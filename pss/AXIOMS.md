@@ -16,6 +16,12 @@ closures, 2 inactive outstanding).
   substitution layer a reusable `n`-head cancellation lemma instead of
   another hand-unrolled arithmetic proof. Added endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Context/DeBruijn.lean` — lifted the generalized preserved-head tail
+  arithmetic pointwise to stacks with `Stack.shiftBy_tail`,
+  `Stack.shiftBy_zero_tail`, and `Stack.instantiate_shiftBy_zero_tail`.
+  This removes the need to introduce fresh numbered stack cancellation
+  lemmas for each deeper preserved-head frontier. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the

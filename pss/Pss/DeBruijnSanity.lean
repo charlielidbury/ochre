@@ -29,6 +29,9 @@ namespace DeBruijn
 #print axioms Term.shiftBy_tail
 #print axioms Term.shiftBy_zero_tail
 #print axioms Term.instantiate_shiftBy_zero_tail
+#print axioms Stack.shiftBy_tail
+#print axioms Stack.shiftBy_zero_tail
+#print axioms Stack.instantiate_shiftBy_zero_tail
 #print axioms Term.instantiate_succ_after
 #print axioms Term.instantiate_after_two
 #print axioms Term.instantiate_zero_after_two

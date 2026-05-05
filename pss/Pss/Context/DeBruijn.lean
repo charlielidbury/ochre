@@ -1336,6 +1336,33 @@ theorem shift_shift_zero (cutoff : Nat) (s : Stack) :
       shift 0 (shift cutoff s) := by
   simpa [shift] using shiftBy_shift_zero cutoff 1 s
 
+/-- Stack-level version of `Term.shiftBy_tail`, inherited pointwise. -/
+theorem shiftBy_tail (cutoff n : Nat) (s : Stack) :
+    shiftBy (cutoff + n) 1 (shiftBy cutoff n s) =
+      shiftBy cutoff (n + 1) s := by
+  induction s with
+  | nil =>
+      rfl
+  | cons α s ih =>
+      simp only [shiftBy_cons, Term.shiftBy_tail cutoff n α, ih]
+
+/-- Top-level specialization of `Stack.shiftBy_tail`. -/
+theorem shiftBy_zero_tail (n : Nat) (s : Stack) :
+    shiftBy n 1 (shiftBy 0 n s) = shiftBy 0 (n + 1) s := by
+  simpa using shiftBy_tail 0 n s
+
+/-- General stack tail cancellation for instantiation below `n` preserved
+top-level bindings. -/
+theorem instantiate_shiftBy_zero_tail (n : Nat) (v : Term) (s : Stack) :
+    instantiate n (Term.shiftBy 0 n v) (shiftBy 0 (n + 1) s) =
+      shiftBy 0 n s := by
+  induction s with
+  | nil =>
+      rfl
+  | cons α s ih =>
+      simp only [instantiate_cons, shiftBy_cons,
+        Term.instantiate_shiftBy_zero_tail n v α, ih]
+
 /-- The stack shape used when weakening a body derivation under an existing
 binder matches the shape obtained by first weakening the outer stack. -/
 theorem shift_one_shift_zero (s : Stack) :
