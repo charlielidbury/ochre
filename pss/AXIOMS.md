@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn β-preservation audit
+  to include the function-bound inversion adapters that feed it:
+  `AbsFunctionBoundInversion_of_diagram`,
+  `AbsFunctionBoundInversion_of_chain_diagram`,
+  `AbsFunctionBoundInversionUnderWfCtx_of_chain_shape`,
+  `AbsFunctionBoundInversionUnderWfCtx_of_chain_shape_machine_state`,
+  `AbsFunctionBoundInversion_of_diagram_via_chain`, and
+  `AbsFunctionBoundInversion_of_msub`. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 5 audit to
   include the β preservation payload boundary:
   `StepBetaPreservesWfM_of`, `StepBetaPreservesWfM_of_diagram`,
