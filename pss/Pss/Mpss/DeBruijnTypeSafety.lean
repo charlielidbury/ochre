@@ -741,6 +741,17 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.top
   simpa using MSubRed.top
     (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv) hu'
 
+/-- `MSubRed.top` substitution embedded into the diagrammatic-star layer. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.top_msubstar
+    {Γ : Ctx} {bound arg u : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MSubStar Γ (Stack.instantiate 0 arg s) (Term.instantiate 0 arg u)
+      (Term.instantiate 0 arg .top) :=
+  MSubStar.of_MSubRed
+    (BetaInstantiationPreservesMSubRedStack.top hArgBound hpv hu)
+
 /-- Successor variables in an arbitrary-stack `MSubRed.pro` leaf descend to
 the tail context during de Bruijn β-instantiation. The remaining head-variable
 case is the substantive bridge from a `WSubMStar` bound premise to a machine
@@ -877,6 +888,17 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.equ
       (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
   MSubRed.equ hEq.prevalidExt hEq
 
+/-- Stack-parametric `MSubRed.equ` substitution embedded into the
+diagrammatic-star layer. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.equ_msubstar
+    {Γ : Ctx} {arg u v : Term} {s : Stack}
+    (hEq :
+      MEqRed Γ (Stack.instantiate 0 arg s)
+        (Term.instantiate 0 arg u) (Term.instantiate 0 arg v)) :
+    MSubStar Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
+  MSubStar.of_MSubRed (BetaInstantiationPreservesMSubRedStack.equ hEq)
+
 /-- The `MSubRed.equ` case of de Bruijn β-instantiation follows from the
 empty-stack equivalence-reduction substitution payload. -/
 noncomputable def BetaInstantiationPreservesMSubRed.equ_of_meq
@@ -917,6 +939,28 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.app
       hArgBound.scoped_left (by
         simpa [Ctx.depth, Nat.succ_eq_add_one] using hv)
   simpa [Term.instantiate] using MSubRed.app hOp hv'
+
+/-- The `MSubRed.app` constructor reassembles a stack-parametric
+β-instantiated subtype step at the diagrammatic-star layer. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.app_msubstar
+    {Γ : Ctx} {bound arg u u' v : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hOp :
+      MSubStar Γ (Term.instantiate 0 arg v :: Stack.instantiate 0 arg s)
+        (Term.instantiate 0 arg u) (Term.instantiate 0 arg u'))
+    (hv : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v) :
+    MSubStar Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.app u v))
+      (Term.instantiate 0 arg (.app u' v)) := by
+  have hpvTail : PrevalidExt Γ (Stack.instantiate 0 arg s) :=
+    BetaInstantiationPreservesPrevalidExtStack hArgBound hpv
+  have hv' : Term.Scoped Γ.depth (Term.instantiate 0 arg v) :=
+    Term.instantiate_scoped 0 Γ.depth arg v (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hv)
+  simpa [Term.instantiate] using
+    msubStar_app_fixed_arg hpvTail hv' hOp
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/

@@ -190,6 +190,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRed.var_of_stack
 #print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top
+#print axioms BetaInstantiationPreservesMSubRedStack.top_msubstar
 #print axioms BetaInstantiationPreservesMSubRedStack.pro_succ
 #print axioms BetaInstantiationPreservesMSubRedStack.pro
 #print axioms BetaInstantiationPreservesMSubRedStack.pro_msubstar
@@ -198,9 +199,11 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedStack.app
 #print axioms BetaInstantiationPreservesMSubRed.equ
 #print axioms BetaInstantiationPreservesMSubRedStack.equ
+#print axioms BetaInstantiationPreservesMSubRedStack.equ_msubstar
 #print axioms BetaInstantiationPreservesMSubRed.equ_of_meq
 #print axioms BetaInstantiationPreservesMSubRedStack.equ_of_meq
 #print axioms BetaInstantiationPreservesMSubRedStack.app
+#print axioms BetaInstantiationPreservesMSubRedStack.app_msubstar
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

@@ -243,6 +243,13 @@ closures, 2 inactive outstanding).
   the successor branch embeds the already-proved raw `pro_succ` machine step
   into `MSubStar`. Added the endpoint to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-layer reassembly helpers
+  `BetaInstantiationPreservesMSubRedStack.top_msubstar`,
+  `BetaInstantiationPreservesMSubRedStack.equ_msubstar`, and
+  `BetaInstantiationPreservesMSubRedStack.app_msubstar`. These embed the
+  easy raw `top`/`equ` cases into `MSubStar` and use the existing
+  `msubStar_app_fixed_arg` lift for application. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
