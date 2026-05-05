@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level
+  `{sub}, {equ}, {sub}` diagrammatic wrappers
+  `meqRedStar_equ_under_sub_head_sub_tail_nil_replace_from_handlers` and
+  `msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_handlers`,
+  obtained by composing the new exact one-step wrappers with the generic chain
+  replacement consumers. Added both endpoints to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the diagrammatic
   `{sub}, {equ}, {sub}` empty-stack wrappers
   `meqRed_equ_under_sub_head_sub_tail_nil_replace_from_handlers` and
