@@ -11823,6 +11823,126 @@ theorem meq_equ_under_two_heads_pro_tail_handler_of_replacement {Γ : Ctx} {s : 
           (by simpa [Ctx.depth] using hα.scoped_left))))
     (hReplace hα)
 
+/-- Canonical handler for preserved-head index `0` `Me-Pro` during
+three-preserved-head `.equ` replacement. -/
+theorem meq_equ_under_three_heads_pro_zero_handler_of_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ head₃ : CtxEntry} {old new : Term}
+    (hpv :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+          s α α' →
+        MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ)
+          s α α')
+    {α α' : Term}
+    (hb :
+      Ctx.equBinds (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        0 α)
+    (hα :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        s α α') :
+    MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 0) α' :=
+  MSubStar.trans
+    (MSubStar.of_MEqRed (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+      (MEqRed.pro (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+        (by simpa [Ctx.equBinds] using hb)
+        (MEqRed.refl (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+          (by simpa [Ctx.depth] using hα.scoped_left))))
+    (hReplace hα)
+
+/-- Canonical handler for preserved-head index `1` `Me-Pro` during
+three-preserved-head `.equ` replacement. -/
+theorem meq_equ_under_three_heads_pro_one_handler_of_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ head₃ : CtxEntry} {old new : Term}
+    (hpv :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+          s α α' →
+        MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ)
+          s α α')
+    {α α' : Term}
+    (hb :
+      Ctx.equBinds (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        1 α)
+    (hα :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        s α α') :
+    MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 1) α' :=
+  MSubStar.trans
+    (MSubStar.of_MEqRed (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+      (MEqRed.pro (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+        (by simpa [Ctx.equBinds] using hb)
+        (MEqRed.refl (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+          (by simpa [Ctx.depth] using hα.scoped_left))))
+    (hReplace hα)
+
+/-- Canonical handler for preserved-head index `2` `Me-Pro` during
+three-preserved-head `.equ` replacement. -/
+theorem meq_equ_under_three_heads_pro_two_handler_of_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ head₃ : CtxEntry} {old new : Term}
+    (hpv :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+          s α α' →
+        MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ)
+          s α α')
+    {α α' : Term}
+    (hb :
+      Ctx.equBinds (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        2 α)
+    (hα :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        s α α') :
+    MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 2) α' :=
+  MSubStar.trans
+    (MSubStar.of_MEqRed (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+      (MEqRed.pro (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+        (by simpa [Ctx.equBinds] using hb)
+        (MEqRed.refl (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+          (by simpa [Ctx.depth] using hα.scoped_left))))
+    (hReplace hα)
+
+/-- Canonical handler for true tail indices `4+` of `Me-Pro` during
+three-preserved-head `.equ` replacement. -/
+theorem meq_equ_under_three_heads_pro_tail_handler_of_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ head₃ : CtxEntry} {old new : Term}
+    (hpv :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hReplace :
+      ∀ {α α' : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+          s α α' →
+        MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ)
+          s α α')
+    {i : Nat} {α α' : Term}
+    (hb :
+      Ctx.equBinds (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        ((((i + 1) + 1) + 1) + 1) α)
+    (hα :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        s α α') :
+    MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar ((((i + 1) + 1) + 1) + 1)) α' :=
+  MSubStar.trans
+    (MSubStar.of_MEqRed (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+      (MEqRed.pro (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+        (by simpa [Ctx.equBinds] using hb)
+        (MEqRed.refl (PrevalidExt.equ_under_three_heads_replace hpv hNewScoped)
+          (by simpa [Ctx.depth] using hα.scoped_left))))
+    (hReplace hα)
+
 /-- One-step equivalence replacement under two preserved heads with all
 `Me-Pro` cases wired. The preserved-head indices `0` and `1`, changed-entry
 residual index `2`, and true tail indices `3+` are discharged by canonical

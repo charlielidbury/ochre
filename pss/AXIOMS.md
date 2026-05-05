@@ -9,6 +9,16 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added stable
+  three-preserved-head `Me-Pro` replacement handlers
+  `meq_equ_under_three_heads_pro_zero_handler_of_replacement`,
+  `meq_equ_under_three_heads_pro_one_handler_of_replacement`,
+  `meq_equ_under_three_heads_pro_two_handler_of_replacement`, and
+  `meq_equ_under_three_heads_pro_tail_handler_of_replacement`. These cover the
+  preserved-head indices `0`, `1`, `2`, and true tail indices `4+`, leaving
+  only the changed-entry index `3` bridge before a full three-head `with_pro`
+  wrapper can mirror the existing two-head API. Added all four endpoints to
+  the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic
   three-preserved-head `.equ` subtype replacement wrappers
   `msubRed_equ_under_three_heads_replace_from_replacements`,
