@@ -2956,16 +2956,13 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty
     (MSubStarToWSubMStarPayload.of_steps hPres hStep)
     hFunBody hNoTop hFOp
 
-/-- No-external-empty variant of the typed target-application `Me-FOp`
-machine-state assembly. The recursive induction handles the `Me-FOp` bound
-step at the empty stack; the remaining non-empty tail is still exposed as the
-target-application tail-step residual. -/
-noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_target_app_tail_step
+/-- Control-left-parametric no-external-empty variant of the typed
+target-application `Me-FOp` machine-state assembly. The recursive induction
+handles the `Me-FOp` bound step at the empty stack; the remaining non-empty
+tail is still exposed as the target-application tail-step residual. -/
+noncomputable def MEqRedPreservesWfMachineState.of_control_left_no_empty_and_typed_fop_target_app_tail_step
     (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
-    (hEqBody : MEqRedSubHeadToEquHeadPayload)
-    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
-    (hPres : MSubPreservesWfMPayload)
-    (hStep : MSubToWSubMStarPayload)
+    (hControl : WfMachineStateControlLeftPayload)
     (hInv : AbsFunctionBoundInversionUnderWfCtx)
     (hFOpBody : MEqRedFOpBodyTypedPayload)
     (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
@@ -2978,9 +2975,6 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
   induction hred with
   | pro hpv hb hred ih =>
       intro hΓ hState
-      have hControl : WfMachineStateControlLeftPayload :=
-        WfMachineStateControlLeftPayload.of_body_transports_and_steps
-          hEqBody hSubBody hPres hStep
       exact ih hΓ
         (MEqRedProAnnotationMachineStatePayload.of_control_left
           hControl hΓ hb hState)
@@ -3018,9 +3012,6 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
         MEqRed.app hOpRefl hArg
       have hControlBack : WSubMStar Γapp (.app u' v') (.app u' v) :=
         WSubMStar.of_MEqRed_back hAppRed hApp hApp'
-      have hControl : WfMachineStateControlLeftPayload :=
-        WfMachineStateControlLeftPayload.of_body_transports_and_steps
-          hEqBody hSubBody hPres hStep
       have hTail' : WfMachineState Γapp (.app u' v') sapp :=
         hControl hControlBack (WfMachineState.tail_state hOpState')
       simpa [WfMachineState, Stack.plug] using hTail'
@@ -3112,6 +3103,47 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
               hTargetApp hFOpTailStep)
               hΓ (MEqRed.fOp hBound hOperandScoped hBodyRed)
               hwfAbs' hState
+
+/-- Append-native no-external-empty variant of the typed target-application
+`Me-FOp` machine-state assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_typed_fop_target_app_tail_step
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hFOpTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_control_left_no_empty_and_typed_fop_target_app_tail_step
+    hBeta
+    (WfMachineStateControlLeftPayload.of_msubstar_stack_append
+      hAppend hBridge)
+    hInv hFOpBody hTargetApp hFOpTailStep hFunBody hNoTop
+
+/-- No-external-empty variant of the typed target-application `Me-FOp`
+machine-state assembly, with the control-left residual still exposed through
+the older body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_target_app_tail_step
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hFOpTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_typed_fop_target_app_tail_step
+    hBeta
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hTargetApp hFOpTailStep hFunBody hNoTop
 
 /-- No-external-empty typed-operator variant of the `Me-FOp` route. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_operator_tail_step

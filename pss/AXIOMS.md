@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the no-external-empty typed
+  target-application `Me-FOp` machine-state assembly through the
+  control-left-parametric endpoint
+  `MEqRedPreservesWfMachineState.of_control_left_no_empty_and_typed_fop_target_app_tail_step`,
+  added the append-native wrapper
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_typed_fop_target_app_tail_step`,
+  and routed the body-transport surface through the transitive diagrammatic
+  stack-append payload directly. Added both endpoints to the De Bruijn audit.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native no-external-empty
   machine-state assembly
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty` and routed
