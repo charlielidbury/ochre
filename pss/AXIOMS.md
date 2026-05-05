@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStep_topOrAppTop_eqStar_from_left`, a one-step
+  abstraction-headed application branch wrapper that recovers the
+  `Top`/`Top`-headed commutation side conditions from the subtype step.
+  Added the endpoint to the de Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level
   `Top`-headed application commutation wrappers
   `commute_appTop_subStep_eqStar_from_left` and

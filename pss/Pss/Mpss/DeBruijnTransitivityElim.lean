@@ -1516,6 +1516,39 @@ theorem commute_appAbs_subStep_topOrAppTop_eqStar {Γ : Ctx} {s : Stack}
   commute_appAbs_subStar_topOrAppTop_eqStar hpv hScoped
     (MSubRedStar.single hSub) hShape hEq
 
+/-- Single-subtype-step `Top` / `Top`-headed branch for
+abstraction-headed application commutation with side conditions recovered
+from the subtype step. -/
+theorem commute_appAbs_subStep_topOrAppTop_eqStar_from_left {Γ : Ctx} {s : Stack}
+    {bound body arg t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hShape : t₁ = .top ∨ ∃ arg', t₁ = .app .top arg')
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  have hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg) := hSub.scoped_left
+  cases hSub with
+  | top hpv hScopedTop =>
+    exact commute_appAbs_subStep_topOrAppTop_eqStar hpv hScopedTop
+      (MSubRed.top hpv hScopedTop) hShape hEq
+  | equ hpv heqSub =>
+    exact commute_appAbs_subStep_topOrAppTop_eqStar hpv heqSub.scoped_left
+      (MSubRed.equ hpv heqSub) hShape hEq
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons hOpScoped =>
+      exact commute_appAbs_subStep_topOrAppTop_eqStar (PrevalidExt.tail hpvCons)
+        hScoped (MSubRed.app (MSubRed.top hpvCons hOpScoped) hArg) hShape hEq
+    | equ hpvCons heqOp =>
+      exact commute_appAbs_subStep_topOrAppTop_eqStar (PrevalidExt.tail hpvCons)
+        hScoped (MSubRed.app (MSubRed.equ hpvCons heqOp) hArg) hShape hEq
+    | fOp _ _ _ =>
+      cases hShape with
+      | inl hTop =>
+        cases hTop
+      | inr hAppTop =>
+        obtain ⟨arg', hTarget⟩ := hAppTop
+        cases hTarget
+
 /-- Diagrammatic packaging of the β branch from
 `MEqRedStar.app_abs_inv`: if an equivalence chain from an
 abstraction-headed application has taken β, the final target is

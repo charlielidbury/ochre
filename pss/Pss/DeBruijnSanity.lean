@@ -28,6 +28,7 @@ namespace DeBruijn
 #print axioms commute_appTop_subStar_eqStar
 #print axioms commute_appTop_subStep_eqStar_from_left
 #print axioms commute_appTop_subStar_eqStep_from_right
+#print axioms commute_appAbs_subStep_topOrAppTop_eqStar_from_left
 #print axioms diamond_abs_fOp_body_fixed_bound
 #print axioms diamond_abs_fOp_body_fixed_bound_star
 #print axioms diamond_abs_fOp_bound_fixed_body
