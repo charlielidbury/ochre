@@ -696,6 +696,30 @@ theorem subBinds_equ_under_head_replace {Γ : Ctx} {head : CtxEntry}
         Ctx.subBinds_equ_head_replace (by simpa [subBinds] using hlook)
       exact ⟨a, by simpa [subBinds] using htail, rfl⟩
 
+/-- Changing the bound stored in an `.equ` entry under two preserved heads
+preserves subtype lookups. -/
+theorem subBinds_equ_under_two_heads_replace {Γ : Ctx} {head₁ head₂ : CtxEntry}
+    {old new : Term} {i : Nat} {t : Term} :
+    subBinds (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) i t →
+    subBinds (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) i t := by
+  cases i with
+  | zero =>
+    cases head₁ with
+    | mk bound kind =>
+      cases kind <;> simp [subBinds]
+  | succ i =>
+    intro h
+    simp [subBinds] at h ⊢
+    cases hlook : lookupSub (head₂ :: { bound := old, kind := .equ } :: Γ) i with
+    | none =>
+      simp [hlook] at h
+    | some a =>
+      simp [hlook] at h
+      subst h
+      have htail : subBinds (head₂ :: { bound := new, kind := .equ } :: Γ) i a :=
+        Ctx.subBinds_equ_under_head_replace (by simpa [subBinds] using hlook)
+      exact ⟨a, by simpa [subBinds] using htail, rfl⟩
+
 /-- Equivalence lookup at the preserved head remains stable when replacing
 the `.equ` entry immediately below it. -/
 theorem equBinds_equ_under_head_replace_zero {Γ : Ctx} {head : CtxEntry}

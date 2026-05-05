@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` — added
+  `Ctx.subBinds_equ_under_two_heads_replace` and
+  `MSubRed.pro_equ_under_two_heads_replace`, then used them to internalize the
+  stable `Ms-Pro` case in
+  `MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers`. The two-`.sub`
+  nil splitter now only exposes `Ms-Equ`, `Ms-App`, and `Ms-Fun` recursive
+  handlers while still ruling out empty-stack `Ms-FOp`. Added the new
+  endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_two_sub_heads_replace_from_handlers` and
   `MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers`, the two-`.sub`

@@ -3208,6 +3208,18 @@ noncomputable def MSubRed.equ_under_two_heads_replace_from_handlers {Γ : Ctx}
   | fOp ht hArg hBody =>
       exact hFOp ht hArg rfl hBody
 
+/-- `Ms-Pro` is stable when replacing an `.equ` entry under two preserved
+heads, because subtype lookup ignores `.equ` entries. -/
+noncomputable def MSubRed.pro_equ_under_two_heads_replace {Γ : Ctx} {s : Stack}
+    {head₁ head₂ : CtxEntry} {old new : Term} {i : Nat} {t : Term}
+    (hpv : PrevalidExt (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb : Ctx.subBinds (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) i t) :
+    MSubRed (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar i) t :=
+  MSubRed.pro (PrevalidExt.equ_under_two_heads_replace hpv hnew)
+    (Ctx.subBinds_equ_under_two_heads_replace hb)
+
 /-- Empty-stack specialization of raw subtype replacement across a changed
 `.equ` entry under two preserved `.sub` heads. The nested raw `Ms-FOp` case is
 impossible at empty stack. -/
@@ -3217,14 +3229,6 @@ noncomputable def MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers
       { bound := headBound₂, kind := .sub } ::
       { bound := old, kind := .equ } :: Γ) [])
     (hnew : Term.Scoped Γ.depth new)
-    (hPro :
-      ∀ {i : Nat} {t : Term},
-        Ctx.subBinds ({ bound := headBound₁, kind := .sub } ::
-          { bound := headBound₂, kind := .sub } ::
-          { bound := old, kind := .equ } :: Γ) i t →
-        MSubRed ({ bound := headBound₁, kind := .sub } ::
-          { bound := headBound₂, kind := .sub } ::
-          { bound := new, kind := .equ } :: Γ) [] (.bvar i) t)
     (hEq :
       ∀ {u v : Term},
         MEqRed ({ bound := headBound₁, kind := .sub } ::
@@ -3267,7 +3271,8 @@ noncomputable def MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers
     MSubRed ({ bound := headBound₁, kind := .sub } ::
       { bound := headBound₂, kind := .sub } ::
       { bound := new, kind := .equ } :: Γ) [] u v :=
-  MSubRed.equ_under_two_heads_replace_from_handlers hpv hnew hPro hEq hApp hFun
+  MSubRed.equ_under_two_heads_replace_from_handlers hpv hnew
+    (MSubRed.pro_equ_under_two_heads_replace hpv hnew) hEq hApp hFun
     (by
       intro bound arg body body' rest _ _ hStack _
       cases hStack)

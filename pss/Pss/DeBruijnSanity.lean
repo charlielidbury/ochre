@@ -18,6 +18,7 @@ namespace DeBruijn
 #print axioms Stack.Scoped.shift_inv
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace
+#print axioms Ctx.subBinds_equ_under_two_heads_replace
 #print axioms meqRed_equ_under_two_heads_replace_from_handlers
 #print axioms msubRed_equ_under_two_heads_replace_from_handlers
 #print axioms PrevalidExt.weaken_head_inv
@@ -172,6 +173,7 @@ namespace DeBruijn
 #print axioms MEqRed.equ_under_two_heads_replace_from_handlers
 #print axioms MSubRed.equ_under_two_heads_replace_from_handlers
 #print axioms MEqRed.equ_under_two_sub_heads_replace_from_handlers
+#print axioms MSubRed.pro_equ_under_two_heads_replace
 #print axioms MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers
 #print axioms MEqRed.sub_head_replace
 #print axioms MEqRed.sub_head_replace_two_step
