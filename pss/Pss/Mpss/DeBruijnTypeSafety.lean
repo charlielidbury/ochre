@@ -616,6 +616,29 @@ def BetaInstantiationPreservesMEqRedUnderHeadsStack (n : Nat) : Type :=
             (Term.instantiate n (Term.shiftBy 0 n arg) lhs)
             (Term.instantiate n (Term.shiftBy 0 n arg) rhs)
 
+/-- The generic preserved-head stack payload specializes at zero heads to the
+existing stack-parametric substitution surface. -/
+def BetaInstantiationPreservesMEqRedStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 0) :
+    BetaInstantiationPreservesMEqRedStack := by
+  intro Γ bound arg lhs rhs s hArg hRed
+  have h' := h (heads := []) rfl hArg hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+
+/-- The existing stack-parametric substitution surface is the zero-head
+specialization of the generic preserved-head payload. -/
+def BetaInstantiationPreservesMEqRedUnderHeadsStack.of_stack
+    (h : BetaInstantiationPreservesMEqRedStack) :
+    BetaInstantiationPreservesMEqRedUnderHeadsStack 0 := by
+  intro Γ bound arg lhs rhs heads s hlen hArg hRed
+  cases heads with
+  | nil =>
+      have h' := h (Γ := Γ) (bound := bound) (arg := arg)
+        (lhs := lhs) (rhs := rhs) (s := s) hArg hRed
+      simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+  | cons head heads =>
+      simp at hlen
+
 /-- The generic preserved-head stack payload specializes to the existing
 one-head surface. -/
 def BetaInstantiationPreservesMEqRedUnderHeadStack.of_generic
