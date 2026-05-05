@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_under_three_heads_replace_with_pro_from_replacements` and
+  `msubRedStar_equ_under_three_heads_replace_with_pro_function_from_replacements`,
+  the subtype-chain three-preserved-head `.equ` replacement wrappers whose
+  `Ms-Equ` branch uses the canonical three-head `Me-Pro`-wired equivalence
+  replacement. This brings the three-head subtype `with_pro` surface to
+  parity with the existing two-head API. Added both endpoints to the De
+  Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRedStar_equ_under_three_heads_replace_with_pro_from_replacements` and
   `meqRedStar_equ_under_three_heads_replace_with_pro_function_from_replacements`,
   the chain-level and stack-polymorphic three-preserved-head equivalence
