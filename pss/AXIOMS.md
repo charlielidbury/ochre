@@ -20,7 +20,8 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.app`, plus the
   eight-head reflexive leaf
   `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.refl` and variable
-  leaf `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.var`. Added
+  leaf `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.var`, plus the
+  `Me-TAp` leaf `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.tAp`. Added
   endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
