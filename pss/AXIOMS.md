@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added raw-subtype-star
+  `{sub}, {equ}, {sub}` replacement splitters
+  `msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_raw_handlers`
+  and
+  `msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_raw_handlers_star`.
+  The nested `Ms-Fun` body residual in
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of`
+  now consumes a raw subtype chain instead of immediately singleton-wrapping
+  a raw body step. Added both endpoints to the De Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added raw-subtype-star
   replacement infrastructure
   `msubRedStar_abs_fun_body_equ_bound` and
   `msubRedStar_equ_head_replace_from_handlers`. The remaining nested

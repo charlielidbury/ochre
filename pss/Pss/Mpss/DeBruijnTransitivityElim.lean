@@ -5645,6 +5645,146 @@ theorem msubRedStar_equ_head_replace_from_handlers {Γ : Ctx} {s : Stack}
   | fOp ht hArg hBody =>
     exact hFOp ht hArg rfl hBody
 
+/-- Raw subtype-star replacement for the empty-stack `{sub}, {equ}, {sub}`
+shape. This is the chain-valued counterpart of the one-step splitters used at
+nested structural-app body residuals. -/
+theorem msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_raw_handlers
+    {Γ : Ctx} {headBound tailBound old new u v : Term}
+    (hpv : PrevalidExt ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [])
+    (hnew : Term.Scoped (Ctx.depth ({ bound := tailBound, kind := .sub } :: Γ)) new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] u v →
+        MSubRedStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [arg] op op' →
+        Term.Scoped
+          (Ctx.depth ({ bound := headBound, kind := .sub } ::
+            { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+            Γ)) arg →
+        MSubRedStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped
+          (Ctx.depth ({ bound := headBound, kind := .sub } ::
+            { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+            Γ)) bound →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } :: { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] body body' →
+        MSubRedStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] (.abs bound body) (.abs bound' body'))
+    (h : MSubRed ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [] u v) :
+    MSubRedStar ({ bound := headBound, kind := .sub } ::
+      { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [] u v := by
+  have hpvNew : PrevalidExt ({ bound := headBound, kind := .sub } ::
+      { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [] := by
+    simpa [CtxEntry.ScopedIn, Ctx.depth] using
+      PrevalidExt.replaceAt_equ_same
+        (Γ := { bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ)
+        (s := []) (cutoff := 1) (old := old) (new := new)
+        hpv (by simp [Ctx.depth])
+        (by simpa [CtxEntry.ScopedIn, Ctx.depth] using hnew)
+  cases h with
+  | pro _ hb =>
+    exact MSubRedStar.single (by
+      simpa [CtxEntry.ScopedIn, Ctx.depth] using
+        MSubRed.pro_replaceAt_equ
+          (Γ := { bound := headBound, kind := .sub } ::
+            { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+            Γ)
+          (s := []) (cutoff := 1) (old := old) (new := new)
+          hpv (by simp [Ctx.depth])
+          (by simpa [CtxEntry.ScopedIn, Ctx.depth] using hnew) hb)
+  | top _ hu =>
+    exact MSubRedStar.single (MSubRed.top hpvNew (by
+      simpa [Ctx.depth] using hu))
+  | equ _ heq =>
+    exact hEq heq
+  | app hOp hArg =>
+    exact hApp hOp hArg
+  | fun_ hBoundScoped hBound hBody =>
+    exact hFun hBoundScoped hBound hBody
+
+/-- Consume a raw subtype-reduction chain in the empty-stack `{sub}, {equ},
+{sub}` shape when each old-context step has a raw-subtype-chain replacement
+in the new context. -/
+theorem msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_raw_handlers_star
+    {Γ : Ctx} {headBound tailBound old new u v : Term}
+    (hpv : PrevalidExt ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [])
+    (hnew : Term.Scoped (Ctx.depth ({ bound := tailBound, kind := .sub } :: Γ)) new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] u v →
+        MSubRedStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [arg] op op' →
+        Term.Scoped
+          (Ctx.depth ({ bound := headBound, kind := .sub } ::
+            { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+            Γ)) arg →
+        MSubRedStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped
+          (Ctx.depth ({ bound := headBound, kind := .sub } ::
+            { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+            Γ)) bound →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } :: { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] body body' →
+        MSubRedStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] (.abs bound body) (.abs bound' body'))
+    (h : MSubRedStar ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [] u v) :
+    MSubRedStar ({ bound := headBound, kind := .sub } ::
+      { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [] u v := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail mid v hStar hLast ih =>
+    exact MSubRedStar.trans ih
+      (msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_raw_handlers
+        hpv hnew hEq hApp hFun hLast.some)
+
 /-- One-step equivalence replacement splitter for an innermost changed `.equ`
 head. Stable leaves are discharged immediately; the head `Me-Pro` case is
 exposed as its precise residual, and recursive constructor cases are exposed
@@ -6160,7 +6300,7 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
               { bound := funBound, kind := .sub } ::
               { bound := v, kind := .equ } ::
               { bound := bound₃, kind := .sub } :: Γ) [] inner inner' →
-            MSubRed ({ bound := funBound, kind := .sub } ::
+            MSubRedStar ({ bound := funBound, kind := .sub } ::
               { bound := v₂, kind := .equ } ::
               { bound := bound₃, kind := .sub } :: Γ) []
               (.abs innerBound inner) (.abs innerBound' inner'))
@@ -6341,51 +6481,77 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
                       hStack hBody
                     cases hStack)
                   hBoundStep
-            have hBodyNew : MSubRed ({ bound := funBound, kind := .sub } ::
+            have hBodyNew : MSubRedStar ({ bound := funBound, kind := .sub } ::
                 { bound := v₂, kind := .equ } :: Γ₃) [] body body' := by
               simpa [Γ₃, Stack.shift] using
-                MSubRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers
-                (Γ := Γ) (headBound := funBound) (tailBound := bound₃)
-                (old := v) (new := v₂) (u := body) (v := body') hpvBodyOld
-                hEqArg₃.scoped_right
-                (by
-                  intro target hTarget
-                  simpa [Γ₃, Stack.shift] using
-                    hAppAppStepFOpFunEquProOne hSubOp hArgScoped hEqOp hEqArg
-                      hBound₁₃ hBound₂₃ hFunScoped hBoundStep hTarget)
-                (by
-                  intro i α₀ α₀' hb hα
-                  simpa [Γ₃, Stack.shift] using
-                    hAppAppStepFOpFunEquProTail hSubOp hArgScoped hEqOp hEqArg
-                      hBound₁₃ hBound₂₃ hFunScoped hBoundStep hb hα)
-                (by
-                  intro op op' arg arg' hOp hArg
-                  simpa [Γ₃, Stack.shift] using
-                    hAppAppStepFOpFunEquApp hSubOp hArgScoped hEqOp hEqArg
-                      hBound₁₃ hBound₂₃ hFunScoped hBoundStep hOp hArg)
-                (by
-                  intro innerBound innerBound' inner inner' hInnerBound hInner
-                  simpa [Γ₃, Stack.shift] using
-                    hAppAppStepFOpFunEquFun hSubOp hArgScoped hEqOp hEqArg
-                      hBound₁₃ hBound₂₃ hFunScoped hBoundStep hInnerBound hInner)
-                (by
-                  intro innerBound arg arg' inner inner' hInnerScoped hInner hArg
-                  simpa [Γ₃, Stack.shift] using
-                    hAppAppStepFOpFunEquBet hSubOp hArgScoped hEqOp hEqArg
-                      hBound₁₃ hBound₂₃ hFunScoped hBoundStep hInnerScoped hInner hArg)
-                (by
-                  intro op op' arg hOp hArg
-                  simpa [Γ₃, Stack.shift] using
-                    hAppAppStepFOpFunApp hSubOp hArgScoped hEqOp hEqArg hBound₁₃
-                      hBound₂₃ hFunScoped hBoundStep hOp hArg)
-                (by
-                  intro innerBound innerBound' inner inner' hInnerScoped hInnerBound hInner
-                  simpa [Γ₃, Stack.shift] using
-                    hAppAppStepFOpFunFun hSubOp hArgScoped hEqOp hEqArg hBound₁₃
-                      hBound₂₃ hFunScoped hBoundStep hInnerScoped hInnerBound hInner)
-                hBody
+                msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_raw_handlers
+                  (Γ := Γ) (headBound := funBound) (tailBound := bound₃)
+                  (old := v) (new := v₂) (u := body) (v := body') hpvBodyOld
+                  hEqArg₃.scoped_right
+                  (by
+                    intro α α' hEqBody
+                    exact MSubRedStar.single (MSubRed.equ
+                      (PrevalidExt.replaceAt_equ_same
+                        (Γ := { bound := funBound, kind := .sub } ::
+                          { bound := v, kind := .equ } ::
+                          { bound := bound₃, kind := .sub } :: Γ)
+                        (s := []) (cutoff := 1) (old := v) (new := v₂)
+                        hpvBodyOld (by simp [Ctx.depth])
+                        (by
+                          simpa [CtxEntry.ScopedIn, Ctx.depth] using
+                            hEqArg₃.scoped_right))
+                      (by
+                        simpa [Γ₃, Stack.shift] using
+                          MEqRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers
+                            (Γ := Γ) (headBound := funBound) (tailBound := bound₃)
+                            (old := v) (new := v₂) (u := α) (v := α')
+                            hpvBodyOld hEqArg₃.scoped_right
+                            (by
+                              intro target hTarget
+                              simpa [Γ₃, Stack.shift] using
+                                hAppAppStepFOpFunEquProOne hSubOp hArgScoped hEqOp
+                                  hEqArg hBound₁₃ hBound₂₃ hFunScoped hBoundStep
+                                  hTarget)
+                            (by
+                              intro i α₀ α₀' hb hα
+                              simpa [Γ₃, Stack.shift] using
+                                hAppAppStepFOpFunEquProTail hSubOp hArgScoped hEqOp
+                                  hEqArg hBound₁₃ hBound₂₃ hFunScoped hBoundStep
+                                  hb hα)
+                            (by
+                              intro op op' arg arg' hOp hArg
+                              simpa [Γ₃, Stack.shift] using
+                                hAppAppStepFOpFunEquApp hSubOp hArgScoped hEqOp
+                                  hEqArg hBound₁₃ hBound₂₃ hFunScoped hBoundStep
+                                  hOp hArg)
+                            (by
+                              intro innerBound innerBound' inner inner' hInnerBound hInner
+                              simpa [Γ₃, Stack.shift] using
+                                hAppAppStepFOpFunEquFun hSubOp hArgScoped hEqOp
+                                  hEqArg hBound₁₃ hBound₂₃ hFunScoped hBoundStep
+                                  hInnerBound hInner)
+                            (by
+                              intro innerBound arg arg' inner inner' hInnerScoped hInner hArg
+                              simpa [Γ₃, Stack.shift] using
+                                hAppAppStepFOpFunEquBet hSubOp hArgScoped hEqOp
+                                  hEqArg hBound₁₃ hBound₂₃ hFunScoped hBoundStep
+                                  hInnerScoped hInner hArg)
+                            hEqBody)))
+                  (by
+                    intro op op' arg hOp hArg
+                    exact MSubRedStar.single (by
+                      simpa [Γ₃, Stack.shift] using
+                        hAppAppStepFOpFunApp hSubOp hArgScoped hEqOp hEqArg
+                          hBound₁₃ hBound₂₃ hFunScoped hBoundStep hOp hArg)
+                      )
+                  (by
+                    intro innerBound innerBound' inner inner' hInnerScoped hInnerBound hInner
+                    simpa [Γ₃, Stack.shift] using
+                      hAppAppStepFOpFunFun hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+                        hBound₂₃ hFunScoped hBoundStep hInnerScoped hInnerBound hInner)
+                  hBody
             exact msubRedStar_abs_fun_body_equ_bound hpvNew hBoundNew hBody.scoped_left
-              (MSubRedStar.single hBodyNew))
+              hBodyNew)
           (by
             intro funBound arg body body' rest hFunScoped hArgScoped hStack hBody
             cases hStack)
