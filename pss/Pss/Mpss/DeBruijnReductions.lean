@@ -1675,6 +1675,19 @@ theorem MEqRedStar.sub_head_replace {Γ : Ctx} {s : Stack} {u v : Term}
       (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
       (old := old) (new := new) h hcut (by simpa using hOldNew))
 
+/-- Chain-valued head replacement for equivalence reductions under an
+innermost `.sub` binder whose bound itself moves by an equivalence chain. -/
+theorem MEqRedStar.sub_head_replace_star {Γ : Ctx} {s : Stack} {u v : Term}
+    {old new : Term}
+    (h : MEqRedStar ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRedStar Γ [] old new) :
+    MEqRedStar ({ bound := new, kind := .sub } :: Γ) s u v := by
+  induction hOldNew with
+  | refl =>
+      exact h
+  | tail hChain hStep ih =>
+      exact ih.sub_head_replace hStep.some
+
 /-- Star-valued `Ms-Equ` replacement across arbitrary-depth `.sub`
 replacement. -/
 theorem MSubRedStar.equ_replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}

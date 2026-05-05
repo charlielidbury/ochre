@@ -10,6 +10,17 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `diamond_abs_fun_bound_body_chains_star`, a star-level
+  changing-bound/changing-body `Fun` diamond assembly that consumes bound
+  chains plus body chains under the original branch bounds and transports the
+  body chains to the joined bound. Added the endpoint to the de Bruijn audit.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRedStar.sub_head_replace_star`, the chain-valued innermost `.sub`
+  replacement endpoint for body equivalence chains when the binder bound
+  itself moves by an equivalence chain. Added the endpoint to the de Bruijn
+  audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `diamond_abs_fun_targets_of_bound_body_chains_from_left`, which packages the
   new `.sub` head replacement star into the changing-bound/changing-body
   `Fun` diamond assembly. Body joins can now be supplied under each branch's

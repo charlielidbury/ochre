@@ -3340,6 +3340,36 @@ theorem diamond_abs_fun_targets_of_bound_body_chains_from_left {Γ : Ctx}
         hBody₁₃.sub_head_replace hBound₁₃.some,
         hBody₂₃.sub_head_replace hBound₂₃.some⟩)
 
+/-- Star-level changing-bound/changing-body `Fun` abstraction diamond
+assembly. Bound equivalence chains move the abstraction bounds to `bound₃`;
+body equivalence chains are supplied under the original branch bounds and are
+transported to the joined `.sub` head before lifting through the abstraction.
+-/
+noncomputable def diamond_abs_fun_bound_body_chains_star {Γ : Ctx}
+    {bound₁ body₁ bound₂ body₂ bound₃ body₃ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBound₃Scoped : Term.Scoped Γ.depth bound₃)
+    (hBody₁Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound₁, kind := .sub } :: Γ)) body₁)
+    (hBody₂Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound₂, kind := .sub } :: Γ)) body₂)
+    (hBound₁₃ : MEqRedStar Γ [] bound₁ bound₃)
+    (hBound₂₃ : MEqRedStar Γ [] bound₂ bound₃)
+    (hBody₁₃ : MEqRedStar ({ bound := bound₁, kind := .sub } :: Γ) [] body₁ body₃)
+    (hBody₂₃ : MEqRedStar ({ bound := bound₂, kind := .sub } :: Γ) [] body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MEqRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  exact ⟨.abs bound₃ body₃,
+    MEqRedStar.trans
+      (meqRedStar_abs_fun_bound_fixed_body hpvNil hBody₁Scoped hBound₁₃)
+      (meqRedStar_abs_fun_body_fixed_bound hpvNil hBound₃Scoped
+        (hBody₁₃.sub_head_replace_star hBound₁₃)),
+    MEqRedStar.trans
+      (meqRedStar_abs_fun_bound_fixed_body hpvNil hBody₂Scoped hBound₂₃)
+      (meqRedStar_abs_fun_body_fixed_bound hpvNil hBound₃Scoped
+        (hBody₂₃.sub_head_replace_star hBound₂₃))⟩
+
 /-- Star-level fixed-body `Fun` abstraction diamond. A bound-level
 equivalence-chain diamond lifts through `Fun` when the body is unchanged. -/
 noncomputable def diamond_abs_fun_bound_fixed_body_star {Γ : Ctx}
