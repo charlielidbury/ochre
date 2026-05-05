@@ -66,6 +66,10 @@ closures, 2 inactive outstanding).
   `MEqRed.app_preservesWfM_of_empty_and_typed_operator`, reconstructing
   application well-formedness from this typed payload plus empty-stack
   preservation for the operand step. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedStackPreservesWSubMStarLeft.not_of_no_top`, showing the old
+  left-factored route is also too broad because it implies the native
+  `Me-App` operator payload refuted above. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces

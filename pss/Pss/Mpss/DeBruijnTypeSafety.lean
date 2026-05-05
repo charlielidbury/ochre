@@ -467,6 +467,15 @@ noncomputable def MEqRedAppFunctionSupertypePayload.not_of_no_top
   obtain ⟨funBound, hTopFun, _hArg⟩ := hwfBody'Sub.app_inv
   exact hNoTop hTopFun
 
+/-- Consequently, the stack-indexed left-endpoint transport route is also
+too broad: it implies the native `Me-App` operator payload refuted above. -/
+noncomputable def MEqRedStackPreservesWSubMStarLeft.not_of_no_top
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedStackPreservesWSubMStarLeft → False := by
+  intro hLeft
+  exact MEqRedAppFunctionSupertypePayload.not_of_no_top hNoTop
+    (MEqRedAppFunctionSupertypePayload.of_left_transport hLeft)
+
 /-- Remaining context-replacement payload for the contextual `Me-Fun`
 well-formedness case. After the body reduction is preserved under the old
 `.sub` head, the body witness must be transported to the changed bound. -/
