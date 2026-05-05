@@ -404,6 +404,16 @@ def MEqRedMachineStackHeadReplacePayload : Type :=
         WfMachineState Γ u (v :: s) →
           WfMachineState Γ u (v' :: s)
 
+/-- Machine-state control transport: replacing the control term by a
+well-subtype preserves plugged-state well-formedness. This is the reusable
+shape behind stack-head replacement for `Me-App` when the tail stack is
+nonempty. -/
+def WfMachineStateControlLeftPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {control control' : Term},
+    WSubMStar Γ control' control →
+      WfMachineState Γ control s →
+        WfMachineState Γ control' s
+
 /-- Machine-state residual for `Me-Fun`, which only fires at the empty
 stack. -/
 def MEqRedFunPreservesWfMachineStatePayload : Type :=
@@ -1041,6 +1051,37 @@ noncomputable def MEqRedPreservesWfMUnderWfCtx.of_machine_state
   intro Γ x y hΓ hred hwf
   simpa [WfMachineState, Stack.plug] using
     hpres hΓ hred.some (by simpa [WfMachineState, Stack.plug] using hwf)
+
+/-- Control-term transport plus empty-stack preservation discharges the
+machine-state stack-head replacement residual. The source plugged state
+exposes the immediate application `u v`; after preserving the empty-stack
+operand step, `u v'` is well formed and is a well-subtype of `u v` by a
+backward `Me-App` embedding. -/
+noncomputable def MEqRedMachineStackHeadReplacePayload.of_control_left
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hControl : WfMachineStateControlLeftPayload) :
+    MEqRedMachineStackHeadReplacePayload := by
+  intro Γ s u v v' hΓ hred hState
+  have hApp : WfM Γ (.app u v) := WfMachineState.head_app_wf hState
+  obtain ⟨bound, hFun, hArg⟩ := hApp.app_inv
+  have hwfV : WfM Γ v := hArg.wf_left
+  have hwfV' : WfM Γ v' := hEmpty hΓ ⟨hred⟩ hwfV
+  have hArgBack : WSubMStar Γ v' v :=
+    WSubMStar.of_MEqRed_back hred hwfV hwfV'
+  have hArg' : WSubMStar Γ v' bound :=
+    WSubMStar.trans hwfV hArgBack hArg
+  have hApp' : WfM Γ (.app u v') := WfM.app hFun hArg'
+  have hpvStack : PrevalidExt Γ [v] :=
+    PrevalidExt.cons (PrevalidExt.nil hwfV.prevalid) hwfV.scoped
+  have hOpRefl : MEqRed Γ [v] u u :=
+    MEqRed.refl hpvStack hFun.wf_left.scoped
+  have hAppRed : MEqRed Γ [] (.app u v) (.app u v') :=
+    MEqRed.app hOpRefl hred
+  have hControlBack : WSubMStar Γ (.app u v') (.app u v) :=
+    WSubMStar.of_MEqRed_back hAppRed hApp hApp'
+  have hTail' : WfMachineState Γ (.app u v') s :=
+    hControl hControlBack (WfMachineState.tail_state hState)
+  simpa [WfMachineState, Stack.plug] using hTail'
 
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this

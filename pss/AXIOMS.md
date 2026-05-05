@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WfMachineStateControlLeftPayload` and
+  `MEqRedMachineStackHeadReplacePayload.of_control_left`, reducing the
+  `Me-App` machine-state stack-head replacement residual to empty-stack
+  preservation plus control-term left transport for plugged machine states.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadToEquHeadPayload.not_of_no_top`, showing that the unrestricted
   `.sub`→`.equ` head/body transport is uninhabitable under the existing
   context-generic no-Top-function-supertype obstruction. The counterexample
