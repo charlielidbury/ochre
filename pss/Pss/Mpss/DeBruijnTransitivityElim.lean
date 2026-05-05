@@ -2122,6 +2122,20 @@ theorem commute_appAbs_subStep_eqStar_of_diamond_or_structApp_from_left
     | fOp hBound hOpnd hBody =>
       exact Or.inr ⟨bound, _, ⟨MSubRed.fOp hBound hOpnd hBody⟩, rfl⟩
 
+/-- Single-equivalence-step wrapper for the structural app-abs
+diamond-or-residual split. -/
+theorem commute_appAbs_subStep_eqStep_of_diamond_or_structApp_from_left
+    {Γ : Ctx} {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hdiamond : EqDiamonds Γ s)
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRed Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body',
+        MSubRedJ Γ (arg :: s) (.abs bound body) (.abs bound' body') ∧
+          t₁ = .app (.abs bound' body') arg :=
+  commute_appAbs_subStep_eqStar_of_diamond_or_structApp_from_left
+    hdiamond hSub (MEqRedStar.single hEq)
+
 /-- Shape-only corollary of
 `commute_appAbs_subStep_eqStar_of_diamond_or_structApp`. -/
 theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
@@ -2156,6 +2170,18 @@ theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs_from_left
   | inr hStruct =>
     obtain ⟨bound', body', _hOp, hEqTarget⟩ := hStruct
     exact Or.inr ⟨bound', body', arg, hEqTarget⟩
+
+/-- Single-equivalence-step shape-only wrapper for the app-abs
+diamond-or-residual split. -/
+theorem commute_appAbs_subStep_eqStep_of_diamond_or_appAbs_from_left
+    {Γ : Ctx} {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hdiamond : EqDiamonds Γ s)
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRed Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' :=
+  commute_appAbs_subStep_eqStar_of_diamond_or_appAbs_from_left hdiamond hSub
+    (MEqRedStar.single hEq)
 
 /-- Same-argument structural application commutation for abstraction-headed
 applications. If the subtype and equivalence sides both step only the
