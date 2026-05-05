@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `Theorem_5_DeBruijn_Preservation_of_components` and
+  `Theorem_5_DeBruijn_ClosedPreservation_of_components`, completing the
+  theorem-level API for the direct function-bound inversion route before the
+  diagram and chain-shape variants. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added theorem-level preservation
   entry points
   `Theorem_5_DeBruijn_Preservation_of_diagram_components`,

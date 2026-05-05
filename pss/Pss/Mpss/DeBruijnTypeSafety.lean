@@ -5830,6 +5830,35 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of
   Theorem_5_DeBruijn_Preservation_of hStepPres hwf hstep
 
 /-- De Bruijn preservation with operational preservation assembled from the
+body-instantiation lemma, function-bound inversion, and the sharpened `.sub`
+head replacement payload. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_of_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_components hSubst hInv hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 entry point for the direct operational
+preservation components. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_components hSubst hInv hSubHeadReplace)
+    hwf hstep
+
+/-- De Bruijn preservation with operational preservation assembled from the
 body-instantiation lemma, the Type-valued function-bound diagram payload, and
 the sharpened `.sub` head replacement payload. -/
 noncomputable def Theorem_5_DeBruijn_Preservation_of_diagram_components
