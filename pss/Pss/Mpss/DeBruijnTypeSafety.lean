@@ -1284,6 +1284,34 @@ def MEqRedFOpTailTransportExactPayload : Type :=
               WfM Γ (.app (.abs bound' body') operand) →
                 WfMachineState Γ (.abs bound' body') (operand :: s)
 
+/-- The non-empty-tail part of exact `Me-FOp` machine-state transport. The
+empty remaining-tail case is definitional from the target immediate
+application typing. -/
+def MEqRedFOpTailTransportConsPayload : Type :=
+  ∀ {Γ : Ctx} {tail : Stack}
+      {bound bound' operand next body body' : Term},
+    WfCtxEqu Γ →
+      MEqRed Γ [] bound bound' →
+        Term.Scoped Γ.depth operand →
+          MEqRed ({ bound := operand, kind := .equ } :: Γ)
+            (Stack.shift 0 (next :: tail)) body body' →
+            WfMachineState Γ (.abs bound body) (operand :: next :: tail) →
+              WfM Γ (.app (.abs bound' body') operand) →
+                WfMachineState Γ (.abs bound' body') (operand :: next :: tail)
+
+/-- Exact `Me-FOp` tail transport reduces to the non-empty-tail case; the
+single-operand machine state follows directly from the target application
+typing. -/
+def MEqRedFOpTailTransportExactPayload.of_cons
+    (hCons : MEqRedFOpTailTransportConsPayload) :
+    MEqRedFOpTailTransportExactPayload := by
+  intro Γ s bound bound' operand body body' hΓ hBound hOperand hBody hState hApp
+  cases s with
+  | nil =>
+      simpa [WfMachineState, Stack.plug] using hApp
+  | cons next tail =>
+      exact hCons hΓ hBound hOperand hBody hState hApp
+
 /-- The machine-state `Me-FOp` residual reduces to the typed body payload,
 function-bound inversion for the source abstraction application, empty-stack
 preservation for the bound step, and a tail-stack transport residual. -/
@@ -1730,6 +1758,18 @@ noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_exact_ta
     (fun hΓ hred hwf => hEmpty hΓ ⟨hred⟩ hwf)
     hBody hTail
 
+/-- Non-empty-tail convenience form of the typed `Me-FOp` machine-state
+reduction. The empty remaining-tail case is discharged by
+`MEqRedFOpTailTransportExactPayload.of_cons`. -/
+noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_cons_tail_and_empty
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hBody : MEqRedFOpBodyTypedPayload)
+    (hTail : MEqRedFOpTailTransportConsPayload) :
+    MEqRedFOpPreservesWfMachineStatePayload :=
+  MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_exact_tail_and_empty
+    hInv hEmpty hBody (MEqRedFOpTailTransportExactPayload.of_cons hTail)
+
 /-- Control-term transport plus empty-stack preservation discharges the
 machine-state stack-head replacement residual. The source plugged state
 exposes the immediate application `u v`; after preserving the empty-stack
@@ -1935,6 +1975,28 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop
     hBeta hEmpty hEqBody hSubBody hPres hStep hFunBody hNoTop
     (MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_exact_tail_and_empty
       hInv hEmpty hFOpBody hFOpTail)
+
+/-- Non-empty-tail variant of
+`MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_exact_tail`.
+The no-tail `Me-FOp` machine-state case is discharged definitionally from the
+target immediate application typing. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_cons_tail
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hFOpTail : MEqRedFOpTailTransportConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_exact_tail
+    hBeta hEmpty hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedFOpTailTransportExactPayload.of_cons hFOpTail)
+    hFunBody hNoTop
 
 /-- Reduced machine-state preservation assembly that uses constructor
 recursive hypotheses directly for the empty-stack subreductions in `Me-App`
