@@ -354,6 +354,30 @@ noncomputable def WEquMStar.prevalid {Γ : Ctx} {v t : Term} (h : WEquMStar Γ v
   | trs _ _ _ ihLeft _ =>
     exact ihLeft
 
+/-! ## Well-formed equivalence-binding contexts -/
+
+/-- Context invariant requiring every `.equ` entry's stored bound to be
+well-formed in its tail context. This is stronger than `Prevalid`, which only
+requires the stored bound to be scoped. -/
+inductive WfCtxEqu : Ctx → Type where
+  | empty : WfCtxEqu []
+  | sub {Γ : Ctx} {t : Term} :
+      WfCtxEqu Γ → WfCtxEqu ({ bound := t, kind := .sub } :: Γ)
+  | equ {Γ : Ctx} {α : Term} :
+      WfCtxEqu Γ → WfM Γ α →
+        WfCtxEqu ({ bound := α, kind := .equ } :: Γ)
+
+namespace WfCtxEqu
+
+/-- Tail projection for the de Bruijn well-formed equivalence-binding
+context invariant. -/
+def tail {e : CtxEntry} {Γ : Ctx} (h : WfCtxEqu (e :: Γ)) : WfCtxEqu Γ := by
+  cases h with
+  | sub hTail => exact hTail
+  | equ hTail _ => exact hTail
+
+end WfCtxEqu
+
 /-! ## Constructor inversions -/
 
 /-- Inversion for de Bruijn well-formed abstractions. -/
@@ -1934,6 +1958,49 @@ noncomputable def WfM.weaken_head {Γ : Ctx} {t : Term} {newEntry : CtxEntry}
     WfM (newEntry :: Γ) (Term.shift 0 t) := by
   simpa using h.insertAt (cutoff := 0) (newEntry := newEntry)
     (Nat.zero_le Γ.depth) hNew hpv
+
+namespace WfCtxEqu
+
+/-- Extract well-formedness for a lifted `.equ` lookup from a
+well-formed-equivalence context. -/
+noncomputable def lookup_equ {Γ : Ctx} {i : Nat} {α : Term}
+    (h : WfCtxEqu Γ) (hpv : Prevalid Γ)
+    (hb : Γ.lookupEqu i = some α) : WfM Γ α := by
+  induction Γ generalizing i α with
+  | nil =>
+      cases i <;> simp [Ctx.lookupEqu] at hb
+  | cons entry Γ ih =>
+      cases h with
+      | sub hTail =>
+          cases i with
+          | zero =>
+              simp [Ctx.lookupEqu] at hb
+          | succ i =>
+              cases hlookup : Ctx.lookupEqu Γ i with
+              | none =>
+                  simp [Ctx.lookupEqu, hlookup] at hb
+              | some β =>
+                  simp [Ctx.lookupEqu, hlookup] at hb
+                  cases hb
+                  exact (ih hTail (Prevalid.tail hpv) hlookup).weaken_head hpv
+                    (Prevalid.tail hpv)
+      | equ hTail hwfHead =>
+          cases i with
+          | zero =>
+              simp [Ctx.lookupEqu] at hb
+              cases hb
+              exact hwfHead.weaken_head hpv (Prevalid.tail hpv)
+          | succ i =>
+              cases hlookup : Ctx.lookupEqu Γ i with
+              | none =>
+                  simp [Ctx.lookupEqu, hlookup] at hb
+              | some β =>
+                  simp [Ctx.lookupEqu, hlookup] at hb
+                  cases hb
+                  exact (ih hTail (Prevalid.tail hpv) hlookup).weaken_head hpv
+                    (Prevalid.tail hpv)
+
+end WfCtxEqu
 
 /-- A well-formed term is well-formed as the shifted bound of a new `.sub`
 head that stores that same term. -/

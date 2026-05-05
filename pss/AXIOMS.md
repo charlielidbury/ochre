@@ -1307,6 +1307,11 @@ closures, 2 inactive outstanding).
   well-formedness payload from stepwise empty-stack equivalence
   preservation via the subtype diagram's projected bound-equivalence
   chain. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — ported the de Bruijn
+  well-formed equivalence-binding context invariant `WfCtxEqu`, its
+  `tail` projection, and `WfCtxEqu.lookup_equ`, which extracts
+  well-formed lifted annotations from `.equ` lookups under the stronger
+  context invariant. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
