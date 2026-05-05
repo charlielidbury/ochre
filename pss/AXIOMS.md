@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 5 audit to
+  include the operational preservation payload boundary:
+  `StepPreservesWfM_of_components`,
+  `StepPreservesWfM_of_diagram_components`,
+  `StepPreservesWfM_of_chain_diagram_components`,
+  `StepPreservesWfM_of_chain_shape_components`, and
+  `StepPreservesWfM_of_chain_shape_meq_components`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added named de Bruijn Theorem 4
   no-`Top` obstruction endpoints
   `Theorem_4_DeBruijn_NoTopFunctionSupertypesAt_of`,
