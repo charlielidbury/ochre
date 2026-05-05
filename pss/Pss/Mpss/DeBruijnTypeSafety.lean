@@ -1514,6 +1514,116 @@ noncomputable def MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx
         (hFOpBody hΓ hStackTail hwfBound hwfBound' hwfOperand
           hwfBody hBound hBody)
 
+/-- Contextual `MEqRed` well-formedness preservation with β proved from
+function-bound inversion under `WfCtxEqu`, native `Me-App` operator
+transport, native `Me-Fun` body replacement, and the `Me-FOp` bridge factored
+into the two directional head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual := by
+  intro Γ s x y hΓ hStack hred hwf
+  revert hΓ hStack hwf
+  induction hred with
+  | pro hpv hb hred ih =>
+      intro hΓ hStack hwf
+      have hwfα := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
+      exact ih hΓ hStack hwfα
+  | @bet Γβ sβ bound arg arg' body body' ht hBody hArg ihBody ihArg =>
+      intro hΓ hStack hwf
+      obtain ⟨result, hFun, hArgTyping⟩ := hwf.app_inv
+      have hwfAbs : WfM Γβ (.abs bound body) := hFun.wf_left
+      have hwfBound : WfM Γβ bound := hwfAbs.fun_inv.1
+      have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γβ) body :=
+        hwfAbs.fun_inv.2
+      have hwfBody' :
+          WfM ({ bound := bound, kind := .sub } :: Γβ) body' :=
+        ihBody (WfCtxEqu.sub hΓ)
+          (WfStack.weaken_sub_head hStack hwfBound) hwfBody
+      have hwfArg : WfM Γβ arg := hArgTyping.wf_left
+      have hwfArg' : WfM Γβ arg' := ihArg hΓ WfStack.nil hwfArg
+      have hArgBack : WSubMStar Γβ arg' arg :=
+        WSubMStar.of_MEqRed_back hArg hwfArg hwfArg'
+      have hArgResult : WSubMStar Γβ arg' result :=
+        WSubMStar.trans hwfArg hArgBack hArgTyping
+      have hEquBoundResult : WEquMStar Γβ bound result := hInv hΓ hFun
+      have hSubResultBound : WSubMStar Γβ result bound :=
+        hEquBoundResult.symm.toWSubMStar
+      have hArgBound : WSubMStar Γβ arg' bound :=
+        WSubMStar.trans hArgTyping.wf_right hArgResult hSubResultBound
+      exact hSubst hArgBound hwfBody'
+  | top hpv =>
+      intro hΓ hStack hwf
+      exact MEqRed.top_preservesWfM hpv hwf
+  | app hOp hArg _ihOp ihArg =>
+      intro hΓ hStack hwf
+      obtain ⟨bound, hFun, hArgTyping⟩ := hwf.app_inv
+      have hwfV := hArgTyping.wf_left
+      have hwfV' := ihArg hΓ WfStack.nil hwfV
+      have hFun' :=
+        hOpFun hΓ hStack hwfV hFun hOp
+      have hArgBack :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArgTyping' :=
+        WSubMStar.trans hwfV hArgBack hArgTyping
+      exact WfM.app hFun' hArgTyping'
+  | var hpv hi =>
+      intro hΓ hStack hwf
+      exact MEqRed.var_preservesWfM hpv hi hwf
+  | fun_ hBound hBody ihBound ihBody =>
+      intro hΓ hStack hwf
+      have hwfBound := hwf.fun_inv.1
+      have hwfBody :=
+        hwf.fun_inv.2
+      have hwfBound' := ihBound hΓ WfStack.nil hwfBound
+      have hwfBodyOld :=
+        ihBody (WfCtxEqu.sub hΓ) WfStack.nil hwfBody
+      exact WfM.fun_ hwfBound'
+        (hFunBody hΓ hwfBound hwfBound' hBound hwfBodyOld)
+  | tAp hpv hu =>
+      intro hΓ hStack hwf
+      exact MEqRed.tAp_preservesWfM hpv hu hwf
+  | @fOp Γf sf bound bound' operand body body' hBound hOperand hBody ihBound ihBody =>
+      intro hΓ hStack hwf
+      have hwfOperand := WfStack.head hStack
+      have hStackTail := WfStack.tail hStack
+      have hΓEqu : WfCtxEqu ({ bound := operand, kind := .equ } :: Γf) :=
+        WfCtxEqu.equ hΓ hwfOperand
+      have hStackEqu :=
+        WfStack.weaken_equ_head hStackTail hwfOperand
+      have hwfBound := hwf.fun_inv.1
+      have hwfBody :=
+        hwf.fun_inv.2
+      have hwfBodyEqu :=
+        hSubToEqu hΓ hwfBound hwfOperand hwfBody
+      have hwfBody'Equ :=
+        ihBody hΓEqu hStackEqu hwfBodyEqu
+      have hwfBound' := ihBound hΓ WfStack.nil hwfBound
+      exact WfM.fun_ hwfBound'
+        (hEquToSub hΓ hwfOperand hwfBound' hwfBody'Equ)
+
+/-- Variant of
+`MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports`
+using the sharpened `.sub` head replacement payload for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports
+    hSubst hInv hOpFun
+    (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
+    hSubToEqu hEquToSub
+
 /-- Contextual `MEqRed` well-formedness preservation with β, `Me-App`, and
 `Me-FOp` factored through reusable endpoint/head-transport payloads. This is
 the narrowest current assembly path: the remaining non-recursive premises are

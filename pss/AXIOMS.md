@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports`,
+  plus the sharpened `.sub` replacement variant
+  `.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_transports`.
+  These preservation assemblers keep the native `Me-App` operator payload
+  while factoring only the `Me-FOp` body bridge through the two directional
+  head/body transports, so the stacked `Me-App` and `Me-FOp` residuals can be
+  discharged independently. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedFOpBodyPayload.of_head_kind_transport`, a direct adapter from
   contextual preservation plus the uniform head-kind/body transport payload
   to the native `Me-FOp` body residual. The directional
