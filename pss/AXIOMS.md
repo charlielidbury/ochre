@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRed.equ_under_sub_head_nil_replace_from_handlers`, the empty-stack
+  `.sub`-head specialization of raw subtype replacement across a changed
+  under-head `.equ` entry. The nested raw `Ms-FOp` case is impossible at empty
+  stack, leaving only `Ms-Equ`, `Ms-App`, and `Ms-Fun` handlers. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_sub_head_replace_from_handlers`, the `.sub`-head
   specialization of the raw under-head `.equ` replacement splitter. The
   impossible index-0 `Me-Pro` case is discharged internally, leaving only the
