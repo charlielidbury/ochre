@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_under_three_heads_replace_from_raw_body_replacements`,
+  the constructor-wired raw-subtype-star three-preserved-head `.equ`
+  replacement wrapper. It packages stable `Ms-Pro`, `Ms-App`, `Ms-Fun`, and
+  `Ms-FOp` rebuilding around the new three-head chain consumer, so nested
+  body residual callers can supply only the recursive raw-chain transports.
+  Added the endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added raw-subtype-star
   three-preserved-head `.equ` replacement splitters
   `msubRedStar_equ_under_three_heads_replace_from_handlers` and
