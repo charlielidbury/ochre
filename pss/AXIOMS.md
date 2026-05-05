@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_body_from_app_fun_handlers_of`, a reduced
+  body-constructor dispatcher for the `Ms-Fun × Me-Fun` commutation cell
+  that closes all `Ms-Pro` body branches internally using the head and
+  non-head helpers. The remaining explicit handlers are now only the
+  recursive `Ms-App` and nested `Ms-Fun` body cases. Added the endpoint
+  to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_pro_head_body_of`, closing the `Ms-Fun × Me-Fun`
   body subcase where the subtype body premise is `Ms-Pro` at the head
   variable. The proof joins the abstraction bounds, weakens the old-to-joined

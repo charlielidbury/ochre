@@ -3787,6 +3787,60 @@ theorem commute_abs_fun_fun_pro_head_body_of {Γ : Ctx}
               MSubRedStar.single (MSubRed.pro hpvBody₃
                 (Ctx.subBinds_zero_self Γ bound₃))⟩)
 
+/-- Body-constructor dispatcher for the `Ms-Fun × Me-Fun` commutation cell
+after closing all `Ms-Pro` body branches. The remaining open handlers are the
+recursive `Ms-App` and nested `Ms-Fun` body cases. -/
+theorem commute_abs_fun_fun_body_from_app_fun_handlers_of {Γ : Ctx}
+    {bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hdiamondBody : EqDiamonds ({ bound := bound, kind := .sub } :: Γ) [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hSubBody : MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂)
+    (hApp :
+      ∀ {u u' v : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        ∃ t₃,
+          MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃ ∧
+            MSubRedStar Γ [] (.abs bound₂ body₂) t₃)
+    (hFun :
+      ∀ {t t' inner inner' : Term},
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+          { bound := bound, kind := .sub } :: Γ) [] inner inner' →
+        ∃ t₃,
+          MEqRedStar Γ [] (.abs bound₁ (.abs t' inner')) t₃ ∧
+            MSubRedStar Γ [] (.abs bound₂ body₂) t₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  cases hSubBody with
+  | @pro _ _ i t _ hb =>
+      cases i with
+      | zero =>
+          have ht : body₁ = Term.shift 0 bound :=
+            Ctx.subBinds_unique hb (Ctx.subBinds_zero_self Γ bound)
+          subst body₁
+          exact commute_abs_fun_fun_pro_head_body_of hpvNil hdiamondBound
+            hSubBound hEqBound hEqBody
+      | succ i =>
+          exact commute_abs_fun_fun_pro_succ_body_of hpvNil hdiamondBound
+            hSubBound hb hEqBound hEqBody
+  | top _ hScoped =>
+      exact commute_abs_fun_fun_top_body_of hpvNil hdiamondBound hSubBound
+        hScoped hEqBound hEqBody
+  | equ _ hEq =>
+      exact commute_abs_fun_fun_equ_body_of hpvNil hdiamondBound hdiamondBody
+        hSubBound hEq hEqBound hEqBody
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | fun_ ht hBound hBody =>
+      exact hFun ht hBound hBody
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
