@@ -830,6 +830,36 @@ private noncomputable def _S_lf2 :
                    (ihwfV' Γ₂ rfl hα)
                    (ih Γ₂ rfl hα)
 
+/-- Axiom-free replacement for the `_S_lf2` case when the subtype-reduction
+premise explicitly avoids `Ms-Pro` on the substituted variable.
+
+This is the local proof obligation needed to swap
+`Lemma_30_ReductionUnderSubst_Sub_noProOn` into Lemma 7. The full Lemma 7
+call site still lacks `hred.noProOn xout`, as witnessed by
+`lf2_allows_noProOn_false_on_head_sub`. -/
+noncomputable def lf2_case_noProOn
+    {Γ₁ Γ₂ : Ctx} {x : String} {t α v v' u : Term}
+    (hα : WSubMStar Γ₁ α t)
+    (hwfV : WfM (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) v)
+    (hred : MSubRed (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) [] v v')
+    (hNo : hred.noProOn x)
+    (hwfV' : WfM (Γ₂ ++ ⟨x, t, .sub⟩ :: Γ₁) v')
+    (hsub : WSubM (Ctx.subst x α Γ₂ ++ Γ₁)
+      (Term.subst x α v') (Term.subst x α u))
+    (ihwfV : WfM (Ctx.subst x α Γ₂ ++ Γ₁) (Term.subst x α v))
+    (ihwfV' : WfM (Ctx.subst x α Γ₂ ++ Γ₁) (Term.subst x α v')) :
+    WSubM (Ctx.subst x α Γ₂ ++ Γ₁)
+      (Term.subst x α v) (Term.subst x α u) := by
+  have hok := _SubstOk_of_WSubMStar hα
+  have hred' : MSubRed (Ctx.subst x α Γ₂ ++ Γ₁)
+                       (Stack.subst x α [])
+                       (Term.subst x α v) (Term.subst x α v') :=
+    Lemma_30_ReductionUnderSubst_Sub_noProOn hred hok hNo
+  have hred'' : MSubRed (Ctx.subst x α Γ₂ ++ Γ₁) []
+                        (Term.subst x α v) (Term.subst x α v') := by
+    simpa using hred'
+  exact WSubM.lf2 ihwfV hred'' ihwfV' hsub
+
 private noncomputable def _S_rgh :
     ∀ {Γ : Ctx} {v u u' : Term}
       (hsub : WSubM Γ v u') (hred : MEqRed Γ [] u u')

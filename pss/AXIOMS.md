@@ -62,6 +62,8 @@ closures, 2 inactive outstanding).
   `WSubM.lf2` derivation and proves its `MSubRed.pro` premise does not
   satisfy `MSubRed.noProOn "x"`. This confirms the new axiom-free Lemma 30
   route still needs a real call-site invariant, not just plumbing.
+  Also added `Lemma7.lf2_case_noProOn`, the checked axiom-free replacement
+  for the local `_S_lf2` branch when such an invariant is supplied.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
