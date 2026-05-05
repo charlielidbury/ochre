@@ -237,6 +237,13 @@ closures, 2 inactive outstanding).
   stack-transport fact. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMSubRedStack.pro_msubstar`, the
+  constructor-facing arbitrary-stack `MSubRed.pro` substitution helper at the
+  diagrammatic-star layer. The head branch consumes the star-shaped payload;
+  the successor branch embeds the already-proved raw `pro_succ` machine step
+  into `MSubStar`. Added the endpoint to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem

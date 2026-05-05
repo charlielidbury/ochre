@@ -790,6 +790,27 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.pro
   | succ i =>
       exact BetaInstantiationPreservesMSubRedStack.pro_succ hArgBound hpv hb
 
+/-- Constructor-facing arbitrary-stack `MSubRed.pro` substitution at the
+diagrammatic-star layer. Unlike the raw `MSubRed` helper, this closes the
+head variable branch using the star-shaped head payload; the successor branch
+embeds the raw machine step into `MSubStar`. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.pro_msubstar
+    (hHead : BetaInstantiationPreservesMSubRedProHeadMSubStarPayload)
+    {Γ : Ctx} {bound arg t : Term} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hb : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ) i t) :
+    MSubStar Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.bvar i)) (Term.instantiate 0 arg t) := by
+  cases i with
+  | zero =>
+      simp [Ctx.subBinds] at hb
+      subst hb
+      exact hHead hArgBound hpv
+  | succ i =>
+      exact MSubStar.of_MSubRed
+        (BetaInstantiationPreservesMSubRedStack.pro_succ hArgBound hpv hb)
+
 /-- `MEqRed.tAp` is stable under de Bruijn β-instantiation at the empty
 stack. -/
 noncomputable def BetaInstantiationPreservesMEqRed.tAp
