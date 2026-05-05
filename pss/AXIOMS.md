@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRed_equ_head_stack_lift_from_replacements`,
+  `msubRedStar_equ_head_stack_lift_from_replacements`, and
+  `msubRedStar_equ_head_stack_lift_function_from_replacements`, the raw-chain
+  constructor-wired subtype changed-`.equ`-head stack-lift wrappers. These
+  mirror the diagrammatic wrappers while keeping recursive transports in
+  `MSubRedStar`; the empty-stack source shape makes `Ms-FOp` impossible, and
+  the nonempty-stack `Ms-Fun` case is rebuilt directly through an `FOp`
+  residual chain. Added all three endpoints to the De Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msub_equ_head_stack_lift_from_replacements`,
   `msubStar_equ_head_stack_lift_from_replacements`, and
   `msubStar_equ_head_stack_lift_function_from_replacements`, the
