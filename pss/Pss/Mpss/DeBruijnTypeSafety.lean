@@ -1267,6 +1267,105 @@ noncomputable def MEqRedPreservesWfMachineState.of_reduced_components
     (MEqRedTApPreservesWfMachineStatePayload.of_no_top hNoTop)
     hFOp
 
+/-- Reduced machine-state preservation assembly that uses constructor
+recursive hypotheses directly for the empty-stack subreductions in `Me-App`
+and `Me-Fun`. This removes the external empty-stack preservation premise
+from the main machine-state assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_reduced_components_no_empty
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hAppOp : WSubMStarAppOperatorPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
+    MEqRedPreservesWfMachineState := by
+  intro Γ s x y hΓ hred hState
+  revert hΓ hState
+  induction hred with
+  | pro hpv hb hred ih =>
+      intro hΓ hState
+      have hControl : WfMachineStateControlLeftPayload :=
+        WfMachineStateControlLeftPayload.of_app_operator hAppOp
+      exact ih hΓ
+        (MEqRedProAnnotationMachineStatePayload.of_control_left
+          hControl hΓ hb hState)
+  | bet ht hBody hArg _ihBody _ihArg =>
+      intro hΓ hState
+      exact hBeta hΓ ht hBody hArg hState
+  | top hpv =>
+      intro hΓ hState
+      exact hState
+  | @app Γapp sapp u u' v v' hOp hArg ihOp ihArg =>
+      intro hΓ hState
+      have hOpState : WfMachineState Γapp u (v :: sapp) := by
+        simpa [WfMachineState, Stack.plug] using hState
+      have hOpState' : WfMachineState Γapp u' (v :: sapp) :=
+        ihOp hΓ hOpState
+      have hApp : WfM Γapp (.app u' v) :=
+        WfMachineState.head_app_wf hOpState'
+      obtain ⟨bound, hFun, hArgSub⟩ := hApp.app_inv
+      have hwfV : WfM Γapp v := hArgSub.wf_left
+      have hVState : WfMachineState Γapp v [] := by
+        simpa [WfMachineState, Stack.plug] using hwfV
+      have hVState' : WfMachineState Γapp v' [] := ihArg hΓ hVState
+      have hwfV' : WfM Γapp v' := by
+        simpa [WfMachineState, Stack.plug] using hVState'
+      have hArgBack : WSubMStar Γapp v' v :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArg' : WSubMStar Γapp v' bound :=
+        WSubMStar.trans hwfV hArgBack hArgSub
+      have hApp' : WfM Γapp (.app u' v') := WfM.app hFun hArg'
+      have hpvStack : PrevalidExt Γapp [v] :=
+        PrevalidExt.cons (PrevalidExt.nil hwfV.prevalid) hwfV.scoped
+      have hOpRefl : MEqRed Γapp [v] u' u' :=
+        MEqRed.refl hpvStack hFun.wf_left.scoped
+      have hAppRed : MEqRed Γapp [] (.app u' v) (.app u' v') :=
+        MEqRed.app hOpRefl hArg
+      have hControlBack : WSubMStar Γapp (.app u' v') (.app u' v) :=
+        WSubMStar.of_MEqRed_back hAppRed hApp hApp'
+      have hControl : WfMachineStateControlLeftPayload :=
+        WfMachineStateControlLeftPayload.of_app_operator hAppOp
+      have hTail' : WfMachineState Γapp (.app u' v') sapp :=
+        hControl hControlBack (WfMachineState.tail_state hOpState')
+      simpa [WfMachineState, Stack.plug] using hTail'
+  | var hpv hi =>
+      intro hΓ hState
+      exact hState
+  | @fun_ Γfun bound bound' body body' hBound hBody ihBound ihBody =>
+      intro hΓ hState
+      have hwfAbs : WfM Γfun (.abs bound body) := by
+        simpa [WfMachineState, Stack.plug] using hState
+      have hwfBound : WfM Γfun bound := hwfAbs.fun_inv.1
+      have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γfun) body :=
+        hwfAbs.fun_inv.2
+      have hBoundState : WfMachineState Γfun bound [] := by
+        simpa [WfMachineState, Stack.plug] using hwfBound
+      have hBoundState' : WfMachineState Γfun bound' [] :=
+        ihBound hΓ hBoundState
+      have hwfBound' : WfM Γfun bound' := by
+        simpa [WfMachineState, Stack.plug] using hBoundState'
+      have hΓBody : WfCtxEqu ({ bound := bound, kind := .sub } :: Γfun) :=
+        WfCtxEqu.sub hΓ
+      have hBodyState : WfMachineState
+          ({ bound := bound, kind := .sub } :: Γfun) body [] := by
+        simpa [WfMachineState, Stack.plug] using hwfBody
+      have hBodyState' : WfMachineState
+          ({ bound := bound, kind := .sub } :: Γfun) body' [] :=
+        ihBody hΓBody hBodyState
+      have hwfBody'Old :
+          WfM ({ bound := bound, kind := .sub } :: Γfun) body' := by
+        simpa [WfMachineState, Stack.plug] using hBodyState'
+      have hwfTarget : WfM Γfun (.abs bound' body') :=
+        WfM.fun_ hwfBound'
+          (hFunBody hΓ hwfBound hwfBound' hBound hwfBody'Old)
+      simpa [WfMachineState, Stack.plug] using hwfTarget
+  | tAp hpv hu =>
+      intro hΓ hState
+      exact MEqRedTApPreservesWfMachineStatePayload.of_no_top
+        hNoTop hΓ hu hState
+  | fOp hBound hOperand hBody _ihBound _ihBody =>
+      intro hΓ hState
+      exact hFOp hΓ hBound hOperand hBody hState
+
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
 version is directly compatible with the empty-stack `WSubM` equivalence

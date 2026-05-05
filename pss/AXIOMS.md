@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_reduced_components_no_empty`, which
+  uses the constructor recursive hypotheses for the empty-stack subreductions
+  in `Me-App` and `Me-Fun`. This removes the external empty-stack
+  preservation premise from the reduced machine-state assembly, leaving
+  `Me-Bet`, `Me-FOp`, function-body replacement, no-Top, and application
+  operator congruence as the active reduced premises. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WSubMStarAppOperatorPayload` and
   `WfMachineStateControlLeftPayload.of_app_operator`, reducing control-left
   machine-state transport to operator-side application congruence for
