@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_target_app_tail_step`,
+  a no-external-empty variant of the typed target-application `Me-FOp`
+  machine-state assembly. The `Me-FOp` bound step is handled by the
+  constructor induction hypothesis, leaving only typed body preservation,
+  immediate target-application well-formedness, and the recursive tail-step
+  residual for the `Me-FOp` branch. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedAppTargetPreservesWfMPayload`,
   `MEqRedAppTargetPreservesWfMPayload.of_machine_operator`,
   `MEqRedFOpTailStepPreservesConsPayload.of_target_app`,
