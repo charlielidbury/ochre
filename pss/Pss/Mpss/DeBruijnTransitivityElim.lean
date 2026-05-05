@@ -15112,6 +15112,46 @@ theorem msubRedStar_equ_head_stack_lift_function_from_step_star_lift
   fun hpvTail =>
     msubRedStar_equ_head_stack_lift_from_step_star_lift (hStep hpvTail) h
 
+/-- Lift an empty-stack subtype-reduction chain under a changed `.equ` head
+into the diagrammatic subtype closure, given a diagrammatic lift for each
+single source subtype step. -/
+theorem msubStar_equ_head_stack_lift_from_step_msub_lift {Γ : Ctx}
+    {s : Stack} {head u v : Term}
+    (hStep :
+      ∀ {a b : Term},
+        MSubRed Γ [] a b →
+        MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 a) (Term.shift 0 b))
+    (h : MSubRedStar Γ [] u v) :
+    MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 u) (Term.shift 0 v) := by
+  induction h with
+  | refl =>
+    exact MSubStar.refl
+  | @tail mid v hStar hLast ih =>
+    exact MSubStar.trans ih (hStep hLast.some)
+
+/-- Function-valued variant of
+`msubStar_equ_head_stack_lift_from_step_msub_lift`, for callers that can lift
+each source subtype step to a diagrammatic subtype chain under every residual
+tail stack. -/
+theorem msubStar_equ_head_stack_lift_function_from_step_msub_lift
+    {Γ : Ctx} {head u v : Term}
+    (hStep :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {a b : Term},
+          MSubRed Γ [] a b →
+          MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+            (Term.shift 0 a) (Term.shift 0 b))
+    (h : MSubRedStar Γ [] u v) :
+    ∀ {s : Stack},
+      PrevalidExt Γ s →
+      MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+        (Term.shift 0 u) (Term.shift 0 v) :=
+  fun hpvTail =>
+    msubStar_equ_head_stack_lift_from_step_msub_lift (hStep hpvTail) h
+
 /-- Chain-level changed-head stack lift with the canonical constructor
 handlers wired in. -/
 theorem meqRedStar_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stack}

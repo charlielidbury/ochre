@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubStar_equ_head_stack_lift_from_step_msub_lift` and
+  `msubStar_equ_head_stack_lift_function_from_step_msub_lift`, the
+  diagrammatic changed-`.equ`-head stack-lift consumers for raw subtype
+  chains. These let callers lift each raw subtype step directly to `MSubStar`
+  and compose the whole source chain without first reifying a raw target
+  chain. Added both endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRedStar_equ_head_stack_lift_from_step_star_lift` and
   `msubRedStar_equ_head_stack_lift_function_from_step_star_lift`, the
   changed-`.equ`-head stack-lift consumers for subtype chains whose source
