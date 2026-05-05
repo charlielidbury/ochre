@@ -97,6 +97,7 @@ namespace DeBruijn
 #print axioms commute_abs_fun_fun_equ_body_of
 #print axioms commute_abs_fun_fun_top_body_of
 #print axioms commute_abs_fun_fun_body_from_handlers_of
+#print axioms commute_abs_fun_fun_pro_succ_body_of
 #print axioms commute_abs_fun_bound_fixed_body_star
 #print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_of
 #print axioms Theorem_3_DeBruijn_WSubMStar_toMSub_of

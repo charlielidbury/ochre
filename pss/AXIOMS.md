@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_pro_succ_body_of`, closing the `Ms-Fun × Me-Fun`
+  body subcase where the subtype body premise is `Ms-Pro` at a non-head
+  variable. The `Me-Pro` body branch is impossible by lookup-kind exclusion;
+  the `Me-Var` branch transports the non-head subtype lookup to the joined
+  `.sub` bound. Added the endpoint to the de Bruijn audit. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_body_from_handlers_of`, a body-constructor dispatcher
   for the `Ms-Fun × Me-Fun` commutation cell. It closes the `Ms-Top` and
   `Ms-Equ` body branches via the existing helpers and exposes the remaining

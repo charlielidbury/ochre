@@ -3689,6 +3689,52 @@ theorem commute_abs_fun_fun_body_from_handlers_of {Γ : Ctx}
   | fun_ ht hBound hBody =>
       exact hFun ht hBound hBody
 
+/-- `Ms-Fun × Me-Fun` commutation subcase where the `Ms-Fun` body premise is
+`Ms-Pro` at a non-head variable and the equivalence body branch starts from
+the same variable. The `Me-Pro` body branch is impossible by lookup-kind
+exclusion; the `Me-Var` branch closes by transporting the non-head subtype
+lookup to the joined bound. -/
+theorem commute_abs_fun_fun_pro_succ_body_of {Γ : Ctx}
+    {bound bound₁ bound₂ body₂ t : Term} {i : Nat}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hb : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ) (i + 1) t)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) []
+      (.bvar (i + 1)) body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ t) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hSubBound.scoped_left)
+  let hLeft : MSubRed Γ [] (.abs bound (.bvar (i + 1))) (.abs bound₁ t) :=
+    MSubRed.fun_ hSubBound.scoped_left hSubBound (MSubRed.pro hpvBody hb)
+  cases hEqBody with
+  | pro _ heqBind hα =>
+      exact (Ctx.subBinds_equBinds_false hb heqBind).elim
+  | var _ hi =>
+      let hRight : MEqRed Γ [] (.abs bound (.bvar (i + 1)))
+          (.abs bound₂ (.bvar (i + 1))) :=
+        MEqRed.fun_ hEqBound (MEqRed.var hpvBody hi)
+      exact
+        commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+          (hdiamondBound hSubBound hEqBound)
+          (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+            have hpvBody₃ :
+                PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+              PrevalidExt.nil
+                (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+            have hb₃ :
+                Ctx.subBinds ({ bound := bound₃, kind := .sub } :: Γ) (i + 1) t :=
+              Ctx.subBinds_sub_head_replace_succ hb
+            have ht₃ : Term.Scoped
+                (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) t :=
+              Prevalid.scoped_lookupSub (PrevalidExt.ctx hpvBody₃) hb₃
+            exact ⟨t,
+              MEqRedStar.single (MEqRed.refl hpvBody₃ ht₃),
+              MSubRedStar.single (MSubRed.pro hpvBody₃ hb₃)⟩)
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
