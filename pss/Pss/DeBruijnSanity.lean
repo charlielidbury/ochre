@@ -160,6 +160,8 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedStackMSubStar
 #print axioms BetaInstantiationPreservesMSubRedProHeadPayload
 #print axioms BetaInstantiationPreservesMSubRedProHeadMSubStarPayload
+#print axioms BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload
+#print axioms BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload
 #print axioms BetaInstantiationPreservesMEqRed.of_stack
 #print axioms BetaInstantiationPreservesMSubRed.of_stack
 #print axioms BetaInstantiationPreservesMSubRedStackMSubStar.of_raw
@@ -211,6 +213,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedStack.app_msubstar
 #print axioms BetaInstantiationPreservesMSubRedStack.fOp_msubstar
 #print axioms BetaInstantiationPreservesMSubRed.fun_msubstar
+#print axioms BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

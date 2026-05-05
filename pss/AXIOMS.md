@@ -264,6 +264,15 @@ closures, 2 inactive outstanding).
   under the instantiated `.sub` head, then reuses
   `msubStar_abs_fun_equ_bound_body` to rebuild the abstraction step. Added
   the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added body-level frontier payloads
+  `BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload` and
+  `BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload`, plus
+  `BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors`. The
+  assembler proves the full stack-parametric star-targeted subtype
+  substitution payload from constructor-local obligations: transformed
+  equivalence substitution, the `Ms-Pro` head star payload, and the two body
+  transports under preserved `.sub`/`.equ` heads. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

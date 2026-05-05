@@ -275,6 +275,32 @@ def BetaInstantiationPreservesMSubRedProHeadMSubStarPayload : Prop :=
           (Term.instantiate 0 arg (.bvar 0))
           (Term.instantiate 0 arg (Term.shift 0 bound))
 
+/-- Body-level payload for the `MSubRed.fun_` case of star-targeted
+β-instantiation. The body premise starts under the original function bound
+`t`, while the reconstructed abstraction target requires the transformed body
+chain under the equivalence target `t'`. -/
+def BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg t t' body body' : Term},
+    WSubMStar Γ arg bound →
+      MEqRed Γ [] (Term.instantiate 0 arg t) (Term.instantiate 0 arg t') →
+        MSubRed ({ bound := t, kind := .sub } ::
+            { bound := bound, kind := .sub } :: Γ) [] body body' →
+          MSubStar ({ bound := Term.instantiate 0 arg t', kind := .sub } :: Γ)
+            [] (Term.instantiate 1 (Term.shift 0 arg) body)
+            (Term.instantiate 1 (Term.shift 0 arg) body')
+
+/-- Body-level payload for the `MSubRed.fOp` case of star-targeted
+β-instantiation under the preserved operand `.equ` head. -/
+def BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg α body body' : Term} {s : Stack},
+    WSubMStar Γ arg bound →
+      MSubRed ({ bound := α, kind := .equ } ::
+          { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s) body body' →
+        MSubStar ({ bound := Term.instantiate 0 arg α, kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.instantiate 0 arg s))
+          (Term.instantiate 1 (Term.shift 0 arg) body)
+          (Term.instantiate 1 (Term.shift 0 arg) body')
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -1071,6 +1097,48 @@ noncomputable def BetaInstantiationPreservesMSubRed.fun_msubstar
           hBodyScoped)
   simpa [Term.instantiate] using
     msubStar_abs_fun_equ_bound_body hpvNil hBound hBodyScoped' hBody
+
+/-- Assemble the stack-parametric star-targeted subtype-substitution payload
+from constructor-local payloads. The `pro` head, `fun_` body, and `fOp` body
+cases are the non-structural obligations; the other constructors reassemble
+directly. -/
+noncomputable def BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors
+    (hHead : BetaInstantiationPreservesMSubRedProHeadMSubStarPayload)
+    (hEq : BetaInstantiationPreservesMEqRedStack)
+    (hFunBody : BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload)
+    (hFOpBody : BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload) :
+    BetaInstantiationPreservesMSubRedStackMSubStar := by
+  intro Γ bound arg lhs rhs s hArgBound hred
+  generalize hC : ({ bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg with
+  | pro hpv hb =>
+      subst hC
+      exact BetaInstantiationPreservesMSubRedStack.pro_msubstar
+        hHead hArgBound hpv hb
+  | top hpv hu =>
+      subst hC
+      exact BetaInstantiationPreservesMSubRedStack.top_msubstar
+        hArgBound hpv hu
+  | equ hpv heq =>
+      subst hC
+      exact BetaInstantiationPreservesMSubRedStack.equ_msubstar
+        (hEq hArgBound heq)
+  | app hOp hv ih =>
+      subst hC
+      exact BetaInstantiationPreservesMSubRedStack.app_msubstar
+        hArgBound (PrevalidExt.tail hOp.prevalidExt)
+        (ih hArgBound rfl) hv
+  | fun_ ht hBound hBody =>
+      subst hC
+      exact BetaInstantiationPreservesMSubRed.fun_msubstar
+        hArgBound (hEq hArgBound hBound) hBody.scoped_left
+        (hFunBody hArgBound (hEq hArgBound hBound) hBody)
+  | fOp ht hα hBody =>
+      subst hC
+      have hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) (_ :: _) :=
+        PrevalidExt.cons (PrevalidExt.weaken_head_inv hBody.prevalidExt) hα
+      exact BetaInstantiationPreservesMSubRedStack.fOp_msubstar
+        hArgBound hpv ht (hFOpBody hArgBound hBody)
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
