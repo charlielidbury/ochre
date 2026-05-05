@@ -154,6 +154,15 @@ closures, 2 inactive outstanding).
   Promotion and compound reduction cases remain the substantive reduction
   substitution frontier. Added the endpoints to `Pss/DeBruijnSanity.lean`;
   no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added more checked empty-stack
+  reduction substitution leaves:
+  `BetaInstantiationPreservesMEqRed.tAp`,
+  `BetaInstantiationPreservesMSubRed.equ`, and
+  `BetaInstantiationPreservesMSubRed.equ_of_meq`. These show that top
+  application is stable under β-instantiation and that the subtype
+  equivalence case reduces directly to the corresponding empty-stack
+  equivalence substitution payload. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

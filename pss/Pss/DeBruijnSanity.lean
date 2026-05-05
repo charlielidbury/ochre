@@ -173,6 +173,9 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRed.var_zero
 #print axioms BetaInstantiationPreservesMEqRed.var_succ
 #print axioms BetaInstantiationPreservesMSubRed.top
+#print axioms BetaInstantiationPreservesMEqRed.tAp
+#print axioms BetaInstantiationPreservesMSubRed.equ
+#print axioms BetaInstantiationPreservesMSubRed.equ_of_meq
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

@@ -532,6 +532,41 @@ noncomputable def BetaInstantiationPreservesMSubRed.top
         simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
   simpa using MSubRed.top (PrevalidExt.nil hArgBound.prevalid) hu'
 
+/-- `MEqRed.tAp` is stable under de Bruijn β-instantiation at the empty
+stack. -/
+noncomputable def BetaInstantiationPreservesMEqRed.tAp
+    {Γ : Ctx} {bound arg u : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed Γ [] (Term.instantiate 0 arg (.app .top u))
+      (Term.instantiate 0 arg .top) := by
+  have hu' : Term.Scoped Γ.depth (Term.instantiate 0 arg u) :=
+    Term.instantiate_scoped 0 Γ.depth arg u (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
+  simpa [Term.instantiate] using
+    MEqRed.tAp (PrevalidExt.nil hArgBound.prevalid) hu'
+
+/-- `MSubRed.equ` reduces de Bruijn β-instantiation subtype substitution to
+the corresponding equivalence-reduction substitution leaf. -/
+noncomputable def BetaInstantiationPreservesMSubRed.equ
+    {Γ : Ctx} {bound arg u v : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hEq :
+      MEqRed Γ [] (Term.instantiate 0 arg u) (Term.instantiate 0 arg v)) :
+    MSubRed Γ [] (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
+  MSubRed.equ (PrevalidExt.nil hArgBound.prevalid) hEq
+
+/-- The `MSubRed.equ` case of de Bruijn β-instantiation follows from the
+empty-stack equivalence-reduction substitution payload. -/
+noncomputable def BetaInstantiationPreservesMSubRed.equ_of_meq
+    (hEqPayload : BetaInstantiationPreservesMEqRed)
+    {Γ : Ctx} {bound arg u v : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hEq : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] u v) :
+    MSubRed Γ [] (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
+  BetaInstantiationPreservesMSubRed.equ hArgBound (hEqPayload hArgBound hEq)
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
