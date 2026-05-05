@@ -94,6 +94,12 @@ closures, 2 inactive outstanding).
   `.sub` replacement boundary at the no-β chain-diagram and chain-shape
   contextual layers, including the `WfCtxEqu` chain-shape route. Added all
   six endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — threaded the direct/factored `.sub`
+  replacement boundary through the remaining `WfCtxEqu` chain-shape
+  contextual no-β routes: split head/body transport, diagnostic head-kind
+  transport, left-factored contextual preservation, and fully factored
+  contextual preservation. Added all ten endpoints to the De Bruijn audit.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,

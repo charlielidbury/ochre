@@ -8562,6 +8562,53 @@ noncomputable def
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
+payload, direct `.sub` replacement residuals, and the two directional
+`Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_direct_sub_payloads_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hSubToEqu hEquToSub
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
+payload, immediate top-level `.sub` replacement residuals plus the named
+preserved-head replacement payload, and the two directional `Me-FOp`
+head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_immediate_sub_payloads_and_under_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hSubToEqu hEquToSub
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
 payload, and one uniform head-kind/body transport payload for `Me-FOp`. This
 is retained as a diagnostic assembly route; the uniform head-kind premise is
 refutable under the no-Top-function-supertype obstruction. -/
@@ -8596,6 +8643,47 @@ noncomputable def
   MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_kind_transport
     hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hOpFun hReplace hHeadTransport
+
+/-- Diagnostic head-kind contextual route using direct `.sub` replacement
+residual payloads for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_direct_sub_payloads_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_kind_transport
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hHeadTransport
+
+/-- Diagnostic head-kind contextual route using immediate top-level `.sub`
+replacement residuals plus the named preserved-head replacement payload for
+`Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_immediate_sub_payloads_and_under_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_kind_transport
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hHeadTransport
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, and stacked left-endpoint
@@ -8633,6 +8721,47 @@ noncomputable def
     (MEqRedAppFunctionSupertypePayload.of_left_transport hLeft)
     hReplace hFOpBody
 
+/-- Left-factored contextual route using direct `.sub` replacement residual
+payloads for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hLeft
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hFOpBody
+
+/-- Left-factored contextual route using immediate top-level `.sub`
+replacement residuals plus the named preserved-head replacement payload for
+`Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hLeft
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hFOpBody
+
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, stacked left-endpoint
 transport, and the two directional `Me-FOp` head/body transports. -/
@@ -8668,6 +8797,49 @@ noncomputable def
     hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hLeft hReplace hSubToEqu hEquToSub
 
+/-- Factored contextual route using direct `.sub` replacement residual
+payloads and the two directional `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_direct_sub_payloads_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports
+    hSubst hShape hShapeWf hLeft
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hSubToEqu hEquToSub
+
+/-- Factored contextual route using immediate top-level `.sub` replacement
+residuals plus the named preserved-head replacement payload and the two
+directional `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_immediate_sub_payloads_and_under_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports
+    hSubst hShape hShapeWf hLeft
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hSubToEqu hEquToSub
+
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, and the factored residual
 payloads for stacked left-endpoint transport and head-kind body transport. -/
@@ -8699,6 +8871,47 @@ noncomputable def
   MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_sub_replace_and_head_kind_transport
     hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hLeft hReplace hHeadTransport
+
+/-- Factored head-kind contextual route using direct `.sub` replacement
+residual payloads for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hLeft
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hHeadTransport
+
+/-- Factored head-kind contextual route using immediate top-level `.sub`
+replacement residuals plus the named preserved-head replacement payload for
+`Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hLeft
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hHeadTransport
 
 /-- Contextual preservation assembled from the shape-only chain payload, with
 the joined-bound well-formedness side condition derived from an already
