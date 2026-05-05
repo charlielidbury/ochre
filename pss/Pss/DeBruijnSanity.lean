@@ -92,6 +92,7 @@ namespace DeBruijn
 #print axioms diamond_abs_fun_body_fixed_bound_from_left
 #print axioms diamond_abs_fun_body_fixed_bound_star
 #print axioms msubStar_abs_fun_body_equ_bound
+#print axioms msubRedStar_abs_fun_body_equ_bound
 #print axioms diamond_abs_fun_bound_fixed_body
 #print axioms diamond_abs_fun_bound_fixed_body_from_left
 #print axioms diamond_abs_fun_targets_of_bound_body_joins_from_left
@@ -175,6 +176,7 @@ namespace DeBruijn
 #print axioms MEqRed.replaceAt_equ_from_handlers
 #print axioms MSubRed.equ_head_replace_from_handlers
 #print axioms MSubRed.replaceAt_equ_from_handlers
+#print axioms msubRedStar_equ_head_replace_from_handlers
 #print axioms msubRed_equ_head_replace_from_body_replacements
 #print axioms msubRed_equ_under_head_replace_from_body_replacements
 #print axioms msubRedStar_equ_head_replace_from_body_replacements

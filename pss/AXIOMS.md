@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added raw-subtype-star
+  replacement infrastructure
+  `msubRedStar_abs_fun_body_equ_bound` and
+  `msubRedStar_equ_head_replace_from_handlers`. The remaining nested
+  `Ms-FOp` body branch now uses the raw-star `.equ`-head splitter, so the
+  outer `Ms-Fun` case can consume a subtype chain instead of forcing a
+  whole raw replacement step. Added both endpoints to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — generalized
   `commute_abs_fun_fun_body_from_operator_join_app_cases_bet_body_stack_handlers_of`
   so its residual `Ms-FOp` body transport can be an `MSubRedStar` chain.
