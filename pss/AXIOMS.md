@@ -60,6 +60,11 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderTenHeadsStack.of_constructors` while
   leaving the recursive eleven-head binder adapters explicit. Added endpoints
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the fixed eleven-head
+  prevalidity transport `BetaInstantiationPreservesPrevalidExtUnderElevenHeads`
+  through the existing list-generic prefix transport, preparing the ten-head
+  binder-body frontier and the next eleven-head structural leaves. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
