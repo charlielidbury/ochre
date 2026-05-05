@@ -182,8 +182,10 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedStackMSubStar.of_raw
 #print axioms BetaInstantiationPreservesMSubRedMSubStar.of_stack
 #print axioms BetaInstantiationPreservesMSubRedMSubStar.of_raw
+#print axioms BetaInstantiationPreservesPrevalidExtUnderTwoHeads
 #print axioms BetaInstantiationPreservesMEqRedStack.refl
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.refl
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.refl
 #print axioms BetaInstantiationPreservesMSubRedStack.refl
 #print axioms BetaInstantiationPreservesMEqRed.refl
 #print axioms BetaInstantiationPreservesMSubRed.refl
@@ -217,6 +219,10 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRed.var_of_stack
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.pro
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.top
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.var
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.tAp
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.app
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload.of_two_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads

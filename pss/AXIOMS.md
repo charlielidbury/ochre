@@ -377,6 +377,15 @@ closures, 2 inactive outstanding).
   so the subtype substitution packaging can consume the generated equivalence
   frontiers directly. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — started decomposing the generic
+  `BetaInstantiationPreservesMEqRedUnderTwoHeadsStack` payload by adding
+  `BetaInstantiationPreservesPrevalidExtUnderTwoHeads` and the constructor
+  leaves
+  `BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.refl`,
+  `.top`, `.var`, `.tAp`, and `.app`. This leaves the two-head `Me-Pro`
+  lookup split plus the next-level binder frontiers as the remaining
+  decomposition work. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

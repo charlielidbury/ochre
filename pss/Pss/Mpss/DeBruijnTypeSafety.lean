@@ -586,6 +586,266 @@ noncomputable def BetaInstantiationPreservesPrevalidExtUnderHead
       simpa [Nat.add_assoc] using hsSource)
   exact PrevalidExt.of_stack_scoped hctx hsTarget
 
+/-- Prevalidity transport for β-instantiation under two preserved context
+heads. The outer head is instantiated at index `1`, the inner head at index
+`0`, and the discharged `.sub` tail is removed. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtUnderTwoHeads
+    {Γ : Ctx} {bound arg head₁ head₂ : Term}
+    {kind₁ kind₂ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := bound, kind := .sub } :: Γ) s) :
+    PrevalidExt
+      ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+      (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s) := by
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hHead₂Scoped : Term.Scoped (Γ.depth + 1) head₂ := by
+    cases kind₁ with
+    | sub =>
+        cases PrevalidExt.ctx hpv with
+        | sub hTail _ =>
+            cases kind₂ with
+            | sub =>
+                cases hTail with
+                | sub _ hHead₂ =>
+                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
+            | equ =>
+                cases hTail with
+                | equ _ hHead₂ =>
+                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
+    | equ =>
+        cases PrevalidExt.ctx hpv with
+        | equ hTail _ =>
+            cases kind₂ with
+            | sub =>
+                cases hTail with
+                | sub _ hHead₂ =>
+                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
+            | equ =>
+                cases hTail with
+                | equ _ hHead₂ =>
+                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
+  have hHead₁Scoped : Term.Scoped (Γ.depth + 2) head₁ := by
+    cases kind₁ with
+    | sub =>
+        cases PrevalidExt.ctx hpv with
+        | sub _ hHead₁ =>
+            simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hHead₁
+    | equ =>
+        cases PrevalidExt.ctx hpv with
+        | equ _ hHead₁ =>
+            simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hHead₁
+  have hHead₂InstScoped :
+      Term.Scoped Γ.depth (Term.instantiate 0 arg head₂) :=
+    Term.instantiate_scoped 0 Γ.depth arg head₂ (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left hHead₂Scoped
+  have hHead₁InstScoped :
+      Term.Scoped (Γ.depth + 1)
+        (Term.instantiate 1 (Term.shift 0 arg) head₁) :=
+    Term.instantiate_scoped 1 (Γ.depth + 1) (Term.shift 0 arg) head₁
+      (by omega) hArgShiftScoped hHead₁Scoped
+  have hctxTail :
+      Prevalid ({ bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ) := by
+    cases kind₂ with
+    | sub => exact Prevalid.sub hArgBound.prevalid hHead₂InstScoped
+    | equ => exact Prevalid.equ hArgBound.prevalid hHead₂InstScoped
+  have hctx :
+      Prevalid
+        ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ) := by
+    cases kind₁ with
+    | sub => exact Prevalid.sub hctxTail hHead₁InstScoped
+    | equ => exact Prevalid.equ hctxTail hHead₁InstScoped
+  have hsSource : Stack.Scoped (Γ.depth + 3) s := by
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using
+      PrevalidExt.stack_scoped hpv
+  have hsTarget :
+      Stack.Scoped (Γ.depth + 2)
+        (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s) :=
+    Stack.Scoped.instantiate (by omega) hArgShiftShiftScoped (by
+      simpa [Nat.add_assoc] using hsSource)
+  exact PrevalidExt.of_stack_scoped hctx hsTarget
+
+/-- Reflexive equivalence reduction is stable under de Bruijn
+β-instantiation below two preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.refl
+    {Γ : Ctx} {bound arg head₁ head₂ u : Term}
+    {kind₁ kind₂ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hu :
+      Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed
+      ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+      (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s)
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u)
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u) := by
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hu' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ))
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 2)
+          (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u) :=
+      Term.instantiate_scoped 2 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg)) u (by omega)
+        hArgShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  exact MEqRed.refl
+    (BetaInstantiationPreservesPrevalidExtUnderTwoHeads hArgBound hpv) hu'
+
+/-- `MEqRed.top` is stable under de Bruijn β-instantiation below two
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.top
+    {Γ : Ctx} {bound arg head₁ head₂ : Term}
+    {kind₁ kind₂ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := bound, kind := .sub } :: Γ) s) :
+    MEqRed
+      ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+      (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s)
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) .top)
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) .top) := by
+  simpa using
+    MEqRed.top (BetaInstantiationPreservesPrevalidExtUnderTwoHeads hArgBound hpv)
+
+/-- Combined two-preserved-head `MEqRed.var` substitution helper. Variables
+that land on the substituted tail head reduce reflexively through the scoped
+instantiated argument; all other variables are also reflexive leaves. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.var
+    {Γ : Ctx} {bound arg head₁ head₂ : Term}
+    {kind₁ kind₂ : CtxEntryKind} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hi :
+      i < Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := bound, kind := .sub } :: Γ)) :
+    MEqRed
+      ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+      (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s)
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) (.bvar i))
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) (.bvar i)) :=
+  BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.refl hArgBound hpv
+    (Term.Scoped.bvar hi)
+
+/-- `MEqRed.tAp` is stable under de Bruijn β-instantiation below two
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.tAp
+    {Γ : Ctx} {bound arg head₁ head₂ u : Term}
+    {kind₁ kind₂ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hu :
+      Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed
+      ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+      (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s)
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) (.app .top u))
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) .top) := by
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hu' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ))
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 2)
+          (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u) :=
+      Term.instantiate_scoped 2 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg)) u (by omega)
+        hArgShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  simpa [Term.instantiate] using
+    MEqRed.tAp
+      (BetaInstantiationPreservesPrevalidExtUnderTwoHeads hArgBound hpv) hu'
+
+/-- The `MEqRed.app` constructor reassembles a two-preserved-head
+β-instantiated equivalence step from transformed operator and argument
+pieces. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.app
+    {Γ : Ctx} {arg head₁ head₂ u u' v v' : Term}
+    {kind₁ kind₂ : CtxEntryKind} {s : Stack}
+    (hFn :
+      MEqRed
+        ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) v ::
+          Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s)
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u)
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) u'))
+    (hArg :
+      MEqRed
+        ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+        [] (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) v)
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) v')) :
+    MEqRed
+      ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
+      (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s)
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) (.app u v))
+      (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) (.app u' v')) := by
+  simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below one preserved context head. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.refl
