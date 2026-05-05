@@ -1244,6 +1244,27 @@ def instantiate (k : Nat) (v : Term) : Stack → Stack :=
 @[simp] theorem shift_cons (cutoff : Nat) (α : Term) (s : Stack) :
     shift cutoff (α :: s) = Term.shift cutoff α :: shift cutoff s := rfl
 
+/-- Instantiating index `1` through a stack shifted over index `0` commutes
+with shifting the stack instantiated at index `0`. -/
+theorem instantiate_one_shift_zero (v : Term) (s : Stack) :
+    Stack.instantiate 1 (Term.shift 0 v) (Stack.shift 0 s) =
+      Stack.shift 0 (Stack.instantiate 0 v s) := by
+  induction s with
+  | nil =>
+      rfl
+  | cons α s ih =>
+      change
+        Term.instantiate 1 (Term.shift 0 v) (Term.shift 0 α) ::
+            Stack.instantiate 1 (Term.shift 0 v) (Stack.shift 0 s) =
+          Term.shift 0 (Term.instantiate 0 v α) ::
+            Stack.shift 0 (Stack.instantiate 0 v s)
+      have hα :
+          Term.instantiate 1 (Term.shift 0 v) (Term.shift 0 α) =
+            Term.shift 0 (Term.instantiate 0 v α) := by
+        simpa [Term.shift] using
+          (Term.shiftBy_instantiate 0 1 0 v α (Nat.le_refl 0)).symm
+      rw [hα, ih]
+
 /-- If shifting a stack produces a non-empty stack, the original stack was
 non-empty and the head/tail are the shifted original head/tail. -/
 theorem shift_eq_cons_inv {cutoff : Nat} {s : Stack} {α : Term} {rest : Stack}

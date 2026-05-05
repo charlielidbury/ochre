@@ -301,6 +301,21 @@ def BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload : Prop :=
           (Term.instantiate 1 (Term.shift 0 arg) body)
           (Term.instantiate 1 (Term.shift 0 arg) body')
 
+/-- Generic body-level payload for β-instantiation under one preserved
+context head. The target stack keeps the direct pointwise instantiated shape;
+constructor-specific adapters can rewrite it to shifted-tail form when needed.
+-/
+def BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg head body body' : Term}
+      {kind : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MSubRed ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) s body body' →
+        MSubStar ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+          (Stack.instantiate 1 (Term.shift 0 arg) s)
+          (Term.instantiate 1 (Term.shift 0 arg) body)
+          (Term.instantiate 1 (Term.shift 0 arg) body')
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -1139,6 +1154,18 @@ noncomputable def BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors
         PrevalidExt.cons (PrevalidExt.weaken_head_inv hBody.prevalidExt) hα
       exact BetaInstantiationPreservesMSubRedStack.fOp_msubstar
         hArgBound hpv ht (hFOpBody hArgBound hBody)
+
+/-- The generic under-head body substitution payload specializes to the
+`MSubRed.fOp` body frontier; the only additional work is rewriting the
+instantiated shifted stack to shifted instantiated tail form. -/
+noncomputable def BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload.of_under_head
+    (hUnder : BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload) :
+    BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload := by
+  intro Γ bound arg α body body' s hArgBound hBody
+  have h := hUnder (Γ := Γ) (bound := bound) (arg := arg)
+    (head := α) (kind := CtxEntryKind.equ) (s := Stack.shift 0 s)
+    hArgBound hBody
+  simpa [Stack.instantiate_one_shift_zero] using h
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/

@@ -16,6 +16,7 @@ namespace DeBruijn
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_of
 #print axioms Term.shift_scoped_inv
 #print axioms Stack.Scoped.shift_inv
+#print axioms Stack.instantiate_one_shift_zero
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace
 #print axioms Ctx.subBinds_equ_under_two_heads_replace
@@ -162,6 +163,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedProHeadMSubStarPayload
 #print axioms BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload
 #print axioms BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload
+#print axioms BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload
 #print axioms BetaInstantiationPreservesMEqRed.of_stack
 #print axioms BetaInstantiationPreservesMSubRed.of_stack
 #print axioms BetaInstantiationPreservesMSubRedStackMSubStar.of_raw
@@ -214,6 +216,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedStack.fOp_msubstar
 #print axioms BetaInstantiationPreservesMSubRed.fun_msubstar
 #print axioms BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors
+#print axioms BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload.of_under_head
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

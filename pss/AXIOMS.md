@@ -273,6 +273,14 @@ closures, 2 inactive outstanding).
   equivalence substitution, the `Ms-Pro` head star payload, and the two body
   transports under preserved `.sub`/`.equ` heads. Added the endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Context/DeBruijn.lean` and `Pss/Mpss/DeBruijnTypeSafety.lean` —
+  added `Stack.instantiate_one_shift_zero`, the pointwise stack rewrite for
+  instantiating under one preserved head, plus the generic under-head payload
+  `BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload` and adapter
+  `BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload.of_under_head`.
+  This reduces the `Ms-FOp` body frontier to the generic preserved-head
+  substitution shape. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
