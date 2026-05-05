@@ -258,11 +258,40 @@ def AbsFunctionBoundChainShape.of_diagram
   subJoin := d.subJoin
   eqJoin := d.eqJoin
 
+/-- Complete a shape-only function-bound diagram once the joined bound is
+known well formed. -/
+def AbsFunctionBoundChainShape.to_diagram
+    {Γ : Ctx} {bound body result : Term}
+    (d : AbsFunctionBoundChainShape Γ bound body result)
+    (hwfJoinBound : WfM Γ d.joinBound) :
+    AbsFunctionBoundChainDiagram Γ bound body result where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := d.subJoin
+  eqJoin := d.eqJoin
+  wfJoinBound := hwfJoinBound
+
 /-- Remaining Type-valued diagram payload for function-bound inversion. -/
 def AbsFunctionBoundDiagramPayload : Type :=
   ∀ {Γ : Ctx} {bound body result : Term},
     WSubMStar Γ (.abs bound body) (.abs result .top) →
       AbsFunctionBoundDiagram Γ bound body result
+
+/-- Remaining shape-only Type-valued chain-diagram payload for
+function-bound inversion. It packages the common-reduct shape separately
+from the joined-bound well-formedness proof. -/
+def AbsFunctionBoundChainShapePayload : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term},
+    WSubMStar Γ (.abs bound body) (.abs result .top) →
+      AbsFunctionBoundChainShape Γ bound body result
+
+/-- Remaining joined-bound well-formedness payload for a chosen shape-only
+function-bound common-reduct payload. -/
+def AbsFunctionBoundChainShapeWfPayload
+    (hShape : AbsFunctionBoundChainShapePayload) : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term}
+    (hSub : WSubMStar Γ (.abs bound body) (.abs result .top)),
+      WfM Γ ((hShape hSub).joinBound)
 
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
@@ -403,6 +432,14 @@ noncomputable def WSubMStar.abs_function_bound_chain_shape_of
         subJoin := by simpa [hJoin] using d.subJoin
         eqJoin := by simpa [hJoin] using d.eqJoin
       }
+
+/-- Strong commutativity at every context supplies the shape-only
+function-bound payload for transitive well-subtyping. -/
+noncomputable def AbsFunctionBoundChainShapePayload_of
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ []) :
+    AbsFunctionBoundChainShapePayload := by
+  intro Γ bound body result hSub
+  exact WSubMStar.abs_function_bound_chain_shape_of (hcomm (Γ := Γ)) hSub
 
 /-- Reflexive abstraction-to-abstraction chain diagram. -/
 def AbsAbsBoundChainDiagram.refl
@@ -649,6 +686,15 @@ def AbsFunctionBoundDiagramPayload.of_chain
     AbsFunctionBoundDiagramPayload := by
   intro Γ bound body result hFun
   exact AbsFunctionBoundDiagram.of_chain (hDiagram hFun)
+
+/-- A shape payload plus its joined-bound well-formedness payload completes
+the full Type-valued chain-diagram payload. -/
+def AbsFunctionBoundChainDiagramPayload.of_shape
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape) :
+    AbsFunctionBoundChainDiagramPayload := by
+  intro Γ bound body result hFun
+  exact (hShape hFun).to_diagram (hShapeWf hFun)
 
 /-- An older Prop-closure diagram payload can be upgraded to the Type-valued
 chain-diagram payload by choosing chain witnesses for the two closures. -/
@@ -936,6 +982,29 @@ noncomputable def StepPreservesWfM_of_chain_diagram_components
     StepPreservesWfM :=
   StepPreservesWfM_of_new_wf
     (StepBetaPreservesWfM_of_chain_diagram hSubst hDiagram)
+    hSubHeadReplace
+
+/-- β preservation reduced to the shape-only function-bound chain payload,
+its joined-bound well-formedness payload, and the body-instantiation lemma. -/
+noncomputable def StepBetaPreservesWfM_of_chain_shape
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape) :
+    StepBetaPreservesWfM :=
+  StepBetaPreservesWfM_of_chain_diagram hSubst
+    (AbsFunctionBoundChainDiagramPayload.of_shape hShape hShapeWf)
+
+/-- Operational well-formedness preservation reduced to the body-instantiation
+lemma, the shape-only function-bound chain payload, its joined-bound
+well-formedness payload, and sharpened `.sub` head replacement. -/
+noncomputable def StepPreservesWfM_of_chain_shape_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_new_wf
+    (StepBetaPreservesWfM_of_chain_shape hSubst hShape hShapeWf)
     hSubHeadReplace
 
 /-- De Bruijn preservation, conditional on operational well-formedness

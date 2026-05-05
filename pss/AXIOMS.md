@@ -1292,6 +1292,16 @@ closures, 2 inactive outstanding).
   the joined-bound well-formedness obligation explicit. No axiom-count
   change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `AbsFunctionBoundChainShape.to_diagram`,
+  `AbsFunctionBoundChainShapePayload`,
+  `AbsFunctionBoundChainShapeWfPayload`,
+  `AbsFunctionBoundChainDiagramPayload.of_shape`,
+  `AbsFunctionBoundChainShapePayload_of`, and the preservation wrappers
+  `StepBetaPreservesWfM_of_chain_shape` /
+  `StepPreservesWfM_of_chain_shape_components`. This exposes preservation
+  as strong commutativity plus the single remaining joined-bound
+  well-formedness payload. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No
