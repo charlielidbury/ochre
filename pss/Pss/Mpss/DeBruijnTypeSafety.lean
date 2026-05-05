@@ -465,6 +465,78 @@ noncomputable def MEqRedFOpBodyPayload.not_of_no_top
   obtain ⟨funBound, hTopFun, _hArg⟩ := hwfBody'Sub.app_inv
   exact hNoTop hTopFun
 
+/-- The current contextual preservation target is too broad with only
+`WfStack`: the same `Me-FOp` counterexample is a one-step reduction from a
+well-formed abstraction at stack `[Top]` to an abstraction whose body is
+`Top Top`. -/
+noncomputable def MEqRedPreservesWfMContextual.not_of_no_top
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMContextual → False := by
+  intro hpres
+  let bound : Term := .abs .top .top
+  let body : Term := .app (.bvar 0) .top
+  let body' : Term := .app .top .top
+  have hpvEmpty : Prevalid [] := Prevalid.empty
+  have hwfTopEmpty : WfM [] .top := WfM.top hpvEmpty
+  have hwfBound : WfM [] bound := by
+    dsimp [bound]
+    exact WfM.fun_ (WfM.top Prevalid.empty)
+      (WfM.top (Prevalid.sub Prevalid.empty Term.Scoped.top))
+  let ΓSub : Ctx := [{ bound := bound, kind := .sub }]
+  have hpvSub : Prevalid ΓSub :=
+    Prevalid.sub hpvEmpty hwfBound.scoped
+  have hwfVarSub : WfM ΓSub (.bvar 0) := by
+    exact @WfM.varSub ΓSub 0 bound hpvSub
+      (by simp [ΓSub, Ctx.subBinds, bound])
+  have hwfBoundSub : WfM ΓSub bound := by
+    simpa [ΓSub, bound, Term.shift] using
+      hwfBound.weaken_head hpvSub hpvEmpty
+  have hProSub : MSubRed ΓSub [] (.bvar 0) bound := by
+    simpa [ΓSub, bound, Term.shift] using
+      (MSubRed.pro (PrevalidExt.nil hpvSub)
+        (by simp [ΓSub, Ctx.subBinds, bound]))
+  have hFunSub : WSubMStar ΓSub (.bvar 0) bound :=
+    WSubMStar.sub hwfVarSub
+      (WSubM.lf2 hwfVarSub hProSub hwfBoundSub (WSubM.rfl hwfBoundSub))
+      hwfBoundSub
+  have hArgSub : WSubMStar ΓSub .top .top :=
+    WSubMStar.refl_of_wfM (WfM.top hpvSub)
+  have hwfBodySub : WfM ΓSub body := by
+    dsimp [body, bound]
+    exact WfM.app hFunSub hArgSub
+  have hwfAbs : WfM [] (.abs bound body) := by
+    exact WfM.fun_ hwfBound hwfBodySub
+  let ΓEqu : Ctx := [{ bound := .top, kind := .equ }]
+  have hpvEqu : Prevalid ΓEqu :=
+    Prevalid.equ Prevalid.empty Term.Scoped.top
+  have hpvEquNil : PrevalidExt ΓEqu [] := PrevalidExt.nil hpvEqu
+  have hpvEquTopStack : PrevalidExt ΓEqu [.top] :=
+    PrevalidExt.cons hpvEquNil Term.Scoped.top
+  have hTopRedTopStack : MEqRed ΓEqu [.top] .top .top :=
+    MEqRed.top hpvEquTopStack
+  have hBvarRedTopStack : MEqRed ΓEqu [.top] (.bvar 0) .top := by
+    simpa [ΓEqu, Term.shift] using
+      (MEqRed.pro hpvEquTopStack
+        (by simp [ΓEqu, Ctx.equBinds])
+        hTopRedTopStack)
+  have hTopRedTopNil : MEqRed ΓEqu [] .top .top :=
+    MEqRed.top hpvEquNil
+  have hBodyRed : MEqRed ΓEqu [] body body' := by
+    dsimp [body, body']
+    exact MEqRed.app hBvarRedTopStack hTopRedTopNil
+  have hBoundRed : MEqRed [] [] bound bound :=
+    MEqRed.refl (PrevalidExt.nil hpvEmpty) hwfBound.scoped
+  have hAbsRed :
+      MEqRed [] [.top] (.abs bound body) (.abs bound body') := by
+    exact MEqRed.fOp hBoundRed Term.Scoped.top hBodyRed
+  have hwfAbs' : WfM [] (.abs bound body') :=
+    hpres WfCtxEqu.empty (WfStack.cons hwfTopEmpty WfStack.nil)
+      hAbsRed hwfAbs
+  have hwfBody'Sub : WfM ΓSub body' := by
+    simpa [ΓSub, bound] using hwfAbs'.fun_inv.2
+  obtain ⟨funBound, hTopFun, _hArg⟩ := hwfBody'Sub.app_inv
+  exact hNoTop hTopFun
+
 /-- Transport a function body from the source `.sub` binder to the
 stack-introduced `.equ` binder used by `Me-FOp`. -/
 def WfMSubHeadToEquHeadPayload : Type :=

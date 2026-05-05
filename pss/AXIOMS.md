@@ -35,6 +35,14 @@ closures, 2 inactive outstanding).
   per-operand stack well-formedness and identifies the next required
   refinement as a stack/application invariant that records the operand's
   relationship to the abstraction bound. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMContextual.not_of_no_top`, lifting the same `Me-FOp`
+  witness from the residual payload to the current contextual preservation
+  target itself. With stack `[Top]`, the source abstraction is well formed
+  because the body is checked under `.sub (λ Top. Top)`, but one `Me-FOp`
+  step checks the body under `.equ Top` and reduces `(bvar 0) Top` to
+  `Top Top`. Thus `MEqRedPreservesWfMContextual` with only `WfStack` is not
+  the right final theorem statement. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
