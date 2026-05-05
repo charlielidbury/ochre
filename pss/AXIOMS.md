@@ -99,7 +99,9 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesPrevalidExtUnderThirteenHeads` via the generic
   preserved-head prevalidity transport, plus the thirteen-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.top` and `Me-App`
-  leaf `BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.app`.
+  leaf `BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.app`, and the
+  thirteen-head reflexive leaf
+  `BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.refl`.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
