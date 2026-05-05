@@ -20,6 +20,18 @@ This is the shape needed by arbitrary-context function-bound inversion. -/
 def NoTopFunctionSupertypesAt : Prop :=
   ∀ {Γ : Ctx} {bound : Term}, WSubMStar Γ .top (.abs bound .top) → False
 
+/-- Context-generic abstraction obstruction: `Top` has no abstraction
+supertype, regardless of the abstraction body. -/
+def NoTopAbstractionSupertypesAt : Prop :=
+  ∀ {Γ : Ctx} {bound body : Term}, WSubMStar Γ .top (.abs bound body) → False
+
+/-- The abstraction obstruction specializes to the function-supertype
+obstruction used by progress and β preservation. -/
+def NoTopFunctionSupertypesAt.of_abs
+    (hNoTop : NoTopAbstractionSupertypesAt) :
+    NoTopFunctionSupertypesAt :=
+  hNoTop
+
 /-- Once de Bruijn Theorem 3 is available at every context, `Top` cannot have a
 function supertype at any context. Diagrammatic subtyping from `Top` can only
 join at `Top`, while equivalence chains from an abstraction can only target
@@ -29,6 +41,18 @@ noncomputable def NoTopFunctionSupertypesAt_of
     NoTopFunctionSupertypesAt := by
   intro Γ bound hTopFun
   obtain ⟨join, hSubTop, hEqAbs⟩ := hTopFun.toMSub_of (hcomm (Γ := Γ))
+  have hJoinTop : join = .top := hSubTop.top_inv
+  subst hJoinTop
+  obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv
+  cases hAbsTop
+
+/-- Once de Bruijn Theorem 3 is available at every context, `Top` cannot have
+any abstraction supertype. -/
+noncomputable def NoTopAbstractionSupertypesAt_of
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ []) :
+    NoTopAbstractionSupertypesAt := by
+  intro Γ bound body hTopAbs
+  obtain ⟨join, hSubTop, hEqAbs⟩ := hTopAbs.toMSub_of (hcomm (Γ := Γ))
   have hJoinTop : join = .top := hSubTop.top_inv
   subst hJoinTop
   obtain ⟨bound', body', hAbsTop⟩ := hEqAbs.abs_inv

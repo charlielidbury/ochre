@@ -563,6 +563,10 @@ closures, 2 inactive outstanding).
   `NoTopFunctionSupertypesAt`, its derivation from per-context
   `StrongCommutes Γ []`, and the closed specialization
   `NoTopFunctionSupertypes_of_at`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — generalized the `Top` obstruction to
+  all abstraction supertypes with `NoTopAbstractionSupertypesAt`,
+  `NoTopFunctionSupertypesAt.of_abs`, and
+  `NoTopAbstractionSupertypesAt_of`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the closed-step preservation
   endpoint `Theorem_5_DeBruijn_ClosedPreservation_of`, specializing
   conditional de Bruijn preservation to the `Step` alias. No axiom-count
