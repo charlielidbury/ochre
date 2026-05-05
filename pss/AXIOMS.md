@@ -89,6 +89,15 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesWfM` work as well-formedness reconstruction,
   not de Bruijn binder arithmetic. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split off constructor-local checked
+  leaves for the de Bruijn β-instantiation well-formedness payload:
+  `BetaInstantiationPreservesWfM.top`,
+  `BetaInstantiationPreservesWfM.var_zero`,
+  `BetaInstantiationPreservesWfM.var_succ_sub`, and
+  `BetaInstantiationPreservesWfM.var_succ_equ`. These cover the `.top`,
+  substituted head-variable, and successor variable lookup cases directly
+  from `WSubMStar` prevalidity and tail context lookups. Added all four
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

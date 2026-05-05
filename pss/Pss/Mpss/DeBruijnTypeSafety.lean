@@ -192,6 +192,56 @@ noncomputable def BetaInstantiationPreservesScoped
   Term.instantiate_scoped 0 Γ.depth arg body (Nat.zero_le Γ.depth)
     hArgBound.scoped_left hBody.scoped
 
+/-- Top terms are a closed β-instantiation well-formedness leaf. -/
+noncomputable def BetaInstantiationPreservesWfM.top
+    {Γ : Ctx} {bound arg : Term}
+    (hArgBound : WSubMStar Γ arg bound) :
+    WfM Γ (Term.instantiate 0 arg .top) := by
+  simpa using WfM.top hArgBound.prevalid
+
+/-- The substituted head variable case of β-instantiation is exactly the
+argument well-formedness carried by the subtype premise. -/
+noncomputable def BetaInstantiationPreservesWfM.var_zero
+    {Γ : Ctx} {bound arg : Term} :
+    WSubMStar Γ arg bound →
+      WfM Γ (Term.instantiate 0 arg (.bvar 0)) :=
+  fun hArgBound => by
+    simpa [Term.instantiate] using hArgBound.wf_left
+
+/-- Successor `.sub` variables descend from the extended body context back to
+the tail context during β-instantiation. -/
+noncomputable def BetaInstantiationPreservesWfM.var_succ_sub
+    {Γ : Ctx} {bound arg t : Term} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hb : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ) (i + 1) t) :
+    WfM Γ (Term.instantiate 0 arg (.bvar (i + 1))) := by
+  have hpv : Prevalid Γ := hArgBound.prevalid
+  simp [Ctx.subBinds] at hb
+  cases hlook : Ctx.lookupSub Γ i with
+  | none =>
+      simp [hlook] at hb
+  | some tail =>
+      have htail : Γ.subBinds i tail := by
+        simpa [Ctx.subBinds] using hlook
+      simpa [Term.instantiate] using WfM.varSub hpv htail
+
+/-- Successor `.equ` variables descend from the extended body context back to
+the tail context during β-instantiation. -/
+noncomputable def BetaInstantiationPreservesWfM.var_succ_equ
+    {Γ : Ctx} {bound arg α : Term} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hb : Ctx.equBinds ({ bound := bound, kind := .sub } :: Γ) (i + 1) α) :
+    WfM Γ (Term.instantiate 0 arg (.bvar (i + 1))) := by
+  have hpv : Prevalid Γ := hArgBound.prevalid
+  simp [Ctx.equBinds] at hb
+  cases hlook : Ctx.lookupEqu Γ i with
+  | none =>
+      simp [hlook] at hb
+  | some tail =>
+      have htail : Γ.equBinds i tail := by
+        simpa [Ctx.equBinds] using hlook
+      simpa [Term.instantiate] using WfM.varEqu hpv htail
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
