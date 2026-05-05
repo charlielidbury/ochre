@@ -9,6 +9,10 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 3 audit to
+  include the existing `Theorem_3_DeBruijn_WSubMStar_toMSub_of` and
+  `Theorem_3_DeBruijn_WEquMStar_toMSub_of` use-sites, alongside the newer
+  chain-diagram endpoints. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WEquMStar.to_chain_diagram_of` and
   `Theorem_3_DeBruijn_WEquMStar_toChainDiagram_of`, exposing the

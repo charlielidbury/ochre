@@ -15,6 +15,8 @@ namespace DeBruijn
 #print axioms Lemma_1_DeBruijn_StrongCommutativityStar_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_of
 #print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_of
+#print axioms Theorem_3_DeBruijn_WSubMStar_toMSub_of
+#print axioms Theorem_3_DeBruijn_WEquMStar_toMSub_of
 #print axioms Theorem_3_DeBruijn_WSubMStar_toChainDiagram_of
 #print axioms Theorem_3_DeBruijn_WEquMStar_toChainDiagram_of
 #print axioms Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of
