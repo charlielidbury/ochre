@@ -1344,6 +1344,12 @@ closures, 2 inactive outstanding).
   `MEqRed.var_preservesWfM`, and `MEqRed.tAp_preservesWfM`. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedAppFunctionSupertypePayload` and
+  `MEqRed.app_preservesWfM_of_contextual`, reducing the contextual
+  `Me-App` well-formedness case to the operator-side stack reduction
+  payload while proving the empty-stack argument transport directly. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No

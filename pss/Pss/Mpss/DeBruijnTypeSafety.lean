@@ -305,6 +305,19 @@ def MEqRedPreservesWfMContextual : Type :=
   ∀ {Γ : Ctx} {s : Stack} {x y : Term},
     WfCtxEqu Γ → WfStack Γ s → MEqRed Γ s x y → WfM Γ x → WfM Γ y
 
+/-- Remaining operator-side payload for the contextual `Me-App`
+well-formedness case. The operator reduction happens under stack `v :: s`,
+so it is not directly covered by the empty-stack `WSubMStar` endpoint
+extension helpers. -/
+def MEqRedAppFunctionSupertypePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {u u' v bound : Term},
+    WfCtxEqu Γ →
+      WfStack Γ s →
+        WfM Γ v →
+          WSubMStar Γ u (.abs bound .top) →
+            MEqRed Γ (v :: s) u u' →
+              WSubMStar Γ u' (.abs bound .top)
+
 /-- Empty-stack preservation under a well-formed-equivalence context. -/
 def MEqRedPreservesWfMUnderWfCtx : Type :=
   ∀ {Γ : Ctx} {x y : Term}, WfCtxEqu Γ → MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
@@ -349,6 +362,28 @@ noncomputable def MEqRed.tAp_preservesWfM
     (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u)
     (_hwf : WfM Γ (.app .top u)) : WfM Γ .top :=
   WfM.top (PrevalidExt.ctx hpv)
+
+/-- `Me-App` well-formedness preservation reduced to the operator-side
+function-supertype payload. The argument side is discharged from the
+contextual empty-stack preservation specialization. -/
+noncomputable def MEqRed.app_preservesWfM_of_contextual
+    (hpres : MEqRedPreservesWfMContextual)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    {Γ : Ctx} {s : Stack} {u u' v v' : Term}
+    (hΓ : WfCtxEqu Γ) (hStack : WfStack Γ s)
+    (hredOp : MEqRed Γ (v :: s) u u')
+    (hredArg : MEqRed Γ [] v v')
+    (hwfApp : WfM Γ (.app u v)) : WfM Γ (.app u' v') := by
+  obtain ⟨bound, hFun, hArg⟩ := hwfApp.app_inv
+  have hwfV : WfM Γ v := hArg.wf_left
+  have hwfV' : WfM Γ v' := hpres hΓ WfStack.nil hredArg hwfV
+  have hFun' : WSubMStar Γ u' (.abs bound .top) :=
+    hOpFun hΓ hStack hwfV hFun hredOp
+  have hArgBack : WSubMStar Γ v' v :=
+    WSubMStar.of_MEqRed_back hredArg hwfV hwfV'
+  have hArg' : WSubMStar Γ v' bound :=
+    WSubMStar.trans hwfV hArgBack hArg
+  exact WfM.app hFun' hArg'
 
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
