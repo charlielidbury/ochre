@@ -494,6 +494,58 @@ theorem MSubRed.stack_head_replace_from_handlers {Γ : Ctx} {s : Stack}
   | fOp ht hArg hBody =>
       exact hFOp ht hArg hBody
 
+/-- Split a one-step equivalence transport across a changed stack head,
+preserving the equivalence conclusion. Stack-insensitive leaves are rebuilt
+directly at the new stack; recursive and operand-consuming constructors are
+exposed as handlers. This is the raw-equivalence analogue of
+`MEqRed.stack_head_subtype_replace_from_handlers`, for body transports that
+must remain `MEqRed` rather than being wrapped into subtype chains. -/
+noncomputable def MEqRed.stack_head_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {old new u v : Term}
+    (hpvNew : PrevalidExt Γ (new :: s))
+    (hPro :
+      ∀ {i : Nat} {α α' : Term},
+        Γ.equBinds i α →
+        MEqRed Γ (old :: s) α α' →
+        MEqRed Γ (new :: s) (.bvar i) α')
+    (hApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed Γ (arg :: old :: s) op op' →
+        MEqRed Γ [] arg arg' →
+        MEqRed Γ (new :: s) (.app op arg) (.app op' arg'))
+    (hBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped Γ.depth bound →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ)
+          (Stack.shift 0 (old :: s)) body body' →
+        MEqRed Γ [] arg arg' →
+        MEqRed Γ (new :: s) (.app (.abs bound body) arg)
+          (Term.instantiate 0 arg' body'))
+    (hFOp :
+      ∀ {bound bound' body body' : Term},
+        MEqRed Γ [] bound bound' →
+        Term.Scoped Γ.depth old →
+        MEqRed ({ bound := old, kind := .equ } :: Γ) (Stack.shift 0 s)
+          body body' →
+        MEqRed Γ (new :: s) (.abs bound body) (.abs bound' body'))
+    (h : MEqRed Γ (old :: s) u v) :
+    MEqRed Γ (new :: s) u v := by
+  cases h with
+  | top _ =>
+      exact MEqRed.top hpvNew
+  | var _ hi =>
+      exact MEqRed.var hpvNew hi
+  | pro _ hb hα =>
+      exact hPro hb hα
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | tAp _ hu =>
+      exact MEqRed.tAp hpvNew hu
+  | bet ht hBody hArg =>
+      exact hBet ht hBody hArg
+  | fOp hBound hOldScoped hBody =>
+      exact hFOp hBound hOldScoped hBody
+
 /-- Split an equivalence-origin one-step transport across a changed stack
 head, producing a subtype chain at the new stack. Stack-insensitive leaves
 (`Me-Top`, `Me-Var`, `Me-TAp`) are rebuilt internally via `Ms-Equ`; recursive

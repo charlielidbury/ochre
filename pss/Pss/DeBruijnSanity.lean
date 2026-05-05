@@ -155,6 +155,7 @@ namespace DeBruijn
 #print axioms MSubRedStackAppendPayload.of_fun
 #print axioms MSubRedStar.stack_replace_from_step_replacement
 #print axioms MSubRed.stack_head_replace_from_handlers
+#print axioms MEqRed.stack_head_replace_from_handlers
 #print axioms MEqRed.stack_head_subtype_replace_from_handlers
 #print axioms MEqRed.sub_head_replace
 #print axioms MEqRed.sub_head_replace_two_step
