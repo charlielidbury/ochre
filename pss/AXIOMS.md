@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRed_replaceAt_equ_from_handlers` and
+  `msubRed_replaceAt_equ_from_handlers`, the diagrammatic counterparts to the
+  raw `Ctx.replaceAt` splitters. They rebuild stable leaves generically and
+  expose lookup/recursive constructor residuals as handlers, giving the
+  nested body residuals an arbitrary-prefix replacement API. Added the
+  endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.replaceAt_equ_from_handlers` and
   `MSubRed.replaceAt_equ_from_handlers`, raw replacement splitters for a

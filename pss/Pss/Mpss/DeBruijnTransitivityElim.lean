@@ -6681,6 +6681,87 @@ theorem meqRed_equ_under_head_replace_from_handlers {Γ : Ctx} {s : Stack}
   | bet ht hBody hArg =>
     exact hBet ht hBody hArg
 
+/-- Diagrammatic one-step equivalence replacement across a changed `.equ`
+entry at an arbitrary context index, presented by `Ctx.replaceAt`. Stable
+leaves are rebuilt directly; lookup and recursive constructor cases are
+exposed as handlers. -/
+theorem meqRed_replaceAt_equ_from_handlers {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u v : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .equ })
+    (hPro :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) i α →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s α α' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+          (.bvar i) α')
+    (hApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (arg :: s) op op' →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] arg arg' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+          (.app op arg) (.app op' arg'))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] body body' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          [] (.abs bound body) (.abs bound' body'))
+    (hBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) bound →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (Stack.shift 0 s) body body' →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] arg arg' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
+    (hFOp :
+      ∀ {bound bound' arg body body' : Term} {rest : Stack},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] bound bound' →
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (Stack.shift 0 rest) body body' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+          (.abs bound body) (.abs bound' body'))
+    (h : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s u v) :
+    MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v := by
+  have hpvNew :
+      PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s :=
+    PrevalidExt.replaceAt_equ_same hpv hcut hnew
+  cases h with
+  | @pro Γp sp i α α' _ hb hα =>
+      exact hPro hb hα
+  | top _ =>
+      exact MSubStar.of_MEqRed hpvNew (MEqRed.top hpvNew)
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | var _ hi =>
+      exact MSubStar.of_MEqRed hpvNew (MEqRed.var hpvNew (by
+        simpa [Ctx.depth_replaceAt] using hi))
+  | fun_ hBound hBody =>
+      exact hFun hBound hBody
+  | tAp _ hu =>
+      exact MSubStar.of_MEqRed hpvNew (MEqRed.tAp hpvNew (by
+        simpa [Ctx.depth_replaceAt] using hu))
+  | fOp hBound hArg hBody =>
+      exact hFOp hBound hArg rfl hBody
+  | bet ht hBody hArg =>
+      exact hBet ht hBody hArg
+
 /-- Equivalence replacement across an innermost changed `.equ` head, with
 canonical constructor handlers wired in. The `Me-Pro` residual handlers stay
 explicit because they are the only lookup-sensitive cases. -/
@@ -6946,6 +7027,71 @@ theorem msubRed_equ_under_two_heads_replace_from_handlers {Γ : Ctx} {s : Stack}
     exact hFun ht hBound hBody
   | fOp ht hArg hBody =>
     exact hFOp ht hArg rfl hBody
+
+/-- Diagrammatic one-step subtype replacement across a changed `.equ` entry
+at an arbitrary context index, presented by `Ctx.replaceAt`. The stable
+`Ms-Pro` and `Ms-Top` leaves are rebuilt directly; equivalence and recursive
+constructor cases are exposed as handlers. -/
+theorem msubRed_replaceAt_equ_from_handlers {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u v : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .equ })
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s u v →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (arg :: s) op op' →
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) arg →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) bound →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] body body' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          [] (.abs bound body) (.abs bound' body'))
+    (hFOp :
+      ∀ {bound arg body body' : Term} {rest : Stack},
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) bound →
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (Stack.shift 0 rest) body body' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+          (.abs bound body) (.abs bound body'))
+    (h : MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s u v) :
+    MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v := by
+  have hpvNew :
+      PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s :=
+    PrevalidExt.replaceAt_equ_same hpv hcut hnew
+  cases h with
+  | pro _ hb =>
+      exact MSubStar.of_MSubRed (MSubRed.pro_replaceAt_equ hpv hcut hnew hb)
+  | top _ hu =>
+      exact MSubStar.of_MSubRed (MSubRed.top hpvNew (by
+        simpa [Ctx.depth_replaceAt] using hu))
+  | equ _ heq =>
+      exact hEq heq
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | fun_ ht hBound hBody =>
+      exact hFun ht hBound hBody
+  | fOp ht hArg hBody =>
+      exact hFOp ht hArg rfl hBody
 
 /-- Canonical `Ms-App` handler for two-preserved-head `.equ` replacement. -/
 theorem msub_equ_under_two_heads_app_handler_of_operator_replacement {Γ : Ctx}
