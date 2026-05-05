@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added raw generic
+  three-preserved-head `.equ` replacement splitters
+  `MEqRed.equ_under_three_heads_replace_from_handlers` and
+  `MSubRed.equ_under_three_heads_replace_from_handlers`. These lift the
+  existing two-head handler interface to the next nested binder depth while
+  keeping `Me-Pro`, `Ms-Pro`, and recursive constructor residuals explicit;
+  the subtype splitter uses the new stable
+  `MSubRed.pro_equ_under_three_heads_replace` leaf. Added both endpoints to
+  the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MSubRed.pro_equ_under_three_heads_replace`, the three-preserved-head
   stable `Ms-Pro` replacement primitive. This matches the existing two-head
