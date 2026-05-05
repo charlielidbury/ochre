@@ -1952,6 +1952,21 @@ theorem commute_appAbs_subStep_eqStar_beta_or_join_or_appAbs_from_left
         exact Or.inr (Or.inr (Or.inr
           ⟨bound₁, body₁, arg₁, bound₂, body₂, arg₂, hEq₁, hEq₂⟩))
 
+/-- Direct one-equivalence-step paired abstraction-headed application
+classifier with source side conditions recovered from the subtype step. -/
+theorem commute_appAbs_subStep_eqStep_beta_or_join_or_appAbs_from_left
+    {Γ : Ctx} {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRed Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ arg' body', MSub Γ s (Term.instantiate 0 arg' body') t₁) ∨
+      (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      (∃ arg' body', MSub Γ s t₂ (Term.instantiate 0 arg' body')) ∨
+      (∃ bound₁ body₁ arg₁ bound₂ body₂ arg₂,
+        t₁ = .app (.abs bound₁ body₁) arg₁ ∧
+        t₂ = .app (.abs bound₂ body₂) arg₂) :=
+  commute_appAbs_subStep_eqStar_beta_or_join_or_appAbs_from_left hSub
+    (MEqRedStar.single hEq)
+
 /-- Conditional abstraction-headed application commutation from the paired
 branch classifier. The already-closed `Top` / `Top`-headed target branch is
 handled internally; callers only need to discharge subtype β, equivalence β,
@@ -2056,6 +2071,29 @@ theorem commute_appAbs_subStep_eqStar_of_branches_from_left {Γ : Ctx} {s : Stac
         obtain ⟨bound₁, body₁, arg₁, bound₂, body₂, arg₂, hEq₁, hEq₂⟩ :=
           hBothAppAbs
         exact hAppAbs hEq₁ hEq₂
+
+/-- Direct one-equivalence-step conditional abstraction-headed application
+commutation with the source side conditions recovered from the subtype step. -/
+theorem commute_appAbs_subStep_eqStep_of_branches_from_left {Γ : Ctx}
+    {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRed Γ s (.app (.abs bound body) arg) t₂)
+    (hSubBet :
+      ∀ {arg' body' : Term},
+        MSub Γ s (Term.instantiate 0 arg' body') t₁ →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃)
+    (hEqBet :
+      ∀ {arg' body' : Term},
+        MSub Γ s t₂ (Term.instantiate 0 arg' body') →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃)
+    (hAppAbs :
+      ∀ {bound₁ body₁ arg₁ bound₂ body₂ arg₂ : Term},
+        t₁ = .app (.abs bound₁ body₁) arg₁ →
+        t₂ = .app (.abs bound₂ body₂) arg₂ →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  commute_appAbs_subStep_eqStar_of_branches_from_left hSub
+    (MEqRedStar.single hEq) hSubBet hEqBet hAppAbs
 
 /-- One-step abstraction-headed application commutation split with the local
 equivalence diamond available, preserving the residual structural `Ms-App`

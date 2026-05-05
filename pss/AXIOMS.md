@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added direct one-step
+  equivalence wrappers for the app-abs beta/join/app-abs classifier and
+  branch-handler commutation wrapper, avoiding manual `MEqRedStar.single`
+  packaging at single-step callers. Added the endpoints to the de Bruijn
+  audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added direct one-step
   equivalence wrappers for the app-abs diamond-or-residual splitter,
   avoiding manual `MEqRedStar.single` packaging at single-step case-grid
   callers. Added the endpoints to the de Bruijn audit. No axiom-count
