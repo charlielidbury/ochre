@@ -120,7 +120,8 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderFourteenHeadsStack.of_generic`,
   starting the next recursive frontier.  Added fourteen-head prevalidity
   transport `BetaInstantiationPreservesPrevalidExtUnderFourteenHeads` via the
-  generic preserved-head prevalidity transport.
+  generic preserved-head prevalidity transport, plus the fourteen-head
+  `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderFourteenHeadsStack.top`.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,

@@ -6310,6 +6310,50 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.top
   MEqRed.top (BetaInstantiationPreservesPrevalidExtUnderThirteenHeads
     hArgBound hpv)
 
+/-- `MEqRed.top` is stable under de Bruijn β-instantiation below fourteen
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFourteenHeadsStack.top
+    {Γ : Ctx}
+    {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ : CtxEntryKind}
+    {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ }]
+      PrevalidExt (heads ++ { bound := bound, kind := .sub } :: Γ) s) :
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ }]
+    MEqRed (Ctx.instantiateBetaPrefix arg 14 heads ++ Γ)
+      (Stack.instantiate 14 (Term.shiftBy 0 14 arg) s) .top .top := by
+  dsimp only at hpv ⊢
+  exact MEqRed.top (BetaInstantiationPreservesPrevalidExtUnderFourteenHeads
+    hArgBound hpv)
+
 /-- `MEqRed.app` is stable under de Bruijn β-instantiation below eleven
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.app
