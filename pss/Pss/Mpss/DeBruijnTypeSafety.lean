@@ -422,7 +422,9 @@ def WfMEquHeadToSubHeadPayload : Type :=
 /-- Uniform head-kind/body transport for the `Me-FOp` gap. It changes both
 the head annotation and the head binding kind while preserving body
 well-formedness. The source and target annotations are both required to be
-well formed in the tail context. -/
+well formed in the tail context. This payload is intentionally retained only
+as a diagnostic/convenience interface: `WfMHeadKindTransportPayload.not_of_no_top`
+shows it is too strong under the no-Top-function-supertype obstruction. -/
 def WfMHeadKindTransportPayload : Type :=
   ∀ {Γ : Ctx} {source target body : Term} {sourceKind targetKind : CtxEntryKind},
     WfCtxEqu Γ →
@@ -430,6 +432,67 @@ def WfMHeadKindTransportPayload : Type :=
         WfM Γ target →
           WfM ({ bound := source, kind := sourceKind } :: Γ) body →
             WfM ({ bound := target, kind := targetKind } :: Γ) body
+
+/-- The unrestricted source `.sub` to stack-introduced `.equ` body transport
+is too strong: a body can use the `.sub` head variable as a function, while
+transporting it to an `.equ Top` head would make `Top` have a function
+supertype. -/
+noncomputable def WfMSubHeadToEquHeadPayload.not_of_no_top
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    WfMSubHeadToEquHeadPayload → False := by
+  intro hTransport
+  let bound : Term := .abs .top .top
+  let body : Term := .app (.bvar 0) .top
+  have hpvEmpty : Prevalid [] := Prevalid.empty
+  have hwfTopEmpty : WfM [] .top := WfM.top hpvEmpty
+  have hwfBound : WfM [] bound := by
+    dsimp [bound]
+    exact WfM.fun_ (WfM.top Prevalid.empty)
+      (WfM.top (Prevalid.sub Prevalid.empty Term.Scoped.top))
+  let ΓSub : Ctx := [{ bound := bound, kind := .sub }]
+  have hpvSub : Prevalid ΓSub :=
+    Prevalid.sub hpvEmpty hwfBound.scoped
+  have hwfVarSub : WfM ΓSub (.bvar 0) := by
+    exact @WfM.varSub ΓSub 0 bound hpvSub
+      (by simp [ΓSub, Ctx.subBinds, bound])
+  have hwfBoundSub : WfM ΓSub bound := by
+    simpa [ΓSub, bound, Term.shift] using
+      hwfBound.weaken_head hpvSub hpvEmpty
+  have hProSub : MSubRed ΓSub [] (.bvar 0) bound := by
+    simpa [ΓSub, bound, Term.shift] using
+      (MSubRed.pro (PrevalidExt.nil hpvSub)
+        (by simp [ΓSub, Ctx.subBinds, bound]))
+  have hFunSub : WSubMStar ΓSub (.bvar 0) bound :=
+    WSubMStar.sub hwfVarSub
+      (WSubM.lf2 hwfVarSub hProSub hwfBoundSub (WSubM.rfl hwfBoundSub))
+      hwfBoundSub
+  have hArgSub : WSubMStar ΓSub .top .top :=
+    WSubMStar.refl_of_wfM (WfM.top hpvSub)
+  have hwfBodySub : WfM ΓSub body := by
+    dsimp [body, bound]
+    exact WfM.app hFunSub hArgSub
+  have hwfBodyEqu :
+      WfM ([{ bound := .top, kind := .equ }] : Ctx) body :=
+    hTransport WfCtxEqu.empty hwfBound hwfTopEmpty hwfBodySub
+  obtain ⟨funBound, hFunEqu, _hArgEqu⟩ := hwfBodyEqu.app_inv
+  let ΓEqu : Ctx := [{ bound := .top, kind := .equ }]
+  have hpvEqu : Prevalid ΓEqu :=
+    Prevalid.equ Prevalid.empty Term.Scoped.top
+  have hwfVarEqu : WfM ΓEqu (.bvar 0) := by
+    exact @WfM.varEqu ΓEqu 0 .top hpvEqu
+      (by simp [ΓEqu, Ctx.equBinds])
+  have hwfTopEqu : WfM ΓEqu .top := WfM.top hpvEqu
+  have hBvarTop : MEqRed ΓEqu [] (.bvar 0) .top := by
+    have hTopRefl : MEqRed ΓEqu [] .top .top :=
+      MEqRed.refl (PrevalidExt.nil hpvEqu) Term.Scoped.top
+    simpa [ΓEqu, Term.shift] using
+      (MEqRed.pro (PrevalidExt.nil hpvEqu)
+        (by simp [ΓEqu, Ctx.equBinds]) hTopRefl)
+  have hTopVar : WSubMStar ΓEqu .top (.bvar 0) :=
+    WSubMStar.of_MEqRed_back hBvarTop hwfVarEqu hwfTopEqu
+  have hTopFun : WSubMStar ΓEqu .top (.abs funBound .top) :=
+    WSubMStar.trans hwfVarEqu hTopVar (by simpa [ΓEqu] using hFunEqu)
+  exact hNoTop hTopFun
 
 /-- Uniform head-kind transport specializes to the source `.sub` to
 stack-introduced `.equ` direction used by `Me-FOp`. -/
@@ -439,6 +502,15 @@ def WfMSubHeadToEquHeadPayload.of_head_kind_transport
   intro Γ bound operand body hΓ hwfBound hwfOperand hwfBody
   exact hTransport (sourceKind := .sub) (targetKind := .equ)
     hΓ hwfBound hwfOperand hwfBody
+
+/-- Consequently, the uniform head-kind/body transport payload is also too
+strong under the no-Top-function-supertype obstruction. -/
+noncomputable def WfMHeadKindTransportPayload.not_of_no_top
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    WfMHeadKindTransportPayload → False := by
+  intro hTransport
+  exact WfMSubHeadToEquHeadPayload.not_of_no_top hNoTop
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hTransport)
 
 /-- Uniform head-kind transport also specializes to the target `.equ` to
 `.sub` direction used after the `Me-FOp` body has been preserved. -/

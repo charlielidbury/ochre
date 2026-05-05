@@ -9,6 +9,17 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WfMSubHeadToEquHeadPayload.not_of_no_top`, showing that the unrestricted
+  `.sub`→`.equ` head/body transport is uninhabitable under the existing
+  context-generic no-Top-function-supertype obstruction. The counterexample
+  body uses `bvar 0` as a function under a `.sub (λ Top. Top)` head; after
+  transport to `.equ Top`, well-formedness would imply `Top ≤*` a function.
+  This identifies the uniform head-kind transport route as too strong for
+  final preservation. Added `WfMHeadKindTransportPayload.not_of_no_top` as
+  the immediate uniform-transport corollary and documented the payload as a
+  diagnostic/convenience interface rather than a viable final proof
+  obligation. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
