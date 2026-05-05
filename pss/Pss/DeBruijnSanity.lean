@@ -33,6 +33,7 @@ namespace DeBruijn
 #print axioms Term.instantiate_six_shift_zero
 #print axioms Term.instantiate_seven_shift_zero
 #print axioms Term.instantiate_eight_shift_zero
+#print axioms Term.instantiate_nine_shift_zero
 #print axioms Term.instantiate_two_shift_zero_tail
 #print axioms Term.instantiate_three_shift_zero_tail
 #print axioms Term.instantiate_four_shift_zero_tail
@@ -40,6 +41,7 @@ namespace DeBruijn
 #print axioms Term.instantiate_six_shift_zero_tail
 #print axioms Term.instantiate_seven_shift_zero_tail
 #print axioms Term.instantiate_eight_shift_zero_tail
+#print axioms Term.instantiate_nine_shift_zero_tail
 #print axioms Term.instantiate_after_seven
 #print axioms Term.instantiate_zero_after_seven
 #print axioms Term.shiftBy_tail

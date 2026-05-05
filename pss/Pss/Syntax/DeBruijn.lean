@@ -455,6 +455,24 @@ theorem instantiate_eight_shift_zero (v t : Term) :
   have h := (shiftBy_instantiate 0 8 0 v t (Nat.zero_le 0)).symm
   simpa [shift, shiftBy_compose, Nat.add_assoc] using h
 
+/-- Instantiation at index `9` through nine preserved top-level bindings
+commutes with instantiating at index `0` before adding those bindings. -/
+theorem instantiate_nine_shift_zero (v t : Term) :
+    instantiate 9
+        (shift 0
+          (shift 0
+            (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 v)))))))))
+        (shift 0
+          (shift 0
+            (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t))))))))) =
+      shift 0
+        (shift 0
+          (shift 0
+            (shift 0
+              (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (instantiate 0 v t))))))))) := by
+  have h := (shiftBy_instantiate 0 9 0 v t (Nat.zero_le 0)).symm
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
 /-- Instantiating index `2` through a term shifted under three top-level
 bindings cancels the shift at the instantiated slot and preserves the two
 outer bindings. -/
@@ -637,6 +655,26 @@ theorem instantiate_eight_shift_zero_tail (v t : Term) :
         (shift 0
           (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t))))))) := by
   have h := instantiate_shiftBy_zero_tail 8 v t
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
+/-- Instantiating index `9` through a term shifted under ten top-level
+bindings cancels the shift at the instantiated slot and preserves the nine
+outer bindings. -/
+theorem instantiate_nine_shift_zero_tail (v t : Term) :
+    instantiate 9
+        (shift 0
+          (shift 0
+            (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 v)))))))))
+        (shift 0
+          (shift 0
+            (shift 0
+              (shift 0
+                (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t)))))))))) =
+      shift 0
+        (shift 0
+          (shift 0
+            (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t)))))))) := by
+  have h := instantiate_shiftBy_zero_tail 9 v t
   simpa [shift, shiftBy_compose, Nat.add_assoc] using h
 
 /-- Generic β-target substitution composition through `n + 1` preserved
