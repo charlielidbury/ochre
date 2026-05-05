@@ -1281,6 +1281,10 @@ closures, 2 inactive outstanding).
   diagram's equivalence leg against the second diagram's subtype leg. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WSubMStar.to_chain_diagram_of`, extracting a Type-valued common-reduct
+  diagram from transitive well-subtyping under empty-stack de Bruijn
+  strong commutativity. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No

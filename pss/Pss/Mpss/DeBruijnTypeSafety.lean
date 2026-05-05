@@ -337,6 +337,31 @@ noncomputable def WSubMChainDiagram.trans_of {Γ : Ctx}
     eqJoin := MEqRedChain.trans d₂.eqJoin hEqJoin
   }
 
+/-- Extract a Type-valued diagrammatic common reduct from transitive
+well-subtyping, assuming de Bruijn strong commutativity at the empty stack. -/
+noncomputable def WSubMStar.to_chain_diagram_of {Γ : Ctx}
+    (hcomm : StrongCommutes Γ []) {source target : Term}
+    (hSub : WSubMStar Γ source target) :
+    WSubMChainDiagram Γ source target := by
+  exact (WSubMStar.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun _ _ _ _ => PUnit)
+    (motive_3 := fun Γ source target _ =>
+      StrongCommutes Γ [] → WSubMChainDiagram Γ source target)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ _ => PUnit.unit)
+    (fun _ _ _ _ _ _ _ => PUnit.unit)
+    (fun _ _ _ => PUnit.unit)
+    (fun _ h _ _ _ _ => fun _ => h.to_chain_diagram)
+    (fun _ _ _ ihLeft _ ihRight => fun hcomm =>
+      WSubMChainDiagram.trans_of hcomm (ihLeft hcomm) (ihRight hcomm))
+    hSub) hcomm
+
 /-- Reflexive abstraction-to-abstraction chain diagram. -/
 def AbsAbsBoundChainDiagram.refl
     {Γ : Ctx} {bound body : Term}
