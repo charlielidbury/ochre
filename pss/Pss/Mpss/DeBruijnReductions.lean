@@ -456,6 +456,44 @@ theorem MSubRedStar.stack_replace_from_step_replacement {Γ Γ' : Ctx}
   | tail hChain hLast ih =>
       exact MSubRedStar.trans ih (hStep hLast.some)
 
+/-- Split a one-step subtype transport across a changed stack head. Stable
+leaves (`Ms-Pro` and `Ms-Top`) are rebuilt directly at the new stack; the
+recursive/equivalence cases are exposed as handlers. This is intentionally not
+a blanket stack replacement theorem: `Ms-FOp` changes the operand head used in
+the body context, and nested `Ms-App` changes the stack recursively. -/
+theorem MSubRed.stack_head_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {old new u v : Term}
+    (hpvNew : PrevalidExt Γ (new :: s))
+    (hEq :
+      ∀ {a b : Term},
+        MEqRed Γ (old :: s) a b →
+        MSubRedStar Γ (new :: s) a b)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed Γ (arg :: old :: s) op op' →
+        Term.Scoped Γ.depth arg →
+        MSubRedStar Γ (new :: s) (.app op arg) (.app op' arg))
+    (hFOp :
+      ∀ {bound body body' : Term},
+        Term.Scoped Γ.depth bound →
+        Term.Scoped Γ.depth old →
+        MSubRed ({ bound := old, kind := .equ } :: Γ) (Stack.shift 0 s)
+          body body' →
+        MSubRedStar Γ (new :: s) (.abs bound body) (.abs bound body'))
+    (h : MSubRed Γ (old :: s) u v) :
+    MSubRedStar Γ (new :: s) u v := by
+  cases h with
+  | pro _ hb =>
+      exact MSubRedStar.single (MSubRed.pro hpvNew hb)
+  | top _ hu =>
+      exact MSubRedStar.single (MSubRed.top hpvNew hu)
+  | equ _ heq =>
+      exact hEq heq
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | fOp ht hArg hBody =>
+      exact hFOp ht hArg hBody
+
 /-- An equivalence-reduction chain embeds into subtype reduction when the
 extended context is prevalid, by wrapping each equivalence step in `Ms-Equ`. -/
 theorem MSubRedStar.of_MEqRedStar {Γ : Ctx} {s : Stack} {u v : Term}

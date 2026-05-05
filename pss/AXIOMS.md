@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRed.stack_head_replace_from_handlers`, a constructor splitter for
+  one-step subtype transport across a changed stack head. It rebuilds stable
+  `Ms-Pro`/`Ms-Top` leaves and exposes only equivalence-origin, nested
+  `Ms-App`, and `Ms-FOp` handlers. `Pss/Mpss/DeBruijnTransitivityElim.lean`
+  uses it in
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_stack_handlers_of`,
+  reducing the structural `Ms-App × Me-App` changed-argument stack-head
+  transport to the remaining recursive/equivalence handler surface. Added the
+  endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MSubRedStar.stack_replace_from_step_replacement`, the stack-varying
   analogue of the existing chain replacement helper.
   `Pss/Mpss/DeBruijnTransitivityElim.lean` uses it in
