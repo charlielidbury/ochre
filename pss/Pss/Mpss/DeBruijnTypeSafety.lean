@@ -1729,6 +1729,42 @@ noncomputable def
     hOpFun hReplace hFOpBody
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, and stacked left-endpoint
+transport, leaving the `Me-Fun` and `Me-FOp` body residuals in their native
+forms. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta
+    hSubst hShape hShapeWf
+    (MEqRedAppFunctionSupertypePayload.of_left_transport hLeft)
+    hFunBody hFOpBody
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, stacked left-endpoint
+transport, and the sharpened `.sub` head replacement payload, leaving the
+`Me-FOp` body residual in its native form. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta_and_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace
+    hSubst hShape hShapeWf
+    (MEqRedAppFunctionSupertypePayload.of_left_transport hLeft)
+    hReplace hFOpBody
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, stacked left-endpoint
 transport, and the two directional `Me-FOp` head/body transports. -/
 noncomputable def

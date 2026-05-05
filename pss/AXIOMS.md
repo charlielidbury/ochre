@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added left-factored shape/WfCtx
+  contextual preservation wrappers
+  `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta`
+  and
+  `.of_chain_shape_wfctx_left_factored_no_beta_and_sub_replace`, composing
+  stacked left-endpoint transport into the native `Me-App` payload while
+  leaving the `Me-FOp` body bridge as its original residual. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added direct shape/WfCtx factored
   contextual preservation wrappers
   `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_head_transports`
