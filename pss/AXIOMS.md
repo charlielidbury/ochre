@@ -45,6 +45,10 @@ closures, 2 inactive outstanding).
   the raw `Lemma_10_Inversion` axiom. Added the module to `Pss.lean`. No
   headline axiom-count change; the generic `Theorem_5_Preservation` remains
   unchanged.
+* `Pss/Sanity.lean` — added `#print axioms` lines for
+  `Theorem_5_Preservation_under_wfctx` and
+  `Theorem_5_Preservation_empty_wfctx`, making the conditional route's
+  dependency tradeoff visible in the standard audit.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

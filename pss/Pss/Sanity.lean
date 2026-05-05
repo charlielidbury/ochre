@@ -1,4 +1,5 @@
 import Pss.Mpss.TypeSafety
+import Pss.Mpss.TypeSafetyWfCtx
 import Pss.Mpss.TransitivityElim
 
 /-! # `Pss.Sanity` — `#print axioms` audit
@@ -17,6 +18,8 @@ namespace Pss
 #print axioms Theorem_3_TransitivityIsAdmissible
 #print axioms Theorem_4_Progress
 #print axioms Theorem_5_Preservation
+#print axioms Theorem_5_Preservation_under_wfctx
+#print axioms Theorem_5_Preservation_empty_wfctx
 #print axioms Lemma_1_StrongCommutativity
 #print axioms Lemma_2_DiamondMEqRed
 
