@@ -182,6 +182,10 @@ namespace DeBruijn
 #print axioms msub_equ_under_two_heads_new_bvar2_to_old_bound
 #print axioms msubStar_equ_under_two_heads_new_bvar2_to_replaced_residual
 #print axioms meq_equ_under_two_heads_pro_two_handler_of_replacement
+#print axioms meq_equ_under_two_heads_pro_zero_handler_of_replacement
+#print axioms meq_equ_under_two_heads_pro_one_handler_of_replacement
+#print axioms meq_equ_under_two_heads_pro_tail_handler_of_replacement
+#print axioms meqRed_equ_under_two_heads_replace_with_pro_from_replacements
 #print axioms MEqRed.sub_head_replace
 #print axioms MEqRed.sub_head_replace_two_step
 #print axioms MEqRedStar.sub_head_replace
