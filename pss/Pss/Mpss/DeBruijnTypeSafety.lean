@@ -3812,6 +3812,26 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
 /-- Native-`FOp`-body variant of the direct no-external-empty split-beta
 assembly. The native body residual is converted to the typed one using the
 operand-to-bound premise available in the `Me-FOp` branch. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst hAppend hBridge hInv hBetaBody
+    (MEqRedFOpBodyTypedPayload.of_untyped hFOpBody) hTargetApp hTailCons
+    hFunBody hNoTop
+
+/-- Native-`FOp`-body variant of the direct no-external-empty split-beta
+assembly, with the control-left residual still exposed through the older
+body-transport surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -3826,13 +3846,36 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hFunBody : MEqRedFunBodyReplacePayload)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody
-    (MEqRedFOpBodyTypedPayload.of_untyped hFOpBody) hTargetApp hTailCons
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hBetaBody hFOpBody hTargetApp hTailCons
     hFunBody hNoTop
 
 /-- Typed-operator entry point for the native-`FOp`-body direct split-beta
 machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
+    hSubst hAppend hBridge hInv hBetaBody hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Typed-operator entry point for the native-`FOp`-body direct split-beta
+machine assembly, with the control-left residual still exposed through the
+older body-transport surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_operator_machine_tail
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -3847,14 +3890,35 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hFunBody : MEqRedFunBodyReplacePayload)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
-    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
-    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
-    hFunBody hNoTop
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_operator_machine_tail
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hBetaBody hFOpBody hOpFun hTail hFunBody hNoTop
 
 /-- Machine-state-aware operator entry point for the native-`FOp`-body direct
 split-beta machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_machine_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
+    hSubst hAppend hBridge hInv hBetaBody hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Machine-state-aware operator entry point for the native-`FOp`-body direct
+split-beta machine assembly, with the control-left residual still exposed
+through the older body-transport surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_machine_operator_machine_tail
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -3869,11 +3933,11 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hFunBody : MEqRedFunBodyReplacePayload)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
-    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
-    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
-    hFunBody hNoTop
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_machine_operator_machine_tail
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hBetaBody hFOpBody hOpFun hTail hFunBody hNoTop
 
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
