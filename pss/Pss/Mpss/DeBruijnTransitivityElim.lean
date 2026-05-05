@@ -3370,6 +3370,40 @@ noncomputable def diamond_abs_fun_bound_body_chains_star {Γ : Ctx}
       (meqRedStar_abs_fun_body_fixed_bound hpvNil hBound₃Scoped
         (hBody₂₃.sub_head_replace_star hBound₂₃))⟩
 
+/-- Restricted star-level changing-bound/changing-body `Fun` abstraction
+commutation assembly. The right body branch is supplied as an equivalence
+chain, then viewed as a subtype chain after `.sub` head replacement. This is
+the shape available when the body-side subtype branch originates from
+`Ms-Equ`; arbitrary subtype chains cannot be transported this way because
+`Ms-Pro` at the replaced slot changes the target. -/
+noncomputable def commute_abs_fun_bound_body_equ_chains_star {Γ : Ctx}
+    {bound₁ body₁ bound₂ body₂ bound₃ body₃ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBound₃Scoped : Term.Scoped Γ.depth bound₃)
+    (hBody₁Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound₁, kind := .sub } :: Γ)) body₁)
+    (hBody₂Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound₂, kind := .sub } :: Γ)) body₂)
+    (hBound₁₃ : MEqRedStar Γ [] bound₁ bound₃)
+    (hBound₂₃ : MEqRedStar Γ [] bound₂ bound₃)
+    (hBody₁₃ : MEqRedStar ({ bound := bound₁, kind := .sub } :: Γ) [] body₁ body₃)
+    (hBody₂₃ : MEqRedStar ({ bound := bound₂, kind := .sub } :: Γ) [] body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₃Scoped)
+  exact ⟨.abs bound₃ body₃,
+    MEqRedStar.trans
+      (meqRedStar_abs_fun_bound_fixed_body hpvNil hBody₁Scoped hBound₁₃)
+      (meqRedStar_abs_fun_body_fixed_bound hpvNil hBound₃Scoped
+        (hBody₁₃.sub_head_replace_star hBound₁₃)),
+    MSubRedStar.trans
+      (msubRedStar_abs_fun_bound_fixed_body hpvNil hBody₂Scoped hBound₂₃)
+      (msubRedStar_abs_fun_body_fixed_bound hpvNil hBound₃Scoped
+        (MSubRedStar.of_meqStar_sub_head_replace_star
+          hpvBody₃ hBody₂₃ hBound₂₃))⟩
+
 /-- Star-level fixed-body `Fun` abstraction diamond. A bound-level
 equivalence-chain diamond lifts through `Fun` when the body is unchanged. -/
 noncomputable def diamond_abs_fun_bound_fixed_body_star {Γ : Ctx}

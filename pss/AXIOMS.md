@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_bound_body_equ_chains_star`, a restricted star-level
+  changing-bound/changing-body `Fun` commutation assembly for the case where
+  the right body subtype branch originates from equivalence. It uses
+  `MSubRedStar.of_meqStar_sub_head_replace_star` rather than a false general
+  subtype-chain replacement. Added the endpoint to the de Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MSubRedStar.of_meqStar_sub_head_replace_star`, a restricted subtype
   transport for `.sub` head replacement when the subtype chain originates from
