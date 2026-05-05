@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStep_eqStar_of_diamond_or_structApp_from_left` and
+  `commute_appAbs_subStep_eqStar_of_diamond_or_appAbs_from_left`,
+  side-condition-free wrappers for the abstraction-headed application
+  diamond-or-residual split. Added both endpoints to the de Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_subStep_eqStar_of_branches_from_left`, a one-step
   conditional abstraction-headed application branch consumer that uses the
   side-condition-free paired classifier. Added the endpoint to the de Bruijn

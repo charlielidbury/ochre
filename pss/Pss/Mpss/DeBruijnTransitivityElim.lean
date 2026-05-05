@@ -2029,6 +2029,39 @@ theorem commute_appAbs_subStep_eqStar_of_diamond_or_structApp {Γ : Ctx}
       subst hEqAbs
       exact Or.inr ⟨bound', body', ⟨hOp⟩, rfl⟩
 
+/-- Side-condition-free wrapper for
+`commute_appAbs_subStep_eqStar_of_diamond_or_structApp`: source validity and
+scoping are recovered from the one-step subtype proof. -/
+theorem commute_appAbs_subStep_eqStar_of_diamond_or_structApp_from_left
+    {Γ : Ctx} {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hdiamond : EqDiamonds Γ s)
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body',
+        MSubRedJ Γ (arg :: s) (.abs bound body) (.abs bound' body') ∧
+          t₁ = .app (.abs bound' body') arg := by
+  have hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg) := hSub.scoped_left
+  cases hSub with
+  | top hpv hScopedTop =>
+    exact commute_appAbs_subStep_eqStar_of_diamond_or_structApp hdiamond hpv
+      hScopedTop (MSubRed.top hpv hScopedTop) hEq
+  | equ hpv heqSub =>
+    exact commute_appAbs_subStep_eqStar_of_diamond_or_structApp hdiamond hpv
+      heqSub.scoped_left (MSubRed.equ hpv heqSub) hEq
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons hOpScoped =>
+      exact Or.inl (commute_appAbs_subStep_appTop_eqStar
+        (PrevalidExt.tail hpvCons) hScoped
+        (MSubRed.app (MSubRed.top hpvCons hOpScoped) hArg) rfl hEq)
+    | equ hpvCons heqOp =>
+      obtain ⟨bound', body', hEqAbs⟩ := heqOp.abs_inv
+      subst hEqAbs
+      exact Or.inr ⟨bound', body', ⟨MSubRed.equ hpvCons heqOp⟩, rfl⟩
+    | fOp hBound hOpnd hBody =>
+      exact Or.inr ⟨bound, _, ⟨MSubRed.fOp hBound hOpnd hBody⟩, rfl⟩
+
 /-- Shape-only corollary of
 `commute_appAbs_subStep_eqStar_of_diamond_or_structApp`. -/
 theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
@@ -2041,6 +2074,23 @@ theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs {Γ : Ctx}
       ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' := by
   cases commute_appAbs_subStep_eqStar_of_diamond_or_structApp
       hdiamond hpv hScoped hSub hEq with
+  | inl hJoin =>
+    exact Or.inl hJoin
+  | inr hStruct =>
+    obtain ⟨bound', body', _hOp, hEqTarget⟩ := hStruct
+    exact Or.inr ⟨bound', body', arg, hEqTarget⟩
+
+/-- Shape-only side-condition-free wrapper for
+`commute_appAbs_subStep_eqStar_of_diamond_or_appAbs`. -/
+theorem commute_appAbs_subStep_eqStar_of_diamond_or_appAbs_from_left
+    {Γ : Ctx} {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hdiamond : EqDiamonds Γ s)
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' := by
+  cases commute_appAbs_subStep_eqStar_of_diamond_or_structApp_from_left
+      hdiamond hSub hEq with
   | inl hJoin =>
     exact Or.inl hJoin
   | inr hStruct =>
