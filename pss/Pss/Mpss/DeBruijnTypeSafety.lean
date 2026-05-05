@@ -3502,15 +3502,13 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
     hFunBody hNoTop
 
-/-- No-external-empty split-beta assembly. The `Me-Bet` branch uses the
-constructor induction hypothesis for the empty-stack argument reduction
-instead of requiring an external empty-stack preservation premise. -/
-noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+/-- Control-left-parametric no-external-empty split-beta assembly. The
+`Me-Bet` branch uses the constructor induction hypothesis for the empty-stack
+argument reduction instead of requiring an external empty-stack preservation
+premise. -/
+noncomputable def MEqRedPreservesWfMachineState.of_control_left_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
     (hSubst : BetaInstantiationPreservesWfM)
-    (hEqBody : MEqRedSubHeadToEquHeadPayload)
-    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
-    (hPres : MSubPreservesWfMPayload)
-    (hStep : MSubToWSubMStarPayload)
+    (hControl : WfMachineStateControlLeftPayload)
     (hInv : AbsFunctionBoundInversionUnderWfCtx)
     (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
     (hFOpBody : MEqRedFOpBodyTypedPayload)
@@ -3524,9 +3522,6 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
   induction hred with
   | pro hpv hb hred ih =>
       intro hΓ hState
-      have hControl : WfMachineStateControlLeftPayload :=
-        WfMachineStateControlLeftPayload.of_body_transports_and_steps
-          hEqBody hSubBody hPres hStep
       exact ih hΓ
         (MEqRedProAnnotationMachineStatePayload.of_control_left
           hControl hΓ hb hState)
@@ -3593,9 +3588,6 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
         MEqRed.app hOpRefl hArg
       have hControlBack : WSubMStar Γapp (.app u' v') (.app u' v) :=
         WSubMStar.of_MEqRed_back hAppRed hApp hApp'
-      have hControl : WfMachineStateControlLeftPayload :=
-        WfMachineStateControlLeftPayload.of_body_transports_and_steps
-          hEqBody hSubBody hPres hStep
       have hTail' : WfMachineState Γapp (.app u' v') sapp :=
         hControl hControlBack (WfMachineState.tail_state hOpState')
       simpa [WfMachineState, Stack.plug] using hTail'
@@ -3688,6 +3680,48 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
               (MEqRedMachineTailStepPreservesPayload.of_cons hTailCons))
               hΓ (MEqRed.fOp hBound hOperandScoped hBodyRed)
               hwfAbs' hState
+
+/-- Append-native direct no-external-empty split-beta assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_control_left_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst
+    (WfMachineStateControlLeftPayload.of_msubstar_stack_append
+      hAppend hBridge)
+    hInv hBetaBody hFOpBody hTargetApp hTailCons hFunBody hNoTop
+
+/-- No-external-empty split-beta assembly. The `Me-Bet` branch uses the
+constructor induction hypothesis for the empty-stack argument reduction
+instead of requiring an external empty-stack preservation premise. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hBetaBody hFOpBody hTargetApp hTailCons hFunBody hNoTop
 
 /-- Typed-operator variant of the direct no-external-empty split-beta
 assembly. -/
