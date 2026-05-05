@@ -1361,6 +1361,12 @@ closures, 2 inactive outstanding).
   `Me-FOp` well-formedness case to the body bridge from the
   stack-introduced `.equ` head back to the target `.sub` head while
   proving bound preservation directly. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — connected
+  `MEqRedFunBodyReplacePayload` to the existing sharpened
+  `WfMSubHeadReplaceOfNewWf` payload via
+  `MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf`, and added
+  `MEqRed.fun_preservesWfM_of_sub_head_replace`. This removes the
+  separate `Me-Fun` body replacement obligation. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

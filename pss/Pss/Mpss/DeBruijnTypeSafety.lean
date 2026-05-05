@@ -998,6 +998,29 @@ def WfMSubHeadReplaceOfNewWf : Type :=
         WfM ({ bound := old, kind := .sub } :: Γ) body →
           WfM ({ bound := new, kind := .sub } :: Γ) body
 
+/-- The existing sharpened `.sub` head replacement payload discharges the
+body-replacement payload needed by the contextual `Me-Fun` case. -/
+def MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf
+    (hReplace : WfMSubHeadReplaceOfNewWf) :
+    MEqRedFunBodyReplacePayload := by
+  intro Γ bound bound' body' _hΓ _hwfBound hwfBound' hred hwfBody'
+  exact hReplace hred hwfBound' hwfBody'
+
+/-- `Me-Fun` well-formedness preservation using the existing sharpened
+`.sub` head replacement payload. -/
+noncomputable def MEqRed.fun_preservesWfM_of_sub_head_replace
+    (hpres : MEqRedPreservesWfMContextual)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {bound bound' body body' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hredBound : MEqRed Γ [] bound bound')
+    (hredBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body')
+    (hwfAbs : WfM Γ (.abs bound body)) :
+    WfM Γ (.abs bound' body') :=
+  MEqRed.fun_preservesWfM_of_contextual hpres
+    (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
+    hΓ hredBound hredBody hwfAbs
+
 namespace StepAt
 
 /-- All structural operational well-formedness preservation cases reduce to
