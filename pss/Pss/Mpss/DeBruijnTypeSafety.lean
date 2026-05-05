@@ -1310,6 +1310,27 @@ def MEqRedFOpTailStepPreservesPayload : Type :=
           WfMachineState Γ source s →
             WfMachineState Γ target s
 
+/-- Non-empty-stack part of the tail-step preservation residual. The empty
+stack case is definitional from the supplied target well-formedness. -/
+def MEqRedFOpTailStepPreservesConsPayload : Type :=
+  ∀ {Γ : Ctx} {tail : Stack} {source target next : Term},
+    WfCtxEqu Γ →
+      MEqRed Γ (next :: tail) source target →
+        WfM Γ target →
+          WfMachineState Γ source (next :: tail) →
+            WfMachineState Γ target (next :: tail)
+
+/-- Tail-step preservation reduces to its non-empty-stack case. -/
+def MEqRedFOpTailStepPreservesPayload.of_cons
+    (hCons : MEqRedFOpTailStepPreservesConsPayload) :
+    MEqRedFOpTailStepPreservesPayload := by
+  intro Γ s source target hΓ hred hwfTarget hState
+  cases s with
+  | nil =>
+      simpa [WfMachineState, Stack.plug] using hwfTarget
+  | cons next tail =>
+      exact hCons hΓ hred hwfTarget hState
+
 /-- The non-empty-tail `Me-FOp` transport reduces to preserving the immediate
 application `Me-App` step under the remaining tail stack. -/
 noncomputable def MEqRedFOpTailTransportConsPayload.of_tail_step
@@ -1818,6 +1839,19 @@ noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_ste
     hInv hEmpty hBody
     (MEqRedFOpTailTransportConsPayload.of_tail_step hTailStep)
 
+/-- Non-empty-tail-step variant of the typed `Me-FOp` machine-state
+reduction. The induced immediate-application step at an empty residual tail
+is discharged definitionally. -/
+noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_step_cons_and_empty
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hBody : MEqRedFOpBodyTypedPayload)
+    (hTailStep : MEqRedFOpTailStepPreservesConsPayload) :
+    MEqRedFOpPreservesWfMachineStatePayload :=
+  MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_step_and_empty
+    hInv hEmpty hBody
+    (MEqRedFOpTailStepPreservesPayload.of_cons hTailStep)
+
 /-- Control-term transport plus empty-stack preservation discharges the
 machine-state stack-head replacement residual. The source plugged state
 exposes the immediate application `u v`; after preserving the empty-stack
@@ -2066,6 +2100,28 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop
   MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_cons_tail
     hBeta hEmpty hEqBody hSubBody hPres hStep hInv hFOpBody
     (MEqRedFOpTailTransportConsPayload.of_tail_step hFOpTailStep)
+    hFunBody hNoTop
+
+/-- Non-empty-tail-step variant of
+`MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step`.
+The induced immediate-application step at an empty residual tail is
+definitionally discharged. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step_cons
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hFOpTailStep : MEqRedFOpTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step
+    hBeta hEmpty hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedFOpTailStepPreservesPayload.of_cons hFOpTailStep)
     hFunBody hNoTop
 
 /-- Reduced machine-state preservation assembly that uses constructor

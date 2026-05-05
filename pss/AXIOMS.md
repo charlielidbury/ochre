@@ -10,6 +10,15 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpTailStepPreservesConsPayload`,
+  `MEqRedFOpTailStepPreservesPayload.of_cons`,
+  `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_step_cons_and_empty`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step_cons`,
+  splitting the induced immediate-application tail-step residual into its
+  definitional empty-stack case and a remaining non-empty-stack residual.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedFOpTailStepPreservesPayload`,
   `MEqRedFOpTailTransportConsPayload.of_tail_step`,
   `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_step_and_empty`,
