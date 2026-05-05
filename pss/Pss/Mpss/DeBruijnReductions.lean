@@ -442,6 +442,20 @@ theorem MSubRedStar.replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
   | tail hChain hLast ih =>
       exact MSubRedStar.trans ih (hStep hLast.some)
 
+/-- Transport a subtype-reduction chain when each old step has a replacement
+chain at the target stack. This is the stack-varying analogue of
+`MSubRedStar.replace_from_step_replacement`; it is useful for reducing
+changed-argument stack-head transports to one-step obligations. -/
+theorem MSubRedStar.stack_replace_from_step_replacement {Γ Γ' : Ctx}
+    {s s' : Stack} {u v : Term}
+    (hStep : ∀ {x y : Term}, MSubRed Γ s x y → MSubRedStar Γ' s' x y)
+    (h : MSubRedStar Γ s u v) : MSubRedStar Γ' s' u v := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hChain hLast ih =>
+      exact MSubRedStar.trans ih (hStep hLast.some)
+
 /-- An equivalence-reduction chain embeds into subtype reduction when the
 extended context is prevalid, by wrapping each equivalence step in `Ms-Equ`. -/
 theorem MSubRedStar.of_MEqRedStar {Γ : Ctx} {s : Stack} {u v : Term}

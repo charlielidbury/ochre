@@ -106,6 +106,7 @@ namespace DeBruijn
 #print axioms commute_abs_fun_fun_body_from_app_cases_fun_handlers_of
 #print axioms commute_abs_fun_fun_body_from_operator_join_app_cases_fun_handlers_of
 #print axioms commute_abs_fun_fun_body_from_operator_join_app_cases_eq_replaced_of
+#print axioms commute_abs_fun_fun_body_from_operator_join_app_cases_step_transport_of
 #print axioms commute_abs_fun_bound_fixed_body_star
 #print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_of
 #print axioms Theorem_3_DeBruijn_WSubMStar_toMSub_of
@@ -148,6 +149,7 @@ namespace DeBruijn
 #print axioms MSubRedFunStackAppendPayload.of_body_equ_transport
 #print axioms MEqRedStackAppendPayload.of_fun
 #print axioms MSubRedStackAppendPayload.of_fun
+#print axioms MSubRedStar.stack_replace_from_step_replacement
 #print axioms MEqRed.sub_head_replace
 #print axioms MEqRed.sub_head_replace_two_step
 #print axioms MEqRedStar.sub_head_replace

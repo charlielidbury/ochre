@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRedStar.stack_replace_from_step_replacement`, the stack-varying
+  analogue of the existing chain replacement helper.
+  `Pss/Mpss/DeBruijnTransitivityElim.lean` uses it in
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_step_transport_of`,
+  reducing the structural `Ms-App × Me-App` changed-argument stack-head
+  transport from a full subtype-chain premise to a one-step transport premise.
+  Added the endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.sub_head_replace` and `MEqRed.sub_head_replace_two_step`, small
   head-specialized wrappers around the existing arbitrary-depth `.sub`
   replacement for equivalence steps. `Pss/Mpss/DeBruijnTransitivityElim.lean`
