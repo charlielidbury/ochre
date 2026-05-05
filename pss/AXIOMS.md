@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.replaceAt_equ_from_handlers` and
+  `MSubRed.replaceAt_equ_from_handlers`, raw replacement splitters for a
+  changed `.equ` slot presented by `Ctx.replaceAt`. Stable leaves are closed
+  generically, with `MSubRed` now using `MSubRed.pro_replaceAt_equ` for the
+  arbitrary-prefix `Ms-Pro` case; lookup and recursive constructor residuals
+  remain explicit. Added the endpoints to the De Bruijn audit. No axiom-count
+  change.
 * `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` — added
   the prefix-polymorphic `.equ` replacement substrate
   `Ctx.subBinds_replaceAt_equ`, `PrevalidExt.replaceAt_equ_same`, and
