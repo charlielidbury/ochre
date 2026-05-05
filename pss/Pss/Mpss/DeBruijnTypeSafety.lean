@@ -1083,6 +1083,25 @@ noncomputable def MEqRedMachineStackHeadReplacePayload.of_control_left
     hControl hControlBack (WfMachineState.tail_state hState)
   simpa [WfMachineState, Stack.plug] using hTail'
 
+/-- The `Me-TAp` machine-state residual is vacuous under the context-generic
+no-`Top`-function-supertype fact: a plugged source state for `.app .top u`
+exposes a well-formed immediate application headed by `Top`. -/
+noncomputable def MEqRedTApPreservesWfMachineStatePayload.of_no_top
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedTApPreservesWfMachineStatePayload := by
+  intro Γ s u hΓ hu hState
+  have hBad : WfM Γ (.app .top u) := by
+    cases s with
+    | nil =>
+        simpa [WfMachineState, Stack.plug] using hState
+    | cons operand tail =>
+        have hOuter : WfM Γ (.app (.app .top u) operand) :=
+          WfMachineState.head_app_wf hState
+        obtain ⟨_, hFun, _⟩ := hOuter.app_inv
+        exact hFun.wf_left
+  obtain ⟨bound, hFun, _hArg⟩ := hBad.app_inv
+  exact (hNoTop hFun).elim
+
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
 version is directly compatible with the empty-stack `WSubM` equivalence
