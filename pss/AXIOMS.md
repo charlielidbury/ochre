@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubStackLiftPayload`, `MSubStarStackLiftPayload`,
+  `MSubStarStackLiftPayload.of_step`, and
+  `WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift`, reducing the
+  well-subtyping-to-stacked-diagrammatic bridge to one-step diagrammatic
+  stack lifting under an operand head. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MSubPreservesWfMPayload`, `MSubToWSubMStarPayload`, and
   `MSubStarToWSubMStarPayload.of_steps`, reducing diagrammatic-star
   re-embedding to one-step diagrammatic well-formedness preservation plus

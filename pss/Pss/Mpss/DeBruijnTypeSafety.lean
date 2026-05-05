@@ -473,6 +473,21 @@ def WSubMStarToStackedMSubStarPayload : Prop :=
       Term.Scoped Γ.depth operand →
         MSubStar Γ [operand] source target
 
+/-- One-step diagrammatic stack lift: expose a diagrammatic subtype step at
+the empty stack under one operand stack head. -/
+def MSubStackLiftPayload : Prop :=
+  ∀ {Γ : Ctx} {source target operand : Term},
+    MSub Γ [] source target →
+      Term.Scoped Γ.depth operand →
+        MSub Γ [operand] source target
+
+/-- Transitive diagrammatic stack lift under one operand stack head. -/
+def MSubStarStackLiftPayload : Prop :=
+  ∀ {Γ : Ctx} {source target operand : Term},
+    MSubStar Γ [] source target →
+      Term.Scoped Γ.depth operand →
+        MSubStar Γ [operand] source target
+
 /-- Machine-state residual for `Me-Fun`, which only fires at the empty
 stack. -/
 def MEqRedFunPreservesWfMachineStatePayload : Type :=
@@ -728,6 +743,27 @@ noncomputable def MSubStarToWSubMStarPayload.of_steps
       let hLeft : WSubMStar Γ source mid := hStep hHead hwfSource hwfMid
       let hRight : WSubMStar Γ mid target := (ih.some hwfMid hwfTarget)
       WSubMStar.trans hwfMid hLeft hRight⟩
+
+/-- A one-step diagrammatic stack lift iterates to a transitive diagrammatic
+stack lift. -/
+def MSubStarStackLiftPayload.of_step
+    (hStep : MSubStackLiftPayload) :
+    MSubStarStackLiftPayload := by
+  intro Γ source target operand hStar hOperand
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hPrefix hHead ih =>
+      exact Relation.ReflTransGen.trans ih (Relation.ReflTransGen.single
+        (hStep hHead hOperand))
+
+/-- A transitive diagrammatic stack lift discharges the well-subtyping to
+stacked diagrammatic bridge by first stripping `WSubMStar` to `MSubStar`. -/
+def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
+    (hLift : MSubStarStackLiftPayload) :
+    WSubMStarToStackedMSubStarPayload := by
+  intro Γ source target operand hSub hOperand
+  exact hLift hSub.toMSubStar hOperand
 
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
