@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubRedStackAppendPayload`, `MEqRedStackAppendPayload`,
+  `MSubRedStackLiftPayload.of_append`, and
+  `MEqRedStackLiftPayload.of_append`, exposing the induction-ready form of
+  one-step reduction stack lifting: appending a scoped operand to an
+  arbitrary operand stack. The previous empty-stack head-lift residual is
+  now a specialization. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MSubRedStackLiftPayload`, `MEqRedStackLiftPayload`,
   `MSubRedStarStackLiftPayload.of_step`, and
   `MEqRedStarStackLiftPayload.of_step`, reducing reduction-chain stack

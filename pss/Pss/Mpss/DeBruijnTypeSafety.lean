@@ -495,6 +495,16 @@ def MSubRedStackLiftPayload : Type :=
       Term.Scoped Γ.depth operand →
         MSubRed Γ [operand] source target
 
+/-- General one-step subtype-reduction stack extension by one operand at the
+outer end of an arbitrary operand stack. This is the induction-ready form:
+operator premises in `Ms-App` live under a non-empty stack, so the empty-stack
+head lift is only a specialization. -/
+def MSubRedStackAppendPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {source target operand : Term},
+    MSubRed Γ s source target →
+      Term.Scoped Γ.depth operand →
+        MSubRed Γ (s ++ [operand]) source target
+
 /-- Stack lift for equivalence-reduction chains under one operand stack head. -/
 def MEqRedStarStackLiftPayload : Prop :=
   ∀ {Γ : Ctx} {source target operand : Term},
@@ -509,6 +519,15 @@ def MEqRedStackLiftPayload : Type :=
     MEqRed Γ [] source target →
       Term.Scoped Γ.depth operand →
         MEqRed Γ [operand] source target
+
+/-- General one-step equivalence-reduction stack extension by one operand at
+the outer end of an arbitrary operand stack. The `Me-App` constructor needs
+exactly this stronger induction principle for its operator premise. -/
+def MEqRedStackAppendPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {source target operand : Term},
+    MEqRed Γ s source target →
+      Term.Scoped Γ.depth operand →
+        MEqRed Γ (s ++ [operand]) source target
 
 /-- Transitive diagrammatic stack lift under one operand stack head. -/
 def MSubStarStackLiftPayload : Prop :=
@@ -782,6 +801,22 @@ def MSubStackLiftPayload.of_reduction_lifts
   intro Γ source target operand hSub hOperand
   obtain ⟨join, hSubChain, hEqChain⟩ := hSub
   exact ⟨join, hSubLift hSubChain hOperand, hEqLift hEqChain hOperand⟩
+
+/-- The generalized subtype-reduction stack append payload specializes to the
+empty-stack head lift used by the current assembly. -/
+def MSubRedStackLiftPayload.of_append
+    (hAppend : MSubRedStackAppendPayload) :
+    MSubRedStackLiftPayload := by
+  intro Γ source target operand hStep hOperand
+  simpa using (hAppend (s := ([] : Stack)) hStep hOperand)
+
+/-- The generalized equivalence-reduction stack append payload specializes to
+the empty-stack head lift used by the current assembly. -/
+def MEqRedStackLiftPayload.of_append
+    (hAppend : MEqRedStackAppendPayload) :
+    MEqRedStackLiftPayload := by
+  intro Γ source target operand hStep hOperand
+  simpa using (hAppend (s := ([] : Stack)) hStep hOperand)
 
 /-- One-step subtype-reduction stack lift iterates to subtype-reduction
 chains. -/
