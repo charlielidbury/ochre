@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
+  `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
+  the fully factored path is a convenience route that additionally replaces
+  the native `Me-App` operator payload with stacked left-endpoint transport,
+  while the split assemblers above it expose the weaker current interface. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added uniform-head-kind convenience
   wrappers for the split `Me-App`/`Me-FOp` preservation path:
   `MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_kind_transport`,

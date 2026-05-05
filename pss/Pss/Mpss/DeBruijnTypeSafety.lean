@@ -1658,10 +1658,9 @@ noncomputable def
 
 /-- Contextual `MEqRed` well-formedness preservation with β, `Me-App`, and
 `Me-FOp` factored through reusable endpoint/head-transport payloads. This is
-the narrowest current assembly path: the remaining non-recursive premises are
-body instantiation, function-bound inversion under `WfCtxEqu`, stacked
-left-endpoint transport for well-subtyping, `Me-Fun` body replacement, and
-the two `.sub`/`.equ` body transports. -/
+the fully factored route: compared with the split assemblers above, it also
+replaces the native `Me-App` operator payload by stacked left-endpoint
+transport for well-subtyping. -/
 noncomputable def MEqRedPreservesWfMContextual.of_factored_components_no_beta
     (hSubst : BetaInstantiationPreservesWfM)
     (hInv : AbsFunctionBoundInversionUnderWfCtx)
