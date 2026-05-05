@@ -9,6 +9,10 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 5 axiom audit
+  to include the direct, diagram, and chain-diagram closed component
+  endpoints alongside the existing chain-shape endpoints. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StepPreservesWfM_of_chain_shape_meq_components`,
   `Theorem_5_DeBruijn_Preservation_of_chain_shape_meq_components`, and
