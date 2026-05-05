@@ -5472,6 +5472,33 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
       hSubst hShape hShapeWf hOpFun hReplace hSubToEqu hEquToSub)
     hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
 
+/-- Factored variant of
+`MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`
+using stacked left-endpoint transport for the contextual `Me-App` operator
+case. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
+    hSubst hEqBody hSubBody hPres hStep
+    (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    (MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports
+      hSubst hShape hShapeWf hLeft hReplace hSubToEqu hEquToSub)
+    hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
+
 namespace StepAt
 
 /-- All structural operational well-formedness preservation cases reduce to
