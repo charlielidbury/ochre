@@ -23,8 +23,12 @@ closures, 2 inactive outstanding).
   leaf `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.var`, plus the
   `Me-TAp` leaf `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.tAp`
   and promoted-variable leaf
-  `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.pro`. Added endpoints
-  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.pro`. Added the
+  eight-head `Me-Fun`/`Me-Bet`/`Me-FOp` payload surface and
+  `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.of_constructors`,
+  packaging the checked eight-head structural leaves while leaving the
+  recursive nine-head binder adapters explicit. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
