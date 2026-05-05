@@ -6222,6 +6222,71 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app
       (Term.instantiate 12 (Term.shiftBy 0 12 arg) (.app u' v')) := by
   simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
 
+/-- `MEqRed.app` is stable under de Bruijn β-instantiation below thirteen
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.app
+    {Γ : Ctx}
+    {arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ u u' v v' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ : CtxEntryKind}
+    {s : Stack}
+    (hFn :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 12 (Term.shiftBy 0 12 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 11 (Term.shiftBy 0 11 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 10 (Term.shiftBy 0 10 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₁₀, kind := kind₁₀ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₁₁, kind := kind₁₁ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₁₂, kind := kind₁₂ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₃, kind := kind₁₃ } :: Γ
+      MEqRed targetCtx
+        (Term.instantiate 13 (Term.shiftBy 0 13 arg) v ::
+          Stack.instantiate 13 (Term.shiftBy 0 13 arg) s)
+        (Term.instantiate 13 (Term.shiftBy 0 13 arg) u)
+        (Term.instantiate 13 (Term.shiftBy 0 13 arg) u'))
+    (hArg :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 12 (Term.shiftBy 0 12 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 11 (Term.shiftBy 0 11 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 10 (Term.shiftBy 0 10 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₁₀, kind := kind₁₀ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₁₁, kind := kind₁₁ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₁₂, kind := kind₁₂ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₃, kind := kind₁₃ } :: Γ
+      MEqRed targetCtx []
+        (Term.instantiate 13 (Term.shiftBy 0 13 arg) v)
+        (Term.instantiate 13 (Term.shiftBy 0 13 arg) v')) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 12 (Term.shiftBy 0 12 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 11 (Term.shiftBy 0 11 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 10 (Term.shiftBy 0 10 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₉, kind := kind₉ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₁₀, kind := kind₁₀ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₁₁, kind := kind₁₁ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₁₂, kind := kind₁₂ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₃, kind := kind₁₃ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 13 (Term.shiftBy 0 13 arg) s)
+      (Term.instantiate 13 (Term.shiftBy 0 13 arg) (.app u v))
+      (Term.instantiate 13 (Term.shiftBy 0 13 arg) (.app u' v')) := by
+  simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below eleven preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.refl
