@@ -1102,6 +1102,29 @@ noncomputable def MEqRedTApPreservesWfMachineStatePayload.of_no_top
   obtain ⟨bound, hFun, _hArg⟩ := hBad.app_inv
   exact (hNoTop hFun).elim
 
+/-- The empty-stack `Me-Fun` machine-state residual reduces to empty-stack
+preservation plus the existing body context-replacement payload. -/
+noncomputable def MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hBodyReplace : MEqRedFunBodyReplacePayload) :
+    MEqRedFunPreservesWfMachineStatePayload := by
+  intro Γ bound bound' body body' hΓ hredBound hredBody hState
+  have hwfAbs : WfM Γ (.abs bound body) := by
+    simpa [WfMachineState, Stack.plug] using hState
+  have hwfBound : WfM Γ bound := hwfAbs.fun_inv.1
+  have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γ) body :=
+    hwfAbs.fun_inv.2
+  have hwfBound' : WfM Γ bound' :=
+    hEmpty hΓ ⟨hredBound⟩ hwfBound
+  have hΓBody : WfCtxEqu ({ bound := bound, kind := .sub } :: Γ) :=
+    WfCtxEqu.sub hΓ
+  have hwfBody'Old : WfM ({ bound := bound, kind := .sub } :: Γ) body' :=
+    hEmpty hΓBody ⟨hredBody⟩ hwfBody
+  have hwfTarget : WfM Γ (.abs bound' body') :=
+    WfM.fun_ hwfBound'
+      (hBodyReplace hΓ hwfBound hwfBound' hredBound hwfBody'Old)
+  simpa [WfMachineState, Stack.plug] using hwfTarget
+
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
 version is directly compatible with the empty-stack `WSubM` equivalence

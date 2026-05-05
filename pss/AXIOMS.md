@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace`,
+  reducing the empty-stack `Me-Fun` machine-state residual to empty-stack
+  preservation plus the existing function-body context-replacement payload.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedTApPreservesWfMachineStatePayload.of_no_top`, discharging the
   `Me-TAp` machine-state residual from the existing context-generic
   no-`Top`-function-supertype fact: a well-formed plugged source state would
