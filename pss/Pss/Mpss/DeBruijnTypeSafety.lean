@@ -617,6 +617,39 @@ def BetaInstantiationPreservesMEqRedUnderHeadsStack (n : Nat) : Type :=
             (Term.instantiate n (Term.shiftBy 0 n arg) rhs)
 
 /-- The generic preserved-head stack payload specializes to the existing
+one-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderHeadStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 1) :
+    BetaInstantiationPreservesMEqRedUnderHeadStack := by
+  intro Γ bound arg head lhs rhs kind s hArg hRed
+  have h' := h (heads := [{ bound := head, kind := kind }]) rfl hArg hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- The existing one-head stack payload can be used through the generic
+length-indexed preserved-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderHeadsStack.of_one
+    (h : BetaInstantiationPreservesMEqRedUnderHeadStack) :
+    BetaInstantiationPreservesMEqRedUnderHeadsStack 1 := by
+  intro Γ bound arg lhs rhs heads s hlen hArg hRed
+  cases heads with
+  | nil =>
+      simp at hlen
+  | cons head heads =>
+      cases heads with
+      | cons head₂ heads =>
+          simp at hlen
+      | nil =>
+          cases head with
+          | mk head kind =>
+              have h' := h
+                (Γ := Γ) (bound := bound) (arg := arg)
+                (head := head) (lhs := lhs) (rhs := rhs)
+                (kind := kind) (s := s) hArg hRed
+              simpa [Ctx.instantiateBetaPrefix, Term.shift,
+                Term.shiftBy_compose, Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- The generic preserved-head stack payload specializes to the existing
 two-head surface. -/
 def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.of_generic
     (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 2) :

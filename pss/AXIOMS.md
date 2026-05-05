@@ -15,8 +15,8 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderHeadsStack`, a generic
   stack-parametric `MEqRed` substitution payload for any number of preserved
   heads. Also added checked specializations from this generic surface to the
-  existing two/three/four/five/six/seven/eight-head stack payload APIs, plus reverse
-  adapters from the existing two/three/four/five/six/seven/eight-head APIs to the generic
+  existing one/two/three/four/five/six/seven/eight-head stack payload APIs, plus reverse
+  adapters from the existing one/two/three/four/five/six/seven/eight-head APIs to the generic
   length-indexed
   surface. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
