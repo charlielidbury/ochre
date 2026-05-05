@@ -111,6 +111,12 @@ closures, 2 inactive outstanding).
   heads, rejects the discharged `.sub` head, and descends tail variables by one
   index using the new five-head tail arithmetic. Added endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the five-head constructor
+  frontier payload types and
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.of_constructors`.
+  The assembler discharges structural and `Me-Pro` leaves through the new
+  five-head checked leaves and leaves only binder frontiers explicit. Added
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
