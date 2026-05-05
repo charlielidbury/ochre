@@ -995,6 +995,22 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_tw
   simpa [Term.instantiate, Stack.instantiate] using
     MEqRed.fOp hBound' hα' hBody'
 
+/-- Under-head equivalence substitution with the `Me-Fun` and `Me-FOp`
+frontiers generated from a one-head equivalence payload and the generic
+two-preserved-head body payload. This leaves the special `Me-Bet` frontier as
+the only constructor-specific binder input. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.of_two_head_adapters
+    (hEqUnder : BetaInstantiationPreservesMEqRedUnderHeadStack)
+    (hBet : BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload)
+    (hTwo : BetaInstantiationPreservesMEqRedUnderTwoHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderHeadStack :=
+  BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors
+    (BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads
+      hEqUnder hTwo)
+    hBet
+    (BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads
+      hEqUnder hTwo)
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation at any stack. -/
 noncomputable def BetaInstantiationPreservesMEqRedStack.refl

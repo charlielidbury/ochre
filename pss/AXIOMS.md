@@ -362,7 +362,10 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderTwoHeadsStack` payload, and adapters
   `BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads`
   and
-  `BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads`.
+  `BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads`,
+  plus the composed
+  `BetaInstantiationPreservesMEqRedUnderHeadStack.of_two_head_adapters`
+  assembler.
   These reduce the under-head `Me-Fun` and `Me-FOp` binder frontiers to the
   one-head equivalence payload plus the new two-head body substitution
   payload. The `Me-Bet` frontier remains separate because its β target needs

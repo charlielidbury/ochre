@@ -218,6 +218,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.of_two_head_adapters
 #print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top_msubstar
