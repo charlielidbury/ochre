@@ -2309,6 +2309,66 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderThreeHeadsFOpStackPayload
   simpa [Term.instantiate, Stack.instantiate] using
     MEqRed.fOp hBound' hα' hBody'
 
+/-- Assemble three-head equivalence β-instantiation from constructor-local
+frontiers. Structural leaves and `Me-Pro` are discharged here; the explicit
+inputs are the recursive binder constructors. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.of_constructors
+    (hFun : BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload)
+    (hBet : BetaInstantiationPreservesMEqRedUnderThreeHeadsBetStackPayload)
+    (hFOp : BetaInstantiationPreservesMEqRedUnderThreeHeadsFOpStackPayload) :
+    BetaInstantiationPreservesMEqRedUnderThreeHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ lhs rhs kind₁ kind₂ kind₃ s
+    hArgBound hred
+  generalize hC : ({ bound := head₁, kind := kind₁ } ::
+      { bound := head₂, kind := kind₂ } ::
+      { bound := head₃, kind := kind₃ } ::
+      { bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg head₁ head₂ head₃ kind₁ kind₂ kind₃ with
+  | pro hpv hb hα ih =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.pro
+        hArgBound hpv hb (ih hArgBound rfl)
+  | bet ht hbody harg =>
+      subst hC
+      exact hBet hArgBound ht hbody harg
+  | top hpv =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.top
+        hArgBound hpv
+  | app hOp hArg ihOp ihArg =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.app
+        (ihOp hArgBound rfl) (ihArg hArgBound rfl)
+  | var hpv hi =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.var
+        hArgBound hpv hi
+  | fun_ hBound hBody =>
+      subst hC
+      exact hFun hArgBound hBound hBody
+  | tAp hpv hu =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.tAp
+        hArgBound hpv hu
+  | fOp hBound hα hBody =>
+      subst hC
+      exact hFOp hArgBound hBound hα hBody
+
+/-- Three-head equivalence substitution with the binder frontiers generated
+from a three-head equivalence payload and the generic four-head body payload.
+-/
+noncomputable def BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.of_four_head_adapters
+    (hThree : BetaInstantiationPreservesMEqRedUnderThreeHeadsStack)
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderThreeHeadsStack :=
+  BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.of_constructors
+    (BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload.of_four_heads
+      hThree hFour)
+    (BetaInstantiationPreservesMEqRedUnderThreeHeadsBetStackPayload.of_four_heads
+      hThree hFour)
+    (BetaInstantiationPreservesMEqRedUnderThreeHeadsFOpStackPayload.of_four_heads
+      hThree hFour)
+
 /-- The two-head `Me-Fun` frontier follows from the two-head equivalence
 payload for the bound and the three-preserved-head payload for the body. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsFunStackPayload.of_three_heads
