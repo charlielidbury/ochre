@@ -42,6 +42,13 @@ closures, 2 inactive outstanding).
   structural leaves and consume the new four-head prevalidity transport.
   Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFourHeadsStack.pro`, the four-head
+  `Me-Pro` β-instantiation leaf. This discharges promotion cases for all four
+  preserved heads, rejects the removed `.sub` head, and transports deeper
+  equivalence bindings through the instantiated tail using the four-head tail
+  arithmetic. Added endpoint to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
