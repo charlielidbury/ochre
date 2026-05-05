@@ -10,6 +10,10 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_abs_step_stackHead_transport_or_fOp_from_left`, a side-condition-free
+  wrapper for the one-step abstraction-to-abstraction stack-head splitter.
+  Added the endpoint to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_of_body_fOp_star_replacements_from_left`
   and
   `commute_appAbs_structApp_eqStep_of_body_fOp_msub_replacements_from_left`,

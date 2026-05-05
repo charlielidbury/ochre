@@ -2224,6 +2224,28 @@ theorem msub_abs_step_stackHead_transport_or_fOp {Γ : Ctx} {s : Stack}
   | fOp _ _ hBody =>
     exact Or.inr (Or.inr ⟨arg, s, rfl, rfl, ⟨hBody⟩⟩)
 
+/-- Side-condition-free stack-head transport splitter for one-step
+abstraction-to-abstraction subtype reductions. The tail prevalidity premise
+of `msub_abs_step_stackHead_transport_or_fOp` is recovered from the subtype
+step. -/
+theorem msub_abs_step_stackHead_transport_or_fOp_from_left {Γ : Ctx} {s : Stack}
+    {arg arg' bound body bound' body' : Term}
+    (hEqArg : MEqRed Γ [] arg arg')
+    (h : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound' body')) :
+    MSubRedJ Γ (arg' :: s) (.abs bound body) (.abs bound' body') ∨
+      (∃ oldArg rest,
+        arg :: s = oldArg :: rest ∧
+          MEqRedJ Γ [] bound bound' ∧
+          MEqRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+            (Stack.shift 0 rest) body body') ∨
+      (∃ oldArg rest,
+        arg :: s = oldArg :: rest ∧
+          bound' = bound ∧
+          MSubRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+            (Stack.shift 0 rest) body body') :=
+  msub_abs_step_stackHead_transport_or_fOp
+    (PrevalidExt.tail h.prevalidExt) hEqArg h
+
 /-- Changed-argument structural application commutation reduced to the
 operator-side `FOp` residual. After applying strong commutativity to the
 operator steps, the only obstruction to building the changed-argument
