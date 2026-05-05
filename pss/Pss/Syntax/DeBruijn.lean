@@ -371,6 +371,14 @@ theorem shift_instantiate_zero (cutoff : Nat) (v t : Term) :
   | succ cutoff =>
     exact shift_instantiate_lt (cutoff + 1) 0 v t (Nat.succ_pos cutoff)
 
+/-- Instantiation at index `2` through two preserved top-level bindings
+commutes with instantiating at index `0` before adding those bindings. -/
+theorem instantiate_two_shift_zero (v t : Term) :
+    instantiate 2 (shift 0 (shift 0 v)) (shift 0 (shift 0 t)) =
+      shift 0 (shift 0 (instantiate 0 v t)) := by
+  have h := (shiftBy_instantiate 0 2 0 v t (Nat.zero_le 0)).symm
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
 /-- Substituting index `k` and then the next surviving slot is equivalent to
 first substituting the corresponding original slot at `k + 2`, then
 substituting index `k`. -/

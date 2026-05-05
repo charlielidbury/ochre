@@ -18,6 +18,7 @@ namespace DeBruijn
 #print axioms Stack.Scoped.shift_inv
 #print axioms Stack.instantiate_one_shift_zero
 #print axioms Stack.instantiate_two_shift_zero
+#print axioms Term.instantiate_two_shift_zero
 #print axioms Term.instantiate_succ_after
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace

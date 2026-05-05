@@ -386,6 +386,11 @@ closures, 2 inactive outstanding).
   lookup split plus the next-level binder frontiers as the remaining
   decomposition work. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` — added
+  `Term.instantiate_two_shift_zero`, the term-level two-preserved-head
+  substitution/shift rewrite needed by the remaining two-head `Me-Pro`
+  lookup split. Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
