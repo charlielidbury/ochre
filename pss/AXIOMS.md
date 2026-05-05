@@ -1261,6 +1261,11 @@ closures, 2 inactive outstanding).
   `MSubRedChain.nonempty_of_star`, and `MSubRedChain.of_star`. The
   `of_star` wrappers use the existing `Classical.choice` pattern and do
   not add project axioms. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added compatibility bridges
+  `AbsFunctionBoundChainDiagram.of_diagram` and
+  `AbsFunctionBoundChainDiagramPayload.of_diagram`, upgrading older
+  Prop-closure function-bound diagrams to Type-valued chain diagrams via
+  the new closure-to-chain witnesses. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

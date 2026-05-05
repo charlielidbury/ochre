@@ -546,6 +546,19 @@ def AbsFunctionBoundDiagram.of_chain {Γ : Ctx} {bound body result : Term}
   eqJoin := d.eqJoin.to_star
   wfJoinBound := d.wfJoinBound
 
+/-- Choose Type-valued chains from an older Prop-closure function-bound
+diagram. This is a compatibility bridge for payloads that already know the
+common reduct but produced Prop-valued closures. -/
+noncomputable def AbsFunctionBoundChainDiagram.of_diagram
+    {Γ : Ctx} {bound body result : Term}
+    (d : AbsFunctionBoundDiagram Γ bound body result) :
+    AbsFunctionBoundChainDiagram Γ bound body result where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := MSubRedChain.of_star d.subJoin
+  eqJoin := MEqRedChain.of_star d.eqJoin
+  wfJoinBound := d.wfJoinBound
+
 /-- A chain-diagram payload can be consumed anywhere the older Prop-closure
 diagram payload is expected. -/
 def AbsFunctionBoundDiagramPayload.of_chain
@@ -553,6 +566,14 @@ def AbsFunctionBoundDiagramPayload.of_chain
     AbsFunctionBoundDiagramPayload := by
   intro Γ bound body result hFun
   exact AbsFunctionBoundDiagram.of_chain (hDiagram hFun)
+
+/-- An older Prop-closure diagram payload can be upgraded to the Type-valued
+chain-diagram payload by choosing chain witnesses for the two closures. -/
+noncomputable def AbsFunctionBoundChainDiagramPayload.of_diagram
+    (hDiagram : AbsFunctionBoundDiagramPayload) :
+    AbsFunctionBoundChainDiagramPayload := by
+  intro Γ bound body result hFun
+  exact AbsFunctionBoundChainDiagram.of_diagram (hDiagram hFun)
 
 /-- A Type-valued common-reduct diagram gives the transitive bound
 well-equivalence needed by β preservation. -/
