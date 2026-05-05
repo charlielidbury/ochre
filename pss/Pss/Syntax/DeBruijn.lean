@@ -481,6 +481,39 @@ noncomputable def shift_scoped (cutoff depth : Nat) (t : Term)
     simp only [shift, shiftBy_app]
     exact Scoped.app (ih_fn cutoff hcut) (ih_arg cutoff hcut)
 
+/-- Invert one-step shifting under a scoped ambient context. If shifting at a
+valid cutoff is scoped one level higher, the original term was scoped at the
+original depth. -/
+noncomputable def shift_scoped_inv (cutoff depth : Nat) (t : Term)
+    (hcut : cutoff ≤ depth) :
+    Scoped (depth + 1) (shift cutoff t) → Scoped depth t := by
+  induction t generalizing cutoff depth with
+  | bvar i =>
+    intro h
+    simp [shift, shiftBy] at h
+    split at h
+    · exact Scoped.bvar (by
+        have hi := Scoped.bvar_lt h
+        omega)
+    · exact Scoped.bvar (by
+        have hi := Scoped.bvar_lt h
+        omega)
+  | top =>
+    intro _h
+    exact Scoped.top
+  | abs bound body ih_bound ih_body =>
+    intro h
+    simp only [shift, shiftBy_abs] at h
+    exact Scoped.abs
+      (ih_bound cutoff depth hcut (Scoped.abs_inv h).1)
+      (ih_body (cutoff + 1) (depth + 1) (by omega) (Scoped.abs_inv h).2)
+  | app fn arg ih_fn ih_arg =>
+    intro h
+    simp only [shift, shiftBy_app] at h
+    exact Scoped.app
+      (ih_fn cutoff depth hcut (Scoped.app_inv h).1)
+      (ih_arg cutoff depth hcut (Scoped.app_inv h).2)
+
 /-- General shifting preserves scoping, increasing the ambient depth by the
 shift amount. -/
 noncomputable def shiftBy_scoped (cutoff amount depth : Nat) (t : Term)

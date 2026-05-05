@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Syntax/DeBruijn.lean`, `Pss/Context/DeBruijn.lean`,
+  `Pss/Mpss/DeBruijnReductions.lean` — added `Term.shift_scoped_inv`,
+  `Stack.Scoped.shift_inv`, `PrevalidExt.weaken_head_inv`, and raw
+  reduction stack-validity extractors `MEqRed.prevalidExt` /
+  `MSubRed.prevalidExt`. These invert shifted operand stacks under a fresh
+  binder, making future structural app-abs wrappers able to recover
+  `PrevalidExt` witnesses from reductions instead of carrying them manually.
+  Added the endpoints to the de Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_subStep_eqStar_of_diamond_or_structApp_from_left` and
   `commute_appAbs_subStep_eqStar_of_diamond_or_appAbs_from_left`,

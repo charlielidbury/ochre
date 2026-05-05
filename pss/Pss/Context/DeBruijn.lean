@@ -1205,6 +1205,21 @@ noncomputable def Scoped.shift {depth : Nat} {s : Stack} :
   | cons hα hs ih =>
     exact Scoped.cons (Term.shift_scoped 0 depth _ (Nat.zero_le _) hα) ih
 
+/-- Invert one-step shifting for stack scoping. -/
+noncomputable def Scoped.shift_inv {depth : Nat} {s : Stack} :
+    Scoped (depth + 1) (Stack.shift 0 s) → Scoped depth s := by
+  intro h
+  induction s with
+  | nil =>
+    exact Scoped.nil
+  | cons α rest ih =>
+    simp [Stack.shift] at h
+    cases h with
+    | cons hα hrest =>
+      exact Scoped.cons
+        (Term.shift_scoped_inv 0 depth α (Nat.zero_le _) hα)
+        (ih hrest)
+
 /-- One-step shifting at an arbitrary cutoff preserves stack scoping under one
 additional ambient binding. -/
 noncomputable def Scoped.shiftAt {depth cutoff : Nat} {s : Stack}
@@ -1704,6 +1719,22 @@ noncomputable def weaken_head {Γ : Ctx} {s : Stack} {e : CtxEntry} :
     exact PrevalidExt.nil hpvHead
   | cons hst hα ih =>
     exact PrevalidExt.cons ih (Term.shift_scoped 0 Γ.depth _ (Nat.zero_le _) hα)
+
+/-- Invert `PrevalidExt.weaken_head` at the stack level: a shifted stack that
+is prevalid under one extra context head descends to a prevalid original stack
+under the tail context. -/
+noncomputable def weaken_head_inv {Γ : Ctx} {s : Stack} {e : CtxEntry} :
+    PrevalidExt (e :: Γ) (Stack.shift 0 s) → PrevalidExt Γ s := by
+  intro h
+  induction s with
+  | nil =>
+    exact PrevalidExt.nil (Prevalid.tail (PrevalidExt.ctx h))
+  | cons α rest ih =>
+    simp [Stack.shift] at h
+    exact PrevalidExt.cons
+      (ih (PrevalidExt.tail h))
+      (Term.shift_scoped_inv 0 Γ.depth α (Nat.zero_le _)
+        (PrevalidExt.head_scoped h))
 
 /-- One-step shifting preserves prevalidity of stacks when the context is
 extended at the head. -/

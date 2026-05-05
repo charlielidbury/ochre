@@ -14,6 +14,11 @@ namespace DeBruijn
 #print axioms Lemma_2_DeBruijn_DiamondMEqRedChain_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityStar_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_of
+#print axioms Term.shift_scoped_inv
+#print axioms Stack.Scoped.shift_inv
+#print axioms PrevalidExt.weaken_head_inv
+#print axioms MEqRed.prevalidExt
+#print axioms MSubRed.prevalidExt
 #print axioms EqDiamonds.top
 #print axioms EqDiamonds.bvar_any
 #print axioms EqDiamonds.appTop_any

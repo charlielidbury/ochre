@@ -539,6 +539,46 @@ noncomputable def MSubRed.prevalid {Γ : Ctx} {s : Stack} {u v : Term}
   | fOp _ _ _ ih =>
     exact Prevalid.tail ih
 
+/-- Extended-context prevalidity from de Bruijn equivalence reduction. This
+recovers stack validity as well as logical-context validity. -/
+noncomputable def MEqRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) : PrevalidExt Γ s := by
+  induction h with
+  | pro hpv _ _ _ =>
+    exact hpv
+  | bet _ _ _ ihBody _ =>
+    exact PrevalidExt.weaken_head_inv ihBody
+  | top hpv =>
+    exact hpv
+  | app _ _ ihOp _ =>
+    exact PrevalidExt.tail ihOp
+  | var hpv _ =>
+    exact hpv
+  | fun_ hBound _ =>
+    exact PrevalidExt.nil hBound.prevalid
+  | tAp hpv _ =>
+    exact hpv
+  | fOp _ hα _ _ ihBody =>
+    exact PrevalidExt.cons (PrevalidExt.weaken_head_inv ihBody) hα
+
+/-- Extended-context prevalidity from de Bruijn subtype reduction. This
+recovers stack validity as well as logical-context validity. -/
+noncomputable def MSubRed.prevalidExt {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) : PrevalidExt Γ s := by
+  induction h with
+  | pro hpv _ =>
+    exact hpv
+  | top hpv _ =>
+    exact hpv
+  | equ hpv _ =>
+    exact hpv
+  | app _ _ ih =>
+    exact PrevalidExt.tail ih
+  | fun_ _ heq _ _ =>
+    exact PrevalidExt.nil heq.prevalid
+  | fOp _ hα _ ih =>
+    exact PrevalidExt.cons (PrevalidExt.weaken_head_inv ih) hα
+
 /-! ## Insertion weakening scaffolding -/
 
 /-- Weakening helper for the de Bruijn equivalence variable case under
