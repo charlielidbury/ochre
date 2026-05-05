@@ -2465,6 +2465,571 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderSixHeadsStack.tAp
     MEqRed.tAp
       (BetaInstantiationPreservesPrevalidExtUnderSixHeads hArgBound hpv) hu'
 
+/-- The `MEqRed.pro` constructor reassembles six-preserved-head
+β-instantiation from the transformed promoted-bound equivalence step. The
+index split accounts for all six preserved heads, the discharged `.sub` head
+at index `6`, and deeper variables descending by one index. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderSixHeadsStack.pro
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ α α' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ : CtxEntryKind} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hb :
+      Ctx.equBinds ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := bound, kind := .sub } :: Γ) i α)
+    (hα :
+      MEqRed
+        ({ bound := Term.instantiate 5
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₄,
+            kind := kind₄ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+            kind := kind₅ } ::
+          { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+        (Stack.instantiate 6
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) s)
+        (Term.instantiate 6
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) α)
+        (Term.instantiate 6
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) α')) :
+    MEqRed
+      ({ bound := Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 2
+            (Term.shift 0 (Term.shift 0 arg)) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+          kind := kind₅ } ::
+        { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+      (Stack.instantiate 6
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) s)
+      (Term.instantiate 6
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+        (.bvar i))
+      (Term.instantiate 6
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) α') := by
+  have hpvTarget :
+      PrevalidExt
+        ({ bound := Term.instantiate 5
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₄,
+            kind := kind₄ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+            kind := kind₅ } ::
+          { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+        (Stack.instantiate 6
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) s) :=
+    BetaInstantiationPreservesPrevalidExtUnderSixHeads hArgBound hpv
+  cases i with
+  | zero =>
+      cases kind₁ with
+      | sub =>
+          simp [Ctx.equBinds] at hb
+      | equ =>
+          simp [Ctx.equBinds] at hb
+          subst hb
+          have htargetInst :
+              Term.instantiate 6
+                  (Term.shift 0
+                    (Term.shift 0
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                  (Term.shift 0 head₁) =
+                Term.shift 0
+                  (Term.instantiate 5
+                    (Term.shift 0
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁) := by
+            exact Term.instantiate_succ_shift_zero 5
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁
+          have hbind :
+              Ctx.equBinds
+                ({ bound := Term.instantiate 5
+                      (Term.shift 0
+                        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                    kind := CtxEntryKind.equ } ::
+                  { bound := Term.instantiate 4
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                    kind := kind₂ } ::
+                  { bound := Term.instantiate 3
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                    kind := kind₃ } ::
+                  { bound := Term.instantiate 2
+                      (Term.shift 0 (Term.shift 0 arg)) head₄,
+                    kind := kind₄ } ::
+                  { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                    kind := kind₅ } ::
+                  { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+                0
+                (Term.instantiate 6
+                  (Term.shift 0
+                    (Term.shift 0
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                  (Term.shift 0 head₁)) := by
+            simp [Ctx.equBinds, htargetInst]
+          simpa [Term.instantiate] using MEqRed.pro hpvTarget hbind hα
+  | succ i =>
+      cases i with
+      | zero =>
+          cases kind₂ with
+          | sub =>
+              simp [Ctx.equBinds] at hb
+          | equ =>
+              simp [Ctx.equBinds] at hb
+              subst hb
+              have htargetInst :
+                  Term.instantiate 6
+                      (Term.shift 0
+                        (Term.shift 0
+                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                      (Term.shift 0 (Term.shift 0 head₂)) =
+                    Term.shift 0
+                      (Term.shift 0
+                        (Term.instantiate 4
+                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂)) := by
+                have h := (Term.shiftBy_instantiate 0 2 4
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂
+                  (Nat.zero_le 4)).symm
+                simpa [Term.shift, Term.shiftBy_compose, Nat.add_assoc] using h
+              have hbind :
+                  Ctx.equBinds
+                    ({ bound := Term.instantiate 5
+                          (Term.shift 0
+                            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                        kind := kind₁ } ::
+                      { bound := Term.instantiate 4
+                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                        kind := CtxEntryKind.equ } ::
+                      { bound := Term.instantiate 3
+                          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                        kind := kind₃ } ::
+                      { bound := Term.instantiate 2
+                          (Term.shift 0 (Term.shift 0 arg)) head₄,
+                        kind := kind₄ } ::
+                      { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                        kind := kind₅ } ::
+                      { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+                    1
+                    (Term.instantiate 6
+                      (Term.shift 0
+                        (Term.shift 0
+                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                      (Term.shift 0 (Term.shift 0 head₂))) := by
+                simp [Ctx.equBinds, htargetInst]
+              simpa [Term.instantiate] using MEqRed.pro hpvTarget hbind hα
+      | succ i =>
+          cases i with
+          | zero =>
+              cases kind₃ with
+              | sub =>
+                  simp [Ctx.equBinds] at hb
+              | equ =>
+                  simp [Ctx.equBinds] at hb
+                  subst hb
+                  have htargetInst :
+                      Term.instantiate 6
+                          (Term.shift 0
+                            (Term.shift 0
+                              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                          (Term.shift 0 (Term.shift 0 (Term.shift 0 head₃))) =
+                        Term.shift 0
+                          (Term.shift 0
+                            (Term.shift 0
+                              (Term.instantiate 3
+                                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃))) := by
+                    have h := (Term.shiftBy_instantiate 0 3 3
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃
+                      (Nat.zero_le 3)).symm
+                    simpa [Term.shift, Term.shiftBy_compose, Nat.add_assoc] using h
+                  have hbind :
+                      Ctx.equBinds
+                        ({ bound := Term.instantiate 5
+                              (Term.shift 0
+                                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                            kind := kind₁ } ::
+                          { bound := Term.instantiate 4
+                              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                            kind := kind₂ } ::
+                          { bound := Term.instantiate 3
+                              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                            kind := CtxEntryKind.equ } ::
+                          { bound := Term.instantiate 2
+                              (Term.shift 0 (Term.shift 0 arg)) head₄,
+                            kind := kind₄ } ::
+                          { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                            kind := kind₅ } ::
+                          { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+                        2
+                        (Term.instantiate 6
+                          (Term.shift 0
+                            (Term.shift 0
+                              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                          (Term.shift 0 (Term.shift 0 (Term.shift 0 head₃)))) := by
+                    simp [Ctx.equBinds, htargetInst]
+                  simpa [Term.instantiate] using MEqRed.pro hpvTarget hbind hα
+          | succ i =>
+              cases i with
+              | zero =>
+                  cases kind₄ with
+                  | sub =>
+                      simp [Ctx.equBinds] at hb
+                  | equ =>
+                      simp [Ctx.equBinds] at hb
+                      subst hb
+                      have htargetInst :
+                          Term.instantiate 6
+                              (Term.shift 0
+                                (Term.shift 0
+                                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                              (Term.shift 0
+                                (Term.shift 0 (Term.shift 0 (Term.shift 0 head₄)))) =
+                            Term.shift 0
+                              (Term.shift 0
+                                (Term.shift 0
+                                  (Term.shift 0
+                                    (Term.instantiate 2
+                                      (Term.shift 0 (Term.shift 0 arg)) head₄)))) := by
+                        have h := (Term.shiftBy_instantiate 0 4 2
+                          (Term.shift 0 (Term.shift 0 arg)) head₄
+                          (Nat.zero_le 2)).symm
+                        simpa [Term.shift, Term.shiftBy_compose, Nat.add_assoc] using h
+                      have hbind :
+                          Ctx.equBinds
+                            ({ bound := Term.instantiate 5
+                                  (Term.shift 0
+                                    (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                                kind := kind₁ } ::
+                              { bound := Term.instantiate 4
+                                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                                kind := kind₂ } ::
+                              { bound := Term.instantiate 3
+                                  (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                                kind := kind₃ } ::
+                              { bound := Term.instantiate 2
+                                  (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                kind := CtxEntryKind.equ } ::
+                              { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                kind := kind₅ } ::
+                              { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+                            3
+                            (Term.instantiate 6
+                              (Term.shift 0
+                                (Term.shift 0
+                                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                              (Term.shift 0
+                                (Term.shift 0 (Term.shift 0 (Term.shift 0 head₄))))) := by
+                        simp [Ctx.equBinds, htargetInst]
+                      simpa [Term.instantiate] using MEqRed.pro hpvTarget hbind hα
+              | succ i =>
+                  cases i with
+                  | zero =>
+                      cases kind₅ with
+                      | sub =>
+                          simp [Ctx.equBinds] at hb
+                      | equ =>
+                          simp [Ctx.equBinds] at hb
+                          subst hb
+                          have htargetInst :
+                              Term.instantiate 6
+                                  (Term.shift 0
+                                    (Term.shift 0
+                                      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                                  (Term.shift 0
+                                    (Term.shift 0
+                                      (Term.shift 0 (Term.shift 0 (Term.shift 0 head₅))))) =
+                                Term.shift 0
+                                  (Term.shift 0
+                                    (Term.shift 0
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.instantiate 1 (Term.shift 0 arg) head₅))))) := by
+                            have h := (Term.shiftBy_instantiate 0 5 1
+                              (Term.shift 0 arg) head₅ (Nat.zero_le 1)).symm
+                            simpa [Term.shift, Term.shiftBy_compose, Nat.add_assoc] using h
+                          have hbind :
+                              Ctx.equBinds
+                                ({ bound := Term.instantiate 5
+                                      (Term.shift 0
+                                        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                                    kind := kind₁ } ::
+                                  { bound := Term.instantiate 4
+                                      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                                    kind := kind₂ } ::
+                                  { bound := Term.instantiate 3
+                                      (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                                    kind := kind₃ } ::
+                                  { bound := Term.instantiate 2
+                                      (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                    kind := kind₄ } ::
+                                  { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                    kind := CtxEntryKind.equ } ::
+                                  { bound := Term.instantiate 0 arg head₆, kind := kind₆ } :: Γ)
+                                4
+                                (Term.instantiate 6
+                                  (Term.shift 0
+                                    (Term.shift 0
+                                      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                                  (Term.shift 0
+                                    (Term.shift 0
+                                      (Term.shift 0 (Term.shift 0 (Term.shift 0 head₅)))))) := by
+                            simp [Ctx.equBinds, htargetInst]
+                          simpa [Term.instantiate] using MEqRed.pro hpvTarget hbind hα
+                  | succ i =>
+                      cases i with
+                      | zero =>
+                          cases kind₆ with
+                          | sub =>
+                              simp [Ctx.equBinds] at hb
+                          | equ =>
+                              simp [Ctx.equBinds] at hb
+                              subst hb
+                              have htargetInst :
+                                  Term.instantiate 6
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0
+                                            (Term.shift 0
+                                              (Term.shift 0 (Term.shift 0 head₆)))))) =
+                                    Term.shift 0
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0
+                                            (Term.shift 0
+                                              (Term.shift 0
+                                                (Term.instantiate 0 arg head₆)))))) := by
+                                exact Term.instantiate_six_shift_zero arg head₆
+                              have hbind :
+                                  Ctx.equBinds
+                                    ({ bound := Term.instantiate 5
+                                          (Term.shift 0
+                                            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                                        kind := kind₁ } ::
+                                      { bound := Term.instantiate 4
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                                        kind := kind₂ } ::
+                                      { bound := Term.instantiate 3
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                                        kind := kind₃ } ::
+                                      { bound := Term.instantiate 2
+                                          (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                        kind := kind₄ } ::
+                                      { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                        kind := kind₅ } ::
+                                      { bound := Term.instantiate 0 arg head₆,
+                                        kind := CtxEntryKind.equ } :: Γ)
+                                    5
+                                    (Term.instantiate 6
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0
+                                            (Term.shift 0
+                                              (Term.shift 0 (Term.shift 0 head₆))))))) := by
+                                simp [Ctx.equBinds, htargetInst]
+                              simpa [Term.instantiate] using MEqRed.pro hpvTarget hbind hα
+                      | succ j =>
+                          cases j with
+                          | zero =>
+                              simp [Ctx.equBinds] at hb
+                          | succ j =>
+                              simp [Ctx.equBinds] at hb
+                              let tailTarget := Classical.choose hb
+                              have htailAnd := Classical.choose_spec hb
+                              have htailLookup : Ctx.lookupEqu Γ j = some tailTarget :=
+                                htailAnd.1
+                              have htarget :
+                                  Term.shift 0
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0
+                                            (Term.shift 0
+                                              (Term.shift 0
+                                                (Term.shift 0 tailTarget)))))) = α :=
+                                htailAnd.2
+                              have htargetInst :
+                                  Term.instantiate 6
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                                      α =
+                                    Term.shift 0
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0
+                                            (Term.shift 0
+                                              (Term.shift 0 tailTarget))))) := by
+                                simpa [← htarget] using
+                                  Term.instantiate_six_shift_zero_tail arg tailTarget
+                              have htail : Ctx.equBinds Γ j tailTarget := by
+                                simpa [Ctx.equBinds] using htailLookup
+                              have htail₀ :
+                                  Ctx.equBinds
+                                    ({ bound := Term.instantiate 0 arg head₆,
+                                        kind := kind₆ } :: Γ)
+                                    (j + 1) (Term.shift 0 tailTarget) :=
+                                Ctx.equBinds_weaken_head
+                                  ({ bound := Term.instantiate 0 arg head₆,
+                                      kind := kind₆ } : CtxEntry) htail
+                              have htail₁ :
+                                  Ctx.equBinds
+                                    ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                        kind := kind₅ } ::
+                                      { bound := Term.instantiate 0 arg head₆,
+                                        kind := kind₆ } :: Γ)
+                                    (j + 2)
+                                    (Term.shift 0 (Term.shift 0 tailTarget)) :=
+                                Ctx.equBinds_weaken_head
+                                  ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                      kind := kind₅ } : CtxEntry) htail₀
+                              have htail₂ :
+                                  Ctx.equBinds
+                                    ({ bound := Term.instantiate 2
+                                          (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                        kind := kind₄ } ::
+                                      { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                        kind := kind₅ } ::
+                                      { bound := Term.instantiate 0 arg head₆,
+                                        kind := kind₆ } :: Γ)
+                                    (j + 3)
+                                    (Term.shift 0
+                                      (Term.shift 0 (Term.shift 0 tailTarget))) :=
+                                Ctx.equBinds_weaken_head
+                                  ({ bound := Term.instantiate 2
+                                        (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                      kind := kind₄ } : CtxEntry) htail₁
+                              have htail₃ :
+                                  Ctx.equBinds
+                                    ({ bound := Term.instantiate 3
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                                        kind := kind₃ } ::
+                                      { bound := Term.instantiate 2
+                                          (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                        kind := kind₄ } ::
+                                      { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                        kind := kind₅ } ::
+                                      { bound := Term.instantiate 0 arg head₆,
+                                        kind := kind₆ } :: Γ)
+                                    (j + 4)
+                                    (Term.shift 0
+                                      (Term.shift 0
+                                        (Term.shift 0 (Term.shift 0 tailTarget)))) :=
+                                Ctx.equBinds_weaken_head
+                                  ({ bound := Term.instantiate 3
+                                        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                                      kind := kind₃ } : CtxEntry) htail₂
+                              have htail₄ :
+                                  Ctx.equBinds
+                                    ({ bound := Term.instantiate 4
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                                        kind := kind₂ } ::
+                                      { bound := Term.instantiate 3
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                                        kind := kind₃ } ::
+                                      { bound := Term.instantiate 2
+                                          (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                        kind := kind₄ } ::
+                                      { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                        kind := kind₅ } ::
+                                      { bound := Term.instantiate 0 arg head₆,
+                                        kind := kind₆ } :: Γ)
+                                    (j + 5)
+                                    (Term.shift 0
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0 (Term.shift 0 tailTarget))))) :=
+                                Ctx.equBinds_weaken_head
+                                  ({ bound := Term.instantiate 4
+                                        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                                      kind := kind₂ } : CtxEntry) htail₃
+                              have hbind :
+                                  Ctx.equBinds
+                                    ({ bound := Term.instantiate 5
+                                          (Term.shift 0
+                                            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                                        kind := kind₁ } ::
+                                      { bound := Term.instantiate 4
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+                                        kind := kind₂ } ::
+                                      { bound := Term.instantiate 3
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+                                        kind := kind₃ } ::
+                                      { bound := Term.instantiate 2
+                                          (Term.shift 0 (Term.shift 0 arg)) head₄,
+                                        kind := kind₄ } ::
+                                      { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+                                        kind := kind₅ } ::
+                                      { bound := Term.instantiate 0 arg head₆,
+                                        kind := kind₆ } :: Γ)
+                                    (j + 6)
+                                    (Term.instantiate 6
+                                      (Term.shift 0
+                                        (Term.shift 0
+                                          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+                                      α) := by
+                                simpa [htargetInst] using
+                                  Ctx.equBinds_weaken_head
+                                    ({ bound := Term.instantiate 5
+                                          (Term.shift 0
+                                            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+                                        kind := kind₁ } : CtxEntry) htail₄
+                              simpa [Term.instantiate] using
+                                MEqRed.pro hpvTarget hbind hα
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below five
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.top
