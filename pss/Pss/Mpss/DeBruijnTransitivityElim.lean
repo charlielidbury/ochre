@@ -2264,6 +2264,33 @@ theorem commute_appAbs_structApp_eqStep_or_fOp_residual {Γ : Ctx} {s : Stack}
   | inr hResidual =>
     exact Or.inr ⟨joinBound, joinBody, hEqJoin, hResidual⟩
 
+/-- Side-condition-free wrapper for
+`commute_appAbs_structApp_eqStep_or_fOp_residual`: the tail stack
+prevalidity is recovered from the operator subtype step. -/
+theorem commute_appAbs_structApp_eqStep_or_fOp_residual_from_left {Γ : Ctx}
+    {s : Stack} {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg') :
+    (∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃) ∨
+      ∃ joinBound joinBody,
+        MEqRedJ Γ (arg :: s) (.abs bound₁ body₁) (.abs joinBound joinBody) ∧
+          ((∃ oldArg rest,
+            arg :: s = oldArg :: rest ∧
+              MEqRedJ Γ [] bound₂ joinBound ∧
+              MEqRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+                (Stack.shift 0 rest) body₂ joinBody) ∨
+            ∃ oldArg rest,
+              arg :: s = oldArg :: rest ∧
+                joinBound = bound₂ ∧
+                MSubRedJ ({ bound := oldArg, kind := .equ } :: Γ)
+                  (Stack.shift 0 rest) body₂ joinBody) :=
+  commute_appAbs_structApp_eqStep_or_fOp_residual
+    (PrevalidExt.tail hSubOp.prevalidExt) hcommArg hSubOp hEqOp hEqArg
+
 /-- Changed-argument structural application commutation isolated behind the
 two precise `FOp` replacement obligations. These handlers are weaker than a
 blanket stack-head transport theorem: they only need to replace the old
@@ -2314,6 +2341,37 @@ theorem commute_appAbs_structApp_eqStep_of_fOp_handlers {Γ : Ctx} {s : Stack}
       exact msubRedStar_app_fixed_arg hArg'Scoped
         (hSubResidual hStack hBody.some)
 
+/-- Side-condition-free wrapper for
+`commute_appAbs_structApp_eqStep_of_fOp_handlers`: the tail stack
+prevalidity is recovered from the operator subtype step. -/
+theorem commute_appAbs_structApp_eqStep_of_fOp_handlers_from_left {Γ : Ctx}
+    {s : Stack} {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg')
+    (hEquResidual :
+      ∀ {joinBound joinBody oldArg : Term} {rest : Stack},
+        arg :: s = oldArg :: rest →
+        MEqRed Γ [] bound₂ joinBound →
+        MEqRed ({ bound := oldArg, kind := .equ } :: Γ)
+          (Stack.shift 0 rest) body₂ joinBody →
+        MSubRedStar Γ (arg' :: s) (.abs bound₂ body₂)
+          (.abs joinBound joinBody))
+    (hSubResidual :
+      ∀ {joinBody oldArg : Term} {rest : Stack},
+        arg :: s = oldArg :: rest →
+        MSubRed ({ bound := oldArg, kind := .equ } :: Γ)
+          (Stack.shift 0 rest) body₂ joinBody →
+        MSubRedStar Γ (arg' :: s) (.abs bound₂ body₂)
+          (.abs bound₂ joinBody)) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃ :=
+  commute_appAbs_structApp_eqStep_of_fOp_handlers
+    (PrevalidExt.tail hSubOp.prevalidExt) hcommArg hSubOp hEqOp hEqArg
+    hEquResidual hSubResidual
+
 /-- Changed-argument structural application commutation reduced to body-level
 replacement under the `FOp` `.equ` head. The two replacement premises are the
 remaining de Bruijn analogue of stack-head replacement: they move residual
@@ -2356,6 +2414,36 @@ theorem commute_appAbs_structApp_eqStep_of_body_fOp_replacements {Γ : Ctx}
     cases hStack
     exact MSubRedStar.single (MSubRed.fOp hBound₂Scoped hArg'Scoped
       (hSubBodyReplace hBody))
+
+/-- Side-condition-free wrapper for
+`commute_appAbs_structApp_eqStep_of_body_fOp_replacements`: the tail stack
+prevalidity is recovered from the operator subtype step. -/
+theorem commute_appAbs_structApp_eqStep_of_body_fOp_replacements_from_left
+    {Γ : Ctx} {s : Stack}
+    {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hEqArg : MEqRed Γ [] arg arg')
+    (hEquBodyReplace :
+      ∀ {joinBound joinBody : Term},
+        MEqRed Γ [] bound₂ joinBound →
+        MEqRed ({ bound := arg, kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody →
+        MEqRed ({ bound := arg', kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody)
+    (hSubBodyReplace :
+      ∀ {joinBody : Term},
+        MSubRed ({ bound := arg, kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody →
+        MSubRed ({ bound := arg', kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₂ joinBody) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃ :=
+  commute_appAbs_structApp_eqStep_of_body_fOp_replacements
+    (PrevalidExt.tail hSubOp.prevalidExt) hcommArg hSubOp hEqOp hEqArg
+    hEquBodyReplace hSubBodyReplace
 
 /-- Lift a body subtype-reduction chain under an `.equ` head into an
 abstraction subtype-reduction chain through the matching `FOp` stack head,

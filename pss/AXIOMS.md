@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_or_fOp_residual_from_left`,
+  `commute_appAbs_structApp_eqStep_of_fOp_handlers_from_left`, and
+  `commute_appAbs_structApp_eqStep_of_body_fOp_replacements_from_left`,
+  wrappers that recover the structural app-abs tail-stack prevalidity from
+  the operator subtype step via `MSubRed.prevalidExt`. Added the endpoints to
+  the de Bruijn audit. No axiom-count change.
 * `Pss/Syntax/DeBruijn.lean`, `Pss/Context/DeBruijn.lean`,
   `Pss/Mpss/DeBruijnReductions.lean` — added `Term.shift_scoped_inv`,
   `Stack.Scoped.shift_inv`, `PrevalidExt.weaken_head_inv`, and raw
