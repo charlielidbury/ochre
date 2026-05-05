@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_operator_machine_tail_contextual`
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_machine_operator_machine_tail_contextual`,
+  completing the native-`Me-FOp` operator contextual entry points for the
+  direct split-beta machine route. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added contextual-preservation entry
   points
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual`,
