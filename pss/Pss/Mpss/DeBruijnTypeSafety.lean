@@ -6420,6 +6420,28 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
 machine route. The uniform head-kind premise remains too strong for the
 final route, but this wrapper keeps the diagnostic interface aligned with
 the strongest machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hHeadTransport : WfMHeadKindTransportPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
+    hSubst hAppend hBridge hShape hShapeWf hLeft
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hHeadTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
+    hTargetApp hTailCons hReplace hNoTop
+
+/-- Diagnostic head-kind-transport variant of the factored chain-shape
+machine route, with the control-left residual still exposed through the
+older body-transport surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -6435,14 +6457,36 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hReplace : WfMSubHeadReplaceOfNewWf)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft
-    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hHeadTransport)
-    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
-    hTargetApp hTailCons hReplace hNoTop
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hShape hShapeWf hLeft hHeadTransport hTargetApp hTailCons hReplace hNoTop
 
 /-- Typed-operator diagnostic head-kind variant of the factored chain-shape
 machine route. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hHeadTransport : WfMHeadKindTransportPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
+    hSubst hAppend hBridge hShape hShapeWf hLeft hHeadTransport
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hReplace hNoTop
+
+/-- Typed-operator diagnostic head-kind variant of the factored chain-shape
+machine route, with the control-left residual still exposed through the older
+body-transport surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_operator_machine_tail
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -6458,14 +6502,36 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hReplace : WfMSubHeadReplaceOfNewWf)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft hHeadTransport
-    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
-    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
-    hReplace hNoTop
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_operator_machine_tail
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hShape hShapeWf hLeft hHeadTransport hOpFun hTail hReplace hNoTop
 
 /-- Machine-operator diagnostic head-kind variant of the factored chain-shape
 machine route. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_machine_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hHeadTransport : WfMHeadKindTransportPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
+    hSubst hAppend hBridge hShape hShapeWf hLeft hHeadTransport
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
+    hReplace hNoTop
+
+/-- Machine-operator diagnostic head-kind variant of the factored chain-shape
+machine route, with the control-left residual still exposed through the older
+body-transport surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_machine_operator_machine_tail
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -6481,11 +6547,11 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hReplace : WfMSubHeadReplaceOfNewWf)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft hHeadTransport
-    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
-    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
-    hReplace hNoTop
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_machine_operator_machine_tail
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hShape hShapeWf hLeft hHeadTransport hOpFun hTail hReplace hNoTop
 
 namespace StepAt
 
