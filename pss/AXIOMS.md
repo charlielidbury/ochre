@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMContextual.of_chain_shape_machine_state_no_beta_and_sub_replace_and_head_transports`
+  and
+  `MEqRedPreservesWfMContextual.of_chain_shape_machine_state_factored_no_beta_and_sub_replace_and_head_transports`,
+  contextual adapters that derive the shape-only joined-bound
+  well-formedness side condition from an already available machine-state
+  preservation theorem specialized to empty stacks. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundInversionUnderWfCtx_of_chain_shape_machine_state`,
   deriving the `WfCtxEqu` function-bound inversion payload directly from the
   shape-only chain payload plus corrected machine-state preservation. No

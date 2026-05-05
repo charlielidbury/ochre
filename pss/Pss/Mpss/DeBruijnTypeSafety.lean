@@ -5482,6 +5482,45 @@ noncomputable def
     hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hLeft hReplace hHeadTransport
 
+/-- Contextual preservation assembled from the shape-only chain payload, with
+the joined-bound well-formedness side condition derived from an already
+available machine-state preservation theorem specialized to empty stacks. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_machine_state_no_beta_and_sub_replace_and_head_transports
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports
+    hSubst hShape
+    (AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state
+      hShape hMachine)
+    hOpFun hReplace hSubToEqu hEquToSub
+
+/-- Factored contextual preservation assembled from the shape-only chain
+payload, with the joined-bound well-formedness side condition derived from
+an already available machine-state preservation theorem specialized to empty
+stacks. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_machine_state_factored_no_beta_and_sub_replace_and_head_transports
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports
+    hSubst hShape
+    (AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state
+      hShape hMachine)
+    hLeft hReplace hSubToEqu hEquToSub
+
 /-- Machine-state preservation route whose contextual subproof is assembled
 from the shape-only function-bound chain payload, joined-bound
 well-formedness under `WfCtxEqu`, the native `Me-App` operator payload,
