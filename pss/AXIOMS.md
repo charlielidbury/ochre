@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` — added
+  the three-preserved-head context replacement facts and
+  `MEqRed.equ_under_three_sub_heads_sub_tail_nil_replace_from_split_handlers`
+  / `MSubRed.equ_under_three_sub_heads_sub_tail_nil_replace_from_split_handlers`.
+  These cover the `{sub}, {sub}, {sub}, {equ}, {sub}` empty-stack shape exposed
+  by the next nested `Me-Fun`/`Ms-Fun` residual: changed-entry lookup is index
+  `3`, the intervening tail `.sub` at index `4` is impossible, and true tail
+  equivalence lookups start at `5+`. Added the endpoints to the De Bruijn
+  audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_two_sub_heads_sub_tail_nil_replace_from_split_handlers`
   and `MSubRed.equ_under_two_sub_heads_sub_tail_nil_replace_from_split_handlers`,

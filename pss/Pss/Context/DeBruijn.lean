@@ -720,6 +720,30 @@ theorem subBinds_equ_under_two_heads_replace {Γ : Ctx} {head₁ head₂ : CtxEn
         Ctx.subBinds_equ_under_head_replace (by simpa [subBinds] using hlook)
       exact ⟨a, by simpa [subBinds] using htail, rfl⟩
 
+/-- Changing the bound stored in an `.equ` entry under three preserved heads
+preserves subtype lookups. -/
+theorem subBinds_equ_under_three_heads_replace {Γ : Ctx}
+    {head₁ head₂ head₃ : CtxEntry} {old new : Term} {i : Nat} {t : Term} :
+    subBinds (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) i t →
+    subBinds (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) i t := by
+  cases i with
+  | zero =>
+    cases head₁ with
+    | mk bound kind =>
+      cases kind <;> simp [subBinds]
+  | succ i =>
+    intro h
+    simp [subBinds] at h ⊢
+    cases hlook : lookupSub (head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) i with
+    | none =>
+      simp [hlook] at h
+    | some a =>
+      simp [hlook] at h
+      subst h
+      have htail : subBinds (head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) i a :=
+        Ctx.subBinds_equ_under_two_heads_replace (by simpa [subBinds] using hlook)
+      exact ⟨a, by simpa [subBinds] using htail, rfl⟩
+
 /-- Equivalence lookup at the preserved head remains stable when replacing
 the `.equ` entry immediately below it. -/
 theorem equBinds_equ_under_head_replace_zero {Γ : Ctx} {head : CtxEntry}
@@ -1600,6 +1624,22 @@ noncomputable def equ_under_two_heads_replace {Γ : Ctx} {head₁ head₂ : CtxE
     exact Prevalid.equ (Prevalid.equ_under_head_replace hTail hnew) (by
       simpa [Ctx.depth] using hHead)
 
+/-- Replace an `.equ` entry under three preserved heads. Since context depth
+is unchanged, all preserved head bounds remain scoped. -/
+noncomputable def equ_under_three_heads_replace {Γ : Ctx}
+    {head₁ head₂ head₃ : CtxEntry} {old new : Term} :
+    Prevalid (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) →
+    Term.Scoped Γ.depth new →
+    Prevalid (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) := by
+  intro h hnew
+  cases h with
+  | sub hTail hHead =>
+    exact Prevalid.sub (Prevalid.equ_under_two_heads_replace hTail hnew) (by
+      simpa [Ctx.depth] using hHead)
+  | equ hTail hHead =>
+    exact Prevalid.equ (Prevalid.equ_under_two_heads_replace hTail hnew) (by
+      simpa [Ctx.depth] using hHead)
+
 end Prevalid
 
 namespace PrevalidExt
@@ -1760,6 +1800,21 @@ noncomputable def equ_under_two_heads_replace {Γ : Ctx} {s : Stack}
   induction h with
   | nil hΓ =>
     exact PrevalidExt.nil (Prevalid.equ_under_two_heads_replace hΓ hnew)
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (by
+      simpa [Ctx.depth] using hα)
+
+/-- Replace an `.equ` entry under three preserved heads while preserving
+extended-context prevalidity. -/
+noncomputable def equ_under_three_heads_replace {Γ : Ctx} {s : Stack}
+    {head₁ head₂ head₃ : CtxEntry} {old new : Term} :
+    PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s →
+    Term.Scoped Γ.depth new →
+    PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s := by
+  intro h hnew
+  induction h with
+  | nil hΓ =>
+    exact PrevalidExt.nil (Prevalid.equ_under_three_heads_replace hΓ hnew)
   | cons hst hα ih =>
     exact PrevalidExt.cons ih (by
       simpa [Ctx.depth] using hα)
