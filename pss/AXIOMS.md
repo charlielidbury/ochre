@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — generalized
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_bet_body_stack_handlers_of`
+  so its residual `Ms-FOp` body transport can be an `MSubRedStar` chain.
+  The existing `fop_body_equ_handlers` caller wraps its current raw proof as
+  a singleton chain. This threads the residual-body chain dispatcher one layer
+  closer to the nested `Ms-Fun` structural-app case. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level
   constructor-wired `{sub}, {equ}, {sub}` subtype replacement wrapper
   `msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_body_replacements`.
