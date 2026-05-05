@@ -1377,6 +1377,32 @@ def MEqRedFOpTailStepPreservesPayload : Type :=
           WfMachineState Γ source s →
             WfMachineState Γ target s
 
+/-- Constructor-generic tail-step machine-state preservation. This is the
+neutral name for the residual first exposed by the `Me-FOp` tail transport:
+once the immediate target control is well formed, preserve the same reduction
+step under the remaining machine stack. -/
+def MEqRedMachineTailStepPreservesPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {source target : Term},
+    WfCtxEqu Γ →
+      MEqRed Γ s source target →
+        WfM Γ target →
+          WfMachineState Γ source s →
+            WfMachineState Γ target s
+
+/-- The original `Me-FOp`-named tail-step residual is the constructor-generic
+machine-tail residual. -/
+def MEqRedFOpTailStepPreservesPayload.of_machine_tail
+    (hTail : MEqRedMachineTailStepPreservesPayload) :
+    MEqRedFOpTailStepPreservesPayload :=
+  hTail
+
+/-- The constructor-generic machine-tail residual is exactly the original
+`Me-FOp`-named tail-step residual. -/
+def MEqRedMachineTailStepPreservesPayload.of_fop_tail_step
+    (hTail : MEqRedFOpTailStepPreservesPayload) :
+    MEqRedMachineTailStepPreservesPayload :=
+  hTail
+
 /-- Non-empty-stack part of the tail-step preservation residual. The empty
 stack case is definitional from the supplied target well-formedness. -/
 def MEqRedFOpTailStepPreservesConsPayload : Type :=
@@ -1409,6 +1435,15 @@ noncomputable def MEqRedBetaPreservesWfMachineStatePayload.of_target_and_tail_st
   have hwfTarget : WfM Γ (Term.instantiate 0 arg' body') :=
     hTarget hΓ ht hBody hArg hState
   exact hTailStep hΓ (MEqRed.bet ht hBody hArg) hwfTarget hState
+
+/-- Neutral machine-tail variant of
+`MEqRedBetaPreservesWfMachineStatePayload.of_target_and_tail_step`. -/
+noncomputable def MEqRedBetaPreservesWfMachineStatePayload.of_target_and_machine_tail
+    (hTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload) :
+    MEqRedBetaPreservesWfMachineStatePayload :=
+  MEqRedBetaPreservesWfMachineStatePayload.of_target_and_tail_step hTarget
+    (MEqRedFOpTailStepPreservesPayload.of_machine_tail hTail)
 
 /-- A non-empty tail step reduces to typed operator-function preservation for
 the immediate application, followed by preservation of the induced
@@ -2777,6 +2812,27 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     hBetaTarget hEqBody hSubBody hPres hStep hInv hFOpBody
     (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
     hTailStep hFunBody hNoTop
+
+/-- Neutral machine-tail spelling of
+`of_body_transports_no_empty_and_beta_target_typed_fop_target_app_tail_step`.
+-/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_tail_step
+    hBetaTarget hEqBody hSubBody hPres hStep hInv hFOpBody hTargetApp
+    (MEqRedFOpTailStepPreservesPayload.of_machine_tail hTail)
+    hFunBody hNoTop
 
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this

@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedMachineTailStepPreservesPayload`,
+  `MEqRedFOpTailStepPreservesPayload.of_machine_tail`,
+  `MEqRedMachineTailStepPreservesPayload.of_fop_tail_step`,
+  `MEqRedBetaPreservesWfMachineStatePayload.of_target_and_machine_tail`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail`,
+  giving the shared beta/`FOp` tail-step residual a constructor-generic
+  machine-tail name while retaining the older `FOp`-named entry points.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedBetaTargetPreservesWfMPayload`,
   `MEqRedBetaPreservesWfMachineStatePayload.of_target_and_tail_step`,
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_tail_step`,
