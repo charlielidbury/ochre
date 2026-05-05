@@ -399,6 +399,23 @@ def MEqRedFOpBodyPayload : Type :=
                     (Stack.shift 0 s) body body' →
                     WfM ({ bound := bound', kind := .sub } :: Γ) body'
 
+/-- Typed `Me-FOp` body residual. Unlike `MEqRedFOpBodyPayload`, this records
+the application typing fact that the stack operand is a well-subtype of the
+abstraction bound. This is the premise missing from the broad contextual
+target refuted by `MEqRedPreservesWfMContextual.not_of_no_top`. -/
+def MEqRedFOpBodyTypedPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {bound bound' operand body body' : Term},
+    WfCtxEqu Γ →
+      WfStack Γ s →
+        WfM Γ bound →
+          WfM Γ bound' →
+            WSubMStar Γ operand bound →
+              WfM ({ bound := bound, kind := .sub } :: Γ) body →
+                MEqRed Γ [] bound bound' →
+                  MEqRed ({ bound := operand, kind := .equ } :: Γ)
+                    (Stack.shift 0 s) body body' →
+                    WfM ({ bound := bound', kind := .sub } :: Γ) body'
+
 /-- The native `Me-FOp` body residual is still too broad with only
 `WfStack`: the stack operand can be `Top` while the abstraction body uses the
 head variable as a function. Under the `.equ Top` head the body can reduce to
@@ -853,6 +870,30 @@ noncomputable def MEqRed.fOp_preservesWfM_of_contextual
     hpres hΓ WfStack.nil hredBound hwfBound
   exact WfM.fun_ hwfBound'
     (hBody hΓ hStack hwfBound hwfBound' hwfOperand hwfBody hredBound hredBody)
+
+/-- Typed `Me-FOp` well-formedness preservation. This is the constructive
+replacement shape for the broad contextual helper: the caller must provide
+the application typing premise `operand ≤* bound`, and only empty-stack
+preservation is needed for the abstraction-bound reduction. -/
+noncomputable def MEqRed.fOp_preservesWfM_of_empty_and_typed_body
+    (hpres : MEqRedPreservesWfMUnderWfCtx)
+    (hBody : MEqRedFOpBodyTypedPayload)
+    {Γ : Ctx} {s : Stack} {bound bound' operand body body' : Term}
+    (hΓ : WfCtxEqu Γ) (hStack : WfStack Γ s)
+    (hOperandBound : WSubMStar Γ operand bound)
+    (hredBound : MEqRed Γ [] bound bound')
+    (hredBody : MEqRed ({ bound := operand, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body')
+    (hwfAbs : WfM Γ (.abs bound body)) :
+    WfM Γ (.abs bound' body') := by
+  have hwfBound : WfM Γ bound := hwfAbs.fun_inv.1
+  have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γ) body :=
+    hwfAbs.fun_inv.2
+  have hwfBound' : WfM Γ bound' :=
+    hpres hΓ ⟨hredBound⟩ hwfBound
+  exact WfM.fun_ hwfBound'
+    (hBody hΓ hStack hwfBound hwfBound' hOperandBound hwfBody
+      hredBound hredBody)
 
 /-- Contextual `MEqRed` well-formedness preservation assembled from the
 remaining constructor payloads. The direct cases are proved here; the β,

@@ -43,6 +43,14 @@ closures, 2 inactive outstanding).
   step checks the body under `.equ Top` and reduces `(bvar 0) Top` to
   `Top Top`. Thus `MEqRedPreservesWfMContextual` with only `WfStack` is not
   the right final theorem statement. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpBodyTypedPayload`, the replacement `Me-FOp` body residual shape
+  that records the missing application-typing premise
+  `WSubMStar Γ operand bound`. Added
+  `MEqRed.fOp_preservesWfM_of_empty_and_typed_body`, which reconstructs the
+  target abstraction from this typed residual plus empty-stack preservation
+  for the bound reduction. This is the first constructive interface after
+  the broad contextual target was refuted. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
