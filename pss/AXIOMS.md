@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_recursive_stack_handlers_of`,
+  a dispatcher wrapper for the structural `Ms-App × Me-App` body branch.
+  It internalizes the stable recursive `Me-Pro`, `Me-App`, and `Ms-App`
+  handler assemblies, reducing them to payload/operator transport at the
+  nested changed stack. The still-explicit residuals are now the recursive
+  `Me-Bet`, `Me-FOp`, and `Ms-FOp` cases plus the existing operator
+  commutativity/subtype-premise replacement obligations. Added the endpoint
+  to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.stack_head_subtype_replace_from_handlers`, an equivalence-origin
   one-step splitter for subtype transport across a changed stack head. It
