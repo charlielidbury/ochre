@@ -231,6 +231,18 @@ def BetaInstantiationPreservesMSubRedStack : Type :=
         MSubRed Γ (Stack.instantiate 0 arg s)
           (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
 
+/-- The remaining head-variable branch of arbitrary-stack `MSubRed.pro`
+substitution. A source head `.sub` lookup reduces `bvar 0` to the lifted
+bound; after β-instantiation this asks for a machine subtype reduction from
+the argument to the instantiated lifted bound over the instantiated stack. -/
+def BetaInstantiationPreservesMSubRedProHeadPayload : Type :=
+  ∀ {Γ : Ctx} {bound arg : Term} {s : Stack},
+    WSubMStar Γ arg bound →
+      PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s →
+        MSubRed Γ (Stack.instantiate 0 arg s)
+          (Term.instantiate 0 arg (.bvar 0))
+          (Term.instantiate 0 arg (Term.shift 0 bound))
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -746,6 +758,25 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.pro_succ
       simpa [Term.instantiate] using
         MSubRed.pro (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv)
           htarget
+
+/-- Constructor-facing arbitrary-stack `MSubRed.pro` substitution, split into
+the explicit head-variable payload and the proved successor-variable
+descent. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.pro
+    (hHead : BetaInstantiationPreservesMSubRedProHeadPayload)
+    {Γ : Ctx} {bound arg t : Term} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hb : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ) i t) :
+    MSubRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.bvar i)) (Term.instantiate 0 arg t) := by
+  cases i with
+  | zero =>
+      simp [Ctx.subBinds] at hb
+      subst hb
+      simpa using hHead hArgBound hpv
+  | succ i =>
+      exact BetaInstantiationPreservesMSubRedStack.pro_succ hArgBound hpv hb
 
 /-- `MEqRed.tAp` is stable under de Bruijn β-instantiation at the empty
 stack. -/

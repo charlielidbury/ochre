@@ -156,6 +156,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRed
 #print axioms BetaInstantiationPreservesMEqRedStack
 #print axioms BetaInstantiationPreservesMSubRedStack
+#print axioms BetaInstantiationPreservesMSubRedProHeadPayload
 #print axioms BetaInstantiationPreservesMEqRed.of_stack
 #print axioms BetaInstantiationPreservesMSubRed.of_stack
 #print axioms BetaInstantiationPreservesMEqRedStack.refl
@@ -189,6 +190,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top
 #print axioms BetaInstantiationPreservesMSubRedStack.pro_succ
+#print axioms BetaInstantiationPreservesMSubRedStack.pro
 #print axioms BetaInstantiationPreservesMEqRed.tAp
 #print axioms BetaInstantiationPreservesMEqRedStack.tAp
 #print axioms BetaInstantiationPreservesMEqRedStack.app

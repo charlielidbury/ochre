@@ -219,6 +219,14 @@ closures, 2 inactive outstanding).
   the explicit `WSubMStar`-to-machine-reduction frontier. Added the endpoint
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMSubRedProHeadPayload` and the constructor-facing
+  `BetaInstantiationPreservesMSubRedStack.pro` helper. The new helper splits
+  `MSubRed.pro` substitution into the proved successor descent and the single
+  explicit head-variable payload, making the remaining frontier precise:
+  convert `WSubMStar Γ arg bound` into the required machine subtype reduction
+  from the instantiated head variable over the instantiated stack. Added both
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem
