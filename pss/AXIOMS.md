@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedMachineStackHeadReplacePayload.of_body_transports_and_steps`,
+  `MEqRedProAnnotationMachineStatePayload.of_body_transports_and_steps`,
+  and `MEqRedPreservesWfMachineState.of_body_transports`, so the
+  external-empty machine-state assembly also consumes the reduced stack-lift
+  body-transport package directly. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty`, the current
   most decomposed machine-state preservation assembly: control/app-operator
   transport is supplied by the stack-lift body transports plus one-step

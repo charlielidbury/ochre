@@ -1612,6 +1612,19 @@ noncomputable def MEqRedMachineStackHeadReplacePayload.of_control_left
     hControl hControlBack (WfMachineState.tail_state hState)
   simpa [WfMachineState, Stack.plug] using hTail'
 
+/-- Stack-head replacement assembled from empty-stack preservation and the
+reduced stack-lift body-transport package. -/
+noncomputable def MEqRedMachineStackHeadReplacePayload.of_body_transports_and_steps
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload) :
+    MEqRedMachineStackHeadReplacePayload :=
+  MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty
+    (WfMachineStateControlLeftPayload.of_body_transports_and_steps
+      hEqBody hSubBody hPres hStep)
+
 /-- Control-left transport discharges the smaller `Me-Pro` annotation
 machine-state residual. The empty-stack `Me-Pro` step embeds backward as
 `α ≤* bvar i`; control transport then replaces the machine-state control. -/
@@ -1628,6 +1641,18 @@ noncomputable def MEqRedProAnnotationMachineStatePayload.of_control_left
   have hαVar : WSubMStar Γ α (.bvar i) :=
     WSubMStar.of_MEqRed_back hPro hwfVar hwfα
   exact hControl hαVar hState
+
+/-- The smaller `Me-Pro` annotation machine-state residual assembled from the
+reduced stack-lift body-transport package. -/
+noncomputable def MEqRedProAnnotationMachineStatePayload.of_body_transports_and_steps
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload) :
+    MEqRedProAnnotationMachineStatePayload :=
+  MEqRedProAnnotationMachineStatePayload.of_control_left
+    (WfMachineStateControlLeftPayload.of_body_transports_and_steps
+      hEqBody hSubBody hPres hStep)
 
 /-- The `Me-TAp` machine-state residual is vacuous under the context-generic
 no-`Top`-function-supertype fact: a plugged source state for `.app .top u`
@@ -1691,6 +1716,30 @@ noncomputable def MEqRedPreservesWfMachineState.of_reduced_components
     hBeta
     (MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty
       (WfMachineStateControlLeftPayload.of_app_operator hAppOp))
+    (MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace
+      hEmpty hFunBody)
+    (MEqRedTApPreservesWfMachineStatePayload.of_no_top hNoTop)
+    hFOp
+
+/-- External-empty reduced assembly using the current body-transport
+decomposition for control/app-operator transport. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_components_pro_annotation
+    (MEqRedProAnnotationMachineStatePayload.of_body_transports_and_steps
+      hEqBody hSubBody hPres hStep)
+    hBeta
+    (MEqRedMachineStackHeadReplacePayload.of_body_transports_and_steps
+      hEmpty hEqBody hSubBody hPres hStep)
     (MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace
       hEmpty hFunBody)
     (MEqRedTApPreservesWfMachineStatePayload.of_no_top hNoTop)
