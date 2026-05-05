@@ -210,6 +210,18 @@ structure AbsFunctionBoundChainDiagram
     MEqRedChain Γ [] (.abs result .top) (.abs joinBound joinBody)
   wfJoinBound : WfM Γ joinBound
 
+/-- Shape-only version of the Type-valued function-bound common-reduct
+diagram. It records that the common reduct is an abstraction, but leaves the
+well-formedness of the joined bound as an explicit later obligation. -/
+structure AbsFunctionBoundChainShape
+    (Γ : Ctx) (bound body result : Term) : Type where
+  joinBound : Term
+  joinBody : Term
+  subJoin :
+    MSubRedChain Γ [] (.abs bound body) (.abs joinBound joinBody)
+  eqJoin :
+    MEqRedChain Γ [] (.abs result .top) (.abs joinBound joinBody)
+
 /-- Generic Type-valued common-reduct diagram for abstraction-to-abstraction
 well-subtyping. The function-supertype diagram is the specialization where
 the target body is `Top`. -/
@@ -234,6 +246,17 @@ def AbsFunctionBoundChainDiagram.of_abs_abs
   subJoin := d.subJoin
   eqJoin := d.eqJoin
   wfJoinBound := d.wfJoinBound
+
+/-- Forget only the bound well-formedness component of a function-bound chain
+diagram. -/
+def AbsFunctionBoundChainShape.of_diagram
+    {Γ : Ctx} {bound body result : Term}
+    (d : AbsFunctionBoundChainDiagram Γ bound body result) :
+    AbsFunctionBoundChainShape Γ bound body result where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := d.subJoin
+  eqJoin := d.eqJoin
 
 /-- Remaining Type-valued diagram payload for function-bound inversion. -/
 def AbsFunctionBoundDiagramPayload : Type :=
@@ -361,6 +384,25 @@ noncomputable def WSubMStar.to_chain_diagram_of {Γ : Ctx}
     (fun _ _ _ ihLeft _ ihRight => fun hcomm =>
       WSubMChainDiagram.trans_of hcomm (ihLeft hcomm) (ihRight hcomm))
     hSub) hcomm
+
+/-- Extract the abstraction-shaped function-bound common reduct from a
+transitive function-supertype derivation. This is the star-level diagram
+shape needed before proving the joined bound is well-formed. -/
+noncomputable def WSubMStar.abs_function_bound_chain_shape_of
+    {Γ : Ctx} (hcomm : StrongCommutes Γ [])
+    {bound body result : Term}
+    (hSub : WSubMStar Γ (.abs bound body) (.abs result .top)) :
+    AbsFunctionBoundChainShape Γ bound body result := by
+  let d := hSub.to_chain_diagram_of hcomm
+  obtain ⟨joinBound, joinBody, hJoin⟩ := d.eqJoin.abs_inv_type
+  cases hJoin with
+  | up hJoin =>
+      exact {
+        joinBound := joinBound
+        joinBody := joinBody
+        subJoin := by simpa [hJoin] using d.subJoin
+        eqJoin := by simpa [hJoin] using d.eqJoin
+      }
 
 /-- Reflexive abstraction-to-abstraction chain diagram. -/
 def AbsAbsBoundChainDiagram.refl
