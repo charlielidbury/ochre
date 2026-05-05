@@ -15,9 +15,10 @@ closures, 2 inactive outstanding).
   existing list-generic prefix transport. This gives the seven-head
   binder-body frontier the same fixed prevalidity leaf surface as the lower
   numbered preserved-head layers. Also added the immediate eight-head
-  `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.top`.
-  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
-  change.
+  `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.top`
+  and the structural `Me-App` leaf
+  `BetaInstantiationPreservesMEqRedUnderEightHeadsStack.app`. Added
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and

@@ -2649,6 +2649,159 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.top
   MEqRed.top (BetaInstantiationPreservesPrevalidExtUnderEightHeads
     hArgBound hpv)
 
+/-- `MEqRed.app` is stable under de Bruijn β-instantiation below eight
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.app
+    {Γ : Ctx} {arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ u u' v v' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ : CtxEntryKind} {s : Stack}
+    (hFn :
+      MEqRed
+        ({ bound := Term.instantiate 7
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0
+                    (Term.shift 0
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 6
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 5
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₄,
+            kind := kind₄ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₅,
+            kind := kind₅ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₆,
+            kind := kind₆ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₇,
+            kind := kind₇ } ::
+          { bound := Term.instantiate 0 arg head₈, kind := kind₈ } :: Γ)
+        (Term.instantiate 8
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0
+                    (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) v ::
+          Stack.instantiate 8
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0
+                    (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) s)
+        (Term.instantiate 8
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) u)
+        (Term.instantiate 8
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) u'))
+    (hArg :
+      MEqRed
+        ({ bound := Term.instantiate 7
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0
+                    (Term.shift 0
+                      (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 6
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 5
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₄,
+            kind := kind₄ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₅,
+            kind := kind₅ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₆,
+            kind := kind₆ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₇,
+            kind := kind₇ } ::
+          { bound := Term.instantiate 0 arg head₈, kind := kind₈ } :: Γ)
+        []
+        (Term.instantiate 8
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) v)
+        (Term.instantiate 8
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) v')) :
+    MEqRed
+      ({ bound := Term.instantiate 7
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0
+                    (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 6
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₅,
+          kind := kind₅ } ::
+        { bound := Term.instantiate 2
+            (Term.shift 0 (Term.shift 0 arg)) head₆,
+          kind := kind₆ } ::
+        { bound := Term.instantiate 1 (Term.shift 0 arg) head₇,
+          kind := kind₇ } ::
+        { bound := Term.instantiate 0 arg head₈, kind := kind₈ } :: Γ)
+      (Stack.instantiate 8
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) s)
+      (Term.instantiate 8
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))))
+        (.app u v))
+      (Term.instantiate 8
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))))
+        (.app u' v')) := by
+  simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below seven
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.top
