@@ -2577,6 +2577,26 @@ theorem diamond_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
     meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα
       (MEqRedStar.single hRight.some)⟩
 
+/-- Fixed-bound `FOp` abstraction cell with stack prevalidity and operand
+scopedness recovered from the left abstraction equivalence step. -/
+theorem diamond_abs_fOp_body_fixed_bound_from_left {Γ : Ctx} {s : Stack}
+    {α bound body body₁ body₂ : Term}
+    (hdiamondBody : EqDiamonds ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s))
+    (hLeft : MEqRed Γ (α :: s) (.abs bound body) (.abs bound body₁))
+    (hBody₁ : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₁)
+    (hBody₂ : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MEqRedStar Γ (α :: s) (.abs bound body₂) t₃ := by
+  exact diamond_abs_fOp_body_fixed_bound
+    (PrevalidExt.tail hLeft.prevalidExt)
+    (Term.Scoped.abs_inv hLeft.scoped_left).1
+    (PrevalidExt.head_scoped hLeft.prevalidExt)
+    hdiamondBody hBody₁ hBody₂
+
 /-- Star-level fixed-bound `FOp` abstraction diamond. A body-level de Bruijn
 Lemma-2 premise lifts to equivalence chains under the operand `.equ` head,
 then through the abstraction. -/
@@ -2623,6 +2643,26 @@ theorem commute_abs_fOp_body_fixed_bound {Γ : Ctx} {s : Stack}
       (MEqRedStar.single hLeft.some),
     msubRedStar_abs_fOp_body_fixed_bound hBoundScoped hα
       (MSubRedStar.single hRight.some)⟩
+
+/-- Fixed-bound `FOp` abstraction commutation with stack prevalidity and
+operand scopedness recovered from the left abstraction subtype step. -/
+theorem commute_abs_fOp_body_fixed_bound_from_left {Γ : Ctx} {s : Stack}
+    {α bound body body₁ body₂ : Term}
+    (hcommBody : StrongCommutes ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s))
+    (hLeft : MSubRed Γ (α :: s) (.abs bound body) (.abs bound body₁))
+    (hSubBody : MSubRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₁)
+    (hEqBody : MEqRed ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound body₂) t₃ := by
+  exact commute_abs_fOp_body_fixed_bound
+    (PrevalidExt.tail hLeft.prevalidExt)
+    (Term.Scoped.abs_inv hLeft.scoped_left).1
+    (PrevalidExt.head_scoped hLeft.prevalidExt)
+    hcommBody hSubBody hEqBody
 
 /-- Fixed-body `FOp` abstraction cell for de Bruijn Lemma 2. A bound-level
 equivalence diamond lifts through `FOp` when the operand and body are
@@ -2831,6 +2871,20 @@ theorem diamond_abs_fun_body_fixed_bound {Γ : Ctx}
     meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
       (MEqRedStar.single hRight.some)⟩
 
+/-- Fixed-bound `Fun` abstraction cell with empty-stack prevalidity and bound
+scopedness recovered from the left abstraction equivalence step. -/
+theorem diamond_abs_fun_body_fixed_bound_from_left {Γ : Ctx}
+    {bound body body₁ body₂ : Term}
+    (hdiamondBody : EqDiamonds ({ bound := bound, kind := .sub } :: Γ) [])
+    (hLeft : MEqRed Γ [] (.abs bound body) (.abs bound body₁))
+    (hBody₁ : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hBody₂ : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound body₁) t₃ ∧
+        MEqRedStar Γ [] (.abs bound body₂) t₃ := by
+  exact diamond_abs_fun_body_fixed_bound hLeft.prevalidExt
+    (Term.Scoped.abs_inv hLeft.scoped_left).1 hdiamondBody hBody₁ hBody₂
+
 /-- Star-level fixed-bound `Fun` abstraction diamond. A body-level de Bruijn
 Lemma-2 premise lifts to equivalence chains under the `.sub` head, then
 through the abstraction. -/
@@ -2869,6 +2923,20 @@ theorem commute_abs_fun_body_fixed_bound {Γ : Ctx}
       (MEqRedStar.single hLeft.some),
     msubRedStar_abs_fun_body_fixed_bound hpvNil hBoundScoped
       (MSubRedStar.single hRight.some)⟩
+
+/-- Fixed-bound `Fun` abstraction commutation with empty-stack prevalidity and
+bound scopedness recovered from the left abstraction subtype step. -/
+theorem commute_abs_fun_body_fixed_bound_from_left {Γ : Ctx}
+    {bound body body₁ body₂ : Term}
+    (hcommBody : StrongCommutes ({ bound := bound, kind := .sub } :: Γ) [])
+    (hLeft : MSubRed Γ [] (.abs bound body) (.abs bound body₁))
+    (hSubBody : MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound body₂) t₃ := by
+  exact commute_abs_fun_body_fixed_bound hLeft.prevalidExt
+    (Term.Scoped.abs_inv hLeft.scoped_left).1 hcommBody hSubBody hEqBody
 
 /-- Fixed-body `Fun` abstraction cell for de Bruijn Lemma 2. A bound-level
 equivalence diamond lifts to abstractions when the body is unchanged. -/

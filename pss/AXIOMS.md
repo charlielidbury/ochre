@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added `_from_left`
+  wrappers for the fixed-bound `Fun`/`FOp` abstraction diamond and
+  commutation cells, recovering prevalidity and scopedness from the inspected
+  left reduction. Added the endpoints to the de Bruijn audit. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — rewired structural app-abs
   helper proofs to call the audited `_from_left` wrappers for residual,
   body-replacement, and shifted-replacement branches. No axiom-count change.
