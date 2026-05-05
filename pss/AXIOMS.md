@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_two_sub_heads_nil_replace_from_split_handlers`, a
+  sharpened empty-stack two-`.sub` equivalence replacement splitter that
+  separates the changed `.equ` lookup at index `2` from genuine tail lookups.
+  This prepares the nested structural-app residual to discharge the changed
+  head payload independently from stable outer-tail `Me-Pro` cases. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_two_sub_heads_nil_replace_from_handlers`, the empty-stack
   specialization of raw equivalence replacement across a changed `.equ` entry
   under two preserved `.sub` heads. It keeps the impossible low-index
