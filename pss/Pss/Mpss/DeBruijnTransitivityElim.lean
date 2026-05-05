@@ -3568,6 +3568,71 @@ theorem commute_abs_fun_targets_of_bound_body_joins_from_left {Γ : Ctx}
       (msubRedStar_abs_fun_body_fixed_bound hRight.prevalidExt hBound₃Scoped
         hBody₂₃)⟩
 
+/-- Abstraction-level structural `Ms-App × Me-App` body branch for the
+`Ms-Fun × Me-Fun` cell. The outer bound join is handled here; the operator
+steps and changed-argument stack-head transport are supplied under each
+joined bound, avoiding an invalid blanket replacement theorem for arbitrary
+subtype steps under a changed `.sub` head. -/
+theorem commute_abs_fun_fun_app_body_app_from_operator_join_of {Γ : Ctx}
+    {bound bound₁ bound₂ u u' v u₂ v₂ : Term}
+    (_hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hSubOp : MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u')
+    (hArgScoped : Term.Scoped
+      (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqOp : MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂)
+    (hEqArg : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂)
+    (hcommOp :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        StrongCommutes ({ bound := bound₃, kind := .sub } :: Γ) (v :: []))
+    (hSubOpReplace :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        MSubRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) u u')
+    (hEqOpReplace :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) u u₂)
+    (hEqArgReplace :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂)
+    (hTransport :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        ∀ {a b : Term},
+          MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) a b →
+          MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: []) a b) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃ := by
+  let hLeft : MSubRed Γ [] (.abs bound (.app u v)) (.abs bound₁ (.app u' v)) :=
+    MSubRed.fun_ hSubBound.scoped_left hSubBound
+      (MSubRed.app hSubOp hArgScoped)
+  let hRight : MEqRed Γ [] (.abs bound (.app u v)) (.abs bound₂ (.app u₂ v₂)) :=
+    MEqRed.fun_ hEqBound (MEqRed.app hEqOp hEqArg)
+  exact commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+    (hdiamondBound hSubBound hEqBound)
+    (fun {bound₃} hBound₁₃ hBound₂₃ => by
+      have hArgScoped₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v := by
+        simpa [Ctx.depth] using hArgScoped
+      exact commute_app_app_body_from_operator_join_of
+        (hcommOp hBound₁₃ hBound₂₃)
+        (hSubOpReplace hBound₁₃ hBound₂₃)
+        hArgScoped₃
+        (hEqOpReplace hBound₁₃ hBound₂₃)
+        (hEqArgReplace hBound₁₃ hBound₂₃)
+        (hTransport hBound₁₃ hBound₂₃))
+
 /-- Changing-bound/changing-body `Fun` abstraction commutation when the body
 joins are first built under each branch's original bound and the right body
 branch originates from equivalence. The right branch is transported to the

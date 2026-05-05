@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_app_body_app_from_operator_join_of`, lifting the
+  structural `Ms-App × Me-App` body join through the outer `Ms-Fun × Me-Fun`
+  abstraction. The theorem handles the outer bound join and keeps the
+  operator premise replacement plus changed-argument stack-head transport as
+  explicit obligations, avoiding a false arbitrary `.sub` head replacement
+  principle for subtype steps. Added the endpoint to the de Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_app_app_body_from_operator_join_of`, the fixed-context
   structural `Ms-App × Me-App` body join. Given strong commutativity for
   the operator stack and the precise transport of the operator subtype
