@@ -548,6 +548,15 @@ def MEqRedFunStackAppendPayload : Type :=
         Term.Scoped Γ.depth operand →
           MEqRed Γ [operand] (.abs bound body) (.abs bound' body')
 
+/-- Transport an empty-stack equivalence body reduction from the source
+function `.sub` head to the stack-introduced operand `.equ` head. This is the
+body premise needed to rebuild a non-empty-stack `Me-Fun` as `Me-FOp`. -/
+def MEqRedSubHeadToEquHeadPayload : Type :=
+  ∀ {Γ : Ctx} {bound operand body body' : Term},
+    MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+      Term.Scoped Γ.depth operand →
+        MEqRed ({ bound := operand, kind := .equ } :: Γ) [] body body'
+
 /-- Transitive diagrammatic stack lift under one operand stack head. -/
 def MSubStarStackLiftPayload : Prop :=
   ∀ {Γ : Ctx} {source target operand : Term},
@@ -836,6 +845,14 @@ def MEqRedStackLiftPayload.of_append
     MEqRedStackLiftPayload := by
   intro Γ source target operand hStep hOperand
   simpa using (hAppend (s := ([] : Stack)) hStep hOperand)
+
+/-- Body transport from the source `.sub` head to the operand `.equ` head
+discharges the empty-stack-only `Me-Fun` stack append residual. -/
+def MEqRedFunStackAppendPayload.of_body_transport
+    (hBody : MEqRedSubHeadToEquHeadPayload) :
+    MEqRedFunStackAppendPayload := by
+  intro Γ bound bound' body body' operand hBound hBodyRed hOperand
+  exact MEqRed.fOp hBound hOperand (hBody hBodyRed hOperand)
 
 namespace Stack
 
