@@ -170,7 +170,8 @@ closures, 2 inactive outstanding).
   `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack.top`
   and `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack.app`,
   plus the sixteen-head reflexive leaf
-  `BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack.refl`.
+  `BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack.refl` and variable
+  leaf `BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack.var`.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
