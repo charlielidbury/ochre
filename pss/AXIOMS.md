@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added side-condition-free
+  wrappers for the abstraction-source `Top`/abstraction dispatcher, recovering
+  source prevalidity and scopedness from the inspected one-step subtype or
+  equivalence reduction. Added the endpoints to the de Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added `_from_left`
   wrappers for the fixed-body `Fun`/`FOp` abstraction diamond and
   commutation cells, recovering prevalidity and scopedness from the inspected
