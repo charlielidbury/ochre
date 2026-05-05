@@ -1217,6 +1217,11 @@ closures, 2 inactive outstanding).
   `AbsFunctionBoundChainDiagramPayload`, plus
   `AbsFunctionBoundInversion_of_chain_diagram`, consuming the new
   `MEqRedChain`/`MSubRedChain` bound projections. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added generic
+  abstraction-to-abstraction chain diagrams `AbsAbsBoundChainDiagram` and
+  the specialization wrapper `AbsFunctionBoundChainDiagram.of_abs_abs`.
+  This prepares the direct `WSubM` extraction, whose right-equivalence branch
+  changes the target abstraction body away from `Top`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

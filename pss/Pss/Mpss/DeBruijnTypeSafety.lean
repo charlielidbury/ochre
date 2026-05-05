@@ -177,6 +177,31 @@ structure AbsFunctionBoundChainDiagram
     MEqRedChain Γ [] (.abs result .top) (.abs joinBound joinBody)
   wfJoinBound : WfM Γ joinBound
 
+/-- Generic Type-valued common-reduct diagram for abstraction-to-abstraction
+well-subtyping. The function-supertype diagram is the specialization where
+the target body is `Top`. -/
+structure AbsAbsBoundChainDiagram
+    (Γ : Ctx) (bound body result resultBody : Term) : Type where
+  joinBound : Term
+  joinBody : Term
+  subJoin :
+    MSubRedChain Γ [] (.abs bound body) (.abs joinBound joinBody)
+  eqJoin :
+    MEqRedChain Γ [] (.abs result resultBody) (.abs joinBound joinBody)
+  wfJoinBound : WfM Γ joinBound
+
+/-- Specialize a generic abstraction-to-abstraction diagram to the
+function-supertype diagram used by β preservation. -/
+def AbsFunctionBoundChainDiagram.of_abs_abs
+    {Γ : Ctx} {bound body result : Term}
+    (d : AbsAbsBoundChainDiagram Γ bound body result .top) :
+    AbsFunctionBoundChainDiagram Γ bound body result where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := d.subJoin
+  eqJoin := d.eqJoin
+  wfJoinBound := d.wfJoinBound
+
 /-- Remaining Type-valued diagram payload for function-bound inversion. -/
 def AbsFunctionBoundDiagramPayload : Type :=
   ∀ {Γ : Ctx} {bound body result : Term},
