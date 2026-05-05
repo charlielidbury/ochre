@@ -40,8 +40,9 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesPrevalidExtUnderNineHeads` and the nine-head
   `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.top`,
   plus the structural `Me-App` leaf
-  `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.app`. Added endpoints
-  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.app` and reflexive
+  leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.refl`. Added
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
