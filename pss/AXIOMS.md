@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_operator_machine_tail`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_machine_operator_machine_tail`,
+  removing the external empty-stack preservation premise from the split-beta
+  machine route by using the `Me-Bet` argument-step induction hypothesis
+  directly. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedBetaBodyPreservesWfMPayload`,
   `MEqRedBetaBodyPreservesWfMPayload.of_contextual`,
   `MEqRedBetaTargetPreservesWfMPayload.of_body_arg_and_subst`,
