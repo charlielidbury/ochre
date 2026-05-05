@@ -56,6 +56,12 @@ closures, 2 inactive outstanding).
   `Lemma_30_msPro_x_axiom` under the explicit stronger predicate. Added the
   module to `Pss.lean`. No headline axiom-count change: the existing
   `WSubM.lf2` call site still does not provide this predicate.
+* `Pss/Mpss/TypeSafety.lean` — added
+  `Lemma7.lf2_allows_noProOn_false_on_head_sub`, the `noProOn` analogue of
+  the existing `msAvoidsPro` diagnostic. It constructs the same concrete
+  `WSubM.lf2` derivation and proves its `MSubRed.pro` premise does not
+  satisfy `MSubRed.noProOn "x"`. This confirms the new axiom-free Lemma 30
+  route still needs a real call-site invariant, not just plumbing.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
