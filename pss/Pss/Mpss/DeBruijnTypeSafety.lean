@@ -362,6 +362,16 @@ with its pending stack when the plugged application spine is well formed. -/
 def WfMachineState (Γ : Ctx) (t : Term) (s : Stack) : Type :=
   WfM Γ (Stack.plug t s)
 
+/-- Corrected stack-indexed preservation target: a reduction preserves
+well-formedness of the whole machine state obtained by plugging the pending
+stack into the control term. The earlier target
+`MEqRedPreservesWfMContextual` is refuted below because it only remembered
+per-element stack well-formedness. -/
+def MEqRedPreservesWfMachineState : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {x y : Term},
+    WfCtxEqu Γ → MEqRed Γ s x y →
+      WfMachineState Γ x s → WfMachineState Γ y s
+
 namespace WfMachineState
 
 /-- Tail view of a non-empty plugged machine state. -/
@@ -915,6 +925,15 @@ def MEqRedBetaPreservesWfMContextual : Type :=
 /-- Empty-stack preservation under a well-formed-equivalence context. -/
 def MEqRedPreservesWfMUnderWfCtx : Type :=
   ∀ {Γ : Ctx} {x y : Term}, WfCtxEqu Γ → MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
+
+/-- Machine-state preservation specializes to empty-stack well-formedness
+preservation. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtx.of_machine_state
+    (hpres : MEqRedPreservesWfMachineState) :
+    MEqRedPreservesWfMUnderWfCtx := by
+  intro Γ x y hΓ hred hwf
+  simpa [WfMachineState, Stack.plug] using
+    hpres hΓ hred.some (by simpa [WfMachineState, Stack.plug] using hwf)
 
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this

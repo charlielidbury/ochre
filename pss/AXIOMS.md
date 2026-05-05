@@ -84,6 +84,13 @@ closures, 2 inactive outstanding).
   invariant. This lets future typed preservation assembly reuse existing
   stack-weakening infrastructure while sourcing stack well-formedness from
   the correct application-spine typing. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the corrected stack-indexed
+  preservation target `MEqRedPreservesWfMachineState`, phrased over
+  `WfMachineState Γ t s` instead of the refuted pair
+  `WfM Γ t`/`WfStack Γ s`. Added
+  `MEqRedPreservesWfMUnderWfCtx.of_machine_state`, specializing machine-state
+  preservation back to the existing empty-stack preservation interface. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
