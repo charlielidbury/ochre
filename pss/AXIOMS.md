@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedEmptyPreservesWSubMStarLeft.of_machine_state`, deriving the
+  empty-stack left-endpoint well-subtyping transport from corrected
+  machine-state preservation by specializing to the empty stack. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state` and
   `AbsFunctionBoundChainShapeWfClosedPayload_of_machine_state`, deriving the
   shape-only joined-bound well-formedness payloads from the corrected

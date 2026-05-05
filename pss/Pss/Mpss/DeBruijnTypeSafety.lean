@@ -3572,6 +3572,14 @@ noncomputable def MEqRedEmptyPreservesWSubMStarLeft.of_contextual
   MEqRedEmptyPreservesWSubMStarLeft.of_wf_preservation
     (MEqRedPreservesWfMUnderWfCtx.of_contextual hpres)
 
+/-- Machine-state preservation supplies empty-stack left-endpoint transport
+by specializing the machine state to the empty stack. -/
+noncomputable def MEqRedEmptyPreservesWSubMStarLeft.of_machine_state
+    (hpres : MEqRedPreservesWfMachineState) :
+    MEqRedEmptyPreservesWSubMStarLeft :=
+  MEqRedEmptyPreservesWSubMStarLeft.of_wf_preservation
+    (MEqRedPreservesWfMUnderWfCtx.of_machine_state hpres)
+
 /-- `Me-Pro` well-formedness preservation under the contextual preservation
 payload. `WfCtxEqu.lookup_equ` supplies the promoted annotation's
 well-formedness before the recursive reduction premise is used. -/
