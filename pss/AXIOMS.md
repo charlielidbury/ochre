@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the two-preserved-head
+  changed-`.equ` payload bridge
+  `msub_equ_under_two_heads_old_bound_to_new_bvar2`, its converse, and the
+  residual-chain consumer. These are the `bvar 2` analogues of the existing
+  head/under-head `Me-Pro` bridges and provide the missing payload for the
+  newly exposed two-`.sub` index-2 residual. Added the endpoints to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MSubRed.equ_under_two_sub_heads_nil_replace_from_split_handlers`, the raw
   subtype counterpart to the split two-`.sub` equivalence replacement. It wires
