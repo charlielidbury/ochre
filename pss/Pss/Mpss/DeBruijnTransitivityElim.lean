@@ -9421,6 +9421,33 @@ noncomputable def commute_abs_fOp_body_fixed_bound_star {Γ : Ctx} {s : Stack}
     meqRedStar_abs_fOp_body_fixed_bound hpvTail hBoundScoped hα hLeft,
     msubRedStar_abs_fOp_body_fixed_bound hBoundScoped hα hRight⟩
 
+/-- Star-level `FOp` abstraction commutation assembly for the case where the
+equivalence side changes the abstraction bound. The subtype side is already
+at the fixed bound `bound₂`; only body transport remains under the operand
+`.equ` head. -/
+noncomputable def commute_abs_fOp_eq_bound_body_star {Γ : Ctx} {s : Stack}
+    {α bound bound₂ body₁ body₂ body₃ : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hBoundScoped : Term.Scoped Γ.depth bound)
+    (hα : Term.Scoped Γ.depth α)
+    (hBody₁Scoped : Term.Scoped
+      (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body₁)
+    (hBound : MEqRedStar Γ [] bound bound₂)
+    (hEqBody : MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body₁ body₃)
+    (hSubBody : MSubRedStar ({ bound := α, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound₂ body₂) t₃ := by
+  have hBound₂Scoped : Term.Scoped Γ.depth bound₂ :=
+    hBound.scoped_right hBoundScoped
+  exact ⟨.abs bound₂ body₃,
+    MEqRedStar.trans
+      (meqRedStar_abs_fOp_bound_fixed_body hpvTail hα hBody₁Scoped hBound)
+      (meqRedStar_abs_fOp_body_fixed_bound hpvTail hBound₂Scoped hα hEqBody),
+    msubRedStar_abs_fOp_body_fixed_bound hBound₂Scoped hα hSubBody⟩
+
 /-- Star-level fixed-bound `Fun` abstraction commutation. A body-level
 de Bruijn Lemma-1 premise lifts subtype/equivalence chains under the `.sub`
 head, then through the abstraction. -/

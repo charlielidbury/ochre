@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fOp_eq_bound_body_star`, the star-level `FOp` commutation
+  assembly matching the shape where the equivalence side changes the
+  abstraction bound and body joins happen under the fixed operand `.equ` head.
+  Added the endpoint to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fOp_targets_of_eq_bound_body_joins_from_left`, the
   shape-correct `FOp` commutation assembly for the case where the equivalence
   side changes the abstraction bound. The helper records the constructor
