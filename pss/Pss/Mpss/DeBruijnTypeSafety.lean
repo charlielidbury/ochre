@@ -364,6 +364,13 @@ def WfMachineState (Γ : Ctx) (t : Term) (s : Stack) : Type :=
 
 namespace WfMachineState
 
+/-- Tail view of a non-empty plugged machine state. -/
+def tail_state {Γ : Ctx} {t operand : Term} {s : Stack} :
+    WfMachineState Γ t (operand :: s) →
+      WfMachineState Γ (.app t operand) s := by
+  intro hState
+  simpa [WfMachineState, Stack.plug] using hState
+
 /-- A well-formed non-empty machine state exposes the first application in
 the plugged stack. -/
 noncomputable def head_app_wf {Γ : Ctx} {t operand : Term} {s : Stack} :
@@ -379,6 +386,20 @@ noncomputable def head_app_wf {Γ : Ctx} {t operand : Term} {s : Stack} :
           simpa [WfMachineState, Stack.plug] using hState)
       obtain ⟨_, hFun, _⟩ := hNext.app_inv
       exact hFun.wf_left
+
+/-- A plugged well-formed machine state supplies the older per-element
+`WfStack` invariant as a projection. -/
+noncomputable def stack_wf {Γ : Ctx} {t : Term} {s : Stack} :
+    WfMachineState Γ t s → WfStack Γ s := by
+  induction s generalizing t with
+  | nil =>
+      intro _hState
+      exact WfStack.nil
+  | cons operand tail ih =>
+      intro hState
+      have hApp : WfM Γ (.app t operand) := head_app_wf hState
+      obtain ⟨_, _hFun, hArg⟩ := hApp.app_inv
+      exact WfStack.cons hArg.wf_left (ih (tail_state hState))
 
 /-- From a well-formed machine state headed by an abstraction, recover the
 typed `Me-FOp` premise that the popped operand is a well-subtype of the

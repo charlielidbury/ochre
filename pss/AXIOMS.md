@@ -78,6 +78,12 @@ closures, 2 inactive outstanding).
   `fop_operand_bound` recovers the typed `Me-FOp` premise
   `operand ≤* bound` from a well-formed plugged state and function-bound
   inversion under `WfCtxEqu`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WfMachineState.tail_state` and `WfMachineState.stack_wf`, projecting the
+  existing per-element `WfStack` invariant out of the stronger plugged-state
+  invariant. This lets future typed preservation assembly reuse existing
+  stack-weakening infrastructure while sourcing stack well-formedness from
+  the correct application-spine typing. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
