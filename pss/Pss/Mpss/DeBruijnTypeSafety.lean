@@ -6319,6 +6319,55 @@ def WfMSubHeadReplaceOfNewWf : Type :=
         WfM ({ bound := old, kind := .sub } :: Γ) body →
           WfM ({ bound := new, kind := .sub } :: Γ) body
 
+/-- Constructor-local direct residuals needed to replace a `.sub` head in a
+well-formed body once the replacement bound is already well formed.
+
+This packages the exact recursive premises consumed by
+`WfM.sub_head_replace_from_direct_payloads_of_new_wf`: direct term
+replacement in the immediate old head, direct replacement under one preserved
+head, empty-stack equivalence preservation in the old head, and the two
+application/function subtype residuals. -/
+structure WfMSubHeadReplaceDirectPayloads
+    (Γ : Ctx) (old new : Term) : Type where
+  wf : ∀ {x : Term},
+    WfM ({ bound := old, kind := .sub } :: Γ) x →
+      WfM ({ bound := new, kind := .sub } :: Γ) x
+  wfUnder : ∀ {head : CtxEntry} {x : Term},
+    WfM (head :: { bound := old, kind := .sub } :: Γ) x →
+      WfM (head :: { bound := new, kind := .sub } :: Γ) x
+  eqPresOld : ∀ {x y : Term},
+    MEqRedJ ({ bound := old, kind := .sub } :: Γ) [] x y →
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := old, kind := .sub } :: Γ) y
+  app : ∀ {arg u u' : Term},
+    Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) arg →
+      MSubRed ({ bound := old, kind := .sub } :: Γ) (arg :: []) u u' →
+        WfM ({ bound := new, kind := .sub } :: Γ) (.app u arg) →
+        WSubMStar ({ bound := new, kind := .sub } :: Γ)
+          (.app u arg) (.app u' arg)
+  fun_ : ∀ {t t' body body' : Term},
+    Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t →
+      MEqRed ({ bound := old, kind := .sub } :: Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+            { bound := old, kind := .sub } :: Γ) [] body body' →
+        WfM ({ bound := new, kind := .sub } :: Γ) (.abs t body) →
+        WSubMStar ({ bound := new, kind := .sub } :: Γ)
+          (.abs t body) (.abs t' body')
+
+/-- Assemble the sharpened `.sub` head replacement payload from the direct
+constructor-local residual package used by the de Bruijn well-formedness
+replacement theorem. -/
+noncomputable def WfMSubHeadReplaceOfNewWf.of_direct_payloads
+    (hPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new) :
+    WfMSubHeadReplaceOfNewWf := by
+  intro Γ old new body hOldNew hNew hBody
+  let p := hPayloads hOldNew hNew
+  exact WfM.sub_head_replace_from_direct_payloads_of_new_wf hBody hOldNew
+    hNew p.wf p.wfUnder p.eqPresOld p.app p.fun_
+
 /-- The existing sharpened `.sub` head replacement payload discharges the
 body-replacement payload needed by the contextual `Me-Fun` case. -/
 def MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf

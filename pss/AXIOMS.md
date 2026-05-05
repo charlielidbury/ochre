@@ -9,6 +9,17 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WfMSubHeadReplaceDirectPayloads` and
+  `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
+  de Bruijn well-formedness replacement theorem
+  `WfM.sub_head_replace_from_direct_payloads_of_new_wf` through a
+  TypeSafety-level payload package. The new surface records the exact
+  remaining constructor-local residuals for `.sub` head replacement:
+  immediate replacement, one-preserved-head replacement, old-head
+  empty-stack equivalence preservation, and the direct application/function
+  subtype residuals. Added the endpoint to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
