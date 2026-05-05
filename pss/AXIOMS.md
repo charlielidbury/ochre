@@ -76,6 +76,14 @@ closures, 2 inactive outstanding).
   replacement residual packages feed the shared machine-state body
   replacement payload boundary. Added both endpoints to the De Bruijn
   audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — threaded the direct/factored
+  `.sub` replacement payload boundary through contextual `Me-Fun` and
+  contextual `MEqRed` preservation wrappers:
+  `MEqRed.fun_preservesWfM_of_direct_sub_payloads`,
+  `.of_immediate_sub_payloads_and_under`,
+  `MEqRedPreservesWfMContextual.of_components_and_direct_sub_payloads`,
+  and `.of_components_and_immediate_sub_payloads_and_under`. Added all
+  four endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,

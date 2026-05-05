@@ -7574,6 +7574,44 @@ noncomputable def MEqRed.fun_preservesWfM_of_sub_head_replace
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hΓ hredBound hredBody hwfAbs
 
+/-- `Me-Fun` well-formedness preservation from direct `.sub` replacement
+residual payloads. -/
+noncomputable def MEqRed.fun_preservesWfM_of_direct_sub_payloads
+    (hpres : MEqRedPreservesWfMContextual)
+    (hPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {Γ : Ctx} {bound bound' body body' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hredBound : MEqRed Γ [] bound bound')
+    (hredBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body')
+    (hwfAbs : WfM Γ (.abs bound body)) :
+    WfM Γ (.abs bound' body') :=
+  MEqRed.fun_preservesWfM_of_contextual hpres
+    (MEqRedFunBodyReplacePayload.of_direct_sub_payloads hPayloads)
+    hΓ hredBound hredBody hwfAbs
+
+/-- `Me-Fun` well-formedness preservation from immediate top-level `.sub`
+replacement residuals plus the named preserved-head replacement payload. -/
+noncomputable def MEqRed.fun_preservesWfM_of_immediate_sub_payloads_and_under
+    (hpres : MEqRedPreservesWfMContextual)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {bound bound' body body' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hredBound : MEqRed Γ [] bound bound')
+    (hredBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body')
+    (hwfAbs : WfM Γ (.abs bound body)) :
+    WfM Γ (.abs bound' body') :=
+  MEqRed.fun_preservesWfM_of_contextual hpres
+    (MEqRedFunBodyReplacePayload.of_immediate_sub_payloads_and_under
+      hUnder hPayloads)
+    hΓ hredBound hredBody hwfAbs
+
 /-- Contextual `MEqRed` well-formedness preservation assembled from the
 remaining constructor payloads, using the existing sharpened `.sub` head
 replacement payload for `Me-Fun`. -/
@@ -7585,6 +7623,42 @@ noncomputable def MEqRedPreservesWfMContextual.of_components_and_sub_replace
     MEqRedPreservesWfMContextual :=
   MEqRedPreservesWfMContextual.of_components hBeta hOpFun
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
+    hFOpBody
+
+/-- Contextual `MEqRed` well-formedness preservation assembled from the
+remaining constructor payloads, using direct `.sub` replacement residuals for
+`Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_and_direct_sub_payloads
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components hBeta hOpFun
+    (MEqRedFunBodyReplacePayload.of_direct_sub_payloads hSubPayloads)
+    hFOpBody
+
+/-- Contextual `MEqRed` well-formedness preservation assembled from the
+remaining constructor payloads, using immediate top-level `.sub` replacement
+residuals plus the named preserved-head replacement payload for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_and_immediate_sub_payloads_and_under
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components hBeta hOpFun
+    (MEqRedFunBodyReplacePayload.of_immediate_sub_payloads_and_under
+      hUnder hSubPayloads)
     hFOpBody
 
 /-- Contextual `MEqRed` well-formedness preservation with the β constructor
