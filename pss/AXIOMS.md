@@ -1392,6 +1392,14 @@ closures, 2 inactive outstanding).
   closed function-bound joined-bound well-formedness endpoint from the
   contextual preservation path. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMContextual.of_components_no_beta` and
+  `.of_components_no_beta_and_sub_replace`, proving the contextual `Me-Bet`
+  well-formedness case from `BetaInstantiationPreservesWfM`,
+  `AbsFunctionBoundInversion`, and the recursive preservation hypotheses.
+  The contextual preservation decomposition now has a no-separate-beta
+  assembly path, leaving the stack-indexed application-operator and `Me-FOp`
+  body bridges as residuals. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No
