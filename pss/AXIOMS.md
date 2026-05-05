@@ -1399,6 +1399,14 @@ closures, 2 inactive outstanding).
   The contextual preservation decomposition now has a no-separate-beta
   assembly path, leaving the stack-indexed application-operator and `Me-FOp`
   body bridges as residuals. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added no-separate-beta contextual
+  preservation wrappers
+  `MEqRedPreservesWfMContextual.of_chain_diagram_no_beta`,
+  `.of_chain_diagram_no_beta_and_sub_replace`, `.of_chain_shape_no_beta`,
+  and `.of_chain_shape_no_beta_and_sub_replace`, letting downstream callers
+  consume the Type-valued function-bound chain/shape payloads directly
+  instead of carrying a raw function-bound inversion premise. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

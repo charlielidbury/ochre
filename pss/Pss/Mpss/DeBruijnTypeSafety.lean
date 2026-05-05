@@ -1266,6 +1266,65 @@ noncomputable def MEqRedPreservesWfMContextual.of_components_no_beta_and_sub_rep
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hFOpBody
 
+/-- Contextual `MEqRed` preservation assembled without a separate β residual,
+using a Type-valued function-bound chain diagram instead of a raw
+function-bound inversion premise. -/
+noncomputable def MEqRedPreservesWfMContextual.of_chain_diagram_no_beta
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta hSubst
+    (AbsFunctionBoundInversion_of_chain_diagram hDiagram)
+    hOpFun hFunBody hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a Type-valued
+function-bound chain diagram and the sharpened `.sub` head replacement
+payload, with the β case proved internally. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_and_sub_replace hSubst
+    (AbsFunctionBoundInversion_of_chain_diagram hDiagram)
+    hOpFun hReplace hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload plus joined-bound well-formedness, with the β
+case proved internally. -/
+noncomputable def MEqRedPreservesWfMContextual.of_chain_shape_no_beta
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_diagram_no_beta hSubst
+    (AbsFunctionBoundChainDiagramPayload.of_shape hShape hShapeWf)
+    hOpFun hFunBody hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload, joined-bound well-formedness, and the sharpened
+`.sub` head replacement payload, with the β case proved internally. -/
+noncomputable def MEqRedPreservesWfMContextual.of_chain_shape_no_beta_and_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_sub_replace
+    hSubst (AbsFunctionBoundChainDiagramPayload.of_shape hShape hShapeWf)
+    hOpFun hReplace hFOpBody
+
 namespace StepAt
 
 /-- All structural operational well-formedness preservation cases reduce to
