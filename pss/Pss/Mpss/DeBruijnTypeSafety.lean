@@ -231,6 +231,26 @@ def BetaInstantiationPreservesMSubRedStack : Type :=
         MSubRed Γ (Stack.instantiate 0 arg s)
           (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
 
+/-- Empty-stack subtype-reduction substitution payload targeting the
+diagrammatic-star layer. This weaker target matches the de Bruijn `Ms-Pro`
+head case, where a well-subtyping chain naturally erases to `MSubStar`
+rather than to one raw machine reduction step. -/
+def BetaInstantiationPreservesMSubRedMSubStar : Prop :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term},
+    WSubMStar Γ arg bound →
+      MSubRed ({ bound := bound, kind := .sub } :: Γ) [] lhs rhs →
+        MSubStar Γ [] (Term.instantiate 0 arg lhs)
+          (Term.instantiate 0 arg rhs)
+
+/-- Stack-parametric subtype-reduction substitution payload targeting the
+diagrammatic-star layer. -/
+def BetaInstantiationPreservesMSubRedStackMSubStar : Prop :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term} {s : Stack},
+    WSubMStar Γ arg bound →
+      MSubRed ({ bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MSubStar Γ (Stack.instantiate 0 arg s)
+          (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
+
 /-- The remaining head-variable branch of arbitrary-stack `MSubRed.pro`
 substitution. A source head `.sub` lookup reduces `bvar 0` to the lifted
 bound; after β-instantiation this asks for a machine subtype reduction from
@@ -282,6 +302,30 @@ noncomputable def BetaInstantiationPreservesMSubRed.of_stack
     BetaInstantiationPreservesMSubRed := by
   intro Γ bound arg lhs rhs hArgBound hred
   simpa using hStack hArgBound hred
+
+/-- Raw stack-parametric subtype-reduction substitution embeds into the
+weaker diagrammatic-star target. -/
+noncomputable def BetaInstantiationPreservesMSubRedStackMSubStar.of_raw
+    (hRaw : BetaInstantiationPreservesMSubRedStack) :
+    BetaInstantiationPreservesMSubRedStackMSubStar := by
+  intro Γ bound arg lhs rhs s hArgBound hred
+  exact MSubStar.of_MSubRed (hRaw hArgBound hred)
+
+/-- Stack-parametric diagrammatic-star subtype-reduction substitution
+specializes to the empty-stack star payload. -/
+noncomputable def BetaInstantiationPreservesMSubRedMSubStar.of_stack
+    (hStack : BetaInstantiationPreservesMSubRedStackMSubStar) :
+    BetaInstantiationPreservesMSubRedMSubStar := by
+  intro Γ bound arg lhs rhs hArgBound hred
+  simpa using hStack hArgBound hred
+
+/-- Raw empty-stack subtype-reduction substitution embeds into the
+empty-stack diagrammatic-star target. -/
+noncomputable def BetaInstantiationPreservesMSubRedMSubStar.of_raw
+    (hRaw : BetaInstantiationPreservesMSubRed) :
+    BetaInstantiationPreservesMSubRedMSubStar := by
+  intro Γ bound arg lhs rhs hArgBound hred
+  exact MSubStar.of_MSubRed (hRaw hArgBound hred)
 
 /-- Prevalidity of an instantiated stack follows from source-stack
 prevalidity and the substituted argument's scopedness. -/

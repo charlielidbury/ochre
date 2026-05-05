@@ -250,6 +250,13 @@ closures, 2 inactive outstanding).
   easy raw `top`/`equ` cases into `MSubStar` and use the existing
   `msubStar_app_fixed_arg` lift for application. Added the endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
+  substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
+  `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
+  `.of_raw`/`.of_stack` from the existing raw-step payloads. This names the
+  attainable De Bruijn target for `Ms-Pro` head substitution without
+  requiring an unavailable raw-step collapse. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

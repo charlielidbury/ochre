@@ -156,10 +156,15 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRed
 #print axioms BetaInstantiationPreservesMEqRedStack
 #print axioms BetaInstantiationPreservesMSubRedStack
+#print axioms BetaInstantiationPreservesMSubRedMSubStar
+#print axioms BetaInstantiationPreservesMSubRedStackMSubStar
 #print axioms BetaInstantiationPreservesMSubRedProHeadPayload
 #print axioms BetaInstantiationPreservesMSubRedProHeadMSubStarPayload
 #print axioms BetaInstantiationPreservesMEqRed.of_stack
 #print axioms BetaInstantiationPreservesMSubRed.of_stack
+#print axioms BetaInstantiationPreservesMSubRedStackMSubStar.of_raw
+#print axioms BetaInstantiationPreservesMSubRedMSubStar.of_stack
+#print axioms BetaInstantiationPreservesMSubRedMSubStar.of_raw
 #print axioms BetaInstantiationPreservesMEqRedStack.refl
 #print axioms BetaInstantiationPreservesMSubRedStack.refl
 #print axioms BetaInstantiationPreservesMEqRed.refl
