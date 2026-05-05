@@ -1595,6 +1595,84 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.top
     MEqRed.top (BetaInstantiationPreservesPrevalidExtUnderFiveHeads
       hArgBound hpv)
 
+/-- The `MEqRed.app` constructor reassembles a five-preserved-head
+β-instantiated equivalence step from transformed operator and argument
+pieces. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.app
+    {Γ : Ctx} {arg head₁ head₂ head₃ head₄ head₅ u u' v v' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ : CtxEntryKind} {s : Stack}
+    (hFn :
+      MEqRed
+        ({ bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+            kind := kind₄ } ::
+          { bound := Term.instantiate 0 arg head₅, kind := kind₅ } :: Γ)
+        (Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) v ::
+          Stack.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) s)
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) u)
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) u'))
+    (hArg :
+      MEqRed
+        ({ bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+            kind := kind₄ } ::
+          { bound := Term.instantiate 0 arg head₅, kind := kind₅ } :: Γ)
+        [] (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) v)
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) v')) :
+    MEqRed
+      ({ bound := Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 2
+            (Term.shift 0 (Term.shift 0 arg)) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 0 arg head₅, kind := kind₅ } :: Γ)
+      (Stack.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) s)
+      (Term.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+        (.app u v))
+      (Term.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+        (.app u' v')) := by
+  simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below four preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsStack.refl

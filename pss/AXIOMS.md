@@ -78,6 +78,12 @@ closures, 2 inactive outstanding).
   actual five-head body-payload implementation required by the four-head
   binder adapters. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.app`, the five-head
+  `Me-App` structural β-instantiation leaf. This reassembles transformed
+  operator and argument equivalence steps under the five-preserved-head
+  context. Added endpoint to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
