@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WSubMStarAppOperatorPayload` and
+  `WfMachineStateControlLeftPayload.of_app_operator`, reducing control-left
+  machine-state transport to operator-side application congruence for
+  transitive well-subtyping. The reduced machine-state assembly now consumes
+  this smaller application-congruence residual instead of raw control-left
+  transport. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — split the `Me-Pro` machine-state
   case with `MEqRedProAnnotationMachineStatePayload`,
   `MEqRedPreservesWfMachineState.of_components_pro_annotation`, and

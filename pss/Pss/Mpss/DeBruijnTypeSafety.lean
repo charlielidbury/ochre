@@ -424,6 +424,16 @@ def WfMachineStateControlLeftPayload : Type :=
       WfMachineState Γ control s →
         WfMachineState Γ control' s
 
+/-- Application congruence residual for transitive well-subtyping on the
+operator side. This is the structural fact needed to iterate control-left
+machine-state transport through a pending stack. -/
+def WSubMStarAppOperatorPayload : Type :=
+  ∀ {Γ : Ctx} {operator operator' operand : Term},
+    WSubMStar Γ operator' operator →
+      WfM Γ (.app operator operand) →
+        WfM Γ (.app operator' operand) →
+          WSubMStar Γ (.app operator' operand) (.app operator operand)
+
 /-- Machine-state residual for `Me-Fun`, which only fires at the empty
 stack. -/
 def MEqRedFunPreservesWfMachineStatePayload : Type :=
@@ -613,6 +623,30 @@ noncomputable def MEqRedPreservesWfMachineState.of_components_pro_annotation
   | fOp hBound hOperand hBody _ihBound _ihBody =>
       intro hΓ hState
       exact hFOp hΓ hBound hOperand hBody hState
+
+/-- Operator-side application congruence for `WSubMStar` discharges
+control-left machine-state transport by induction over the pending stack. -/
+noncomputable def WfMachineStateControlLeftPayload.of_app_operator
+    (hApp : WSubMStarAppOperatorPayload) :
+    WfMachineStateControlLeftPayload := by
+  intro Γ s control control' hSub hState
+  induction s generalizing control control' with
+  | nil =>
+      simpa [WfMachineState, Stack.plug] using hSub.wf_left
+  | cons operand tail ih =>
+      have hAppControl : WfM Γ (.app control operand) :=
+        WfMachineState.head_app_wf hState
+      obtain ⟨bound, hFun, hArg⟩ := hAppControl.app_inv
+      have hFun' : WSubMStar Γ control' (.abs bound .top) :=
+        WSubMStar.trans hSub.wf_right hSub hFun
+      have hAppControl' : WfM Γ (.app control' operand) :=
+        WfM.app hFun' hArg
+      have hSubApp : WSubMStar Γ (.app control' operand)
+          (.app control operand) :=
+        hApp hSub hAppControl hAppControl'
+      have hTail' : WfMachineState Γ (.app control' operand) tail :=
+        ih hSubApp (WfMachineState.tail_state hState)
+      simpa [WfMachineState, Stack.plug] using hTail'
 
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
@@ -1211,20 +1245,23 @@ noncomputable def MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_repl
 /-- Reduced machine-state preservation assembly after discharging the
 structural `Me-App` head replacement, `Me-Fun`, and `Me-TAp` residuals
 through smaller premises. The broad `Me-Pro` machine residual is split and
-discharged through control-left annotation transport, leaving constructor-
-sized machine residuals for `Me-Bet` and `Me-FOp`. -/
+discharged through control-left annotation transport; control-left itself
+is reduced to operator-side application congruence for `WSubMStar`. The
+remaining constructor-sized machine residuals are `Me-Bet` and `Me-FOp`. -/
 noncomputable def MEqRedPreservesWfMachineState.of_reduced_components
     (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
     (hEmpty : MEqRedPreservesWfMUnderWfCtx)
-    (hControl : WfMachineStateControlLeftPayload)
+    (hAppOp : WSubMStarAppOperatorPayload)
     (hFunBody : MEqRedFunBodyReplacePayload)
     (hNoTop : NoTopFunctionSupertypesAt)
     (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
     MEqRedPreservesWfMachineState :=
   MEqRedPreservesWfMachineState.of_components_pro_annotation
-    (MEqRedProAnnotationMachineStatePayload.of_control_left hControl)
+    (MEqRedProAnnotationMachineStatePayload.of_control_left
+      (WfMachineStateControlLeftPayload.of_app_operator hAppOp))
     hBeta
-    (MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty hControl)
+    (MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty
+      (WfMachineStateControlLeftPayload.of_app_operator hAppOp))
     (MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace
       hEmpty hFunBody)
     (MEqRedTApPreservesWfMachineStatePayload.of_no_top hNoTop)
