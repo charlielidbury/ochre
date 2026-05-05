@@ -3245,6 +3245,95 @@ noncomputable def MEqRed.equ_under_sub_head_nil_replace_from_split_handlers {Γ 
       cases hStack)
     h
 
+/-- Empty-stack specialization when a changed `.equ` entry sits under a
+preserved `.sub` head and above a preserved `.sub` tail head. The changed
+entry is index `1`; index `2` is the tail `.sub` head and is impossible for
+`Me-Pro`, so genuine tail equivalence lookups start at `3+`. -/
+noncomputable def MEqRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers
+    {Γ : Ctx} {headBound tailBound old new u v : Term}
+    (hpv : PrevalidExt ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } ::
+      { bound := tailBound, kind := .sub } :: Γ) [])
+    (hnew : Term.Scoped (Ctx.depth ({ bound := tailBound, kind := .sub } :: Γ)) new)
+    (hProOne :
+      ∀ {target : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (Term.shift 0 (Term.shift 0 old)) target →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] (.bvar 1) target)
+    (hProTail :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) (((i + 1) + 1) + 1) α →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] α α' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.bvar (((i + 1) + 1) + 1)) α')
+    (hApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) (arg :: []) op op' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] (.app op arg) (.app op' arg'))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ)) bound →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) (Stack.shift 0 []) body body' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
+    (h : MEqRed ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } ::
+      { bound := tailBound, kind := .sub } :: Γ) [] u v) :
+    MEqRed ({ bound := headBound, kind := .sub } ::
+      { bound := new, kind := .equ } ::
+      { bound := tailBound, kind := .sub } :: Γ) [] u v :=
+  MEqRed.equ_under_sub_head_nil_replace_from_split_handlers
+    (Γ := { bound := tailBound, kind := .sub } :: Γ)
+    (headBound := headBound) (old := old) (new := new) hpv hnew hProOne
+    (by
+      intro i α α' hb hα
+      cases i with
+      | zero =>
+          simp [Ctx.equBinds] at hb
+      | succ i =>
+          simpa using hProTail hb hα)
+    hApp hFun hBet h
+
 /-- `Ms-Pro` is stable when replacing an `.equ` entry immediately under a
 preserved head, because subtype lookup ignores `.equ` entries. -/
 noncomputable def MSubRed.pro_equ_under_head_replace {Γ : Ctx} {s : Stack}
@@ -3743,6 +3832,123 @@ noncomputable def MSubRed.equ_under_sub_head_nil_replace_from_split_handlers {Γ
       exact MEqRed.equ_under_sub_head_nil_replace_from_split_handlers hpv hnew
         hEqProOne hEqProTail hEqApp hEqFun hEqBet hEq)
     hApp hFun h
+
+/-- Empty-stack one-`.sub` subtype replacement specialized to the case where
+the changed `.equ` entry is followed by a preserved `.sub` tail head. The
+`Ms-Equ` branch uses the matching index-1/true-tail equivalence splitter. -/
+noncomputable def MSubRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers
+    {Γ : Ctx} {headBound tailBound old new u v : Term}
+    (hpv : PrevalidExt ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } ::
+      { bound := tailBound, kind := .sub } :: Γ) [])
+    (hnew : Term.Scoped (Ctx.depth ({ bound := tailBound, kind := .sub } :: Γ)) new)
+    (hEqProOne :
+      ∀ {target : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (Term.shift 0 (Term.shift 0 old)) target →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] (.bvar 1) target)
+    (hEqProTail :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) (((i + 1) + 1) + 1) α →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] α α' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.bvar (((i + 1) + 1) + 1)) α')
+    (hEqApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) (arg :: []) op op' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] (.app op arg) (.app op' arg'))
+    (hEqFun :
+      ∀ {bound bound' body body' : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] body body' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hEqBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ)) bound →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) (Stack.shift 0 []) body body' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) (arg :: []) op op' →
+        Term.Scoped (Ctx.depth ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ)) arg →
+        MSubRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ)) bound →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] body body' →
+        MSubRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (h : MSubRed ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } ::
+      { bound := tailBound, kind := .sub } :: Γ) [] u v) :
+    MSubRed ({ bound := headBound, kind := .sub } ::
+      { bound := new, kind := .equ } ::
+      { bound := tailBound, kind := .sub } :: Γ) [] u v :=
+  MSubRed.equ_under_sub_head_nil_replace_from_split_handlers
+    (Γ := { bound := tailBound, kind := .sub } :: Γ)
+    (headBound := headBound) (old := old) (new := new) hpv hnew
+    hEqProOne
+    (by
+      intro i α α' hb hα
+      cases i with
+      | zero =>
+          simp [Ctx.equBinds] at hb
+      | succ i =>
+          simpa using hEqProTail hb hα)
+    hEqApp hEqFun hEqBet hApp hFun h
 
 /-! ## Shape inversions -/
 

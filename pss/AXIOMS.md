@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers` and
+  `MSubRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers`, the
+  sharper one-`.sub` splitters for the `{sub}, {equ}, {sub}` empty-stack
+  shape. They expose the changed-entry residual at index `1`, rule out the
+  intervening `.sub` index `2`, and start true tail equivalence lookups at
+  `3+`. Rewired the nested `FOp/Fun` body replacement in
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of`
+  through the new splitter. Added the endpoints to the De Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_sub_head_nil_replace_from_split_handlers` and
   `MSubRed.equ_under_sub_head_nil_replace_from_split_handlers`, the
   one-`.sub` empty-stack counterparts to the existing two-`.sub` splitters.

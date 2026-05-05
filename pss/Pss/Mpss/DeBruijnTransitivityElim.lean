@@ -5904,51 +5904,35 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
           have hBodyNew : MSubRed ({ bound := funBound, kind := .sub } ::
               { bound := v₂, kind := .equ } :: Γ₃) [] body body' := by
             simpa [Γ₃, Stack.shift] using
-              MSubRed.equ_under_sub_head_nil_replace_from_handlers
-              (Γ := Γ₃) (headBound := funBound) (old := v) (new := v₂)
-              (u := body) (v := body') hpvBodyOld hEqArg₃.scoped_right
+              MSubRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers
+              (Γ := Γ) (headBound := funBound) (tailBound := bound₃)
+              (old := v) (new := v₂) (u := body) (v := body') hpvBodyOld
+              hEqArg₃.scoped_right
               (by
-                intro α α' hEqBody
+                intro target hTarget
                 simpa [Γ₃, Stack.shift] using
-                  MEqRed.equ_under_sub_head_replace_from_handlers
-                    (Γ := Γ₃) (s := []) (headBound := funBound) (old := v)
-                    (new := v₂) (u := α) (v := α') hpvBodyOld
-                    hEqArg₃.scoped_right
-                    (by
-                      intro target hTarget
-                      simpa [Γ₃, Stack.shift] using
-                        hAppAppStepFOpFunEquProOne hSubOp hArgScoped hEqOp hEqArg
-                          hBound₁₃ hBound₂₃ hFunScoped hBoundStep hTarget)
-                    (by
-                      intro i α₀ α₀' hb hα
-                      cases i with
-                      | zero =>
-                          simp [Γ₃, Ctx.equBinds] at hb
-                      | succ i =>
-                          simpa [Γ₃, Stack.shift] using
-                            hAppAppStepFOpFunEquProTail hSubOp hArgScoped hEqOp hEqArg
-                              hBound₁₃ hBound₂₃ hFunScoped hBoundStep hb hα)
-                    (by
-                      intro op op' arg arg' hOp hArg
-                      simpa [Γ₃, Stack.shift] using
-                        hAppAppStepFOpFunEquApp hSubOp hArgScoped hEqOp hEqArg
-                          hBound₁₃ hBound₂₃ hFunScoped hBoundStep hOp hArg)
-                    (by
-                      intro innerBound innerBound' inner inner' hInnerBound hInner
-                      simpa [Γ₃, Stack.shift] using
-                        hAppAppStepFOpFunEquFun hSubOp hArgScoped hEqOp hEqArg
-                          hBound₁₃ hBound₂₃ hFunScoped hBoundStep hInnerBound hInner)
-                    (by
-                      intro innerBound arg arg' inner inner' hInnerScoped hInner hArg
-                      simpa [Γ₃, Stack.shift] using
-                        hAppAppStepFOpFunEquBet hSubOp hArgScoped hEqOp hEqArg
-                          hBound₁₃ hBound₂₃ hFunScoped hBoundStep hInnerScoped
-                          hInner hArg)
-                    (by
-                      intro innerBound innerBound' arg inner inner' rest hInnerBound
-                        hArgScoped hStack hInner
-                      cases hStack)
-                    hEqBody)
+                  hAppAppStepFOpFunEquProOne hSubOp hArgScoped hEqOp hEqArg
+                    hBound₁₃ hBound₂₃ hFunScoped hBoundStep hTarget)
+              (by
+                intro i α₀ α₀' hb hα
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepFOpFunEquProTail hSubOp hArgScoped hEqOp hEqArg
+                    hBound₁₃ hBound₂₃ hFunScoped hBoundStep hb hα)
+              (by
+                intro op op' arg arg' hOp hArg
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepFOpFunEquApp hSubOp hArgScoped hEqOp hEqArg
+                    hBound₁₃ hBound₂₃ hFunScoped hBoundStep hOp hArg)
+              (by
+                intro innerBound innerBound' inner inner' hInnerBound hInner
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepFOpFunEquFun hSubOp hArgScoped hEqOp hEqArg
+                    hBound₁₃ hBound₂₃ hFunScoped hBoundStep hInnerBound hInner)
+              (by
+                intro innerBound arg arg' inner inner' hInnerScoped hInner hArg
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepFOpFunEquBet hSubOp hArgScoped hEqOp hEqArg
+                    hBound₁₃ hBound₂₃ hFunScoped hBoundStep hInnerScoped hInner hArg)
               (by
                 intro op op' arg hOp hArg
                 simpa [Γ₃, Stack.shift] using
