@@ -1226,6 +1226,10 @@ closures, 2 inactive outstanding).
   the specialization wrapper `AbsFunctionBoundChainDiagram.of_abs_abs`.
   This prepares the direct `WSubM` extraction, whose right-equivalence branch
   changes the target abstraction body away from `Top`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the local one-step
+  `WSubMAbsAbsChainDiagramPayload` and the function-specialization wrapper
+  `AbsFunctionBoundChainDiagramPayload_of_wsubm`, isolating the non-transitive
+  `WSubM` abstraction-diagram extraction target. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

@@ -239,6 +239,31 @@ def AbsFunctionBoundChainDiagramPayload : Type :=
     WSubMStar Γ (.abs bound body) (.abs result .top) →
       AbsFunctionBoundChainDiagram Γ bound body result
 
+/-- One-step well-subtyping abstraction diagram payload. This is the
+non-transitive local target for extracting Type-valued diagrams from `WSubM`
+while ruling out the branch that factors through `Top`. -/
+def WSubMAbsAbsChainDiagramPayload : Type :=
+  ∀ {Γ : Ctx} {bound body result resultBody : Term},
+    NoTopAbstractionSupertypesAt →
+      WfM Γ (.abs bound body) →
+        WfM Γ (.abs result resultBody) →
+          WSubM Γ (.abs bound body) (.abs result resultBody) →
+            AbsAbsBoundChainDiagram Γ bound body result resultBody
+
+/-- Function-bound chain diagrams are the function-supertype specialization
+of the one-step abstraction-to-abstraction diagram payload. -/
+noncomputable def AbsFunctionBoundChainDiagramPayload_of_wsubm
+    (hOne : WSubMAbsAbsChainDiagramPayload) :
+    ∀ {Γ : Ctx} {bound body result : Term},
+      NoTopAbstractionSupertypesAt →
+        WfM Γ (.abs bound body) →
+          WfM Γ (.abs result .top) →
+            WSubM Γ (.abs bound body) (.abs result .top) →
+              AbsFunctionBoundChainDiagram Γ bound body result := by
+  intro Γ bound body result hNoTop hwfSource hwfTarget hSub
+  exact AbsFunctionBoundChainDiagram.of_abs_abs
+    (hOne hNoTop hwfSource hwfTarget hSub)
+
 /-- Forget the Type-valued chain structure of a function-bound diagram,
 embedding its chains into the existing Prop-valued closures. -/
 def AbsFunctionBoundDiagram.of_chain {Γ : Ctx} {bound body result : Term}
