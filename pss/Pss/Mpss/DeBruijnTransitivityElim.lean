@@ -3404,6 +3404,37 @@ noncomputable def commute_abs_fun_bound_body_equ_chains_star {Γ : Ctx}
         (MSubRedStar.of_meqStar_sub_head_replace_star
           hpvBody₃ hBody₂₃ hBound₂₃))⟩
 
+/-- Star-level changing-bound `Fun` abstraction commutation when the subtype
+body branch has already reached `Top`. The joined abstraction uses `Top` as
+the body target, and the right branch closes by `Ms-Top` under the joined
+`.sub` head. -/
+noncomputable def commute_abs_fun_bound_body_top_star {Γ : Ctx}
+    {bound₁ bound₂ bound₃ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hBound₃Scoped : Term.Scoped Γ.depth bound₃)
+    (hBody₂Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound₂, kind := .sub } :: Γ)) body₂)
+    (hBound₁₃ : MEqRedStar Γ [] bound₁ bound₃)
+    (hBound₂₃ : MEqRedStar Γ [] bound₂ bound₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ .top) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₃Scoped)
+  have hBody₂Scoped₃ :
+      Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) body₂ := by
+    simpa [Ctx.depth] using hBody₂Scoped
+  exact ⟨.abs bound₃ .top,
+    MEqRedStar.trans
+      (meqRedStar_abs_fun_bound_fixed_body hpvNil Term.Scoped.top hBound₁₃)
+      (MEqRedStar.single
+        (MEqRed.fun_ (MEqRed.refl hpvNil hBound₃Scoped) (MEqRed.top hpvBody₃))),
+    MSubRedStar.trans
+      (msubRedStar_abs_fun_bound_fixed_body hpvNil hBody₂Scoped hBound₂₃)
+      (MSubRedStar.single
+        (MSubRed.fun_ hBound₃Scoped (MEqRed.refl hpvNil hBound₃Scoped)
+          (MSubRed.top hpvBody₃ hBody₂Scoped₃)))⟩
+
 /-- Star-level fixed-body `Fun` abstraction diamond. A bound-level
 equivalence-chain diamond lifts through `Fun` when the body is unchanged. -/
 noncomputable def diamond_abs_fun_bound_fixed_body_star {Γ : Ctx}

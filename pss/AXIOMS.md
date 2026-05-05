@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_bound_body_top_star`, the star-level changing-bound `Fun`
+  commutation assembly for branches whose subtype-side body target is `Top`.
+  It moves both bounds to a shared bound and closes the right body by
+  `Ms-Top` under the joined `.sub` head. Added the endpoint to the de Bruijn
+  audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_top_body_of`, closing the `Ms-Fun × Me-Fun`
   changing-bound/changing-body subcase where the subtype body premise is
   `Ms-Top`. The proof joins bounds, chooses `Top` as the common body target,
