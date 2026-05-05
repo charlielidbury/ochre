@@ -38,9 +38,10 @@ closures, 2 inactive outstanding).
   `Me-Fun`/`Me-Bet`/`Me-FOp` payload surface for the following layer. Added
   the fixed nine-head prevalidity transport
   `BetaInstantiationPreservesPrevalidExtUnderNineHeads` and the nine-head
-  `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.top`.
-  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
-  change.
+  `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.top`,
+  plus the structural `Me-App` leaf
+  `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.app`. Added endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
