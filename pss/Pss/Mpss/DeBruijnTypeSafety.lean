@@ -352,6 +352,19 @@ def MEqRedAppFunctionSupertypePayload : Type :=
             MEqRed Γ (v :: s) u u' →
               WSubMStar Γ u' (.abs bound .top)
 
+/-- Typed operator-side payload for the `Me-App` well-formedness case. The
+source application typing supplies both the operator function supertype and
+the operand-to-bound relationship; the latter is exactly the information
+missing from `MEqRedAppFunctionSupertypePayload`. -/
+def MEqRedAppFunctionSupertypeTypedPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {u u' v bound : Term},
+    WfCtxEqu Γ →
+      WfStack Γ s →
+        WSubMStar Γ v bound →
+          WSubMStar Γ u (.abs bound .top) →
+            MEqRed Γ (v :: s) u u' →
+              WSubMStar Γ u' (.abs bound .top)
+
 /-- Generic left-endpoint transport for well-subtyping along a stack-indexed
 equivalence reduction. This is the precise reusable shape behind the
 operator side of contextual `Me-App`. -/
@@ -903,6 +916,28 @@ noncomputable def MEqRed.app_preservesWfM_of_contextual
   have hwfV' : WfM Γ v' := hpres hΓ WfStack.nil hredArg hwfV
   have hFun' : WSubMStar Γ u' (.abs bound .top) :=
     hOpFun hΓ hStack hwfV hFun hredOp
+  have hArgBack : WSubMStar Γ v' v :=
+    WSubMStar.of_MEqRed_back hredArg hwfV hwfV'
+  have hArg' : WSubMStar Γ v' bound :=
+    WSubMStar.trans hwfV hArgBack hArg
+  exact WfM.app hFun' hArg'
+
+/-- Typed `Me-App` well-formedness preservation. This variant feeds the
+operand-to-bound premise from source application typing to the operator
+payload, avoiding the broad stack-only operator residual. -/
+noncomputable def MEqRed.app_preservesWfM_of_empty_and_typed_operator
+    (hpres : MEqRedPreservesWfMUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    {Γ : Ctx} {s : Stack} {u u' v v' : Term}
+    (hΓ : WfCtxEqu Γ) (hStack : WfStack Γ s)
+    (hredOp : MEqRed Γ (v :: s) u u')
+    (hredArg : MEqRed Γ [] v v')
+    (hwfApp : WfM Γ (.app u v)) : WfM Γ (.app u' v') := by
+  obtain ⟨bound, hFun, hArg⟩ := hwfApp.app_inv
+  have hwfV : WfM Γ v := hArg.wf_left
+  have hwfV' : WfM Γ v' := hpres hΓ ⟨hredArg⟩ hwfV
+  have hFun' : WSubMStar Γ u' (.abs bound .top) :=
+    hOpFun hΓ hStack hArg hFun hredOp
   have hArgBack : WSubMStar Γ v' v :=
     WSubMStar.of_MEqRed_back hredArg hwfV hwfV'
   have hArg' : WSubMStar Γ v' bound :=

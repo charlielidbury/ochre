@@ -58,6 +58,14 @@ closures, 2 inactive outstanding).
   `Me-FOp` with operand `Top` reduces its body to `Top Top`; preserving the
   operator supertype would imply the reduced abstraction is well formed and
   hence again force `Top ≤*` a function. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedAppFunctionSupertypeTypedPayload`, the app-operator analogue of the
+  typed `Me-FOp` residual. It records the source application's operand
+  typing premise `WSubMStar Γ v bound`, which is missing from the broad
+  stack-only operator payload. Added
+  `MEqRed.app_preservesWfM_of_empty_and_typed_operator`, reconstructing
+  application well-formedness from this typed payload plus empty-stack
+  preservation for the operand step. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
