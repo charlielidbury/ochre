@@ -10,6 +10,17 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_app_body_tAp_of`, closing the
+  `Ms-Fun × Me-Fun` body subcase where the subtype body premise is
+  `Ms-App` and the equivalence body premise is `Me-TAp`. The operator
+  subtype step starts from `Top`, so it also targets `Top`; after joining
+  the abstraction bounds, both body branches join at `Top`. Also added
+  `commute_abs_fun_fun_body_from_app_cases_fun_handlers_of`, which
+  internalizes this `Ms-App × Me-TAp` branch and leaves only structural
+  `Ms-App × Me-App`, beta `Ms-App × Me-Bet`, and nested `Ms-Fun` body
+  handlers. Added both endpoints to the de Bruijn audit. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_body_from_app_fun_handlers_of`, a reduced
   body-constructor dispatcher for the `Ms-Fun × Me-Fun` commutation cell
   that closes all `Ms-Pro` body branches internally using the head and

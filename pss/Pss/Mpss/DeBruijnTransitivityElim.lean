@@ -3841,6 +3841,122 @@ theorem commute_abs_fun_fun_body_from_app_fun_handlers_of {Γ : Ctx}
   | fun_ ht hBound hBody =>
       exact hFun ht hBound hBody
 
+/-- `Ms-Fun × Me-Fun` commutation subcase where the `Ms-Fun` body premise is
+`Ms-App` and the equivalence body premise is `Me-TAp`. The operator subtype
+step starts from `Top`, so its target is definitionally `Top`; after joining
+the abstraction bounds, both body branches join at `Top`. -/
+theorem commute_abs_fun_fun_app_body_tAp_of {Γ : Ctx}
+    {bound bound₁ bound₂ v u' : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hSubOp : MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) .top u')
+    (hArgScoped : Term.Scoped
+      (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v)
+    (hEqBound : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ .top) t₃ := by
+  have hu' : u' = .top := hSubOp.top_inv
+  subst u'
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hSubBound.scoped_left)
+  let hLeft : MSubRed Γ [] (.abs bound (.app .top v))
+      (.abs bound₁ (.app .top v)) :=
+    MSubRed.fun_ hSubBound.scoped_left hSubBound
+      (MSubRed.app hSubOp hArgScoped)
+  let hRight : MEqRed Γ [] (.abs bound (.app .top v)) (.abs bound₂ .top) :=
+    MEqRed.fun_ hEqBound (MEqRed.tAp hpvBody hArgScoped)
+  exact
+    commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+      (hdiamondBound hSubBound hEqBound)
+      (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+        have hpvBody₃ :
+            PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+          PrevalidExt.nil
+            (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+        have hArgScoped₃ :
+            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v := by
+          simpa [Ctx.depth] using hArgScoped
+        exact ⟨.top,
+          MEqRedStar.single (MEqRed.tAp hpvBody₃ hArgScoped₃),
+          MSubRedStar.single (MSubRed.equ hpvBody₃ (MEqRed.top hpvBody₃))⟩)
+
+/-- Body-constructor dispatcher for the `Ms-Fun × Me-Fun` commutation cell
+after also closing the `Ms-App × Me-TAp` body branch. The remaining explicit
+handlers are structural `Ms-App × Me-App`, beta `Ms-App × Me-Bet`, and nested
+`Ms-Fun` body cases. -/
+theorem commute_abs_fun_fun_body_from_app_cases_fun_handlers_of {Γ : Ctx}
+    {bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hdiamondBody : EqDiamonds ({ bound := bound, kind := .sub } :: Γ) [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hSubBody : MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂)
+    (hAppApp :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∃ t₃,
+          MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃ ∧
+            MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃)
+    (hAppBet :
+      ∀ {t v v' inner inner' u' : Term},
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) t →
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) (.abs t inner) u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := t, kind := .sub } ::
+          { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 []) inner inner' →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v' →
+        ∃ t₃,
+          MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃ ∧
+            MSubRedStar Γ [] (.abs bound₂ (Term.instantiate 0 v' inner')) t₃)
+    (hFun :
+      ∀ {t t' inner inner' : Term},
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+          { bound := bound, kind := .sub } :: Γ) [] inner inner' →
+        ∃ t₃,
+          MEqRedStar Γ [] (.abs bound₁ (.abs t' inner')) t₃ ∧
+            MSubRedStar Γ [] (.abs bound₂ body₂) t₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  cases hSubBody with
+  | @pro _ _ i t _ hb =>
+      cases i with
+      | zero =>
+          have ht : body₁ = Term.shift 0 bound :=
+            Ctx.subBinds_unique hb (Ctx.subBinds_zero_self Γ bound)
+          subst body₁
+          exact commute_abs_fun_fun_pro_head_body_of hpvNil hdiamondBound
+            hSubBound hEqBound hEqBody
+      | succ i =>
+          exact commute_abs_fun_fun_pro_succ_body_of hpvNil hdiamondBound
+            hSubBound hb hEqBound hEqBody
+  | top _ hScoped =>
+      exact commute_abs_fun_fun_top_body_of hpvNil hdiamondBound hSubBound
+        hScoped hEqBound hEqBody
+  | equ _ hEq =>
+      exact commute_abs_fun_fun_equ_body_of hpvNil hdiamondBound hdiamondBody
+        hSubBound hEq hEqBound hEqBody
+  | app hSubOp hArgScoped =>
+      cases hEqBody with
+      | app hEqOp hEqArg =>
+          exact hAppApp hSubOp hArgScoped hEqOp hEqArg
+      | bet ht hBody hArg =>
+          exact hAppBet ht hSubOp hArgScoped hBody hArg
+      | tAp _ _ =>
+          exact commute_abs_fun_fun_app_body_tAp_of hpvNil hdiamondBound
+            hSubBound hSubOp hArgScoped hEqBound
+  | fun_ ht hBound hBody =>
+      exact hFun ht hBound hBody
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
