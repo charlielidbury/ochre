@@ -488,12 +488,27 @@ def MSubRedStarStackLiftPayload : Prop :=
       Term.Scoped Γ.depth operand →
         MSubRedStar Γ [operand] source target
 
+/-- Stack lift for one subtype-reduction step under one operand stack head. -/
+def MSubRedStackLiftPayload : Type :=
+  ∀ {Γ : Ctx} {source target operand : Term},
+    MSubRed Γ [] source target →
+      Term.Scoped Γ.depth operand →
+        MSubRed Γ [operand] source target
+
 /-- Stack lift for equivalence-reduction chains under one operand stack head. -/
 def MEqRedStarStackLiftPayload : Prop :=
   ∀ {Γ : Ctx} {source target operand : Term},
     MEqRedStar Γ [] source target →
       Term.Scoped Γ.depth operand →
         MEqRedStar Γ [operand] source target
+
+/-- Stack lift for one equivalence-reduction step under one operand stack
+head. -/
+def MEqRedStackLiftPayload : Type :=
+  ∀ {Γ : Ctx} {source target operand : Term},
+    MEqRed Γ [] source target →
+      Term.Scoped Γ.depth operand →
+        MEqRed Γ [operand] source target
 
 /-- Transitive diagrammatic stack lift under one operand stack head. -/
 def MSubStarStackLiftPayload : Prop :=
@@ -767,6 +782,32 @@ def MSubStackLiftPayload.of_reduction_lifts
   intro Γ source target operand hSub hOperand
   obtain ⟨join, hSubChain, hEqChain⟩ := hSub
   exact ⟨join, hSubLift hSubChain hOperand, hEqLift hEqChain hOperand⟩
+
+/-- One-step subtype-reduction stack lift iterates to subtype-reduction
+chains. -/
+def MSubRedStarStackLiftPayload.of_step
+    (hStep : MSubRedStackLiftPayload) :
+    MSubRedStarStackLiftPayload := by
+  intro Γ source target operand hStar hOperand
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hPrefix hHead ih =>
+      exact Relation.ReflTransGen.trans ih
+        (Relation.ReflTransGen.single ⟨hStep hHead.some hOperand⟩)
+
+/-- One-step equivalence-reduction stack lift iterates to equivalence-
+reduction chains. -/
+def MEqRedStarStackLiftPayload.of_step
+    (hStep : MEqRedStackLiftPayload) :
+    MEqRedStarStackLiftPayload := by
+  intro Γ source target operand hStar hOperand
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hPrefix hHead ih =>
+      exact Relation.ReflTransGen.trans ih
+        (Relation.ReflTransGen.single ⟨hStep hHead.some hOperand⟩)
 
 /-- A one-step diagrammatic stack lift iterates to a transitive diagrammatic
 stack lift. -/
