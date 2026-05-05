@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFunStackAppendPayload`, `MSubRedFunStackAppendPayload`,
+  `Stack.shift_append_single`, `PrevalidExt.append_operand`,
+  `MEqRedStackAppendPayload.of_fun`, and
+  `MSubRedStackAppendPayload.of_fun`, reducing generalized one-step stack
+  append lifting to the two empty-stack-only function constructor residuals.
+  The recursive `Me-App`, `Me-Bet`, `Me-FOp`, `Ms-App`, and `Ms-FOp`
+  cases are now handled by structural induction. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MSubRedStackAppendPayload`, `MEqRedStackAppendPayload`,
   `MSubRedStackLiftPayload.of_append`, and
   `MEqRedStackLiftPayload.of_append`, exposing the induction-ready form of

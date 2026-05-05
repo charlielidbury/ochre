@@ -505,6 +505,16 @@ def MSubRedStackAppendPayload : Type :=
       Term.Scoped Γ.depth operand →
         MSubRed Γ (s ++ [operand]) source target
 
+/-- The only empty-stack-only subtype-reduction constructor case left by the
+general stack-append induction. -/
+def MSubRedFunStackAppendPayload : Type :=
+  ∀ {Γ : Ctx} {bound bound' body body' operand : Term},
+    Term.Scoped Γ.depth bound →
+      MEqRed Γ [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+          Term.Scoped Γ.depth operand →
+            MSubRed Γ [operand] (.abs bound body) (.abs bound' body')
+
 /-- Stack lift for equivalence-reduction chains under one operand stack head. -/
 def MEqRedStarStackLiftPayload : Prop :=
   ∀ {Γ : Ctx} {source target operand : Term},
@@ -528,6 +538,15 @@ def MEqRedStackAppendPayload : Type :=
     MEqRed Γ s source target →
       Term.Scoped Γ.depth operand →
         MEqRed Γ (s ++ [operand]) source target
+
+/-- The only empty-stack-only equivalence-reduction constructor case left by
+the general stack-append induction. -/
+def MEqRedFunStackAppendPayload : Type :=
+  ∀ {Γ : Ctx} {bound bound' body body' operand : Term},
+    MEqRed Γ [] bound bound' →
+      MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        Term.Scoped Γ.depth operand →
+          MEqRed Γ [operand] (.abs bound body) (.abs bound' body')
 
 /-- Transitive diagrammatic stack lift under one operand stack head. -/
 def MSubStarStackLiftPayload : Prop :=
@@ -817,6 +836,106 @@ def MEqRedStackLiftPayload.of_append
     MEqRedStackLiftPayload := by
   intro Γ source target operand hStep hOperand
   simpa using (hAppend (s := ([] : Stack)) hStep hOperand)
+
+namespace Stack
+
+/-- Shifting commutes with appending one operand to the outer end of a stack. -/
+theorem shift_append_single (cutoff : Nat) (s : Stack) (operand : Term) :
+    Stack.shift cutoff (s ++ [operand]) =
+      Stack.shift cutoff s ++ [Term.shift cutoff operand] := by
+  induction s with
+  | nil =>
+      rfl
+  | cons head tail ih =>
+      simp [Stack.shift, Stack.shiftBy, Term.shift, ih]
+
+end Stack
+
+namespace PrevalidExt
+
+/-- Append a scoped operand to the outer end of a prevalid operand stack. -/
+noncomputable def append_operand {Γ : Ctx} {s : Stack} {operand : Term} :
+    PrevalidExt Γ s →
+      Term.Scoped Γ.depth operand →
+        PrevalidExt Γ (s ++ [operand]) := by
+  intro hpv hOperand
+  induction hpv with
+  | nil hΓ =>
+      exact PrevalidExt.cons (PrevalidExt.nil hΓ) hOperand
+  | cons hpvHead hHead ih =>
+      exact PrevalidExt.cons ih hHead
+
+end PrevalidExt
+
+/-- The generalized equivalence-reduction stack append lift follows by
+structural induction once the empty-stack-only `Me-Fun` case is supplied. -/
+noncomputable def MEqRedStackAppendPayload.of_fun
+    (hFun : MEqRedFunStackAppendPayload) :
+    MEqRedStackAppendPayload := by
+  intro Γ s source target operand hStep hOperand
+  induction hStep generalizing operand with
+  | pro hpv hb hred ih =>
+      exact MEqRed.pro (PrevalidExt.append_operand hpv hOperand) hb
+        (ih hOperand)
+  | @bet Γp sp t v v' body body' ht hBody hArg ihBody _ihArg =>
+      have hOperand' : Term.Scoped
+          (Ctx.depth ({ bound := t, kind := .sub } :: Γp))
+          (Term.shift 0 operand) := by
+        simpa [Ctx.depth] using
+          (Term.shift_scoped 0 Γp.depth operand (Nat.zero_le _) hOperand)
+      exact MEqRed.bet ht
+        (by
+          simpa [Stack.shift_append_single] using ihBody hOperand')
+        hArg
+  | top hpv =>
+      exact MEqRed.top (PrevalidExt.append_operand hpv hOperand)
+  | app hOp hArg ihOp _ihArg =>
+      exact MEqRed.app (ihOp hOperand) hArg
+  | var hpv hi =>
+      exact MEqRed.var (PrevalidExt.append_operand hpv hOperand) hi
+  | fun_ hBound hBody _ihBound _ihBody =>
+      exact hFun hBound hBody hOperand
+  | tAp hpv hu =>
+      exact MEqRed.tAp (PrevalidExt.append_operand hpv hOperand) hu
+  | @fOp Γp sp t t' α body body' hBound hOperandHead hBody _ihBound ihBody =>
+      have hOperand' : Term.Scoped
+          (Ctx.depth ({ bound := α, kind := .equ } :: Γp))
+          (Term.shift 0 operand) := by
+        simpa [Ctx.depth] using
+          (Term.shift_scoped 0 Γp.depth operand (Nat.zero_le _) hOperand)
+      exact MEqRed.fOp hBound hOperandHead
+        (by
+          simpa [Stack.shift_append_single] using ihBody hOperand')
+
+/-- The generalized subtype-reduction stack append lift follows by
+structural induction once `Ms-Equ` can reuse equivalence stack append and the
+empty-stack-only `Ms-Fun` case is supplied. -/
+noncomputable def MSubRedStackAppendPayload.of_fun
+    (hEqAppend : MEqRedStackAppendPayload)
+    (hFun : MSubRedFunStackAppendPayload) :
+    MSubRedStackAppendPayload := by
+  intro Γ s source target operand hStep hOperand
+  induction hStep generalizing operand with
+  | pro hpv hb =>
+      exact MSubRed.pro (PrevalidExt.append_operand hpv hOperand) hb
+  | top hpv hu =>
+      exact MSubRed.top (PrevalidExt.append_operand hpv hOperand) hu
+  | equ hpv hEq =>
+      exact MSubRed.equ (PrevalidExt.append_operand hpv hOperand)
+        (hEqAppend hEq hOperand)
+  | app hOp hv ihOp =>
+      exact MSubRed.app (ihOp hOperand) hv
+  | fun_ ht hBound hBody _ihBody =>
+      exact hFun ht hBound hBody hOperand
+  | @fOp Γp sp t α body body' ht hOperandHead hBody ihBody =>
+      have hOperand' : Term.Scoped
+          (Ctx.depth ({ bound := α, kind := .equ } :: Γp))
+          (Term.shift 0 operand) := by
+        simpa [Ctx.depth] using
+          (Term.shift_scoped 0 Γp.depth operand (Nat.zero_le _) hOperand)
+      exact MSubRed.fOp ht hOperandHead
+        (by
+          simpa [Stack.shift_append_single] using ihBody hOperand')
 
 /-- One-step subtype-reduction stack lift iterates to subtype-reduction
 chains. -/
