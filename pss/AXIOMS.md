@@ -352,6 +352,11 @@ closures, 2 inactive outstanding).
   same audit with `Lemma_30_ReductionUnderSubst_Sub_noProOn` and
   `Lemma7.lf2_case_noProOn`, making the no-pro Lemma 30 route's
   standard-axiom-only closure visible too.
+* `Pss/Sanity.lean` — added a direct audit line for the permanent paper
+  conjecture `Conjecture_8_WellSubtypingContextIndependent`. The headline
+  closures still do not depend on it, but the permanent/public axiom is now
+  visible in the same sanity output as the active and inactive residuals. No
+  headline axiom-count change.
 * `Pss/Mpss/SubstitutionNoPro.lean` — added `MSubRed.noProOn`, an
   all-cofinite-branches predicate excluding `Ms-Pro` promotion of a chosen
   variable, plus `Lemma_30_ReductionUnderSubst_Sub_noProOn`. This proves

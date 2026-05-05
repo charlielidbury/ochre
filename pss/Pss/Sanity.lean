@@ -26,6 +26,7 @@ namespace Pss
 #print axioms Lemma7.lf2_case_noProOn
 #print axioms Lemma_1_StrongCommutativity
 #print axioms Lemma_2_DiamondMEqRed
+#print axioms Conjecture_8_WellSubtypingContextIndependent
 #print axioms Lemma_10_InversionRestricted
 #print axioms Lemma_32_AsymmetricEqu
 
