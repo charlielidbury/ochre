@@ -3538,6 +3538,37 @@ theorem commute_abs_fun_targets_of_bound_body_equ_chains_from_left {Γ : Ctx}
         MSubRedStar.of_meqStar_sub_head_replace_star hpvBody₃ hBody₂₃
           (MEqRedStar.single hBound₂₃.some)⟩)
 
+/-- `Ms-Fun × Me-Fun` commutation subcase where the `Ms-Fun` body premise is
+itself `Ms-Equ`. Both body branches are therefore equivalence steps under the
+original `.sub` head; the resulting body diamond can be transported to the two
+branch bounds using the restricted equivalence-origin machinery. -/
+theorem commute_abs_fun_fun_equ_body_of {Γ : Ctx}
+    {bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hdiamondBody : EqDiamonds ({ bound := bound, kind := .sub } :: Γ) [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hSubBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hSubBound.scoped_left)
+  let hLeft : MSubRed Γ [] (.abs bound body) (.abs bound₁ body₁) :=
+    MSubRed.fun_ hSubBound.scoped_left hSubBound (MSubRed.equ hpvBody hSubBody)
+  let hRight : MEqRed Γ [] (.abs bound body) (.abs bound₂ body₂) :=
+    MEqRed.fun_ hEqBound hEqBody
+  exact
+    commute_abs_fun_targets_of_bound_body_equ_chains_from_left hLeft hRight
+      (hdiamondBound hSubBound hEqBound)
+      (fun _ _ => by
+        obtain ⟨body₃, hBody₁₃, hBody₂₃⟩ := hdiamondBody hSubBody hEqBody
+        exact ⟨body₃,
+          (MEqRedStar.single hBody₁₃.some).sub_head_replace hSubBound,
+          (MEqRedStar.single hBody₂₃.some).sub_head_replace hEqBound⟩)
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
