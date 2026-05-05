@@ -22,6 +22,8 @@ namespace DeBruijn
 #print axioms Term.instantiate_two_shift_zero
 #print axioms Term.instantiate_two_shift_zero_tail
 #print axioms Term.instantiate_succ_after
+#print axioms Term.instantiate_after_two
+#print axioms Term.instantiate_zero_after_two
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace
 #print axioms Ctx.subBinds_equ_under_two_heads_replace
@@ -175,6 +177,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack
 #print axioms BetaInstantiationPreservesMEqRedUnderThreeHeadsStack
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsFunStackPayload
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsBetStackPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsFOpStackPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload
@@ -231,6 +234,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.app
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.pro
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsFunStackPayload.of_three_heads
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsBetStackPayload.of_three_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsFOpStackPayload.of_three_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload.of_two_heads

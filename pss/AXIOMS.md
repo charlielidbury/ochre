@@ -415,6 +415,16 @@ closures, 2 inactive outstanding).
   deeper β-target substitution composition plus the constructor proof of the
   three-head payload. Added endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` and `Pss/Mpss/DeBruijnTypeSafety.lean` —
+  added the cutoff-general β-target substitution permutation
+  `Term.instantiate_after_two` plus the zero-cutoff specialization
+  `Term.instantiate_zero_after_two`, then discharged the two-head `Me-Bet`
+  binder adapter
+  `BetaInstantiationPreservesMEqRedUnderTwoHeadsBetStackPayload.of_three_heads`.
+  Together with the previous two-head `Me-Fun` and `Me-FOp` adapters, this
+  reduces the remaining two-head binder constructors to the three-preserved-head
+  body payload. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
