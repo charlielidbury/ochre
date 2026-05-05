@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added uniform-head-kind convenience
+  wrappers for the split `Me-App`/`Me-FOp` preservation path:
+  `MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_kind_transport`,
+  `.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_kind_transport`,
+  `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_head_kind_transport`,
+  and
+  `.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_kind_transport`.
+  These specialize the weaker directional head/body transport wrappers
+  without requiring stacked left-endpoint transport. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — lifted the split `Me-App`/`Me-FOp`
   preservation assembly to the shape/WfCtx layer with
   `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_head_transports`

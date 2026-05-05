@@ -1624,6 +1624,38 @@ noncomputable def
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hSubToEqu hEquToSub
 
+/-- Split-residual contextual preservation using the native `Me-App`
+operator payload and one uniform head-kind/body transport payload for
+`Me-FOp`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports
+    hSubst hInv hOpFun hFunBody
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hHeadTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
+
+/-- Split-residual contextual preservation using the native `Me-App`
+operator payload, sharpened `.sub` head replacement for `Me-Fun`, and one
+uniform head-kind/body transport payload for `Me-FOp`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_transports
+    hSubst hInv hOpFun hReplace
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hHeadTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
+
 /-- Contextual `MEqRed` well-formedness preservation with β, `Me-App`, and
 `Me-FOp` factored through reusable endpoint/head-transport payloads. This is
 the narrowest current assembly path: the remaining non-recursive premises are
@@ -1918,6 +1950,39 @@ noncomputable def
   MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_transports
     hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hOpFun hReplace hSubToEqu hEquToSub
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
+payload, and one uniform head-kind/body transport payload for `Me-FOp`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_kind_transport
+    hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    hOpFun hFunBody hHeadTransport
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
+payload, sharpened `.sub` head replacement for `Me-Fun`, and one uniform
+head-kind/body transport payload for `Me-FOp`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_kind_transport
+    hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    hOpFun hReplace hHeadTransport
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, and stacked left-endpoint
