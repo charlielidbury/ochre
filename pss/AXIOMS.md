@@ -1418,6 +1418,16 @@ closures, 2 inactive outstanding).
   β case consume function-bound inversion and joined-bound well-formedness
   only under the `WfCtxEqu` invariant available in the recursive proof. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — factored the two remaining
+  constructor-sized contextual residuals into reusable payloads:
+  `MEqRedStackPreservesWSubMStarLeft` with
+  `MEqRedAppFunctionSupertypePayload.of_left_transport` for the stack-indexed
+  `Me-App` operator case, and `WfMSubHeadToEquHeadPayload` /
+  `WfMEquHeadToSubHeadPayload` with
+  `MEqRedFOpBodyPayload.of_head_transports` for the `Me-FOp` body case. Also
+  added `MEqRedPreservesWfMContextual.of_factored_components_no_beta` and
+  `.of_factored_components_no_beta_and_sub_replace`, assembling contextual
+  preservation from these narrower reusable premises. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
