@@ -84,6 +84,12 @@ closures, 2 inactive outstanding).
   operator and argument equivalence steps under the five-preserved-head
   context. Added endpoint to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.refl`, the five-head
+  reflexive `MEqRed` β-instantiation leaf. This transports the reflected term's
+  scopedness through the five-head target context and reuses the existing
+  five-head prevalid transport. Added endpoint to `Pss/DeBruijnSanity.lean`;
+  no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
