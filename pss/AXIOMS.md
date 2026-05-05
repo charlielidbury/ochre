@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native typed-operator and
+  machine-operator wrappers
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_operator_machine_tail`
+  and
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_machine_operator_machine_tail`,
+  then routed their body-transport surfaces through the transitive
+  diagrammatic stack-append payload directly. Added both endpoints to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — split the direct no-external-empty
   split-beta typed `Me-FOp` target-application machine-tail assembly through
   the control-left-parametric endpoint
