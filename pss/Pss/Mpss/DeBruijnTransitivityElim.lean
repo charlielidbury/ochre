@@ -1958,6 +1958,45 @@ theorem commute_appAbs_subStep_eqStar_of_branches {Γ : Ctx} {s : Stack}
   commute_appAbs_subStar_eqStar_of_branches hpv hScoped
     (MSubRedStar.single hSub) hEq hSubBet hEqBet hAppAbs
 
+/-- One-step conditional abstraction-headed application commutation with the
+source side conditions recovered from the subtype step. -/
+theorem commute_appAbs_subStep_eqStar_of_branches_from_left {Γ : Ctx} {s : Stack}
+    {bound body arg t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂)
+    (hSubBet :
+      ∀ {arg' body' : Term},
+        MSub Γ s (Term.instantiate 0 arg' body') t₁ →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃)
+    (hEqBet :
+      ∀ {arg' body' : Term},
+        MSub Γ s t₂ (Term.instantiate 0 arg' body') →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃)
+    (hAppAbs :
+      ∀ {bound₁ body₁ arg₁ bound₂ body₂ arg₂ : Term},
+        t₁ = .app (.abs bound₁ body₁) arg₁ →
+        t₂ = .app (.abs bound₂ body₂) arg₂ →
+        ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  cases commute_appAbs_subStep_eqStar_beta_or_join_or_appAbs_from_left
+      hSub hEq with
+  | inl hSubBeta =>
+    obtain ⟨arg', body', hMSub⟩ := hSubBeta
+    exact hSubBet hMSub
+  | inr hRest =>
+    cases hRest with
+    | inl hJoin =>
+      exact hJoin
+    | inr hRest =>
+      cases hRest with
+      | inl hEqBeta =>
+        obtain ⟨arg', body', hMSub⟩ := hEqBeta
+        exact hEqBet hMSub
+      | inr hBothAppAbs =>
+        obtain ⟨bound₁, body₁, arg₁, bound₂, body₂, arg₂, hEq₁, hEq₂⟩ :=
+          hBothAppAbs
+        exact hAppAbs hEq₁ hEq₂
+
 /-- One-step abstraction-headed application commutation split with the local
 equivalence diamond available, preserving the residual structural `Ms-App`
 operator step. `Ms-Top`, `Ms-Equ`, and the `Ms-App` branch whose operator

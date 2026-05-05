@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_subStep_eqStar_of_branches_from_left`, a one-step
+  conditional abstraction-headed application branch consumer that uses the
+  side-condition-free paired classifier. Added the endpoint to the de Bruijn
+  audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_subStep_beta_or_join_or_appAbs_from_left` and
   `commute_appAbs_subStep_eqStar_beta_or_join_or_appAbs_from_left`,
   one-step abstraction-headed application classifier wrappers that recover
