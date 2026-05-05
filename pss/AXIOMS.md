@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn machine-preservation
+  audit to include the strongest chain-shape machine-state assembly routes:
+  the direct target-app/tail-cons route, the factored target-app/tail-cons
+  route, and the typed-operator and machine-operator factored machine-tail
+  variants. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn function-bound audit
   to include the shape-only joined-bound well-formedness adapters:
   `AbsFunctionBoundChainShapeWfPayload_of_meq`,
