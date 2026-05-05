@@ -316,6 +316,18 @@ noncomputable def MEqRedPreservesWfMUnderWfCtx.of_contextual
   intro Γ x y hΓ hred hwf
   exact hpres hΓ WfStack.nil hred.some hwf
 
+/-- `Me-Pro` well-formedness preservation under the contextual preservation
+payload. `WfCtxEqu.lookup_equ` supplies the promoted annotation's
+well-formedness before the recursive reduction premise is used. -/
+noncomputable def MEqRed.pro_preservesWfM_of_contextual
+    (hpres : MEqRedPreservesWfMContextual)
+    {Γ : Ctx} {s : Stack} {i : Nat} {α α' : Term}
+    (hΓ : WfCtxEqu Γ) (hStack : WfStack Γ s)
+    (hb : Γ.equBinds i α) (hred : MEqRed Γ s α α')
+    (hwfVar : WfM Γ (.bvar i)) : WfM Γ α' := by
+  have hwfα : WfM Γ α := WfCtxEqu.lookup_equ hΓ hwfVar.prevalid hb
+  exact hpres hΓ hStack hred hwfα
+
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
 def AbsFunctionBoundChainDiagramPayload : Type :=

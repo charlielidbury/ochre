@@ -1326,6 +1326,11 @@ closures, 2 inactive outstanding).
   `WfStack`, rather than the known-false unrestricted premise. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRed.pro_preservesWfM_of_contextual`, discharging the `Me-Pro`
+  well-formedness-preservation case under the contextual payload by
+  combining `WfCtxEqu.lookup_equ` with the recursive preservation
+  premise. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No
