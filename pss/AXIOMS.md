@@ -78,6 +78,12 @@ closures, 2 inactive outstanding).
   packaging the checked eleven-head structural leaves while leaving the
   recursive twelve-head binder adapters explicit. Added endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the fixed twelve-head
+  prevalidity transport `BetaInstantiationPreservesPrevalidExtUnderTwelveHeads`
+  through the existing list-generic prefix transport, preparing the
+  eleven-head binder-body frontier and the next twelve-head structural leaves.
+  Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
