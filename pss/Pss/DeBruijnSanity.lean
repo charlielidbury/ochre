@@ -16,6 +16,8 @@ namespace DeBruijn
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_of
 #print axioms Term.shift_scoped_inv
 #print axioms Stack.Scoped.shift_inv
+#print axioms Prevalid.equ_under_two_heads_replace
+#print axioms PrevalidExt.equ_under_two_heads_replace
 #print axioms PrevalidExt.weaken_head_inv
 #print axioms MEqRed.prevalidExt
 #print axioms MSubRed.prevalidExt

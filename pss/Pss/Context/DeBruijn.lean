@@ -1560,6 +1560,22 @@ noncomputable def equ_under_head_replace {Γ : Ctx} {head : CtxEntry}
     exact Prevalid.equ (Prevalid.equ_head_replace hTail hnew) (by
       simpa [Ctx.depth] using hHead)
 
+/-- Replace an `.equ` entry under two preserved heads. Since context depth is
+unchanged, both preserved head bounds remain scoped. -/
+noncomputable def equ_under_two_heads_replace {Γ : Ctx} {head₁ head₂ : CtxEntry}
+    {old new : Term} :
+    Prevalid (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) →
+    Term.Scoped Γ.depth new →
+    Prevalid (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) := by
+  intro h hnew
+  cases h with
+  | sub hTail hHead =>
+    exact Prevalid.sub (Prevalid.equ_under_head_replace hTail hnew) (by
+      simpa [Ctx.depth] using hHead)
+  | equ hTail hHead =>
+    exact Prevalid.equ (Prevalid.equ_under_head_replace hTail hnew) (by
+      simpa [Ctx.depth] using hHead)
+
 end Prevalid
 
 namespace PrevalidExt
@@ -1705,6 +1721,21 @@ noncomputable def equ_under_head_replace {Γ : Ctx} {s : Stack}
   induction h with
   | nil hΓ =>
     exact PrevalidExt.nil (Prevalid.equ_under_head_replace hΓ hnew)
+  | cons hst hα ih =>
+    exact PrevalidExt.cons ih (by
+      simpa [Ctx.depth] using hα)
+
+/-- Replace an `.equ` entry under two preserved heads while preserving
+extended-context prevalidity. -/
+noncomputable def equ_under_two_heads_replace {Γ : Ctx} {s : Stack}
+    {head₁ head₂ : CtxEntry} {old new : Term} :
+    PrevalidExt (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s →
+    Term.Scoped Γ.depth new →
+    PrevalidExt (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s := by
+  intro h hnew
+  induction h with
+  | nil hΓ =>
+    exact PrevalidExt.nil (Prevalid.equ_under_two_heads_replace hΓ hnew)
   | cons hst hα ih =>
     exact PrevalidExt.cons ih (by
       simpa [Ctx.depth] using hα)

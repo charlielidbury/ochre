@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Context/DeBruijn.lean` — added
+  `Prevalid.equ_under_two_heads_replace` and
+  `PrevalidExt.equ_under_two_heads_replace`, context-prevalidity transport
+  for replacing a changed `.equ` entry under two preserved heads. This is the
+  prevalidity substrate needed for the next two-preserved-`.sub` splitter in
+  the nested structural-app `Ms-Fun` body residual. Added both endpoints to
+  the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MSubRed.equ_under_sub_head_nil_replace_from_handlers`, the empty-stack
   `.sub`-head specialization of raw subtype replacement across a changed
