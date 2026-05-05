@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `AbsFunctionBoundInversionUnderWfCtx_of_chain_shape_machine_state`,
+  deriving the `WfCtxEqu` function-bound inversion payload directly from the
+  shape-only chain payload plus corrected machine-state preservation. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedEmptyPreservesWSubMStarLeft.of_machine_state`, deriving the
   empty-stack left-endpoint well-subtyping transport from corrected
   machine-state preservation by specializing to the empty stack. No

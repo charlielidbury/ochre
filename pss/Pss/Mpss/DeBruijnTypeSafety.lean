@@ -4336,6 +4336,17 @@ noncomputable def AbsFunctionBoundInversionUnderWfCtx_of_chain_shape
       hwfResult d.wfJoinBound
   exact WEquMStar.trans d.wfJoinBound hLeft hRight
 
+/-- Function-bound inversion under `WfCtxEqu`, with the joined-bound
+well-formedness supplied by machine-state preservation specialized to the
+empty stack. -/
+noncomputable def AbsFunctionBoundInversionUnderWfCtx_of_chain_shape_machine_state
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hpres : MEqRedPreservesWfMachineState) :
+    AbsFunctionBoundInversionUnderWfCtx :=
+  AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape
+    (AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state
+      hShape hpres)
+
 /-- The older Prop-closure diagram payload can also feed function-bound
 inversion through the Type-valued chain endpoint by choosing chain witnesses
 for both closures. -/
