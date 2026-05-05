@@ -302,6 +302,39 @@ noncomputable def AbsAbsBoundChainDiagram.rgh
   eqJoin := MEqRedChain.trans (MEqRedChain.single hred) d.eqJoin
   wfJoinBound := d.wfJoinBound
 
+/-- Append an equivalence chain on the right side of an abstraction diagram. -/
+noncomputable def AbsAbsBoundChainDiagram.rgh_chain
+    {Γ : Ctx} {bound body result resultBody result' resultBody' : Term}
+    (d : AbsAbsBoundChainDiagram Γ bound body result' resultBody')
+    (hred : MEqRedChain Γ [] (.abs result resultBody)
+      (.abs result' resultBody')) :
+    AbsAbsBoundChainDiagram Γ bound body result resultBody := by
+  suffices key : ∀ {target : Term},
+      MEqRedChain Γ [] (.abs result resultBody) target →
+        ∀ {result' resultBody' : Term},
+          PLift (target = .abs result' resultBody') →
+            AbsAbsBoundChainDiagram Γ bound body result' resultBody' →
+              AbsAbsBoundChainDiagram Γ bound body result resultBody from
+    key hred ⟨rfl⟩ d
+  intro target hChain
+  induction hChain with
+  | refl =>
+      intro result' resultBody' hEq d
+      cases hEq with
+      | up hEq =>
+          cases hEq
+          exact d
+  | tail hChain hStep ih =>
+      intro result' resultBody' hEq d
+      cases hEq with
+      | up hEq =>
+          subst hEq
+          obtain ⟨midBound, midBody, hMid⟩ := hChain.abs_inv_type
+          cases hMid with
+          | up hMid =>
+              subst hMid
+              exact ih ⟨rfl⟩ (AbsAbsBoundChainDiagram.rgh d hStep)
+
 /-- Prepend a subtype step on the left side of an abstraction diagram, after
 the subtype step target has been classified as an abstraction. The
 classification is the part that must rule out the `Top` branch separately. -/
@@ -315,6 +348,99 @@ noncomputable def AbsAbsBoundChainDiagram.lf2_abs
   subJoin := MSubRedChain.trans (MSubRedChain.single hred) d.subJoin
   eqJoin := d.eqJoin
   wfJoinBound := d.wfJoinBound
+
+/-- Apply the abstraction `Top` obstruction after appending a right
+equivalence chain to the well-subtyping derivation. -/
+noncomputable def NoTopAbstractionSupertypesAt.of_wsubm_right_chain
+    {Γ : Ctx} {result resultBody target : Term}
+    (hNoTop : NoTopAbstractionSupertypesAt)
+    (hwfTop : WfM Γ .top)
+    (hwfTarget : WfM Γ (.abs result resultBody))
+    (hSub : WSubM Γ .top target)
+    (hred : MEqRedChain Γ [] (.abs result resultBody) target) :
+    False :=
+  hNoTop (WSubMStar.sub hwfTop
+    (WSubM.right_rgh_chain hSub hred.to_star) hwfTarget)
+
+/-- Extract an abstraction diagram from one de Bruijn well-subtyping
+derivation, with a right-equivalence continuation to the final abstraction
+target. The continuation lets right-equivalence branches keep using the
+original well-formed target when ruling out paths through `Top`. -/
+noncomputable def WSubM.abs_abs_chain_diagram_with_right_chain
+    {Γ : Ctx} {source target : Term}
+    (hSub : WSubM Γ source target) :
+    ∀ {bound body result resultBody : Term},
+      NoTopAbstractionSupertypesAt →
+        WfM Γ (.abs result resultBody) →
+          PLift (source = .abs bound body) →
+            MEqRedChain Γ [] (.abs result resultBody) target →
+              AbsAbsBoundChainDiagram Γ bound body result resultBody := by
+  exact (WSubM.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun Γ source target _ =>
+      ∀ {bound body result resultBody : Term},
+        NoTopAbstractionSupertypesAt →
+          WfM Γ (.abs result resultBody) →
+            PLift (source = .abs bound body) →
+              MEqRedChain Γ [] (.abs result resultBody) target →
+                AbsAbsBoundChainDiagram Γ bound body result resultBody)
+    (motive_3 := fun _ _ _ _ => PUnit)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun {Γ t} hwf _ => by
+      intro bound body result resultBody _hNoTop _hwfTarget hSource hRight
+      cases hSource with
+      | up hSource =>
+          subst hSource
+          exact AbsAbsBoundChainDiagram.rgh_chain
+            (AbsAbsBoundChainDiagram.refl hwf) hRight)
+    (fun {Γ v v' t} hred _ ih => by
+      intro bound body result resultBody hNoTop hwfTarget hSource hRight
+      cases hSource with
+      | up hSource =>
+          subst hSource
+          obtain ⟨bound', body', hTarget⟩ := hred.abs_inv_type
+          cases hTarget with
+          | up hTarget =>
+              subst hTarget
+              exact AbsAbsBoundChainDiagram.lf1 hred
+                (ih hNoTop hwfTarget (PLift.up (Eq.refl _)) hRight))
+    (fun {Γ v v' t} _hwfV hred hwfV' hsub _ _ ih => by
+      intro bound body result resultBody hNoTop hwfTarget hSource hRight
+      cases hSource with
+      | up hSource =>
+          subst hSource
+          cases hred.abs_inv_type with
+          | inl hTop =>
+              cases hTop with
+              | up hTop =>
+                  subst hTop
+                  exact False.elim
+                    (NoTopAbstractionSupertypesAt.of_wsubm_right_chain
+                      hNoTop hwfV' hwfTarget hsub hRight)
+          | inr hAbs =>
+              obtain ⟨bound', body', hTarget⟩ := hAbs
+              cases hTarget with
+              | up hTarget =>
+                  subst hTarget
+                  exact AbsAbsBoundChainDiagram.lf2_abs hred
+                    (ih hNoTop hwfTarget (PLift.up (Eq.refl _)) hRight))
+    (fun {Γ v t t'} _ hred ih => by
+      intro bound body result resultBody hNoTop hwfTarget hSource hRight
+      exact ih hNoTop hwfTarget hSource (MEqRedChain.tail hRight hred))
+    (fun _ _ _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ _ _ => PUnit.unit)
+    hSub)
+
+/-- One-step well-subtyping abstraction diagram extraction. -/
+noncomputable def WSubM.abs_abs_chain_diagram :
+    WSubMAbsAbsChainDiagramPayload := by
+  intro Γ bound body result resultBody hNoTop _hwfSource hwfTarget hSub
+  exact hSub.abs_abs_chain_diagram_with_right_chain
+    hNoTop hwfTarget (PLift.up (Eq.refl _)) MEqRedChain.refl
 
 /-- Forget the Type-valued chain structure of a function-bound diagram,
 embedding its chains into the existing Prop-valued closures. -/

@@ -1235,6 +1235,14 @@ closures, 2 inactive outstanding).
   `AbsAbsBoundChainDiagram.refl`, `.lf1`, `.rgh`, and `.lf2_abs`, covering
   the reflexive, left-equivalence, right-equivalence, and abstraction-target
   left-subtype `WSubM` branches. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — proved the direct one-step
+  abstraction diagram extraction
+  `WSubM.abs_abs_chain_diagram`, with the right-continuation helper
+  `WSubM.abs_abs_chain_diagram_with_right_chain` and supporting
+  `AbsAbsBoundChainDiagram.rgh_chain` /
+  `NoTopAbstractionSupertypesAt.of_wsubm_right_chain`. This discharges
+  `WSubMAbsAbsChainDiagramPayload` without adding axioms. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
