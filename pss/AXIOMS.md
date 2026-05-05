@@ -313,6 +313,16 @@ closures, 2 inactive outstanding).
   `WSubMStar` premise lifted under the instantiated preserved head and target
   stack. Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added stack-append convenience
+  assemblers
+  `BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_stack_append_constructors`
+  and
+  `BetaInstantiationPreservesMSubRedStackMSubStar.of_stack_append_under_head_constructors`.
+  These package both top-level and under-head `Ms-Pro` substitution frontiers
+  through `MSubStarStackAppendPayload`, leaving only equivalence substitution,
+  under-head body frontiers, and changed-bound `Ms-Fun` transport as explicit
+  inputs. Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

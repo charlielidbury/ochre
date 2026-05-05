@@ -2538,6 +2538,40 @@ noncomputable def BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload.o
               simpa [Term.instantiate, htargetInst] using
                 MSubStar.of_MSubRed (MSubRed.pro hpvTarget hbind)
 
+/-- Convenience assembler once the under-head `Ms-Pro` frontier is supplied
+by the general diagrammatic stack-append lift. The remaining inputs are the
+under-head equivalence substitution and body frontiers. -/
+noncomputable def BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_stack_append_constructors
+    (hAppend : MSubStarStackAppendPayload)
+    (hEq : BetaInstantiationPreservesMEqRedUnderHeadStack)
+    (hFun : BetaInstantiationPreservesMSubRedUnderHeadFunMSubStarPayload)
+    (hFOp : BetaInstantiationPreservesMSubRedUnderHeadFOpMSubStarPayload) :
+    BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload :=
+  BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_constructors
+    (BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload.of_stack_append
+      hAppend)
+    hEq hFun hFOp
+
+/-- Stack-targeted subtype β-instantiation assembled from stack append and
+under-head constructor frontiers. This packages both `Ms-Pro` obligations
+through `MSubStarStackAppendPayload`, leaving only equivalence substitution,
+under-head body frontiers, and changed-bound `Ms-Fun` transport explicit. -/
+noncomputable def BetaInstantiationPreservesMSubRedStackMSubStar.of_stack_append_under_head_constructors
+    (hAppend : MSubStarStackAppendPayload)
+    (hEq : BetaInstantiationPreservesMEqRedStack)
+    (hEqUnder : BetaInstantiationPreservesMEqRedUnderHeadStack)
+    (hFunUnder : BetaInstantiationPreservesMSubRedUnderHeadFunMSubStarPayload)
+    (hFOpUnder : BetaInstantiationPreservesMSubRedUnderHeadFOpMSubStarPayload)
+    (hChange : BetaInstantiationPreservesMSubRedFunBodyHeadChangeMSubStarPayload) :
+    BetaInstantiationPreservesMSubRedStackMSubStar :=
+  BetaInstantiationPreservesMSubRedStackMSubStar.of_under_head_constructors
+    (BetaInstantiationPreservesMSubRedProHeadMSubStarPayload.of_stack_append
+      hAppend)
+    hEq
+    (BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_stack_append_constructors
+      hAppend hEqUnder hFunUnder hFOpUnder)
+    hChange
+
 /-- A transitive diagrammatic stack lift discharges the well-subtyping to
 stacked diagrammatic bridge by first stripping `WSubMStar` to `MSubStar`. -/
 def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
