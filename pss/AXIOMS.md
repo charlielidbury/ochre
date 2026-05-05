@@ -1249,6 +1249,12 @@ closures, 2 inactive outstanding).
   `WSubM.abs_function_bound_inversion`, exposing the new Type-valued
   diagram extraction as bound well-equivalence for a single `WSubM`
   derivation. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added generic Type-valued
+  one-step well-subtyping diagrams via `WSubMChainDiagram`,
+  `WSubM.to_chain_diagram`, and `WSubMChainDiagram.toMSub`. This
+  mirrors the existing Prop-valued `MSub` extraction while preserving
+  concrete reduction-chain evidence for future composition work. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

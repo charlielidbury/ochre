@@ -175,6 +175,15 @@ def AbsFunctionBoundInversionOfMSub : Type :=
     MSub Γ [] (.abs bound body) (.abs result .top) →
       WEquMStar Γ bound result
 
+/-- Type-valued diagrammatic common reduct for one well-subtyping
+derivation. This mirrors `MSub` but keeps both reduction chains in `Type`, so
+later payloads can construct evidence without eliminating a Prop-valued
+existential. -/
+structure WSubMChainDiagram (Γ : Ctx) (source target : Term) : Type where
+  join : Term
+  subJoin : MSubRedChain Γ [] source join
+  eqJoin : MEqRedChain Γ [] target join
+
 /-- Type-valued common-reduct diagram for a well-subtyping chain from an
 abstraction to a function supertype. This avoids eliminating the Prop-valued
 `MSub` witness when constructing Type-valued well-equivalence evidence. -/
@@ -263,6 +272,54 @@ noncomputable def AbsFunctionBoundChainDiagramPayload_of_wsubm
   intro Γ bound body result hNoTop hwfSource hwfTarget hSub
   exact AbsFunctionBoundChainDiagram.of_abs_abs
     (hOne hNoTop hwfSource hwfTarget hSub)
+
+/-- Extract a Type-valued diagrammatic common reduct from one de Bruijn
+well-subtyping derivation. -/
+noncomputable def WSubM.to_chain_diagram {Γ : Ctx} {source target : Term}
+    (hSub : WSubM Γ source target) :
+    WSubMChainDiagram Γ source target := by
+  exact (WSubM.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun Γ source target _ =>
+      WSubMChainDiagram Γ source target)
+    (motive_3 := fun _ _ _ _ => PUnit)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun {Γ t} _ _ => {
+      join := t
+      subJoin := MSubRedChain.refl
+      eqJoin := MEqRedChain.refl
+    })
+    (fun {Γ source source' target} hred _ d => {
+      join := d.join
+      subJoin := MSubRedChain.trans
+        (MSubRedChain.single
+          (MSubRed.equ (PrevalidExt.nil hred.prevalid) hred))
+        d.subJoin
+      eqJoin := d.eqJoin
+    })
+    (fun {Γ source source' target} _ hred _ _ _ _ d => {
+      join := d.join
+      subJoin := MSubRedChain.trans (MSubRedChain.single hred) d.subJoin
+      eqJoin := d.eqJoin
+    })
+    (fun {Γ source target target'} _ hred d => {
+      join := d.join
+      subJoin := d.subJoin
+      eqJoin := MEqRedChain.trans (MEqRedChain.single hred) d.eqJoin
+    })
+    (fun _ _ _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ _ _ => PUnit.unit)
+    hSub)
+
+/-- Forget the Type-valued one-step well-subtyping diagram into the existing
+Prop-valued diagrammatic subtyping relation. -/
+def WSubMChainDiagram.toMSub {Γ : Ctx} {source target : Term}
+    (d : WSubMChainDiagram Γ source target) : MSub Γ [] source target :=
+  ⟨d.join, d.subJoin.to_star, d.eqJoin.to_star⟩
 
 /-- Reflexive abstraction-to-abstraction chain diagram. -/
 def AbsAbsBoundChainDiagram.refl
