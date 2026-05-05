@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added right-step variants
+  `EqDiamonds.appTop_any_from_right` and
+  `StrongCommutes.appTop_any_from_right`, so `Top`-headed application
+  cells can recover side conditions from either inspected reduction. Added
+  both endpoints to the de Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `EqDiamonds.appTop_any_from_left` and
   `StrongCommutes.appTop_any_from_left`, recovering the `Top`-headed

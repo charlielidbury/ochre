@@ -394,6 +394,15 @@ theorem appTop_any_from_left {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
   | tAp hpv hu =>
     exact appTop_any hpv hu (MEqRed.tAp hpv hu) h₂
 
+/-- The full `Top`-headed application source cell with prevalidity and
+argument scoping recovered from the right equivalence step. -/
+theorem appTop_any_from_right {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
+    (h₁ : MEqRed Γ s (.app .top u) t₁)
+    (h₂ : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  obtain ⟨t₃, hRight, hLeft⟩ := appTop_any_from_left h₂ h₁
+  exact ⟨t₃, hLeft, hRight⟩
+
 end EqDiamonds
 
 /-- The `Top` source case for one equivalence step against an equivalence
@@ -772,6 +781,22 @@ theorem appTop_any_from_left {Γ : Ctx} {s : Stack}
     | equ hpvCons heqOp =>
       exact appTop_any (PrevalidExt.tail hpvCons) hArg
         (MSubRed.app (MSubRed.equ hpvCons heqOp) hArg) heq
+
+/-- The full `Top`-headed application source cell with prevalidity and
+argument scoping recovered from the equivalence step. -/
+theorem appTop_any_from_right {Γ : Ctx} {s : Stack}
+    {u t₁ t₂ : Term}
+    (hsub : MSubRed Γ s (.app .top u) t₁)
+    (heq : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  cases heq with
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons =>
+      exact appTop_any (PrevalidExt.tail hpvCons) hArg.scoped_left
+        hsub (MEqRed.app (MEqRed.top hpvCons) hArg)
+  | tAp hpv hu =>
+    exact appTop_any hpv hu hsub (MEqRed.tAp hpv hu)
 
 /-- Compatibility wrapper for the full `Top`-headed application source cell
 that matches the conditional Lemma 1 helper shape. The local diamond premise
