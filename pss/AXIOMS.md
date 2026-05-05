@@ -10,6 +10,15 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
+  feeding the existing shape-only function-bound chain payload and
+  `WfCtxEqu` joined-bound well-formedness route into the direct split-beta
+  machine assembly. The remaining explicit premises are the stack/control
+  body transports, native `Me-App` operator payload for contextual
+  preservation, directional `Me-FOp` head transports, target-app/tail
+  machine residuals, and sharpened `.sub` replacement. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_operator_machine_tail_contextual`
   and
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_machine_operator_machine_tail_contextual`,

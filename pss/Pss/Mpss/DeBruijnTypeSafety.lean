@@ -5443,6 +5443,35 @@ noncomputable def
     hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hLeft hReplace hHeadTransport
 
+/-- Machine-state preservation route whose contextual subproof is assembled
+from the shape-only function-bound chain payload, joined-bound
+well-formedness under `WfCtxEqu`, the native `Me-App` operator payload,
+sharpened `.sub` head replacement, and the two directional `Me-FOp`
+head/body transports. The remaining machine-specific residuals are the
+stack/control body transports and target/tail application payloads. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
+    hSubst hEqBody hSubBody hPres hStep
+    (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    (MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports
+      hSubst hShape hShapeWf hOpFun hReplace hSubToEqu hEquToSub)
+    hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
+
 namespace StepAt
 
 /-- All structural operational well-formedness preservation cases reduce to
