@@ -39,6 +39,14 @@ closures, 2 inactive outstanding).
   its closed variant, and the corresponding chain-shape/empty-stack
   equivalence preservation endpoints. Added all nine endpoints to the
   De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WfMSubHeadReplaceImmediateDirectPayloads`,
+  `WfMSubHeadReplaceDirectPayloads.of_immediate_and_under`, and
+  `WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under`, factoring
+  the top-level `.sub` replacement direct residual package through the
+  named preserved-head replacement payload
+  `WfMSubUnderHeadReplaceOfNewWf`. Added the two assembler endpoints to
+  the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,

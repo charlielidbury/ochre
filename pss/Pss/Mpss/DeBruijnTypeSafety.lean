@@ -6422,6 +6422,63 @@ noncomputable def WfMSubUnderHeadReplaceOfNewWf.of_direct_payloads
   exact WfM.sub_under_head_replace_from_direct_payloads_of_new_wf
     hBody hOldNew hNew p.wf p.wfUnder p.eqPresOld p.app p.fun_
 
+/-- Direct top-level `.sub` replacement residuals, factored so the
+preserved-head recursion is supplied separately by
+`WfMSubUnderHeadReplaceOfNewWf`. -/
+structure WfMSubHeadReplaceImmediateDirectPayloads
+    (Γ : Ctx) (old new : Term) : Type where
+  wf : ∀ {x : Term},
+    WfM ({ bound := old, kind := .sub } :: Γ) x →
+      WfM ({ bound := new, kind := .sub } :: Γ) x
+  eqPresOld : ∀ {x y : Term},
+    MEqRedJ ({ bound := old, kind := .sub } :: Γ) [] x y →
+      WfM ({ bound := old, kind := .sub } :: Γ) x →
+        WfM ({ bound := old, kind := .sub } :: Γ) y
+  app : ∀ {arg u u' : Term},
+    Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) arg →
+      MSubRed ({ bound := old, kind := .sub } :: Γ) (arg :: []) u u' →
+        WfM ({ bound := new, kind := .sub } :: Γ) (.app u arg) →
+        WSubMStar ({ bound := new, kind := .sub } :: Γ)
+          (.app u arg) (.app u' arg)
+  fun_ : ∀ {t t' body body' : Term},
+    Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t →
+      MEqRed ({ bound := old, kind := .sub } :: Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+            { bound := old, kind := .sub } :: Γ) [] body body' →
+        WfM ({ bound := new, kind := .sub } :: Γ) (.abs t body) →
+        WSubMStar ({ bound := new, kind := .sub } :: Γ)
+          (.abs t body) (.abs t' body')
+
+/-- Combine immediate top-level direct residuals with the preserved-head
+replacement payload to obtain the full direct residual package. -/
+def WfMSubHeadReplaceDirectPayloads.of_immediate_and_under
+    {Γ : Ctx} {old new : Term}
+    (hOldNew : MEqRed Γ [] old new)
+    (hNew : WfM Γ new)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (p : WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    WfMSubHeadReplaceDirectPayloads Γ old new where
+  wf := p.wf
+  wfUnder := fun hBody => hUnder hOldNew hNew hBody
+  eqPresOld := p.eqPresOld
+  app := p.app
+  fun_ := p.fun_
+
+/-- Assemble top-level `.sub` head replacement from immediate direct residuals
+and a preserved-head replacement payload. -/
+noncomputable def
+    WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    WfMSubHeadReplaceOfNewWf :=
+  WfMSubHeadReplaceOfNewWf.of_direct_payloads
+    (fun hOldNew hNew =>
+      WfMSubHeadReplaceDirectPayloads.of_immediate_and_under
+        hOldNew hNew hUnder (hPayloads hOldNew hNew))
+
 /-- The existing sharpened `.sub` head replacement payload discharges the
 body-replacement payload needed by the contextual `Me-Fun` case. -/
 def MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf
