@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpTailTransportPayload`,
+  `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body`,
+  `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_and_empty`, and
+  `MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop`,
+  reducing the `Me-FOp` machine-state residual to typed body preservation,
+  function-bound inversion, bound-step empty preservation, and an explicit
+  tail-stack transport residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedMachineStackHeadReplacePayload.of_body_transports_and_steps`,
   `MEqRedProAnnotationMachineStatePayload.of_body_transports_and_steps`,
   and `MEqRedPreservesWfMachineState.of_body_transports`, so the

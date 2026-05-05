@@ -1259,6 +1259,67 @@ def MEqRedFOpBodyTypedPayload : Type :=
                     (Stack.shift 0 s) body body' →
                     WfM ({ bound := bound', kind := .sub } :: Γ) body'
 
+/-- Tail transport residual for `Me-FOp` machine states after the target
+immediate application has been retyped. This is deliberately stack-indexed:
+the `Me-FOp` body reduction lives under the remaining tail stack, so it does
+not by itself give an empty-stack well-subtyping relation between the
+immediate source and target applications. -/
+def MEqRedFOpTailTransportPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {bound bound' operand body body' : Term},
+    WfMachineState Γ (.abs bound body) (operand :: s) →
+      WfM Γ (.app (.abs bound' body') operand) →
+        WfMachineState Γ (.abs bound' body') (operand :: s)
+
+/-- The machine-state `Me-FOp` residual reduces to the typed body payload,
+function-bound inversion for the source abstraction application, empty-stack
+preservation for the bound step, and a tail-stack transport residual. -/
+noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBoundPres :
+      ∀ {Γ : Ctx} {source target : Term},
+        WfCtxEqu Γ → MEqRed Γ [] source target → WfM Γ source → WfM Γ target)
+    (hBody : MEqRedFOpBodyTypedPayload)
+    (hTail : MEqRedFOpTailTransportPayload) :
+    MEqRedFOpPreservesWfMachineStatePayload := by
+  intro Γ s bound bound' operand body body' hΓ hBound hOperandScoped hBodyRed hState
+  have hStack : WfStack Γ (operand :: s) :=
+    WfMachineState.stack_wf hState
+  have hwfOperand : WfM Γ operand := WfStack.head hStack
+  have hStackTail : WfStack Γ s := WfStack.tail hStack
+  have hwfAbs : WfM Γ (.abs bound body) :=
+    WfMachineState.control_wf hState
+  have hwfBound : WfM Γ bound := hwfAbs.fun_inv.1
+  have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γ) body :=
+    hwfAbs.fun_inv.2
+  have hOperandBound : WSubMStar Γ operand bound :=
+    WfMachineState.fop_operand_bound hInv hΓ hState
+  have hwfBound' : WfM Γ bound' :=
+    hBoundPres hΓ hBound hwfBound
+  have hwfBody' :
+      WfM ({ bound := bound', kind := .sub } :: Γ) body' :=
+    hBody hΓ hStackTail hwfBound hwfBound' hOperandBound hwfBody
+      hBound hBodyRed
+  have hwfAbs' : WfM Γ (.abs bound' body') :=
+    WfM.fun_ hwfBound' hwfBody'
+  have hBoundSubBound' : WSubMStar Γ bound bound' :=
+    WSubMStar.of_MEqRed_fwd hBound hwfBound hwfBound'
+  have hOperandBound' : WSubMStar Γ operand bound' :=
+    WSubMStar.trans hwfBound hOperandBound hBoundSubBound'
+  have hwfAbsTop' : WfM Γ (.abs bound' .top) :=
+    WfM.fun_ hwfBound'
+      (WfM.top (Prevalid.sub hwfBound'.prevalid hwfBound'.scoped))
+  have hBodyTop : MSubRed ({ bound := bound', kind := .sub } :: Γ) [] body' .top :=
+    MSubRed.top (PrevalidExt.nil hwfBody'.prevalid) hwfBody'.scoped
+  have hBoundRefl : MEqRed Γ [] bound' bound' :=
+    MEqRed.refl (PrevalidExt.nil hwfBound'.prevalid) hwfBound'.scoped
+  have hAbsSubTop : MSubRed Γ [] (.abs bound' body') (.abs bound' .top) :=
+    MSubRed.fun_ hwfBound'.scoped hBoundRefl hBodyTop
+  have hFunTarget : WSubMStar Γ (.abs bound' body') (.abs bound' .top) :=
+    WSubMStar.of_MSubRed_fwd hAbsSubTop hwfAbs' hwfAbsTop'
+  have hAppTarget : WfM Γ (.app (.abs bound' body') operand) :=
+    WfM.app hFunTarget hOperandBound'
+  exact hTail hState hAppTarget
+
 /-- The native `Me-FOp` body residual is still too broad with only
 `WfStack`: the stack operand can be `Top` while the abstraction body uses the
 head variable as a function. Under the `.equ Top` head the body can reduce to
@@ -1581,6 +1642,18 @@ noncomputable def MEqRedPreservesWfMUnderWfCtx.of_machine_state
   simpa [WfMachineState, Stack.plug] using
     hpres hΓ hred.some (by simpa [WfMachineState, Stack.plug] using hwf)
 
+/-- Convenience form of the typed `Me-FOp` machine-state reduction using the
+existing empty-stack preservation payload for the abstraction-bound step. -/
+noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_and_empty
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hBody : MEqRedFOpBodyTypedPayload)
+    (hTail : MEqRedFOpTailTransportPayload) :
+    MEqRedFOpPreservesWfMachineStatePayload :=
+  MEqRedFOpPreservesWfMachineStatePayload.of_typed_body hInv
+    (fun hΓ hred hwf => hEmpty hΓ ⟨hred⟩ hwf)
+    hBody hTail
+
 /-- Control-term transport plus empty-stack preservation discharges the
 machine-state stack-head replacement residual. The source plugged state
 exposes the immediate application `u v`; after preserving the empty-stack
@@ -1744,6 +1817,27 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports
       hEmpty hFunBody)
     (MEqRedTApPreservesWfMachineStatePayload.of_no_top hNoTop)
     hFOp
+
+/-- External-empty machine-state assembly with both the control/app-operator
+side and the `Me-FOp` constructor reduced to their typed body/tail transport
+residuals. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hFOpTail : MEqRedFOpTailTransportPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports
+    hBeta hEmpty hEqBody hSubBody hPres hStep hFunBody hNoTop
+    (MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_and_empty
+      hInv hEmpty hFOpBody hFOpTail)
 
 /-- Reduced machine-state preservation assembly that uses constructor
 recursive hypotheses directly for the empty-stack subreductions in `Me-App`
