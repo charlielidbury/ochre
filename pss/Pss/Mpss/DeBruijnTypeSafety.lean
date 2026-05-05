@@ -8338,6 +8338,45 @@ noncomputable def
     (AbsFunctionBoundInversion_of_chain_diagram hDiagram)
     hOpFun hReplace hFOpBody
 
+/-- Contextual `MEqRed` preservation assembled from a Type-valued
+function-bound chain diagram and direct `.sub` replacement residual payloads. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_sub_replace
+    hSubst hDiagram hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a Type-valued
+function-bound chain diagram, immediate top-level `.sub` replacement
+residuals, and the named preserved-head replacement payload. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_sub_replace
+    hSubst hDiagram hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hFOpBody
+
 /-- Contextual `MEqRed` preservation assembled from a shape-only
 function-bound chain payload plus joined-bound well-formedness, with the β
 case proved internally. -/
@@ -8367,6 +8406,49 @@ noncomputable def MEqRedPreservesWfMContextual.of_chain_shape_no_beta_and_sub_re
   MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_sub_replace
     hSubst (AbsFunctionBoundChainDiagramPayload.of_shape hShape hShapeWf)
     hOpFun hReplace hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload, joined-bound well-formedness, and direct `.sub`
+replacement residual payloads. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_no_beta_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload, joined-bound well-formedness, immediate
+top-level `.sub` replacement residuals, and the named preserved-head
+replacement payload. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_no_beta_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hFOpBody
 
 /-- Contextual `MEqRed` preservation assembled from a shape-only
 function-bound chain payload plus joined-bound well-formedness only under
@@ -8399,6 +8481,49 @@ noncomputable def
   MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace
     hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hOpFun hReplace hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload, joined-bound well-formedness under `WfCtxEqu`,
+and direct `.sub` replacement residual payloads. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload, joined-bound well-formedness under `WfCtxEqu`,
+immediate top-level `.sub` replacement residuals, and the named
+preserved-head replacement payload. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace
+    hSubst hShape hShapeWf hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hFOpBody
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator

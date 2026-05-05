@@ -90,6 +90,10 @@ closures, 2 inactive outstanding).
   inversion, split `Me-FOp` head/body transport, and fully factored
   contextual routes. Added all eight endpoints to the De Bruijn audit. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the same direct/factored
+  `.sub` replacement boundary at the no-β chain-diagram and chain-shape
+  contextual layers, including the `WfCtxEqu` chain-shape route. Added all
+  six endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
