@@ -15071,6 +15071,47 @@ theorem msubRedStar_equ_head_stack_lift_function_from_step_lift {Γ : Ctx}
   fun hpvTail =>
     msubRedStar_equ_head_stack_lift_from_step_lift (hStep hpvTail) h
 
+/-- Lift an empty-stack subtype-reduction chain under a changed `.equ` head
+when each source step may lift to a subtype-reduction chain. This is the
+shape needed for abstraction cases where a changed-head nonempty stack lift
+is not a single raw subtype step. -/
+theorem msubRedStar_equ_head_stack_lift_from_step_star_lift {Γ : Ctx}
+    {s : Stack} {head u v : Term}
+    (hStep :
+      ∀ {a b : Term},
+        MSubRed Γ [] a b →
+        MSubRedStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 a) (Term.shift 0 b))
+    (h : MSubRedStar Γ [] u v) :
+    MSubRedStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 u) (Term.shift 0 v) := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail mid v hStar hLast ih =>
+    exact MSubRedStar.trans ih (hStep hLast.some)
+
+/-- Function-valued variant of
+`msubRedStar_equ_head_stack_lift_from_step_star_lift`, for callers that can
+lift each source subtype step to a subtype chain under every residual tail
+stack. -/
+theorem msubRedStar_equ_head_stack_lift_function_from_step_star_lift
+    {Γ : Ctx} {head u v : Term}
+    (hStep :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {a b : Term},
+          MSubRed Γ [] a b →
+          MSubRedStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+            (Term.shift 0 a) (Term.shift 0 b))
+    (h : MSubRedStar Γ [] u v) :
+    ∀ {s : Stack},
+      PrevalidExt Γ s →
+      MSubRedStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+        (Term.shift 0 u) (Term.shift 0 v) :=
+  fun hpvTail =>
+    msubRedStar_equ_head_stack_lift_from_step_star_lift (hStep hpvTail) h
+
 /-- Chain-level changed-head stack lift with the canonical constructor
 handlers wired in. -/
 theorem meqRedStar_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stack}

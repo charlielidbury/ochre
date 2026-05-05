@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_head_stack_lift_from_step_star_lift` and
+  `msubRedStar_equ_head_stack_lift_function_from_step_star_lift`, the
+  changed-`.equ`-head stack-lift consumers for subtype chains whose source
+  steps lift to target subtype chains rather than single target steps. This
+  is the reusable shape for abstraction residuals where a nonempty changed
+  argument stack lift naturally expands through an `FOp` chain. Added both
+  endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRedStar_equ_head_stack_lift_from_step_lift` and
   `msubRedStar_equ_head_stack_lift_function_from_step_lift`, the generic
   raw-subtype-chain consumers for changed-`.equ`-head stack lifting. These
