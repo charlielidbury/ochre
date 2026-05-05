@@ -10,6 +10,15 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedMachineTailStepPreservesConsPayload`,
+  `MEqRedFOpTailStepPreservesConsPayload.of_machine_tail_cons`,
+  `MEqRedMachineTailStepPreservesConsPayload.of_fop_tail_cons`,
+  `MEqRedMachineTailStepPreservesPayload.of_cons`, and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail_cons`,
+  giving the non-empty case of the shared machine-tail residual a
+  constructor-generic name and exposing the strongest no-external-empty
+  assembly from that cons residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_operator_machine_tail`
   and
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_machine_operator_machine_tail`,
