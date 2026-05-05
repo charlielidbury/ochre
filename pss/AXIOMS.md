@@ -35,6 +35,16 @@ closures, 2 inactive outstanding).
   specialization `Lemma_10_Inversion_empty`. No headline axiom-count
   change; these endpoints inherit the same subject-reduction residual
   closure as the conditional transitivity bridge.
+* `Pss/Mpss/TypeSafetyWfCtx.lean` — added downstream `WfCtxEqu`-parametric
+  type-safety endpoints:
+  `Lemma_6_EvaluationPreservesWf_under_wfctx`,
+  `Theorem_5_Preservation_under_wfctx`, and the closed specialization
+  `Theorem_5_Preservation_empty_wfctx`. This route imports both
+  `TypeSafety` and `SubjectReduction`, so it avoids the original import
+  cycle and uses `Lemma_10_Inversion_under_wfctx` in the β case instead of
+  the raw `Lemma_10_Inversion` axiom. Added the module to `Pss.lean`. No
+  headline axiom-count change; the generic `Theorem_5_Preservation` remains
+  unchanged.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
