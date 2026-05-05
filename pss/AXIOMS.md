@@ -99,6 +99,14 @@ closures, 2 inactive outstanding).
   from `WSubMStar` prevalidity and tail context lookups. Added all four
   endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesWfM.var`, a combined checked variable case for
+  the de Bruijn β-instantiation well-formedness payload. It eliminates a
+  `WfM ({ bound := bound, kind := .sub } :: Γ) (.bvar i)` body derivation
+  and dispatches to the zero/successor `.sub`/`.equ` leaves above, leaving
+  abstraction and application as the non-variable constructor frontiers.
+  Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem

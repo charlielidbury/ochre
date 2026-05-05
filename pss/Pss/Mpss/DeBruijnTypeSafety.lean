@@ -242,6 +242,27 @@ noncomputable def BetaInstantiationPreservesWfM.var_succ_equ
         simpa [Ctx.equBinds] using hlook
       simpa [Term.instantiate] using WfM.varEqu hpv htail
 
+/-- Combined variable case for the de Bruijn β-instantiation
+well-formedness payload. -/
+noncomputable def BetaInstantiationPreservesWfM.var
+    {Γ : Ctx} {bound arg : Term} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hBody : WfM ({ bound := bound, kind := .sub } :: Γ) (.bvar i)) :
+    WfM Γ (Term.instantiate 0 arg (.bvar i)) := by
+  cases hBody with
+  | varSub _ hb =>
+      cases i with
+      | zero =>
+          exact BetaInstantiationPreservesWfM.var_zero hArgBound
+      | succ i =>
+          exact BetaInstantiationPreservesWfM.var_succ_sub hArgBound hb
+  | varEqu _ hb =>
+      cases i with
+      | zero =>
+          simp [Ctx.equBinds] at hb
+      | succ i =>
+          exact BetaInstantiationPreservesWfM.var_succ_equ hArgBound hb
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=

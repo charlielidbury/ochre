@@ -153,6 +153,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWfM.var_zero
 #print axioms BetaInstantiationPreservesWfM.var_succ_sub
 #print axioms BetaInstantiationPreservesWfM.var_succ_equ
+#print axioms BetaInstantiationPreservesWfM.var
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape
