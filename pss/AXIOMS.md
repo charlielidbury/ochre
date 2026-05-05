@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_targets_of_bound_body_joins_from_left`, the final
+  assembly helper for the changing-bound/changing-body `Fun` abstraction
+  commutation cell. It mirrors the diamond helper but leaves the right body
+  branch as a subtype transport under the joined bound. Added the endpoint to
+  the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `diamond_abs_fun_targets_of_bound_body_joins_from_left`, the final
   assembly helper for the changing-bound/changing-body `Fun` abstraction
   diamond. It isolates the remaining hard obligation as transported body

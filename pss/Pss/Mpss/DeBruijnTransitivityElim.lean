@@ -3297,6 +3297,47 @@ theorem commute_abs_fun_bound_fixed_body_from_left {Γ : Ctx}
     (by simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_left).2)
     hdiamondBound hSubBound hEqBound
 
+/-- Final assembly for the changing-bound/changing-body `Fun` abstraction
+commutation cell. The recursive obligation is isolated in `hBodyJoin`: after
+choosing a bound join, the left body target moves by equivalence and the
+right body target moves by subtype under the joined `.sub` head. -/
+theorem commute_abs_fun_targets_of_bound_body_joins_from_left {Γ : Ctx}
+    {bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hLeft : MSubRed Γ [] (.abs bound body) (.abs bound₁ body₁))
+    (hRight : MEqRed Γ [] (.abs bound body) (.abs bound₂ body₂))
+    (hBoundJoin :
+      ∃ bound₃, MEqRedJ Γ [] bound₁ bound₃ ∧ MEqRedJ Γ [] bound₂ bound₃)
+    (hBodyJoin :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        ∃ body₃,
+          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] body₁ body₃ ∧
+            MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  obtain ⟨bound₃, hBound₁₃, hBound₂₃⟩ := hBoundJoin
+  obtain ⟨body₃, hBody₁₃, hBody₂₃⟩ := hBodyJoin hBound₁₃ hBound₂₃
+  have hBody₁Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound₁, kind := .sub } :: Γ)) body₁ := by
+    simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_right).2
+  have hBody₂Scoped :
+      Term.Scoped (Ctx.depth ({ bound := bound₂, kind := .sub } :: Γ)) body₂ := by
+    simpa [Ctx.depth] using (Term.Scoped.abs_inv hRight.scoped_right).2
+  have hBound₃Scoped : Term.Scoped Γ.depth bound₃ := hBound₁₃.some.scoped_right
+  exact ⟨.abs bound₃ body₃,
+    MEqRedStar.trans
+      (meqRedStar_abs_fun_bound_fixed_body hLeft.prevalidExt hBody₁Scoped
+        (MEqRedStar.single hBound₁₃.some))
+      (meqRedStar_abs_fun_body_fixed_bound hLeft.prevalidExt hBound₃Scoped
+        hBody₁₃),
+    MSubRedStar.trans
+      (msubRedStar_abs_fun_bound_fixed_body hRight.prevalidExt hBody₂Scoped
+        (MEqRedStar.single hBound₂₃.some))
+      (msubRedStar_abs_fun_body_fixed_bound hRight.prevalidExt hBound₃Scoped
+        hBody₂₃)⟩
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
