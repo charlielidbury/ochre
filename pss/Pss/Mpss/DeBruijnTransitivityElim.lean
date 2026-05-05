@@ -5284,11 +5284,10 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_bet_body_stack_han
             hFunBound hInnerBound hOldScoped hBody₀)
       hBody
 
-/-- Dispatcher variant that splits the residual `Me-FOp` body-premise
-transport through the raw `.equ`-head replacement splitter. Since the premise
-is at empty stack, the nested `Me-FOp` constructor case is impossible; the
-remaining `Me-Pro`, `Me-App`, `Me-Fun`, and `Me-Bet` cases stay as explicit
-handlers. -/
+/-- Dispatcher variant that splits the residual `Me-FOp` and raw `Ms-FOp`
+body-premise transports through the raw `.equ`-head replacement splitters.
+Since both premises are at empty stack, the nested `FOp` constructor cases are
+impossible; the remaining recursive body cases stay as explicit handlers. -/
 theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of
     {Γ : Ctx} {bound body bound₁ body₁ bound₂ body₂ : Term}
     (hpvNil : PrevalidExt Γ [])
@@ -5538,7 +5537,7 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
             Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) arg →
             MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ)
               (arg :: v₂ :: []) op op')
-    (hAppAppStepFOpBody :
+    (hAppAppStepFOpApp :
       ∀ {u u' v u₂ v₂ : Term},
         MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
         Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
@@ -5547,16 +5546,35 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
         ∀ {bound₃ : Term},
           MEqRedJ Γ [] bound₁ bound₃ →
           MEqRedJ Γ [] bound₂ bound₃ →
-          ∀ {funBound body body' : Term},
-            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-              funBound →
-            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v →
+          ∀ {op op' arg : Term},
             MSubRed ({ bound := v, kind := .equ } ::
-              { bound := bound₃, kind := .sub } :: Γ) (Stack.shift 0 [])
-              body body' →
+              { bound := bound₃, kind := .sub } :: Γ) (arg :: Stack.shift 0 [])
+              op op' →
+            Term.Scoped (Ctx.depth ({ bound := v, kind := .equ } ::
+              { bound := bound₃, kind := .sub } :: Γ)) arg →
             MSubRed ({ bound := v₂, kind := .equ } ::
               { bound := bound₃, kind := .sub } :: Γ) (Stack.shift 0 [])
-              body body')
+              (.app op arg) (.app op' arg))
+    (hAppAppStepFOpFun :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          ∀ {funBound funBound' body body' : Term},
+            Term.Scoped (Ctx.depth ({ bound := v, kind := .equ } ::
+              { bound := bound₃, kind := .sub } :: Γ)) funBound →
+            MEqRed ({ bound := v, kind := .equ } ::
+              { bound := bound₃, kind := .sub } :: Γ) [] funBound funBound' →
+            MSubRed ({ bound := funBound, kind := .sub } ::
+              { bound := v, kind := .equ } ::
+              { bound := bound₃, kind := .sub } :: Γ) [] body body' →
+            MSubRed ({ bound := v₂, kind := .equ } ::
+              { bound := bound₃, kind := .sub } :: Γ) []
+              (.abs funBound body) (.abs funBound' body'))
     (hAppBet :
       ∀ {t v v' inner inner' u' : Term},
         Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) t →
@@ -5586,50 +5604,113 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
       hAppAppComm hAppAppSubReplace hAppAppStepEquProPayload
       hAppAppStepEquAppOp hAppAppStepEquBetPro hAppAppStepEquBetAppOp
       hAppAppStepEquBetBody hAppAppStepEquBetFOp ?_ hAppAppStepAppOp
-      hAppAppStepFOpBody hAppBet hFun
-  intro u u' v u₂ v₂ hSubOp hArgScoped hEqOp hEqArg bound₃ hBound₁₃ hBound₂₃
-    funBound funBound' inner inner' hBound hOldScoped hBody
-  let Γ₃ : Ctx := { bound := bound₃, kind := .sub } :: Γ
-  have hEqArg₃ : MEqRed Γ₃ [] v v₂ :=
-    hEqArg.sub_head_replace_two_step hEqBound hBound₂₃.some
-  have hCtx₃ : Prevalid Γ₃ :=
-    Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₂₃.some.scoped_right
-  have hpvOld : PrevalidExt ({ bound := v, kind := .equ } :: Γ₃) (Stack.shift 0 []) := by
-    simpa [Stack.shift] using
-      PrevalidExt.nil (Prevalid.equ hCtx₃ hOldScoped)
-  simpa [Γ₃, Stack.shift] using
-    MEqRed.equ_head_replace_from_handlers
-      (Γ := Γ₃) (s := []) (old := v) (new := v₂) (u := inner) (v := inner')
-      hpvOld hEqArg₃.scoped_right
-      (by
-        intro target hTarget
-        simpa [Γ₃, Stack.shift] using
-          hAppAppStepEquFOpProHead hSubOp hArgScoped hEqOp hEqArg hBound₁₃
-            hBound₂₃ hTarget)
-      (by
-        intro i α α' hb hα
-        simpa [Γ₃, Stack.shift] using
-          hAppAppStepEquFOpProTail hSubOp hArgScoped hEqOp hEqArg hBound₁₃
-            hBound₂₃ hb hα)
-      (by
-        intro op op' arg arg' hOp hArg
-        simpa [Γ₃, Stack.shift] using
-          hAppAppStepEquFOpApp hSubOp hArgScoped hEqOp hEqArg hBound₁₃
-            hBound₂₃ hOp hArg)
-      (by
-        intro funBound funBound' body body' hFunBound hFunBody
-        simpa [Γ₃, Stack.shift] using
-          hAppAppStepEquFOpFun hSubOp hArgScoped hEqOp hEqArg hBound₁₃
-            hBound₂₃ hFunBound hFunBody)
-      (by
-        intro funBound arg arg' body body' hFunScoped hBody hArg
-        simpa [Γ₃, Stack.shift] using
-          hAppAppStepEquFOpBet hSubOp hArgScoped hEqOp hEqArg hBound₁₃
-            hBound₂₃ hFunScoped hBody hArg)
-      (by
-        intro funBound funBound' arg body body' rest hBound hArgScoped hStack hBody
-        cases hStack)
-      hBody
+      ?_ hAppBet hFun
+  · intro u u' v u₂ v₂ hSubOp hArgScoped hEqOp hEqArg bound₃ hBound₁₃ hBound₂₃
+      funBound funBound' inner inner' hBound hOldScoped hBody
+    let Γ₃ : Ctx := { bound := bound₃, kind := .sub } :: Γ
+    have hEqArg₃ : MEqRed Γ₃ [] v v₂ :=
+      hEqArg.sub_head_replace_two_step hEqBound hBound₂₃.some
+    have hCtx₃ : Prevalid Γ₃ :=
+      Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₂₃.some.scoped_right
+    have hpvOld : PrevalidExt ({ bound := v, kind := .equ } :: Γ₃) (Stack.shift 0 []) := by
+      simpa [Stack.shift] using
+        PrevalidExt.nil (Prevalid.equ hCtx₃ hOldScoped)
+    simpa [Γ₃, Stack.shift] using
+      MEqRed.equ_head_replace_from_handlers
+        (Γ := Γ₃) (s := []) (old := v) (new := v₂) (u := inner) (v := inner')
+        hpvOld hEqArg₃.scoped_right
+        (by
+          intro target hTarget
+          simpa [Γ₃, Stack.shift] using
+            hAppAppStepEquFOpProHead hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+              hBound₂₃ hTarget)
+        (by
+          intro i α α' hb hα
+          simpa [Γ₃, Stack.shift] using
+            hAppAppStepEquFOpProTail hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+              hBound₂₃ hb hα)
+        (by
+          intro op op' arg arg' hOp hArg
+          simpa [Γ₃, Stack.shift] using
+            hAppAppStepEquFOpApp hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+              hBound₂₃ hOp hArg)
+        (by
+          intro funBound funBound' body body' hFunBound hFunBody
+          simpa [Γ₃, Stack.shift] using
+            hAppAppStepEquFOpFun hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+              hBound₂₃ hFunBound hFunBody)
+        (by
+          intro funBound arg arg' body body' hFunScoped hBody hArg
+          simpa [Γ₃, Stack.shift] using
+            hAppAppStepEquFOpBet hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+              hBound₂₃ hFunScoped hBody hArg)
+        (by
+          intro funBound funBound' arg body body' rest hBound hArgScoped hStack hBody
+          cases hStack)
+        hBody
+  · intro u u' v u₂ v₂ hSubOp hArgScoped hEqOp hEqArg bound₃ hBound₁₃ hBound₂₃
+      funBound body body' hFunBound hOldScoped hBody
+    let Γ₃ : Ctx := { bound := bound₃, kind := .sub } :: Γ
+    have hEqArg₃ : MEqRed Γ₃ [] v v₂ :=
+      hEqArg.sub_head_replace_two_step hEqBound hBound₂₃.some
+    have hCtx₃ : Prevalid Γ₃ :=
+      Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₂₃.some.scoped_right
+    have hpvOld : PrevalidExt ({ bound := v, kind := .equ } :: Γ₃) (Stack.shift 0 []) := by
+      simpa [Stack.shift] using
+        PrevalidExt.nil (Prevalid.equ hCtx₃ hOldScoped)
+    simpa [Γ₃, Stack.shift] using
+      MSubRed.equ_head_replace_from_handlers
+        (Γ := Γ₃) (s := []) (old := v) (new := v₂) (u := body) (v := body')
+        hpvOld hEqArg₃.scoped_right
+        (by
+          intro α α' hEqBody
+          simpa [Γ₃, Stack.shift] using
+            MEqRed.equ_head_replace_from_handlers
+              (Γ := Γ₃) (s := []) (old := v) (new := v₂) (u := α) (v := α')
+              hpvOld hEqArg₃.scoped_right
+              (by
+                intro target hTarget
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepEquFOpProHead hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+                    hBound₂₃ hTarget)
+              (by
+                intro i α₀ α₀' hb hα
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepEquFOpProTail hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+                    hBound₂₃ hb hα)
+              (by
+                intro op op' arg arg' hOp hArg
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepEquFOpApp hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+                    hBound₂₃ hOp hArg)
+              (by
+                intro funBound funBound' body body' hFunBound hFunBody
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepEquFOpFun hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+                    hBound₂₃ hFunBound hFunBody)
+              (by
+                intro funBound arg arg' body body' hFunScoped hBody hArg
+                simpa [Γ₃, Stack.shift] using
+                  hAppAppStepEquFOpBet hSubOp hArgScoped hEqOp hEqArg hBound₁₃
+                    hBound₂₃ hFunScoped hBody hArg)
+              (by
+                intro funBound funBound' arg body body' rest hBound hArgScoped hStack hBody
+                cases hStack)
+              hEqBody)
+        (by
+          intro op op' arg hOp hArg
+          simpa [Γ₃, Stack.shift] using
+            hAppAppStepFOpApp hSubOp hArgScoped hEqOp hEqArg hBound₁₃ hBound₂₃
+              hOp hArg)
+        (by
+          intro funBound funBound' body body' hFunScoped hBoundStep hBody
+          simpa [Γ₃, Stack.shift] using
+            hAppAppStepFOpFun hSubOp hArgScoped hEqOp hEqArg hBound₁₃ hBound₂₃
+              hFunScoped hBoundStep hBody)
+        (by
+          intro funBound arg body body' rest hFunScoped hArgScoped hStack hBody
+          cases hStack)
+        hBody
 
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
