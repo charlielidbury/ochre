@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn function-bound audit
+  to include the one-step abstraction diagram and inversion extractors:
+  `AbsFunctionBoundChainDiagramPayload_of_wsubm`,
+  `WSubM.abs_abs_chain_diagram`,
+  `WSubM.abs_function_bound_chain_diagram`,
+  `WSubM.abs_function_bound_inversion`, and
+  `MSubRed.abs_function_bound_inversion`. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 5 audit to
   include the open/context-depth preservation endpoints alongside the
   existing closed-term preservation endpoints. No axiom-count change.

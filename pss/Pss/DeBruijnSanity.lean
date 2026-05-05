@@ -20,6 +20,11 @@ namespace DeBruijn
 #print axioms Theorem_3_DeBruijn_WSubMStar_toChainDiagram_of
 #print axioms Theorem_3_DeBruijn_WEquMStar_toChainDiagram_of
 #print axioms Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of
+#print axioms AbsFunctionBoundChainDiagramPayload_of_wsubm
+#print axioms WSubM.abs_abs_chain_diagram
+#print axioms WSubM.abs_function_bound_chain_diagram
+#print axioms WSubM.abs_function_bound_inversion
+#print axioms MSubRed.abs_function_bound_inversion
 #print axioms Theorem_4_DeBruijn_NoTopFunctionSupertypesAt_of
 #print axioms Theorem_4_DeBruijn_NoTopAbstractionSupertypesAt_of
 #print axioms Theorem_4_DeBruijn_NoTopFunctionSupertypes_of
