@@ -1217,6 +1217,11 @@ closures, 2 inactive outstanding).
   `AbsFunctionBoundChainDiagramPayload`, plus
   `AbsFunctionBoundInversion_of_chain_diagram`, consuming the new
   `MEqRedChain`/`MSubRedChain` bound projections. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `AbsFunctionBoundDiagram.of_chain` and
+  `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
+  diagrams to be consumed by existing Prop-closure diagram endpoints. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added direct diagram-based β and
   preservation wrappers `StepBetaPreservesWfM_of_diagram` and
   `StepPreservesWfM_of_diagram_components`, so the preservation endpoint can

@@ -190,6 +190,25 @@ def AbsFunctionBoundChainDiagramPayload : Type :=
     WSubMStar Γ (.abs bound body) (.abs result .top) →
       AbsFunctionBoundChainDiagram Γ bound body result
 
+/-- Forget the Type-valued chain structure of a function-bound diagram,
+embedding its chains into the existing Prop-valued closures. -/
+def AbsFunctionBoundDiagram.of_chain {Γ : Ctx} {bound body result : Term}
+    (d : AbsFunctionBoundChainDiagram Γ bound body result) :
+    AbsFunctionBoundDiagram Γ bound body result where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := d.subJoin.to_star
+  eqJoin := d.eqJoin.to_star
+  wfJoinBound := d.wfJoinBound
+
+/-- A chain-diagram payload can be consumed anywhere the older Prop-closure
+diagram payload is expected. -/
+def AbsFunctionBoundDiagramPayload.of_chain
+    (hDiagram : AbsFunctionBoundChainDiagramPayload) :
+    AbsFunctionBoundDiagramPayload := by
+  intro Γ bound body result hFun
+  exact AbsFunctionBoundDiagram.of_chain (hDiagram hFun)
+
 /-- A Type-valued common-reduct diagram gives the transitive bound
 well-equivalence needed by β preservation. -/
 noncomputable def AbsFunctionBoundInversion_of_diagram
