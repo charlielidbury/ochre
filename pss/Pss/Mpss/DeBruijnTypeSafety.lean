@@ -623,6 +623,18 @@ noncomputable def BetaInstantiationPreservesMEqRedStack.var
   | succ i =>
     exact BetaInstantiationPreservesMEqRedStack.var_succ hArgBound hpv hi
 
+/-- The stack-parametric variable helper specializes to the existing
+empty-stack variable helper shape. -/
+noncomputable def BetaInstantiationPreservesMEqRed.var_of_stack
+    {Γ : Ctx} {bound arg : Term} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hi : i < Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) :
+    MEqRed Γ [] (Term.instantiate 0 arg (.bvar i))
+      (Term.instantiate 0 arg (.bvar i)) := by
+  simpa using
+    BetaInstantiationPreservesMEqRedStack.var hArgBound
+      (PrevalidExt.nil (Prevalid.sub hArgBound.prevalid hArgBound.scoped_right)) hi
+
 /-- `MSubRed.top` is stable under de Bruijn β-instantiation. -/
 noncomputable def BetaInstantiationPreservesMSubRed.top
     {Γ : Ctx} {bound arg u : Term}

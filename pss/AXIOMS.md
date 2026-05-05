@@ -193,6 +193,12 @@ closures, 2 inactive outstanding).
   delegates through it. Added the endpoint to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRed.var_of_stack`, the empty-stack
+  specialization of the constructor-facing arbitrary-stack variable helper.
+  This lets future empty-stack callers consume the single stack-parametric
+  implementation instead of splitting de Bruijn indices independently. Added
+  the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem
