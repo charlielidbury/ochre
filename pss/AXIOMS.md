@@ -10,6 +10,9 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Lemma 1/2 audit to
+  include the fixed-bound and fixed-body abstraction cells for `FOp` and
+  `Fun`, both single-step and star-level. No axiom-count change.
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Lemma 1/2 audit to
   include the already-proved direct single-step variable/`Top` cells and
   `Top`-headed application star-level joins. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn stack-lift audit to
