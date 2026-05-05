@@ -234,6 +234,14 @@ closures, 2 inactive outstanding).
   seven preserved heads, the discharged `.sub` binder, and the tail lookup
   shifted from source index `j + 8` to target index `j + 7`. Added an endpoint
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the seven-head constructor
+  frontier interfaces
+  `BetaInstantiationPreservesMEqRedUnderSevenHeads{Fun,Bet,FOp}StackPayload`
+  and `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.of_constructors`.
+  This packages the checked seven-head structural leaves with explicit
+  recursive binder payloads, setting up the next eight-head adapter layer.
+  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
