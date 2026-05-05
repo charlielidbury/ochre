@@ -176,6 +176,12 @@ closures, 2 inactive outstanding).
   The assembler discharges structural and `Me-Pro` leaves through the checked
   six-head leaves and leaves only binder frontiers explicit. Added endpoints
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack` and
+  `BetaInstantiationPreservesMEqRedUnderSixHeadsFunStackPayload.of_seven_heads`,
+  closing the six-head `Me-Fun` binder frontier conditional on the seven-head
+  body payload. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the

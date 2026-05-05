@@ -485,6 +485,60 @@ def BetaInstantiationPreservesMEqRedUnderSixHeadsStack : Type :=
               (Term.shift 0
                 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) rhs)
 
+/-- Stack-parametric equivalence-reduction β-instantiation under seven
+preserved context heads. This is the recursive body payload needed by the
+six-head binder constructors. -/
+def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ lhs rhs : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := head₆, kind := kind₆ } ::
+          { bound := head₇, kind := kind₇ } ::
+          { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed
+          ({ bound := Term.instantiate 6
+                (Term.shift 0
+                  (Term.shift 0
+                    (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 5
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 4
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₄,
+              kind := kind₄ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₅,
+              kind := kind₅ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₆,
+              kind := kind₆ } ::
+            { bound := Term.instantiate 0 arg head₇,
+              kind := kind₇ } :: Γ)
+          (Stack.instantiate 7
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) s)
+          (Term.instantiate 7
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) lhs)
+          (Term.instantiate 7
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) rhs)
+
 /-- Constructor-facing `Me-Fun` frontier for six-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
 so discharging it will require the seven-preserved-head payload. -/
@@ -3254,6 +3308,31 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderSixHeadsStack.of_construc
   | fOp hBound hα hBody =>
       subst hC
       exact hFOp hArgBound hBound hα hBody
+
+/-- The six-head `Me-Fun` frontier follows from the six-head equivalence
+payload for the bound and the seven-preserved-head payload for the body. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderSixHeadsFunStackPayload.of_seven_heads
+    (hSix : BetaInstantiationPreservesMEqRedUnderSixHeadsStack)
+    (hSeven : BetaInstantiationPreservesMEqRedUnderSevenHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderSixHeadsFunStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ t t' body body'
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ hArgBound hBound hBody
+  have hBound' := hSix (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃)
+    (head₄ := head₄) (kind₄ := kind₄)
+    (head₅ := head₅) (kind₅ := kind₅)
+    (head₆ := head₆) (kind₆ := kind₆) (s := []) hArgBound hBound
+  have hBody' := hSeven (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃)
+    (head₅ := head₄) (kind₅ := kind₄)
+    (head₆ := head₅) (kind₆ := kind₅)
+    (head₇ := head₆) (kind₇ := kind₆) (s := []) hArgBound hBody
+  simpa [Term.instantiate] using MEqRed.fun_ hBound' hBody'
 
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below five
 preserved context heads. -/
