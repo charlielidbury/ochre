@@ -64,6 +64,12 @@ closures, 2 inactive outstanding).
   `Theorem_5_DeBruijn_Preservation_of_chain_shape_meq_components_and_immediate_sub_replace_and_under`,
   and its closed variant. Added all four endpoints to the De Bruijn
   audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the remaining
+  diagrammatic Theorem 5 surfaces over direct and factored-immediate
+  `.sub` replacement payloads: open/closed diagram components,
+  open/closed chain-diagram components, and open/closed chain-shape
+  components. Added all twelve endpoints to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,

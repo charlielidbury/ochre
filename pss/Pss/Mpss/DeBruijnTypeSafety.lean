@@ -9520,6 +9520,46 @@ noncomputable def Theorem_5_DeBruijn_Preservation_of_diagram_components
       hSubst hDiagram hSubHeadReplace)
     hwf hstep
 
+/-- De Bruijn preservation with diagrammatic function-bound payload and
+direct `.sub` replacement residual package. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_diagram_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_diagram_components_and_direct_sub_replace
+      hSubst hDiagram hSubPayloads)
+    hwf hstep
+
+/-- De Bruijn preservation with diagrammatic function-bound payload,
+immediate top-level `.sub` replacement residuals, and the named
+preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_diagram_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_diagram_components_and_immediate_sub_replace_and_under
+      hSubst hDiagram hUnder hSubPayloads)
+    hwf hstep
+
 /-- Closed-term Theorem 5 entry point for the Type-valued function-bound
 diagram preservation components. -/
 noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_diagram_components
@@ -9533,6 +9573,46 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_diagram_components
   Theorem_5_DeBruijn_ClosedPreservation_of
     (StepPreservesWfM_of_diagram_components
       hSubst hDiagram hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 with diagrammatic function-bound payload and
+direct `.sub` replacement residual package. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_diagram_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_diagram_components_and_direct_sub_replace
+      hSubst hDiagram hSubPayloads)
+    hwf hstep
+
+/-- Closed-term Theorem 5 with diagrammatic function-bound payload,
+immediate top-level `.sub` replacement residuals, and the named
+preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_diagram_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_diagram_components_and_immediate_sub_replace_and_under
+      hSubst hDiagram hUnder hSubPayloads)
     hwf hstep
 
 /-- De Bruijn preservation with operational preservation assembled from the
@@ -9551,6 +9631,46 @@ noncomputable def Theorem_5_DeBruijn_Preservation_of_chain_diagram_components
       hSubst hDiagram hSubHeadReplace)
     hwf hstep
 
+/-- De Bruijn preservation with chain-diagram function-bound payload and
+direct `.sub` replacement residual package. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_chain_diagram_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_diagram_components_and_direct_sub_replace
+      hSubst hDiagram hSubPayloads)
+    hwf hstep
+
+/-- De Bruijn preservation with chain-diagram function-bound payload,
+immediate top-level `.sub` replacement residuals, and the named
+preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_chain_diagram_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_diagram_components_and_immediate_sub_replace_and_under
+      hSubst hDiagram hUnder hSubPayloads)
+    hwf hstep
+
 /-- Closed-term Theorem 5 entry point for the Type-valued function-bound
 chain-diagram preservation components. -/
 noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_chain_diagram_components
@@ -9564,6 +9684,46 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_chain_diagram_compone
   Theorem_5_DeBruijn_ClosedPreservation_of
     (StepPreservesWfM_of_chain_diagram_components
       hSubst hDiagram hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 with chain-diagram function-bound payload and
+direct `.sub` replacement residual package. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_chain_diagram_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_diagram_components_and_direct_sub_replace
+      hSubst hDiagram hSubPayloads)
+    hwf hstep
+
+/-- Closed-term Theorem 5 with chain-diagram function-bound payload,
+immediate top-level `.sub` replacement residuals, and the named
+preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_chain_diagram_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_diagram_components_and_immediate_sub_replace_and_under
+      hSubst hDiagram hUnder hSubPayloads)
     hwf hstep
 
 /-- De Bruijn preservation with operational preservation assembled from the
@@ -9584,6 +9744,49 @@ noncomputable def Theorem_5_DeBruijn_Preservation_of_chain_shape_components
       hSubst hShape hShapeWf hSubHeadReplace)
     hwf hstep
 
+/-- De Bruijn preservation with shape-only function-bound chain payload,
+joined-bound well-formedness payload, and direct `.sub` replacement residual
+package. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_chain_shape_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_shape_components_and_direct_sub_replace
+      hSubst hShape hShapeWf hSubPayloads)
+    hwf hstep
+
+/-- De Bruijn preservation with shape-only function-bound chain payload,
+joined-bound well-formedness payload, immediate top-level `.sub` replacement
+residuals, and the named preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_chain_shape_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_shape_components_and_immediate_sub_replace_and_under
+      hSubst hShape hShapeWf hUnder hSubPayloads)
+    hwf hstep
+
 /-- Closed-term Theorem 5 entry point for the shape-only function-bound
 chain preservation components. -/
 noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_components
@@ -9598,6 +9801,49 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_component
   Theorem_5_DeBruijn_ClosedPreservation_of
     (StepPreservesWfM_of_chain_shape_components
       hSubst hShape hShapeWf hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 with shape-only function-bound chain payload,
+joined-bound well-formedness payload, and direct `.sub` replacement residual
+package. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_shape_components_and_direct_sub_replace
+      hSubst hShape hShapeWf hSubPayloads)
+    hwf hstep
+
+/-- Closed-term Theorem 5 with shape-only function-bound chain payload,
+joined-bound well-formedness payload, immediate top-level `.sub` replacement
+residuals, and the named preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_shape_components_and_immediate_sub_replace_and_under
+      hSubst hShape hShapeWf hUnder hSubPayloads)
     hwf hstep
 
 /-- De Bruijn preservation with the chain-shape joined-bound well-formedness
