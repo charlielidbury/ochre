@@ -273,6 +273,36 @@ noncomputable def BetaInstantiationPreservesPrevalidExtStack
           PrevalidExt.stack_scoped hpv)
   exact PrevalidExt.of_stack_scoped hArgBound.prevalid hs
 
+/-- Reflexive equivalence reduction is stable under de Bruijn
+β-instantiation at any stack. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack.refl
+    {Γ : Ctx} {bound arg u : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg u) (Term.instantiate 0 arg u) := by
+  have hu' : Term.Scoped Γ.depth (Term.instantiate 0 arg u) :=
+    Term.instantiate_scoped 0 Γ.depth arg u (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
+  exact MEqRed.refl (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv) hu'
+
+/-- Reflexive subtype reduction is stable under de Bruijn β-instantiation at
+any stack. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.refl
+    {Γ : Ctx} {bound arg u : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MSubRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg u) (Term.instantiate 0 arg u) :=
+  MSubRed.refl (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv)
+    (by
+      exact Term.instantiate_scoped 0 Γ.depth arg u (Nat.zero_le Γ.depth)
+        hArgBound.scoped_left (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one] using hu))
+
 /-- Top terms are a closed β-instantiation well-formedness leaf. -/
 noncomputable def BetaInstantiationPreservesWfM.top
     {Γ : Ctx} {bound arg : Term}

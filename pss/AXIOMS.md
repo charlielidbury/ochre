@@ -198,6 +198,13 @@ closures, 2 inactive outstanding).
   This lets future empty-stack callers consume the single stack-parametric
   implementation instead of splitting de Bruijn indices independently. Added
   the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added stack-parametric reflexivity
+  leaves `BetaInstantiationPreservesMEqRedStack.refl` and
+  `BetaInstantiationPreservesMSubRedStack.refl`. From source-stack
+  prevalidity and source-term scoping under the substituted head, these
+  instantiate the stack/term, rebuild target prevalidity/scoping, and apply
+  the existing de Bruijn reduction reflexivity lemmas. Added both endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
