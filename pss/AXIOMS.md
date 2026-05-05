@@ -110,6 +110,10 @@ closures, 2 inactive outstanding).
   and native `FOp` over the direct/factored `.sub` replacement boundary.
   Added all four endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the no-external-empty
+  body-transport target-application machine-state assemblies for typed and
+  native `FOp` over the direct/factored `.sub` replacement boundary. Added
+  all four endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the no-external-empty
   direct split-beta typed-operator and machine-operator machine-state
   assemblies for typed and native `FOp` over the direct/factored `.sub`
   replacement boundary. Added all eight endpoints to the De Bruijn audit.
