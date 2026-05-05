@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic
+  three-preserved-head `.equ` replacement splitters
+  `meqRed_equ_under_three_heads_replace_from_handlers` and
+  `msubRed_equ_under_three_heads_replace_from_handlers`. These mirror the
+  two-head `MSubStar`-producing handler interface over the raw three-head
+  splitters, giving future nested body residuals a direct diagrammatic
+  replacement surface before the star/function wrappers are introduced.
+  Added both endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added raw generic
   three-preserved-head `.equ` replacement splitters
   `MEqRed.equ_under_three_heads_replace_from_handlers` and
