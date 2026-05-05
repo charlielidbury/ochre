@@ -21,6 +21,7 @@ import Pss.Mpss.SubRed
 import Pss.Mpss.ContextRed
 import Pss.Mpss.Weakening
 import Pss.Mpss.Substitution
+import Pss.Mpss.SubstitutionNoPro
 import Pss.Mpss.AvoidsPro
 import Pss.Mpss.Renaming
 import Pss.Mpss.WellFormed

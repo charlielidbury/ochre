@@ -49,6 +49,13 @@ closures, 2 inactive outstanding).
   `Theorem_5_Preservation_under_wfctx` and
   `Theorem_5_Preservation_empty_wfctx`, making the conditional route's
   dependency tradeoff visible in the standard audit.
+* `Pss/Mpss/SubstitutionNoPro.lean` — added `MSubRed.noProOn`, an
+  all-cofinite-branches predicate excluding `Ms-Pro` promotion of a chosen
+  variable, plus `Lemma_30_ReductionUnderSubst_Sub_noProOn`. This proves
+  Lemma 30's `MSubRed` substitution conclusion without
+  `Lemma_30_msPro_x_axiom` under the explicit stronger predicate. Added the
+  module to `Pss.lean`. No headline axiom-count change: the existing
+  `WSubM.lf2` call site still does not provide this predicate.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
