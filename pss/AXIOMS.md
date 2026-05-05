@@ -212,6 +212,13 @@ closures, 2 inactive outstanding).
   empty-stack prevalidity. Added both endpoints to `Pss/DeBruijnSanity.lean`;
   no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMSubRedStack.pro_succ`, covering the successor
+  variable branch of arbitrary-stack `MSubRed.pro` substitution. The helper
+  descends the `.sub` lookup into the tail context and cancels the lookup
+  lift with `Term.instantiate_shift_id`. The head variable branch remains
+  the explicit `WSubMStar`-to-machine-reduction frontier. Added the endpoint
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem

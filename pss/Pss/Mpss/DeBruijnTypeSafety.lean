@@ -717,6 +717,36 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.top
   simpa using MSubRed.top
     (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv) hu'
 
+/-- Successor variables in an arbitrary-stack `MSubRed.pro` leaf descend to
+the tail context during de Bruijn β-instantiation. The remaining head-variable
+case is the substantive bridge from a `WSubMStar` bound premise to a machine
+subtype reduction over the instantiated stack. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.pro_succ
+    {Γ : Ctx} {bound arg t : Term} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hb : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ) (i + 1) t) :
+    MSubRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.bvar (i + 1)))
+      (Term.instantiate 0 arg t) := by
+  simp [Ctx.subBinds] at hb
+  cases hlook : Ctx.lookupSub Γ i with
+  | none =>
+      simp [hlook] at hb
+  | some tail =>
+      simp [hlook] at hb
+      subst hb
+      have htail : Γ.subBinds i tail := by
+        simpa [Ctx.subBinds] using hlook
+      have htarget :
+          Γ.subBinds i (Term.instantiate 0 arg (Term.shift 0 tail)) := by
+        have hid : Term.instantiate 0 arg (Term.shift 0 tail) = tail :=
+          Term.instantiate_shift_id 0 arg tail
+        simpa [hid] using htail
+      simpa [Term.instantiate] using
+        MSubRed.pro (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv)
+          htarget
+
 /-- `MEqRed.tAp` is stable under de Bruijn β-instantiation at the empty
 stack. -/
 noncomputable def BetaInstantiationPreservesMEqRed.tAp
