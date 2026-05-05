@@ -617,6 +617,53 @@ def BetaInstantiationPreservesMEqRedUnderEightHeadsStack : Type :=
                   (Term.shift 0
                     (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) rhs)
 
+/-- Stack-parametric equivalence-reduction β-instantiation under nine
+preserved context heads. This is the recursive body payload needed by the
+eight-head binder constructors. -/
+def BetaInstantiationPreservesMEqRedUnderNineHeadsStack : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ lhs rhs : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := head₆, kind := kind₆ } ::
+          { bound := head₇, kind := kind₇ } ::
+          { bound := head₈, kind := kind₈ } ::
+          { bound := head₉, kind := kind₉ } ::
+          { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed
+          ({ bound := Term.instantiate 8
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg))))))))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 7
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg)))))))) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 6
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg))))))) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 5
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg)))))) head₄,
+              kind := kind₄ } ::
+            { bound := Term.instantiate 4 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg))))) head₅,
+              kind := kind₅ } ::
+            { bound := Term.instantiate 3 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg)))) head₆,
+              kind := kind₆ } ::
+            { bound := Term.instantiate 2 (Term.shift 0 (Term.shift 0 (arg))) head₇,
+              kind := kind₇ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 (arg)) head₈,
+              kind := kind₈ } ::
+            { bound := Term.instantiate 0 (arg) head₉,
+              kind := kind₉ } :: Γ)
+          (Stack.instantiate 9
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg)))))))))) s)
+          (Term.instantiate 9
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg)))))))))) lhs)
+          (Term.instantiate 9
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (arg)))))))))) rhs)
+
 /-- Generic stack-parametric equivalence-reduction β-instantiation under an
 arbitrary list of preserved context heads. This is the abstraction that the
 numbered five/six/seven/eight stack payloads below specialize from. -/
@@ -1172,6 +1219,27 @@ def BetaInstantiationPreservesMEqRedUnderHeadsStack.of_eight
                                                                         Term.shiftBy_compose,
                                                                         Term.shiftBy_zero_id,
                                                                         Nat.add_assoc] using h'
+
+/-- The generic preserved-head stack payload specializes to the nine-head
+surface. -/
+def BetaInstantiationPreservesMEqRedUnderNineHeadsStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 9) :
+    BetaInstantiationPreservesMEqRedUnderNineHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ s hArg hRed
+  have h' := h
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ }])
+    rfl hArg hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
 
 /-- Constructor-facing `Me-Fun` frontier for seven-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
