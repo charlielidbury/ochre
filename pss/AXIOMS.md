@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_under_three_heads_replace_function_from_raw_body_replacements`,
+  the stack-polymorphic function-valued wrapper for three-preserved-head
+  raw-subtype-star `.equ` replacement. This matches the existing two-head
+  function wrapper and lets recursive callers package the replacement for
+  every residual stack from a single prevalidity-indexed premise. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRedStar_equ_under_three_heads_replace_from_raw_body_replacements`,
   the constructor-wired raw-subtype-star three-preserved-head `.equ`
   replacement wrapper. It packages stable `Ms-Pro`, `Ms-App`, `Ms-Fun`, and
