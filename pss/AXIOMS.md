@@ -71,6 +71,13 @@ closures, 2 inactive outstanding).
   which turns the abstract four-head assembler into the adapter-facing
   frontier. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesPrevalidExtUnderFiveHeads` and the first
+  five-head structural equivalence leaf,
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.top`. This starts the
+  actual five-head body-payload implementation required by the four-head
+  binder adapters. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
