@@ -11823,6 +11823,155 @@ theorem meq_equ_under_two_heads_pro_tail_handler_of_replacement {Γ : Ctx} {s : 
           (by simpa [Ctx.depth] using hα.scoped_left))))
     (hReplace hα)
 
+/-- Under three preserved heads and a changed `.equ` entry, the old shifted
+under-under-under-head bound diagrammatically subtypes the new variable at
+index `3`. This is the three-level analogue of
+`msub_equ_under_two_heads_old_bound_to_new_bvar2`. -/
+theorem msub_equ_under_three_heads_old_bound_to_new_bvar3 {Γ : Ctx} {s : Stack}
+    {head₁ head₂ head₃ : CtxEntry} {old new : Term}
+    (hpvNew :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old))))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new))))) :
+    MSub (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old)))) (.bvar 3) := by
+  have hNewShiftScoped :
+      Term.Scoped
+        (Ctx.depth (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) := by
+    have hOnce : Term.Scoped (Γ.depth + 1) (Term.shift 0 new) :=
+      Term.shift_scoped 0 Γ.depth new (Nat.zero_le _) hNewScoped
+    have hTwice : Term.Scoped ((Γ.depth + 1) + 1)
+        (Term.shift 0 (Term.shift 0 new)) :=
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 new) (Nat.zero_le _) hOnce
+    have hThrice : Term.Scoped (((Γ.depth + 1) + 1) + 1)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 new))) :=
+      Term.shift_scoped 0 ((Γ.depth + 1) + 1) (Term.shift 0 (Term.shift 0 new))
+        (Nat.zero_le _) hTwice
+    have hFour : Term.Scoped ((((Γ.depth + 1) + 1) + 1) + 1)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) :=
+      Term.shift_scoped 0 (((Γ.depth + 1) + 1) + 1)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 new))) (Nat.zero_le _) hThrice
+    simpa [Ctx.depth, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using hFour
+  have hNewRefl :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new))))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) :=
+    MEqRed.refl hpvNew hNewShiftScoped
+  have hVarNew :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (.bvar 3) (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) :=
+    MEqRed.pro hpvNew (by simp [Ctx.equBinds]) hNewRefl
+  exact MSub.intro
+    (MSubRedStar.single (MSubRed.equ hpvNew hOldNewStack))
+    (MEqRedStar.single hVarNew)
+
+/-- Converse three-preserved-head bridge: the new variable at index `3`
+diagrammatically subtypes the old quadruply shifted changed-head bound. -/
+theorem msub_equ_under_three_heads_new_bvar3_to_old_bound {Γ : Ctx} {s : Stack}
+    {head₁ head₂ head₃ : CtxEntry} {old new : Term}
+    (hpvNew :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old))))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new))))) :
+    MSub (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 3) (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old)))) := by
+  have hNewShiftScoped :
+      Term.Scoped
+        (Ctx.depth (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) := by
+    have hOnce : Term.Scoped (Γ.depth + 1) (Term.shift 0 new) :=
+      Term.shift_scoped 0 Γ.depth new (Nat.zero_le _) hNewScoped
+    have hTwice : Term.Scoped ((Γ.depth + 1) + 1)
+        (Term.shift 0 (Term.shift 0 new)) :=
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 new) (Nat.zero_le _) hOnce
+    have hThrice : Term.Scoped (((Γ.depth + 1) + 1) + 1)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 new))) :=
+      Term.shift_scoped 0 ((Γ.depth + 1) + 1) (Term.shift 0 (Term.shift 0 new))
+        (Nat.zero_le _) hTwice
+    have hFour : Term.Scoped ((((Γ.depth + 1) + 1) + 1) + 1)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) :=
+      Term.shift_scoped 0 (((Γ.depth + 1) + 1) + 1)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 new))) (Nat.zero_le _) hThrice
+    simpa [Ctx.depth, Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using hFour
+  have hNewRefl :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new))))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) :=
+    MEqRed.refl hpvNew hNewShiftScoped
+  have hVarNew :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (.bvar 3) (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))) :=
+    MEqRed.pro hpvNew (by simp [Ctx.equBinds]) hNewRefl
+  exact MSub.intro
+    (MSubRedStar.single (MSubRed.equ hpvNew hVarNew))
+    (MEqRedStar.single hOldNewStack)
+
+/-- Consume the three-preserved-head `Me-Pro` replacement residual by joining
+the new variable at index `3` back to the old quadruply shifted changed-head
+bound, then following the recursively replaced residual chain. -/
+theorem msubStar_equ_under_three_heads_new_bvar3_to_replaced_residual {Γ : Ctx}
+    {s : Stack} {head₁ head₂ head₃ : CtxEntry} {old new target : Term}
+    (hpvNew :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old))))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))))
+    (hResidual :
+      MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old)))) target) :
+    MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 3) target :=
+  MSubStar.trans
+    (MSub.to_star
+      (msub_equ_under_three_heads_new_bvar3_to_old_bound hpvNew hNewScoped
+        hOldNewStack))
+    hResidual
+
+/-- Canonical handler for the changed-entry `Me-Pro` residual at index `3`
+under three preserved heads: expose the old quadruply shifted bound, replace
+that residual recursively, then compose it with the converse `bvar 3` bridge.
+-/
+theorem meq_equ_under_three_heads_pro_three_handler_of_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ head₃ : CtxEntry} {old new : Term}
+    (hpvNew :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old))))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))))
+    (hReplace :
+      ∀ {target : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old)))) target →
+        MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old)))) target)
+    {α α' : Term}
+    (hb :
+      Ctx.equBinds (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        3 α)
+    (hα :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        s α α') :
+    MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 3) α' := by
+  have hαeq : α = Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old))) := by
+    have hraw : Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old))) = α := by
+      simpa [Ctx.equBinds] using hb
+    exact hraw.symm
+  subst hαeq
+  exact msubStar_equ_under_three_heads_new_bvar3_to_replaced_residual
+    hpvNew hNewScoped hOldNewStack (hReplace hα)
+
 /-- Canonical handler for preserved-head index `0` `Me-Pro` during
 three-preserved-head `.equ` replacement. -/
 theorem meq_equ_under_three_heads_pro_zero_handler_of_replacement {Γ : Ctx}

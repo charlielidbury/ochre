@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the changed-entry
+  three-preserved-head `Me-Pro` bridge for index `3`:
+  `msub_equ_under_three_heads_old_bound_to_new_bvar3`,
+  `msub_equ_under_three_heads_new_bvar3_to_old_bound`,
+  `msubStar_equ_under_three_heads_new_bvar3_to_replaced_residual`, and
+  `meq_equ_under_three_heads_pro_three_handler_of_replacement`. This gives
+  the three-head `with_pro` path the missing changed-slot analogue of the
+  existing two-head `bvar 2` bridge. Added all four endpoints to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added stable
   three-preserved-head `Me-Pro` replacement handlers
   `meq_equ_under_three_heads_pro_zero_handler_of_replacement`,
