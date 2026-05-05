@@ -1270,6 +1270,11 @@ closures, 2 inactive outstanding).
   `AbsFunctionBoundInversion_of_diagram_via_chain`, routing older
   Prop-closure function-bound diagram payloads through the Type-valued
   chain inversion endpoint. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_subChain_eqChain_of`, a Type-valued chain-commutation wrapper
+  over the existing de Bruijn Lemma 1 star lifting. It chooses concrete
+  Type-valued chains for the Prop-valued commutation closures and is
+  intended for future diagram composition. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

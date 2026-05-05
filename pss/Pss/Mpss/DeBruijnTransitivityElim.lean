@@ -7703,6 +7703,23 @@ noncomputable def commute_subStar_eqStar_of
     obtain ⟨t₃, hT₁T₃, hyT₃⟩ := ihC hcy
     exact ⟨t₃, hT₁T₃, Relation.ReflTransGen.trans hzy hyT₃⟩
 
+/-- Type-valued chain form of de Bruijn Lemma 1 lifting. This reuses the
+existing Prop-valued star commutation theorem and chooses Type-valued chain
+witnesses for its two resulting closures. -/
+noncomputable def commute_subChain_eqChain_of
+    {Γ : Ctx} {s : Stack} (hcomm : StrongCommutes Γ s)
+    {t₀ t₁ t₂ : Term}
+    (hsubs : MSubRedChain Γ s t₀ t₁)
+    (heqs : MEqRedChain Γ s t₀ t₂) :
+    Sigma fun t₃ =>
+      MEqRedChain Γ s t₁ t₃ × MSubRedChain Γ s t₂ t₃ := by
+  let h := commute_subStar_eqStar_of hcomm hsubs.to_star heqs.to_star
+  let t₃ := Classical.choose h
+  have hSpec :
+      MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+    Classical.choose_spec h
+  exact ⟨t₃, MEqRedChain.of_star hSpec.1, MSubRedChain.of_star hSpec.2⟩
+
 /-- Named de Bruijn Lemma 1 chain lifting: single-step strong commutativity
 at a fixed extended context lifts to one subtype step against an
 equivalence-reduction chain. -/
