@@ -403,6 +403,43 @@ def BetaInstantiationPreservesMEqRedUnderFourHeadsStack : Type :=
           (Term.instantiate 4
             (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) rhs)
 
+/-- Stack-parametric equivalence-reduction β-instantiation under five
+preserved context heads. This is the recursive body payload needed by the
+four-head binder constructors. -/
+def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ lhs rhs : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed
+          ({ bound := Term.instantiate 4
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+              kind := kind₄ } ::
+            { bound := Term.instantiate 0 arg head₅,
+              kind := kind₅ } :: Γ)
+          (Stack.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) s)
+          (Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) lhs)
+          (Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) rhs)
+
 /-- Constructor-facing `Me-Fun` frontier for four-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
 so discharging it will require the five-preserved-head payload. -/
@@ -2154,6 +2191,249 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsStack.of_constru
   | fOp hBound hα hBody =>
       subst hC
       exact hFOp hArgBound hBound hα hBody
+
+/-- The four-head `Me-Fun` frontier follows from the four-head equivalence
+payload for the bound and the five-preserved-head payload for the body. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsFunStackPayload.of_five_heads
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack)
+    (hFive : BetaInstantiationPreservesMEqRedUnderFiveHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderFourHeadsFunStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ t t' body body'
+    kind₁ kind₂ kind₃ kind₄ hArgBound hBound hBody
+  have hBound' := hFour (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃)
+    (head₄ := head₄) (kind₄ := kind₄) (s := []) hArgBound hBound
+  have hBody' := hFive (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃)
+    (head₅ := head₄) (kind₅ := kind₄) (s := []) hArgBound hBody
+  simpa [Term.instantiate] using MEqRed.fun_ hBound' hBody'
+
+/-- The four-head `Me-Bet` frontier follows from the four-head equivalence
+payload for the argument and the five-preserved-head payload for the body,
+plus the de Bruijn substitution-composition law for the deeper β target. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsBetStackPayload.of_five_heads
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack)
+    (hFive : BetaInstantiationPreservesMEqRedUnderFiveHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderFourHeadsBetStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ t v v' body body'
+    kind₁ kind₂ kind₃ kind₄ s hArgBound ht hBody hArg
+  have hBodyFive := hFive (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃)
+    (head₅ := head₄) (kind₅ := kind₄) (s := Stack.shift 0 s)
+    hArgBound hBody
+  have hBody' :
+      MEqRed
+        ({ bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) t,
+            kind := CtxEntryKind.sub } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 0 arg head₄, kind := kind₄ } :: Γ)
+        (Stack.shift 0
+          (Stack.instantiate 4
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) s))
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+          body)
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+          body') := by
+    simpa [Stack.instantiate_five_shift_zero] using hBodyFive
+  have hArg' := hFour (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃)
+    (head₄ := head₄) (kind₄ := kind₄) (s := []) hArgBound hArg
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hArgShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg))
+        (Nat.zero_le (Γ.depth + 2)) hArgShiftShiftScoped
+  have hArgShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+        (Nat.zero_le (Γ.depth + 3)) hArgShiftShiftShiftScoped
+  have ht' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 0 arg head₄,
+              kind := kind₄ } :: Γ))
+        (Term.instantiate 4
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) t) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 4)
+          (Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) t) :=
+      Term.instantiate_scoped 4 (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) t
+        (by omega) hArgShiftShiftShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using ht)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  have hBet := MEqRed.bet ht' hBody' hArg'
+  have hTarget :
+      Term.instantiate 0
+          (Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) v')
+          (Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+            body') =
+        Term.instantiate 4
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+          (Term.instantiate 0 v' body') := by
+    exact Term.instantiate_zero_after_four
+      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) v' body'
+  simpa [Term.instantiate, Stack.instantiate, hTarget] using hBet
+
+/-- The four-head `Me-FOp` frontier follows from the four-head equivalence
+payload for the abstraction bound and the five-preserved-head payload for
+the operand body. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsFOpStackPayload.of_five_heads
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack)
+    (hFive : BetaInstantiationPreservesMEqRedUnderFiveHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderFourHeadsFOpStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ t t' α body body'
+    kind₁ kind₂ kind₃ kind₄ s hArgBound hBound hα hBody
+  have hBound' := hFour (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃)
+    (head₄ := head₄) (kind₄ := kind₄) (s := []) hArgBound hBound
+  have hBodyFive := hFive (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := α) (kind₁ := CtxEntryKind.equ)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃)
+    (head₅ := head₄) (kind₅ := kind₄) (s := Stack.shift 0 s)
+    hArgBound hBody
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hArgShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg))
+        (Nat.zero_le (Γ.depth + 2)) hArgShiftShiftScoped
+  have hArgShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+        (Nat.zero_le (Γ.depth + 3)) hArgShiftShiftShiftScoped
+  have hα' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 0 arg head₄,
+              kind := kind₄ } :: Γ))
+        (Term.instantiate 4
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) α) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 4)
+          (Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) α) :=
+      Term.instantiate_scoped 4 (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) α
+        (by omega) hArgShiftShiftShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hα)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  have hBody' :
+      MEqRed
+        ({ bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) α,
+            kind := CtxEntryKind.equ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 0 arg head₄, kind := kind₄ } :: Γ)
+        (Stack.shift 0
+          (Stack.instantiate 4
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) s))
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+          body)
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+          body') := by
+    simpa [Stack.instantiate_five_shift_zero] using hBodyFive
+  simpa [Term.instantiate, Stack.instantiate] using
+    MEqRed.fOp hBound' hα' hBody'
+
+/-- Four-head equivalence substitution with the binder frontiers generated
+from a four-head equivalence payload and the generic five-head body payload.
+-/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsStack.of_five_head_adapters
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack)
+    (hFive : BetaInstantiationPreservesMEqRedUnderFiveHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderFourHeadsStack :=
+  BetaInstantiationPreservesMEqRedUnderFourHeadsStack.of_constructors
+    (BetaInstantiationPreservesMEqRedUnderFourHeadsFunStackPayload.of_five_heads
+      hFour hFive)
+    (BetaInstantiationPreservesMEqRedUnderFourHeadsBetStackPayload.of_five_heads
+      hFour hFive)
+    (BetaInstantiationPreservesMEqRedUnderFourHeadsFOpStackPayload.of_five_heads
+      hFour hFive)
 
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below three preserved context heads. -/

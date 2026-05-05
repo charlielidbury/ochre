@@ -63,6 +63,14 @@ closures, 2 inactive outstanding).
   binder-body transport and the four-preserved-head β-target composition
   law. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack` and derived the
+  four-head `Me-Fun`, `Me-Bet`, and `Me-FOp` binder adapters from the
+  four-head equivalence payload plus the five-head body payload. Also added
+  `BetaInstantiationPreservesMEqRedUnderFourHeadsStack.of_five_head_adapters`,
+  which turns the abstract four-head assembler into the adapter-facing
+  frontier. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
