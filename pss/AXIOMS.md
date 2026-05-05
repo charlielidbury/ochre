@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_head_replace_from_raw_body_replacements`, the
+  constructor-wired raw-subtype-star innermost `.equ`-head replacement
+  wrapper. It packages the raw-chain handlers for `Ms-App`, `Ms-Fun`, and
+  `Ms-FOp` through the existing chain consumer, avoiding a diagrammatic
+  `MSubStar` boundary at residual sites that still carry raw subtype chains.
+  Added the endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRedStar_equ_head_replace_from_handlers_star`, the chain consumer for
   the raw-subtype-star innermost `.equ`-head replacement splitter. This
   matches the new `{sub}, {equ}, {sub}` raw-star chain consumer and keeps the
