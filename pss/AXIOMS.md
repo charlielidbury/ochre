@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — lifted the stack-append factoring from
+  raw reduction chains to diagrammatic `MSub` / `MSubStar` with
+  `MSubStackAppendPayload` and `MSubStarStackAppendPayload`, plus reduction-
+  append assemblers, empty-stack specializations, and body-transport
+  constructors. `WSubMStarToStackedMSubStarPayload.of_body_transports` now
+  factors through the transitive diagrammatic stack-append payload instead of
+  iterating the empty-stack lift directly. Added the new endpoints to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-level stack-append payloads
   `MEqRedStarStackAppendPayload` and `MSubRedStarStackAppendPayload`, plus
   one-step iterators, empty-stack specializations

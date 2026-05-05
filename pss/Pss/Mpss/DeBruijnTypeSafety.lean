@@ -532,6 +532,14 @@ def MSubStackLiftPayload : Prop :=
       Term.Scoped Γ.depth operand →
         MSub Γ [operand] source target
 
+/-- General one-step diagrammatic stack extension by one operand at the outer
+end of an arbitrary operand stack. -/
+def MSubStackAppendPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {source target operand : Term},
+    MSub Γ s source target →
+      Term.Scoped Γ.depth operand →
+        MSub Γ (s ++ [operand]) source target
+
 /-- Stack lift for subtype-reduction chains under one operand stack head. -/
 def MSubRedStarStackLiftPayload : Prop :=
   ∀ {Γ : Ctx} {source target operand : Term},
@@ -641,6 +649,14 @@ def MSubStarStackLiftPayload : Prop :=
     MSubStar Γ [] source target →
       Term.Scoped Γ.depth operand →
         MSubStar Γ [operand] source target
+
+/-- Transitive diagrammatic stack extension by one operand at the outer end of
+an arbitrary operand stack. -/
+def MSubStarStackAppendPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {source target operand : Term},
+    MSubStar Γ s source target →
+      Term.Scoped Γ.depth operand →
+        MSubStar Γ (s ++ [operand]) source target
 
 /-- Machine-state residual for `Me-Fun`, which only fires at the empty
 stack. -/
@@ -908,6 +924,25 @@ def MSubStackLiftPayload.of_reduction_lifts
   obtain ⟨join, hSubChain, hEqChain⟩ := hSub
   exact ⟨join, hSubLift hSubChain hOperand, hEqLift hEqChain hOperand⟩
 
+/-- Reduction-chain stack appends discharge one-step diagrammatic stack append
+by lifting both sides of the common-reduct diagram under the appended
+operand. -/
+def MSubStackAppendPayload.of_reduction_appends
+    (hSubAppend : MSubRedStarStackAppendPayload)
+    (hEqAppend : MEqRedStarStackAppendPayload) :
+    MSubStackAppendPayload := by
+  intro Γ s source target operand hSub hOperand
+  obtain ⟨join, hSubChain, hEqChain⟩ := hSub
+  exact ⟨join, hSubAppend hSubChain hOperand, hEqAppend hEqChain hOperand⟩
+
+/-- The generalized diagrammatic stack append payload specializes to the
+empty-stack head lift. -/
+def MSubStackLiftPayload.of_append
+    (hAppend : MSubStackAppendPayload) :
+    MSubStackLiftPayload := by
+  intro Γ source target operand hStep hOperand
+  simpa using (hAppend (Γ := Γ) (s := ([] : Stack)) hStep hOperand)
+
 /-- The generalized subtype-reduction stack append payload specializes to the
 empty-stack head lift used by the current assembly. -/
 def MSubRedStackLiftPayload.of_append
@@ -1124,6 +1159,27 @@ def MSubStarStackLiftPayload.of_step
       exact Relation.ReflTransGen.trans ih (Relation.ReflTransGen.single
         (hStep hHead hOperand))
 
+/-- One-step diagrammatic stack append iterates to transitive diagrammatic
+chains. -/
+def MSubStarStackAppendPayload.of_step
+    (hStep : MSubStackAppendPayload) :
+    MSubStarStackAppendPayload := by
+  intro Γ s source target operand hStar hOperand
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hPrefix hHead ih =>
+      exact Relation.ReflTransGen.trans ih
+        (Relation.ReflTransGen.single (hStep hHead hOperand))
+
+/-- The generalized transitive diagrammatic stack append payload specializes
+to the empty-stack head lift. -/
+def MSubStarStackLiftPayload.of_append
+    (hAppend : MSubStarStackAppendPayload) :
+    MSubStarStackLiftPayload := by
+  intro Γ source target operand hStar hOperand
+  simpa using (hAppend (Γ := Γ) (s := ([] : Stack)) hStar hOperand)
+
 /-- A transitive diagrammatic stack lift discharges the well-subtyping to
 stacked diagrammatic bridge by first stripping `WSubMStar` to `MSubStar`. -/
 def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
@@ -1153,6 +1209,16 @@ noncomputable def MSubRedStarStackAppendPayload.of_body_transports
         (MEqRedFunStackAppendPayload.of_body_transport hEqBody))
       (MSubRedFunStackAppendPayload.of_body_equ_transport hSubBody))
 
+/-- Body-transport residuals assemble the generalized diagrammatic stack
+append payload. -/
+noncomputable def MSubStackAppendPayload.of_body_transports
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
+    MSubStackAppendPayload :=
+  MSubStackAppendPayload.of_reduction_appends
+    (MSubRedStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MEqRedStarStackAppendPayload.of_body_transport hEqBody)
+
 /-- Body-transport residuals for the two empty-stack function constructors
 discharge one-step diagrammatic stack lifting. This wires the full stack-lift
 decomposition into the smaller residuals exposed above. -/
@@ -1160,11 +1226,17 @@ noncomputable def MSubStackLiftPayload.of_body_transports
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
     (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
     MSubStackLiftPayload :=
-  MSubStackLiftPayload.of_reduction_lifts
-    (MSubRedStarStackLiftPayload.of_append
-      (MSubRedStarStackAppendPayload.of_body_transports hEqBody hSubBody))
-    (MEqRedStarStackLiftPayload.of_append
-      (MEqRedStarStackAppendPayload.of_body_transport hEqBody))
+  MSubStackLiftPayload.of_append
+    (MSubStackAppendPayload.of_body_transports hEqBody hSubBody)
+
+/-- Body-transport residuals assemble the generalized transitive diagrammatic
+stack append payload. -/
+noncomputable def MSubStarStackAppendPayload.of_body_transports
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
+    MSubStarStackAppendPayload :=
+  MSubStarStackAppendPayload.of_step
+    (MSubStackAppendPayload.of_body_transports hEqBody hSubBody)
 
 /-- The well-subtyping-to-stacked-diagrammatic bridge can now be assembled
 directly from the two body-transport residuals for stack-lifted reductions. -/
@@ -1173,8 +1245,8 @@ noncomputable def WSubMStarToStackedMSubStarPayload.of_body_transports
     (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
     WSubMStarToStackedMSubStarPayload :=
   WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
-    (MSubStarStackLiftPayload.of_step
-      (MSubStackLiftPayload.of_body_transports hEqBody hSubBody))
+    (MSubStarStackLiftPayload.of_append
+      (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody))
 
 /-- Application-operator congruence assembled from the reduced stack-lift
 body transports and one-step diagrammatic re-embedding components. -/
