@@ -425,6 +425,14 @@ closures, 2 inactive outstanding).
   reduces the remaining two-head binder constructors to the three-preserved-head
   body payload. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.of_constructors` and
+  `.of_three_head_adapters`, the structural two-head equivalence substitution
+  assemblers that consume the two-head `Me-Fun` / `Me-Bet` / `Me-FOp` binder
+  adapters. This reduces the generic two-head substitution payload to the
+  two-head recursive premise plus the named three-preserved-head body payload.
+  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

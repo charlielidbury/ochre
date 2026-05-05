@@ -1438,6 +1438,63 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsFOpStackPayload.o
   simpa [Term.instantiate, Stack.instantiate] using
     MEqRed.fOp hBound' hα' hBody'
 
+/-- Assemble two-head equivalence β-instantiation from constructor-local
+frontiers. Structural leaves and `Me-Pro` are discharged here; the explicit
+inputs are the recursive binder constructors. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.of_constructors
+    (hFun : BetaInstantiationPreservesMEqRedUnderTwoHeadsFunStackPayload)
+    (hBet : BetaInstantiationPreservesMEqRedUnderTwoHeadsBetStackPayload)
+    (hFOp : BetaInstantiationPreservesMEqRedUnderTwoHeadsFOpStackPayload) :
+    BetaInstantiationPreservesMEqRedUnderTwoHeadsStack := by
+  intro Γ bound arg head₁ head₂ lhs rhs kind₁ kind₂ s hArgBound hred
+  generalize hC : ({ bound := head₁, kind := kind₁ } ::
+      { bound := head₂, kind := kind₂ } ::
+      { bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg head₁ head₂ kind₁ kind₂ with
+  | pro hpv hb hα ih =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.pro
+        hArgBound hpv hb (ih hArgBound rfl)
+  | bet ht hbody harg =>
+      subst hC
+      exact hBet hArgBound ht hbody harg
+  | top hpv =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.top hArgBound hpv
+  | app hOp hArg ihOp ihArg =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.app
+        (ihOp hArgBound rfl) (ihArg hArgBound rfl)
+  | var hpv hi =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.var
+        hArgBound hpv hi
+  | fun_ hBound hBody =>
+      subst hC
+      exact hFun hArgBound hBound hBody
+  | tAp hpv hu =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.tAp
+        hArgBound hpv hu
+  | fOp hBound hα hBody =>
+      subst hC
+      exact hFOp hArgBound hBound hα hBody
+
+/-- Two-head equivalence substitution with the binder frontiers generated
+from a two-head equivalence payload and the generic three-head body payload.
+-/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.of_three_head_adapters
+    (hTwo : BetaInstantiationPreservesMEqRedUnderTwoHeadsStack)
+    (hThree : BetaInstantiationPreservesMEqRedUnderThreeHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderTwoHeadsStack :=
+  BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.of_constructors
+    (BetaInstantiationPreservesMEqRedUnderTwoHeadsFunStackPayload.of_three_heads
+      hTwo hThree)
+    (BetaInstantiationPreservesMEqRedUnderTwoHeadsBetStackPayload.of_three_heads
+      hTwo hThree)
+    (BetaInstantiationPreservesMEqRedUnderTwoHeadsFOpStackPayload.of_three_heads
+      hTwo hThree)
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below one preserved context head. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.refl
