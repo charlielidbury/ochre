@@ -226,6 +226,16 @@ closures, 2 inactive outstanding).
   convert `WSubMStar Γ arg bound` into the required machine subtype reduction
   from the instantiated head variable over the instantiated stack. Added both
   endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the star-shaped
+  `BetaInstantiationPreservesMSubRedProHeadMSubStarPayload`,
+  `MSubStarStackAppendPayload.iterate_scoped`, and
+  `BetaInstantiationPreservesMSubRedProHeadMSubStarPayload.of_stack_append`.
+  This derives the head-variable frontier at the diagrammatic `MSubStar`
+  layer from `WSubMStar.toMSubStar` plus generalized stack append over the
+  instantiated operand stack. The remaining raw `MSubRed` head payload is
+  therefore a collapse/transitivity-elimination obligation, not a missing
+  stack-transport fact. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

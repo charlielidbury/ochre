@@ -243,6 +243,18 @@ def BetaInstantiationPreservesMSubRedProHeadPayload : Type :=
           (Term.instantiate 0 arg (.bvar 0))
           (Term.instantiate 0 arg (Term.shift 0 bound))
 
+/-- Star-shaped variant of the `MSubRed.pro` head frontier. This is the shape
+directly reachable from `WSubMStar.toMSubStar` plus diagrammatic stack
+transport; collapsing it back to a raw machine subtype step is a separate
+transitivity-elimination obligation. -/
+def BetaInstantiationPreservesMSubRedProHeadMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg : Term} {s : Stack},
+    WSubMStar Γ arg bound →
+      PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s →
+        MSubStar Γ (Stack.instantiate 0 arg s)
+          (Term.instantiate 0 arg (.bvar 0))
+          (Term.instantiate 0 arg (Term.shift 0 bound))
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -1884,6 +1896,47 @@ def MSubStarStackLiftPayload.of_append
     MSubStarStackLiftPayload := by
   intro Γ source target operand hStar hOperand
   simpa using (hAppend (Γ := Γ) (s := ([] : Stack)) hStar hOperand)
+
+/-- Generalized stack append transports an empty-stack diagrammatic chain
+through every operand of a scoped stack. -/
+def MSubStarStackAppendPayload.iterate_scoped
+    (hAppend : MSubStarStackAppendPayload)
+    {Γ : Ctx} {source target : Term} {s : Stack}
+    (hs : Stack.Scoped Γ.depth s)
+    (hStar : MSubStar Γ [] source target) :
+    MSubStar Γ s source target := by
+  have aux :
+      ∀ {base tail : Stack},
+        Stack.Scoped Γ.depth tail →
+          MSubStar Γ base source target →
+            MSubStar Γ (base ++ tail) source target := by
+    intro base tail htail hbase
+    induction htail generalizing base with
+    | nil =>
+        simpa using hbase
+    | @cons α s hα hrest ih =>
+        have hbase' : MSubStar Γ (base ++ [α]) source target :=
+          hAppend (Γ := Γ) (s := base) hbase hα
+        have htail' : MSubStar Γ ((base ++ [α]) ++ s) source target :=
+          ih hbase'
+        simpa [List.append_assoc] using htail'
+  simpa using aux (base := []) hs hStar
+
+/-- The star-shaped `MSubRed.pro` head frontier follows from the existing
+empty-stack `WSubMStar` erasure plus generalized diagrammatic stack append.
+This deliberately stops at `MSubStar`; a later theorem-3/collapse payload is
+needed to recover a raw `MSubRed` step. -/
+noncomputable def BetaInstantiationPreservesMSubRedProHeadMSubStarPayload.of_stack_append
+    (hAppend : MSubStarStackAppendPayload) :
+    BetaInstantiationPreservesMSubRedProHeadMSubStarPayload := by
+  intro Γ bound arg s hArgBound hpv
+  have hpvInst : PrevalidExt Γ (Stack.instantiate 0 arg s) :=
+    BetaInstantiationPreservesPrevalidExtStack hArgBound hpv
+  have hStar : MSubStar Γ [] arg bound :=
+    hArgBound.toMSubStar
+  have hStack : MSubStar Γ (Stack.instantiate 0 arg s) arg bound :=
+    hAppend.iterate_scoped (PrevalidExt.stack_scoped hpvInst) hStar
+  simpa [Term.instantiate, Term.instantiate_shift_id] using hStack
 
 /-- A transitive diagrammatic stack lift discharges the well-subtyping to
 stacked diagrammatic bridge by first stripping `WSubMStar` to `MSubStar`. -/

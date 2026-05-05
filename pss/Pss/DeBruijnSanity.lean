@@ -157,6 +157,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedStack
 #print axioms BetaInstantiationPreservesMSubRedStack
 #print axioms BetaInstantiationPreservesMSubRedProHeadPayload
+#print axioms BetaInstantiationPreservesMSubRedProHeadMSubStarPayload
 #print axioms BetaInstantiationPreservesMEqRed.of_stack
 #print axioms BetaInstantiationPreservesMSubRed.of_stack
 #print axioms BetaInstantiationPreservesMEqRedStack.refl
@@ -230,6 +231,8 @@ namespace DeBruijn
 #print axioms MSubStackAppendPayload.of_body_transports
 #print axioms MSubStarStackAppendPayload.of_step
 #print axioms MSubStarStackLiftPayload.of_append
+#print axioms MSubStarStackAppendPayload.iterate_scoped
+#print axioms BetaInstantiationPreservesMSubRedProHeadMSubStarPayload.of_stack_append
 #print axioms MSubStarStackAppendPayload.of_body_transports
 #print axioms WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append
 #print axioms MSubRedStar.stack_replace_from_step_replacement
