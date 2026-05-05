@@ -8252,6 +8252,36 @@ theorem msubStar_equ_under_two_heads_new_bvar2_to_replaced_residual {Γ : Ctx}
         hOldNewStack))
     hResidual
 
+/-- Canonical handler for the changed-entry `Me-Pro` residual at index `2`
+under two preserved heads: expose the old triply shifted bound, replace that
+residual recursively, then compose it with the converse `bvar 2` bridge. -/
+theorem meq_equ_under_two_heads_pro_two_handler_of_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ : CtxEntry} {old new : Term}
+    (hpvNew : PrevalidExt (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s)
+    (hNewScoped : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      MEqRed (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 old)))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 new))))
+    (hReplace :
+      ∀ {target : Term},
+        MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 old))) target →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 old))) target)
+    {α α' : Term}
+    (hb : Ctx.equBinds (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) 2 α)
+    (hα : MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s α α') :
+    MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar 2) α' := by
+  have hαeq : α = Term.shift 0 (Term.shift 0 (Term.shift 0 old)) := by
+    have hraw : Term.shift 0 (Term.shift 0 (Term.shift 0 old)) = α := by
+      simpa [Ctx.equBinds] using hb
+    exact hraw.symm
+  subst hαeq
+  exact msubStar_equ_under_two_heads_new_bvar2_to_replaced_residual
+    hpvNew hNewScoped hOldNewStack (hReplace hα)
+
 /-- One-step equivalence replacement under a preserved head with all
 `Me-Pro` cases wired. The preserved-head index `0`, changed-entry residual
 index `1`, and non-residual tail indices `2+` are discharged by the canonical

@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meq_equ_under_two_heads_pro_two_handler_of_replacement`, the canonical
+  consumer for the changed-entry `Me-Pro` residual at index `2` under two
+  preserved heads. It identifies the looked-up payload as the old triply
+  shifted bound, delegates only that residual replacement, then composes with
+  the `bvar 2` bridge. Added the endpoint to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the two-preserved-head
   changed-`.equ` payload bridge
   `msub_equ_under_two_heads_old_bound_to_new_bvar2`, its converse, and the
