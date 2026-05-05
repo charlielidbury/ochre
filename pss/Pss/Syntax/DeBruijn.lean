@@ -417,6 +417,17 @@ theorem instantiate_five_shift_zero (v t : Term) :
   have h := (shiftBy_instantiate 0 5 0 v t (Nat.zero_le 0)).symm
   simpa [shift, shiftBy_compose, Nat.add_assoc] using h
 
+/-- Instantiation at index `6` through six preserved top-level bindings
+commutes with instantiating at index `0` before adding those bindings. -/
+theorem instantiate_six_shift_zero (v t : Term) :
+    instantiate 6
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 v))))))
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t)))))) =
+      shift 0
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (instantiate 0 v t)))))) := by
+  have h := (shiftBy_instantiate 0 6 0 v t (Nat.zero_le 0)).symm
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
 /-- Instantiating index `2` through a term shifted under three top-level
 bindings cancels the shift at the instantiated slot and preserves the two
 outer bindings. -/
@@ -556,6 +567,18 @@ theorem instantiate_five_shift_zero_tail (v t : Term) :
         (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t)))))) =
       shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t)))) := by
   have h := instantiate_shiftBy_zero_tail 5 v t
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
+/-- Instantiating index `6` through a term shifted under seven top-level
+bindings cancels the shift at the instantiated slot and preserves the six
+outer bindings. -/
+theorem instantiate_six_shift_zero_tail (v t : Term) :
+    instantiate 6
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 v))))))
+        (shift 0
+          (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t))))))) =
+      shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t))))) := by
+  have h := instantiate_shiftBy_zero_tail 6 v t
   simpa [shift, shiftBy_compose, Nat.add_assoc] using h
 
 /-- Substituting index `k` and then the next surviving slot is equivalent to
