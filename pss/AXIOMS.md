@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state` and
+  `AbsFunctionBoundChainShapeWfClosedPayload_of_machine_state`, deriving the
+  shape-only joined-bound well-formedness payloads from the corrected
+  machine-state preservation theorem by specializing it to empty stacks. No
+  axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 5 axiom audit
   to include the direct, diagram, and chain-diagram closed component
   endpoints alongside the existing chain-shape endpoints. No axiom-count

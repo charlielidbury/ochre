@@ -4219,6 +4219,15 @@ noncomputable def AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_contextual
   AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq hShape
     (MEqRedPreservesWfMUnderWfCtx.of_contextual hpres)
 
+/-- Machine-state preservation supplies joined-bound well-formedness under a
+well-formed-equivalence context by specializing to the empty stack. -/
+noncomputable def AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hpres : MEqRedPreservesWfMachineState) :
+    AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape :=
+  AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq hShape
+    (MEqRedPreservesWfMUnderWfCtx.of_machine_state hpres)
+
 /-- The well-formed-equivalence-context joined-bound payload specializes to
 closed contexts. -/
 def AbsFunctionBoundChainShapeWfClosedPayload.of_wfctx
@@ -4236,6 +4245,17 @@ noncomputable def AbsFunctionBoundChainShapeWfClosedPayload_of_contextual
     AbsFunctionBoundChainShapeWfClosedPayload hShape :=
   AbsFunctionBoundChainShapeWfClosedPayload.of_wfctx
     (AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_contextual hShape hpres)
+
+/-- Machine-state preservation supplies closed joined-bound well-formedness
+for shape-only function-bound diagrams by specializing through the
+well-formed-equivalence context route. -/
+noncomputable def AbsFunctionBoundChainShapeWfClosedPayload_of_machine_state
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hpres : MEqRedPreservesWfMachineState) :
+    AbsFunctionBoundChainShapeWfClosedPayload hShape :=
+  AbsFunctionBoundChainShapeWfClosedPayload.of_wfctx
+    (AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state
+      hShape hpres)
 
 /-- An older Prop-closure diagram payload can be upgraded to the Type-valued
 chain-diagram payload by choosing chain witnesses for the two closures. -/
