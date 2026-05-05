@@ -47,6 +47,8 @@ namespace DeBruijn
 #print axioms StepBetaPreservesWfM_of_diagram
 #print axioms StepBetaPreservesWfM_of_chain_diagram
 #print axioms StepBetaPreservesWfM_of_chain_shape
+#print axioms StepPreservesWfM_of
+#print axioms StepPreservesWfM_of_new_wf
 #print axioms StepPreservesWfM_of_components
 #print axioms StepPreservesWfM_of_diagram_components
 #print axioms StepPreservesWfM_of_chain_diagram_components

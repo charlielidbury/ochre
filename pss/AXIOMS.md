@@ -9,6 +9,10 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn operational
+  preservation audit to include the raw `StepPreservesWfM_of` reducer and
+  the sharpened `StepPreservesWfM_of_new_wf` reducer before the
+  componentized Theorem 5 routes. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn
   machine-preservation audit to include the diagnostic head-kind variant of
   the strongest factored target-app/tail-cons route plus its typed-operator
