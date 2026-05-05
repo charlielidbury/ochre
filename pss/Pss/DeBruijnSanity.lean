@@ -169,6 +169,8 @@ namespace DeBruijn
 #print axioms MEqRed.equ_under_sub_head_replace_from_handlers
 #print axioms MSubRed.equ_under_head_replace_from_handlers
 #print axioms MSubRed.equ_under_sub_head_nil_replace_from_handlers
+#print axioms MEqRed.equ_under_two_heads_replace_from_handlers
+#print axioms MSubRed.equ_under_two_heads_replace_from_handlers
 #print axioms MEqRed.sub_head_replace
 #print axioms MEqRed.sub_head_replace_two_step
 #print axioms MEqRedStar.sub_head_replace

@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_two_heads_replace_from_handlers` and
+  `MSubRed.equ_under_two_heads_replace_from_handlers`, raw replacement
+  splitters for a changed `.equ` entry under two preserved context heads.
+  These preserve raw `MEqRed`/`MSubRed` conclusions, close stable leaves, and
+  expose lookup plus recursive constructor payloads as handlers. They match
+  the raw obligations needed by the nested structural-app `Ms-Fun` body
+  residual. Added both endpoints to the De Bruijn audit. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRed_equ_under_two_heads_replace_from_handlers`, the matching
   diagrammatic subtype-replacement splitter for a changed `.equ` entry under
