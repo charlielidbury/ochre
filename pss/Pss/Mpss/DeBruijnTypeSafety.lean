@@ -7449,6 +7449,63 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_direct_sp
     (MSubStarToWSubMStarPayload.of_steps hPres hStep)
     hInv hBetaBody hFOpBody hTargetApp hTailCons hReplace hNoTop
 
+/-- External-empty body-transport entry point for the typed-`FOp` direct
+split-beta target-application assembly, using direct `.sub` replacement
+payloads. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hEmpty hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads) hNoTop
+
+/-- External-empty body-transport entry point for the typed-`FOp` direct
+split-beta target-application assembly, using immediate/factored `.sub`
+replacement payloads. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hEmpty hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hNoTop
+
 /-- External-empty sub-replacement entry point for the native-`FOp` direct
 split-beta target-application assembly. -/
 noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace
@@ -7540,6 +7597,63 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_direct_sp
     (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
     (MSubStarToWSubMStarPayload.of_steps hPres hStep)
     hInv hBetaBody hFOpBody hTargetApp hTailCons hReplace hNoTop
+
+/-- External-empty body-transport entry point for the native-`FOp` direct
+split-beta target-application assembly, using direct `.sub` replacement
+payloads. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_fop_target_app_machine_tail_cons_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hEmpty hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads) hNoTop
+
+/-- External-empty body-transport entry point for the native-`FOp` direct
+split-beta target-application assembly, using immediate/factored `.sub`
+replacement payloads. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_fop_target_app_machine_tail_cons_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hEmpty hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hNoTop
 
 /-- External-empty typed-operator sub-replacement entry point for the
 typed-`FOp` direct split-beta assembly. -/
