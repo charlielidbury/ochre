@@ -10,6 +10,10 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn machine-preservation
+  audit to include the stack-lift, diagrammatic re-embedding,
+  app-operator, and control-left adapters that feed the generic
+  machine-state assemblies. No axiom-count change.
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn machine-preservation
   audit to include the generic component, pro-annotation, reduced-component,
   body-transport, and no-external-empty body-transport machine-state
   assemblies that feed the strongest chain-shape routes. No axiom-count
