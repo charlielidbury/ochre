@@ -10,6 +10,15 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_app_app_body_from_operator_join_of`, the fixed-context
+  structural `Ms-App × Me-App` body join. Given strong commutativity for
+  the operator stack and the precise transport of the operator subtype
+  join from stack head `v` to `v₂`, it joins `.app u' v` with
+  `.app u₂ v₂`. This isolates the same changed-argument stack-head
+  transport obstruction already exposed by the outer app-abs
+  infrastructure. Added the endpoint to the de Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_app_body_tAp_of`, closing the
   `Ms-Fun × Me-Fun` body subcase where the subtype body premise is
   `Ms-App` and the equivalence body premise is `Me-TAp`. The operator

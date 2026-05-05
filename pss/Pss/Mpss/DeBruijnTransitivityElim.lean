@@ -2330,6 +2330,38 @@ theorem msubStar_app_fixed_arg {Γ : Ctx} {s : Stack}
     exact Relation.ReflTransGen.trans ih
       (MSub.to_star (msub_app_fixed_arg hpvTail hArgScoped hStep))
 
+/-- Structural application body commutation from an operator-stack
+commutation result and the precise changed-argument stack-head transport.
+The equivalence side first follows the operator join under the old argument
+and then changes the argument; the subtype side transports the operator
+subtype join to the new argument stack and lifts it under the new argument. -/
+theorem commute_app_app_body_from_operator_join_of {Γ : Ctx}
+    {u u' v u₂ v₂ : Term}
+    (hcommOp : StrongCommutes Γ (v :: []))
+    (hSubOp : MSubRed Γ (v :: []) u u')
+    (hArgScoped : Term.Scoped Γ.depth v)
+    (hEqOp : MEqRed Γ (v :: []) u u₂)
+    (hEqArg : MEqRed Γ [] v v₂)
+    (hTransport :
+      ∀ {a b : Term},
+        MSubRedStar Γ (v :: []) a b →
+        MSubRedStar Γ (v₂ :: []) a b) :
+    ∃ body₃,
+      MEqRedStar Γ [] (.app u' v) body₃ ∧
+        MSubRedStar Γ [] (.app u₂ v₂) body₃ := by
+  obtain ⟨op₃, hEqJoin, hSubJoin⟩ := hcommOp hSubOp hEqOp
+  have hpvNil : PrevalidExt Γ [] := PrevalidExt.tail hSubOp.prevalidExt
+  have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hArgScoped
+  have hOp₃Refl : MEqRed Γ (v :: []) op₃ op₃ :=
+    MEqRed.refl hSubOp.prevalidExt hEqJoin.some.scoped_right
+  have hArg₂Scoped : Term.Scoped Γ.depth v₂ := hEqArg.scoped_right
+  exact ⟨.app op₃ v₂,
+    MEqRedStar.trans
+      (meqRedStar_app_fixed_arg hArgRefl (MEqRedStar.single hEqJoin.some))
+      (MEqRedStar.single (MEqRed.app hOp₃Refl hEqArg)),
+    msubRedStar_app_fixed_arg hArg₂Scoped
+      (hTransport (MSubRedStar.single hSubJoin.some))⟩
+
 /-- Changed-argument structural application commutation for
 abstraction-headed applications, isolated behind the precise missing
 stack-head transport. The transport premise moves the operator-side subtype
