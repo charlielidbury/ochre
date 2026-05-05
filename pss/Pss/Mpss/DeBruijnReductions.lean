@@ -2945,6 +2945,79 @@ noncomputable def MEqRed.equ_under_two_sub_heads_replace_from_handlers {Γ : Ctx
               simpa using hProTail hb hα)
     hApp hFun hBet hFOp h
 
+/-- Empty-stack specialization of raw equivalence replacement across a
+changed `.equ` entry under two preserved `.sub` heads. The first two
+`Me-Pro` indices and nested `Me-FOp` are impossible. -/
+noncomputable def MEqRed.equ_under_two_sub_heads_nil_replace_from_handlers
+    {Γ : Ctx} {headBound₁ headBound₂ old new u v : Term}
+    (hpv : PrevalidExt ({ bound := headBound₁, kind := .sub } ::
+      { bound := headBound₂, kind := .sub } ::
+      { bound := old, kind := .equ } :: Γ) [])
+    (hnew : Term.Scoped Γ.depth new)
+    (hProTail :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) ((i + 1) + 1) α →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] α α' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] (.bvar ((i + 1) + 1)) α')
+    (hApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (arg :: []) op op' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] (.app op arg) (.app op' arg'))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 []) body body' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) []
+          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
+    (h : MEqRed ({ bound := headBound₁, kind := .sub } ::
+      { bound := headBound₂, kind := .sub } ::
+      { bound := old, kind := .equ } :: Γ) [] u v) :
+    MEqRed ({ bound := headBound₁, kind := .sub } ::
+      { bound := headBound₂, kind := .sub } ::
+      { bound := new, kind := .equ } :: Γ) [] u v :=
+  MEqRed.equ_under_two_sub_heads_replace_from_handlers hpv hnew
+    hProTail hApp hFun hBet
+    (by
+      intro bound bound' arg body body' rest _ _ hStack _
+      cases hStack)
+    h
+
 /-- Specialization of `MEqRed.equ_under_head_replace_from_handlers` when the
 preserved head is a `.sub` entry. The index-0 `Me-Pro` case is impossible, so
 only the changed under-head `.equ` residual, tail lookups, and recursive

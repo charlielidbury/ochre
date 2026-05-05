@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_two_sub_heads_nil_replace_from_handlers`, the empty-stack
+  specialization of raw equivalence replacement across a changed `.equ` entry
+  under two preserved `.sub` heads. It keeps the impossible low-index
+  `Me-Pro` cases discharged and additionally rules out nested `Me-FOp` at
+  empty stack, matching nested body-premise shapes in the structural-app
+  residual. Added the endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` — added
   `Ctx.subBinds_equ_under_two_heads_replace` and
   `MSubRed.pro_equ_under_two_heads_replace`, then used them to internalize the
