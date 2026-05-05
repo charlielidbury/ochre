@@ -10,6 +10,10 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added a direct one-step
+  equivalence wrapper for the app-abs `Top` / `Top`-headed residual branch,
+  avoiding manual `MEqRedStar.single` packaging at single-step branch-grid
+  callers. Added the endpoint to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added a direct one-step
   equivalence wrapper for `Top`-headed application commutation, avoiding
   manual `MEqRedStar.single` packaging at single-step callers. Added the
   endpoint to the de Bruijn audit. No axiom-count change.

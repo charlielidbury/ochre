@@ -1618,6 +1618,18 @@ theorem commute_appAbs_subStep_topOrAppTop_eqStar_from_left {Γ : Ctx} {s : Stac
         obtain ⟨arg', hTarget⟩ := hAppTop
         cases hTarget
 
+/-- Direct one-equivalence-step `Top` / `Top`-headed branch for
+abstraction-headed application commutation with side conditions recovered
+from the subtype step. -/
+theorem commute_appAbs_subStep_topOrAppTop_eqStep_from_left {Γ : Ctx}
+    {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hShape : t₁ = .top ∨ ∃ arg', t₁ = .app .top arg')
+    (hEq : MEqRed Γ s (.app (.abs bound body) arg) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  commute_appAbs_subStep_topOrAppTop_eqStar_from_left hSub hShape
+    (MEqRedStar.single hEq)
+
 /-- Diagrammatic packaging of the β branch from
 `MEqRedStar.app_abs_inv`: if an equivalence chain from an
 abstraction-headed application has taken β, the final target is
