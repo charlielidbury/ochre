@@ -257,6 +257,13 @@ closures, 2 inactive outstanding).
   reuses `msubStar_abs_fOp_body_fixed_bound` to lift it back to the
   abstraction level over the instantiated operand stack. Added the endpoint
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMSubRed.fun_msubstar`, the star-layer
+  reassembly helper for the empty-stack `MSubRed.fun_` constructor. It
+  consumes the transformed bound equivalence plus the transformed body chain
+  under the instantiated `.sub` head, then reuses
+  `msubStar_abs_fun_equ_bound_body` to rebuild the abstraction step. Added
+  the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

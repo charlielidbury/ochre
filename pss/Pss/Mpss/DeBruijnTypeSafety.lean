@@ -1039,6 +1039,39 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.fOp_msubstar
   simpa [Term.instantiate, Stack.instantiate] using
     msubStar_abs_fOp_body_fixed_bound hpvTail ht' hα' hBody
 
+/-- The `MSubRed.fun_` constructor reassembles an empty-stack
+β-instantiated subtype step at the diagrammatic-star layer once the
+transformed bound equivalence and transformed body chain are available. -/
+noncomputable def BetaInstantiationPreservesMSubRed.fun_msubstar
+    {Γ : Ctx} {bound arg t t' body body' : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hBound :
+      MEqRed Γ [] (Term.instantiate 0 arg t) (Term.instantiate 0 arg t'))
+    (hBodyScoped :
+      Term.Scoped
+        (Ctx.depth ({ bound := t, kind := .sub } ::
+          { bound := bound, kind := .sub } :: Γ)) body)
+    (hBody :
+      MSubStar ({ bound := Term.instantiate 0 arg t', kind := .sub } :: Γ)
+        [] (Term.instantiate 1 (Term.shift 0 arg) body)
+        (Term.instantiate 1 (Term.shift 0 arg) body')) :
+    MSubStar Γ [] (Term.instantiate 0 arg (.abs t body))
+      (Term.instantiate 0 arg (.abs t' body')) := by
+  have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hArgBound.prevalid
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hBodyScoped' :
+      Term.Scoped (Ctx.depth
+        ({ bound := Term.instantiate 0 arg t, kind := .sub } :: Γ))
+        (Term.instantiate 1 (Term.shift 0 arg) body) :=
+    Term.instantiate_scoped 1 (Γ.depth + 1) (Term.shift 0 arg) body
+      (by omega) hArgShiftScoped (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using
+          hBodyScoped)
+  simpa [Term.instantiate] using
+    msubStar_abs_fun_equ_bound_body hpvNil hBound hBodyScoped' hBody
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
