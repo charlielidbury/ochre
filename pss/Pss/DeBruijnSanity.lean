@@ -131,6 +131,8 @@ namespace DeBruijn
 #print axioms MSubRedFunStackAppendPayload.of_body_equ_transport
 #print axioms MEqRedStackAppendPayload.of_fun
 #print axioms MSubRedStackAppendPayload.of_fun
+#print axioms MEqRedStar.sub_head_replace
+#print axioms MSubRedStar.equ_sub_head_replace
 #print axioms MSubRedStarStackLiftPayload.of_step
 #print axioms MEqRedStarStackLiftPayload.of_step
 #print axioms MSubStarStackLiftPayload.of_step

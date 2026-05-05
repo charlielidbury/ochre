@@ -1661,6 +1661,20 @@ theorem MEqRedStar.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
       exact Relation.ReflTransGen.tail ih
         ⟨hStep.some.replaceAt_sub hcut hOldNew⟩
 
+/-- Head specialization of `MEqRedStar.replaceAt_sub` for replacing the
+innermost `.sub` binder. -/
+theorem MEqRedStar.sub_head_replace {Γ : Ctx} {s : Stack} {u v : Term}
+    {old new : Term}
+    (h : MEqRedStar ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRed Γ [] old new) :
+    MEqRedStar ({ bound := new, kind := .sub } :: Γ) s u v := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (MEqRedStar.replaceAt_sub
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) h hcut (by simpa using hOldNew))
+
 /-- Star-valued `Ms-Equ` replacement across arbitrary-depth `.sub`
 replacement. -/
 theorem MSubRedStar.equ_replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
@@ -1672,6 +1686,21 @@ theorem MSubRedStar.equ_replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
     MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v :=
   MSubRedStar.single
     (MSubRed.equ_replaceAt_sub hpvNew (hEq.replaceAt_sub hcut hOldNew))
+
+/-- Head specialization of `MSubRedStar.equ_replaceAt_sub` for replacing the
+innermost `.sub` binder in an `Ms-Equ` step. -/
+theorem MSubRedStar.equ_sub_head_replace {Γ : Ctx} {s : Stack} {u v : Term}
+    {old new : Term}
+    (hpvNew : PrevalidExt ({ bound := new, kind := .sub } :: Γ) s)
+    (hEq : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRed Γ [] old new) :
+    MSubRedStar ({ bound := new, kind := .sub } :: Γ) s u v := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (MSubRedStar.equ_replaceAt_sub
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) hpvNew hEq hcut (by simpa using hOldNew))
 
 /-- Star-valued changed-slot `Ms-Pro` replacement residual. -/
 theorem MSubRedStar.pro_replaceAt_sub_self {Γ : Ctx} {s : Stack}

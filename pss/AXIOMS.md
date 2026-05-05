@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added head-specialized `.sub`
+  replacement endpoints `MEqRedStar.sub_head_replace` and
+  `MSubRedStar.equ_sub_head_replace`, packaging the existing arbitrary-depth
+  `replaceAt_sub` machinery for innermost binder transport. Added both
+  endpoints to the de Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fOp_eq_bound_body_star`, the star-level `FOp` commutation
   assembly matching the shape where the equivalence side changes the
