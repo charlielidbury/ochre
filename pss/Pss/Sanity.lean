@@ -2,6 +2,7 @@ import Pss.Mpss.TypeSafety
 import Pss.Mpss.TypeSafetyWfCtx
 import Pss.Mpss.TransitivityElim
 import Pss.Mpss.SubstitutionNoPro
+import Pss.Mpss.AvoidsPro
 
 /-! # `Pss.Sanity` — `#print axioms` audit
 
@@ -25,5 +26,7 @@ namespace Pss
 #print axioms Lemma7.lf2_case_noProOn
 #print axioms Lemma_1_StrongCommutativity
 #print axioms Lemma_2_DiamondMEqRed
+#print axioms Lemma_10_InversionRestricted
+#print axioms Lemma_32_AsymmetricEqu
 
 end Pss

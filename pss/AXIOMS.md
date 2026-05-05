@@ -5352,6 +5352,12 @@ and still inherit the shared preservation/transitivity residuals:
 * `Pss.Proposition_17_beta_axiom`
 * the Lemma 1 / Lemma 2 locally-nameless residual cluster listed above
 
+`Pss.Sanity` also prints the two inactive public residual axioms so the
+standard audit covers the entire non-permanent public axiom surface:
+
+* `Pss.Lemma_10_InversionRestricted`
+* `Pss.Lemma_32_AsymmetricEqu`
+
 ---
 
 ## Permanent (paper-conjecture status)
