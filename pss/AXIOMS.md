@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added the diagrammatic
+  `{sub}, {equ}, {sub}` empty-stack wrappers
+  `meqRed_equ_under_sub_head_sub_tail_nil_replace_from_handlers` and
+  `msubRed_equ_under_sub_head_sub_tail_nil_replace_from_handlers`, both
+  expressed via the generic `Ctx.replaceAt` splitters. The equivalence wrapper
+  exposes the precise `Me-Pro` split needed at the nested residual site:
+  indices `0` and `2` are impossible `.sub` entries, index `1` is the changed
+  `.equ` residual, and true tail lookups begin at `3+`. Added both endpoints
+  to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — moved the innermost
   diagrammatic `.equ`-head splitters
   `msubRed_equ_head_replace_from_handlers` and
