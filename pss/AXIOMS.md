@@ -80,6 +80,16 @@ closures, 2 inactive outstanding).
   four endpoints to `Pss/DeBruijnSanity.lean`; their axiom audit is standard
   Lean axioms only. No headline locally-nameless axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesScoped`, a checked scoping theorem for the
+  de Bruijn β-instantiation payload. From
+  `WSubMStar Γ arg bound` and `WfM ({ bound := bound, kind := .sub } :: Γ)
+  body`, it proves
+  `Term.Scoped Γ.depth (Term.instantiate 0 arg body)` using the existing
+  `Term.instantiate_scoped` lemma. This isolates the remaining
+  `BetaInstantiationPreservesWfM` work as well-formedness reconstruction,
+  not de Bruijn binder arithmetic. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem

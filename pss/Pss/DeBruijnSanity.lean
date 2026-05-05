@@ -148,6 +148,7 @@ namespace DeBruijn
 #print axioms WfMSubHeadToEquHeadPayload.not_of_no_top
 #print axioms WfMHeadKindTransportPayload.not_of_no_top
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity
+#print axioms BetaInstantiationPreservesScoped
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

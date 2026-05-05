@@ -180,6 +180,18 @@ def BetaInstantiationPreservesWfM : Type :=
       WfM ({ bound := bound, kind := .sub } :: Γ) body →
         WfM Γ (Term.instantiate 0 arg body)
 
+/-- The de Bruijn β-instantiation preservation frontier is not blocked on
+scoping: substituting an argument for the innermost body variable preserves
+the ambient context depth. The remaining payload is the MPSS well-formedness
+reconstruction captured by `BetaInstantiationPreservesWfM`. -/
+noncomputable def BetaInstantiationPreservesScoped
+    {Γ : Ctx} {bound body arg : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hBody : WfM ({ bound := bound, kind := .sub } :: Γ) body) :
+    Term.Scoped Γ.depth (Term.instantiate 0 arg body) :=
+  Term.instantiate_scoped 0 Γ.depth arg body (Nat.zero_le Γ.depth)
+    hArgBound.scoped_left hBody.scoped
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
