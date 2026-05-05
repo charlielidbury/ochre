@@ -25,6 +25,16 @@ closures, 2 inactive outstanding).
   wrappers are still useful for comparing preservation decompositions, but
   after `WfMHeadKindTransportPayload.not_of_no_top` they should not be read
   as viable final proof obligations. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpBodyPayload.not_of_no_top`, showing the native `Me-FOp` body
+  residual is also too broad under the current `WfStack` invariant. The
+  counterexample uses the same `.sub (λ Top. Top)` source body
+  `(bvar 0) Top`; under a stack-introduced `.equ Top` head, `Me-Pro` and
+  `Me-App` reduce it to `Top Top`, whose well-formedness would imply
+  `Top ≤*` a function. This rules out contextual preservation with only
+  per-operand stack well-formedness and identifies the next required
+  refinement as a stack/application invariant that records the operand's
+  relationship to the abstraction bound. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
