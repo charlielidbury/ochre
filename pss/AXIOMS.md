@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `diamond_abs_fun_targets_of_bound_body_joins_from_left`, the final
+  assembly helper for the changing-bound/changing-body `Fun` abstraction
+  diamond. It isolates the remaining hard obligation as transported body
+  joins under the chosen joined bound. Added the endpoint to the de Bruijn
+  audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added a direct one-step
   equivalence wrapper for the app-abs `Top` / `Top`-headed residual branch,
   avoiding manual `MEqRedStar.single` packaging at single-step branch-grid
