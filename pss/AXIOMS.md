@@ -1312,6 +1312,11 @@ closures, 2 inactive outstanding).
   `tail` projection, and `WfCtxEqu.lookup_equ`, which extracts
   well-formed lifted annotations from `.equ` lookups under the stronger
   context invariant. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added the de Bruijn
+  well-formed stack invariant `WfStack`, with `toScoped`,
+  `prevalidExt`, and head weakening. This is the stack-side payload
+  needed for conditional `MEqRed` well-formedness preservation under
+  non-empty stacks. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

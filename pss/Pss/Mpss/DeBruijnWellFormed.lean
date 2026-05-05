@@ -378,6 +378,33 @@ def tail {e : CtxEntry} {Γ : Ctx} (h : WfCtxEqu (e :: Γ)) : WfCtxEqu Γ := by
 
 end WfCtxEqu
 
+/-- Stack invariant requiring every operand in the stack to be well-formed in
+the ambient context. `PrevalidExt` only records scoping; this is the stronger
+payload needed when preservation descends into stack-indexed reductions. -/
+inductive WfStack (Γ : Ctx) : Stack → Type where
+  | nil : WfStack Γ []
+  | cons {α : Term} {s : Stack} :
+      WfM Γ α → WfStack Γ s → WfStack Γ (α :: s)
+
+namespace WfStack
+
+/-- A well-formed stack is scoped in the ambient context. -/
+noncomputable def toScoped {Γ : Ctx} {s : Stack} (h : WfStack Γ s) :
+    Stack.Scoped Γ.depth s := by
+  induction h with
+  | nil => exact Stack.Scoped.nil
+  | cons hα _ ih => exact Stack.Scoped.cons hα.scoped ih
+
+/-- A well-formed stack extends a prevalid context to a prevalid extended
+context. -/
+noncomputable def prevalidExt {Γ : Ctx} {s : Stack} (h : WfStack Γ s)
+    (hpv : Prevalid Γ) : PrevalidExt Γ s := by
+  induction h with
+  | nil => exact PrevalidExt.nil hpv
+  | cons hα _ ih => exact PrevalidExt.cons ih hα.scoped
+
+end WfStack
+
 /-! ## Constructor inversions -/
 
 /-- Inversion for de Bruijn well-formed abstractions. -/
@@ -2001,6 +2028,22 @@ noncomputable def lookup_equ {Γ : Ctx} {i : Nat} {α : Term}
                     (Prevalid.tail hpv)
 
 end WfCtxEqu
+
+namespace WfStack
+
+/-- Head-extension weakening for well-formed stacks. -/
+noncomputable def weaken_head {Γ : Ctx} {s : Stack} {newEntry : CtxEntry}
+    (h : WfStack Γ s)
+    (hNew : Prevalid (newEntry :: Γ))
+    (hpv : Prevalid Γ) :
+    WfStack (newEntry :: Γ) (Stack.shift 0 s) := by
+  induction h with
+  | nil =>
+      exact WfStack.nil
+  | cons hα _ ih =>
+      exact WfStack.cons (hα.weaken_head hNew hpv) ih
+
+end WfStack
 
 /-- A well-formed term is well-formed as the shifted bound of a new `.sub`
 head that stores that same term. -/
