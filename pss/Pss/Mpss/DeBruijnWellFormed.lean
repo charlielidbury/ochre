@@ -388,6 +388,18 @@ inductive WfStack (Γ : Ctx) : Stack → Type where
 
 namespace WfStack
 
+/-- Head well-formedness from a non-empty well-formed stack. -/
+def head {Γ : Ctx} {α : Term} {s : Stack}
+    (h : WfStack Γ (α :: s)) : WfM Γ α := by
+  cases h with
+  | cons hα _ => exact hα
+
+/-- Tail well-formedness from a non-empty well-formed stack. -/
+def tail {Γ : Ctx} {α : Term} {s : Stack}
+    (h : WfStack Γ (α :: s)) : WfStack Γ s := by
+  cases h with
+  | cons _ hs => exact hs
+
 /-- A well-formed stack is scoped in the ambient context. -/
 noncomputable def toScoped {Γ : Ctx} {s : Stack} (h : WfStack Γ s) :
     Stack.Scoped Γ.depth s := by

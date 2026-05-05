@@ -1317,6 +1317,10 @@ closures, 2 inactive outstanding).
   `prevalidExt`, and head weakening. This is the stack-side payload
   needed for conditional `MEqRed` well-formedness preservation under
   non-empty stacks. No axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added non-empty well-formed stack
+  inversion helpers `WfStack.head` and `WfStack.tail`, preparing the
+  stack-splitting obligations in contextual preservation cases. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the contextual
   well-formedness-preservation premise
   `MEqRedPreservesWfMContextual`, the empty-stack under-context
