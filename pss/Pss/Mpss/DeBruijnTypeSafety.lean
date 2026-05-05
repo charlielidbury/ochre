@@ -4393,6 +4393,48 @@ def MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf
   intro Γ bound bound' body' _hΓ _hwfBound hwfBound' hred hwfBody'
   exact hReplace hred hwfBound' hwfBody'
 
+/-- Sub-replacement entry point for the typed-`FOp` direct split-beta
+machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    hTargetApp hTailCons
+    (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace) hNoTop
+
+/-- Sub-replacement entry point for the native-`FOp` direct split-beta
+machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
+    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    hTargetApp hTailCons
+    (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace) hNoTop
+
 /-- `Me-Fun` well-formedness preservation using the existing sharpened
 `.sub` head replacement payload. -/
 noncomputable def MEqRed.fun_preservesWfM_of_sub_head_replace

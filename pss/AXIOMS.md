@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace`
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace`,
+  letting the strongest direct split-beta machine assemblies consume the
+  sharpened `.sub` head replacement payload directly instead of a prebuilt
+  `Me-Fun` body-replacement payload. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedFOpBodyTypedPayload.of_untyped`,
   `MEqRedFOpBodyTypedPayload.of_head_transports`,
   `MEqRedFOpBodyTypedPayload.of_head_kind_transport`,
