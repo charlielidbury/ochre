@@ -1147,6 +1147,15 @@ noncomputable def MEqRedAppTargetPreservesWfMPayload.of_machine_operator
   obtain ⟨bound, hFun, hArg⟩ := hImmediateSource.app_inv
   exact WfM.app (hOpFun hΓ hState hArg hFun hred) hArg
 
+/-- The typed operator-function residual also supplies immediate
+target-application preservation by forgetting the plugged machine-state
+evidence down to the tail-stack well-formedness used by the typed payload. -/
+noncomputable def MEqRedAppTargetPreservesWfMPayload.of_typed_operator
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload) :
+    MEqRedAppTargetPreservesWfMPayload :=
+  MEqRedAppTargetPreservesWfMPayload.of_machine_operator
+    (MEqRedAppFunctionSupertypeMachinePayload.of_typed hOpFun)
+
 /-- Generic left-endpoint transport for well-subtyping along a stack-indexed
 equivalence reduction. This is the precise reusable shape behind the
 operator side of contextual `Me-App`. -/
@@ -2640,6 +2649,45 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
               hTargetApp hFOpTailStep)
               hΓ (MEqRed.fOp hBound hOperandScoped hBodyRed)
               hwfAbs' hState
+
+/-- No-external-empty typed-operator variant of the `Me-FOp` route. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_operator_tail_step
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFOpTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_target_app_tail_step
+    hBeta hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    hFOpTailStep hFunBody hNoTop
+
+/-- No-external-empty machine-state-aware operator variant of the `Me-FOp`
+route. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_machine_operator_tail_step
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hFOpTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_target_app_tail_step
+    hBeta hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    hFOpTailStep hFunBody hNoTop
 
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this

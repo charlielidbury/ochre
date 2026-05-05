@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedAppTargetPreservesWfMPayload.of_typed_operator`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_operator_tail_step`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_machine_operator_tail_step`,
+  exposing typed-operator and machine-operator entry points for the
+  no-external-empty target-application `Me-FOp` route. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_target_app_tail_step`,
   a no-external-empty variant of the typed target-application `Me-FOp`
   machine-state assembly. The `Me-FOp` bound step is handled by the
