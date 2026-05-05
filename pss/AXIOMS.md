@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRedStar_replaceAt_equ_from_replacements` and
+  `msubRedStar_replaceAt_equ_from_replacements`, chain-level arbitrary-prefix
+  `.equ` replacement wrappers obtained by composing the new one-step wrappers
+  with the generic step-replacement consumers. Added both endpoints to the De
+  Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRed_replaceAt_equ_from_replacements` and
   `msubRed_replaceAt_equ_from_replacements`, arbitrary-prefix diagrammatic
   `.equ` replacement wrappers with the canonical app/fun/beta/fop handlers
