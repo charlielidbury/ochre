@@ -3978,6 +3978,49 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.var
   BetaInstantiationPreservesMEqRedUnderEightHeadsStack.refl hArgBound hpv
     (Term.Scoped.bvar hi)
 
+/-- Combined nine-preserved-head `MEqRed.var` substitution helper. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderNineHeadsStack.var
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ : CtxEntryKind} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hi :
+      i < Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := bound, kind := .sub } :: Γ)) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₉, kind := kind₉ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 9 (Term.shiftBy 0 9 arg) s)
+      (Term.instantiate 9 (Term.shiftBy 0 9 arg) (.bvar i))
+      (Term.instantiate 9 (Term.shiftBy 0 9 arg) (.bvar i)) :=
+  BetaInstantiationPreservesMEqRedUnderNineHeadsStack.refl hArgBound hpv
+    (Term.Scoped.bvar hi)
+
 /-- `MEqRed.tAp` is stable under de Bruijn β-instantiation below eight
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.tAp

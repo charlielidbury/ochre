@@ -42,7 +42,8 @@ closures, 2 inactive outstanding).
   plus the structural `Me-App` leaf
   `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.app` and reflexive
   leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.refl`, plus the
-  nine-head `Me-TAp` leaf
+  nine-head variable leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.var`
+  and `Me-TAp` leaf
   `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.tAp`. Added endpoints
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
