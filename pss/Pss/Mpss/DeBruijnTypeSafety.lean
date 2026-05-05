@@ -606,6 +606,23 @@ noncomputable def BetaInstantiationPreservesMEqRedStack.var_succ
     MEqRed.var (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv)
       hiTail
 
+/-- Combined arbitrary-stack `MEqRed.var` substitution helper. This is the
+constructor-facing form: the head variable is replaced by the substituted
+argument, while successor variables descend into the tail context. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack.var
+    {Γ : Ctx} {bound arg : Term} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hi : i < Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.bvar i))
+      (Term.instantiate 0 arg (.bvar i)) := by
+  cases i with
+  | zero =>
+    exact BetaInstantiationPreservesMEqRedStack.var_zero hArgBound hpv
+  | succ i =>
+    exact BetaInstantiationPreservesMEqRedStack.var_succ hArgBound hpv hi
+
 /-- `MSubRed.top` is stable under de Bruijn β-instantiation. -/
 noncomputable def BetaInstantiationPreservesMSubRed.top
     {Γ : Ctx} {bound arg u : Term}

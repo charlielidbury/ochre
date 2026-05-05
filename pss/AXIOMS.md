@@ -182,6 +182,11 @@ closures, 2 inactive outstanding).
   both endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedStack.var`, the constructor-facing
+  arbitrary-stack variable helper that dispatches the de Bruijn index to the
+  checked zero/successor leaves. Added it to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem
