@@ -17,6 +17,7 @@ namespace DeBruijn
 #print axioms Term.shift_scoped_inv
 #print axioms Stack.Scoped.shift_inv
 #print axioms Stack.instantiate_one_shift_zero
+#print axioms Stack.instantiate_two_shift_zero
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace
 #print axioms Ctx.subBinds_equ_under_two_heads_replace
@@ -167,6 +168,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload
 #print axioms BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack
+#print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload
@@ -214,6 +216,8 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRed.var_of_stack
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.pro
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads
 #print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top_msubstar

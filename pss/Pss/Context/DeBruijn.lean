@@ -1265,6 +1265,29 @@ theorem instantiate_one_shift_zero (v : Term) (s : Stack) :
           (Term.shiftBy_instantiate 0 1 0 v α (Nat.le_refl 0)).symm
       rw [hα, ih]
 
+/-- Instantiating index `2` through a stack shifted over index `0` commutes
+with shifting the stack instantiated at index `1`. This is the two-preserved
+head analogue of `Stack.instantiate_one_shift_zero`. -/
+theorem instantiate_two_shift_zero (v : Term) (s : Stack) :
+    Stack.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Stack.shift 0 s) =
+      Stack.shift 0 (Stack.instantiate 1 (Term.shift 0 v) s) := by
+  induction s with
+  | nil =>
+      rfl
+  | cons α s ih =>
+      change
+        Term.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Term.shift 0 α) ::
+            Stack.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Stack.shift 0 s) =
+          Term.shift 0 (Term.instantiate 1 (Term.shift 0 v) α) ::
+            Stack.shift 0 (Stack.instantiate 1 (Term.shift 0 v) s)
+      have hα :
+          Term.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Term.shift 0 α) =
+            Term.shift 0 (Term.instantiate 1 (Term.shift 0 v) α) := by
+        simpa [Term.shift] using
+          (Term.shiftBy_instantiate 0 1 1 (Term.shift 0 v) α
+            (Nat.zero_le 1)).symm
+      rw [hα, ih]
+
 /-- If shifting a stack produces a non-empty stack, the original stack was
 non-empty and the head/tail are the shifted original head/tail. -/
 theorem shift_eq_cons_inv {cutoff : Nat} {s : Stack} {α : Term} {rest : Stack}
