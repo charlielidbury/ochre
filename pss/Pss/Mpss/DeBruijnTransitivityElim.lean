@@ -3569,6 +3569,43 @@ theorem commute_abs_fun_fun_equ_body_of {Γ : Ctx}
           (MEqRedStar.single hBody₁₃.some).sub_head_replace hSubBound,
           (MEqRedStar.single hBody₂₃.some).sub_head_replace hEqBound⟩)
 
+/-- `Ms-Fun × Me-Fun` commutation subcase where the `Ms-Fun` body premise is
+`Ms-Top`. After the bounds are joined, the common body target is `Top`; the
+right body branch closes by `Ms-Top` under the joined `.sub` head. -/
+theorem commute_abs_fun_fun_top_body_of {Γ : Ctx}
+    {bound body bound₁ bound₂ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hBodyScoped : Term.Scoped
+      (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) body)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ .top) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hSubBound.scoped_left)
+  let hLeft : MSubRed Γ [] (.abs bound body) (.abs bound₁ .top) :=
+    MSubRed.fun_ hSubBound.scoped_left hSubBound
+      (MSubRed.top hpvBody hBodyScoped)
+  let hRight : MEqRed Γ [] (.abs bound body) (.abs bound₂ body₂) :=
+    MEqRed.fun_ hEqBound hEqBody
+  exact
+    commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+      (hdiamondBound hSubBound hEqBound)
+      (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+        have hpvBody₃ :
+            PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+          PrevalidExt.nil
+            (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+        have hBody₂Scoped :
+            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) body₂ := by
+          simpa [Ctx.depth] using hEqBody.scoped_right
+        exact ⟨.top,
+          MEqRedStar.single (MEqRed.top hpvBody₃),
+          MSubRedStar.single (MSubRed.top hpvBody₃ hBody₂Scoped)⟩)
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}

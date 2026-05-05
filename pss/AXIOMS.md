@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_top_body_of`, closing the `Ms-Fun × Me-Fun`
+  changing-bound/changing-body subcase where the subtype body premise is
+  `Ms-Top`. The proof joins bounds, chooses `Top` as the common body target,
+  and closes the right body branch by `Ms-Top` under the joined `.sub` head.
+  Added the endpoint to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_equ_body_of`, closing the `Ms-Fun × Me-Fun`
   changing-bound/changing-body subcase where the subtype body premise is
   `Ms-Equ`. The proof combines bound/body diamonds with the restricted
