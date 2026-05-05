@@ -703,6 +703,60 @@ def BetaInstantiationPreservesMEqRedUnderSixHeadsStack.of_generic
   simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
     Term.shiftBy_zero_id, Nat.add_assoc] using h'
 
+/-- The existing six-head stack payload can be used through the generic
+length-indexed preserved-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderHeadsStack.of_six
+    (h : BetaInstantiationPreservesMEqRedUnderSixHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderHeadsStack 6 := by
+  intro Γ bound arg lhs rhs heads s hlen hArg hRed
+  cases heads with
+  | nil => simp at hlen
+  | cons head₁ heads =>
+      cases heads with
+      | nil => simp at hlen
+      | cons head₂ heads =>
+          cases heads with
+          | nil => simp at hlen
+          | cons head₃ heads =>
+              cases heads with
+              | nil => simp at hlen
+              | cons head₄ heads =>
+                  cases heads with
+                  | nil => simp at hlen
+                  | cons head₅ heads =>
+                      cases heads with
+                      | nil => simp at hlen
+                      | cons head₆ heads =>
+                          cases heads with
+                          | cons head₇ heads => simp at hlen
+                          | nil =>
+                              cases head₁ with
+                              | mk head₁ kind₁ =>
+                                  cases head₂ with
+                                  | mk head₂ kind₂ =>
+                                      cases head₃ with
+                                      | mk head₃ kind₃ =>
+                                          cases head₄ with
+                                          | mk head₄ kind₄ =>
+                                              cases head₅ with
+                                              | mk head₅ kind₅ =>
+                                                  cases head₆ with
+                                                  | mk head₆ kind₆ =>
+                                                      have h' := h
+                                                        (Γ := Γ) (bound := bound) (arg := arg)
+                                                        (head₁ := head₁) (head₂ := head₂)
+                                                        (head₃ := head₃) (head₄ := head₄)
+                                                        (head₅ := head₅) (head₆ := head₆)
+                                                        (lhs := lhs) (rhs := rhs)
+                                                        (kind₁ := kind₁) (kind₂ := kind₂)
+                                                        (kind₃ := kind₃) (kind₄ := kind₄)
+                                                        (kind₅ := kind₅) (kind₆ := kind₆)
+                                                        (s := s) hArg hRed
+                                                      simpa [Ctx.instantiateBetaPrefix,
+                                                        Term.shift, Term.shiftBy_compose,
+                                                        Term.shiftBy_zero_id, Nat.add_assoc]
+                                                        using h'
+
 /-- The generic preserved-head stack payload specializes to the existing
 seven-head surface. -/
 def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.of_generic
@@ -721,6 +775,75 @@ def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.of_generic
     rfl hArg hRed
   simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
     Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- The existing seven-head stack payload can be used through the generic
+length-indexed preserved-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderHeadsStack.of_seven
+    (h : BetaInstantiationPreservesMEqRedUnderSevenHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderHeadsStack 7 := by
+  intro Γ bound arg lhs rhs heads s hlen hArg hRed
+  cases heads with
+  | nil => simp at hlen
+  | cons head₁ heads =>
+      cases heads with
+      | nil => simp at hlen
+      | cons head₂ heads =>
+          cases heads with
+          | nil => simp at hlen
+          | cons head₃ heads =>
+              cases heads with
+              | nil => simp at hlen
+              | cons head₄ heads =>
+                  cases heads with
+                  | nil => simp at hlen
+                  | cons head₅ heads =>
+                      cases heads with
+                      | nil => simp at hlen
+                      | cons head₆ heads =>
+                          cases heads with
+                          | nil => simp at hlen
+                          | cons head₇ heads =>
+                              cases heads with
+                              | cons head₈ heads => simp at hlen
+                              | nil =>
+                                  cases head₁ with
+                                  | mk head₁ kind₁ =>
+                                      cases head₂ with
+                                      | mk head₂ kind₂ =>
+                                          cases head₃ with
+                                          | mk head₃ kind₃ =>
+                                              cases head₄ with
+                                              | mk head₄ kind₄ =>
+                                                  cases head₅ with
+                                                  | mk head₅ kind₅ =>
+                                                      cases head₆ with
+                                                      | mk head₆ kind₆ =>
+                                                          cases head₇ with
+                                                          | mk head₇ kind₇ =>
+                                                              have h' := h
+                                                                (Γ := Γ) (bound := bound)
+                                                                (arg := arg)
+                                                                (head₁ := head₁)
+                                                                (head₂ := head₂)
+                                                                (head₃ := head₃)
+                                                                (head₄ := head₄)
+                                                                (head₅ := head₅)
+                                                                (head₆ := head₆)
+                                                                (head₇ := head₇)
+                                                                (lhs := lhs) (rhs := rhs)
+                                                                (kind₁ := kind₁)
+                                                                (kind₂ := kind₂)
+                                                                (kind₃ := kind₃)
+                                                                (kind₄ := kind₄)
+                                                                (kind₅ := kind₅)
+                                                                (kind₆ := kind₆)
+                                                                (kind₇ := kind₇)
+                                                                (s := s) hArg hRed
+                                                              simpa [Ctx.instantiateBetaPrefix,
+                                                                Term.shift,
+                                                                Term.shiftBy_compose,
+                                                                Term.shiftBy_zero_id,
+                                                                Nat.add_assoc] using h'
 
 /-- The generic preserved-head stack payload specializes to the existing
 eight-head surface. -/
@@ -741,6 +864,85 @@ def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.of_generic
     rfl hArg hRed
   simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
     Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- The existing eight-head stack payload can be used through the generic
+length-indexed preserved-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderHeadsStack.of_eight
+    (h : BetaInstantiationPreservesMEqRedUnderEightHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderHeadsStack 8 := by
+  intro Γ bound arg lhs rhs heads s hlen hArg hRed
+  cases heads with
+  | nil => simp at hlen
+  | cons head₁ heads =>
+      cases heads with
+      | nil => simp at hlen
+      | cons head₂ heads =>
+          cases heads with
+          | nil => simp at hlen
+          | cons head₃ heads =>
+              cases heads with
+              | nil => simp at hlen
+              | cons head₄ heads =>
+                  cases heads with
+                  | nil => simp at hlen
+                  | cons head₅ heads =>
+                      cases heads with
+                      | nil => simp at hlen
+                      | cons head₆ heads =>
+                          cases heads with
+                          | nil => simp at hlen
+                          | cons head₇ heads =>
+                              cases heads with
+                              | nil => simp at hlen
+                              | cons head₈ heads =>
+                                  cases heads with
+                                  | cons head₉ heads => simp at hlen
+                                  | nil =>
+                                      cases head₁ with
+                                      | mk head₁ kind₁ =>
+                                          cases head₂ with
+                                          | mk head₂ kind₂ =>
+                                              cases head₃ with
+                                              | mk head₃ kind₃ =>
+                                                  cases head₄ with
+                                                  | mk head₄ kind₄ =>
+                                                      cases head₅ with
+                                                      | mk head₅ kind₅ =>
+                                                          cases head₆ with
+                                                          | mk head₆ kind₆ =>
+                                                              cases head₇ with
+                                                              | mk head₇ kind₇ =>
+                                                                  cases head₈ with
+                                                                  | mk head₈ kind₈ =>
+                                                                      have h' := h
+                                                                        (Γ := Γ)
+                                                                        (bound := bound)
+                                                                        (arg := arg)
+                                                                        (head₁ := head₁)
+                                                                        (head₂ := head₂)
+                                                                        (head₃ := head₃)
+                                                                        (head₄ := head₄)
+                                                                        (head₅ := head₅)
+                                                                        (head₆ := head₆)
+                                                                        (head₇ := head₇)
+                                                                        (head₈ := head₈)
+                                                                        (lhs := lhs)
+                                                                        (rhs := rhs)
+                                                                        (kind₁ := kind₁)
+                                                                        (kind₂ := kind₂)
+                                                                        (kind₃ := kind₃)
+                                                                        (kind₄ := kind₄)
+                                                                        (kind₅ := kind₅)
+                                                                        (kind₆ := kind₆)
+                                                                        (kind₇ := kind₇)
+                                                                        (kind₈ := kind₈)
+                                                                        (s := s) hArg hRed
+                                                                      simpa [
+                                                                        Ctx.instantiateBetaPrefix,
+                                                                        Term.shift,
+                                                                        Term.shiftBy_compose,
+                                                                        Term.shiftBy_zero_id,
+                                                                        Nat.add_assoc] using h'
 
 /-- Constructor-facing `Me-Fun` frontier for seven-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
