@@ -29,6 +29,10 @@ closures, 2 inactive outstanding).
   `Stack.instantiate_five_shift_zero`. These are checked specializations
   of the generalized shift/instantiation arithmetic above. Added endpoints
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` — added
+  `Term.instantiate_five_shift_zero_tail`, the fixed five-head tail
+  cancellation specialization needed by five-head `Me-Pro` reconstruction.
+  Added endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderFourHeads`, the checked
   prevalidity transport for β-instantiation under four preserved context

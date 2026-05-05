@@ -30,6 +30,7 @@ namespace DeBruijn
 #print axioms Term.instantiate_two_shift_zero_tail
 #print axioms Term.instantiate_three_shift_zero_tail
 #print axioms Term.instantiate_four_shift_zero_tail
+#print axioms Term.instantiate_five_shift_zero_tail
 #print axioms Term.shiftBy_tail
 #print axioms Term.shiftBy_zero_tail
 #print axioms Term.instantiate_shiftBy_zero_tail

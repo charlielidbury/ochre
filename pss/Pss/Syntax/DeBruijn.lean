@@ -547,6 +547,17 @@ theorem instantiate_four_shift_zero_tail (v t : Term) :
   have h := instantiate_shiftBy_zero_tail 4 v t
   simpa [shift, shiftBy_compose, Nat.add_assoc] using h
 
+/-- Instantiating index `5` through a term shifted under six top-level
+bindings cancels the shift at the instantiated slot and preserves the five
+outer bindings. -/
+theorem instantiate_five_shift_zero_tail (v t : Term) :
+    instantiate 5
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 v)))))
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t)))))) =
+      shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t)))) := by
+  have h := instantiate_shiftBy_zero_tail 5 v t
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
 /-- Substituting index `k` and then the next surviving slot is equivalent to
 first substituting the corresponding original slot at `k + 2`, then
 substituting index `k`. -/
