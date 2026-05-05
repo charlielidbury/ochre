@@ -1276,6 +1276,11 @@ closures, 2 inactive outstanding).
   Type-valued chains for the Prop-valued commutation closures and is
   intended for future diagram composition. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WSubMChainDiagram.trans_of`, composing two Type-valued well-subtyping
+  diagrams under de Bruijn strong commutativity by commuting the first
+  diagram's equivalence leg against the second diagram's subtype leg. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No

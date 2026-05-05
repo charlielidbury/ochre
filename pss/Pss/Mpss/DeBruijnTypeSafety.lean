@@ -321,6 +321,22 @@ def WSubMChainDiagram.toMSub {Γ : Ctx} {source target : Term}
     (d : WSubMChainDiagram Γ source target) : MSub Γ [] source target :=
   ⟨d.join, d.subJoin.to_star, d.eqJoin.to_star⟩
 
+/-- Compose two Type-valued well-subtyping diagrams, using de Bruijn Lemma 1
+to commute the first diagram's right equivalence leg against the second
+diagram's left subtype leg. -/
+noncomputable def WSubMChainDiagram.trans_of {Γ : Ctx}
+    (hcomm : StrongCommutes Γ []) {source mid target : Term}
+    (d₁ : WSubMChainDiagram Γ source mid)
+    (d₂ : WSubMChainDiagram Γ mid target) :
+    WSubMChainDiagram Γ source target := by
+  obtain ⟨join, hEqJoin, hSubJoin⟩ :=
+    commute_subChain_eqChain_of hcomm d₂.subJoin d₁.eqJoin
+  exact {
+    join := join
+    subJoin := MSubRedChain.trans d₁.subJoin hSubJoin
+    eqJoin := MEqRedChain.trans d₂.eqJoin hEqJoin
+  }
+
 /-- Reflexive abstraction-to-abstraction chain diagram. -/
 def AbsAbsBoundChainDiagram.refl
     {Γ : Ctx} {bound body : Term}
