@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native control-left
+  transport `WfMachineStateControlLeftPayload.of_msubstar_stack_append` and
+  routed `WfMachineStateControlLeftPayload.of_body_transports_and_steps`
+  through the transitive diagrammatic stack-append payload directly. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native consumers
   `WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append` and
   `WSubMStarAppOperatorPayload.of_stacked_msubstar_append_bridge`, then routed

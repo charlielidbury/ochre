@@ -321,6 +321,7 @@ namespace DeBruijn
 #print axioms WSubMStarAppOperatorPayload.of_stacked_msubstar_append_bridge
 #print axioms WSubMStarAppOperatorPayload.of_body_transports_and_steps
 #print axioms WfMachineStateControlLeftPayload.of_app_operator
+#print axioms WfMachineStateControlLeftPayload.of_msubstar_stack_append
 #print axioms WfMachineStateControlLeftPayload.of_body_transports_and_steps
 #print axioms MEqRedPreservesWfMachineState.of_components
 #print axioms MEqRedPreservesWfMachineState.of_components_pro_annotation
