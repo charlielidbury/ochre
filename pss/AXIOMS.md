@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRed.equ_head_replace_from_handlers`, the raw-subtype splitter for
+  replacing an innermost `.equ` head while preserving an `MSubRed` conclusion.
+  Stable `Ms-Pro`/`Ms-Top` leaves are rebuilt directly; `Ms-Equ`, `Ms-App`,
+  `Ms-Fun`, and `Ms-FOp` are exposed as explicit handler obligations. This
+  prepares the final structural-app `Ms-FOp` body transport residual for the
+  same constructor-splitting treatment as the equivalence body residuals.
+  Added the endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of`,
   using the raw `.equ`-head replacement splitter to reduce the residual

@@ -2514,6 +2514,58 @@ noncomputable def MSubRed.fOp_equ_head_replace {Γ : Ctx} {s : Stack}
       (.abs t body) (.abs t body') := by
   exact MSubRed.fOp (by simpa [Ctx.depth] using ht) (by simpa [Ctx.depth] using hα) hBody
 
+/-- Split a one-step subtype replacement across an innermost changed `.equ`
+head, preserving the raw subtype conclusion. Stable leaves are rebuilt
+directly; constructor cases whose premises must be recursively replaced are
+exposed as handlers. This is the raw-`MSubRed` counterpart to
+`msubRed_equ_head_replace_from_handlers`. -/
+noncomputable def MSubRed.equ_head_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {old new u v : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) s u v →
+        MEqRed ({ bound := new, kind := .equ } :: Γ) s u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        MSubRed ({ bound := new, kind := .equ } :: Γ) s
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hFOp :
+      ∀ {bound arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubRed ({ bound := new, kind := .equ } :: Γ) s
+          (.abs bound body) (.abs bound body'))
+    (h : MSubRed ({ bound := old, kind := .equ } :: Γ) s u v) :
+    MSubRed ({ bound := new, kind := .equ } :: Γ) s u v := by
+  cases h with
+  | pro _ hb =>
+      exact MSubRed.pro_equ_head_replace hpv hnew hb
+  | top _ hu =>
+      exact MSubRed.top_equ_head_replace hpv hnew hu
+  | equ _ heq =>
+      exact MSubRed.equ_equ_head_replace hpv hnew (hEq heq)
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | fun_ ht hBound hBody =>
+      exact hFun ht hBound hBody
+  | fOp ht hArg hBody =>
+      exact hFOp ht hArg rfl hBody
+
 /-! ### Equ-head replacement under one preserved head -/
 
 /-- `Me-Top` is stable when replacing an `.equ` entry immediately under a
