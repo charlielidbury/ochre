@@ -20,6 +20,11 @@ closures, 2 inactive outstanding).
   the immediate uniform-transport corollary and documented the payload as a
   diagnostic/convenience interface rather than a viable final proof
   obligation. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` / audit notes — marked the older
+  uniform-head-kind assembly wrappers as diagnostic routes only. The
+  wrappers are still useful for comparing preservation decompositions, but
+  after `WfMHeadKindTransportPayload.not_of_no_top` they should not be read
+  as viable final proof obligations. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces
@@ -34,7 +39,9 @@ closures, 2 inactive outstanding).
   and
   `.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_kind_transport`.
   These specialize the weaker directional head/body transport wrappers
-  without requiring stacked left-endpoint transport. No axiom-count change.
+  without requiring stacked left-endpoint transport. Later in this session,
+  `WfMHeadKindTransportPayload.not_of_no_top` showed this uniform route is
+  diagnostic only, not a viable final obligation. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — lifted the split `Me-App`/`Me-FOp`
   preservation assembly to the shape/WfCtx layer with
   `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_head_transports`
@@ -55,7 +62,9 @@ closures, 2 inactive outstanding).
   `MEqRedFOpBodyPayload.of_head_kind_transport`, a direct adapter from
   contextual preservation plus the uniform head-kind/body transport payload
   to the native `Me-FOp` body residual. The directional
-  `.of_head_transports` interface remains the weaker underlying path. No
+  `.of_head_transports` interface remains the weaker underlying path. Later
+  in this session, `WfMHeadKindTransportPayload.not_of_no_top` showed this
+  uniform adapter is diagnostic only, not a viable final obligation. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedEmptyPreservesWSubMStarLeft` and
@@ -1510,15 +1519,18 @@ closures, 2 inactive outstanding).
   and
   `.of_factored_components_no_beta_and_sub_replace_and_head_kind_transport`.
   This reduces the two directional `Me-FOp` body transports to one head-kind
-  switching payload. No axiom-count change.
+  switching payload. Later work showed this payload is too strong under the
+  no-Top-function-supertype obstruction, so it is retained only as a
+  diagnostic/convenience interface. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added direct shape/WfCtx factored
   contextual preservation wrappers
   `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta` and
   `.of_chain_shape_wfctx_factored_no_beta_and_sub_replace`, composing
   shape-only function-bound extraction, joined-bound well-formedness under
   `WfCtxEqu`, stacked left-endpoint transport, and uniform head-kind body
-  transport into the narrowest current preservation assembly path. No
-  axiom-count change.
+  transport into the then-narrowest assembly path. Later work showed the
+  uniform head-kind payload is too strong, so this path is diagnostic rather
+  than final. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

@@ -545,9 +545,9 @@ noncomputable def MEqRedFOpBodyPayload.of_head_transports
   exact hEquToSub hΓ hwfOperand hwfBound' hwfBody'Equ
 
 /-- Direct `Me-FOp` body residual from contextual preservation and one
-uniform head-kind/body transport payload. This is only a convenience wrapper:
-the weaker interface is `MEqRedFOpBodyPayload.of_head_transports`, which keeps
-the two directional transports explicit. -/
+uniform head-kind/body transport payload. This is only a diagnostic
+convenience wrapper: `WfMHeadKindTransportPayload.not_of_no_top` shows the
+uniform transport premise is too strong for the final preservation route. -/
 noncomputable def MEqRedFOpBodyPayload.of_head_kind_transport
     (hpres : MEqRedPreservesWfMContextual)
     (hTransport : WfMHeadKindTransportPayload) :
@@ -1698,7 +1698,9 @@ noncomputable def
 
 /-- Split-residual contextual preservation using the native `Me-App`
 operator payload and one uniform head-kind/body transport payload for
-`Me-FOp`. -/
+`Me-FOp`. This is retained as a diagnostic assembly route; the uniform
+head-kind premise is refutable under the no-Top-function-supertype
+obstruction. -/
 noncomputable def
     MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_kind_transport
     (hSubst : BetaInstantiationPreservesWfM)
@@ -1714,7 +1716,9 @@ noncomputable def
 
 /-- Split-residual contextual preservation using the native `Me-App`
 operator payload, sharpened `.sub` head replacement for `Me-Fun`, and one
-uniform head-kind/body transport payload for `Me-FOp`. -/
+uniform head-kind/body transport payload for `Me-FOp`. This is retained as a
+diagnostic assembly route; the uniform head-kind premise is refutable under
+the no-Top-function-supertype obstruction. -/
 noncomputable def
     MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_kind_transport
     (hSubst : BetaInstantiationPreservesWfM)
@@ -1837,7 +1841,9 @@ noncomputable def
     hSubToEqu hEquToSub
 
 /-- Factored contextual preservation using one uniform head-kind transport
-payload for both `Me-FOp` body transport directions. -/
+payload for both `Me-FOp` body transport directions. This is retained as a
+diagnostic assembly route; the uniform head-kind premise is refutable under
+the no-Top-function-supertype obstruction. -/
 noncomputable def
     MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_head_kind_transport
     (hSubst : BetaInstantiationPreservesWfM)
@@ -1852,7 +1858,9 @@ noncomputable def
     (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
 
 /-- Factored contextual preservation using sharpened `.sub` head replacement
-for `Me-Fun` and one uniform head-kind transport payload for `Me-FOp`. -/
+for `Me-Fun` and one uniform head-kind transport payload for `Me-FOp`. This
+is retained as a diagnostic assembly route; the uniform head-kind premise is
+refutable under the no-Top-function-supertype obstruction. -/
 noncomputable def
     MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_sub_replace_and_head_kind_transport
     (hSubst : BetaInstantiationPreservesWfM)
@@ -2024,7 +2032,9 @@ noncomputable def
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
-payload, and one uniform head-kind/body transport payload for `Me-FOp`. -/
+payload, and one uniform head-kind/body transport payload for `Me-FOp`. This
+is retained as a diagnostic assembly route; the uniform head-kind premise is
+refutable under the no-Top-function-supertype obstruction. -/
 noncomputable def
     MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_head_kind_transport
     (hSubst : BetaInstantiationPreservesWfM)
@@ -2041,7 +2051,9 @@ noncomputable def
 /-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
 payload, sharpened `.sub` head replacement for `Me-Fun`, and one uniform
-head-kind/body transport payload for `Me-FOp`. -/
+head-kind/body transport payload for `Me-FOp`. This is retained as a
+diagnostic assembly route; the uniform head-kind premise is refutable under
+the no-Top-function-supertype obstruction. -/
 noncomputable def
     MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_kind_transport
     (hSubst : BetaInstantiationPreservesWfM)
