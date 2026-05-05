@@ -163,6 +163,16 @@ closures, 2 inactive outstanding).
   equivalence case reduces directly to the corresponding empty-stack
   equivalence substitution payload. Added the endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Context/DeBruijn.lean` and `Pss/Mpss/DeBruijnTypeSafety.lean` —
+  added stack-level de Bruijn instantiation (`Stack.instantiate`), its
+  scopedness/prevalidity helpers, stack-parametric reduction substitution
+  payloads `BetaInstantiationPreservesMEqRedStack` and
+  `BetaInstantiationPreservesMSubRedStack`, empty-stack adapters
+  `.of_stack`, and checked stack constructor leaves for top, top
+  application, equivalence, and application reassembly. This moves the
+  β-instantiation reduction frontier beyond the previous `[]`-only shape
+  while preserving the existing empty-stack payload API. Added the endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

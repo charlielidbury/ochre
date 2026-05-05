@@ -1220,12 +1220,23 @@ def shiftBy (cutoff amount : Nat) : Stack → Stack :=
 def shift (cutoff : Nat) : Stack → Stack :=
   shiftBy cutoff 1
 
+/-- Instantiate every term in a stack. -/
+def instantiate (k : Nat) (v : Term) : Stack → Stack :=
+  List.map (Term.instantiate k v)
+
 @[simp] theorem shiftBy_nil (cutoff amount : Nat) :
     shiftBy cutoff amount [] = [] := rfl
 
 @[simp] theorem shiftBy_cons (cutoff amount : Nat) (α : Term) (s : Stack) :
     shiftBy cutoff amount (α :: s) =
       Term.shiftBy cutoff amount α :: shiftBy cutoff amount s := rfl
+
+@[simp] theorem instantiate_nil (k : Nat) (v : Term) :
+    instantiate k v [] = [] := rfl
+
+@[simp] theorem instantiate_cons (k : Nat) (v α : Term) (s : Stack) :
+    instantiate k v (α :: s) =
+      Term.instantiate k v α :: instantiate k v s := rfl
 
 @[simp] theorem shift_nil (cutoff : Nat) :
     shift cutoff [] = [] := rfl
@@ -1319,6 +1330,18 @@ noncomputable def Scoped.shiftAt {depth cutoff : Nat} {s : Stack}
     exact Scoped.nil
   | cons hα hs ih =>
     exact Scoped.cons (Term.shift_scoped cutoff depth _ hcut hα) ih
+
+/-- Stack instantiation preserves scoping pointwise. -/
+noncomputable def Scoped.instantiate {depth k : Nat} {v : Term} {s : Stack}
+    (hk : k ≤ depth)
+    (hv : Term.Scoped depth v)
+    (hs : Scoped (depth + 1) s) :
+    Scoped depth (Stack.instantiate k v s) := by
+  induction hs with
+  | nil =>
+    exact Scoped.nil
+  | cons hα hs ih =>
+    exact Scoped.cons (Term.instantiate_scoped k depth v _ hk hv hα) ih
 
 end Stack
 
@@ -1788,6 +1811,18 @@ noncomputable def stack_scoped {Γ : Ctx} {s : Stack} :
     exact Stack.Scoped.nil
   | cons hst hα ih =>
     exact Stack.Scoped.cons hα ih
+
+/-- Build extended-context prevalidity from logical-context prevalidity and
+pointwise stack scopedness. -/
+noncomputable def of_stack_scoped {Γ : Ctx} {s : Stack}
+    (hΓ : Prevalid Γ) :
+    Stack.Scoped Γ.depth s → PrevalidExt Γ s := by
+  intro hs
+  induction hs with
+  | nil =>
+    exact PrevalidExt.nil hΓ
+  | cons hα _ ih =>
+    exact PrevalidExt.cons ih hα
 
 /-- Replace the bound stored in an innermost `.sub` context entry while
 preserving extended-context prevalidity. -/

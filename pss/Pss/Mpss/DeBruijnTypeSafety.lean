@@ -213,6 +213,24 @@ def BetaInstantiationPreservesMSubRed : Type :=
       MSubRed ({ bound := bound, kind := .sub } :: Γ) [] lhs rhs →
         MSubRed Γ [] (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
 
+/-- Stack-parametric equivalence-reduction substitution payload for de Bruijn
+β-instantiation. -/
+def BetaInstantiationPreservesMEqRedStack : Type :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed Γ (Stack.instantiate 0 arg s)
+          (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
+
+/-- Stack-parametric subtype-reduction substitution payload for de Bruijn
+β-instantiation. -/
+def BetaInstantiationPreservesMSubRedStack : Type :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term} {s : Stack},
+    WSubMStar Γ arg bound →
+      MSubRed ({ bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MSubRed Γ (Stack.instantiate 0 arg s)
+          (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -224,6 +242,36 @@ noncomputable def BetaInstantiationPreservesScoped
     Term.Scoped Γ.depth (Term.instantiate 0 arg body) :=
   Term.instantiate_scoped 0 Γ.depth arg body (Nat.zero_le Γ.depth)
     hArgBound.scoped_left hBody.scoped
+
+/-- Stack-parametric equivalence-reduction substitution specializes to the
+existing empty-stack payload. -/
+noncomputable def BetaInstantiationPreservesMEqRed.of_stack
+    (hStack : BetaInstantiationPreservesMEqRedStack) :
+    BetaInstantiationPreservesMEqRed := by
+  intro Γ bound arg lhs rhs hArgBound hred
+  simpa using hStack hArgBound hred
+
+/-- Stack-parametric subtype-reduction substitution specializes to the
+existing empty-stack payload. -/
+noncomputable def BetaInstantiationPreservesMSubRed.of_stack
+    (hStack : BetaInstantiationPreservesMSubRedStack) :
+    BetaInstantiationPreservesMSubRed := by
+  intro Γ bound arg lhs rhs hArgBound hred
+  simpa using hStack hArgBound hred
+
+/-- Prevalidity of an instantiated stack follows from source-stack
+prevalidity and the substituted argument's scopedness. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtStack
+    {Γ : Ctx} {bound arg : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s) :
+    PrevalidExt Γ (Stack.instantiate 0 arg s) := by
+  have hs : Stack.Scoped Γ.depth (Stack.instantiate 0 arg s) :=
+    Stack.Scoped.instantiate (Nat.zero_le Γ.depth) hArgBound.scoped_left
+      (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using
+          PrevalidExt.stack_scoped hpv)
+  exact PrevalidExt.of_stack_scoped hArgBound.prevalid hs
 
 /-- Top terms are a closed β-instantiation well-formedness leaf. -/
 noncomputable def BetaInstantiationPreservesWfM.top
@@ -495,6 +543,15 @@ noncomputable def BetaInstantiationPreservesMEqRed.top
       (Term.instantiate 0 arg .top) := by
   simpa using MEqRed.top (PrevalidExt.nil hArgBound.prevalid)
 
+/-- `MEqRed.top` is stable under de Bruijn β-instantiation at any stack. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack.top
+    {Γ : Ctx} {bound arg : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s) :
+    MEqRed Γ (Stack.instantiate 0 arg s) (Term.instantiate 0 arg .top)
+      (Term.instantiate 0 arg .top) := by
+  simpa using MEqRed.top (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv)
+
 /-- The head variable in an `MEqRed.var` leaf instantiates to the substituted
 argument, reducing reflexively in the tail context. -/
 noncomputable def BetaInstantiationPreservesMEqRed.var_zero
@@ -532,6 +589,21 @@ noncomputable def BetaInstantiationPreservesMSubRed.top
         simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
   simpa using MSubRed.top (PrevalidExt.nil hArgBound.prevalid) hu'
 
+/-- `MSubRed.top` is stable under de Bruijn β-instantiation at any stack. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.top
+    {Γ : Ctx} {bound arg u : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MSubRed Γ (Stack.instantiate 0 arg s) (Term.instantiate 0 arg u)
+      (Term.instantiate 0 arg .top) := by
+  have hu' : Term.Scoped Γ.depth (Term.instantiate 0 arg u) :=
+    Term.instantiate_scoped 0 Γ.depth arg u (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
+  simpa using MSubRed.top
+    (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv) hu'
+
 /-- `MEqRed.tAp` is stable under de Bruijn β-instantiation at the empty
 stack. -/
 noncomputable def BetaInstantiationPreservesMEqRed.tAp
@@ -546,6 +618,36 @@ noncomputable def BetaInstantiationPreservesMEqRed.tAp
         simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
   simpa [Term.instantiate] using
     MEqRed.tAp (PrevalidExt.nil hArgBound.prevalid) hu'
+
+/-- `MEqRed.tAp` is stable under de Bruijn β-instantiation at any stack. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack.tAp
+    {Γ : Ctx} {bound arg u : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.app .top u)) (Term.instantiate 0 arg .top) := by
+  have hu' : Term.Scoped Γ.depth (Term.instantiate 0 arg u) :=
+    Term.instantiate_scoped 0 Γ.depth arg u (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
+  simpa [Term.instantiate] using
+    MEqRed.tAp (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv) hu'
+
+/-- The `MEqRed.app` constructor reassembles a stack-parametric
+β-instantiated equivalence-reduction step from its operator and argument
+pieces. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack.app
+    {Γ : Ctx} {arg u u' v v' : Term} {s : Stack}
+    (hFn :
+      MEqRed Γ (Term.instantiate 0 arg v :: Stack.instantiate 0 arg s)
+        (Term.instantiate 0 arg u) (Term.instantiate 0 arg u'))
+    (hArg :
+      MEqRed Γ [] (Term.instantiate 0 arg v) (Term.instantiate 0 arg v')) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.app u v))
+      (Term.instantiate 0 arg (.app u' v')) := by
+  simpa [Term.instantiate] using MEqRed.app hFn hArg
 
 /-- `MSubRed.equ` reduces de Bruijn β-instantiation subtype substitution to
 the corresponding equivalence-reduction substitution leaf. -/
@@ -566,6 +668,38 @@ noncomputable def BetaInstantiationPreservesMSubRed.equ_of_meq
     (hEq : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] u v) :
     MSubRed Γ [] (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
   BetaInstantiationPreservesMSubRed.equ hArgBound (hEqPayload hArgBound hEq)
+
+/-- `MSubRed.equ` reduces stack-parametric de Bruijn β-instantiation subtype
+substitution to the corresponding stack-parametric equivalence-reduction
+substitution leaf. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.equ_of_meq
+    (hEqPayload : BetaInstantiationPreservesMEqRedStack)
+    {Γ : Ctx} {bound arg u v : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hEq : MEqRed ({ bound := bound, kind := .sub } :: Γ) s u v) :
+    MSubRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
+  MSubRed.equ (hEqPayload hArgBound hEq).prevalidExt
+    (hEqPayload hArgBound hEq)
+
+/-- The `MSubRed.app` constructor reassembles a stack-parametric
+β-instantiated subtype-reduction step from its operator piece and preserved
+argument scopedness. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.app
+    {Γ : Ctx} {bound arg u u' v : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hOp :
+      MSubRed Γ (Term.instantiate 0 arg v :: Stack.instantiate 0 arg s)
+        (Term.instantiate 0 arg u) (Term.instantiate 0 arg u'))
+    (hv : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v) :
+    MSubRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.app u v))
+      (Term.instantiate 0 arg (.app u' v)) := by
+  have hv' : Term.Scoped Γ.depth (Term.instantiate 0 arg v) :=
+    Term.instantiate_scoped 0 Γ.depth arg v (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hv)
+  simpa [Term.instantiate] using MSubRed.app hOp hv'
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
