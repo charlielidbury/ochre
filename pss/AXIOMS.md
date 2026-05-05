@@ -367,6 +367,14 @@ closures, 2 inactive outstanding).
   the stronger global `MEqRedPreservesWfM` premise when preservation is stated
   under `WfCtxEqu`. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added Theorem 5 surfaces that assemble
+  the `MEqRedPreservesWfMachineState` premise from the existing
+  no-external-empty, body-transport, factored machine-operator route, in both
+  direct `.sub` replacement and immediate-plus-preserved-head replacement
+  forms. These make the machine-preservation frontier explicit at the theorem
+  boundary instead of requiring callers to supply the whole machine-state
+  preservation premise. Added endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/SubstitutionNoPro.lean` — added `MSubRed.noProOn`, an
   all-cofinite-branches predicate excluding `Ms-Pro` promotion of a chosen
   variable, plus `Lemma_30_ReductionUnderSubst_Sub_noProOn`. This proves

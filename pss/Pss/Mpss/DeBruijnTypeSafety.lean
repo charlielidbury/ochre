@@ -22957,5 +22957,148 @@ noncomputable def
   Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_machine_components_and_immediate_sub_replace_and_under
     hSubst hcomm hMachine hUnder hSubPayloads WfCtxEqu.empty hwf hstep
 
+/-- `WfCtxEqu`-parametric de Bruijn preservation with the machine-state
+premise assembled from the no-external-empty, body-transport, factored
+machine-operator route. This exposes the remaining machine preservation
+frontier directly at the Theorem 5 surface. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    {Γ : Ctx} {t t' u : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  let hShape : AbsFunctionBoundChainShapePayload :=
+    Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm
+  let hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape :=
+    AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq hShape hEmpty
+  let hReplace : WfMSubHeadReplaceOfNewWf :=
+    WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads
+  let hMachine : MEqRedPreservesWfMachineState :=
+    MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_machine_operator_machine_tail
+      hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft
+      hSubToEqu hEquToSub hOpFun hTail hReplace hNoTop
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_machine_components_and_direct_sub_replace
+    hSubst hcomm hMachine hSubPayloads hΓ hwf hstep
+
+/-- Immediate plus preserved-head `.sub` replacement variant of the
+body-transport, no-external-empty, factored machine-operator Theorem 5
+surface. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    {Γ : Ctx} {t t' u : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  let hShape : AbsFunctionBoundChainShapePayload :=
+    Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm
+  let hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape :=
+    AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq hShape hEmpty
+  let hReplace : WfMSubHeadReplaceOfNewWf :=
+    WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads
+  let hMachine : MEqRedPreservesWfMachineState :=
+    MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_machine_operator_machine_tail
+      hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft
+      hSubToEqu hEquToSub hOpFun hTail hReplace hNoTop
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_machine_components_and_immediate_sub_replace_and_under
+    hSubst hcomm hMachine hUnder hSubPayloads hΓ hwf hstep
+
+/-- Closed-context specialization of the body-transport, no-external-empty,
+factored machine-operator direct `.sub` replacement Theorem 5 surface. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_direct_sub_replace
+    hSubst hcomm hEmpty hEqBody hSubBody hPres hStep hLeft hSubToEqu hEquToSub
+    hOpFun hTail hSubPayloads hNoTop WfCtxEqu.empty hwf hstep
+
+/-- Closed-context specialization of the body-transport, no-external-empty,
+factored machine-operator immediate plus preserved-head `.sub` replacement
+Theorem 5 surface. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_immediate_sub_replace_and_under
+    hSubst hcomm hEmpty hEqBody hSubBody hPres hStep hLeft hSubToEqu hEquToSub
+    hOpFun hTail hUnder hSubPayloads hNoTop WfCtxEqu.empty hwf hstep
+
 end DeBruijn
 end Pss
