@@ -112,6 +112,16 @@ def replaceAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
       | 0 => newEntry :: Γ
       | cutoff + 1 => head :: replaceAt cutoff newEntry Γ
 
+/-- Instantiate the first `n` preserved heads after removing the `.sub` entry
+immediately below them. The head closest to the removed entry receives
+cutoff `0`, and each newer preserved head receives one additional shift. -/
+def instantiateBetaPrefix (arg : Term) : Nat → Ctx → Ctx
+  | 0, Γ => Γ
+  | _ + 1, [] => []
+  | n + 1, head :: Γ =>
+      { bound := Term.instantiate n (Term.shiftBy 0 n arg) head.bound,
+        kind := head.kind } :: instantiateBetaPrefix arg n Γ
+
 @[simp] theorem lookup_nil (i : Nat) : lookup [] i = none := rfl
 @[simp] theorem lookupSub_nil (i : Nat) : lookupSub [] i = none := rfl
 @[simp] theorem lookupEqu_nil (i : Nat) : lookupEqu [] i = none := rfl
@@ -144,6 +154,18 @@ def replaceAt (cutoff : Nat) (newEntry : CtxEntry) : Ctx → Ctx
     (Γ : Ctx) :
     replaceAt (cutoff + 1) newEntry (head :: Γ) =
       head :: replaceAt cutoff newEntry Γ := rfl
+
+@[simp] theorem instantiateBetaPrefix_zero (arg : Term) (Γ : Ctx) :
+    instantiateBetaPrefix arg 0 Γ = Γ := rfl
+
+@[simp] theorem instantiateBetaPrefix_succ_nil (arg : Term) (n : Nat) :
+    instantiateBetaPrefix arg (n + 1) [] = [] := rfl
+
+@[simp] theorem instantiateBetaPrefix_succ_cons
+    (arg : Term) (n : Nat) (head : CtxEntry) (Γ : Ctx) :
+    instantiateBetaPrefix arg (n + 1) (head :: Γ) =
+      { bound := Term.instantiate n (Term.shiftBy 0 n arg) head.bound,
+        kind := head.kind } :: instantiateBetaPrefix arg n Γ := rfl
 
 @[simp] theorem depth_replaceAt (cutoff : Nat) (newEntry : CtxEntry) (Γ : Ctx) :
     depth (replaceAt cutoff newEntry Γ) = depth Γ := by

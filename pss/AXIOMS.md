@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
+  added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
+  β-instantiation context transformer, and
+  `BetaInstantiationPreservesMEqRedUnderHeadsStack`, a generic
+  stack-parametric `MEqRed` substitution payload for any number of preserved
+  heads. Also added checked specializations from this generic surface to the
+  existing five/six/seven/eight-head stack payload APIs. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Syntax/DeBruijn.lean` — added general preserved-head shift
   arithmetic: `Term.shiftBy_tail`, `Term.shiftBy_zero_tail`, and
   `Term.instantiate_shiftBy_zero_tail`. These subsume the fixed

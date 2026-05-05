@@ -603,6 +603,93 @@ def BetaInstantiationPreservesMEqRedUnderEightHeadsStack : Type :=
                   (Term.shift 0
                     (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))))) rhs)
 
+/-- Generic stack-parametric equivalence-reduction β-instantiation under an
+arbitrary list of preserved context heads. This is the abstraction that the
+numbered five/six/seven/eight stack payloads below specialize from. -/
+def BetaInstantiationPreservesMEqRedUnderHeadsStack (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term} {heads : Ctx} {s : Stack},
+    heads.length = n →
+      WSubMStar Γ arg bound →
+        MEqRed (heads ++ { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+          MEqRed (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) s)
+            (Term.instantiate n (Term.shiftBy 0 n arg) lhs)
+            (Term.instantiate n (Term.shiftBy 0 n arg) rhs)
+
+/-- The generic preserved-head stack payload specializes to the existing
+five-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 5) :
+    BetaInstantiationPreservesMEqRedUnderFiveHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ s hArg hRed
+  have h' := h
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ }])
+    rfl hArg hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- The generic preserved-head stack payload specializes to the existing
+six-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderSixHeadsStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 6) :
+    BetaInstantiationPreservesMEqRedUnderSixHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ s hArg hRed
+  have h' := h
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ }])
+    rfl hArg hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- The generic preserved-head stack payload specializes to the existing
+seven-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 7) :
+    BetaInstantiationPreservesMEqRedUnderSevenHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ s hArg hRed
+  have h' := h
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ }])
+    rfl hArg hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- The generic preserved-head stack payload specializes to the existing
+eight-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 8) :
+    BetaInstantiationPreservesMEqRedUnderEightHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ s hArg hRed
+  have h' := h
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ }])
+    rfl hArg hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
 /-- Constructor-facing `Me-Fun` frontier for seven-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
 so discharging it will require an eight-preserved-head payload. -/
