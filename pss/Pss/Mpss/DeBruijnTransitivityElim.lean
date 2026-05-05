@@ -5645,6 +5645,50 @@ theorem msubRedStar_equ_head_replace_from_handlers {Γ : Ctx} {s : Stack}
   | fOp ht hArg hBody =>
     exact hFOp ht hArg rfl hBody
 
+/-- Consume a raw subtype-reduction chain across an innermost changed `.equ`
+head when each old-context step has a raw-subtype-chain replacement in the
+new context. -/
+theorem msubRedStar_equ_head_replace_from_handlers_star {Γ : Ctx} {s : Stack}
+    {old new u v : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) s u v →
+        MSubRedStar ({ bound := new, kind := .equ } :: Γ) s u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        MSubRedStar ({ bound := new, kind := .equ } :: Γ) s
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRedStar ({ bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hFOp :
+      ∀ {bound arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubRedStar ({ bound := new, kind := .equ } :: Γ) s
+          (.abs bound body) (.abs bound body'))
+    (h : MSubRedStar ({ bound := old, kind := .equ } :: Γ) s u v) :
+    MSubRedStar ({ bound := new, kind := .equ } :: Γ) s u v := by
+  induction h with
+  | refl =>
+    exact Relation.ReflTransGen.refl
+  | @tail mid v hStar hLast ih =>
+    exact MSubRedStar.trans ih
+      (msubRedStar_equ_head_replace_from_handlers hpv hnew hEq hApp hFun hFOp
+        hLast.some)
+
 /-- Raw subtype-star replacement for the empty-stack `{sub}, {equ}, {sub}`
 shape. This is the chain-valued counterpart of the one-step splitters used at
 nested structural-app body residuals. -/

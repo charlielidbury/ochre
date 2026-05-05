@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_head_replace_from_handlers_star`, the chain consumer for
+  the raw-subtype-star innermost `.equ`-head replacement splitter. This
+  matches the new `{sub}, {equ}, {sub}` raw-star chain consumer and keeps the
+  residual replacement API consistent for callers that already carry raw
+  subtype chains. Added the endpoint to the De Bruijn audit. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added raw-subtype-star
   `{sub}, {equ}, {sub}` replacement splitters
   `msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_raw_handlers`

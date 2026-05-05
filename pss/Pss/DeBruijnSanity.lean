@@ -177,6 +177,7 @@ namespace DeBruijn
 #print axioms MSubRed.equ_head_replace_from_handlers
 #print axioms MSubRed.replaceAt_equ_from_handlers
 #print axioms msubRedStar_equ_head_replace_from_handlers
+#print axioms msubRedStar_equ_head_replace_from_handlers_star
 #print axioms msubRed_equ_head_replace_from_body_replacements
 #print axioms msubRed_equ_under_head_replace_from_body_replacements
 #print axioms msubRedStar_equ_head_replace_from_body_replacements
