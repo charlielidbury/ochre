@@ -396,6 +396,13 @@ closures, 2 inactive outstanding).
   for an equivalence lookup under two preserved heads and the discharged
   `.sub` head. Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — discharged the two-head `Me-Pro`
+  lookup split as
+  `BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.pro`, using the
+  two-head and deeper-tail substitution rewrites for the preserved-second-head
+  and tail lookup cases. This leaves the next-level binder frontiers as the
+  remaining decomposition work for the generic two-head payload. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
