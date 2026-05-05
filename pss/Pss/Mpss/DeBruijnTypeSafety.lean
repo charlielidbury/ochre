@@ -328,6 +328,28 @@ noncomputable def MEqRed.pro_preservesWfM_of_contextual
   have hwfα : WfM Γ α := WfCtxEqu.lookup_equ hΓ hwfVar.prevalid hb
   exact hpres hΓ hStack hred hwfα
 
+/-- `Me-Top` preserves well-formedness directly from the reduction's
+prevalidity witness. -/
+noncomputable def MEqRed.top_preservesWfM
+    {Γ : Ctx} {s : Stack} (hpv : PrevalidExt Γ s)
+    (_hwf : WfM Γ .top) : WfM Γ .top :=
+  WfM.top (PrevalidExt.ctx hpv)
+
+/-- `Me-Var` preserves well-formedness by returning the original variable
+well-formedness witness. -/
+def MEqRed.var_preservesWfM
+    {Γ : Ctx} {s : Stack} {i : Nat}
+    (_hpv : PrevalidExt Γ s) (_hi : i < Γ.depth)
+    (hwf : WfM Γ (.bvar i)) : WfM Γ (.bvar i) :=
+  hwf
+
+/-- `Me-TAp` preserves well-formedness because its target is `Top`. -/
+noncomputable def MEqRed.tAp_preservesWfM
+    {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (_hu : Term.Scoped Γ.depth u)
+    (_hwf : WfM Γ (.app .top u)) : WfM Γ .top :=
+  WfM.top (PrevalidExt.ctx hpv)
+
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
 def AbsFunctionBoundChainDiagramPayload : Type :=
