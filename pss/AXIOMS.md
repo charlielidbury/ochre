@@ -337,6 +337,15 @@ closures, 2 inactive outstanding).
   bound equivalence step and handles the preserved-head, discharged-tail-head,
   and deeper-tail index cases directly. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the generic under-head
+  equivalence β-instantiation payload into recursive binder frontiers
+  `BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload`, then added
+  `BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors`. The
+  assembler proves `Me-Pro`, `Me-Top`, `Me-App`, `Me-Var`, and `Me-TAp`
+  structurally, leaving only the three binder frontiers explicit. Added the
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

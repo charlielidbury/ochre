@@ -329,6 +329,65 @@ def BetaInstantiationPreservesMEqRedUnderHeadStack : Type :=
           (Term.instantiate 1 (Term.shift 0 arg) lhs)
           (Term.instantiate 1 (Term.shift 0 arg) rhs)
 
+/-- Constructor-facing `Me-Fun` frontier for under-head equivalence
+β-instantiation. The body premise lives under one additional `.sub` binder,
+so this is the first recursive binder case left by the structural assembler.
+-/
+def BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload : Type :=
+  ∀ {Γ : Ctx} {bound arg head t t' body body' : Term}
+      {kind : CtxEntryKind},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) [] t t' →
+        MEqRed ({ bound := t, kind := .sub } ::
+            { bound := head, kind := kind } ::
+            { bound := bound, kind := .sub } :: Γ) [] body body' →
+          MEqRed ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+            [] (Term.instantiate 1 (Term.shift 0 arg) (.abs t body))
+            (Term.instantiate 1 (Term.shift 0 arg) (.abs t' body'))
+
+/-- Constructor-facing `Me-Bet` frontier for under-head equivalence
+β-instantiation. This packages the β target arithmetic and body
+substitution under the abstraction binder. -/
+def BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload : Type :=
+  ∀ {Γ : Ctx} {bound arg head t v v' body body' : Term}
+      {kind : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      Term.Scoped
+        (Ctx.depth ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := t, kind := .sub } ::
+            { bound := head, kind := kind } ::
+            { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s)
+          body body' →
+          MEqRed ({ bound := head, kind := kind } ::
+              { bound := bound, kind := .sub } :: Γ) [] v v' →
+            MEqRed ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+              (Stack.instantiate 1 (Term.shift 0 arg) s)
+              (Term.instantiate 1 (Term.shift 0 arg) (.app (.abs t body) v))
+              (Term.instantiate 1 (Term.shift 0 arg)
+                (Term.instantiate 0 v' body'))
+
+/-- Constructor-facing `Me-FOp` frontier for under-head equivalence
+β-instantiation under the operand `.equ` binder. -/
+def BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload : Type :=
+  ∀ {Γ : Ctx} {bound arg head t t' α body body' : Term}
+      {kind : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) [] t t' →
+        Term.Scoped
+          (Ctx.depth ({ bound := head, kind := kind } ::
+            { bound := bound, kind := .sub } :: Γ)) α →
+          MEqRed ({ bound := α, kind := .equ } ::
+              { bound := head, kind := kind } ::
+              { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s)
+            body body' →
+            MEqRed ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+              (Stack.instantiate 1 (Term.shift 0 arg) (α :: s))
+              (Term.instantiate 1 (Term.shift 0 arg) (.abs t body))
+              (Term.instantiate 1 (Term.shift 0 arg) (.abs t' body'))
+
 /-- Preserved-head `Ms-Pro` frontier for under-head star-targeted subtype
 β-instantiation. -/
 def BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload : Prop :=
@@ -822,6 +881,46 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.pro
                 simpa [← htarget, htargetInst] using hα
               simpa [Term.instantiate, htargetInst] using
                 MEqRed.pro hpvTarget hbind hαFor
+
+/-- Assemble under-head equivalence β-instantiation from constructor-local
+frontiers. Structural cases are discharged here; the remaining explicit
+inputs are precisely the recursive binder constructors. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors
+    (hFun : BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload)
+    (hBet : BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload)
+    (hFOp : BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload) :
+    BetaInstantiationPreservesMEqRedUnderHeadStack := by
+  intro Γ bound arg head lhs rhs kind s hArgBound hred
+  generalize hC : ({ bound := head, kind := kind } ::
+      { bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg head kind with
+  | pro hpv hb hα ih =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderHeadStack.pro
+        hArgBound hpv hb (ih hArgBound rfl)
+  | bet ht hbody harg =>
+      subst hC
+      exact hBet hArgBound ht hbody harg
+  | top hpv =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderHeadStack.top hArgBound hpv
+  | app hOp hArg ihOp ihArg =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderHeadStack.app
+        (ihOp hArgBound rfl) (ihArg hArgBound rfl)
+  | var hpv hi =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderHeadStack.var hArgBound hpv hi
+  | fun_ hBound hBody =>
+      subst hC
+      exact hFun hArgBound hBound hBody
+  | tAp hpv hu =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderHeadStack.tAp
+        hArgBound hpv hu
+  | fOp hBound hα hBody =>
+      subst hC
+      exact hFOp hArgBound hBound hα hBody
 
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation at any stack. -/
