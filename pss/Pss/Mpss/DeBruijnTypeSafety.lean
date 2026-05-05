@@ -6223,6 +6223,30 @@ well-formedness under `WfCtxEqu`, the native `Me-App` operator payload,
 sharpened `.sub` head replacement, and the two directional `Me-FOp`
 head/body transports. The remaining machine-specific residuals are the
 stack/control body transports and target/tail application payloads. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
+    hSubst hAppend hBridge
+    (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    (MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports
+      hSubst hShape hShapeWf hOpFun hReplace hSubToEqu hEquToSub)
+    hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
+
+/-- Machine-state preservation route whose contextual subproof is assembled
+from the shape-only function-bound chain payload, with the control-left
+residual still exposed through the older body-transport surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -6239,17 +6263,42 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hReplace : WfMSubHeadReplaceOfNewWf)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
-    hSubst hEqBody hSubBody hPres hStep
-    (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
-    (MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports
-      hSubst hShape hShapeWf hOpFun hReplace hSubToEqu hEquToSub)
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hShape hShapeWf hOpFun
     hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
 
 /-- Factored variant of
 `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`
 using stacked left-endpoint transport for the contextual `Me-App` operator
 case. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
+    hSubst hAppend hBridge
+    (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    (MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports
+      hSubst hShape hShapeWf hLeft hReplace hSubToEqu hEquToSub)
+    hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
+
+/-- Factored variant of
+`MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
+with the control-left residual still exposed through the older body-transport
+surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -6266,14 +6315,38 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hReplace : WfMSubHeadReplaceOfNewWf)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
-    hSubst hEqBody hSubBody hPres hStep
-    (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
-    (MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports
-      hSubst hShape hShapeWf hLeft hReplace hSubToEqu hEquToSub)
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hShape hShapeWf hLeft
     hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
 
 /-- Typed-operator variant of the factored chain-shape machine route. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
+    hSubst hAppend hBridge hShape hShapeWf hLeft
+    hSubToEqu hEquToSub
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hReplace hNoTop
+
+/-- Typed-operator variant of the factored chain-shape machine route, with
+the control-left residual still exposed through the older body-transport
+surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_operator_machine_tail
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -6290,14 +6363,37 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hReplace : WfMSubHeadReplaceOfNewWf)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft
-    hSubToEqu hEquToSub
-    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
-    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
-    hReplace hNoTop
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_operator_machine_tail
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hShape hShapeWf hLeft hSubToEqu hEquToSub hOpFun hTail hReplace hNoTop
 
 /-- Machine-operator variant of the factored chain-shape machine route. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_machine_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
+    hSubst hAppend hBridge hShape hShapeWf hLeft
+    hSubToEqu hEquToSub
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
+    hReplace hNoTop
+
+/-- Machine-operator variant of the factored chain-shape machine route, with
+the control-left residual still exposed through the older body-transport
+surface. -/
 noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_machine_operator_machine_tail
     (hSubst : BetaInstantiationPreservesWfM)
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
@@ -6314,12 +6410,11 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hReplace : WfMSubHeadReplaceOfNewWf)
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
-    hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft
-    hSubToEqu hEquToSub
-    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
-    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
-    hReplace hNoTop
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_machine_operator_machine_tail
+    hSubst
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hShape hShapeWf hLeft hSubToEqu hEquToSub hOpFun hTail hReplace hNoTop
 
 /-- Diagnostic head-kind-transport variant of the factored chain-shape
 machine route. The uniform head-kind premise remains too strong for the

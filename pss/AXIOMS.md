@@ -9,6 +9,16 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native chain-shape
+  direct split-beta machine-state wrappers
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_operator_machine_tail`,
+  and
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_machine_operator_machine_tail`,
+  then routed their body-transport surfaces through the transitive
+  diagrammatic stack-append payload directly. Added all four endpoints to the
+  De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native contextual
   typed/native target-application, operator, and machine-operator direct
   split-beta wrappers
