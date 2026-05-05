@@ -5593,14 +5593,14 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
             ∀ {i : Nat} {α α' : Term},
               Ctx.equBinds ({ bound := funBound, kind := .sub } ::
                 { bound := v, kind := .equ } ::
-                { bound := bound₃, kind := .sub } :: Γ) ((i + 1) + 1) α →
+                { bound := bound₃, kind := .sub } :: Γ) (((i + 1) + 1) + 1) α →
               MEqRed ({ bound := funBound, kind := .sub } ::
                 { bound := v, kind := .equ } ::
                 { bound := bound₃, kind := .sub } :: Γ) [] α α' →
               MEqRed ({ bound := funBound, kind := .sub } ::
                 { bound := v₂, kind := .equ } ::
                 { bound := bound₃, kind := .sub } :: Γ) []
-                (.bvar ((i + 1) + 1)) α')
+                (.bvar (((i + 1) + 1) + 1)) α')
     (hAppAppStepFOpFunEquApp :
       ∀ {u u' v u₂ v₂ : Term},
         MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
@@ -5921,9 +5921,13 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
                           hBound₁₃ hBound₂₃ hFunScoped hBoundStep hTarget)
                     (by
                       intro i α₀ α₀' hb hα
-                      simpa [Γ₃, Stack.shift] using
-                        hAppAppStepFOpFunEquProTail hSubOp hArgScoped hEqOp hEqArg
-                          hBound₁₃ hBound₂₃ hFunScoped hBoundStep hb hα)
+                      cases i with
+                      | zero =>
+                          simp [Γ₃, Ctx.equBinds] at hb
+                      | succ i =>
+                          simpa [Γ₃, Stack.shift] using
+                            hAppAppStepFOpFunEquProTail hSubOp hArgScoped hEqOp hEqArg
+                              hBound₁₃ hBound₂₃ hFunScoped hBoundStep hb hα)
                     (by
                       intro op op' arg arg' hOp hArg
                       simpa [Γ₃, Stack.shift] using

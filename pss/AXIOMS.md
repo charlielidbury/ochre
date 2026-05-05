@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — narrowed the
+  `hAppAppStepFOpFunEquProTail` residual required by
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of`.
+  The local index-2 lookup under `{funBound : sub}, {v : equ},
+  {bound₃ : sub}` is now discharged as impossible, so the explicit handler
+  starts at the genuine outer tail. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_two_sub_heads_nil_replace_from_split_handlers`, a
   sharpened empty-stack two-`.sub` equivalence replacement splitter that
