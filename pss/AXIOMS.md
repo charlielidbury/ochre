@@ -100,6 +100,11 @@ closures, 2 inactive outstanding).
   transport, left-factored contextual preservation, and fully factored
   contextual preservation. Added all ten endpoints to the De Bruijn audit.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed machine-state-derived
+  chain-shape contextual no-β routes over the direct/factored `.sub`
+  replacement boundary, for both native and factored contextual
+  preservation. Added all four endpoints to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,

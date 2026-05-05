@@ -8932,6 +8932,49 @@ noncomputable def
       hShape hMachine)
     hOpFun hReplace hSubToEqu hEquToSub
 
+/-- Machine-state-derived contextual preservation using direct `.sub`
+replacement residual payloads and split `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_machine_state_no_beta_and_direct_sub_payloads_and_head_transports
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_machine_state_no_beta_and_sub_replace_and_head_transports
+    hMachine hSubst hShape hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hSubToEqu hEquToSub
+
+/-- Machine-state-derived contextual preservation using immediate top-level
+`.sub` replacement residuals plus the named preserved-head replacement
+payload and split `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_machine_state_no_beta_and_immediate_sub_payloads_and_under_and_head_transports
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_machine_state_no_beta_and_sub_replace_and_head_transports
+    hMachine hSubst hShape hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hSubToEqu hEquToSub
+
 /-- Factored contextual preservation assembled from the shape-only chain
 payload, with the joined-bound well-formedness side condition derived from
 an already available machine-state preservation theorem specialized to empty
@@ -8951,6 +8994,49 @@ noncomputable def
     (AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state
       hShape hMachine)
     hLeft hReplace hSubToEqu hEquToSub
+
+/-- Factored machine-state-derived contextual preservation using direct
+`.sub` replacement residual payloads and split `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_machine_state_factored_no_beta_and_direct_sub_payloads_and_head_transports
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_machine_state_factored_no_beta_and_sub_replace_and_head_transports
+    hMachine hSubst hShape hLeft
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hSubToEqu hEquToSub
+
+/-- Factored machine-state-derived contextual preservation using immediate
+top-level `.sub` replacement residuals plus the named preserved-head
+replacement payload and split `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_machine_state_factored_no_beta_and_immediate_sub_payloads_and_under_and_head_transports
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_chain_shape_machine_state_factored_no_beta_and_sub_replace_and_head_transports
+    hMachine hSubst hShape hLeft
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hSubToEqu hEquToSub
 
 /-- Machine-state preservation route whose contextual subproof is assembled
 from the shape-only function-bound chain payload, joined-bound
