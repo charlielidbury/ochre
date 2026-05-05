@@ -5766,9 +5766,9 @@ theorem.
   `Pss/Mpss/AvoidsPro.lean`). The same blocker as the Lemma-2
   β-residuals: closing the diagram requires consuming `avoidsPro h₁ x =
   true → avoidsPro h₂' x = true` through the construction, but
-  `MEqRed.refl` is built via `Classical.choice` on `Nonempty`, hiding
-  its constructor tree from `avoidsPro`. The current
-  `avoidsPro_refl` axiom (in `AvoidsPro.lean`) is a candidate
+  `MEqRed.refl` was historically built via `Classical.choice` on
+  `Nonempty`, hiding its constructor tree from `avoidsPro`. The current
+  `avoidsPro_refl` theorem (in `AvoidsPro.lean`) is a candidate
   unblocker but has not been threaded yet.
 * **Estimated complexity:** Medium (~300-500 lines if `avoidsPro_refl`
   is consumed; large if Type-LC refactor is the path).
@@ -5937,7 +5937,7 @@ theorem.
   1. Type-valued `Term.LC` (cross-codebase refactor — see Option B in
      `PLAN.md`'s discharge-campaign section);
   2. Source-driven refl construction (~200 lines of mirror-recursion);
-  3. Consume the existing `avoidsPro_refl` axiom (one-line, would
+  3. Consume the existing `avoidsPro_refl` theorem (one-line, would
      unblock all three β-residuals).
 * **Estimated complexity:** Medium on path 3 (~200-400 lines); medium
   on path 2 (~200 lines mirror); large on path 1 (cross-codebase).
@@ -5975,9 +5975,31 @@ Lemma 2.
 * **Estimated complexity:** Small (~50-100 lines if anyone wants to
   prove it).
 
-### 12. `avoidsPro_refl` — DISCHARGED (post Type-LC refactor)
+### 12. `Lemma_32_AsymmetricEqu`
 
-* **File:** `Pss/Mpss/AvoidsPro.lean`, line 457.
+* **File:** `Pss/Mpss/AvoidsPro.lean`, line 1213.
+* **Statement:** Asymmetric extension of
+  `Lemma_32_ReductionUnderSubst_Eq_OfEqu`: if
+  `MEqRed (⟨x, α, .equ⟩ :: Γ) s body body'`,
+  `MEqRed Γ [] v v'`, and the body derivation has both
+  `avoidsPro hbody x = true` and `noVarX hbody x = true`, then
+  `MEqRed Γ s (body[x:=v]) (body'[x:=v'])`.
+* **Status:** Inactive outstanding. Currently unused by headline theorem
+  closures and retained as an experimental asymmetric-substitution bridge
+  for the historical locally-nameless β-residual discharge path.
+* **Discharge plan:** Structural induction on `hbody`, mirroring
+  `Lemma_32_ReductionUnderSubst_Eq_OfEqu`. The extra `noVarX` premise
+  closes the `Me-Var x` counterexample; `avoidsPro` handles the
+  `Me-Pro x` branch. This remains a locally-nameless residual-path
+  helper and is not part of the current de Bruijn pivot's critical path.
+
+---
+
+## Historical Discharged
+
+### `avoidsPro_refl`
+
+* **File:** `Pss/Mpss/AvoidsPro.lean`, line 635.
 * **Statement:** `avoidsPro (MEqRed.refl hpv hLC hfv) x = true` for any
   context, term, scope witness, and variable name.
 * **Status:** PROVED as a theorem in commit `64162c2` (branch

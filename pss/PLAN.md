@@ -38,7 +38,7 @@ Plus the pre-existing axioms that did not change shape:
 * `Lemma_10_InversionRestricted` (legacy, inactive);
 * `Lemma_30_msPro_x_axiom` (leaf discharged via `msAvoidsPro`; awaits
   threading through `TypeSafety._S_lf2`);
-* `avoidsPro_refl` (inactive bridging axiom);
+* `Lemma_32_AsymmetricEqu` (inactive asymmetric substitution bridge);
 * `Proposition_17_beta_axiom` (LN-encoding obstacle on `MEqRed.refl`).
 
 12 total. See `AXIOMS.md` for per-axiom statements, paper refs, blocker
@@ -55,7 +55,7 @@ analyses, complexity estimates, and discharge plans.
   `Lemma_2_inline_app_bet_residual_axiom`,
   `Lemma_2_inline_bet_residual_axiom`.
 * **2 inactive outstanding (no headline depends on these):**
-  `Lemma_10_InversionRestricted`, `avoidsPro_refl`.
+  `Lemma_10_InversionRestricted`, `Lemma_32_AsymmetricEqu`.
 
 ### Unblocking options — historical (now superseded by de Bruijn pivot)
 
