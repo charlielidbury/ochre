@@ -10,6 +10,15 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedBetaTargetPreservesWfMPayload.of_contextual`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_contextual_beta_typed_fop_target_app_machine_tail_cons`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_contextual_beta_typed_fop_operator_machine_tail_cons`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_contextual_beta_typed_fop_machine_operator_machine_tail_cons`,
+  allowing the strongest no-external-empty machine-preservation assembly to
+  consume the existing contextual β constructor residual for immediate
+  β-target well-formedness. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedMachineTailStepPreservesConsPayload.of_target_app`,
   `MEqRedMachineTailStepPreservesConsPayload.of_typed_operator`,
   `MEqRedMachineTailStepPreservesConsPayload.of_machine_operator`,
