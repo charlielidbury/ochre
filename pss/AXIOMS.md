@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRed_equ_under_two_heads_replace_from_handlers`, a diagrammatic
+  equivalence-replacement splitter for a changed `.equ` entry under two
+  preserved context heads. It closes stable `Me-Top`, `Me-Var`, and `Me-TAp`
+  leaves with the new two-head prevalidity transport and exposes lookup and
+  recursive constructor cases as handlers, preparing the nested structural-app
+  `Ms-Fun` body residual for a narrower split. Added the endpoint to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Context/DeBruijn.lean` — added
   `Prevalid.equ_under_two_heads_replace` and
   `PrevalidExt.equ_under_two_heads_replace`, context-prevalidity transport
