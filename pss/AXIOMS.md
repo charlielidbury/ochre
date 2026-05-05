@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRedStar_equ_under_three_heads_replace_with_pro_from_replacements` and
+  `meqRedStar_equ_under_three_heads_replace_with_pro_function_from_replacements`,
+  the chain-level and stack-polymorphic three-preserved-head equivalence
+  replacement wrappers with all canonical `Me-Pro` cases wired. These mirror
+  the existing two-head `with_pro` star API at the next binder depth and
+  derive new-context prevalidity from the old context in the function-valued
+  wrapper. Added both endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRed_equ_under_three_heads_replace_with_pro_from_replacements`, the
   one-step equivalence replacement wrapper with all three-preserved-head
   `Me-Pro` cases wired. It dispatches preserved indices `0`, `1`, `2`, the
