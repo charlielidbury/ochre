@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRed_equ_under_two_heads_replace_from_handlers`, the matching
+  diagrammatic subtype-replacement splitter for a changed `.equ` entry under
+  two preserved context heads. It closes the stable `Ms-Top` leaf and exposes
+  lookup, equivalence, and recursive structural cases as handlers, preparing
+  the raw nested `Ms-Fun` body residual for the next narrowing. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRed_equ_under_two_heads_replace_from_handlers`, a diagrammatic
   equivalence-replacement splitter for a changed `.equ` entry under two
   preserved context heads. It closes stable `Me-Top`, `Me-Var`, and `Me-TAp`

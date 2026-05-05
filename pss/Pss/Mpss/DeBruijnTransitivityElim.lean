@@ -6890,6 +6890,75 @@ theorem meqRed_equ_under_two_heads_replace_from_handlers {Γ : Ctx} {s : Stack}
   | bet ht hBody hArg =>
     exact hBet ht hBody hArg
 
+/-- One-step subtype replacement splitter when the changed `.equ` entry sits
+under two preserved heads. This closes the context-stable `Ms-Top` leaf and
+exposes lookup-sensitive and recursive constructor cases as handlers. -/
+theorem msubRed_equ_under_two_heads_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {head₁ head₂ : CtxEntry} {old new u v : Term}
+    (hpv : PrevalidExt (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hPro :
+      ∀ {i : Nat} {t : Term},
+        Ctx.subBinds (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) i t →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+          (.bvar i) t)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s u v →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)
+          (arg :: s) op op' →
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ))
+          arg →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ))
+          bound →
+        MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)
+          [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ)
+          [] (.abs bound body) (.abs bound' body'))
+    (hFOp :
+      ∀ {bound arg body body' : Term} {rest : Stack},
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ))
+          bound →
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ))
+          arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } :: head₁ :: head₂ ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+          (.abs bound body) (.abs bound body'))
+    (h : MSubRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s u v) :
+    MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s u v := by
+  have hpvNew :
+      PrevalidExt (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s :=
+    PrevalidExt.equ_under_two_heads_replace hpv hnew
+  cases h with
+  | pro _ hb =>
+    exact hPro hb
+  | top _ hu =>
+    exact MSubStar.of_MSubRed (MSubRed.top hpvNew (by
+      simpa [Ctx.depth] using hu))
+  | equ _ heq =>
+    exact hEq heq
+  | app hOp hArg =>
+    exact hApp hOp hArg
+  | fun_ ht hBound hBody =>
+    exact hFun ht hBound hBody
+  | fOp ht hArg hBody =>
+    exact hFOp ht hArg rfl hBody
+
 /-- Consume a subtype-reduction chain when each old-context step has already
 been replaced by a diagrammatic chain in the new context. -/
 theorem msubRedStar_replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
