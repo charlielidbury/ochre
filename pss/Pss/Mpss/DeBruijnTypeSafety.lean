@@ -487,6 +487,51 @@ noncomputable def BetaInstantiationPreservesWSubM.of_reductions
     (fun _ _ _ _ _ _ => PUnit.unit)
     hSub) (by rfl) hArgBound
 
+/-- `MEqRed.top` is stable under de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesMEqRed.top
+    {Γ : Ctx} {bound arg : Term}
+    (hArgBound : WSubMStar Γ arg bound) :
+    MEqRed Γ [] (Term.instantiate 0 arg .top)
+      (Term.instantiate 0 arg .top) := by
+  simpa using MEqRed.top (PrevalidExt.nil hArgBound.prevalid)
+
+/-- The head variable in an `MEqRed.var` leaf instantiates to the substituted
+argument, reducing reflexively in the tail context. -/
+noncomputable def BetaInstantiationPreservesMEqRed.var_zero
+    {Γ : Ctx} {bound arg : Term}
+    (hArgBound : WSubMStar Γ arg bound) :
+    MEqRed Γ [] (Term.instantiate 0 arg (.bvar 0))
+      (Term.instantiate 0 arg (.bvar 0)) := by
+  simpa [Term.instantiate] using
+    MEqRed.refl (PrevalidExt.nil hArgBound.prevalid) hArgBound.scoped_left
+
+/-- Successor variables in an `MEqRed.var` leaf descend to the tail context
+during de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesMEqRed.var_succ
+    {Γ : Ctx} {bound arg : Term} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hi : i + 1 < Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) :
+    MEqRed Γ [] (Term.instantiate 0 arg (.bvar (i + 1)))
+      (Term.instantiate 0 arg (.bvar (i + 1))) := by
+  have hiTail : i < Γ.depth := by
+    exact Nat.succ_lt_succ_iff.mp (by
+      simpa [Ctx.depth, Nat.succ_eq_add_one] using hi)
+  simpa [Term.instantiate] using
+    MEqRed.var (PrevalidExt.nil hArgBound.prevalid) hiTail
+
+/-- `MSubRed.top` is stable under de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesMSubRed.top
+    {Γ : Ctx} {bound arg u : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hu : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) u) :
+    MSubRed Γ [] (Term.instantiate 0 arg u)
+      (Term.instantiate 0 arg .top) := by
+  have hu' : Term.Scoped Γ.depth (Term.instantiate 0 arg u) :=
+    Term.instantiate_scoped 0 Γ.depth arg u (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hu)
+  simpa using MSubRed.top (PrevalidExt.nil hArgBound.prevalid) hu'
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=

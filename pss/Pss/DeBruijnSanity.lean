@@ -169,6 +169,10 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWSubM.lf2
 #print axioms BetaInstantiationPreservesWSubM.rgh
 #print axioms BetaInstantiationPreservesWSubM.of_reductions
+#print axioms BetaInstantiationPreservesMEqRed.top
+#print axioms BetaInstantiationPreservesMEqRed.var_zero
+#print axioms BetaInstantiationPreservesMEqRed.var_succ
+#print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

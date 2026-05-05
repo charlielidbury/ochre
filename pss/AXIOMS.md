@@ -143,6 +143,17 @@ closures, 2 inactive outstanding).
   subtype substitution follows from β-instantiation well-formedness
   preservation and those two reduction payloads. Added the new endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added checked base leaves for the
+  remaining de Bruijn reduction substitution payloads:
+  `BetaInstantiationPreservesMEqRed.top`,
+  `BetaInstantiationPreservesMEqRed.var_zero`,
+  `BetaInstantiationPreservesMEqRed.var_succ`, and
+  `BetaInstantiationPreservesMSubRed.top`. These discharge the top and
+  variable reflexive equivalence cases, plus the subtype-top case, directly
+  from `WSubMStar` prevalidity/scoping and de Bruijn instantiation scoping.
+  Promotion and compound reduction cases remain the substantive reduction
+  substitution frontier. Added the endpoints to `Pss/DeBruijnSanity.lean`;
+  no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
