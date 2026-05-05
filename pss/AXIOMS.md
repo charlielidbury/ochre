@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_bet_body_stack_handlers_of`,
+  using the raw `MEqRed` changed-stack-head splitter to reduce the residual
+  `Me-Bet` body-premise transport in the structural `Ms-App × Me-App` branch.
+  Stable `Me-Top`/`Me-Var`/`Me-TAp` body leaves are rebuilt at the changed
+  argument stack; only recursive `Me-Pro`, `Me-App`, nested `Me-Bet`, and
+  nested `Me-FOp` body handlers remain explicit for that premise. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.stack_head_replace_from_handlers`, the raw-equivalence
   changed-stack-head splitter. It rebuilds stack-insensitive
