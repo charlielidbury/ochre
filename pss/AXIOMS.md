@@ -170,6 +170,12 @@ closures, 2 inactive outstanding).
   checked six-head structural constructor frontier through promoted
   variables. Added an endpoint to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the six-head constructor
+  frontier payload types and
+  `BetaInstantiationPreservesMEqRedUnderSixHeadsStack.of_constructors`.
+  The assembler discharges structural and `Me-Pro` leaves through the checked
+  six-head leaves and leaves only binder frontiers explicit. Added endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
