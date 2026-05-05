@@ -1452,6 +1452,97 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload
     (head₄ := head₃) (kind₄ := kind₃) (s := []) hArgBound hBody
   simpa [Term.instantiate] using MEqRed.fun_ hBound' hBody'
 
+/-- The three-head `Me-Bet` frontier follows from the three-head equivalence
+payload for the argument and the four-preserved-head payload for the body,
+plus the de Bruijn substitution-composition law for the deeper β target. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderThreeHeadsBetStackPayload.of_four_heads
+    (hThree : BetaInstantiationPreservesMEqRedUnderThreeHeadsStack)
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderThreeHeadsBetStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ t v v' body body'
+    kind₁ kind₂ kind₃ s hArgBound ht hBody hArg
+  have hBodyFour := hFour (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃) (s := Stack.shift 0 s)
+    hArgBound hBody
+  have hBody' :
+      MEqRed
+        ({ bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) t,
+            kind := CtxEntryKind.sub } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 0 arg head₃, kind := kind₃ } :: Γ)
+        (Stack.shift 0
+          (Stack.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) s))
+        (Term.instantiate 4
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+          body)
+        (Term.instantiate 4
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+          body') := by
+    simpa [Stack.instantiate_four_shift_zero] using hBodyFour
+  have hArg' := hThree (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃) (s := []) hArgBound hArg
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hArgShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg))
+        (Nat.zero_le (Γ.depth + 2)) hArgShiftShiftScoped
+  have ht' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 0 arg head₃,
+              kind := kind₃ } :: Γ))
+        (Term.instantiate 3
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) t) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 3)
+          (Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) t) :=
+      Term.instantiate_scoped 3 (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) t (by omega)
+        hArgShiftShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using ht)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  have hBet := MEqRed.bet ht' hBody' hArg'
+  have hTarget :
+      Term.instantiate 0
+          (Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) v')
+          (Term.instantiate 4
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) body') =
+        Term.instantiate 3
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+          (Term.instantiate 0 v' body') := by
+    exact Term.instantiate_zero_after_three
+      (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) v' body'
+  simpa [Term.instantiate, Stack.instantiate, hTarget] using hBet
+
 /-- The three-head `Me-FOp` frontier follows from the three-head equivalence
 payload for the abstraction bound and the four-preserved-head payload for
 the operand body. -/

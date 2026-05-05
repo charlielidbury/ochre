@@ -28,6 +28,8 @@ namespace DeBruijn
 #print axioms Term.instantiate_succ_after
 #print axioms Term.instantiate_after_two
 #print axioms Term.instantiate_zero_after_two
+#print axioms Term.instantiate_after_three
+#print axioms Term.instantiate_zero_after_three
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace
 #print axioms Ctx.subBinds_equ_under_two_heads_replace
@@ -238,6 +240,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.app
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.pro
 #print axioms BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload.of_four_heads
+#print axioms BetaInstantiationPreservesMEqRedUnderThreeHeadsBetStackPayload.of_four_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderThreeHeadsFOpStackPayload.of_four_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsFunStackPayload.of_three_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsBetStackPayload.of_three_heads

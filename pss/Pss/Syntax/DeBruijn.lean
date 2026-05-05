@@ -590,6 +590,98 @@ theorem instantiate_zero_after_two (a v t : Term) :
       instantiate 2 a (instantiate 0 v t) :=
   instantiate_after_two 0 a v t
 
+/-- Substituting index `k` after substituting through four preserved slots is
+equivalent to first substituting index `k`, then substituting the surviving
+slot at `k + 3`. This is the three-preserved-head β-target composition law.
+-/
+theorem instantiate_after_three (k : Nat) (a v t : Term) :
+    instantiate k (instantiate (k + 3) a v)
+        (instantiate (k + 4) (shift k a) t) =
+      instantiate (k + 3) a (instantiate k v t) := by
+  induction t generalizing k a v with
+  | bvar i =>
+      by_cases hlt : i < k
+      · have hlt_four : i < k + 4 := by omega
+        have hlt_three : i < k + 3 := by omega
+        simp [instantiate, hlt, hlt_four, hlt_three]
+      · by_cases heq : i = k
+        · subst i
+          have hnot_four : ¬ k < k := by omega
+          have hlt_four : k < k + 4 := by omega
+          simp [instantiate, hnot_four, hlt_four]
+        · have hgt : k < i := by omega
+          by_cases heq_one : i = k + 1
+          · subst i
+            have hlt_four : k + 1 < k + 4 := by omega
+            have hnot : ¬ k + 1 < k := by omega
+            have hpred : k + 1 - 1 = k := by omega
+            simp [instantiate, hlt, hnot, hlt_four, hpred]
+          · by_cases heq_two : i = k + 2
+            · subst i
+              have hlt_four : k + 2 < k + 4 := by omega
+              have hnot : ¬ k + 2 < k := by omega
+              have hpred : k + 2 - 1 = k + 1 := by omega
+              have hlt_three : k + 1 < k + 3 := by omega
+              simp [instantiate, hlt, hnot, hlt_four, hpred, hlt_three]
+            · by_cases heq_three : i = k + 3
+              · subst i
+                have hlt_four : k + 3 < k + 4 := by omega
+                have hnot : ¬ k + 3 < k := by omega
+                have hpred : k + 3 - 1 = k + 2 := by omega
+                have hlt_three : k + 2 < k + 3 := by omega
+                simp [instantiate, hlt, hnot, hlt_four, hpred, hlt_three]
+              · by_cases heq_four : i = k + 4
+                · subst i
+                  have hnlt_lhs₁ : ¬ k + 4 < k + 4 := by omega
+                  have hnlt_lhs₂ : ¬ k < k := by omega
+                  have hnot_rhs₁ : ¬ k + 4 < k := by omega
+                  have hne_rhs₁ : k + 4 ≠ k := by omega
+                  have hpred_rhs₁ : k + 4 - 1 = k + 3 := by omega
+                  have hnlt_rhs₂ : ¬ k + 3 < k + 3 := by omega
+                  have hshift_id :
+                      instantiate k (instantiate (k + 3) a v) (shift k a) = a := by
+                    exact instantiate_shift_id k (instantiate (k + 3) a v) a
+                  simp [instantiate, hnlt_lhs₁, hnlt_lhs₂, hnot_rhs₁,
+                    hne_rhs₁, hpred_rhs₁, hnlt_rhs₂, hshift_id]
+                · have hgt_four : k + 4 < i := by omega
+                  have hnlt_lhs₁ : ¬ i < k + 4 := by omega
+                  have hne_lhs₁ : i ≠ k + 4 := by omega
+                  have hnlt_lhs₂ : ¬ i - 1 < k := by omega
+                  have hne_lhs₂ : i - 1 ≠ k := by omega
+                  have hpred_lhs : i - 1 - 1 = i - 2 := by omega
+                  have hnlt_rhs₁ : ¬ i < k := by omega
+                  have hne_rhs₁ : i ≠ k := by omega
+                  have hnlt_rhs₂ : ¬ i - 1 < k + 3 := by omega
+                  have hne_rhs₂ : i - 1 ≠ k + 3 := by omega
+                  have hpred_rhs₂ : i - 1 - 1 = i - 2 := by omega
+                  simp [instantiate, hnlt_lhs₁, hne_lhs₁, hnlt_lhs₂,
+                    hne_lhs₂, hpred_lhs, hnlt_rhs₁, hne_rhs₁,
+                    hnlt_rhs₂, hne_rhs₂, hpred_rhs₂]
+  | top =>
+      rfl
+  | abs bound body ih_bound ih_body =>
+      simp only [instantiate_abs]
+      apply congrArg₂ Term.abs
+      · exact ih_bound k a v
+      · have hbody := ih_body (k + 1) (shift 0 a) (shift 0 v)
+        have hshift :
+            shift (k + 1) (shift 0 a) = shift 0 (shift k a) := by
+          exact shift_shift_zero k a
+        have hvShift :
+            instantiate (k + 4) (shift 0 a) (shift 0 v) =
+              shift 0 (instantiate (k + 3) a v) := by
+          exact (shiftBy_instantiate 0 1 (k + 3) a v (Nat.zero_le _)).symm
+        simpa [Nat.add_assoc, hshift, hvShift] using hbody
+  | app fn arg ih_fn ih_arg =>
+      simp only [instantiate_app]
+      exact congrArg₂ Term.app (ih_fn k a v) (ih_arg k a v)
+
+/-- Zero-cutoff specialization of `Term.instantiate_after_three`. -/
+theorem instantiate_zero_after_three (a v t : Term) :
+    instantiate 0 (instantiate 3 a v) (instantiate 4 (shift 0 a) t) =
+      instantiate 3 a (instantiate 0 v t) :=
+  instantiate_after_three 0 a v t
+
 /-! ## Scoping -/
 
 /-- `Scoped depth t` means every index in `t` is bound within `depth`

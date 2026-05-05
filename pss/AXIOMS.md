@@ -452,6 +452,15 @@ closures, 2 inactive outstanding).
   The three-head `Me-Bet` adapter remains blocked on the corresponding
   three-preserved-head β-target substitution-composition law. Added endpoints
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` and `Pss/Mpss/DeBruijnTypeSafety.lean` —
+  added the cutoff-general three-preserved-head β-target composition law
+  `Term.instantiate_after_three` plus `Term.instantiate_zero_after_three`,
+  then discharged
+  `BetaInstantiationPreservesMEqRedUnderThreeHeadsBetStackPayload.of_four_heads`.
+  Together with the previous three-head `Me-Fun` and `Me-FOp` adapters, this
+  reduces the remaining three-head binder constructors to the four-preserved-head
+  body payload. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
