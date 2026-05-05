@@ -92,6 +92,7 @@ namespace DeBruijn
 #print axioms commute_abs_fun_bound_fixed_body
 #print axioms commute_abs_fun_bound_fixed_body_from_left
 #print axioms commute_abs_fun_targets_of_bound_body_joins_from_left
+#print axioms commute_abs_fun_targets_of_bound_body_equ_chains_from_left
 #print axioms commute_abs_fun_bound_fixed_body_star
 #print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_of
 #print axioms Theorem_3_DeBruijn_WSubMStar_toMSub_of

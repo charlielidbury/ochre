@@ -3505,6 +3505,39 @@ theorem commute_abs_fun_targets_of_bound_body_joins_from_left {Γ : Ctx}
       (msubRedStar_abs_fun_body_fixed_bound hRight.prevalidExt hBound₃Scoped
         hBody₂₃)⟩
 
+/-- Changing-bound/changing-body `Fun` abstraction commutation when the body
+joins are first built under each branch's original bound and the right body
+branch originates from equivalence. The right branch is transported to the
+joined `.sub` head via the restricted equivalence-origin subtype transport,
+avoiding a false arbitrary-subtype replacement premise. -/
+theorem commute_abs_fun_targets_of_bound_body_equ_chains_from_left {Γ : Ctx}
+    {bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hLeft : MSubRed Γ [] (.abs bound body) (.abs bound₁ body₁))
+    (hRight : MEqRed Γ [] (.abs bound body) (.abs bound₂ body₂))
+    (hBoundJoin :
+      ∃ bound₃, MEqRedJ Γ [] bound₁ bound₃ ∧ MEqRedJ Γ [] bound₂ bound₃)
+    (hBodyJoin :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        ∃ body₃,
+          MEqRedStar ({ bound := bound₁, kind := .sub } :: Γ) [] body₁ body₃ ∧
+            MEqRedStar ({ bound := bound₂, kind := .sub } :: Γ) [] body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ :=
+  commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight hBoundJoin
+    (fun {bound₃} hBound₁₃ hBound₂₃ => by
+      obtain ⟨body₃, hBody₁₃, hBody₂₃⟩ := hBodyJoin hBound₁₃ hBound₂₃
+      have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hLeft.prevalidExt)
+            hBound₁₃.some.scoped_right)
+      exact ⟨body₃,
+        hBody₁₃.sub_head_replace hBound₁₃.some,
+        MSubRedStar.of_meqStar_sub_head_replace_star hpvBody₃ hBody₂₃
+          (MEqRedStar.single hBound₂₃.some)⟩)
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}

@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_targets_of_bound_body_equ_chains_from_left`, the one-step
+  wrapper matching branch-original body joins for changing-bound/changing-body
+  `Fun` commutation when the right body branch is equivalence-origin. Added
+  the endpoint to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_bound_body_equ_chains_star`, a restricted star-level
   changing-bound/changing-body `Fun` commutation assembly for the case where
   the right body subtype branch originates from equivalence. It uses
