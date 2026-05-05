@@ -2754,6 +2754,57 @@ noncomputable def MSubRed.fOp_equ_under_head_replace {Γ : Ctx} {s : Stack}
       (.abs t body) (.abs t body') := by
   exact MSubRed.fOp (by simpa [Ctx.depth] using ht) (by simpa [Ctx.depth] using hα) hBody
 
+/-- Split a one-step subtype replacement across a changed `.equ` entry under
+one preserved head, preserving the raw subtype conclusion. Stable leaves are
+rebuilt directly; constructor cases whose premises must be recursively
+replaced are exposed as handlers. -/
+noncomputable def MSubRed.equ_under_head_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u v : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) s u v →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+        MSubRed (head :: { bound := new, kind := .equ } :: Γ) s
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed (head :: { bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hFOp :
+      ∀ {bound arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) bound →
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubRed (head :: { bound := new, kind := .equ } :: Γ) s
+          (.abs bound body) (.abs bound body'))
+    (h : MSubRed (head :: { bound := old, kind := .equ } :: Γ) s u v) :
+    MSubRed (head :: { bound := new, kind := .equ } :: Γ) s u v := by
+  cases h with
+  | pro _ hb =>
+      exact MSubRed.pro_equ_under_head_replace hpv hnew hb
+  | top _ hu =>
+      exact MSubRed.top_equ_under_head_replace hpv hnew hu
+  | equ _ heq =>
+      exact MSubRed.equ_equ_under_head_replace hpv hnew (hEq heq)
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | fun_ ht hBound hBody =>
+      exact hFun ht hBound hBody
+  | fOp ht hArg hBody =>
+      exact hFOp ht hArg rfl hBody
+
 /-! ## Shape inversions -/
 
 /-- A de Bruijn equivalence-reduction step from `Top` can only target `Top`. -/

@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRed.equ_under_head_replace_from_handlers`, the raw-subtype splitter for
+  replacing an `.equ` entry immediately under one preserved context head while
+  preserving an `MSubRed` conclusion. Stable `Ms-Pro`/`Ms-Top` leaves are
+  rebuilt directly; `Ms-Equ`, `Ms-App`, `Ms-Fun`, and `Ms-FOp` are exposed as
+  explicit handler obligations. Added the endpoint to the De Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MSubRed.equ_head_replace_from_handlers`, the raw-subtype splitter for
   replacing an innermost `.equ` head while preserving an `MSubRed` conclusion.
   Stable `Ms-Pro`/`Ms-Top` leaves are rebuilt directly; `Ms-Equ`, `Ms-App`,
