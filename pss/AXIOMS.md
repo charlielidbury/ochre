@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_residual_body_handlers_of`,
+  reducing the remaining recursive `Me-Bet`, `Me-FOp`, and `Ms-FOp`
+  structural-app stack handlers to body-premise transports under the changed
+  argument head. Once those body transports are supplied, the outer
+  constructors are rebuilt directly. Added the endpoint to the De Bruijn
+  audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_body_from_operator_join_app_cases_recursive_stack_handlers_of`,
   a dispatcher wrapper for the structural `Ms-App × Me-App` body branch.
   It internalizes the stable recursive `Me-Pro`, `Me-App`, and `Ms-App`
