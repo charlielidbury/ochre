@@ -5499,6 +5499,31 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
       hSubst hShape hShapeWf hLeft hReplace hSubToEqu hEquToSub)
     hSubToEqu hEquToSub hTargetApp hTailCons hReplace hNoTop
 
+/-- Diagnostic head-kind-transport variant of the factored chain-shape
+machine route. The uniform head-kind premise remains too strong for the
+final route, but this wrapper keeps the diagnostic interface aligned with
+the strongest machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hHeadTransport : WfMHeadKindTransportPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_target_app_machine_tail_cons
+    hSubst hEqBody hSubBody hPres hStep hShape hShapeWf hLeft
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hHeadTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
+    hTargetApp hTailCons hReplace hNoTop
+
 namespace StepAt
 
 /-- All structural operational well-formedness preservation cases reduce to
