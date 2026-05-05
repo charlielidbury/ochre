@@ -290,6 +290,12 @@ closures, 2 inactive outstanding).
   general `.sub` head replacement theorem would be false because `Ms-Pro` can
   target the changed head. Added the endpoints to `Pss/DeBruijnSanity.lean`;
   no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMSubRedStackMSubStar.of_under_head_constructors`,
+  a convenience assembler for the star-targeted subtype substitution payload
+  that consumes generic under-head substitution plus the changed-bound
+  `Ms-Fun` body frontier directly. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

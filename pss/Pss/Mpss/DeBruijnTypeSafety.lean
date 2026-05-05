@@ -1193,6 +1193,23 @@ noncomputable def BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload.of_und
     (head := t) (kind := CtxEntryKind.sub) (s := []) hArgBound hBody
   exact hChange hArgBound hBound hBodyUnder
 
+/-- Constructor assembler specialized to the generic under-head body payload.
+The only remaining non-structural inputs are the equivalence substitution
+payload, the `Ms-Pro` head star payload, and the changed-bound `Ms-Fun` body
+transport. -/
+noncomputable def BetaInstantiationPreservesMSubRedStackMSubStar.of_under_head_constructors
+    (hHead : BetaInstantiationPreservesMSubRedProHeadMSubStarPayload)
+    (hEq : BetaInstantiationPreservesMEqRedStack)
+    (hUnder : BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload)
+    (hChange : BetaInstantiationPreservesMSubRedFunBodyHeadChangeMSubStarPayload) :
+    BetaInstantiationPreservesMSubRedStackMSubStar :=
+  BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors
+    hHead hEq
+    (BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload.of_under_head
+      hUnder hChange)
+    (BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload.of_under_head
+      hUnder)
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
