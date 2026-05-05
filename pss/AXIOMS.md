@@ -10,6 +10,15 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedMachineTailStepPreservesConsPayload.of_target_app`,
+  `MEqRedMachineTailStepPreservesConsPayload.of_typed_operator`,
+  `MEqRedMachineTailStepPreservesConsPayload.of_machine_operator`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_operator_machine_tail_cons`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_machine_operator_machine_tail_cons`,
+  exposing neutral non-empty machine-tail reductions from target-application,
+  typed-operator, and machine-operator residuals. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedMachineTailStepPreservesConsPayload`,
   `MEqRedFOpTailStepPreservesConsPayload.of_machine_tail_cons`,
   `MEqRedMachineTailStepPreservesConsPayload.of_fop_tail_cons`,

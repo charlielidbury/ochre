@@ -1554,6 +1554,34 @@ noncomputable def MEqRedFOpTailStepPreservesConsPayload.of_target_app
     (WfMachineState.tail_state (t := source) (operand := next)
       (s := tail) hState)
 
+/-- Neutral machine-tail spelling of the target-application reduction for
+non-empty tail-step preservation. -/
+noncomputable def MEqRedMachineTailStepPreservesConsPayload.of_target_app
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload) :
+    MEqRedMachineTailStepPreservesConsPayload :=
+  MEqRedMachineTailStepPreservesConsPayload.of_fop_tail_cons
+    (MEqRedFOpTailStepPreservesConsPayload.of_target_app hTargetApp
+      (MEqRedFOpTailStepPreservesPayload.of_machine_tail hTail))
+
+/-- Neutral machine-tail spelling of the typed-operator reduction for
+non-empty tail-step preservation. -/
+noncomputable def MEqRedMachineTailStepPreservesConsPayload.of_typed_operator
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload) :
+    MEqRedMachineTailStepPreservesConsPayload :=
+  MEqRedMachineTailStepPreservesConsPayload.of_target_app
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun) hTail
+
+/-- Neutral machine-tail spelling of the machine-state-aware operator
+reduction for non-empty tail-step preservation. -/
+noncomputable def MEqRedMachineTailStepPreservesConsPayload.of_machine_operator
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload) :
+    MEqRedMachineTailStepPreservesConsPayload :=
+  MEqRedMachineTailStepPreservesConsPayload.of_target_app
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun) hTail
+
 /-- The non-empty-tail `Me-FOp` transport reduces to preserving the immediate
 application `Me-App` step under the remaining tail stack. -/
 noncomputable def MEqRedFOpTailTransportConsPayload.of_tail_step
@@ -2928,6 +2956,48 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
   MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail
     hBetaTarget hEqBody hSubBody hPres hStep hInv hFOpBody hTargetApp
     (MEqRedMachineTailStepPreservesPayload.of_cons hTailCons)
+    hFunBody hNoTop
+
+/-- Typed-operator, non-empty-tail spelling of the strongest
+no-external-empty assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_operator_machine_tail_cons
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail_cons
+    hBetaTarget hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Machine-state-aware operator, non-empty-tail spelling of the strongest
+no-external-empty assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_machine_operator_machine_tail_cons
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail_cons
+    hBetaTarget hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
     hFunBody hNoTop
 
 /-- Empty-stack left-endpoint transport for well-subtyping along one
