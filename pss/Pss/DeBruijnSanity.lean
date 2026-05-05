@@ -23,6 +23,7 @@ namespace DeBruijn
 #print axioms Stack.instantiate_three_shift_zero
 #print axioms Stack.instantiate_four_shift_zero
 #print axioms Stack.instantiate_five_shift_zero
+#print axioms Stack.instantiate_six_shift_zero
 #print axioms Term.instantiate_two_shift_zero
 #print axioms Term.instantiate_three_shift_zero
 #print axioms Term.instantiate_four_shift_zero
@@ -269,6 +270,8 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderFiveHeadsFunStackPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderFiveHeadsBetStackPayload
 #print axioms BetaInstantiationPreservesMEqRedUnderFiveHeadsFOpStackPayload
+#print axioms BetaInstantiationPreservesMEqRedUnderSixHeadsStack
+#print axioms BetaInstantiationPreservesMEqRedUnderFiveHeadsFunStackPayload.of_six_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderFourHeadsFunStackPayload.of_five_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderFourHeadsBetStackPayload.of_five_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderFourHeadsFOpStackPayload.of_five_heads

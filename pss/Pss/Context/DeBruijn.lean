@@ -1313,6 +1313,22 @@ theorem instantiate_five_shift_zero (v : Term) (s : Stack) :
   simpa using instantiate_succ_shift_zero 4
     (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 v)))) s
 
+/-- Instantiating index `6` through a stack shifted over index `0` commutes
+with shifting the stack instantiated at index `5`. This is the arithmetic
+needed by the next five-head binder frontier. -/
+theorem instantiate_six_shift_zero (v : Term) (s : Stack) :
+    Stack.instantiate 6
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 v))))))
+        (Stack.shift 0 s) =
+      Stack.shift 0
+        (Stack.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 v))))) s) := by
+  simpa using instantiate_succ_shift_zero 5
+    (Term.shift 0
+      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 v))))) s
+
 /-- If shifting a stack produces a non-empty stack, the original stack was
 non-empty and the head/tail are the shifted original head/tail. -/
 theorem shift_eq_cons_inv {cutoff : Nat} {s : Stack} {α : Term} {rest : Stack}

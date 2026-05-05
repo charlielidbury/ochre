@@ -440,6 +440,51 @@ def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack : Type :=
             (Term.shift 0
               (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) rhs)
 
+/-- Stack-parametric equivalence-reduction β-instantiation under six
+preserved context heads. This is the recursive body payload needed by the
+five-head binder constructors. -/
+def BetaInstantiationPreservesMEqRedUnderSixHeadsStack : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ lhs rhs : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := head₆, kind := kind₆ } ::
+          { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed
+          ({ bound := Term.instantiate 5
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 4
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₄,
+              kind := kind₄ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₅,
+              kind := kind₅ } ::
+            { bound := Term.instantiate 0 arg head₆,
+              kind := kind₆ } :: Γ)
+          (Stack.instantiate 6
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) s)
+          (Term.instantiate 6
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) lhs)
+          (Term.instantiate 6
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) rhs)
+
 /-- Constructor-facing `Me-Fun` frontier for five-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
 so discharging it will require the six-preserved-head payload. -/
@@ -2858,6 +2903,29 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.of_constru
   | fOp hBound hα hBody =>
       subst hC
       exact hFOp hArgBound hBound hα hBody
+
+/-- The five-head `Me-Fun` frontier follows from the five-head equivalence
+payload for the bound and the six-preserved-head payload for the body. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsFunStackPayload.of_six_heads
+    (hFive : BetaInstantiationPreservesMEqRedUnderFiveHeadsStack)
+    (hSix : BetaInstantiationPreservesMEqRedUnderSixHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderFiveHeadsFunStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ t t' body body'
+    kind₁ kind₂ kind₃ kind₄ kind₅ hArgBound hBound hBody
+  have hBound' := hFive (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃)
+    (head₄ := head₄) (kind₄ := kind₄)
+    (head₅ := head₅) (kind₅ := kind₅) (s := []) hArgBound hBound
+  have hBody' := hSix (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃)
+    (head₅ := head₄) (kind₅ := kind₄)
+    (head₆ := head₅) (kind₆ := kind₅) (s := []) hArgBound hBody
+  simpa [Term.instantiate] using MEqRed.fun_ hBound' hBody'
 
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below four preserved context heads. -/
