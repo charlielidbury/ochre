@@ -31,8 +31,9 @@ closures, 2 inactive outstanding).
   single `WSubM` under `WfCtxEqu Γ` by composing `.trs` legs with
   `WSubM.trans_under_wfctx`. Also added
   `Lemma_10_Inversion_under_wfctx`, which reuses the existing axiom-free
-  single-step inversion after that collapse. No headline axiom-count
-  change; both endpoints inherit the same subject-reduction residual
+  single-step inversion after that collapse, plus its closed-context
+  specialization `Lemma_10_Inversion_empty`. No headline axiom-count
+  change; these endpoints inherit the same subject-reduction residual
   closure as the conditional transitivity bridge.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and

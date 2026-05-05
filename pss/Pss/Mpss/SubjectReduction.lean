@@ -877,4 +877,11 @@ noncomputable def Lemma_10_Inversion_under_wfctx
   _Lemma_10_Inversion_sub_partial
     (WSubMStar.toWSubM_under_wfctx hCtx h) rfl rfl
 
+/-- Closed-context specialization of `Lemma_10_Inversion_under_wfctx`. -/
+noncomputable def Lemma_10_Inversion_empty
+    {t t' u u' : Term}
+    (h : WSubMStar [] (.abs t u) (.abs t' u')) :
+    WEquM [] t t' :=
+  Lemma_10_Inversion_under_wfctx WfCtxEqu.empty h
+
 end Pss
