@@ -2688,6 +2688,90 @@ noncomputable def MEqRed.fOp_equ_under_head_replace {Γ : Ctx} {s : Stack}
       (.abs t body) (.abs t' body') := by
   exact MEqRed.fOp hBound (by simpa [Ctx.depth] using hα) hBody
 
+/-- Split a one-step equivalence replacement across a changed `.equ` entry
+under one preserved head, preserving the raw equivalence conclusion. Stable
+leaves are rebuilt directly; lookup-sensitive `Me-Pro` cases and recursive
+constructors are exposed as handlers. -/
+noncomputable def MEqRed.equ_under_head_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {head : CtxEntry} {old new u v : Term}
+    (hpv : PrevalidExt (head :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hProZero :
+      ∀ {α α' : Term},
+        Ctx.equBinds (head :: { bound := old, kind := .equ } :: Γ) 0 α →
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) s α α' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s (.bvar 0) α')
+    (hProOne :
+      ∀ {target : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) s
+          (Term.shift 0 (Term.shift 0 old)) target →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s (.bvar 1) target)
+    (hProTail :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds (head :: { bound := old, kind := .equ } :: Γ) ((i + 1) + 1) α →
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) s α α' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+          (.bvar ((i + 1) + 1)) α')
+    (hApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+          (.app op arg) (.app op' arg'))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := bound, kind := .sub } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
+    (hFOp :
+      ∀ {bound bound' arg body body' : Term} {rest : Stack},
+        MEqRed (head :: { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        Term.Scoped (Ctx.depth (head :: { bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } :: head ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MEqRed (head :: { bound := new, kind := .equ } :: Γ) s
+          (.abs bound body) (.abs bound' body'))
+    (h : MEqRed (head :: { bound := old, kind := .equ } :: Γ) s u v) :
+    MEqRed (head :: { bound := new, kind := .equ } :: Γ) s u v := by
+  cases h with
+  | @pro Γp sp i α α' _ hb hα =>
+      cases i with
+      | zero =>
+          exact hProZero hb hα
+      | succ i =>
+          cases i with
+          | zero =>
+              obtain ⟨hαEq, hResidual⟩ := MEqRed.pro_equ_under_head_one_residual hb hα
+              subst hαEq
+              exact hProOne hResidual.some
+          | succ i =>
+              exact hProTail hb hα
+  | top _ =>
+      exact MEqRed.top_equ_under_head_replace hpv hnew
+  | app hOp hArg =>
+      exact hApp hOp hArg
+  | var _ hi =>
+      exact MEqRed.var_equ_under_head_replace hpv hnew hi
+  | fun_ hBound hBody =>
+      exact hFun hBound hBody
+  | tAp _ hu =>
+      exact MEqRed.tAp_equ_under_head_replace hpv hnew hu
+  | fOp hBound hArg hBody =>
+      exact hFOp hBound hArg rfl hBody
+  | bet ht hBody hArg =>
+      exact hBet ht hBody hArg
+
 /-- `Ms-Pro` is stable when replacing an `.equ` entry immediately under a
 preserved head, because subtype lookup ignores `.equ` entries. -/
 noncomputable def MSubRed.pro_equ_under_head_replace {Γ : Ctx} {s : Stack}
