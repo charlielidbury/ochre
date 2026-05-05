@@ -696,6 +696,133 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.app
       (Term.instantiate 1 (Term.shift 0 arg) (.app u' v')) := by
   simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
 
+/-- The `MEqRed.pro` constructor reassembles under-head β-instantiation from
+the transformed promoted-bound equivalence step. The index split accounts for
+the preserved head at `0`, the discharged `.sub` tail head at `1`, and all
+deeper variables descending by one index. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.pro
+    {Γ : Ctx} {bound arg head α α' : Term} {kind : CtxEntryKind}
+    {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head, kind := kind } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hb :
+      Ctx.equBinds ({ bound := head, kind := kind } ::
+        { bound := bound, kind := .sub } :: Γ) i α)
+    (hα :
+      MEqRed ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+        (Stack.instantiate 1 (Term.shift 0 arg) s)
+        (Term.instantiate 1 (Term.shift 0 arg) α)
+        (Term.instantiate 1 (Term.shift 0 arg) α')) :
+    MEqRed ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+      (Stack.instantiate 1 (Term.shift 0 arg) s)
+      (Term.instantiate 1 (Term.shift 0 arg) (.bvar i))
+      (Term.instantiate 1 (Term.shift 0 arg) α') := by
+  have hpvTarget :
+      PrevalidExt ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+        (Stack.instantiate 1 (Term.shift 0 arg) s) :=
+    BetaInstantiationPreservesPrevalidExtUnderHead hArgBound hpv
+  cases i with
+  | zero =>
+      cases kind with
+      | sub =>
+          simp [Ctx.equBinds] at hb
+      | equ =>
+          simp [Ctx.equBinds] at hb
+          subst hb
+          have hbind :
+              Ctx.equBinds
+                ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.equ } :: Γ)
+                0 (Term.shift 0 (Term.instantiate 0 arg head)) := by
+            simp [Ctx.equBinds]
+          have htargetInst :
+              Term.instantiate 1 (Term.shift 0 arg) (Term.shift 0 head) =
+                Term.shift 0 (Term.instantiate 0 arg head) := by
+            exact (Term.shiftBy_instantiate 0 1 0 arg head (Nat.le_refl 0)).symm
+          have hαFor :
+              MEqRed
+                ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.equ } :: Γ)
+                (Stack.instantiate 1 (Term.shift 0 arg) s)
+                (Term.shift 0 (Term.instantiate 0 arg head))
+                (Term.instantiate 1 (Term.shift 0 arg) α') := by
+            simpa [htargetInst] using hα
+          simpa [Term.instantiate, htargetInst] using
+            MEqRed.pro hpvTarget hbind hαFor
+  | succ i =>
+      cases i with
+      | zero =>
+          cases kind <;> simp [Ctx.equBinds] at hb
+      | succ j =>
+          cases kind with
+          | sub =>
+              simp [Ctx.equBinds] at hb
+              let tailTarget := Classical.choose hb
+              have htailAnd := Classical.choose_spec hb
+              have htailLookup : Ctx.lookupEqu Γ j = some tailTarget :=
+                htailAnd.1
+              have htarget :
+                  Term.shift 0 (Term.shift 0 tailTarget) = α :=
+                htailAnd.2
+              have htail : Ctx.equBinds Γ j tailTarget := by
+                simpa [Ctx.equBinds] using htailLookup
+              have hbind :
+                  Ctx.equBinds
+                    ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.sub } :: Γ)
+                    (j + 1) (Term.shift 0 tailTarget) := by
+                exact Ctx.equBinds_weaken_head
+                  ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.sub } : CtxEntry)
+                  htail
+              have htargetInst :
+                  Term.instantiate 1 (Term.shift 0 arg)
+                    (Term.shift 0 (Term.shift 0 tailTarget)) =
+                    Term.shift 0 tailTarget := by
+                simpa [Term.shift_shift_zero] using
+                  Term.instantiate_shift_id 1 (Term.shift 0 arg)
+                    (Term.shift 0 tailTarget)
+              have hαFor :
+                  MEqRed
+                    ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.sub } :: Γ)
+                    (Stack.instantiate 1 (Term.shift 0 arg) s)
+                    (Term.shift 0 tailTarget)
+                    (Term.instantiate 1 (Term.shift 0 arg) α') := by
+                simpa [← htarget, htargetInst] using hα
+              simpa [Term.instantiate, htargetInst] using
+                MEqRed.pro hpvTarget hbind hαFor
+          | equ =>
+              simp [Ctx.equBinds] at hb
+              let tailTarget := Classical.choose hb
+              have htailAnd := Classical.choose_spec hb
+              have htailLookup : Ctx.lookupEqu Γ j = some tailTarget :=
+                htailAnd.1
+              have htarget :
+                  Term.shift 0 (Term.shift 0 tailTarget) = α :=
+                htailAnd.2
+              have htail : Ctx.equBinds Γ j tailTarget := by
+                simpa [Ctx.equBinds] using htailLookup
+              have hbind :
+                  Ctx.equBinds
+                    ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.equ } :: Γ)
+                    (j + 1) (Term.shift 0 tailTarget) := by
+                exact Ctx.equBinds_weaken_head
+                  ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.equ } : CtxEntry)
+                  htail
+              have htargetInst :
+                  Term.instantiate 1 (Term.shift 0 arg)
+                    (Term.shift 0 (Term.shift 0 tailTarget)) =
+                    Term.shift 0 tailTarget := by
+                simpa [Term.shift_shift_zero] using
+                  Term.instantiate_shift_id 1 (Term.shift 0 arg)
+                    (Term.shift 0 tailTarget)
+              have hαFor :
+                  MEqRed
+                    ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.equ } :: Γ)
+                    (Stack.instantiate 1 (Term.shift 0 arg) s)
+                    (Term.shift 0 tailTarget)
+                    (Term.instantiate 1 (Term.shift 0 arg) α') := by
+                simpa [← htarget, htargetInst] using hα
+              simpa [Term.instantiate, htargetInst] using
+                MEqRed.pro hpvTarget hbind hαFor
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation at any stack. -/
 noncomputable def BetaInstantiationPreservesMEqRedStack.refl

@@ -209,6 +209,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedStack.var
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.var
 #print axioms BetaInstantiationPreservesMEqRed.var_of_stack
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.pro
 #print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top_msubstar

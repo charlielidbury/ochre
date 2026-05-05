@@ -331,6 +331,12 @@ closures, 2 inactive outstanding).
   recursive binder frontiers (`Me-Pro`, `Me-Fun`, `Me-Bet`, and `Me-FOp`).
   Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderHeadStack.pro`, the checked
+  under-head `Me-Pro` reassembly helper. It consumes the transformed promoted
+  bound equivalence step and handles the preserved-head, discharged-tail-head,
+  and deeper-tail index cases directly. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
