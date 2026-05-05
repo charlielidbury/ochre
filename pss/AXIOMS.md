@@ -66,9 +66,10 @@ closures, 2 inactive outstanding).
   binder-body frontier and the next eleven-head structural leaves. Added the
   eleven-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.top` and structural
-  `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.app`.
-  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
-  change.
+  `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.app`,
+  plus the eleven-head reflexive leaf
+  `BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.refl`. Added
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and

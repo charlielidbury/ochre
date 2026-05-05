@@ -5400,6 +5400,85 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.app
       (Term.instantiate 11 (Term.shiftBy 0 11 arg) (.app u' v')) := by
   simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
 
+/-- Reflexive equivalence reduction is stable under de Bruijn
+β-instantiation below eleven preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.refl
+    {Γ : Ctx}
+    {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ u : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ : CtxEntryKind}
+    {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := head₁₁, kind := kind₁₁ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hu : Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := head₆, kind := kind₆ } ::
+          { bound := head₇, kind := kind₇ } ::
+          { bound := head₈, kind := kind₈ } ::
+          { bound := head₉, kind := kind₉ } ::
+          { bound := head₁₀, kind := kind₁₀ } ::
+          { bound := head₁₁, kind := kind₁₁ } ::
+          { bound := bound, kind := .sub } :: Γ)) u) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 10 (Term.shiftBy 0 10 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₉, kind := kind₉ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₁₀, kind := kind₁₀ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₁, kind := kind₁₁ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 11 (Term.shiftBy 0 11 arg) s)
+      (Term.instantiate 11 (Term.shiftBy 0 11 arg) u)
+      (Term.instantiate 11 (Term.shiftBy 0 11 arg) u) := by
+  have hArgShiftScoped :
+      Term.Scoped (Γ.depth + 11) (Term.shiftBy 0 11 arg) := by
+    simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Term.shiftBy_scoped 0 11 Γ.depth arg (Nat.zero_le Γ.depth)
+        hArgBound.scoped_left
+  have hu' :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 10 (Term.shiftBy 0 10 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₉, kind := kind₉ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₁₀, kind := kind₁₀ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₁, kind := kind₁₁ } :: Γ
+      Term.Scoped (Ctx.depth targetCtx)
+        (Term.instantiate 11 (Term.shiftBy 0 11 arg) u) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 11)
+          (Term.instantiate 11 (Term.shiftBy 0 11 arg) u) :=
+      Term.instantiate_scoped 11 (Γ.depth + 11)
+        (Term.shiftBy 0 11 arg) u (by omega) hArgShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+    simpa [Ctx.depth, Nat.add_assoc] using hInst
+  exact MEqRed.refl
+    (BetaInstantiationPreservesPrevalidExtUnderElevenHeads hArgBound hpv) hu'
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below seven
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.top
