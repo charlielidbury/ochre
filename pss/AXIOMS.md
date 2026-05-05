@@ -346,6 +346,16 @@ closures, 2 inactive outstanding).
   assembler proves `Me-Pro`, `Me-Top`, `Me-App`, `Me-Var`, and `Me-TAp`
   structurally, leaving only the three binder frontiers explicit. Added the
   endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added stack-append/equivalence
+  convenience assemblers
+  `BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_stack_append_eq_constructors`
+  and
+  `BetaInstantiationPreservesMSubRedStackMSubStar.of_stack_append_under_head_eq_constructors`.
+  These consume the under-head equivalence constructor assembler directly,
+  so the remaining subtype-substitution surface exposes the three
+  under-head `MEqRed` binder frontiers instead of an opaque
+  `BetaInstantiationPreservesMEqRedUnderHeadStack` premise. Added the
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
