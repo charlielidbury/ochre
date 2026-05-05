@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubStackLiftPayload.of_body_transports` and
+  `WSubMStarToStackedMSubStarPayload.of_body_transports`, wiring the
+  complete stack-lift decomposition into the two body-transport residuals
+  exposed for empty-stack function constructors. The stacked diagrammatic
+  bridge can now be assembled directly from those body transports. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MSubRedSubHeadToEquHeadAsMEqPayload` and
   `MSubRedFunStackAppendPayload.of_body_equ_transport`, reducing the
   empty-stack-only `Ms-Fun` stack-append residual to the exact stronger

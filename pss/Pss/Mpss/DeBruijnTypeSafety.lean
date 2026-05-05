@@ -1023,6 +1023,35 @@ def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
   intro Γ source target operand hSub hOperand
   exact hLift hSub.toMSubStar hOperand
 
+/-- Body-transport residuals for the two empty-stack function constructors
+discharge one-step diagrammatic stack lifting. This wires the full stack-lift
+decomposition into the smaller residuals exposed above. -/
+noncomputable def MSubStackLiftPayload.of_body_transports
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
+    MSubStackLiftPayload :=
+  MSubStackLiftPayload.of_reduction_lifts
+    (MSubRedStarStackLiftPayload.of_step
+      (MSubRedStackLiftPayload.of_append
+        (MSubRedStackAppendPayload.of_fun
+          (MEqRedStackAppendPayload.of_fun
+            (MEqRedFunStackAppendPayload.of_body_transport hEqBody))
+          (MSubRedFunStackAppendPayload.of_body_equ_transport hSubBody))))
+    (MEqRedStarStackLiftPayload.of_step
+      (MEqRedStackLiftPayload.of_append
+        (MEqRedStackAppendPayload.of_fun
+          (MEqRedFunStackAppendPayload.of_body_transport hEqBody))))
+
+/-- The well-subtyping-to-stacked-diagrammatic bridge can now be assembled
+directly from the two body-transport residuals for stack-lifted reductions. -/
+noncomputable def WSubMStarToStackedMSubStarPayload.of_body_transports
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
+    WSubMStarToStackedMSubStarPayload :=
+  WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
+    (MSubStarStackLiftPayload.of_step
+      (MSubStackLiftPayload.of_body_transports hEqBody hSubBody))
+
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
 so it is not directly covered by the empty-stack `WSubMStar` endpoint
