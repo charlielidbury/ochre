@@ -26,6 +26,14 @@ closures, 2 inactive outstanding).
   theorem inherits the current `subject_reduction_sub` closure, including
   its SR residuals and the existing LN commutation/diamond/narrowing
   dependencies.
+* `Pss/Mpss/SubjectReduction.lean` — added
+  `WSubMStar.toWSubM_under_wfctx`, collapsing a `WSubMStar` chain to a
+  single `WSubM` under `WfCtxEqu Γ` by composing `.trs` legs with
+  `WSubM.trans_under_wfctx`. Also added
+  `Lemma_10_Inversion_under_wfctx`, which reuses the existing axiom-free
+  single-step inversion after that collapse. No headline axiom-count
+  change; both endpoints inherit the same subject-reduction residual
+  closure as the conditional transitivity bridge.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

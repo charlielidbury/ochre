@@ -817,4 +817,64 @@ noncomputable def WSubM.trans_under_wfctx
   · intro _ _ _ _ _ _ _ _ _ _
     exact PUnit.unit
 
+/-! ## §6. `WSubMStar` collapse under `WfCtxEqu`
+
+The previous theorem supplies the only missing ingredient for eliminating
+the explicit `WSubMStar.trs` nodes when `WfCtxEqu Γ` is available. This is
+not a headline axiom discharge, because it inherits the same
+subject-reduction residuals as `WSubM.trans_under_wfctx`; it is a checked
+bridge for conditional downstream routes.
+-/
+
+/-- Collapse a transitive well-subtyping chain to a single `WSubM` under
+`WfCtxEqu Γ`.
+
+The `.sub` case unwraps directly. The `.trs` case recursively collapses
+both legs and composes them with `WSubM.trans_under_wfctx`. -/
+noncomputable def WSubMStar.toWSubM_under_wfctx
+    {Γ : Ctx} {a b : Term}
+    (hCtx : WfCtxEqu Γ)
+    (h : WSubMStar Γ a b) :
+    WSubM Γ a b := by
+  refine (WSubMStar.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun _ _ _ _ => PUnit)
+    (motive_3 := fun Γ a b _ => WfCtxEqu Γ → WSubM Γ a b)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h) hCtx
+  · intro _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ hsub _ _ _ _ _
+    exact hsub
+  · intro _ _ _ _ _ _ _ ihLeft _ ihRight hCtx
+    exact WSubM.trans_under_wfctx hCtx (ihLeft hCtx) (ihRight hCtx)
+
+/-- Conditional Lemma 10 inversion under `WfCtxEqu`.
+
+This turns the full `WSubMStar` premise into a single `WSubM` using
+`WSubMStar.toWSubM_under_wfctx`, then reuses the axiom-free single-step
+inversion from `Pss.Mpss.WellFormed`. -/
+noncomputable def Lemma_10_Inversion_under_wfctx
+    {Γ : Ctx} {t t' u u' : Term}
+    (hCtx : WfCtxEqu Γ)
+    (h : WSubMStar Γ (.abs t u) (.abs t' u')) :
+    WEquM Γ t t' :=
+  _Lemma_10_Inversion_sub_partial
+    (WSubMStar.toWSubM_under_wfctx hCtx h) rfl rfl
+
 end Pss
