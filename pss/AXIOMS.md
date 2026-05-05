@@ -20,6 +20,13 @@ closures, 2 inactive outstanding).
   empty-stack equivalence preservation, and the direct application/function
   subtype residuals. Added the endpoint to the De Bruijn audit. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the preserved-head analogue
+  `WfMSubUnderHeadReplaceOfNewWf`,
+  `WfMSubUnderHeadReplaceDirectPayloads`, and
+  `WfMSubUnderHeadReplaceOfNewWf.of_direct_payloads`, exposing
+  `WfM.sub_under_head_replace_from_direct_payloads_of_new_wf` at the
+  TypeSafety layer for the recursive binder-descent case. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
