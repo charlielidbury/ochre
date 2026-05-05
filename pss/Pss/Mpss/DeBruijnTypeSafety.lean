@@ -1188,6 +1188,15 @@ def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
   intro Γ source target operand hSub hOperand
   exact hLift hSub.toMSubStar hOperand
 
+/-- A transitive diagrammatic stack append payload discharges the
+well-subtyping to stacked-diagrammatic bridge by specializing to the appended
+singleton stack. -/
+def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append
+    (hAppend : MSubStarStackAppendPayload) :
+    WSubMStarToStackedMSubStarPayload :=
+  WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
+    (MSubStarStackLiftPayload.of_append hAppend)
+
 /-- Body-transport residuals assemble the generalized equivalence-reduction
 star append payload. -/
 noncomputable def MEqRedStarStackAppendPayload.of_body_transport
@@ -1244,9 +1253,19 @@ noncomputable def WSubMStarToStackedMSubStarPayload.of_body_transports
     (hEqBody : MEqRedSubHeadToEquHeadPayload)
     (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
     WSubMStarToStackedMSubStarPayload :=
-  WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
-    (MSubStarStackLiftPayload.of_append
-      (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody))
+  WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+
+/-- Append-native variant of `of_stacked_msubstar_bridge`: callers can expose
+the generalized stack-append payload directly and let this wrapper perform
+the singleton-stack specialization. -/
+noncomputable def WSubMStarAppOperatorPayload.of_stacked_msubstar_append_bridge
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload) :
+    WSubMStarAppOperatorPayload :=
+  WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
+    (WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append hAppend)
+    hBridge
 
 /-- Application-operator congruence assembled from the reduced stack-lift
 body transports and one-step diagrammatic re-embedding components. -/
@@ -1256,8 +1275,8 @@ noncomputable def WSubMStarAppOperatorPayload.of_body_transports_and_steps
     (hPres : MSubPreservesWfMPayload)
     (hStep : MSubToWSubMStarPayload) :
     WSubMStarAppOperatorPayload :=
-  WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
-    (WSubMStarToStackedMSubStarPayload.of_body_transports hEqBody hSubBody)
+  WSubMStarAppOperatorPayload.of_stacked_msubstar_append_bridge
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
     (MSubStarToWSubMStarPayload.of_steps hPres hStep)
 
 /-- Control-left machine-state transport assembled from the same reduced

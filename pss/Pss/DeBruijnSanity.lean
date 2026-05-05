@@ -180,6 +180,7 @@ namespace DeBruijn
 #print axioms MSubStarStackAppendPayload.of_step
 #print axioms MSubStarStackLiftPayload.of_append
 #print axioms MSubStarStackAppendPayload.of_body_transports
+#print axioms WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append
 #print axioms MSubRedStar.stack_replace_from_step_replacement
 #print axioms MSubRed.stack_head_replace_from_handlers
 #print axioms MEqRed.stack_head_replace_from_handlers
@@ -317,6 +318,7 @@ namespace DeBruijn
 #print axioms MSubStackLiftPayload.of_body_transports
 #print axioms WSubMStarToStackedMSubStarPayload.of_body_transports
 #print axioms WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
+#print axioms WSubMStarAppOperatorPayload.of_stacked_msubstar_append_bridge
 #print axioms WSubMStarAppOperatorPayload.of_body_transports_and_steps
 #print axioms WfMachineStateControlLeftPayload.of_app_operator
 #print axioms WfMachineStateControlLeftPayload.of_body_transports_and_steps

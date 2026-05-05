@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native consumers
+  `WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append` and
+  `WSubMStarAppOperatorPayload.of_stacked_msubstar_append_bridge`, then routed
+  `WSubMStarAppOperatorPayload.of_body_transports_and_steps` through the
+  transitive diagrammatic stack-append payload directly. Added both endpoints
+  to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — lifted the stack-append factoring from
   raw reduction chains to diagrammatic `MSub` / `MSubStar` with
   `MSubStackAppendPayload` and `MSubStarStackAppendPayload`, plus reduction-
