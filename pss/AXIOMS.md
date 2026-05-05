@@ -207,6 +207,10 @@ closures, 2 inactive outstanding).
   seven-head structural frontier with the prevalidity transport and `Me-Top`
   leaf. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.app`, extending the
+  seven-head structural frontier through application reductions. Added an
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
