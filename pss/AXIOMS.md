@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level innermost
+  and under-head `.equ` subtype replacement wrappers
+  `msubRedStar_equ_head_replace_from_body_replacements` and
+  `msubRedStar_equ_under_head_replace_from_body_replacements`. These compose
+  the chain-aware one-step body replacement wrappers over raw subtype
+  reduction chains. Added both endpoints to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added innermost and
   under-head `.equ` subtype replacement wrappers
   `msubRed_equ_head_replace_from_body_replacements` and
