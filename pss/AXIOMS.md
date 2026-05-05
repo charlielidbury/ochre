@@ -32,6 +32,10 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesPrevalidExtUnderHeads`, keeping their public
   signatures unchanged while reducing hand-unrolled preserved-head proof
   code. No headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — routed the existing three-head beta
+  prevalidity API through `BetaInstantiationPreservesPrevalidExtUnderHeads`,
+  matching the one/two-head adapters and deleting another hand-unrolled
+  preserved-head proof body. No headline axiom-count change.
 * `Pss/Syntax/DeBruijn.lean` — added general preserved-head shift
   arithmetic: `Term.shiftBy_tail`, `Term.shiftBy_zero_tail`, and
   `Term.instantiate_shiftBy_zero_tail`. These subsume the fixed
