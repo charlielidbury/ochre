@@ -105,6 +105,12 @@ closures, 2 inactive outstanding).
   scopedness through the five-head target context and rebuilds the transformed
   `MEqRed.tAp` constructor. Added endpoint to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.pro`, the five-head
+  promoted-bound `MEqRed` β-instantiation leaf. This handles all five preserved
+  heads, rejects the discharged `.sub` head, and descends tail variables by one
+  index using the new five-head tail arithmetic. Added endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
