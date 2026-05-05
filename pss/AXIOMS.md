@@ -1317,6 +1317,14 @@ closures, 2 inactive outstanding).
   `prevalidExt`, and head weakening. This is the stack-side payload
   needed for conditional `MEqRed` well-formedness preservation under
   non-empty stacks. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the contextual
+  well-formedness-preservation premise
+  `MEqRedPreservesWfMContextual`, the empty-stack under-context
+  premise `MEqRedPreservesWfMUnderWfCtx`, and
+  `MEqRedPreservesWfMUnderWfCtx.of_contextual`. This records the
+  stronger de Bruijn preservation target using `WfCtxEqu` and
+  `WfStack`, rather than the known-false unrestricted premise. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

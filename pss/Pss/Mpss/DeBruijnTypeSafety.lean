@@ -299,6 +299,23 @@ function-bound shape into a full diagram. -/
 def MEqRedPreservesWfM : Type :=
   ∀ {Γ : Ctx} {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
 
+/-- Contextual well-formedness preservation for one equivalence reduction
+step, with the stronger invariants needed away from the empty stack. -/
+def MEqRedPreservesWfMContextual : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {x y : Term},
+    WfCtxEqu Γ → WfStack Γ s → MEqRed Γ s x y → WfM Γ x → WfM Γ y
+
+/-- Empty-stack preservation under a well-formed-equivalence context. -/
+def MEqRedPreservesWfMUnderWfCtx : Type :=
+  ∀ {Γ : Ctx} {x y : Term}, WfCtxEqu Γ → MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
+
+/-- The contextual preservation payload specializes to the empty stack. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtx.of_contextual
+    (hpres : MEqRedPreservesWfMContextual) :
+    MEqRedPreservesWfMUnderWfCtx := by
+  intro Γ x y hΓ hred hwf
+  exact hpres hΓ WfStack.nil hred.some hwf
+
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
 def AbsFunctionBoundChainDiagramPayload : Type :=
