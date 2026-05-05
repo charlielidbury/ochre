@@ -251,6 +251,13 @@ closures, 2 inactive outstanding).
   eight-head recursive body payload needed by the seven-head binder adapters.
   Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Syntax/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `Term.instantiate_after_seven`, `Term.instantiate_zero_after_seven`, and the
+  seven-head `Me-Fun`/`Me-Bet`/`Me-FOp` adapters from the eight-head recursive
+  body payload, packaged as
+  `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.of_eight_head_adapters`.
+  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the

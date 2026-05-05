@@ -40,6 +40,8 @@ namespace DeBruijn
 #print axioms Term.instantiate_six_shift_zero_tail
 #print axioms Term.instantiate_seven_shift_zero_tail
 #print axioms Term.instantiate_eight_shift_zero_tail
+#print axioms Term.instantiate_after_seven
+#print axioms Term.instantiate_zero_after_seven
 #print axioms Term.shiftBy_tail
 #print axioms Term.shiftBy_zero_tail
 #print axioms Term.instantiate_shiftBy_zero_tail
@@ -307,6 +309,10 @@ namespace DeBruijn
 #print axioms Pss.DeBruijn.BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.tAp
 #print axioms Pss.DeBruijn.BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.pro
 #print axioms Pss.DeBruijn.BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.of_constructors
+#print axioms BetaInstantiationPreservesMEqRedUnderSevenHeadsFunStackPayload.of_eight_heads
+#print axioms BetaInstantiationPreservesMEqRedUnderSevenHeadsBetStackPayload.of_eight_heads
+#print axioms BetaInstantiationPreservesMEqRedUnderSevenHeadsFOpStackPayload.of_eight_heads
+#print axioms Pss.DeBruijn.BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.of_eight_head_adapters
 #print axioms BetaInstantiationPreservesMEqRedUnderSixHeadsFunStackPayload.of_seven_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderSixHeadsBetStackPayload.of_seven_heads
 #print axioms BetaInstantiationPreservesMEqRedUnderSixHeadsFOpStackPayload.of_seven_heads
