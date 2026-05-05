@@ -4248,6 +4248,73 @@ noncomputable def BetaInstantiationPreservesPrevalidExtUnderTwelveHeads
       { bound := head₁₂, kind := kind₁₂ }]) rfl hArgBound hpv
   simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
 
+/-- Prevalidity transport for β-instantiation under thirteen preserved context
+heads. This is the fixed prevalidity leaf surface needed by the twelve-head
+binder-body frontier and the thirteen-head structural leaves. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtUnderThirteenHeads
+    {Γ : Ctx}
+    {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ : CtxEntryKind}
+    {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := head₁₀, kind := kind₁₀ } ::
+        { bound := head₁₁, kind := kind₁₁ } ::
+        { bound := head₁₂, kind := kind₁₂ } ::
+        { bound := head₁₃, kind := kind₁₃ } ::
+        { bound := bound, kind := .sub } :: Γ) s) :
+    PrevalidExt
+      ({ bound := Term.instantiate 12 (Term.shiftBy 0 12 arg) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 11 (Term.shiftBy 0 11 arg) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 10 (Term.shiftBy 0 10 arg) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 9 (Term.shiftBy 0 9 arg) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₅,
+          kind := kind₅ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₆,
+          kind := kind₆ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₇,
+          kind := kind₇ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₈,
+          kind := kind₈ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₉,
+          kind := kind₉ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₁₀,
+          kind := kind₁₀ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₁₁,
+          kind := kind₁₁ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₁₂,
+          kind := kind₁₂ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₁₃,
+          kind := kind₁₃ } :: Γ)
+      (Stack.instantiate 13 (Term.shiftBy 0 13 arg) s) := by
+  have h := BetaInstantiationPreservesPrevalidExtUnderHeads
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ }]) rfl hArgBound hpv
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below eight
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.top
