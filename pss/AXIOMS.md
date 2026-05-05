@@ -8,6 +8,16 @@ the axioms below.
 **Total axiom count: 12** (1 permanent, 9 active outstanding in headline
 closures, 2 inactive outstanding).
 
+**Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added direct shape/WfCtx factored
+  contextual preservation wrappers
+  `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_head_transports`
+  and
+  `.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports`.
+  These keep the narrow shape/WfCtx assembly path available with the two
+  directional `Me-FOp` head/body transport payloads, without requiring the
+  stronger uniform head-kind transport adapter. No axiom-count change.
+
 **Session 2026-05-04 (db-refactor Phase 1 started):**
 * `Pss/Syntax/DeBruijn.lean` — new standalone raw de Bruijn syntax core
   on branch `db-refactor`: `Pss.DeBruijn.Term` with constructors

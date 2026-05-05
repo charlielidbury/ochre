@@ -1729,6 +1729,41 @@ noncomputable def
     hOpFun hReplace hFOpBody
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, stacked left-endpoint
+transport, and the two directional `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_factored_components_no_beta
+    hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    hLeft hFunBody hSubToEqu hEquToSub
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, stacked left-endpoint
+transport, the sharpened `.sub` head replacement payload for `Me-Fun`, and
+the two directional `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta_and_sub_replace_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_sub_replace
+    hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    hLeft hReplace hSubToEqu hEquToSub
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, and the factored residual
 payloads for stacked left-endpoint transport and head-kind body transport. -/
 noncomputable def MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta
