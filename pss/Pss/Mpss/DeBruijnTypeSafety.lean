@@ -1823,6 +1823,114 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.var
   BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.refl hArgBound hpv
     (Term.Scoped.bvar hi)
 
+/-- `MEqRed.tAp` is stable under de Bruijn β-instantiation below five
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.tAp
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ u : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hu :
+      Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed
+      ({ bound := Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 2
+            (Term.shift 0 (Term.shift 0 arg)) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 0 arg head₅, kind := kind₅ } :: Γ)
+      (Stack.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) s)
+      (Term.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+        (.app .top u))
+      (Term.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+        .top) := by
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hArgShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg))
+        (Nat.zero_le (Γ.depth + 2)) hArgShiftShiftScoped
+  have hArgShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+        (Nat.zero_le (Γ.depth + 3)) hArgShiftShiftShiftScoped
+  have hArgShiftShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 5)
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+        (Nat.zero_le (Γ.depth + 4)) hArgShiftShiftShiftShiftScoped
+  have hu' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 4
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+              kind := kind₄ } ::
+            { bound := Term.instantiate 0 arg head₅,
+              kind := kind₅ } :: Γ))
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) u) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 5)
+          (Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) u) :=
+      Term.instantiate_scoped 5 (Γ.depth + 5)
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) u
+        (by omega) hArgShiftShiftShiftShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  simpa [Term.instantiate] using
+    MEqRed.tAp
+      (BetaInstantiationPreservesPrevalidExtUnderFiveHeads hArgBound hpv) hu'
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below four preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsStack.refl
