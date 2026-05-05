@@ -556,6 +556,14 @@ def MSubRedStackAppendPayload : Type :=
       Term.Scoped Γ.depth operand →
         MSubRed Γ (s ++ [operand]) source target
 
+/-- Star-level subtype-reduction stack extension by one operand at the outer
+end of an arbitrary operand stack. -/
+def MSubRedStarStackAppendPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {source target operand : Term},
+    MSubRedStar Γ s source target →
+      Term.Scoped Γ.depth operand →
+        MSubRedStar Γ (s ++ [operand]) source target
+
 /-- The only empty-stack-only subtype-reduction constructor case left by the
 general stack-append induction. -/
 def MSubRedFunStackAppendPayload : Type :=
@@ -600,6 +608,14 @@ def MEqRedStackAppendPayload : Type :=
     MEqRed Γ s source target →
       Term.Scoped Γ.depth operand →
         MEqRed Γ (s ++ [operand]) source target
+
+/-- Star-level equivalence-reduction stack extension by one operand at the
+outer end of an arbitrary operand stack. -/
+def MEqRedStarStackAppendPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {source target operand : Term},
+    MEqRedStar Γ s source target →
+      Term.Scoped Γ.depth operand →
+        MEqRedStar Γ (s ++ [operand]) source target
 
 /-- The only empty-stack-only equivalence-reduction constructor case left by
 the general stack-append induction. -/
@@ -1027,6 +1043,48 @@ noncomputable def MSubRedStackAppendPayload.of_fun
         (by
           simpa [Stack.shift_append_single] using ihBody hOperand')
 
+/-- One-step subtype-reduction stack append iterates to subtype-reduction
+chains. -/
+def MSubRedStarStackAppendPayload.of_step
+    (hStep : MSubRedStackAppendPayload) :
+    MSubRedStarStackAppendPayload := by
+  intro Γ s source target operand hStar hOperand
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hPrefix hHead ih =>
+      exact Relation.ReflTransGen.trans ih
+        (Relation.ReflTransGen.single ⟨hStep hHead.some hOperand⟩)
+
+/-- One-step equivalence-reduction stack append iterates to equivalence-
+reduction chains. -/
+def MEqRedStarStackAppendPayload.of_step
+    (hStep : MEqRedStackAppendPayload) :
+    MEqRedStarStackAppendPayload := by
+  intro Γ s source target operand hStar hOperand
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hPrefix hHead ih =>
+      exact Relation.ReflTransGen.trans ih
+        (Relation.ReflTransGen.single ⟨hStep hHead.some hOperand⟩)
+
+/-- The generalized subtype-reduction star append payload specializes to the
+empty-stack head lift used by the current assembly. -/
+def MSubRedStarStackLiftPayload.of_append
+    (hAppend : MSubRedStarStackAppendPayload) :
+    MSubRedStarStackLiftPayload := by
+  intro Γ source target operand hStar hOperand
+  simpa using (hAppend (Γ := Γ) (s := ([] : Stack)) hStar hOperand)
+
+/-- The generalized equivalence-reduction star append payload specializes to
+the empty-stack head lift used by the current assembly. -/
+def MEqRedStarStackLiftPayload.of_append
+    (hAppend : MEqRedStarStackAppendPayload) :
+    MEqRedStarStackLiftPayload := by
+  intro Γ source target operand hStar hOperand
+  simpa using (hAppend (Γ := Γ) (s := ([] : Stack)) hStar hOperand)
+
 /-- One-step subtype-reduction stack lift iterates to subtype-reduction
 chains. -/
 def MSubRedStarStackLiftPayload.of_step
@@ -1074,6 +1132,27 @@ def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
   intro Γ source target operand hSub hOperand
   exact hLift hSub.toMSubStar hOperand
 
+/-- Body-transport residuals assemble the generalized equivalence-reduction
+star append payload. -/
+noncomputable def MEqRedStarStackAppendPayload.of_body_transport
+    (hEqBody : MEqRedSubHeadToEquHeadPayload) :
+    MEqRedStarStackAppendPayload :=
+  MEqRedStarStackAppendPayload.of_step
+    (MEqRedStackAppendPayload.of_fun
+      (MEqRedFunStackAppendPayload.of_body_transport hEqBody))
+
+/-- Body-transport residuals assemble the generalized subtype-reduction star
+append payload. -/
+noncomputable def MSubRedStarStackAppendPayload.of_body_transports
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
+    MSubRedStarStackAppendPayload :=
+  MSubRedStarStackAppendPayload.of_step
+    (MSubRedStackAppendPayload.of_fun
+      (MEqRedStackAppendPayload.of_fun
+        (MEqRedFunStackAppendPayload.of_body_transport hEqBody))
+      (MSubRedFunStackAppendPayload.of_body_equ_transport hSubBody))
+
 /-- Body-transport residuals for the two empty-stack function constructors
 discharge one-step diagrammatic stack lifting. This wires the full stack-lift
 decomposition into the smaller residuals exposed above. -/
@@ -1082,16 +1161,10 @@ noncomputable def MSubStackLiftPayload.of_body_transports
     (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload) :
     MSubStackLiftPayload :=
   MSubStackLiftPayload.of_reduction_lifts
-    (MSubRedStarStackLiftPayload.of_step
-      (MSubRedStackLiftPayload.of_append
-        (MSubRedStackAppendPayload.of_fun
-          (MEqRedStackAppendPayload.of_fun
-            (MEqRedFunStackAppendPayload.of_body_transport hEqBody))
-          (MSubRedFunStackAppendPayload.of_body_equ_transport hSubBody))))
-    (MEqRedStarStackLiftPayload.of_step
-      (MEqRedStackLiftPayload.of_append
-        (MEqRedStackAppendPayload.of_fun
-          (MEqRedFunStackAppendPayload.of_body_transport hEqBody))))
+    (MSubRedStarStackLiftPayload.of_append
+      (MSubRedStarStackAppendPayload.of_body_transports hEqBody hSubBody))
+    (MEqRedStarStackLiftPayload.of_append
+      (MEqRedStarStackAppendPayload.of_body_transport hEqBody))
 
 /-- The well-subtyping-to-stacked-diagrammatic bridge can now be assembled
 directly from the two body-transport residuals for stack-lifted reductions. -/

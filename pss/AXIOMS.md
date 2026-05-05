@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-level stack-append payloads
+  `MEqRedStarStackAppendPayload` and `MSubRedStarStackAppendPayload`, plus
+  one-step iterators, empty-stack specializations
+  `MEqRedStarStackLiftPayload.of_append` /
+  `MSubRedStarStackLiftPayload.of_append`, and body-transport constructors.
+  `MSubStackLiftPayload.of_body_transports` now factors through these
+  star-append payloads instead of rebuilding the empty-stack specialization
+  inline. Added the new endpoints to the De Bruijn audit. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRed_equ_head_stack_lift_from_replacements`,
   `msubRedStar_equ_head_stack_lift_from_replacements`, and
