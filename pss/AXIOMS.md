@@ -51,6 +51,13 @@ closures, 2 inactive outstanding).
   target abstraction from this typed residual plus empty-stack preservation
   for the bound reduction. This is the first constructive interface after
   the broad contextual target was refuted. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedAppFunctionSupertypePayload.not_of_no_top`, showing the native
+  `Me-App` operator residual is also too broad with only `WfStack`. The same
+  applied-abstraction witness is initially a subtype of `λ bound. Top`, but
+  `Me-FOp` with operand `Top` reduces its body to `Top Top`; preserving the
+  operator supertype would imply the reduced abstraction is well formed and
+  hence again force `Top ≤*` a function. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces

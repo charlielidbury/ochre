@@ -371,6 +371,89 @@ def MEqRedAppFunctionSupertypePayload.of_left_transport
   intro Γ s u u' v bound hΓ hStack hwfV hFun hred
   exact hLeft hΓ (WfStack.cons hwfV hStack) hFun hred
 
+/-- The native `Me-App` operator payload is too broad with only `WfStack`.
+The operator can be a well-formed abstraction whose body uses its bound
+variable as a function; `Me-FOp` with stack operand `Top` then reduces the
+body to `Top Top`, so the target abstraction cannot remain a well-subtype of
+a function type. -/
+noncomputable def MEqRedAppFunctionSupertypePayload.not_of_no_top
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedAppFunctionSupertypePayload → False := by
+  intro hOpFun
+  let bound : Term := .abs .top .top
+  let body : Term := .app (.bvar 0) .top
+  let body' : Term := .app .top .top
+  have hpvEmpty : Prevalid [] := Prevalid.empty
+  have hwfTopEmpty : WfM [] .top := WfM.top hpvEmpty
+  have hwfBound : WfM [] bound := by
+    dsimp [bound]
+    exact WfM.fun_ (WfM.top Prevalid.empty)
+      (WfM.top (Prevalid.sub Prevalid.empty Term.Scoped.top))
+  let ΓSub : Ctx := [{ bound := bound, kind := .sub }]
+  have hpvSub : Prevalid ΓSub :=
+    Prevalid.sub hpvEmpty hwfBound.scoped
+  have hwfVarSub : WfM ΓSub (.bvar 0) := by
+    exact @WfM.varSub ΓSub 0 bound hpvSub
+      (by simp [ΓSub, Ctx.subBinds, bound])
+  have hwfBoundSub : WfM ΓSub bound := by
+    simpa [ΓSub, bound, Term.shift] using
+      hwfBound.weaken_head hpvSub hpvEmpty
+  have hProSub : MSubRed ΓSub [] (.bvar 0) bound := by
+    simpa [ΓSub, bound, Term.shift] using
+      (MSubRed.pro (PrevalidExt.nil hpvSub)
+        (by simp [ΓSub, Ctx.subBinds, bound]))
+  have hFunVarSub : WSubMStar ΓSub (.bvar 0) bound :=
+    WSubMStar.sub hwfVarSub
+      (WSubM.lf2 hwfVarSub hProSub hwfBoundSub (WSubM.rfl hwfBoundSub))
+      hwfBoundSub
+  have hArgSub : WSubMStar ΓSub .top .top :=
+    WSubMStar.refl_of_wfM (WfM.top hpvSub)
+  have hwfBodySub : WfM ΓSub body := by
+    dsimp [body, bound]
+    exact WfM.app hFunVarSub hArgSub
+  have hwfAbs : WfM [] (.abs bound body) :=
+    WfM.fun_ hwfBound hwfBodySub
+  have hwfAbsTop : WfM [] (.abs bound .top) :=
+    WfM.fun_ hwfBound (WfM.top hpvSub)
+  have hBoundRed : MEqRed [] [] bound bound :=
+    MEqRed.refl (PrevalidExt.nil hpvEmpty) hwfBound.scoped
+  have hBodyTop : MSubRed ΓSub [] body .top := by
+    exact MSubRed.top (PrevalidExt.nil hpvSub) hwfBodySub.scoped
+  have hAbsSubTop : MSubRed [] [] (.abs bound body) (.abs bound .top) := by
+    exact MSubRed.fun_ hwfBound.scoped hBoundRed hBodyTop
+  have hAbsFun : WSubMStar [] (.abs bound body) (.abs bound .top) :=
+    WSubMStar.sub hwfAbs
+      (WSubM.lf2 hwfAbs hAbsSubTop hwfAbsTop (WSubM.rfl hwfAbsTop))
+      hwfAbsTop
+  let ΓEqu : Ctx := [{ bound := .top, kind := .equ }]
+  have hpvEqu : Prevalid ΓEqu :=
+    Prevalid.equ Prevalid.empty Term.Scoped.top
+  have hpvEquNil : PrevalidExt ΓEqu [] := PrevalidExt.nil hpvEqu
+  have hpvEquTopStack : PrevalidExt ΓEqu [.top] :=
+    PrevalidExt.cons hpvEquNil Term.Scoped.top
+  have hTopRedTopStack : MEqRed ΓEqu [.top] .top .top :=
+    MEqRed.top hpvEquTopStack
+  have hBvarRedTopStack : MEqRed ΓEqu [.top] (.bvar 0) .top := by
+    simpa [ΓEqu, Term.shift] using
+      (MEqRed.pro hpvEquTopStack
+        (by simp [ΓEqu, Ctx.equBinds])
+        hTopRedTopStack)
+  have hTopRedTopNil : MEqRed ΓEqu [] .top .top :=
+    MEqRed.top hpvEquNil
+  have hBodyRed : MEqRed ΓEqu [] body body' := by
+    dsimp [body, body']
+    exact MEqRed.app hBvarRedTopStack hTopRedTopNil
+  have hAbsRed :
+      MEqRed [] [.top] (.abs bound body) (.abs bound body') := by
+    exact MEqRed.fOp hBoundRed Term.Scoped.top hBodyRed
+  have hAbsFun' : WSubMStar [] (.abs bound body') (.abs bound .top) :=
+    hOpFun WfCtxEqu.empty WfStack.nil hwfTopEmpty hAbsFun hAbsRed
+  have hwfAbs' : WfM [] (.abs bound body') := hAbsFun'.wf_left
+  have hwfBody'Sub : WfM ΓSub body' := by
+    simpa [ΓSub, bound] using hwfAbs'.fun_inv.2
+  obtain ⟨funBound, hTopFun, _hArg⟩ := hwfBody'Sub.app_inv
+  exact hNoTop hTopFun
+
 /-- Remaining context-replacement payload for the contextual `Me-Fun`
 well-formedness case. After the body reduction is preserved under the old
 `.sub` head, the body witness must be transported to the changed bound. -/
