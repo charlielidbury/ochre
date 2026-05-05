@@ -10,6 +10,18 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpBodyTypedPayload.of_untyped`,
+  `MEqRedFOpBodyTypedPayload.of_head_transports`,
+  `MEqRedFOpBodyTypedPayload.of_head_kind_transport`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_operator_machine_tail`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_machine_operator_machine_tail`,
+  allowing the strongest direct split-beta machine route to consume the
+  native `Me-FOp` body residual by deriving the typed body premise from the
+  operand-to-bound fact available in the `Me-FOp` branch. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons`,
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_operator_machine_tail`,
   and

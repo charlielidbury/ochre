@@ -2015,6 +2015,29 @@ noncomputable def MEqRedFOpBodyPayload.of_head_transports
     hpres hΓEqu hStackEqu hredBody hwfBodyEqu
   exact hEquToSub hΓ hwfOperand hwfBound' hwfBody'Equ
 
+/-- The broad/native `Me-FOp` body residual implies the typed version by
+recovering operand well-formedness from the source application's
+operand-to-bound premise. -/
+noncomputable def MEqRedFOpBodyTypedPayload.of_untyped
+    (hBody : MEqRedFOpBodyPayload) :
+    MEqRedFOpBodyTypedPayload := by
+  intro Γ s bound bound' operand body body' hΓ hStack hwfBound hwfBound'
+    hOperandBound hwfBody hredBound hredBody
+  exact hBody hΓ hStack hwfBound hwfBound' hOperandBound.wf_left hwfBody
+    hredBound hredBody
+
+/-- The typed `Me-FOp` body residual follows from the same directional
+head/body transports as the native residual; the typed operand premise
+supplies the operand well-formedness needed to enter the stack-introduced
+`.equ` context. -/
+noncomputable def MEqRedFOpBodyTypedPayload.of_head_transports
+    (hpres : MEqRedPreservesWfMContextual)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedFOpBodyTypedPayload :=
+  MEqRedFOpBodyTypedPayload.of_untyped
+    (MEqRedFOpBodyPayload.of_head_transports hpres hSubToEqu hEquToSub)
+
 /-- Direct `Me-FOp` body residual from contextual preservation and one
 uniform head-kind/body transport payload. This is only a diagnostic
 convenience wrapper: `WfMHeadKindTransportPayload.not_of_no_top` shows the
@@ -2024,6 +2047,17 @@ noncomputable def MEqRedFOpBodyPayload.of_head_kind_transport
     (hTransport : WfMHeadKindTransportPayload) :
     MEqRedFOpBodyPayload :=
   MEqRedFOpBodyPayload.of_head_transports hpres
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hTransport)
+
+/-- Typed direct `Me-FOp` body residual from contextual preservation and one
+uniform head-kind/body transport payload. This is also diagnostic, for the
+same reason as `MEqRedFOpBodyPayload.of_head_kind_transport`. -/
+noncomputable def MEqRedFOpBodyTypedPayload.of_head_kind_transport
+    (hpres : MEqRedPreservesWfMContextual)
+    (hTransport : WfMHeadKindTransportPayload) :
+    MEqRedFOpBodyTypedPayload :=
+  MEqRedFOpBodyTypedPayload.of_head_transports hpres
     (WfMSubHeadToEquHeadPayload.of_head_kind_transport hTransport)
     (WfMEquHeadToSubHeadPayload.of_head_kind_transport hTransport)
 
@@ -3426,6 +3460,72 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (hNoTop : NoTopFunctionSupertypesAt) :
     MEqRedPreservesWfMachineState :=
   MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Native-`FOp`-body variant of the direct no-external-empty split-beta
+assembly. The native body residual is converted to the typed one using the
+operand-to-bound premise available in the `Me-FOp` branch. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody
+    (MEqRedFOpBodyTypedPayload.of_untyped hFOpBody) hTargetApp hTailCons
+    hFunBody hNoTop
+
+/-- Typed-operator entry point for the native-`FOp`-body direct split-beta
+machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
+    hSubst hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Machine-state-aware operator entry point for the native-`FOp`-body direct
+split-beta machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_machine_operator_machine_tail
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
     hSubst hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
     (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
     (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
