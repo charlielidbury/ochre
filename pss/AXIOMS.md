@@ -10,6 +10,15 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpTailTransportExactPayload`,
+  `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_exact_tail`,
+  `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_exact_tail_and_empty`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_exact_tail`,
+  refining the `Me-FOp` tail transport residual so the original bound/body
+  reduction evidence remains available to the tail-stack proof. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedFOpTailTransportPayload`,
   `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body`,
   `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_and_empty`, and
