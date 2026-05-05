@@ -135,6 +135,11 @@ closures, 2 inactive outstanding).
   This closes the five-head `Me-FOp` binder frontier from the six-head payload
   and the same five-head scoped substitution transport pattern. Added an
   endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.of_six_head_adapters`,
+  packaging the checked five-head constructor leaves/frontiers into the full
+  five-head stack payload, conditional on the six-head body payload. Added an
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the

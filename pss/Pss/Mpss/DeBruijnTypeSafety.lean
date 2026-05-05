@@ -3182,6 +3182,20 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsFOpStackPayload.
   simpa [Term.instantiate, Stack.instantiate] using
     MEqRed.fOp hBound' hα' hBody'
 
+/-- Five-head equivalence substitution with the binder frontiers generated
+from a five-head equivalence payload and the generic six-head body payload. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.of_six_head_adapters
+    (hFive : BetaInstantiationPreservesMEqRedUnderFiveHeadsStack)
+    (hSix : BetaInstantiationPreservesMEqRedUnderSixHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderFiveHeadsStack :=
+  BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.of_constructors
+    (BetaInstantiationPreservesMEqRedUnderFiveHeadsFunStackPayload.of_six_heads
+      hFive hSix)
+    (BetaInstantiationPreservesMEqRedUnderFiveHeadsBetStackPayload.of_six_heads
+      hFive hSix)
+    (BetaInstantiationPreservesMEqRedUnderFiveHeadsFOpStackPayload.of_six_heads
+      hFive hSix)
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below four preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsStack.refl
