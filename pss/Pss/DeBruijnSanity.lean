@@ -443,6 +443,8 @@ namespace DeBruijn
 #print axioms WfMSubUnderHeadReplaceOfNewWf.of_direct_payloads
 #print axioms WfMSubHeadReplaceDirectPayloads.of_immediate_and_under
 #print axioms WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+#print axioms MEqRedFunBodyReplacePayload.of_direct_sub_payloads
+#print axioms MEqRedFunBodyReplacePayload.of_immediate_sub_payloads_and_under
 #print axioms StepBetaPreservesWfM_of
 #print axioms StepBetaPreservesWfM_of_diagram
 #print axioms StepBetaPreservesWfM_of_chain_diagram

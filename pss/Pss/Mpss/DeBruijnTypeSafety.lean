@@ -6487,6 +6487,30 @@ def MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf
   intro Γ bound bound' body' _hΓ _hwfBound hwfBound' hred hwfBody'
   exact hReplace hred hwfBound' hwfBody'
 
+/-- Body-replacement payload from the direct top-level `.sub` replacement
+residual package. -/
+noncomputable def MEqRedFunBodyReplacePayload.of_direct_sub_payloads
+    (hPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new) :
+    MEqRedFunBodyReplacePayload :=
+  MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hPayloads)
+
+/-- Body-replacement payload from immediate top-level `.sub` replacement
+residuals plus the named preserved-head replacement payload. -/
+noncomputable def MEqRedFunBodyReplacePayload.of_immediate_sub_payloads_and_under
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    MEqRedFunBodyReplacePayload :=
+  MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hPayloads)
+
 /-- Sub-replacement entry point for the typed-`FOp` direct split-beta
 machine assembly. -/
 noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace

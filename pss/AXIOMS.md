@@ -70,6 +70,12 @@ closures, 2 inactive outstanding).
   open/closed chain-diagram components, and open/closed chain-shape
   components. Added all twelve endpoints to the De Bruijn audit. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed
+  `MEqRedFunBodyReplacePayload.of_direct_sub_payloads` and
+  `.of_immediate_sub_payloads_and_under`, letting direct/factored `.sub`
+  replacement residual packages feed the shared machine-state body
+  replacement payload boundary. Added both endpoints to the De Bruijn
+  audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
