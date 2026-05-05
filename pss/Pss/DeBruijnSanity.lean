@@ -26,6 +26,7 @@ namespace DeBruijn
 #print axioms Term.instantiate_two_shift_zero
 #print axioms Term.instantiate_three_shift_zero
 #print axioms Term.instantiate_four_shift_zero
+#print axioms Term.instantiate_five_shift_zero
 #print axioms Term.instantiate_two_shift_zero_tail
 #print axioms Term.instantiate_three_shift_zero_tail
 #print axioms Term.instantiate_four_shift_zero_tail
@@ -40,6 +41,8 @@ namespace DeBruijn
 #print axioms Term.instantiate_zero_after_two
 #print axioms Term.instantiate_after_three
 #print axioms Term.instantiate_zero_after_three
+#print axioms Term.instantiate_after_four
+#print axioms Term.instantiate_zero_after_four
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace
 #print axioms Ctx.subBinds_equ_under_two_heads_replace

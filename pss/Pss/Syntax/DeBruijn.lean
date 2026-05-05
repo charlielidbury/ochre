@@ -407,6 +407,16 @@ theorem instantiate_four_shift_zero (v t : Term) :
   have h := (shiftBy_instantiate 0 4 0 v t (Nat.zero_le 0)).symm
   simpa [shift, shiftBy_compose, Nat.add_assoc] using h
 
+/-- Instantiation at index `5` through five preserved top-level bindings
+commutes with instantiating at index `0` before adding those bindings. -/
+theorem instantiate_five_shift_zero (v t : Term) :
+    instantiate 5
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 v)))))
+        (shift 0 (shift 0 (shift 0 (shift 0 (shift 0 t))))) =
+      shift 0 (shift 0 (shift 0 (shift 0 (shift 0 (instantiate 0 v t))))) := by
+  have h := (shiftBy_instantiate 0 5 0 v t (Nat.zero_le 0)).symm
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
 /-- Instantiating index `2` through a term shifted under three top-level
 bindings cancels the shift at the instantiated slot and preserves the two
 outer bindings. -/
@@ -785,6 +795,104 @@ theorem instantiate_zero_after_three (a v t : Term) :
     instantiate 0 (instantiate 3 a v) (instantiate 4 (shift 0 a) t) =
       instantiate 3 a (instantiate 0 v t) :=
   instantiate_after_three 0 a v t
+
+/-- Substituting index `k` after substituting through five preserved slots is
+equivalent to first substituting index `k`, then substituting the surviving
+slot at `k + 4`. This is the four-preserved-head β-target composition law. -/
+theorem instantiate_after_four (k : Nat) (a v t : Term) :
+    instantiate k (instantiate (k + 4) a v)
+        (instantiate (k + 5) (shift k a) t) =
+      instantiate (k + 4) a (instantiate k v t) := by
+  induction t generalizing k a v with
+  | bvar i =>
+      by_cases hlt : i < k
+      · have hlt_five : i < k + 5 := by omega
+        have hlt_four : i < k + 4 := by omega
+        simp [instantiate, hlt, hlt_five, hlt_four]
+      · by_cases heq : i = k
+        · subst i
+          have hnot_five : ¬ k < k := by omega
+          have hlt_five : k < k + 5 := by omega
+          simp [instantiate, hnot_five, hlt_five]
+        · have hgt : k < i := by omega
+          by_cases heq_one : i = k + 1
+          · subst i
+            have hlt_five : k + 1 < k + 5 := by omega
+            have hnot : ¬ k + 1 < k := by omega
+            have hpred : k + 1 - 1 = k := by omega
+            simp [instantiate, hlt, hnot, hlt_five, hpred]
+          · by_cases heq_two : i = k + 2
+            · subst i
+              have hlt_five : k + 2 < k + 5 := by omega
+              have hnot : ¬ k + 2 < k := by omega
+              have hpred : k + 2 - 1 = k + 1 := by omega
+              have hlt_four : k + 1 < k + 4 := by omega
+              simp [instantiate, hlt, hnot, hlt_five, hpred, hlt_four]
+            · by_cases heq_three : i = k + 3
+              · subst i
+                have hlt_five : k + 3 < k + 5 := by omega
+                have hnot : ¬ k + 3 < k := by omega
+                have hpred : k + 3 - 1 = k + 2 := by omega
+                have hlt_four : k + 2 < k + 4 := by omega
+                simp [instantiate, hlt, hnot, hlt_five, hpred, hlt_four]
+              · by_cases heq_four : i = k + 4
+                · subst i
+                  have hlt_five : k + 4 < k + 5 := by omega
+                  have hnot : ¬ k + 4 < k := by omega
+                  have hpred : k + 4 - 1 = k + 3 := by omega
+                  have hlt_four : k + 3 < k + 4 := by omega
+                  simp [instantiate, hlt, hnot, hlt_five, hpred, hlt_four]
+                · by_cases heq_five : i = k + 5
+                  · subst i
+                    have hnlt_lhs₁ : ¬ k + 5 < k + 5 := by omega
+                    have hnlt_lhs₂ : ¬ k < k := by omega
+                    have hnot_rhs₁ : ¬ k + 5 < k := by omega
+                    have hne_rhs₁ : k + 5 ≠ k := by omega
+                    have hpred_rhs₁ : k + 5 - 1 = k + 4 := by omega
+                    have hnlt_rhs₂ : ¬ k + 4 < k + 4 := by omega
+                    have hshift_id :
+                        instantiate k (instantiate (k + 4) a v) (shift k a) = a := by
+                      exact instantiate_shift_id k (instantiate (k + 4) a v) a
+                    simp [instantiate, hnlt_lhs₁, hnlt_lhs₂, hnot_rhs₁,
+                      hne_rhs₁, hpred_rhs₁, hnlt_rhs₂, hshift_id]
+                  · have hgt_five : k + 5 < i := by omega
+                    have hnlt_lhs₁ : ¬ i < k + 5 := by omega
+                    have hne_lhs₁ : i ≠ k + 5 := by omega
+                    have hnlt_lhs₂ : ¬ i - 1 < k := by omega
+                    have hne_lhs₂ : i - 1 ≠ k := by omega
+                    have hpred_lhs : i - 1 - 1 = i - 2 := by omega
+                    have hnlt_rhs₁ : ¬ i < k := by omega
+                    have hne_rhs₁ : i ≠ k := by omega
+                    have hnlt_rhs₂ : ¬ i - 1 < k + 4 := by omega
+                    have hne_rhs₂ : i - 1 ≠ k + 4 := by omega
+                    have hpred_rhs₂ : i - 1 - 1 = i - 2 := by omega
+                    simp [instantiate, hnlt_lhs₁, hne_lhs₁, hnlt_lhs₂,
+                      hne_lhs₂, hpred_lhs, hnlt_rhs₁, hne_rhs₁,
+                      hnlt_rhs₂, hne_rhs₂, hpred_rhs₂]
+  | top =>
+      rfl
+  | abs bound body ih_bound ih_body =>
+      simp only [instantiate_abs]
+      apply congrArg₂ Term.abs
+      · exact ih_bound k a v
+      · have hbody := ih_body (k + 1) (shift 0 a) (shift 0 v)
+        have hshift :
+            shift (k + 1) (shift 0 a) = shift 0 (shift k a) := by
+          exact shift_shift_zero k a
+        have hvShift :
+            instantiate (k + 5) (shift 0 a) (shift 0 v) =
+              shift 0 (instantiate (k + 4) a v) := by
+          exact (shiftBy_instantiate 0 1 (k + 4) a v (Nat.zero_le _)).symm
+        simpa [Nat.add_assoc, hshift, hvShift] using hbody
+  | app fn arg ih_fn ih_arg =>
+      simp only [instantiate_app]
+      exact congrArg₂ Term.app (ih_fn k a v) (ih_arg k a v)
+
+/-- Zero-cutoff specialization of `Term.instantiate_after_four`. -/
+theorem instantiate_zero_after_four (a v t : Term) :
+    instantiate 0 (instantiate 4 a v) (instantiate 5 (shift 0 a) t) =
+      instantiate 4 a (instantiate 0 v t) :=
+  instantiate_after_four 0 a v t
 
 /-! ## Scoping -/
 

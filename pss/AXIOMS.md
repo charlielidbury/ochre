@@ -56,6 +56,13 @@ closures, 2 inactive outstanding).
   single constructor dispatcher, leaving only the recursive binder frontiers
   explicit for the next five-head adapter layer. Added endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` — added
+  `Term.instantiate_five_shift_zero`, `Term.instantiate_after_four`, and
+  `Term.instantiate_zero_after_four`. These are the concrete arithmetic
+  endpoints needed by the next four-head binder adapters: five-head
+  binder-body transport and the four-preserved-head β-target composition
+  law. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
