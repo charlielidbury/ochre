@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_appAbs_structApp_eqStep_of_body_fOp_star_replacements_from_left`
+  and
+  `commute_appAbs_structApp_eqStep_of_body_fOp_msub_replacements_from_left`,
+  star-level and diagrammatic structural app-abs wrappers that recover
+  tail-stack prevalidity from the operator subtype step. Added both endpoints
+  to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_appAbs_structApp_eqStep_or_fOp_residual_from_left`,
   `commute_appAbs_structApp_eqStep_of_fOp_handlers_from_left`, and
   `commute_appAbs_structApp_eqStep_of_body_fOp_replacements_from_left`,
