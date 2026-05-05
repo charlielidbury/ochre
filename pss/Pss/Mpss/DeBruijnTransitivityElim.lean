@@ -12092,6 +12092,119 @@ theorem meq_equ_under_three_heads_pro_tail_handler_of_replacement {Γ : Ctx}
           (by simpa [Ctx.depth] using hα.scoped_left))))
     (hReplace hα)
 
+/-- One-step equivalence replacement under three preserved heads with all
+`Me-Pro` cases wired. The preserved-head indices `0`, `1`, and `2`,
+changed-entry residual index `3`, and true tail indices `4+` are discharged
+by canonical handlers; constructor recursive replacements remain explicit. -/
+theorem meqRed_equ_under_three_heads_replace_with_pro_from_replacements {Γ : Ctx}
+    {s : Stack} {head₁ head₂ head₃ : CtxEntry} {old new u v : Term}
+    (hpvOld :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s)
+    (hpvNew :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOldNewStack :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 old))))
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 new)))))
+    (hSelfReplace :
+      ∀ {u v : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+          s u v →
+        MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ)
+          s u v)
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+          (arg :: s) op op' →
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ)
+          (arg :: s) op op')
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+          [] arg arg' →
+        MEqRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ)
+          [] arg arg')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ :: head₃ ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ :: head₃ ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hBetBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ :: head₃ ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
+        MEqRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ :: head₃ ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 s) body body')
+    (hFOpBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ))
+          arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } :: head₁ :: head₂ :: head₃ ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } :: head₁ :: head₂ :: head₃ ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (h :
+      MEqRed (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        s u v) :
+    MSubStar (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      u v :=
+  meqRed_equ_under_three_heads_replace_from_handlers hpvOld hnew
+    (by
+      intro i α α' hb hα
+      cases i with
+      | zero =>
+          exact meq_equ_under_three_heads_pro_zero_handler_of_replacement hpvOld hnew
+            (fun h => hSelfReplace h) hb hα
+      | succ i =>
+          cases i with
+          | zero =>
+              exact meq_equ_under_three_heads_pro_one_handler_of_replacement hpvOld
+                hnew (fun h => hSelfReplace h) hb hα
+          | succ i =>
+              cases i with
+              | zero =>
+                  exact meq_equ_under_three_heads_pro_two_handler_of_replacement hpvOld
+                    hnew (fun h => hSelfReplace h) hb hα
+              | succ i =>
+                  cases i with
+                  | zero =>
+                      exact meq_equ_under_three_heads_pro_three_handler_of_replacement
+                        hpvNew hnew hOldNewStack (fun h => hSelfReplace h) hb hα
+                  | succ i =>
+                      exact meq_equ_under_three_heads_pro_tail_handler_of_replacement
+                        hpvOld hnew (fun h => hSelfReplace h) hb hα)
+    (by
+      intro op op' arg arg' hOp hArg
+      exact MSubStar.of_MEqRed (PrevalidExt.equ_under_three_heads_replace hpvOld hnew)
+        (MEqRed.app (hAppOpReplace hOp) (hNilReplace hArg)))
+    (by
+      intro bound bound' body body' hBound hBody
+      exact MSubStar.of_MEqRed
+        (PrevalidExt.equ_under_three_heads_replace
+          (PrevalidExt.nil (PrevalidExt.ctx hpvOld)) hnew)
+        (MEqRed.fun_ (hNilReplace hBound) (hFunBodyReplace hBody)))
+    (by
+      intro bound arg arg' body body' hBoundScoped hBody hArg
+      exact MSubStar.of_MEqRed (PrevalidExt.equ_under_three_heads_replace hpvOld hnew)
+        (MEqRed.bet (by simpa [Ctx.depth] using hBoundScoped)
+          (hBetBodyReplace hBody) (hNilReplace hArg)))
+    (by
+      intro bound bound' arg body body' rest hBound hArgScoped hStack hBody
+      subst hStack
+      have hpvNewTail :
+          PrevalidExt
+            (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) rest :=
+        PrevalidExt.equ_under_three_heads_replace (PrevalidExt.tail hpvOld) hnew
+      exact msubStar_abs_fOp_equ_bound_body hpvNewTail (hNilReplace hBound)
+        (by simpa [Ctx.depth] using hArgScoped)
+        (by simpa [Ctx.depth] using hBody.scoped_left)
+        (hFOpBodyReplace hArgScoped rfl hBody))
+    h
+
 /-- One-step equivalence replacement under two preserved heads with all
 `Me-Pro` cases wired. The preserved-head indices `0` and `1`, changed-entry
 residual index `2`, and true tail indices `3+` are discharged by canonical
