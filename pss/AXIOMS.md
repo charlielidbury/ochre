@@ -44,8 +44,16 @@ closures, 2 inactive outstanding).
   leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.refl`, plus the
   nine-head variable leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.var`
   and `Me-TAp` leaf
-  `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.tAp`. Added endpoints
-  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.tAp`. Added generic
+  `.equ` lookup transport through `Ctx.instantiateBetaPrefix`, the generic
+  promoted-variable transport
+  `BetaInstantiationPreservesMEqRedUnderHeadsStack.pro`, the fixed
+  nine-head promoted-variable leaf
+  `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.pro`, and
+  `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.of_constructors`,
+  packaging the checked nine-head structural leaves while leaving the
+  recursive ten-head binder adapters explicit. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and

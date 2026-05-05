@@ -3064,6 +3064,147 @@ noncomputable def BetaInstantiationPreservesPrevalidExtUnderHeads
       Nat.add_assoc] using hStack
   exact PrevalidExt.of_stack_scoped hctx hsTarget
 
+/-- Result package for transporting an `.equ` lookup through the generic
+β-instantiation prefix. -/
+structure Ctx.EquBindsInstantiateBetaPrefixResult
+    (Γ : Ctx) (arg α : Term) (heads : Ctx) (i : Nat) where
+  j : Nat
+  var_eq :
+    Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) (.bvar i) =
+      .bvar j
+  bind :
+    Ctx.equBinds (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ) j
+      (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) α)
+
+/-- Transport an `.equ` lookup through the generic β-instantiation prefix.
+The result index accounts for the removed `.sub` entry below `heads`, and
+the variable-instantiation equality identifies the corresponding target
+`bvar`. -/
+noncomputable def Ctx.equBinds_instantiateBetaPrefix
+    {Γ : Ctx} {bound arg α : Term} {heads : Ctx} {i : Nat}
+    (hb : Ctx.equBinds (heads ++ { bound := bound, kind := .sub } :: Γ) i α) :
+    Ctx.EquBindsInstantiateBetaPrefixResult Γ arg α heads i := by
+  induction heads generalizing i α with
+  | nil =>
+      cases i with
+      | zero =>
+          simp [Ctx.equBinds] at hb
+      | succ i =>
+          simp [Ctx.equBinds] at hb
+          let tailTarget := Classical.choose hb
+          have htailAnd := Classical.choose_spec hb
+          have htailLookup : Ctx.lookupEqu Γ i = some tailTarget := htailAnd.1
+          have htarget : Term.shift 0 tailTarget = α := htailAnd.2
+          have htargetInst :
+              Term.instantiate 0 arg α = tailTarget := by
+            simpa [← htarget] using Term.instantiate_shift_id 0 arg tailTarget
+          have htargetInst' :
+              Term.instantiate 0 (Term.shiftBy 0 0 arg) α = tailTarget := by
+            simpa [Term.shiftBy_zero_id] using htargetInst
+          refine ⟨i, ?_, ?_⟩
+          · simp [Term.instantiate]
+          · simpa [Ctx.instantiateBetaPrefix, Ctx.equBinds, htargetInst'] using
+              htailLookup
+  | cons head heads ih =>
+      cases head with
+      | mk headBound kind =>
+          cases i with
+          | zero =>
+              cases kind with
+              | sub =>
+                  simp [Ctx.equBinds] at hb
+              | equ =>
+                  simp [Ctx.equBinds] at hb
+                  subst hb
+                  have htargetInst :
+                      Term.instantiate (heads.length + 1)
+                          (Term.shiftBy 0 (heads.length + 1) arg)
+                          (Term.shift 0 headBound) =
+                        Term.shift 0
+                          (Term.instantiate heads.length
+                            (Term.shiftBy 0 heads.length arg) headBound) := by
+                    have h := Term.instantiate_succ_shift_zero heads.length
+                      (Term.shiftBy 0 heads.length arg) headBound
+                    simpa [Term.shift, Term.shiftBy_compose, Nat.add_assoc] using h
+                  refine ⟨0, ?_, ?_⟩
+                  · simp [Term.instantiate]
+                  · simp [Ctx.instantiateBetaPrefix, Ctx.equBinds, htargetInst]
+          | succ i =>
+              simp [Ctx.equBinds] at hb
+              let tailTarget := Classical.choose hb
+              have htailAnd := Classical.choose_spec hb
+              have htailLookup :
+                  Ctx.lookupEqu (heads ++ { bound := bound, kind := .sub } :: Γ) i =
+                    some tailTarget := htailAnd.1
+              have htarget : Term.shift 0 tailTarget = α := htailAnd.2
+              have hbTail :
+                  Ctx.equBinds (heads ++ { bound := bound, kind := .sub } :: Γ)
+                    i tailTarget := by
+                simpa [Ctx.equBinds] using htailLookup
+              rcases ih hbTail with ⟨j, hvar, hbind⟩
+              have hvarCurrent :
+                  Term.instantiate (heads.length + 1)
+                      (Term.shiftBy 0 (heads.length + 1) arg) (.bvar (i + 1)) =
+                    Term.shift 0
+                      (Term.instantiate heads.length
+                        (Term.shiftBy 0 heads.length arg) (.bvar i)) := by
+                have h := Term.instantiate_succ_shift_zero heads.length
+                  (Term.shiftBy 0 heads.length arg) (.bvar i)
+                simpa [Term.shift, Term.shiftBy_compose, Nat.add_assoc] using h
+              have htargetInst :
+                  Term.instantiate (heads.length + 1)
+                      (Term.shiftBy 0 (heads.length + 1) arg) α =
+                    Term.shift 0
+                      (Term.instantiate heads.length
+                        (Term.shiftBy 0 heads.length arg) tailTarget) := by
+                have h := Term.instantiate_succ_shift_zero heads.length
+                  (Term.shiftBy 0 heads.length arg) tailTarget
+                simpa [← htarget, Term.shift, Term.shiftBy_compose,
+                  Nat.add_assoc] using h
+              refine ⟨j + 1, ?_, ?_⟩
+              · change
+                  Term.instantiate (heads.length + 1)
+                      (Term.shiftBy 0 (heads.length + 1) arg) (.bvar (i + 1)) =
+                    .bvar (j + 1)
+                rw [hvarCurrent, hvar]
+                simp [Term.shift]
+              · let headEntry : CtxEntry :=
+                  { bound := Term.instantiate heads.length
+                      (Term.shiftBy 0 heads.length arg) headBound,
+                    kind := kind }
+                change Ctx.equBinds
+                  (headEntry :: (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ))
+                  (j + 1)
+                  (Term.instantiate (heads.length + 1)
+                    (Term.shiftBy 0 (heads.length + 1) arg) α)
+                rw [htargetInst]
+                simpa [headEntry] using
+                  Ctx.equBinds_weaken_head headEntry hbind
+
+/-- Generic `MEqRed.pro` transport for β-instantiation below an arbitrary
+preserved-head prefix. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderHeadsStack.pro
+    {Γ : Ctx} {bound arg α α' : Term} {heads : Ctx} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt (heads ++ { bound := bound, kind := .sub } :: Γ) s)
+    (hb : Ctx.equBinds (heads ++ { bound := bound, kind := .sub } :: Γ) i α)
+    (hα :
+      MEqRed (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ)
+        (Stack.instantiate heads.length (Term.shiftBy 0 heads.length arg) s)
+        (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) α)
+        (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) α')) :
+    MEqRed (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ)
+      (Stack.instantiate heads.length (Term.shiftBy 0 heads.length arg) s)
+      (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) (.bvar i))
+      (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) α') := by
+  have hpvTarget := BetaInstantiationPreservesPrevalidExtUnderHeads
+    (n := heads.length) rfl hArgBound hpv
+  rcases Ctx.equBinds_instantiateBetaPrefix
+      (Γ := Γ) (bound := bound) (arg := arg) (heads := heads) hb with
+    ⟨j, hvar, hbind⟩
+  rw [hvar]
+  exact MEqRed.pro hpvTarget hbind hα
+
 /-- Prevalidity transport for β-instantiation under one preserved context
 head. The preserved head's bound is instantiated while the discharged `.sub`
 tail is removed. -/
@@ -4222,6 +4363,76 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderNineHeadsStack.tAp
     MEqRed.tAp
       (BetaInstantiationPreservesPrevalidExtUnderNineHeads hArgBound hpv) hu'
 
+/-- The `MEqRed.pro` constructor is stable under de Bruijn β-instantiation
+below nine preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderNineHeadsStack.pro
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ α α' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ : CtxEntryKind} {s : Stack}
+    {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hb : Ctx.equBinds ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := head₈, kind := kind₈ } ::
+        { bound := head₉, kind := kind₉ } ::
+        { bound := bound, kind := .sub } :: Γ) i α)
+    (hα :
+      let targetCtx : Ctx :=
+        { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₁, kind := kind₁ } ::
+        { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₂, kind := kind₂ } ::
+        { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₃, kind := kind₃ } ::
+        { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₄, kind := kind₄ } ::
+        { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₅, kind := kind₅ } ::
+        { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₆, kind := kind₆ } ::
+        { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₇, kind := kind₇ } ::
+        { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₈, kind := kind₈ } ::
+        { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₉, kind := kind₉ } :: Γ
+      MEqRed targetCtx
+        (Stack.instantiate 9 (Term.shiftBy 0 9 arg) s)
+        (Term.instantiate 9 (Term.shiftBy 0 9 arg) α)
+        (Term.instantiate 9 (Term.shiftBy 0 9 arg) α')) :
+    let targetCtx : Ctx :=
+      { bound := Term.instantiate 8 (Term.shiftBy 0 8 arg) head₁, kind := kind₁ } ::
+      { bound := Term.instantiate 7 (Term.shiftBy 0 7 arg) head₂, kind := kind₂ } ::
+      { bound := Term.instantiate 6 (Term.shiftBy 0 6 arg) head₃, kind := kind₃ } ::
+      { bound := Term.instantiate 5 (Term.shiftBy 0 5 arg) head₄, kind := kind₄ } ::
+      { bound := Term.instantiate 4 (Term.shiftBy 0 4 arg) head₅, kind := kind₅ } ::
+      { bound := Term.instantiate 3 (Term.shiftBy 0 3 arg) head₆, kind := kind₆ } ::
+      { bound := Term.instantiate 2 (Term.shiftBy 0 2 arg) head₇, kind := kind₇ } ::
+      { bound := Term.instantiate 1 (Term.shiftBy 0 1 arg) head₈, kind := kind₈ } ::
+      { bound := Term.instantiate 0 (Term.shiftBy 0 0 arg) head₉, kind := kind₉ } :: Γ
+    MEqRed targetCtx
+      (Stack.instantiate 9 (Term.shiftBy 0 9 arg) s)
+      (Term.instantiate 9 (Term.shiftBy 0 9 arg) (.bvar i))
+      (Term.instantiate 9 (Term.shiftBy 0 9 arg) α') := by
+  have h := BetaInstantiationPreservesMEqRedUnderHeadsStack.pro
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ }])
+    hArgBound hpv hb hα
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h
+
 /-- The `MEqRed.pro` constructor reassembles eight-preserved-head
 β-instantiation from the transformed promoted-bound equivalence step. The
 tail case drops the discharged `.sub` binder, so source index `j + 9`
@@ -4518,6 +4729,75 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.of_constr
   | fOp hBound hα hBody =>
       subst hC
       exact hFOp hArgBound hBound hα hBody
+
+/-- Assemble nine-head equivalence β-instantiation from constructor-local
+frontiers. Structural leaves and `Me-Pro` are discharged here; the explicit
+inputs are the recursive binder constructors. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderNineHeadsStack.of_constructors
+    (hFun : BetaInstantiationPreservesMEqRedUnderNineHeadsFunStackPayload)
+    (hBet : BetaInstantiationPreservesMEqRedUnderNineHeadsBetStackPayload)
+    (hFOp : BetaInstantiationPreservesMEqRedUnderNineHeadsFOpStackPayload) :
+    BetaInstantiationPreservesMEqRedUnderNineHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ s hArgBound hred
+  generalize hC : ({ bound := head₁, kind := kind₁ } ::
+      { bound := head₂, kind := kind₂ } ::
+      { bound := head₃, kind := kind₃ } ::
+      { bound := head₄, kind := kind₄ } ::
+      { bound := head₅, kind := kind₅ } ::
+      { bound := head₆, kind := kind₆ } ::
+      { bound := head₇, kind := kind₇ } ::
+      { bound := head₈, kind := kind₈ } ::
+      { bound := head₉, kind := kind₉ } ::
+      { bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉
+      kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ with
+  | pro hpv hb hα ih =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using
+        BetaInstantiationPreservesMEqRedUnderNineHeadsStack.pro
+          hArgBound hpv hb (by
+            simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+              Nat.add_assoc] using ih hArgBound rfl)
+  | bet ht hbody harg =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using hBet hArgBound ht hbody harg
+  | top hpv =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using
+        BetaInstantiationPreservesMEqRedUnderNineHeadsStack.top hArgBound hpv
+  | app hOp hArg ihOp ihArg =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using
+        BetaInstantiationPreservesMEqRedUnderNineHeadsStack.app
+          (by
+            simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+              Nat.add_assoc] using ihOp hArgBound rfl)
+          (by
+            simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+              Nat.add_assoc] using ihArg hArgBound rfl)
+  | var hpv hi =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using
+        BetaInstantiationPreservesMEqRedUnderNineHeadsStack.var hArgBound hpv hi
+  | fun_ hBound hBody =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using hFun hArgBound hBound hBody
+  | tAp hpv hu =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using
+        BetaInstantiationPreservesMEqRedUnderNineHeadsStack.tAp hArgBound hpv hu
+  | fOp hBound hα hBody =>
+      subst hC
+      simpa [Term.shift, Term.shiftBy_compose, Term.shiftBy_zero_id,
+        Nat.add_assoc] using hFOp hArgBound hBound hα hBody
 
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below seven
 preserved context heads. -/
