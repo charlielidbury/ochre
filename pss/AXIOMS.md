@@ -35,6 +35,13 @@ closures, 2 inactive outstanding).
   heads. This is the first four-head structural leaf required by the
   three-head-to-four-head substitution frontier. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the four-preserved-head
+  structural `MEqRed` β-instantiation leaves
+  `BetaInstantiationPreservesMEqRedUnderFourHeadsStack.refl`, `.top`,
+  `.var`, `.tAp`, and `.app`. These mirror the existing three-head
+  structural leaves and consume the new four-head prevalidity transport.
+  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
