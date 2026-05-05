@@ -9,6 +9,18 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added theorem-level preservation
+  entry points
+  `Theorem_5_DeBruijn_Preservation_of_diagram_components`,
+  `Theorem_5_DeBruijn_ClosedPreservation_of_diagram_components`,
+  `Theorem_5_DeBruijn_Preservation_of_chain_diagram_components`,
+  `Theorem_5_DeBruijn_ClosedPreservation_of_chain_diagram_components`,
+  `Theorem_5_DeBruijn_Preservation_of_chain_shape_components`, and
+  `Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_components`,
+  so the final De Bruijn Theorem 5 endpoints can consume the existing
+  componentized operational-preservation routes directly. Added the strongest
+  closed chain-shape endpoint to `Pss/DeBruijnSanity.lean`'s axiom audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_operator_machine_tail`
   and

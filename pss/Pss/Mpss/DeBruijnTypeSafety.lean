@@ -5829,5 +5829,101 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of
     WSubMStar [] t' u :=
   Theorem_5_DeBruijn_Preservation_of hStepPres hwf hstep
 
+/-- De Bruijn preservation with operational preservation assembled from the
+body-instantiation lemma, the Type-valued function-bound diagram payload, and
+the sharpened `.sub` head replacement payload. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_of_diagram_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_diagram_components
+      hSubst hDiagram hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 entry point for the Type-valued function-bound
+diagram preservation components. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_diagram_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_diagram_components
+      hSubst hDiagram hSubHeadReplace)
+    hwf hstep
+
+/-- De Bruijn preservation with operational preservation assembled from the
+body-instantiation lemma, the Type-valued function-bound chain diagram
+payload, and the sharpened `.sub` head replacement payload. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_of_chain_diagram_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_diagram_components
+      hSubst hDiagram hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 entry point for the Type-valued function-bound
+chain-diagram preservation components. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_chain_diagram_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_diagram_components
+      hSubst hDiagram hSubHeadReplace)
+    hwf hstep
+
+/-- De Bruijn preservation with operational preservation assembled from the
+body-instantiation lemma, the shape-only function-bound chain payload, its
+joined-bound well-formedness payload, and the sharpened `.sub` head
+replacement payload. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_of_chain_shape_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_shape_components
+      hSubst hShape hShapeWf hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 entry point for the shape-only function-bound
+chain preservation components. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_shape_components
+      hSubst hShape hShapeWf hSubHeadReplace)
+    hwf hstep
+
 end DeBruijn
 end Pss

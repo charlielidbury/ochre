@@ -15,6 +15,7 @@ namespace DeBruijn
 #print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_of
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_of
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_components
 
 end DeBruijn
 end Pss
