@@ -1125,6 +1125,28 @@ noncomputable def MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_repl
       (hBodyReplace hΓ hwfBound hwfBound' hredBound hwfBody'Old)
   simpa [WfMachineState, Stack.plug] using hwfTarget
 
+/-- Reduced machine-state preservation assembly after discharging the
+structural `Me-App` head replacement, `Me-Fun`, and `Me-TAp` residuals
+through smaller premises. The remaining constructor-sized machine residuals
+are `Me-Pro`, `Me-Bet`, and `Me-FOp`. -/
+noncomputable def MEqRedPreservesWfMachineState.of_reduced_components
+    (hPro : MEqRedProPreservesWfMachineStatePayload)
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hControl : WfMachineStateControlLeftPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_components
+    hPro
+    hBeta
+    (MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty hControl)
+    (MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace
+      hEmpty hFunBody)
+    (MEqRedTApPreservesWfMachineStatePayload.of_no_top hNoTop)
+    hFOp
+
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
 version is directly compatible with the empty-stack `WSubM` equivalence

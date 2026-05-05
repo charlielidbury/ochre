@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_reduced_components`, recording the
+  current reduced machine-state preservation assembly: `Me-App`
+  head-replacement, `Me-Fun`, and `Me-TAp` are now supplied by the smaller
+  adapters, leaving constructor-sized `Me-Pro`, `Me-Bet`, and `Me-FOp`
+  machine residuals plus empty/control/function-body/no-Top premises. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace`,
   reducing the empty-stack `Me-Fun` machine-state residual to empty-stack
   preservation plus the existing function-body context-replacement payload.
