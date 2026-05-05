@@ -4444,6 +4444,186 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_stack_handlers_of
         hBound hOldScoped hBody)
     hStep
 
+/-- Dispatcher variant that also splits the equivalence-origin changed-stack
+handler in the structural `Ms-App × Me-App` body branch. Stable
+`Me-Top`/`Me-Var`/`Me-TAp` leaves are rebuilt internally; the remaining
+equivalence-origin premises are exactly the recursive `Me-Pro`, `Me-App`,
+`Me-Bet`, and `Me-FOp` cases. -/
+theorem commute_abs_fun_fun_body_from_operator_join_app_cases_equ_stack_handlers_of
+    {Γ : Ctx} {bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hdiamondBody : EqDiamonds ({ bound := bound, kind := .sub } :: Γ) [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hSubBody : MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body₁)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body₂)
+    (hAppAppComm :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          StrongCommutes ({ bound := bound₃, kind := .sub } :: Γ) (v :: []))
+    (hAppAppSubReplace :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          MSubRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) u u')
+    (hAppAppStepEquPro :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          ∀ {i : Nat} {α α' : Term},
+            Ctx.equBinds ({ bound := bound₃, kind := .sub } :: Γ) i α →
+            MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) α α' →
+            MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: [])
+              (.bvar i) α')
+    (hAppAppStepEquApp :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          ∀ {op op' arg arg' : Term},
+            MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (arg :: v :: [])
+              op op' →
+            MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] arg arg' →
+            MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: [])
+              (.app op arg) (.app op' arg'))
+    (hAppAppStepEquBet :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          ∀ {funBound arg arg' inner inner' : Term},
+            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+              funBound →
+            MEqRed ({ bound := funBound, kind := .sub } ::
+              { bound := bound₃, kind := .sub } :: Γ) (Stack.shift 0 (v :: []))
+              inner inner' →
+            MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] arg arg' →
+            MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: [])
+              (.app (.abs funBound inner) arg) (Term.instantiate 0 arg' inner'))
+    (hAppAppStepEquFOp :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          ∀ {funBound funBound' inner inner' : Term},
+            MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] funBound funBound' →
+            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v →
+            MEqRed ({ bound := v, kind := .equ } ::
+              { bound := bound₃, kind := .sub } :: Γ) (Stack.shift 0 [])
+              inner inner' →
+            MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: [])
+              (.abs funBound inner) (.abs funBound' inner'))
+    (hAppAppStepApp :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          ∀ {op op' arg : Term},
+            MSubRed ({ bound := bound₃, kind := .sub } :: Γ) (arg :: v :: [])
+              op op' →
+            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) arg →
+            MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: [])
+              (.app op arg) (.app op' arg))
+    (hAppAppStepFOp :
+      ∀ {u u' v u₂ v₂ : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) u u₂ →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v₂ →
+        ∀ {bound₃ : Term},
+          MEqRedJ Γ [] bound₁ bound₃ →
+          MEqRedJ Γ [] bound₂ bound₃ →
+          ∀ {funBound body body' : Term},
+            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+              funBound →
+            Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v →
+            MSubRed ({ bound := v, kind := .equ } ::
+              { bound := bound₃, kind := .sub } :: Γ) (Stack.shift 0 [])
+              body body' →
+            MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: [])
+              (.abs funBound body) (.abs funBound body'))
+    (hAppBet :
+      ∀ {t v v' inner inner' u' : Term},
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) t →
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) (v :: []) (.abs t inner) u' →
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) v →
+        MEqRed ({ bound := t, kind := .sub } ::
+          { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 []) inner inner' →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] v v' →
+        ∃ t₃,
+          MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃ ∧
+            MSubRedStar Γ [] (.abs bound₂ (Term.instantiate 0 v' inner')) t₃)
+    (hFun :
+      ∀ {t t' inner inner' : Term},
+        Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+          { bound := bound, kind := .sub } :: Γ) [] inner inner' →
+        ∃ t₃,
+          MEqRedStar Γ [] (.abs bound₁ (.abs t' inner')) t₃ ∧
+            MSubRedStar Γ [] (.abs bound₂ body₂) t₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  refine
+    commute_abs_fun_fun_body_from_operator_join_app_cases_stack_handlers_of
+      hpvNil hdiamondBound hdiamondBody hSubBound hSubBody hEqBound hEqBody
+      hAppAppComm hAppAppSubReplace ?_ hAppAppStepApp hAppAppStepFOp
+      hAppBet hFun
+  intro u u' v u₂ v₂ hSubOp hArgScoped hEqOp hEqArg bound₃ hBound₁₃ hBound₂₃
+    a b hEqStep
+  let Γ₃ : Ctx := { bound := bound₃, kind := .sub } :: Γ
+  have hEqArg₃ : MEqRed Γ₃ [] v v₂ :=
+    hEqArg.sub_head_replace_two_step hEqBound hBound₂₃.some
+  have hpvNew : PrevalidExt Γ₃ (v₂ :: []) :=
+    PrevalidExt.push (PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil)
+      hBound₂₃.some.scoped_right)) hEqArg₃.scoped_right
+  exact MEqRed.stack_head_subtype_replace_from_handlers hpvNew
+    (fun hb hα =>
+      hAppAppStepEquPro hSubOp hArgScoped hEqOp hEqArg hBound₁₃ hBound₂₃ hb hα)
+    (fun hOp hArg =>
+      hAppAppStepEquApp hSubOp hArgScoped hEqOp hEqArg hBound₁₃ hBound₂₃ hOp hArg)
+    (fun hBound hBody hArg =>
+      hAppAppStepEquBet hSubOp hArgScoped hEqOp hEqArg hBound₁₃ hBound₂₃
+        hBound hBody hArg)
+    (fun hBound hOldScoped hBody =>
+      hAppAppStepEquFOp hSubOp hArgScoped hEqOp hEqArg hBound₁₃ hBound₂₃
+        hBound hOldScoped hBody)
+    hEqStep
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
