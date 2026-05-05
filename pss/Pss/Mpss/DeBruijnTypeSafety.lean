@@ -490,12 +490,38 @@ def MEqRedBetaPreservesWfMContextual : Type :=
 def MEqRedPreservesWfMUnderWfCtx : Type :=
   ∀ {Γ : Ctx} {x y : Term}, WfCtxEqu Γ → MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
 
+/-- Empty-stack left-endpoint transport for well-subtyping along one
+equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
+version is directly compatible with the empty-stack `WSubM` equivalence
+embedding rules. -/
+def MEqRedEmptyPreservesWSubMStarLeft : Type :=
+  ∀ {Γ : Ctx} {source source' target : Term},
+    WfCtxEqu Γ →
+      WSubMStar Γ source target →
+        MEqRed Γ [] source source' →
+          WSubMStar Γ source' target
+
 /-- The contextual preservation payload specializes to the empty stack. -/
 noncomputable def MEqRedPreservesWfMUnderWfCtx.of_contextual
     (hpres : MEqRedPreservesWfMContextual) :
     MEqRedPreservesWfMUnderWfCtx := by
   intro Γ x y hΓ hred hwf
   exact hpres hΓ WfStack.nil hred.some hwf
+
+/-- Empty-stack left-endpoint transport follows from empty-stack
+well-formedness preservation. The proof embeds the forward equivalence step
+backward as `source' ≤ source`, then composes with the original
+`source ≤ target` chain. -/
+noncomputable def MEqRedEmptyPreservesWSubMStarLeft.of_wf_preservation
+    (hpres : MEqRedPreservesWfMUnderWfCtx) :
+    MEqRedEmptyPreservesWSubMStarLeft := by
+  intro Γ source source' target hΓ hSub hred
+  have hwfSource : WfM Γ source := hSub.wf_left
+  have hwfSource' : WfM Γ source' :=
+    hpres hΓ ⟨hred⟩ hwfSource
+  have hBack : WSubMStar Γ source' source :=
+    WSubMStar.of_MEqRed_back hred hwfSource hwfSource'
+  exact WSubMStar.trans hwfSource hBack hSub
 
 /-- `Me-Pro` well-formedness preservation under the contextual preservation
 payload. `WfCtxEqu.lookup_equ` supplies the promoted annotation's

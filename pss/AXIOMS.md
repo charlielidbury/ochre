@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedEmptyPreservesWSubMStarLeft` and
+  `.of_wf_preservation`, proving the empty-stack left-endpoint
+  well-subtyping transport from empty-stack `WfM` preservation plus the
+  existing backward equivalence embedding. This separates the already
+  derivable empty-stack endpoint transport from the genuinely stacked
+  `Me-App` residual. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added left-factored shape/WfCtx
   contextual preservation wrappers
   `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_left_factored_no_beta`
