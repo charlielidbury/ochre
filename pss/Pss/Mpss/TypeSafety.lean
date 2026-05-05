@@ -875,6 +875,37 @@ private noncomputable def _S_trs_star :
 
 end -- section
 
+/-- Diagnostic for the `Lemma_30_msPro_x_axiom` plumbing blocker.
+
+The `WSubM.lf2` constructor can legitimately carry an `MSubRed.pro` step on
+the same `.sub` variable that Lemma 7 substitutes away. Therefore `_S_lf2`
+cannot synthesize `msAvoidsPro hred x = true` from its current premises. -/
+noncomputable def lf2_allows_msPro_on_head_sub :
+    Σ' (hred :
+      MSubRed ([⟨"x", .top, .sub⟩] : Ctx) [] (.fvar "x") .top),
+      PProd (WSubM ([⟨"x", .top, .sub⟩] : Ctx) (.fvar "x") .top)
+        (PLift (msAvoidsPro hred "x" = false)) := by
+  let Γ : Ctx := [⟨"x", .top, .sub⟩]
+  have hfvTop : Term.fv (.top : Term) ⊆ Ctx.dom ([] : Ctx) := by
+    intro z hz
+    simp [Term.fv] at hz
+  have hxFresh : "x" ∉ Ctx.dom ([] : Ctx) := by
+    simp [Ctx.dom]
+  have hpv : Prevalid Γ :=
+    Prevalid.sub Prevalid.empty hxFresh hfvTop Term.LC.top
+  have hpvExt : PrevalidExt Γ [] := PrevalidExt.nil hpv
+  have hsb : Γ.subBinds "x" .top := by
+    simp [Γ, Ctx.subBinds]
+  let hred : MSubRed Γ [] (.fvar "x") .top :=
+    MSubRed.pro hpvExt hsb
+  have hwfX : WfM Γ (.fvar "x") := WfM.varSub hpv hsb
+  have hwfTop : WfM Γ .top := WfM.top hpv
+  have hsubTop : WSubM Γ .top .top := WSubM.rfl hwfTop
+  have hlf2 : WSubM Γ (.fvar "x") .top :=
+    WSubM.lf2 hwfX hred hwfTop hsubTop
+  refine ⟨hred, PProd.mk hlf2 ?_⟩
+  exact PLift.up (by simp [hred, msAvoidsPro_pro])
+
 end Lemma7
 
 /-- **Lemma 7 (Substitution preserves well-formedness, Pasquale &

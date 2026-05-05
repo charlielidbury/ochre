@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
+  `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
+  derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
+  substituted head `.sub` variable and whose `msAvoidsPro` check is false.
+  This formalizes the current `Lemma_30_msPro_x_axiom` call-site blocker:
+  `_S_lf2` cannot synthesize the avoidance witness from the existing
+  `WSubM.lf2` premises alone. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
@@ -4854,6 +4861,13 @@ theorem.
   Hence the SubstOk-bridge collapses to the same WSubM-transitivity
   cluster that obstructs `Lemma_10_Inversion` and
   `Lemma_24_NarrowingMSubRed`. It is not an independent attack vector.
+* **Call-site blocker checked in Lean (2026-05-05):**
+  `Lemma7.lf2_allows_msPro_on_head_sub` constructs a concrete
+  `WSubM.lf2` proof in context `[⟨"x", .top, .sub⟩]` whose
+  `MSubRed` premise is `Ms-Pro x` and whose `msAvoidsPro` witness is
+  false. This confirms `_S_lf2` cannot derive the avoidance premise
+  needed by `Lemma_30_msPro_x` from its current well-formedness and
+  well-subtyping inputs alone.
 
 ### 5. `Proposition_17_beta_axiom`
 
