@@ -301,6 +301,14 @@ def AbsFunctionBoundChainShapeWfUnderWfCtxPayload
     (hSub : WSubMStar Γ (.abs bound body) (.abs result .top)),
       WfCtxEqu Γ → WfM Γ ((hShape hSub).joinBound)
 
+/-- Closed-context specialization of joined-bound well-formedness for
+shape-only function-bound common reducts. -/
+def AbsFunctionBoundChainShapeWfClosedPayload
+    (hShape : AbsFunctionBoundChainShapePayload) : Type :=
+  ∀ {bound body result : Term}
+    (hSub : WSubMStar [] (.abs bound body) (.abs result .top)),
+      WfM [] ((hShape hSub).joinBound)
+
 /-- Conditional empty-stack well-formedness preservation for one equivalence
 reduction step. This is the exact local premise needed to turn a
 function-bound shape into a full diagram. -/
@@ -979,6 +987,24 @@ noncomputable def AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_contextual
     AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape :=
   AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq hShape
     (MEqRedPreservesWfMUnderWfCtx.of_contextual hpres)
+
+/-- The well-formed-equivalence-context joined-bound payload specializes to
+closed contexts. -/
+def AbsFunctionBoundChainShapeWfClosedPayload.of_wfctx
+    {hShape : AbsFunctionBoundChainShapePayload}
+    (hWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape) :
+    AbsFunctionBoundChainShapeWfClosedPayload hShape := by
+  intro bound body result hFun
+  exact hWf hFun WfCtxEqu.empty
+
+/-- Contextual `MEqRed` preservation supplies closed joined-bound
+well-formedness for shape-only function-bound diagrams. -/
+noncomputable def AbsFunctionBoundChainShapeWfClosedPayload_of_contextual
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hpres : MEqRedPreservesWfMContextual) :
+    AbsFunctionBoundChainShapeWfClosedPayload hShape :=
+  AbsFunctionBoundChainShapeWfClosedPayload.of_wfctx
+    (AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_contextual hShape hpres)
 
 /-- An older Prop-closure diagram payload can be upgraded to the Type-valued
 chain-diagram payload by choosing chain witnesses for the two closures. -/

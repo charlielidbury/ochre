@@ -1386,6 +1386,11 @@ closures, 2 inactive outstanding).
   allowing joined-bound well-formedness for shape-only function-bound
   diagrams to consume contextual `MEqRed` preservation under `WfCtxEqu`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the closed-context
+  specialization `AbsFunctionBoundChainShapeWfClosedPayload`,
+  `.of_wfctx`, and `_of_contextual`, using `WfCtxEqu.empty` to expose a
+  closed function-bound joined-bound well-formedness endpoint from the
+  contextual preservation path. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
