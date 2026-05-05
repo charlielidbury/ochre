@@ -639,6 +639,46 @@ theorem subBinds_replaceAt_sub_of_ne {Γ : Ctx} {cutoff i : Nat}
                       (by simpa [subBinds] using hlook)
                   exact ⟨a, by simpa [subBinds] using htail, rfl⟩
 
+/-- Replacing an `.equ` entry at any context index preserves subtype lookups,
+because subtype lookup skips `.equ` entries and every other entry remains in
+place. -/
+theorem subBinds_replaceAt_equ {Γ : Ctx} {cutoff i : Nat}
+    {old new t : Term} :
+    subBinds (replaceAt cutoff { bound := old, kind := .equ } Γ) i t →
+    subBinds (replaceAt cutoff { bound := new, kind := .equ } Γ) i t := by
+  induction Γ generalizing cutoff i t with
+  | nil =>
+      cases i <;> simp [subBinds, replaceAt]
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero =>
+          cases i with
+          | zero =>
+              simp [subBinds, replaceAt]
+          | succ i =>
+              intro h
+              simpa [subBinds, replaceAt] using h
+      | succ cutoff =>
+          cases i with
+          | zero =>
+              cases head with
+              | mk bound kind =>
+                  cases kind <;> simp [subBinds, replaceAt]
+          | succ i =>
+              intro h
+              simp [subBinds, replaceAt] at h ⊢
+              cases hlook : lookupSub (replaceAt cutoff { bound := old, kind := .equ } Γ) i with
+              | none =>
+                  simp [hlook] at h
+              | some a =>
+                  simp [hlook] at h
+                  subst h
+                  have htail : subBinds
+                      (replaceAt cutoff { bound := new, kind := .equ } Γ) i a :=
+                    ih (cutoff := cutoff) (i := i) (t := a)
+                      (by simpa [subBinds] using hlook)
+                  exact ⟨a, by simpa [subBinds] using htail, rfl⟩
+
 /-- Changing the bound stored in an `.equ` head does not affect subtype
 lookups, because subtype lookup skips `.equ` heads. -/
 theorem subBinds_equ_head_replace {Γ : Ctx} {old new : Term} {i : Nat} {t : Term} :
@@ -1718,6 +1758,24 @@ noncomputable def replaceAt_sub_same {Γ : Ctx} {s : Stack} {cutoff : Nat}
         (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) s :=
     PrevalidExt.replaceAt hpv (by simpa [Ctx.depth_replaceAt] using hcut)
       (newEntry := { bound := new, kind := .sub })
+      (by simpa [CtxEntry.ScopedIn, Ctx.drop_succ_replaceAt_self] using hnew)
+  simpa using hpvDouble
+
+/-- Replace the same `.equ` slot inside a context already known to contain
+the old replacement at that slot, collapsing the double replacement to the
+new one. -/
+noncomputable def replaceAt_equ_same {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {old new : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .equ }) :
+    PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s := by
+  have hpvDouble :
+      PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ }
+        (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) s :=
+    PrevalidExt.replaceAt hpv (by simpa [Ctx.depth_replaceAt] using hcut)
+      (newEntry := { bound := new, kind := .equ })
       (by simpa [CtxEntry.ScopedIn, Ctx.drop_succ_replaceAt_self] using hnew)
   simpa using hpvDouble
 

@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` — added
+  the prefix-polymorphic `.equ` replacement substrate
+  `Ctx.subBinds_replaceAt_equ`, `PrevalidExt.replaceAt_equ_same`, and
+  `MSubRed.pro_replaceAt_equ`. These package the stable `Ms-Pro` case through
+  `Ctx.replaceAt`, so future residual replacement can target arbitrary
+  preserved-prefix depths instead of growing only fixed two-/three-head
+  variants. Added the endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Context/DeBruijn.lean`, `Pss/Mpss/DeBruijnReductions.lean` — added
   the three-preserved-head context replacement facts and
   `MEqRed.equ_under_three_sub_heads_sub_tail_nil_replace_from_split_handlers`
   / `MSubRed.equ_under_three_sub_heads_sub_tail_nil_replace_from_split_handlers`.

@@ -2340,6 +2340,21 @@ noncomputable def MSubRed.pro_equ_head_replace {Γ : Ctx} {s : Stack} {old new :
   MSubRed.pro (PrevalidExt.equ_head_replace hpv hnew)
     (Ctx.subBinds_equ_head_replace hb)
 
+/-- `Ms-Pro` is stable when replacing an `.equ` entry at an arbitrary context
+index, because subtype lookup ignores `.equ` entries. The context is presented
+through `Ctx.replaceAt` so this can be reused at any preserved-prefix depth. -/
+noncomputable def MSubRed.pro_replaceAt_equ {Γ : Ctx} {s : Stack}
+    {cutoff i : Nat} {old new t : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .equ })
+    (hb : Ctx.subBinds (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) i t) :
+    MSubRed (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+      (.bvar i) t :=
+  MSubRed.pro (PrevalidExt.replaceAt_equ_same hpv hcut hnew)
+    (Ctx.subBinds_replaceAt_equ hb)
+
 /-- `Ms-Top` is stable when the bound stored in an innermost `.equ` head is
 replaced. -/
 noncomputable def MSubRed.top_equ_head_replace {Γ : Ctx} {s : Stack} {old new u : Term}
