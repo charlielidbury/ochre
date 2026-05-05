@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpBodyPayload.of_head_kind_transport`, a direct adapter from
+  contextual preservation plus the uniform head-kind/body transport payload
+  to the native `Me-FOp` body residual. The directional
+  `.of_head_transports` interface remains the weaker underlying path. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedEmptyPreservesWSubMStarLeft` and
   `.of_wf_preservation` / `.of_contextual`, proving the empty-stack
   left-endpoint well-subtyping transport from empty-stack or contextual

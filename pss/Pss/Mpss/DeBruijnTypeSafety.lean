@@ -472,6 +472,18 @@ noncomputable def MEqRedFOpBodyPayload.of_head_transports
     hpres hΓEqu hStackEqu hredBody hwfBodyEqu
   exact hEquToSub hΓ hwfOperand hwfBound' hwfBody'Equ
 
+/-- Direct `Me-FOp` body residual from contextual preservation and one
+uniform head-kind/body transport payload. This is only a convenience wrapper:
+the weaker interface is `MEqRedFOpBodyPayload.of_head_transports`, which keeps
+the two directional transports explicit. -/
+noncomputable def MEqRedFOpBodyPayload.of_head_kind_transport
+    (hpres : MEqRedPreservesWfMContextual)
+    (hTransport : WfMHeadKindTransportPayload) :
+    MEqRedFOpBodyPayload :=
+  MEqRedFOpBodyPayload.of_head_transports hpres
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hTransport)
+
 /-- Remaining β payload for contextual `MEqRed` well-formedness
 preservation. This is the constructor-level analogue of the operational β
 payload, but for reduction targets produced by `Me-Bet`. -/
