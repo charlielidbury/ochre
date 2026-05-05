@@ -316,6 +316,72 @@ def BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload : Prop :=
           (Term.instantiate 1 (Term.shift 0 arg) body)
           (Term.instantiate 1 (Term.shift 0 arg) body')
 
+/-- Stack-parametric equivalence-reduction β-instantiation under one
+preserved context head. -/
+def BetaInstantiationPreservesMEqRedUnderHeadStack : Type :=
+  ∀ {Γ : Ctx} {bound arg head lhs rhs : Term}
+      {kind : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+          (Stack.instantiate 1 (Term.shift 0 arg) s)
+          (Term.instantiate 1 (Term.shift 0 arg) lhs)
+          (Term.instantiate 1 (Term.shift 0 arg) rhs)
+
+/-- Preserved-head `Ms-Pro` frontier for under-head star-targeted subtype
+β-instantiation. -/
+def BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg head target : Term}
+      {kind : CtxEntryKind} {s : Stack} {i : Nat},
+    WSubMStar Γ arg bound →
+      PrevalidExt ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) s →
+        Ctx.subBinds ({ bound := head, kind := kind } ::
+            { bound := bound, kind := .sub } :: Γ) i target →
+          MSubStar ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+            (Stack.instantiate 1 (Term.shift 0 arg) s)
+            (Term.instantiate 1 (Term.shift 0 arg) (.bvar i))
+            (Term.instantiate 1 (Term.shift 0 arg) target)
+
+/-- Constructor-facing `Ms-Fun` frontier for under-head star-targeted subtype
+β-instantiation. -/
+def BetaInstantiationPreservesMSubRedUnderHeadFunMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg head t t' body body' : Term}
+      {kind : CtxEntryKind},
+    WSubMStar Γ arg bound →
+      Term.Scoped
+        (Ctx.depth ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+          { bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) [] body body' →
+          MSubStar ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+            [] (Term.instantiate 1 (Term.shift 0 arg) (.abs t body))
+            (Term.instantiate 1 (Term.shift 0 arg) (.abs t' body'))
+
+/-- Constructor-facing `Ms-FOp` frontier for under-head star-targeted subtype
+β-instantiation. -/
+def BetaInstantiationPreservesMSubRedUnderHeadFOpMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg head t α body body' : Term}
+      {kind : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      Term.Scoped
+        (Ctx.depth ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ)) t →
+        Term.Scoped
+          (Ctx.depth ({ bound := head, kind := kind } ::
+            { bound := bound, kind := .sub } :: Γ)) α →
+        MSubRed ({ bound := α, kind := .equ } ::
+          { bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s) body body' →
+          MSubStar ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+            (Stack.instantiate 1 (Term.shift 0 arg) (α :: s))
+            (Term.instantiate 1 (Term.shift 0 arg) (.abs t body))
+            (Term.instantiate 1 (Term.shift 0 arg) (.abs t body'))
+
 /-- Changed-bound transport needed after applying generic under-head
 β-instantiation to the `MSubRed.fun_` body premise. This is not a general
 `.sub` head replacement theorem: arbitrary subtype chains can use `Ms-Pro` at
@@ -396,6 +462,50 @@ noncomputable def BetaInstantiationPreservesPrevalidExtStack
         simpa [Ctx.depth, Nat.succ_eq_add_one] using
           PrevalidExt.stack_scoped hpv)
   exact PrevalidExt.of_stack_scoped hArgBound.prevalid hs
+
+/-- Prevalidity transport for β-instantiation under one preserved context
+head. The preserved head's bound is instantiated while the discharged `.sub`
+tail is removed. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtUnderHead
+    {Γ : Ctx} {bound arg head : Term} {kind : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head, kind := kind } ::
+        { bound := bound, kind := .sub } :: Γ) s) :
+    PrevalidExt ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+      (Stack.instantiate 1 (Term.shift 0 arg) s) := by
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hHeadScoped : Term.Scoped (Γ.depth + 1) head := by
+    cases kind with
+    | sub =>
+        cases PrevalidExt.ctx hpv with
+        | sub _ hHead =>
+            simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead
+    | equ =>
+        cases PrevalidExt.ctx hpv with
+        | equ _ hHead =>
+            simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead
+  have hHeadInstScoped :
+      Term.Scoped Γ.depth (Term.instantiate 0 arg head) :=
+    Term.instantiate_scoped 0 Γ.depth arg head (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left hHeadScoped
+  have hctx :
+      Prevalid ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ) := by
+    cases kind with
+    | sub =>
+        exact Prevalid.sub hArgBound.prevalid hHeadInstScoped
+    | equ =>
+        exact Prevalid.equ hArgBound.prevalid hHeadInstScoped
+  have hsSource : Stack.Scoped (Γ.depth + 2) s := by
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using
+      PrevalidExt.stack_scoped hpv
+  have hsTarget :
+      Stack.Scoped (Γ.depth + 1)
+        (Stack.instantiate 1 (Term.shift 0 arg) s) :=
+    Stack.Scoped.instantiate (by omega) hArgShiftScoped (by
+      simpa [Nat.add_assoc] using hsSource)
+  exact PrevalidExt.of_stack_scoped hctx hsTarget
 
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation at any stack. -/
@@ -1169,6 +1279,77 @@ noncomputable def BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors
         PrevalidExt.cons (PrevalidExt.weaken_head_inv hBody.prevalidExt) hα
       exact BetaInstantiationPreservesMSubRedStack.fOp_msubstar
         hArgBound hpv ht (hFOpBody hArgBound hBody)
+
+/-- Assemble the generic under-head star-targeted subtype-substitution payload
+from constructor-local under-head frontiers. This is the recursive body
+substitution needed by the outer `Ms-Fun`/`Ms-FOp` adapters. -/
+noncomputable def BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_constructors
+    (hPro : BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload)
+    (hEq : BetaInstantiationPreservesMEqRedUnderHeadStack)
+    (hFun : BetaInstantiationPreservesMSubRedUnderHeadFunMSubStarPayload)
+    (hFOp : BetaInstantiationPreservesMSubRedUnderHeadFOpMSubStarPayload) :
+    BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload := by
+  intro Γ bound arg head body body' kind s hArgBound hred
+  generalize hC : ({ bound := head, kind := kind } ::
+      { bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg head kind with
+  | pro hpv hb =>
+      subst hC
+      exact hPro hArgBound hpv hb
+  | @top _ _ u hpv hu =>
+      subst hC
+      have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+        Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+          hArgBound.scoped_left
+      have hu' :
+          Term.Scoped
+            (Ctx.depth ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ))
+            (Term.instantiate 1 (Term.shift 0 arg) u) := by
+        have huInst :
+            Term.Scoped (Γ.depth + 1)
+              (Term.instantiate 1 (Term.shift 0 arg) u) :=
+          Term.instantiate_scoped 1 (Γ.depth + 1) (Term.shift 0 arg) u
+            (by omega) hArgShiftScoped (by
+              simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using huInst
+      exact MSubStar.of_MSubRed
+        (MSubRed.top
+          (BetaInstantiationPreservesPrevalidExtUnderHead hArgBound hpv) hu')
+  | equ hpv heq =>
+      subst hC
+      exact MSubStar.of_MSubRed
+        (MSubRed.equ
+          (BetaInstantiationPreservesPrevalidExtUnderHead hArgBound hpv)
+          (hEq hArgBound heq))
+  | @app _ sApp _ _ v hOp hv ih =>
+      subst hC
+      have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+        Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+          hArgBound.scoped_left
+      have hpvTail :
+          PrevalidExt ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+            (Stack.instantiate 1 (Term.shift 0 arg) sApp) :=
+        BetaInstantiationPreservesPrevalidExtUnderHead hArgBound
+          (PrevalidExt.tail (s := sApp) (α := v) hOp.prevalidExt)
+      have hv' :
+          Term.Scoped
+            (Ctx.depth ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ))
+            (Term.instantiate 1 (Term.shift 0 arg) v) := by
+        have hvInst :
+            Term.Scoped (Γ.depth + 1)
+              (Term.instantiate 1 (Term.shift 0 arg) v) :=
+          Term.instantiate_scoped 1 (Γ.depth + 1) (Term.shift 0 arg) v
+            (by omega) hArgShiftScoped (by
+              simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hv)
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hvInst
+      simpa [Term.instantiate, Stack.instantiate] using
+        msubStar_app_fixed_arg hpvTail hv' (ih hArgBound rfl)
+  | fun_ ht hBound hBody =>
+      subst hC
+      exact hFun hArgBound ht hBound hBody
+  | fOp ht hα hBody =>
+      subst hC
+      exact hFOp hArgBound ht hα hBody
 
 /-- The generic under-head body substitution payload specializes to the
 `MSubRed.fOp` body frontier; the only additional work is rewriting the

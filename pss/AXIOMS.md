@@ -296,6 +296,14 @@ closures, 2 inactive outstanding).
   that consumes generic under-head substitution plus the changed-bound
   `Ms-Fun` body frontier directly. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split generic under-head subtype
+  β-instantiation into constructor-facing frontiers for under-head
+  equivalence substitution, `Ms-Pro`, `Ms-Fun`, and `Ms-FOp`, then added
+  `BetaInstantiationPreservesPrevalidExtUnderHead` and
+  `BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_constructors`.
+  The assembler discharges the structural `Ms-Top`, `Ms-Equ`, and `Ms-App`
+  cases and leaves only the named under-head frontiers as inputs. Added the
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
