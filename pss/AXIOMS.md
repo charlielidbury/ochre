@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubPreservesWfMPayload`, `MSubToWSubMStarPayload`, and
+  `MSubStarToWSubMStarPayload.of_steps`, reducing diagrammatic-star
+  re-embedding to one-step diagrammatic well-formedness preservation plus
+  one-step diagrammatic-to-well-subtyping re-embedding. The proof uses the
+  existing Prop-safe `Nonempty` pattern for eliminating `MSubStar` into
+  Type-valued `WSubMStar`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MSubStarToWSubMStarPayload`,
   `WSubMStarToStackedMSubStarPayload`, and
   `WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge`, reducing the

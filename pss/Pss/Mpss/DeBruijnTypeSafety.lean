@@ -445,6 +445,24 @@ def MSubStarToWSubMStarPayload : Type :=
         WfM Γ target →
           WSubMStar Γ source target
 
+/-- One-step diagrammatic subtyping well-formedness preservation. This is the
+chain-local well-formedness premise needed to re-embed `MSubStar` into
+`WSubMStar`. -/
+def MSubPreservesWfMPayload : Type :=
+  ∀ {Γ : Ctx} {source target : Term},
+    MSub Γ [] source target →
+      WfM Γ source →
+        WfM Γ target
+
+/-- One-step diagrammatic subtyping re-embedding into transitive
+well-subtyping once both endpoints are known well formed. -/
+def MSubToWSubMStarPayload : Type :=
+  ∀ {Γ : Ctx} {source target : Term},
+    MSub Γ [] source target →
+      WfM Γ source →
+        WfM Γ target →
+          WSubMStar Γ source target
+
 /-- Stack-extension bridge for well-subtyping stripped to diagrammatic
 subtyping. A `WSubMStar` lives at the empty stack, but structural application
 lifting for diagrammatic subtyping expects the operator relation under the
@@ -686,6 +704,30 @@ noncomputable def WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
       (.app operator operand) :=
     msubStar_app_fixed_arg hpvNil hArg.wf_left.scoped hOpStack
   exact hBridge hMSubApp hApp' hApp
+
+/-- Re-embed a diagrammatic subtype chain into well-subtyping from one-step
+well-formedness preservation plus one-step well-subtyping re-embedding. -/
+noncomputable def MSubStarToWSubMStarPayload.of_steps
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload) :
+    MSubStarToWSubMStarPayload := by
+  intro Γ source target hChain hwfSource hwfTarget
+  suffices key : ∀ {source : Term} (h : MSubStar Γ [] source target),
+      Nonempty (WfM Γ source → WfM Γ target →
+        WSubMStar Γ source target) from
+    (key hChain).some hwfSource hwfTarget
+  intro source h
+  refine Relation.ReflTransGen.head_induction_on (b := target)
+    (P := fun source (_ : MSubStar Γ [] source target) =>
+      Nonempty (WfM Γ source → WfM Γ target →
+        WSubMStar Γ source target)) h ?_ ?_
+  · exact ⟨fun hwfSource _hwfTarget => WSubMStar.refl_of_wfM hwfSource⟩
+  · intro source mid hHead hTail ih
+    exact ⟨fun hwfSource hwfTarget =>
+      let hwfMid : WfM Γ mid := hPres hHead hwfSource
+      let hLeft : WSubMStar Γ source mid := hStep hHead hwfSource hwfMid
+      let hRight : WSubMStar Γ mid target := (ih.some hwfMid hwfTarget)
+      WSubMStar.trans hwfMid hLeft hRight⟩
 
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
