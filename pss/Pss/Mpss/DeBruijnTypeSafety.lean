@@ -3911,6 +3911,16 @@ noncomputable def WSubMStar.to_chain_diagram_of {Γ : Ctx}
       WSubMChainDiagram.trans_of hcomm (ihLeft hcomm) (ihRight hcomm))
     hSub) hcomm
 
+/-- Named de Bruijn Theorem 3 use-site in Type-valued chain-diagram form.
+This keeps the chain witnesses needed by the function-bound inversion layer,
+instead of immediately forgetting them to Prop-valued closures. -/
+noncomputable def Theorem_3_DeBruijn_WSubMStar_toChainDiagram_of
+    {Γ : Ctx} {source target : Term}
+    (hcomm : StrongCommutes Γ [])
+    (hSub : WSubMStar Γ source target) :
+    WSubMChainDiagram Γ source target :=
+  hSub.to_chain_diagram_of hcomm
+
 /-- Extract the abstraction-shaped function-bound common reduct from a
 transitive function-supertype derivation. This is the star-level diagram
 shape needed before proving the joined bound is well-formed. -/
@@ -3937,6 +3947,14 @@ noncomputable def AbsFunctionBoundChainShapePayload_of
     AbsFunctionBoundChainShapePayload := by
   intro Γ bound body result hSub
   exact WSubMStar.abs_function_bound_chain_shape_of (hcomm (Γ := Γ)) hSub
+
+/-- Named Theorem 3-to-function-bound-shape adapter used by the de Bruijn
+preservation route. It exposes the abstraction-shaped chain witnesses without
+requiring callers to rebuild the transitive well-subtyping collapse. -/
+noncomputable def Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ []) :
+    AbsFunctionBoundChainShapePayload :=
+  AbsFunctionBoundChainShapePayload_of hcomm
 
 /-- Reflexive abstraction-to-abstraction chain diagram. -/
 def AbsAbsBoundChainDiagram.refl

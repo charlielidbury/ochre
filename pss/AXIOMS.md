@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `Theorem_3_DeBruijn_WSubMStar_toChainDiagram_of` and
+  `Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of`, exposing
+  Type-valued chain-diagram Theorem 3 use-sites for the function-bound
+  inversion layer. Added both endpoints to `Pss/DeBruijnSanity.lean`'s axiom
+  audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `Lemma_1_DeBruijn_StrongCommutativityChain_of`, the named Type-valued
   chain form of the de Bruijn Lemma 1 lifting endpoint, and added it to
