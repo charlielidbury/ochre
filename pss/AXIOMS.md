@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 5 audit to
+  include the β preservation payload boundary:
+  `StepBetaPreservesWfM_of`, `StepBetaPreservesWfM_of_diagram`,
+  `StepBetaPreservesWfM_of_chain_diagram`, and
+  `StepBetaPreservesWfM_of_chain_shape`. No axiom-count change.
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Theorem 5 audit to
   include the operational preservation payload boundary:
   `StepPreservesWfM_of_components`,
   `StepPreservesWfM_of_diagram_components`,

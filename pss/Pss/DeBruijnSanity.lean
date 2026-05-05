@@ -24,6 +24,10 @@ namespace DeBruijn
 #print axioms Theorem_4_DeBruijn_NoTopAbstractionSupertypesAt_of
 #print axioms Theorem_4_DeBruijn_NoTopFunctionSupertypes_of
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity
+#print axioms StepBetaPreservesWfM_of
+#print axioms StepBetaPreservesWfM_of_diagram
+#print axioms StepBetaPreservesWfM_of_chain_diagram
+#print axioms StepBetaPreservesWfM_of_chain_shape
 #print axioms StepPreservesWfM_of_components
 #print axioms StepPreservesWfM_of_diagram_components
 #print axioms StepPreservesWfM_of_chain_diagram_components
