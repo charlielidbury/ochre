@@ -2333,7 +2333,7 @@ blanket stack-head transport theorem: they only need to replace the old
 `commute_appAbs_structApp_eqStep_or_fOp_residual`. -/
 theorem commute_appAbs_structApp_eqStep_of_fOp_handlers {Γ : Ctx} {s : Stack}
     {bound body arg bound₁ body₁ bound₂ body₂ arg' : Term}
-    (hpvTail : PrevalidExt Γ s)
+    (_hpvTail : PrevalidExt Γ s)
     (hcommArg : StrongCommutes Γ (arg :: s))
     (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
     (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂))
@@ -2356,7 +2356,7 @@ theorem commute_appAbs_structApp_eqStep_of_fOp_handlers {Γ : Ctx} {s : Stack}
     ∃ t₃,
       MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
         MSubRedStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
-  cases commute_appAbs_structApp_eqStep_or_fOp_residual hpvTail hcommArg hSubOp
+  cases commute_appAbs_structApp_eqStep_or_fOp_residual_from_left hcommArg hSubOp
       hEqOp hEqArg with
   | inl hJoin =>
     exact hJoin
@@ -7330,7 +7330,7 @@ theorem commute_appAbs_structApp_eqStep_of_body_fOp_msub_replacements {Γ : Ctx}
     ∃ t₃,
       MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
         MSubStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
-  cases commute_appAbs_structApp_eqStep_or_fOp_residual hpvTail hcommArg hSubOp
+  cases commute_appAbs_structApp_eqStep_or_fOp_residual_from_left hcommArg hSubOp
       hEqOp hEqArg with
   | inl hJoin =>
     obtain ⟨t₃, hEqJoin, hSubJoin⟩ := hJoin
@@ -7465,8 +7465,8 @@ theorem commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements {Γ : Ctx}
         MSubStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
   have hArgScoped : Term.Scoped Γ.depth arg := hEqArg.scoped_left
   have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
-  refine commute_appAbs_structApp_eqStep_of_body_fOp_msub_replacements
-    hpvTail hcommArg hSubOp hEqOp hEqArg ?_ ?_
+  refine commute_appAbs_structApp_eqStep_of_body_fOp_msub_replacements_from_left
+    hcommArg hSubOp hEqOp hEqArg ?_ ?_
   · intro joinBound joinBody _hBound hBody
     exact meqRed_equ_head_shifted_replace_from_replacements hpvTail hArgScoped
       hArg'Scoped hOldNewStack hEqSelfReplace hEqAppOpReplace hNilReplace
@@ -7723,8 +7723,8 @@ theorem commute_appAbs_structApp_eqStep_of_shifted_fOp_tail_lifts {Γ : Ctx}
   have hpvNew : PrevalidExt ({ bound := arg', kind := .equ } :: Γ)
       (Stack.shift 0 s) :=
     PrevalidExt.weaken_head hpvTail hpvNewCtx
-  exact commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements
-    hpvTail hcommArg hSubOp hEqOp hEqArg hOldNewStack hEqSelfReplace
+  exact commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements_from_left
+    hcommArg hSubOp hEqOp hEqArg hOldNewStack hEqSelfReplace
     hEqAppOpReplace hNilReplace hEqFunBodyReplace hEqBetBodyReplace
     (meq_equ_head_shifted_fop_body_handler_from_tail_lifts hpvOld hpvNew
       hArg'Scoped hOldNewTail hEqFOpSelfReplace hEqFOpAppOpReplace
@@ -8743,8 +8743,8 @@ theorem commute_appAbs_structApp_eqStep_of_lifted_shifted_fOp_replacements
       MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
         MSubStar Γ s (.app (.abs bound₂ body₂) arg') t₃ := by
   have hArg'Scoped : Term.Scoped Γ.depth arg' := hEqArg.scoped_right
-  exact commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements
-    hpvTail hcommArg hSubOp hEqOp hEqArg
+  exact commute_appAbs_structApp_eqStep_of_shifted_fOp_replacements_from_left
+    hcommArg hSubOp hEqOp hEqArg
     (meq_equ_head_stack_lift_from_replacements hpvTail hArg'Scoped
       hArgProReplace hArgAppOpReplace hArgNilReplace hArgFunNilBodyReplace
       hArgFunConsBodyReplace hArgBetBodyReplace hEqArg)
