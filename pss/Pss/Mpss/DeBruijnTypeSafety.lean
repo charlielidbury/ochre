@@ -481,6 +481,20 @@ def MSubStackLiftPayload : Prop :=
       Term.Scoped Γ.depth operand →
         MSub Γ [operand] source target
 
+/-- Stack lift for subtype-reduction chains under one operand stack head. -/
+def MSubRedStarStackLiftPayload : Prop :=
+  ∀ {Γ : Ctx} {source target operand : Term},
+    MSubRedStar Γ [] source target →
+      Term.Scoped Γ.depth operand →
+        MSubRedStar Γ [operand] source target
+
+/-- Stack lift for equivalence-reduction chains under one operand stack head. -/
+def MEqRedStarStackLiftPayload : Prop :=
+  ∀ {Γ : Ctx} {source target operand : Term},
+    MEqRedStar Γ [] source target →
+      Term.Scoped Γ.depth operand →
+        MEqRedStar Γ [operand] source target
+
 /-- Transitive diagrammatic stack lift under one operand stack head. -/
 def MSubStarStackLiftPayload : Prop :=
   ∀ {Γ : Ctx} {source target operand : Term},
@@ -743,6 +757,16 @@ noncomputable def MSubStarToWSubMStarPayload.of_steps
       let hLeft : WSubMStar Γ source mid := hStep hHead hwfSource hwfMid
       let hRight : WSubMStar Γ mid target := (ih.some hwfMid hwfTarget)
       WSubMStar.trans hwfMid hLeft hRight⟩
+
+/-- Reduction-chain stack lifts discharge one-step diagrammatic stack lift by
+lifting both sides of the common-reduct diagram under the operand head. -/
+def MSubStackLiftPayload.of_reduction_lifts
+    (hSubLift : MSubRedStarStackLiftPayload)
+    (hEqLift : MEqRedStarStackLiftPayload) :
+    MSubStackLiftPayload := by
+  intro Γ source target operand hSub hOperand
+  obtain ⟨join, hSubChain, hEqChain⟩ := hSub
+  exact ⟨join, hSubLift hSubChain hOperand, hEqLift hEqChain hOperand⟩
 
 /-- A one-step diagrammatic stack lift iterates to a transitive diagrammatic
 stack lift. -/

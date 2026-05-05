@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubRedStarStackLiftPayload`, `MEqRedStarStackLiftPayload`, and
+  `MSubStackLiftPayload.of_reduction_lifts`, reducing one-step diagrammatic
+  stack lifting to stack lifting for the two reduction chains that form the
+  common-reduct diagram. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MSubStackLiftPayload`, `MSubStarStackLiftPayload`,
   `MSubStarStackLiftPayload.of_step`, and
   `WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift`, reducing the
