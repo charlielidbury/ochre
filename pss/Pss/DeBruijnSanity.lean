@@ -66,6 +66,7 @@ namespace DeBruijn
 #print axioms diamond_abs_fOp_body_fixed_bound_star
 #print axioms diamond_abs_fOp_bound_fixed_body
 #print axioms diamond_abs_fOp_bound_fixed_body_from_left
+#print axioms diamond_abs_fOp_targets_of_bound_body_joins_from_left
 #print axioms diamond_abs_fOp_bound_fixed_body_star
 #print axioms commute_abs_fOp_body_fixed_bound
 #print axioms commute_abs_fOp_body_fixed_bound_from_left

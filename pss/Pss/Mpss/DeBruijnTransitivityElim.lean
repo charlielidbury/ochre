@@ -2876,6 +2876,50 @@ theorem meqRedStar_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
       exact Relation.ReflTransGen.trans ih
         (MEqRedStar.single (MEqRed.fOp hStep.some hα hBodyRefl))
 
+/-- Final assembly for the changing-bound/changing-body `FOp` abstraction
+diamond. After a bound join is chosen, both body targets are joined under the
+fixed operand `.equ` head. -/
+theorem diamond_abs_fOp_targets_of_bound_body_joins_from_left {Γ : Ctx} {s : Stack}
+    {α bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hLeft : MEqRed Γ (α :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hRight : MEqRed Γ (α :: s) (.abs bound body) (.abs bound₂ body₂))
+    (hBoundJoin :
+      ∃ bound₃, MEqRedJ Γ [] bound₁ bound₃ ∧ MEqRedJ Γ [] bound₂ bound₃)
+    (hBodyJoin :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        ∃ body₃,
+          MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+            (Stack.shift 0 s) body₁ body₃ ∧
+            MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+              (Stack.shift 0 s) body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound₁ body₁) t₃ ∧
+        MEqRedStar Γ (α :: s) (.abs bound₂ body₂) t₃ := by
+  obtain ⟨bound₃, hBound₁₃, hBound₂₃⟩ := hBoundJoin
+  obtain ⟨body₃, hBody₁₃, hBody₂₃⟩ := hBodyJoin hBound₁₃ hBound₂₃
+  have hpvTail : PrevalidExt Γ s := PrevalidExt.tail hLeft.prevalidExt
+  have hα : Term.Scoped Γ.depth α := PrevalidExt.head_scoped hLeft.prevalidExt
+  have hBody₁Scoped :
+      Term.Scoped (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body₁ := by
+    simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_right).2
+  have hBody₂Scoped :
+      Term.Scoped (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body₂ := by
+    simpa [Ctx.depth] using (Term.Scoped.abs_inv hRight.scoped_right).2
+  have hBound₃Scoped : Term.Scoped Γ.depth bound₃ := hBound₁₃.some.scoped_right
+  exact ⟨.abs bound₃ body₃,
+    MEqRedStar.trans
+      (meqRedStar_abs_fOp_bound_fixed_body hpvTail hα hBody₁Scoped
+        (MEqRedStar.single hBound₁₃.some))
+      (meqRedStar_abs_fOp_body_fixed_bound hpvTail hBound₃Scoped hα
+        hBody₁₃),
+    MEqRedStar.trans
+      (meqRedStar_abs_fOp_bound_fixed_body hpvTail hα hBody₂Scoped
+        (MEqRedStar.single hBound₂₃.some))
+      (meqRedStar_abs_fOp_body_fixed_bound hpvTail hBound₃Scoped hα
+        hBody₂₃)⟩
+
 /-- Star-level fixed-body `FOp` abstraction diamond. A bound-level
 equivalence-chain diamond lifts through `FOp` when the operand and body are
 unchanged. -/
