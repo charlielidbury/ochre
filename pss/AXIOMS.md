@@ -1350,6 +1350,12 @@ closures, 2 inactive outstanding).
   payload while proving the empty-stack argument transport directly. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFunBodyReplacePayload` and
+  `MEqRed.fun_preservesWfM_of_contextual`, reducing the contextual
+  `Me-Fun` well-formedness case to the old-`.sub` to new-`.sub` body
+  replacement payload while proving bound and old-head body preservation
+  directly. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No

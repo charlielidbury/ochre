@@ -318,6 +318,18 @@ def MEqRedAppFunctionSupertypePayload : Type :=
             MEqRed Γ (v :: s) u u' →
               WSubMStar Γ u' (.abs bound .top)
 
+/-- Remaining context-replacement payload for the contextual `Me-Fun`
+well-formedness case. After the body reduction is preserved under the old
+`.sub` head, the body witness must be transported to the changed bound. -/
+def MEqRedFunBodyReplacePayload : Type :=
+  ∀ {Γ : Ctx} {bound bound' body' : Term},
+    WfCtxEqu Γ →
+      WfM Γ bound →
+        WfM Γ bound' →
+          MEqRed Γ [] bound bound' →
+            WfM ({ bound := bound, kind := .sub } :: Γ) body' →
+              WfM ({ bound := bound', kind := .sub } :: Γ) body'
+
 /-- Empty-stack preservation under a well-formed-equivalence context. -/
 def MEqRedPreservesWfMUnderWfCtx : Type :=
   ∀ {Γ : Ctx} {x y : Term}, WfCtxEqu Γ → MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
@@ -384,6 +396,29 @@ noncomputable def MEqRed.app_preservesWfM_of_contextual
   have hArg' : WSubMStar Γ v' bound :=
     WSubMStar.trans hwfV hArgBack hArg
   exact WfM.app hFun' hArg'
+
+/-- `Me-Fun` well-formedness preservation reduced to the body
+context-replacement payload. -/
+noncomputable def MEqRed.fun_preservesWfM_of_contextual
+    (hpres : MEqRedPreservesWfMContextual)
+    (hBodyReplace : MEqRedFunBodyReplacePayload)
+    {Γ : Ctx} {bound bound' body body' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hredBound : MEqRed Γ [] bound bound')
+    (hredBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body')
+    (hwfAbs : WfM Γ (.abs bound body)) :
+    WfM Γ (.abs bound' body') := by
+  have hwfBound : WfM Γ bound := hwfAbs.fun_inv.1
+  have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γ) body :=
+    hwfAbs.fun_inv.2
+  have hwfBound' : WfM Γ bound' :=
+    hpres hΓ WfStack.nil hredBound hwfBound
+  have hΓBody : WfCtxEqu ({ bound := bound, kind := .sub } :: Γ) :=
+    WfCtxEqu.sub hΓ
+  have hwfBodyOld : WfM ({ bound := bound, kind := .sub } :: Γ) body' :=
+    hpres hΓBody WfStack.nil hredBody hwfBody
+  exact WfM.fun_ hwfBound'
+    (hBodyReplace hΓ hwfBound hwfBound' hredBound hwfBodyOld)
 
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
