@@ -156,6 +156,11 @@ closures, 2 inactive outstanding).
   checked six-head payload frontier through scoped reflexivity and variables.
   Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added six-head constructor leaf
+  `BetaInstantiationPreservesMEqRedUnderSixHeadsStack.tAp`, extending the
+  checked six-head payload frontier through the top-application reduction.
+  Added an endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
