@@ -7747,6 +7747,16 @@ noncomputable def commute_subChain_eqChain_of
     Classical.choose_spec h
   exact ⟨t₃, MEqRedChain.of_star hSpec.1, MSubRedChain.of_star hSpec.2⟩
 
+/-- Named de Bruijn Lemma 1 lifting in Type-valued chain form. -/
+noncomputable def Lemma_1_DeBruijn_StrongCommutativityChain_of
+    {Γ : Ctx} {s : Stack} (hcomm : StrongCommutes Γ s)
+    {t₀ t₁ t₂ : Term}
+    (hsubs : MSubRedChain Γ s t₀ t₁)
+    (heqs : MEqRedChain Γ s t₀ t₂) :
+    Sigma fun t₃ =>
+      MEqRedChain Γ s t₁ t₃ × MSubRedChain Γ s t₂ t₃ :=
+  commute_subChain_eqChain_of hcomm hsubs heqs
+
 /-- Named de Bruijn Lemma 1 chain lifting: single-step strong commutativity
 at a fixed extended context lifts to one subtype step against an
 equivalence-reduction chain. -/

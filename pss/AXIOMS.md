@@ -10,6 +10,10 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `Lemma_1_DeBruijn_StrongCommutativityChain_of`, the named Type-valued
+  chain form of the de Bruijn Lemma 1 lifting endpoint, and added it to
+  `Pss/DeBruijnSanity.lean`'s axiom audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `diamond_eqChain_eqChain_of` and
   `Lemma_2_DeBruijn_DiamondMEqRedChain_of`, the Type-valued chain form of
   the de Bruijn Lemma 2 star-lifting endpoint. Added the named chain
