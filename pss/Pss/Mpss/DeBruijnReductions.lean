@@ -1715,6 +1715,18 @@ theorem MSubRedStar.equ_sub_head_replace {Γ : Ctx} {s : Stack} {u v : Term}
       (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
       (old := old) (new := new) hpvNew hEq hcut (by simpa using hOldNew))
 
+/-- Restricted subtype-chain head replacement for chains that originate from
+equivalence. This avoids the false general `MSubRedStar` replacement shape:
+arbitrary subtype steps may use `Ms-Pro` at the replaced `.sub` slot and
+therefore change their target. -/
+theorem MSubRedStar.of_meqStar_sub_head_replace_star {Γ : Ctx} {s : Stack}
+    {u v old new : Term}
+    (hpvNew : PrevalidExt ({ bound := new, kind := .sub } :: Γ) s)
+    (hEq : MEqRedStar ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRedStar Γ [] old new) :
+    MSubRedStar ({ bound := new, kind := .sub } :: Γ) s u v :=
+  MSubRedStar.of_MEqRedStar hpvNew (hEq.sub_head_replace_star hOldNew)
+
 /-- Star-valued changed-slot `Ms-Pro` replacement residual. -/
 theorem MSubRedStar.pro_replaceAt_sub_self {Γ : Ctx} {s : Stack}
     {cutoff : Nat} {new : Term}

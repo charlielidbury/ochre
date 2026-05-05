@@ -136,6 +136,7 @@ namespace DeBruijn
 #print axioms MEqRedStar.sub_head_replace
 #print axioms MEqRedStar.sub_head_replace_star
 #print axioms MSubRedStar.equ_sub_head_replace
+#print axioms MSubRedStar.of_meqStar_sub_head_replace_star
 #print axioms MSubRedStarStackLiftPayload.of_step
 #print axioms MEqRedStarStackLiftPayload.of_step
 #print axioms MSubStarStackLiftPayload.of_step

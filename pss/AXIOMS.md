@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRedStar.of_meqStar_sub_head_replace_star`, a restricted subtype
+  transport for `.sub` head replacement when the subtype chain originates from
+  equivalence. This records why the tempting general subtype replacement is
+  false (`Ms-Pro` at the replaced slot changes the target). Added the endpoint
+  to the de Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `diamond_abs_fun_bound_body_chains_star`, a star-level
   changing-bound/changing-body `Fun` diamond assembly that consumes bound
