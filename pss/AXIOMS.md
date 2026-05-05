@@ -220,6 +220,10 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.var`, deriving the
   seven-head variable leaf from the checked reflexive leaf. Added an endpoint
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.tAp`, extending the
+  seven-head structural frontier through top-application reductions. Added an
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
