@@ -304,6 +304,15 @@ closures, 2 inactive outstanding).
   The assembler discharges the structural `Ms-Top`, `Ms-Equ`, and `Ms-App`
   cases and leaves only the named under-head frontiers as inputs. Added the
   endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` and
+  `Pss/Mpss/DeBruijnTypeSafety.lean` — added diagrammatic head-extension
+  weakening for `MSub`/`MSubStar` and used it to derive
+  `BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload.of_stack_append`.
+  The preserved-head and true-tail lookup cases become raw `Ms-Pro` steps in
+  the target context, while the changed index-1 case is the original
+  `WSubMStar` premise lifted under the instantiated preserved head and target
+  stack. Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

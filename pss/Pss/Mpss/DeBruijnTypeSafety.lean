@@ -2432,6 +2432,112 @@ noncomputable def BetaInstantiationPreservesMSubRedProHeadMSubStarPayload.of_sta
     hAppend.iterate_scoped (PrevalidExt.stack_scoped hpvInst) hStar
   simpa [Term.instantiate, Term.instantiate_shift_id] using hStack
 
+/-- The under-head `Ms-Pro` frontier follows from lookup analysis plus the
+existing diagrammatic stack-append lift. The changed index-`1` case is exactly
+the lifted `WSubMStar` premise; the preserved head and true-tail lookups are
+raw `Ms-Pro` steps in the target context. -/
+noncomputable def BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload.of_stack_append
+    (hAppend : MSubStarStackAppendPayload) :
+    BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload := by
+  intro Γ bound arg head target kind s i hArgBound hpv hb
+  have hpvTarget :
+      PrevalidExt ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+        (Stack.instantiate 1 (Term.shift 0 arg) s) :=
+    BetaInstantiationPreservesPrevalidExtUnderHead hArgBound hpv
+  cases i with
+  | zero =>
+      cases kind with
+      | sub =>
+          have htarget :
+              target = Term.shift 0 head := by
+            have h : Term.shift 0 head = target := by
+              simpa [Ctx.subBinds] using hb
+            exact h.symm
+          have hbind :
+              Ctx.subBinds
+                ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.sub } :: Γ)
+                0 (Term.shift 0 (Term.instantiate 0 arg head)) := by
+            simp [Ctx.subBinds]
+          have htargetInst :
+              Term.instantiate 1 (Term.shift 0 arg) target =
+                Term.shift 0 (Term.instantiate 0 arg head) := by
+            rw [htarget]
+            exact (Term.shiftBy_instantiate 0 1 0 arg head (Nat.le_refl 0)).symm
+          simpa [Term.instantiate, htargetInst] using
+            MSubStar.of_MSubRed (MSubRed.pro hpvTarget hbind)
+      | equ =>
+          simp [Ctx.subBinds] at hb
+  | succ i =>
+      cases i with
+      | zero =>
+          have htarget :
+              target = Term.shift 0 (Term.shift 0 bound) := by
+            cases kind <;>
+              (have h : Term.shift 0 (Term.shift 0 bound) = target := by
+                simpa [Ctx.subBinds] using hb
+               exact h.symm)
+          have hNew : Prevalid
+              ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ) :=
+            PrevalidExt.ctx hpvTarget
+          have hBase :
+              MSubStar ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+                [] (Term.shift 0 arg) (Term.shift 0 bound) :=
+            MSubStar.weaken_head
+              (PrevalidExt.nil hArgBound.prevalid) hNew hArgBound.toMSubStar
+          have hStack :
+              MSubStar ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+                (Stack.instantiate 1 (Term.shift 0 arg) s)
+                (Term.shift 0 arg) (Term.shift 0 bound) :=
+            hAppend.iterate_scoped (PrevalidExt.stack_scoped hpvTarget) hBase
+          have htargetInst :
+              Term.instantiate 1 (Term.shift 0 arg) target = Term.shift 0 bound := by
+            rw [htarget]
+            simpa [Term.shift_shift_zero] using
+              Term.instantiate_shift_id 1 (Term.shift 0 arg) (Term.shift 0 bound)
+          simpa [Term.instantiate, htargetInst] using hStack
+      | succ j =>
+          cases kind with
+          | sub =>
+              simp [Ctx.subBinds] at hb
+              rcases hb with ⟨tailTarget, htail, htarget⟩
+              subst htarget
+              have hbind :
+                  Ctx.subBinds
+                    ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.sub } :: Γ)
+                    (j + 1) (Term.shift 0 tailTarget) := by
+                exact Ctx.subBinds_weaken_head
+                  ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.sub } : CtxEntry)
+                  htail
+              have htargetInst :
+                  Term.instantiate 1 (Term.shift 0 arg)
+                    (Term.shift 0 (Term.shift 0 tailTarget)) =
+                    Term.shift 0 tailTarget := by
+                simpa [Term.shift_shift_zero] using
+                  Term.instantiate_shift_id 1 (Term.shift 0 arg)
+                    (Term.shift 0 tailTarget)
+              simpa [Term.instantiate, htargetInst] using
+                MSubStar.of_MSubRed (MSubRed.pro hpvTarget hbind)
+          | equ =>
+              simp [Ctx.subBinds] at hb
+              rcases hb with ⟨tailTarget, htail, htarget⟩
+              subst htarget
+              have hbind :
+                  Ctx.subBinds
+                    ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.equ } :: Γ)
+                    (j + 1) (Term.shift 0 tailTarget) := by
+                exact Ctx.subBinds_weaken_head
+                  ({ bound := Term.instantiate 0 arg head, kind := CtxEntryKind.equ } : CtxEntry)
+                  htail
+              have htargetInst :
+                  Term.instantiate 1 (Term.shift 0 arg)
+                    (Term.shift 0 (Term.shift 0 tailTarget)) =
+                    Term.shift 0 tailTarget := by
+                simpa [Term.shift_shift_zero] using
+                  Term.instantiate_shift_id 1 (Term.shift 0 arg)
+                    (Term.shift 0 tailTarget)
+              simpa [Term.instantiate, htargetInst] using
+                MSubStar.of_MSubRed (MSubRed.pro hpvTarget hbind)
+
 /-- A transitive diagrammatic stack lift discharges the well-subtyping to
 stacked diagrammatic bridge by first stripping `WSubMStar` to `MSubStar`. -/
 def WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift

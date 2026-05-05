@@ -100,6 +100,18 @@ theorem of_MEqRedStar_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRedStar Γ s v u) : MSub Γ s u v :=
   MSub.intro Relation.ReflTransGen.refl h
 
+/-- Head-extension weakening for one diagrammatic subtype step. -/
+theorem weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MSub Γ s u v →
+    MSub (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  rintro ⟨w, hSub, hEqu⟩
+  exact MSub.intro
+    (MSubRedStar.weaken_head hpv hNew hSub)
+    (MEqRedStar.weaken_head hpv hNew hEqu)
+
 /-- A single de Bruijn diagrammatic subtyping step embeds into its reflexive
 transitive closure. -/
 theorem to_star {Γ : Ctx} {s : Stack} {u v : Term}
@@ -185,6 +197,22 @@ diagrammatic subtyping. -/
 theorem of_MEqRedStar_right {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRedStar Γ s v u) : MSubStar Γ s u v :=
   MSub.to_star (MSub.of_MEqRedStar_right h)
+
+/-- Head-extension weakening for transitive diagrammatic subtyping. -/
+theorem weaken_head {Γ : Ctx} {s : Stack} {u v : Term}
+    {newEntry : CtxEntry}
+    (hpv : PrevalidExt Γ s)
+    (hNew : Prevalid (newEntry :: Γ)) :
+    MSubStar Γ s u v →
+    MSubStar (newEntry :: Γ) (Stack.shift 0 s) (Term.shift 0 u) (Term.shift 0 v) := by
+  intro h
+  refine Relation.ReflTransGen.head_induction_on (b := v)
+    (P := fun a _ =>
+      MSubStar (newEntry :: Γ) (Stack.shift 0 s)
+        (Term.shift 0 a) (Term.shift 0 v)) h ?_ ?_
+  · exact Relation.ReflTransGen.refl
+  · intro a b hHead _ ih
+    exact Relation.ReflTransGen.head (MSub.weaken_head hpv hNew hHead) ih
 
 /-- Transitivity of the reflexive-transitive diagrammatic relation. -/
 theorem trans {Γ : Ctx} {s : Stack} {u v w : Term}

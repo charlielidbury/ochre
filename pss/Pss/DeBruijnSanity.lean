@@ -108,6 +108,8 @@ namespace DeBruijn
 #print axioms commute_abs_fun_bound_fixed_body
 #print axioms commute_abs_fun_bound_fixed_body_from_left
 #print axioms commute_abs_fun_targets_of_bound_body_joins_from_left
+#print axioms MSub.weaken_head
+#print axioms MSubStar.weaken_head
 #print axioms commute_abs_fun_targets_of_bound_body_equ_chains_from_left
 #print axioms commute_abs_fun_fun_equ_body_of
 #print axioms commute_abs_fun_fun_top_body_of
@@ -259,6 +261,7 @@ namespace DeBruijn
 #print axioms MSubStarStackLiftPayload.of_append
 #print axioms MSubStarStackAppendPayload.iterate_scoped
 #print axioms BetaInstantiationPreservesMSubRedProHeadMSubStarPayload.of_stack_append
+#print axioms BetaInstantiationPreservesMSubRedUnderHeadProMSubStarPayload.of_stack_append
 #print axioms MSubStarStackAppendPayload.of_body_transports
 #print axioms WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append
 #print axioms MSubRedStar.stack_replace_from_step_replacement
