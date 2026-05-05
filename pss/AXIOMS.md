@@ -91,6 +91,17 @@ closures, 2 inactive outstanding).
   `MEqRedPreservesWfMUnderWfCtx.of_machine_state`, specializing machine-state
   preservation back to the existing empty-stack preservation interface. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added constructor-level residuals for
+  machine-state preservation (`MEqRedProPreservesWfMachineStatePayload`,
+  `MEqRedBetaPreservesWfMachineStatePayload`,
+  `MEqRedMachineStackHeadReplacePayload`,
+  `MEqRedFunPreservesWfMachineStatePayload`,
+  `MEqRedTApPreservesWfMachineStatePayload`, and
+  `MEqRedFOpPreservesWfMachineStatePayload`) plus
+  `MEqRedPreservesWfMachineState.of_components`. The `Me-App` case is now
+  structurally decomposed through the operator IH under the original stack
+  head and a separate head-replacement residual for the reduced operand. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces

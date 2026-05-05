@@ -372,6 +372,69 @@ def MEqRedPreservesWfMachineState : Type :=
     WfCtxEqu Γ → MEqRed Γ s x y →
       WfMachineState Γ x s → WfMachineState Γ y s
 
+/-- Machine-state residual for `Me-Pro`: promotion through an equivalence
+binding must preserve the whole plugged state. This is nontrivial because
+the source state types `bvar i` under the pending stack, while `WfCtxEqu`
+only directly types the stored annotation at an empty stack. -/
+def MEqRedProPreservesWfMachineStatePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {i : Nat} {α α' : Term},
+    WfCtxEqu Γ →
+      Γ.equBinds i α →
+        MEqRed Γ s α α' →
+          WfMachineState Γ (.bvar i) s →
+            WfMachineState Γ α' s
+
+/-- Machine-state residual for `Me-Bet`. -/
+def MEqRedBetaPreservesWfMachineStatePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {bound arg arg' body body' : Term},
+    WfCtxEqu Γ →
+      Term.Scoped Γ.depth bound →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ)
+          (Stack.shift 0 s) body body' →
+          MEqRed Γ [] arg arg' →
+            WfMachineState Γ (.app (.abs bound body) arg) s →
+              WfMachineState Γ (Term.instantiate 0 arg' body') s
+
+/-- Machine-state residual for changing the head operand after the
+empty-stack argument reduction in `Me-App`. -/
+def MEqRedMachineStackHeadReplacePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {u v v' : Term},
+    WfCtxEqu Γ →
+      MEqRed Γ [] v v' →
+        WfMachineState Γ u (v :: s) →
+          WfMachineState Γ u (v' :: s)
+
+/-- Machine-state residual for `Me-Fun`, which only fires at the empty
+stack. -/
+def MEqRedFunPreservesWfMachineStatePayload : Type :=
+  ∀ {Γ : Ctx} {bound bound' body body' : Term},
+    WfCtxEqu Γ →
+      MEqRed Γ [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+          WfMachineState Γ (.abs bound body) [] →
+            WfMachineState Γ (.abs bound' body') []
+
+/-- Machine-state residual for `Me-TAp`. -/
+def MEqRedTApPreservesWfMachineStatePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {u : Term},
+    WfCtxEqu Γ →
+      Term.Scoped Γ.depth u →
+        WfMachineState Γ (.app .top u) s →
+          WfMachineState Γ .top s
+
+/-- Machine-state residual for `Me-FOp`; this is where the plugged-state
+typing supplies the operand-to-bound relationship exposed by
+`WfMachineState.fop_operand_bound`. -/
+def MEqRedFOpPreservesWfMachineStatePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {bound bound' operand body body' : Term},
+    WfCtxEqu Γ →
+      MEqRed Γ [] bound bound' →
+        Term.Scoped Γ.depth operand →
+          MEqRed ({ bound := operand, kind := .equ } :: Γ)
+            (Stack.shift 0 s) body body' →
+            WfMachineState Γ (.abs bound body) (operand :: s) →
+              WfMachineState Γ (.abs bound' body') (operand :: s)
+
 namespace WfMachineState
 
 /-- Tail view of a non-empty plugged machine state. -/
@@ -430,6 +493,50 @@ noncomputable def fop_operand_bound
   exact WSubMStar.trans hArg.wf_right hArg hSubResultBound
 
 end WfMachineState
+
+/-- Assemble corrected machine-state preservation from the constructor-level
+machine-state residuals. The `Me-App` case is partly structural: the
+operator IH preserves the plugged state under the original operand head, and
+`hStackHead` accounts for the empty-stack operand reduction changing that
+head. -/
+noncomputable def MEqRedPreservesWfMachineState.of_components
+    (hPro : MEqRedProPreservesWfMachineStatePayload)
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hStackHead : MEqRedMachineStackHeadReplacePayload)
+    (hFun : MEqRedFunPreservesWfMachineStatePayload)
+    (hTAp : MEqRedTApPreservesWfMachineStatePayload)
+    (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
+    MEqRedPreservesWfMachineState := by
+  intro Γ s x y hΓ hred hState
+  revert hΓ hState
+  induction hred with
+  | pro hpv hb hred ih =>
+      intro hΓ hState
+      exact hPro hΓ hb hred hState
+  | bet ht hBody hArg _ihBody _ihArg =>
+      intro hΓ hState
+      exact hBeta hΓ ht hBody hArg hState
+  | top hpv =>
+      intro hΓ hState
+      exact hState
+  | @app Γapp sapp u u' v v' hOp hArg ihOp _ihArg =>
+      intro hΓ hState
+      have hOpState : WfMachineState Γapp u (v :: sapp) := by
+        simpa [WfMachineState, Stack.plug] using hState
+      have hOpState' := ihOp hΓ hOpState
+      exact hStackHead hΓ hArg hOpState'
+  | var hpv hi =>
+      intro hΓ hState
+      exact hState
+  | fun_ hBound hBody _ihBound _ihBody =>
+      intro hΓ hState
+      exact hFun hΓ hBound hBody hState
+  | tAp hpv hu =>
+      intro hΓ hState
+      exact hTAp hΓ hu hState
+  | fOp hBound hOperand hBody _ihBound _ihBody =>
+      intro hΓ hState
+      exact hFOp hΓ hBound hOperand hBody hState
 
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
