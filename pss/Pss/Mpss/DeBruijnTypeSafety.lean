@@ -523,6 +523,14 @@ noncomputable def MEqRedEmptyPreservesWSubMStarLeft.of_wf_preservation
     WSubMStar.of_MEqRed_back hred hwfSource hwfSource'
   exact WSubMStar.trans hwfSource hBack hSub
 
+/-- Contextual well-formedness preservation also supplies the empty-stack
+left-endpoint well-subtyping transport by specializing to `[]`. -/
+noncomputable def MEqRedEmptyPreservesWSubMStarLeft.of_contextual
+    (hpres : MEqRedPreservesWfMContextual) :
+    MEqRedEmptyPreservesWSubMStarLeft :=
+  MEqRedEmptyPreservesWSubMStarLeft.of_wf_preservation
+    (MEqRedPreservesWfMUnderWfCtx.of_contextual hpres)
+
 /-- `Me-Pro` well-formedness preservation under the contextual preservation
 payload. `WfCtxEqu.lookup_equ` supplies the promoted annotation's
 well-formedness before the recursive reduction premise is used. -/
