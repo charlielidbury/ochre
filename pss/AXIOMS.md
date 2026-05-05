@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_head_stack_lift_from_step_lift` and
+  `msubRedStar_equ_head_stack_lift_function_from_step_lift`, the generic
+  raw-subtype-chain consumers for changed-`.equ`-head stack lifting. These
+  mirror the existing equivalence-chain lift wrappers: callers that can lift
+  each one-step subtype residual under a changed argument head can now lift an
+  entire empty-stack subtype chain for a fixed tail stack or uniformly for
+  every tail stack. Added the new subtype endpoints, plus the adjacent
+  equivalence stack-lift endpoints, to the De Bruijn audit. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRedStar_equ_under_three_heads_replace_with_pro_from_replacements` and
   `msubRedStar_equ_under_three_heads_replace_with_pro_function_from_replacements`,
   the subtype-chain three-preserved-head `.equ` replacement wrappers whose

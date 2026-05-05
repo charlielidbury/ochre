@@ -287,6 +287,10 @@ namespace DeBruijn
 #print axioms MSubRedStarStackLiftPayload.of_step
 #print axioms MEqRedStarStackLiftPayload.of_step
 #print axioms MSubStarStackLiftPayload.of_step
+#print axioms meqRedStar_equ_head_stack_lift_from_step_lift
+#print axioms meqRedStar_equ_head_stack_lift_function_from_step_lift
+#print axioms msubRedStar_equ_head_stack_lift_from_step_lift
+#print axioms msubRedStar_equ_head_stack_lift_function_from_step_lift
 #print axioms WSubMStarToStackedMSubStarPayload.of_msubstar_stack_lift
 #print axioms MSubStackLiftPayload.of_body_transports
 #print axioms WSubMStarToStackedMSubStarPayload.of_body_transports
