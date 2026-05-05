@@ -711,6 +711,75 @@ theorem instantiate_succ_after (k : Nat) (a v t : Term) :
       simp only [instantiate_app]
       exact congrArg₂ Term.app (ih_fn k a v) (ih_arg k a v)
 
+/-- Generic β-target substitution composition through `n + 1` preserved
+slots. This subsumes the numbered `instantiate_after_*` lemmas used by the
+preserved-head binder adapters. -/
+theorem instantiate_after_many (n k : Nat) (a v t : Term) :
+    instantiate k (instantiate (k + n + 1) a v)
+        (instantiate (k + n + 2) (shift k a) t) =
+      instantiate (k + n + 1) a (instantiate k v t) := by
+  induction t generalizing n k a v with
+  | bvar i =>
+      by_cases hlt : i < k
+      · have hlt_high₂ : i < k + n + 2 := by omega
+        have hlt_high₁ : i < k + n + 1 := by omega
+        simp [instantiate, hlt, hlt_high₂, hlt_high₁]
+      · by_cases heq : i = k
+        · subst i
+          have hnlt : ¬ k < k := by omega
+          have hlt_high₂ : k < k + n + 2 := by omega
+          simp [instantiate, hnlt, hlt_high₂]
+        · by_cases hlt_high₂ : i < k + n + 2
+          · have hnlt : ¬ i < k := by omega
+            have hne : i ≠ k := by omega
+            have hpred_lt_high₁ : i - 1 < k + n + 1 := by omega
+            simp [instantiate, hnlt, hne, hlt_high₂, hpred_lt_high₁]
+          · by_cases heq_high₂ : i = k + n + 2
+            · subst i
+              have hnlt_lhs₁ : ¬ k + n + 2 < k + n + 2 := by omega
+              have hnlt_lhs₂ : ¬ k < k := by omega
+              have hnlt_rhs₁ : ¬ k + n + 2 < k := by omega
+              have hne_rhs₁ : k + n + 2 ≠ k := by omega
+              have hpred_rhs₁ : k + n + 2 - 1 = k + n + 1 := by omega
+              have hnlt_rhs₂ : ¬ k + n + 1 < k + n + 1 := by omega
+              have hshift_id :
+                  instantiate k (instantiate (k + n + 1) a v) (shift k a) = a := by
+                exact instantiate_shift_id k (instantiate (k + n + 1) a v) a
+              simp [instantiate, hnlt_lhs₁, hnlt_lhs₂, hnlt_rhs₁, hne_rhs₁,
+                hpred_rhs₁, hnlt_rhs₂, hshift_id]
+            · have hnlt_lhs₁ : ¬ i < k + n + 2 := by omega
+              have hne_lhs₁ : i ≠ k + n + 2 := by omega
+              have hnlt_lhs₂ : ¬ i - 1 < k := by omega
+              have hne_lhs₂ : i - 1 ≠ k := by omega
+              have hpred_lhs : i - 1 - 1 = i - 2 := by omega
+              have hnlt_rhs₁ : ¬ i < k := by omega
+              have hne_rhs₁ : i ≠ k := by omega
+              have hnlt_rhs₂ : ¬ i - 1 < k + n + 1 := by omega
+              have hne_rhs₂ : i - 1 ≠ k + n + 1 := by omega
+              have hpred_rhs₂ : i - 1 - 1 = i - 2 := by omega
+              simp [instantiate, hnlt_lhs₁, hne_lhs₁, hnlt_lhs₂, hne_lhs₂,
+                hpred_lhs, hnlt_rhs₁, hne_rhs₁, hnlt_rhs₂, hne_rhs₂,
+                hpred_rhs₂]
+  | top =>
+      rfl
+  | abs bound body ih_bound ih_body =>
+      simp only [instantiate_abs]
+      apply congrArg₂ Term.abs
+      · exact ih_bound n k a v
+      · have hbody := ih_body n (k + 1) (shift 0 a) (shift 0 v)
+        have hshift :
+            shift (k + 1) (shift 0 a) = shift 0 (shift k a) := by
+          exact shift_shift_zero k a
+        have hvShift :
+            instantiate (n + (k + 2)) (shift 0 a) (shift 0 v) =
+              shift 0 (instantiate (n + (k + 1)) a v) := by
+          simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+            (shiftBy_instantiate 0 1 (k + n + 1) a v (Nat.zero_le _)).symm
+        simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm, hshift, hvShift] using hbody
+  | app fn arg ih_fn ih_arg =>
+      simp only [instantiate_app]
+      exact congrArg₂ Term.app (ih_fn n k a v) (ih_arg n k a v)
+
 /-- Substituting index `k` after substituting through three preserved slots is
 equivalent to first substituting index `k`, then substituting the surviving
 slot at `k + 2`. -/
