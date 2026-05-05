@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_two_sub_heads_replace_from_handlers` and
+  `MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers`, the two-`.sub`
+  specializations of the raw two-head replacement splitters. The equivalence
+  splitter discharges impossible `Me-Pro` indices 0 and 1; the subtype
+  splitter rules out nested raw `Ms-FOp` at empty stack. Added both endpoints
+  to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_two_heads_replace_from_handlers` and
   `MSubRed.equ_under_two_heads_replace_from_handlers`, raw replacement
   splitters for a changed `.equ` entry under two preserved context heads.
