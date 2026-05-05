@@ -1243,6 +1243,12 @@ closures, 2 inactive outstanding).
   `NoTopAbstractionSupertypesAt.of_wsubm_right_chain`. This discharges
   `WSubMAbsAbsChainDiagramPayload` without adding axioms. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the direct one-step
+  function-bound projection wrappers
+  `WSubM.abs_function_bound_chain_diagram` and
+  `WSubM.abs_function_bound_inversion`, exposing the new Type-valued
+  diagram extraction as bound well-equivalence for a single `WSubM`
+  derivation. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

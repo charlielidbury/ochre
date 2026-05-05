@@ -442,6 +442,42 @@ noncomputable def WSubM.abs_abs_chain_diagram :
   exact hSub.abs_abs_chain_diagram_with_right_chain
     hNoTop hwfTarget (PLift.up (Eq.refl _)) MEqRedChain.refl
 
+/-- Direct one-step function-bound chain diagram extraction from `WSubM`. -/
+noncomputable def WSubM.abs_function_bound_chain_diagram
+    {Γ : Ctx} {bound body result : Term}
+    (hNoTop : NoTopAbstractionSupertypesAt)
+    (_hwfSource : WfM Γ (.abs bound body))
+    (hwfTarget : WfM Γ (.abs result .top))
+    (hSub : WSubM Γ (.abs bound body) (.abs result .top)) :
+    AbsFunctionBoundChainDiagram Γ bound body result :=
+  AbsFunctionBoundChainDiagram.of_abs_abs
+    (hSub.abs_abs_chain_diagram_with_right_chain
+      hNoTop hwfTarget (PLift.up (Eq.refl _)) MEqRedChain.refl)
+
+/-- Direct one-step function-bound inversion from `WSubM`, obtained by
+projecting the Type-valued chain diagram. -/
+noncomputable def WSubM.abs_function_bound_inversion
+    {Γ : Ctx} {bound body result : Term}
+    (hNoTop : NoTopAbstractionSupertypesAt)
+    (hwfSource : WfM Γ (.abs bound body))
+    (hwfTarget : WfM Γ (.abs result .top))
+    (hSub : WSubM Γ (.abs bound body) (.abs result .top)) :
+    WEquMStar Γ bound result := by
+  let d := hSub.abs_function_bound_chain_diagram hNoTop hwfSource hwfTarget
+  have hwfBound : WfM Γ bound := hwfSource.fun_inv.1
+  have hwfResult : WfM Γ result := hwfTarget.fun_inv.1
+  have hBoundJoin : MEqRedChain Γ [] bound d.joinBound :=
+    MSubRedChain.abs_bound_chain d.subJoin
+  have hResultJoin : MEqRedChain Γ [] result d.joinBound :=
+    MEqRedChain.abs_bound_chain d.eqJoin
+  have hLeft : WEquMStar Γ bound d.joinBound :=
+    WEquMStar.of_MEqRedStar_fwd_of_wf hBoundJoin.to_star
+      hwfBound d.wfJoinBound
+  have hRight : WEquMStar Γ d.joinBound result :=
+    WEquMStar.of_MEqRedStar_back_of_wf hResultJoin.to_star
+      hwfResult d.wfJoinBound
+  exact WEquMStar.trans d.wfJoinBound hLeft hRight
+
 /-- Forget the Type-valued chain structure of a function-bound diagram,
 embedding its chains into the existing Prop-valued closures. -/
 def AbsFunctionBoundDiagram.of_chain {Γ : Ctx} {bound body result : Term}
