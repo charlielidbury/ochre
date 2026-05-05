@@ -224,6 +224,10 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.tAp`, extending the
   seven-head structural frontier through top-application reductions. Added an
   endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` — added `Term.instantiate_seven_shift_zero` and
+  `Term.instantiate_seven_shift_zero_tail`, the term arithmetic needed by the
+  remaining seven-head `Me-Pro` leaf. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
