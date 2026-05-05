@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_fun_handlers_of`,
+  a dispatcher variant for the `Ms-Fun × Me-Fun` body case that wires the
+  structural `Ms-App × Me-App` branch through
+  `commute_abs_fun_fun_app_body_app_from_operator_join_of`. This removes the
+  monolithic structural app callback in favor of the precise operator
+  commutativity, replacement, and changed-argument transport obligations.
+  Added the endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_app_body_app_from_operator_join_of`, lifting the
   structural `Ms-App × Me-App` body join through the outer `Ms-Fun × Me-Fun`
   abstraction. The theorem handles the outer bound join and keeps the
