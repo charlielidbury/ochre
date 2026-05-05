@@ -87,8 +87,10 @@ closures, 2 inactive outstanding).
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
   plus the twelve-head reflexive leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.refl` and variable
-  leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.var`. Added
-  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.var`, plus the
+  twelve-head `Me-TAp` leaf
+  `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.tAp`. Added endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
