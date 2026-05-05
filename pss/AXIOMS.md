@@ -9,6 +9,17 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native no-external-empty
+  typed-`FOp` tail-step wrappers
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_typed_fop_operator_tail_step`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_typed_fop_machine_operator_tail_step`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_beta_target_typed_fop_target_app_tail_step`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_beta_target_typed_fop_operator_tail_step`,
+  and
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_beta_target_typed_fop_machine_operator_tail_step`,
+  then routed their body-transport surfaces through the transitive
+  diagrammatic stack-append payload directly. Added all five endpoints to the
+  De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native diagnostic
   head-kind chain-shape direct split-beta wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_chain_shape_wfctx_factored_head_kind_target_app_machine_tail_cons`,
