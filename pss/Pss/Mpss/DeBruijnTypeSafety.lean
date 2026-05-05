@@ -9429,6 +9429,27 @@ noncomputable def Theorem_5_DeBruijn_Preservation_of_components_and_direct_sub_r
       hSubst hInv hSubPayloads)
     hwf hstep
 
+/-- De Bruijn preservation from direct operational components, immediate
+top-level `.sub` replacement residuals, and the named preserved-head
+replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_components_and_immediate_sub_replace_and_under
+      hSubst hInv hUnder hSubPayloads)
+    hwf hstep
+
 /-- Closed-term Theorem 5 entry point for the direct operational
 preservation components. -/
 noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_components
@@ -9460,6 +9481,27 @@ noncomputable def
   Theorem_5_DeBruijn_ClosedPreservation_of
     (StepPreservesWfM_of_components_and_direct_sub_replace
       hSubst hInv hSubPayloads)
+    hwf hstep
+
+/-- Closed-term Theorem 5 from direct operational components, immediate
+top-level `.sub` replacement residuals, and the named preserved-head
+replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_components_and_immediate_sub_replace_and_under
+      hSubst hInv hUnder hSubPayloads)
     hwf hstep
 
 /-- De Bruijn preservation with operational preservation assembled from the
@@ -9595,6 +9637,28 @@ noncomputable def
       hSubst hShape hMEqPres hSubPayloads)
     hwf hstep
 
+/-- De Bruijn preservation with chain-shape joined-bound well-formedness from
+empty-stack equivalence preservation, immediate top-level `.sub` replacement
+residuals, and the named preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
+      hSubst hShape hMEqPres hUnder hSubPayloads)
+    hwf hstep
+
 /-- Closed-term Theorem 5 entry point for chain-shape preservation when the
 joined-bound well-formedness payload is supplied by empty-stack equivalence
 preservation. -/
@@ -9632,6 +9696,28 @@ noncomputable def
   Theorem_5_DeBruijn_ClosedPreservation_of
     (StepPreservesWfM_of_chain_shape_meq_components_and_direct_sub_replace
       hSubst hShape hMEqPres hSubPayloads)
+    hwf hstep
+
+/-- Closed-term Theorem 5 with chain-shape joined-bound well-formedness from
+empty-stack equivalence preservation, immediate top-level `.sub` replacement
+residuals, and the named preserved-head replacement payload. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
+      hSubst hShape hMEqPres hUnder hSubPayloads)
     hwf hstep
 
 end DeBruijn
