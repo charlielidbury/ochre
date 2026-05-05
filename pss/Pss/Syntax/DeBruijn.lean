@@ -474,6 +474,49 @@ theorem instantiate_three_shift_zero_tail (v t : Term) :
   exact instantiate_shift_id 3 (shift 0 (shift 0 (shift 0 v)))
     (shift 0 (shift 0 (shift 0 t)))
 
+/-- Shifting a term by `n` at some cutoff and then inserting one slot after
+those `n` slots is the same as shifting the original term by `n + 1`. This is
+the generalized arithmetic behind the fixed two-head and three-head tail
+lemmas. -/
+theorem shiftBy_tail (cutoff n : Nat) (t : Term) :
+    shiftBy (cutoff + n) 1 (shiftBy cutoff n t) =
+      shiftBy cutoff (n + 1) t := by
+  induction t generalizing cutoff n with
+  | bvar i =>
+      by_cases hcut : cutoff ≤ i
+      · have htail : cutoff + n ≤ i + n := by omega
+        have hsum : i + n + 1 = i + (n + 1) := by omega
+        simp [shiftBy, hcut, htail, hsum]
+      · have htail : ¬ cutoff + n ≤ i := by omega
+        simp [shiftBy, hcut, htail]
+  | top =>
+      simp [shiftBy]
+  | abs bound body ih_bound ih_body =>
+      simp only [shiftBy_abs]
+      exact congrArg₂ Term.abs
+        (ih_bound cutoff n)
+        (by
+          have hbody := ih_body (cutoff + 1) n
+          simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using hbody)
+  | app fn arg ih_fn ih_arg =>
+      simp only [shiftBy_app]
+      exact congrArg₂ Term.app (ih_fn cutoff n) (ih_arg cutoff n)
+
+/-- Top-level specialization of `Term.shiftBy_tail`. -/
+theorem shiftBy_zero_tail (n : Nat) (t : Term) :
+    shiftBy n 1 (shiftBy 0 n t) = shiftBy 0 (n + 1) t := by
+  simpa using shiftBy_tail 0 n t
+
+/-- General tail cancellation for instantiation below `n` preserved top-level
+bindings. The fixed `instantiate_two_shift_zero_tail` and
+`instantiate_three_shift_zero_tail` lemmas are special cases with nested
+one-step shifts. -/
+theorem instantiate_shiftBy_zero_tail (n : Nat) (v t : Term) :
+    instantiate n (shiftBy 0 n v) (shiftBy 0 (n + 1) t) =
+      shiftBy 0 n t := by
+  rw [← shiftBy_zero_tail n t]
+  exact instantiate_shift_id n (shiftBy 0 n v) (shiftBy 0 n t)
+
 /-- Substituting index `k` and then the next surviving slot is equivalent to
 first substituting the corresponding original slot at `k + 2`, then
 substituting index `k`. -/

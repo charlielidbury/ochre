@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Syntax/DeBruijn.lean` — added general preserved-head shift
+  arithmetic: `Term.shiftBy_tail`, `Term.shiftBy_zero_tail`, and
+  `Term.instantiate_shiftBy_zero_tail`. These subsume the fixed
+  two-head and three-head tail cancellation proofs and give the next de Bruijn
+  substitution layer a reusable `n`-head cancellation lemma instead of
+  another hand-unrolled arithmetic proof. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
