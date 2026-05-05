@@ -110,7 +110,10 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderThirteenHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderThirteenHeadsBetStackPayload`, and
   `BetaInstantiationPreservesMEqRedUnderThirteenHeadsFOpStackPayload`; these
-  expose the recursive fourteen-head body obligations.
+  expose the recursive fourteen-head body obligations.  Added
+  `BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.of_constructors`,
+  packaging the checked thirteen-head structural leaves while leaving those
+  recursive fourteen-head binder adapters explicit.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
