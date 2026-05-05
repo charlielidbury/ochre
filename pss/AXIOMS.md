@@ -461,6 +461,14 @@ closures, 2 inactive outstanding).
   reduces the remaining three-head binder constructors to the four-preserved-head
   body payload. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesPrevalidExtUnderThreeHeads` plus the three-head
+  structural equivalence leaves
+  `BetaInstantiationPreservesMEqRedUnderThreeHeadsStack.refl`, `.top`,
+  `.var`, `.tAp`, and `.app`. This leaves the three-head `Me-Pro` lookup split
+  as the last non-binder constructor before a three-head structural assembler
+  can consume the existing `Me-Fun` / `Me-Bet` / `Me-FOp` adapters. Added
+  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
