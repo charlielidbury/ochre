@@ -3002,6 +3002,136 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop
     (MSubStarToWSubMStarPayload.of_steps hPres hStep)
     hInv hFOpBody hTargetApp hFOpTailStep hFunBody hNoTop
 
+/-- External-empty assembly with both `Me-Bet` and `Me-FOp` routed through
+immediate target well-formedness plus the shared tail-step residual. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_tail_step
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_typed_fop_target_app_tail_step
+    (MEqRedBetaPreservesWfMachineStatePayload.of_target_and_tail_step
+      hBetaTarget hTailStep)
+    hEmpty hAppend hBridge hInv hFOpBody hTargetApp hTailStep hFunBody hNoTop
+
+/-- External-empty assembly with both `Me-Bet` and `Me-FOp` routed through
+immediate target well-formedness plus the shared tail-step residual, with the
+control-left residual still exposed through the older body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_beta_target_typed_fop_target_app_tail_step
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_tail_step
+    hBetaTarget hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hTargetApp hTailStep hFunBody hNoTop
+
+/-- Typed-operator entry point for the external-empty assembly with both
+`Me-Bet` and `Me-FOp` routed through immediate target well-formedness plus the
+shared tail-step residual. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_operator_tail_step
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_tail_step
+    hBetaTarget hEmpty hAppend hBridge hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    hTailStep hFunBody hNoTop
+
+/-- Typed-operator entry point for the external-empty assembly with both
+`Me-Bet` and `Me-FOp` routed through immediate target well-formedness plus the
+shared tail-step residual, with the control-left residual still exposed
+through the older body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_beta_target_typed_fop_operator_tail_step
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_operator_tail_step
+    hBetaTarget hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hOpFun hTailStep hFunBody hNoTop
+
+/-- Machine-state-aware operator entry point for the external-empty assembly
+with both `Me-Bet` and `Me-FOp` routed through immediate target
+well-formedness plus the shared tail-step residual. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_machine_operator_tail_step
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_tail_step
+    hBetaTarget hEmpty hAppend hBridge hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    hTailStep hFunBody hNoTop
+
+/-- Machine-state-aware operator entry point for the external-empty assembly
+with both `Me-Bet` and `Me-FOp` routed through immediate target
+well-formedness plus the shared tail-step residual, with the control-left
+residual still exposed through the older body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_beta_target_typed_fop_machine_operator_tail_step
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_machine_operator_tail_step
+    hBetaTarget hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hOpFun hTailStep hFunBody hNoTop
+
 /-- Reduced machine-state preservation assembly that uses constructor
 recursive hypotheses directly for the empty-stack subreductions in `Me-App`
 and `Me-Fun`. This removes the external empty-stack preservation premise
