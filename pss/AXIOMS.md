@@ -27,6 +27,11 @@ closures, 2 inactive outstanding).
   prevalidity transport for beta-instantiation under any preserved-head
   prefix. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — routed the existing one-head and
+  two-head beta prevalidity APIs through
+  `BetaInstantiationPreservesPrevalidExtUnderHeads`, keeping their public
+  signatures unchanged while reducing hand-unrolled preserved-head proof
+  code. No headline axiom-count change.
 * `Pss/Syntax/DeBruijn.lean` — added general preserved-head shift
   arithmetic: `Term.shiftBy_tail`, `Term.shiftBy_zero_tail`, and
   `Term.instantiate_shiftBy_zero_tail`. These subsume the fixed

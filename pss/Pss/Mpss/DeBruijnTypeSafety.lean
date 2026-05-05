@@ -2297,39 +2297,10 @@ noncomputable def BetaInstantiationPreservesPrevalidExtUnderHead
         { bound := bound, kind := .sub } :: Γ) s) :
     PrevalidExt ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
       (Stack.instantiate 1 (Term.shift 0 arg) s) := by
-  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
-    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
-      hArgBound.scoped_left
-  have hHeadScoped : Term.Scoped (Γ.depth + 1) head := by
-    cases kind with
-    | sub =>
-        cases PrevalidExt.ctx hpv with
-        | sub _ hHead =>
-            simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead
-    | equ =>
-        cases PrevalidExt.ctx hpv with
-        | equ _ hHead =>
-            simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead
-  have hHeadInstScoped :
-      Term.Scoped Γ.depth (Term.instantiate 0 arg head) :=
-    Term.instantiate_scoped 0 Γ.depth arg head (Nat.zero_le Γ.depth)
-      hArgBound.scoped_left hHeadScoped
-  have hctx :
-      Prevalid ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ) := by
-    cases kind with
-    | sub =>
-        exact Prevalid.sub hArgBound.prevalid hHeadInstScoped
-    | equ =>
-        exact Prevalid.equ hArgBound.prevalid hHeadInstScoped
-  have hsSource : Stack.Scoped (Γ.depth + 2) s := by
-    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using
-      PrevalidExt.stack_scoped hpv
-  have hsTarget :
-      Stack.Scoped (Γ.depth + 1)
-        (Stack.instantiate 1 (Term.shift 0 arg) s) :=
-    Stack.Scoped.instantiate (by omega) hArgShiftScoped (by
-      simpa [Nat.add_assoc] using hsSource)
-  exact PrevalidExt.of_stack_scoped hctx hsTarget
+  have h := BetaInstantiationPreservesPrevalidExtUnderHeads
+    (heads := [{ bound := head, kind := kind }]) rfl hArgBound hpv
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h
 
 /-- Prevalidity transport for β-instantiation under two preserved context
 heads. The outer head is instantiated at index `1`, the inner head at index
@@ -2346,81 +2317,11 @@ noncomputable def BetaInstantiationPreservesPrevalidExtUnderTwoHeads
           kind := kind₁ } ::
         { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ)
       (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s) := by
-  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
-    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
-      hArgBound.scoped_left
-  have hArgShiftShiftScoped :
-      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
-    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
-      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
-        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
-  have hHead₂Scoped : Term.Scoped (Γ.depth + 1) head₂ := by
-    cases kind₁ with
-    | sub =>
-        cases PrevalidExt.ctx hpv with
-        | sub hTail _ =>
-            cases kind₂ with
-            | sub =>
-                cases hTail with
-                | sub _ hHead₂ =>
-                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
-            | equ =>
-                cases hTail with
-                | equ _ hHead₂ =>
-                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
-    | equ =>
-        cases PrevalidExt.ctx hpv with
-        | equ hTail _ =>
-            cases kind₂ with
-            | sub =>
-                cases hTail with
-                | sub _ hHead₂ =>
-                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
-            | equ =>
-                cases hTail with
-                | equ _ hHead₂ =>
-                    simpa [Ctx.depth, Nat.succ_eq_add_one] using hHead₂
-  have hHead₁Scoped : Term.Scoped (Γ.depth + 2) head₁ := by
-    cases kind₁ with
-    | sub =>
-        cases PrevalidExt.ctx hpv with
-        | sub _ hHead₁ =>
-            simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hHead₁
-    | equ =>
-        cases PrevalidExt.ctx hpv with
-        | equ _ hHead₁ =>
-            simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hHead₁
-  have hHead₂InstScoped :
-      Term.Scoped Γ.depth (Term.instantiate 0 arg head₂) :=
-    Term.instantiate_scoped 0 Γ.depth arg head₂ (Nat.zero_le Γ.depth)
-      hArgBound.scoped_left hHead₂Scoped
-  have hHead₁InstScoped :
-      Term.Scoped (Γ.depth + 1)
-        (Term.instantiate 1 (Term.shift 0 arg) head₁) :=
-    Term.instantiate_scoped 1 (Γ.depth + 1) (Term.shift 0 arg) head₁
-      (by omega) hArgShiftScoped hHead₁Scoped
-  have hctxTail :
-      Prevalid ({ bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ) := by
-    cases kind₂ with
-    | sub => exact Prevalid.sub hArgBound.prevalid hHead₂InstScoped
-    | equ => exact Prevalid.equ hArgBound.prevalid hHead₂InstScoped
-  have hctx :
-      Prevalid
-        ({ bound := Term.instantiate 1 (Term.shift 0 arg) head₁,
-            kind := kind₁ } ::
-          { bound := Term.instantiate 0 arg head₂, kind := kind₂ } :: Γ) := by
-    cases kind₁ with
-    | sub => exact Prevalid.sub hctxTail hHead₁InstScoped
-    | equ => exact Prevalid.equ hctxTail hHead₁InstScoped
-  have hsSource : Stack.Scoped (Γ.depth + 3) s := by
-    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using
-      PrevalidExt.stack_scoped hpv
-  have hsTarget :
-      Stack.Scoped (Γ.depth + 2)
-        (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) s) :=
-    Stack.Scoped.instantiate (by omega) hArgShiftShiftScoped (by
-      simpa [Nat.add_assoc] using hsSource)
-  exact PrevalidExt.of_stack_scoped hctx hsTarget
+  have h := BetaInstantiationPreservesPrevalidExtUnderHeads
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ }]) rfl hArgBound hpv
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h
 
 /-- Prevalidity transport for β-instantiation under three preserved context
 heads. The outer heads are instantiated at indices `2`, `1`, and `0`,
