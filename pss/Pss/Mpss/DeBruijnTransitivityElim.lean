@@ -6762,6 +6762,95 @@ theorem meqRed_replaceAt_equ_from_handlers {Γ : Ctx} {s : Stack}
   | bet ht hBody hArg =>
       exact hBet ht hBody hArg
 
+/-- Diagrammatic equivalence replacement across a changed `.equ` entry at an
+arbitrary context index, with canonical constructor handlers wired from raw
+recursive replacements. The `Me-Pro` branch remains explicit because
+equivalence lookup is sensitive to the changed `.equ` entry. -/
+theorem meqRed_replaceAt_equ_from_replacements {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u v : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .equ })
+    (hPro :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) i α →
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s α α' →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s
+          (.bvar i) α')
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (arg :: s) op op' →
+        MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          (arg :: s) op op')
+    (hNilReplace :
+      ∀ {arg arg' : Term},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] arg arg' →
+        MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          [] arg arg')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          [] body body')
+    (hBetBodyReplace :
+      ∀ {bound body body' : Term},
+        MEqRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (Stack.shift 0 s) body body' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          (Stack.shift 0 s) body body')
+    (hFOpBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } ::
+          Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          (Stack.shift 0 rest) body body')
+    (h : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s u v) :
+    MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v :=
+  have hpvNew :
+      PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s :=
+    PrevalidExt.replaceAt_equ_same hpv hcut hnew
+  have hpvNewNil :
+      PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) [] :=
+    PrevalidExt.nil (PrevalidExt.ctx hpvNew)
+  meqRed_replaceAt_equ_from_handlers hpv hcut hnew hPro
+    (by
+      intro op op' arg arg' hOp hArg
+      exact MSubStar.of_MEqRed hpvNew
+        (MEqRed.app (hAppOpReplace hOp) (hNilReplace hArg)))
+    (by
+      intro bound bound' body body' hBound hBody
+      exact MSubStar.of_MEqRed hpvNewNil
+        (MEqRed.fun_ (hNilReplace hBound) (hFunBodyReplace hBody)))
+    (by
+      intro bound arg arg' body body' hBoundScoped hBody hArg
+      exact MSubStar.of_MEqRed hpvNew
+        (MEqRed.bet (by simpa [Ctx.depth_replaceAt] using hBoundScoped)
+          (hBetBodyReplace hBody) (hNilReplace hArg)))
+    (by
+      intro bound bound' arg body body' rest hBound hArgScoped hStack hBody
+      subst hStack
+      have hpvNewTail :
+          PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) rest :=
+        PrevalidExt.replaceAt_equ_same (PrevalidExt.tail hpv) hcut hnew
+      exact msubStar_abs_fOp_equ_bound_body hpvNewTail
+        (hNilReplace hBound) (by simpa [Ctx.depth_replaceAt] using hArgScoped)
+        (by simpa [Ctx.depth_replaceAt] using hBody.scoped_left)
+        (hFOpBodyReplace hArgScoped rfl hBody))
+    h
+
 /-- Equivalence replacement across an innermost changed `.equ` head, with
 canonical constructor handlers wired in. The `Me-Pro` residual handlers stay
 explicit because they are the only lookup-sensitive cases. -/
@@ -7092,6 +7181,81 @@ theorem msubRed_replaceAt_equ_from_handlers {Γ : Ctx} {s : Stack}
       exact hFun ht hBound hBody
   | fOp ht hArg hBody =>
       exact hFOp ht hArg rfl hBody
+
+/-- Diagrammatic subtype replacement across a changed `.equ` entry at an
+arbitrary context index, with canonical constructor handlers wired from raw
+or diagrammatic recursive replacements. The `Ms-Equ` branch remains an
+explicit diagrammatic equivalence replacement premise. -/
+theorem msubRed_replaceAt_equ_from_replacements {Γ : Ctx} {s : Stack}
+    {cutoff : Nat} {old new u v : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .equ })
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s u v →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v)
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (arg :: s) op op' →
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) arg →
+        MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          (arg :: s) op op')
+    (hFunBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] bound bound' →
+        MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          [] bound bound')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          [] body body' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          [] body body')
+    (hFOpBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+          (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } ::
+          Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ)
+          (Stack.shift 0 rest) body body')
+    (h : MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ) s u v) :
+    MSubStar (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v :=
+  msubRed_replaceAt_equ_from_handlers hpv hcut hnew hEq
+    (by
+      intro op op' arg hOp hArgScoped
+      have hpvNew :
+          PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s :=
+        PrevalidExt.replaceAt_equ_same hpv hcut hnew
+      exact msubStar_app_fixed_arg hpvNew
+        (by simpa [Ctx.depth_replaceAt] using hArgScoped)
+        (hAppOpReplace hOp hArgScoped))
+    (by
+      intro bound bound' body body' hBoundScoped hBound hBody
+      exact MSubStar.of_MSubRed
+        (MSubRed.fun_ (by simpa [Ctx.depth_replaceAt] using hBoundScoped)
+          (hFunBoundReplace hBound) (hFunBodyReplace hBody)))
+    (by
+      intro bound arg body body' rest hBoundScoped hArgScoped hStack hBody
+      subst hStack
+      have hpvNewTail :
+          PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) rest :=
+        PrevalidExt.replaceAt_equ_same (PrevalidExt.tail hpv) hcut hnew
+      exact msubStar_abs_fOp_body_fixed_bound hpvNewTail
+        (by simpa [Ctx.depth_replaceAt] using hBoundScoped)
+        (by simpa [Ctx.depth_replaceAt] using hArgScoped)
+        (hFOpBodyReplace hArgScoped rfl hBody))
+    h
 
 /-- Canonical `Ms-App` handler for two-preserved-head `.equ` replacement. -/
 theorem msub_equ_under_two_heads_app_handler_of_operator_replacement {Γ : Ctx}

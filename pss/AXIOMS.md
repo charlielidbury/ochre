@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRed_replaceAt_equ_from_replacements` and
+  `msubRed_replaceAt_equ_from_replacements`, arbitrary-prefix diagrammatic
+  `.equ` replacement wrappers with the canonical app/fun/beta/fop handlers
+  wired from raw or diagrammatic recursive replacements. Added both endpoints
+  to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRed_replaceAt_equ_from_handlers` and
   `msubRed_replaceAt_equ_from_handlers`, the diagrammatic counterparts to the
   raw `Ctx.replaceAt` splitters. They rebuild stable leaves generically and
