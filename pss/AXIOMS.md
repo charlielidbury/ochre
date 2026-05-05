@@ -1255,6 +1255,12 @@ closures, 2 inactive outstanding).
   mirrors the existing Prop-valued `MSub` extraction while preserving
   concrete reduction-chain evidence for future composition work. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added `Nonempty` bridges from
+  Prop-valued reduction closures back to Type-valued chains:
+  `MEqRedChain.nonempty_of_star`, `MEqRedChain.of_star`,
+  `MSubRedChain.nonempty_of_star`, and `MSubRedChain.of_star`. The
+  `of_star` wrappers use the existing `Classical.choice` pattern and do
+  not add project axioms. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

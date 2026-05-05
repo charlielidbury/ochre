@@ -400,6 +400,36 @@ theorem MSubRedChain.to_star {Γ : Ctx} {s : Stack} {u v : Term}
   | tail hChain hStep ih =>
       exact MSubRedStar.trans ih (MSubRedStar.single hStep)
 
+/-- Prop-valued equivalence closures contain a Type-valued chain witness.
+This is kept as `Nonempty` so Prop eliminations stay in Prop. -/
+theorem MEqRedChain.nonempty_of_star {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s u v) : Nonempty (MEqRedChain Γ s u v) := by
+  induction h with
+  | refl =>
+      exact ⟨MEqRedChain.refl⟩
+  | tail hStar hStep ih =>
+      exact ⟨MEqRedChain.tail ih.some hStep.some⟩
+
+/-- Choose a Type-valued equivalence chain from the Prop-valued closure. -/
+noncomputable def MEqRedChain.of_star {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s u v) : MEqRedChain Γ s u v :=
+  (MEqRedChain.nonempty_of_star h).some
+
+/-- Prop-valued subtype closures contain a Type-valued chain witness. This is
+kept as `Nonempty` so Prop eliminations stay in Prop. -/
+theorem MSubRedChain.nonempty_of_star {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) : Nonempty (MSubRedChain Γ s u v) := by
+  induction h with
+  | refl =>
+      exact ⟨MSubRedChain.refl⟩
+  | tail hStar hStep ih =>
+      exact ⟨MSubRedChain.tail ih.some hStep.some⟩
+
+/-- Choose a Type-valued subtype chain from the Prop-valued closure. -/
+noncomputable def MSubRedChain.of_star {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) : MSubRedChain Γ s u v :=
+  (MSubRedChain.nonempty_of_star h).some
+
 /-- Transport a subtype-reduction chain when each old step has a replacement
 chain in the target context. -/
 theorem MSubRedStar.replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
