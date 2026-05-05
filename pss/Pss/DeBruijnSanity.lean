@@ -151,6 +151,8 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesScoped
 #print axioms BetaInstantiationPreservesWSubMStar
 #print axioms BetaInstantiationPreservesWSubM
+#print axioms BetaInstantiationPreservesMEqRed
+#print axioms BetaInstantiationPreservesMSubRed
 #print axioms BetaInstantiationPreservesWfM.top
 #print axioms BetaInstantiationPreservesWfM.var_zero
 #print axioms BetaInstantiationPreservesWfM.var_succ_sub
@@ -162,6 +164,11 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWSubMStar.sub
 #print axioms BetaInstantiationPreservesWSubMStar.trs
 #print axioms BetaInstantiationPreservesWSubMStar.of_wsubm
+#print axioms BetaInstantiationPreservesWSubM.rfl
+#print axioms BetaInstantiationPreservesWSubM.lf1
+#print axioms BetaInstantiationPreservesWSubM.lf2
+#print axioms BetaInstantiationPreservesWSubM.rgh
+#print axioms BetaInstantiationPreservesWSubM.of_reductions
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

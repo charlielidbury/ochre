@@ -197,6 +197,22 @@ def BetaInstantiationPreservesWSubM : Type :=
       WSubM ({ bound := bound, kind := .sub } :: Γ) lhs rhs →
         WSubM Γ (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
 
+/-- Empty-stack equivalence-reduction substitution payload for de Bruijn
+β-instantiation. -/
+def BetaInstantiationPreservesMEqRed : Type :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := bound, kind := .sub } :: Γ) [] lhs rhs →
+        MEqRed Γ [] (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
+
+/-- Empty-stack subtype-reduction substitution payload for de Bruijn
+β-instantiation. -/
+def BetaInstantiationPreservesMSubRed : Type :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term},
+    WSubMStar Γ arg bound →
+      MSubRed ({ bound := bound, kind := .sub } :: Γ) [] lhs rhs →
+        MSubRed Γ [] (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -382,6 +398,94 @@ noncomputable def BetaInstantiationPreservesWSubMStar.of_wsubm
         (ihLeft rfl hArgBound) (hWf hArgBound hwfMid)
         (ihRight rfl hArgBound))
     hChain) rfl hArgBound
+
+/-- `WSubM.rfl` reassembly for de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesWSubM.rfl
+    {Γ : Ctx} {arg t : Term}
+    (hInst : WfM Γ (Term.instantiate 0 arg t)) :
+    WSubM Γ (Term.instantiate 0 arg t) (Term.instantiate 0 arg t) :=
+  WSubM.rfl hInst
+
+/-- `WSubM.lf1` reassembly for de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesWSubM.lf1
+    {Γ : Ctx} {arg lhs lhs' rhs : Term}
+    (hRed :
+      MEqRed Γ [] (Term.instantiate 0 arg lhs)
+        (Term.instantiate 0 arg lhs'))
+    (hTail :
+      WSubM Γ (Term.instantiate 0 arg lhs') (Term.instantiate 0 arg rhs)) :
+    WSubM Γ (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs) :=
+  WSubM.lf1 hRed hTail
+
+/-- `WSubM.lf2` reassembly for de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesWSubM.lf2
+    {Γ : Ctx} {arg lhs lhs' rhs : Term}
+    (hLhs : WfM Γ (Term.instantiate 0 arg lhs))
+    (hRed :
+      MSubRed Γ [] (Term.instantiate 0 arg lhs)
+        (Term.instantiate 0 arg lhs'))
+    (hLhs' : WfM Γ (Term.instantiate 0 arg lhs'))
+    (hTail :
+      WSubM Γ (Term.instantiate 0 arg lhs') (Term.instantiate 0 arg rhs)) :
+    WSubM Γ (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs) :=
+  WSubM.lf2 hLhs hRed hLhs' hTail
+
+/-- `WSubM.rgh` reassembly for de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesWSubM.rgh
+    {Γ : Ctx} {arg lhs rhs rhs' : Term}
+    (hTail :
+      WSubM Γ (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs'))
+    (hRed :
+      MEqRed Γ [] (Term.instantiate 0 arg rhs)
+        (Term.instantiate 0 arg rhs')) :
+    WSubM Γ (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs) :=
+  WSubM.rgh hTail hRed
+
+/-- One-step subtype substitution follows from well-formedness substitution
+and empty-stack equivalence/subtype reduction substitution. -/
+noncomputable def BetaInstantiationPreservesWSubM.of_reductions
+    (hWf : BetaInstantiationPreservesWfM)
+    (hEq : BetaInstantiationPreservesMEqRed)
+    (hSubRed : BetaInstantiationPreservesMSubRed) :
+    BetaInstantiationPreservesWSubM := by
+  intro Γ bound arg lhs rhs hArgBound hSub
+  exact (WSubM.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun Δ lhs rhs _ =>
+      ∀ {Γ : Ctx} {bound arg : Term},
+        Δ = ({ bound := bound, kind := .sub } :: Γ) →
+          WSubMStar Γ arg bound →
+            WSubM Γ (Term.instantiate 0 arg lhs)
+              (Term.instantiate 0 arg rhs))
+    (motive_3 := fun _ _ _ _ => PUnit)
+    (fun _ _ => PUnit.unit)
+    (fun _ _ => PUnit.unit)
+    (fun _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ => PUnit.unit)
+    (fun hwf _ => by
+      intro Γ bound arg hΔ hArgBound
+      subst hΔ
+      exact BetaInstantiationPreservesWSubM.rfl (hWf hArgBound hwf))
+    (fun hred _ ih => by
+      intro Γ bound arg hΔ hArgBound
+      subst hΔ
+      exact BetaInstantiationPreservesWSubM.lf1 (hEq hArgBound hred)
+        (ih (by rfl) hArgBound))
+    (fun hwfL hred hwfL' _ _ _ ih => by
+      intro Γ bound arg hΔ hArgBound
+      subst hΔ
+      exact BetaInstantiationPreservesWSubM.lf2
+        (hWf hArgBound hwfL) (hSubRed hArgBound hred)
+        (hWf hArgBound hwfL') (ih (by rfl) hArgBound))
+    (fun _ hred ih => by
+      intro Γ bound arg hΔ hArgBound
+      subst hΔ
+      exact BetaInstantiationPreservesWSubM.rgh (ih (by rfl) hArgBound)
+        (hEq hArgBound hred))
+    (fun _ _ _ _ _ _ => PUnit.unit)
+    (fun _ _ _ _ _ _ => PUnit.unit)
+    hSub) (by rfl) hArgBound
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/

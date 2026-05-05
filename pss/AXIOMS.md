@@ -132,6 +132,17 @@ closures, 2 inactive outstanding).
   transitive chain payload follows from `BetaInstantiationPreservesWfM` and
   `BetaInstantiationPreservesWSubM`. Added the new endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the de Bruijn
+  `BetaInstantiationPreservesWSubM` one-step subtype substitution payload
+  into checked constructor reassembly helpers
+  `BetaInstantiationPreservesWSubM.rfl`, `.lf1`, `.lf2`, and `.rgh`, plus
+  the remaining empty-stack reduction substitution payloads
+  `BetaInstantiationPreservesMEqRed` and
+  `BetaInstantiationPreservesMSubRed`. Added
+  `BetaInstantiationPreservesWSubM.of_reductions`, proving that one-step
+  subtype substitution follows from β-instantiation well-formedness
+  preservation and those two reduction payloads. Added the new endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
