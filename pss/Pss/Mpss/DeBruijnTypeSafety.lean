@@ -330,6 +330,22 @@ def MEqRedFunBodyReplacePayload : Type :=
             WfM ({ bound := bound, kind := .sub } :: Γ) body' →
               WfM ({ bound := bound', kind := .sub } :: Γ) body'
 
+/-- Remaining body payload for the contextual `Me-FOp` well-formedness case.
+The source abstraction body is well-formed under `.sub bound`, but the
+reduction premise runs under an `.equ operand` head from the stack. -/
+def MEqRedFOpBodyPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {bound bound' operand body body' : Term},
+    WfCtxEqu Γ →
+      WfStack Γ s →
+        WfM Γ bound →
+          WfM Γ bound' →
+            WfM Γ operand →
+              WfM ({ bound := bound, kind := .sub } :: Γ) body →
+                MEqRed Γ [] bound bound' →
+                  MEqRed ({ bound := operand, kind := .equ } :: Γ)
+                    (Stack.shift 0 s) body body' →
+                    WfM ({ bound := bound', kind := .sub } :: Γ) body'
+
 /-- Empty-stack preservation under a well-formed-equivalence context. -/
 def MEqRedPreservesWfMUnderWfCtx : Type :=
   ∀ {Γ : Ctx} {x y : Term}, WfCtxEqu Γ → MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
@@ -419,6 +435,28 @@ noncomputable def MEqRed.fun_preservesWfM_of_contextual
     hpres hΓBody WfStack.nil hredBody hwfBody
   exact WfM.fun_ hwfBound'
     (hBodyReplace hΓ hwfBound hwfBound' hredBound hwfBodyOld)
+
+/-- `Me-FOp` well-formedness preservation reduced to the body payload that
+bridges from the stack-introduced `.equ` head back to the target `.sub`
+head. -/
+noncomputable def MEqRed.fOp_preservesWfM_of_contextual
+    (hpres : MEqRedPreservesWfMContextual)
+    (hBody : MEqRedFOpBodyPayload)
+    {Γ : Ctx} {s : Stack} {bound bound' operand body body' : Term}
+    (hΓ : WfCtxEqu Γ) (hStack : WfStack Γ s)
+    (hwfOperand : WfM Γ operand)
+    (hredBound : MEqRed Γ [] bound bound')
+    (hredBody : MEqRed ({ bound := operand, kind := .equ } :: Γ)
+      (Stack.shift 0 s) body body')
+    (hwfAbs : WfM Γ (.abs bound body)) :
+    WfM Γ (.abs bound' body') := by
+  have hwfBound : WfM Γ bound := hwfAbs.fun_inv.1
+  have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γ) body :=
+    hwfAbs.fun_inv.2
+  have hwfBound' : WfM Γ bound' :=
+    hpres hΓ WfStack.nil hredBound hwfBound
+  exact WfM.fun_ hwfBound'
+    (hBody hΓ hStack hwfBound hwfBound' hwfOperand hwfBody hredBound hredBody)
 
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/

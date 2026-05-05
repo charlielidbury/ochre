@@ -1356,6 +1356,12 @@ closures, 2 inactive outstanding).
   replacement payload while proving bound and old-head body preservation
   directly. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedFOpBodyPayload` and
+  `MEqRed.fOp_preservesWfM_of_contextual`, reducing the contextual
+  `Me-FOp` well-formedness case to the body bridge from the
+  stack-introduced `.equ` head back to the target `.sub` head while
+  proving bound preservation directly. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No
