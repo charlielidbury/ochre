@@ -9147,6 +9147,23 @@ noncomputable def StepPreservesWfM_of_components_and_direct_sub_replace
   StepPreservesWfM_of_components hSubst hInv
     (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
 
+/-- Operational well-formedness preservation from immediate top-level direct
+`.sub` replacement residuals and a factored preserved-head replacement
+payload. -/
+noncomputable def
+    StepPreservesWfM_of_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_components hSubst hInv
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+
 /-- β preservation reduced directly to the Type-valued function-bound diagram
 payload and the body-instantiation lemma. -/
 noncomputable def StepBetaPreservesWfM_of_diagram
@@ -9180,6 +9197,23 @@ noncomputable def StepPreservesWfM_of_diagram_components_and_direct_sub_replace
     StepPreservesWfM :=
   StepPreservesWfM_of_diagram_components hSubst hDiagram
     (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+
+/-- Diagrammatic operational preservation from immediate top-level direct
+`.sub` replacement residuals and a factored preserved-head replacement
+payload. -/
+noncomputable def
+    StepPreservesWfM_of_diagram_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundDiagramPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_diagram_components hSubst hDiagram
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
 
 /-- β preservation reduced directly to the Type-valued function-bound
 chain-diagram payload and the body-instantiation lemma. -/
@@ -9215,6 +9249,23 @@ noncomputable def
     StepPreservesWfM :=
   StepPreservesWfM_of_chain_diagram_components hSubst hDiagram
     (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+
+/-- Chain-diagram operational preservation from immediate top-level direct
+`.sub` replacement residuals and a factored preserved-head replacement
+payload. -/
+noncomputable def
+    StepPreservesWfM_of_chain_diagram_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hDiagram : AbsFunctionBoundChainDiagramPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_chain_diagram_components hSubst hDiagram
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
 
 /-- β preservation reduced to the shape-only function-bound chain payload,
 its joined-bound well-formedness payload, and the body-instantiation lemma. -/
@@ -9253,6 +9304,24 @@ noncomputable def StepPreservesWfM_of_chain_shape_components_and_direct_sub_repl
   StepPreservesWfM_of_chain_shape_components hSubst hShape hShapeWf
     (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
 
+/-- Chain-shape operational preservation from immediate top-level direct
+`.sub` replacement residuals and a factored preserved-head replacement
+payload. -/
+noncomputable def
+    StepPreservesWfM_of_chain_shape_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_chain_shape_components hSubst hShape hShapeWf
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+
 /-- Operational well-formedness preservation reduced to the body-instantiation
 lemma, the shape-only function-bound chain payload, empty-stack equivalence
 well-formedness preservation for the joined bound, and sharpened `.sub` head
@@ -9282,6 +9351,25 @@ noncomputable def
     StepPreservesWfM :=
   StepPreservesWfM_of_chain_shape_meq_components hSubst hShape hMEqPres
     (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+
+/-- Chain-shape operational preservation with joined-bound well-formedness
+from empty-stack equivalence preservation, plus immediate top-level direct
+`.sub` replacement residuals and a factored preserved-head replacement
+payload. -/
+noncomputable def
+    StepPreservesWfM_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_chain_shape_meq_components hSubst hShape hMEqPres
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
 
 /-- De Bruijn preservation, conditional on operational well-formedness
 preservation. The operational step is at the ambient context depth so the

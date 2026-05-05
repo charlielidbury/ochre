@@ -47,6 +47,15 @@ closures, 2 inactive outstanding).
   named preserved-head replacement payload
   `WfMSubUnderHeadReplaceOfNewWf`. Added the two assembler endpoints to
   the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — threaded the immediate top-level
+  direct `.sub` replacement residual package plus named preserved-head
+  replacement payload through operational preservation wrappers:
+  `StepPreservesWfM_of_components_and_immediate_sub_replace_and_under`,
+  `_of_diagram_components_and_immediate_sub_replace_and_under`,
+  `_of_chain_diagram_components_and_immediate_sub_replace_and_under`,
+  `_of_chain_shape_components_and_immediate_sub_replace_and_under`, and
+  `_of_chain_shape_meq_components_and_immediate_sub_replace_and_under`.
+  Added all five endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
