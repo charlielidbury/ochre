@@ -70,6 +70,14 @@ closures, 2 inactive outstanding).
   `MEqRedStackPreservesWSubMStarLeft.not_of_no_top`, showing the old
   left-factored route is also too broad because it implies the native
   `Me-App` operator payload refuted above. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the machine-state typing layer
+  `Stack.plug` and `WfMachineState`, plus
+  `WfMachineState.head_app_wf` and `WfMachineState.fop_operand_bound`.
+  These expose the missing invariant for stack-indexed reduction: the
+  pending stack must be typed as an application spine. In particular,
+  `fop_operand_bound` recovers the typed `Me-FOp` premise
+  `operand ≤* bound` from a well-formed plugged state and function-bound
+  inversion under `WfCtxEqu`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — clarified the
   `MEqRedPreservesWfMContextual.of_factored_components_no_beta` docstring:
   the fully factored path is a convenience route that additionally replaces

@@ -339,6 +339,67 @@ def MEqRedPreservesWfMContextual : Type :=
   ∀ {Γ : Ctx} {s : Stack} {x y : Term},
     WfCtxEqu Γ → WfStack Γ s → MEqRed Γ s x y → WfM Γ x → WfM Γ y
 
+namespace Stack
+
+/-- Plug a machine stack back into a term by applying the stack head first.
+This is the well-formedness invariant missing from the broad stack-only
+contextual preservation target: `MEqRed Γ s t t'` should be related to the
+typing of `plug t s`, not just to the typing of `t` and each stack element
+separately. -/
+def plug (t : Term) : Stack → Term
+  | [] => t
+  | operand :: s => plug (.app t operand) s
+
+@[simp] theorem plug_nil (t : Term) : plug t [] = t := rfl
+
+@[simp] theorem plug_cons (t operand : Term) (s : Stack) :
+    plug t (operand :: s) = plug (.app t operand) s := rfl
+
+end Stack
+
+/-- Machine-state well-formedness: a control term is well formed together
+with its pending stack when the plugged application spine is well formed. -/
+def WfMachineState (Γ : Ctx) (t : Term) (s : Stack) : Type :=
+  WfM Γ (Stack.plug t s)
+
+namespace WfMachineState
+
+/-- A well-formed non-empty machine state exposes the first application in
+the plugged stack. -/
+noncomputable def head_app_wf {Γ : Ctx} {t operand : Term} {s : Stack} :
+    WfMachineState Γ t (operand :: s) → WfM Γ (.app t operand) := by
+  induction s generalizing t operand with
+  | nil =>
+      intro hState
+      simpa [WfMachineState, Stack.plug] using hState
+  | cons next rest ih =>
+      intro hState
+      have hNext : WfM Γ (.app (.app t operand) next) :=
+        ih (t := .app t operand) (operand := next) (by
+          simpa [WfMachineState, Stack.plug] using hState)
+      obtain ⟨_, hFun, _⟩ := hNext.app_inv
+      exact hFun.wf_left
+
+/-- From a well-formed machine state headed by an abstraction, recover the
+typed `Me-FOp` premise that the popped operand is a well-subtype of the
+abstraction bound. The function-bound inversion payload bridges the result
+bound chosen by `Wf-App` back to the abstraction's actual bound. -/
+noncomputable def fop_operand_bound
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    {Γ : Ctx} {s : Stack} {bound body operand : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hState : WfMachineState Γ (.abs bound body) (operand :: s)) :
+    WSubMStar Γ operand bound := by
+  have hApp : WfM Γ (.app (.abs bound body) operand) :=
+    head_app_wf hState
+  obtain ⟨result, hFun, hArg⟩ := hApp.app_inv
+  have hEquBoundResult : WEquMStar Γ bound result := hInv hΓ hFun
+  have hSubResultBound : WSubMStar Γ result bound :=
+    hEquBoundResult.symm.toWSubMStar
+  exact WSubMStar.trans hArg.wf_right hArg hSubResultBound
+
+end WfMachineState
+
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
 so it is not directly covered by the empty-stack `WSubMStar` endpoint
