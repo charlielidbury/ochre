@@ -16,10 +16,14 @@ namespace DeBruijn
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_of
 #print axioms Term.shift_scoped_inv
 #print axioms Stack.Scoped.shift_inv
+#print axioms Term.instantiate_succ_shift_zero
+#print axioms Stack.instantiate_succ_shift_zero
 #print axioms Stack.instantiate_one_shift_zero
 #print axioms Stack.instantiate_two_shift_zero
 #print axioms Stack.instantiate_three_shift_zero
+#print axioms Stack.instantiate_four_shift_zero
 #print axioms Term.instantiate_two_shift_zero
+#print axioms Term.instantiate_three_shift_zero
 #print axioms Term.instantiate_two_shift_zero_tail
 #print axioms Term.instantiate_succ_after
 #print axioms Term.instantiate_after_two

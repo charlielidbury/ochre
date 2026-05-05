@@ -371,12 +371,30 @@ theorem shift_instantiate_zero (cutoff : Nat) (v t : Term) :
   | succ cutoff =>
     exact shift_instantiate_lt (cutoff + 1) 0 v t (Nat.succ_pos cutoff)
 
+/-- Instantiating one slot below a newly added top-level binder commutes with
+shifting the surrounding term. This names the general form behind the
+one-head, two-head, and three-head stack arithmetic lemmas. -/
+theorem instantiate_succ_shift_zero (k : Nat) (v t : Term) :
+    instantiate (k + 1) (shift 0 v) (shift 0 t) =
+      shift 0 (instantiate k v t) := by
+  simpa [shift] using
+    (shiftBy_instantiate 0 1 k v t (Nat.zero_le k)).symm
+
 /-- Instantiation at index `2` through two preserved top-level bindings
 commutes with instantiating at index `0` before adding those bindings. -/
 theorem instantiate_two_shift_zero (v t : Term) :
     instantiate 2 (shift 0 (shift 0 v)) (shift 0 (shift 0 t)) =
       shift 0 (shift 0 (instantiate 0 v t)) := by
   have h := (shiftBy_instantiate 0 2 0 v t (Nat.zero_le 0)).symm
+  simpa [shift, shiftBy_compose, Nat.add_assoc] using h
+
+/-- Instantiation at index `3` through three preserved top-level bindings
+commutes with instantiating at index `0` before adding those bindings. -/
+theorem instantiate_three_shift_zero (v t : Term) :
+    instantiate 3 (shift 0 (shift 0 (shift 0 v)))
+        (shift 0 (shift 0 (shift 0 t))) =
+      shift 0 (shift 0 (shift 0 (instantiate 0 v t))) := by
+  have h := (shiftBy_instantiate 0 3 0 v t (Nat.zero_le 0)).symm
   simpa [shift, shiftBy_compose, Nat.add_assoc] using h
 
 /-- Instantiating index `2` through a term shifted under three top-level

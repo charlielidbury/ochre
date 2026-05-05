@@ -1244,26 +1244,29 @@ def instantiate (k : Nat) (v : Term) : Stack → Stack :=
 @[simp] theorem shift_cons (cutoff : Nat) (α : Term) (s : Stack) :
     shift cutoff (α :: s) = Term.shift cutoff α :: shift cutoff s := rfl
 
-/-- Instantiating index `1` through a stack shifted over index `0` commutes
-with shifting the stack instantiated at index `0`. -/
-theorem instantiate_one_shift_zero (v : Term) (s : Stack) :
-    Stack.instantiate 1 (Term.shift 0 v) (Stack.shift 0 s) =
-      Stack.shift 0 (Stack.instantiate 0 v s) := by
+/-- Instantiating one slot below a newly added top-level binder commutes with
+shifting every stack operand. This is the generic form behind the named
+one-head, two-head, and three-head stack arithmetic lemmas. -/
+theorem instantiate_succ_shift_zero (k : Nat) (v : Term) (s : Stack) :
+    Stack.instantiate (k + 1) (Term.shift 0 v) (Stack.shift 0 s) =
+      Stack.shift 0 (Stack.instantiate k v s) := by
   induction s with
   | nil =>
       rfl
   | cons α s ih =>
       change
-        Term.instantiate 1 (Term.shift 0 v) (Term.shift 0 α) ::
-            Stack.instantiate 1 (Term.shift 0 v) (Stack.shift 0 s) =
-          Term.shift 0 (Term.instantiate 0 v α) ::
-            Stack.shift 0 (Stack.instantiate 0 v s)
-      have hα :
-          Term.instantiate 1 (Term.shift 0 v) (Term.shift 0 α) =
-            Term.shift 0 (Term.instantiate 0 v α) := by
-        simpa [Term.shift] using
-          (Term.shiftBy_instantiate 0 1 0 v α (Nat.le_refl 0)).symm
-      rw [hα, ih]
+        Term.instantiate (k + 1) (Term.shift 0 v) (Term.shift 0 α) ::
+            Stack.instantiate (k + 1) (Term.shift 0 v) (Stack.shift 0 s) =
+          Term.shift 0 (Term.instantiate k v α) ::
+            Stack.shift 0 (Stack.instantiate k v s)
+      rw [Term.instantiate_succ_shift_zero, ih]
+
+/-- Instantiating index `1` through a stack shifted over index `0` commutes
+with shifting the stack instantiated at index `0`. -/
+theorem instantiate_one_shift_zero (v : Term) (s : Stack) :
+    Stack.instantiate 1 (Term.shift 0 v) (Stack.shift 0 s) =
+      Stack.shift 0 (Stack.instantiate 0 v s) := by
+  simpa using instantiate_succ_shift_zero 0 v s
 
 /-- Instantiating index `2` through a stack shifted over index `0` commutes
 with shifting the stack instantiated at index `1`. This is the two-preserved
@@ -1271,22 +1274,7 @@ head analogue of `Stack.instantiate_one_shift_zero`. -/
 theorem instantiate_two_shift_zero (v : Term) (s : Stack) :
     Stack.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Stack.shift 0 s) =
       Stack.shift 0 (Stack.instantiate 1 (Term.shift 0 v) s) := by
-  induction s with
-  | nil =>
-      rfl
-  | cons α s ih =>
-      change
-        Term.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Term.shift 0 α) ::
-            Stack.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Stack.shift 0 s) =
-          Term.shift 0 (Term.instantiate 1 (Term.shift 0 v) α) ::
-            Stack.shift 0 (Stack.instantiate 1 (Term.shift 0 v) s)
-      have hα :
-          Term.instantiate 2 (Term.shift 0 (Term.shift 0 v)) (Term.shift 0 α) =
-            Term.shift 0 (Term.instantiate 1 (Term.shift 0 v) α) := by
-        simpa [Term.shift] using
-          (Term.shiftBy_instantiate 0 1 1 (Term.shift 0 v) α
-            (Nat.zero_le 1)).symm
-      rw [hα, ih]
+  simpa using instantiate_succ_shift_zero 1 (Term.shift 0 v) s
 
 /-- Instantiating index `3` through a stack shifted over index `0` commutes
 with shifting the stack instantiated at index `2`. This is the
@@ -1296,28 +1284,21 @@ theorem instantiate_three_shift_zero (v : Term) (s : Stack) :
         (Stack.shift 0 s) =
       Stack.shift 0
         (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 v)) s) := by
-  induction s with
-  | nil =>
-      rfl
-  | cons α s ih =>
-      change
-        Term.instantiate 3 (Term.shift 0 (Term.shift 0 (Term.shift 0 v)))
-            (Term.shift 0 α) ::
-          Stack.instantiate 3 (Term.shift 0 (Term.shift 0 (Term.shift 0 v)))
-            (Stack.shift 0 s) =
-        Term.shift 0
-            (Term.instantiate 2 (Term.shift 0 (Term.shift 0 v)) α) ::
-          Stack.shift 0
-            (Stack.instantiate 2 (Term.shift 0 (Term.shift 0 v)) s)
-      have hα :
-          Term.instantiate 3 (Term.shift 0 (Term.shift 0 (Term.shift 0 v)))
-              (Term.shift 0 α) =
-            Term.shift 0
-              (Term.instantiate 2 (Term.shift 0 (Term.shift 0 v)) α) := by
-        simpa [Term.shift] using
-          (Term.shiftBy_instantiate 0 1 2 (Term.shift 0 (Term.shift 0 v)) α
-            (Nat.zero_le 2)).symm
-      rw [hα, ih]
+  simpa using instantiate_succ_shift_zero 2
+    (Term.shift 0 (Term.shift 0 v)) s
+
+/-- Instantiating index `4` through a stack shifted over index `0` commutes
+with shifting the stack instantiated at index `3`. This is the arithmetic
+needed by the next three-head binder frontier. -/
+theorem instantiate_four_shift_zero (v : Term) (s : Stack) :
+    Stack.instantiate 4
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 v))))
+        (Stack.shift 0 s) =
+      Stack.shift 0
+        (Stack.instantiate 3
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 v))) s) := by
+  simpa using instantiate_succ_shift_zero 3
+    (Term.shift 0 (Term.shift 0 (Term.shift 0 v))) s
 
 /-- If shifting a stack produces a non-empty stack, the original stack was
 non-empty and the head/tail are the shifted original head/tail. -/

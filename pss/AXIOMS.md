@@ -433,6 +433,16 @@ closures, 2 inactive outstanding).
   two-head recursive premise plus the named three-preserved-head body payload.
   Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Syntax/DeBruijn.lean` and `Pss/Context/DeBruijn.lean` — generalized
+  the stack shift/substitution arithmetic with
+  `Term.instantiate_succ_shift_zero` and
+  `Stack.instantiate_succ_shift_zero`, rewired the existing one-/two-/three-head
+  stack rewrites through the generic theorem, and added
+  `Stack.instantiate_four_shift_zero` plus
+  `Term.instantiate_three_shift_zero`. This removes one-off arithmetic
+  duplication and supplies the stack rewrite needed by the next three-head
+  binder frontier. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
