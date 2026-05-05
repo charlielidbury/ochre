@@ -250,6 +250,13 @@ closures, 2 inactive outstanding).
   easy raw `top`/`equ` cases into `MSubStar` and use the existing
   `msubStar_app_fixed_arg` lift for application. Added the endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMSubRedStack.fOp_msubstar`, the star-layer
+  reassembly helper for the `MSubRed.fOp` constructor. It consumes the
+  already transformed body chain under the instantiated `.equ` head and
+  reuses `msubStar_abs_fOp_body_fixed_bound` to lift it back to the
+  abstraction level over the instantiated operand stack. Added the endpoint
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

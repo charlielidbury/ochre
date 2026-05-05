@@ -1006,6 +1006,39 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.app_msubstar
   simpa [Term.instantiate] using
     msubStar_app_fixed_arg hpvTail hv' hOp
 
+/-- The `MSubRed.fOp` constructor reassembles a stack-parametric
+β-instantiated subtype step at the diagrammatic-star layer once the
+body-level transformed chain under the instantiated `.equ` head is available.
+-/
+noncomputable def BetaInstantiationPreservesMSubRedStack.fOp_msubstar
+    {Γ : Ctx} {bound arg t α body body' : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) (α :: s))
+    (ht : Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) t)
+    (hBody :
+      MSubStar ({ bound := Term.instantiate 0 arg α, kind := .equ } :: Γ)
+        (Stack.shift 0 (Stack.instantiate 0 arg s))
+        (Term.instantiate 1 (Term.shift 0 arg) body)
+        (Term.instantiate 1 (Term.shift 0 arg) body')) :
+    MSubStar Γ (Stack.instantiate 0 arg (α :: s))
+      (Term.instantiate 0 arg (.abs t body))
+      (Term.instantiate 0 arg (.abs t body')) := by
+  have hpvTail : PrevalidExt Γ (Stack.instantiate 0 arg s) :=
+    BetaInstantiationPreservesPrevalidExtStack hArgBound (PrevalidExt.tail hpv)
+  have ht' : Term.Scoped Γ.depth (Term.instantiate 0 arg t) :=
+    Term.instantiate_scoped 0 Γ.depth arg t (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using ht)
+  have hα :
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) α :=
+    PrevalidExt.head_scoped hpv
+  have hα' : Term.Scoped Γ.depth (Term.instantiate 0 arg α) :=
+    Term.instantiate_scoped 0 Γ.depth arg α (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left (by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hα)
+  simpa [Term.instantiate, Stack.instantiate] using
+    msubStar_abs_fOp_body_fixed_bound hpvTail ht' hα' hBody
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
