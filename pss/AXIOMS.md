@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic
+  three-preserved-head `.equ` subtype replacement wrappers
+  `msubRed_equ_under_three_heads_replace_from_replacements`,
+  `msubRedStar_equ_under_three_heads_replace_from_replacements`, and
+  `msubRedStar_equ_under_three_heads_replace_function_from_replacements`.
+  These match the existing two-head `MSubStar` API at the next nested binder
+  depth by wiring stable `Ms-Pro`, `Ms-App`, `Ms-Fun`, and `Ms-FOp` handlers
+  through the three-head splitter. Added all three endpoints to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRedStar_equ_under_three_heads_replace_function_from_raw_body_replacements`,
   the stack-polymorphic function-valued wrapper for three-preserved-head
