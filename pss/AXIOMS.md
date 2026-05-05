@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty`, the current
+  most decomposed machine-state preservation assembly: control/app-operator
+  transport is supplied by the stack-lift body transports plus one-step
+  diagrammatic preservation/re-embedding components, while the constructor
+  recursive hypotheses still remove the external empty-stack preservation
+  premise. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WSubMStarAppOperatorPayload.of_body_transports_and_steps` and
   `WfMachineStateControlLeftPayload.of_body_transports_and_steps`, lifting
   the reduced stack-lift body-transport package through application-operator

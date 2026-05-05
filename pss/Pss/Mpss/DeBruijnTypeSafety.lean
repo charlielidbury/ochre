@@ -1800,6 +1800,26 @@ noncomputable def MEqRedPreservesWfMachineState.of_reduced_components_no_empty
       intro hΓ hState
       exact hFOp hΓ hBound hOperand hBody hState
 
+/-- Reduced machine-state preservation assembled directly from the
+body-transport residuals for stack lifting and the one-step diagrammatic
+re-embedding components. This is the current most decomposed assembly for the
+control/app-operator side of machine preservation. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_reduced_components_no_empty
+    hBeta
+    (WSubMStarToStackedMSubStarPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hFunBody hNoTop hFOp
+
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
 version is directly compatible with the empty-stack `WSubM` equivalence
