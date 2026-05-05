@@ -433,6 +433,47 @@ theorem instantiate_two_shift_zero_tail (v t : Term) :
   rw [hshift]
   exact instantiate_shift_id 2 (shift 0 (shift 0 v)) (shift 0 (shift 0 t))
 
+/-- Instantiating index `3` through a term shifted under four top-level
+bindings cancels the shift at the instantiated slot and preserves the three
+outer bindings. -/
+theorem instantiate_three_shift_zero_tail (v t : Term) :
+    instantiate 3 (shift 0 (shift 0 (shift 0 v)))
+        (shift 0 (shift 0 (shift 0 (shift 0 t)))) =
+      shift 0 (shift 0 (shift 0 t)) := by
+  have hshift_general :
+      ∀ (cutoff : Nat) (u : Term),
+        shift cutoff (shift cutoff (shift cutoff (shift cutoff u))) =
+          shift (cutoff + 3)
+            (shift cutoff (shift cutoff (shift cutoff u))) := by
+    intro cutoff u
+    induction u generalizing cutoff with
+    | bvar i =>
+        by_cases h : cutoff ≤ i
+        · have h₁ : cutoff ≤ i + 1 := by omega
+          have h₂ : cutoff ≤ i + 1 + 1 := by omega
+          have h₃ : cutoff ≤ i + 1 + 1 + 1 := by omega
+          have h₄ : cutoff + 3 ≤ i + 1 + 1 + 1 := by omega
+          simp [shift, shiftBy, h, h₁, h₂, h₃, h₄, Nat.add_assoc]
+        · have h₄ : ¬ cutoff + 3 ≤ i := by omega
+          simp [shift, shiftBy, h, h₄]
+    | top =>
+        simp [shift, shiftBy]
+    | abs bound body ih_bound ih_body =>
+        simp only [shift, shiftBy]
+        exact congrArg₂ Term.abs
+          (ih_bound cutoff)
+          (by simpa [Nat.add_assoc] using ih_body (cutoff + 1))
+    | app fn arg ih_fn ih_arg =>
+        simp only [shift, shiftBy]
+        exact congrArg₂ Term.app (ih_fn cutoff) (ih_arg cutoff)
+  have hshift :
+      shift 0 (shift 0 (shift 0 (shift 0 t))) =
+        shift 3 (shift 0 (shift 0 (shift 0 t))) := by
+    simpa using hshift_general 0 t
+  rw [hshift]
+  exact instantiate_shift_id 3 (shift 0 (shift 0 (shift 0 v)))
+    (shift 0 (shift 0 (shift 0 t)))
+
 /-- Substituting index `k` and then the next surviving slot is equivalent to
 first substituting the corresponding original slot at `k + 2`, then
 substituting index `k`. -/
