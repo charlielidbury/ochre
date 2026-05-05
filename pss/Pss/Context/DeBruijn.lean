@@ -167,6 +167,18 @@ def instantiateBetaPrefix (arg : Term) : Nat → Ctx → Ctx
       { bound := Term.instantiate n (Term.shiftBy 0 n arg) head.bound,
         kind := head.kind } :: instantiateBetaPrefix arg n Γ := rfl
 
+@[simp] theorem length_instantiateBetaPrefix (arg : Term) (n : Nat) (Γ : Ctx) :
+    (instantiateBetaPrefix arg n Γ).length = Γ.length := by
+  induction n generalizing Γ with
+  | zero =>
+      rfl
+  | succ n ih =>
+      cases Γ with
+      | nil =>
+          rfl
+      | cons head Γ =>
+          simp [instantiateBetaPrefix, ih]
+
 @[simp] theorem depth_replaceAt (cutoff : Nat) (newEntry : CtxEntry) (Γ : Ctx) :
     depth (replaceAt cutoff newEntry Γ) = depth Γ := by
   induction Γ generalizing cutoff with

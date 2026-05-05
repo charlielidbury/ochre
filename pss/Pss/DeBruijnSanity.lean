@@ -60,6 +60,7 @@ namespace DeBruijn
 #print axioms Term.instantiate_zero_after_five
 #print axioms Term.instantiate_after_six
 #print axioms Term.instantiate_zero_after_six
+#print axioms Ctx.length_instantiateBetaPrefix
 #print axioms Prevalid.equ_under_two_heads_replace
 #print axioms PrevalidExt.equ_under_two_heads_replace
 #print axioms Ctx.subBinds_equ_under_two_heads_replace
@@ -209,6 +210,8 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload
 #print axioms BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload
 #print axioms BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload
+#print axioms BetaInstantiationPreservesPrevalidPrefix
+#print axioms BetaInstantiationPreservesPrevalidExtUnderHeads
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack
 #print axioms BetaInstantiationPreservesMEqRedUnderTwoHeadsStack
 #print axioms BetaInstantiationPreservesMEqRedUnderThreeHeadsStack

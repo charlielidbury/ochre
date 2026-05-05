@@ -2208,6 +2208,85 @@ private noncomputable def prevalid_head_scoped
       cases hpv with
       | equ _ hHead => exact hHead
 
+/-- Generic prevalidity transport for the preserved context prefix after a
+β-instantiation removes the `.sub` entry below it. -/
+noncomputable def BetaInstantiationPreservesPrevalidPrefix
+    {Γ : Ctx} {bound arg : Term} (heads : Ctx)
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : Prevalid (heads ++ { bound := bound, kind := .sub } :: Γ)) :
+    Prevalid (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ) := by
+  induction heads with
+  | nil =>
+      simpa [Ctx.instantiateBetaPrefix] using Prevalid.tail hpv
+  | cons head heads ih =>
+      have hpvTail :
+          Prevalid (heads ++ { bound := bound, kind := .sub } :: Γ) :=
+        Prevalid.tail hpv
+      have hTail := ih hpvTail
+      have hArgShiftScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.shiftBy 0 heads.length arg) := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 heads.length Γ.depth arg
+            (Nat.zero_le Γ.depth) hArgBound.scoped_left
+      have hHeadScoped :
+          Term.Scoped (Γ.depth + heads.length + 1) head.bound := by
+        simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+          Nat.add_assoc] using prevalid_head_scoped hpv
+      have hHeadInstScoped :
+          Term.Scoped
+            (Ctx.depth (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ))
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg) head.bound) := by
+        have hInst := Term.instantiate_scoped heads.length
+          (Γ.depth + heads.length) (Term.shiftBy 0 heads.length arg)
+          head.bound (by omega) hArgShiftScoped hHeadScoped
+        simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+          Nat.add_assoc] using hInst
+      cases head with
+      | mk headBound kind =>
+          cases kind with
+          | sub =>
+              exact Prevalid.sub hTail hHeadInstScoped
+          | equ =>
+              exact Prevalid.equ hTail hHeadInstScoped
+
+/-- Generic prevalidity transport for β-instantiation under an arbitrary
+number of preserved context heads. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtUnderHeads
+    {Γ : Ctx} {bound arg : Term} {heads : Ctx} {s : Stack} {n : Nat}
+    (hlen : heads.length = n)
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt (heads ++ { bound := bound, kind := .sub } :: Γ) s) :
+    PrevalidExt (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+      (Stack.instantiate n (Term.shiftBy 0 n arg) s) := by
+  subst hlen
+  have hctx :=
+    BetaInstantiationPreservesPrevalidPrefix heads hArgBound (PrevalidExt.ctx hpv)
+  have hArgShiftScoped :
+      Term.Scoped (Γ.depth + heads.length)
+        (Term.shiftBy 0 heads.length arg) := by
+    simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Term.shiftBy_scoped 0 heads.length Γ.depth arg
+        (Nat.zero_le Γ.depth) hArgBound.scoped_left
+  have hsSource :
+      Stack.Scoped (Γ.depth + heads.length + 1) s := by
+    simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+      Nat.add_assoc] using PrevalidExt.stack_scoped hpv
+  have hsTarget :
+      Stack.Scoped
+        (Ctx.depth (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ))
+        (Stack.instantiate heads.length
+          (Term.shiftBy 0 heads.length arg) s) := by
+    have hStack := Stack.Scoped.instantiate
+      (depth := Γ.depth + heads.length)
+      (k := heads.length)
+      (v := Term.shiftBy 0 heads.length arg)
+      (s := s) (by omega) hArgShiftScoped hsSource
+    simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+      Nat.add_assoc] using hStack
+  exact PrevalidExt.of_stack_scoped hctx hsTarget
+
 /-- Prevalidity transport for β-instantiation under one preserved context
 head. The preserved head's bound is instantiated while the discharged `.sub`
 tail is removed. -/

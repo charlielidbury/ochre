@@ -20,6 +20,13 @@ closures, 2 inactive outstanding).
   zero/one/two/three/four/five/six/seven/eight-head APIs to the generic
   length-indexed surface. Added endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
+  added `Ctx.length_instantiateBetaPrefix`,
+  `BetaInstantiationPreservesPrevalidPrefix`, and
+  `BetaInstantiationPreservesPrevalidExtUnderHeads`, a list-generic
+  prevalidity transport for beta-instantiation under any preserved-head
+  prefix. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Syntax/DeBruijn.lean` — added general preserved-head shift
   arithmetic: `Term.shiftBy_tail`, `Term.shiftBy_zero_tail`, and
   `Term.instantiate_shiftBy_zero_tail`. These subsume the fixed
