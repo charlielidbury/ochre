@@ -84,6 +84,12 @@ closures, 2 inactive outstanding).
   `MEqRedPreservesWfMContextual.of_components_and_direct_sub_payloads`,
   and `.of_components_and_immediate_sub_payloads_and_under`. Added all
   four endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — routed the direct/factored `.sub`
+  replacement payload boundary through the no-β contextual preservation
+  assemblers: ordinary function-bound inversion, `WfCtxEqu` function-bound
+  inversion, split `Me-FOp` head/body transport, and fully factored
+  contextual routes. Added all eight endpoints to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,

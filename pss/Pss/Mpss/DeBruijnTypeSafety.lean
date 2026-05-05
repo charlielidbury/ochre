@@ -7939,6 +7939,49 @@ noncomputable def
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hSubToEqu hEquToSub
 
+/-- Variant of
+`MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports`
+using direct `.sub` replacement residual payloads for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_direct_sub_payloads_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_transports
+    hSubst hInv hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hSubToEqu hEquToSub
+
+/-- Variant of
+`MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports`
+using immediate top-level `.sub` replacement residuals plus the named
+preserved-head replacement payload for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_immediate_sub_payloads_and_under_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_transports
+    hSubst hInv hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hSubToEqu hEquToSub
+
 /-- Split-residual contextual preservation using the native `Me-App`
 operator payload and one uniform head-kind/body transport payload for
 `Me-FOp`. This is retained as a diagnostic assembly route; the uniform
@@ -8083,6 +8126,47 @@ noncomputable def
     hLeft (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hSubToEqu hEquToSub
 
+/-- Factored contextual preservation using direct `.sub` replacement
+residual payloads for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_sub_replace
+    hSubst hInv hLeft
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hSubToEqu hEquToSub
+
+/-- Factored contextual preservation using immediate top-level `.sub`
+replacement residuals plus the named preserved-head replacement payload for
+`Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_sub_replace
+    hSubst hInv hLeft
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hSubToEqu hEquToSub
+
 /-- Factored contextual preservation using one uniform head-kind transport
 payload for both `Me-FOp` body transport directions. This is retained as a
 diagnostic assembly route; the uniform head-kind premise is refutable under
@@ -8131,6 +8215,45 @@ noncomputable def MEqRedPreservesWfMContextual.of_components_no_beta_and_sub_rep
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hFOpBody
 
+/-- Contextual `MEqRed` preservation assembled without a separate β
+residual, using direct `.sub` replacement residual payloads for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_and_sub_replace
+    hSubst hInv hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled without a separate β
+residual, using immediate top-level `.sub` replacement residuals plus the
+named preserved-head replacement payload for `Me-Fun`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_and_sub_replace
+    hSubst hInv hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hFOpBody
+
 /-- Contextual `MEqRed` well-formedness preservation assembled from the
 well-formed-context function-bound inversion payload and the sharpened `.sub`
 head replacement payload, with the β case proved internally. -/
@@ -8145,6 +8268,45 @@ noncomputable def
   MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv hSubst
     hInv hOpFun
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
+    hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from well-formed-context
+function-bound inversion and direct `.sub` replacement residual payloads. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace
+    hSubst hInv hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+    hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from well-formed-context
+function-bound inversion, immediate top-level `.sub` replacement residuals,
+and the named preserved-head replacement payload. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace
+    hSubst hInv hOpFun
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
     hFOpBody
 
 /-- Contextual `MEqRed` preservation assembled without a separate β residual,
