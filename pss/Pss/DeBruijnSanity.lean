@@ -149,6 +149,7 @@ namespace DeBruijn
 #print axioms WfMHeadKindTransportPayload.not_of_no_top
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity
 #print axioms BetaInstantiationPreservesScoped
+#print axioms BetaInstantiationPreservesWSubMStar
 #print axioms BetaInstantiationPreservesWfM.top
 #print axioms BetaInstantiationPreservesWfM.var_zero
 #print axioms BetaInstantiationPreservesWfM.var_succ_sub
@@ -156,6 +157,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWfM.var
 #print axioms BetaInstantiationPreservesWfM.abs
 #print axioms BetaInstantiationPreservesWfM.app
+#print axioms BetaInstantiationPreservesWfM.app_of_wsubmstar
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

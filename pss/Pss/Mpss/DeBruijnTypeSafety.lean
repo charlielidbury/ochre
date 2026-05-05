@@ -180,6 +180,14 @@ def BetaInstantiationPreservesWfM : Type :=
       WfM ({ bound := bound, kind := .sub } :: Γ) body →
         WfM Γ (Term.instantiate 0 arg body)
 
+/-- De Bruijn subtype-chain substitution payload needed by the application
+case of β-instantiation preservation. -/
+def BetaInstantiationPreservesWSubMStar : Type :=
+  ∀ {Γ : Ctx} {bound arg lhs rhs : Term},
+    WSubMStar Γ arg bound →
+      WSubMStar ({ bound := bound, kind := .sub } :: Γ) lhs rhs →
+        WSubMStar Γ (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg rhs)
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -289,6 +297,22 @@ noncomputable def BetaInstantiationPreservesWfM.app
         (Term.instantiate 0 arg t)) :
     WfM Γ (Term.instantiate 0 arg (.app u v)) := by
   simpa [Term.instantiate] using WfM.app hOp hArg
+
+/-- The application case of de Bruijn β-instantiation well-formedness follows
+from substitution preservation for `WSubMStar` chains. -/
+noncomputable def BetaInstantiationPreservesWfM.app_of_wsubmstar
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    {Γ : Ctx} {bound arg u v : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hBody : WfM ({ bound := bound, kind := .sub } :: Γ) (.app u v)) :
+    WfM Γ (Term.instantiate 0 arg (.app u v)) := by
+  cases hBody with
+  | app hOp hArg =>
+      have hOp' := hSubstStar hArgBound hOp
+      have hArg' := hSubstStar hArgBound hArg
+      exact BetaInstantiationPreservesWfM.app
+        (by simpa [Term.instantiate] using hOp')
+        hArg'
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/

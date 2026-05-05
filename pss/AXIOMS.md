@@ -116,6 +116,14 @@ closures, 2 inactive outstanding).
   Added both endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesWSubMStar`, the de Bruijn subtype-chain
+  substitution payload needed by the application constructor, and
+  `BetaInstantiationPreservesWfM.app_of_wsubmstar`, a checked reduction of
+  the β-instantiation application case to that payload. This isolates the
+  remaining application work as preservation of `WSubMStar` endpoints through
+  head substitution. Added both endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem
