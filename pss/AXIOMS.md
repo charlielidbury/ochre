@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msub_equ_head_stack_lift_from_replacements`,
+  `msubStar_equ_head_stack_lift_from_replacements`, and
+  `msubStar_equ_head_stack_lift_function_from_replacements`, the
+  constructor-wired diagrammatic subtype changed-`.equ`-head stack-lift
+  wrappers. These package the `Ms-Pro`, `Ms-Top`, `Ms-Equ`, `Ms-App`, and
+  empty-stack `Ms-Fun` cases around the new `MSubStar` stack-lift consumer;
+  the nonempty-stack `Ms-Fun` case is rebuilt through the existing `FOp`
+  abstraction lift. Added all three endpoints to the De Bruijn audit. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubStar_equ_head_stack_lift_from_step_msub_lift` and
   `msubStar_equ_head_stack_lift_function_from_step_msub_lift`, the
   diagrammatic changed-`.equ`-head stack-lift consumers for raw subtype

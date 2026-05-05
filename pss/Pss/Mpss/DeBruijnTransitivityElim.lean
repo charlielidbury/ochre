@@ -15152,6 +15152,177 @@ theorem msubStar_equ_head_stack_lift_function_from_step_msub_lift
   fun hpvTail =>
     msubStar_equ_head_stack_lift_from_step_msub_lift (hStep hpvTail) h
 
+/-- One-step subtype changed-head stack lift with the canonical constructor
+handlers wired in. The `Ms-Equ` branch is handled by the supplied
+diagrammatic equivalence lift; the `Ms-Fun` nonempty-stack case is rebuilt as
+an `FOp` abstraction lift. -/
+theorem msub_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stack}
+    {head u v : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hEqReplace :
+      ∀ {a b : Term},
+        MEqRed Γ [] a b →
+        MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 a) (Term.shift 0 b))
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed Γ (arg :: []) op op' →
+        Term.Scoped Γ.depth arg →
+        MSubStar ({ bound := head, kind := .equ } :: Γ)
+          (Term.shift 0 arg :: Stack.shift 0 s)
+          (Term.shift 0 op) (Term.shift 0 op'))
+    (hNilEqReplace :
+      ∀ {a b : Term},
+        MEqRed Γ [] a b →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 a) (Term.shift 0 b))
+    (hFunNilBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MSubStar ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) []
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hFunConsBodyReplace :
+      ∀ {α bound body body' : Term} {rest : Stack},
+        Term.Scoped Γ.depth α →
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MSubStar ({ bound := Term.shift 0 α, kind := .equ } ::
+          { bound := head, kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body'))
+    (h : MSubRed Γ [] u v) :
+    MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 u) (Term.shift 0 v) := by
+  have hpvNew : PrevalidExt ({ bound := head, kind := .equ } :: Γ)
+      (Stack.shift 0 s) :=
+    PrevalidExt.weaken_head hpvTail
+      (Prevalid.equ (PrevalidExt.ctx hpvTail) hHeadScoped)
+  cases h with
+  | pro hpv hb =>
+    exact MSubStar.of_MSubRed (by
+      simpa [Term.shift, Nat.zero_le] using
+        MSubRed.pro hpvNew (Ctx.subBinds_weaken_head
+          ({ bound := head, kind := .equ }) hb))
+  | top hpv hu =>
+    exact MSubStar.of_MSubRed
+      (MSubRed.top hpvNew (Term.shift_scoped 0 Γ.depth _ (Nat.zero_le _) hu))
+  | equ hpv heq =>
+    exact hEqReplace heq
+  | app hOp hArgScoped =>
+    exact msubStar_app_fixed_arg hpvNew
+      (Term.shift_scoped 0 Γ.depth _ (Nat.zero_le _) hArgScoped)
+      (hAppOpReplace hOp hArgScoped)
+  | fun_ hBoundScoped hBound hBody =>
+    cases s with
+    | nil =>
+      exact msubStar_abs_fun_body_equ_bound
+        (PrevalidExt.nil (Prevalid.equ (PrevalidExt.ctx hpvTail) hHeadScoped))
+        (hNilEqReplace hBound)
+        (by
+          simpa [Ctx.depth] using
+            Term.shift_scoped 1 (Γ.depth + 1) _ (by omega) hBody.scoped_left)
+        (hFunNilBodyReplace hBody)
+    | cons α rest =>
+      exact msubStar_abs_fOp_equ_bound_body hpvNew.tail (hNilEqReplace hBound)
+        (Term.shift_scoped 0 Γ.depth _ (Nat.zero_le _) hpvTail.head_scoped)
+        (by
+          simpa [Ctx.depth] using
+            Term.shift_scoped 1 (Γ.depth + 1) _ (by omega) hBody.scoped_left)
+        (hFunConsBodyReplace hpvTail.head_scoped hBody)
+
+/-- Chain-level subtype changed-head stack lift with canonical constructor
+handlers wired in. -/
+theorem msubStar_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stack}
+    {head u v : Term}
+    (hpvTail : PrevalidExt Γ s)
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hEqReplace :
+      ∀ {a b : Term},
+        MEqRed Γ [] a b →
+        MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+          (Term.shift 0 a) (Term.shift 0 b))
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed Γ (arg :: []) op op' →
+        Term.Scoped Γ.depth arg →
+        MSubStar ({ bound := head, kind := .equ } :: Γ)
+          (Term.shift 0 arg :: Stack.shift 0 s)
+          (Term.shift 0 op) (Term.shift 0 op'))
+    (hNilEqReplace :
+      ∀ {a b : Term},
+        MEqRed Γ [] a b →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 a) (Term.shift 0 b))
+    (hFunNilBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MSubStar ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) []
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hFunConsBodyReplace :
+      ∀ {α bound body body' : Term} {rest : Stack},
+        Term.Scoped Γ.depth α →
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MSubStar ({ bound := Term.shift 0 α, kind := .equ } ::
+          { bound := head, kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body'))
+    (h : MSubRedStar Γ [] u v) :
+    MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+      (Term.shift 0 u) (Term.shift 0 v) :=
+  msubStar_equ_head_stack_lift_from_step_msub_lift
+    (msub_equ_head_stack_lift_from_replacements hpvTail hHeadScoped hEqReplace
+      hAppOpReplace hNilEqReplace hFunNilBodyReplace hFunConsBodyReplace)
+    h
+
+/-- Function-valued chain-level subtype changed-head stack lift with canonical
+constructor handlers wired in for every residual tail stack. -/
+theorem msubStar_equ_head_stack_lift_function_from_replacements {Γ : Ctx}
+    {head u v : Term}
+    (hHeadScoped : Term.Scoped Γ.depth head)
+    (hEqReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {a b : Term},
+          MEqRed Γ [] a b →
+          MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+            (Term.shift 0 a) (Term.shift 0 b))
+    (hAppOpReplace :
+      ∀ {s : Stack},
+        PrevalidExt Γ s →
+        ∀ {op op' arg : Term},
+          MSubRed Γ (arg :: []) op op' →
+          Term.Scoped Γ.depth arg →
+          MSubStar ({ bound := head, kind := .equ } :: Γ)
+            (Term.shift 0 arg :: Stack.shift 0 s)
+            (Term.shift 0 op) (Term.shift 0 op'))
+    (hNilEqReplace :
+      ∀ {a b : Term},
+        MEqRed Γ [] a b →
+        MEqRed ({ bound := head, kind := .equ } :: Γ) []
+          (Term.shift 0 a) (Term.shift 0 b))
+    (hFunNilBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MSubStar ({ bound := Term.shift 0 bound, kind := .sub } ::
+          { bound := head, kind := .equ } :: Γ) []
+          (Term.shift 1 body) (Term.shift 1 body'))
+    (hFunConsBodyReplace :
+      ∀ {α bound body body' : Term} {rest : Stack},
+        Term.Scoped Γ.depth α →
+        MSubRed ({ bound := bound, kind := .sub } :: Γ) [] body body' →
+        MSubStar ({ bound := Term.shift 0 α, kind := .equ } ::
+          { bound := head, kind := .equ } :: Γ)
+          (Stack.shift 0 (Stack.shift 0 rest)) (Term.shift 1 body) (Term.shift 1 body'))
+    (h : MSubRedStar Γ [] u v) :
+    ∀ {s : Stack},
+      PrevalidExt Γ s →
+      MSubStar ({ bound := head, kind := .equ } :: Γ) (Stack.shift 0 s)
+        (Term.shift 0 u) (Term.shift 0 v) :=
+  fun hpvTail =>
+    msubStar_equ_head_stack_lift_from_replacements hpvTail hHeadScoped
+      (hEqReplace hpvTail) (hAppOpReplace hpvTail) hNilEqReplace
+      hFunNilBodyReplace hFunConsBodyReplace h
+
 /-- Chain-level changed-head stack lift with the canonical constructor
 handlers wired in. -/
 theorem meqRedStar_equ_head_stack_lift_from_replacements {Γ : Ctx} {s : Stack}
