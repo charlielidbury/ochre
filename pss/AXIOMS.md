@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level
+  `Top`-headed application commutation wrappers
+  `commute_appTop_subStep_eqStar_from_left` and
+  `commute_appTop_subStar_eqStep_from_right`, recovering side conditions
+  from the inspected single subtype/equivalence step. Added both endpoints
+  to the de Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added right-step variants
   `EqDiamonds.appTop_any_from_right` and
   `StrongCommutes.appTop_any_from_right`, so `Top`-headed application

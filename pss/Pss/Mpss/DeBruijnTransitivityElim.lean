@@ -1002,6 +1002,45 @@ theorem commute_appTop_subStep_eqStar {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term
     ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
   commute_appTop_subStar_eqStar hpv hu (MSubRedStar.single hSub) hEq
 
+/-- Single-subtype-step `Top`-headed application commutation with
+prevalidity and argument scoping recovered from the subtype step. -/
+theorem commute_appTop_subStep_eqStar_from_left {Γ : Ctx} {s : Stack}
+    {u t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app .top u) t₁)
+    (hEq : MEqRedStar Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  cases hSub with
+  | top hpv hScoped =>
+    exact commute_appTop_subStep_eqStar hpv (Term.Scoped.app_inv hScoped).2
+      (MSubRed.top hpv hScoped) hEq
+  | equ hpv heqSub =>
+    exact commute_appTop_subStep_eqStar hpv (Term.Scoped.app_inv heqSub.scoped_left).2
+      (MSubRed.equ hpv heqSub) hEq
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons hScoped =>
+      exact commute_appTop_subStep_eqStar (PrevalidExt.tail hpvCons) hArg
+        (MSubRed.app (MSubRed.top hpvCons hScoped) hArg) hEq
+    | equ hpvCons heqOp =>
+      exact commute_appTop_subStep_eqStar (PrevalidExt.tail hpvCons) hArg
+        (MSubRed.app (MSubRed.equ hpvCons heqOp) hArg) hEq
+
+/-- Single-equivalence-step `Top`-headed application commutation with
+prevalidity and argument scoping recovered from the equivalence step. -/
+theorem commute_appTop_subStar_eqStep_from_right {Γ : Ctx} {s : Stack}
+    {u t₁ t₂ : Term}
+    (hSub : MSubRedStar Γ s (.app .top u) t₁)
+    (hEq : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ := by
+  cases hEq with
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons =>
+      exact commute_appTop_subStar_eqStar (PrevalidExt.tail hpvCons)
+        hArg.scoped_left hSub (MEqRedStar.single (MEqRed.app (MEqRed.top hpvCons) hArg))
+  | tAp hpv hu =>
+    exact commute_appTop_subStar_eqStar hpv hu hSub (MEqRedStar.single (MEqRed.tAp hpv hu))
+
 /-- If the subtype side has already reached `Top`, any equivalence-chain
 target from the same scoped source joins it at `Top`. -/
 theorem commute_subStar_to_top_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
