@@ -29,7 +29,9 @@ closures, 2 inactive outstanding).
   packaging the checked eight-head structural leaves while leaving the
   recursive nine-head binder adapters explicit. Also added
   `BetaInstantiationPreservesMEqRedUnderNineHeadsStack` and its generic
-  specialization as the next recursive body surface. Added endpoints to
+  specialization as the next recursive body surface, then exposed
+  `BetaInstantiationPreservesMEqRedUnderTenHeadsStack` and its generic
+  specialization for the following binder layer. Added endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
