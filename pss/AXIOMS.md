@@ -130,6 +130,11 @@ closures, 2 inactive outstanding).
   payload plus the new five-preserved-head substitution-composition law.
   Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsFOpStackPayload.of_six_heads`.
+  This closes the five-head `Me-FOp` binder frontier from the six-head payload
+  and the same five-head scoped substitution transport pattern. Added an
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
