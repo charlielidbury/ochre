@@ -1375,6 +1375,11 @@ closures, 2 inactive outstanding).
   function-supertype transport, `Me-Fun` body replacement, and `Me-FOp`
   body bridging. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMContextual.of_components_and_sub_replace`, a
+  slimmer contextual preservation assembly that consumes the existing
+  sharpened `.sub` head replacement payload directly, leaving only β,
+  app-operator, and `fOp` body residuals. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No

@@ -1098,6 +1098,19 @@ noncomputable def MEqRed.fun_preservesWfM_of_sub_head_replace
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hΓ hredBound hredBody hwfAbs
 
+/-- Contextual `MEqRed` well-formedness preservation assembled from the
+remaining constructor payloads, using the existing sharpened `.sub` head
+replacement payload for `Me-Fun`. -/
+noncomputable def MEqRedPreservesWfMContextual.of_components_and_sub_replace
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components hBeta hOpFun
+    (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
+    hFOpBody
+
 namespace StepAt
 
 /-- All structural operational well-formedness preservation cases reduce to
