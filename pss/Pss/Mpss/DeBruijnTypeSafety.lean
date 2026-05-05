@@ -7347,6 +7347,73 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderThirteenHeadsStack.tAp
       (BetaInstantiationPreservesPrevalidExtUnderThirteenHeads hArgBound hpv)
       (MEqRed.scoped_left h)
 
+/-- `MEqRed.tAp` is stable under de Bruijn β-instantiation below fourteen
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFourteenHeadsStack.tAp
+    {Γ : Ctx}
+    {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ u : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ : CtxEntryKind}
+    {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ }]
+      PrevalidExt (heads ++ { bound := bound, kind := .sub } :: Γ) s)
+    (hu :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ }]
+      Term.Scoped (Ctx.depth (heads ++ { bound := bound, kind := .sub } :: Γ)) u) :
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ }]
+    let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 14 heads ++ Γ
+    MEqRed targetCtx
+      (Stack.instantiate 14 (Term.shiftBy 0 14 arg) s)
+      (Term.instantiate 14 (Term.shiftBy 0 14 arg) (.app .top u))
+      (Term.instantiate 14 (Term.shiftBy 0 14 arg) .top) := by
+  dsimp only at hpv hu ⊢
+  have h := BetaInstantiationPreservesMEqRedUnderFourteenHeadsStack.refl
+    hArgBound hpv hu
+  simpa [Term.instantiate] using
+    MEqRed.tAp
+      (BetaInstantiationPreservesPrevalidExtUnderFourteenHeads hArgBound hpv)
+      (MEqRed.scoped_left h)
+
 /-- The `MEqRed.pro` constructor is stable under de Bruijn β-instantiation
 below eleven preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.pro
