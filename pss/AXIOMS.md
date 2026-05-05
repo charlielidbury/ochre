@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
+  beta-target typed-`FOp` machine-tail wrappers
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_machine_tail`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_operator_machine_tail`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_machine_operator_machine_tail`,
+  and
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_machine_tail_cons`,
+  then routed their body-transport surfaces through the transitive
+  diagrammatic stack-append payload directly. Added all four endpoints to the
+  De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   beta-target typed-`FOp` tail-step wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_tail_step`,
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_operator_tail_step`,
