@@ -105,6 +105,10 @@ closures, 2 inactive outstanding).
   replacement boundary, for both native and factored contextual
   preservation. Added all four endpoints to the De Bruijn audit. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the no-external-empty
+  direct split-beta target-application machine-state assemblies for typed
+  and native `FOp` over the direct/factored `.sub` replacement boundary.
+  Added all four endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,

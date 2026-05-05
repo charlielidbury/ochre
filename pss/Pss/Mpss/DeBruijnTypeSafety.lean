@@ -6529,6 +6529,53 @@ noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empt
     hSubst hAppend hBridge hInv hBetaBody hFOpBody hTargetApp hTailCons
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace) hNoTop
 
+/-- Direct `.sub` replacement payload entry point for the typed-`FOp` direct
+split-beta target-application machine assembly. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hAppend hBridge hInv hBetaBody hFOpBody hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads) hNoTop
+
+/-- Immediate/factored `.sub` replacement payload entry point for the
+typed-`FOp` direct split-beta target-application machine assembly. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hAppend hBridge hInv hBetaBody hFOpBody hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hNoTop
+
 /-- Sub-replacement entry point for the typed-`FOp` direct split-beta
 machine assembly, with the control-left residual still exposed through the
 older body-transport surface. -/
@@ -6569,6 +6616,53 @@ noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empt
   MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons
     hSubst hAppend hBridge hInv hBetaBody hFOpBody hTargetApp hTailCons
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace) hNoTop
+
+/-- Direct `.sub` replacement payload entry point for the native-`FOp`
+direct split-beta target-application machine assembly. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_direct_sub_payloads
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hAppend hBridge hInv hBetaBody hFOpBody hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads) hNoTop
+
+/-- Immediate/factored `.sub` replacement payload entry point for the
+native-`FOp` direct split-beta target-application machine assembly. -/
+noncomputable def
+    MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_immediate_sub_payloads_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hAppend hBridge hInv hBetaBody hFOpBody hTargetApp hTailCons
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+    hNoTop
 
 /-- Sub-replacement entry point for the native-`FOp` direct split-beta
 machine assembly, with the control-left residual still exposed through the
