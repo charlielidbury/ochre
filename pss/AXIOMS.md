@@ -68,6 +68,18 @@ closures, 2 inactive outstanding).
   Also added `Lemma7.lf2_case_noProOn`, the checked axiom-free replacement
   for the local `_S_lf2` branch when such an invariant is supplied.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `Theorem_5_DeBruijn_Preservation_of_comm_meq_components_and_direct_sub_replace`,
+  its closed specialization, and the immediate-plus-preserved-head `.sub`
+  replacement analogues. These wrappers consume the global de Bruijn
+  strong-commutativity premise through
+  `Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of`, so the exposed
+  Theorem 5 frontier no longer asks separately for the function-bound
+  chain-shape payload. The remaining explicit de Bruijn preservation
+  obligations are beta instantiation, empty-stack equivalence
+  well-formedness preservation, and `.sub` replacement residuals. Added all
+  four endpoints to `Pss/DeBruijnSanity.lean`; their axiom audit is standard
+  Lean axioms only. No headline locally-nameless axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem

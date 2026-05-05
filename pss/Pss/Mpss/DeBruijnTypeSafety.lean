@@ -11878,5 +11878,88 @@ noncomputable def
       hSubst hShape hMEqPres hUnder hSubPayloads)
     hwf hstep
 
+/-- De Bruijn preservation with the function-bound chain-shape payload derived
+directly from global strong commutativity. This exposes the remaining
+Theorem 5 frontier after Theorem 3 has supplied the abstraction-shape
+collapse: beta instantiation, empty-stack equivalence preservation, and
+`.sub` replacement. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_comm_meq_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMEqPres : MEqRedPreservesWfM)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of_chain_shape_meq_components_and_direct_sub_replace
+    hSubst (Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm)
+    hMEqPres hSubPayloads hwf hstep
+
+/-- De Bruijn preservation with Theorem 3's strong-commutativity payload
+already consumed, and with top-level `.sub` replacement factored into
+immediate and preserved-head residual packages. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_of_comm_meq_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMEqPres : MEqRedPreservesWfM)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
+    hSubst (Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm)
+    hMEqPres hUnder hSubPayloads hwf hstep
+
+/-- Closed-term specialization of the strong-commutativity-driven de Bruijn
+preservation surface over the direct `.sub` replacement residual package. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_comm_meq_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMEqPres : MEqRedPreservesWfM)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_meq_components_and_direct_sub_replace
+    hSubst (Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm)
+    hMEqPres hSubPayloads hwf hstep
+
+/-- Closed-term specialization of the strong-commutativity-driven de Bruijn
+preservation surface over immediate plus preserved-head `.sub` replacement
+residuals. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_comm_meq_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMEqPres : MEqRedPreservesWfM)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
+    hSubst (Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm)
+    hMEqPres hUnder hSubPayloads hwf hstep
+
 end DeBruijn
 end Pss
