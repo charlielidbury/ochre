@@ -2983,6 +2983,38 @@ theorem commute_abs_fOp_bound_fixed_body_from_left {Γ : Ctx} {s : Stack}
     (by simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_left).2)
     hEqBound
 
+/-- Final assembly for the changing-body `FOp` abstraction commutation cell
+when the equivalence side changes the abstraction bound. Unlike `MEqRed.fOp`,
+`MSubRed.fOp` preserves the abstraction bound, so the subtype target remains
+at `bound` and only the equivalence-side bound is joined by `hBoundJoin`. -/
+theorem commute_abs_fOp_targets_of_eq_bound_body_joins_from_left {Γ : Ctx} {s : Stack}
+    {α bound body body₁ bound₂ body₂ : Term}
+    (hLeft : MSubRed Γ (α :: s) (.abs bound body) (.abs bound body₁))
+    (hBoundJoin : MEqRedJ Γ [] bound bound₂)
+    (hBodyJoin :
+      ∃ body₃,
+        MEqRedStar ({ bound := α, kind := .equ } :: Γ)
+          (Stack.shift 0 s) body₁ body₃ ∧
+          MSubRedStar ({ bound := α, kind := .equ } :: Γ)
+            (Stack.shift 0 s) body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body₁) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound₂ body₂) t₃ := by
+  obtain ⟨body₃, hBody₁₃, hBody₂₃⟩ := hBodyJoin
+  have hpvTail : PrevalidExt Γ s := PrevalidExt.tail hLeft.prevalidExt
+  have hα : Term.Scoped Γ.depth α := PrevalidExt.head_scoped hLeft.prevalidExt
+  have hBody₁Scoped :
+      Term.Scoped (Ctx.depth ({ bound := α, kind := .equ } :: Γ)) body₁ := by
+    simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_right).2
+  have hBound₂Scoped : Term.Scoped Γ.depth bound₂ := hBoundJoin.some.scoped_right
+  exact ⟨.abs bound₂ body₃,
+    MEqRedStar.trans
+      (meqRedStar_abs_fOp_bound_fixed_body hpvTail hα hBody₁Scoped
+        (MEqRedStar.single hBoundJoin.some))
+      (meqRedStar_abs_fOp_body_fixed_bound hpvTail hBound₂Scoped hα
+        hBody₁₃),
+    msubRedStar_abs_fOp_body_fixed_bound hBound₂Scoped hα hBody₂₃⟩
+
 /-- Lift a diagrammatic body replacement chain through `FOp` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fOp_equ_bound_body {Γ : Ctx} {s : Stack}

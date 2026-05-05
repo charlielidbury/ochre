@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fOp_targets_of_eq_bound_body_joins_from_left`, the
+  shape-correct `FOp` commutation assembly for the case where the equivalence
+  side changes the abstraction bound. The helper records the constructor
+  restriction that `MSubRed.fOp` preserves the abstraction bound, avoiding the
+  false general subtype-bound lift. Added the endpoint to the de Bruijn audit.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `diamond_abs_fOp_targets_of_bound_body_joins_from_left`, the final assembly
   helper for the changing-bound/changing-body `FOp` abstraction diamond. It
   isolates the remaining hard obligation as body joins under the fixed operand
