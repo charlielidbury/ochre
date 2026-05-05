@@ -27,6 +27,18 @@ closures, 2 inactive outstanding).
   `WfM.sub_under_head_replace_from_direct_payloads_of_new_wf` at the
   TypeSafety layer for the recursive binder-descent case. Added the
   endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — threaded
+  `WfMSubHeadReplaceDirectPayloads` through operational preservation and
+  Theorem 5 wrapper endpoints:
+  `StepPreservesWfM_of_components_and_direct_sub_replace`,
+  `_of_diagram_components_and_direct_sub_replace`,
+  `_of_chain_diagram_components_and_direct_sub_replace`,
+  `_of_chain_shape_components_and_direct_sub_replace`,
+  `_of_chain_shape_meq_components_and_direct_sub_replace`,
+  `Theorem_5_DeBruijn_Preservation_of_components_and_direct_sub_replace`,
+  its closed variant, and the corresponding chain-shape/empty-stack
+  equivalence preservation endpoints. Added all nine endpoints to the
+  De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta chain-shape wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_chain_shape_wfctx_target_app_machine_tail_cons`,
