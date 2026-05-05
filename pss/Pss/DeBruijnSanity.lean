@@ -150,6 +150,7 @@ namespace DeBruijn
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity
 #print axioms BetaInstantiationPreservesScoped
 #print axioms BetaInstantiationPreservesWSubMStar
+#print axioms BetaInstantiationPreservesWSubM
 #print axioms BetaInstantiationPreservesWfM.top
 #print axioms BetaInstantiationPreservesWfM.var_zero
 #print axioms BetaInstantiationPreservesWfM.var_succ_sub
@@ -158,6 +159,9 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWfM.abs
 #print axioms BetaInstantiationPreservesWfM.app
 #print axioms BetaInstantiationPreservesWfM.app_of_wsubmstar
+#print axioms BetaInstantiationPreservesWSubMStar.sub
+#print axioms BetaInstantiationPreservesWSubMStar.trs
+#print axioms BetaInstantiationPreservesWSubMStar.of_wsubm
 #print axioms AbsFunctionBoundInversion_of_diagram
 #print axioms AbsFunctionBoundInversion_of_chain_diagram
 #print axioms AbsFunctionBoundInversionUnderWfCtx_of_chain_shape

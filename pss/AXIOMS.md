@@ -123,6 +123,15 @@ closures, 2 inactive outstanding).
   remaining application work as preservation of `WSubMStar` endpoints through
   head substitution. Added both endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the de Bruijn
+  `BetaInstantiationPreservesWSubMStar` payload into checked `WSubMStar.sub`
+  and `WSubMStar.trs` reassembly helpers plus
+  `BetaInstantiationPreservesWSubM`, the remaining one-step subtype
+  substitution payload. Added
+  `BetaInstantiationPreservesWSubMStar.of_wsubm`, proving that the full
+  transitive chain payload follows from `BetaInstantiationPreservesWfM` and
+  `BetaInstantiationPreservesWSubM`. Added the new endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
