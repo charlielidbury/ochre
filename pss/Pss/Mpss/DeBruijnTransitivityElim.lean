@@ -2690,6 +2690,24 @@ theorem diamond_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
     MEqRedStar.single (MEqRed.fOp hLeft.some hα hBodyRefl),
     MEqRedStar.single (MEqRed.fOp hRight.some hα hBodyRefl)⟩
 
+/-- Fixed-body `FOp` abstraction cell with stack prevalidity, operand
+scopedness, and body scopedness recovered from the left abstraction
+equivalence step. -/
+theorem diamond_abs_fOp_bound_fixed_body_from_left {Γ : Ctx} {s : Stack}
+    {α bound bound₁ bound₂ body : Term}
+    (hdiamondBound : EqDiamonds Γ [])
+    (hLeft : MEqRed Γ (α :: s) (.abs bound body) (.abs bound₁ body))
+    (hBound₁ : MEqRed Γ [] bound bound₁)
+    (hBound₂ : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound₁ body) t₃ ∧
+        MEqRedStar Γ (α :: s) (.abs bound₂ body) t₃ := by
+  exact diamond_abs_fOp_bound_fixed_body
+    (PrevalidExt.tail hLeft.prevalidExt)
+    (PrevalidExt.head_scoped hLeft.prevalidExt)
+    (by simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_left).2)
+    hdiamondBound hBound₁ hBound₂
+
 /-- Lift a bound equivalence-reduction chain through `FOp` while keeping the
 operand and body fixed. -/
 theorem meqRedStar_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
@@ -2759,6 +2777,22 @@ theorem commute_abs_fOp_bound_fixed_body {Γ : Ctx} {s : Stack}
   exact ⟨.abs bound₂ body,
     MEqRedStar.single (MEqRed.fOp hEqBound hα hBodyEqRefl),
     MSubRedStar.single (MSubRed.fOp hEqBound.scoped_right hα hBodySubRefl)⟩
+
+/-- Fixed-body `FOp` abstraction commutation with stack prevalidity, operand
+scopedness, and body scopedness recovered from the left abstraction subtype
+step. -/
+theorem commute_abs_fOp_bound_fixed_body_from_left {Γ : Ctx} {s : Stack}
+    {α bound bound₂ body : Term}
+    (hLeft : MSubRed Γ (α :: s) (.abs bound body) (.abs bound body))
+    (hEqBound : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ (α :: s) (.abs bound body) t₃ ∧
+        MSubRedStar Γ (α :: s) (.abs bound₂ body) t₃ := by
+  exact commute_abs_fOp_bound_fixed_body
+    (PrevalidExt.tail hLeft.prevalidExt)
+    (PrevalidExt.head_scoped hLeft.prevalidExt)
+    (by simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_left).2)
+    hEqBound
 
 /-- Lift a diagrammatic body replacement chain through `FOp` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
@@ -2963,6 +2997,21 @@ theorem diamond_abs_fun_bound_fixed_body {Γ : Ctx}
     MEqRedStar.single (MEqRed.fun_ hLeft.some hBody₁),
     MEqRedStar.single (MEqRed.fun_ hRight.some hBody₂)⟩
 
+/-- Fixed-body `Fun` abstraction cell with empty-stack prevalidity and body
+scopedness recovered from the left abstraction equivalence step. -/
+theorem diamond_abs_fun_bound_fixed_body_from_left {Γ : Ctx}
+    {bound bound₁ bound₂ body : Term}
+    (hdiamondBound : EqDiamonds Γ [])
+    (hLeft : MEqRed Γ [] (.abs bound body) (.abs bound₁ body))
+    (hBound₁ : MEqRed Γ [] bound bound₁)
+    (hBound₂ : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body) t₃ ∧
+        MEqRedStar Γ [] (.abs bound₂ body) t₃ := by
+  exact diamond_abs_fun_bound_fixed_body hLeft.prevalidExt
+    (by simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_left).2)
+    hdiamondBound hBound₁ hBound₂
+
 /-- Lift a bound equivalence-reduction chain through `Fun` while keeping the
 body fixed. -/
 theorem meqRedStar_abs_fun_bound_fixed_body {Γ : Ctx}
@@ -3046,6 +3095,21 @@ theorem commute_abs_fun_bound_fixed_body {Γ : Ctx}
   exact ⟨.abs bound₃ body,
     MEqRedStar.single (MEqRed.fun_ hLeft.some hBody₁),
     MSubRedStar.single (MSubRed.fun_ hEqBound.scoped_right hRight.some hBody₂)⟩
+
+/-- Fixed-body `Fun` abstraction commutation with empty-stack prevalidity and
+body scopedness recovered from the left abstraction subtype step. -/
+theorem commute_abs_fun_bound_fixed_body_from_left {Γ : Ctx}
+    {bound bound₁ bound₂ body : Term}
+    (hdiamondBound : EqDiamonds Γ [])
+    (hLeft : MSubRed Γ [] (.abs bound body) (.abs bound₁ body))
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hEqBound : MEqRed Γ [] bound bound₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body) t₃ := by
+  exact commute_abs_fun_bound_fixed_body hLeft.prevalidExt
+    (by simpa [Ctx.depth] using (Term.Scoped.abs_inv hLeft.scoped_left).2)
+    hdiamondBound hSubBound hEqBound
 
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
