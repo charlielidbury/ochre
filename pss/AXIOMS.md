@@ -16,6 +16,16 @@ closures, 2 inactive outstanding).
   This formalizes the current `Lemma_30_msPro_x_axiom` call-site blocker:
   `_S_lf2` cannot synthesize the avoidance witness from the existing
   `WSubM.lf2` premises alone. No axiom-count change.
+* `Pss/Mpss/SubjectReduction.lean` — added
+  `WSubM.trans_under_wfctx`, a conditional single-step `WSubM`
+  transitivity theorem under `WfCtxEqu Γ`. The structural cases follow the
+  first `WSubM` derivation; the formerly blocked `WSubM.rgh` case now uses
+  `subject_reduction_sub` to transport the second derivation across the
+  right-hand `MEqRed` step. Updated `WSubMTrans.lean`'s note to point at
+  this conditional downstream route. No headline axiom-count change; the
+  theorem inherits the current `subject_reduction_sub` closure, including
+  its SR residuals and the existing LN commutation/diamond/narrowing
+  dependencies.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing

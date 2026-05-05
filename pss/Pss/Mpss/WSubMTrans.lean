@@ -42,8 +42,11 @@ These four are sufficient for the `Lemma_24_NarrowingMSubRed` discharge
 plan provided the surrounding context can supply the `WfM` decorations
 (which it does: see `Lemma_24_sound` shape in `Pss.Mpss.Narrowing`).
 
-The *single*-`WSubM` form `WSubM.trans` would require a subject-reduction
-property and is not proven here.
+The *single*-`WSubM` form `WSubM.trans` requires a subject-reduction
+property and is not proven here. A conditional version under `WfCtxEqu`
+is available downstream as `WSubM.trans_under_wfctx` in
+`Pss.Mpss.SubjectReduction`, after the subject-reduction theorem is in
+scope.
 -/
 
 namespace Pss
@@ -162,7 +165,9 @@ Inducting on `h₁ : WSubM Γ a b`, the four cases are:
   counterexample exploiting the `Me-Pro` rule plus the gap between
   `Prevalid` and `WfM`).
 
-The `WSubMStar` form proven above is sufficient for all current
-downstream uses and avoids this blocker. -/
+The `WSubMStar` form proven above is sufficient for all current downstream
+uses that avoid this blocker. When `WfCtxEqu Γ` is available, the downstream
+subject-reduction theorem supplies the missing transport; see
+`WSubM.trans_under_wfctx` in `Pss.Mpss.SubjectReduction`. -/
 
 end Pss

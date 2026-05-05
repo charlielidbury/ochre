@@ -769,4 +769,52 @@ theorem subject_reduction_star
     (@_SR_case_sub_star) (@_SR_case_trs_star)
     hStar hCtx hred
 
+/-! ## §5. Conditional single-step `WSubM` transitivity
+
+The unconditional single-`WSubM` transitivity obstruction documented in
+`Pss.Mpss.WSubMTrans` is exactly the `WSubM.rgh` case. The conditional
+subject-reduction theorem above supplies that missing case under `WfCtxEqu`.
+-/
+
+/-- **Conditional single-step transitivity for `WSubM`.**
+
+Under `WfCtxEqu Γ`, two single well-subtyping derivations compose into a
+single `WSubM`. The only non-structural case is `WSubM.rgh`: it requires
+transporting the second derivation across the right-hand `MEqRed` step, and
+that is provided by `subject_reduction_sub`. -/
+noncomputable def WSubM.trans_under_wfctx
+    {Γ : Ctx} {a b c : Term}
+    (hCtx : WfCtxEqu Γ)
+    (h₁ : WSubM Γ a b)
+    (h₂ : WSubM Γ b c) :
+    WSubM Γ a c := by
+  refine (WSubM.rec
+    (motive_1 := fun _ _ _ => PUnit)
+    (motive_2 := fun Γ a b _ =>
+      WfCtxEqu Γ → ∀ {c : Term}, WSubM Γ b c → WSubM Γ a c)
+    (motive_3 := fun _ _ _ _ => PUnit)
+    ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ h₁) hCtx h₂
+  · intro _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ hsub
+    exact hsub
+  · intro _ _ _ _ hred _ ih hCtx _ hsub
+    exact WSubM.lf1 hred (ih hCtx hsub)
+  · intro _ _ _ _ hwfV hred hwfV' _ _ _ ih hCtx _ hsub
+    exact WSubM.lf2 hwfV hred hwfV' (ih hCtx hsub)
+  · intro _ _ _ _ _ hred ih hCtx _ hsub
+    exact ih hCtx (subject_reduction_sub hCtx hsub hred).some
+  · intro _ _ _ _ _ _ _ _ _
+    exact PUnit.unit
+  · intro _ _ _ _ _ _ _ _ _ _
+    exact PUnit.unit
+
 end Pss
