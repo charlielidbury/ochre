@@ -48,7 +48,10 @@ closures, 2 inactive outstanding).
 * `Pss/Sanity.lean` — added `#print axioms` lines for
   `Theorem_5_Preservation_under_wfctx` and
   `Theorem_5_Preservation_empty_wfctx`, making the conditional route's
-  dependency tradeoff visible in the standard audit.
+  dependency tradeoff visible in the standard audit. Later expanded the
+  same audit with `Lemma_30_ReductionUnderSubst_Sub_noProOn` and
+  `Lemma7.lf2_case_noProOn`, making the no-pro Lemma 30 route's
+  standard-axiom-only closure visible too.
 * `Pss/Mpss/SubstitutionNoPro.lean` — added `MSubRed.noProOn`, an
   all-cofinite-branches predicate excluding `Ms-Pro` promotion of a chosen
   variable, plus `Lemma_30_ReductionUnderSubst_Sub_noProOn`. This proves

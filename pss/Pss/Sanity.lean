@@ -1,6 +1,7 @@
 import Pss.Mpss.TypeSafety
 import Pss.Mpss.TypeSafetyWfCtx
 import Pss.Mpss.TransitivityElim
+import Pss.Mpss.SubstitutionNoPro
 
 /-! # `Pss.Sanity` — `#print axioms` audit
 
@@ -20,6 +21,8 @@ namespace Pss
 #print axioms Theorem_5_Preservation
 #print axioms Theorem_5_Preservation_under_wfctx
 #print axioms Theorem_5_Preservation_empty_wfctx
+#print axioms Lemma_30_ReductionUnderSubst_Sub_noProOn
+#print axioms Lemma7.lf2_case_noProOn
 #print axioms Lemma_1_StrongCommutativity
 #print axioms Lemma_2_DiamondMEqRed
 
