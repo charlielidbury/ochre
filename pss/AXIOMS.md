@@ -10,12 +10,21 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubStarToWSubMStarPayload`,
+  `WSubMStarToStackedMSubStarPayload`, and
+  `WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge`, reducing the
+  `WSubMStar` application-operator congruence residual to two sharper
+  bridges: exposing a well-subtyping chain as diagrammatic subtyping under
+  the operand stack head, and re-embedding the lifted diagrammatic chain back
+  into well-subtyping. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_reduced_components_no_empty`, which
   uses the constructor recursive hypotheses for the empty-stack subreductions
   in `Me-App` and `Me-Fun`. This removes the external empty-stack
   preservation premise from the reduced machine-state assembly, leaving
-  `Me-Bet`, `Me-FOp`, function-body replacement, no-Top, and application
-  operator congruence as the active reduced premises. No axiom-count change.
+  `Me-Bet`, `Me-FOp`, function-body replacement, no-Top, stacked
+  diagrammatic exposure, and diagrammatic-to-well-subtyping re-embedding as
+  the active reduced premises. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WSubMStarAppOperatorPayload` and
   `WfMachineStateControlLeftPayload.of_app_operator`, reducing control-left

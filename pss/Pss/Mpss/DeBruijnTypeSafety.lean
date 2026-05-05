@@ -434,6 +434,27 @@ def WSubMStarAppOperatorPayload : Type :=
         WfM Γ (.app operator' operand) →
           WSubMStar Γ (.app operator' operand) (.app operator operand)
 
+/-- Bridge residual from diagrammatic transitive subtyping back into
+well-subtyping. Existing code can strip `WSubMStar` to `MSubStar` and lift
+the diagrammatic chain structurally through applications; this payload is the
+remaining well-formed re-embedding step. -/
+def MSubStarToWSubMStarPayload : Type :=
+  ∀ {Γ : Ctx} {source target : Term},
+    MSubStar Γ [] source target →
+      WfM Γ source →
+        WfM Γ target →
+          WSubMStar Γ source target
+
+/-- Stack-extension bridge for well-subtyping stripped to diagrammatic
+subtyping. A `WSubMStar` lives at the empty stack, but structural application
+lifting for diagrammatic subtyping expects the operator relation under the
+operand stack head. -/
+def WSubMStarToStackedMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {source target operand : Term},
+    WSubMStar Γ source target →
+      Term.Scoped Γ.depth operand →
+        MSubStar Γ [operand] source target
+
 /-- Machine-state residual for `Me-Fun`, which only fires at the empty
 stack. -/
 def MEqRedFunPreservesWfMachineStatePayload : Type :=
@@ -647,6 +668,24 @@ noncomputable def WfMachineStateControlLeftPayload.of_app_operator
       have hTail' : WfMachineState Γ (.app control' operand) tail :=
         ih hSubApp (WfMachineState.tail_state hState)
       simpa [WfMachineState, Stack.plug] using hTail'
+
+/-- Diagrammatic re-embedding discharges operator-side application congruence
+for `WSubMStar`: first expose the operator relation as a diagrammatic chain
+under the operand stack head, use the existing fixed-argument application
+lift, then re-embed the lifted diagrammatic chain. -/
+noncomputable def WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
+    (hStack : WSubMStarToStackedMSubStarPayload)
+    (hBridge : MSubStarToWSubMStarPayload) :
+    WSubMStarAppOperatorPayload := by
+  intro Γ operator operator' operand hOp hApp hApp'
+  obtain ⟨_, _hFun, hArg⟩ := hApp.app_inv
+  have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil hApp.prevalid
+  have hOpStack : MSubStar Γ [operand] operator' operator :=
+    hStack hOp hArg.wf_left.scoped
+  have hMSubApp : MSubStar Γ [] (.app operator' operand)
+      (.app operator operand) :=
+    msubStar_app_fixed_arg hpvNil hArg.wf_left.scoped hOpStack
+  exact hBridge hMSubApp hApp' hApp
 
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
@@ -1273,7 +1312,8 @@ and `Me-Fun`. This removes the external empty-stack preservation premise
 from the main machine-state assembly. -/
 noncomputable def MEqRedPreservesWfMachineState.of_reduced_components_no_empty
     (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
-    (hAppOp : WSubMStarAppOperatorPayload)
+    (hStack : WSubMStarToStackedMSubStarPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
     (hFunBody : MEqRedFunBodyReplacePayload)
     (hNoTop : NoTopFunctionSupertypesAt)
     (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
@@ -1284,7 +1324,9 @@ noncomputable def MEqRedPreservesWfMachineState.of_reduced_components_no_empty
   | pro hpv hb hred ih =>
       intro hΓ hState
       have hControl : WfMachineStateControlLeftPayload :=
-        WfMachineStateControlLeftPayload.of_app_operator hAppOp
+        WfMachineStateControlLeftPayload.of_app_operator
+          (WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
+            hStack hBridge)
       exact ih hΓ
         (MEqRedProAnnotationMachineStatePayload.of_control_left
           hControl hΓ hb hState)
@@ -1323,7 +1365,9 @@ noncomputable def MEqRedPreservesWfMachineState.of_reduced_components_no_empty
       have hControlBack : WSubMStar Γapp (.app u' v') (.app u' v) :=
         WSubMStar.of_MEqRed_back hAppRed hApp hApp'
       have hControl : WfMachineStateControlLeftPayload :=
-        WfMachineStateControlLeftPayload.of_app_operator hAppOp
+        WfMachineStateControlLeftPayload.of_app_operator
+          (WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
+            hStack hBridge)
       have hTail' : WfMachineState Γapp (.app u' v') sapp :=
         hControl hControlBack (WfMachineState.tail_state hOpState')
       simpa [WfMachineState, Stack.plug] using hTail'
