@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_sub_head_replace_from_handlers`, the `.sub`-head
+  specialization of the raw under-head `.equ` replacement splitter. The
+  impossible index-0 `Me-Pro` case is discharged internally, leaving only the
+  changed `.equ` residual, tail lookups, and recursive constructor handlers.
+  Added the endpoint to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_head_replace_from_handlers`, the raw-equivalence splitter
   for replacing an `.equ` entry immediately under one preserved context head
   while preserving an `MEqRed` conclusion. It rebuilds stable leaves directly
