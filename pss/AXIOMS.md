@@ -1380,6 +1380,13 @@ closures, 2 inactive outstanding).
   sharpened `.sub` head replacement payload directly, leaving only β,
   app-operator, and `fOp` body residuals. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `AbsFunctionBoundChainShapeWfUnderWfCtxPayload`,
+  `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq`, and
+  `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_contextual`,
+  allowing joined-bound well-formedness for shape-only function-bound
+  diagrams to consume contextual `MEqRed` preservation under `WfCtxEqu`.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No

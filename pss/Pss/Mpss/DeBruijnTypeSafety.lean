@@ -293,6 +293,14 @@ def AbsFunctionBoundChainShapeWfPayload
     (hSub : WSubMStar Γ (.abs bound body) (.abs result .top)),
       WfM Γ ((hShape hSub).joinBound)
 
+/-- Joined-bound well-formedness for shape-only function-bound common
+reducts under the stronger well-formed-equivalence context invariant. -/
+def AbsFunctionBoundChainShapeWfUnderWfCtxPayload
+    (hShape : AbsFunctionBoundChainShapePayload) : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term}
+    (hSub : WSubMStar Γ (.abs bound body) (.abs result .top)),
+      WfCtxEqu Γ → WfM Γ ((hShape hSub).joinBound)
+
 /-- Conditional empty-stack well-formedness preservation for one equivalence
 reduction step. This is the exact local premise needed to turn a
 function-bound shape into a full diagram. -/
@@ -949,6 +957,28 @@ noncomputable def AbsFunctionBoundChainShapeWfPayload_of_meq
   let hBoundChain : MEqRedChain Γ [] bound (hShape hFun).joinBound :=
     MSubRedChain.abs_bound_chain (hShape hFun).subJoin
   exact hBoundChain.to_star.wf_right_of hpres hwfBound
+
+/-- Contextual empty-stack equivalence preservation supplies joined-bound
+well-formedness under a well-formed-equivalence context. -/
+noncomputable def AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hpres : MEqRedPreservesWfMUnderWfCtx) :
+    AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape := by
+  intro Γ bound body result hFun hΓ
+  have hwfBound : WfM Γ bound := hFun.wf_left.fun_inv.1
+  let hBoundChain : MEqRedChain Γ [] bound (hShape hFun).joinBound :=
+    MSubRedChain.abs_bound_chain (hShape hFun).subJoin
+  exact hBoundChain.to_star.wf_right_of
+    (fun hred hwf => hpres hΓ hred hwf) hwfBound
+
+/-- Contextual `MEqRed` well-formedness preservation supplies joined-bound
+well-formedness under a well-formed-equivalence context. -/
+noncomputable def AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_contextual
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hpres : MEqRedPreservesWfMContextual) :
+    AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape :=
+  AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq hShape
+    (MEqRedPreservesWfMUnderWfCtx.of_contextual hpres)
 
 /-- An older Prop-closure diagram payload can be upgraded to the Type-valued
 chain-diagram payload by choosing chain witnesses for the two closures. -/
