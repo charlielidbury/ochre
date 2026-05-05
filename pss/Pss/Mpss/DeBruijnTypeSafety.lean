@@ -8332,6 +8332,109 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFourteenHeadsStack.pro
     hArgBound hpv hb hα
   simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
 
+/-- The `MEqRed.pro` constructor is stable under de Bruijn β-instantiation
+below fifteen preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFifteenHeadsStack.pro
+    {Γ : Ctx}
+    {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ α α' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ : CtxEntryKind}
+    {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ }]
+      PrevalidExt (heads ++ { bound := bound, kind := .sub } :: Γ) s)
+    (hb :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ }]
+      Ctx.equBinds (heads ++ { bound := bound, kind := .sub } :: Γ) i α)
+    (hα :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ }]
+      let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 15 heads ++ Γ
+      MEqRed targetCtx
+        (Stack.instantiate 15 (Term.shiftBy 0 15 arg) s)
+        (Term.instantiate 15 (Term.shiftBy 0 15 arg) α)
+        (Term.instantiate 15 (Term.shiftBy 0 15 arg) α')) :
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ }]
+    let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 15 heads ++ Γ
+    MEqRed targetCtx
+      (Stack.instantiate 15 (Term.shiftBy 0 15 arg) s)
+      (Term.instantiate 15 (Term.shiftBy 0 15 arg) (.bvar i))
+      (Term.instantiate 15 (Term.shiftBy 0 15 arg) α') := by
+  dsimp only at hpv hb hα ⊢
+  have h := BetaInstantiationPreservesMEqRedUnderHeadsStack.pro
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ }])
+    hArgBound hpv hb hα
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
+
 /-- Assemble eleven-head equivalence β-instantiation from constructor-local
 frontiers. Structural leaves and `Me-Pro` are discharged here; the explicit
 inputs are the recursive binder constructors. -/
