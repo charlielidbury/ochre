@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRedStar_equ_under_two_heads_replace_function_from_raw_body_replacements`,
+  the stack-quantified function-valued wrapper for the two-preserved-head
+  raw-subtype-star `.equ` replacement API. This gives callers the same
+  residual-stack packaging now available for the innermost and one-head
+  raw-chain replacement APIs. Added the endpoint to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added two-preserved-head
   raw-subtype-star `.equ` replacement infrastructure:
   `msubRedStar_equ_under_two_heads_replace_from_handlers`,
