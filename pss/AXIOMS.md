@@ -9,6 +9,10 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn
+  machine-preservation audit to include the diagnostic head-kind variants
+  of the strongest factored machine-tail routes for typed operators and
+  machine-state-aware operators. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn machine-preservation
   audit to include the strongest chain-shape machine-state assembly routes:
   the direct target-app/tail-cons route, the factored target-app/tail-cons
