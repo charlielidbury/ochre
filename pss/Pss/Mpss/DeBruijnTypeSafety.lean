@@ -6625,6 +6625,64 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.of_const
       simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using
         hFOp hArgBound hBound hα hBody
 
+/-- Assemble twelve-head equivalence β-instantiation from constructor-local
+frontiers. Structural leaves and `Me-Pro` are discharged here; the explicit
+inputs are the recursive binder constructors. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.of_constructors
+    (hFun : BetaInstantiationPreservesMEqRedUnderTwelveHeadsFunStackPayload)
+    (hBet : BetaInstantiationPreservesMEqRedUnderTwelveHeadsBetStackPayload)
+    (hFOp : BetaInstantiationPreservesMEqRedUnderTwelveHeadsFOpStackPayload) :
+    BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ s hArgBound hred
+  generalize hC : ({ bound := head₁, kind := kind₁ } ::
+      { bound := head₂, kind := kind₂ } ::
+      { bound := head₃, kind := kind₃ } ::
+      { bound := head₄, kind := kind₄ } ::
+      { bound := head₅, kind := kind₅ } ::
+      { bound := head₆, kind := kind₆ } ::
+      { bound := head₇, kind := kind₇ } ::
+      { bound := head₈, kind := kind₈ } ::
+      { bound := head₉, kind := kind₉ } ::
+      { bound := head₁₀, kind := kind₁₀ } ::
+      { bound := head₁₁, kind := kind₁₁ } ::
+      { bound := head₁₂, kind := kind₁₂ } ::
+      { bound := bound, kind := .sub } :: Γ) = C at hred
+  induction hred generalizing Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂
+      kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ with
+  | pro hpv hb hα ih =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.pro
+        hArgBound hpv hb (ih hArgBound rfl)
+  | bet ht hbody harg =>
+      subst hC
+      simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using
+        hBet hArgBound ht hbody harg
+  | top hpv =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top
+        hArgBound hpv
+  | app hOp hArg ihOp ihArg =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app
+        (ihOp hArgBound rfl) (ihArg hArgBound rfl)
+  | var hpv hi =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.var
+        hArgBound hpv hi
+  | fun_ hBound hBody =>
+      subst hC
+      simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using
+        hFun hArgBound hBound hBody
+  | tAp hpv hu =>
+      subst hC
+      exact BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.tAp
+        hArgBound hpv hu
+  | fOp hBound hα hBody =>
+      subst hC
+      simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using
+        hFOp hArgBound hBound hα hBody
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below seven
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.top
