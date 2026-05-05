@@ -86,6 +86,8 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack` and its generic
   list-specialization wrapper
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.of_generic`.
+  Added the twelve-head `Me-Fun`/`Me-Bet`/`Me-FOp` payload surface, making
+  the thirteen-head recursive binder frontier explicit.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
