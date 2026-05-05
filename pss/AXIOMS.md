@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRed.equ_under_two_sub_heads_nil_replace_from_split_handlers`, the raw
+  subtype counterpart to the split two-`.sub` equivalence replacement. It wires
+  `Ms-Equ` through the index-2/tail `MEqRed` splitter while still exposing
+  recursive raw `Ms-App` and `Ms-Fun` residuals. Added the endpoint to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — narrowed the
   `hAppAppStepFOpFunEquProTail` residual required by
   `commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of`.

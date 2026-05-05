@@ -3437,6 +3437,118 @@ noncomputable def MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers
       cases hStack)
     h
 
+/-- Empty-stack two-`.sub` subtype replacement with the `Ms-Equ` branch wired
+through the split equivalence replacement. The changed `.equ` lookup at index
+`2` is exposed separately from genuine tail lookups. -/
+noncomputable def MSubRed.equ_under_two_sub_heads_nil_replace_from_split_handlers
+    {Γ : Ctx} {headBound₁ headBound₂ old new u v : Term}
+    (hpv : PrevalidExt ({ bound := headBound₁, kind := .sub } ::
+      { bound := headBound₂, kind := .sub } ::
+      { bound := old, kind := .equ } :: Γ) [])
+    (hnew : Term.Scoped Γ.depth new)
+    (hEqProTwo :
+      ∀ {α α' : Term},
+        Ctx.equBinds ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) 2 α →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] α α' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] (.bvar 2) α')
+    (hEqProTail :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (((i + 1) + 1) + 1) α →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] α α' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] (.bvar (((i + 1) + 1) + 1)) α')
+    (hEqApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (arg :: []) op op' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) [] (.app op arg) (.app op' arg'))
+    (hEqFun :
+      ∀ {bound bound' body body' : Term},
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hEqBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 []) body body' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) []
+          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (arg :: []) op op' →
+        Term.Scoped (Ctx.depth ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ)) arg →
+        MSubRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) []
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := headBound₁, kind := .sub } ::
+          { bound := headBound₂, kind := .sub } ::
+          { bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (h : MSubRed ({ bound := headBound₁, kind := .sub } ::
+      { bound := headBound₂, kind := .sub } ::
+      { bound := old, kind := .equ } :: Γ) [] u v) :
+    MSubRed ({ bound := headBound₁, kind := .sub } ::
+      { bound := headBound₂, kind := .sub } ::
+      { bound := new, kind := .equ } :: Γ) [] u v :=
+  MSubRed.equ_under_two_sub_heads_nil_replace_from_handlers hpv hnew
+    (by
+      intro u v hEq
+      exact MEqRed.equ_under_two_sub_heads_nil_replace_from_split_handlers
+        hpv hnew hEqProTwo hEqProTail hEqApp hEqFun hEqBet hEq)
+    hApp hFun h
+
 /-- Empty-stack specialization of raw subtype replacement across a changed
 `.equ` entry under one preserved `.sub` head. The nested raw `Ms-FOp` case is
 impossible at empty stack, so only the `Ms-Equ`, `Ms-App`, and `Ms-Fun`
