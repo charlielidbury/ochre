@@ -82,6 +82,10 @@ closures, 2 inactive outstanding).
   prevalidity transport `BetaInstantiationPreservesPrevalidExtUnderTwelveHeads`
   through the existing list-generic prefix transport, preparing the
   eleven-head binder-body frontier and the next twelve-head structural leaves.
+  Added the base twelve-head stack surface
+  `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack` and its generic
+  list-specialization wrapper
+  `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.of_generic`.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
