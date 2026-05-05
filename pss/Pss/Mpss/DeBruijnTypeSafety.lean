@@ -562,6 +562,19 @@ noncomputable def BetaInstantiationPreservesMEqRed.var_zero
   simpa [Term.instantiate] using
     MEqRed.refl (PrevalidExt.nil hArgBound.prevalid) hArgBound.scoped_left
 
+/-- The head variable in an arbitrary-stack `MEqRed.var` leaf instantiates to
+the substituted argument, reducing reflexively in the tail context. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack.var_zero
+    {Γ : Ctx} {bound arg : Term} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.bvar 0))
+      (Term.instantiate 0 arg (.bvar 0)) := by
+  simpa [Term.instantiate] using
+    MEqRed.refl (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv)
+      hArgBound.scoped_left
+
 /-- Successor variables in an `MEqRed.var` leaf descend to the tail context
 during de Bruijn β-instantiation. -/
 noncomputable def BetaInstantiationPreservesMEqRed.var_succ
@@ -575,6 +588,23 @@ noncomputable def BetaInstantiationPreservesMEqRed.var_succ
       simpa [Ctx.depth, Nat.succ_eq_add_one] using hi)
   simpa [Term.instantiate] using
     MEqRed.var (PrevalidExt.nil hArgBound.prevalid) hiTail
+
+/-- Successor variables in an arbitrary-stack `MEqRed.var` leaf descend to
+the tail context during de Bruijn β-instantiation. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack.var_succ
+    {Γ : Ctx} {bound arg : Term} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) s)
+    (hi : i + 1 < Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg (.bvar (i + 1)))
+      (Term.instantiate 0 arg (.bvar (i + 1))) := by
+  have hiTail : i < Γ.depth := by
+    exact Nat.succ_lt_succ_iff.mp (by
+      simpa [Ctx.depth, Nat.succ_eq_add_one] using hi)
+  simpa [Term.instantiate] using
+    MEqRed.var (BetaInstantiationPreservesPrevalidExtStack hArgBound hpv)
+      hiTail
 
 /-- `MSubRed.top` is stable under de Bruijn β-instantiation. -/
 noncomputable def BetaInstantiationPreservesMSubRed.top

@@ -177,7 +177,9 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRed.top
 #print axioms BetaInstantiationPreservesMEqRedStack.top
 #print axioms BetaInstantiationPreservesMEqRed.var_zero
+#print axioms BetaInstantiationPreservesMEqRedStack.var_zero
 #print axioms BetaInstantiationPreservesMEqRed.var_succ
+#print axioms BetaInstantiationPreservesMEqRedStack.var_succ
 #print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top
 #print axioms BetaInstantiationPreservesMEqRed.tAp

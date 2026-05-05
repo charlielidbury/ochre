@@ -173,6 +173,14 @@ closures, 2 inactive outstanding).
   β-instantiation reduction frontier beyond the previous `[]`-only shape
   while preserving the existing empty-stack payload API. Added the endpoints
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — extended the stack-parametric
+  equivalence-reduction substitution frontier with
+  `BetaInstantiationPreservesMEqRedStack.var_zero` and `.var_succ`,
+  covering arbitrary-stack variable leaves. The zero case reduces
+  reflexively to the substituted argument over the instantiated stack; the
+  successor case descends the variable index into the tail context. Added
+  both endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
