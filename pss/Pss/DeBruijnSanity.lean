@@ -177,6 +177,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedMSubStar.of_stack
 #print axioms BetaInstantiationPreservesMSubRedMSubStar.of_raw
 #print axioms BetaInstantiationPreservesMEqRedStack.refl
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.refl
 #print axioms BetaInstantiationPreservesMSubRedStack.refl
 #print axioms BetaInstantiationPreservesMEqRed.refl
 #print axioms BetaInstantiationPreservesMSubRed.refl
@@ -200,9 +201,13 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedStack.top
 #print axioms BetaInstantiationPreservesMEqRed.var_zero
 #print axioms BetaInstantiationPreservesMEqRedStack.var_zero
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.var_zero
 #print axioms BetaInstantiationPreservesMEqRed.var_succ
 #print axioms BetaInstantiationPreservesMEqRedStack.var_succ
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.var_one
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.var_succ_succ
 #print axioms BetaInstantiationPreservesMEqRedStack.var
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.var
 #print axioms BetaInstantiationPreservesMEqRed.var_of_stack
 #print axioms BetaInstantiationPreservesMSubRed.top
 #print axioms BetaInstantiationPreservesMSubRedStack.top
@@ -212,7 +217,9 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMSubRedStack.pro_msubstar
 #print axioms BetaInstantiationPreservesMEqRed.tAp
 #print axioms BetaInstantiationPreservesMEqRedStack.tAp
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.tAp
 #print axioms BetaInstantiationPreservesMEqRedStack.app
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.app
 #print axioms BetaInstantiationPreservesMSubRed.equ
 #print axioms BetaInstantiationPreservesMSubRedStack.equ
 #print axioms BetaInstantiationPreservesMSubRedStack.equ_msubstar

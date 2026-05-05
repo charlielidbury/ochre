@@ -323,6 +323,14 @@ closures, 2 inactive outstanding).
   under-head body frontiers, and changed-bound `Ms-Fun` transport as explicit
   inputs. Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added checked structural leaves for
+  under-head equivalence β-instantiation:
+  `BetaInstantiationPreservesMEqRedUnderHeadStack.refl`, `.top`,
+  `.var_zero`, `.var_one`, `.var_succ_succ`, `.var`, `.tAp`, and `.app`.
+  These isolate the easy preserved-head `MEqRed` cases from the remaining
+  recursive binder frontiers (`Me-Pro`, `Me-Fun`, `Me-Bet`, and `Me-FOp`).
+  Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
