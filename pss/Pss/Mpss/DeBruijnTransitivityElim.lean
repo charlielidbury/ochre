@@ -3313,6 +3313,33 @@ theorem diamond_abs_fun_targets_of_bound_body_joins_from_left {Γ : Ctx}
       (meqRedStar_abs_fun_body_fixed_bound hRight.prevalidExt hBound₃Scoped
         hBody₂₃)⟩
 
+/-- Changing-bound/changing-body `Fun` abstraction diamond when the body joins
+are first built under each branch's original bound. The bound-join witnesses
+transport those body joins to the selected joined `.sub` head before the final
+abstraction assembly. -/
+theorem diamond_abs_fun_targets_of_bound_body_chains_from_left {Γ : Ctx}
+    {bound body bound₁ body₁ bound₂ body₂ : Term}
+    (hLeft : MEqRed Γ [] (.abs bound body) (.abs bound₁ body₁))
+    (hRight : MEqRed Γ [] (.abs bound body) (.abs bound₂ body₂))
+    (hBoundJoin :
+      ∃ bound₃, MEqRedJ Γ [] bound₁ bound₃ ∧ MEqRedJ Γ [] bound₂ bound₃)
+    (hBodyJoin :
+      ∀ {bound₃ : Term},
+        MEqRedJ Γ [] bound₁ bound₃ →
+        MEqRedJ Γ [] bound₂ bound₃ →
+        ∃ body₃,
+          MEqRedStar ({ bound := bound₁, kind := .sub } :: Γ) [] body₁ body₃ ∧
+            MEqRedStar ({ bound := bound₂, kind := .sub } :: Γ) [] body₂ body₃) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ body₁) t₃ ∧
+        MEqRedStar Γ [] (.abs bound₂ body₂) t₃ :=
+  diamond_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight hBoundJoin
+    (fun hBound₁₃ hBound₂₃ => by
+      obtain ⟨body₃, hBody₁₃, hBody₂₃⟩ := hBodyJoin hBound₁₃ hBound₂₃
+      exact ⟨body₃,
+        hBody₁₃.sub_head_replace hBound₁₃.some,
+        hBody₂₃.sub_head_replace hBound₂₃.some⟩)
+
 /-- Star-level fixed-body `Fun` abstraction diamond. A bound-level
 equivalence-chain diamond lifts through `Fun` when the body is unchanged. -/
 noncomputable def diamond_abs_fun_bound_fixed_body_star {Γ : Ctx}

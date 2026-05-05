@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `diamond_abs_fun_targets_of_bound_body_chains_from_left`, which packages the
+  new `.sub` head replacement star into the changing-bound/changing-body
+  `Fun` diamond assembly. Body joins can now be supplied under each branch's
+  original bound and transported to the selected joined bound. Added the
+  endpoint to the de Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added head-specialized `.sub`
   replacement endpoints `MEqRedStar.sub_head_replace` and
   `MSubRedStar.equ_sub_head_replace`, packaging the existing arbitrary-depth
