@@ -3306,6 +3306,216 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_beta_targ
     (MSubStarToWSubMStarPayload.of_steps hPres hStep)
     hInv hFOpBody hTargetApp hTailCons hFunBody hNoTop
 
+/-- Contextual-β variant of the strongest external-empty target-application
+assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_contextual_beta_typed_fop_target_app_machine_tail_cons
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_machine_tail_cons
+    (MEqRedBetaTargetPreservesWfMPayload.of_contextual hBeta)
+    hEmpty hAppend hBridge hInv hFOpBody hTargetApp hTailCons
+    hFunBody hNoTop
+
+/-- Contextual-β variant of the strongest external-empty target-application
+assembly, with the control-left residual still exposed through the older
+body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_contextual_beta_typed_fop_target_app_machine_tail_cons
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_contextual_beta_typed_fop_target_app_machine_tail_cons
+    hBeta hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hTargetApp hTailCons hFunBody hNoTop
+
+/-- Typed-operator, non-empty-tail spelling of the strongest external-empty
+assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_operator_machine_tail_cons
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_machine_tail_cons
+    hBetaTarget hEmpty hAppend hBridge hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Typed-operator, non-empty-tail spelling of the strongest external-empty
+assembly, with the control-left residual still exposed through the older
+body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_beta_target_typed_fop_operator_machine_tail_cons
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_operator_machine_tail_cons
+    hBetaTarget hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hOpFun hTail hFunBody hNoTop
+
+/-- Contextual-β typed-operator, non-empty-tail spelling of the strongest
+external-empty assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_contextual_beta_typed_fop_operator_machine_tail_cons
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_operator_machine_tail_cons
+    (MEqRedBetaTargetPreservesWfMPayload.of_contextual hBeta)
+    hEmpty hAppend hBridge hInv hFOpBody hOpFun hTail hFunBody hNoTop
+
+/-- Contextual-β typed-operator, non-empty-tail spelling of the strongest
+external-empty assembly, with the control-left residual still exposed through
+the older body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_contextual_beta_typed_fop_operator_machine_tail_cons
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_contextual_beta_typed_fop_operator_machine_tail_cons
+    hBeta hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hOpFun hTail hFunBody hNoTop
+
+/-- Machine-state-aware operator, non-empty-tail spelling of the strongest
+external-empty assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_machine_operator_machine_tail_cons
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_target_app_machine_tail_cons
+    hBetaTarget hEmpty hAppend hBridge hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Machine-state-aware operator, non-empty-tail spelling of the strongest
+external-empty assembly, with the control-left residual still exposed through
+the older body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_beta_target_typed_fop_machine_operator_machine_tail_cons
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_machine_operator_machine_tail_cons
+    hBetaTarget hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hOpFun hTail hFunBody hNoTop
+
+/-- Contextual-β machine-state-aware operator, non-empty-tail spelling of the
+strongest external-empty assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_contextual_beta_typed_fop_machine_operator_machine_tail_cons
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_beta_target_typed_fop_machine_operator_machine_tail_cons
+    (MEqRedBetaTargetPreservesWfMPayload.of_contextual hBeta)
+    hEmpty hAppend hBridge hInv hFOpBody hOpFun hTail hFunBody hNoTop
+
+/-- Contextual-β machine-state-aware operator, non-empty-tail spelling of the
+strongest external-empty assembly, with the control-left residual still
+exposed through the older body-transport surface. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_contextual_beta_typed_fop_machine_operator_machine_tail_cons
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_contextual_beta_typed_fop_machine_operator_machine_tail_cons
+    hBeta hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+    hInv hFOpBody hOpFun hTail hFunBody hNoTop
+
 /-- Reduced machine-state preservation assembly that uses constructor
 recursive hypotheses directly for the empty-stack subreductions in `Me-App`
 and `Me-Fun`. This removes the external empty-stack preservation premise
