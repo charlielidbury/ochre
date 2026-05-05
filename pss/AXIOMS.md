@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedAppFunctionSupertypeMachinePayload`,
+  `MEqRedAppFunctionSupertypeMachinePayload.of_typed`,
+  `MEqRedFOpTailStepPreservesConsPayload.of_machine_operator`,
+  `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_machine_operator_tail_step_and_empty`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_machine_operator_tail_step`,
+  refining the recursive `Me-FOp` tail route so the operator-function
+  residual retains the full plugged source machine-state evidence available
+  in that branch. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedFOpTailStepPreservesConsPayload.of_typed_operator`,
   `MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_operator_tail_step_and_empty`,
   and

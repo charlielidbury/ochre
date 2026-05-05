@@ -1103,6 +1103,28 @@ def MEqRedAppFunctionSupertypeTypedPayload : Type :=
             MEqRed Γ (v :: s) u u' →
               WSubMStar Γ u' (.abs bound .top)
 
+/-- Machine-state-aware operator-side payload for the `Me-App`/tail-step
+case. Compared with `MEqRedAppFunctionSupertypeTypedPayload`, this retains
+the full plugged source machine-state evidence that is available in the
+machine-preservation path. -/
+def MEqRedAppFunctionSupertypeMachinePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {u u' v bound : Term},
+    WfCtxEqu Γ →
+      WfMachineState Γ u (v :: s) →
+        WSubMStar Γ v bound →
+          WSubMStar Γ u (.abs bound .top) →
+            MEqRed Γ (v :: s) u u' →
+              WSubMStar Γ u' (.abs bound .top)
+
+/-- The typed operator payload implies the machine-state-aware version by
+forgetting the additional plugged-state evidence down to `WfStack`. -/
+noncomputable def MEqRedAppFunctionSupertypeMachinePayload.of_typed
+    (hTyped : MEqRedAppFunctionSupertypeTypedPayload) :
+    MEqRedAppFunctionSupertypeMachinePayload := by
+  intro Γ s u u' v bound hΓ hState hArg hFun hred
+  have hStack : WfStack Γ (v :: s) := WfMachineState.stack_wf hState
+  exact hTyped hΓ (WfStack.tail hStack) hArg hFun hred
+
 /-- Generic left-endpoint transport for well-subtyping along a stack-indexed
 equivalence reduction. This is the precise reusable shape behind the
 operator side of contextual `Me-App`. -/
@@ -1347,6 +1369,31 @@ noncomputable def MEqRedFOpTailStepPreservesConsPayload.of_typed_operator
   obtain ⟨bound, hFunSource, hArgNext⟩ := hImmediateSource.app_inv
   have hFunTarget : WSubMStar Γ target (.abs bound .top) :=
     hOpFun hΓ hStackTail hArgNext hFunSource hred
+  have hImmediateTarget : WfM Γ (.app target next) :=
+    WfM.app hFunTarget hArgNext
+  have hNextRefl : MEqRed Γ [] next next :=
+    MEqRed.refl (PrevalidExt.nil hArgNext.wf_left.prevalid)
+      hArgNext.wf_left.scoped
+  have hAppRed : MEqRed Γ tail (.app source next) (.app target next) :=
+    MEqRed.app hred hNextRefl
+  exact hTailStep (s := tail) (source := .app source next)
+    (target := .app target next) hΓ hAppRed hImmediateTarget
+    (WfMachineState.tail_state (t := source) (operand := next)
+      (s := tail) hState)
+
+/-- Machine-state-aware variant of
+`MEqRedFOpTailStepPreservesConsPayload.of_typed_operator`. This is the
+sharper payload shape for the machine-preservation path. -/
+noncomputable def MEqRedFOpTailStepPreservesConsPayload.of_machine_operator
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload) :
+    MEqRedFOpTailStepPreservesConsPayload := by
+  intro Γ tail source target next hΓ hred hwfTarget hState
+  have hImmediateSource : WfM Γ (.app source next) :=
+    WfMachineState.head_app_wf hState
+  obtain ⟨bound, hFunSource, hArgNext⟩ := hImmediateSource.app_inv
+  have hFunTarget : WSubMStar Γ target (.abs bound .top) :=
+    hOpFun hΓ hState hArgNext hFunSource hred
   have hImmediateTarget : WfM Γ (.app target next) :=
     WfM.app hFunTarget hArgNext
   have hNextRefl : MEqRed Γ [] next next :=
@@ -1895,6 +1942,20 @@ noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_operator
     (MEqRedFOpTailStepPreservesConsPayload.of_typed_operator
       hOpFun hTailStep)
 
+/-- Machine-state-aware operator variant of the typed `Me-FOp`
+machine-state reduction. -/
+noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_machine_operator_tail_step_and_empty
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload) :
+    MEqRedFOpPreservesWfMachineStatePayload :=
+  MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_step_cons_and_empty
+    hInv hEmpty hBody
+    (MEqRedFOpTailStepPreservesConsPayload.of_machine_operator
+      hOpFun hTailStep)
+
 /-- Control-term transport plus empty-stack preservation discharges the
 machine-state stack-head replacement residual. The source plugged state
 exposes the immediate application `u v`; after preserving the empty-stack
@@ -2188,6 +2249,30 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop
   MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step_cons
     hBeta hEmpty hEqBody hSubBody hPres hStep hInv hFOpBody
     (MEqRedFOpTailStepPreservesConsPayload.of_typed_operator
+      hOpFun hFOpTailStep)
+    hFunBody hNoTop
+
+/-- Machine-state-aware operator variant of the current machine-state
+assembly. This keeps the full plugged source state in the residual used to
+preserve the immediate operator function supertype in recursive `Me-FOp`
+tail steps. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_machine_operator_tail_step
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hFOpTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step_cons
+    hBeta hEmpty hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedFOpTailStepPreservesConsPayload.of_machine_operator
       hOpFun hFOpTailStep)
     hFunBody hNoTop
 
