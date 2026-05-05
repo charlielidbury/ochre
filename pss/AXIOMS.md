@@ -1438,6 +1438,14 @@ closures, 2 inactive outstanding).
   `.of_factored_components_no_beta_and_sub_replace_and_head_kind_transport`.
   This reduces the two directional `Me-FOp` body transports to one head-kind
   switching payload. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added direct shape/WfCtx factored
+  contextual preservation wrappers
+  `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_factored_no_beta` and
+  `.of_chain_shape_wfctx_factored_no_beta_and_sub_replace`, composing
+  shape-only function-bound extraction, joined-bound well-formedness under
+  `WfCtxEqu`, stacked left-endpoint transport, and uniform head-kind body
+  transport into the narrowest current preservation assembly path. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
