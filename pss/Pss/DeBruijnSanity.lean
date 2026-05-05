@@ -323,6 +323,8 @@ namespace DeBruijn
 #print axioms WfMachineStateControlLeftPayload.of_app_operator
 #print axioms WfMachineStateControlLeftPayload.of_msubstar_stack_append
 #print axioms WfMachineStateControlLeftPayload.of_body_transports_and_steps
+#print axioms MEqRedMachineStackHeadReplacePayload.of_msubstar_stack_append
+#print axioms MEqRedProAnnotationMachineStatePayload.of_msubstar_stack_append
 #print axioms MEqRedPreservesWfMachineState.of_components
 #print axioms MEqRedPreservesWfMachineState.of_components_pro_annotation
 #print axioms MEqRedPreservesWfMachineState.of_reduced_components

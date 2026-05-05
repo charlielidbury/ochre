@@ -2481,6 +2481,17 @@ noncomputable def MEqRedMachineStackHeadReplacePayload.of_control_left
     hControl hControlBack (WfMachineState.tail_state hState)
   simpa [WfMachineState, Stack.plug] using hTail'
 
+/-- Append-native stack-head replacement assembly: build control-left
+transport from the generalized diagrammatic stack-append payload. -/
+noncomputable def MEqRedMachineStackHeadReplacePayload.of_msubstar_stack_append
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload) :
+    MEqRedMachineStackHeadReplacePayload :=
+  MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty
+    (WfMachineStateControlLeftPayload.of_msubstar_stack_append
+      hAppend hBridge)
+
 /-- Stack-head replacement assembled from empty-stack preservation and the
 reduced stack-lift body-transport package. -/
 noncomputable def MEqRedMachineStackHeadReplacePayload.of_body_transports_and_steps
@@ -2490,9 +2501,9 @@ noncomputable def MEqRedMachineStackHeadReplacePayload.of_body_transports_and_st
     (hPres : MSubPreservesWfMPayload)
     (hStep : MSubToWSubMStarPayload) :
     MEqRedMachineStackHeadReplacePayload :=
-  MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty
-    (WfMachineStateControlLeftPayload.of_body_transports_and_steps
-      hEqBody hSubBody hPres hStep)
+  MEqRedMachineStackHeadReplacePayload.of_msubstar_stack_append hEmpty
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
 
 /-- Control-left transport discharges the smaller `Me-Pro` annotation
 machine-state residual. The empty-stack `Me-Pro` step embeds backward as
@@ -2511,6 +2522,17 @@ noncomputable def MEqRedProAnnotationMachineStatePayload.of_control_left
     WSubMStar.of_MEqRed_back hPro hwfVar hwfα
   exact hControl hαVar hState
 
+/-- Append-native `Me-Pro` annotation machine-state assembly: build
+control-left transport from the generalized diagrammatic stack-append
+payload. -/
+noncomputable def MEqRedProAnnotationMachineStatePayload.of_msubstar_stack_append
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload) :
+    MEqRedProAnnotationMachineStatePayload :=
+  MEqRedProAnnotationMachineStatePayload.of_control_left
+    (WfMachineStateControlLeftPayload.of_msubstar_stack_append
+      hAppend hBridge)
+
 /-- The smaller `Me-Pro` annotation machine-state residual assembled from the
 reduced stack-lift body-transport package. -/
 noncomputable def MEqRedProAnnotationMachineStatePayload.of_body_transports_and_steps
@@ -2519,9 +2541,9 @@ noncomputable def MEqRedProAnnotationMachineStatePayload.of_body_transports_and_
     (hPres : MSubPreservesWfMPayload)
     (hStep : MSubToWSubMStarPayload) :
     MEqRedProAnnotationMachineStatePayload :=
-  MEqRedProAnnotationMachineStatePayload.of_control_left
-    (WfMachineStateControlLeftPayload.of_body_transports_and_steps
-      hEqBody hSubBody hPres hStep)
+  MEqRedProAnnotationMachineStatePayload.of_msubstar_stack_append
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
 
 /-- The `Me-TAp` machine-state residual is vacuous under the context-generic
 no-`Top`-function-supertype fact: a plugged source state for `.app .top u`

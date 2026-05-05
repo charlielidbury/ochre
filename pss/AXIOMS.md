@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native machine-state
+  residual wrappers
+  `MEqRedMachineStackHeadReplacePayload.of_msubstar_stack_append` and
+  `MEqRedProAnnotationMachineStatePayload.of_msubstar_stack_append`, then
+  routed their body-transport constructors through the transitive
+  diagrammatic stack-append payload directly. Added both endpoints to the De
+  Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native control-left
   transport `WfMachineStateControlLeftPayload.of_msubstar_stack_append` and
   routed `WfMachineStateControlLeftPayload.of_body_transports_and_steps`
