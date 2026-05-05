@@ -44,6 +44,10 @@ closures, 2 inactive outstanding).
   prevalidity API through `BetaInstantiationPreservesPrevalidExtUnderHeads`,
   eliminating the fifth fixed preserved-head prevalidity proof body. No
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — routed the existing six-head beta
+  prevalidity API through `BetaInstantiationPreservesPrevalidExtUnderHeads`,
+  continuing the fixed-to-generic prevalidity adapter cleanup. No headline
+  axiom-count change.
 * `Pss/Syntax/DeBruijn.lean` — added general preserved-head shift
   arithmetic: `Term.shiftBy_tail`, `Term.shiftBy_zero_tail`, and
   `Term.instantiate_shiftBy_zero_tail`. These subsume the fixed
