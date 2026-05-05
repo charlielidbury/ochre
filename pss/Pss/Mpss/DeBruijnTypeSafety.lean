@@ -302,6 +302,20 @@ noncomputable def AbsAbsBoundChainDiagram.rgh
   eqJoin := MEqRedChain.trans (MEqRedChain.single hred) d.eqJoin
   wfJoinBound := d.wfJoinBound
 
+/-- Prepend a subtype step on the left side of an abstraction diagram, after
+the subtype step target has been classified as an abstraction. The
+classification is the part that must rule out the `Top` branch separately. -/
+noncomputable def AbsAbsBoundChainDiagram.lf2_abs
+    {Γ : Ctx} {bound body bound' body' result resultBody : Term}
+    (hred : MSubRed Γ [] (.abs bound body) (.abs bound' body'))
+    (d : AbsAbsBoundChainDiagram Γ bound' body' result resultBody) :
+    AbsAbsBoundChainDiagram Γ bound body result resultBody where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := MSubRedChain.trans (MSubRedChain.single hred) d.subJoin
+  eqJoin := d.eqJoin
+  wfJoinBound := d.wfJoinBound
+
 /-- Forget the Type-valued chain structure of a function-bound diagram,
 embedding its chains into the existing Prop-valued closures. -/
 def AbsFunctionBoundDiagram.of_chain {Γ : Ctx} {bound body result : Term}

@@ -1232,9 +1232,9 @@ closures, 2 inactive outstanding).
   `WSubM` abstraction-diagram extraction target. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added reusable constructors for the
   one-step abstraction diagram target:
-  `AbsAbsBoundChainDiagram.refl`, `.lf1`, and `.rgh`, covering the
-  reflexive, left-equivalence, and right-equivalence `WSubM` branches. No
-  axiom-count change.
+  `AbsAbsBoundChainDiagram.refl`, `.lf1`, `.rgh`, and `.lf2_abs`, covering
+  the reflexive, left-equivalence, right-equivalence, and abstraction-target
+  left-subtype `WSubM` branches. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
