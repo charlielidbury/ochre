@@ -90,6 +90,11 @@ closures, 2 inactive outstanding).
   scopedness through the five-head target context and reuses the existing
   five-head prevalid transport. Added endpoint to `Pss/DeBruijnSanity.lean`;
   no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.var`, the five-head
+  variable `MEqRed` β-instantiation leaf. This specializes the new five-head
+  reflexive leaf to scoped bound variables. Added endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the

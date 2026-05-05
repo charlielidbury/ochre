@@ -1778,6 +1778,51 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.refl
   exact MEqRed.refl
     (BetaInstantiationPreservesPrevalidExtUnderFiveHeads hArgBound hpv) hu'
 
+/-- Combined five-preserved-head `MEqRed.var` substitution helper. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.var
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ : CtxEntryKind} {s : Stack} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hi :
+      i < Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := bound, kind := .sub } :: Γ)) :
+    MEqRed
+      ({ bound := Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 2
+            (Term.shift 0 (Term.shift 0 arg)) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 0 arg head₅, kind := kind₅ } :: Γ)
+      (Stack.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) s)
+      (Term.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+        (.bvar i))
+      (Term.instantiate 5
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+        (.bvar i)) :=
+  BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.refl hArgBound hpv
+    (Term.Scoped.bvar hi)
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below four preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsStack.refl
