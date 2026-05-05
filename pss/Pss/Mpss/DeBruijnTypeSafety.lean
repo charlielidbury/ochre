@@ -4523,6 +4523,100 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
     hReplace hNoTop
 
+/-- Contextual-preservation entry point for the typed-`FOp` direct split-beta
+machine assembly. The contextual preservation payload supplies the beta body
+preservation residual, while the directional `Me-FOp` head transports supply
+the typed body residual. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hCtx : MEqRedPreservesWfMContextual)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hEqBody hSubBody hPres hStep hInv
+    (MEqRedBetaBodyPreservesWfMPayload.of_contextual hCtx)
+    (MEqRedFOpBodyTypedPayload.of_head_transports hCtx hSubToEqu hEquToSub)
+    hTargetApp hTailCons hReplace hNoTop
+
+/-- Contextual-preservation entry point for the native-`FOp` direct
+split-beta machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_contextual
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hCtx : MEqRedPreservesWfMContextual)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace
+    hSubst hEqBody hSubBody hPres hStep hInv
+    (MEqRedBetaBodyPreservesWfMPayload.of_contextual hCtx)
+    (MEqRedFOpBodyTypedPayload.of_head_transports hCtx hSubToEqu hEquToSub)
+    hTargetApp hTailCons hReplace hNoTop
+
+/-- Typed-operator contextual entry point for the typed-`FOp` direct
+split-beta machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_operator_machine_tail_contextual
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hCtx : MEqRedPreservesWfMContextual)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
+    hSubst hEqBody hSubBody hPres hStep hInv hCtx hSubToEqu hEquToSub
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hReplace hNoTop
+
+/-- Machine-operator contextual entry point for the typed-`FOp` direct
+split-beta machine assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_machine_operator_machine_tail_contextual
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hCtx : MEqRedPreservesWfMContextual)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual
+    hSubst hEqBody hSubBody hPres hStep hInv hCtx hSubToEqu hEquToSub
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
+    hReplace hNoTop
+
 /-- `Me-Fun` well-formedness preservation using the existing sharpened
 `.sub` head replacement payload. -/
 noncomputable def MEqRed.fun_preservesWfM_of_sub_head_replace

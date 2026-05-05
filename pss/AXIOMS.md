@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added contextual-preservation entry
+  points
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_contextual`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_fop_target_app_machine_tail_cons_contextual`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_operator_machine_tail_contextual`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_direct_split_beta_typed_fop_machine_operator_machine_tail_contextual`,
+  deriving the beta-body and typed `Me-FOp` body residuals from contextual
+  preservation plus directional head transports. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added typed-operator and
   machine-operator sub-replacement entry points for the typed and native
   direct split-beta machine assemblies:
