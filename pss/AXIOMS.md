@@ -190,6 +190,11 @@ closures, 2 inactive outstanding).
   This closes the six-head `Me-Bet` binder frontier from the seven-head body
   payload plus the six-preserved-head substitution-composition law. Added
   endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderSixHeadsFOpStackPayload.of_seven_heads`,
+  closing the six-head `Me-FOp` binder frontier from the seven-head operand
+  body payload plus the seven-head stack substitution law. Added an endpoint
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
