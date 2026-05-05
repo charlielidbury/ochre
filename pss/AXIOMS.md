@@ -370,7 +370,12 @@ closures, 2 inactive outstanding).
   assembler.
   These reduce the under-head `Me-Fun`, `Me-Bet`, and `Me-FOp` binder
   frontiers to the one-head equivalence payload plus the new two-head body
-  substitution payload. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
+  substitution payload. Added downstream assemblers
+  `BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload.of_stack_append_two_head_adapters`
+  and
+  `BetaInstantiationPreservesMSubRedStackMSubStar.of_stack_append_under_head_two_head_adapters`
+  so the subtype substitution packaging can consume the generated equivalence
+  frontiers directly. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
