@@ -1646,6 +1646,32 @@ noncomputable def MEqRed.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
     MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v :=
   h.replaceAt_sub_aux rfl hcut hOldNew
 
+/-- Head specialization of `MEqRed.replaceAt_sub` for replacing the
+innermost `.sub` binder by one equivalence step. -/
+noncomputable def MEqRed.sub_head_replace {Γ : Ctx} {s : Stack} {u v : Term}
+    {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRed Γ [] old new) :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s u v := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (h.replaceAt_sub
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) hcut (by simpa using hOldNew))
+
+/-- Two-step head replacement for equivalence reductions under an innermost
+`.sub` binder. This packages the common changing-bound/body pattern: first
+move from the original bound to one branch bound, then from that branch bound
+to the joined bound. -/
+noncomputable def MEqRed.sub_head_replace_two_step {Γ : Ctx} {s : Stack}
+    {u v old mid new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldMid : MEqRed Γ [] old mid)
+    (hMidNew : MEqRed Γ [] mid new) :
+    MEqRed ({ bound := new, kind := .sub } :: Γ) s u v :=
+  (h.sub_head_replace hOldMid).sub_head_replace hMidNew
+
 /-- Chain-level equivalence-reduction transport across arbitrary-depth `.sub`
 replacement. -/
 theorem MEqRedStar.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}

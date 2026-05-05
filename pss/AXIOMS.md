@@ -9,6 +9,18 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.sub_head_replace` and `MEqRed.sub_head_replace_two_step`, small
+  head-specialized wrappers around the existing arbitrary-depth `.sub`
+  replacement for equivalence steps. `Pss/Mpss/DeBruijnTransitivityElim.lean`
+  uses them in
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_eq_replaced_of`, a
+  dispatcher variant that internalizes the structural `Ms-App × Me-App`
+  equivalence-premise replacements through the right branch bound and joined
+  bound. The structural app branch now leaves only operator commutativity,
+  subtype-premise replacement, and changed-argument stack-head transport as
+  explicit obligations. Added the endpoints to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_body_from_operator_join_app_cases_fun_handlers_of`,
   a dispatcher variant for the `Ms-Fun × Me-Fun` body case that wires the
