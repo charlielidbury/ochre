@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added raw-subtype-star
+  three-preserved-head `.equ` replacement splitters
+  `msubRedStar_equ_under_three_heads_replace_from_handlers` and
+  `msubRedStar_equ_under_three_heads_replace_from_handlers_star`. These
+  compose the one-step three-head handler splitter across raw subtype chains,
+  matching the two-head chain consumer API for deeper nested residuals. Added
+  both endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added diagrammatic
   three-preserved-head `.equ` replacement splitters
   `meqRed_equ_under_three_heads_replace_from_handlers` and
