@@ -164,6 +164,24 @@ def AbsFunctionBoundInversion : Type :=
     WSubMStar Γ (.abs bound body) (.abs result .top) →
       WEquMStar Γ bound result
 
+/-- Function-bound inversion under the well-formed-equivalence context
+invariant used by contextual preservation. This is weaker than the
+context-generic inversion payload and matches the actual invariant available
+in the recursive `MEqRed` preservation proof. -/
+def AbsFunctionBoundInversionUnderWfCtx : Type :=
+  ∀ {Γ : Ctx} {bound body result : Term},
+    WfCtxEqu Γ →
+      WSubMStar Γ (.abs bound body) (.abs result .top) →
+        WEquMStar Γ bound result
+
+/-- A context-generic function-bound inversion payload specializes to the
+well-formed-equivalence context invariant. -/
+def AbsFunctionBoundInversionUnderWfCtx.of_global
+    (hInv : AbsFunctionBoundInversion) :
+    AbsFunctionBoundInversionUnderWfCtx := by
+  intro Γ bound body result _hΓ hFun
+  exact hInv hFun
+
 /-- Diagrammatic function-bound inversion payload: after Theorem 3 collapses a
 well-subtyping chain between functions to a single diagrammatic subtype step,
 the remaining obligation is to recover transitive well-equivalence between the
@@ -1054,6 +1072,29 @@ noncomputable def AbsFunctionBoundInversion_of_chain_diagram
       hwfResult d.wfJoinBound
   exact WEquMStar.trans d.wfJoinBound hLeft hRight
 
+/-- A shape-only chain payload plus joined-bound well-formedness under
+`WfCtxEqu` gives the function-bound inversion needed by contextual
+preservation. -/
+noncomputable def AbsFunctionBoundInversionUnderWfCtx_of_chain_shape
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape) :
+    AbsFunctionBoundInversionUnderWfCtx := by
+  intro Γ bound body result hΓ hFun
+  let d := (hShape hFun).to_diagram (hShapeWf hFun hΓ)
+  have hwfBound : WfM Γ bound := hFun.wf_left.fun_inv.1
+  have hwfResult : WfM Γ result := hFun.wf_right.fun_inv.1
+  have hBoundJoin : MEqRedChain Γ [] bound d.joinBound :=
+    MSubRedChain.abs_bound_chain d.subJoin
+  have hResultJoin : MEqRedChain Γ [] result d.joinBound :=
+    MEqRedChain.abs_bound_chain d.eqJoin
+  have hLeft : WEquMStar Γ bound d.joinBound :=
+    WEquMStar.of_MEqRedStar_fwd_of_wf hBoundJoin.to_star
+      hwfBound d.wfJoinBound
+  have hRight : WEquMStar Γ d.joinBound result :=
+    WEquMStar.of_MEqRedStar_back_of_wf hResultJoin.to_star
+      hwfResult d.wfJoinBound
+  exact WEquMStar.trans d.wfJoinBound hLeft hRight
+
 /-- The older Prop-closure diagram payload can also feed function-bound
 inversion through the Type-valued chain endpoint by choosing chain witnesses
 for both closures. -/
@@ -1252,6 +1293,89 @@ noncomputable def MEqRedPreservesWfMContextual.of_components_no_beta
         (hFOpBody hΓ hStackTail hwfBound hwfBound' hwfOperand
           hwfBody hBound hBody)
 
+/-- Contextual `MEqRed` well-formedness preservation with the β constructor
+proved from a function-bound inversion payload that is only required under
+`WfCtxEqu`. This is the sharper form for contextual preservation. -/
+noncomputable def MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual := by
+  intro Γ s x y hΓ hStack hred hwf
+  revert hΓ hStack hwf
+  induction hred with
+  | pro hpv hb hred ih =>
+      intro hΓ hStack hwf
+      have hwfα := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
+      exact ih hΓ hStack hwfα
+  | @bet Γβ sβ bound arg arg' body body' ht hBody hArg ihBody ihArg =>
+      intro hΓ hStack hwf
+      obtain ⟨result, hFun, hArgTyping⟩ := hwf.app_inv
+      have hwfAbs : WfM Γβ (.abs bound body) := hFun.wf_left
+      have hwfBound : WfM Γβ bound := hwfAbs.fun_inv.1
+      have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γβ) body :=
+        hwfAbs.fun_inv.2
+      have hwfBody' :
+          WfM ({ bound := bound, kind := .sub } :: Γβ) body' :=
+        ihBody (WfCtxEqu.sub hΓ)
+          (WfStack.weaken_sub_head hStack hwfBound) hwfBody
+      have hwfArg : WfM Γβ arg := hArgTyping.wf_left
+      have hwfArg' : WfM Γβ arg' := ihArg hΓ WfStack.nil hwfArg
+      have hArgBack : WSubMStar Γβ arg' arg :=
+        WSubMStar.of_MEqRed_back hArg hwfArg hwfArg'
+      have hArgResult : WSubMStar Γβ arg' result :=
+        WSubMStar.trans hwfArg hArgBack hArgTyping
+      have hEquBoundResult : WEquMStar Γβ bound result := hInv hΓ hFun
+      have hSubResultBound : WSubMStar Γβ result bound :=
+        hEquBoundResult.symm.toWSubMStar
+      have hArgBound : WSubMStar Γβ arg' bound :=
+        WSubMStar.trans hArgTyping.wf_right hArgResult hSubResultBound
+      exact hSubst hArgBound hwfBody'
+  | top hpv =>
+      intro hΓ hStack hwf
+      exact MEqRed.top_preservesWfM hpv hwf
+  | app hOp hArg _ihOp ihArg =>
+      intro hΓ hStack hwf
+      obtain ⟨bound, hFun, hArgTyping⟩ := hwf.app_inv
+      have hwfV := hArgTyping.wf_left
+      have hwfV' := ihArg hΓ WfStack.nil hwfV
+      have hFun' :=
+        hOpFun hΓ hStack hwfV hFun hOp
+      have hArgBack :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArgTyping' :=
+        WSubMStar.trans hwfV hArgBack hArgTyping
+      exact WfM.app hFun' hArgTyping'
+  | var hpv hi =>
+      intro hΓ hStack hwf
+      exact MEqRed.var_preservesWfM hpv hi hwf
+  | fun_ hBound hBody ihBound ihBody =>
+      intro hΓ hStack hwf
+      have hwfBound := hwf.fun_inv.1
+      have hwfBody :=
+        hwf.fun_inv.2
+      have hwfBound' := ihBound hΓ WfStack.nil hwfBound
+      have hwfBodyOld :=
+        ihBody (WfCtxEqu.sub hΓ) WfStack.nil hwfBody
+      exact WfM.fun_ hwfBound'
+        (hFunBody hΓ hwfBound hwfBound' hBound hwfBodyOld)
+  | tAp hpv hu =>
+      intro hΓ hStack hwf
+      exact MEqRed.tAp_preservesWfM hpv hu hwf
+  | fOp hBound hOperand hBody ihBound _ihBody =>
+      intro hΓ hStack hwf
+      have hwfOperand := WfStack.head hStack
+      have hStackTail := WfStack.tail hStack
+      have hwfBound := hwf.fun_inv.1
+      have hwfBody :=
+        hwf.fun_inv.2
+      have hwfBound' := ihBound hΓ WfStack.nil hwfBound
+      exact WfM.fun_ hwfBound'
+        (hFOpBody hΓ hStackTail hwfBound hwfBound' hwfOperand
+          hwfBody hBound hBody)
+
 /-- Contextual `MEqRed` well-formedness preservation assembled without a
 separate β residual, using the existing sharpened `.sub` head replacement
 payload for `Me-Fun`. -/
@@ -1263,6 +1387,22 @@ noncomputable def MEqRedPreservesWfMContextual.of_components_no_beta_and_sub_rep
     (hFOpBody : MEqRedFOpBodyPayload) :
     MEqRedPreservesWfMContextual :=
   MEqRedPreservesWfMContextual.of_components_no_beta hSubst hInv hOpFun
+    (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
+    hFOpBody
+
+/-- Contextual `MEqRed` well-formedness preservation assembled from the
+well-formed-context function-bound inversion payload and the sharpened `.sub`
+head replacement payload, with the β case proved internally. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv hSubst
+    hInv hOpFun
     (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hFOpBody
 
@@ -1323,6 +1463,38 @@ noncomputable def MEqRedPreservesWfMContextual.of_chain_shape_no_beta_and_sub_re
     MEqRedPreservesWfMContextual :=
   MEqRedPreservesWfMContextual.of_chain_diagram_no_beta_and_sub_replace
     hSubst (AbsFunctionBoundChainDiagramPayload.of_shape hShape hShapeWf)
+    hOpFun hReplace hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload plus joined-bound well-formedness only under
+`WfCtxEqu`, with the β case proved internally. -/
+noncomputable def MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv hSubst
+    (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    hOpFun hFunBody hFOpBody
+
+/-- Contextual `MEqRed` preservation assembled from a shape-only
+function-bound chain payload, joined-bound well-formedness under `WfCtxEqu`,
+and the sharpened `.sub` head replacement payload, with the β case proved
+internally. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace
+    hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
     hOpFun hReplace hFOpBody
 
 namespace StepAt

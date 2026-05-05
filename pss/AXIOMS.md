@@ -1408,6 +1408,17 @@ closures, 2 inactive outstanding).
   instead of carrying a raw function-bound inversion premise. No axiom-count
   change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `AbsFunctionBoundInversionUnderWfCtx`, its `.of_global` specialization,
+  and `AbsFunctionBoundInversionUnderWfCtx_of_chain_shape`, plus contextual
+  preservation assemblers
+  `MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv`,
+  `.of_components_no_beta_under_wfctx_inv_and_sub_replace`,
+  `.of_chain_shape_wfctx_no_beta`, and
+  `.of_chain_shape_wfctx_no_beta_and_sub_replace`. This lets the contextual
+  β case consume function-bound inversion and joined-bound well-formedness
+  only under the `WfCtxEqu` invariant available in the recursive proof. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No
