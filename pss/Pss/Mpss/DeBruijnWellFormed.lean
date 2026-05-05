@@ -2055,6 +2055,18 @@ noncomputable def weaken_head {Γ : Ctx} {s : Stack} {newEntry : CtxEntry}
   | cons hα _ ih =>
       exact WfStack.cons (hα.weaken_head hNew hpv) ih
 
+/-- Weaken a well-formed stack under a new `.sub` head. -/
+noncomputable def weaken_sub_head {Γ : Ctx} {s : Stack} {t : Term}
+    (h : WfStack Γ s) (ht : WfM Γ t) :
+    WfStack ({ bound := t, kind := .sub } :: Γ) (Stack.shift 0 s) :=
+  h.weaken_head (Prevalid.sub ht.prevalid ht.scoped) ht.prevalid
+
+/-- Weaken a well-formed stack under a new `.equ` head. -/
+noncomputable def weaken_equ_head {Γ : Ctx} {s : Stack} {α : Term}
+    (h : WfStack Γ s) (hα : WfM Γ α) :
+    WfStack ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s) :=
+  h.weaken_head (Prevalid.equ hα.prevalid hα.scoped) hα.prevalid
+
 end WfStack
 
 /-- A well-formed term is well-formed as the shifted bound of a new `.sub`

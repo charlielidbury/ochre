@@ -1321,6 +1321,10 @@ closures, 2 inactive outstanding).
   inversion helpers `WfStack.head` and `WfStack.tail`, preparing the
   stack-splitting obligations in contextual preservation cases. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnWellFormed.lean` — added specialized well-formed
+  stack weakening helpers `WfStack.weaken_sub_head` and
+  `WfStack.weaken_equ_head` for the binder heads created by de Bruijn
+  reduction rules. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the contextual
   well-formedness-preservation premise
   `MEqRedPreservesWfMContextual`, the empty-stack under-context
