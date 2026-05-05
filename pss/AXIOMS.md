@@ -403,6 +403,18 @@ closures, 2 inactive outstanding).
   and tail lookup cases. This leaves the next-level binder frontiers as the
   remaining decomposition work for the generic two-head payload. Added the
   endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Context/DeBruijn.lean` and `Pss/Mpss/DeBruijnTypeSafety.lean` —
+  added the stack-level three-preserved-head rewrite
+  `Stack.instantiate_three_shift_zero`, named the recursive
+  `BetaInstantiationPreservesMEqRedUnderThreeHeadsStack` payload, and
+  discharged the two-head `Me-Fun` / `Me-FOp` binder adapters
+  `BetaInstantiationPreservesMEqRedUnderTwoHeadsFunStackPayload.of_three_heads`
+  and
+  `BetaInstantiationPreservesMEqRedUnderTwoHeadsFOpStackPayload.of_three_heads`.
+  This narrows the next two-head decomposition frontier to `Me-Bet`'s
+  deeper β-target substitution composition plus the constructor proof of the
+  three-head payload. Added endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
