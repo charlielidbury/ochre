@@ -36,7 +36,11 @@ closures, 2 inactive outstanding).
   constructor-facing adapters against the ten-head recursive body. Added
   `BetaInstantiationPreservesMEqRedUnderElevenHeadsStack` and the ten-head
   `Me-Fun`/`Me-Bet`/`Me-FOp` payload surface for the following layer. Added
-  endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  the fixed nine-head prevalidity transport
+  `BetaInstantiationPreservesPrevalidExtUnderNineHeads` and the nine-head
+  `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderNineHeadsStack.top`.
+  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Context/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` —
   added `Ctx.instantiateBetaPrefix`, the list-based generic preserved-head
   β-instantiation context transformer, and
