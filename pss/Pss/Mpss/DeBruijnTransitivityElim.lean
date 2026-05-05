@@ -2118,6 +2118,19 @@ theorem commute_appAbs_structApp_eqStep_sameArg_of {Γ : Ctx} {s : Stack}
     MEqRedStar.single (MEqRed.app hEqJoin.some hArgRefl),
     MSubRedStar.single (MSubRed.app hSubJoin.some hArgScoped)⟩
 
+/-- Side-condition-free same-argument structural application commutation:
+the fixed argument scopedness is recovered from the operator subtype step. -/
+theorem commute_appAbs_structApp_eqStep_sameArg_of_from_left {Γ : Ctx} {s : Stack}
+    {bound body arg bound₁ body₁ bound₂ body₂ : Term}
+    (hcommArg : StrongCommutes Γ (arg :: s))
+    (hSubOp : MSubRed Γ (arg :: s) (.abs bound body) (.abs bound₁ body₁))
+    (hEqOp : MEqRed Γ (arg :: s) (.abs bound body) (.abs bound₂ body₂)) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs bound₁ body₁) arg) t₃ ∧
+        MSubRedStar Γ s (.app (.abs bound₂ body₂) arg) t₃ :=
+  commute_appAbs_structApp_eqStep_sameArg_of hcommArg
+    (PrevalidExt.head_scoped hSubOp.prevalidExt) hSubOp hEqOp
+
 /-- Lift an operator subtype-reduction chain under a fixed argument into an
 application subtype-reduction chain. -/
 theorem msubRedStar_app_fixed_arg {Γ : Ctx} {s : Stack}
