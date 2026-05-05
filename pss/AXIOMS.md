@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_two_sub_heads_sub_tail_nil_replace_from_split_handlers`
+  and `MSubRed.equ_under_two_sub_heads_sub_tail_nil_replace_from_split_handlers`,
+  the `{sub}, {sub}, {equ}, {sub}` empty-stack splitters. They expose the
+  changed-entry residual at index `2`, rule out the intervening `.sub` index
+  `3`, and start true tail equivalence lookups at `4+`. Added the endpoints
+  to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers` and
   `MSubRed.equ_under_sub_head_sub_tail_nil_replace_from_split_handlers`, the
   sharper one-`.sub` splitters for the `{sub}, {equ}, {sub}` empty-stack
