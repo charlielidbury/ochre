@@ -10,6 +10,16 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedBetaTargetPreservesWfMPayload`,
+  `MEqRedBetaPreservesWfMachineStatePayload.of_target_and_tail_step`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_tail_step`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_operator_tail_step`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_machine_operator_tail_step`,
+  reducing the `Me-Bet` machine-state residual to immediate β-target
+  well-formedness plus the shared generic tail-step preservation residual
+  already used by the `Me-FOp` route. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedAppTargetPreservesWfMPayload.of_typed_operator`,
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_typed_fop_operator_tail_step`,
   and
