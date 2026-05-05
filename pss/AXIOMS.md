@@ -107,6 +107,15 @@ closures, 2 inactive outstanding).
   Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesWfM.abs` and
+  `BetaInstantiationPreservesWfM.app`, checked constructor reassembly helpers
+  for the remaining compound de Bruijn β-instantiation cases. The abstraction
+  helper records the exact recursive obligations for the instantiated bound
+  and body under the instantiated bound head; the application helper records
+  the exact instantiated operator and argument subtype-chain obligations.
+  Added both endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem

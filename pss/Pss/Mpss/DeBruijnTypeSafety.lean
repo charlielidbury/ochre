@@ -263,6 +263,33 @@ noncomputable def BetaInstantiationPreservesWfM.var
       | succ i =>
           exact BetaInstantiationPreservesWfM.var_succ_equ hArgBound hb
 
+/-- Abstraction reassembly for the de Bruijn β-instantiation
+well-formedness payload. The remaining work is the recursive reconstruction
+of the instantiated bound and body under the instantiated bound head. -/
+noncomputable def BetaInstantiationPreservesWfM.abs
+    {Γ : Ctx} {arg t body : Term}
+    (hBound :
+      WfM Γ (Term.instantiate 0 arg t))
+    (hBody :
+      WfM ({ bound := Term.instantiate 0 arg t, kind := .sub } :: Γ)
+        (Term.instantiate 1 (Term.shift 0 arg) body)) :
+    WfM Γ (Term.instantiate 0 arg (.abs t body)) := by
+  simpa [Term.instantiate] using WfM.fun_ hBound hBody
+
+/-- Application reassembly for the de Bruijn β-instantiation
+well-formedness payload. The remaining work is preservation of the operator
+and argument subtype chains through instantiation. -/
+noncomputable def BetaInstantiationPreservesWfM.app
+    {Γ : Ctx} {arg u v t : Term}
+    (hOp :
+      WSubMStar Γ (Term.instantiate 0 arg u)
+        (.abs (Term.instantiate 0 arg t) .top))
+    (hArg :
+      WSubMStar Γ (Term.instantiate 0 arg v)
+        (Term.instantiate 0 arg t)) :
+    WfM Γ (Term.instantiate 0 arg (.app u v)) := by
+  simpa [Term.instantiate] using WfM.app hOp hArg
+
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/
 def AbsFunctionBoundInversion : Type :=
