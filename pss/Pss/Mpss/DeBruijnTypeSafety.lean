@@ -1331,6 +1331,34 @@ def MEqRedFOpTailStepPreservesPayload.of_cons
   | cons next tail =>
       exact hCons hΓ hred hwfTarget hState
 
+/-- A non-empty tail step reduces to typed operator-function preservation for
+the immediate application, followed by preservation of the induced
+application step under the remaining tail. -/
+noncomputable def MEqRedFOpTailStepPreservesConsPayload.of_typed_operator
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload) :
+    MEqRedFOpTailStepPreservesConsPayload := by
+  intro Γ tail source target next hΓ hred hwfTarget hState
+  have hStack : WfStack Γ (next :: tail) :=
+    WfMachineState.stack_wf hState
+  have hStackTail : WfStack Γ tail := WfStack.tail hStack
+  have hImmediateSource : WfM Γ (.app source next) :=
+    WfMachineState.head_app_wf hState
+  obtain ⟨bound, hFunSource, hArgNext⟩ := hImmediateSource.app_inv
+  have hFunTarget : WSubMStar Γ target (.abs bound .top) :=
+    hOpFun hΓ hStackTail hArgNext hFunSource hred
+  have hImmediateTarget : WfM Γ (.app target next) :=
+    WfM.app hFunTarget hArgNext
+  have hNextRefl : MEqRed Γ [] next next :=
+    MEqRed.refl (PrevalidExt.nil hArgNext.wf_left.prevalid)
+      hArgNext.wf_left.scoped
+  have hAppRed : MEqRed Γ tail (.app source next) (.app target next) :=
+    MEqRed.app hred hNextRefl
+  exact hTailStep (s := tail) (source := .app source next)
+    (target := .app target next) hΓ hAppRed hImmediateTarget
+    (WfMachineState.tail_state (t := source) (operand := next)
+      (s := tail) hState)
+
 /-- The non-empty-tail `Me-FOp` transport reduces to preserving the immediate
 application `Me-App` step under the remaining tail stack. -/
 noncomputable def MEqRedFOpTailTransportConsPayload.of_tail_step
@@ -1852,6 +1880,21 @@ noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_ste
     hInv hEmpty hBody
     (MEqRedFOpTailStepPreservesPayload.of_cons hTailStep)
 
+/-- Typed-operator variant of the `Me-FOp` machine-state reduction. The
+non-empty induced tail step is reduced to typed operator preservation for the
+immediate application plus a recursive tail-step residual. -/
+noncomputable def MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_operator_tail_step_and_empty
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTailStep : MEqRedFOpTailStepPreservesPayload) :
+    MEqRedFOpPreservesWfMachineStatePayload :=
+  MEqRedFOpPreservesWfMachineStatePayload.of_typed_body_tail_step_cons_and_empty
+    hInv hEmpty hBody
+    (MEqRedFOpTailStepPreservesConsPayload.of_typed_operator
+      hOpFun hTailStep)
+
 /-- Control-term transport plus empty-stack preservation discharges the
 machine-state stack-head replacement residual. The source plugged state
 exposes the immediate application `u v`; after preserving the empty-stack
@@ -2122,6 +2165,30 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop
   MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step
     hBeta hEmpty hEqBody hSubBody hPres hStep hInv hFOpBody
     (MEqRedFOpTailStepPreservesPayload.of_cons hFOpTailStep)
+    hFunBody hNoTop
+
+/-- Typed-operator variant of the current machine-state assembly. The
+remaining non-empty `Me-FOp` tail-step is reduced to typed operator
+preservation for the immediate application plus a recursive tail-step
+residual. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_operator_tail_step
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFOpTailStep : MEqRedFOpTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_and_typed_fop_tail_step_cons
+    hBeta hEmpty hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedFOpTailStepPreservesConsPayload.of_typed_operator
+      hOpFun hFOpTailStep)
     hFunBody hNoTop
 
 /-- Reduced machine-state preservation assembly that uses constructor
