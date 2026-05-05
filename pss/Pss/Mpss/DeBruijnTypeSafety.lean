@@ -2927,6 +2927,142 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsFunStackPayload.
     (head₆ := head₅) (kind₆ := kind₅) (s := []) hArgBound hBody
   simpa [Term.instantiate] using MEqRed.fun_ hBound' hBody'
 
+/-- The five-head `Me-Bet` frontier follows from the five-head equivalence
+payload for the argument and the six-preserved-head payload for the body,
+plus the de Bruijn substitution-composition law for the deeper β target. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsBetStackPayload.of_six_heads
+    (hFive : BetaInstantiationPreservesMEqRedUnderFiveHeadsStack)
+    (hSix : BetaInstantiationPreservesMEqRedUnderSixHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderFiveHeadsBetStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ t v v' body body'
+    kind₁ kind₂ kind₃ kind₄ kind₅ s hArgBound ht hBody hArg
+  have hBodySix := hSix (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃)
+    (head₅ := head₄) (kind₅ := kind₄)
+    (head₆ := head₅) (kind₆ := kind₅) (s := Stack.shift 0 s)
+    hArgBound hBody
+  have hBody' :
+      MEqRed
+        ({ bound := Term.instantiate 5
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) t,
+            kind := CtxEntryKind.sub } ::
+          { bound := Term.instantiate 4
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₃,
+            kind := kind₃ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+            kind := kind₄ } ::
+          { bound := Term.instantiate 0 arg head₅, kind := kind₅ } :: Γ)
+        (Stack.shift 0
+          (Stack.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) s))
+        (Term.instantiate 6
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+          body)
+        (Term.instantiate 6
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+          body') := by
+    simpa [Stack.instantiate_six_shift_zero] using hBodySix
+  have hArg' := hFive (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃)
+    (head₄ := head₄) (kind₄ := kind₄)
+    (head₅ := head₅) (kind₅ := kind₅) (s := []) hArgBound hArg
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hArgShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg))
+        (Nat.zero_le (Γ.depth + 2)) hArgShiftShiftScoped
+  have hArgShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+        (Nat.zero_le (Γ.depth + 3)) hArgShiftShiftShiftScoped
+  have hArgShiftShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 5)
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+        (Nat.zero_le (Γ.depth + 4)) hArgShiftShiftShiftShiftScoped
+  have ht' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 4
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₄,
+              kind := kind₄ } ::
+            { bound := Term.instantiate 0 arg head₅,
+              kind := kind₅ } :: Γ))
+        (Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) t) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 5)
+          (Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) t) :=
+      Term.instantiate_scoped 5 (Γ.depth + 5)
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) t
+        (by omega) hArgShiftShiftShiftShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using ht)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  have hBet := MEqRed.bet ht' hBody' hArg'
+  have hTarget :
+      Term.instantiate 0
+          (Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) v')
+          (Term.instantiate 6
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+            body') =
+        Term.instantiate 5
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+          (Term.instantiate 0 v' body') := by
+    exact Term.instantiate_zero_after_five
+      (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+      v' body'
+  simpa [Term.instantiate, Stack.instantiate, hTarget] using hBet
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below four preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderFourHeadsStack.refl

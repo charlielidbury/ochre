@@ -123,6 +123,13 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderFiveHeadsFunStackPayload.of_six_heads`.
   This starts the six-head frontier needed to close the five-head binder cases.
   Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` / `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `Term.instantiate_after_five`, `Term.instantiate_zero_after_five`, and
+  `BetaInstantiationPreservesMEqRedUnderFiveHeadsBetStackPayload.of_six_heads`.
+  This closes the five-head `Me-Bet` binder frontier from the six-head
+  payload plus the new five-preserved-head substitution-composition law.
+  Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
