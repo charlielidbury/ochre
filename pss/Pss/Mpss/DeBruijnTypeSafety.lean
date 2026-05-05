@@ -3645,6 +3645,20 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderSixHeadsFOpStackPayload.o
   simpa [Term.instantiate, Stack.instantiate] using
     MEqRed.fOp hBound' hα' hBody'
 
+/-- Six-head equivalence substitution with the binder frontiers generated
+from a six-head equivalence payload and the generic seven-head body payload. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderSixHeadsStack.of_seven_head_adapters
+    (hSix : BetaInstantiationPreservesMEqRedUnderSixHeadsStack)
+    (hSeven : BetaInstantiationPreservesMEqRedUnderSevenHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderSixHeadsStack :=
+  BetaInstantiationPreservesMEqRedUnderSixHeadsStack.of_constructors
+    (BetaInstantiationPreservesMEqRedUnderSixHeadsFunStackPayload.of_seven_heads
+      hSix hSeven)
+    (BetaInstantiationPreservesMEqRedUnderSixHeadsBetStackPayload.of_seven_heads
+      hSix hSeven)
+    (BetaInstantiationPreservesMEqRedUnderSixHeadsFOpStackPayload.of_seven_heads
+      hSix hSeven)
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below five
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderFiveHeadsStack.top
