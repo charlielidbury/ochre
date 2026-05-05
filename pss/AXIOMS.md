@@ -10,6 +10,18 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
+  direct split-beta typed/native `FOp` sub-replacement wrappers
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_typed_fop_target_app_machine_tail_cons_sub_replace`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_fop_target_app_machine_tail_cons_sub_replace`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_typed_fop_operator_machine_tail_sub_replace`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_typed_fop_machine_operator_machine_tail_sub_replace`,
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_fop_operator_machine_tail_sub_replace`,
+  and
+  `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_fop_machine_operator_machine_tail_sub_replace`,
+  then routed their body-transport surfaces through the transitive
+  diagrammatic stack-append payload directly. Added all six endpoints to
+  the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added append-native external-empty
   direct split-beta typed/native `FOp` wrappers
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_typed_fop_target_app_machine_tail_cons`,
   `MEqRedPreservesWfMachineState.of_msubstar_stack_append_and_direct_split_beta_typed_fop_operator_machine_tail`,
