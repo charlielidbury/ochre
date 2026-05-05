@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `meqRedStar_replaceAt_equ_function_from_replacements` and
+  `msubRedStar_replaceAt_equ_function_from_replacements`, function-valued
+  arbitrary-prefix `.equ` replacement wrappers for residual-stack-polymorphic
+  chains. These mirror the fixed-head function wrappers and are intended for
+  the nested body transports in the remaining `Ms-Fun` / `Me-Fun` residual
+  grid. Added both endpoints to the De Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRedStar_replaceAt_equ_from_replacements` and
   `msubRedStar_replaceAt_equ_from_replacements`, chain-level arbitrary-prefix
   `.equ` replacement wrappers obtained by composing the new one-step wrappers
