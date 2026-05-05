@@ -2920,6 +2920,22 @@ noncomputable def MEqRedPreservesWfMachineState.of_reduced_components_no_empty
       intro hΓ hState
       exact hFOp hΓ hBound hOperand hBody hState
 
+/-- Append-native no-external-empty machine-state assembly: expose the
+generalized diagrammatic stack-append payload directly and specialize it to
+the stacked-diagrammatic bridge used by the recursive constructor proof. -/
+noncomputable def MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hAppend : MSubStarStackAppendPayload)
+    (hBridge : MSubStarToWSubMStarPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt)
+    (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_reduced_components_no_empty
+    hBeta
+    (WSubMStarToStackedMSubStarPayload.of_msubstar_stack_append hAppend)
+    hBridge hFunBody hNoTop hFOp
+
 /-- Reduced machine-state preservation assembled directly from the
 body-transport residuals for stack lifting and the one-step diagrammatic
 re-embedding components. This is the current most decomposed assembly for the
@@ -2934,9 +2950,9 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty
     (hNoTop : NoTopFunctionSupertypesAt)
     (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_reduced_components_no_empty
+  MEqRedPreservesWfMachineState.of_msubstar_stack_append_no_empty
     hBeta
-    (WSubMStarToStackedMSubStarPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarStackAppendPayload.of_body_transports hEqBody hSubBody)
     (MSubStarToWSubMStarPayload.of_steps hPres hStep)
     hFunBody hNoTop hFOp
 
