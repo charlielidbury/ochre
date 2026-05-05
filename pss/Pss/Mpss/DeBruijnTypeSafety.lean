@@ -419,6 +419,20 @@ def MEqRedBetaTargetPreservesWfMPayload : Type :=
             WfMachineState Γ (.app (.abs bound body) arg) s →
               WfM Γ (Term.instantiate 0 arg' body')
 
+/-- Body-preservation residual for the `Me-Bet` target. The body reduction
+runs under the source `.sub bound` head and the shifted pending machine stack.
+This isolates the recursive body-preservation part of the beta target from
+argument preservation and beta instantiation. -/
+def MEqRedBetaBodyPreservesWfMPayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {bound body body' : Term},
+    WfCtxEqu Γ →
+      WfStack Γ s →
+        WfM Γ bound →
+          MEqRed ({ bound := bound, kind := .sub } :: Γ)
+            (Stack.shift 0 s) body body' →
+            WfM ({ bound := bound, kind := .sub } :: Γ) body →
+              WfM ({ bound := bound, kind := .sub } :: Γ) body'
+
 /-- Machine-state residual for changing the head operand after the
 empty-stack argument reduction in `Me-App`. -/
 def MEqRedMachineStackHeadReplacePayload : Type :=
@@ -2044,6 +2058,50 @@ noncomputable def MEqRedBetaTargetPreservesWfMPayload.of_contextual
     WfMachineState.control_wf hState
   exact hBeta hΓ hStack ht hBody hArg hwfSource
 
+/-- Contextual preservation supplies the beta body-preservation residual by
+specializing under the source `.sub` head and shifting the pending stack
+through that head. -/
+noncomputable def MEqRedBetaBodyPreservesWfMPayload.of_contextual
+    (hPres : MEqRedPreservesWfMContextual) :
+    MEqRedBetaBodyPreservesWfMPayload := by
+  intro Γ s bound body body' hΓ hStack hwfBound hBody hwfBody
+  exact hPres (WfCtxEqu.sub hΓ) (WfStack.weaken_sub_head hStack hwfBound)
+    hBody hwfBody
+
+/-- Immediate β-target well-formedness from the exact beta-instantiation
+lemma, function-bound inversion, beta-body preservation, and empty-stack
+argument preservation. -/
+noncomputable def MEqRedBetaTargetPreservesWfMPayload.of_body_arg_and_subst
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBodyPres : MEqRedBetaBodyPreservesWfMPayload)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx) :
+    MEqRedBetaTargetPreservesWfMPayload := by
+  intro Γ s bound arg arg' body body' hΓ _ht hBody hArg hState
+  have hStack : WfStack Γ s := WfMachineState.stack_wf hState
+  have hwfSource : WfM Γ (.app (.abs bound body) arg) :=
+    WfMachineState.control_wf hState
+  obtain ⟨result, hFun, hArgTyping⟩ := hwfSource.app_inv
+  have hwfAbs : WfM Γ (.abs bound body) := hFun.wf_left
+  have hwfBound : WfM Γ bound := hwfAbs.fun_inv.1
+  have hwfBody : WfM ({ bound := bound, kind := .sub } :: Γ) body :=
+    hwfAbs.fun_inv.2
+  have hwfBody' :
+      WfM ({ bound := bound, kind := .sub } :: Γ) body' :=
+    hBodyPres hΓ hStack hwfBound hBody hwfBody
+  have hwfArg : WfM Γ arg := hArgTyping.wf_left
+  have hwfArg' : WfM Γ arg' := hEmpty hΓ ⟨hArg⟩ hwfArg
+  have hArgBack : WSubMStar Γ arg' arg :=
+    WSubMStar.of_MEqRed_back hArg hwfArg hwfArg'
+  have hArgResult : WSubMStar Γ arg' result :=
+    WSubMStar.trans hwfArg hArgBack hArgTyping
+  have hEquBoundResult : WEquMStar Γ bound result := hInv hΓ hFun
+  have hSubResultBound : WSubMStar Γ result bound :=
+    hEquBoundResult.symm.toWSubMStar
+  have hArgBound : WSubMStar Γ arg' bound :=
+    WSubMStar.trans hArgTyping.wf_right hArgResult hSubResultBound
+  exact hSubst hArgBound hwfBody'
+
 /-- Machine-state preservation specializes to empty-stack well-formedness
 preservation. -/
 noncomputable def MEqRedPreservesWfMUnderWfCtx.of_machine_state
@@ -3070,6 +3128,77 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
   MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_machine_operator_machine_tail_cons
     (MEqRedBetaTargetPreservesWfMPayload.of_contextual hBeta)
     hEqBody hSubBody hPres hStep hInv hFOpBody hOpFun hTail hFunBody hNoTop
+
+/-- Split-beta variant of the strongest no-external-empty target-application
+assembly. The beta branch is reduced to beta instantiation, function-bound
+inversion, body preservation under the source `.sub` head, and empty-stack
+argument preservation. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_target_app_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hTargetApp : MEqRedAppTargetPreservesWfMPayload)
+    (hTailCons : MEqRedMachineTailStepPreservesConsPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail_cons
+    (MEqRedBetaTargetPreservesWfMPayload.of_body_arg_and_subst
+      hSubst hInv hBetaBody hEmpty)
+    hEqBody hSubBody hPres hStep hInv hFOpBody hTargetApp hTailCons
+    hFunBody hNoTop
+
+/-- Split-beta, typed-operator variant of the strongest no-external-empty
+assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_operator_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst hEmpty hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_typed_operator hOpFun hTail)
+    hFunBody hNoTop
+
+/-- Split-beta, machine-state-aware operator variant of the strongest
+no-external-empty assembly. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_machine_operator_machine_tail_cons
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hEmpty : MEqRedPreservesWfMUnderWfCtx)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hBetaBody : MEqRedBetaBodyPreservesWfMPayload)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_target_app_machine_tail_cons
+    hSubst hEmpty hEqBody hSubBody hPres hStep hInv hBetaBody hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    (MEqRedMachineTailStepPreservesConsPayload.of_machine_operator hOpFun hTail)
+    hFunBody hNoTop
 
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this

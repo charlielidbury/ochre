@@ -10,6 +10,17 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedBetaBodyPreservesWfMPayload`,
+  `MEqRedBetaBodyPreservesWfMPayload.of_contextual`,
+  `MEqRedBetaTargetPreservesWfMPayload.of_body_arg_and_subst`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_target_app_machine_tail_cons`,
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_operator_machine_tail_cons`,
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_split_beta_typed_fop_machine_operator_machine_tail_cons`,
+  reducing the immediate `Me-Bet` machine target residual to beta
+  instantiation, function-bound inversion, body preservation under the source
+  `.sub` head, and empty-stack argument preservation. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedBetaTargetPreservesWfMPayload.of_contextual`,
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_contextual_beta_typed_fop_target_app_machine_tail_cons`,
   `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_contextual_beta_typed_fop_operator_machine_tail_cons`,
