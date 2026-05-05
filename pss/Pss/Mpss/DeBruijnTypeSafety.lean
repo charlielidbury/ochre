@@ -2705,6 +2705,167 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.app
         (.app u' v')) := by
   simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
 
+/-- Reflexive equivalence reduction is stable under de Bruijn
+β-instantiation below seven preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.refl
+    {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ u : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ : CtxEntryKind} {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : PrevalidExt ({ bound := head₁, kind := kind₁ } ::
+        { bound := head₂, kind := kind₂ } ::
+        { bound := head₃, kind := kind₃ } ::
+        { bound := head₄, kind := kind₄ } ::
+        { bound := head₅, kind := kind₅ } ::
+        { bound := head₆, kind := kind₆ } ::
+        { bound := head₇, kind := kind₇ } ::
+        { bound := bound, kind := .sub } :: Γ) s)
+    (hu :
+      Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := head₅, kind := kind₅ } ::
+          { bound := head₆, kind := kind₆ } ::
+          { bound := head₇, kind := kind₇ } ::
+          { bound := bound, kind := .sub } :: Γ)) u) :
+    MEqRed
+      ({ bound := Term.instantiate 6
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) head₁,
+          kind := kind₁ } ::
+        { bound := Term.instantiate 5
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₂,
+          kind := kind₂ } ::
+        { bound := Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₃,
+          kind := kind₃ } ::
+        { bound := Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₄,
+          kind := kind₄ } ::
+        { bound := Term.instantiate 2
+            (Term.shift 0 (Term.shift 0 arg)) head₅,
+          kind := kind₅ } ::
+        { bound := Term.instantiate 1 (Term.shift 0 arg) head₆,
+          kind := kind₆ } ::
+        { bound := Term.instantiate 0 arg head₇, kind := kind₇ } :: Γ)
+      (Stack.instantiate 7
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) s)
+      (Term.instantiate 7
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) u)
+      (Term.instantiate 7
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) u) := by
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hArgShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg))
+        (Nat.zero_le (Γ.depth + 2)) hArgShiftShiftScoped
+  have hArgShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+        (Nat.zero_le (Γ.depth + 3)) hArgShiftShiftShiftScoped
+  have hArgShiftShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 5)
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 4)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+        (Nat.zero_le (Γ.depth + 4)) hArgShiftShiftShiftShiftScoped
+  have hArgShiftShiftShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 6)
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 5)
+        (Term.shift 0
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))
+        (Nat.zero_le (Γ.depth + 5)) hArgShiftShiftShiftShiftShiftScoped
+  have hArgShiftShiftShiftShiftShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 7)
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 6)
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))
+        (Nat.zero_le (Γ.depth + 6)) hArgShiftShiftShiftShiftShiftShiftScoped
+  have hu' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 6
+                (Term.shift 0
+                  (Term.shift 0
+                    (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 5
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 4
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₄,
+              kind := kind₄ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₅,
+              kind := kind₅ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₆,
+              kind := kind₆ } ::
+            { bound := Term.instantiate 0 arg head₇,
+              kind := kind₇ } :: Γ))
+        (Term.instantiate 7
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) u) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 7)
+          (Term.instantiate 7
+            (Term.shift 0
+              (Term.shift 0
+                (Term.shift 0
+                  (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) u) :=
+      Term.instantiate_scoped 7 (Γ.depth + 7)
+        (Term.shift 0
+          (Term.shift 0
+            (Term.shift 0
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))))) u
+        (by omega) hArgShiftShiftShiftShiftShiftShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  exact MEqRed.refl
+    (BetaInstantiationPreservesPrevalidExtUnderSevenHeads hArgBound hpv) hu'
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below six
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderSixHeadsStack.top
