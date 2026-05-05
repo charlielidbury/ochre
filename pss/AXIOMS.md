@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added star-level
+  constructor-wired `{sub}, {equ}, {sub}` subtype replacement wrapper
+  `msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_body_replacements`.
+  This composes the chain-aware one-step body replacement wrapper over raw
+  subtype chains, matching nested `Ms-Fun` residuals whose body transport is
+  already diagrammatic. Added the endpoint to the De Bruijn audit. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added dispatcher
   `commute_abs_fun_fun_body_from_operator_join_app_cases_residual_body_star_handlers_of`.
   This variant accepts the residual `Ms-FOp` body transport as an

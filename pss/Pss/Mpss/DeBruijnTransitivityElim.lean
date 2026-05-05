@@ -8493,6 +8493,62 @@ theorem msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_replacements
       hpv hnew hEq hAppOpReplace hFunBoundReplace hFunBodyReplace)
     h
 
+/-- Star-level constructor-wired subtype replacement for the empty-stack
+`{sub}, {equ}, {sub}` shape where recursive `Ms-Fun` body replacement is
+already diagrammatic. -/
+theorem msubRedStar_equ_under_sub_head_sub_tail_nil_replace_from_body_replacements
+    {Γ : Ctx} {headBound tailBound old new u v : Term}
+    (hpv : PrevalidExt ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [])
+    (hnew : Term.Scoped (Ctx.depth ({ bound := tailBound, kind := .sub } :: Γ)) new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] u v →
+        MSubStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] u v)
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [arg] op op' →
+        Term.Scoped
+          (Ctx.depth ({ bound := headBound, kind := .sub } ::
+            { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+            Γ)) arg →
+        MSubStar ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [arg] op op')
+    (hFunBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] bound bound' →
+        MEqRed ({ bound := headBound, kind := .sub } ::
+          { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+          Γ) [] bound bound')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } :: { bound := old, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] body body' →
+        MSubStar ({ bound := bound, kind := .sub } ::
+          { bound := headBound, kind := .sub } :: { bound := new, kind := .equ } ::
+          { bound := tailBound, kind := .sub } :: Γ) [] body body')
+    (h : MSubRedStar ({ bound := headBound, kind := .sub } ::
+      { bound := old, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [] u v) :
+    MSubStar ({ bound := headBound, kind := .sub } ::
+      { bound := new, kind := .equ } :: { bound := tailBound, kind := .sub } ::
+      Γ) [] u v :=
+  msubRedStar_replace_from_step_replacement
+    (msubRed_equ_under_sub_head_sub_tail_nil_replace_from_body_replacements
+      hpv hnew hEq hAppOpReplace hFunBoundReplace hFunBodyReplace)
+    h
+
 /-- Star-level equivalence replacement across a changed `.equ` entry at an
 arbitrary context index, obtained by composing the one-step `Ctx.replaceAt`
 wrapper over an equivalence-reduction chain. -/
