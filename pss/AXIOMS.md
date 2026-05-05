@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `msubRed_equ_under_two_heads_replace_from_replacements` plus the
+  two-preserved-head `Ms-App`, `Ms-Fun`, and `Ms-FOp` constructor handlers.
+  This packages stable `Ms-Pro` replacement and leaves only the recursive
+  `Ms-Equ`/constructor replacement obligations explicit for the two-head
+  residual shape. Added the endpoints to the De Bruijn audit. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `meqRed_equ_under_two_heads_replace_with_pro_from_replacements` plus the
   stable index-0, index-1, and true-tail `Me-Pro` handlers. Together with the
   existing index-2 residual handler, this gives the two-preserved-head

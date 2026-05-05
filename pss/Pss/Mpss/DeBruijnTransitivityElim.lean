@@ -6963,6 +6963,152 @@ theorem msubRed_equ_under_two_heads_replace_from_handlers {Γ : Ctx} {s : Stack}
   | fOp ht hArg hBody =>
     exact hFOp ht hArg rfl hBody
 
+/-- Canonical `Ms-App` handler for two-preserved-head `.equ` replacement. -/
+theorem msub_equ_under_two_heads_app_handler_of_operator_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ : CtxEntry} {old new : Term}
+    (hpv : PrevalidExt (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)
+          (arg :: s) op op' →
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)) arg →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ)
+          (arg :: s) op op')
+    {op op' arg : Term}
+    (hOp : MSubRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)
+      (arg :: s) op op')
+    (hArgScoped :
+      Term.Scoped
+        (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)) arg) :
+    MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+      (.app op arg) (.app op' arg) :=
+  msubStar_app_fixed_arg (PrevalidExt.equ_under_two_heads_replace hpv hnew)
+    (by simpa [Ctx.depth] using hArgScoped) (hOpReplace hOp hArgScoped)
+
+/-- Canonical `Ms-Fun` handler for two-preserved-head `.equ` replacement when
+the bound equivalence and body subtype premises have already been replaced as
+raw one-step reductions. -/
+theorem msub_equ_under_two_heads_fun_handler_of_raw_replacements {Γ : Ctx}
+    {head₁ head₂ : CtxEntry} {old new : Term}
+    (hBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) []
+          bound bound' →
+        MEqRed (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) []
+          bound bound')
+    (hBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    {bound bound' body body' : Term}
+    (hBoundScoped :
+      Term.Scoped
+        (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ))
+        bound)
+    (hBound : MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) []
+      bound bound')
+    (hBody : MSubRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ ::
+      { bound := old, kind := .equ } :: Γ) [] body body') :
+    MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) []
+      (.abs bound body) (.abs bound' body') :=
+  MSubStar.of_MSubRed
+    (MSubRed.fun_ (by simpa [Ctx.depth] using hBoundScoped)
+      (hBoundReplace hBound) (hBodyReplace hBody))
+
+/-- Canonical `Ms-FOp` handler for two-preserved-head `.equ` replacement. -/
+theorem msub_equ_under_two_heads_fop_handler_of_body_replacement {Γ : Ctx}
+    {s : Stack} {head₁ head₂ : CtxEntry} {old new : Term}
+    (hpvTail : PrevalidExt (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } :: head₁ :: head₂ ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } :: head₁ :: head₂ ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    {bound arg body body' : Term} {rest : Stack}
+    (hBoundScoped :
+      Term.Scoped
+        (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ))
+        bound)
+    (hArgScoped :
+      Term.Scoped
+        (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)) arg)
+    (hStack : s = arg :: rest)
+    (hBody : MSubRed ({ bound := arg, kind := .equ } :: head₁ :: head₂ ::
+      { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body') :
+    MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s
+      (.abs bound body) (.abs bound body') := by
+  subst hStack
+  have hpvNewTail :
+      PrevalidExt (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) rest :=
+    PrevalidExt.equ_under_two_heads_replace (PrevalidExt.tail hpvTail) hnew
+  exact msubStar_abs_fOp_body_fixed_bound hpvNewTail
+    (by simpa [Ctx.depth] using hBoundScoped)
+    (by simpa [Ctx.depth] using hArgScoped)
+    (hBodyReplace hArgScoped rfl hBody)
+
+/-- Subtype replacement under two preserved heads, with stable leaves and the
+canonical constructor handlers wired in. The `Ms-Equ` branch remains an
+explicit diagrammatic replacement premise. -/
+theorem msubRed_equ_under_two_heads_replace_from_replacements {Γ : Ctx} {s : Stack}
+    {head₁ head₂ : CtxEntry} {old new u v : Term}
+    (hpv : PrevalidExt (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s u v →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s u v)
+    (hAppOpReplace :
+      ∀ {op op' arg : Term},
+        MSubRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)
+          (arg :: s) op op' →
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)) arg →
+        MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ)
+          (arg :: s) op op')
+    (hFunBoundReplace :
+      ∀ {bound bound' : Term},
+        MEqRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) []
+          bound bound' →
+        MEqRed (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) []
+          bound bound')
+    (hFunBodyReplace :
+      ∀ {bound body body' : Term},
+        MSubRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubRed ({ bound := bound, kind := .sub } :: head₁ :: head₂ ::
+          { bound := new, kind := .equ } :: Γ) [] body body')
+    (hFOpBodyReplace :
+      ∀ {arg body body' : Term} {rest : Stack},
+        Term.Scoped
+          (Ctx.depth (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } :: head₁ :: head₂ ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := arg, kind := .equ } :: head₁ :: head₂ ::
+          { bound := new, kind := .equ } :: Γ) (Stack.shift 0 rest) body body')
+    (h : MSubRed (head₁ :: head₂ :: { bound := old, kind := .equ } :: Γ) s u v) :
+    MSubStar (head₁ :: head₂ :: { bound := new, kind := .equ } :: Γ) s u v :=
+  msubRed_equ_under_two_heads_replace_from_handlers hpv hnew
+    (fun hb => MSubStar.of_MSubRed
+      (MSubRed.pro_equ_under_two_heads_replace hpv hnew hb))
+    hEq
+    (msub_equ_under_two_heads_app_handler_of_operator_replacement hpv hnew
+      hAppOpReplace)
+    (msub_equ_under_two_heads_fun_handler_of_raw_replacements
+      hFunBoundReplace hFunBodyReplace)
+    (msub_equ_under_two_heads_fop_handler_of_body_replacement hpv hnew
+      hFOpBodyReplace)
+    h
+
 /-- Consume a subtype-reduction chain when each old-context step has already
 been replaced by a diagrammatic chain in the new context. -/
 theorem msubRedStar_replace_from_step_replacement {Γ Γ' : Ctx} {s : Stack}
