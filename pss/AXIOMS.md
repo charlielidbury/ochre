@@ -9,12 +9,21 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the `Me-Pro` machine-state
+  case with `MEqRedProAnnotationMachineStatePayload`,
+  `MEqRedPreservesWfMachineState.of_components_pro_annotation`, and
+  `MEqRedProAnnotationMachineStatePayload.of_control_left`. The recursive
+  `Me-Pro` premise now preserves the annotation step, while control-left
+  transport handles only `bvar i` to its equivalence annotation. The reduced
+  machine-state assembly no longer takes the broad `Me-Pro` machine residual.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMachineState.of_reduced_components`, recording the
   current reduced machine-state preservation assembly: `Me-App`
   head-replacement, `Me-Fun`, and `Me-TAp` are now supplied by the smaller
-  adapters, leaving constructor-sized `Me-Pro`, `Me-Bet`, and `Me-FOp`
-  machine residuals plus empty/control/function-body/no-Top premises. No
+  adapters, and broad `Me-Pro` is split through control-left annotation
+  transport, leaving constructor-sized `Me-Bet` and `Me-FOp` machine
+  residuals plus empty/control/function-body/no-Top premises. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace`,

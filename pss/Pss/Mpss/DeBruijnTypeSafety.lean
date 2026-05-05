@@ -384,6 +384,16 @@ def MEqRedProPreservesWfMachineStatePayload : Type :=
           WfMachineState Γ (.bvar i) s →
             WfMachineState Γ α' s
 
+/-- Smaller `Me-Pro` machine-state residual: only transport the source
+machine state from the variable to its equivalence annotation. The recursive
+premise for the annotation reduction then handles `α → α'`. -/
+def MEqRedProAnnotationMachineStatePayload : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {i : Nat} {α : Term},
+    WfCtxEqu Γ →
+      Γ.equBinds i α →
+        WfMachineState Γ (.bvar i) s →
+          WfMachineState Γ α s
+
 /-- Machine-state residual for `Me-Bet`. -/
 def MEqRedBetaPreservesWfMachineStatePayload : Type :=
   ∀ {Γ : Ctx} {s : Stack} {bound arg arg' body body' : Term},
@@ -470,6 +480,20 @@ noncomputable def head_app_wf {Γ : Ctx} {t operand : Term} {s : Stack} :
       obtain ⟨_, hFun, _⟩ := hNext.app_inv
       exact hFun.wf_left
 
+/-- A plugged well-formed machine state always contains a well-formed
+control term. -/
+noncomputable def control_wf {Γ : Ctx} {t : Term} {s : Stack} :
+    WfMachineState Γ t s → WfM Γ t := by
+  cases s with
+  | nil =>
+      intro hState
+      simpa [WfMachineState, Stack.plug] using hState
+  | cons operand tail =>
+      intro hState
+      have hApp : WfM Γ (.app t operand) := head_app_wf hState
+      obtain ⟨_, hFun, _⟩ := hApp.app_inv
+      exact hFun.wf_left
+
 /-- A plugged well-formed machine state supplies the older per-element
 `WfStack` invariant as a projection. -/
 noncomputable def stack_wf {Γ : Ctx} {t : Term} {s : Stack} :
@@ -523,6 +547,48 @@ noncomputable def MEqRedPreservesWfMachineState.of_components
   | pro hpv hb hred ih =>
       intro hΓ hState
       exact hPro hΓ hb hred hState
+  | bet ht hBody hArg _ihBody _ihArg =>
+      intro hΓ hState
+      exact hBeta hΓ ht hBody hArg hState
+  | top hpv =>
+      intro hΓ hState
+      exact hState
+  | @app Γapp sapp u u' v v' hOp hArg ihOp _ihArg =>
+      intro hΓ hState
+      have hOpState : WfMachineState Γapp u (v :: sapp) := by
+        simpa [WfMachineState, Stack.plug] using hState
+      have hOpState' := ihOp hΓ hOpState
+      exact hStackHead hΓ hArg hOpState'
+  | var hpv hi =>
+      intro hΓ hState
+      exact hState
+  | fun_ hBound hBody _ihBound _ihBody =>
+      intro hΓ hState
+      exact hFun hΓ hBound hBody hState
+  | tAp hpv hu =>
+      intro hΓ hState
+      exact hTAp hΓ hu hState
+  | fOp hBound hOperand hBody _ihBound _ihBody =>
+      intro hΓ hState
+      exact hFOp hΓ hBound hOperand hBody hState
+
+/-- Assemble corrected machine-state preservation using the smaller `Me-Pro`
+annotation transport residual. The recursive premise from the `Me-Pro`
+constructor then preserves the annotation reduction itself. -/
+noncomputable def MEqRedPreservesWfMachineState.of_components_pro_annotation
+    (hPro : MEqRedProAnnotationMachineStatePayload)
+    (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
+    (hStackHead : MEqRedMachineStackHeadReplacePayload)
+    (hFun : MEqRedFunPreservesWfMachineStatePayload)
+    (hTAp : MEqRedTApPreservesWfMachineStatePayload)
+    (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
+    MEqRedPreservesWfMachineState := by
+  intro Γ s x y hΓ hred hState
+  revert hΓ hState
+  induction hred with
+  | pro hpv hb hred ih =>
+      intro hΓ hState
+      exact ih hΓ (hPro hΓ hb hState)
   | bet ht hBody hArg _ihBody _ihArg =>
       intro hΓ hState
       exact hBeta hΓ ht hBody hArg hState
@@ -1083,6 +1149,23 @@ noncomputable def MEqRedMachineStackHeadReplacePayload.of_control_left
     hControl hControlBack (WfMachineState.tail_state hState)
   simpa [WfMachineState, Stack.plug] using hTail'
 
+/-- Control-left transport discharges the smaller `Me-Pro` annotation
+machine-state residual. The empty-stack `Me-Pro` step embeds backward as
+`α ≤* bvar i`; control transport then replaces the machine-state control. -/
+noncomputable def MEqRedProAnnotationMachineStatePayload.of_control_left
+    (hControl : WfMachineStateControlLeftPayload) :
+    MEqRedProAnnotationMachineStatePayload := by
+  intro Γ s i α hΓ hb hState
+  have hwfVar : WfM Γ (.bvar i) := WfMachineState.control_wf hState
+  have hwfα : WfM Γ α := WfCtxEqu.lookup_equ hΓ hwfVar.prevalid hb
+  have hαRefl : MEqRed Γ [] α α :=
+    MEqRed.refl (PrevalidExt.nil hwfα.prevalid) hwfα.scoped
+  have hPro : MEqRed Γ [] (.bvar i) α :=
+    MEqRed.pro (PrevalidExt.nil hwfVar.prevalid) hb hαRefl
+  have hαVar : WSubMStar Γ α (.bvar i) :=
+    WSubMStar.of_MEqRed_back hPro hwfVar hwfα
+  exact hControl hαVar hState
+
 /-- The `Me-TAp` machine-state residual is vacuous under the context-generic
 no-`Top`-function-supertype fact: a plugged source state for `.app .top u`
 exposes a well-formed immediate application headed by `Top`. -/
@@ -1127,10 +1210,10 @@ noncomputable def MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_repl
 
 /-- Reduced machine-state preservation assembly after discharging the
 structural `Me-App` head replacement, `Me-Fun`, and `Me-TAp` residuals
-through smaller premises. The remaining constructor-sized machine residuals
-are `Me-Pro`, `Me-Bet`, and `Me-FOp`. -/
+through smaller premises. The broad `Me-Pro` machine residual is split and
+discharged through control-left annotation transport, leaving constructor-
+sized machine residuals for `Me-Bet` and `Me-FOp`. -/
 noncomputable def MEqRedPreservesWfMachineState.of_reduced_components
-    (hPro : MEqRedProPreservesWfMachineStatePayload)
     (hBeta : MEqRedBetaPreservesWfMachineStatePayload)
     (hEmpty : MEqRedPreservesWfMUnderWfCtx)
     (hControl : WfMachineStateControlLeftPayload)
@@ -1138,8 +1221,8 @@ noncomputable def MEqRedPreservesWfMachineState.of_reduced_components
     (hNoTop : NoTopFunctionSupertypesAt)
     (hFOp : MEqRedFOpPreservesWfMachineStatePayload) :
     MEqRedPreservesWfMachineState :=
-  MEqRedPreservesWfMachineState.of_components
-    hPro
+  MEqRedPreservesWfMachineState.of_components_pro_annotation
+    (MEqRedProAnnotationMachineStatePayload.of_control_left hControl)
     hBeta
     (MEqRedMachineStackHeadReplacePayload.of_control_left hEmpty hControl)
     (MEqRedFunPreservesWfMachineStatePayload.of_empty_and_body_replace
