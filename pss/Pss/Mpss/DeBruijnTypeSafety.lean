@@ -5804,6 +5804,20 @@ noncomputable def StepPreservesWfM_of_chain_shape_components
     (StepBetaPreservesWfM_of_chain_shape hSubst hShape hShapeWf)
     hSubHeadReplace
 
+/-- Operational well-formedness preservation reduced to the body-instantiation
+lemma, the shape-only function-bound chain payload, empty-stack equivalence
+well-formedness preservation for the joined bound, and sharpened `.sub` head
+replacement. -/
+noncomputable def StepPreservesWfM_of_chain_shape_meq_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf) :
+    StepPreservesWfM :=
+  StepPreservesWfM_of_chain_shape_components hSubst hShape
+    (AbsFunctionBoundChainShapeWfPayload_of_meq hShape hMEqPres)
+    hSubHeadReplace
+
 /-- De Bruijn preservation, conditional on operational well-formedness
 preservation. The operational step is at the ambient context depth so the
 closed case specializes to `Step`. -/
@@ -5952,6 +5966,40 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_component
   Theorem_5_DeBruijn_ClosedPreservation_of
     (StepPreservesWfM_of_chain_shape_components
       hSubst hShape hShapeWf hSubHeadReplace)
+    hwf hstep
+
+/-- De Bruijn preservation with the chain-shape joined-bound well-formedness
+payload derived from empty-stack equivalence preservation. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_of_chain_shape_meq_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of
+    (StepPreservesWfM_of_chain_shape_meq_components
+      hSubst hShape hMEqPres hSubHeadReplace)
+    hwf hstep
+
+/-- Closed-term Theorem 5 entry point for chain-shape preservation when the
+joined-bound well-formedness payload is supplied by empty-stack equivalence
+preservation. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_meq_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of
+    (StepPreservesWfM_of_chain_shape_meq_components
+      hSubst hShape hMEqPres hSubHeadReplace)
     hwf hstep
 
 end DeBruijn

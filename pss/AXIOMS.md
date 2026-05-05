@@ -10,6 +10,14 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StepPreservesWfM_of_chain_shape_meq_components`,
+  `Theorem_5_DeBruijn_Preservation_of_chain_shape_meq_components`, and
+  `Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_meq_components`,
+  deriving the chain-shape joined-bound well-formedness payload from
+  empty-stack `MEqRed` well-formedness preservation at the final Theorem 5
+  boundary. Added the closed endpoint to `Pss/DeBruijnSanity.lean`'s audit.
+  No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `Theorem_5_DeBruijn_Preservation_of_components` and
   `Theorem_5_DeBruijn_ClosedPreservation_of_components`, completing the
   theorem-level API for the direct function-bound inversion route before the

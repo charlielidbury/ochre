@@ -16,6 +16,7 @@ namespace DeBruijn
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_of
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_components
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_meq_components
 
 end DeBruijn
 end Pss
