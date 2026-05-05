@@ -158,6 +158,7 @@ namespace DeBruijn
 #print axioms MSubRed.stack_head_replace_from_handlers
 #print axioms MEqRed.stack_head_replace_from_handlers
 #print axioms MEqRed.stack_head_subtype_replace_from_handlers
+#print axioms MEqRed.equ_head_replace_from_handlers
 #print axioms MEqRed.sub_head_replace
 #print axioms MEqRed.sub_head_replace_two_step
 #print axioms MEqRedStar.sub_head_replace

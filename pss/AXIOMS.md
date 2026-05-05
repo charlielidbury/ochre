@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_head_replace_from_handlers`, the raw-equivalence splitter for
+  replacing an innermost `.equ` head while preserving an `MEqRed` conclusion.
+  It rebuilds stable leaves directly and exposes the head `Me-Pro` residual
+  plus recursive `Me-App`, `Me-Fun`, `Me-Bet`, and `Me-FOp` handlers. This
+  prepares the remaining structural-app `Me-FOp` body transport for the same
+  explicit-handler reduction used on the `Me-Bet` body premise. Added the
+  endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_fun_body_from_operator_join_app_cases_bet_body_stack_handlers_of`,
   using the raw `MEqRed` changed-stack-head splitter to reduce the residual
