@@ -14,6 +14,14 @@ namespace DeBruijn
 #print axioms Lemma_2_DeBruijn_DiamondMEqRedChain_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityStar_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_of
+#print axioms EqDiamonds.top
+#print axioms EqDiamonds.bvar_any
+#print axioms EqDiamonds.appTop_any
+#print axioms diamond_appTop_eqStar_eqStar
+#print axioms StrongCommutes.top
+#print axioms StrongCommutes.bvar_any
+#print axioms StrongCommutes.appTop_any
+#print axioms commute_appTop_subStar_eqStar
 #print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_of
 #print axioms Theorem_3_DeBruijn_WSubMStar_toMSub_of
 #print axioms Theorem_3_DeBruijn_WEquMStar_toMSub_of
