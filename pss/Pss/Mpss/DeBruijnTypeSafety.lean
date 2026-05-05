@@ -419,6 +419,36 @@ def WfMEquHeadToSubHeadPayload : Type :=
           WfM ({ bound := operand, kind := .equ } :: Γ) body →
             WfM ({ bound := bound, kind := .sub } :: Γ) body
 
+/-- Uniform head-kind/body transport for the `Me-FOp` gap. It changes both
+the head annotation and the head binding kind while preserving body
+well-formedness. The source and target annotations are both required to be
+well formed in the tail context. -/
+def WfMHeadKindTransportPayload : Type :=
+  ∀ {Γ : Ctx} {source target body : Term} {sourceKind targetKind : CtxEntryKind},
+    WfCtxEqu Γ →
+      WfM Γ source →
+        WfM Γ target →
+          WfM ({ bound := source, kind := sourceKind } :: Γ) body →
+            WfM ({ bound := target, kind := targetKind } :: Γ) body
+
+/-- Uniform head-kind transport specializes to the source `.sub` to
+stack-introduced `.equ` direction used by `Me-FOp`. -/
+def WfMSubHeadToEquHeadPayload.of_head_kind_transport
+    (hTransport : WfMHeadKindTransportPayload) :
+    WfMSubHeadToEquHeadPayload := by
+  intro Γ bound operand body hΓ hwfBound hwfOperand hwfBody
+  exact hTransport (sourceKind := .sub) (targetKind := .equ)
+    hΓ hwfBound hwfOperand hwfBody
+
+/-- Uniform head-kind transport also specializes to the target `.equ` to
+`.sub` direction used after the `Me-FOp` body has been preserved. -/
+def WfMEquHeadToSubHeadPayload.of_head_kind_transport
+    (hTransport : WfMHeadKindTransportPayload) :
+    WfMEquHeadToSubHeadPayload := by
+  intro Γ operand bound body hΓ hwfOperand hwfBound hwfBody
+  exact hTransport (sourceKind := .equ) (targetKind := .sub)
+    hΓ hwfOperand hwfBound hwfBody
+
 /-- The `Me-FOp` body residual follows from source `.sub`→`.equ` transport,
 contextual preservation under the stack-introduced `.equ` head, and target
 `.equ`→`.sub` transport. -/
@@ -1546,6 +1576,36 @@ noncomputable def
   MEqRedPreservesWfMContextual.of_factored_components_no_beta hSubst hInv
     hLeft (MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf hReplace)
     hSubToEqu hEquToSub
+
+/-- Factored contextual preservation using one uniform head-kind transport
+payload for both `Me-FOp` body transport directions. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_factored_components_no_beta hSubst hInv
+    hLeft hFunBody
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hHeadTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
+
+/-- Factored contextual preservation using sharpened `.sub` head replacement
+for `Me-Fun` and one uniform head-kind transport payload for `Me-FOp`. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_sub_replace_and_head_kind_transport
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hLeft : MEqRedStackPreservesWSubMStarLeft)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hHeadTransport : WfMHeadKindTransportPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_sub_replace
+    hSubst hInv hLeft hReplace
+    (WfMSubHeadToEquHeadPayload.of_head_kind_transport hHeadTransport)
+    (WfMEquHeadToSubHeadPayload.of_head_kind_transport hHeadTransport)
 
 /-- Contextual `MEqRed` well-formedness preservation assembled without a
 separate β residual, using the existing sharpened `.sub` head replacement

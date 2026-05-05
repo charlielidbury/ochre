@@ -1428,6 +1428,16 @@ closures, 2 inactive outstanding).
   added `MEqRedPreservesWfMContextual.of_factored_components_no_beta` and
   `.of_factored_components_no_beta_and_sub_replace`, assembling contextual
   preservation from these narrower reusable premises. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the uniform
+  `WfMHeadKindTransportPayload`, adapters
+  `WfMSubHeadToEquHeadPayload.of_head_kind_transport` and
+  `WfMEquHeadToSubHeadPayload.of_head_kind_transport`, plus contextual
+  preservation wrappers
+  `MEqRedPreservesWfMContextual.of_factored_components_no_beta_and_head_kind_transport`
+  and
+  `.of_factored_components_no_beta_and_sub_replace_and_head_kind_transport`.
+  This reduces the two directional `Me-FOp` body transports to one head-kind
+  switching payload. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
