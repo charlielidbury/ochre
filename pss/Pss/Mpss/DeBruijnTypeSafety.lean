@@ -1885,6 +1885,41 @@ noncomputable def
     hOpFun hReplace hFOpBody
 
 /-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
+payload, and the two directional `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports
+    hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    hOpFun hFunBody hSubToEqu hEquToSub
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
+joined-bound well-formedness under `WfCtxEqu`, the native `Me-App` operator
+payload, the sharpened `.sub` head replacement payload, and the two
+directional `Me-FOp` head/body transports. -/
+noncomputable def
+    MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hReplace : WfMSubHeadReplaceOfNewWf)
+    (hSubToEqu : WfMSubHeadToEquHeadPayload)
+    (hEquToSub : WfMEquHeadToSubHeadPayload) :
+    MEqRedPreservesWfMContextual :=
+  MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_sub_replace_and_head_transports
+    hSubst (AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf)
+    hOpFun hReplace hSubToEqu hEquToSub
+
+/-- Contextual preservation from a shape-only function-bound chain payload,
 joined-bound well-formedness under `WfCtxEqu`, and stacked left-endpoint
 transport, leaving the `Me-Fun` and `Me-FOp` body residuals in their native
 forms. -/

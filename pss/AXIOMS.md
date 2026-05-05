@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — lifted the split `Me-App`/`Me-FOp`
+  preservation assembly to the shape/WfCtx layer with
+  `MEqRedPreservesWfMContextual.of_chain_shape_wfctx_no_beta_and_head_transports`
+  and
+  `.of_chain_shape_wfctx_no_beta_and_sub_replace_and_head_transports`.
+  These compose shape-only function-bound extraction and joined-bound
+  well-formedness under `WfCtxEqu` with the native application-operator
+  payload and directional `Me-FOp` transports. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedPreservesWfMContextual.of_components_no_beta_under_wfctx_inv_and_head_transports`,
   plus the sharpened `.sub` replacement variant
