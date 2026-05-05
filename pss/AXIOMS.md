@@ -145,6 +145,11 @@ closures, 2 inactive outstanding).
   transport needed before the six-head constructor leaves can be mirrored from
   the five-head frontier. Added an endpoint to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added six-head constructor leaves
+  `BetaInstantiationPreservesMEqRedUnderSixHeadsStack.top` and
+  `BetaInstantiationPreservesMEqRedUnderSixHeadsStack.app`, starting the
+  checked six-head payload frontier. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
