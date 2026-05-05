@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `commute_abs_fun_fun_body_from_handlers_of`, a body-constructor dispatcher
+  for the `Ms-Fun × Me-Fun` commutation cell. It closes the `Ms-Top` and
+  `Ms-Equ` body branches via the existing helpers and exposes the remaining
+  `Ms-Pro`, `Ms-App`, and nested `Ms-Fun` body branches as explicit handlers.
+  Added the endpoint to the de Bruijn audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `commute_abs_fun_bound_body_top_star`, the star-level changing-bound `Fun`
   commutation assembly for branches whose subtype-side body target is `Top`.
   It moves both bounds to a shared bound and closes the right body by
