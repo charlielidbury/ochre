@@ -201,6 +201,12 @@ closures, 2 inactive outstanding).
   `Me-Fun`, `Me-Bet`, and `Me-FOp` adapters generated from the seven-head
   payload. Added an endpoint to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesPrevalidExtUnderSevenHeads` and
+  `BetaInstantiationPreservesMEqRedUnderSevenHeadsStack.top`, opening the
+  seven-head structural frontier with the prevalidity transport and `Me-Top`
+  leaf. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
