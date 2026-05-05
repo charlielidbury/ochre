@@ -1367,6 +1367,13 @@ closures, 2 inactive outstanding).
   `MEqRedFunBodyReplacePayload.of_sub_head_replace_new_wf`, and added
   `MEqRed.fun_preservesWfM_of_sub_head_replace`. This removes the
   separate `Me-Fun` body replacement obligation. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the contextual β payload
+  `MEqRedBetaPreservesWfMContextual` and assembled
+  `MEqRedPreservesWfMContextual.of_components`, proving contextual
+  `MEqRed` well-formedness preservation from the four remaining
+  constructor payloads: β target preservation, `Me-App` operator
+  function-supertype transport, `Me-Fun` body replacement, and `Me-FOp`
+  body bridging. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

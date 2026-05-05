@@ -346,6 +346,20 @@ def MEqRedFOpBodyPayload : Type :=
                     (Stack.shift 0 s) body body' →
                     WfM ({ bound := bound', kind := .sub } :: Γ) body'
 
+/-- Remaining β payload for contextual `MEqRed` well-formedness
+preservation. This is the constructor-level analogue of the operational β
+payload, but for reduction targets produced by `Me-Bet`. -/
+def MEqRedBetaPreservesWfMContextual : Type :=
+  ∀ {Γ : Ctx} {s : Stack} {bound arg arg' body body' : Term},
+    WfCtxEqu Γ →
+      WfStack Γ s →
+        Term.Scoped Γ.depth bound →
+          MEqRed ({ bound := bound, kind := .sub } :: Γ)
+            (Stack.shift 0 s) body body' →
+            MEqRed Γ [] arg arg' →
+              WfM Γ (.app (.abs bound body) arg) →
+                WfM Γ (Term.instantiate 0 arg' body')
+
 /-- Empty-stack preservation under a well-formed-equivalence context. -/
 def MEqRedPreservesWfMUnderWfCtx : Type :=
   ∀ {Γ : Ctx} {x y : Term}, WfCtxEqu Γ → MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
@@ -457,6 +471,69 @@ noncomputable def MEqRed.fOp_preservesWfM_of_contextual
     hpres hΓ WfStack.nil hredBound hwfBound
   exact WfM.fun_ hwfBound'
     (hBody hΓ hStack hwfBound hwfBound' hwfOperand hwfBody hredBound hredBody)
+
+/-- Contextual `MEqRed` well-formedness preservation assembled from the
+remaining constructor payloads. The direct cases are proved here; the β,
+application-operator, function-body replacement, and `fOp` body bridges stay
+explicit. -/
+noncomputable def MEqRedPreservesWfMContextual.of_components
+    (hBeta : MEqRedBetaPreservesWfMContextual)
+    (hOpFun : MEqRedAppFunctionSupertypePayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hFOpBody : MEqRedFOpBodyPayload) :
+    MEqRedPreservesWfMContextual := by
+  intro Γ s x y hΓ hStack hred hwf
+  revert hΓ hStack hwf
+  induction hred with
+  | pro hpv hb hred ih =>
+      intro hΓ hStack hwf
+      have hwfα := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
+      exact ih hΓ hStack hwfα
+  | bet ht hBody hArg _ihBody _ihArg =>
+      intro hΓ hStack hwf
+      exact hBeta hΓ hStack ht hBody hArg hwf
+  | top hpv =>
+      intro hΓ hStack hwf
+      exact MEqRed.top_preservesWfM hpv hwf
+  | app hOp hArg _ihOp ihArg =>
+      intro hΓ hStack hwf
+      obtain ⟨bound, hFun, hArgTyping⟩ := hwf.app_inv
+      have hwfV := hArgTyping.wf_left
+      have hwfV' := ihArg hΓ WfStack.nil hwfV
+      have hFun' :=
+        hOpFun hΓ hStack hwfV hFun hOp
+      have hArgBack :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArgTyping' :=
+        WSubMStar.trans hwfV hArgBack hArgTyping
+      exact WfM.app hFun' hArgTyping'
+  | var hpv hi =>
+      intro hΓ hStack hwf
+      exact MEqRed.var_preservesWfM hpv hi hwf
+  | fun_ hBound hBody ihBound ihBody =>
+      intro hΓ hStack hwf
+      have hwfBound := hwf.fun_inv.1
+      have hwfBody :=
+        hwf.fun_inv.2
+      have hwfBound' := ihBound hΓ WfStack.nil hwfBound
+      have hwfBodyOld :=
+        ihBody (WfCtxEqu.sub hΓ) WfStack.nil hwfBody
+      exact WfM.fun_ hwfBound'
+        (hFunBody hΓ hwfBound hwfBound' hBound hwfBodyOld)
+  | tAp hpv hu =>
+      intro hΓ hStack hwf
+      exact MEqRed.tAp_preservesWfM hpv hu hwf
+  | fOp hBound hOperand hBody ihBound _ihBody =>
+      intro hΓ hStack hwf
+      have hwfOperand := WfStack.head hStack
+      have hStackTail := WfStack.tail hStack
+      have hwfBound := hwf.fun_inv.1
+      have hwfBody :=
+        hwf.fun_inv.2
+      have hwfBound' := ihBound hΓ WfStack.nil hwfBound
+      exact WfM.fun_ hwfBound'
+        (hFOpBody hΓ hStackTail hwfBound hwfBound' hwfOperand
+          hwfBody hBound hBody)
 
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
