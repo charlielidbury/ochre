@@ -615,6 +615,15 @@ noncomputable def AbsFunctionBoundInversion_of_chain_diagram
       hwfResult d.wfJoinBound
   exact WEquMStar.trans d.wfJoinBound hLeft hRight
 
+/-- The older Prop-closure diagram payload can also feed function-bound
+inversion through the Type-valued chain endpoint by choosing chain witnesses
+for both closures. -/
+noncomputable def AbsFunctionBoundInversion_of_diagram_via_chain
+    (hDiagram : AbsFunctionBoundDiagramPayload) :
+    AbsFunctionBoundInversion :=
+  AbsFunctionBoundInversion_of_chain_diagram
+    (AbsFunctionBoundChainDiagramPayload.of_diagram hDiagram)
+
 /-- One-step abstraction-function subtype inversion: any direct empty-stack
 subtype reduction from one abstraction to another can only change the bound by
 an equivalence reduction. -/

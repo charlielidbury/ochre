@@ -1267,6 +1267,10 @@ closures, 2 inactive outstanding).
   Prop-closure function-bound diagrams to Type-valued chain diagrams via
   the new closure-to-chain witnesses. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `AbsFunctionBoundInversion_of_diagram_via_chain`, routing older
+  Prop-closure function-bound diagram payloads through the Type-valued
+  chain inversion endpoint. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain
   diagrams to be consumed by existing Prop-closure diagram endpoints. No
