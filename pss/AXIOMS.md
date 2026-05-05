@@ -9,6 +9,9 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn stack-lift audit to
+  include the append specializations and empty-stack function append
+  residual adapters for `MEqRed` and `MSubRed`. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn machine-preservation
   audit to include the stack-lift, diagrammatic re-embedding,
   app-operator, and control-left adapters that feed the generic

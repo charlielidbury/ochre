@@ -49,6 +49,12 @@ namespace DeBruijn
 #print axioms AbsFunctionBoundChainShapeWfClosedPayload_of_machine_state
 #print axioms MSubStarToWSubMStarPayload.of_steps
 #print axioms MSubStackLiftPayload.of_reduction_lifts
+#print axioms MSubRedStackLiftPayload.of_append
+#print axioms MEqRedStackLiftPayload.of_append
+#print axioms MEqRedFunStackAppendPayload.of_body_transport
+#print axioms MSubRedFunStackAppendPayload.of_body_equ_transport
+#print axioms MEqRedStackAppendPayload.of_fun
+#print axioms MSubRedStackAppendPayload.of_fun
 #print axioms MSubRedStarStackLiftPayload.of_step
 #print axioms MEqRedStarStackLiftPayload.of_step
 #print axioms MSubStarStackLiftPayload.of_step
