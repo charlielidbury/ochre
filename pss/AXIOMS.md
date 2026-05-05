@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WSubMStarAppOperatorPayload.of_body_transports_and_steps` and
+  `WfMachineStateControlLeftPayload.of_body_transports_and_steps`, lifting
+  the reduced stack-lift body-transport package through application-operator
+  congruence and control-left machine-state transport. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MSubStackLiftPayload.of_body_transports` and
   `WSubMStarToStackedMSubStarPayload.of_body_transports`, wiring the
   complete stack-lift decomposition into the two body-transport residuals

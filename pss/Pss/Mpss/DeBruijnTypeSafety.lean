@@ -1052,6 +1052,31 @@ noncomputable def WSubMStarToStackedMSubStarPayload.of_body_transports
     (MSubStarStackLiftPayload.of_step
       (MSubStackLiftPayload.of_body_transports hEqBody hSubBody))
 
+/-- Application-operator congruence assembled from the reduced stack-lift
+body transports and one-step diagrammatic re-embedding components. -/
+noncomputable def WSubMStarAppOperatorPayload.of_body_transports_and_steps
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload) :
+    WSubMStarAppOperatorPayload :=
+  WSubMStarAppOperatorPayload.of_stacked_msubstar_bridge
+    (WSubMStarToStackedMSubStarPayload.of_body_transports hEqBody hSubBody)
+    (MSubStarToWSubMStarPayload.of_steps hPres hStep)
+
+/-- Control-left machine-state transport assembled from the same reduced
+stack-lift body transports plus one-step diagrammatic re-embedding
+components. -/
+noncomputable def WfMachineStateControlLeftPayload.of_body_transports_and_steps
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload) :
+    WfMachineStateControlLeftPayload :=
+  WfMachineStateControlLeftPayload.of_app_operator
+    (WSubMStarAppOperatorPayload.of_body_transports_and_steps
+      hEqBody hSubBody hPres hStep)
+
 /-- Remaining operator-side payload for the contextual `Me-App`
 well-formedness case. The operator reduction happens under stack `v :: s`,
 so it is not directly covered by the empty-stack `WSubMStar` endpoint
