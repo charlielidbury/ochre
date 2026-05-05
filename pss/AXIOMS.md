@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — moved the innermost
+  diagrammatic `.equ`-head splitters
+  `msubRed_equ_head_replace_from_handlers` and
+  `meqRed_equ_head_replace_from_handlers` before
+  `commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of`.
+  This keeps the existing raw-chain boundary intact while making the
+  chain-valued handler API available at the remaining nested residual site.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — moved
   `msubStar_abs_fun_equ_bound_body` before the residual body theorem and
   added the dual lift `msubStar_abs_fun_body_equ_bound`, which first lifts a

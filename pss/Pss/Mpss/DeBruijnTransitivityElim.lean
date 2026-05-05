@@ -5330,6 +5330,129 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_bet_body_stack_han
 body-premise transports through the raw `.equ`-head replacement splitters.
 Since both premises are at empty stack, the nested `FOp` constructor cases are
 impossible; the remaining recursive body cases stay as explicit handlers. -/
+theorem msubRed_equ_head_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {old new u v : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hEq :
+      ∀ {u v : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) s u v →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s u v)
+    (hApp :
+      ∀ {op op' arg : Term},
+        MSubRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s
+          (.app op arg) (.app op' arg))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MSubRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hFOp :
+      ∀ {bound arg body body' : Term} {rest : Stack},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MSubRed ({ bound := arg, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s
+          (.abs bound body) (.abs bound body'))
+    (h : MSubRed ({ bound := old, kind := .equ } :: Γ) s u v) :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s u v := by
+  cases h with
+  | pro _ hb =>
+    exact MSubStar.of_MSubRed (MSubRed.pro_equ_head_replace hpv hnew hb)
+  | top _ hu =>
+    exact MSubStar.of_MSubRed (MSubRed.top_equ_head_replace hpv hnew hu)
+  | equ _ heq =>
+    exact hEq heq
+  | app hOp hArg =>
+    exact hApp hOp hArg
+  | fun_ ht hBound hBody =>
+    exact hFun ht hBound hBody
+  | fOp ht hArg hBody =>
+    exact hFOp ht hArg rfl hBody
+
+/-- One-step equivalence replacement splitter for an innermost changed `.equ`
+head. Stable leaves are discharged immediately; the head `Me-Pro` case is
+exposed as its precise residual, and recursive constructor cases are exposed
+as explicit handlers. -/
+theorem meqRed_equ_head_replace_from_handlers {Γ : Ctx} {s : Stack}
+    {old new u v : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hProHead :
+      ∀ {target : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) s
+          (Term.shift 0 old) target →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s (.bvar 0) target)
+    (hProTail :
+      ∀ {i : Nat} {α α' : Term},
+        Ctx.equBinds ({ bound := old, kind := .equ } :: Γ) (i + 1) α →
+        MEqRed ({ bound := old, kind := .equ } :: Γ) s α α' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s (.bvar (i + 1)) α')
+    (hApp :
+      ∀ {op op' arg arg' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s
+          (.app op arg) (.app op' arg'))
+    (hFun :
+      ∀ {bound bound' body body' : Term},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) [] body body' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) []
+          (.abs bound body) (.abs bound' body'))
+    (hBet :
+      ∀ {bound arg arg' body body' : Term},
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
+        MEqRed ({ bound := bound, kind := .sub } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s
+          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
+    (hFOp :
+      ∀ {bound bound' arg body body' : Term} {rest : Stack},
+        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
+        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
+        s = arg :: rest →
+        MEqRed ({ bound := arg, kind := .equ } ::
+          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
+        MSubStar ({ bound := new, kind := .equ } :: Γ) s
+          (.abs bound body) (.abs bound' body'))
+    (h : MEqRed ({ bound := old, kind := .equ } :: Γ) s u v) :
+    MSubStar ({ bound := new, kind := .equ } :: Γ) s u v := by
+  have hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ) s :=
+    PrevalidExt.equ_head_replace hpv hnew
+  cases h with
+  | @pro Γp sp i α α' _ hb hα =>
+    cases i with
+    | zero =>
+      obtain ⟨hαEq, hResidual⟩ := MEqRed.pro_equ_head_zero_residual hb hα
+      subst hαEq
+      exact hProHead hResidual.some
+    | succ i =>
+      exact hProTail hb hα
+  | top _ =>
+    exact MSubStar.of_MEqRed hpvNew (MEqRed.top_equ_head_replace hpv hnew)
+  | app hOp hArg =>
+    exact hApp hOp hArg
+  | var _ hi =>
+    exact MSubStar.of_MEqRed hpvNew (MEqRed.var_equ_head_replace hpv hnew hi)
+  | fun_ hBound hBody =>
+    exact hFun hBound hBody
+  | tAp _ hu =>
+    exact MSubStar.of_MEqRed hpvNew (MEqRed.tAp_equ_head_replace hpv hnew hu)
+  | fOp hBound hArg hBody =>
+    exact hFOp hBound hArg rfl hBody
+  | bet ht hBody hArg =>
+    exact hBet ht hBody hArg
+
 theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of
     {Γ : Ctx} {bound body bound₁ body₁ bound₂ body₂ : Term}
     (hpvNil : PrevalidExt Γ [])
@@ -5992,57 +6115,6 @@ theorem commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handl
           cases hStack)
         hBody
 
-/-- One-step subtype replacement splitter for an innermost changed `.equ`
-head. Stable leaves are discharged immediately; constructor cases whose
-subderivations must be recursively replaced are exposed as explicit handlers.
--/
-theorem msubRed_equ_head_replace_from_handlers {Γ : Ctx} {s : Stack}
-    {old new u v : Term}
-    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
-    (hnew : Term.Scoped Γ.depth new)
-    (hEq :
-      ∀ {u v : Term},
-        MEqRed ({ bound := old, kind := .equ } :: Γ) s u v →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s u v)
-    (hApp :
-      ∀ {op op' arg : Term},
-        MSubRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
-        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s
-          (.app op arg) (.app op' arg))
-    (hFun :
-      ∀ {bound bound' body body' : Term},
-        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
-        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
-        MSubRed ({ bound := bound, kind := .sub } ::
-          { bound := old, kind := .equ } :: Γ) [] body body' →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) []
-          (.abs bound body) (.abs bound' body'))
-    (hFOp :
-      ∀ {bound arg body body' : Term} {rest : Stack},
-        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
-        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
-        s = arg :: rest →
-        MSubRed ({ bound := arg, kind := .equ } ::
-          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s
-          (.abs bound body) (.abs bound body'))
-    (h : MSubRed ({ bound := old, kind := .equ } :: Γ) s u v) :
-    MSubStar ({ bound := new, kind := .equ } :: Γ) s u v := by
-  cases h with
-  | pro _ hb =>
-    exact MSubStar.of_MSubRed (MSubRed.pro_equ_head_replace hpv hnew hb)
-  | top _ hu =>
-    exact MSubStar.of_MSubRed (MSubRed.top_equ_head_replace hpv hnew hu)
-  | equ _ heq =>
-    exact hEq heq
-  | app hOp hArg =>
-    exact hApp hOp hArg
-  | fun_ ht hBound hBody =>
-    exact hFun ht hBound hBody
-  | fOp ht hArg hBody =>
-    exact hFOp ht hArg rfl hBody
-
 /-- One-step subtype replacement splitter when the changed `.equ` entry sits
 immediately under a preserved head. This is the shape reached by recursive
 replacement inside binder bodies. -/
@@ -6541,82 +6613,6 @@ theorem msubRed_equ_under_head_replace_from_replacements {Γ : Ctx} {s : Stack}
       hFunBoundReplace hFunBodyReplace)
     (msub_equ_under_head_fop_handler_of_body_replacement hpv hnew hFOpBodyReplace)
     h
-
-/-- One-step equivalence replacement splitter for an innermost changed `.equ`
-head. Stable leaves are discharged immediately; the head `Me-Pro` case is
-exposed as its precise residual, and recursive constructor cases are exposed
-as explicit handlers. -/
-theorem meqRed_equ_head_replace_from_handlers {Γ : Ctx} {s : Stack}
-    {old new u v : Term}
-    (hpv : PrevalidExt ({ bound := old, kind := .equ } :: Γ) s)
-    (hnew : Term.Scoped Γ.depth new)
-    (hProHead :
-      ∀ {target : Term},
-        MEqRed ({ bound := old, kind := .equ } :: Γ) s
-          (Term.shift 0 old) target →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s (.bvar 0) target)
-    (hProTail :
-      ∀ {i : Nat} {α α' : Term},
-        Ctx.equBinds ({ bound := old, kind := .equ } :: Γ) (i + 1) α →
-        MEqRed ({ bound := old, kind := .equ } :: Γ) s α α' →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s (.bvar (i + 1)) α')
-    (hApp :
-      ∀ {op op' arg arg' : Term},
-        MEqRed ({ bound := old, kind := .equ } :: Γ) (arg :: s) op op' →
-        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s
-          (.app op arg) (.app op' arg'))
-    (hFun :
-      ∀ {bound bound' body body' : Term},
-        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
-        MEqRed ({ bound := bound, kind := .sub } ::
-          { bound := old, kind := .equ } :: Γ) [] body body' →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) []
-          (.abs bound body) (.abs bound' body'))
-    (hBet :
-      ∀ {bound arg arg' body body' : Term},
-        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) bound →
-        MEqRed ({ bound := bound, kind := .sub } ::
-          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 s) body body' →
-        MEqRed ({ bound := old, kind := .equ } :: Γ) [] arg arg' →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s
-          (.app (.abs bound body) arg) (Term.instantiate 0 arg' body'))
-    (hFOp :
-      ∀ {bound bound' arg body body' : Term} {rest : Stack},
-        MEqRed ({ bound := old, kind := .equ } :: Γ) [] bound bound' →
-        Term.Scoped (Ctx.depth ({ bound := old, kind := .equ } :: Γ)) arg →
-        s = arg :: rest →
-        MEqRed ({ bound := arg, kind := .equ } ::
-          { bound := old, kind := .equ } :: Γ) (Stack.shift 0 rest) body body' →
-        MSubStar ({ bound := new, kind := .equ } :: Γ) s
-          (.abs bound body) (.abs bound' body'))
-    (h : MEqRed ({ bound := old, kind := .equ } :: Γ) s u v) :
-    MSubStar ({ bound := new, kind := .equ } :: Γ) s u v := by
-  have hpvNew : PrevalidExt ({ bound := new, kind := .equ } :: Γ) s :=
-    PrevalidExt.equ_head_replace hpv hnew
-  cases h with
-  | @pro Γp sp i α α' _ hb hα =>
-    cases i with
-    | zero =>
-      obtain ⟨hαEq, hResidual⟩ := MEqRed.pro_equ_head_zero_residual hb hα
-      subst hαEq
-      exact hProHead hResidual.some
-    | succ i =>
-      exact hProTail hb hα
-  | top _ =>
-    exact MSubStar.of_MEqRed hpvNew (MEqRed.top_equ_head_replace hpv hnew)
-  | app hOp hArg =>
-    exact hApp hOp hArg
-  | var _ hi =>
-    exact MSubStar.of_MEqRed hpvNew (MEqRed.var_equ_head_replace hpv hnew hi)
-  | fun_ hBound hBody =>
-    exact hFun hBound hBody
-  | tAp _ hu =>
-    exact MSubStar.of_MEqRed hpvNew (MEqRed.tAp_equ_head_replace hpv hnew hu)
-  | fOp hBound hArg hBody =>
-    exact hFOp hBound hArg rfl hBody
-  | bet ht hBody hArg =>
-    exact hBet ht hBody hArg
 
 /-- One-step equivalence replacement splitter when the changed `.equ` entry
 sits immediately under a preserved head. The residual `Me-Pro` case is the
