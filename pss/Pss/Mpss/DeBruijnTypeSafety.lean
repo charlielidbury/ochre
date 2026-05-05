@@ -316,6 +316,21 @@ def BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload : Prop :=
           (Term.instantiate 1 (Term.shift 0 arg) body)
           (Term.instantiate 1 (Term.shift 0 arg) body')
 
+/-- Changed-bound transport needed after applying generic under-head
+β-instantiation to the `MSubRed.fun_` body premise. This is not a general
+`.sub` head replacement theorem: arbitrary subtype chains can use `Ms-Pro` at
+the changed head. -/
+def BetaInstantiationPreservesMSubRedFunBodyHeadChangeMSubStarPayload : Prop :=
+  ∀ {Γ : Ctx} {bound arg t t' body body' : Term},
+    WSubMStar Γ arg bound →
+      MEqRed Γ [] (Term.instantiate 0 arg t) (Term.instantiate 0 arg t') →
+        MSubStar ({ bound := Term.instantiate 0 arg t, kind := .sub } :: Γ)
+          [] (Term.instantiate 1 (Term.shift 0 arg) body)
+          (Term.instantiate 1 (Term.shift 0 arg) body') →
+          MSubStar ({ bound := Term.instantiate 0 arg t', kind := .sub } :: Γ)
+            [] (Term.instantiate 1 (Term.shift 0 arg) body)
+            (Term.instantiate 1 (Term.shift 0 arg) body')
+
 /-- The de Bruijn β-instantiation preservation frontier is not blocked on
 scoping: substituting an argument for the innermost body variable preserves
 the ambient context depth. The remaining payload is the MPSS well-formedness
@@ -1166,6 +1181,17 @@ noncomputable def BetaInstantiationPreservesMSubRedFOpBodyMSubStarPayload.of_und
     (head := α) (kind := CtxEntryKind.equ) (s := Stack.shift 0 s)
     hArgBound hBody
   simpa [Stack.instantiate_one_shift_zero] using h
+
+/-- The generic under-head body substitution payload plus the changed-bound
+transport payload specializes to the `MSubRed.fun_` body frontier. -/
+noncomputable def BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload.of_under_head
+    (hUnder : BetaInstantiationPreservesMSubRedUnderHeadMSubStarPayload)
+    (hChange : BetaInstantiationPreservesMSubRedFunBodyHeadChangeMSubStarPayload) :
+    BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload := by
+  intro Γ bound arg t t' body body' hArgBound hBound hBody
+  have hBodyUnder := hUnder (Γ := Γ) (bound := bound) (arg := arg)
+    (head := t) (kind := CtxEntryKind.sub) (s := []) hArgBound hBody
+  exact hChange hArgBound hBound hBodyUnder
 
 /-- Function-bound inversion payload needed by the β case: if an abstraction
 has a function supertype, their bounds are transitively well-equivalent. -/

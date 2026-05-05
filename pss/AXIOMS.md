@@ -281,6 +281,15 @@ closures, 2 inactive outstanding).
   This reduces the `Ms-FOp` body frontier to the generic preserved-head
   substitution shape. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the changed-bound frontier
+  `BetaInstantiationPreservesMSubRedFunBodyHeadChangeMSubStarPayload` and
+  adapter `BetaInstantiationPreservesMSubRedFunBodyMSubStarPayload.of_under_head`.
+  This isolates the remaining `Ms-Fun` body obligation after generic
+  under-head substitution: transporting the instantiated body chain from the
+  instantiated source `.sub` head to the instantiated target `.sub` head. A
+  general `.sub` head replacement theorem would be false because `Ms-Pro` can
+  target the changed head. Added the endpoints to `Pss/DeBruijnSanity.lean`;
+  no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters
