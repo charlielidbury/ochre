@@ -9,6 +9,15 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/DeBruijnSanity.lean` — expanded the de Bruijn function-bound audit
+  to include the shape-only joined-bound well-formedness adapters:
+  `AbsFunctionBoundChainShapeWfPayload_of_meq`,
+  `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq`,
+  `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_contextual`,
+  `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_machine_state`,
+  `AbsFunctionBoundChainShapeWfClosedPayload_of_contextual`, and
+  `AbsFunctionBoundChainShapeWfClosedPayload_of_machine_state`. No
+  axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn β-preservation audit
   to include the function-bound inversion adapters that feed it:
   `AbsFunctionBoundInversion_of_diagram`,
