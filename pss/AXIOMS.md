@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MSubRed.pro_equ_under_three_heads_replace`, the three-preserved-head
+  stable `Ms-Pro` replacement primitive. This matches the existing two-head
+  helper and lets future three-head `.equ` replacement splitters discharge
+  subtype lookup leaves directly from `Ctx.subBinds_equ_under_three_heads_replace`.
+  Added the endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added two-preserved-head
   `Me-Pro`-wired chain/function wrappers:
   `meqRedStar_equ_under_two_heads_replace_with_pro_from_replacements`,

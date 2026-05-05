@@ -3962,6 +3962,21 @@ noncomputable def MSubRed.pro_equ_under_two_heads_replace {Γ : Ctx} {s : Stack}
   MSubRed.pro (PrevalidExt.equ_under_two_heads_replace hpv hnew)
     (Ctx.subBinds_equ_under_two_heads_replace hb)
 
+/-- `Ms-Pro` is stable when replacing an `.equ` entry under three preserved
+heads, because subtype lookup ignores `.equ` entries. -/
+noncomputable def MSubRed.pro_equ_under_three_heads_replace {Γ : Ctx} {s : Stack}
+    {head₁ head₂ head₃ : CtxEntry} {old new : Term} {i : Nat} {t : Term}
+    (hpv :
+      PrevalidExt (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new)
+    (hb :
+      Ctx.subBinds (head₁ :: head₂ :: head₃ :: { bound := old, kind := .equ } :: Γ)
+        i t) :
+    MSubRed (head₁ :: head₂ :: head₃ :: { bound := new, kind := .equ } :: Γ) s
+      (.bvar i) t :=
+  MSubRed.pro (PrevalidExt.equ_under_three_heads_replace hpv hnew)
+    (Ctx.subBinds_equ_under_three_heads_replace hb)
+
 /-- Empty-stack specialization of raw subtype replacement across a changed
 `.equ` entry under two preserved `.sub` heads. The nested raw `Ms-FOp` case is
 impossible at empty stack. -/
