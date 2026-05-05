@@ -1041,6 +1041,15 @@ theorem commute_appTop_subStar_eqStep_from_right {Γ : Ctx} {s : Stack}
   | tAp hpv hu =>
     exact commute_appTop_subStar_eqStar hpv hu hSub (MEqRedStar.single (MEqRed.tAp hpv hu))
 
+/-- Direct one-step `Top`-headed application commutation with prevalidity
+and argument scoping recovered from the subtype step. -/
+theorem commute_appTop_subStep_eqStep_from_left {Γ : Ctx} {s : Stack}
+    {u t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app .top u) t₁)
+    (hEq : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  commute_appTop_subStep_eqStar_from_left hSub (MEqRedStar.single hEq)
+
 /-- If the subtype side has already reached `Top`, any equivalence-chain
 target from the same scoped source joins it at `Top`. -/
 theorem commute_subStar_to_top_eqStar {Γ : Ctx} {s : Stack} {t₀ t₂ : Term}
