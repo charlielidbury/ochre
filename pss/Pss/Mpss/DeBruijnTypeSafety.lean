@@ -3921,6 +3921,28 @@ noncomputable def Theorem_3_DeBruijn_WSubMStar_toChainDiagram_of
     WSubMChainDiagram Γ source target :=
   hSub.to_chain_diagram_of hcomm
 
+namespace WEquMStar
+
+/-- Extract a Type-valued diagrammatic common reduct from transitive
+well-equivalence, via the well-subtyping embedding and the chain-diagram
+Theorem 3 use-site. -/
+noncomputable def to_chain_diagram_of {Γ : Ctx}
+    (hcomm : StrongCommutes Γ []) {source target : Term}
+    (hEqu : WEquMStar Γ source target) :
+    WSubMChainDiagram Γ source target :=
+  hEqu.toWSubMStar.to_chain_diagram_of hcomm
+
+end WEquMStar
+
+/-- Named de Bruijn Theorem 3 well-equivalence use-site in Type-valued
+chain-diagram form. -/
+noncomputable def Theorem_3_DeBruijn_WEquMStar_toChainDiagram_of
+    {Γ : Ctx} {source target : Term}
+    (hcomm : StrongCommutes Γ [])
+    (hEqu : WEquMStar Γ source target) :
+    WSubMChainDiagram Γ source target :=
+  hEqu.to_chain_diagram_of hcomm
+
 /-- Extract the abstraction-shaped function-bound common reduct from a
 transitive function-supertype derivation. This is the star-level diagram
 shape needed before proving the joined bound is well-formed. -/

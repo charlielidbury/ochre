@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `WEquMStar.to_chain_diagram_of` and
+  `Theorem_3_DeBruijn_WEquMStar_toChainDiagram_of`, exposing the
+  well-equivalence Theorem 3 use-site in Type-valued chain-diagram form via
+  the well-subtyping embedding. Added the named endpoint to
+  `Pss/DeBruijnSanity.lean`'s axiom audit. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `Theorem_3_DeBruijn_WSubMStar_toChainDiagram_of` and
   `Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of`, exposing
   Type-valued chain-diagram Theorem 3 use-sites for the function-bound
