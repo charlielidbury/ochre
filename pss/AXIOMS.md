@@ -262,9 +262,10 @@ closures, 2 inactive outstanding).
   β-target substitution-composition law through any `n + 1` preserved slots.
   This subsumes the hand-unrolled numbered `instantiate_after_*` arithmetic
   used by binder adapters and is the first step away from the finite
-  preserved-head ladder. `Term.instantiate_after_two` through
-  `Term.instantiate_after_seven` now delegate to this generic proof. Added an
-  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  preserved-head ladder. `Term.instantiate_succ_after` and
+  `Term.instantiate_after_two` through `Term.instantiate_after_seven` now
+  delegate to this generic proof. Added an endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the
