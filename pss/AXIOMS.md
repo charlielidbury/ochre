@@ -356,21 +356,22 @@ closures, 2 inactive outstanding).
   under-head `MEqRed` binder frontiers instead of an opaque
   `BetaInstantiationPreservesMEqRedUnderHeadStack` premise. Added the
   endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
-* `Pss/Context/DeBruijn.lean` and `Pss/Mpss/DeBruijnTypeSafety.lean` —
-  added the two-preserved-head stack rewrite
-  `Stack.instantiate_two_shift_zero`, the generic
+* `Pss/Syntax/DeBruijn.lean`, `Pss/Context/DeBruijn.lean`, and
+  `Pss/Mpss/DeBruijnTypeSafety.lean` — added the β-target
+  substitution-composition rewrite `Term.instantiate_succ_after`, the
+  two-preserved-head stack rewrite `Stack.instantiate_two_shift_zero`, the generic
   `BetaInstantiationPreservesMEqRedUnderTwoHeadsStack` payload, and adapters
-  `BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads`
+  `BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads`,
+  `BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload.of_two_heads`,
   and
   `BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads`,
   plus the composed
   `BetaInstantiationPreservesMEqRedUnderHeadStack.of_two_head_adapters`
   assembler.
-  These reduce the under-head `Me-Fun` and `Me-FOp` binder frontiers to the
-  one-head equivalence payload plus the new two-head body substitution
-  payload. The `Me-Bet` frontier remains separate because its β target needs
-  an additional substitution-composition rewrite. Added the endpoints to
-  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+  These reduce the under-head `Me-Fun`, `Me-Bet`, and `Me-FOp` binder
+  frontiers to the one-head equivalence payload plus the new two-head body
+  substitution payload. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

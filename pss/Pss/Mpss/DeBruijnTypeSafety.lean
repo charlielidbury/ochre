@@ -956,6 +956,51 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_tw
     (head₂ := head) (kind₂ := kind) (s := []) hArgBound hBody
   simpa [Term.instantiate] using MEqRed.fun_ hBound' hBody'
 
+/-- The under-head `Me-Bet` frontier follows from the one-head equivalence
+payload for the argument and the two-preserved-head payload for the body,
+plus the de Bruijn substitution-composition law for the β target. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload.of_two_heads
+    (hEqUnder : BetaInstantiationPreservesMEqRedUnderHeadStack)
+    (hTwo : BetaInstantiationPreservesMEqRedUnderTwoHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload := by
+  intro Γ bound arg head t v v' body body' kind s hArgBound ht hBody hArg
+  have hBodyTwo := hTwo (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head) (kind₂ := kind) (s := Stack.shift 0 s) hArgBound hBody
+  have hBody' :
+      MEqRed
+        ({ bound := Term.instantiate 1 (Term.shift 0 arg) t,
+            kind := CtxEntryKind.sub } ::
+          { bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+        (Stack.shift 0 (Stack.instantiate 1 (Term.shift 0 arg) s))
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) body)
+        (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) body') := by
+    simpa [Stack.instantiate_two_shift_zero] using hBodyTwo
+  have hArg' := hEqUnder (Γ := Γ) (bound := bound) (arg := arg)
+    (head := head) (kind := kind) (s := []) hArgBound hArg
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have ht' :
+      Term.Scoped
+        (Ctx.depth ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ))
+        (Term.instantiate 1 (Term.shift 0 arg) t) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 1)
+          (Term.instantiate 1 (Term.shift 0 arg) t) :=
+      Term.instantiate_scoped 1 (Γ.depth + 1) (Term.shift 0 arg) t
+        (by omega) hArgShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using ht)
+    simpa [Ctx.depth, Nat.succ_eq_add_one] using hInst
+  have hBet := MEqRed.bet ht' hBody' hArg'
+  have hTarget :
+      Term.instantiate 0 (Term.instantiate 1 (Term.shift 0 arg) v')
+          (Term.instantiate 2 (Term.shift 0 (Term.shift 0 arg)) body') =
+        Term.instantiate 1 (Term.shift 0 arg)
+          (Term.instantiate 0 v' body') := by
+    exact (Term.instantiate_succ_after 0 (Term.shift 0 arg) v' body').symm
+  simpa [Term.instantiate, Stack.instantiate, hTarget] using hBet
+
 /-- The under-head `Me-FOp` frontier follows from the one-head equivalence
 payload for the abstraction bound and the two-preserved-head payload for the
 operand body. -/
@@ -997,17 +1042,16 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_tw
 
 /-- Under-head equivalence substitution with the `Me-Fun` and `Me-FOp`
 frontiers generated from a one-head equivalence payload and the generic
-two-preserved-head body payload. This leaves the special `Me-Bet` frontier as
-the only constructor-specific binder input. -/
+two-preserved-head body payload. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderHeadStack.of_two_head_adapters
     (hEqUnder : BetaInstantiationPreservesMEqRedUnderHeadStack)
-    (hBet : BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload)
     (hTwo : BetaInstantiationPreservesMEqRedUnderTwoHeadsStack) :
     BetaInstantiationPreservesMEqRedUnderHeadStack :=
   BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors
     (BetaInstantiationPreservesMEqRedUnderHeadFunStackPayload.of_two_heads
       hEqUnder hTwo)
-    hBet
+    (BetaInstantiationPreservesMEqRedUnderHeadBetStackPayload.of_two_heads
+      hEqUnder hTwo)
     (BetaInstantiationPreservesMEqRedUnderHeadFOpStackPayload.of_two_heads
       hEqUnder hTwo)
 

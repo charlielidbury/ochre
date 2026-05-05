@@ -371,6 +371,78 @@ theorem shift_instantiate_zero (cutoff : Nat) (v t : Term) :
   | succ cutoff =>
     exact shift_instantiate_lt (cutoff + 1) 0 v t (Nat.succ_pos cutoff)
 
+/-- Substituting index `k` and then the next surviving slot is equivalent to
+first substituting the corresponding original slot at `k + 2`, then
+substituting index `k`. -/
+theorem instantiate_succ_after (k : Nat) (a v t : Term) :
+    instantiate (k + 1) a (instantiate k v t) =
+      instantiate k (instantiate (k + 1) a v)
+        (instantiate (k + 2) (shift k a) t) := by
+  induction t generalizing k a v with
+  | bvar i =>
+      by_cases hlt : i < k
+      · have hlt_succ : i < k + 1 := by omega
+        have hlt_two : i < k + 2 := by omega
+        simp [instantiate, hlt, hlt_succ, hlt_two]
+      · by_cases heq : i = k
+        · subst i
+          have hnot_succ : ¬ k < k := by omega
+          have hnot_two : ¬ k < k := by omega
+          have hlt_two : k < k + 2 := by omega
+          simp [instantiate, hnot_succ, hnot_two, hlt_two]
+        · have hgt : k < i := by omega
+          by_cases heq_succ : i = k + 1
+          · subst heq_succ
+            have hnot : ¬ k + 1 < k := by omega
+            have hnot_succ : ¬ k < k := by omega
+            have hlt_two : k + 1 < k + 2 := by omega
+            have hpred : k + 1 - 1 = k := by omega
+            simp [instantiate, hlt, hnot, hnot_succ, hlt_two, hpred]
+          · have hgt_succ : k + 1 < i := by omega
+            by_cases heq_two : i = k + 2
+            · subst heq_two
+              have hnlt_lhs₁ : ¬ k + 2 < k := by omega
+              have hne_lhs₁ : k + 2 ≠ k := by omega
+              have hpred_lhs₁ : k + 2 - 1 = k + 1 := by omega
+              have hnlt_lhs₂ : ¬ k + 1 < k + 1 := by omega
+              have hshift_id :
+                  instantiate k (instantiate (k + 1) a v) (shift k a) = a := by
+                exact instantiate_shift_id k (instantiate (k + 1) a v) a
+              simp [instantiate, hnlt_lhs₁, hne_lhs₁, hpred_lhs₁,
+                hnlt_lhs₂, hshift_id]
+            · have hnlt_lhs₁ : ¬ i < k := by omega
+              have hne_lhs₁ : i ≠ k := by omega
+              have hpred_lhs₁ : k < i - 1 := by omega
+              have hpred_nlt : ¬ i - 1 < k + 1 := by omega
+              have hpred_ne : i - 1 ≠ k + 1 := by omega
+              have hpred_pred : i - 1 - 1 = i - 2 := by omega
+              have hnlt_rhs₁ : ¬ i < k + 2 := by omega
+              have hne_rhs₁ : i ≠ k + 2 := by omega
+              have hnlt_rhs₂ : ¬ i - 1 < k := by omega
+              have hne_rhs₂ : i - 1 ≠ k := by omega
+              have hpred_rhs : i - 1 - 1 = i - 2 := by omega
+              simp [instantiate, hnlt_lhs₁, hne_lhs₁, hpred_lhs₁,
+                hpred_nlt, hpred_ne, hpred_pred, hnlt_rhs₁, hne_rhs₁,
+                hnlt_rhs₂, hne_rhs₂, hpred_rhs]
+  | top =>
+      simp [instantiate]
+  | abs bound body ih_bound ih_body =>
+      simp only [instantiate_abs]
+      apply congrArg₂ Term.abs
+      · exact ih_bound k a v
+      · have hbody := ih_body (k + 1) (shift 0 a) (shift 0 v)
+        have hshift :
+            shift (k + 1) (shift 0 a) = shift 0 (shift k a) := by
+          exact shift_shift_zero k a
+        have hvShift :
+            instantiate (k + 2) (shift 0 a) (shift 0 v) =
+              shift 0 (instantiate (k + 1) a v) := by
+          exact (shiftBy_instantiate 0 1 (k + 1) a v (Nat.zero_le _)).symm
+        simpa [Nat.add_assoc, hshift, hvShift] using hbody
+  | app fn arg ih_fn ih_arg =>
+      simp only [instantiate_app]
+      exact congrArg₂ Term.app (ih_fn k a v) (ih_arg k a v)
+
 /-! ## Scoping -/
 
 /-- `Scoped depth t` means every index in `t` is bound within `depth`
