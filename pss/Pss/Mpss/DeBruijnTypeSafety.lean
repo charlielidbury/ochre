@@ -920,6 +920,37 @@ def BetaInstantiationPreservesMEqRedUnderFifteenHeadsStack : Type :=
           (Term.instantiate 15 (Term.shiftBy 0 15 arg) lhs)
           (Term.instantiate 15 (Term.shiftBy 0 15 arg) rhs)
 
+/-- Stack-parametric equivalence-reduction β-instantiation under sixteen
+preserved context heads. This is the recursive body payload needed by the
+fifteen-head binder constructors. -/
+def BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack : Type :=
+  ∀ {Γ : Ctx}
+      {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ lhs rhs : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ : CtxEntryKind}
+      {s : Stack},
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ }]
+    WSubMStar Γ arg bound →
+      MEqRed (heads ++ { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed (Ctx.instantiateBetaPrefix arg 16 heads ++ Γ)
+          (Stack.instantiate 16 (Term.shiftBy 0 16 arg) s)
+          (Term.instantiate 16 (Term.shiftBy 0 16 arg) lhs)
+          (Term.instantiate 16 (Term.shiftBy 0 16 arg) rhs)
+
 /-- Generic stack-parametric equivalence-reduction β-instantiation under an
 arbitrary list of preserved context heads. This is the abstraction that the
 numbered five/six/seven/eight stack payloads below specialize from. -/
@@ -1639,6 +1670,35 @@ def BetaInstantiationPreservesMEqRedUnderFifteenHeadsStack.of_generic
       { bound := head₁₃, kind := kind₁₃ },
       { bound := head₁₄, kind := kind₁₄ },
       { bound := head₁₅, kind := kind₁₅ }])
+    rfl hArg hRed
+  simpa using h'
+
+/-- The generic preserved-head stack payload specializes to the sixteen-head
+surface. -/
+def BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 16) :
+    BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ s
+  dsimp only
+  intro hArg hRed
+  have h' := h
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ }])
     rfl hArg hRed
   simpa using h'
 
