@@ -17,10 +17,12 @@ namespace DeBruijn
 #print axioms EqDiamonds.top
 #print axioms EqDiamonds.bvar_any
 #print axioms EqDiamonds.appTop_any
+#print axioms EqDiamonds.appTop_any_from_left
 #print axioms diamond_appTop_eqStar_eqStar
 #print axioms StrongCommutes.top
 #print axioms StrongCommutes.bvar_any
 #print axioms StrongCommutes.appTop_any
+#print axioms StrongCommutes.appTop_any_from_left
 #print axioms commute_appTop_subStar_eqStar
 #print axioms diamond_abs_fOp_body_fixed_bound
 #print axioms diamond_abs_fOp_body_fixed_bound_star

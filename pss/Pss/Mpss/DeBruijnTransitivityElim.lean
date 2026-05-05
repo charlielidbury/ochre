@@ -379,6 +379,21 @@ theorem appTop_any {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
       have hArg₂ : Term.Scoped Γ.depth arg₂ := (Term.Scoped.app_inv hTargetScoped₂).2
       exact ⟨.top, ⟨MEqRed.tAp hpv hArg₁⟩, ⟨MEqRed.tAp hpv hArg₂⟩⟩
 
+/-- The full `Top`-headed application source cell with prevalidity and
+argument scoping recovered from the left equivalence step. -/
+theorem appTop_any_from_left {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
+    (h₁ : MEqRed Γ s (.app .top u) t₁)
+    (h₂ : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MEqRedJ Γ s t₂ t₃ := by
+  cases h₁ with
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons =>
+      exact appTop_any (PrevalidExt.tail hpvCons) hArg.scoped_left
+        (MEqRed.app (MEqRed.top hpvCons) hArg) h₂
+  | tAp hpv hu =>
+    exact appTop_any hpv hu (MEqRed.tAp hpv hu) h₂
+
 end EqDiamonds
 
 /-- The `Top` source case for one equivalence step against an equivalence
@@ -734,6 +749,29 @@ theorem appTop_any {Γ : Ctx} {s : Stack}
       have hArg' : Term.Scoped Γ.depth arg' := (Term.Scoped.app_inv hTargetScoped).2
       exact ⟨.top, ⟨MEqRed.tAp hpv hu⟩,
         ⟨MSubRed.top hpv (Term.Scoped.app Term.Scoped.top hArg')⟩⟩
+
+/-- The full `Top`-headed application source cell with prevalidity and
+argument scoping recovered from the subtype step. -/
+theorem appTop_any_from_left {Γ : Ctx} {s : Stack}
+    {u t₁ t₂ : Term}
+    (hsub : MSubRed Γ s (.app .top u) t₁)
+    (heq : MEqRed Γ s (.app .top u) t₂) :
+    ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s t₂ t₃ := by
+  cases hsub with
+  | top hpv hScoped =>
+    exact appTop_any hpv (Term.Scoped.app_inv hScoped).2
+      (MSubRed.top hpv hScoped) heq
+  | equ hpv heqSub =>
+    exact appTop_any hpv (Term.Scoped.app_inv heqSub.scoped_left).2
+      (MSubRed.equ hpv heqSub) heq
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons hScoped =>
+      exact appTop_any (PrevalidExt.tail hpvCons) hArg
+        (MSubRed.app (MSubRed.top hpvCons hScoped) hArg) heq
+    | equ hpvCons heqOp =>
+      exact appTop_any (PrevalidExt.tail hpvCons) hArg
+        (MSubRed.app (MSubRed.equ hpvCons heqOp) hArg) heq
 
 /-- Compatibility wrapper for the full `Top`-headed application source cell
 that matches the conditional Lemma 1 helper shape. The local diamond premise

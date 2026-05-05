@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
+  `EqDiamonds.appTop_any_from_left` and
+  `StrongCommutes.appTop_any_from_left`, recovering the `Top`-headed
+  application cell side conditions directly from the left reduction step.
+  Added both endpoints to the de Bruijn audit. No axiom-count change.
 * `Pss/DeBruijnSanity.lean` — expanded the de Bruijn Lemma 1/2 audit to
   include the fixed-bound and fixed-body abstraction cells for `FOp` and
   `Fun`, both single-step and star-level. No axiom-count change.
