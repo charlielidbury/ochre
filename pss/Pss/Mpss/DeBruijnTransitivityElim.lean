@@ -3735,6 +3735,58 @@ theorem commute_abs_fun_fun_pro_succ_body_of {Γ : Ctx}
               MEqRedStar.single (MEqRed.refl hpvBody₃ ht₃),
               MSubRedStar.single (MSubRed.pro hpvBody₃ hb₃)⟩)
 
+/-- `Ms-Fun × Me-Fun` commutation subcase where the `Ms-Fun` body premise is
+`Ms-Pro` at the head variable. After the bounds are joined, the left body
+target `shift 0 bound` is carried to `shift 0 bound₃` by weakening the
+old-to-joined bound chain under the joined `.sub` head; the right body target
+is the residual head `Ms-Pro` lookup. -/
+theorem commute_abs_fun_fun_pro_head_body_of {Γ : Ctx}
+    {bound bound₁ bound₂ body₂ : Term}
+    (hpvNil : PrevalidExt Γ [])
+    (hdiamondBound : EqDiamonds Γ [])
+    (hSubBound : MEqRed Γ [] bound bound₁)
+    (hEqBound : MEqRed Γ [] bound bound₂)
+    (hEqBody : MEqRed ({ bound := bound, kind := .sub } :: Γ) []
+      (.bvar 0) body₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ (Term.shift 0 bound)) t₃ ∧
+        MSubRedStar Γ [] (.abs bound₂ body₂) t₃ := by
+  have hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hSubBound.scoped_left)
+  let hLeft : MSubRed Γ [] (.abs bound (.bvar 0))
+      (.abs bound₁ (Term.shift 0 bound)) :=
+    MSubRed.fun_ hSubBound.scoped_left hSubBound
+      (MSubRed.pro hpvBody (Ctx.subBinds_zero_self Γ bound))
+  cases hEqBody with
+  | pro _ heqBind hα =>
+      exact (Ctx.subBinds_equBinds_false
+        (Ctx.subBinds_zero_self Γ bound) heqBind).elim
+  | var _ hi =>
+      let hRight : MEqRed Γ [] (.abs bound (.bvar 0)) (.abs bound₂ (.bvar 0)) :=
+        MEqRed.fun_ hEqBound (MEqRed.var hpvBody hi)
+      exact
+        commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+          (hdiamondBound hSubBound hEqBound)
+          (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+            have hpvBody₃ :
+                PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+              PrevalidExt.nil
+                (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+            have hOldTo₃ : MEqRedStar Γ [] bound bound₃ :=
+              MEqRedStar.trans (MEqRedStar.single hSubBound)
+                (MEqRedStar.single hBound₁₃.some)
+            have hBodyEq :
+                MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
+                  (Term.shift 0 bound) (Term.shift 0 bound₃) := by
+              simpa using
+                (MEqRedStar.weaken_head (Γ := Γ) (s := []) (u := bound)
+                  (v := bound₃) (newEntry := { bound := bound₃, kind := .sub })
+                  hpvNil (PrevalidExt.ctx hpvBody₃) hOldTo₃)
+            exact ⟨Term.shift 0 bound₃,
+              hBodyEq,
+              MSubRedStar.single (MSubRed.pro hpvBody₃
+                (Ctx.subBinds_zero_self Γ bound₃))⟩)
+
 /-- Lift a diagrammatic body replacement chain through `Fun` after first
 changing the abstraction bound by an empty-stack equivalence step. -/
 theorem msubStar_abs_fun_equ_bound_body {Γ : Ctx}
