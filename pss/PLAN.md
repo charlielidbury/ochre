@@ -57,6 +57,12 @@ analyses, complexity estimates, and discharge plans.
 * **2 inactive outstanding (no headline depends on these):**
   `Lemma_10_InversionRestricted`, `Lemma_32_AsymmetricEqu`.
 
+`Pss.Sanity` additionally audits the conditional WfCtx preservation
+endpoints. Those are public preservation variants, but they are not part
+of the five-headline count above; their current closures inherit the
+subject-reduction residuals `_SR_axiom_app_meApp` and `_SR_v2_bet_residual`
+instead of `Lemma_10_Inversion`.
+
 ### Unblocking options — historical (now superseded by de Bruijn pivot)
 
 The campaign explored several paths through iter-32. All walled at the
