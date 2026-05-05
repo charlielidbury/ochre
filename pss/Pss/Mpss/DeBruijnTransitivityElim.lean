@@ -1780,6 +1780,37 @@ theorem commute_appAbs_subStep_beta_or_join_or_appAbs {Γ : Ctx} {s : Stack}
   commute_appAbs_subStar_beta_or_join_or_appAbs hpv hScoped
     (MSubRedStar.single hSub) hEq
 
+/-- One-step abstraction-headed application classifier with source side
+conditions recovered from the subtype step. The structural `Ms-App` branch
+whose operator remains abstraction-headed is returned directly. -/
+theorem commute_appAbs_subStep_beta_or_join_or_appAbs_from_left {Γ : Ctx}
+    {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ arg' body', MSub Γ s (Term.instantiate 0 arg' body') t₁) ∨
+      (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      ∃ bound' body' arg', t₁ = .app (.abs bound' body') arg' := by
+  have hScoped : Term.Scoped Γ.depth (.app (.abs bound body) arg) := hSub.scoped_left
+  cases hSub with
+  | top hpv hScopedTop =>
+    exact commute_appAbs_subStep_beta_or_join_or_appAbs hpv hScopedTop
+      (MSubRed.top hpv hScopedTop) hEq
+  | equ hpv heqSub =>
+    exact commute_appAbs_subStep_beta_or_join_or_appAbs hpv heqSub.scoped_left
+      (MSubRed.equ hpv heqSub) hEq
+  | app hOp hArg =>
+    cases hOp with
+    | top hpvCons hOpScoped =>
+      exact commute_appAbs_subStep_beta_or_join_or_appAbs
+        (PrevalidExt.tail hpvCons) hScoped
+        (MSubRed.app (MSubRed.top hpvCons hOpScoped) hArg) hEq
+    | equ hpvCons heqOp =>
+      exact commute_appAbs_subStep_beta_or_join_or_appAbs
+        (PrevalidExt.tail hpvCons) hScoped
+        (MSubRed.app (MSubRed.equ hpvCons heqOp) hArg) hEq
+    | fOp _ _ hBody =>
+      exact Or.inr (Or.inr ⟨bound, _, arg, rfl⟩)
+
 /-- Paired abstraction-headed application branch classifier for strong
 commutativity. It combines the subtype-side classifier with the
 equivalence-side β/residual split: either the subtype target is reached from a
@@ -1831,6 +1862,35 @@ theorem commute_appAbs_subStep_eqStar_beta_or_join_or_appAbs {Γ : Ctx}
         t₂ = .app (.abs bound₂ body₂) arg₂) :=
   commute_appAbs_subStar_eqStar_beta_or_join_or_appAbs hpv hScoped
     (MSubRedStar.single hSub) hEq
+
+/-- One-step paired abstraction-headed application classifier with source
+side conditions recovered from the subtype step. -/
+theorem commute_appAbs_subStep_eqStar_beta_or_join_or_appAbs_from_left
+    {Γ : Ctx} {s : Stack} {bound body arg t₁ t₂ : Term}
+    (hSub : MSubRed Γ s (.app (.abs bound body) arg) t₁)
+    (hEq : MEqRedStar Γ s (.app (.abs bound body) arg) t₂) :
+    (∃ arg' body', MSub Γ s (Term.instantiate 0 arg' body') t₁) ∨
+      (∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃) ∨
+      (∃ arg' body', MSub Γ s t₂ (Term.instantiate 0 arg' body')) ∨
+      (∃ bound₁ body₁ arg₁ bound₂ body₂ arg₂,
+        t₁ = .app (.abs bound₁ body₁) arg₁ ∧
+        t₂ = .app (.abs bound₂ body₂) arg₂) := by
+  cases commute_appAbs_subStep_beta_or_join_or_appAbs_from_left hSub hEq with
+  | inl hSubBet =>
+    exact Or.inl hSubBet
+  | inr hRest =>
+    cases hRest with
+    | inl hJoin =>
+      exact Or.inr (Or.inl hJoin)
+    | inr hSubAppAbs =>
+      cases msub_appAbs_eqStar_beta_or_appAbs hEq with
+      | inl hEqBet =>
+        exact Or.inr (Or.inr (Or.inl hEqBet))
+      | inr hEqAppAbs =>
+        obtain ⟨bound₁, body₁, arg₁, hEq₁⟩ := hSubAppAbs
+        obtain ⟨bound₂, body₂, arg₂, hEq₂⟩ := hEqAppAbs
+        exact Or.inr (Or.inr (Or.inr
+          ⟨bound₁, body₁, arg₁, bound₂, body₂, arg₂, hEq₁, hEq₂⟩))
 
 /-- Conditional abstraction-headed application commutation from the paired
 branch classifier. The already-closed `Top` / `Top`-headed target branch is
