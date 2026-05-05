@@ -443,6 +443,15 @@ closures, 2 inactive outstanding).
   duplication and supplies the stack rewrite needed by the next three-head
   binder frontier. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the
+  `BetaInstantiationPreservesMEqRedUnderFourHeadsStack` body payload and the
+  three-head constructor frontiers
+  `BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload`,
+  `...BetStackPayload`, and `...FOpStackPayload`. Discharged the three-head
+  `Me-Fun` and `Me-FOp` adapters from the three-head and four-head payloads.
+  The three-head `Me-Bet` adapter remains blocked on the corresponding
+  three-preserved-head β-target substitution-composition law. Added endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added star-targeted subtype
   substitution payload APIs `BetaInstantiationPreservesMSubRedMSubStar` and
   `BetaInstantiationPreservesMSubRedStackMSubStar`, plus adapters

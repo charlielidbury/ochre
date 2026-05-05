@@ -374,6 +374,142 @@ def BetaInstantiationPreservesMEqRedUnderThreeHeadsStack : Type :=
           (Term.instantiate 3
             (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) rhs)
 
+/-- Stack-parametric equivalence-reduction β-instantiation under four
+preserved context heads. This is the recursive body payload needed by the
+three-head binder constructors. -/
+def BetaInstantiationPreservesMEqRedUnderFourHeadsStack : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ head₄ lhs rhs : Term}
+      {kind₁ kind₂ kind₃ kind₄ : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := head₄, kind := kind₄ } ::
+          { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed
+          ({ bound := Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₃,
+              kind := kind₃ } ::
+            { bound := Term.instantiate 0 arg head₄, kind := kind₄ } :: Γ)
+          (Stack.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) s)
+          (Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) lhs)
+          (Term.instantiate 4
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))) rhs)
+
+/-- Constructor-facing `Me-Fun` frontier for three-head equivalence
+β-instantiation. The body premise lives under one additional `.sub` binder,
+so discharging it requires the four-preserved-head payload. -/
+def BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ t t' body body' : Term}
+      {kind₁ kind₂ kind₃ : CtxEntryKind},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := bound, kind := .sub } :: Γ) [] t t' →
+        MEqRed ({ bound := t, kind := .sub } ::
+            { bound := head₁, kind := kind₁ } ::
+            { bound := head₂, kind := kind₂ } ::
+            { bound := head₃, kind := kind₃ } ::
+            { bound := bound, kind := .sub } :: Γ) [] body body' →
+          MEqRed
+            ({ bound := Term.instantiate 2
+                  (Term.shift 0 (Term.shift 0 arg)) head₁,
+                kind := kind₁ } ::
+              { bound := Term.instantiate 1 (Term.shift 0 arg) head₂,
+                kind := kind₂ } ::
+              { bound := Term.instantiate 0 arg head₃, kind := kind₃ } :: Γ)
+            [] (Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+              (.abs t body))
+            (Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+              (.abs t' body'))
+
+/-- Constructor-facing `Me-Bet` frontier for three-head equivalence
+β-instantiation. Its adapter additionally needs the three-preserved-head
+β-target substitution-composition law. -/
+def BetaInstantiationPreservesMEqRedUnderThreeHeadsBetStackPayload : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ t v v' body body' : Term}
+      {kind₁ kind₂ kind₃ : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      Term.Scoped
+        (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := bound, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := t, kind := .sub } ::
+            { bound := head₁, kind := kind₁ } ::
+            { bound := head₂, kind := kind₂ } ::
+            { bound := head₃, kind := kind₃ } ::
+            { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s)
+          body body' →
+          MEqRed ({ bound := head₁, kind := kind₁ } ::
+              { bound := head₂, kind := kind₂ } ::
+              { bound := head₃, kind := kind₃ } ::
+              { bound := bound, kind := .sub } :: Γ) [] v v' →
+            MEqRed
+              ({ bound := Term.instantiate 2
+                    (Term.shift 0 (Term.shift 0 arg)) head₁,
+                  kind := kind₁ } ::
+                { bound := Term.instantiate 1 (Term.shift 0 arg) head₂,
+                  kind := kind₂ } ::
+                { bound := Term.instantiate 0 arg head₃,
+                  kind := kind₃ } :: Γ)
+              (Stack.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) s)
+              (Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+                (.app (.abs t body) v))
+              (Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+                (Term.instantiate 0 v' body'))
+
+/-- Constructor-facing `Me-FOp` frontier for three-head equivalence
+β-instantiation under the operand `.equ` binder. -/
+def BetaInstantiationPreservesMEqRedUnderThreeHeadsFOpStackPayload : Type :=
+  ∀ {Γ : Ctx} {bound arg head₁ head₂ head₃ t t' α body body' : Term}
+      {kind₁ kind₂ kind₃ : CtxEntryKind} {s : Stack},
+    WSubMStar Γ arg bound →
+      MEqRed ({ bound := head₁, kind := kind₁ } ::
+          { bound := head₂, kind := kind₂ } ::
+          { bound := head₃, kind := kind₃ } ::
+          { bound := bound, kind := .sub } :: Γ) [] t t' →
+        Term.Scoped
+          (Ctx.depth ({ bound := head₁, kind := kind₁ } ::
+            { bound := head₂, kind := kind₂ } ::
+            { bound := head₃, kind := kind₃ } ::
+            { bound := bound, kind := .sub } :: Γ)) α →
+          MEqRed ({ bound := α, kind := .equ } ::
+              { bound := head₁, kind := kind₁ } ::
+              { bound := head₂, kind := kind₂ } ::
+              { bound := head₃, kind := kind₃ } ::
+              { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s)
+            body body' →
+            MEqRed
+              ({ bound := Term.instantiate 2
+                    (Term.shift 0 (Term.shift 0 arg)) head₁,
+                  kind := kind₁ } ::
+                { bound := Term.instantiate 1 (Term.shift 0 arg) head₂,
+                  kind := kind₂ } ::
+                { bound := Term.instantiate 0 arg head₃,
+                  kind := kind₃ } :: Γ)
+              (Stack.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) (α :: s))
+              (Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+                (.abs t body))
+              (Term.instantiate 3
+                (Term.shift 0 (Term.shift 0 (Term.shift 0 arg)))
+                (.abs t' body'))
+
 /-- Constructor-facing `Me-Fun` frontier for two-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
 so discharging it requires the three-preserved-head payload. -/
@@ -1296,6 +1432,104 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderTwoHeadsStack.pro
                   simpa [← htarget, htargetInst] using hα
                 simpa [Term.instantiate, htargetInst] using
                   MEqRed.pro hpvTarget hbind hαFor
+
+/-- The three-head `Me-Fun` frontier follows from the three-head equivalence
+payload for the bound and the four-preserved-head payload for the body. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload.of_four_heads
+    (hThree : BetaInstantiationPreservesMEqRedUnderThreeHeadsStack)
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderThreeHeadsFunStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ t t' body body' kind₁ kind₂ kind₃
+    hArgBound hBound hBody
+  have hBound' := hThree (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃) (s := []) hArgBound hBound
+  have hBody' := hFour (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := t) (kind₁ := CtxEntryKind.sub)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃) (s := []) hArgBound hBody
+  simpa [Term.instantiate] using MEqRed.fun_ hBound' hBody'
+
+/-- The three-head `Me-FOp` frontier follows from the three-head equivalence
+payload for the abstraction bound and the four-preserved-head payload for
+the operand body. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderThreeHeadsFOpStackPayload.of_four_heads
+    (hThree : BetaInstantiationPreservesMEqRedUnderThreeHeadsStack)
+    (hFour : BetaInstantiationPreservesMEqRedUnderFourHeadsStack) :
+    BetaInstantiationPreservesMEqRedUnderThreeHeadsFOpStackPayload := by
+  intro Γ bound arg head₁ head₂ head₃ t t' α body body'
+    kind₁ kind₂ kind₃ s hArgBound hBound hα hBody
+  have hBound' := hThree (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := head₁) (kind₁ := kind₁)
+    (head₂ := head₂) (kind₂ := kind₂)
+    (head₃ := head₃) (kind₃ := kind₃) (s := []) hArgBound hBound
+  have hBodyFour := hFour (Γ := Γ) (bound := bound) (arg := arg)
+    (head₁ := α) (kind₁ := CtxEntryKind.equ)
+    (head₂ := head₁) (kind₂ := kind₁)
+    (head₃ := head₂) (kind₃ := kind₂)
+    (head₄ := head₃) (kind₄ := kind₃) (s := Stack.shift 0 s)
+    hArgBound hBody
+  have hArgShiftScoped : Term.Scoped (Γ.depth + 1) (Term.shift 0 arg) :=
+    Term.shift_scoped 0 Γ.depth arg (Nat.zero_le Γ.depth)
+      hArgBound.scoped_left
+  have hArgShiftShiftScoped :
+      Term.Scoped (Γ.depth + 2) (Term.shift 0 (Term.shift 0 arg)) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 1) (Term.shift 0 arg)
+        (Nat.zero_le (Γ.depth + 1)) hArgShiftScoped
+  have hArgShiftShiftShiftScoped :
+      Term.Scoped (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) := by
+    simpa [Nat.succ_eq_add_one, Nat.add_assoc] using
+      Term.shift_scoped 0 (Γ.depth + 2)
+        (Term.shift 0 (Term.shift 0 arg))
+        (Nat.zero_le (Γ.depth + 2)) hArgShiftShiftScoped
+  have hα' :
+      Term.Scoped
+        (Ctx.depth
+          ({ bound := Term.instantiate 2
+                (Term.shift 0 (Term.shift 0 arg)) head₁,
+              kind := kind₁ } ::
+            { bound := Term.instantiate 1 (Term.shift 0 arg) head₂,
+              kind := kind₂ } ::
+            { bound := Term.instantiate 0 arg head₃,
+              kind := kind₃ } :: Γ))
+        (Term.instantiate 3
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) α) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 3)
+          (Term.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) α) :=
+      Term.instantiate_scoped 3 (Γ.depth + 3)
+        (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) α (by omega)
+        hArgShiftShiftShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hα)
+    simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hInst
+  have hBody' :
+      MEqRed
+        ({ bound := Term.instantiate 3
+              (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) α,
+            kind := CtxEntryKind.equ } ::
+          { bound := Term.instantiate 2
+              (Term.shift 0 (Term.shift 0 arg)) head₁,
+            kind := kind₁ } ::
+          { bound := Term.instantiate 1 (Term.shift 0 arg) head₂,
+            kind := kind₂ } ::
+          { bound := Term.instantiate 0 arg head₃, kind := kind₃ } :: Γ)
+        (Stack.shift 0
+          (Stack.instantiate 3
+            (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))) s))
+        (Term.instantiate 4
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+          body)
+        (Term.instantiate 4
+          (Term.shift 0 (Term.shift 0 (Term.shift 0 (Term.shift 0 arg))))
+          body') := by
+    simpa [Stack.instantiate_four_shift_zero] using hBodyFour
+  simpa [Term.instantiate, Stack.instantiate] using
+    MEqRed.fOp hBound' hα' hBody'
 
 /-- The two-head `Me-Fun` frontier follows from the two-head equivalence
 payload for the bound and the three-preserved-head payload for the body. -/
