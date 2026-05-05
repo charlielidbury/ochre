@@ -187,6 +187,12 @@ closures, 2 inactive outstanding).
   checked zero/successor leaves. Added it to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMSubRedStack.equ`, a direct arbitrary-stack
+  subtype-equivalence reassembly helper for cases where the transformed
+  `MEqRed` step is already available. The existing `.equ_of_meq` helper now
+  delegates through it. Added the endpoint to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `WfMSubHeadReplaceDirectPayloads` and
   `WfMSubHeadReplaceOfNewWf.of_direct_payloads`, exposing the existing
   de Bruijn well-formedness replacement theorem

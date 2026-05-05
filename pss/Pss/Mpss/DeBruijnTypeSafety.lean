@@ -706,6 +706,17 @@ noncomputable def BetaInstantiationPreservesMSubRed.equ
     MSubRed Γ [] (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
   MSubRed.equ (PrevalidExt.nil hArgBound.prevalid) hEq
 
+/-- Stack-parametric `MSubRed.equ` reassembly once the transformed
+equivalence-reduction step is already available. -/
+noncomputable def BetaInstantiationPreservesMSubRedStack.equ
+    {Γ : Ctx} {arg u v : Term} {s : Stack}
+    (hEq :
+      MEqRed Γ (Stack.instantiate 0 arg s)
+        (Term.instantiate 0 arg u) (Term.instantiate 0 arg v)) :
+    MSubRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
+  MSubRed.equ hEq.prevalidExt hEq
+
 /-- The `MSubRed.equ` case of de Bruijn β-instantiation follows from the
 empty-stack equivalence-reduction substitution payload. -/
 noncomputable def BetaInstantiationPreservesMSubRed.equ_of_meq
@@ -726,8 +737,7 @@ noncomputable def BetaInstantiationPreservesMSubRedStack.equ_of_meq
     (hEq : MEqRed ({ bound := bound, kind := .sub } :: Γ) s u v) :
     MSubRed Γ (Stack.instantiate 0 arg s)
       (Term.instantiate 0 arg u) (Term.instantiate 0 arg v) :=
-  MSubRed.equ (hEqPayload hArgBound hEq).prevalidExt
-    (hEqPayload hArgBound hEq)
+  BetaInstantiationPreservesMSubRedStack.equ (hEqPayload hArgBound hEq)
 
 /-- The `MSubRed.app` constructor reassembles a stack-parametric
 β-instantiated subtype-reduction step from its operator piece and preserved
