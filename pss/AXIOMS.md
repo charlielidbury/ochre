@@ -1301,6 +1301,12 @@ closures, 2 inactive outstanding).
   `StepPreservesWfM_of_chain_shape_components`. This exposes preservation
   as strong commutativity plus the single remaining joined-bound
   well-formedness payload. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the named conditional
+  payload `MEqRedPreservesWfM` and
+  `AbsFunctionBoundChainShapeWfPayload_of_meq`, deriving the joined-bound
+  well-formedness payload from stepwise empty-stack equivalence
+  preservation via the subtype diagram's projected bound-equivalence
+  chain. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `AbsFunctionBoundDiagram.of_chain` and
   `AbsFunctionBoundDiagramPayload.of_chain`, allowing Type-valued chain

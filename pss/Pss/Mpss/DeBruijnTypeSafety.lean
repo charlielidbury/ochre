@@ -293,6 +293,12 @@ def AbsFunctionBoundChainShapeWfPayload
     (hSub : WSubMStar Γ (.abs bound body) (.abs result .top)),
       WfM Γ ((hShape hSub).joinBound)
 
+/-- Conditional empty-stack well-formedness preservation for one equivalence
+reduction step. This is the exact local premise needed to turn a
+function-bound shape into a full diagram. -/
+def MEqRedPreservesWfM : Type :=
+  ∀ {Γ : Ctx} {x y : Term}, MEqRedJ Γ [] x y → WfM Γ x → WfM Γ y
+
 /-- Remaining Type-valued chain-diagram payload for function-bound
 inversion. -/
 def AbsFunctionBoundChainDiagramPayload : Type :=
@@ -695,6 +701,18 @@ def AbsFunctionBoundChainDiagramPayload.of_shape
     AbsFunctionBoundChainDiagramPayload := by
   intro Γ bound body result hFun
   exact (hShape hFun).to_diagram (hShapeWf hFun)
+
+/-- Stepwise empty-stack equivalence preservation supplies the joined-bound
+well-formedness needed to complete a shape-only function-bound payload. -/
+noncomputable def AbsFunctionBoundChainShapeWfPayload_of_meq
+    (hShape : AbsFunctionBoundChainShapePayload)
+    (hpres : MEqRedPreservesWfM) :
+    AbsFunctionBoundChainShapeWfPayload hShape := by
+  intro Γ bound body result hFun
+  have hwfBound : WfM Γ bound := hFun.wf_left.fun_inv.1
+  let hBoundChain : MEqRedChain Γ [] bound (hShape hFun).joinBound :=
+    MSubRedChain.abs_bound_chain (hShape hFun).subJoin
+  exact hBoundChain.to_star.wf_right_of hpres hwfBound
 
 /-- An older Prop-closure diagram payload can be upgraded to the Type-valued
 chain-diagram payload by choosing chain witnesses for the two closures. -/
