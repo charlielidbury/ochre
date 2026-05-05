@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnReductions.lean` — added
+  `MEqRed.equ_under_sub_head_nil_replace_from_split_handlers` and
+  `MSubRed.equ_under_sub_head_nil_replace_from_split_handlers`, the
+  one-`.sub` empty-stack counterparts to the existing two-`.sub` splitters.
+  They make the changed-entry `Me-Pro` residual at index `1` explicit while
+  ruling out the preserved `.sub` lookup and nested `FOp` at empty stack.
+  Added the endpoints to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnTransitivityElim.lean` — added
   `msubRed_equ_under_two_heads_replace_from_replacements` plus the
   two-preserved-head `Ms-App`, `Ms-Fun`, and `Ms-FOp` constructor handlers.
