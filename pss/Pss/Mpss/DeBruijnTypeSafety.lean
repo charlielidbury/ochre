@@ -2834,6 +2834,48 @@ noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_
     (MEqRedFOpTailStepPreservesPayload.of_machine_tail hTail)
     hFunBody hNoTop
 
+/-- Typed-operator, neutral machine-tail entry point for the no-external-empty
+assembly with both `Me-Bet` and `Me-FOp` routed through immediate target
+well-formedness. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_operator_machine_tail
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail
+    hBetaTarget hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_typed_operator hOpFun)
+    hTail hFunBody hNoTop
+
+/-- Machine-state-aware operator, neutral machine-tail entry point for the
+no-external-empty assembly with both `Me-Bet` and `Me-FOp` routed through
+immediate target well-formedness. -/
+noncomputable def MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_machine_operator_machine_tail
+    (hBetaTarget : MEqRedBetaTargetPreservesWfMPayload)
+    (hEqBody : MEqRedSubHeadToEquHeadPayload)
+    (hSubBody : MSubRedSubHeadToEquHeadAsMEqPayload)
+    (hPres : MSubPreservesWfMPayload)
+    (hStep : MSubToWSubMStarPayload)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hFOpBody : MEqRedFOpBodyTypedPayload)
+    (hOpFun : MEqRedAppFunctionSupertypeMachinePayload)
+    (hTail : MEqRedMachineTailStepPreservesPayload)
+    (hFunBody : MEqRedFunBodyReplacePayload)
+    (hNoTop : NoTopFunctionSupertypesAt) :
+    MEqRedPreservesWfMachineState :=
+  MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_target_app_machine_tail
+    hBetaTarget hEqBody hSubBody hPres hStep hInv hFOpBody
+    (MEqRedAppTargetPreservesWfMPayload.of_machine_operator hOpFun)
+    hTail hFunBody hNoTop
+
 /-- Empty-stack left-endpoint transport for well-subtyping along one
 equivalence-reduction step. Unlike `MEqRedStackPreservesWSubMStarLeft`, this
 version is directly compatible with the empty-stack `WSubM` equivalence

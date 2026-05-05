@@ -10,6 +10,13 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_operator_machine_tail`
+  and
+  `MEqRedPreservesWfMachineState.of_body_transports_no_empty_and_beta_target_typed_fop_machine_operator_machine_tail`,
+  exposing typed-operator and machine-operator entry points for the
+  strongest no-external-empty beta/`FOp` assembly using the neutral
+  machine-tail residual. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `MEqRedMachineTailStepPreservesPayload`,
   `MEqRedFOpTailStepPreservesPayload.of_machine_tail`,
   `MEqRedMachineTailStepPreservesPayload.of_fop_tail_step`,
