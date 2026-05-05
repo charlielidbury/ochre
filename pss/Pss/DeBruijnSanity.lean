@@ -11,6 +11,7 @@ namespace Pss
 namespace DeBruijn
 
 #print axioms Lemma_2_DeBruijn_DiamondMEqRedStar_of
+#print axioms Lemma_2_DeBruijn_DiamondMEqRedChain_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityStar_of
 #print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_of
 #print axioms Theorem_4_DeBruijn_Progress_of_StrongCommutativity

@@ -543,6 +543,33 @@ noncomputable def Lemma_2_DeBruijn_DiamondMEqRedStar_of
     ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ :=
   diamond_eqStar_eqStar_of hdiamond h₁ h₂
 
+/-- Type-valued chain form of de Bruijn Lemma 2 lifting. This reuses the
+Prop-valued star diamond theorem and chooses Type-valued chain witnesses for
+its two resulting closures. -/
+noncomputable def diamond_eqChain_eqChain_of
+    {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRedChain Γ s t₀ t₁)
+    (h₂ : MEqRedChain Γ s t₀ t₂) :
+    Sigma fun t₃ =>
+      MEqRedChain Γ s t₁ t₃ × MEqRedChain Γ s t₂ t₃ := by
+  let h := diamond_eqStar_eqStar_of hdiamond h₁.to_star h₂.to_star
+  let t₃ := Classical.choose h
+  have hSpec :
+      MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ :=
+    Classical.choose_spec h
+  exact ⟨t₃, MEqRedChain.of_star hSpec.1, MEqRedChain.of_star hSpec.2⟩
+
+/-- Named de Bruijn Lemma 2 chain lifting in Type-valued chain form. -/
+noncomputable def Lemma_2_DeBruijn_DiamondMEqRedChain_of
+    {Γ : Ctx} {s : Stack} (hdiamond : EqDiamonds Γ s)
+    {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRedChain Γ s t₀ t₁)
+    (h₂ : MEqRedChain Γ s t₀ t₂) :
+    Sigma fun t₃ =>
+      MEqRedChain Γ s t₁ t₃ × MEqRedChain Γ s t₂ t₃ :=
+  diamond_eqChain_eqChain_of hdiamond h₁ h₂
+
 /-- De Bruijn single-step strong commutativity at a fixed extended context.
 This is the de Bruijn Lemma 1 shape needed by the star-lifting argument for
 Theorem 3. The conclusion uses the Prop wrappers for single Type-valued
