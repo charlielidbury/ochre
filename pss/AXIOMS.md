@@ -357,6 +357,16 @@ closures, 2 inactive outstanding).
   closures still do not depend on it, but the permanent/public axiom is now
   visible in the same sanity output as the active and inactive residuals. No
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added `WfCtxEqu`-parametric
+  operational preservation payloads:
+  `StepPreservesWfMUnderWfCtx`,
+  `StepBetaPreservesWfMUnderWfCtx`, their component assemblers, and
+  `Theorem_5_DeBruijn_Preservation_under_wfctx_of`. Also added final
+  machine-state driven Theorem 5 surfaces that consume Theorem 3's
+  strong-commutativity payload plus `MEqRedPreservesWfMachineState`, avoiding
+  the stronger global `MEqRedPreservesWfM` premise when preservation is stated
+  under `WfCtxEqu`. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/SubstitutionNoPro.lean` — added `MSubRed.noProOn`, an
   all-cofinite-branches predicate excluding `Ms-Pro` promotion of a chosen
   variable, plus `Lemma_30_ReductionUnderSubst_Sub_noProOn`. This proves

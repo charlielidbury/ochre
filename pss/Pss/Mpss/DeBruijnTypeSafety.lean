@@ -164,12 +164,26 @@ steps at arbitrary context depth. -/
 def StepPreservesWfM : Type :=
   ∀ {Γ : Ctx} {t t' : Term}, StepAt Γ.depth t t' → WfM Γ t → WfM Γ t'
 
+/-- De Bruijn operational preservation under the well-formed-equivalence
+context invariant. This is the surface naturally supplied by the
+machine-state preservation route. -/
+def StepPreservesWfMUnderWfCtx : Type :=
+  ∀ {Γ : Ctx} {t t' : Term},
+    WfCtxEqu Γ → StepAt Γ.depth t t' → WfM Γ t → WfM Γ t'
+
 /-- Remaining β payload for de Bruijn operational well-formedness
 preservation. -/
 def StepBetaPreservesWfM : Type :=
   ∀ {Γ : Ctx} {bound body arg : Term},
     WfM Γ (.app (.abs bound body) arg) →
       WfM Γ (Term.instantiate 0 arg body)
+
+/-- β preservation under the well-formed-equivalence context invariant. -/
+def StepBetaPreservesWfMUnderWfCtx : Type :=
+  ∀ {Γ : Ctx} {bound body arg : Term},
+    WfCtxEqu Γ →
+      WfM Γ (.app (.abs bound body) arg) →
+        WfM Γ (Term.instantiate 0 arg body)
 
 /-- De Bruijn analogue of Lemma 7 in the exact β-instantiation shape:
 substituting an argument that is a well-subtype of the abstraction bound
@@ -17047,6 +17061,25 @@ noncomputable def StepBetaPreservesWfM_of
     WSubMStar.trs hArg hwfResult hSubResultBound
   exact hSubst hStarArgBound hAbsParts.2
 
+/-- The `WfCtxEqu`-parametric β preservation payload follows from
+function-bound inversion under that same invariant and exact de Bruijn
+body-instantiation preservation. -/
+noncomputable def StepBetaPreservesWfMUnderWfCtx_of
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx) :
+    StepBetaPreservesWfMUnderWfCtx := by
+  intro Γ bound body arg hΓ hwf
+  obtain ⟨result, hFun, hArg⟩ := hwf.app_inv
+  have hEquBoundResult : WEquMStar Γ bound result := hInv hΓ hFun
+  have hSubResultBound : WSubMStar Γ result bound :=
+    hEquBoundResult.symm.toWSubMStar
+  have hwfAbs : WfM Γ (.abs bound body) := hFun.wf_left
+  have hAbsParts := hwfAbs.fun_inv
+  have hwfResult : WfM Γ result := hArg.wf_right
+  have hStarArgBound : WSubMStar Γ arg bound :=
+    WSubMStar.trs hArg hwfResult hSubResultBound
+  exact hSubst hStarArgBound hAbsParts.2
+
 /-- Remaining `.sub` head replacement payload for de Bruijn well-formedness.
 This is the de Bruijn narrowing/replacement bridge needed when an abstraction
 bound changes. -/
@@ -21760,6 +21793,50 @@ theorem wf_right_nonempty_of_new_wf
           ih.some (by simpa [Ctx.depth, hdepth]) hParts.2
         WfM.fun_ hParts.1 hBody'⟩
 
+/-- `WfCtxEqu`-parametric variant of `wf_right_nonempty_of_new_wf`. The
+recursive abstraction-body case extends the invariant with the body `.sub`
+head, matching the de Bruijn binder discipline. -/
+theorem wf_right_under_wfctx_nonempty_of_new_wf
+    (hBeta : StepBetaPreservesWfMUnderWfCtx)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {depth : Nat} {t t' : Term} (hstep : StepAt depth t t') :
+    Nonempty (∀ {Γ : Ctx}, Γ.depth = depth → WfCtxEqu Γ →
+      WfM Γ t → WfM Γ t') := by
+  induction hstep with
+  | beta =>
+      exact ⟨fun {Γ} _hdepth hΓ hwf => hBeta hΓ hwf⟩
+  | @appL depth op op' arg hOp _hArgScoped ih =>
+      exact ⟨fun {Γ} hdepth hΓ hwf =>
+        let ⟨funBound, hFun, hArg⟩ := hwf.app_inv
+        let hwfOp' : WfM Γ op' := ih.some hdepth hΓ hFun.wf_left
+        let hBack : WSubMStar Γ op' op :=
+          WSubMStar.of_StepAt_back (by simpa [hdepth] using hOp)
+            hFun.wf_left hwfOp'
+        WfM.app (WSubMStar.trans hFun.wf_left hBack hFun) hArg⟩
+  | @appR depth op arg arg' _hOpScoped hArgStep ih =>
+      exact ⟨fun {Γ} hdepth hΓ hwf =>
+        let ⟨funBound, hFun, hArg⟩ := hwf.app_inv
+        let hwfArg' : WfM Γ arg' := ih.some hdepth hΓ hArg.wf_left
+        let hBack : WSubMStar Γ arg' arg :=
+          WSubMStar.of_StepAt_back (by simpa [hdepth] using hArgStep)
+            hArg.wf_left hwfArg'
+        WfM.app hFun (WSubMStar.trans hArg.wf_left hBack hArg)⟩
+  | @absBound depth bound bound' body hBound _hBodyScoped _ih =>
+      exact ⟨fun {Γ} hdepth hΓ hwf =>
+        let hParts := hwf.fun_inv
+        let hwfBound' : WfM Γ bound' := _ih.some hdepth hΓ hParts.1
+        let hEqBound : MEqRed Γ [] bound bound' :=
+          MEqRed.of_StepAt (by simpa [hdepth] using hBound) rfl
+            (PrevalidExt.nil hParts.1.prevalid)
+        WfM.fun_ hwfBound'
+          (hSubHeadReplace hEqBound hwfBound' hParts.2)⟩
+  | @absBody depth bound body body' _hBoundScoped hBody ih =>
+      exact ⟨fun {Γ} hdepth hΓ hwf =>
+        let hParts := hwf.fun_inv
+        let hBody' : WfM ({ bound := bound, kind := .sub } :: Γ) body' :=
+          ih.some (by simpa [Ctx.depth, hdepth]) (WfCtxEqu.sub hΓ) hParts.2
+        WfM.fun_ hParts.1 hBody'⟩
+
 end StepAt
 
 /-- De Bruijn operational well-formedness preservation reduced to the two
@@ -21782,6 +21859,16 @@ noncomputable def StepPreservesWfM_of_new_wf
   exact (StepAt.wf_right_nonempty_of_new_wf hBeta hSubHeadReplace hstep).some
     rfl hwf
 
+/-- `WfCtxEqu`-parametric operational well-formedness preservation reduced to
+β instantiation and the sharpened `.sub` head replacement payload. -/
+noncomputable def StepPreservesWfMUnderWfCtx_of_new_wf
+    (hBeta : StepBetaPreservesWfMUnderWfCtx)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf) :
+    StepPreservesWfMUnderWfCtx := by
+  intro Γ t t' hΓ hstep hwf
+  exact (StepAt.wf_right_under_wfctx_nonempty_of_new_wf
+    hBeta hSubHeadReplace hstep).some rfl hΓ hwf
+
 /-- Operational well-formedness preservation reduced to the lower-level β
 components and the sharpened `.sub` head replacement payload. -/
 noncomputable def StepPreservesWfM_of_components
@@ -21791,6 +21878,17 @@ noncomputable def StepPreservesWfM_of_components
     StepPreservesWfM :=
   StepPreservesWfM_of_new_wf
     (StepBetaPreservesWfM_of hSubst hInv)
+    hSubHeadReplace
+
+/-- `WfCtxEqu`-parametric operational preservation from the lower-level β
+components and sharpened `.sub` head replacement. -/
+noncomputable def StepPreservesWfMUnderWfCtx_of_components
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf) :
+    StepPreservesWfMUnderWfCtx :=
+  StepPreservesWfMUnderWfCtx_of_new_wf
+    (StepBetaPreservesWfMUnderWfCtx_of hSubst hInv)
     hSubHeadReplace
 
 /-- Operational well-formedness preservation from the direct `.sub` head
@@ -21804,6 +21902,19 @@ noncomputable def StepPreservesWfM_of_components_and_direct_sub_replace
           WfMSubHeadReplaceDirectPayloads Γ old new) :
     StepPreservesWfM :=
   StepPreservesWfM_of_components hSubst hInv
+    (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
+
+/-- `WfCtxEqu`-parametric operational preservation from direct `.sub` head
+replacement residuals. -/
+noncomputable def StepPreservesWfMUnderWfCtx_of_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new) :
+    StepPreservesWfMUnderWfCtx :=
+  StepPreservesWfMUnderWfCtx_of_components hSubst hInv
     (WfMSubHeadReplaceOfNewWf.of_direct_payloads hSubPayloads)
 
 /-- Operational well-formedness preservation from immediate top-level direct
@@ -21820,6 +21931,23 @@ noncomputable def
           WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
     StepPreservesWfM :=
   StepPreservesWfM_of_components hSubst hInv
+    (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
+      hUnder hSubPayloads)
+
+/-- `WfCtxEqu`-parametric operational preservation from immediate top-level
+direct `.sub` replacement residuals and a factored preserved-head replacement
+payload. -/
+noncomputable def
+    StepPreservesWfMUnderWfCtx_of_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversionUnderWfCtx)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new) :
+    StepPreservesWfMUnderWfCtx :=
+  StepPreservesWfMUnderWfCtx_of_components hSubst hInv
     (WfMSubHeadReplaceOfNewWf.of_immediate_payloads_and_under
       hUnder hSubPayloads)
 
@@ -22707,6 +22835,127 @@ noncomputable def
   Theorem_5_DeBruijn_ClosedPreservation_of_chain_shape_meq_components_and_immediate_sub_replace_and_under
     hSubst (Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm)
     hMEqPres hUnder hSubPayloads hwf hstep
+
+/-- De Bruijn preservation under `WfCtxEqu`, conditional on operational
+well-formedness preservation under the same invariant. This avoids requiring
+global empty-stack equivalence preservation in contexts where the machine-state
+route already supplies the stronger context invariant. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_under_wfctx_of
+    (hStepPres : StepPreservesWfMUnderWfCtx)
+    {Γ : Ctx} {t t' u : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u := by
+  have hwfT : WfM Γ t := hwf.wf_left
+  have hwfT' : WfM Γ t' := hStepPres hΓ hstep hwfT
+  have hBack : WSubMStar Γ t' t :=
+    WSubMStar.of_StepAt_back hstep hwfT hwfT'
+  exact WSubMStar.trans hwfT hBack hwf
+
+/-- Closed-term specialization of the `WfCtxEqu`-parametric de Bruijn
+preservation theorem. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_under_wfctx_of
+    (hStepPres : StepPreservesWfMUnderWfCtx)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of hStepPres
+    WfCtxEqu.empty hwf hstep
+
+/-- `WfCtxEqu`-parametric de Bruijn preservation with Theorem 3's
+strong-commutativity payload consumed, joined-bound well-formedness supplied
+by machine-state preservation, and direct `.sub` replacement residuals. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_machine_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  let hShape : AbsFunctionBoundChainShapePayload :=
+    Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm
+  let hInv : AbsFunctionBoundInversionUnderWfCtx :=
+    AbsFunctionBoundInversionUnderWfCtx_of_chain_shape_machine_state
+    hShape hMachine
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of
+    (StepPreservesWfMUnderWfCtx_of_components_and_direct_sub_replace
+      hSubst hInv hSubPayloads)
+    hΓ hwf hstep
+
+/-- `WfCtxEqu`-parametric de Bruijn preservation with Theorem 3's
+strong-commutativity payload consumed, joined-bound well-formedness supplied
+by machine-state preservation, and immediate plus preserved-head `.sub`
+replacement residuals. -/
+noncomputable def
+    Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_machine_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {Γ : Ctx} {t t' u : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  let hShape : AbsFunctionBoundChainShapePayload :=
+    Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of hcomm
+  let hInv : AbsFunctionBoundInversionUnderWfCtx :=
+    AbsFunctionBoundInversionUnderWfCtx_of_chain_shape_machine_state
+    hShape hMachine
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of
+    (StepPreservesWfMUnderWfCtx_of_components_and_immediate_sub_replace_and_under
+      hSubst hInv hUnder hSubPayloads)
+    hΓ hwf hstep
+
+/-- Closed-term specialization of the machine-state driven direct `.sub`
+replacement theorem surface. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_under_wfctx_of_comm_machine_components_and_direct_sub_replace
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_machine_components_and_direct_sub_replace
+    hSubst hcomm hMachine hSubPayloads WfCtxEqu.empty hwf hstep
+
+/-- Closed-term specialization of the machine-state driven immediate plus
+preserved-head `.sub` replacement theorem surface. -/
+noncomputable def
+    Theorem_5_DeBruijn_ClosedPreservation_under_wfctx_of_comm_machine_components_and_immediate_sub_replace_and_under
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hcomm : ∀ {Γ : Ctx}, StrongCommutes Γ [])
+    (hMachine : MEqRedPreservesWfMachineState)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hSubPayloads : ∀ {Γ : Ctx} {old new : Term},
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfMSubHeadReplaceImmediateDirectPayloads Γ old new)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_machine_components_and_immediate_sub_replace_and_under
+    hSubst hcomm hMachine hUnder hSubPayloads WfCtxEqu.empty hwf hstep
 
 end DeBruijn
 end Pss
