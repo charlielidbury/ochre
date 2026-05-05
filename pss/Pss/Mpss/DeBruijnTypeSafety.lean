@@ -264,6 +264,44 @@ noncomputable def AbsFunctionBoundChainDiagramPayload_of_wsubm
   exact AbsFunctionBoundChainDiagram.of_abs_abs
     (hOne hNoTop hwfSource hwfTarget hSub)
 
+/-- Reflexive abstraction-to-abstraction chain diagram. -/
+def AbsAbsBoundChainDiagram.refl
+    {Γ : Ctx} {bound body : Term}
+    (hwf : WfM Γ (.abs bound body)) :
+    AbsAbsBoundChainDiagram Γ bound body bound body where
+  joinBound := bound
+  joinBody := body
+  subJoin := MSubRedChain.refl
+  eqJoin := MEqRedChain.refl
+  wfJoinBound := hwf.fun_inv.1
+
+/-- Prepend an equivalence step on the left side of an abstraction diagram. -/
+noncomputable def AbsAbsBoundChainDiagram.lf1
+    {Γ : Ctx} {bound body bound' body' result resultBody : Term}
+    (hred : MEqRed Γ [] (.abs bound body) (.abs bound' body'))
+    (d : AbsAbsBoundChainDiagram Γ bound' body' result resultBody) :
+    AbsAbsBoundChainDiagram Γ bound body result resultBody where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := MSubRedChain.trans
+    (MSubRedChain.single
+      (MSubRed.equ (PrevalidExt.nil hred.prevalid) hred))
+    d.subJoin
+  eqJoin := d.eqJoin
+  wfJoinBound := d.wfJoinBound
+
+/-- Append an equivalence step on the right side of an abstraction diagram. -/
+noncomputable def AbsAbsBoundChainDiagram.rgh
+    {Γ : Ctx} {bound body result resultBody result' resultBody' : Term}
+    (d : AbsAbsBoundChainDiagram Γ bound body result' resultBody')
+    (hred : MEqRed Γ [] (.abs result resultBody) (.abs result' resultBody')) :
+    AbsAbsBoundChainDiagram Γ bound body result resultBody where
+  joinBound := d.joinBound
+  joinBody := d.joinBody
+  subJoin := d.subJoin
+  eqJoin := MEqRedChain.trans (MEqRedChain.single hred) d.eqJoin
+  wfJoinBound := d.wfJoinBound
+
 /-- Forget the Type-valued chain structure of a function-bound diagram,
 embedding its chains into the existing Prop-valued closures. -/
 def AbsFunctionBoundDiagram.of_chain {Γ : Ctx} {bound body result : Term}
