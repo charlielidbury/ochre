@@ -47,10 +47,11 @@ closures, 2 inactive outstanding).
   `commute_abs_fun_fun_body_from_operator_join_app_cases_fop_body_equ_handlers_of`,
   using the raw `.equ`-head replacement splitters to reduce the residual
   `Me-FOp` and raw `Ms-FOp` body-premise transports in the structural
-  `Ms-App × Me-App` branch. The empty-stack nested `FOp` cases are impossible;
-  the remaining `Me-Pro`, `Me-App`, `Me-Fun`, `Me-Bet`, raw `Ms-App`, and raw
-  `Ms-Fun` body cases are exposed as explicit handlers. Added the endpoint to
-  the De Bruijn audit. No axiom-count change.
+  `Ms-App × Me-App` branch, then refined the nested raw `Ms-Fun` residual via
+  the empty-stack under-`.sub` splitter. The empty-stack nested `FOp` cases are
+  impossible; the remaining `Me-Pro`, `Me-App`, `Me-Fun`, `Me-Bet`, raw
+  `Ms-App`, and nested raw `Ms-Fun` body cases are exposed as explicit
+  handlers. Added the endpoint to the De Bruijn audit. No axiom-count change.
 * `Pss/Mpss/DeBruijnReductions.lean` — added
   `MEqRed.equ_head_replace_from_handlers`, the raw-equivalence splitter for
   replacing an innermost `.equ` head while preserving an `MEqRed` conclusion.
