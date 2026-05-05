@@ -22,6 +22,13 @@ closures, 2 inactive outstanding).
   This removes the need to introduce fresh numbered stack cancellation
   lemmas for each deeper preserved-head frontier. Added endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` / `Pss/Context/DeBruijn.lean` — added the
+  concrete four-preserved-head arithmetic names needed by the next
+  de Bruijn substitution frontier: `Term.instantiate_four_shift_zero`,
+  `Term.instantiate_four_shift_zero_tail`, and
+  `Stack.instantiate_five_shift_zero`. These are checked specializations
+  of the generalized shift/instantiation arithmetic above. Added endpoints
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/TypeSafety.lean` — added the checked diagnostic
   `Lemma7.lf2_allows_msPro_on_head_sub`, exhibiting a `WSubM.lf2`
   derivation whose subtype-reduction premise is exactly `Ms-Pro` on the

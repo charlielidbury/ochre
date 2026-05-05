@@ -22,10 +22,13 @@ namespace DeBruijn
 #print axioms Stack.instantiate_two_shift_zero
 #print axioms Stack.instantiate_three_shift_zero
 #print axioms Stack.instantiate_four_shift_zero
+#print axioms Stack.instantiate_five_shift_zero
 #print axioms Term.instantiate_two_shift_zero
 #print axioms Term.instantiate_three_shift_zero
+#print axioms Term.instantiate_four_shift_zero
 #print axioms Term.instantiate_two_shift_zero_tail
 #print axioms Term.instantiate_three_shift_zero_tail
+#print axioms Term.instantiate_four_shift_zero_tail
 #print axioms Term.shiftBy_tail
 #print axioms Term.shiftBy_zero_tail
 #print axioms Term.instantiate_shiftBy_zero_tail
