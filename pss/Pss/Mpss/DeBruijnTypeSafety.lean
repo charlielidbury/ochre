@@ -17478,6 +17478,69 @@ noncomputable def MEqRedSubBridgePayloadNoBinders_proved
   exact (MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty hBody
     hBodyNoBinders hpvNew).some
 
+/-- Single-step stack/context retargeting for de Bruijn subtype reduction,
+restricted to `NoBinders` sources.
+
+Unlike the equivalence version, this does **not** convert subtype reduction
+to equivalence reduction: the `Ms-Top` constructor remains a genuine
+subtype-only step even when the source is binder-free. -/
+theorem MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty
+    {Γ_old Γ_new : Ctx} {arg arg' : Term} :
+    ∀ {s_old s_new : Stack},
+      MSubRed Γ_old s_old arg arg' →
+      Term.NoBinders arg →
+      PrevalidExt Γ_new s_new →
+      Nonempty (MSubRed Γ_new s_new arg arg') := by
+  intro s_old s_new hStep hNoBinders hpv
+  induction hStep generalizing Γ_new s_new with
+  | pro _ _ =>
+      cases hNoBinders
+  | top _ _ =>
+      exact ⟨MSubRed.top hpv
+        (hNoBinders.scoped_nonempty Γ_new.depth).some⟩
+  | @equ Γp sp u v hpvOld hEq =>
+      have hEqNew : MEqRed Γ_new s_new u v :=
+        (MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty hEq
+          hNoBinders hpv).some
+      exact ⟨MSubRed.equ hpv hEqNew⟩
+  | @app Γp sp u u' v hOp hVScoped ihOp =>
+      have ⟨hNoBindersU, hNoBindersV⟩ := hNoBinders.app_inv
+      have hVScopedNew : Term.Scoped Γ_new.depth v :=
+        (hNoBindersV.scoped_nonempty Γ_new.depth).some
+      have hpvOp : PrevalidExt Γ_new (v :: s_new) :=
+        PrevalidExt.cons hpv hVScopedNew
+      have hOpNew : MSubRed Γ_new (v :: s_new) u u' :=
+        (ihOp hNoBindersU hpvOp).some
+      exact ⟨MSubRed.app hOpNew hVScopedNew⟩
+  | fun_ _ _ _ _ =>
+      cases hNoBinders
+  | fOp _ _ _ _ =>
+      cases hNoBinders
+
+/-- Scoped, binder-free `.equ`-head to `.sub`-head bridge for subtype
+reduction. This preserves the subtype-reduction judgment; it is not a
+conversion to `MEqRed`. -/
+noncomputable def MSubRedSubBridgePayloadNoBinders_proved
+    {Γ : Ctx} {t v body body' : Term} {s : Stack}
+    (ht : Term.Scoped Γ.depth t)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hBody :
+      MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s) body body') :
+    MSubRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body' := by
+  have hpvOld : PrevalidExt ({bound := v, kind := .equ} :: Γ)
+      (Stack.shift 0 s) := hBody.prevalidExt
+  have hΓ : Prevalid Γ := Prevalid.tail (PrevalidExt.ctx hpvOld)
+  have hPrevalidSub : Prevalid ({bound := t, kind := .sub} :: Γ) :=
+    Prevalid.sub hΓ ht
+  have hStackScoped : Stack.Scoped (Γ.depth + 1) (Stack.shift 0 s) :=
+    PrevalidExt.stack_scoped hpvOld
+  have hpvNew :
+      PrevalidExt ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) :=
+    PrevalidExt.of_stack_scoped hPrevalidSub (by
+      simpa [Ctx.depth] using hStackScoped)
+  exact (MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty hBody
+    hBodyNoBinders hpvNew).some
+
 namespace EqDiamonds
 
 /-- The `Me-Bet × Me-Bet` source cell of de Bruijn Lemma 2 in **restricted

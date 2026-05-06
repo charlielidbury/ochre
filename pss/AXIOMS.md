@@ -2037,6 +2037,14 @@ Bruijn proofs do not yet bridge to LN.
   bridge premise in those mixed β cells when the abstraction body source is
   `Term.NoBinders`. This is not the general `MEqRedSubBridgePayload`.
   Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty` and
+  `MSubRedSubBridgePayloadNoBinders_proved`, the subtype-reduction analog
+  of the scoped binder-free head bridge. This retargets `MSubRed` steps
+  across the `.equ`/`.sub` head change but deliberately does not convert
+  them to `MEqRed`; `Ms-Top` remains a subtype-only constructor even for
+  binder-free sources. Added the endpoints to `Pss/DeBruijnSanity.lean`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
@@ -3433,6 +3441,14 @@ unproven and remains a hypothesis on the cells that consume it.
   `StrongCommutes.equ_bet_chain_ArgBodyNoBinders_of`. This does not cover
   the `StrongCommutes.app_bet_chain_of` `Ms-FOp` branch, whose body premise
   is subtype-reduction rather than equivalence-reduction.
+
+* **Subtype bridge-restricted form:** `MSubRedSubBridgePayloadNoBinders_proved`
+  proves the analogous `.equ`-head to `.sub`-head retargeting for
+  `MSubRed`, again for `Term.NoBinders` body sources and an explicitly
+  scoped target `.sub` bound. This is useful as a narrowed subtype residual,
+  but it is not enough to discharge the `StrongCommutes.app_bet_chain_of`
+  `Ms-FOp` branch because that branch needs a `MEqRed` body derivation for
+  the body diamond, not merely a retargeted subtype step.
 
 * **Residual gap (the cases the restricted forms do NOT cover):**
   **Argument-side bvar or abstraction** remains open: `v = .bvar i` or
