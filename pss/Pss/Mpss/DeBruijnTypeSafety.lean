@@ -20936,6 +20936,113 @@ def StrongCommutesFunFunBranchPayload : Prop :=
     ∃ t₃, MEqRedJ Γ [] (.abs bound₁ body₁) t₃
         ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃
 
+/-- Direct `Ms-Pro` body case of the fun/fun branch obligation. This is one
+of the cases not closed by the generic top/equ body split because the body
+step observes the changed `.sub` head. -/
+def StrongCommutesFunFunBodyProPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ body₁ body₂ : Term} {i : Nat},
+    MEqRed Γ [] t bound₁ →
+    Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) i body₁ →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] (.bvar i) body₂ →
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ body₁) t₃
+        ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃
+
+/-- Direct `Ms-App` body case of the fun/fun branch obligation. -/
+def StrongCommutesFunFunBodyAppPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ u u' v body₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] (.app u v) body₂ →
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ (.app u' v)) t₃
+        ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃
+
+/-- Direct nested `Ms-Fun` body case of the fun/fun branch obligation. -/
+def StrongCommutesFunFunBodyFunPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner inner' body body' body₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] inner inner' →
+    MSubRed ({ bound := inner, kind := .sub } ::
+        { bound := t, kind := .sub } :: Γ) [] body body' →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] (.abs inner body) body₂ →
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ (.abs inner' body')) t₃
+        ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃
+
+/-- Build the broad fun/fun branch handler from direct body-case handlers.
+
+The `Ms-Top` body case closes at an abstraction whose body is `Top`.
+The `Ms-Equ` body case is just an equivalence diamond under the old
+`.sub` head, retargeted to the two post-bound contexts. The remaining
+body constructors are exposed as explicit branch-local obligations. -/
+noncomputable def StrongCommutesFunFunBranchPayload.of_body_handlers
+    (hBodyPro : StrongCommutesFunFunBodyProPayload)
+    (hBodyApp : StrongCommutesFunFunBodyAppPayload)
+    (hBodyFun : StrongCommutesFunFunBodyFunPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBranchPayload := by
+  intro Γ t bound₁ bound₂ body body₁ body₂ hT₁ hBody₁ hT₂ hBody₂
+  have hBoundDiamond := @hUniformDiamond Γ []
+  cases hBody₁ with
+  | pro _ hBind =>
+      exact hBodyPro hT₁ hBind hT₂ hBody₂
+  | top _ _ =>
+      obtain ⟨bound₃, hLeftBound, hRightBound⟩ := hBoundDiamond hT₁ hT₂
+      refine ⟨.abs bound₃ .top, ?_, ?_⟩
+      · obtain ⟨hLB⟩ := hLeftBound
+        have hpvOld : PrevalidExt ({bound := bound₁, kind := .sub} :: Γ) [] := by
+          have hΓ : Prevalid Γ := hT₁.prevalidExt.ctx
+          exact PrevalidExt.nil (Prevalid.sub hΓ hT₁.scoped_right)
+        have hTopEq :
+            MEqRed ({bound := bound₁, kind := .sub} :: Γ) [] .top .top :=
+          MEqRed.top hpvOld
+        exact ⟨MEqRed.fun_ hLB hTopEq⟩
+      · obtain ⟨hRB⟩ := hRightBound
+        have hΓ : Prevalid Γ := hT₂.prevalidExt.ctx
+        have hpvNew :
+            PrevalidExt ({bound := bound₂, kind := .sub} :: Γ) [] :=
+          PrevalidExt.nil (Prevalid.sub hΓ hT₂.scoped_right)
+        have hBody₂Scoped : Term.Scoped (Γ.depth + 1) body₂ := by
+          simpa [Ctx.depth] using hBody₂.scoped_right
+        have hBody₂ScopedNew :
+            Term.Scoped (Ctx.depth ({bound := bound₂, kind := .sub} :: Γ))
+              body₂ := by
+          simpa [Ctx.depth, Nat.succ_eq_add_one] using hBody₂Scoped
+        have hTopSub :
+            MSubRed ({bound := bound₂, kind := .sub} :: Γ) [] body₂ .top :=
+          MSubRed.top hpvNew hBody₂ScopedNew
+        exact ⟨MSubRed.fun_ hT₂.scoped_right hRB hTopSub⟩
+  | equ _ hBodyEqu =>
+      obtain ⟨bound₃, hLeftBound, hRightBound⟩ := hBoundDiamond hT₁ hT₂
+      obtain ⟨body₃, hLeftBody, hRightBody⟩ :=
+        @hUniformDiamond ({bound := t, kind := .sub} :: Γ) []
+          _ _ _ hBodyEqu hBody₂
+      refine ⟨.abs bound₃ body₃, ?_, ?_⟩
+      · obtain ⟨hLB⟩ := hLeftBound
+        obtain ⟨hLeftBodyStep⟩ := hLeftBody
+        have hLeftBodyStep' :
+            MEqRed ({bound := bound₁, kind := .sub} :: Γ) [] body₁ body₃ :=
+          hLeftBodyStep.sub_head_replace hT₁
+        exact ⟨MEqRed.fun_ hLB hLeftBodyStep'⟩
+      · obtain ⟨hRB⟩ := hRightBound
+        obtain ⟨hRightBodyStep⟩ := hRightBody
+        have hRightBodyStep' :
+            MEqRed ({bound := bound₂, kind := .sub} :: Γ) [] body₂ body₃ :=
+          hRightBodyStep.sub_head_replace hT₂
+        have hΓ : Prevalid Γ := hT₂.prevalidExt.ctx
+        have hpvNew :
+            PrevalidExt ({bound := bound₂, kind := .sub} :: Γ) [] :=
+          PrevalidExt.nil (Prevalid.sub hΓ hT₂.scoped_right)
+        exact ⟨MSubRed.fun_ hT₂.scoped_right hRB
+          (MSubRed.equ hpvNew hRightBodyStep')⟩
+  | app hOp hv =>
+      exact hBodyApp hT₁ hOp hv hT₂ hBody₂
+  | fun_ hInner hInnerStep hBodyStep =>
+      exact hBodyFun hT₁ hInner hInnerStep hBodyStep hT₂ hBody₂
+
 /-- Top-level chain-output Lemma 1 closure using branch-local handlers for
 the two known false broad residuals.
 

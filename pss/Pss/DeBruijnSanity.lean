@@ -923,6 +923,10 @@ namespace DeBruijn
 #print axioms StrongCommutesAppBetFOpBranchPayload
 #print axioms StrongCommutesAppBetBranchPayload.of_fop_handler
 #print axioms StrongCommutesFunFunBranchPayload
+#print axioms StrongCommutesFunFunBodyProPayload
+#print axioms StrongCommutesFunFunBodyAppPayload
+#print axioms StrongCommutesFunFunBodyFunPayload
+#print axioms StrongCommutesFunFunBranchPayload.of_body_handlers
 #print axioms StrongCommutes_proved_of_branch_handlers
 
 -- Top-level Lemma 1 chain-output closure.

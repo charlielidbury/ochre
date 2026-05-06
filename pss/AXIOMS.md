@@ -2202,6 +2202,17 @@ Bruijn proofs do not yet bridge to LN.
   case remains as the branch-local payload. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBodyProPayload`,
+  `StrongCommutesFunFunBodyAppPayload`,
+  `StrongCommutesFunFunBodyFunPayload`, and
+  `StrongCommutesFunFunBranchPayload.of_body_handlers`. This splits the
+  broad fun/fun branch obligation: body `Ms-Top` closes directly at an
+  abstraction with body `Top`, body `Ms-Equ` routes through the body
+  `EqDiamonds` premise plus `MEqRed.sub_head_replace`, and only direct
+  body `Ms-Pro`, `Ms-App`, and nested `Ms-Fun` remain as branch-local
+  payloads. Added the endpoints to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype
