@@ -2153,6 +2153,14 @@ Bruijn proofs do not yet bridge to LN.
   `MSubBodyNarrowPayloadNoBinders_proved` only to that concrete body
   step. Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutes.app_app_chain_OpNoBinders_of`, the binder-free-operator
+  `Ms-App × Me-App` Lemma 1 cell. It factors the app/app assembly and
+  discharges both broad operator stack-head transport residuals by
+  preserving `Term.NoBinders` across the operator `MSubRed`/`MEqRed`
+  reducts, then applying the already proved restricted equivalence and
+  subtype operator transports. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -20322,6 +20322,75 @@ theorem MSubRedOpStackHeadTransportPayloadRestricted_proved :
   exact MSubRedStar.op_stack_head_transport_of_NoBinders hArgStar
     hNoBinders (MSubRedStar.single hOpStep) hOpStep.prevalidExt
 
+namespace StrongCommutes
+
+/- Restricted `Ms-App × Me-App` source cell where the operator source is
+binder-free. The binder-free premise propagates to both operator reducts,
+so the already-proved restricted stack-head transports replace the broad
+`MEqRedOpStackHeadTransportPayload` and
+`MSubRedOpStackHeadTransportPayload` residuals for this case. -/
+theorem app_app_chain_OpNoBinders_of
+    {Γ : Ctx} {s : Stack} {u u' u₂ v v₂ : Term}
+    (hOpComm : StrongCommutes Γ (v :: s))
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (hNoBindersOp : Term.NoBinders u)
+    (hOp : MSubRed Γ (v :: s) u u')
+    (hOp₂ : MEqRed Γ (v :: s) u u₂)
+    (hArg₂ : MEqRed Γ [] v v₂) :
+    ∃ t₃,
+      MEqRedStar Γ s (.app u' v) t₃
+      ∧ MSubRedStar Γ s (.app u₂ v₂) t₃ := by
+  have hpvCons : PrevalidExt Γ (v :: s) := hOp.prevalidExt
+  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hv : Term.Scoped Γ.depth v := PrevalidExt.head_scoped hpvCons
+  have hpvNil : PrevalidExt Γ [] :=
+    PrevalidExt.nil (PrevalidExt.ctx hpv)
+  obtain ⟨u₃, hOp_eqJ, hOp_subJ⟩ := hOpComm hOp hOp₂
+  let hOp_eq : MEqRed Γ (v :: s) u' u₃ := hOp_eqJ.some
+  let hOp_sub : MSubRed Γ (v :: s) u₂ u₃ := hOp_subJ.some
+  have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+  obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArgRefl hArg₂
+  let hArg₁₃ : MEqRed Γ [] v v₃ := hArg₁₃J.some
+  let hArg₂₃ : MEqRed Γ [] v₂ v₃ := hArg₂₃J.some
+  have hu' : Term.Scoped Γ.depth u' := hOp.scoped_right
+  have hu₂ : Term.Scoped Γ.depth u₂ := hOp₂.scoped_right
+  have hv₂ : Term.Scoped Γ.depth v₂ := hArg₂.scoped_right
+  have hv₃ : Term.Scoped Γ.depth v₃ := hArg₁₃.scoped_right
+  have hNoBindersOp' : Term.NoBinders u' :=
+    hOp.preserves_noBinders hNoBindersOp
+  have hNoBindersOp₂ : Term.NoBinders u₂ :=
+    hOp₂.preserves_noBinders hNoBindersOp
+  refine ⟨.app u₃ v₃, ?_, ?_⟩
+  · have hArgChain₁ : MEqRedStar Γ s (.app u' v) (.app u' v₃) :=
+      MEqRedStar.app_right hu' (MEqRedStar.single hArg₁₃) hpv
+    have hOpAtNew : MEqRedStar Γ (v₃ :: s) u' u₃ :=
+      MEqRedOpStackHeadTransportPayloadRestricted_proved
+        (MEqRedStar.single hArg₁₃) hNoBindersOp' hOp_eq
+    have hOpChain : MEqRedStar Γ s (.app u' v₃) (.app u₃ v₃) :=
+      MEqRedStar.app_left hOpAtNew hv₃
+    exact hArgChain₁.trans hOpChain
+  · have hpvOp : PrevalidExt Γ (v₂ :: s) :=
+      PrevalidExt.cons hpv hv₂
+    have hu₂Refl : MEqRed Γ (v₂ :: s) u₂ u₂ :=
+      MEqRed.refl hpvOp hu₂
+    have hMeApp₂₂ : MEqRed Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+      MEqRed.app hu₂Refl hArg₂₃
+    have hStep₁ :
+        MSubRedStar Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+      MSubRedStar.single (MSubRed.equ hpv hMeApp₂₂)
+    have hOpSubAtNew : MSubRedStar Γ (v₃ :: s) u₂ u₃ :=
+      MSubRedOpStackHeadTransportPayloadRestricted_proved
+        (MEqRedStar.single hArg₁₃) hNoBindersOp₂ hOp_sub
+    have hStep₂ :
+        MSubRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
+      MSubRedStar.app_fixed_arg hv₃ hOpSubAtNew
+    exact hStep₁.trans hStep₂
+
+end StrongCommutes
+
 /-- Cross-relation, cross-head bridge: convert an `MSubRed` body step
 under an `.equ`-head bound `v` into an `MEqRed` body step under a
 `.sub`-head bound `t`. Required by the `app × bet` cell's `Ms-FOp`
@@ -20711,3 +20780,101 @@ theorem StrongCommutes_proved
         (@hUniformStrongCommutes ({bound := α, kind := .equ} :: Γ)
           (Stack.shift 0 s_inner))
         hα hBody₁ hT₂ hBody₂
+
+/-! ## Top-level chain-input/chain-output Lemma 1 closure assembly
+
+This section assembles the de Bruijn `StrongCommutes` β-position chain
+cells (single-step in × chain out) into a top-level chain-input,
+chain-output strong-commutativity headline.
+
+### Residual hypothesis
+
+The closure is **conditional** on a single residual:
+
+`UniformStrongCommutes` — single-step `StrongCommutes Γ s` at every
+extended context, exactly mirroring `UniformEqDiamonds` for Lemma 2.
+Discharging this residual is itself the open transitivity-elimination
+problem.
+
+### Why single-step rather than chain-output
+
+The parallel Lemma 2 chain-headline `Lemma_2_DeBruijn_DiamondMEqRedStar_proved`
+documents (commit `49c9196`) that lifting a chain-output single-step
+diamond to chain-chain confluence via standard Newman/strip
+`head_induction_on` does **not** go through: the chain-output residuals
+break the structural-recursion measure, and the canonical alternative
+requires introducing parallel reduction (Tait/Martin-Löf). The same
+obstruction applies to lifting the chain-output `StrongCommutesChain`
+to chain-chain strong commutativity.
+
+We therefore follow Path B' from the Lemma 2 wiring: take
+**single-step** `UniformStrongCommutes` directly, instantiate it at the
+home `Γ s`, and feed it to the existing single-step strip lemma
+`Lemma_1_DeBruijn_StrongCommutativityStar_of`. The chain-output
+companion `StrongCommutesChain` (assembled from the per-cell chain
+theorems) is a strict consequence of the single-step
+`UniformStrongCommutes` plus the residual transport/bridge payloads;
+keeping the residual set documented in this headline as
+`UniformStrongCommutes` (single-step) is the right granularity for the
+campaign — the headline becomes unconditional in lockstep as
+`UniformStrongCommutes` itself becomes provable. -/
+
+/-- Universal single-step strong commutativity at every extended
+context. This is the residual for the chain-input/chain-output Lemma 1
+closure, mirroring `UniformEqDiamonds` for Lemma 2. -/
+def UniformStrongCommutes : Prop :=
+  ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s
+
+/-- Universal chain-output strong commutativity at every extended
+context. Strict consequence of `UniformStrongCommutes` paired with the
+residual transport/bridge payloads (see the per-cell `equ_bet_chain_of`
+and `app_bet_chain_of` theorems plus the per-cell single-step closures
+in `DeBruijnTransitivityElim.StrongCommutes.*`). Provided as a typed
+abbrev so that downstream chain-shape assembly (e.g. assembling a
+top-level chain-output closure analogous to `EqDiamonds_proved`) has a
+named target. The current chain-input headline below uses single-step
+`UniformStrongCommutes` directly, so this abbrev is documentation-level
+only at this stage. -/
+def UniformStrongCommutesChain : Prop :=
+  ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s
+
+/-- Top-level chain-input/chain-output strong commutativity headline for
+de Bruijn Lemma 1. Conditional on universal single-step strong
+commutativity `UniformStrongCommutes` at every extended context.
+
+Given a subtype-reduction chain `t₀ →* t₁` and an equivalence-reduction
+chain `t₀ →* t₂` from a common source, this produces a common reduct
+`t₃` joined by an equivalence chain on the subtype side and a subtype
+chain on the equivalence side. This is the chain-input/chain-output
+shape needed by Theorem 3 (transitivity-elimination) downstream.
+
+Following the same Path B' as the parallel
+`Lemma_2_DeBruijn_DiamondMEqRedStar_proved` (commit `49c9196`), we
+instantiate the universal hypothesis at the home `Γ s` and feed it to
+the existing single-step strip lemma
+`Lemma_1_DeBruijn_StrongCommutativityStar_of`. The single-step
+`UniformStrongCommutes` residual is exactly the standing
+transitivity-elimination problem; as it is discharged, this headline
+becomes unconditional in lockstep. -/
+noncomputable def Lemma_1_DeBruijn_StrongCommutativityStar_proved
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
+    (h₁ : MSubRedStar Γ s t₀ t₁)
+    (h₂ : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃ :=
+  Lemma_1_DeBruijn_StrongCommutativityStar_of
+    (@hUniformStrongCommutes Γ s) h₁ h₂
+
+/-- Type-valued chain analog of `Lemma_1_DeBruijn_StrongCommutativityStar_proved`.
+Mirrors `Lemma_1_DeBruijn_StrongCommutativityChain_of` but takes the
+universal residual hypothesis `UniformStrongCommutes` instead of a bare
+single-step `StrongCommutes Γ s` premise. -/
+noncomputable def Lemma_1_DeBruijn_StrongCommutativityChain_proved
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
+    (h₁ : MSubRedChain Γ s t₀ t₁)
+    (h₂ : MEqRedChain Γ s t₀ t₂) :
+    Sigma fun t₃ =>
+      MEqRedChain Γ s t₁ t₃ × MSubRedChain Γ s t₂ t₃ :=
+  Lemma_1_DeBruijn_StrongCommutativityChain_of
+    (@hUniformStrongCommutes Γ s) h₁ h₂

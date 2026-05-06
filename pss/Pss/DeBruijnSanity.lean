@@ -879,6 +879,11 @@ namespace DeBruijn
 -- abstraction body is binder-free.
 #print axioms StrongCommutes.fun_fun_BodyNoBinders_of
 
+-- de Bruijn Lemma 1 `Ms-App × Me-App` restricted cell. Discharges both
+-- broad operator stack-head transport residuals when the operator source is
+-- binder-free.
+#print axioms StrongCommutes.app_app_chain_OpNoBinders_of
+
 -- de Bruijn Lemma 1 `StrongCommutes` β-position chain-output cells. These
 -- are the analogs of `EqDiamonds.bet_*_chain_of` but for the asymmetric
 -- `MSubRed × MEqRed → ∃ t₃, MEqRedStar t₁ t₃ ∧ MSubRedStar t₂ t₃` shape.
