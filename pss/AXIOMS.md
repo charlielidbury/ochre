@@ -251,6 +251,10 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsBetStackPayload`, and
   `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsFOpStackPayload`. Added
   the endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — assembled the thirty-six-head constructor
+  helper `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack.of_constructors`
+  from the thirty-six-head structural leaves and binder payload frontiers. Added
+  the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-four-head constructor
   payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsBetStackPayload`, and
