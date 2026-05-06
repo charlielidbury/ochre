@@ -17273,6 +17273,16 @@ theorem Term.NoBinders.shiftBy_eq {t : Term} (h : Term.NoBinders t)
   | app _ _ ihF ihX =>
       simp [Term.shiftBy, ihF cutoff amount, ihX cutoff amount]
 
+/-- Instantiation leaves `NoBinders` terms unchanged. -/
+theorem Term.NoBinders.instantiate_eq {t : Term} (h : Term.NoBinders t)
+    (k : Nat) (v : Term) :
+    Term.instantiate k v t = t := by
+  induction h generalizing k v with
+  | top =>
+      simp [Term.instantiate]
+  | app _ _ ihF ihX =>
+      simp [Term.instantiate, ihF k v, ihX k v]
+
 /-- Restricted argument-transport payload: a strictly stronger form of
 `MEqRedArgTransportPayload` with `Term.AbsFree body` and `Term.NoBinders
 arg` premises added. The body's abs-freedom is needed for the index-0
@@ -19963,6 +19973,84 @@ theorem app_bet_chain_ArgBodyNoBinders_of
           subst h1
           subst h2
           exact hFOpBodySubBridge hBodySub)
+
+/-- The genuine subtype-only `Ms-FOp × Me-Bet` β-position branch with
+binder-free argument and body.
+
+Unlike `app_bet_chain_ArgBodyNoBinders_of`, this does not ask the direct
+`Ms-FOp` body step to become an `MEqRed` step. It retargets that body step
+as `MSubRed` under the `.sub` head, commutes it with the β body
+`MEqRed` step using `StrongCommutes` in the body context, and then lifts the
+resulting binder-free chains back to the outer context. -/
+theorem app_bet_chain_FOpArgBodyNoBindersAsSub_of
+    {Γ : Ctx} {s : Stack} {t v body bodyOp' body₂' v₂' : Term}
+    (hBodyComm :
+      StrongCommutes ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s))
+    (ht : Term.Scoped Γ.depth t)
+    (hv : Term.Scoped Γ.depth v)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hBodySub :
+      MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s)
+        body bodyOp')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+        body body₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs t bodyOp') v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  have hpv : PrevalidExt Γ s :=
+    PrevalidExt.weaken_head_inv hBody₂.prevalidExt
+  have hpvNil : PrevalidExt Γ [] :=
+    PrevalidExt.nil (PrevalidExt.ctx hpv)
+  have hBodySubAtSub :
+      MSubRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+        body bodyOp' :=
+    MSubRedSubBridgePayloadNoBinders_proved ht hBodyNoBinders hBodySub
+  obtain ⟨body₃, hBodyEqJ, hBodySubJ⟩ :=
+    hBodyComm hBodySubAtSub hBody₂
+  have hBodyEq : MEqRed ({bound := t, kind := .sub} :: Γ)
+      (Stack.shift 0 s) bodyOp' body₃ := hBodyEqJ.some
+  have hBodySub₂₃ : MSubRed ({bound := t, kind := .sub} :: Γ)
+      (Stack.shift 0 s) body₂' body₃ := hBodySubJ.some
+  have hBodyOpNoBinders : Term.NoBinders bodyOp' :=
+    hBodySubAtSub.preserves_noBinders hBodyNoBinders
+  have hBody₂NoBinders : Term.NoBinders body₂' :=
+    hBody₂.preserves_noBinders hBodyNoBinders
+  have hBody₃NoBinders : Term.NoBinders body₃ :=
+    hBodyEq.preserves_noBinders hBodyOpNoBinders
+  refine ⟨body₃, ?_, ?_⟩
+  · have hPrevalidT :
+        Prevalid ({bound := t, kind := .sub} :: Γ) :=
+      Prevalid.sub (PrevalidExt.ctx hpv) ht
+    have hpvBodyT :
+        PrevalidExt ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) :=
+      PrevalidExt.weaken_head hpv hPrevalidT
+    have hBodyOpScoped :
+        Term.Scoped (Ctx.depth ({bound := t, kind := .sub} :: Γ)) bodyOp' :=
+      hBodyEq.scoped_left
+    have hBodyRefl :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          bodyOp' bodyOp' :=
+      MEqRed.refl hpvBodyT hBodyOpScoped
+    have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+    have hβ :
+        MEqRed Γ s (.app (.abs t bodyOp') v)
+          (Term.instantiate 0 v bodyOp') :=
+      MEqRed.bet ht hBodyRefl hArgRefl
+    have hβStar :
+        MEqRedStar Γ s (.app (.abs t bodyOp') v) bodyOp' := by
+      simpa [hBodyOpNoBinders.instantiate_eq 0 v] using
+        (MEqRedStar.single hβ)
+    have hBodyEqLift :
+        MEqRedStar Γ s bodyOp' body₃ :=
+      MEqRedStar.lift_to_any_context_stack_of_NoBinders
+        hBodyEq hBodyOpNoBinders hpv
+    exact hβStar.trans hBodyEqLift
+  · have hBodySubLift :
+        MSubRedStar Γ s body₂' body₃ :=
+      MSubRedStar.lift_to_any_context_stack_of_NoBinders
+        (MSubRedStar.single hBodySub₂₃) hBody₂NoBinders hpv
+    simpa [hBody₂NoBinders.instantiate_eq 0 v₂'] using hBodySubLift
 
 end StrongCommutes
 

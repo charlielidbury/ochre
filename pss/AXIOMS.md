@@ -2155,6 +2155,17 @@ Bruijn proofs do not yet bridge to LN.
   subtype-only `Ms-FOp` body step remains an explicit local bridge premise.
   Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `Term.NoBinders.instantiate_eq` and
+  `StrongCommutes.app_bet_chain_FOpArgBodyNoBindersAsSub_of`, a
+  binder-free `Ms-FOp × Me-Bet` branch theorem that consumes the sound
+  subtype-preserving bridge instead of the false `MSubBridgePayload`.
+  The body `MSubRed` step is retargeted under the `.sub` head, commuted
+  with the β-body `MEqRed` step using `StrongCommutes` in the body
+  context, and the resulting binder-free `MEqRedStar`/`MSubRedStar`
+  chains are lifted back to the outer context because instantiation is
+  definitionally unchanged on `Term.NoBinders` terms. Added the endpoint
+  to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

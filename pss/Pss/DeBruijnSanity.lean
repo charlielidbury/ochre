@@ -809,6 +809,7 @@ namespace DeBruijn
 #print axioms Term.NoBinders.absFree
 #print axioms Term.NoBinders.scoped_nonempty
 #print axioms Term.NoBinders.shiftBy_eq
+#print axioms Term.NoBinders.instantiate_eq
 #print axioms MEqRedStar.lift_to_any_stack_of_NoBinders
 #print axioms MEqRed.preserves_noBinders
 #print axioms MEqRedJ.preserves_noBinders
@@ -912,6 +913,7 @@ namespace DeBruijn
 #print axioms StrongCommutes.equ_bet_chain_ArgBodyNoBinders_of
 #print axioms StrongCommutes.app_bet_chain_ArgNoBinders_of
 #print axioms StrongCommutes.app_bet_chain_ArgBodyNoBinders_of
+#print axioms StrongCommutes.app_bet_chain_FOpArgBodyNoBindersAsSub_of
 
 -- Top-level Lemma 1 chain-output closure.
 -- Conditional on the same residuals as `EqDiamonds_proved` plus three
