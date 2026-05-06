@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-three-head promoted
+  variable leaf `BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsStack.pro`,
+  routing the fixed-head surface through the generic de Bruijn preserved-head
+  `Me-Pro` transport. Added the endpoint to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-three-head top
   application leaf `BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsStack.tAp`,
   deriving the instantiated argument scopedness through the checked
