@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-nine-head
+  reflexive equivalence leaf
+  `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsStack.refl`, extending
+  the scoped-term instantiation argument to depth `Γ.depth + 29`. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-nine-head
   `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsStack.app`,
   assembling the instantiated function and argument premises with `MEqRed.app`.
   Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count
