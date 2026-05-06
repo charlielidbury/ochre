@@ -17875,6 +17875,26 @@ theorem MEqRedStar.op_stack_head_transport_of_NoBinders
   exact MEqRedStar.lift_chain_to_any_context_stack_of_NoBinders
     hOpStar hNoBinders hpvNew
 
+/-- Chain-level restricted subtype operator stack-head transport. This is
+the `MSubRedStar` analogue of
+`MEqRedStar.op_stack_head_transport_of_NoBinders`: a binder-free operator
+subtype chain can be retargeted from stack `(v :: s)` to `(v' :: s)` along
+an argument-side equivalence chain. The old stack prevalidity is explicit
+for the same reason: a reflexive subtype chain carries no constructor. -/
+theorem MSubRedStar.op_stack_head_transport_of_NoBinders
+    {Γ : Ctx} {s : Stack} {v v' u u' : Term}
+    (hArgStar : MEqRedStar Γ [] v v')
+    (hNoBinders : Term.NoBinders u)
+    (hOpStar : MSubRedStar Γ (v :: s) u u')
+    (hpvCons : PrevalidExt Γ (v :: s)) :
+    MSubRedStar Γ (v' :: s) u u' := by
+  have hpvTail : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hv : Term.Scoped Γ.depth v := PrevalidExt.head_scoped hpvCons
+  have hv' : Term.Scoped Γ.depth v' := hArgStar.scoped_right hv
+  have hpvNew : PrevalidExt Γ (v' :: s) := PrevalidExt.cons hpvTail hv'
+  exact MSubRedStar.lift_to_any_context_stack_of_NoBinders
+    hOpStar hNoBinders hpvNew
+
 namespace EqDiamonds
 
 /-- The `Me-App × Me-App` source cell of de Bruijn Lemma 2 with chain
