@@ -931,5 +931,11 @@ namespace DeBruijn
 #print axioms MSubBodyNarrowPayloadNoBinders_proved
 #print axioms StrongCommutes_proved
 
+-- Top-level chain-input/chain-output Lemma 1 closure (Path B' wiring).
+#print axioms UniformStrongCommutes
+#print axioms UniformStrongCommutesChain
+#print axioms Lemma_1_DeBruijn_StrongCommutativityStar_proved
+#print axioms Lemma_1_DeBruijn_StrongCommutativityChain_proved
+
 end DeBruijn
 end Pss

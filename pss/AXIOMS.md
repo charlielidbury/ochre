@@ -2161,6 +2161,15 @@ Bruijn proofs do not yet bridge to LN.
   reducts, then applying the already proved restricted equivalence and
   subtype operator transports. Added the endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the Path B' chain-input
+  Lemma 1 headlines `UniformStrongCommutes`,
+  `UniformStrongCommutesChain`,
+  `Lemma_1_DeBruijn_StrongCommutativityStar_proved`, and
+  `Lemma_1_DeBruijn_StrongCommutativityChain_proved`. These mirror the
+  Lemma 2 chain-input wiring: instantiate universal single-step
+  `StrongCommutes` at the home context/stack and delegate to the existing
+  strip lemmas. Added the endpoints to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
