@@ -8,6 +8,106 @@ the axioms below.
 **Total axiom count: 12** (1 permanent, 9 active outstanding in headline
 closures, 2 inactive outstanding).
 
+## De Bruijn primary headlines (post-iter pss-20260506-*)
+
+The de Bruijn `_proved` endpoints in
+`Pss/Mpss/DeBruijnTypeSafety.lean` are the **primary form** of the
+headline theorems for the active campaign. Each closure consumes only:
+
+* **Kernel axioms** — the standard three (`propext`, `Quot.sound`,
+  `Classical.choice`); no custom axioms.
+* **Named Prop / Type residual hypotheses** — passed in as explicit
+  arguments. These are *not* axioms; they are open obligations carried
+  in the theorem statement and discharged by callers (or, eventually,
+  proved unconditionally as the campaign progresses).
+
+The five de Bruijn `_proved` endpoints (with their chain analogs):
+
+| Endpoint | Residual hypotheses |
+|---|---|
+| `Pss.DeBruijn.Lemma_1_DeBruijn_StrongCommutativityStar_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Lemma_1_DeBruijn_StrongCommutativityChain_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Lemma_2_DeBruijn_DiamondMEqRedStar_proved` | `MEqRedArgTransportPayload`, `MEqRedOpStackHeadTransportPayload`, `MEqRedSubBridgePayload`, `UniformEqDiamonds` |
+| `Pss.DeBruijn.Lemma_2_DeBruijn_DiamondMEqRedChain_proved` | `MEqRedArgTransportPayload`, `MEqRedOpStackHeadTransportPayload`, `MEqRedSubBridgePayload`, `UniformEqDiamonds` |
+| `Pss.DeBruijn.Theorem_3_DeBruijn_TransitivityIsAdmissible_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Theorem_4_DeBruijn_Progress_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_proved` | `BetaInstantiationPreservesWfM`, `AbsFunctionBoundInversion`, `WfMSubHeadReplaceOfNewWf` |
+| `Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_proved` | `BetaInstantiationPreservesWfM`, `AbsFunctionBoundInversion`, `WfMSubHeadReplaceOfNewWf` |
+
+These are audited in `Pss/Sanity.lean` under the "De Bruijn primary
+headlines" section. As each residual hypothesis is discharged, the
+corresponding `_proved` endpoint becomes unconditional in lockstep
+without changing any downstream call sites.
+
+### Residual hypothesis dictionary
+
+* `UniformStrongCommutes : Prop` — universal single-step strong
+  commutativity at every extended context. The standing
+  transitivity-elimination problem; consumed by Lemma 1 / Theorem 3 /
+  Theorem 4 closures. Discharge requires the case-grid recursion over
+  genuine structural sub-derivations that the de Bruijn switch was
+  designed to enable. See `DeBruijnTransitivityElim.lean`'s per-cell
+  `StrongCommutes.*` namespace for the case progress, and
+  `DeBruijnTypeSafety.lean:21202` for the definition.
+
+* `UniformEqDiamonds : Prop` — universal single-step equivalence
+  diamond at every extended context. Lemma 2's standing residual.
+  Defined at `DeBruijnTypeSafety.lean:20215`.
+
+* `MEqRedArgTransportPayload`, `MEqRedOpStackHeadTransportPayload`,
+  `MEqRedSubBridgePayload` (Type-valued) — argument-position transport,
+  operator stack-head transport, and `.equ → .sub` head bridge payloads
+  for the Lemma 2 chain-output assembly. Open structural transports;
+  individual cases are progressing in
+  `DeBruijnTypeSafety.EqDiamonds.*`.
+
+* `BetaInstantiationPreservesWfM : Type` — de Bruijn analogue of
+  Lemma 7: substituting an argument that is a well-subtype of the
+  abstraction bound preserves body well-formedness. Defined at
+  `DeBruijnTypeSafety.lean:193`.
+
+* `AbsFunctionBoundInversion : Type` — function-bound inversion: if an
+  abstraction has a function supertype, their bounds are transitively
+  well-equivalent. Defined at `DeBruijnTypeSafety.lean:4043`.
+
+* `WfMSubHeadReplaceOfNewWf : Type` — sharpened `.sub`-head replacement
+  payload for the operational abstraction-bound case (assumes the
+  replacement bound is already well-formed). Defined at
+  `DeBruijnTypeSafety.lean:10890`.
+
+**Note on terminology.** "Residual hypothesis" is *not* a synonym for
+"axiom" in this section. Each of the names above is a `def` whose body
+is a `Prop` or `Type`; passing one in as an explicit argument records
+the open obligation in the theorem signature without committing the
+build to a Lean `axiom` declaration. `#print axioms` on a `_proved`
+endpoint will show the kernel three only, not the residual names.
+
+### Relationship to the LN-side axioms
+
+The five LN β-residual axioms
+
+* `Lemma_1_ctx_axiom`
+* `Lemma_1_inline_app_bet_residual`
+* `Lemma_2_DiamondMEqRed_ctx_axiom`
+* `Lemma_2_inline_app_bet_residual_axiom`
+* `Lemma_2_inline_bet_residual_axiom`
+
+remain **STILL-CONSUMED-BY-LN-SIDE**. They appear in the `#print axioms`
+closure of the LN-side endpoints (`Theorem_3_TransitivityIsAdmissible`,
+`Lemma_2_DiamondMEqRed`, etc.) which are kept in the audit as
+documentation-only / paper-faithfulness references. The de Bruijn
+`_proved` endpoints exist alongside, not as a replacement: the LN
+endpoints carry the paper-faithful textual statements while the de
+Bruijn endpoints carry the actual current proof status.
+
+The LN axioms are no longer the only path: the de Bruijn endpoints
+above are the campaign's primary discharge target, and the LN axioms
+will be retired once the LN side is removed (after the de Bruijn
+campaign closes the `Uniform*` / `BetaInstantiationPreservesWfM`
+residuals). Until then, both are tracked in the audit.
+
+---
+
 **Session 2026-05-06 (iter pss-20260506-130802) — DE BRUIJN PIVOT WALLS:**
 
 The de Bruijn refactor's stack-extension wall has been characterized
