@@ -2073,6 +2073,14 @@ Bruijn proofs do not yet bridge to LN.
   equivalence chain only to recover scoping of the new stack head, then
   applies the subtype NoBinders chain-retargeting lemma. Added the endpoint
   to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `EqDiamonds.app_app_chain_from_star_joins_of_NoBinders`, a factored
+  `Me-App × Me-App` cell for binder-free operators that consumes
+  already-built operator and operand join chains. Re-routed
+  `EqDiamonds.app_app_chain_NoBinders_of` through this factored surface,
+  so the new chain-level operator stack-head transport is now a direct
+  dependency of the restricted app/app cell. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

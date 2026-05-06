@@ -850,6 +850,7 @@ namespace DeBruijn
 #print axioms MEqRedOpStackHeadTransportPayloadRestricted_proved
 #print axioms MEqRedStar.op_stack_head_transport_of_NoBinders
 #print axioms MSubRedStar.op_stack_head_transport_of_NoBinders
+#print axioms EqDiamonds.app_app_chain_from_star_joins_of_NoBinders
 #print axioms EqDiamonds.app_app_chain_NoBinders_of
 
 -- de Bruijn Lemma 2 `Me-Bet × Me-App` cell (chain output, conditional on

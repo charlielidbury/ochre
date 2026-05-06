@@ -17959,6 +17959,54 @@ theorem app_app_chain_of
       MEqRedStar.app_left hOpAtNewStack hv₃
     exact hArgChain₂.trans hOpChain₂
 
+/-- Factored restricted `Me-App × Me-App` source cell. This version accepts
+operator and operand joins that have already been factored as chains, and
+then uses the binder-free operator-chain stack-head transport to rebuild the
+application joins at the final operand stack head. -/
+theorem app_app_chain_from_star_joins_of_NoBinders
+    {Γ : Ctx} {s : Stack} {u u₁ u₂ u₃ v v₁ v₂ v₃ : Term}
+    (hNoBindersOp : Term.NoBinders u)
+    (hOp₁ : MEqRed Γ (v :: s) u u₁) (hArg₁ : MEqRed Γ [] v v₁)
+    (hOp₂ : MEqRed Γ (v :: s) u u₂) (hArg₂ : MEqRed Γ [] v v₂)
+    (hOp₁₃ : MEqRedStar Γ (v :: s) u₁ u₃)
+    (hOp₂₃ : MEqRedStar Γ (v :: s) u₂ u₃)
+    (hArg₁₃ : MEqRedStar Γ [] v₁ v₃)
+    (hArg₂₃ : MEqRedStar Γ [] v₂ v₃) :
+    ∃ t₃, MEqRedStar Γ s (.app u₁ v₁) t₃ ∧
+      MEqRedStar Γ s (.app u₂ v₂) t₃ := by
+  have hpvCons : PrevalidExt Γ (v :: s) := hOp₁.prevalidExt
+  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hu₁ : Term.Scoped Γ.depth u₁ := hOp₁.scoped_right
+  have hu₂ : Term.Scoped Γ.depth u₂ := hOp₂.scoped_right
+  have hv₁ : Term.Scoped Γ.depth v₁ := hArg₁.scoped_right
+  have hv₂ : Term.Scoped Γ.depth v₂ := hArg₂.scoped_right
+  have hv₃ : Term.Scoped Γ.depth v₃ := hArg₁₃.scoped_right hv₁
+  have hOp₁NoBinders : Term.NoBinders u₁ :=
+    hOp₁.preserves_noBinders hNoBindersOp
+  have hOp₂NoBinders : Term.NoBinders u₂ :=
+    hOp₂.preserves_noBinders hNoBindersOp
+  have hArgChain₁_full : MEqRedStar Γ [] v v₃ :=
+    (MEqRedStar.single hArg₁).trans hArg₁₃
+  have hArgChain₂_full : MEqRedStar Γ [] v v₃ :=
+    (MEqRedStar.single hArg₂).trans hArg₂₃
+  refine ⟨.app u₃ v₃, ?_, ?_⟩
+  · have hArgChain₁ : MEqRedStar Γ s (.app u₁ v₁) (.app u₁ v₃) :=
+      MEqRedStar.app_right hu₁ hArg₁₃ hpv
+    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₁ u₃ :=
+      MEqRedStar.op_stack_head_transport_of_NoBinders
+        hArgChain₁_full hOp₁NoBinders hOp₁₃ hpvCons
+    have hOpChain₁ : MEqRedStar Γ s (.app u₁ v₃) (.app u₃ v₃) :=
+      MEqRedStar.app_left hOpAtNewStack hv₃
+    exact hArgChain₁.trans hOpChain₁
+  · have hArgChain₂ : MEqRedStar Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+      MEqRedStar.app_right hu₂ hArg₂₃ hpv
+    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₂ u₃ :=
+      MEqRedStar.op_stack_head_transport_of_NoBinders
+        hArgChain₂_full hOp₂NoBinders hOp₂₃ hpvCons
+    have hOpChain₂ : MEqRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
+      MEqRedStar.app_left hOpAtNewStack hv₃
+    exact hArgChain₂.trans hOpChain₂
+
 /-- Restricted `Me-App × Me-App` source cell: the conditional operator
 stack-head transport is discharged when the original operator source is
 `Term.NoBinders`. The premise propagates to both operator diamond branches
@@ -17977,44 +18025,14 @@ theorem app_app_chain_NoBinders_of
     (hOp₁ : MEqRed Γ (v :: s) u u₁) (hArg₁ : MEqRed Γ [] v v₁)
     (hOp₂ : MEqRed Γ (v :: s) u u₂) (hArg₂ : MEqRed Γ [] v v₂) :
     ∃ t₃, MEqRedStar Γ s (.app u₁ v₁) t₃ ∧ MEqRedStar Γ s (.app u₂ v₂) t₃ := by
-  have hOp₁NoBinders : Term.NoBinders u₁ :=
-    hOp₁.preserves_noBinders hNoBindersOp
-  have hOp₂NoBinders : Term.NoBinders u₂ :=
-    hOp₂.preserves_noBinders hNoBindersOp
   obtain ⟨u₃, hOp₁₃J, hOp₂₃J⟩ := hOpDiamond hOp₁ hOp₂
   obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArg₁ hArg₂
-  let hOp₁₃ : MEqRed Γ (v :: s) u₁ u₃ := hOp₁₃J.some
-  let hOp₂₃ : MEqRed Γ (v :: s) u₂ u₃ := hOp₂₃J.some
-  let hArg₁₃ : MEqRed Γ [] v₁ v₃ := hArg₁₃J.some
-  let hArg₂₃ : MEqRed Γ [] v₂ v₃ := hArg₂₃J.some
-  have hpvCons : PrevalidExt Γ (v :: s) := hOp₁.prevalidExt
-  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
-  have hu₁ : Term.Scoped Γ.depth u₁ := hOp₁.scoped_right
-  have hu₂ : Term.Scoped Γ.depth u₂ := hOp₂.scoped_right
-  have hv₃ : Term.Scoped Γ.depth v₃ := hArg₁₃.scoped_right
-  have hArgChain₁_full : MEqRedStar Γ [] v v₃ :=
-    (MEqRedStar.single hArg₁).trans (MEqRedStar.single hArg₁₃)
-  have hArgChain₂_full : MEqRedStar Γ [] v v₃ :=
-    (MEqRedStar.single hArg₂).trans (MEqRedStar.single hArg₂₃)
-  refine ⟨.app u₃ v₃, ?_, ?_⟩
-  · have hArgStep₁ : MEqRedStar Γ [] v₁ v₃ := MEqRedStar.single hArg₁₃
-    have hArgChain₁ : MEqRedStar Γ s (.app u₁ v₁) (.app u₁ v₃) :=
-      MEqRedStar.app_right hu₁ hArgStep₁ hpv
-    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₁ u₃ :=
-      MEqRedOpStackHeadTransportPayloadRestricted_proved
-        hArgChain₁_full hOp₁NoBinders hOp₁₃
-    have hOpChain₁ : MEqRedStar Γ s (.app u₁ v₃) (.app u₃ v₃) :=
-      MEqRedStar.app_left hOpAtNewStack hv₃
-    exact hArgChain₁.trans hOpChain₁
-  · have hArgStep₂ : MEqRedStar Γ [] v₂ v₃ := MEqRedStar.single hArg₂₃
-    have hArgChain₂ : MEqRedStar Γ s (.app u₂ v₂) (.app u₂ v₃) :=
-      MEqRedStar.app_right hu₂ hArgStep₂ hpv
-    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₂ u₃ :=
-      MEqRedOpStackHeadTransportPayloadRestricted_proved
-        hArgChain₂_full hOp₂NoBinders hOp₂₃
-    have hOpChain₂ : MEqRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
-      MEqRedStar.app_left hOpAtNewStack hv₃
-    exact hArgChain₂.trans hOpChain₂
+  exact app_app_chain_from_star_joins_of_NoBinders hNoBindersOp
+    hOp₁ hArg₁ hOp₂ hArg₂
+    (MEqRedStar.single hOp₁₃J.some)
+    (MEqRedStar.single hOp₂₃J.some)
+    (MEqRedStar.single hArg₁₃J.some)
+    (MEqRedStar.single hArg₂₃J.some)
 
 /-- Restricted `Me-Bet × Me-App` source cell: the general argument-transport
 payload is discharged for binder-free arguments, matching the restricted
