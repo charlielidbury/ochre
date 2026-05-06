@@ -277,6 +277,11 @@ closures, 2 inactive outstanding).
   Added `BetaInstantiationPreservesMEqRedUnderTwentyHeadsStack.of_constructors`,
   packaging the twenty-head structural leaves and binder payload assumptions
   into the full twenty-head stack theorem.
+  Added the base twenty-one-head stack surface
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsStack` and generic
+  list-specialization wrapper
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsStack.of_generic`,
+  setting up the recursive body target for the twenty-head binder payloads.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
