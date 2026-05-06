@@ -17322,6 +17322,13 @@ theorem MEqRedJ.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
     (h : MEqRedJ Γ s u v) (hu : Term.NoBinders u) : Term.NoBinders v :=
   h.some.preserves_noBinders hu
 
+/-- `Term.NoBinders` preservation lifted to equivalence-reduction chains. -/
+theorem MEqRedStar.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedStar Γ s u v) (hu : Term.NoBinders u) : Term.NoBinders v := by
+  induction h with
+  | refl => exact hu
+  | tail _ hStep ih => exact hStep.some.preserves_noBinders ih
+
 namespace EqDiamonds
 
 /-- The `Me-Bet × Me-Bet` source cell of de Bruijn Lemma 2 in **restricted
@@ -17457,6 +17464,40 @@ theorem bet_bet_chain_AbsFree_of
       MEqRedArgTransportPayloadRestricted_proved
         hBody₃Scoped hBody₃AbsFree hV₂'NoBinders hArg₂₃ hpvΓs
     exact (MEqRedStar.single hBodyProgress').trans hArgChain
+
+/-- Restricted `Me-Bet × Me-Bet` source cell with an easier body side
+condition: if the body branch used for the joined-body proof is itself
+`NoBinders`, then the `AbsFree` side condition of
+`bet_bet_chain_AbsFree_of` follows by `MEqRedJ.preserves_noBinders`. -/
+theorem bet_bet_chain_NoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₁' body₂' v₁' v₂' : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hBody₁'NoBinders : Term.NoBinders body₁')
+    (hBody₁ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁')
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (Term.instantiate 0 v₁' body₁') t₃
+      ∧ MEqRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ :=
+  bet_bet_chain_AbsFree_of hBodyDiamond hArgDiamond ht hVNoBinders
+    (fun h => (h.preserves_noBinders hBody₁'NoBinders).absFree)
+    hBody₁ hArg₁ hBody₂ hArg₂
 
 end EqDiamonds
 
@@ -17819,5 +17860,75 @@ theorem app_bet_chain_AbsFree_of
     bet_app_chain_AbsFree_of hBodyDiamond hArgDiamond ht hVNoBinders
       hAbsFreeBody₃ hBody₂ hArg₂ hOp₁ hArg₁ hBody₁Sub
   exact ⟨t₃, hRight, hLeft⟩
+
+/-- Restricted `Me-Bet × Me-App` source cell with the joined-body
+`AbsFree` side condition discharged from a `NoBinders` body branch. -/
+theorem bet_app_chain_NoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₁' v₁' v₂' hOp₂_target : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hBody₁'NoBinders : Term.NoBinders body₁')
+    (hBody₁ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁')
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hOp₂ : MEqRed Γ (v :: s) (.abs t body) hOp₂_target)
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hBody₂Sub :
+      ∀ {body₂' t' : Term},
+        hOp₂_target = .abs t' body₂' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (Term.instantiate 0 v₁' body₁') t₃
+      ∧ MEqRedStar Γ s (.app hOp₂_target v₂') t₃ :=
+  bet_app_chain_AbsFree_of hBodyDiamond hArgDiamond ht hVNoBinders
+    (fun h => (h.preserves_noBinders hBody₁'NoBinders).absFree)
+    hBody₁ hArg₁ hOp₂ hArg₂ hBody₂Sub
+
+/-- Restricted `Me-App × Me-Bet` source cell with the joined-body
+`AbsFree` side condition discharged from a `NoBinders` body branch. -/
+theorem app_bet_chain_NoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₁' v₂' hOp₁_target : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hBody₂'NoBinders : Term.NoBinders body₂')
+    (hOp₁ : MEqRed Γ (v :: s) (.abs t body) hOp₁_target)
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hBody₁Sub :
+      ∀ {body₁' t' : Term},
+        hOp₁_target = .abs t' body₁' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app hOp₁_target v₁') t₃
+      ∧ MEqRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ :=
+  app_bet_chain_AbsFree_of hBodyDiamond hArgDiamond ht hVNoBinders
+    (fun h => (h.preserves_noBinders hBody₂'NoBinders).absFree)
+    hOp₁ hArg₁ hBody₂ hArg₂ hBody₁Sub
 
 end EqDiamonds

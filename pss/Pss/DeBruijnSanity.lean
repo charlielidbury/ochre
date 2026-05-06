@@ -805,6 +805,7 @@ namespace DeBruijn
 #print axioms MEqRedStar.lift_to_any_stack_of_NoBinders
 #print axioms MEqRed.preserves_noBinders
 #print axioms MEqRedJ.preserves_noBinders
+#print axioms MEqRedStar.preserves_noBinders
 #print axioms MEqRedArgTransportPayloadRestricted
 #print axioms MEqRedArgTransportPayloadRestricted_proved
 
@@ -815,6 +816,7 @@ namespace DeBruijn
 -- discharge of `bet_bet_chain_of`'s argument-transport hypothesis for
 -- the cases the restricted surface covers.
 #print axioms EqDiamonds.bet_bet_chain_AbsFree_of
+#print axioms EqDiamonds.bet_bet_chain_NoBinders_of
 
 -- de Bruijn Lemma 2 `Me-App × Me-App` cell (chain output, conditional on
 -- the operator stack-head transport hypothesis). Decomposes the closure
@@ -837,11 +839,13 @@ namespace DeBruijn
 -- β-substitution single step with the argument-transport chain.
 #print axioms EqDiamonds.bet_app_chain_of
 #print axioms EqDiamonds.bet_app_chain_AbsFree_of
+#print axioms EqDiamonds.bet_app_chain_NoBinders_of
 
 -- de Bruijn Lemma 2 `Me-App × Me-Bet` cell (chain output). Symmetric to
 -- `bet_app_chain_of`; same conditional hypotheses with LHS/RHS swapped.
 #print axioms EqDiamonds.app_bet_chain_of
 #print axioms EqDiamonds.app_bet_chain_AbsFree_of
+#print axioms EqDiamonds.app_bet_chain_NoBinders_of
 
 end DeBruijn
 end Pss

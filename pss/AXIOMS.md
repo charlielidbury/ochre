@@ -1989,6 +1989,14 @@ Bruijn proofs do not yet bridge to LN.
   binder-free β arguments and abs-free joined bodies. The existing `.sub`
   head bridge remains explicit. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedStar.preserves_noBinders` plus `NoBinders` convenience wrappers
+  `EqDiamonds.bet_bet_chain_NoBinders_of`,
+  `EqDiamonds.bet_app_chain_NoBinders_of`, and
+  `EqDiamonds.app_bet_chain_NoBinders_of`. These discharge the joined-body
+  `AbsFree` side condition in the restricted β chain cells when the relevant
+  body branch is binder-free. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
