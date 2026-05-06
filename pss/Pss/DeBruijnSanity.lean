@@ -272,6 +272,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderSixteenHeadsStack.var
 #print axioms BetaInstantiationPreservesMEqRedUnderSeventeenHeadsStack.var
 #print axioms BetaInstantiationPreservesMEqRedUnderEighteenHeadsStack.var
+#print axioms BetaInstantiationPreservesMEqRedUnderNineteenHeadsStack.var
 #print axioms BetaInstantiationPreservesMEqRedUnderEightHeadsStack.tAp
 #print axioms BetaInstantiationPreservesMEqRedUnderNineHeadsStack.tAp
 #print axioms BetaInstantiationPreservesMEqRedUnderTenHeadsStack.tAp
