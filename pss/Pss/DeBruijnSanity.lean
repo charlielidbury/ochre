@@ -791,5 +791,30 @@ namespace DeBruijn
 -- chain to close the diamond at `Term.instantiate 0 v₃ body₃`.
 #print axioms EqDiamonds.bet_bet_chain_of
 
+-- Restricted argument-transport surface and the structural stack lift
+-- it composes with for `NoBinders` argument shapes. The combination of
+-- `Term.AbsFree body` (top-level abs-freedom) and `Term.NoBinders arg`
+-- (no `.bvar` and no `.abs` anywhere in the argument) discharges the
+-- restricted form of `MEqRedArgTransportPayload` unconditionally modulo
+-- kernel axioms. The general payload remains open for the abstraction
+-- body and bvar/abstraction argument shapes — see `AXIOMS.md` for the
+-- documented residual.
+#print axioms Term.NoBinders
+#print axioms Term.NoBinders.app_inv
+#print axioms Term.NoBinders.absFree
+#print axioms MEqRedStar.lift_to_any_stack_of_NoBinders
+#print axioms MEqRed.preserves_noBinders
+#print axioms MEqRedJ.preserves_noBinders
+#print axioms MEqRedArgTransportPayloadRestricted
+#print axioms MEqRedArgTransportPayloadRestricted_proved
+
+-- The `bet × bet` source cell of de Bruijn Lemma 2 in restricted form:
+-- closed for the `Term.AbsFree body₃` ∧ `Term.NoBinders v` case
+-- combination, with `NoBinders` propagated through the diamond's
+-- argument path via `MEqRed.preserves_noBinders`. This is the partial
+-- discharge of `bet_bet_chain_of`'s argument-transport hypothesis for
+-- the cases the restricted surface covers.
+#print axioms EqDiamonds.bet_bet_chain_AbsFree_of
+
 end DeBruijn
 end Pss

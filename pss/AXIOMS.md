@@ -3311,6 +3311,85 @@ Lemma 2.
 
 ---
 
+## Documented residuals (Prop hypotheses, not axioms)
+
+These are **not axioms** — they are `Prop`-typed hypotheses on
+specific cells/lemmas in the de Bruijn development that have been
+discharged in restricted form but remain conditional in the general
+form. The general form is not asserted as an axiom; it is simply
+unproven and remains a hypothesis on the cells that consume it.
+
+### `MEqRedArgTransportPayload` (general form)
+
+* **File:** `Pss/Mpss/DeBruijnTypeSafety.lean` (def near the
+  `bet_bet_chain_of` cell).
+* **Statement:** For all `Γ`, `arg`, `arg'`, `body`, `s`:
+  ```
+  Term.Scoped (Γ.depth + 1) body →
+  MEqRed Γ [] arg arg' →
+  PrevalidExt Γ s →
+  MEqRedStar Γ s (Term.instantiate 0 arg body) (Term.instantiate 0 arg' body)
+  ```
+* **Status:** Hypothesis on `EqDiamonds.bet_bet_chain_of` (the chain-
+  output `Me-Bet × Me-Bet` cell of de Bruijn Lemma 2). NOT an axiom —
+  cells that consume the general form simply take it as a `Prop`
+  premise, leaving downstream proofs conditional.
+* **Restricted form discharged:** The cell
+  `EqDiamonds.bet_bet_chain_AbsFree_of` discharges the same diamond
+  conclusion **unconditionally modulo kernel axioms** (`propext`,
+  `Classical.choice`, `Quot.sound`) for the case combination
+
+  - `Term.NoBinders v` (β-argument has no `.bvar` and no `.abs`
+    anywhere — strictly stronger than `Term.AbsFree`),
+  - `Term.AbsFree body₃` (the joined body from the body diamond is
+    abs-free at the top level — caller-supplied since `MEqRed` does not
+    preserve `AbsFree` in general).
+
+  See `MEqRedArgTransportPayloadRestricted_proved` for the underlying
+  proven payload.
+
+* **Residual gap (the cases the restricted form does NOT cover):**
+  1. **Body-side abstraction:** `body = .abs bound innerBody`. The
+     restricted argument-transport surface
+     (`MEqRedStar.argTransportRestricted`) cannot recurse under a
+     top-level abstraction without an index-1 instantiation lemma. The
+     joined `body₃` having a top-level abstraction is the wall here.
+  2. **Argument-side bvar or abstraction:** `v = .bvar i` or `v` has
+     `.abs` somewhere in its tree. The structural stack lift
+     (`MEqRedStar.lift_to_any_stack_of_NoBinders`) cannot rebuild a
+     `pro` step at a new stack — the inner equ-binding derivation
+     `MEqRed Γ [] α α'` requires `MEqRedFunStackAppendPayload` to lift
+     when `α` is `.abs`-rooted, and that payload remains open. The
+     stricter `Term.NoBinders` predicate (no `.bvar`, no `.abs`)
+     excludes the wall by ruling out the relevant constructors
+     entirely.
+
+* **Discharge path for the residual:** The general form requires either
+  (a) an index-1 instantiation lemma to recurse under abstraction
+  bodies, AND (b) a stack lift for arbitrary single-step `MEqRed Γ []
+  arg arg'`. (b) is precisely the `MEqRedFunStackAppendPayload` wall —
+  the only known route is body subtype-to-equivalence transport, which
+  is a load-bearing residual of the de Bruijn pivot. (a) is a routine
+  index-bookkeeping generalization of the index-0 `argTransportRestricted`,
+  estimated at ~200-400 lines but blocked on (b).
+
+* **Headline impact:** The restricted form covers a strictly limited
+  shape of `bet × bet` confluence cells. Whether this discharges any
+  headline theorem closures depends on which `bet × bet` situations
+  arise in the in-flight Lemma 2 / Theorem 4 / Theorem 5 de Bruijn
+  proofs. As of the audit at commit time, the de Bruijn pivot is
+  pre-headline; no Theorem 3/4/5 or Lemma 1/2 chain currently consumes
+  this cell, so the residual is a forward-facing constraint rather
+  than a backward-facing blocker.
+
+* **NOT an axiom.** Do not introduce `MEqRedArgTransportPayload` as an
+  axiom under any circumstances. The current `Prop` hypothesis is the
+  correct shape for this conditional surface; ship the restricted form
+  on cells where its preconditions are satisfiable, and leave the
+  general form open until both walls above admit discharge.
+
+---
+
 ## Historical Discharged
 
 ### `avoidsPro_refl`

@@ -16902,3 +16902,342 @@ theorem MEqRedStarArgTransportRestricted_proved :
     MEqRedStarArgTransportRestricted := by
   intro Γ arg arg' body s hBody hAbsFree hArg hArg' hpv hLift
   exact MEqRedStar.argTransportRestricted hBody hAbsFree hArg hArg' hpv hLift
+
+/-! ## Restricted argument-side stack lift via `Term.NoBinders`
+
+The `argTransportRestricted` surface above is parameterized by a caller-
+supplied lift `hLift : ∀ s', PrevalidExt Γ s' → MEqRedStar Γ s' arg arg'`.
+For abstraction `arg` this lift cannot be discharged at the de Bruijn level
+(the wall analyzed in the docstring above the lemma). For non-abstraction
+`arg` the prompt envisioned a structural discharge inducting on `MEqRed`
+with `Term.AbsFree arg` excluding the `fun_` constructor.
+
+That structural discharge **walls at the `pro` constructor**: when the
+single step is `MEqRed.pro hpv hb hred` from source `.bvar i` to target `α'`,
+rebuilding the step at a new stack `s_new` requires lifting the inner
+`hred : MEqRed Γ [] α α'` to `MEqRed Γ s_new α α'`, where `α` (the equ-
+binding) need not be `AbsFree`. Iteratively recursing on the inner
+derivation hits the `fun_` case if `α = .abs t body`, which is precisely
+the wall of `MEqRedFunStackAppendPayload` (open since the syntax pivot).
+
+The provable strict restriction excludes both `.bvar` and `.abs` from
+source `arg`: with no bvar source, `pro` and `var` are excluded, and with
+no abstraction source, `bet`, `fun_`, `fOp` are excluded. Only `top`,
+`tAp`, `app` remain — all admit direct stack rebuild.
+
+The predicate `Term.NoBinders` captures exactly this sublanguage, and the
+`MEqRedStar.lift_to_any_stack_of_NoBinders` helper provides the required
+`hLift` from a single-step `MEqRed Γ [] arg arg'` with `NoBinders arg`.
+The `bet × bet` cell consequently closes for the strict shape combination
+`Term.AbsFree body ∧ Term.NoBinders arg` (with `NoBinders` understood as
+the `arg`-restriction stronger than the body's `AbsFree`). -/
+
+/-- A term has no binder constructs (`.bvar` or `.abs`) anywhere in its
+structural tree. The defined cases are `.top` and `.app` (recursive on
+both subterms). This is strictly stronger than `Term.AbsFree` (which
+permits `.bvar` and abstractions inside `.app` subterms) and is the
+precise sublanguage on which de Bruijn `MEqRed` admits a structural
+stack-lift to an arbitrary prevalid stack. -/
+inductive Term.NoBinders : Term → Prop
+  | top : Term.NoBinders .top
+  | app {f x : Term} : Term.NoBinders f → Term.NoBinders x →
+      Term.NoBinders (.app f x)
+
+/-- `Term.NoBinders` is preserved under the structural decomposition of
+applications. -/
+theorem Term.NoBinders.app_inv {f x : Term}
+    (h : Term.NoBinders (.app f x)) :
+    Term.NoBinders f ∧ Term.NoBinders x := by
+  cases h with
+  | app hf hx => exact ⟨hf, hx⟩
+
+/-- Stack lift for a single de Bruijn equivalence-reduction step from any
+stack `s_old` to any prevalid stack `s_new`, restricted to `NoBinders`
+sources.
+
+Inducts on the `MEqRed` derivation. The constructor cases:
+- `pro`/`var`: source is `.bvar i`, excluded by `NoBinders`.
+- `bet`: source is `.app (.abs ..) v`, the `.abs` factor excluded.
+- `fun_`/`fOp`: source is `.abs ..`, excluded.
+- `top`: rebuild at `s_new` via `MEqRed.top` of the new prevalidity.
+- `tAp`: rebuild at `s_new` via `MEqRed.tAp` of the new prevalidity and
+  the (preserved) operand scoping.
+- `app`: induct on the operator at the operand-pushed new stack and the
+  operand at the empty new stack, then recombine via the chain-level
+  `app_left`/`app_right` congruences.
+
+The output is a chain (`MEqRedStar`) rather than a single step because
+the `app` case combines two sub-chains via transitivity. The `top`/`tAp`
+cases would alone admit a single-step output but the unified statement
+returns the chain form. -/
+theorem MEqRedStar.lift_to_any_stack_of_NoBinders
+    {Γ : Ctx} {arg arg' : Term} :
+    ∀ {s_old s_new : Stack},
+      MEqRed Γ s_old arg arg' →
+      Term.NoBinders arg →
+      PrevalidExt Γ s_new →
+      MEqRedStar Γ s_new arg arg' := by
+  intro s_old s_new hStep hNoBinders hpv
+  induction hStep generalizing s_new with
+  | pro _ _ _ _ =>
+      -- Source is `.bvar i`, excluded by `Term.NoBinders`.
+      cases hNoBinders
+  | @bet Γp sp t v v' body body' _ _ _ _ _ =>
+      -- Source is `.app (.abs t body) v`; the `.abs t body` factor is
+      -- excluded by `Term.NoBinders.app`'s left premise.
+      have ⟨hAbs, _hV⟩ := hNoBinders.app_inv
+      cases hAbs
+  | top _ =>
+      exact MEqRedStar.single (MEqRed.top hpv)
+  | @app Γp sp u u' v v' hOp hArg ihOp ihArg =>
+      -- Source `.app u v`: NoBinders gives both `u` and `v` NoBinders.
+      have ⟨hNoBindersU, hNoBindersV⟩ := hNoBinders.app_inv
+      -- Operator advance: from `MEqRed Γ (v :: s_old) u u'` to chain at
+      -- `v :: s_new`.
+      have hVScoped : Term.Scoped Γp.depth v := hArg.scoped_left
+      have hpvOp : PrevalidExt Γp (v :: s_new) := PrevalidExt.cons hpv hVScoped
+      have hOpStar : MEqRedStar Γp (v :: s_new) u u' :=
+        ihOp hNoBindersU hpvOp
+      have hStarOp :
+          MEqRedStar Γp s_new (.app u v) (.app u' v) :=
+        MEqRedStar.app_left hOpStar hVScoped
+      -- Operand advance: from `MEqRed Γ [] v v'` to chain at `[]`, then
+      -- push back to `s_new` via app_right (which keeps the operand step
+      -- empty-stack but rebuilds the application at any stack).
+      have hpvNil : PrevalidExt Γp [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+      have hArgStar : MEqRedStar Γp [] v v' :=
+        ihArg hNoBindersV hpvNil
+      -- Right scoping of `u'` from the original operator subderivation.
+      have hUtgtScoped : Term.Scoped Γp.depth u' := hOp.scoped_right
+      have hStarArg :
+          MEqRedStar Γp s_new (.app u' v) (.app u' v') :=
+        MEqRedStar.app_right hUtgtScoped hArgStar hpv
+      exact Relation.ReflTransGen.trans hStarOp hStarArg
+  | var _ _ =>
+      -- Source `.bvar i`, excluded by NoBinders.
+      cases hNoBinders
+  | fun_ _ _ _ _ =>
+      -- Source `.abs t body`, excluded by NoBinders (no `Term.NoBinders.abs`).
+      cases hNoBinders
+  | tAp _ hu =>
+      exact MEqRedStar.single (MEqRed.tAp hpv hu)
+  | fOp _ _ _ _ _ =>
+      -- Source `.abs t body`, excluded by NoBinders.
+      cases hNoBinders
+
+/-- `Term.NoBinders` immediately implies `Term.AbsFree`: the predicates
+agree on `.top` and `.app` cases, and `NoBinders` rules out `.bvar` and
+`.abs` (the only point of disagreement, where `AbsFree` allows `.bvar` and
+`.abs`-in-app-subterm but `NoBinders` rules them all out). -/
+theorem Term.NoBinders.absFree {t : Term} :
+    Term.NoBinders t → Term.AbsFree t := by
+  intro h
+  induction h with
+  | top => exact Term.AbsFree.top
+  | app _ _ ihF ihX => exact Term.AbsFree.app ihF ihX
+
+/-- Restricted argument-transport payload: a strictly stronger form of
+`MEqRedArgTransportPayload` with `Term.AbsFree body` and `Term.NoBinders
+arg` premises added. The body's abs-freedom is needed for the index-0
+instantiation lemma to recurse cleanly under the body shape; the arg's
+binder-freedom enables the structural stack lift required at the
+`body = .bvar 0` case (the only spot the original payload uses the
+chain-output of the argument step). -/
+def MEqRedArgTransportPayloadRestricted : Prop :=
+  ∀ {Γ : Ctx} {arg arg' body : Term} {s : Stack},
+    Term.Scoped (Γ.depth + 1) body →
+    Term.AbsFree body →
+    Term.NoBinders arg →
+    MEqRed Γ [] arg arg' →
+    PrevalidExt Γ s →
+    MEqRedStar Γ s
+      (Term.instantiate 0 arg body)
+      (Term.instantiate 0 arg' body)
+
+/-- Closed proof of the restricted argument-transport payload, composing
+the restricted argument-transport surface (`argTransportRestricted`) with
+the structural stack lift for `NoBinders` argument shapes. -/
+theorem MEqRedArgTransportPayloadRestricted_proved :
+    MEqRedArgTransportPayloadRestricted := by
+  intro Γ arg arg' body s hBody hAbsFreeBody hNoBindersArg hArgStep hpv
+  have hArgScoped : Term.Scoped Γ.depth arg := hArgStep.scoped_left
+  have hArgScoped' : Term.Scoped Γ.depth arg' := hArgStep.scoped_right
+  have hLift : ∀ {s' : Stack}, PrevalidExt Γ s' →
+      MEqRedStar Γ s' arg arg' := fun hpv' =>
+    MEqRedStar.lift_to_any_stack_of_NoBinders hArgStep hNoBindersArg hpv'
+  exact MEqRedStar.argTransportRestricted hBody hAbsFreeBody hArgScoped
+    hArgScoped' hpv hLift
+
+/-- `Term.NoBinders` is preserved under a single de Bruijn equivalence-
+reduction step. The constructor cases `pro`, `var`, `bet`, `fun_`, `fOp`
+have sources excluded by `NoBinders`; the remaining `top`, `tAp`, `app`
+cases produce `NoBinders` targets directly (`top`/`tAp` go to `.top`,
+`app` recurses).
+
+Notice this preservation is **single-step on the source**, not on the
+target — that is, `NoBinders` flows from the source to the target through
+the constructor structure, with no use of the inverse direction. -/
+theorem MEqRed.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRed Γ s u v) (hu : Term.NoBinders u) : Term.NoBinders v := by
+  induction h with
+  | pro _ _ _ _ =>
+      cases hu
+  | bet _ _ _ _ _ =>
+      have ⟨hAbs, _⟩ := hu.app_inv
+      cases hAbs
+  | top _ =>
+      exact Term.NoBinders.top
+  | @app Γp sp u u' v v' _ _ ihOp ihArg =>
+      have ⟨hOpNoBinders, hArgNoBinders⟩ := hu.app_inv
+      exact Term.NoBinders.app (ihOp hOpNoBinders) (ihArg hArgNoBinders)
+  | var _ _ =>
+      cases hu
+  | fun_ _ _ _ _ =>
+      cases hu
+  | tAp _ _ =>
+      exact Term.NoBinders.top
+  | fOp _ _ _ _ _ =>
+      cases hu
+
+/-- `Term.NoBinders` preservation lifted to the `Prop`-wrapped reduction. -/
+theorem MEqRedJ.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MEqRedJ Γ s u v) (hu : Term.NoBinders u) : Term.NoBinders v :=
+  h.some.preserves_noBinders hu
+
+namespace EqDiamonds
+
+/-- The `Me-Bet × Me-Bet` source cell of de Bruijn Lemma 2 in **restricted
+form**: closed unconditionally (modulo kernel axioms) for the case
+combination
+
+- `Term.AbsFree body` (top-level body has no abstraction; abstractions
+  permitted only inside `.app` subterms — see `Term.AbsFree`),
+- `Term.NoBinders v` (β-argument has no `.bvar` and no `.abs` anywhere).
+
+The restriction on the body matches the wall analysis of
+`MEqRedStar.argTransportRestricted`: index-0 instantiation cannot recurse
+under a top-level abstraction without an index-1 instantiation lemma.
+
+The restriction on `v` matches the wall analysis of
+`MEqRedStar.lift_to_any_stack_of_NoBinders`: the `pro` constructor case
+of the single-step stack lift requires lifting an inner equ-binding
+derivation whose source `α` may be `.abs`-rooted, hitting the
+`MEqRedFunStackAppendPayload` wall. Excluding `.bvar` and `.abs` from `v`
+excludes the relevant constructors entirely.
+
+`NoBinders` is preserved by `MEqRed` (`MEqRed.preserves_noBinders`), so
+the post-step joined arguments `v₁'`, `v₂'`, and the diamond reduct `v₃`
+are all `NoBinders` once `v` is. The body's `AbsFree` premise on the
+diamond reduct `body₃` is supplied separately because `MEqRed` does
+**not** preserve `AbsFree` (a `pro` step on a body `bvar` can promote to
+an abstraction). For body shapes where this preservation does hold —
+e.g. `body` is itself `NoBinders` — the caller can derive `AbsFree
+body₃` by composing `NoBinders`-preservation with `NoBinders.absFree`.
+
+This cell discharges the partial form of `MEqRedArgTransportPayload` for
+the `bet × bet` source of de Bruijn Lemma 2 without reliance on any
+unproven payload — it is **unconditional modulo kernel axioms** for the
+restricted shape. -/
+theorem bet_bet_chain_AbsFree_of
+    {Γ : Ctx} {s : Stack} {t v body body₁' body₂' v₁' v₂' : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hAbsFreeBody₃ : ∀ {body₃ : Term},
+      MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body₁' body₃ →
+      Term.AbsFree body₃)
+    (hBody₁ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁')
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (Term.instantiate 0 v₁' body₁') t₃
+      ∧ MEqRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  -- Body diamond closure: body₁' / body₂' join at body₃.
+  obtain ⟨body₃, hBody₁₃J, hBody₂₃J⟩ := hBodyDiamond hBody₁ hBody₂
+  -- Arg diamond closure: v₁' / v₂' join at v₃ at the empty stack.
+  obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArg₁ hArg₂
+  -- Extract Type-valued MEqRed derivations.
+  let hBody₁₃ : MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+    body₁' body₃ := hBody₁₃J.some
+  let hBody₂₃ : MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+    body₂' body₃ := hBody₂₃J.some
+  let hArg₁₃ : MEqRed Γ [] v₁' v₃ := hArg₁₃J.some
+  let hArg₂₃ : MEqRed Γ [] v₂' v₃ := hArg₂₃J.some
+  -- NoBinders propagation through the diamond's argument path.
+  have hV₁'NoBinders : Term.NoBinders v₁' :=
+    hArg₁.preserves_noBinders hVNoBinders
+  have hV₂'NoBinders : Term.NoBinders v₂' :=
+    hArg₂.preserves_noBinders hVNoBinders
+  -- AbsFree on the joined body (caller-supplied).
+  have hBody₃AbsFree : Term.AbsFree body₃ := hAbsFreeBody₃ hBody₁₃J
+  refine ⟨Term.instantiate 0 v₃ body₃, ?_, ?_⟩
+  · -- LHS chain: instantiate 0 v₁' body₁' →* instantiate 0 v₃ body₃.
+    have hv₁'Scoped : Term.Scoped Γ.depth v₁' := hArg₁.scoped_right
+    have hBodyProgress :
+        MEqRed Γ (Stack.instantiate 0 v₁' (Stack.shift 0 s))
+          (Term.instantiate 0 v₁' body₁')
+          (Term.instantiate 0 v₁' body₃) :=
+      MEqRedFusedKindNarrowedBetaSubstStack_proved
+        (arg := t) (arg' := v₁') ht hv₁'Scoped hBody₁₃
+    have hStackEq :
+        Stack.instantiate 0 v₁' (Stack.shift 0 s) = s :=
+      Stack.instantiate_zero_shift_zero_id v₁' s
+    have hBodyProgress' :
+        MEqRed Γ s
+          (Term.instantiate 0 v₁' body₁')
+          (Term.instantiate 0 v₁' body₃) := by
+      simpa [hStackEq] using hBodyProgress
+    have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+      simpa [Ctx.depth] using hBody₁₃.scoped_right
+    have hpvΓs : PrevalidExt Γ s :=
+      PrevalidExt.weaken_head_inv hBody₁.prevalidExt
+    have hArgChain :
+        MEqRedStar Γ s
+          (Term.instantiate 0 v₁' body₃)
+          (Term.instantiate 0 v₃ body₃) :=
+      MEqRedArgTransportPayloadRestricted_proved
+        hBody₃Scoped hBody₃AbsFree hV₁'NoBinders hArg₁₃ hpvΓs
+    exact (MEqRedStar.single hBodyProgress').trans hArgChain
+  · -- RHS chain: instantiate 0 v₂' body₂' →* instantiate 0 v₃ body₃.
+    have hv₂'Scoped : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+    have hBodyProgress :
+        MEqRed Γ (Stack.instantiate 0 v₂' (Stack.shift 0 s))
+          (Term.instantiate 0 v₂' body₂')
+          (Term.instantiate 0 v₂' body₃) :=
+      MEqRedFusedKindNarrowedBetaSubstStack_proved
+        (arg := t) (arg' := v₂') ht hv₂'Scoped hBody₂₃
+    have hStackEq :
+        Stack.instantiate 0 v₂' (Stack.shift 0 s) = s :=
+      Stack.instantiate_zero_shift_zero_id v₂' s
+    have hBodyProgress' :
+        MEqRed Γ s
+          (Term.instantiate 0 v₂' body₂')
+          (Term.instantiate 0 v₂' body₃) := by
+      simpa [hStackEq] using hBodyProgress
+    have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+      simpa [Ctx.depth] using hBody₂₃.scoped_right
+    have hpvΓs : PrevalidExt Γ s :=
+      PrevalidExt.weaken_head_inv hBody₂.prevalidExt
+    have hArgChain :
+        MEqRedStar Γ s
+          (Term.instantiate 0 v₂' body₃)
+          (Term.instantiate 0 v₃ body₃) :=
+      MEqRedArgTransportPayloadRestricted_proved
+        hBody₃Scoped hBody₃AbsFree hV₂'NoBinders hArg₂₃ hpvΓs
+    exact (MEqRedStar.single hBodyProgress').trans hArgChain
+
+end EqDiamonds
