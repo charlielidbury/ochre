@@ -2509,6 +2509,16 @@ Bruijn proofs do not yet bridge to LN.
   residuals at changed-head `Ms-Pro`, stable-successor `Ms-Pro`, recursive
   `Ms-App`, and `Ms-FOp`. Added the proved endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — discharged the three-deeper
+  stable-successor `Ms-Pro` leaf
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppProSuccChainPayload.proved`.
+  The proof extends the successor-lookup transport through five structural
+  arguments plus the final body argument, rules out an equivalence binding
+  at the shared successor head, and rebuilds the transported subtype
+  application spine at the joined abstraction bound. The nested-app handler
+  now supplies this proof directly, leaving the live three-deeper residuals
+  at changed-head `Ms-Pro`, recursive `Ms-App`, and `Ms-FOp`. Added the
+  proved endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
