@@ -17566,3 +17566,239 @@ theorem app_app_chain_of
     exact hArgChain₂.trans hOpChain₂
 
 end EqDiamonds
+
+/-! ## Top-level chain-output Lemma 2 closure assembly
+
+This section assembles the per-cell EqDiamonds theorems into a single
+chain-output closure `EqDiamonds_proved`. The closure is structured as a
+case-dispatch tree on the two input `MEqRed` derivations. Each cell is
+invoked with the appropriate residual hypotheses.
+
+### Residual hypotheses
+
+The closure is **conditional** on four residuals:
+
+1. `MEqRedArgTransportPayload` — the argument-position transport lemma
+   used by the `bet × bet`, `bet × app`, and `app × bet` chain cells.
+2. `MEqRedOpStackHeadTransportPayload` — the operator stack-head
+   transport lemma used by the `app × app` chain cell.
+3. `hSubBridge` — the `.equ → .sub` head bridge for FOp-inverted bodies,
+   used in the cross-β `bet × app` and `app × bet` cells.
+4. `hUniformDiamond` — universal single-step `EqDiamonds Γ' s'` at every
+   extended context. The single-step body/arg/operator diamonds required
+   by the chain cells (which take `MEqRedJ` body diamonds, not chains)
+   are obtained by specializing this hypothesis. This residual is
+   **necessary** because chain cells like `bet_bet_chain_of` accept
+   only single-step body diamonds — recursive descent through the
+   closure cannot produce single-step output for body sub-derivations
+   in general (e.g. body sub-derivation diamonds for `bet × bet` need
+   chain output, not single-step). Discharging this residual is
+   itself the open transitivity-elimination problem. -/
+
+/-- Chain-output equivalence diamond at a fixed extended context. The
+chain-output form is essential because the `bet × bet`, `bet × app`,
+`app × bet`, and `app × app` source cells produce chain reducts at
+their joins. -/
+abbrev EqDiamondsChain (Γ : Ctx) (s : Stack) : Prop :=
+  ∀ {t₀ t₁ t₂ : Term},
+    MEqRed Γ s t₀ t₁ → MEqRed Γ s t₀ t₂ →
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃
+
+/-- The `.equ → .sub` head bridge residual: convert an equivalence step
+in an `.equ`-head context (with bound `v`) to one in a `.sub`-head
+context (with bound `t`), preserving the body source/target and the
+shifted stack. Required by the cross-β `bet × app` and `app × bet`
+cells whose `Me-FOp` inversion produces `.equ`-head body derivations
+that need to live in `.sub`-head context to be diamonded against the
+abstraction's `.sub`-head body.
+
+Defined in `Type` because `MEqRed` is `Type`-valued; reducible so the
+closure body can apply it as a function directly. -/
+@[reducible] def MEqRedSubBridgePayload : Type :=
+  ∀ {Γ : Ctx} {t v body body' : Term} {s : Stack},
+    MEqRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s) body body' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body'
+
+/-- Universal single-step equivalence diamond at every extended context.
+This is the residual for body/arg/op single-step diamond hypotheses
+required by the chain cells. -/
+def UniformEqDiamonds : Prop :=
+  ∀ {Γ : Ctx} {s : Stack}, EqDiamonds Γ s
+
+/-- Top-level chain-output equivalence diamond closure for de Bruijn
+Lemma 2, conditional on:
+- `MEqRedArgTransportPayload` (argument-position transport)
+- `MEqRedOpStackHeadTransportPayload` (operator stack-head transport)
+- `MEqRedSubBridgePayload` (`.equ → .sub` head bridge)
+- `UniformEqDiamonds` (single-step diamond at every extended context;
+  the standing transitivity-elimination residual)
+
+The closure is assembled by case-splitting on both input reductions:
+single-step output cells (`top`, `bvar_any_of`, `tAp_*`, `appTop_*`,
+`fun_fun_of`, `fOp_fOp_of`) are wrapped with `MEqRedStar.single`;
+chain-output cells (`bet_bet_chain_of`, `bet_app_chain_of`,
+`app_bet_chain_of`, `app_app_chain_of`) compose directly. -/
+theorem EqDiamonds_proved
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    ∀ {Γ : Ctx} {s : Stack}, EqDiamondsChain Γ s := by
+  intro Γ s t₀ t₁ t₂ hRed₁ hRed₂
+  -- Adapter to wrap a single-step diamond cell as a chain-output diamond.
+  have wrapSingle :
+      ∀ {a b : Term},
+        (∃ c, MEqRedJ Γ s a c ∧ MEqRedJ Γ s b c) →
+        ∃ c, MEqRedStar Γ s a c ∧ MEqRedStar Γ s b c := by
+    intro a b ⟨c, hac, hbc⟩
+    exact ⟨c, Relation.ReflTransGen.single hac, Relation.ReflTransGen.single hbc⟩
+  -- Case-split on hRed₁'s constructor.
+  cases hRed₁ with
+  | top hpv =>
+    -- Source `.top`: hRed₂ also reduces from `.top`, target is `.top`.
+    cases hRed₂ with
+    | top hpv₂ =>
+      exact ⟨.top,
+        Relation.ReflTransGen.refl,
+        Relation.ReflTransGen.refl⟩
+  | @pro _ _ i α α' hpv hαb hα =>
+    -- Source `.bvar i` via `Me-Pro`. Use `EqDiamonds.bvar_any_of`.
+    refine wrapSingle ?_
+    exact EqDiamonds.bvar_any_of (@hUniformDiamond Γ s) hpv
+      (MEqRed.pro hpv hαb hα) hRed₂
+  | @var _ _ i hpv hi =>
+    -- Source `.bvar i` via `Me-Var`.
+    refine wrapSingle ?_
+    exact EqDiamonds.bvar_any_of (@hUniformDiamond Γ s) hpv
+      (MEqRed.var hpv hi) hRed₂
+  | @tAp _ _ u hpv hu =>
+    -- Source `.app .top u`: use `EqDiamonds.tAp_any`.
+    refine wrapSingle ?_
+    exact EqDiamonds.tAp_any hpv hu hRed₂
+  | @app _ _ u u' v v' hOp₁ hArg₁ =>
+    -- Source `.app u v`. hRed₂ may be: app, bet (if u = .abs ...),
+    -- or tAp (if u = .top). Case-split on hRed₂.
+    cases hRed₂ with
+    | @app _ _ _ u₂ _ v₂ hOp₂ hArg₂ =>
+      -- app × app
+      have hOpDiamond :
+          ∀ {a b : Term},
+            MEqRed Γ (v :: s) u a → MEqRed Γ (v :: s) u b →
+            ∃ c, MEqRedJ Γ (v :: s) a c ∧ MEqRedJ Γ (v :: s) b c :=
+        fun ha hb => @hUniformDiamond Γ (v :: s) _ _ _ ha hb
+      have hArgDiamond :
+          ∀ {a b : Term},
+            MEqRed Γ [] v a → MEqRed Γ [] v b →
+            ∃ c, MEqRedJ Γ [] a c ∧ MEqRedJ Γ [] b c :=
+        fun ha hb => @hUniformDiamond Γ [] _ _ _ ha hb
+      exact EqDiamonds.app_app_chain_of hOpTransport hOpDiamond
+        hArgDiamond hOp₁ hArg₁ hOp₂ hArg₂
+    | @bet _ _ t _ _ body _ ht hBody₂ hArg₂ =>
+      -- app × bet: source is .app (.abs t body) v, h₁ = app, h₂ = bet.
+      -- Use `app_bet_chain_of`.
+      have hBodyDiamond :
+          ∀ {b₁ b₂ : Term},
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+            ∃ b₃,
+              MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+              ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+                  b₂ b₃ := fun ha hb =>
+        @hUniformDiamond ({bound := t, kind := .sub} :: Γ)
+          (Stack.shift 0 s) _ _ _ ha hb
+      have hArgDiamond :
+          ∀ {a₁ a₂ : Term},
+            MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+            ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ := fun ha hb =>
+        @hUniformDiamond Γ [] _ _ _ ha hb
+      have hBody₁Sub :
+          ∀ {body₁' t' : Term},
+            u' = .abs t' body₁' →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              body body₁' := by
+        intro body₁' t' heq
+        cases hOp₁ with
+        | fOp hT₁ hα₁ hBody₁equ =>
+          rename_i body₁'_inv
+          injection heq with heq1 heq2
+          subst heq1
+          subst heq2
+          exact hSubBridge hBody₁equ
+      exact EqDiamonds.app_bet_chain_of hArgTransport hBodyDiamond
+        hArgDiamond ht hOp₁ hArg₁ hBody₂ hArg₂ hBody₁Sub
+    | @tAp _ _ u_t hpv hu =>
+      -- App × tAp: source is .app .top u, h₁ = app with u = .top.
+      refine wrapSingle ?_
+      exact EqDiamonds.any_tAp hpv hu (MEqRed.app hOp₁ hArg₁)
+  | @bet _ _ t v vDst body bodyDst ht hBody₁ hArg₁ =>
+    -- Source `.app (.abs t body) v`. hRed₂ may be bet or app.
+    cases hRed₂ with
+    | @bet _ _ _ _ _ _ _ ht₂ hBody₂ hArg₂ =>
+      -- bet × bet
+      have hBodyDiamond :
+          ∀ {b₁ b₂ : Term},
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+            ∃ b₃,
+              MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+              ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+                  b₂ b₃ := fun ha hb =>
+        @hUniformDiamond ({bound := t, kind := .sub} :: Γ)
+          (Stack.shift 0 s) _ _ _ ha hb
+      have hArgDiamond :
+          ∀ {a₁ a₂ : Term},
+            MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+            ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ := fun ha hb =>
+        @hUniformDiamond Γ [] _ _ _ ha hb
+      exact EqDiamonds.bet_bet_chain_of hArgTransport hBodyDiamond
+        hArgDiamond ht hBody₁ hArg₁ hBody₂ hArg₂
+    | @app _ _ _ uDst₂ _ vDst₂ hOp₂ hArg₂ =>
+      -- bet × app: source is .app (.abs t body) v, h₁ = bet, h₂ = app.
+      -- Use `bet_app_chain_of`.
+      have hBodyDiamond :
+          ∀ {b₁ b₂ : Term},
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+            ∃ b₃,
+              MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+              ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+                  b₂ b₃ := fun ha hb =>
+        @hUniformDiamond ({bound := t, kind := .sub} :: Γ)
+          (Stack.shift 0 s) _ _ _ ha hb
+      have hArgDiamond :
+          ∀ {a₁ a₂ : Term},
+            MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+            ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ := fun ha hb =>
+        @hUniformDiamond Γ [] _ _ _ ha hb
+      have hBody₂Sub :
+          ∀ {body₂' t' : Term},
+            uDst₂ = .abs t' body₂' →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              body body₂' := by
+        intro body₂' t' heq
+        cases hOp₂ with
+        | fOp hT₂ hα₂ hBody₂equ =>
+          rename_i body₂'_inv
+          injection heq with heq1 heq2
+          subst heq1
+          subst heq2
+          exact hSubBridge hBody₂equ
+      exact EqDiamonds.bet_app_chain_of hArgTransport hBodyDiamond
+        hArgDiamond ht hBody₁ hArg₁ hOp₂ hArg₂ hBody₂Sub
+  | @fun_ _ t tDst body bodyDst hT₁ hBody₁ =>
+    -- Source `.abs t body`, stack `[]`. hRed₂ must be `fun_`.
+    cases hRed₂ with
+    | @fun_ _ _ tDst₂ _ bodyDst₂ hT₂ hBody₂ =>
+      refine wrapSingle ?_
+      exact EqDiamonds.fun_fun_of (@hUniformDiamond Γ [])
+        (@hUniformDiamond ({bound := t, kind := .sub} :: Γ) [])
+        hT₁ hBody₁ hT₂ hBody₂
+  | @fOp _ s_inner t tDst α body bodyDst hT₁ hα hBody₁ =>
+    -- Source `.abs t body`, stack `α :: s_inner`. hRed₂ must be `fOp`.
+    cases hRed₂ with
+    | @fOp _ _ _ tDst₂ _ _ bodyDst₂ hT₂ hα₂ hBody₂ =>
+      refine wrapSingle ?_
+      exact EqDiamonds.fOp_fOp_of (@hUniformDiamond Γ [])
+        (@hUniformDiamond ({bound := α, kind := .equ} :: Γ)
+          (Stack.shift 0 s_inner))
+        hα hT₁ hBody₁ hT₂ hBody₂
