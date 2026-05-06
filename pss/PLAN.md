@@ -13,6 +13,24 @@
 > theorems. This section captures where we started, where we are now,
 > and the two unblocking options that the campaign has identified.
 
+> **Strategic pivot 2026-05-06 (iter pss-20260506-130802):** A degenerate
+> per-depth ladder pattern (`BetaInstantiationPreservesMEqRedUnderNHeadsStack`
+> for N = 1..37, ~30k+ lines) was halted and replaced with one universal
+> theorem `BetaInstantiationPreservesMEqRedUnderHeadsStack_universal :
+> ∀n, ...` (commit `327ae8e`). The 36-depth concrete ladder was deleted
+> in commit `da6fedd`; the closed surface
+> `BetaInstantiationPreservesMEqRedStack_proved` is now unconditional
+> (commit `7ec6954`). `Pss/Mpss/DeBruijnTypeSafety.lean` shrunk
+> 51,125 → 14,812 lines. The diagnosis (binder cases recurse to depth N+1,
+> so per-depth proofs are divergent by construction) and the fix (induct
+> on the derivation with `heads`/`n` generalized in the IH) are documented
+> in feedback_no_per_depth_ladders.md. **The next concrete frontier is
+> the EqDiamonds/StrongCommutes case-grid binder cells** (β cells need
+> a symmetric `MEqRedRespectsBetaInstantiate` lemma; non-β binder cells
+> need only body-diamond IH at extended context). LN-side headline axioms
+> are unchanged because the de Bruijn proofs don't yet bridge to LN; the
+> bridge is post-Phase-5 work per CLAUDE.md "NEXT MAJOR WORK".
+
 ### Where we started
 
 Waves 0–7 landed the full module hierarchy (per §3 below) with
