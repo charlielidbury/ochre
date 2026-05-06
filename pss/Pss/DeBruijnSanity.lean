@@ -791,5 +791,16 @@ namespace DeBruijn
 -- chain to close the diamond at `Term.instantiate 0 v₃ body₃`.
 #print axioms EqDiamonds.bet_bet_chain_of
 
+-- de Bruijn Lemma 2 `Me-Bet × Me-App` cell (chain output, conditional on
+-- the argument-transport hypothesis and a `.sub`-head bridging hypothesis
+-- for the `Me-FOp`-inverted body₂'). Inverts the `app`-side operator step
+-- through `Me-FOp`, then composes the proved fused kind-narrowing
+-- β-substitution single step with the argument-transport chain.
+#print axioms EqDiamonds.bet_app_chain_of
+
+-- de Bruijn Lemma 2 `Me-App × Me-Bet` cell (chain output). Symmetric to
+-- `bet_app_chain_of`; same conditional hypotheses with LHS/RHS swapped.
+#print axioms EqDiamonds.app_bet_chain_of
+
 end DeBruijn
 end Pss
