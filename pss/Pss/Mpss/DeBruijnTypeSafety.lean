@@ -17348,6 +17348,54 @@ theorem MEqRedStar.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
   | refl => exact hu
   | tail _ hStep ih => exact hStep.some.preserves_noBinders ih
 
+/-- Single-step stack/context retargeting for de Bruijn equivalence
+reduction, restricted to `NoBinders` sources.
+
+This is stronger than the chain-valued retargeting below. The `NoBinders`
+restriction excludes all stack/context-sensitive source constructors
+(`pro`, `var`, `bet`, `fun_`, `fOp`), and the remaining constructors
+(`top`, `tAp`, `app`) can be rebuilt as one step in the target context and
+stack. -/
+theorem MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty
+    {Γ_old Γ_new : Ctx} {arg arg' : Term} :
+    ∀ {s_old s_new : Stack},
+      MEqRed Γ_old s_old arg arg' →
+      Term.NoBinders arg →
+      PrevalidExt Γ_new s_new →
+      Nonempty (MEqRed Γ_new s_new arg arg') := by
+  intro s_old s_new hStep hNoBinders hpv
+  induction hStep generalizing Γ_new s_new with
+  | pro _ _ _ _ =>
+      cases hNoBinders
+  | @bet _ _ _ _ _ _ _ _ _ _ _ =>
+      have ⟨hAbs, _hV⟩ := hNoBinders.app_inv
+      cases hAbs
+  | top _ =>
+      exact ⟨MEqRed.top hpv⟩
+  | @app Γp sp u u' v v' hOp hArg ihOp ihArg =>
+      have ⟨hNoBindersU, hNoBindersV⟩ := hNoBinders.app_inv
+      have hVScopedNew : Term.Scoped Γ_new.depth v :=
+        (hNoBindersV.scoped_nonempty Γ_new.depth).some
+      have hpvOp : PrevalidExt Γ_new (v :: s_new) :=
+        PrevalidExt.cons hpv hVScopedNew
+      have hOpNew : MEqRed Γ_new (v :: s_new) u u' :=
+        (ihOp hNoBindersU hpvOp).some
+      have hpvNil : PrevalidExt Γ_new [] :=
+        PrevalidExt.nil (PrevalidExt.ctx hpv)
+      have hArgNew : MEqRed Γ_new [] v v' :=
+        (ihArg hNoBindersV hpvNil).some
+      exact ⟨MEqRed.app hOpNew hArgNew⟩
+  | var _ _ =>
+      cases hNoBinders
+  | fun_ _ _ _ _ =>
+      cases hNoBinders
+  | @tAp _ _ u _ _ =>
+      have hArgNoBinders : Term.NoBinders u := hNoBinders.app_inv.2
+      exact ⟨MEqRed.tAp hpv
+        (hArgNoBinders.scoped_nonempty Γ_new.depth).some⟩
+  | fOp _ _ _ _ _ =>
+      cases hNoBinders
+
 /-- Stack lift for a single de Bruijn equivalence-reduction step into any
 prevalid target context and stack, restricted to `NoBinders` sources.
 
@@ -17405,6 +17453,30 @@ theorem MEqRedStar.lift_to_any_context_stack_of_NoBinders
         (MEqRed.tAp hpv (hArgNoBinders.scoped_nonempty Γ_new.depth).some)
   | fOp _ _ _ _ _ =>
       cases hNoBinders
+
+/-- Scoped, binder-free `.equ`-head to `.sub`-head bridge. This is not the
+general `MEqRedSubBridgePayload`: it is the provable sublanguage where the
+body source cannot observe the head kind or annotation. -/
+noncomputable def MEqRedSubBridgePayloadNoBinders_proved
+    {Γ : Ctx} {t v body body' : Term} {s : Stack}
+    (ht : Term.Scoped Γ.depth t)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hBody :
+      MEqRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s) body body') :
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body' := by
+  have hpvOld : PrevalidExt ({bound := v, kind := .equ} :: Γ)
+      (Stack.shift 0 s) := hBody.prevalidExt
+  have hΓ : Prevalid Γ := Prevalid.tail (PrevalidExt.ctx hpvOld)
+  have hPrevalidSub : Prevalid ({bound := t, kind := .sub} :: Γ) :=
+    Prevalid.sub hΓ ht
+  have hStackScoped : Stack.Scoped (Γ.depth + 1) (Stack.shift 0 s) :=
+    PrevalidExt.stack_scoped hpvOld
+  have hpvNew :
+      PrevalidExt ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) :=
+    PrevalidExt.of_stack_scoped hPrevalidSub (by
+      simpa [Ctx.depth] using hStackScoped)
+  exact (MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty hBody
+    hBodyNoBinders hpvNew).some
 
 namespace EqDiamonds
 
@@ -19316,6 +19388,81 @@ theorem app_bet_chain_ArgNoBinders_of
       hBody₂ hArg₂ hOp₁ hArg₁ hBody₁Sub
   exact ⟨t₃, hRight, hLeft⟩
 
+/- Restricted `Me-Bet × Me-App` source cell where both the β argument and
+the abstraction body are binder-free. The body-side `NoBinders` premise
+discharges the `.equ`-head to `.sub`-head bridge for the `Me-FOp` operator
+inversion. -/
+theorem bet_app_chain_ArgBodyNoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₁' v₁' v₂' hOp₂_target : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hBody₁ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁')
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hOp₂ : MEqRed Γ (v :: s) (.abs t body) hOp₂_target)
+    (hArg₂ : MEqRed Γ [] v v₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (Term.instantiate 0 v₁' body₁') t₃
+      ∧ MEqRedStar Γ s (.app hOp₂_target v₂') t₃ :=
+  bet_app_chain_ArgNoBinders_of hBodyDiamond hArgDiamond ht hVNoBinders
+    hBody₁ hArg₁ hOp₂ hArg₂
+    (fun {body₂' t'} hShape => by
+      cases hOp₂ with
+      | fOp hT₂ hα₂ hBody₂equ =>
+          cases hShape
+          exact MEqRedSubBridgePayloadNoBinders_proved ht hBodyNoBinders
+            hBody₂equ)
+
+/- Restricted `Me-App × Me-Bet` source cell where both the β argument and
+the abstraction body are binder-free. Symmetric to
+`bet_app_chain_ArgBodyNoBinders_of`. -/
+theorem app_bet_chain_ArgBodyNoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₁' v₂' hOp₁_target : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hOp₁ : MEqRed Γ (v :: s) (.abs t body) hOp₁_target)
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app hOp₁_target v₁') t₃
+      ∧ MEqRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ :=
+  app_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond ht hVNoBinders
+    hOp₁ hArg₁ hBody₂ hArg₂
+    (fun {body₁' t'} hShape => by
+      cases hOp₁ with
+      | fOp hT₁ hα₁ hBody₁equ =>
+          cases hShape
+          exact MEqRedSubBridgePayloadNoBinders_proved ht hBodyNoBinders
+            hBody₁equ)
+
 end EqDiamonds
 
 namespace StrongCommutes
@@ -19366,6 +19513,44 @@ theorem equ_bet_chain_ArgNoBinders_of
         (fun {body₁' t'} hShape => hAppBodyOpSubBridge hOp₁ hShape)
     refine ⟨t₃, hLeft, ?_⟩
     exact MSubRedStar.of_MEqRedStar hpv hRight
+
+/- Restricted `Ms-Equ × Me-Bet` β-position cell where both the β argument
+and abstraction body are binder-free. The body-side `NoBinders` premise
+discharges the `.equ`-head to `.sub`-head bridge for wrapped `Me-FOp`
+operator steps. -/
+theorem equ_bet_chain_ArgBodyNoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₂' t₁ : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hpv : PrevalidExt Γ s)
+    (hMEqLHS : MEqRed Γ s (.app (.abs t body) v) t₁)
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂') :
+    ∃ t₃,
+      MEqRedStar Γ s t₁ t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ :=
+  equ_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond ht hVNoBinders
+    hpv hMEqLHS hBody₂ hArg₂
+    (fun {hOp₁_target body₁' t'} hOp₁ hShape => by
+      cases hOp₁ with
+      | fOp hT₁ hα₁ hBody₁equ =>
+          cases hShape
+          exact MEqRedSubBridgePayloadNoBinders_proved ht hBodyNoBinders
+            hBody₁equ)
 
 /- Restricted `Ms-App × Me-Bet` β-position cell with only a binder-free
 argument-side condition. The `Ms-Equ` operator case delegates to the

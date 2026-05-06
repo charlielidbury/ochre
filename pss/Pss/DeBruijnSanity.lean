@@ -811,7 +811,9 @@ namespace DeBruijn
 #print axioms MEqRed.preserves_noBinders
 #print axioms MEqRedJ.preserves_noBinders
 #print axioms MEqRedStar.preserves_noBinders
+#print axioms MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty
 #print axioms MEqRedStar.lift_to_any_context_stack_of_NoBinders
+#print axioms MEqRedSubBridgePayloadNoBinders_proved
 #print axioms MEqRedArgTransportPayloadRestricted
 #print axioms MEqRedArgTransportPayloadRestricted_proved
 #print axioms MEqRedArgTransportPayloadNoBinders
@@ -850,6 +852,7 @@ namespace DeBruijn
 #print axioms EqDiamonds.bet_app_chain_AbsFree_of
 #print axioms EqDiamonds.bet_app_chain_NoBinders_of
 #print axioms EqDiamonds.bet_app_chain_ArgNoBinders_of
+#print axioms EqDiamonds.bet_app_chain_ArgBodyNoBinders_of
 
 -- de Bruijn Lemma 2 `Me-App × Me-Bet` cell (chain output). Symmetric to
 -- `bet_app_chain_of`; same conditional hypotheses with LHS/RHS swapped.
@@ -857,6 +860,7 @@ namespace DeBruijn
 #print axioms EqDiamonds.app_bet_chain_AbsFree_of
 #print axioms EqDiamonds.app_bet_chain_NoBinders_of
 #print axioms EqDiamonds.app_bet_chain_ArgNoBinders_of
+#print axioms EqDiamonds.app_bet_chain_ArgBodyNoBinders_of
 
 -- de Bruijn Lemma 1 `StrongCommutes` β-position chain-output cells. These
 -- are the analogs of `EqDiamonds.bet_*_chain_of` but for the asymmetric
@@ -883,6 +887,7 @@ namespace DeBruijn
 #print axioms StrongCommutes.equ_bet_chain_of
 #print axioms StrongCommutes.app_bet_chain_of
 #print axioms StrongCommutes.equ_bet_chain_ArgNoBinders_of
+#print axioms StrongCommutes.equ_bet_chain_ArgBodyNoBinders_of
 #print axioms StrongCommutes.app_bet_chain_ArgNoBinders_of
 
 end DeBruijn

@@ -2027,6 +2027,16 @@ Bruijn proofs do not yet bridge to LN.
   chain-output cells. The existing `.sub` head bridge remains explicit.
   Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty` and
+  `MEqRedSubBridgePayloadNoBinders_proved`, a scoped, binder-free
+  `.equ`-head to `.sub`-head bridge. Also added
+  `EqDiamonds.bet_app_chain_ArgBodyNoBinders_of`,
+  `EqDiamonds.app_bet_chain_ArgBodyNoBinders_of`, and
+  `StrongCommutes.equ_bet_chain_ArgBodyNoBinders_of`, discharging the
+  bridge premise in those mixed β cells when the abstraction body source is
+  `Term.NoBinders`. This is not the general `MEqRedSubBridgePayload`.
+  Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
@@ -3412,6 +3422,17 @@ unproven and remains a hypothesis on the cells that consume it.
   use-sites expose the same strengthening as
   `StrongCommutes.equ_bet_chain_ArgNoBinders_of` and
   `StrongCommutes.app_bet_chain_ArgNoBinders_of`.
+
+* **Bridge-restricted form:** `MEqRedSubBridgePayloadNoBinders_proved`
+  proves the `.equ`-head to `.sub`-head bridge for body sources satisfying
+  `Term.NoBinders`, with an explicit scoped target `.sub` bound. The mixed
+  Lemma 2 cells expose this as
+  `EqDiamonds.bet_app_chain_ArgBodyNoBinders_of` and
+  `EqDiamonds.app_bet_chain_ArgBodyNoBinders_of`; the Lemma 1 `Ms-Equ`
+  β-position use-site exposes it as
+  `StrongCommutes.equ_bet_chain_ArgBodyNoBinders_of`. This does not cover
+  the `StrongCommutes.app_bet_chain_of` `Ms-FOp` branch, whose body premise
+  is subtype-reduction rather than equivalence-reduction.
 
 * **Residual gap (the cases the restricted forms do NOT cover):**
   **Argument-side bvar or abstraction** remains open: `v = .bvar i` or
