@@ -17551,6 +17551,28 @@ theorem MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty
   | fOp _ _ _ _ =>
       cases hNoBinders
 
+/-- Chain-level stack/context retargeting for de Bruijn subtype reduction,
+restricted to `NoBinders` sources. Each source along the chain remains
+`NoBinders` by `MSubRedStar.preserves_noBinders`, so the single-step
+retargeting lemma applies at every hop. -/
+theorem MSubRedStar.lift_to_any_context_stack_of_NoBinders
+    {Γ_old Γ_new : Ctx} {arg arg' : Term} {s_old s_new : Stack}
+    (h : MSubRedStar Γ_old s_old arg arg')
+    (hNoBinders : Term.NoBinders arg)
+    (hpv : PrevalidExt Γ_new s_new) :
+    MSubRedStar Γ_new s_new arg arg' := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | @tail mid target hChain hStep ih =>
+      have hMidNoBinders : Term.NoBinders mid :=
+        MSubRedStar.preserves_noBinders hChain hNoBinders
+      have hStepNew : MSubRed Γ_new s_new mid target :=
+        (MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty
+          hStep.some hMidNoBinders hpv).some
+      exact Relation.ReflTransGen.trans ih
+        (MSubRedStar.single hStepNew)
+
 /-- Scoped, binder-free `.equ`-head to `.sub`-head bridge for subtype
 reduction. This preserves the subtype-reduction judgment; it is not a
 conversion to `MEqRed`. -/
