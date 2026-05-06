@@ -14,6 +14,12 @@ closures, 2 inactive outstanding).
   twenty-one-preserved-head β-instantiation prevalidity surface through the
   existing list-generic prefix transport. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-one-head
+  `MEqRed.top` and `MEqRed.app` constructor leaves
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsStack.top` and
+  `.app`, using the new twenty-one-head prevalidity transport and direct
+  stack/term instantiation reassembly. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderEightHeads`, routing the
   eight-preserved-head β-instantiation prevalidity surface through the
