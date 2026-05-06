@@ -23072,6 +23072,97 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppTopChainPayload.p
         MSubRedStar.single
           (MSubRed.top hpvBody₃ (Term.Scoped.app hu₂₃ hv₂₃))⟩)
 
+/-- Two-deeper nested-recursive `Ms-Equ` leaf inside the recursive
+`Ms-App` case. This is the old-bound equivalence body diamond pattern with
+one more structural application layer than the one-deeper leaf. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₄ arg₃ arg₂ arg v u₂ v₂ hT₁ hEq hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hpvV : PrevalidExt ({ bound := t, kind := .sub } :: Γ) (v :: []) :=
+    PrevalidExt.cons hpvBody hv
+  have hpvArgV :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ) (arg :: v :: []) :=
+    PrevalidExt.cons hpvV hArg
+  have hpvArg₂ArgV :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ) (arg₂ :: arg :: v :: []) :=
+    PrevalidExt.cons hpvArgV hArg₂
+  have hpvArg₃Arg₂ArgV :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ)
+        (arg₃ :: arg₂ :: arg :: v :: []) :=
+    PrevalidExt.cons hpvArg₂ArgV hArg₃
+  have hpvArg₄Arg₃Arg₂ArgV :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ)
+        (arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) :=
+    PrevalidExt.cons hpvArg₃Arg₂ArgV hArg₄
+  let hLeft : MSubRed Γ [] (.abs t
+      (.app (.app (.app (.app (.app op arg₄) arg₃) arg₂) arg) v))
+      (.abs bound₁
+        (.app (.app (.app (.app (.app op' arg₄) arg₃) arg₂) arg) v)) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁
+      (MSubRed.app
+        (MSubRed.app
+          (MSubRed.app
+            (MSubRed.app
+              (MSubRed.app (MSubRed.equ hpvArg₄Arg₃Arg₂ArgV hEq) hArg₄)
+              hArg₃)
+            hArg₂)
+          hArg)
+        hv)
+  let hRight : MEqRed Γ [] (.abs t
+      (.app (.app (.app (.app (.app op arg₄) arg₃) arg₂) arg) v))
+      (.abs bound₂ (.app u₂ v₂)) :=
+    MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+    ((@hUniformDiamond Γ []) hT₁ hT₂)
+    (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+      have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+      have hOldTo₃ : MEqRedStar Γ [] t bound₃ :=
+        MEqRedStar.trans (MEqRedStar.single hT₁)
+          (MEqRedStar.single hBound₁₃.some)
+      have hLeftInner₁ :
+          MEqRed ({ bound := t, kind := .sub } :: Γ)
+            (arg₃ :: arg₂ :: arg :: v :: []) (.app op arg₄)
+            (.app op' arg₄) :=
+        MEqRed.app hEq (MEqRed.refl hpvBody hArg₄)
+      have hLeftInner₂ :
+          MEqRed ({ bound := t, kind := .sub } :: Γ)
+            (arg₂ :: arg :: v :: [])
+            (.app (.app op arg₄) arg₃) (.app (.app op' arg₄) arg₃) :=
+        MEqRed.app hLeftInner₁ (MEqRed.refl hpvBody hArg₃)
+      have hLeftInner₃ :
+          MEqRed ({ bound := t, kind := .sub } :: Γ) (arg :: v :: [])
+            (.app (.app (.app op arg₄) arg₃) arg₂)
+            (.app (.app (.app op' arg₄) arg₃) arg₂) :=
+        MEqRed.app hLeftInner₂ (MEqRed.refl hpvBody hArg₂)
+      have hLeftInner₄ :
+          MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+            (.app (.app (.app (.app op arg₄) arg₃) arg₂) arg)
+            (.app (.app (.app (.app op' arg₄) arg₃) arg₂) arg) :=
+        MEqRed.app hLeftInner₃ (MEqRed.refl hpvBody hArg)
+      have hLeftBody :
+          MEqRed ({ bound := t, kind := .sub } :: Γ) []
+            (.app (.app (.app (.app (.app op arg₄) arg₃) arg₂) arg) v)
+            (.app (.app (.app (.app (.app op' arg₄) arg₃) arg₂) arg) v) :=
+        MEqRed.app hLeftInner₄ (MEqRed.refl hpvBody hv)
+      have hRightBody :
+          MEqRed ({ bound := t, kind := .sub } :: Γ) []
+            (.app (.app (.app (.app (.app op arg₄) arg₃) arg₂) arg) v)
+            (.app u₂ v₂) :=
+        MEqRed.app hEqOp hEqArg
+      obtain ⟨body₃, hLeftJoin, hRightJoin⟩ :=
+        (@hUniformDiamond ({ bound := t, kind := .sub } :: Γ) [])
+          hLeftBody hRightBody
+      exact ⟨body₃,
+        (MEqRedStar.single hLeftJoin.some).sub_head_replace_star hOldTo₃,
+        MSubRedStar.of_MEqRedStar hpvBody₃
+          ((MEqRedStar.single hRightJoin.some).sub_head_replace_star hOldTo₃)⟩)
+
 /-- Constructor-local nested `Ms-FOp` operator case for the structural
 `Ms-App × Me-App` body branch. -/
 def StrongCommutesFunFunBodyAppAppSubFOpChainPayload : Prop :=
@@ -23994,8 +24085,6 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppProHeadChainPayload)
     (hFunBodyAppAppSubAppAppAppAppProSucc :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppProSuccChainPayload)
-    (hFunBodyAppAppSubAppAppAppAppEqu :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppEquChainPayload)
     (hFunBodyAppAppSubAppAppAppAppApp :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppChainPayload)
     (hFunBodyAppAppSubAppAppAppAppFOp :
@@ -24047,7 +24136,8 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
             hFunBodyAppAppSubAppAppAppAppProSucc
             (StrongCommutesFunFunBodyAppAppSubAppAppAppAppTopChainPayload.proved
               hUniformDiamond)
-            hFunBodyAppAppSubAppAppAppAppEqu
+            (StrongCommutesFunFunBodyAppAppSubAppAppAppAppEquChainPayload.proved
+              hUniformDiamond)
             hFunBodyAppAppSubAppAppAppAppApp
             hFunBodyAppAppSubAppAppAppAppFOp)
           hFunBodyAppAppSubAppAppAppFOp)
