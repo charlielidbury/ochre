@@ -2194,6 +2194,14 @@ Bruijn proofs do not yet bridge to LN.
   signature. Added the endpoints to `Pss/DeBruijnSanity.lean`. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesAppBetFOpBranchPayload` and
+  `StrongCommutesAppBetBranchPayload.of_fop_handler`. This splits the
+  broad app/bet branch obligation: `Ms-Top` closes directly, `Ms-Equ`
+  routes through `EqDiamonds.app_bet_chain_of` using the true
+  `MEqRedSubBridgePayload`, and only the direct subtype-only `Ms-FOp`
+  case remains as the branch-local payload. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

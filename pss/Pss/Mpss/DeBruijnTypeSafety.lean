@@ -20839,6 +20839,89 @@ def StrongCommutesAppBetBranchPayload : Prop :=
       MEqRedStar Γ s (.app op' v) t₃
       ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
 
+/-- Direct `Ms-FOp` app/bet branch obligation for top-level Lemma 1.
+
+This is the only constructor case of `StrongCommutesAppBetBranchPayload`
+that cannot be routed through existing equivalence-side app/bet cells:
+the operator body step is genuinely `MSubRed` under an `.equ` head, so
+the false broad `MSubBridgePayload` would be needed if we forced it into
+an `MEqRed` body step. -/
+def StrongCommutesAppBetFOpBranchPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {t v body body₂' v₂' bodyOp' : Term},
+    Term.Scoped Γ.depth t →
+    Term.Scoped Γ.depth v →
+    MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s)
+      body bodyOp' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+      body body₂' →
+    MEqRed Γ [] v v₂' →
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs t bodyOp') v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
+
+/-- Build the broad app/bet branch handler from existing true residuals plus
+only the direct `Ms-FOp` branch obligation.
+
+`Ms-Top` closes directly at `Top`. `Ms-Equ` is an equivalence-side
+`Me-App × Me-Bet` cell and uses the true `MEqRedSubBridgePayload` when its
+operator step is `Me-FOp`. The remaining direct `Ms-FOp` case is delegated
+to `StrongCommutesAppBetFOpBranchPayload`, avoiding the false
+`MSubBridgePayload` interface. -/
+noncomputable def StrongCommutesAppBetBranchPayload.of_fop_handler
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hFOp : StrongCommutesAppBetFOpBranchPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesAppBetBranchPayload := by
+  intro Γ s t v body body₂' v₂' op' ht hv hOp hBody₂ hArg₂
+  have hpvCons : PrevalidExt Γ (v :: s) := hOp.prevalidExt
+  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃ := fun ha hb =>
+    @hUniformDiamond ({bound := t, kind := .sub} :: Γ)
+      (Stack.shift 0 s) _ _ _ ha hb
+  have hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ := fun ha hb =>
+    @hUniformDiamond Γ [] _ _ _ ha hb
+  cases hOp with
+  | top _ _ =>
+      have hMeTAp : MEqRed Γ s (.app .top v) .top := MEqRed.tAp hpv hv
+      have hv₂' : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+      have hBody₂Scoped : Term.Scoped (Γ.depth + 1) body₂' := by
+        simpa [Ctx.depth] using hBody₂.scoped_right
+      have hInstScoped :
+          Term.Scoped Γ.depth (Term.instantiate 0 v₂' body₂') :=
+        Term.instantiate_scoped 0 _ _ _ (Nat.zero_le _) hv₂' hBody₂Scoped
+      have hMsTop :
+          MSubRed Γ s (Term.instantiate 0 v₂' body₂') .top :=
+        MSubRed.top hpv hInstScoped
+      exact ⟨.top, MEqRedStar.single hMeTAp, MSubRedStar.single hMsTop⟩
+  | equ _ hMEqOp =>
+      have hpvNil : PrevalidExt Γ [] :=
+        PrevalidExt.nil (PrevalidExt.ctx hpv)
+      have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+      obtain ⟨t₃, hLeft, hRight⟩ :=
+        EqDiamonds.app_bet_chain_of hArgTransport hBodyDiamond hArgDiamond
+          ht hMEqOp hArgRefl hBody₂ hArg₂
+          (fun {body₁' t'} hShape => by
+            cases hMEqOp with
+            | fOp _ _ hBodyEqu =>
+                injection hShape with h1 h2
+                subst h1
+                subst h2
+                exact hSubBridge hBodyEqu)
+      exact ⟨t₃, hLeft, MSubRedStar.of_MEqRedStar hpv hRight⟩
+  | fOp _ _ hBodySub =>
+      exact hFOp ht hv hBodySub hBody₂ hArg₂
+
 /-- Branch-local fun/fun handler for top-level Lemma 1 closure assembly.
 
 This is the broad branch obligation itself, rather than a same-target
