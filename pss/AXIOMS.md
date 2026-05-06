@@ -210,7 +210,12 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderEighteenHeadsStack` and generic
   list-specialization wrapper
   `BetaInstantiationPreservesMEqRedUnderEighteenHeadsStack.of_generic`,
-  starting the next recursive frontier.
+  starting the next recursive frontier.  Added eighteen-head prevalidity
+  transport `BetaInstantiationPreservesPrevalidExtUnderEighteenHeads` via the
+  generic preserved-head prevalidity transport, plus the eighteen-head
+  `Me-Top` leaf `BetaInstantiationPreservesMEqRedUnderEighteenHeadsStack.top`
+  and `Me-App` leaf
+  `BetaInstantiationPreservesMEqRedUnderEighteenHeadsStack.app`.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
