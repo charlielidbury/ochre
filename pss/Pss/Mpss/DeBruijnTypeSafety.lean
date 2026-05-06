@@ -20452,6 +20452,27 @@ noncomputable def MSubBridgePayloadEquNoBinders_proved :
   intro Γ t v body body' s ht hNoBinders hEq
   exact MEqRedSubBridgePayloadNoBinders_proved ht hNoBinders hEq
 
+/-- Sound subtype-preserving fragment of the false cross-relation bridge.
+
+The unrestricted `MSubBridgePayload` fails because it asks for an
+`MSubRed` body step under an `.equ` head to become an `MEqRed` step under
+a `.sub` head. The provable replacement keeps the subtype judgment:
+for binder-free bodies, the step cannot observe the changed head, so it
+can be retargeted to the `.sub` context as `MSubRed`. -/
+@[reducible] def MSubBridgePayloadNoBindersAsSub : Type :=
+  ∀ {Γ : Ctx} {t v body body' : Term} {s : Stack},
+    Term.Scoped Γ.depth t →
+    Term.NoBinders body →
+    MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s) body body' →
+    MSubRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body'
+
+/-- Closed proof of the binder-free subtype-preserving replacement for
+`MSubBridgePayload`. -/
+noncomputable def MSubBridgePayloadNoBindersAsSub_proved :
+    MSubBridgePayloadNoBindersAsSub := by
+  intro Γ t v body body' s ht hNoBinders hSub
+  exact MSubRedSubBridgePayloadNoBinders_proved ht hNoBinders hSub
+
 /-- `.sub`-head abstraction-bound narrowing for `MSubRed` bodies: an
 `MSubRed` body step under bound `t` lifts to an `MSubRed` body step under
 the post-bound `t'` whenever `MEqRed Γ [] t t'`. Required by the

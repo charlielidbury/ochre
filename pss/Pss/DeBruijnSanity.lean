@@ -926,6 +926,8 @@ namespace DeBruijn
 #print axioms MSubBridgePayload_not
 #print axioms MSubBridgePayloadEquNoBinders
 #print axioms MSubBridgePayloadEquNoBinders_proved
+#print axioms MSubBridgePayloadNoBindersAsSub
+#print axioms MSubBridgePayloadNoBindersAsSub_proved
 #print axioms MSubBodyNarrowPayload
 #print axioms MSubBodyNarrowPayload_not
 #print axioms MSubBodyNarrowPayloadNoBinders_proved

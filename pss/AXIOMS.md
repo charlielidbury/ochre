@@ -2138,6 +2138,16 @@ Bruijn proofs do not yet bridge to LN.
   restricted payload and endpoint to `Pss/DeBruijnSanity.lean`. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubBridgePayloadNoBindersAsSub_proved`, the subtype-preserving
+  binder-free replacement for the false cross-relation
+  `MSubBridgePayload`. It retargets an `MSubRed` body step from an
+  `.equ` head to a `.sub` head while keeping the conclusion as `MSubRed`,
+  using the existing no-binders subtype context/stack retargeting lemma.
+  This is the intended sound interface for the genuine subtype-only
+  `Ms-FOp` branch, where collapsing to `MEqRed` is impossible. Added the
+  restricted payload and endpoint to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.app_bet_chain_ArgBodyNoBinders_of`, the binder-free
   `Ms-App × Me-Bet` Lemma 1 β-position cell. The `Ms-Equ` operator branch
   now discharges the cross-head body bridge through the existing
