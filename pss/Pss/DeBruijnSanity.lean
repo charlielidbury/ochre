@@ -909,6 +909,8 @@ namespace DeBruijn
 -- `StrongCommutes` hypothesis. Should depend only on `propext`,
 -- `Classical.choice`, `Quot.sound`.
 #print axioms MSubRedOpStackHeadTransportPayload
+#print axioms MSubRedOpStackHeadTransportPayloadRestricted
+#print axioms MSubRedOpStackHeadTransportPayloadRestricted_proved
 #print axioms MSubBridgePayload
 #print axioms MSubBridgePayload_not
 #print axioms MSubBodyNarrowPayload

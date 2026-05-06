@@ -2121,6 +2121,13 @@ Bruijn proofs do not yet bridge to LN.
   `Ms-Pro`, so the existing NoBinders context/stack retargeting lemma
   gives same-target subtype body narrowing. Added the endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubRedOpStackHeadTransportPayloadRestricted_proved`, the binder-free
+  subtype analogue of the previously proved equivalence operator
+  stack-head transport. It wraps the one-step subtype operator reduction
+  as a chain and reuses `MSubRedStar.op_stack_head_transport_of_NoBinders`.
+  Added the restricted payload and endpoint to `Pss/DeBruijnSanity.lean`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

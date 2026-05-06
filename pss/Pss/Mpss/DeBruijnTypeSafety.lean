@@ -20244,6 +20244,26 @@ def MSubRedOpStackHeadTransportPayload : Prop :=
     MSubRed Γ (v :: s) u u' →
     MSubRedStar Γ (v' :: s) u u'
 
+/-- Restricted operator stack-head transport for binder-free subtype operator
+sources. This is the sound fragment of `MSubRedOpStackHeadTransportPayload`:
+`Term.NoBinders` excludes the stack-sensitive abstraction cases and lookup
+sources that can observe the stack head. -/
+def MSubRedOpStackHeadTransportPayloadRestricted : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {v v' u u' : Term},
+    MEqRedStar Γ [] v v' →
+    Term.NoBinders u →
+    MSubRed Γ (v :: s) u u' →
+    MSubRedStar Γ (v' :: s) u u'
+
+/-- Closed proof of the binder-free subtype operator stack-head transport
+surface, obtained by wrapping the one-step subtype reduction as a chain and
+using `MSubRedStar.op_stack_head_transport_of_NoBinders`. -/
+theorem MSubRedOpStackHeadTransportPayloadRestricted_proved :
+    MSubRedOpStackHeadTransportPayloadRestricted := by
+  intro Γ s v v' u u' hArgStar hNoBinders hOpStep
+  exact MSubRedStar.op_stack_head_transport_of_NoBinders hArgStar
+    hNoBinders (MSubRedStar.single hOpStep) hOpStep.prevalidExt
+
 /-- Cross-relation, cross-head bridge: convert an `MSubRed` body step
 under an `.equ`-head bound `v` into an `MEqRed` body step under a
 `.sub`-head bound `t`. Required by the `app × bet` cell's `Ms-FOp`
