@@ -198,6 +198,14 @@ closures, 2 inactive outstanding).
   seventeen-head `Me-TApp` leaf
   `BetaInstantiationPreservesMEqRedUnderSeventeenHeadsStack.tAp` and `Me-Pro`
   leaf `BetaInstantiationPreservesMEqRedUnderSeventeenHeadsStack.pro`.
+  Added the seventeen-head constructor-facing binder payload types
+  `BetaInstantiationPreservesMEqRedUnderSeventeenHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderSeventeenHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderSeventeenHeadsFOpStackPayload`; these
+  expose the recursive eighteen-head body obligations.  Added
+  `BetaInstantiationPreservesMEqRedUnderSeventeenHeadsStack.of_constructors`,
+  packaging the checked seventeen-head structural leaves while leaving those
+  recursive eighteen-head binder adapters explicit.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
