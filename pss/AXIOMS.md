@@ -2114,6 +2114,13 @@ Bruijn proofs do not yet bridge to LN.
   lookup. The replacement bridge must exclude subtype-only cases or
   return a subtype/chain target rather than a single `MEqRed` step. Added
   the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubBodyNarrowPayloadNoBinders_proved`, the sound binder-free fragment
+  of the false same-target `MSubBodyNarrowPayload`. If the source body is
+  `Term.NoBinders`, it cannot observe the changed `.sub` head through
+  `Ms-Pro`, so the existing NoBinders context/stack retargeting lemma
+  gives same-target subtype body narrowing. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

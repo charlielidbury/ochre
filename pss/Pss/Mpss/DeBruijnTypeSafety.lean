@@ -20354,6 +20354,28 @@ theorem MSubBodyNarrowPayload_not :
               rcases hPro with ⟨α, α', hEquBind, _, _⟩
               simp [Ctx.equBinds, Ctx.lookupEqu, new] at hEquBind
 
+/-- Binder-free same-target body narrowing for subtype reduction.
+
+This is the sound fragment of `MSubBodyNarrowPayload`: if the source body has
+no binders, it cannot observe the changed `.sub` head through `Ms-Pro`, so the
+existing NoBinders context/stack retargeting lemma applies. -/
+theorem MSubBodyNarrowPayloadNoBinders_proved :
+    ∀ {Γ : Ctx} {t t' u v : Term},
+      MEqRed Γ [] t t' →
+      Term.NoBinders u →
+      MSubRed ({bound := t, kind := .sub} :: Γ) [] u v →
+      MSubRedJ ({bound := t', kind := .sub} :: Γ) [] u v := by
+  intro Γ t t' u v hBound hNoBinders hSub
+  have hpvOld : PrevalidExt ({bound := t, kind := .sub} :: Γ) [] :=
+    hSub.prevalidExt
+  have hΓ : Prevalid Γ := Prevalid.tail (PrevalidExt.ctx hpvOld)
+  have ht' : Term.Scoped Γ.depth t' := hBound.scoped_right
+  have hpvNew :
+      PrevalidExt ({bound := t', kind := .sub} :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub hΓ ht')
+  exact MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty
+    hSub hNoBinders hpvNew
+
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
 Lemma 1, conditional on the residual hypotheses listed above.
 

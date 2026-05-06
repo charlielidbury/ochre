@@ -913,6 +913,7 @@ namespace DeBruijn
 #print axioms MSubBridgePayload_not
 #print axioms MSubBodyNarrowPayload
 #print axioms MSubBodyNarrowPayload_not
+#print axioms MSubBodyNarrowPayloadNoBinders_proved
 #print axioms StrongCommutes_proved
 
 end DeBruijn
