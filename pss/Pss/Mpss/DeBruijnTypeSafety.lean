@@ -2412,6 +2412,159 @@ noncomputable def MEqRedFusedKindNarrowedBetaSubstStack_proved :
   MEqRedFusedKindNarrowedBetaSubstStack.of_generic
     (MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack_universal 0)
 
+/-! ## de Bruijn Lemma 2 `Me-Bet × Me-Bet` cell — chain output
+
+The `bet × bet` source cell of de Bruijn Lemma 2 closes via two pieces of
+machinery composed along an `MEqRedStar` chain: the proved fused
+kind-narrowing β-substitution (which provides the body-progress single
+step at the discharged `.sub` head) and an argument-transport hypothesis
+(which provides the argument-progress chain when the body is then evaluated
+at the joined `v₃`). The argument-transport hypothesis is conditional —
+this file's job is to discharge the cell **assuming** the transport
+machinery; the discharge of the transport itself is handled in a separate
+work product. -/
+
+/-- Stack-level instantiate-shift cancellation: instantiating below a fresh
+top-level binder cancels the surrounding stack shift. Specializes
+`Stack.instantiate_shiftBy_zero_tail` with `n = 0`. -/
+private theorem Stack.instantiate_zero_shift_zero_id (v : Term) (s : Stack) :
+    Stack.instantiate 0 v (Stack.shift 0 s) = s := by
+  induction s with
+  | nil => rfl
+  | cons α s ih =>
+      show Term.instantiate 0 v (Term.shift 0 α) ::
+          Stack.instantiate 0 v (Stack.shift 0 s) = α :: s
+      rw [Term.instantiate_shift_id 0 v α, ih]
+
+/-- Argument-position transport hypothesis: a body whose `bvar 0` references
+all become `arg` after instantiation, paired with a step `arg → arg'`,
+produces a chain to the form where they all become `arg'`. The MEqRed-side
+analog of the LN paper's argument-position substitution lemma. Conditional
+on this hypothesis being discharged separately.
+
+This payload is `Prop`-valued because `MEqRedStar` is `Prop`-valued
+(`Relation.ReflTransGen` of the `MEqRedJ` proposition wrapper). -/
+def MEqRedArgTransportPayload : Prop :=
+  ∀ {Γ : Ctx} {arg arg' body : Term} {s : Stack},
+    Term.Scoped (Γ.depth + 1) body →
+    MEqRed Γ [] arg arg' →
+    PrevalidExt Γ s →
+    MEqRedStar Γ s
+      (Term.instantiate 0 arg body)
+      (Term.instantiate 0 arg' body)
+
+namespace EqDiamonds
+
+/-- The `Me-Bet × Me-Bet` source cell of de Bruijn Lemma 2 with chain output.
+Closes the diamond at `Term.instantiate 0 v₃ body₃` via:
+- body diamond → `body₃`, joining `body₁'`/`body₂'` at the extended `.sub`
+  head context;
+- arg diamond → `v₃`, joining `v₁'`/`v₂'` at the empty stack;
+- the proved fused kind-narrowing β-substitution helper for the body
+  progress single step;
+- the argument-transport hypothesis for the arg progress chain.
+
+The body- and arg-diamond hypotheses are stated using `MEqRedJ` (the `Prop`
+wrapper around `MEqRed`) to match the existing `EqDiamonds` shape. The
+underlying `Type`-valued `MEqRed` derivations are extracted with `.some`
+where needed.
+
+Conditional on `MEqRedArgTransportPayload`. -/
+theorem bet_bet_chain_of
+    (hArgTransport : MEqRedArgTransportPayload)
+    {Γ : Ctx} {s : Stack} {t v body body₁' body₂' v₁' v₂' : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hBody₁ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁')
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (Term.instantiate 0 v₁' body₁') t₃
+      ∧ MEqRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  -- Body diamond closure: body₁' / body₂' join at body₃ under `{t,.sub}` head.
+  obtain ⟨body₃, hBody₁₃J, hBody₂₃J⟩ := hBodyDiamond hBody₁ hBody₂
+  -- Arg diamond closure: v₁' / v₂' join at v₃ at the empty stack.
+  obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArg₁ hArg₂
+  -- Extract Type-valued MEqRed derivations from the Nonempty wrappers.
+  let hBody₁₃ : MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+    body₁' body₃ := hBody₁₃J.some
+  let hBody₂₃ : MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+    body₂' body₃ := hBody₂₃J.some
+  let hArg₁₃ : MEqRed Γ [] v₁' v₃ := hArg₁₃J.some
+  let hArg₂₃ : MEqRed Γ [] v₂' v₃ := hArg₂₃J.some
+  -- Common reduct.
+  refine ⟨Term.instantiate 0 v₃ body₃, ?_, ?_⟩
+  · -- LHS chain: instantiate 0 v₁' body₁' →* instantiate 0 v₃ body₃.
+    have hv₁'Scoped : Term.Scoped Γ.depth v₁' := hArg₁.scoped_right
+    -- Body progress (single step) via fused kind-narrowing β-substitution.
+    have hBodyProgress :
+        MEqRed Γ (Stack.instantiate 0 v₁' (Stack.shift 0 s))
+          (Term.instantiate 0 v₁' body₁')
+          (Term.instantiate 0 v₁' body₃) :=
+      MEqRedFusedKindNarrowedBetaSubstStack_proved
+        (arg := t) (arg' := v₁') ht hv₁'Scoped hBody₁₃
+    have hStackEq :
+        Stack.instantiate 0 v₁' (Stack.shift 0 s) = s :=
+      Stack.instantiate_zero_shift_zero_id v₁' s
+    have hBodyProgress' :
+        MEqRed Γ s
+          (Term.instantiate 0 v₁' body₁')
+          (Term.instantiate 0 v₁' body₃) := by
+      simpa [hStackEq] using hBodyProgress
+    -- Arg progress (chain) via the argument-transport hypothesis.
+    have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+      simpa [Ctx.depth] using hBody₁₃.scoped_right
+    have hpvΓs : PrevalidExt Γ s :=
+      PrevalidExt.weaken_head_inv hBody₁.prevalidExt
+    have hArgChain :
+        MEqRedStar Γ s
+          (Term.instantiate 0 v₁' body₃)
+          (Term.instantiate 0 v₃ body₃) :=
+      hArgTransport hBody₃Scoped hArg₁₃ hpvΓs
+    exact (MEqRedStar.single hBodyProgress').trans hArgChain
+  · -- RHS chain: instantiate 0 v₂' body₂' →* instantiate 0 v₃ body₃.
+    have hv₂'Scoped : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+    have hBodyProgress :
+        MEqRed Γ (Stack.instantiate 0 v₂' (Stack.shift 0 s))
+          (Term.instantiate 0 v₂' body₂')
+          (Term.instantiate 0 v₂' body₃) :=
+      MEqRedFusedKindNarrowedBetaSubstStack_proved
+        (arg := t) (arg' := v₂') ht hv₂'Scoped hBody₂₃
+    have hStackEq :
+        Stack.instantiate 0 v₂' (Stack.shift 0 s) = s :=
+      Stack.instantiate_zero_shift_zero_id v₂' s
+    have hBodyProgress' :
+        MEqRed Γ s
+          (Term.instantiate 0 v₂' body₂')
+          (Term.instantiate 0 v₂' body₃) := by
+      simpa [hStackEq] using hBodyProgress
+    have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+      simpa [Ctx.depth] using hBody₂₃.scoped_right
+    have hpvΓs : PrevalidExt Γ s :=
+      PrevalidExt.weaken_head_inv hBody₂.prevalidExt
+    have hArgChain :
+        MEqRedStar Γ s
+          (Term.instantiate 0 v₂' body₃)
+          (Term.instantiate 0 v₃ body₃) :=
+      hArgTransport hBody₃Scoped hArg₂₃ hpvΓs
+    exact (MEqRedStar.single hBodyProgress').trans hArgChain
+
+end EqDiamonds
+
 /-- Prevalidity transport for β-instantiation under one preserved context
 head. The preserved head's bound is instantiated while the discharged `.sub`
 tail is removed. -/
