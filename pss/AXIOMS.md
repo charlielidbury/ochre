@@ -2533,6 +2533,16 @@ Bruijn proofs do not yet bridge to LN.
   `Ms-App`, and `Ms-FOp`, alongside the remaining shallower changed-head
   `Ms-Pro` and `Ms-FOp` residuals. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — discharged the four-deeper
+  nested-recursive `Ms-Equ` leaf
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppEquChainPayload.proved`.
+  The proof extends the old-bound equivalence body diamond through seven
+  application layers and then replaces the old subtype head along the
+  joined abstraction bound. The nested-app handler now supplies this proof
+  directly, leaving the live four-deeper residuals at changed-head
+  `Ms-Pro`, stable-successor `Ms-Pro`, `Ms-Top`, recursive `Ms-App`, and
+  `Ms-FOp`. Added the proved endpoint to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
