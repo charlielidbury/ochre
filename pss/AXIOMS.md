@@ -202,6 +202,11 @@ closures, 2 inactive outstanding).
   the instantiated equivalence-binding case to the generic preserved-head
   projection helper. Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-five-head constructor
+  payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtyFiveHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderThirtyFiveHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderThirtyFiveHeadsFOpStackPayload`. Added
+  the endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-four-head constructor
   payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsBetStackPayload`, and
