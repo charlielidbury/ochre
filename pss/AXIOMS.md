@@ -2144,6 +2144,15 @@ Bruijn proofs do not yet bridge to LN.
   no-binders `.equ`-to-`.sub` retargeting proof, while the genuine
   subtype-only `Ms-FOp` body step remains an explicit local bridge premise.
   Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
+  `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
+  construction and discharges the otherwise false same-target subtype
+  body-narrowing residual by preserving `Term.NoBinders` along the
+  right-edge `MEqRed` body step, then applying
+  `MSubBodyNarrowPayloadNoBinders_proved` only to that concrete body
+  step. Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

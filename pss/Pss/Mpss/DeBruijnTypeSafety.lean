@@ -20474,6 +20474,44 @@ theorem MSubBodyNarrowPayloadNoBinders_proved :
   exact MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty
     hSub hNoBinders hpvNew
 
+namespace StrongCommutes
+
+/- Restricted `Ms-Fun × Me-Fun` cell where the abstraction body is
+binder-free. This is the sound no-binders fragment of the body-narrowing
+premise used by `StrongCommutes.fun_fun_of`; after the body commutation
+join, the right-edge body source preserves `NoBinders`, so same-target
+subtype narrowing can be discharged directly. -/
+theorem fun_fun_BodyNoBinders_of
+    {Γ : Ctx} {t bound₁ bound₂ body body₁ body₂ : Term}
+    (hBoundDiamond : EqDiamonds Γ [])
+    (hBodyComm : StrongCommutes ({ bound := t, kind := .sub } :: Γ) [])
+    (hBodyNoBinders : Term.NoBinders body)
+    (hT₁ : MEqRed Γ [] t bound₁)
+    (hBody₁ : MSubRed ({ bound := t, kind := .sub } :: Γ) [] body body₁)
+    (hT₂ : MEqRed Γ [] t bound₂)
+    (hBody₂ : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ body₁) t₃
+        ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃ := by
+  obtain ⟨bound₃, hLeftBound, hRightBound⟩ := hBoundDiamond hT₁ hT₂
+  obtain ⟨body₃, hEqBody, hSubBody⟩ := hBodyComm hBody₁ hBody₂
+  refine ⟨.abs bound₃ body₃, ?_, ?_⟩
+  · obtain ⟨hLB⟩ := hLeftBound
+    obtain ⟨hEB⟩ := hEqBody
+    have hEB' :
+        MEqRed ({ bound := bound₁, kind := .sub } :: Γ) [] body₁ body₃ :=
+      hEB.sub_head_replace hT₁
+    exact ⟨MEqRed.fun_ hLB hEB'⟩
+  · obtain ⟨hRB⟩ := hRightBound
+    have hBody₂NoBinders : Term.NoBinders body₂ :=
+      hBody₂.preserves_noBinders hBodyNoBinders
+    obtain ⟨hSB'⟩ :=
+      MSubBodyNarrowPayloadNoBinders_proved hT₂ hBody₂NoBinders
+        hSubBody.some
+    have hScoped₂ : Term.Scoped Γ.depth bound₂ := hT₂.scoped_right
+    exact ⟨MSubRed.fun_ hScoped₂ hRB hSB'⟩
+
+end StrongCommutes
+
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
 Lemma 1, conditional on the residual hypotheses listed above.
 

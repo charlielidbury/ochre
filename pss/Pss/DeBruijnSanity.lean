@@ -874,6 +874,11 @@ namespace DeBruijn
 #print axioms EqDiamonds.app_bet_chain_ArgNoBinders_of
 #print axioms EqDiamonds.app_bet_chain_ArgBodyNoBinders_of
 
+-- de Bruijn Lemma 1 `Ms-Fun × Me-Fun` restricted cell. Discharges the
+-- otherwise false same-target `MSubRed` body-narrowing residual when the
+-- abstraction body is binder-free.
+#print axioms StrongCommutes.fun_fun_BodyNoBinders_of
+
 -- de Bruijn Lemma 1 `StrongCommutes` β-position chain-output cells. These
 -- are the analogs of `EqDiamonds.bet_*_chain_of` but for the asymmetric
 -- `MSubRed × MEqRed → ∃ t₃, MEqRedStar t₁ t₃ ∧ MSubRedStar t₂ t₃` shape.
