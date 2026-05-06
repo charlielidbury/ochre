@@ -2780,6 +2780,17 @@ Bruijn proofs do not yet bridge to LN.
   extend the explicit successor-lookup transport proof one application
   layer deeper, including the extra `Me-App` decomposition and argument
   retargeting step. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — discharged that eight-deeper
+  stable-successor `Ms-Pro` leaf
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProSuccChainPayload.proved`.
+  The proof extends the existing successor-lookup transport by one
+  structural application layer, explicitly decomposing the additional
+  `Me-App`, retargeting all argument reductions under the joined
+  abstraction bound, and rebuilding the final `Ms-Pro` chain. The nested
+  handler now supplies this proof directly; the deepest successor
+  `Ms-Pro` residual remains live alongside changed-head `Ms-Pro`,
+  recursive `Ms-App`, and `Ms-FOp` residuals. Added the proved endpoint
+  to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
