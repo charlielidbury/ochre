@@ -16,6 +16,14 @@ closures, 2 inactive outstanding).
   setting up the recursive body target for the twenty-one-head binder
   payloads. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-one-head
+  `Me-Fun`/`Me-Bet`/`Me-FOp` binder payload surfaces
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsFOpStackPayload`,
+  recording the recursive twenty-two-head body obligations needed to package
+  the twenty-one-head constructor frontier. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderTwentyOneHeads`, routing the
   twenty-one-preserved-head β-instantiation prevalidity surface through the
