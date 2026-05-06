@@ -816,5 +816,16 @@ namespace DeBruijn
 -- the cases the restricted surface covers.
 #print axioms EqDiamonds.bet_bet_chain_AbsFree_of
 
+-- de Bruijn Lemma 2 `Me-App × Me-App` cell (chain output, conditional on
+-- the operator stack-head transport hypothesis). Decomposes the closure
+-- as "step the arg first, then the operator at the new stack head"
+-- using `MEqRedStar.app_right` and `MEqRedStar.app_left`. The transport
+-- premise threads the operator-diamond derivation from the original
+-- arg-as-stack-head to the joined arg's stack head — this is the
+-- structurally missing piece of the de Bruijn Lemma 2 case grid for
+-- the `Me-App × Me-App` cell.
+#print axioms EqDiamonds.app_app_chain_of
+#print axioms MEqRedOpStackHeadTransportPayload
+
 end DeBruijn
 end Pss
