@@ -770,5 +770,20 @@ namespace DeBruijn
 #print axioms MEqRedFusedKindNarrowedBetaSubstStack_proved
 #print axioms MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack_universal
 
+-- Audit: argument-transport lemma (Path 3, restricted form). Companion to
+-- the fused kind-narrowing β-substitution: the `bet × bet` cell composes
+-- both surfaces over the chain. This surface is restricted to abs-free
+-- bodies (so abstractions only occur inside application subterms, never
+-- as the directly substituted shape) and requires an argument-side stack
+-- lift premise. See the file docstring in `Pss.Mpss.DeBruijnTypeSafety`
+-- for the wall analysis: `body = .bvar 0` at non-empty stack with
+-- abstraction-rooted `arg` is genuinely structurally inaccessible.
+#print axioms MEqRedStar.argTransportRestricted
+#print axioms MEqRedStarArgTransportRestricted_proved
+#print axioms MEqRed.app_left
+#print axioms MEqRed.app_right
+#print axioms MEqRedStar.app_left
+#print axioms MEqRedStar.app_right
+
 end DeBruijn
 end Pss

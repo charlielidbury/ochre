@@ -16524,5 +16524,228 @@ noncomputable def
     hSubst hcomm hEmpty hEqBody hSubBody hPres hStep hLeft hSubToEqu hEquToSub
     hOpFun hTail hUnder hSubPayloads hNoTop WfCtxEqu.empty hwf hstep
 
-end DeBruijn
-end Pss
+/-! ## Argument-transport lemma (Path 3, restricted form)
+
+The `bet × bet` diamond cell needs to bridge two β-fires that disagree on the
+post-step argument: one β fires with the original `arg`, the other with the
+post-step `arg'`. The bridge takes the form
+
+  `MEqRedStar Γ s (instantiate 0 arg body) (instantiate 0 arg' body)`,
+
+asking to step from a body-instantiated-by-`arg` reduct to one
+body-instantiated-by-`arg'`, at any prevalid stack.
+
+**The wall.** A direct attack via `MEqRed Γ [] arg arg'` walls at
+`body = .bvar 0`: both sides reduce to `arg` and `arg'` respectively, and we
+need `MEqRedStar Γ s arg arg'`. When `s` is non-empty and `arg` is
+abstraction-rooted, the `MEqRed` step **cannot lift** to non-empty stack
+because `Me-Fun` requires empty stack and `Me-FOp` requires a specific
+operand-shaped stack head. This is the **stack-extension wall** documented
+across the de Bruijn refactor: `MEqRedStackAppendPayload.of_fun` shows that
+the only outstanding case in the lift induction is precisely the `Me-Fun`
+case.
+
+**Restricted form shipped here.** We package the wall as an explicit
+**precondition**: the caller must supply a chain
+`MEqRedStar Γ s' arg arg'` at every prevalid stack `s'` they might encounter.
+For non-abstraction `arg` this lifts trivially via stack-append (because
+`MEqRedStar Γ s arg arg'` decomposes into constructors that all admit stack
+extension); for abstraction `arg` the caller must produce the lift externally
+or arrange for the relevant stacks to be empty.
+
+This is the closest provable surface short of solving the general lift
+problem. The downstream `bet × bet` cell composes this with the body-side
+`MEqRedFusedKindNarrowedBetaSubstStack_proved` and an outer chain.
+
+**Wall analysis for an unconditional version.** The genuine obstruction is
+at `body = .bvar 0`, stack non-empty, `arg` abstraction-rooted. There is no
+known workaround at the de Bruijn level: the substituted `bvar 0` must
+literally become `arg`, which has the wrong abstraction shape for the
+ambient stack. The restricted form is therefore not a stop-gap — it is the
+form the lemma admits at this encoding. -/
+
+/-- Single-step equivalence-reduction congruence at the operator (function)
+position of an application. The operator step lives at the stack with the
+operand pushed on top, so `Me-App` directly applies. -/
+noncomputable def MEqRed.app_left {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (hStep : MEqRed Γ (v :: s) u u')
+    (hv : Term.Scoped Γ.depth v) : MEqRed Γ s (.app u v) (.app u' v) :=
+  MEqRed.app hStep
+    (MEqRed.refl (PrevalidExt.nil hStep.prevalid) hv)
+
+/-- Chain-level operator-position congruence: a chain of operator-position
+equivalence steps lifts to a chain of `Me-App` steps, leaving the operand
+untouched. -/
+theorem MEqRedStar.app_left {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (hStar : MEqRedStar Γ (v :: s) u u')
+    (hv : Term.Scoped Γ.depth v) :
+    MEqRedStar Γ s (.app u v) (.app u' v) := by
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail _hPrefix hStep ih =>
+      exact Relation.ReflTransGen.tail ih
+        ⟨MEqRed.app_left hStep.some hv⟩
+
+/-- Single-step equivalence-reduction congruence at the operand (argument)
+position of an application. The operand step lives at the empty stack and
+is pushed into the application via `Me-App`'s operand premise; the operator
+position uses reflexivity at the appropriate stack. -/
+noncomputable def MEqRed.app_right {Γ : Ctx} {s : Stack} {u v v' : Term}
+    (hu : Term.Scoped Γ.depth u)
+    (hStep : MEqRed Γ [] v v')
+    (hpv : PrevalidExt Γ s) :
+    MEqRed Γ s (.app u v) (.app u v') := by
+  have hv : Term.Scoped Γ.depth v := hStep.scoped_left
+  have hpvOp : PrevalidExt Γ (v :: s) := PrevalidExt.cons hpv hv
+  exact MEqRed.app (MEqRed.refl hpvOp hu) hStep
+
+/-- Chain-level operand-position congruence: a chain of operand-position
+equivalence steps lifts to a chain of `Me-App` steps, leaving the operator
+untouched but advancing the operand. -/
+theorem MEqRedStar.app_right {Γ : Ctx} {s : Stack} {u v v' : Term}
+    (hu : Term.Scoped Γ.depth u)
+    (hStar : MEqRedStar Γ [] v v')
+    (hpv : PrevalidExt Γ s) :
+    MEqRedStar Γ s (.app u v) (.app u v') := by
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail _hPrefix hStep ih =>
+      exact Relation.ReflTransGen.tail ih
+        ⟨MEqRed.app_right hu hStep.some hpv⟩
+
+/-- Predicate: a term has no `.abs` constructor anywhere along its
+structural spine (top-level only, so applications can have abstractions
+inside their subterms — but the term being instantiated is not directly
+an abstraction at the top of any of its app-spine positions).
+
+Concretely: `top`/`bvar` are abs-free; `app f x` is abs-free iff both `f`
+and `x` are; `abs _ _` is never abs-free. This precisely characterizes the
+sublanguage that the index-0 restricted argument-transport lemma covers.
+
+The body case where `body = .abs bound innerBody` is excluded because the
+recursion under the binder would require an index-1 instantiation lemma,
+which the index-0 surface does not supply. -/
+inductive Term.AbsFree : Term → Prop
+  | bvar (i : Nat) : Term.AbsFree (.bvar i)
+  | top : Term.AbsFree .top
+  | app {f x : Term} : Term.AbsFree f → Term.AbsFree x →
+      Term.AbsFree (.app f x)
+
+/-- Argument-transport lemma in **restricted form**: when the argument step
+already lifts to a chain at every prevalid stack and the body is abs-free,
+the chain transports through the body's instantiation by induction on body
+shape.
+
+**Two restrictions:**
+
+1. **Argument-side lift.** The wall is at `body = .bvar 0` with non-empty
+   stack: there we need `MEqRedStar Γ s arg arg'`, which the caller supplies
+   via `hLift`. Non-abstraction `arg`s admit `hLift` trivially via
+   stack-append; abstraction `arg`s require an external supply or
+   arrangement that the relevant stacks are empty.
+
+2. **Body-side abs-freedom.** The body case `body = .abs bound innerBody`
+   would require recursion at index 1 (the innerBody substitution becomes
+   `instantiate 1 (shift 0 arg) innerBody`), which the index-0 IH cannot
+   supply directly. The generalized under-heads form (analogous to
+   `MEqRedRespectsBetaInstantiateUnderHeadsStack`) would discharge this,
+   but at substantially more proof complexity. The abs-free restriction
+   captures the sublanguage where the lemma closes cleanly.
+
+The downstream `bet × bet` cell can use this for body shapes that are
+abs-free at the top level, composing with the body-side
+`MEqRedFusedKindNarrowedBetaSubstStack_proved` for the abs-shaped
+subderivations. -/
+noncomputable def MEqRedStar.argTransportRestricted
+    {Γ : Ctx} {arg arg' body : Term} {s : Stack}
+    (hBody : Term.Scoped (Γ.depth + 1) body)
+    (hAbsFree : Term.AbsFree body)
+    (hArg : Term.Scoped Γ.depth arg)
+    (hArg' : Term.Scoped Γ.depth arg')
+    (hpv : PrevalidExt Γ s)
+    (hLift : ∀ {s' : Stack}, PrevalidExt Γ s' →
+      MEqRedStar Γ s' arg arg') :
+    MEqRedStar Γ s
+      (Term.instantiate 0 arg body) (Term.instantiate 0 arg' body) := by
+  induction body generalizing s with
+  | bvar i =>
+      have hi : i < Γ.depth + 1 := hBody.bvar_lt
+      by_cases heq : i = 0
+      · subst heq
+        simpa [Term.instantiate] using hLift hpv
+      · -- i ≥ 1; both sides reduce to .bvar (i - 1); chain is refl
+        have hnotlt : ¬ i < 0 := Nat.not_lt_zero _
+        simp [Term.instantiate, hnotlt, heq]
+        exact Relation.ReflTransGen.refl
+  | top =>
+      simpa [Term.instantiate] using
+        (Relation.ReflTransGen.refl :
+          MEqRedStar Γ s .top .top)
+  | app f x ihF ihX =>
+      have ⟨hF, hX⟩ : Term.Scoped (Γ.depth + 1) f ×
+          Term.Scoped (Γ.depth + 1) x := Term.Scoped.app_inv hBody
+      have hAbsFreeF : Term.AbsFree f := by
+        cases hAbsFree with | app hf _ => exact hf
+      have hAbsFreeX : Term.AbsFree x := by
+        cases hAbsFree with | app _ hx => exact hx
+      have hFInst' : Term.Scoped Γ.depth (Term.instantiate 0 arg' f) :=
+        Term.instantiate_scoped 0 Γ.depth arg' f (Nat.zero_le _) hArg' hF
+      have hXInst : Term.Scoped Γ.depth (Term.instantiate 0 arg x) :=
+        Term.instantiate_scoped 0 Γ.depth arg x (Nat.zero_le _) hArg hX
+      -- IH on operator at extended stack: chain of operator-position changes
+      have hpvOp : PrevalidExt Γ (Term.instantiate 0 arg x :: s) :=
+        PrevalidExt.cons hpv hXInst
+      have hOpStar :
+          MEqRedStar Γ (Term.instantiate 0 arg x :: s)
+            (Term.instantiate 0 arg f) (Term.instantiate 0 arg' f) :=
+        ihF hF hAbsFreeF hpvOp
+      -- IH on operand at empty stack: chain of operand-position changes
+      have hpvNil : PrevalidExt Γ [] := PrevalidExt.nil (PrevalidExt.ctx hpv)
+      have hArgStar :
+          MEqRedStar Γ []
+            (Term.instantiate 0 arg x) (Term.instantiate 0 arg' x) :=
+        ihX hX hAbsFreeX hpvNil
+      -- Compose: first move operator at extended stack, then move operand
+      have hStarOp :
+          MEqRedStar Γ s
+            (.app (Term.instantiate 0 arg f) (Term.instantiate 0 arg x))
+            (.app (Term.instantiate 0 arg' f) (Term.instantiate 0 arg x)) :=
+        MEqRedStar.app_left hOpStar hXInst
+      have hStarArg :
+          MEqRedStar Γ s
+            (.app (Term.instantiate 0 arg' f) (Term.instantiate 0 arg x))
+            (.app (Term.instantiate 0 arg' f) (Term.instantiate 0 arg' x)) :=
+        MEqRedStar.app_right hFInst' hArgStar hpv
+      simpa [Term.instantiate] using
+        Relation.ReflTransGen.trans hStarOp hStarArg
+  | abs bound innerBody _ihBound _ihInner =>
+      -- Excluded by `Term.AbsFree`: the abstraction case requires recursion
+      -- at depth 1, which the index-0 form does not supply. See the lemma
+      -- docstring for the wall analysis.
+      exact (by cases hAbsFree)
+
+/-- Statement of the restricted argument-transport surface. The body is
+required to be abs-free (top-level, with abstractions allowed only inside
+applications' subterms — see `Term.AbsFree`), and the caller supplies the
+argument-side stack lift via `hLift`. The conclusion lives in `Prop`
+because `MEqRedStar` does. -/
+def MEqRedStarArgTransportRestricted : Prop :=
+  ∀ {Γ : Ctx} {arg arg' body : Term} {s : Stack},
+    Term.Scoped (Γ.depth + 1) body →
+      Term.AbsFree body →
+        Term.Scoped Γ.depth arg →
+          Term.Scoped Γ.depth arg' →
+            PrevalidExt Γ s →
+              (∀ {s' : Stack}, PrevalidExt Γ s' →
+                MEqRedStar Γ s' arg arg') →
+                MEqRedStar Γ s
+                  (Term.instantiate 0 arg body)
+                  (Term.instantiate 0 arg' body)
+
+/-- Closed proof of the restricted argument-transport surface. -/
+theorem MEqRedStarArgTransportRestricted_proved :
+    MEqRedStarArgTransportRestricted := by
+  intro Γ arg arg' body s hBody hAbsFree hArg hArg' hpv hLift
+  exact MEqRedStar.argTransportRestricted hBody hAbsFree hArg hArg' hpv hLift
