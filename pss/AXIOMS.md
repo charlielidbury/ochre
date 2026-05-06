@@ -2463,6 +2463,17 @@ Bruijn proofs do not yet bridge to LN.
   directly, leaving live two-deeper residuals at changed-head `Ms-Pro`,
   stable-successor `Ms-Pro`, recursive `Ms-App`, and `Ms-FOp`. Added the
   endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — discharged the exposed two-deeper
+  stable-successor `Ms-Pro` leaf as
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppProSuccChainPayload.proved`.
+  The proof extends the successor-lookup pattern through four structural
+  application layers, rules out an equivalence binding at the shared
+  successor head, transports the lookup across the joined fun bound, and
+  advances the four arguments plus the final body argument on the left.
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`
+  now supplies this proof directly, leaving the live two-deeper residuals
+  at changed-head `Ms-Pro`, recursive `Ms-App`, and `Ms-FOp`. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
