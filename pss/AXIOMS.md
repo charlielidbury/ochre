@@ -188,6 +188,10 @@ closures, 2 inactive outstanding).
   leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.tAp`, using
   the thirty-four-head reflexive leaf to feed `MEqRed.tAp`. Added the endpoint
   to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-five-head top-application
+  leaf `BetaInstantiationPreservesMEqRedUnderThirtyFiveHeadsStack.tAp`, using
+  the thirty-five-head reflexive leaf to feed `MEqRed.tAp`. Added the endpoint
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-four-head projection
   leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.pro`, delegating
   the instantiated equivalence-binding case to the generic preserved-head
