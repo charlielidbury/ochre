@@ -17932,3 +17932,687 @@ theorem app_bet_chain_NoBinders_of
     hOp₁ hArg₁ hBody₂ hArg₂ hBody₁Sub
 
 end EqDiamonds
+/-! ## Argument-transport under preserved heads (universal form)
+
+The body-shape recursion in `argTransportRestricted` stalls at
+`body = .abs bound innerBody` because the inner body's substitution is
+at index 1, not index 0. The fix is the standard under-heads pattern
+(mirroring `MEqRedRespectsBetaInstantiateUnderHeadsStack_universal`):
+generalize the substitution index `k` from a fixed `0` to a `Nat`-indexed
+family, where the dropped binder has been pushed under `n` preserved
+heads above.
+
+In this form the body's recursion descends into abstractions structurally:
+- `body = .bvar i` with `i = n` is the only case that fires the
+  substitution (substituting `shiftBy 0 n arg` for the dropped binder).
+- `body = .abs bound innerBody` recurses on `innerBody` at `n + 1`. The
+  inner body's `bvar 0` then refers to the new abstraction binder (no
+  substitution); `bvar (n + 1)` refers to the lifted dropped binder
+  (substitution fires there only if the inner body references it).
+
+The argument-side stack lift is still packaged as a hypothesis `hLift`
+because the underlying `MEqRed` step `arg → arg'` may not lift to
+arbitrary stacks even with `Term.AbsFree arg` (the `Me-Pro` case on
+`arg = .bvar i` recurses on the looked-up annotation, which is not
+constrained). The caller (typically the bet × bet diamond cell)
+discharges this externally.
+
+The substantive gain over `MEqRedStar.argTransportRestricted` is that
+the body need not be `Term.AbsFree`: the abstraction case closes via
+the under-heads recursion at `n + 1` and the `Me-Fun`/`Me-FOp` chain
+congruences (`meqRedStar_abs_fun_body_fixed_bound` and
+`meqRedStar_abs_fOp_body_fixed_bound`). -/
+
+/-- Universal under-heads argument-transport. The "lift" hypothesis is
+quantified over `n'`, `heads'`, and `s'` so that recursive descent into
+abstraction bodies (which increases `n` to `n' + 1`) and into application
+operators (which extends the stack) can both reuse the same lift surface.
+-/
+def MEqRedStarArgTransportUnderHeadsStack (n : Nat) : Prop :=
+  ∀ {Γ : Ctx} {arg arg' body : Term} {heads : Ctx} {s : Stack},
+    heads.length = n →
+    Term.Scoped (Γ.depth + n + 1) body →
+    Term.Scoped Γ.depth arg →
+    Term.Scoped Γ.depth arg' →
+    PrevalidExt (heads ++ { bound := arg, kind := .sub } :: Γ) s →
+    (∀ {n' : Nat} {heads' : Ctx} {s' : Stack},
+      heads'.length = n' →
+      PrevalidExt (heads' ++ { bound := arg, kind := .sub } :: Γ) s' →
+      MEqRedStar (Ctx.instantiateBetaPrefix arg n' heads' ++ Γ)
+        (Stack.instantiate n' (Term.shiftBy 0 n' arg) s')
+        (Term.shiftBy 0 n' arg) (Term.shiftBy 0 n' arg')) →
+    MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+      (Stack.instantiate n (Term.shiftBy 0 n arg) s)
+      (Term.instantiate n (Term.shiftBy 0 n arg) body)
+      (Term.instantiate n (Term.shiftBy 0 n arg') body)
+
+/-- Closed-stack universal argument-transport: the body can be any shape,
+including abstractions. The argument-side stack lift `hLift` is universally
+quantified over preserved-head prefixes to support the under-heads
+recursion. -/
+def MEqRedStarArgTransportStack : Prop :=
+  ∀ {Γ : Ctx} {arg arg' body : Term} {s : Stack},
+    Term.Scoped (Γ.depth + 1) body →
+    Term.Scoped Γ.depth arg →
+    Term.Scoped Γ.depth arg' →
+    PrevalidExt Γ s →
+    (∀ {n' : Nat} {heads' : Ctx} {s' : Stack},
+      heads'.length = n' →
+      PrevalidExt (heads' ++ { bound := arg, kind := .sub } :: Γ) s' →
+      MEqRedStar (Ctx.instantiateBetaPrefix arg n' heads' ++ Γ)
+        (Stack.instantiate n' (Term.shiftBy 0 n' arg) s')
+        (Term.shiftBy 0 n' arg) (Term.shiftBy 0 n' arg')) →
+    MEqRedStar Γ s
+      (Term.instantiate 0 arg body) (Term.instantiate 0 arg' body)
+
+/-- Pointwise stack-level monotonicity for `Stack.Scoped`. Used to lift a
+stack scoped at `Γ.depth` to one scoped at `Γ.depth + 1` after adding a
+preserved head. -/
+private noncomputable def Stack.Scoped.mono_succ
+    {depth : Nat} {s : Stack}
+    (h : Stack.Scoped depth s) : Stack.Scoped (depth + 1) s := by
+  induction h with
+  | nil => exact Stack.Scoped.nil
+  | cons hα _ ih => exact Stack.Scoped.cons (Term.scoped_mono (Nat.le_succ _) hα) ih
+
+/-- The closed-stack universal argument-transport reduces to the universal
+under-heads form at `n = 0`. We feed the under-heads form a source-side
+stack `Stack.shift 0 s` (one shift to bring `s` into the source context
+with the extra `.sub` head), and then `Stack.instantiate 0 arg (Stack.shift 0 s)`
+collapses back to `s`. -/
+theorem MEqRedStarArgTransportStack.of_generic
+    (h : MEqRedStarArgTransportUnderHeadsStack 0) :
+    MEqRedStarArgTransportStack := by
+  intro Γ arg arg' body s hBody hArg hArg' hpv hLift
+  have hBody0 : Term.Scoped (Γ.depth + 0 + 1) body := by
+    simpa using hBody
+  -- Source-side prevalid: shift the conclusion stack into the source context.
+  have hpvΓ : Prevalid Γ := PrevalidExt.ctx hpv
+  have hSubCtx : Prevalid ({ bound := arg, kind := .sub } :: Γ) :=
+    Prevalid.sub hpvΓ hArg
+  have hpvSrc : PrevalidExt
+      ([] ++ { bound := arg, kind := .sub } :: Γ) (Stack.shift 0 s) := by
+    have hShifted : PrevalidExt ({ bound := arg, kind := .sub } :: Γ)
+        (Stack.shift 0 s) :=
+      PrevalidExt.weaken_head hpv hSubCtx
+    simpa using hShifted
+  have h0 := h (Γ := Γ) (arg := arg) (arg' := arg') (body := body)
+    (heads := []) (s := Stack.shift 0 s) rfl hBody0 hArg hArg' hpvSrc hLift
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id,
+    Stack.instantiate_zero_shift_zero_id] using h0
+
+/-- Chain version of `MEqRed.sub_to_equ_head_replace`. -/
+private theorem MEqRedStar.argTransport_sub_to_equ_head_replace
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRedStar ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hnew : Term.Scoped Γ.depth new) :
+    MEqRedStar ({ bound := new, kind := .equ } :: Γ) s u v := by
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail _ hStep ih =>
+      exact Relation.ReflTransGen.tail ih
+        ⟨hStep.some.sub_to_equ_head_replace hnew⟩
+
+/-- **Universal under-heads argument-transport.**
+
+By induction on the body shape (not on a derivation). Each constructor case
+either resolves trivially (`.top`, `.bvar i` with `i ≠ n`) or recurses
+structurally:
+
+- `.bvar n` (the dropped binder): the substituted endpoints are the shifted
+  arg and arg'. Discharge via the `hLift` premise specialized at the
+  current `(n, heads, s)` shape.
+- `.app f x`: the post-substitution is `.app (inst f) (inst x)`. The
+  operator step lives at the extended stack `(inst x) :: post_stack`; the
+  operand step lives at empty stack. Compose via `MEqRedStar.app_left` and
+  `MEqRedStar.app_right` (both shipped at commit `2a2b143`).
+- `.abs bound innerBody`: recurse on `bound` at level `n` with empty stack
+  to obtain a chain on the bound annotation; recurse on `innerBody` at
+  level `n + 1` with `Stack.shift 0 (post_stack)` to obtain a chain on the
+  inner body. Transport the inner-body chain across the bound's annotation
+  swap via `MEqRedStar.sub_head_replace_star`. Assemble using
+  `meqRedStar_abs_fun_bound_fixed_body` /
+  `meqRedStar_abs_fun_body_fixed_bound` (empty outer stack) or
+  `meqRedStar_abs_fOp_bound_fixed_body` /
+  `meqRedStar_abs_fOp_body_fixed_bound` (non-empty outer stack).
+
+The body's `.abs` case is the substantive gain over
+`MEqRedStar.argTransportRestricted` (which excluded `.abs` bodies via
+`Term.AbsFree`). -/
+theorem MEqRedStarArgTransportUnderHeadsStack_universal :
+    ∀ n, MEqRedStarArgTransportUnderHeadsStack n := by
+  -- The structural recursion is on `body`, not `n`, so we shift the
+  -- quantification accordingly.
+  suffices key : ∀ (body : Term) (n : Nat) {Γ : Ctx} {arg arg' : Term}
+      {heads : Ctx} {s : Stack},
+      heads.length = n →
+      Term.Scoped (Γ.depth + n + 1) body →
+      Term.Scoped Γ.depth arg →
+      Term.Scoped Γ.depth arg' →
+      PrevalidExt (heads ++ { bound := arg, kind := .sub } :: Γ) s →
+      (∀ {n' : Nat} {heads' : Ctx} {s' : Stack},
+        heads'.length = n' →
+        PrevalidExt (heads' ++ { bound := arg, kind := .sub } :: Γ) s' →
+        MEqRedStar (Ctx.instantiateBetaPrefix arg n' heads' ++ Γ)
+          (Stack.instantiate n' (Term.shiftBy 0 n' arg) s')
+          (Term.shiftBy 0 n' arg) (Term.shiftBy 0 n' arg')) →
+      MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+        (Stack.instantiate n (Term.shiftBy 0 n arg) s)
+        (Term.instantiate n (Term.shiftBy 0 n arg) body)
+        (Term.instantiate n (Term.shiftBy 0 n arg') body) by
+    intro n Γ arg arg' body heads s hlen hBody hArg hArg' hpvSrc hLift
+    exact key body n hlen hBody hArg hArg' hpvSrc hLift
+  intro body
+  induction body with
+  | top =>
+      intro n Γ arg arg' heads s _hlen _hBody _hArg _hArg' _hpvSrc _hLift
+      simpa [Term.instantiate] using
+        (Relation.ReflTransGen.refl :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) s) .top .top)
+  | bvar i =>
+      intro n Γ arg arg' heads s hlen hBody hArg hArg' hpvSrc hLift
+      have hi : i < Γ.depth + n + 1 := hBody.bvar_lt
+      by_cases hlt : i < n
+      · -- i < n: bvar stays as bvar (heads slot, untouched by substitution)
+        have hne : i ≠ n := Nat.ne_of_lt hlt
+        have hnotgt : ¬ n < i := Nat.not_lt_of_lt hlt
+        simp [Term.instantiate, hlt, hne]
+        exact Relation.ReflTransGen.refl
+      by_cases heq : i = n
+      · -- i = n: bvar is the dropped binder, substituted by arg/arg'
+        subst heq
+        have hLifted := hLift (n' := i) (heads' := heads) (s' := s) hlen hpvSrc
+        simpa [Term.instantiate] using hLifted
+      · -- i > n: bvar references original Γ, decremented by 1 in conclusion
+        have hge : n ≤ i := Nat.le_of_not_lt hlt
+        have hne : i ≠ n := heq
+        have hgt : n < i := lt_of_le_of_ne hge (fun h => hne h.symm)
+        have hnotlt : ¬ i < n := Nat.not_lt_of_lt hgt
+        simp [Term.instantiate, hnotlt, heq]
+        exact Relation.ReflTransGen.refl
+  | app f x ihF ihX =>
+      intro n Γ arg arg' heads s hlen hBody hArg hArg' hpvSrc hLift
+      have hF : Term.Scoped (Γ.depth + n + 1) f := (Term.Scoped.app_inv hBody).1
+      have hX : Term.Scoped (Γ.depth + n + 1) x := (Term.Scoped.app_inv hBody).2
+      -- Conclusion-side prevalid (after substitution).
+      have hpvConc :
+          PrevalidExt (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) s) :=
+        BetaInstantiationPreservesPrevalidExtUnderHeadsOfScoped
+          (n := n) hlen hArg hpvSrc
+      -- The substituted argument-shifted by n.
+      have hArgShifted : Term.Scoped (Γ.depth + n)
+          (Term.shiftBy 0 n arg) := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 n Γ.depth arg (Nat.zero_le _) hArg
+      have hArg'Shifted : Term.Scoped (Γ.depth + n)
+          (Term.shiftBy 0 n arg') := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 n Γ.depth arg' (Nat.zero_le _) hArg'
+      -- Scoping of substituted f and x in the conclusion context.
+      have hConcDepth :
+          Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ) =
+            Γ.depth + n := by
+        show List.length (Ctx.instantiateBetaPrefix arg n heads ++ Γ) =
+          List.length Γ + n
+        rw [List.length_append, Ctx.length_instantiateBetaPrefix, hlen]
+        omega
+      have hFInst : Term.Scoped (Γ.depth + n)
+          (Term.instantiate n (Term.shiftBy 0 n arg) f) :=
+        Term.instantiate_scoped n (Γ.depth + n)
+          (Term.shiftBy 0 n arg) f (by omega) hArgShifted hF
+      have hFInst' : Term.Scoped (Γ.depth + n)
+          (Term.instantiate n (Term.shiftBy 0 n arg') f) :=
+        Term.instantiate_scoped n (Γ.depth + n)
+          (Term.shiftBy 0 n arg') f (by omega) hArg'Shifted hF
+      have hXInst : Term.Scoped (Γ.depth + n)
+          (Term.instantiate n (Term.shiftBy 0 n arg) x) :=
+        Term.instantiate_scoped n (Γ.depth + n)
+          (Term.shiftBy 0 n arg) x (by omega) hArgShifted hX
+      have hXInst' : Term.Scoped (Γ.depth + n)
+          (Term.instantiate n (Term.shiftBy 0 n arg') x) :=
+        Term.instantiate_scoped n (Γ.depth + n)
+          (Term.shiftBy 0 n arg') x (by omega) hArg'Shifted hX
+      have hFInstConc : Term.Scoped
+          (Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+          (Term.instantiate n (Term.shiftBy 0 n arg) f) := by
+        simpa [hConcDepth] using hFInst
+      have hFInstConc' : Term.Scoped
+          (Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+          (Term.instantiate n (Term.shiftBy 0 n arg') f) := by
+        simpa [hConcDepth] using hFInst'
+      have hXInstConc : Term.Scoped
+          (Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+          (Term.instantiate n (Term.shiftBy 0 n arg) x) := by
+        simpa [hConcDepth] using hXInst
+      -- Source-side prevalid for the operator IH at extended stack `x :: s`.
+      have hSrcDepth :
+          Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ) =
+            Γ.depth + n + 1 := by
+        simp [Ctx.depth, List.length_append, hlen, Nat.add_comm,
+          Nat.add_left_comm, Nat.add_assoc]
+      have hxSrc : Term.Scoped
+          (Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ)) x := by
+        simpa [hSrcDepth] using hX
+      have hpvSrcOp :
+          PrevalidExt (heads ++ { bound := arg, kind := .sub } :: Γ)
+            (x :: s) :=
+        PrevalidExt.cons hpvSrc hxSrc
+      -- IH on operator at extended stack.
+      have hOpStar :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) (x :: s))
+            (Term.instantiate n (Term.shiftBy 0 n arg) f)
+            (Term.instantiate n (Term.shiftBy 0 n arg') f) :=
+        ihF n hlen hF hArg hArg' hpvSrcOp hLift
+      -- Source-side prevalid for the operand IH at empty stack.
+      have hpvSrcNil :
+          PrevalidExt (heads ++ { bound := arg, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil (PrevalidExt.ctx hpvSrc)
+      have hOpStarFlat :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Term.instantiate n (Term.shiftBy 0 n arg) x ::
+              Stack.instantiate n (Term.shiftBy 0 n arg) s)
+            (Term.instantiate n (Term.shiftBy 0 n arg) f)
+            (Term.instantiate n (Term.shiftBy 0 n arg') f) := by
+        simpa [Stack.instantiate] using hOpStar
+      -- IH on operand at empty stack.
+      have hArgChain :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) [])
+            (Term.instantiate n (Term.shiftBy 0 n arg) x)
+            (Term.instantiate n (Term.shiftBy 0 n arg') x) :=
+        ihX n hlen hX hArg hArg' hpvSrcNil hLift
+      have hArgChainFlat :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ) []
+            (Term.instantiate n (Term.shiftBy 0 n arg) x)
+            (Term.instantiate n (Term.shiftBy 0 n arg') x) := by
+        simpa [Stack.instantiate] using hArgChain
+      -- Compose: first move operator (at extended stack), then move operand.
+      have hStarOp :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) s)
+            (.app (Term.instantiate n (Term.shiftBy 0 n arg) f)
+              (Term.instantiate n (Term.shiftBy 0 n arg) x))
+            (.app (Term.instantiate n (Term.shiftBy 0 n arg') f)
+              (Term.instantiate n (Term.shiftBy 0 n arg) x)) :=
+        MEqRedStar.app_left hOpStarFlat hXInstConc
+      have hStarArg :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) s)
+            (.app (Term.instantiate n (Term.shiftBy 0 n arg') f)
+              (Term.instantiate n (Term.shiftBy 0 n arg) x))
+            (.app (Term.instantiate n (Term.shiftBy 0 n arg') f)
+              (Term.instantiate n (Term.shiftBy 0 n arg') x)) :=
+        MEqRedStar.app_right hFInstConc' hArgChainFlat hpvConc
+      simpa [Term.instantiate] using
+        Relation.ReflTransGen.trans hStarOp hStarArg
+  | abs b0 innerBody ihBound ihInner =>
+      intro n Γ arg arg' heads s hlen hBody hArg hArg' hpvSrc hLift
+      have hBoundScoped : Term.Scoped (Γ.depth + n + 1) b0 :=
+        (Term.Scoped.abs_inv hBody).1
+      have hInnerScoped : Term.Scoped (Γ.depth + n + 1 + 1) innerBody :=
+        (Term.Scoped.abs_inv hBody).2
+      have hInnerScoped' : Term.Scoped (Γ.depth + (n + 1) + 1) innerBody := by
+        simpa [Nat.add_assoc] using hInnerScoped
+      -- Conclusion-side prevalid (after substitution).
+      have hpvConc :
+          PrevalidExt (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) s) :=
+        BetaInstantiationPreservesPrevalidExtUnderHeadsOfScoped
+          (n := n) hlen hArg hpvSrc
+      -- Shifted argument scoping.
+      have hArgShifted : Term.Scoped (Γ.depth + n)
+          (Term.shiftBy 0 n arg) := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 n Γ.depth arg (Nat.zero_le _) hArg
+      have hArg'Shifted : Term.Scoped (Γ.depth + n)
+          (Term.shiftBy 0 n arg') := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 n Γ.depth arg' (Nat.zero_le _) hArg'
+      -- Substituted bound scoping.
+      have hBoundInst : Term.Scoped (Γ.depth + n)
+          (Term.instantiate n (Term.shiftBy 0 n arg) b0) :=
+        Term.instantiate_scoped n (Γ.depth + n)
+          (Term.shiftBy 0 n arg) b0 (by omega) hArgShifted hBoundScoped
+      have hBoundInst' : Term.Scoped (Γ.depth + n)
+          (Term.instantiate n (Term.shiftBy 0 n arg') b0) :=
+        Term.instantiate_scoped n (Γ.depth + n)
+          (Term.shiftBy 0 n arg') b0 (by omega) hArg'Shifted hBoundScoped
+      have hConcDepth :
+          Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ) =
+            Γ.depth + n := by
+        show List.length (Ctx.instantiateBetaPrefix arg n heads ++ Γ) =
+          List.length Γ + n
+        rw [List.length_append, Ctx.length_instantiateBetaPrefix, hlen]
+        omega
+      have hBoundInstConc : Term.Scoped
+          (Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+          (Term.instantiate n (Term.shiftBy 0 n arg) b0) := by
+        simpa [hConcDepth] using hBoundInst
+      have hBoundInstConc' : Term.Scoped
+          (Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+          (Term.instantiate n (Term.shiftBy 0 n arg') b0) := by
+        simpa [hConcDepth] using hBoundInst'
+      -- Source-side prevalid for the bound IH at empty stack.
+      have hpvSrcNil :
+          PrevalidExt (heads ++ { bound := arg, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil (PrevalidExt.ctx hpvSrc)
+      -- IH on bound at level n with empty stack.
+      have hBoundChain :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Stack.instantiate n (Term.shiftBy 0 n arg) [])
+            (Term.instantiate n (Term.shiftBy 0 n arg) b0)
+            (Term.instantiate n (Term.shiftBy 0 n arg') b0) :=
+        ihBound n hlen hBoundScoped hArg hArg' hpvSrcNil hLift
+      have hBoundChainFlat :
+          MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ) []
+            (Term.instantiate n (Term.shiftBy 0 n arg) b0)
+            (Term.instantiate n (Term.shiftBy 0 n arg') b0) := by
+        simpa [Stack.instantiate] using hBoundChain
+      -- Source-side prevalid setup for the innerBody IH.
+      have hpvSrcCtx : Prevalid (heads ++ { bound := arg, kind := .sub } :: Γ) :=
+        PrevalidExt.ctx hpvSrc
+      have hSrcDepth :
+          Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ) =
+            Γ.depth + n + 1 := by
+        show List.length (heads ++ { bound := arg, kind := .sub } :: Γ) =
+          List.length Γ + n + 1
+        rw [List.length_append, List.length_cons, hlen]; omega
+      have hpvSrcCtxBound :
+          Prevalid ({ bound := b0, kind := .sub } ::
+            heads ++ { bound := arg, kind := .sub } :: Γ) := by
+        have hBoundInSrc : Term.Scoped
+            (Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ)) b0 := by
+          rw [hSrcDepth]; exact hBoundScoped
+        exact Prevalid.sub hpvSrcCtx hBoundInSrc
+      have hHeadsInnerLen :
+          ({ bound := b0, kind := .sub } :: heads : Ctx).length = n + 1 := by
+        simp [hlen]
+      have hShiftSucc :
+          Term.shiftBy 0 (n + 1) arg =
+            Term.shift 0 (Term.shiftBy 0 n arg) := by
+        have h := Term.shiftBy_compose 0 n 1 arg
+        simpa [Term.shift] using h.symm
+      have hShiftSucc' :
+          Term.shiftBy 0 (n + 1) arg' =
+            Term.shift 0 (Term.shiftBy 0 n arg') := by
+        have h := Term.shiftBy_compose 0 n 1 arg'
+        simpa [Term.shift] using h.symm
+      have hCtxSucc :
+          Ctx.instantiateBetaPrefix arg (n + 1)
+            ({ bound := b0, kind := .sub } :: heads) =
+          { bound := Term.instantiate n (Term.shiftBy 0 n arg) b0,
+            kind := .sub } ::
+            Ctx.instantiateBetaPrefix arg n heads := by
+        simp [Ctx.instantiateBetaPrefix]
+      -- Source stack split: outer empty vs cons.
+      cases s with
+      | nil =>
+          -- Outer empty: use Me-Fun chain congruences.
+          have hpvNil :
+              PrevalidExt (Ctx.instantiateBetaPrefix arg n heads ++ Γ) [] := by
+            simpa [Stack.instantiate] using hpvConc
+          have hpvSrcInner :
+              PrevalidExt
+                (({ bound := b0, kind := .sub } :: heads) ++
+                  { bound := arg, kind := .sub } :: Γ) [] := by
+            have h : Prevalid ({ bound := b0, kind := .sub } ::
+                heads ++ { bound := arg, kind := .sub } :: Γ) :=
+              hpvSrcCtxBound
+            have : PrevalidExt
+                ({ bound := b0, kind := .sub } ::
+                  heads ++ { bound := arg, kind := .sub } :: Γ) [] :=
+              PrevalidExt.nil h
+            simpa [List.cons_append] using this
+          have hInnerChain := ihInner (n + 1)
+            (heads := { bound := b0, kind := .sub } :: heads)
+            (s := [])
+            hHeadsInnerLen hInnerScoped' hArg hArg' hpvSrcInner hLift
+          have hInnerReady :
+              MEqRedStar
+                  (({ bound := Term.instantiate n (Term.shiftBy 0 n arg) b0, kind := .sub } : CtxEntry) ::
+                    (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+                []
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg) innerBody)
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg') innerBody) := by
+            rw [hCtxSucc] at hInnerChain
+            simpa [Stack.instantiate, List.cons_append] using hInnerChain
+          have hInnerReady' :
+              MEqRedStar
+                  (({ bound := Term.instantiate n (Term.shiftBy 0 n arg') b0, kind := .sub } : CtxEntry) ::
+                    (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+                []
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg) innerBody)
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg') innerBody) :=
+            MEqRedStar.sub_head_replace_star hInnerReady hBoundChainFlat
+          have hInnerInstScoped : Term.Scoped (Γ.depth + n + 1)
+              (Term.instantiate (n + 1)
+                (Term.shiftBy 0 (n + 1) arg) innerBody) := by
+            have hShiftScoped : Term.Scoped (Γ.depth + n + 1)
+                (Term.shiftBy 0 (n + 1) arg) := by
+              have h := Term.shiftBy_scoped 0 (n + 1) Γ.depth arg
+                (Nat.zero_le _) hArg
+              simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using h
+            exact Term.instantiate_scoped (n + 1) (Γ.depth + n + 1)
+              (Term.shiftBy 0 (n + 1) arg) innerBody (by omega)
+              hShiftScoped (by simpa [Nat.add_assoc] using hInnerScoped')
+          have hBoundFixedBody :
+              MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ) []
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg) b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody))
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody)) := by
+            apply meqRedStar_abs_fun_bound_fixed_body
+              (Γ := Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+              (bound := Term.instantiate n (Term.shiftBy 0 n arg) b0)
+              (bound' := Term.instantiate n (Term.shiftBy 0 n arg') b0)
+              (body := Term.instantiate (n + 1)
+                (Term.shiftBy 0 (n + 1) arg) innerBody)
+              hpvNil ?_ hBoundChainFlat
+            show Term.Scoped
+                (Ctx.depth ({bound := Term.instantiate n (Term.shiftBy 0 n arg) b0,
+                             kind := .sub} ::
+                  (Ctx.instantiateBetaPrefix arg n heads ++ Γ)))
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg) innerBody)
+            have hDepthEq :
+                Ctx.depth ({bound := Term.instantiate n (Term.shiftBy 0 n arg) b0,
+                            kind := .sub} ::
+                  (Ctx.instantiateBetaPrefix arg n heads ++ Γ)) =
+                  Γ.depth + n + 1 := by
+              show List.length _ = _
+              simp [Ctx.depth, hConcDepth]; omega
+            rw [hDepthEq]
+            exact hInnerInstScoped
+          have hBodyFixedBound :
+              MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ) []
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody))
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg') innerBody)) :=
+            meqRedStar_abs_fun_body_fixed_bound hpvNil hBoundInstConc'
+              hInnerReady'
+          have hStarOuter :
+              MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ) []
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg) b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody))
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg') innerBody)) :=
+            Relation.ReflTransGen.trans hBoundFixedBody hBodyFixedBound
+          simpa [Term.instantiate, Stack.instantiate, hShiftSucc, hShiftSucc']
+            using hStarOuter
+      | cons αSrc restSrc =>
+          -- Outer source stack `αSrc :: restSrc`. Conclusion is
+          -- `inst-α :: inst-rest`. Use Me-FOp chain congruences.
+          have hαSrcScoped : Term.Scoped
+              (Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ))
+              αSrc := PrevalidExt.head_scoped hpvSrc
+          have hpvSrcRest : PrevalidExt
+              (heads ++ { bound := arg, kind := .sub } :: Γ) restSrc :=
+            PrevalidExt.tail hpvSrc
+          have hαSrcScopedSrc : Term.Scoped (Γ.depth + n + 1) αSrc := by
+            rw [hSrcDepth] at hαSrcScoped; exact hαSrcScoped
+          -- Body source stack at level n+1: shift 0 of restSrc, kept in
+          -- the augmented context (.sub bound :: heads ++ ...).
+          have hpvSrcInner :
+              PrevalidExt
+                (({ bound := b0, kind := .sub } :: heads) ++
+                  { bound := arg, kind := .sub } :: Γ)
+                (Stack.shift 0 restSrc) := by
+            have h : PrevalidExt
+                ({ bound := b0, kind := .sub } ::
+                  heads ++ { bound := arg, kind := .sub } :: Γ)
+                (Stack.shift 0 restSrc) :=
+              PrevalidExt.weaken_head hpvSrcRest hpvSrcCtxBound
+            simpa [List.cons_append] using h
+          have hInnerChain := ihInner (n + 1)
+            (heads := { bound := b0, kind := .sub } :: heads)
+            (s := Stack.shift 0 restSrc)
+            hHeadsInnerLen hInnerScoped' hArg hArg' hpvSrcInner hLift
+          -- Reshape stack: instantiate (n+1) (shift 0 (shifted arg)) (shift 0 restSrc)
+          -- = shift 0 (instantiate n (shifted arg) restSrc).
+          have hStackBodyEq :
+              Stack.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg) (Stack.shift 0 restSrc) =
+                Stack.shift 0
+                  (Stack.instantiate n (Term.shiftBy 0 n arg) restSrc) := by
+            rw [hShiftSucc]
+            exact Stack.instantiate_succ_shift_zero n
+              (Term.shiftBy 0 n arg) restSrc
+          have hInnerReady :
+              MEqRedStar
+                  (({ bound := Term.instantiate n (Term.shiftBy 0 n arg) b0, kind := .sub } : CtxEntry) ::
+                    (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+                (Stack.shift 0
+                  (Stack.instantiate n (Term.shiftBy 0 n arg) restSrc))
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg) innerBody)
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg') innerBody) := by
+            rw [hCtxSucc] at hInnerChain
+            rw [hStackBodyEq] at hInnerChain
+            simpa [List.cons_append] using hInnerChain
+          have hInnerReady' :
+              MEqRedStar
+                  (({ bound := Term.instantiate n (Term.shiftBy 0 n arg') b0, kind := .sub } : CtxEntry) ::
+                    (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+                (Stack.shift 0
+                  (Stack.instantiate n (Term.shiftBy 0 n arg) restSrc))
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg) innerBody)
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg') innerBody) :=
+            MEqRedStar.sub_head_replace_star hInnerReady hBoundChainFlat
+          -- Conclusion-stack outer prevalids.
+          have hpvConcCons : PrevalidExt
+              (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+              (Term.instantiate n (Term.shiftBy 0 n arg) αSrc ::
+                Stack.instantiate n (Term.shiftBy 0 n arg) restSrc) := by
+            simpa [Stack.instantiate] using hpvConc
+          have hαConc : Term.Scoped
+              (Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+              (Term.instantiate n (Term.shiftBy 0 n arg) αSrc) :=
+            PrevalidExt.head_scoped hpvConcCons
+          have hpvConcTail : PrevalidExt
+              (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+              (Stack.instantiate n (Term.shiftBy 0 n arg) restSrc) :=
+            PrevalidExt.tail hpvConcCons
+          have hInnerInstScoped : Term.Scoped (Γ.depth + n + 1)
+              (Term.instantiate (n + 1)
+                (Term.shiftBy 0 (n + 1) arg) innerBody) := by
+            have hShiftScoped : Term.Scoped (Γ.depth + n + 1)
+                (Term.shiftBy 0 (n + 1) arg) := by
+              have h := Term.shiftBy_scoped 0 (n + 1) Γ.depth arg
+                (Nat.zero_le _) hArg
+              simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using h
+            exact Term.instantiate_scoped (n + 1) (Γ.depth + n + 1)
+              (Term.shiftBy 0 (n + 1) arg) innerBody (by omega)
+              hShiftScoped (by simpa [Nat.add_assoc] using hInnerScoped')
+          -- meqRedStar_abs_fOp_bound_fixed_body wants stack rest, body fixed.
+          have hBoundFixedBodyFOp :
+              MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+                (Term.instantiate n (Term.shiftBy 0 n arg) αSrc ::
+                  Stack.instantiate n (Term.shiftBy 0 n arg) restSrc)
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg) b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody))
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody)) := by
+            apply meqRedStar_abs_fOp_bound_fixed_body
+              (Γ := Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+              (s := Stack.instantiate n (Term.shiftBy 0 n arg) restSrc)
+              (α := Term.instantiate n (Term.shiftBy 0 n arg) αSrc)
+              (bound := Term.instantiate n (Term.shiftBy 0 n arg) b0)
+              (bound' := Term.instantiate n (Term.shiftBy 0 n arg') b0)
+              (body := Term.instantiate (n + 1)
+                (Term.shiftBy 0 (n + 1) arg) innerBody)
+              hpvConcTail hαConc ?_ hBoundChainFlat
+            have hDepthEq :
+                Ctx.depth ({bound := Term.instantiate n (Term.shiftBy 0 n arg) αSrc,
+                            kind := .equ} ::
+                  (Ctx.instantiateBetaPrefix arg n heads ++ Γ)) =
+                  Γ.depth + n + 1 := by
+              show List.length _ = _
+              simp [Ctx.depth, hConcDepth]; omega
+            rw [hDepthEq]
+            exact hInnerInstScoped
+          -- Convert the body chain from `.sub b0` head to `.equ αSrc` head
+          -- via kind narrowing + bound replacement. The kind narrowing is
+          -- sound because `.sub`-head Me-Pro at index 0 is impossible (no
+          -- equBinds match), so no chain step references the dropped binder
+          -- via Me-Pro at index 0.
+          have hαSrcInstConc : Term.Scoped
+              (Ctx.depth (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+              (Term.instantiate n (Term.shiftBy 0 n arg) αSrc) := hαConc
+          -- Star version of MEqRed.sub_to_equ_head_replace.
+          have hInnerReadyEqu :
+              MEqRedStar
+                  (({ bound := Term.instantiate n (Term.shiftBy 0 n arg) αSrc,
+                      kind := .equ } : CtxEntry) ::
+                    (Ctx.instantiateBetaPrefix arg n heads ++ Γ))
+                (Stack.shift 0
+                  (Stack.instantiate n (Term.shiftBy 0 n arg) restSrc))
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg) innerBody)
+                (Term.instantiate (n + 1)
+                  (Term.shiftBy 0 (n + 1) arg') innerBody) :=
+            MEqRedStar.argTransport_sub_to_equ_head_replace hInnerReady'
+              hαSrcInstConc
+          have hBodyFixedBoundFOp :
+              MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+                (Term.instantiate n (Term.shiftBy 0 n arg) αSrc ::
+                  Stack.instantiate n (Term.shiftBy 0 n arg) restSrc)
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody))
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg') innerBody)) :=
+            meqRedStar_abs_fOp_body_fixed_bound hpvConcTail hBoundInstConc'
+              hαConc hInnerReadyEqu
+          have hStarOuter :
+              MEqRedStar (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+                (Term.instantiate n (Term.shiftBy 0 n arg) αSrc ::
+                  Stack.instantiate n (Term.shiftBy 0 n arg) restSrc)
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg) b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg) innerBody))
+                (.abs (Term.instantiate n (Term.shiftBy 0 n arg') b0)
+                  (Term.instantiate (n + 1)
+                    (Term.shiftBy 0 (n + 1) arg') innerBody)) :=
+            Relation.ReflTransGen.trans hBoundFixedBodyFOp hBodyFixedBoundFOp
+          simpa [Term.instantiate, Stack.instantiate, hShiftSucc, hShiftSucc']
+            using hStarOuter
