@@ -937,5 +937,11 @@ namespace DeBruijn
 #print axioms Lemma_1_DeBruijn_StrongCommutativityStar_proved
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_proved
 
+-- Top-level Theorem 3 / Theorem 4 / Theorem 5 closures (Path B' wiring).
+#print axioms Theorem_3_DeBruijn_TransitivityIsAdmissible_proved
+#print axioms Theorem_4_DeBruijn_Progress_proved
+#print axioms Theorem_5_DeBruijn_Preservation_proved
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_proved
+
 end DeBruijn
 end Pss
