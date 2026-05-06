@@ -1786,6 +1786,59 @@ def BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack : Type :=
           (Term.instantiate 36 (Term.shiftBy 0 36 arg) rhs)
 
 
+/-- Stack-parametric equivalence-reduction β-instantiation under thirty-seven
+preserved context heads. This is the recursive body payload needed by the
+thirty-six-head binder constructors. -/
+def BetaInstantiationPreservesMEqRedUnderThirtySevenHeadsStack : Type :=
+  ∀ {Γ : Ctx}
+      {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ head₁₉ head₂₀ head₂₁ head₂₂ head₂₃ head₂₄ head₂₅ head₂₆ head₂₇ head₂₈ head₂₉ head₃₀ head₃₁ head₃₂ head₃₃ head₃₄ head₃₅ head₃₆ head₃₇ lhs rhs : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ kind₁₉ kind₂₀ kind₂₁ kind₂₂ kind₂₃ kind₂₄ kind₂₅ kind₂₆ kind₂₇ kind₂₈ kind₂₉ kind₃₀ kind₃₁ kind₃₂ kind₃₃ kind₃₄ kind₃₅ kind₃₆ kind₃₇ : CtxEntryKind}
+      {s : Stack},
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ },
+      { bound := head₂₂, kind := kind₂₂ },
+      { bound := head₂₃, kind := kind₂₃ },
+      { bound := head₂₄, kind := kind₂₄ },
+      { bound := head₂₅, kind := kind₂₅ },
+      { bound := head₂₆, kind := kind₂₆ },
+      { bound := head₂₇, kind := kind₂₇ },
+      { bound := head₂₈, kind := kind₂₈ },
+      { bound := head₂₉, kind := kind₂₉ },
+      { bound := head₃₀, kind := kind₃₀ },
+      { bound := head₃₁, kind := kind₃₁ },
+      { bound := head₃₂, kind := kind₃₂ },
+      { bound := head₃₃, kind := kind₃₃ },
+      { bound := head₃₄, kind := kind₃₄ },
+      { bound := head₃₅, kind := kind₃₅ },
+      { bound := head₃₆, kind := kind₃₆ },
+      { bound := head₃₇, kind := kind₃₇ }]
+    WSubMStar Γ arg bound →
+      MEqRed (heads ++ { bound := bound, kind := .sub } :: Γ) s lhs rhs →
+        MEqRed (Ctx.instantiateBetaPrefix arg 37 heads ++ Γ)
+          (Stack.instantiate 37 (Term.shiftBy 0 37 arg) s)
+          (Term.instantiate 37 (Term.shiftBy 0 37 arg) lhs)
+          (Term.instantiate 37 (Term.shiftBy 0 37 arg) rhs)
+
+
 /-- Generic stack-parametric equivalence-reduction β-instantiation under an
 arbitrary list of preserved context heads. This is the abstraction that the
 numbered five/six/seven/eight stack payloads below specialize from. -/
@@ -3325,6 +3378,57 @@ def BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack.of_generic
       { bound := head₃₄, kind := kind₃₄ },
       { bound := head₃₅, kind := kind₃₅ },
       { bound := head₃₆, kind := kind₃₆ }])
+    rfl hArg hRed
+  simpa using h'
+
+
+/-- The generic preserved-head stack payload specializes to the
+thirty-seven-head surface. -/
+def BetaInstantiationPreservesMEqRedUnderThirtySevenHeadsStack.of_generic
+    (h : BetaInstantiationPreservesMEqRedUnderHeadsStack 37) :
+    BetaInstantiationPreservesMEqRedUnderThirtySevenHeadsStack := by
+  intro Γ bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ head₁₉ head₂₀ head₂₁ head₂₂ head₂₃ head₂₄ head₂₅ head₂₆ head₂₇ head₂₈ head₂₉ head₃₀ head₃₁ head₃₂ head₃₃ head₃₄ head₃₅ head₃₆ head₃₇ lhs rhs
+    kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ kind₁₉ kind₂₀ kind₂₁ kind₂₂ kind₂₃ kind₂₄ kind₂₅ kind₂₆ kind₂₇ kind₂₈ kind₂₉ kind₃₀ kind₃₁ kind₃₂ kind₃₃ kind₃₄ kind₃₅ kind₃₆ kind₃₇ s
+  dsimp only
+  intro hArg hRed
+  have h' := h
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ },
+      { bound := head₂₂, kind := kind₂₂ },
+      { bound := head₂₃, kind := kind₂₃ },
+      { bound := head₂₄, kind := kind₂₄ },
+      { bound := head₂₅, kind := kind₂₅ },
+      { bound := head₂₆, kind := kind₂₆ },
+      { bound := head₂₇, kind := kind₂₇ },
+      { bound := head₂₈, kind := kind₂₈ },
+      { bound := head₂₉, kind := kind₂₉ },
+      { bound := head₃₀, kind := kind₃₀ },
+      { bound := head₃₁, kind := kind₃₁ },
+      { bound := head₃₂, kind := kind₃₂ },
+      { bound := head₃₃, kind := kind₃₃ },
+      { bound := head₃₄, kind := kind₃₄ },
+      { bound := head₃₅, kind := kind₃₅ },
+      { bound := head₃₆, kind := kind₃₆ },
+      { bound := head₃₇, kind := kind₃₇ }])
     rfl hArg hRed
   simpa using h'
 

@@ -255,6 +255,11 @@ closures, 2 inactive outstanding).
   helper `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack.of_constructors`
   from the thirty-six-head structural leaves and binder payload frontiers. Added
   the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-seven-head stack
+  surface `BetaInstantiationPreservesMEqRedUnderThirtySevenHeadsStack` and its
+  generic preserved-head adapter `...of_generic`, giving the thirty-six-head
+  binder payloads a named recursive target. Added both endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-four-head constructor
   payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsBetStackPayload`, and
