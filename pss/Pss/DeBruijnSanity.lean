@@ -849,12 +849,14 @@ namespace DeBruijn
 #print axioms EqDiamonds.bet_app_chain_of
 #print axioms EqDiamonds.bet_app_chain_AbsFree_of
 #print axioms EqDiamonds.bet_app_chain_NoBinders_of
+#print axioms EqDiamonds.bet_app_chain_ArgNoBinders_of
 
 -- de Bruijn Lemma 2 `Me-App × Me-Bet` cell (chain output). Symmetric to
 -- `bet_app_chain_of`; same conditional hypotheses with LHS/RHS swapped.
 #print axioms EqDiamonds.app_bet_chain_of
 #print axioms EqDiamonds.app_bet_chain_AbsFree_of
 #print axioms EqDiamonds.app_bet_chain_NoBinders_of
+#print axioms EqDiamonds.app_bet_chain_ArgNoBinders_of
 
 -- de Bruijn Lemma 1 `StrongCommutes` β-position chain-output cells. These
 -- are the analogs of `EqDiamonds.bet_*_chain_of` but for the asymmetric
