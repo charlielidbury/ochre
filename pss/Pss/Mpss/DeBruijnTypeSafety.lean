@@ -20143,3 +20143,53 @@ theorem EqDiamonds_proved
         (@hUniformDiamond ({bound := α, kind := .equ} :: Γ)
           (Stack.shift 0 s_inner))
         hα hT₁ hBody₁ hT₂ hBody₂
+
+/-- Top-level chain-chain confluence headline for de Bruijn Lemma 2,
+parametrised on the same four residual hypotheses as `EqDiamonds_proved`:
+
+- `MEqRedArgTransportPayload` (argument-position transport),
+- `MEqRedOpStackHeadTransportPayload` (operator stack-head transport),
+- `MEqRedSubBridgePayload` (`.equ → .sub` head bridge),
+- `UniformEqDiamonds` (single-step diamond at every extended context).
+
+Given two equivalence-reduction chains starting from a common source
+`t₀`, this produces a common reduct joined by chains on both sides. The
+companion `EqDiamonds_proved` (chain-output single-step diamond at
+`Γ s`) is a strict consequence of `hUniformDiamond` plus the three
+transport/bridge payloads, but the chain-chain lift here only needs the
+single-step diamond directly: `hUniformDiamond` instantiated at the
+specific `Γ s` matches the `EqDiamonds Γ s` premise of the existing
+strip lemma `Lemma_2_DeBruijn_DiamondMEqRedStar_of`. The transport and
+bridge payloads remain in the signature for honest accounting — the
+shipped headline is conditional on exactly the same residual set as the
+chain-output diamond closure. As the campaign discharges
+`UniformEqDiamonds` (and the transport/bridge payloads), this headline
+becomes unconditional in lockstep.
+
+Used downstream by Theorem 3 (de Bruijn): given two evaluation chains
+emerging from a single source, identify a common reduct. -/
+noncomputable def Lemma_2_DeBruijn_DiamondMEqRedStar_proved
+    (_hArgTransport : MEqRedArgTransportPayload)
+    (_hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (_hSubBridge : MEqRedSubBridgePayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRedStar Γ s t₀ t₁)
+    (h₂ : MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MEqRedStar Γ s t₂ t₃ :=
+  Lemma_2_DeBruijn_DiamondMEqRedStar_of (@hUniformDiamond Γ s) h₁ h₂
+
+/-- Type-valued chain-chain analog of `Lemma_2_DeBruijn_DiamondMEqRedStar_proved`.
+Mirrors `Lemma_2_DeBruijn_DiamondMEqRedChain_of` but takes the four
+residual payloads instead of a bare single-step diamond hypothesis. -/
+noncomputable def Lemma_2_DeBruijn_DiamondMEqRedChain_proved
+    (_hArgTransport : MEqRedArgTransportPayload)
+    (_hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (_hSubBridge : MEqRedSubBridgePayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRedChain Γ s t₀ t₁)
+    (h₂ : MEqRedChain Γ s t₀ t₂) :
+    Sigma fun t₃ =>
+      MEqRedChain Γ s t₁ t₃ × MEqRedChain Γ s t₂ t₃ :=
+  Lemma_2_DeBruijn_DiamondMEqRedChain_of (@hUniformDiamond Γ s) h₁ h₂
