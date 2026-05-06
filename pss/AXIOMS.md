@@ -238,6 +238,10 @@ closures, 2 inactive outstanding).
   equivalence leaf `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack.var`
   on top of the thirty-six-head reflexive helper. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-six-head type-application
+  equivalence leaf `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack.tAp`,
+  reusing the thirty-six-head reflexive and prevalidity helpers. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-four-head constructor
   payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsBetStackPayload`, and
