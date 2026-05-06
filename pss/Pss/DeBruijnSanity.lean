@@ -826,6 +826,9 @@ namespace DeBruijn
 -- the `Me-App × Me-App` cell.
 #print axioms EqDiamonds.app_app_chain_of
 #print axioms MEqRedOpStackHeadTransportPayload
+#print axioms MEqRedOpStackHeadTransportPayloadRestricted
+#print axioms MEqRedOpStackHeadTransportPayloadRestricted_proved
+#print axioms EqDiamonds.app_app_chain_NoBinders_of
 
 -- de Bruijn Lemma 2 `Me-Bet × Me-App` cell (chain output, conditional on
 -- the argument-transport hypothesis and a `.sub`-head bridging hypothesis

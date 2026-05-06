@@ -1976,6 +1976,12 @@ Bruijn proofs do not yet bridge to LN.
   which builds the reusable argument stack-lift function from canonical
   changed-head replacement premises before invoking the argument-stack-lifted
   `FOp` commutation wrapper. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the restricted
+  `MEqRedOpStackHeadTransportPayloadRestricted` surface and proved it from
+  `MEqRedStar.lift_to_any_stack_of_NoBinders`; also added
+  `EqDiamonds.app_app_chain_NoBinders_of`, discharging the `Me-App × Me-App`
+  chain-output cell when the original operator source is binder-free. Added
+  the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

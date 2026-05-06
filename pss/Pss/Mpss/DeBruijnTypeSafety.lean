@@ -17501,6 +17501,30 @@ def MEqRedOpStackHeadTransportPayload : Prop :=
       MEqRed Γ (v :: s) u u' →
         MEqRedStar Γ (v' :: s) u u'
 
+/-- Restricted operator stack-head transport for binder-free operator
+sources. The general transport is false for abstraction-rooted operators
+because `Me-Fun` requires an empty stack, but `Term.NoBinders` excludes
+the stack-sensitive and lookup-sensitive source shapes. -/
+def MEqRedOpStackHeadTransportPayloadRestricted : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {v v' u u' : Term},
+    MEqRedStar Γ [] v v' →
+      Term.NoBinders u →
+        MEqRed Γ (v :: s) u u' →
+          MEqRedStar Γ (v' :: s) u u'
+
+/-- Closed proof of the restricted operator stack-head transport surface,
+obtained by retargeting the operator step to the post-argument stack with
+`MEqRedStar.lift_to_any_stack_of_NoBinders`. -/
+theorem MEqRedOpStackHeadTransportPayloadRestricted_proved :
+    MEqRedOpStackHeadTransportPayloadRestricted := by
+  intro Γ s v v' u u' hArgStar hNoBinders hOpStep
+  have hpvCons : PrevalidExt Γ (v :: s) := hOpStep.prevalidExt
+  have hpvTail : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hv : Term.Scoped Γ.depth v := PrevalidExt.head_scoped hpvCons
+  have hv' : Term.Scoped Γ.depth v' := hArgStar.scoped_right hv
+  have hpvNew : PrevalidExt Γ (v' :: s) := PrevalidExt.cons hpvTail hv'
+  exact MEqRedStar.lift_to_any_stack_of_NoBinders hOpStep hNoBinders hpvNew
+
 namespace EqDiamonds
 
 /-- The `Me-App × Me-App` source cell of de Bruijn Lemma 2 with chain
@@ -17561,6 +17585,63 @@ theorem app_app_chain_of
       MEqRedStar.app_right hu₂ hArgStep₂ hpv
     have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₂ u₃ :=
       hOpTransport hArgChain₂_full hOp₂₃
+    have hOpChain₂ : MEqRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
+      MEqRedStar.app_left hOpAtNewStack hv₃
+    exact hArgChain₂.trans hOpChain₂
+
+/-- Restricted `Me-App × Me-App` source cell: the conditional operator
+stack-head transport is discharged when the original operator source is
+`Term.NoBinders`. The premise propagates to both operator diamond branches
+by `MEqRed.preserves_noBinders`. -/
+theorem app_app_chain_NoBinders_of
+    {Γ : Ctx} {s : Stack} {u u₁ u₂ v v₁ v₂ : Term}
+    (hNoBindersOp : Term.NoBinders u)
+    (hOpDiamond :
+      ∀ {a b : Term},
+        MEqRed Γ (v :: s) u a → MEqRed Γ (v :: s) u b →
+        ∃ c, MEqRedJ Γ (v :: s) a c ∧ MEqRedJ Γ (v :: s) b c)
+    (hArgDiamond :
+      ∀ {a b : Term},
+        MEqRed Γ [] v a → MEqRed Γ [] v b →
+        ∃ c, MEqRedJ Γ [] a c ∧ MEqRedJ Γ [] b c)
+    (hOp₁ : MEqRed Γ (v :: s) u u₁) (hArg₁ : MEqRed Γ [] v v₁)
+    (hOp₂ : MEqRed Γ (v :: s) u u₂) (hArg₂ : MEqRed Γ [] v v₂) :
+    ∃ t₃, MEqRedStar Γ s (.app u₁ v₁) t₃ ∧ MEqRedStar Γ s (.app u₂ v₂) t₃ := by
+  have hOp₁NoBinders : Term.NoBinders u₁ :=
+    hOp₁.preserves_noBinders hNoBindersOp
+  have hOp₂NoBinders : Term.NoBinders u₂ :=
+    hOp₂.preserves_noBinders hNoBindersOp
+  obtain ⟨u₃, hOp₁₃J, hOp₂₃J⟩ := hOpDiamond hOp₁ hOp₂
+  obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArg₁ hArg₂
+  let hOp₁₃ : MEqRed Γ (v :: s) u₁ u₃ := hOp₁₃J.some
+  let hOp₂₃ : MEqRed Γ (v :: s) u₂ u₃ := hOp₂₃J.some
+  let hArg₁₃ : MEqRed Γ [] v₁ v₃ := hArg₁₃J.some
+  let hArg₂₃ : MEqRed Γ [] v₂ v₃ := hArg₂₃J.some
+  have hpvCons : PrevalidExt Γ (v :: s) := hOp₁.prevalidExt
+  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hu₁ : Term.Scoped Γ.depth u₁ := hOp₁.scoped_right
+  have hu₂ : Term.Scoped Γ.depth u₂ := hOp₂.scoped_right
+  have hv₃ : Term.Scoped Γ.depth v₃ := hArg₁₃.scoped_right
+  have hArgChain₁_full : MEqRedStar Γ [] v v₃ :=
+    (MEqRedStar.single hArg₁).trans (MEqRedStar.single hArg₁₃)
+  have hArgChain₂_full : MEqRedStar Γ [] v v₃ :=
+    (MEqRedStar.single hArg₂).trans (MEqRedStar.single hArg₂₃)
+  refine ⟨.app u₃ v₃, ?_, ?_⟩
+  · have hArgStep₁ : MEqRedStar Γ [] v₁ v₃ := MEqRedStar.single hArg₁₃
+    have hArgChain₁ : MEqRedStar Γ s (.app u₁ v₁) (.app u₁ v₃) :=
+      MEqRedStar.app_right hu₁ hArgStep₁ hpv
+    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₁ u₃ :=
+      MEqRedOpStackHeadTransportPayloadRestricted_proved
+        hArgChain₁_full hOp₁NoBinders hOp₁₃
+    have hOpChain₁ : MEqRedStar Γ s (.app u₁ v₃) (.app u₃ v₃) :=
+      MEqRedStar.app_left hOpAtNewStack hv₃
+    exact hArgChain₁.trans hOpChain₁
+  · have hArgStep₂ : MEqRedStar Γ [] v₂ v₃ := MEqRedStar.single hArg₂₃
+    have hArgChain₂ : MEqRedStar Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+      MEqRedStar.app_right hu₂ hArgStep₂ hpv
+    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₂ u₃ :=
+      MEqRedOpStackHeadTransportPayloadRestricted_proved
+        hArgChain₂_full hOp₂NoBinders hOp₂₃
     have hOpChain₂ : MEqRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
       MEqRedStar.app_left hOpAtNewStack hv₃
     exact hArgChain₂.trans hOpChain₂
