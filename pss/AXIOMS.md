@@ -212,6 +212,11 @@ closures, 2 inactive outstanding).
   routing structural cases to the thirty-five leaves and binder cases to the
   thirty-five payload frontiers. Added the endpoint to `Pss/DeBruijnSanity.lean`;
   no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — opened the thirty-six-head stack surface
+  `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack` and its generic
+  specialization `.of_generic`, giving the thirty-five-head binder payloads a
+  recursive target. Added both endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-four-head constructor
   payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsBetStackPayload`, and
