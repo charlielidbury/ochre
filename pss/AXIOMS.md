@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesPrevalidExtUnderTwentyEightHeads`, routing the
+  generic preserved-head prevalidity transport through the fixed
+  twenty-eight-head context shape. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-eight-head
   stack-parametric surface `BetaInstantiationPreservesMEqRedUnderTwentyEightHeadsStack`
   and its generic adapter
