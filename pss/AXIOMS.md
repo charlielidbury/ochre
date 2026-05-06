@@ -20,6 +20,12 @@ closures, 2 inactive outstanding).
   `.app`, using the new twenty-one-head prevalidity transport and direct
   stack/term instantiation reassembly. Added endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-one-head
+  reflexive equivalence leaf
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsStack.refl`, deriving
+  the instantiated scopedness premise from de Bruijn shift/instantiate
+  scopedness and the twenty-one-head prevalidity transport. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderEightHeads`, routing the
   eight-preserved-head β-instantiation prevalidity surface through the
