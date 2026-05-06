@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the base twenty-two-head stack
+  surface `BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsStack` and
+  generic list-specialization wrapper
+  `BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsStack.of_generic`,
+  setting up the recursive body target for the twenty-one-head binder
+  payloads. Added endpoints to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderTwentyOneHeads`, routing the
   twenty-one-preserved-head β-instantiation prevalidity surface through the
