@@ -2105,6 +2105,15 @@ Bruijn proofs do not yet bridge to LN.
   promotes to the new annotation. The replacement payload must either
   transport the target or exclude the changed head lookup case. Added the
   endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubBridgePayload_not`, a kernel-checked counterexample showing the
+  unrestricted cross-relation `MSubBridgePayload` is inconsistent. Under
+  an `.equ` head, `Ms-Top` reduces `bvar 0` to `Top`; under the target
+  `.sub` head there is no corresponding `MEqRed` step from `bvar 0` to
+  `Top` because `Me-Var` is reflexive and `Me-Pro` requires an `.equ`
+  lookup. The replacement bridge must exclude subtype-only cases or
+  return a subtype/chain target rather than a single `MEqRed` step. Added
+  the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

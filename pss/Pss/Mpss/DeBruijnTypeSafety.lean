@@ -20256,6 +20256,35 @@ reducible so the closure body can apply it as a function directly. -/
     MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s) body body' →
     MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body'
 
+/-- The unrestricted cross-relation `MSubBridgePayload` is also too strong.
+
+Under an `.equ` head, `Ms-Top` can reduce `bvar 0` to `Top`. After retargeting
+to a `.sub` head, there is no matching `MEqRed` step from `bvar 0` to `Top`:
+`Me-Var` keeps the variable fixed and `Me-Pro` requires an `.equ` lookup. -/
+theorem MSubBridgePayload_not : MSubBridgePayload → False := by
+  intro hBridge
+  have hpvEqu : Prevalid ({ bound := Term.top, kind := .equ } :: ([] : Ctx)) :=
+    Prevalid.equ Prevalid.empty Term.Scoped.top
+  have hpvEquNil :
+      PrevalidExt ({ bound := Term.top, kind := .equ } :: ([] : Ctx)) [] :=
+    PrevalidExt.nil hpvEqu
+  have hSub :
+      MSubRed ({ bound := Term.top, kind := .equ } :: ([] : Ctx)) []
+        (.bvar 0) .top :=
+    MSubRed.top hpvEquNil (Term.Scoped.bvar (by simp [Ctx.depth]))
+  have hEq :
+      MEqRed ({ bound := Term.top, kind := .sub } :: ([] : Ctx)) []
+        (.bvar 0) .top :=
+    hBridge (Γ := ([] : Ctx)) (t := Term.top) (v := Term.top)
+      (body := .bvar 0) (body' := .top) (s := []) hSub
+  cases MEqRed.bvar_inv_detail hEq with
+  | inl hVar =>
+      rcases hVar with ⟨_, _, hTarget⟩
+      cases hTarget
+  | inr hPro =>
+      rcases hPro with ⟨α, α', hEquBind, _, _⟩
+      simp [Ctx.equBinds, Ctx.lookupEqu] at hEquBind
+
 /-- `.sub`-head abstraction-bound narrowing for `MSubRed` bodies: an
 `MSubRed` body step under bound `t` lifts to an `MSubRed` body step under
 the post-bound `t'` whenever `MEqRed Γ [] t t'`. Required by the

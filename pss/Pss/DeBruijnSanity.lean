@@ -910,6 +910,7 @@ namespace DeBruijn
 -- `Classical.choice`, `Quot.sound`.
 #print axioms MSubRedOpStackHeadTransportPayload
 #print axioms MSubBridgePayload
+#print axioms MSubBridgePayload_not
 #print axioms MSubBodyNarrowPayload
 #print axioms MSubBodyNarrowPayload_not
 #print axioms StrongCommutes_proved
