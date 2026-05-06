@@ -919,6 +919,83 @@ theorem appTop_any_tAp_of {Γ : Ctx} {s : Stack} (_hdiamond : EqDiamonds Γ s)
     ∃ t₃, MEqRedJ Γ s t₁ t₃ ∧ MSubRedJ Γ s .top t₃ := by
   exact appTop_any_tAp hpv hu hsub
 
+/-- The `Ms-Fun × Me-Fun` source cell of de Bruijn Lemma 1. Both reductions
+descend under an unapplied abstraction at empty stack. The subtype side
+reduces the bound `t` to `bound₁` (via `MEqRed`) and the body to `body₁` (via
+`MSubRed`); the equivalence side reduces the bound to `bound₂` and the body
+to `body₂` (both via `MEqRed`). The cell closes the commutation square at
+`(.abs bound₃ body₃)` where `bound₃` is the bound diamond join and `body₃`
+is the body commutation join.
+
+The body's left-edge migration from `(extctx with t)` to `(extctx with
+bound₁)` uses `MEqRed.sub_head_replace`, which is sound for `MEqRed` since
+`Me-Var` at a `.sub` slot has fixed target. The body's right-edge migration
+from `(extctx with t)` to `(extctx with bound₂)` is, in contrast, generally
+unsound for arbitrary `MSubRed` derivations because `Ms-Pro` at the head
+`.sub` slot would change its target term as the bound varies. We therefore
+take the migration as an explicit hypothesis `hSubBodyNarrow`, mirroring the
+LN proof's use of `Lemma_24_NarrowingMSubRed` to swap the head annotation
+on the subtype-side body. -/
+theorem fun_fun_of
+    {Γ : Ctx} {t bound₁ bound₂ body body₁ body₂ : Term}
+    (hBoundDiamond : EqDiamonds Γ [])
+    (hBodyComm : StrongCommutes ({ bound := t, kind := .sub } :: Γ) [])
+    (hT₁ : MEqRed Γ [] t bound₁)
+    (hBody₁ : MSubRed ({ bound := t, kind := .sub } :: Γ) [] body body₁)
+    (hT₂ : MEqRed Γ [] t bound₂)
+    (hBody₂ : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body₂)
+    (hSubBodyNarrow : ∀ {u v : Term},
+      MSubRed ({ bound := t, kind := .sub } :: Γ) [] u v →
+      MSubRedJ ({ bound := bound₂, kind := .sub } :: Γ) [] u v) :
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ body₁) t₃
+        ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃ := by
+  obtain ⟨bound₃, hLeftBound, hRightBound⟩ := hBoundDiamond hT₁ hT₂
+  obtain ⟨body₃, hEqBody, hSubBody⟩ := hBodyComm hBody₁ hBody₂
+  refine ⟨.abs bound₃ body₃, ?_, ?_⟩
+  · -- Eq-side closure: `MEqRed Γ [] (.abs bound₁ body₁) (.abs bound₃ body₃)`.
+    obtain ⟨hLB⟩ := hLeftBound
+    obtain ⟨hEB⟩ := hEqBody
+    have hEB' :
+        MEqRed ({ bound := bound₁, kind := .sub } :: Γ) [] body₁ body₃ :=
+      hEB.sub_head_replace hT₁
+    exact ⟨MEqRed.fun_ hLB hEB'⟩
+  · -- Sub-side closure: `MSubRed Γ [] (.abs bound₂ body₂) (.abs bound₃ body₃)`.
+    obtain ⟨hRB⟩ := hRightBound
+    obtain ⟨hSB'⟩ := hSubBodyNarrow hSubBody.some
+    have hScoped₂ : Term.Scoped Γ.depth bound₂ := hT₂.scoped_right
+    exact ⟨MSubRed.fun_ hScoped₂ hRB hSB'⟩
+
+/-- The `Ms-FOp × Me-FOp` source cell of de Bruijn Lemma 1. Both reductions
+pop an operand `α` from the stack into an equivalence binding for the body.
+The subtype side keeps the bound `t` fixed (per `MSubRed.fOp`); the
+equivalence side reduces the bound to `bound₂`. The body's context uses `α`
+from the stack (not the abstraction's outer bound), so no head-replacement
+or narrowing is needed for body migration on either side. -/
+theorem fOp_fOp_of
+    {Γ : Ctx} {s : Stack} {t α bound₂ body body₁ body₂ : Term}
+    (hBodyComm :
+        StrongCommutes ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s))
+    (hα : Term.Scoped Γ.depth α)
+    (hBody₁ :
+        MSubRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s)
+          body body₁)
+    (hT₂ : MEqRed Γ [] t bound₂)
+    (hBody₂ :
+        MEqRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s)
+          body body₂) :
+    ∃ t₃, MEqRedJ Γ (α :: s) (.abs t body₁) t₃
+        ∧ MSubRedJ Γ (α :: s) (.abs bound₂ body₂) t₃ := by
+  obtain ⟨body₃, hEqBody, hSubBody⟩ := hBodyComm hBody₁ hBody₂
+  refine ⟨.abs bound₂ body₃, ?_, ?_⟩
+  · -- Eq-side closure: `MEqRed Γ (α :: s) (.abs t body₁) (.abs bound₂ body₃)`.
+    obtain ⟨hEB⟩ := hEqBody
+    exact ⟨MEqRed.fOp hT₂ hα hEB⟩
+  · -- Sub-side closure: `MSubRed Γ (α :: s) (.abs bound₂ body₂)
+    -- (.abs bound₂ body₃)` — `Ms-FOp` keeps the bound fixed.
+    obtain ⟨hSB⟩ := hSubBody
+    have hScoped₂ : Term.Scoped Γ.depth bound₂ := hT₂.scoped_right
+    exact ⟨MSubRed.fOp hScoped₂ hα hSB⟩
+
 end StrongCommutes
 
 /-- The `Top` source case for one subtype step against an equivalence chain,
