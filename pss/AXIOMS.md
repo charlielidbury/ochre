@@ -10,6 +10,12 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-nine-head
+  application-to-top leaf
+  `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsStack.tAp`, reusing
+  the checked twenty-nine-head reflexive leaf for the instantiated argument
+  scope. Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-nine-head
   variable leaf `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsStack.var`,
   reducing the bound-variable case to the checked twenty-nine-head reflexive
   leaf. Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline
