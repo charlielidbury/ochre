@@ -2415,13 +2415,15 @@ Bruijn proofs do not yet bridge to LN.
   so this route no longer hides that one-deeper recursive `Ms-App` case
   behind a broad replacement-style residual. Proved the exposed
   one-deeper `Ms-Top` case as
-  `StrongCommutesFunFunBodyAppAppSubAppAppAppTopChainPayload.proved` and
-  the exposed one-deeper `Ms-Equ` case as
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppTopChainPayload.proved`, the
+  stable-successor one-deeper `Ms-Pro` case as
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppProSuccChainPayload.proved`,
+  and the exposed one-deeper `Ms-Equ` case as
   `StrongCommutesFunFunBodyAppAppSubAppAppAppEquChainPayload.proved` from
   `UniformEqDiamonds`, so the live one-deeper residuals are now
-  changed-head `Ms-Pro`, stable-successor `Ms-Pro`, recursive `Ms-App`, and
-  `Ms-FOp`, alongside the existing nested-recursive `Ms-FOp`, sibling
-  nested `Ms-FOp`, and changed-head `Ms-Pro` cases. Added the endpoints to
+  changed-head `Ms-Pro`, recursive `Ms-App`, and `Ms-FOp`, alongside the
+  existing nested-recursive `Ms-FOp`, sibling nested `Ms-FOp`, and
+  changed-head `Ms-Pro` cases. Added the endpoints to
   `Pss/DeBruijnSanity.lean`.
   No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
