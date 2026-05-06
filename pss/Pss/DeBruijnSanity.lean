@@ -919,6 +919,9 @@ namespace DeBruijn
 #print axioms StrongCommutes.AppBetNoFalseBridgePayload.of_uniform
 #print axioms StrongCommutes.FunFunNoFalseNarrowPayload
 #print axioms StrongCommutes.FunFunNoFalseNarrowPayload.of_uniform
+#print axioms StrongCommutesAppBetBranchPayload
+#print axioms StrongCommutesFunFunBranchPayload
+#print axioms StrongCommutes_proved_of_branch_handlers
 
 -- Top-level Lemma 1 chain-output closure.
 -- Conditional on the same residuals as `EqDiamonds_proved` plus three

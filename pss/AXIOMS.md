@@ -2183,6 +2183,17 @@ Bruijn proofs do not yet bridge to LN.
   Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count
   change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesAppBetBranchPayload`,
+  `StrongCommutesFunFunBranchPayload`, and
+  `StrongCommutes_proved_of_branch_handlers`, a top-level chain-output
+  Lemma 1 closure that replaces the two known-false broad residuals with
+  their branch-local diagram obligations. This keeps the structural
+  app/app transport residuals and recursive uniform
+  `StrongCommutes`/`EqDiamonds` premises, but removes
+  `MSubBridgePayload` and `MSubBodyNarrowPayload` from this closure's
+  signature. Added the endpoints to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

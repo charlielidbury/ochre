@@ -20821,6 +20821,143 @@ noncomputable def FunFunNoFalseNarrowPayload.of_uniform
 
 end StrongCommutes
 
+/-- Branch-local app/bet handler for top-level Lemma 1 closure assembly.
+
+This is the broad branch obligation itself, rather than a cross-relation
+body bridge. Using this payload lets the top-level closure avoid the false
+`MSubBridgePayload` interface. Restricted builders such as
+`StrongCommutes.AppBetNoFalseBridgePayload.of_uniform` can target this shape
+when their side conditions are available. -/
+def StrongCommutesAppBetBranchPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {t v body body₂' v₂' op' : Term},
+    Term.Scoped Γ.depth t →
+    Term.Scoped Γ.depth v →
+    MSubRed Γ (v :: s) (.abs t body) op' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂' →
+    MEqRed Γ [] v v₂' →
+    ∃ t₃,
+      MEqRedStar Γ s (.app op' v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
+
+/-- Branch-local fun/fun handler for top-level Lemma 1 closure assembly.
+
+This is the broad branch obligation itself, rather than a same-target
+body-narrowing function. Using this payload lets the top-level closure avoid
+the false `MSubBodyNarrowPayload` interface. -/
+def StrongCommutesFunFunBranchPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ body body₁ body₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) [] body body₁ →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body₂ →
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ body₁) t₃
+        ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃
+
+/-- Top-level chain-output Lemma 1 closure using branch-local handlers for
+the two known false broad residuals.
+
+Compared with `StrongCommutes_proved`, this does not require
+`MSubBridgePayload` or `MSubBodyNarrowPayload`. The app/bet and fun/fun
+cases are exposed as their real diagram obligations, while the remaining
+structural cases are assembled exactly as in the broad closure. -/
+theorem StrongCommutes_proved_of_branch_handlers
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hAppBet : StrongCommutesAppBetBranchPayload)
+    (hFunFun : StrongCommutesFunFunBranchPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s := by
+  intro Γ s t₀ t₁ t₂ hSub hEq
+  have wrapSingle :
+      ∀ {a b : Term},
+        (∃ c, MEqRedJ Γ s a c ∧ MSubRedJ Γ s b c) →
+        ∃ c, MEqRedStar Γ s a c ∧ MSubRedStar Γ s b c := by
+    intro a b ⟨c, hac, hbc⟩
+    exact ⟨c, Relation.ReflTransGen.single hac, Relation.ReflTransGen.single hbc⟩
+  have hpv : PrevalidExt Γ s := hSub.prevalidExt
+  cases hSub with
+  | @pro _ _ i t hpv₀ hsubBind =>
+      refine wrapSingle ?_
+      exact StrongCommutes.pro_any hpv hsubBind hEq
+  | @top _ _ u hpv₀ hu =>
+      refine wrapSingle ?_
+      exact StrongCommutes.top_of hpv hu hEq
+  | @equ _ _ u v hpv₀ hMEqSub =>
+      refine wrapSingle ?_
+      exact StrongCommutes.equ_of (@hUniformDiamond Γ s) hpv hMEqSub hEq
+  | @app _ _ u u' v hOp hv =>
+      cases hEq with
+      | @app _ _ _ u₂ _ v₂ hOp₂ hArg₂ =>
+          have hpvCons : PrevalidExt Γ (v :: s) :=
+            PrevalidExt.cons hpv hv
+          have hpvNil : PrevalidExt Γ [] :=
+            PrevalidExt.nil (PrevalidExt.ctx hpv)
+          obtain ⟨u₃, hOp_eqJ, hOp_subJ⟩ :=
+            @hUniformStrongCommutes Γ (v :: s) _ _ _ hOp hOp₂
+          let hOp_eq : MEqRed Γ (v :: s) u' u₃ := hOp_eqJ.some
+          let hOp_sub : MSubRed Γ (v :: s) u₂ u₃ := hOp_subJ.some
+          have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+          have hArgDiamond :
+              ∀ {a₁ a₂ : Term},
+                MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+                ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ :=
+            fun ha hb => @hUniformDiamond Γ [] _ _ _ ha hb
+          obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArgRefl hArg₂
+          let hArg₁₃ : MEqRed Γ [] v v₃ := hArg₁₃J.some
+          let hArg₂₃ : MEqRed Γ [] v₂ v₃ := hArg₂₃J.some
+          have hu' : Term.Scoped Γ.depth u' := hOp.scoped_right
+          have hu₂ : Term.Scoped Γ.depth u₂ := hOp₂.scoped_right
+          have hv₂ : Term.Scoped Γ.depth v₂ := hArg₂.scoped_right
+          have hv₃ : Term.Scoped Γ.depth v₃ := hArg₁₃.scoped_right
+          refine ⟨.app u₃ v₃, ?_, ?_⟩
+          · have hArgChain₁ : MEqRedStar Γ s (.app u' v) (.app u' v₃) :=
+              MEqRedStar.app_right hu' (MEqRedStar.single hArg₁₃) hpv
+            have hArgFull : MEqRedStar Γ [] v v₃ :=
+              MEqRedStar.single hArg₁₃
+            have hOpAtNew : MEqRedStar Γ (v₃ :: s) u' u₃ :=
+              hOpTransport hArgFull hOp_eq
+            have hOpChain : MEqRedStar Γ s (.app u' v₃) (.app u₃ v₃) :=
+              MEqRedStar.app_left hOpAtNew hv₃
+            exact hArgChain₁.trans hOpChain
+          · have hpvOp : PrevalidExt Γ (v₂ :: s) :=
+              PrevalidExt.cons hpv hv₂
+            have hu₂Refl : MEqRed Γ (v₂ :: s) u₂ u₂ :=
+              MEqRed.refl hpvOp hu₂
+            have hMeApp₂₂ : MEqRed Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+              MEqRed.app hu₂Refl hArg₂₃
+            have hStep₁ :
+                MSubRedStar Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+              MSubRedStar.single (MSubRed.equ hpv hMeApp₂₂)
+            have hOpSubAtNew : MSubRedStar Γ (v₃ :: s) u₂ u₃ :=
+              hMSubOpTransport (MEqRedStar.single hArg₁₃) hOp_sub
+            have hStep₂ :
+                MSubRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
+              MSubRedStar.app_fixed_arg hv₃ hOpSubAtNew
+            exact hStep₁.trans hStep₂
+      | @bet _ _ t _ _ body _ ht hBody₂ hArg₂ =>
+          exact hAppBet ht hv hOp hBody₂ hArg₂
+      | @tAp _ _ u_t hpv₂ hu_t =>
+          have hu'Top : u' = .top := MSubRed.top_inv hOp
+          subst hu'Top
+          refine ⟨.top, ?_, ?_⟩
+          · exact MEqRedStar.single (MEqRed.tAp hpv hv)
+          · exact Relation.ReflTransGen.refl
+  | @fun_ _ t tDst body bodyDst ht hT₁ hBody₁ =>
+      cases hEq with
+      | @fun_ _ _ tDst₂ _ bodyDst₂ hT₂ hBody₂ =>
+          refine wrapSingle ?_
+          exact hFunFun hT₁ hBody₁ hT₂ hBody₂
+  | @fOp _ s_inner t α body bodyDst ht hα hBody₁ =>
+      cases hEq with
+      | @fOp _ _ _ tDst₂ _ _ bodyDst₂ hT₂ hα₂ hBody₂ =>
+          refine wrapSingle ?_
+          exact StrongCommutes.fOp_fOp_of
+            (@hUniformStrongCommutes ({bound := α, kind := .equ} :: Γ)
+              (Stack.shift 0 s_inner))
+            hα hBody₁ hT₂ hBody₂
+
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
 Lemma 1, conditional on the residual hypotheses listed above.
 
