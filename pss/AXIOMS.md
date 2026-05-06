@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsStack.of_constructors`,
+  packaging the checked twenty-two-head structural leaves with the explicit
+  twenty-two-head recursive binder payloads. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-two-head
   `Me-Fun`/`Me-Bet`/`Me-FOp` binder payload surfaces
   `BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsFunStackPayload`,
