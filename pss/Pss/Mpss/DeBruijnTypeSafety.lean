@@ -21320,6 +21320,35 @@ theorem StrongCommutes_proved_of_branch_handlers
               (Stack.shift 0 s_inner))
             hα hBody₁ hT₂ hBody₂
 
+/-- Top-level chain-output Lemma 1 closure with the broad app/bet and
+fun/fun branch payloads expanded into constructor-local residuals. -/
+theorem StrongCommutes_proved_of_split_branch_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hAppBetBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hAppBetBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hFunBodyPro : StrongCommutesFunFunBodyProPayload)
+    (hFunBodyApp : StrongCommutesFunFunBodyAppPayload)
+    (hFunBodyFun : StrongCommutesFunFunBodyFunPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s :=
+  StrongCommutes_proved_of_branch_handlers hOpTransport hMSubOpTransport
+    (StrongCommutesAppBetBranchPayload.of_fop_handler
+      hArgTransport hSubBridge
+      (StrongCommutesAppBetFOpBranchPayload.of_body_handlers
+        hArgTransport hSubBridge hAppBetBodyPro hAppBetBodyApp
+        hAppBetBodyFun hAppBetBodyFOp hUniformDiamond)
+      hUniformDiamond)
+    (StrongCommutesFunFunBranchPayload.of_body_handlers
+      hFunBodyPro hFunBodyApp hFunBodyFun hUniformDiamond)
+    hUniformDiamond hUniformStrongCommutes
+
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
 Lemma 1, conditional on the residual hypotheses listed above.
 
