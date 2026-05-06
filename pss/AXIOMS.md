@@ -9,6 +9,10 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-head
+  `MEqRed.top` leaf `BetaInstantiationPreservesMEqRedUnderThirtyHeadsStack.top`,
+  reusing the checked thirty-head prevalidity transport. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderThirtyHeads`, routing the
   generic preserved-head prevalidity transport through the fixed thirty-head
