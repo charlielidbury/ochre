@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-head
+  `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderThirtyHeadsStack.app`,
+  assembling the instantiated function and argument premises with `MEqRed.app`.
+  Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-head
   `MEqRed.top` leaf `BetaInstantiationPreservesMEqRedUnderThirtyHeadsStack.top`,
   reusing the checked thirty-head prevalidity transport. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
