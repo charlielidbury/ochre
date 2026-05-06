@@ -9,6 +9,13 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-seven-head
+  stack-parametric surface `BetaInstantiationPreservesMEqRedUnderTwentySevenHeadsStack`
+  and its list-generic adapter
+  `BetaInstantiationPreservesMEqRedUnderTwentySevenHeadsStack.of_generic`,
+  preparing the recursive body payload needed by the twenty-six-head binder
+  constructor adapters. Added the endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesMEqRedUnderTwentySixHeadsStack.of_constructors`,
   assembling the twenty-six-head stack-parametric β-instantiation surface
