@@ -246,6 +246,11 @@ closures, 2 inactive outstanding).
   equivalence leaf `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsStack.pro`,
   delegating to the generic preserved-head projection helper at depth 36. Added
   the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-six-head constructor
+  payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderThirtySixHeadsFOpStackPayload`. Added
+  the endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — exposed the thirty-four-head constructor
   payload frontiers `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsBetStackPayload`, and
