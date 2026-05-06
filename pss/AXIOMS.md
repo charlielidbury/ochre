@@ -25,6 +25,11 @@ closures, 2 inactive outstanding).
   the twenty-one-head constructor frontier. Added endpoints to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsStack.of_constructors`,
+  packaging the checked twenty-one-head structural leaves with the explicit
+  twenty-one-head recursive binder payloads. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderTwentyOneHeads`, routing the
   twenty-one-preserved-head β-instantiation prevalidity surface through the
   existing list-generic prefix transport. Added the endpoint to
