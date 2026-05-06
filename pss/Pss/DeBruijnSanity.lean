@@ -921,6 +921,11 @@ namespace DeBruijn
 #print axioms StrongCommutes.FunFunNoFalseNarrowPayload.of_uniform
 #print axioms StrongCommutesAppBetBranchPayload
 #print axioms StrongCommutesAppBetFOpBranchPayload
+#print axioms StrongCommutesAppBetFOpBodyProPayload
+#print axioms StrongCommutesAppBetFOpBodyAppPayload
+#print axioms StrongCommutesAppBetFOpBodyFunPayload
+#print axioms StrongCommutesAppBetFOpBodyFOpPayload
+#print axioms StrongCommutesAppBetFOpBranchPayload.of_body_handlers
 #print axioms StrongCommutesAppBetBranchPayload.of_fop_handler
 #print axioms StrongCommutesFunFunBranchPayload
 #print axioms StrongCommutesFunFunBodyProPayload

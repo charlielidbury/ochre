@@ -20859,6 +20859,178 @@ def StrongCommutesAppBetFOpBranchPayload : Prop :=
       MEqRedStar Γ s (.app (.abs t bodyOp') v) t₃
       ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
 
+/-- Direct inner `Ms-Pro` body case of the `Ms-FOp × Me-Bet` app/bet
+branch. -/
+def StrongCommutesAppBetFOpBodyProPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {t v bodyOp' body₂' v₂' : Term} {i : Nat},
+    Term.Scoped Γ.depth t →
+    Term.Scoped Γ.depth v →
+    Ctx.subBinds ({bound := v, kind := .equ} :: Γ) i bodyOp' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+      (.bvar i) body₂' →
+    MEqRed Γ [] v v₂' →
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs t bodyOp') v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
+
+/-- Direct inner `Ms-App` body case of the `Ms-FOp × Me-Bet` app/bet
+branch. -/
+def StrongCommutesAppBetFOpBodyAppPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {t v u u' arg body₂' v₂' : Term},
+    Term.Scoped Γ.depth t →
+    Term.Scoped Γ.depth v →
+    MSubRed ({bound := v, kind := .equ} :: Γ)
+      (arg :: Stack.shift 0 s) u u' →
+    Term.Scoped (Ctx.depth ({bound := v, kind := .equ} :: Γ)) arg →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+      (.app u arg) body₂' →
+    MEqRed Γ [] v v₂' →
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs t (.app u' arg)) v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
+
+/-- Direct inner `Ms-Fun` body case of the `Ms-FOp × Me-Bet` app/bet
+branch. -/
+def StrongCommutesAppBetFOpBodyFunPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {t v inner inner' body body' body₂' v₂' : Term},
+    Term.Scoped Γ.depth t →
+    Term.Scoped Γ.depth v →
+    Term.Scoped (Ctx.depth ({bound := v, kind := .equ} :: Γ)) inner →
+    MEqRed ({bound := v, kind := .equ} :: Γ) [] inner inner' →
+    MSubRed ({bound := inner, kind := .sub} ::
+        {bound := v, kind := .equ} :: Γ) [] body body' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+      (.abs inner body) body₂' →
+    MEqRed Γ [] v v₂' →
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs t (.abs inner' body')) v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
+
+/-- Direct nested inner `Ms-FOp` body case of the `Ms-FOp × Me-Bet`
+app/bet branch. The premise keeps the original inner `MSubRed` step rather
+than trying to restate its stack unification by hand. -/
+def StrongCommutesAppBetFOpBodyFOpPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {t v inner body body' body₂' v₂' : Term},
+    Term.Scoped Γ.depth t →
+    Term.Scoped Γ.depth v →
+    MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s)
+      (.abs inner body) (.abs inner body') →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+      (.abs inner body) body₂' →
+    MEqRed Γ [] v v₂' →
+    ∃ t₃,
+      MEqRedStar Γ s (.app (.abs t (.abs inner body')) v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
+
+/-- Build the direct `Ms-FOp × Me-Bet` app/bet handler from inner body-case
+handlers.
+
+The inner body `Ms-Top` case closes directly at `Top`. The inner body
+`Ms-Equ` case can be treated as the existing broad app/bet cell after the
+true `MEqRedSubBridgePayload` retargets the equivalence body step from the
+`.equ` head to the `.sub` head. The remaining inner subtype-only body
+constructors stay exposed as branch-local obligations. -/
+noncomputable def StrongCommutesAppBetFOpBranchPayload.of_body_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesAppBetFOpBranchPayload := by
+  intro Γ s t v body body₂' v₂' bodyOp' ht hv hBodySub hBody₂ hArg₂
+  have hpv : PrevalidExt Γ s :=
+    PrevalidExt.weaken_head_inv hBody₂.prevalidExt
+  generalize hsShift : Stack.shift 0 s = sShift at hBodySub hBody₂
+  cases hBodySub with
+  | pro _ hBind =>
+      exact hBodyPro ht hv hBind (by simpa [hsShift] using hBody₂) hArg₂
+  | top _ _ =>
+      have hpvNil : PrevalidExt Γ [] :=
+        PrevalidExt.nil (PrevalidExt.ctx hpv)
+      have hPrevalidT :
+          Prevalid ({bound := t, kind := .sub} :: Γ) :=
+        Prevalid.sub (PrevalidExt.ctx hpv) ht
+      have hpvBodyT :
+          PrevalidExt ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) :=
+        PrevalidExt.weaken_head hpv hPrevalidT
+      have hBodyTop :
+          MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+            .top .top :=
+        MEqRed.top hpvBodyT
+      have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+      have hβ :
+          MEqRed Γ s (.app (.abs t .top) v)
+            (Term.instantiate 0 v .top) :=
+        MEqRed.bet ht hBodyTop hArgRefl
+      have hβTop : MEqRedStar Γ s (.app (.abs t .top) v) .top := by
+        simpa using MEqRedStar.single hβ
+      have hv₂' : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+      have hBody₂Scoped : Term.Scoped (Γ.depth + 1) body₂' := by
+        simpa [Ctx.depth] using hBody₂.scoped_right
+      have hInstScoped :
+          Term.Scoped Γ.depth (Term.instantiate 0 v₂' body₂') :=
+        Term.instantiate_scoped 0 _ _ _ (Nat.zero_le _) hv₂' hBody₂Scoped
+      have hTopSub :
+          MSubRed Γ s (Term.instantiate 0 v₂' body₂') .top :=
+        MSubRed.top hpv hInstScoped
+      exact ⟨.top, hβTop, MSubRedStar.single hTopSub⟩
+  | equ _ hBodyEq =>
+      have hBodyEqShift :
+          MEqRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s)
+            body bodyOp' := by
+        simpa [hsShift] using hBodyEq
+      have hBody₂Shift :
+          MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+            body body₂' := by
+        simpa [hsShift] using hBody₂
+      have hBodyDiamond :
+          ∀ {b₁ b₂ : Term},
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              body b₁ →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              body b₂ →
+            ∃ b₃,
+              MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+                b₁ b₃
+              ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ)
+                (Stack.shift 0 s) b₂ b₃ := fun ha hb =>
+        @hUniformDiamond ({bound := t, kind := .sub} :: Γ)
+          (Stack.shift 0 s) _ _ _ ha hb
+      have hArgDiamond :
+          ∀ {a₁ a₂ : Term},
+            MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+            ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ := fun ha hb =>
+        @hUniformDiamond Γ [] _ _ _ ha hb
+      have hOuter :
+          MSubRed Γ (v :: s) (.abs t body) (.abs t bodyOp') :=
+        MSubRed.fOp ht hv
+          (MSubRed.equ hBodyEqShift.prevalidExt hBodyEqShift)
+      exact StrongCommutes.app_bet_chain_of hArgTransport hBodyDiamond
+        hArgDiamond ht hv hOuter hBody₂Shift hArg₂
+        (fun {body' t'} hShape => by
+          injection hShape with h1 h2
+          subst h1
+          subst h2
+          exact hSubBridge hBodyEqShift)
+  | @app _ _ u u' arg hOp hArgScoped =>
+      have hOpShift :
+          MSubRed ({bound := v, kind := .equ} :: Γ)
+            (arg :: Stack.shift 0 s) u u' := by
+        simpa [hsShift] using hOp
+      exact hBodyApp ht hv hOpShift hArgScoped
+        (by simpa [hsShift] using hBody₂) hArg₂
+  | @fun_ _ inner inner' body body' hInner hInnerStep hInnerBody =>
+      exact hBodyFun ht hv hInner hInnerStep hInnerBody
+        (by simpa [hsShift] using hBody₂) hArg₂
+  | @fOp _ s_inner inner α body body' hInner hα hInnerBody =>
+      have hNested :
+          MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s)
+            (.abs inner body) (.abs inner body') := by
+        simpa [hsShift] using MSubRed.fOp hInner hα hInnerBody
+      exact hBodyFOp ht hv hNested (by simpa [hsShift] using hBody₂) hArg₂
+
 /-- Build the broad app/bet branch handler from existing true residuals plus
 only the direct `Ms-FOp` branch obligation.
 

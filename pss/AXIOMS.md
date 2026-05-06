@@ -2202,6 +2202,18 @@ Bruijn proofs do not yet bridge to LN.
   case remains as the branch-local payload. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesAppBetFOpBodyProPayload`,
+  `StrongCommutesAppBetFOpBodyAppPayload`,
+  `StrongCommutesAppBetFOpBodyFunPayload`,
+  `StrongCommutesAppBetFOpBodyFOpPayload`, and
+  `StrongCommutesAppBetFOpBranchPayload.of_body_handlers`. This splits
+  the direct `Ms-FOp × Me-Bet` app/bet branch by the inner body subtype
+  step: inner `Ms-Top` closes directly at `Top`, inner `Ms-Equ` routes
+  through the existing app/bet cell using the true
+  `MEqRedSubBridgePayload`, and only inner `Ms-Pro`, `Ms-App`, nested
+  `Ms-Fun`, and nested `Ms-FOp` remain as branch-local payloads. Added
+  the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutesFunFunBodyProPayload`,
   `StrongCommutesFunFunBodyAppPayload`,
   `StrongCommutesFunFunBodyFunPayload`, and
