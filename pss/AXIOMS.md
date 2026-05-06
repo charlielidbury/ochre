@@ -148,6 +148,10 @@ closures, 2 inactive outstanding).
   assembling instantiated function and argument premises with `MEqRed.app`.
   Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-four-head reflexive
+  equivalence leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.refl`,
+  extending scoped-term instantiation to depth `Γ.depth + 34`. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-one-head
   `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderThirtyOneHeadsStack.app`,
   assembling the instantiated function and argument premises with `MEqRed.app`.
