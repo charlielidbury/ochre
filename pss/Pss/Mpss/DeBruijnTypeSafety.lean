@@ -20052,6 +20052,62 @@ theorem app_bet_chain_FOpArgBodyNoBindersAsSub_of
         (MSubRedStar.single hBodySub₂₃) hBody₂NoBinders hpv
     simpa [hBody₂NoBinders.instantiate_eq 0 v₂'] using hBodySubLift
 
+/-- Restricted `Ms-App × Me-Bet` β-position cell with binder-free argument
+and body, using the sound subtype-preserving route for the direct `Ms-FOp`
+operator branch.
+
+The `Ms-Top` and `Ms-Equ` branches reuse the existing no-binders
+`app_bet` cell. The direct `Ms-FOp` branch delegates to
+`app_bet_chain_FOpArgBodyNoBindersAsSub_of`, so no premise has to coerce a
+subtype-only body step into `MEqRed`. -/
+theorem app_bet_chain_ArgBodyNoBindersAsSub_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₂' op' : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (hBodyComm :
+      StrongCommutes ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s))
+    (ht : Term.Scoped Γ.depth t)
+    (hv : Term.Scoped Γ.depth v)
+    (hVNoBinders : Term.NoBinders v)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hOp : MSubRed Γ (v :: s) (.abs t body) op')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app op' v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  cases hOp with
+  | top hpv hu =>
+      exact app_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond
+        ht hv hVNoBinders (MSubRed.top hpv hu) hBody₂ hArg₂
+        (fun hShape => absurd hShape (by simp))
+  | equ hpv hMEqOp =>
+      exact app_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond
+        ht hv hVNoBinders (MSubRed.equ hpv hMEqOp) hBody₂ hArg₂
+        (fun {body' t'} hShape => by
+          cases hMEqOp with
+          | fOp _ _ hBodyEq =>
+              injection hShape with h1 h2
+              subst h1
+              subst h2
+              exact MEqRedSubBridgePayloadNoBinders_proved ht
+                hBodyNoBinders hBodyEq)
+  | fOp htOp hα hBodySub =>
+      rename_i bodyOp'
+      exact app_bet_chain_FOpArgBodyNoBindersAsSub_of hBodyComm
+        ht hv hBodyNoBinders hBodySub hBody₂
+
 end StrongCommutes
 
 /-! ## Top-level chain-output Lemma 2 closure assembly

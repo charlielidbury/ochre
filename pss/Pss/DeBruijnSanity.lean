@@ -914,6 +914,7 @@ namespace DeBruijn
 #print axioms StrongCommutes.app_bet_chain_ArgNoBinders_of
 #print axioms StrongCommutes.app_bet_chain_ArgBodyNoBinders_of
 #print axioms StrongCommutes.app_bet_chain_FOpArgBodyNoBindersAsSub_of
+#print axioms StrongCommutes.app_bet_chain_ArgBodyNoBindersAsSub_of
 
 -- Top-level Lemma 1 chain-output closure.
 -- Conditional on the same residuals as `EqDiamonds_proved` plus three

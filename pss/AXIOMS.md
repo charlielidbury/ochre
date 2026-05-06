@@ -2166,6 +2166,14 @@ Bruijn proofs do not yet bridge to LN.
   definitionally unchanged on `Term.NoBinders` terms. Added the endpoint
   to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutes.app_bet_chain_ArgBodyNoBindersAsSub_of`, the unified
+  binder-free `Ms-App × Me-Bet` wrapper with no false cross-relation
+  bridge premise. The `Ms-Top`/`Ms-Equ` operator cases reuse the existing
+  no-binders app/bet cell, while the direct `Ms-FOp` case delegates to
+  `StrongCommutes.app_bet_chain_FOpArgBodyNoBindersAsSub_of` and keeps
+  the body residual as subtype reduction. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype
