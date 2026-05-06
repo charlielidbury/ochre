@@ -2563,6 +2563,20 @@ Bruijn proofs do not yet bridge to LN.
   supplies this proof directly, leaving the live four-deeper residuals at
   changed-head `Ms-Pro`, recursive `Ms-App`, and `Ms-FOp`. Added the
   proved endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the remaining four-deeper
+  recursive `Ms-App` leaf
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppChainPayload` by
+  its next subtype-operator constructor, again separating the local
+  `Ms-Pro` leaf into changed-head and stable-successor payloads. Added
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppChainPayload.of_nested_cases`
+  and
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split`,
+  and rewired the nested-app handler so the five-deeper recursive `Ms-App`
+  case is no longer opaque. The live five-deeper residuals are changed-head
+  `Ms-Pro`, stable-successor `Ms-Pro`, `Ms-Top`, `Ms-Equ`, recursive
+  `Ms-App`, and `Ms-FOp`, alongside the remaining shallower changed-head
+  `Ms-Pro` and `Ms-FOp` residuals. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
