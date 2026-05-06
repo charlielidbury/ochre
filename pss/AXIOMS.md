@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-nine-head binder
+  frontiers `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsFOpStackPayload`.
+  Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-nine-head
   projection leaf `BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsStack.pro`,
   specializing the generic preserved-head `Me-Pro` transport to the fixed
