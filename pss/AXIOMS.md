@@ -230,6 +230,13 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderEighteenHeadsStack.of_constructors`,
   packaging the checked eighteen-head structural leaves while leaving those
   recursive nineteen-head binder adapters explicit.
+  Added the base nineteen-head stack surface
+  `BetaInstantiationPreservesMEqRedUnderNineteenHeadsStack` and generic
+  list-specialization wrapper
+  `BetaInstantiationPreservesMEqRedUnderNineteenHeadsStack.of_generic`,
+  starting the next recursive frontier.  Added nineteen-head prevalidity
+  transport `BetaInstantiationPreservesPrevalidExtUnderNineteenHeads` via the
+  generic preserved-head prevalidity transport.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
