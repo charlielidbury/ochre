@@ -144,6 +144,10 @@ closures, 2 inactive outstanding).
   transport `BetaInstantiationPreservesPrevalidExtUnderThirtyFourHeads`, reusing
   the generic preserved-head prevalidity transport at length thirty-four. Added
   the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added thirty-five-head prevalidity
+  transport `BetaInstantiationPreservesPrevalidExtUnderThirtyFiveHeads`, reusing
+  the generic preserved-head prevalidity transport at length thirty-five. Added
+  the endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-four-head `MEqRed.top`
   leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.top`, reusing
   the thirty-four-head prevalidity transport. Added the endpoint to
