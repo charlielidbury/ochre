@@ -8668,6 +8668,114 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderSeventeenHeadsStack.refl
   exact MEqRed.refl
     (BetaInstantiationPreservesPrevalidExtUnderSeventeenHeads hArgBound hpv) hu'
 
+/-- Reflexive equivalence reduction is stable under de Bruijn
+β-instantiation below eighteen preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderEighteenHeadsStack.refl
+    {Γ : Ctx}
+    {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ u : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ : CtxEntryKind}
+    {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ },
+        { bound := head₁₆, kind := kind₁₆ },
+        { bound := head₁₇, kind := kind₁₇ },
+        { bound := head₁₈, kind := kind₁₈ }]
+      PrevalidExt (heads ++ { bound := bound, kind := .sub } :: Γ) s)
+    (hu :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ },
+        { bound := head₁₆, kind := kind₁₆ },
+        { bound := head₁₇, kind := kind₁₇ },
+        { bound := head₁₈, kind := kind₁₈ }]
+      Term.Scoped (Ctx.depth (heads ++ { bound := bound, kind := .sub } :: Γ)) u) :
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ }]
+    let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 18 heads ++ Γ
+    MEqRed targetCtx
+      (Stack.instantiate 18 (Term.shiftBy 0 18 arg) s)
+      (Term.instantiate 18 (Term.shiftBy 0 18 arg) u)
+      (Term.instantiate 18 (Term.shiftBy 0 18 arg) u) := by
+  dsimp only at hpv hu ⊢
+  have hArgShiftScoped :
+      Term.Scoped (Γ.depth + 18) (Term.shiftBy 0 18 arg) := by
+    simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Term.shiftBy_scoped 0 18 Γ.depth arg (Nat.zero_le Γ.depth)
+        hArgBound.scoped_left
+  have hu' :
+      Term.Scoped (Ctx.depth (Ctx.instantiateBetaPrefix arg 18
+        [{ bound := head₁, kind := kind₁ },
+          { bound := head₂, kind := kind₂ },
+          { bound := head₃, kind := kind₃ },
+          { bound := head₄, kind := kind₄ },
+          { bound := head₅, kind := kind₅ },
+          { bound := head₆, kind := kind₆ },
+          { bound := head₇, kind := kind₇ },
+          { bound := head₈, kind := kind₈ },
+          { bound := head₉, kind := kind₉ },
+          { bound := head₁₀, kind := kind₁₀ },
+          { bound := head₁₁, kind := kind₁₁ },
+          { bound := head₁₂, kind := kind₁₂ },
+          { bound := head₁₃, kind := kind₁₃ },
+          { bound := head₁₄, kind := kind₁₄ },
+          { bound := head₁₅, kind := kind₁₅ },
+          { bound := head₁₆, kind := kind₁₆ },
+          { bound := head₁₇, kind := kind₁₇ },
+          { bound := head₁₈, kind := kind₁₈ }] ++ Γ))
+        (Term.instantiate 18 (Term.shiftBy 0 18 arg) u) := by
+    have hInst :
+        Term.Scoped (Γ.depth + 18)
+          (Term.instantiate 18 (Term.shiftBy 0 18 arg) u) :=
+      Term.instantiate_scoped 18 (Γ.depth + 18)
+        (Term.shiftBy 0 18 arg) u (by omega) hArgShiftScoped (by
+          simpa [Ctx.depth, Nat.succ_eq_add_one, Nat.add_assoc] using hu)
+    simpa [Ctx.instantiateBetaPrefix, Ctx.depth, Nat.add_assoc] using hInst
+  exact MEqRed.refl
+    (BetaInstantiationPreservesPrevalidExtUnderEighteenHeads hArgBound hpv) hu'
+
 /-- Combined eleven-preserved-head `MEqRed.var` substitution helper. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.var
     {Γ : Ctx}
