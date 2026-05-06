@@ -89,6 +89,10 @@ closures, 2 inactive outstanding).
   specialization `.of_generic`, giving the thirty-two-head binder payloads a
   recursive target. Added both endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added thirty-three-head prevalidity
+  transport `BetaInstantiationPreservesPrevalidExtUnderThirtyThreeHeads`, reusing
+  the generic preserved-head prevalidity helper at the new depth. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-one-head
   `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderThirtyOneHeadsStack.app`,
   assembling the instantiated function and argument premises with `MEqRed.app`.
