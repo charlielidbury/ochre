@@ -22363,6 +22363,173 @@ def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppChainPayload : Prop
         (.app (.app (.app (.app (.app (.app (.app (.app (.app op' arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- Six-deeper nested-recursive constructor-local `Ms-Pro` case inside
+the five-deeper recursive `Ms-App` operator case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ target arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term} {i : Nat},
+    MEqRed Γ [] t bound₁ →
+    Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) i target →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₈ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₇ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₆ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₅ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₄ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₃ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app (.app (.app (.app (.app (.app (.app (.bvar i) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Changed-head six-deeper nested-recursive `Ms-Pro` case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProHeadChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₈ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₇ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₆ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₅ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₄ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₃ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app (.app (.app (.app (.app (.app (.app (.bvar 0) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (.app (.app (.app (.app (.app (.app (.app (.app (.app (Term.shift 0 t) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Stable-successor six-deeper nested-recursive `Ms-Pro` case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProSuccChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ target arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term} {i : Nat},
+    MEqRed Γ [] t bound₁ →
+    Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) (i + 1) target →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₈ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₇ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₆ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₅ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₄ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₃ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app (.app (.app (.app (.app (.app (.app (.bvar (i + 1)) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Six-deeper nested-recursive constructor-local `Ms-Top` case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppTopChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) op →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₈ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₇ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₆ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₅ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₄ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₃ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app (.app (.app (.app (.app (.app (.app op arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (.app (.app (.app (.app (.app (.app (.app (.app (.app .top arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Six-deeper nested-recursive constructor-local `Ms-Equ` case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppEquChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ)
+      (arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) op op' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₈ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₇ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₆ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₅ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₄ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₃ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app (.app (.app (.app (.app (.app (.app op arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (.app (.app (.app (.app (.app (.app (.app (.app (.app op' arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Six-deeper nested-recursive `Ms-App` case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' arg₉ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ)
+      (arg₉ :: arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) op op' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₉ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₈ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₇ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₆ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₅ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₄ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₃ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app (.app (.app (.app (.app (.app (.app (.app op arg₉) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app op' arg₉) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Six-deeper nested-recursive `Ms-FOp` case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppFOpChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner α body body' arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) α →
+    MSubRed ({ bound := α, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)
+      (Stack.shift 0 (arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: [])) body body' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₈ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₇ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₆ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₅ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₄ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₃ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app (.app (.app (.app (.app (.app (.app (.abs inner body) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (.app (.app (.app (.app (.app (.app (.app (.app (.app (.abs inner body') arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 /-- Five-deeper nested-recursive `Ms-FOp` case. -/
 def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppFOpChainPayload : Prop :=
   ∀ {Γ : Ctx} {t bound₁ bound₂ inner α body body' arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ : Term},
@@ -26405,6 +26572,59 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppChainPay
   | fOp hInner hα hBody =>
       exact hNestedFOp hT₁ hInner hα hBody hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
 
+
+/-- Split the six-deeper recursive nested `Ms-App` leaf by the next
+subtype operator constructor. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppChainPayload.of_nested_cases
+    (hNestedPro : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProChainPayload)
+    (hNestedTop : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppTopChainPayload)
+    (hNestedEqu : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppEquChainPayload)
+    (hNestedApp : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppChainPayload)
+    (hNestedFOp : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppFOpChainPayload) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ hT₁ hOp hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  cases hOp with
+  | @pro _ _ i target _ hBind =>
+      exact hNestedPro hT₁ hBind hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | top _ hScoped =>
+      exact hNestedTop hT₁ hScoped hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | equ _ hEq =>
+      exact hNestedEqu hT₁ hEq hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | app hOp hArg₉ =>
+      exact hNestedApp hT₁ hOp hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | fOp hInner hα hBody =>
+      exact hNestedFOp hT₁ hInner hα hBody hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+
+/-- Split the six-deeper recursive nested `Ms-Pro` leaf into the changed
+head lookup and stable successor lookups. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split
+    (hNestedProHead : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProHeadChainPayload)
+    (hNestedProSucc : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProSuccChainPayload)
+    (hNestedTop : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppTopChainPayload)
+    (hNestedEqu : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppEquChainPayload)
+    (hNestedApp : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppChainPayload)
+    (hNestedFOp : StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppFOpChainPayload) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂ hT₁ hOp hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  cases hOp with
+  | @pro _ _ i target _ hBind =>
+      cases i with
+      | zero =>
+          have hTarget : op' = Term.shift 0 t :=
+            Ctx.subBinds_unique hBind (Ctx.subBinds_zero_self Γ t)
+          subst op'
+          exact hNestedProHead hT₁ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+      | succ i =>
+          exact hNestedProSucc hT₁ hBind hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | top _ hScoped =>
+      exact hNestedTop hT₁ hScoped hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | equ _ hEq =>
+      exact hNestedEqu hT₁ hEq hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | app hOp hArg₉ =>
+      exact hNestedApp hT₁ hOp hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | fOp hInner hα hBody =>
+      exact hNestedFOp hT₁ hInner hα hBody hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
 
@@ -26883,8 +27103,18 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppProHeadChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppProHead :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppProHeadChainPayload)
-    (hFunBodyAppAppSubAppAppAppAppAppAppAppApp :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppChainPayload)
+    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppProHead :
+      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProHeadChainPayload)
+    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppProSucc :
+      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppProSuccChainPayload)
+    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppTop :
+      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppTopChainPayload)
+    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppEqu :
+      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppEquChainPayload)
+    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppApp :
+      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppChainPayload)
+    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppFOp :
+      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppFOpChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppFOp :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppFOpChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppFOp :
@@ -26967,7 +27197,13 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                     hUniformDiamond)
                   (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppEquChainPayload.proved
                     hUniformDiamond)
-                  hFunBodyAppAppSubAppAppAppAppAppAppAppApp
+                  (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split
+                    hFunBodyAppAppSubAppAppAppAppAppAppAppAppProHead
+                    hFunBodyAppAppSubAppAppAppAppAppAppAppAppProSucc
+                    hFunBodyAppAppSubAppAppAppAppAppAppAppAppTop
+                    hFunBodyAppAppSubAppAppAppAppAppAppAppAppEqu
+                    hFunBodyAppAppSubAppAppAppAppAppAppAppAppApp
+                    hFunBodyAppAppSubAppAppAppAppAppAppAppAppFOp)
                   hFunBodyAppAppSubAppAppAppAppAppAppAppFOp)
                 hFunBodyAppAppSubAppAppAppAppAppAppFOp)
               hFunBodyAppAppSubAppAppAppAppAppFOp)
