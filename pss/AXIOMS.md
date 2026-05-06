@@ -2247,6 +2247,16 @@ Bruijn proofs do not yet bridge to LN.
   single-step branch-handler closure is preserved as a wrapper. Added the
   endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBodyAppAppChainPayload`,
+  `StrongCommutesFunFunBodyAppBetChainPayload`,
+  `StrongCommutesFunFunBodyAppChainPayload.of_app_cases`, and
+  `StrongCommutes_proved_of_split_chain_fun_app_cases_handlers`. This
+  splits the remaining fun/fun body `Ms-App` residual by the equivalence
+  body constructor: structural `Me-App` and beta `Me-Bet` remain explicit,
+  while the `Me-TAp` leaf closes internally via the existing
+  `commute_abs_fun_fun_app_body_tAp_of` cell. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

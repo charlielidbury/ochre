@@ -21167,6 +21167,34 @@ def StrongCommutesFunFunBodyAppChainPayload : Prop :=
     ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ body₂) t₃
 
+/-- Chain-output structural `Ms-App × Me-App` body case of the fun/fun
+branch. -/
+def StrongCommutesFunFunBodyAppAppChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ u u' v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Chain-output beta `Ms-App × Me-Bet` body case of the fun/fun branch. -/
+def StrongCommutesFunFunBodyAppBetChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ innerBound v v' inner inner' u' : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) innerBound →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.abs innerBound inner) u' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := innerBound, kind := .sub } ::
+      { bound := t, kind := .sub } :: Γ) (Stack.shift 0 []) inner inner' →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v' →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (Term.instantiate 0 v' inner')) t₃
+
 /-- Chain-output direct nested `Ms-Fun` body case of the fun/fun branch. -/
 def StrongCommutesFunFunBodyFunChainPayload : Prop :=
   ∀ {Γ : Ctx} {t bound₁ bound₂ inner inner' body body' body₂ : Term},
@@ -21298,6 +21326,26 @@ noncomputable def StrongCommutesFunFunBranchChainPayload.of_app_fun_handlers
       exact hBodyApp hT₁ hOp hv hT₂ hBody₂
   | fun_ hInner hInnerStep hBodyStep =>
       exact hBodyFun hT₁ hInner hInnerStep hBodyStep hT₂ hBody₂
+
+/-- Build the chain-output direct `Ms-App` body handler by splitting the
+equivalence body step into structural app, beta, and `Top`-application cases.
+The `Me-TAp` leaf closes internally; only app/app and app/bet remain
+explicit. -/
+noncomputable def StrongCommutesFunFunBodyAppChainPayload.of_app_cases
+    (hBodyAppApp : StrongCommutesFunFunBodyAppAppChainPayload)
+    (hBodyAppBet : StrongCommutesFunFunBodyAppBetChainPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppChainPayload := by
+  intro Γ t bound₁ bound₂ u u' v body₂ hT₁ hOp hv hT₂ hBody₂
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  cases hBody₂ with
+  | app hEqOp hEqArg =>
+      exact hBodyAppApp hT₁ hOp hv hT₂ hEqOp hEqArg
+  | bet hInner hBody hArg =>
+      exact hBodyAppBet hT₁ hInner hOp hv hT₂ hBody hArg
+  | tAp _ _ =>
+      exact commute_abs_fun_fun_app_body_tAp_of hpvNil
+        (@hUniformDiamond Γ []) hT₁ hOp hv hT₂
 
 /-- Top-level chain-output Lemma 1 closure using branch-local handlers for
 the two known false broad residuals.
@@ -21477,6 +21525,32 @@ theorem StrongCommutes_proved_of_split_chain_fun_handlers
     (StrongCommutesFunFunBranchChainPayload.of_app_fun_handlers
       hFunBodyApp hFunBodyFun hUniformDiamond)
     hUniformDiamond hUniformStrongCommutes
+
+/-- Top-level chain-output Lemma 1 closure with the fun/fun body `Ms-App`
+case split by the equivalence body constructor. The `Me-TAp` leaf is closed
+internally, leaving structural app/app and beta app/bet residuals. -/
+theorem StrongCommutes_proved_of_split_chain_fun_app_cases_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hAppBetBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hAppBetBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hFunBodyAppApp : StrongCommutesFunFunBodyAppAppChainPayload)
+    (hFunBodyAppBet : StrongCommutesFunFunBodyAppBetChainPayload)
+    (hFunBodyFun : StrongCommutesFunFunBodyFunChainPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s :=
+  StrongCommutes_proved_of_split_chain_fun_handlers hArgTransport
+    hOpTransport hMSubOpTransport hSubBridge
+    hAppBetBodyPro hAppBetBodyApp hAppBetBodyFun hAppBetBodyFOp
+    (StrongCommutesFunFunBodyAppChainPayload.of_app_cases
+      hFunBodyAppApp hFunBodyAppBet hUniformDiamond)
+    hFunBodyFun hUniformDiamond hUniformStrongCommutes
 
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
 Lemma 1, conditional on the residual hypotheses listed above.
