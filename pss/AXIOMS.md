@@ -274,6 +274,9 @@ closures, 2 inactive outstanding).
   `BetaInstantiationPreservesMEqRedUnderTwentyHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderTwentyHeadsBetStackPayload`, and
   `BetaInstantiationPreservesMEqRedUnderTwentyHeadsFOpStackPayload`.
+  Added `BetaInstantiationPreservesMEqRedUnderTwentyHeadsStack.of_constructors`,
+  packaging the twenty-head structural leaves and binder payload assumptions
+  into the full twenty-head stack theorem.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
