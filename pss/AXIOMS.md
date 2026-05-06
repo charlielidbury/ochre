@@ -26,6 +26,11 @@ closures, 2 inactive outstanding).
   the instantiated scopedness premise from de Bruijn shift/instantiate
   scopedness and the twenty-one-head prevalidity transport. Added the
   endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-one-head variable
+  equivalence leaf `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsStack.var`,
+  routing the de Bruijn variable case through the checked twenty-one-head
+  reflexive leaf. Added the endpoint to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderEightHeads`, routing the
   eight-preserved-head β-instantiation prevalidity surface through the
