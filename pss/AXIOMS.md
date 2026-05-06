@@ -246,6 +246,11 @@ closures, 2 inactive outstanding).
   nineteen-head `Me-TAp` leaf
   `BetaInstantiationPreservesMEqRedUnderNineteenHeadsStack.tAp` and `Me-Pro`
   leaf `BetaInstantiationPreservesMEqRedUnderNineteenHeadsStack.pro`.
+  Added the base twenty-head stack surface
+  `BetaInstantiationPreservesMEqRedUnderTwentyHeadsStack` and generic
+  list-specialization wrapper
+  `BetaInstantiationPreservesMEqRedUnderTwentyHeadsStack.of_generic`, setting
+  up the recursive body target for the nineteen-head binder payloads.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
