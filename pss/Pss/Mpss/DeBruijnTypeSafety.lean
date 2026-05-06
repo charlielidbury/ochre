@@ -26047,6 +26047,32 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppEquCh
     hT₁ hEqHead hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
     hT₂ hEqOp hEqArg
 
+/-- Seven-deeper nested-recursive `Ms-Equ` leaf inside the recursive
+`Ms-App` case. This reuses the six-deeper old-bound equivalence proof
+after absorbing the leading argument into the operator. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₉ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂
+    hT₁ hEq hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hEqHead :
+      MEqRed ({ bound := t, kind := .sub } :: Γ)
+        (arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: [])
+        (.app op arg₉) (.app op' arg₉) :=
+    MEqRed.app hEq (MEqRed.refl hpvBody hArg₉)
+  exact StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppEquChainPayload.proved
+    hUniformDiamond
+    (Γ := Γ) (t := t) (bound₁ := bound₁) (bound₂ := bound₂)
+    (op := .app op arg₉) (op' := .app op' arg₉)
+    (arg₈ := arg₈) (arg₇ := arg₇) (arg₆ := arg₆) (arg₅ := arg₅)
+    (arg₄ := arg₄) (arg₃ := arg₃) (arg₂ := arg₂) (arg := arg)
+    (v := v) (u₂ := u₂) (v₂ := v₂)
+    hT₁ hEqHead hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
+    hT₂ hEqOp hEqArg
+
 /-- Five-deeper nested-recursive `Ms-Top` leaf inside the recursive
 `Ms-App` case. This reuses the four-deeper top-collapse proof after
 absorbing the leading argument into the operator, then prefixes the left
@@ -27501,8 +27527,6 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppProSuccChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppTop :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppTopChainPayload)
-    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEqu :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEquChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppApp :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppFOp :
@@ -27602,7 +27626,8 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                       hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppProHead
                       hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppProSucc
                       hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppTop
-                      hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEqu
+                      (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+                        hUniformDiamond)
                       hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppApp
                       hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppFOp)
                     hFunBodyAppAppSubAppAppAppAppAppAppAppAppFOp)
