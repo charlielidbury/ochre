@@ -2257,6 +2257,17 @@ Bruijn proofs do not yet bridge to LN.
   `commute_abs_fun_fun_app_body_tAp_of` cell. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBodyAppAppSubReplacePayload`,
+  `StrongCommutesFunFunBodyAppAppTransportPayload`,
+  `StrongCommutesFunFunBodyAppAppChainPayload.of_replacements`, and
+  `StrongCommutes_proved_of_split_chain_fun_app_operator_handlers`. This
+  reduces the fun/fun structural app/app body residual to subtype-premise
+  replacement under the joined abstraction bound plus changed-argument
+  subtype-chain transport. Recursive operator commutation comes from the
+  uniform `StrongCommutes` premise, and equivalence-premise replacement is
+  handled internally by the existing operator-join cell. Added the endpoints
+  to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

@@ -21180,6 +21180,39 @@ def StrongCommutesFunFunBodyAppAppChainPayload : Prop :=
     ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- Subtype-premise replacement needed by the structural `Ms-App × Me-App`
+body case of the fun/fun branch after the abstraction bounds have been
+joined. -/
+@[reducible] def StrongCommutesFunFunBodyAppAppSubReplacePayload : Type :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ u u' v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∀ {bound₃ : Term},
+      MEqRedJ Γ [] bound₁ bound₃ →
+      MEqRedJ Γ [] bound₂ bound₃ →
+      MSubRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) u u'
+
+/-- Changed-argument subtype-chain transport needed by the structural
+`Ms-App × Me-App` body case of the fun/fun branch. -/
+def StrongCommutesFunFunBodyAppAppTransportPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ u u' v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∀ {bound₃ : Term},
+      MEqRedJ Γ [] bound₁ bound₃ →
+      MEqRedJ Γ [] bound₂ bound₃ →
+      ∀ {a b : Term},
+        MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) a b →
+        MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: []) a b
+
 /-- Chain-output beta `Ms-App × Me-Bet` body case of the fun/fun branch. -/
 def StrongCommutesFunFunBodyAppBetChainPayload : Prop :=
   ∀ {Γ : Ctx} {t bound₁ bound₂ innerBound v v' inner inner' u' : Term},
@@ -21346,6 +21379,35 @@ noncomputable def StrongCommutesFunFunBodyAppChainPayload.of_app_cases
   | tAp _ _ =>
       exact commute_abs_fun_fun_app_body_tAp_of hpvNil
         (@hUniformDiamond Γ []) hT₁ hOp hv hT₂
+
+/-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
+remaining replacement and changed-argument transport residuals.
+
+The recursive operator commutation is supplied by the uniform
+`StrongCommutes` premise, and the equivalence-side premise replacements are
+handled by the imported dispatcher. -/
+noncomputable def StrongCommutesFunFunBodyAppAppChainPayload.of_replacements
+    (hSubReplace : StrongCommutesFunFunBodyAppAppSubReplacePayload)
+    (hTransport : StrongCommutesFunFunBodyAppAppTransportPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    StrongCommutesFunFunBodyAppAppChainPayload := by
+  intro Γ t bound₁ bound₂ u u' v u₂ v₂ hT₁ hSubOp hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  exact commute_abs_fun_fun_app_body_app_from_operator_join_of hpvNil
+    (@hUniformDiamond Γ []) hT₁ hSubOp hv hT₂ hEqOp hEqArg
+    (fun {_bound₃} _hBound₁₃ _hBound₂₃ =>
+      @hUniformStrongCommutes ({ bound := _bound₃, kind := .sub } :: Γ)
+        (v :: []))
+    (fun {_bound₃} hBound₁₃ hBound₂₃ =>
+      hSubReplace hT₁ hSubOp hv hT₂ hEqOp hEqArg hBound₁₃ hBound₂₃)
+    (fun {_bound₃} _hBound₁₃ hBound₂₃ =>
+      hEqOp.sub_head_replace_two_step hT₂ hBound₂₃.some)
+    (fun {_bound₃} _hBound₁₃ hBound₂₃ =>
+      hEqArg.sub_head_replace_two_step hT₂ hBound₂₃.some)
+    (fun {_bound₃} hBound₁₃ hBound₂₃ =>
+      hTransport hT₁ hSubOp hv hT₂ hEqOp hEqArg hBound₁₃ hBound₂₃)
 
 /-- Top-level chain-output Lemma 1 closure using branch-local handlers for
 the two known false broad residuals.
@@ -21551,6 +21613,37 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_cases_handlers
     (StrongCommutesFunFunBodyAppChainPayload.of_app_cases
       hFunBodyAppApp hFunBodyAppBet hUniformDiamond)
     hFunBodyFun hUniformDiamond hUniformStrongCommutes
+
+/-- Top-level chain-output Lemma 1 closure with the fun/fun structural
+app/app body case reduced to its remaining replacement and changed-argument
+transport residuals. Recursive operator commutation and equivalence-premise
+replacement are supplied internally. -/
+theorem StrongCommutes_proved_of_split_chain_fun_app_operator_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hAppBetBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hAppBetBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hFunBodyAppAppSubReplace :
+      StrongCommutesFunFunBodyAppAppSubReplacePayload)
+    (hFunBodyAppAppTransport :
+      StrongCommutesFunFunBodyAppAppTransportPayload)
+    (hFunBodyAppBet : StrongCommutesFunFunBodyAppBetChainPayload)
+    (hFunBodyFun : StrongCommutesFunFunBodyFunChainPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s :=
+  StrongCommutes_proved_of_split_chain_fun_app_cases_handlers
+    hArgTransport hOpTransport hMSubOpTransport hSubBridge
+    hAppBetBodyPro hAppBetBodyApp hAppBetBodyFun hAppBetBodyFOp
+    (StrongCommutesFunFunBodyAppAppChainPayload.of_replacements
+      hFunBodyAppAppSubReplace hFunBodyAppAppTransport
+      hUniformDiamond hUniformStrongCommutes)
+    hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
 
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
 Lemma 1, conditional on the residual hypotheses listed above.
