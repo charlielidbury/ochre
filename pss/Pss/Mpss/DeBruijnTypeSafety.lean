@@ -1898,6 +1898,520 @@ noncomputable def MEqRedRespectsBetaInstantiateStack_proved :
   MEqRedRespectsBetaInstantiateStack.of_generic
     (MEqRedRespectsBetaInstantiateUnderHeadsStack_universal 0)
 
+/-! ## Fused kind-narrowing β-substitution
+
+The `bet × bet` diamond cell would ideally consume a **fully asymmetric**
+β-substitution surface where the LHS body is instantiated by the original
+argument `arg` and the RHS body by its post-step `arg'`. That fully
+asymmetric shape is, however, **structurally impossible to prove as a
+single `MEqRed` step**: the `Me-FOp` constructor's stack-head and body-
+context binder are syntactically the same `α`, and the asymmetric LHS/
+RHS substitution would require them to be `α[arg/n]` versus `α[arg'/n]`
+respectively whenever `α` references the discharged binder. Both `Me-Pro`
+discharge (post-context lookups must agree with the body recursive
+premise's LHS endpoint) and `Me-FOp` constructor consistency (the body
+binder must match the stack head) impose conflicting constraints on
+which substitution argument the post-substitution context uses.
+
+The closest provable surface that **enables the `bet × bet` cell** is the
+**fused kind-narrowing β-substitution**: a body derivation in `.sub`-head
+context with bound `arg` is converted to substitution by `arg'` (the
+post-step argument), with both LHS and RHS uniformly substituted by
+`arg'`. This is structurally identical to the symmetric form except that
+the dropped `.sub` head's bound (`arg`) and the substitution argument
+(`arg'`) are **decoupled**: the proof goes through unchanged with `arg'`
+playing the role of the substitution argument throughout, with `arg`
+appearing only as the source context's discharged head bound. The
+"fusion" is with `MEqRed.sub_to_equ_head_replace` (commit `8e72b12`,
+`Pss/Mpss/DeBruijnReductions.lean:1953`), which would convert the
+`.sub`-bound source body to an `.equ`-bound body before substitution;
+the present surface skips that explicit conversion and substitutes
+directly by `arg'`, achieving the same downstream effect.
+
+For the `bet × bet` consumer, this surface combines with the body
+diamond closure and `v`'s diamond closure to produce a chain
+`MEqRedStar` from `instantiate 0 v₁' body₁'` to a common reduct
+`instantiate 0 v₃ body₃`. A single-`MEqRed`-step bridge for that chain
+is foreclosed by the structural conflicts described above; the diamond
+cell composes along the chain. -/
+
+/-- Universal fused kind-narrowing β-substitution under any number of
+preserved context heads, indexed by the number of preserved heads. The
+dropped `.sub` head's bound is `arg`; the substitution argument is
+`arg'`. Both must be scoped at `Γ.depth`. The proof structure mirrors the
+symmetric case, with `arg'` substituting throughout the post-context,
+post-stack, and post-body. -/
+def MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {arg arg' lhs rhs : Term} {heads : Ctx} {s : Stack},
+    heads.length = n →
+      Term.Scoped Γ.depth arg →
+        Term.Scoped Γ.depth arg' →
+          MEqRed (heads ++ { bound := arg, kind := .sub } :: Γ) s lhs rhs →
+            MEqRed (Ctx.instantiateBetaPrefix arg' n heads ++ Γ)
+              (Stack.instantiate n (Term.shiftBy 0 n arg') s)
+              (Term.instantiate n (Term.shiftBy 0 n arg') lhs)
+              (Term.instantiate n (Term.shiftBy 0 n arg') rhs)
+
+/-- Closed-stack fused kind-narrowing β-substitution: at empty preserved-
+prefix the universal lemma collapses to the natural surface used by the
+`bet × bet` diamond's chain closure. -/
+def MEqRedFusedKindNarrowedBetaSubstStack : Type :=
+  ∀ {Γ : Ctx} {arg arg' lhs rhs : Term} {s : Stack},
+    Term.Scoped Γ.depth arg →
+      Term.Scoped Γ.depth arg' →
+        MEqRed ({ bound := arg, kind := .sub } :: Γ) s lhs rhs →
+          MEqRed Γ (Stack.instantiate 0 arg' s)
+            (Term.instantiate 0 arg' lhs)
+            (Term.instantiate 0 arg' rhs)
+
+/-- Asymmetric prevalidity helper: prevalidity of the post-substitution
+context (using `arg'`) with post-stack (using `arg'`) when the source has
+`{arg, .sub}` head. Both `arg` and `arg'` need only be scoped at `Γ.depth`. -/
+noncomputable def BetaInstantiationPreservesPrevalidPrefixKindNarrowed
+    {Γ : Ctx} {arg arg' : Term} (heads : Ctx)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hpv : Prevalid (heads ++ { bound := arg, kind := .sub } :: Γ)) :
+    Prevalid (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ) := by
+  induction heads with
+  | nil =>
+      simpa [Ctx.instantiateBetaPrefix] using Prevalid.tail hpv
+  | cons head heads ih =>
+      have hpvTail :
+          Prevalid (heads ++ { bound := arg, kind := .sub } :: Γ) :=
+        Prevalid.tail hpv
+      have hTail := ih hpvTail
+      have hArg'ShiftScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.shiftBy 0 heads.length arg') := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 heads.length Γ.depth arg'
+            (Nat.zero_le Γ.depth) hArg'Scoped
+      have hHeadScoped :
+          Term.Scoped (Γ.depth + heads.length + 1) head.bound := by
+        simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+          Nat.add_assoc] using prevalid_head_scoped hpv
+      have hHeadInstScoped :
+          Term.Scoped
+            (Ctx.depth (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') head.bound) := by
+        have hInst := Term.instantiate_scoped heads.length
+          (Γ.depth + heads.length) (Term.shiftBy 0 heads.length arg')
+          head.bound (by omega) hArg'ShiftScoped hHeadScoped
+        simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+          Nat.add_assoc] using hInst
+      cases head with
+      | mk headBound kind =>
+          cases kind with
+          | sub =>
+              exact Prevalid.sub hTail hHeadInstScoped
+          | equ =>
+              exact Prevalid.equ hTail hHeadInstScoped
+
+/-- Asymmetric `PrevalidExt` helper: the post-substitution context uses
+`arg'` (the substitution argument) and the post-stack uses `arg'`. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtUnderHeadsKindNarrowed
+    {Γ : Ctx} {arg arg' : Term} {heads : Ctx} {s : Stack} {n : Nat}
+    (hlen : heads.length = n)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hpv : PrevalidExt (heads ++ { bound := arg, kind := .sub } :: Γ) s) :
+    PrevalidExt (Ctx.instantiateBetaPrefix arg' n heads ++ Γ)
+      (Stack.instantiate n (Term.shiftBy 0 n arg') s) := by
+  subst hlen
+  have hctx :=
+    BetaInstantiationPreservesPrevalidPrefixKindNarrowed heads hArg'Scoped
+      (PrevalidExt.ctx hpv)
+  have hArg'ShiftScoped :
+      Term.Scoped (Γ.depth + heads.length)
+        (Term.shiftBy 0 heads.length arg') := by
+    simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+      Term.shiftBy_scoped 0 heads.length Γ.depth arg'
+        (Nat.zero_le Γ.depth) hArg'Scoped
+  have hsSource :
+      Stack.Scoped (Γ.depth + heads.length + 1) s := by
+    simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+      Nat.add_assoc] using PrevalidExt.stack_scoped hpv
+  have hsTarget :
+      Stack.Scoped
+        (Ctx.depth (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+        (Stack.instantiate heads.length
+          (Term.shiftBy 0 heads.length arg') s) := by
+    have hStack := Stack.Scoped.instantiate
+      (depth := Γ.depth + heads.length)
+      (k := heads.length)
+      (v := Term.shiftBy 0 heads.length arg')
+      (s := s) (by omega) hArg'ShiftScoped hsSource
+    simpa [Ctx.depth, List.length_append, Nat.add_comm, Nat.add_left_comm,
+      Nat.add_assoc] using hStack
+  exact PrevalidExt.of_stack_scoped hctx hsTarget
+
+/-- Generic `MEqRed.pro` transport for fused kind-narrowing β-substitution
+below an arbitrary preserved-head prefix. The post-context uses the
+substitution argument `arg'`, so `equBinds` lookups return targets
+substituted by `arg'`, matching the body recursive premise's LHS
+endpoint. -/
+noncomputable def MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack.pro
+    {Γ : Ctx} {arg arg' α α' : Term} {heads : Ctx} {s : Stack} {i : Nat}
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hpv : PrevalidExt (heads ++ { bound := arg, kind := .sub } :: Γ) s)
+    (hb : Ctx.equBinds (heads ++ { bound := arg, kind := .sub } :: Γ) i α)
+    (hα :
+      MEqRed (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ)
+        (Stack.instantiate heads.length (Term.shiftBy 0 heads.length arg') s)
+        (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg') α)
+        (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg') α')) :
+    MEqRed (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ)
+      (Stack.instantiate heads.length (Term.shiftBy 0 heads.length arg') s)
+      (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg')
+        (.bvar i))
+      (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg')
+        α') := by
+  have hpvTarget :=
+    BetaInstantiationPreservesPrevalidExtUnderHeadsKindNarrowed
+      (n := heads.length) rfl hArg'Scoped hpv
+  rcases Ctx.equBinds_instantiateBetaPrefix
+      (Γ := Γ) (bound := arg) (arg := arg') (heads := heads) hb with
+    ⟨j, hvar, hbind⟩
+  rw [hvar]
+  exact MEqRed.pro hpvTarget hbind hα
+
+/-- The zero-prefix specialization of the universal fused kind-narrowing
+β-substitution theorem matches the closed-stack surface. -/
+def MEqRedFusedKindNarrowedBetaSubstStack.of_generic
+    (h : MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack 0) :
+    MEqRedFusedKindNarrowedBetaSubstStack := by
+  intro Γ arg arg' lhs rhs s hArgScoped hArg'Scoped hRed
+  have h' := h (heads := []) rfl hArgScoped hArg'Scoped hRed
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+
+/-- **Universal fused kind-narrowing β-substitution respect** under any
+number of preserved context heads.
+
+Mirrors `MEqRedRespectsBetaInstantiateUnderHeadsStack_universal` but with
+the substitution argument `arg'` decoupled from the discharged `.sub`
+head's bound `arg`. The proof is structurally identical, with `arg'`
+replacing `arg` everywhere except in the source context shape. -/
+noncomputable def MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack_universal :
+    ∀ n, MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack n := by
+  intro n Γ arg arg' lhs rhs heads s hlen hArgScoped hArg'Scoped hRed
+  subst hlen
+  generalize hC : (heads ++ ({ bound := arg, kind := .sub } :: Γ : Ctx)) =
+    C at hRed
+  induction hRed generalizing heads with
+  | pro hpv hb hα ih =>
+      subst hC
+      exact MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack.pro
+        (Γ := Γ) (arg := arg) (arg' := arg') (heads := heads)
+        hArg'Scoped hpv hb (ih (heads := heads) rfl)
+  | top hpv =>
+      subst hC
+      have hpvTarget :=
+        BetaInstantiationPreservesPrevalidExtUnderHeadsKindNarrowed
+          (n := heads.length) rfl hArg'Scoped hpv
+      simpa [Term.instantiate] using MEqRed.top hpvTarget
+  | @app Γ' s' u u' v v' hOp hArg ihOp ihArg =>
+      subst hC
+      have hOp' := ihOp (heads := heads) rfl
+      have hArgRec := ihArg (heads := heads) rfl
+      simpa [Term.instantiate, Stack.instantiate] using
+        MEqRed.app hOp' (by simpa [Stack.instantiate] using hArgRec)
+  | @var Γ' s' i hpv hi =>
+      subst hC
+      have hpvTarget :=
+        BetaInstantiationPreservesPrevalidExtUnderHeadsKindNarrowed
+          (n := heads.length) rfl hArg'Scoped hpv
+      have hArg'ShiftScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.shiftBy 0 heads.length arg') := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 heads.length Γ.depth arg'
+            (Nat.zero_le Γ.depth) hArg'Scoped
+      have hi_lt : i < Γ.depth + heads.length + 1 := by
+        have hheads_depth :
+            Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ) =
+              heads.length + 1 + Γ.depth := by
+          simp [Ctx.depth, List.length_append, Nat.add_comm,
+            Nat.add_left_comm, Nat.add_assoc]
+        rw [hheads_depth] at hi
+        omega
+      have hbvar_scoped :
+          Term.Scoped (Γ.depth + heads.length + 1) (.bvar i) :=
+        Term.Scoped.bvar hi_lt
+      have hScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') (.bvar i)) :=
+        Term.instantiate_scoped heads.length (Γ.depth + heads.length)
+          (Term.shiftBy 0 heads.length arg') (.bvar i) (by omega)
+          hArg'ShiftScoped hbvar_scoped
+      have hScoped' :
+          Term.Scoped
+            (Ctx.depth
+              (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') (.bvar i)) := by
+        simpa [Ctx.depth, List.length_append,
+          Ctx.length_instantiateBetaPrefix,
+          Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using hScoped
+      exact MEqRed.refl hpvTarget hScoped'
+  | @tAp Γ' s' u hpv hu =>
+      subst hC
+      have hpvTarget :=
+        BetaInstantiationPreservesPrevalidExtUnderHeadsKindNarrowed
+          (n := heads.length) rfl hArg'Scoped hpv
+      have hArg'ShiftScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.shiftBy 0 heads.length arg') := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 heads.length Γ.depth arg'
+            (Nat.zero_le Γ.depth) hArg'Scoped
+      have hu' : Term.Scoped (Γ.depth + heads.length + 1) u := by
+        have hheads_depth :
+            Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ) =
+              heads.length + 1 + Γ.depth := by
+          simp [Ctx.depth, List.length_append, Nat.add_comm,
+            Nat.add_left_comm, Nat.add_assoc]
+        rw [hheads_depth] at hu
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using hu
+      have huInstScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') u) :=
+        Term.instantiate_scoped heads.length (Γ.depth + heads.length)
+          (Term.shiftBy 0 heads.length arg') u (by omega)
+          hArg'ShiftScoped hu'
+      have huInstScoped' :
+          Term.Scoped
+            (Ctx.depth
+              (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') u) := by
+        simpa [Ctx.depth, List.length_append,
+          Ctx.length_instantiateBetaPrefix,
+          Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using huInstScoped
+      simpa [Term.instantiate] using MEqRed.tAp hpvTarget huInstScoped'
+  | @bet Γ' s' t v v' body body' ht hbody harg ihBody ihArg =>
+      subst hC
+      have hBody' :=
+        ihBody (heads := { bound := t, kind := .sub } :: heads)
+          (by simp [List.cons_append])
+      have hArgRec := ihArg (heads := heads) rfl
+      have hshift_succ' :
+          Term.shiftBy 0 (heads.length + 1) arg' =
+            Term.shift 0 (Term.shiftBy 0 heads.length arg') := by
+        have h := Term.shiftBy_compose 0 heads.length 1 arg'
+        simpa [Term.shift] using h.symm
+      have hStack_succ' :
+          Stack.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') (Stack.shift 0 s') =
+            Stack.shift 0 (Stack.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') s') := by
+        rw [hshift_succ']
+        exact Stack.instantiate_succ_shift_zero heads.length
+          (Term.shiftBy 0 heads.length arg') s'
+      have hCtx_succ :
+          Ctx.instantiateBetaPrefix arg' (heads.length + 1)
+              ({ bound := t, kind := .sub } :: heads) =
+            { bound := Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg') t,
+                kind := .sub } ::
+              Ctx.instantiateBetaPrefix arg' heads.length heads := by
+        simp [Ctx.instantiateBetaPrefix]
+      have hArg'ShiftScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.shiftBy 0 heads.length arg') := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 heads.length Γ.depth arg'
+            (Nat.zero_le Γ.depth) hArg'Scoped
+      have htOriginal : Term.Scoped (Γ.depth + heads.length + 1) t := by
+        have hheads_depth :
+            Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ) =
+              heads.length + 1 + Γ.depth := by
+          simp [Ctx.depth, List.length_append, Nat.add_comm,
+            Nat.add_left_comm, Nat.add_assoc]
+        rw [hheads_depth] at ht
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using ht
+      have htInstScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') t) :=
+        Term.instantiate_scoped heads.length (Γ.depth + heads.length)
+          (Term.shiftBy 0 heads.length arg') t (by omega)
+          hArg'ShiftScoped htOriginal
+      have htInstScoped' :
+          Term.Scoped
+            (Ctx.depth
+              (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') t) := by
+        simpa [Ctx.depth, List.length_append,
+          Ctx.length_instantiateBetaPrefix,
+          Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using htInstScoped
+      have hBodyReady :
+          MEqRed
+            ({ bound := Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg') t,
+                kind := .sub } ::
+              (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            (Stack.shift 0 (Stack.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') s'))
+            (Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') body)
+            (Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') body') := by
+        simp only [List.length_cons] at hBody'
+        rw [hCtx_succ] at hBody'
+        rw [hStack_succ'] at hBody'
+        simpa using hBody'
+      have hBet :=
+        MEqRed.bet
+          (Γ := Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ)
+          (s := Stack.instantiate heads.length
+            (Term.shiftBy 0 heads.length arg') s')
+          (t := Term.instantiate heads.length
+            (Term.shiftBy 0 heads.length arg') t)
+          (v := Term.instantiate heads.length
+            (Term.shiftBy 0 heads.length arg') v)
+          (v' := Term.instantiate heads.length
+            (Term.shiftBy 0 heads.length arg') v')
+          (body := Term.instantiate (heads.length + 1)
+            (Term.shiftBy 0 (heads.length + 1) arg') body)
+          (body' := Term.instantiate (heads.length + 1)
+            (Term.shiftBy 0 (heads.length + 1) arg') body')
+          htInstScoped' hBodyReady hArgRec
+      have hTarget :
+          Term.instantiate 0
+              (Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg') v')
+              (Term.instantiate (heads.length + 1)
+                (Term.shiftBy 0 (heads.length + 1) arg') body') =
+            Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg')
+              (Term.instantiate 0 v' body') := by
+        rw [hshift_succ']
+        exact Term.instantiate_zero_after_many heads.length
+          (Term.shiftBy 0 heads.length arg') v' body'
+      simpa [Term.instantiate, hTarget, ← hshift_succ'] using hBet
+  | @fun_ Γ' t t' body body' hT hBody ihT ihBody =>
+      subst hC
+      have hT' := ihT (heads := heads) rfl
+      have hBody' :=
+        ihBody (heads := { bound := t, kind := .sub } :: heads)
+          (by simp [List.cons_append])
+      have hCtx_succ :
+          Ctx.instantiateBetaPrefix arg' (heads.length + 1)
+              ({ bound := t, kind := .sub } :: heads) =
+            { bound := Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg') t,
+                kind := .sub } ::
+              Ctx.instantiateBetaPrefix arg' heads.length heads := by
+        simp [Ctx.instantiateBetaPrefix]
+      have hshift_succ' :
+          Term.shiftBy 0 (heads.length + 1) arg' =
+            Term.shift 0 (Term.shiftBy 0 heads.length arg') := by
+        have h := Term.shiftBy_compose 0 heads.length 1 arg'
+        simpa [Term.shift] using h.symm
+      have hBodyReady :
+          MEqRed
+            ({ bound := Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg') t,
+                kind := .sub } ::
+              (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            []
+            (Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') body)
+            (Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') body') := by
+        simp only [List.length_cons] at hBody'
+        rw [hCtx_succ] at hBody'
+        simpa using hBody'
+      have hFun := MEqRed.fun_ hT' hBodyReady
+      simpa [Term.instantiate, hshift_succ'] using hFun
+  | @fOp Γ' s' t t' α body body' hT hα hBody ihT ihBody =>
+      subst hC
+      have hT' := ihT (heads := heads) rfl
+      have hBody' :=
+        ihBody (heads := { bound := α, kind := .equ } :: heads)
+          (by simp [List.cons_append])
+      have hshift_succ' :
+          Term.shiftBy 0 (heads.length + 1) arg' =
+            Term.shift 0 (Term.shiftBy 0 heads.length arg') := by
+        have h := Term.shiftBy_compose 0 heads.length 1 arg'
+        simpa [Term.shift] using h.symm
+      have hStack_succ' :
+          Stack.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') (Stack.shift 0 s') =
+            Stack.shift 0 (Stack.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') s') := by
+        rw [hshift_succ']
+        exact Stack.instantiate_succ_shift_zero heads.length
+          (Term.shiftBy 0 heads.length arg') s'
+      have hCtx_succ :
+          Ctx.instantiateBetaPrefix arg' (heads.length + 1)
+              ({ bound := α, kind := .equ } :: heads) =
+            { bound := Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg') α,
+                kind := .equ } ::
+              Ctx.instantiateBetaPrefix arg' heads.length heads := by
+        simp [Ctx.instantiateBetaPrefix]
+      have hArg'ShiftScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.shiftBy 0 heads.length arg') := by
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using
+          Term.shiftBy_scoped 0 heads.length Γ.depth arg'
+            (Nat.zero_le Γ.depth) hArg'Scoped
+      have hαOriginal : Term.Scoped (Γ.depth + heads.length + 1) α := by
+        have hheads_depth :
+            Ctx.depth (heads ++ { bound := arg, kind := .sub } :: Γ) =
+              heads.length + 1 + Γ.depth := by
+          simp [Ctx.depth, List.length_append, Nat.add_comm,
+            Nat.add_left_comm, Nat.add_assoc]
+        rw [hheads_depth] at hα
+        simpa [Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using hα
+      have hαInstScoped :
+          Term.Scoped (Γ.depth + heads.length)
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') α) :=
+        Term.instantiate_scoped heads.length (Γ.depth + heads.length)
+          (Term.shiftBy 0 heads.length arg') α (by omega)
+          hArg'ShiftScoped hαOriginal
+      have hαInstScoped' :
+          Term.Scoped
+            (Ctx.depth
+              (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            (Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') α) := by
+        simpa [Ctx.depth, List.length_append,
+          Ctx.length_instantiateBetaPrefix,
+          Nat.add_comm, Nat.add_left_comm, Nat.add_assoc] using hαInstScoped
+      have hBodyReady :
+          MEqRed
+            ({ bound := Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg') α,
+                kind := .equ } ::
+              (Ctx.instantiateBetaPrefix arg' heads.length heads ++ Γ))
+            (Stack.shift 0 (Stack.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg') s'))
+            (Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') body)
+            (Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg') body') := by
+        simp only [List.length_cons] at hBody'
+        rw [hCtx_succ] at hBody'
+        rw [hStack_succ'] at hBody'
+        simpa using hBody'
+      have hFOp := MEqRed.fOp hT' hαInstScoped' hBodyReady
+      simpa [Term.instantiate, Stack.instantiate, hshift_succ'] using hFOp
+
+/-- Closed fused kind-narrowing β-substitution respect for de Bruijn
+`MEqRed`, proved unconditionally via the universal `∀n` theorem. The
+discharged `.sub` head's bound `arg` and the substitution argument
+`arg'` are decoupled — both must be scoped at `Γ.depth`. -/
+noncomputable def MEqRedFusedKindNarrowedBetaSubstStack_proved :
+    MEqRedFusedKindNarrowedBetaSubstStack :=
+  MEqRedFusedKindNarrowedBetaSubstStack.of_generic
+    (MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack_universal 0)
+
 /-- Prevalidity transport for β-instantiation under one preserved context
 head. The preserved head's bound is instantiated while the discharged `.sub`
 tail is removed. -/

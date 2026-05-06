@@ -760,5 +760,15 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_immediate_sub_replace_and_under
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_under_wfctx_of_comm_body_transports_no_empty_factored_machine_operator_and_immediate_sub_replace_and_under
 
+-- Audit: fused kind-narrowing β-substitution. The `bet × bet` diamond
+-- cell consumes this surface (composed with body and argument diamond
+-- closures) to bridge β-fires that disagree on the post-step argument.
+-- The fully asymmetric LHS/RHS form is structurally infeasible as a
+-- single `MEqRed` step (see the file docstring for the `Me-FOp`/`Me-Pro`
+-- conflict analysis); this kind-narrowed surface delivers the closest
+-- provable single-step bridge.
+#print axioms MEqRedFusedKindNarrowedBetaSubstStack_proved
+#print axioms MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack_universal
+
 end DeBruijn
 end Pss
