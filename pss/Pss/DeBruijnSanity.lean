@@ -911,6 +911,7 @@ namespace DeBruijn
 #print axioms MSubRedOpStackHeadTransportPayload
 #print axioms MSubBridgePayload
 #print axioms MSubBodyNarrowPayload
+#print axioms MSubBodyNarrowPayload_not
 #print axioms StrongCommutes_proved
 
 end DeBruijn

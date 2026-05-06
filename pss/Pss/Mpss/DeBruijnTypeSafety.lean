@@ -20269,6 +20269,62 @@ wrapper); the reducible attribute lets the closure apply it directly. -/
     MSubRed ({bound := t, kind := .sub} :: Γ) [] u v →
     MSubRedJ ({bound := t', kind := .sub} :: Γ) [] u v
 
+/-- The unrestricted single-step `MSubBodyNarrowPayload` is too strong.
+
+The changed-head `Ms-Pro` case exposes the problem directly: under
+`{ bound := .app .top .top, kind := .sub }`, `bvar 0` promotes to
+`.app .top .top`; after narrowing the head along
+`.app .top .top → .top`, `bvar 0` promotes to `.top`, not to the old
+target. Any eventual replacement for this payload must either return a
+chain to a transported target or exclude the changed head lookup case. -/
+theorem MSubBodyNarrowPayload_not :
+    MSubBodyNarrowPayload → False := by
+  intro hNarrow
+  let old : Term := .app .top .top
+  let new : Term := .top
+  have hpvNil : PrevalidExt ([] : Ctx) [] :=
+    PrevalidExt.nil Prevalid.empty
+  have hOldNew : MEqRed ([] : Ctx) [] old new := by
+    exact MEqRed.tAp hpvNil Term.Scoped.top
+  have hpvOld : Prevalid ({ bound := old, kind := .sub } :: ([] : Ctx)) :=
+    Prevalid.sub Prevalid.empty (Term.Scoped.app Term.Scoped.top Term.Scoped.top)
+  have hpvOldNil :
+      PrevalidExt ({ bound := old, kind := .sub } :: ([] : Ctx)) [] :=
+    PrevalidExt.nil hpvOld
+  have hOldSub :
+      MSubRed ({ bound := old, kind := .sub } :: ([] : Ctx)) []
+        (.bvar 0) old := by
+    simpa [old] using
+      (MSubRed.pro hpvOldNil
+        (Ctx.subBinds_zero_self ([] : Ctx) old))
+  have hNewJ :
+      MSubRedJ ({ bound := new, kind := .sub } :: ([] : Ctx)) []
+        (.bvar 0) old :=
+    hNarrow hOldNew hOldSub
+  have hNew := hNewJ.some
+  cases MSubRed.bvar_inv_detail hNew with
+  | inl hPro =>
+      rcases hPro with ⟨target, hBind, hTarget⟩
+      subst hTarget
+      simp [Ctx.subBinds, Ctx.lookupSub, old, new] at hBind
+  | inr hRest =>
+      cases hRest with
+      | inl hTop =>
+          rcases hTop with ⟨_, _, hTopTarget⟩
+          have hNoConf := hTopTarget
+          simp [old] at hNoConf
+      | inr hEq =>
+          rcases hEq with ⟨target, hEqJ, hTarget⟩
+          subst hTarget
+          cases MEqRed.bvar_inv_detail hEqJ.some with
+          | inl hVar =>
+              rcases hVar with ⟨_, _, hVarTarget⟩
+              have hNoConf := hVarTarget
+              simp [old] at hNoConf
+          | inr hPro =>
+              rcases hPro with ⟨α, α', hEquBind, _, _⟩
+              simp [Ctx.equBinds, Ctx.lookupEqu, new] at hEquBind
+
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
 Lemma 1, conditional on the residual hypotheses listed above.
 

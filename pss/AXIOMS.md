@@ -2097,6 +2097,14 @@ Bruijn proofs do not yet bridge to LN.
   `MSubBodyNarrowPayload`, and a uniform strong-commutation hypothesis.
   Added all new endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubBodyNarrowPayload_not`, a kernel-checked counterexample showing
+  the current unrestricted same-target `MSubBodyNarrowPayload` signature
+  is inconsistent. The changed-head `Ms-Pro` case promotes `bvar 0` to
+  the old `.sub` annotation, while after narrowing the same lookup
+  promotes to the new annotation. The replacement payload must either
+  transport the target or exclude the changed head lookup case. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
