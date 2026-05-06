@@ -1151,6 +1151,17 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderHeadsStack_universal :
       have hFOp := MEqRed.fOp hT' hαInstScoped' hBodyReady
       simpa [Term.instantiate, Stack.instantiate, hshift_succ] using hFOp
 
+/-- The closed equivalence-reduction substitution payload, proved
+unconditionally via the universal `∀n` β-instantiation theorem.
+
+This wires `BetaInstantiationPreservesMEqRedUnderHeadsStack_universal` into
+the empty-prefix surface used by downstream consumers; `BetaInstantiationPreservesMEqRedStack`
+no longer needs to be assumed. -/
+noncomputable def BetaInstantiationPreservesMEqRedStack_proved :
+    BetaInstantiationPreservesMEqRedStack :=
+  BetaInstantiationPreservesMEqRedStack.of_generic
+    (BetaInstantiationPreservesMEqRedUnderHeadsStack_universal 0)
+
 /-- Prevalidity transport for β-instantiation under one preserved context
 head. The preserved head's bound is instantiated while the discharged `.sub`
 tail is removed. -/
