@@ -17348,6 +17348,40 @@ theorem MEqRedStar.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
   | refl => exact hu
   | tail _ hStep ih => exact hStep.some.preserves_noBinders ih
 
+/-- `Term.NoBinders` is preserved under a single de Bruijn subtype-reduction
+step. This is similar to the equivalence-reduction preservation lemma, except
+`Ms-Top` can target `.top` from any scoped source. -/
+theorem MSubRed.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRed Γ s u v) (hu : Term.NoBinders u) : Term.NoBinders v := by
+  induction h with
+  | pro _ _ =>
+      cases hu
+  | top _ _ =>
+      exact Term.NoBinders.top
+  | equ _ hEq =>
+      exact hEq.preserves_noBinders hu
+  | @app Γp sp u u' v _ _ ih =>
+      have ⟨hOpNoBinders, hArgNoBinders⟩ := hu.app_inv
+      exact Term.NoBinders.app (ih hOpNoBinders) hArgNoBinders
+  | fun_ _ _ _ _ =>
+      cases hu
+  | fOp _ _ _ _ =>
+      cases hu
+
+/-- `Term.NoBinders` preservation lifted to the Prop-wrapped subtype
+reduction. -/
+theorem MSubRedJ.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedJ Γ s u v) (hu : Term.NoBinders u) : Term.NoBinders v :=
+  h.some.preserves_noBinders hu
+
+/-- `Term.NoBinders` preservation lifted to subtype-reduction chains. -/
+theorem MSubRedStar.preserves_noBinders {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubRedStar Γ s u v) (hu : Term.NoBinders u) :
+    Term.NoBinders v := by
+  induction h with
+  | refl => exact hu
+  | tail _ hStep ih => exact hStep.some.preserves_noBinders ih
+
 /-- Single-step stack/context retargeting for de Bruijn equivalence
 reduction, restricted to `NoBinders` sources.
 

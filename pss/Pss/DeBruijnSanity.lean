@@ -811,6 +811,9 @@ namespace DeBruijn
 #print axioms MEqRed.preserves_noBinders
 #print axioms MEqRedJ.preserves_noBinders
 #print axioms MEqRedStar.preserves_noBinders
+#print axioms MSubRed.preserves_noBinders
+#print axioms MSubRedJ.preserves_noBinders
+#print axioms MSubRedStar.preserves_noBinders
 #print axioms MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty
 #print axioms MEqRedStar.lift_to_any_context_stack_of_NoBinders
 #print axioms MEqRedSubBridgePayloadNoBinders_proved

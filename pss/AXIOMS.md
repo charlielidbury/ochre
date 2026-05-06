@@ -2045,6 +2045,11 @@ Bruijn proofs do not yet bridge to LN.
   them to `MEqRed`; `Ms-Top` remains a subtype-only constructor even for
   binder-free sources. Added the endpoints to `Pss/DeBruijnSanity.lean`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubRed.preserves_noBinders`, `MSubRedJ.preserves_noBinders`, and
+  `MSubRedStar.preserves_noBinders`, giving the subtype-reduction side the
+  same binder-free shape tracking already available for `MEqRed`. Added
+  the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
