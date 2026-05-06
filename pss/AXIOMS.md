@@ -8,6 +8,49 @@ the axioms below.
 **Total axiom count: 12** (1 permanent, 9 active outstanding in headline
 closures, 2 inactive outstanding).
 
+**Session 2026-05-06 (iter pss-20260506-130802) — DE BRUIJN PIVOT WALLS:**
+
+The de Bruijn refactor's stack-extension wall has been characterized
+across three load-bearing positions. None reduce alpha-equivariance
+(which IS dissolved by de Bruijn); all stem from `MEqRed.fun_` /
+`MSubRed.fun_` requiring empty stack:
+
+1. **Asymmetric β-substitution (Lemma 32 analog)** at `Me-Var i = 0`
+   case: lifting `MEqRed Γ [] arg arg'` to `MEqRed Γ s arg arg'`.
+   Walls when `arg` is an abstraction (`fun_`-rooted derivation
+   doesn't lift). Discharge: stack-extension witness premise OR
+   parallel reduction.
+
+2. **Stack-head replacement** for `MEqRed.app` in the EqDiamonds
+   case grid (`app × app`, `bet × bet`, `bet × app`, `app × bet`).
+   The `fOp` arm reduces to a confluence-shaped recursion on
+   `.equ`-bound replacement (changing the `.equ` bound rewrites
+   `Me-Pro` lookup targets). Recommended path: D3 — restructure
+   `EqDiamonds_core` with outer term-size IH (matching LN
+   `_inline_app`'s `ihu`/`ihv` shape, which de Bruijn enables since
+   body sub-derivations are single proof trees, no CAPSU).
+
+3. **`MSubStarStackAppendPayload`** for the MSubRed star β-substitution
+   companion's `Ms-Pro` head case at `i = heads.length`:
+   **genuinely false** in general. Counterexample: `bound = .abs .top
+   .top`, `operand = .top`, `body = .bvar 0` — source `MSubRed` via
+   `Ms-Pro` exists but target `MEqRed` at `.equ` head is
+   unconstructible (the only available `Me-Pro 0` rule yields
+   `operand`, not `bound`). Discharge requires either (i) refinement
+   type restricting `WSubMStar` chains to avoid `Ms-Pro 0` body
+   steps, (ii) standing axiom, or (iii) consume `WSubMStar` directly
+   (also walls at the same root).
+
+The MEqRed-side kind-narrowing transport (commit `8e72b12`,
+`Pss/Mpss/DeBruijnReductions.lean:1953`) is fully proved and
+axiom-free; only the `MSubRed`-side variant has the counterexample
+above. Path B (kind-narrowing + fused asymmetric β-substitution) is
+the immediate frontier; Path A (change `MEqRed.bet`'s body context
+from `.sub t` to `.equ v`) remains as architectural fallback.
+
+Headline LN axioms unchanged this iteration as expected — the de
+Bruijn proofs do not yet bridge to LN.
+
 **Session 2026-05-05 (db-refactor continuation) — SUMMARY:**
 
 * Per-depth `BetaInstantiationPreservesMEqRedUnderNHeadsStack` ladder (depths 1-37) was the focus of this session. Was halted and replaced with the universal `∀n` form on 2026-05-06; original session log entries describing per-depth leaves are obsolete and were removed in commit `6e10961` (PLAN.md update). See `feedback_no_per_depth_ladders.md` for the strategic-pivot rationale.
