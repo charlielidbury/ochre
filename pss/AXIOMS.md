@@ -2281,6 +2281,16 @@ Bruijn proofs do not yet bridge to LN.
   abstraction bound. Added the endpoints to `Pss/DeBruijnSanity.lean`. No
   axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBodyAppAppSubReplacePayload_not`, a kernel-checked
+  counterexample showing the remaining unrestricted subtype-premise
+  replacement payload is false. The changed-head `Ms-Pro` case is the
+  obstruction: after joining old bound `.app .top .top` to `.top`, the new
+  `.sub` head no longer supports a one-step subtype reduction from
+  `bvar 0` to the old application target. The next app/app split must expose
+  the `Ms-Pro` head case separately rather than trying to prove this broad
+  payload. Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count
+  change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

@@ -935,6 +935,7 @@ namespace DeBruijn
 #print axioms StrongCommutesFunFunBodyAppChainPayload
 #print axioms StrongCommutesFunFunBodyAppAppChainPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubReplacePayload
+#print axioms StrongCommutesFunFunBodyAppAppSubReplacePayload_not
 #print axioms StrongCommutesFunFunBodyAppAppTransportPayload
 #print axioms StrongCommutesFunFunBodyAppBetChainPayload
 #print axioms StrongCommutesFunFunBodyFunChainPayload

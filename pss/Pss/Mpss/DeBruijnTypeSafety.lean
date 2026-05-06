@@ -21212,6 +21212,75 @@ joined. -/
       MEqRedJ Γ [] bound₂ bound₃ →
       MSubRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) u u'
 
+/-- The unrestricted subtype-premise replacement payload for the structural
+fun/fun body `Ms-App × Me-App` case is too strong.
+
+The changed-head `Ms-Pro` case exposes the same obstruction as
+`MSubBodyNarrowPayload_not`: under old bound `.app .top .top`, `bvar 0`
+promotes to the old bound; after joining that bound to `.top`, the new
+context can no longer produce a one-step subtype reduction from `bvar 0` to
+the old application target. -/
+theorem StrongCommutesFunFunBodyAppAppSubReplacePayload_not :
+    StrongCommutesFunFunBodyAppAppSubReplacePayload → False := by
+  intro hReplace
+  let old : Term := .app .top .top
+  let new : Term := .top
+  have hpvNil : PrevalidExt ([] : Ctx) [] :=
+    PrevalidExt.nil Prevalid.empty
+  have hOldOld : MEqRed ([] : Ctx) [] old old :=
+    MEqRed.refl hpvNil (Term.Scoped.app Term.Scoped.top Term.Scoped.top)
+  have hOldNew : MEqRed ([] : Ctx) [] old new :=
+    MEqRed.tAp hpvNil Term.Scoped.top
+  have hNewNew : MEqRed ([] : Ctx) [] new new :=
+    MEqRed.top hpvNil
+  have hpvOld : Prevalid ({ bound := old, kind := .sub } :: ([] : Ctx)) :=
+    Prevalid.sub Prevalid.empty (Term.Scoped.app Term.Scoped.top Term.Scoped.top)
+  have hpvOldStack :
+      PrevalidExt ({ bound := old, kind := .sub } :: ([] : Ctx)) [.top] :=
+    PrevalidExt.cons (PrevalidExt.nil hpvOld) Term.Scoped.top
+  have hSubHead :
+      MSubRed ({ bound := old, kind := .sub } :: ([] : Ctx)) [.top]
+        (.bvar 0) old := by
+    simpa [old] using
+      (MSubRed.pro hpvOldStack
+        (Ctx.subBinds_zero_self ([] : Ctx) old))
+  have hEqHead :
+      MEqRed ({ bound := old, kind := .sub } :: ([] : Ctx)) [.top]
+        (.bvar 0) (.bvar 0) :=
+    MEqRed.var hpvOldStack (by simp [Ctx.depth])
+  have hEqArg :
+      MEqRed ({ bound := old, kind := .sub } :: ([] : Ctx)) [] .top .top :=
+    MEqRed.top (PrevalidExt.nil hpvOld)
+  have hBad :
+      MSubRed ({ bound := new, kind := .sub } :: ([] : Ctx)) [.top]
+        (.bvar 0) old :=
+    hReplace (Γ := ([] : Ctx)) (t := old) (bound₁ := old) (bound₂ := new)
+      (u := .bvar 0) (u' := old) (v := .top) (u₂ := .bvar 0) (v₂ := .top)
+      hOldOld hSubHead Term.Scoped.top hOldNew hEqHead hEqArg
+      (bound₃ := new) ⟨hOldNew⟩ ⟨hNewNew⟩
+  cases MSubRed.bvar_inv_detail hBad with
+  | inl hPro =>
+      rcases hPro with ⟨target, hBind, hTarget⟩
+      subst hTarget
+      simp [Ctx.subBinds, Ctx.lookupSub, old, new] at hBind
+  | inr hRest =>
+      cases hRest with
+      | inl hTop =>
+          rcases hTop with ⟨_, _, hTarget⟩
+          have hNoConf := hTarget
+          simp [old] at hNoConf
+      | inr hEq =>
+          rcases hEq with ⟨target, hEqJ, hTarget⟩
+          subst hTarget
+          cases MEqRed.bvar_inv_detail hEqJ.some with
+          | inl hVar =>
+              rcases hVar with ⟨_, _, hTarget⟩
+              have hNoConf := hTarget
+              simp [old] at hNoConf
+          | inr hPro =>
+              rcases hPro with ⟨α, α', hEquBind, _, _⟩
+              simp [Ctx.equBinds, Ctx.lookupEqu, new] at hEquBind
+
 /-- Changed-argument subtype-chain transport needed by the structural
 `Ms-App × Me-App` body case of the fun/fun branch. -/
 def StrongCommutesFunFunBodyAppAppTransportPayload : Prop :=
