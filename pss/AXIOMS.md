@@ -152,6 +152,10 @@ closures, 2 inactive outstanding).
   leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.top`, reusing
   the thirty-four-head prevalidity transport. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-five-head `MEqRed.top`
+  leaf `BetaInstantiationPreservesMEqRedUnderThirtyFiveHeadsStack.top`, reusing
+  the thirty-five-head prevalidity transport. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-four-head
   `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.app`,
   assembling instantiated function and argument premises with `MEqRed.app`.
