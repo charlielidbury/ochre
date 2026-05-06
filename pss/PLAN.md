@@ -24,12 +24,39 @@
 > 51,125 → 14,812 lines. The diagnosis (binder cases recurse to depth N+1,
 > so per-depth proofs are divergent by construction) and the fix (induct
 > on the derivation with `heads`/`n` generalized in the IH) are documented
-> in feedback_no_per_depth_ladders.md. **The next concrete frontier is
-> the EqDiamonds/StrongCommutes case-grid binder cells** (β cells need
-> a symmetric `MEqRedRespectsBetaInstantiate` lemma; non-β binder cells
-> need only body-diamond IH at extended context). LN-side headline axioms
-> are unchanged because the de Bruijn proofs don't yet bridge to LN; the
-> bridge is post-Phase-5 work per CLAUDE.md "NEXT MAJOR WORK".
+> in feedback_no_per_depth_ladders.md.
+>
+> **Subsequent dispatches in same iter:** Symmetric β-substitution
+> `MEqRedRespectsBetaInstantiateStack_proved` shipped (commit `a5aaf59`,
+> 518 lines). Asymmetric variant walls at `var i = heads.length` because
+> stack-extension is not generally valid for `fun_`-rooted derivations.
+> EqDiamonds and StrongCommutes binder cells `fun_×fun_` and `fOp×fOp`
+> shipped (commits `c4c18ac`, `fe241b0`).
+>
+> **Wall identified 2026-05-06:** Both `EqDiamonds.app_app_of` and the β
+> cells need **stack-head replacement** for `MEqRed`: `MEqRed Γ (old::s) u u'`
+> + `MEqRed Γ [] old new` → `MEqRed Γ (new::s) u u'`. Investigation
+> (agent `a07fa798dfbd8fb0e`) shows this is NOT a free-standing structural
+> theorem in de Bruijn — the `fOp` case (where stack head is consumed into
+> a `.equ` binder) requires diamond-joining `α → α'` against `α → new → new'`,
+> a confluence-shaped recursion. **The wall is structurally distinct from
+> LN's wall** (which was CAPSU/cofinite); de Bruijn's wall is the
+> equ-bound-replacement-confluence. Recommended path forward: D3 from
+> investigation report — restructure `EqDiamonds_core` with a term-size
+> outer induction (matching the LN-era `_inline_app`'s `ihu`/`ihv` pattern,
+> which LN couldn't use because of CAPSU but de Bruijn can since body
+> sub-derivations are single proof trees). Estimate: 700-900 lines,
+> 4-6 dispatches.
+>
+> **Subtlety:** Paper's Lemma 32 uses `.equ` head (`Γ, x ≡ v, Γ'`); MPSS
+> Me-Bet body lives in `.sub` head (`Γ, x ≤ t`). The bet × bet diamond
+> closure has an unaccounted-for sub-to-equ binder kind transition that
+> needs a separate helper. Future work: confirm whether this transition
+> is provable via existing infrastructure or needs new development.
+>
+> LN-side headline axioms are unchanged because the de Bruijn proofs
+> don't yet bridge to LN; the bridge is post-Phase-5 work per CLAUDE.md
+> "NEXT MAJOR WORK".
 
 ### Where we started
 
