@@ -431,6 +431,72 @@ theorem appTop_any_from_right {Γ : Ctx} {s : Stack} {u t₁ t₂ : Term}
   obtain ⟨t₃, hRight, hLeft⟩ := appTop_any_from_left h₂ h₁
   exact ⟨t₃, hLeft, hRight⟩
 
+/-- The `Me-Fun × Me-Fun` source cell of de Bruijn Lemma 2. Both reductions
+descend under an unapplied abstraction; the bound diamond at `Γ; []` and the
+body diamond at the extended subtype context close the bound and body
+respectively. The empty stack is forced by the `MEqRed.fun_` constructor's
+shape. The body derivations need a head replacement from the original
+abstraction bound `t` to each branch bound, since `MEqRed.fun_` requires the
+body's context entry to use the source bound exactly. -/
+theorem fun_fun_of
+    {Γ : Ctx} {t bound₁ bound₂ body body₁ body₂ : Term}
+    (hBoundDiamond : EqDiamonds Γ [])
+    (hBodyDiamond : EqDiamonds ({ bound := t, kind := .sub } :: Γ) [])
+    (hT₁ : MEqRed Γ [] t bound₁)
+    (hBody₁ : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body₁)
+    (hT₂ : MEqRed Γ [] t bound₂)
+    (hBody₂ : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body₂) :
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ body₁) t₃
+        ∧ MEqRedJ Γ [] (.abs bound₂ body₂) t₃ := by
+  obtain ⟨bound₃, hLeftBound, hRightBound⟩ := hBoundDiamond hT₁ hT₂
+  obtain ⟨body₃, hLeftBody, hRightBody⟩ := hBodyDiamond hBody₁ hBody₂
+  refine ⟨.abs bound₃ body₃, ?_, ?_⟩
+  · obtain ⟨hLB⟩ := hLeftBound
+    obtain ⟨hLBdy⟩ := hLeftBody
+    -- `MEqRed.fun_` needs the body context to use the source bound `bound₁`,
+    -- but the diamond gives the body step at the original bound `t`. Replace
+    -- the head along `hT₁ : t → bound₁`.
+    have hLBdy' :
+        MEqRed ({ bound := bound₁, kind := .sub } :: Γ) [] body₁ body₃ :=
+      hLBdy.sub_head_replace hT₁
+    exact ⟨MEqRed.fun_ hLB hLBdy'⟩
+  · obtain ⟨hRB⟩ := hRightBound
+    obtain ⟨hRBdy⟩ := hRightBody
+    have hRBdy' :
+        MEqRed ({ bound := bound₂, kind := .sub } :: Γ) [] body₂ body₃ :=
+      hRBdy.sub_head_replace hT₂
+    exact ⟨MEqRed.fun_ hRB hRBdy'⟩
+
+/-- The `Me-FOp × Me-FOp` source cell of de Bruijn Lemma 2. Both reductions
+pop an operand `α` from the stack into an equivalence binding for the body.
+The bound diamond at `Γ; []` and the body diamond at the extended equivalence
+context (with shifted stack) close the bound and body respectively. -/
+theorem fOp_fOp_of
+    {Γ : Ctx} {s : Stack} {t α bound₁ bound₂ body body₁ body₂ : Term}
+    (hBoundDiamond : EqDiamonds Γ [])
+    (hBodyDiamond :
+        EqDiamonds ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s))
+    (hα : Term.Scoped Γ.depth α)
+    (hT₁ : MEqRed Γ [] t bound₁)
+    (hBody₁ :
+        MEqRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s)
+          body body₁)
+    (hT₂ : MEqRed Γ [] t bound₂)
+    (hBody₂ :
+        MEqRed ({ bound := α, kind := .equ } :: Γ) (Stack.shift 0 s)
+          body body₂) :
+    ∃ t₃, MEqRedJ Γ (α :: s) (.abs bound₁ body₁) t₃
+        ∧ MEqRedJ Γ (α :: s) (.abs bound₂ body₂) t₃ := by
+  obtain ⟨bound₃, hLeftBound, hRightBound⟩ := hBoundDiamond hT₁ hT₂
+  obtain ⟨body₃, hLeftBody, hRightBody⟩ := hBodyDiamond hBody₁ hBody₂
+  refine ⟨.abs bound₃ body₃, ?_, ?_⟩
+  · obtain ⟨hLB⟩ := hLeftBound
+    obtain ⟨hLBdy⟩ := hLeftBody
+    exact ⟨MEqRed.fOp hLB hα hLBdy⟩
+  · obtain ⟨hRB⟩ := hRightBound
+    obtain ⟨hRBdy⟩ := hRightBody
+    exact ⟨MEqRed.fOp hRB hα hRBdy⟩
+
 end EqDiamonds
 
 /-- The `Top` source case for one equivalence step against an equivalence
