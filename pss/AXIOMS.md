@@ -2443,6 +2443,17 @@ Bruijn proofs do not yet bridge to LN.
   nested-recursive `Ms-FOp`, sibling nested `Ms-FOp`, and higher
   changed-head `Ms-Pro` cases. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — discharged the exposed two-deeper
+  recursive `Ms-Top` leaf as
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppTopChainPayload.proved`.
+  The proof extends the shallower `Top` pattern by one application layer:
+  after the fun-bound join it collapses the left nested `Top` spine with
+  repeated `Me-TAp` steps and closes the right side with `Ms-Top`.
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`
+  now supplies this proof directly, so the live two-deeper residuals are
+  changed-head `Ms-Pro`, stable-successor `Ms-Pro`, `Ms-Equ`, recursive
+  `Ms-App`, and `Ms-FOp`. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
