@@ -36,6 +36,11 @@ closures, 2 inactive outstanding).
   routing the instantiated argument scopedness through the checked
   twenty-one-head reflexive leaf. Added the endpoint to
   `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-one-head promoted
+  variable leaf `BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsStack.pro`,
+  specializing the existing generic preserved-head promotion helper to the
+  fixed twenty-one-head surface. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderEightHeads`, routing the
   eight-preserved-head β-instantiation prevalidity surface through the
