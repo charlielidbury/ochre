@@ -880,5 +880,16 @@ namespace DeBruijn
 #print axioms StrongCommutes.equ_bet_chain_of
 #print axioms StrongCommutes.app_bet_chain_of
 
+-- Top-level Lemma 1 chain-output closure.
+-- Conditional on the same residuals as `EqDiamonds_proved` plus three
+-- additional MSub-side residuals (`MSubRedOpStackHeadTransportPayload`,
+-- `MSubBridgePayload`, `MSubBodyNarrowPayload`) and a uniform
+-- `StrongCommutes` hypothesis. Should depend only on `propext`,
+-- `Classical.choice`, `Quot.sound`.
+#print axioms MSubRedOpStackHeadTransportPayload
+#print axioms MSubBridgePayload
+#print axioms MSubBodyNarrowPayload
+#print axioms StrongCommutes_proved
+
 end DeBruijn
 end Pss

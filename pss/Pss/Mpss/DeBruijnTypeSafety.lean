@@ -19287,3 +19287,279 @@ theorem EqDiamonds_proved
         (@hUniformDiamond ({bound := α, kind := .equ} :: Γ)
           (Stack.shift 0 s_inner))
         hα hT₁ hBody₁ hT₂ hBody₂
+
+/-! ## Top-level chain-output Lemma 1 closure assembly
+
+This section assembles the per-cell `StrongCommutes` theorems into a single
+chain-output closure `StrongCommutes_proved`. The closure is structured as
+a case-dispatch tree on the input `MSubRed × MEqRed` pair. Each cell is
+invoked with the appropriate residual hypotheses.
+
+### Residual hypotheses
+
+The closure is **conditional** on:
+
+1. `MEqRedArgTransportPayload` — the argument-position transport lemma
+   used by the `app × bet` and `equ × bet` chain cells.
+2. `MEqRedOpStackHeadTransportPayload` — the equivalence operator stack-
+   head transport, used by the `app × app` chain assembly.
+3. `MSubRedOpStackHeadTransportPayload` — the *subtype* operator stack-
+   head transport: lift `MSubRed Γ (v :: s) u u'` across an argument chain
+   `v →* v'` to `MSubRedStar Γ (v' :: s) u u'`. Needed by `app × app` to
+   step the right-edge subtype operator at the post-arg stack.
+4. `MEqRedSubBridgePayload` — the `.equ → .sub` head bridge for `MEqRed`
+   bodies, used in the cross-β `equ × bet` and `app × bet` cells.
+5. `MSubBridgePayload` — the cross-relation, cross-head bridge: convert
+   an `MSubRed` body step under an `.equ`-head into an `MEqRed` body step
+   under a `.sub`-head with the original abstraction bound. Needed by the
+   `app × bet` cell's `Ms-FOp` branch, where the operator step's body is
+   an `MSubRed` under an `.equ`-binding bound `v`, but the body diamond
+   that closes the cell expects `MEqRed` under a `.sub`-binding bound
+   `t`. Discharging this is part of the open transitivity-elimination
+   problem; it is strictly more demanding than `MEqRedSubBridgePayload`
+   because it must also collapse `MSubRed`'s extra constructors (`Ms-Pro`,
+   `Ms-Top`, `Ms-FOp`) into `MEqRed`.
+6. `MSubBodyNarrowPayload` — the `.sub`-head abstraction-bound narrowing
+   for `MSubRed` bodies. Needed by the `fun_fun_of` cell to migrate the
+   right-edge body subtype step across the abstraction-bound diamond.
+7. `UniformEqDiamonds` — universal single-step `EqDiamonds Γ' s'` at
+   every extended context. Specializes to body/arg/operator diamonds for
+   the per-cell helpers. Mirrors `EqDiamonds_proved`'s residual.
+8. A uniform `StrongCommutes Γ' s'` at every extended context — the
+   `MSubRed × MEqRed` analog of the diamond residual, used to commute
+   body and operator sub-derivations through the recursion. -/
+
+/-- Operator stack-head transport for `MSubRed`: lift a subtype operator-
+step `MSubRed Γ (v :: s) u u'` across an argument chain `v →* v'` to a
+subtype reduction chain `MSubRedStar Γ (v' :: s) u u'`. The de Bruijn
+analog of `MEqRedOpStackHeadTransportPayload`. -/
+def MSubRedOpStackHeadTransportPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {v v' u u' : Term},
+    MEqRedStar Γ [] v v' →
+    MSubRed Γ (v :: s) u u' →
+    MSubRedStar Γ (v' :: s) u u'
+
+/-- Cross-relation, cross-head bridge: convert an `MSubRed` body step
+under an `.equ`-head bound `v` into an `MEqRed` body step under a
+`.sub`-head bound `t`. Required by the `app × bet` cell's `Ms-FOp`
+branch.
+
+Defined in `Type` because both `MSubRed` and `MEqRed` are `Type`-valued;
+reducible so the closure body can apply it as a function directly. -/
+@[reducible] def MSubBridgePayload : Type :=
+  ∀ {Γ : Ctx} {t v body body' : Term} {s : Stack},
+    MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s) body body' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body'
+
+/-- `.sub`-head abstraction-bound narrowing for `MSubRed` bodies: an
+`MSubRed` body step under bound `t` lifts to an `MSubRed` body step under
+the post-bound `t'` whenever `MEqRed Γ [] t t'`. Required by the
+`fun_fun_of` cell's right-edge construction.
+
+Defined as a `Prop` since the conclusion is `MSubRedJ` (a `Nonempty`
+wrapper); the reducible attribute lets the closure apply it directly. -/
+@[reducible] def MSubBodyNarrowPayload : Prop :=
+  ∀ {Γ : Ctx} {t t' u v : Term},
+    MEqRed Γ [] t t' →
+    MSubRed ({bound := t, kind := .sub} :: Γ) [] u v →
+    MSubRedJ ({bound := t', kind := .sub} :: Γ) [] u v
+
+/-- Top-level chain-output strong-commutativity closure for de Bruijn
+Lemma 1, conditional on the residual hypotheses listed above.
+
+The closure is assembled by case-splitting on both input reductions.
+Single-step output cells (`pro_any`, `top_of`, `equ_of`, `bvar_any_of`,
+`fun_fun_of`, `fOp_fOp_of`, `appTop_*`) are wrapped with
+`MEqRedStar.single`/`MSubRedStar.single`; chain-output cells
+(`equ_bet_chain_of`, `app_bet_chain_of`) compose directly. The
+`Ms-App × Me-App` case is closed by recursive descent through
+`hUniformStrongCommutes` on the operator and `hUniformDiamond` on the
+argument, threaded with the `MEqRed`/`MSubRed` op-stack-head transports.
+
+The `Ms-Equ × Me-Bet` case routes through `StrongCommutes.equ_bet_chain_of`,
+which dispatches the wrapped `MEqRed` operator on its constructor
+(`Me-Bet` or `Me-App`) and delegates to the matching `EqDiamonds.*_chain_of`
+cell with `MSubRedStar.of_MEqRedStar` wrapping the right-edge MEqRed
+chain into MSubRed. -/
+theorem StrongCommutes_proved
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hMSubBridge : MSubBridgePayload)
+    (hSubBodyNarrow : MSubBodyNarrowPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s := by
+  intro Γ s t₀ t₁ t₂ hSub hEq
+  -- Adapter to wrap a single-step strong-commutes cell into chain output.
+  have wrapSingle :
+      ∀ {a b : Term},
+        (∃ c, MEqRedJ Γ s a c ∧ MSubRedJ Γ s b c) →
+        ∃ c, MEqRedStar Γ s a c ∧ MSubRedStar Γ s b c := by
+    intro a b ⟨c, hac, hbc⟩
+    exact ⟨c, Relation.ReflTransGen.single hac, Relation.ReflTransGen.single hbc⟩
+  -- Recover prevalidity at the head context.
+  have hpv : PrevalidExt Γ s := hSub.prevalidExt
+  -- Case-split on the MSubRed source constructor.
+  cases hSub with
+  | @pro _ _ i t hpv₀ hsubBind =>
+    -- Source `.bvar i` via `Ms-Pro`. The MEqRed source is `.bvar i`,
+    -- so `hEq` is `Me-Pro` or `Me-Var`. Delegate to `pro_any`.
+    refine wrapSingle ?_
+    exact StrongCommutes.pro_any hpv hsubBind hEq
+  | @top _ _ u hpv₀ hu =>
+    -- Target `.top`. Close at `.top`: refl on left, `Ms-Top` on right.
+    refine wrapSingle ?_
+    exact StrongCommutes.top_of hpv hu hEq
+  | @equ _ _ u v hpv₀ hMEqSub =>
+    -- LHS is a wrapped MEqRed. Both sides are MEqRed from the same source
+    -- — diamond closes them, then wrap RHS in `Ms-Equ`.
+    refine wrapSingle ?_
+    exact StrongCommutes.equ_of (@hUniformDiamond Γ s) hpv hMEqSub hEq
+  | @app _ _ u u' v hOp hv =>
+    -- Source `.app u v`. Case-split on the MEqRed.
+    cases hEq with
+    | @app _ _ _ u₂ _ v₂ hOp₂ hArg₂ =>
+      -- app × app: combine operator strong-commutes (at stack `(v :: s)`)
+      -- with argument diamond (at empty stack). Stitch via the two op
+      -- stack-head transports.
+      have hpvCons : PrevalidExt Γ (v :: s) :=
+        PrevalidExt.cons hpv hv
+      have hpvNil : PrevalidExt Γ [] :=
+        PrevalidExt.nil (PrevalidExt.ctx hpv)
+      -- Operator commutation at stack (v :: s).
+      obtain ⟨u₃, hOp_eqJ, hOp_subJ⟩ :=
+        @hUniformStrongCommutes Γ (v :: s) _ _ _ hOp hOp₂
+      let hOp_eq : MEqRed Γ (v :: s) u' u₃ := hOp_eqJ.some
+      let hOp_sub : MSubRed Γ (v :: s) u₂ u₃ := hOp_subJ.some
+      -- Argument diamond at empty stack.
+      have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+      have hArgDiamond :
+          ∀ {a₁ a₂ : Term},
+            MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+            ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ :=
+        fun ha hb => @hUniformDiamond Γ [] _ _ _ ha hb
+      obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArgRefl hArg₂
+      let hArg₁₃ : MEqRed Γ [] v v₃ := hArg₁₃J.some
+      let hArg₂₃ : MEqRed Γ [] v₂ v₃ := hArg₂₃J.some
+      -- Scope facts.
+      have hu' : Term.Scoped Γ.depth u' := hOp.scoped_right
+      have hu₂ : Term.Scoped Γ.depth u₂ := hOp₂.scoped_right
+      have hv₂ : Term.Scoped Γ.depth v₂ := hArg₂.scoped_right
+      have hv₃ : Term.Scoped Γ.depth v₃ := hArg₁₃.scoped_right
+      refine ⟨.app u₃ v₃, ?_, ?_⟩
+      · -- LHS chain: (.app u' v) →* (.app u' v₃) →* (.app u₃ v₃).
+        have hArgChain₁ : MEqRedStar Γ s (.app u' v) (.app u' v₃) :=
+          MEqRedStar.app_right hu' (MEqRedStar.single hArg₁₃) hpv
+        have hArgFull : MEqRedStar Γ [] v v₃ :=
+          MEqRedStar.single hArg₁₃
+        have hOpAtNew : MEqRedStar Γ (v₃ :: s) u' u₃ :=
+          hOpTransport hArgFull hOp_eq
+        have hOpChain : MEqRedStar Γ s (.app u' v₃) (.app u₃ v₃) :=
+          MEqRedStar.app_left hOpAtNew hv₃
+        exact hArgChain₁.trans hOpChain
+      · -- RHS chain:
+        --   (.app u₂ v₂) →[Ms-Equ Me-App refl(u₂) (v₂→v₃)] (.app u₂ v₃)
+        --   (.app u₂ v₃) →* (.app u₃ v₃)  (via MSub op transport).
+        have hpvOp : PrevalidExt Γ (v₂ :: s) :=
+          PrevalidExt.cons hpv hv₂
+        have hu₂Refl : MEqRed Γ (v₂ :: s) u₂ u₂ :=
+          MEqRed.refl hpvOp hu₂
+        have hMeApp₂₂ : MEqRed Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+          MEqRed.app hu₂Refl hArg₂₃
+        have hStep₁ :
+            MSubRedStar Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+          MSubRedStar.single (MSubRed.equ hpv hMeApp₂₂)
+        -- Transport MSub op-step from (v :: s) to (v₃ :: s) via arg chain
+        -- v →* v₃.
+        have hOpSubAtNew : MSubRedStar Γ (v₃ :: s) u₂ u₃ :=
+          hMSubOpTransport (MEqRedStar.single hArg₁₃) hOp_sub
+        have hStep₂ :
+            MSubRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
+          MSubRedStar.app_fixed_arg hv₃ hOpSubAtNew
+        exact hStep₁.trans hStep₂
+    | @bet _ _ t _ _ body _ ht hBody₂ hArg₂ =>
+      -- app × bet: source `.app (.abs t body) v`, MSubRed steps the op,
+      -- MEqRed β-fires. Delegate to `StrongCommutes.app_bet_chain_of`.
+      have hBodyDiamond :
+          ∀ {b₁ b₂ : Term},
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+            ∃ b₃,
+              MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+              ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+                  b₂ b₃ := fun ha hb =>
+        @hUniformDiamond ({bound := t, kind := .sub} :: Γ)
+          (Stack.shift 0 s) _ _ _ ha hb
+      have hArgDiamond :
+          ∀ {a₁ a₂ : Term},
+            MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+            ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ := fun ha hb =>
+        @hUniformDiamond Γ [] _ _ _ ha hb
+      -- Bridge: for each shape `op' = .abs t' body'`, return an MEqRed
+      -- body in `.sub`-head bound `t`. Case-split on `hOp` to handle
+      -- `Ms-Top` (vacuous), `Ms-Equ` (Me-FOp inside, use `hSubBridge`),
+      -- and `Ms-FOp` (use the cross-relation `hMSubBridge`).
+      have hBodyOpSubBridge :
+          ∀ {body' t' : Term},
+            u' = .abs t' body' →
+            MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              body body' := by
+        intro body' t' hShape
+        cases hOp with
+        | top _ _ =>
+          -- u' = .top, contradicts u' = .abs t' body'.
+          exact absurd hShape (by simp)
+        | equ _ heqOp =>
+          -- u' is the target of an MEqRed op-step from `.abs t body`
+          -- at stack (v :: s). Only `Me-FOp` can fire; convert via
+          -- `hSubBridge`.
+          cases heqOp with
+          | fOp _ _ hBody'equ =>
+            rename_i body'_inv
+            injection hShape with h1 h2
+            subst h1
+            subst h2
+            exact hSubBridge hBody'equ
+        | fOp _ _ hBodyMSub =>
+          -- u' = .abs t bodyOp', body in equ-head bound v with MSubRed
+          -- step. Use `hMSubBridge` to convert to MEqRed in sub-head t.
+          rename_i bodyOp'
+          injection hShape with h1 h2
+          subst h1
+          subst h2
+          exact hMSubBridge hBodyMSub
+      exact StrongCommutes.app_bet_chain_of hArgTransport hBodyDiamond
+        hArgDiamond ht hv hOp hBody₂ hArg₂ hBodyOpSubBridge
+    | @tAp _ _ u_t hpv₂ hu_t =>
+      -- app × tAp: MEqRed says `u = .top`, MSubRed says hOp : MSubRed (v::s) .top u'.
+      -- Then u' = .top. Close at .top.
+      have hu'Top : u' = .top := MSubRed.top_inv hOp
+      subst hu'Top
+      refine ⟨.top, ?_, ?_⟩
+      · -- LHS: (.app .top v) →[Me-TAp] .top.
+        exact MEqRedStar.single (MEqRed.tAp hpv hv)
+      · -- RHS: refl .top.
+        exact Relation.ReflTransGen.refl
+  | @fun_ _ t tDst body bodyDst ht hT₁ hBody₁ =>
+    -- Source `.abs t body`, stack `[]`. MEqRed must be `Me-Fun`.
+    cases hEq with
+    | @fun_ _ _ tDst₂ _ bodyDst₂ hT₂ hBody₂ =>
+      refine wrapSingle ?_
+      -- The hSubBodyNarrow residual handles narrowing the body MSub
+      -- across the abstraction-bound diamond.
+      exact StrongCommutes.fun_fun_of (@hUniformDiamond Γ [])
+        (@hUniformStrongCommutes ({bound := t, kind := .sub} :: Γ) [])
+        hT₁ hBody₁ hT₂ hBody₂
+        (fun {u v} hSubStep => hSubBodyNarrow hT₂ hSubStep)
+  | @fOp _ s_inner t α body bodyDst ht hα hBody₁ =>
+    -- Source `.abs t body`, stack `α :: s_inner`. MEqRed must be `Me-FOp`.
+    cases hEq with
+    | @fOp _ _ _ tDst₂ _ _ bodyDst₂ hT₂ hα₂ hBody₂ =>
+      refine wrapSingle ?_
+      exact StrongCommutes.fOp_fOp_of
+        (@hUniformStrongCommutes ({bound := α, kind := .equ} :: Γ)
+          (Stack.shift 0 s_inner))
+        hα hBody₁ hT₂ hBody₂
