@@ -2173,6 +2173,15 @@ Bruijn proofs do not yet bridge to LN.
   `StrongCommutes.app_bet_chain_FOpArgBodyNoBindersAsSub_of` and keeps
   the body residual as subtype reduction. Added the endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added branch-local handler
+  payloads `StrongCommutes.AppBetNoFalseBridgePayload` and
+  `StrongCommutes.FunFunNoFalseNarrowPayload`, plus `.of_uniform`
+  builders from uniform diamonds and recursive strong commutativity.
+  These package the sound no-binders replacements for the two false broad
+  Lemma 1 residuals (`MSubBridgePayload` and `MSubBodyNarrowPayload`)
+  without changing the existing broad `StrongCommutes_proved` signature.
+  Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`

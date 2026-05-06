@@ -20108,6 +20108,53 @@ theorem app_bet_chain_ArgBodyNoBindersAsSub_of
       exact app_bet_chain_FOpArgBodyNoBindersAsSub_of hBodyComm
         ht hv hBodyNoBinders hBodySub hBody₂
 
+/-- Sound branch-local replacement for the false `MSubBridgePayload` use in
+the broad top-level `Ms-App × Me-Bet` branch.
+
+The premise exposes exactly the extra information needed by the no-false-
+bridge app/bet cell: binder-free β argument and body. -/
+def AppBetNoFalseBridgePayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {t v body body₂' v₂' op' : Term},
+    Term.Scoped Γ.depth t →
+    Term.Scoped Γ.depth v →
+    Term.NoBinders v →
+    Term.NoBinders body →
+    MSubRed Γ (v :: s) (.abs t body) op' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂' →
+    MEqRed Γ [] v v₂' →
+    ∃ t₃,
+      MEqRedStar Γ s (.app op' v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃
+
+/-- Build the app/bet no-false-bridge handler from the uniform recursive
+diamond and strong-commutativity premises. -/
+noncomputable def AppBetNoFalseBridgePayload.of_uniform
+    (hUniformDiamond : ∀ {Γ : Ctx} {s : Stack}, EqDiamonds Γ s)
+    (hUniformStrongCommutes :
+      ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    AppBetNoFalseBridgePayload := by
+  intro Γ s t v body body₂' v₂' op' ht hv hVNoBinders
+    hBodyNoBinders hOp hBody₂ hArg₂
+  have hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃ := fun ha hb =>
+    @hUniformDiamond ({bound := t, kind := .sub} :: Γ)
+      (Stack.shift 0 s) _ _ _ ha hb
+  have hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃ := fun ha hb =>
+    @hUniformDiamond Γ [] _ _ _ ha hb
+  exact app_bet_chain_ArgBodyNoBindersAsSub_of hBodyDiamond hArgDiamond
+    (@hUniformStrongCommutes ({bound := t, kind := .sub} :: Γ)
+      (Stack.shift 0 s))
+    ht hv hVNoBinders hBodyNoBinders hOp hBody₂ hArg₂
+
 end StrongCommutes
 
 /-! ## Top-level chain-output Lemma 2 closure assembly
@@ -20743,6 +20790,34 @@ theorem fun_fun_BodyNoBinders_of
         hSubBody.some
     have hScoped₂ : Term.Scoped Γ.depth bound₂ := hT₂.scoped_right
     exact ⟨MSubRed.fun_ hScoped₂ hRB hSB'⟩
+
+/-- Sound branch-local replacement for the false `MSubBodyNarrowPayload` use
+in the broad top-level `Ms-Fun × Me-Fun` branch.
+
+The extra premise is the binder-freedom of the abstraction body, exactly the
+condition needed by `StrongCommutes.fun_fun_BodyNoBinders_of`. -/
+def FunFunNoFalseNarrowPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ body body₁ body₂ : Term},
+    Term.NoBinders body →
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) [] body body₁ →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body₂ →
+    ∃ t₃, MEqRedJ Γ [] (.abs bound₁ body₁) t₃
+        ∧ MSubRedJ Γ [] (.abs bound₂ body₂) t₃
+
+/-- Build the fun/fun no-false-narrowing handler from the uniform recursive
+diamond and strong-commutativity premises. -/
+noncomputable def FunFunNoFalseNarrowPayload.of_uniform
+    (hUniformDiamond : ∀ {Γ : Ctx} {s : Stack}, EqDiamonds Γ s)
+    (hUniformStrongCommutes :
+      ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    FunFunNoFalseNarrowPayload := by
+  intro Γ t bound₁ bound₂ body body₁ body₂ hBodyNoBinders
+    hT₁ hBody₁ hT₂ hBody₂
+  exact fun_fun_BodyNoBinders_of (@hUniformDiamond Γ [])
+    (@hUniformStrongCommutes ({ bound := t, kind := .sub } :: Γ) [])
+    hBodyNoBinders hT₁ hBody₁ hT₂ hBody₂
 
 end StrongCommutes
 
