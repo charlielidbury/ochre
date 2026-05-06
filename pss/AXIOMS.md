@@ -2081,6 +2081,14 @@ Bruijn proofs do not yet bridge to LN.
   so the new chain-level operator stack-head transport is now a direct
   dependency of the restricted app/app cell. Added the endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `Lemma_2_DeBruijn_DiamondMEqRedStar_proved` and
+  `Lemma_2_DeBruijn_DiamondMEqRedChain_proved`, top-level chain-chain
+  Lemma 2 endpoints parameterised by the same four residuals as
+  `EqDiamonds_proved`. The proof delegates to the existing strip lemmas
+  under `UniformEqDiamonds`; the transport and bridge payloads remain in
+  the signature for honest residual accounting. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
