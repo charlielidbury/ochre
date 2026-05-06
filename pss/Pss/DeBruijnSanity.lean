@@ -784,6 +784,8 @@ namespace DeBruijn
 #print axioms MEqRed.app_right
 #print axioms MEqRedStar.app_left
 #print axioms MEqRedStar.app_right
+#print axioms MEqRedStarArgTransportUnderHeadsStack_universal
+#print axioms MEqRedStarArgTransportStack.of_generic
 
 -- de Bruijn Lemma 2 `Me-Bet × Me-Bet` cell (chain output, conditional on
 -- the argument-transport hypothesis). Composes the proved fused
