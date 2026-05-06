@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-three-head binder
+  frontiers `BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsFOpStackPayload`.
+  Added the endpoints to `Pss/DeBruijnSanity.lean`; no headline axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-four-head
   stack-parametric surface `BetaInstantiationPreservesMEqRedUnderTwentyFourHeadsStack`
   and its generic adapter. This opens the recursive body premise needed by
