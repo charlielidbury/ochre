@@ -6131,6 +6131,86 @@ noncomputable def BetaInstantiationPreservesPrevalidExtUnderTwentyHeads
       { bound := head₂₀, kind := kind₂₀ }]) rfl hArgBound hpv
   simpa using h
 
+/-- Prevalidity transport for β-instantiation under twenty-one preserved
+context heads. This is the fixed prevalidity leaf surface needed by the
+twenty-head binder-body frontier and the twenty-one-head structural leaves. -/
+noncomputable def BetaInstantiationPreservesPrevalidExtUnderTwentyOneHeads
+    {Γ : Ctx}
+    {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ head₁₉ head₂₀ head₂₁ : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ kind₁₉ kind₂₀ kind₂₁ : CtxEntryKind}
+    {s : Stack}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ },
+        { bound := head₁₆, kind := kind₁₆ },
+        { bound := head₁₇, kind := kind₁₇ },
+        { bound := head₁₈, kind := kind₁₈ },
+        { bound := head₁₉, kind := kind₁₉ },
+        { bound := head₂₀, kind := kind₂₀ },
+        { bound := head₂₁, kind := kind₂₁ }]
+      PrevalidExt (heads ++ { bound := bound, kind := .sub } :: Γ) s) :
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ }]
+    PrevalidExt (Ctx.instantiateBetaPrefix arg 21 heads ++ Γ)
+      (Stack.instantiate 21 (Term.shiftBy 0 21 arg) s) := by
+  dsimp only at hpv ⊢
+  have h := BetaInstantiationPreservesPrevalidExtUnderHeads
+    (heads := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ }]) rfl hArgBound hpv
+  simpa using h
+
 /-- `MEqRed.top` is stable under de Bruijn β-instantiation below eight
 preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderEightHeadsStack.top

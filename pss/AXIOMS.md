@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesPrevalidExtUnderTwentyOneHeads`, routing the
+  twenty-one-preserved-head β-instantiation prevalidity surface through the
+  existing list-generic prefix transport. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesPrevalidExtUnderEightHeads`, routing the
   eight-preserved-head β-instantiation prevalidity surface through the
   existing list-generic prefix transport. This gives the seven-head
