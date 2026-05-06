@@ -14,6 +14,7 @@ namespace DeBruijn
 #print axioms Lemma_2_DeBruijn_DiamondMEqRedChain_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityStar_of
 #print axioms Lemma_1_DeBruijn_StrongCommutativityChain_of
+#print axioms EqDiamonds_proved
 #print axioms Term.shift_scoped_inv
 #print axioms Stack.Scoped.shift_inv
 #print axioms Term.instantiate_succ_shift_zero
