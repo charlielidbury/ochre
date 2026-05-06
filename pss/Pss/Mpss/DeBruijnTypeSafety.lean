@@ -17856,6 +17856,25 @@ theorem MEqRedOpStackHeadTransportPayloadRestricted_proved :
   have hpvNew : PrevalidExt Γ (v' :: s) := PrevalidExt.cons hpvTail hv'
   exact MEqRedStar.lift_to_any_stack_of_NoBinders hOpStep hNoBinders hpvNew
 
+/-- Chain-level restricted operator stack-head transport. If the operator
+source is binder-free, an entire operator equivalence chain can be retargeted
+from stack `(v :: s)` to `(v' :: s)` along an argument-side chain
+`v →* v'`. The old stack prevalidity is explicit because a reflexive
+operator chain carries no constructor from which to recover it. -/
+theorem MEqRedStar.op_stack_head_transport_of_NoBinders
+    {Γ : Ctx} {s : Stack} {v v' u u' : Term}
+    (hArgStar : MEqRedStar Γ [] v v')
+    (hNoBinders : Term.NoBinders u)
+    (hOpStar : MEqRedStar Γ (v :: s) u u')
+    (hpvCons : PrevalidExt Γ (v :: s)) :
+    MEqRedStar Γ (v' :: s) u u' := by
+  have hpvTail : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hv : Term.Scoped Γ.depth v := PrevalidExt.head_scoped hpvCons
+  have hv' : Term.Scoped Γ.depth v' := hArgStar.scoped_right hv
+  have hpvNew : PrevalidExt Γ (v' :: s) := PrevalidExt.cons hpvTail hv'
+  exact MEqRedStar.lift_chain_to_any_context_stack_of_NoBinders
+    hOpStar hNoBinders hpvNew
+
 namespace EqDiamonds
 
 /-- The `Me-App × Me-App` source cell of de Bruijn Lemma 2 with chain

@@ -2061,6 +2061,12 @@ Bruijn proofs do not yet bridge to LN.
   sources. It composes the existing single-step retargeting helper with
   `MEqRedStar.preserves_noBinders` along the chain. Added the endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedStar.op_stack_head_transport_of_NoBinders`, a chain-level
+  restricted operator stack-head transport theorem. It retargets a
+  binder-free operator `MEqRedStar` chain from `(v :: s)` to `(v' :: s)`
+  using an argument chain `v →* v'` and explicit old-stack prevalidity.
+  Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
