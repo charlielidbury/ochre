@@ -19318,6 +19318,213 @@ theorem app_bet_chain_ArgNoBinders_of
 
 end EqDiamonds
 
+namespace StrongCommutes
+
+/- Restricted `Ms-Equ × Me-Bet` β-position cell with only a binder-free
+argument-side condition. This is the `StrongCommutes` analog of the
+`EqDiamonds.*_ArgNoBinders_of` cells. -/
+theorem equ_bet_chain_ArgNoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₂' t₁ : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hpv : PrevalidExt Γ s)
+    (hMEqLHS : MEqRed Γ s (.app (.abs t body) v) t₁)
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hAppBodyOpSubBridge :
+      ∀ {hOp₁_target body₁' t' : Term},
+        MEqRed Γ (v :: s) (.abs t body) hOp₁_target →
+        hOp₁_target = .abs t' body₁' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁') :
+    ∃ t₃,
+      MEqRedStar Γ s t₁ t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  cases hMEqLHS with
+  | bet ht₁ hBody₁ hArg₁ =>
+    obtain ⟨t₃, hLeft, hRight⟩ :=
+      EqDiamonds.bet_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond
+        ht hVNoBinders hBody₁ hArg₁ hBody₂ hArg₂
+    refine ⟨t₃, hLeft, ?_⟩
+    exact MSubRedStar.of_MEqRedStar hpv hRight
+  | app hOp₁ hArg₁ =>
+    obtain ⟨t₃, hLeft, hRight⟩ :=
+      EqDiamonds.app_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond
+        ht hVNoBinders hOp₁ hArg₁ hBody₂ hArg₂
+        (fun {body₁' t'} hShape => hAppBodyOpSubBridge hOp₁ hShape)
+    refine ⟨t₃, hLeft, ?_⟩
+    exact MSubRedStar.of_MEqRedStar hpv hRight
+
+/- Restricted `Ms-App × Me-Bet` β-position cell with only a binder-free
+argument-side condition. The `Ms-Equ` operator case delegates to the
+restricted EqDiamonds app/bet cell; the `Ms-FOp` operator case uses
+`MEqRedArgTransportPayloadNoBinders_proved` directly. -/
+theorem app_bet_chain_ArgNoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₂' op' : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hv : Term.Scoped Γ.depth v)
+    (hVNoBinders : Term.NoBinders v)
+    (hOp : MSubRed Γ (v :: s) (.abs t body) op')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hBodyOpSubBridge :
+      ∀ {body' t' : Term},
+        op' = .abs t' body' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body body') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app op' v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  have hpvCons : PrevalidExt Γ (v :: s) := hOp.prevalidExt
+  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  cases hOp with
+  | top _ _ =>
+    have hMeTAp : MEqRed Γ s (.app .top v) .top := MEqRed.tAp hpv hv
+    have hv₂' : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+    have hBody₂Scoped : Term.Scoped (Γ.depth + 1) body₂' := by
+      simpa [Ctx.depth] using hBody₂.scoped_right
+    have hInstScoped :
+        Term.Scoped Γ.depth (Term.instantiate 0 v₂' body₂') :=
+      Term.instantiate_scoped 0 _ _ _ (Nat.zero_le _) hv₂' hBody₂Scoped
+    have hMsTop :
+        MSubRed Γ s (Term.instantiate 0 v₂' body₂') .top :=
+      MSubRed.top hpv hInstScoped
+    refine ⟨.top, MEqRedStar.single hMeTAp, MSubRedStar.single hMsTop⟩
+  | equ _ hMEqOp =>
+    have hpvNil : PrevalidExt Γ [] :=
+      PrevalidExt.nil (PrevalidExt.ctx hpv)
+    have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+    obtain ⟨t₃, hLeft, hRight⟩ :=
+      EqDiamonds.app_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond
+        ht hVNoBinders hMEqOp hArgRefl hBody₂ hArg₂
+        (fun {body₁' t'} hShape => hBodyOpSubBridge hShape)
+    refine ⟨t₃, hLeft, ?_⟩
+    exact MSubRedStar.of_MEqRedStar hpv hRight
+  | fOp htOp hαOp hBodySub =>
+    rename_i bodyOp'
+    have hBodyOpSubBridged :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body bodyOp' :=
+      hBodyOpSubBridge rfl
+    obtain ⟨body₃, hBody₁₃J, hBody₂₃J⟩ :=
+      hBodyDiamond hBodyOpSubBridged hBody₂
+    let hBody₁₃ :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          bodyOp' body₃ := hBody₁₃J.some
+    let hBody₂₃ :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body₂' body₃ := hBody₂₃J.some
+    have hpvNil : PrevalidExt Γ [] :=
+      PrevalidExt.nil (PrevalidExt.ctx hpv)
+    have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+    obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArgRefl hArg₂
+    let hArg₁₃ : MEqRed Γ [] v v₃ := hArg₁₃J.some
+    let hArg₂₃ : MEqRed Γ [] v₂' v₃ := hArg₂₃J.some
+    have hV₂'NoBinders : Term.NoBinders v₂' :=
+      hArg₂.preserves_noBinders hVNoBinders
+    refine ⟨Term.instantiate 0 v₃ body₃, ?_, ?_⟩
+    · have hPrevalidT :
+          Prevalid ({bound := t, kind := .sub} :: Γ) :=
+        Prevalid.sub (PrevalidExt.ctx hpv) ht
+      have hpvBodyT :
+          PrevalidExt ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) :=
+        PrevalidExt.weaken_head hpv hPrevalidT
+      have hBodyOp'Scoped : Term.Scoped (Γ.depth + 1) bodyOp' := by
+        simpa [Ctx.depth] using hBodyOpSubBridged.scoped_right
+      have hBodyOp'Scoped_t :
+          Term.Scoped
+            (Ctx.depth ({bound := t, kind := .sub} :: Γ)) bodyOp' := by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hBodyOp'Scoped
+      have hBodyReflT :
+          MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+            bodyOp' bodyOp' :=
+        MEqRed.refl hpvBodyT hBodyOp'Scoped_t
+      have hArgReflv : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+      have hβStep :
+          MEqRed Γ s (.app (.abs t bodyOp') v)
+            (Term.instantiate 0 v bodyOp') :=
+        MEqRed.bet ht hBodyReflT hArgReflv
+      have hBodyProgress :
+          MEqRed Γ (Stack.instantiate 0 v (Stack.shift 0 s))
+            (Term.instantiate 0 v bodyOp')
+            (Term.instantiate 0 v body₃) :=
+        MEqRedFusedKindNarrowedBetaSubstStack_proved
+          (arg := t) (arg' := v) ht hv hBody₁₃
+      have hStackEq :
+          Stack.instantiate 0 v (Stack.shift 0 s) = s :=
+        Stack.instantiate_zero_shift_zero_id v s
+      have hBodyProgress' :
+          MEqRed Γ s
+            (Term.instantiate 0 v bodyOp')
+            (Term.instantiate 0 v body₃) := by
+        simpa [hStackEq] using hBodyProgress
+      have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+        simpa [Ctx.depth] using hBody₁₃.scoped_right
+      have hArgChain :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v body₃)
+            (Term.instantiate 0 v₃ body₃) :=
+        MEqRedArgTransportPayloadNoBinders_proved
+          hBody₃Scoped hVNoBinders hArg₁₃ hpv
+      exact ((MEqRedStar.single hβStep).trans
+        (MEqRedStar.single hBodyProgress')).trans hArgChain
+    · have hv₂'Scoped : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+      have hBodyProgress :
+          MEqRed Γ (Stack.instantiate 0 v₂' (Stack.shift 0 s))
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₂' body₃) :=
+        MEqRedFusedKindNarrowedBetaSubstStack_proved
+          (arg := t) (arg' := v₂') ht hv₂'Scoped hBody₂₃
+      have hStackEq :
+          Stack.instantiate 0 v₂' (Stack.shift 0 s) = s :=
+        Stack.instantiate_zero_shift_zero_id v₂' s
+      have hBodyProgress' :
+          MEqRed Γ s
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₂' body₃) := by
+        simpa [hStackEq] using hBodyProgress
+      have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+        simpa [Ctx.depth] using hBody₂₃.scoped_right
+      have hArgChain :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v₂' body₃)
+            (Term.instantiate 0 v₃ body₃) :=
+        MEqRedArgTransportPayloadNoBinders_proved
+          hBody₃Scoped hV₂'NoBinders hArg₂₃ hpv
+      have hMeRHS :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₃ body₃) :=
+        (MEqRedStar.single hBodyProgress').trans hArgChain
+      exact MSubRedStar.of_MEqRedStar hpv hMeRHS
+
+end StrongCommutes
+
 /-! ## Top-level chain-output Lemma 2 closure assembly
 
 This section assembles the per-cell EqDiamonds theorems into a single

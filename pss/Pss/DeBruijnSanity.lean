@@ -882,6 +882,8 @@ namespace DeBruijn
 #print axioms StrongCommutesChain
 #print axioms StrongCommutes.equ_bet_chain_of
 #print axioms StrongCommutes.app_bet_chain_of
+#print axioms StrongCommutes.equ_bet_chain_ArgNoBinders_of
+#print axioms StrongCommutes.app_bet_chain_ArgNoBinders_of
 
 end DeBruijn
 end Pss

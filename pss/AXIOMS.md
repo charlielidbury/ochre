@@ -2020,6 +2020,13 @@ Bruijn proofs do not yet bridge to LN.
   only `Term.NoBinders` for the β argument and keep the existing `.sub`
   head bridge explicit. Added the endpoints to `Pss/DeBruijnSanity.lean`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutes.equ_bet_chain_ArgNoBinders_of` and
+  `StrongCommutes.app_bet_chain_ArgNoBinders_of`, extending the same
+  binder-free argument transport strengthening to the Lemma 1 β-position
+  chain-output cells. The existing `.sub` head bridge remains explicit.
+  Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
@@ -3401,7 +3408,10 @@ unproven and remains a hypothesis on the cells that consume it.
   The `Me-Bet × Me-Bet`, `Me-Bet × Me-App`, and `Me-App × Me-Bet` use-sites
   now expose this directly as `EqDiamonds.bet_bet_chain_ArgNoBinders_of`,
   `EqDiamonds.bet_app_chain_ArgNoBinders_of`, and
-  `EqDiamonds.app_bet_chain_ArgNoBinders_of`.
+  `EqDiamonds.app_bet_chain_ArgNoBinders_of`. The Lemma 1 β-position
+  use-sites expose the same strengthening as
+  `StrongCommutes.equ_bet_chain_ArgNoBinders_of` and
+  `StrongCommutes.app_bet_chain_ArgNoBinders_of`.
 
 * **Residual gap (the cases the restricted forms do NOT cover):**
   **Argument-side bvar or abstraction** remains open: `v = .bvar i` or
