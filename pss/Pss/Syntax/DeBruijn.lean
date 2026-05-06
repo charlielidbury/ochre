@@ -756,6 +756,104 @@ theorem instantiate_succ_after (k : Nat) (a v t : Term) :
   have h := instantiate_after_many 0 k a v t
   simpa [Nat.add_assoc] using h.symm
 
+/-- Substitution-composition (general cutoff and offset). At any cutoff `k`
+and offset `n ≥ 0`, performing the inner substitution at `k` and the outer
+substitution at `k + n` (with the input pre-substituted) agrees with first
+substituting the outer slot directly, then substituting at `k`. Both `n = 0`
+and `n ≥ 1` are covered uniformly. -/
+theorem instantiate_subst_compose (k n : Nat) (a v t : Term) :
+    instantiate k (instantiate (k + n) a v)
+        (instantiate (k + n + 1) (shift k a) t) =
+      instantiate (k + n) a (instantiate k v t) := by
+  induction t generalizing k n a v with
+  | bvar i =>
+      by_cases hltk : i < k
+      · have hltkn : i < k + n := by omega
+        have hltkn1 : i < k + n + 1 := by omega
+        simp [instantiate, hltk, hltkn, hltkn1]
+      · by_cases heqk : i = k
+        · subst heqk
+          have hnltii : ¬ i < i := by omega
+          have hltkn1 : i < i + n + 1 := by omega
+          have hshift_id :
+              instantiate i (instantiate (i + n) a v) (shift i a) = a := by
+            simpa using instantiate_shift_id i (instantiate (i + n) a v) a
+          rcases Nat.eq_zero_or_pos n with hn0 | hnpos
+          · subst hn0
+            -- i = i + 0, trivial case
+            have heq : i = i + 0 := by omega
+            simp [instantiate, hnltii]
+          · have hltii : i < i + n := by omega
+            simp [instantiate, hnltii, hltkn1, hltii, hshift_id]
+        · have hgtk : k < i := by omega
+          by_cases hltkn1 : i < k + n + 1
+          · have hltkn : i ≤ k + n := by omega
+            have hltkn' : i < k + n ∨ i = k + n := by omega
+            rcases hltkn' with hltkn | heqkn
+            · have hipredlt : i - 1 < k + n := by omega
+              simp [instantiate, hltk, heqk, hltkn1, hltkn, hipredlt]
+            · subst heqkn
+              -- i = k + n, n ≥ 1 (since i ≠ k means n ≥ 1)
+              -- LHS: instantiate (k+n+1) (shift k a) (bvar (k+n)): k+n < k+n+1 → bvar (k+n).
+              --      instantiate k (instantiate (k+n) a v) (bvar (k+n)):
+              --        not < k, not = k (since hgtk: k < k+n means n ≥ 1), result bvar (k+n-1).
+              -- RHS: instantiate (k+n) a (instantiate k v (bvar (k+n))):
+              --      inner: not < k, not = k, result bvar (k+n-1).
+              --      outer: instantiate (k+n) a (bvar (k+n-1)): k+n-1 < k+n true, result bvar (k+n-1).
+              have hpred_lt : k + n - 1 < k + n := by omega
+              have hltkn1' : k + n < k + n + 1 := by omega
+              have hgtk' : k < k + n := by omega
+              simp [instantiate, hltk, heqk, hltkn1', hgtk', hpred_lt]
+          · by_cases heqkn1 : i = k + n + 1
+            · subst heqkn1
+              have hpred : k + n + 1 - 1 = k + n := by omega
+              have hnlt_kn : ¬ k + n < k + n := by omega
+              have hshift_id :
+                  instantiate k (instantiate (k + n) a v) (shift k a) = a := by
+                simpa using instantiate_shift_id k (instantiate (k + n) a v) a
+              simp [instantiate, hltk, heqk, hpred, hnlt_kn, hshift_id]
+            · have hgtkn1 : k + n + 1 < i := by omega
+              have hpred : i - 1 - 1 = i - 2 := by omega
+              have hpred_gt_kn : k + n < i - 1 := by omega
+              have hpred_nlt : ¬ i - 1 < k + n := by omega
+              have hpred_ne : i - 1 ≠ k + n := by omega
+              have hpred_nlt_k : ¬ i - 1 < k := by omega
+              have hpred_ne_k : i - 1 ≠ k := by omega
+              simp [instantiate, hltk, heqk, hltkn1, heqkn1, hpred,
+                hpred_nlt, hpred_ne, hpred_nlt_k, hpred_ne_k]
+  | top => rfl
+  | abs bound body ih_bound ih_body =>
+      simp only [instantiate_abs]
+      refine congrArg₂ Term.abs (ih_bound k n a v) ?_
+      -- Goal: instantiate (k+1) (shift 0 (instantiate (k+n) a v))
+      --         (instantiate (k+n+2) (shift 0 (shift k a)) body)
+      --     = instantiate (k+n+1) (shift 0 a) (instantiate (k+1) (shift 0 v) body)
+      -- Use IH at k' = k+1, n' = n.
+      have hbody := ih_body (k + 1) n (shift 0 a) (shift 0 v)
+      have hshift_a : shift (k + 1) (shift 0 a) = shift 0 (shift k a) :=
+        shiftBy_lift_comm 0 k 1 a (Nat.zero_le k)
+      have hshift_va :
+          shift 0 (instantiate (k + n) a v) =
+            instantiate (k + n + 1) (shift 0 a) (shift 0 v) := by
+        have h := shiftBy_instantiate 0 1 (k + n) a v (Nat.zero_le _)
+        simpa [shift] using h
+      have hkn_inc : k + 1 + n = k + n + 1 := by ring
+      rw [hkn_inc, hshift_a] at hbody
+      rw [hshift_va]
+      exact hbody
+  | app fn arg ih_fn ih_arg =>
+      simp only [instantiate_app]
+      exact congrArg₂ Term.app (ih_fn k n a v) (ih_arg k n a v)
+
+/-- Zero-cutoff specialization of `instantiate_subst_compose`. This is the
+exact algebraic identity used by the universal β-instantiation theorem to
+reconcile the post-substitution `MEqRed.bet` target with the explicit
+β-result of the original derivation under any number of preserved heads. -/
+theorem instantiate_zero_after_many (n : Nat) (a v t : Term) :
+    instantiate 0 (instantiate n a v) (instantiate (n + 1) (shift 0 a) t) =
+      instantiate n a (instantiate 0 v t) := by
+  simpa using instantiate_subst_compose 0 n a v t
+
 /-- Substituting index `k` after substituting through three preserved slots is
 equivalent to first substituting index `k`, then substituting the surviving
 slot at `k + 2`. -/
