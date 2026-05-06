@@ -20305,6 +20305,26 @@ theorem MSubBridgePayload_not : MSubBridgePayload → False := by
       rcases hPro with ⟨α, α', hEquBind, _, _⟩
       simp [Ctx.equBinds, Ctx.lookupEqu] at hEquBind
 
+/-- Sound `Ms-Equ` fragment of the false cross-relation bridge.
+
+If the subtype body step is known to come from an underlying `MEqRed` step
+and the source body is binder-free, the existing binder-free `.equ`-to-`.sub`
+retargeting bridge supplies the desired `MEqRed` step. This does not cover
+subtype-only constructors such as `Ms-Top` or `Ms-Pro`. -/
+@[reducible] def MSubBridgePayloadEquNoBinders : Type :=
+  ∀ {Γ : Ctx} {t v body body' : Term} {s : Stack},
+    Term.Scoped Γ.depth t →
+    Term.NoBinders body →
+    MEqRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s) body body' →
+    MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body'
+
+/-- Closed proof of the sound `Ms-Equ`/binder-free fragment of the
+cross-relation bridge. -/
+noncomputable def MSubBridgePayloadEquNoBinders_proved :
+    MSubBridgePayloadEquNoBinders := by
+  intro Γ t v body body' s ht hNoBinders hEq
+  exact MEqRedSubBridgePayloadNoBinders_proved ht hNoBinders hEq
+
 /-- `.sub`-head abstraction-bound narrowing for `MSubRed` bodies: an
 `MSubRed` body step under bound `t` lifts to an `MSubRed` body step under
 the post-bound `t'` whenever `MEqRed Γ [] t t'`. Required by the

@@ -913,6 +913,8 @@ namespace DeBruijn
 #print axioms MSubRedOpStackHeadTransportPayloadRestricted_proved
 #print axioms MSubBridgePayload
 #print axioms MSubBridgePayload_not
+#print axioms MSubBridgePayloadEquNoBinders
+#print axioms MSubBridgePayloadEquNoBinders_proved
 #print axioms MSubBodyNarrowPayload
 #print axioms MSubBodyNarrowPayload_not
 #print axioms MSubBodyNarrowPayloadNoBinders_proved

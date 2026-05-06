@@ -2128,6 +2128,15 @@ Bruijn proofs do not yet bridge to LN.
   as a chain and reuses `MSubRedStar.op_stack_head_transport_of_NoBinders`.
   Added the restricted payload and endpoint to `Pss/DeBruijnSanity.lean`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubBridgePayloadEquNoBinders_proved`, the sound `Ms-Equ`/binder-free
+  fragment of the false cross-relation bridge. When the subtype body step
+  is known to come from an underlying `MEqRed` step and the source body is
+  `Term.NoBinders`, the existing binder-free `.equ`-to-`.sub` retargeting
+  bridge supplies the required `MEqRed` step. This deliberately does not
+  cover subtype-only constructors such as `Ms-Top` or `Ms-Pro`. Added the
+  restricted payload and endpoint to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
