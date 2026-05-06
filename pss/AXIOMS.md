@@ -251,6 +251,11 @@ closures, 2 inactive outstanding).
   list-specialization wrapper
   `BetaInstantiationPreservesMEqRedUnderTwentyHeadsStack.of_generic`, setting
   up the recursive body target for the nineteen-head binder payloads.
+  Added the nineteen-head constructor-facing binder payload types
+  `BetaInstantiationPreservesMEqRedUnderNineteenHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderNineteenHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderNineteenHeadsFOpStackPayload`; these
+  expose the recursive twenty-head body obligations.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
