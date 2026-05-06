@@ -2233,6 +2233,20 @@ Bruijn proofs do not yet bridge to LN.
   `UniformEqDiamonds`, and recursive `StrongCommutes`. Added the endpoint
   to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBranchChainPayload`,
+  `StrongCommutesFunFunBodyAppChainPayload`,
+  `StrongCommutesFunFunBodyFunChainPayload`,
+  `StrongCommutesFunFunBranchChainPayload.of_single`,
+  `StrongCommutesFunFunBranchChainPayload.of_app_fun_handlers`,
+  `StrongCommutes_proved_of_chain_branch_handlers`, and
+  `StrongCommutes_proved_of_split_chain_fun_handlers`. This adds a
+  chain-output fun/fun branch path that uses the existing
+  transitivity-elimination helpers to close the body `Ms-Pro`, `Ms-Top`,
+  and `Ms-Equ` cases; only direct body `Ms-App` and nested body `Ms-Fun`
+  remain as fun/fun residuals on the new split closure. The historical
+  single-step branch-handler closure is preserved as a wrapper. Added the
+  endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype
