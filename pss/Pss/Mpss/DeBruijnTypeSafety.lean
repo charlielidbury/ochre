@@ -21508,6 +21508,197 @@ def StrongCommutesFunFunBodyAppAppSubAppChainPayload : Prop :=
     ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.app op' arg) v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- Nested constructor-local `Ms-Pro` case inside the outer `Ms-App`
+operator case. -/
+def StrongCommutesFunFunBodyAppAppSubAppProChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ target arg v u₂ v₂ : Term} {i : Nat},
+    MEqRed Γ [] t bound₁ →
+    Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) i target →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.bvar i) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.app target arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Nested constructor-local `Ms-Top` case inside the outer `Ms-App`
+operator case. -/
+def StrongCommutesFunFunBodyAppAppSubAppTopChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) op →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app op arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.app .top arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Nested constructor-local `Ms-Equ` case inside the outer `Ms-App`
+operator case. -/
+def StrongCommutesFunFunBodyAppAppSubAppEquChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (arg :: v :: []) op op' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app op arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.app op' arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Nested recursive `Ms-App` case inside the outer `Ms-App` operator case. -/
+def StrongCommutesFunFunBodyAppAppSubAppAppChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' arg arg₂ v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (arg₂ :: arg :: v :: [])
+      op op' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg₂ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.app op arg₂) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.app (.app op' arg₂) arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Nested `Ms-FOp` case inside the outer `Ms-App` operator case. -/
+def StrongCommutesFunFunBodyAppAppSubAppFOpChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner α body body' arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) α →
+    MSubRed ({ bound := α, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ) (Stack.shift 0 (v :: []))
+      body body' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.app (.abs inner body) arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ (.app (.app (.abs inner body') arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- The nested `Ms-Top` leaf of the outer `Ms-App` case closes at body
+`Top` by two `Me-TAp` steps on the left and `Ms-Top` on the right. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppTopChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppTopChainPayload := by
+  intro Γ t bound₁ bound₂ op arg v u₂ v₂ hT₁ hop hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hpvV : PrevalidExt ({ bound := t, kind := .sub } :: Γ) (v :: []) :=
+    PrevalidExt.cons hpvBody hv
+  have hpvArgV :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ) (arg :: v :: []) :=
+    PrevalidExt.cons hpvV hArg
+  let hLeft : MSubRed Γ [] (.abs t (.app (.app op arg) v))
+      (.abs bound₁ (.app (.app .top arg) v)) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁
+      (MSubRed.app
+        (MSubRed.app (MSubRed.top hpvArgV hop) hArg) hv)
+  let hRight : MEqRed Γ [] (.abs t (.app (.app op arg) v))
+      (.abs bound₂ (.app u₂ v₂)) :=
+    MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+    ((@hUniformDiamond Γ []) hT₁ hT₂)
+    (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+      have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+      have hv₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v := by
+        simpa [Ctx.depth] using hv
+      have hArg₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) arg := by
+        simpa [Ctx.depth] using hArg
+      have hpvV₃ :
+          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) :=
+        PrevalidExt.cons hpvBody₃ hv₃
+      have hInnerTop :
+          MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: [])
+            (.app .top arg) .top :=
+        MEqRed.tAp hpvV₃ hArg₃
+      have hStep₁ :
+          MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+            (.app (.app .top arg) v) (.app .top v) :=
+        MEqRed.app hInnerTop (MEqRed.refl hpvBody₃ hv₃)
+      have hStep₂ :
+          MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+            (.app .top v) .top :=
+        MEqRed.tAp hpvBody₃ hv₃
+      have hu₂₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) u₂ := by
+        simpa [Ctx.depth] using hEqOp.scoped_right
+      have hv₂₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v₂ := by
+        simpa [Ctx.depth] using hEqArg.scoped_right
+      exact ⟨.top,
+        MEqRedStar.trans (MEqRedStar.single hStep₁) (MEqRedStar.single hStep₂),
+        MSubRedStar.single
+          (MSubRed.top hpvBody₃ (Term.Scoped.app hu₂₃ hv₂₃))⟩)
+
+/-- The nested `Ms-Equ` leaf of the outer `Ms-App` case is an equivalence
+body diamond under the original bound, transported to the joined bound. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg v u₂ v₂ hT₁ hEq hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hpvV : PrevalidExt ({ bound := t, kind := .sub } :: Γ) (v :: []) :=
+    PrevalidExt.cons hpvBody hv
+  have hpvArgV :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ) (arg :: v :: []) :=
+    PrevalidExt.cons hpvV hArg
+  let hLeft : MSubRed Γ [] (.abs t (.app (.app op arg) v))
+      (.abs bound₁ (.app (.app op' arg) v)) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁
+      (MSubRed.app
+        (MSubRed.app (MSubRed.equ hpvArgV hEq) hArg) hv)
+  let hRight : MEqRed Γ [] (.abs t (.app (.app op arg) v))
+      (.abs bound₂ (.app u₂ v₂)) :=
+    MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+    ((@hUniformDiamond Γ []) hT₁ hT₂)
+    (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+      have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+      have hOldTo₃ : MEqRedStar Γ [] t bound₃ :=
+        MEqRedStar.trans (MEqRedStar.single hT₁)
+          (MEqRedStar.single hBound₁₃.some)
+      have hLeftInner :
+          MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+            (.app op arg) (.app op' arg) :=
+        MEqRed.app hEq (MEqRed.refl hpvBody hArg)
+      have hLeftBody :
+          MEqRed ({ bound := t, kind := .sub } :: Γ) []
+            (.app (.app op arg) v) (.app (.app op' arg) v) :=
+        MEqRed.app hLeftInner (MEqRed.refl hpvBody hv)
+      have hRightBody :
+          MEqRed ({ bound := t, kind := .sub } :: Γ) []
+            (.app (.app op arg) v) (.app u₂ v₂) :=
+        MEqRed.app hEqOp hEqArg
+      obtain ⟨body₃, hLeftJoin, hRightJoin⟩ :=
+        (@hUniformDiamond ({ bound := t, kind := .sub } :: Γ) [])
+          hLeftBody hRightBody
+      exact ⟨body₃,
+        (MEqRedStar.single hLeftJoin.some).sub_head_replace_star hOldTo₃,
+        MSubRedStar.of_MEqRedStar hpvBody₃
+          ((MEqRedStar.single hRightJoin.some).sub_head_replace_star hOldTo₃)⟩)
+
 /-- Constructor-local nested `Ms-FOp` operator case for the structural
 `Ms-App × Me-App` body branch. -/
 def StrongCommutesFunFunBodyAppAppSubFOpChainPayload : Prop :=
@@ -21747,6 +21938,28 @@ noncomputable def StrongCommutesFunFunBodyAppAppChainPayload.of_sub_cases_pro_sp
       exact hSubApp hT₁ hOp hArg hv hT₂ hEqOp hEqArg
   | fOp hInner hArg hBody =>
       exact hSubFOp hT₁ hInner hArg hBody hv hT₂ hEqOp hEqArg
+
+/-- Split the outer `Ms-App` subtype-operator residual by the nested
+operator constructor. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppChainPayload.of_nested_cases
+    (hNestedPro : StrongCommutesFunFunBodyAppAppSubAppProChainPayload)
+    (hNestedTop : StrongCommutesFunFunBodyAppAppSubAppTopChainPayload)
+    (hNestedEqu : StrongCommutesFunFunBodyAppAppSubAppEquChainPayload)
+    (hNestedApp : StrongCommutesFunFunBodyAppAppSubAppAppChainPayload)
+    (hNestedFOp : StrongCommutesFunFunBodyAppAppSubAppFOpChainPayload) :
+    StrongCommutesFunFunBodyAppAppSubAppChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg v u₂ v₂ hT₁ hOp hArg hv hT₂ hEqOp hEqArg
+  cases hOp with
+  | @pro _ _ i target _ hBind =>
+      exact hNestedPro hT₁ hBind hArg hv hT₂ hEqOp hEqArg
+  | top _ hScoped =>
+      exact hNestedTop hT₁ hScoped hArg hv hT₂ hEqOp hEqArg
+  | equ _ hEq =>
+      exact hNestedEqu hT₁ hEq hArg hv hT₂ hEqOp hEqArg
+  | app hOp hArg₂ =>
+      exact hNestedApp hT₁ hOp hArg₂ hArg hv hT₂ hEqOp hEqArg
+  | fOp hInner hα hBody =>
+      exact hNestedFOp hT₁ hInner hα hBody hArg hv hT₂ hEqOp hEqArg
 
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
@@ -22193,6 +22406,47 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_pro_succ_handlers
       (StrongCommutesFunFunBodyAppAppSubEquChainPayload.proved
         hUniformDiamond)
       hFunBodyAppAppSubApp hFunBodyAppAppSubFOp)
+    hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
+
+/-- Top-level chain-output Lemma 1 closure after splitting the nested
+`Ms-App` residual and discharging its `Ms-Top` and `Ms-Equ` leaves. -/
+theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hAppBetBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hAppBetBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hFunBodyAppAppSubProHead :
+      StrongCommutesFunFunBodyAppAppSubProHeadChainPayload)
+    (hFunBodyAppAppSubAppPro :
+      StrongCommutesFunFunBodyAppAppSubAppProChainPayload)
+    (hFunBodyAppAppSubAppApp :
+      StrongCommutesFunFunBodyAppAppSubAppAppChainPayload)
+    (hFunBodyAppAppSubAppFOp :
+      StrongCommutesFunFunBodyAppAppSubAppFOpChainPayload)
+    (hFunBodyAppAppSubFOp :
+      StrongCommutesFunFunBodyAppAppSubFOpChainPayload)
+    (hFunBodyAppBet : StrongCommutesFunFunBodyAppBetChainPayload)
+    (hFunBodyFun : StrongCommutesFunFunBodyFunChainPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s :=
+  StrongCommutes_proved_of_split_chain_fun_app_sub_cases_pro_succ_handlers
+    hArgTransport hOpTransport hMSubOpTransport hSubBridge
+    hAppBetBodyPro hAppBetBodyApp hAppBetBodyFun hAppBetBodyFOp
+    hFunBodyAppAppSubProHead
+    (StrongCommutesFunFunBodyAppAppSubAppChainPayload.of_nested_cases
+      hFunBodyAppAppSubAppPro
+      (StrongCommutesFunFunBodyAppAppSubAppTopChainPayload.proved
+        hUniformDiamond)
+      (StrongCommutesFunFunBodyAppAppSubAppEquChainPayload.proved
+        hUniformDiamond)
+      hFunBodyAppAppSubAppApp hFunBodyAppAppSubAppFOp)
+    hFunBodyAppAppSubFOp
     hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
 
 /-- Top-level chain-output strong-commutativity closure for de Bruijn

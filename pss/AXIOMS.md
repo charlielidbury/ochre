@@ -2335,6 +2335,18 @@ Bruijn proofs do not yet bridge to LN.
   The changed-head `Ms-Pro` case remains exposed because the old head
   target `shift t` is not stable under the joined abstraction bound.
   Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the constructor-local
+  fun/fun structural app/app nested `Ms-App` subtype-operator case into
+  nested `Ms-Pro`, `Ms-Top`, `Ms-Equ`, `Ms-App`, and `Ms-FOp` payloads;
+  proved the nested `Ms-Top` and `Ms-Equ` leaves as
+  `StrongCommutesFunFunBodyAppAppSubAppTopChainPayload.proved` and
+  `StrongCommutesFunFunBodyAppAppSubAppEquChainPayload.proved` from
+  `UniformEqDiamonds`. Added
+  `StrongCommutesFunFunBodyAppAppSubAppChainPayload.of_nested_cases` and
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`.
+  The nested `Ms-Pro`, recursive nested `Ms-App`, and nested `Ms-FOp`
+  leaves remain explicit residuals. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
