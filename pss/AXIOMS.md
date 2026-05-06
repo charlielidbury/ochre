@@ -2137,6 +2137,13 @@ Bruijn proofs do not yet bridge to LN.
   cover subtype-only constructors such as `Ms-Top` or `Ms-Pro`. Added the
   restricted payload and endpoint to `Pss/DeBruijnSanity.lean`. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutes.app_bet_chain_ArgBodyNoBinders_of`, the binder-free
+  `Ms-App × Me-Bet` Lemma 1 β-position cell. The `Ms-Equ` operator branch
+  now discharges the cross-head body bridge through the existing
+  no-binders `.equ`-to-`.sub` retargeting proof, while the genuine
+  subtype-only `Ms-FOp` body step remains an explicit local bridge premise.
+  Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

@@ -19906,6 +19906,64 @@ theorem app_bet_chain_ArgNoBinders_of
         (MEqRedStar.single hBodyProgress').trans hArgChain
       exact MSubRedStar.of_MEqRedStar hpv hMeRHS
 
+/- Restricted `Ms-App × Me-Bet` β-position cell where both the β argument
+and abstraction body are binder-free. The `Ms-Equ` operator case discharges
+the cross-head body bridge with the existing no-binders `.equ`-to-`.sub`
+retargeting proof; the genuine subtype-only `Ms-FOp` body step remains an
+explicit local bridge premise. -/
+theorem app_bet_chain_ArgBodyNoBinders_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₂' op' : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hv : Term.Scoped Γ.depth v)
+    (hVNoBinders : Term.NoBinders v)
+    (hBodyNoBinders : Term.NoBinders body)
+    (hOp : MSubRed Γ (v :: s) (.abs t body) op')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hFOpBodySubBridge :
+      ∀ {body' : Term},
+        MSubRed ({bound := v, kind := .equ} :: Γ) (Stack.shift 0 s)
+          body body' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body body') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app op' v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ :=
+  app_bet_chain_ArgNoBinders_of hBodyDiamond hArgDiamond ht hv hVNoBinders
+    hOp hBody₂ hArg₂
+    (fun {body' t'} hShape => by
+      cases hOp with
+      | top _ _ =>
+          exact absurd hShape (by simp)
+      | equ _ hMEqOp =>
+          cases hMEqOp with
+          | fOp _ _ hBodyEq =>
+              rename_i body'_inv
+              injection hShape with h1 h2
+              subst h1
+              subst h2
+              exact MEqRedSubBridgePayloadNoBinders_proved ht hBodyNoBinders
+                hBodyEq
+      | fOp _ _ hBodySub =>
+          rename_i bodyOp'
+          injection hShape with h1 h2
+          subst h1
+          subst h2
+          exact hFOpBodySubBridge hBodySub)
+
 end StrongCommutes
 
 /-! ## Top-level chain-output Lemma 2 closure assembly
