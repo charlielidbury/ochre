@@ -939,6 +939,7 @@ namespace DeBruijn
 #print axioms StrongCommutesFunFunBodyAppAppTransportPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubProChainPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubTopChainPayload
+#print axioms StrongCommutesFunFunBodyAppAppSubTopChainPayload.proved
 #print axioms StrongCommutesFunFunBodyAppAppSubEquChainPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubAppChainPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubFOpChainPayload
@@ -960,6 +961,7 @@ namespace DeBruijn
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_operator_handlers
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_operator_transport_handlers
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_sub_cases_handlers
+#print axioms StrongCommutes_proved_of_split_chain_fun_app_sub_cases_top_handlers
 
 -- Top-level Lemma 1 chain-output closure.
 -- Conditional on the same residuals as `EqDiamonds_proved` plus three

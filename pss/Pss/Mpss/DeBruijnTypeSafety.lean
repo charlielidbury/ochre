@@ -21326,6 +21326,44 @@ def StrongCommutesFunFunBodyAppAppSubTopChainPayload : Prop :=
     ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app .top v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- The `Ms-Top` constructor-local app/app subtype-operator case closes at
+body `Top`: the left app-top body takes `Me-TAp`, and the right structural
+application is a subtype of `Top`. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubTopChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubTopChainPayload := by
+  intro Γ t bound₁ bound₂ u v u₂ v₂ hT₁ hu hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  let hLeft : MSubRed Γ [] (.abs t (.app u v)) (.abs bound₁ (.app .top v)) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁
+      (MSubRed.app (MSubRed.top (PrevalidExt.cons hpvBody hv) hu) hv)
+  let hRight : MEqRed Γ [] (.abs t (.app u v)) (.abs bound₂ (.app u₂ v₂)) :=
+    MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+    ((@hUniformDiamond Γ []) hT₁ hT₂)
+    (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+      have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+      have hv₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v := by
+        simpa [Ctx.depth] using hv
+      have hu₂₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) u₂ := by
+        simpa [Ctx.depth] using hEqOp.scoped_right
+      have hv₂₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v₂ := by
+        simpa [Ctx.depth] using hEqArg.scoped_right
+      have hRightScoped₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+            (.app u₂ v₂) :=
+        Term.Scoped.app hu₂₃ hv₂₃
+      exact ⟨.top,
+        MEqRedStar.single (MEqRed.tAp hpvBody₃ hv₃),
+        MSubRedStar.single (MSubRed.top hpvBody₃ hRightScoped₃)⟩)
+
 /-- Constructor-local `Ms-Equ` operator case for the structural
 `Ms-App × Me-App` body branch. -/
 def StrongCommutesFunFunBodyAppAppSubEquChainPayload : Prop :=
@@ -21904,6 +21942,39 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_handlers
     (StrongCommutesFunFunBodyAppAppChainPayload.of_sub_cases
       hFunBodyAppAppSubPro hFunBodyAppAppSubTop hFunBodyAppAppSubEqu
       hFunBodyAppAppSubApp hFunBodyAppAppSubFOp)
+    hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
+
+/-- Top-level chain-output Lemma 1 closure after discharging the constructor
+local fun/fun structural app/app `Ms-Top` subtype-operator case. -/
+theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_top_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hAppBetBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hAppBetBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hFunBodyAppAppSubPro :
+      StrongCommutesFunFunBodyAppAppSubProChainPayload)
+    (hFunBodyAppAppSubEqu :
+      StrongCommutesFunFunBodyAppAppSubEquChainPayload)
+    (hFunBodyAppAppSubApp :
+      StrongCommutesFunFunBodyAppAppSubAppChainPayload)
+    (hFunBodyAppAppSubFOp :
+      StrongCommutesFunFunBodyAppAppSubFOpChainPayload)
+    (hFunBodyAppBet : StrongCommutesFunFunBodyAppBetChainPayload)
+    (hFunBodyFun : StrongCommutesFunFunBodyFunChainPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s :=
+  StrongCommutes_proved_of_split_chain_fun_app_sub_cases_handlers
+    hArgTransport hOpTransport hMSubOpTransport hSubBridge
+    hAppBetBodyPro hAppBetBodyApp hAppBetBodyFun hAppBetBodyFOp
+    hFunBodyAppAppSubPro
+    (StrongCommutesFunFunBodyAppAppSubTopChainPayload.proved hUniformDiamond)
+    hFunBodyAppAppSubEqu hFunBodyAppAppSubApp hFunBodyAppAppSubFOp
     hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
 
 /-- Top-level chain-output strong-commutativity closure for de Bruijn

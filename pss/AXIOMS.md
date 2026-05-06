@@ -2304,6 +2304,15 @@ Bruijn proofs do not yet bridge to LN.
   `Ms-Pro`, `Ms-Top`, `Ms-Equ`, nested `Ms-App`, and `Ms-FOp`; raw
   `Ms-Fun` is impossible at the nonempty operator stack `(v :: [])`.
   Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — proved
+  `StrongCommutesFunFunBodyAppAppSubTopChainPayload.proved` from
+  `UniformEqDiamonds`. In the constructor-local `Ms-Top` subtype-operator
+  app/app case, the left body `.app .top v` joins to `.top` by `Me-TAp`,
+  while the right structural application joins to `.top` by `Ms-Top` under
+  the joined abstraction bound. Added
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_top_handlers`,
+  a top-level closure that no longer exposes the `SubTop` residual. Added
+  the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
