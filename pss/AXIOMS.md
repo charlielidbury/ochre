@@ -111,6 +111,10 @@ closures, 2 inactive outstanding).
   routing scoped de Bruijn variables through the verified thirty-three-head
   reflexive leaf. Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-three-head top-application
+  leaf `BetaInstantiationPreservesMEqRedUnderThirtyThreeHeadsStack.tAp`, using
+  the thirty-three-head reflexive leaf to feed `MEqRed.tAp`. Added the endpoint
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-one-head
   `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderThirtyOneHeadsStack.app`,
   assembling the instantiated function and argument premises with `MEqRed.app`.
