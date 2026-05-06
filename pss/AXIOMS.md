@@ -1982,6 +1982,13 @@ Bruijn proofs do not yet bridge to LN.
   `EqDiamonds.app_app_chain_NoBinders_of`, discharging the `Me-App × Me-App`
   chain-output cell when the original operator source is binder-free. Added
   the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added restricted
+  `EqDiamonds.bet_app_chain_AbsFree_of` and
+  `EqDiamonds.app_bet_chain_AbsFree_of`, discharging the general
+  argument-transport premise in the mixed `Me-Bet`/`Me-App` chain cells for
+  binder-free β arguments and abs-free joined bodies. The existing `.sub`
+  head bridge remains explicit. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the

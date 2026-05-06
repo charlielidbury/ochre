@@ -17646,4 +17646,178 @@ theorem app_app_chain_NoBinders_of
       MEqRedStar.app_left hOpAtNewStack hv₃
     exact hArgChain₂.trans hOpChain₂
 
+/-- Restricted `Me-Bet × Me-App` source cell: the general argument-transport
+payload is discharged for binder-free arguments, matching the restricted
+`bet × bet` surface. The `.sub`-head bridge for the `Me-FOp`-inverted body
+remains explicit. -/
+theorem bet_app_chain_AbsFree_of
+    {Γ : Ctx} {s : Stack} {t v body body₁' v₁' v₂' hOp₂_target : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hAbsFreeBody₃ : ∀ {body₃ : Term},
+      MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body₁' body₃ →
+      Term.AbsFree body₃)
+    (hBody₁ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁')
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hOp₂ : MEqRed Γ (v :: s) (.abs t body) hOp₂_target)
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hBody₂Sub :
+      ∀ {body₂' t' : Term},
+        hOp₂_target = .abs t' body₂' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂') :
+    ∃ t₃,
+      MEqRedStar Γ s (Term.instantiate 0 v₁' body₁') t₃
+      ∧ MEqRedStar Γ s (.app hOp₂_target v₂') t₃ := by
+  cases hOp₂ with
+  | fOp hT₂ hα₂ hBody₂equ =>
+    rename_i t' body₂'
+    have hBody₂sub :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂' :=
+      hBody₂Sub rfl
+    obtain ⟨body₃, hBody₁₃J, hBody₂₃J⟩ := hBodyDiamond hBody₁ hBody₂sub
+    obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArg₁ hArg₂
+    let hBody₁₃ :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body₁' body₃ := hBody₁₃J.some
+    let hBody₂₃ :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body₂' body₃ := hBody₂₃J.some
+    let hArg₁₃ : MEqRed Γ [] v₁' v₃ := hArg₁₃J.some
+    let hArg₂₃ : MEqRed Γ [] v₂' v₃ := hArg₂₃J.some
+    have hV₁'NoBinders : Term.NoBinders v₁' :=
+      hArg₁.preserves_noBinders hVNoBinders
+    have hV₂'NoBinders : Term.NoBinders v₂' :=
+      hArg₂.preserves_noBinders hVNoBinders
+    have hBody₃AbsFree : Term.AbsFree body₃ := hAbsFreeBody₃ hBody₁₃J
+    refine ⟨Term.instantiate 0 v₃ body₃, ?_, ?_⟩
+    · have hv₁'Scoped : Term.Scoped Γ.depth v₁' := hArg₁.scoped_right
+      have hBodyProgress :
+          MEqRed Γ (Stack.instantiate 0 v₁' (Stack.shift 0 s))
+            (Term.instantiate 0 v₁' body₁')
+            (Term.instantiate 0 v₁' body₃) :=
+        MEqRedFusedKindNarrowedBetaSubstStack_proved
+          (arg := t) (arg' := v₁') ht hv₁'Scoped hBody₁₃
+      have hStackEq :
+          Stack.instantiate 0 v₁' (Stack.shift 0 s) = s :=
+        Stack.instantiate_zero_shift_zero_id v₁' s
+      have hBodyProgress' :
+          MEqRed Γ s
+            (Term.instantiate 0 v₁' body₁')
+            (Term.instantiate 0 v₁' body₃) := by
+        simpa [hStackEq] using hBodyProgress
+      have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+        simpa [Ctx.depth] using hBody₁₃.scoped_right
+      have hpvΓs : PrevalidExt Γ s :=
+        PrevalidExt.weaken_head_inv hBody₁.prevalidExt
+      have hArgChain :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v₁' body₃)
+            (Term.instantiate 0 v₃ body₃) :=
+        MEqRedArgTransportPayloadRestricted_proved
+          hBody₃Scoped hBody₃AbsFree hV₁'NoBinders hArg₁₃ hpvΓs
+      exact (MEqRedStar.single hBodyProgress').trans hArgChain
+    · have hpvΓs : PrevalidExt Γ s :=
+        PrevalidExt.weaken_head_inv hBody₁.prevalidExt
+      have ht' : Term.Scoped Γ.depth t' := hT₂.scoped_right
+      have hPrevalidT' :
+          Prevalid ({bound := t', kind := .sub} :: Γ) :=
+        Prevalid.sub (PrevalidExt.ctx hpvΓs) ht'
+      have hpvBody₂t' :
+          PrevalidExt ({bound := t', kind := .sub} :: Γ) (Stack.shift 0 s) :=
+        PrevalidExt.weaken_head hpvΓs hPrevalidT'
+      have hBody₂'Scoped : Term.Scoped (Γ.depth + 1) body₂' := by
+        simpa [Ctx.depth] using hBody₂equ.scoped_right
+      have hBody₂'Scoped_t' :
+          Term.Scoped
+            (Ctx.depth ({bound := t', kind := .sub} :: Γ)) body₂' := by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hBody₂'Scoped
+      have hBodyReflT' :
+          MEqRed ({bound := t', kind := .sub} :: Γ) (Stack.shift 0 s)
+            body₂' body₂' :=
+        MEqRed.refl hpvBody₂t' hBody₂'Scoped_t'
+      have hv₂'Scoped : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+      have hpvNil : PrevalidExt Γ [] :=
+        PrevalidExt.nil (PrevalidExt.ctx hpvΓs)
+      have hArgReflv₂' : MEqRed Γ [] v₂' v₂' :=
+        MEqRed.refl hpvNil hv₂'Scoped
+      have hβStep :
+          MEqRed Γ s (.app (.abs t' body₂') v₂')
+            (Term.instantiate 0 v₂' body₂') :=
+        MEqRed.bet ht' hBodyReflT' hArgReflv₂'
+      have hBodyProgress :
+          MEqRed Γ (Stack.instantiate 0 v₂' (Stack.shift 0 s))
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₂' body₃) :=
+        MEqRedFusedKindNarrowedBetaSubstStack_proved
+          (arg := t) (arg' := v₂') ht hv₂'Scoped hBody₂₃
+      have hStackEq :
+          Stack.instantiate 0 v₂' (Stack.shift 0 s) = s :=
+        Stack.instantiate_zero_shift_zero_id v₂' s
+      have hBodyProgress' :
+          MEqRed Γ s
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₂' body₃) := by
+        simpa [hStackEq] using hBodyProgress
+      have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+        simpa [Ctx.depth] using hBody₂₃.scoped_right
+      have hArgChain :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v₂' body₃)
+            (Term.instantiate 0 v₃ body₃) :=
+        MEqRedArgTransportPayloadRestricted_proved
+          hBody₃Scoped hBody₃AbsFree hV₂'NoBinders hArg₂₃ hpvΓs
+      exact ((MEqRedStar.single hβStep).trans
+        (MEqRedStar.single hBodyProgress')).trans hArgChain
+
+/-- Restricted `Me-App × Me-Bet` source cell, symmetric to
+`bet_app_chain_AbsFree_of`. -/
+theorem app_bet_chain_AbsFree_of
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₁' v₂' hOp₁_target : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hVNoBinders : Term.NoBinders v)
+    (hAbsFreeBody₃ : ∀ {body₃ : Term},
+      MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body₂' body₃ →
+      Term.AbsFree body₃)
+    (hOp₁ : MEqRed Γ (v :: s) (.abs t body) hOp₁_target)
+    (hArg₁ : MEqRed Γ [] v v₁')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hBody₁Sub :
+      ∀ {body₁' t' : Term},
+        hOp₁_target = .abs t' body₁' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app hOp₁_target v₁') t₃
+      ∧ MEqRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  obtain ⟨t₃, hLeft, hRight⟩ :=
+    bet_app_chain_AbsFree_of hBodyDiamond hArgDiamond ht hVNoBinders
+      hAbsFreeBody₃ hBody₂ hArg₂ hOp₁ hArg₁ hBody₁Sub
+  exact ⟨t₃, hRight, hLeft⟩
+
 end EqDiamonds

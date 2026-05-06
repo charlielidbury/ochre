@@ -836,10 +836,12 @@ namespace DeBruijn
 -- through `Me-FOp`, then composes the proved fused kind-narrowing
 -- β-substitution single step with the argument-transport chain.
 #print axioms EqDiamonds.bet_app_chain_of
+#print axioms EqDiamonds.bet_app_chain_AbsFree_of
 
 -- de Bruijn Lemma 2 `Me-App × Me-Bet` cell (chain output). Symmetric to
 -- `bet_app_chain_of`; same conditional hypotheses with LHS/RHS swapped.
 #print axioms EqDiamonds.app_bet_chain_of
+#print axioms EqDiamonds.app_bet_chain_AbsFree_of
 
 end DeBruijn
 end Pss
