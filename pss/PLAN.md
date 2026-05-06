@@ -51,8 +51,50 @@
 > **Subtlety:** Paper's Lemma 32 uses `.equ` head (`Γ, x ≡ v, Γ'`); MPSS
 > Me-Bet body lives in `.sub` head (`Γ, x ≤ t`). The bet × bet diamond
 > closure has an unaccounted-for sub-to-equ binder kind transition that
-> needs a separate helper. Future work: confirm whether this transition
-> is provable via existing infrastructure or needs new development.
+> needs a separate helper. The kind-narrowing helper
+> `MEqRed.sub_to_equ_head_replace` shipped in commit `8e72b12`
+> (`Pss/Mpss/DeBruijnReductions.lean:1953`) provides this bridge for
+> the MEqRed side. The MSubRed-side variant is genuinely false in
+> general (counterexample documented in AXIOMS.md).
+>
+> **Parallel reduction is not a backup architecture** (investigation
+> agent `a78d8da4b2d52d871`, 2026-05-06). The de Bruijn `MEqRed` is
+> already a Tait-Martin-Löf parallel reduction — its `bet` rule's body
+> sub-derivation is an `MEqRed` and can fire arbitrary nested redexes
+> in one step. Introducing a separate `MParRed` would re-derive the
+> same walls (stack-head replacement, `var i=0` stack-extension for
+> `fun_`-rooted `arg`) with renamed identifiers — ~2.5-4.5k lines of
+> zero-progress work. The walls are properties of the constructor
+> signatures (`fun_` requires empty stack, `app` shares `v` between
+> operator stack head and operand source). **If Path B walls, the
+> recommended fallback is Path A (change `MEqRed.bet`'s body context
+> from `.sub t` to `.equ v`), not parallel reduction.** Past planning
+> at `Pss/Util/ParRed.lean` recognized this — generic Takahashi
+> sandwich infrastructure exists but was never instantiated for
+> `MEqRed` because the paper's relation is already parallel.
+>
+> **Fused β-substitution shipped (commit `98a62a2`, +514 lines):**
+> `MEqRedFusedKindNarrowedBetaSubstStack_proved` is the kind-narrowed
+> (sub→equ + uniform substitution by `arg'`) single-MEqRed-step
+> β-substitution. **The fully asymmetric form (LHS by `arg`, RHS by
+> `arg'`) is mathematically foreclosed** at single MEqRed step:
+> `MEqRed.fOp` requires the body-binder `α` and stack-head `α` to be
+> syntactically identical, but asymmetric substitution forces them
+> to be `α[arg/n]` vs `α[arg'/n]` when `α` references the discharged
+> binder. Same blocker at `Me-Pro`. The shipped lemma uniformly
+> substitutes by `arg'` on both sides, with the dropped `.sub` head's
+> bound `arg` decoupled from the substitution.
+>
+> **Implication for the case grid:** `bet × bet`, `bet × app`, and
+> `app × bet` cells require `MEqRedStar` (chain) output, NOT
+> single-step `MEqRedJ`. This contradicts the current `EqDiamonds Γ s`
+> definition's single-step shape. The LN axiom
+> `Lemma_2_inline_bet_residual_axiom` is also stated at single-step
+> output and unproven for the same reason. Three resolution paths
+> for the next major work: (i) restate `EqDiamonds` with chain
+> output (downstream `diamond_eqStar_eqStar_of` consumers change);
+> (ii) use `MSub`-style chain abstraction directly for these cells;
+> (iii) future analysis finds unforeseen single-step closure.
 >
 > LN-side headline axioms are unchanged because the de Bruijn proofs
 > don't yet bridge to LN; the bridge is post-Phase-5 work per CLAUDE.md
