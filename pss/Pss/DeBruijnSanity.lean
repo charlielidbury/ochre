@@ -356,6 +356,7 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderTwentyEightHeadsStack.tAp
 #print axioms BetaInstantiationPreservesMEqRedUnderTwentyNineHeadsStack.tAp
 #print axioms BetaInstantiationPreservesMEqRedUnderThirtyHeadsStack.tAp
+#print axioms BetaInstantiationPreservesMEqRedUnderThirtyOneHeadsStack.tAp
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadsStack.pro
 #print axioms BetaInstantiationPreservesMEqRedUnderEightHeadsStack.pro
 #print axioms BetaInstantiationPreservesMEqRedUnderNineHeadsStack.pro
