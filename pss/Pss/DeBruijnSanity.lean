@@ -825,6 +825,7 @@ namespace DeBruijn
 -- the cases the restricted surface covers.
 #print axioms EqDiamonds.bet_bet_chain_AbsFree_of
 #print axioms EqDiamonds.bet_bet_chain_NoBinders_of
+#print axioms EqDiamonds.bet_bet_chain_ArgNoBinders_of
 
 -- de Bruijn Lemma 2 `Me-App × Me-App` cell (chain output, conditional on
 -- the operator stack-head transport hypothesis). Decomposes the closure

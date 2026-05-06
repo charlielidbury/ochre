@@ -2005,6 +2005,13 @@ Bruijn proofs do not yet bridge to LN.
   `Term.NoBinders`; the remaining general gap is argument-side
   bvar/abstraction stack transport. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `EqDiamonds.bet_bet_chain_ArgNoBinders_of`, a `Me-Bet × Me-Bet`
+  chain-output cell that needs only `Term.NoBinders` for the β argument
+  and no `AbsFree`/`NoBinders` premise on the joined body. It uses
+  `MEqRedArgTransportPayloadNoBinders_proved` for the argument-transport
+  leg. Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
@@ -3383,6 +3390,8 @@ unproven and remains a hypothesis on the cells that consume it.
   `MEqRedStarArgTransportUnderHeadsStack_universal` with
   `MEqRedStar.lift_to_any_context_stack_of_NoBinders`, so abstraction
   bodies are no longer a residual for the binder-free argument sublanguage.
+  The `Me-Bet × Me-Bet` use-site now exposes this directly as
+  `EqDiamonds.bet_bet_chain_ArgNoBinders_of`.
 
 * **Residual gap (the cases the restricted forms do NOT cover):**
   **Argument-side bvar or abstraction** remains open: `v = .bvar i` or
