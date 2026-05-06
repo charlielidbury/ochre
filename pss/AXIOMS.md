@@ -135,6 +135,11 @@ closures, 2 inactive outstanding).
   specialization `.of_generic`, giving the thirty-three-head binder payloads a
   recursive target. Added both endpoints to `Pss/DeBruijnSanity.lean`; no
   headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — opened the thirty-five-head stack surface
+  `BetaInstantiationPreservesMEqRedUnderThirtyFiveHeadsStack` and its generic
+  specialization `.of_generic`, giving the thirty-four-head binder payloads a
+  recursive target. Added both endpoints to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added thirty-four-head prevalidity
   transport `BetaInstantiationPreservesPrevalidExtUnderThirtyFourHeads`, reusing
   the generic preserved-head prevalidity transport at length thirty-four. Added
