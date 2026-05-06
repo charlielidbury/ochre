@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-eight-head
+  projection leaf `BetaInstantiationPreservesMEqRedUnderTwentyEightHeadsStack.pro`,
+  specializing the generic preserved-head `Me-Pro` transport to the fixed
+  twenty-eight-head context shape. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-eight-head
   application-to-top leaf
   `BetaInstantiationPreservesMEqRedUnderTwentyEightHeadsStack.tAp`, reusing
   the checked twenty-eight-head reflexive leaf for the instantiated argument
