@@ -770,5 +770,11 @@ namespace DeBruijn
 #print axioms MEqRedFusedKindNarrowedBetaSubstStack_proved
 #print axioms MEqRedFusedKindNarrowedBetaSubstUnderHeadsStack_universal
 
+-- de Bruijn Lemma 2 `Me-Bet × Me-Bet` cell (chain output, conditional on
+-- the argument-transport hypothesis). Composes the proved fused
+-- kind-narrowing β-substitution single step with the argument-transport
+-- chain to close the diamond at `Term.instantiate 0 v₃ body₃`.
+#print axioms EqDiamonds.bet_bet_chain_of
+
 end DeBruijn
 end Pss
