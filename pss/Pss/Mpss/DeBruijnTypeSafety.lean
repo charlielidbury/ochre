@@ -17566,3 +17566,307 @@ theorem app_app_chain_of
     exact hArgChain₂.trans hOpChain₂
 
 end EqDiamonds
+
+/-! ## `StrongCommutes` β-position chain-output cells
+
+These are the de Bruijn Lemma 1 (`StrongCommutes`) β-position cells with
+chain output, the analog of `EqDiamonds.bet_*_chain_of` cells but for the
+asymmetric `MSubRed × MEqRed` shape.
+
+`MSubRed`'s constructors at an `.app (.abs t body) v` source are:
+- `Ms-Top` (target `.top`)
+- `Ms-Equ` (wraps an `MEqRed` step at the source)
+- `Ms-App` (operator step at stack `(v :: s)`)
+
+There is no direct `Ms-Bet` constructor — β-fires on the subtype side go
+through `Ms-Equ` wrapping `Me-Bet`. So the β-position cells here are:
+
+- `equ_bet_chain_of`: `Ms-Equ` wrapping a source `Me-*` step paired with
+  `Me-Bet`. Delegates to `EqDiamonds.bet_bet_chain_of` /
+  `app_bet_chain_of` based on which `Me-*` constructor the wrap holds.
+
+- `app_bet_chain_of`: `Ms-App` (genuine subtype operator progression at
+  stack `(v :: s)`) paired with `Me-Bet`. The operator step is one of
+  `Ms-Top` (target `.top`, closes at `.top`), `Ms-Equ` (delegates to
+  `EqDiamonds.app_bet_chain_of`), or `Ms-FOp` (β-fire LHS post-step
+  via `Me-Bet` and use a `.sub`-head bridging hypothesis).
+
+Both cells return `MEqRedStar t₁ t₃ ∧ MSubRedStar t₂ t₃` (the
+`StrongCommutesChain` shape), which mirrors `EqDiamonds`'s chain output
+but with `MSubRedStar` on the second component (the RHS-side post-step
+chain). The Me-side chain is recovered directly from the EqDiamonds
+delegate; the Ms-side chain is converted from the EqDiamonds chain via
+`MSubRedStar.of_MEqRedStar`. -/
+
+/-- Chain-output strong commutativity at a fixed extended context. The
+de Bruijn Lemma 1 shape needed by chain-output close arguments
+analogous to the `EqDiamonds` chain-output cells. -/
+abbrev StrongCommutesChain (Γ : Ctx) (s : Stack) : Prop :=
+  ∀ {t₀ t₁ t₂ : Term},
+    MSubRed Γ s t₀ t₁ →
+    MEqRed Γ s t₀ t₂ →
+    ∃ t₃, MEqRedStar Γ s t₁ t₃ ∧ MSubRedStar Γ s t₂ t₃
+
+namespace StrongCommutes
+
+/-- The `Ms-Equ × Me-Bet` β-position cell of de Bruijn Lemma 1 with
+chain output. The LHS subtype step wraps an `MEqRed` step from the
+β-redex source; the RHS is `Me-Bet`. The wrapped `MEqRed` step at
+source `.app (.abs t body) v` can only be `Me-Bet` or `Me-App`
+(structurally — `.app` heads do not match `Me-Pro`/`Me-Var`/`Me-Top`/
+`Me-Fun`/`Me-FOp`/`Me-TAp` here). Each sub-case delegates to the
+matching `EqDiamonds.*_chain_of` cell, and the RHS `MEqRedStar` chain
+is wrapped into `MSubRedStar` via `MSubRedStar.of_MEqRedStar`.
+
+Conditional on the same payloads as the underlying `EqDiamonds.bet_bet_chain_of`
+and `EqDiamonds.app_bet_chain_of` cells. The bridge `hBody₁Sub` matches
+`EqDiamonds.app_bet_chain_of`'s `hBody₁Sub` shape exactly, parameterised
+in the post-step operator-application target. -/
+theorem equ_bet_chain_of
+    (hArgTransport : MEqRedArgTransportPayload)
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₂' t₁ : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hpv : PrevalidExt Γ s)
+    (hMEqLHS : MEqRed Γ s (.app (.abs t body) v) t₁)
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hAppBodyOpSubBridge :
+      ∀ {hOp₁_target body₁' t' : Term},
+        MEqRed Γ (v :: s) (.abs t body) hOp₁_target →
+        hOp₁_target = .abs t' body₁' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₁') :
+    ∃ t₃,
+      MEqRedStar Γ s t₁ t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  cases hMEqLHS with
+  | bet ht₁ hBody₁ hArg₁ =>
+    -- LHS β-fires too: delegate to EqDiamonds.bet_bet_chain_of.
+    obtain ⟨t₃, hLeft, hRight⟩ :=
+      EqDiamonds.bet_bet_chain_of hArgTransport hBodyDiamond hArgDiamond
+        ht hBody₁ hArg₁ hBody₂ hArg₂
+    refine ⟨t₃, hLeft, ?_⟩
+    exact MSubRedStar.of_MEqRedStar hpv hRight
+  | app hOp₁ hArg₁ =>
+    -- LHS app-fires: delegate to EqDiamonds.app_bet_chain_of.
+    obtain ⟨t₃, hLeft, hRight⟩ :=
+      EqDiamonds.app_bet_chain_of hArgTransport hBodyDiamond hArgDiamond
+        ht hOp₁ hArg₁ hBody₂ hArg₂
+        (fun {body₁' t'} hShape => hAppBodyOpSubBridge hOp₁ hShape)
+    refine ⟨t₃, hLeft, ?_⟩
+    exact MSubRedStar.of_MEqRedStar hpv hRight
+
+/-- The `Ms-App × Me-Bet` β-position cell of de Bruijn Lemma 1 with
+chain output. The LHS is a genuine subtype operator-progression step
+at stack `(v :: s)`; the RHS β-fires.
+
+Cases on the operator-step constructor (`MSubRed Γ (v :: s) (.abs t body) op'`):
+
+- `Ms-Top`: `op' = .top`. Both sides reach `.top`: LHS `.app .top v` via
+  `Me-TAp`; RHS `Term.instantiate 0 v₂' body₂'` via `Ms-Top` at
+  scope `Γ.depth`.
+- `Ms-Equ`: wraps an `MEqRed` operator step. Combined with refl on
+  the operand, this is an `Me-App × Me-Bet` source — delegate to
+  `EqDiamonds.app_bet_chain_of` and convert RHS via
+  `MSubRedStar.of_MEqRedStar`.
+- `Ms-FOp`: `op' = .abs t bodyOp'` with body in `.equ`-head bound `v`.
+  β-fire LHS post-step `.app (.abs t bodyOp') v` directly; close via
+  the body diamond + arg diamond + transport bridges, using the
+  caller-supplied `.sub`-head bridge for the operator step's `.equ`-head
+  body derivation.
+
+Conditional on:
+- `MEqRedArgTransportPayload`,
+- A body diamond (at `.sub`-head bound `t`) and arg diamond,
+- A general `.sub`-head bridging hypothesis matching
+  `EqDiamonds.app_bet_chain_of`'s `hBody₁Sub`. This handles BOTH the
+  `Ms-FOp` case (where the post-step bound is `t` since `Ms-FOp` keeps
+  the bound fixed) and the `Ms-Equ` case wrapping `Me-FOp` (where the
+  post-step bound `t'` may differ from `t`).
+
+The bridge hypothesis is parametric in the post-step bound and body so
+the bridging works uniformly across the two `.abs`-shape cases. -/
+theorem app_bet_chain_of
+    (hArgTransport : MEqRedArgTransportPayload)
+    {Γ : Ctx} {s : Stack} {t v body body₂' v₂' op' : Term}
+    (hBodyDiamond :
+      ∀ {b₁ b₂ : Term},
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₁ →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body b₂ →
+        ∃ b₃,
+          MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) b₁ b₃
+          ∧ MEqRedJ ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+              b₂ b₃)
+    (hArgDiamond :
+      ∀ {a₁ a₂ : Term},
+        MEqRed Γ [] v a₁ → MEqRed Γ [] v a₂ →
+        ∃ a₃, MEqRedJ Γ [] a₁ a₃ ∧ MEqRedJ Γ [] a₂ a₃)
+    (ht : Term.Scoped Γ.depth t)
+    (hv : Term.Scoped Γ.depth v)
+    (hOp : MSubRed Γ (v :: s) (.abs t body) op')
+    (hBody₂ :
+      MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) body body₂')
+    (hArg₂ : MEqRed Γ [] v v₂')
+    (hBodyOpSubBridge :
+      ∀ {body' t' : Term},
+        op' = .abs t' body' →
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body body') :
+    ∃ t₃,
+      MEqRedStar Γ s (.app op' v) t₃
+      ∧ MSubRedStar Γ s (Term.instantiate 0 v₂' body₂') t₃ := by
+  -- Recover prevalidities and scopings.
+  have hpvCons : PrevalidExt Γ (v :: s) := hOp.prevalidExt
+  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  cases hOp with
+  | top _ _ =>
+    -- op' = .top. Both sides reach .top.
+    -- LHS chain: .app .top v →[Me-TAp] .top.
+    have hMeTAp : MEqRed Γ s (.app .top v) .top := MEqRed.tAp hpv hv
+    -- RHS chain: instantiate 0 v₂' body₂' →[Ms-Top] .top.
+    have hv₂' : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+    have hBody₂Scoped : Term.Scoped (Γ.depth + 1) body₂' := by
+      simpa [Ctx.depth] using hBody₂.scoped_right
+    have hInstScoped :
+        Term.Scoped Γ.depth (Term.instantiate 0 v₂' body₂') :=
+      Term.instantiate_scoped 0 _ _ _ (Nat.zero_le _) hv₂' hBody₂Scoped
+    have hMsTop :
+        MSubRed Γ s (Term.instantiate 0 v₂' body₂') .top :=
+      MSubRed.top hpv hInstScoped
+    refine ⟨.top, MEqRedStar.single hMeTAp, MSubRedStar.single hMsTop⟩
+  | equ _ hMEqOp =>
+    -- op' is the target of an MEqRed operator step. Build an Me-App on
+    -- LHS via refl on the operand and delegate to
+    -- EqDiamonds.app_bet_chain_of. The bridge hypothesis flows through
+    -- unchanged: it has the EqDiamonds shape `op' = .abs t' body' →
+    -- MEqRed (.sub-head bound t) body body'`.
+    have hpvNil : PrevalidExt Γ [] :=
+      PrevalidExt.nil (PrevalidExt.ctx hpv)
+    have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+    obtain ⟨t₃, hLeft, hRight⟩ :=
+      EqDiamonds.app_bet_chain_of hArgTransport hBodyDiamond hArgDiamond
+        ht hMEqOp hArgRefl hBody₂ hArg₂
+        (fun {body₁' t'} hShape => hBodyOpSubBridge hShape)
+    refine ⟨t₃, hLeft, ?_⟩
+    exact MSubRedStar.of_MEqRedStar hpv hRight
+  | fOp htOp hαOp hBodySub =>
+    -- op' = .abs t bodyOp', body sub-chain at `.equ`-head bound `v`
+    -- (Ms-FOp keeps the bound `t` fixed). The bridge hypothesis at
+    -- shape `op' = .abs t bodyOp'` provides a `.sub`-head MEqRed
+    -- derivation `body → bodyOp'`.
+    rename_i bodyOp'
+    have hBodyOpSubBridged :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body bodyOp' :=
+      hBodyOpSubBridge rfl
+    -- Body diamond: bodyOp' joins body₂' at body₃ in `.sub`-head.
+    obtain ⟨body₃, hBody₁₃J, hBody₂₃J⟩ :=
+      hBodyDiamond hBodyOpSubBridged hBody₂
+    let hBody₁₃ :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          bodyOp' body₃ := hBody₁₃J.some
+    let hBody₂₃ :
+        MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+          body₂' body₃ := hBody₂₃J.some
+    -- Arg diamond: refl(v) and `v → v₂'` join at some v₃.
+    have hpvNil : PrevalidExt Γ [] :=
+      PrevalidExt.nil (PrevalidExt.ctx hpv)
+    have hArgRefl : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+    obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArgRefl hArg₂
+    let hArg₁₃ : MEqRed Γ [] v v₃ := hArg₁₃J.some
+    let hArg₂₃ : MEqRed Γ [] v₂' v₃ := hArg₂₃J.some
+    refine ⟨Term.instantiate 0 v₃ body₃, ?_, ?_⟩
+    · -- LHS chain: .app (.abs t bodyOp') v →[Me-Bet]
+      --              instantiate 0 v bodyOp'
+      --            →[fused-narrow] instantiate 0 v body₃
+      --            →* instantiate 0 v₃ body₃ (via arg-transport).
+      have hPrevalidT :
+          Prevalid ({bound := t, kind := .sub} :: Γ) :=
+        Prevalid.sub (PrevalidExt.ctx hpv) ht
+      have hpvBodyT :
+          PrevalidExt ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) :=
+        PrevalidExt.weaken_head hpv hPrevalidT
+      have hBodyOp'Scoped : Term.Scoped (Γ.depth + 1) bodyOp' := by
+        simpa [Ctx.depth] using hBodyOpSubBridged.scoped_right
+      have hBodyOp'Scoped_t :
+          Term.Scoped
+            (Ctx.depth ({bound := t, kind := .sub} :: Γ)) bodyOp' := by
+        simpa [Ctx.depth, Nat.succ_eq_add_one] using hBodyOp'Scoped
+      have hBodyReflT :
+          MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s)
+            bodyOp' bodyOp' :=
+        MEqRed.refl hpvBodyT hBodyOp'Scoped_t
+      have hArgReflv : MEqRed Γ [] v v := MEqRed.refl hpvNil hv
+      have hβStep :
+          MEqRed Γ s (.app (.abs t bodyOp') v)
+            (Term.instantiate 0 v bodyOp') :=
+        MEqRed.bet ht hBodyReflT hArgReflv
+      have hBodyProgress :
+          MEqRed Γ (Stack.instantiate 0 v (Stack.shift 0 s))
+            (Term.instantiate 0 v bodyOp')
+            (Term.instantiate 0 v body₃) :=
+        MEqRedFusedKindNarrowedBetaSubstStack_proved
+          (arg := t) (arg' := v) ht hv hBody₁₃
+      have hStackEq :
+          Stack.instantiate 0 v (Stack.shift 0 s) = s :=
+        Stack.instantiate_zero_shift_zero_id v s
+      have hBodyProgress' :
+          MEqRed Γ s
+            (Term.instantiate 0 v bodyOp')
+            (Term.instantiate 0 v body₃) := by
+        simpa [hStackEq] using hBodyProgress
+      have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+        simpa [Ctx.depth] using hBody₁₃.scoped_right
+      have hArgChain :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v body₃)
+            (Term.instantiate 0 v₃ body₃) :=
+        hArgTransport hBody₃Scoped hArg₁₃ hpv
+      exact ((MEqRedStar.single hβStep).trans
+        (MEqRedStar.single hBodyProgress')).trans hArgChain
+    · -- RHS chain: instantiate 0 v₂' body₂' →[fused-narrow]
+      --               instantiate 0 v₂' body₃
+      --            →* instantiate 0 v₃ body₃ (via arg-transport),
+      -- then wrap into MSubRedStar via Ms-Equ.
+      have hv₂'Scoped : Term.Scoped Γ.depth v₂' := hArg₂.scoped_right
+      have hBodyProgress :
+          MEqRed Γ (Stack.instantiate 0 v₂' (Stack.shift 0 s))
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₂' body₃) :=
+        MEqRedFusedKindNarrowedBetaSubstStack_proved
+          (arg := t) (arg' := v₂') ht hv₂'Scoped hBody₂₃
+      have hStackEq :
+          Stack.instantiate 0 v₂' (Stack.shift 0 s) = s :=
+        Stack.instantiate_zero_shift_zero_id v₂' s
+      have hBodyProgress' :
+          MEqRed Γ s
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₂' body₃) := by
+        simpa [hStackEq] using hBodyProgress
+      have hBody₃Scoped : Term.Scoped (Γ.depth + 1) body₃ := by
+        simpa [Ctx.depth] using hBody₂₃.scoped_right
+      have hArgChain :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v₂' body₃)
+            (Term.instantiate 0 v₃ body₃) :=
+        hArgTransport hBody₃Scoped hArg₂₃ hpv
+      have hMeRHS :
+          MEqRedStar Γ s
+            (Term.instantiate 0 v₂' body₂')
+            (Term.instantiate 0 v₃ body₃) :=
+        (MEqRedStar.single hBodyProgress').trans hArgChain
+      exact MSubRedStar.of_MEqRedStar hpv hMeRHS
+
+end StrongCommutes

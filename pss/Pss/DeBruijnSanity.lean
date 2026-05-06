@@ -838,5 +838,30 @@ namespace DeBruijn
 -- `bet_app_chain_of`; same conditional hypotheses with LHS/RHS swapped.
 #print axioms EqDiamonds.app_bet_chain_of
 
+-- de Bruijn Lemma 1 `StrongCommutes` β-position chain-output cells. These
+-- are the analogs of `EqDiamonds.bet_*_chain_of` but for the asymmetric
+-- `MSubRed × MEqRed → ∃ t₃, MEqRedStar t₁ t₃ ∧ MSubRedStar t₂ t₃` shape.
+-- `MSubRed` has no `bet` constructor; β-fires on the subtype side go
+-- through `Ms-Equ` wrapping `Me-Bet`. So the β-position cells are:
+--
+-- 1. `equ_bet_chain_of`: `Ms-Equ` (wrapping a source `Me-*` step) paired
+--    with `Me-Bet`. Delegates to `EqDiamonds.bet_bet_chain_of` /
+--    `app_bet_chain_of` based on which `Me-*` constructor the wrap holds,
+--    then converts the RHS `MEqRedStar` to `MSubRedStar` via
+--    `MSubRedStar.of_MEqRedStar`.
+-- 2. `app_bet_chain_of`: `Ms-App` (genuine subtype operator-progression
+--    at stack `(v :: s)`) paired with `Me-Bet`. The `Ms-Top` operator
+--    case closes at `.top`; `Ms-Equ` delegates to
+--    `EqDiamonds.app_bet_chain_of`; `Ms-FOp` β-fires LHS post-step
+--    directly using a `.sub`-head bridge for the operator step's
+--    `.equ`-head body derivation.
+--
+-- Both cells are conditional on `MEqRedArgTransportPayload`, the
+-- standard body and arg diamond hypotheses, and a `.sub`-head bridging
+-- hypothesis matching `EqDiamonds.app_bet_chain_of`'s `hBody₁Sub`.
+#print axioms StrongCommutesChain
+#print axioms StrongCommutes.equ_bet_chain_of
+#print axioms StrongCommutes.app_bet_chain_of
+
 end DeBruijn
 end Pss
