@@ -17488,6 +17488,28 @@ theorem MEqRedStar.lift_to_any_context_stack_of_NoBinders
   | fOp _ _ _ _ _ =>
       cases hNoBinders
 
+/-- Chain-level stack/context retargeting for de Bruijn equivalence
+reduction, restricted to `NoBinders` sources. This lifts an entire
+`MEqRedStar` chain into any prevalid target context and stack by retargeting
+each single step and using `MEqRedStar.preserves_noBinders` to keep the
+restriction available at intermediate sources. -/
+theorem MEqRedStar.lift_chain_to_any_context_stack_of_NoBinders
+    {Γ_old Γ_new : Ctx} {arg arg' : Term} {s_old s_new : Stack}
+    (h : MEqRedStar Γ_old s_old arg arg')
+    (hNoBinders : Term.NoBinders arg)
+    (hpv : PrevalidExt Γ_new s_new) :
+    MEqRedStar Γ_new s_new arg arg' := by
+  induction h with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | @tail mid target hChain hStep ih =>
+      have hMidNoBinders : Term.NoBinders mid :=
+        MEqRedStar.preserves_noBinders hChain hNoBinders
+      have hStepNew : MEqRedStar Γ_new s_new mid target :=
+        MEqRedStar.lift_to_any_context_stack_of_NoBinders
+          hStep.some hMidNoBinders hpv
+      exact Relation.ReflTransGen.trans ih hStepNew
+
 /-- Scoped, binder-free `.equ`-head to `.sub`-head bridge. This is not the
 general `MEqRedSubBridgePayload`: it is the provable sublanguage where the
 body source cannot observe the head kind or annotation. -/

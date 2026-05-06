@@ -2055,6 +2055,12 @@ Bruijn proofs do not yet bridge to LN.
   subtype-reduction retargeting lemma for binder-free sources, built from
   `MSubRedStar.preserves_noBinders` and the single-step retargeting helper.
   Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedStar.lift_chain_to_any_context_stack_of_NoBinders`, the matching
+  chain-level equivalence-reduction retargeting lemma for binder-free
+  sources. It composes the existing single-step retargeting helper with
+  `MEqRedStar.preserves_noBinders` along the chain. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
