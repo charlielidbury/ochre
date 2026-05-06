@@ -16902,3 +16902,110 @@ theorem MEqRedStarArgTransportRestricted_proved :
     MEqRedStarArgTransportRestricted := by
   intro Γ arg arg' body s hBody hAbsFree hArg hArg' hpv hLift
   exact MEqRedStar.argTransportRestricted hBody hAbsFree hArg hArg' hpv hLift
+
+/-! ## `Me-App × Me-App` chain-output cell (conditional on operator
+stack-head transport)
+
+The single-step approach to this cell walls because `MEqRed.app`'s operator
+sub-step lives at the operand-as-stack-head, and the post-arg-step operand
+differs from the pre-arg-step operand. With chain output via
+`MEqRedStar.app_left/app_right`, we can decompose into "arg first then
+operator" or "operator first then arg" — but in either case, the chain
+congruence requires the operator chain to live at the stack head matching
+the operand at that point, and the operator-diamond's output lives at the
+*pre-step* operand's stack head.
+
+This is structurally identical to the wall observed in the iter-32 Lever A
+counterexample at `tAp`: stack-head transport of an arbitrary `MEqRed`
+operator step from `(v :: s)` to `(v' :: s)` is the open problem.
+
+The closed form here threads an explicit **operator stack-head transport
+hypothesis** as a Prop premise, mirroring how `bet_bet_chain_of` threads
+`MEqRedArgTransportPayload`. This is not a new axiom — callers must supply
+the transport from elsewhere (or arrange that the relevant operator steps
+fall in the stack-insensitive sublanguage where transport is provable). -/
+
+/-- Operator stack-head transport: given an arg-side equivalence chain
+`v →* v'`, lift any operator step at stack `(v :: s)` to a chain at stack
+`(v' :: s)`. This is the structurally missing ingredient for the
+`Me-App × Me-App` chain-output cell.
+
+`MEqRed.app`'s recursive operator premise is at stack `(v :: s)` where `v`
+is the operand. After an arg-side chain `v →* v'`, the application's
+operand has progressed to `v'`, and a follow-on operator chain needs to
+live at stack `(v' :: s)`.
+
+Stated with a chain (`MEqRedStar`) on the arg side rather than a single
+step so that callers can compose multi-hop arg progressions (e.g. the
+diamond's two-hop `v → v_i → v₃` factoring) without repeated invocation. -/
+def MEqRedOpStackHeadTransportPayload : Prop :=
+  ∀ {Γ : Ctx} {s : Stack} {v v' u u' : Term},
+    MEqRedStar Γ [] v v' →
+      MEqRed Γ (v :: s) u u' →
+        MEqRedStar Γ (v' :: s) u u'
+
+namespace EqDiamonds
+
+/-- The `Me-App × Me-App` source cell of de Bruijn Lemma 2 with chain
+output. Closes via "first step the arg, then step the operator at the new
+arg-stack" using `MEqRedStar.app_right` and `MEqRedStar.app_left`,
+threading the operator stack-head transport for the second leg. -/
+theorem app_app_chain_of
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    {Γ : Ctx} {s : Stack} {u u₁ u₂ v v₁ v₂ : Term}
+    (hOpDiamond :
+      ∀ {a b : Term},
+        MEqRed Γ (v :: s) u a → MEqRed Γ (v :: s) u b →
+        ∃ c, MEqRedJ Γ (v :: s) a c ∧ MEqRedJ Γ (v :: s) b c)
+    (hArgDiamond :
+      ∀ {a b : Term},
+        MEqRed Γ [] v a → MEqRed Γ [] v b →
+        ∃ c, MEqRedJ Γ [] a c ∧ MEqRedJ Γ [] b c)
+    (hOp₁ : MEqRed Γ (v :: s) u u₁) (hArg₁ : MEqRed Γ [] v v₁)
+    (hOp₂ : MEqRed Γ (v :: s) u u₂) (hArg₂ : MEqRed Γ [] v v₂) :
+    ∃ t₃, MEqRedStar Γ s (.app u₁ v₁) t₃ ∧ MEqRedStar Γ s (.app u₂ v₂) t₃ := by
+  -- Op diamond closure: u₁ / u₂ join at u₃ at stack (v :: s).
+  obtain ⟨u₃, hOp₁₃J, hOp₂₃J⟩ := hOpDiamond hOp₁ hOp₂
+  -- Arg diamond closure: v₁ / v₂ join at v₃ at empty stack.
+  obtain ⟨v₃, hArg₁₃J, hArg₂₃J⟩ := hArgDiamond hArg₁ hArg₂
+  -- Extract the underlying Type-valued derivations.
+  let hOp₁₃ : MEqRed Γ (v :: s) u₁ u₃ := hOp₁₃J.some
+  let hOp₂₃ : MEqRed Γ (v :: s) u₂ u₃ := hOp₂₃J.some
+  let hArg₁₃ : MEqRed Γ [] v₁ v₃ := hArg₁₃J.some
+  let hArg₂₃ : MEqRed Γ [] v₂ v₃ := hArg₂₃J.some
+  -- Recover prevalidities and scopings.
+  have hpvCons : PrevalidExt Γ (v :: s) := hOp₁.prevalidExt
+  have hpv : PrevalidExt Γ s := PrevalidExt.tail hpvCons
+  have hu₁ : Term.Scoped Γ.depth u₁ := hOp₁.scoped_right
+  have hu₂ : Term.Scoped Γ.depth u₂ := hOp₂.scoped_right
+  have hv₃ : Term.Scoped Γ.depth v₃ := hArg₁₃.scoped_right
+  -- The arg-side two-hop chain `v →* v_i →* v₃` for each branch.
+  have hArgChain₁_full : MEqRedStar Γ [] v v₃ :=
+    (MEqRedStar.single hArg₁).trans (MEqRedStar.single hArg₁₃)
+  have hArgChain₂_full : MEqRedStar Γ [] v v₃ :=
+    (MEqRedStar.single hArg₂).trans (MEqRedStar.single hArg₂₃)
+  refine ⟨.app u₃ v₃, ?_, ?_⟩
+  · -- LHS chain: (.app u₁ v₁) →* (.app u₁ v₃) →* (.app u₃ v₃).
+    have hArgStep₁ : MEqRedStar Γ [] v₁ v₃ := MEqRedStar.single hArg₁₃
+    have hArgChain₁ : MEqRedStar Γ s (.app u₁ v₁) (.app u₁ v₃) :=
+      MEqRedStar.app_right hu₁ hArgStep₁ hpv
+    -- Transport the operator step from stack (v :: s) to (v₃ :: s)
+    -- using the supplied stack-head transport. The transport's `v`
+    -- is the *original* `v` (matching `hOp₁₃`'s stack), with target
+    -- `v₃` reached via the two-hop arg chain.
+    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₁ u₃ :=
+      hOpTransport hArgChain₁_full hOp₁₃
+    have hOpChain₁ : MEqRedStar Γ s (.app u₁ v₃) (.app u₃ v₃) :=
+      MEqRedStar.app_left hOpAtNewStack hv₃
+    exact hArgChain₁.trans hOpChain₁
+  · -- RHS chain: (.app u₂ v₂) →* (.app u₂ v₃) →* (.app u₃ v₃).
+    have hArgStep₂ : MEqRedStar Γ [] v₂ v₃ := MEqRedStar.single hArg₂₃
+    have hArgChain₂ : MEqRedStar Γ s (.app u₂ v₂) (.app u₂ v₃) :=
+      MEqRedStar.app_right hu₂ hArgStep₂ hpv
+    have hOpAtNewStack : MEqRedStar Γ (v₃ :: s) u₂ u₃ :=
+      hOpTransport hArgChain₂_full hOp₂₃
+    have hOpChain₂ : MEqRedStar Γ s (.app u₂ v₃) (.app u₃ v₃) :=
+      MEqRedStar.app_left hOpAtNewStack hv₃
+    exact hArgChain₂.trans hOpChain₂
+
+end EqDiamonds
