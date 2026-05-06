@@ -2362,6 +2362,20 @@ Bruijn proofs do not yet bridge to LN.
   `Ms-Pro` has the same `shift t` joined-bound instability as the outer
   changed-head `Ms-Pro`. Added the endpoints to `Pss/DeBruijnSanity.lean`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the recursive nested `Ms-App`
+  leaf one level deeper into nested-recursive `Ms-Pro`, `Ms-Top`, `Ms-Equ`,
+  `Ms-App`, and `Ms-FOp` payloads; proved the nested-recursive `Ms-Top`
+  leaf as
+  `StrongCommutesFunFunBodyAppAppSubAppAppTopChainPayload.proved` from
+  `UniformEqDiamonds`. Added
+  `StrongCommutesFunFunBodyAppAppSubAppAppChainPayload.of_nested_cases`
+  and rewired
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`
+  so this route no longer exposes the unsplit recursive nested `Ms-App`
+  residual. The live recursive nested residuals are now nested-recursive
+  `Ms-Pro`, `Ms-Equ`, `Ms-App`, and `Ms-FOp`, plus the sibling nested
+  `Ms-FOp` and changed-head `Ms-Pro` cases. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
