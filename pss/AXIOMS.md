@@ -1997,6 +1997,14 @@ Bruijn proofs do not yet bridge to LN.
   `AbsFree` side condition in the restricted β chain cells when the relevant
   body branch is binder-free. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — merged the under-heads
+  argument-transport proof
+  `MEqRedStarArgTransportUnderHeadsStack_universal` and added
+  `MEqRedArgTransportPayloadNoBinders_proved`. This removes the
+  body-shape restriction from argument transport when the β argument is
+  `Term.NoBinders`; the remaining general gap is argument-side
+  bvar/abstraction stack transport. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnWellFormed.lean` — added constructor inversions
   `WfM.fun_inv` and `WfM.app_inv` for the de Bruijn well-formedness
   judgment. `WfM.app_inv` returns a `Sigma` witness because the
@@ -3369,30 +3377,27 @@ unproven and remains a hypothesis on the cells that consume it.
   See `MEqRedArgTransportPayloadRestricted_proved` for the underlying
   proven payload.
 
-* **Residual gap (the cases the restricted form does NOT cover):**
-  1. **Body-side abstraction:** `body = .abs bound innerBody`. The
-     restricted argument-transport surface
-     (`MEqRedStar.argTransportRestricted`) cannot recurse under a
-     top-level abstraction without an index-1 instantiation lemma. The
-     joined `body₃` having a top-level abstraction is the wall here.
-  2. **Argument-side bvar or abstraction:** `v = .bvar i` or `v` has
-     `.abs` somewhere in its tree. The structural stack lift
-     (`MEqRedStar.lift_to_any_stack_of_NoBinders`) cannot rebuild a
-     `pro` step at a new stack — the inner equ-binding derivation
-     `MEqRed Γ [] α α'` requires `MEqRedFunStackAppendPayload` to lift
-     when `α` is `.abs`-rooted, and that payload remains open. The
-     stricter `Term.NoBinders` predicate (no `.bvar`, no `.abs`)
-     excludes the wall by ruling out the relevant constructors
-     entirely.
+* **Newer restricted form:** `MEqRedArgTransportPayloadNoBinders_proved`
+  removes the body-side `AbsFree` condition entirely when the argument
+  source is `Term.NoBinders`. It combines the under-heads transport
+  `MEqRedStarArgTransportUnderHeadsStack_universal` with
+  `MEqRedStar.lift_to_any_context_stack_of_NoBinders`, so abstraction
+  bodies are no longer a residual for the binder-free argument sublanguage.
 
-* **Discharge path for the residual:** The general form requires either
-  (a) an index-1 instantiation lemma to recurse under abstraction
-  bodies, AND (b) a stack lift for arbitrary single-step `MEqRed Γ []
-  arg arg'`. (b) is precisely the `MEqRedFunStackAppendPayload` wall —
-  the only known route is body subtype-to-equivalence transport, which
-  is a load-bearing residual of the de Bruijn pivot. (a) is a routine
-  index-bookkeeping generalization of the index-0 `argTransportRestricted`,
-  estimated at ~200-400 lines but blocked on (b).
+* **Residual gap (the cases the restricted forms do NOT cover):**
+  **Argument-side bvar or abstraction** remains open: `v = .bvar i` or
+  `v` has `.abs` somewhere in its tree. The structural stack/context lift
+  cannot rebuild a `pro` step at a new stack — the inner equ-binding
+  derivation `MEqRed Γ [] α α'` requires `MEqRedFunStackAppendPayload` to
+  lift when `α` is `.abs`-rooted, and that payload remains open. The
+  stricter `Term.NoBinders` predicate (no `.bvar`, no `.abs`) excludes
+  the wall by ruling out the relevant constructors entirely.
+
+* **Discharge path for the residual:** The general form now reduces to a
+  stack/context lift for arbitrary single-step `MEqRed Γ [] arg arg'`.
+  This is precisely the `MEqRedFunStackAppendPayload` wall — the only
+  known route is body subtype-to-equivalence transport, which is a
+  load-bearing residual of the de Bruijn pivot.
 
 * **Headline impact:** The restricted form covers a strictly limited
   shape of `bet × bet` confluence cells. Whether this discharges any
