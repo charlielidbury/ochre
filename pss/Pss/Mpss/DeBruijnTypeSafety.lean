@@ -9997,6 +9997,102 @@ noncomputable def BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsStack.app
   dsimp only at hFn hArg ⊢
   simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
 
+/-- `MEqRed.app` is stable under de Bruijn β-instantiation below twenty-three
+preserved context heads. -/
+noncomputable def BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsStack.app
+    {Γ : Ctx}
+    {arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ head₁₉ head₂₀ head₂₁ head₂₂ head₂₃ u u' v v' : Term}
+    {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ kind₁₉ kind₂₀ kind₂₁ kind₂₂ kind₂₃ : CtxEntryKind}
+    {s : Stack}
+    (hFn :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ },
+        { bound := head₁₆, kind := kind₁₆ },
+        { bound := head₁₇, kind := kind₁₇ },
+        { bound := head₁₈, kind := kind₁₈ },
+        { bound := head₁₉, kind := kind₁₉ },
+        { bound := head₂₀, kind := kind₂₀ },
+        { bound := head₂₁, kind := kind₂₁ },
+        { bound := head₂₂, kind := kind₂₂ },
+        { bound := head₂₃, kind := kind₂₃ }]
+      let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 23 heads ++ Γ
+      MEqRed targetCtx
+        (Term.instantiate 23 (Term.shiftBy 0 23 arg) v ::
+          Stack.instantiate 23 (Term.shiftBy 0 23 arg) s)
+        (Term.instantiate 23 (Term.shiftBy 0 23 arg) u)
+        (Term.instantiate 23 (Term.shiftBy 0 23 arg) u'))
+    (hArg :
+      let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+        { bound := head₂, kind := kind₂ },
+        { bound := head₃, kind := kind₃ },
+        { bound := head₄, kind := kind₄ },
+        { bound := head₅, kind := kind₅ },
+        { bound := head₆, kind := kind₆ },
+        { bound := head₇, kind := kind₇ },
+        { bound := head₈, kind := kind₈ },
+        { bound := head₉, kind := kind₉ },
+        { bound := head₁₀, kind := kind₁₀ },
+        { bound := head₁₁, kind := kind₁₁ },
+        { bound := head₁₂, kind := kind₁₂ },
+        { bound := head₁₃, kind := kind₁₃ },
+        { bound := head₁₄, kind := kind₁₄ },
+        { bound := head₁₅, kind := kind₁₅ },
+        { bound := head₁₆, kind := kind₁₆ },
+        { bound := head₁₇, kind := kind₁₇ },
+        { bound := head₁₈, kind := kind₁₈ },
+        { bound := head₁₉, kind := kind₁₉ },
+        { bound := head₂₀, kind := kind₂₀ },
+        { bound := head₂₁, kind := kind₂₁ },
+        { bound := head₂₂, kind := kind₂₂ },
+        { bound := head₂₃, kind := kind₂₃ }]
+      let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 23 heads ++ Γ
+      MEqRed targetCtx []
+        (Term.instantiate 23 (Term.shiftBy 0 23 arg) v)
+        (Term.instantiate 23 (Term.shiftBy 0 23 arg) v')) :
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ },
+      { bound := head₂₂, kind := kind₂₂ },
+      { bound := head₂₃, kind := kind₂₃ }]
+    let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 23 heads ++ Γ
+    MEqRed targetCtx
+      (Stack.instantiate 23 (Term.shiftBy 0 23 arg) s)
+      (Term.instantiate 23 (Term.shiftBy 0 23 arg) (.app u v))
+      (Term.instantiate 23 (Term.shiftBy 0 23 arg) (.app u' v')) := by
+  dsimp only at hFn hArg ⊢
+  simpa [Term.instantiate, Stack.instantiate] using MEqRed.app hFn hArg
+
 /-- Reflexive equivalence reduction is stable under de Bruijn
 β-instantiation below eleven preserved context heads. -/
 noncomputable def BetaInstantiationPreservesMEqRedUnderElevenHeadsStack.refl
