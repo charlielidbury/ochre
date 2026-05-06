@@ -264,6 +264,8 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.pro
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.of_constructors
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadsStack
+#print axioms BetaInstantiationPreservesMEqRedUnderHeadsStack_universal
+#print axioms BetaInstantiationPreservesMEqRedStack_proved
 #print axioms BetaInstantiationPreservesMEqRedStack.of_generic
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadsStack.of_stack
 #print axioms BetaInstantiationPreservesMEqRedUnderHeadStack.of_generic
