@@ -2376,6 +2376,17 @@ Bruijn proofs do not yet bridge to LN.
   `Ms-Pro`, `Ms-Equ`, `Ms-App`, and `Ms-FOp`, plus the sibling nested
   `Ms-FOp` and changed-head `Ms-Pro` cases. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — proved the nested-recursive
+  `Ms-Equ` leaf
+  `StrongCommutesFunFunBodyAppAppSubAppAppEquChainPayload.proved` from
+  `UniformEqDiamonds`. The proof uses the same old-bound equivalence body
+  diamond and joined-bound transport pattern as the shallower `Ms-Equ`
+  leaves, with one additional structural application layer. Rewired
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`
+  so the live recursive nested residuals are now nested-recursive `Ms-Pro`,
+  `Ms-App`, and `Ms-FOp`, plus the sibling nested `Ms-FOp` and changed-head
+  `Ms-Pro` cases. Added the endpoint to `Pss/DeBruijnSanity.lean`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
