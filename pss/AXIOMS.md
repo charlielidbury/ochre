@@ -152,6 +152,11 @@ closures, 2 inactive outstanding).
   equivalence leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.refl`,
   extending scoped-term instantiation to depth `Γ.depth + 34`. Added the
   endpoint to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-four-head variable
+  equivalence leaf `BetaInstantiationPreservesMEqRedUnderThirtyFourHeadsStack.var`,
+  routing scoped de Bruijn variables through the verified thirty-four-head
+  reflexive leaf. Added the endpoint to `Pss/DeBruijnSanity.lean`; no headline
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the thirty-one-head
   `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderThirtyOneHeadsStack.app`,
   assembling the instantiated function and argument premises with `MEqRed.app`.
