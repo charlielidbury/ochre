@@ -270,6 +270,10 @@ closures, 2 inactive outstanding).
   twenty-head `Me-TAp` leaf
   `BetaInstantiationPreservesMEqRedUnderTwentyHeadsStack.tAp` and `Me-Pro`
   leaf `BetaInstantiationPreservesMEqRedUnderTwentyHeadsStack.pro`.
+  Added the twenty-head constructor-facing binder payload types
+  `BetaInstantiationPreservesMEqRedUnderTwentyHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderTwentyHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderTwentyHeadsFOpStackPayload`.
   Added the twelve-head `Me-Top` leaf
   `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.top` and structural
   `Me-App` leaf `BetaInstantiationPreservesMEqRedUnderTwelveHeadsStack.app`,
