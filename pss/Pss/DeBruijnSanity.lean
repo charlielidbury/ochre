@@ -943,12 +943,15 @@ namespace DeBruijn
 #print axioms StrongCommutesFunFunBranchChainPayload.of_app_fun_handlers
 #print axioms StrongCommutesFunFunBodyAppChainPayload.of_app_cases
 #print axioms StrongCommutesFunFunBodyAppAppChainPayload.of_replacements
+#print axioms MSubRedOpStackHeadTransportPayload.to_star
+#print axioms StrongCommutesFunFunBodyAppAppTransportPayload.of_msub_op_transport
 #print axioms StrongCommutes_proved_of_chain_branch_handlers
 #print axioms StrongCommutes_proved_of_branch_handlers
 #print axioms StrongCommutes_proved_of_split_branch_handlers
 #print axioms StrongCommutes_proved_of_split_chain_fun_handlers
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_cases_handlers
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_operator_handlers
+#print axioms StrongCommutes_proved_of_split_chain_fun_app_operator_transport_handlers
 
 -- Top-level Lemma 1 chain-output closure.
 -- Conditional on the same residuals as `EqDiamonds_proved` plus three

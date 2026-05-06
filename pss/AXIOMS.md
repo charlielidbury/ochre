@@ -2268,6 +2268,19 @@ Bruijn proofs do not yet bridge to LN.
   handled internally by the existing operator-join cell. Added the endpoints
   to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MSubRedOpStackHeadTransportPayload.to_star`,
+  `StrongCommutesFunFunBodyAppAppTransportPayload.of_msub_op_transport`,
+  and
+  `StrongCommutes_proved_of_split_chain_fun_app_operator_transport_handlers`.
+  This iterates the existing one-step subtype operator stack-head transport
+  over `MSubRedStar` chains, then uses it to discharge the changed-argument
+  subtype-chain transport residual in the fun/fun structural app/app body
+  case. The latest split closure no longer exposes
+  `StrongCommutesFunFunBodyAppAppTransportPayload`; the remaining app/app
+  residual there is the subtype-premise replacement under the joined
+  abstraction bound. Added the endpoints to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

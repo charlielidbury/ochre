@@ -20493,6 +20493,22 @@ def MSubRedOpStackHeadTransportPayload : Prop :=
     MSubRed Γ (v :: s) u u' →
     MSubRedStar Γ (v' :: s) u u'
 
+/-- A one-step subtype operator stack-head transport payload iterates over
+subtype-reduction chains. -/
+def MSubRedOpStackHeadTransportPayload.to_star
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload) :
+    ∀ {Γ : Ctx} {s : Stack} {v v' u u' : Term},
+      MEqRedStar Γ [] v v' →
+      MSubRedStar Γ (v :: s) u u' →
+      MSubRedStar Γ (v' :: s) u u' := by
+  intro Γ s v v' u u' hArgStar hOpStar
+  induction hOpStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail hPrefix hHead ih =>
+      exact Relation.ReflTransGen.trans ih
+        (hMSubOpTransport hArgStar hHead.some)
+
 /-- Restricted operator stack-head transport for binder-free subtype operator
 sources. This is the sound fragment of `MSubRedOpStackHeadTransportPayload`:
 `Term.NoBinders` excludes the stack-sensitive abstraction cases and lookup
@@ -21409,6 +21425,19 @@ noncomputable def StrongCommutesFunFunBodyAppAppChainPayload.of_replacements
     (fun {_bound₃} hBound₁₃ hBound₂₃ =>
       hTransport hT₁ hSubOp hv hT₂ hEqOp hEqArg hBound₁₃ hBound₂₃)
 
+/-- The changed-argument subtype-chain transport residual for the structural
+fun/fun body `Ms-App × Me-App` case follows from the existing subtype
+operator stack-head transport payload. -/
+noncomputable def StrongCommutesFunFunBodyAppAppTransportPayload.of_msub_op_transport
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload) :
+    StrongCommutesFunFunBodyAppAppTransportPayload := by
+  intro Γ t bound₁ bound₂ u u' v u₂ v₂ hT₁ hSubOp hv hT₂ hEqOp
+    hEqArg bound₃ hBound₁₃ hBound₂₃ a b hChain
+  exact MSubRedOpStackHeadTransportPayload.to_star hMSubOpTransport
+    (MEqRedStar.single
+      (hEqArg.sub_head_replace_two_step hT₂ hBound₂₃.some))
+    hChain
+
 /-- Top-level chain-output Lemma 1 closure using branch-local handlers for
 the two known false broad residuals.
 
@@ -21643,6 +21672,35 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_operator_handlers
     (StrongCommutesFunFunBodyAppAppChainPayload.of_replacements
       hFunBodyAppAppSubReplace hFunBodyAppAppTransport
       hUniformDiamond hUniformStrongCommutes)
+    hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
+
+/-- Top-level chain-output Lemma 1 closure with the fun/fun structural
+app/app changed-argument transport discharged by
+`MSubRedOpStackHeadTransportPayload`. The remaining app/app residual is the
+subtype-premise replacement under the joined abstraction bound. -/
+theorem StrongCommutes_proved_of_split_chain_fun_app_operator_transport_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hAppBetBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hAppBetBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hFunBodyAppAppSubReplace :
+      StrongCommutesFunFunBodyAppAppSubReplacePayload)
+    (hFunBodyAppBet : StrongCommutesFunFunBodyAppBetChainPayload)
+    (hFunBodyFun : StrongCommutesFunFunBodyFunChainPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s :=
+  StrongCommutes_proved_of_split_chain_fun_app_operator_handlers
+    hArgTransport hOpTransport hMSubOpTransport hSubBridge
+    hAppBetBodyPro hAppBetBodyApp hAppBetBodyFun hAppBetBodyFOp
+    hFunBodyAppAppSubReplace
+    (StrongCommutesFunFunBodyAppAppTransportPayload.of_msub_op_transport
+      hMSubOpTransport)
     hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
 
 /-- Top-level chain-output strong-commutativity closure for de Bruijn
