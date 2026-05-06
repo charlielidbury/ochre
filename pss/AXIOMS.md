@@ -10,6 +10,11 @@ closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesPrevalidExtUnderTwentyFourHeads`, routing the
+  twenty-four-preserved-head β-instantiation prevalidity surface through the
+  existing list-generic prefix transport. Added the endpoint to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsStack.of_constructors`,
   assembling the twenty-three-head stack-parametric β-instantiation surface
   from the checked structural leaves, `Me-Pro`, and the constructor-local
