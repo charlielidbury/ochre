@@ -9,6 +9,14 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-two-head
+  `Me-Fun`/`Me-Bet`/`Me-FOp` binder payload surfaces
+  `BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsFunStackPayload`,
+  `BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsBetStackPayload`, and
+  `BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsFOpStackPayload`,
+  recording the recursive twenty-three-head body obligations needed to
+  package the twenty-two-head constructor frontier. Added endpoints to
+  `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the base twenty-three-head
   stack surface `BetaInstantiationPreservesMEqRedUnderTwentyThreeHeadsStack`
   and generic list-specialization wrapper

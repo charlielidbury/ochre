@@ -4272,6 +4272,127 @@ def BetaInstantiationPreservesMEqRedUnderTwentyOneHeadsFOpStackPayload : Type :=
               (Term.instantiate 21 (Term.shiftBy 0 21 arg) (.abs t body))
               (Term.instantiate 21 (Term.shiftBy 0 21 arg) (.abs t' body'))
 
+/-- Constructor-facing `Me-Fun` frontier for twenty-two-head equivalence
+β-instantiation. The body premise lives under one additional `.sub` binder,
+so discharging it will require a twenty-three-preserved-head payload. -/
+def BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsFunStackPayload : Type :=
+  ∀ {Γ : Ctx}
+      {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ head₁₉ head₂₀ head₂₁ head₂₂ t t' body body' : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ kind₁₉ kind₂₀ kind₂₁ kind₂₂ : CtxEntryKind},
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ },
+      { bound := head₂₂, kind := kind₂₂ }]
+    WSubMStar Γ arg bound →
+      MEqRed (heads ++ { bound := bound, kind := .sub } :: Γ) [] t t' →
+        MEqRed ({ bound := t, kind := .sub } ::
+            heads ++ { bound := bound, kind := .sub } :: Γ) [] body body' →
+          let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 22 heads ++ Γ
+          MEqRed targetCtx []
+            (Term.instantiate 22 (Term.shiftBy 0 22 arg) (.abs t body))
+            (Term.instantiate 22 (Term.shiftBy 0 22 arg) (.abs t' body'))
+
+/-- Constructor-facing `Me-Bet` frontier for twenty-two-head equivalence
+β-instantiation. Its eventual adapter needs the twenty-two-preserved-head
+β-target substitution-composition law and a twenty-three-head body payload. -/
+def BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsBetStackPayload : Type :=
+  ∀ {Γ : Ctx}
+      {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ head₁₉ head₂₀ head₂₁ head₂₂ t v v' body body' : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ kind₁₉ kind₂₀ kind₂₁ kind₂₂ : CtxEntryKind}
+      {s : Stack},
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ },
+      { bound := head₂₂, kind := kind₂₂ }]
+    WSubMStar Γ arg bound →
+      Term.Scoped (Ctx.depth (heads ++ { bound := bound, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := t, kind := .sub } ::
+            heads ++ { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s)
+          body body' →
+          MEqRed (heads ++ { bound := bound, kind := .sub } :: Γ) [] v v' →
+            let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 22 heads ++ Γ
+            MEqRed targetCtx
+              (Stack.instantiate 22 (Term.shiftBy 0 22 arg) s)
+              (Term.instantiate 22 (Term.shiftBy 0 22 arg) (.app (.abs t body) v))
+              (Term.instantiate 22 (Term.shiftBy 0 22 arg) (Term.instantiate 0 v' body'))
+
+/-- Constructor-facing `Me-FOp` frontier for twenty-two-head equivalence
+β-instantiation under the operand `.equ` binder. -/
+def BetaInstantiationPreservesMEqRedUnderTwentyTwoHeadsFOpStackPayload : Type :=
+  ∀ {Γ : Ctx}
+      {bound arg head₁ head₂ head₃ head₄ head₅ head₆ head₇ head₈ head₉ head₁₀ head₁₁ head₁₂ head₁₃ head₁₄ head₁₅ head₁₆ head₁₇ head₁₈ head₁₉ head₂₀ head₂₁ head₂₂ t t' α body body' : Term}
+      {kind₁ kind₂ kind₃ kind₄ kind₅ kind₆ kind₇ kind₈ kind₉ kind₁₀ kind₁₁ kind₁₂ kind₁₃ kind₁₄ kind₁₅ kind₁₆ kind₁₇ kind₁₈ kind₁₉ kind₂₀ kind₂₁ kind₂₂ : CtxEntryKind}
+      {s : Stack},
+    let heads : Ctx := [{ bound := head₁, kind := kind₁ },
+      { bound := head₂, kind := kind₂ },
+      { bound := head₃, kind := kind₃ },
+      { bound := head₄, kind := kind₄ },
+      { bound := head₅, kind := kind₅ },
+      { bound := head₆, kind := kind₆ },
+      { bound := head₇, kind := kind₇ },
+      { bound := head₈, kind := kind₈ },
+      { bound := head₉, kind := kind₉ },
+      { bound := head₁₀, kind := kind₁₀ },
+      { bound := head₁₁, kind := kind₁₁ },
+      { bound := head₁₂, kind := kind₁₂ },
+      { bound := head₁₃, kind := kind₁₃ },
+      { bound := head₁₄, kind := kind₁₄ },
+      { bound := head₁₅, kind := kind₁₅ },
+      { bound := head₁₆, kind := kind₁₆ },
+      { bound := head₁₇, kind := kind₁₇ },
+      { bound := head₁₈, kind := kind₁₈ },
+      { bound := head₁₉, kind := kind₁₉ },
+      { bound := head₂₀, kind := kind₂₀ },
+      { bound := head₂₁, kind := kind₂₁ },
+      { bound := head₂₂, kind := kind₂₂ }]
+    WSubMStar Γ arg bound →
+      MEqRed (heads ++ { bound := bound, kind := .sub } :: Γ) [] t t' →
+        Term.Scoped (Ctx.depth (heads ++ { bound := bound, kind := .sub } :: Γ)) α →
+          MEqRed ({ bound := α, kind := .equ } ::
+              heads ++ { bound := bound, kind := .sub } :: Γ) (Stack.shift 0 s)
+            body body' →
+            let targetCtx : Ctx := Ctx.instantiateBetaPrefix arg 22 heads ++ Γ
+            MEqRed targetCtx
+              (Stack.instantiate 22 (Term.shiftBy 0 22 arg) (α :: s))
+              (Term.instantiate 22 (Term.shiftBy 0 22 arg) (.abs t body))
+              (Term.instantiate 22 (Term.shiftBy 0 22 arg) (.abs t' body'))
+
 /-- Constructor-facing `Me-Fun` frontier for six-head equivalence
 β-instantiation. The body premise lives under one additional `.sub` binder,
 so discharging it will require the seven-preserved-head payload. -/
