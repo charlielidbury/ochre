@@ -21298,6 +21298,79 @@ def StrongCommutesFunFunBodyAppAppTransportPayload : Prop :=
         MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) a b →
         MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: []) a b
 
+/-- Constructor-local `Ms-Pro` operator case for the structural
+`Ms-App × Me-App` body branch. This replaces the false broad same-target
+subtype-premise replacement with the actual chain-output obligation for a
+subtype lookup operator step. -/
+def StrongCommutesFunFunBodyAppAppSubProChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ target v u₂ v₂ : Term} {i : Nat},
+    MEqRed Γ [] t bound₁ →
+    Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) i target →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) (.bvar i) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app target v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Constructor-local `Ms-Top` operator case for the structural
+`Ms-App × Me-App` body branch. -/
+def StrongCommutesFunFunBodyAppAppSubTopChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ u v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) u →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app .top v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Constructor-local `Ms-Equ` operator case for the structural
+`Ms-App × Me-App` body branch. -/
+def StrongCommutesFunFunBodyAppAppSubEquChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ u u' v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) u u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app u' v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Constructor-local nested `Ms-App` operator case for the structural
+`Ms-App × Me-App` body branch. -/
+def StrongCommutesFunFunBodyAppAppSubAppChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' arg v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (arg :: v :: []) op op' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: []) (.app op arg) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.app op' arg) v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Constructor-local nested `Ms-FOp` operator case for the structural
+`Ms-App × Me-App` body branch. -/
+def StrongCommutesFunFunBodyAppAppSubFOpChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner α body body' v u₂ v₂ : Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) α →
+    MSubRed ({ bound := α, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ) (Stack.shift 0 [])
+      body body' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (.abs inner body) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.abs inner body') v)) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
 /-- Chain-output beta `Ms-App × Me-Bet` body case of the fun/fun branch. -/
 def StrongCommutesFunFunBodyAppBetChainPayload : Prop :=
   ∀ {Γ : Ctx} {t bound₁ bound₂ innerBound v v' inner inner' u' : Term},
@@ -21464,6 +21537,30 @@ noncomputable def StrongCommutesFunFunBodyAppChainPayload.of_app_cases
   | tAp _ _ =>
       exact commute_abs_fun_fun_app_body_tAp_of hpvNil
         (@hUniformDiamond Γ []) hT₁ hOp hv hT₂
+
+/-- Split the structural fun/fun body `Ms-App × Me-App` branch by the
+subtype operator constructor. This avoids the false broad
+`StrongCommutesFunFunBodyAppAppSubReplacePayload` surface and exposes the
+actual constructor-local chain obligations. -/
+noncomputable def StrongCommutesFunFunBodyAppAppChainPayload.of_sub_cases
+    (hSubPro : StrongCommutesFunFunBodyAppAppSubProChainPayload)
+    (hSubTop : StrongCommutesFunFunBodyAppAppSubTopChainPayload)
+    (hSubEqu : StrongCommutesFunFunBodyAppAppSubEquChainPayload)
+    (hSubApp : StrongCommutesFunFunBodyAppAppSubAppChainPayload)
+    (hSubFOp : StrongCommutesFunFunBodyAppAppSubFOpChainPayload) :
+    StrongCommutesFunFunBodyAppAppChainPayload := by
+  intro Γ t bound₁ bound₂ u u' v u₂ v₂ hT₁ hSubOp hv hT₂ hEqOp hEqArg
+  cases hSubOp with
+  | @pro _ _ i target _ hBind =>
+      exact hSubPro hT₁ hBind hv hT₂ hEqOp hEqArg
+  | top _ hScoped =>
+      exact hSubTop hT₁ hScoped hv hT₂ hEqOp hEqArg
+  | equ _ hEq =>
+      exact hSubEqu hT₁ hEq hv hT₂ hEqOp hEqArg
+  | app hOp hArg =>
+      exact hSubApp hT₁ hOp hArg hv hT₂ hEqOp hEqArg
+  | fOp hInner hArg hBody =>
+      exact hSubFOp hT₁ hInner hArg hBody hv hT₂ hEqOp hEqArg
 
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
@@ -21770,6 +21867,43 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_operator_transport_handlers
     hFunBodyAppAppSubReplace
     (StrongCommutesFunFunBodyAppAppTransportPayload.of_msub_op_transport
       hMSubOpTransport)
+    hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
+
+/-- Top-level chain-output Lemma 1 closure with the fun/fun structural
+app/app body case split by the subtype operator constructor. This is the
+sound replacement for the false broad
+`StrongCommutesFunFunBodyAppAppSubReplacePayload` route. -/
+theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_handlers
+    (hArgTransport : MEqRedArgTransportPayload)
+    (hOpTransport : MEqRedOpStackHeadTransportPayload)
+    (hMSubOpTransport : MSubRedOpStackHeadTransportPayload)
+    (hSubBridge : MEqRedSubBridgePayload)
+    (hAppBetBodyPro : StrongCommutesAppBetFOpBodyProPayload)
+    (hAppBetBodyApp : StrongCommutesAppBetFOpBodyAppPayload)
+    (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
+    (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
+    (hFunBodyAppAppSubPro :
+      StrongCommutesFunFunBodyAppAppSubProChainPayload)
+    (hFunBodyAppAppSubTop :
+      StrongCommutesFunFunBodyAppAppSubTopChainPayload)
+    (hFunBodyAppAppSubEqu :
+      StrongCommutesFunFunBodyAppAppSubEquChainPayload)
+    (hFunBodyAppAppSubApp :
+      StrongCommutesFunFunBodyAppAppSubAppChainPayload)
+    (hFunBodyAppAppSubFOp :
+      StrongCommutesFunFunBodyAppAppSubFOpChainPayload)
+    (hFunBodyAppBet : StrongCommutesFunFunBodyAppBetChainPayload)
+    (hFunBodyFun : StrongCommutesFunFunBodyFunChainPayload)
+    (hUniformDiamond : UniformEqDiamonds)
+    (hUniformStrongCommutes :
+        ∀ {Γ : Ctx} {s : Stack}, StrongCommutes Γ s) :
+    ∀ {Γ : Ctx} {s : Stack}, StrongCommutesChain Γ s :=
+  StrongCommutes_proved_of_split_chain_fun_app_cases_handlers
+    hArgTransport hOpTransport hMSubOpTransport hSubBridge
+    hAppBetBodyPro hAppBetBodyApp hAppBetBodyFun hAppBetBodyFOp
+    (StrongCommutesFunFunBodyAppAppChainPayload.of_sub_cases
+      hFunBodyAppAppSubPro hFunBodyAppAppSubTop hFunBodyAppAppSubEqu
+      hFunBodyAppAppSubApp hFunBodyAppAppSubFOp)
     hFunBodyAppBet hFunBodyFun hUniformDiamond hUniformStrongCommutes
 
 /-- Top-level chain-output strong-commutativity closure for de Bruijn

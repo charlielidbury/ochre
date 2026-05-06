@@ -2290,6 +2290,20 @@ Bruijn proofs do not yet bridge to LN.
   the `Ms-Pro` head case separately rather than trying to prove this broad
   payload. Added the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count
   change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the constructor-local
+  fun/fun structural app/app subtype-operator payloads
+  `StrongCommutesFunFunBodyAppAppSubProChainPayload`,
+  `StrongCommutesFunFunBodyAppAppSubTopChainPayload`,
+  `StrongCommutesFunFunBodyAppAppSubEquChainPayload`,
+  `StrongCommutesFunFunBodyAppAppSubAppChainPayload`,
+  `StrongCommutesFunFunBodyAppAppSubFOpChainPayload`; added
+  `StrongCommutesFunFunBodyAppAppChainPayload.of_sub_cases` and
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_handlers`.
+  The builder case-splits the subtype operator step, avoiding the false
+  broad subtype-premise replacement payload. The live dispatcher cases are
+  `Ms-Pro`, `Ms-Top`, `Ms-Equ`, nested `Ms-App`, and `Ms-FOp`; raw
+  `Ms-Fun` is impossible at the nonempty operator stack `(v :: [])`.
+  Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`

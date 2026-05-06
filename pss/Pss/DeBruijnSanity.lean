@@ -937,12 +937,18 @@ namespace DeBruijn
 #print axioms StrongCommutesFunFunBodyAppAppSubReplacePayload
 #print axioms StrongCommutesFunFunBodyAppAppSubReplacePayload_not
 #print axioms StrongCommutesFunFunBodyAppAppTransportPayload
+#print axioms StrongCommutesFunFunBodyAppAppSubProChainPayload
+#print axioms StrongCommutesFunFunBodyAppAppSubTopChainPayload
+#print axioms StrongCommutesFunFunBodyAppAppSubEquChainPayload
+#print axioms StrongCommutesFunFunBodyAppAppSubAppChainPayload
+#print axioms StrongCommutesFunFunBodyAppAppSubFOpChainPayload
 #print axioms StrongCommutesFunFunBodyAppBetChainPayload
 #print axioms StrongCommutesFunFunBodyFunChainPayload
 #print axioms StrongCommutesFunFunBranchChainPayload.of_single
 #print axioms StrongCommutesFunFunBranchPayload.of_body_handlers
 #print axioms StrongCommutesFunFunBranchChainPayload.of_app_fun_handlers
 #print axioms StrongCommutesFunFunBodyAppChainPayload.of_app_cases
+#print axioms StrongCommutesFunFunBodyAppAppChainPayload.of_sub_cases
 #print axioms StrongCommutesFunFunBodyAppAppChainPayload.of_replacements
 #print axioms MSubRedOpStackHeadTransportPayload.to_star
 #print axioms StrongCommutesFunFunBodyAppAppTransportPayload.of_msub_op_transport
@@ -953,6 +959,7 @@ namespace DeBruijn
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_cases_handlers
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_operator_handlers
 #print axioms StrongCommutes_proved_of_split_chain_fun_app_operator_transport_handlers
+#print axioms StrongCommutes_proved_of_split_chain_fun_app_sub_cases_handlers
 
 -- Top-level Lemma 1 chain-output closure.
 -- Conditional on the same residuals as `EqDiamonds_proved` plus three
