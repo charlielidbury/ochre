@@ -9,6 +9,11 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-four-head reflexive
+  equivalence leaf `BetaInstantiationPreservesMEqRedUnderTwentyFourHeadsStack.refl`,
+  deriving instantiated scopedness from de Bruijn shift/instantiate scopedness
+  and the checked twenty-four-head prevalidity transport. Added the endpoint
+  to `Pss/DeBruijnSanity.lean`; no headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-four-head
   `MEqRed.app` leaf `BetaInstantiationPreservesMEqRedUnderTwentyFourHeadsStack.app`,
   reassembling already-instantiated operator and argument premises. Added the
