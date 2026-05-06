@@ -21255,3 +21255,92 @@ noncomputable def Lemma_1_DeBruijn_StrongCommutativityChain_proved
       MEqRedChain Γ s t₁ t₃ × MSubRedChain Γ s t₂ t₃ :=
   Lemma_1_DeBruijn_StrongCommutativityChain_of
     (@hUniformStrongCommutes Γ s) h₁ h₂
+
+/-! ## Top-level Theorem 3 / Theorem 4 / Theorem 5 closures (Path B' wiring)
+
+These three top-level `_proved` headlines mirror the just-shipped
+`Lemma_1_DeBruijn_StrongCommutativityStar_proved` and
+`Lemma_2_DeBruijn_DiamondMEqRedStar_proved` shape: they each instantiate
+a universal residual hypothesis at the relevant home `Γ s` (or `[]` for
+closed cases) and feed it to the existing `_of` lemma.
+
+The Theorem 3 / Theorem 4 closures share the same residual
+`UniformStrongCommutes` (universal single-step strong commutativity at
+every extended context) used by the chain Lemma 1 closure. Discharging
+this residual is itself the open transitivity-elimination problem.
+
+Theorem 5 is conditional on the three operational-side components named
+in `Theorem_5_DeBruijn_Preservation_of_components`:
+
+  - `BetaInstantiationPreservesWfM` (de Bruijn analogue of Lemma 7),
+  - `AbsFunctionBoundInversion` (function-bound inversion),
+  - `WfMSubHeadReplaceOfNewWf` (sharpened `.sub` head replacement).
+
+The `StepPreservesWfM` investigation showed full discharge requires
+R1+R3+R4 walls; this dispatch ships the headline conditional on the
+named components rather than chasing the full discharge. -/
+
+/-- Top-level de Bruijn Theorem 3 closure: transitive diagrammatic subtyping
+is admissible, conditional on universal single-step strong commutativity
+`UniformStrongCommutes` at every extended context.
+
+Path B' wiring analogous to
+`Lemma_2_DeBruijn_DiamondMEqRedStar_proved` (commit `49c9196`) and
+`Lemma_1_DeBruijn_StrongCommutativityStar_proved`: instantiate the
+universal residual at the home `Γ s` and feed the resulting
+`StrongCommutes Γ s` to the existing
+`Theorem_3_DeBruijn_TransitivityIsAdmissible_of` skeleton. As
+`UniformStrongCommutes` is discharged, this headline becomes
+unconditional in lockstep. -/
+noncomputable def Theorem_3_DeBruijn_TransitivityIsAdmissible_proved
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    {Γ : Ctx} {s : Stack} {u v : Term}
+    (h : MSubStar Γ s u v) : MSub Γ s u v :=
+  Theorem_3_DeBruijn_TransitivityIsAdmissible_of
+    (@hUniformStrongCommutes Γ s) h
+
+/-- Top-level de Bruijn Theorem 4 closure: closed well-formed terms are an
+abstraction, `Top`, or take an operational step. Conditional on universal
+single-step strong commutativity `UniformStrongCommutes`, instantiated at
+`Γ = []`, `s = []` to feed the existing
+`Theorem_4_DeBruijn_Progress_of_StrongCommutativity` skeleton. -/
+theorem Theorem_4_DeBruijn_Progress_proved
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    {t : Term} (hwf : WfM [] t) :
+    (∃ bound body, t = .abs bound body) ∨
+      t = .top ∨
+      (∃ t', Step t t') :=
+  Theorem_4_DeBruijn_Progress_of_StrongCommutativity
+    (@hUniformStrongCommutes [] []) hwf
+
+/-- Top-level de Bruijn Theorem 5 closure: subtype-chain typing is preserved
+under operational steps, conditional on the three operational-side
+component residuals named in `Theorem_5_DeBruijn_Preservation_of_components`.
+
+The `StepPreservesWfM` discharge investigation walled at R1+R3+R4; this
+headline keeps the residuals explicit rather than chasing the full
+discharge. As each residual is discharged independently, this headline
+becomes unconditional in lockstep without changing downstream call sites. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_of_components
+    hSubst hInv hSubHeadReplace hwf hstep
+
+/-- Closed-term specialization of `Theorem_5_DeBruijn_Preservation_proved`,
+using the operational `Step` alias. Same three residual components. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hInv : AbsFunctionBoundInversion)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_of_components
+    hSubst hInv hSubHeadReplace hwf hstep
