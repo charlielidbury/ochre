@@ -1156,7 +1156,22 @@ unconditionally via the universal `∀n` β-instantiation theorem.
 
 This wires `BetaInstantiationPreservesMEqRedUnderHeadsStack_universal` into
 the empty-prefix surface used by downstream consumers; `BetaInstantiationPreservesMEqRedStack`
-no longer needs to be assumed. -/
+no longer needs to be assumed.
+
+**Note on the missing `MSubRed` companion.** A parallel
+`BetaInstantiationPreservesMSubRedStack_proved` would be the obvious next
+step, but the `MSubRed.pro` head case is not provable from the universal
+companion alone: at `bvar 0` the source head case asks for a single raw
+`MSubRed Γ s arg bound` step, but the only premise we have is
+`WSubMStar Γ arg bound`, which produces `MSubStar` (a transitive closure)
+rather than a single raw step. Collapsing star to raw is itself the
+content of transitivity-elimination. Consequently the closed `MSubRed`
+surface remains assumed at the `BetaInstantiationPreservesMSubRedStack`
+type level; only the diagrammatic-star variant
+(`BetaInstantiationPreservesMSubRedStackMSubStar.of_constructors`) admits a
+direct constructor-level proof. The historical per-depth ladder for
+`MSubRed` (when it briefly existed) targeted `MSubStar` for exactly this
+reason. -/
 noncomputable def BetaInstantiationPreservesMEqRedStack_proved :
     BetaInstantiationPreservesMEqRedStack :=
   BetaInstantiationPreservesMEqRedStack.of_generic
