@@ -1826,6 +1826,134 @@ noncomputable def MEqRed.sub_head_replace_two_step {Γ : Ctx} {s : Stack}
     MEqRed ({ bound := new, kind := .sub } :: Γ) s u v :=
   (h.sub_head_replace hOldMid).sub_head_replace hMidNew
 
+/-! ### Kind narrowing: switch `.sub` slots to `.equ` slots
+
+A `MEqRed` derivation valid at a `.sub`-bound slot can be re-cast at an
+`.equ`-bound slot with a different (scoped) bound. Soundness: switching the
+kind from `.sub` to `.equ` only WIDENS the relation (Me-Pro can fire on
+`.equ` heads but not on `.sub` heads), so existing derivations carry through.
+The lone case that touches the swapped slot's `equBinds` lookup is `Me-Pro`,
+which on a `.sub` head at the swapped index is vacuously False; the source
+derivation must therefore have been targeting a different slot, whose
+lookup is unaffected by the kind swap. -/
+
+/-- Kind-narrowing transport across arbitrary-depth `.sub` → `.equ`
+replacement of a single context slot. The new bound is required to be
+scoped in the slot's tail. -/
+noncomputable def MEqRed.replaceAt_sub_to_equ_aux {Γold : Ctx} {s : Stack}
+    {u v : Term} {old new : Term}
+    (h : MEqRed Γold s u v) :
+    ∀ {Γ : Ctx} {cutoff : Nat},
+      Γold = Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ →
+      cutoff < Ctx.depth Γ →
+      Term.Scoped (List.length (List.drop (cutoff + 1) Γ)) new →
+      MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v := by
+  induction h with
+  | pro hpv hb hα ih =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by
+            unfold CtxEntry.ScopedIn
+            simpa using hnew)
+      exact MEqRed.pro hpvNew (Ctx.equBinds_replaceAt_sub_to_equ hb)
+        (ih rfl hcut hnew)
+  | bet ht hBody hArg ihBody ihArg =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have ihBody' :=
+        ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+      refine MEqRed.bet (by simpa [Ctx.depth_replaceAt] using ht) ?_
+        (ihArg rfl hcut hnew)
+      simpa [Ctx.replaceAt] using ihBody'
+  | top hpv =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by
+            unfold CtxEntry.ScopedIn
+            simpa using hnew)
+      exact MEqRed.top hpvNew
+  | app hOp hArg ihOp ihArg =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      exact MEqRed.app (ihOp rfl hcut hnew) (ihArg rfl hcut hnew)
+  | var hpv hi =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by
+            unfold CtxEntry.ScopedIn
+            simpa using hnew)
+      exact MEqRed.var hpvNew (by simpa [Ctx.depth_replaceAt] using hi)
+  | fun_ hBound hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have ihBody' :=
+        ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+      refine MEqRed.fun_ (ihBound rfl hcut hnew) ?_
+      simpa [Ctx.replaceAt] using ihBody'
+  | tAp hpv hu =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by
+            unfold CtxEntry.ScopedIn
+            simpa using hnew)
+      exact MEqRed.tAp hpvNew (by simpa [Ctx.depth_replaceAt] using hu)
+  | fOp hBound hα hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have ihBody' :=
+        ihBody (Γ := { bound := _, kind := .equ } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+      refine MEqRed.fOp (ihBound rfl hcut hnew)
+        (by simpa [Ctx.depth_replaceAt] using hα) ?_
+      simpa [Ctx.replaceAt] using ihBody'
+
+/-- Kind-narrowing transport across arbitrary-depth `.sub` → `.equ`
+replacement. -/
+noncomputable def MEqRed.replaceAt_sub_to_equ {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {old new : Term}
+    (h : MEqRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) s u v)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hnew : Term.Scoped (List.length (List.drop (cutoff + 1) Γ)) new) :
+    MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v :=
+  h.replaceAt_sub_to_equ_aux rfl hcut hnew
+
+/-- Head specialization: a `MEqRed` body derivation valid at a `.sub`-bound
+head can be re-cast at an `.equ`-bound head with a different (scoped) bound,
+because `.sub` heads forbid `Me-Pro` lookups at index 0 (only `Me-Var`
+applies, which is kind-agnostic). The new bound term need only be scoped in
+the tail context. -/
+noncomputable def MEqRed.sub_to_equ_head_replace
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hnew : Term.Scoped Γ.depth new) :
+    MEqRed ({ bound := new, kind := .equ } :: Γ) s u v := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  simpa [Ctx.replaceAt] using
+    (h.replaceAt_sub_to_equ
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) hcut (by simpa using hnew))
+
 /-- Chain-level equivalence-reduction transport across arbitrary-depth `.sub`
 replacement. -/
 theorem MEqRedStar.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}

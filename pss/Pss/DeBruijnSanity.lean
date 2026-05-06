@@ -453,6 +453,8 @@ namespace DeBruijn
 #print axioms msubRedStar_equ_under_two_heads_replace_with_pro_function_from_replacements
 #print axioms MEqRed.sub_head_replace
 #print axioms MEqRed.sub_head_replace_two_step
+#print axioms MEqRed.sub_to_equ_head_replace
+#print axioms MEqRed.replaceAt_sub_to_equ
 #print axioms MEqRedStar.sub_head_replace
 #print axioms MEqRedStar.sub_head_replace_star
 #print axioms MSubRedStar.equ_sub_head_replace

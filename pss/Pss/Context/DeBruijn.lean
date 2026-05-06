@@ -602,6 +602,51 @@ theorem equBinds_replaceAt_sub {Γ : Ctx} {cutoff i : Nat}
                       (by simpa [equBinds] using hlook)
                   exact ⟨a, by simpa [equBinds] using htail, rfl⟩
 
+/-- Switching a `.sub` entry at any context index to an `.equ` entry preserves
+all equivalence lookups that succeeded before. The lookup at the swapped index
+itself is vacuously preserved: under a `.sub` head, equivalence lookup at that
+position returns `none`, so any source `equBinds` derivation must target a
+different position whose lookup is unaffected by the swap. -/
+theorem equBinds_replaceAt_sub_to_equ {Γ : Ctx} {cutoff i : Nat}
+    {old new α : Term} :
+    equBinds (replaceAt cutoff { bound := old, kind := .sub } Γ) i α →
+    equBinds (replaceAt cutoff { bound := new, kind := .equ } Γ) i α := by
+  induction Γ generalizing cutoff i α with
+  | nil =>
+      cases i <;> simp [equBinds, replaceAt]
+  | cons head Γ ih =>
+      cases cutoff with
+      | zero =>
+          cases i with
+          | zero =>
+              -- Source head is `.sub`, so `lookupEqu ... 0 = none`; vacuous.
+              simp [equBinds, replaceAt]
+          | succ i =>
+              intro h
+              -- The tails are identical; the lookups differ only at index 0.
+              simpa [equBinds, replaceAt] using h
+      | succ cutoff =>
+          cases i with
+          | zero =>
+              cases head with
+              | mk bound kind =>
+                  cases kind <;> simp [equBinds, replaceAt]
+          | succ i =>
+              intro h
+              simp [equBinds, replaceAt] at h ⊢
+              cases hlook :
+                  lookupEqu (replaceAt cutoff { bound := old, kind := .sub } Γ) i with
+              | none =>
+                  simp [hlook] at h
+              | some a =>
+                  simp [hlook] at h
+                  subst h
+                  have htail : equBinds
+                      (replaceAt cutoff { bound := new, kind := .equ } Γ) i a :=
+                    ih (cutoff := cutoff) (i := i) (α := a)
+                      (by simpa [equBinds] using hlook)
+                  exact ⟨a, by simpa [equBinds] using htail, rfl⟩
+
 /-- After replacing a context entry with a `.sub` entry, lookup at that exact
 index returns the new bound shifted through the replaced entry and every
 preserved head above it. -/
@@ -1988,6 +2033,43 @@ noncomputable def replaceAt_equ_same {Γ : Ctx} {s : Stack} {cutoff : Nat}
       (newEntry := { bound := new, kind := .equ })
       (by simpa [CtxEntry.ScopedIn, Ctx.drop_succ_replaceAt_self] using hnew)
   simpa using hpvDouble
+
+/-- Switch a `.sub` slot to an `.equ` slot at the same context index while
+preserving extended-context prevalidity. The new bound is taken to be scoped
+in the slot's tail; context depth is unchanged so all preserved heads and
+stack operands remain scoped. -/
+noncomputable def replaceAt_sub_to_equ_same {Γ : Ctx} {s : Stack} {cutoff : Nat}
+    {old new : Term}
+    (hpv : PrevalidExt (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) s)
+    (hcut : cutoff < Γ.depth)
+    (hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+      { bound := new, kind := .equ }) :
+    PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s := by
+  have hpvDouble :
+      PrevalidExt (Ctx.replaceAt cutoff { bound := new, kind := .equ }
+        (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) s :=
+    PrevalidExt.replaceAt hpv (by simpa [Ctx.depth_replaceAt] using hcut)
+      (newEntry := { bound := new, kind := .equ })
+      (by simpa [CtxEntry.ScopedIn, Ctx.drop_succ_replaceAt_self] using hnew)
+  simpa using hpvDouble
+
+/-- Head-form specialization of `PrevalidExt.replaceAt_sub_to_equ_same`:
+swap the innermost `.sub` head for an `.equ` head with a different (scoped)
+bound. -/
+noncomputable def sub_to_equ_head_replace {Γ : Ctx} {s : Stack} {old new : Term}
+    (hpv : PrevalidExt ({ bound := old, kind := .sub } :: Γ) s)
+    (hnew : Term.Scoped Γ.depth new) :
+    PrevalidExt ({ bound := new, kind := .equ } :: Γ) s := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  have hnewEntry :
+      CtxEntry.ScopedIn (List.drop 1 ({ bound := old, kind := .sub } :: Γ))
+        { bound := new, kind := .equ } := by
+    simpa [CtxEntry.ScopedIn] using hnew
+  simpa [Ctx.replaceAt] using
+    (PrevalidExt.replaceAt_sub_to_equ_same
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) hpv hcut hnewEntry)
 
 /-- Every operand in a prevalid stack is scoped in the logical context. -/
 noncomputable def stack_scoped {Γ : Ctx} {s : Stack} :
