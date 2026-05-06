@@ -2770,6 +2770,16 @@ Bruijn proofs do not yet bridge to LN.
   changed-head `Ms-Pro`, stable-successor `Ms-Pro`, recursive `Ms-App`,
   and `Ms-FOp`. Added the proved endpoint to `Pss/DeBruijnSanity.lean`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — audited the next live
+  stable-successor `Ms-Pro` residual after the seven-deeper `Ms-Top`
+  discharge. The `Ms-Top`/`Ms-Equ` shortcut of absorbing the leading
+  argument into the operator does **not** apply to successor `Ms-Pro`:
+  the available lookup is
+  `Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) (i + 1) target`,
+  not a lookup for `.app target arg`. The next discharge must therefore
+  extend the explicit successor-lookup transport proof one application
+  layer deeper, including the extra `Me-App` decomposition and argument
+  retargeting step. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
