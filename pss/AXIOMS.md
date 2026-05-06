@@ -9,6 +9,12 @@ the axioms below.
 closures, 2 inactive outstanding).
 
 **Session 2026-05-05 (db-refactor continuation):**
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `BetaInstantiationPreservesMEqRedUnderTwentySixHeadsStack.of_constructors`,
+  assembling the twenty-six-head stack-parametric β-instantiation surface
+  from the checked structural leaves, `Me-Pro`, and the constructor-local
+  binder frontiers. Added the endpoint to `Pss/DeBruijnSanity.lean`; no
+  headline axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added the twenty-six-head binder
   frontiers `BetaInstantiationPreservesMEqRedUnderTwentySixHeadsFunStackPayload`,
   `BetaInstantiationPreservesMEqRedUnderTwentySixHeadsBetStackPayload`, and
