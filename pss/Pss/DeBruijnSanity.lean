@@ -1144,5 +1144,14 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_proved
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_proved
 
+-- Function-bound inversion partial discharge: replaces
+-- `AbsFunctionBoundInversion` (one of the load-bearing residuals of
+-- Theorem 5) with `UniformStrongCommutes` plus `MEqRedPreservesWfM`,
+-- both of which are already named residuals elsewhere in the campaign.
+#print axioms AbsFunctionBoundInversion_partial_proved
+#print axioms AbsFunctionBoundInversionUnderWfCtx_partial_proved
+#print axioms Theorem_5_DeBruijn_Preservation_partial_proved
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_proved
+
 end DeBruijn
 end Pss
