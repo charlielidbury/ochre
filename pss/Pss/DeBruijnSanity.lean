@@ -1144,5 +1144,15 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_proved
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_proved
 
+-- Easy `MEqRedPreservesWfM` constructor cases plus partial assembly.
+-- The three structural-trivial constructors (`top`, `var`, `tAp`) are
+-- discharged unconditionally; the partial assembly leaves the five hard
+-- arms (`pro`, `bet`, `app`, `fun_`, `fOp`) as explicit hypotheses, with
+-- `fOp` structurally unreachable at empty outer stack.
+#print axioms MEqRedPreservesWfM_top
+#print axioms MEqRedPreservesWfM_var
+#print axioms MEqRedPreservesWfM_tAp
+#print axioms MEqRedPreservesWfM_partial
+
 end DeBruijn
 end Pss

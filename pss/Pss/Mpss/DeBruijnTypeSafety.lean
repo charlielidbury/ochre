@@ -4220,6 +4220,94 @@ def MEqRedPreservesWfMContextual : Type :=
   ∀ {Γ : Ctx} {s : Stack} {x y : Term},
     WfCtxEqu Γ → WfStack Γ s → MEqRed Γ s x y → WfM Γ x → WfM Γ y
 
+/-! ### Easy `MEqRedPreservesWfM` constructor cases
+
+The following three per-constructor lemmas discharge the trivial cases of
+empty-stack equivalence-reduction preservation:
+
+* `MEqRedPreservesWfM_top` — the source and target are both `.top`, so the
+  source well-formedness witness is exactly the target witness.
+* `MEqRedPreservesWfM_var` — the source and target are the same de Bruijn
+  variable, so the source well-formedness witness is exactly the target
+  witness.
+* `MEqRedPreservesWfM_tAp` — the target is `.top`, which is universally
+  well-formed under any prevalid context (and the source's well-formedness
+  delivers a prevalid context via `WfM.prevalid`).
+
+A partial assembly `MEqRedPreservesWfM_partial` then dispatches the eight
+constructors of `MEqRed` at empty stack: the three structural-trivial
+constructors `top`, `var`, `tAp` are discharged unconditionally, while the
+five hard constructors `pro`, `bet`, `app`, `fun_`, `fOp` remain explicit
+hypotheses. The `fOp` hypothesis is structurally unreachable at empty
+outer stack (its constructor produces `MEqRed Γ (α :: s) ...`), but the
+hypothesis is left in the signature for future iterations that drop the
+empty-stack restriction. -/
+
+/-- Easy `Me-Top` arm of `MEqRedPreservesWfM`: the source and the target
+are both `.top`, so the source well-formedness witness transports
+verbatim. -/
+def MEqRedPreservesWfM_top
+    {Γ : Ctx} (_hpv : PrevalidExt Γ ([] : Stack)) :
+    WfM Γ .top → WfM Γ .top := id
+
+/-- Easy `Me-Var` arm of `MEqRedPreservesWfM`: the source and the target
+are the same de Bruijn variable, so the source well-formedness witness
+transports verbatim. -/
+def MEqRedPreservesWfM_var
+    {Γ : Ctx} {i : Nat}
+    (_hpv : PrevalidExt Γ ([] : Stack)) (_hi : i < Γ.depth) :
+    WfM Γ (.bvar i) → WfM Γ (.bvar i) := id
+
+/-- Easy `Me-TAp` arm of `MEqRedPreservesWfM`: the target is `.top`, which
+is universally well-formed under any prevalid context. The source
+well-formedness witness's prevalid context discharges the `Wf-Top`
+premise, regardless of the operand. -/
+noncomputable def MEqRedPreservesWfM_tAp
+    {Γ : Ctx} {u : Term}
+    (_hpv : PrevalidExt Γ ([] : Stack))
+    (_hu : Term.Scoped Γ.depth u) :
+    WfM Γ (.app .top u) → WfM Γ .top := by
+  intro hwf
+  exact WfM.top hwf.prevalid
+
+/-- Partial assembly of `MEqRedPreservesWfM` discharging the easy
+constructor arms (`top`, `var`, `tAp`) unconditionally and leaving the
+hard arms (`pro`, `bet`, `app`, `fun_`) as explicit hypotheses. The
+`fOp` arm is structurally unreachable at empty outer stack. As future
+iterations discharge the residual hypotheses, this assembly's hypothesis
+list shrinks accordingly. -/
+noncomputable def MEqRedPreservesWfM_partial
+    (h_pro : ∀ {Γ : Ctx} {i : Nat} {α α' : Term}
+      (_hpv : PrevalidExt Γ ([] : Stack))
+      (_hb : Γ.equBinds i α)
+      (_hRec : MEqRed Γ [] α α'),
+        WfM Γ (.bvar i) → WfM Γ α')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    MEqRedPreservesWfM := by
+  intro Γ x y hRed hwf
+  cases hRed.some with
+  | top hpv => exact MEqRedPreservesWfM_top hpv hwf
+  | var hpv hi => exact MEqRedPreservesWfM_var hpv hi hwf
+  | tAp hpv hu => exact MEqRedPreservesWfM_tAp hpv hu hwf
+  | pro hpv hb hRec => exact h_pro hpv hb hRec hwf
+  | bet ht hBody hArg =>
+      simpa [Stack.shift] using h_bet ht (by simpa [Stack.shift] using hBody) hArg hwf
+  | app hOp hArg => exact h_app hOp hArg hwf
+  | fun_ hT hBody => exact h_fun hT hBody hwf
+
 namespace Stack
 
 /-- Plug a machine stack back into a term by applying the stack head first.
