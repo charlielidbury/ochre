@@ -2860,6 +2860,19 @@ Bruijn proofs do not yet bridge to LN.
   `Ms-App` frontier explicit one layer deeper; the open changed-head
   obstruction and the successor-transport target remain separated. Added
   the new endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — discharged the newly exposed
+  deepest, one-more, and two-more `Ms-Equ` leaves as
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved`,
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved`,
+  and
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved`.
+  Each proof reuses the previous old-bound equivalence proof after
+  absorbing the leading argument into the operator with `Me-App`. The
+  nested handler now supplies these three `Ms-Equ` proofs directly; the
+  corresponding live residuals remain changed-head `Ms-Pro`,
+  stable-successor `Ms-Pro`, `Ms-Top`, recursive `Ms-App`, and `Ms-FOp`.
+  Added the proved endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count
+  change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`

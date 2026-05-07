@@ -27216,6 +27216,85 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEq
     hT₁ hEqHead hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
     hT₂ hEqOp hEqArg
 
+/-- Deepest exposed `Ms-Equ` leaf inside the recursive `Ms-App` case. This
+reuses the seven-deeper old-bound equivalence proof after absorbing the
+leading argument into the operator. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₁₀ arg₉ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂
+    hT₁ hEq hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hEqHead :
+      MEqRed ({ bound := t, kind := .sub } :: Γ)
+        (arg₉ :: arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: [])
+        (.app op arg₁₀) (.app op' arg₁₀) :=
+    MEqRed.app hEq (MEqRed.refl hpvBody hArg₁₀)
+  exact StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    hUniformDiamond
+    (Γ := Γ) (t := t) (bound₁ := bound₁) (bound₂ := bound₂)
+    (op := .app op arg₁₀) (op' := .app op' arg₁₀)
+    (arg₉ := arg₉) (arg₈ := arg₈) (arg₇ := arg₇) (arg₆ := arg₆)
+    (arg₅ := arg₅) (arg₄ := arg₄) (arg₃ := arg₃) (arg₂ := arg₂)
+    (arg := arg) (v := v) (u₂ := u₂) (v₂ := v₂)
+    hT₁ hEqHead hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
+    hT₂ hEqOp hEqArg
+
+/-- One-more exposed `Ms-Equ` leaf inside the recursive `Ms-App` case. This
+reuses the deepest exposed old-bound equivalence proof after absorbing the
+leading argument into the operator. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₁₁ arg₁₀ arg₉ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂
+    hT₁ hEq hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hEqHead :
+      MEqRed ({ bound := t, kind := .sub } :: Γ)
+        (arg₁₀ :: arg₉ :: arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: [])
+        (.app op arg₁₁) (.app op' arg₁₁) :=
+    MEqRed.app hEq (MEqRed.refl hpvBody hArg₁₁)
+  exact StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    hUniformDiamond
+    (Γ := Γ) (t := t) (bound₁ := bound₁) (bound₂ := bound₂)
+    (op := .app op arg₁₁) (op' := .app op' arg₁₁)
+    (arg₁₀ := arg₁₀) (arg₉ := arg₉) (arg₈ := arg₈) (arg₇ := arg₇)
+    (arg₆ := arg₆) (arg₅ := arg₅) (arg₄ := arg₄) (arg₃ := arg₃)
+    (arg₂ := arg₂) (arg := arg) (v := v) (u₂ := u₂) (v₂ := v₂)
+    hT₁ hEqHead hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
+    hT₂ hEqOp hEqArg
+
+/-- Two-more exposed `Ms-Equ` leaf inside the recursive `Ms-App` case. This
+reuses the one-more old-bound equivalence proof after absorbing the leading
+argument into the operator. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₁₂ arg₁₁ arg₁₀ arg₉ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂
+    hT₁ hEq hArg₁₂ hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hEqHead :
+      MEqRed ({ bound := t, kind := .sub } :: Γ)
+        (arg₁₁ :: arg₁₀ :: arg₉ :: arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: [])
+        (.app op arg₁₂) (.app op' arg₁₂) :=
+    MEqRed.app hEq (MEqRed.refl hpvBody hArg₁₂)
+  exact StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    hUniformDiamond
+    (Γ := Γ) (t := t) (bound₁ := bound₁) (bound₂ := bound₂)
+    (op := .app op arg₁₂) (op' := .app op' arg₁₂)
+    (arg₁₁ := arg₁₁) (arg₁₀ := arg₁₀) (arg₉ := arg₉) (arg₈ := arg₈)
+    (arg₇ := arg₇) (arg₆ := arg₆) (arg₅ := arg₅) (arg₄ := arg₄)
+    (arg₃ := arg₃) (arg₂ := arg₂) (arg := arg) (v := v)
+    (u₂ := u₂) (v₂ := v₂)
+    hT₁ hEqHead hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
+    hT₂ hEqOp hEqArg
+
 /-- Five-deeper nested-recursive `Ms-Top` leaf inside the recursive
 `Ms-App` case. This reuses the four-deeper top-collapse proof after
 absorbing the leading argument into the operator, then prefixes the left
@@ -28931,24 +29010,18 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppProSuccChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppTop :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppTopChainPayload)
-    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEqu :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEquChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppProHead :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppProHeadChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppProSucc :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppProSuccChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppTop :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppTopChainPayload)
-    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEqu :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEquChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppProHead :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppProHeadChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppProSucc :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppProSuccChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppTop :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppTopChainPayload)
-    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEqu :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppApp :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp :
@@ -29063,17 +29136,20 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                         hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppProHead
                         hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppProSucc
                         hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppTop
-                        hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEqu
+                        (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+                          hUniformDiamond)
                         (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split
                           hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppProHead
                           hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppProSucc
                           hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppTop
-                          hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEqu
+                          (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+                            hUniformDiamond)
                           (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppProHead
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppProSucc
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppTop
-                            hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEqu
+                            (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+                              hUniformDiamond)
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppApp
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp)
                           hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppFOp)
