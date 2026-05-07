@@ -3322,6 +3322,119 @@ noncomputable def BetaInstantiationPreservesWfM.app_of_wsubmstar
         (by simpa [Term.instantiate] using hOp')
         hArg'
 
+/-! ### Partial discharge of `BetaInstantiationPreservesWfM`
+
+The full β-instantiation well-formedness payload `BetaInstantiationPreservesWfM`
+walls at the `WfM.app` constructor: that case requires single-step `MSubRed`
+substitution from a `WSubMStar` chain (transitivity-elimination content),
+documented just above the `BetaInstantiationPreservesMEqRedStack_proved`
+definition. Independently, the `WfM.fun_` constructor case requires a
+β-instantiation surface under one extra preserved binder (depth-1
+instantiation of the body), which is a strictly more general payload than the
+empty-prefix `BetaInstantiationPreservesWfM` itself.
+
+`BetaInstantiationPreservesWfM_partial_proved` ships the **closed** cases
+unconditionally — `WfM.top`, `WfM.varSub`, `WfM.varEqu` — and takes the two
+remaining recursive cases (`WfM.fun_` and `WfM.app`) as residual
+hypotheses. Each residual abstracts exactly the recursive shape its
+constructor produces, with no other downstream content.
+
+This mirrors the partial-discharge pattern used elsewhere in this module
+(e.g. `EqDiamonds.bet_bet_chain_AbsFree_of` carves out the closed shape of
+the `bet × bet` cell while exposing the residual transport content as
+hypotheses).
+
+Once a depth-1 β-instantiation surface lands and the `MSubRed.pro` head
+collapse residual is discharged, both hypotheses become derivable and the
+partial proved theorem promotes to an unconditional
+`BetaInstantiationPreservesWfM_proved`. -/
+
+/-- Residual hypothesis covering the `WfM.fun_` constructor case of
+β-instantiation. The premise carries the original sub-derivations exposed by
+the `fun_` constructor; the conclusion is the targeted post-substitution
+shape produced by `BetaInstantiationPreservesWfM.abs`. -/
+def BetaInstantiationPreservesWfM_FunResidual : Type :=
+  ∀ {Γ : Ctx} {bound arg t body : Term},
+    WSubMStar Γ arg bound →
+      WfM ({ bound := bound, kind := .sub } :: Γ) t →
+        WfM ({ bound := t, kind := .sub } ::
+            { bound := bound, kind := .sub } :: Γ) body →
+          WfM Γ (Term.instantiate 0 arg (.abs t body))
+
+/-- Residual hypothesis covering the `WfM.app` constructor case of
+β-instantiation. The premise carries the `WSubMStar` chains exposed by the
+`app` constructor; the conclusion is the targeted post-substitution shape
+produced by `BetaInstantiationPreservesWfM.app`. -/
+def BetaInstantiationPreservesWfM_AppResidual : Type :=
+  ∀ {Γ : Ctx} {bound arg u v t : Term},
+    WSubMStar Γ arg bound →
+      WSubMStar ({ bound := bound, kind := .sub } :: Γ) u (.abs t .top) →
+        WSubMStar ({ bound := bound, kind := .sub } :: Γ) v t →
+          WfM Γ (Term.instantiate 0 arg (.app u v))
+
+/-- Partial discharge of de Bruijn β-instantiation well-formedness.
+
+This is `BetaInstantiationPreservesWfM`-shaped, with the two recursive
+constructor cases factored out as residual hypotheses. The `top`,
+`varSub` and `varEqu` cases close unconditionally via the existing
+`BetaInstantiationPreservesWfM.{top,var}` helpers; the `fun_` and `app`
+cases dispatch to the residuals.
+
+Pattern mirrors `EqDiamonds.bet_bet_chain_AbsFree_of`: closed structural
+content shipped, transport-shaped content exposed as hypotheses. -/
+noncomputable def BetaInstantiationPreservesWfM_partial_proved
+    (hFun : BetaInstantiationPreservesWfM_FunResidual)
+    (hApp : BetaInstantiationPreservesWfM_AppResidual) :
+    BetaInstantiationPreservesWfM := by
+  intro Γ bound arg t hArgBound hBody
+  cases hBody with
+  | varSub hpv hb =>
+      exact BetaInstantiationPreservesWfM.var hArgBound (WfM.varSub hpv hb)
+  | varEqu hpv hb =>
+      exact BetaInstantiationPreservesWfM.var hArgBound (WfM.varEqu hpv hb)
+  | top hpv =>
+      exact BetaInstantiationPreservesWfM.top hArgBound
+  | fun_ hT hBody =>
+      exact hFun hArgBound hT hBody
+  | app hOp hArg =>
+      exact hApp hArgBound hOp hArg
+
+/-! Closed-case sub-surfaces of `BetaInstantiationPreservesWfM`. These are
+the same three cases dispatched in the partial proved theorem above,
+exposed as standalone definitions so callers can compose them with the
+residuals at point of use. -/
+
+/-- The `WfM.top` case of β-instantiation, exposed at the
+`BetaInstantiationPreservesWfM`-shaped surface. -/
+noncomputable def BetaInstantiationPreservesWfM.top_cell
+    {Γ : Ctx} {bound arg : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (_hBody : WfM ({ bound := bound, kind := .sub } :: Γ) .top) :
+    WfM Γ (Term.instantiate 0 arg .top) :=
+  BetaInstantiationPreservesWfM.top hArgBound
+
+/-- The `WfM.varSub`/`WfM.varEqu` case of β-instantiation, exposed at the
+`BetaInstantiationPreservesWfM`-shaped surface. -/
+noncomputable def BetaInstantiationPreservesWfM.var_cell
+    {Γ : Ctx} {bound arg : Term} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hBody : WfM ({ bound := bound, kind := .sub } :: Γ) (.bvar i)) :
+    WfM Γ (Term.instantiate 0 arg (.bvar i)) :=
+  BetaInstantiationPreservesWfM.var hArgBound hBody
+
+/-- `BetaInstantiationPreservesWfM_partial_proved` specializes back to a
+direct constructor-arm dispatcher when given concrete residuals at point of
+use. This is the canonical entry point for downstream code that wants the
+"easy cases discharged, hard cases delegated" surface in one call. -/
+noncomputable def BetaInstantiationPreservesWfM.dispatch
+    (hFun : BetaInstantiationPreservesWfM_FunResidual)
+    (hApp : BetaInstantiationPreservesWfM_AppResidual)
+    {Γ : Ctx} {bound arg t : Term}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hBody : WfM ({ bound := bound, kind := .sub } :: Γ) t) :
+    WfM Γ (Term.instantiate 0 arg t) :=
+  BetaInstantiationPreservesWfM_partial_proved hFun hApp hArgBound hBody
+
 /-- `WSubMStar.sub` reassembly for de Bruijn β-instantiation. -/
 noncomputable def BetaInstantiationPreservesWSubMStar.sub
     {Γ : Ctx} {arg lhs rhs : Term}

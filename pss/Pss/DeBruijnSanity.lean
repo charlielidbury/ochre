@@ -244,6 +244,10 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWfM.abs
 #print axioms BetaInstantiationPreservesWfM.app
 #print axioms BetaInstantiationPreservesWfM.app_of_wsubmstar
+#print axioms BetaInstantiationPreservesWfM.top_cell
+#print axioms BetaInstantiationPreservesWfM.var_cell
+#print axioms BetaInstantiationPreservesWfM.dispatch
+#print axioms BetaInstantiationPreservesWfM_partial_proved
 #print axioms BetaInstantiationPreservesWSubMStar.sub
 #print axioms BetaInstantiationPreservesWSubMStar.trs
 #print axioms BetaInstantiationPreservesWSubMStar.of_wsubm
