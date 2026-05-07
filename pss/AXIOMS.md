@@ -2850,6 +2850,16 @@ Bruijn proofs do not yet bridge to LN.
   the next successor-transport target; the changed-head blocker remains
   the same arbitrary-depth stack-head replacement problem. Added the new
   endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the next two-more recursive
+  `Ms-App` residual
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppChainPayload`
+  into constructor-local leaves, again splitting the exposed `Ms-Pro`
+  leaf into changed-head and stable-successor payloads. Added
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split`
+  and rewired the nested handler through it. This keeps the recursive
+  `Ms-App` frontier explicit one layer deeper; the open changed-head
+  obstruction and the successor-transport target remain separated. Added
+  the new endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
