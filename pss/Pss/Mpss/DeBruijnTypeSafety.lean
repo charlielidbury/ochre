@@ -30242,3 +30242,99 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_proved
     WSubMStar [] t' u :=
   Theorem_5_DeBruijn_ClosedPreservation_of_components
     hSubst hInv hSubHeadReplace hwf hstep
+
+/-! ### Function-bound inversion partial discharge
+
+`AbsFunctionBoundInversion` (the β residual feeding
+`Theorem_5_DeBruijn_Preservation_proved`) decomposes through existing
+infrastructure into two strictly smaller, already-named residuals:
+
+  * `UniformStrongCommutes` — the standing single-step strong-commutativity
+    residual, already in the closure of `Theorem_3` / `Theorem_4`.
+  * `MEqRedPreservesWfM` (R3) — empty-stack equivalence preservation of
+    well-formedness.
+
+The pipeline is:
+
+  `Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of`
+    + `AbsFunctionBoundChainShapeWfPayload_of_meq`
+    + `AbsFunctionBoundChainDiagramPayload.of_shape`
+    + `AbsFunctionBoundInversion_of_chain_diagram`.
+
+That is, Theorem 3 collapses transitive function supertypes to a single
+abstraction-shaped diagram, R3 supplies the joined-bound well-formedness,
+and the chain-diagram inversion adapter recovers transitive bound
+well-equivalence.
+
+This factoring does not enlarge the closure of `Theorem_5_DeBruijn_…`: both
+new residuals are already named in the campaign. -/
+
+/-- Function-bound inversion derived from universal single-step strong
+commutativity (Theorem 3 input) and stepwise empty-stack equivalence
+preservation of well-formedness (`MEqRedPreservesWfM`, R3). -/
+noncomputable def AbsFunctionBoundInversion_partial_proved
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hMEqPres : MEqRedPreservesWfM) :
+    AbsFunctionBoundInversion :=
+  let hShape : AbsFunctionBoundChainShapePayload :=
+    Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of
+      (fun {Γ} => @hUniformStrongCommutes Γ [])
+  let hShapeWf : AbsFunctionBoundChainShapeWfPayload hShape :=
+    AbsFunctionBoundChainShapeWfPayload_of_meq hShape hMEqPres
+  let hChain : AbsFunctionBoundChainDiagramPayload :=
+    AbsFunctionBoundChainDiagramPayload.of_shape hShape hShapeWf
+  AbsFunctionBoundInversion_of_chain_diagram hChain
+
+/-- Function-bound inversion under `WfCtxEqu`, derived from universal
+single-step strong commutativity and stepwise empty-stack equivalence
+preservation of well-formedness. The `WfCtxEqu` premise is unused at this
+layer because the global `MEqRedPreservesWfM` already supplies the needed
+context-generic well-formedness propagation. -/
+noncomputable def AbsFunctionBoundInversionUnderWfCtx_partial_proved
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hMEqPres : MEqRedPreservesWfM) :
+    AbsFunctionBoundInversionUnderWfCtx :=
+  AbsFunctionBoundInversionUnderWfCtx.of_global
+    (AbsFunctionBoundInversion_partial_proved hUniformStrongCommutes hMEqPres)
+
+/-- Top-level de Bruijn Theorem 5 with `AbsFunctionBoundInversion` factored
+into universal strong commutativity plus stepwise empty-stack equivalence
+preservation. Replaces the single `AbsFunctionBoundInversion` residual of
+`Theorem_5_DeBruijn_Preservation_proved` with the two strictly-smaller
+already-named residuals it decomposes into.
+
+Residuals consumed (relative to `Theorem_5_DeBruijn_Preservation_proved`):
+  * `AbsFunctionBoundInversion` — replaced by `UniformStrongCommutes` and
+    `MEqRedPreservesWfM`.
+
+Residuals retained:
+  * `BetaInstantiationPreservesWfM`
+  * `WfMSubHeadReplaceOfNewWf`. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_partial_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_proved
+    hSubst
+    (AbsFunctionBoundInversion_partial_proved hUniformStrongCommutes hMEqPres)
+    hSubHeadReplace hwf hstep
+
+/-- Closed-term specialization of `Theorem_5_DeBruijn_Preservation_partial_proved`. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hMEqPres : MEqRedPreservesWfM)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_proved
+    hSubst
+    (AbsFunctionBoundInversion_partial_proved hUniformStrongCommutes hMEqPres)
+    hSubHeadReplace hwf hstep
