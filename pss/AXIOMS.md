@@ -2825,6 +2825,19 @@ Bruijn proofs do not yet bridge to LN.
   `Ms-Pro` payload is intentionally not split yet into changed-head and
   successor cases. Added the new endpoints to `Pss/DeBruijnSanity.lean`.
   No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the newly exposed deepest
+  `Ms-Pro` payload
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppProChainPayload`
+  into changed-head and stable-successor leaves:
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppProHeadChainPayload`
+  and
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppProSuccChainPayload`.
+  Added
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split`
+  and rewired the nested handler to consume the split leaves. This exposes
+  the next successor-transport target without attempting the changed-head
+  case. Added the new endpoints to `Pss/DeBruijnSanity.lean`. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
