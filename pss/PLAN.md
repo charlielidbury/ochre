@@ -6,6 +6,195 @@
 
 ---
 
+## CAMPAIGN ENDPOINT STATE (post-iter pss-20260506-130802)
+
+> **All eight de Bruijn `_proved` headlines have shipped.** This section
+> captures the campaign's current endpoint: the headline theorems are in
+> their final structural form on the de Bruijn side; what remains is to
+> discharge the named `Prop`/`Type` residual hypotheses they take as
+> arguments. The de Bruijn `_proved` endpoints depend only on kernel
+> axioms (`propext`, `Quot.sound`, `Classical.choice`) plus those named
+> hypotheses — there are no de-Bruijn-side custom `axiom` declarations.
+
+### The eight de Bruijn `_proved` headlines (PRIMARY)
+
+`Pss/Sanity.lean` audits the following as the campaign's primary
+proof-status endpoints. Each is a `noncomputable def` / `theorem` taking
+the listed named residual hypotheses as explicit arguments and producing
+the headline conclusion modulo the kernel three.
+
+| Endpoint | Residual hypotheses |
+|---|---|
+| `Pss.DeBruijn.Lemma_1_DeBruijn_StrongCommutativityStar_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Lemma_1_DeBruijn_StrongCommutativityChain_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Lemma_2_DeBruijn_DiamondMEqRedStar_proved` | `MEqRedArgTransportPayload`, `MEqRedOpStackHeadTransportPayload`, `MEqRedSubBridgePayload`, `UniformEqDiamonds` |
+| `Pss.DeBruijn.Lemma_2_DeBruijn_DiamondMEqRedChain_proved` | `MEqRedArgTransportPayload`, `MEqRedOpStackHeadTransportPayload`, `MEqRedSubBridgePayload`, `UniformEqDiamonds` |
+| `Pss.DeBruijn.Theorem_3_DeBruijn_TransitivityIsAdmissible_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Theorem_4_DeBruijn_Progress_proved` | `UniformStrongCommutes` |
+| `Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_proved` | `BetaInstantiationPreservesWfM`, `AbsFunctionBoundInversion`, `WfMSubHeadReplaceOfNewWf` |
+| `Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_proved` | `BetaInstantiationPreservesWfM`, `AbsFunctionBoundInversion`, `WfMSubHeadReplaceOfNewWf` |
+
+`#print axioms` on each of the above produces the kernel-three baseline
+only; the residual hypothesis names appear in the theorem signature, not
+in the axiom closure. This is the structural shape `AXIOMS.md` describes
+under "De Bruijn primary headlines".
+
+### Residual hypothesis taxonomy
+
+The named residuals partition into three sources by what closes them.
+
+#### A. Standing transitivity-elimination residuals
+
+These are the open metatheoretic problems on which the headline closures
+are conditional — the universal single-step companion of the relation
+the headline lifts to chain output.
+
+* `UniformStrongCommutes : Prop` — universal single-step `StrongCommutes
+  Γ s` at every extended context. Defined in
+  `DeBruijnTypeSafety.lean:21202`. Consumed by Lemma 1 / Theorem 3 /
+  Theorem 4 closures.
+* `UniformEqDiamonds : Prop` — universal single-step `EqDiamonds Γ s` at
+  every extended context. Defined in `DeBruijnTypeSafety.lean:20215`.
+  Consumed by Lemma 2 closures.
+
+These are the hardest residuals; their discharge requires closing the
+single-step case grid (~36 cells per side after `app × app` /
+`bet × bet` / `app × bet` / `bet × app` are unblocked by per-cell
+transports below).
+
+#### B. Theorem 5 operational residuals (subject-reduction-class)
+
+Independent of the transitivity-elimination problem. Each is needed
+specifically to propagate well-formedness across a single operational
+step.
+
+* `BetaInstantiationPreservesWfM : Type` — de Bruijn analogue of paper
+  Lemma 7. Defined in `DeBruijnTypeSafety.lean:193`. Substituting an
+  argument into an abstraction body preserves well-formedness when the
+  argument is a well-subtype of the abstraction bound.
+* `AbsFunctionBoundInversion : Type` — function-bound inversion: if
+  `WSubMStar Γ (.abs bound body) (.abs result .top)`, then bounds are
+  transitively well-equivalent. Defined in
+  `DeBruijnTypeSafety.lean:4043`.
+* `WfMSubHeadReplaceOfNewWf : Type` — sharpened `.sub`-head replacement,
+  carrying the assumption that the replacement bound is already
+  well-formed. Defined in `DeBruijnTypeSafety.lean:10890`.
+
+#### C. Per-cell transport residuals (unblock A above)
+
+These are not consumed by any headline directly — they are consumed by
+the per-cell `EqDiamonds.*_chain_of` and `StrongCommutes.*_chain_of`
+helpers that case-split inside `UniformEqDiamonds` /
+`UniformStrongCommutes`. Discharging them shrinks the per-cell residual
+list inside the case grid.
+
+* `MEqRedArgTransportPayload` — argument-position transport across
+  argument chain. Restricted form `MEqRedArgTransportPayloadRestricted_proved`
+  proved for `Term.NoBinders` argument + `Term.AbsFree` body shape;
+  newer `MEqRedArgTransportPayloadNoBinders_proved` removes the body-side
+  `AbsFree` condition when the argument is `NoBinders`.
+* `MEqRedOpStackHeadTransportPayload` — operator stack-head transport
+  for `MEqRed`. Restricted form `MEqRedOpStackHeadTransportPayloadRestricted_proved`
+  proved.
+* `MEqRedSubBridgePayload` — `.equ → .sub` head bridge for `MEqRed`
+  bodies. Restricted form `MEqRedSubBridgePayloadNoBinders_proved`
+  proved for `Term.NoBinders` body sources.
+* `MSubRedOpStackHeadTransportPayload` — analogous operator stack-head
+  transport for `MSubRed`. Restricted form
+  `MSubRedOpStackHeadTransportPayloadRestricted_proved` proved (commit
+  `20614` line of `DeBruijnTypeSafety.lean`).
+* `MSubBridgePayload` — cross-relation, cross-head bridge: `MSubRed`
+  body step under `.equ`-head into `MEqRed` body step under `.sub`-head
+  with the original abstraction bound. NoBinders-as-Sub variant
+  `MSubBridgePayloadNoBindersAsSub_proved` proved; equivalence-side
+  variant `MSubBridgePayloadEquNoBinders_proved` proved.
+* `MSubBodyNarrowPayload` — `.sub`-head abstraction-bound narrowing for
+  `MSubRed` bodies. NoBinders variant `MSubBodyNarrowPayloadNoBinders_proved`
+  proved.
+
+### Partial discharges shipped (this iteration cluster)
+
+The following named `_proved` / `_partial` payloads ship the
+restricted-form discharges for the per-cell residuals above and some
+constructor-level discharges for `BetaInstantiationPreservesWfM`. They
+are reachable from `Pss/DeBruijnSanity.lean`'s `#print axioms` audit.
+
+| Payload | Status |
+|---|---|
+| `MEqRedArgTransportPayloadRestricted_proved` | proved (`NoBinders` arg + `AbsFree` body) |
+| `MEqRedArgTransportPayloadNoBinders_proved` | proved (`NoBinders` arg, drops body condition) |
+| `MEqRedOpStackHeadTransportPayloadRestricted_proved` | proved |
+| `MEqRedSubBridgePayloadNoBinders_proved` | proved (`NoBinders` body) |
+| `MSubRedOpStackHeadTransportPayloadRestricted_proved` | proved |
+| `MSubRedSubBridgePayloadNoBinders_proved` | proved (`NoBinders` body, MSubRed side) |
+| `MSubBridgePayloadEquNoBinders_proved` | proved |
+| `MSubBridgePayloadNoBindersAsSub_proved` | proved |
+| `MSubBodyNarrowPayloadNoBinders_proved` | proved |
+| `MEqRedPreservesWfM_partial` | proved-with-hypotheses; `top`/`var`/`tAp` arms unconditional, `pro`/`bet`/`app`/`fun_` arms left as named hypotheses (commit `4b547d0`) |
+| `MEqRedStarArgTransportRestricted_proved` | proved |
+| `MEqRedFusedKindNarrowedBetaSubstStack_proved` | proved (commit `98a62a2`) |
+| `MEqRedRespectsBetaInstantiateStack_proved` | proved (commit `a5aaf59`) |
+| `BetaInstantiationPreservesMEqRedStack_proved` | proved (commit `7ec6954`) |
+| Per-cell `EqDiamonds.*_chain_NoBinders_of`, `EqDiamonds.*_chain_AbsFree_of`, `EqDiamonds.*_chain_ArgNoBinders_of`, `EqDiamonds.*_chain_ArgBodyNoBinders_of` | proved per their preconditions |
+| Per-cell `StrongCommutes.equ_bet_chain_ArgNoBinders_of`, `.app_bet_chain_ArgNoBinders_of`, `.equ_bet_chain_ArgBodyNoBinders_of` | proved per their preconditions |
+
+Search `git log --oneline --all --grep="_NoBinders_\|_AbsFree_\|_partial\|_Restricted_proved"` for the full audit
+trail of partial-discharge commits.
+
+### Next concrete attacks (hardest case first)
+
+Per CLAUDE.md §5a "Hardest case first", the priority order for further
+discharge is:
+
+1. **`UniformStrongCommutes` (Lemma 1 / Theorem 3 / Theorem 4 single-step).**
+   The hardest standing residual: closing the full `MSubRed × MEqRed`
+   case grid as an unconditional `StrongCommutes Γ s` at every extended
+   context. The `app × app`, `bet × bet`, `app × bet`, `bet × app`
+   binder cases reduce to: (i) the per-cell transport residuals in
+   group C above, and (ii) inner recursive calls to the same
+   `StrongCommutes` at deeper-stack contexts. The de Bruijn switch
+   eliminated the alpha-equivariance wall here; what remains is
+   structural recursion plus the open per-cell payloads. Discharging
+   this falls Theorem 3 and Theorem 4 in lockstep.
+
+2. **`UniformEqDiamonds` (Lemma 2 single-step).** Same shape as (1) on
+   the `MEqRed × MEqRed` side. Smaller case grid; many cells already
+   shipped (`top`, `var`, `pro_pro`, `tAp_*`, `appTop_*`, `app_app`,
+   `fun_fun`, `fOp_fOp`). The cross-β cells (`bet × bet`, `bet × app`,
+   `app × bet`) consume `MEqRedArgTransportPayload` /
+   `MEqRedSubBridgePayload`; restricted variants are shipped per the
+   table above.
+
+3. **Per-cell transport residuals (group C).** Each of
+   `MEqRedArgTransportPayload`, `MEqRedOpStackHeadTransportPayload`,
+   `MEqRedSubBridgePayload`, `MSubRedOpStackHeadTransportPayload`,
+   `MSubBridgePayload`, `MSubBodyNarrowPayload` has a restricted form
+   shipped; widening each to the full general statement is the path to
+   removing the restricted-vs-general gap on the binder cells of (1)
+   and (2). Hardest-first within this group: `MSubBridgePayload`
+   (cross-relation cross-head bridge collapsing `Ms-Pro` / `Ms-Top` /
+   `Ms-FOp` into `MEqRed`).
+
+4. **`BetaInstantiationPreservesWfM` (Theorem 5).**
+   `MEqRedPreservesWfM_partial` ships the trivial three constructor
+   arms; the four named hypotheses (`pro`, `bet`, `app`, `fun_`) are
+   left explicit. The `bet` arm is the hardest — it requires the
+   subject-reduction-class substitution lemma. The `pro` and `app`
+   arms reduce to chain-IH composition once `MEqRedPreservesWfM` is
+   itself proved at the recursive call site.
+
+5. **`AbsFunctionBoundInversion`, `WfMSubHeadReplaceOfNewWf`
+   (Theorem 5).** Independent of (1)–(4); each is its own structural
+   discharge. Less load-bearing than (4) for the headline closure
+   shape.
+
+The campaign's success metric is each `_proved` headline becoming
+unconditional in lockstep as residuals are discharged — no downstream
+call sites change because the residual hypotheses are explicit
+arguments, not axioms or implicit instances.
+
+---
+
 ## DISCHARGE CAMPAIGN STATUS (post-Wave-7)
 
 > **All seven waves are complete.** The project is now in a sustained
