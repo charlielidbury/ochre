@@ -2800,6 +2800,19 @@ Bruijn proofs do not yet bridge to LN.
   remaining live leaves in this branch are changed-head `Ms-Pro`,
   recursive `Ms-App`, and `Ms-FOp`. Added the proved endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — audited the first remaining
+  changed-head `Ms-Pro` app/app residual
+  `StrongCommutesFunFunBodyAppAppSubProHeadChainPayload`. The direct
+  analogue of `commute_abs_fun_fun_pro_head_body_of` reaches the joined
+  body with an empty-stack chain
+  `MEqRedStar Γ [] t bound₃`, weakened to
+  `MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (shift t)
+  (shift bound₃)`. The application case, however, needs that operator
+  chain at stack `[v]` (or `[v₂]`) to use `MEqRedStar.app_left`; for an
+  arbitrary abstraction-capable `t`, the existing stack-parametric lifts
+  only apply under extra shape hypotheses such as `Term.NoBinders`. This
+  is now the concrete blocker for the changed-head `Ms-Pro` family, not
+  a successor-lookup issue. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
