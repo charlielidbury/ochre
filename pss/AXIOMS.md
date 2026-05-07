@@ -2813,6 +2813,18 @@ Bruijn proofs do not yet bridge to LN.
   only apply under extra shape hypotheses such as `Term.NoBinders`. This
   is now the concrete blocker for the changed-head `Ms-Pro` family, not
   a successor-lookup issue. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the deepest currently exposed
+  recursive `Ms-App` residual
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppChainPayload`
+  by its next subtype-operator constructor. Added constructor-local
+  deepest payloads for `Ms-Pro`, `Ms-Top`, `Ms-Equ`, one-more-layer
+  `Ms-App`, and `Ms-FOp`, plus the dispatcher
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppChainPayload.of_nested_cases`.
+  The nested handler now consumes those precise leaves instead of a
+  single opaque recursive `Ms-App` premise. The newly exposed deepest
+  `Ms-Pro` payload is intentionally not split yet into changed-head and
+  successor cases. Added the new endpoints to `Pss/DeBruijnSanity.lean`.
+  No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
