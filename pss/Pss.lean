@@ -1,24 +1,14 @@
-import Pss.Syntax.Term
-import Pss.Syntax.LocallyNameless
 import Pss.Syntax.DeBruijn
 import Pss.Util.ParRed
 import Pss.Util.Tactic
-import Pss.Context.Logical
-import Pss.Context.Stack
 import Pss.Context.DeBruijn
-import Pss.Context.Prevalid
-import Pss.Reduction.Operational
 import Pss.Reduction.DeBruijnOperational
-import Pss.Mpss.Reductions
 import Pss.Mpss.DeBruijnReductions
 import Pss.Mpss.DeBruijnContextRed
 import Pss.Mpss.DeBruijnWellFormed
 import Pss.Mpss.DeBruijnOperationalSem
 import Pss.Mpss.DeBruijnTransitivityElim
 import Pss.Mpss.DeBruijnTypeSafety
-import Pss.Mpss.ContextRed
-import Pss.Mpss.Substitution
-import Pss.Mpss.SubstitutionNoPro
 
 /-! # PSS — Pure Subtype Systems
 
