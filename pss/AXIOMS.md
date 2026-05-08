@@ -3064,6 +3064,14 @@ Bruijn proofs do not yet bridge to LN.
   residuals remain changed-head `Ms-Pro`, stable-successor `Ms-Pro`,
   recursive `Ms-App`, and `Ms-FOp`. Added the proved endpoint to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the three-more recursive
+  `Ms-App` leaf into constructor-local `Ms-Pro`, `Ms-Top`, `Ms-Equ`,
+  recursive `Ms-App`, and `Ms-FOp` payloads via
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_nested_cases`.
+  The nested handler now supplies the already-proved three-more `Ms-Top`
+  endpoint directly, leaving the corresponding `Ms-Pro`, `Ms-Equ`,
+  recursive `Ms-App`, and `Ms-FOp` residuals explicit. Added the new
+  endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
