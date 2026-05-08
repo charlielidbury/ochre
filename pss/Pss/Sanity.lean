@@ -38,7 +38,7 @@ This module audits the axiom dependencies in two layers:
   `Lemma_2_inline_app_bet_residual_axiom`,
   `Lemma_2_inline_bet_residual_axiom`) and the Wf-inversion residuals
   (`Lemma_10_Inversion`, `Lemma_24_NarrowingMSubRed`,
-  `Lemma_30_msPro_x_axiom`, `Proposition_17_beta_axiom`) remain visible
+  `Lemma_30_msPro_x_axiom`) remain visible
   in the audit during the de Bruijn refactor. The LN type-safety
   endpoints (`Theorem_4_Progress`, `Theorem_5_Preservation`,
   `Lemma_30_ReductionUnderSubst_Sub_noProOn`,
@@ -84,7 +84,7 @@ Their proofs still consume the LN β-residual axioms
 `Lemma_2_inline_app_bet_residual_axiom`,
 `Lemma_2_inline_bet_residual_axiom`) and the Wf-inversion family
 (`Lemma_10_Inversion`, `Lemma_24_NarrowingMSubRed`,
-`Lemma_30_msPro_x_axiom`, `Proposition_17_beta_axiom`); the de Bruijn
+`Lemma_30_msPro_x_axiom`); the de Bruijn
 `_proved` endpoints above carry the actual current proof status. The
 LN type-safety endpoints (`Theorem_4_Progress`,
 `Theorem_5_Preservation`, `Lemma_30_ReductionUnderSubst_Sub_noProOn`,

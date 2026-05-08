@@ -29,7 +29,6 @@ import Pss.Mpss.Diamond
 import Pss.Mpss.Narrowing
 import Pss.Mpss.Commutation
 import Pss.Mpss.TransitivityElim
-import Pss.Mpss.OperationalSem
 
 /-! # PSS — Pure Subtype Systems
 
