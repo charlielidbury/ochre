@@ -3100,6 +3100,11 @@ Bruijn proofs do not yet bridge to LN.
   lookups, then instantiate it at the concrete `arg₁₀+` leaves. The
   changed-head `Ms-Pro` obstruction remains the nonempty stack-head
   transport problem described above. No axiom-count change.
+* `Pss/Syntax/DeBruijn.lean` — added the reusable application-spine
+  primitive `Term.appSpine` with append, shift, instantiate, and scoping
+  lemmas. This is the first infrastructure piece for replacing the
+  fixed-depth stable-successor `Ms-Pro` application-chain ladder with a
+  generic spine join/transport proof. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`

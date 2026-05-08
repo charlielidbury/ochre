@@ -40,6 +40,29 @@ def size : Term → Nat
 @[simp] theorem size_app (t u : Term) :
     size (.app t u) = 1 + size t + size u := rfl
 
+/-! ## Application spines -/
+
+/-- Left-associated application of a head term to a list of arguments. This
+packages the fixed-depth nests used by the MPSS machine rules as one reusable
+spine. -/
+def appSpine (head : Term) : List Term → Term
+  | [] => head
+  | arg :: args => appSpine (.app head arg) args
+
+@[simp] theorem appSpine_nil (head : Term) :
+    appSpine head [] = head := rfl
+
+@[simp] theorem appSpine_cons (head arg : Term) (args : List Term) :
+    appSpine head (arg :: args) = appSpine (.app head arg) args := rfl
+
+@[simp] theorem appSpine_append (head : Term) (args tail : List Term) :
+    appSpine head (args ++ tail) = appSpine (appSpine head args) tail := by
+  induction args generalizing head with
+  | nil =>
+      rfl
+  | cons arg args ih =>
+      simpa using ih (.app head arg)
+
 /-! ## Shifting -/
 
 /-- `shiftBy cutoff amount t` raises every index `i ≥ cutoff` in `t` by
@@ -75,6 +98,25 @@ def shift (cutoff : Nat) : Term → Term := shiftBy cutoff 1
     shift cutoff (.abs t b) = .abs (shift cutoff t) (shift (cutoff + 1) b) := rfl
 @[simp] theorem shift_app (cutoff : Nat) (t u : Term) :
     shift cutoff (.app t u) = .app (shift cutoff t) (shift cutoff u) := rfl
+
+/-- Shifting distributes across an application spine. -/
+@[simp] theorem shiftBy_appSpine (cutoff amount : Nat) (head : Term)
+    (args : List Term) :
+    shiftBy cutoff amount (appSpine head args) =
+      appSpine (shiftBy cutoff amount head)
+        (args.map (shiftBy cutoff amount)) := by
+  induction args generalizing head with
+  | nil =>
+      rfl
+  | cons arg args ih =>
+      simpa using ih (.app head arg)
+
+/-- One-step shifting distributes across an application spine. -/
+@[simp] theorem shift_appSpine (cutoff : Nat) (head : Term)
+    (args : List Term) :
+    shift cutoff (appSpine head args) =
+      appSpine (shift cutoff head) (args.map (shift cutoff)) :=
+  shiftBy_appSpine cutoff 1 head args
 
 /-- Shifting by zero is the identity. -/
 theorem shiftBy_zero_id (cutoff : Nat) (t : Term) :
@@ -180,6 +222,17 @@ def instantiate (k : Nat) (v : Term) : Term → Term
       .abs (instantiate k v t) (instantiate (k + 1) (shift 0 v) b) := rfl
 @[simp] theorem instantiate_app (k : Nat) (v t u : Term) :
     instantiate k v (.app t u) = .app (instantiate k v t) (instantiate k v u) := rfl
+
+/-- Instantiation distributes across an application spine. -/
+@[simp] theorem instantiate_appSpine (k : Nat) (v head : Term)
+    (args : List Term) :
+    instantiate k v (appSpine head args) =
+      appSpine (instantiate k v head) (args.map (instantiate k v)) := by
+  induction args generalizing head with
+  | nil =>
+      rfl
+  | cons arg args ih =>
+      simpa using ih (.app head arg)
 
 /-- Instantiation distributes over application. Kept as a named lemma because
 later ports use the application case constantly. -/
@@ -985,6 +1038,21 @@ def Scoped.app_inv {depth : Nat} {t u : Term} :
   intro h
   cases h with
   | app h_t h_u => exact ⟨h_t, h_u⟩
+
+/-- Build scoping evidence for a left-associated application spine from
+scoping evidence for its head and each argument. -/
+def Scoped.appSpine {depth : Nat} {head : Term} {args : List Term}
+    (hHead : Scoped depth head)
+    (hArgs : ∀ arg ∈ args, Scoped depth arg) :
+    Scoped depth (appSpine head args) := by
+  induction args generalizing head with
+  | nil =>
+      simpa
+  | cons arg args ih =>
+      exact ih (Scoped.app hHead (hArgs arg (by simp)))
+        (by
+          intro arg' harg'
+          exact hArgs arg' (by simp [harg']))
 
 def no_scoped_zero_bvar (i : Nat) :
     Scoped 0 (.bvar i) → False := by
