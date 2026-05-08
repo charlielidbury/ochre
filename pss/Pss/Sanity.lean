@@ -1,4 +1,3 @@
-import Pss.Mpss.TypeSafety
 import Pss.Mpss.TransitivityElim
 import Pss.Mpss.SubstitutionNoPro
 import Pss.Mpss.AvoidsPro
@@ -31,8 +30,8 @@ This module audits the axiom dependencies in two layers:
   status of the headline theorems.
 
 * **Locally-nameless headlines** (DOCUMENTATION-ONLY / paper-faithfulness
-  reference). The original LN-encoded `Theorem_3_*` / `Theorem_4_*` /
-  `Theorem_5_*` / `Lemma_1_*` / `Lemma_2_*` endpoints. These remain in
+  reference). The original LN-encoded `Theorem_3_*` / `Lemma_1_*` /
+  `Lemma_2_*` endpoints that survive the LN-cleanup. These remain in
   the audit so the LN-side residual cluster
   (`Lemma_1_ctx_axiom`, `Lemma_1_inline_app_bet_residual`,
   `Lemma_2_DiamondMEqRed_ctx_axiom`,
@@ -40,10 +39,14 @@ This module audits the axiom dependencies in two layers:
   `Lemma_2_inline_bet_residual_axiom`) and the Wf-inversion residuals
   (`Lemma_10_Inversion`, `Lemma_24_NarrowingMSubRed`,
   `Lemma_30_msPro_x_axiom`, `Proposition_17_beta_axiom`) remain visible
-  in the audit during the de Bruijn refactor. The de Bruijn `_proved`
-  endpoints exist *alongside* the LN endpoints, not as a replacement;
-  the LN endpoints are retained as the paper-faithful textual statements
-  while the de Bruijn endpoints carry the actual proofs.
+  in the audit during the de Bruijn refactor. The LN type-safety
+  endpoints (`Theorem_4_Progress`, `Theorem_5_Preservation`,
+  `Lemma_30_ReductionUnderSubst_Sub_noProOn`,
+  `Lemma7.lf2_case_noProOn`, `Conjecture_8_*`) were retired together
+  with `Pss/Mpss/TypeSafety.lean` during Phase B of the de Bruijn
+  refactor (the de Bruijn `_proved` endpoints carry the proofs). The
+  remaining LN endpoints are retained as paper-faithful textual
+  statements alongside the de Bruijn endpoints above.
 -/
 
 namespace Pss
@@ -73,25 +76,25 @@ NOT custom axioms.
 
 /-! ## Locally-nameless headlines (documentation-only / paper-faithful)
 
-The LN-side endpoints are retained as a paper-faithfulness reference
-(textual statements match Pasquale & García-Pérez 2024). Their proofs
-still consume the LN β-residual axioms (`Lemma_1_ctx_axiom`,
-`Lemma_1_inline_app_bet_residual`, `Lemma_2_DiamondMEqRed_ctx_axiom`,
+The remaining LN-side endpoints are retained as a paper-faithfulness
+reference (textual statements match Pasquale & García-Pérez 2024).
+Their proofs still consume the LN β-residual axioms
+(`Lemma_1_ctx_axiom`, `Lemma_1_inline_app_bet_residual`,
+`Lemma_2_DiamondMEqRed_ctx_axiom`,
 `Lemma_2_inline_app_bet_residual_axiom`,
 `Lemma_2_inline_bet_residual_axiom`) and the Wf-inversion family
 (`Lemma_10_Inversion`, `Lemma_24_NarrowingMSubRed`,
 `Lemma_30_msPro_x_axiom`, `Proposition_17_beta_axiom`); the de Bruijn
-`_proved` endpoints above carry the actual current proof status.
+`_proved` endpoints above carry the actual current proof status. The
+LN type-safety endpoints (`Theorem_4_Progress`,
+`Theorem_5_Preservation`, `Lemma_30_ReductionUnderSubst_Sub_noProOn`,
+`Lemma7.lf2_case_noProOn`, `Conjecture_8_*`) were retired with
+`Pss/Mpss/TypeSafety.lean` during Phase B of the de Bruijn refactor.
 -/
 
 #print axioms Theorem_3_TransitivityIsAdmissible
-#print axioms Theorem_4_Progress
-#print axioms Theorem_5_Preservation
-#print axioms Lemma_30_ReductionUnderSubst_Sub_noProOn
-#print axioms Lemma7.lf2_case_noProOn
 #print axioms Lemma_1_StrongCommutativity
 #print axioms Lemma_2_DiamondMEqRed
-#print axioms Conjecture_8_WellSubtypingContextIndependent
 #print axioms Lemma_10_InversionRestricted
 #print axioms Lemma_32_AsymmetricEqu
 
