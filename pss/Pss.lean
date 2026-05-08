@@ -16,14 +16,9 @@ import Pss.Mpss.DeBruijnWellFormed
 import Pss.Mpss.DeBruijnOperationalSem
 import Pss.Mpss.DeBruijnTransitivityElim
 import Pss.Mpss.DeBruijnTypeSafety
-import Pss.Mpss.EqRed
-import Pss.Mpss.SubRed
 import Pss.Mpss.ContextRed
-import Pss.Mpss.Weakening
 import Pss.Mpss.Substitution
 import Pss.Mpss.SubstitutionNoPro
-import Pss.Mpss.AvoidsPro
-import Pss.Mpss.WellFormed
 
 /-! # PSS — Pure Subtype Systems
 
