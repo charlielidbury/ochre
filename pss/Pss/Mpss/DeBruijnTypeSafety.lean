@@ -18459,6 +18459,218 @@ noncomputable def BetaInstantiationPreservesWfM_full_of_payloads
       BetaInstantiationPreservesWfM.app_of_wsubmstar hSubstStar
         hArgBound (WfM.app hOp hArg))
 
+/-! ### Partial discharge of `BetaInstantiationPreservesWfMUnderHead`
+
+The depth-1 (under-head) β-instantiation surface walls at the same two
+recursive constructor cases as the depth-0 surface (`WfM.fun_` and
+`WfM.app`), but with the body's sub-derivations now living in a
+**three-head** context rather than a two-head context. The recursive
+constructor cases require a depth-2 generalization of the under-head
+payload — strictly more general than the depth-1 surface itself — and
+the application case requires a depth-1 chain-substitution payload, so
+both are exposed as residuals.
+
+The closed cases (`WfM.top`, `WfM.varSub`, `WfM.varEqu`) discharge
+unconditionally, mirroring the depth-0 partial proved theorem
+`BetaInstantiationPreservesWfM_partial_proved`. -/
+
+/-- Prevalidity of the post-instantiation under-head context. Specializes
+`BetaInstantiationPreservesPrevalidPrefix` at one preserved head. -/
+private noncomputable def BetaInstantiationPreservesPrevalidUnderHead
+    {Γ : Ctx} {bound arg head : Term} {kind : CtxEntryKind}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : Prevalid ({ bound := head, kind := kind } ::
+        { bound := bound, kind := .sub } :: Γ)) :
+    Prevalid ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ) := by
+  have h := BetaInstantiationPreservesPrevalidPrefix
+    (heads := [{ bound := head, kind := kind }])
+    hArgBound (by simpa using hpv)
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
+
+/-- The `WfM.top` case of depth-1 β-instantiation closes via the under-head
+prevalidity transport. -/
+private noncomputable def BetaInstantiationPreservesWfMUnderHead.top
+    {Γ : Ctx} {bound arg head : Term} {kind : CtxEntryKind}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hpv : Prevalid ({ bound := head, kind := kind } ::
+        { bound := bound, kind := .sub } :: Γ)) :
+    WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+      (Term.instantiate 1 (Term.shift 0 arg) .top) := by
+  have hpvTarget := BetaInstantiationPreservesPrevalidUnderHead
+    (kind := kind) hArgBound hpv
+  simpa [Term.instantiate] using WfM.top hpvTarget
+
+/-- The `WfM.varSub`/`WfM.varEqu` case of depth-1 β-instantiation: the
+target index `1` collapses to the lifted `arg`, the preserved head
+remains at index `0` after instantiation, and any deeper index `i + 2`
+descends through the dropped `.sub` entry to land at `i + 1` in the new
+context. -/
+private noncomputable def BetaInstantiationPreservesWfMUnderHead.var
+    {Γ : Ctx} {bound arg head : Term} {kind : CtxEntryKind} {i : Nat}
+    (hArgBound : WSubMStar Γ arg bound)
+    (hBody : WfM ({ bound := head, kind := kind } ::
+        { bound := bound, kind := .sub } :: Γ) (.bvar i)) :
+    WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+      (Term.instantiate 1 (Term.shift 0 arg) (.bvar i)) := by
+  have hpvOrig : Prevalid ({ bound := head, kind := kind } ::
+      { bound := bound, kind := .sub } :: Γ) := hBody.prevalid
+  have hpvTarget : Prevalid
+      ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ) :=
+    BetaInstantiationPreservesPrevalidUnderHead
+      (kind := kind) hArgBound hpvOrig
+  cases hBody with
+  | varSub _ hb =>
+      -- `varSub` produced; lookup must succeed in `.sub` shape.
+      cases i with
+      | zero =>
+          -- Original `kind` must be `.sub` (else `lookupSub` returns none).
+          cases kind with
+          | sub =>
+              simp [Ctx.subBinds] at hb
+              subst hb
+              -- Conclusion: `WfM ({inst 0 arg head, .sub} :: Γ) (.bvar 0)`.
+              have hbTarget :
+                  Ctx.subBinds
+                    ({ bound := Term.instantiate 0 arg head, kind := .sub } :: Γ)
+                    0 (Term.shift 0 (Term.instantiate 0 arg head)) := by
+                simp [Ctx.subBinds]
+              simpa [Term.instantiate] using WfM.varSub hpvTarget hbTarget
+          | equ =>
+              simp [Ctx.subBinds] at hb
+      | succ i =>
+          cases i with
+          | zero =>
+              -- Index 1: lookup descends into `{bound, .sub}`-head, returning
+              -- `shift 0 (shift 0 bound)`. Conclusion is `shift 0 arg` — we have
+              -- `WfM Γ arg`, weaken under the new head.
+              simp [Ctx.subBinds] at hb
+              -- `hb : t = shift 0 (shift 0 bound)`; we don't actually need `t`
+              -- since the conclusion shape is independent of it.
+              have hWfArg : WfM Γ arg := hArgBound.wf_left
+              have hWfArgShift : WfM
+                  ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+                  (Term.shift 0 arg) :=
+                hWfArg.weaken_head hpvTarget hWfArg.prevalid
+              simpa [Term.instantiate] using hWfArgShift
+          | succ i =>
+              -- Index ≥ 2: lookup descends into `Γ` after stripping two heads.
+              -- Avoid `rcases` on `∃` since the goal is in `Type`; case-split
+              -- on `Ctx.lookupSub Γ i` directly instead.
+              cases hlook : Ctx.lookupSub Γ i with
+              | none =>
+                  -- Lookup fails; the original hypothesis is impossible.
+                  simp [Ctx.subBinds, hlook] at hb
+              | some tailΓ =>
+                  have hbΓ' : Γ.subBinds i tailΓ := by
+                    simpa [Ctx.subBinds] using hlook
+                  have hbNew :
+                      Ctx.subBinds
+                        ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+                        (i + 1) (Term.shift 0 tailΓ) :=
+                    Ctx.subBinds_weaken_head _ hbΓ'
+                  have hwf : WfM
+                      ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+                      (.bvar (i + 1)) :=
+                    WfM.varSub hpvTarget hbNew
+                  simpa [Term.instantiate] using hwf
+  | varEqu _ hb =>
+      cases i with
+      | zero =>
+          cases kind with
+          | equ =>
+              simp [Ctx.equBinds] at hb
+              subst hb
+              have hbTarget :
+                  Ctx.equBinds
+                    ({ bound := Term.instantiate 0 arg head, kind := .equ } :: Γ)
+                    0 (Term.shift 0 (Term.instantiate 0 arg head)) := by
+                simp [Ctx.equBinds]
+              simpa [Term.instantiate] using WfM.varEqu hpvTarget hbTarget
+          | sub =>
+              simp [Ctx.equBinds] at hb
+      | succ i =>
+          cases i with
+          | zero =>
+              -- Index 1: equBinds steps over `{head, kind}` head then hits the
+              -- `.sub` head — but `.sub` does not yield an equ binding. So this
+              -- case is impossible.
+              simp [Ctx.equBinds] at hb
+          | succ i =>
+              cases hlook : Ctx.lookupEqu Γ i with
+              | none =>
+                  simp [Ctx.equBinds, hlook] at hb
+              | some tailΓ =>
+                  have hbΓ' : Γ.equBinds i tailΓ := by
+                    simpa [Ctx.equBinds] using hlook
+                  have hbNew :
+                      Ctx.equBinds
+                        ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+                        (i + 1) (Term.shift 0 tailΓ) :=
+                    Ctx.equBinds_weaken_head _ hbΓ'
+                  have hwf : WfM
+                      ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+                      (.bvar (i + 1)) :=
+                    WfM.varEqu hpvTarget hbNew
+                  simpa [Term.instantiate] using hwf
+
+/-- Residual hypothesis covering the `WfM.fun_` constructor case of
+depth-1 β-instantiation under one preserved head. The body's
+sub-derivations now live in a three-head context, so the recursion goes
+to depth 2 — strictly more general than the under-head surface itself. -/
+def BetaInstantiationPreservesWfMUnderHead_FunResidual : Type :=
+  ∀ {Γ : Ctx} {bound arg head t body : Term} {kind : CtxEntryKind},
+    WSubMStar Γ arg bound →
+      WfM ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) t →
+        WfM ({ bound := t, kind := .sub } ::
+            { bound := head, kind := kind } ::
+            { bound := bound, kind := .sub } :: Γ) body →
+          WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+            (Term.instantiate 1 (Term.shift 0 arg) (.abs t body))
+
+/-- Residual hypothesis covering the `WfM.app` constructor case of
+depth-1 β-instantiation under one preserved head. The chains live in
+the original three-head context; closing this residual reduces to a
+depth-1 `WSubMStar` chain-substitution payload. -/
+def BetaInstantiationPreservesWfMUnderHead_AppResidual : Type :=
+  ∀ {Γ : Ctx} {bound arg head u v t : Term} {kind : CtxEntryKind},
+    WSubMStar Γ arg bound →
+      WSubMStar ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) u (.abs t .top) →
+        WSubMStar ({ bound := head, kind := kind } ::
+            { bound := bound, kind := .sub } :: Γ) v t →
+          WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+            (Term.instantiate 1 (Term.shift 0 arg) (.app u v))
+
+/-- Partial discharge of de Bruijn depth-1 β-instantiation well-formedness.
+
+This is `BetaInstantiationPreservesWfMUnderHead`-shaped, with the two
+recursive constructor cases factored out as residual hypotheses. The
+`top`, `varSub` and `varEqu` cases close unconditionally via the helpers
+`BetaInstantiationPreservesWfMUnderHead.{top,var}`; the `fun_` and `app`
+cases dispatch to the residuals.
+
+Mirrors `BetaInstantiationPreservesWfM_partial_proved` at depth 1. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHead_partial_proved
+    (hFun : BetaInstantiationPreservesWfMUnderHead_FunResidual)
+    (hApp : BetaInstantiationPreservesWfMUnderHead_AppResidual) :
+    BetaInstantiationPreservesWfMUnderHead := by
+  intro Γ bound arg head body kind hArgBound hBody
+  cases hBody with
+  | varSub hpv hb =>
+      exact BetaInstantiationPreservesWfMUnderHead.var
+        (kind := kind) hArgBound (WfM.varSub hpv hb)
+  | varEqu hpv hb =>
+      exact BetaInstantiationPreservesWfMUnderHead.var
+        (kind := kind) hArgBound (WfM.varEqu hpv hb)
+  | top hpv =>
+      exact BetaInstantiationPreservesWfMUnderHead.top
+        (kind := kind) hArgBound hpv
+  | fun_ hT hBody =>
+      exact hFun hArgBound hT hBody
+  | app hOp hArg =>
+      exact hApp hArgBound hOp hArg
+
 namespace EqDiamonds
 
 /-- The `Me-Bet × Me-Bet` source cell of de Bruijn Lemma 2 in **restricted

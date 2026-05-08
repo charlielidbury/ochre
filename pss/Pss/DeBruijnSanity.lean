@@ -271,6 +271,9 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWfM_FunResidual_NoBindersBody_of_self_and_underHead
 #print axioms BetaInstantiationPreservesWfM_FunResidual.of_NoBindersBody
 #print axioms BetaInstantiationPreservesWfM_full_of_payloads
+#print axioms BetaInstantiationPreservesWfMUnderHead_FunResidual
+#print axioms BetaInstantiationPreservesWfMUnderHead_AppResidual
+#print axioms BetaInstantiationPreservesWfMUnderHead_partial_proved
 #print axioms Term.NoBinders.bvar_elim
 #print axioms Term.NoBinders.abs_elim
 #print axioms BetaInstantiationPreservesWSubMStar.sub
