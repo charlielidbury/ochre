@@ -27,7 +27,6 @@ import Pss.Mpss.Renaming
 import Pss.Mpss.WellFormed
 import Pss.Mpss.Diamond
 import Pss.Mpss.Narrowing
-import Pss.Mpss.Commutation
 
 /-! # PSS — Pure Subtype Systems
 
