@@ -90,6 +90,7 @@ namespace DeBruijn
 #print axioms MSubRedStar.app_left
 #print axioms MSubRed.appSpine_left
 #print axioms MSubRedStar.appSpine_left
+#print axioms stableSuccProAppSpineJoin
 #print axioms EqDiamonds.top
 #print axioms EqDiamonds.bvar_any
 #print axioms EqDiamonds.appTop_any

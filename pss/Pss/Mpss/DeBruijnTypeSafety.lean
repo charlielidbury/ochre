@@ -17453,6 +17453,39 @@ theorem MSubRedStar.appSpine_left {Γ : Ctx} {s : Stack}
         simpa [List.cons_append] using MSubRedStar.app_left hStar hArg
       simpa using ih hHead hTailArgs
 
+/-- Stable-successor `Ms-Pro` application spines join after the abstraction
+bound has been replaced. The left side replays pointwise argument
+equivalence through the target spine; the right side rebuilds the subtype
+spine from the unchanged successor lookup. -/
+noncomputable def stableSuccProAppSpineJoin {Γ : Ctx} {bound target : Term}
+    {i : Nat} {args args' : List Term}
+    (hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [])
+    (hBind : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ)
+      (i + 1) target)
+    (hTargetScoped :
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ))
+        target)
+    (hArgs : ∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) arg)
+    (hArgs' : ∀ arg' ∈ args',
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) arg')
+    (hSteps : List.Forall₂
+      (fun arg arg' =>
+        MEqRedStar ({ bound := bound, kind := .sub } :: Γ) [] arg arg')
+      args args') :
+    ∃ body₃,
+      MEqRedStar ({ bound := bound, kind := .sub } :: Γ) []
+        (Term.appSpine target args) body₃
+        ∧ MSubRedStar ({ bound := bound, kind := .sub } :: Γ) []
+          (Term.appSpine (.bvar (i + 1)) args') body₃ := by
+  have hpvArgs' :
+      PrevalidExt ({ bound := bound, kind := .sub } :: Γ) (args' ++ []) :=
+    PrevalidExt.prepend_scoped_list hpvBody hArgs'
+  refine ⟨Term.appSpine target args', ?_, ?_⟩
+  · exact MEqRedStar.appSpine_args hTargetScoped hArgs hSteps hpvBody
+  · exact MSubRedStar.single
+      (MSubRed.appSpine_left args' (MSubRed.pro hpvArgs' hBind) hArgs')
+
 /-- Predicate: a term has no `.abs` constructor anywhere along its
 structural spine (top-level only, so applications can have abstractions
 inside their subterms — but the term being instantiated is not directly
@@ -21830,9 +21863,6 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubProSuccChainPayload.proved
       have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
         PrevalidExt.nil
           (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
-      have hpvOp₃ :
-          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: []) :=
-        PrevalidExt.cons hpvBody₃ hEqArg.scoped_right
       cases hEqOp with
       | pro _ heqBind _ =>
           exact (Ctx.subBinds_equBinds_false hBind heqBind).elim
@@ -21845,18 +21875,30 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubProSuccChainPayload.proved
               Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
                 target :=
             Prevalid.scoped_lookupSub (PrevalidExt.ctx hpvBody₃) hBind₃
-          have hLeftArg :
-              MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                (.app target v) (.app target v₂) :=
-            MEqRedStar.app_right hTargetScoped₃
-              (MEqRedStar.single
-                (hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some))
-              hpvBody₃
-          exact ⟨.app target v₂,
-            hLeftArg,
-            MSubRedStar.single
-              (MSubRed.app (MSubRed.pro hpvOp₃ hBind₃)
-                hEqArg.scoped_right)⟩)
+          have hv₃ :
+              Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                v := by
+            simpa [Ctx.depth] using hv
+          obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+            stableSuccProAppSpineJoin
+              (Γ := Γ) (bound := bound₃) (target := target) (i := i)
+              (args := [v]) (args' := [v₂])
+              hpvBody₃ hBind₃ hTargetScoped₃
+              (by
+                intro arg harg
+                simp only [List.mem_singleton] at harg
+                subst harg
+                exact hv₃)
+              (by
+                intro arg harg
+                simp only [List.mem_singleton] at harg
+                subst harg
+                exact hEqArg.scoped_right)
+              (List.Forall₂.cons
+                (MEqRedStar.single
+                  (hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some))
+                List.Forall₂.nil)
+          exact ⟨body₃, by simpa using hLeftSpine, by simpa using hRightSpine⟩)
 
 /-- Constructor-local `Ms-Top` operator case for the structural
 `Ms-App × Me-App` body branch. -/

@@ -3120,6 +3120,13 @@ Bruijn proofs do not yet bridge to LN.
   right edge, complementing the equivalence-chain spine helpers above.
   Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `stableSuccProAppSpineJoin`, the generic joined-bound body helper for
+  stable-successor `Ms-Pro` application spines, and rewired the shallow
+  `StrongCommutesFunFunBodyAppAppSubProSuccChainPayload.proved` through it.
+  This validates the spine abstraction on the first successor leaf before
+  using it to collapse the deeper fixed-depth successor proofs. Added the
+  endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype
