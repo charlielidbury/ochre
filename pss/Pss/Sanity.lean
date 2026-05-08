@@ -1,4 +1,6 @@
-import Pss.Mpss.TransitivityElim
+import Pss.Mpss.Commutation
+import Pss.Mpss.Diamond
+import Pss.Mpss.WellFormed
 import Pss.Mpss.SubstitutionNoPro
 import Pss.Mpss.AvoidsPro
 import Pss.Mpss.DeBruijnTypeSafety
@@ -30,8 +32,8 @@ This module audits the axiom dependencies in two layers:
   status of the headline theorems.
 
 * **Locally-nameless headlines** (DOCUMENTATION-ONLY / paper-faithfulness
-  reference). The original LN-encoded `Theorem_3_*` / `Lemma_1_*` /
-  `Lemma_2_*` endpoints that survive the LN-cleanup. These remain in
+  reference). The original LN-encoded `Lemma_1_*` / `Lemma_2_*` endpoints
+  that survive the LN-cleanup. These remain in
   the audit so the LN-side residual cluster
   (`Lemma_1_ctx_axiom`, `Lemma_1_inline_app_bet_residual`,
   `Lemma_2_DiamondMEqRed_ctx_axiom`,
@@ -44,7 +46,9 @@ This module audits the axiom dependencies in two layers:
   `Lemma_30_ReductionUnderSubst_Sub_noProOn`,
   `Lemma7.lf2_case_noProOn`, `Conjecture_8_*`) were retired together
   with `Pss/Mpss/TypeSafety.lean` during Phase B of the de Bruijn
-  refactor (the de Bruijn `_proved` endpoints carry the proofs). The
+  refactor (the de Bruijn `_proved` endpoints carry the proofs); the
+  LN `Theorem_3_TransitivityIsAdmissible` endpoint was retired with
+  `Pss/Mpss/TransitivityElim.lean` later in the same Phase B. The
   remaining LN endpoints are retained as paper-faithful textual
   statements alongside the de Bruijn endpoints above.
 -/
@@ -92,7 +96,6 @@ LN type-safety endpoints (`Theorem_4_Progress`,
 `Pss/Mpss/TypeSafety.lean` during Phase B of the de Bruijn refactor.
 -/
 
-#print axioms Theorem_3_TransitivityIsAdmissible
 #print axioms Lemma_1_StrongCommutativity
 #print axioms Lemma_2_DiamondMEqRed
 #print axioms Lemma_10_InversionRestricted
