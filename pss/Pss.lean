@@ -32,7 +32,6 @@ import Pss.Mpss.TransitivityElim
 import Pss.Mpss.WSubMTrans
 import Pss.Mpss.OperationalSem
 import Pss.Mpss.TypeSafety
-import Pss.Mpss.WfMPreservation
 
 /-! # PSS — Pure Subtype Systems
 
