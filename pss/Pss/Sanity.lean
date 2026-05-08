@@ -1,4 +1,3 @@
-import Pss.Mpss.Diamond
 import Pss.Mpss.WellFormed
 import Pss.Mpss.SubstitutionNoPro
 import Pss.Mpss.AvoidsPro
@@ -33,10 +32,7 @@ This module audits the axiom dependencies in two layers:
 * **Locally-nameless headlines** (DOCUMENTATION-ONLY / paper-faithfulness
   reference). The original LN-encoded `Lemma_1_*` / `Lemma_2_*` endpoints
   that survive the LN-cleanup. These remain in
-  the audit so the LN-side residual cluster
-  (`Lemma_2_DiamondMEqRed_ctx_axiom`,
-  `Lemma_2_inline_app_bet_residual_axiom`,
-  `Lemma_2_inline_bet_residual_axiom`) and the Wf-inversion residuals
+  the audit so the Wf-inversion residuals
   (`Lemma_10_Inversion`, `Lemma_24_NarrowingMSubRed`,
   `Lemma_30_msPro_x_axiom`) remain visible
   in the audit during the de Bruijn refactor. The LN type-safety
@@ -50,7 +46,14 @@ This module audits the axiom dependencies in two layers:
   LN `Lemma_1_StrongCommutativity` endpoint was retired with
   `Pss/Mpss/Commutation.lean` (killing the
   `Lemma_1_ctx_axiom` and `Lemma_1_inline_app_bet_residual` axioms)
-  later still in the same Phase B. The
+  later in the same Phase B; and the
+  LN `Lemma_2_DiamondMEqRed` endpoint was retired with
+  `Pss/Mpss/Diamond.lean` (killing the
+  `Lemma_2_DiamondMEqRed_ctx_axiom`,
+  `Lemma_2_inline_app_bet_residual_axiom`, and
+  `Lemma_2_inline_bet_residual_axiom` axioms) later still in the same
+  Phase B. With this last deletion all 5 of the original LN
+  β-residual axioms are gone from the codebase. The
   remaining LN endpoints are retained as paper-faithful textual
   statements alongside the de Bruijn endpoints above.
 -/
@@ -84,10 +87,7 @@ NOT custom axioms.
 
 The remaining LN-side endpoints are retained as a paper-faithfulness
 reference (textual statements match Pasquale & García-Pérez 2024).
-Their proofs still consume the LN β-residual axioms
-(`Lemma_2_DiamondMEqRed_ctx_axiom`,
-`Lemma_2_inline_app_bet_residual_axiom`,
-`Lemma_2_inline_bet_residual_axiom`) and the Wf-inversion family
+Their proofs consume only the Wf-inversion family
 (`Lemma_10_Inversion`, `Lemma_24_NarrowingMSubRed`,
 `Lemma_30_msPro_x_axiom`); the de Bruijn
 `_proved` endpoints above carry the actual current proof status. The
@@ -97,10 +97,14 @@ LN type-safety endpoints (`Theorem_4_Progress`,
 `Pss/Mpss/TypeSafety.lean` during Phase B of the de Bruijn refactor;
 the LN `Lemma_1_StrongCommutativity` endpoint was retired with
 `Pss/Mpss/Commutation.lean` (killing `Lemma_1_ctx_axiom` and
-`Lemma_1_inline_app_bet_residual`) later in the same Phase B.
+`Lemma_1_inline_app_bet_residual`) later in the same Phase B; the
+LN `Lemma_2_DiamondMEqRed` endpoint was retired with
+`Pss/Mpss/Diamond.lean` (killing the three
+`Lemma_2_*` β-residual axioms) later still in the same Phase B,
+removing the last of the original 5 LN β-residual axioms from the
+codebase.
 -/
 
-#print axioms Lemma_2_DiamondMEqRed
 #print axioms Lemma_10_InversionRestricted
 #print axioms Lemma_32_AsymmetricEqu
 
