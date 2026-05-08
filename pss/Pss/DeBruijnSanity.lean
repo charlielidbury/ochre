@@ -79,6 +79,13 @@ namespace DeBruijn
 #print axioms PrevalidExt.weaken_head_inv
 #print axioms MEqRed.prevalidExt
 #print axioms MSubRed.prevalidExt
+#print axioms Term.appSpine_append
+#print axioms Term.shiftBy_appSpine
+#print axioms Term.instantiate_appSpine
+#print axioms Term.Scoped.appSpine
+#print axioms PrevalidExt.prepend_scoped_list
+#print axioms MEqRedStar.appSpine_left
+#print axioms MEqRedStar.appSpine_args
 #print axioms EqDiamonds.top
 #print axioms EqDiamonds.bvar_any
 #print axioms EqDiamonds.appTop_any

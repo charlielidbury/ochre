@@ -3105,6 +3105,14 @@ Bruijn proofs do not yet bridge to LN.
   lemmas. This is the first infrastructure piece for replacing the
   fixed-depth stable-successor `Ms-Pro` application-chain ladder with a
   generic spine join/transport proof. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added spine-level equivalence-chain
+  congruence helpers `MEqRedStar.appSpine_left` and
+  `MEqRedStar.appSpine_args`, plus `PrevalidExt.prepend_scoped_list`.
+  These package the repeated `Me-App` chain used by the stable-successor
+  `Ms-Pro` ladder: a head chain can be lifted through an arbitrary
+  left-associated argument spine, and pointwise empty-stack argument chains
+  can be replayed across a whole spine. Added the endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`

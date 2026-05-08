@@ -5065,6 +5065,23 @@ noncomputable def append_operand {Γ : Ctx} {s : Stack} {operand : Term} :
   | cons hpvHead hHead ih =>
       exact PrevalidExt.cons ih hHead
 
+/-- Prepend a scoped argument list to a prevalid machine stack. The first
+list element becomes the current stack head, matching left-associated
+application spines. -/
+noncomputable def prepend_scoped_list {Γ : Ctx} {args s : Stack} :
+    PrevalidExt Γ s →
+      (∀ arg ∈ args, Term.Scoped Γ.depth arg) →
+        PrevalidExt Γ (args ++ s) := by
+  intro hpv hArgs
+  induction args with
+  | nil =>
+      simpa
+  | cons arg args ih =>
+      exact PrevalidExt.cons (ih (by
+        intro arg' harg'
+        exact hArgs arg' (by simp [harg'])))
+        (hArgs arg (by simp))
+
 end PrevalidExt
 
 /-- The generalized equivalence-reduction stack append lift follows by
@@ -17306,6 +17323,74 @@ theorem MEqRedStar.app_right {Γ : Ctx} {s : Stack} {u v v' : Term}
   | tail _hPrefix hStep ih =>
       exact Relation.ReflTransGen.tail ih
         ⟨MEqRed.app_right hu hStep.some hpv⟩
+
+/-- Chain-level congruence for changing the head of a left-associated
+application spine. The head chain runs under the argument list prepended to
+the ambient stack, exactly as repeated uses of `Me-App` require. -/
+theorem MEqRedStar.appSpine_left {Γ : Ctx} {s : Stack}
+    {head head' : Term} (args : List Term)
+    (hStar : MEqRedStar Γ (args ++ s) head head')
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg) :
+    MEqRedStar Γ s (Term.appSpine head args)
+      (Term.appSpine head' args) := by
+  induction args generalizing head head' with
+  | nil =>
+      simpa using hStar
+  | cons arg args ih =>
+      have hArg : Term.Scoped Γ.depth arg := hArgs arg (by simp)
+      have hTailArgs : ∀ arg' ∈ args, Term.Scoped Γ.depth arg' := by
+        intro arg' harg'
+        exact hArgs arg' (by simp [harg'])
+      have hHead :
+          MEqRedStar Γ (args ++ s) (.app head arg) (.app head' arg) := by
+        simpa [List.cons_append] using MEqRedStar.app_left hStar hArg
+      simpa using ih hHead hTailArgs
+
+/-- Chain-level congruence for changing every argument in a left-associated
+application spine by pointwise empty-stack equivalence chains. This packages
+the repeated `app_right`/`app_left` pattern used by the stable-successor
+`Ms-Pro` leaves. -/
+theorem MEqRedStar.appSpine_args {Γ : Ctx} {s : Stack}
+    {head : Term} {args args' : List Term}
+    (hHead : Term.Scoped Γ.depth head)
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg)
+    (hSteps : List.Forall₂ (fun arg arg' => MEqRedStar Γ [] arg arg')
+      args args')
+    (hpv : PrevalidExt Γ s) :
+    MEqRedStar Γ s (Term.appSpine head args)
+      (Term.appSpine head args') := by
+  induction hSteps generalizing head s with
+  | nil =>
+      exact Relation.ReflTransGen.refl
+  | cons hArgStep hTailSteps ih =>
+      rename_i arg arg' args args'
+      have hArg : Term.Scoped Γ.depth arg := hArgs arg (by simp)
+      have hArg' : Term.Scoped Γ.depth arg' :=
+        hArgStep.scoped_right hArg
+      have hTailArgs : ∀ tailArg ∈ args, Term.Scoped Γ.depth tailArg := by
+        intro tailArg htail
+        exact hArgs tailArg (by simp [htail])
+      have hpvTail : PrevalidExt Γ (args ++ s) :=
+        PrevalidExt.prepend_scoped_list hpv hTailArgs
+      have hFirst :
+          MEqRedStar Γ s (Term.appSpine head (arg :: args))
+            (Term.appSpine head (arg' :: args)) := by
+        have hArgApp :
+            MEqRedStar Γ (args ++ s) (.app head arg)
+              (.app head arg') :=
+          MEqRedStar.app_right hHead hArgStep hpvTail
+        simpa using MEqRedStar.appSpine_left args hArgApp hTailArgs
+      have hRest :
+          MEqRedStar Γ s (Term.appSpine head (arg' :: args))
+            (Term.appSpine head (arg' :: args')) := by
+        have hHead' : Term.Scoped Γ.depth (.app head arg') :=
+          Term.Scoped.app hHead hArg'
+        have hTail :
+            MEqRedStar Γ s (Term.appSpine (.app head arg') args)
+              (Term.appSpine (.app head arg') args') :=
+          ih hHead' hTailArgs hpv
+        simpa using hTail
+      exact hFirst.trans hRest
 
 /-- Predicate: a term has no `.abs` constructor anywhere along its
 structural spine (top-level only, so applications can have abstractions
