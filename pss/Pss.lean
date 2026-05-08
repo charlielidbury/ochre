@@ -29,7 +29,6 @@ import Pss.Mpss.Diamond
 import Pss.Mpss.Narrowing
 import Pss.Mpss.Commutation
 import Pss.Mpss.TransitivityElim
-import Pss.Mpss.WSubMTrans
 import Pss.Mpss.OperationalSem
 import Pss.Mpss.TypeSafety
 
