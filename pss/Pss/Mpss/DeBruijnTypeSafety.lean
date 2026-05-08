@@ -18129,6 +18129,162 @@ noncomputable def MSubRedSubBridgePayloadNoBinders_proved
   exact (MSubRed.lift_to_any_context_stack_of_NoBinders_nonempty hBody
     hBodyNoBinders hpvNew).some
 
+/-! ### NoBinders-restricted partial discharge of `BetaInstantiationPreservesWfM`
+
+The full `BetaInstantiationPreservesWfM_AppResidual` requires substitution
+preservation through `WSubMStar` chains. The single-step wall is the
+`MSubRed.pro` head case (transitivity-elimination content), but the
+chain-level shape additionally requires handling `WSubMStar.trs`'s
+intermediates which have no a priori `NoBinders` structure even when the
+chain endpoints are.
+
+The **NoBinders-restricted** variant restricts the body of the source
+WfM to be `Term.NoBinders`. Because `Term.NoBinders` excludes `.bvar`,
+`.abs`, and any constructor matching `WfM.fun_`, `WfM.varSub`,
+`WfM.varEqu`, the only remaining cases are `WfM.top` (closed) and
+`WfM.app` (NoBinders-shaped). Furthermore, since `Term.NoBinders.app_inv`
+descends to NoBinders subterms, the recursive structure remains within
+the NoBinders sublanguage.
+
+The NoBinders-restricted `_AppResidual_NoBinders` shape requires the
+WfM.app's operator and argument to be NoBinders. The closed proof
+modulo `BetaInstantiationPreservesWSubMStar` follows from the existing
+`BetaInstantiationPreservesWfM.app_of_wsubmstar` helper, with the
+NoBinders restriction simplifying the conclusion's `Term.instantiate`
+to the source shape via `Term.NoBinders.instantiate_eq`.
+
+The NoBinders shape is preserved through the recursive descent of the
+partial theorem, eliminating the need for a `_FunResidual_NoBinders`
+(the `WfM.fun_` case is excluded by NoBinders entirely). This is the
+structural endpoint analog of the `_partial_proved` pattern: instead of
+two residual hypotheses (Fun + App), the NoBinders restriction
+collapses to a single residual (App), which in turn closes modulo the
+existing `_of_wsubmstar` route. -/
+
+/-- Residual hypothesis covering the `WfM.app` constructor case of
+β-instantiation, restricted to `Term.NoBinders` operator and argument.
+
+Compared with `BetaInstantiationPreservesWfM_AppResidual`, this version
+restricts the source `u` and `v` to be `Term.NoBinders` — the
+sublanguage where each subterm is `.top` or `.app` with NoBinders
+subterms. This restriction lets the conclusion's `Term.instantiate`
+collapse to the source: `Term.instantiate 0 arg (.app u v) = .app u v`
+when both `u` and `v` are NoBinders, by `Term.NoBinders.instantiate_eq`. -/
+def BetaInstantiationPreservesWfM_AppResidual_NoBinders : Type :=
+  ∀ {Γ : Ctx} {bound arg u v t : Term},
+    Term.NoBinders u →
+      Term.NoBinders v →
+        WSubMStar Γ arg bound →
+          WSubMStar ({ bound := bound, kind := .sub } :: Γ) u
+              (.abs t .top) →
+            WSubMStar ({ bound := bound, kind := .sub } :: Γ) v t →
+              WfM Γ (Term.instantiate 0 arg (.app u v))
+
+/-- Closed proof of `BetaInstantiationPreservesWfM_AppResidual_NoBinders`
+modulo `BetaInstantiationPreservesWSubMStar`.
+
+The NoBinders restriction is not used to discharge the chain
+substitution itself — that remains the content of
+`BetaInstantiationPreservesWSubMStar`. Instead, NoBinders is used to
+recognize that the post-substitution shape coincides with the
+pre-substitution shape modulo `Term.NoBinders.instantiate_eq`. The
+proof routes through the existing
+`BetaInstantiationPreservesWfM.app_of_wsubmstar` helper, which
+transports the WSubMStar chains exposed by `WfM.app` through
+β-instantiation.
+
+This makes the residual reusable in contexts where
+`BetaInstantiationPreservesWSubMStar` is available locally (e.g.
+derived from a stronger context-specific assumption) even when the
+global `BetaInstantiationPreservesMSubRed` is open. -/
+noncomputable def BetaInstantiationPreservesWfM_AppResidual_NoBinders_of_wsubmstar
+    (hSubstStar : BetaInstantiationPreservesWSubMStar) :
+    BetaInstantiationPreservesWfM_AppResidual_NoBinders := by
+  intro Γ bound arg u v t _hNoBindersU _hNoBindersV hArgBound hOp hArg
+  -- Reassemble `WfM.app` from the chain witnesses.
+  have hWfApp : WfM ({ bound := bound, kind := .sub } :: Γ) (.app u v) :=
+    WfM.app hOp hArg
+  -- Discharge via the existing `app_of_wsubmstar` helper, which
+  -- transports the chains through β-instantiation.
+  exact BetaInstantiationPreservesWfM.app_of_wsubmstar hSubstStar
+    hArgBound hWfApp
+
+/-- The de Bruijn β-instantiation well-formedness payload, restricted
+to source bodies that are `Term.NoBinders`. Compared with the full
+`BetaInstantiationPreservesWfM`, this version drops the `.bvar`,
+`.abs`-source cases entirely (excluded by NoBinders) and replaces the
+`WfM.fun_` residual with no residual at all (NoBinders rules out the
+`.abs` source). The remaining cases — `WfM.top` and `WfM.app` — are
+closed via the existing leaf helpers and the NoBinders-restricted
+application residual.
+
+Note: `WfM.app` source `(.app u v)` with `Term.NoBinders (.app u v)`
+gives `Term.NoBinders u` and `Term.NoBinders v` via
+`Term.NoBinders.app_inv`. -/
+def BetaInstantiationPreservesWfM_NoBinders : Type :=
+  ∀ {Γ : Ctx} {bound arg t : Term},
+    Term.NoBinders t →
+      WSubMStar Γ arg bound →
+        WfM ({ bound := bound, kind := .sub } :: Γ) t →
+          WfM Γ (Term.instantiate 0 arg t)
+
+/-- A `Term.NoBinders (.bvar i)` premise is uninhabited; this helper
+extracts `False` for use in Type-valued elimination contexts (where
+`cases` on a `Prop` predicate cannot directly produce a Type result). -/
+theorem Term.NoBinders.bvar_elim {i : Nat} (h : Term.NoBinders (.bvar i)) :
+    False := by
+  cases h
+
+/-- A `Term.NoBinders (.abs t body)` premise is uninhabited; this helper
+extracts `False` for use in Type-valued elimination contexts. -/
+theorem Term.NoBinders.abs_elim {t body : Term}
+    (h : Term.NoBinders (.abs t body)) : False := by
+  cases h
+
+/-- Closed proof of `BetaInstantiationPreservesWfM_NoBinders` modulo
+`BetaInstantiationPreservesWfM_AppResidual_NoBinders`.
+
+Cases dispatched:
+- `WfM.top`: closed via `BetaInstantiationPreservesWfM.top`.
+- `WfM.varSub` / `WfM.varEqu`: source is `.bvar i`, excluded by
+  NoBinders (no `.bvar` constructor in NoBinders).
+- `WfM.fun_`: source is `.abs t body`, excluded by NoBinders.
+- `WfM.app`: dispatched to the NoBinders-restricted residual after
+  extracting NoBinders for the operator and argument via
+  `Term.NoBinders.app_inv`. -/
+noncomputable def BetaInstantiationPreservesWfM_NoBinders_partial_proved
+    (hApp : BetaInstantiationPreservesWfM_AppResidual_NoBinders) :
+    BetaInstantiationPreservesWfM_NoBinders := by
+  intro Γ bound arg t hNoBinders hArgBound hBody
+  cases hBody with
+  | varSub _ _ =>
+      -- Source `.bvar i`, excluded by NoBinders.
+      exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | varEqu _ _ =>
+      -- Source `.bvar i`, excluded by NoBinders.
+      exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | top _ =>
+      exact BetaInstantiationPreservesWfM.top hArgBound
+  | fun_ _ _ =>
+      -- Source `.abs t body`, excluded by NoBinders.
+      exact (Term.NoBinders.abs_elim hNoBinders).elim
+  | app hOp hArg =>
+      -- Source `.app u v`. NoBinders gives both u and v NoBinders.
+      have ⟨hNoBindersU, hNoBindersV⟩ := hNoBinders.app_inv
+      exact hApp hNoBindersU hNoBindersV hArgBound hOp hArg
+
+/-- Closed proof of `BetaInstantiationPreservesWfM_NoBinders` modulo
+`BetaInstantiationPreservesWSubMStar`. Combines
+`BetaInstantiationPreservesWfM_NoBinders_partial_proved` with the
+NoBinders-restricted application residual closed under the chain
+substitution hypothesis. -/
+noncomputable def BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar
+    (hSubstStar : BetaInstantiationPreservesWSubMStar) :
+    BetaInstantiationPreservesWfM_NoBinders :=
+  BetaInstantiationPreservesWfM_NoBinders_partial_proved
+    (BetaInstantiationPreservesWfM_AppResidual_NoBinders_of_wsubmstar
+      hSubstStar)
+
 namespace EqDiamonds
 
 /-- The `Me-Bet × Me-Bet` source cell of de Bruijn Lemma 2 in **restricted

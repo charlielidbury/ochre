@@ -260,6 +260,13 @@ namespace DeBruijn
 #print axioms BetaInstantiationPreservesWfM.var_cell
 #print axioms BetaInstantiationPreservesWfM.dispatch
 #print axioms BetaInstantiationPreservesWfM_partial_proved
+#print axioms BetaInstantiationPreservesWfM_AppResidual_NoBinders
+#print axioms BetaInstantiationPreservesWfM_AppResidual_NoBinders_of_wsubmstar
+#print axioms BetaInstantiationPreservesWfM_NoBinders
+#print axioms BetaInstantiationPreservesWfM_NoBinders_partial_proved
+#print axioms BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar
+#print axioms Term.NoBinders.bvar_elim
+#print axioms Term.NoBinders.abs_elim
 #print axioms BetaInstantiationPreservesWSubMStar.sub
 #print axioms BetaInstantiationPreservesWSubMStar.trs
 #print axioms BetaInstantiationPreservesWSubMStar.of_wsubm
