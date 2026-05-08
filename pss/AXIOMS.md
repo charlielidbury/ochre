@@ -3138,6 +3138,10 @@ Bruijn proofs do not yet bridge to LN.
   through `stableSuccProAppSpineJoin`, removing the hand-built
   four-argument successor-spine join. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — rewired
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppProSuccChainPayload.proved`
+  through `stableSuccProAppSpineJoin`, removing the hand-built
+  five-argument successor-spine join. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — rewired
   `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppProSuccChainPayload.proved`
   through `stableSuccProAppSpineJoin`, removing the hand-built
   six-argument successor-spine join. No axiom-count change.
