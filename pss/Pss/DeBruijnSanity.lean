@@ -692,6 +692,8 @@ namespace DeBruijn
 #print axioms WfMSubHeadReplaceOfNewWf.top_cell
 #print axioms WfMSubHeadReplaceOfNewWf.var_cell
 #print axioms WfMSubHeadReplaceOfNewWf.dispatch
+#print axioms WfMSubHeadReplaceOfNewWf_FunResidual_of_self_and_underHead
+#print axioms WfMSubHeadReplaceOfNewWf_full_of_payloads
 #print axioms MEqRedFunBodyReplacePayload.of_direct_sub_payloads
 #print axioms MEqRedFunBodyReplacePayload.of_immediate_sub_payloads_and_under
 #print axioms MEqRed.fun_preservesWfM_of_direct_sub_payloads

@@ -11352,6 +11352,59 @@ noncomputable def WfMSubHeadReplaceOfNewWf_partial_proved
   | app hOp hArg =>
       exact hApp hOldNew hNew hOp hArg
 
+/-- Closure of `WfMSubHeadReplaceOfNewWf_FunResidual` modulo two
+`.sub`-head replacement payloads:
+
+- `hSelf : WfMSubHeadReplaceOfNewWf` discharges the depth-0 head
+  replacement of the abstraction's bound `t` (the `WfM.fun_`
+  constructor's first premise).
+- `hUnder : WfMSubUnderHeadReplaceOfNewWf` discharges the depth-1 head
+  replacement of the abstraction's body (the `WfM.fun_` constructor's
+  second premise, in extended context — the preserved `.sub t` head
+  remains, only the deeper `.sub old` is rewritten to `.sub new`).
+
+Once both payloads are derivable (from the still-open `.sub` head and
+under-head replacement layers), this closure ships the full
+`_FunResidual` unconditionally.
+
+Direct mirror of `BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead`
+(the β-instantiation surface of the same factorisation). The assembly
+point is `WfM.fun_sub_head_replace_from_body_wf` which takes WfM-transport
+payloads on the bound and body and reassembles via `WfM.fun_`. -/
+noncomputable def WfMSubHeadReplaceOfNewWf_FunResidual_of_self_and_underHead
+    (hSelf  : WfMSubHeadReplaceOfNewWf)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf) :
+    WfMSubHeadReplaceOfNewWf_FunResidual := by
+  intro Γ old new t body hOldNew hNew hT hBody
+  exact WfM.fun_sub_head_replace_from_body_wf hT hBody
+    (fun hx => hSelf hOldNew hNew hx)
+    (fun hx => hUnder hOldNew hNew hx)
+
+/-- Full discharge of `WfMSubHeadReplaceOfNewWf` modulo three payloads:
+the `.sub`-head replacement payload itself (used positively to close the
+`_FunResidual`'s bound substitution sub-goal), the preserved-head
+replacement payload (for the body), and the `_AppResidual` payload that
+covers the `WfM.app` constructor case.
+
+Note: `hSelf` is the headline payload itself, used positively to close
+`_FunResidual`'s bound sub-goal. This is **not** circular — the closure
+consumes `hSelf` as an oracle and produces a `WfMSubHeadReplaceOfNewWf`
+proof tree that uses `hSelf` only for the `WfM.fun_` constructor case's
+bound-replacement position, exactly where the partial dispatcher
+delegates. Callers wanting genuinely circular-free discharge would close
+`hSelf` separately (e.g. via the unrestricted discharge at the headline
+level once both layers are closed).
+
+Direct mirror of `BetaInstantiationPreservesWfM_full_of_payloads`. -/
+noncomputable def WfMSubHeadReplaceOfNewWf_full_of_payloads
+    (hSelf  : WfMSubHeadReplaceOfNewWf)
+    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
+    (hApp   : WfMSubHeadReplaceOfNewWf_AppResidual) :
+    WfMSubHeadReplaceOfNewWf :=
+  WfMSubHeadReplaceOfNewWf_partial_proved
+    (WfMSubHeadReplaceOfNewWf_FunResidual_of_self_and_underHead hSelf hUnder)
+    hApp
+
 /-! Closed-case sub-surfaces of `WfMSubHeadReplaceOfNewWf`. These are
 the same three cases dispatched in the partial proved theorem above,
 exposed as standalone definitions so callers can compose them with the
