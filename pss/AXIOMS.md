@@ -3080,6 +3080,13 @@ Bruijn proofs do not yet bridge to LN.
   now supplies this proof directly; the remaining three-more residuals
   at that split are `Ms-Pro`, recursive `Ms-App`, and `Ms-FOp`. Added
   the endpoint to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — split the three-more exposed
+  `Ms-Pro` leaf into changed-head and stable-successor payloads via
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_nested_cases_pro_split`.
+  This exposes the known changed-head obstruction at this depth instead
+  of hiding it behind a broad `Ms-Pro` payload, and leaves the stable
+  successor branch explicit for later discharge. Added the new endpoints
+  to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
