@@ -3821,27 +3821,7 @@ Same as Theorem 3.
 * `Pss.Lemma_2_inline_app_bet_residual_axiom` *(private)*
 * `Pss.Lemma_2_inline_bet_residual_axiom` *(private)*
 
-### Additional audited WfCtx endpoints
-
-`Pss.Sanity` also audits the conditional WfCtx preservation route. These
-endpoints are not part of the five-headline count above, but they are
-publicly audited because they are exposed preservation variants:
-
-* `Theorem_5_Preservation_under_wfctx`
-* `Theorem_5_Preservation_empty_wfctx`
-
-Their current closures replace the raw `Lemma_10_Inversion` dependency
-with the subject-reduction residual pair:
-
-* `Pss._SR_axiom_app_meApp`
-* `Pss._SR_v2_bet_residual` *(private)*
-
-and still inherit the shared preservation/transitivity residuals:
-
-* `Pss.Lemma_24_NarrowingMSubRed`
-* `Pss.Lemma_30_msPro_x_axiom`
-* `Pss.Proposition_17_beta_axiom`
-* the Lemma 1 / Lemma 2 locally-nameless residual cluster listed above
+### Inactive public residual axioms
 
 `Pss.Sanity` also prints the two inactive public residual axioms so the
 standard audit covers the entire non-permanent public axiom surface:

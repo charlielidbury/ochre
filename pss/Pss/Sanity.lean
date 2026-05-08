@@ -1,5 +1,4 @@
 import Pss.Mpss.TypeSafety
-import Pss.Mpss.TypeSafetyWfCtx
 import Pss.Mpss.TransitivityElim
 import Pss.Mpss.SubstitutionNoPro
 import Pss.Mpss.AvoidsPro
@@ -88,8 +87,6 @@ still consume the LN β-residual axioms (`Lemma_1_ctx_axiom`,
 #print axioms Theorem_3_TransitivityIsAdmissible
 #print axioms Theorem_4_Progress
 #print axioms Theorem_5_Preservation
-#print axioms Theorem_5_Preservation_under_wfctx
-#print axioms Theorem_5_Preservation_empty_wfctx
 #print axioms Lemma_30_ReductionUnderSubst_Sub_noProOn
 #print axioms Lemma7.lf2_case_noProOn
 #print axioms Lemma_1_StrongCommutativity
