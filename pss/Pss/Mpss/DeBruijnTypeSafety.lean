@@ -24284,52 +24284,37 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppProSuccChainPayload.proved
                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] arg
                     arg₂ := by
                 exact hEqAppArg.sub_head_replace_two_step hT₁ hBound₁₃.some
-              have hArg₂Scoped₃ :
-                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                    arg₂ :=
-                hArg₂₃.scoped_right
-              have hv₂₃ :
-                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                    v₂ := by
-                simpa [Ctx.depth] using hEqArg.scoped_right
-              have hpvV₃ :
-                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) :=
-                PrevalidExt.cons hpvBody₃ hv₃
               have hV₂Step :
                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
                 hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
-              have hInnerTargetScoped₃ :
-                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                    (.app target arg₂) :=
-                Term.Scoped.app hTargetScoped₃ hArg₂Scoped₃
-              have hLeftArg :
-                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                    (.app (.app target arg) v)
-                    (.app (.app target arg₂) v) :=
-                MEqRedStar.app_left
-                  (MEqRedStar.app_right hTargetScoped₃
-                    (MEqRedStar.single hArg₂₃) hpvV₃)
-                  hv₃
-              have hLeftV :
-                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                    (.app (.app target arg₂) v)
-                    (.app (.app target arg₂) v₂) :=
-                MEqRedStar.app_right hInnerTargetScoped₃
-                  (MEqRedStar.single hV₂Step) hpvBody₃
-              have hpvV₂₃ :
-                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: []) :=
-                PrevalidExt.cons hpvBody₃ hv₂₃
-              have hpvArg₂V₂₃ :
-                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                    (arg₂ :: v₂ :: []) :=
-                PrevalidExt.cons hpvV₂₃ hArg₂Scoped₃
-              exact ⟨.app (.app target arg₂) v₂,
-                hLeftArg.trans hLeftV,
-                MSubRedStar.single
-                  (MSubRed.app
-                    (MSubRed.app (MSubRed.pro hpvArg₂V₂₃ hBind₃)
-                      hArg₂Scoped₃)
-                    hv₂₃)⟩
+              obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+                stableSuccProAppSpineJoin
+                  (Γ := Γ) (bound := bound₃) (target := target) (i := i)
+                  (args := [arg, v]) (args' := [arg₂, v₂])
+                  hpvBody₃ hBind₃ hTargetScoped₃
+                  (by
+                    intro arg' harg'
+                    by_cases hArg' : arg' = arg
+                    · subst arg'
+                      exact hArg₃
+                    · have hV' : arg' = v := by
+                        simpa [List.mem_cons, List.mem_singleton, hArg'] using harg'
+                      subst arg'
+                      exact hv₃)
+                  (by
+                    intro arg' harg'
+                    by_cases hArg' : arg' = arg₂
+                    · subst arg'
+                      exact hArg₂₃.scoped_right
+                    · have hV' : arg' = v₂ := by
+                        simpa [List.mem_cons, List.mem_singleton, hArg'] using harg'
+                      subst arg'
+                      exact hV₂Step.scoped_right)
+                  (List.Forall₂.cons (MEqRedStar.single hArg₂₃)
+                    (List.Forall₂.cons (MEqRedStar.single hV₂Step)
+                      List.Forall₂.nil))
+              exact ⟨body₃, by simpa using hLeftSpine,
+                by simpa using hRightSpine⟩
       )
 
 /-- Nested-recursive `Ms-Top` leaf inside the nested `Ms-App` case closes
@@ -24560,69 +24545,43 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppProSuccChainPayload.pro
                   have hVStep₃ :
                       MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
                     hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
-                  have hv₂₃ :
-                      Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                        v₂ :=
-                    hVStep₃.scoped_right
-                  have hpvV₃ :
-                      PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) :=
-                    PrevalidExt.cons hpvBody₃ hv₃
-                  have hpvArgV₃ :
-                      PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                        (arg :: v :: []) :=
-                    PrevalidExt.cons hpvV₃ hArg₃
-                  have hTargetArg₂'Scoped₃ :
-                      Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                        (.app target arg₂') :=
-                    Term.Scoped.app hTargetScoped₃ hArg₂'Scoped₃
-                  have hTargetArg₂'Arg'Scoped₃ :
-                      Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                        (.app (.app target arg₂') arg') :=
-                    Term.Scoped.app hTargetArg₂'Scoped₃ hArg'Scoped₃
-                  have hLeftArg₂ :
-                      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                        (.app (.app (.app target arg₂) arg) v)
-                        (.app (.app (.app target arg₂') arg) v) :=
-                    MEqRedStar.app_left
-                      (MEqRedStar.app_left
-                        (MEqRedStar.app_right hTargetScoped₃
-                          (MEqRedStar.single hArg₂Step₃) hpvArgV₃)
-                        hArg₃)
-                      hv₃
-                  have hLeftArg :
-                      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                        (.app (.app (.app target arg₂') arg) v)
-                        (.app (.app (.app target arg₂') arg') v) :=
-                    MEqRedStar.app_left
-                      (MEqRedStar.app_right hTargetArg₂'Scoped₃
-                        (MEqRedStar.single hArgStep₃) hpvV₃)
-                      hv₃
-                  have hLeftV :
-                      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                        (.app (.app (.app target arg₂') arg') v)
-                        (.app (.app (.app target arg₂') arg') v₂) :=
-                    MEqRedStar.app_right hTargetArg₂'Arg'Scoped₃
-                      (MEqRedStar.single hVStep₃) hpvBody₃
-                  have hpvV₂₃ :
-                      PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: []) :=
-                    PrevalidExt.cons hpvBody₃ hv₂₃
-                  have hpvArg'V₂₃ :
-                      PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                        (arg' :: v₂ :: []) :=
-                    PrevalidExt.cons hpvV₂₃ hArg'Scoped₃
-                  have hpvArg₂'Arg'V₂₃ :
-                      PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                        (arg₂' :: arg' :: v₂ :: []) :=
-                    PrevalidExt.cons hpvArg'V₂₃ hArg₂'Scoped₃
-                  exact ⟨.app (.app (.app target arg₂') arg') v₂,
-                    hLeftArg₂.trans (hLeftArg.trans hLeftV),
-                    MSubRedStar.single
-                      (MSubRed.app
-                        (MSubRed.app
-                          (MSubRed.app (MSubRed.pro hpvArg₂'Arg'V₂₃ hBind₃)
-                            hArg₂'Scoped₃)
-                          hArg'Scoped₃)
-                        hv₂₃)⟩)
+                  obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+                    stableSuccProAppSpineJoin
+                      (Γ := Γ) (bound := bound₃) (target := target) (i := i)
+                      (args := [arg₂, arg, v]) (args' := [arg₂', arg', v₂])
+                      hpvBody₃ hBind₃ hTargetScoped₃
+                      (by
+                        intro x hx
+                        by_cases hx₂ : x = arg₂
+                        · subst x
+                          exact hArg₂₃
+                        · by_cases hx₁ : x = arg
+                          · subst x
+                            exact hArg₃
+                          · have hxv : x = v := by
+                              simpa [List.mem_cons, List.mem_singleton, hx₂, hx₁]
+                                using hx
+                            subst x
+                            exact hv₃)
+                      (by
+                        intro x hx
+                        by_cases hx₂ : x = arg₂'
+                        · subst x
+                          exact hArg₂'Scoped₃
+                        · by_cases hx₁ : x = arg'
+                          · subst x
+                            exact hArg'Scoped₃
+                          · have hxv : x = v₂ := by
+                              simpa [List.mem_cons, List.mem_singleton, hx₂, hx₁]
+                                using hx
+                            subst x
+                            exact hVStep₃.scoped_right)
+                      (List.Forall₂.cons (MEqRedStar.single hArg₂Step₃)
+                        (List.Forall₂.cons (MEqRedStar.single hArgStep₃)
+                          (List.Forall₂.cons (MEqRedStar.single hVStep₃)
+                            List.Forall₂.nil)))
+                  exact ⟨body₃, by simpa using hLeftSpine,
+                    by simpa using hRightSpine⟩)
 
 /-- Stable-successor one-deeper nested-recursive `Ms-Pro` leaf. The right
 equivalence step is forced through three structural applications, with a
