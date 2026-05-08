@@ -24687,103 +24687,51 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppProSuccChainPayload.
                       have hVStep₃ :
                           MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
                         hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
-                      have hv₂₃ :
-                          Term.Scoped
-                            (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                            v₂ :=
-                        hVStep₃.scoped_right
-                      have hpvV₃ :
-                          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                            (v :: []) :=
-                        PrevalidExt.cons hpvBody₃ hv₃
-                      have hpvArgV₃ :
-                          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                            (arg :: v :: []) :=
-                        PrevalidExt.cons hpvV₃ hArg_₃
-                      have hpvArg₂ArgV₃ :
-                          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                            (arg₂ :: arg :: v :: []) :=
-                        PrevalidExt.cons hpvArgV₃ hArg₂₃
-                      have hTargetArg₃'Scoped₃ :
-                          Term.Scoped
-                            (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                            (.app target arg₃') :=
-                        Term.Scoped.app hTargetScoped₃ hArg₃'Scoped₃
-                      have hTargetArg₃'Arg₂'Scoped₃ :
-                          Term.Scoped
-                            (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                            (.app (.app target arg₃') arg₂') :=
-                        Term.Scoped.app hTargetArg₃'Scoped₃ hArg₂'Scoped₃
-                      have hTargetArg₃'Arg₂'Arg'Scoped₃ :
-                          Term.Scoped
-                            (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                            (.app (.app (.app target arg₃') arg₂') arg') :=
-                        Term.Scoped.app hTargetArg₃'Arg₂'Scoped₃ hArg'Scoped₃
-                      have hLeftArg₃ :
-                          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                            (.app (.app (.app (.app target arg₃) arg₂) arg) v)
-                            (.app (.app (.app (.app target arg₃') arg₂) arg) v) :=
-                        MEqRedStar.app_left
-                          (MEqRedStar.app_left
-                            (MEqRedStar.app_left
-                              (MEqRedStar.app_right hTargetScoped₃
-                                (MEqRedStar.single hArg₃Step₃) hpvArg₂ArgV₃)
-                              hArg₂₃)
-                            hArg_₃)
-                          hv₃
-                      have hLeftArg₂ :
-                          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                            (.app (.app (.app (.app target arg₃') arg₂) arg) v)
-                            (.app (.app (.app (.app target arg₃') arg₂') arg) v) :=
-                        MEqRedStar.app_left
-                          (MEqRedStar.app_left
-                            (MEqRedStar.app_right hTargetArg₃'Scoped₃
-                              (MEqRedStar.single hArg₂Step₃) hpvArgV₃)
-                            hArg_₃)
-                          hv₃
-                      have hLeftArg :
-                          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                            (.app (.app (.app (.app target arg₃') arg₂') arg) v)
-                            (.app (.app (.app (.app target arg₃') arg₂') arg') v) :=
-                        MEqRedStar.app_left
-                          (MEqRedStar.app_right hTargetArg₃'Arg₂'Scoped₃
-                            (MEqRedStar.single hArgStep₃) hpvV₃)
-                          hv₃
-                      have hLeftV :
-                          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
-                            (.app (.app (.app (.app target arg₃') arg₂') arg') v)
-                            (.app (.app (.app (.app target arg₃') arg₂') arg') v₂) :=
-                        MEqRedStar.app_right hTargetArg₃'Arg₂'Arg'Scoped₃
-                          (MEqRedStar.single hVStep₃) hpvBody₃
-                      have hpvV₂₃ :
-                          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                            (v₂ :: []) :=
-                        PrevalidExt.cons hpvBody₃ hv₂₃
-                      have hpvArg'V₂₃ :
-                          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                            (arg' :: v₂ :: []) :=
-                        PrevalidExt.cons hpvV₂₃ hArg'Scoped₃
-                      have hpvArg₂'Arg'V₂₃ :
-                          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                            (arg₂' :: arg' :: v₂ :: []) :=
-                        PrevalidExt.cons hpvArg'V₂₃ hArg₂'Scoped₃
-                      have hpvArg₃'Arg₂'Arg'V₂₃ :
-                          PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
-                            (arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                        PrevalidExt.cons hpvArg₂'Arg'V₂₃ hArg₃'Scoped₃
-                      exact ⟨.app (.app (.app (.app target arg₃') arg₂') arg') v₂,
-                        hLeftArg₃.trans
-                          (hLeftArg₂.trans (hLeftArg.trans hLeftV)),
-                        MSubRedStar.single
-                          (MSubRed.app
-                            (MSubRed.app
-                              (MSubRed.app
-                                (MSubRed.app
-                                  (MSubRed.pro hpvArg₃'Arg₂'Arg'V₂₃ hBind₃)
-                                  hArg₃'Scoped₃)
-                                hArg₂'Scoped₃)
-                              hArg'Scoped₃)
-                            hv₂₃)⟩)
+                      obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+                        stableSuccProAppSpineJoin
+                          (Γ := Γ) (bound := bound₃) (target := target) (i := i)
+                          (args := [arg₃, arg₂, arg, v])
+                          (args' := [arg₃', arg₂', arg', v₂])
+                          hpvBody₃ hBind₃ hTargetScoped₃
+                          (by
+                            intro x hx
+                            by_cases hx₃ : x = arg₃
+                            · subst x
+                              exact hArg₃₃
+                            · by_cases hx₂ : x = arg₂
+                              · subst x
+                                exact hArg₂₃
+                              · by_cases hx₁ : x = arg
+                                · subst x
+                                  exact hArg_₃
+                                · have hxv : x = v := by
+                                    simpa [List.mem_cons, List.mem_singleton,
+                                      hx₃, hx₂, hx₁] using hx
+                                  subst x
+                                  exact hv₃)
+                          (by
+                            intro x hx
+                            by_cases hx₃ : x = arg₃'
+                            · subst x
+                              exact hArg₃'Scoped₃
+                            · by_cases hx₂ : x = arg₂'
+                              · subst x
+                                exact hArg₂'Scoped₃
+                              · by_cases hx₁ : x = arg'
+                                · subst x
+                                  exact hArg'Scoped₃
+                                · have hxv : x = v₂ := by
+                                    simpa [List.mem_cons, List.mem_singleton,
+                                      hx₃, hx₂, hx₁] using hx
+                                  subst x
+                                  exact hVStep₃.scoped_right)
+                          (List.Forall₂.cons (MEqRedStar.single hArg₃Step₃)
+                            (List.Forall₂.cons (MEqRedStar.single hArg₂Step₃)
+                              (List.Forall₂.cons (MEqRedStar.single hArgStep₃)
+                                (List.Forall₂.cons (MEqRedStar.single hVStep₃)
+                                  List.Forall₂.nil))))
+                      exact ⟨body₃, by simpa using hLeftSpine,
+                        by simpa using hRightSpine⟩)
 
 /-- Stable-successor two-deeper nested-recursive `Ms-Pro` leaf. The right
 equivalence step is forced through four structural applications, with a
