@@ -17392,6 +17392,67 @@ theorem MEqRedStar.appSpine_args {Γ : Ctx} {s : Stack}
         simpa using hTail
       exact hFirst.trans hRest
 
+/-- Single-step subtype-reduction congruence at the operator position of an
+application. This is exactly `Ms-App` packaged to match `MEqRed.app_left`. -/
+noncomputable def MSubRed.app_left {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (hStep : MSubRed Γ (v :: s) u u')
+    (hv : Term.Scoped Γ.depth v) : MSubRed Γ s (.app u v) (.app u' v) :=
+  MSubRed.app hStep hv
+
+/-- Chain-level subtype-reduction congruence at the operator position of an
+application. -/
+theorem MSubRedStar.app_left {Γ : Ctx} {s : Stack} {u u' v : Term}
+    (hStar : MSubRedStar Γ (v :: s) u u')
+    (hv : Term.Scoped Γ.depth v) :
+    MSubRedStar Γ s (.app u v) (.app u' v) := by
+  induction hStar with
+  | refl =>
+      exact Relation.ReflTransGen.refl
+  | tail _hPrefix hStep ih =>
+      exact Relation.ReflTransGen.tail ih
+        ⟨MSubRed.app_left hStep.some hv⟩
+
+/-- Single-step subtype-reduction congruence for changing the head of a
+left-associated application spine. -/
+noncomputable def MSubRed.appSpine_left {Γ : Ctx} {s : Stack}
+    {head head' : Term} (args : List Term)
+    (hStep : MSubRed Γ (args ++ s) head head')
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg) :
+    MSubRed Γ s (Term.appSpine head args) (Term.appSpine head' args) := by
+  induction args generalizing head head' with
+  | nil =>
+      simpa using hStep
+  | cons arg args ih =>
+      have hArg : Term.Scoped Γ.depth arg := hArgs arg (by simp)
+      have hTailArgs : ∀ arg' ∈ args, Term.Scoped Γ.depth arg' := by
+        intro arg' harg'
+        exact hArgs arg' (by simp [harg'])
+      have hHead :
+          MSubRed Γ (args ++ s) (.app head arg) (.app head' arg) := by
+        simpa [List.cons_append] using MSubRed.app_left hStep hArg
+      exact ih hHead hTailArgs
+
+/-- Chain-level subtype-reduction congruence for changing the head of a
+left-associated application spine. -/
+theorem MSubRedStar.appSpine_left {Γ : Ctx} {s : Stack}
+    {head head' : Term} (args : List Term)
+    (hStar : MSubRedStar Γ (args ++ s) head head')
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg) :
+    MSubRedStar Γ s (Term.appSpine head args)
+      (Term.appSpine head' args) := by
+  induction args generalizing head head' with
+  | nil =>
+      simpa using hStar
+  | cons arg args ih =>
+      have hArg : Term.Scoped Γ.depth arg := hArgs arg (by simp)
+      have hTailArgs : ∀ arg' ∈ args, Term.Scoped Γ.depth arg' := by
+        intro arg' harg'
+        exact hArgs arg' (by simp [harg'])
+      have hHead :
+          MSubRedStar Γ (args ++ s) (.app head arg) (.app head' arg) := by
+        simpa [List.cons_append] using MSubRedStar.app_left hStar hArg
+      simpa using ih hHead hTailArgs
+
 /-- Predicate: a term has no `.abs` constructor anywhere along its
 structural spine (top-level only, so applications can have abstractions
 inside their subterms — but the term being instantiated is not directly

@@ -3113,6 +3113,12 @@ Bruijn proofs do not yet bridge to LN.
   left-associated argument spine, and pointwise empty-stack argument chains
   can be replayed across a whole spine. Added the endpoints to
   `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added the subtype-side spine
+  congruences `MSubRed.app_left`, `MSubRedStar.app_left`,
+  `MSubRed.appSpine_left`, and `MSubRedStar.appSpine_left`. These package
+  the repeated `Ms-App` rebuilding on the stable-successor `Ms-Pro`
+  right edge, complementing the equivalence-chain spine helpers above.
+  Added the endpoints to `Pss/DeBruijnSanity.lean`. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
