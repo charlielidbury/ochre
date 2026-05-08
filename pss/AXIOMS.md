@@ -3087,6 +3087,19 @@ Bruijn proofs do not yet bridge to LN.
   of hiding it behind a broad `Ms-Pro` payload, and leaves the stable
   successor branch explicit for later discharge. Added the new endpoints
   to `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — audited the newly exposed
+  three-more stable-successor `Ms-Pro` leaf after the split above. The
+  existing successor transport proofs close through the nine-argument
+  nested application depth by explicitly destructing the equivalence-side
+  operator spine and rebuilding the joined application chain one argument
+  at a time. The next exposed depths would be more copies of that same
+  per-depth ladder. This is not a mathematical counterexample, but it is
+  the same proof-engineering failure mode that was removed for
+  beta-instantiation: the next productive discharge should first factor a
+  generic application-spine join/transport helper for stable successor
+  lookups, then instantiate it at the concrete `arg₁₀+` leaves. The
+  changed-head `Ms-Pro` obstruction remains the nonempty stack-head
+  transport problem described above. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`

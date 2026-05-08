@@ -156,6 +156,14 @@ discharge is:
    eliminated the alpha-equivariance wall here; what remains is
    structural recursion plus the open per-cell payloads. Discharging
    this falls Theorem 3 and Theorem 4 in lockstep.
+   Current fine-grained blocker in the `fun/fun` body `Ms-App × Me-App`
+   branch: the changed-head `Ms-Pro` leaves need nonempty stack-head
+   transport, while the stable-successor `Ms-Pro` leaves are true but
+   currently proved by a fixed-depth application-spine ladder. The next
+   productive local proof step is to factor a generic application-spine
+   join/transport helper for stable successor lookups and instantiate it
+   at the exposed `arg₁₀+` leaves, rather than adding more copied
+   per-depth proofs.
 
 2. **`UniformEqDiamonds` (Lemma 2 single-step).** Same shape as (1) on
    the `MEqRed × MEqRed` side. Smaller case grid; many cells already
