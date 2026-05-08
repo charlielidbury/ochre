@@ -27768,6 +27768,33 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAp
     hT₁ hEqHead hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
     hT₂ hEqOp hEqArg
 
+/-- Three-more exposed `Ms-Equ` leaf inside the recursive `Ms-App` case.
+This reuses the two-more old-bound equivalence proof after absorbing the
+leading argument into the operator. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₁₃ arg₁₂ arg₁₁ arg₁₀ arg₉ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂
+    hT₁ hEq hArg₁₃ hArg₁₂ hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hEqHead :
+      MEqRed ({ bound := t, kind := .sub } :: Γ)
+        (arg₁₂ :: arg₁₁ :: arg₁₀ :: arg₉ :: arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: [])
+        (.app op arg₁₃) (.app op' arg₁₃) :=
+    MEqRed.app hEq (MEqRed.refl hpvBody hArg₁₃)
+  exact StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+    hUniformDiamond
+    (Γ := Γ) (t := t) (bound₁ := bound₁) (bound₂ := bound₂)
+    (op := .app op arg₁₃) (op' := .app op' arg₁₃)
+    (arg₁₂ := arg₁₂) (arg₁₁ := arg₁₁) (arg₁₀ := arg₁₀)
+    (arg₉ := arg₉) (arg₈ := arg₈) (arg₇ := arg₇) (arg₆ := arg₆)
+    (arg₅ := arg₅) (arg₄ := arg₄) (arg₃ := arg₃) (arg₂ := arg₂)
+    (arg := arg) (v := v) (u₂ := u₂) (v₂ := v₂)
+    hT₁ hEqHead hArg₁₂ hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv
+    hT₂ hEqOp hEqArg
+
 /-- Five-deeper nested-recursive `Ms-Top` leaf inside the recursive
 `Ms-App` case. This reuses the four-deeper top-collapse proof after
 absorbing the leading argument into the operator, then prefixes the left
@@ -30090,8 +30117,6 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppProSuccChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppPro :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppProChainPayload)
-    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEqu :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppApp :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp :
@@ -30229,7 +30254,8 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                               hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppPro
                               (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppTopChainPayload.proved
                                 hUniformDiamond)
-                              hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEqu
+                              (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
+                                hUniformDiamond)
                               hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppApp
                               hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp)
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp)
