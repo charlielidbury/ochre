@@ -18285,6 +18285,180 @@ noncomputable def BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar
     (BetaInstantiationPreservesWfM_AppResidual_NoBinders_of_wsubmstar
       hSubstStar)
 
+/-! ### `_FunResidual` factorization via under-head β-instantiation
+
+The `_FunResidual` case of `BetaInstantiationPreservesWfM` covers the
+`WfM.fun_` constructor — source `.abs t body` with the body sub-derivation
+in the **depth-2** context `({t, .sub} :: {bound, .sub} :: Γ)`. After
+β-instantiation, the body lives at depth 1 in
+`({inst 0 arg t, .sub} :: Γ)` with index-1 substitution
+`Term.instantiate 1 (Term.shift 0 arg) body`.
+
+Symmetrically to how `_AppResidual` factors via
+`BetaInstantiationPreservesWSubMStar` (chain substitution at depth 0),
+the `_FunResidual` factors via:
+
+- `BetaInstantiationPreservesWfM` — for the bound `t`, this is the depth-0
+  β-instantiation payload (the headline itself).
+- `BetaInstantiationPreservesWfMUnderHead` — for the body, the depth-1
+  generalization parameterized by the preserved head shape.
+
+This factorization parallels the under-heads stack/MEqRed payloads
+(`BetaInstantiationPreservesMEqRedUnderHeadsStack_universal`) which close
+the corresponding reduction-side substitution problems at all depths
+simultaneously. The WfM/WSubMStar substitution-under-heads payload is the
+analogous content remaining open: `WSubMStar.rec` recursion through the
+chain endpoints under one preserved head still requires the chain
+endpoints to be substitutable, which itself reduces to the same depth-1
+WfM substitution this payload captures.
+
+The NoBinders-restricted variant `_FunResidual_NoBindersBody` adds a
+`Term.NoBinders body` premise. Under that restriction, the index-1
+substitution `Term.instantiate 1 (Term.shift 0 arg) body = body` collapses
+to identity (via `Term.NoBinders.instantiate_eq`), simplifying the
+conclusion's body shape. The bound `t` remains arbitrary in this variant —
+unlike `_AppResidual_NoBinders` (which restricts both `u` and `v`) —
+because the FunResidual's bound and body live at different depths and are
+substituted differently. -/
+
+/-- De Bruijn β-instantiation well-formedness payload **under one preserved
+head**. This is the depth-1 generalization of `BetaInstantiationPreservesWfM`:
+substituting an `arg` with bound `bound` for index 1 (the `.sub bound`
+entry below the preserved head) preserves body well-formedness, with the
+body's index-1 instantiation `Term.instantiate 1 (Term.shift 0 arg) body`
+in the context where the preserved head's bound has been substituted.
+
+This is the WfM-side analog of
+`BetaInstantiationPreservesMEqRedUnderHeadStack` (one-head equivalence
+reduction substitution, derivable from the universal under-heads
+machinery). The corresponding well-formedness payload is open and
+captures the remaining content needed to close `_FunResidual`. -/
+def BetaInstantiationPreservesWfMUnderHead : Type :=
+  ∀ {Γ : Ctx} {bound arg head body : Term} {kind : CtxEntryKind},
+    WSubMStar Γ arg bound →
+      WfM ({ bound := head, kind := kind } ::
+          { bound := bound, kind := .sub } :: Γ) body →
+        WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
+          (Term.instantiate 1 (Term.shift 0 arg) body)
+
+/-- Closure of `BetaInstantiationPreservesWfM_FunResidual` modulo two
+β-instantiation well-formedness payloads:
+
+- `hSelf : BetaInstantiationPreservesWfM` discharges the depth-0
+  substitution of the abstraction's bound `t` (the `WfM.fun_` constructor's
+  first premise).
+- `hUnder : BetaInstantiationPreservesWfMUnderHead` discharges the depth-1
+  substitution of the abstraction's body (the `WfM.fun_` constructor's
+  second premise, in extended context).
+
+Once both payloads are derivable (from the still-open under-heads WfM
+substitution layer), this closure ships the full `_FunResidual`
+unconditionally. The factorization mirrors how `_AppResidual` factors
+via `BetaInstantiationPreservesWSubMStar` (chain substitution at depth 0,
+itself derivable from the depth-0 reduction substitution payloads). -/
+noncomputable def BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead
+    (hSelf : BetaInstantiationPreservesWfM)
+    (hUnder : BetaInstantiationPreservesWfMUnderHead) :
+    BetaInstantiationPreservesWfM_FunResidual := by
+  intro Γ bound arg t body hArgBound hT hBody
+  -- Bound substitution: depth-0 β-instantiation gives `WfM Γ (inst 0 arg t)`.
+  have hT' : WfM Γ (Term.instantiate 0 arg t) := hSelf hArgBound hT
+  -- Body substitution: depth-1 β-instantiation gives the body in the
+  -- context where the preserved `.sub t` head has been substituted.
+  have hBody' :
+      WfM ({ bound := Term.instantiate 0 arg t, kind := .sub } :: Γ)
+        (Term.instantiate 1 (Term.shift 0 arg) body) :=
+    hUnder hArgBound hBody
+  -- Reassemble via the existing abs reassembly helper.
+  exact BetaInstantiationPreservesWfM.abs hT' hBody'
+
+/-- Body-NoBinders-restricted variant of `_FunResidual`. The body is
+required to be `Term.NoBinders` (no `.bvar`, no `.abs`); the bound `t`
+remains arbitrary.
+
+Under the body-NoBinders restriction:
+- `Term.instantiate 1 (Term.shift 0 arg) body = body`
+  (via `Term.NoBinders.instantiate_eq`).
+- The conclusion simplifies from
+  `WfM Γ (.abs (inst 0 arg t) (inst 1 (shift 0 arg) body))` to
+  `WfM Γ (.abs (inst 0 arg t) body)`.
+
+The bound `t` is left unrestricted because the abstraction's bound
+component lives at depth 0 — the standard `BetaInstantiationPreservesWfM`
+payload covers it. The body's NoBinders restriction collapses only the
+index-1 instantiation operation (its under-head substitution becomes
+identity); the body's WfM derivation still lives in the depth-2 context
+and the chains in `WfM.app` still require substitution. -/
+def BetaInstantiationPreservesWfM_FunResidual_NoBindersBody : Type :=
+  ∀ {Γ : Ctx} {bound arg t body : Term},
+    Term.NoBinders body →
+      WSubMStar Γ arg bound →
+        WfM ({ bound := bound, kind := .sub } :: Γ) t →
+          WfM ({ bound := t, kind := .sub } ::
+              { bound := bound, kind := .sub } :: Γ) body →
+            WfM Γ (Term.instantiate 0 arg (.abs t body))
+
+/-- Closure of `_FunResidual_NoBindersBody` modulo the same two payloads
+that close the unrestricted `_FunResidual`. The NoBinders restriction on
+the body does not eliminate any payload — the body's WfM derivation may
+still use `WfM.app` whose chain endpoints can be arbitrary (not NoBinders),
+so under-head substitution is still required.
+
+This variant is shipped because the NoBinders shape is preserved through
+the recursive descent of `BetaInstantiationPreservesWfM_NoBinders`-style
+discharge: callers that have already restricted the source body to
+NoBinders can use the simpler conclusion shape without re-establishing
+the index-1 instantiation collapse. -/
+noncomputable def BetaInstantiationPreservesWfM_FunResidual_NoBindersBody_of_self_and_underHead
+    (hSelf : BetaInstantiationPreservesWfM)
+    (hUnder : BetaInstantiationPreservesWfMUnderHead) :
+    BetaInstantiationPreservesWfM_FunResidual_NoBindersBody := by
+  intro Γ bound arg t body _hNoBinders hArgBound hT hBody
+  -- Reuse the unrestricted FunResidual closure; the NoBinders premise
+  -- isn't exercised because the conclusion shape uses generic instantiate.
+  exact BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead
+    hSelf hUnder hArgBound hT hBody
+
+/-- Promote a `_FunResidual_NoBindersBody` to the unrestricted
+`_FunResidual` by forgetting the NoBinders restriction. This is **not**
+unconditional — it only works for callers that already have NoBinders body
+shape; the unrestricted FunResidual is strictly stronger. -/
+noncomputable def BetaInstantiationPreservesWfM_FunResidual.of_NoBindersBody
+    (hRes : BetaInstantiationPreservesWfM_FunResidual_NoBindersBody)
+    {Γ : Ctx} {bound arg t body : Term}
+    (hNoBinders : Term.NoBinders body)
+    (hArgBound : WSubMStar Γ arg bound)
+    (hT : WfM ({ bound := bound, kind := .sub } :: Γ) t)
+    (hBody : WfM ({ bound := t, kind := .sub } ::
+        { bound := bound, kind := .sub } :: Γ) body) :
+    WfM Γ (Term.instantiate 0 arg (.abs t body)) :=
+  hRes hNoBinders hArgBound hT hBody
+
+/-- Full discharge of `BetaInstantiationPreservesWfM` modulo the two
+β-instantiation payloads — `BetaInstantiationPreservesWSubMStar` (for the
+`_AppResidual` chain substitution) and the self-and-under-head pair (for
+the `_FunResidual` recursive constructor).
+
+Note: `hSelf` here is the headline payload itself, used positively to
+close `_FunResidual`'s bound substitution sub-goal. This is **not**
+circular — the closure consumes `hSelf` as an oracle and produces a
+`BetaInstantiationPreservesWfM` proof tree that uses `hSelf` only for the
+`WfM.fun_` constructor case's bound-substitution position, exactly where
+the partial dispatcher delegates. Callers wanting genuinely circular-free
+discharge would close `hSelf` separately (e.g. via the unrestricted
+discharge at the headline level once both payload layers are closed). -/
+noncomputable def BetaInstantiationPreservesWfM_full_of_payloads
+    (hSelf : BetaInstantiationPreservesWfM)
+    (hUnder : BetaInstantiationPreservesWfMUnderHead)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar) :
+    BetaInstantiationPreservesWfM :=
+  BetaInstantiationPreservesWfM_partial_proved
+    (BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead
+      hSelf hUnder)
+    (fun {_ _ _ _ _ _} hArgBound hOp hArg =>
+      BetaInstantiationPreservesWfM.app_of_wsubmstar hSubstStar
+        hArgBound (WfM.app hOp hArg))
+
 namespace EqDiamonds
 
 /-- The `Me-Bet × Me-Bet` source cell of de Bruijn Lemma 2 in **restricted
