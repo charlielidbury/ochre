@@ -157,13 +157,19 @@ discharge is:
    structural recursion plus the open per-cell payloads. Discharging
    this falls Theorem 3 and Theorem 4 in lockstep.
    Current fine-grained blocker in the `fun/fun` body `Ms-App × Me-App`
-   branch: the changed-head `Ms-Pro` leaves need nonempty stack-head
-   transport, while the stable-successor `Ms-Pro` leaves are true but
-   currently proved by a fixed-depth application-spine ladder. The next
-   productive local proof step is to factor a generic application-spine
-   join/transport helper for stable successor lookups and instantiate it
-   at the exposed `arg₁₀+` leaves, rather than adding more copied
-   per-depth proofs.
+   branch: the exposed changed-head `Ms-Pro` app-spine leaves have now
+   been discharged through the thirteen-argument residual and wired into
+   `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`.
+   The next visible residual in that handler is the deeper recursive
+   `Ms-App` payload
+   `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload`,
+   plus the remaining `Ms-FOp` payload family. The next productive local
+   proof step is to split that deepest recursive app payload by its
+   operator constructor and avoid extending the fixed-depth ladder again:
+   either introduce the next constructor-split layer and discharge its
+   top/equ/successor/changed-head leaves, or factor the generic
+   application-spine decomposition that would make those fixed arities
+   unnecessary.
 
 2. **`UniformEqDiamonds` (Lemma 2 single-step).** Same shape as (1) on
    the `MEqRed × MEqRed` side. Smaller case grid; many cells already
