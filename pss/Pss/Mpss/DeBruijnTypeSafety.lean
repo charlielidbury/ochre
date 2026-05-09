@@ -27169,130 +27169,100 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppPr
                                               have hVStep₃ :
                                                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
                                                 hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
-                                              have hv₂₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v₂ :=
-                                                hVStep₃.scoped_right
-                                              have hpvOrig1₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v :: []) :=
-                                                PrevalidExt.cons hpvBody₃ hv₃
-                                              have hpvOrig2₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig1₃ hArgScoped₃
-                                              have hpvOrig3₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig2₃ hArg₂Scoped₃
-                                              have hpvOrig4₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₃ :: arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig3₃ hArg₃Scoped₃
-                                              have hpvOrig5₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig4₃ hArg₄Scoped₃
-                                              have hpvOrig6₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig5₃ hArg₅Scoped₃
-                                              have hpvOrig7₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig6₃ hArg₆Scoped₃
-                                              have hpvOrig8₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig7₃ hArg₇Scoped₃
-                                              have hpvOrig9₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig8₃ hArg₈Scoped₃
-                                              have hpvOrig10₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₉ :: arg₈ :: arg₇ :: arg₆ :: arg₅ :: arg₄ :: arg₃ :: arg₂ :: arg :: v :: []) :=
-                                                PrevalidExt.cons hpvOrig9₃ hArg₉Scoped₃
-                                              have hTargetPrefix1Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app target arg₉') :=
-                                                Term.Scoped.app hTargetScoped₃ hArg₉'Scoped₃
-                                              have hTargetPrefix2Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app target arg₉') arg₈') :=
-                                                Term.Scoped.app hTargetPrefix1Scoped₃ hArg₈'Scoped₃
-                                              have hTargetPrefix3Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app (.app target arg₉') arg₈') arg₇') :=
-                                                Term.Scoped.app hTargetPrefix2Scoped₃ hArg₇'Scoped₃
-                                              have hTargetPrefix4Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') :=
-                                                Term.Scoped.app hTargetPrefix3Scoped₃ hArg₆'Scoped₃
-                                              have hTargetPrefix5Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') :=
-                                                Term.Scoped.app hTargetPrefix4Scoped₃ hArg₅'Scoped₃
-                                              have hTargetPrefix6Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') :=
-                                                Term.Scoped.app hTargetPrefix5Scoped₃ hArg₄'Scoped₃
-                                              have hTargetPrefix7Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') :=
-                                                Term.Scoped.app hTargetPrefix6Scoped₃ hArg₃'Scoped₃
-                                              have hTargetPrefix8Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') :=
-                                                Term.Scoped.app hTargetPrefix7Scoped₃ hArg₂'Scoped₃
-                                              have hTargetPrefix9Scoped₃ :
-                                                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') arg') :=
-                                                Term.Scoped.app hTargetPrefix8Scoped₃ hArg'Scoped₃
-                                              have hLeftArg1 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetScoped₃ (MEqRedStar.single hArg₉Step₃) hpvOrig9₃) hArg₈Scoped₃) hArg₇Scoped₃) hArg₆Scoped₃) hArg₅Scoped₃) hArg₄Scoped₃) hArg₃Scoped₃) hArg₂Scoped₃) hArgScoped₃) hv₃)
-                                              have hLeftArg2 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix1Scoped₃ (MEqRedStar.single hArg₈Step₃) hpvOrig8₃) hArg₇Scoped₃) hArg₆Scoped₃) hArg₅Scoped₃) hArg₄Scoped₃) hArg₃Scoped₃) hArg₂Scoped₃) hArgScoped₃) hv₃)
-                                              have hLeftArg3 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆) arg₅) arg₄) arg₃) arg₂) arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix2Scoped₃ (MEqRedStar.single hArg₇Step₃) hpvOrig7₃) hArg₆Scoped₃) hArg₅Scoped₃) hArg₄Scoped₃) hArg₃Scoped₃) hArg₂Scoped₃) hArgScoped₃) hv₃)
-                                              have hLeftArg4 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆) arg₅) arg₄) arg₃) arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅) arg₄) arg₃) arg₂) arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix3Scoped₃ (MEqRedStar.single hArg₆Step₃) hpvOrig6₃) hArg₅Scoped₃) hArg₄Scoped₃) hArg₃Scoped₃) hArg₂Scoped₃) hArgScoped₃) hv₃)
-                                              have hLeftArg5 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅) arg₄) arg₃) arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄) arg₃) arg₂) arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix4Scoped₃ (MEqRedStar.single hArg₅Step₃) hpvOrig5₃) hArg₄Scoped₃) hArg₃Scoped₃) hArg₂Scoped₃) hArgScoped₃) hv₃)
-                                              have hLeftArg6 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄) arg₃) arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃) arg₂) arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix5Scoped₃ (MEqRedStar.single hArg₄Step₃) hpvOrig4₃) hArg₃Scoped₃) hArg₂Scoped₃) hArgScoped₃) hv₃)
-                                              have hLeftArg7 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃) arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂) arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix6Scoped₃ (MEqRedStar.single hArg₃Step₃) hpvOrig3₃) hArg₂Scoped₃) hArgScoped₃) hv₃)
-                                              have hLeftArg8 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂) arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') arg) v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix7Scoped₃ (MEqRedStar.single hArg₂Step₃) hpvOrig2₃) hArgScoped₃) hv₃)
-                                              have hLeftArg9 :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') arg) v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') arg') v) :=
-                                                (MEqRedStar.app_left (MEqRedStar.app_right hTargetPrefix8Scoped₃ (MEqRedStar.single hArgStep₃) hpvOrig1₃) hv₃)
-                                              have hLeftV :
-                                                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') arg') v) (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') arg') v₂) :=
-                                                MEqRedStar.app_right hTargetPrefix9Scoped₃ (MEqRedStar.single hVStep₃) hpvBody₃
-                                              have hpvPrimed1₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (v₂ :: []) :=
-                                                PrevalidExt.cons hpvBody₃ hv₂₃
-                                              have hpvPrimed2₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed1₃ hArg'Scoped₃
-                                              have hpvPrimed3₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed2₃ hArg₂'Scoped₃
-                                              have hpvPrimed4₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed3₃ hArg₃'Scoped₃
-                                              have hpvPrimed5₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₄' :: arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed4₃ hArg₄'Scoped₃
-                                              have hpvPrimed6₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₅' :: arg₄' :: arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed5₃ hArg₅'Scoped₃
-                                              have hpvPrimed7₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₆' :: arg₅' :: arg₄' :: arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed6₃ hArg₆'Scoped₃
-                                              have hpvPrimed8₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₇' :: arg₆' :: arg₅' :: arg₄' :: arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed7₃ hArg₇'Scoped₃
-                                              have hpvPrimed9₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₈' :: arg₇' :: arg₆' :: arg₅' :: arg₄' :: arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed8₃ hArg₈'Scoped₃
-                                              have hpvPrimed10₃ :
-                                                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) (arg₉' :: arg₈' :: arg₇' :: arg₆' :: arg₅' :: arg₄' :: arg₃' :: arg₂' :: arg' :: v₂ :: []) :=
-                                                PrevalidExt.cons hpvPrimed9₃ hArg₉'Scoped₃
-                                              exact ⟨
-                                                (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app target arg₉') arg₈') arg₇') arg₆') arg₅') arg₄') arg₃') arg₂') arg') v₂),
-                                                hLeftArg1.trans (hLeftArg2.trans (hLeftArg3.trans (hLeftArg4.trans (hLeftArg5.trans (hLeftArg6.trans (hLeftArg7.trans (hLeftArg8.trans (hLeftArg9.trans (hLeftV))))))))),
-                                                MSubRedStar.single (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.app (MSubRed.pro hpvPrimed10₃ hBind₃) hArg₉'Scoped₃) hArg₈'Scoped₃) hArg₇'Scoped₃) hArg₆'Scoped₃) hArg₅'Scoped₃) hArg₄'Scoped₃) hArg₃'Scoped₃) hArg₂'Scoped₃) hArg'Scoped₃) hv₂₃)⟩)
+                                              obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+                                                stableSuccProAppSpineJoin
+                                                  (Γ := Γ) (bound := bound₃)
+                                                  (target := target) (i := i)
+                                                  (args := [arg₉, arg₈, arg₇, arg₆, arg₅, arg₄, arg₃, arg₂, arg, v])
+                                                  (args' := [arg₉', arg₈', arg₇', arg₆', arg₅', arg₄', arg₃', arg₂', arg', v₂])
+                                                  hpvBody₃ hBind₃ hTargetScoped₃
+                                                  (by
+                                                    intro x hx
+                                                    by_cases hx₉ : x = arg₉
+                                                    · subst x
+                                                      exact hArg₉Scoped₃
+                                                    · by_cases hx₈ : x = arg₈
+                                                      · subst x
+                                                        exact hArg₈Scoped₃
+                                                      · by_cases hx₇ : x = arg₇
+                                                        · subst x
+                                                          exact hArg₇Scoped₃
+                                                        · by_cases hx₆ : x = arg₆
+                                                          · subst x
+                                                            exact hArg₆Scoped₃
+                                                          · by_cases hx₅ : x = arg₅
+                                                            · subst x
+                                                              exact hArg₅Scoped₃
+                                                            · by_cases hx₄ : x = arg₄
+                                                              · subst x
+                                                                exact hArg₄Scoped₃
+                                                              · by_cases hx₃ : x = arg₃
+                                                                · subst x
+                                                                  exact hArg₃Scoped₃
+                                                                · by_cases hx₂ : x = arg₂
+                                                                  · subst x
+                                                                    exact hArg₂Scoped₃
+                                                                  · by_cases hx₁ : x = arg
+                                                                    · subst x
+                                                                      exact hArgScoped₃
+                                                                    · have hxv : x = v := by
+                                                                        simpa [List.mem_cons,
+                                                                          List.mem_singleton, hx₉,
+                                                                          hx₈, hx₇, hx₆,
+                                                                          hx₅, hx₄, hx₃,
+                                                                          hx₂, hx₁] using hx
+                                                                      subst x
+                                                                      exact hv₃)
+                                                  (by
+                                                    intro x hx
+                                                    by_cases hx₉ : x = arg₉'
+                                                    · subst x
+                                                      exact hArg₉'Scoped₃
+                                                    · by_cases hx₈ : x = arg₈'
+                                                      · subst x
+                                                        exact hArg₈'Scoped₃
+                                                      · by_cases hx₇ : x = arg₇'
+                                                        · subst x
+                                                          exact hArg₇'Scoped₃
+                                                        · by_cases hx₆ : x = arg₆'
+                                                          · subst x
+                                                            exact hArg₆'Scoped₃
+                                                          · by_cases hx₅ : x = arg₅'
+                                                            · subst x
+                                                              exact hArg₅'Scoped₃
+                                                            · by_cases hx₄ : x = arg₄'
+                                                              · subst x
+                                                                exact hArg₄'Scoped₃
+                                                              · by_cases hx₃ : x = arg₃'
+                                                                · subst x
+                                                                  exact hArg₃'Scoped₃
+                                                                · by_cases hx₂ : x = arg₂'
+                                                                  · subst x
+                                                                    exact hArg₂'Scoped₃
+                                                                  · by_cases hx₁ : x = arg'
+                                                                    · subst x
+                                                                      exact hArg'Scoped₃
+                                                                    · have hxv : x = v₂ := by
+                                                                        simpa [List.mem_cons,
+                                                                          List.mem_singleton, hx₉,
+                                                                          hx₈, hx₇, hx₆,
+                                                                          hx₅, hx₄, hx₃,
+                                                                          hx₂, hx₁] using hx
+                                                                      subst x
+                                                                      exact hVStep₃.scoped_right)
+                                                  (List.Forall₂.cons (MEqRedStar.single hArg₉Step₃)
+                                                    (List.Forall₂.cons (MEqRedStar.single hArg₈Step₃)
+                                                      (List.Forall₂.cons (MEqRedStar.single hArg₇Step₃)
+                                                        (List.Forall₂.cons (MEqRedStar.single hArg₆Step₃)
+                                                          (List.Forall₂.cons (MEqRedStar.single hArg₅Step₃)
+                                                            (List.Forall₂.cons (MEqRedStar.single hArg₄Step₃)
+                                                              (List.Forall₂.cons (MEqRedStar.single hArg₃Step₃)
+                                                                (List.Forall₂.cons (MEqRedStar.single hArg₂Step₃)
+                                                                  (List.Forall₂.cons (MEqRedStar.single hArgStep₃)
+                                                                    (List.Forall₂.cons (MEqRedStar.single hVStep₃)
+                                                                      List.Forall₂.nil))))))))))
+                                              exact ⟨body₃, by simpa using hLeftSpine,
+                                                by simpa using hRightSpine⟩)
 
 /-- Four-deeper nested-recursive `Ms-Top` leaf inside the recursive
 `Ms-App` case. This extends the explicit top-collapse chain by one more
