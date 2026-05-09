@@ -22799,6 +22799,95 @@ def StrongCommutesFunFunBodyAppAppSubAppProHeadChainPayload : Prop :=
     ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (.app (Term.shift 0 t) arg) v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- The one-argument nested changed-head `Ms-Pro` case also factors through
+the changed-head spine helper. The equivalence-side structural app step
+supplies the pointwise argument chain before the final outer argument step. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppProHeadChainPayload.proved_of_stack_append
+    (hAppend : MEqRedStarStackAppendPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppProHeadChainPayload := by
+  intro Γ t bound₁ bound₂ arg v u₂ v₂ hT₁ hArg hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hpvArgV : PrevalidExt ({ bound := t, kind := .sub } :: Γ) (arg :: v :: []) :=
+    PrevalidExt.cons (PrevalidExt.cons hpvBody hv) hArg
+  let hLeft : MSubRed Γ [] (.abs t (.app (.app (.bvar 0) arg) v))
+      (.abs bound₁ (.app (.app (Term.shift 0 t) arg) v)) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁
+      (MSubRed.app
+        (MSubRed.app
+          (MSubRed.pro hpvArgV (Ctx.subBinds_zero_self Γ t)) hArg)
+        hv)
+  let hRight : MEqRed Γ [] (.abs t (.app (.app (.bvar 0) arg) v))
+      (.abs bound₂ (.app u₂ v₂)) :=
+    MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+    ((@hUniformDiamond Γ []) hT₁ hT₂)
+    (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+      have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+      have hArg₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+            arg := by
+        simpa [Ctx.depth] using hArg
+      have hv₃ :
+          Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+            v := by
+        simpa [Ctx.depth] using hv
+      cases hEqOp with
+      | @app _ _ _ _ _ arg' hEqInner hEqArgStep =>
+          cases hEqInner with
+          | pro _ heqBind _ =>
+              exact (Ctx.subBinds_equBinds_false
+                (Ctx.subBinds_zero_self Γ t) heqBind).elim
+          | var _ _ =>
+              have hArgStep₃ :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] arg _ :=
+                hEqArgStep.sub_head_replace_two_step hT₁ hBound₁₃.some
+              have hArg'₃ :
+                  Term.Scoped
+                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) _ :=
+                hArgStep₃.scoped_right
+              have hVStep₃ :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+                hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
+              have hv₂₃ :
+                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                    v₂ :=
+                hVStep₃.scoped_right
+              have hOldTo₃ : MEqRedStar Γ [] t bound₃ :=
+                MEqRedStar.trans (MEqRedStar.single hT₁)
+                  (MEqRedStar.single hBound₁₃.some)
+              obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+                changedHeadProAppSpineJoin
+                  (Γ := Γ) (oldBound := t) (newBound := bound₃)
+                  (args := [arg, v]) (args' := [arg', v₂])
+                  hAppend hpvNil hpvBody₃ hOldTo₃
+                  (by
+                    intro x hx
+                    by_cases hxArg : x = arg
+                    · subst x; exact hArg₃
+                    · have hxv : x = v := by
+                        simpa [List.mem_cons, List.mem_singleton, hxArg] using hx
+                      subst x
+                      exact hv₃)
+                  (by
+                    intro x hx
+                    by_cases hxArg : x = arg'
+                    · subst x; exact hArg'₃
+                    · have hxv : x = v₂ := by
+                        simpa [List.mem_cons, List.mem_singleton, hxArg] using hx
+                      subst x
+                      exact hv₂₃)
+                  (List.Forall₂.cons
+                    (MEqRedStar.single hArgStep₃)
+                    (List.Forall₂.cons
+                      (MEqRedStar.single hVStep₃)
+                      List.Forall₂.nil))
+              exact ⟨body₃, by simpa using hLeftSpine, by simpa using hRightSpine⟩)
+
 /-- Stable-successor nested `Ms-Pro` case inside the outer `Ms-App`
 operator case. -/
 def StrongCommutesFunFunBodyAppAppSubAppProSuccChainPayload : Prop :=

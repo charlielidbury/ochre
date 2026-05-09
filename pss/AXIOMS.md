@@ -3190,6 +3190,12 @@ Bruijn proofs do not yet bridge to LN.
   the old bound target must be transported through a nonempty application
   stack. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBodyAppAppSubAppProHeadChainPayload.proved_of_stack_append`,
+  the one-argument nested changed-head `Ms-Pro` app/app leaf, using the
+  same `changedHeadProAppSpineJoin` helper after splitting the right
+  `Me-App` operator step. Added both changed-head endpoints to
+  `Pss/DeBruijnSanity.lean`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype
