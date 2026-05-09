@@ -3158,6 +3158,12 @@ Bruijn proofs do not yet bridge to LN.
   through `stableSuccProAppSpineJoin`, removing the hand-built
   nine-argument successor-spine join. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppProSuccChainPayload.proved`
+  through `stableSuccProAppSpineJoin` and wired it into
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`,
+  removing one more explicit stable-successor residual parameter from the
+  top-level Lemma 1 assembly. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype
