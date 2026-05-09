@@ -17598,6 +17598,42 @@ theorem MEqRedStar.appSpine_args {Γ : Ctx} {s : Stack}
         simpa using hTail
       exact hFirst.trans hRest
 
+/-- Pointwise equivalence-star steps over an argument list transport scoping
+from the source list to the target list. The `Nonempty` shape avoids
+eliminating the Prop-valued `List.Forall₂` proof into Type-valued scoping
+evidence directly. -/
+theorem MEqRedStar.scoped_right_list_nonempty {Γ : Ctx}
+    {args args' : List Term}
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg)
+    (hSteps : List.Forall₂
+      (fun arg arg' => MEqRedStar Γ [] arg arg') args args') :
+    Nonempty (∀ arg' ∈ args', Term.Scoped Γ.depth arg') := by
+  induction hSteps with
+  | nil =>
+      exact ⟨fun arg' harg' => False.elim (List.not_mem_nil arg' harg')⟩
+  | cons hStep hTail ih =>
+      rename_i arg arg' args args'
+      exact ⟨fun x hx => by
+        by_cases hxHead : x = arg'
+        · subst x
+          exact hStep.scoped_right (hArgs arg (by simp))
+        ·
+          have hxTail : x ∈ args' := by
+            simpa [hxHead] using hx
+          exact (ih
+            (by
+              intro tailArg htail
+              exact hArgs tailArg (by simp [htail]))).some x hxTail⟩
+
+/-- Type-valued projection of `MEqRedStar.scoped_right_list_nonempty`. -/
+noncomputable def MEqRedStar.scoped_right_list {Γ : Ctx}
+    {args args' : List Term}
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg)
+    (hSteps : List.Forall₂
+      (fun arg arg' => MEqRedStar Γ [] arg arg') args args') :
+    ∀ arg' ∈ args', Term.Scoped Γ.depth arg' :=
+  (MEqRedStar.scoped_right_list_nonempty hArgs hSteps).some
+
 /-- Iterate the star-level equivalence stack-append payload over a scoped
 argument list. This is the exact lift needed to move a head-position
 equivalence chain through a left-associated application spine. -/
@@ -17782,6 +17818,30 @@ noncomputable def changedHeadProAppSpineJoin {Γ : Ctx} {oldBound newBound : Ter
   exact MSubRedStar.single
     (MSubRed.appSpine_left args'
       (MSubRed.pro hpvArgs' (Ctx.subBinds_zero_self Γ newBound)) hArgs')
+
+/-- Variant of `changedHeadProAppSpineJoin` that derives target-argument
+scoping from the pointwise equivalence-star steps. This is the intended
+interface for the fixed-arity changed-head leaves while the app-spine
+decomposition is still being generalized. -/
+noncomputable def changedHeadProAppSpineJoin_of_steps {Γ : Ctx}
+    {oldBound newBound : Term} {args args' : List Term}
+    (hAppend : MEqRedStarStackAppendPayload)
+    (hpvNil : PrevalidExt Γ [])
+    (hpvBody : PrevalidExt ({ bound := newBound, kind := .sub } :: Γ) [])
+    (hOldToNew : MEqRedStar Γ [] oldBound newBound)
+    (hArgs : ∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := newBound, kind := .sub } :: Γ)) arg)
+    (hSteps : List.Forall₂
+      (fun arg arg' =>
+        MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) [] arg arg')
+      args args') :
+    ∃ body₃,
+      MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+        (Term.appSpine (Term.shift 0 oldBound) args) body₃
+        ∧ MSubRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+          (Term.appSpine (.bvar 0) args') body₃ :=
+  changedHeadProAppSpineJoin hAppend hpvNil hpvBody hOldToNew hArgs
+    (MEqRedStar.scoped_right_list hArgs hSteps) hSteps
 
 /-- Predicate: a term has no `.abs` constructor anywhere along its
 structural spine (top-level only, so applications can have abstractions
