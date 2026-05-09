@@ -17667,6 +17667,58 @@ noncomputable def stableSuccProAppSpineJoin {Γ : Ctx} {bound target : Term}
   · exact MSubRedStar.single
       (MSubRed.appSpine_left args' (MSubRed.pro hpvArgs' hBind) hArgs')
 
+/-- Variant of `stableSuccProAppSpineJoin` that derives target-argument
+scoping from the pointwise equivalence-star steps. This matches the
+stable-successor `Ms-Pro` leaves after the right-hand app spine has been
+split structurally. -/
+noncomputable def stableSuccProAppSpineJoin_of_steps {Γ : Ctx}
+    {bound target : Term} {i : Nat} {args args' : List Term}
+    (hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [])
+    (hBind : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ)
+      (i + 1) target)
+    (hTargetScoped :
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ))
+        target)
+    (hArgs : ∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) arg)
+    (hSteps : List.Forall₂
+      (fun arg arg' =>
+        MEqRedStar ({ bound := bound, kind := .sub } :: Γ) [] arg arg')
+      args args') :
+    ∃ body₃,
+      MEqRedStar ({ bound := bound, kind := .sub } :: Γ) []
+        (Term.appSpine target args) body₃
+        ∧ MSubRedStar ({ bound := bound, kind := .sub } :: Γ) []
+          (Term.appSpine (.bvar (i + 1)) args') body₃ :=
+  stableSuccProAppSpineJoin hpvBody hBind hTargetScoped hArgs
+    (MEqRedStar.scoped_right_list hArgs hSteps) hSteps
+
+/-- Single-step-list variant of `stableSuccProAppSpineJoin_of_steps`.
+The fixed-arity stable-successor leaves obtain these raw argument steps by
+splitting nested `Me-App` constructors. -/
+noncomputable def stableSuccProAppSpineJoin_of_single_steps {Γ : Ctx}
+    {bound target : Term} {i : Nat} {args args' : List Term}
+    (hpvBody : PrevalidExt ({ bound := bound, kind := .sub } :: Γ) [])
+    (hBind : Ctx.subBinds ({ bound := bound, kind := .sub } :: Γ)
+      (i + 1) target)
+    (hTargetScoped :
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ))
+        target)
+    (hArgs : ∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := bound, kind := .sub } :: Γ)) arg)
+    (hSteps : List.Forall₂
+      (fun arg arg' =>
+        Nonempty
+          (MEqRed ({ bound := bound, kind := .sub } :: Γ) [] arg arg'))
+      args args') :
+    ∃ body₃,
+      MEqRedStar ({ bound := bound, kind := .sub } :: Γ) []
+        (Term.appSpine target args) body₃
+        ∧ MSubRedStar ({ bound := bound, kind := .sub } :: Γ) []
+          (Term.appSpine (.bvar (i + 1)) args') body₃ :=
+  stableSuccProAppSpineJoin_of_steps hpvBody hBind hTargetScoped
+    hArgs (MEqRedStar.forall₂_single hSteps)
+
 /-- Changed-head `Ms-Pro` application spines join after the abstraction
 bound has been replaced, conditional on the known equivalence stack-append
 payload. Unlike stable successor lookups, the old head target is
@@ -22775,8 +22827,11 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubProSuccChainPayload.proved
               Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
                 v := by
             simpa [Ctx.depth] using hv
+          have hVStep₃ :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+            hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
           obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
-            stableSuccProAppSpineJoin
+            stableSuccProAppSpineJoin_of_single_steps
               (Γ := Γ) (bound := bound₃) (target := target) (i := i)
               (args := [v]) (args' := [v₂])
               hpvBody₃ hBind₃ hTargetScoped₃
@@ -22785,14 +22840,8 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubProSuccChainPayload.proved
                 simp only [List.mem_singleton] at harg
                 subst harg
                 exact hv₃)
-              (by
-                intro arg harg
-                simp only [List.mem_singleton] at harg
-                subst harg
-                exact hEqArg.scoped_right)
               (List.Forall₂.cons
-                (MEqRedStar.single
-                  (hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some))
+                ⟨hVStep₃⟩
                 List.Forall₂.nil)
           exact ⟨body₃, by simpa using hLeftSpine, by simpa using hRightSpine⟩)
 
