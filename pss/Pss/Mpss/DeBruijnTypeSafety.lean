@@ -19004,6 +19004,181 @@ noncomputable def BetaInstantiationPreservesWfM_NoBinders_of_universal
     rfl hNoBinders hArgBound (by simpa using hBody)
   simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
 
+/-! ### NoBinders-restricted partial discharge of universal `.sub`-head
+replacement.
+
+The universal `WfMSubHeadsReplaceOfNewWf_AppResidual n` (line ~11215)
+carries the `MSubRed.pro` single-step wall (chain rewrite at depth `n`).
+The **NoBinders-restricted** variant restricts the source body `body` to
+`Term.NoBinders`. Because `Term.NoBinders` excludes `.bvar` and `.abs`
+and recurses through `.app`, the structural recursion of the universal
+partial discharge stays inside the NoBinders sublanguage; the
+`WfM.fun_` constructor case is excluded entirely (no `.abs` source) and
+the `WfM.varSub`/`WfM.varEqu` cases are excluded too (no `.bvar`
+source).
+
+This mirrors the
+`BetaInstantiationPreservesWfMUnderHeads_NoBinders_partial_universal`
+pattern (line ~18949) for the sibling β-instantiation surface. The
+residual wall is the application case, which still requires the chain
+rewrite at depth `n` — the `_AppResidual_NoBinders n` surface below
+carries that obligation. -/
+
+/-- NoBinders-restricted residual hypothesis covering the `WfM.app`
+constructor case of universal `.sub`-head replacement. The source
+operator and argument are `Term.NoBinders`.
+
+Compared with `WfMSubHeadsReplaceOfNewWf_AppResidual n`, this restricts
+the source `u` and `v` to be `Term.NoBinders`. The chain rewrite wall
+(the `MSubRed.pro` single-step content) is unchanged in shape; this
+surface is reusable in contexts where NoBinders is already known, e.g.
+when the parent body is itself NoBinders. -/
+def WfMSubHeadsReplaceOfNewWf_AppResidual_NoBinders (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {old new u v t : Term},
+    heads.length = n →
+      Term.NoBinders u →
+        Term.NoBinders v →
+          MEqRed Γ [] old new →
+            WfM Γ new →
+              WSubMStar (heads ++ { bound := old, kind := .sub } :: Γ)
+                  u (.abs t .top) →
+                WSubMStar (heads ++ { bound := old, kind := .sub } :: Γ) v t →
+                  WfM (heads ++ { bound := new, kind := .sub } :: Γ) (.app u v)
+
+/-- The universal `.sub`-head replacement payload restricted to a
+NoBinders source body. Compared with `WfMSubHeadsReplaceOfNewWf n`,
+this restricts the source `body` to be `Term.NoBinders` (no `.bvar`,
+no `.abs`, only `.top` and `.app` recursion). -/
+def WfMSubHeadsReplaceOfNewWf_NoBinders (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {old new body : Term},
+    heads.length = n →
+      Term.NoBinders body →
+        MEqRed Γ [] old new →
+          WfM Γ new →
+            WfM (heads ++ { bound := old, kind := .sub } :: Γ) body →
+              WfM (heads ++ { bound := new, kind := .sub } :: Γ) body
+
+/-- Closed proof of the NoBinders-restricted universal `.sub`-head
+replacement modulo the NoBinders-restricted application residual.
+
+Cases dispatched:
+- `WfM.varSub` / `WfM.varEqu`: source is `.bvar i`, excluded by
+  NoBinders.
+- `WfM.top`: closed via `WfM.top_replaceAt_sub` after a rewrite to
+  `Ctx.replaceAt heads.length` shape (same content as the universal
+  partial above).
+- `WfM.fun_`: source is `.abs t body`, excluded by NoBinders.
+- `WfM.app`: dispatched to the NoBinders-restricted residual after
+  extracting NoBinders for the operator and argument via
+  `Term.NoBinders.app_inv`.
+
+Mirrors the universal `WfMSubHeadsReplaceOfNewWf_partial_universal`
+shape but at the NoBinders sublanguage, where binders are absent so
+the `fun_` recursive call is unreachable. -/
+noncomputable def WfMSubHeadsReplaceOfNewWf_NoBinders_partial_universal
+    (hAppRes : ∀ n,
+      WfMSubHeadsReplaceOfNewWf_AppResidual_NoBinders n) :
+    ∀ n, WfMSubHeadsReplaceOfNewWf_NoBinders n := by
+  intro n Γ heads old new body hlen hNoBinders hOldNew hNew hBody
+  subst hlen
+  have hcut : heads.length <
+      Ctx.depth (heads ++ { bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth, List.length_append, List.length_cons]
+  have hdrop :
+      List.drop (heads.length + 1)
+          (heads ++ { bound := old, kind := .sub } :: Γ) = Γ := by
+    simp [List.drop_append_eq_append_drop]
+  have hScoped : CtxEntry.ScopedIn
+      (List.drop (heads.length + 1)
+        (heads ++ { bound := old, kind := .sub } :: Γ))
+      { bound := new, kind := .sub } := by
+    rw [hdrop]
+    simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+  cases hBody with
+  | varSub _ _ =>
+      -- Source `.bvar i`, excluded by NoBinders.
+      exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | varEqu _ _ =>
+      -- Source `.bvar i`, excluded by NoBinders.
+      exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | top hpv =>
+      -- Source `.top`, closed via `WfM.top_replaceAt_sub`.
+      have hwf' : WfM (Ctx.replaceAt heads.length
+          { bound := old, kind := .sub }
+          (heads ++ { bound := old, kind := .sub } :: Γ)) .top := by
+        simpa [Ctx.replaceAt_length_append] using WfM.top hpv
+      have hres :=
+        WfM.top_replaceAt_sub
+          (Γ := heads ++ { bound := old, kind := .sub } :: Γ)
+          (cutoff := heads.length)
+          (old := old) (new := new) hwf' hcut hScoped
+      simpa [Ctx.replaceAt_length_append] using hres
+  | fun_ _ _ =>
+      -- Source `.abs t body`, excluded by NoBinders.
+      exact (Term.NoBinders.abs_elim hNoBinders).elim
+  | app hOp hArg =>
+      -- Source `.app u v`. NoBinders gives both u and v NoBinders.
+      have ⟨hNoBindersU, hNoBindersV⟩ := hNoBinders.app_inv
+      exact hAppRes heads.length rfl hNoBindersU hNoBindersV
+        hOldNew hNew hOp hArg
+
+/-- NoBinders-restricted depth-0 surface for direct callers. Specializes
+`WfMSubHeadsReplaceOfNewWf_AppResidual_NoBinders 0`. -/
+def WfMSubHeadReplaceOfNewWf_AppResidual_NoBinders : Type :=
+  ∀ {Γ : Ctx} {old new u v t : Term},
+    Term.NoBinders u →
+      Term.NoBinders v →
+        MEqRed Γ [] old new →
+          WfM Γ new →
+            WSubMStar ({ bound := old, kind := .sub } :: Γ)
+                u (.abs t .top) →
+              WSubMStar ({ bound := old, kind := .sub } :: Γ) v t →
+                WfM ({ bound := new, kind := .sub } :: Γ) (.app u v)
+
+/-- NoBinders-restricted depth-0 preservation surface for direct
+callers. Specializes `WfMSubHeadsReplaceOfNewWf_NoBinders 0`. -/
+def WfMSubHeadReplaceOfNewWf_NoBinders : Type :=
+  ∀ {Γ : Ctx} {old new body : Term},
+    Term.NoBinders body →
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfM ({ bound := old, kind := .sub } :: Γ) body →
+            WfM ({ bound := new, kind := .sub } :: Γ) body
+
+/-- Promote a depth-0 NoBinders-restricted app residual into the
+universal `n = 0` NoBinders-restricted app residual. -/
+noncomputable def
+    WfMSubHeadsReplaceOfNewWf_AppResidual_NoBinders.of_zero
+    (h : WfMSubHeadReplaceOfNewWf_AppResidual_NoBinders) :
+    WfMSubHeadsReplaceOfNewWf_AppResidual_NoBinders 0 := by
+  intro Γ heads old new u v t hlen hNoBindersU hNoBindersV hOldNew hNew hOp hArg
+  have heq : heads = [] := List.length_eq_zero.mp hlen
+  subst heq
+  simp only [List.nil_append] at hOp hArg
+  have h' := h hNoBindersU hNoBindersV hOldNew hNew hOp hArg
+  simpa using h'
+
+/-- Specialize the universal NoBinders-restricted app residual back to
+a depth-0 NoBinders-restricted app residual. -/
+noncomputable def
+    WfMSubHeadReplaceOfNewWf_AppResidual_NoBinders_of_universal
+    (h : WfMSubHeadsReplaceOfNewWf_AppResidual_NoBinders 0) :
+    WfMSubHeadReplaceOfNewWf_AppResidual_NoBinders := by
+  intro Γ old new u v t hNoBindersU hNoBindersV hOldNew hNew hOp hArg
+  have h' := h (heads := []) rfl hNoBindersU hNoBindersV hOldNew hNew
+    (by simpa using hOp) (by simpa using hArg)
+  simpa using h'
+
+/-- Specialize the universal NoBinders-restricted preservation to
+depth-0, recovering `WfMSubHeadReplaceOfNewWf_NoBinders`. -/
+noncomputable def WfMSubHeadReplaceOfNewWf_NoBinders_of_universal
+    (h : WfMSubHeadsReplaceOfNewWf_NoBinders 0) :
+    WfMSubHeadReplaceOfNewWf_NoBinders := by
+  intro Γ old new body hNoBinders hOldNew hNew hBody
+  have h' := h (heads := []) rfl hNoBinders hOldNew hNew
+    (by simpa using hBody)
+  simpa using h'
+
 /-! ### Why the two universal `_AppResidual` payloads are NOT factored
 through a shared `MSubRedProSingleStepPayload`.
 
