@@ -28110,6 +28110,104 @@ def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload : Prop :=
         (Term.appSpine (.app (.abs inner body') argHead) (args ++ [v]))) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- Body case grid `Ms-Pro` residual: when the body MSubRed step in the
+SpineCons FOp arm is `MSubRed.pro` (i.e. `body = .bvar i` with subBinds
+`target` at index `i` in the body context). The body context's head is an
+`equ` binder, so `i = 0` is impossible and `i ≥ 1` lifts the lookup through
+`{sub t} :: Γ`. This residual is structurally recursive on the lookup
+target's shape. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyProChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner argHead v u₂ v₂ target : Term}
+    {args : List Term} {i : Nat},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    PrevalidExt
+      ({ bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)
+      (Stack.shift 0 (args ++ [v])) →
+    Ctx.subBinds
+      ({ bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)
+      i target →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.abs inner (.bvar i)) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app (.abs inner target) argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Body case grid `Ms-App` residual: when the body MSubRed step in the
+SpineCons FOp arm is `MSubRed.app` (i.e. `body = .app uBody vBody` with the
+subtype step on `uBody`). The body's outer constructor is `.app`. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyAppChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner argHead v u₂ v₂ uBody uBody' vBody : Term}
+    {args : List Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    MSubRed ({ bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)
+      (vBody :: Stack.shift 0 (args ++ [v])) uBody uBody' →
+    Term.Scoped
+      (Ctx.depth ({ bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)) vBody →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.abs inner (.app uBody vBody)) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app (.abs inner (.app uBody' vBody)) argHead)
+          (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Body case grid `Ms-FOp` residual: when the body MSubRed step in the
+SpineCons FOp arm is `MSubRed.fOp` (i.e. `body = .abs tBody bodyInner` with
+the body's stack starting from `Stack.shift 0 (args ++ [v])` consuming the
+first stack head — `αBody` — as a new equ binder). The inner body
+sub-derivation lives at the deeper context
+`{equ αBody} :: {equ argHead} :: {sub t} :: Γ` with stack
+`Stack.shift 0 sBody`. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyFOpChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner argHead v u₂ v₂ tBody αBody bodyInner
+      bodyInner' : Term}
+    {args : List Term} {sBody : Stack},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    Term.Scoped
+      (Ctx.depth ({ bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)) tBody →
+    Term.Scoped
+      (Ctx.depth ({ bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)) αBody →
+    MSubRed ({ bound := αBody, kind := .equ } ::
+        { bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)
+      (Stack.shift 0 sBody) bodyInner bodyInner' →
+    Stack.shift 0 (args ++ [v]) = αBody :: sBody →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.abs inner (.abs tBody bodyInner)) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app (.abs inner (.abs tBody bodyInner')) argHead)
+          (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
 /-- Constructor-local `Ms-FOp` case exposed from the two-more recursive
 `Ms-App` residual. -/
 def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOpChainPayload : Prop :=
@@ -34624,6 +34722,470 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload.p
               MEqRedStar.single hLeftJoin.some
           · exact MSubRedStar.of_MEqRedStar hpvBody₃
               (MEqRedStar.single hRightJoin.some))
+
+/-- Partial discharge of the SpineCons FOp leaf via a per-body-constructor
+case grid.
+
+The body MSubRed step `hBody : MSubRed ({equ argHead} :: {sub t} :: Γ)
+(Stack.shift 0 (args ++ [v])) body body'` is split on its constructor:
+
+* `top` and `equ` close inline:
+  - `top`: `body' = .top`, so the LHS body shape
+    `Term.appSpine (.app (.abs inner .top) argHead) (args ++ [v])` reduces
+    via `Me-Bet` (instantiating `argHead` into `.top` is identity since
+    `.top` has no bvars) and then `Me-TAp` collapse on the remaining spine
+    of `.top`-applications. The RHS body `.app u₂ v₂` reduces to `.top` via
+    `Ms-Top`.
+  - `equ`: the body MEqRed step lifts via `Me-FOp`, `Me-App-left`,
+    `Me-AppSpine-left` to a single MEqRed step from
+    `Term.appSpine (.app (.abs inner body) argHead) (args ++ [v])` to the
+    LHS body source. The right side from `hEqOp`/`hEqArg` is a single
+    MEqRed step from the same source to `.app u₂ v₂`. Both paths share the
+    common source so uniform diamond joins them.
+
+* `pro`, `app`, `fOp` are recursive on the body's sub-shape and are
+  exposed as explicit residual sub-payloads. The `fun_` constructor is
+  impossible because the body MSubRed stack
+  `Stack.shift 0 (args ++ [v])` is non-empty (`args ++ [v]` has at least
+  the singleton `[v]`). -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload.proved_partial
+    (hBodyPro :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyProChainPayload)
+    (hBodyApp :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyAppChainPayload)
+    (hBodyFOp :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyFOpChainPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload := by
+  intro Γ t bound₁ bound₂ inner body body' argHead v u₂ v₂ args
+    hT₁ hInner hBody hArgHead hArgs hv hT₂ hEqOp hEqArg
+  -- Pre-decompose `Stack.shift 0 (args ++ [v])` into a concrete cons so the
+  -- dependent eliminator on `MSubRed.fOp` (which unifies the stack against
+  -- `α :: s`) succeeds.
+  obtain ⟨αHead, sTail, hStackEq⟩ : ∃ αHead sTail,
+      Stack.shift 0 (args ++ [v]) = αHead :: sTail := by
+    rcases args with _ | ⟨arg₀, argsTail⟩
+    · exact ⟨Term.shift 0 v, [], rfl⟩
+    · exact ⟨Term.shift 0 arg₀, Stack.shift 0 (argsTail ++ [v]), rfl⟩
+  -- Rewrite hBody's stack to expose the cons; cases dispatcher converts
+  -- back via hStackEq's inverse.
+  have hBodyOrig := hBody
+  rw [hStackEq] at hBody
+  cases hBody with
+  | @pro _ _ i target hpv hBind =>
+      have hpv' :
+          PrevalidExt
+            ({ bound := argHead, kind := .equ } ::
+              { bound := t, kind := .sub } :: Γ)
+            (Stack.shift 0 (args ++ [v])) := by rw [hStackEq]; exact hpv
+      exact hBodyPro hT₁ hInner hpv' hBind hArgHead hArgs hv hT₂ hEqOp hEqArg
+  | top hpv hScopedBody =>
+      -- body' = .top. Build LHS step + RHS step into a common .abs _ .top.
+      have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+      have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+      have hAllArgs :
+          ∀ arg ∈ argHead :: args ++ [v],
+            Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+        intro arg hmem
+        by_cases hHead : arg = argHead
+        · simpa [hHead] using hArgHead
+        · by_cases hArg : arg ∈ args
+          · exact hArgs arg hArg
+          · have hV : arg = v := by
+              simpa [List.mem_cons, List.mem_append, List.mem_singleton,
+                hHead, hArg] using hmem
+            simpa [hV] using hv
+      -- Build hLeft: source `.abs t (Term.appSpine (.app (.abs inner body) argHead) (args ++ [v]))`
+      -- subtype-steps to `.abs bound₁ (Term.appSpine (.app (.abs inner .top) argHead) (args ++ [v]))`.
+      have hpvSpine :
+          PrevalidExt
+            ({ bound := argHead, kind := .equ } ::
+              { bound := t, kind := .sub } :: Γ)
+            (Stack.shift 0 (args ++ [v])) := by rw [hStackEq]; exact hpv
+      have hBodyTopStep :
+          MSubRed ({ bound := argHead, kind := .equ } ::
+              { bound := t, kind := .sub } :: Γ)
+            (Stack.shift 0 (args ++ [v])) body .top :=
+        MSubRed.top hpvSpine hScopedBody
+      have hFOpStep :
+          MSubRed ({ bound := t, kind := .sub } :: Γ)
+            (argHead :: args ++ [v])
+            (.abs inner body) (.abs inner .top) :=
+        MSubRed.fOp hInner hArgHead hBodyTopStep
+      have hHeadStep :
+          MSubRed ({ bound := t, kind := .sub } :: Γ)
+            (args ++ [v])
+            (.app (.abs inner body) argHead)
+            (.app (.abs inner .top) argHead) := by
+        simpa [List.cons_append] using MSubRed.app_left hFOpStep hArgHead
+      have hAllArgsTail :
+          ∀ arg ∈ args ++ [v],
+            Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+        intro arg hmem
+        by_cases hArg : arg ∈ args
+        · exact hArgs arg hArg
+        · have hV : arg = v := by
+            simpa [List.mem_append, List.mem_singleton, hArg] using hmem
+          simpa [hV] using hv
+      have hLeftBody :
+          MSubRed ({ bound := t, kind := .sub } :: Γ) []
+            (Term.appSpine (.app (.abs inner body) argHead) (args ++ [v]))
+            (Term.appSpine (.app (.abs inner .top) argHead) (args ++ [v])) :=
+        MSubRed.appSpine_left (args ++ [v]) (by simpa using hHeadStep)
+          hAllArgsTail
+      have hLeft :
+          MSubRed Γ []
+            (.abs t (Term.appSpine (.app (.abs inner body) argHead)
+                      (args ++ [v])))
+            (.abs bound₁ (Term.appSpine (.app (.abs inner .top) argHead)
+                            (args ++ [v]))) :=
+        MSubRed.fun_ hT₁.scoped_left hT₁ hLeftBody
+      have hRight :
+          MEqRed Γ []
+            (.abs t (Term.appSpine (.app (.abs inner body) argHead)
+                      (args ++ [v])))
+            (.abs bound₂ (.app u₂ v₂)) := by
+        simpa [Term.appSpine, Term.appSpine_append] using
+          MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+      exact by
+        simpa [Term.appSpine] using
+          commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+            ((@hUniformDiamond Γ []) hT₁ hT₂)
+            (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+              have hpvBody₃ :
+                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+                PrevalidExt.nil
+                  (Prevalid.sub (PrevalidExt.ctx hpvNil)
+                    hBound₁₃.some.scoped_right)
+              have hAllArgs₃ :
+                  ∀ arg ∈ argHead :: args ++ [v],
+                    Term.Scoped
+                      (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                      arg := by
+                intro arg hmem
+                have hScoped := hAllArgs arg hmem
+                simpa [Ctx.depth] using hScoped
+              have hArgHead₃ :
+                  Term.Scoped
+                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                    argHead := by
+                simpa [Ctx.depth] using hArgHead
+              have hAllArgsTail₃ :
+                  ∀ arg ∈ args ++ [v],
+                    Term.Scoped
+                      (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                      arg := by
+                intro arg hmem
+                have hScoped := hAllArgsTail arg hmem
+                simpa [Ctx.depth] using hScoped
+              have hu₂₃ :
+                  Term.Scoped
+                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                    u₂ := by
+                simpa [Ctx.depth] using hEqOp.scoped_right
+              have hv₂₃ :
+                  Term.Scoped
+                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                    v₂ := by
+                simpa [Ctx.depth] using hEqArg.scoped_right
+              -- LHS: `Term.appSpine (.app (.abs inner .top) argHead) (args ++ [v])`
+              -- → via Me-Bet at the head + appSpine_left + top_appSpine.
+              have hpvFull₃ :
+                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
+                    ((args ++ [v]) ++ []) :=
+                PrevalidExt.prepend_scoped_list hpvBody₃ hAllArgsTail₃
+              have hpvFull₃' :
+                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
+                    (args ++ [v]) := by simpa using hpvFull₃
+              have hInner₃ :
+                  Term.Scoped
+                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                    inner := by simpa [Ctx.depth] using hInner
+              have hpvBetBody :
+                  PrevalidExt ({ bound := inner, kind := .sub } ::
+                      { bound := bound₃, kind := .sub } :: Γ)
+                    (Stack.shift 0 (args ++ [v])) :=
+                PrevalidExt.weaken_head hpvFull₃'
+                  (Prevalid.sub (PrevalidExt.ctx hpvFull₃') hInner₃)
+              have hTopBody₃ :
+                  MEqRed
+                    ({ bound := inner, kind := .sub } ::
+                      { bound := bound₃, kind := .sub } :: Γ)
+                    (Stack.shift 0 (args ++ [v])) .top .top :=
+                MEqRed.top hpvBetBody
+              have hArgHeadRefl :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+                    argHead argHead :=
+                MEqRed.refl hpvBody₃ hArgHead₃
+              have hBetStep :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ)
+                    (args ++ [v])
+                    (.app (.abs inner .top) argHead)
+                    (Term.instantiate 0 argHead .top) :=
+                MEqRed.bet hInner₃ hTopBody₃ hArgHeadRefl
+              have hBetStep' :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ)
+                    (args ++ [v])
+                    (.app (.abs inner .top) argHead) .top := by
+                simpa [Term.instantiate_top] using hBetStep
+              have hBetStepStacked :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ)
+                    ((args ++ [v]) ++ [])
+                    (.app (.abs inner .top) argHead) .top := by
+                simpa using hBetStep'
+              have hLeftToTopSpine :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+                    (Term.appSpine (.app (.abs inner .top) argHead)
+                      (args ++ [v]))
+                    (Term.appSpine .top (args ++ [v])) :=
+                MEqRed.appSpine_left (args ++ [v]) hBetStepStacked
+                  hAllArgsTail₃
+              have hTopCollapse :
+                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
+                    (Term.appSpine .top (args ++ [v])) .top :=
+                MEqRedStar.top_appSpine hpvBody₃ hAllArgsTail₃
+              have hLeftToTop :
+                  MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
+                    (Term.appSpine (.app (.abs inner .top) argHead)
+                      (args ++ [v])) .top :=
+                MEqRedStar.trans (MEqRedStar.single hLeftToTopSpine)
+                  hTopCollapse
+              -- RHS: `.app u₂ v₂` → .top via Ms-Top.
+              have hRightToTop :
+                  MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
+                    (.app u₂ v₂) .top :=
+                MSubRedStar.single
+                  (MSubRed.top hpvBody₃ (Term.Scoped.app hu₂₃ hv₂₃))
+              exact ⟨.top, hLeftToTop, hRightToTop⟩)
+  | equ hpv hEqBody =>
+      -- body' is the result of an MEqRed step. Lift through fOp/app/spine
+      -- and join with hEqOp/hEqArg via uniform diamond.
+      have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+      have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+      have hAllArgs :
+          ∀ arg ∈ argHead :: args ++ [v],
+            Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+        intro arg hmem
+        by_cases hHead : arg = argHead
+        · simpa [hHead] using hArgHead
+        · by_cases hArg : arg ∈ args
+          · exact hArgs arg hArg
+          · have hV : arg = v := by
+              simpa [List.mem_cons, List.mem_append, List.mem_singleton,
+                hHead, hArg] using hmem
+            simpa [hV] using hv
+      have hAllArgsTail :
+          ∀ arg ∈ args ++ [v],
+            Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+        intro arg hmem
+        by_cases hArg : arg ∈ args
+        · exact hArgs arg hArg
+        · have hV : arg = v := by
+            simpa [List.mem_append, List.mem_singleton, hArg] using hmem
+          simpa [hV] using hv
+      -- Build hLeft as MSubRed via Ms-Equ-wrapping the lifted MEqRed step.
+      have hpvArgs :
+          PrevalidExt ({ bound := t, kind := .sub } :: Γ)
+            ((argHead :: args ++ [v]) ++ []) :=
+        PrevalidExt.prepend_scoped_list hpvBody hAllArgs
+      have hpvOrig :
+          PrevalidExt
+            ({ bound := argHead, kind := .equ } ::
+              { bound := t, kind := .sub } :: Γ)
+            (Stack.shift 0 (args ++ [v])) := by rw [hStackEq]; exact hpv
+      have hEqBodyOrig :
+          MEqRed ({ bound := argHead, kind := .equ } ::
+              { bound := t, kind := .sub } :: Γ)
+            (Stack.shift 0 (args ++ [v])) body body' := by
+        rw [hStackEq]; exact hEqBody
+      have hBodyEquStep :
+          MSubRed ({ bound := argHead, kind := .equ } ::
+              { bound := t, kind := .sub } :: Γ)
+            (Stack.shift 0 (args ++ [v])) body body' :=
+        MSubRed.equ hpvOrig hEqBodyOrig
+      have hFOpStep :
+          MSubRed ({ bound := t, kind := .sub } :: Γ)
+            (argHead :: args ++ [v])
+            (.abs inner body) (.abs inner body') :=
+        MSubRed.fOp hInner hArgHead hBodyEquStep
+      have hHeadStep :
+          MSubRed ({ bound := t, kind := .sub } :: Γ)
+            (args ++ [v])
+            (.app (.abs inner body) argHead)
+            (.app (.abs inner body') argHead) := by
+        simpa [List.cons_append] using MSubRed.app_left hFOpStep hArgHead
+      have hLeftBody :
+          MSubRed ({ bound := t, kind := .sub } :: Γ) []
+            (Term.appSpine (.app (.abs inner body) argHead) (args ++ [v]))
+            (Term.appSpine (.app (.abs inner body') argHead)
+              (args ++ [v])) :=
+        MSubRed.appSpine_left (args ++ [v]) (by simpa using hHeadStep)
+          hAllArgsTail
+      have hLeft :
+          MSubRed Γ []
+            (.abs t (Term.appSpine (.app (.abs inner body) argHead)
+                      (args ++ [v])))
+            (.abs bound₁ (Term.appSpine (.app (.abs inner body') argHead)
+                            (args ++ [v]))) :=
+        MSubRed.fun_ hT₁.scoped_left hT₁ hLeftBody
+      have hRight :
+          MEqRed Γ []
+            (.abs t (Term.appSpine (.app (.abs inner body) argHead)
+                      (args ++ [v])))
+            (.abs bound₂ (.app u₂ v₂)) := by
+        simpa [Term.appSpine, Term.appSpine_append] using
+          MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+      exact by
+        simpa [Term.appSpine] using
+          commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+            ((@hUniformDiamond Γ []) hT₁ hT₂)
+            (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+              have hpvBody₃ :
+                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+                PrevalidExt.nil
+                  (Prevalid.sub (PrevalidExt.ctx hpvNil)
+                    hBound₁₃.some.scoped_right)
+              have hAllArgs₃ :
+                  ∀ arg ∈ argHead :: args ++ [v],
+                    Term.Scoped
+                      (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                      arg := by
+                intro arg hmem
+                have hScoped := hAllArgs arg hmem
+                simpa [Ctx.depth] using hScoped
+              have hArgHead₃ :
+                  Term.Scoped
+                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                    argHead := by
+                simpa [Ctx.depth] using hArgHead
+              have hAllArgsTail₃ :
+                  ∀ arg ∈ args ++ [v],
+                    Term.Scoped
+                      (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                      arg := by
+                intro arg hmem
+                have hScoped := hAllArgsTail arg hmem
+                simpa [Ctx.depth] using hScoped
+              have hpvFull₃' :
+                  PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ)
+                    (args ++ [v]) := by
+                have h := PrevalidExt.prepend_scoped_list
+                  (args := args ++ [v]) (s := []) hpvBody₃ hAllArgsTail₃
+                simpa using h
+              -- Transport hEqBody to bound₃-context. The innermost binder
+              -- is `.equ argHead`, so we use `replaceAt_sub` at cutoff 1
+              -- (the `.sub t` slot under the equ head). Compose via t →
+              -- bound₁ → bound₃.
+              have hcut₁ :
+                  (1 : Nat) < Ctx.depth
+                    ({ bound := argHead, kind := .equ } ::
+                      { bound := t, kind := .sub } :: Γ) := by
+                simp [Ctx.depth]
+              have hEqBody₁ :
+                  MEqRed ({ bound := argHead, kind := .equ } ::
+                      { bound := bound₁, kind := .sub } :: Γ)
+                    (Stack.shift 0 (args ++ [v])) body body' := by
+                have h := hEqBodyOrig.replaceAt_sub
+                  (Γ := { bound := argHead, kind := .equ } ::
+                    { bound := t, kind := .sub } :: Γ)
+                  (cutoff := 1) (old := t) (new := bound₁) hcut₁
+                  (by simpa using hT₁)
+                simpa [Ctx.replaceAt] using h
+              have hcut₂ :
+                  (1 : Nat) < Ctx.depth
+                    ({ bound := argHead, kind := .equ } ::
+                      { bound := bound₁, kind := .sub } :: Γ) := by
+                simp [Ctx.depth]
+              have hEqBody₃ :
+                  MEqRed ({ bound := argHead, kind := .equ } ::
+                      { bound := bound₃, kind := .sub } :: Γ)
+                    (Stack.shift 0 (args ++ [v])) body body' := by
+                have h := hEqBody₁.replaceAt_sub
+                  (Γ := { bound := argHead, kind := .equ } ::
+                    { bound := bound₁, kind := .sub } :: Γ)
+                  (cutoff := 1) (old := bound₁) (new := bound₃) hcut₂
+                  (by simpa using hBound₁₃.some)
+                simpa [Ctx.replaceAt] using h
+              -- Lift hEqBody₃ through fOp + app + appSpine to a step from
+              -- the LHS body source to the LHS body target.
+              have hInner₃ :
+                  Term.Scoped
+                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                    inner := by simpa [Ctx.depth] using hInner
+              have hFOpStep₃ :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ)
+                    (argHead :: args ++ [v])
+                    (.abs inner body) (.abs inner body') := by
+                have hReflInner :
+                    MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+                      inner inner :=
+                  MEqRed.refl hpvBody₃ hInner₃
+                exact MEqRed.fOp hReflInner hArgHead₃ hEqBody₃
+              have hAppHeadStep₃ :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ)
+                    (args ++ [v])
+                    (.app (.abs inner body) argHead)
+                    (.app (.abs inner body') argHead) := by
+                simpa [List.cons_append] using
+                  MEqRed.app_left hFOpStep₃ hArgHead₃
+              have hAppHeadStepStacked :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ)
+                    ((args ++ [v]) ++ [])
+                    (.app (.abs inner body) argHead)
+                    (.app (.abs inner body') argHead) := by
+                simpa using hAppHeadStep₃
+              have hLeftBodySingle :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+                    (Term.appSpine (.app (.abs inner body) argHead)
+                      (args ++ [v]))
+                    (Term.appSpine (.app (.abs inner body') argHead)
+                      (args ++ [v])) :=
+                MEqRed.appSpine_left (args ++ [v]) hAppHeadStepStacked
+                  hAllArgsTail₃
+              -- Build the RHS body single step from hEqOp / hEqArg.
+              have hEqOp₃ :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: [])
+                    (Term.appSpine (.app (.abs inner body) argHead) args)
+                    u₂ :=
+                (hEqOp.sub_head_replace hT₁).sub_head_replace hBound₁₃.some
+              have hEqArg₃ :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+                (hEqArg.sub_head_replace hT₁).sub_head_replace hBound₁₃.some
+              have hRightBodySingle :
+                  MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+                    (Term.appSpine (.app (.abs inner body) argHead)
+                      (args ++ [v]))
+                    (.app u₂ v₂) := by
+                simpa [Term.appSpine_append, Term.appSpine] using
+                  MEqRed.app hEqOp₃ hEqArg₃
+              obtain ⟨body₃', hLeftJoin, hRightJoin⟩ :=
+                (@hUniformDiamond ({ bound := bound₃, kind := .sub } :: Γ) [])
+                  hLeftBodySingle hRightBodySingle
+              refine ⟨body₃', ?_, ?_⟩
+              · exact MEqRedStar.single hLeftJoin.some
+              · exact MSubRedStar.of_MEqRedStar hpvBody₃
+                  (MEqRedStar.single hRightJoin.some))
+  | @app _ _ uBody uBody' vBody hOpStep hvBodyScoped =>
+      -- After the rw, hOpStep is at stack `vBody :: αHead :: sTail`. The
+      -- residual expects `vBody :: Stack.shift 0 (args ++ [v])`.
+      have hOpStepOrig :
+          MSubRed ({ bound := argHead, kind := .equ } ::
+              { bound := t, kind := .sub } :: Γ)
+            (vBody :: Stack.shift 0 (args ++ [v])) uBody uBody' := by
+        rw [hStackEq]; exact hOpStep
+      exact hBodyApp hT₁ hInner hOpStepOrig hvBodyScoped hArgHead hArgs hv
+        hT₂ hEqOp hEqArg
+  | @fOp _ sBody tBody αBody bodyInner bodyInner' hScopedT hScopedα hSub =>
+      -- Constructor's unification gave `αHead :: sTail = αBody :: sBody`,
+      -- i.e. `αBody = αHead` and `sBody = sTail`. Since
+      -- `Stack.shift 0 (args ++ [v]) = αHead :: sTail = αBody :: sBody`, we
+      -- pass `hStackEq` to the residual as the explicit equation witness.
+      exact hBodyFOp hT₁ hInner hScopedT hScopedα hSub hStackEq
+        hArgHead hArgs hv hT₂ hEqOp hEqArg
 
 /-- Discharge the recursive `Ms-App` leaf for the nonempty generic app-spine
 residual. Internally, the App ChainPayload's `MSubRed` operator step `hOp`

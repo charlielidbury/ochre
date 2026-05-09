@@ -1311,5 +1311,11 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_partial_v6_proved
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v6_proved
 
+-- SpineCons FOp body case grid partial discharge: top + equ body cases
+-- close inline against `hUniformDiamond`; pro/app/fOp body cases remain
+-- as residual sub-payloads. The `fun_` body case is impossible because
+-- `Stack.shift 0 (args ++ [v])` is non-empty.
+#print axioms StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload.proved_partial
+
 end DeBruijn
 end Pss
