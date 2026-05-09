@@ -1252,5 +1252,16 @@ namespace DeBruijn
 #print axioms MEqRedPreservesWfMUnderWfCtx_partial_with_pro
 #print axioms MEqRedPreservesWfM_pro_arm_under_wfctx
 
+-- App residual absorption via the typed operator function-supertype
+-- payload: discharges the `Me-App` constructor arm of
+-- `MEqRedPreservesWfM_partial` by recursing on the empty-stack
+-- argument sub-derivation and transporting the operator
+-- `WSubMStar` across the stack-indexed reduction. Combined with the
+-- pro absorption, this leaves only the two hard arms (`bet`, `fun_`).
+#print axioms MEqRedPreservesWfMUnderWfCtxApp_typed_aux
+#print axioms MEqRedPreservesWfMUnderWfCtxApp_typed
+#print axioms MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app
+#print axioms MEqRedPreservesWfM_app_arm_under_wfctx
+
 end DeBruijn
 end Pss

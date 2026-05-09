@@ -35564,3 +35564,194 @@ noncomputable def MEqRedPreservesWfM_pro_arm_under_wfctx
   intro hwf
   have hα : WfM Γ α := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
   exact MEqRedPreservesWfMUnderWfCtx_typed h_bet h_app h_fun hΓ hRec hα
+
+/-! ### `Me-App` residual absorption via typed operator function-supertype
+
+The `MEqRedPreservesWfM_partial` partial assembly exposes the `Me-App`
+constructor of `MEqRed` as a residual hypothesis `h_app`. Closing this
+residual structurally is harder than the `Me-Pro` arm because the head
+sub-derivation `MEqRed Γ [v] u u'` lives at a *non-empty* outer stack
+(`[v]`), so it is not directly transportable through the empty-stack
+preservation IH.
+
+The natural decomposition is:
+
+* The argument sub-derivation `MEqRed Γ [] v v'` is empty-stack and is
+  discharged by structural recursion on the auxiliary typed
+  preservation routine.
+* The operator sub-derivation requires a stack-indexed `WSubMStar`
+  transport. The existing
+  `MEqRedAppFunctionSupertypeTypedPayload` is the precise modular
+  shape for this: given `WSubMStar Γ v bound` (the operand-bound
+  relationship from the source `app` typing) and
+  `WSubMStar Γ u (.abs bound .top)` (the operator function-supertype),
+  it transports the operator function-supertype across the stack-indexed
+  reduction.
+
+The two payloads compose: the operator side delivers
+`WSubMStar Γ u' (.abs bound .top)`, the argument side delivers
+`WSubMStar Γ v' bound` (via `WSubMStar.of_MEqRed_back` plus
+`WSubMStar.trans`), and `WfM.app` reassembles `WfM Γ (.app u' v')`.
+
+To absorb the `Me-App` residual fully (so callers no longer supply
+an `h_app` argument), we re-run the structural recursion of
+`MEqRedPreservesWfMUnderWfCtx_typed_aux` with the `app` arm
+internalised. The recursive call goes through the *empty-stack*
+argument sub-derivation, which is structurally smaller; the operator
+sub-derivation is consumed only via the typed payload, so no recursion
+is needed there.
+
+This sub-section ships:
+
+* `MEqRedPreservesWfMUnderWfCtxApp_typed_aux` — recursive preservation
+  proof on `MEqRed Γ s x y` with an `s = []` constraint and both
+  `pro` and `app` arms absorbed. Parameterised on the typed operator
+  function-supertype payload plus only the two remaining hard arms
+  (`bet`, `fun_`).
+* `MEqRedPreservesWfMUnderWfCtxApp_typed` — empty-stack specialisation.
+* `MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app` —
+  `MEqRedJ`-wrapped surface specialised to
+  `MEqRedPreservesWfMUnderWfCtx`, with both `Me-Pro` and `Me-App`
+  residuals absorbed.
+* `MEqRedPreservesWfM_app_arm_under_wfctx` — manufactured `h_app`
+  residual matching the exact shape consumed by
+  `MEqRedPreservesWfM_partial`, taking `WfCtxEqu Γ`, the typed
+  operator function-supertype payload, and only the two remaining
+  hard arms (`bet`, `fun_`). -/
+
+/-- Type-valued empty-stack equivalence-reduction preservation under a
+well-formed-equivalence context, with both the `Me-Pro` and `Me-App`
+constructor arms absorbed via `WfCtxEqu.lookup_equ` and the typed
+operator function-supertype payload respectively. Parameterised on
+only the two remaining hard arms `bet` and `fun_`. The auxiliary
+`s = []` constraint lets us induct on `MEqRed Γ s x y` for arbitrary
+`s` while restricting the consumed cases to empty stack. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtxApp_typed_aux
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    ∀ {Γ : Ctx} {s : Stack} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ s x y → s = [] → WfM Γ x → WfM Γ y
+  | _, _, _, _, _, .top _, _, hwf => hwf
+  | _, _, _, _, _, .var _ _, _, hwf => hwf
+  | _, _, _, _, _, .tAp _ _, _, hwf => WfM.top hwf.prevalid
+  | _, _, _, _, hΓ, .pro _ hb hRec, rfl, hwf =>
+      have hα : WfM _ _ := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
+      MEqRedPreservesWfMUnderWfCtxApp_typed_aux hOpFun h_bet h_fun hΓ hRec rfl hα
+  | _, _, _, _, _, .bet ht hBody hArg, rfl, hwf =>
+      h_bet ht (by simpa [Stack.shift] using hBody) hArg hwf
+  | _, _, _, _, hΓ, .app (v := v) hOp hArg, rfl, hwf =>
+      -- Decompose the source application typing.
+      let ⟨bound, hFun, hArgTy⟩ := hwf.app_inv
+      have hwfV : WfM _ v := hArgTy.wf_left
+      -- Recurse on the empty-stack argument sub-derivation.
+      have hwfV' : WfM _ _ :=
+        MEqRedPreservesWfMUnderWfCtxApp_typed_aux hOpFun h_bet h_fun
+          hΓ hArg rfl hwfV
+      -- The empty tail stack is well-formed; `hOp : MEqRed Γ (v :: []) u u'`
+      -- which matches the typed-operator payload shape `MEqRed Γ (v :: s) u u'`
+      -- with `s = []`.
+      have hStack : WfStack _ ([] : Stack) := WfStack.nil
+      -- Operator transport via the typed function-supertype payload.
+      have hFunTarget : WSubMStar _ _ (.abs bound .top) :=
+        hOpFun hΓ hStack hArgTy hFun hOp
+      -- Argument backward embedding plus transitivity gives `v' ≤* bound`.
+      have hArgBack : WSubMStar _ _ _ :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArgTarget : WSubMStar _ _ bound :=
+        WSubMStar.trans hwfV hArgBack hArgTy
+      WfM.app hFunTarget hArgTarget
+  | _, _, _, _, _, .fun_ hT hBody, _, hwf =>
+      h_fun hT hBody hwf
+  | _, _, _, _, _, .fOp _ _ _, hs, _ => by cases hs
+
+/-- Empty-stack specialisation of
+`MEqRedPreservesWfMUnderWfCtxApp_typed_aux`. Both `Me-Pro` and
+`Me-App` are absorbed; only the `Me-Bet` and `Me-Fun` constructor
+arms remain as residuals. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtxApp_typed
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    ∀ {Γ : Ctx} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ [] x y → WfM Γ x → WfM Γ y :=
+  fun hΓ hRed hwf =>
+    MEqRedPreservesWfMUnderWfCtxApp_typed_aux hOpFun h_bet h_fun
+      hΓ hRed rfl hwf
+
+/-- `MEqRedJ`-wrapped surface specialised to
+`MEqRedPreservesWfMUnderWfCtx`, with both `Me-Pro` and `Me-App`
+constructor residuals absorbed. The `Me-Pro` residual is absorbed via
+`WfCtxEqu.lookup_equ`; the `Me-App` residual is additionally absorbed
+via the typed operator function-supertype payload. The remaining
+residuals are the two hard constructor arms `bet` and `fun_`. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    MEqRedPreservesWfMUnderWfCtx :=
+  fun hΓ hRed hwf =>
+    MEqRedPreservesWfMUnderWfCtxApp_typed hOpFun h_bet h_fun
+      hΓ hRed.some hwf
+
+/-- Built-in `h_app` residual for the v2 surface, manufactured from a
+`WfCtxEqu`-quantified empty-stack preservation payload (recoverable
+from the two remaining hard arms via
+`MEqRedPreservesWfMUnderWfCtxApp_typed`) plus the typed operator
+function-supertype payload `MEqRedAppFunctionSupertypeTypedPayload`.
+
+The argument step is closed by recursing through
+`MEqRedPreservesWfMUnderWfCtxApp_typed` on the empty-stack
+`MEqRed Γ [] v v'` sub-derivation. The operator step is closed by
+feeding the source operand-bound relationship `WSubMStar Γ v bound`
+and operator function-supertype `WSubMStar Γ u (.abs bound .top)` to
+the typed operator payload, transporting both across the reduction,
+and reassembling via `WfM.app`. -/
+noncomputable def MEqRedPreservesWfM_app_arm_under_wfctx
+    {Γ : Ctx} {u u' v v' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (_hOp : MEqRed Γ [v] u u')
+    (_hArg : MEqRed Γ [] v v')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    WfM Γ (.app u v) → WfM Γ (.app u' v') := by
+  intro hwf
+  -- Reuse the recursive routine on the assembled `MEqRed.app` step.
+  -- Both `pro` and `app` constructor arms are absorbed inside
+  -- `MEqRedPreservesWfMUnderWfCtxApp_typed`.
+  have hAppRed : MEqRed Γ [] (.app u v) (.app u' v') :=
+    MEqRed.app _hOp _hArg
+  exact MEqRedPreservesWfMUnderWfCtxApp_typed hOpFun h_bet h_fun hΓ hAppRed hwf
