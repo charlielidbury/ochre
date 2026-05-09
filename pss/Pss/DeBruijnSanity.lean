@@ -1275,5 +1275,14 @@ namespace DeBruijn
 #print axioms MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app_fun
 #print axioms MEqRedPreservesWfM_fun_arm_under_wfctx
 
+-- Theorem 5 partial v3: full per-arm absorption under outer `WfCtxEqu`.
+-- Composes the four `_under_wfctx` arm helpers (pro, app, fun, bet
+-- NoBinders-restricted) with `Theorem_5_DeBruijn_Preservation_under_wfctx_of`
+-- so the only WfCtxEqu input is `hWfCtxEquOuter : WfCtxEqu Γ`. Internal
+-- recursion threads through `.sub`-extended sub-contexts via
+-- `WfCtxEqu.sub`. No false-shape `∀ Γ, WfCtxEqu Γ` hypothesis required.
+#print axioms Theorem_5_DeBruijn_Preservation_partial_v3_proved
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v3_proved
+
 end DeBruijn
 end Pss

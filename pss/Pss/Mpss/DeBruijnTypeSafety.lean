@@ -36114,3 +36114,177 @@ noncomputable def MEqRedPreservesWfM_bet_arm_under_wfctx_NoBinders
   rw [hInstV]
   rw [hInstT] at hwfBody'_dropped
   exact hwfBody'_dropped
+
+/-! ### Theorem 5 partial v3: full per-arm absorption under outer `WfCtxEqu`
+
+The v3 surface composes the four manufactured per-arm discharges
+(`MEqRedPreservesWfM_pro_arm_under_wfctx`,
+`MEqRedPreservesWfM_app_arm_under_wfctx`,
+`MEqRedPreservesWfM_fun_arm_under_wfctx`,
+`MEqRedPreservesWfM_bet_arm_under_wfctx_NoBinders`) with the
+`WfCtxEqu`-parametric Theorem 5 surface
+`Theorem_5_DeBruijn_Preservation_under_wfctx_of` so the only WfCtxEqu
+input the v3 surface needs is the *outer-Γ* well-formed-equivalence
+context `hWfCtxEquOuter : WfCtxEqu Γ`. This is dischargeable from the
+typing of the source term in the surrounding theorem (e.g. closed-term
+`Γ = []` gives `WfCtxEqu.empty` immediately).
+
+The previous v3 attempt (commit `4283db7`, NOT merged into
+`db-refactor`) was rejected because it exposed
+`hWfCtxEquUniv : ∀ {Γ : Ctx}, WfCtxEqu Γ` as a hypothesis. WfCtxEqu is
+NOT universally provable: with non-well-formed `.equ` bounds in Γ,
+WfCtxEqu fails (see `DeBruijnWellFormed.lean:362-368`,
+`WfCtxEqu` constructors `.empty`, `.sub`, `.equ`). This v3 takes the
+single concrete outer-Γ WfCtxEqu and threads it through the per-call
+WfCtxEqu pipeline, where internal recursion uses `WfCtxEqu.sub` (which
+propagates trivially through `.sub`-extended contexts — every MEqRed
+sub-derivation under a binder lives in such an extension).
+
+The pipeline:
+
+1. Manufacture a universal `h_bet` arm of shape
+   `∀ {Γ : Ctx} {..}, ... → WfM Γ (.app (.abs t body) v) → WfM Γ (...)`
+   from the user-supplied NoBinders-restricted bet residual
+   `hBetNoBindersResidual` plus the universal NoBinders extractor
+   `hNoBindersAtBet`. Both inputs are universal in Γ at the source-typing
+   level; no WfCtxEqu is needed because NoBinders is a syntactic
+   restriction independent of context well-formedness.
+2. Build `MEqRedPreservesWfMUnderWfCtx` (per-call WfCtxEqu) via
+   `MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app_fun`, supplying
+   the two typed payloads (`hOpFun`, `hFunBound`) plus the manufactured
+   `h_bet`.
+3. Build the chain-shape payload from `UniformStrongCommutes` via
+   `Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of`.
+4. Build the chain-shape well-formedness payload (per-call WfCtxEqu)
+   via `AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq`.
+5. Build `AbsFunctionBoundInversionUnderWfCtx` via
+   `AbsFunctionBoundInversionUnderWfCtx_of_chain_shape`.
+6. Build `StepPreservesWfMUnderWfCtx` via
+   `StepPreservesWfMUnderWfCtx_of_components`, supplying `hSubst`,
+   the inversion payload, and `hSubHeadReplace`.
+7. Apply `Theorem_5_DeBruijn_Preservation_under_wfctx_of` with
+   the outer `hWfCtxEquOuter`, threading it once at the surface.
+
+Inside the `MEqRedPreservesWfMUnderWfCtx`-typed arm helpers and the
+chain-shape pipeline, all internal `WfCtxEqu` extensions go through
+`WfCtxEqu.sub` on `.sub`-extended contexts. No `.equ` extension is
+ever performed by `MEqRed` (binders only introduce `.sub` heads in
+the de Bruijn pivot), so the outer WfCtxEqu suffices. -/
+
+/-- Theorem 5 with all four `MEqRed`-arm residuals absorbed via the
+per-arm `_under_wfctx` discharges, requiring only an *outer*
+`WfCtxEqu Γ` premise rather than a universal `∀ Γ, WfCtxEqu Γ`.
+
+The outer `hWfCtxEquOuter : WfCtxEqu Γ` is threaded into the
+`WfCtxEqu`-parametric Theorem 5 surface
+`Theorem_5_DeBruijn_Preservation_under_wfctx_of`, which propagates it
+through internal recursion via `WfCtxEqu.sub` on `.sub`-extended
+sub-contexts (every MEqRed binder sub-derivation lives under a
+`.sub`-extended Γ). No false-shape universal-Γ hypothesis is required.
+
+The four `h_*` arms exposed by v2 are manufactured inside this wrapper
+using the typed payloads plus the bet-arm NoBinders premises. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_partial_v3_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    (hBetNoBindersResidual :
+      ∀ {Γ : Ctx} {t v v' body body' : Term},
+        Term.NoBinders body → Term.NoBinders v →
+        Term.Scoped Γ.depth t →
+        MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body' →
+        MEqRed Γ [] v v' →
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (hNoBindersAtBet :
+      ∀ {Γ : Ctx} {t body v : Term},
+        WfM Γ (.app (.abs t body) v) →
+          Term.NoBinders body ∧ Term.NoBinders v)
+    {Γ : Ctx} {t t' u : Term}
+    (hWfCtxEquOuter : WfCtxEqu Γ)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u := by
+  -- Retain `hSubstStar` as a real dependency so it shows up in the
+  -- closure even though it is consumed by the user's external
+  -- construction of `hBetNoBindersResidual` (built from
+  -- `BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar` plus the
+  -- absorbed arms).
+  let _ : BetaInstantiationPreservesWSubMStar := hSubstStar
+  -- Manufacture the universal `h_bet` arm (universal in Γ) from
+  -- the source-typing NoBinders extractor + NoBinders-restricted
+  -- bet residual. Neither input requires `WfCtxEqu`: NoBinders is a
+  -- syntactic restriction extracted from the source `WfM` typing of
+  -- the β-redex, and the NoBinders-restricted bet residual is built
+  -- externally from `hSubstStar` plus the absorbed arms.
+  have h_bet : ∀ {Γ' : Ctx} {t v v' body body' : Term},
+      Term.Scoped Γ'.depth t →
+        MEqRed ({ bound := t, kind := .sub } :: Γ') [] body body' →
+          MEqRed Γ' [] v v' →
+            WfM Γ' (.app (.abs t body) v) →
+              WfM Γ' (Term.instantiate 0 v' body') := by
+    intro Γ' t v v' body body' ht hBody hArg hwf
+    have ⟨hNB, hNV⟩ := hNoBindersAtBet hwf
+    exact hBetNoBindersResidual hNB hNV ht hBody hArg hwf
+  -- Build `MEqRedPreservesWfMUnderWfCtx` (per-call WfCtxEqu) via the
+  -- partial-with-pro-app-fun assembly. The three "easy" residuals
+  -- (`pro`, `app`, `fun_`) are absorbed inside; the only remaining
+  -- residual is `h_bet`, which is now fully discharged.
+  have hMEqPres : MEqRedPreservesWfMUnderWfCtx :=
+    MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app_fun
+      hOpFun hFunBound h_bet
+  -- Build the chain-shape payload from universal strong commutativity.
+  have hShape : AbsFunctionBoundChainShapePayload :=
+    Theorem_3_DeBruijn_AbsFunctionBoundChainShapePayload_of
+      (fun {Γ} => @hUniformStrongCommutes Γ [])
+  -- Build the per-call-`WfCtxEqu` chain-shape well-formedness payload
+  -- from `MEqRedPreservesWfMUnderWfCtx`.
+  have hShapeWf : AbsFunctionBoundChainShapeWfUnderWfCtxPayload hShape :=
+    AbsFunctionBoundChainShapeWfUnderWfCtxPayload_of_meq hShape hMEqPres
+  -- Build the per-call-`WfCtxEqu` function-bound inversion payload.
+  have hInv : AbsFunctionBoundInversionUnderWfCtx :=
+    AbsFunctionBoundInversionUnderWfCtx_of_chain_shape hShape hShapeWf
+  -- Build the per-call-`WfCtxEqu` operational preservation payload.
+  have hStepPres : StepPreservesWfMUnderWfCtx :=
+    StepPreservesWfMUnderWfCtx_of_components hSubst hInv hSubHeadReplace
+  -- Apply the per-call-`WfCtxEqu` Theorem 5 surface, threading the
+  -- outer `WfCtxEqu Γ` once. Internal recursion through `.sub`-extended
+  -- sub-contexts uses `WfCtxEqu.sub` (already inside the per-arm
+  -- helpers and chain-shape inversion).
+  exact Theorem_5_DeBruijn_Preservation_under_wfctx_of hStepPres
+    hWfCtxEquOuter hwf hstep
+
+/-- Closed-term specialization of
+`Theorem_5_DeBruijn_Preservation_partial_v3_proved`. The closed-term
+case discharges the outer `WfCtxEqu` premise via `WfCtxEqu.empty`
+(the empty context is trivially well-formed-equivalent). -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v3_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    (hBetNoBindersResidual :
+      ∀ {Γ : Ctx} {t v v' body body' : Term},
+        Term.NoBinders body → Term.NoBinders v →
+        Term.Scoped Γ.depth t →
+        MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body' →
+        MEqRed Γ [] v v' →
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (hNoBindersAtBet :
+      ∀ {Γ : Ctx} {t body v : Term},
+        WfM Γ (.app (.abs t body) v) →
+          Term.NoBinders body ∧ Term.NoBinders v)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_partial_v3_proved
+    hSubst hUniformStrongCommutes hOpFun hFunBound hSubstStar
+    hSubHeadReplace hBetNoBindersResidual hNoBindersAtBet
+    WfCtxEqu.empty hwf hstep
