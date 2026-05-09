@@ -17762,6 +17762,113 @@ noncomputable def changedHeadProAppSpineJoin_of_single_steps {Γ : Ctx}
   changedHeadProAppSpineJoin_of_steps hAppend hpvNil hpvBody hOldToNew
     hArgs (MEqRedStar.forall₂_single hSteps)
 
+/-- Append two `Forall₂` proofs over the same relation. Mathlib's
+`List.rel_append` is in relator style; this is the direct shape needed
+by the inversion below. -/
+theorem List.Forall₂_append {α β : Type*} {R : α → β → Prop}
+    {l₁ l₁' : List α} {l₂ l₂' : List β}
+    (h₁ : List.Forall₂ R l₁ l₂) (h₂ : List.Forall₂ R l₁' l₂') :
+    List.Forall₂ R (l₁ ++ l₁') (l₂ ++ l₂') := by
+  induction h₁ with
+  | nil => simpa using h₂
+  | cons hHead _ ih => exact List.Forall₂.cons hHead (ih)
+
+/-- Pointwise transport of a `Forall₂` of relations under a relation
+implication. Used to lift per-argument MEqRedStar steps from one bound
+to another (composing with `sub_head_replace_star`). -/
+theorem List.Forall₂.imp {α β : Type*} {R S : α → β → Prop}
+    {l₁ : List α} {l₂ : List β}
+    (hMap : ∀ ⦃a b⦄, R a b → S a b)
+    (h : List.Forall₂ R l₁ l₂) :
+    List.Forall₂ S l₁ l₂ := by
+  induction h with
+  | nil => exact List.Forall₂.nil
+  | cons hHead _ ih => exact List.Forall₂.cons (hMap hHead) ih
+
+/-- An `.app`-headed application spine is itself always an `.app`, never
+an `.abs` or `.top`. Prop-level form. -/
+theorem Term.appSpine_app_eq_app {A B : Term} (args : List Term) :
+    ∃ U V, Term.appSpine (.app A B) args = .app U V := by
+  induction args using List.reverseRecOn generalizing A B with
+  | nil => exact ⟨A, B, rfl⟩
+  | append_singleton init last _ =>
+      refine ⟨Term.appSpine (.app A B) init, last, ?_⟩
+      simp [Term.appSpine_append]
+
+/-- Inversion: `MEqRed Γ s (.app (.bvar i) v) u₂` with a sub-binding
+witness for `i` decomposes into pointwise steps. `Me-Pro` is ruled out
+by `subBinds_equBinds_false`; `Me-Var` fixes the head. -/
+theorem MEqRed.app_bvar_inv_subBound
+    {Γ : Ctx} {s : Stack} {i : Nat} {v u₂ tBnd : Term}
+    (hBind : Ctx.subBinds Γ i tBnd)
+    (h : MEqRed Γ s (.app (.bvar i) v) u₂) :
+    ∃ v', u₂ = .app (.bvar i) v' ∧
+      Nonempty (MEqRed Γ [] v v') := by
+  cases h with
+  | app hOp hArg =>
+      rename_i u' v'
+      cases hOp with
+      | pro _ heqBind _ =>
+          exact (Ctx.subBinds_equBinds_false hBind heqBind).elim
+      | var _ _ =>
+          exact ⟨v', rfl, ⟨hArg⟩⟩
+
+/-- Inversion specialized to a `bvar`-headed application spine. Given a
+single `MEqRed` step from `Term.appSpine (.app (.bvar i) argHead) args`,
+recover individual empty-stack steps on `argHead`, on each spine
+argument, and observe that the result has the same `(.bvar i)` head
+once `Me-Pro` is ruled out by an existing `subBinds` witness.
+
+The structural reason this inversion exists: the outermost layers of
+the spine are all `.app` constructors whose head is itself an `.app`,
+so `Me-Bet` (head `.abs _ _`) and `Me-TAp` (head `.top`) are
+syntactically impossible at every layer. The innermost `.bvar i` step
+admits only `Me-Var` (since `Me-Pro` would require an equivalence
+binding at index `i`, contradicting the supplied subtype binding). -/
+theorem MEqRed.appSpine_bvar_app_inv
+    {Γ : Ctx} {s : Stack} {i : Nat} {argHead u₂ tBnd : Term}
+    (args : List Term)
+    (hBind : Ctx.subBinds Γ i tBnd)
+    (h : MEqRed Γ s (Term.appSpine (.app (.bvar i) argHead) args) u₂) :
+    ∃ argHead' args',
+      args.length = args'.length ∧
+      u₂ = Term.appSpine (.app (.bvar i) argHead') args' ∧
+      Nonempty (MEqRed Γ [] argHead argHead') ∧
+      List.Forall₂ (fun arg arg' => Nonempty (MEqRed Γ [] arg arg'))
+        args args' := by
+  induction args using List.reverseRecOn generalizing s u₂ with
+  | nil =>
+      simp only [Term.appSpine] at h
+      obtain ⟨v', hEq, hArg⟩ :=
+        MEqRed.app_bvar_inv_subBound (i := i) (v := argHead) hBind h
+      refine ⟨v', [], rfl, ?_, hArg, List.Forall₂.nil⟩
+      simp [Term.appSpine, hEq]
+  | append_singleton init last ih =>
+      have hRew :
+          Term.appSpine (.app (.bvar i) argHead) (init ++ [last]) =
+            .app (Term.appSpine (.app (.bvar i) argHead) init) last := by
+        simp [Term.appSpine_append]
+      rw [hRew] at h
+      -- Outer step: `.app (Term.appSpine (.app (.bvar i) argHead) init) last`.
+      -- The outer head is always an `.app` (by `Term.appSpine_app_eq_app`), so
+      -- only `Me-App` can fire.
+      obtain ⟨U, V, hShape⟩ :=
+        Term.appSpine_app_eq_app (A := .bvar i) (B := argHead) init
+      rw [hShape] at h
+      cases h with
+      | app hOp hArgStep =>
+          rename_i u' v'
+          have hOp' : MEqRed Γ (last :: s)
+              (Term.appSpine (.app (.bvar i) argHead) init) u' := by
+            simpa [hShape] using hOp
+          obtain ⟨argHead', args', hLen, hEq, hArgHeadStep, hArgSteps⟩ :=
+            ih (s := last :: s) hOp'
+          refine ⟨argHead', args' ++ [v'], ?_, ?_, hArgHeadStep, ?_⟩
+          · simp [hLen]
+          · simp [Term.appSpine_append, hEq]
+          · exact List.Forall₂_append hArgSteps
+              (List.Forall₂.cons ⟨hArgStep⟩ List.Forall₂.nil)
+
 /-- Predicate: a term has no `.abs` constructor anywhere along its
 structural spine (top-level only, so applications can have abstractions
 inside their subterms — but the term being instantiated is not directly
@@ -27871,10 +27978,14 @@ def StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload : Prop :=
 /-- Body join needed by the stable-successor lookup leaf for a generic
 nonempty application spine. Like the changed-head body join, this isolates
 the missing inversion of the right `MEqRed` app-spine step into argument
-steps after the abstraction bound is joined. -/
+steps after the abstraction bound is joined. The `MEqRedStar Γ [] t
+bound₃` premise mirrors the changed-head body join: it is what allows
+the body's MEqRed step to be transported from `t`-context to
+`bound₃`-context. -/
 def StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccBodyJoinPayload : Prop :=
   ∀ {Γ : Ctx} {t bound₃ target argHead v u₂ v₂ : Term}
     {args : List Term} {i : Nat},
+    MEqRedStar Γ [] t bound₃ →
     Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) (i + 1) target →
     PrevalidExt Γ [] →
     PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] →
@@ -33998,6 +34109,175 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload.of_n
   | fOp hInner hα hBody =>
       exact hNestedFOp hT₁ hInner hα hBody hArgHead hArgs hv hT₂ hEqOp hEqArg
 
+/-- Discharge the changed-head body join via inversion of the right
+`MEqRed` app-spine step into pointwise empty-stack arg steps, head
+replacement of the inverted steps from `t`-context to `bound₃`-context,
+and the existing `changedHeadProAppSpineJoin_of_single_steps` helper.
+
+The structural argument: `hEqOp` lives in `({t,sub}::Γ) (v::[])` form.
+We invert it via `MEqRed.appSpine_bvar_app_inv` (using
+`Ctx.subBinds_zero_self Γ t` to rule out `Me-Pro` on `.bvar 0`); the
+inversion yields `argHead'`, `args'` and pointwise empty-stack steps
+on each, matching exactly the input shape required by the join helper
+once `v →ₑ v₂` is supplied from `hEqArg`. The argument-list
+transport from `t`-context to `bound₃`-context is per-element via
+`sub_head_replace_star`. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload.proved_of_stack_append
+    (hAppend : MEqRedStarStackAppendPayload) :
+    StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload := by
+  intro Γ t bound₃ argHead v u₂ v₂ args
+    hOldTo₃ hpvNil hpvBody₃ hArgHead hArgs hv hEqOp hEqArg
+  -- Invert hEqOp: u₂ = Term.appSpine (.app (.bvar 0) argHead') args' with
+  -- pointwise (t-context) empty-stack steps.
+  obtain ⟨argHead', args', hLen, hU₂Eq, hArgHeadStep, hArgSteps⟩ :=
+    MEqRed.appSpine_bvar_app_inv (i := 0) (argHead := argHead)
+      (Γ := { bound := t, kind := .sub } :: Γ) (s := v :: []) args
+      (Ctx.subBinds_zero_self Γ t) hEqOp
+  -- Transport each step from t-context to bound₃-context.
+  have hArgHeadStep₃ :
+      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] argHead argHead' :=
+    MEqRedStar.sub_head_replace_star
+      (MEqRedStar.single hArgHeadStep.some) hOldTo₃
+  have hVStep₃ :
+      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+    MEqRedStar.sub_head_replace_star
+      (MEqRedStar.single hEqArg) hOldTo₃
+  -- Per-element transport for the args list.
+  have hArgsSteps_t :
+      List.Forall₂
+        (fun arg arg' =>
+          MEqRedStar ({ bound := t, kind := .sub } :: Γ) [] arg arg')
+        args args' := MEqRedStar.forall₂_single hArgSteps
+  have hArgsSteps₃ :
+      List.Forall₂
+        (fun arg arg' =>
+          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] arg arg')
+        args args' :=
+    hArgsSteps_t.imp
+      (fun _ _ hStep => MEqRedStar.sub_head_replace_star hStep hOldTo₃)
+  -- Build a Forall₂ for argHead :: args ++ [v] vs argHead' :: args' ++ [v₂]
+  -- with star-level steps in bound₃-context.
+  have hAllSteps₃ :
+      List.Forall₂
+        (fun arg arg' =>
+          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] arg arg')
+        (argHead :: args ++ [v]) (argHead' :: args' ++ [v₂]) := by
+    refine List.Forall₂.cons hArgHeadStep₃ ?_
+    exact List.Forall₂_append hArgsSteps₃
+      (List.Forall₂.cons hVStep₃ List.Forall₂.nil)
+  -- All argument scoping in bound₃-context.
+  have hArgs₃ :
+      ∀ arg ∈ argHead :: args ++ [v],
+        Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+          arg := by
+    intro arg hmem
+    by_cases hHead : arg = argHead
+    · subst hHead
+      simpa [Ctx.depth] using hArgHead
+    · by_cases hArg : arg ∈ args
+      · simpa [Ctx.depth] using hArgs arg hArg
+      · have hV : arg = v := by
+          simpa [List.mem_cons, List.mem_append, List.mem_singleton,
+            hHead, hArg] using hmem
+        subst hV
+        simpa [Ctx.depth] using hv
+  -- Apply the changed-head spine join.
+  obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+    changedHeadProAppSpineJoin
+      (Γ := Γ) (oldBound := t) (newBound := bound₃)
+      (args := argHead :: args ++ [v])
+      (args' := argHead' :: args' ++ [v₂])
+      hAppend hpvNil hpvBody₃ hOldTo₃ hArgs₃
+      (MEqRedStar.scoped_right_list hArgs₃ hAllSteps₃)
+      hAllSteps₃
+  refine ⟨body₃, hLeftSpine, ?_⟩
+  -- RHS: convert appSpine (.bvar 0) (argHead' :: args' ++ [v₂]) to .app u₂ v₂.
+  have hRhsRewrite :
+      Term.appSpine (.bvar 0) (argHead' :: args' ++ [v₂]) = .app u₂ v₂ := by
+    simp [Term.appSpine_cons, Term.appSpine_append, hU₂Eq]
+  rw [hRhsRewrite] at hRightSpine
+  exact hRightSpine
+
+/-- Discharge the stable-successor body join via inversion of the right
+`MEqRed` app-spine step. Mirror of the changed-head body join discharge,
+using `stableSuccProAppSpineJoin_of_steps` and the head-replaced
+successor lookup. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccBodyJoinPayload.proved :
+    StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccBodyJoinPayload := by
+  intro Γ t bound₃ target argHead v u₂ v₂ args i
+    hOldTo₃ hBind hpvNil hpvBody₃ hArgHead hArgs hv hEqOp hEqArg
+  -- The successor binding's target is preserved under the head replacement.
+  have hBind₃ :
+      Ctx.subBinds ({ bound := bound₃, kind := .sub } :: Γ) (i + 1) target :=
+    Ctx.subBinds_sub_head_replace_succ hBind
+  have hTargetScoped₃ :
+      Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+        target :=
+    Prevalid.scoped_lookupSub (PrevalidExt.ctx hpvBody₃) hBind₃
+  -- Invert hEqOp: same shape as head case but with (.bvar (i + 1)).
+  obtain ⟨argHead', args', hLen, hU₂Eq, hArgHeadStep, hArgSteps⟩ :=
+    MEqRed.appSpine_bvar_app_inv (i := i + 1) (argHead := argHead)
+      (Γ := { bound := t, kind := .sub } :: Γ) (s := v :: []) args
+      hBind hEqOp
+  -- Transport each step.
+  have hArgHeadStep₃ :
+      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] argHead argHead' :=
+    MEqRedStar.sub_head_replace_star
+      (MEqRedStar.single hArgHeadStep.some) hOldTo₃
+  have hVStep₃ :
+      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+    MEqRedStar.sub_head_replace_star
+      (MEqRedStar.single hEqArg) hOldTo₃
+  have hArgsSteps_t :
+      List.Forall₂
+        (fun arg arg' =>
+          MEqRedStar ({ bound := t, kind := .sub } :: Γ) [] arg arg')
+        args args' := MEqRedStar.forall₂_single hArgSteps
+  have hArgsSteps₃ :
+      List.Forall₂
+        (fun arg arg' =>
+          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] arg arg')
+        args args' :=
+    hArgsSteps_t.imp
+      (fun _ _ hStep => MEqRedStar.sub_head_replace_star hStep hOldTo₃)
+  have hAllSteps₃ :
+      List.Forall₂
+        (fun arg arg' =>
+          MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) [] arg arg')
+        (argHead :: args ++ [v]) (argHead' :: args' ++ [v₂]) := by
+    refine List.Forall₂.cons hArgHeadStep₃ ?_
+    exact List.Forall₂_append hArgsSteps₃
+      (List.Forall₂.cons hVStep₃ List.Forall₂.nil)
+  have hArgs₃ :
+      ∀ arg ∈ argHead :: args ++ [v],
+        Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+          arg := by
+    intro arg hmem
+    by_cases hHead : arg = argHead
+    · subst hHead
+      simpa [Ctx.depth] using hArgHead
+    · by_cases hArg : arg ∈ args
+      · simpa [Ctx.depth] using hArgs arg hArg
+      · have hV : arg = v := by
+          simpa [List.mem_cons, List.mem_append, List.mem_singleton,
+            hHead, hArg] using hmem
+        subst hV
+        simpa [Ctx.depth] using hv
+  obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+    stableSuccProAppSpineJoin
+      (Γ := Γ) (bound := bound₃) (target := target) (i := i)
+      (args := argHead :: args ++ [v])
+      (args' := argHead' :: args' ++ [v₂])
+      hpvBody₃ hBind₃ hTargetScoped₃ hArgs₃
+      (MEqRedStar.scoped_right_list hArgs₃ hAllSteps₃)
+      hAllSteps₃
+  refine ⟨body₃, hLeftSpine, ?_⟩
+  have hRhsRewrite :
+      Term.appSpine (.bvar (i + 1)) (argHead' :: args' ++ [v₂]) = .app u₂ v₂ := by
+    simp [Term.appSpine_cons, Term.appSpine_append, hU₂Eq]
+  rw [hRhsRewrite] at hRightSpine
+  exact hRightSpine
+
 /-- Discharge the changed-head lookup leaf once the generic app-spine body
 join has been isolated. The remaining payload is exactly the missing
 right-spine inversion/transport step; the abstraction-bound join and outer
@@ -34110,7 +34390,10 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPaylo
             PrevalidExt.nil
               (Prevalid.sub (PrevalidExt.ctx hpvNil)
                 hBound₁₃.some.scoped_right)
-          exact hBodyJoin hBind hpvNil hpvBody₃ hArgHead hArgs hv hEqOp hEqArg)
+          have hOldTo₃ : MEqRedStar Γ [] t bound₃ :=
+            MEqRedStar.trans (MEqRedStar.single hT₁)
+              (MEqRedStar.single hBound₁₃.some)
+          exact hBodyJoin hOldTo₃ hBind hpvNil hpvBody₃ hArgHead hArgs hv hEqOp hEqArg)
 
 /-- Discharge the generic nonempty-spine `Ms-Top` leaf. The left body
 collapses by repeated `Me-TAp`; the right body closes by `Ms-Top`. -/
