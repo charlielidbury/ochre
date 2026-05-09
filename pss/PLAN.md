@@ -174,9 +174,12 @@ discharge is:
    This split avoids extending the fixed-depth ladder again: the changed-
    head lookup, stable-successor lookup, `Ms-Top`, `Ms-Equ`, recursive
    `Ms-App`, and `Ms-FOp` obligations are now exposed as separate cons-
-   spine payloads. The changed-head leaf is structurally reduced to
+   spine payloads. The changed-head and stable-successor lookup leaves are
+   structurally reduced to
    `StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload`,
-   which isolates the missing generic inversion/transport of the right
+   and
+   `StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccBodyJoinPayload`;
+   these isolate the missing generic inversion/transport of the right
    `MEqRed` app-spine step into body-level joins. The previous direct
    generic split over a stack written as `args ++ [v]` failed in the
    `Ms-FOp` arm, because `MSubRed.fOp` consumes the stack head as its
