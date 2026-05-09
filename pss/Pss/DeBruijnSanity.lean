@@ -1232,5 +1232,16 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_partial_proved
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_proved
 
+-- v2 partial discharge: factors `AbsFunctionBoundInversion` through
+-- `MEqRedPreservesWfM_partial`, decomposing the single
+-- `MEqRedPreservesWfM` residual into the four hard constructor arms
+-- (`pro`, `bet`, `app`, `fun_`). The trivial arms (`top`, `var`, `tAp`)
+-- are discharged inline; `fOp` is structurally unreachable at empty
+-- outer stack.
+#print axioms AbsFunctionBoundInversion_partial_via_MEqRed_residuals
+#print axioms AbsFunctionBoundInversionUnderWfCtx_partial_via_MEqRed_residuals
+#print axioms Theorem_5_DeBruijn_Preservation_partial_v2_proved
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v2_proved
+
 end DeBruijn
 end Pss

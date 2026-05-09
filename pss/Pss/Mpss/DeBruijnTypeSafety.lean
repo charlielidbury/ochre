@@ -35256,3 +35256,163 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_proved
     hSubst
     (AbsFunctionBoundInversion_partial_proved hUniformStrongCommutes hMEqPres)
     hSubHeadReplace hwf hstep
+
+/-! ### Function-bound inversion via `MEqRedPreservesWfM_partial` (v2)
+
+`AbsFunctionBoundInversion_partial_proved` consumes a whole
+`MEqRedPreservesWfM` witness. `MEqRedPreservesWfM_partial` discharges the
+three structural-trivial constructor arms of `MEqRedPreservesWfM` (`top`,
+`var`, `tAp`) unconditionally and exposes the four hard arms (`pro`,
+`bet`, `app`, `fun_`) as named hypotheses.
+
+Composing the two replaces the single `MEqRedPreservesWfM` residual with
+the four strictly-smaller per-constructor residuals. The `fOp`
+constructor of `MEqRed` is structurally unreachable at empty outer stack
+and so does not appear in the residual list.
+
+This v2 layer further decomposes one of the operational residuals of
+`Theorem_5_DeBruijn_Preservation_proved` into smaller discharge-able
+pieces, without enlarging the closure of `Theorem_5_DeBruijn_…`. -/
+
+/-- Function-bound inversion derived from universal single-step strong
+commutativity plus the four hard constructor arms of
+`MEqRedPreservesWfM`, with the three trivial arms (`top`, `var`, `tAp`)
+discharged inline via `MEqRedPreservesWfM_partial`. Replaces the single
+`MEqRedPreservesWfM` residual of `AbsFunctionBoundInversion_partial_proved`
+with the four strictly-smaller per-constructor residuals. -/
+noncomputable def AbsFunctionBoundInversion_partial_via_MEqRed_residuals
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (h_pro : ∀ {Γ : Ctx} {i : Nat} {α α' : Term}
+      (_hpv : PrevalidExt Γ ([] : Stack))
+      (_hb : Γ.equBinds i α)
+      (_hRec : MEqRed Γ [] α α'),
+        WfM Γ (.bvar i) → WfM Γ α')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    AbsFunctionBoundInversion :=
+  AbsFunctionBoundInversion_partial_proved
+    hUniformStrongCommutes
+    (MEqRedPreservesWfM_partial h_pro h_bet h_app h_fun)
+
+/-- `WfCtxEqu`-quantified function-bound inversion derived from the same
+inputs as `AbsFunctionBoundInversion_partial_via_MEqRed_residuals`. The
+`WfCtxEqu` premise is unused at this layer because the partial assembly
+already supplies context-generic well-formedness propagation. -/
+noncomputable def AbsFunctionBoundInversionUnderWfCtx_partial_via_MEqRed_residuals
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (h_pro : ∀ {Γ : Ctx} {i : Nat} {α α' : Term}
+      (_hpv : PrevalidExt Γ ([] : Stack))
+      (_hb : Γ.equBinds i α)
+      (_hRec : MEqRed Γ [] α α'),
+        WfM Γ (.bvar i) → WfM Γ α')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    AbsFunctionBoundInversionUnderWfCtx :=
+  AbsFunctionBoundInversionUnderWfCtx.of_global
+    (AbsFunctionBoundInversion_partial_via_MEqRed_residuals
+      hUniformStrongCommutes h_pro h_bet h_app h_fun)
+
+/-- Top-level de Bruijn Theorem 5 with the operational `AbsFunctionBoundInversion`
+residual factored through `MEqRedPreservesWfM_partial` into four
+strictly-smaller per-constructor residuals.
+
+Residuals consumed (relative to `Theorem_5_DeBruijn_Preservation_partial_proved`):
+  * `MEqRedPreservesWfM` — replaced by `MEqRedPreservesWfM_partial`'s four
+    hard constructor arms (`pro`, `bet`, `app`, `fun_`). The trivial
+    arms (`top`, `var`, `tAp`) are discharged inline. The `fOp` arm is
+    structurally unreachable at empty outer stack.
+
+Residuals retained:
+  * `BetaInstantiationPreservesWfM`
+  * `UniformStrongCommutes`
+  * `WfMSubHeadReplaceOfNewWf`. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_partial_v2_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (h_pro : ∀ {Γ : Ctx} {i : Nat} {α α' : Term}
+      (_hpv : PrevalidExt Γ ([] : Stack))
+      (_hb : Γ.equBinds i α)
+      (_hRec : MEqRed Γ [] α α'),
+        WfM Γ (.bvar i) → WfM Γ α')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body'))
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  Theorem_5_DeBruijn_Preservation_proved
+    hSubst
+    (AbsFunctionBoundInversion_partial_via_MEqRed_residuals
+      hUniformStrongCommutes h_pro h_bet h_app h_fun)
+    hSubHeadReplace hwf hstep
+
+/-- Closed-term specialization of `Theorem_5_DeBruijn_Preservation_partial_v2_proved`. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v2_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (h_pro : ∀ {Γ : Ctx} {i : Nat} {α α' : Term}
+      (_hpv : PrevalidExt Γ ([] : Stack))
+      (_hb : Γ.equBinds i α)
+      (_hRec : MEqRed Γ [] α α'),
+        WfM Γ (.bvar i) → WfM Γ α')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body'))
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_ClosedPreservation_proved
+    hSubst
+    (AbsFunctionBoundInversion_partial_via_MEqRed_residuals
+      hUniformStrongCommutes h_pro h_bet h_app h_fun)
+    hSubHeadReplace hwf hstep
