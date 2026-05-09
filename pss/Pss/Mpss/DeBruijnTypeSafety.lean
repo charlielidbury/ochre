@@ -27277,6 +27277,26 @@ def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOpC
         (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app (.app (.abs inner body') arg₁₃) arg₁₂) arg₁₁) arg₁₀) arg₉) arg₈) arg₇) arg₆) arg₅) arg₄) arg₃) arg₂) arg) v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- Generic app-spine form of the recursive `Ms-App` residual in the
+fun/fun body app/app branch. This is the list-based surface that avoids
+adding another fixed-arity recursive-app payload when the next constructor
+split is exposed. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' v u₂ v₂ : Term}
+    {args : List Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (args ++ [v]) op op' →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine op args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁ (Term.appSpine op' (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
 /-- Constructor-local `Ms-FOp` case exposed from the two-more recursive
 `Ms-App` residual. -/
 def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOpChainPayload : Prop :=
@@ -33154,6 +33174,65 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAp
   | fOp hInner hα hBody =>
       exact hNestedFOp hT₁ hInner hα hBody hArg₁₃ hArg₁₂ hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
 
+/-- Specialize the generic app-spine recursive residual to the current
+four-more fixed-arity `Ms-App` payload. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_app_spine
+    (hAppSpine : StrongCommutesFunFunBodyAppAppSubAppSpineChainPayload) :
+    StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload := by
+  intro Γ t bound₁ bound₂ op op' arg₁₄ arg₁₃ arg₁₂ arg₁₁ arg₁₀ arg₉ arg₈ arg₇ arg₆ arg₅ arg₄ arg₃ arg₂ arg v u₂ v₂
+    hT₁ hOp hArg₁₄ hArg₁₃ hArg₁₂ hArg₁₁ hArg₁₀ hArg₉ hArg₈ hArg₇ hArg₆ hArg₅ hArg₄ hArg₃ hArg₂ hArg hv hT₂ hEqOp hEqArg
+  exact by
+    simpa [Term.appSpine] using
+      hAppSpine hT₁ hOp
+        (args := [arg₁₄, arg₁₃, arg₁₂, arg₁₁, arg₁₀, arg₉, arg₈, arg₇, arg₆, arg₅, arg₄, arg₃, arg₂, arg])
+        (by
+          intro x hx
+          by_cases hx₁₄ : x = arg₁₄
+          · subst x
+            exact hArg₁₄
+          · by_cases hx₁₃ : x = arg₁₃
+            · subst x
+              exact hArg₁₃
+            · by_cases hx₁₂ : x = arg₁₂
+              · subst x
+                exact hArg₁₂
+              · by_cases hx₁₁ : x = arg₁₁
+                · subst x
+                  exact hArg₁₁
+                · by_cases hx₁₀ : x = arg₁₀
+                  · subst x
+                    exact hArg₁₀
+                  · by_cases hx₉ : x = arg₉
+                    · subst x
+                      exact hArg₉
+                    · by_cases hx₈ : x = arg₈
+                      · subst x
+                        exact hArg₈
+                      · by_cases hx₇ : x = arg₇
+                        · subst x
+                          exact hArg₇
+                        · by_cases hx₆ : x = arg₆
+                          · subst x
+                            exact hArg₆
+                          · by_cases hx₅ : x = arg₅
+                            · subst x
+                              exact hArg₅
+                            · by_cases hx₄ : x = arg₄
+                              · subst x
+                                exact hArg₄
+                              · by_cases hx₃ : x = arg₃
+                                · subst x
+                                  exact hArg₃
+                                · by_cases hx₂ : x = arg₂
+                                  · subst x
+                                    exact hArg₂
+                                  · have hxarg : x = arg := by
+                                      simpa [List.mem_cons, List.mem_singleton,
+                                        hx₁₄, hx₁₃, hx₁₂, hx₁₁, hx₁₀, hx₉,
+                                        hx₈, hx₇, hx₆, hx₅, hx₄, hx₃, hx₂] using hx
+                                    simpa [hxarg] using hArg)
+        hv hT₂ hEqOp hEqArg
+
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
 
@@ -33617,8 +33696,8 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
     (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
     (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
     (hAppend : MEqRedStarStackAppendPayload)
-    (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppApp :
-      StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload)
+    (hFunBodyAppAppSubAppSpine :
+      StrongCommutesFunFunBodyAppAppSubAppSpineChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOpChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp :
@@ -33775,7 +33854,8 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                                 hUniformDiamond)
                               (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
                                 hUniformDiamond)
-                              hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppApp
+                              (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_app_spine
+                                hFunBodyAppAppSubAppSpine)
                               hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp)
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp)
                           hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppFOp)
