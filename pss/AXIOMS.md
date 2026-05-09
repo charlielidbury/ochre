@@ -3301,6 +3301,15 @@ Bruijn proofs do not yet bridge to LN.
   call the lower-level joins. This removes the repeated target-argument
   scoping boilerplate before the next recursive `Ms-App` split. No
   axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — factored the deepest fixed
+  recursive `Ms-App` residual through the generic
+  `StrongCommutesFunFunBodyAppAppSubAppSpineChainPayload`, then wired
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`
+  to consume that spine payload instead of the fourteen-argument fixed
+  payload. A direct generic constructor split was checked and rejected:
+  `MSubRed.fOp` matches only stacks headed by its operand (`α :: s`), so
+  a split over `args ++ [v]` must first decompose `args` before
+  destructing the subtype reduction. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`

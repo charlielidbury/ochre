@@ -173,7 +173,12 @@ discharge is:
    either introduce the next constructor-split layer and discharge its
    top/equ/successor/changed-head leaves, or factor the generic
    application-spine decomposition that would make those fixed arities
-   unnecessary.
+   unnecessary. The first generic split attempt exposed an important shape
+   constraint: a direct `cases hOp` over a stack written as `args ++ [v]`
+   fails in the `Ms-FOp` arm, because `MSubRed.fOp` consumes the stack
+   head as its operand (`α :: s`). The generic split must first decompose
+   `args` (separating empty/nonempty spines and the FOp operand) before
+   destructing the subtype reduction.
 
 2. **`UniformEqDiamonds` (Lemma 2 single-step).** Same shape as (1) on
    the `MEqRed × MEqRed` side. Smaller case grid; many cells already
