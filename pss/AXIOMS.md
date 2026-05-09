@@ -3206,6 +3206,14 @@ Bruijn proofs do not yet bridge to LN.
   changed-head residual parameters with the single stack-append residual.
   No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `StrongCommutesFunFunBodyAppAppSubAppAppAppProHeadChainPayload.proved_of_stack_append`,
+  the three-argument nested changed-head `Ms-Pro` app/app leaf, using
+  `changedHeadProAppSpineJoin` after splitting the right `Me-App`
+  operator step through three applications. Wired it into
+  `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`,
+  removing one more explicit changed-head residual parameter in favor of
+  `MEqRedStarStackAppendPayload`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype
