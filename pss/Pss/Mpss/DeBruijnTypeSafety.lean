@@ -17634,6 +17634,20 @@ noncomputable def MEqRedStar.scoped_right_list {Γ : Ctx}
     ∀ arg' ∈ args', Term.Scoped Γ.depth arg' :=
   (MEqRedStar.scoped_right_list_nonempty hArgs hSteps).some
 
+/-- Promote a pointwise list of single equivalence steps, stored in the
+Prop-wrapper `Nonempty` shape, to pointwise equivalence-star steps. This
+removes the repeated `MEqRedStar.single` wrapping from application-spine
+leaf proofs. -/
+theorem MEqRedStar.forall₂_single {Γ : Ctx} {args args' : List Term}
+    (hSteps : List.Forall₂ (fun arg arg' => Nonempty (MEqRed Γ [] arg arg'))
+      args args') :
+    List.Forall₂ (fun arg arg' => MEqRedStar Γ [] arg arg') args args' := by
+  induction hSteps with
+  | nil =>
+      exact List.Forall₂.nil
+  | cons hStep hTail ih =>
+      exact List.Forall₂.cons (MEqRedStar.single hStep.some) ih
+
 /-- Iterate the star-level equivalence stack-append payload over a scoped
 argument list. This is the exact lift needed to move a head-position
 equivalence chain through a left-associated application spine. -/
@@ -17842,6 +17856,30 @@ noncomputable def changedHeadProAppSpineJoin_of_steps {Γ : Ctx}
           (Term.appSpine (.bvar 0) args') body₃ :=
   changedHeadProAppSpineJoin hAppend hpvNil hpvBody hOldToNew hArgs
     (MEqRedStar.scoped_right_list hArgs hSteps) hSteps
+
+/-- Single-step-list variant of `changedHeadProAppSpineJoin_of_steps`.
+The fixed-arity changed-head leaves obtain exactly these raw argument
+steps by splitting nested `Me-App` constructors. -/
+noncomputable def changedHeadProAppSpineJoin_of_single_steps {Γ : Ctx}
+    {oldBound newBound : Term} {args args' : List Term}
+    (hAppend : MEqRedStarStackAppendPayload)
+    (hpvNil : PrevalidExt Γ [])
+    (hpvBody : PrevalidExt ({ bound := newBound, kind := .sub } :: Γ) [])
+    (hOldToNew : MEqRedStar Γ [] oldBound newBound)
+    (hArgs : ∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := newBound, kind := .sub } :: Γ)) arg)
+    (hSteps : List.Forall₂
+      (fun arg arg' =>
+        Nonempty
+          (MEqRed ({ bound := newBound, kind := .sub } :: Γ) [] arg arg'))
+      args args') :
+    ∃ body₃,
+      MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+        (Term.appSpine (Term.shift 0 oldBound) args) body₃
+        ∧ MSubRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+          (Term.appSpine (.bvar 0) args') body₃ :=
+  changedHeadProAppSpineJoin_of_steps hAppend hpvNil hpvBody hOldToNew
+    hArgs (MEqRedStar.forall₂_single hSteps)
 
 /-- Predicate: a term has no `.abs` constructor anywhere along its
 structural spine (top-level only, so applications can have abstractions
