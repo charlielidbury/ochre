@@ -34620,6 +34620,132 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload.p
           · exact MSubRedStar.of_MEqRedStar hpvBody₃
               (MEqRedStar.single hRightJoin.some))
 
+/-- Discharge the recursive `Ms-App` leaf for the nonempty generic app-spine
+residual. Internally, the App ChainPayload's `MSubRed` operator step `hOp`
+is dispatched by case analysis: each non-`Ms-App` constructor case
+delegates to the matching sibling arm handler with the operator's
+underlying head replacing the spine source's `op` slot. The `Ms-App`
+constructor case shrinks `op` (its outer shape becomes `.app op_inner v`)
+and recurses on this same `proved` lemma. Termination is by the size of
+`op`, which strictly decreases at every `Ms-App` constructor: the
+sub-derivation is on `op_inner`, whose size is one less than `.app op_inner v`. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload.proved
+    (hProHead : StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload)
+    (hProSucc : StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload)
+    (hTop : StrongCommutesFunFunBodyAppAppSubAppSpineConsTopChainPayload)
+    (hEqu : StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload)
+    (hFOp : StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload)
+    {Γ : Ctx} {t bound₁ bound₂ op op' opArg argHead v u₂ v₂ : Term}
+    {args : List Term}
+    (hT₁ : MEqRed Γ [] t bound₁)
+    (hOp : MSubRed ({ bound := t, kind := .sub } :: Γ)
+      (opArg :: argHead :: args ++ [v]) op op')
+    (hOpArg : Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) opArg)
+    (hArgHead :
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead)
+    (hArgs : ∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg)
+    (hv : Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v)
+    (hT₂ : MEqRed Γ [] t bound₂)
+    (hEqOp : MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.app op opArg) argHead) args) u₂)
+    (hEqArg : MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂) :
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app (.app op' opArg) argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃ := by
+  -- Reshape: treat `opArg` as the new `argHead`, `argHead :: args` as the
+  -- new `args` for the parent ChainPayload's shape.
+  have hAllArgsStep :
+      ∀ arg ∈ argHead :: args,
+        Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+    intro arg hmem
+    by_cases hHead : arg = argHead
+    · subst hHead; exact hArgHead
+    · have hMem : arg ∈ args := by
+        simpa [List.mem_cons, hHead] using hmem
+      exact hArgs arg hMem
+  have hEqOpStep :
+      MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+        (Term.appSpine (.app op opArg) (argHead :: args)) u₂ := by
+    simpa [Term.appSpine_cons] using hEqOp
+  have hParentClose :
+      ∃ t₃,
+        MEqRedStar Γ [] (.abs bound₁
+          (Term.appSpine (.app op' opArg) (argHead :: args ++ [v]))) t₃
+          ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃ := by
+    cases hOp with
+    | @pro _ _ i target _ hBind =>
+        cases i with
+        | zero =>
+            have hTarget : op' = Term.shift 0 t :=
+              Ctx.subBinds_unique hBind (Ctx.subBinds_zero_self Γ t)
+            subst op'
+            exact hProHead hT₁ hOpArg hAllArgsStep hv hT₂ hEqOpStep hEqArg
+        | succ i =>
+            exact hProSucc (i := i) hT₁ hBind hOpArg hAllArgsStep hv hT₂
+              hEqOpStep hEqArg
+    | top _ hScoped =>
+        exact hTop hT₁ hScoped hOpArg hAllArgsStep hv hT₂ hEqOpStep hEqArg
+    | equ _ hEq =>
+        exact hEqu hT₁ hEq hOpArg hAllArgsStep hv hT₂ hEqOpStep hEqArg
+    | @app _ _ op_inner op_inner' opArg_inner hOp_inner hArg_inner =>
+        -- After the `app` constructor matches: `op = .app op_inner opArg_inner`,
+        -- `op' = .app op_inner' opArg_inner`. The constructor's `v`
+        -- (here `opArg_inner`) is the inner argument. The inner
+        -- sub-derivation `hOp_inner` has stack
+        --   `opArg_inner :: opArg :: argHead :: args ++ [v]`
+        -- which corresponds to the App ChainPayload's expected shape
+        --   `(opArg' :: argHead' :: args' ++ [v])`
+        -- with `opArg' := opArg_inner`, `argHead' := opArg`, `args' := argHead :: args`.
+        -- We recurse on `proved` with these reshape parameters; termination
+        -- is by `Term.size op` which strictly decreases (op_inner is a
+        -- structural sub-term of op = .app op_inner opArg_inner).
+        have hAllArgsStep' :
+            ∀ arg ∈ opArg :: argHead :: args,
+              Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+          intro arg hmem
+          by_cases hHead : arg = opArg
+          · subst hHead; exact hOpArg
+          · by_cases hHead' : arg = argHead
+            · subst hHead'; exact hArgHead
+            · have hMem' : arg ∈ args := by
+                simpa [List.mem_cons, hHead, hHead'] using hmem
+              exact hArgs arg hMem'
+        have hEqOpStep' :
+            MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+              (Term.appSpine (.app op_inner opArg_inner) (opArg :: argHead :: args)) u₂ := by
+          simpa [Term.appSpine_cons] using hEqOpStep
+        -- Recurse: pass `op_inner` as the new explicit `op` argument
+        -- (which controls the termination measure).
+        have hRec :=
+          StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload.proved
+            hProHead hProSucc hTop hEqu hFOp
+            (op := op_inner) (op' := op_inner') (opArg := opArg_inner)
+            (argHead := opArg) (args := argHead :: args)
+            (u₂ := u₂) (v₂ := v₂)
+            hT₁ hOp_inner hArg_inner hOpArg
+            hAllArgsStep hv hT₂ hEqOpStep' hEqArg
+        obtain ⟨t₃, hLeftRec, hRightRec⟩ := hRec
+        refine ⟨t₃, ?_, hRightRec⟩
+        simpa [Term.appSpine_cons, List.cons_append] using hLeftRec
+    | fOp ht hα hBody =>
+        exact hFOp hT₁ ht hα hBody hOpArg hAllArgsStep hv hT₂ hEqOpStep hEqArg
+  obtain ⟨t₃, hLeft, hRight⟩ := hParentClose
+  refine ⟨t₃, ?_, hRight⟩
+  simpa [Term.appSpine_cons, List.cons_append] using hLeft
+termination_by Term.size op
+decreasing_by
+  simp_wf
+  -- The recursive call is on `op_inner`, where the cases analysis
+  -- has refined `op = .app op_inner opArg_inner`. The Term.size of
+  -- `.app op_inner opArg_inner` is `1 + size op_inner + size opArg_inner ≥ 1 + size op_inner > size op_inner`.
+  rename_i hHEq
+  -- Use the HEq `op = u✝.app v✝` to substitute.
+  subst_eqs
+  simp only [Term.size_app]
+  omega
+
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
 
@@ -35087,8 +35213,6 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
       StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload)
     (hFunBodyAppAppSubAppSpineProSuccBodyJoin :
       StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccBodyJoinPayload)
-    (hFunBodyAppAppSubAppSpineApp :
-      StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload)
     (hFunBodyAppAppSubAppSpineFOp :
       StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp :
@@ -35259,7 +35383,24 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                                     hUniformDiamond)
                                   (StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload.proved
                                     hUniformDiamond)
-                                  hFunBodyAppAppSubAppSpineApp
+                                  -- The App SpineCons arm is structurally
+                                  -- recursive on the inner subtype operator
+                                  -- step `op_inner`; it dispatches each
+                                  -- `MSubRed` constructor case to the matching
+                                  -- sibling arm and recurses on `Ms-App` with
+                                  -- a strictly smaller `op` (size measure).
+                                  (StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload.proved
+                                    (StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload.proved_of_body_join
+                                      hFunBodyAppAppSubAppSpineProHeadBodyJoin
+                                      hUniformDiamond)
+                                    (StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload.proved_of_body_join
+                                      hFunBodyAppAppSubAppSpineProSuccBodyJoin
+                                      hUniformDiamond)
+                                    (StrongCommutesFunFunBodyAppAppSubAppSpineConsTopChainPayload.proved
+                                      hUniformDiamond)
+                                    (StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload.proved
+                                      hUniformDiamond)
+                                    hFunBodyAppAppSubAppSpineFOp)
                                   hFunBodyAppAppSubAppSpineFOp))
                               hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp)
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp)
