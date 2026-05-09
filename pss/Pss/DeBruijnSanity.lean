@@ -1290,5 +1290,20 @@ namespace DeBruijn
 #print axioms MEqRed.preserves_wfM_NoBinders
 #print axioms hBetNoBindersResidual_of_wsubmstar
 
+-- Theorem 5 partial v5: replaces v4's universal-shape `hNoBindersAtBet`
+-- (false in general) with a concrete `hSourceNoBinders : Term.NoBinders t`
+-- premise on the outer source. Under `NoBinders t`, every Step from the
+-- source is structurally absurd at `beta`/`absBound`/`absBody` and
+-- propagates `NoBinders` through `appL`/`appR`, so the chain-shape
+-- pipeline is vacuous. The `_aux_NoBinders` recursion structure
+-- demonstrates the same collapse on `MEqRed`-side: bet/fun_/fOp/var/pro
+-- are all absurd via case-elim on `Term.NoBinders`, leaving only
+-- top/tAp/app — discharged with `hOpFun` alone.
+#print axioms MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux_NoBinders
+#print axioms MEqRedPreservesWfMUnderWfCtxAppFun_typed_NoBinders
+#print axioms StepAt.wf_right_of_NoBinders
+#print axioms Theorem_5_DeBruijn_Preservation_partial_v5_proved
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v5_proved
+
 end DeBruijn
 end Pss

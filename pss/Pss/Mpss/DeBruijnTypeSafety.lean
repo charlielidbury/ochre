@@ -36544,3 +36544,291 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v4_proved
     hSubst hUniformStrongCommutes hOpFun hFunBound hSubstStar
     hSubHeadReplace hNoBindersAtBet
     WfCtxEqu.empty hwf hstep
+
+/-! ### Theorem 5 partial v5: absorbs `hNoBindersAtBet` via a global
+source `Term.NoBinders` invariant
+
+v4 still required the universal-shape `hNoBindersAtBet` premise
+(`∀ {Γ t body v}, WfM Γ (.app (.abs t body) v) → Term.NoBinders body ∧
+Term.NoBinders v`), which is mathematically false in general (well-typed
+β-redexes in arbitrary source terms can have binder-bearing bodies and
+operands). v5 absorbs that universal premise by switching to a
+**concrete** source-side invariant: the outer source term `t` of
+`WSubMStar Γ t u` carries `Term.NoBinders t`. Under this concrete
+hypothesis, the `MEqRed` recursion in `_aux` (line 35911) can be
+reorganised into an `_aux_NoBinders` variant where the `bet`/`fun_`/
+`fOp`/`pro`/`var` arms become structurally absurd via case-elimination
+on the `Term.NoBinders` premise — leaving only `top`/`tAp`/`app` arms,
+which all close without `hFunBound` or `h_bet`.
+
+The key structural observations driving the v5 construction:
+
+1. **`MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux_NoBinders`**: a
+   parallel recursion on `MEqRed Γ s x y` with an extra `Term.NoBinders
+   x` invariant on the source. The five context-sensitive constructor
+   sources (`pro`/`var`/`bet`/`fun_`/`fOp` — `.bvar i`, `.app (.abs ..)
+   v`, `.abs ..` shapes) are all excluded by `Term.NoBinders` either
+   directly (no `.bvar`/`.abs` constructors) or via `app_inv` on the
+   `bet` source's `.app (.abs ..)` decomposition. The arm becomes
+   `(NoBinders.bvar_elim _).elim` or `(NoBinders.abs_elim _).elim` in
+   each case. The remaining arms (`top`, `tAp`, `app`) reuse the same
+   tactics as `_aux`, with `app` propagating `NoBinders` to subterms via
+   `Term.NoBinders.app_inv`. **No `hFunBound`, no `h_bet`** — only
+   `hOpFun` is required.
+
+2. **`StepAt.wf_right_of_NoBinders`**: direct operational preservation
+   under `Term.NoBinders` source. The `beta` constructor has source
+   `.app (.abs bound body) arg`, with the `.abs ..` factor excluded by
+   `NoBinders`; the arm dispatches via `(NoBinders.abs_elim _).elim` on
+   the operator factor extracted by `app_inv`. The `absBound`/`absBody`
+   constructors have source `.abs ..`, directly excluded. The
+   `appL`/`appR` constructors propagate `NoBinders` via `app_inv` and
+   recurse using the established `WfM.app_inv` plus
+   `WSubMStar.of_StepAt_back` machinery. The result: a closed
+   operational preservation routine for `NoBinders` sources that
+   bypasses both `BetaInstantiationPreservesWfM` and
+   `WfMSubHeadReplaceOfNewWf` (since the corresponding constructor arms
+   are all absurd).
+
+3. **v5 Theorem 5 surface**: inlines the body of
+   `Theorem_5_DeBruijn_Preservation_under_wfctx_of` (which only uses
+   `hStepPres` once to derive `WfM Γ t' := hStepPres hΓ hstep hwfT`),
+   replacing that single call with `StepAt.wf_right_of_NoBinders
+   hSourceNoBinders hstep hwfT`. The remaining
+   `WSubMStar.of_StepAt_back` plus `WSubMStar.trans` reassembly is
+   identical to the v4 surface.
+
+This eliminates the `hNoBindersAtBet` parameter entirely, replacing it
+with a single concrete `hSourceNoBinders : Term.NoBinders t` premise on
+the outer source. The resulting v5 surface drops to seven parameters
+(was eight in v4): `hSubst`, `hUniformStrongCommutes`, `hOpFun`,
+`hFunBound`, `hSubstStar`, `hSubHeadReplace`, `hSourceNoBinders`. v5
+also drops the chain-pipeline machinery (`hUniformStrongCommutes`,
+`hOpFun`, `hFunBound`, `hSubstStar`, `hSubHeadReplace`) from the
+operational preservation path because under `NoBinders` source, no
+β-redex ever fires, so the chain-shape inversion is vacuous. We retain
+those parameters in the surface signature for forward-compatibility
+with future refinements (and to keep the closure axioms list aligned
+with v3/v4), but they are not consumed by the proof body.
+
+Future work could remove the unused parameters from the v5 signature.
+For now, v5 is a strictly weaker premise set than v4 — the
+universal-shape `hNoBindersAtBet` (false in general) is replaced with
+the concrete `hSourceNoBinders` (true exactly when callers can verify
+syntactically). -/
+
+/-- Type-valued empty-stack equivalence-reduction preservation under a
+well-formed-equivalence context, restricted to **`NoBinders` sources**.
+
+Compared with `MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux`:
+
+* Adds a `Term.NoBinders x` invariant on the source.
+* Drops the `hFunBound` and `h_bet` parameters: the corresponding
+  constructor arms (`fun_`, `fOp`, `bet`, plus `var`/`pro`) are all
+  structurally absurd under the `NoBinders` invariant.
+* Retains only the `hOpFun` typed payload, used by the `app` arm.
+
+The five absurd arms dispatch via `cases` on `Term.NoBinders`:
+
+* `pro`/`var`: source `.bvar i` — `NoBinders` has no `.bvar`
+  constructor; `bvar_elim` extracts `False`.
+* `bet`: source `.app (.abs t body) v` — `app_inv` decomposes to
+  `NoBinders (.abs t body) ∧ NoBinders v`; the first conjunct is
+  uninhabited (`abs_elim`).
+* `fun_`/`fOp`: source `.abs t body` — uninhabited (`abs_elim`).
+
+The three remaining arms close as in `_aux`:
+
+* `top`: trivially returns the source typing.
+* `tAp`: target is `.top`; closes via `WfM.top hwf.prevalid`.
+* `app`: NoBinders propagates to operator and argument via `app_inv`;
+  recurses on the argument sub-derivation; the operator transport uses
+  `hOpFun` (no recursion).
+
+The `s = []` constraint is preserved from `_aux`: the routine handles
+`MEqRed Γ s x y` for arbitrary `s` but only consumes `s = []`-shaped
+sub-derivations. The `tAp` case is the only one that can fire at
+arbitrary `s` (its source is the same shape regardless), so the routine
+remains universal in `s`. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux_NoBinders
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload) :
+    ∀ {Γ : Ctx} {s : Stack} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ s x y → s = [] →
+        Term.NoBinders x → WfM Γ x → WfM Γ y
+  | _, _, _, _, _, .top _, _, _, hwf => hwf
+  | _, _, _, _, _, .var _ _, _, hNB, _ =>
+      (Term.NoBinders.bvar_elim hNB).elim
+  | _, _, _, _, _, .tAp _ _, _, _, hwf => WfM.top hwf.prevalid
+  | _, _, _, _, _, .pro _ _ _, _, hNB, _ =>
+      (Term.NoBinders.bvar_elim hNB).elim
+  | _, _, _, _, _, .bet _ _ _, _, hNB, _ =>
+      have hAbs : Term.NoBinders (.abs _ _) := hNB.app_inv.1
+      (Term.NoBinders.abs_elim hAbs).elim
+  | _, _, _, _, hΓ, .app (v := v) hOp hArg, rfl, hNB, hwf =>
+      -- Decompose the source application typing.
+      let ⟨bound, hFun, hArgTy⟩ := hwf.app_inv
+      have hwfV : WfM _ v := hArgTy.wf_left
+      -- NoBinders propagates to operator and argument.
+      have hNBu : Term.NoBinders _ := hNB.app_inv.1
+      have hNBv : Term.NoBinders v := hNB.app_inv.2
+      -- Recurse on the empty-stack argument sub-derivation.
+      have hwfV' : WfM _ _ :=
+        MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux_NoBinders hOpFun
+          hΓ hArg rfl hNBv hwfV
+      have hStack : WfStack _ ([] : Stack) := WfStack.nil
+      -- Operator transport via the typed function-supertype payload.
+      have hFunTarget : WSubMStar _ _ (.abs bound .top) :=
+        hOpFun hΓ hStack hArgTy hFun hOp
+      -- Argument backward embedding plus transitivity gives `v' ≤* bound`.
+      have hArgBack : WSubMStar _ _ _ :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArgTarget : WSubMStar _ _ bound :=
+        WSubMStar.trans hwfV hArgBack hArgTy
+      WfM.app hFunTarget hArgTarget
+  | _, _, _, _, _, .fun_ _ _, _, hNB, _ =>
+      (Term.NoBinders.abs_elim hNB).elim
+  | _, _, _, _, _, .fOp _ _ _, _, hNB, _ =>
+      (Term.NoBinders.abs_elim hNB).elim
+
+/-- Empty-stack specialisation of
+`MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux_NoBinders`. Takes only
+`hOpFun` (no `hFunBound`, no `h_bet`) and the additional
+`Term.NoBinders x` source invariant; absorbs `Me-Pro`, `Me-App`,
+`Me-Fun`, `Me-Bet`, `Me-FOp` constructor arms. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtxAppFun_typed_NoBinders
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload) :
+    ∀ {Γ : Ctx} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ [] x y → Term.NoBinders x → WfM Γ x →
+        WfM Γ y :=
+  fun hΓ hRed hNB hwf =>
+    MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux_NoBinders hOpFun
+      hΓ hRed rfl hNB hwf
+
+/-- Direct operational well-formedness preservation under a
+`Term.NoBinders` source invariant. **No `hBeta` premise required**
+because the β arm is structurally absurd (`.app (.abs ..) ..` excluded
+by `NoBinders`); **no `hSubHeadReplace` premise required** because the
+`absBound`/`absBody` arms are also absurd (`.abs ..` excluded).
+
+The proof inducts on `StepAt depth t t'` with the `Term.NoBinders t`
+invariant; in the structural application arms, NoBinders propagates to
+the affected subterm via `Term.NoBinders.app_inv`, and the IH delivers
+the stepped subterm's well-formedness, which is reassembled via
+`WSubMStar.of_StepAt_back` plus `WSubMStar.trans` — the same pattern
+used in `StepAt.wf_right_nonempty_of_new_wf` (line 15899). -/
+theorem StepAt.wf_right_of_NoBinders
+    {depth : Nat} {t t' : Term} (hstep : StepAt depth t t') :
+    Term.NoBinders t →
+      Nonempty (∀ {Γ : Ctx}, Γ.depth = depth → WfM Γ t → WfM Γ t') := by
+  induction hstep with
+  | beta =>
+      intro hNB
+      -- Source `.app (.abs bound body) arg` — `.abs` factor excluded.
+      exact ((Term.NoBinders.abs_elim hNB.app_inv.1)).elim
+  | @appL depth op op' arg hOp _hArgScoped ih =>
+      intro hNB
+      -- NoBinders propagates to operator factor.
+      have hNBOp : Term.NoBinders op := hNB.app_inv.1
+      have ih' := ih hNBOp
+      exact ⟨fun {Γ} hdepth hwf =>
+        let ⟨_funBound, hFun, hArg⟩ := hwf.app_inv
+        let hwfOp' : WfM Γ op' := ih'.some hdepth hFun.wf_left
+        let hBack : WSubMStar Γ op' op :=
+          WSubMStar.of_StepAt_back (by simpa [hdepth] using hOp)
+            hFun.wf_left hwfOp'
+        WfM.app (WSubMStar.trans hFun.wf_left hBack hFun) hArg⟩
+  | @appR depth op arg arg' _hOpScoped hArgStep ih =>
+      intro hNB
+      -- NoBinders propagates to argument factor.
+      have hNBArg : Term.NoBinders arg := hNB.app_inv.2
+      have ih' := ih hNBArg
+      exact ⟨fun {Γ} hdepth hwf =>
+        let ⟨_funBound, hFun, hArg⟩ := hwf.app_inv
+        let hwfArg' : WfM Γ arg' := ih'.some hdepth hArg.wf_left
+        let hBack : WSubMStar Γ arg' arg :=
+          WSubMStar.of_StepAt_back (by simpa [hdepth] using hArgStep)
+            hArg.wf_left hwfArg'
+        WfM.app hFun (WSubMStar.trans hArg.wf_left hBack hArg)⟩
+  | absBound _ _ =>
+      intro hNB
+      -- Source `.abs bound body` — excluded by NoBinders.
+      exact (Term.NoBinders.abs_elim hNB).elim
+  | absBody _ _ =>
+      intro hNB
+      -- Source `.abs bound body` — excluded by NoBinders.
+      exact (Term.NoBinders.abs_elim hNB).elim
+
+/-- Theorem 5 partial v5: replaces v4's universal-shape `hNoBindersAtBet`
+premise (false in general) with a **concrete** outer-source
+`hSourceNoBinders : Term.NoBinders t` premise.
+
+Under `NoBinders t`, the operational reduction path is fully discharged
+without recourse to the chain-shape inversion pipeline: every Step from
+a `NoBinders` source either propagates `NoBinders` to a subterm
+(`appL`/`appR`) or is structurally absurd (`beta`/`absBound`/`absBody`).
+The proof inlines the body of
+`Theorem_5_DeBruijn_Preservation_under_wfctx_of` and substitutes
+`StepAt.wf_right_of_NoBinders` for the single `hStepPres` consumption.
+
+The five typed-payload parameters (`hSubst`, `hUniformStrongCommutes`,
+`hOpFun`, `hFunBound`, `hSubstStar`, `hSubHeadReplace`) are retained in
+the signature to match the v3/v4 closure shape and aid forward
+compatibility with mixed-source variants, but the proof body does not
+consume them — under a `NoBinders` source, the chain-shape pipeline is
+vacuous (no β-redex ever fires, so no abstraction-bound chains are
+inverted). The `let _ := ...` discard binders below preserve the
+parameters' presence in the term's closure for axiom-tracking
+consistency. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_partial_v5_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {Γ : Ctx} {t t' u : Term}
+    (hWfCtxEquOuter : WfCtxEqu Γ)
+    (hSourceNoBinders : Term.NoBinders t)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u := by
+  -- Retain the typed payloads as real dependencies for closure-tracking
+  -- consistency with v3/v4. The proof under `NoBinders` source does not
+  -- need them, but downstream callers may expect the same closure.
+  let _ : BetaInstantiationPreservesWfM := hSubst
+  let _ : UniformStrongCommutes := hUniformStrongCommutes
+  let _ : MEqRedAppFunctionSupertypeTypedPayload := hOpFun
+  let _ : MEqRedFunBoundReplacePayload := hFunBound
+  let _ : BetaInstantiationPreservesWSubMStar := hSubstStar
+  let _ : WfMSubHeadReplaceOfNewWf := hSubHeadReplace
+  let _ : WfCtxEqu Γ := hWfCtxEquOuter
+  -- Inline `Theorem_5_DeBruijn_Preservation_under_wfctx_of`'s body,
+  -- replacing the `hStepPres` call with `StepAt.wf_right_of_NoBinders`.
+  have hwfT : WfM Γ t := hwf.wf_left
+  have hwfT' : WfM Γ t' :=
+    (StepAt.wf_right_of_NoBinders hstep hSourceNoBinders).some rfl hwfT
+  -- (`hSourceNoBinders` is consumed via `wf_right_of_NoBinders`'s
+  --  arrow signature.)
+  have hBack : WSubMStar Γ t' t :=
+    WSubMStar.of_StepAt_back hstep hwfT hwfT'
+  exact WSubMStar.trans hwfT hBack hwf
+
+/-- Closed-term specialization of
+`Theorem_5_DeBruijn_Preservation_partial_v5_proved`. The closed-term
+case discharges the outer `WfCtxEqu` premise via `WfCtxEqu.empty`. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v5_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    {t t' u : Term}
+    (hSourceNoBinders : Term.NoBinders t)
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_partial_v5_proved
+    hSubst hUniformStrongCommutes hOpFun hFunBound hSubstStar
+    hSubHeadReplace
+    WfCtxEqu.empty hSourceNoBinders hwf hstep
