@@ -28082,14 +28082,19 @@ def StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload : Prop :=
         (Term.appSpine (.app (.app op' opArg) argHead) (args ++ [v]))) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
-/-- `Ms-FOp` leaf for the nonempty generic app-spine residual. -/
+/-- `Ms-FOp` leaf for the nonempty generic app-spine residual.
+
+The constructor `MSubRed.fOp` consumes the spine's first stack head as its
+equality binder, so the body sub-derivation lives in `{argHead, equ}`-context
+with stack `Stack.shift 0 (args ++ [v])`. There is no separate `α`
+parameter — it is fixed to the spine's `argHead` by the constructor's
+unification. -/
 def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload : Prop :=
-  ∀ {Γ : Ctx} {t bound₁ bound₂ inner α body body' argHead v u₂ v₂ : Term}
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner body body' argHead v u₂ v₂ : Term}
     {args : List Term},
     MEqRed Γ [] t bound₁ →
     Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
-    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) α →
-    MSubRed ({ bound := α, kind := .equ } ::
+    MSubRed ({ bound := argHead, kind := .equ } ::
         { bound := t, kind := .sub } :: Γ)
       (Stack.shift 0 (args ++ [v])) body body' →
     Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
@@ -34128,8 +34133,8 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload.of_n
       exact hNestedEqu hT₁ hEq hArgHead hArgs hv hT₂ hEqOp hEqArg
   | app hOp hArg =>
       exact hNestedApp hT₁ hOp hArg hArgHead hArgs hv hT₂ hEqOp hEqArg
-  | fOp hInner hα hBody =>
-      exact hNestedFOp hT₁ hInner hα hBody hArgHead hArgs hv hT₂ hEqOp hEqArg
+  | fOp hInner _hα hBody =>
+      exact hNestedFOp hT₁ hInner hBody hArgHead hArgs hv hT₂ hEqOp hEqArg
 
 /-- Discharge the changed-head body join via inversion of the right
 `MEqRed` app-spine step into pointwise empty-stack arg steps, head
@@ -34729,8 +34734,8 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload.p
         obtain ⟨t₃, hLeftRec, hRightRec⟩ := hRec
         refine ⟨t₃, ?_, hRightRec⟩
         simpa [Term.appSpine_cons, List.cons_append] using hLeftRec
-    | fOp ht hα hBody =>
-        exact hFOp hT₁ ht hα hBody hOpArg hAllArgsStep hv hT₂ hEqOpStep hEqArg
+    | fOp ht _hα hBody =>
+        exact hFOp hT₁ ht hBody hOpArg hAllArgsStep hv hT₂ hEqOpStep hEqArg
   obtain ⟨t₃, hLeft, hRight⟩ := hParentClose
   refine ⟨t₃, ?_, hRight⟩
   simpa [Term.appSpine_cons, List.cons_append] using hLeft
