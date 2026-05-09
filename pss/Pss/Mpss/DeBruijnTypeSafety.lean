@@ -35755,3 +35755,223 @@ noncomputable def MEqRedPreservesWfM_app_arm_under_wfctx
   have hAppRed : MEqRed Γ [] (.app u v) (.app u' v') :=
     MEqRed.app _hOp _hArg
   exact MEqRedPreservesWfMUnderWfCtxApp_typed hOpFun h_bet h_fun hΓ hAppRed hwf
+
+/-! ### `Me-Fun` residual absorption via body-bound narrowing payload
+
+The `MEqRedPreservesWfM_partial` partial assembly exposes the `Me-Fun`
+constructor of `MEqRed` as a residual hypothesis `h_fun`. Closing this
+residual structurally pushes the body sub-derivation through the
+recursive routine, but the body lives under an *extended* context
+`{ bound := t, kind := .sub } :: Γ`. After the `Me-Fun` step, the
+abstraction's bound updates from `t` to `t'`, so the reassembled
+`WfM Γ (.abs t' body')` requires
+`WfM ({ bound := t', kind := .sub } :: Γ) body'`, whereas the body
+recursion delivers `WfM ({ bound := t, kind := .sub } :: Γ) body'`.
+
+The structural decomposition for the `Me-Fun` arm, given
+`MEqRed.fun_ hT hBody : MEqRed Γ [] (.abs t body) (.abs t' body')`:
+
+* The bound sub-derivation `hT : MEqRed Γ [] t t'` is empty-stack and
+  transports through the recursive routine, yielding `WfM Γ t'`.
+* The body sub-derivation
+  `hBody : MEqRed ({bound := t, .sub} :: Γ) [] body body'` is empty-
+  stack under an extended context. We can recurse on it via the
+  recursive routine itself, supplying `WfCtxEqu.sub hΓ` for the
+  extended context. The body's source well-formedness `WfM ext body`
+  comes from `WfM.fun_inv` on the source `(.abs t body)` typing.
+* Reassembly to `WfM Γ (.abs t' body')` requires the body's typing
+  context's bound to update from `t` to `t'`. This is the
+  body-bound-narrowing step, which is consumed via a typed residual
+  payload.
+
+The typed payload `MEqRedFunBoundReplacePayload` exactly captures the
+body-bound narrowing under `WfCtxEqu`. It is the analogue, on the
+`Me-Fun` side, of `MEqRedAppFunctionSupertypeTypedPayload` on the
+`Me-App` side: a stack-aware residual that the recursive routine
+consumes after recursing on its empty-stack sub-derivation(s). The
+recursive call goes through structurally smaller `MEqRed` derivations
+(both `hT` and `hBody`); the bound-narrowing is the only non-recursive
+ingredient, and it is precisely the typed payload.
+
+This sub-section ships:
+
+* `MEqRedFunBoundReplacePayload` — typed body-bound narrowing residual,
+  parameterised on `WfCtxEqu Γ` plus the bound step `MEqRed Γ [] t t'`.
+* `MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux` — recursive
+  preservation proof on `MEqRed Γ s x y` with an `s = []` constraint
+  and `pro`, `app`, `fun_` arms all absorbed. Parameterised on the
+  typed operator function-supertype payload, the typed body-bound
+  narrowing payload, plus only the single remaining hard arm `bet`.
+* `MEqRedPreservesWfMUnderWfCtxAppFun_typed` — empty-stack
+  specialisation.
+* `MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app_fun` —
+  `MEqRedJ`-wrapped surface specialised to
+  `MEqRedPreservesWfMUnderWfCtx`, with `pro`, `app`, `fun_` residuals
+  all absorbed.
+* `MEqRedPreservesWfM_fun_arm_under_wfctx` — manufactured `h_fun`
+  residual matching the exact shape consumed by
+  `MEqRedPreservesWfM_partial`, taking `WfCtxEqu Γ`, the typed
+  operator function-supertype payload, the typed body-bound narrowing
+  payload, and only the single remaining hard arm (`bet`). -/
+
+/-- Typed body-bound narrowing payload for the `Me-Fun` well-formedness
+case. After the bound step `MEqRed Γ [] t t'` advances the abstraction
+head, an existing body well-formedness witness in the old bound's
+context lifts to the new bound's context. The premises supply the
+ambient `WfCtxEqu`, the bound step itself, both endpoint
+well-formedness witnesses for the bound, and the body witness in the
+old context; the conclusion delivers the body witness in the new
+context. -/
+def MEqRedFunBoundReplacePayload : Type :=
+  ∀ {Γ : Ctx} {t t' body' : Term},
+    WfCtxEqu Γ →
+      MEqRed Γ [] t t' →
+        WfM Γ t →
+          WfM Γ t' →
+            WfM ({ bound := t, kind := .sub } :: Γ) body' →
+              WfM ({ bound := t', kind := .sub } :: Γ) body'
+
+/-- Type-valued empty-stack equivalence-reduction preservation under a
+well-formed-equivalence context, with the `Me-Pro`, `Me-App`, and
+`Me-Fun` constructor arms all absorbed. The `Me-Pro` arm is absorbed
+via `WfCtxEqu.lookup_equ`; the `Me-App` arm via the typed operator
+function-supertype payload; the `Me-Fun` arm via recursion on both
+the bound and body sub-derivations plus the typed body-bound
+narrowing payload. Parameterised on only the single remaining hard
+arm `bet`. The auxiliary `s = []` constraint lets us induct on
+`MEqRed Γ s x y` for arbitrary `s` while restricting the consumed
+cases to empty stack. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body')) :
+    ∀ {Γ : Ctx} {s : Stack} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ s x y → s = [] → WfM Γ x → WfM Γ y
+  | _, _, _, _, _, .top _, _, hwf => hwf
+  | _, _, _, _, _, .var _ _, _, hwf => hwf
+  | _, _, _, _, _, .tAp _ _, _, hwf => WfM.top hwf.prevalid
+  | _, _, _, _, hΓ, .pro _ hb hRec, rfl, hwf =>
+      have hα : WfM _ _ := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
+      MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux hOpFun hFunBound h_bet
+        hΓ hRec rfl hα
+  | _, _, _, _, _, .bet ht hBody hArg, rfl, hwf =>
+      h_bet ht (by simpa [Stack.shift] using hBody) hArg hwf
+  | _, _, _, _, hΓ, .app (v := v) hOp hArg, rfl, hwf =>
+      -- Decompose the source application typing.
+      let ⟨bound, hFun, hArgTy⟩ := hwf.app_inv
+      have hwfV : WfM _ v := hArgTy.wf_left
+      -- Recurse on the empty-stack argument sub-derivation.
+      have hwfV' : WfM _ _ :=
+        MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux hOpFun hFunBound h_bet
+          hΓ hArg rfl hwfV
+      have hStack : WfStack _ ([] : Stack) := WfStack.nil
+      -- Operator transport via the typed function-supertype payload.
+      have hFunTarget : WSubMStar _ _ (.abs bound .top) :=
+        hOpFun hΓ hStack hArgTy hFun hOp
+      -- Argument backward embedding plus transitivity gives `v' ≤* bound`.
+      have hArgBack : WSubMStar _ _ _ :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArgTarget : WSubMStar _ _ bound :=
+        WSubMStar.trans hwfV hArgBack hArgTy
+      WfM.app hFunTarget hArgTarget
+  | _, _, _, _, hΓ, .fun_ hT hBody, rfl, hwf =>
+      -- Decompose the source abstraction typing.
+      let ⟨hwfT, hwfBody⟩ := hwf.fun_inv
+      -- Recurse on the empty-stack bound sub-derivation.
+      have hwfT' : WfM _ _ :=
+        MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux hOpFun hFunBound h_bet
+          hΓ hT rfl hwfT
+      -- Recurse on the empty-stack body sub-derivation under the extended
+      -- context (`WfCtxEqu.sub` extends the well-formed-equivalence
+      -- invariant through a `.sub` head; the head's bound `t` need not be
+      -- well-formed for this extension).
+      have hΓExt : WfCtxEqu ({ bound := _, kind := .sub } :: _) :=
+        WfCtxEqu.sub hΓ
+      have hwfBody' : WfM _ _ :=
+        MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux hOpFun hFunBound h_bet
+          hΓExt hBody rfl hwfBody
+      -- Narrow the body bound from `t` to `t'` via the typed payload.
+      have hwfBody'' : WfM ({ bound := _, kind := .sub } :: _) _ :=
+        hFunBound hΓ hT hwfT hwfT' hwfBody'
+      WfM.fun_ hwfT' hwfBody''
+  | _, _, _, _, _, .fOp _ _ _, hs, _ => by cases hs
+
+/-- Empty-stack specialisation of
+`MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux`. The `Me-Pro`, `Me-App`,
+and `Me-Fun` arms are all absorbed; only the `Me-Bet` constructor arm
+remains as a residual. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtxAppFun_typed
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body')) :
+    ∀ {Γ : Ctx} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ [] x y → WfM Γ x → WfM Γ y :=
+  fun hΓ hRed hwf =>
+    MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux hOpFun hFunBound h_bet
+      hΓ hRed rfl hwf
+
+/-- `MEqRedJ`-wrapped surface specialised to
+`MEqRedPreservesWfMUnderWfCtx`, with `Me-Pro`, `Me-App`, and `Me-Fun`
+constructor residuals all absorbed. The remaining residual is the
+single hard constructor arm `bet`. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtx_partial_with_pro_app_fun
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body')) :
+    MEqRedPreservesWfMUnderWfCtx :=
+  fun hΓ hRed hwf =>
+    MEqRedPreservesWfMUnderWfCtxAppFun_typed hOpFun hFunBound h_bet
+      hΓ hRed.some hwf
+
+/-- Built-in `h_fun` residual for the v2 surface, manufactured from a
+`WfCtxEqu`-quantified empty-stack preservation payload (recoverable
+from the single remaining hard arm via
+`MEqRedPreservesWfMUnderWfCtxAppFun_typed`) plus the typed operator
+function-supertype payload `MEqRedAppFunctionSupertypeTypedPayload`
+and the typed body-bound narrowing payload
+`MEqRedFunBoundReplacePayload`.
+
+The bound and body steps are both closed by recursing through
+`MEqRedPreservesWfMUnderWfCtxAppFun_typed` on the empty-stack
+sub-derivations. The body recursion goes under the extended context
+`{bound := t, .sub} :: Γ`, with `WfCtxEqu.sub hΓ` extending the
+well-formed-equivalence invariant. The narrow step from
+`{bound := t, .sub} :: Γ` to `{bound := t', .sub} :: Γ` is consumed
+by the typed body-bound narrowing payload. -/
+noncomputable def MEqRedPreservesWfM_fun_arm_under_wfctx
+    {Γ : Ctx} {t t' body body' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (_hT : MEqRed Γ [] t t')
+    (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body')) :
+    WfM Γ (.abs t body) → WfM Γ (.abs t' body') := by
+  intro hwf
+  -- Reuse the recursive routine on the assembled `MEqRed.fun_` step.
+  -- The `pro`, `app`, and `fun_` constructor arms are all absorbed
+  -- inside `MEqRedPreservesWfMUnderWfCtxAppFun_typed`.
+  have hFunRed : MEqRed Γ [] (.abs t body) (.abs t' body') :=
+    MEqRed.fun_ _hT _hBody
+  exact MEqRedPreservesWfMUnderWfCtxAppFun_typed hOpFun hFunBound h_bet
+    hΓ hFunRed hwf
