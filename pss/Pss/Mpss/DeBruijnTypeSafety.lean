@@ -18876,6 +18876,134 @@ noncomputable def BetaInstantiationPreservesWfMUnderHead_of_universal_app
   BetaInstantiationPreservesWfMUnderHead_of_universal
     (BetaInstantiationPreservesWfMUnderHeads_partial_universal_indexed hAppRes 1)
 
+/-! ### NoBinders-restricted partial discharge of universal β-instantiation
+
+The universal `BetaInstantiationPreservesWfMUnderHeads_AppResidual n` carries
+the `MSubRed.pro` single-step wall (chain substitution at depth `n`). The
+**NoBinders-restricted** variant restricts the source body `t` to
+`Term.NoBinders`. Because `Term.NoBinders` excludes `.bvar`, `.abs`, and
+recurses through `.app`, the structural recursion of the universal partial
+discharge stays inside the NoBinders sublanguage; the `.fun_` constructor
+case is excluded entirely (no `.abs` source) and the `.varSub`/`.varEqu`
+cases are excluded too (no `.bvar` source).
+
+This mirrors the depth-0 NoBinders discharge pattern at
+`BetaInstantiationPreservesWfM_NoBinders_partial_proved` (line ~18506),
+generalized to arbitrary `n`. The residual wall is the application case,
+which still requires chain substitution at depth `n` — the
+`_AppResidual_NoBinders n` surface below carries that obligation. -/
+
+/-- NoBinders-restricted residual hypothesis covering the `WfM.app`
+constructor case of universal β-instantiation. The source operator and
+argument are `Term.NoBinders`, so the conclusion's `Term.instantiate n _`
+collapses on the application via `Term.NoBinders.instantiate_eq`.
+
+Compared with `BetaInstantiationPreservesWfMUnderHeads_AppResidual n`, this
+restricts the source `u` and `v` to be `Term.NoBinders`. The chain
+substitution wall (the `MSubRed.pro` single-step content) is unchanged in
+shape; this surface is reusable in contexts where NoBinders is already
+known, e.g. when the parent body is itself NoBinders. -/
+def BetaInstantiationPreservesWfMUnderHeads_AppResidual_NoBinders (n : Nat) :
+    Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {bound arg u v t : Term},
+    heads.length = n →
+      Term.NoBinders u →
+        Term.NoBinders v →
+          WSubMStar Γ arg bound →
+            WSubMStar (heads ++ { bound := bound, kind := .sub } :: Γ)
+                u (.abs t .top) →
+              WSubMStar (heads ++ { bound := bound, kind := .sub } :: Γ) v t →
+                WfM (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+                  (Term.instantiate n (Term.shiftBy 0 n arg) (.app u v))
+
+/-- The universal β-instantiation well-formedness payload restricted to a
+NoBinders source body. Compared with
+`BetaInstantiationPreservesWfMUnderHeads n`, this restricts the source `t`
+to be `Term.NoBinders` (no `.bvar`, no `.abs`, only `.top` and `.app`
+recursion). -/
+def BetaInstantiationPreservesWfMUnderHeads_NoBinders (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {bound arg t : Term},
+    heads.length = n →
+      Term.NoBinders t →
+        WSubMStar Γ arg bound →
+          WfM (heads ++ { bound := bound, kind := .sub } :: Γ) t →
+            WfM (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+              (Term.instantiate n (Term.shiftBy 0 n arg) t)
+
+/-- Closed proof of the NoBinders-restricted universal β-instantiation
+modulo the NoBinders-restricted application residual.
+
+Cases dispatched:
+- `WfM.varSub` / `WfM.varEqu`: source is `.bvar i`, excluded by NoBinders.
+- `WfM.top`: closed via `BetaInstantiationPreservesWfM_NoBinders_partial_proved`'s
+  top branch generalized — same `.top → .top` shape under instantiation.
+- `WfM.fun_`: source is `.abs t body`, excluded by NoBinders.
+- `WfM.app`: dispatched to the NoBinders-restricted residual after extracting
+  NoBinders for the operator and argument via `Term.NoBinders.app_inv`.
+
+Mirrors `BetaInstantiationPreservesWfM_NoBinders_partial_proved` at
+arbitrary `n`. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHeads_NoBinders_partial_universal
+    (hAppRes : ∀ n,
+      BetaInstantiationPreservesWfMUnderHeads_AppResidual_NoBinders n) :
+    ∀ n, BetaInstantiationPreservesWfMUnderHeads_NoBinders n := by
+  intro n Γ heads bound arg t hlen hNoBinders hArgBound hBody
+  subst hlen
+  cases hBody with
+  | varSub _ _ =>
+      -- Source `.bvar i`, excluded by NoBinders.
+      exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | varEqu _ _ =>
+      -- Source `.bvar i`, excluded by NoBinders.
+      exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | top hpv =>
+      -- Source `.top`, closed via the universal `top` branch.
+      have hpvTarget :=
+        BetaInstantiationPreservesPrevalidPrefix heads hArgBound hpv
+      simpa [Term.instantiate] using WfM.top hpvTarget
+  | fun_ _ _ =>
+      -- Source `.abs t body`, excluded by NoBinders.
+      exact (Term.NoBinders.abs_elim hNoBinders).elim
+  | app hOp hArg =>
+      -- Source `.app u v`. NoBinders gives both u and v NoBinders.
+      have ⟨hNoBindersU, hNoBindersV⟩ := hNoBinders.app_inv
+      exact hAppRes heads.length rfl hNoBindersU hNoBindersV
+        hArgBound hOp hArg
+
+/-- Promote a depth-0 NoBinders-restricted app residual into the
+universal `n = 0` NoBinders-restricted app residual. -/
+noncomputable def
+    BetaInstantiationPreservesWfMUnderHeads_AppResidual_NoBinders.of_zero
+    (h : BetaInstantiationPreservesWfM_AppResidual_NoBinders) :
+    BetaInstantiationPreservesWfMUnderHeads_AppResidual_NoBinders 0 := by
+  intro Γ heads bound arg u v t hlen hNoBindersU hNoBindersV hArgBound hOp hArg
+  have heq : heads = [] := List.length_eq_zero.mp hlen
+  subst heq
+  simp only [List.nil_append] at hOp hArg
+  have h' := h hNoBindersU hNoBindersV hArgBound hOp hArg
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+
+/-- Specialize the universal NoBinders-restricted app residual back to a
+depth-0 NoBinders-restricted app residual. -/
+noncomputable def
+    BetaInstantiationPreservesWfM_AppResidual_NoBinders_of_universal
+    (h : BetaInstantiationPreservesWfMUnderHeads_AppResidual_NoBinders 0) :
+    BetaInstantiationPreservesWfM_AppResidual_NoBinders := by
+  intro Γ bound arg u v t hNoBindersU hNoBindersV hArgBound hOp hArg
+  have h' := h (heads := []) rfl hNoBindersU hNoBindersV hArgBound
+    (by simpa using hOp) (by simpa using hArg)
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+
+/-- Specialize the universal NoBinders-restricted preservation to depth-0,
+recovering `BetaInstantiationPreservesWfM_NoBinders`. -/
+noncomputable def BetaInstantiationPreservesWfM_NoBinders_of_universal
+    (h : BetaInstantiationPreservesWfMUnderHeads_NoBinders 0) :
+    BetaInstantiationPreservesWfM_NoBinders := by
+  intro Γ bound arg t hNoBinders hArgBound hBody
+  have h' := h (heads := []) (bound := bound) (arg := arg) (t := t)
+    rfl hNoBinders hArgBound (by simpa using hBody)
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+
 /-! ### Why the two universal `_AppResidual` payloads are NOT factored
 through a shared `MSubRedProSingleStepPayload`.
 
