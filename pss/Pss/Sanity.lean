@@ -68,4 +68,22 @@ Surface arity drops by one parameter relative to v3; the remaining
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_partial_v4_proved
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_partial_v4_proved
 
+/-! ### v5 partial surface
+
+The v5 partial surface absorbs v4's universal-shape `hNoBindersAtBet`
+premise (false in general) by switching to a concrete outer-source
+`hSourceNoBinders : Term.NoBinders t` premise. Under that invariant,
+the operational reduction path is fully discharged without recourse to
+the chain-shape inversion pipeline: every Step from a `NoBinders`
+source either propagates `NoBinders` to a subterm (`appL`/`appR`) or
+is structurally absurd (`beta`/`absBound`/`absBody`).
+
+The supporting `_aux_NoBinders` recursion structure demonstrates the
+parallel collapse on the `MEqRed` side: bet/fun_/fOp/var/pro arms are
+all absurd via case-elim on `Term.NoBinders`, leaving only top/tAp/app
+— discharged with `hOpFun` alone (no `hFunBound`, no `h_bet`). -/
+
+#print axioms Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_partial_v5_proved
+#print axioms Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_partial_v5_proved
+
 end Pss
