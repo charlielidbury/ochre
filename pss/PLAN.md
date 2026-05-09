@@ -174,8 +174,9 @@ discharge is:
    This split avoids extending the fixed-depth ladder again: the changed-
    head lookup, stable-successor lookup, `Ms-Top`, `Ms-Equ`, recursive
    `Ms-App`, and `Ms-FOp` obligations are now exposed as separate cons-
-   spine payloads. The changed-head and stable-successor lookup leaves are
-   structurally reduced to
+   spine payloads. The `Ms-Top` leaf is discharged generically by
+   collapsing the `Top` application spine with repeated `Me-TAp`. The
+   changed-head and stable-successor lookup leaves are structurally reduced to
    `StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload`,
    and
    `StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccBodyJoinPayload`;
