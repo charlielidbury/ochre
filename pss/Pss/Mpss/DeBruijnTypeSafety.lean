@@ -1186,7 +1186,7 @@ head (or in `Γ`) — in which case the instantiated context yields a fresh
 `bvar i` after instantiation to the lifted `arg` and the target to the
 lifted `bound`. -/
 inductive Ctx.SubBindsInstantiateBetaPrefixCase
-    (Γ : Ctx) (arg bound target : Term) (heads : Ctx) (i : Nat) : Prop where
+    (Γ : Ctx) (arg bound target : Term) (heads : Ctx) (i : Nat) : Type where
   | preserved (j : Nat)
       (var_eq :
         Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) (.bvar i) =
@@ -1206,7 +1206,7 @@ inductive Ctx.SubBindsInstantiateBetaPrefixCase
 /-- Transport an `.sub` lookup through the generic β-instantiation prefix.
 Mirrors `Ctx.equBinds_instantiateBetaPrefix` but classifies the lookup into
 either a preserved binding or the dropped `.sub` head. -/
-theorem Ctx.subBinds_instantiateBetaPrefix
+noncomputable def Ctx.subBinds_instantiateBetaPrefix
     {Γ : Ctx} {bound arg target : Term} {heads : Ctx} {i : Nat}
     (hb :
       Ctx.subBinds (heads ++ { bound := bound, kind := .sub } :: Γ) i target) :
@@ -1225,17 +1225,19 @@ theorem Ctx.subBinds_instantiateBetaPrefix
       | succ i =>
           -- Lookup descends into `Γ`.
           simp [Ctx.subBinds] at hb
-          rcases hb with ⟨tailTarget, htail, htarget⟩
-          subst htarget
+          let tailTarget := Classical.choose hb
+          have htailAnd := Classical.choose_spec hb
+          have htailLookup : Ctx.lookupSub Γ i = some tailTarget := htailAnd.1
+          have htarget : Term.shift 0 tailTarget = target := htailAnd.2
           have hbind :
               Ctx.subBinds Γ i tailTarget := by
-            simpa [Ctx.subBinds] using htail
+            simpa [Ctx.subBinds] using htailLookup
           have htargetInst :
-              Term.instantiate 0 arg (Term.shift 0 tailTarget) = tailTarget :=
-            Term.instantiate_shift_id 0 arg tailTarget
+              Term.instantiate 0 arg target = tailTarget := by
+            rw [← htarget]
+            exact Term.instantiate_shift_id 0 arg tailTarget
           have htargetInst' :
-              Term.instantiate 0 (Term.shiftBy 0 0 arg) (Term.shift 0 tailTarget)
-                = tailTarget := by
+              Term.instantiate 0 (Term.shiftBy 0 0 arg) target = tailTarget := by
             simpa [Term.shiftBy_zero_id] using htargetInst
           refine Ctx.SubBindsInstantiateBetaPrefixCase.preserved i ?_ ?_
           · simp [Term.instantiate]
@@ -1270,12 +1272,18 @@ theorem Ctx.subBinds_instantiateBetaPrefix
           | succ i =>
               -- Recurse through `heads`.
               simp [Ctx.subBinds] at hb
-              rcases hb with ⟨tailTarget, htail, htarget⟩
-              subst htarget
+              let tailTarget := Classical.choose hb
+              have htailAnd := Classical.choose_spec hb
+              have htailLookup :
+                  Ctx.lookupSub
+                    (heads ++ { bound := bound, kind := .sub } :: Γ)
+                    i = some tailTarget := htailAnd.1
+              have htarget : Term.shift 0 tailTarget = target := htailAnd.2
               have hbTail :
                   Ctx.subBinds (heads ++ { bound := bound, kind := .sub } :: Γ)
                     i tailTarget := by
-                simpa [Ctx.subBinds] using htail
+                simpa [Ctx.subBinds] using htailLookup
+              rw [← htarget]
               cases ih (i := i) (target := tailTarget) hbTail with
               | preserved j hvar hbind =>
                   have hvarCurrent :
@@ -3321,119 +3329,6 @@ noncomputable def BetaInstantiationPreservesWfM.app_of_wsubmstar
       exact BetaInstantiationPreservesWfM.app
         (by simpa [Term.instantiate] using hOp')
         hArg'
-
-/-! ### Partial discharge of `BetaInstantiationPreservesWfM`
-
-The full β-instantiation well-formedness payload `BetaInstantiationPreservesWfM`
-walls at the `WfM.app` constructor: that case requires single-step `MSubRed`
-substitution from a `WSubMStar` chain (transitivity-elimination content),
-documented just above the `BetaInstantiationPreservesMEqRedStack_proved`
-definition. Independently, the `WfM.fun_` constructor case requires a
-β-instantiation surface under one extra preserved binder (depth-1
-instantiation of the body), which is a strictly more general payload than the
-empty-prefix `BetaInstantiationPreservesWfM` itself.
-
-`BetaInstantiationPreservesWfM_partial_proved` ships the **closed** cases
-unconditionally — `WfM.top`, `WfM.varSub`, `WfM.varEqu` — and takes the two
-remaining recursive cases (`WfM.fun_` and `WfM.app`) as residual
-hypotheses. Each residual abstracts exactly the recursive shape its
-constructor produces, with no other downstream content.
-
-This mirrors the partial-discharge pattern used elsewhere in this module
-(e.g. `EqDiamonds.bet_bet_chain_AbsFree_of` carves out the closed shape of
-the `bet × bet` cell while exposing the residual transport content as
-hypotheses).
-
-Once a depth-1 β-instantiation surface lands and the `MSubRed.pro` head
-collapse residual is discharged, both hypotheses become derivable and the
-partial proved theorem promotes to an unconditional
-`BetaInstantiationPreservesWfM_proved`. -/
-
-/-- Residual hypothesis covering the `WfM.fun_` constructor case of
-β-instantiation. The premise carries the original sub-derivations exposed by
-the `fun_` constructor; the conclusion is the targeted post-substitution
-shape produced by `BetaInstantiationPreservesWfM.abs`. -/
-def BetaInstantiationPreservesWfM_FunResidual : Type :=
-  ∀ {Γ : Ctx} {bound arg t body : Term},
-    WSubMStar Γ arg bound →
-      WfM ({ bound := bound, kind := .sub } :: Γ) t →
-        WfM ({ bound := t, kind := .sub } ::
-            { bound := bound, kind := .sub } :: Γ) body →
-          WfM Γ (Term.instantiate 0 arg (.abs t body))
-
-/-- Residual hypothesis covering the `WfM.app` constructor case of
-β-instantiation. The premise carries the `WSubMStar` chains exposed by the
-`app` constructor; the conclusion is the targeted post-substitution shape
-produced by `BetaInstantiationPreservesWfM.app`. -/
-def BetaInstantiationPreservesWfM_AppResidual : Type :=
-  ∀ {Γ : Ctx} {bound arg u v t : Term},
-    WSubMStar Γ arg bound →
-      WSubMStar ({ bound := bound, kind := .sub } :: Γ) u (.abs t .top) →
-        WSubMStar ({ bound := bound, kind := .sub } :: Γ) v t →
-          WfM Γ (Term.instantiate 0 arg (.app u v))
-
-/-- Partial discharge of de Bruijn β-instantiation well-formedness.
-
-This is `BetaInstantiationPreservesWfM`-shaped, with the two recursive
-constructor cases factored out as residual hypotheses. The `top`,
-`varSub` and `varEqu` cases close unconditionally via the existing
-`BetaInstantiationPreservesWfM.{top,var}` helpers; the `fun_` and `app`
-cases dispatch to the residuals.
-
-Pattern mirrors `EqDiamonds.bet_bet_chain_AbsFree_of`: closed structural
-content shipped, transport-shaped content exposed as hypotheses. -/
-noncomputable def BetaInstantiationPreservesWfM_partial_proved
-    (hFun : BetaInstantiationPreservesWfM_FunResidual)
-    (hApp : BetaInstantiationPreservesWfM_AppResidual) :
-    BetaInstantiationPreservesWfM := by
-  intro Γ bound arg t hArgBound hBody
-  cases hBody with
-  | varSub hpv hb =>
-      exact BetaInstantiationPreservesWfM.var hArgBound (WfM.varSub hpv hb)
-  | varEqu hpv hb =>
-      exact BetaInstantiationPreservesWfM.var hArgBound (WfM.varEqu hpv hb)
-  | top hpv =>
-      exact BetaInstantiationPreservesWfM.top hArgBound
-  | fun_ hT hBody =>
-      exact hFun hArgBound hT hBody
-  | app hOp hArg =>
-      exact hApp hArgBound hOp hArg
-
-/-! Closed-case sub-surfaces of `BetaInstantiationPreservesWfM`. These are
-the same three cases dispatched in the partial proved theorem above,
-exposed as standalone definitions so callers can compose them with the
-residuals at point of use. -/
-
-/-- The `WfM.top` case of β-instantiation, exposed at the
-`BetaInstantiationPreservesWfM`-shaped surface. -/
-noncomputable def BetaInstantiationPreservesWfM.top_cell
-    {Γ : Ctx} {bound arg : Term}
-    (hArgBound : WSubMStar Γ arg bound)
-    (_hBody : WfM ({ bound := bound, kind := .sub } :: Γ) .top) :
-    WfM Γ (Term.instantiate 0 arg .top) :=
-  BetaInstantiationPreservesWfM.top hArgBound
-
-/-- The `WfM.varSub`/`WfM.varEqu` case of β-instantiation, exposed at the
-`BetaInstantiationPreservesWfM`-shaped surface. -/
-noncomputable def BetaInstantiationPreservesWfM.var_cell
-    {Γ : Ctx} {bound arg : Term} {i : Nat}
-    (hArgBound : WSubMStar Γ arg bound)
-    (hBody : WfM ({ bound := bound, kind := .sub } :: Γ) (.bvar i)) :
-    WfM Γ (Term.instantiate 0 arg (.bvar i)) :=
-  BetaInstantiationPreservesWfM.var hArgBound hBody
-
-/-- `BetaInstantiationPreservesWfM_partial_proved` specializes back to a
-direct constructor-arm dispatcher when given concrete residuals at point of
-use. This is the canonical entry point for downstream code that wants the
-"easy cases discharged, hard cases delegated" surface in one call. -/
-noncomputable def BetaInstantiationPreservesWfM.dispatch
-    (hFun : BetaInstantiationPreservesWfM_FunResidual)
-    (hApp : BetaInstantiationPreservesWfM_AppResidual)
-    {Γ : Ctx} {bound arg t : Term}
-    (hArgBound : WSubMStar Γ arg bound)
-    (hBody : WfM ({ bound := bound, kind := .sub } :: Γ) t) :
-    WfM Γ (Term.instantiate 0 arg t) :=
-  BetaInstantiationPreservesWfM_partial_proved hFun hApp hArgBound hBody
 
 /-- `WSubMStar.sub` reassembly for de Bruijn β-instantiation. -/
 noncomputable def BetaInstantiationPreservesWSubMStar.sub
@@ -18582,54 +18477,20 @@ noncomputable def BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar
     (BetaInstantiationPreservesWfM_AppResidual_NoBinders_of_wsubmstar
       hSubstStar)
 
-/-! ### `_FunResidual` factorization via under-head β-instantiation
+/-! ### Preserved-head β-instantiation type defs
 
-The `_FunResidual` case of `BetaInstantiationPreservesWfM` covers the
-`WfM.fun_` constructor — source `.abs t body` with the body sub-derivation
-in the **depth-2** context `({t, .sub} :: {bound, .sub} :: Γ)`. After
-β-instantiation, the body lives at depth 1 in
-`({inst 0 arg t, .sub} :: Γ)` with index-1 substitution
-`Term.instantiate 1 (Term.shift 0 arg) body`.
-
-Symmetrically to how `_AppResidual` factors via
-`BetaInstantiationPreservesWSubMStar` (chain substitution at depth 0),
-the `_FunResidual` factors via:
-
-- `BetaInstantiationPreservesWfM` — for the bound `t`, this is the depth-0
-  β-instantiation payload (the headline itself).
-- `BetaInstantiationPreservesWfMUnderHead` — for the body, the depth-1
-  generalization parameterized by the preserved head shape.
-
-This factorization parallels the under-heads stack/MEqRed payloads
-(`BetaInstantiationPreservesMEqRedUnderHeadsStack_universal`) which close
-the corresponding reduction-side substitution problems at all depths
-simultaneously. The WfM/WSubMStar substitution-under-heads payload is the
-analogous content remaining open: `WSubMStar.rec` recursion through the
-chain endpoints under one preserved head still requires the chain
-endpoints to be substitutable, which itself reduces to the same depth-1
-WfM substitution this payload captures.
-
-The NoBinders-restricted variant `_FunResidual_NoBindersBody` adds a
-`Term.NoBinders body` premise. Under that restriction, the index-1
-substitution `Term.instantiate 1 (Term.shift 0 arg) body = body` collapses
-to identity (via `Term.NoBinders.instantiate_eq`), simplifying the
-conclusion's body shape. The bound `t` remains arbitrary in this variant —
-unlike `_AppResidual_NoBinders` (which restricts both `u` and `v`) —
-because the FunResidual's bound and body live at different depths and are
-substituted differently. -/
+The depth-1 generalization of `BetaInstantiationPreservesWfM` lives under
+one preserved head. The depth-0 and depth-1 payloads are discharged
+together by the universal `∀n` theorem just below; these type defs are
+kept as named surfaces for downstream call sites that prefer the
+specialized shape. -/
 
 /-- De Bruijn β-instantiation well-formedness payload **under one preserved
 head**. This is the depth-1 generalization of `BetaInstantiationPreservesWfM`:
 substituting an `arg` with bound `bound` for index 1 (the `.sub bound`
 entry below the preserved head) preserves body well-formedness, with the
 body's index-1 instantiation `Term.instantiate 1 (Term.shift 0 arg) body`
-in the context where the preserved head's bound has been substituted.
-
-This is the WfM-side analog of
-`BetaInstantiationPreservesMEqRedUnderHeadStack` (one-head equivalence
-reduction substitution, derivable from the universal under-heads
-machinery). The corresponding well-formedness payload is open and
-captures the remaining content needed to close `_FunResidual`. -/
+in the context where the preserved head's bound has been substituted. -/
 def BetaInstantiationPreservesWfMUnderHead : Type :=
   ∀ {Γ : Ctx} {bound arg head body : Term} {kind : CtxEntryKind},
     WSubMStar Γ arg bound →
@@ -18638,297 +18499,220 @@ def BetaInstantiationPreservesWfMUnderHead : Type :=
         WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
           (Term.instantiate 1 (Term.shift 0 arg) body)
 
-/-- Closure of `BetaInstantiationPreservesWfM_FunResidual` modulo two
-β-instantiation well-formedness payloads:
+/-! ### Universal `∀n` discharge of `BetaInstantiationPreservesWfM` and
+`BetaInstantiationPreservesWfMUnderHead`.
 
-- `hSelf : BetaInstantiationPreservesWfM` discharges the depth-0
-  substitution of the abstraction's bound `t` (the `WfM.fun_` constructor's
-  first premise).
-- `hUnder : BetaInstantiationPreservesWfMUnderHead` discharges the depth-1
-  substitution of the abstraction's body (the `WfM.fun_` constructor's
-  second premise, in extended context).
+Per the no-per-depth-ladders rule (`feedback_no_per_depth_ladders.md`,
+the iter-32 wall described in `CLAUDE.md`'s NEXT MAJOR WORK section, and
+the iter-pss-20260506-130802 commit `327ae8e` which replaced the
+`BetaInstantiationPreservesMEqRedUnderHeadsStack` ladder with its own
+~250-line universal), the depth-0 (`BetaInstantiationPreservesWfM`) and
+depth-1 (`BetaInstantiationPreservesWfMUnderHead`) β-instantiation
+well-formedness payloads are discharged together via a single ∀n
+universal indexed by the prefix length. The `WfM.fun_` constructor's body
+case lands at `n+1`; with the heads and `n` generalized in the IH the
+universal proof closes uniformly without spawning a depth-2/3/... ladder.
 
-Once both payloads are derivable (from the still-open under-heads WfM
-substitution layer), this closure ships the full `_FunResidual`
-unconditionally. The factorization mirrors how `_AppResidual` factors
-via `BetaInstantiationPreservesWSubMStar` (chain substitution at depth 0,
-itself derivable from the depth-0 reduction substitution payloads). -/
-noncomputable def BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead
-    (hSelf : BetaInstantiationPreservesWfM)
-    (hUnder : BetaInstantiationPreservesWfMUnderHead) :
-    BetaInstantiationPreservesWfM_FunResidual := by
-  intro Γ bound arg t body hArgBound hT hBody
-  -- Bound substitution: depth-0 β-instantiation gives `WfM Γ (inst 0 arg t)`.
-  have hT' : WfM Γ (Term.instantiate 0 arg t) := hSelf hArgBound hT
-  -- Body substitution: depth-1 β-instantiation gives the body in the
-  -- context where the preserved `.sub t` head has been substituted.
-  have hBody' :
-      WfM ({ bound := Term.instantiate 0 arg t, kind := .sub } :: Γ)
-        (Term.instantiate 1 (Term.shift 0 arg) body) :=
-    hUnder hArgBound hBody
-  -- Reassemble via the existing abs reassembly helper.
-  exact BetaInstantiationPreservesWfM.abs hT' hBody'
+The case grid is:
+- `WfM.varSub`/`WfM.varEqu` close via `Ctx.subBinds_instantiateBetaPrefix`
+  (resp. `Ctx.equBinds_instantiateBetaPrefix`) which classifies the lookup
+  as either preserved (lifted via `_weaken_head`) or as the dropped
+  `.sub`-head (in which case the post-instantiation target is the lifted
+  argument).
+- `WfM.top` closes via `BetaInstantiationPreservesPrevalidPrefix`.
+- `WfM.fun_` recurses into the body with `heads' = {t', sub} :: heads`,
+  reassembled via `WfM.fun_` after a `Term.instantiate`/`shiftBy_compose`
+  rewrite.
+- `WfM.app` is the only residual exposed as a hypothesis — its content is
+  the `WSubMStar` chain substitution wall (the `MSubRed.pro` single-step
+  wall). -/
 
-/-- Body-NoBinders-restricted variant of `_FunResidual`. The body is
-required to be `Term.NoBinders` (no `.bvar`, no `.abs`); the bound `t`
-remains arbitrary.
+/-- Iteratively weaken `WfM Γ arg` under a `Ctx.instantiateBetaPrefix`
+prefix to give `WfM (instantiateBetaPrefix arg n heads ++ Γ)
+  (Term.shiftBy 0 n arg)`. Used in the `argHead` case of the universal
+β-instantiation `var` dispatch when the source `.bvar i` index hits the
+dropped `.sub`-head. -/
+private noncomputable def WfM.weaken_under_instantiateBetaPrefix
+    {Γ : Ctx} {arg : Term} (heads : Ctx)
+    (hWfArg : WfM Γ arg)
+    (hpv :
+      Prevalid (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ)) :
+    WfM (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ)
+      (Term.shiftBy 0 heads.length arg) := by
+  induction heads with
+  | nil =>
+      simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using hWfArg
+  | cons head heads ih =>
+      obtain ⟨headBound, kind⟩ := head
+      simp only [List.length_cons, Ctx.instantiateBetaPrefix] at hpv ⊢
+      have hpvTail :
+          Prevalid (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ) :=
+        Prevalid.tail hpv
+      have hwfTail := ih hpvTail
+      let newEntry : CtxEntry :=
+        { bound := Term.instantiate heads.length
+            (Term.shiftBy 0 heads.length arg) headBound,
+          kind := kind }
+      have hwfShift :
+          WfM (newEntry ::
+              (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ))
+            (Term.shift 0 (Term.shiftBy 0 heads.length arg)) :=
+        hwfTail.weaken_head (newEntry := newEntry) hpv hpvTail
+      have hShiftEq :
+          Term.shift 0 (Term.shiftBy 0 heads.length arg) =
+            Term.shiftBy 0 (heads.length + 1) arg := by
+        simpa [Term.shift] using
+          Term.shiftBy_compose 0 heads.length 1 arg
+      simpa [hShiftEq, newEntry] using hwfShift
 
-Under the body-NoBinders restriction:
-- `Term.instantiate 1 (Term.shift 0 arg) body = body`
-  (via `Term.NoBinders.instantiate_eq`).
-- The conclusion simplifies from
-  `WfM Γ (.abs (inst 0 arg t) (inst 1 (shift 0 arg) body))` to
-  `WfM Γ (.abs (inst 0 arg t) body)`.
-
-The bound `t` is left unrestricted because the abstraction's bound
-component lives at depth 0 — the standard `BetaInstantiationPreservesWfM`
-payload covers it. The body's NoBinders restriction collapses only the
-index-1 instantiation operation (its under-head substitution becomes
-identity); the body's WfM derivation still lives in the depth-2 context
-and the chains in `WfM.app` still require substitution. -/
-def BetaInstantiationPreservesWfM_FunResidual_NoBindersBody : Type :=
-  ∀ {Γ : Ctx} {bound arg t body : Term},
-    Term.NoBinders body →
+/-- Universal β-instantiation well-formedness payload, indexed by the
+prefix length. Specializes to `BetaInstantiationPreservesWfM` at `n = 0`
+and to `BetaInstantiationPreservesWfMUnderHead` at `n = 1`. -/
+def BetaInstantiationPreservesWfMUnderHeads (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {bound arg t : Term},
+    heads.length = n →
       WSubMStar Γ arg bound →
-        WfM ({ bound := bound, kind := .sub } :: Γ) t →
-          WfM ({ bound := t, kind := .sub } ::
-              { bound := bound, kind := .sub } :: Γ) body →
-            WfM Γ (Term.instantiate 0 arg (.abs t body))
+        WfM (heads ++ { bound := bound, kind := .sub } :: Γ) t →
+          WfM (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+            (Term.instantiate n (Term.shiftBy 0 n arg) t)
 
-/-- Closure of `_FunResidual_NoBindersBody` modulo the same two payloads
-that close the unrestricted `_FunResidual`. The NoBinders restriction on
-the body does not eliminate any payload — the body's WfM derivation may
-still use `WfM.app` whose chain endpoints can be arbitrary (not NoBinders),
-so under-head substitution is still required.
+/-- Universal `WfM.app` residual indexed by the prefix length. The
+`WSubMStar` chain substitution at the new context is the only
+constructor-local content not closed by the structural induction; it
+shares the same `MSubRed.pro` single-step wall as the depth-0 and
+depth-1 app residuals it generalizes. -/
+def BetaInstantiationPreservesWfMUnderHeads_AppResidual (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {bound arg u v t : Term},
+    heads.length = n →
+      WSubMStar Γ arg bound →
+        WSubMStar (heads ++ { bound := bound, kind := .sub } :: Γ)
+            u (.abs t .top) →
+          WSubMStar (heads ++ { bound := bound, kind := .sub } :: Γ) v t →
+            WfM (Ctx.instantiateBetaPrefix arg n heads ++ Γ)
+              (Term.instantiate n (Term.shiftBy 0 n arg) (.app u v))
 
-This variant is shipped because the NoBinders shape is preserved through
-the recursive descent of `BetaInstantiationPreservesWfM_NoBinders`-style
-discharge: callers that have already restricted the source body to
-NoBinders can use the simpler conclusion shape without re-establishing
-the index-1 instantiation collapse. -/
-noncomputable def BetaInstantiationPreservesWfM_FunResidual_NoBindersBody_of_self_and_underHead
-    (hSelf : BetaInstantiationPreservesWfM)
-    (hUnder : BetaInstantiationPreservesWfMUnderHead) :
-    BetaInstantiationPreservesWfM_FunResidual_NoBindersBody := by
-  intro Γ bound arg t body _hNoBinders hArgBound hT hBody
-  -- Reuse the unrestricted FunResidual closure; the NoBinders premise
-  -- isn't exercised because the conclusion shape uses generic instantiate.
-  exact BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead
-    hSelf hUnder hArgBound hT hBody
+/-- Universal β-instantiation, partially proved. The `varSub`, `varEqu`,
+`top`, and `fun_` constructor cases close uniformly by structural
+recursion on the WfM derivation with `heads` generalized; only the `app`
+case is exposed as a residual.
 
-/-- Promote a `_FunResidual_NoBindersBody` to the unrestricted
-`_FunResidual` by forgetting the NoBinders restriction. This is **not**
-unconditional — it only works for callers that already have NoBinders body
-shape; the unrestricted FunResidual is strictly stronger. -/
-noncomputable def BetaInstantiationPreservesWfM_FunResidual.of_NoBindersBody
-    (hRes : BetaInstantiationPreservesWfM_FunResidual_NoBindersBody)
-    {Γ : Ctx} {bound arg t body : Term}
-    (hNoBinders : Term.NoBinders body)
+In the `fun_` case the recursive call applies at
+`heads' = {t', .sub} :: heads`, so the recursion uses the universal at
+one binder deeper — no per-depth ladder. WfM is mutually inductive (with
+`WSubM` and `WSubMStar`) so we cannot use plain `induction`; we
+structurally recurse via `match` on `t, hBody` and let Lean accept the
+call sites in `fun_` as recursive sub-derivation calls. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHeads_partial_universal
+    (hAppRes : ∀ n, BetaInstantiationPreservesWfMUnderHeads_AppResidual n)
+    {Γ : Ctx} {heads : Ctx} {bound arg t : Term}
     (hArgBound : WSubMStar Γ arg bound)
-    (hT : WfM ({ bound := bound, kind := .sub } :: Γ) t)
-    (hBody : WfM ({ bound := t, kind := .sub } ::
-        { bound := bound, kind := .sub } :: Γ) body) :
-    WfM Γ (Term.instantiate 0 arg (.abs t body)) :=
-  hRes hNoBinders hArgBound hT hBody
+    (hBody : WfM (heads ++ { bound := bound, kind := .sub } :: Γ) t) :
+    WfM (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ)
+      (Term.instantiate heads.length (Term.shiftBy 0 heads.length arg) t) := by
+  match t, hBody with
+  | .top, .top hpv =>
+      have hpvTarget :=
+        BetaInstantiationPreservesPrevalidPrefix heads hArgBound hpv
+      simpa [Term.instantiate] using WfM.top hpvTarget
+  | .bvar i, hBody@(.varSub hpv hb) =>
+      have hpvTarget :=
+        BetaInstantiationPreservesPrevalidPrefix heads hArgBound hpv
+      cases Ctx.subBinds_instantiateBetaPrefix (arg := arg) hb with
+      | preserved j hvar hbind =>
+          rw [hvar]
+          exact WfM.varSub hpvTarget hbind
+      | argHead heq hvar htarget_eq =>
+          have hWfArg : WfM Γ arg := hArgBound.wf_left
+          have hWfArgPrefix :
+              WfM (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ)
+                (Term.shiftBy 0 heads.length arg) :=
+            WfM.weaken_under_instantiateBetaPrefix heads hWfArg hpvTarget
+          rw [hvar]
+          exact hWfArgPrefix
+  | .bvar i, hBody@(.varEqu hpv hb) =>
+      have hpvTarget :=
+        BetaInstantiationPreservesPrevalidPrefix heads hArgBound hpv
+      rcases Ctx.equBinds_instantiateBetaPrefix (arg := arg) hb with
+        ⟨j, hvar, hbind⟩
+      rw [hvar]
+      exact WfM.varEqu hpvTarget hbind
+  | .abs t' bd', .fun_ hT hBd =>
+      have hT' :=
+        BetaInstantiationPreservesWfMUnderHeads_partial_universal
+          hAppRes (heads := heads) hArgBound hT
+      have hBd' :=
+        BetaInstantiationPreservesWfMUnderHeads_partial_universal
+          hAppRes (heads := { bound := t', kind := .sub } :: heads)
+          hArgBound (by simpa [List.cons_append] using hBd)
+      have hshift_succ :
+          Term.shiftBy 0 (heads.length + 1) arg =
+            Term.shift 0 (Term.shiftBy 0 heads.length arg) := by
+        have h := Term.shiftBy_compose 0 heads.length 1 arg
+        simpa [Term.shift] using h.symm
+      have hBdReady :
+          WfM
+            ({ bound := Term.instantiate heads.length
+                (Term.shiftBy 0 heads.length arg) t',
+                kind := .sub } ::
+              (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ))
+            (Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg) bd') := by
+        simpa [Ctx.instantiateBetaPrefix, List.length_cons] using hBd'
+      have hFun :=
+        WfM.fun_ (t := Term.instantiate heads.length
+              (Term.shiftBy 0 heads.length arg) t')
+          (body := Term.instantiate (heads.length + 1)
+              (Term.shiftBy 0 (heads.length + 1) arg) bd')
+          hT' hBdReady
+      simpa [Term.instantiate, hshift_succ] using hFun
+  | .app _ _, .app hOp hArg =>
+      exact hAppRes heads.length rfl hArgBound hOp hArg
 
-/-- Full discharge of `BetaInstantiationPreservesWfM` modulo the two
-β-instantiation payloads — `BetaInstantiationPreservesWSubMStar` (for the
-`_AppResidual` chain substitution) and the self-and-under-head pair (for
-the `_FunResidual` recursive constructor).
+/-- Discharge the `n`-indexed universal payload from the structurally
+recursive partial proof, for any `n`. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHeads_partial_universal_indexed
+    (hAppRes : ∀ n, BetaInstantiationPreservesWfMUnderHeads_AppResidual n) :
+    ∀ n, BetaInstantiationPreservesWfMUnderHeads n := by
+  intro n Γ heads bound arg t hlen hArgBound hBody
+  subst hlen
+  exact BetaInstantiationPreservesWfMUnderHeads_partial_universal
+    hAppRes hArgBound hBody
 
-Note: `hSelf` here is the headline payload itself, used positively to
-close `_FunResidual`'s bound substitution sub-goal. This is **not**
-circular — the closure consumes `hSelf` as an oracle and produces a
-`BetaInstantiationPreservesWfM` proof tree that uses `hSelf` only for the
-`WfM.fun_` constructor case's bound-substitution position, exactly where
-the partial dispatcher delegates. Callers wanting genuinely circular-free
-discharge would close `hSelf` separately (e.g. via the unrestricted
-discharge at the headline level once both payload layers are closed). -/
-noncomputable def BetaInstantiationPreservesWfM_full_of_payloads
-    (hSelf : BetaInstantiationPreservesWfM)
-    (hUnder : BetaInstantiationPreservesWfMUnderHead)
-    (hSubstStar : BetaInstantiationPreservesWSubMStar) :
-    BetaInstantiationPreservesWfM :=
-  BetaInstantiationPreservesWfM_partial_proved
-    (BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead
-      hSelf hUnder)
-    (fun {_ _ _ _ _ _} hArgBound hOp hArg =>
-      BetaInstantiationPreservesWfM.app_of_wsubmstar hSubstStar
-        hArgBound (WfM.app hOp hArg))
+/-- Sharpened depth-0 β-instantiation well-formedness, recovered as the
+`n = 0` specialization of `BetaInstantiationPreservesWfMUnderHeads`. -/
+noncomputable def BetaInstantiationPreservesWfM_of_universal
+    (h : BetaInstantiationPreservesWfMUnderHeads 0) :
+    BetaInstantiationPreservesWfM := by
+  intro Γ bound body arg hArgBound hBody
+  have h' := h (heads := []) (bound := bound) (arg := arg) (t := body)
+    rfl hArgBound (by simpa using hBody)
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
 
-/-! ### Partial discharge of `BetaInstantiationPreservesWfMUnderHead`
+/-- Preserved-head depth-1 β-instantiation well-formedness, recovered as
+the `n = 1` specialization of `BetaInstantiationPreservesWfMUnderHeads`.
 
-The depth-1 (under-head) β-instantiation surface walls at the same two
-recursive constructor cases as the depth-0 surface (`WfM.fun_` and
-`WfM.app`), but with the body's sub-derivations now living in a
-**three-head** context rather than a two-head context. The recursive
-constructor cases require a depth-2 generalization of the under-head
-payload — strictly more general than the depth-1 surface itself — and
-the application case requires a depth-1 chain-substitution payload, so
-both are exposed as residuals.
+The depth-1 surface specifies a `kind` parameter for the preserved head;
+the universal carries an arbitrary `heads`, so the `n = 1` head can be
+either `.sub` or `.equ`. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHead_of_universal
+    (h : BetaInstantiationPreservesWfMUnderHeads 1) :
+    BetaInstantiationPreservesWfMUnderHead := by
+  intro Γ bound arg head body kind hArgBound hBody
+  have h' := h (heads := [{ bound := head, kind := kind }])
+    (bound := bound) (arg := arg) (t := body)
+    rfl hArgBound (by simpa using hBody)
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
 
-The closed cases (`WfM.top`, `WfM.varSub`, `WfM.varEqu`) discharge
-unconditionally, mirroring the depth-0 partial proved theorem
-`BetaInstantiationPreservesWfM_partial_proved`. -/
-
-/-- Prevalidity of the post-instantiation under-head context. Specializes
-`BetaInstantiationPreservesPrevalidPrefix` at one preserved head. -/
-private noncomputable def BetaInstantiationPreservesPrevalidUnderHead
-    {Γ : Ctx} {bound arg head : Term} {kind : CtxEntryKind}
-    (hArgBound : WSubMStar Γ arg bound)
-    (hpv : Prevalid ({ bound := head, kind := kind } ::
-        { bound := bound, kind := .sub } :: Γ)) :
-    Prevalid ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ) := by
-  have h := BetaInstantiationPreservesPrevalidPrefix
-    (heads := [{ bound := head, kind := kind }])
-    hArgBound (by simpa using hpv)
-  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h
-
-/-- The `WfM.top` case of depth-1 β-instantiation closes via the under-head
-prevalidity transport. -/
-private noncomputable def BetaInstantiationPreservesWfMUnderHead.top
-    {Γ : Ctx} {bound arg head : Term} {kind : CtxEntryKind}
-    (hArgBound : WSubMStar Γ arg bound)
-    (hpv : Prevalid ({ bound := head, kind := kind } ::
-        { bound := bound, kind := .sub } :: Γ)) :
-    WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-      (Term.instantiate 1 (Term.shift 0 arg) .top) := by
-  have hpvTarget := BetaInstantiationPreservesPrevalidUnderHead
-    (kind := kind) hArgBound hpv
-  simpa [Term.instantiate] using WfM.top hpvTarget
-
-/-- The `WfM.varSub`/`WfM.varEqu` case of depth-1 β-instantiation: the
-target index `1` collapses to the lifted `arg`, the preserved head
-remains at index `0` after instantiation, and any deeper index `i + 2`
-descends through the dropped `.sub` entry to land at `i + 1` in the new
-context. -/
-private noncomputable def BetaInstantiationPreservesWfMUnderHead.var
-    {Γ : Ctx} {bound arg head : Term} {kind : CtxEntryKind} {i : Nat}
-    (hArgBound : WSubMStar Γ arg bound)
-    (hBody : WfM ({ bound := head, kind := kind } ::
-        { bound := bound, kind := .sub } :: Γ) (.bvar i)) :
-    WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-      (Term.instantiate 1 (Term.shift 0 arg) (.bvar i)) := by
-  have hpvOrig : Prevalid ({ bound := head, kind := kind } ::
-      { bound := bound, kind := .sub } :: Γ) := hBody.prevalid
-  have hpvTarget : Prevalid
-      ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ) :=
-    BetaInstantiationPreservesPrevalidUnderHead
-      (kind := kind) hArgBound hpvOrig
-  cases hBody with
-  | varSub _ hb =>
-      -- `varSub` produced; lookup must succeed in `.sub` shape.
-      cases i with
-      | zero =>
-          -- Original `kind` must be `.sub` (else `lookupSub` returns none).
-          cases kind with
-          | sub =>
-              simp [Ctx.subBinds] at hb
-              subst hb
-              -- Conclusion: `WfM ({inst 0 arg head, .sub} :: Γ) (.bvar 0)`.
-              have hbTarget :
-                  Ctx.subBinds
-                    ({ bound := Term.instantiate 0 arg head, kind := .sub } :: Γ)
-                    0 (Term.shift 0 (Term.instantiate 0 arg head)) := by
-                simp [Ctx.subBinds]
-              simpa [Term.instantiate] using WfM.varSub hpvTarget hbTarget
-          | equ =>
-              simp [Ctx.subBinds] at hb
-      | succ i =>
-          cases i with
-          | zero =>
-              -- Index 1: lookup descends into `{bound, .sub}`-head, returning
-              -- `shift 0 (shift 0 bound)`. Conclusion is `shift 0 arg` — we have
-              -- `WfM Γ arg`, weaken under the new head.
-              simp [Ctx.subBinds] at hb
-              -- `hb : t = shift 0 (shift 0 bound)`; we don't actually need `t`
-              -- since the conclusion shape is independent of it.
-              have hWfArg : WfM Γ arg := hArgBound.wf_left
-              have hWfArgShift : WfM
-                  ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-                  (Term.shift 0 arg) :=
-                hWfArg.weaken_head hpvTarget hWfArg.prevalid
-              simpa [Term.instantiate] using hWfArgShift
-          | succ i =>
-              -- Index ≥ 2: lookup descends into `Γ` after stripping two heads.
-              -- Avoid `rcases` on `∃` since the goal is in `Type`; case-split
-              -- on `Ctx.lookupSub Γ i` directly instead.
-              cases hlook : Ctx.lookupSub Γ i with
-              | none =>
-                  -- Lookup fails; the original hypothesis is impossible.
-                  simp [Ctx.subBinds, hlook] at hb
-              | some tailΓ =>
-                  have hbΓ' : Γ.subBinds i tailΓ := by
-                    simpa [Ctx.subBinds] using hlook
-                  have hbNew :
-                      Ctx.subBinds
-                        ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-                        (i + 1) (Term.shift 0 tailΓ) :=
-                    Ctx.subBinds_weaken_head _ hbΓ'
-                  have hwf : WfM
-                      ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-                      (.bvar (i + 1)) :=
-                    WfM.varSub hpvTarget hbNew
-                  simpa [Term.instantiate] using hwf
-  | varEqu _ hb =>
-      cases i with
-      | zero =>
-          cases kind with
-          | equ =>
-              simp [Ctx.equBinds] at hb
-              subst hb
-              have hbTarget :
-                  Ctx.equBinds
-                    ({ bound := Term.instantiate 0 arg head, kind := .equ } :: Γ)
-                    0 (Term.shift 0 (Term.instantiate 0 arg head)) := by
-                simp [Ctx.equBinds]
-              simpa [Term.instantiate] using WfM.varEqu hpvTarget hbTarget
-          | sub =>
-              simp [Ctx.equBinds] at hb
-      | succ i =>
-          cases i with
-          | zero =>
-              -- Index 1: equBinds steps over `{head, kind}` head then hits the
-              -- `.sub` head — but `.sub` does not yield an equ binding. So this
-              -- case is impossible.
-              simp [Ctx.equBinds] at hb
-          | succ i =>
-              cases hlook : Ctx.lookupEqu Γ i with
-              | none =>
-                  simp [Ctx.equBinds, hlook] at hb
-              | some tailΓ =>
-                  have hbΓ' : Γ.equBinds i tailΓ := by
-                    simpa [Ctx.equBinds] using hlook
-                  have hbNew :
-                      Ctx.equBinds
-                        ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-                        (i + 1) (Term.shift 0 tailΓ) :=
-                    Ctx.equBinds_weaken_head _ hbΓ'
-                  have hwf : WfM
-                      ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-                      (.bvar (i + 1)) :=
-                    WfM.varEqu hpvTarget hbNew
-                  simpa [Term.instantiate] using hwf
-
-/-- Residual hypothesis covering the `WfM.fun_` constructor case of
-depth-1 β-instantiation under one preserved head. The body's
-sub-derivations now live in a three-head context, so the recursion goes
-to depth 2 — strictly more general than the under-head surface itself. -/
-def BetaInstantiationPreservesWfMUnderHead_FunResidual : Type :=
-  ∀ {Γ : Ctx} {bound arg head t body : Term} {kind : CtxEntryKind},
+/-- Universal `_AppResidual` specialized to depth-0. -/
+def BetaInstantiationPreservesWfM_AppResidual : Type :=
+  ∀ {Γ : Ctx} {bound arg u v t : Term},
     WSubMStar Γ arg bound →
-      WfM ({ bound := head, kind := kind } ::
-          { bound := bound, kind := .sub } :: Γ) t →
-        WfM ({ bound := t, kind := .sub } ::
-            { bound := head, kind := kind } ::
-            { bound := bound, kind := .sub } :: Γ) body →
-          WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
-            (Term.instantiate 1 (Term.shift 0 arg) (.abs t body))
+      WSubMStar ({ bound := bound, kind := .sub } :: Γ) u (.abs t .top) →
+        WSubMStar ({ bound := bound, kind := .sub } :: Γ) v t →
+          WfM Γ (Term.instantiate 0 arg (.app u v))
 
-/-- Residual hypothesis covering the `WfM.app` constructor case of
-depth-1 β-instantiation under one preserved head. The chains live in
-the original three-head context; closing this residual reduces to a
-depth-1 `WSubMStar` chain-substitution payload. -/
+/-- Universal `_AppResidual` specialized to depth-1. -/
 def BetaInstantiationPreservesWfMUnderHead_AppResidual : Type :=
   ∀ {Γ : Ctx} {bound arg head u v t : Term} {kind : CtxEntryKind},
     WSubMStar Γ arg bound →
@@ -18939,34 +18723,67 @@ def BetaInstantiationPreservesWfMUnderHead_AppResidual : Type :=
           WfM ({ bound := Term.instantiate 0 arg head, kind := kind } :: Γ)
             (Term.instantiate 1 (Term.shift 0 arg) (.app u v))
 
-/-- Partial discharge of de Bruijn depth-1 β-instantiation well-formedness.
+/-- Promote a depth-0 app residual into a `n = 0` universal app
+residual. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHeads_AppResidual.of_zero
+    (h : BetaInstantiationPreservesWfM_AppResidual) :
+    BetaInstantiationPreservesWfMUnderHeads_AppResidual 0 := by
+  intro Γ heads bound arg u v t hlen hArgBound hOp hArg
+  have heq : heads = [] := List.length_eq_zero.mp hlen
+  subst heq
+  simp only [List.nil_append] at hOp hArg
+  have h' := h hArgBound hOp hArg
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
 
-This is `BetaInstantiationPreservesWfMUnderHead`-shaped, with the two
-recursive constructor cases factored out as residual hypotheses. The
-`top`, `varSub` and `varEqu` cases close unconditionally via the helpers
-`BetaInstantiationPreservesWfMUnderHead.{top,var}`; the `fun_` and `app`
-cases dispatch to the residuals.
+/-- Promote a depth-1 app residual into a `n = 1` universal app
+residual. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHeads_AppResidual.of_one
+    (h : BetaInstantiationPreservesWfMUnderHead_AppResidual) :
+    BetaInstantiationPreservesWfMUnderHeads_AppResidual 1 := by
+  intro Γ heads bound arg u v t hlen hArgBound hOp hArg
+  match heads, hlen with
+  | [head], _ =>
+      have h' := h (head := head.bound) (kind := head.kind) hArgBound
+        (by simpa using hOp) (by simpa using hArg)
+      simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+        Term.shiftBy_zero_id, Nat.add_assoc] using h'
 
-Mirrors `BetaInstantiationPreservesWfM_partial_proved` at depth 1. -/
-noncomputable def BetaInstantiationPreservesWfMUnderHead_partial_proved
-    (hFun : BetaInstantiationPreservesWfMUnderHead_FunResidual)
-    (hApp : BetaInstantiationPreservesWfMUnderHead_AppResidual) :
-    BetaInstantiationPreservesWfMUnderHead := by
-  intro Γ bound arg head body kind hArgBound hBody
-  cases hBody with
-  | varSub hpv hb =>
-      exact BetaInstantiationPreservesWfMUnderHead.var
-        (kind := kind) hArgBound (WfM.varSub hpv hb)
-  | varEqu hpv hb =>
-      exact BetaInstantiationPreservesWfMUnderHead.var
-        (kind := kind) hArgBound (WfM.varEqu hpv hb)
-  | top hpv =>
-      exact BetaInstantiationPreservesWfMUnderHead.top
-        (kind := kind) hArgBound hpv
-  | fun_ hT hBody =>
-      exact hFun hArgBound hT hBody
-  | app hOp hArg =>
-      exact hApp hArgBound hOp hArg
+/-- Specialize the universal app residual back to a depth-0 app
+residual. -/
+noncomputable def BetaInstantiationPreservesWfM_AppResidual_of_universal
+    (h : BetaInstantiationPreservesWfMUnderHeads_AppResidual 0) :
+    BetaInstantiationPreservesWfM_AppResidual := by
+  intro Γ bound arg u v t hArgBound hOp hArg
+  have h' := h (heads := []) rfl hArgBound (by simpa using hOp)
+    (by simpa using hArg)
+  simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+
+/-- Specialize the universal app residual back to a depth-1 app
+residual. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHead_AppResidual_of_universal
+    (h : BetaInstantiationPreservesWfMUnderHeads_AppResidual 1) :
+    BetaInstantiationPreservesWfMUnderHead_AppResidual := by
+  intro Γ bound arg head u v t kind hArgBound hOp hArg
+  have h' := h (heads := [{ bound := head, kind := kind }])
+    rfl hArgBound (by simpa using hOp) (by simpa using hArg)
+  simpa [Ctx.instantiateBetaPrefix, Term.shift, Term.shiftBy_compose,
+    Term.shiftBy_zero_id, Nat.add_assoc] using h'
+
+/-- Discharge the depth-0 β-instantiation well-formedness payload from a
+single universal app residual layered over all depths. -/
+noncomputable def BetaInstantiationPreservesWfM_of_universal_app
+    (hAppRes : ∀ n, BetaInstantiationPreservesWfMUnderHeads_AppResidual n) :
+    BetaInstantiationPreservesWfM :=
+  BetaInstantiationPreservesWfM_of_universal
+    (BetaInstantiationPreservesWfMUnderHeads_partial_universal_indexed hAppRes 0)
+
+/-- Discharge the depth-1 (preserved-head) β-instantiation well-formedness
+payload from a single universal app residual layered over all depths. -/
+noncomputable def BetaInstantiationPreservesWfMUnderHead_of_universal_app
+    (hAppRes : ∀ n, BetaInstantiationPreservesWfMUnderHeads_AppResidual n) :
+    BetaInstantiationPreservesWfMUnderHead :=
+  BetaInstantiationPreservesWfMUnderHead_of_universal
+    (BetaInstantiationPreservesWfMUnderHeads_partial_universal_indexed hAppRes 1)
 
 namespace EqDiamonds
 
