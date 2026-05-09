@@ -3293,6 +3293,14 @@ Bruijn proofs do not yet bridge to LN.
   `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`,
   replacing another explicit changed-head residual parameter with
   `MEqRedStarStackAppendPayload`. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added single-step wrapper
+  variants for the changed-head and stable-successor application-spine
+  joins, then rewired all fixed-depth `Ms-Pro` app-spine leaves through
+  those wrappers. Direct leaf calls to `changedHeadProAppSpineJoin` and
+  `stableSuccProAppSpineJoin` are gone; only helper-layer implementations
+  call the lower-level joins. This removes the repeated target-argument
+  scoping boilerplate before the next recursive `Ms-App` split. No
+  axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
