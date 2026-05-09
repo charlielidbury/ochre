@@ -157,10 +157,14 @@ discharge is:
    structural recursion plus the open per-cell payloads. Discharging
    this falls Theorem 3 and Theorem 4 in lockstep.
    Current fine-grained blocker in the `fun/fun` body `Ms-App × Me-App`
-   branch: the exposed changed-head `Ms-Pro` app-spine leaves have now
-   been discharged through the thirteen-argument residual and wired into
+   branch: the exposed changed-head and stable-successor `Ms-Pro`
+   app-spine leaves have now been routed through the generic spine
+   wrappers and wired into
    `StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handlers`.
-   The next visible residual in that handler is the deeper recursive
+   Direct leaf calls to `changedHeadProAppSpineJoin` and
+   `stableSuccProAppSpineJoin` are gone; only their helper-layer
+   implementations still call the lower-level joins. The next visible
+   residual in that handler is the deeper recursive
    `Ms-App` payload
    `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload`,
    plus the remaining `Ms-FOp` payload family. The next productive local
