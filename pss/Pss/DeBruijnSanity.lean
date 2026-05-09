@@ -1317,5 +1317,14 @@ namespace DeBruijn
 -- `Stack.shift 0 (args ++ [v])` is non-empty.
 #print axioms StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload.proved_partial
 
+-- SpineCons FOp body `Ms-FOp` arm partial discharge: builds the LHS
+-- abstraction step (lifting the inner body MSubRed via fOp/app/spine/fun_)
+-- and the RHS abstraction step (fun/app), then exposes the body-join
+-- obligation under each joined bound `bound₃` as the `BodyJoin`
+-- sub-payload. The body-join receives the original-context `hSub`,
+-- `hEqOp`, `hEqArg` plus the bound transport witnesses
+-- `hT₁ : Γ ⊢ t ⇔ bound₁` and `hBound₁₃ : Γ ⊢ bound₁ ⇔ bound₃`.
+#print axioms StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyFOpChainPayload.proved_partial
+
 end DeBruijn
 end Pss
