@@ -3182,6 +3182,14 @@ Bruijn proofs do not yet bridge to LN.
   removing the final explicit stable-successor residual parameter from the
   top-level Lemma 1 nested-app assembly. No axiom-count change.
 * `Pss/Mpss/DeBruijnTypeSafety.lean` — added
+  `MEqRedStar.stack_append_scoped_list_of_payload` and
+  `changedHeadProAppSpineJoin`, then proved
+  `StrongCommutesFunFunBodyAppAppSubProHeadChainPayload.proved_of_stack_append`.
+  This factors the changed-head `Ms-Pro` app/app leaf to the existing
+  `MEqRedStarStackAppendPayload` wall: unlike stable-successor lookups,
+  the old bound target must be transported through a nonempty application
+  stack. No axiom-count change.
+* `Pss/Mpss/DeBruijnTypeSafety.lean` — added
   `StrongCommutes.fun_fun_BodyNoBinders_of`, the binder-free
   `Ms-Fun × Me-Fun` Lemma 1 cell. It inlines the existing `fun_fun_of`
   construction and discharges the otherwise false same-target subtype

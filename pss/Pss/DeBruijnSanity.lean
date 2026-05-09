@@ -86,11 +86,13 @@ namespace DeBruijn
 #print axioms PrevalidExt.prepend_scoped_list
 #print axioms MEqRedStar.appSpine_left
 #print axioms MEqRedStar.appSpine_args
+#print axioms MEqRedStar.stack_append_scoped_list_of_payload
 #print axioms MSubRed.app_left
 #print axioms MSubRedStar.app_left
 #print axioms MSubRed.appSpine_left
 #print axioms MSubRedStar.appSpine_left
 #print axioms stableSuccProAppSpineJoin
+#print axioms changedHeadProAppSpineJoin
 #print axioms EqDiamonds.top
 #print axioms EqDiamonds.bvar_any
 #print axioms EqDiamonds.appTop_any
@@ -977,6 +979,7 @@ namespace DeBruijn
 #print axioms StrongCommutesFunFunBodyAppAppTransportPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubProChainPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubProHeadChainPayload
+#print axioms StrongCommutesFunFunBodyAppAppSubProHeadChainPayload.proved_of_stack_append
 #print axioms StrongCommutesFunFunBodyAppAppSubProSuccChainPayload
 #print axioms StrongCommutesFunFunBodyAppAppSubProSuccChainPayload.proved
 #print axioms StrongCommutesFunFunBodyAppAppSubTopChainPayload

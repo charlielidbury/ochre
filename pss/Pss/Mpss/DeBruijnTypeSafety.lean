@@ -17445,6 +17445,29 @@ theorem MEqRedStar.appSpine_args {Γ : Ctx} {s : Stack}
         simpa using hTail
       exact hFirst.trans hRest
 
+/-- Iterate the star-level equivalence stack-append payload over a scoped
+argument list. This is the exact lift needed to move a head-position
+equivalence chain through a left-associated application spine. -/
+theorem MEqRedStar.stack_append_scoped_list_of_payload
+    (hAppend : MEqRedStarStackAppendPayload)
+    {Γ : Ctx} {s : Stack} {source target : Term} (args : List Term)
+    (hStar : MEqRedStar Γ s source target)
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg) :
+    MEqRedStar Γ (s ++ args) source target := by
+  induction args generalizing s with
+  | nil =>
+      simpa using hStar
+  | cons arg args ih =>
+      have hArg : Term.Scoped Γ.depth arg := hArgs arg (by simp)
+      have hTailArgs : ∀ arg' ∈ args, Term.Scoped Γ.depth arg' := by
+        intro arg' harg'
+        exact hArgs arg' (by simp [harg'])
+      have hStep : MEqRedStar Γ (s ++ [arg]) source target :=
+        hAppend (Γ := Γ) (s := s) hStar hArg
+      have hTail : MEqRedStar Γ ((s ++ [arg]) ++ args) source target :=
+        ih hStep hTailArgs
+      simpa [List.append_assoc] using hTail
+
 /-- Single-step subtype-reduction congruence at the operator position of an
 application. This is exactly `Ms-App` packaged to match `MEqRed.app_left`. -/
 noncomputable def MSubRed.app_left {Γ : Ctx} {s : Stack} {u u' v : Term}
@@ -17538,6 +17561,74 @@ noncomputable def stableSuccProAppSpineJoin {Γ : Ctx} {bound target : Term}
   · exact MEqRedStar.appSpine_args hTargetScoped hArgs hSteps hpvBody
   · exact MSubRedStar.single
       (MSubRed.appSpine_left args' (MSubRed.pro hpvArgs' hBind) hArgs')
+
+/-- Changed-head `Ms-Pro` application spines join after the abstraction
+bound has been replaced, conditional on the known equivalence stack-append
+payload. Unlike stable successor lookups, the old head target is
+`shift oldBound`, so the left spine must transport the old-to-new bound
+chain through the whole application stack. That transport is exactly the
+`MEqRedStarStackAppendPayload` dependency. -/
+noncomputable def changedHeadProAppSpineJoin {Γ : Ctx} {oldBound newBound : Term}
+    {args args' : List Term}
+    (hAppend : MEqRedStarStackAppendPayload)
+    (hpvNil : PrevalidExt Γ [])
+    (hpvBody : PrevalidExt ({ bound := newBound, kind := .sub } :: Γ) [])
+    (hOldToNew : MEqRedStar Γ [] oldBound newBound)
+    (hArgs : ∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := newBound, kind := .sub } :: Γ)) arg)
+    (hArgs' : ∀ arg' ∈ args',
+      Term.Scoped (Ctx.depth ({ bound := newBound, kind := .sub } :: Γ)) arg')
+    (hSteps : List.Forall₂
+      (fun arg arg' =>
+        MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) [] arg arg')
+      args args') :
+    ∃ body₃,
+      MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+        (Term.appSpine (Term.shift 0 oldBound) args) body₃
+        ∧ MSubRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+          (Term.appSpine (.bvar 0) args') body₃ := by
+  have hHeadEmpty :
+      MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+        (Term.shift 0 oldBound) (Term.shift 0 newBound) := by
+    simpa using
+      (MEqRedStar.weaken_head (Γ := Γ) (s := []) (u := oldBound)
+        (v := newBound) (newEntry := { bound := newBound, kind := .sub })
+        hpvNil (PrevalidExt.ctx hpvBody) hOldToNew)
+  have hHeadAtArgs :
+      MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) (args ++ [])
+        (Term.shift 0 oldBound) (Term.shift 0 newBound) := by
+    simpa using
+      (MEqRedStar.stack_append_scoped_list_of_payload hAppend
+        (Γ := ({ bound := newBound, kind := .sub } :: Γ)) (s := [])
+        (source := Term.shift 0 oldBound) (target := Term.shift 0 newBound)
+        args hHeadEmpty hArgs)
+  have hNewBoundScoped :
+      Term.Scoped (Ctx.depth ({ bound := newBound, kind := .sub } :: Γ))
+        (Term.shift 0 newBound) := by
+    have hNewScoped : Term.Scoped Γ.depth newBound := by
+      cases hpvBody with
+      | nil hCtx =>
+          cases hCtx with
+          | sub _ hScoped => exact hScoped
+    simpa [Ctx.depth] using
+      Term.shift_scoped 0 Γ.depth newBound (Nat.zero_le _) hNewScoped
+  have hLeftHead :
+      MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+        (Term.appSpine (Term.shift 0 oldBound) args)
+        (Term.appSpine (Term.shift 0 newBound) args) :=
+    MEqRedStar.appSpine_left args hHeadAtArgs hArgs
+  have hLeftArgs :
+      MEqRedStar ({ bound := newBound, kind := .sub } :: Γ) []
+        (Term.appSpine (Term.shift 0 newBound) args)
+        (Term.appSpine (Term.shift 0 newBound) args') :=
+    MEqRedStar.appSpine_args hNewBoundScoped hArgs hSteps hpvBody
+  have hpvArgs' :
+      PrevalidExt ({ bound := newBound, kind := .sub } :: Γ) (args' ++ []) :=
+    PrevalidExt.prepend_scoped_list hpvBody hArgs'
+  refine ⟨Term.appSpine (Term.shift 0 newBound) args', hLeftHead.trans hLeftArgs, ?_⟩
+  exact MSubRedStar.single
+    (MSubRed.appSpine_left args'
+      (MSubRed.pro hpvArgs' (Ctx.subBinds_zero_self Γ newBound)) hArgs')
 
 /-- Predicate: a term has no `.abs` constructor anywhere along its
 structural spine (top-level only, so applications can have abstractions
@@ -22420,6 +22511,72 @@ def StrongCommutesFunFunBodyAppAppSubProHeadChainPayload : Prop :=
     MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
     ∃ t₃, MEqRedStar Γ [] (.abs bound₁ (.app (Term.shift 0 t) v)) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- The changed-head `Ms-Pro` app/app case closes once the old-to-joined
+bound chain can be lifted through the application argument stack. This
+pinpoints the exact remaining dependency for the `ProHead` ladder:
+`MEqRedStarStackAppendPayload`. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubProHeadChainPayload.proved_of_stack_append
+    (hAppend : MEqRedStarStackAppendPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubProHeadChainPayload := by
+  intro Γ t bound₁ bound₂ v u₂ v₂ hT₁ hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hpvOp : PrevalidExt ({ bound := t, kind := .sub } :: Γ) (v :: []) :=
+    PrevalidExt.cons hpvBody hv
+  let hLeft : MSubRed Γ [] (.abs t (.app (.bvar 0) v))
+      (.abs bound₁ (.app (Term.shift 0 t) v)) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁
+      (MSubRed.app (MSubRed.pro hpvOp (Ctx.subBinds_zero_self Γ t)) hv)
+  let hRight : MEqRed Γ [] (.abs t (.app (.bvar 0) v))
+      (.abs bound₂ (.app u₂ v₂)) :=
+    MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+    ((@hUniformDiamond Γ []) hT₁ hT₂)
+    (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+      have hpvBody₃ : PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+        PrevalidExt.nil
+          (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₁₃.some.scoped_right)
+      cases hEqOp with
+      | pro _ heqBind _ =>
+          exact (Ctx.subBinds_equBinds_false
+            (Ctx.subBinds_zero_self Γ t) heqBind).elim
+      | var _ _ =>
+          have hv₃ :
+              Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                v := by
+            simpa [Ctx.depth] using hv
+          have hVStep₃ :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+            hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
+          have hv₂₃ :
+              Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+                v₂ :=
+            hVStep₃.scoped_right
+          have hOldTo₃ : MEqRedStar Γ [] t bound₃ :=
+            MEqRedStar.trans (MEqRedStar.single hT₁)
+              (MEqRedStar.single hBound₁₃.some)
+          obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
+            changedHeadProAppSpineJoin
+              (Γ := Γ) (oldBound := t) (newBound := bound₃)
+              (args := [v]) (args' := [v₂])
+              hAppend hpvNil hpvBody₃ hOldTo₃
+              (by
+                intro arg harg
+                simp only [List.mem_singleton] at harg
+                subst harg
+                exact hv₃)
+              (by
+                intro arg harg
+                simp only [List.mem_singleton] at harg
+                subst harg
+                exact hv₂₃)
+              (List.Forall₂.cons
+                (MEqRedStar.single hVStep₃)
+                List.Forall₂.nil)
+          exact ⟨body₃, by simpa using hLeftSpine, by simpa using hRightSpine⟩)
 
 /-- Stable successor `Ms-Pro` app/app subtype-operator case. -/
 def StrongCommutesFunFunBodyAppAppSubProSuccChainPayload : Prop :=
