@@ -11204,7 +11204,14 @@ def WfMSubHeadsReplaceOfNewWf (n : Nat) : Type :=
 `WSubMStar` rewrite at the new context is the only constructor-local
 content not closed by the structural induction; it shares the same
 `MSubRed.pro` single-step wall as the depth-0 and depth-1 app residuals
-it generalizes. -/
+it generalizes.
+
+NB: The `BetaInstantiationPreservesWfMUnderHeads_AppResidual` payload
+(line ~18636) characterizes its wall identically. The two are NOT
+factorable through a single shared `MSubRedProSingleStepPayload` — see
+the doc-only "Why the two universal `_AppResidual` payloads are NOT
+factored through a shared `MSubRedProSingleStepPayload`" block (line
+~18840) for the structural-distinction analysis. -/
 def WfMSubHeadsReplaceOfNewWf_AppResidual (n : Nat) : Type :=
   ∀ {Γ : Ctx} {heads : Ctx} {old new u v t : Term},
     heads.length = n →
@@ -18632,7 +18639,14 @@ def BetaInstantiationPreservesWfMUnderHeads (n : Nat) : Type :=
 `WSubMStar` chain substitution at the new context is the only
 constructor-local content not closed by the structural induction; it
 shares the same `MSubRed.pro` single-step wall as the depth-0 and
-depth-1 app residuals it generalizes. -/
+depth-1 app residuals it generalizes.
+
+NB: The `WfMSubHeadsReplaceOfNewWf_AppResidual` payload (line ~11208)
+characterizes its wall identically. The two are NOT factorable through a
+single shared `MSubRedProSingleStepPayload` — see the doc-only "Why the
+two universal `_AppResidual` payloads are NOT factored through a shared
+`MSubRedProSingleStepPayload`" block (line ~18840) for the structural-
+distinction analysis. -/
 def BetaInstantiationPreservesWfMUnderHeads_AppResidual (n : Nat) : Type :=
   ∀ {Γ : Ctx} {heads : Ctx} {bound arg u v t : Term},
     heads.length = n →
@@ -18836,6 +18850,89 @@ noncomputable def BetaInstantiationPreservesWfMUnderHead_of_universal_app
     BetaInstantiationPreservesWfMUnderHead :=
   BetaInstantiationPreservesWfMUnderHead_of_universal
     (BetaInstantiationPreservesWfMUnderHeads_partial_universal_indexed hAppRes 1)
+
+/-! ### Why the two universal `_AppResidual` payloads are NOT factored
+through a shared `MSubRedProSingleStepPayload`.
+
+After consolidating the per-depth ladders for `WfMSubHeadReplaceOfNewWf`
+(commit `7d349e4`) and `BetaInstantiationPreservesWfM` (commit `77ece63`)
+into universal `∀n` surfaces, exactly two open `_AppResidual n` payloads
+remain:
+
+* `WfMSubHeadsReplaceOfNewWf_AppResidual n` — definitions section at
+  line ~11208.
+* `BetaInstantiationPreservesWfMUnderHeads_AppResidual n` — definitions
+  section at line ~18636.
+
+Both docstrings characterize the wall as the **`MSubRed.pro`
+single-step content**, which suggests a shared payload (e.g. an
+`MSubRedProSingleStepPayload` collapsing `WSubMStar` chains to single
+`MSubRed` steps) might let downstream callers discharge ONE shared
+obligation instead of two.
+
+**The factoring does not work** at the granularity of a single `Type`-
+or `Prop`-valued payload. The two `_AppResidual`s share their HYPOTHESES
+(3) and (4) (the `WSubMStar (heads ++ {x, sub} :: Γ) u (.abs t .top)` and
+`... v t` chains over an identically-shaped context-with-`.sub`-head),
+but they differ in three structural axes:
+
+1. **Different "rewrite witnesses"** —
+   * Replace takes `MEqRed Γ [] old new` plus `WfM Γ new` (the head's
+     bound is being rewritten).
+   * Beta takes `WSubMStar Γ arg bound` (the head's bound is being
+     dropped and instantiated against a refining argument).
+
+2. **Different context modifications on the conclusion** —
+   * Replace lands in `heads ++ {new, sub} :: Γ` (the head bound
+     swapped, term unchanged).
+   * Beta lands in `Ctx.instantiateBetaPrefix arg n heads ++ Γ` (the
+     `.sub` head dropped entirely, prefix β-instantiated, arg shifted).
+
+3. **Different term modifications on the conclusion** —
+   * Replace's conclusion term is `.app u v` literally.
+   * Beta's conclusion term is
+     `Term.instantiate n (Term.shiftBy 0 n arg) (.app u v)`.
+
+A genuine shared abstraction would have to parameterize over a
+**context-and-term modification functor**
+
+```
+F : Ctx → Ctx       (modifies the `.sub`-headed context)
+G : Term → Term     (modifies the term, distributing over `.app`/`.abs`)
+```
+
+together with **F-and-G preservation laws**: an `MSubRed.pro` step at
+`heads ++ {x, sub} :: Γ` lifts to a `MSubRedStar` (or `WSubMStar`) at
+`F (heads ++ {x, sub} :: Γ)` against `G`-modified terms. The two clients
+would each instantiate `F`, `G` and supply their own preservation laws.
+But **those preservation laws ARE the open content** of each
+`_AppResidual` — separating them out into a generic surface relocates
+the obligation without reducing the count of open obligations:
+the user still has to discharge two preservation lemmas (one per `F`,
+`G`-pair) instead of two `_AppResidual`s.
+
+A simpler intermediate surface — "collapse `WSubMStar Γh u t` to
+`MSubRedStar Γh [] u t` for some shape" — does not exist as a closed
+form either: the chain alternates `MEqRed` and `MSubRed` steps via the
+`WSubM.lf1`/`lf2`/`rgh` constructors and the `WSubMStar.trs`
+intermediate, and the reduction to a single MSubRed-step direction is
+exactly the `MSubRed.pro` head-step transport (parameterized again by
+the context modification on which the chain sits).
+
+**Conclusion.** The two payloads are STRUCTURALLY DISTINCT obligations.
+They share the high-level intuition "transport `MSubRed.pro`'s
+`.sub`-head dependency through a context modification", but the
+specific modifications differ enough that no shared `Type` payload can
+serve both without re-introducing the same number of open laws as
+hypotheses on each client.
+
+The right architectural move is to leave the two `_AppResidual`
+universals as siblings and continue treating them as the genuine open
+frontier of the campaign. If a future agent factors the **MSubRed.pro
+single-step transport** as a generic functor preservation law and
+proves both clients' specific instances from it, that would be a real
+factoring. As of this iteration, the open content is genuinely two
+distinct walls. -/
 
 namespace EqDiamonds
 
