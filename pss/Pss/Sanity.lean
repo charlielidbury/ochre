@@ -86,4 +86,12 @@ all absurd via case-elim on `Term.NoBinders`, leaving only top/tAp/app
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_partial_v5_proved
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_partial_v5_proved
 
+-- Theorem 5 partial v6: drops the v5 typed-payload premises that were
+-- retained for closure-tracking parity. v6's surface needs only the outer
+-- `WfCtxEqu Γ` and the source `Term.NoBinders` premise. The closed-term
+-- v6 discharges WfCtxEqu via `WfCtxEqu.empty`, leaving `hSourceNoBinders`
+-- as the sole non-standard premise. Both depend only on the kernel three.
+#print axioms Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_partial_v6_proved
+#print axioms Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_partial_v6_proved
+
 end Pss
