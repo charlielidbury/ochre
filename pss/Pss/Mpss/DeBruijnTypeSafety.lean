@@ -27414,6 +27414,124 @@ def StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload : Prop :=
         (Term.appSpine (.app op' argHead) (args ++ [v]))) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- Changed-head lookup leaf for the nonempty generic app-spine residual. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ argHead v u₂ v₂ : Term}
+    {args : List Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.bvar 0) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app (Term.shift 0 t) argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Stable-successor lookup leaf for the nonempty generic app-spine residual. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ target argHead v u₂ v₂ : Term}
+    {args : List Term} {i : Nat},
+    MEqRed Γ [] t bound₁ →
+    Ctx.subBinds ({ bound := t, kind := .sub } :: Γ) (i + 1) target →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.bvar (i + 1)) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app target argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- `Ms-Top` leaf for the nonempty generic app-spine residual. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsTopChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op argHead v u₂ v₂ : Term}
+    {args : List Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) op →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app op argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app .top argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- `Ms-Equ` leaf for the nonempty generic app-spine residual. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' argHead v u₂ v₂ : Term}
+    {args : List Term},
+    MEqRed Γ [] t bound₁ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (argHead :: args ++ [v]) op op' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app op argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app op' argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- Recursive `Ms-App` leaf for the nonempty generic app-spine residual. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ op op' opArg argHead v u₂ v₂ : Term}
+    {args : List Term},
+    MEqRed Γ [] t bound₁ →
+    MSubRed ({ bound := t, kind := .sub } :: Γ) (opArg :: argHead :: args ++ [v]) op op' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) opArg →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.app op opArg) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app (.app op' opArg) argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
+/-- `Ms-FOp` leaf for the nonempty generic app-spine residual. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₁ bound₂ inner α body body' argHead v u₂ v₂ : Term}
+    {args : List Term},
+    MEqRed Γ [] t bound₁ →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) inner →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) α →
+    MSubRed ({ bound := α, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)
+      (Stack.shift 0 (args ++ [v])) body body' →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed Γ [] t bound₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.abs inner body) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ t₃,
+      MEqRedStar Γ [] (.abs bound₁
+        (Term.appSpine (.app (.abs inner body') argHead) (args ++ [v]))) t₃
+        ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
+
 /-- Constructor-local `Ms-FOp` case exposed from the two-more recursive
 `Ms-App` residual. -/
 def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOpChainPayload : Prop :=
@@ -33407,6 +33525,39 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAp
                                   simpa [hxarg] using hArg)
         hv hT₂ hEqOp hEqArg
 
+/-- Split the nonempty generic app-spine residual by the subtype operator
+constructor. This is the generic counterpart of the fixed-depth
+`of_nested_cases_pro_split` ladder, with the `Ms-FOp` stack head exposed
+instead of hidden in `args ++ [v]`. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload.of_nested_cases_pro_split
+    (hNestedProHead : StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload)
+    (hNestedProSucc : StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload)
+    (hNestedTop : StrongCommutesFunFunBodyAppAppSubAppSpineConsTopChainPayload)
+    (hNestedEqu : StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload)
+    (hNestedApp : StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload)
+    (hNestedFOp : StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload) :
+    StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload := by
+  intro Γ t bound₁ bound₂ op op' argHead v u₂ v₂ args
+    hT₁ hOp hArgHead hArgs hv hT₂ hEqOp hEqArg
+  cases hOp with
+  | @pro _ _ i target _ hBind =>
+      cases i with
+      | zero =>
+          have hTarget : op' = Term.shift 0 t :=
+            Ctx.subBinds_unique hBind (Ctx.subBinds_zero_self Γ t)
+          subst op'
+          exact hNestedProHead hT₁ hArgHead hArgs hv hT₂ hEqOp hEqArg
+      | succ i =>
+          exact hNestedProSucc (i := i) hT₁ hBind hArgHead hArgs hv hT₂ hEqOp hEqArg
+  | top _ hScoped =>
+      exact hNestedTop hT₁ hScoped hArgHead hArgs hv hT₂ hEqOp hEqArg
+  | equ _ hEq =>
+      exact hNestedEqu hT₁ hEq hArgHead hArgs hv hT₂ hEqOp hEqArg
+  | app hOp hArg =>
+      exact hNestedApp hT₁ hOp hArg hArgHead hArgs hv hT₂ hEqOp hEqArg
+  | fOp hInner hα hBody =>
+      exact hNestedFOp hT₁ hInner hα hBody hArgHead hArgs hv hT₂ hEqOp hEqArg
+
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
 
@@ -33870,8 +34021,18 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
     (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
     (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
     (hAppend : MEqRedStarStackAppendPayload)
-    (hFunBodyAppAppSubAppSpine :
-      StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload)
+    (hFunBodyAppAppSubAppSpineProHead :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload)
+    (hFunBodyAppAppSubAppSpineProSucc :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload)
+    (hFunBodyAppAppSubAppSpineTop :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsTopChainPayload)
+    (hFunBodyAppAppSubAppSpineEqu :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload)
+    (hFunBodyAppAppSubAppSpineApp :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload)
+    (hFunBodyAppAppSubAppSpineFOp :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp :
       StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOpChainPayload)
     (hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp :
@@ -34029,7 +34190,13 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                               (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppEquChainPayload.proved
                                 hUniformDiamond)
                               (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_app_spine_cons
-                                hFunBodyAppAppSubAppSpine)
+                                (StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload.of_nested_cases_pro_split
+                                  hFunBodyAppAppSubAppSpineProHead
+                                  hFunBodyAppAppSubAppSpineProSucc
+                                  hFunBodyAppAppSubAppSpineTop
+                                  hFunBodyAppAppSubAppSpineEqu
+                                  hFunBodyAppAppSubAppSpineApp
+                                  hFunBodyAppAppSubAppSpineFOp))
                               hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp)
                             hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppFOp)
                           hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppFOp)
