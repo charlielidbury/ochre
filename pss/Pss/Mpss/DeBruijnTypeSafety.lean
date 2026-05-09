@@ -18517,6 +18517,73 @@ theorem Term.NoBinders.abs_elim {t body : Term}
     (h : Term.NoBinders (.abs t body)) : False := by
   cases h
 
+/-- Universal-Γ MEqRed-preserves-WfM under a `NoBinders` source. **No
+`WfCtxEqu` premise required.**
+
+Under `Term.NoBinders body`, the context-sensitive constructors `pro`,
+`var`, `bet`, `fun_`, `fOp` are all excluded by source-shape (their
+sources are `.bvar`, `.app (.abs ..) ..`, `.abs`, all forbidden by
+`NoBinders`). The remaining structurally-trivial constructors
+(`top`, `tAp`) close immediately via `WfM.top` from the source typing's
+prevalidity. The structural `app` constructor closes via:
+
+* recursion (the IHs deliver `WfM Γ u'` and `WfM Γ v'` for both factor
+  steps);
+* the source typing's `app_inv` exposes the chains
+  `WSubMStar Γ u (.abs τ .top)` and `WSubMStar Γ v τ`;
+* `WSubMStar.of_MEqRed_back` plus `WSubMStar.trans` lifts those chains
+  to `u'` and `v'` (the operator step is retargeted to empty stack via
+  `MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty` to satisfy
+  the empty-stack constraint of `WSubMStar.of_MEqRed_back`).
+
+This is the universal-Γ analog of
+`MEqRedPreservesWfMUnderWfCtxAppFun_typed` restricted to NoBinders
+sources. The WfCtxEqu invariant is dropped because the residual
+chain-transport content is closed structurally inside the NoBinders
+sublanguage — backward embedding plus transitivity replaces both the
+typed operator function-supertype payload and the typed
+β-instantiation chain payload, neither of which is needed when the
+source body is binder-free. -/
+noncomputable def MEqRed.preserves_wfM_NoBinders
+    {Γ : Ctx} {s : Stack} {body body' : Term}
+    (hNoBinders : Term.NoBinders body)
+    (hRed : MEqRed Γ s body body')
+    (hwf : WfM Γ body) :
+    WfM Γ body' := by
+  induction hRed with
+  | top _ => exact hwf
+  | var _ _ => exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | pro _ _ _ _ => exact (Term.NoBinders.bvar_elim hNoBinders).elim
+  | @bet _ _ _ _ _ _ _ _ _ _ _ =>
+      have ⟨hAbs, _⟩ := hNoBinders.app_inv
+      exact (Term.NoBinders.abs_elim hAbs).elim
+  | fun_ _ _ _ _ => exact (Term.NoBinders.abs_elim hNoBinders).elim
+  | fOp _ _ _ _ _ => exact (Term.NoBinders.abs_elim hNoBinders).elim
+  | @tAp _ _ _ _ _ => exact WfM.top hwf.prevalid
+  | @app Γp sp u u' v v' hOp hArg ihOp ihArg =>
+      have ⟨hNBu, hNBv⟩ := hNoBinders.app_inv
+      obtain ⟨τ, hFun, hArgTy⟩ := hwf.app_inv
+      have hwfU : WfM Γp u := hFun.wf_left
+      have hwfV : WfM Γp v := hArgTy.wf_left
+      have hwfV' : WfM Γp v' := ihArg hNBv hwfV
+      have hwfU' : WfM Γp u' := ihOp hNBu hwfU
+      -- Retarget hOp from stack `(v :: sp)` to empty stack so we can
+      -- apply `WSubMStar.of_MEqRed_back` (which requires empty stack).
+      have hpvNil : PrevalidExt Γp [] := PrevalidExt.nil hwfU.prevalid
+      have hOpEmpty : MEqRed Γp [] u u' :=
+        (MEqRed.lift_to_any_context_stack_of_NoBinders_nonempty
+          hOp hNBu hpvNil).some
+      -- Backward embedding: `WSubMStar Γp u' u` and `WSubMStar Γp v' v`.
+      have hBackU : WSubMStar Γp u' u :=
+        WSubMStar.of_MEqRed_back hOpEmpty hwfU hwfU'
+      have hFunNew : WSubMStar Γp u' (.abs τ .top) :=
+        WSubMStar.trans hwfU hBackU hFun
+      have hBackV : WSubMStar Γp v' v :=
+        WSubMStar.of_MEqRed_back hArg hwfV hwfV'
+      have hArgNew : WSubMStar Γp v' τ :=
+        WSubMStar.trans hwfV hBackV hArgTy
+      exact WfM.app hFunNew hArgNew
+
 /-- Closed proof of `BetaInstantiationPreservesWfM_NoBinders` modulo
 `BetaInstantiationPreservesWfM_AppResidual_NoBinders`.
 
@@ -36100,6 +36167,104 @@ noncomputable def MEqRedPreservesWfM_bet_arm_under_wfctx_NoBinders
   -- the refl chain `WSubMStar Γ t t`. The result type
   -- `WfM Γ (Term.instantiate 0 t body')` reduces to `WfM Γ body'` because
   -- `body'` is NoBinders.
+  have hReflChain : WSubMStar Γ t t := WSubMStar.refl_of_wfM hwfT
+  have hBetaNoBinders : BetaInstantiationPreservesWfM_NoBinders :=
+    BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar hSubstStar
+  have hwfBody'_dropped : WfM Γ (Term.instantiate 0 t body') :=
+    hBetaNoBinders hNoBindersBody' hReflChain hwfBody'
+  -- Both `Term.instantiate 0 t body'` and the goal
+  -- `Term.instantiate 0 v' body'` collapse to `body'` (NoBinders).
+  have hInstT : Term.instantiate 0 t body' = body' :=
+    hNoBindersBody'.instantiate_eq 0 t
+  have hInstV : Term.instantiate 0 v' body' = body' :=
+    hNoBindersBody'.instantiate_eq 0 v'
+  rw [hInstV]
+  rw [hInstT] at hwfBody'_dropped
+  exact hwfBody'_dropped
+
+/-! ### Universal-Γ NoBinders-restricted bet residual
+
+The v3 `Theorem_5_DeBruijn_Preservation_partial_v3_proved` exposes the
+NoBinders-restricted bet residual `hBetNoBindersResidual` as a hypothesis
+quantified over **arbitrary** Γ:
+
+```
+∀ {Γ : Ctx} {t v v' body body' : Term},
+  Term.NoBinders body → Term.NoBinders v →
+  Term.Scoped Γ.depth t →
+  MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body' →
+  MEqRed Γ [] v v' →
+  WfM Γ (.app (.abs t body) v) →
+    WfM Γ (Term.instantiate 0 v' body')
+```
+
+The universal-Γ shape is critical: this residual fires inside
+`MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux` at the `bet` arm, which
+does NOT thread `WfCtxEqu Γ` to the bet hypothesis. So we cannot rely on
+WfCtxEqu being available for the local Γ.
+
+`MEqRedPreservesWfM_bet_arm_under_wfctx_NoBinders` (line ~36059) is the
+*per-call WfCtxEqu* discharge — it does **not** match the universal-Γ
+shape because it consumes a `hΓ : WfCtxEqu Γ` premise.
+
+The construction here is universal-Γ:
+
+1. Decompose the source typing `WfM Γ (.app (.abs t body) v)` via
+   `WfM.app_inv` to extract `WSubMStar Γ (.abs t body) (.abs bound .top)`
+   and `WSubMStar Γ v bound` for some `bound`.
+2. Take `wf_left` on the function chain to recover
+   `WfM Γ (.abs t body)`, then `WfM.fun_inv` to extract
+   `WfM Γ t` and `WfM ({bound:=t, .sub} :: Γ) body`.
+3. Apply `MEqRed.preserves_wfM_NoBinders` (universal, no WfCtxEqu) to
+   step the body forward: `WfM ({bound:=t, .sub} :: Γ) body'`. This
+   helper closes structurally because NoBinders excludes the
+   context-sensitive `pro`, `var`, `bet`, `fun_`, `fOp` constructors,
+   leaving `top`/`tAp` (immediate via `Prevalid`) and `app` (recursive
+   via backward embedding plus chain transitivity).
+4. Drop the `.sub`-head bound from the body's context via
+   `BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar` with `arg := t`
+   and the refl chain `WSubMStar Γ t t = refl_of_wfM hwfT`. Result:
+   `WfM Γ (Term.instantiate 0 t body')`.
+5. Both `Term.instantiate 0 t body'` and the goal
+   `Term.instantiate 0 v' body'` collapse to `body'` because `body'` is
+   `NoBinders` (preserved by `MEqRed.preserves_noBinders`), via
+   `Term.NoBinders.instantiate_eq`.
+
+The only dependency is `BetaInstantiationPreservesWSubMStar` — the same
+chain-substitution payload that `BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar`
+already requires. No `WfCtxEqu`. No new axiom. -/
+
+/-- Closed proof of the universal-Γ NoBinders-restricted bet residual,
+matching the exact shape consumed by
+`Theorem_5_DeBruijn_Preservation_partial_v3_proved`. -/
+noncomputable def hBetNoBindersResidual_of_wsubmstar
+    (hSubstStar : BetaInstantiationPreservesWSubMStar) :
+    ∀ {Γ : Ctx} {t v v' body body' : Term},
+      Term.NoBinders body → Term.NoBinders v →
+      Term.Scoped Γ.depth t →
+      MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body' →
+      MEqRed Γ [] v v' →
+      WfM Γ (.app (.abs t body) v) →
+        WfM Γ (Term.instantiate 0 v' body') := by
+  intro Γ t v v' body body' hNoBindersBody _hNoBindersV _ht hBody _hArg hwf
+  -- Decompose source typing.
+  obtain ⟨_bound, hFun, _hArgTy⟩ := hwf.app_inv
+  have hwfAbs : WfM Γ (.abs t body) := hFun.wf_left
+  obtain ⟨hwfT, hwfBody⟩ := hwfAbs.fun_inv
+  -- Step the body forward universally (no WfCtxEqu): NoBinders body
+  -- excludes the five context-sensitive `MEqRed` constructors, leaving
+  -- only `top`/`tAp` (immediate via `Prevalid`) and `app` (recursive
+  -- via backward embedding plus chain transitivity).
+  have hwfBody' : WfM ({ bound := t, kind := .sub } :: Γ) body' :=
+    MEqRed.preserves_wfM_NoBinders hNoBindersBody hBody hwfBody
+  -- Stepped body remains NoBinders.
+  have hNoBindersBody' : Term.NoBinders body' :=
+    hBody.preserves_noBinders hNoBindersBody
+  -- Drop the `.sub`-head from the body's typing context via the
+  -- NoBinders-restricted β-instantiation payload, with `arg := t` and
+  -- the refl chain `WSubMStar Γ t t`. The result type
+  -- `WfM Γ (Term.instantiate 0 t body')` reduces to `WfM Γ body'`
+  -- because `body'` is NoBinders.
   have hReflChain : WSubMStar Γ t t := WSubMStar.refl_of_wfM hwfT
   have hBetaNoBinders : BetaInstantiationPreservesWfM_NoBinders :=
     BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar hSubstStar

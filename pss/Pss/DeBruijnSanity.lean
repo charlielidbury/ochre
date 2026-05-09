@@ -1284,5 +1284,11 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_partial_v3_proved
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v3_proved
 
+-- Universal-Γ NoBinders-restricted bet residual (no `WfCtxEqu` premise).
+-- Closes against `BetaInstantiationPreservesWSubMStar` plus the new
+-- universal `MEqRed.preserves_wfM_NoBinders` helper, both axiom-free.
+#print axioms MEqRed.preserves_wfM_NoBinders
+#print axioms hBetNoBindersResidual_of_wsubmstar
+
 end DeBruijn
 end Pss
