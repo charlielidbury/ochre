@@ -1243,5 +1243,14 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_partial_v2_proved
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v2_proved
 
+-- Pro residual absorption via `WfCtxEqu`: discharges the `Me-Pro`
+-- constructor arm of `MEqRedPreservesWfM_partial` by recursive descent
+-- through `WfCtxEqu.lookup_equ`, leaving only the three hard arms
+-- (`bet`, `app`, `fun_`).
+#print axioms MEqRedPreservesWfMUnderWfCtx_typed_aux
+#print axioms MEqRedPreservesWfMUnderWfCtx_typed
+#print axioms MEqRedPreservesWfMUnderWfCtx_partial_with_pro
+#print axioms MEqRedPreservesWfM_pro_arm_under_wfctx
+
 end DeBruijn
 end Pss

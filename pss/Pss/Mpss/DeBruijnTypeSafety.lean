@@ -35416,3 +35416,151 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v2_proved
     (AbsFunctionBoundInversion_partial_via_MEqRed_residuals
       hUniformStrongCommutes h_pro h_bet h_app h_fun)
     hSubHeadReplace hwf hstep
+
+/-! ### Pro residual absorption via `WfCtxEqu`
+
+The `MEqRedPreservesWfM_partial` partial assembly exposes the `Me-Pro`
+constructor of `MEqRed` as a residual hypothesis `h_pro`. Closing this
+residual structurally requires recovering the well-formedness `WfM Γ α`
+of the equivalence-bound stored term from a witness `WfM Γ (.bvar i)`,
+which is impossible at the bare `Prevalid Γ` level — the bvar
+well-formedness witness only records the binding's existence, not the
+body's well-formedness.
+
+The `WfCtxEqu` invariant is precisely the strengthening that lifts each
+`.equ` entry's stored bound to a well-formedness witness in its tail
+context. Combining this with `WfCtxEqu.lookup_equ` gives `WfM Γ α` from
+`Γ.equBinds i α`, after which a recursive call on the smaller
+sub-derivation `MEqRed Γ [] α α'` discharges `α'`.
+
+This sub-section ships:
+
+* `MEqRedPreservesWfMUnderWfCtx_typed_aux` — Type-valued recursive
+  preservation proof on `MEqRed Γ s x y` with an `s = []` constraint,
+  parameterised on the three remaining hard constructor arms (`bet`,
+  `app`, `fun_`). Uses `WfCtxEqu` to internally absorb the `Me-Pro`
+  constructor case.
+* `MEqRedPreservesWfMUnderWfCtx_typed` — empty-stack specialisation of
+  the auxiliary above.
+* `MEqRedPreservesWfMUnderWfCtx_partial_with_pro` — `MEqRedJ`-wrapped
+  surface specialised to the `MEqRedPreservesWfMUnderWfCtx` payload,
+  for direct consumption by callers expecting that signature.
+* `MEqRedPreservesWfM_pro_arm_under_wfctx` — manufactured `h_pro`
+  residual for the v2 surface, taking the same three hard arms plus a
+  `WfCtxEqu Γ` premise and yielding the exact shape consumed by
+  `MEqRedPreservesWfM_partial`. -/
+
+/-- Type-valued empty-stack equivalence-reduction preservation under a
+well-formed-equivalence context, parameterised on the three hard
+constructor arms `bet`, `app`, `fun_`. The `pro` arm is absorbed via
+recursion on the sub-derivation, using `WfCtxEqu.lookup_equ` to
+recover `WfM Γ α` from `Γ.equBinds i α`. The `top`, `var`, `tAp` arms
+are discharged inline; the `fOp` arm is structurally unreachable at
+empty outer stack.
+
+The auxiliary `s = []` constraint lets us induct on `MEqRed Γ s x y`
+for arbitrary `s` while restricting the consumed cases to empty
+stack. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtx_typed_aux
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    ∀ {Γ : Ctx} {s : Stack} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ s x y → s = [] → WfM Γ x → WfM Γ y
+  | _, _, _, _, _, .top _, _, hwf => hwf
+  | _, _, _, _, _, .var _ _, _, hwf => hwf
+  | _, _, _, _, _, .tAp _ _, _, hwf => WfM.top hwf.prevalid
+  | _, _, _, _, hΓ, .pro _ hb hRec, rfl, hwf =>
+      have hα : WfM _ _ := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
+      MEqRedPreservesWfMUnderWfCtx_typed_aux h_bet h_app h_fun hΓ hRec rfl hα
+  | _, _, _, _, _, .bet ht hBody hArg, rfl, hwf =>
+      h_bet ht (by simpa [Stack.shift] using hBody) hArg hwf
+  | _, _, _, _, _, .app hOp hArg, rfl, hwf =>
+      h_app hOp hArg hwf
+  | _, _, _, _, _, .fun_ hT hBody, _, hwf =>
+      h_fun hT hBody hwf
+  | _, _, _, _, _, .fOp _ _ _, hs, _ => by cases hs
+
+/-- Empty-stack specialisation of `MEqRedPreservesWfMUnderWfCtx_typed_aux`. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtx_typed
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    ∀ {Γ : Ctx} {x y : Term},
+      WfCtxEqu Γ → MEqRed Γ [] x y → WfM Γ x → WfM Γ y :=
+  fun hΓ hRed hwf =>
+    MEqRedPreservesWfMUnderWfCtx_typed_aux h_bet h_app h_fun hΓ hRed rfl hwf
+
+/-- `MEqRedJ`-wrapped surface specialised to the
+`MEqRedPreservesWfMUnderWfCtx` payload, with the `Me-Pro` constructor
+residual absorbed via `WfCtxEqu.lookup_equ`. The remaining residuals
+are the three hard constructor arms `bet`, `app`, `fun_`. -/
+noncomputable def MEqRedPreservesWfMUnderWfCtx_partial_with_pro
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    MEqRedPreservesWfMUnderWfCtx :=
+  fun hΓ hRed hwf =>
+    MEqRedPreservesWfMUnderWfCtx_typed h_bet h_app h_fun hΓ hRed.some hwf
+
+/-- Built-in `h_pro` residual for the v2 surface, manufactured from a
+`WfCtxEqu`-quantified empty-stack preservation payload. The `Γ` is
+supplied by the caller's `WfCtxEqu` premise; here we simply read out
+`WfM Γ α'` by recursive descent through `WfCtxEqu.lookup_equ`. -/
+noncomputable def MEqRedPreservesWfM_pro_arm_under_wfctx
+    {Γ : Ctx} {i : Nat} {α α' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (_hpv : PrevalidExt Γ ([] : Stack))
+    (hb : Γ.equBinds i α)
+    (hRec : MEqRed Γ [] α α')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body'))
+    (h_app : ∀ {Γ : Ctx} {u u' v v' : Term}
+      (_hOp : MEqRed Γ [v] u u')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app u v) → WfM Γ (.app u' v'))
+    (h_fun : ∀ {Γ : Ctx} {t t' body body' : Term}
+      (_hT : MEqRed Γ [] t t')
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body'),
+        WfM Γ (.abs t body) → WfM Γ (.abs t' body')) :
+    WfM Γ (.bvar i) → WfM Γ α' := by
+  intro hwf
+  have hα : WfM Γ α := WfCtxEqu.lookup_equ hΓ hwf.prevalid hb
+  exact MEqRedPreservesWfMUnderWfCtx_typed h_bet h_app h_fun hΓ hRec hα
