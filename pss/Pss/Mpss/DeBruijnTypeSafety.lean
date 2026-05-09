@@ -28203,34 +28203,19 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppProSuccChainPayload.
                           MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                             arg₃ arg₃' :=
                         hEqArg₃Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                      have hArg₃'Scoped₃ :
-                          Term.Scoped
-                            (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                            arg₃' :=
-                        hArg₃Step₃.scoped_right
                       have hArg₂Step₃ :
                           MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                             arg₂ arg₂' :=
                         hEqArg₂Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                      have hArg₂'Scoped₃ :
-                          Term.Scoped
-                            (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                            arg₂' :=
-                        hArg₂Step₃.scoped_right
                       have hArgStep₃ :
                           MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] arg
                             arg' :=
                         hEqArgStep.sub_head_replace_two_step hT₁ hBound₁₃.some
-                      have hArg'Scoped₃ :
-                          Term.Scoped
-                            (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                            arg' :=
-                        hArgStep₃.scoped_right
                       have hVStep₃ :
                           MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
                         hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
                       obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
-                        stableSuccProAppSpineJoin
+                        stableSuccProAppSpineJoin_of_single_steps
                           (Γ := Γ) (bound := bound₃) (target := target) (i := i)
                           (args := [arg₃, arg₂, arg, v])
                           (args' := [arg₃', arg₂', arg', v₂])
@@ -28251,26 +28236,10 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppProSuccChainPayload.
                                       hx₃, hx₂, hx₁] using hx
                                   subst x
                                   exact hv₃)
-                          (by
-                            intro x hx
-                            by_cases hx₃ : x = arg₃'
-                            · subst x
-                              exact hArg₃'Scoped₃
-                            · by_cases hx₂ : x = arg₂'
-                              · subst x
-                                exact hArg₂'Scoped₃
-                              · by_cases hx₁ : x = arg'
-                                · subst x
-                                  exact hArg'Scoped₃
-                                · have hxv : x = v₂ := by
-                                    simpa [List.mem_cons, List.mem_singleton,
-                                      hx₃, hx₂, hx₁] using hx
-                                  subst x
-                                  exact hVStep₃.scoped_right)
-                          (List.Forall₂.cons (MEqRedStar.single hArg₃Step₃)
-                            (List.Forall₂.cons (MEqRedStar.single hArg₂Step₃)
-                              (List.Forall₂.cons (MEqRedStar.single hArgStep₃)
-                                (List.Forall₂.cons (MEqRedStar.single hVStep₃)
+                          (List.Forall₂.cons ⟨hArg₃Step₃⟩
+                            (List.Forall₂.cons ⟨hArg₂Step₃⟩
+                              (List.Forall₂.cons ⟨hArgStep₃⟩
+                                (List.Forall₂.cons ⟨hVStep₃⟩
                                   List.Forall₂.nil))))
                       exact ⟨body₃, by simpa using hLeftSpine,
                         by simpa using hRightSpine⟩)
@@ -28365,44 +28334,24 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppProSuccChainPaylo
                               MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                 arg₄ arg₄' :=
                             hEqArg₄Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                          have hArg₄'Scoped₃ :
-                              Term.Scoped
-                                (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                arg₄' :=
-                            hArg₄Step₃.scoped_right
                           have hArg₃Step₃ :
                               MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                 arg₃ arg₃' :=
                             hEqArg₃Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                          have hArg₃'Scoped₃ :
-                              Term.Scoped
-                                (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                arg₃' :=
-                            hArg₃Step₃.scoped_right
                           have hArg₂Step₃ :
                               MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                 arg₂ arg₂' :=
                             hEqArg₂Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                          have hArg₂'Scoped₃ :
-                              Term.Scoped
-                                (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                arg₂' :=
-                            hArg₂Step₃.scoped_right
                           have hArgStep₃ :
                               MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                 arg arg' :=
                             hEqArgStep.sub_head_replace_two_step hT₁ hBound₁₃.some
-                          have hArg'Scoped₃ :
-                              Term.Scoped
-                                (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                arg' :=
-                            hArgStep₃.scoped_right
                           have hVStep₃ :
                               MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                 v v₂ :=
                             hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
                           obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
-                            stableSuccProAppSpineJoin
+                            stableSuccProAppSpineJoin_of_single_steps
                               (Γ := Γ) (bound := bound₃) (target := target) (i := i)
                               (args := [arg₄, arg₃, arg₂, arg, v])
                               (args' := [arg₄', arg₃', arg₂', arg', v₂])
@@ -28426,30 +28375,11 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppProSuccChainPaylo
                                             hx₄, hx₃, hx₂, hx₁] using hx
                                         subst x
                                         exact hv₃)
-                              (by
-                                intro x hx
-                                by_cases hx₄ : x = arg₄'
-                                · subst x
-                                  exact hArg₄'Scoped₃
-                                · by_cases hx₃ : x = arg₃'
-                                  · subst x
-                                    exact hArg₃'Scoped₃
-                                  · by_cases hx₂ : x = arg₂'
-                                    · subst x
-                                      exact hArg₂'Scoped₃
-                                    · by_cases hx₁ : x = arg'
-                                      · subst x
-                                        exact hArg'Scoped₃
-                                      · have hxv : x = v₂ := by
-                                          simpa [List.mem_cons, List.mem_singleton,
-                                            hx₄, hx₃, hx₂, hx₁] using hx
-                                        subst x
-                                        exact hVStep₃.scoped_right)
-                              (List.Forall₂.cons (MEqRedStar.single hArg₄Step₃)
-                                (List.Forall₂.cons (MEqRedStar.single hArg₃Step₃)
-                                  (List.Forall₂.cons (MEqRedStar.single hArg₂Step₃)
-                                    (List.Forall₂.cons (MEqRedStar.single hArgStep₃)
-                                      (List.Forall₂.cons (MEqRedStar.single hVStep₃)
+                              (List.Forall₂.cons ⟨hArg₄Step₃⟩
+                                (List.Forall₂.cons ⟨hArg₃Step₃⟩
+                                  (List.Forall₂.cons ⟨hArg₂Step₃⟩
+                                    (List.Forall₂.cons ⟨hArgStep₃⟩
+                                      (List.Forall₂.cons ⟨hVStep₃⟩
                                         List.Forall₂.nil)))))
                           exact ⟨body₃, by simpa using hLeftSpine,
                             by simpa using hRightSpine⟩)
@@ -28555,53 +28485,28 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppProSuccChainPa
                                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                     arg₅ arg₅' :=
                                 hEqArg₅Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                              have hArg₅'Scoped₃ :
-                                  Term.Scoped
-                                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                    arg₅' :=
-                                hArg₅Step₃.scoped_right
                               have hArg₄Step₃ :
                                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                     arg₄ arg₄' :=
                                 hEqArg₄Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                              have hArg₄'Scoped₃ :
-                                  Term.Scoped
-                                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                    arg₄' :=
-                                hArg₄Step₃.scoped_right
                               have hArg₃Step₃ :
                                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                     arg₃ arg₃' :=
                                 hEqArg₃Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                              have hArg₃'Scoped₃ :
-                                  Term.Scoped
-                                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                    arg₃' :=
-                                hArg₃Step₃.scoped_right
                               have hArg₂Step₃ :
                                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                     arg₂ arg₂' :=
                                 hEqArg₂Step.sub_head_replace_two_step hT₁ hBound₁₃.some
-                              have hArg₂'Scoped₃ :
-                                  Term.Scoped
-                                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                    arg₂' :=
-                                hArg₂Step₃.scoped_right
                               have hArgStep₃ :
                                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                     arg arg' :=
                                 hEqArgStep.sub_head_replace_two_step hT₁ hBound₁₃.some
-                              have hArg'Scoped₃ :
-                                  Term.Scoped
-                                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                                    arg' :=
-                                hArgStep₃.scoped_right
                               have hVStep₃ :
                                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
                                     v v₂ :=
                                 hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
                               obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
-                                stableSuccProAppSpineJoin
+                                stableSuccProAppSpineJoin_of_single_steps
                                   (Γ := Γ) (bound := bound₃) (target := target)
                                   (i := i)
                                   (args := [arg₅, arg₄, arg₃, arg₂, arg, v])
@@ -28627,36 +28532,13 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppProSuccChainPa
                                             · have hxv : x = v := by
                                                 simpa [List.mem_cons, List.mem_singleton,
                                                   hx₅, hx₄, hx₃, hx₂, hx₁] using hx
-                                              subst x
-                                              exact hv₃)
-                                  (by
-                                    intro x hx
-                                    by_cases hx₅ : x = arg₅'
-                                    · subst x
-                                      exact hArg₅'Scoped₃
-                                    · by_cases hx₄ : x = arg₄'
-                                      · subst x
-                                        exact hArg₄'Scoped₃
-                                      · by_cases hx₃ : x = arg₃'
-                                        · subst x
-                                          exact hArg₃'Scoped₃
-                                        · by_cases hx₂ : x = arg₂'
-                                          · subst x
-                                            exact hArg₂'Scoped₃
-                                          · by_cases hx₁ : x = arg'
-                                            · subst x
-                                              exact hArg'Scoped₃
-                                            · have hxv : x = v₂ := by
-                                                simpa [List.mem_cons, List.mem_singleton,
-                                                  hx₅, hx₄, hx₃, hx₂, hx₁] using hx
-                                              subst x
-                                              exact hVStep₃.scoped_right)
-                                  (List.Forall₂.cons (MEqRedStar.single hArg₅Step₃)
-                                    (List.Forall₂.cons (MEqRedStar.single hArg₄Step₃)
-                                      (List.Forall₂.cons (MEqRedStar.single hArg₃Step₃)
-                                        (List.Forall₂.cons (MEqRedStar.single hArg₂Step₃)
-                                          (List.Forall₂.cons (MEqRedStar.single hArgStep₃)
-                                            (List.Forall₂.cons (MEqRedStar.single hVStep₃)
+                                              simpa [hxv] using hv₃)
+                                  (List.Forall₂.cons ⟨hArg₅Step₃⟩
+                                    (List.Forall₂.cons ⟨hArg₄Step₃⟩
+                                      (List.Forall₂.cons ⟨hArg₃Step₃⟩
+                                        (List.Forall₂.cons ⟨hArg₂Step₃⟩
+                                          (List.Forall₂.cons ⟨hArgStep₃⟩
+                                            (List.Forall₂.cons ⟨hVStep₃⟩
                                               List.Forall₂.nil))))))
                               exact ⟨body₃, by simpa using hLeftSpine,
                                 by simpa using hRightSpine⟩)
