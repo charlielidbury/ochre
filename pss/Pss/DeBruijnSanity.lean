@@ -1305,5 +1305,11 @@ namespace DeBruijn
 #print axioms Theorem_5_DeBruijn_Preservation_partial_v5_proved
 #print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v5_proved
 
+-- Theorem 5 partial v6: drops the v5 typed-payload hypotheses (which v5
+-- never consumed under NoBinders source). v6 surface needs only the
+-- outer `WfCtxEqu Γ` and the source `Term.NoBinders` premise.
+#print axioms Theorem_5_DeBruijn_Preservation_partial_v6_proved
+#print axioms Theorem_5_DeBruijn_ClosedPreservation_partial_v6_proved
+
 end DeBruijn
 end Pss

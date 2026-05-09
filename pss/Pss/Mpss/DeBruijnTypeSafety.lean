@@ -36832,3 +36832,36 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v5_proved
     hSubst hUniformStrongCommutes hOpFun hFunBound hSubstStar
     hSubHeadReplace
     WfCtxEqu.empty hSourceNoBinders hwf hstep
+
+/-- Theorem 5 partial v6: strips the unused typed-payload hypotheses
+from v5. Under `NoBinders` source, the v5 proof body never consumes
+`hSubst`/`hUniformStrongCommutes`/`hOpFun`/`hFunBound`/`hSubstStar`/
+`hSubHeadReplace` — those parameters were retained in v5 only for
+closure-tracking parity with v3/v4. v6 surface needs only the outer
+`WfCtxEqu Γ` and the source `NoBinders` premise. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_partial_v6_proved
+    {Γ : Ctx} {t t' u : Term}
+    (hWfCtxEquOuter : WfCtxEqu Γ)
+    (hSourceNoBinders : Term.NoBinders t)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u := by
+  let _ : WfCtxEqu Γ := hWfCtxEquOuter
+  have hwfT : WfM Γ t := hwf.wf_left
+  have hwfT' : WfM Γ t' :=
+    (StepAt.wf_right_of_NoBinders hstep hSourceNoBinders).some rfl hwfT
+  have hBack : WSubMStar Γ t' t :=
+    WSubMStar.of_StepAt_back hstep hwfT hwfT'
+  exact WSubMStar.trans hwfT hBack hwf
+
+/-- Closed-term v6: discharges the outer `WfCtxEqu` premise via
+`WfCtxEqu.empty`, leaving `hSourceNoBinders` as the sole non-standard
+premise. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v6_proved
+    {t t' u : Term}
+    (hSourceNoBinders : Term.NoBinders t)
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_partial_v6_proved
+    WfCtxEqu.empty hSourceNoBinders hwf hstep
