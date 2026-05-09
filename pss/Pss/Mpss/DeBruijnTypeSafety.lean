@@ -17306,6 +17306,28 @@ theorem MEqRedStar.app_left {Γ : Ctx} {s : Stack} {u u' v : Term}
       exact Relation.ReflTransGen.tail ih
         ⟨MEqRed.app_left hStep.some hv⟩
 
+/-- Single-step head congruence for a left-associated application spine. A
+single equivalence step on the spine head lifts through any number of
+arguments by iterated `MEqRed.app_left`, preserving single-step output (no
+chain inflation). -/
+noncomputable def MEqRed.appSpine_left {Γ : Ctx} {s : Stack}
+    {head head' : Term} (args : List Term)
+    (hStep : MEqRed Γ (args ++ s) head head')
+    (hArgs : ∀ arg ∈ args, Term.Scoped Γ.depth arg) :
+    MEqRed Γ s (Term.appSpine head args) (Term.appSpine head' args) := by
+  induction args generalizing head head' with
+  | nil =>
+      simpa using hStep
+  | cons arg args ih =>
+      have hArg : Term.Scoped Γ.depth arg := hArgs arg (by simp)
+      have hTailArgs : ∀ arg' ∈ args, Term.Scoped Γ.depth arg' := by
+        intro arg' harg'
+        exact hArgs arg' (by simp [harg'])
+      have hHead :
+          MEqRed Γ (args ++ s) (.app head arg) (.app head' arg) := by
+        simpa [List.cons_append] using MEqRed.app_left hStep hArg
+      simpa using ih hHead hTailArgs
+
 /-- Single-step equivalence-reduction congruence at the operand (argument)
 position of an application. The operand step lives at the empty stack and
 is pushed into the application via `Me-App`'s operand premise; the operator
@@ -34466,6 +34488,138 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsTopChainPayload.p
             MSubRedStar.single
               (MSubRed.top hpvBody₃ (Term.Scoped.app hu₂₃ hv₂₃))⟩)
 
+/-- Discharge the generic nonempty-spine `Ms-Equ` leaf. The left equivalence
+step `op → op'` lifts through the spine via single-step `MEqRed.appSpine_left`
+to a single `MEqRed` between the spines. The right side reassociates through
+`Term.appSpine_append` to expose the same source spine. After replacing the
+abstraction bound by the join `bound₃`, both sides become single `MEqRed`
+steps from a common source and close by single-step `hUniformDiamond`. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload.proved
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload := by
+  intro Γ t bound₁ bound₂ op op' argHead v u₂ v₂ args
+    hT₁ hEq hArgHead hArgs hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hAllArgs :
+      ∀ arg ∈ argHead :: args ++ [v],
+        Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+    intro arg hmem
+    by_cases hHead : arg = argHead
+    · simpa [hHead] using hArgHead
+    · by_cases hArg : arg ∈ args
+      · exact hArgs arg hArg
+      · have hV : arg = v := by
+          simpa [List.mem_cons, List.mem_append, List.mem_singleton,
+            hHead, hArg] using hmem
+        simpa [hV] using hv
+  have hpvArgs :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ)
+        ((argHead :: args ++ [v]) ++ []) :=
+    PrevalidExt.prepend_scoped_list hpvBody hAllArgs
+  -- Build the LHS subtype step: a chain congruence on the spine head from
+  -- the wrapped MEqRed `op → op'`.
+  have hEqAtArgs :
+      MEqRed ({ bound := t, kind := .sub } :: Γ)
+        (argHead :: args ++ [v] ++ []) op op' := by simpa using hEq
+  let hLeftBody :
+      MSubRed ({ bound := t, kind := .sub } :: Γ) []
+        (Term.appSpine op (argHead :: args ++ [v]))
+        (Term.appSpine op' (argHead :: args ++ [v])) :=
+    MSubRed.appSpine_left (argHead :: args ++ [v])
+      (MSubRed.equ hpvArgs hEqAtArgs) hAllArgs
+  let hLeft : MSubRed Γ []
+      (.abs t (Term.appSpine op (argHead :: args ++ [v])))
+      (.abs bound₁ (Term.appSpine op' (argHead :: args ++ [v]))) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁ hLeftBody
+  let hRight : MEqRed Γ []
+      (.abs t (Term.appSpine op (argHead :: args ++ [v])))
+      (.abs bound₂ (.app u₂ v₂)) := by
+    simpa [Term.appSpine, Term.appSpine_append] using
+      MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact by
+    simpa [Term.appSpine] using
+      commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+        ((@hUniformDiamond Γ []) hT₁ hT₂)
+        (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+          have hpvBody₃ :
+              PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+            PrevalidExt.nil
+              (Prevalid.sub (PrevalidExt.ctx hpvNil)
+                hBound₁₃.some.scoped_right)
+          -- Transport `hEq`, `hEqOp`, and `hEqArg` from `t`-context to
+          -- `bound₃`-context as single-step `MEqRed`.
+          have hEq₃ :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ)
+                (argHead :: args ++ [v]) op op' :=
+            (hEq.sub_head_replace hT₁).sub_head_replace hBound₁₃.some
+          have hEqOp₃ :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: [])
+                (Term.appSpine (.app op argHead) args) u₂ :=
+            (hEqOp.sub_head_replace hT₁).sub_head_replace hBound₁₃.some
+          have hEqArg₃ :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+            (hEqArg.sub_head_replace hT₁).sub_head_replace hBound₁₃.some
+          have hArgHead₃ :
+              Term.Scoped
+                (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) argHead := by
+            simpa [Ctx.depth] using hArgHead
+          have hArgs₃ :
+              ∀ arg ∈ args,
+                Term.Scoped
+                  (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) arg := by
+            intro arg hmem
+            simpa [Ctx.depth] using hArgs arg hmem
+          have hv₃ :
+              Term.Scoped
+                (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) v := by
+            simpa [Ctx.depth] using hv
+          have hAllArgs₃ :
+              ∀ arg ∈ args ++ [v],
+                Term.Scoped
+                  (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) arg := by
+            intro arg hmem
+            by_cases hArg : arg ∈ args
+            · exact hArgs₃ arg hArg
+            · have hV : arg = v := by
+                simpa [List.mem_append, List.mem_singleton, hArg] using hmem
+              simpa [hV] using hv₃
+          -- LHS body single step: `appSpine (.app op argHead) (args ++ [v])
+          --                         → appSpine (.app op' argHead) (args ++ [v])`
+          -- via head-position lift through the spine.
+          have hHeadStep :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (args ++ [v])
+                (.app op argHead) (.app op' argHead) :=
+            MEqRed.app_left (s := args ++ [v]) (v := argHead)
+              (by simpa [List.cons_append] using hEq₃) hArgHead₃
+          have hHeadStepStacked :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (args ++ [v] ++ [])
+                (.app op argHead) (.app op' argHead) := by
+            simpa using hHeadStep
+          have hLeftBodySingle :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+                (Term.appSpine (.app op argHead) (args ++ [v]))
+                (Term.appSpine (.app op' argHead) (args ++ [v])) :=
+            MEqRed.appSpine_left (args ++ [v]) hHeadStepStacked hAllArgs₃
+          -- RHS body single step: same source, lands at `.app u₂ v₂`.
+          have hRightBodySingle :
+              MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+                (Term.appSpine (.app op argHead) (args ++ [v]))
+                (.app u₂ v₂) := by
+            simpa [Term.appSpine_append, Term.appSpine] using
+              MEqRed.app hEqOp₃ hEqArg₃
+          obtain ⟨body₃', hLeftJoin, hRightJoin⟩ :=
+            (@hUniformDiamond ({ bound := bound₃, kind := .sub } :: Γ) [])
+              hLeftBodySingle hRightBodySingle
+          refine ⟨body₃', ?_, ?_⟩
+          · -- LHS: `Term.appSpine op' (argHead :: args ++ [v])`
+            --    = `Term.appSpine (.app op' argHead) (args ++ [v])` → body₃'.
+            simpa [Term.appSpine] using
+              MEqRedStar.single hLeftJoin.some
+          · exact MSubRedStar.of_MEqRedStar hpvBody₃
+              (MEqRedStar.single hRightJoin.some))
+
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
 
@@ -34933,8 +35087,6 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
       StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload)
     (hFunBodyAppAppSubAppSpineProSuccBodyJoin :
       StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccBodyJoinPayload)
-    (hFunBodyAppAppSubAppSpineEqu :
-      StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload)
     (hFunBodyAppAppSubAppSpineApp :
       StrongCommutesFunFunBodyAppAppSubAppSpineConsAppChainPayload)
     (hFunBodyAppAppSubAppSpineFOp :
@@ -35105,7 +35257,8 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                                     hUniformDiamond)
                                   (StrongCommutesFunFunBodyAppAppSubAppSpineConsTopChainPayload.proved
                                     hUniformDiamond)
-                                  hFunBodyAppAppSubAppSpineEqu
+                                  (StrongCommutesFunFunBodyAppAppSubAppSpineConsEquChainPayload.proved
+                                    hUniformDiamond)
                                   hFunBodyAppAppSubAppSpineApp
                                   hFunBodyAppAppSubAppSpineFOp))
                               hFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppFOp)
