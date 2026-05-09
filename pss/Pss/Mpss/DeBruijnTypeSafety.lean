@@ -36453,3 +36453,94 @@ noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v3_proved
     hSubst hUniformStrongCommutes hOpFun hFunBound hSubstStar
     hSubHeadReplace hBetNoBindersResidual hNoBindersAtBet
     WfCtxEqu.empty hwf hstep
+
+/-! ### Theorem 5 partial v4: absorbs `hBetNoBindersResidual`
+
+Builds on v3 by absorbing the universal-Γ NoBinders-restricted bet
+residual `hBetNoBindersResidual` via `hBetNoBindersResidual_of_wsubmstar`
+(commit `7ee59a2`). The `hBetNoBindersResidual` parameter — a universal
+shape consumed by callers via the same `hSubstStar` payload that v4
+already takes — is now manufactured internally, so callers pass one
+fewer hypothesis.
+
+The remaining `hNoBindersAtBet` parameter is left as a hypothesis. It is
+**universal** in `Γ t body v` (`∀ {Γ t body v}, WfM Γ (.app (.abs t body) v)
+→ Term.NoBinders body ∧ Term.NoBinders v`), which is only true when the
+ambient source term has no binders at all (so β-redex sub-positions
+cannot occur in well-typed source terms outside that fragment).
+
+A hypothetical v5 should replace `hNoBindersAtBet` with a **global
+source-NoBinders** premise `hSourceNoBinders : Term.NoBinders source` and
+propagate `Term.NoBinders` through the `MEqRedPreservesWfMUnderWfCtxAppFun_typed_aux`
+recursion so the `bet` arm becomes structurally absurd. This requires
+extending the recursion with an extra `Term.NoBinders x` invariant on
+the source `x`, which is a deeper refactor than the surface-level
+absorption performed here. v4 is a partial improvement that ships the
+surface absorption immediately.
+
+Closure-wise, v4's axiom dependencies are the same as v3's: the universal
+NoBinders bet residual was already constructible from `hSubstStar`
+inside the surrounding theorem, so absorbing it does not change the
+typed payloads; it simply moves the construction inside the surface. -/
+
+/-- Theorem 5 partial v4: absorbs the universal-Γ NoBinders-restricted
+bet residual via `hBetNoBindersResidual_of_wsubmstar`, leaving the
+universal NoBinders source extractor `hNoBindersAtBet` as a hypothesis.
+
+The `hBetNoBindersResidual` argument of v3 is manufactured inside this
+surface from `hSubstStar` plus the four absorbed per-arm helpers; this
+matches the closed proof shipped at line 36240. Surface arity drops by
+one parameter relative to v3.
+
+The same caveat as v3 applies to `hNoBindersAtBet`: it is universally
+true only when the surrounding source term has no binders at all. Future
+work in v5 should replace it with a global `Term.NoBinders source`
+premise propagated through the MEqRed recursion. -/
+noncomputable def Theorem_5_DeBruijn_Preservation_partial_v4_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoBindersAtBet :
+      ∀ {Γ : Ctx} {t body v : Term},
+        WfM Γ (.app (.abs t body) v) →
+          Term.NoBinders body ∧ Term.NoBinders v)
+    {Γ : Ctx} {t t' u : Term}
+    (hWfCtxEquOuter : WfCtxEqu Γ)
+    (hwf : WSubMStar Γ t u)
+    (hstep : StepAt Γ.depth t t') :
+    WSubMStar Γ t' u :=
+  -- Manufacture the universal NoBinders-restricted bet residual via
+  -- `hBetNoBindersResidual_of_wsubmstar`, then thread it (plus
+  -- `hNoBindersAtBet`) through the v3 surface.
+  Theorem_5_DeBruijn_Preservation_partial_v3_proved
+    hSubst hUniformStrongCommutes hOpFun hFunBound hSubstStar
+    hSubHeadReplace
+    (hBetNoBindersResidual_of_wsubmstar hSubstStar)
+    hNoBindersAtBet
+    hWfCtxEquOuter hwf hstep
+
+/-- Closed-term specialization of
+`Theorem_5_DeBruijn_Preservation_partial_v4_proved`. The closed-term
+case discharges the outer `WfCtxEqu` premise via `WfCtxEqu.empty`. -/
+noncomputable def Theorem_5_DeBruijn_ClosedPreservation_partial_v4_proved
+    (hSubst : BetaInstantiationPreservesWfM)
+    (hUniformStrongCommutes : UniformStrongCommutes)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    (hSubHeadReplace : WfMSubHeadReplaceOfNewWf)
+    (hNoBindersAtBet :
+      ∀ {Γ : Ctx} {t body v : Term},
+        WfM Γ (.app (.abs t body) v) →
+          Term.NoBinders body ∧ Term.NoBinders v)
+    {t t' u : Term}
+    (hwf : WSubMStar [] t u)
+    (hstep : Step t t') :
+    WSubMStar [] t' u :=
+  Theorem_5_DeBruijn_Preservation_partial_v4_proved
+    hSubst hUniformStrongCommutes hOpFun hFunBound hSubstStar
+    hSubHeadReplace hNoBindersAtBet
+    WfCtxEqu.empty hwf hstep

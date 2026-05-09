@@ -58,4 +58,14 @@ NOT custom axioms.
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_proved
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_proved
 
+/-! ### v4 partial surface
+
+The v4 partial surface absorbs the universal-Γ NoBinders-restricted
+bet residual `hBetNoBindersResidual` via `hBetNoBindersResidual_of_wsubmstar`.
+Surface arity drops by one parameter relative to v3; the remaining
+`hNoBindersAtBet` is still exposed as a hypothesis. -/
+
+#print axioms Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_partial_v4_proved
+#print axioms Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_partial_v4_proved
+
 end Pss
