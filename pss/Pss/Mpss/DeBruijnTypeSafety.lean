@@ -23088,22 +23088,14 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppProHeadChainPayload.proved
               have hArgStep₃ :
                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] arg _ :=
                 hEqArgStep.sub_head_replace_two_step hT₁ hBound₁₃.some
-              have hArg'₃ :
-                  Term.Scoped
-                    (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ)) _ :=
-                hArgStep₃.scoped_right
               have hVStep₃ :
                   MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
                 hEqArg.sub_head_replace_two_step hT₁ hBound₁₃.some
-              have hv₂₃ :
-                  Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
-                    v₂ :=
-                hVStep₃.scoped_right
               have hOldTo₃ : MEqRedStar Γ [] t bound₃ :=
                 MEqRedStar.trans (MEqRedStar.single hT₁)
                   (MEqRedStar.single hBound₁₃.some)
               obtain ⟨body₃, hLeftSpine, hRightSpine⟩ :=
-                changedHeadProAppSpineJoin
+                changedHeadProAppSpineJoin_of_single_steps
                   (Γ := Γ) (oldBound := t) (newBound := bound₃)
                   (args := [arg, v]) (args' := [arg', v₂])
                   hAppend hpvNil hpvBody₃ hOldTo₃
@@ -23115,18 +23107,10 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppProHeadChainPayload.proved
                         simpa [List.mem_cons, List.mem_singleton, hxArg] using hx
                       subst x
                       exact hv₃)
-                  (by
-                    intro x hx
-                    by_cases hxArg : x = arg'
-                    · subst x; exact hArg'₃
-                    · have hxv : x = v₂ := by
-                        simpa [List.mem_cons, List.mem_singleton, hxArg] using hx
-                      subst x
-                      exact hv₂₃)
                   (List.Forall₂.cons
-                    (MEqRedStar.single hArgStep₃)
+                    ⟨hArgStep₃⟩
                     (List.Forall₂.cons
-                      (MEqRedStar.single hVStep₃)
+                      ⟨hVStep₃⟩
                       List.Forall₂.nil))
               exact ⟨body₃, by simpa using hLeftSpine, by simpa using hRightSpine⟩)
 
