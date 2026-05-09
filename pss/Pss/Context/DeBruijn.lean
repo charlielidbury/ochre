@@ -219,6 +219,19 @@ replacement. -/
       | succ cutoff =>
           simp [replaceAt, ih]
 
+/-- Replacing the head entry of a `heads ++ entry :: Γ` context at depth
+`heads.length` rewrites just the named entry, leaving every preserved head
+and the tail untouched. This is the de Bruijn analogue of "replace the
+named `.sub` entry under `heads.length` preserved binders". -/
+@[simp] theorem replaceAt_length_append (heads : Ctx)
+    (oldEntry newEntry : CtxEntry) (Γ : Ctx) :
+    replaceAt heads.length newEntry (heads ++ oldEntry :: Γ) =
+      heads ++ newEntry :: Γ := by
+  induction heads with
+  | nil => rfl
+  | cons h hs ih =>
+      simp [replaceAt, List.length_cons, List.cons_append, ih]
+
 @[simp] theorem depth_insertAt_of_le {cutoff : Nat} {newEntry : CtxEntry} {Γ : Ctx}
     (hcut : cutoff ≤ Γ.depth) :
     depth (insertAt cutoff newEntry Γ) = Γ.depth + 1 := by

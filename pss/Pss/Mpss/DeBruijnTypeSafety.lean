@@ -11272,45 +11272,155 @@ noncomputable def
       WfMSubHeadReplaceDirectPayloads.of_immediate_and_under
         hOldNew hNew hUnder (hPayloads hOldNew hNew))
 
-/-! ### Partial discharge of `WfMSubHeadReplaceOfNewWf`
+/-! ### Partial discharge of `WfMSubHeadReplaceOfNewWf` via a universal
+all-depths surface.
 
-The sharpened `.sub`-head replacement payload `WfMSubHeadReplaceOfNewWf`
-walls at the `WfM.fun_` and `WfM.app` constructor cases. Each requires
-either recursive head-replacement under one extra preserved binder
-(`WfMSubUnderHeadReplaceOfNewWf`) or `MSubRed`-to-`WSubMStar` rewrite
-content under head replacement — the latter shares the same
-`MSubRed.pro` single-step wall as `BetaInstantiationPreservesWfM`.
+Per the no-per-depth-ladders rule (commit `327ae8e` and the
+`feedback_no_per_depth_ladders.md` autonomy memory), the depth-0
+(`WfMSubHeadReplaceOfNewWf`) and depth-1
+(`WfMSubUnderHeadReplaceOfNewWf`) `.sub`-head replacement payloads are
+discharged together via a single ∀n universal indexed by the prefix
+length. The `WfM.fun_` constructor's body case lands at `n+1`; with the
+heads and `n` generalized in the IH the universal proof closes uniformly
+without spawning a depth-2/3/... ladder.
 
-`WfMSubHeadReplaceOfNewWf_partial_proved` ships the **closed** leaf
-cases — `WfM.varSub`, `WfM.varEqu`, `WfM.top` — unconditionally via the
-existing `Prevalid`-based head-replacement helpers
-(`WfM.bvar_sub_head_replace`, `WfM.top_sub_head_replace`), and exposes
-the two recursive constructor cases (`WfM.fun_` and `WfM.app`) as
-residual hypotheses.
+The case grid is:
+- `WfM.varSub`/`WfM.varEqu` close via `WfM.bvar_replaceAt_sub` after a
+  rewrite to `Ctx.replaceAt heads.length` shape.
+- `WfM.top` closes via `WfM.top_replaceAt_sub` after the same rewrite.
+- `WfM.fun_` recurses into the body with `heads' = {t,sub} :: heads`,
+  reassembled via `WfM.fun_`.
+- `WfM.app` is the only residual exposed as a hypothesis: the `WSubMStar`
+  rewrite content is the `MSubRed.pro` single-step wall, the same wall
+  blocking `BetaInstantiationPreservesWfM`'s app case. -/
 
-This mirrors `BetaInstantiationPreservesWfM_partial_proved`: closed
-structural content shipped, transport-shaped content exposed as
-hypotheses. The leaf-case discharge here is purely Prevalid-level
-context-bookkeeping (no MEqRed transport, no WSubMStar reasoning), so
-no axioms are introduced. -/
+/-- Universal `.sub`-head replacement payload indexed by the prefix
+length. Specializes to `WfMSubHeadReplaceOfNewWf` at `n = 0` and to
+`WfMSubUnderHeadReplaceOfNewWf` at `n = 1`. -/
+def WfMSubHeadsReplaceOfNewWf (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {old new body : Term},
+    heads.length = n →
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WfM (heads ++ { bound := old, kind := .sub } :: Γ) body →
+            WfM (heads ++ { bound := new, kind := .sub } :: Γ) body
 
-/-- Residual hypothesis covering the `WfM.fun_` constructor case of
-`.sub`-head replacement. The premise carries the original
-sub-derivations exposed by the `fun_` constructor; the conclusion is
-the targeted post-replacement well-formedness. -/
-def WfMSubHeadReplaceOfNewWf_FunResidual : Type :=
-  ∀ {Γ : Ctx} {old new t body : Term},
-    MEqRed Γ [] old new →
-      WfM Γ new →
-        WfM ({ bound := old, kind := .sub } :: Γ) t →
-          WfM ({ bound := t, kind := .sub } ::
-              { bound := old, kind := .sub } :: Γ) body →
-            WfM ({ bound := new, kind := .sub } :: Γ) (.abs t body)
+/-- Universal `WfM.app` residual indexed by the prefix length. The
+`WSubMStar` rewrite at the new context is the only constructor-local
+content not closed by the structural induction; it shares the same
+`MSubRed.pro` single-step wall as the depth-0 and depth-1 app residuals
+it generalizes. -/
+def WfMSubHeadsReplaceOfNewWf_AppResidual (n : Nat) : Type :=
+  ∀ {Γ : Ctx} {heads : Ctx} {old new u v t : Term},
+    heads.length = n →
+      MEqRed Γ [] old new →
+        WfM Γ new →
+          WSubMStar (heads ++ { bound := old, kind := .sub } :: Γ)
+              u (.abs t .top) →
+            WSubMStar (heads ++ { bound := old, kind := .sub } :: Γ) v t →
+              WfM (heads ++ { bound := new, kind := .sub } :: Γ) (.app u v)
 
-/-- Residual hypothesis covering the `WfM.app` constructor case of
-`.sub`-head replacement. The premise carries the `WSubMStar` chains
-exposed by the `app` constructor; the conclusion is the targeted
-post-replacement well-formedness. -/
+/-- Universal `.sub`-head replacement, partially proved. The `varSub`,
+`varEqu`, `top`, and `fun_` constructor cases close uniformly by
+structural recursion on the WfM derivation with `heads` generalized;
+only the `app` case is exposed as a residual (because its `WSubMStar`
+rewrite content is the `MSubRed.pro` single-step wall).
+
+In the `fun_` case the recursive call applies at `heads' = {t, sub} :: heads`,
+so the recursion uses the universal at one binder deeper — no per-depth
+ladder. WfM is mutually inductive (with `WSubM` and `WSubMStar`) so we
+cannot use plain `induction`; we structurally recurse via `match` on
+`hBody` and let Lean accept the call sites in `fun_` as recursive
+sub-derivation calls. -/
+noncomputable def WfMSubHeadsReplaceOfNewWf_partial_universal
+    (hAppRes : ∀ n, WfMSubHeadsReplaceOfNewWf_AppResidual n)
+    {Γ : Ctx} {heads : Ctx} {old new body : Term}
+    (hOldNew : MEqRed Γ [] old new) (hNew : WfM Γ new)
+    (hBody : WfM (heads ++ { bound := old, kind := .sub } :: Γ) body) :
+    WfM (heads ++ { bound := new, kind := .sub } :: Γ) body := by
+  have hcut : heads.length <
+      Ctx.depth (heads ++ { bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth, List.length_append, List.length_cons]
+  have hdrop :
+      List.drop (heads.length + 1)
+          (heads ++ { bound := old, kind := .sub } :: Γ) = Γ := by
+    simp [List.drop_append_eq_append_drop]
+  have hScoped : CtxEntry.ScopedIn
+      (List.drop (heads.length + 1)
+        (heads ++ { bound := old, kind := .sub } :: Γ))
+      { bound := new, kind := .sub } := by
+    rw [hdrop]
+    simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+  match body, hBody with
+  | .bvar i, hb_full@(.varSub _ _) =>
+      have hwf' :
+          WfM (Ctx.replaceAt heads.length { bound := old, kind := .sub }
+              (heads ++ { bound := old, kind := .sub } :: Γ)) (.bvar i) := by
+        simpa [Ctx.replaceAt_length_append] using hb_full
+      have hres :=
+        WfM.bvar_replaceAt_sub
+          (Γ := heads ++ { bound := old, kind := .sub } :: Γ)
+          (cutoff := heads.length)
+          (old := old) (new := new) hwf' hcut hScoped
+      simpa [Ctx.replaceAt_length_append] using hres
+  | .bvar i, hb_full@(.varEqu _ _) =>
+      have hwf' :
+          WfM (Ctx.replaceAt heads.length { bound := old, kind := .sub }
+              (heads ++ { bound := old, kind := .sub } :: Γ)) (.bvar i) := by
+        simpa [Ctx.replaceAt_length_append] using hb_full
+      have hres :=
+        WfM.bvar_replaceAt_sub
+          (Γ := heads ++ { bound := old, kind := .sub } :: Γ)
+          (cutoff := heads.length)
+          (old := old) (new := new) hwf' hcut hScoped
+      simpa [Ctx.replaceAt_length_append] using hres
+  | .top, .top hpv =>
+      have hwf' : WfM (Ctx.replaceAt heads.length
+          { bound := old, kind := .sub }
+          (heads ++ { bound := old, kind := .sub } :: Γ)) .top := by
+        simpa [Ctx.replaceAt_length_append] using WfM.top hpv
+      have hres :=
+        WfM.top_replaceAt_sub
+          (Γ := heads ++ { bound := old, kind := .sub } :: Γ)
+          (cutoff := heads.length)
+          (old := old) (new := new) hwf' hcut hScoped
+      simpa [Ctx.replaceAt_length_append] using hres
+  | .abs t' bd', .fun_ hT hBd =>
+      have hT' := WfMSubHeadsReplaceOfNewWf_partial_universal
+        hAppRes (heads := heads) hOldNew hNew hT
+      have hBd' := WfMSubHeadsReplaceOfNewWf_partial_universal
+        hAppRes (heads := { bound := t', kind := .sub } :: heads)
+        hOldNew hNew (by simpa [List.cons_append] using hBd)
+      exact WfM.fun_ hT' (by simpa [List.cons_append] using hBd')
+  | .app _ _, .app hOp hArg =>
+      exact hAppRes heads.length rfl hOldNew hNew hOp hArg
+
+/-- Discharge the `n`-indexed universal payload from the structurally
+recursive partial proof, for any `n`. The `n` parameter is purely
+nominal; the underlying proof works at all `heads`. -/
+noncomputable def WfMSubHeadsReplaceOfNewWf_partial_universal_indexed
+    (hAppRes : ∀ n, WfMSubHeadsReplaceOfNewWf_AppResidual n) :
+    ∀ n, WfMSubHeadsReplaceOfNewWf n := by
+  intro n Γ heads old new body _hlen hOldNew hNew hBody
+  exact WfMSubHeadsReplaceOfNewWf_partial_universal hAppRes hOldNew hNew hBody
+
+/-- Sharpened `.sub`-head replacement at depth-0, recovered as the
+`n = 0` specialization of `WfMSubHeadsReplaceOfNewWf`. Preserves the
+existing surface used by the 95+ depth-0 call sites. -/
+noncomputable def WfMSubHeadReplaceOfNewWf_of_universal
+    (h : WfMSubHeadsReplaceOfNewWf 0) : WfMSubHeadReplaceOfNewWf := by
+  intro Γ old new body hOldNew hNew hBody
+  exact h (heads := []) rfl hOldNew hNew (by simpa using hBody)
+
+/-- Preserved-head `.sub`-replacement at depth-1, recovered as the
+`n = 1` specialization of `WfMSubHeadsReplaceOfNewWf`. -/
+noncomputable def WfMSubUnderHeadReplaceOfNewWf_of_universal
+    (h : WfMSubHeadsReplaceOfNewWf 1) : WfMSubUnderHeadReplaceOfNewWf := by
+  intro Γ head old new body hOldNew hNew hBody
+  have h' := h (heads := [head]) rfl hOldNew hNew (by simpa using hBody)
+  simpa using h'
+
+/-- Universal `_AppResidual` specialized to depth-0. -/
 def WfMSubHeadReplaceOfNewWf_AppResidual : Type :=
   ∀ {Γ : Ctx} {old new u v t : Term},
     MEqRed Γ [] old new →
@@ -11320,163 +11430,7 @@ def WfMSubHeadReplaceOfNewWf_AppResidual : Type :=
           WSubMStar ({ bound := old, kind := .sub } :: Γ) v t →
             WfM ({ bound := new, kind := .sub } :: Γ) (.app u v)
 
-/-- Partial discharge of de Bruijn `.sub`-head replacement.
-
-This is `WfMSubHeadReplaceOfNewWf`-shaped, with the two recursive
-constructor cases factored out as residual hypotheses. The `varSub`,
-`varEqu` and `top` cases close unconditionally via the existing
-`WfM.bvar_sub_head_replace` and `WfM.top_sub_head_replace` helpers; the
-`fun_` and `app` cases dispatch to the residuals.
-
-Pattern mirrors `BetaInstantiationPreservesWfM_partial_proved`: closed
-structural content shipped, transport-shaped content exposed as
-hypotheses. Once the depth-1 head-replacement under one preserved binder
-and the `MSubRed.pro` single-step rewrite residuals are discharged, both
-hypotheses become derivable and the partial proved theorem promotes to
-an unconditional `WfMSubHeadReplaceOfNewWf_proved`. -/
-noncomputable def WfMSubHeadReplaceOfNewWf_partial_proved
-    (hFun : WfMSubHeadReplaceOfNewWf_FunResidual)
-    (hApp : WfMSubHeadReplaceOfNewWf_AppResidual) :
-    WfMSubHeadReplaceOfNewWf := by
-  intro Γ old new body hOldNew hNew hBody
-  have hnew : Term.Scoped Γ.depth new := hOldNew.scoped_right
-  cases hBody with
-  | varSub hpv hb =>
-      exact WfM.bvar_sub_head_replace (WfM.varSub hpv hb) hnew
-  | varEqu hpv hb =>
-      exact WfM.bvar_sub_head_replace (WfM.varEqu hpv hb) hnew
-  | top hpv =>
-      exact WfM.top_sub_head_replace (WfM.top hpv) hnew
-  | fun_ hT hBody' =>
-      exact hFun hOldNew hNew hT hBody'
-  | app hOp hArg =>
-      exact hApp hOldNew hNew hOp hArg
-
-/-- Closure of `WfMSubHeadReplaceOfNewWf_FunResidual` modulo two
-`.sub`-head replacement payloads:
-
-- `hSelf : WfMSubHeadReplaceOfNewWf` discharges the depth-0 head
-  replacement of the abstraction's bound `t` (the `WfM.fun_`
-  constructor's first premise).
-- `hUnder : WfMSubUnderHeadReplaceOfNewWf` discharges the depth-1 head
-  replacement of the abstraction's body (the `WfM.fun_` constructor's
-  second premise, in extended context — the preserved `.sub t` head
-  remains, only the deeper `.sub old` is rewritten to `.sub new`).
-
-Once both payloads are derivable (from the still-open `.sub` head and
-under-head replacement layers), this closure ships the full
-`_FunResidual` unconditionally.
-
-Direct mirror of `BetaInstantiationPreservesWfM_FunResidual_of_self_and_underHead`
-(the β-instantiation surface of the same factorisation). The assembly
-point is `WfM.fun_sub_head_replace_from_body_wf` which takes WfM-transport
-payloads on the bound and body and reassembles via `WfM.fun_`. -/
-noncomputable def WfMSubHeadReplaceOfNewWf_FunResidual_of_self_and_underHead
-    (hSelf  : WfMSubHeadReplaceOfNewWf)
-    (hUnder : WfMSubUnderHeadReplaceOfNewWf) :
-    WfMSubHeadReplaceOfNewWf_FunResidual := by
-  intro Γ old new t body hOldNew hNew hT hBody
-  exact WfM.fun_sub_head_replace_from_body_wf hT hBody
-    (fun hx => hSelf hOldNew hNew hx)
-    (fun hx => hUnder hOldNew hNew hx)
-
-/-- Full discharge of `WfMSubHeadReplaceOfNewWf` modulo three payloads:
-the `.sub`-head replacement payload itself (used positively to close the
-`_FunResidual`'s bound substitution sub-goal), the preserved-head
-replacement payload (for the body), and the `_AppResidual` payload that
-covers the `WfM.app` constructor case.
-
-Note: `hSelf` is the headline payload itself, used positively to close
-`_FunResidual`'s bound sub-goal. This is **not** circular — the closure
-consumes `hSelf` as an oracle and produces a `WfMSubHeadReplaceOfNewWf`
-proof tree that uses `hSelf` only for the `WfM.fun_` constructor case's
-bound-replacement position, exactly where the partial dispatcher
-delegates. Callers wanting genuinely circular-free discharge would close
-`hSelf` separately (e.g. via the unrestricted discharge at the headline
-level once both layers are closed).
-
-Direct mirror of `BetaInstantiationPreservesWfM_full_of_payloads`. -/
-noncomputable def WfMSubHeadReplaceOfNewWf_full_of_payloads
-    (hSelf  : WfMSubHeadReplaceOfNewWf)
-    (hUnder : WfMSubUnderHeadReplaceOfNewWf)
-    (hApp   : WfMSubHeadReplaceOfNewWf_AppResidual) :
-    WfMSubHeadReplaceOfNewWf :=
-  WfMSubHeadReplaceOfNewWf_partial_proved
-    (WfMSubHeadReplaceOfNewWf_FunResidual_of_self_and_underHead hSelf hUnder)
-    hApp
-
-/-! Closed-case sub-surfaces of `WfMSubHeadReplaceOfNewWf`. These are
-the same three cases dispatched in the partial proved theorem above,
-exposed as standalone definitions so callers can compose them with the
-residuals at point of use. -/
-
-/-- The `WfM.top` case of `.sub`-head replacement, exposed at the
-`WfMSubHeadReplaceOfNewWf`-shaped surface. -/
-noncomputable def WfMSubHeadReplaceOfNewWf.top_cell
-    {Γ : Ctx} {old new : Term}
-    (hOldNew : MEqRed Γ [] old new)
-    (_hNew : WfM Γ new)
-    (hBody : WfM ({ bound := old, kind := .sub } :: Γ) .top) :
-    WfM ({ bound := new, kind := .sub } :: Γ) .top :=
-  WfM.top_sub_head_replace hBody hOldNew.scoped_right
-
-/-- The `WfM.varSub`/`WfM.varEqu` case of `.sub`-head replacement,
-exposed at the `WfMSubHeadReplaceOfNewWf`-shaped surface. -/
-noncomputable def WfMSubHeadReplaceOfNewWf.var_cell
-    {Γ : Ctx} {old new : Term} {i : Nat}
-    (hOldNew : MEqRed Γ [] old new)
-    (_hNew : WfM Γ new)
-    (hBody : WfM ({ bound := old, kind := .sub } :: Γ) (.bvar i)) :
-    WfM ({ bound := new, kind := .sub } :: Γ) (.bvar i) :=
-  WfM.bvar_sub_head_replace hBody hOldNew.scoped_right
-
-/-- `WfMSubHeadReplaceOfNewWf_partial_proved` specialized back to a
-direct constructor-arm dispatcher when given concrete residuals at
-point of use. This is the canonical entry point for downstream code
-that wants the "easy cases discharged, hard cases delegated" surface in
-one call. -/
-noncomputable def WfMSubHeadReplaceOfNewWf.dispatch
-    (hFun : WfMSubHeadReplaceOfNewWf_FunResidual)
-    (hApp : WfMSubHeadReplaceOfNewWf_AppResidual)
-    {Γ : Ctx} {old new body : Term}
-    (hOldNew : MEqRed Γ [] old new)
-    (hNew : WfM Γ new)
-    (hBody : WfM ({ bound := old, kind := .sub } :: Γ) body) :
-    WfM ({ bound := new, kind := .sub } :: Γ) body :=
-  WfMSubHeadReplaceOfNewWf_partial_proved hFun hApp hOldNew hNew hBody
-
-/-! ### Partial discharge of `WfMSubUnderHeadReplaceOfNewWf`
-
-Depth-1 mirror of `WfMSubHeadReplaceOfNewWf_partial_proved`. The
-preserved-head `.sub`-replacement payload also walls at the `WfM.fun_`
-and `WfM.app` constructor cases. The closed leaf cases — `WfM.varSub`,
-`WfM.varEqu`, `WfM.top` — discharge unconditionally via the existing
-`Prevalid`-based under-head replacement helpers
-(`WfM.bvar_sub_under_head_replace`, `WfM.top_sub_under_head_replace`),
-exactly mirroring the depth-0 partial proved theorem.
-
-Pattern is identical to `WfMSubHeadReplaceOfNewWf_partial_proved`:
-closed structural content shipped, transport-shaped content exposed as
-hypotheses. -/
-
-/-- Residual hypothesis covering the `WfM.fun_` constructor case of the
-preserved-head `.sub`-replacement. The premise carries the original
-sub-derivations exposed by the `fun_` constructor in the under-head
-context; the conclusion is the targeted post-replacement
-well-formedness. -/
-def WfMSubUnderHeadReplaceOfNewWf_FunResidual : Type :=
-  ∀ {Γ : Ctx} {head : CtxEntry} {old new t body : Term},
-    MEqRed Γ [] old new →
-      WfM Γ new →
-        WfM (head :: { bound := old, kind := .sub } :: Γ) t →
-          WfM ({ bound := t, kind := .sub } :: head ::
-              { bound := old, kind := .sub } :: Γ) body →
-            WfM (head :: { bound := new, kind := .sub } :: Γ) (.abs t body)
-
-/-- Residual hypothesis covering the `WfM.app` constructor case of the
-preserved-head `.sub`-replacement. The premise carries the `WSubMStar`
-chains exposed by the `app` constructor in the under-head context; the
-conclusion is the targeted post-replacement well-formedness. -/
+/-- Universal `_AppResidual` specialized to depth-1. -/
 def WfMSubUnderHeadReplaceOfNewWf_AppResidual : Type :=
   ∀ {Γ : Ctx} {head : CtxEntry} {old new u v t : Term},
     MEqRed Γ [] old new →
@@ -11486,117 +11440,65 @@ def WfMSubUnderHeadReplaceOfNewWf_AppResidual : Type :=
           WSubMStar (head :: { bound := old, kind := .sub } :: Γ) v t →
             WfM (head :: { bound := new, kind := .sub } :: Γ) (.app u v)
 
-/-- Partial discharge of de Bruijn preserved-head `.sub`-replacement.
+/-- Promote a depth-0 app residual into a `n = 0` universal app
+residual. -/
+noncomputable def WfMSubHeadsReplaceOfNewWf_AppResidual.of_zero
+    (h : WfMSubHeadReplaceOfNewWf_AppResidual) :
+    WfMSubHeadsReplaceOfNewWf_AppResidual 0 := by
+  intro Γ heads old new u v t hlen hOldNew hNew hOp hArg
+  have heq : heads = [] := List.length_eq_zero.mp hlen
+  subst heq
+  simp only [List.nil_append] at hOp hArg
+  have h' := h hOldNew hNew hOp hArg
+  simpa using h'
 
-Depth-1 mirror of `WfMSubHeadReplaceOfNewWf_partial_proved`: the
-`varSub`, `varEqu`, and `top` cases close unconditionally via the
-existing `WfM.bvar_sub_under_head_replace` and
-`WfM.top_sub_under_head_replace` helpers; the `fun_` and `app` cases
-dispatch to the residuals.
+/-- Promote a depth-1 app residual into a `n = 1` universal app
+residual. -/
+noncomputable def WfMSubHeadsReplaceOfNewWf_AppResidual.of_one
+    (h : WfMSubUnderHeadReplaceOfNewWf_AppResidual) :
+    WfMSubHeadsReplaceOfNewWf_AppResidual 1 := by
+  intro Γ heads old new u v t hlen hOldNew hNew hOp hArg
+  match heads, hlen with
+  | [head], _ =>
+      have h' := h (head := head) hOldNew hNew
+        (by simpa using hOp) (by simpa using hArg)
+      simpa using h'
 
-Once the depth-2 head-replacement under two preserved binders and the
-`MSubRed.pro` single-step rewrite residuals are discharged, both
-hypotheses become derivable and the partial proved theorem promotes to
-an unconditional `WfMSubUnderHeadReplaceOfNewWf_proved`. -/
-noncomputable def WfMSubUnderHeadReplaceOfNewWf_partial_proved
-    (hFun : WfMSubUnderHeadReplaceOfNewWf_FunResidual)
-    (hApp : WfMSubUnderHeadReplaceOfNewWf_AppResidual) :
-    WfMSubUnderHeadReplaceOfNewWf := by
-  intro Γ head old new body hOldNew hNew hBody
-  have hnew : Term.Scoped Γ.depth new := hOldNew.scoped_right
-  cases hBody with
-  | varSub hpv hb =>
-      exact WfM.bvar_sub_under_head_replace (WfM.varSub hpv hb) hnew
-  | varEqu hpv hb =>
-      exact WfM.bvar_sub_under_head_replace (WfM.varEqu hpv hb) hnew
-  | top hpv =>
-      exact WfM.top_sub_under_head_replace (WfM.top hpv) hnew
-  | fun_ hT hBody' =>
-      exact hFun hOldNew hNew hT hBody'
-  | app hOp hArg =>
-      exact hApp hOldNew hNew hOp hArg
+/-- Specialize the universal app residual back to a depth-0 app
+residual. -/
+noncomputable def WfMSubHeadReplaceOfNewWf_AppResidual_of_universal
+    (h : WfMSubHeadsReplaceOfNewWf_AppResidual 0) :
+    WfMSubHeadReplaceOfNewWf_AppResidual := by
+  intro Γ old new u v t hOldNew hNew hOp hArg
+  have h' := h (heads := []) rfl hOldNew hNew
+    (by simpa using hOp) (by simpa using hArg)
+  simpa using h'
 
-/-- Depth-2 preserved-head `.sub`-replacement payload, the body-side
-recursive ingredient needed when closing
-`WfMSubUnderHeadReplaceOfNewWf_FunResidual`. The body of the abstraction
-in the under-head context lives under two preserved heads
-(`{ bound := t, kind := .sub } :: head :: ...`), so its replacement is
-one binder deeper than `WfMSubUnderHeadReplaceOfNewWf` itself.
+/-- Specialize the universal app residual back to a depth-1 app
+residual. -/
+noncomputable def WfMSubUnderHeadReplaceOfNewWf_AppResidual_of_universal
+    (h : WfMSubHeadsReplaceOfNewWf_AppResidual 1) :
+    WfMSubUnderHeadReplaceOfNewWf_AppResidual := by
+  intro Γ head old new u v t hOldNew hNew hOp hArg
+  have h' := h (heads := [head]) rfl hOldNew hNew
+    (by simpa using hOp) (by simpa using hArg)
+  simpa using h'
 
-This is the analogue of `WfMSubUnderHeadReplaceOfNewWf` at depth 2,
-introduced as a named payload here so the under-head full-of-payloads
-closure can name it explicitly. -/
-def WfMSubUnder2HeadReplaceOfNewWf : Type :=
-  ∀ {Γ : Ctx} {head1 head2 : CtxEntry} {old new body : Term},
-    MEqRed Γ [] old new →
-      WfM Γ new →
-        WfM (head1 :: head2 :: { bound := old, kind := .sub } :: Γ) body →
-          WfM (head1 :: head2 :: { bound := new, kind := .sub } :: Γ) body
+/-- Discharge the depth-0 `.sub`-head replacement payload from a single
+universal app residual layered over all depths. -/
+noncomputable def WfMSubHeadReplaceOfNewWf_of_universal_app
+    (hAppRes : ∀ n, WfMSubHeadsReplaceOfNewWf_AppResidual n) :
+    WfMSubHeadReplaceOfNewWf :=
+  WfMSubHeadReplaceOfNewWf_of_universal
+    (WfMSubHeadsReplaceOfNewWf_partial_universal_indexed hAppRes 0)
 
-/-- Closure of `WfMSubUnderHeadReplaceOfNewWf_FunResidual` modulo two
-`.sub`-replacement payloads:
-
-- `hSelf : WfMSubUnderHeadReplaceOfNewWf` discharges the depth-1
-  preserved-head replacement of the abstraction's bound `t` (the
-  `WfM.fun_` constructor's first premise in the under-head context).
-- `hUnder2 : WfMSubUnder2HeadReplaceOfNewWf` discharges the depth-2
-  preserved-head replacement of the abstraction's body (the
-  `WfM.fun_` constructor's second premise — both the preserved
-  `.sub t` and `head` heads remain, only the deeper `.sub old` is
-  rewritten to `.sub new`).
-
-Direct mirror of
-`WfMSubHeadReplaceOfNewWf_FunResidual_of_self_and_underHead` (the
-depth-0 surface of the same factorisation). The assembly point is
-`WfM.fun_sub_under_head_replace_from_body_wf` which takes WfM-transport
-payloads on the bound and body and reassembles via `WfM.fun_`. -/
-noncomputable def
-    WfMSubUnderHeadReplaceOfNewWf_FunResidual_of_self_and_underHead
-    (hSelf   : WfMSubUnderHeadReplaceOfNewWf)
-    (hUnder2 : WfMSubUnder2HeadReplaceOfNewWf) :
-    WfMSubUnderHeadReplaceOfNewWf_FunResidual := by
-  intro Γ head old new t body hOldNew hNew hT hBody
-  exact WfM.fun_sub_under_head_replace_from_body_wf hT hBody
-    (fun hx => hSelf hOldNew hNew hx)
-    (fun hx => hUnder2 hOldNew hNew hx)
-
-/-- Full discharge of `WfMSubUnderHeadReplaceOfNewWf` modulo three
-payloads: the preserved-head `.sub`-replacement payload itself (used
-positively to close the `_FunResidual`'s bound substitution sub-goal),
-the depth-2 preserved-head replacement payload (for the body), and the
-`_AppResidual` payload that covers the `WfM.app` constructor case.
-
-Note: `hSelf` is the headline payload itself, used positively to close
-`_FunResidual`'s bound sub-goal. This is **not** circular — the closure
-consumes `hSelf` as an oracle and produces a
-`WfMSubUnderHeadReplaceOfNewWf` proof tree that uses `hSelf` only for
-the `WfM.fun_` constructor case's bound-replacement position, exactly
-where the partial dispatcher delegates. Callers wanting genuinely
-circular-free discharge would close `hSelf` separately.
-
-Direct mirror of `WfMSubHeadReplaceOfNewWf_full_of_payloads`. -/
-noncomputable def WfMSubUnderHeadReplaceOfNewWf_full_of_payloads
-    (hSelf   : WfMSubUnderHeadReplaceOfNewWf)
-    (hUnder2 : WfMSubUnder2HeadReplaceOfNewWf)
-    (hApp    : WfMSubUnderHeadReplaceOfNewWf_AppResidual) :
+/-- Discharge the depth-1 preserved-head `.sub`-replacement payload
+from a single universal app residual layered over all depths. -/
+noncomputable def WfMSubUnderHeadReplaceOfNewWf_of_universal_app
+    (hAppRes : ∀ n, WfMSubHeadsReplaceOfNewWf_AppResidual n) :
     WfMSubUnderHeadReplaceOfNewWf :=
-  WfMSubUnderHeadReplaceOfNewWf_partial_proved
-    (WfMSubUnderHeadReplaceOfNewWf_FunResidual_of_self_and_underHead
-      hSelf hUnder2)
-    hApp
-
-/-- `WfMSubUnderHeadReplaceOfNewWf_partial_proved` specialized back to a
-direct constructor-arm dispatcher when given concrete residuals at point
-of use. Mirrors `WfMSubHeadReplaceOfNewWf.dispatch`. -/
-noncomputable def WfMSubUnderHeadReplaceOfNewWf.dispatch
-    (hFun : WfMSubUnderHeadReplaceOfNewWf_FunResidual)
-    (hApp : WfMSubUnderHeadReplaceOfNewWf_AppResidual)
-    {Γ : Ctx} {head : CtxEntry} {old new body : Term}
-    (hOldNew : MEqRed Γ [] old new)
-    (hNew : WfM Γ new)
-    (hBody : WfM (head :: { bound := old, kind := .sub } :: Γ) body) :
-    WfM (head :: { bound := new, kind := .sub } :: Γ) body :=
-  WfMSubUnderHeadReplaceOfNewWf_partial_proved hFun hApp hOldNew hNew hBody
+  WfMSubUnderHeadReplaceOfNewWf_of_universal
+    (WfMSubHeadsReplaceOfNewWf_partial_universal_indexed hAppRes 1)
 
 /-- The existing sharpened `.sub` head replacement payload discharges the
 body-replacement payload needed by the contextual `Me-Fun` case. -/
