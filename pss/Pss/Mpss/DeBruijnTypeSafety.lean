@@ -35975,3 +35975,142 @@ noncomputable def MEqRedPreservesWfM_fun_arm_under_wfctx
     MEqRed.fun_ _hT _hBody
   exact MEqRedPreservesWfMUnderWfCtxAppFun_typed hOpFun hFunBound h_bet
     hΓ hFunRed hwf
+
+/-! ### `Me-Bet` residual partial discharge under `NoBinders` body and operand
+
+The `MEqRedPreservesWfM_partial` partial assembly exposes the `Me-Bet`
+constructor of `MEqRed` as a residual hypothesis `h_bet`. Closing this
+residual structurally requires β-instantiation preservation —
+`Term.instantiate 0 v' body'` is the result of substituting the stepped
+operand `v'` into the stepped body `body'`. The full discharge needs the
+universal `BetaInstantiationPreservesWfM` payload, which is open in the
+de Bruijn pivot.
+
+The **NoBinders-restricted** version of this residual closes against the
+existing `BetaInstantiationPreservesWfM_NoBinders` surface (line ~18557).
+With `Term.NoBinders body` and `Term.NoBinders v` as additional
+hypotheses, the body and operand subterms remain inside the NoBinders
+sublanguage under reduction (`MEqRed.preserves_noBinders`, line ~18103),
+and the result `Term.instantiate 0 v' body'` collapses to `body'` via
+`Term.NoBinders.instantiate_eq` (line ~18053).
+
+The proof structure:
+
+* Decompose the source `WfM Γ (.app (.abs t body) v)` into
+  `WfM Γ (.abs t body)` and `WfM Γ v`. The abstraction's
+  `WfM.fun_inv` yields `WfM Γ t` and the body-context body witness
+  `WfM ({bound := t, .sub} :: Γ) body`.
+* Recurse on the body sub-derivation
+  `MEqRed ({bound := t, .sub} :: Γ) [] body body'` via
+  `MEqRedPreservesWfMUnderWfCtxAppFun_typed`. The routine consumes
+  `h_bet` parametrically; with `body : NoBinders`, no `MEqRed.bet`
+  step is structurally producible from a NoBinders source (its source
+  shape `.app (.abs ..) ..` carries an `.abs` factor), so the
+  `h_bet` arm is unreachable through this recursion. The remaining
+  arms (`pro`, `app`, `fun_`, `top`, `var`, `tAp`, `fOp`) are
+  absorbed inside the routine.
+* The result `WfM ({bound := t, .sub} :: Γ) body'` lives in the
+  extended context. Drop the head via
+  `BetaInstantiationPreservesWfM_NoBinders` with `arg := t` and
+  `WSubMStar Γ t t = WSubMStar.refl_of_wfM hwfT`. The result
+  `WfM Γ (Term.instantiate 0 t body')` reduces to `WfM Γ body'` via
+  `Term.NoBinders.instantiate_eq`.
+* The goal `WfM Γ (Term.instantiate 0 v' body')` reduces likewise to
+  `WfM Γ body'` via the same `Term.NoBinders.instantiate_eq`.
+
+This sub-section ships:
+
+* `MEqRedPreservesWfM_bet_arm_under_wfctx_NoBinders` — manufactured
+  `h_bet` residual matching the exact shape consumed by
+  `MEqRedPreservesWfM_partial`, restricted to source `body` and
+  source operand `v` being `Term.NoBinders`. Takes `WfCtxEqu Γ`, the
+  typed operator function-supertype payload, the typed body-bound
+  narrowing payload, the typed β-instantiation chain-substitution
+  payload `BetaInstantiationPreservesWSubMStar`, and a parametric
+  `h_bet` (unused operationally inside the recursion thanks to the
+  NoBinders restriction).
+
+Mirrors `BetaInstantiationPreservesWfMUnderHeads_AppResidual_NoBinders`
+(line ~18906) and `WfMSubHeadsReplaceOfNewWf_AppResidual_NoBinders`
+(line ~19036) at the bet-residual level, completing the NoBinders
+partial-discharge family for the v2 residual surface. -/
+
+/-- Built-in `h_bet` residual for the v2 surface, under the
+NoBinders-restricted regime, manufactured from a `WfCtxEqu`-quantified
+empty-stack preservation payload (recoverable from the absorbed arms via
+`MEqRedPreservesWfMUnderWfCtxAppFun_typed`) plus the typed payloads for
+operator function-supertype, body-bound narrowing, and β-instantiation
+chain substitution.
+
+Compared to the unrestricted bet arm (open at the de Bruijn level
+because of the universal β-instantiation wall), this version requires
+the source body and operand to be `Term.NoBinders`. The conclusion's
+`Term.instantiate 0 v' body'` collapses to `body'` because `body'` is
+NoBinders (preserved by `MEqRed.preserves_noBinders`); the head-drop
+from `{bound := t, .sub} :: Γ` to `Γ` goes through
+`BetaInstantiationPreservesWfM_NoBinders` with `arg := t` and the
+trivially refl chain `WSubMStar.refl_of_wfM`.
+
+The `h_bet` parameter is taken parametrically to match the
+`MEqRedPreservesWfM_partial` consumer interface. With the NoBinders
+restriction, no `MEqRed.bet` step is structurally producible from the
+recursive descent on the body and operand sub-derivations, so the
+parameter is never invoked operationally within this routine. -/
+noncomputable def MEqRedPreservesWfM_bet_arm_under_wfctx_NoBinders
+    {Γ : Ctx} {t v v' body body' : Term}
+    (hΓ : WfCtxEqu Γ)
+    (hOpFun : MEqRedAppFunctionSupertypeTypedPayload)
+    (hFunBound : MEqRedFunBoundReplacePayload)
+    (hSubstStar : BetaInstantiationPreservesWSubMStar)
+    (hNoBindersBody : Term.NoBinders body)
+    (_hNoBindersV : Term.NoBinders v)
+    (_ht : Term.Scoped Γ.depth t)
+    (hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+    (_hArg : MEqRed Γ [] v v')
+    (h_bet : ∀ {Γ : Ctx} {t v v' body body' : Term}
+      (_ht : Term.Scoped Γ.depth t)
+      (_hBody : MEqRed ({ bound := t, kind := .sub } :: Γ) [] body body')
+      (_hArg : MEqRed Γ [] v v'),
+        WfM Γ (.app (.abs t body) v) →
+          WfM Γ (Term.instantiate 0 v' body')) :
+    WfM Γ (.app (.abs t body) v) → WfM Γ (Term.instantiate 0 v' body') := by
+  intro hwf
+  -- Decompose the source application typing.
+  obtain ⟨_bound, hFun, _hArgTy⟩ := hwf.app_inv
+  -- Extract the abstraction's well-formedness from the function chain's
+  -- left endpoint, then invert to recover the bound and body witnesses.
+  have hwfAbs : WfM Γ (.abs t body) := hFun.wf_left
+  obtain ⟨hwfT, hwfBody⟩ := hwfAbs.fun_inv
+  -- Recurse on the body sub-derivation under the extended context.
+  -- `MEqRedPreservesWfMUnderWfCtxAppFun_typed` absorbs the `pro`, `app`,
+  -- and `fun_` constructor arms internally; the `h_bet` parameter is
+  -- never invoked operationally because `body : NoBinders` rules out
+  -- any nested `MEqRed.bet` step (its source `.app (.abs ..) ..` would
+  -- contain an `.abs` factor, breaking NoBinders).
+  have hΓExt : WfCtxEqu ({ bound := t, kind := .sub } :: Γ) :=
+    WfCtxEqu.sub hΓ
+  have hwfBody' : WfM ({ bound := t, kind := .sub } :: Γ) body' :=
+    MEqRedPreservesWfMUnderWfCtxAppFun_typed hOpFun hFunBound h_bet
+      hΓExt hBody hwfBody
+  -- The stepped body is still `NoBinders` (preserved across `MEqRed`).
+  have hNoBindersBody' : Term.NoBinders body' :=
+    hBody.preserves_noBinders hNoBindersBody
+  -- Drop the `.sub`-head from the body's typing context via the
+  -- NoBinders-restricted β-instantiation payload, with `arg := t` and
+  -- the refl chain `WSubMStar Γ t t`. The result type
+  -- `WfM Γ (Term.instantiate 0 t body')` reduces to `WfM Γ body'` because
+  -- `body'` is NoBinders.
+  have hReflChain : WSubMStar Γ t t := WSubMStar.refl_of_wfM hwfT
+  have hBetaNoBinders : BetaInstantiationPreservesWfM_NoBinders :=
+    BetaInstantiationPreservesWfM_NoBinders_of_wsubmstar hSubstStar
+  have hwfBody'_dropped : WfM Γ (Term.instantiate 0 t body') :=
+    hBetaNoBinders hNoBindersBody' hReflChain hwfBody'
+  -- Both `Term.instantiate 0 t body'` and the goal
+  -- `Term.instantiate 0 v' body'` collapse to `body'` (NoBinders).
+  have hInstT : Term.instantiate 0 t body' = body' :=
+    hNoBindersBody'.instantiate_eq 0 t
+  have hInstV : Term.instantiate 0 v' body' = body' :=
+    hNoBindersBody'.instantiate_eq 0 v'
+  rw [hInstV]
+  rw [hInstT] at hwfBody'_dropped
+  exact hwfBody'_dropped
