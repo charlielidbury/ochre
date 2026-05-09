@@ -27432,6 +27432,28 @@ def StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload : Prop :=
         (Term.appSpine (.app (Term.shift 0 t) argHead) (args ++ [v]))) t₃
         ∧ MSubRedStar Γ [] (.abs bound₂ (.app u₂ v₂)) t₃
 
+/-- Body join needed by the changed-head lookup leaf for a generic nonempty
+application spine. This isolates the missing inversion of the right
+`MEqRed` app-spine step into argument steps after the abstraction bound is
+joined. -/
+def StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload : Prop :=
+  ∀ {Γ : Ctx} {t bound₃ argHead v u₂ v₂ : Term} {args : List Term},
+    MEqRedStar Γ [] t bound₃ →
+    PrevalidExt Γ [] →
+    PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) argHead →
+    (∀ arg ∈ args,
+      Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg) →
+    Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) v →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) (v :: [])
+      (Term.appSpine (.app (.bvar 0) argHead) args) u₂ →
+    MEqRed ({ bound := t, kind := .sub } :: Γ) [] v v₂ →
+    ∃ body₃,
+      MEqRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
+        (Term.appSpine (Term.shift 0 t) (argHead :: args ++ [v])) body₃
+        ∧ MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
+          (.app u₂ v₂) body₃
+
 /-- Stable-successor lookup leaf for the nonempty generic app-spine residual. -/
 def StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload : Prop :=
   ∀ {Γ : Ctx} {t bound₁ bound₂ target argHead v u₂ v₂ : Term}
@@ -33558,6 +33580,65 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload.of_n
   | fOp hInner hα hBody =>
       exact hNestedFOp hT₁ hInner hα hBody hArgHead hArgs hv hT₂ hEqOp hEqArg
 
+/-- Discharge the changed-head lookup leaf once the generic app-spine body
+join has been isolated. The remaining payload is exactly the missing
+right-spine inversion/transport step; the abstraction-bound join and outer
+fun target commute are handled here. -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload.proved_of_body_join
+    (hBodyJoin : StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload)
+    (hUniformDiamond : UniformEqDiamonds) :
+    StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload := by
+  intro Γ t bound₁ bound₂ argHead v u₂ v₂ args
+    hT₁ hArgHead hArgs hv hT₂ hEqOp hEqArg
+  have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+  have hpvBody : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil (Prevalid.sub (PrevalidExt.ctx hpvNil) hT₁.scoped_left)
+  have hAllArgs :
+      ∀ arg ∈ argHead :: args ++ [v],
+        Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+    intro arg hmem
+    by_cases hHead : arg = argHead
+    · simpa [hHead] using hArgHead
+    · by_cases hArg : arg ∈ args
+      · exact hArgs arg hArg
+      · have hV : arg = v := by
+          simpa [List.mem_cons, List.mem_append, List.mem_singleton,
+            hHead, hArg] using hmem
+        simpa [hV] using hv
+  have hpvArgs :
+      PrevalidExt ({ bound := t, kind := .sub } :: Γ)
+        ((argHead :: args ++ [v]) ++ []) :=
+    PrevalidExt.prepend_scoped_list hpvBody hAllArgs
+  let hLeftBody :
+      MSubRed ({ bound := t, kind := .sub } :: Γ) []
+        (Term.appSpine (.bvar 0) (argHead :: args ++ [v]))
+        (Term.appSpine (Term.shift 0 t) (argHead :: args ++ [v])) :=
+    MSubRed.appSpine_left (argHead :: args ++ [v])
+      (MSubRed.pro hpvArgs (Ctx.subBinds_zero_self Γ t)) hAllArgs
+  let hLeft : MSubRed Γ []
+      (.abs t (Term.appSpine (.bvar 0) (argHead :: args ++ [v])))
+      (.abs bound₁ (Term.appSpine (Term.shift 0 t) (argHead :: args ++ [v]))) :=
+    MSubRed.fun_ hT₁.scoped_left hT₁ hLeftBody
+  let hRight : MEqRed Γ []
+      (.abs t (Term.appSpine (.bvar 0) (argHead :: args ++ [v])))
+      (.abs bound₂ (.app u₂ v₂)) := by
+    simpa [Term.appSpine, Term.appSpine_append] using
+      MEqRed.fun_ hT₂ (MEqRed.app hEqOp hEqArg)
+  exact by
+    simpa [Term.appSpine] using
+      commute_abs_fun_targets_of_bound_body_joins_from_left hLeft hRight
+        ((@hUniformDiamond Γ []) hT₁ hT₂)
+        (fun {bound₃} hBound₁₃ _hBound₂₃ => by
+          have hpvBody₃ :
+              PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] :=
+            PrevalidExt.nil
+              (Prevalid.sub (PrevalidExt.ctx hpvNil)
+                hBound₁₃.some.scoped_right)
+          have hOldTo₃ : MEqRedStar Γ [] t bound₃ :=
+            MEqRedStar.trans (MEqRedStar.single hT₁)
+              (MEqRedStar.single hBound₁₃.some)
+          exact hBodyJoin hOldTo₃ hpvNil hpvBody₃ hArgHead hArgs hv hEqOp hEqArg)
+
 /-- Build the structural fun/fun body `Ms-App × Me-App` handler from the
 remaining replacement and changed-argument transport residuals.
 
@@ -34021,8 +34102,8 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
     (hAppBetBodyFun : StrongCommutesAppBetFOpBodyFunPayload)
     (hAppBetBodyFOp : StrongCommutesAppBetFOpBodyFOpPayload)
     (hAppend : MEqRedStarStackAppendPayload)
-    (hFunBodyAppAppSubAppSpineProHead :
-      StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload)
+    (hFunBodyAppAppSubAppSpineProHeadBodyJoin :
+      StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload)
     (hFunBodyAppAppSubAppSpineProSucc :
       StrongCommutesFunFunBodyAppAppSubAppSpineConsProSuccChainPayload)
     (hFunBodyAppAppSubAppSpineTop :
@@ -34191,7 +34272,9 @@ theorem StrongCommutes_proved_of_split_chain_fun_app_sub_cases_nested_app_handle
                                 hUniformDiamond)
                               (StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload.of_app_spine_cons
                                 (StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload.of_nested_cases_pro_split
-                                  hFunBodyAppAppSubAppSpineProHead
+                                  (StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadChainPayload.proved_of_body_join
+                                    hFunBodyAppAppSubAppSpineProHeadBodyJoin
+                                    hUniformDiamond)
                                   hFunBodyAppAppSubAppSpineProSucc
                                   hFunBodyAppAppSubAppSpineTop
                                   hFunBodyAppAppSubAppSpineEqu

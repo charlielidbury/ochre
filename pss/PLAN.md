@@ -168,16 +168,20 @@ discharge is:
    `Ms-App` payload
    `StrongCommutesFunFunBodyAppAppSubAppAppAppAppAppAppAppAppAppAppAppAppAppAppChainPayload`,
    plus the remaining `Ms-FOp` payload family. The next productive local
-   proof step is to discharge the constructor-local leaves of the generic
-   nonempty app-spine split
+   proof step is to discharge the remaining constructor-local leaves of the
+   generic nonempty app-spine split
    `StrongCommutesFunFunBodyAppAppSubAppSpineConsChainPayload.of_nested_cases_pro_split`.
    This split avoids extending the fixed-depth ladder again: the changed-
    head lookup, stable-successor lookup, `Ms-Top`, `Ms-Equ`, recursive
    `Ms-App`, and `Ms-FOp` obligations are now exposed as separate cons-
-   spine payloads. The previous direct generic split over a stack written
-   as `args ++ [v]` failed in the `Ms-FOp` arm, because `MSubRed.fOp`
-   consumes the stack head as its operand (`α :: s`); the active split
-   uses the explicit-head shape needed by that constructor.
+   spine payloads. The changed-head leaf is structurally reduced to
+   `StrongCommutesFunFunBodyAppAppSubAppSpineConsProHeadBodyJoinPayload`,
+   which isolates the missing generic inversion/transport of the right
+   `MEqRed` app-spine step into body-level joins. The previous direct
+   generic split over a stack written as `args ++ [v]` failed in the
+   `Ms-FOp` arm, because `MSubRed.fOp` consumes the stack head as its
+   operand (`α :: s`); the active split uses the explicit-head shape needed
+   by that constructor.
 
 2. **`UniformEqDiamonds` (Lemma 2 single-step).** Same shape as (1) on
    the `MEqRed × MEqRed` side. Smaller case grid; many cells already
