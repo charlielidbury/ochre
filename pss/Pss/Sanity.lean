@@ -7,6 +7,7 @@ import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
 import Pss.Paper.Aux.Weakening
+import Pss.Paper.Conjecture8
 import Pss.Paper.Lemma_2_Diamond
 
 /-! # `Pss.Sanity` — `#print axioms` audit
@@ -251,5 +252,9 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.Lemma_2_TopTop_proved_unconditional
 #print axioms Pss.DeBruijn.Paper.Lemma_2_VarVar_proved_unconditional
 #print axioms Pss.DeBruijn.Paper.Lemma_2_TApTAp_proved_unconditional
+
+-- Conjecture 8 (paper p. 9:13). Open in the paper. Surfaces in the
+-- `#print axioms` of any theorem that depends on it.
+#print axioms Pss.DeBruijn.Paper.Conjecture_8_WellSubtypingContextIndependent
 
 end Pss

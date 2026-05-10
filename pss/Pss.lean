@@ -10,6 +10,7 @@ import Pss.Mpss.DeBruijnOperationalSem
 import Pss.Mpss.DeBruijnTransitivityElim
 import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.ContextEvolution
+import Pss.Paper.Conjecture8
 import Pss.Paper.Aux.CommutativityWeakening
 import Pss.Paper.Aux.Congruence
 import Pss.Paper.Aux.EvolutionTransport
