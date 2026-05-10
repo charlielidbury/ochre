@@ -1,5 +1,6 @@
 import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.Aux.CommutativityWeakening
+import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
 import Pss.Paper.Aux.Weakening
 
@@ -117,5 +118,51 @@ match the paper (Pasquale & García-Pérez 2024). -/
   Pss.DeBruijn.Paper.Lemma_32_ReductionUnderSubstitution_AuxForCommutation
 #print axioms
   Pss.DeBruijn.Paper.Lemma_32_ReductionUnderSubstitution_AuxForCommutation_J
+
+-- Paper Theorem 11 (No supertype of `Top` is a function), p. 9:31. Conditional
+-- on `StrongCommutes` (de Bruijn analogue of Theorem 3 at the empty stack).
+#print axioms Pss.DeBruijn.Paper.Theorem_11_NoTopAbstractionSupertypes_of
+#print axioms Pss.DeBruijn.Paper.Theorem_11_NoTopFunctionSupertypes_of
+#print axioms Pss.DeBruijn.Paper.Theorem_11_NoTopFunctionSupertypes_closed_of
+
+-- Paper Proposition 12 (Well-formedness extraction), p. 9:32.
+#print axioms Pss.DeBruijn.Paper.Proposition_12_WfMExtraction_left
+#print axioms Pss.DeBruijn.Paper.Proposition_12_WfMExtraction_right
+#print axioms Pss.DeBruijn.Paper.Proposition_12_WfMExtraction
+
+-- Paper Proposition 13 (From well-subtyping to subtyping), p. 9:32.
+#print axioms Pss.DeBruijn.Paper.Proposition_13_FromWellSubtypingToSubtyping
+#print axioms
+  Pss.DeBruijn.Paper.Proposition_13_FromWellSubtypingToSubtyping_star
+
+-- Paper Proposition 14 (From well-equivalence to equivalence), p. 9:32.
+#print axioms
+  Pss.DeBruijn.Paper.Proposition_14_FromWellEquivalenceToEquivalence
+#print axioms
+  Pss.DeBruijn.Paper.Proposition_14_FromWellEquivalenceToEquivalence_star
+
+-- Paper Lemma 15 (Symmetry of `≡_wf`), p. 9:33.
+#print axioms Pss.DeBruijn.Paper.Lemma_15_WEquMSymmetry
+#print axioms Pss.DeBruijn.Paper.Lemma_15_WEquMSymmetry_star
+
+-- Paper Lemma 16 (`≡_wf` ⊆ `≤_wf`), p. 9:33.
+#print axioms Pss.DeBruijn.Paper.Lemma_16_WEquMToWSubM
+#print axioms Pss.DeBruijn.Paper.Lemma_16_WEquMToWSubM_star
+
+-- Paper Proposition 17 (From reduction semantics to equivalence reduction),
+-- p. 9:33. Unconditional in de Bruijn (the LN `Proposition_17_beta_axiom` is
+-- retired).
+#print axioms
+  Pss.DeBruijn.Paper.Proposition_17_FromReductionToEquivalenceReduction
+#print axioms
+  Pss.DeBruijn.Paper.Proposition_17_FromReductionToEquivalenceReduction_closed
+#print axioms
+  Pss.DeBruijn.Paper.Proposition_17_FromReductionToEquivalenceReduction_J
+
+-- Paper Proposition 18 (Reflexivity of equivalence reduction), p. 9:33.
+#print axioms Pss.DeBruijn.Paper.Proposition_18_MEqRedReflexivity
+#print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity
+#print axioms Pss.DeBruijn.Paper.Proposition_18_MEqRedReflexivity_J
+#print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity_J
 
 end Pss
