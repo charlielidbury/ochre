@@ -8,6 +8,7 @@ import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
 import Pss.Paper.Aux.Weakening
 import Pss.Paper.Conjecture8
+import Pss.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric
 import Pss.Paper.Lemma_2_Diamond
 
 /-! # `Pss.Sanity` — `#print axioms` audit
@@ -256,5 +257,15 @@ match the paper (Pasquale & García-Pérez 2024). -/
 -- Conjecture 8 (paper p. 9:13). Open in the paper. Surfaces in the
 -- `#print axioms` of any theorem that depends on it.
 #print axioms Pss.DeBruijn.Paper.Conjecture_8_WellSubtypingContextIndependent
+
+-- Kind-narrowed asymmetric Lemma 32. Combines the decoupling of the
+-- symmetric kind-narrowed `MEqRedFusedKindNarrowedBetaSubstStack_proved`
+-- with the asymmetric LHS/RHS substitutions of
+-- `Lemma_32_Asymmetric_proved`. Source's `.sub` head bound `t` is
+-- decoupled from the LHS substitution arg `arg`. This is the lemma
+-- consumed by Lemma 2's bet × bet, app × bet, bet × app cells for
+-- single-step output.
+#print axioms Pss.DeBruijn.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric_proved
+#print axioms Pss.DeBruijn.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
 
 end Pss

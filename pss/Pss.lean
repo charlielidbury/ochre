@@ -19,6 +19,7 @@ import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Weakening
 import Pss.Paper.Investigation.Lemma_32_Asymmetric
+import Pss.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric
 
 /-! # PSS — Pure Subtype Systems
 
