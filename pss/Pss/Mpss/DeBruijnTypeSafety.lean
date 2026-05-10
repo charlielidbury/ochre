@@ -35234,6 +35234,285 @@ noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpChainPayload.p
       exact hBodyFOp hT₁ hInner hScopedT hScopedα hSub hStackEq
         hArgHead hArgs hv hT₂ hEqOp hEqArg
 
+/-! ### Body-join `proved_partial` via `MSubRed.replaceAt_sub_aux`
+
+The body-join sub-residual `BodyJoinPayload` joins the LHS post-Sub body
+(produced by lifting `hSub` outward) with the RHS post-Eq body
+`.app u₂ v₂` under the joined bound `bound₃`. Concretely:
+
+- LHS direction: transport `hSub` from `{sub t}` to `{sub bound₃}`
+  context via `MSubRed.replaceAt_sub_aux` at cutoff 2 (the body context
+  is `{equ αBody} :: {equ argHead} :: {sub t} :: Γ`). The aux returns an
+  `MSubRedStar` (not a single step) because the changed-cutoff `Ms-Pro`
+  case must be supplied as a payload `hProSelf`. The recursive
+  `Ms-Fun`/`Ms-FOp` cases are similarly delegated as `hFunBody`/
+  `hFOpBody` payloads. After transport, the result is lifted through
+  `MSubRedStar.fOp` (consuming αBody) → `MSubRedStar.fOp` (consuming
+  argHead) → `MSubRedStar.app_left` (head) → `MSubRedStar.appSpine_left`
+  (spine) to a chain at the outer empty stack.
+
+- RHS direction: transport `hEqOp`/`hEqArg` from `{sub t}` to
+  `{sub bound₃}` via two applications of `MEqRed.sub_head_replace`
+  (`t → bound₁ → bound₃`), then combine via `MEqRed.app` and the
+  appSpine append/cons rewrites.
+
+- Joining: with LHS `MSubRedStar` and RHS `MEqRed`, the join is a
+  star-level strong-commutativity obligation, exposed verbatim as the
+  `hJoin` sub-payload. -/
+
+/-- Body-join `proved_partial` for the SpineCons FOp body `Ms-FOp` arm.
+
+This factors `BodyJoinPayload` into:
+
+1. The three `MSubRed.replaceAt_sub_aux` sub-payloads (`hProSelf`,
+   `hFunBody`, `hFOpBody`) at cutoff 2 in the body context
+   `{equ αBody} :: {equ argHead} :: {sub t} :: Γ`. Each is supplied
+   universally enough to be discharged by future deep machinery.
+
+2. A star-level strong-commutativity join `hJoin` that, given an
+   `MSubRedStar` on the left and an `MEqRed` on the right from a common
+   source, produces the joined `body₃`.
+
+The proof composes `hT₁` and `hBound₁₃` via two `replaceAt_sub_aux`
+applications (one per single MEqRed step in the chain). -/
+noncomputable def StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyFOpBodyJoinPayload.proved_partial
+    (hProSelf :
+      ∀ {Γ : Ctx} {old new argHead αBody : Term} {s' : Stack},
+        Term.Scoped (Ctx.depth Γ) old →
+        MEqRed Γ [] old new →
+        PrevalidExt ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := new, kind := .sub } :: Γ) s' →
+        MSubRedStar ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := new, kind := .sub } :: Γ) s'
+          (.bvar 2) (Term.shiftBy 0 3 old))
+    (hFunBody :
+      ∀ {Γ : Ctx} {old new argHead αBody t t' body body' : Term},
+        Term.Scoped (Ctx.depth Γ) old →
+        MEqRed Γ [] old new →
+        Term.Scoped (Ctx.depth ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := old, kind := .sub } :: Γ)) t →
+        MEqRed ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := old, kind := .sub } :: Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+            { bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := old, kind := .sub } :: Γ) [] body body' →
+        MSubRedStar ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := new, kind := .sub } :: Γ) []
+          (.abs t body) (.abs t' body'))
+    (hFOpBody :
+      ∀ {Γ : Ctx} {old new argHead αBody t α body body' : Term}
+        {sBody : Stack},
+        Term.Scoped (Ctx.depth Γ) old →
+        MEqRed Γ [] old new →
+        Term.Scoped (Ctx.depth ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := old, kind := .sub } :: Γ)) t →
+        Term.Scoped (Ctx.depth ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := old, kind := .sub } :: Γ)) α →
+        MSubRed ({ bound := α, kind := .equ } ::
+            { bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := old, kind := .sub } :: Γ)
+          (Stack.shift 0 sBody) body body' →
+        MSubRedStar ({ bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := new, kind := .sub } :: Γ) (α :: sBody)
+          (.abs t body) (.abs t body'))
+    (hJoin :
+      ∀ {Γ : Ctx} {a b c : Term},
+        MSubRedStar Γ [] a b →
+        MEqRed Γ [] a c →
+        ∃ d, MEqRedStar Γ [] b d ∧ MSubRedStar Γ [] c d) :
+    StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyFOpBodyJoinPayload := by
+  intro Γ t bound₁ bound₃ inner argHead v u₂ v₂ tBody αBody bodyInner
+    bodyInner' args sBody hT₁ hBound₁₃ hInner hScopedT hScopedα hSub
+    hStackEq hArgHead hArgs hv hEqOp hEqArg
+  -- Step 1: transport `hSub` from t-context to bound₁-context via
+  -- `MSubRed.replaceAt_sub_aux` at cutoff 2.
+  have hT₁_drop :
+      MEqRed (List.drop 3 ({ bound := αBody, kind := .equ } ::
+          { bound := argHead, kind := .equ } ::
+          { bound := t, kind := .sub } :: Γ)) [] t bound₁ := by
+    simpa using hT₁
+  -- Use auxiliary: prove the cutoff condition for the full body context.
+  have hcutFull :
+      (2 : Nat) < Ctx.depth ({ bound := αBody, kind := .equ } ::
+          { bound := argHead, kind := .equ } ::
+          { bound := t, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  have hT₁Scoped : Term.Scoped Γ.depth t := hT₁.scoped_left
+  have hBound₁Scoped : Term.Scoped Γ.depth bound₁ := hT₁.scoped_right
+  -- Apply replaceAt_sub_aux to transport hSub from t to bound₁.
+  have hSubBound₁Star :
+      MSubRedStar ({ bound := αBody, kind := .equ } ::
+          { bound := argHead, kind := .equ } ::
+          { bound := bound₁, kind := .sub } :: Γ)
+        (Stack.shift 0 sBody) bodyInner bodyInner' := by
+    have h := hSub.replaceAt_sub_aux
+      (Γ := { bound := αBody, kind := .equ } ::
+        { bound := argHead, kind := .equ } ::
+        { bound := t, kind := .sub } :: Γ)
+      (cutoff := 2) rfl hcutFull hT₁_drop
+      (fun {s'} hpv' => hProSelf hT₁Scoped hT₁ hpv')
+      (fun {tt tt' bb bb'} htt hEqtt hbb =>
+        hFunBody hT₁Scoped hT₁ htt hEqtt hbb)
+      (fun {tt αα bb bb' sBB} htt hαα hbb =>
+        hFOpBody hT₁Scoped hT₁ htt hαα hbb)
+    simpa [Ctx.replaceAt] using h
+  -- Step 2: transport from bound₁ to bound₃ via the same aux.
+  have hcutFull' :
+      (2 : Nat) < Ctx.depth ({ bound := αBody, kind := .equ } ::
+          { bound := argHead, kind := .equ } ::
+          { bound := bound₁, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  have hBound₁₃_drop :
+      MEqRed (List.drop 3 ({ bound := αBody, kind := .equ } ::
+          { bound := argHead, kind := .equ } ::
+          { bound := bound₁, kind := .sub } :: Γ)) [] bound₁ bound₃ := by
+    simpa using hBound₁₃
+  -- Apply the chain-level transport using `replace_from_step_replacement`,
+  -- which lifts a per-step transport to the closure level.
+  have hSubBound₃Star :
+      MSubRedStar ({ bound := αBody, kind := .equ } ::
+          { bound := argHead, kind := .equ } ::
+          { bound := bound₃, kind := .sub } :: Γ)
+        (Stack.shift 0 sBody) bodyInner bodyInner' :=
+    MSubRedStar.replace_from_step_replacement
+      (Γ := { bound := αBody, kind := .equ } ::
+        { bound := argHead, kind := .equ } ::
+        { bound := bound₁, kind := .sub } :: Γ)
+      (Γ' := { bound := αBody, kind := .equ } ::
+        { bound := argHead, kind := .equ } ::
+        { bound := bound₃, kind := .sub } :: Γ)
+      (s := Stack.shift 0 sBody)
+      (u := bodyInner) (v := bodyInner')
+      (fun {x y} hStep => by
+        have hh := hStep.replaceAt_sub_aux
+          (Γ := { bound := αBody, kind := .equ } ::
+            { bound := argHead, kind := .equ } ::
+            { bound := bound₁, kind := .sub } :: Γ)
+          (cutoff := 2) rfl hcutFull' hBound₁₃_drop
+          (fun {s'} hpv' => hProSelf hBound₁Scoped hBound₁₃ hpv')
+          (fun {tt tt' bb bb'} htt hEqtt hbb =>
+            hFunBody hBound₁Scoped hBound₁₃ htt hEqtt hbb)
+          (fun {tt αα bb bb' sBB} htt hαα hbb =>
+            hFOpBody hBound₁Scoped hBound₁₃ htt hαα hbb)
+        simpa [Ctx.replaceAt] using hh)
+      hSubBound₁Star
+  -- Step 3: lift hSubBound₃Star through fOp/fOp/app_left/appSpine_left
+  -- to a chain at the outer empty stack under {sub bound₃} :: Γ.
+  have hpvBody₃ :
+      PrevalidExt ({ bound := bound₃, kind := .sub } :: Γ) [] := by
+    have hBound₃Scoped : Term.Scoped Γ.depth bound₃ := hBound₁₃.scoped_right
+    have hpvNil : PrevalidExt Γ [] := hT₁.prevalidExt
+    exact PrevalidExt.nil
+      (Prevalid.sub (PrevalidExt.ctx hpvNil) hBound₃Scoped)
+  have hArgHead₃ :
+      Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+        argHead := by simpa [Ctx.depth] using hArgHead
+  have hAllArgsTail :
+      ∀ arg ∈ args ++ [v],
+        Term.Scoped (Ctx.depth ({ bound := t, kind := .sub } :: Γ)) arg := by
+    intro arg hmem
+    by_cases hArg : arg ∈ args
+    · exact hArgs arg hArg
+    · have hV : arg = v := by
+        simpa [List.mem_append, List.mem_singleton, hArg] using hmem
+      simpa [hV] using hv
+  have hAllArgsTail₃ :
+      ∀ arg ∈ args ++ [v],
+        Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+          arg := by
+    intro arg hmem
+    have h := hAllArgsTail arg hmem
+    simpa [Ctx.depth] using h
+  have hScopedT₃ :
+      Term.Scoped (Ctx.depth ({ bound := argHead, kind := .equ } ::
+          { bound := bound₃, kind := .sub } :: Γ)) tBody := by
+    simpa [Ctx.depth] using hScopedT
+  have hScopedα₃ :
+      Term.Scoped (Ctx.depth ({ bound := argHead, kind := .equ } ::
+          { bound := bound₃, kind := .sub } :: Γ)) αBody := by
+    simpa [Ctx.depth] using hScopedα
+  -- Apply MSubRedStar.fOp_body_fixed to lift through the inner abs binder.
+  have hAbsTBody₃Star :
+      MSubRedStar ({ bound := argHead, kind := .equ } ::
+          { bound := bound₃, kind := .sub } :: Γ)
+        (αBody :: sBody)
+        (.abs tBody bodyInner) (.abs tBody bodyInner') :=
+    MSubRedStar.fOp_body_fixed hScopedT₃ hScopedα₃ hSubBound₃Star
+  -- Rewrite stack to `Stack.shift 0 (args ++ [v])` via hStackEq.
+  have hAbsTBody₃StarRw :
+      MSubRedStar ({ bound := argHead, kind := .equ } ::
+          { bound := bound₃, kind := .sub } :: Γ)
+        (Stack.shift 0 (args ++ [v]))
+        (.abs tBody bodyInner) (.abs tBody bodyInner') := by
+    rw [hStackEq]; exact hAbsTBody₃Star
+  -- Lift outer abs (consuming argHead).
+  have hInner₃ :
+      Term.Scoped (Ctx.depth ({ bound := bound₃, kind := .sub } :: Γ))
+        inner := by simpa [Ctx.depth] using hInner
+  have hAbsInnerStar :
+      MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ)
+        (argHead :: args ++ [v])
+        (.abs inner (.abs tBody bodyInner))
+        (.abs inner (.abs tBody bodyInner')) := by
+    have h :
+        MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ)
+          (argHead :: (args ++ [v]))
+          (.abs inner (.abs tBody bodyInner))
+          (.abs inner (.abs tBody bodyInner')) :=
+      MSubRedStar.fOp_body_fixed (s := args ++ [v]) hInner₃ hArgHead₃
+        hAbsTBody₃StarRw
+    simpa [List.cons_append] using h
+  -- Lift via app_left.
+  have hAppHead₃Star :
+      MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ)
+        (args ++ [v])
+        (.app (.abs inner (.abs tBody bodyInner)) argHead)
+        (.app (.abs inner (.abs tBody bodyInner')) argHead) := by
+    simpa [List.cons_append] using
+      MSubRedStar.app_left hAbsInnerStar hArgHead₃
+  -- Lift via appSpine_left.
+  have hLeftBodyStar :
+      MSubRedStar ({ bound := bound₃, kind := .sub } :: Γ) []
+        (Term.appSpine (.app (.abs inner (.abs tBody bodyInner)) argHead)
+          (args ++ [v]))
+        (Term.appSpine (.app (.abs inner (.abs tBody bodyInner')) argHead)
+          (args ++ [v])) :=
+    MSubRedStar.appSpine_left (args ++ [v]) (by simpa using hAppHead₃Star)
+      hAllArgsTail₃
+  -- Step 4: build RHS single-step MEqRed at bound₃-context.
+  have hEqOp₃ :
+      MEqRed ({ bound := bound₃, kind := .sub } :: Γ) (v :: [])
+        (Term.appSpine (.app (.abs inner (.abs tBody bodyInner)) argHead)
+          args) u₂ :=
+    (hEqOp.sub_head_replace hT₁).sub_head_replace hBound₁₃
+  have hEqArg₃ :
+      MEqRed ({ bound := bound₃, kind := .sub } :: Γ) [] v v₂ :=
+    (hEqArg.sub_head_replace hT₁).sub_head_replace hBound₁₃
+  have hRightBodySingle :
+      MEqRed ({ bound := bound₃, kind := .sub } :: Γ) []
+        (Term.appSpine (.app (.abs inner (.abs tBody bodyInner)) argHead)
+          (args ++ [v]))
+        (.app u₂ v₂) := by
+    simpa [Term.appSpine_append, Term.appSpine] using
+      MEqRed.app hEqOp₃ hEqArg₃
+  -- Step 5: convert LHS source to use the post-Sub form via reverse-direction
+  -- transformation. Actually, reorient: we need MEqRedStar from
+  -- LHS-target (post-Sub) to body₃, and MSubRedStar from .app u₂ v₂ to body₃.
+  -- The hLeftBodyStar gives MSubRedStar from LHS-source to LHS-target;
+  -- combined with hRightBodySingle (MEqRed from LHS-source to .app u₂ v₂),
+  -- the join via hJoin produces body₃.
+  exact hJoin hLeftBodyStar hRightBodySingle
+
 /-- Partial discharge of the SpineCons FOp body `Ms-FOp` arm.
 
 The body MSubRed step is `MSubRed.fOp hScopedT hScopedα hSub`, with

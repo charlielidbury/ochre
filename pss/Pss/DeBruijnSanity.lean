@@ -1326,5 +1326,13 @@ namespace DeBruijn
 -- `hT₁ : Γ ⊢ t ⇔ bound₁` and `hBound₁₃ : Γ ⊢ bound₁ ⇔ bound₃`.
 #print axioms StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyFOpChainPayload.proved_partial
 
+-- BodyJoinPayload partial discharge via `MSubRed.replaceAt_sub_aux`. Takes
+-- the three aux sub-payloads (`hProSelf`/`hFunBody`/`hFOpBody`) plus a
+-- star-level strong-commutativity join `hJoin`. Composes `hT₁` and
+-- `hBound₁₃` via two `replaceAt_sub_aux` applications, lifts through
+-- `MSubRedStar.fOp`/`app_left`/`appSpine_left`, and joins with the RHS
+-- single-step `MEqRed`.
+#print axioms StrongCommutesFunFunBodyAppAppSubAppSpineConsFOpBodyFOpBodyJoinPayload.proved_partial
+
 end DeBruijn
 end Pss
