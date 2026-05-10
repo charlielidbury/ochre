@@ -40,7 +40,7 @@ theorem stripStackHead {Γ Γ' : Ctx} {s s' s_0 : Stack} {α : Term}
     (hStack : s = α :: s_0)
     (h : ContextEvolution Γ s Γ' s') :
     ∃ α' s_1, s' = α' :: s_1 ∧ ContextEvolution Γ s_0 Γ' s_1 := by
-  induction h with
+  induction h generalizing s_0 α with
   | @ctRefl Γ s =>
       -- s' = s = α :: s_0; pick α' = α, s_1 = s_0; sub-derivation is ctRefl.
       subst hStack
@@ -51,10 +51,43 @@ theorem stripStackHead {Γ Γ' : Ctx} {s s' s_0 : Stack} {α : Term}
       obtain ⟨α', s_1, hs', hInner_strip⟩ := ih hStack
       exact ⟨α', s_1, hs',
         ContextEvolution.ctAnn hInner_strip hred⟩
-  | @ctStk Γ Γ' s s' β β' hInner hred =>
+  | @ctStk Γ Γ' s s' β β' hInner hred _ =>
       -- Outer rule is Ct-Stk; the inner premise is exactly the result.
       cases hStack
       exact ⟨β', s', rfl, hInner⟩
+  | @cons_lift Γ_inner Γ_inner' s_inner s_inner' entry hInner hBoundScoped ih =>
+      -- Outer LHS stack is `Stack.shift 0 s_inner`. The hStack hypothesis says
+      -- `Stack.shift 0 s_inner = α :: s_0`. Inversion: `s_inner = α'' :: s_0''`
+      -- with `α = Term.shift 0 α''` and `s_0 = Stack.shift 0 s_0''`.
+      cases s_inner with
+      | nil =>
+          -- Stack.shift 0 [] = [] ≠ α :: s_0. Contradiction.
+          simp [Stack.shift, Stack.shiftBy] at hStack
+      | cons α'' s_0'' =>
+          -- Stack.shift 0 (α'' :: s_0'') = Term.shift 0 α'' :: Stack.shift 0 s_0''.
+          have hSplit : Term.shift 0 α'' = α ∧ Stack.shift 0 s_0'' = s_0 := by
+            simp [Stack.shift, Stack.shiftBy] at hStack
+            exact hStack
+          -- Recurse on the inner derivation to split off α''.
+          obtain ⟨α_inner', s_1_inner', hs_inner', hInner_strip⟩ := ih rfl
+          -- s_inner' = α_inner' :: s_1_inner'. Apply cons_lift to recover the
+          -- stripped evolution at the cons-context's shifted stack.
+          subst hs_inner'
+          refine ⟨Term.shift 0 α_inner', Stack.shift 0 s_1_inner', ?_, ?_⟩
+          · -- The post-shift output stack: Stack.shift 0 (α_inner' :: s_1_inner')
+            --   = Term.shift 0 α_inner' :: Stack.shift 0 s_1_inner'.
+            simp [Stack.shift, Stack.shiftBy, Term.shift]
+          · -- ContextEvolution (entry :: Γ_inner) (Stack.shift 0 s_0'')
+            --   (entry :: Γ_inner') (Stack.shift 0 s_1_inner') via cons_lift on
+            --   hInner_strip.
+            have hL : ContextEvolution
+                (entry :: Γ_inner) (Stack.shift 0 s_0'')
+                (entry :: Γ_inner') (Stack.shift 0 s_1_inner') :=
+              ContextEvolution.cons_lift hInner_strip hBoundScoped
+            -- Goal stack on the LHS is `s_0` (which by hSplit.2 equals
+            -- `Stack.shift 0 s_0''`).
+            rw [← hSplit.2]
+            exact hL
 
 /-- **Lemma 36 (Commutativity — context weakening), paper p. 9:46.**
 

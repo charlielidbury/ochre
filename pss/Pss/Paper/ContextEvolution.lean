@@ -72,6 +72,27 @@ inductive ContextEvolution : Ctx → Stack → Ctx → Stack → Prop where
       MEqRed Γ [] α α' →
       ContextEvolution Γ (α :: s) Γ' (α' :: s')
 
+  /-- **Body-context lift** (paper-implicit). The body cases of paper
+  Lemma 2 (`Me-Fun`, `Me-FOp`, `Me-Bet`, `Me-App × Me-Bet`, etc.) need to
+  lift an outer evolution `Γ; s ↣ Γ'; s'` to the body context's
+  evolution `(entry :: Γ); shift 0 s ↣ (entry :: Γ'); shift 0 s'`. The
+  paper uses this implicitly when invoking weakening (Lemma 19) under a
+  binder; the de Bruijn mechanization makes it an explicit constructor
+  so that inductions and discharges of the body cases close without
+  needing a separate `cons_lift` walk over the underlying derivation.
+  The same `entry` is added to BOTH sides, preserving all evolution
+  invariants. The scoping witness for the bound at `Γ.depth` (= `Γ'.depth`
+  by `preserves_ctx_depth`) ensures we can rebuild prevalidity of the
+  new heads on both sides. -- Paper handwaves; mechanized as: explicit
+  `cons_lift` constructor.
+  -/
+  | cons_lift {Γ Γ' : Ctx} {s s' : Stack} {entry : CtxEntry} :
+      ContextEvolution Γ s Γ' s' →
+      Term.Scoped Γ.depth entry.bound →
+      ContextEvolution
+        (entry :: Γ) (Stack.shift 0 s)
+        (entry :: Γ') (Stack.shift 0 s')
+
 namespace ContextEvolution
 
 /-! ## Basic structural invariants -/
@@ -83,6 +104,8 @@ theorem preserves_stack_length {Γ Γ' : Ctx} {s s' : Stack}
   | ctRefl => rfl
   | ctAnn _ _ ih => exact ih
   | ctStk _ _ ih => simp [ih]
+  | cons_lift _ _ ih =>
+      simp [Stack.shift, Stack.shiftBy, List.length_map, ih]
 
 /-- Context depth is preserved by `ContextEvolution`. -/
 theorem preserves_ctx_depth {Γ Γ' : Ctx} {s s' : Stack}
@@ -92,6 +115,8 @@ theorem preserves_ctx_depth {Γ Γ' : Ctx} {s s' : Stack}
   | ctAnn _ _ ih =>
       simp [Ctx.depth_cons, ih]
   | ctStk _ _ ih => exact ih
+  | cons_lift _ _ ih =>
+      simp [Ctx.depth_cons, ih]
 
 end ContextEvolution
 
