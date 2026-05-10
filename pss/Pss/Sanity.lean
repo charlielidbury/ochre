@@ -1,6 +1,7 @@
 import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.Aux.CommutativityWeakening
 import Pss.Paper.Aux.Congruence
+import Pss.Paper.Aux.EvolutionTransport
 import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
@@ -212,5 +213,17 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.Lemma_2_TopTop_proved
 #print axioms Pss.DeBruijn.Paper.Lemma_2_VarVar_proved
 #print axioms Pss.DeBruijn.Paper.Lemma_2_TApTAp_proved
+
+-- Paper Lemma 2 trivial cells, UNCONDITIONAL discharge. The original
+-- `MEqRedTransportAcrossEvolution` auxiliary that wrapped these cells was
+-- shown to be structurally circular (its Me-Pro case requires diamond
+-- itself); see `Pss/Paper/Aux/EvolutionTransport.lean` docstring. The
+-- unconditional cells use only `ContextEvolution.preservesNonemptyPrevalidExt`
+-- and `preserves_ctx_depth`.
+#print axioms Pss.DeBruijn.Paper.ContextEvolution.preservesNonemptyPrevalid
+#print axioms Pss.DeBruijn.Paper.ContextEvolution.preservesNonemptyPrevalidExt
+#print axioms Pss.DeBruijn.Paper.Lemma_2_TopTop_proved_unconditional
+#print axioms Pss.DeBruijn.Paper.Lemma_2_VarVar_proved_unconditional
+#print axioms Pss.DeBruijn.Paper.Lemma_2_TApTAp_proved_unconditional
 
 end Pss

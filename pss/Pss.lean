@@ -12,6 +12,7 @@ import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.ContextEvolution
 import Pss.Paper.Aux.CommutativityWeakening
 import Pss.Paper.Aux.Congruence
+import Pss.Paper.Aux.EvolutionTransport
 import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Weakening
