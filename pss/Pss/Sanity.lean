@@ -4,6 +4,7 @@ import Pss.Paper.Aux.Congruence
 import Pss.Paper.Aux.EvolutionTransport
 import Pss.Paper.Aux.Narrowing
 import Pss.Paper.Aux.PrevalidityUnderSubst
+import Pss.Paper.Aux.PromotionUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
 import Pss.Paper.Aux.Weakening
@@ -124,6 +125,29 @@ match the paper (Pasquale & García-Pérez 2024). -/
   Pss.DeBruijn.Paper.Lemma_28_SubstitutionPreservesPrevalidity_extended
 #print axioms
   Pss.DeBruijn.Paper.Lemma_28_SubstitutionPreservesPrevalidity_logical
+
+-- Paper Lemma 29 (Promotion under substitution outside of covariant
+-- contexts), p. 9:41–42. Direct constructor recursion on `Co`.
+#print axioms Pss.DeBruijn.Paper.Lemma_29_PromotionUnderSubst_OutsideCovariant
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_29_PromotionUnderSubst_OutsideCovariant_closed
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_29_PromotionUnderSubst_OutsideCovariant_J
+
+-- Paper Lemma 30 (Promotion under substitution inside of covariant
+-- contexts), p. 9:42–43. Closed-prefix form; conditional on the
+-- `MSubStarStackAppendPayload` residual (the codebase's Ms-Pro head
+-- bridge for substitution preservation). The conclusion targets
+-- `MSubStar` (chain) rather than the paper's single `→ˢᵘᵇ`; see file
+-- docstring for the rationale.
+#print axioms Pss.DeBruijn.Paper.Lemma_30_PromotionUnderSubst_InsideCovariant
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_30_PromotionUnderSubst_InsideCovariant_nilStack
+
+-- Paper Lemma 9 covariant-context branch (paper p. 9:31): combines
+-- Lemma 29 with Conjecture 8 to bridge `→ˢᵘᵇ` to `≤*_wf`. Surfaces
+-- Conjecture 8 in `#print axioms`.
+#print axioms Pss.DeBruijn.Paper.Lemma_9_Bridge_via_Conjecture8
 
 #print axioms Pss.DeBruijn.Paper.Lemma_31_ReductionUnderSubstitution
 #print axioms Pss.DeBruijn.Paper.Lemma_31_ReductionUnderSubstitution_J
