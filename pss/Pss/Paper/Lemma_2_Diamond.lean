@@ -232,12 +232,12 @@ def Lemma_2_Case_AppBet : Prop :=
         ∧ MEqRedJ Γ₂ s₂ (Term.instantiate 0 v₂ u₂) t₃
 
 /-- **Lemma 2 case Me-App × Me-TAp**, paper p. 9:23. The Me-TAp side
-collapses to `Top`; trivial. -/
+collapses to `Top`; the LHS Me-App necessarily reduces from `.top` (the
+Me-TAp source forces operator = `.top`). Trivial. -/
 def Lemma_2_Case_AppTAp : Prop :=
-  ∀ {Γ₀ : Ctx} {s₀ : Stack} {u₀ u₁ v₀ v₁ : Term},
-    MEqRed Γ₀ (v₀ :: s₀) u₀ u₁ →
+  ∀ {Γ₀ : Ctx} {s₀ : Stack} {u₁ v₀ v₁ : Term},
+    MEqRed Γ₀ (v₀ :: s₀) .top u₁ →
     MEqRed Γ₀ [] v₀ v₁ →
-    -- The Me-TAp source forces u₀ = .top; arg is scoped:
     Term.Scoped Γ₀.depth v₀ →
     PrevalidExt Γ₀ s₀ →
     ∀ {Γ₁ s₁ Γ₂ s₂},
