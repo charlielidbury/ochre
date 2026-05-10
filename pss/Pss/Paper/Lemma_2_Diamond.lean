@@ -137,18 +137,26 @@ dispatches can discharge each independently. -/
 
 Source: `bvar i` with `Γ₀.equBinds i α₀` and `α₀ →ᵉᵠᵘ α_1`. RHS source:
 `bvar i →ᵉᵠᵘ bvar i` (Me-Var). Paper invokes Lemmas 36 + 19; result
-closes by `Me-Pro` at the evolved context. -/
+closes by `Me-Pro` at the evolved context.
+
+The IH on the bound `α₀ → α_1` is the standard generalized diamond:
+given a SECOND derivation `α₀ → α₂'` and any evolved contexts, find a
+common reduct. Paper p. 9:21: invokes this IH with second derivation =
+`α₀ → α₂` from `equBinds_evolve` lifted to `Γ₀; s₀` via Lemma 19. -/
 def Lemma_2_Case_ProVar : Prop :=
   ∀ {Γ₀ : Ctx} {s₀ : Stack} {i : Nat} {α₀ α_1 : Term},
     PrevalidExt Γ₀ s₀ →
     Γ₀.equBinds i α₀ →
     MEqRed Γ₀ s₀ α₀ α_1 →
-    -- Recursive premise: the bound diamond is closed at any evolved
-    -- contexts (from the paper's IH on the smaller bound derivation).
-    (∀ {Γ₁' s₁' Γ₂' s₂' : _},
-      ContextEvolution Γ₀ s₀ Γ₁' s₁' →
-      ContextEvolution Γ₀ s₀ Γ₂' s₂' →
-      ∃ α_3, MEqRedJ Γ₁' s₁' α_1 α_3 ∧ MEqRedJ Γ₂' s₂' α₀ α_3) →
+    -- Recursive premise: the **standard** generalized diamond IH on
+    -- the smaller bound derivation. Quantifies over a second derivation
+    -- and evolved contexts.
+    (∀ {α_2' : Term},
+      MEqRed Γ₀ s₀ α₀ α_2' →
+      ∀ {Γ₁' s₁' Γ₂' s₂' : _},
+        ContextEvolution Γ₀ s₀ Γ₁' s₁' →
+        ContextEvolution Γ₀ s₀ Γ₂' s₂' →
+        ∃ α_3, MEqRedJ Γ₁' s₁' α_1 α_3 ∧ MEqRedJ Γ₂' s₂' α_2' α_3) →
     ∀ {Γ₁ s₁ Γ₂ s₂},
       ContextEvolution Γ₀ s₀ Γ₁ s₁ →
       ContextEvolution Γ₀ s₀ Γ₂ s₂ →
