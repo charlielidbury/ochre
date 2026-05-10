@@ -1,5 +1,6 @@
 import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.Aux.CommutativityWeakening
+import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
 import Pss.Paper.Aux.Weakening
@@ -111,6 +112,12 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.Lemma_20_Weakening_Aux.proved
 #print axioms Pss.DeBruijn.Paper.Lemma_21_Weakening_SubtypingReduction
 #print axioms Pss.DeBruijn.Paper.Lemma_22_Weakening_EquivalenceReduction
+
+-- Paper Lemma 28 (Substitution preserves prevalidity), p. 9:40.
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_28_SubstitutionPreservesPrevalidity_extended
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_28_SubstitutionPreservesPrevalidity_logical
 
 #print axioms Pss.DeBruijn.Paper.Lemma_31_ReductionUnderSubstitution
 #print axioms Pss.DeBruijn.Paper.Lemma_31_ReductionUnderSubstitution_J
