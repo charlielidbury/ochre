@@ -1,5 +1,6 @@
 import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.Aux.CommutativityWeakening
+import Pss.Paper.Aux.Weakening
 
 /-! # `Pss.Sanity` — `#print axioms` audit
 
@@ -103,5 +104,10 @@ match the paper (Pasquale & García-Pérez 2024). -/
 
 #print axioms
   Pss.DeBruijn.Paper.ContextEvolution.Lemma_36_CommutativityContextWeakening
+
+#print axioms Pss.DeBruijn.Paper.Lemma_19_Weakening.proved
+#print axioms Pss.DeBruijn.Paper.Lemma_20_Weakening_Aux.proved
+#print axioms Pss.DeBruijn.Paper.Lemma_21_Weakening_SubtypingReduction
+#print axioms Pss.DeBruijn.Paper.Lemma_22_Weakening_EquivalenceReduction
 
 end Pss
