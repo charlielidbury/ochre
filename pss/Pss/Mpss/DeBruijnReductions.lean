@@ -5816,6 +5816,246 @@ theorem MSubRedStar.fun_sub_under_head_replace_from_body_changed_bound {Γ : Ctx
   MSubRedStar.fun_bound_then_body (by simpa [Ctx.depth] using ht)
     hEq hBodyScoped hBody
 
+/-- Compose a body subtype chain that lives under the OLD abstraction bound
+with the bound transport step. The body chain advances under the source bound
+`t` first, then a single `Ms-Fun` step shifts the bound to `t'` with a
+reflexive body to land at `(.abs t' body')`.
+
+This is the OLD-bound counterpart to `MSubRedStar.fun_bound_then_body` — useful
+when the body chain comes from a recursive replaceAt call that lives in the
+`{bound := t, kind := .sub}` (preserved-source) context. -/
+theorem MSubRedStar.fun_body_then_bound {Γ : Ctx}
+    {t t' body body' : Term}
+    (ht : Term.Scoped Γ.depth t)
+    (hEq : MEqRed Γ [] t t')
+    (hBodyScoped : Term.Scoped (Γ.depth + 1) body)
+    (hBody : MSubRedStar ({ bound := t, kind := .sub } :: Γ) [] body body') :
+    MSubRedStar Γ [] (.abs t body) (.abs t' body') := by
+  have hpvΓ : Prevalid Γ := hEq.prevalid
+  have hpvBodyCtx : Prevalid ({ bound := t, kind := .sub } :: Γ) :=
+    Prevalid.sub hpvΓ ht
+  have hEqRefl : MEqRed Γ [] t t :=
+    MEqRed.refl (PrevalidExt.nil hpvΓ) ht
+  -- First chain: lift the body chain through `Ms-Fun` keeping bound `t`.
+  have hFirst : MSubRedStar Γ [] (.abs t body) (.abs t body') :=
+    MSubRedStar.fun_body_fixed ht hEqRefl hBody
+  -- Final scoping for `body'`: chain target scoping in the body context,
+  -- which has depth `Γ.depth + 1`.
+  have hBodyScopedFinal : Term.Scoped (Γ.depth + 1) body' := by
+    have h := hBody.scoped_right (by simpa [Ctx.depth] using hBodyScoped)
+    simpa [Ctx.depth] using h
+  -- Tail step: change the bound `t → t'` with a reflexive `body'`.
+  have hpvBodyExt : PrevalidExt ({ bound := t, kind := .sub } :: Γ) [] :=
+    PrevalidExt.nil hpvBodyCtx
+  have hBodyRefl' : MSubRed ({ bound := t, kind := .sub } :: Γ) [] body' body' :=
+    MSubRed.refl hpvBodyExt (by simpa [Ctx.depth] using hBodyScopedFinal)
+  have hTail : MSubRedStar Γ [] (.abs t body') (.abs t' body') :=
+    MSubRedStar.single (MSubRed.fun_ ht hEq hBodyRefl')
+  exact MSubRedStar.trans hFirst hTail
+
+/-! ### `MSubRed.replaceAt_sub_aux` — global `MSubRed` transport across `.sub`
+replacement (payload-driven).
+
+Analogue of `MEqRed.replaceAt_sub_aux`. Unlike the equivalence-side aux, this
+returns `MSubRedStar` rather than a single `MSubRed` step, because:
+
+1. The replaced cutoff slot's `Ms-Pro` lookup target shifts from
+   `Term.shiftBy 0 (cutoff+1) old` to `Term.shiftBy 0 (cutoff+1) new`. The
+   pure `MSubRedStar` relation cannot bridge new back to old (no symmetric
+   `MEqRed`), so the changed-slot `Ms-Pro` case is supplied by the caller as
+   a payload `hProSelf`. (Compare `WSubMStar.lf2_self_replaceAt_sub`, which
+   uses the `WSubM.rgh` algebra to bridge new → old in the well-subtyping
+   setting — that algebra is unavailable on raw `MSubRed`.)
+
+2. Recursive `Ms-Fun` and `Ms-FOp` binder cases are similarly delegated as
+   payloads `hFunBody` and `hFOpBody`, mirroring the structure of
+   `WSubMStar.of_MSubRed_replaceAt_sub_from_payloads`. The recursive
+   transports must internally lift `hProSelf` through the preserved binder
+   head, and the explicit prefix-threading complexity is left to the caller.
+
+The non-binder, non-changed-slot constructor cases (`Ms-Top`, `Ms-Equ`,
+`Ms-App`, `Ms-Pro` away from cutoff) are handled inline. -/
+
+/-- Full subtype-reduction transport across arbitrary-depth `.sub`
+replacement. Mirror of `MEqRed.replaceAt_sub_aux`, with payloads for the
+changed-slot `Ms-Pro` case and the recursive `Ms-Fun`/`Ms-FOp` cases. -/
+noncomputable def MSubRed.replaceAt_sub_aux {Γold : Ctx} {s : Stack}
+    {u v : Term} {old new : Term}
+    (h : MSubRed Γold s u v) :
+    ∀ {Γ : Ctx} {cutoff : Nat},
+      Γold = Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ →
+      cutoff < Ctx.depth Γ →
+      MEqRed (List.drop (cutoff + 1) Γ) [] old new →
+      -- Changed-slot `Ms-Pro` payload at the original cutoff.
+      (∀ {s' : Stack},
+        PrevalidExt
+          (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s' →
+        MSubRedStar
+          (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s'
+          (.bvar cutoff) (Term.shiftBy 0 (cutoff + 1) old)) →
+      -- Recursive `Ms-Fun` body payload: given the source body step and the
+      -- transported bound equivalence, produce the body chain at the new
+      -- bound and the new cutoff context.
+      (∀ {t t' body body' : Term},
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t →
+        MEqRed
+          (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) [] t t' →
+        MSubRed ({ bound := t, kind := .sub } ::
+            Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) [] body body' →
+        MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+          (.abs t body) (.abs t' body')) →
+      -- Recursive `Ms-FOp` body payload: given the source body step under the
+      -- equ-operand head, produce the abstraction chain at the new cutoff
+      -- context.
+      (∀ {t α body body' : Term} {sBody : Stack},
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t →
+        Term.Scoped
+          (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) α →
+        MSubRed ({ bound := α, kind := .equ } ::
+            Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+          (Stack.shift 0 sBody) body body' →
+        MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+          (α :: sBody) (.abs t body) (.abs t body')) →
+      MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v := by
+  induction h with
+  | @pro _ stk i t hpv hb =>
+      intro Γ cutoff hEqCtx hcut hOldNew hProSelf _hFunBody _hFOpBody
+      cases hEqCtx
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+      have hpvNew : PrevalidExt
+          (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) stk :=
+        PrevalidExt.replaceAt_sub_same hpv hcut hnew
+      by_cases hidx : i = cutoff
+      · subst i
+        have htEq : t = Term.shiftBy 0 (cutoff + 1) old :=
+          Ctx.subBinds_unique hb
+            (Ctx.subBinds_replaceAt_sub_self (Γ := Γ) (cutoff := cutoff)
+              (new := old) hcut)
+        subst htEq
+        exact hProSelf hpvNew
+      · exact MSubRedStar.single
+          (MSubRed.pro_replaceAt_sub_of_ne hpvNew hidx hb)
+  | @top _ stk u hpv hu =>
+      intro Γ cutoff hEqCtx hcut hOldNew _hProSelf _hFunBody _hFOpBody
+      cases hEqCtx
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+      have hpvNew : PrevalidExt
+          (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) stk :=
+        PrevalidExt.replaceAt_sub_same hpv hcut hnew
+      exact MSubRedStar.top_replaceAt_sub hpvNew hu
+  | @equ _ stk u v hpv hEqStep =>
+      intro Γ cutoff hEqCtx hcut hOldNew _hProSelf _hFunBody _hFOpBody
+      cases hEqCtx
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        simpa [CtxEntry.ScopedIn, Ctx.depth] using hOldNew.scoped_right
+      have hpvNew : PrevalidExt
+          (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) stk :=
+        PrevalidExt.replaceAt_sub_same hpv hcut hnew
+      exact MSubRedStar.equ_replaceAt_sub hpvNew hEqStep hcut hOldNew
+  | app hOp hv ihOp =>
+      intro Γ cutoff hEqCtx hcut hOldNew hProSelf hFunBody hFOpBody
+      cases hEqCtx
+      exact MSubRedStar.app_replaceAt_sub_from_operator
+        (ihOp rfl hcut hOldNew hProSelf hFunBody hFOpBody) hv
+  | fun_ ht hEqT hBody =>
+      intro Γ cutoff hEqCtx hcut hOldNew _hProSelf hFunBody _hFOpBody
+      cases hEqCtx
+      exact hFunBody ht hEqT hBody
+  | fOp ht hα hBody =>
+      intro Γ cutoff hEqCtx hcut hOldNew _hProSelf _hFunBody hFOpBody
+      cases hEqCtx
+      exact hFOpBody ht hα hBody
+
+/-- Full subtype-reduction transport across arbitrary-depth `.sub`
+replacement, surface form. -/
+noncomputable def MSubRed.replaceAt_sub {Γ : Ctx} {s : Stack} {u v : Term}
+    {cutoff : Nat} {old new : Term}
+    (h : MSubRed (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) s u v)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (hProSelf : ∀ {s' : Stack},
+      PrevalidExt
+        (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s' →
+      MSubRedStar
+        (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s'
+        (.bvar cutoff) (Term.shiftBy 0 (cutoff + 1) old))
+    (hFunBody : ∀ {t t' body body' : Term},
+      Term.Scoped
+        (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t →
+      MEqRed
+        (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) [] t t' →
+      MSubRed ({ bound := t, kind := .sub } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ) [] body body' →
+      MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) []
+        (.abs t body) (.abs t' body'))
+    (hFOpBody : ∀ {t α body body' : Term} {sBody : Stack},
+      Term.Scoped
+        (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) t →
+      Term.Scoped
+        (Ctx.depth (Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)) α →
+      MSubRed ({ bound := α, kind := .equ } ::
+          Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+        (Stack.shift 0 sBody) body body' →
+      MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ)
+        (α :: sBody) (.abs t body) (.abs t body')) :
+    MSubRedStar (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v :=
+  h.replaceAt_sub_aux rfl hcut hOldNew hProSelf hFunBody hFOpBody
+
+/-- Head specialization: replace the innermost `.sub` binder by a single
+equivalence step. Same payload structure as `MSubRed.replaceAt_sub`. -/
+noncomputable def MSubRed.sub_head_replace {Γ : Ctx} {s : Stack} {u v : Term}
+    {old new : Term}
+    (h : MSubRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRed Γ [] old new)
+    (hProSelf : ∀ {s' : Stack},
+      PrevalidExt ({ bound := new, kind := .sub } :: Γ) s' →
+      MSubRedStar ({ bound := new, kind := .sub } :: Γ) s'
+        (.bvar 0) (Term.shift 0 old))
+    (hFunBody : ∀ {t t' body body' : Term},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t →
+      MEqRed ({ bound := old, kind := .sub } :: Γ) [] t t' →
+      MSubRed ({ bound := t, kind := .sub } ::
+          { bound := old, kind := .sub } :: Γ) [] body body' →
+      MSubRedStar ({ bound := new, kind := .sub } :: Γ) []
+        (.abs t body) (.abs t' body'))
+    (hFOpBody : ∀ {t α body body' : Term} {sBody : Stack},
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) t →
+      Term.Scoped (Ctx.depth ({ bound := old, kind := .sub } :: Γ)) α →
+      MSubRed ({ bound := α, kind := .equ } ::
+          { bound := old, kind := .sub } :: Γ)
+        (Stack.shift 0 sBody) body body' →
+      MSubRedStar ({ bound := new, kind := .sub } :: Γ)
+        (α :: sBody) (.abs t body) (.abs t body')) :
+    MSubRedStar ({ bound := new, kind := .sub } :: Γ) s u v := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by
+    simp [Ctx.depth]
+  have hOldNew' : MEqRed (List.drop (0 + 1)
+      ({ bound := old, kind := .sub } :: Γ)) [] old new := by
+    simpa using hOldNew
+  have hRes :=
+    h.replaceAt_sub
+      (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+      (old := old) (new := new) hcut hOldNew'
+      (by intro s' hpv'; simpa [Ctx.replaceAt, Term.shift] using
+            hProSelf (by simpa [Ctx.replaceAt] using hpv'))
+      (by intro t t' body body' ht hEqT hBody
+          simpa [Ctx.replaceAt] using
+            hFunBody (by simpa [Ctx.replaceAt] using ht)
+              (by simpa [Ctx.replaceAt] using hEqT)
+              (by simpa [Ctx.replaceAt] using hBody))
+      (by intro t α body body' sBody ht hα hBody
+          simpa [Ctx.replaceAt] using
+            hFOpBody (by simpa [Ctx.replaceAt] using ht)
+              (by simpa [Ctx.replaceAt] using hα)
+              (by simpa [Ctx.replaceAt] using hBody))
+  simpa [Ctx.replaceAt] using hRes
 
 end DeBruijn
 end Pss
