@@ -543,25 +543,54 @@ variable. If `Γ, x ≤ t, Γ' ⊢ u wf`, and `Γ ⊢ α ≤∗_wf t`, then
     **Lemma 30** for the equivalent reduction on the substituted side.
 - `(λy ≤ z.Top)[x\α]` reasoning collapses similarly.
 
-**Lean.** Mechanized as `BetaInstantiationPreservesWfM` (Type) at
+**Lean.** Paper-faithful aliased entry shipped as
+`Lemma_7_SubstitutionPreservesWfM_proved` at
+`Pss/Paper/Lemma_7_SubstPreservesWfM.lean`. The underlying Type is
+`BetaInstantiationPreservesWfM` (Type) at
 `Pss/Mpss/DeBruijnTypeSafety.lean:193`:
 ```
 def BetaInstantiationPreservesWfM : Type :=
   ∀ {Γ : Ctx} {bound body arg : Term}, ...
 ```
-Family of helpers feeding it: `BetaInstantiationPreservesWSubMStar` (201),
-`BetaInstantiationPreservesWSubM` (210), `BetaInstantiationPreservesMEqRed`
-(218), `BetaInstantiationPreservesMSubRed` (226), and many "under heads"
-generalizations starting line 337. The reduction-under-substitution side is
-covered by `MEqRedRespectsBetaInstantiateStack_proved` (proved, commit
-`a5aaf59`) and `BetaInstantiationPreservesMEqRedStack_proved` (proved, commit
-`7ec6954`). The kind-narrowing helper
+The paper-faithful entry is **definitionally equal** to the codebase
+Type (witnessed by
+`Lemma_7_SubstitutionPreservesWfM_eq_BetaInstantiationPreservesWfM`),
+under the dictionary `Γ ↦ Γ`, paper's `t ↦ bound`, paper's `α ↦ arg`,
+paper's `u ↦ body`. The closed-prefix specialisation (paper's
+`Γ' = nil`) is the codebase's level-0 form.
+
+**Per-case discharge (closed):** the Wf-Top, Wf-Var, Wf-Fun cases of
+paper Lemma 7 are shipped closed (no residual hypothesis):
+* `Lemma_7_SubstitutionPreservesWfM_top` — closed,
+* `Lemma_7_SubstitutionPreservesWfM_var` — closed,
+* `Lemma_7_SubstitutionPreservesWfM_fun` — closed.
+
+The Wf-App case is shipped routed via the chain-substitution residual:
+* `Lemma_7_SubstitutionPreservesWfM_app` — conditional on
+  `BetaInstantiationPreservesWSubMStar` (the chain-substitution
+  residual whose own discharge would surface Conjecture 8 via Lemma 9).
+
+**Family of helpers feeding the discharge:**
+`BetaInstantiationPreservesWSubMStar` (201), `BetaInstantiationPreservesWSubM`
+(210), `BetaInstantiationPreservesMEqRed` (218),
+`BetaInstantiationPreservesMSubRed` (226), and many "under heads"
+generalizations starting line 337. The reduction-under-substitution
+side is covered by `MEqRedRespectsBetaInstantiateStack_proved`
+(proved, commit `a5aaf59`) and `BetaInstantiationPreservesMEqRedStack_proved`
+(proved, commit `7ec6954`). The kind-narrowing helper
 `MEqRedFusedKindNarrowedBetaSubstStack_proved` (proved, commit `98a62a2`)
 covers the cross-`.sub`/`.equ` migration.
 
-**Status:** MECHANIZED (residual). The `BetaInstantiationPreservesWfM` Type
-itself is shipped as a residual feeding `Theorem_5_DeBruijn_Preservation_proved`.
-Most supporting infrastructure is unconditional.
+**Status:** MECHANIZED-AS-ALIAS (residual). Top/Var/Fun cases closed;
+Wf-App routed via chain-substitution residual. The headline
+`Lemma_7_SubstitutionPreservesWfM_proved` takes the underlying
+`BetaInstantiationPreservesWfM` as a hypothesis (= the same residual
+shape consumed by `Theorem_5_DeBruijn_Preservation_proved`). Closed
+discharge of `BetaInstantiationPreservesWfM` (= conditional on
+Conjecture 8 + WfMSubHeadReplaceOfNewWf) requires the multi-page
+Wf-App sub-induction of paper p. 9:28–30 (case grid on
+`Co[x] →ˢᵘᵇ Co[t]` decidability + chain transformation under Ws-Lf2);
+that mechanization is a campaign-level open obligation.
 
 ---
 

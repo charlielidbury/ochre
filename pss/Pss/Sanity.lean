@@ -11,6 +11,7 @@ import Pss.Paper.Aux.Weakening
 import Pss.Paper.Conjecture8
 import Pss.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric
 import Pss.Paper.Lemma_2_Diamond
+import Pss.Paper.Lemma_7_SubstPreservesWfM
 
 /-! # `Pss.Sanity` — `#print axioms` audit
 
@@ -281,6 +282,25 @@ match the paper (Pasquale & García-Pérez 2024). -/
 -- Conjecture 8 (paper p. 9:13). Open in the paper. Surfaces in the
 -- `#print axioms` of any theorem that depends on it.
 #print axioms Pss.DeBruijn.Paper.Conjecture_8_WellSubtypingContextIndependent
+
+-- Paper Lemma 7 (Substitution preserves well-formedness), p. 9:12 statement;
+-- proof p. 9:27–30. Paper-faithful aliased entry of the de Bruijn
+-- `BetaInstantiationPreservesWfM` Type. The closed discharge requires the
+-- multi-page Wf-App sub-induction (paper p. 9:28–30) which depends on
+-- Conjecture 8 via Lemma 9; that discharge is a campaign-level open
+-- obligation. The `_proved` form below takes
+-- `BetaInstantiationPreservesWfM` as a hypothesis (the same residual
+-- consumed by `Theorem_5_DeBruijn_Preservation_proved`), so Lemma 7 inherits
+-- exactly the residual surface of the underlying Type. The `_top`, `_var`,
+-- `_fun` specialisations are closed (kernel three only); `_app` consumes
+-- only the chain-substitution residual `BetaInstantiationPreservesWSubMStar`.
+#print axioms Pss.DeBruijn.Paper.Lemma_7_SubstitutionPreservesWfM_proved
+#print axioms Pss.DeBruijn.Paper.Lemma_7_SubstitutionPreservesWfM_top
+#print axioms Pss.DeBruijn.Paper.Lemma_7_SubstitutionPreservesWfM_var
+#print axioms Pss.DeBruijn.Paper.Lemma_7_SubstitutionPreservesWfM_fun
+#print axioms Pss.DeBruijn.Paper.Lemma_7_SubstitutionPreservesWfM_app
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_7_SubstitutionPreservesWfM_eq_BetaInstantiationPreservesWfM
 
 -- Kind-narrowed asymmetric Lemma 32. Combines the decoupling of the
 -- symmetric kind-narrowed `MEqRedFusedKindNarrowedBetaSubstStack_proved`
