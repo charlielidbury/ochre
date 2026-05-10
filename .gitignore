@@ -28,3 +28,4 @@ _build
 
 # Agda compiled interface files
 *.agdai
+ochre-pss-A/
