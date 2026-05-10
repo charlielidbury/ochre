@@ -13,6 +13,7 @@ import Pss.Paper.ContextEvolution
 import Pss.Paper.Aux.CommutativityWeakening
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Weakening
+import Pss.Paper.Investigation.Lemma_32_Asymmetric
 
 /-! # PSS — Pure Subtype Systems
 
