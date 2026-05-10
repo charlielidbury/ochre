@@ -371,6 +371,55 @@ theorem Lemma_2_Case_BetBet_proved : Lemma_2_Case_BetBet := by
   rw [hStackSimp₂] at hR
   exact ⟨Term.instantiate 0 v_3 u_3, ⟨hL⟩, ⟨hR⟩⟩
 
+/-! ## Me-App × Me-App (paper p. 9:21–22) -/
+
+/-- Discharge of `Lemma_2_Case_AppApp`: paper p. 9:21-22.
+
+Both sides do Me-App. Operator IH at expanded stack `v_i :: s_i`; operand
+IH at empty stack. Paper uses Ct-Stk to build the operator evolutions.
+
+The key insight (paper p. 9:22): "By rule Ct-Stk, we know
+Γ_0; v_0 :: s_0 ↣ Γ_1; v_1 :: s_1 from Γ_0; nil ⊢ v_0 → v_1." -/
+theorem Lemma_2_Case_AppApp_proved : Lemma_2_Case_AppApp := by
+  intro Γ₀ s₀ u₀ u₁ u₂ v₀ v₁ v₂ hOp₁ hArg₁ hOp₂ hArg₂ hOpIH hArgIH
+    Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- Operand diamond at evolved []: use Lemma 36 to strip stacks.
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, hLArg, hRArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  let hLArg₀ : MEqRed Γ₁ [] v₁ v_3 := Classical.choice hLArg
+  let hRArg₀ : MEqRed Γ₂ [] v₂ v_3 := Classical.choice hRArg
+  -- Operator IH at evolved (v_i :: s_i): use Ct-Stk to build operator
+  -- evolutions from the existing he_i + the operand head reductions
+  -- (lifted from Γ₀ to Γ_i context via paper's Ct-Stk pattern).
+  -- Actually paper applies Ct-Stk on the SOURCE side: from
+  -- Γ₀; s₀ ↣ Γ_i; s_i_inner (the strip) and Γ₀; nil ⊢ v_0 → v_i, build
+  -- Γ₀; v_0 :: s_0 ↣ Γ_i; v_i :: s_i_inner. But our he_i is already at
+  -- (v_0 :: s_0). Strip the head and rebuild with the new operand.
+  -- WAIT: our he_i is at outer stack s₀, NOT (v_0 :: s_0). Looking at
+  -- the obligation: he_1 : ContextEvolution Γ₀ s₀ Γ₁ s_1. We need to
+  -- INVOKE the operator IH at evolution Γ₀ (v_0 :: s_0) ↣ Γ_? (v_? :: s_?).
+  -- Build this via Ct-Stk from he_i + the operand-head reduction.
+  -- Operand head reduction: MEqRed Γ₀ [] v_0 v_i. From hArg_i.
+  let heOp₁ : ContextEvolution Γ₀ (v₀ :: s₀) Γ₁ (v₁ :: s₁) :=
+    ContextEvolution.ctStk he₁ hArg₁
+  let heOp₂ : ContextEvolution Γ₀ (v₀ :: s₀) Γ₂ (v₂ :: s₂) :=
+    ContextEvolution.ctStk he₂ hArg₂
+  -- Operator IH gives u_3 at (v_i :: s_i).
+  obtain ⟨u_3, hLOp, hROp⟩ := hOpIH heOp₁ heOp₂
+  let hLOp₀ : MEqRed Γ₁ (v₁ :: s₁) u₁ u_3 := Classical.choice hLOp
+  let hROp₀ : MEqRed Γ₂ (v₂ :: s₂) u₂ u_3 := Classical.choice hROp
+  -- Now we need the joint reduct. Paper's reasoning: the operator
+  -- IH gives u_1 → u_3 at v_1 :: s_1 and u_2 → u_3 at v_2 :: s_2.
+  -- Then we build Me-App on each side.
+  -- LHS: Me-App from hLOp₀ (u_1 → u_3 at v_1 :: s_1) + arg reduction
+  -- v_1 → v_3 at [] = hLArg₀. Result: (.app u_1 v_1) → (.app u_3 v_3) at Γ_1; s_1.
+  refine ⟨.app u_3 v_3, ?_, ?_⟩
+  · exact ⟨MEqRed.app hLOp₀ hLArg₀⟩
+  · exact ⟨MEqRed.app hROp₀ hRArg₀⟩
+
 end Paper
 end DeBruijn
 end Pss
