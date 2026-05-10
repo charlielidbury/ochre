@@ -125,6 +125,19 @@ match the paper (Pasquale & García-Pérez 2024). -/
   Pss.DeBruijn.Paper.Lemma_32_ReductionUnderSubstitution_AuxForCommutation
 #print axioms
   Pss.DeBruijn.Paper.Lemma_32_ReductionUnderSubstitution_AuxForCommutation_J
+-- Paper-faithful asymmetric form of Lemma 32 (LHS by `arg`, RHS by `arg'`).
+-- Discharged via `MEqRedStackExtensionWall_proved`; see
+-- `Pss/Paper/Investigation/Lemma_32_Asymmetric.lean`.
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_32_ReductionUnderSubstitution_AuxForCommutation_Asymmetric
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_32_ReductionUnderSubstitution_AuxForCommutation_Asymmetric_J
+#print axioms
+  Pss.DeBruijn.Paper.Investigation.MEqRedStackExtensionWall_proved
+#print axioms
+  Pss.DeBruijn.Paper.Investigation.Lemma_32_Asymmetric_proved
+#print axioms
+  Pss.DeBruijn.Paper.Investigation.Lemma_32_Asymmetric_proved_closed
 
 -- Paper Theorem 11 (No supertype of `Top` is a function), p. 9:31. Conditional
 -- on `StrongCommutes` (de Bruijn analogue of Theorem 3 at the empty stack).

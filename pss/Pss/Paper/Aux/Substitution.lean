@@ -1,4 +1,5 @@
 import Pss.Mpss.DeBruijnTypeSafety
+import Pss.Paper.Investigation.Lemma_32_Asymmetric
 
 /-! # `Pss.Paper.Aux.Substitution` — paper Lemmas 31, 32
 
@@ -77,7 +78,7 @@ existentially packages the Type form via `Nonempty`.
 
 ### Lemma 32
 
-Paper's Lemma 32 has THREE structural features the codebase form does
+Paper's Lemma 32 has TWO structural features the codebase form does
 not directly mirror:
 
 1. **Head kind: `.equ` vs `.sub`.** Paper discharges `x ≡ v` (an
@@ -91,35 +92,32 @@ not directly mirror:
 
 2. **Asymmetry: LHS by `v`, RHS by `v'`.** Paper substitutes the
    pre-step `v` on the LHS and the post-step `v'` on the RHS. The
-   codebase form substitutes a single term `arg'` on BOTH sides — i.e.,
-   it is symmetric in LHS/RHS roles. The fully asymmetric form is
-   **structurally impossible to prove as a single `MEqRed` step** in
-   de Bruijn: `Me-FOp`'s stack-head and body-context binder are
-   syntactically the same `α`, conflicting with asymmetric LHS/RHS
-   substitutions (see `Pss/Mpss/DeBruijnTypeSafety.lean:1907–1922`).
-   The "fused kind-narrowing" form decouples the dropped head's bound
-   (`arg`) from the substitution argument (`arg'`), which is the
-   strongest single-step approximation available.
+   codebase ships **both forms**:
+   * The **symmetric form** (both sides by `arg'`), backed by
+     `MEqRedFusedKindNarrowedBetaSubstStack_proved`. Useful at call
+     sites that already have a chain-shaped composition handling the
+     asymmetry.
+   * The **paper-faithful asymmetric form** (LHS by `arg`, RHS by
+     `arg'`), backed by `Lemma_32_Asymmetric_proved_closed` from
+     `Pss/Paper/Investigation/Lemma_32_Asymmetric.lean`. The
+     additional premise is `MEqRed Γ [] arg arg'` (the paper's
+     `v →ᵉᵠᵘ v'`).
 
-3. **Premise: `MEqRed v v'`.** Paper requires a single equivalence step
-   linking `v` and `v'`. The codebase form requires only
-   `Term.Scoped Γ.depth arg'` — i.e., the substitution argument is
-   well-scoped, with no link to the source-bound term. This is strictly
-   weaker on the premise side.
+   A previous campaign iteration (commit `e5d2096`) believed the
+   asymmetric form was structurally unprovable in de Bruijn; that
+   conclusion was retracted in the follow-up dispatch that ships the
+   asymmetric proof. The discharge uses iterated weakening
+   (`MEqRed.appendCtx` in `Pss/Paper/Aux/StackExtension.lean`) plus
+   stack-append extension (`MEqRed.append_stack` in the same file),
+   the latter of which handles the abstraction-shaped lifting
+   `Me-Fun → Me-FOp` via `MEqRed.sub_to_equ_head_replace`.
 
 The paper's Lemma 32 is invoked twice: (i) in **Lemma 1** (`Ms-App` ×
 `Me-Bet` cell, p. 9:22), and (ii) in **Lemma 2** (`Me-App` × `Me-Bet`
-cell, p. 9:22). The de Bruijn working development handles both via
-**chain-shaped** transport: combining
-`MEqRedFusedKindNarrowedBetaSubstStack_proved` with separate diamond
-closures on the body and the operand to produce a `MEqRedStar` chain
-from the LHS β-target to a common reduct. The single-`MEqRed`-step
-bridge across the asymmetric substitution is foreclosed by the
-structural conflicts above. -- Paper Lemma 32 (asymmetric, single-step,
-`.equ`-headed); mechanized as: symmetric, single-step, `.sub`-headed
-(with kind-narrowing) plus chain-composition at the call sites
-(see commits `7ec6954`, `8e72b12` and the `equ_bet_chain_*` family in
-`DeBruijnTypeSafety.lean`).
+cell, p. 9:22). With the asymmetric form available, both call sites
+can in principle close in a single `MEqRed` step; existing
+chain-shaped invocations of the symmetric form remain valid and
+unchanged.
 
 ## Imports
 
@@ -248,6 +246,50 @@ theorem Lemma_32_ReductionUnderSubstitution_AuxForCommutation_J
       (Term.instantiate 0 arg' lhs) (Term.instantiate 0 arg' rhs) :=
   ⟨Lemma_32_ReductionUnderSubstitution_AuxForCommutation
     hArgScoped hArg'Scoped h.some⟩
+
+/-- **Lemma 32, paper-faithful asymmetric form.**
+
+Paper p. 9:44–45: `Γ, x ≡ v, Γ'; s ⊢ u →ᵉᵠᵘ u'` and
+`Γ; nil ⊢ v →ᵉᵠᵘ v'` together yield
+`Γ, Γ'[x\v]; s[x\v] ⊢ u[x\v] →ᵉᵠᵘ u'[x\v']`.
+
+This is the closed-prefix specialization (paper's `Γ' = nil`); the
+generic-prefix form is `Lemma_32_Asymmetric_proved` in
+`Pss/Paper/Investigation/Lemma_32_Asymmetric.lean`. The asymmetric
+substitution `[x\v]` on LHS vs `[x\v']` on RHS is the paper's exact
+shape (`arg` / `arg'` here playing `v` / `v'`).
+
+The premise `hArgArg' : MEqRed Γ [] arg arg'` is the paper's
+equivalence step `v →ᵉᵠᵘ v'` over the empty stack. Other premises:
+`arg`, `arg'` scoped at `Γ.depth` (paper's well-formedness of `v`,
+`v'`).
+
+This entry point is exposed alongside the symmetric form
+(`Lemma_32_ReductionUnderSubstitution_AuxForCommutation`) for callers
+that need the paper-faithful asymmetric shape.
+-/
+noncomputable def Lemma_32_ReductionUnderSubstitution_AuxForCommutation_Asymmetric
+    {Γ : Ctx} {s : Stack} {arg arg' lhs rhs : Term}
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hArgArg' : MEqRed Γ [] arg arg')
+    (h : MEqRed ({ bound := arg, kind := .sub } :: Γ) s lhs rhs) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg' rhs) :=
+  Investigation.Lemma_32_Asymmetric_proved_closed
+    hArgScoped hArg'Scoped hArgArg' h
+
+/-- Prop-wrapper variant of the asymmetric Lemma 32. -/
+theorem Lemma_32_ReductionUnderSubstitution_AuxForCommutation_Asymmetric_J
+    {Γ : Ctx} {s : Stack} {arg arg' lhs rhs : Term}
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hArgArg' : MEqRedJ Γ [] arg arg')
+    (h : MEqRedJ ({ bound := arg, kind := .sub } :: Γ) s lhs rhs) :
+    MEqRedJ Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg lhs) (Term.instantiate 0 arg' rhs) :=
+  ⟨Lemma_32_ReductionUnderSubstitution_AuxForCommutation_Asymmetric
+    hArgScoped hArg'Scoped hArgArg'.some h.some⟩
 
 end Paper
 end DeBruijn

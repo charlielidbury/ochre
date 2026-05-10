@@ -1,7 +1,8 @@
 import Pss.Mpss.DeBruijnTypeSafety
+import Pss.Paper.Aux.StackExtension
 
-/-! # `Pss.Paper.Investigation.Lemma_32_Asymmetric` — direct attempt at the
-paper's *fully asymmetric* Lemma 32
+/-! # `Pss.Paper.Investigation.Lemma_32_Asymmetric` — paper's asymmetric
+Lemma 32, **provable**.
 
 This file is an **investigation artifact** dispatched by the campaign to
 resolve the long-standing question:
@@ -9,81 +10,63 @@ resolve the long-standing question:
 > Is the paper's asymmetric Lemma 32 (Pasquale & García-Pérez 2024,
 > p. 9:44–45) provable in our de Bruijn encoding?
 
-The codebase has shipped a *symmetric kind-narrowed* approximation
-(`MEqRedFusedKindNarrowedBetaSubstStack_proved`) and used to assert at
-`Pss/Mpss/DeBruijnTypeSafety.lean:1909–1944` that the asymmetric form is
-**structurally impossible to prove as a single `MEqRed` step** because
-of the `Me-FOp` constructor's stack-head/binder coincidence. This
-dispatch verifies or refutes that assertion by walking the paper's
-induction case-by-case in Lean.
+## Outcome — FALSE ALARM
 
-## Outcome
+A previous dispatch (commit `e5d2096`) claimed the asymmetric form was
+unprovable due to a structural wall at the `Me-Var × substituted slot`
+case. **That claim was wrong.** The wall (here named
+`MEqRedStackExtensionWall`) IS provable; this dispatch ships its proof
+and ships the closed-form asymmetric Lemma 32.
 
-The codebase commentary at `:1909–1944` is **wrong about which case
-walls** but **correct that the asymmetric form does not close as a
-single `MEqRed` step**. Specifically:
+The argument the previous dispatch missed:
 
-* **`Me-FOp` is NOT the wall.** The binder annotation `α` and the stack
-  head `α` in `MEqRed.fOp` are both uniformly substituted by `[x\v]`
-  (the LHS substitution), so they remain syntactically equal after
-  substitution. The body sub-derivation lives under `.equ α[x\v]`
-  matching the new stack head `α[x\v]`. The body IH applies
-  asymmetrically (LHS by `v`, RHS by `v'`) and the constructor
-  reassembles cleanly. The `Me-Bet` and `Me-Fun` binder cases close the
-  same way.
+* The wall reduces to (a) iterated weakening across the
+  `instantiateBetaPrefix` heads, plus (b) stack-append extension from
+  `[]` to a non-empty stack on `MEqRed`.
+* (a) is standard weakening (`MEqRed.appendCtx` in
+  `Pss/Paper/Aux/StackExtension.lean`).
+* (b)'s only non-trivial case is `Me-Fun → Me-FOp`: an empty-stack
+  abstraction-shaped derivation re-derived as a non-empty-stack
+  `Me-FOp` step. The kind switch `.sub head → .equ head` is supplied
+  by `MEqRed.sub_to_equ_head_replace` (`Pss/Mpss/DeBruijnReductions.lean:1945`).
+  This existing lemma exists because `Me-Pro` (the only `MEqRed` rule
+  whose conclusion distinguishes `.sub` from `.equ`) cannot fire on
+  `bvar 0` under a `.sub` head, so the body sub-derivation is
+  invariant under that kind switch.
 
-* **The actual wall is at `Me-Var × substituted slot`.** When `u = u' =
-  bvar i` and `i` indexes the substituted slot, the goal becomes:
+The paper is therefore correct as stated. The previous dispatch
+incorrectly concluded it was a paper bug because it did not consider
+the `sub_to_equ_head_replace`-mediated re-derivation in the body of
+the wall's `Me-Fun` case.
 
-  > `MEqRed (Γ', x≡v, _)[x\v] ; s[x\v] ⊢ v →ᵉᵠᵘ v'`
+## Paper-faithfulness note
 
-  over an **arbitrary stack** `s[x\v]`. The lemma's hypothesis is
-  `Γ; nil ⊢ v →ᵉᵠᵘ v'` — over the **empty stack**. There is no general
-  stack-extension lemma for `MEqRed` (it would need to map a `Me-Fun`
-  body derivation into a `Me-FOp` body derivation, requiring an
-  `.equ`-headed sub-derivation that the source `Me-Fun` derivation
-  does not provide).
-
-  A counter-shape: take `v = .abs .top body`, `v' = .abs .top body'`.
-  Then `MEqRed Γ [] v v'` holds via `Me-Fun` (with `body →ᵉᵠᵘ body'`
-  under `.sub Top`-headed context). For non-empty target stack `[β]`,
-  lifting requires `Me-FOp` (body in `.equ β`-headed context) — a
-  reshaping that's not derivable from the `Me-Fun` step.
-
-* **The paper's proof on p. 9:44 silently dodges this case** by
-  collapsing `v'` to `v` in the `Me-Var` equation (`v[x\v] = v` rather
-  than `u'[x\v'] = v'`) and closing the case by reflexivity of `→ᵉᵠᵘ`
-  on `v`. That collapse is a typographical error in the paper that
-  hides a genuine gap in the proof.
-
-## Verdict — outcome (c) — paper bug + Lean-checkable obstruction
-
-The paper's asymmetric Lemma 32 as stated is **not provable as a
-single `MEqRed` step**, in either de Bruijn or named encoding, without
-strengthening the lemma's hypothesis on `v →ᵉᵠᵘ v'` to one that
-extends to non-empty stacks (or restricting `v` to non-abstraction
-shapes). For abstraction-shaped `v`, the lifting is genuinely false.
-
-Suggested authors' email is in `pss/STOP-PAPER-BUG-LEMMA-32.md`.
+The named-binders presentation of the paper hides the kind-switch
+because the paper writes the body's context entry as `y ≤ a` or `y ≡ β`
+depending on which rule fires, treating both as fresh-named entries.
+The de Bruijn encoding makes the kind switch syntactically explicit;
+hence the explicit `sub_to_equ_head_replace` lemma in the codebase.
+Either way, the structural argument is identical: the body's
+derivation does not depend on the discharged head's kind because the
+only kind-distinguishing rule (`Me-Pro`) is foreclosed at `bvar 0`
+under `.sub`.
 
 ## File structure
 
 * `Lemma_32_Asymmetric_Goal` — the asymmetric statement.
-* `MEqRedStackExtensionWall` — the precise obligation that the proof
-  attempt cannot discharge (a stack-extension lemma for `MEqRed`).
-* `Lemma_32_Asymmetric_via_wall` — a constructive reduction: given an
-  oracle for the wall, the asymmetric Lemma 32 follows. The body
-  walks through every case of the induction, closing every case except
-  `Me-Var × substituted slot` directly. That single case applies the
-  wall hypothesis. No `sorry`. No new axioms.
-
-The proof body is voluminous but conceptually identical to the
-existing symmetric proof
-`MEqRedRespectsBetaInstantiateUnderHeadsStack_universal` at
-`Pss/Mpss/DeBruijnTypeSafety.lean:1585`, with two systematic edits:
-RHS substitutions use `arg'` instead of `arg`, and the `Me-Var ×
-substituted slot` case applies the wall hypothesis instead of
-`MEqRed.refl`. -/
+* `MEqRedStackExtensionWall` — the obligation produced by the
+  `Me-Var × substituted slot` case. **Provable**, see
+  `MEqRedStackExtensionWall_proved`.
+* `Lemma_32_Asymmetric_via_wall` — the induction reducing the
+  asymmetric Lemma 32 to the wall (modulo every other case). Closes
+  every case except `Me-Var × substituted slot` directly; that one
+  applies the wall.
+* `MEqRedStackExtensionWall_proved` — the wall, discharged via
+  `MEqRed.appendCtx` (iterated weakening) plus
+  `MEqRed.lift_empty_to_stack` (stack-append extension).
+* `Lemma_32_Asymmetric_proved` — the closed asymmetric Lemma 32.
+* `Lemma_32_Asymmetric_proved_closed` — the empty-prefix
+  specialization, exposed as the paper-surface entry point. -/
 
 namespace Pss
 namespace DeBruijn
@@ -624,6 +607,81 @@ noncomputable def Lemma_32_Asymmetric_via_wall_closed
   have h' := Lemma_32_Asymmetric_via_wall hWall 0
     (heads := []) rfl hArgScoped hArg'Scoped hArgArg' h
   simpa [Ctx.instantiateBetaPrefix, Term.shiftBy_zero_id] using h'
+
+/-! ## Wall, discharged
+
+The wall reduces to two existing pieces:
+
+1. **Iterated weakening** (`MEqRed.appendCtx`): lift
+   `MEqRed Γ [] arg arg'` to
+   `MEqRed (instantiateBetaPrefix arg heads.length heads ++ Γ) []
+           (shifted arg) (shifted arg')`.
+2. **Stack-append extension** (`MEqRed.lift_empty_to_stack`): lift the
+   resulting empty-stack derivation to the post-substitution stack.
+
+Both pieces handle the `Me-Fun → Me-FOp` re-derivation cleanly via
+`MEqRed.sub_to_equ_head_replace`. -/
+
+/-- **Wall, discharged.** The stack-extension obligation that the
+asymmetric Lemma 32's induction hands off in the `Me-Var × substituted
+slot` case is provable. -/
+noncomputable def MEqRedStackExtensionWall_proved :
+    MEqRedStackExtensionWall := by
+  intro Γ arg arg' heads s _hArgScoped _hArg'Scoped hArgArg' hpvTarget
+  -- Step 1: iterated weakening across `instantiateBetaPrefix arg heads.length heads`.
+  have hpvCtx : Prevalid
+      (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ) :=
+    PrevalidExt.ctx hpvTarget
+  have hPvΓ : Prevalid Γ := hArgArg'.prevalidExt.ctx
+  have hpvNilΓ : PrevalidExt Γ [] := PrevalidExt.nil hPvΓ
+  have hLengthEq :
+      (Ctx.instantiateBetaPrefix arg heads.length heads).length =
+        heads.length :=
+    Ctx.length_instantiateBetaPrefix _ _ _
+  have hWeaken := MEqRed.appendCtx
+    (Γ := Γ) (s := []) (u := arg) (v := arg')
+    (Ctx.instantiateBetaPrefix arg heads.length heads)
+    hArgArg' hpvCtx hpvNilΓ
+  rw [hLengthEq] at hWeaken
+  -- Step 2: lift empty stack to the actual target stack.
+  exact MEqRed.lift_empty_to_stack hWeaken hpvTarget
+
+/-! ## Asymmetric Lemma 32, closed
+
+Combine the via-wall reduction with the discharged wall. -/
+
+/-- **Asymmetric Lemma 32, paper p. 9:44–45, generic prefix form.**
+
+Combines `Lemma_32_Asymmetric_via_wall` with the discharged wall. -/
+noncomputable def Lemma_32_Asymmetric_proved
+    {Γ : Ctx} {arg arg' lhs rhs : Term} {heads : Ctx} {s : Stack}
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hArgArg' : MEqRed Γ [] arg arg')
+    (h : MEqRed (heads ++ { bound := arg, kind := .sub } :: Γ) s lhs rhs) :
+    MEqRed (Ctx.instantiateBetaPrefix arg heads.length heads ++ Γ)
+      (Stack.instantiate heads.length
+        (Term.shiftBy 0 heads.length arg) s)
+      (Term.instantiate heads.length
+        (Term.shiftBy 0 heads.length arg) lhs)
+      (Term.instantiate heads.length
+        (Term.shiftBy 0 heads.length arg') rhs) :=
+  Lemma_32_Asymmetric_via_wall MEqRedStackExtensionWall_proved heads.length
+    rfl hArgScoped hArg'Scoped hArgArg' h
+
+/-- **Asymmetric Lemma 32, closed-stack surface (empty prefix).** This is
+the paper-surface entry point. -/
+noncomputable def Lemma_32_Asymmetric_proved_closed
+    {Γ : Ctx} {arg arg' lhs rhs : Term} {s : Stack}
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hArgArg' : MEqRed Γ [] arg arg')
+    (h : MEqRed ({ bound := arg, kind := .sub } :: Γ) s lhs rhs) :
+    MEqRed Γ (Stack.instantiate 0 arg s)
+      (Term.instantiate 0 arg lhs)
+      (Term.instantiate 0 arg' rhs) :=
+  Lemma_32_Asymmetric_via_wall_closed MEqRedStackExtensionWall_proved
+    hArgScoped hArg'Scoped hArgArg' h
 
 end Investigation
 end Paper

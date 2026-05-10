@@ -1908,40 +1908,32 @@ noncomputable def MEqRedRespectsBetaInstantiateStack_proved :
 
 /-! ## Fused kind-narrowing β-substitution
 
-The `bet × bet` diamond cell would ideally consume a **fully asymmetric**
-β-substitution surface where the LHS body is instantiated by the original
-argument `arg` and the RHS body by its post-step `arg'`. That fully
-asymmetric shape is, however, **structurally impossible to prove as a
-single `MEqRed` step**: the `Me-FOp` constructor's stack-head and body-
-context binder are syntactically the same `α`, and the asymmetric LHS/
-RHS substitution would require them to be `α[arg/n]` versus `α[arg'/n]`
-respectively whenever `α` references the discharged binder. Both `Me-Pro`
-discharge (post-context lookups must agree with the body recursive
-premise's LHS endpoint) and `Me-FOp` constructor consistency (the body
-binder must match the stack head) impose conflicting constraints on
-which substitution argument the post-substitution context uses.
+The `bet × bet` diamond cell calls for a **fully asymmetric**
+β-substitution surface where the LHS body is instantiated by the
+original argument `arg` and the RHS body by its post-step `arg'`. That
+asymmetric form has been **proved** as a single `MEqRed` step in
+`Pss/Paper/Investigation/Lemma_32_Asymmetric.lean`
+(`Lemma_32_Asymmetric_proved` and the closed-prefix specialization
+`Lemma_32_Asymmetric_proved_closed`); no axioms beyond the kernel
+three. (Older commentary in this comment block claimed the asymmetric
+form was structurally impossible — that claim was retracted in commit
+following `e5d2096`. The discharge relies on the stack-extension
+`MEqRed.append_stack` from `Pss/Paper/Aux/StackExtension.lean`, which
+in turn uses `MEqRed.sub_to_equ_head_replace` to handle the
+`Me-Fun → Me-FOp` re-derivation in the abstraction case.)
 
-The closest provable surface that **enables the `bet × bet` cell** is the
-**fused kind-narrowing β-substitution**: a body derivation in `.sub`-head
-context with bound `arg` is converted to substitution by `arg'` (the
-post-step argument), with both LHS and RHS uniformly substituted by
-`arg'`. This is structurally identical to the symmetric form except that
-the dropped `.sub` head's bound (`arg`) and the substitution argument
-(`arg'`) are **decoupled**: the proof goes through unchanged with `arg'`
-playing the role of the substitution argument throughout, with `arg`
-appearing only as the source context's discharged head bound. The
-"fusion" is with `MEqRed.sub_to_equ_head_replace` (commit `8e72b12`,
-`Pss/Mpss/DeBruijnReductions.lean:1953`), which would convert the
-`.sub`-bound source body to an `.equ`-bound body before substitution;
-the present surface skips that explicit conversion and substitutes
-directly by `arg'`, achieving the same downstream effect.
+The **fused kind-narrowing** form below remains useful as an
+optimization: it ships the symmetric variant (LHS and RHS both
+substitute by `arg'`) without the iterated weakening / stack-extension
+machinery, which is sometimes simpler at the call site than the full
+asymmetric form. It coexists with the asymmetric form rather than
+replacing it; downstream β-cell call sites can choose.
 
-For the `bet × bet` consumer, this surface combines with the body
-diamond closure and `v`'s diamond closure to produce a chain
-`MEqRedStar` from `instantiate 0 v₁' body₁'` to a common reduct
-`instantiate 0 v₃ body₃`. A single-`MEqRed`-step bridge for that chain
-is foreclosed by the structural conflicts described above; the diamond
-cell composes along the chain. -/
+The "fusion" name refers to combining a kind-narrowing
+(`MEqRed.sub_to_equ_head_replace`) with β-substitution: a body
+derivation in `.sub`-head context with bound `arg` is treated as if
+the bound were itself `arg'` for substitution purposes, decoupling the
+dropped head's bound from the substitution argument. -/
 
 /-- Universal fused kind-narrowing β-substitution under any number of
 preserved context heads, indexed by the number of preserved heads. The
