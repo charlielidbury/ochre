@@ -88,6 +88,24 @@ theorem stripStackHead {Γ Γ' : Ctx} {s s' s_0 : Stack} {α : Term}
             -- `Stack.shift 0 s_0''`).
             rw [← hSplit.2]
             exact hL
+  | @cons_evolve Γ_inner Γ_inner' s_inner s_inner' t t' kind hInner hBound ih =>
+      cases s_inner with
+      | nil =>
+          simp [Stack.shift, Stack.shiftBy] at hStack
+      | cons α'' s_0'' =>
+          have hSplit : Term.shift 0 α'' = α ∧ Stack.shift 0 s_0'' = s_0 := by
+            simp [Stack.shift, Stack.shiftBy] at hStack
+            exact hStack
+          obtain ⟨α_inner', s_1_inner', hs_inner', hInner_strip⟩ := ih rfl
+          subst hs_inner'
+          refine ⟨Term.shift 0 α_inner', Stack.shift 0 s_1_inner', ?_, ?_⟩
+          · simp [Stack.shift, Stack.shiftBy, Term.shift]
+          · have hL : ContextEvolution
+                ({bound := t, kind} :: Γ_inner) (Stack.shift 0 s_0'')
+                ({bound := t', kind} :: Γ_inner') (Stack.shift 0 s_1_inner') :=
+              ContextEvolution.cons_evolve hInner_strip hBound
+            rw [← hSplit.2]
+            exact hL
 
 /-- **Lemma 36 (Commutativity — context weakening), paper p. 9:46.**
 

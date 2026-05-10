@@ -93,6 +93,24 @@ inductive ContextEvolution : Ctx → Stack → Ctx → Stack → Prop where
         (entry :: Γ) (Stack.shift 0 s)
         (entry :: Γ') (Stack.shift 0 s')
 
+  /-- **Body-context lift with bound evolution** (paper p. 9:24 FOpFOp,
+  paper p. 9:22 AppBet). Lifts an outer evolution and simultaneously
+  evolves the new head's bound from `t` to `t'`. This is the paper's
+  "by rule Ct-Ann, we have Γ, x ≡ α; s_0 ↣ Γ', x ≡ α'; s_1" pattern
+  applied at the body context (with the de Bruijn stack shifted by
+  one due to the new binder). The same constructor's existence makes
+  the FOpFOp / AppBet / BetApp cases close without further structural
+  auxiliaries. -- Paper handwaves; mechanized as: explicit
+  `cons_evolve` constructor.
+  -/
+  | cons_evolve {Γ Γ' : Ctx} {s s' : Stack} {t t' : Term}
+      {kind : CtxEntryKind} :
+      ContextEvolution Γ s Γ' s' →
+      MEqRed Γ [] t t' →
+      ContextEvolution
+        ({ bound := t,  kind } :: Γ) (Stack.shift 0 s)
+        ({ bound := t', kind } :: Γ') (Stack.shift 0 s')
+
 namespace ContextEvolution
 
 /-! ## Basic structural invariants -/
@@ -106,6 +124,8 @@ theorem preserves_stack_length {Γ Γ' : Ctx} {s s' : Stack}
   | ctStk _ _ ih => simp [ih]
   | cons_lift _ _ ih =>
       simp [Stack.shift, Stack.shiftBy, List.length_map, ih]
+  | cons_evolve _ _ ih =>
+      simp [Stack.shift, Stack.shiftBy, List.length_map, ih]
 
 /-- Context depth is preserved by `ContextEvolution`. -/
 theorem preserves_ctx_depth {Γ Γ' : Ctx} {s s' : Stack}
@@ -116,6 +136,8 @@ theorem preserves_ctx_depth {Γ Γ' : Ctx} {s s' : Stack}
       simp [Ctx.depth_cons, ih]
   | ctStk _ _ ih => exact ih
   | cons_lift _ _ ih =>
+      simp [Ctx.depth_cons, ih]
+  | cons_evolve _ _ ih =>
       simp [Ctx.depth_cons, ih]
 
 end ContextEvolution
