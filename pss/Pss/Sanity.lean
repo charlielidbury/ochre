@@ -1,4 +1,5 @@
 import Pss.Mpss.DeBruijnTypeSafety
+import Pss.Paper.Aux.CommutativityWeakening
 
 /-! # `Pss.Sanity` — `#print axioms` audit
 
@@ -93,5 +94,14 @@ all absurd via case-elim on `Term.NoBinders`, leaving only top/tAp/app
 -- as the sole non-standard premise. Both depend only on the kernel three.
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_Preservation_partial_v6_proved
 #print axioms Pss.DeBruijn.Theorem_5_DeBruijn_ClosedPreservation_partial_v6_proved
+
+/-! ### Paper-mirroring layer
+
+These are the `Pss.Paper.*` artifacts established as the paper-faithful
+counterpart to the existing de Bruijn working development. The numbers
+match the paper (Pasquale & García-Pérez 2024). -/
+
+#print axioms
+  Pss.DeBruijn.Paper.ContextEvolution.Lemma_36_CommutativityContextWeakening
 
 end Pss

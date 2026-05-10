@@ -9,6 +9,8 @@ import Pss.Mpss.DeBruijnWellFormed
 import Pss.Mpss.DeBruijnOperationalSem
 import Pss.Mpss.DeBruijnTransitivityElim
 import Pss.Mpss.DeBruijnTypeSafety
+import Pss.Paper.ContextEvolution
+import Pss.Paper.Aux.CommutativityWeakening
 
 /-! # PSS — Pure Subtype Systems
 
