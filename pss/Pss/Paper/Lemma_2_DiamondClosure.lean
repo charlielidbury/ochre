@@ -149,6 +149,28 @@ noncomputable def MEqRed.lift_empty_to_stack
     exact MEqRedStackAppendPayload_proved
       (s := front) (operand := op) (ih hpvFront) hOp
 
+/-! ## ContextEvolution.cons_lift — body-context evolution lifts
+
+For the body cases of Lemma 2 (Bet × Bet, Fun × Fun, FOp × FOp, App ×
+Bet, Bet × App), the body sub-derivation lives in an extended context
+`(head :: Γ₀); shift 0 s₀`. The body IH is parameterized over evolutions
+of THIS extended context. To invoke the body IH after deriving the
+outer evolution `Γ₀; s₀ ↣ Γ_i; s_i`, we lift the outer evolution to
+the body context, producing `(head :: Γ₀); shift 0 s₀ ↣ (head :: Γ_i);
+shift 0 s_i`.
+
+The lift walks the outer derivation, rebuilding each step at the
+extended context: each `ctAnn`'s bound reduction is weakened across
+the new head; each `ctStk`'s stack head reduction is also weakened.
+The new head is unchanged through the walk. -/
+
+-- Note: a richer `stripStackHead'` that also returns the head reduction
+-- `α → α'` is desirable for lifting the FOp body context, but requires
+-- additional infrastructure for the ctRefl and ctAnn cases (the
+-- ctRefl case needs `Term.Scoped` on α to construct the refl reduction;
+-- the ctAnn case needs to weaken the head reduction across the new
+-- head). Postponed.
+
 /-! ## Variable-source cases (paper p. 9:21) -/
 
 /-- Discharge of `Lemma_2_Case_ProPro`: when both sides promote the same
@@ -191,6 +213,81 @@ theorem Lemma_2_Case_ProVar_proved : Lemma_2_Case_ProVar := by
     Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv₀⟩)
   refine ⟨α₃, hL, ?_⟩
   exact ⟨MEqRed.pro hpv₂ hb₂ hR₀⟩
+
+/-! ## Body-source cases (paper p. 9:23–24) — Me-Fun and Me-FOp -/
+
+/-- Discharge of `Lemma_2_Case_FunFun`: paper p. 9:23. Both sides
+descend under an unapplied abstraction with `s₀ = []`. The body
+context's evolution at `({t_i, .sub} :: Γ_i); []` (note: bound = `t_i`
+on each side, NOT `t₀`) is built directly via `ctAnn` from the outer
+evolution + the abstraction's bound reduction. -/
+theorem Lemma_2_Case_FunFun_proved : Lemma_2_Case_FunFun := by
+  intro Γ₀ t₀ t₁ t₂ body₀ body₁ body₂ hT₁ hBody₁ hT₂ hBody₂
+    hBoundIH hBodyIH Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- Outer stacks forced to [].
+  have hs₁_nil : s₁ = [] := by
+    have := he₁.preserves_stack_length
+    cases s₁
+    · rfl
+    · simp at this
+  have hs₂_nil : s₂ = [] := by
+    have := he₂.preserves_stack_length
+    cases s₂
+    · rfl
+    · simp at this
+  subst hs₁_nil; subst hs₂_nil
+  -- Bound diamond.
+  obtain ⟨t_3, hLBound, hRBound⟩ := hBoundIH he₁ he₂
+  -- Body IH: lift outer evolutions to body context via ctAnn with the
+  -- ABSTRACTION'S bound reduction t₀ → t₁ (resp. t₀ → t₂). The body
+  -- context's bound EVOLVES along with the abstraction's bound.
+  let heBody₁ : ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀) []
+      ({bound := t₁, kind := .sub} :: Γ₁) [] :=
+    ContextEvolution.ctAnn he₁ hT₁
+  let heBody₂ : ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀) []
+      ({bound := t₂, kind := .sub} :: Γ₂) [] :=
+    ContextEvolution.ctAnn he₂ hT₂
+  obtain ⟨b_3, hLBody, hRBody⟩ := hBodyIH heBody₁ heBody₂
+  -- Now we have:
+  --   hLBody : MEqRedJ ({t₁, .sub} :: Γ₁) [] body₁ b_3
+  --   hRBody : MEqRedJ ({t₂, .sub} :: Γ₂) [] body₂ b_3
+  -- Plus bound diamond:
+  --   hLBound : MEqRedJ Γ₁ [] t₁ t_3
+  --   hRBound : MEqRedJ Γ₂ [] t₂ t_3
+  -- Rebuild via Me-Fun:
+  --   LHS: (.abs t₁ body₁) → (.abs t_3 b_3) at Γ₁; [].
+  --        Me-Fun needs bound reduction `t₁ → t_3` and body reduction
+  --        in `{t₁, .sub} :: Γ₁; []`. ✓ both available.
+  let hLBound₀ : MEqRed Γ₁ [] t₁ t_3 := Classical.choice hLBound
+  let hRBound₀ : MEqRed Γ₂ [] t₂ t_3 := Classical.choice hRBound
+  let hLBody₀ : MEqRed ({bound := t₁, kind := .sub} :: Γ₁) [] body₁ b_3 :=
+    Classical.choice hLBody
+  let hRBody₀ : MEqRed ({bound := t₂, kind := .sub} :: Γ₂) [] body₂ b_3 :=
+    Classical.choice hRBody
+  refine ⟨.abs t_3 b_3, ?_, ?_⟩
+  · exact ⟨MEqRed.fun_ hLBound₀ hLBody₀⟩
+  · exact ⟨MEqRed.fun_ hRBound₀ hRBody₀⟩
+
+/-! ## Body-context lifts and Bet × Bet — DEFERRED
+
+The body cases of paper Lemma 2 (Bet × Bet, FOp × FOp, App × Bet,
+Bet × App) need to lift an outer evolution `Γ₀; s₀ ↣ Γ₁; s₁` to the
+body context's evolution `({bound, .sub} :: Γ₀); shift 0 s₀ ↣
+({bound, .sub} :: Γ₁); shift 0 s₁`.
+
+The `ctRefl` and `ctStk` cases of this lift are mechanical (refl on
+both sides; ctStk with weakened head reduction). The `ctAnn` case
+walls structurally: it would require modifying a NON-OUTERMOST entry
+of the body-context, which `ContextEvolution.ctAnn` (which modifies
+the outermost) doesn't directly support.
+
+A clean discharge requires extending `ContextEvolution` with a
+`weaken_outer` constructor (insert a new outermost head into an
+existing evolution at the inner level). Postponed to a follow-up
+dispatch.
+
+Given this, the body cases (Bet × Bet, FOp × FOp, App × Bet, Bet × App)
+remain undischarged in this commit. -/
 
 end Paper
 end DeBruijn
