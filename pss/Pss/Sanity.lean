@@ -4,6 +4,7 @@ import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
 import Pss.Paper.Aux.Weakening
+import Pss.Paper.Lemma_2_Diamond
 
 /-! # `Pss.Sanity` — `#print axioms` audit
 
@@ -184,5 +185,16 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MEqRedReflexivity_J
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity_J
+
+-- Paper Lemma 2 (Diamond property of `→ᵉᵠᵘ`), p. 9:9 statement / p. 9:21–25
+-- proof. Trivial-source-shape cells (Top × Top, Var × Var, TAp × TAp) close
+-- conditionally on `MEqRedTransportAcrossEvolution` (the de Bruijn analogue of
+-- paper Lemma 19's `↣` invocation pattern). The non-trivial cases are exposed
+-- as named per-case obligations bundled in `Lemma_2_CaseGrid`. See file
+-- `Pss/Paper/Lemma_2_Diamond.lean` and `STOP-LEMMA-2-STRUCTURAL.md` for the
+-- dispatch sequence to discharge each.
+#print axioms Pss.DeBruijn.Paper.Lemma_2_TopTop_proved
+#print axioms Pss.DeBruijn.Paper.Lemma_2_VarVar_proved
+#print axioms Pss.DeBruijn.Paper.Lemma_2_TApTAp_proved
 
 end Pss
