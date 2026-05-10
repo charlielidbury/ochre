@@ -268,26 +268,108 @@ theorem Lemma_2_Case_FunFun_proved : Lemma_2_Case_FunFun := by
   · exact ⟨MEqRed.fun_ hLBound₀ hLBody₀⟩
   · exact ⟨MEqRed.fun_ hRBound₀ hRBody₀⟩
 
-/-! ## Body-context lifts and Bet × Bet — DEFERRED
+/-! ## Body-context lifts via `cons_lift`
 
 The body cases of paper Lemma 2 (Bet × Bet, FOp × FOp, App × Bet,
-Bet × App) need to lift an outer evolution `Γ₀; s₀ ↣ Γ₁; s₁` to the
-body context's evolution `({bound, .sub} :: Γ₀); shift 0 s₀ ↣
-({bound, .sub} :: Γ₁); shift 0 s₁`.
+Bet × App) lift an outer evolution `Γ₀; s₀ ↣ Γ_i; s_i` to the body
+context's evolution `(entry :: Γ₀); shift 0 s₀ ↣ (entry :: Γ_i); shift 0 s_i`
+via `ContextEvolution.cons_lift`. This requires a scoping witness for
+the head's `bound` at `Γ₀.depth`. -/
 
-The `ctRefl` and `ctStk` cases of this lift are mechanical (refl on
-both sides; ctStk with weakened head reduction). The `ctAnn` case
-walls structurally: it would require modifying a NON-OUTERMOST entry
-of the body-context, which `ContextEvolution.ctAnn` (which modifies
-the outermost) doesn't directly support.
+/-! ## Body-source cases — Me-Bet × Me-Bet (paper p. 9:25) -/
 
-A clean discharge requires extending `ContextEvolution` with a
-`weaken_outer` constructor (insert a new outermost head into an
-existing evolution at the inner level). Postponed to a follow-up
-dispatch.
+/-- Discharge of `Lemma_2_Case_BetBet`: paper p. 9:25.
 
-Given this, the body cases (Bet × Bet, FOp × FOp, App × Bet, Bet × App)
-remain undischarged in this commit. -/
+Both LHS and RHS perform β. After body diamond at evolved bodies'
+contexts (lifted via `cons_lift`) and operand diamond at evolved empty
+stacks (after Lemma 36 to strip the stack), the joint reduct is
+constructed by Lemma 32 (kind-narrowed asymmetric, closed-stack) on
+each side. -/
+theorem Lemma_2_Case_BetBet_proved : Lemma_2_Case_BetBet := by
+  intro Γ₀ s₀ t u₀ u₁ u₂ v₀ v₁ v₂ ht hBody₁ hArg₁ hBody₂ hArg₂
+    hBodyIH hArgIH Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- Lift the outer evolutions to the body context via cons_lift, using
+  -- the abstraction's bound `t` as the head's bound.
+  let heBody₁ : ContextEvolution
+      ({bound := t, kind := .sub} :: Γ₀) (Stack.shift 0 s₀)
+      ({bound := t, kind := .sub} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_lift he₁ ht
+  let heBody₂ : ContextEvolution
+      ({bound := t, kind := .sub} :: Γ₀) (Stack.shift 0 s₀)
+      ({bound := t, kind := .sub} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_lift he₂ ht
+  obtain ⟨u_3, hLBody, hRBody⟩ := hBodyIH heBody₁ heBody₂
+  -- Strip the stacks for the operand IH via Lemma 36 (= preserves_ctx_depth
+  -- + reflexivity is more direct: paper says "by Lemma 36 we obtain Γ₀; nil
+  -- ↣ Γ_i; nil"). For the operand IH we need ContextEvolution Γ₀ [] Γ_i [].
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, hLArg, hRArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  -- Extract the underlying derivations.
+  let hLBody₀ : MEqRed ({bound := t, kind := .sub} :: Γ₁)
+      (Stack.shift 0 s₁) u₁ u_3 := Classical.choice hLBody
+  let hRBody₀ : MEqRed ({bound := t, kind := .sub} :: Γ₂)
+      (Stack.shift 0 s₂) u₂ u_3 := Classical.choice hRBody
+  let hLArg₀ : MEqRed Γ₁ [] v₁ v_3 := Classical.choice hLArg
+  let hRArg₀ : MEqRed Γ₂ [] v₂ v_3 := Classical.choice hRArg
+  -- Scoping witnesses for v_1, v_2, v_3 at their respective contexts.
+  have hv₁Scoped₁ : Term.Scoped Γ₁.depth v₁ := hLArg₀.scoped_left
+  have hv₃Scoped₁ : Term.Scoped Γ₁.depth v_3 := hLArg₀.scoped_right
+  have hv₂Scoped₂ : Term.Scoped Γ₂.depth v₂ := hRArg₀.scoped_left
+  have hv₃Scoped₂ : Term.Scoped Γ₂.depth v_3 := hRArg₀.scoped_right
+  have htScoped₁ : Term.Scoped Γ₁.depth t := by
+    have : Γ₀.depth = Γ₁.depth := he₁.preserves_ctx_depth
+    rw [← this]; exact ht
+  have htScoped₂ : Term.Scoped Γ₂.depth t := by
+    have : Γ₀.depth = Γ₂.depth := he₂.preserves_ctx_depth
+    rw [← this]; exact ht
+  -- Apply Lemma 32 (kind-narrowed asymmetric closed) on each side.
+  -- LHS: at Γ₁, source bound is t, LHS arg v₁, RHS arg v₃; body diamond
+  -- hLBody₀ : MEqRed ({t,.sub}::Γ₁) (shift 0 s₁) u₁ u_3.
+  -- Result: MEqRed Γ₁ (Stack.instantiate 0 v₁ (shift 0 s₁))
+  --                 (Term.instantiate 0 v₁ u₁) (Term.instantiate 0 v₃ u_3).
+  -- We need: MEqRed Γ₁ s₁ (instantiate 0 v₁ u₁) (instantiate 0 v_3 u_3).
+  -- Use Stack.instantiate_shiftBy_zero_tail to simplify the stack.
+  have hL := Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+    (Γ := Γ₁) (t := t) (arg := v₁) (arg' := v_3)
+    (lhs := u₁) (rhs := u_3) (s := Stack.shift 0 s₁)
+    htScoped₁ hv₁Scoped₁ hv₃Scoped₁ hLArg₀ hLBody₀
+  -- Stack.instantiate 0 v₁ (Stack.shift 0 s₁) = s₁.
+  have hStackSimp₁ :
+      Stack.instantiate 0 v₁ (Stack.shift 0 s₁) = s₁ := by
+    have h := Stack.instantiate_shiftBy_zero_tail (n := 0) (v := v₁) (s := s₁)
+    -- Stack.shiftBy 0 0 s = s by induction on s.
+    have hsBy_zero : ∀ (sx : Stack), Stack.shiftBy 0 0 sx = sx := by
+      intro sx
+      induction sx with
+      | nil => rfl
+      | cons α t ih =>
+          show Term.shiftBy 0 0 α :: Stack.shiftBy 0 0 t = α :: t
+          rw [Term.shiftBy_zero_id, ih]
+    rw [hsBy_zero] at h
+    simpa [Term.shiftBy_zero_id, Stack.shift] using h
+  rw [hStackSimp₁] at hL
+  -- RHS: at Γ₂.
+  have hR := Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+    (Γ := Γ₂) (t := t) (arg := v₂) (arg' := v_3)
+    (lhs := u₂) (rhs := u_3) (s := Stack.shift 0 s₂)
+    htScoped₂ hv₂Scoped₂ hv₃Scoped₂ hRArg₀ hRBody₀
+  have hStackSimp₂ :
+      Stack.instantiate 0 v₂ (Stack.shift 0 s₂) = s₂ := by
+    have h := Stack.instantiate_shiftBy_zero_tail (n := 0) (v := v₂) (s := s₂)
+    have hsBy_zero : ∀ (sx : Stack), Stack.shiftBy 0 0 sx = sx := by
+      intro sx
+      induction sx with
+      | nil => rfl
+      | cons α t ih =>
+          show Term.shiftBy 0 0 α :: Stack.shiftBy 0 0 t = α :: t
+          rw [Term.shiftBy_zero_id, ih]
+    rw [hsBy_zero] at h
+    simpa [Term.shiftBy_zero_id, Stack.shift] using h
+  rw [hStackSimp₂] at hR
+  exact ⟨Term.instantiate 0 v_3 u_3, ⟨hL⟩, ⟨hR⟩⟩
 
 end Paper
 end DeBruijn
