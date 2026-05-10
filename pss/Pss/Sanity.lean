@@ -1,5 +1,6 @@
 import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.Aux.CommutativityWeakening
+import Pss.Paper.Aux.Congruence
 import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
@@ -185,6 +186,21 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MEqRedReflexivity_J
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity_J
+
+-- Paper Lemma 33 (Congruence of `≤`), p. 9:45. Six conjuncts (single-step
+-- and chain variants for app, fun, fOp shapes).
+#print axioms Pss.DeBruijn.Paper.Lemma_33_Congruence_MSub.proved
+
+-- Paper Lemma 34 (Congruence of `↦ˢᵘᵇ`), p. 9:45–46. Three conjuncts
+-- (app/fun/fOp). Dispatches to the single-step `MSubRedStar` lifters in
+-- `Pss/Mpss/DeBruijnReductions.lean`.
+#print axioms Pss.DeBruijn.Paper.Lemma_34_Congruence_MSubRedStar.proved
+
+-- Paper Lemma 35 (Congruence of `↦ᵉᵠᵘ`), p. 9:46. Three conjuncts. The
+-- equivalence-side chain lifters are introduced in this file (no prior
+-- `MEqRedStar.app_*`/`fun_*`/`fOp_*` siblings existed in the working
+-- development).
+#print axioms Pss.DeBruijn.Paper.Lemma_35_Congruence_MEqRedStar.proved
 
 -- Paper Lemma 2 (Diamond property of `→ᵉᵠᵘ`), p. 9:9 statement / p. 9:21–25
 -- proof. Trivial-source-shape cells (Top × Top, Var × Var, TAp × TAp) close
