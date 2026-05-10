@@ -2,6 +2,7 @@ import Pss.Mpss.DeBruijnTypeSafety
 import Pss.Paper.Aux.CommutativityWeakening
 import Pss.Paper.Aux.Congruence
 import Pss.Paper.Aux.EvolutionTransport
+import Pss.Paper.Aux.Narrowing
 import Pss.Paper.Aux.PrevalidityUnderSubst
 import Pss.Paper.Aux.Propositions
 import Pss.Paper.Aux.Substitution
@@ -187,6 +188,31 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MEqRedReflexivity_J
 #print axioms Pss.DeBruijn.Paper.Proposition_18_MSubRedReflexivity_J
+
+-- Paper Lemma 23 (Narrowing of context in well-formedness), p. 9:37–38.
+-- Conditional on `WfMSubHeadReplaceOfNewWf` (residual; see file docstring).
+#print axioms Pss.DeBruijn.Paper.Lemma_23_Narrowing_WfM_of
+#print axioms Pss.DeBruijn.Paper.Lemma_23_Narrowing_WfM_under_of
+
+-- Paper Lemma 24 (Narrowing of context in subtyping reductions), p. 9:38–39.
+-- Closed unconditionally modulo caller-supplied paper-faithful payloads
+-- (changed-slot Ms-Pro bridge, recursive Ms-Fun/Ms-FOp body cases).
+#print axioms Pss.DeBruijn.Paper.Lemma_24_Narrowing_MSubRed
+#print axioms Pss.DeBruijn.Paper.Lemma_24_Narrowing_MSubRed_general
+
+-- Paper Lemma 25 (Narrowing of context in equivalence reductions), p. 9:39.
+-- Direct match: `MEqRed.sub_head_replace` is `Lemma_25_Narrowing_MEqRed`.
+#print axioms Pss.DeBruijn.Paper.Lemma_25_Narrowing_MEqRed
+#print axioms Pss.DeBruijn.Paper.Lemma_25_Narrowing_MEqRed_star
+#print axioms Pss.DeBruijn.Paper.Lemma_25_Narrowing_MEqRed_general
+#print axioms Pss.DeBruijn.Paper.Lemma_25_Narrowing_MEqRed_J
+
+-- Paper Lemma 26 (Narrowing prevalidity), p. 9:39–41. Direct match:
+-- `Prevalid.sub_head_replace` is the head form.
+#print axioms Pss.DeBruijn.Paper.Lemma_26_Narrowing_Prevalidity_sub
+#print axioms Pss.DeBruijn.Paper.Lemma_26_Narrowing_Prevalidity_equ
+#print axioms Pss.DeBruijn.Paper.Lemma_26_Narrowing_Prevalidity
+#print axioms Pss.DeBruijn.Paper.Lemma_26_Narrowing_Prevalidity_general
 
 -- Paper Lemma 33 (Congruence of `≤`), p. 9:45. Six conjuncts (single-step
 -- and chain variants for app, fun, fOp shapes).
