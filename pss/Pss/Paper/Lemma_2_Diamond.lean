@@ -212,18 +212,23 @@ to close the subtype edge. -/
 def Lemma_2_Case_AppBet : Prop :=
   ∀ {Γ₀ : Ctx} {s₀ : Stack} {t₀ u₀ u₁ u₂ v₀ v₁ v₂ t₁ : Term},
     Term.Scoped Γ₀.depth t₀ →
-    -- Me-App side decomposes (λx≤t₀.u₀) v₀ → (λx≤t₁.u₁) v₁:
+    Term.Scoped Γ₀.depth v₀ →
+    -- Me-App side decomposes (λx≤t₀.u₀) v₀ → (λx≤t₁.u₁) v₁ via Me-FOp:
+    --   t₀ → t₁ at Γ₀; [] (bound reduction)
+    --   u₀ → u₁ at ({v₀, .equ} :: Γ₀); shift 0 s₀ (body in .equ head — v₀ popped)
+    --   v₀ → v₁ at Γ₀; [] (operand)
     MEqRed Γ₀ [] t₀ t₁ →
-    MEqRed ({bound := t₀, kind := .equ} :: Γ₀) (Stack.shift 0 s₀) u₀ u₁ →
+    MEqRed ({bound := v₀, kind := .equ} :: Γ₀) (Stack.shift 0 s₀) u₀ u₁ →
     MEqRed Γ₀ [] v₀ v₁ →
     -- Me-Bet side decomposes (λx≤t₀.u₀) v₀ → u₂[v₂/0]:
+    --   u₀ → u₂ at ({t₀, .sub} :: Γ₀); shift 0 s₀ (body in .sub head)
+    --   v₀ → v₂ at Γ₀; [] (operand)
     MEqRed ({bound := t₀, kind := .sub} :: Γ₀) (Stack.shift 0 s₀) u₀ u₂ →
     MEqRed Γ₀ [] v₀ v₂ →
-    -- IH on body (under .equ head — the no-promotion-of-x invariant
-    -- ensures the body reduction does not promote x, making the head
-    -- kind irrelevant for the sub-derivation):
+    -- IH on body. LHS is at .equ head bound v₀ in evolved context;
+    -- RHS is at .sub head bound t₀ in evolved context. Body diamond.
     (∀ {Γ₁' s₁' Γ₂' s₂' : _},
-      ContextEvolution ({bound := t₀, kind := .equ} :: Γ₀)
+      ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
         (Stack.shift 0 s₀) Γ₁' s₁' →
       ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀)
         (Stack.shift 0 s₀) Γ₂' s₂' →
