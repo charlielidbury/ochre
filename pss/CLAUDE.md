@@ -6,6 +6,61 @@ closes Hutchins' transitivity-elimination gap. See `README.md` for scope,
 `PLAN.md` for module map and discharge campaign status, and `AXIOMS.md`
 for the precise current axiom inventory with discharge plans.
 
+## Source of truth — the paper
+
+**The paper IS the source of truth for every proof in this codebase.**
+
+- **Local PDF:** `papers/pasquale-garcia-perez-2024-mpss.pdf` (46 pages,
+  full proof appendix included).
+- **Index:** `PAPER-PROOFS.md` maps every paper Theorem / Lemma /
+  Proposition to its codebase counterpart with paper page citations.
+  Read this first; consult the PDF for the full proof of any item the
+  index links to.
+- **Read the whole paper.** Every dispatch should read the entire PDF
+  before working. ~60k tokens at ~1M context budget — the cost is
+  negligible compared to the cost of inventing proofs that drift from
+  the paper. Do not skim sections.
+
+### Hard rules on proof construction
+
+1. **NO AGENT MAY INVENT A PROOF that the paper provides.** If the paper
+   has a proof for a lemma, theorem, or proposition, mechanize *that
+   proof* — same case enumeration, same auxiliary lemmas, same
+   structural argument. Do not search for a "Lean-friendlier" proof.
+   Do not factor into payload/partial machinery the paper does not
+   have.
+
+2. **The only legitimate reasons to deviate from the paper's argument:**
+   - (a) The paper genuinely omits the proof (handwaved, "similar to",
+         "by routine induction"). The deviation must be flagged in the
+         lemma's docstring with `-- Paper handwaves; mechanized as: ...`.
+   - (b) A conscious mechanization choice we have made (currently:
+         **de Bruijn indices** instead of named binders). Even then, the
+         structural shape of the proof (case enumeration, induction
+         principle, lemmas invoked) must match the paper. Only the
+         binder representation differs.
+
+3. **Codebase structure must mirror the paper's structure 1-to-1.**
+   One file per paper section / paper lemma family. Lemma names match
+   paper lemma numbers (e.g. `Lemma_19_Weakening`, `Theorem_1_StrongCommutes`).
+   Docstrings cite paper page numbers. If you find an existing helper
+   that doesn't correspond to anything in the paper, treat that as a
+   defect — either remove it or document why it exists.
+
+4. **Auxiliary lemmas must be named, not inlined per cell.** The paper's
+   Theorem 1 closes its 8 cases by calling Lemmas 19, 32, 36, etc. by
+   name. Our codebase must do the same. If your dispatch needs an
+   auxiliary, find which paper lemma corresponds. If none does and the
+   reason isn't (1a) or (1b), do not invent one — report back instead.
+
+5. **Conjecture 8 stays explicit.** The paper acknowledges it as open;
+   we mirror that. Theorem 5 / Lemma 7 are conditional on it. If a
+   proof you write doesn't visibly rely on Conjecture 8 but the paper
+   says it should, you've drifted — re-read the paper.
+
+If a residual seems to need a novel proof technique, that's a flag.
+Re-read the paper before grinding.
+
 ## Operating principles
 
 You have full ownership of this project. Quality > speed. There is no
