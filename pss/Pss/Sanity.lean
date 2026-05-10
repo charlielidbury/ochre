@@ -312,4 +312,9 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric_proved
 #print axioms Pss.DeBruijn.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
 
+-- equBinds preservation across ContextEvolution. Unblocks paper Lemma 2's
+-- Me-Pro × Me-Var case (paper p. 9:21): given Γ ↣ Γ' and Γ.equBinds i α₀,
+-- finds the new bound α₂ in Γ' and a reduction `α₀ →ᵉᵠᵘ α₂` at Γ; [].
+#print axioms Pss.DeBruijn.Paper.ContextEvolution.equBinds_evolve
+
 end Pss

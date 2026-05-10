@@ -177,6 +177,90 @@ theorem preservesNonemptyPrevalidExt {Γ Γ' : Ctx} {s s' : Stack}
     rw [← hdepth]; exact hsScoped'₀
   exact ⟨PrevalidExt.of_stack_scoped hpvCtx'₀ hsScoped''⟩
 
+/-! ## `equBinds` preservation across `↣` (with bound's reduction)
+
+For paper Lemma 2's Me-Pro × Me-Var case (paper p. 9:21, "By multiple
+use of the rule Ct-Ann, we have `Γ'₀; nil ⊢ α₀ →ᵉᵠᵘ α₂`"): given
+`Γ ↣ Γ'` and `Γ.equBinds i α₀`, find the corresponding bound `α₂` in
+`Γ'` and a reduction `α₀ →ᵉᵠᵘ α₂` at the original `Γ; []`. The
+reduction lifts to `Γ; s` via `MEqRed.lift_empty_to_stack` if the
+caller needs the stack. -/
+
+/-- Preservation of `equBinds` across context evolution, with the
+bound's reduction recovered at the original `Γ; []`.
+
+Paper p. 9:21 (Me-Pro × Me-Var case): given `Γ₀; s₀ ↣ Γ₂; s₂` and
+`x ≡ α₀ ∈ Γ₀`, finds the new bound `α₂` such that `x ≡ α₂ ∈ Γ₂` and
+`Γ'₀; nil ⊢ α₀ →ᵉᵠᵘ α₂` (where `Γ'₀` is the prefix of `Γ₀` below
+the binder for `x`). After weakening (Lemma 19) the reduction lifts
+to `Γ₀; s₀ ⊢ α₀ →ᵉᵠᵘ α₂`.
+
+This de Bruijn version of paper's CT-ANN-extraction-plus-weakening
+collapses both steps into a single recursive walk on the evolution.
+-/
+theorem equBinds_evolve {Γ Γ' : Ctx} {s s' : Stack}
+    (hev : ContextEvolution Γ s Γ' s')
+    (hpv : Prevalid Γ)
+    {i : Nat} {α₀ : Term} (hb : Γ.equBinds i α₀) :
+    ∃ α₂, Γ'.equBinds i α₂ ∧ Nonempty (MEqRed Γ [] α₀ α₂) := by
+  induction hev generalizing i α₀ with
+  | @ctRefl Γ s =>
+      -- Refl evolution: α₂ = α₀, reduction is refl.
+      have hα₀_scoped : Term.Scoped Γ.depth α₀ := Prevalid.scoped_lookupEqu hpv hb
+      exact ⟨α₀, hb, ⟨MEqRed.refl (PrevalidExt.nil hpv) hα₀_scoped⟩⟩
+  | @ctAnn Γ_inner Γ'_inner s s' t t' kind hev_inner hbound ih =>
+      -- Outer: (kind, t)::Γ_inner ↣ (kind, t')::Γ'_inner.
+      -- Source has prevalidity (kind t :: Γ_inner).
+      cases i with
+      | zero =>
+          cases kind with
+          | sub =>
+              -- equBinds at index 0 with .sub head is impossible.
+              exfalso
+              simp [Ctx.equBinds, Ctx.lookupEqu] at hb
+          | equ =>
+              -- equBinds 0 returns shift 0 t. So α₀ = shift 0 t.
+              have hb_eq : α₀ = Term.shift 0 t := Ctx.equBinds_zero_equ_inv hb
+              subst hb_eq
+              -- α₂ = shift 0 t' is the post-evolution bound at index 0.
+              refine ⟨Term.shift 0 t', ?_, ?_⟩
+              · simp [Ctx.equBinds, Ctx.lookupEqu]
+              · -- The reduction: shift 0 t →ᵉᵠᵘ shift 0 t' at
+                -- ((.equ t) :: Γ_inner); []. Lift hbound : MEqRed Γ_inner [] t t'
+                -- via weaken_head with the new (.equ t) entry.
+                have hpvNew : Prevalid ({bound := t, kind := .equ} :: Γ_inner) := hpv
+                have hpvE : PrevalidExt Γ_inner [] :=
+                  PrevalidExt.nil (Prevalid.tail hpvNew)
+                have hStep : MEqRed ({bound := t, kind := .equ} :: Γ_inner)
+                    (Stack.shift 0 []) (Term.shift 0 t) (Term.shift 0 t') :=
+                  hbound.weaken_head hpvE hpvNew
+                exact ⟨by simpa using hStep⟩
+      | succ k =>
+          -- Recurse on the inner evolution. The lookup at index k+1 in
+          -- the cons-context shifts the inner lookup: we need to extract
+          -- the inner lookup, recurse, and re-shift the result.
+          simp [Ctx.equBinds, Ctx.lookupEqu] at hb
+          rcases hb with ⟨a, ha, hb_eq⟩
+          have hpv_inner : Prevalid Γ_inner := Prevalid.tail hpv
+          -- Recurse on the inner evolution.
+          obtain ⟨a₂, ha₂, hRedInner⟩ := ih hpv_inner (i := k) (α₀ := a) ha
+          -- The reduction MEqRed Γ_inner [] a a₂ lifts to
+          -- MEqRed (head :: Γ_inner) [] (shift 0 a) (shift 0 a₂) via weaken_head.
+          let hpvE_inner : PrevalidExt Γ_inner [] := PrevalidExt.nil hpv_inner
+          let hRedLifted : MEqRed ({bound := t, kind := kind} :: Γ_inner)
+              (Stack.shift 0 []) (Term.shift 0 a) (Term.shift 0 a₂) :=
+            (Classical.choice hRedInner).weaken_head hpvE_inner hpv
+          -- Repackage as α₀ → shift 0 a₂.
+          have hα₀_eq : α₀ = Term.shift 0 a := hb_eq.symm
+          subst hα₀_eq
+          refine ⟨Term.shift 0 a₂, ?_, ?_⟩
+          · simp [Ctx.equBinds, Ctx.lookupEqu]
+            exact ⟨a₂, ha₂, rfl⟩
+          · exact ⟨by simpa using hRedLifted⟩
+  | @ctStk Γ Γ' s s' α α' hev_inner hbound ih =>
+      -- Stack-only evolution; context unchanged.
+      exact ih hpv hb
+
 end ContextEvolution
 
 /-! ## Unconditional discharge of Lemma 2's trivial cells
