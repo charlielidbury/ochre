@@ -1168,6 +1168,53 @@ theorem UniformEqDiamonds_proved_of_MoreoverGeneral
     UniformEqDiamonds :=
   hMoreover.toUniformEqDiamonds
 
+/-! ## ProVar / VarPro residual payload
+
+The Me-Pro × Me-Var (and symmetric) cells require a bound IH that runs
+the bundle with a SYNTHETIC second derivation (the lifted `α_0 → α_evolved`
+from `equBinds_evolve` + `lift_empty_to_stack`), not a sub-derivation of
+the original `h_2 = Me-Var`. This is the **parametric-second-derivation**
+shape natively provided by structural induction on h_1 where h_2 is
+universally quantified at each recursive step.
+
+Our `MoreoverDiamondGeneral h₁ h₂` predicate fixes both source derivations,
+so the per-cell theorem signature for ProVar can't directly express the
+synthetic-second-derivation IH. The structural-on-h_1 bundle naturally
+provides it.
+
+For now, we ship the missing cells as a Prop residual:
+
+* `MoreoverDiamondGeneral_ProVarVarPro_Payload` — the universal closure
+  of ProVar/VarPro cells at general context.
+
+The bundle assembly (structural induction on h_1 dispatching to the 12
+shipped cells + the ProVar/VarPro residual) becomes conditional on this
+payload. -/
+
+/-- **Universal ProVar/VarPro cell at general context.**
+
+Captures both ProVar (h_1 = Me-Pro, h_2 = Me-Var) and VarPro (symmetric).
+The bound IH (`hBoundDiamond`) takes a `bvar i`-bound's derivation pair
+(possibly involving the synthetic lifted reduction `α_0 → α_evolved`) and
+returns a `MoreoverDiamondGeneral`-shape closure on it. -/
+def MoreoverDiamondGeneral_ProVarVarPro_Payload : Prop :=
+  -- ProVar: h_1 = Me-Pro, h_2 = Me-Var (or symmetric VarPro).
+  ∀ {Γ₀ : Ctx} {s₀ : Stack} {i : Nat} {α₀ α_1 : Term}
+    (hpv₁ : PrevalidExt Γ₀ s₀) (hb : Γ₀.equBinds i α₀)
+    (hα : MEqRed Γ₀ s₀ α₀ α_1)
+    (hpv₂ : PrevalidExt Γ₀ s₀) (hi : i < Γ₀.depth),
+    MoreoverDiamondGeneral
+      (MEqRed.pro hpv₁ hb hα) (MEqRed.var hpv₂ hi)
+
+/-- **Universal VarPro cell at general context** (symmetric to ProVar). -/
+def MoreoverDiamondGeneral_VarPro_Payload : Prop :=
+  ∀ {Γ₀ : Ctx} {s₀ : Stack} {i : Nat} {α₀ α_2 : Term}
+    (hpv₁ : PrevalidExt Γ₀ s₀) (hi : i < Γ₀.depth)
+    (hpv₂ : PrevalidExt Γ₀ s₀) (hb : Γ₀.equBinds i α₀)
+    (hα : MEqRed Γ₀ s₀ α₀ α_2),
+    MoreoverDiamondGeneral
+      (MEqRed.var hpv₁ hi) (MEqRed.pro hpv₂ hb hα)
+
 end Paper
 end DeBruijn
 end Pss
