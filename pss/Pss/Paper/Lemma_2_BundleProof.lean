@@ -1045,29 +1045,88 @@ theorem MoreoverDiamond_fOp_fOp {Γ : Ctx} {s : Stack}
   · intro h_2np
     exact ⟨(hMBound x).2 h_2np.1, (hMBody (x + 1)).2 h_2np.2⟩
 
-/-! ## Status: bundle path
+/-! ## Status: bundle path (after iter-pss-20260511)
 
-With `MEqRed.bridgeSubToEquHead` shipped (depth-preserving structural
-bridge with Σ' witness) and the trivial cells (Top, Var, TAp) shipped,
-the bundle proof's remaining work is the recursive constructor-pair
-case dispatch:
+Phases 1–3 of the user-specified bundle plan are shipped:
 
-1. Define `Lemma_2_DiamondMEqRed_proved` as a well-founded recursion
-   on `MEqRedDepth h₁ + MEqRedDepth h₂`.
-2. Case-split on the source derivation pair `(h₁, h₂)`.
-3. For each constructor pair, dispatch to a Moreover-tracked per-case
-   theorem (or inline the per-case work).
-4. For cross-β cases (App×Bet, Bet×App), bridge `h₂`'s body via
-   `MEqRed.bridgeSubToEquHead`. The bridge's depth-equality witness
-   justifies the recursive call's termination on the bridged
-   derivation.
-5. Specialize to `UniformEqDiamonds_proved` by dropping the NP
-   witness.
+* **Phase 1** (asymmetric MoreoverDiamond): `MoreoverDiamond` is now
+  `(h₁.NP-x → d₂.NP-x) ∧ (h₂.NP-x → d₁.NP-x)`, paper-faithful to the
+  p. 9:9 "Moreover" clause.
 
-The bundle proof itself is ~600-1000 lines of case dispatch and is
-the closure target of a follow-up dispatch. The depth-preserving
-bridge shipped here is the load-bearing infrastructure that unblocks
-the case dispatch. -/
+* **Phase 2** (ProVar/VarPro): `MoreoverDiamond_pro_var` and
+  `MoreoverDiamond_var_pro` close the Me-Pro × Me-Var crossings using
+  the bound IH against `refl` and rebuilding the Me-Pro output.
+
+* **Phase 3** (Body bridges with NP preservation):
+  - `MEqRed.bridgeSubToSubHead` with `bridgeSubToSubHead_preserves_NP`:
+    `.sub → .sub` head-bound bridge for FunFun's body transport.
+  - `MoreoverDiamond_fun_fun`: FunFun cell with bridged body.
+  - `MoreoverDiamond_fOp_fOp`: FOpFOp cell.
+  - `MoreoverDiamond_bet_bet`: BetBet cell using Lemma 32 (closed-stack,
+    kind-narrowed asymmetric) on each side, with Eq.rec motive
+    generalisation for the Stack rewrite. Conditional on
+    `Lemma_32_PreservesNP_Payload`.
+
+## Remaining work (Phases 4–8)
+
+### Phase 4 (App×Bet, Bet×App): the cross-β wall
+
+The same-context bundle has a **fundamental wall** at AppBet/BetApp.
+The wall analysis:
+
+1. Body IH source contexts differ: h_1 (Me-App's body) at
+   `{v_0,.equ}::Γ`, h_2 (Me-Bet's body) at `{t_0,.sub}::Γ`.
+2. Bridging h_2 to `.equ`-head (via `bridgeSubToEquHead`) brings both
+   to `{v_0,.equ}::Γ`. Bundle's IH gives `d_1, d_2` at `{v_0,.equ}::Γ`.
+3. LHS Me-Bet rebuild: bridge `d_1` from `.equ`-bound `v_0` to
+   `.sub`-bound `t_1` via `equ_to_sub_head_replace_NoPromotion`. Needs
+   `d_1.NP-0`. Asymmetric Moreover clause 2 (`h_2.NP-0 → d_1.NP-0`)
+   delivers this since bridged h_2 has NP-0 (preserved by bridge from
+   the source's trivial NP-0 at `.sub`-head). ✓
+4. RHS rebuild via Lemma 32: needs body at `.sub`-head. `d_2` is at
+   `.equ`-head bound `v_0`. To bridge `d_2` back to `.sub` requires
+   `d_2.NP-0`. Asymmetric Moreover clause 1 (`h_1.NP-0 → d_2.NP-0`).
+   But h_1 is at `.equ`-head and may use Me-Pro@0; **NP-0 not free**.
+
+This wall mirrors the wall the campaign hit in the LN setting (commit
+`5f2c58c`). The general-context Lemma 2 (`Lemma_2_Case_AppBet_proved` in
+`Pss.Paper.Lemma_2_DiamondClosure`) resolves it via `cons_evolve`, which
+evolves the `.equ` body context's bound from `v_0` to `v_1` mid-proof,
+keeping the `.sub`-head body at the original `t_0` bound. This is a
+general-context feature unavailable at same-context.
+
+**Path forward.** The bundle must move to general-context with
+`ContextEvolution` (per the existing `Lemma_2_DiamondMEqRed_Conclusion`
+shape in `Lemma_2_Diamond.lean`). The Moreover-tracked recursion would
+take two evolutions and produce outputs at the evolved contexts. The
+existing `Lemma_2_Case_*_proved` cells already cover all 9 grid pairs
+at general-context; the bundle becomes the structural recursion
+dispatching to them, with NP-tracking layered on top.
+
+### Phase 5 (App×App, transport-conditional)
+
+AppApp's operator IH at `(v_0 :: s)` produces output at `(v_0 :: s)`
+which must be transported to `(v_1 :: s_1)` for the LHS Me-App rebuild
+and `(v_2 :: s_2)` for the RHS. This is the existing
+`MEqRedOpStackHeadTransportPayload` residual.
+
+### Phases 6–8
+
+Phase 6 assembles the bundle theorem. Phase 7 specialises to ctRefl
+(or, given Phase 4's general-context pivot, specialises to identity
+evolution). Phase 8 wires up in `Pss/Mpss/DeBruijnTypeSafety.lean`.
+
+### Open infrastructure residuals
+
+* `Lemma_32_PreservesNP_Payload` (Phase 3c): NP propagation through
+  Lemma 32's β-substitution. Provable by structural induction on
+  Lemma 32's via-wall construction.
+* `MEqRedOpStackHeadTransportPayload`: existing residual for AppApp.
+
+The bundle, once assembled at general-context, would discharge
+`UniformEqDiamonds_proved` conditionally on these residuals (matching
+the existing `Lemma_2_DeBruijn_DiamondMEqRedStar_proved` conditioning
+shape). The campaign would then attack the two residuals individually. -/
 
 end Paper
 end DeBruijn
