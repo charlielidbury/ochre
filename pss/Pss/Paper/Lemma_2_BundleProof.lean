@@ -136,21 +136,140 @@ theorem MEqRedDepth_pos : ∀ {Γ s u v} (h : MEqRed Γ s u v), 0 < MEqRedDepth 
   intro Γ s u v h
   cases h <;> simp [MEqRedDepth]
 
-/-! ## Depth preservation of the `.sub → .equ` head bridge
+/-! ## Depth-preserving `.sub → .equ` bridge with witness
 
-The bridge `MEqRed.sub_to_equ_head_replace` preserves derivation
-depth, which the bundle's well-founded recursion needs to ensure
-cross-β recursive calls terminate.
+We define a parallel `.sub → .equ` head bridge as a fresh
+structural recursion on the source derivation, returning the
+bridged derivation paired with its depth-equality witness. This
+sidesteps the tactic-mode definition of the existing bridge.
 
-The full proof requires `simp`-ing through `replaceAt_sub_to_equ_aux`'s
-tactic-mode induction, which generates an `MEqRed.rec` expression
-resistant to direct `unfold`/`simp`. Proper proof requires either
-re-defining the bridge as a structural `def` matching `MEqRed.rec`
-explicitly, or proving by structural recursion on the source using
-`MEqRed.rec`-level rewriting.
+Each constructor case manually constructs the corresponding output
+and computes the depth equality. -/
 
-We defer the full proof to a follow-up dispatch and ship the bundle
-proof's other pieces here. -/
+/-- Parallel `.sub → .equ` head bridge with depth-equality witness.
+For each constructor of the source, produces the corresponding
+output at the bridged context, with manifest depth equality.
+
+Defined as structural recursion on the source via `induction h`,
+where each branch yields a Σ' pair `(h', proof of depth equality)`. -/
+noncomputable def bridgeSubToEquWithDepth_aux
+    {Γold : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed Γold s u v) :
+    ∀ {Γ : Ctx} {cutoff : Nat},
+      Γold = Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ →
+      cutoff < Ctx.depth Γ →
+      Term.Scoped (List.length (List.drop (cutoff + 1) Γ)) new →
+      Σ' (h' : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .equ } Γ) s u v),
+        MEqRedDepth h' = MEqRedDepth h := by
+  induction h with
+  | pro hpv hb hα ih =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by unfold CtxEntry.ScopedIn; simpa using hnew)
+      let ⟨innerBridge, innerDepth⟩ := ih rfl hcut hnew
+      refine ⟨MEqRed.pro hpvNew (Ctx.equBinds_replaceAt_sub_to_equ hb) innerBridge, ?_⟩
+      simp [MEqRedDepth, innerDepth]
+  | bet ht hBody hArg ihBody ihArg =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      let ⟨bodyBridge, bodyDepth⟩ :=
+        ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+      let ⟨argBridge, argDepth⟩ := ihArg rfl hcut hnew
+      refine ⟨MEqRed.bet (by simpa [Ctx.depth_replaceAt] using ht)
+                         (by simpa [Ctx.replaceAt] using bodyBridge)
+                         argBridge, ?_⟩
+      show 1 + MEqRedDepth _ + MEqRedDepth argBridge
+        = 1 + MEqRedDepth hBody + MEqRedDepth hArg
+      rw [bodyDepth, argDepth]
+  | top hpv =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by unfold CtxEntry.ScopedIn; simpa using hnew)
+      refine ⟨MEqRed.top hpvNew, ?_⟩
+      simp [MEqRedDepth]
+  | app hOp hArg ihOp ihArg =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      let ⟨opBridge, opDepth⟩ := ihOp rfl hcut hnew
+      let ⟨argBridge, argDepth⟩ := ihArg rfl hcut hnew
+      refine ⟨MEqRed.app opBridge argBridge, ?_⟩
+      simp [MEqRedDepth, opDepth, argDepth]
+  | var hpv hi =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by unfold CtxEntry.ScopedIn; simpa using hnew)
+      refine ⟨MEqRed.var hpvNew (by simpa [Ctx.depth_replaceAt] using hi), ?_⟩
+      simp [MEqRedDepth]
+  | fun_ hBound hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      let ⟨boundBridge, boundDepth⟩ := ihBound rfl hcut hnew
+      let ⟨bodyBridge, bodyDepth⟩ :=
+        ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+      refine ⟨MEqRed.fun_ boundBridge (by simpa [Ctx.replaceAt] using bodyBridge), ?_⟩
+      show 1 + MEqRedDepth boundBridge + MEqRedDepth _
+        = 1 + MEqRedDepth hBound + MEqRedDepth hBody
+      rw [boundDepth, bodyDepth]
+  | tAp hpv hu =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      have hpvNew :=
+        PrevalidExt.replaceAt_sub_to_equ_same (old := old) (new := new)
+          hpv hcut
+          (by unfold CtxEntry.ScopedIn; simpa using hnew)
+      refine ⟨MEqRed.tAp hpvNew (by simpa [Ctx.depth_replaceAt] using hu), ?_⟩
+      simp [MEqRedDepth]
+  | fOp hBound hα hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hnew
+      cases hEq
+      let ⟨boundBridge, boundDepth⟩ := ihBound rfl hcut hnew
+      let ⟨bodyBridge, bodyDepth⟩ :=
+        ihBody (Γ := { bound := _, kind := .equ } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+      refine ⟨MEqRed.fOp boundBridge
+                         (by simpa [Ctx.depth_replaceAt] using hα)
+                         (by simpa [Ctx.replaceAt] using bodyBridge), ?_⟩
+      show 1 + MEqRedDepth boundBridge + MEqRedDepth _
+        = 1 + MEqRedDepth hBound + MEqRedDepth hBody
+      rw [boundDepth, bodyDepth]
+
+/-- The parallel `.sub → .equ` head bridge, with depth equality. -/
+noncomputable def MEqRed.bridgeSubToEquHead
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hnew : Term.Scoped Γ.depth new) :
+    Σ' (h' : MEqRed ({ bound := new, kind := .equ } :: Γ) s u v),
+      MEqRedDepth h' = MEqRedDepth h := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by simp [Ctx.depth]
+  have hnew' : Term.Scoped
+      (List.length (List.drop 1 ({ bound := old, kind := .sub } :: Γ))) new := by
+    simpa using hnew
+  have ⟨h', hDepth⟩ := bridgeSubToEquWithDepth_aux
+    (Γold := { bound := old, kind := .sub } :: Γ)
+    (old := old) (new := new) h
+    (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+    rfl hcut hnew'
+  refine ⟨by simpa [Ctx.replaceAt] using h', ?_⟩
+  have : MEqRedDepth (by simpa [Ctx.replaceAt] using h' :
+      MEqRed ({ bound := new, kind := .equ } :: Γ) s u v) = MEqRedDepth h' := rfl
+  rw [this, hDepth]
 
 /-! ## Bundle predicate (same-context, Moreover-tracked) -/
 
