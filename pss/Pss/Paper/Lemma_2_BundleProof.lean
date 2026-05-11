@@ -140,6 +140,61 @@ def MEqRedDepth : ∀ {Γ s u v}, MEqRed Γ s u v → Nat
   | _, _, _, _, .tAp _ _ => 1
   | _, _, _, _, .fOp tBound _ body => 1 + MEqRedDepth tBound + MEqRedDepth body
 
+/-! ## MEqRedDepth ≥ 1 -/
+
+theorem MEqRedDepth_pos : ∀ {Γ s u v} (h : MEqRed Γ s u v), 0 < MEqRedDepth h := by
+  intro Γ s u v h
+  cases h <;> simp [MEqRedDepth]
+
+/-! ## Bundle predicate
+
+The same-context Moreover-tracked diamond at a fixed extended context. -/
+
+def MoreoverDiamond (Γ : Ctx) (s : Stack) (t₀ t₁ t₂ : Term)
+    (h₁ : MEqRed Γ s t₀ t₁) (h₂ : MEqRed Γ s t₀ t₂) : Prop :=
+  ∃ (t₃ : Term) (d₁ : MEqRed Γ s t₁ t₃) (d₂ : MEqRed Γ s t₂ t₃),
+    ∀ (x : Nat),
+      (h₁.NoPromotionOf x ∨ h₂.NoPromotionOf x) →
+        (d₁.NoPromotionOf x ∧ d₂.NoPromotionOf x)
+
+/-! ## Trivial cases — Top × Top and Var × Var -/
+
+/-- Top source: both derivations are `Me-Top`, target is `Top`. -/
+theorem MoreoverDiamond_top_top {Γ : Ctx} {s : Stack}
+    (hpv₁ hpv₂ : PrevalidExt Γ s) :
+    MoreoverDiamond Γ s .top .top .top (MEqRed.top hpv₁) (MEqRed.top hpv₂) := by
+  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
+/-- Var × Var: both reduce `.bvar i` to itself. -/
+theorem MoreoverDiamond_var_var {Γ : Ctx} {s : Stack} {i : Nat}
+    (hpv₁ hpv₂ : PrevalidExt Γ s) (hi₁ hi₂ : i < Γ.depth) :
+    MoreoverDiamond Γ s (.bvar i) (.bvar i) (.bvar i)
+      (MEqRed.var hpv₁ hi₁) (MEqRed.var hpv₂ hi₂) := by
+  refine ⟨.bvar i, MEqRed.var hpv₁ hi₁, MEqRed.var hpv₂ hi₂, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
+/-- TAp × TAp: both reduce `.app .top u` to `.top`. -/
+theorem MoreoverDiamond_tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv₁ hpv₂ : PrevalidExt Γ s) (hu₁ hu₂ : Term.Scoped Γ.depth u) :
+    MoreoverDiamond Γ s (.app .top u) .top .top
+      (MEqRed.tAp hpv₁ hu₁) (MEqRed.tAp hpv₂ hu₂) := by
+  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
+/-! ## Status: bundle remaining work
+
+The trivial cells (Top×Top, Var×Var, TAp×TAp) are shipped above. The
+remaining 9+ cells (Pro×Var, Pro×Pro, App×App, App×Bet, App×TAp,
+Fun×Fun, FOp×FOp, Bet×Bet, Bet×App) require the inductive structure on
+derivation depth, with bridges for the cross-β cases.
+
+The well-founded recursion definition (~600-1000 lines) is the closure
+target. -/
+
 end Paper
 end DeBruijn
 end Pss
