@@ -281,10 +281,43 @@ def MoreoverDiamond (Γ : Ctx) (s : Stack) (t₀ t₁ t₂ : Term)
       (h₁.NoPromotionOf x ∨ h₂.NoPromotionOf x) →
         (d₁.NoPromotionOf x ∧ d₂.NoPromotionOf x)
 
+/-! ## Bundle proof — trivial-cell discharges
+
+Trivial cells (Top×Top, Var×Var, TAp×TAp) close immediately by
+case-analysis on the source pair, without recursion. -/
+
+/-- Top × Top: source `.top`, target `.top` on both sides. -/
+theorem MoreoverDiamond_top_top {Γ : Ctx} {s : Stack}
+    (hpv₁ hpv₂ : PrevalidExt Γ s) :
+    MoreoverDiamond Γ s .top .top .top (MEqRed.top hpv₁) (MEqRed.top hpv₂) := by
+  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
+/-- Var × Var: both reduce `.bvar i` to itself. -/
+theorem MoreoverDiamond_var_var {Γ : Ctx} {s : Stack} {i : Nat}
+    (hpv₁ hpv₂ : PrevalidExt Γ s) (hi₁ hi₂ : i < Γ.depth) :
+    MoreoverDiamond Γ s (.bvar i) (.bvar i) (.bvar i)
+      (MEqRed.var hpv₁ hi₁) (MEqRed.var hpv₂ hi₂) := by
+  refine ⟨.bvar i, MEqRed.var hpv₁ hi₁, MEqRed.var hpv₂ hi₂, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
+/-- TAp × TAp: both reduce `.app .top u` to `.top`. -/
+theorem MoreoverDiamond_tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv₁ hpv₂ : PrevalidExt Γ s) (hu₁ hu₂ : Term.Scoped Γ.depth u) :
+    MoreoverDiamond Γ s (.app .top u) .top .top
+      (MEqRed.tAp hpv₁ hu₁) (MEqRed.tAp hpv₂ hu₂) := by
+  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
 /-! ## Status: bundle path
 
 With `MEqRed.bridgeSubToEquHead` shipped (depth-preserving structural
-bridge with Σ' witness), the bundle proof can now proceed:
+bridge with Σ' witness) and the trivial cells (Top, Var, TAp) shipped,
+the bundle proof's remaining work is the recursive constructor-pair
+case dispatch:
 
 1. Define `Lemma_2_DiamondMEqRed_proved` as a well-founded recursion
    on `MEqRedDepth h₁ + MEqRedDepth h₂`.
