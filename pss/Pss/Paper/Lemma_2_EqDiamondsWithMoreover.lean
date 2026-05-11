@@ -163,6 +163,88 @@ theorem UniformEqDiamondsWithMoreover.toUniformEqDiamonds
   intro Γ s t₀ t₁ t₂ h₁ h₂
   exact (EqDiamondsWithMoreover.toEqDiamonds (@h Γ s)) h₁ h₂
 
+/-! ## Wall analysis (iter-pss-20260511): same-context AppBet/BetApp
+
+The same-context closure path for `UniformEqDiamonds` walls at the
+AppBet (and symmetric BetApp) cases. Detailed analysis:
+
+**Setup.** For the AppBet source (`MEqRed Γ s (.app (.abs t₀ body) v₀) ?`
+where LHS does `Me-App` and RHS does `Me-Bet`):
+
+* LHS body sub-derivation (from `Me-App` via inverted `Me-FOp`):
+  `h₁ : MEqRed ({v₀,.equ}::Γ) (shift 0 s) body body_1'`. The head bound
+  is the popped operand `v₀`, kind `.equ`. NP-0 NOT FREE (could use
+  Me-Pro@0 to promote `.bvar 0` to v_0).
+
+* RHS body sub-derivation (from `Me-Bet`):
+  `h₂ : MEqRed ({t₀,.sub}::Γ) (shift 0 s) body body_2'`. The head bound
+  is the abstraction's annotation `t₀`, kind `.sub`. NP-0 FREE (by
+  `MEqRed.NoPromotionOf_zero_of_sub_head`).
+
+**Path with `sub_to_equ_head_replace`.** Bridge `h₂` from `.sub`-head
+(bound `t₀`) to `.equ`-head (bound `v₀`) via the total
+`sub_to_equ_head_replace` (no NP required — the `.sub`-head source's
+derivation cannot use `Me-Pro@0`). Body diamond at
+`{v₀,.equ}::Γ; shift 0 s`. Inputs: `h₁` (.equ, possibly Me-Pro@0),
+`h₂_bridged` (.equ, no Me-Pro@0). Moreover gives `NP-0(d₁)` from
+`NP-0(h₂_bridged)`, but `NP-0(d₂)` only from `NP-0(h₁)` which is NOT
+free.
+
+For the LHS Me-Bet output target `instantiate 0 v_3 body_3`:
+* Use `Me-Bet` from `(.abs t_1 body_1') v_1`. Requires body progress
+  `MEqRed ({t_1,.sub}::Γ) (shift 0 s) body_1' body_3`. Bridge `d_1`
+  from `{v₀,.equ}::Γ` to `{t_1,.sub}::Γ` via
+  `equ_to_sub_head_replace_NoPromotion` — requires `NP-0(d_1)` which
+  Moreover delivers. ✓
+
+For the RHS Me-Bet output target `instantiate 0 v_2 body_2' →
+instantiate 0 v_3 body_3`:
+* `Lemma_32_KindNarrowedAsymmetric_proved_closed` with body at
+  `{X,.sub}::Γ`. Need `d_2` at `.sub`-head. Bridge `d_2` from
+  `{v₀,.equ}::Γ` to `{X,.sub}::Γ` requires `NP-0(d_2)`. NOT FREE.
+* `Lemma_32_EquHead_proved_closed` with body at `{arg,.equ}::Γ`,
+  arg = LHS substitution arg. Our `d_2` is at `.equ`-head bound
+  `v_0`, but the RHS arg target is `v_2`. Lemma 32 equ-head with
+  arg=`v_0` substitutes `v_0` (not `v_2`) into `body_2'` on LHS of
+  output, giving `MEqRed Γ s (instantiate 0 v_0 body_2')
+  (instantiate 0 v_? body_3)` — wrong LHS shape.
+
+**The v_0-vs-v_2 wall.** The paper resolves this via context evolution
+`Γ_0, x ≡ v_0; s_0 ↣ Γ_2, x ≡ v_2; s_2` (Ct-Ann applied at body
+level), which evolves the equ-head bound from `v_0` to `v_2` mid-proof.
+Same-context formulation (no evolutions) doesn't have this; `d_2` is
+fixed at `{v_0,.equ}::Γ`, and there's no single-step path from
+`instantiate 0 v_2 body_2'` to `instantiate 0 v_3 body_3` from this
+context.
+
+**Path forward.** Two options:
+
+1. **Discharge at general context with `ContextEvolution`.**
+   - `Lemma_2_Case_AppBet_proved` (general) in
+     `Pss.Paper.Lemma_2_DiamondClosure` — use `ContextEvolution.cons_evolve`
+     (paper's body-level Ct-Ann) to evolve `Γ, v_0,.equ; s ↣ Γ, v_i,.equ; s_i`
+     mid-proof. Body IH then gives `d_2` at `{v_2,.equ}::Γ`, ready for
+     Lemma_32_EquHead with arg=v_2.
+   - Symmetric for `Lemma_2_Case_BetApp_proved`.
+   - `Lemma_2_Case_FOpFOp_proved` similarly via `cons_evolve` (needs
+     extracted α →= α' step from outer Γ_0; α::s_0 ↣ Γ_i; s_i; the
+     existing `stripStackHead` returns just the stripped evolution, so
+     a `stripStackHeadWithReduction` helper is needed).
+   - Build the headline `Lemma_2_proved` by structural induction on the
+     source `MEqRed Γ_0 s_0 t_0 t_1`, dispatching to each case via
+     `Lemma_2_CaseGrid`.
+   - Specialise to identity evolution to discharge `UniformEqDiamonds`.
+
+2. **Strengthen `EqDiamondsWithMoreover` to track context evolution.**
+   - Redefine the predicate to allow evolving outputs at evolved
+     contexts. Effectively this re-derives the general-context Lemma 2.
+   - Equivalent in expressive power to option 1; cleaner if/once the
+     evolution-transport infrastructure is fully proved.
+
+The current file ships the foundational infrastructure
+(`MEqRed.NoPromotionOf_zero_of_sub_head` and the
+`EqDiamondsWithMoreover` predicate) that EITHER path will need. -/
+
 end Paper
 end DeBruijn
 end Pss
