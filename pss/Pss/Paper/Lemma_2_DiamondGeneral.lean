@@ -1142,6 +1142,32 @@ theorem MoreoverDiamondGeneral_app_app {Γ₀ : Ctx} {s₀ : Stack}
   · intro h₂np
     exact ⟨(hMOp x).2 h₂np.1, (hMArg x).2 h₂np.2⟩
 
+/-! ## Phase 4 — projection from Moreover to plain `UniformEqDiamonds`
+
+The bundle's universal closure `UniformMoreoverDiamondGeneral_proved` —
+the structural induction on h₁ × h₂ dispatching to the 13 per-cell
+theorems above — is a substantial assembly (estimated ~1500 lines)
+that handles all 64+ source-pair combinations, including ProVar/VarPro
+which require a parametric-second-derivation IH (paper-faithful: the
+bundle's structural induction on h₁ naturally provides this IH because
+h₂ is universally quantified at each recursion step).
+
+Pending that assembly, we ship the **projection** from the universal
+Moreover closure to `UniformEqDiamonds`. The projection is conditional
+on `UniformMoreoverDiamondGeneral` as a Prop hypothesis; once the
+bundle's assembly is shipped, this projection becomes the final
+discharge of `UniformEqDiamonds`. -/
+
+/-- **Projection: `UniformMoreoverDiamondGeneral → UniformEqDiamonds`.**
+
+Specialise the universal closure to `ctRefl/ctRefl` (same-context
+evolutions) and drop the Moreover NP witness. This is the wire-up
+point for the de Bruijn Lemma 2 headline. -/
+theorem UniformEqDiamonds_proved_of_MoreoverGeneral
+    (hMoreover : UniformMoreoverDiamondGeneral) :
+    UniformEqDiamonds :=
+  hMoreover.toUniformEqDiamonds
+
 end Paper
 end DeBruijn
 end Pss
