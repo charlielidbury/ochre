@@ -271,6 +271,127 @@ noncomputable def MEqRed.bridgeSubToEquHead
       MEqRed ({ bound := new, kind := .equ } :: Γ) s u v) = MEqRedDepth h' := rfl
   rw [this, hDepth]
 
+/-! ## NP-preservation of the `.sub → .equ` head bridge
+
+The bridge is structural: each constructor of the source is rebuilt
+at the bridged context with the same `pro` index, the same shape, and
+recursive bridged sub-derivations. Therefore `NoPromotionOf x`
+propagates from source to bridge for **every** `x`, since the
+predicate is defined on the structural shape of the derivation tree
+and the bridge preserves the shape constructor-for-constructor.
+
+For `x = 0` specifically: the source is at a `.sub`-head context, so
+no `Me-Pro` at index 0 is possible in the source (a `.sub`-slot's
+`Ctx.equBinds 0 _` is impossible). Hence NP-0 holds trivially in the
+source via `MEqRed.NoPromotionOf_zero_of_sub_head`. The bridged
+derivation preserves NP-0 by structural preservation.
+
+This is the load-bearing NP-preservation lemma for the cross-β case
+dispatch in the bundle: it certifies that after bridging
+`h₂_body : MEqRed ({t₀,.sub}::Γ) ... → MEqRed ({v₀,.equ}::Γ) ...`,
+the bridged derivation still has NP-0, which can be combined with
+the body-bundle's Moreover witness to obtain NP-0 on the body output
+(required to apply `equ_to_sub_head_replace_NoPromotion` in the LHS
+Me-Bet rebuild). -/
+
+/-- Auxiliary: the bridge constructed in `bridgeSubToEquWithDepth_aux`
+preserves `NoPromotionOf x` for every `x`. Proved by structural
+induction on the source derivation, mirroring the bridge's
+construction. -/
+theorem bridgeSubToEquWithDepth_aux_preserves_NP
+    {Γold : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed Γold s u v)
+    {Γ : Ctx} {cutoff : Nat}
+    (hEq : Γold = Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hnew : Term.Scoped (List.length (List.drop (cutoff + 1) Γ)) new)
+    (x : Nat) (hnp : h.NoPromotionOf x) :
+    (bridgeSubToEquWithDepth_aux h hEq hcut hnew).1.NoPromotionOf x := by
+  induction h generalizing Γ cutoff x with
+  | pro hpv hb hα ih =>
+      cases hEq
+      -- hnp : i ≠ x ∧ NoPromotionOf x hα
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hne, hαnp⟩ := hnp
+      -- Bridge constructs MEqRed.pro from hpvNew, equBinds_replaceAt_sub_to_equ hb, innerBridge.
+      -- The output's NP-x = i ≠ x ∧ NP-x innerBridge.
+      refine ⟨hne, ?_⟩
+      exact ih rfl hcut hnew x hαnp
+  | bet ht hBody hArg ihBody ihArg =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hBodyNp, hArgNp⟩ := hnp
+      refine ⟨?_, ?_⟩
+      · exact ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+          (x + 1) hBodyNp
+      · exact ihArg rfl hcut hnew x hArgNp
+  | top hpv =>
+      cases hEq
+      trivial
+  | app hOp hArg ihOp ihArg =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hOpNp, hArgNp⟩ := hnp
+      exact ⟨ihOp rfl hcut hnew x hOpNp, ihArg rfl hcut hnew x hArgNp⟩
+  | var hpv hi =>
+      cases hEq
+      trivial
+  | fun_ hBound hBody ihBound ihBody =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hBoundNp, hBodyNp⟩ := hnp
+      refine ⟨ihBound rfl hcut hnew x hBoundNp, ?_⟩
+      exact ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+        rfl
+        (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+        (by simpa using hnew)
+        (x + 1) hBodyNp
+  | tAp hpv hu =>
+      cases hEq
+      trivial
+  | fOp hBound hα hBody ihBound ihBody =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hBoundNp, hBodyNp⟩ := hnp
+      refine ⟨ihBound rfl hcut hnew x hBoundNp, ?_⟩
+      exact ihBody (Γ := { bound := _, kind := .equ } :: Γ) (cutoff := cutoff + 1)
+        rfl
+        (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+        (by simpa using hnew)
+        (x + 1) hBodyNp
+
+/-- The bridge `MEqRed.bridgeSubToEquHead` preserves `NoPromotionOf x`
+for every `x`. -/
+theorem bridgeSubToEquHead_preserves_NP
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hnew : Term.Scoped Γ.depth new)
+    (x : Nat) (hnp : h.NoPromotionOf x) :
+    (MEqRed.bridgeSubToEquHead h hnew).1.NoPromotionOf x := by
+  -- The bridge's .1 is defined as `by simpa [Ctx.replaceAt] using h'`
+  -- where h' = bridgeSubToEquWithDepth_aux h _ _ _. Since
+  -- `Ctx.replaceAt 0 ... ({bound,.sub}::Γ) = ({new,.equ}::Γ)`
+  -- definitionally, the .1 equals h' up to definitional reduction;
+  -- NP-x of h' carries through via the aux lemma.
+  unfold MEqRed.bridgeSubToEquHead
+  simp only [Ctx.replaceAt]
+  exact bridgeSubToEquWithDepth_aux_preserves_NP h rfl _ _ x hnp
+
+/-- The `.sub → .equ` head bridge always produces a derivation with
+`NoPromotionOf 0`, regardless of source. This combines
+`bridgeSubToEquHead_preserves_NP` with the trivial NP-0 of any
+`.sub`-head source. Used in the bundle's cross-β case dispatch. -/
+theorem bridgeSubToEquHead_NP_zero
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hnew : Term.Scoped Γ.depth new) :
+    (MEqRed.bridgeSubToEquHead h hnew).1.NoPromotionOf 0 := by
+  apply bridgeSubToEquHead_preserves_NP h hnew 0
+  exact MEqRed.NoPromotionOf_zero_of_sub_head h
+
 /-! ## Bundle predicate (same-context, Moreover-tracked) -/
 
 /-- The same-context Moreover-tracked diamond. -/
