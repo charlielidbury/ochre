@@ -281,11 +281,27 @@ def MoreoverDiamond (Γ : Ctx) (s : Stack) (t₀ t₁ t₂ : Term)
       (h₁.NoPromotionOf x ∨ h₂.NoPromotionOf x) →
         (d₁.NoPromotionOf x ∧ d₂.NoPromotionOf x)
 
-/-! ## Status
+/-! ## Status: bundle path
 
-The bundle scaffolding is shipped. The closure target is the bundle
-proof itself (same-context structural recursion with cross-β bridging
-via `sub_to_equ_head_replace`, terminating on `MEqRedDepth`). -/
+With `MEqRed.bridgeSubToEquHead` shipped (depth-preserving structural
+bridge with Σ' witness), the bundle proof can now proceed:
+
+1. Define `Lemma_2_DiamondMEqRed_proved` as a well-founded recursion
+   on `MEqRedDepth h₁ + MEqRedDepth h₂`.
+2. Case-split on the source derivation pair `(h₁, h₂)`.
+3. For each constructor pair, dispatch to a Moreover-tracked per-case
+   theorem (or inline the per-case work).
+4. For cross-β cases (App×Bet, Bet×App), bridge `h₂`'s body via
+   `MEqRed.bridgeSubToEquHead`. The bridge's depth-equality witness
+   justifies the recursive call's termination on the bridged
+   derivation.
+5. Specialize to `UniformEqDiamonds_proved` by dropping the NP
+   witness.
+
+The bundle proof itself is ~600-1000 lines of case dispatch and is
+the closure target of a follow-up dispatch. The depth-preserving
+bridge shipped here is the load-bearing infrastructure that unblocks
+the case dispatch. -/
 
 end Paper
 end DeBruijn
