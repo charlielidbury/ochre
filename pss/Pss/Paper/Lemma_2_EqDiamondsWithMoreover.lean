@@ -163,6 +163,22 @@ theorem UniformEqDiamondsWithMoreover.toUniformEqDiamonds
   intro Γ s t₀ t₁ t₂ h₁ h₂
   exact (EqDiamondsWithMoreover.toEqDiamonds (@h Γ s)) h₁ h₂
 
+/-! ## Status update (post-stripStackHeadWithReduction)
+
+The same-context AppBet/BetApp wall has been resolved at general
+context. The discharges `Lemma_2_Case_AppBet_proved`,
+`Lemma_2_Case_BetApp_proved`, and `Lemma_2_Case_FOpFOp_proved` live in
+`Pss.Paper.Lemma_2_DiamondClosure`. They use the
+`stripStackHeadWithReduction` head-reduction extractor from
+`Pss.Paper.Aux.CommutativityWeakening` (enabled by the de-Bruijn-
+faithful `ctAnn` rule's stack shift, fixed in commit `761487f`).
+
+The remaining work for closing `UniformEqDiamonds_proved` is the
+bundling: structural induction on the source `MEqRed` that dispatches
+each constructor pair to the corresponding `Lemma_2_Case_*_proved`. The
+bundle is Moreover-tracked because AppBet/BetApp's body IHs require
+NP-0 on outputs. -/
+
 /-! ## Wall analysis (iter-pss-20260511): same-context AppBet/BetApp
 
 The same-context closure path for `UniformEqDiamonds` walls at the
