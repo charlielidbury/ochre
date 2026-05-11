@@ -45,12 +45,28 @@ theorem stripStackHead {Γ Γ' : Ctx} {s s' s_0 : Stack} {α : Term}
       -- s' = s = α :: s_0; pick α' = α, s_1 = s_0; sub-derivation is ctRefl.
       subst hStack
       exact ⟨α, s_0, rfl, ContextEvolution.ctRefl⟩
-  | @ctAnn Γ Γ' s s' t t' kind hInner hred ih =>
-      -- Stack is unchanged by ctAnn; recurse to peel α off the inner derivation
-      -- and rewrap the result with ctAnn.
-      obtain ⟨α', s_1, hs', hInner_strip⟩ := ih hStack
-      exact ⟨α', s_1, hs',
-        ContextEvolution.ctAnn hInner_strip hred⟩
+  | @ctAnn Γ_inner Γ_inner' s_inner s_inner' t t' kind hInner hred ih =>
+      -- Post-fix: ctAnn now shifts the stack. Outer LHS stack is
+      -- `Stack.shift 0 s_inner`. The hStack hypothesis says
+      -- `Stack.shift 0 s_inner = α :: s_0`. Inversion: `s_inner = α'' :: s_0''`
+      -- with `α = Term.shift 0 α''` and `s_0 = Stack.shift 0 s_0''`.
+      cases s_inner with
+      | nil =>
+          simp [Stack.shift, Stack.shiftBy] at hStack
+      | cons α'' s_0'' =>
+          have hSplit : Term.shift 0 α'' = α ∧ Stack.shift 0 s_0'' = s_0 := by
+            simp [Stack.shift, Stack.shiftBy] at hStack
+            exact hStack
+          obtain ⟨α_inner', s_1_inner', hs_inner', hInner_strip⟩ := ih rfl
+          subst hs_inner'
+          refine ⟨Term.shift 0 α_inner', Stack.shift 0 s_1_inner', ?_, ?_⟩
+          · simp [Stack.shift, Stack.shiftBy, Term.shift]
+          · have hL : ContextEvolution
+                ({bound := t, kind} :: Γ_inner) (Stack.shift 0 s_0'')
+                ({bound := t', kind} :: Γ_inner') (Stack.shift 0 s_1_inner') :=
+              ContextEvolution.ctAnn hInner_strip hred
+            rw [← hSplit.2]
+            exact hL
   | @ctStk Γ Γ' s s' β β' hInner hred _ =>
       -- Outer rule is Ct-Stk; the inner premise is exactly the result.
       cases hStack
@@ -86,24 +102,6 @@ theorem stripStackHead {Γ Γ' : Ctx} {s s' s_0 : Stack} {α : Term}
               ContextEvolution.cons_lift hInner_strip hBoundScoped
             -- Goal stack on the LHS is `s_0` (which by hSplit.2 equals
             -- `Stack.shift 0 s_0''`).
-            rw [← hSplit.2]
-            exact hL
-  | @cons_evolve Γ_inner Γ_inner' s_inner s_inner' t t' kind hInner hBound ih =>
-      cases s_inner with
-      | nil =>
-          simp [Stack.shift, Stack.shiftBy] at hStack
-      | cons α'' s_0'' =>
-          have hSplit : Term.shift 0 α'' = α ∧ Stack.shift 0 s_0'' = s_0 := by
-            simp [Stack.shift, Stack.shiftBy] at hStack
-            exact hStack
-          obtain ⟨α_inner', s_1_inner', hs_inner', hInner_strip⟩ := ih rfl
-          subst hs_inner'
-          refine ⟨Term.shift 0 α_inner', Stack.shift 0 s_1_inner', ?_, ?_⟩
-          · simp [Stack.shift, Stack.shiftBy, Term.shift]
-          · have hL : ContextEvolution
-                ({bound := t, kind} :: Γ_inner) (Stack.shift 0 s_0'')
-                ({bound := t', kind} :: Γ_inner') (Stack.shift 0 s_1_inner') :=
-              ContextEvolution.cons_evolve hInner_strip hBound
             rw [← hSplit.2]
             exact hL
 

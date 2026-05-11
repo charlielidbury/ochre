@@ -102,11 +102,22 @@ private theorem stack_scoped_preserved_at
   | @ctRefl Γp sp => intro hs; exact hs
   | @ctAnn Γp Γp' sp sp' t t' kind h_evol _ ih =>
       intro hs
-      -- ctAnn doesn't touch the stack; the underlying evolution Γp;sp ↣
-      -- Γp';sp' transports sp into sp' and we recurse with the same `n`.
-      have hnTail : Γp.depth ≤ n := Nat.le_of_succ_le (by
-        simpa [Ctx.depth_cons] using hn)
-      exact ih hnTail hs
+      -- Post-fix: ctAnn now shifts the stack. Same shape as cons_lift /
+      -- (old) cons_evolve: outer stack is `shift 0 sp` at depth `n =
+      -- k + 1`; the inner stack is `sp` at depth `k = n - 1`.
+      have hn_succ : Γp.depth + 1 ≤ n := by
+        simpa [Ctx.depth_cons] using hn
+      cases hn_eq : n with
+      | zero => subst hn_eq; omega
+      | succ k =>
+        subst hn_eq
+        have hk : Γp.depth ≤ k := Nat.le_of_succ_le_succ hn_succ
+        let hsShifted : Stack.Scoped (k + 1) (Stack.shift 0 sp) :=
+          Classical.choice hs
+        have hsInner : Stack.Scoped k sp := Stack.Scoped.shift_inv hsShifted
+        have hsInner' : Nonempty (Stack.Scoped k sp') := ih hk ⟨hsInner⟩
+        let hsInner'₀ : Stack.Scoped k sp' := Classical.choice hsInner'
+        exact ⟨Stack.Scoped.shift hsInner'₀⟩
   | @ctStk Γp Γp' sp sp' α α' h_evol hα_red ih =>
       intro hs
       let hs₀ : Stack.Scoped n (α :: sp) := Classical.choice hs
@@ -124,23 +135,6 @@ private theorem stack_scoped_preserved_at
       intro hs
       -- Outer: (entry :: Γp); shift 0 sp ↣ (entry :: Γp'); shift 0 sp'.
       -- hn : (entry :: Γp).depth ≤ n, i.e. Γp.depth + 1 ≤ n.
-      have hn_succ : Γp.depth + 1 ≤ n := by
-        simpa [Ctx.depth_cons] using hn
-      cases hn_eq : n with
-      | zero => subst hn_eq; omega
-      | succ k =>
-        subst hn_eq
-        have hk : Γp.depth ≤ k := Nat.le_of_succ_le_succ hn_succ
-        let hsShifted : Stack.Scoped (k + 1) (Stack.shift 0 sp) :=
-          Classical.choice hs
-        have hsInner : Stack.Scoped k sp := Stack.Scoped.shift_inv hsShifted
-        have hsInner' : Nonempty (Stack.Scoped k sp') := ih hk ⟨hsInner⟩
-        let hsInner'₀ : Stack.Scoped k sp' := Classical.choice hsInner'
-        exact ⟨Stack.Scoped.shift hsInner'₀⟩
-  | @cons_evolve Γp Γp' sp sp' t t' kind h_evol hBound ih =>
-      intro hs
-      -- Same shape as cons_lift; bound differs but stack scoping logic is
-      -- identical.
       have hn_succ : Γp.depth + 1 ≤ n := by
         simpa [Ctx.depth_cons] using hn
       cases hn_eq : n with
@@ -203,24 +197,6 @@ theorem preservesNonemptyPrevalid {Γ Γ' : Ctx} {s s' : Stack}
           rcases entry with ⟨b, k⟩
           subst hKind
           exact Prevalid.equ hpvTail'₀ hBoundScoped'
-  | @cons_evolve Γp Γp' sp sp' t t' kind h_evol hBound ih =>
-      -- Source has Prevalid ({t, kind} :: Γp). Strip the head to get Prevalid Γp.
-      let hpv₀ : Prevalid ({bound := t, kind} :: Γp) := Classical.choice hpv
-      let hpvTail : Prevalid Γp := Prevalid.tail hpv₀
-      have hpvTail' : Nonempty (Prevalid Γp') := ih ⟨hpvTail⟩
-      let hpvTail'₀ : Prevalid Γp' := Classical.choice hpvTail'
-      -- The new head's bound is t' (post-evolution). Scoping:
-      -- Term.Scoped Γp'.depth t' from hBound.scoped_right (= Γp.depth) and
-      -- preserves_ctx_depth.
-      have ht'_at_Γp : Term.Scoped Γp.depth t' := hBound.scoped_right
-      have hdepth : Γp.depth = Γp'.depth := preserves_ctx_depth h_evol
-      have ht'_at_Γp' : Term.Scoped Γp'.depth t' := by
-        rw [← hdepth]; exact ht'_at_Γp
-      cases kind with
-      | sub =>
-          exact ⟨Prevalid.sub hpvTail'₀ ht'_at_Γp'⟩
-      | equ =>
-          exact ⟨Prevalid.equ hpvTail'₀ ht'_at_Γp'⟩
 
 /-- `ContextEvolution` preserves extended-context prevalidity (existence
 form). Decomposes `PrevalidExt` into `Prevalid Γ` plus
@@ -370,49 +346,6 @@ theorem equBinds_evolve {Γ Γ' : Ctx} {s s' : Stack}
           obtain ⟨a₂, ha₂, hRedInner⟩ := ih hpv_inner (i := k) (α₀ := a) ha
           let hpvE_inner : PrevalidExt Γ_inner [] := PrevalidExt.nil hpv_inner
           let hRedLifted : MEqRed (entry :: Γ_inner)
-              (Stack.shift 0 []) (Term.shift 0 a) (Term.shift 0 a₂) :=
-            (Classical.choice hRedInner).weaken_head hpvE_inner hpv
-          have hα₀_eq : α₀ = Term.shift 0 a := hb_eq.symm
-          subst hα₀_eq
-          refine ⟨Term.shift 0 a₂, ?_, ?_⟩
-          · simp [Ctx.equBinds, Ctx.lookupEqu]
-            exact ⟨a₂, ha₂, rfl⟩
-          · exact ⟨by simpa using hRedLifted⟩
-  | @cons_evolve Γ_inner Γ_inner' s_inner s_inner' t t' kind hev_inner hBound ih =>
-      -- Source context is ({t, kind} :: Γ_inner); destination is
-      -- ({t', kind} :: Γ_inner'). Cases on i.
-      cases i with
-      | zero =>
-          -- equBinds 0: requires kind = .equ. Then α₀ = shift 0 t,
-          -- and at the destination ({t',.equ}::Γ_inner'), equBinds 0
-          -- yields shift 0 t'. The reduction is shift 0 (hBound).
-          have hb_kind : kind = .equ := by
-            simp [Ctx.equBinds, Ctx.lookupEqu] at hb
-            rcases hk : kind with _ | _
-            · rw [hk] at hb; simp at hb
-            · rfl
-          subst hb_kind
-          have hb_eq : α₀ = Term.shift 0 t := by
-            simp [Ctx.equBinds, Ctx.lookupEqu] at hb
-            exact hb.symm
-          subst hb_eq
-          refine ⟨Term.shift 0 t', ?_, ?_⟩
-          · simp [Ctx.equBinds, Ctx.lookupEqu]
-          · -- The reduction: MEqRed ({t, .equ} :: Γ_inner) (shift 0 [])
-            --   (shift 0 t) (shift 0 t'). This is hBound.weaken_head.
-            have hpvE_inner : PrevalidExt Γ_inner [] :=
-              PrevalidExt.nil (Prevalid.tail hpv)
-            have hStep : MEqRed ({bound := t, kind := .equ} :: Γ_inner)
-                (Stack.shift 0 []) (Term.shift 0 t) (Term.shift 0 t') :=
-              hBound.weaken_head hpvE_inner hpv
-            exact ⟨by simpa using hStep⟩
-      | succ k =>
-          simp [Ctx.equBinds, Ctx.lookupEqu] at hb
-          rcases hb with ⟨a, ha, hb_eq⟩
-          have hpv_inner : Prevalid Γ_inner := Prevalid.tail hpv
-          obtain ⟨a₂, ha₂, hRedInner⟩ := ih hpv_inner (i := k) (α₀ := a) ha
-          let hpvE_inner : PrevalidExt Γ_inner [] := PrevalidExt.nil hpv_inner
-          let hRedLifted : MEqRed ({bound := t, kind} :: Γ_inner)
               (Stack.shift 0 []) (Term.shift 0 a) (Term.shift 0 a₂) :=
             (Classical.choice hRedInner).weaken_head hpvE_inner hpv
           have hα₀_eq : α₀ = Term.shift 0 a := hb_eq.symm

@@ -57,14 +57,22 @@ inductive ContextEvolution : Ctx → Stack → Ctx → Stack → Prop where
   /-- **Ct-Ann** (paper p. 9:7). Reduce the bound of the innermost binding,
   preserving the binder kind. The paper writes `Γ, x ⊲ t` for either a
   subtype or equivalence binding; in de Bruijn both shapes prepend a
-  `CtxEntry`, so we quantify over `kind`. -/
+  `CtxEntry`, so we quantify over `kind`.
+
+  **De Bruijn shift on the stack** — the inner stack `s` lives at
+  `Γ.depth`; when we add a new innermost entry, every existing index
+  in the stack shifts up by one to refer to the same binder. The paper
+  formulation hides this because named binders are stable under
+  context extension; the de Bruijn formulation has to make the shift
+  explicit. -- Paper handwaves; mechanized as: shifted stack on both
+  sides of the Ct-Ann conclusion. -/
   | ctAnn {Γ Γ' : Ctx} {s s' : Stack} {t t' : Term}
       {kind : CtxEntryKind} :
       ContextEvolution Γ s Γ' s' →
       MEqRed Γ [] t t' →
       ContextEvolution
-        ({ bound := t,  kind } :: Γ) s
-        ({ bound := t', kind } :: Γ') s'
+        ({ bound := t,  kind } :: Γ) (Stack.shift 0 s)
+        ({ bound := t', kind } :: Γ') (Stack.shift 0 s')
 
   /-- **Ct-Stk** (paper p. 9:7). Reduce the head stack annotation. -/
   | ctStk {Γ Γ' : Ctx} {s s' : Stack} {α α' : Term} :
@@ -93,25 +101,17 @@ inductive ContextEvolution : Ctx → Stack → Ctx → Stack → Prop where
         (entry :: Γ) (Stack.shift 0 s)
         (entry :: Γ') (Stack.shift 0 s')
 
-  /-- **Body-context lift with bound evolution** (paper p. 9:24 FOpFOp,
-  paper p. 9:22 AppBet). Lifts an outer evolution and simultaneously
-  evolves the new head's bound from `t` to `t'`. This is the paper's
-  "by rule Ct-Ann, we have Γ, x ≡ α; s_0 ↣ Γ', x ≡ α'; s_1" pattern
-  applied at the body context (with the de Bruijn stack shifted by
-  one due to the new binder). The same constructor's existence makes
-  the FOpFOp / AppBet / BetApp cases close without further structural
-  auxiliaries. -- Paper handwaves; mechanized as: explicit
-  `cons_evolve` constructor.
-  -/
-  | cons_evolve {Γ Γ' : Ctx} {s s' : Stack} {t t' : Term}
-      {kind : CtxEntryKind} :
-      ContextEvolution Γ s Γ' s' →
-      MEqRed Γ [] t t' →
-      ContextEvolution
-        ({ bound := t,  kind } :: Γ) (Stack.shift 0 s)
-        ({ bound := t', kind } :: Γ') (Stack.shift 0 s')
-
 namespace ContextEvolution
+
+/-- Alias for `ContextEvolution.ctAnn` — the old `cons_evolve` constructor
+was identical to `ctAnn` after the de Bruijn-faithful stack-shift fix.
+Provided for backward compatibility with downstream callers. -/
+@[reducible] def cons_evolve {Γ Γ' : Ctx} {s s' : Stack} {t t' : Term}
+    {kind : CtxEntryKind}
+    (h : ContextEvolution Γ s Γ' s') (hbound : MEqRed Γ [] t t') :
+    ContextEvolution ({ bound := t, kind } :: Γ) (Stack.shift 0 s)
+      ({ bound := t', kind } :: Γ') (Stack.shift 0 s') :=
+  ContextEvolution.ctAnn h hbound
 
 /-! ## Basic structural invariants -/
 
@@ -120,11 +120,10 @@ theorem preserves_stack_length {Γ Γ' : Ctx} {s s' : Stack}
     (h : ContextEvolution Γ s Γ' s') : s.length = s'.length := by
   induction h with
   | ctRefl => rfl
-  | ctAnn _ _ ih => exact ih
+  | ctAnn _ _ ih =>
+      simp [Stack.shift, Stack.shiftBy, List.length_map, ih]
   | ctStk _ _ ih => simp [ih]
   | cons_lift _ _ ih =>
-      simp [Stack.shift, Stack.shiftBy, List.length_map, ih]
-  | cons_evolve _ _ ih =>
       simp [Stack.shift, Stack.shiftBy, List.length_map, ih]
 
 /-- Context depth is preserved by `ContextEvolution`. -/
@@ -136,8 +135,6 @@ theorem preserves_ctx_depth {Γ Γ' : Ctx} {s s' : Stack}
       simp [Ctx.depth_cons, ih]
   | ctStk _ _ ih => exact ih
   | cons_lift _ _ ih =>
-      simp [Ctx.depth_cons, ih]
-  | cons_evolve _ _ ih =>
       simp [Ctx.depth_cons, ih]
 
 end ContextEvolution
