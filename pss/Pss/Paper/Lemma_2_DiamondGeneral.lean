@@ -745,6 +745,78 @@ theorem Lemma_2_PaperFaithful_BetApp_Moreover
         exact hPre
     exact hMotive _ _ _ rfl
 
+/-! ## Phase 3b — non-cross-β Moreover-tracked cells (general context)
+
+Mirroring the same-context `MoreoverDiamond_*` cells in
+`Lemma_2_BundleProof.lean`, but at general context with
+`ContextEvolution` evolutions. Each cell takes:
+
+* `h₁, h₂` source derivations
+* Per-cell IHs at `MoreoverDiamondGeneral` shape (sub-derivations of
+  `h₁, h₂` evolved to arbitrary `Γ_i; s_i`)
+* Two outer evolutions `he_i : ContextEvolution Γ₀ s₀ Γ_i s_i`
+
+Returns the `MoreoverDiamondGeneral`-shape conclusion: a common reduct
+`t_3` with derivations `d_1, d_2` and the asymmetric Moreover witness. -/
+
+/-- **Me-Pro × Me-Pro** at general context. Both promote the same `bvar i`
+through the same equ-binding; recurse on the bound. -/
+theorem MoreoverDiamondGeneral_pro_pro {Γ₀ : Ctx} {s₀ : Stack} {i : Nat}
+    {α₀ α_1 α_2 : Term}
+    (hpv₁ hpv₂ : PrevalidExt Γ₀ s₀)
+    (hb₁ hb₂ : Γ₀.equBinds i α₀)
+    (hα₁ : MEqRed Γ₀ s₀ α₀ α_1) (hα₂ : MEqRed Γ₀ s₀ α₀ α_2)
+    (hBoundIH : MoreoverDiamondGeneral hα₁ hα₂) :
+    MoreoverDiamondGeneral
+      (MEqRed.pro hpv₁ hb₁ hα₁) (MEqRed.pro hpv₂ hb₂ hα₂) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  obtain ⟨α_3, d_1, d_2, hMoreoverBound⟩ := hBoundIH he₁ he₂
+  refine ⟨α_3, d_1, d_2, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · intro h₁np
+    exact (hMoreoverBound x).1 h₁np.2
+  · intro h₂np
+    exact (hMoreoverBound x).2 h₂np.2
+
+/-! ### Note: ProVar / VarPro and other parametric-IH cells
+
+The Me-Pro × Me-Var (and symmetric Me-Var × Me-Pro) cells require an IH
+parametric over a SECOND derivation: the paper recurses with `α₀ →
+α_evolved` (obtained via Lemma 36 / Ct-Ann + Lemma 19) as the bound's
+second derivation, not refl. Our `MoreoverDiamondGeneral` predicate fixes
+both source derivations, so the bundle's recursion produces IHs that fix
+the second derivation as a sub-derivation of the original `h_2`.
+
+For ProVar/VarPro this means the bundle's bound IH delivers `α_3` joining
+`α_1` and `α_evolved` (NOT `α_1` and `α_0`). The Me-Pro output `bvar i
+→ α_3` at Γ_2; s_2 is rebuilt from the EVOLVED binding `hb_evolved :
+Γ_2.equBinds i α_evolved` and the bound's d_2 (sourced from α_evolved).
+
+To support this in the recursion, the bundle's structural induction at
+the Me-Pro × Me-Var pair must:
+1. Compute α_evolved via `he₂.equBinds_evolve hpv.ctx hb`.
+2. Lift `α_0 → α_evolved` across `s_0` via `lift_empty_to_stack`.
+3. Run the bound IH against `(hα₁, lifted)` — a MoreoverDiamondGeneral
+   call with second derivation = the lifted reduction.
+4. The bound IH's d_2 has source α_evolved at Γ_2; s_2; build Me-Pro.
+
+The lifted `α_0 → α_evolved` is a NEW derivation, not a sub-derivation of
+h_2 = Me-Var. The bundle's recursion measure must accommodate this.
+
+Implementation status: ProVar / VarPro general-context Moreover cells
+are DEFERRED to a dedicated dispatch. The existing
+`Lemma_2_Case_ProVar_proved` in `Lemma_2_DiamondClosure.lean` handles
+the plain (non-Moreover) version; the Moreover-tracked version requires
+restructuring the bundle's IH shape (parametric second derivation) and
+re-engineering the per-cell theorem.
+
+For the same-context (`ctRefl/ctRefl`) projection that closes
+`UniformEqDiamonds`, ProVar/VarPro at `ctRefl/ctRefl` becomes:
+α_evolved = α_0, lifted = refl, bound IH = (hα₁, refl). At this
+specialization the cell collapses to the BundleProof's
+`MoreoverDiamond_pro_var` cell with refl bound. -/
+
 end Paper
 end DeBruijn
 end Pss
