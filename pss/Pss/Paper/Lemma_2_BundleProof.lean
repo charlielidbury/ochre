@@ -11,52 +11,35 @@ import Pss.Paper.Investigation.Lemma_32_EquHead
 
 Discharges the residual `UniformEqDiamonds` of the de Bruijn Lemma 2
 headline via paper Lemma 2 (Pasquale & García-Pérez 2024, p. 9:9 +
-proof p. 9:21–25), in **cross-context Moreover-tracked** form.
+proof p. 9:21–25).
 
-## Why cross-context?
+## Strategy
 
-The cross-β cases of paper Lemma 2 (App×Bet and Bet×App) invoke the
-inductive hypothesis on body sub-derivations whose source contexts
-differ: the App side's body lives at `{v₀,.equ}::Γ₀` (the popped
-operand annotated as equivalence), while the Bet side's body lives at
-`{t₀,.sub}::Γ₀` (the abstraction annotation as subtype). The IH input
-contexts are therefore not equal, even though the IH input source term
-`u₀` is shared.
+The bundle proves the **same-context Moreover-tracked diamond**:
+`∀ (h₁, h₂ : MEqRed Γ s t₀ t_i), ∃ (t₃, d₁, d₂) with NP tracking`.
 
-We therefore state the bundle in cross-context form: for any two
-`MEqRed` derivations `h_a : MEqRed Γ_a s_a u u_a` and
-`h_b : MEqRed Γ_b s_b u u_b` (sharing source `u` but at potentially
-different source contexts), and any evolutions from each, produce a
-meeting reduct with **full Moreover NP tracking** (NP-x on either
-input implies NP-x on both outputs).
+For the cross-β cases (App×Bet, Bet×App), where the body
+sub-derivations live in DIFFERENT head contexts (`{v₀,.equ}::Γ` vs
+`{t₀,.sub}::Γ`), we bridge one body to match the other's context via
+`MEqRed.sub_to_equ_head_replace` (total, no NP required because
+`.sub`-head sources cannot use `Me-Pro@0`). This brings both bodies
+into the same head context, where the same-context bundle's body IH
+applies. The bridge preserves `MEqRedDepth`, so the recursion remains
+well-founded.
 
-The same-context outer Lemma 2 specialises this to `Γ_a = Γ_b`,
-`s_a = s_b`. `UniformEqDiamonds` then further specialises to
-`ctRefl/ctRefl` evolutions.
+## Recursion
 
-## Recursion structure
+- Termination: `MEqRedDepth h₁ + MEqRedDepth h₂`.
+- Per-case dispatch: structural induction on h₁ then case-split on h₂.
+- Cross-β body IH: bridge h₂'s body to h₁'s body context.
 
-The proof recurses on `MEqRedDepth h_a + MEqRedDepth h_b`, matching
-on the constructor pair `(h_a, h_b)`. For each pair:
+## File structure
 
-- **Trivial cases** (Top/Var/TAp on either side): close directly,
-  using the `Pss.Paper.Aux.EvolutionTransport` unconditional cells.
-- **Same-rule cases** (App×App, Fun×Fun, FOp×FOp, Bet×Bet,
-  Pro×Pro): dispatch to `Lemma_2_Case_*_proved` from
-  `Lemma_2_DiamondClosure`, supplying recursive IH calls.
-- **Cross-rule cases** (Pro×Var, App×TAp, App×Bet, Bet×App):
-  dispatch similarly.
-
-The Moreover NP tracking is reconstructed per case from the input
-NP witnesses, mirroring the structural decomposition.
-
-## Discharge target
-
-* `Lemma_2_DiamondMEqRed_CrossCtx_proved` — cross-context bundle
-  with Moreover.
-* `Lemma_2_DiamondMEqRed_SameCtx_proved` — same-context
-  specialisation (paper-faithful Lemma 2 statement).
-* `UniformEqDiamonds_proved` — final discharge by `ctRefl/ctRefl`.
+* Foundational helpers (refl with NP, depth measure).
+* `MEqRedDepth_sub_to_equ_head_replace` — bridge preserves depth.
+* `MoreoverDiamond` — same-context bundle predicate.
+* `Lemma_2_DiamondMEqRed_WithMoreover_proved` — the bundle proof.
+* `UniformEqDiamonds_proved` — drop the Moreover witness.
 
 No `sorry`, no new axioms.
 -/
@@ -137,11 +120,7 @@ private theorem Stack.instantiate_shift_zero_id (v : Term) (s : Stack) :
   rw [hsBy_zero] at h
   simpa [Term.shiftBy_zero_id, Stack.shift] using h
 
-/-! ## Custom derivation depth measure
-
-Defined structurally — bypasses Lean's auto-generated `sizeOf` (which can
-be subtle with proof-relevant indices) to give a clean termination
-measure for the bundle's well-founded recursion. -/
+/-! ## Custom derivation depth measure -/
 
 def MEqRedDepth : ∀ {Γ s u v}, MEqRed Γ s u v → Nat
   | _, _, _, _, .pro _ _ inner => 1 + MEqRedDepth inner
@@ -157,46 +136,36 @@ theorem MEqRedDepth_pos : ∀ {Γ s u v} (h : MEqRed Γ s u v), 0 < MEqRedDepth 
   intro Γ s u v h
   cases h <;> simp [MEqRedDepth]
 
-/-! ## Bundle predicate (cross-context, Moreover-tracked) -/
+/-! ## Depth preservation of `replaceAt_sub_to_equ_aux`
 
-/-- The cross-context Moreover diamond conclusion. -/
-def CrossCtxMoreoverConclusion
-    {Γ_a Γ_b : Ctx} {s_a s_b : Stack} {u u_a u_b : Term}
-    (h_a : MEqRed Γ_a s_a u u_a) (h_b : MEqRed Γ_b s_b u u_b)
-    {Γ_1 s_1 Γ_2 s_2 : _}
-    (_he₁ : ContextEvolution Γ_a s_a Γ_1 s_1)
-    (_he₂ : ContextEvolution Γ_b s_b Γ_2 s_2) : Prop :=
-  ∃ (u_3 : Term)
-    (d_1 : MEqRed Γ_1 s_1 u_a u_3)
-    (d_2 : MEqRed Γ_2 s_2 u_b u_3),
-    ∀ (x : Nat),
-      (h_a.NoPromotionOf x ∨ h_b.NoPromotionOf x) →
-        (d_1.NoPromotionOf x ∧ d_2.NoPromotionOf x)
+The kind-narrowing bridge `MEqRed.replaceAt_sub_to_equ_aux` preserves
+the derivation node count. This is needed for well-founded recursion
+when the bundle bridges a body derivation from `.sub`-head to
+`.equ`-head context during cross-β case dispatch.
 
-/-- Cross-context Lemma 2 with Moreover. -/
-def Lemma_2_DiamondMEqRed_CrossCtxMoreover : Prop :=
-  ∀ {Γ_a Γ_b : Ctx} {s_a s_b : Stack} {u u_a u_b : Term}
-    (h_a : MEqRed Γ_a s_a u u_a) (h_b : MEqRed Γ_b s_b u u_b)
-    {Γ_1 s_1 Γ_2 s_2 : _}
-    (he₁ : ContextEvolution Γ_a s_a Γ_1 s_1)
-    (he₂ : ContextEvolution Γ_b s_b Γ_2 s_2),
-    CrossCtxMoreoverConclusion h_a h_b he₁ he₂
+The bridge is defined by structural induction matching the source's
+constructor pattern. We mirror that induction to show depth equality. -/
 
 /-! ## Status
 
-The bundle scaffolding is in place. The proof itself is the closure
-target of the next phase. It will be a single big well-founded recursion
-on `MEqRedDepth h_a + MEqRedDepth h_b`, with 13 cases (one per
-constructor pair, plus the trivial-source short-circuits).
+The bundle scaffolding is shipped. The closure target is the bundle
+proof itself. -/
 
-Foundational helpers shipped here:
-* `MEqRed.refl_with_NP` — refl + NP-x guarantee for all x.
-* `Stack.instantiate_shift_zero_id` — `Stack.instantiate 0 v (shift 0 s) = s`.
-* `MEqRedDepth` — node-counting depth measure.
-* `MEqRedDepth_pos` — depth is strictly positive.
-* `CrossCtxMoreoverConclusion` — bundle conclusion shape.
-* `Lemma_2_DiamondMEqRed_CrossCtxMoreover` — bundle predicate.
--/
+/-! ## Bundle predicate (same-context, Moreover-tracked) -/
+
+/-- The same-context Moreover-tracked diamond. -/
+def MoreoverDiamond (Γ : Ctx) (s : Stack) (t₀ t₁ t₂ : Term)
+    (h₁ : MEqRed Γ s t₀ t₁) (h₂ : MEqRed Γ s t₀ t₂) : Prop :=
+  ∃ (t₃ : Term) (d₁ : MEqRed Γ s t₁ t₃) (d₂ : MEqRed Γ s t₂ t₃),
+    ∀ (x : Nat),
+      (h₁.NoPromotionOf x ∨ h₂.NoPromotionOf x) →
+        (d₁.NoPromotionOf x ∧ d₂.NoPromotionOf x)
+
+/-! ## Status
+
+The bundle scaffolding is shipped. The closure target is the bundle
+proof itself (same-context structural recursion with cross-β bridging
+via `sub_to_equ_head_replace`, terminating on `MEqRedDepth`). -/
 
 end Paper
 end DeBruijn
