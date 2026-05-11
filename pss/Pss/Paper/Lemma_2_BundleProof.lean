@@ -392,15 +392,33 @@ theorem bridgeSubToEquHead_NP_zero
   apply bridgeSubToEquHead_preserves_NP h hnew 0
   exact MEqRed.NoPromotionOf_zero_of_sub_head h
 
-/-! ## Bundle predicate (same-context, Moreover-tracked) -/
+/-! ## Bundle predicate (same-context, Moreover-tracked)
 
-/-- The same-context Moreover-tracked diamond. -/
+The **asymmetric Moreover form** mirrors the paper's "Moreover" clause
+exactly (Pasquale & García-Pérez 2024, p. 9:9):
+
+> *Moreover, for any variable x, if in the derivation of `Γ_0; s_0 ⊢ t_0
+> →ᵉᵠᵘ t_1` there isn't an application of Me-Pro that makes a promotion
+> of variable x, then in the derivation `Γ_2; s_2 ⊢ t_2 →ᵉᵠᵘ t_3` there
+> won't be an application of Me-Pro that makes a promotion of variable
+> x (respectively Γ_1; s_1 ⊢ t_1 →ᵉᵠᵘ t_3).*
+
+In the diamond diagram, `h_1 : t_0 → t_1` is the bottom edge, `h_2 :
+t_0 → t_2` is the left edge, `d_1 : t_1 → t_3` is the right edge, and
+`d_2 : t_2 → t_3` is the top edge. The paper's "Moreover" reads
+asymmetrically: `h_1.NP-x → d_2.NP-x` and (respectively)
+`h_2.NP-x → d_1.NP-x`. The CROSSED form (`h_i → d_j` for `i ≠ j`) is
+what's needed downstream by ProVar: there, only `h_1` (the Me-Pro side)
+has a meaningful NP constraint; the IH then gives `d_2` NP-x (the
+output rebuilt as Me-Pro on the Me-Var side). -/
+
+/-- The same-context Moreover-tracked diamond. Asymmetric crossed form. -/
 def MoreoverDiamond (Γ : Ctx) (s : Stack) (t₀ t₁ t₂ : Term)
     (h₁ : MEqRed Γ s t₀ t₁) (h₂ : MEqRed Γ s t₀ t₂) : Prop :=
   ∃ (t₃ : Term) (d₁ : MEqRed Γ s t₁ t₃) (d₂ : MEqRed Γ s t₂ t₃),
     ∀ (x : Nat),
-      (h₁.NoPromotionOf x ∨ h₂.NoPromotionOf x) →
-        (d₁.NoPromotionOf x ∧ d₂.NoPromotionOf x)
+      (h₁.NoPromotionOf x → d₂.NoPromotionOf x) ∧
+      (h₂.NoPromotionOf x → d₁.NoPromotionOf x)
 
 /-! ## Bundle proof — trivial-cell discharges
 
@@ -412,8 +430,8 @@ theorem MoreoverDiamond_top_top {Γ : Ctx} {s : Stack}
     (hpv₁ hpv₂ : PrevalidExt Γ s) :
     MoreoverDiamond Γ s .top .top .top (MEqRed.top hpv₁) (MEqRed.top hpv₂) := by
   refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
-  intro x _
-  exact ⟨trivial, trivial⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 /-- Var × Var: both reduce `.bvar i` to itself. -/
 theorem MoreoverDiamond_var_var {Γ : Ctx} {s : Stack} {i : Nat}
@@ -421,8 +439,8 @@ theorem MoreoverDiamond_var_var {Γ : Ctx} {s : Stack} {i : Nat}
     MoreoverDiamond Γ s (.bvar i) (.bvar i) (.bvar i)
       (MEqRed.var hpv₁ hi₁) (MEqRed.var hpv₂ hi₂) := by
   refine ⟨.bvar i, MEqRed.var hpv₁ hi₁, MEqRed.var hpv₂ hi₂, ?_⟩
-  intro x _
-  exact ⟨trivial, trivial⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 /-- TAp × TAp: both reduce `.app .top u` to `.top`. -/
 theorem MoreoverDiamond_tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
@@ -430,8 +448,8 @@ theorem MoreoverDiamond_tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
     MoreoverDiamond Γ s (.app .top u) .top .top
       (MEqRed.tAp hpv₁ hu₁) (MEqRed.tAp hpv₂ hu₂) := by
   refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
-  intro x _
-  exact ⟨trivial, trivial⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 /-! ## Bundle proof — `Me-Pro × Me-Pro` cell (paper p. 9:21)
 
@@ -443,7 +461,11 @@ reductions themselves close the diagonal. -/
 
 /-- Me-Pro × Me-Pro: both promote `.bvar i` via the same equ-binding,
 recursing on the bound reductions. Takes the body-diamond IH as a
-parameter; the bundle will provide this from its own recursion. -/
+parameter; the bundle will provide this from its own recursion.
+
+Asymmetric Moreover: `h₁.NP-x = (i ≠ x ∧ NP-x hα₁)` unfolds; from it we
+extract `NP-x hα₁` and dispatch the bound IH's asymmetric clause
+`hα₁.NP-x → d_2_bound.NP-x` (the IH says: h's NP crosses to d_other). -/
 theorem MoreoverDiamond_pro_pro {Γ : Ctx} {s : Stack} {i : Nat}
     {α₀ α_1 α_2 : Term}
     (hpv₁ hpv₂ : PrevalidExt Γ s)
@@ -454,15 +476,15 @@ theorem MoreoverDiamond_pro_pro {Γ : Ctx} {s : Stack} {i : Nat}
       (MEqRed.pro hpv₁ hb₁ hα₁) (MEqRed.pro hpv₂ hb₂ hα₂) := by
   obtain ⟨α_3, d_1, d_2, hMoreoverBound⟩ := hBoundIH
   refine ⟨α_3, d_1, d_2, ?_⟩
-  intro x hOR
-  -- hOR : (MEqRed.pro hpv₁ hb₁ hα₁).NP-x ∨ (MEqRed.pro hpv₂ hb₂ hα₂).NP-x
-  -- Both branches unfold to `i ≠ x ∧ NP-x of bound`, so either case
-  -- gives us NP-x of one of the bound derivations.
-  have hα_OR : hα₁.NoPromotionOf x ∨ hα₂.NoPromotionOf x := by
-    cases hOR with
-    | inl h => exact Or.inl h.2
-    | inr h => exact Or.inr h.2
-  exact hMoreoverBound x hα_OR
+  intro x
+  refine ⟨?_, ?_⟩
+  · -- (h₁.NP-x → d_2.NP-x): h₁.NP-x = `i ≠ x ∧ hα₁.NP-x`. Extract hα₁
+    -- NP-x and use bound IH's `hα₁ → d_2` clause.
+    intro h₁np
+    exact (hMoreoverBound x).1 h₁np.2
+  · -- (h₂.NP-x → d_1.NP-x): symmetric.
+    intro h₂np
+    exact (hMoreoverBound x).2 h₂np.2
 
 /-! ## Bundle proof — `Me-App × Me-TAp` cell (paper p. 9:23)
 
@@ -486,8 +508,8 @@ theorem MoreoverDiamond_app_tAp {Γ : Ctx} {s : Stack}
   have hpvE : PrevalidExt Γ s := MEqRed.prevalidExt (MEqRed.tAp hpvTAp hv₀)
   have hv₁Scoped : Term.Scoped Γ.depth v_1 := hArg.scoped_right
   refine ⟨.top, MEqRed.tAp hpvE hv₁Scoped, MEqRed.top hpvE, ?_⟩
-  intro x _
-  exact ⟨trivial, trivial⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 /-- Me-TAp × Me-App: symmetric to `MoreoverDiamond_app_tAp`. -/
 theorem MoreoverDiamond_tAp_app {Γ : Ctx} {s : Stack}
@@ -502,8 +524,8 @@ theorem MoreoverDiamond_tAp_app {Γ : Ctx} {s : Stack}
   have hpvE : PrevalidExt Γ s := MEqRed.prevalidExt (MEqRed.tAp hpvTAp hv₀)
   have hv₂Scoped : Term.Scoped Γ.depth v_2 := hArg.scoped_right
   refine ⟨.top, MEqRed.top hpvE, MEqRed.tAp hpvE hv₂Scoped, ?_⟩
-  intro x _
-  exact ⟨trivial, trivial⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 /-! ## Bundle proof — `Me-Fun × Me-Fun` cell (paper p. 9:23)
 
