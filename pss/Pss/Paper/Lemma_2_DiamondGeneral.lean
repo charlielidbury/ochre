@@ -1485,6 +1485,60 @@ theorem UniformEqDiamonds_proved_unconditional
   UniformMoreoverDiamondGeneral.toUniformEqDiamonds
     (UniformMoreoverDiamondGeneral_proved_conditional hPayloads)
 
+/-! ## Wire-up to `Lemma_2_DeBruijn_DiamondMEqRedStar_proved` /
+`_DiamondMEqRedChain_proved`
+
+The de Bruijn Lemma 2 chain-output closures
+(`Lemma_2_DeBruijn_DiamondMEqRedStar_proved` in
+`Pss/Mpss/DeBruijnTypeSafety.lean:22241` and the chain analogue at line
+22255) take `hUniformDiamond : UniformEqDiamonds` as their fourth residual.
+This file's `UniformEqDiamonds_proved_unconditional` discharges that
+residual from the smaller `UniformMoreoverDiamondGeneralPayloads` bundle.
+
+The wrapper theorems below ship the de Bruijn Lemma 2 endpoints
+**conditional on the payload bundle** instead of on `UniformEqDiamonds`,
+moving the residual chain one rung closer to unconditional. -/
+
+/-- **De Bruijn Lemma 2 chain-output closure (star form)** conditional
+on the payload bundle.
+
+Wraps `Lemma_2_DeBruijn_DiamondMEqRedStar_proved` with
+`UniformEqDiamonds_proved_unconditional` to replace the
+`UniformEqDiamonds` residual with the smaller
+`UniformMoreoverDiamondGeneralPayloads` bundle (ProVar/VarPro +
+Lemma 32 NP + Lemma 32 EquHead NP). The three transport/bridge payloads
+are kept as separate residuals. -/
+theorem Lemma_2_DeBruijn_DiamondMEqRedStar_proved_unconditional_UniformEqDiamonds
+    (hArgTransport : Pss.DeBruijn.MEqRedArgTransportPayload)
+    (hOpTransport : Pss.DeBruijn.MEqRedOpStackHeadTransportPayload)
+    (hSubBridge : Pss.DeBruijn.MEqRedSubBridgePayload)
+    (hPayloads : UniformMoreoverDiamondGeneralPayloads)
+    {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
+    (h₁ : Pss.DeBruijn.MEqRedStar Γ s t₀ t₁)
+    (h₂ : Pss.DeBruijn.MEqRedStar Γ s t₀ t₂) :
+    ∃ t₃, Pss.DeBruijn.MEqRedStar Γ s t₁ t₃ ∧
+          Pss.DeBruijn.MEqRedStar Γ s t₂ t₃ :=
+  Pss.DeBruijn.Lemma_2_DeBruijn_DiamondMEqRedStar_proved
+    hArgTransport hOpTransport hSubBridge
+    (UniformEqDiamonds_proved_unconditional hPayloads) h₁ h₂
+
+/-- **De Bruijn Lemma 2 chain-output closure (chain form)** conditional
+on the payload bundle. Type-valued analog. -/
+noncomputable def Lemma_2_DeBruijn_DiamondMEqRedChain_proved_unconditional_UniformEqDiamonds
+    (hArgTransport : Pss.DeBruijn.MEqRedArgTransportPayload)
+    (hOpTransport : Pss.DeBruijn.MEqRedOpStackHeadTransportPayload)
+    (hSubBridge : Pss.DeBruijn.MEqRedSubBridgePayload)
+    (hPayloads : UniformMoreoverDiamondGeneralPayloads)
+    {Γ : Ctx} {s : Stack} {t₀ t₁ t₂ : Term}
+    (h₁ : Pss.DeBruijn.MEqRedChain Γ s t₀ t₁)
+    (h₂ : Pss.DeBruijn.MEqRedChain Γ s t₀ t₂) :
+    Sigma fun t₃ =>
+      Pss.DeBruijn.MEqRedChain Γ s t₁ t₃ ×
+      Pss.DeBruijn.MEqRedChain Γ s t₂ t₃ :=
+  Pss.DeBruijn.Lemma_2_DeBruijn_DiamondMEqRedChain_proved
+    hArgTransport hOpTransport hSubBridge
+    (UniformEqDiamonds_proved_unconditional hPayloads) h₁ h₂
+
 end Paper
 end DeBruijn
 end Pss

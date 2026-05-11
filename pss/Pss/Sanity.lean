@@ -121,6 +121,16 @@ match the paper (Pasquale & García-Pérez 2024). -/
 #print axioms Pss.DeBruijn.Paper.UniformMoreoverDiamondGeneral_proved_conditional
 #print axioms Pss.DeBruijn.Paper.UniformEqDiamonds_proved_unconditional
 
+-- Lemma 2 chain-output closures with UniformEqDiamonds discharged from
+-- the smaller `UniformMoreoverDiamondGeneralPayloads` bundle. The chain
+-- transport/bridge payloads (`MEqRedArgTransportPayload`,
+-- `MEqRedOpStackHeadTransportPayload`, `MEqRedSubBridgePayload`) remain
+-- as separate residuals.
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_2_DeBruijn_DiamondMEqRedStar_proved_unconditional_UniformEqDiamonds
+#print axioms
+  Pss.DeBruijn.Paper.Lemma_2_DeBruijn_DiamondMEqRedChain_proved_unconditional_UniformEqDiamonds
+
 #print axioms Pss.DeBruijn.Paper.Lemma_19_Weakening.proved
 #print axioms Pss.DeBruijn.Paper.Lemma_20_Weakening_Aux.proved
 #print axioms Pss.DeBruijn.Paper.Lemma_21_Weakening_SubtypingReduction
