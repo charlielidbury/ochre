@@ -420,6 +420,176 @@ theorem Lemma_2_Case_AppApp_proved : Lemma_2_Case_AppApp := by
   · exact ⟨MEqRed.app hLOp₀ hLArg₀⟩
   · exact ⟨MEqRed.app hROp₀ hRArg₀⟩
 
+/-! ## Me-App × Me-Bet (paper p. 9:22-23) — cross-β case
+
+The cross-β case where LHS is Me-App and RHS is Me-Bet. The paper's
+proof (p. 9:22-23) uses the Ct-Ann body-context evolution mid-proof
+(translated to de Bruijn as `cons_evolve` with the operand head
+reduction), plus the Moreover NP-0 propagation for the equ→sub bridge
+in the LHS output rebuild, plus Lemma 32 (asymmetric, kind-narrowed)
+for the RHS output rebuild. -/
+
+/-- Discharge of `Lemma_2_Case_AppBet`: paper p. 9:22-23. -/
+theorem Lemma_2_Case_AppBet_proved : Lemma_2_Case_AppBet := by
+  intro Γ₀ s₀ t₀ u₀ u₁ u₂ v₀ v₁ v₂ t₁
+    ht₀Scoped hv₀Scoped hT₁ hBody₁ hArg₁ hBody₂ hArg₂
+    hBodyIH hArgIH Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- Operand IH at evolved Γ₀; [].
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, hLArg, hRArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  let hLArg₀ : MEqRed Γ₁ [] v₁ v_3 := Classical.choice hLArg
+  let hRArg₀ : MEqRed Γ₂ [] v₂ v_3 := Classical.choice hRArg
+  -- Body context evolutions:
+  --   LHS body: ({v_0, .equ}::Γ_0; shift 0 s_0) ↣ ({v_1, .equ}::Γ_1; shift 0 s_1)
+  --     via cons_evolve he₁ hArg₁.
+  --   RHS body: ({t_0, .sub}::Γ_0; shift 0 s_0) ↣ ({t_0, .sub}::Γ_2; shift 0 s_2)
+  --     via cons_lift he₂ ht₀Scoped (bound unchanged on RHS).
+  let heBody₁ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₁, kind := .equ} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_evolve he₁ hArg₁
+  let heBody₂ : ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := t₀, kind := .sub} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_lift he₂ ht₀Scoped
+  -- Body IH with Moreover: d_1 has NP-0.
+  obtain ⟨u_3, d_1, d_2, hd_1_NP⟩ := hBodyIH heBody₁ heBody₂
+  -- d_1 : MEqRed ({v_1, .equ} :: Γ_1) (shift 0 s_1) u_1 u_3
+  -- d_2 : MEqRed ({t_0, .sub} :: Γ_2) (shift 0 s_2) u_2 u_3
+  -- For LHS output: target is `instantiate 0 v_3 u_3`. Build via Me-Bet.
+  -- Me-Bet requires:
+  --   Term.Scoped Γ_1.depth t_1
+  --   MEqRed ({t_1, .sub} :: Γ_1) (shift 0 s_1) u_1 u_3 — bridge d_1
+  --     via equ_to_sub_head_replace_NoPromotion using hd_1_NP.
+  --   MEqRed Γ_1 [] v_1 v_3
+  have ht₁Scoped : Term.Scoped Γ₁.depth t₁ := by
+    have h : Term.Scoped Γ₀.depth t₁ := hT₁.scoped_right
+    rw [he₁.preserves_ctx_depth] at h
+    exact h
+  let d_1_bridged : MEqRed ({bound := t₁, kind := .sub} :: Γ₁)
+      (Stack.shift 0 s₁) u₁ u_3 :=
+    d_1.equ_to_sub_head_replace_NoPromotion hd_1_NP ht₁Scoped
+  -- For RHS output: target is `instantiate 0 v_3 u_3`. Use Lemma 32
+  -- (asymmetric, kind-narrowed, closed-stack).
+  -- Lemma 32 needs:
+  --   Term.Scoped Γ_2.depth t_0
+  --   Term.Scoped Γ_2.depth v_2
+  --   Term.Scoped Γ_2.depth v_3
+  --   MEqRed Γ_2 [] v_2 v_3 (= hRArg₀)
+  --   MEqRed ({t_0, .sub} :: Γ_2) (shift 0 s_2) u_2 u_3 (= d_2)
+  -- Result: MEqRed Γ_2 (Stack.instantiate 0 v_2 (shift 0 s_2))
+  --                    (instantiate 0 v_2 u_2) (instantiate 0 v_3 u_3).
+  -- Stack.instantiate 0 v_2 (shift 0 s_2) = s_2.
+  have ht₀_at_Γ₂ : Term.Scoped Γ₂.depth t₀ := by
+    have h : Term.Scoped Γ₀.depth t₀ := ht₀Scoped
+    rw [he₂.preserves_ctx_depth] at h
+    exact h
+  have hv₂Scoped : Term.Scoped Γ₂.depth v₂ := hRArg₀.scoped_left
+  have hv_3_at_Γ₂ : Term.Scoped Γ₂.depth v_3 := hRArg₀.scoped_right
+  have hRHS_pre := Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+    (Γ := Γ₂) (t := t₀) (arg := v₂) (arg' := v_3)
+    (lhs := u₂) (rhs := u_3) (s := Stack.shift 0 s₂)
+    ht₀_at_Γ₂ hv₂Scoped hv_3_at_Γ₂ hRArg₀ d_2
+  -- Stack.instantiate 0 v₂ (Stack.shift 0 s₂) = s₂.
+  have hStackSimp :
+      Stack.instantiate 0 v₂ (Stack.shift 0 s₂) = s₂ := by
+    have h := Stack.instantiate_shiftBy_zero_tail (n := 0) (v := v₂) (s := s₂)
+    have hsBy_zero : ∀ (sx : Stack), Stack.shiftBy 0 0 sx = sx := by
+      intro sx
+      induction sx with
+      | nil => rfl
+      | cons α t ih =>
+          show Term.shiftBy 0 0 α :: Stack.shiftBy 0 0 t = α :: t
+          rw [Term.shiftBy_zero_id, ih]
+    rw [hsBy_zero] at h
+    simpa [Term.shiftBy_zero_id, Stack.shift] using h
+  rw [hStackSimp] at hRHS_pre
+  -- LHS output via Me-Bet.
+  let hLHS_out : MEqRed Γ₁ s₁
+      (.app (.abs t₁ u₁) v₁) (Term.instantiate 0 v_3 u_3) :=
+    MEqRed.bet ht₁Scoped d_1_bridged hLArg₀
+  refine ⟨Term.instantiate 0 v_3 u_3, ?_, ?_⟩
+  · exact ⟨hLHS_out⟩
+  · exact ⟨hRHS_pre⟩
+
+/-! ## Me-Bet × Me-App (paper p. 9:22-23 mirrored) — cross-β case (symmetric)
+
+Symmetric to AppBet: LHS does Me-Bet (β with .sub-head body), RHS does
+Me-App (Me-FOp inversion gives .equ-head body). Structure is identical
+to AppBet with sides swapped. -/
+
+/-- Discharge of `Lemma_2_Case_BetApp`: paper p. 9:22-23 mirrored. -/
+theorem Lemma_2_Case_BetApp_proved : Lemma_2_Case_BetApp := by
+  intro Γ₀ s₀ t₀ u₀ u₁ u₂ v₀ v₁ v₂ t₂
+    ht₀Scoped hv₀Scoped hBody₁ hArg₁ hT₂ hBody₂ hArg₂
+    hBodyIH hArgIH Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, hLArg, hRArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  let hLArg₀ : MEqRed Γ₁ [] v₁ v_3 := Classical.choice hLArg
+  let hRArg₀ : MEqRed Γ₂ [] v₂ v_3 := Classical.choice hRArg
+  -- Body context evolutions:
+  --   LHS body: ({t_0, .sub}::Γ_0) ↣ ({t_0, .sub}::Γ_1) via cons_lift.
+  --   RHS body: ({v_0, .equ}::Γ_0) ↣ ({v_2, .equ}::Γ_2) via cons_evolve.
+  let heBody₁ : ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := t₀, kind := .sub} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_lift he₁ ht₀Scoped
+  let heBody₂ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₂, kind := .equ} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_evolve he₂ hArg₂
+  obtain ⟨u_3, d_1, d_2, hd_2_NP⟩ := hBodyIH heBody₁ heBody₂
+  -- d_1 : MEqRed ({t_0, .sub} :: Γ_1) (shift 0 s_1) u_1 u_3
+  -- d_2 : MEqRed ({v_2, .equ} :: Γ_2) (shift 0 s_2) u_2 u_3
+  -- LHS output: target = `instantiate 0 v_3 u_3`. Use Lemma 32 (asymm, kind-narrowed).
+  have ht₀_at_Γ₁ : Term.Scoped Γ₁.depth t₀ := by
+    have h : Term.Scoped Γ₀.depth t₀ := ht₀Scoped
+    rw [he₁.preserves_ctx_depth] at h
+    exact h
+  have hv₁Scoped : Term.Scoped Γ₁.depth v₁ := hLArg₀.scoped_left
+  have hv_3_at_Γ₁ : Term.Scoped Γ₁.depth v_3 := hLArg₀.scoped_right
+  have hLHS_pre := Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+    (Γ := Γ₁) (t := t₀) (arg := v₁) (arg' := v_3)
+    (lhs := u₁) (rhs := u_3) (s := Stack.shift 0 s₁)
+    ht₀_at_Γ₁ hv₁Scoped hv_3_at_Γ₁ hLArg₀ d_1
+  have hStackSimp₁ :
+      Stack.instantiate 0 v₁ (Stack.shift 0 s₁) = s₁ := by
+    have h := Stack.instantiate_shiftBy_zero_tail (n := 0) (v := v₁) (s := s₁)
+    have hsBy_zero : ∀ (sx : Stack), Stack.shiftBy 0 0 sx = sx := by
+      intro sx
+      induction sx with
+      | nil => rfl
+      | cons α t ih =>
+          show Term.shiftBy 0 0 α :: Stack.shiftBy 0 0 t = α :: t
+          rw [Term.shiftBy_zero_id, ih]
+    rw [hsBy_zero] at h
+    simpa [Term.shiftBy_zero_id, Stack.shift] using h
+  rw [hStackSimp₁] at hLHS_pre
+  -- RHS output: target = `instantiate 0 v_3 u_3`. Use Me-Bet on RHS source.
+  -- Me-Bet requires:
+  --   Term.Scoped Γ_2.depth t_2
+  --   MEqRed ({t_2, .sub} :: Γ_2) (shift 0 s_2) u_2 u_3 — bridge d_2.
+  --   MEqRed Γ_2 [] v_2 v_3
+  have ht₂Scoped : Term.Scoped Γ₂.depth t₂ := by
+    have h : Term.Scoped Γ₀.depth t₂ := hT₂.scoped_right
+    rw [he₂.preserves_ctx_depth] at h
+    exact h
+  let d_2_bridged : MEqRed ({bound := t₂, kind := .sub} :: Γ₂)
+      (Stack.shift 0 s₂) u₂ u_3 :=
+    d_2.equ_to_sub_head_replace_NoPromotion hd_2_NP ht₂Scoped
+  let hRHS_out : MEqRed Γ₂ s₂
+      (.app (.abs t₂ u₂) v₂) (Term.instantiate 0 v_3 u_3) :=
+    MEqRed.bet ht₂Scoped d_2_bridged hRArg₀
+  refine ⟨Term.instantiate 0 v_3 u_3, ?_, ?_⟩
+  · exact ⟨hLHS_pre⟩
+  · exact ⟨hRHS_out⟩
+
 /-! ## Me-FOp × Me-FOp (paper p. 9:24)
 
 Both sides do Me-FOp: the outer stack starts with `α`, which is popped

@@ -3,6 +3,7 @@ import Pss.Paper.Aux.CommutativityWeakening
 import Pss.Paper.Aux.Weakening
 import Pss.Paper.Aux.Substitution
 import Pss.Paper.Aux.Propositions
+import Pss.Paper.Lemma_2_NoPromotion
 
 /-! # `Pss.Paper.Lemma_2_Diamond` — paper Lemma 2 (Diamond of `→ᵉᵠᵘ`)
 
@@ -208,7 +209,17 @@ def Lemma_2_Case_AppApp : Prop :=
 /-- **Lemma 2 case Me-App × Me-Bet**, paper p. 9:22–23. The mixed
 case: subtype-side `Me-App` reduces `(λx ≤ t.u)v` to `(λx ≤ t'.u')v'`;
 equiv-side does β to `u_2[x\v_2]`. Paper invokes asymmetric Lemma 32
-to close the subtype edge. -/
+to close the subtype edge.
+
+**Moreover-tracked body IH.** The paper's "Moreover" clause (p. 9:9)
+says: if either source has `NoPromotionOf 0`, then both outputs have
+`NoPromotionOf 0`. For AppBet, the RHS source `u_0 → u_2` lives at
+`{t_0, .sub}::Γ_0; shift 0 s_0`, which trivially has `NoPromotionOf 0`
+(no equ-binding at slot 0 in a `.sub`-head context). The Moreover then
+gives `NoPromotionOf 0` on the LHS output `u_1 → u_3`, which is needed
+to bridge the LHS body from `.equ`-head (bound v_1) to `.sub`-head
+(bound t_1) via `MEqRed.equ_to_sub_head_replace_NoPromotion` so that
+Me-Bet can be applied for the LHS output target. -/
 def Lemma_2_Case_AppBet : Prop :=
   ∀ {Γ₀ : Ctx} {s₀ : Stack} {t₀ u₀ u₁ u₂ v₀ v₁ v₂ t₁ : Term},
     Term.Scoped Γ₀.depth t₀ →
@@ -225,14 +236,17 @@ def Lemma_2_Case_AppBet : Prop :=
     --   v₀ → v₂ at Γ₀; [] (operand)
     MEqRed ({bound := t₀, kind := .sub} :: Γ₀) (Stack.shift 0 s₀) u₀ u₂ →
     MEqRed Γ₀ [] v₀ v₂ →
-    -- IH on body. LHS is at .equ head bound v₀ in evolved context;
-    -- RHS is at .sub head bound t₀ in evolved context. Body diamond.
+    -- IH on body with Moreover NP-0 tracking. The IH crosses the
+    -- `.sub`-head source's trivial NP-0 to the LHS `.equ`-head body
+    -- output's NP-0. Both outputs are returned as `MEqRed` (Type) so
+    -- the NP-0 witness can be packaged structurally.
     (∀ {Γ₁' s₁' Γ₂' s₂' : _},
       ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
         (Stack.shift 0 s₀) Γ₁' s₁' →
       ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀)
         (Stack.shift 0 s₀) Γ₂' s₂' →
-      ∃ u_3, MEqRedJ Γ₁' s₁' u₁ u_3 ∧ MEqRedJ Γ₂' s₂' u₂ u_3) →
+      ∃ u_3 : Term, ∃ d_1 : MEqRed Γ₁' s₁' u₁ u_3,
+        ∃ _d_2 : MEqRed Γ₂' s₂' u₂ u_3, d_1.NoPromotionOf 0) →
     -- IH on operand:
     (∀ {Γ₁' s₁' Γ₂' s₂' : _},
       ContextEvolution Γ₀ [] Γ₁' s₁' →
@@ -243,6 +257,46 @@ def Lemma_2_Case_AppBet : Prop :=
       ContextEvolution Γ₀ s₀ Γ₂ s₂ →
       ∃ t₃, MEqRedJ Γ₁ s₁ (.app (.abs t₁ u₁) v₁) t₃
         ∧ MEqRedJ Γ₂ s₂ (Term.instantiate 0 v₂ u₂) t₃
+
+/-- **Lemma 2 case Me-Bet × Me-App** (symmetric to AppBet), paper
+p. 9:22-23 mirrored. Same structure as AppBet with LHS and RHS swapped:
+LHS source decomposes via Me-Bet (β with .sub-head body), RHS source
+decomposes via Me-App (with .equ-head body after Me-FOp inversion).
+
+The Moreover-tracked body IH crosses the LHS .sub-head source's
+trivial NP-0 to the RHS .equ-head body output's NP-0, used for the
+.equ → .sub bridge in the RHS Me-Bet output rebuild. -/
+def Lemma_2_Case_BetApp : Prop :=
+  ∀ {Γ₀ : Ctx} {s₀ : Stack} {t₀ u₀ u₁ u₂ v₀ v₁ v₂ t₂ : Term},
+    Term.Scoped Γ₀.depth t₀ →
+    Term.Scoped Γ₀.depth v₀ →
+    -- Me-Bet (LHS): body at .sub-head bound t₀.
+    MEqRed ({bound := t₀, kind := .sub} :: Γ₀) (Stack.shift 0 s₀) u₀ u₁ →
+    MEqRed Γ₀ [] v₀ v₁ →
+    -- Me-App (RHS): via Me-FOp, body at .equ-head bound v₀.
+    MEqRed Γ₀ [] t₀ t₂ →
+    MEqRed ({bound := v₀, kind := .equ} :: Γ₀) (Stack.shift 0 s₀) u₀ u₂ →
+    MEqRed Γ₀ [] v₀ v₂ →
+    -- IH on body with Moreover NP-0 tracking. Crosses the LHS
+    -- `.sub`-head source's trivial NP-0 to the RHS `.equ`-head body
+    -- output's NP-0.
+    (∀ {Γ₁' s₁' Γ₂' s₂' : _},
+      ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀)
+        (Stack.shift 0 s₀) Γ₁' s₁' →
+      ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+        (Stack.shift 0 s₀) Γ₂' s₂' →
+      ∃ u_3 : Term, ∃ _d_1 : MEqRed Γ₁' s₁' u₁ u_3,
+        ∃ d_2 : MEqRed Γ₂' s₂' u₂ u_3, d_2.NoPromotionOf 0) →
+    -- IH on operand:
+    (∀ {Γ₁' s₁' Γ₂' s₂' : _},
+      ContextEvolution Γ₀ [] Γ₁' s₁' →
+      ContextEvolution Γ₀ [] Γ₂' s₂' →
+      ∃ v_3, MEqRedJ Γ₁' s₁' v₁ v_3 ∧ MEqRedJ Γ₂' s₂' v₂ v_3) →
+    ∀ {Γ₁ s₁ Γ₂ s₂},
+      ContextEvolution Γ₀ s₀ Γ₁ s₁ →
+      ContextEvolution Γ₀ s₀ Γ₂ s₂ →
+      ∃ t₃, MEqRedJ Γ₁ s₁ (Term.instantiate 0 v₁ u₁) t₃
+        ∧ MEqRedJ Γ₂ s₂ (.app (.abs t₂ u₂) v₂) t₃
 
 /-- **Lemma 2 case Me-App × Me-TAp**, paper p. 9:23. The Me-TAp side
 collapses to `Top`; the LHS Me-App necessarily reduces from `.top` (the
