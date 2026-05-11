@@ -136,20 +136,21 @@ theorem MEqRedDepth_pos : ∀ {Γ s u v} (h : MEqRed Γ s u v), 0 < MEqRedDepth 
   intro Γ s u v h
   cases h <;> simp [MEqRedDepth]
 
-/-! ## Depth preservation of `replaceAt_sub_to_equ_aux`
+/-! ## Depth preservation of the `.sub → .equ` head bridge
 
-The kind-narrowing bridge `MEqRed.replaceAt_sub_to_equ_aux` preserves
-the derivation node count. This is needed for well-founded recursion
-when the bundle bridges a body derivation from `.sub`-head to
-`.equ`-head context during cross-β case dispatch.
+The bridge `MEqRed.sub_to_equ_head_replace` preserves derivation
+depth, which the bundle's well-founded recursion needs to ensure
+cross-β recursive calls terminate.
 
-The bridge is defined by structural induction matching the source's
-constructor pattern. We mirror that induction to show depth equality. -/
+The full proof requires `simp`-ing through `replaceAt_sub_to_equ_aux`'s
+tactic-mode induction, which generates an `MEqRed.rec` expression
+resistant to direct `unfold`/`simp`. Proper proof requires either
+re-defining the bridge as a structural `def` matching `MEqRed.rec`
+explicitly, or proving by structural recursion on the source using
+`MEqRed.rec`-level rewriting.
 
-/-! ## Status
-
-The bundle scaffolding is shipped. The closure target is the bundle
-proof itself. -/
+We defer the full proof to a follow-up dispatch and ship the bundle
+proof's other pieces here. -/
 
 /-! ## Bundle predicate (same-context, Moreover-tracked) -/
 
