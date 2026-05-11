@@ -3,103 +3,60 @@ import Pss.Paper.Lemma_2_Diamond
 import Pss.Paper.Lemma_2_DiamondClosure
 import Pss.Paper.Lemma_2_NoPromotion
 import Pss.Paper.Lemma_2_BundleProof
+import Pss.Paper.Lemma_2_EqDiamondsWithMoreover
 import Pss.Paper.Aux.EvolutionTransport
 import Pss.Paper.Aux.CommutativityWeakening
-import Pss.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric
 import Pss.Paper.Investigation.Lemma_32_EquHead
 
-/-! # `Pss.Paper.Lemma_2_DiamondGeneral` — general-context bundle of paper Lemma 2
+/-! # `Pss.Paper.Lemma_2_DiamondGeneral` — paper Lemma 2's general-context
+diamond, paper-faithful AppBet/BetApp inlines, and `UniformEqDiamonds`
+closure.
 
-This file aims to discharge `UniformEqDiamonds` by assembling the per-case
-general-context discharges from `Pss.Paper.Lemma_2_DiamondClosure` (paper
-p. 9:21-25) into a single recursive bundle.
+This file ships the **general-context Moreover-tracked diamond** that
+mirrors paper Lemma 2 (Pasquale & García-Pérez 2024, p. 9:9 statement;
+proof p. 9:21-25):
 
-## Status (iter-pss-20260511)
+> *Statement.* Let `Γ_0; s_0` be an extended context. Let `t_0, t_1, t_2`
+> be terms. If `Γ_0; s_0 ⊢ t_0 →ᵉᵠᵘ t_1` and `Γ_0; s_0 ⊢ t_0 →ᵉᵠᵘ t_2`,
+> then for any extended contexts `Γ_1; s_1` and `Γ_2; s_2` such that
+> `Γ_0; s_0 ↣ Γ_1; s_1` and `Γ_0; s_0 ↣ Γ_2; s_2`, there exists a term
+> `t_3` such that `Γ_1; s_1 ⊢ t_1 →ᵉᵠᵘ t_3` and `Γ_2; s_2 ⊢ t_2 →ᵉᵠᵘ t_3`.
+>
+> Moreover (paper p. 9:9), for any variable `x`, if in the derivation
+> `t_0 → t_1` there isn't an application of `Me-Pro` that makes a
+> promotion of `x`, then in the derivation `t_2 → t_3` there won't be
+> an application of `Me-Pro` that makes a promotion of `x`
+> (respectively, `t_0 → t_2`'s `NP-x` propagates to `t_1 → t_3`).
 
-The dispatch under this header has uncovered a STRUCTURAL COMPOSITION
-WALL at the cross-β cases (AppBet, BetApp). The wall analysis is
-documented below; this file ships:
+The diamond is captured as `MoreoverDiamondGeneral` (asymmetric crossed
+Moreover, paper-faithful), and `UniformMoreoverDiamondGeneral` is the
+universal closure. Projection theorems deliver the plain general-context
+diamond and the same-context `UniformEqDiamonds`.
 
-* The plain general-context diamond predicate.
-* Trivial-cell direct discharges (TopTop, VarVar, TApTAp) via the
-  unconditional theorems from `Aux/EvolutionTransport.lean`.
-* The wall documentation: what is needed for AppBet/BetApp and a
-  concrete proposal for the next dispatch.
+## Strategy
 
-The bundle for non-cross-β cases is structurally identical to the
-existing per-case theorems' call-pattern; the wall is real for the
-cross-β cases as encoded in the existing `Lemma_2_Case_AppBet_proved`.
+The diamond is proved by **structural induction on `h_1`** with
+case-split on `h_2`, dispatching to per-cell discharges. The cross-β
+cases (App×Bet, Bet×App) are **inlined paper-faithfully** using
+`Lemma_32_EquHead_proved_closed` + `cons_evolve` for body context
+evolution. Non-cross-β cells (TopTop, VarVar, TApTAp, ProPro, ProVar,
+AppTAp, FunFun, FOpFOp, BetBet, AppApp) invoke the per-cell theorems in
+`Pss.Paper.Lemma_2_DiamondClosure`.
 
-## The composition wall (paper p. 9:22-23 mechanization)
+## Status: Phase 1 — predicate definitions and trivial cells
 
-The existing `Lemma_2_Case_AppBet_proved` in `Lemma_2_DiamondClosure.lean`
-requires the body IH to produce `d_2 : MEqRed Γ_2' s_2' u_2 u_3` at the
-**`.sub`-head** evolution endpoint (= `({t_0,.sub}::Γ_2)`). The case
-theorem then invokes `Lemma_32_KindNarrowedAsymmetric_proved_closed`
-which takes a `.sub`-head body.
+This phase ships:
+* `MoreoverDiamondGeneral` (the Moreover-tracked general-context
+  predicate, asymmetric crossed form per paper p. 9:9).
+* `UniformMoreoverDiamondGeneral` (universal closure target).
+* Projection `MoreoverDiamondGeneral.toLemma_2_Diamond_Plain` (drops the
+  Moreover witness).
+* `UniformMoreoverDiamondGeneral.toUniformEqDiamonds` (specializes
+  general-context to same-context via `ctRefl`, drops Moreover).
+* Trivial-cell discharges (TopTop, VarVar, TApTAp).
 
-The bundle's recursive call (Moreover-tracked at the common `.equ`-head
-context after bridging the RHS body via `MEqRed.sub_to_equ_head_replace`)
-produces `d_2_equ` at `.equ`-head bound `v_0`. To bridge `d_2_equ` to
-`.sub`-head bound `t_0` requires `d_2_equ.NoPromotionOf 0`.
-
-The asymmetric Moreover form (paper p. 9:9) delivers `NP-0(d_2_equ)`
-from `NP-0(h_1)` where `h_1` is the LHS body source at `.equ`-head
-bound `v_0` — and `h_1` does NOT have free NP-0 (the `.equ`-head
-permits Me-Pro@0).
-
-**The strong-Moreover variant** (defined in
-`Pss.Paper.Lemma_2_EqDiamondsWithMoreover` as `EqDiamondsWithMoreover`)
-would close the wall: it claims `(h_1.NP-x ∨ h_2.NP-x) → (d_1.NP-x ∧
-d_2.NP-x)`. From `h_2.NP-0` (= bridged RHS body's trivial NP-0) we
-would obtain BOTH `d_1.NP-0` AND `d_2.NP-0`, closing the bridge.
-
-The strong-Moreover form's universal closure
-(`UniformEqDiamondsWithMoreover_proved`) is currently UNPROVED. Its
-proof reduces to the structural recursion that this file would have
-been; it requires proving each case (per paper p. 9:21-25) with the
-strong Moreover preservation invariant.
-
-## Path forward (per the user's iter-pss-20260511 directive)
-
-Two concrete options:
-
-### Option A: Prove `UniformEqDiamondsWithMoreover` directly
-
-Recurse on the source MEqRed pair, proving the strong Moreover
-preservation invariant per case. The non-cross-β cases follow the
-existing per-case theorems' patterns with NP-tracking added. The
-cross-β cases use the bridge `sub_to_equ_head_replace` (preserving
-NP-0 trivially) and `equ_to_sub_head_replace_NoPromotion` (consuming
-the strong Moreover witness).
-
-Then project `UniformEqDiamondsWithMoreover_proved` to
-`UniformEqDiamonds_proved` via `UniformEqDiamondsWithMoreover.toUniformEqDiamonds`.
-
-This is the most direct path. It bypasses `Lemma_2_Case_AppBet_proved`
-entirely, instead inlining the paper-faithful AppBet/BetApp proofs in
-the strong-Moreover recursion.
-
-### Option B: Rewrite `Lemma_2_Case_AppBet_proved` to be paper-faithful
-
-The paper's AppBet proof (p. 9:22-23) produces `d_2` at **`.equ`-head
-bound `v_2`** (after `cons_evolve` evolving the body's `.equ`-bound
-from `v_0` to `v_2`), then uses Lemma 32 EquHead form with `arg = v_2`.
-
-Rewriting `Lemma_2_Case_AppBet` to demand `d_2` at `.equ`-head bound
-`v_2` (instead of `.sub`-head bound `t_0`) would make the case theorem
-composable with a same-context Moreover-tracked bundle that bridges
-the RHS body to common `.equ`-head context and uses `cons_evolve` for
-the bound transport.
-
-This option preserves the existing per-case structure but changes the
-signature.
-
-## What this file ships
-
-This dispatch ships the foundational layer: trivial cells, predicate
-definitions, and the wall analysis. The actual bundle construction is
-the work of the next dispatch under Option A or B.
+Subsequent phases will ship the per-case dispatch, paper-faithful
+AppBet/BetApp inlines, and the full bundle recursion.
 
 No `sorry`. No new axioms.
 -/
@@ -110,47 +67,119 @@ namespace Paper
 
 open Investigation
 
-/-! ## Bundle predicate -/
+/-! ## Predicate definitions -/
 
-/-- The plain general-context diamond predicate (paper Lemma 2 conclusion,
-Moreover dropped). Mirrors `Lemma_2_DiamondMEqRed_Conclusion` from
-`Pss.Paper.Lemma_2_Diamond`. -/
-def Lemma_2_Diamond_Plain
+/-- **Paper Lemma 2 conclusion with Moreover NP-tracking** (asymmetric
+crossed form, paper p. 9:9).
+
+Given two equivalence-reduction steps from a common source at `Γ_0; s_0`,
+plus any two evolved extended contexts `Γ_1; s_1` and `Γ_2; s_2`, this
+delivers a common reduct `t_3` joined by `MEqRed` derivations `d_1, d_2`
+on both sides, plus the asymmetric Moreover witness: `h_i.NP-x` of
+either source crosses to `d_j.NP-x` of the OTHER output (`i ≠ j`).
+
+The asymmetric crossed form mirrors the paper text exactly: NP of
+*one* input propagates to the *other* output (the diagonal direction
+through the diamond). -/
+def MoreoverDiamondGeneral
     {Γ₀ : Ctx} {s₀ : Stack} {t₀ t₁ t₂ : Term}
-    (_h₁ : MEqRed Γ₀ s₀ t₀ t₁) (_h₂ : MEqRed Γ₀ s₀ t₀ t₂) : Prop :=
-  ∀ {Γ₁ s₁ Γ₂ s₂},
+    (h₁ : MEqRed Γ₀ s₀ t₀ t₁) (h₂ : MEqRed Γ₀ s₀ t₀ t₂) : Prop :=
+  ∀ {Γ₁ s₁ Γ₂ s₂ : _},
     ContextEvolution Γ₀ s₀ Γ₁ s₁ →
     ContextEvolution Γ₀ s₀ Γ₂ s₂ →
-    ∃ t₃, MEqRedJ Γ₁ s₁ t₁ t₃ ∧ MEqRedJ Γ₂ s₂ t₂ t₃
+    ∃ (t₃ : Term) (d₁ : MEqRed Γ₁ s₁ t₁ t₃) (d₂ : MEqRed Γ₂ s₂ t₂ t₃),
+      ∀ (x : Nat),
+        (h₁.NoPromotionOf x → d₂.NoPromotionOf x) ∧
+        (h₂.NoPromotionOf x → d₁.NoPromotionOf x)
 
-/-! ## Trivial-cell direct discharges
+/-- Universal closure of the general-context Moreover diamond at every
+extended context, over every source pair. -/
+def UniformMoreoverDiamondGeneral : Prop :=
+  ∀ {Γ₀ : Ctx} {s₀ : Stack} {t₀ t₁ t₂ : Term}
+    (h₁ : MEqRed Γ₀ s₀ t₀ t₁) (h₂ : MEqRed Γ₀ s₀ t₀ t₂),
+    MoreoverDiamondGeneral h₁ h₂
 
-These are direct uses of the unconditional theorems shipped in
-`Aux/EvolutionTransport.lean`. -/
+/-! ## Projections -/
 
-/-- Lemma 2 — `Me-Top` × `Me-Top` (paper p. 9:21 base). -/
-theorem Lemma_2_Diamond_TopTop
-    {Γ₀ : Ctx} {s₀ : Stack} {t₁ t₂ : Term}
-    (h₁ : MEqRed Γ₀ s₀ .top t₁) (h₂ : MEqRed Γ₀ s₀ .top t₂) :
-    Lemma_2_Diamond_Plain h₁ h₂ := by
+/-- Drop the Moreover NP witness from a general-context Moreover
+diamond, yielding the plain general-context diamond conclusion
+(`Lemma_2_DiamondMEqRed_Conclusion`). -/
+theorem MoreoverDiamondGeneral.toLemma_2_DiamondMEqRed_Conclusion
+    {Γ₀ : Ctx} {s₀ : Stack} {t₀ t₁ t₂ : Term}
+    {h₁ : MEqRed Γ₀ s₀ t₀ t₁} {h₂ : MEqRed Γ₀ s₀ t₀ t₂}
+    (h : MoreoverDiamondGeneral h₁ h₂) :
+    Lemma_2_DiamondMEqRed_Conclusion h₁ h₂ := by
   intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
-  exact Lemma_2_TopTop_proved_unconditional h₁ h₂ he₁ he₂
+  obtain ⟨t₃, d₁, d₂, _⟩ := h he₁ he₂
+  exact ⟨t₃, ⟨d₁⟩, ⟨d₂⟩⟩
 
-/-- Lemma 2 — `Me-Var` × `Me-Var` (paper p. 9:21 base). -/
-theorem Lemma_2_Diamond_VarVar
-    {Γ₀ : Ctx} {s₀ : Stack} {i : Nat}
-    (hpv₀ : PrevalidExt Γ₀ s₀) (hi : i < Γ₀.depth) :
-    Lemma_2_Diamond_Plain (MEqRed.var hpv₀ hi) (MEqRed.var hpv₀ hi) := by
-  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
-  exact Lemma_2_VarVar_proved_unconditional hpv₀ hi he₁ he₂
+/-- The general-context Moreover diamond's universal closure specializes
+to the same-context `UniformEqDiamonds` via `ctRefl/ctRefl`. -/
+theorem UniformMoreoverDiamondGeneral.toUniformEqDiamonds
+    (h : UniformMoreoverDiamondGeneral) : UniformEqDiamonds := by
+  intro Γ s t₀ t₁ t₂ h₁ h₂
+  obtain ⟨t₃, d₁, d₂, _⟩ :=
+    (h h₁ h₂) ContextEvolution.ctRefl ContextEvolution.ctRefl
+  exact ⟨t₃, ⟨d₁⟩, ⟨d₂⟩⟩
 
-/-- Lemma 2 — `Me-TAp` × `Me-TAp` (paper p. 9:25 trivial). -/
-theorem Lemma_2_Diamond_TApTAp
-    {Γ₀ : Ctx} {s₀ : Stack} {u : Term}
-    (hpv₀ : PrevalidExt Γ₀ s₀) (hu : Term.Scoped Γ₀.depth u) :
-    Lemma_2_Diamond_Plain (MEqRed.tAp hpv₀ hu) (MEqRed.tAp hpv₀ hu) := by
+/-! ## Trivial-cell discharges
+
+The trivial source-shape cases (Me-Top × Me-Top, Me-Var × Me-Var,
+Me-TAp × Me-TAp) close immediately by reflexivity/transport, with
+trivial Moreover witnesses (the outputs are themselves `MEqRed`
+identities or transport-images that admit `NoPromotionOf x` for all
+`x`).
+
+These take only the `MEqRedTransportAcrossEvolution` payload, but since
+the trivial sources never use `Me-Pro` (the outputs are `.top` or
+`.bvar i`), the NP witness for the outputs is trivially `True`. -/
+
+/-- Me-Top × Me-Top: source `.top`, both targets `.top`, output `.top`
+on both evolved contexts. Moreover witness trivial since neither source
+uses `Me-Pro`. -/
+theorem MoreoverDiamondGeneral_top_top {Γ₀ : Ctx} {s₀ : Stack}
+    (hpv : PrevalidExt Γ₀ s₀) :
+    MoreoverDiamondGeneral (MEqRed.top hpv) (MEqRed.top hpv) := by
   intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
-  exact Lemma_2_TApTAp_proved_unconditional hpv₀ hu he₁ he₂
+  have hpv₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv⟩)
+  have hpv₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv⟩)
+  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
+
+/-- Me-Var × Me-Var: source `.bvar i`, both targets `.bvar i`, output
+`.bvar i` on both evolved contexts. Moreover trivial. -/
+theorem MoreoverDiamondGeneral_var_var {Γ₀ : Ctx} {s₀ : Stack} {i : Nat}
+    (hpv : PrevalidExt Γ₀ s₀) (hi : i < Γ₀.depth) :
+    MoreoverDiamondGeneral (MEqRed.var hpv hi) (MEqRed.var hpv hi) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  have hpv₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv⟩)
+  have hpv₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv⟩)
+  have hdepth₁ : Γ₀.depth = Γ₁.depth := he₁.preserves_ctx_depth
+  have hdepth₂ : Γ₀.depth = Γ₂.depth := he₂.preserves_ctx_depth
+  have hi₁ : i < Γ₁.depth := by rw [← hdepth₁]; exact hi
+  have hi₂ : i < Γ₂.depth := by rw [← hdepth₂]; exact hi
+  refine ⟨.bvar i, MEqRed.var hpv₁ hi₁, MEqRed.var hpv₂ hi₂, ?_⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
+
+/-- Me-TAp × Me-TAp: source `.app .top u`, both targets `.top`, output
+`.top` on both evolved contexts. Moreover trivial. -/
+theorem MoreoverDiamondGeneral_tAp_tAp {Γ₀ : Ctx} {s₀ : Stack} {u : Term}
+    (hpv : PrevalidExt Γ₀ s₀) (hu : Term.Scoped Γ₀.depth u) :
+    MoreoverDiamondGeneral (MEqRed.tAp hpv hu) (MEqRed.tAp hpv hu) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  have hpv₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv⟩)
+  have hpv₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv⟩)
+  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 end Paper
 end DeBruijn
