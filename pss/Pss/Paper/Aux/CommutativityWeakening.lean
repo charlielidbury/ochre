@@ -105,6 +105,186 @@ theorem stripStackHead {Γ Γ' : Ctx} {s s' s_0 : Stack} {α : Term}
             rw [← hSplit.2]
             exact hL
 
+/-! ## Stack-head inversion with reduction
+
+The richer cousin of `stripStackHead`: in addition to the smaller-stack
+sub-derivation, this version also recovers the **head reduction**
+`MEqRed Γ [] α α'` at the OUTER `Γ`. The `MEqRed` lives at the outer
+context (not at the inner of any `ctAnn` step), so the resulting head
+reduction can be fed directly to `ContextEvolution.cons_evolve` /
+`MEqRed.bet` / `MEqRed.fOp` body-context builders.
+
+This lemma was the load-bearing infrastructure for Lemma 2's FOpFOp /
+AppBet / BetApp cases at general context (paper p. 9:22-25): the
+extracted `α →= α'` step feeds the body context's mid-proof `Ct-Ann`
+that evolves the equ-bound from the popped operand on both sides. -/
+
+/-- Auxiliary "general inversion" lemma for `stripStackHeadWithReduction`.
+This version states the conclusion under the literal `α :: s` / `α' :: s'`
+forms (so the recursion is on the evolution, not on the stack shape). -/
+private theorem stripStackHeadWithReduction_aux
+    {Γ Γ' : Ctx} {sSrc sTgt : Stack}
+    (h : ContextEvolution Γ sSrc Γ' sTgt) :
+    ∀ {α α' : Term} {s s' : Stack},
+      sSrc = α :: s → sTgt = α' :: s' →
+      Term.Scoped Γ.depth α →
+      PrevalidExt Γ sSrc →
+      Nonempty (MEqRed Γ [] α α') ∧ ContextEvolution Γ s Γ' s' := by
+  induction h with
+  | @ctRefl Γp sp =>
+      intro α α' s s' hSrc hTgt hα hpv
+      -- sp = α::s = α'::s', so α = α', s = s'.
+      subst hSrc
+      cases hTgt
+      refine ⟨⟨?_⟩, ContextEvolution.ctRefl⟩
+      exact MEqRed.refl (PrevalidExt.nil (PrevalidExt.ctx hpv)) hα
+  | @ctAnn Γp Γp' sp sp' t t' kind hInner hred ih =>
+      intro α α' s s' hSrc hTgt hα hpv
+      -- Outer LHS stack = shift 0 sp = α::s.
+      cases sp with
+      | nil =>
+          simp [Stack.shift, Stack.shiftBy] at hSrc
+      | cons α'' s_0'' =>
+          have hShiftSrc :
+              Term.shift 0 α'' = α ∧ Stack.shift 0 s_0'' = s := by
+            simp [Stack.shift, Stack.shiftBy] at hSrc
+            exact hSrc
+          cases sp' with
+          | nil =>
+              have hLen := hInner.preserves_stack_length
+              simp at hLen
+          | cons α''' s_1''' =>
+              have hShiftTgt :
+                  Term.shift 0 α''' = α' ∧ Stack.shift 0 s_1''' = s' := by
+                simp [Stack.shift, Stack.shiftBy] at hTgt
+                exact hTgt
+              -- Set up inner scoping / prevalidity.
+              have hα_at_Γp : Term.Scoped Γp.depth α'' := by
+                obtain ⟨hShiftα, _⟩ := hShiftSrc
+                rw [← hShiftα] at hα
+                have hScopedSucc :
+                    Term.Scoped (Γp.depth + 1) (Term.shift 0 α'') := by
+                  simpa [Ctx.depth_cons] using hα
+                exact Term.shift_scoped_inv 0 Γp.depth α''
+                  (Nat.zero_le _) hScopedSucc
+              have hpvCtxOuter : Prevalid ({bound := t, kind} :: Γp) :=
+                PrevalidExt.ctx hpv
+              have hpvCtxInner : Prevalid Γp := Prevalid.tail hpvCtxOuter
+              have hStackScopedShifted :
+                  Stack.Scoped (Γp.depth + 1) (Stack.shift 0 (α'' :: s_0'')) := by
+                have hStackScoped := PrevalidExt.stack_scoped hpv
+                simp [Ctx.depth_cons] at hStackScoped
+                exact hStackScoped
+              have hStackScopedInner :
+                  Stack.Scoped Γp.depth (α'' :: s_0'') :=
+                Stack.Scoped.shift_inv hStackScopedShifted
+              have hpvInner : PrevalidExt Γp (α'' :: s_0'') :=
+                PrevalidExt.of_stack_scoped hpvCtxInner hStackScopedInner
+              -- Recurse.
+              obtain ⟨hHeadInner, hStripInner⟩ :=
+                ih (α := α'') (α' := α''') (s := s_0'') (s' := s_1''')
+                  rfl rfl hα_at_Γp hpvInner
+              let hHeadInner₀ : MEqRed Γp [] α'' α''' := Classical.choice hHeadInner
+              -- Lift head reduction via weaken_head.
+              let hpvE_nil : PrevalidExt Γp [] := PrevalidExt.nil hpvCtxInner
+              let hHeadOuter :
+                  MEqRed ({bound := t, kind} :: Γp) [] (Term.shift 0 α'') (Term.shift 0 α''') := by
+                have h := hHeadInner₀.weaken_head hpvE_nil hpvCtxOuter
+                simpa using h
+              refine ⟨⟨?_⟩, ?_⟩
+              · obtain ⟨hα_eq, _⟩ := hShiftSrc
+                obtain ⟨hα'_eq, _⟩ := hShiftTgt
+                rw [← hα_eq, ← hα'_eq]
+                exact hHeadOuter
+              · obtain ⟨_, hs_eq⟩ := hShiftSrc
+                obtain ⟨_, hs'_eq⟩ := hShiftTgt
+                rw [← hs_eq, ← hs'_eq]
+                exact ContextEvolution.ctAnn hStripInner hred
+  | @ctStk Γp Γp' sp sp' β β' hInner hred _ =>
+      intro α α' s s' hSrc hTgt _hα _hpv
+      -- Outer LHS = β::sp = α::s, output = β'::sp' = α'::s'.
+      cases hSrc
+      cases hTgt
+      exact ⟨⟨hred⟩, hInner⟩
+  | @cons_lift Γp Γp' sp sp' entry hInner hBoundScoped ih =>
+      intro α α' s s' hSrc hTgt hα hpv
+      cases sp with
+      | nil =>
+          simp [Stack.shift, Stack.shiftBy] at hSrc
+      | cons α'' s_0'' =>
+          have hShiftSrc :
+              Term.shift 0 α'' = α ∧ Stack.shift 0 s_0'' = s := by
+            simp [Stack.shift, Stack.shiftBy] at hSrc
+            exact hSrc
+          cases sp' with
+          | nil =>
+              have hLen := hInner.preserves_stack_length
+              simp at hLen
+          | cons α''' s_1''' =>
+              have hShiftTgt :
+                  Term.shift 0 α''' = α' ∧ Stack.shift 0 s_1''' = s' := by
+                simp [Stack.shift, Stack.shiftBy] at hTgt
+                exact hTgt
+              have hα_at_Γp : Term.Scoped Γp.depth α'' := by
+                obtain ⟨hShiftα, _⟩ := hShiftSrc
+                rw [← hShiftα] at hα
+                have hScopedSucc :
+                    Term.Scoped (Γp.depth + 1) (Term.shift 0 α'') := by
+                  simpa [Ctx.depth_cons] using hα
+                exact Term.shift_scoped_inv 0 Γp.depth α''
+                  (Nat.zero_le _) hScopedSucc
+              have hpvCtxOuter : Prevalid (entry :: Γp) :=
+                PrevalidExt.ctx hpv
+              have hpvCtxInner : Prevalid Γp := Prevalid.tail hpvCtxOuter
+              have hStackScopedShifted :
+                  Stack.Scoped (Γp.depth + 1) (Stack.shift 0 (α'' :: s_0'')) := by
+                have hStackScoped := PrevalidExt.stack_scoped hpv
+                simp [Ctx.depth_cons] at hStackScoped
+                exact hStackScoped
+              have hStackScopedInner :
+                  Stack.Scoped Γp.depth (α'' :: s_0'') :=
+                Stack.Scoped.shift_inv hStackScopedShifted
+              have hpvInner : PrevalidExt Γp (α'' :: s_0'') :=
+                PrevalidExt.of_stack_scoped hpvCtxInner hStackScopedInner
+              obtain ⟨hHeadInner, hStripInner⟩ :=
+                ih (α := α'') (α' := α''') (s := s_0'') (s' := s_1''')
+                  rfl rfl hα_at_Γp hpvInner
+              let hHeadInner₀ : MEqRed Γp [] α'' α''' := Classical.choice hHeadInner
+              let hpvE_nil : PrevalidExt Γp [] := PrevalidExt.nil hpvCtxInner
+              let hHeadOuter :
+                  MEqRed (entry :: Γp) [] (Term.shift 0 α'') (Term.shift 0 α''') := by
+                have h := hHeadInner₀.weaken_head hpvE_nil hpvCtxOuter
+                simpa using h
+              refine ⟨⟨?_⟩, ?_⟩
+              · obtain ⟨hα_eq, _⟩ := hShiftSrc
+                obtain ⟨hα'_eq, _⟩ := hShiftTgt
+                rw [← hα_eq, ← hα'_eq]
+                exact hHeadOuter
+              · obtain ⟨_, hs_eq⟩ := hShiftSrc
+                obtain ⟨_, hs'_eq⟩ := hShiftTgt
+                rw [← hs_eq, ← hs'_eq]
+                exact ContextEvolution.cons_lift hStripInner hBoundScoped
+
+/-- Pull a head `α` (with scoping at `Γ.depth`) off the LHS of a
+`ContextEvolution`, returning both the head reduction `α →= α'` at the
+outer `Γ; nil` AND the stripped sub-derivation on the smaller stack.
+
+The de Bruijn-faithful `ctAnn` rule shifts its stack, so every
+constructor that touches the stack head produces a `shift 0`-form
+outer stack; the head reduction at the outer level is then either
+given directly (`ctStk`) or lifted from the inner via `weaken_head`
+(`ctAnn`, `cons_lift`).
+
+`ctRefl` produces `α = α'` and the head reduction is `MEqRed.refl`
+on `α` at the outer context. -/
+theorem stripStackHeadWithReduction
+    {Γ Γ' : Ctx} {s s' : Stack} {α α' : Term}
+    (h : ContextEvolution Γ (α :: s) Γ' (α' :: s'))
+    (hα : Term.Scoped Γ.depth α)
+    (hpv : PrevalidExt Γ (α :: s)) :
+    Nonempty (MEqRed Γ [] α α') ∧ ContextEvolution Γ s Γ' s' :=
+  stripStackHeadWithReduction_aux h rfl rfl hα hpv
+
 /-- **Lemma 36 (Commutativity — context weakening), paper p. 9:46.**
 
 > *Statement.* Let `Γ; s` and `Γ'; s'` be extended contexts such that
