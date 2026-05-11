@@ -181,6 +181,241 @@ theorem MoreoverDiamondGeneral_tAp_tAp {Γ₀ : Ctx} {s₀ : Stack} {u : Term}
   intro x
   exact ⟨fun _ => trivial, fun _ => trivial⟩
 
+/-! ## Paper-faithful App × Bet inline (paper p. 9:22–23)
+
+The cross-β case `Me-App × Me-Bet` is **the hardest** of paper Lemma 2's
+cases. The paper's proof (p. 9:22–23) proceeds:
+
+1. Me-App side decomposes via Me-FOp inversion:
+   * Bound `Γ_0; nil ⊢ t_0 → t_1`.
+   * Body `Γ_0, x ≡ v_0; s_0 ⊢ u_0 → u_1` (`.equ`-head, bound `v_0`).
+   * Operand `Γ_0; nil ⊢ v_0 → v_1`.
+
+2. Me-Bet side:
+   * Body `Γ_0; s_0 ⊢ u_0 → u_2` (paper); de Bruijn: `.sub`-head bound `t_0`.
+   * Operand `Γ_0; nil ⊢ v_0 → v_2`.
+
+3. Lemma 19 (weakening) lifts Me-Bet body to `Γ_0, x ≡ v_0; s_0`. In
+   de Bruijn this is the **`.sub → .equ` head bridge**
+   `MEqRed.bridgeSubToEquHead` from `BundleProof.lean`.
+
+4. Body IH at `Γ_0, x ≡ v_0; s_0` with evolutions:
+   * LHS: `cons_evolve he₁ hArg₁` evolves bound `v_0 → v_1`.
+   * RHS: `cons_evolve he₂ hArg₂` evolves bound `v_0 → v_2`.
+
+   Body IH gives `u_3, d_1` at `{v_1,.equ}::Γ_1; shift 0 s_1` and
+   `d_2` at `{v_2,.equ}::Γ_2; shift 0 s_2`, plus asymmetric Moreover
+   `(h_2_bridged.NP-0 → d_1.NP-0)`.
+
+5. Arg IH at `Γ_0; nil` gives `v_3, dArg_1, dArg_2`.
+
+6. **LHS output** `Γ_1; s_1 ⊢ (λx≤t_1.u_1) v_1 → u_3[x\v_3]` via Me-Bet,
+   bridging `d_1` from `{v_1,.equ}` to `{t_1,.sub}` via
+   `equ_to_sub_head_replace_NoPromotion` using the Moreover-delivered
+   `d_1.NP-0`.
+
+7. **RHS output** `Γ_2; s_2 ⊢ u_2[x\v_2] → u_3[x\v_3]` via the paper's
+   **`.equ`-head Lemma 32** (`Lemma_32_EquHead_proved_closed`) on
+   `d_2 : MEqRed ({v_2,.equ}::Γ_2) ... u_2 u_3` with arg reduction
+   `dArg_2 : MEqRed Γ_2 [] v_2 v_3`. The stack simplifies via
+   `Stack.instantiate_shift_zero_id`.
+
+This inline produces the diamond conclusion (existence of `t_3, d_1_out,
+d_2_out`) without the outer Moreover witness. The outer Moreover requires
+NP-propagation through `Me-Bet` (LHS) and `Lemma 32 EquHead` (RHS); both
+will be handled at the full-bundle assembly with the
+`Lemma_32_EquHead_PreservesNP_Payload` residual.
+
+## Helper: `bridgeSubToEquHead.1` interface
+
+The `.sub → .equ` head bridge from `Pss.Paper.Lemma_2_BundleProof`
+returns `Σ' (h', _)` where `h'` is the bridged derivation. The `.1`
+projection (the bridged derivation itself) inherits NP-0 from the
+source's trivial NP-0 at `.sub`-head via `bridgeSubToEquHead_NP_zero`. -/
+
+/-- Stack-simplification helper: `Stack.instantiate 0 v (Stack.shift 0 s) = s`.
+Re-exported from `Lemma_2_BundleProof` via re-derivation, since the
+original is `private`. Internal to this file. -/
+private theorem Stack.instantiate_shift_zero_id_general (v : Term) (s : Stack) :
+    Stack.instantiate 0 v (Stack.shift 0 s) = s := by
+  have h := Stack.instantiate_shiftBy_zero_tail (n := 0) (v := v) (s := s)
+  have hsBy_zero : ∀ (sx : Stack), Stack.shiftBy 0 0 sx = sx := by
+    intro sx
+    induction sx with
+    | nil => rfl
+    | cons α t ih =>
+        show Term.shiftBy 0 0 α :: Stack.shiftBy 0 0 t = α :: t
+        rw [Term.shiftBy_zero_id, ih]
+  rw [hsBy_zero] at h
+  simpa [Term.shiftBy_zero_id, Stack.shift] using h
+
+/-- **Paper-faithful App × Bet diamond conclusion** (paper p. 9:22–23).
+
+Given the inverted form of the Me-App source (Me-FOp body at
+`.equ`-head bound `v_0`) and the Me-Bet source, plus body and arg
+recursive IHs at the bundle's `MoreoverDiamondGeneral` shape — both
+operating on the body sources after the **`.sub → .equ` head bridge**
+— produces the AppBet diamond conclusion.
+
+The body IH is invoked at `{v_0,.equ}::Γ_0; shift 0 s_0` with both
+sources at the common `.equ`-head context. The arg IH is at `Γ_0; nil`.
+
+The output drops the outer Moreover witness (deferred to the full
+bundle assembly, conditional on NP-propagation through Lemma 32 EquHead). -/
+theorem Lemma_2_PaperFaithful_AppBet
+    {Γ₀ : Ctx} {s₀ : Stack}
+    {t₀_inner u₀ u₁ u₂ v₀ v₁ v₂ t₁ : Term}
+    (hT₁ : MEqRed Γ₀ [] t₀_inner t₁)
+    (hv₀Scoped : Term.Scoped Γ₀.depth v₀)
+    (hBody₁ : MEqRed ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₁)
+    (hArg₁ : MEqRed Γ₀ [] v₀ v₁)
+    (ht₀_innerScoped : Term.Scoped Γ₀.depth t₀_inner)
+    (hBody₂ : MEqRed ({bound := t₀_inner, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₂)
+    (hArg₂ : MEqRed Γ₀ [] v₀ v₂)
+    -- Body IH operates on (hBody₁, bridged hBody₂). The asymmetric
+    -- Moreover clause needed downstream: `h_2_bridged.NP-0 → d_1.NP-0`.
+    (hBodyIH :
+      MoreoverDiamondGeneral hBody₁
+        (MEqRed.bridgeSubToEquHead hBody₂ hv₀Scoped).1)
+    (hArgIH : MoreoverDiamondGeneral hArg₁ hArg₂)
+    {Γ₁ s₁ Γ₂ s₂ : _}
+    (he₁ : ContextEvolution Γ₀ s₀ Γ₁ s₁)
+    (he₂ : ContextEvolution Γ₀ s₀ Γ₂ s₂) :
+    ∃ (t₃ : Term),
+      MEqRedJ Γ₁ s₁ (.app (.abs t₁ u₁) v₁) t₃ ∧
+      MEqRedJ Γ₂ s₂ (Term.instantiate 0 v₂ u₂) t₃ := by
+  -- Lift evolutions to body context via cons_evolve with the arg reductions.
+  -- LHS body: {v_0,.equ}::Γ_0 evolves to {v_1,.equ}::Γ_1 via hArg₁ (Ct-Ann).
+  -- RHS body: {v_0,.equ}::Γ_0 evolves to {v_2,.equ}::Γ_2 via hArg₂ (Ct-Ann).
+  let heBody₁ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₁, kind := .equ} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_evolve he₁ hArg₁
+  let heBody₂ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₂, kind := .equ} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_evolve he₂ hArg₂
+  -- Body IH delivers u_3 at the common evolved body contexts with
+  -- Moreover crossing NP-0 from h_2_bridged (= bridge.1, trivially NP-0)
+  -- to d_1.
+  obtain ⟨u_3, d_1, d_2, hMBody⟩ := hBodyIH heBody₁ heBody₂
+  -- NP-0 on the bridged source (= bridge.1). The source `hBody₂` is at
+  -- `.sub`-head, hence has trivial NP-0; the bridge preserves NP-0.
+  have hBridged_NP_0 :
+      (MEqRed.bridgeSubToEquHead hBody₂ hv₀Scoped).1.NoPromotionOf 0 :=
+    bridgeSubToEquHead_NP_zero hBody₂ hv₀Scoped
+  -- Moreover crossing: bridged.NP-0 → d_1.NP-0.
+  have hd_1_NP_0 : d_1.NoPromotionOf 0 := (hMBody 0).2 hBridged_NP_0
+  -- Arg IH at Γ_0; [] with evolutions stripped via Lemma 36.
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, dArg_1, dArg_2, _⟩ := hArgIH hArgEv₁ hArgEv₂
+  -- Scoping witnesses at evolved contexts.
+  have ht₁Scoped : Term.Scoped Γ₁.depth t₁ := by
+    have h : Term.Scoped Γ₀.depth t₁ := hT₁.scoped_right
+    rw [he₁.preserves_ctx_depth] at h
+    exact h
+  have hv₂Scoped₂ : Term.Scoped Γ₂.depth v₂ := dArg_2.scoped_left
+  have hv_3Scoped₂ : Term.Scoped Γ₂.depth v_3 := dArg_2.scoped_right
+  -- LHS output: build via Me-Bet from `d_1` bridged to `.sub`-head bound `t_1`.
+  let d_1_bridged : MEqRed ({bound := t₁, kind := .sub} :: Γ₁)
+      (Stack.shift 0 s₁) u₁ u_3 :=
+    d_1.equ_to_sub_head_replace_NoPromotion hd_1_NP_0 ht₁Scoped
+  let hLHS_out : MEqRed Γ₁ s₁
+      (.app (.abs t₁ u₁) v₁) (Term.instantiate 0 v_3 u_3) :=
+    MEqRed.bet ht₁Scoped d_1_bridged dArg_1
+  -- RHS output: build via Lemma 32 EquHead on `d_2` at `{v_2,.equ}::Γ_2`.
+  -- Lemma 32 EquHead with arg = v_2, arg' = v_3:
+  --   `MEqRed Γ_2 (Stack.instantiate 0 v_2 (shift 0 s_2))
+  --              (instantiate 0 v_2 u_2) (instantiate 0 v_3 u_3)`.
+  -- Simplify stack: Stack.instantiate 0 v_2 (shift 0 s_2) = s_2.
+  have hRHS_pre :=
+    Lemma_32_EquHead_proved_closed hv₂Scoped₂ hv_3Scoped₂ dArg_2 d_2
+  have hStackSimp :
+      Stack.instantiate 0 v₂ (Stack.shift 0 s₂) = s₂ :=
+    Stack.instantiate_shift_zero_id_general v₂ s₂
+  rw [hStackSimp] at hRHS_pre
+  refine ⟨Term.instantiate 0 v_3 u_3, ⟨hLHS_out⟩, ⟨hRHS_pre⟩⟩
+
+/-! ## Paper-faithful Bet × App inline (paper p. 9:22-23 mirrored)
+
+Symmetric to App × Bet: LHS does Me-Bet, RHS does Me-App. The body
+sources are swapped, but the structure is identical. -/
+
+/-- **Paper-faithful Bet × App diamond conclusion** (paper p. 9:22-23
+mirrored). Symmetric to `Lemma_2_PaperFaithful_AppBet`. -/
+theorem Lemma_2_PaperFaithful_BetApp
+    {Γ₀ : Ctx} {s₀ : Stack}
+    {t₀_inner u₀ u₁ u₂ v₀ v₁ v₂ t₂ : Term}
+    (ht₀_innerScoped : Term.Scoped Γ₀.depth t₀_inner)
+    (hBody₁ : MEqRed ({bound := t₀_inner, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₁)
+    (hArg₁ : MEqRed Γ₀ [] v₀ v₁)
+    (hT₂ : MEqRed Γ₀ [] t₀_inner t₂)
+    (hv₀Scoped : Term.Scoped Γ₀.depth v₀)
+    (hBody₂ : MEqRed ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₂)
+    (hArg₂ : MEqRed Γ₀ [] v₀ v₂)
+    -- Body IH operates on (bridged hBody₁, hBody₂).
+    (hBodyIH :
+      MoreoverDiamondGeneral
+        (MEqRed.bridgeSubToEquHead hBody₁ hv₀Scoped).1
+        hBody₂)
+    (hArgIH : MoreoverDiamondGeneral hArg₁ hArg₂)
+    {Γ₁ s₁ Γ₂ s₂ : _}
+    (he₁ : ContextEvolution Γ₀ s₀ Γ₁ s₁)
+    (he₂ : ContextEvolution Γ₀ s₀ Γ₂ s₂) :
+    ∃ (t₃ : Term),
+      MEqRedJ Γ₁ s₁ (Term.instantiate 0 v₁ u₁) t₃ ∧
+      MEqRedJ Γ₂ s₂ (.app (.abs t₂ u₂) v₂) t₃ := by
+  let heBody₁ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₁, kind := .equ} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_evolve he₁ hArg₁
+  let heBody₂ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₂, kind := .equ} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_evolve he₂ hArg₂
+  obtain ⟨u_3, d_1, d_2, hMBody⟩ := hBodyIH heBody₁ heBody₂
+  -- NP-0 on the bridged LHS source (= bridge.1).
+  have hBridged_NP_0 :
+      (MEqRed.bridgeSubToEquHead hBody₁ hv₀Scoped).1.NoPromotionOf 0 :=
+    bridgeSubToEquHead_NP_zero hBody₁ hv₀Scoped
+  -- Asymmetric Moreover crossing: bridged_h_1.NP-0 → d_2.NP-0.
+  have hd_2_NP_0 : d_2.NoPromotionOf 0 := (hMBody 0).1 hBridged_NP_0
+  -- Arg IH.
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, dArg_1, dArg_2, _⟩ := hArgIH hArgEv₁ hArgEv₂
+  -- Scoping witnesses.
+  have ht₂Scoped : Term.Scoped Γ₂.depth t₂ := by
+    have h : Term.Scoped Γ₀.depth t₂ := hT₂.scoped_right
+    rw [he₂.preserves_ctx_depth] at h
+    exact h
+  have hv₁Scoped₁ : Term.Scoped Γ₁.depth v₁ := dArg_1.scoped_left
+  have hv_3Scoped₁ : Term.Scoped Γ₁.depth v_3 := dArg_1.scoped_right
+  -- LHS output: Lemma 32 EquHead on `d_1` at `{v_1,.equ}::Γ_1`.
+  have hLHS_pre :=
+    Lemma_32_EquHead_proved_closed hv₁Scoped₁ hv_3Scoped₁ dArg_1 d_1
+  have hStackSimp :
+      Stack.instantiate 0 v₁ (Stack.shift 0 s₁) = s₁ :=
+    Stack.instantiate_shift_zero_id_general v₁ s₁
+  rw [hStackSimp] at hLHS_pre
+  -- RHS output: Me-Bet using `d_2` bridged to `.sub`-head bound `t_2`.
+  let d_2_bridged : MEqRed ({bound := t₂, kind := .sub} :: Γ₂)
+      (Stack.shift 0 s₂) u₂ u_3 :=
+    d_2.equ_to_sub_head_replace_NoPromotion hd_2_NP_0 ht₂Scoped
+  let hRHS_out : MEqRed Γ₂ s₂
+      (.app (.abs t₂ u₂) v₂) (Term.instantiate 0 v_3 u_3) :=
+    MEqRed.bet ht₂Scoped d_2_bridged dArg_2
+  refine ⟨Term.instantiate 0 v_3 u_3, ⟨hLHS_pre⟩, ⟨hRHS_out⟩⟩
+
 end Paper
 end DeBruijn
 end Pss
