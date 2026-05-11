@@ -7,6 +7,7 @@ import Pss.Paper.Lemma_2_EqDiamondsWithMoreover
 import Pss.Paper.Aux.EvolutionTransport
 import Pss.Paper.Aux.CommutativityWeakening
 import Pss.Paper.Investigation.Lemma_32_EquHead
+import Pss.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric
 
 /-! # `Pss.Paper.Lemma_2_DiamondGeneral` — paper Lemma 2's general-context
 diamond, paper-faithful AppBet/BetApp inlines, and `UniformEqDiamonds`
@@ -450,6 +451,299 @@ theorem Lemma_2_PaperFaithful_BetApp
       (.app (.abs t₂ u₂) v₂) (Term.instantiate 0 v_3 u_3) :=
     MEqRed.bet ht₂Scoped d_2_bridged dArg_2
   refine ⟨Term.instantiate 0 v_3 u_3, ⟨hLHS_pre⟩, ⟨hRHS_out⟩⟩
+
+/-! ## Phase 3a — Lemma 32 EquHead NP-preservation payload
+
+The cross-β AppBet/BetApp outer Moreover witness requires NP-preservation
+through Lemma 32 EquHead's substitution: given a body `MEqRed
+({arg,.equ}::Γ) s lhs rhs` with NP-(x+1), and an arg reduction `MEqRed Γ
+[] arg arg'` with NP-x, the substituted output `MEqRed Γ
+(Stack.instantiate 0 arg s) (Term.instantiate 0 arg lhs) (Term.instantiate
+0 arg' rhs)` has NP-x.
+
+This is the `.equ`-head analog of the existing `Lemma_32_PreservesNP_Payload`
+(which is for the `.sub`-head, kind-narrowed form used by BetBet). Like its
+`.sub`-head sibling, this payload is structurally provable by induction on
+`Lemma_32_EquHead_via_wall`'s construction; the proof effort is comparable
+to `Lemma_32_PreservesNP_Payload` and is deferred to a dedicated dispatch.
+
+The bundle's AppBet/BetApp cells take this payload as a residual; downstream
+the bundle is conditional on it (mirroring the existing pattern). -/
+
+/-- **Lemma 32 EquHead NP-preservation payload.**
+
+NP-x of `Lemma_32_EquHead_proved_closed` output, given NP-(x+1) of body
+input and NP-x of arg input. Paper-faithful to the `.equ`-head substitution
+case. Companion to `Lemma_32_PreservesNP_Payload` (`.sub`-head form). -/
+def Lemma_32_EquHead_PreservesNP_Payload : Prop :=
+  ∀ {Γ : Ctx} {arg arg' lhs rhs : Term} {s : Stack}
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hArgArg' : MEqRed Γ [] arg arg')
+    (h : MEqRed ({bound := arg, kind := .equ} :: Γ) s lhs rhs)
+    (x : Nat),
+    h.NoPromotionOf (x + 1) →
+    hArgArg'.NoPromotionOf x →
+    (Lemma_32_EquHead_proved_closed hArgScoped hArg'Scoped hArgArg' h).NoPromotionOf x
+
+/-! ## Phase 3a — strengthened AppBet/BetApp with outer Moreover
+
+The strengthened paper-faithful inlines produce the full
+`MoreoverDiamondGeneral` shape — diamond conclusion + asymmetric Moreover
+witness — conditional on the Lemma 32 NP payloads. The Moreover witness
+on the outer outputs is established by:
+
+* **LHS output (Me-Bet rebuild):** NP-x of `MEqRed.bet ht d_1_bridged dArg_1`
+  unfolds to `(NP-(x+1) d_1_bridged) ∧ (NP-x dArg_1)`. Each conjunct is
+  established from the body/arg IH's Moreover crossings + bridge
+  NP-preservation.
+
+* **RHS output (Lemma 32 EquHead application):** NP-x of the Lemma 32
+  EquHead output is delivered by `Lemma_32_EquHead_PreservesNP_Payload`
+  applied to NP-(x+1) of `d_2` (body) and NP-x of `dArg_2` (arg). -/
+
+/-- **Strengthened paper-faithful App × Bet** with full Moreover output.
+
+Produces the `MoreoverDiamondGeneral`-shape Σ-type at the call site:
+diamond conclusion plus the asymmetric Moreover witness, conditional on
+`Lemma_32_EquHead_PreservesNP_Payload`. -/
+theorem Lemma_2_PaperFaithful_AppBet_Moreover
+    (hLem32EquHeadNP : Lemma_32_EquHead_PreservesNP_Payload)
+    {Γ₀ : Ctx} {s₀ : Stack}
+    {t₀_inner u₀ u₁ u₂ v₀ v₁ v₂ t₁ : Term}
+    (hT₁ : MEqRed Γ₀ [] t₀_inner t₁)
+    (hv₀Scoped : Term.Scoped Γ₀.depth v₀)
+    (hBody₁ : MEqRed ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₁)
+    (hArg₁ : MEqRed Γ₀ [] v₀ v₁)
+    (ht₀_innerScoped : Term.Scoped Γ₀.depth t₀_inner)
+    (hBody₂ : MEqRed ({bound := t₀_inner, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₂)
+    (hArg₂ : MEqRed Γ₀ [] v₀ v₂)
+    (hBodyIH :
+      MoreoverDiamondGeneral hBody₁
+        (MEqRed.bridgeSubToEquHead hBody₂ hv₀Scoped).1)
+    (hArgIH : MoreoverDiamondGeneral hArg₁ hArg₂)
+    {Γ₁ s₁ Γ₂ s₂ : _}
+    (he₁ : ContextEvolution Γ₀ s₀ Γ₁ s₁)
+    (he₂ : ContextEvolution Γ₀ s₀ Γ₂ s₂) :
+    ∃ (t₃ : Term)
+      (d₁ : MEqRed Γ₁ s₁ (.app (.abs t₁ u₁) v₁) t₃)
+      (d₂ : MEqRed Γ₂ s₂ (Term.instantiate 0 v₂ u₂) t₃),
+      ∀ (x : Nat),
+        ((MEqRed.app
+            (MEqRed.fOp hT₁ hv₀Scoped hBody₁) hArg₁).NoPromotionOf x →
+          d₂.NoPromotionOf x) ∧
+        ((MEqRed.bet ht₀_innerScoped hBody₂ hArg₂).NoPromotionOf x →
+          d₁.NoPromotionOf x) := by
+  let heBody₁ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₁, kind := .equ} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_evolve he₁ hArg₁
+  let heBody₂ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₂, kind := .equ} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_evolve he₂ hArg₂
+  obtain ⟨u_3, d_1, d_2, hMBody⟩ := hBodyIH heBody₁ heBody₂
+  have hBridged_NP_0 :
+      (MEqRed.bridgeSubToEquHead hBody₂ hv₀Scoped).1.NoPromotionOf 0 :=
+    bridgeSubToEquHead_NP_zero hBody₂ hv₀Scoped
+  have hd_1_NP_0 : d_1.NoPromotionOf 0 := (hMBody 0).2 hBridged_NP_0
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, dArg_1, dArg_2, hMArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  have ht₁Scoped : Term.Scoped Γ₁.depth t₁ := by
+    have h : Term.Scoped Γ₀.depth t₁ := hT₁.scoped_right
+    rw [he₁.preserves_ctx_depth] at h
+    exact h
+  have hv₂Scoped₂ : Term.Scoped Γ₂.depth v₂ := dArg_2.scoped_left
+  have hv_3Scoped₂ : Term.Scoped Γ₂.depth v_3 := dArg_2.scoped_right
+  let d_1_bridged : MEqRed ({bound := t₁, kind := .sub} :: Γ₁)
+      (Stack.shift 0 s₁) u₁ u_3 :=
+    d_1.equ_to_sub_head_replace_NoPromotion hd_1_NP_0 ht₁Scoped
+  let hLHS_out : MEqRed Γ₁ s₁
+      (.app (.abs t₁ u₁) v₁) (Term.instantiate 0 v_3 u_3) :=
+    MEqRed.bet ht₁Scoped d_1_bridged dArg_1
+  have hStackSimp :
+      Stack.instantiate 0 v₂ (Stack.shift 0 s₂) = s₂ :=
+    Stack.instantiate_shift_zero_id_general v₂ s₂
+  let hRHS_pre :
+      MEqRed Γ₂ (Stack.instantiate 0 v₂ (Stack.shift 0 s₂))
+        (Term.instantiate 0 v₂ u₂) (Term.instantiate 0 v_3 u_3) :=
+    Lemma_32_EquHead_proved_closed hv₂Scoped₂ hv_3Scoped₂ dArg_2 d_2
+  let hRHS_out : MEqRed Γ₂ s₂
+      (Term.instantiate 0 v₂ u₂) (Term.instantiate 0 v_3 u_3) :=
+    hStackSimp ▸ hRHS_pre
+  refine ⟨Term.instantiate 0 v_3 u_3, hLHS_out, hRHS_out, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · -- h_1.NP-x → d_2.NP-x. h_1 = MEqRed.app (MEqRed.fOp hT₁ hv₀Scoped hBody₁) hArg₁.
+    -- h_1.NP-x = (NP-x (fOp hT₁ ... hBody₁)) ∧ (NP-x hArg₁)
+    --         = ((NP-x hT₁) ∧ (NP-(x+1) hBody₁)) ∧ (NP-x hArg₁).
+    -- d_2 = hRHS_out = hStackSimp ▸ (Lemma_32_EquHead applied to d_2).
+    -- NP-x of d_2 via the Lemma 32 EquHead NP payload from NP-(x+1) of body
+    -- diamond's d_2 + NP-x of arg's dArg_2.
+    intro h₁np
+    have hBodyOuterNP : hBody₁.NoPromotionOf (x + 1) := h₁np.1.2
+    have hArgOuterNP : hArg₁.NoPromotionOf x := h₁np.2
+    have hd_2_body_NP : d_2.NoPromotionOf (x + 1) :=
+      (hMBody (x + 1)).1 hBodyOuterNP
+    have hdArg_2_NP : dArg_2.NoPromotionOf x := (hMArg x).1 hArgOuterNP
+    have hPre : hRHS_pre.NoPromotionOf x :=
+      hLem32EquHeadNP hv₂Scoped₂ hv_3Scoped₂ dArg_2 d_2 x hd_2_body_NP hdArg_2_NP
+    show MEqRed.NoPromotionOf x hRHS_out
+    -- hRHS_out = hStackSimp ▸ hRHS_pre. NP-x propagates through Eq.rec.
+    have hMotive : ∀ (s' : Stack)
+      (heq : Stack.instantiate 0 v₂ (Stack.shift 0 s₂) = s')
+      (d : MEqRed Γ₂ s'
+        (Term.instantiate 0 v₂ u₂) (Term.instantiate 0 v_3 u_3)),
+      d = heq ▸ hRHS_pre →
+      MEqRed.NoPromotionOf x d := by
+        intro s' heq d hd
+        subst heq
+        subst hd
+        exact hPre
+    exact hMotive _ _ _ rfl
+  · -- h_2.NP-x → d_1.NP-x. h_2 = MEqRed.bet ht₀ hBody₂ hArg₂.
+    -- h_2.NP-x = (NP-(x+1) hBody₂) ∧ (NP-x hArg₂).
+    -- d_1 = MEqRed.bet ht₁Scoped d_1_bridged dArg_1.
+    -- d_1.NP-x = (NP-(x+1) d_1_bridged) ∧ (NP-x dArg_1).
+    -- NP-(x+1) d_1_bridged = NP-(x+1) of equ_to_sub_head_replace_NoPromotion d_1 ht₁ ...
+    -- For x ≥ 0, x+1 ≠ 0, so equ_to_sub_head_replace_NoPromotion_preserves_NP gives:
+    --   NP-(x+1) d_1 → NP-(x+1) d_1_bridged.
+    -- The bridged source hBody₂ has NP-(x+1) by hypothesis; bridgeSubToEquHead
+    -- preserves NP. Use Moreover crossing (bridged_h₂ → d_1).
+    intro h₂np
+    have hBody₂NP : hBody₂.NoPromotionOf (x + 1) := h₂np.1
+    have hArg₂NP : hArg₂.NoPromotionOf x := h₂np.2
+    have hBridged_NP :
+        (MEqRed.bridgeSubToEquHead hBody₂ hv₀Scoped).1.NoPromotionOf (x + 1) :=
+      bridgeSubToEquHead_preserves_NP hBody₂ hv₀Scoped (x + 1) hBody₂NP
+    have hd_1_body_NP : d_1.NoPromotionOf (x + 1) :=
+      (hMBody (x + 1)).2 hBridged_NP
+    have hdArg_1_NP : dArg_1.NoPromotionOf x := (hMArg x).2 hArg₂NP
+    -- NP-(x+1) of d_1_bridged via equ_to_sub_head_replace_NoPromotion_preserves_NP.
+    have hd_1_bridged_NP : d_1_bridged.NoPromotionOf (x + 1) :=
+      MEqRed.equ_to_sub_head_replace_NoPromotion_preserves_NP
+        d_1 hd_1_NP_0 ht₁Scoped (x + 1) (by omega) hd_1_body_NP
+    -- Output NP-x = NP-(x+1) d_1_bridged ∧ NP-x dArg_1.
+    exact ⟨hd_1_bridged_NP, hdArg_1_NP⟩
+
+/-- **Strengthened paper-faithful Bet × App** with full Moreover output.
+Symmetric to `Lemma_2_PaperFaithful_AppBet_Moreover`. -/
+theorem Lemma_2_PaperFaithful_BetApp_Moreover
+    (hLem32EquHeadNP : Lemma_32_EquHead_PreservesNP_Payload)
+    {Γ₀ : Ctx} {s₀ : Stack}
+    {t₀_inner u₀ u₁ u₂ v₀ v₁ v₂ t₂ : Term}
+    (ht₀_innerScoped : Term.Scoped Γ₀.depth t₀_inner)
+    (hBody₁ : MEqRed ({bound := t₀_inner, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₁)
+    (hArg₁ : MEqRed Γ₀ [] v₀ v₁)
+    (hT₂ : MEqRed Γ₀ [] t₀_inner t₂)
+    (hv₀Scoped : Term.Scoped Γ₀.depth v₀)
+    (hBody₂ : MEqRed ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) u₀ u₂)
+    (hArg₂ : MEqRed Γ₀ [] v₀ v₂)
+    (hBodyIH :
+      MoreoverDiamondGeneral
+        (MEqRed.bridgeSubToEquHead hBody₁ hv₀Scoped).1
+        hBody₂)
+    (hArgIH : MoreoverDiamondGeneral hArg₁ hArg₂)
+    {Γ₁ s₁ Γ₂ s₂ : _}
+    (he₁ : ContextEvolution Γ₀ s₀ Γ₁ s₁)
+    (he₂ : ContextEvolution Γ₀ s₀ Γ₂ s₂) :
+    ∃ (t₃ : Term)
+      (d₁ : MEqRed Γ₁ s₁ (Term.instantiate 0 v₁ u₁) t₃)
+      (d₂ : MEqRed Γ₂ s₂ (.app (.abs t₂ u₂) v₂) t₃),
+      ∀ (x : Nat),
+        ((MEqRed.bet ht₀_innerScoped hBody₁ hArg₁).NoPromotionOf x →
+          d₂.NoPromotionOf x) ∧
+        ((MEqRed.app
+            (MEqRed.fOp hT₂ hv₀Scoped hBody₂) hArg₂).NoPromotionOf x →
+          d₁.NoPromotionOf x) := by
+  let heBody₁ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₁, kind := .equ} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_evolve he₁ hArg₁
+  let heBody₂ : ContextEvolution ({bound := v₀, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := v₂, kind := .equ} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_evolve he₂ hArg₂
+  obtain ⟨u_3, d_1, d_2, hMBody⟩ := hBodyIH heBody₁ heBody₂
+  have hBridged_NP_0 :
+      (MEqRed.bridgeSubToEquHead hBody₁ hv₀Scoped).1.NoPromotionOf 0 :=
+    bridgeSubToEquHead_NP_zero hBody₁ hv₀Scoped
+  have hd_2_NP_0 : d_2.NoPromotionOf 0 := (hMBody 0).1 hBridged_NP_0
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, dArg_1, dArg_2, hMArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  have ht₂Scoped : Term.Scoped Γ₂.depth t₂ := by
+    have h : Term.Scoped Γ₀.depth t₂ := hT₂.scoped_right
+    rw [he₂.preserves_ctx_depth] at h
+    exact h
+  have hv₁Scoped₁ : Term.Scoped Γ₁.depth v₁ := dArg_1.scoped_left
+  have hv_3Scoped₁ : Term.Scoped Γ₁.depth v_3 := dArg_1.scoped_right
+  have hStackSimp :
+      Stack.instantiate 0 v₁ (Stack.shift 0 s₁) = s₁ :=
+    Stack.instantiate_shift_zero_id_general v₁ s₁
+  let hLHS_pre :
+      MEqRed Γ₁ (Stack.instantiate 0 v₁ (Stack.shift 0 s₁))
+        (Term.instantiate 0 v₁ u₁) (Term.instantiate 0 v_3 u_3) :=
+    Lemma_32_EquHead_proved_closed hv₁Scoped₁ hv_3Scoped₁ dArg_1 d_1
+  let hLHS_out : MEqRed Γ₁ s₁
+      (Term.instantiate 0 v₁ u₁) (Term.instantiate 0 v_3 u_3) :=
+    hStackSimp ▸ hLHS_pre
+  let d_2_bridged : MEqRed ({bound := t₂, kind := .sub} :: Γ₂)
+      (Stack.shift 0 s₂) u₂ u_3 :=
+    d_2.equ_to_sub_head_replace_NoPromotion hd_2_NP_0 ht₂Scoped
+  let hRHS_out : MEqRed Γ₂ s₂
+      (.app (.abs t₂ u₂) v₂) (Term.instantiate 0 v_3 u_3) :=
+    MEqRed.bet ht₂Scoped d_2_bridged dArg_2
+  refine ⟨Term.instantiate 0 v_3 u_3, hLHS_out, hRHS_out, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · -- h_1.NP-x → d_2.NP-x. h_1 = MEqRed.bet ht₀ hBody₁ hArg₁.
+    -- d_2 = hRHS_out = MEqRed.bet ht₂Scoped d_2_bridged dArg_2.
+    -- d_2.NP-x = (NP-(x+1) d_2_bridged) ∧ (NP-x dArg_2).
+    intro h₁np
+    have hBody₁NP : hBody₁.NoPromotionOf (x + 1) := h₁np.1
+    have hArg₁NP : hArg₁.NoPromotionOf x := h₁np.2
+    have hBridged_NP :
+        (MEqRed.bridgeSubToEquHead hBody₁ hv₀Scoped).1.NoPromotionOf (x + 1) :=
+      bridgeSubToEquHead_preserves_NP hBody₁ hv₀Scoped (x + 1) hBody₁NP
+    have hd_2_body_NP : d_2.NoPromotionOf (x + 1) :=
+      (hMBody (x + 1)).1 hBridged_NP
+    have hdArg_2_NP : dArg_2.NoPromotionOf x := (hMArg x).1 hArg₁NP
+    have hd_2_bridged_NP : d_2_bridged.NoPromotionOf (x + 1) :=
+      MEqRed.equ_to_sub_head_replace_NoPromotion_preserves_NP
+        d_2 hd_2_NP_0 ht₂Scoped (x + 1) (by omega) hd_2_body_NP
+    exact ⟨hd_2_bridged_NP, hdArg_2_NP⟩
+  · -- h_2.NP-x → d_1.NP-x. h_2 = MEqRed.app (MEqRed.fOp hT₂ hv₀Scoped hBody₂) hArg₂.
+    -- d_1 = hLHS_out = hStackSimp ▸ Lemma_32_EquHead output.
+    intro h₂np
+    have hBodyOuterNP : hBody₂.NoPromotionOf (x + 1) := h₂np.1.2
+    have hArgOuterNP : hArg₂.NoPromotionOf x := h₂np.2
+    have hd_1_body_NP : d_1.NoPromotionOf (x + 1) :=
+      (hMBody (x + 1)).2 hBodyOuterNP
+    have hdArg_1_NP : dArg_1.NoPromotionOf x := (hMArg x).2 hArgOuterNP
+    have hPre : hLHS_pre.NoPromotionOf x :=
+      hLem32EquHeadNP hv₁Scoped₁ hv_3Scoped₁ dArg_1 d_1 x hd_1_body_NP hdArg_1_NP
+    show MEqRed.NoPromotionOf x hLHS_out
+    have hMotive : ∀ (s' : Stack)
+      (heq : Stack.instantiate 0 v₁ (Stack.shift 0 s₁) = s')
+      (d : MEqRed Γ₁ s'
+        (Term.instantiate 0 v₁ u₁) (Term.instantiate 0 v_3 u_3)),
+      d = heq ▸ hLHS_pre →
+      MEqRed.NoPromotionOf x d := by
+        intro s' heq d hd
+        subst heq
+        subst hd
+        exact hPre
+    exact hMotive _ _ _ rfl
 
 end Paper
 end DeBruijn
