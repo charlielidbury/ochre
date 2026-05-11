@@ -881,6 +881,170 @@ theorem MoreoverDiamond_fun_fun {Γ : Ctx} {t₀ body₀ t_1 t_2 body_1 body_2 :
     · exact bridgeSubToSubHead_preserves_NP d_1_body hT_1 (x + 1)
         ((hMBody (x + 1)).2 h_2np.2)
 
+/-! ## Lemma 32 NP-preservation residual
+
+For BetBet, AppBet, BetApp cells: the bundle's outputs use
+`Lemma_32_KindNarrowedAsymmetric_proved_closed` to produce a single
+β-substitution step `(instantiate 0 arg lhs) → (instantiate 0 arg' rhs)`.
+For asymmetric Moreover NP propagation, we need:
+
+> *Lemma 32 NP-preservation.* For all x: if the body input
+> `h : MEqRed ({t,.sub}::Γ) s lhs rhs` has `NP-(x+1) h`, AND the arg
+> input `hArgArg' : MEqRed Γ [] arg arg'` has `NP-x hArgArg'`, then
+> the Lemma 32 output has `NP-x`.
+
+This is a structural claim about Lemma 32's internal construction.
+Pending a proper proof of this NP-preservation lemma, the bundle's
+BetBet, AppBet, BetApp cells take it as a `Prop` residual; downstream,
+the `UniformEqDiamonds_proved` becomes conditional on this residual. -/
+
+/-- The Lemma 32 NP-preservation payload, as a `Prop` residual. -/
+def Lemma_32_PreservesNP_Payload : Prop :=
+  ∀ {Γ : Ctx} {t arg arg' lhs rhs : Term} {s : Stack}
+    (htScoped : Term.Scoped Γ.depth t)
+    (hArgScoped : Term.Scoped Γ.depth arg)
+    (hArg'Scoped : Term.Scoped Γ.depth arg')
+    (hArgArg' : MEqRed Γ [] arg arg')
+    (h : MEqRed ({bound := t, kind := .sub} :: Γ) s lhs rhs)
+    (x : Nat),
+    h.NoPromotionOf (x + 1) →
+    hArgArg'.NoPromotionOf x →
+    (Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+      htScoped hArgScoped hArg'Scoped hArgArg' h).NoPromotionOf x
+
+/-! ## Bundle proof — `Me-Bet × Me-Bet` cell (paper p. 9:25)
+
+Both sides do β. Body IH at `{t₀,.sub}::Γ; shift 0 s` and arg IH at
+`Γ; []` close the inner diamonds; Lemma 32 (kind-narrowed asymmetric)
+lifts each side's diamond to the single β step `(instantiate 0 v_i u_i)
+→ (instantiate 0 v_3 body_3)`. NP propagation through Lemma 32 is
+provided by the `Lemma_32_PreservesNP_Payload` residual. -/
+
+/-- Me-Bet × Me-Bet: both sides do β. Takes the body and arg IHs as
+parameters plus the Lemma 32 NP-preservation payload. -/
+theorem MoreoverDiamond_bet_bet (hLem32NP : Lemma_32_PreservesNP_Payload)
+    {Γ : Ctx} {s : Stack} {t v u u_1 u_2 v_1 v_2 : Term}
+    (ht : Term.Scoped Γ.depth t)
+    (hBody_1 : MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) u u_1)
+    (hArg_1 : MEqRed Γ [] v v_1)
+    (hBody_2 : MEqRed ({bound := t, kind := .sub} :: Γ) (Stack.shift 0 s) u u_2)
+    (hArg_2 : MEqRed Γ [] v v_2)
+    (hBodyIH : MoreoverDiamond ({bound := t, kind := .sub} :: Γ)
+      (Stack.shift 0 s) u u_1 u_2 hBody_1 hBody_2)
+    (hArgIH : MoreoverDiamond Γ [] v v_1 v_2 hArg_1 hArg_2) :
+    MoreoverDiamond Γ s (.app (.abs t u) v)
+      (Term.instantiate 0 v_1 u_1) (Term.instantiate 0 v_2 u_2)
+      (MEqRed.bet ht hBody_1 hArg_1) (MEqRed.bet ht hBody_2 hArg_2) := by
+  obtain ⟨u_3, d_1_body, d_2_body, hMBody⟩ := hBodyIH
+  obtain ⟨v_3, d_1_arg, d_2_arg, hMArg⟩ := hArgIH
+  have hv_1Scoped : Term.Scoped Γ.depth v_1 := d_1_arg.scoped_left
+  have hv_2Scoped : Term.Scoped Γ.depth v_2 := d_2_arg.scoped_left
+  have hv_3Scoped : Term.Scoped Γ.depth v_3 := d_1_arg.scoped_right
+  -- Apply Lemma 32 on each side. Stack simplification:
+  -- Stack.instantiate 0 v_i (shift 0 s) = s.
+  have hStackSimp₁ : Stack.instantiate 0 v_1 (Stack.shift 0 s) = s :=
+    Stack.instantiate_shift_zero_id v_1 s
+  have hStackSimp₂ : Stack.instantiate 0 v_2 (Stack.shift 0 s) = s :=
+    Stack.instantiate_shift_zero_id v_2 s
+  -- We need the joint reduct to live at stack s. Use `Eq.mp` on the stack
+  -- equality to convert the Lemma 32 output type. The expression is
+  -- preserved.
+  refine ⟨Term.instantiate 0 v_3 u_3, ?_, ?_, ?_⟩
+  · exact hStackSimp₁ ▸
+      Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+        (Γ := Γ) (t := t) (arg := v_1) (arg' := v_3)
+        (lhs := u_1) (rhs := u_3) (s := Stack.shift 0 s)
+        ht hv_1Scoped hv_3Scoped d_1_arg d_1_body
+  · exact hStackSimp₂ ▸
+      Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+        (Γ := Γ) (t := t) (arg := v_2) (arg' := v_3)
+        (lhs := u_2) (rhs := u_3) (s := Stack.shift 0 s)
+        ht hv_2Scoped hv_3Scoped d_2_arg d_2_body
+  · intro x
+    refine ⟨?_, ?_⟩
+    · -- h_1.NP-x → d_2.NP-x. h_1 = bet ht hBody_1 hArg_1.
+      -- The output is `hStackSimp₂ ▸ Lemma_32_*`. Use Eq.rec on a motive
+      -- that includes the dependent NP-x.
+      intro h_1np
+      have hBody_NP : d_2_body.NoPromotionOf (x + 1) :=
+        (hMBody (x + 1)).1 h_1np.1
+      have hArg_NP : d_2_arg.NoPromotionOf x :=
+        (hMArg x).1 h_1np.2
+      have hPre : (Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+          ht hv_2Scoped hv_3Scoped d_2_arg d_2_body).NoPromotionOf x :=
+        hLem32NP ht hv_2Scoped hv_3Scoped d_2_arg d_2_body x hBody_NP hArg_NP
+      -- The motive is: for any stack s' and (h : Stack.instantiate ... = s'),
+      -- NP-x (h ▸ derivPre) ↔ NP-x derivPre. The forward direction is
+      -- proven by Eq.subst on the equality.
+      let derivPre := Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+        ht hv_2Scoped hv_3Scoped d_2_arg d_2_body
+      show MEqRed.NoPromotionOf x (hStackSimp₂ ▸ derivPre)
+      have hMotive : ∀ (s' : Stack) (h : Stack.instantiate 0 v_2 (Stack.shift 0 s) = s')
+        (d : MEqRed Γ s' (Term.instantiate 0 v_2 u_2) (Term.instantiate 0 v_3 u_3)),
+        d = h ▸ derivPre →
+        MEqRed.NoPromotionOf x d := by
+          intro s' h d hd
+          subst h
+          subst hd
+          exact hPre
+      exact hMotive _ _ _ rfl
+    · intro h_2np
+      have hBody_NP : d_1_body.NoPromotionOf (x + 1) :=
+        (hMBody (x + 1)).2 h_2np.1
+      have hArg_NP : d_1_arg.NoPromotionOf x :=
+        (hMArg x).2 h_2np.2
+      have hPre : (Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+          ht hv_1Scoped hv_3Scoped d_1_arg d_1_body).NoPromotionOf x :=
+        hLem32NP ht hv_1Scoped hv_3Scoped d_1_arg d_1_body x hBody_NP hArg_NP
+      let derivPre := Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+        ht hv_1Scoped hv_3Scoped d_1_arg d_1_body
+      show MEqRed.NoPromotionOf x (hStackSimp₁ ▸ derivPre)
+      have hMotive : ∀ (s' : Stack) (h : Stack.instantiate 0 v_1 (Stack.shift 0 s) = s')
+        (d : MEqRed Γ s' (Term.instantiate 0 v_1 u_1) (Term.instantiate 0 v_3 u_3)),
+        d = h ▸ derivPre →
+        MEqRed.NoPromotionOf x d := by
+          intro s' h d hd
+          subst h
+          subst hd
+          exact hPre
+      exact hMotive _ _ _ rfl
+
+/-! ## Bundle proof — `Me-FOp × Me-FOp` cell (paper p. 9:24)
+
+Both sides pop the same α from the stack into an `.equ`-head body
+context. Unlike FunFun, the body context's bound is `α` (popped from
+the stack) — NOT the abstraction's source bound — so the body outputs
+live at the same `{α,.equ}::Γ` context on both sides, no bridge
+needed. -/
+
+/-- Me-FOp × Me-FOp: both sides pop the same α from the stack. -/
+theorem MoreoverDiamond_fOp_fOp {Γ : Ctx} {s : Stack}
+    {t₀ body₀ α t_1 t_2 body_1 body_2 : Term}
+    (hT_1 : MEqRed Γ [] t₀ t_1)
+    (hα : Term.Scoped Γ.depth α)
+    (hBody_1 : MEqRed ({bound := α, kind := .equ} :: Γ) (Stack.shift 0 s)
+      body₀ body_1)
+    (hT_2 : MEqRed Γ [] t₀ t_2)
+    (hBody_2 : MEqRed ({bound := α, kind := .equ} :: Γ) (Stack.shift 0 s)
+      body₀ body_2)
+    (hBoundIH : MoreoverDiamond Γ [] t₀ t_1 t_2 hT_1 hT_2)
+    (hBodyIH : MoreoverDiamond ({bound := α, kind := .equ} :: Γ)
+      (Stack.shift 0 s) body₀ body_1 body_2 hBody_1 hBody_2) :
+    MoreoverDiamond Γ (α :: s) (.abs t₀ body₀) (.abs t_1 body_1) (.abs t_2 body_2)
+      (MEqRed.fOp hT_1 hα hBody_1) (MEqRed.fOp hT_2 hα hBody_2) := by
+  obtain ⟨t_3, d_1_bound, d_2_bound, hMBound⟩ := hBoundIH
+  obtain ⟨body_3, d_1_body, d_2_body, hMBody⟩ := hBodyIH
+  refine ⟨.abs t_3 body_3,
+    MEqRed.fOp d_1_bound hα d_1_body,
+    MEqRed.fOp d_2_bound hα d_2_body,
+    ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · intro h_1np
+    exact ⟨(hMBound x).1 h_1np.1, (hMBody (x + 1)).1 h_1np.2⟩
+  · intro h_2np
+    exact ⟨(hMBound x).2 h_2np.1, (hMBody (x + 1)).2 h_2np.2⟩
+
 /-! ## Status: bundle path
 
 With `MEqRed.bridgeSubToEquHead` shipped (depth-preserving structural
