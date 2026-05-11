@@ -94,6 +94,30 @@ relations the headlines lift to chain output.
   (`top`, `var`, `pro_pro`, `tAp_*`, `appTop_*`, `app_app`, `fun_fun`,
   `fOp_fOp`); cross-β cells route through Group C transports.
 
+  **Discharged (conditional on a smaller payload bundle):**
+  `Pss.DeBruijn.Paper.UniformEqDiamonds_proved_unconditional` (in
+  `Pss/Paper/Lemma_2_DiamondGeneral.lean`) closes this from the smaller
+  `UniformMoreoverDiamondGeneralPayloads` bundle. The bundle aggregates
+  four named residuals: `MoreoverDiamondGeneral_ProVarVarPro_Payload`,
+  `MoreoverDiamondGeneral_VarPro_Payload`, `Lemma_32_PreservesNP_Payload`,
+  `Lemma_32_EquHead_PreservesNP_Payload`. The chain-output Lemma 2
+  closures are re-shipped as
+  `Lemma_2_DeBruijn_DiamondMEqRedStar_proved_unconditional_UniformEqDiamonds`
+  and `..._Chain_proved_unconditional_UniformEqDiamonds`, conditional
+  on the payload bundle plus the three transport/bridge payloads.
+
+  ProVar/VarPro residuals correspond to Me-Pro × Me-Var (and symmetric)
+  cells of paper Lemma 2 (p. 9:21). Paper-faithfulness gap: the paper's
+  bidirectional Moreover for ProVar (the "respectively" clause)
+  requires NP-x of the lifted reduction `α₀ → α_evolved` for all x;
+  the lifted reduction is built via `equBinds_evolve +
+  lift_empty_to_stack` and can contain Me-Pro steps inherited from the
+  evolution's `ctAnn` carriers. The paper p. 9:21 proof body does not
+  trace the Moreover propagation through ProVar explicitly. Discharge
+  would require either an NP-preservation theorem for
+  `equBinds_evolve`'s output (false in general) or restructuring
+  Moreover to be one-directional (loses paper faithfulness).
+
 #### Group B — Theorem 5 operational residuals
 
 Independent of transitivity elimination. Each is needed specifically to
