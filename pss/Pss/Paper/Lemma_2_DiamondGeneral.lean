@@ -43,20 +43,55 @@ evolution. Non-cross-β cells (TopTop, VarVar, TApTAp, ProPro, ProVar,
 AppTAp, FunFun, FOpFOp, BetBet, AppApp) invoke the per-cell theorems in
 `Pss.Paper.Lemma_2_DiamondClosure`.
 
-## Status: Phase 1 — predicate definitions and trivial cells
+## Status
 
-This phase ships:
-* `MoreoverDiamondGeneral` (the Moreover-tracked general-context
-  predicate, asymmetric crossed form per paper p. 9:9).
+**Phase 1 (predicate definitions + trivial cells)** — shipped:
+* `MoreoverDiamondGeneral` (Moreover-tracked general-context predicate,
+  asymmetric crossed form per paper p. 9:9).
 * `UniformMoreoverDiamondGeneral` (universal closure target).
-* Projection `MoreoverDiamondGeneral.toLemma_2_Diamond_Plain` (drops the
-  Moreover witness).
-* `UniformMoreoverDiamondGeneral.toUniformEqDiamonds` (specializes
-  general-context to same-context via `ctRefl`, drops Moreover).
-* Trivial-cell discharges (TopTop, VarVar, TApTAp).
+* Projection `MoreoverDiamondGeneral.toLemma_2_DiamondMEqRed_Conclusion`.
+* `UniformMoreoverDiamondGeneral.toUniformEqDiamonds` (`ctRefl/ctRefl`
+  specialization).
+* Trivial-cell Moreover discharges: TopTop, VarVar, TApTAp.
 
-Subsequent phases will ship the per-case dispatch, paper-faithful
-AppBet/BetApp inlines, and the full bundle recursion.
+**Phase 2 (paper-faithful AppBet / BetApp inlines)** — shipped:
+* `Lemma_2_PaperFaithful_AppBet`: cross-β App×Bet diamond conclusion
+  using Lemma 32 EquHead + cons_evolve (paper p. 9:22-23).
+* `Lemma_2_PaperFaithful_BetApp`: symmetric.
+
+These inlines take body and arg IHs at `MoreoverDiamondGeneral` shape.
+They produce the diamond conclusion (`∃ t₃, MEqRedJ ... ∧ MEqRedJ ...`)
+**without the outer Moreover witness** — that is deferred to Phase 3
+pending the structural NP-preservation lemmas for `Lemma 32 EquHead`
+and `equ_to_sub_head_replace_NoPromotion`.
+
+## Remaining work (Phase 3 onwards)
+
+**Phase 3a — outer Moreover witnesses on AppBet/BetApp.**
+Required structural lemmas:
+* `Lemma_32_EquHead_PreservesNP_Payload`: NP-x of Lemma 32 EquHead
+  output from body's NP-(x+1) and arg's NP-x. Proved by structural
+  induction on the Lemma 32 EquHead `via_wall` construction.
+* `MEqRed.equ_to_sub_head_replace_NoPromotion_preserves_NP`: NP-x
+  preservation through the `.equ → .sub` head bridge (analogous to
+  the existing `bridgeSubToEquHead_preserves_NP`). Proved by structural
+  induction on `MEqRed.replaceAt_equ_to_sub_aux`.
+
+**Phase 3b — non-cross-β Moreover-tracked cells.** ProPro, ProVar/VarPro,
+AppApp (with `MEqRedOpStackHeadTransportPayload`), AppTAp/TApApp,
+FunFun, FOpFOp, BetBet (with `Lemma_32_PreservesNP_Payload`). Most
+mirror the same-context cells in `Lemma_2_BundleProof.lean` with
+`ContextEvolution` evolutions added.
+
+**Phase 3c — bundle recursion.** Structural induction on `h₁` then
+case-split on `h₂`, dispatching to per-cell discharges. Termination
+via `MEqRedDepth h₁ + MEqRedDepth h₂` (custom measure from
+`Lemma_2_BundleProof.lean`).
+
+**Phase 4 — `UniformEqDiamonds_proved` closure.** Projection of
+`UniformMoreoverDiamondGeneral_proved` via `ctRefl/ctRefl`. Wires up
+to discharge the `UniformEqDiamonds` residual in
+`Pss/Mpss/DeBruijnTypeSafety.lean:22241`.
 
 No `sorry`. No new axioms.
 -/
