@@ -307,6 +307,132 @@ noncomputable def MEqRed.equ_to_sub_head_replace_NoPromotion
       (cutoff := 0) rfl hcut hnew' hnp
   simpa [Ctx.replaceAt] using hres
 
+/-! ## NP-preservation of `equ_to_sub_head_replace_NoPromotion`
+
+The `.equ → .sub` head bridge `equ_to_sub_head_replace_NoPromotion`
+preserves `NoPromotionOf x` for **all `x` other than the swapped slot
+itself** (the swapped slot at index 0 changes from `.equ` to `.sub`,
+so its lookup behaviour changes — the `NP-0` precondition is what
+enables the bridge in the first place).
+
+Structurally: the bridge constructs each output via the same `MEqRed`
+constructor as the source, with the same indices/scoping/shape; only
+the underlying prevalidity changes. Therefore `NP-x` for `x ≠ cutoff`
+propagates constructor-for-constructor.
+
+For our cross-β AppBet/BetApp use, we invoke this with cutoff = 0
+(swapping the head slot), and we want `NP-y` for `y ≥ 1`. The proof
+handles arbitrary cutoff to match the structural recursion. -/
+
+/-- Auxiliary: NP-x preservation for `replaceAt_equ_to_sub_aux` for
+any `x ≠ cutoff`. Proved by structural induction mirroring the
+bridge's construction. -/
+theorem MEqRed.replaceAt_equ_to_sub_aux_preserves_NP
+    {Γold : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed Γold s u v)
+    {Γ : Ctx} {cutoff : Nat}
+    (hEq : Γold = Ctx.replaceAt cutoff { bound := old, kind := .equ } Γ)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hnew : Term.Scoped (List.length (List.drop (cutoff + 1) Γ)) new)
+    (hnpCut : h.NoPromotionOf cutoff)
+    (x : Nat) (hne : x ≠ cutoff) (hnpX : h.NoPromotionOf x) :
+    (h.replaceAt_equ_to_sub_aux hEq hcut hnew hnpCut).NoPromotionOf x := by
+  induction h generalizing Γ cutoff x with
+  | @pro _ _ i α α' hpv hb hα ih =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnpX hnpCut
+      obtain ⟨hneCut, hαnpCut⟩ := hnpCut
+      obtain ⟨hneX, hαnpX⟩ := hnpX
+      -- Bridge produces MEqRed.pro hpvNew hbNew innerBridge.
+      -- NP-x of output = i ≠ x ∧ NP-x innerBridge.
+      refine ⟨hneX, ?_⟩
+      exact ih rfl hcut hnew hαnpCut x hne hαnpX
+  | bet ht hBody hArg ihBody ihArg =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnpX hnpCut
+      obtain ⟨hBodyNpCut, hArgNpCut⟩ := hnpCut
+      obtain ⟨hBodyNpX, hArgNpX⟩ := hnpX
+      -- Bridge: MEqRed.bet (scoping) ihBody' (ihArg ...).
+      -- NP-x output = NP-(x+1) bodyBridge ∧ NP-x argBridge.
+      refine ⟨?_, ?_⟩
+      · -- bodyBridge produced at {.,.sub} :: Γ with cutoff + 1. NP-(x+1).
+        -- Need x+1 ≠ cutoff + 1 i.e. x ≠ cutoff. ✓
+        have hne' : x + 1 ≠ cutoff + 1 := by
+          intro hEq
+          exact hne (Nat.succ_injective hEq)
+        have h1 := ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa using hnew)
+          hBodyNpCut (x + 1) hne' hBodyNpX
+        -- Need to massage the `simpa [Ctx.replaceAt]` rewrite. The
+        -- bridge's body output is `by simpa [Ctx.replaceAt] using ihBody'`
+        -- where `ihBody'` is the IH result. NP-x is preserved through
+        -- the `simpa`-rewrite.
+        exact h1
+      · exact ihArg rfl hcut hnew hArgNpCut x hne hArgNpX
+  | top hpv =>
+      cases hEq
+      trivial
+  | app hOp hArg ihOp ihArg =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnpX hnpCut
+      exact ⟨ihOp rfl hcut hnew hnpCut.1 x hne hnpX.1,
+             ihArg rfl hcut hnew hnpCut.2 x hne hnpX.2⟩
+  | var hpv hi =>
+      cases hEq
+      trivial
+  | fun_ hBound hBody ihBound ihBody =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnpX hnpCut
+      obtain ⟨hBoundNpCut, hBodyNpCut⟩ := hnpCut
+      obtain ⟨hBoundNpX, hBodyNpX⟩ := hnpX
+      refine ⟨ihBound rfl hcut hnew hBoundNpCut x hne hBoundNpX, ?_⟩
+      have hne' : x + 1 ≠ cutoff + 1 := by
+        intro hEq
+        exact hne (Nat.succ_injective hEq)
+      exact ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+        rfl
+        (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+        (by simpa using hnew)
+        hBodyNpCut (x + 1) hne' hBodyNpX
+  | tAp hpv hu =>
+      cases hEq
+      trivial
+  | fOp hBound hα hBody ihBound ihBody =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnpX hnpCut
+      obtain ⟨hBoundNpCut, hBodyNpCut⟩ := hnpCut
+      obtain ⟨hBoundNpX, hBodyNpX⟩ := hnpX
+      refine ⟨ihBound rfl hcut hnew hBoundNpCut x hne hBoundNpX, ?_⟩
+      have hne' : x + 1 ≠ cutoff + 1 := by
+        intro hEq
+        exact hne (Nat.succ_injective hEq)
+      exact ihBody (Γ := { bound := _, kind := .equ } :: Γ) (cutoff := cutoff + 1)
+        rfl
+        (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+        (by simpa using hnew)
+        hBodyNpCut (x + 1) hne' hBodyNpX
+
+/-- **NP-preservation of `equ_to_sub_head_replace_NoPromotion`.**
+
+The head specialization at cutoff = 0 preserves `NoPromotionOf y`
+for every `y ≥ 1` (i.e., `y ≠ 0`). The swapped slot itself (0)
+is the precondition's slot. -/
+theorem MEqRed.equ_to_sub_head_replace_NoPromotion_preserves_NP
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .equ } :: Γ) s u v)
+    (hnp : h.NoPromotionOf 0)
+    (hnew : Term.Scoped Γ.depth new)
+    (y : Nat) (hne : y ≠ 0) (hnpY : h.NoPromotionOf y) :
+    (h.equ_to_sub_head_replace_NoPromotion hnp hnew).NoPromotionOf y := by
+  unfold MEqRed.equ_to_sub_head_replace_NoPromotion
+  -- The definition unfolds to `simpa [Ctx.replaceAt] using
+  --   h.replaceAt_equ_to_sub_aux ... rfl hcut hnew' hnp`. NP-y propagates
+  -- through this via the aux preservation lemma at cutoff = 0.
+  simp only [Ctx.replaceAt]
+  exact MEqRed.replaceAt_equ_to_sub_aux_preserves_NP h rfl _ _ hnp y hne hnpY
+
 namespace Paper
 
 /-- The existential `MEqRedJ`-with-side-condition form: a derivation
