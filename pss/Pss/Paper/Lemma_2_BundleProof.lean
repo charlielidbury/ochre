@@ -617,31 +617,235 @@ theorem MoreoverDiamond_tAp_app {Γ : Ctx} {s : Stack}
   intro x
   exact ⟨fun _ => trivial, fun _ => trivial⟩
 
+/-! ## Phase 3 — NP-preservation through `.sub → .sub` head bridge
+
+The `.sub → .sub` head bridge (`MEqRed.sub_head_replace`) replaces a
+`.sub`-head bound `old` with `new` (where `old → new` via a `MEqRed`
+step). The bridge is **total** — no NP required — because `.sub → .sub`
+doesn't affect `equ-binds` lookups (Me-Pro at slot 0 in a `.sub`-head is
+vacuous on both sides).
+
+For the bundle's NP-tracking, we still need to show NP-x is **preserved
+for every x** by the bridge. The bridge is structural (each constructor
+of the source is rebuilt at the new context), so NP-x propagates by
+structural induction on the source.
+
+We define a parallel `bridgeSubToSubHead` analogous to
+`bridgeSubToEquHead`, returning a Σ' with depth equality, then prove
+NP-preservation by structural induction on the source. -/
+
+/-- Parallel `.sub → .sub` head-bound bridge with depth-equality witness.
+Replaces the innermost `.sub` head's bound `old` with `new`. Note: this
+bridge takes `MEqRed Γ [] old new` as input (the underlying transport
+proves preservation of all relevant validity constraints). -/
+noncomputable def bridgeSubToSubWithDepth_aux
+    {Γold : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed Γold s u v) :
+    ∀ {Γ : Ctx} {cutoff : Nat},
+      Γold = Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ →
+      cutoff < Ctx.depth Γ →
+      MEqRed (List.drop (cutoff + 1) Γ) [] old new →
+      Σ' (h' : MEqRed (Ctx.replaceAt cutoff { bound := new, kind := .sub } Γ) s u v),
+        MEqRedDepth h' = MEqRedDepth h := by
+  induction h with
+  | pro hpv hb hα ih =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        unfold CtxEntry.ScopedIn
+        simpa [Ctx.depth] using hOldNew.scoped_right
+      have hpvNew := PrevalidExt.replaceAt_sub_same hpv hcut hnew
+      let ⟨innerBridge, innerDepth⟩ := ih rfl hcut hOldNew
+      refine ⟨MEqRed.pro hpvNew (Ctx.equBinds_replaceAt_sub hb) innerBridge, ?_⟩
+      simp [MEqRedDepth, innerDepth]
+  | bet ht hBody hArg ihBody ihArg =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      let ⟨bodyBridge, bodyDepth⟩ :=
+        ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa [Nat.add_assoc] using hOldNew)
+      let ⟨argBridge, argDepth⟩ := ihArg rfl hcut hOldNew
+      refine ⟨MEqRed.bet (by simpa [Ctx.depth_replaceAt] using ht)
+                         (by simpa [Ctx.replaceAt, Nat.add_assoc] using bodyBridge)
+                         argBridge, ?_⟩
+      show 1 + MEqRedDepth _ + MEqRedDepth argBridge
+        = 1 + MEqRedDepth hBody + MEqRedDepth hArg
+      rw [bodyDepth, argDepth]
+  | top hpv =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        unfold CtxEntry.ScopedIn
+        simpa [Ctx.depth] using hOldNew.scoped_right
+      have hpvNew := PrevalidExt.replaceAt_sub_same hpv hcut hnew
+      refine ⟨MEqRed.top hpvNew, ?_⟩
+      simp [MEqRedDepth]
+  | app hOp hArg ihOp ihArg =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      let ⟨opBridge, opDepth⟩ := ihOp rfl hcut hOldNew
+      let ⟨argBridge, argDepth⟩ := ihArg rfl hcut hOldNew
+      refine ⟨MEqRed.app opBridge argBridge, ?_⟩
+      simp [MEqRedDepth, opDepth, argDepth]
+  | var hpv hi =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        unfold CtxEntry.ScopedIn
+        simpa [Ctx.depth] using hOldNew.scoped_right
+      have hpvNew := PrevalidExt.replaceAt_sub_same hpv hcut hnew
+      refine ⟨MEqRed.var hpvNew (by simpa [Ctx.depth_replaceAt] using hi), ?_⟩
+      simp [MEqRedDepth]
+  | fun_ hBound hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      let ⟨boundBridge, boundDepth⟩ := ihBound rfl hcut hOldNew
+      let ⟨bodyBridge, bodyDepth⟩ :=
+        ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa [Nat.add_assoc] using hOldNew)
+      refine ⟨MEqRed.fun_ boundBridge
+        (by simpa [Ctx.replaceAt, Nat.add_assoc] using bodyBridge), ?_⟩
+      show 1 + MEqRedDepth boundBridge + MEqRedDepth _
+        = 1 + MEqRedDepth hBound + MEqRedDepth hBody
+      rw [boundDepth, bodyDepth]
+  | tAp hpv hu =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      have hnew : CtxEntry.ScopedIn (List.drop (cutoff + 1) Γ)
+          { bound := new, kind := .sub } := by
+        unfold CtxEntry.ScopedIn
+        simpa [Ctx.depth] using hOldNew.scoped_right
+      have hpvNew := PrevalidExt.replaceAt_sub_same hpv hcut hnew
+      refine ⟨MEqRed.tAp hpvNew (by simpa [Ctx.depth_replaceAt] using hu), ?_⟩
+      simp [MEqRedDepth]
+  | fOp hBound hα hBody ihBound ihBody =>
+      intro Γ cutoff hEq hcut hOldNew
+      cases hEq
+      let ⟨boundBridge, boundDepth⟩ := ihBound rfl hcut hOldNew
+      let ⟨bodyBridge, bodyDepth⟩ :=
+        ihBody (Γ := { bound := _, kind := .equ } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa [Nat.add_assoc] using hOldNew)
+      refine ⟨MEqRed.fOp boundBridge
+        (by simpa [Ctx.depth_replaceAt] using hα)
+        (by simpa [Ctx.replaceAt, Nat.add_assoc] using bodyBridge), ?_⟩
+      show 1 + MEqRedDepth boundBridge + MEqRedDepth _
+        = 1 + MEqRedDepth hBound + MEqRedDepth hBody
+      rw [boundDepth, bodyDepth]
+
+/-- The parallel `.sub → .sub` head-bound bridge, with depth equality. -/
+noncomputable def MEqRed.bridgeSubToSubHead
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRed Γ [] old new) :
+    Σ' (h' : MEqRed ({ bound := new, kind := .sub } :: Γ) s u v),
+      MEqRedDepth h' = MEqRedDepth h := by
+  have hcut : 0 < Ctx.depth ({ bound := old, kind := .sub } :: Γ) := by simp [Ctx.depth]
+  have hOldNew' : MEqRed
+      (List.drop 1 ({ bound := old, kind := .sub } :: Γ)) [] old new := by
+    simpa using hOldNew
+  have ⟨h', hDepth⟩ := bridgeSubToSubWithDepth_aux
+    (Γold := { bound := old, kind := .sub } :: Γ)
+    (old := old) (new := new) h
+    (Γ := { bound := old, kind := .sub } :: Γ) (cutoff := 0)
+    rfl hcut hOldNew'
+  refine ⟨by simpa [Ctx.replaceAt] using h', ?_⟩
+  have : MEqRedDepth (by simpa [Ctx.replaceAt] using h' :
+      MEqRed ({ bound := new, kind := .sub } :: Γ) s u v) = MEqRedDepth h' := rfl
+  rw [this, hDepth]
+
+/-- The `.sub → .sub` head-bound bridge preserves `NoPromotionOf x` for
+every `x`. Structural induction mirrors the bridge's construction. -/
+theorem bridgeSubToSubWithDepth_aux_preserves_NP
+    {Γold : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed Γold s u v)
+    {Γ : Ctx} {cutoff : Nat}
+    (hEq : Γold = Ctx.replaceAt cutoff { bound := old, kind := .sub } Γ)
+    (hcut : cutoff < Ctx.depth Γ)
+    (hOldNew : MEqRed (List.drop (cutoff + 1) Γ) [] old new)
+    (x : Nat) (hnp : h.NoPromotionOf x) :
+    (bridgeSubToSubWithDepth_aux h hEq hcut hOldNew).1.NoPromotionOf x := by
+  induction h generalizing Γ cutoff x with
+  | pro hpv hb hα ih =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hne, hαnp⟩ := hnp
+      refine ⟨hne, ?_⟩
+      exact ih rfl hcut hOldNew x hαnp
+  | bet ht hBody hArg ihBody ihArg =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hBodyNp, hArgNp⟩ := hnp
+      refine ⟨?_, ?_⟩
+      · exact ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+          rfl
+          (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+          (by simpa [Nat.add_assoc] using hOldNew)
+          (x + 1) hBodyNp
+      · exact ihArg rfl hcut hOldNew x hArgNp
+  | top hpv =>
+      cases hEq
+      trivial
+  | app hOp hArg ihOp ihArg =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hOpNp, hArgNp⟩ := hnp
+      exact ⟨ihOp rfl hcut hOldNew x hOpNp, ihArg rfl hcut hOldNew x hArgNp⟩
+  | var hpv hi =>
+      cases hEq
+      trivial
+  | fun_ hBound hBody ihBound ihBody =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hBoundNp, hBodyNp⟩ := hnp
+      refine ⟨ihBound rfl hcut hOldNew x hBoundNp, ?_⟩
+      exact ihBody (Γ := { bound := _, kind := .sub } :: Γ) (cutoff := cutoff + 1)
+        rfl
+        (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+        (by simpa [Nat.add_assoc] using hOldNew)
+        (x + 1) hBodyNp
+  | tAp hpv hu =>
+      cases hEq
+      trivial
+  | fOp hBound hα hBody ihBound ihBody =>
+      cases hEq
+      simp only [MEqRed.NoPromotionOf] at hnp
+      obtain ⟨hBoundNp, hBodyNp⟩ := hnp
+      refine ⟨ihBound rfl hcut hOldNew x hBoundNp, ?_⟩
+      exact ihBody (Γ := { bound := _, kind := .equ } :: Γ) (cutoff := cutoff + 1)
+        rfl
+        (by simpa [Ctx.depth] using Nat.succ_lt_succ hcut)
+        (by simpa [Nat.add_assoc] using hOldNew)
+        (x + 1) hBodyNp
+
+/-- The `.sub → .sub` head-bound bridge `MEqRed.bridgeSubToSubHead`
+preserves `NoPromotionOf x` for every `x`. -/
+theorem bridgeSubToSubHead_preserves_NP
+    {Γ : Ctx} {s : Stack} {u v : Term} {old new : Term}
+    (h : MEqRed ({ bound := old, kind := .sub } :: Γ) s u v)
+    (hOldNew : MEqRed Γ [] old new)
+    (x : Nat) (hnp : h.NoPromotionOf x) :
+    (MEqRed.bridgeSubToSubHead h hOldNew).1.NoPromotionOf x := by
+  unfold MEqRed.bridgeSubToSubHead
+  simp only [Ctx.replaceAt]
+  exact bridgeSubToSubWithDepth_aux_preserves_NP h rfl _ _ x hnp
+
 /-! ## Bundle proof — `Me-Fun × Me-Fun` cell (paper p. 9:23)
 
 Both sides descend under an unapplied abstraction; outer stack `[]`.
 Bound IH and body IH are independent (bound at `Γ; []`, body at
-`{t₀,.sub}::Γ; []`). The output is rebuilt via Me-Fun on each side. -/
-
-/-! Note on FunFun's bound-evolution wall.
-
-Paper FunFun (p. 9:23) rebuilds the LHS output as
-`(λx≤t₁.b₃)` and the RHS as `(λx≤t₂.b₃)` (with different bounds).
-The Me-Fun constructor requires the body at `{t_i,.sub}::Γ` (bound
-**equal to** the abstraction's bound). The body diamond's outputs live
-at `{t₀,.sub}::Γ`. Transporting the body across the bound change
-requires `MEqRed.sub_head_replace` (a single-step bound reduction)
-which is total — no NP needed.
-
-However, the NP-tracking through `sub_head_replace` requires showing
-that the transport preserves NP-x for all x; this is a structural
-witness similar to `bridgeSubToEquHead_preserves_NP` but for the
-`.sub → .sub` head-bound-replacement. Building that witness is the
-shape of the work this cell would dispatch.
-
-For now, the cell is left as a documented blocker. The same-context
-discharge of FunFun without NP-tracking is straightforward via
-`sub_head_replace`; adding NP-tracking is the open work. -/
+`{t₀,.sub}::Γ; []`). The output is rebuilt via Me-Fun on each side. The
+body diamond's outputs at `{t₀,.sub}::Γ` are bridged to the
+abstraction's actual bound (`{t_i,.sub}::Γ`) via `bridgeSubToSubHead`.
+NP propagation through the bridge is via `bridgeSubToSubHead_preserves_NP`. -/
 
 /-! ## Status: bundle path
 
