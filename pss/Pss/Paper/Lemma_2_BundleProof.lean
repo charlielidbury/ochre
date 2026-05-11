@@ -847,6 +847,40 @@ body diamond's outputs at `{t₀,.sub}::Γ` are bridged to the
 abstraction's actual bound (`{t_i,.sub}::Γ`) via `bridgeSubToSubHead`.
 NP propagation through the bridge is via `bridgeSubToSubHead_preserves_NP`. -/
 
+/-- Me-Fun × Me-Fun: both sides descend under unapplied abstractions.
+Takes the bound IH and body IH (both MoreoverDiamond-typed) as
+parameters; the outer bundle will provide these from its own recursion. -/
+theorem MoreoverDiamond_fun_fun {Γ : Ctx} {t₀ body₀ t_1 t_2 body_1 body_2 : Term}
+    (hT_1 : MEqRed Γ [] t₀ t_1)
+    (hBody_1 : MEqRed ({bound := t₀, kind := .sub} :: Γ) [] body₀ body_1)
+    (hT_2 : MEqRed Γ [] t₀ t_2)
+    (hBody_2 : MEqRed ({bound := t₀, kind := .sub} :: Γ) [] body₀ body_2)
+    (hBoundIH : MoreoverDiamond Γ [] t₀ t_1 t_2 hT_1 hT_2)
+    (hBodyIH : MoreoverDiamond ({bound := t₀, kind := .sub} :: Γ) [] body₀
+      body_1 body_2 hBody_1 hBody_2) :
+    MoreoverDiamond Γ [] (.abs t₀ body₀) (.abs t_1 body_1) (.abs t_2 body_2)
+      (MEqRed.fun_ hT_1 hBody_1) (MEqRed.fun_ hT_2 hBody_2) := by
+  obtain ⟨t_3, d_1_bound, d_2_bound, hMBound⟩ := hBoundIH
+  obtain ⟨body_3, d_1_body, d_2_body, hMBody⟩ := hBodyIH
+  -- Bridge body outputs from {t₀,.sub}::Γ to {t_i,.sub}::Γ via hT_i.
+  refine ⟨.abs t_3 body_3,
+    MEqRed.fun_ d_1_bound (MEqRed.bridgeSubToSubHead d_1_body hT_1).1,
+    MEqRed.fun_ d_2_bound (MEqRed.bridgeSubToSubHead d_2_body hT_2).1,
+    ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · -- h_1.NP-x → d_2.NP-x. h_1 = fun_ hT_1 hBody_1, NP-x = ⟨NP-x hT_1, NP-(x+1) hBody_1⟩.
+    intro h_1np
+    refine ⟨?_, ?_⟩
+    · exact (hMBound x).1 h_1np.1
+    · exact bridgeSubToSubHead_preserves_NP d_2_body hT_2 (x + 1)
+        ((hMBody (x + 1)).1 h_1np.2)
+  · intro h_2np
+    refine ⟨?_, ?_⟩
+    · exact (hMBound x).2 h_2np.1
+    · exact bridgeSubToSubHead_preserves_NP d_1_body hT_1 (x + 1)
+        ((hMBody (x + 1)).2 h_2np.2)
+
 /-! ## Status: bundle path
 
 With `MEqRed.bridgeSubToEquHead` shipped (depth-preserving structural
