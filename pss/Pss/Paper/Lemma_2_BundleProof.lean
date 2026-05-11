@@ -433,6 +433,104 @@ theorem MoreoverDiamond_tAp_tAp {Γ : Ctx} {s : Stack} {u : Term}
   intro x _
   exact ⟨trivial, trivial⟩
 
+/-! ## Bundle proof — `Me-Pro × Me-Pro` cell (paper p. 9:21)
+
+Both sides promote the same variable `i` through the same equ-binding.
+By prevalidity, the bound `α₀` is uniquely determined. The diamond
+closes by recursive body-diamond on the bound reductions; paper's
+diagram (p. 9:21) does NOT rebuild `Me-Pro` on the output — the bound
+reductions themselves close the diagonal. -/
+
+/-- Me-Pro × Me-Pro: both promote `.bvar i` via the same equ-binding,
+recursing on the bound reductions. Takes the body-diamond IH as a
+parameter; the bundle will provide this from its own recursion. -/
+theorem MoreoverDiamond_pro_pro {Γ : Ctx} {s : Stack} {i : Nat}
+    {α₀ α_1 α_2 : Term}
+    (hpv₁ hpv₂ : PrevalidExt Γ s)
+    (hb₁ hb₂ : Γ.equBinds i α₀)
+    (hα₁ : MEqRed Γ s α₀ α_1) (hα₂ : MEqRed Γ s α₀ α_2)
+    (hBoundIH : MoreoverDiamond Γ s α₀ α_1 α_2 hα₁ hα₂) :
+    MoreoverDiamond Γ s (.bvar i) α_1 α_2
+      (MEqRed.pro hpv₁ hb₁ hα₁) (MEqRed.pro hpv₂ hb₂ hα₂) := by
+  obtain ⟨α_3, d_1, d_2, hMoreoverBound⟩ := hBoundIH
+  refine ⟨α_3, d_1, d_2, ?_⟩
+  intro x hOR
+  -- hOR : (MEqRed.pro hpv₁ hb₁ hα₁).NP-x ∨ (MEqRed.pro hpv₂ hb₂ hα₂).NP-x
+  -- Both branches unfold to `i ≠ x ∧ NP-x of bound`, so either case
+  -- gives us NP-x of one of the bound derivations.
+  have hα_OR : hα₁.NoPromotionOf x ∨ hα₂.NoPromotionOf x := by
+    cases hOR with
+    | inl h => exact Or.inl h.2
+    | inr h => exact Or.inr h.2
+  exact hMoreoverBound x hα_OR
+
+/-! ## Bundle proof — `Me-App × Me-TAp` cell (paper p. 9:23)
+
+Me-TAp source: `.app .top u → .top`. The Me-App side has operator
+target `u_1`, but since the LHS source's operator is `.top` and
+Me-App descends to operator at stack `(u :: s)`, we know operator
+target is `.top` by `Me-Top` inversion. Hence both reduce to `.top`. -/
+
+/-- Me-App × Me-TAp: LHS Me-App has operator target `.top` by source
+constraint; both diamond endpoints reduce to `.top`. -/
+theorem MoreoverDiamond_app_tAp {Γ : Ctx} {s : Stack}
+    {u_1 v₀ v_1 : Term}
+    (hOp : MEqRed Γ (v₀ :: s) .top u_1)
+    (hArg : MEqRed Γ [] v₀ v_1)
+    (hpvTAp : PrevalidExt Γ s) (hv₀ : Term.Scoped Γ.depth v₀) :
+    MoreoverDiamond Γ s (.app .top v₀) (.app u_1 v_1) .top
+      (MEqRed.app hOp hArg) (MEqRed.tAp hpvTAp hv₀) := by
+  -- hOp : MEqRed Γ (v₀ :: s) .top u_1 forces u_1 = .top.
+  have hu₁ : u_1 = .top := hOp.top_inv
+  subst hu₁
+  have hpvE : PrevalidExt Γ s := MEqRed.prevalidExt (MEqRed.tAp hpvTAp hv₀)
+  have hv₁Scoped : Term.Scoped Γ.depth v_1 := hArg.scoped_right
+  refine ⟨.top, MEqRed.tAp hpvE hv₁Scoped, MEqRed.top hpvE, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
+/-- Me-TAp × Me-App: symmetric to `MoreoverDiamond_app_tAp`. -/
+theorem MoreoverDiamond_tAp_app {Γ : Ctx} {s : Stack}
+    {u_2 v₀ v_2 : Term}
+    (hpvTAp : PrevalidExt Γ s) (hv₀ : Term.Scoped Γ.depth v₀)
+    (hOp : MEqRed Γ (v₀ :: s) .top u_2)
+    (hArg : MEqRed Γ [] v₀ v_2) :
+    MoreoverDiamond Γ s (.app .top v₀) .top (.app u_2 v_2)
+      (MEqRed.tAp hpvTAp hv₀) (MEqRed.app hOp hArg) := by
+  have hu₂ : u_2 = .top := hOp.top_inv
+  subst hu₂
+  have hpvE : PrevalidExt Γ s := MEqRed.prevalidExt (MEqRed.tAp hpvTAp hv₀)
+  have hv₂Scoped : Term.Scoped Γ.depth v_2 := hArg.scoped_right
+  refine ⟨.top, MEqRed.top hpvE, MEqRed.tAp hpvE hv₂Scoped, ?_⟩
+  intro x _
+  exact ⟨trivial, trivial⟩
+
+/-! ## Bundle proof — `Me-Fun × Me-Fun` cell (paper p. 9:23)
+
+Both sides descend under an unapplied abstraction; outer stack `[]`.
+Bound IH and body IH are independent (bound at `Γ; []`, body at
+`{t₀,.sub}::Γ; []`). The output is rebuilt via Me-Fun on each side. -/
+
+/-! Note on FunFun's bound-evolution wall.
+
+Paper FunFun (p. 9:23) rebuilds the LHS output as
+`(λx≤t₁.b₃)` and the RHS as `(λx≤t₂.b₃)` (with different bounds).
+The Me-Fun constructor requires the body at `{t_i,.sub}::Γ` (bound
+**equal to** the abstraction's bound). The body diamond's outputs live
+at `{t₀,.sub}::Γ`. Transporting the body across the bound change
+requires `MEqRed.sub_head_replace` (a single-step bound reduction)
+which is total — no NP needed.
+
+However, the NP-tracking through `sub_head_replace` requires showing
+that the transport preserves NP-x for all x; this is a structural
+witness similar to `bridgeSubToEquHead_preserves_NP` but for the
+`.sub → .sub` head-bound-replacement. Building that witness is the
+shape of the work this cell would dispatch.
+
+For now, the cell is left as a documented blocker. The same-context
+discharge of FunFun without NP-tracking is straightforward via
+`sub_head_replace`; adding NP-tracking is the open work. -/
+
 /-! ## Status: bundle path
 
 With `MEqRed.bridgeSubToEquHead` shipped (depth-preserving structural
