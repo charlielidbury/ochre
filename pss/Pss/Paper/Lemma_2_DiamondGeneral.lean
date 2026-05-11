@@ -1215,6 +1215,62 @@ def MoreoverDiamondGeneral_VarPro_Payload : Prop :=
     MoreoverDiamondGeneral
       (MEqRed.var hpv₁ hi) (MEqRed.pro hpv₂ hb hα)
 
+/-! ## Phase 4 — bundle assembly architectural analysis
+
+The bundle `UniformMoreoverDiamondGeneral_proved` ideally proceeds by
+**structural induction on h_1** with `h_2` generalised at each step.
+This naturally provides the parametric-second-derivation IH for
+ProVar/VarPro: when h_1 = `Me-Pro hpv hb hα`, the IH `ihα : ∀ t₂' h₂',
+MoreoverDiamondGeneral hα h₂'` is universally quantified over h_2'.
+
+Each constructor case of h_1 dispatches to the corresponding cell:
+
+| h_1 constructor | h_2 cases handled | Cell |
+|-----------------|-------------------|------|
+| `top` | `top` | `MoreoverDiamondGeneral_top_top` |
+| `pro` | `pro` | `MoreoverDiamondGeneral_pro_pro` |
+| `pro` | `var` | `MoreoverDiamondGeneral_ProVarVarPro_Payload` |
+| `var` | `var` | `MoreoverDiamondGeneral_var_var` |
+| `var` | `pro` | `MoreoverDiamondGeneral_VarPro_Payload` |
+| `app` | `app` | `MoreoverDiamondGeneral_app_app` |
+| `app` | `bet` | `Lemma_2_PaperFaithful_AppBet_Moreover` |
+| `app` | `tAp` | `MoreoverDiamondGeneral_app_tAp` |
+| `bet` | `bet` | `MoreoverDiamondGeneral_bet_bet` |
+| `bet` | `app` | `Lemma_2_PaperFaithful_BetApp_Moreover` |
+| `tAp` | `tAp` | `MoreoverDiamondGeneral_tAp_tAp` |
+| `tAp` | `app` | `MoreoverDiamondGeneral_tAp_app` |
+| `fun_` | `fun_` | `MoreoverDiamondGeneral_fun_fun` |
+| `fOp` | `fOp` | `MoreoverDiamondGeneral_fOp_fOp` |
+
+Source-shape forcings ensure many h_1 × h_2 combinations are impossible
+(e.g. `bet` h_1 forces source `(.abs t u) v`, ruling out `tAp` h_2).
+
+**Cross-β architectural challenge.** For AppBet / BetApp, the body
+diamond's two source derivations live in DIFFERENT head contexts:
+* h_1 (Me-App via Me-FOp inversion): body at `{v_0, .equ}::Γ₀; shift 0 s₀`
+* h_2 (Me-Bet): body at `{t, .sub}::Γ₀; shift 0 s₀`
+
+The bridge `MEqRed.bridgeSubToEquHead` aligns these to a common
+`.equ`-head context. The bundle's body IH is at the ORIGINAL source's
+context — to invoke `Lemma_2_PaperFaithful_*_Moreover`, the body IH
+must be at the bridged (common) context.
+
+The bridge preserves derivation depth, so well-founded recursion on
+`MEqRedDepth h_1 + MEqRedDepth h_2` can be used to invoke the bundle at
+the bridged body context. Structural induction on h_1 alone cannot
+directly express this — the body call needs the FULL bundle, not just
+the IH on h_1's sub-derivations.
+
+**Path forward** for the bundle's full assembly:
+1. Define `UniformMoreoverDiamondGeneral_aux : (n : Nat) → ...` via
+   well-founded recursion on `n = MEqRedDepth h_1 + MEqRedDepth h_2`.
+2. AppBet/BetApp cases invoke the recursion at the bridged body context
+   with depth `bodyDepth_1 + bodyDepth_2 < total + 2` (bridge preserves
+   depth, body sub-derivations strictly smaller).
+3. All other cases work via direct dispatch on the IH at sub-derivations.
+
+This is the natural form. Estimated 600-1000 lines additional. -/
+
 end Paper
 end DeBruijn
 end Pss
