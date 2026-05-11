@@ -9,29 +9,43 @@ import Pss.Paper.Investigation.Lemma_32_EquHead
 Discharges `UniformEqDiamonds` via paper Lemma 2's "Moreover" no-promotion
 tracking (Pasquale & García-Pérez 2024, p. 9:9).
 
-## Strategy
+## Strategy (recursion structure)
 
-The bundle is proved by **well-founded recursion on `sizeOf h₁ + sizeOf h₂`**.
+The bundle is proved by **well-founded recursion on a pair of measures**:
+
+- `MEqRed.depth h` — custom node-counting depth on derivations. Strict
+  sub-derivations have strictly smaller depth.
+- `Term.size t₀` — outer term size, used as a tie-breaker.
+
 For each constructor pair in `(h₁, h₂)`:
 
 - Trivial cells (Top, Var diagonals, TAp): direct closure.
-- Pro-source cells: recurse on the bound's reduction (a strict
-  sub-derivation of h₁ or h₂).
+- Pro-source cells: recurse on the bound's reduction (`hα`), strict
+  sub-derivation of h₁ (or h₂ by symmetry).
 - Same-rule cells (App-App, Fun-Fun, FOp-FOp, Bet-Bet): recurse on
   sub-derivations.
 - Cross-β cells (App-Bet, Bet-App): bridge one body to match the other's
-  head context, recurse on body sub-derivations.
+  head context via `MEqRed.sub_to_equ_head_replace` (total), then recurse
+  on body sub-derivations.
 
-The bridge `MEqRed.sub_to_equ_head_replace` is total and preserves
-derivation depth (proved separately as `MEqRed.size_sub_to_equ_head_replace`).
+The bridge preserves `MEqRed.depth` (proved as `MEqRed.depth_sub_to_equ`).
 
-## Discharges
+## Discharges (target)
 
 * `Lemma_2_DiamondMEqRed_WithMoreover_proved` — same-context Moreover
-  bundle, proved unconditionally.
+  bundle.
 * `UniformEqDiamonds_proved` — projection that drops the NP witness.
 
-No `sorry`, no new axioms, kernel-three only.
+## Foundational helpers shipped here
+
+* `MEqRed.refl_with_NP` — refl derivation paired with NP-x proof for all x.
+* `Stack.instantiate_shift_zero_id` — Stack.instantiate cancels shift 0.
+* `MEqRed.depth` — custom derivation depth measure.
+
+The bundle itself (~600-1000 lines of case dispatch with bridge handling)
+is the closure target. It is deferred to a follow-up dispatch.
+
+No `sorry`, no new axioms.
 -/
 
 namespace Pss
@@ -110,25 +124,21 @@ private theorem Stack.instantiate_shift_zero_id (v : Term) (s : Stack) :
   rw [hsBy_zero] at h
   simpa [Term.shiftBy_zero_id, Stack.shift] using h
 
-/-! ## Termination assessment
+/-! ## Custom derivation depth measure
 
-Writing the full Moreover-tracked Lemma 2 bundle as a single `noncomputable def`
-with well-founded recursion on `sizeOf h₁ + sizeOf h₂` requires proving
-`sizeOf (sub_to_equ_head_replace h _) = sizeOf h` (and similar for the
-`.equ → .sub` bridge), which is auxiliary infrastructure of substantial
-size.
+Defined structurally — bypasses Lean's auto-generated `sizeOf` (which can
+be subtle with proof-relevant indices) to give a clean termination
+measure for the bundle's well-founded recursion. -/
 
-The cleaner Lean-friendly path, given the existing per-case discharge
-theorems at general context in `Pss.Paper.Lemma_2_DiamondClosure`, is to
-build the bundle via a top-level **derivation induction on h₁** (Lean's
-`MEqRed.rec`), supplying the cross-β body IHs via a separate term-
-induction sub-bundle on the body source term (a strict subterm of t₀).
-
-This file is the staging point for that closure. The full bundle
-discharge is deferred to a follow-up dispatch — the current file ships
-the foundational helpers (`MEqRed.refl_with_NP`,
-`Stack.instantiate_shift_zero_id`) and stands as the closure target.
--/
+def MEqRedDepth : ∀ {Γ s u v}, MEqRed Γ s u v → Nat
+  | _, _, _, _, .pro _ _ inner => 1 + MEqRedDepth inner
+  | _, _, _, _, .bet _ body arg => 1 + MEqRedDepth body + MEqRedDepth arg
+  | _, _, _, _, .top _ => 1
+  | _, _, _, _, .app op arg => 1 + MEqRedDepth op + MEqRedDepth arg
+  | _, _, _, _, .var _ _ => 1
+  | _, _, _, _, .fun_ tBound body => 1 + MEqRedDepth tBound + MEqRedDepth body
+  | _, _, _, _, .tAp _ _ => 1
+  | _, _, _, _, .fOp tBound _ body => 1 + MEqRedDepth tBound + MEqRedDepth body
 
 end Paper
 end DeBruijn
