@@ -11,6 +11,7 @@ import Pss.Paper.Aux.Weakening
 import Pss.Paper.Conjecture8
 import Pss.Paper.Investigation.Lemma_32_KindNarrowedAsymmetric
 import Pss.Paper.Lemma_2_Diamond
+import Pss.Paper.Lemma_2_DiamondGeneral
 import Pss.Paper.Lemma_7_SubstPreservesWfM
 
 /-! # `Pss.Sanity` — `#print axioms` audit
@@ -115,6 +116,10 @@ match the paper (Pasquale & García-Pérez 2024). -/
 
 #print axioms
   Pss.DeBruijn.Paper.ContextEvolution.Lemma_36_CommutativityContextWeakening
+
+-- Paper Lemma 2 general-context Moreover diamond + UniformEqDiamonds projection.
+#print axioms Pss.DeBruijn.Paper.UniformMoreoverDiamondGeneral_proved_conditional
+#print axioms Pss.DeBruijn.Paper.UniformEqDiamonds_proved_unconditional
 
 #print axioms Pss.DeBruijn.Paper.Lemma_19_Weakening.proved
 #print axioms Pss.DeBruijn.Paper.Lemma_20_Weakening_Aux.proved

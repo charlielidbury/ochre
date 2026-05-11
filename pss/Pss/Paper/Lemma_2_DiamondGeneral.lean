@@ -174,46 +174,46 @@ the trivial sources never use `Me-Pro` (the outputs are `.top` or
 on both evolved contexts. Moreover witness trivial since neither source
 uses `Me-Pro`. -/
 theorem MoreoverDiamondGeneral_top_top {Γ₀ : Ctx} {s₀ : Stack}
-    (hpv : PrevalidExt Γ₀ s₀) :
-    MoreoverDiamondGeneral (MEqRed.top hpv) (MEqRed.top hpv) := by
+    (hpv₁ hpv₂ : PrevalidExt Γ₀ s₀) :
+    MoreoverDiamondGeneral (MEqRed.top hpv₁) (MEqRed.top hpv₂) := by
   intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
-  have hpv₁ : PrevalidExt Γ₁ s₁ :=
-    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv⟩)
-  have hpv₂ : PrevalidExt Γ₂ s₂ :=
-    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv⟩)
-  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  have hpvE₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv₁⟩)
+  have hpvE₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv₂⟩)
+  refine ⟨.top, MEqRed.top hpvE₁, MEqRed.top hpvE₂, ?_⟩
   intro x
   exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 /-- Me-Var × Me-Var: source `.bvar i`, both targets `.bvar i`, output
 `.bvar i` on both evolved contexts. Moreover trivial. -/
 theorem MoreoverDiamondGeneral_var_var {Γ₀ : Ctx} {s₀ : Stack} {i : Nat}
-    (hpv : PrevalidExt Γ₀ s₀) (hi : i < Γ₀.depth) :
-    MoreoverDiamondGeneral (MEqRed.var hpv hi) (MEqRed.var hpv hi) := by
+    (hpv₁ hpv₂ : PrevalidExt Γ₀ s₀) (hi₁ hi₂ : i < Γ₀.depth) :
+    MoreoverDiamondGeneral (MEqRed.var hpv₁ hi₁) (MEqRed.var hpv₂ hi₂) := by
   intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
-  have hpv₁ : PrevalidExt Γ₁ s₁ :=
-    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv⟩)
-  have hpv₂ : PrevalidExt Γ₂ s₂ :=
-    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv⟩)
+  have hpvE₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv₁⟩)
+  have hpvE₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv₂⟩)
   have hdepth₁ : Γ₀.depth = Γ₁.depth := he₁.preserves_ctx_depth
   have hdepth₂ : Γ₀.depth = Γ₂.depth := he₂.preserves_ctx_depth
-  have hi₁ : i < Γ₁.depth := by rw [← hdepth₁]; exact hi
-  have hi₂ : i < Γ₂.depth := by rw [← hdepth₂]; exact hi
-  refine ⟨.bvar i, MEqRed.var hpv₁ hi₁, MEqRed.var hpv₂ hi₂, ?_⟩
+  have hiE₁ : i < Γ₁.depth := by rw [← hdepth₁]; exact hi₁
+  have hiE₂ : i < Γ₂.depth := by rw [← hdepth₂]; exact hi₂
+  refine ⟨.bvar i, MEqRed.var hpvE₁ hiE₁, MEqRed.var hpvE₂ hiE₂, ?_⟩
   intro x
   exact ⟨fun _ => trivial, fun _ => trivial⟩
 
 /-- Me-TAp × Me-TAp: source `.app .top u`, both targets `.top`, output
 `.top` on both evolved contexts. Moreover trivial. -/
 theorem MoreoverDiamondGeneral_tAp_tAp {Γ₀ : Ctx} {s₀ : Stack} {u : Term}
-    (hpv : PrevalidExt Γ₀ s₀) (hu : Term.Scoped Γ₀.depth u) :
-    MoreoverDiamondGeneral (MEqRed.tAp hpv hu) (MEqRed.tAp hpv hu) := by
+    (hpv₁ hpv₂ : PrevalidExt Γ₀ s₀) (hu₁ hu₂ : Term.Scoped Γ₀.depth u) :
+    MoreoverDiamondGeneral (MEqRed.tAp hpv₁ hu₁) (MEqRed.tAp hpv₂ hu₂) := by
   intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
-  have hpv₁ : PrevalidExt Γ₁ s₁ :=
-    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv⟩)
-  have hpv₂ : PrevalidExt Γ₂ s₂ :=
-    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv⟩)
-  refine ⟨.top, MEqRed.top hpv₁, MEqRed.top hpv₂, ?_⟩
+  have hpvE₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpv₁⟩)
+  have hpvE₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpv₂⟩)
+  refine ⟨.top, MEqRed.top hpvE₁, MEqRed.top hpvE₂, ?_⟩
   intro x
   exact ⟨fun _ => trivial, fun _ => trivial⟩
 
@@ -919,7 +919,7 @@ from the outer evolution via `stripStackHeadWithReduction`, then the
 body context evolution is built via `cons_evolve`. -/
 theorem MoreoverDiamondGeneral_fOp_fOp {Γ₀ : Ctx} {s₀ : Stack}
     {α t₀ t_1 t_2 body₀ body_1 body_2 : Term}
-    (hαScoped : Term.Scoped Γ₀.depth α)
+    (hαScoped₁ hαScoped₂ : Term.Scoped Γ₀.depth α)
     (hT_1 : MEqRed Γ₀ [] t₀ t_1)
     (hBody_1 : MEqRed ({bound := α, kind := .equ} :: Γ₀)
       (Stack.shift 0 s₀) body₀ body_1)
@@ -933,7 +933,7 @@ theorem MoreoverDiamondGeneral_fOp_fOp {Γ₀ : Ctx} {s₀ : Stack}
     -- `cons_evolve` with α →= α_i.
     (hBodyIH : MoreoverDiamondGeneral hBody_1 hBody_2) :
     MoreoverDiamondGeneral
-      (MEqRed.fOp hT_1 hαScoped hBody_1) (MEqRed.fOp hT_2 hαScoped hBody_2) := by
+      (MEqRed.fOp hT_1 hαScoped₁ hBody_1) (MEqRed.fOp hT_2 hαScoped₂ hBody_2) := by
   intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
   -- We need PrevalidExt Γ₀ (α :: s₀) to invoke stripStackHeadWithReduction.
   -- Build from body's prevalidity.
@@ -949,7 +949,7 @@ theorem MoreoverDiamondGeneral_fOp_fOp {Γ₀ : Ctx} {s₀ : Stack}
     Stack.Scoped.shift_inv hStackScopedShifted
   have hpvE_s₀ : PrevalidExt Γ₀ s₀ :=
     PrevalidExt.of_stack_scoped hpvCtx₀ hStackScoped₀
-  have hpvE_α_s₀ : PrevalidExt Γ₀ (α :: s₀) := PrevalidExt.cons hpvE_s₀ hαScoped
+  have hpvE_α_s₀ : PrevalidExt Γ₀ (α :: s₀) := PrevalidExt.cons hpvE_s₀ hαScoped₁
   -- s_i must be `α_i :: s_inner_i`; extract.
   have hLen₁ := he₁.preserves_stack_length
   have hLen₂ := he₂.preserves_stack_length
@@ -963,9 +963,9 @@ theorem MoreoverDiamondGeneral_fOp_fOp {Γ₀ : Ctx} {s₀ : Stack}
   rw [hs2] at he₂ hLen₂
   -- Extract α →= α_i + stripped Γ₀;s₀ ↣ Γ_i;s_inner_i.
   obtain ⟨hHead₁_ne, heStrip₁⟩ :=
-    ContextEvolution.stripStackHeadWithReduction he₁ hαScoped hpvE_α_s₀
+    ContextEvolution.stripStackHeadWithReduction he₁ hαScoped₁ hpvE_α_s₀
   obtain ⟨hHead₂_ne, heStrip₂⟩ :=
-    ContextEvolution.stripStackHeadWithReduction he₂ hαScoped hpvE_α_s₀
+    ContextEvolution.stripStackHeadWithReduction he₂ hαScoped₁ hpvE_α_s₀
   let hHead₁ : MEqRed Γ₀ [] α α_1 := Classical.choice hHead₁_ne
   let hHead₂ : MEqRed Γ₀ [] α α_2 := Classical.choice hHead₂_ne
   -- Bound IH at evolved Γ_0; [] ↣ Γ_i; [] via Lemma 36 on stripped evolutions.
@@ -1010,7 +1010,7 @@ theorem MoreoverDiamondGeneral_bet_bet
     (hLem32NP : Lemma_32_PreservesNP_Payload)
     {Γ₀ : Ctx} {s₀ : Stack}
     {t v_0 u_0 u_1 u_2 v_1 v_2 : Term}
-    (ht : Term.Scoped Γ₀.depth t)
+    (ht₁ ht₂ : Term.Scoped Γ₀.depth t)
     (hBody_1 : MEqRed ({bound := t, kind := .sub} :: Γ₀)
       (Stack.shift 0 s₀) u_0 u_1)
     (hArg_1 : MEqRed Γ₀ [] v_0 v_1)
@@ -1022,17 +1022,17 @@ theorem MoreoverDiamondGeneral_bet_bet
     (hBodyIH : MoreoverDiamondGeneral hBody_1 hBody_2)
     (hArgIH : MoreoverDiamondGeneral hArg_1 hArg_2) :
     MoreoverDiamondGeneral
-      (MEqRed.bet ht hBody_1 hArg_1) (MEqRed.bet ht hBody_2 hArg_2) := by
+      (MEqRed.bet ht₁ hBody_1 hArg_1) (MEqRed.bet ht₂ hBody_2 hArg_2) := by
   intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
   -- Body context evolutions via cons_lift (bound unchanged on both sides).
   let heBody₁ : ContextEvolution ({bound := t, kind := .sub} :: Γ₀)
       (Stack.shift 0 s₀)
       ({bound := t, kind := .sub} :: Γ₁) (Stack.shift 0 s₁) :=
-    ContextEvolution.cons_lift he₁ ht
+    ContextEvolution.cons_lift he₁ ht₁
   let heBody₂ : ContextEvolution ({bound := t, kind := .sub} :: Γ₀)
       (Stack.shift 0 s₀)
       ({bound := t, kind := .sub} :: Γ₂) (Stack.shift 0 s₂) :=
-    ContextEvolution.cons_lift he₂ ht
+    ContextEvolution.cons_lift he₂ ht₁
   obtain ⟨u_3, d_1_body, d_2_body, hMBody⟩ := hBodyIH heBody₁ heBody₂
   have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
     he₁.Lemma_36_CommutativityContextWeakening
@@ -1044,9 +1044,9 @@ theorem MoreoverDiamondGeneral_bet_bet
   have hv_3Scoped₁ : Term.Scoped Γ₁.depth v_3 := d_1_arg.scoped_right
   have hv_3Scoped₂ : Term.Scoped Γ₂.depth v_3 := d_2_arg.scoped_right
   have htScoped₁ : Term.Scoped Γ₁.depth t := by
-    rw [← he₁.preserves_ctx_depth]; exact ht
+    rw [← he₁.preserves_ctx_depth]; exact ht₁
   have htScoped₂ : Term.Scoped Γ₂.depth t := by
-    rw [← he₂.preserves_ctx_depth]; exact ht
+    rw [← he₂.preserves_ctx_depth]; exact ht₁
   have hStackSimp₁ : Stack.instantiate 0 v_1 (Stack.shift 0 s₁) = s₁ :=
     Stack.instantiate_shift_zero_id_general v_1 s₁
   have hStackSimp₂ : Stack.instantiate 0 v_2 (Stack.shift 0 s₂) = s₂ :=
@@ -1215,18 +1215,24 @@ def MoreoverDiamondGeneral_VarPro_Payload : Prop :=
     MoreoverDiamondGeneral
       (MEqRed.var hpv₁ hi) (MEqRed.pro hpv₂ hb hα)
 
-/-! ## Phase 4 — bundle assembly architectural analysis
+/-! ## Phase 4 — bundle assembly via well-founded recursion on
+`MEqRedDepth h₁`.
 
-The bundle `UniformMoreoverDiamondGeneral_proved` ideally proceeds by
-**structural induction on h_1** with `h_2` generalised at each step.
-This naturally provides the parametric-second-derivation IH for
-ProVar/VarPro: when h_1 = `Me-Pro hpv hb hα`, the IH `ihα : ∀ t₂' h₂',
-MoreoverDiamondGeneral hα h₂'` is universally quantified over h_2'.
+The bundle `UniformMoreoverDiamondGeneral_proved` is implemented as a
+**well-founded recursion on `MEqRedDepth h₁`**. The bridge
+`bridgeSubToEquHead` preserves depth, so BetApp's body recursion
+(`bundle bridge(hBody₁) hBody₂`) is depth-decreasing on h₁
+(`MEqRedDepth bridge(hBody₁) = MEqRedDepth hBody₁ < MEqRedDepth h₁`).
 
-Each constructor case of h_1 dispatches to the corresponding cell:
+ProVar's bound recursion (`bundle hα lifted`) is depth-decreasing on
+h₁ (`MEqRedDepth hα < MEqRedDepth h₁`). VarPro has no sub-derivation
+of h₁ available, so it's handled via the residual payload
+`MoreoverDiamondGeneral_VarPro_Payload`.
 
-| h_1 constructor | h_2 cases handled | Cell |
-|-----------------|-------------------|------|
+Each constructor case of h₁ dispatches to the corresponding cell:
+
+| h₁ constructor | h₂ cases handled | Cell |
+|----------------|------------------|------|
 | `top` | `top` | `MoreoverDiamondGeneral_top_top` |
 | `pro` | `pro` | `MoreoverDiamondGeneral_pro_pro` |
 | `pro` | `var` | `MoreoverDiamondGeneral_ProVarVarPro_Payload` |
@@ -1242,34 +1248,242 @@ Each constructor case of h_1 dispatches to the corresponding cell:
 | `fun_` | `fun_` | `MoreoverDiamondGeneral_fun_fun` |
 | `fOp` | `fOp` | `MoreoverDiamondGeneral_fOp_fOp` |
 
-Source-shape forcings ensure many h_1 × h_2 combinations are impossible
-(e.g. `bet` h_1 forces source `(.abs t u) v`, ruling out `tAp` h_2).
+The bundle is conditional on the residual payloads listed above plus
+`Lemma_32_PreservesNP_Payload` and `Lemma_32_EquHead_PreservesNP_Payload`.
 
-**Cross-β architectural challenge.** For AppBet / BetApp, the body
-diamond's two source derivations live in DIFFERENT head contexts:
-* h_1 (Me-App via Me-FOp inversion): body at `{v_0, .equ}::Γ₀; shift 0 s₀`
-* h_2 (Me-Bet): body at `{t, .sub}::Γ₀; shift 0 s₀`
+## ProVar architectural note
 
-The bridge `MEqRed.bridgeSubToEquHead` aligns these to a common
-`.equ`-head context. The bundle's body IH is at the ORIGINAL source's
-context — to invoke `Lemma_2_PaperFaithful_*_Moreover`, the body IH
-must be at the bridged (common) context.
+ProVar (Me-Pro × Me-Var) requires invoking the bound IH on `(hα, lifted)`
+where `lifted : MEqRed Γ₀ s₀ α₀ α_evolved` is built from
+`equBinds_evolve + lift_empty_to_stack`. The Moreover-tracked bundle's
+reverse direction `h_2.NP-x → d_1.NP-x` requires `lifted.NP-x` for all
+`x` (since h_2 = Me-Var has NP-x = True). The `lifted` reduction may
+contain `Me-Pro` steps derived from the evolution's `ctAnn` constructors,
+so `lifted.NP-x` is not unconditionally True for all `x`. This is the
+genuine paper-faithfulness gap: the paper's "respectively" clause of
+Moreover (p. 9:9) is unprovable for ProVar without additional NP-
+preservation infrastructure on the lifted reduction.
 
-The bridge preserves derivation depth, so well-founded recursion on
-`MEqRedDepth h_1 + MEqRedDepth h_2` can be used to invoke the bundle at
-the bridged body context. Structural induction on h_1 alone cannot
-directly express this — the body call needs the FULL bundle, not just
-the IH on h_1's sub-derivations.
+We therefore ship ProVar/VarPro as **named residual payloads**, mirroring
+the pattern used for Lemma 32 NP-preservation. Downstream wire-up to
+`Lemma_2_DeBruijn_DiamondMEqRedStar_proved` takes these payloads
+explicitly. -/
 
-**Path forward** for the bundle's full assembly:
-1. Define `UniformMoreoverDiamondGeneral_aux : (n : Nat) → ...` via
-   well-founded recursion on `n = MEqRedDepth h_1 + MEqRedDepth h_2`.
-2. AppBet/BetApp cases invoke the recursion at the bridged body context
-   with depth `bodyDepth_1 + bodyDepth_2 < total + 2` (bridge preserves
-   depth, body sub-derivations strictly smaller).
-3. All other cases work via direct dispatch on the IH at sub-derivations.
+/-- Bundle of payloads required by the general-context Moreover diamond.
 
-This is the natural form. Estimated 600-1000 lines additional. -/
+This bundles the four NP-preservation / structural residuals that the
+bundle assembly is conditional on. Wiring is simpler with one bundle
+rather than four separate hypotheses. -/
+structure UniformMoreoverDiamondGeneralPayloads : Prop where
+  proVar : MoreoverDiamondGeneral_ProVarVarPro_Payload
+  varPro : MoreoverDiamondGeneral_VarPro_Payload
+  lem32 : Lemma_32_PreservesNP_Payload
+  lem32EquHead : Lemma_32_EquHead_PreservesNP_Payload
+
+/-! ## Bundle helper: NoPromotion of `MEqRed.refl`
+
+Reflexivity derivations never use Me-Pro, hence their NP-x is True for
+all x. This is consumed by the bundle's same-source recursions where
+the second derivation is constructed via refl. -/
+
+theorem MEqRed.refl_NoPromotionOf {Γ : Ctx} {s : Stack} {u : Term}
+    (hpv : PrevalidExt Γ s) (hu : Term.Scoped Γ.depth u) :
+    ∀ (x : Nat), (MEqRed.refl hpv hu).NoPromotionOf x := by
+  -- `MEqRed.refl` is constructed by induction on the term u, using only
+  -- `.var`, `.top`, `.app`, `.fun_`, `.fOp` constructors — never `.pro`.
+  -- NoPromotionOf for these constructors unfolds to conjunctions of
+  -- `True` (for leaf nodes) and recursive NoPromotionOf on sub-derivations.
+  intro x
+  induction u generalizing Γ s x with
+  | bvar i =>
+    -- refl = .var hpv hu.bvar_lt. NP-x = True.
+    unfold MEqRed.refl
+    exact trivial
+  | top =>
+    -- refl = .top hpv. NP-x = True.
+    unfold MEqRed.refl
+    exact trivial
+  | app u v ihu ihv =>
+    -- refl = .app (refl u) (refl v). NP-x = NP-x (refl u) ∧ NP-x (refl v).
+    unfold MEqRed.refl
+    refine ⟨?_, ?_⟩
+    · exact ihu _ _ x
+    · exact ihv _ _ x
+  | abs bound body ihBound ihBody =>
+    unfold MEqRed.refl
+    cases s with
+    | nil =>
+      -- refl = .fun_ (refl bound) (refl body). NP-x = NP-x (refl bound) ∧ NP-(x+1) (refl body).
+      refine ⟨?_, ?_⟩
+      · exact ihBound _ _ x
+      · exact ihBody _ _ (x + 1)
+    | cons α s' =>
+      -- refl = .fOp (refl bound) hα (refl body). NP-x = NP-x (refl bound) ∧ NP-(x+1) (refl body).
+      refine ⟨?_, ?_⟩
+      · exact ihBound _ _ x
+      · exact ihBody _ _ (x + 1)
+
+/-! ## Bundle assembly
+
+The bundle is shipped as a recursive function on `MEqRedDepth h₁`,
+case-splitting on `h₁`'s constructor and dispatching to the per-cell
+discharges. -/
+
+/-- Inner recursion of the bundle: by strong induction on
+`n = MEqRedDepth h₁`, return `MoreoverDiamondGeneral h₁ h₂` for any
+`h₁` with `MEqRedDepth h₁ ≤ n` and any `h₂`. -/
+noncomputable def UniformMoreoverDiamondGeneral_proved_aux
+    (hPayloads : UniformMoreoverDiamondGeneralPayloads) :
+    ∀ (n : Nat) {Γ₀ : Ctx} {s₀ : Stack} {t₀ t₁ t₂ : Term}
+      (h₁ : MEqRed Γ₀ s₀ t₀ t₁) (h₂ : MEqRed Γ₀ s₀ t₀ t₂),
+      MEqRedDepth h₁ ≤ n → MoreoverDiamondGeneral h₁ h₂ := by
+  intro n
+  induction n using Nat.strong_induction_on with
+  | _ n ih =>
+  intro Γ₀ s₀ t₀ t₁ t₂ h₁ h₂ hDepthLE
+  -- Helper: invoke the IH at smaller depth.
+  have ih' : ∀ {Γ₀' : Ctx} {s₀' : Stack} {t₀' t₁' t₂' : Term}
+      (h₁' : MEqRed Γ₀' s₀' t₀' t₁') (h₂' : MEqRed Γ₀' s₀' t₀' t₂'),
+      MEqRedDepth h₁' < MEqRedDepth h₁ →
+      MoreoverDiamondGeneral h₁' h₂' := by
+    intro Γ₀' s₀' t₀' t₁' t₂' h₁' h₂' hLt
+    exact ih (MEqRedDepth h₁') (by omega) h₁' h₂' (Nat.le_refl _)
+  -- Case-split on h₁'s constructor.
+  cases h₁ with
+  | top hpv =>
+    -- h₁ source is .top, so h₂ must also reduce from .top.
+    cases h₂ with
+    | top hpv₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_top_top hpv hpv₂ he₁ he₂
+  | pro hpv hb hα =>
+    -- h₁ source is .bvar i; h₂ may be .pro or .var.
+    have hαLt : MEqRedDepth hα < MEqRedDepth (MEqRed.pro hpv hb hα) := by
+      simp [MEqRedDepth]
+    cases h₂ with
+    | pro hpv₂ hb₂ hα₂ =>
+      -- Source `.bvar i` shared; equBinds_unique forces α-bound equality.
+      have hαEq : _ = _ := Ctx.equBinds_unique hb hb₂
+      subst hαEq
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_pro_pro hpv hpv₂ hb hb₂ hα hα₂
+        (ih' hα hα₂ hαLt) he₁ he₂
+    | var hpv₂ hi₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact hPayloads.proVar hpv hb hα hpv₂ hi₂ he₁ he₂
+  | var hpv hi =>
+    -- h₁ source is .bvar i; h₂ may be .var or .pro.
+    cases h₂ with
+    | var hpv₂ hi₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_var_var hpv hpv₂ hi hi₂ he₁ he₂
+    | pro hpv₂ hb₂ hα₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact hPayloads.varPro hpv hi hpv₂ hb₂ hα₂ he₁ he₂
+  | tAp hpv hu =>
+    -- h₁ source is .app .top u. h₂ may be .tAp or .app (with op = .top).
+    cases h₂ with
+    | tAp hpv₂ hu₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_tAp_tAp hpv hpv₂ hu hu₂ he₁ he₂
+    | app hOp₂ hArg₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_tAp_app hpv hu hOp₂ hArg₂ he₁ he₂
+  | app hOp hArg =>
+    have hOpLt : MEqRedDepth hOp < MEqRedDepth (MEqRed.app hOp hArg) := by
+      simp [MEqRedDepth]; try omega
+    have hArgLt : MEqRedDepth hArg < MEqRedDepth (MEqRed.app hOp hArg) := by
+      simp [MEqRedDepth]; try omega
+    cases h₂ with
+    | app hOp₂ hArg₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_app_app hOp hArg hOp₂ hArg₂
+        (ih' hOp hOp₂ hOpLt) (ih' hArg hArg₂ hArgLt) he₁ he₂
+    | bet ht hBody₂ hArg₂ =>
+      -- Invert hOp; only .fOp fires for source `.abs t body` at stack `v :: s`.
+      cases hOp with
+      | fOp hT₁ hv₀Scoped hBody₁ =>
+        have hBody₁Lt :
+            MEqRedDepth hBody₁ <
+            MEqRedDepth (MEqRed.app (MEqRed.fOp hT₁ hv₀Scoped hBody₁) hArg) := by
+          simp [MEqRedDepth]; try omega
+        let bridged := MEqRed.bridgeSubToEquHead hBody₂ hv₀Scoped
+        intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+        exact Lemma_2_PaperFaithful_AppBet_Moreover
+          hPayloads.lem32EquHead hT₁ hv₀Scoped hBody₁ hArg ht hBody₂ hArg₂
+          (ih' hBody₁ bridged.1 hBody₁Lt) (ih' hArg hArg₂ hArgLt) he₁ he₂
+    | tAp hpv₂ hu₂ =>
+      -- h₂ source `.app .top u`. Apply tAp cell with h₂'s prevalidity.
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_app_tAp hOp hArg hpv₂ hu₂ he₁ he₂
+  | bet ht hBody₁ hArg₁ =>
+    have hBody₁Lt : MEqRedDepth hBody₁ <
+        MEqRedDepth (MEqRed.bet ht hBody₁ hArg₁) := by
+      simp [MEqRedDepth]; try omega
+    have hArg₁Lt : MEqRedDepth hArg₁ <
+        MEqRedDepth (MEqRed.bet ht hBody₁ hArg₁) := by
+      simp [MEqRedDepth]; try omega
+    cases h₂ with
+    | bet ht₂ hBody₂ hArg₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_bet_bet hPayloads.lem32 ht ht₂
+        hBody₁ hArg₁ hBody₂ hArg₂
+        (ih' hBody₁ hBody₂ hBody₁Lt) (ih' hArg₁ hArg₂ hArg₁Lt) he₁ he₂
+    | app hOp₂ hArg₂ =>
+      cases hOp₂ with
+      | fOp hT₂ hv₀Scoped hBody₂ =>
+        let bridged := MEqRed.bridgeSubToEquHead hBody₁ hv₀Scoped
+        have hBridgedDepth : MEqRedDepth bridged.1 = MEqRedDepth hBody₁ := bridged.2
+        have hBridgedLt : MEqRedDepth bridged.1 <
+            MEqRedDepth (MEqRed.bet ht hBody₁ hArg₁) := by
+          rw [hBridgedDepth]; exact hBody₁Lt
+        intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+        exact Lemma_2_PaperFaithful_BetApp_Moreover
+          hPayloads.lem32EquHead ht hBody₁ hArg₁ hT₂ hv₀Scoped hBody₂ hArg₂
+          (ih' bridged.1 hBody₂ hBridgedLt)
+          (ih' hArg₁ hArg₂ hArg₁Lt) he₁ he₂
+  | fun_ hT hBody =>
+    have hTLt : MEqRedDepth hT < MEqRedDepth (MEqRed.fun_ hT hBody) := by
+      simp [MEqRedDepth]; try omega
+    have hBodyLt : MEqRedDepth hBody < MEqRedDepth (MEqRed.fun_ hT hBody) := by
+      simp [MEqRedDepth]; try omega
+    cases h₂ with
+    | fun_ hT₂ hBody₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_fun_fun hT hBody hT₂ hBody₂
+        (ih' hT hT₂ hTLt) (ih' hBody hBody₂ hBodyLt) he₁ he₂
+  | fOp hT hα hBody =>
+    have hTLt : MEqRedDepth hT < MEqRedDepth (MEqRed.fOp hT hα hBody) := by
+      simp [MEqRedDepth]; try omega
+    have hBodyLt :
+        MEqRedDepth hBody < MEqRedDepth (MEqRed.fOp hT hα hBody) := by
+      simp [MEqRedDepth]; try omega
+    cases h₂ with
+    | fOp hT₂ hα₂ hBody₂ =>
+      intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+      exact MoreoverDiamondGeneral_fOp_fOp hα hα₂ hT hBody hT₂ hBody₂
+        (ih' hT hT₂ hTLt) (ih' hBody hBody₂ hBodyLt) he₁ he₂
+
+/-- **The bundled-payload version of `UniformMoreoverDiamondGeneral`.**
+
+Takes the residual payloads explicitly. -/
+noncomputable def UniformMoreoverDiamondGeneral_proved_conditional
+    (hPayloads : UniformMoreoverDiamondGeneralPayloads) :
+    UniformMoreoverDiamondGeneral := by
+  intro Γ₀ s₀ t₀ t₁ t₂ h₁ h₂
+  exact UniformMoreoverDiamondGeneral_proved_aux hPayloads
+    (MEqRedDepth h₁) h₁ h₂ (Nat.le_refl _)
+
+/-- **Unconditional `UniformEqDiamonds` projection.**
+
+`UniformEqDiamonds` follows from `UniformMoreoverDiamondGeneral` via the
+`ctRefl/ctRefl` specialization. With the payload bundle plus the
+projection, this is the wire-up point for the de Bruijn Lemma 2 closure. -/
+theorem UniformEqDiamonds_proved_unconditional
+    (hPayloads : UniformMoreoverDiamondGeneralPayloads) :
+    UniformEqDiamonds :=
+  UniformMoreoverDiamondGeneral.toUniformEqDiamonds
+    (UniformMoreoverDiamondGeneral_proved_conditional hPayloads)
 
 end Paper
 end DeBruijn
