@@ -420,6 +420,97 @@ theorem Lemma_2_Case_AppApp_proved : Lemma_2_Case_AppApp := by
   · exact ⟨MEqRed.app hLOp₀ hLArg₀⟩
   · exact ⟨MEqRed.app hROp₀ hRArg₀⟩
 
+/-! ## Me-FOp × Me-FOp (paper p. 9:24)
+
+Both sides do Me-FOp: the outer stack starts with `α`, which is popped
+into a `.equ`-head body context with bound = α. The body diamond happens
+in the (evolved) body context. The bound `t_0 →= t_i` reduces at empty
+stack.
+
+For the body context's evolution, we extract α →= α_i from the outer
+evolution via `stripStackHeadWithReduction`, then build the body
+context's evolution via `cons_evolve` (= `ctAnn` with shifted stack). -/
+
+/-- Discharge of `Lemma_2_Case_FOpFOp`: paper p. 9:24. -/
+theorem Lemma_2_Case_FOpFOp_proved : Lemma_2_Case_FOpFOp := by
+  intro Γ₀ s₀ α t₀ t₁ t₂ body₀ body₁ body₂ hαScoped hT₁ hBody₁ hT₂ hBody₂
+    hBoundIH hBodyIH Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- Outer stack length forces s_i to start with some α_i.
+  have hLen₁ := he₁.preserves_stack_length
+  have hLen₂ := he₂.preserves_stack_length
+  -- s_1 has form α_1 :: s_inner_1.
+  cases s₁ with
+  | nil => simp at hLen₁
+  | cons α_1 s_inner_1 =>
+  cases s₂ with
+  | nil => simp at hLen₂
+  | cons α_2 s_inner_2 =>
+  -- Get PrevalidExt for the outer source context Γ₀; α::s₀.
+  -- Strategy: hBody₁ : MEqRed ({α,.equ}::Γ₀) (shift 0 s₀) body₀ body₁ gives
+  -- PrevalidExt ({α,.equ}::Γ₀) (shift 0 s₀). Extract: Prevalid Γ₀ (via tail
+  -- of context) and Stack.Scoped Γ₀.depth s₀ (via shift_inv). Recombine:
+  -- PrevalidExt Γ₀ s₀ via of_stack_scoped, then PrevalidExt.cons with hαScoped.
+  have hpvE_body : PrevalidExt ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) := hBody₁.prevalidExt
+  have hpvCtx_body : Prevalid ({bound := α, kind := .equ} :: Γ₀) :=
+    PrevalidExt.ctx hpvE_body
+  have hpvCtx₀ : Prevalid Γ₀ := Prevalid.tail hpvCtx_body
+  have hStackScopedShifted' : Stack.Scoped (Γ₀.depth + 1) (Stack.shift 0 s₀) := by
+    have h := PrevalidExt.stack_scoped hpvE_body
+    simpa [Ctx.depth_cons] using h
+  have hStackScoped₀ : Stack.Scoped Γ₀.depth s₀ :=
+    Stack.Scoped.shift_inv hStackScopedShifted'
+  have hpvE_s₀ : PrevalidExt Γ₀ s₀ :=
+    PrevalidExt.of_stack_scoped hpvCtx₀ hStackScoped₀
+  have hpvE₀ : PrevalidExt Γ₀ (α :: s₀) := PrevalidExt.cons hpvE_s₀ hαScoped
+  -- Extract head reductions and stripped evolutions via stripStackHeadWithReduction.
+  obtain ⟨hHead₁_ne, heStrip₁⟩ :=
+    ContextEvolution.stripStackHeadWithReduction he₁ hαScoped hpvE₀
+  obtain ⟨hHead₂_ne, heStrip₂⟩ :=
+    ContextEvolution.stripStackHeadWithReduction he₂ hαScoped hpvE₀
+  let hHead₁ : MEqRed Γ₀ [] α α_1 := Classical.choice hHead₁_ne
+  let hHead₂ : MEqRed Γ₀ [] α α_2 := Classical.choice hHead₂_ne
+  -- Bound IH at evolved Γ₀;[] ↣ Γ_i;[]: strip stacks from stripped evolutions
+  -- via Lemma 36.
+  have hBoundEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    heStrip₁.Lemma_36_CommutativityContextWeakening
+  have hBoundEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    heStrip₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨t_3, hLBound, hRBound⟩ := hBoundIH hBoundEv₁ hBoundEv₂
+  let hLBound₀ : MEqRed Γ₁ [] t₁ t_3 := Classical.choice hLBound
+  let hRBound₀ : MEqRed Γ₂ [] t₂ t_3 := Classical.choice hRBound
+  -- Body context evolutions via cons_evolve.
+  let heBody₁ : ContextEvolution ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := α_1, kind := .equ} :: Γ₁) (Stack.shift 0 s_inner_1) :=
+    ContextEvolution.cons_evolve heStrip₁ hHead₁
+  let heBody₂ : ContextEvolution ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := α_2, kind := .equ} :: Γ₂) (Stack.shift 0 s_inner_2) :=
+    ContextEvolution.cons_evolve heStrip₂ hHead₂
+  obtain ⟨b_3, hLBody, hRBody⟩ := hBodyIH heBody₁ heBody₂
+  let hLBody₀ : MEqRed ({bound := α_1, kind := .equ} :: Γ₁)
+      (Stack.shift 0 s_inner_1) body₁ b_3 := Classical.choice hLBody
+  let hRBody₀ : MEqRed ({bound := α_2, kind := .equ} :: Γ₂)
+      (Stack.shift 0 s_inner_2) body₂ b_3 := Classical.choice hRBody
+  -- Build outputs via Me-FOp.
+  -- LHS: MEqRed Γ_1 (α_1 :: s_inner_1) (abs t_1 body_1) (abs t_3 b_3)
+  -- Me-FOp requires:
+  --   MEqRed Γ_1 [] t_1 t_3 ✓ hLBound₀
+  --   Term.Scoped Γ_1.depth α_1
+  --   MEqRed ({α_1, .equ} :: Γ_1) (shift 0 s_inner_1) body_1 b_3 ✓ hLBody₀
+  have hα₁Scoped : Term.Scoped Γ₁.depth α_1 := by
+    have h : Term.Scoped Γ₀.depth α_1 := hHead₁.scoped_right
+    rw [heStrip₁.preserves_ctx_depth] at h
+    exact h
+  have hα₂Scoped : Term.Scoped Γ₂.depth α_2 := by
+    have h : Term.Scoped Γ₀.depth α_2 := hHead₂.scoped_right
+    rw [heStrip₂.preserves_ctx_depth] at h
+    exact h
+  refine ⟨.abs t_3 b_3, ?_, ?_⟩
+  · exact ⟨MEqRed.fOp hLBound₀ hα₁Scoped hLBody₀⟩
+  · exact ⟨MEqRed.fOp hRBound₀ hα₂Scoped hRBody₀⟩
+
 end Paper
 end DeBruijn
 end Pss
