@@ -817,6 +817,331 @@ For the same-context (`ctRefl/ctRefl`) projection that closes
 specialization the cell collapses to the BundleProof's
 `MoreoverDiamond_pro_var` cell with refl bound. -/
 
+/-- **Me-App × Me-TAp** at general context. The Me-TAp source's stack
+inversion forces `u_1 = .top` via `top_inv`. Both diamond endpoints
+collapse to `.top`. -/
+theorem MoreoverDiamondGeneral_app_tAp {Γ₀ : Ctx} {s₀ : Stack}
+    {u_1 v₀ v_1 : Term}
+    (hOp : MEqRed Γ₀ (v₀ :: s₀) .top u_1)
+    (hArg : MEqRed Γ₀ [] v₀ v_1)
+    (hpvTAp : PrevalidExt Γ₀ s₀) (hv₀ : Term.Scoped Γ₀.depth v₀) :
+    MoreoverDiamondGeneral
+      (MEqRed.app hOp hArg) (MEqRed.tAp hpvTAp hv₀) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  have hu₁ : u_1 = .top := hOp.top_inv
+  subst hu₁
+  have hpvE₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpvTAp⟩)
+  have hpvE₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpvTAp⟩)
+  have hv₁Scoped : Term.Scoped Γ₀.depth v_1 := hArg.scoped_right
+  have hv₁Scoped₁ : Term.Scoped Γ₁.depth v_1 := by
+    rw [← he₁.preserves_ctx_depth]; exact hv₁Scoped
+  refine ⟨.top, MEqRed.tAp hpvE₁ hv₁Scoped₁, MEqRed.top hpvE₂, ?_⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
+
+/-- **Me-TAp × Me-App** at general context. Symmetric to `_app_tAp`. -/
+theorem MoreoverDiamondGeneral_tAp_app {Γ₀ : Ctx} {s₀ : Stack}
+    {u_2 v₀ v_2 : Term}
+    (hpvTAp : PrevalidExt Γ₀ s₀) (hv₀ : Term.Scoped Γ₀.depth v₀)
+    (hOp : MEqRed Γ₀ (v₀ :: s₀) .top u_2)
+    (hArg : MEqRed Γ₀ [] v₀ v_2) :
+    MoreoverDiamondGeneral
+      (MEqRed.tAp hpvTAp hv₀) (MEqRed.app hOp hArg) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  have hu₂ : u_2 = .top := hOp.top_inv
+  subst hu₂
+  have hpvE₁ : PrevalidExt Γ₁ s₁ :=
+    Classical.choice (he₁.preservesNonemptyPrevalidExt ⟨hpvTAp⟩)
+  have hpvE₂ : PrevalidExt Γ₂ s₂ :=
+    Classical.choice (he₂.preservesNonemptyPrevalidExt ⟨hpvTAp⟩)
+  have hv₂Scoped : Term.Scoped Γ₀.depth v_2 := hArg.scoped_right
+  have hv₂Scoped₂ : Term.Scoped Γ₂.depth v_2 := by
+    rw [← he₂.preserves_ctx_depth]; exact hv₂Scoped
+  refine ⟨.top, MEqRed.top hpvE₁, MEqRed.tAp hpvE₂ hv₂Scoped₂, ?_⟩
+  intro x
+  exact ⟨fun _ => trivial, fun _ => trivial⟩
+
+/-- **Me-Fun × Me-Fun** at general context. Both descend under unapplied
+abstractions; outer stack is `[]`. Body IH at `{t₀,.sub}::Γ_0; []`. The
+body outputs at `{t₀,.sub}::Γ_i; []` are bridged to the evolved
+abstraction's bound `{t_i,.sub}::Γ_i; []` via the body IH directly
+(by lifting evolution with the abstraction's bound reduction). -/
+theorem MoreoverDiamondGeneral_fun_fun {Γ₀ : Ctx}
+    {t₀ t_1 t_2 body₀ body_1 body_2 : Term}
+    (hT_1 : MEqRed Γ₀ [] t₀ t_1)
+    (hBody_1 : MEqRed ({bound := t₀, kind := .sub} :: Γ₀) [] body₀ body_1)
+    (hT_2 : MEqRed Γ₀ [] t₀ t_2)
+    (hBody_2 : MEqRed ({bound := t₀, kind := .sub} :: Γ₀) [] body₀ body_2)
+    (hBoundIH : MoreoverDiamondGeneral hT_1 hT_2)
+    (hBodyIH : MoreoverDiamondGeneral hBody_1 hBody_2) :
+    MoreoverDiamondGeneral
+      (MEqRed.fun_ hT_1 hBody_1) (MEqRed.fun_ hT_2 hBody_2) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- Force s_i = [] from stack-length preservation.
+  have hs₁_nil : s₁ = [] := by
+    have h := he₁.preserves_stack_length
+    cases s₁
+    · rfl
+    · simp at h
+  have hs₂_nil : s₂ = [] := by
+    have h := he₂.preserves_stack_length
+    cases s₂
+    · rfl
+    · simp at h
+  subst hs₁_nil; subst hs₂_nil
+  -- Bound diamond at evolved contexts.
+  obtain ⟨t_3, d_1_bound, d_2_bound, hMBound⟩ := hBoundIH he₁ he₂
+  -- Build body context evolutions via ctAnn with the abstraction's bound reductions.
+  let heBody₁ : ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀) []
+      ({bound := t_1, kind := .sub} :: Γ₁) [] :=
+    ContextEvolution.ctAnn he₁ hT_1
+  let heBody₂ : ContextEvolution ({bound := t₀, kind := .sub} :: Γ₀) []
+      ({bound := t_2, kind := .sub} :: Γ₂) [] :=
+    ContextEvolution.ctAnn he₂ hT_2
+  obtain ⟨body_3, d_1_body, d_2_body, hMBody⟩ := hBodyIH heBody₁ heBody₂
+  refine ⟨.abs t_3 body_3,
+    MEqRed.fun_ d_1_bound d_1_body,
+    MEqRed.fun_ d_2_bound d_2_body, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · intro h₁np
+    -- h₁ = MEqRed.fun_ hT_1 hBody_1, NP-x = (NP-x hT_1) ∧ (NP-(x+1) hBody_1)
+    -- d_2 = MEqRed.fun_ d_2_bound d_2_body, NP-x = (NP-x d_2_bound) ∧ (NP-(x+1) d_2_body)
+    exact ⟨(hMBound x).1 h₁np.1, (hMBody (x + 1)).1 h₁np.2⟩
+  · intro h₂np
+    exact ⟨(hMBound x).2 h₂np.1, (hMBody (x + 1)).2 h₂np.2⟩
+
+/-- **Me-FOp × Me-FOp** at general context. Both pop the stack head into an
+`.equ`-head body context with bound = α. The α →= α_i step is extracted
+from the outer evolution via `stripStackHeadWithReduction`, then the
+body context evolution is built via `cons_evolve`. -/
+theorem MoreoverDiamondGeneral_fOp_fOp {Γ₀ : Ctx} {s₀ : Stack}
+    {α t₀ t_1 t_2 body₀ body_1 body_2 : Term}
+    (hαScoped : Term.Scoped Γ₀.depth α)
+    (hT_1 : MEqRed Γ₀ [] t₀ t_1)
+    (hBody_1 : MEqRed ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) body₀ body_1)
+    (hT_2 : MEqRed Γ₀ [] t₀ t_2)
+    (hBody_2 : MEqRed ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) body₀ body_2)
+    (hBoundIH : MoreoverDiamondGeneral hT_1 hT_2)
+    -- The body IH's signature is for the ORIGINAL body context
+    -- `{α,.equ}::Γ₀; shift 0 s₀`. We invoke it with body-evolved
+    -- contexts `{α_i,.equ}::Γ_i; shift 0 s_inner_i` derived via
+    -- `cons_evolve` with α →= α_i.
+    (hBodyIH : MoreoverDiamondGeneral hBody_1 hBody_2) :
+    MoreoverDiamondGeneral
+      (MEqRed.fOp hT_1 hαScoped hBody_1) (MEqRed.fOp hT_2 hαScoped hBody_2) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- We need PrevalidExt Γ₀ (α :: s₀) to invoke stripStackHeadWithReduction.
+  -- Build from body's prevalidity.
+  have hpvE_body : PrevalidExt ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀) := hBody_1.prevalidExt
+  have hpvCtx_body : Prevalid ({bound := α, kind := .equ} :: Γ₀) :=
+    PrevalidExt.ctx hpvE_body
+  have hpvCtx₀ : Prevalid Γ₀ := Prevalid.tail hpvCtx_body
+  have hStackScopedShifted : Stack.Scoped (Γ₀.depth + 1) (Stack.shift 0 s₀) := by
+    have h := PrevalidExt.stack_scoped hpvE_body
+    simpa [Ctx.depth_cons] using h
+  have hStackScoped₀ : Stack.Scoped Γ₀.depth s₀ :=
+    Stack.Scoped.shift_inv hStackScopedShifted
+  have hpvE_s₀ : PrevalidExt Γ₀ s₀ :=
+    PrevalidExt.of_stack_scoped hpvCtx₀ hStackScoped₀
+  have hpvE_α_s₀ : PrevalidExt Γ₀ (α :: s₀) := PrevalidExt.cons hpvE_s₀ hαScoped
+  -- s_i must be `α_i :: s_inner_i`; extract.
+  have hLen₁ := he₁.preserves_stack_length
+  have hLen₂ := he₂.preserves_stack_length
+  cases hs1 : s₁ with
+  | nil => rw [hs1] at hLen₁; simp at hLen₁
+  | cons α_1 s_inner_1 =>
+  cases hs2 : s₂ with
+  | nil => rw [hs2] at hLen₂; simp at hLen₂
+  | cons α_2 s_inner_2 =>
+  rw [hs1] at he₁ hLen₁
+  rw [hs2] at he₂ hLen₂
+  -- Extract α →= α_i + stripped Γ₀;s₀ ↣ Γ_i;s_inner_i.
+  obtain ⟨hHead₁_ne, heStrip₁⟩ :=
+    ContextEvolution.stripStackHeadWithReduction he₁ hαScoped hpvE_α_s₀
+  obtain ⟨hHead₂_ne, heStrip₂⟩ :=
+    ContextEvolution.stripStackHeadWithReduction he₂ hαScoped hpvE_α_s₀
+  let hHead₁ : MEqRed Γ₀ [] α α_1 := Classical.choice hHead₁_ne
+  let hHead₂ : MEqRed Γ₀ [] α α_2 := Classical.choice hHead₂_ne
+  -- Bound IH at evolved Γ_0; [] ↣ Γ_i; [] via Lemma 36 on stripped evolutions.
+  have hBoundEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    heStrip₁.Lemma_36_CommutativityContextWeakening
+  have hBoundEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    heStrip₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨t_3, d_1_bound, d_2_bound, hMBound⟩ := hBoundIH hBoundEv₁ hBoundEv₂
+  -- Body context evolutions via cons_evolve (with α →= α_i).
+  let heBody₁ : ContextEvolution ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := α_1, kind := .equ} :: Γ₁) (Stack.shift 0 s_inner_1) :=
+    ContextEvolution.cons_evolve heStrip₁ hHead₁
+  let heBody₂ : ContextEvolution ({bound := α, kind := .equ} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := α_2, kind := .equ} :: Γ₂) (Stack.shift 0 s_inner_2) :=
+    ContextEvolution.cons_evolve heStrip₂ hHead₂
+  obtain ⟨body_3, d_1_body, d_2_body, hMBody⟩ := hBodyIH heBody₁ heBody₂
+  have hα₁Scoped : Term.Scoped Γ₁.depth α_1 := by
+    have h : Term.Scoped Γ₀.depth α_1 := hHead₁.scoped_right
+    rw [heStrip₁.preserves_ctx_depth] at h
+    exact h
+  have hα₂Scoped : Term.Scoped Γ₂.depth α_2 := by
+    have h : Term.Scoped Γ₀.depth α_2 := hHead₂.scoped_right
+    rw [heStrip₂.preserves_ctx_depth] at h
+    exact h
+  refine ⟨.abs t_3 body_3,
+    MEqRed.fOp d_1_bound hα₁Scoped d_1_body,
+    MEqRed.fOp d_2_bound hα₂Scoped d_2_body, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · intro h₁np
+    exact ⟨(hMBound x).1 h₁np.1, (hMBody (x + 1)).1 h₁np.2⟩
+  · intro h₂np
+    exact ⟨(hMBound x).2 h₂np.1, (hMBody (x + 1)).2 h₂np.2⟩
+
+/-- **Me-Bet × Me-Bet** at general context. Both perform β at body
+`{t,.sub}::Γ_0; shift 0 s_0` and arg `Γ_0; []`. Uses Lemma 32
+(kind-narrowed asymmetric closed) on each side to produce the joint
+β-substituted output. Conditional on `Lemma_32_PreservesNP_Payload`. -/
+theorem MoreoverDiamondGeneral_bet_bet
+    (hLem32NP : Lemma_32_PreservesNP_Payload)
+    {Γ₀ : Ctx} {s₀ : Stack}
+    {t v_0 u_0 u_1 u_2 v_1 v_2 : Term}
+    (ht : Term.Scoped Γ₀.depth t)
+    (hBody_1 : MEqRed ({bound := t, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀) u_0 u_1)
+    (hArg_1 : MEqRed Γ₀ [] v_0 v_1)
+    (hBody_2 : MEqRed ({bound := t, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀) u_0 u_2)
+    (hArg_2 : MEqRed Γ₀ [] v_0 v_2)
+    -- Body IH at the SAME starting context (both bodies share
+    -- `{t,.sub}::Γ_0; shift 0 s_0`).
+    (hBodyIH : MoreoverDiamondGeneral hBody_1 hBody_2)
+    (hArgIH : MoreoverDiamondGeneral hArg_1 hArg_2) :
+    MoreoverDiamondGeneral
+      (MEqRed.bet ht hBody_1 hArg_1) (MEqRed.bet ht hBody_2 hArg_2) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  -- Body context evolutions via cons_lift (bound unchanged on both sides).
+  let heBody₁ : ContextEvolution ({bound := t, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := t, kind := .sub} :: Γ₁) (Stack.shift 0 s₁) :=
+    ContextEvolution.cons_lift he₁ ht
+  let heBody₂ : ContextEvolution ({bound := t, kind := .sub} :: Γ₀)
+      (Stack.shift 0 s₀)
+      ({bound := t, kind := .sub} :: Γ₂) (Stack.shift 0 s₂) :=
+    ContextEvolution.cons_lift he₂ ht
+  obtain ⟨u_3, d_1_body, d_2_body, hMBody⟩ := hBodyIH heBody₁ heBody₂
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, d_1_arg, d_2_arg, hMArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  have hv₁Scoped : Term.Scoped Γ₁.depth v_1 := d_1_arg.scoped_left
+  have hv₂Scoped : Term.Scoped Γ₂.depth v_2 := d_2_arg.scoped_left
+  have hv_3Scoped₁ : Term.Scoped Γ₁.depth v_3 := d_1_arg.scoped_right
+  have hv_3Scoped₂ : Term.Scoped Γ₂.depth v_3 := d_2_arg.scoped_right
+  have htScoped₁ : Term.Scoped Γ₁.depth t := by
+    rw [← he₁.preserves_ctx_depth]; exact ht
+  have htScoped₂ : Term.Scoped Γ₂.depth t := by
+    rw [← he₂.preserves_ctx_depth]; exact ht
+  have hStackSimp₁ : Stack.instantiate 0 v_1 (Stack.shift 0 s₁) = s₁ :=
+    Stack.instantiate_shift_zero_id_general v_1 s₁
+  have hStackSimp₂ : Stack.instantiate 0 v_2 (Stack.shift 0 s₂) = s₂ :=
+    Stack.instantiate_shift_zero_id_general v_2 s₂
+  let hLHS_pre :
+      MEqRed Γ₁ (Stack.instantiate 0 v_1 (Stack.shift 0 s₁))
+        (Term.instantiate 0 v_1 u_1) (Term.instantiate 0 v_3 u_3) :=
+    Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+      htScoped₁ hv₁Scoped hv_3Scoped₁ d_1_arg d_1_body
+  let hRHS_pre :
+      MEqRed Γ₂ (Stack.instantiate 0 v_2 (Stack.shift 0 s₂))
+        (Term.instantiate 0 v_2 u_2) (Term.instantiate 0 v_3 u_3) :=
+    Investigation.Lemma_32_KindNarrowedAsymmetric_proved_closed
+      htScoped₂ hv₂Scoped hv_3Scoped₂ d_2_arg d_2_body
+  let hLHS_out : MEqRed Γ₁ s₁
+      (Term.instantiate 0 v_1 u_1) (Term.instantiate 0 v_3 u_3) :=
+    hStackSimp₁ ▸ hLHS_pre
+  let hRHS_out : MEqRed Γ₂ s₂
+      (Term.instantiate 0 v_2 u_2) (Term.instantiate 0 v_3 u_3) :=
+    hStackSimp₂ ▸ hRHS_pre
+  refine ⟨Term.instantiate 0 v_3 u_3, hLHS_out, hRHS_out, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · -- h₁.NP-x → d_2.NP-x. h₁ = MEqRed.bet ht hBody_1 hArg_1.
+    intro h₁np
+    have hBody_NP : d_2_body.NoPromotionOf (x + 1) :=
+      (hMBody (x + 1)).1 h₁np.1
+    have hArg_NP : d_2_arg.NoPromotionOf x := (hMArg x).1 h₁np.2
+    have hPre : hRHS_pre.NoPromotionOf x :=
+      hLem32NP htScoped₂ hv₂Scoped hv_3Scoped₂ d_2_arg d_2_body x hBody_NP hArg_NP
+    show MEqRed.NoPromotionOf x hRHS_out
+    have hMotive : ∀ (s' : Stack)
+      (heq : Stack.instantiate 0 v_2 (Stack.shift 0 s₂) = s')
+      (d : MEqRed Γ₂ s'
+        (Term.instantiate 0 v_2 u_2) (Term.instantiate 0 v_3 u_3)),
+      d = heq ▸ hRHS_pre →
+      MEqRed.NoPromotionOf x d := by
+        intro s' heq d hd
+        subst heq
+        subst hd
+        exact hPre
+    exact hMotive _ _ _ rfl
+  · intro h₂np
+    have hBody_NP : d_1_body.NoPromotionOf (x + 1) :=
+      (hMBody (x + 1)).2 h₂np.1
+    have hArg_NP : d_1_arg.NoPromotionOf x := (hMArg x).2 h₂np.2
+    have hPre : hLHS_pre.NoPromotionOf x :=
+      hLem32NP htScoped₁ hv₁Scoped hv_3Scoped₁ d_1_arg d_1_body x hBody_NP hArg_NP
+    show MEqRed.NoPromotionOf x hLHS_out
+    have hMotive : ∀ (s' : Stack)
+      (heq : Stack.instantiate 0 v_1 (Stack.shift 0 s₁) = s')
+      (d : MEqRed Γ₁ s'
+        (Term.instantiate 0 v_1 u_1) (Term.instantiate 0 v_3 u_3)),
+      d = heq ▸ hLHS_pre →
+      MEqRed.NoPromotionOf x d := by
+        intro s' heq d hd
+        subst heq
+        subst hd
+        exact hPre
+    exact hMotive _ _ _ rfl
+
+/-- **Me-App × Me-App** at general context. Operator IH at expanded stack
+`v_0 :: s_0` (Ct-Stk evolution); operand IH at empty stack. -/
+theorem MoreoverDiamondGeneral_app_app {Γ₀ : Ctx} {s₀ : Stack}
+    {u_0 u_1 u_2 v_0 v_1 v_2 : Term}
+    (hOp_1 : MEqRed Γ₀ (v_0 :: s₀) u_0 u_1)
+    (hArg_1 : MEqRed Γ₀ [] v_0 v_1)
+    (hOp_2 : MEqRed Γ₀ (v_0 :: s₀) u_0 u_2)
+    (hArg_2 : MEqRed Γ₀ [] v_0 v_2)
+    (hOpIH : MoreoverDiamondGeneral hOp_1 hOp_2)
+    (hArgIH : MoreoverDiamondGeneral hArg_1 hArg_2) :
+    MoreoverDiamondGeneral
+      (MEqRed.app hOp_1 hArg_1) (MEqRed.app hOp_2 hArg_2) := by
+  intro Γ₁ s₁ Γ₂ s₂ he₁ he₂
+  have hArgEv₁ : ContextEvolution Γ₀ [] Γ₁ [] :=
+    he₁.Lemma_36_CommutativityContextWeakening
+  have hArgEv₂ : ContextEvolution Γ₀ [] Γ₂ [] :=
+    he₂.Lemma_36_CommutativityContextWeakening
+  obtain ⟨v_3, d_1_arg, d_2_arg, hMArg⟩ := hArgIH hArgEv₁ hArgEv₂
+  -- Operator IH at expanded stack via Ct-Stk.
+  let heOp₁ : ContextEvolution Γ₀ (v_0 :: s₀) Γ₁ (v_1 :: s₁) :=
+    ContextEvolution.ctStk he₁ hArg_1
+  let heOp₂ : ContextEvolution Γ₀ (v_0 :: s₀) Γ₂ (v_2 :: s₂) :=
+    ContextEvolution.ctStk he₂ hArg_2
+  obtain ⟨u_3, d_1_op, d_2_op, hMOp⟩ := hOpIH heOp₁ heOp₂
+  refine ⟨.app u_3 v_3,
+    MEqRed.app d_1_op d_1_arg,
+    MEqRed.app d_2_op d_2_arg, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · intro h₁np
+    exact ⟨(hMOp x).1 h₁np.1, (hMArg x).1 h₁np.2⟩
+  · intro h₂np
+    exact ⟨(hMOp x).2 h₂np.1, (hMArg x).2 h₂np.2⟩
+
 end Paper
 end DeBruijn
 end Pss
