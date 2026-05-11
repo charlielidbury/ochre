@@ -486,6 +486,96 @@ theorem MoreoverDiamond_pro_pro {Γ : Ctx} {s : Stack} {i : Nat}
     intro h₂np
     exact (hMoreoverBound x).2 h₂np.2
 
+/-! ## Bundle proof — `Me-Pro × Me-Var` cell (paper p. 9:21)
+
+Source: `bvar i`. LHS is `Me-Pro` with bound reduction `α₀ →= α_1`, RHS
+is `Me-Var` (identity). For the same-context bundle, RHS Me-Var
+reduces `bvar i → bvar i`. The diamond closes by:
+
+1. Recursing on the bound: source pair `(α₀ → α_1, α₀ → α₀)` where the
+   second derivation is `refl`. The bound IH (from the outer bundle's
+   recursion) gives `α_3` with `α_1 → α_3` (right edge) and `α₀ → α_3`
+   (top edge).
+2. Right edge `d_1 : α_1 → α_3` (already the bound IH's d_1).
+3. Top edge `d_2 : bvar i → α_3` rebuilt via `Me-Pro` from `hb` and the
+   bound IH's `d_2 : α₀ → α_3`.
+
+NP propagation:
+* `h₁.NP-x = i ≠ x ∧ hα.NP-x` (Me-Pro on bvar i). h₁.NP-x → d_2.NP-x:
+  d_2 = Me-Pro hb (bound_d_2), so d_2.NP-x = `i ≠ x ∧ bound_d_2.NP-x`.
+  First conjunct from h₁.NP-x.1; second from bound IH's `hα → d_2`
+  applied to h₁.NP-x.2.
+* `h₂.NP-x` = True (Me-Var). h₂.NP-x → d_1.NP-x: d_1 = bound_d_1 of the
+  bound IH. Use bound IH's `α₀refl → d_1` clause; refl_with_NP gives
+  `reflα.NP-x` for all x (trivially), so we get `bound_d_1.NP-x` = d_1
+  NP-x.
+-/
+
+/-- Me-Pro × Me-Var: LHS is Me-Pro on bvar i with bound `α₀ → α_1`; RHS
+is Me-Var on bvar i. The diamond resolves at the bound: recurse on
+`(hα, refl α₀)`, get `α_3` with `α_1 → α_3` and `α₀ → α_3`; rebuild RHS
+output as `Me-Pro hb (α₀ → α_3)`. -/
+theorem MoreoverDiamond_pro_var {Γ : Ctx} {s : Stack} {i : Nat}
+    {α₀ α_1 : Term}
+    (hpv₁ : PrevalidExt Γ s) (hb : Γ.equBinds i α₀)
+    (hα : MEqRed Γ s α₀ α_1)
+    (hpv₂ : PrevalidExt Γ s) (hi : i < Γ.depth)
+    (hα₀Scoped : Term.Scoped Γ.depth α₀)
+    (hBoundIH :
+      ∀ (hα_refl : MEqRed Γ s α₀ α₀)
+        (_hreflNP : ∀ x, hα_refl.NoPromotionOf x),
+        MoreoverDiamond Γ s α₀ α_1 α₀ hα hα_refl) :
+    MoreoverDiamond Γ s (.bvar i) α_1 (.bvar i)
+      (MEqRed.pro hpv₁ hb hα) (MEqRed.var hpv₂ hi) := by
+  -- Build the refl derivation on α₀.
+  let ⟨hα_refl, hreflNP⟩ := MEqRed.refl_with_NP hpv₁ hα₀Scoped
+  obtain ⟨α_3, d_1_bound, d_2_bound, hMoreoverBound⟩ := hBoundIH hα_refl hreflNP
+  -- d_1_bound : MEqRed Γ s α_1 α_3
+  -- d_2_bound : MEqRed Γ s α₀ α_3
+  refine ⟨α_3, d_1_bound, MEqRed.pro hpv₂ hb d_2_bound, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · -- h₁.NP-x → d_2.NP-x: h₁.NP-x = ⟨i ≠ x, hα.NP-x⟩. d_2 = pro hpv₂ hb
+    -- d_2_bound, NP-x = ⟨i ≠ x, d_2_bound.NP-x⟩. Bound IH crosses hα.NP-x
+    -- to d_2_bound.NP-x.
+    intro h₁np
+    refine ⟨h₁np.1, ?_⟩
+    exact (hMoreoverBound x).1 h₁np.2
+  · -- h₂.NP-x → d_1.NP-x: h₂ = Me-Var, NP-x = True. d_1 = d_1_bound of bound
+    -- IH. Use bound IH's `hα_refl.NP-x → d_1_bound.NP-x` clause; reflNP
+    -- gives `hα_refl.NP-x` trivially.
+    intro _
+    exact (hMoreoverBound x).2 (hreflNP x)
+
+/-- Me-Var × Me-Pro: symmetric to `MoreoverDiamond_pro_var`. -/
+theorem MoreoverDiamond_var_pro {Γ : Ctx} {s : Stack} {i : Nat}
+    {α₀ α_2 : Term}
+    (hpv₁ : PrevalidExt Γ s) (hi : i < Γ.depth)
+    (hpv₂ : PrevalidExt Γ s) (hb : Γ.equBinds i α₀)
+    (hα : MEqRed Γ s α₀ α_2)
+    (hα₀Scoped : Term.Scoped Γ.depth α₀)
+    (hBoundIH :
+      ∀ (hα_refl : MEqRed Γ s α₀ α₀)
+        (_hreflNP : ∀ x, hα_refl.NoPromotionOf x),
+        MoreoverDiamond Γ s α₀ α₀ α_2 hα_refl hα) :
+    MoreoverDiamond Γ s (.bvar i) (.bvar i) α_2
+      (MEqRed.var hpv₁ hi) (MEqRed.pro hpv₂ hb hα) := by
+  let ⟨hα_refl, hreflNP⟩ := MEqRed.refl_with_NP hpv₂ hα₀Scoped
+  obtain ⟨α_3, d_1_bound, d_2_bound, hMoreoverBound⟩ := hBoundIH hα_refl hreflNP
+  -- d_1_bound : MEqRed Γ s α₀ α_3 (this is the refl side's reduction)
+  -- d_2_bound : MEqRed Γ s α_2 α_3
+  refine ⟨α_3, MEqRed.pro hpv₁ hb d_1_bound, d_2_bound, ?_⟩
+  intro x
+  refine ⟨?_, ?_⟩
+  · -- h₁.NP-x → d_2.NP-x: h₁ = Me-Var, NP-x = True.
+    intro _
+    exact (hMoreoverBound x).1 (hreflNP x)
+  · -- h₂.NP-x → d_1.NP-x: h₂ = Me-Pro, NP-x = ⟨i ≠ x, hα.NP-x⟩.
+    -- d_1 = pro hpv₁ hb d_1_bound, NP-x = ⟨i ≠ x, d_1_bound.NP-x⟩.
+    intro h₂np
+    refine ⟨h₂np.1, ?_⟩
+    exact (hMoreoverBound x).2 h₂np.2
+
 /-! ## Bundle proof — `Me-App × Me-TAp` cell (paper p. 9:23)
 
 Me-TAp source: `.app .top u → .top`. The Me-App side has operator
