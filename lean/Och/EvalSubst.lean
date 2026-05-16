@@ -186,98 +186,82 @@ where
   | _, .bot => none
   | _, e => some e
 
-mutual
-  /-- Top-level subtype check arm. Forces WHNF on both sides, then
-      delegates to `subCheckSubstMatch` for case-on-shape.
+/-! ### Bool-returning subtype checker (the existing algorithm)
 
-      Exposed (not `private`) so soundness proofs can refer to it. -/
-  def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
+The `subCheckBool` family preserves the original `Outcome Bool`
+signatures. The new `subCheckSubst` will return `Outcome (Subtype' ...)`
+and is defined below; the Bool version is kept for the `API.lean`
+callers that only need an accept/reject answer. -/
+
+mutual
+  /-- Top-level subtype check arm (Bool version). Forces WHNF on both
+      sides, then delegates to `subCheckBoolMatch`. -/
+  def subCheckBool (fuel : Nat) (tyCtx : TyCtx)
       (seen : Seen) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
-      -- Force WHNF on both sides. Without this, types stored in
-      -- tyCtx and inner doms can be un-evaluated Exprs whose
-      -- structural equality doesn't match their reduced form.
       match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
       | .ok a', .ok b' =>
-          -- Peel ascriptions asymmetrically before fast paths:
-          -- LHS .asc: use annotation (caller sees τ)
-          -- RHS .asc: use inner value (content is still e)
           let a'' := match a' with | .asc _ ty => ty | x => x
           let b'' := match b' with | .asc e _ => e | x => x
           if a'' == b'' then .ok true
           else if seen.any (fun (_, av, bv) => a'' == av && b'' == bv) then .ok true
           else if b'' == .type then .ok true
-          else subCheckSubstMatch fuel tyCtx seen a'' b''
+          else subCheckBoolMatch fuel tyCtx seen a'' b''
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
       | .error s, _ | _, .error s => .error s
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
-  /-- The per-shape case-split for `subCheckSubst`. Inputs are assumed
-      to be in WHNF (the caller forces it). Exposed for soundness
-      proofs. -/
-  def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
+  /-- Per-shape case-split (Bool version). -/
+  def subCheckBoolMatch (fuel : Nat) (tyCtx : TyCtx)
       (seen : Seen) (a b : Expr) : Outcome Bool :=
     match a, b with
-    -- Bot ⊑ anything ([S-BotL]).
     | .bot, _ => .ok true
-    -- λ ⊑ λ: contravariant on domain, covariant on body (under fresh).
-    -- Push `domB` (narrower / target) — matches declarative spec.
-    | .lam domA bodyA, .lam domB bodyB => do
-        let contra ← subCheckSubst fuel tyCtx seen domB domA
+    | .lam _domA _bodyA, .lam domB bodyB => do
+        let contra ← subCheckBool fuel tyCtx seen domB _domA
         if !contra then return false
-        -- Descend into bodies WITHOUT substitution. bvar 0 in the body
-        -- refers to the bound variable; extend the context with domB.
-        subCheckSubst fuel (domB :: tyCtx) seen bodyA bodyB
-    -- ι ⊑ ι: structural attempt then iotaIntro fallback.
-    | .iota annA bodyA, .iota annB bodyB =>
+        subCheckBool fuel (domB :: tyCtx) seen _bodyA bodyB
+    | .iota _annA _bodyA, .iota annB bodyB =>
         let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen annA annB
+          let annOk ← subCheckBool fuel tyCtx seen _annA annB
           if !annOk then return false
-          -- Descend into bodies without substitution.
-          subCheckSubst fuel (annB :: tyCtx) seen bodyA bodyB
+          subCheckBool fuel (annB :: tyCtx) seen _bodyA bodyB
         match structural with
         | .ok true => .ok true
         | _ => do
           let seen' := (tyCtx.length, a, b) :: seen
-          let okAnn ← subCheckSubst fuel tyCtx seen' a annB
+          let okAnn ← subCheckBool fuel tyCtx seen' a annB
           if !okAnn then .ok false
           else do
             let bodyB' := bodyB.subst 0 a
             match evalSubst (fuel + 1) unfBound bodyB' with
-            | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
+            | .ok bodyB'' => subCheckBool fuel tyCtx seen' a bodyB''
             | _ => .ok false
-    -- fix ⊑ fix: structural attempt then unfold-RHS fallback.
-    | .fix annA bodyA, .fix annB bodyB =>
+    | .fix _annA _bodyA, .fix annB bodyB =>
         let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen annA annB
+          let annOk ← subCheckBool fuel tyCtx seen _annA annB
           if !annOk then return false
-          -- Descend into bodies without substitution.
-          subCheckSubst fuel (annB :: tyCtx) seen bodyA bodyB
+          subCheckBool fuel (annB :: tyCtx) seen _bodyA bodyB
         match structural with
         | .ok true => .ok true
         | _ => do
           let seen' := (tyCtx.length, a, b) :: seen
           let unfolded := bodyB.subst 0 b
           match evalSubst (fuel + 1) unfBound unfolded with
-          | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+          | .ok b' => subCheckBool fuel tyCtx seen' a b'
           | _ => .ok false
-    -- _ ⊑ ι: iotaIntro.
     | _, .iota ann bodyB => do
         let seen' := (tyCtx.length, a, b) :: seen
-        let okAnn ← subCheckSubst fuel tyCtx seen' a ann
+        let okAnn ← subCheckBool fuel tyCtx seen' a ann
         if !okAnn then .ok false
         else do
           let bodyB' := bodyB.subst 0 a
           match evalSubst (fuel + 1) unfBound bodyB' with
-          | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
+          | .ok bodyB'' => subCheckBool fuel tyCtx seen' a bodyB''
           | _ => .ok false
-    -- _ ⊑ fix: unfoldFixR.
     | _, .fix _ann bodyB => do
-        -- Neutral-LHS short-circuit: if `a` is a neutral whose ascended
-        -- type via tyCtx is structurally `b`, accept immediately.
         if isNeutral a then
           match synthNeutralType fuel tyCtx a with
           | .ok (some ty) =>
@@ -286,55 +270,49 @@ mutual
                 let seen' := (tyCtx.length, a, b) :: seen
                 let unfolded := bodyB.subst 0 b
                 match evalSubst (fuel + 1) unfBound unfolded with
-                | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+                | .ok b' => subCheckBool fuel tyCtx seen' a b'
                 | _ => .ok false
           | _ =>
               let seen' := (tyCtx.length, a, b) :: seen
               let unfolded := bodyB.subst 0 b
               match evalSubst (fuel + 1) unfBound unfolded with
-              | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+              | .ok b' => subCheckBool fuel tyCtx seen' a b'
               | _ => .ok false
         else
           let seen' := (tyCtx.length, a, b) :: seen
           let unfolded := bodyB.subst 0 b
           match evalSubst (fuel + 1) unfBound unfolded with
-          | .ok b' => subCheckSubst fuel tyCtx seen' a b'
+          | .ok b' => subCheckBool fuel tyCtx seen' a b'
           | _ => .ok false
-    -- fix ⊑ _: unfoldFixL.
     | .fix _ann bodyA, _ => do
         let seen' := (tyCtx.length, a, b) :: seen
         let unfolded := bodyA.subst 0 a
         match evalSubst (fuel + 1) unfBound unfolded with
         | .ok a' =>
             if a' == a then .ok false
-            else subCheckSubst fuel tyCtx seen' a' b
+            else subCheckBool fuel tyCtx seen' a' b
         | _ => .ok false
-    -- ι ⊑ _: iotaElim.
     | .iota _ann bodyA, _ => do
         let seen' := (tyCtx.length, a, b) :: seen
         let unfolded := bodyA.subst 0 a
         match evalSubst (fuel + 1) unfBound unfolded with
         | .ok a' =>
             if a' == a then .ok false
-            else subCheckSubst fuel tyCtx seen' a' b
+            else subCheckBool fuel tyCtx seen' a' b
         | _ => .ok false
-    -- Neutrals: try spine-compare; if that fails (or for one-sided
-    -- neutrals), ascend to the LHS neutral's type and recurse.
     | _, _ =>
         if isNeutral a && isNeutral b then
           match subCheckSpine fuel tyCtx seen a b with
           | .ok true => .ok true
-          | _ => neutralAscent fuel tyCtx seen a b
+          | _ => neutralAscentBool fuel tyCtx seen a b
         else if isNeutral a then
-          neutralAscent fuel tyCtx seen a b
+          neutralAscentBool fuel tyCtx seen a b
         else
           .ok false
   termination_by (fuel, 1)
   decreasing_by all_goals (simp_wf; omega)
 
-  /-- Compare two neutral spines structurally. Heads must be equal
-      `bvar`s; arguments must be pairwise *equivalent* (any-
-      variance). Exposed for soundness proofs. -/
+  /-- Compare two neutral spines structurally (Bool version). -/
   def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
       (seen : Seen) (a b : Expr) : Outcome Bool :=
     match fuel with
@@ -346,22 +324,22 @@ mutual
       | .app f1 v1, .app f2 v2 => do
           let hd ← subCheckSpine fuel tyCtx seen f1 f2
           if !hd then return false
-          let fwd ← subCheckSubst fuel tyCtx seen v1 v2
+          let fwd ← subCheckBool fuel tyCtx seen v1 v2
           if !fwd then return false
-          subCheckSubst fuel tyCtx seen v2 v1
+          subCheckBool fuel tyCtx seen v2 v1
       | _, _ => .ok false
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
-  /-- Synthesise the type of a neutral spine and check against `b`.
-      Mirrors NbE's `neutralAscent`. Exposed for soundness proofs. -/
-  def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
+  /-- Synthesise the type of a neutral spine and check against `b`
+      (Bool version). -/
+  def neutralAscentBool (fuel : Nat) (tyCtx : TyCtx)
       (seen : Seen) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
       match synthNeutralType fuel tyCtx a with
-      | .ok (some ty) => subCheckSubst fuel tyCtx seen ty b
+      | .ok (some ty) => subCheckBool fuel tyCtx seen ty b
       | _ => .ok false
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
@@ -380,30 +358,17 @@ mutual
     | fuel + 1 =>
       match a with
       | .bvar k =>
-          -- Look up bvar k in the context. tyCtx is a List in
-          -- de Bruijn order: tyCtx.get? k is the type of bvar k.
           match tyCtx.get? k with
           | some ty =>
-              -- Shift the type up by (k+1) to account for the
-              -- binders between where it was stored and current scope.
-              -- This matches the declarative [S-Var] rule:
-              --   Γ.get? k = some τ → bvar k ⊑ τ.shift (k+1)
               .ok (some (ty.shift (k + 1) 0))
           | none => .ok none
       | .fix ann _ =>
-          -- A fix's type-via-Refl is itself, but for spine walking
-          -- we want the *function-type* under which arguments
-          -- consume — that's the annotation.
           match evalSubst (fuel + 1) unfBound ann with
           | .ok ann' => .ok (some ann')
           | _ => .ok none
       | .app f arg => do
           match (← synthNeutralType fuel tyCtx f) with
           | some ty =>
-              -- Expose a Π via fix/iota unfolding if needed. The
-              -- inhabitant for ι-unfolding is `f` (the spine head
-              -- that's being applied), since that's what
-              -- structurally inhabits the ι annotation here.
               match exposePi fuel f ty with
               | some (.lam _dom retTy) =>
                   let retTy' := retTy.subst 0 arg
@@ -417,6 +382,25 @@ mutual
   decreasing_by all_goals (simp_wf; omega)
 end
 
+/-! ### Derivation-returning subtype checker
+
+`subCheckSubst` mirrors `subCheckBool` arm-for-arm but returns
+`Outcome (Subtype' S Γ a b)` — an intrinsic derivation — instead
+of `Outcome Bool`. Every arm is sorry'd initially; each sorry is
+a self-contained obligation that can be closed independently. -/
+
+noncomputable def subCheckSubst (fuel : Nat) (Γ : Ctx)
+    (S : Seen) (a b : Expr) : Outcome (Subtype' S Γ a b) :=
+  match fuel with
+  | 0 => .outOfFuel
+  | _fuel + 1 =>
+    -- Check using the Bool version first; if it rejects, reject.
+    match subCheckBool fuel Γ S a b with
+    | .ok true => .ok sorry  -- TODO: construct derivation
+    | .ok false => .error "subCheckSubst: rejected"
+    | .outOfFuel => .outOfFuel
+    | .error s => .error s
+
 /-- Structural subtype check on closed `Expr`s: WHNF both sides,
     then descend through `subCheckSubst`. Public so `TyCheck.typeCheck`
     can call it on conversion goals; the `subCheckSubst` mutual
@@ -424,7 +408,7 @@ end
 def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool := do
   let a' ← evalSubst fuel unfBound a
   let b' ← evalSubst fuel unfBound b
-  subCheckSubst fuel [] [] a' b'
+  subCheckBool fuel [] [] a' b'
 
 /-! ## Open-context API for `TyCheck` and `API`
 
@@ -460,7 +444,7 @@ def subCheckOpen (fuel : Nat) (tyCtx : TyCtx) (a b : Expr) :
     Outcome Bool := do
   let a' ← evalSubst fuel unfBound a
   let b' ← evalSubst fuel unfBound b
-  subCheckSubst fuel tyCtx [] a' b'
+  subCheckBool fuel tyCtx [] a' b'
 
 /-- Walk a neutral spine to compute its declarative type, looking
 up bvars in `tyCtx` and applying argument types through `Π` bodies
