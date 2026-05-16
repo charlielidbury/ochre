@@ -3,6 +3,7 @@ import Och.EvalSubst
 import Och.Subtyping
 import Och.API
 import Och.Soundness.EvalSubstEquiv
+import Och.Soundness.SubCheckSubstSoundness
 
 /-!
 # `synth_sound` — synthesis-soundness proof (Step-3 progress)
@@ -36,13 +37,13 @@ The `synthCore` function in `Och/API.lean` has been:
    via per-arm bind-chain extraction lemmas + `evalSubst_equiv`;
    the `.asc` arm uses `asc_L` + the structural IH on `inner`.
 
-## Remaining sorry's
+## Status: sorry-free
 
-  * `synthCore_app_WALL` neutralType fallback — when `whnfPi` does not
-    directly expose a `.lam`, the algorithm falls through to
-    `neutralType` to ascend. Closing this requires
-    `synthNeutralType_to_sub` for `.app` (in SubCheckSubstSoundness.lean),
-    which in turn needs open-context `whnfPi_sound`.
+All arms are closed. The former last wall (`synthCore_app_WALL`
+neutralType fallback) was closed by generalizing `whnfPi_sound` to
+open contexts (`whnfPi_sound_open` in SubCheckSubstSoundness.lean)
+and proving `synthNeutralType_to_sub` for `.app` via fuel induction
++ `whnfPi_sound_open` + `app_elim` + `evalSubst_equiv_open`.
 
 ## Closed walls
 
@@ -677,6 +678,9 @@ private noncomputable def whnfPi_sound
   | .outOfFuel => rw [hev] at h; cases h
   | .error _ => rw [hev] at h; cases h
 
+-- Open-context whnfPi soundness (`whnfPi_go_sound_open`, `whnfPi_sound_open`)
+-- is in SubCheckSubstSoundness.lean, where `evalSubst_equiv_open` lives.
+
 /-! ## The .app arm
 
 The `.app` arm of synth-soundness composes a 3-step chain:
@@ -731,9 +735,11 @@ private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
   have step1 : Subtype' [] [] (.app f a) (.app fV aV) :=
     .app_cong hf_fV ha_aV haV_a
   -- Dispatch on whnfPi: primary path (direct exposure) vs secondary (neutralType)
-  match hwhnf : whnfPi n fV vF with
-  | some (.lam piDom piBody) =>
-    rw [hwhnf] at h; simp only [Outcome.ok_bind, Outcome.ok.injEq] at h
+  -- Use `split` to handle the match on whnfPi result within `h`.
+  split at h
+  · -- Primary path: whnfPi returned some (.lam piDom piBody)
+    rename_i piLam piDom piBody hwhnf
+    simp only [] at h
     -- Step 2: fV ⊑ (.lam piDom piBody) via whnfPi_sound (Option B)
     have hcl_vF : closedAt 0 vF = true :=
       synthCore_closedAt hclF hvF_eq
@@ -777,12 +783,71 @@ private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
         rw [hntA] at h; simp only [Outcome.ok_bind] at h; cases h
       | .outOfFuel => rw [hntA] at h; cases h
       | .error _ => rw [hntA] at h; cases h
-  | _ =>
-    rw [hwhnf] at h
-    -- Secondary path: whnfPi didn't directly expose a lam.
+  · -- Secondary path: whnfPi didn't directly expose a lam.
     -- Falls through to neutralType on vF, then whnfPi on the result.
-    -- Sorry'd pending neutralType soundness infrastructure.
-    sorry
+    -- Destructure neutralType call
+    match hntF : neutralType n [] vF with
+    | .outOfFuel => rw [hntF] at h; cases h
+    | .error _ => rw [hntF] at h; cases h
+    | .ok none => rw [hntF] at h; simp only [Outcome.ok_bind] at h; cases h
+    | .ok (some tyF) =>
+      rw [hntF] at h; simp only [Outcome.ok_bind] at h
+      -- synthNeutralType_to_sub: vF ⊑ tyF
+      have hvF_tyF : Subtype' [] [] vF tyF := synthNeutralType_to_sub hntF
+      -- fV ⊑ tyF via chain: fV ⊑ f ⊑ vF ⊑ tyF
+      have hfV_tyF : Subtype' [] [] fV tyF := .trans hfV_vF hvF_tyF
+      -- Destructure second whnfPi call
+      split at h
+      · -- whnfPi returned some (.lam piDom piBody)
+        rename_i piLam piDom piBody hwp2
+        simp only [] at h
+        -- whnfPi_sound_open: fV ⊑ (.lam piDom piBody)
+        have hfV_pi : Subtype' [] [] fV (.lam piDom piBody) :=
+          whnfPi_sound_open [] [] hfV_tyF hwp2
+        have step2 : Subtype' [] [] (.app fV aV) (.app (.lam piDom piBody) aV) :=
+          .app_cong hfV_pi (.refl _) (.refl _)
+        -- Destructure domain check
+        match hdomChk : subCheckOpen n [] aV piDom with
+        | .outOfFuel => rw [hdomChk] at h; cases h
+        | .error _ => rw [hdomChk] at h; cases h
+        | .ok true =>
+          rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
+          -- Final eval bridge
+          have hcl_vF' : closedAt 0 vF = true := synthCore_closedAt hclF hvF_eq
+          have hcl_tyF := neutralType_closedAt hcl_vF' hntF
+          have hcl_piExpr := whnfPi_closedAt hcl_tyF hcl_fV hwp2
+          have hcl_aV := Och.Soundness.evalSubst_closedAt hclA haV_eq
+          have hcl_pi : closedAt 0 (.app (.lam piDom piBody) aV) = true := by
+            simp only [closedAt, Bool.and_eq_true] at hcl_piExpr ⊢
+            exact ⟨hcl_piExpr, hcl_aV⟩
+          exact .trans step1 (.trans step2 (evalSubst_equiv hcl_pi h).2)
+        | .ok false =>
+          rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
+          -- Domain check failed initially, neutralType fallback for arg
+          match hntA : neutralType n [] aV with
+          | .ok (some aTy) =>
+            rw [hntA] at h; simp only [Outcome.ok_bind] at h
+            match hdomChk2 : subCheckOpen n [] aTy piDom with
+            | .outOfFuel => rw [hdomChk2] at h; cases h
+            | .error _ => rw [hdomChk2] at h; cases h
+            | .ok true =>
+              rw [hdomChk2] at h; simp only [Outcome.ok_bind] at h
+              have hcl_vF' := synthCore_closedAt hclF hvF_eq
+              have hcl_tyF := neutralType_closedAt hcl_vF' hntF
+              have hcl_piExpr := whnfPi_closedAt hcl_tyF hcl_fV hwp2
+              have hcl_aV' := Och.Soundness.evalSubst_closedAt hclA haV_eq
+              have hcl_pi : closedAt 0 (.app (.lam piDom piBody) aV) = true := by
+                simp only [closedAt, Bool.and_eq_true] at hcl_piExpr ⊢
+                exact ⟨hcl_piExpr, hcl_aV'⟩
+              exact .trans step1 (.trans step2 (evalSubst_equiv hcl_pi h).2)
+            | .ok false =>
+              rw [hdomChk2] at h; simp only [Outcome.ok_bind] at h; cases h
+          | .ok none =>
+            rw [hntA] at h; simp only [Outcome.ok_bind] at h; cases h
+          | .outOfFuel => rw [hntA] at h; cases h
+          | .error _ => rw [hntA] at h; cases h
+      · -- whnfPi returned something else; algorithm errors
+        simp at h
 
 /-! ## Main soundness lemma -/
 

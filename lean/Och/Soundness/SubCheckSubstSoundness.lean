@@ -24,19 +24,13 @@ By induction on `fuel`:
 - `subCheckSubstMatch n` calls `subCheckSubst n` recursively.
 - The eval bridge (`evalSubst_equiv_open`) connects inputs to WHNF.
 
-## Sorry inventory (this file) — 2 sorries in 1 def
+## Status: sorry-free
 
-- `synthNeutralType_to_sub` (2 sorries):
-  - `.app f arg`: requires `exposePi` soundness (fix/iota unfolding
-    preserves type equivalence), recursive IH on `synthNeutralType`,
-    and substitution + eval bridge. ~200 LOC once `exposePi_sound`
-    is available.
-  - `.fix ann body`: `synthNeutralType` returns the evaluated
-    annotation `ann'`, but `Subtype'` has no `fix_ann` rule
-    (`fix ann body ⊑ ann`). The annotation records the fixpoint's
-    type; the type checker enforces it but the subtyping relation
-    doesn't internalise this. Fix: add a `fix_ann` rule to
-    `Subtype'`, justified by the typing discipline.
+All arms are closed. `synthNeutralType_to_sub` is fully proved:
+- `.bvar`: via context lookup (`Subtype'.bvar`)
+- `.app f arg`: fuel induction + `whnfPi_sound_open` + `app_elim`
+  + `evalSubst_equiv_open`
+- `.fix ann body`: `fix_ann` + `evalSubst_equiv_open`
 
 ## Closed results
 
@@ -320,47 +314,154 @@ private noncomputable def neutralAscent_bvar_sound
       have hsub := ih_strong m (Nat.le_succ m) Γ S ty b h
       exact .trans (synthNeutralType_bvar_to_sub hsynth) hsub
 
+/-! ### Open-context whnfPi soundness
+
+`whnfPi_go_sound_open` and `whnfPi_sound_open` generalise the
+closed-context `whnfPi_go_sound` / `whnfPi_sound` (in SynthSound.lean)
+to arbitrary `S, Γ` with no `closedAt 0` precondition. The proof
+strategy is identical (Option B: track `inhab ⊑ e` through the loop)
+but uses `evalSubst_equiv_open` instead of the closed `evalSubst_equiv`. -/
+
+/-- Open-context inner loop soundness: if `go n e = some piExpr` and
+`Subtype' S Γ inhab e`, then `Subtype' S Γ inhab piExpr`. -/
+noncomputable def whnfPi_go_sound_open
+    (fuel : Nat) (inhab : Expr) (S : Seen) (Γ : Ctx)
+    : ∀ (n : Nat) (e piExpr : Expr),
+      Subtype' S Γ inhab e →
+      whnfPi.go fuel inhab n e = some piExpr →
+      Subtype' S Γ inhab piExpr := by
+  intro n
+  induction n with
+  | zero =>
+    intro e piExpr hsub hgo
+    simp only [whnfPi.go] at hgo
+    injection hgo with hgo; subst hgo; exact hsub
+  | succ m ih =>
+    intro e piExpr hsub hgo
+    match e with
+    | .lam dom body =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .fix ann body =>
+      simp only [whnfPi.go] at hgo
+      match hev : evalSubst fuel 4 (body.subst 0 (.fix ann body)) with
+      | .ok e' =>
+        rw [hev] at hgo
+        have ⟨_, hfwd⟩ := evalSubst_equiv_open S Γ hev
+        have step_unfold : Subtype' S Γ (.fix ann body)
+            (body.subst 0 (.fix ann body)) :=
+          .unfold_fix_L (.refl _)
+        have hsub' : Subtype' S Γ inhab e' :=
+          .trans hsub (.trans step_unfold hfwd)
+        exact ih e' piExpr hsub' hgo
+      | .outOfFuel => rw [hev] at hgo; cases hgo
+      | .error _ => rw [hev] at hgo; cases hgo
+    | .iota _ann _body =>
+      simp only [whnfPi.go] at hgo
+      match hev : evalSubst fuel 4 (_body.subst 0 inhab) with
+      | .ok e' =>
+        rw [hev] at hgo
+        have ⟨_, hfwd⟩ := evalSubst_equiv_open S Γ hev
+        have step_elim : Subtype' S Γ inhab (_body.subst 0 inhab) :=
+          .iota_elim hsub
+        have hsub' : Subtype' S Γ inhab e' :=
+          .trans step_elim hfwd
+        exact ih e' piExpr hsub' hgo
+      | .outOfFuel => rw [hev] at hgo; cases hgo
+      | .error _ => rw [hev] at hgo; cases hgo
+    | .bot => simp only [whnfPi.go] at hgo; cases hgo
+    | .bvar _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .type =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .app _ _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .asc _ _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .letE _ _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+
+/-- Open-context `whnfPi` soundness: if `whnfPi fuel inhab ty = some piExpr`
+and `Subtype' S Γ inhab ty`, then `Subtype' S Γ inhab piExpr`.
+No closedness precondition. -/
+noncomputable def whnfPi_sound_open
+    {fuel : Nat} {inhab ty piExpr : Expr} (S : Seen) (Γ : Ctx)
+    (hsub_inhab : Subtype' S Γ inhab ty)
+    (h : whnfPi fuel inhab ty = some piExpr) :
+    Subtype' S Γ inhab piExpr := by
+  unfold whnfPi at h
+  match hev : evalSubst fuel SubstEval.unfBound ty with
+  | .ok ty' =>
+    rw [hev] at h
+    have ⟨_, hfwd⟩ := evalSubst_equiv_open S Γ hev
+    exact whnfPi_go_sound_open fuel inhab S Γ
+      SubstEval.unfBound ty' piExpr (.trans hsub_inhab hfwd) h
+  | .outOfFuel => rw [hev] at h; cases h
+  | .error _ => rw [hev] at h; cases h
+
 /-! ### synthNeutralType soundness (general)
 
-Full soundness of `synthNeutralType` for `.app f arg` requires proving
-that the recursive spine walk through `exposePi` and substitution
-correctly produces the type of the application. This involves:
-- Recursive soundness of `synthNeutralType` on the function head
-- `exposePi` soundness (unfolding fix/iota preserves type equivalence)
-- Substitution of the argument into the return type
-
-The `.bvar` case is closed via `synthNeutralType_bvar_to_sub`.
-The `.app` case is sorry'd pending the above infrastructure. -/
+Full soundness of `synthNeutralType`: if it returns `some ty` for
+neutral `a`, then `Subtype' S Γ a ty`. The proof inducts on fuel `n`
+so the `.app` case can apply the IH at `n-1` for the recursive call
+on the function head. -/
 
 /-- If `synthNeutralType` returns `some ty` for a neutral `a`, then
-    `Subtype' S Γ a ty`. Sorry'd for the `.app` case. -/
-private noncomputable def synthNeutralType_to_sub
+    `Subtype' S Γ a ty`. -/
+noncomputable def synthNeutralType_to_sub
     {n : Nat} {Γ : Ctx} {a ty : Expr} {S : Seen}
     (h : synthNeutralType n Γ a = .ok (some ty)) :
     Subtype' S Γ a ty := by
-  cases a with
-  | bvar k => exact synthNeutralType_bvar_to_sub h
-  | app f arg =>
-    -- synthNeutralType recurses on f to get fTy, applies exposePi to
-    -- get (.lam dom retTy), substitutes arg into retTy, and evaluates.
-    -- The proof chain:
-    --   (1) IH on f gives f ⊑ fTy
-    --   (2) exposePi soundness gives fTy ⊑ piExpr (.lam dom retTy)
-    --       via fix/iota unfolding equivalence
-    --   (3) app_cong + beta gives (.app f arg) ⊑ retTy.subst 0 arg
-    --   (4) eval bridge gives retTy.subst 0 arg ⊑ ty
-    -- Requires exposePi_sound (not yet available) and recursive IH
-    -- on synthNeutralType (the function itself is mutual-recursive
-    -- with the subCheckSubst block, so the IH needs fuel threading).
-    sorry
-  | fix ann body =>
-    -- synthNeutralType for (.fix ann body) returns evalSubst ann = ann'.
-    -- We need: Subtype' S Γ (.fix ann body) ann'.
-    -- fix_ann gives (.fix ann body) ⊑ ann, and evalSubst_equiv_open
-    -- gives ann ⊑ ann'. Compose via trans.
-    cases n with
-    | zero => rw [synthNeutralType.eq_def] at h; cases h
-    | succ m =>
+  induction n generalizing a ty with
+  | zero => rw [synthNeutralType.eq_def] at h; cases h
+  | succ m ih =>
+    cases a with
+    | bvar k => exact synthNeutralType_bvar_to_sub h
+    | app f arg =>
+      rw [synthNeutralType.eq_def] at h; simp only [] at h
+      -- Destructure: synthNeutralType m Γ f
+      match hnt : synthNeutralType m Γ f with
+      | .outOfFuel => rw [hnt] at h; cases h
+      | .error _ => rw [hnt] at h; cases h
+      | .ok none => rw [hnt] at h; simp only [Outcome.ok_bind] at h; cases h
+      | .ok (some fTy) =>
+        rw [hnt] at h; simp only [Outcome.ok_bind] at h
+        -- IH: f ⊑ fTy
+        have hf_sub : Subtype' S Γ f fTy := ih hnt
+        -- Rewrite exposePi to whnfPi
+        rw [exposePi_eq_whnfPi] at h
+        -- Destructure: whnfPi m f fTy via exposePi bridge
+        -- After `rw [exposePi_eq_whnfPi]`, h uses `whnfPi`.
+        -- Use `split` to dispatch the match on the whnfPi result in h.
+        split at h
+        · -- whnfPi returned some (.lam dom retTy)
+          rename_i dom retTy hwp
+          -- whnfPi_sound_open: f ⊑ (.lam dom retTy)
+          have hf_pi : Subtype' S Γ f (.lam dom retTy) :=
+            whnfPi_sound_open S Γ hf_sub hwp
+          -- Now h is about the evalSubst step
+          match hev : evalSubst (m + 1) unfBound (retTy.subst 0 arg) with
+          | .ok r =>
+            rw [hev] at h
+            simp only [Outcome.ok.injEq, Option.some.injEq] at h
+            subst h
+            -- app_elim: (.app f arg) ⊑ (retTy.subst 0 arg)
+            have happ : Subtype' S Γ (.app f arg) (retTy.subst 0 arg) :=
+              .app_elim hf_pi
+            -- eval bridge: (retTy.subst 0 arg) ⊑ r
+            have ⟨_, hfwd⟩ := evalSubst_equiv_open S Γ hev
+            exact .trans happ hfwd
+          | .outOfFuel => rw [hev] at h; simp at h
+          | .error _ => rw [hev] at h; simp at h
+        · -- whnfPi returned something else; algorithm returns .ok none
+          -- which contradicts h : ... = .ok (some ty)
+          simp at h
+    | fix ann body =>
       rw [synthNeutralType.eq_def] at h; simp only [] at h
       match hev : evalSubst (m + 1) unfBound ann with
       | .ok ann' =>
@@ -371,21 +472,15 @@ private noncomputable def synthNeutralType_to_sub
         exact .trans .fix_ann hfwd
       | .outOfFuel => rw [hev] at h; simp at h
       | .error _ => rw [hev] at h; simp at h
-  | _ =>
-    -- Other cases: synthNeutralType returns .ok none or .outOfFuel
-    cases n with
-    | zero => rw [synthNeutralType.eq_def] at h; cases h
-    | succ m => rw [synthNeutralType.eq_def] at h; simp at h
+    | _ =>
+      rw [synthNeutralType.eq_def] at h; simp at h
 
 /-! ### neutralAscent soundness for arbitrary neutrals
 
-Full `neutralAscent` soundness requires `synthNeutralType` soundness
-for `.app`, which recurses through `exposePi` and spine-application
-substitution. This is sorry'd here pending that infrastructure. -/
+Full `neutralAscent` soundness uses `synthNeutralType_to_sub` (now
+fully proved) composed with the strong IH for `subCheckSubst`. -/
 
-/-- When `neutralAscent` returns true, produce a declarative derivation.
-    Sorry'd: requires `synthNeutralType` soundness for `.app` (recursive
-    spine analysis through `exposePi`). -/
+/-- When `neutralAscent` returns true, produce a declarative derivation. -/
 private noncomputable def neutralAscent_sound
     (n : Nat)
     (ih_strong : ∀ (m : Nat), m ≤ n → ∀ (Γ' : Ctx) (S' : Seen) (a' b' : Expr),
