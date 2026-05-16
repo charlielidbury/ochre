@@ -66,9 +66,21 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
       rw [evalSubst.eq_6] at h ⊢; exact h
     | .fix _ _ =>
       rw [evalSubst.eq_7] at h ⊢; exact h
-    | .asc t _ =>
+    | .asc t ty =>
       rw [evalSubst.eq_8] at h ⊢
-      exact ih h
+      match ht : evalSubst k unf t with
+      | .outOfFuel => rw [ht] at h; cases h
+      | .error _ => rw [ht] at h; cases h
+      | .ok tv =>
+        have ht' := ih ht
+        match hty : evalSubst k unf ty with
+        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .ok tyv =>
+          have hty' := ih hty
+          rw [ht, hty] at h
+          rw [ht', hty']
+          exact h
     | .letE val body =>
       rw [evalSubst.eq_9] at h ⊢
       -- `do let v ← X; Y v` reduces by cases on `X`.
@@ -118,7 +130,7 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
             split at h
             · rename_i hcond; rw [if_pos hcond]; exact h
             · rename_i hcond; rw [if_neg hcond]; exact ih h
-          | asc _ _ => simp only at h ⊢; exact h
+          | asc _ _ => simp only at h ⊢; exact ih h
           | letE _ _ => simp only at h ⊢; exact h
           | app _ _ => simp only at h ⊢; exact h
 
@@ -175,7 +187,18 @@ theorem evalSubst_closedAtLvl {n unf : Nat} {e v : Expr}
     | .asc t ty =>
       simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
       rw [evalSubst.eq_8] at h
-      exact ih hcl.1 h
+      match ht : evalSubst k unf t with
+      | .outOfFuel => rw [ht] at h; cases h
+      | .error _ => rw [ht] at h; cases h
+      | .ok tv =>
+        match hty : evalSubst k unf ty with
+        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .ok tyv =>
+          rw [ht, hty] at h
+          simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
+          simp only [Expr.closedAtLvl, Bool.and_eq_true]
+          exact ⟨ih hcl.1 ht, ih hcl.2 hty⟩
     | .letE val body =>
       simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
       rw [evalSubst.eq_9] at h
@@ -271,13 +294,14 @@ theorem evalSubst_closedAtLvl {n unf : Nat} {e v : Expr}
                     = ((substL body 0 (.fix ann body)).closedAtLvl 0 && av.closedAtLvl 0) := rfl
                 rw [this, Bool.and_eq_true]; exact ⟨hsub, hacl⟩
               exact ih hApp h
-          | asc t ty =>
+          | asc inner _ =>
             simp only at h
-            simp only [Outcome.ok.injEq] at h
-            subst h
-            have : (Expr.app (.asc t ty) av).closedAtLvl 0
-                = ((Expr.asc t ty).closedAtLvl 0 && av.closedAtLvl 0) := rfl
-            rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
+            have hApp : (Expr.app inner av).closedAtLvl 0 = true := by
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl
+              have : (Expr.app inner av).closedAtLvl 0
+                  = (inner.closedAtLvl 0 && av.closedAtLvl 0) := rfl
+              rw [this, Bool.and_eq_true]; exact ⟨hfcl.1, hacl⟩
+            exact ih hApp h
           | letE vv b =>
             simp only at h
             simp only [Outcome.ok.injEq] at h

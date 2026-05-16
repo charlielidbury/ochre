@@ -480,7 +480,10 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
     | .lam _ _ => .ok e
     | .iota _ _ => .ok e
     | .fix _ _ => .ok e
-    | .asc t _ => evalSubst fuel unf t
+    | .asc t ty => do
+        let t' ← evalSubst fuel unf t
+        let ty' ← evalSubst fuel unf ty
+        .ok (.asc t' ty')
     | .letE val body => do
         let v ← evalSubst fuel unf val
         evalSubst fuel unf (substL body 0 v)
@@ -504,6 +507,8 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
             else
               let unfolded := substL body 0 f'
               evalSubst fuel (unf - 1) (.app unfolded a')
+        | .asc inner _ =>
+            evalSubst fuel unf (.app inner a')
         | _ => .ok (.app f' a')
 
 /-! ## Subtype check on Expr
@@ -580,10 +585,15 @@ mutual
       -- structural equality doesn't match their reduced form.
       match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
       | .ok a', .ok b' =>
-          if a' == b' then .ok true
-          else if seen.any (fun (av, bv) => a' == av && b' == bv) then .ok true
-          else if b' == .type then .ok true
-          else subCheckSubstMatch fuel tyCtx seen a' b'
+          -- Peel ascriptions asymmetrically before fast paths:
+          -- LHS .asc: use annotation (caller sees τ)
+          -- RHS .asc: use inner value (content is still e)
+          let a'' := match a' with | .asc _ ty => ty | x => x
+          let b'' := match b' with | .asc e _ => e | x => x
+          if a'' == b'' then .ok true
+          else if seen.any (fun (av, bv) => a'' == av && b'' == bv) then .ok true
+          else if b'' == .type then .ok true
+          else subCheckSubstMatch fuel tyCtx seen a'' b''
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
       | .error s, _ | _, .error s => .error s
   termination_by (fuel, 0)

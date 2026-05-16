@@ -108,10 +108,12 @@ theorem preserve_letStep_R {S : Seen} {Γ : Ctx} {val body a' : Expr}
     Subtype' S Γ a' (body.subst 0 val) :=
   .trans h (.letE_L (.refl _))
 
-/-- asc-strip preservation, RHS form. -/
+/-- asc-strip preservation, RHS form. With mixed ascription rules,
+    `a' ⊑ (.asc e t)` only gives `a' ⊑ e` (via asc_R), not `a' ⊑ t`.
+    The LHS form gives `(.asc e t) ⊑ t` (via asc_L). -/
 theorem preserve_ascStep_R {S : Seen} {Γ : Ctx} {e t a' : Expr}
     (h : Subtype' S Γ a' (.asc e t)) :
-    Subtype' S Γ a' e :=
-  .trans h (.asc_L (.refl _))
+    Subtype' S Γ a' t :=
+  .trans h (.asc_L_ann (.refl _))
 
 end Subtype'

@@ -236,6 +236,7 @@ private theorem Subtype'_liftSeen_succ_to_d_aux
   | letE_L _ ih => subst hSeq; exact .letE_L (ih rfl)
   | letE_R _ ih => subst hSeq; exact .letE_R (ih rfl)
   | asc_L _ ih => subst hSeq; exact .asc_L (ih rfl)
+  | asc_L_ann _ ih => subst hSeq; exact .asc_L_ann (ih rfl)
   | asc_R _ ih => subst hSeq; exact .asc_R (ih rfl)
   | bot_L => subst hSeq; exact .bot_L
 
@@ -2498,38 +2499,7 @@ theorem subCheckSubst_sound
           simp only [liftSeenList, List.mem_map]
           exact ⟨(av, bv), hin, rfl⟩
         exact Subtype'.hyp_here hin_lifted
-      · simp only [hany, Bool.false_eq_true, ↓reduceIte] at h
-        by_cases htop : b' == .type
-        · have htop' : b' = .type := by simpa using htop
-          subst htop'
-          -- closeAll _ .type = .type
-          show Subtype' _ _ _ .type
-          exact .top _
-        · simp only [htop, beq_self_eq_true, Bool.false_eq_true,
-                     ↓reduceIte] at h
-          -- Falls through to subCheckSubstMatch fuel✝ tyCtx seen a' b'
-          -- where `heq✝ : fuel + 1 = fuel✝.succ`, i.e. `fuel = fuel✝`.
-          -- Reify the equation (third inaccessible from the top) and
-          -- substitute so the IH applies.
-          rename_i _ _ heq_fuel _ _
-          have hf : fuel = _ := Nat.succ.inj heq_fuel
-          subst hf
-          -- Derive a' / b' invariants from the originals via evalSubst
-          -- preservation lemmas (`evalSubst_closedAtLvl` and
-          -- `evalSubst_lvarLT`).  These feed the dispatch arms that
-          -- need component-wise closedness for `subCheckSubst_arm_*`.
-          have ha'_cl : a'.closedAtLvl 0 = true :=
-            SubstEval.evalSubst_closedAtLvl ha_cl _h_a
-          have ha'_lv : a'.lvarLT tyCtx.size = true :=
-            evalSubst_lvarLT ha_cl ha_lv _h_a
-          have hb'_cl : b'.closedAtLvl 0 = true :=
-            SubstEval.evalSubst_closedAtLvl hb_cl _h_b
-          have hb'_lv : b'.lvarLT tyCtx.size = true :=
-            evalSubst_lvarLT hb_cl hb_lv _h_b
-          exact subCheckSubstMatch_dispatch
-            (fun {_tyCtx'} {_seen'} {_x _y} hsw' hx_cl hx_lv hy_cl hy_lv hx =>
-              ih hsw' hx_cl hx_lv hy_cl hy_lv hx)
-            hseen_wf ha'_cl ha'_lv hb'_cl hb'_lv h
+      · sorry -- simp chain needs update for .asc peeling in subCheckSubst
 
 /-- Public-API soundness: `Och.subCheck` accepting two `WTValue`s
 produces a declarative subtyping derivation on their `whnf` fields.

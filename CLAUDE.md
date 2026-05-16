@@ -11,7 +11,7 @@ The current focus is on proving out the metatheory via the construction and anal
 - AGENT_PROMPT.md - The prompt given to the agents/you working on this project (agents/you are often made by the ./loop.sh script)
 
 # Building / Tooling
-Everything is built via the Nix flake at the repo root. Use `nix develop` to get a shell with Lean, Rust nightly, Agda and OCaml pinned to the right versions, then run `lake build` / `cargo build` as normal. Use `nix build .#och-lean` or `nix build .#compiler` for reproducible CI-style builds. Do not install elan/rustup manually.
+Everything is built via the Nix flake at the repo root. The `.envrc` at the repo root runs `use flake`, so tooling (Lean, Rust nightly, Agda, OCaml) should be on PATH transparently via direnv — just run `lake build` / `cargo build` as normal. If tools are missing, surface this to the user and offer to fix the direnv/nix setup. Use `nix build .#och-lean` or `nix build .#compiler` for reproducible CI-style builds. Do not install elan/rustup manually.
 
 # Git Context
 Agents/you are prompted into putting what they did and their rational into commit messages in great detail. This is often the most efficient way to figure out **why** something was done or to get more details about something unclear.

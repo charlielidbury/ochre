@@ -1,19 +1,20 @@
-# Och: A Core Calculus with Iota/Fix, NbE, and Bidirectional Typing
+# Och: A Core Calculus with Iota/Fix and Equirecursive Subtyping
 
 Och is the core calculus on which the Ochre language's metatheory is developed.
 It is a dependently-typed λ-calculus with two recursive-binder forms —
 **ι** (Cedille-style self-types) and **fix** (general recursion at the type
 and term level) — and a single syntactic category in which terms and types
-coincide. The checker is a bidirectional type-checker layered on a
-normalization-by-evaluation (NbE) core, and the subtyping relation is
-equirecursive with Brandt–Henglein coinductive hypotheses.
+coincide. The checker is a structural type-synthesis walk (`synthCore`)
+layered on a substitution-based WHNF evaluator (`evalSubst`), and the
+subtyping relation is equirecursive with Brandt–Henglein coinductive
+hypotheses.
 
 This document specifies Och as a type system: the term syntax, the concrete
-operational semantics, the declarative subtyping relation, the semantic-value
-domain on which the algorithm runs, and the algorithmic typing/subtyping
-judgments. Inference rules follow the indented convention described in
-[docs/notation.md](../../docs/notation.md) — conclusion first, premises
-indented beneath — rather than the horizontal-bar format.
+operational semantics, the declarative subtyping relation, and the
+algorithmic typing/subtyping judgments. Inference rules follow the indented
+convention described in [docs/notation.md](../../docs/notation.md) —
+conclusion first, premises indented beneath — rather than the horizontal-bar
+format.
 
 ### Naming convention: named binders, not de Bruijn
 
@@ -27,13 +28,13 @@ This is a presentational choice for readability, not a formalism choice.
 **The Lean formalisation uses de Bruijn indices throughout** —
 [`Expr.bvar`](Syntax.lean#L38), [`Expr.shift`](Syntax.lean#L112),
 `body.subst 0 v`, `Γ : List Expr` indexed by position — and that is what
-the `Soundness.lean` / `Subtyping.lean` statements actually prove. When
+the `Soundness/` and `Subtyping.lean` statements actually prove. When
 porting a rule from this document to the codebase: a named variable `x`
 bound at the innermost binder becomes `bvar 0`, a variable bound `k`
 binders out becomes `bvar k`, substitution `body[x ↦ v]` becomes
 `body.subst 0 v` at the binding site (with `Expr.shift` composed in if
 `v` lives at a different depth), and the de Bruijn shift `τ.shift(k+1)`
-in the formalisation's `[S-BVar]` disappears from the named form because
+in the formalisation's `[S-Var]` disappears from the named form because
 named variables don't need re-indexing.
 
 **Future work on Och/Ochre should uphold this convention** in all
@@ -52,7 +53,7 @@ history. References take two forms:
 
 - **Code links.** Lines like
   [`Subtype'`](Subtyping.lean#L77) or
-  [`concEval_equiv`](Soundness.lean#L304) point at the exact
+  [`concEval_equiv`](Soundness/ConcEvalPreservation.lean#L48) point at the exact
   declaration in the Lean sources. These anchor the English
   description to the machine-checked statement. Keep them current as
   files move; a stale link is worse than no link because it silently
@@ -112,8 +113,7 @@ gives each a narrower congruence and unfolding rule.
 
 Throughout the paper `Γ` denotes a typing context (a finite map from
 variable names to their declared types, innermost-first in the
-formalisation: [lean/Och/Subtyping.lean](Subtyping.lean#L27)) and `ρ` a
-value-level environment mapping variables to `Val`.
+formalisation: [lean/Och/Subtyping.lean](Subtyping.lean#L27)).
 
 ## 2. Concrete semantics — the evaluation judgment
 
@@ -164,31 +164,129 @@ f a ⇓ f' vₐ
 ```
 
 Free variables are not values; `concEval` returns `none` on them. Ascription
-is erased at evaluation ([E-Asc]), matching the declarative rules `asc_L`/`asc_R`
-(SoundnessAudit A8). The dispatch on ι/fix heads is realised in
-[Eval.lean](Eval.lean#L82).
+is erased at evaluation ([E-Asc]); the declarative `[S-Asc-L]` rule (§4.4)
+provides the corresponding transparency for `concEval_equiv`. The dispatch
+on ι/fix heads is realised in [Eval.lean](Eval.lean#L82).
 
 **Bot is a self-evaluating value.** Like `Type`, `Bot` evaluates to
-itself via `[E-Val]` and has no corresponding `vapp` arm — the
-`.lam`/`.iota`/`.fix`/`.neutral` dispatch in `vapp` doesn't cover `.bot`,
-so applying an argument to Bot is *stuck* (parallel to `Type`-application).
-This is intentional: Bot is a type, not a callable. The typing discipline
-must ensure well-typed programs never reach `Bot a` at runtime; under the
-bidirectional restriction (§6) this should not arise in practice. A formal
-progress-style theorem is deferred to `progress_mod_fuel` (see §7 and
-[`docs/ideas/soundness-strengthen.md`](../../docs/ideas/soundness-strengthen.md)).
+itself via `[E-Val]` and has no application dispatch arm — the
+`.lam`/`.iota`/`.fix` head-match in `concEval`'s `.app` case doesn't
+cover `.bot`, so applying an argument to Bot is *stuck* (parallel to
+`Type`-application). This is intentional: Bot is a type, not a
+callable. The typing discipline must ensure well-typed programs never
+reach `Bot a` at runtime; under `synthCore`'s structural walk (§7)
+this should not arise in practice. `synth_progress` (§8) proves that
+synth-accepted closed terms never produce `.error` from `concEval`.
 
 This is the **operational specification** of the language. The algorithmic
 type-checker is connected to it via
-[`concEval_equiv`](Soundness.lean#L304) and
-[`concEval_preservation`](Soundness.lean#L380). Both are stated and have
-no direct `sorry`, but their transitive axiom set currently includes
-`sorryAx` — they depend on `Equiv.shift`'s nil-Γ case and nine other
-sorries in [`SoundnessProof.lean`](SoundnessProof.lean). See
-[`PROGRESS.md`](../../PROGRESS.md) for the per-sorry status; all ten
-have documented engineering routes, none are open research questions.
+[`concEval_equiv`](Soundness/ConcEvalPreservation.lean) and
+[`concEval_preservation`](Soundness.lean#L129). Both are **sorry-free**
+— `concEval_equiv` is a bidirectional equivalence proved by induction on
+fuel and case analysis on `e`; `concEval_preservation` derives from it
+via `Subtype'.trans`. See §8 for the full proof architecture.
 
-## 3. Declarative subtyping
+## 3. Overview of the algorithmic relations
+
+Three judgments make up the algorithmic side of Och. This section
+introduces each one's semantic role and explains how they compose;
+the full rules appear in §§5–7.
+
+### `S ; Γ ⊢ a ⊑ₑ b` — structural subtype check (§6)
+
+Decides whether well-typed WHNF term `a` is a subtype of well-typed
+WHNF term `b` under context `Γ`, given coinductive hypotheses `S`.
+Both inputs must already be well-typed and in WHNF — the caller
+(`~>`) is responsible for ensuring this.
+
+The check is purely structural: it pattern-matches on the head
+constructors of `a` and `b` and recurses. Under binders it opens
+both sides with a fresh level-variable and extends `Γ` with
+the narrower of the two domains (always the RHS, since the
+contravariance check `domB ⊑ domA` has already passed). The
+seen-set `S` provides coinductive closure for equirecursive types
+(§4.3 of the declarative subtyping). Internally, `⊑ₑ` normalises
+intermediate terms (e.g. after substituting into an unfolded body)
+via a WHNF evaluator (`evalSubst`, §5) — this is safe because
+substituting a well-typed term into a well-typed body preserves
+well-typedness.
+
+The key property: `⊑ₑ` is **monotone in `Γ`** — narrowing any
+context entry preserves the judgment. If `S ; Γ ⊢ a ⊑ₑ b` holds
+and we replace `Γ(k)` with any narrower (more specific) term
+`C ⊑ Γ(k)`, the check still succeeds. Conceptually, each context
+entry describes a set of possible values; replacing it with a
+subset can only make more subtype relationships provable, never
+fewer. The check only inspects `Γ` entries via neutral ascent
+(§6.3), which widens a neutral to its declared type — a narrower
+declared type is still at least as wide as the neutral itself, so
+every ascent that succeeded under the wider context also succeeds
+under the narrower one.
+
+### `Γ ⊢ e ~> v` — type synthesis (§7)
+
+Validates that `e` is well-typed under context `Γ` and returns its
+WHNF `v` as a type-witness (since in Och a value *is* its own
+most-precise type, by `[S-Refl]`). This is where type checking
+happens: at every application `f a`, the walk synthesises both
+sides, exposes a Π from the function, and asks `⊑ₑ` whether the
+argument inhabits the domain. Binder annotations must subtype
+`Type`.
+
+The semantic guarantee of `~>` is that the term it accepts will
+remain well-typed under any narrowing of the context — that is,
+when abstract variables are replaced by narrower (more specific)
+values. This is the bridge between static checking and runtime
+execution: when we check a function body `b` under `(Γ, x : A)`
+with `x` abstract, the synthesis walk asks `⊑ₑ` questions like
+"does this expression inhabit the domain `A`?" Later, when
+`concEval` runs `b[x ↦ v]` with a concrete `v` that is narrower
+than `A`, every subtype question the walk asked is at least as
+easy — a narrower context can only make more things provable,
+never fewer. So the abstract check is a sound over-approximation
+of every possible concrete execution.
+
+### `e ⇓ v` — concrete evaluation (§2)
+
+The reference big-step interpreter on closed terms (no
+level-variables, no open context). This is what actually runs
+programs. It is defined independently of the type-checker and has
+no access to a context or type information — it is a pure
+untyped evaluator.
+
+The connection to the type-checker is through two soundness
+theorems: **preservation** (`e ⊑ τ` and `e ⇓ v` imply `v ⊑ τ`)
+and **progress** (`~>` accepted `e` implies `⇓` never gets stuck).
+Together these say: if you type-check first, the evaluator either
+produces a well-typed value or runs out of fuel — it never reaches
+a stuck state.
+
+### How they compose
+
+```
+                    ┌─────────────────────────────────┐
+ source term  ──►  │  Γ ⊢ e ~> v   (§7)               │
+                    │    │                             │
+                    │    │ domain checks at app/asc    │
+                    │    ▼                             │
+                    │  S ; Γ ⊢ a ⊑ₑ b  (§6)           │
+                    └─────────────────────────────────┘
+                                  │
+                          accept / reject
+                                  │
+                    ┌─────────────▼───────────────────┐
+  (if accepted)     │  e ⇓ v   (§2)                    │
+                    │  runtime, closed terms only      │
+                    └─────────────────────────────────┘
+```
+
+The top box is the static phase: `~>` walks the term, calling `⊑ₑ`
+for each typing obligation. If the walk accepts, the term enters the
+runtime phase: `⇓` evaluates it without any type information.
+Soundness (§8) connects the two phases — the static acceptance
+guarantees that the runtime evaluation is well-behaved.
+
+## 4. Declarative subtyping
 
 Subtyping in Och means set inclusion: `A ⊑ B` iff every value of `A` is also
 a value of `B`. The relation is
@@ -203,21 +301,21 @@ S ; Γ ⊢ a ⊑ b
 `Γ` is the typing context — a finite ordered list of `(variable, type)`
 pairs, with the most recent binder at the front. Lookup is `Γ(x)` for
 the declared type of `x`; extension is `Γ, x : A`. The context carries no
-well-formedness side conditions in `Subtype'` itself — those live in the
-open-context judgments used by the type-checker (`OpenCtx` in
-[`SoundnessProof.lean`](SoundnessProof.lean)).
+well-formedness side conditions in `Subtype'` itself — those are
+enforced by the type-checker's structural walk (`synthCore` in
+[`API.lean`](API.lean)).
 
 In the formalisation, `Γ : List Expr` is indexed by de Bruijn position
 with the innermost binder at index 0; a use-site must shift the declared
 type by the number of intervening binders (see the named form of
-`[S-BVar]` below, and contrast with the formalisation's
+`[S-Var]` below, and contrast with the formalisation's
 `τ.shift(k+1)`).
 
 ### Seen set `S`
 
 `S` is a set of pairs `(a, b)` — ancestor subtyping goals introduced by
 productive unfolding rules (ι-introduction and the four `unfold_*`
-rules, §3.3). The invariant: only those five rules extend `S`; every
+rules, §4.3). The invariant: only those five rules extend `S`; every
 other rule propagates it unchanged. This is the Brandt–Henglein device
 for equirecursive subtyping — coinductive assumptions are only legal
 after at least one productive step, so reflexivity of a non-productive
@@ -240,10 +338,10 @@ knowing which category a rule belongs to predicts its shape.
 
 | Category                     | Purpose                                                                    | Rules                                                                              | Extends `S`? |
 | ---------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | :----------: |
-| Structural (§3.1)            | Plumbing: compose, lookup, without inspecting constructors on either side  | `S-Refl`, `S-Top`, `S-BotL`, `S-Trans`, `S-Hyp`, `S-Var`                           | no           |
-| Congruence (§3.2)            | Match constructor on both sides; reduce to sub-obligations with variance   | `S-Lam`, `S-App-Cong`, `S-Iota-Cong`, `S-Fix-Cong`, `S-LetE-Cong`                  | no           |
-| Productive unfolding (§3.3)  | Unfold a recursive binder (ι/fix); extend `S`; enable coinductive closure  | `S-Iota-Intro`, `S-Unfold-Iota-L`, `S-Unfold-Iota-R`, `S-Unfold-Fix-L`, `S-Unfold-Fix-R` | **yes**  |
-| Conversion (§3.4)            | Close under head reduction so algorithmic NbE is sound                     | `S-Beta-L/R`, `S-Let-L/R`, `S-Asc-L/R`                                             | no           |
+| Structural (§4.1)            | Plumbing: compose, lookup, without inspecting constructors on either side  | `S-Refl`, `S-Top`, `S-BotL`, `S-Trans`, `S-Hyp`, `S-Var`                           | no           |
+| Congruence (§4.2)            | Match constructor on both sides; reduce to sub-obligations with variance   | `S-Lam`, `S-App-Cong`, `S-Iota-Cong`, `S-Fix-Cong`, `S-LetE-Cong`                  | no           |
+| Productive unfolding (§4.3)  | Unfold a recursive binder (ι/fix); extend `S`; enable coinductive closure  | `S-Iota-Intro`, `S-Unfold-Iota-L`, `S-Unfold-Iota-R`, `S-Unfold-Fix-L`, `S-Unfold-Fix-R` | **yes**  |
+| Conversion (§4.4)            | Close under head reduction so the algorithmic evaluator is sound           | `S-Beta-L/R`, `S-Let-L/R`, `S-Asc-L`, `S-Asc-L-Ann`, `S-Asc-R`                     | no           |
 
 The `S`-extension column matters: `S-Hyp` can only fire against
 entries that some ancestor productive rule installed, so any path to
@@ -261,7 +359,7 @@ mechanical.
 > of this: free variables carry their own names, so no shift is ever
 > required at lookup time.
 
-### 3.1 Structural rules
+### 4.1 Structural rules
 
 "Structural" rules talk about `⊑` as a relation on terms without inspecting
 either side's head constructor: reflexivity, transitivity, the top element,
@@ -310,7 +408,7 @@ replaces it with `body[self ↦ fix(self : A). body]`, which is *larger*
 than the original.
 There's no obvious structural measure on derivations that decreases
 through an unfold, so transitivity is not derivable by induction on
-derivations. The seen-set discipline of §3.3 is the coinductive
+derivations. The seen-set discipline of §4.3 is the coinductive
 counterpart that keeps the relation consistent, but it doesn't by itself
 give admissibility of `trans`.
 
@@ -324,17 +422,18 @@ had briefly *proven* a `Subtype'.trans` theorem in the old setting — but
 both predate the ι/fix split and the equirecursive unfolds, and neither
 survived the move to the current formulation.
 
-### 3.2 Congruence rules
+### 4.2 Congruence rules
 
 Congruence rules are the opposite of structural: they *do* inspect the
 head constructor on both sides, require it to match, and reduce the goal
 to sub-obligations on the immediate sub-terms with appropriate variance.
 They're how the relation lifts from leaves to compound terms. Each
 constructor of `Expr` with a subterm (λ, ι, fix, app, let) gets one rule.
-Ascriptions (`:`) are handled by the conversion rules of §3.4 rather than
-a congruence, since they're computationally transparent
-([SoundnessAudit A8](SoundnessAudit.lean),
-[`7985ea2`](https://github.com/charlielidbury/ochre/commit/7985ea2)).
+Ascriptions (`:`) are handled by the conversion rules of §4.4 rather than
+a congruence — they peel asymmetrically (LHS → annotation, RHS → inner
+value) rather than requiring both sides to be ascriptions with matching
+sub-terms. See §4.4 for the mixed-transparency design and its
+motivation.
 
 ```
 [S-Lam]                       // contravariant dom, covariant body
@@ -376,7 +475,7 @@ congruence. The `iota`, `fix`, and `letE` congruences were added later
 alongside `Equiv.subst_resp` in
 [`5169447`](https://github.com/charlielidbury/ochre/commit/5169447).
 
-### 3.3 Productive unfolding (extend `S`)
+### 4.3 Productive unfolding (extend `S`)
 
 A rule is *productive* when it replaces a goal whose head is a recursive
 binder (ι or fix) with a goal where that binder has been unfolded once —
@@ -474,7 +573,7 @@ action: recursion in the subtyping judgment is legal *only across a
 productive unfold*, so non-productive loops (e.g. reflexivity-by-loop)
 cannot sneak through.
 
-### 3.4 Conversion
+### 4.4 Conversion
 
 The algorithm normalises before comparing, so the declarative relation must
 be closed under head reduction. These rules provide that closure.
@@ -496,646 +595,587 @@ S ; Γ ⊢ (let x = val in body) ⊑ b
 S ; Γ ⊢ a ⊑ (let x = val in body)
   S ; Γ ⊢ a ⊑ body[x ↦ val]
 
-[S-Asc-L]
+[S-Asc-L]                        // transparent: sees inner value
 S ; Γ ⊢ (e : τ) ⊑ b
   S ; Γ ⊢ e ⊑ b
 
-[S-Asc-R]
+[S-Asc-L-Ann]                    // narrowing: sees annotation
+S ; Γ ⊢ (e : τ) ⊑ b
+  S ; Γ ⊢ τ ⊑ b
+
+[S-Asc-R]                        // sees inner value
 S ; Γ ⊢ a ⊑ (e : τ)
   S ; Γ ⊢ a ⊑ e
 ```
 
-Ascriptions compare their *term*, not their annotation: `Nat ⊑ (zero : Nat)`
-should reduce to `Nat ⊑ zero` (false), not `Nat ⊑ Nat` (SoundnessAudit A8).
+**Ascription rules: mixed transparency.** Ascription has three rules,
+not two. On the **RHS**, `[S-Asc-R]` sees through to the inner value
+`e` — the ascription doesn't widen the set of values it contains. On
+the **LHS**, both rules coexist: `[S-Asc-L]` (transparent, sees `e`)
+is needed by `concEval_equiv` because the runtime erases ascriptions,
+while `[S-Asc-L-Ann]` (narrowing, sees `τ`) is what the algorithmic
+checker uses — it peels an LHS ascription to the annotation, so the
+caller sees `τ`, not the precise inner value.
 
-## 4. Semantic evaluation (NbE)
+Given `A ⊑ B ⊑ C`, the mixed rules give the expected behavior:
 
-**Normalization by Evaluation (NbE)** is a technique for computing
-normal forms of terms without implementing substitution and
-β-reduction as syntactic rewrites. The idea:
+| Goal | Rule | Reduces to | Holds? |
+|---|---|---|---|
+| `(A : B) ⊑ C` | `Asc-L-Ann` | `B ⊑ C` | yes |
+| `A ⊑ (B : C)` | `Asc-R` | `A ⊑ B` | yes |
+| `B ⊑ (A : C)` | `Asc-R` | `B ⊑ A` | **no** |
+| `(A : C) ⊑ B` | `Asc-L-Ann` | `C ⊑ B` | **no** |
 
-1. **Evaluate** the term into a semantic domain of *values*,
-   deferring the bodies of binders as closures (or as host-level
-   functions in HOAS-style presentations; §4.1 explains Och's
-   closure choice). β happens at the value level by extending a
-   captured environment, not by substitution on syntax.
-2. **Quote** the resulting value back to a syntactic term. Quoting
-   walks under binders by opening closures with fresh free variables,
-   and re-emits the result as a source-level expression.
+The transparent `[S-Asc-L]` also closes cases 1 and 4 via the inner
+value (`A ⊑ C` and `A ⊑ B` respectively), but the algorithmic checker
+only uses `[S-Asc-L-Ann]`. The declarative relation admits both paths;
+the algorithm is an under-approximation, which is sound.
 
-Composing these two gives a normaliser: `nf e := quote(eval(e))`.
-Two terms are α/β-equivalent iff they normalise to the same syntax,
-which is free because the value domain already identifies
-α-equivalent terms (binders become host-level functions) and β
-fires automatically during `eval`. The wrinkle for open terms and
-stuck computations is the **neutral** value: a semantic placeholder
-that records "evaluation got stuck here" (on a free variable, or on
-an eliminator with an abstract scrutinee), so quoting can re-emit
-the stuck subterm as syntax rather than getting stuck itself.
+## 5. Substitution-based evaluation
 
-Och's algorithmic checker runs on this value domain rather than on
-raw syntax. α-equivalence and β-equivalence of types are free, and
-dependent elimination under a binder works by opening the binder
-with a fresh neutral and evaluating the body symbolically — §6.3.
+`evalSubst` ([lean/Och/EvalSubst.lean](EvalSubst.lean#L468)) is a
+substitution-based WHNF evaluator. It replaces the env-based NbE
+pipeline (`eval`/`vapp`/`quote` over a `Val`/`Closure` domain) that
+was retired in the engine-collapse refactor (2026-04-27,
+[`86aa82a`](https://github.com/charlielidbury/ochre/commit/86aa82a)).
+Input and output are both `Expr` — there is no separate `Val` type,
+no closures, no environments, and no quoting step.
 
-**Why avoid substitution.** Och originally used an eager-substitution
-evaluator `absEval : Expr → Expr` whose normaliser substituted the
-argument physically into every occurrence in the body. This blew up
-on dependent types: on `done_ ⊑ dNat`, `iotaIntro` substitutes the
-normal form of `done_` for every `self`-ascription in `dNat`'s body,
-and the term fan-out became exponential in the depth of self-references.
+### 5.1 Design
 
-Concretely, imagine a body `b` that references its bound variable `x`
-in `k` positions, and a substituend `T` of size `|T|`:
+The key simplification: because `Expr` serves as both AST and value,
+β-reduction is literal syntactic substitution — `body[x ↦ arg]` via
+`substL`. Lambdas, ι-binders, and fix-binders are already in WHNF and
+evaluate to themselves. Applications reduce by substituting the
+evaluated argument into the function's body. The evaluator is a single
+non-mutual function (contrast NbE's three-way `eval`/`vapp`/`quote`
+mutual block).
+
+Two fuel parameters bound the computation:
+
+- **`fuel`**: overall step budget. Every recursive call decrements it.
+- **`unf`**: unfold budget for ι/fix heads in application position.
+  Decremented on each self-referential unfold; when exhausted, the
+  application is left as a stuck neutral `(f a)`. Prevents divergence
+  on non-terminating self-application chains.
+
+The lex ordering `(fuel, unf)` gives a structurally decreasing
+termination measure, so `evalSubst` is non-partial in Lean — equation
+lemmas auto-generate.
+
+### 5.2 Level-variables for open terms
+
+The subtype checker (§6) needs to compare terms under binders — e.g.
+to check `λ(x:A).b₁ ⊑ λ(x:A).b₂`, it opens both bodies with a
+fresh variable and recurses. Rather than introduce a separate `Val`
+domain with neutral placeholders, the engine encodes free variables
+as **level-variables**: `bvar` indices in a reserved high range
+(`levelOffset = 100_000_000`). A level-variable `bvar(levelOffset + k)`
+represents the free variable introduced at de Bruijn *level* `k`
+(counted from the context root, not the innermost binder). Level-vars
+are stable under further binder-openings — opening a new binder
+introduces `bvar(levelOffset + k+1)` without shifting existing
+level-vars.
+
+This encoding lets the entire algorithmic pipeline — evaluation,
+subtype checking, type synthesis — operate on a single `Expr` type
+with no `Val`/`Neutral`/`Closure` machinery.
+
+> **Formalisation aside.** `isLevelIdx k` tests whether an index is
+> in the level-var range. `openFresh body depth` substitutes
+> `bvar(levelOffset + depth)` for `bvar 0` in `body`.
+> `substL`/`shiftL` are the level-aware counterparts of
+> `Expr.subst`/`Expr.shift` that leave level-vars untouched.
+
+### 5.3 Evaluation rules
+
+Write the judgment `e ⇒ v` for "`evalSubst` reduces `e` to WHNF `v`."
 
 ```
-  Substitution-based (absEval):              Closure-based (NbE):
-  ══════════════════════════════             ════════════════════════
+[ES-Type]
+Type ⇒ Type
 
-     let x = T in b                              let x = T in b
-             │                                           │
-         [substitute]                           [bind x in env]
-             │                                           │
-             ▼                                           ▼
+[ES-Bot]
+Bot ⇒ Bot
 
-     b[x ↦ T]                                    { body = b,
-                                                   env  = [x ↦ T] }
-       │ │ │
-       ▼ ▼ ▼
-      ┌─┐┌─┐┌─┐                                  ┌─┐   (single T; k pointers
-      │T││T││T│     ← T copied k times           │T│    from occurrences of x
-      └─┘└─┘└─┘                                  └─┘    refer to the same node)
-                                                 ▲ ▲ ▲
-                                                 └─┴─┘
-     size = k · |T| + O(|b|)                     size = |T| + O(|b|) + k ptrs
+[ES-Lam]                      // already in WHNF
+(λ(x : A). b) ⇒ (λ(x : A). b)
+
+[ES-Iota]                     // already in WHNF
+(ι(self : A). b) ⇒ (ι(self : A). b)
+
+[ES-Fix]                      // already in WHNF
+(fix(self : A). b) ⇒ (fix(self : A). b)
+
+[ES-LevelVar]                 // free level-var is neutral
+x ⇒ x                         // x = bvar(levelOffset + k)
+
+[ES-Asc]                      // ascription preserved (WHNF form)
+(e : τ) ⇒ (e' : τ')
+  e ⇒ e'
+  τ ⇒ τ'
+
+[ES-Let]                      // β for let
+(let x = val in body) ⇒ v
+  val ⇒ v₁
+  body[x ↦ v₁] ⇒ v
+
+[ES-App-β]                    // λ-application
+f a ⇒ v
+  f ⇒ λ(x : A). body
+  a ⇒ vₐ
+  body[x ↦ vₐ] ⇒ v
+
+[ES-App-ι-Unfold]             // ι unfold (¬neutral(a) ∧ unf > 0)
+f a ⇒ v
+  f ⇒ ι(self : A). body
+  a ⇒ vₐ          where ¬neutral(vₐ) ∧ unf > 0
+  (body[self ↦ f]) vₐ ⇒ v              // recurse with unf-1
+
+[ES-App-ι-Stuck]              // ι stuck (neutral(a) ∨ unf = 0)
+f a ⇒ f' vₐ
+  f ⇒ f'          where f' = ι(..)
+  a ⇒ vₐ          where neutral(vₐ) ∨ unf = 0
+
+[ES-App-fix-Unfold]           // fix unfold (symmetric to ι)
+f a ⇒ v
+  f ⇒ fix(self : A). body
+  a ⇒ vₐ          where ¬neutral(vₐ) ∧ unf > 0
+  (body[self ↦ f]) vₐ ⇒ v              // recurse with unf-1
+
+[ES-App-fix-Stuck]            // fix stuck
+f a ⇒ f' vₐ
+  f ⇒ f'          where f' = fix(..)
+  a ⇒ vₐ          where neutral(vₐ) ∨ unf = 0
+
+[ES-App-Asc]                  // strip ascription in function position
+f a ⇒ v
+  f ⇒ (inner : τ)
+  (inner a) ⇒ v
+
+[ES-App-Neutral]              // head is stuck
+f a ⇒ f' vₐ
+  f ⇒ f'          where neutral(f') ∨ f' ∈ {Type, Bot}
+  a ⇒ vₐ
 ```
 
-With nesting, the copies compound: three levels of `let` with `k`
-uses each gives `k³` copies under substitution, but still one shared
-copy under closures.
+### 5.4 Historical note: NbE and why it was retired
 
-The closure-based NbE replaces each substitution with an *environment
-extension* — the substituend is bound to a variable and shared across
-all its uses, not copied. The NbE evaluator was introduced in
+Och originally used an env-based NbE pipeline with three mutually
+recursive operations (`eval : Expr → Val`, `vapp : Val → Val → Val`,
+`quote : Val → Expr`) over a separate `Val`/`Closure`/`Env` domain.
+The NbE evaluator was introduced in
 [`4488378`](https://github.com/charlielidbury/ochre/commit/4488378)
-(2026-04-16) alongside the legacy `absEval`, which ran in parallel
-for a few days as a divergence-detection oracle (it surfaced A1–A8
-in `SoundnessAudit.lean`). Once the sweep had served its purpose,
-the legacy checker was retired in
-[`6772061`](https://github.com/charlielidbury/ochre/commit/6772061)
-(2026-04-19); `NbE.subCheckVal` is now the sole algorithmic checker
-and the Phase-2 soundness target.
+(2026-04-16). NbE's sharing advantage (closures avoid copying
+substituends) was empirically irrelevant on Och's workload — the
+substitution-based evaluator was ~280× faster on heavy cases like
+`three_ ⊑ Nat_` (see
+[`docs/ideas/eval-subst-vs-env-benchmark.md`](../../docs/ideas/eval-subst-vs-env-benchmark.md)).
+The NbE machinery (`NbE.lean`, `SubCheckVal.lean`, `TypedNbE.lean`,
+`MemoRefs.lean`) was deleted in the engine-collapse refactor
+(commits [`fcc2891`](https://github.com/charlielidbury/ochre/commit/fcc2891)
+through [`9d4cfac`](https://github.com/charlielidbury/ochre/commit/9d4cfac),
+2026-04-27).
 
-### 4.1 Values and closures
+The substitution-based design also simplifies the soundness proof:
+input and output share the same type (`Expr`), so there is no
+quote-totality obligation (the old NbE proof needed to show that
+every intermediate `Val` could be quoted back to an `Expr`, which
+hit a fundamental impossibility for non-total λ-calculus — see
+[`docs/ideas/quote-witness-feasibility.md`](../../docs/ideas/quote-witness-feasibility.md)).
 
-[lean/Och/NbE.lean](NbE.lean#L27):
+## 6. Algorithmic subtyping on expressions
 
-```
-Val     ::= Type
-          | λ(x : Val_A). Closure              // binders carry a closure
-          | ι(self : Val_A). Closure
-          | fix(self : Val_A). Closure
-          | neutral(Neutral)
+[`subCheckSubst`](EvalSubst.lean#L573) is the algorithmic realisation of
+§4. It operates directly on `Expr`s in WHNF (not on a separate `Val`
+type). The subtype checker and `evalSubst` live in the same file as a
+mutual block with a lex `(fuel, phase)` termination measure — the
+checker calls `evalSubst` to force WHNF before comparing, and calls
+itself recursively under binders.
 
-Neutral ::= free(x)                            // free variable
-          | app(Neutral, Val)                  // stuck spine
-          | stuckRec(Val, Val)                 // ι/fix head vs neutral arg
+Write the judgment `S ; Γ ⊢ a ⊑ₑ b` for the algorithmic check, where
+`a, b : Expr` are in WHNF, `S` is a list of `(Expr × Expr)` pairs
+(the seen-set), and `Γ` is a `TyCtx` (array mapping level indices to
+their declared types).
 
-Closure ::= { body : Expr, env : Env }         // named-field record
-Env     ::= finite map from variables to Val
-```
+### 6.1 Top-level dispatch (`subCheckSubst`)
 
-A `Closure` is a pair — the as-yet-unevaluated source body and the
-environment under which to evaluate it — packaged so that evaluation
-can be deferred until the binder is opened. Its fields are accessed as
-`cl.body` and `cl.env`. The annotation `Val_A` on each binder is the
-already-evaluated type of the bound parameter. A `neutral` value is a
-semantic placeholder that records exactly where evaluation is stuck —
-`free(x)` for a free variable, `app` for a stuck application spine, and
-`stuckRec` for the Och-specific case of an ι or fix head applied to a
-neutral argument (the eliminator has no pattern to scrutinise, so the
-application is tagged as stuck). The corresponding Lean record is
-[`Closure`](NbE.lean#L45).
+Before case-splitting on shapes, `subCheckSubst` forces both sides to
+WHNF via `evalSubst`, then **peels ascriptions asymmetrically**:
 
-**Why `Closure`, not a host-level function.** The textbook NbE
-presentation interprets a λ-AST-node as a literal function in the
-host language — `Val.lam : (Val → Val) → Val`, so β is just
-meta-level function application. Lean can't express this: its
-inductive types must be strictly positive, and `(Val → Val) → Val`
-has `Val` in a negative position. We produce a `Closure` instead.
-A closure is as self-contained as a meta-level function would be —
-it captures its own evaluation environment — so β-reduction is
-"extend `cl.env` with the argument, `eval cl.body` in the extended
-environment" rather than "apply the Lean function to the argument".
-The NbE payoff (no substitution on `Expr`, α/β free for types) is
-the same; only the mechanism differs.
+- LHS `.asc _ τ` → replace with `τ` (annotation; narrowing)
+- RHS `.asc e _` → replace with `e` (inner value; content)
 
-> **Formalisation aside.** `free(x)` is implemented as a de Bruijn
-> *level* `var k` — an index counted from the root of the context
-> rather than from the innermost binder — so the same neutral stays
-> stable as more binders are opened around it. The level-vs-index
-> choice is why quoting takes a depth argument `k` and returns
-> `bvar(k-1-l)` (see §4.2).
+After peeling, three fast paths fire in order:
 
-### 4.2 Three mutually-recursive judgments
+1. **Syntactic equality** (`a'' == b''`): immediate accept.
+2. **Seen-set hit** (`(a'', b'') ∈ S`): coinductive accept.
+3. **Top** (`b'' == Type`): immediate accept.
 
-Three relations carry the NbE machinery, each doing one job:
+If none fires, it delegates to `subCheckSubstMatch` for the per-shape
+case analysis.
 
-1. **Eval** — `ρ ⊢ e ⇒ v` ([eval](NbE.lean#L91)). Turns a source
-   `Expr` into a semantic `Val`, given an environment `ρ` binding the
-   expression's free variables. This is the syntactic-traversal half:
-   walk the term, recurse into sub-terms, build up a value. When eval
-   hits a λ/ι/fix it *doesn't* recurse into the body — it packages
-   the body and the current environment into a `Closure` and returns
-   that as a value, deferring body-evaluation until the binder is
-   eventually opened.
-
-2. **Value application** — `f · a ⇒ v` ([vapp](NbE.lean#L124)).
-   Applies an already-evaluated value `f` to an already-evaluated
-   argument `a`. This is the β-step in the semantic world: when
-   `f` is a λ-closure, open it by extending its captured env with
-   the argument and evaluating the closure's body; when `f` is an
-   ι/fix, possibly unfold it; when `f` is a neutral, extend the
-   stuck spine.
-
-3. **Quoting** — `v ↓ e` ([quote](NbE.lean#L258)). Reads a value
-   back to a source `Expr`, so the pipeline produces normal-form
-   syntax at the end. To go under a binder, quoting opens the
-   closure with a fresh free variable (which is why it needs eval
-   in return).
-
-**Why three?** Evaluation alone is not enough: when it encounters an
-application, both sides are terms but the result of evaluating the
-function is a value (typically a closure), not a term — you can't
-just substitute and keep going. You need a value-level "apply me to
-this argument" operation, which is `vapp`. Evaluation and vapp are
-therefore mutually recursive — eval calls vapp on applications, vapp
-calls eval when it opens a closure.
-
-Quoting is the third piece because NbE's whole point is to produce a
-normal-form `Expr`, not a `Val`. Values are the internal currency;
-users want syntax out. Quoting is mutually recursive with eval as
-well: reading a closure back requires opening it under a fresh
-binder, which requires evaluating the body in an extended environment.
-The normalisation function [`NbE.nf`](NbE.lean#L410) is literally
-`quote ∘ eval`; the rest of §4.2 is the machinery that makes that
-composition well-defined.
-
-```mermaid
-flowchart LR
-    eval(["eval<br/>Expr → Val"])
-    vapp(["vapp<br/>Val · Val → Val"])
-    quote(["quote<br/>Val → Expr"])
-
-    eval -->|"on .app:<br/>vapp the spine"| vapp
-    vapp -->|"λ/ι/fix head:<br/>eval cl.body in extended env"| eval
-    quote -->|"on a closure:<br/>eval body under fresh free var"| eval
-
-    nf[["nf = quote ∘ eval"]]
-    nf -.-> eval
-    nf -.-> quote
-```
-
-A fuel parameter is threaded through each of the three for
-termination but elided below; an unfolding budget `unf` bounds how
-many times ι/fix may unroll in a single application chain.
+### 6.2 Per-shape rules (`subCheckSubstMatch`)
 
 ```
-[V-Type]
-ρ ⊢ Type ⇒ Type
+[AS-BotL]                     // Bot ⊑ anything
+S ; Γ ⊢ Bot ⊑ₑ b
 
-[V-Var]
-ρ ⊢ x ⇒ ρ(x)
+[AS-Lam]                      // contravariant dom, covariant body
+S ; Γ ⊢ (λ(x : A₁). b₁) ⊑ₑ (λ(x : A₂). b₂)
+  S ; Γ ⊢ A₂ ⊑ₑ A₁
+  S ; (Γ, x : A₂) ⊢ b₁[x↦fresh] ⊑ₑ b₂[x↦fresh]
 
-[V-Lam]
-ρ ⊢ (λ(x : A). b) ⇒ λ(x : v_A). { body = b, env = ρ }
-  ρ ⊢ A ⇒ v_A
+[AS-Iota-Iota]                // structural attempt, then iotaIntro fallback
+S ; Γ ⊢ (ι(self : A₁). B₁) ⊑ₑ (ι(self : A₂). B₂)
+  try:
+    S ; Γ ⊢ A₁ ⊑ₑ A₂
+    S ; (Γ, self : A₂) ⊢ B₁[self↦fresh] ⊑ₑ B₂[self↦fresh]
+  fallback (iotaIntro):
+    S' ; Γ ⊢ a ⊑ₑ A₂                        // S' = (a,b) :: S
+    S' ; Γ ⊢ a ⊑ₑ B₂[self ↦ a]
 
-[V-Iota]
-ρ ⊢ (ι(self : A). b) ⇒ ι(self : v_A). { body = b, env = ρ }
-  ρ ⊢ A ⇒ v_A
+[AS-Fix-Fix]                  // structural attempt, then unfold-R fallback
+S ; Γ ⊢ (fix(self : A₁). b₁) ⊑ₑ (fix(self : A₂). b₂)
+  try:
+    S ; Γ ⊢ A₁ ⊑ₑ A₂
+    S ; (Γ, self : A₂) ⊢ b₁[self↦fresh] ⊑ₑ b₂[self↦fresh]
+  fallback (unfold-R):
+    S' ; Γ ⊢ a ⊑ₑ b₂[self ↦ b]              // S' = (a,b) :: S
 
-[V-Fix]
-ρ ⊢ (fix(self : A). b) ⇒ fix(self : v_A). { body = b, env = ρ }
-  ρ ⊢ A ⇒ v_A
+[AS-Iota-Intro]               // _ ⊑ ι: Cedille-style introduction
+S ; Γ ⊢ a ⊑ₑ (ι(self : A). B)
+  S' ; Γ ⊢ a ⊑ₑ A                            // S' = (a, ι(self:A).B) :: S
+  S' ; Γ ⊢ a ⊑ₑ B[self ↦ a]
 
-[V-App]
-ρ ⊢ f a ⇒ v
-  ρ ⊢ f ⇒ v_f
-  ρ ⊢ a ⇒ v_a
-  v_f · v_a ⇒ v
+[AS-Unfold-Fix-R]             // _ ⊑ fix: unfold RHS
+S ; Γ ⊢ a ⊑ₑ (fix(self : A). b)
+  S' ; Γ ⊢ a ⊑ₑ b[self ↦ fix(self:A).b]     // S' = (a, fix..) :: S
 
-[V-Let]
-ρ ⊢ (let x = e in b) ⇒ v
-  ρ ⊢ e ⇒ v_e
-  ρ, x ↦ v_e ⊢ b ⇒ v
+[AS-Unfold-Fix-L]             // fix ⊑ _: unfold LHS
+S ; Γ ⊢ (fix(self : A). b) ⊑ₑ c
+  S' ; Γ ⊢ b[self ↦ fix(self:A).b] ⊑ₑ c     // S' = (fix.., c) :: S
 
-[V-Asc]                       // computationally transparent
-ρ ⊢ (e : τ) ⇒ v
-  ρ ⊢ e ⇒ v
+[AS-Unfold-Iota-L]            // ι ⊑ _: unfold LHS
+S ; Γ ⊢ (ι(self : A). B) ⊑ₑ c
+  S' ; Γ ⊢ B[self ↦ ι(self:A).B] ⊑ₑ c       // S' = (ι.., c) :: S
 ```
 
-Value application. `vapp` is the β-step in the semantic world. The ι/fix
-arms gate unfolding on `¬a.isNeutral ∧ unf > 0`: an abstract scrutinee
-makes the eliminator stuck regardless of fuel, and `unf` prevents
-diverging self-application on concrete arguments.
+### 6.3 Neutral handling
+
+When both sides are neutral (level-var-headed spines), the checker
+tries **spine comparison** ([`subCheckSpine`](EvalSubst.lean#L722)):
+heads must be the same level-var; arguments must be pairwise
+*equivalent* (checked in both directions, matching `[S-App-Cong]`).
+
+If spine comparison fails, or if only the LHS is neutral, the checker
+falls back to **neutral ascent** ([`neutralAscent`](EvalSubst.lean#L742)):
+it synthesises the LHS neutral's type by walking its spine through
+`Γ` ([`synthNeutralType`](EvalSubst.lean#L760)), then recurses with
+the synthesised type on the LHS. This corresponds to `[S-Var]` in the
+declarative relation — a neutral ascends to its declared type.
 
 ```
-[VA-Lam]
-(λ(x : _). cl) · a ⇒ v
-  cl.env, x ↦ a ⊢ cl.body ⇒ v
+[AS-Spine]                    // both neutrals, spine match
+S ; Γ ⊢ (x e₁ … eₙ) ⊑ₑ (x e₁' … eₙ')
+  x = x                                       // same head level-var
+  S ; Γ ⊢ eᵢ ⊑ₑ eᵢ'     for each i           // forward
+  S ; Γ ⊢ eᵢ' ⊑ₑ eᵢ     for each i           // backward (equivalence)
 
-[VA-Iota-Stuck]               // a neutral OR unf = 0
-f · a ⇒ neutral(stuckRec(f, a))
-  f = ι(self : _). _
-
-[VA-Iota-Unfold]              // ¬a neutral ∧ unf > 0; decrement unf
-f · a ⇒ v
-  f = ι(self : _). cl
-  cl.env, self ↦ f ⊢ cl.body ⇒ f'   // evaluate body with self bound to f
-  f' · a ⇒ v
-
-[VA-Fix-Stuck]
-f · a ⇒ neutral(stuckRec(f, a))
-  f = fix(self : _). _
-
-[VA-Fix-Unfold]               // as iota
-f · a ⇒ v
-  f = fix(self : _). cl
-  cl.env, self ↦ f ⊢ cl.body ⇒ f'
-  f' · a ⇒ v
-
-[VA-Neutral]                  // extend the spine
-n · a ⇒ neutral(app(n, a))
-
-[VA-Type]                     // types aren't applicable
-Type · a ⇒ neutral(stuckRec(Type, a))
+[AS-Ascent]                   // LHS neutral, ascend to declared type
+S ; Γ ⊢ n ⊑ₑ b
+  synthNeutralType(Γ, n) = some τ
+  S ; Γ ⊢ τ ⊑ₑ b
 ```
 
-Quoting. Reading a value back to an `Expr` under a set of already-opened
-free variables. To push quoting under a binder, a **fresh free variable**
-is introduced into the value and the body is re-evaluated with the
-binder's variable bound to that fresh neutral. The `app` spine rebuilds
-syntactic applications; a `stuckRec(f, a)` quotes back as an ordinary
-application (the stuck-ness is a value-world artifact).
+### 6.4 Π-exposure helper
 
-In the formalisation, "fresh free variable" is implemented as a de Bruijn
-level `var k` where `k` is the number of binders already opened; the
-judgment therefore carries `k` and converts levels back to indices as
-`bvar(k-1-l)`. The rules below use named variables.
+[`whnfPi`](EvalSubst.lean#L911) unfolds a fix/ι wrapper in a type
+until a `.lam` (Π) head is exposed. For fix, the self-reference is
+the fix itself (μ-unfold); for ι, the self-reference is the
+*inhabitant* whose type is being computed — `n : ι(self : A). B`
+means `n : B[self ↦ n]`. Returns `none` on `.bot` (Bot is not a Π
+head). Used by `synthCore`'s app arm (§7) and by
+`synthNeutralType`'s spine walk.
 
-```
-[Q-Type]
-Type ↓ Type
+### 6.5 Public API wrappers
 
-[Q-Var]                       // free variable remains free
-neutral(free(x)) ↓ x
+- [`subCheck`](EvalSubst.lean#L802): closed-term check. Forces WHNF
+  on both sides, delegates to `subCheckSubst` with empty `Γ` and
+  empty seen-set.
+- [`subCheckOpen`](EvalSubst.lean#L865): open-term check under a
+  non-empty `Γ`.
+- [`neutralType`](EvalSubst.lean#L887): public mirror of
+  `synthNeutralType`, used by `synthCore`'s app arm.
 
-[Q-App]
-neutral(app(n, a)) ↓ f' a'
-  neutral(n) ↓ f'
-  a ↓ a'
+## 7. Algorithmic typing (`synthCore`)
 
-[Q-StuckRec]
-neutral(stuckRec(f, a)) ↓ f' a'
-  f ↓ f'
-  a ↓ a'
+[`synthCore`](API.lean#L150) is the top-level type-synthesis walk.
+It replaces the bidirectional `tyInfer`/`tyCheck` pair from the
+NbE-era architecture. Where the old bidirectional checker dispatched
+between synthesis and checking modes and delegated type comparison to
+`subCheckVal` on `Val`s, `synthCore` is a single structural walk over
+`Expr` that delegates all typing questions to the complete structural
+engine `subCheckOpen` (§6).
 
-[Q-Lam]                       // x fresh; open body with x bound to free(x)
-(λ(_ : v_A). cl) ↓ λ(x : A'). b'
-  v_A ↓ A'
-  cl.env, x ↦ neutral(free(x)) ⊢ cl.body ⇒ w
-  w ↓ b'
+### 7.1 Design
 
-[Q-Iota] / [Q-Fix]            // symmetric to [Q-Lam]
-```
+`synthCore Γ e` walks `e` recursively, returning its WHNF — which,
+by Och's Refl-typing convention (`a ⊑ a`), doubles as the
+most-precise type. At every node that introduces a typing obligation
+(applications, ascriptions), it calls `subCheckOpen` to verify the
+obligation. The walk is *not* bidirectional: there is no separate
+checking mode. The `Γ` argument is a `TyEnv` (array of `Expr`)
+mapping level indices to the WHNF types of free variables introduced
+by binder-opening.
 
-Normalization is `nf e := quote(eval(∅, e))` starting from the empty
-environment and no open variables ([`NbE.nf`](NbE.lean#L410)).
+The public entry point [`Och.synth`](API.lean#L308) validates
+`e.closedAt 0` at entry and wraps the result in an opaque
+[`WTValue`](API.lean#L99) (whose `mk` constructor is `private`, so
+the only way to obtain one is through `synth`).
 
-## 5. Algorithmic subtyping on values
-
-[`subCheckVal`](SubCheckVal.lean#L212) is the algorithmic realisation of
-§3. It operates directly on `Val`s (not on `Expr`s), so α-equivalence and
-β-equivalence are free — two terms that evaluate to the same `Val` are
-immediately recognised as subtype-equal. The seen-set lives at the
-value level: entries are `Val × Val` pairs, recorded at the current
-depth.
-
-Write the judgment `S ; Γ ⊢ a ⊑ᵥ b` for values `a, b : Val`. Structurally it
-mirrors §3 but with these algorithmic adaptations:
-
-- **Seen-set lookup** (`.hyp` equivalent) is a pointer-sharing fast
-  path: a `ptrEq`-based `Val.beq` closes a goal that has already been
-  visited under a productive ancestor ([SubCheckVal.lean](SubCheckVal.lean#L40)).
-- **Lam-lam** opens both closures with the *same* fresh free variable
-  and recurses on the bodies under `Γ, x : A_B`.
-- **Iota-R** and **fix-R** are realised as `iotaIntro` / `fixR`:
-  the RHS closure is opened with the LHS value bound to `self` (so
-  the self-reference is the LHS), and the resulting body is compared
-  against the LHS.
-- **StuckRec** arms cross-unfold until one side steps (the seen-set and
-  productivity gate prevent divergence).
-- The **top** rule (`_ ⊑ Type`) is an early fast path.
-- The **bot** rule (`.bot, _ => .ok true`) is realised as a single
-  high-priority match arm — it fires before any structural / neutral /
-  ascent arm so `Bot ⊑ anything` closes immediately without traversal.
-  No dual `_, .bot => .ok false` arm; rejection of `X ⊑ Bot` (for
-  non-Bot `X`) emerges from fall-through. Contrast with `.type`: both
-  are lattice extrema, but Type appears as an *accept* on the RHS
-  (`_ ⊑ Type`), while Bot appears as an *accept* on the LHS
-  (`Bot ⊑ _`). See `docs/ideas/bottom.md`.
-
-Soundness of this algorithm against the declarative relation is
-[`subCheckVal_sound`](Soundness.lean#L84): if `subCheckVal` returns
-`ok true` on two closed values `a, b` and both quote to expressions
-`ae, be`, then `[] ; [] ⊢ ae ⊑ be`.
-
-## 6. Algorithmic typing
-
-Och's type-checker is bidirectional ([lean/Och/TyCheck.lean](TyCheck.lean)):
-elimination forms synthesize their type (mode `⇒`), introduction forms
-check against one (mode `⇐`). The top-level wrapper [`typeCheck`](TyCheck.lean#L282)
-evaluates `τ`, then calls `tyCheck` in check mode. The judgments are
+### 7.2 Synthesis rules
 
 ```
-Γ ; ρ ⊢ e ⇒ τV       synthesis  —  returns a Val type
-Γ ; ρ ⊢ e ⇐ τV       checking   —  returns Bool
+[I-Type]                                         // API.lean
+Γ ⊢ Type ~> Type
+
+[I-Bot]
+Γ ⊢ Bot ~> Bot
+
+[I-Var]                                          // Refl-typing convention
+Γ ⊢ x ~> x                                       // x = levelVar(k), k < |Γ|
+
+[I-Lam]
+Γ ⊢ (λ(x : A). b) ~> whnf(λ(x : A). b)
+  Γ ⊢ A ⊑ₑ Type                               // domain is a type
+  domV ← whnf(A)
+  (Γ, x : domV) ⊢ b[x↦fresh] ~> _bodyTy       // validate body
+
+[I-Iota]                                         // symmetric to I-Lam
+Γ ⊢ (ι(self : A). b) ~> whnf(ι(self : A). b)
+  Γ ⊢ A ⊑ₑ Type
+  annV ← whnf(A)
+  (Γ, self : annV) ⊢ b[self↦fresh] ~> _bodyTy
+
+[I-Fix]                                          // symmetric to I-Lam
+Γ ⊢ (fix(self : A). b) ~> whnf(fix(self : A). b)
+  Γ ⊢ A ⊑ₑ Type
+  annV ← whnf(A)
+  (Γ, self : annV) ⊢ b[self↦fresh] ~> _bodyTy
+
+[I-Asc]
+Γ ⊢ (e : τ) ~> whnf(e : τ)                       // ascription is a WHNF form
+  Γ ⊢ τ ⊑ₑ Type                               // annotation is a type
+  τV ← whnf(τ)
+  Γ ⊢ e ~> v                                    // synthesise inner
+  Γ ⊢ v ⊑ₑ τV                                  // inner ⊑ annotation
+
+[I-Let]
+Γ ⊢ (let x = val in body) ~> whnf(let x = val in body)
+  Γ ⊢ val ~> valV
+  (Γ, x : valV) ⊢ body[x↦fresh] ~> _bodyTy
+
+[I-App]
+Γ ⊢ f a ~> whnf(piExpr aV)
+  Γ ⊢ f ~> vF                                   // synthesise function
+  Γ ⊢ a ~> vA                                   // synthesise argument
+  aV ← whnf(a)
+  fV ← whnf(f)
+  piExpr ← exposePi(fV, vF)                     // expose Π from value or
+                  or exposePi(fV, neutralType(Γ, fV))  // from ascended type
+  match piExpr with (λ(x : dom). body) →
+    Γ ⊢ vA ⊑ₑ dom                               // THE domain check
+      or Γ ⊢ neutralType(Γ, aV) ⊑ₑ dom          // fallback: ascend arg
+      or Γ ⊢ aV ⊑ₑ dom                          // fallback: raw value
+    return whnf(piExpr aV)
 ```
 
-`Γ` maps free variables to their declared types (as `Val`s), and `ρ` is
-the value environment mapping variables to `Val`s (fresh neutrals for
-parameters introduced inside a binder). Both modes call
-[`subCheckVal`](SubCheckVal.lean#L212) when they need to compare two
-types.
+**Refl-typing convention.** Canonical forms (lam, iota, fix)
+synthesise themselves: `synthCore` returns `whnf(e)` for these nodes.
+Since `a ⊑ a` holds declaratively by `[S-Refl]`, the synthesised
+WHNF is trivially a valid type-witness.
 
-### 6.1 Synthesis
+**Why not bidirectional.** The previous `tyInfer`/`tyCheck`
+architecture was algorithmically incomplete on Och programs: the
+bidirectional walk stalled on the A6-family of well-formed programs
+(`succ_`, `one_`, `mkVec`, `appendVec`, etc.) because the mode
+dispatch couldn't propagate enough type information through
+elimination forms. The pragmatic fallback — accept `tyInfer`'s
+`.error` and fall through to `evalSubst` — silently accepted
+ill-typed terms like `appendVec_wrong`. `synthCore` bypasses the
+mode dispatch entirely and asks the *complete* structural engine
+(`subCheckOpen`) to decide each domain check directly. See
+[`API.lean`](API.lean) lines 64–78 for the full rationale.
 
-```
-[T-Var]                                          // TyCheck.lean:83
-Γ ; ρ ⊢ x ⇒ Γ(x)
+**Bot in `synthCore`.** `Bot` synthesises itself via `[I-Bot]`.
+`whnfPi fuel inhab .bot = none` — Bot is not a Π head, so applying
+an argument to Bot-typed function fails at the `exposePi` step in
+`[I-App]`. See [`docs/ideas/bottom.md`](../../docs/ideas/bottom.md)
+for the full design.
 
-[T-Type]
-Γ ; ρ ⊢ Type ⇒ Type
+### 7.3 Abstract interpretation of bodies
 
-[T-Asc]                                          // TyCheck.lean:89
-Γ ; ρ ⊢ (e : τ) ⇒ τV
-  ρ ⊢ τ ⇒ τV
-  Γ ; ρ ⊢ e ⇐ τV
+When `synthCore` enters a binder (lam, iota, fix, let), it opens the
+body by substituting a fresh level-variable for `bvar 0` and
+extends `Γ` with the annotation's WHNF. The level-variable is
+**neutral** with respect to `evalSubst` — it evaluates to itself,
+blocks β-reduction, and propagates through application spines as a
+stuck head. This is the substitution-based analogue of NbE's "open
+closure with fresh free variable": the level-var acts as a symbolic
+"any value of this type," and the structural subtype checker can
+compare bodies containing level-vars by spine-walking and ascending
+through `Γ`.
 
-[T-Lam]                                          // TyCheck.lean:110
-Γ ; ρ ⊢ (λ(x : A). b) ⇒ λ(x : domV). ⟨bodyTyE, ρ⟩
-  ρ ⊢ A ⇒ domV
-  (Γ, x : domV) ; (ρ, x ↦ neutral(free(x))) ⊢ b ⇒ bodyTy
-  bodyTy ↓ bodyTyE                // reify so the Π can be re-opened later
-
-[T-App-β]                                        // TyCheck.lean:126
-Γ ; ρ ⊢ (λ(x : A). b) a ⇒ τ'                     // β fast-path
-  ρ ⊢ A ⇒ domV
-  Γ ; ρ ⊢ a ⇐ domV
-  ρ ⊢ a ⇒ vₐ
-  (Γ, x : domV) ; (ρ, x ↦ vₐ) ⊢ b ⇒ τ'
-
-[T-App]                                          // TyCheck.lean:152
-Γ ; ρ ⊢ f a ⇒ retTy
-  Γ ; ρ ⊢ f ⇒ fTy
-  ρ ⊢ f ⇒ fV
-  whnfPi(fV, fTy) = λ(x : dom). cl               // expose Π head
-  Γ ; ρ ⊢ a ⇐ dom
-  ρ ⊢ a ⇒ vₐ
-  cl[x ↦ vₐ] ⇒ retTy
-
-[T-Let]                                          // TyCheck.lean:172
-Γ ; ρ ⊢ (let x = val in body) ⇒ τ
-  (vV, valTy) = letBinderType(val)
-  (Γ, x : valTy) ; (ρ, x ↦ vV) ⊢ body ⇒ τ
-
-[T-Fix] / [T-Iota]                               // TyCheck.lean:97
-Γ ; ρ ⊢ (fix(self : A). b) ⇒ AV                  // annotation only (bare)
-  ρ ⊢ A ⇒ AV
-```
-
-**`whnfPi`** ([TyCheck.lean:56](TyCheck.lean#L56)) unfolds a fix/ι wrapper to
-expose a Π (= `.lam`) head. For fix, the self is the fix itself; for ι,
-the self is the *inhabitant* whose type is being computed —
-`n : ι(self : A). B` means `n : B[self ↦ n]`. This drives dependent
-elimination.
-
-**A9 caveat.** `tyInfer` returns the bare annotation for fix/ι without
-checking the body against it. That makes the synthesised type usable in
-downstream `.app` chains but unsound on its own — `(fix(x : Nat). unit)`
-synthesises `Nat` even though the body has type `Unit`. Callers that need
-a verified type must route through `tyCheck` (§6.2), which uses
-`subCheckVal` to compare the *unfolded* fix/ι against the expected type
-([TyCheck.lean:209](TyCheck.lean#L209)).
-
-**Bot in the bidirectional mode.** `tyInfer .bot` returns `.error` —
-Bot has no synthesized type. `tyCheck .bot expected` succeeds **only
-when `expected = Val.type`**; at any other expected type it falls through
-to the fallback (which goes via `tyInfer`, which errors). This piggybacks
-on Och's existing bidirectional mode as a *proxy* for a term/type
-stratum: "checking at `Val.type` ≈ used as a type"; "checking at
-anything else ≈ used as a value." The proxy leaks under type-in-type
-(e.g. `(λX:Type. X) Bot` evaluates to `Val.bot` at type `Type`), but
-benignly: `Val.bot` cannot be ascribed at a non-Type type, cannot be
-passed to a non-Type-expecting function, and the only thing it *can*
-do (appear as an annotation elsewhere) is equivalent to writing `Bot`
-directly. `whnfPi fuel inhab .bot = none` — Bot is not a Π head. See
-`docs/ideas/bottom.md` for the full design.
-
-### 6.2 Checking
-
-```
-[C-Lam]                                          // TyCheck.lean:184
-Γ ; ρ ⊢ (λ(x : A). b) ⇐ expected
-  ρ ⊢ A ⇒ domV
-  whnfPi(neutral(free(x)), expected) = λ(x : expDom). expCl
-  ∅ ; Γ ⊢ expDom ⊑ᵥ domV                         // contravariant dom
-  expCl[x ↦ neutral(free(x))] ⇒ expBody
-  (Γ, x : expDom) ; (ρ, x ↦ neutral(free(x))) ⊢ b ⇐ expBody
-
-[C-Let]                                          // TyCheck.lean:200
-Γ ; ρ ⊢ (let x = val in body) ⇐ expected
-  (vV, valTy) = letBinderType(val)
-  (Γ, x : valTy) ; (ρ, x ↦ vV) ⊢ body ⇐ expected
-
-[C-Asc]                                          // TyCheck.lean:203
-Γ ; ρ ⊢ (e : τ) ⇐ expected
-  ρ ⊢ τ ⇒ τV
-  Γ ; ρ ⊢ e ⇐ τV
-  ∅ ; Γ ⊢ τV ⊑ᵥ expected
-
-[C-Fix] / [C-Iota]                               // TyCheck.lean:209
-Γ ; ρ ⊢ e ⇐ expected                              // e ∈ {fix, ι}
-  ρ ⊢ e ⇒ eV
-  ∅ ; Γ ⊢ eV ⊑ᵥ expected                         // unfolds eV against expected
-
-[C-Fallback]                                     // TyCheck.lean:232
-Γ ; ρ ⊢ e ⇐ expected
-  Γ ; ρ ⊢ e ⇒ τ
-  ∅ ; Γ ⊢ τ ⊑ᵥ expected
-```
-
-The fallback handles all remaining forms: infer a principal type, then
-subtype-check against `expected`. When no principal type is available
-(no synthesis rule fires), `tyCheckFallback` re-evaluates `e` and compares
-the resulting value directly against `expected`, matching the behaviour
-of raw subtype checking.
-
-### 6.3 Abstract interpretation of bodies
-
-The essential NbE move in the type-checker is the **fresh free variable**
-introduced when entering a binder (both in `[T-Lam]` and `[C-Lam]`). The
-free variable acts as a symbolic "any value of type `dom`": evaluation of
-the body under the extended `ρ` produces neutral-headed normal forms, and
-the codomain of the expected Π is opened at the *same* fresh variable so
-the body's type can be compared against a codomain that mentions the
-parameter. This is how dependently-typed function bodies are checked
-before any concrete argument exists.
-
-## 7. Metatheory
+## 8. Metatheory
 
 Soundness theorems ([lean/Och/Soundness.lean](Soundness.lean)) link
-the concrete semantics (§2), the declarative subtyping (§3), and the
-algorithmic checker (§§4–6). The diagram below unifies three views:
-the external soundness claim, the internal algorithmic relations, and
-the declarative / intermediate relations the proofs route through.
+the concrete semantics (§2), the declarative subtyping (§4), and the
+algorithmic checker (§§5–7).
 
 ```mermaid
 flowchart TB
-    subgraph algo["Algorithmic world (runs): NbE + concEval"]
+    subgraph algo["Algorithmic world (runs): evalSubst + subCheckSubst + synthCore"]
         direction TB
-        typ["∅ ; ∅ ⊢ e ⇐ τ<br/>(entry; §6)"]
-        tinf["Γ ; ρ ⊢ e ⇒ τ<br/>(synthesise)"]
-        tchk["Γ ; ρ ⊢ e ⇐ τ<br/>(check)"]
-        nev["ρ ⊢ e ⇒ v<br/>(NbE eval; §4)"]
-        vap["f · a ⇒ v<br/>(vapp)"]
-        qt["v ↓ e<br/>(quote)"]
-        scv["S ; Γ ⊢ a ⊑ᵥ b<br/>(subCheckVal; §5)"]
-        ce["e ⇓ e'<br/>(concEval; §2)"]
-        typ -->|"eval τ to τV,<br/>delegate to check mode"| tchk
-        tchk -.->|"if can't check,<br/>synthesise and compare"| tinf
-        tchk -->|"eval annotations<br/>(domain, expected)"| nev
-        tchk -->|"synthed ⊑ᵥ expected"| scv
-        tinf -->|"eval annotations,<br/>app heads, let values"| nev
-        nev -->|"reduce .app / unfold .iota·.fix"| vap
-        scv -->|"emit Expr for Subtype'"| qt
+        syn["Och.synth e<br/>(entry; §7)"]
+        sc["synthCore Γ e<br/>(structural walk)"]
+        sco["subCheckOpen Γ a b<br/>(§6)"]
+        es["evalSubst fuel unf e<br/>(§5)"]
+        ce["concEval fuel e<br/>(§2)"]
+        syn -->|"validates closedAt,<br/>delegates"| sc
+        sc -->|"domain checks<br/>at app/asc"| sco
+        sc -->|"compute WHNF<br/>for return value"| es
+        sco -->|"force WHNF<br/>before comparing"| es
     end
 
-    subgraph decl["Declarative world (§3): ⊑ and companions"]
+    subgraph decl["Declarative world (§4): Subtype'"]
         direction TB
         st["S ; Γ ⊢ a ⊑ b<br/>(declarative ⊑)"]
-        subv["SubV<br/>(algorithm reflection)"]
-        eqc["e₁ ≡_d e₂<br/>(Equiv_c: ⊑ both ways<br/>at depth d)"]
-        rr["v ∼_d e<br/>(R: Val realises Expr<br/>at depth d)"]
-        subv -->|"SubV_to_Subtype':<br/>reflection → declarative"| st
-        rr -->|"R_quote_equiv:<br/>quote the realiser"| eqc
-        eqc -->|"take one direction<br/>(fst or snd of pair)"| st
     end
 
-    scv  -.->|"subCheckVal_subV:<br/>algorithm accepts → SubV holds"| subv
-    nev  -.->|"eval_realises:<br/>eval output realises source"| rr
-    vap  -.->|"vapp_realises:<br/>vapp output realises .app"| rr
-    typ  -.->|"typeCheck_sound:<br/>accept → declarative ⊑"| st
-    ce   -.->|"concEval_equiv_closed:<br/>e ⇓ e' → e ≡ e'"| eqc
-    ce   -.->|"concEval_preservation:<br/>composes with typeCheck_sound"| st
-    typ  ==>|"soundness (composed<br/>with concEval result)"| st
+    syn  -.->|"synth_sound:<br/>synth ok → e ⊑ v.whnf"| st
+    sco  -.->|"subCheck_sound:<br/>check ok → a.whnf ⊑ b.whnf"| st
+    es   -.->|"evalSubst_equiv:<br/>e ⇒ v → e ≡ v"| st
+    ce   -.->|"concEval_equiv:<br/>e ⇓ e' → e ≡ e'"| st
+    ce   -.->|"concEval_preservation:<br/>e ⊑ τ ∧ e ⇓ e' → e' ⊑ τ"| st
+    syn  ==>|"soundness (composed)"| st
 
     classDef algoStyle fill:#fef3c7,stroke:#92400e
     classDef declStyle fill:#dbeafe,stroke:#1e40af
-    class typ,tchk,tinf,nev,vap,qt,scv,ce algoStyle
-    class st,subv,eqc,rr declStyle
+    class syn,sc,sco,es,ce algoStyle
+    class st declStyle
 ```
 
 Reading guide:
 
-- **Algorithmic world (yellow)**: what actually runs. `typeCheck` is
-  the user-facing entry. It dispatches to the bidirectional pair
-  `tyInfer ⇒` (synthesise a type) and `tyCheck ⇐` (check against a
-  given type), which in turn call `NbE eval` for Val-level computation,
-  `vapp` for Val-level application, and `subCheckVal` for subtype
-  comparison between Vals (which uses `quote` to close proof
-  obligations back to Expr). `concEval` runs separately as the
-  big-step Expr-level evaluator.
+- **Algorithmic world (yellow)**: what actually runs. `Och.synth` is
+  the user-facing entry; it delegates to `synthCore` (the structural
+  walk), which calls `subCheckOpen` for each typing obligation and
+  `evalSubst` to compute WHNFs. `concEval` is the separate big-step
+  reference evaluator for closed terms (§2).
 - **Declarative world (blue)**: the formal semantics. `Subtype'` is
-  the derivation relation (§3). `SubV` mirrors `subCheckVal`'s
-  match-arms 1-to-1 and bridges back to `Subtype'` via
-  `SubV_to_Subtype'`. `Equiv_c d e₁ e₂` is `Subtype'` in both
-  directions at depth d. `R m d v e` (realisation) connects a Val
-  to the Expr it represents at step index m and depth d.
-- **Solid arrows** inside each subgraph are call / derivation
-  dependencies (typeCheck calls tyCheck calls NbE eval; SubV refines
-  Subtype'; Equiv_c decomposes to Subtype'; etc.).
+  the derivation relation (§4).
 - **Dashed arrows** between the two worlds are *soundness theorems*:
   each says "algorithm says OK ⟹ declarative derivation exists."
-  Every declaration-level sorry in `SoundnessProof.lean` lives on one
-  of these dashed arrows.
 - **The heavy arrow `soundness (composed)`** is the user-level
-  composition: "if `typeCheck e τ` accepted AND `concEval e` produced
-  some e', then e' declaratively subtypes τ." It goes through
-  `typeCheck_sound` + `concEval_preservation` under the hood.
+  composition: "if `synth e` accepted AND `subCheck a b` accepted
+  AND `concEval e` produced some `e'`, then `e' ⊑ b.whnf`
+  declaratively."
 
-`concEval_equiv_closed` sits separately: it establishes declarative
-equivalence between `e` and `e'` via one-step rules (β, ι-unfold,
-fix-unfold, asc-erase) independently of typing. `concEval_preservation`
-composes it with `typeCheck_sound` to land on `Subtype'`.
+### 8.0 Proof architecture
 
-The blocked Phase 1 sorries (per
-`docs/ideas/sorry-closure-plan.md`) all live on the `eval_realises` /
-`vapp_realises` / `R_quote_equiv` / `typeCheck_sound` dashed arrows —
-specifically at points where these theorems need a `quote`-succeeds
-witness on intermediate closure values. The research note
-`docs/ideas/quote-witness-feasibility.md` proves that witness cannot
-be derived structurally in untyped OCH.
+The soundness proof is split across several files in
+[`Soundness/`](Soundness/):
+
+| File | Theorem | Status |
+|---|---|---|
+| [`ConcEvalPreservation.lean`](Soundness/ConcEvalPreservation.lean) | `concEval_equiv`, `concEval_preservation_aux` | **sorry-free** |
+| [`SynthProgress.lean`](Soundness/SynthProgress.lean) | `concEval_no_error` | **sorry-free** |
+| [`EvalSubstEquiv.lean`](Soundness/EvalSubstEquiv.lean) | `evalSubst_equiv`, `evalSubst_preservation_aux` | 3 sorries (`WALL_substL_depth` + bridge walls) |
+| [`EvalSubstLemmas.lean`](Soundness/EvalSubstLemmas.lean) | `evalSubst_fuel_mono`, `evalSubst_closedAtLvl`, `substL_eq_subst` helpers | **sorry-free** |
+| [`SubtypeSteps.lean`](Soundness/SubtypeSteps.lean) | one-step `Subtype'` lemmas (β, unfold, asc) | **sorry-free** |
+| [`CloseAll.lean`](Soundness/CloseAll.lean) | `closeAll` translation lemmas | 5 sorries |
+| [`SubCheckSubstStructural.lean`](Soundness/SubCheckSubstStructural.lean) | lam-lam, iota-iota, fix-fix arm packages | 2 sorries |
+| [`SubCheckSubstFallback.lean`](Soundness/SubCheckSubstFallback.lean) | iotaIntro, unfold-fix-R/L, unfold-iota-L arm packages | 3 sorries |
+| [`SubCheckSubstNeutral.lean`](Soundness/SubCheckSubstNeutral.lean) | spine, ascent arm packages | 2 sorries |
+| [`SubCheckSubstSoundness.lean`](Soundness/SubCheckSubstSoundness.lean) | `subCheckSubst_sound`, `Och_subCheck_sound` (composition) | 33 sorries |
+| [`SynthSound.lean`](Soundness/SynthSound.lean) | `Och_synth_sound` | 5 sorries |
+
+The key structural difference from the old NbE-era proof: there is no
+`Val`-level intermediate relation (`SubV`, `R`). The proofs connect
+the algorithmic `subCheckSubst` directly to `Subtype'` via per-arm
+lemma packages, each of which constructs a `Subtype'` derivation from
+the algorithmic accept. The `closeAll` function translates between
+level-var-encoded open terms and de Bruijn terms in `Subtype'`'s
+context.
 
 **Subtyping soundness.**
-[`subCheckVal_sound`](Soundness.lean#L84) — if the algorithm accepts two
-closed values and they quote back to expressions, the quoted pair is
-declaratively a subtype.
+[`subCheck_sound`](Soundness.lean#L111) — if the algorithm accepts two
+validated values, they are declaratively subtypes.
 
 ```
-subCheckVal n Γ=∅ ρ=∅ a b = ok true
-  ∧ quote(a) = some aₑ
-  ∧ quote(b) = some bₑ
- ⟹  ∅ ; ∅ ⊢ aₑ ⊑ bₑ
+Och.subCheck a b fuel = .ok true
+ ⟹  ∅ ; ∅ ⊢ a.whnf ⊑ b.whnf
 ```
 
-The proof goes via `subCheckVal_subV` (algorithm-reflection to an
-intermediate value-level relation `SubV`) and `SubV_to_Subtype'`
-(readback bridge).
+The proof routes through `subCheckSubst_sound` (induction on fuel,
+dispatching to per-arm packages) and `closeAll` (translating
+level-vars to de Bruijn context entries).
 
-**Typing soundness.**
-[`typeCheck_sound`](Soundness.lean#L264) — if the top-level checker
-accepts `e` at `τ` (both closed, both normalising within the proof's
-global fuel), then `∅ ; ∅ ⊢ e ⊑ τ` declaratively.
+**Synthesis soundness.**
+[`synth_sound`](Soundness.lean#L92) — if `synth` accepts `e`, then
+`e` declaratively subtypes its synthesised WHNF.
+
+```
+Och.synth e fuel = .ok v
+ ⟹  ∅ ; ∅ ⊢ e ⊑ v.whnf
+```
+
+Structural induction on `e`. All arms closed except `.app`, which
+is the remaining wall (`synthCore_app_WALL`).
+
+**Evaluation equivalence.**
+[`concEval_equiv`](Soundness/ConcEvalPreservation.lean) — if `e`
+evaluates to `e'`, both directions of subtyping hold. **Sorry-free.**
+
+```
+e.closedAt 0 = true
+  ∧ concEval fuel e = .ok e'
+ ⟹  ∅ ; ∅ ⊢ e' ⊑ e  ∧  ∅ ; ∅ ⊢ e ⊑ e'
+```
 
 **Preservation.**
-[`concEval_equiv`](Soundness.lean#L304) strengthens the forward direction
-into a declarative *equivalence*: `e ⇓ e'` implies both
-`∅ ; ∅ ⊢ e' ⊑ e` and `∅ ; ∅ ⊢ e ⊑ e'`. The one-step equivalences
-needed — β, let-unfold, ι-unfold, fix-unfold, asc-erase — come from
-[`Equiv.subst_resp`](SoundnessProof.lean), `beta_L`/`_R`, `unfold_iota_R`,
-`unfold_fix_R`, `asc_L`/`_R`. Type preservation
-[`concEval_preservation`](Soundness.lean#L380) follows by transitivity.
+[`concEval_preservation`](Soundness.lean#L129) — standard type
+preservation. **Sorry-free** (derives from `concEval_equiv` via
+`Subtype'.trans`).
+
+**Progress.**
+[`synth_progress`](Soundness.lean#L153) — a synth-accepted term
+doesn't get stuck during evaluation. `concEval` may return
+`.ok value` or `.outOfFuel` but never `.error`. **Sorry-free.**
+
+```
+Och.synth e fuel = .ok v
+ ⟹  ∀ f msg, concEval f e ≠ .error msg
+```
 
 **End-to-end.**
-[`soundness`](Soundness.lean#L388) composes the two: if `typeCheck e τ`
-accepts and `e ⇓ e'`, then `∅ ; ∅ ⊢ e' ⊑ τ` — the runtime result
-declaratively inhabits the declared type.
+[`soundness`](Soundness.lean#L174) composes the above: if `synth e`
+and `synth τ` both succeed, `subCheck` accepts, and `concEval e`
+produces `e'`, then `e' ⊑ τ.whnf` declaratively.
 
 ```
 soundness :
-  typeCheck n e τ = ok true
-  ∧ concEval n e = some e'
- ⟹  ∅ ; ∅ ⊢ e' ⊑ τ
+  Och.synth e fuel = .ok a
+  ∧ Och.subCheck a b fuel = .ok true
+  ∧ concEval fuel e = .ok e'
+ ⟹  ∅ ; ∅ ⊢ e' ⊑ b.whnf
 ```
 
-The theorem carries closed-ness and normalisation side-conditions on
-`e` and `τ`; the latter is inherent (quote-totality is not derivable from
-eval-totality alone) and in practice is discharged by `native_decide`
-for any concrete source input.
+The composition itself is **sorry-free** — it chains `synth_sound`,
+`subCheck_sound`, and `concEval_preservation`.
 
-### 7.1 What soundness promises to the programmer
+### 8.1 What soundness promises to the programmer
 
 Two separable runtime properties a type system can promise:
 
@@ -1164,206 +1204,81 @@ The language expects the following discipline at any boundary where
 an `Expr` is about to be run:
 
 ```
-match typeCheck n e τ with
-  | ok true  => concEval n' e     // safe: only failure is fuel
-  | _        => reject
+match Och.synth e with
+  | .ok v  => concEval n e     // safe: only failure is fuel
+  | _      => reject
 ```
 
-That is: **run `typeCheck` first; only call `concEval` if it
-succeeded.** The contract the type system offers the programmer is
-expressed by the conjunction
-
-```
-progress_mod_fuel  (aspirational) :
-  typeCheck n e τ = ok true
-  ∧ e, τ closed
- ⟹  ∀ n'. concEval n' e ∈ { some v (well-formed), none-due-to-fuel }
-```
-
-— i.e. the only reason `concEval n' e` returns `none` on a typed
-closed term is fuel exhaustion, never "the evaluator hit an arm it
-couldn't handle." No application-of-a-non-function, no
-scrutinee-without-a-match. If the program halts within its budget, the
-programmer gets a well-formed value; if it doesn't halt, they're
-guaranteed only that it's still running, not that it's broken.
+That is: **run `Och.synth` first; only call `concEval` if it
+succeeded.** `synth_progress` guarantees that a synth-accepted closed
+term never produces `.error` from `concEval` — only `.ok value` or
+`.outOfFuel`.
 
 #### What holds and what doesn't
 
 | Property                                              | Status                |
 | ----------------------------------------------------- | --------------------- |
-| `typeCheck` accepts ⟹ `Subtype' ∅ ∅ e τ` declaratively | **proven** (mod sorries — §7.2) |
-| `Subtype'` preserved under one step of `concEval`     | **proven** (mod sorries) |
-| Composed preservation (`soundness`)                   | **proven** (mod sorries) |
-| `typeCheck` accepts ⟹ `concEval` only fails by fuel (`progress_mod_fuel`) | **not stated, not proven** |
-| `typeCheck` accepts ⟹ `concEval` terminates at some fuel | **not pursued** |
-
-`soundness` today is a **preservation-only** theorem: it assumes
-`concEval` returned a value and concludes the result has the declared
-type. It does not claim evaluation runs without stuck arms.
-
-#### What does *not* hold internally
-
-It is **not** a current invariant that `Val` or `Closure` inhabitants
-held during type checking witness any prior well-typedness. `eval`
-runs speculatively on sub-expressions *before* they are themselves
-checked:
-
-- `tyInfer` on `λ(x : A). b` evaluates `A` before checking that
-  `A : Type` ([TyCheck.lean:111](TyCheck.lean#L111)).
-- `tyCheck` on `λ(x : A). b` evaluates `A` before comparing it to the
-  expected domain ([TyCheck.lean:185](TyCheck.lean#L185)).
-- `tyCheck` on `(e : τ)` evaluates `τ` without checking
-  `τ : Type` ([TyCheck.lean:204](TyCheck.lean#L204)).
-- Top-level `typeCheck` evaluates the user-supplied `τ` with no prior
-  kinding check.
-
-At each of those points, any nested lambda gets packaged into a
-`Closure` whose body has not been type-checked. The checker works
-correctly because it catches errors *later* via `subCheckVal`
-failures; but "closures only hold well-typed bodies" is **not** a
-theorem about the current code.
-
-`Val`/`Closure` are internal scratch data structures used by the
-algorithm. They are not a carrier of well-typedness proofs. The
-soundness story lives entirely at the `Expr`/`typeCheck`/`concEval`
-boundary, not inside the NbE machinery.
+| `synth` accepts ⟹ `Subtype' ∅ ∅ e v.whnf` declaratively | **proven** (mod sorries — §8.2) |
+| `Subtype'` preserved under one step of `concEval`     | **sorry-free** |
+| `concEval` never `.error`s on synth-accepted input    | **sorry-free** |
+| Composed preservation (`soundness`)                   | **sorry-free** composition (upstream sorries) |
+| `synth` accepts ⟹ `concEval` terminates at some fuel | **not pursued** |
 
 #### What would close the gap
 
-To upgrade `progress_mod_fuel` from aspirational to proven, two pieces
-are needed:
+The remaining sorries fall into three categories:
 
-1. A **kinding discipline** in `tyCheck`: wherever a type is stored
-   into `Γ` (ascription, `whnfPi` domain, top-level entry), verify
-   it has type `Type` first. This rules out the stuck arms in
-   `concEval` (application of `Type`, application of a free
-   variable) for typed inputs.
-2. A **progress lemma** for `concEval`: by induction on `Subtype'`,
-   show that every stuck arm contradicts the declarative relation.
+1. **`synthCore_app_WALL`** (SynthSound.lean): the `.app` arm of
+   synth-soundness. Needs to show that the domain check
+   `subCheckOpen vA dom = .ok true` implies `Subtype' [] [] (.app f a) v`.
 
-Closing this is the next metatheory milestone after the ten
-`SoundnessProof.lean` sorries land. In the meantime, a cheaper
-near-term win — making the programmer contract machine-enforced
-rather than documented — would be to bundle the two calls at the
-API surface:
+2. **`closeAll` commutation walls** (CloseAll.lean,
+   SubCheckSubstSoundness.lean): translating between level-var
+   terms and de Bruijn terms under `Subtype'`'s context. The
+   main wall is `closeAll` commuting with `substL` at non-zero
+   depth.
 
-```
-safeEval : (e τ : Expr) → (n : Nat) → SafeResult
-  -- internally: runs typeCheck first, short-circuits on failure
-```
+3. **`WALL_substL_depth`** (EvalSubstEquiv.lean): showing
+   `substL body 0 s = body.subst 0 s` for closed terms. Needs a
+   depth-budget argument for β-growth during substitution.
 
-or, using dependent types in Lean,
+All three are engineering obstacles, not research questions.
 
-```
-safeEval : (e τ : Expr) → typeCheck n e τ = .ok true → Nat → Option Val
-```
+### 8.2 Sorry status
 
-The first is ergonomic and moves the discipline into a single
-checked call site. The second makes the obligation a Lean-level type,
-so you can't even call the evaluator without a proof in hand. Neither
-requires restructuring the internals; both would materially tighten
-what "runtime safety" means in practice.
+**(2026-05-14 snapshot.)** The sorry count across `Soundness/`:
 
-Separately, the design direction of making well-typedness an
-invariant of the AST itself — a typed syntax `WTExpr Γ τ` produced
-by `tyCheck` and consumed by `concEval` — is being investigated; see
-[`docs/ideas/intrinsic-typing.md`](../../docs/ideas/intrinsic-typing.md).
+| File | Sorries | Nature |
+|---|---|---|
+| `ConcEvalPreservation.lean` | 0 | |
+| `SynthProgress.lean` | 0 | |
+| `SubtypeSteps.lean` | 0 | |
+| `EvalSubstLemmas.lean` | 0 | |
+| `EvalSubstEquiv.lean` | 3 | `substL`/`subst` bridge walls |
+| `CloseAll.lean` | 5 | `closeAll` commutation lemmas |
+| `SubCheckSubstNeutral.lean` | 2 | neutral arm packages |
+| `SubCheckSubstStructural.lean` | 2 | structural arm packages |
+| `SubCheckSubstFallback.lean` | 3 | fallback arm packages |
+| `SynthSound.lean` | 5 | bind-chain extractions + app wall |
+| `SubCheckSubstSoundness.lean` | 33 | dispatch composition + top-level |
+| **Total** | **53** | |
 
-### 7.2 Axiom status
+The four top-level theorems' status:
 
-**(2026-04-25 update).** `typeCheck_sound`, `concEval_equiv`,
-`concEval_preservation`, `soundness` are stated with no direct
-`sorry`, but `#print axioms` reports `sorryAx` in the transitive
-closure. Four declaration-level sorries remain in
-[`SoundnessProof.lean`](SoundnessProof.lean) —
-`eval_vapp_preserves_fullyQuotable`, `quoteClosure_realises`,
-`vapp_realises`, and `tyInfer_sound_open`.
-
-The typed-NbE substrate ([`TypedNbE.lean`](TypedNbE.lean)) is the
-endorsed long-term path to closing these. Pass 1 (substrate +
-predicate, 2026-04-24), pass 2 (typed-eval + typed conversion check
-+ wide test suite migration, 2026-04-24), and pass 3 phase 1+2
-(2026-04-25 — `RC.mono` closed via Pitts-Howe form; saturated RC
-gives `RC.fullyQuotable`/`RC.quote_witness` as direct projections;
-`implies_*` corollaries closed) have landed. The fundamental
-lemma's body remains sorried (a 2-4 week formalization effort),
-along with `subtype_closed` (~17 SubV cases, ~1-2 weeks).
-
-The substrate (`RC.mono`, `RC.fullyQuotable`, `RC.quote_witness`,
-all introducers/eliminators) is **axiom-clean** — `#print axioms`
-shows no `sorryAx` in any of these lemmas. Future FL work
-inherits a fully-verified API.
-
-An earlier assessment
-(2026-04-21) characterised all remaining sorries as "engineering
-routes, none research questions." That assessment has been
-**falsified** for two of the four.
-
-- **`eval_vapp_preserves_fullyQuotable` is formally impossible to
-  strengthen** (without typing-with-normalization invariants). The
-  implication `Val.fullyQuotable d v → ∃ q, quote fuelω d v =
-  some q` reduces to the Halting Problem for untyped λ-calculus
-  via an explicit Ω-combinator closure counterexample. See
-  [`docs/ideas/quote-witness-feasibility.md`](../../docs/ideas/quote-witness-feasibility.md).
-  This is a **fundamental limit of non-total OCH**, not
-  engineering.
-
-- **`quoteClosure_realises` is blocked** at the mutual-block level:
-  Lean's termination checker rejects every lex measure tested for
-  the `R_quote_equiv`-closure-case inline; the post-mutual route
-  cascades `sorryAx` via pre-mutual `R_quote_equiv`'s own closure
-  cases.
-
-- **`vapp_realises` and `tyInfer_sound_open` Category A** depend on
-  the impossibility above — they inherit its blockers.
-
-- **`tyInfer_sound_open` Category B** would close given a
-  ~300–500 LOC `Subtype'.unshift_head` structural-induction proof
-  (substitution-based; plan documented in
-  [`Subtyping.lean`](Subtyping.lean)). Tractable engineering, not
-  research, but beyond single-session subagent budgets to date.
-
-- **`tyInfer_sound_open` Category C (A9)** is intentionally sorried
-  — the algorithm is correct, the proof statement is the bug. See
-  DECISION-LOG 2026-04-22.
-
-**The honest reading**: the residual sorries map OCH's non-totality
-boundary. §7.1 already states Och does not aim to prove
-termination / progress; the fullyQuotable-quote-termination
-implication is a concrete instance of that non-goal. Closing the
-declaration-level sorries against current preservation-only
-soundness is not engineering work in the general case — it requires
-either (a) accepting the boundary as OCH's design, (b) pursuing
-[Option 1.75: a typed NbE fundamental lemma](../../docs/ideas/quote-witness-feasibility.md)
-(2–4 week research-scale effort), or (c) the orthogonal Phase 2
-`progress_mod_fuel` refactor
-([`soundness-strengthen.md`](../../docs/ideas/soundness-strengthen.md)),
-which has independent value but does NOT subsume the closure-eval
-divergence issue.
-
-Full post-mortem at
-[`docs/ideas/sorry-closure-plan.md`](../../docs/ideas/sorry-closure-plan.md).
-
-**Phase 1 vs Phase 2 for Bot.** The native `Bot` primitive landed
-without re-opening any sorry. Phase 1 (this one): add `Expr.bot`,
-extend all structural predicates, add `[S-BotL]` declaratively and
-the `.bot, _ => .ok true` algorithmic arm, verify no regression on
-the Std test battery. The existing preservation-only `soundness`
-theorem is unaffected — Bot-application's stuckness returns `none`
-and vacuously satisfies the preservation implication. Phase 2 —
-strengthening to `progress_mod_fuel` so well-typed programs
-*cannot* stuck at runtime — requires refactoring `concEval`'s return
-type to distinguish fuel exhaustion from stuckness; see
-[`docs/ideas/soundness-strengthen.md`](../../docs/ideas/soundness-strengthen.md)
-for the separate proposal. This is not part of Phase 1.
+- `concEval_preservation`: **sorry-free**.
+- `synth_progress`: **sorry-free**.
+- `synth_sound`: walled at `synthCore_app_WALL` + 4 mechanical
+  bind-chain lemmas (broken by in-progress API changes).
+- `subCheck_sound`: walled at `closeAll` commutation + dispatch arms.
+- `soundness` (composition): **sorry-free** body; only upstream walls.
 
 ## Appendix A. Declarative typing (derived)
 
 Och has no declarative typing relation as a first-class inductive; the
-algorithmic judgments in §6 are the typing spec, with soundness against
-`Subtype'` in §7. For readers who want the textbook form, the following
-relation `Γ ⊢ e : τ` is the clean projection of the algorithm modulo the
-A9 fix/ι caveat. It is not defined in the codebase.
+algorithmic `synthCore` (§7) is the typing spec, with soundness against
+`Subtype'` in §8. For readers who want the textbook form, the following
+relation `Γ ⊢ e : τ` is the clean projection of the algorithm. It is
+not defined in the codebase.
 
 ```
 [D-Var]
@@ -1409,11 +1324,3 @@ A9 fix/ι caveat. It is not defined in the codebase.
   Γ ⊢ e : A
   ∅ ; Γ ⊢ A ⊑ B
 ```
-
-`[D-Iota]` reflects the Cedille semantics: an ι-value `v` must inhabit
-both the bare annotation `A` and the body `B[self ↦ v]` with the
-self-reference instantiated to `v` itself. The algorithmic A9 caveat on
-`[T-Fix]`/`[T-Iota]` shows that this declarative form is not yet matched
-— `tyInfer` returns the bare annotation without verifying the body.
-Bringing the checker into line with `[D-Iota]`/`[D-Fix]` (checking the
-body against the annotation under a self-hypothesis) is future work.

@@ -193,9 +193,15 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
   | letE_R {S Γ a val body} :
       Subtype' S Γ a (body.subst 0 val) →
       Subtype' S Γ a (.letE val body)
-  /-- Ascription is computationally transparent. -/
+  /-- Ascription on LHS: transparent (sees inner value).
+      Needed by `concEval_equiv` since runtime erases ascriptions. -/
   | asc_L {S Γ e τ b} :
       Subtype' S Γ e b → Subtype' S Γ (.asc e τ) b
+  /-- Ascription on LHS: narrows to annotation.
+      The algorithmic checker uses this form (not `asc_L`). -/
+  | asc_L_ann {S Γ e τ b} :
+      Subtype' S Γ τ b → Subtype' S Γ (.asc e τ) b
+  /-- Ascription on RHS: content is the inner value. -/
   | asc_R {S Γ a e τ} :
       Subtype' S Γ a e → Subtype' S Γ a (.asc e τ)
   /-- `[S-BotL]`: Bot is the universal lower bound. `Bot ⊑ e` for
@@ -259,6 +265,7 @@ theorem Subtype'.weaken {S S' Γ a b}
   | letE_L _ ih => exact .letE_L (ih hsub)
   | letE_R _ ih => exact .letE_R (ih hsub)
   | asc_L _ ih => exact .asc_L (ih hsub)
+  | asc_L_ann _ ih => exact .asc_L_ann (ih hsub)
   | asc_R _ ih => exact .asc_R (ih hsub)
   | bot_L => exact .bot_L
 
@@ -659,6 +666,10 @@ theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     intro Γpfx hpfx
     simp only [Expr.shift]
     exact .asc_L (ih Γpfx hpfx)
+  | asc_L_ann _ ih =>
+    intro Γpfx hpfx
+    simp only [Expr.shift]
+    exact .asc_L_ann (ih Γpfx hpfx)
   | asc_R _ ih =>
     intro Γpfx hpfx
     simp only [Expr.shift]
@@ -840,6 +851,7 @@ theorem Subtype'.narrow_at {Γ domA domB}
   | letE_L _ ih => exact fun Γ' hΔ => .letE_L (ih Γ' hΔ)
   | letE_R _ ih => exact fun Γ' hΔ => .letE_R (ih Γ' hΔ)
   | asc_L _ ih => exact fun Γ' hΔ => .asc_L (ih Γ' hΔ)
+  | asc_L_ann _ ih => exact fun Γ' hΔ => .asc_L_ann (ih Γ' hΔ)
   | asc_R _ ih => exact fun Γ' hΔ => .asc_R (ih Γ' hΔ)
   | bot_L => exact fun _ _ => .bot_L
 

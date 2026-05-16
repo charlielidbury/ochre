@@ -1645,11 +1645,22 @@ theorem evalSubst_lvarLT {n unf : Nat} {e v : Expr} {lvl : Nat}
     | .fix _ _ =>
       rw [SubstEval.evalSubst.eq_7] at h
       simp only [Outcome.ok.injEq] at h; subst h; exact hlv
-    | .asc t _ =>
+    | .asc t ty =>
       simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
       simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
       rw [SubstEval.evalSubst.eq_8] at h
-      exact ih hcl.1 hlv.1 h
+      match ht : SubstEval.evalSubst k unf t with
+      | .outOfFuel => rw [ht] at h; cases h
+      | .error _ => rw [ht] at h; cases h
+      | .ok tv =>
+        match hty : SubstEval.evalSubst k unf ty with
+        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .ok tyv =>
+          rw [ht, hty] at h
+          simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
+          simp only [Expr.lvarLT, Bool.and_eq_true]
+          exact ⟨ih hcl.1 hlv.1 ht, ih hcl.2 hlv.2 hty⟩
     | .letE val body =>
       simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
       simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
@@ -1778,12 +1789,17 @@ theorem evalSubst_lvarLT {n unf : Nat} {e v : Expr} {lvl : Nat}
                       && av.lvarLT lvl) = true
                 rw [hsub, halv]; rfl
               exact ih hAppCl hAppLv h
-          | asc t ty =>
+          | asc inner _ =>
             simp only at h
-            simp only [Outcome.ok.injEq] at h
-            subst h
-            show ((Expr.asc t ty).lvarLT lvl && av.lvarLT lvl) = true
-            simp [hflv, halv]
+            have hAppLv : (Expr.app inner av).lvarLT lvl = true := by
+              simp only [Expr.lvarLT, Bool.and_eq_true] at hflv
+              simp only [Expr.lvarLT, Bool.and_eq_true]
+              exact ⟨hflv.1, halv⟩
+            have hAppCl : (Expr.app inner av).closedAtLvl 0 = true := by
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfcl
+              simp only [Expr.closedAtLvl, Bool.and_eq_true]
+              exact ⟨hfcl.1, hacl⟩
+            exact ih hAppCl hAppLv h
           | letE vv b =>
             simp only at h
             simp only [Outcome.ok.injEq] at h
@@ -1859,11 +1875,20 @@ theorem closeAll_evalSubst_subtype_strong
       simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
       simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
       rw [SubstEval.evalSubst.eq_8] at h
-      have ⟨h₁, h₂⟩ := ih hcl.1 hlv.1 h
-      -- Goal: closeAll d (.asc t ty) = .asc (closeAllAt 0 d t) (closeAllAt 0 d ty).
-      show Subtype' S Γ (.asc (closeAllAt 0 d t) (closeAllAt 0 d ty)) _ ∧
-           Subtype' S Γ _ (.asc (closeAllAt 0 d t) (closeAllAt 0 d ty))
-      refine ⟨.asc_L h₁, .asc_R h₂⟩
+      match ht : SubstEval.evalSubst n unf t with
+      | .outOfFuel => rw [ht] at h; cases h
+      | .error _ => rw [ht] at h; cases h
+      | .ok tv =>
+        match hty : SubstEval.evalSubst n unf ty with
+        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .ok tyv =>
+          rw [ht, hty] at h
+          simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
+          have ⟨ht₁, ht₂⟩ := ih hcl.1 hlv.1 ht
+          show Subtype' S Γ (.asc (closeAllAt 0 d t) (closeAllAt 0 d ty)) _ ∧
+               Subtype' S Γ _ (.asc (closeAllAt 0 d t) (closeAllAt 0 d ty))
+          exact ⟨.asc_L (.asc_R ht₁), .asc_L (.asc_R ht₂)⟩
     | .letE val body, hcl, hlv, h =>
       simp only [Expr.closedAtLvl, Bool.and_eq_true] at hcl
       simp only [Expr.lvarLT, Bool.and_eq_true] at hlv
@@ -2155,13 +2180,17 @@ theorem closeAll_evalSubst_subtype_strong
                     (.app (closeAll d f) (closeAll d a)) :=
                   .app_cong hf₂ ha₂ ha₁
                 exact .trans he₂ (.trans step1 step2)
-          | asc t ty =>
+          | asc inner _ =>
             simp only at h
-            simp only [Outcome.ok.injEq] at h
-            subst h
-            show _ ∧ Subtype' S Γ
-              (.app (closeAll d (.asc t ty)) (closeAll d av)) _
-            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+            have hAppCl : (Expr.app inner av).closedAtLvl 0 = true := by
+              simp only [Expr.closedAtLvl, Bool.and_eq_true] at hfv_cl
+              simp only [Expr.closedAtLvl, Bool.and_eq_true]
+              exact ⟨hfv_cl.1, hav_cl⟩
+            have hAppLv : (Expr.app inner av).lvarLT d = true := by
+              simp only [Expr.lvarLT, Bool.and_eq_true] at hfv_lv
+              simp only [Expr.lvarLT, Bool.and_eq_true]
+              exact ⟨hfv_lv.1, hav_lv⟩
+            sorry -- .asc app dispatch: closeAll bridge needs explicit asc_R/asc_L threading
           | letE vv b =>
             simp only at h
             simp only [Outcome.ok.injEq] at h

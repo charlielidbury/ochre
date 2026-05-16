@@ -57,24 +57,21 @@ example : Och.subCheckE 200 (och{ id_ Nat_ three_ }) three_ = .ok true ∧
           Och.subCheckE 200 three_ (och{ id_ Nat_ three_ }) = .ok true := by
   native_decide
 
--- After A8, idAscribed reduces identically to id_ (the
--- ascription is computationally transparent). The previous
--- "widening via asc" was unsound: it accepted
--- `Nat_ ⊑ (zero_ : Nat_)`, but `(zero_ : Nat_)` computes to
--- `zero_` and `Nat_ ⊄ zero_` (subject reduction fails).
--- Widening is now expressed via `TyCheck.typeCheck` (which
--- keeps the annotation as the *expected type* without
--- conflating it with the value), not via the value-level
--- evaluator.
-example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) three_ = .ok true ∧
-          Och.subCheckE 200 three_ (och{ idAscribed Nat_ three_ }) = .ok true := by
+-- Ascription narrows asymmetrically: on the LHS, `(three_ : Nat_)`
+-- presents as `Nat_` (annotation); on the RHS, as `three_` (inner).
+-- So `three_ ⊑ (idAscribed Nat_ three_)` holds but not vice versa.
+example : Och.subCheckE 200 three_ (och{ idAscribed Nat_ three_ }) = .ok true := by
+  native_decide
+example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) three_ = .ok false := by
   native_decide
 
+-- id_ preserves singleton; idAscribed widens to annotation.
+-- id_ Nat_ three_ ⊑ idAscribed Nat_ three_ (three_ ⊑ three_ via RHS)
+-- but not vice versa (Nat_ ⊄ three_ via LHS).
+example : Och.subCheckE 200 (och{ id_ Nat_ three_ }) (och{ idAscribed Nat_ three_ })
+            = .ok true := by native_decide
 example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) (och{ id_ Nat_ three_ })
-            = .ok true ∧
-          Och.subCheckE 200 (och{ id_ Nat_ three_ }) (och{ idAscribed Nat_ three_ })
-            = .ok true := by
-  native_decide
+            = .ok false := by native_decide
 
 -- ----------------------------------------------------------
 -- Transparency: negative

@@ -29,6 +29,43 @@ def Vec := och{ λT:Type. Sigma Nat_ (λn:Nat_. Array_ n T) }
 def mkVec := och{ λT:Type. λn:Nat_. λarr:(Array_ n T). dpair Nat_ (λn2:Nat_. Array_ n2 T) n arr }
 
 -- ============================================================
+-- Ascription transparency bug: minimal reproduction
+-- ============================================================
+section AscBug
+
+-- BUG: `(x : Type)` should erase x's type to Type, so passing it
+-- where Nat_ is expected should reject. But synthCore's .asc arm
+-- returns the inner value (not the annotation), and the .app arm's
+-- fallback re-discovers x:Nat_ from Γ via neutral ascent on the
+-- evalSubst'd argument (which strips the ascription).
+private def asc_transparent := och{
+  λx:Nat_. (λy:Nat_. y) (x : Type)
+}
+example : -- correctly rejects: (x : Type) narrows to Type, Type ⊄ Nat_
+    (match Och.synth asc_transparent 200 with
+     | .ok _ => false | _ => true) = true := by native_decide
+
+-- Concrete value (not neutral): ascription transparency in .asc arm
+-- still fires (returns zero_ not Type), but no neutral-ascent
+-- fallback exists → correctly rejects.
+private def asc_concrete := och{
+  (λy:Unit_. y) (zero_ : Type)
+}
+example : -- correctly rejects (zero_ ⊑ Unit_ fails, no fallback)
+    (match Och.synth asc_concrete 200 with
+     | .ok _ => false | _ => true) = true := by native_decide
+
+-- Baseline: genuine type mismatch without ascription.
+private def genuinely_wrong := och{
+  λx:Nat_. (λy:Unit_. y) x
+}
+example : -- correctly rejects
+    (match Och.synth genuinely_wrong 200 with
+     | .ok _ => false | _ => true) = true := by native_decide
+
+end AscBug
+
+-- ============================================================
 -- Tests
 -- ============================================================
 
@@ -87,6 +124,8 @@ type system tracks dependent lengths and catches mistakes like
 
 `appendVec` unpacks both vectors, calls `appendArrays`, and repacks.
 -/
+
+def id := och{ λΤ:Type. λx:Τ. x }
 
 def appendVec := och{
   λT:Type. λv1:(Vec T). λv2:(Vec T).
