@@ -472,4 +472,46 @@ where
   | _, .bot => none
   | _, e => some e
 
+/-- The `go` helper of `exposePi` computes the same result as `whnfPi.go`. -/
+private theorem exposePi_go_eq_whnfPi_go (fuel : Nat) (inhab : Expr)
+    : ∀ (n : Nat) (e : Expr),
+      exposePi.go fuel inhab n e = whnfPi.go fuel inhab n e := by
+  intro n
+  induction n with
+  | zero => intro e; cases e <;> rfl
+  | succ m ih =>
+    intro e
+    match e with
+    | .lam _ _ => rfl
+    | .fix _ann body =>
+      simp only [exposePi.go, whnfPi.go]
+      match evalSubst fuel 4 (body.subst 0 (.fix _ann body)) with
+      | .ok e' => exact ih e'
+      | .outOfFuel => rfl
+      | .error _ => rfl
+    | .iota _ann body =>
+      simp only [exposePi.go, whnfPi.go]
+      match evalSubst fuel 4 (body.subst 0 inhab) with
+      | .ok e' => exact ih e'
+      | .outOfFuel => rfl
+      | .error _ => rfl
+    | .bot => rfl
+    | .bvar _ => rfl
+    | .type => rfl
+    | .app _ _ => rfl
+    | .asc _ _ => rfl
+    | .letE _ _ => rfl
+
+/-- `exposePi` (private, used by `synthNeutralType`) computes the same
+result as `whnfPi` (public). Proved inside the section where
+`exposePi` is in scope, exposed for soundness proofs that need
+to reason about `synthNeutralType`'s internal call to `exposePi`. -/
+theorem exposePi_eq_whnfPi (fuel : Nat) (inhab ty : Expr) :
+    exposePi fuel inhab ty = whnfPi fuel inhab ty := by
+  unfold exposePi whnfPi
+  match evalSubst fuel unfBound ty with
+  | .ok ty' => exact exposePi_go_eq_whnfPi_go fuel inhab unfBound ty'
+  | .outOfFuel => rfl
+  | .error _ => rfl
+
 end SubstEval
