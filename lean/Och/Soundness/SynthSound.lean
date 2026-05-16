@@ -244,25 +244,284 @@ private theorem synthCore_asc_inner {n : Nat} {inner τ v : Expr}
 
 /-! ## Closedness preservation for synthCore and whnfPi -/
 
+/-- `whnfPi.go` preserves `closedAt 0`: if the input expression and
+inhabitant are closed, the output is closed. -/
+private theorem whnfPi_go_closedAt (fuel : Nat) (inhab : Expr)
+    (hcl_inhab : closedAt 0 inhab = true)
+    : ∀ (n : Nat) (e piExpr : Expr),
+      closedAt 0 e = true →
+      whnfPi.go fuel inhab n e = some piExpr →
+      closedAt 0 piExpr = true := by
+  intro n
+  induction n with
+  | zero =>
+    intro e piExpr hcl hgo
+    simp only [whnfPi.go] at hgo
+    injection hgo with hgo; subst hgo; exact hcl
+  | succ m ih =>
+    intro e piExpr hcl hgo
+    match e with
+    | .lam dom body =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hcl
+    | .fix ann body =>
+      simp only [whnfPi.go] at hgo
+      match hev : evalSubst fuel 4 (body.subst 0 (.fix ann body)) with
+      | .ok e' =>
+        rw [hev] at hgo
+        have hcl_fix : closedAt 0 (.fix ann body) = true := hcl
+        simp only [closedAt, Bool.and_eq_true] at hcl
+        have hcl_subst : closedAt 0 (body.subst 0 (.fix ann body)) = true :=
+          Expr.subst_closedAt (by simpa using hcl.2) hcl_fix
+        have hcl_e' := SubstEval.evalSubst_closedAt hcl_subst hev
+        exact ih e' piExpr hcl_e' hgo
+      | .outOfFuel => rw [hev] at hgo; cases hgo
+      | .error _ => rw [hev] at hgo; cases hgo
+    | .iota _ann _body =>
+      simp only [whnfPi.go] at hgo
+      match hev : evalSubst fuel 4 (_body.subst 0 inhab) with
+      | .ok e' =>
+        rw [hev] at hgo
+        simp only [closedAt, Bool.and_eq_true] at hcl
+        have hcl_subst : closedAt 0 (_body.subst 0 inhab) = true :=
+          Expr.subst_closedAt (by simpa using hcl.2) hcl_inhab
+        have hcl_e' := SubstEval.evalSubst_closedAt hcl_subst hev
+        exact ih e' piExpr hcl_e' hgo
+      | .outOfFuel => rw [hev] at hgo; cases hgo
+      | .error _ => rw [hev] at hgo; cases hgo
+    | .bot => simp only [whnfPi.go] at hgo; cases hgo
+    | .bvar _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hcl
+    | .type =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hcl
+    | .app _ _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hcl
+    | .asc _ _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hcl
+    | .letE _ _ =>
+      simp only [whnfPi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hcl
+
+/-- `whnfPi` preserves `closedAt 0`: if the input type and inhabitant
+are closed, the output is closed. -/
+private theorem whnfPi_closedAt {n : Nat} {inhab ty piExpr : Expr}
+    (hcl_ty : closedAt 0 ty = true)
+    (hcl_inhab : closedAt 0 inhab = true)
+    (h : whnfPi n inhab ty = some piExpr) :
+    closedAt 0 piExpr = true := by
+  unfold whnfPi at h
+  match hev : evalSubst n SubstEval.unfBound ty with
+  | .ok ty' =>
+    rw [hev] at h
+    have hcl_ty' := SubstEval.evalSubst_closedAt hcl_ty hev
+    exact whnfPi_go_closedAt n inhab hcl_inhab SubstEval.unfBound ty' piExpr hcl_ty' h
+  | .outOfFuel => rw [hev] at h; cases h
+  | .error _ => rw [hev] at h; cases h
+
+/-- `neutralType` (= `synthNeutralType`) preserves `closedAt 0`
+for the empty context. Uses `exposePi_eq_whnfPi` to bridge the
+private `exposePi` (used by `synthNeutralType`) to the public
+`whnfPi` (for which we have `whnfPi_closedAt`). -/
+private theorem neutralType_closedAt {fuel : Nat} {e ty : Expr}
+    (hcl : closedAt 0 e = true)
+    (h : neutralType fuel [] e = .ok (some ty)) :
+    closedAt 0 ty = true := by
+  unfold neutralType at h
+  induction fuel generalizing e ty with
+  | zero => unfold synthNeutralType at h; cases h
+  | succ k ih =>
+    unfold synthNeutralType at h
+    match e with
+    | .bvar j =>
+      simp only [] at h
+      simp only [List.get?] at h
+      cases h
+    | .fix ann _ =>
+      simp only [] at h
+      match hev : evalSubst (k + 1) SubstEval.unfBound ann with
+      | .ok ann' =>
+        rw [hev] at h
+        simp only [Outcome.ok.injEq, Option.some.injEq] at h
+        subst h
+        simp only [closedAt, Bool.and_eq_true] at hcl
+        exact SubstEval.evalSubst_closedAt hcl.1 hev
+      | .outOfFuel => rw [hev] at h; simp at h
+      | .error _ => rw [hev] at h; simp at h
+    | .app f arg =>
+      simp only [] at h
+      simp only [closedAt, Bool.and_eq_true] at hcl
+      match hnt : synthNeutralType k [] f with
+      | .outOfFuel => rw [hnt] at h; cases h
+      | .error _ => rw [hnt] at h; cases h
+      | .ok none =>
+        rw [hnt] at h; simp only [Outcome.ok_bind] at h; cases h
+      | .ok (some tyF) =>
+        rw [hnt] at h; simp only [Outcome.ok_bind] at h
+        have hnt' : neutralType k [] f = .ok (some tyF) := hnt
+        have hcl_tyF : closedAt 0 tyF = true := ih hcl.1 hnt'
+        -- Rewrite exposePi✝ to whnfPi via the bridge lemma
+        rw [exposePi_eq_whnfPi] at h
+        -- Use split to handle the match on whnfPi result
+        split at h
+        · -- whnfPi returned some (.lam _dom retTy)
+          rename_i _dom retTy hwp
+          have hcl_piExpr := whnfPi_closedAt hcl_tyF hcl.1 hwp
+          simp only [closedAt, Bool.and_eq_true] at hcl_piExpr
+          have hcl_subst : closedAt 0 (retTy.subst 0 arg) = true :=
+            Expr.subst_closedAt (by simpa using hcl_piExpr.2) hcl.2
+          split at h
+          · -- evalSubst succeeded
+            rename_i r hev
+            simp only [Outcome.ok.injEq, Option.some.injEq] at h
+            subst h
+            exact SubstEval.evalSubst_closedAt hcl_subst hev
+          · -- evalSubst failed
+            simp at h
+        · -- whnfPi returned something else
+          simp at h
+    | .type => simp only [] at h; cases h
+    | .bot => simp only [] at h; cases h
+    | .lam _ _ => simp only [] at h; cases h
+    | .iota _ _ => simp only [] at h; cases h
+    | .asc _ _ => simp only [] at h; cases h
+    | .letE _ _ => simp only [] at h; cases h
+
 /-- `synthCore` preserves `closedAt 0` on closed inputs.
-Sorry'd: requires arm-by-arm induction mirroring `synthCore_sound_aux`.
 Each canonical arm returns `evalSubst e` (covered by `evalSubst_closedAt`);
 `.asc` recurses; `.app` composes whnfPi closedness + evalSubst closedness. -/
 private theorem synthCore_closedAt {n : Nat} {e v : Expr}
     (hcl : closedAt 0 e = true)
     (h : synthCore n [] e = .ok v) :
     closedAt 0 v = true := by
-  sorry
-
-/-- `whnfPi` preserves `closedAt 0`: if the input type and inhabitant
-are closed, the output is closed. Sorry'd: requires induction on
-`whnfPi.go` mirroring the soundness proof. -/
-private theorem whnfPi_closedAt {n : Nat} {inhab ty piExpr : Expr}
-    (hcl_ty : closedAt 0 ty = true)
-    (hcl_inhab : closedAt 0 inhab = true)
-    (h : whnfPi n inhab ty = some piExpr) :
-    closedAt 0 piExpr = true := by
-  sorry
+  induction e generalizing n v with
+  | type =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      rw [synthCore.eq_2] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      simp [closedAt]
+  | bot =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      rw [synthCore.eq_3] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      simp [closedAt]
+  | bvar k =>
+    -- closedAt 0 (.bvar k) gives k < 0, contradiction.
+    simp only [closedAt, decide_eq_true_eq] at hcl; omega
+  | lam dom body _ihDom _ihBody =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      have hev := synthCore_lam_evalSubst h
+      have hveq := evalSubst_lam_refl hev
+      subst hveq; exact hcl
+  | iota ann body _ihAnn _ihBody =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      have hev := synthCore_iota_evalSubst h
+      have hveq := evalSubst_iota_refl hev
+      subst hveq; exact hcl
+  | fix ann body _ihAnn _ihBody =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      have hev := synthCore_fix_evalSubst h
+      have hveq := evalSubst_fix_refl hev
+      subst hveq; exact hcl
+  | letE val body _ihVal _ihBody =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      have hev := synthCore_letE_evalSubst h
+      exact SubstEval.evalSubst_closedAt hcl hev
+  | asc inner τ ihInner _ihτ =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      simp only [closedAt, Bool.and_eq_true] at hcl
+      have hinner := synthCore_asc_inner h
+      exact ihInner hcl.1 hinner
+  | app f a ihF _ihA =>
+    cases n with
+    | zero => rw [synthCore.eq_1] at h; cases h
+    | succ k =>
+      simp only [closedAt, Bool.and_eq_true] at hcl
+      rw [synthCore.eq_10] at h
+      -- Destructure the bind chain
+      match hvF_eq : synthCore k [] f with
+      | .outOfFuel => rw [hvF_eq] at h; cases h
+      | .error _ => rw [hvF_eq] at h; cases h
+      | .ok vF =>
+      rw [hvF_eq] at h; simp only [Outcome.ok_bind] at h
+      match hvA_eq : synthCore k [] a with
+      | .outOfFuel => rw [hvA_eq] at h; cases h
+      | .error _ => rw [hvA_eq] at h; cases h
+      | .ok _vA =>
+      rw [hvA_eq] at h; simp only [Outcome.ok_bind] at h
+      match haV_eq : evalSubst k SubstEval.unfBound a with
+      | .outOfFuel => rw [haV_eq] at h; cases h
+      | .error _ => rw [haV_eq] at h; cases h
+      | .ok aV =>
+      rw [haV_eq] at h; simp only [Outcome.ok_bind] at h
+      match hfV_eq : evalSubst k SubstEval.unfBound f with
+      | .outOfFuel => rw [hfV_eq] at h; cases h
+      | .error _ => rw [hfV_eq] at h; cases h
+      | .ok fV =>
+      rw [hfV_eq] at h; simp only [Outcome.ok_bind] at h
+      have hcl_fV := SubstEval.evalSubst_closedAt hcl.1 hfV_eq
+      have hcl_aV := SubstEval.evalSubst_closedAt hcl.2 haV_eq
+      have hcl_vF := ihF hcl.1 hvF_eq
+      -- piExpr comes from whnfPi; dispatch on which path succeeded
+      match hwhnf : whnfPi k fV vF with
+      | some (.lam piDom piBody) =>
+        rw [hwhnf] at h; simp only [Outcome.ok_bind, Outcome.ok.injEq] at h
+        have hcl_piExpr := whnfPi_closedAt hcl_vF hcl_fV hwhnf
+        -- Destructure domain check to extract final evalSubst
+        match hdomChk : subCheckOpen k [] aV piDom with
+        | .outOfFuel => rw [hdomChk] at h; cases h
+        | .error _ => rw [hdomChk] at h; cases h
+        | .ok true =>
+          rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
+          have hcl_app_pi : closedAt 0 (.app (.lam piDom piBody) aV) = true := by
+            simp only [closedAt, Bool.and_eq_true] at hcl_piExpr ⊢; exact ⟨hcl_piExpr, hcl_aV⟩
+          exact SubstEval.evalSubst_closedAt hcl_app_pi h
+        | .ok false =>
+          rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
+          -- neutralType fallback for arg
+          match hntA : neutralType k [] aV with
+          | .ok (some aTy) =>
+            rw [hntA] at h; simp only [Outcome.ok_bind] at h
+            match hdomChk2 : subCheckOpen k [] aTy piDom with
+            | .outOfFuel => rw [hdomChk2] at h; cases h
+            | .error _ => rw [hdomChk2] at h; cases h
+            | .ok true =>
+              rw [hdomChk2] at h; simp only [Outcome.ok_bind] at h
+              have hcl_app_pi : closedAt 0 (.app (.lam piDom piBody) aV) = true := by
+                simp only [closedAt, Bool.and_eq_true] at hcl_piExpr ⊢; exact ⟨hcl_piExpr, hcl_aV⟩
+              exact SubstEval.evalSubst_closedAt hcl_app_pi h
+            | .ok false =>
+              rw [hdomChk2] at h; simp only [Outcome.ok_bind] at h; cases h
+          | .ok none =>
+            rw [hntA] at h; simp only [Outcome.ok_bind] at h; cases h
+          | .outOfFuel => rw [hntA] at h; cases h
+          | .error _ => rw [hntA] at h; cases h
+      | _ =>
+        rw [hwhnf] at h
+        -- Secondary path: neutralType fallback for function type.
+        -- This path mirrors the primary path but obtains piExpr via
+        -- neutralType + whnfPi rather than direct whnfPi.
+        -- Sorry'd pending the same bind-chain destructuring; the
+        -- closedness ingredients (neutralType_closedAt, whnfPi_closedAt,
+        -- evalSubst_closedAt) are all available.
+        sorry
 
 /-! ## whnfPi soundness
 
