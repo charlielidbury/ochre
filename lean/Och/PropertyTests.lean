@@ -43,7 +43,7 @@ De Bruijn lookup: `bvar k` → `tyCtx[tyCtx.size - 1 - k]`, so:
 
 section OpenContext
 
-private def Γ₂ : Array Expr := #[Nat_, och{Nat_ → Nat_}]
+private def Γ₂ : List Expr := [och{Nat_ → Nat_}, Nat_]
 
 -- (1a) Neutral ascent: `bvar 1` has type `Nat_` (outermost entry),
 -- so `bvar 1 ⊑ Nat_`.

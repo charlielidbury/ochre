@@ -1,6 +1,7 @@
 import Och.Syntax
 import Och.Outcome
 import Och.Eval
+import Och.Subtyping
 
 /-!
 # Substitution-based evaluator and structural subtype check
@@ -151,12 +152,12 @@ direction decrements phase, and all other recursive calls decrement
 `fuel` directly. Equation lemmas auto-generate.
 -/
 
-/-- Engine-internal type-context. `tyCtx` is an Array where:
-    - Push to the end when entering a binder
-    - Look up `bvar k` via `tyCtx[tyCtx.size - 1 - k]`
-
+/-- Engine-internal type-context. `Γ[k]` is the type of `bvar k`.
+    Stored as `Ctx = List Expr` in de Bruijn order: `Γ[0]` =
+    innermost binder, matching `Subtype'`'s context directly.
+    When entering a binder, prepend: `domV :: Γ`.
     Exposed (not `private`) so soundness proofs can refer to it. -/
-abbrev TyCtx := Array Expr
+abbrev TyCtx := Ctx
 
 /-- Internal: unfold a `.fix` / `.iota` wrapper in `ty` until a
     `.lam` is exposed. Used by `synthNeutralType` to walk a spine
@@ -191,7 +192,7 @@ mutual
 
       Exposed (not `private`) so soundness proofs can refer to it. -/
   def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
@@ -206,7 +207,7 @@ mutual
           let a'' := match a' with | .asc _ ty => ty | x => x
           let b'' := match b' with | .asc e _ => e | x => x
           if a'' == b'' then .ok true
-          else if seen.any (fun (av, bv) => a'' == av && b'' == bv) then .ok true
+          else if seen.any (fun (_, av, bv) => a'' == av && b'' == bv) then .ok true
           else if b'' == .type then .ok true
           else subCheckSubstMatch fuel tyCtx seen a'' b''
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
@@ -218,7 +219,7 @@ mutual
       to be in WHNF (the caller forces it). Exposed for soundness
       proofs. -/
   def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome Bool :=
     match a, b with
     -- Bot ⊑ anything ([S-BotL]).
     | .bot, _ => .ok true
@@ -229,18 +230,18 @@ mutual
         if !contra then return false
         -- Descend into bodies WITHOUT substitution. bvar 0 in the body
         -- refers to the bound variable; extend the context with domB.
-        subCheckSubst fuel (tyCtx.push domB) seen bodyA bodyB
+        subCheckSubst fuel (domB :: tyCtx) seen bodyA bodyB
     -- ι ⊑ ι: structural attempt then iotaIntro fallback.
     | .iota annA bodyA, .iota annB bodyB =>
         let structural := do
           let annOk ← subCheckSubst fuel tyCtx seen annA annB
           if !annOk then return false
           -- Descend into bodies without substitution.
-          subCheckSubst fuel (tyCtx.push annB) seen bodyA bodyB
+          subCheckSubst fuel (annB :: tyCtx) seen bodyA bodyB
         match structural with
         | .ok true => .ok true
         | _ => do
-          let seen' := (a, b) :: seen
+          let seen' := (tyCtx.length, a, b) :: seen
           let okAnn ← subCheckSubst fuel tyCtx seen' a annB
           if !okAnn then .ok false
           else do
@@ -254,18 +255,18 @@ mutual
           let annOk ← subCheckSubst fuel tyCtx seen annA annB
           if !annOk then return false
           -- Descend into bodies without substitution.
-          subCheckSubst fuel (tyCtx.push annB) seen bodyA bodyB
+          subCheckSubst fuel (annB :: tyCtx) seen bodyA bodyB
         match structural with
         | .ok true => .ok true
         | _ => do
-          let seen' := (a, b) :: seen
+          let seen' := (tyCtx.length, a, b) :: seen
           let unfolded := bodyB.subst 0 b
           match evalSubst (fuel + 1) unfBound unfolded with
           | .ok b' => subCheckSubst fuel tyCtx seen' a b'
           | _ => .ok false
     -- _ ⊑ ι: iotaIntro.
     | _, .iota ann bodyB => do
-        let seen' := (a, b) :: seen
+        let seen' := (tyCtx.length, a, b) :: seen
         let okAnn ← subCheckSubst fuel tyCtx seen' a ann
         if !okAnn then .ok false
         else do
@@ -282,26 +283,26 @@ mutual
           | .ok (some ty) =>
               if ty == b then .ok true
               else
-                let seen' := (a, b) :: seen
+                let seen' := (tyCtx.length, a, b) :: seen
                 let unfolded := bodyB.subst 0 b
                 match evalSubst (fuel + 1) unfBound unfolded with
                 | .ok b' => subCheckSubst fuel tyCtx seen' a b'
                 | _ => .ok false
           | _ =>
-              let seen' := (a, b) :: seen
+              let seen' := (tyCtx.length, a, b) :: seen
               let unfolded := bodyB.subst 0 b
               match evalSubst (fuel + 1) unfBound unfolded with
               | .ok b' => subCheckSubst fuel tyCtx seen' a b'
               | _ => .ok false
         else
-          let seen' := (a, b) :: seen
+          let seen' := (tyCtx.length, a, b) :: seen
           let unfolded := bodyB.subst 0 b
           match evalSubst (fuel + 1) unfBound unfolded with
           | .ok b' => subCheckSubst fuel tyCtx seen' a b'
           | _ => .ok false
     -- fix ⊑ _: unfoldFixL.
     | .fix _ann bodyA, _ => do
-        let seen' := (a, b) :: seen
+        let seen' := (tyCtx.length, a, b) :: seen
         let unfolded := bodyA.subst 0 a
         match evalSubst (fuel + 1) unfBound unfolded with
         | .ok a' =>
@@ -310,7 +311,7 @@ mutual
         | _ => .ok false
     -- ι ⊑ _: iotaElim.
     | .iota _ann bodyA, _ => do
-        let seen' := (a, b) :: seen
+        let seen' := (tyCtx.length, a, b) :: seen
         let unfolded := bodyA.subst 0 a
         match evalSubst (fuel + 1) unfBound unfolded with
         | .ok a' =>
@@ -335,7 +336,7 @@ mutual
       `bvar`s; arguments must be pairwise *equivalent* (any-
       variance). Exposed for soundness proofs. -/
   def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
@@ -355,7 +356,7 @@ mutual
   /-- Synthesise the type of a neutral spine and check against `b`.
       Mirrors NbE's `neutralAscent`. Exposed for soundness proofs. -/
   def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
-      (seen : List (Expr × Expr)) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome Bool :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
@@ -379,20 +380,16 @@ mutual
     | fuel + 1 =>
       match a with
       | .bvar k =>
-          -- Look up bvar k in the context. tyCtx stores types
-          -- with push-to-end convention: tyCtx[tyCtx.size - 1 - k]
-          -- is the type of bvar k.
-          let idx := tyCtx.size - 1 - k
-          if k < tyCtx.size then
-            match tyCtx[idx]? with
-            | some ty =>
-                -- Shift the type up by (k+1) to account for the
-                -- binders between where it was stored and current scope.
-                -- This matches the declarative [S-Var] rule:
-                --   Γ.get? k = some τ → bvar k ⊑ τ.shift (k+1)
-                .ok (some (ty.shift (k + 1) 0))
-            | none => .ok none
-          else .ok none
+          -- Look up bvar k in the context. tyCtx is a List in
+          -- de Bruijn order: tyCtx.get? k is the type of bvar k.
+          match tyCtx.get? k with
+          | some ty =>
+              -- Shift the type up by (k+1) to account for the
+              -- binders between where it was stored and current scope.
+              -- This matches the declarative [S-Var] rule:
+              --   Γ.get? k = some τ → bvar k ⊑ τ.shift (k+1)
+              .ok (some (ty.shift (k + 1) 0))
+          | none => .ok none
       | .fix ann _ =>
           -- A fix's type-via-Refl is itself, but for spine walking
           -- we want the *function-type* under which arguments
@@ -427,7 +424,7 @@ end
 def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool := do
   let a' ← evalSubst fuel unfBound a
   let b' ← evalSubst fuel unfBound b
-  subCheckSubst fuel #[] [] a' b'
+  subCheckSubst fuel [] [] a' b'
 
 /-! ## Open-context API for `TyCheck` and `API`
 
@@ -459,7 +456,7 @@ def substTop (body : Expr) (value : Expr) : Expr :=
 
 /-- Subtype check in a non-empty type context. Forces WHNF on both
     sides, then delegates to the structural engine. -/
-def subCheckOpen (fuel : Nat) (tyCtx : Array Expr) (a b : Expr) :
+def subCheckOpen (fuel : Nat) (tyCtx : TyCtx) (a b : Expr) :
     Outcome Bool := do
   let a' ← evalSubst fuel unfBound a
   let b' ← evalSubst fuel unfBound b
@@ -475,7 +472,7 @@ of a neutral function head.
 - `.ok (some ty)` — neutral head ascended to type `ty` (in WHNF).
 - `.ok none` — `a` is not a neutral, or its head is unbound.
 - `.outOfFuel` — fuel exhausted. -/
-def neutralType (fuel : Nat) (tyCtx : Array Expr) (a : Expr) :
+def neutralType (fuel : Nat) (tyCtx : TyCtx) (a : Expr) :
     Outcome (Option Expr) :=
   synthNeutralType fuel tyCtx a
 

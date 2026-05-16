@@ -54,7 +54,7 @@ open SubstEval Std
 `tyCtx` index `0 ↦ T : Type`, `1 ↦ pred : Nat_`, `2 ↦ n2 : Nat_`. -/
 
 /-- Type context with `T : Type, pred : Nat_, n2 : Nat_`. -/
-private def tyCtx : Array Expr := #[.type, Nat_, Nat_]
+private def tyCtx : List Expr := [Nat_, Nat_, .type]
 
 /-- Free level-var for `T : Type`. -/
 private def Tv : Expr := freshLevelVar 0
@@ -166,15 +166,13 @@ that question: it correctly answers `.ok false`. -/
 
 /-- Synthetic Γ at the failing point — only the slots the engine
 queries are populated. -/
-private def Γ_at_depth_15 : Array Expr := Id.run do
-  let mut Γ : Array Expr := Array.mkArray 15 .type
-  Γ := Γ.set! 0 .type
-  Γ := Γ.set! 8 .type        -- T : Type
-  -- ?14 : Array_ (succ_ ?13) ?8 — for the diagnostic question we
-  -- only need its WHNF as a Π. We use a coarse 3-arg Π that
-  -- mirrors the iota-unfolded shape of `Array_ (succ_ ?13) ?8`.
-  Γ := Γ.set! 14 (och{ λx:Type. λy:(Type → Type). λz:Type. x })
-  pure Γ
+private def Γ_at_depth_15 : List Expr :=
+  -- In the new de Bruijn convention, Γ[k] is the type of `bvar k`.
+  -- Old Array convention had Γ[size-1-k] for bvar k, so this is
+  -- the reverse of the old array. Position 0 (bvar 0, innermost)
+  -- has the Π type; positions 1–14 have `.type`.
+  (och{ λx:Type. λy:(Type → Type). λz:Type. x }) ::
+    List.replicate 14 .type
 
 /-- `aV` at the bail = `fst_ arr` post-β = `?14 Type (λa. λb. a)`. -/
 private def aV_at_failure : Expr :=

@@ -48,12 +48,12 @@ structure WTValue where
   deriving Repr
 
 /-- Type context for `synth`: stores the types of free variables.
-`Γ[Γ.size - 1 - k]` is the type of `bvar k`. Push to the end
+`Γ[Γ.length - 1 - k]` is the type of `bvar k`. Push to the end
 when entering a binder.
 
 Public so soundness lemmas in `Soundness/SynthSound.lean` can
 mention `Γ`'s type when stating per-arm helper lemmas. -/
-abbrev TyEnv := Array Expr
+abbrev TyEnv := List Expr
 
 /-! ## Synth core (private mutual block)
 
@@ -85,11 +85,11 @@ def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
     | .type => .ok .type
     | .bot  => .ok .bot
     | .bvar k =>
-        -- Pure de Bruijn: bvar k is valid if k < Γ.size.
-        if k < Γ.size then
+        -- Pure de Bruijn: bvar k is valid if k < Γ.length.
+        if k < Γ.length then
           .ok e
         else
-          .error s!"synth: unbound bvar {k} (|Γ|={Γ.size})"
+          .error s!"synth: unbound bvar {k} (|Γ|={Γ.length})"
     | .lam dom body => do
         let okDom ← subCheckOpen fuel Γ dom .type
         if !okDom then
@@ -98,7 +98,7 @@ def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
           let domV ← evalSubst fuel SubstEval.unfBound dom
           -- Descend into body without substitution. bvar 0 in body
           -- refers to the lambda parameter; extend Γ with domV.
-          let _bodyTy ← synthCore fuel (Γ.push domV) body
+          let _bodyTy ← synthCore fuel (domV :: Γ) body
           -- Canonical: a lambda is its own most-precise type.
           evalSubst fuel SubstEval.unfBound e
     | .iota ann body => do
@@ -107,7 +107,7 @@ def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
           .error s!"synth: iota annotation is not a type"
         else
           let annV ← evalSubst fuel SubstEval.unfBound ann
-          let _bodyTy ← synthCore fuel (Γ.push annV) body
+          let _bodyTy ← synthCore fuel (annV :: Γ) body
           evalSubst fuel SubstEval.unfBound e
     | .fix ann body => do
         let okAnn ← subCheckOpen fuel Γ ann .type
@@ -115,7 +115,7 @@ def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
           .error s!"synth: fix annotation is not a type"
         else
           let annV ← evalSubst fuel SubstEval.unfBound ann
-          let _bodyTy ← synthCore fuel (Γ.push annV) body
+          let _bodyTy ← synthCore fuel (annV :: Γ) body
           evalSubst fuel SubstEval.unfBound e
     | .asc inner τ => do
         let okτ ← subCheckOpen fuel Γ τ .type
@@ -133,7 +133,7 @@ def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
     | .letE val body => do
         let valV ← synthCore fuel Γ val
         -- Descend into body without substitution.
-        let _bodyTy ← synthCore fuel (Γ.push valV) body
+        let _bodyTy ← synthCore fuel (valV :: Γ) body
         -- The whole `let` β-reduces to `body[val/0]`; return its WHNF.
         evalSubst fuel SubstEval.unfBound e
     | .app f a => do
@@ -181,7 +181,7 @@ def synth (e : Expr) (fuel : Nat := 5000) : Outcome WTValue := do
   if !e.closedAt 0 then
     .error s!"synth: input contains unbound bvars (not closed)"
   else
-    let v ← synthCore fuel #[] e
+    let v ← synthCore fuel [] e
     pure ⟨v⟩
 
 /-- Structural subtype check on already-typed values. -/

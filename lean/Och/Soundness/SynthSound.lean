@@ -111,7 +111,7 @@ still need it.  See `EvalSubstLemmas.lean` for the closedness
 inversion lemma `substL_closedAtLvl_inversion` that resolution path
 3 would build on. -/
 
-/-- If `Och.synth e fuel = .ok v` (top-level call with `Γ = #[]`),
+/-- If `Och.synth e fuel = .ok v` (top-level call with `Γ = []`),
 then `e` is `closedAt 0`.
 
 `Och.synth` now validates `e.closedAt 0` at entry and rejects with
@@ -135,14 +135,14 @@ with `evalSubst fuel unfBound e`.  These lemmas extract that
 final step from a `synthCore = .ok v` hypothesis by destructing
 the bind chain. -/
 
-/-- For the `.lam` arm: if `synthCore (n+1) #[] (.lam dom body) = .ok v`,
+/-- For the `.lam` arm: if `synthCore (n+1) [] (.lam dom body) = .ok v`,
 then the final `evalSubst` step succeeded with the same `v`.  The arm:
 `synthCore dom → subCheckOpen → if-else → evalSubst dom →
 synthCore body → evalSubst e`.
 On `.ok v` the first three steps succeeded and the final `evalSubst` is
 the return value. -/
 private theorem synthCore_lam_evalSubst {n : Nat} {dom body v : Expr}
-    (h : synthCore (n+1) #[] (.lam dom body) = .ok v) :
+    (h : synthCore (n+1) [] (.lam dom body) = .ok v) :
     evalSubst n unfBound (.lam dom body) = .ok v := by
   sorry
 
@@ -166,7 +166,7 @@ private theorem evalSubst_lam_refl {n : Nat} {dom body v : Expr}
     simp only [Outcome.ok.injEq] at h; exact h.symm
 
 private theorem synthCore_iota_evalSubst {n : Nat} {ann body v : Expr}
-    (h : synthCore (n+1) #[] (.iota ann body) = .ok v) :
+    (h : synthCore (n+1) [] (.iota ann body) = .ok v) :
     evalSubst n unfBound (.iota ann body) = .ok v := by
   sorry
 
@@ -180,7 +180,7 @@ private theorem evalSubst_iota_refl {n : Nat} {ann body v : Expr}
     simp only [Outcome.ok.injEq] at h; exact h.symm
 
 private theorem synthCore_fix_evalSubst {n : Nat} {ann body v : Expr}
-    (h : synthCore (n+1) #[] (.fix ann body) = .ok v) :
+    (h : synthCore (n+1) [] (.fix ann body) = .ok v) :
     evalSubst n unfBound (.fix ann body) = .ok v := by
   sorry
 
@@ -194,7 +194,7 @@ private theorem evalSubst_fix_refl {n : Nat} {ann body v : Expr}
     simp only [Outcome.ok.injEq] at h; exact h.symm
 
 private theorem synthCore_letE_evalSubst {n : Nat} {val body v : Expr}
-    (h : synthCore (n+1) #[] (.letE val body) = .ok v) :
+    (h : synthCore (n+1) [] (.letE val body) = .ok v) :
     evalSubst n unfBound (.letE val body) = .ok v := by
   rw [synthCore.eq_9] at h
   rw [Outcome.bind_eq_ok] at h
@@ -203,12 +203,12 @@ private theorem synthCore_letE_evalSubst {n : Nat} {val body v : Expr}
   obtain ⟨_bodyTy, _hBody, h⟩ := h
   exact h
 
-/-- For the `.asc` arm: if `synthCore (n+1) #[] (.asc inner τ) = .ok v`,
+/-- For the `.asc` arm: if `synthCore (n+1) [] (.asc inner τ) = .ok v`,
 then the inner recursive call also succeeded.  synthCore passes
 the predecessor fuel `n` to the inner call. -/
 private theorem synthCore_asc_inner {n : Nat} {inner τ v : Expr}
-    (h : synthCore (n+1) #[] (.asc inner τ) = .ok v) :
-    synthCore n #[] inner = .ok v := by
+    (h : synthCore (n+1) [] (.asc inner τ) = .ok v) :
+    synthCore n [] inner = .ok v := by
   sorry
 
 /-- WALL: the residual `.app` arm.  synthCore on `.app f a`
@@ -253,7 +253,7 @@ resolution. -/
 private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
     (_hclF : closedAt 0 f = true)
     (_hclA : closedAt 0 a = true)
-    (_h : synthCore (n+1) #[] (.app f a) = .ok v) :
+    (_h : synthCore (n+1) [] (.app f a) = .ok v) :
     Subtype' [] [] (.app f a) v := by
   sorry
 
@@ -269,13 +269,13 @@ The `closedAt 0` hypothesis is needed to invoke `evalSubst_equiv`
 on the canonical-form arms (`.lam`, `.iota`, `.fix`, `.letE`,
 `.app`), all of which return `evalSubst …`.
 
-The `Γ = #[]` specialisation matters: at top level there are no
+The `Γ = []` specialisation matters: at top level there are no
 level-vars in scope, so the `.bvar` arm must fail — hence the
 `.bvar` case is vacuous in the proof. -/
 private noncomputable def synthCore_sound_aux :
     ∀ (e : Expr) (fuel : Nat) (v : Expr),
       e.closedAt 0 = true →
-      synthCore fuel #[] e = .ok v →
+      synthCore fuel [] e = .ok v →
       Subtype' [] [] e v := by
   intro e
   induction e with
@@ -359,7 +359,7 @@ private noncomputable def synthCore_sound_aux :
 `synthCore_topLevel_closedAt` lemma.
 
 The composition: `Och.synth e fuel = .ok v` unfolds to
-`synthCore fuel #[] e = .ok v.whnf`.  We feed this plus the
+`synthCore fuel [] e = .ok v.whnf`.  We feed this plus the
 closedAt-0 invariant (from the closedAt sub-wall) into
 `synthCore_sound_aux`. -/
 private noncomputable def synthCore_opacity_WALL
@@ -369,7 +369,7 @@ private noncomputable def synthCore_opacity_WALL
   have hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt h
   unfold Och.synth at h
   simp only [hcl, Bool.not_true, Bool.false_eq_true, ↓reduceIte] at h
-  match heq : synthCore fuel #[] e with
+  match heq : synthCore fuel [] e with
   | .ok v' =>
     rw [heq] at h
     simp only [Outcome.ok_bind, Pure.pure, Outcome.ok.injEq] at h

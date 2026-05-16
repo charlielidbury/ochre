@@ -132,9 +132,9 @@ widen, so we exercise `subCheckOpen` directly. -/
 
 section CtxMono
 
-private def Γbase : Array Expr := #[]
-private def Γext1 : Array Expr := #[Nat_]
-private def Γext2 : Array Expr := #[Nat_, Std.Bool]
+private def Γbase : List Expr := []
+private def Γext1 : List Expr := [Nat_]
+private def Γext2 : List Expr := [Std.Bool, Nat_]
 
 /-- For closed terms, the answer is independent of the context's
 extra entries (the engine never consults `tyCtx` on level-vars it
