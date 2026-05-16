@@ -397,7 +397,7 @@ mutual
   /-- Top-level derivation-returning subtype check. Forces WHNF on
       both sides, checks fast paths, then delegates to
       `subCheckSubstMatch`. -/
-  noncomputable def subCheckSubst (fuel : Nat) (Γ : Ctx)
+  def subCheckSubst (fuel : Nat) (Γ : Ctx)
       (S : Seen) (a b : Expr) : Outcome (Subtype' S Γ a b) :=
     match fuel with
     | 0 => .outOfFuel
@@ -428,7 +428,7 @@ mutual
       - `ha : a ⊑ a'` (forward eval bridge for LHS)
       - `hb : b' ⊑ b` (backward eval bridge for RHS)
       The composition is: `a ⊑ a' ⊑ b' ⊑ b` via `.trans`. -/
-  noncomputable def subCheckSubstMatch (fuel : Nat) (Γ : Ctx) (S : Seen)
+  def subCheckSubstMatch (fuel : Nat) (Γ : Ctx) (S : Seen)
       (a b : Expr) (a' b' : Expr)
       (ha : Subtype' S Γ a a') (hb : Subtype' S Γ b' b)
       : Outcome (Subtype' S Γ a b) :=
@@ -474,7 +474,7 @@ def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool := do
 
 /-- Derivation-producing subtype check on closed `Expr`s. Returns
     a `Subtype' [] [] a b` derivation when the check succeeds. -/
-noncomputable def subCheckDeriv (fuel : Nat) (a b : Expr) :
+def subCheckDeriv (fuel : Nat) (a b : Expr) :
     Outcome (Subtype' [] [] a b) :=
   subCheckSubst fuel [] [] a b
 
