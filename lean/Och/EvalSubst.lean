@@ -468,6 +468,12 @@ def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool := do
   let b' ← evalSubst fuel unfBound b
   subCheckBool fuel [] [] a' b'
 
+/-- Derivation-producing subtype check on closed `Expr`s. Returns
+    a `Subtype' [] [] a b` derivation when the check succeeds. -/
+noncomputable def subCheckDeriv (fuel : Nat) (a b : Expr) :
+    Outcome (Subtype' [] [] a b) :=
+  subCheckSubst fuel [] [] a b
+
 /-! ## Open-context API for `TyCheck` and `API`
 
 The bidirectional type-checker and the synth walk need:
