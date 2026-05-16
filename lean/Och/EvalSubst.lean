@@ -387,19 +387,77 @@ end
 `subCheckSubst` mirrors `subCheckBool` arm-for-arm but returns
 `Outcome (Subtype' S Γ a b)` — an intrinsic derivation — instead
 of `Outcome Bool`. Every arm is sorry'd initially; each sorry is
-a self-contained obligation that can be closed independently. -/
+a self-contained obligation that can be closed independently.
 
-noncomputable def subCheckSubst (fuel : Nat) (Γ : Ctx)
-    (S : Seen) (a b : Expr) : Outcome (Subtype' S Γ a b) :=
-  match fuel with
-  | 0 => .outOfFuel
-  | _fuel + 1 =>
-    -- Check using the Bool version first; if it rejects, reject.
-    match subCheckBool fuel Γ S a b with
-    | .ok true => .ok sorry  -- TODO: construct derivation
-    | .ok false => .error "subCheckSubst: rejected"
-    | .outOfFuel => .outOfFuel
-    | .error s => .error s
+The current implementation delegates to `subCheckBool` and sorry's
+the derivation construction. As arms are closed, they will be
+inlined with proper derivation construction. -/
+
+mutual
+  /-- Top-level derivation-returning subtype check. Forces WHNF on
+      both sides, checks fast paths, then delegates to
+      `subCheckSubstMatch`. -/
+  noncomputable def subCheckSubst (fuel : Nat) (Γ : Ctx)
+      (S : Seen) (a b : Expr) : Outcome (Subtype' S Γ a b) :=
+    match fuel with
+    | 0 => .outOfFuel
+    | fuel + 1 =>
+      match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
+      | .ok a', .ok b' =>
+          let a'' := match a' with | .asc _ ty => ty | x => x
+          let b'' := match b' with | .asc e _ => e | x => x
+          if a'' == b'' then
+            -- Syntactic equality after WHNF: bridge via sorry
+            -- (needs evalSubst_equiv + refl)
+            .ok sorry
+          else if S.any (fun (_, av, bv) => a'' == av && b'' == bv) then
+            -- Seen-set hit: bridge via sorry (needs hyp)
+            .ok sorry
+          else if b'' == .type then
+            -- Top: bridge via sorry (needs .top + eval bridge)
+            .ok sorry
+          else
+            subCheckSubstMatch fuel Γ S a b a'' b'' sorry sorry
+      | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
+      | .error s, _ | _, .error s => .error s
+  termination_by (fuel, 0)
+  decreasing_by all_goals (simp_wf; omega)
+
+  /-- Per-shape derivation-returning case-split. Takes the WHNF'd
+      terms `a'` `b'` and two sorry'd bridges from `a ⊑ a'` and
+      `b' ⊑ b` (to be filled in once evalSubst_equiv is extended
+      to open terms). -/
+  noncomputable def subCheckSubstMatch (fuel : Nat) (Γ : Ctx) (S : Seen)
+      (a b : Expr) (a' b' : Expr)
+      (_ha : Subtype' S Γ a' a) (_hb : Subtype' S Γ b b')
+      : Outcome (Subtype' S Γ a b) :=
+    match a', b' with
+    -- Bot ⊑ anything
+    | .bot, _ => .ok sorry  -- needs .bot_L + bridge
+    -- λ ⊑ λ
+    | .lam domA bodyA, .lam domB bodyB => do
+        let _ih_dom ← subCheckSubst fuel Γ S domB domA
+        let _ih_body ← subCheckSubst fuel (domB :: Γ) S bodyA bodyB
+        .ok sorry  -- needs .lam + bridge
+    -- ι ⊑ ι
+    | .iota _annA _bodyA, .iota _annB _bodyB => .ok sorry
+    -- fix ⊑ fix
+    | .fix _annA _bodyA, .fix _annB _bodyB => .ok sorry
+    -- _ ⊑ ι (iotaIntro)
+    | _, .iota _ann _bodyB => .ok sorry
+    -- _ ⊑ fix (unfoldFixR)
+    | _, .fix _ann _bodyB => .ok sorry
+    -- fix ⊑ _ (unfoldFixL)
+    | .fix _ann _bodyA, _ => .ok sorry
+    -- ι ⊑ _ (unfoldIotaL)
+    | .iota _ann _bodyA, _ => .ok sorry
+    -- Neutrals
+    | _, _ =>
+        if isNeutral a' then .ok sorry  -- neutralAscent
+        else .error "subCheckSubstMatch: no rule applies"
+  termination_by (fuel, 1)
+  decreasing_by all_goals (simp_wf; omega)
+end
 
 /-- Structural subtype check on closed `Expr`s: WHNF both sides,
     then descend through `subCheckSubst`. Public so `TyCheck.typeCheck`
