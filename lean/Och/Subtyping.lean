@@ -145,6 +145,14 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
       Subtype' ((Γ.length, a, .iota ann body) :: S) Γ
         a (body.subst 0 a) →
       Subtype' S Γ a (.iota ann body)
+  /-- Iota elimination: if `a ⊑ ι(self:A).B`, then `a ⊑ B[self ↦ a]`.
+  The self-reference points at the inhabitant — this is THE rule that
+  makes iota (Cedille self-types) useful for dependent elimination.
+  Without it, you can introduce iota types (via `iota_intro`) but
+  cannot eliminate them with the inhabitant substituted for self. -/
+  | iota_elim {S Γ a ann body} :
+      Subtype' S Γ a (.iota ann body) →
+      Subtype' S Γ a (body.subst 0 a)
   /-- [unfoldIotaL]: `ι A. body ⊑ c` if its one-step unfolding
   is. The goal is added to `S` (productive unfold). -/
   | unfold_iota_L {S Γ ann body c} :
@@ -236,6 +244,7 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
         cases hp with
         | head => exact List.mem_cons_self ..
         | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
+  | iota_elim _ ih => exact .iota_elim (ih hsub)
   | unfold_iota_L _ ih =>
       refine .unfold_iota_L (ih ?_)
       intro p hp
@@ -570,6 +579,10 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     · have := ih2 Γpfx rfl
       simp only [List.map_cons, hhead] at this
       simpa [Expr.shift, Expr.subst_shift_swap] using this
+  | @iota_elim S' Γ' a' ann body _ ih =>
+    intro Γpfx hpfx
+    have := ih Γpfx hpfx
+    exact sorry -- iota_elim shift: needs subst_shift_swap
   | @unfold_iota_L S' Γ' ann body c' _ ih =>
     intro Γpfx hpfx
     subst hpfx
@@ -814,6 +827,8 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       have h2 := ih2 Γ' rfl
       rw [hlen] at h1 h2
       exact .iota_intro h1 h2
+  | @iota_elim S' Δ' a' ann body _ ih =>
+      exact fun Γ' hΔ => .iota_elim (ih Γ' hΔ)
   | @unfold_iota_L S' Δ' ann body c' _ ih =>
       intro Γ' hΔ
       subst hΔ

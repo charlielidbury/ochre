@@ -66,6 +66,8 @@
             (agda.withPackages (p: [ p.standard-library ]))
             # OCaml scaffolding
             ocaml dune_3
+            # Typesetting
+            typst pandoc
           ];
         };
       });
