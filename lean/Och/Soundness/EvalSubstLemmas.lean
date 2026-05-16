@@ -9,9 +9,8 @@ that the soundness proof needs.
 ## Status (post de Bruijn refactor)
 
 - A1 (`evalSubst_fuel_mono`) — closed.
-- A2 (`evalSubst_closedAt`) — sorry'd, needs re-proof for standard
-  `closedAt` (old proof used removed `closedAtLvl`/`substL`).
-- A3 (`subst_closedAt`) — sorry'd, straightforward induction deferred.
+- A2 (`evalSubst_closedAt`) — closed.
+- A3 (`subst_closedAt`) — closed.
 
 The old `shiftL`/`substL` agreement block and `closedAtLvl`
 infrastructure have been removed entirely; the pure de Bruijn
@@ -134,35 +133,188 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
           | letE _ _ => simp only at h ⊢; exact h
           | app _ _ => simp only at h ⊢; exact h
 
-/-! ## Closedness preservation for `evalSubst`
+/-! ## Closedness preservation for `Expr.subst` and `evalSubst`
 
 In the pure de Bruijn regime, the relevant closedness property is
 `Expr.closedAt n`: every free `bvar k` in the term satisfies `k < n`.
-The `evalSubst` evaluator preserves `closedAt 0` on closed terms
-(it only reduces redexes, never introduces free variables). The old
-`closedAtLvl` / `substL` infrastructure has been removed as part of
-the de Bruijn refactor; the lemmas below are sorry'd pending
-re-proof in the new regime.
+-/
 
-The downstream soundness modules still reference some of these
-names; we provide sorry'd stubs so the project compiles. -/
-
-/-- `evalSubst` preserves closedness: evaluating a closed term
-    produces a closed term. (Sorry'd — needs re-proof for pure de
-    Bruijn; the old proof relied on `closedAtLvl`/`substL` which no
-    longer exist.) -/
-theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
-    (hcl : e.closedAt 0 = true)
-    (h : evalSubst n unf e = .ok v) : v.closedAt 0 = true := by
-  sorry
+/-- Generalized `subst_closedAt`: substituting at index `j ≤ n` with
+    a term closed at `n` into a body closed at `n+1` yields a term
+    closed at `n`. Needed for the induction step under binders. -/
+private theorem subst_closedAt_gen (body : Expr) (s : Expr) (n j : Nat)
+    (hj : j ≤ n)
+    (hbody : body.closedAt (n + 1) = true)
+    (hs : s.closedAt n = true) :
+    (body.subst j s).closedAt n = true := by
+  induction body generalizing s j n with
+  | bvar k =>
+    unfold Expr.subst
+    split
+    · -- k == j: result is s
+      exact hs
+    · split
+      · -- k > j: result is bvar (k-1)
+        simp only [Expr.closedAt, decide_eq_true_eq] at hbody ⊢
+        omega
+      · -- k < j: result is bvar k
+        rename_i hne hngt
+        simp only [beq_iff_eq] at hne
+        simp only [Nat.not_lt] at hngt
+        simp only [Expr.closedAt, decide_eq_true_eq] at hbody ⊢
+        omega
+  | lam dom body ih_dom ih_body =>
+    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
+    exact ⟨ih_dom s n j hj hbody.1 hs,
+           ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
+             (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
+  | app f a ih_f ih_a =>
+    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
+    exact ⟨ih_f s n j hj hbody.1 hs, ih_a s n j hj hbody.2 hs⟩
+  | asc t y ih_t ih_y =>
+    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
+    exact ⟨ih_t s n j hj hbody.1 hs, ih_y s n j hj hbody.2 hs⟩
+  | type => simp [Expr.subst, Expr.closedAt]
+  | bot => simp [Expr.subst, Expr.closedAt]
+  | iota ann body ih_ann ih_body =>
+    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
+    exact ⟨ih_ann s n j hj hbody.1 hs,
+           ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
+             (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
+  | fix ann body ih_ann ih_body =>
+    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
+    exact ⟨ih_ann s n j hj hbody.1 hs,
+           ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
+             (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
+  | letE val body ih_val ih_body =>
+    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
+    exact ⟨ih_val s n j hj hbody.1 hs,
+           ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
+             (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
 
 /-- `Expr.subst` preserves closedness: substituting a closed term
-    into a body that's closed at depth 1 yields a closed term.
-    (Sorry'd — straightforward induction, deferred.) -/
+    into a body that's closed at depth 1 yields a closed term. -/
 theorem subst_closedAt (body : Expr) (s : Expr)
     (hbody : body.closedAt 1 = true)
     (hs : s.closedAt 0 = true) :
-    (body.subst 0 s).closedAt 0 = true := by
-  sorry
+    (body.subst 0 s).closedAt 0 = true :=
+  subst_closedAt_gen body s 0 0 (Nat.le_refl 0) hbody hs
+
+/-- `evalSubst` preserves closedness: evaluating a closed term
+    produces a closed term. -/
+theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
+    (hcl : e.closedAt 0 = true)
+    (h : evalSubst n unf e = .ok v) : v.closedAt 0 = true := by
+  induction n generalizing unf e v with
+  | zero => rw [evalSubst.eq_1] at h; cases h
+  | succ k ih =>
+    match e with
+    | .bvar k' =>
+      rw [evalSubst.eq_2] at h; cases h; exact hcl
+    | .type =>
+      rw [evalSubst.eq_3] at h; cases h; simp [Expr.closedAt]
+    | .bot =>
+      rw [evalSubst.eq_4] at h; cases h; simp [Expr.closedAt]
+    | .lam _ _ =>
+      rw [evalSubst.eq_5] at h; cases h; exact hcl
+    | .iota _ _ =>
+      rw [evalSubst.eq_6] at h; cases h; exact hcl
+    | .fix _ _ =>
+      rw [evalSubst.eq_7] at h; cases h; exact hcl
+    | .asc t ty =>
+      rw [evalSubst.eq_8] at h
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      match ht : evalSubst k unf t with
+      | .outOfFuel => rw [ht] at h; cases h
+      | .error _ => rw [ht] at h; cases h
+      | .ok tv =>
+        match hty : evalSubst k unf ty with
+        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .ok tyv =>
+          rw [ht, hty] at h
+          simp only [Outcome.ok_bind] at h
+          cases h
+          simp only [Expr.closedAt, Bool.and_eq_true]
+          exact ⟨ih hcl.1 ht, ih hcl.2 hty⟩
+    | .letE val body =>
+      rw [evalSubst.eq_9] at h
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      match hv : evalSubst k unf val with
+      | .outOfFuel => rw [hv] at h; cases h
+      | .error _ => rw [hv] at h; cases h
+      | .ok vVal =>
+        rw [hv] at h
+        have hvCl := ih hcl.1 hv
+        have hsubCl := subst_closedAt body vVal hcl.2 hvCl
+        exact ih hsubCl h
+    | .app f a =>
+      rw [evalSubst.eq_10] at h
+      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+      match hf : evalSubst k unf f with
+      | .outOfFuel => rw [hf] at h; cases h
+      | .error _ => rw [hf] at h; cases h
+      | .ok fv =>
+        match ha : evalSubst k unf a with
+        | .outOfFuel => rw [hf, ha] at h; cases h
+        | .error _ => rw [hf, ha] at h; cases h
+        | .ok av =>
+          rw [hf, ha] at h
+          simp only [Outcome.ok_bind] at h
+          have hfCl := ih hcl.1 hf
+          have haCl := ih hcl.2 ha
+          cases fv with
+          | bvar _ =>
+            simp only at h; cases h
+            simp only [Expr.closedAt, Bool.and_eq_true]
+            exact ⟨hfCl, haCl⟩
+          | type =>
+            simp only at h; cases h
+            simp only [Expr.closedAt, Bool.and_eq_true]
+            exact ⟨by simp [Expr.closedAt], haCl⟩
+          | bot =>
+            simp only at h; cases h
+            simp only [Expr.closedAt, Bool.and_eq_true]
+            exact ⟨by simp [Expr.closedAt], haCl⟩
+          | lam _dom body =>
+            simp only at h
+            simp only [Expr.closedAt, Bool.and_eq_true] at hfCl
+            exact ih (subst_closedAt body av hfCl.2 haCl) h
+          | iota _ann body =>
+            simp only at h
+            split at h
+            · cases h
+              simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢
+              exact ⟨⟨hfCl.1, hfCl.2⟩, haCl⟩
+            · simp only [Expr.closedAt, Bool.and_eq_true] at hfCl
+              have hsubCl := subst_closedAt body (.iota _ann body) hfCl.2
+                (by simp [Expr.closedAt, Bool.and_eq_true]; exact hfCl)
+              have happCl : (Expr.app (body.subst 0 (.iota _ann body)) av).closedAt 0 = true := by
+                simp only [Expr.closedAt, Bool.and_eq_true]; exact ⟨hsubCl, haCl⟩
+              exact ih happCl h
+          | fix _ann body =>
+            simp only at h
+            split at h
+            · cases h
+              simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢
+              exact ⟨⟨hfCl.1, hfCl.2⟩, haCl⟩
+            · simp only [Expr.closedAt, Bool.and_eq_true] at hfCl
+              have hsubCl := subst_closedAt body (.fix _ann body) hfCl.2
+                (by simp [Expr.closedAt, Bool.and_eq_true]; exact hfCl)
+              have happCl : (Expr.app (body.subst 0 (.fix _ann body)) av).closedAt 0 = true := by
+                simp only [Expr.closedAt, Bool.and_eq_true]; exact ⟨hsubCl, haCl⟩
+              exact ih happCl h
+          | asc inner _ =>
+            simp only at h
+            simp only [Expr.closedAt, Bool.and_eq_true] at hfCl
+            exact ih (by simp [Expr.closedAt, Bool.and_eq_true]; exact ⟨hfCl.1, haCl⟩) h
+          | letE _ _ =>
+            simp only at h; cases h
+            simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢
+            exact ⟨⟨hfCl.1, hfCl.2⟩, haCl⟩
+          | app _ _ =>
+            simp only at h; cases h
+            simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢
+            exact ⟨⟨hfCl.1, hfCl.2⟩, haCl⟩
 
 end SubstEval
