@@ -620,7 +620,18 @@ private noncomputable def whnfPi_go_sound
     | .iota _ann _body =>
       simp only [whnfPi.go] at hgo
       match hev : evalSubst fuel 4 (_body.subst 0 inhab) with
-      | .ok _ => rw [hev] at hgo; sorry
+      | .ok _ =>
+        rw [hev] at hgo
+        -- WALL: substitution mismatch between algorithm and declaration.
+        -- Algorithm: body.subst 0 inhab (substitutes the actual inhabitant)
+        -- Declaration (unfold_iota_L): body.subst 0 (.iota ann body)
+        -- Closing requires either:
+        --   (a) Change whnfPi.go to substitute (.iota ann body) instead of inhab
+        --       (tried: closes proof but breaks PerfProbe regression test due
+        --       to larger terms requiring more fuel), OR
+        --   (b) Substitution monotonicity: a ⊑ b → e.subst 0 a ⊑ e.subst 0 b
+        --       (deep property, major proof effort)
+        sorry
       | .outOfFuel => rw [hev] at hgo; cases hgo
       | .error _ => rw [hev] at hgo; cases hgo
     | .bot => simp only [whnfPi.go] at hgo; cases hgo
