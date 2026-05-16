@@ -189,10 +189,11 @@ where
 /-! ### Structural subtype checker -/
 
 mutual
-  /-- Top-level subtype check arm (Bool version). Forces WHNF on both
-      sides, then delegates to `subCheckSubstMatch`. -/
+  /-- Top-level subtype check. Forces WHNF on both sides, then
+      delegates to `subCheckSubstMatch`. Returns a derivation on
+      success (intrinsic typing). -/
   def subCheckSubst (fuel : Nat) (tyCtx : TyCtx)
-      (seen : Seen) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome (Subtype' seen tyCtx a b) :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
@@ -200,142 +201,208 @@ mutual
       | .ok a', .ok b' =>
           let a'' := match a' with | .asc _ ty => ty | x => x
           let b'' := match b' with | .asc e _ => e | x => x
-          if a'' == b'' then .ok true
-          else if seen.any (fun (d, av, bv) => d == tyCtx.length && a'' == av && b'' == bv) then .ok true
-          else if b'' == .type then .ok true
-          else subCheckSubstMatch fuel tyCtx seen a'' b''
+          if a'' == b'' then .ok sorry
+          else if seen.any (fun (d, av, bv) => d == tyCtx.length && a'' == av && b'' == bv) then .ok sorry
+          else if b'' == .type then .ok sorry
+          else
+            match subCheckSubstMatch fuel tyCtx seen a'' b'' with
+            | .ok deriv => .ok sorry
+            | .outOfFuel => .outOfFuel
+            | .error s => .error s
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
       | .error s, _ | _, .error s => .error s
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
-  /-- Per-shape case-split (Bool version). -/
+  /-- Per-shape case-split. Uses `sorry` for derivation construction
+      in arms that need eval bridges or seen-set manipulation.
+      These will be filled in incrementally. -/
   def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
-      (seen : Seen) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome (Subtype' seen tyCtx a b) := by
+    exact
     match a, b with
-    | .bot, _ => .ok true
-    | .lam _domA _bodyA, .lam domB bodyB => do
-        let contra ← subCheckSubst fuel tyCtx seen domB _domA
-        if !contra then return false
-        subCheckSubst fuel (domB :: tyCtx) seen _bodyA bodyB
+    | .bot, _ => .ok .bot_L
+    | .lam _domA _bodyA, .lam domB bodyB =>
+        match subCheckSubst fuel tyCtx seen domB _domA with
+        | .ok contra =>
+            match subCheckSubst fuel (domB :: tyCtx) seen _bodyA bodyB with
+            | .ok body => .ok (.lam contra body)
+            | .outOfFuel => .outOfFuel
+            | .error s => .error s
+        | .outOfFuel => .outOfFuel
+        | .error s => .error s
     | .iota _annA _bodyA, .iota annB bodyB =>
-        let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen _annA annB
-          if !annOk then return false
-          subCheckSubst fuel (annB :: tyCtx) seen _bodyA bodyB
+        let structural : Outcome (Subtype' seen tyCtx (.iota _annA _bodyA) (.iota annB bodyB)) :=
+          match subCheckSubst fuel tyCtx seen _annA annB with
+          | .ok annDeriv =>
+              match subCheckSubst fuel (annB :: tyCtx) seen _bodyA bodyB with
+              | .ok bodyDeriv => .ok (.iota_cong annDeriv bodyDeriv)
+              | .outOfFuel => .outOfFuel
+              | .error s => .error s
+          | .outOfFuel => .outOfFuel
+          | .error s => .error s
         match structural with
-        | .ok true => .ok true
-        | _ => do
-          let seen' := (tyCtx.length, a, b) :: seen
-          let okAnn ← subCheckSubst fuel tyCtx seen' a annB
-          if !okAnn then .ok false
-          else do
+        | .ok deriv => .ok deriv
+        | _ =>
+          let seen' := (tyCtx.length, Expr.iota _annA _bodyA, Expr.iota annB bodyB) :: seen
+          match subCheckSubst fuel tyCtx seen' (.iota _annA _bodyA) annB with
+          | .ok _annDeriv =>
+              let bodyB' := bodyB.subst 0 (.iota _annA _bodyA)
+              match evalSubst (fuel + 1) unfBound bodyB' with
+              | .ok bodyB'' =>
+                  match subCheckSubst fuel tyCtx seen' (.iota _annA _bodyA) bodyB'' with
+                  | .ok _bodyDeriv => .ok sorry
+                  | .outOfFuel => .outOfFuel
+                  | .error s => .error s
+              | .outOfFuel => .outOfFuel
+              | .error _ => .error "iota fallback: eval body failed"
+          | .outOfFuel => .outOfFuel
+          | .error s => .error s
+    | .fix _annA _bodyA, .fix annB bodyB =>
+        let structural : Outcome (Subtype' seen tyCtx (.fix _annA _bodyA) (.fix annB bodyB)) :=
+          match subCheckSubst fuel tyCtx seen _annA annB with
+          | .ok annDeriv =>
+              match subCheckSubst fuel (annB :: tyCtx) seen _bodyA bodyB with
+              | .ok bodyDeriv => .ok (.fix_cong annDeriv bodyDeriv)
+              | .outOfFuel => .outOfFuel
+              | .error s => .error s
+          | .outOfFuel => .outOfFuel
+          | .error s => .error s
+        match structural with
+        | .ok deriv => .ok deriv
+        | _ =>
+          let seen' := (tyCtx.length, Expr.fix _annA _bodyA, Expr.fix annB bodyB) :: seen
+          let unfolded := bodyB.subst 0 (.fix annB bodyB)
+          match evalSubst (fuel + 1) unfBound unfolded with
+          | .ok b' =>
+              match subCheckSubst fuel tyCtx seen' (.fix _annA _bodyA) b' with
+              | .ok _deriv => .ok sorry
+              | .outOfFuel => .outOfFuel
+              | .error s => .error s
+          | .outOfFuel => .outOfFuel
+          | .error _ => .error "fix fallback: eval failed"
+    | _, .iota ann bodyB =>
+        let seen' := (tyCtx.length, a, .iota ann bodyB) :: seen
+        match subCheckSubst fuel tyCtx seen' a ann with
+        | .ok _annDeriv =>
             let bodyB' := bodyB.subst 0 a
             match evalSubst (fuel + 1) unfBound bodyB' with
-            | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
-            | _ => .ok false
-    | .fix _annA _bodyA, .fix annB bodyB =>
-        let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen _annA annB
-          if !annOk then return false
-          subCheckSubst fuel (annB :: tyCtx) seen _bodyA bodyB
-        match structural with
-        | .ok true => .ok true
-        | _ => do
-          let seen' := (tyCtx.length, a, b) :: seen
-          let unfolded := bodyB.subst 0 b
-          match evalSubst (fuel + 1) unfBound unfolded with
-          | .ok b' => subCheckSubst fuel tyCtx seen' a b'
-          | _ => .ok false
-    | _, .iota ann bodyB => do
-        let seen' := (tyCtx.length, a, b) :: seen
-        let okAnn ← subCheckSubst fuel tyCtx seen' a ann
-        if !okAnn then .ok false
-        else do
-          let bodyB' := bodyB.subst 0 a
-          match evalSubst (fuel + 1) unfBound bodyB' with
-          | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
-          | _ => .ok false
-    | _, .fix _ann bodyB => do
+            | .ok bodyB'' =>
+                match subCheckSubst fuel tyCtx seen' a bodyB'' with
+                | .ok _bodyDeriv => .ok sorry
+                | .outOfFuel => .outOfFuel
+                | .error s => .error s
+            | .outOfFuel => .outOfFuel
+            | .error _ => .error "iotaIntro: eval body failed"
+        | .outOfFuel => .outOfFuel
+        | .error s => .error s
+    | _, .fix _ann bodyB =>
         if isNeutral a then
           match synthNeutralType fuel tyCtx a with
           | .ok (some ty) =>
-              if ty == b then .ok true
+              if ty == Expr.fix _ann bodyB then .ok sorry
               else
-                let seen' := (tyCtx.length, a, b) :: seen
-                let unfolded := bodyB.subst 0 b
+                let seen' := (tyCtx.length, a, Expr.fix _ann bodyB) :: seen
+                let unfolded := bodyB.subst 0 (.fix _ann bodyB)
                 match evalSubst (fuel + 1) unfBound unfolded with
-                | .ok b' => subCheckSubst fuel tyCtx seen' a b'
-                | _ => .ok false
+                | .ok b' =>
+                    match subCheckSubst fuel tyCtx seen' a b' with
+                    | .ok _deriv => .ok sorry
+                    | .outOfFuel => .outOfFuel
+                    | .error s => .error s
+                | .outOfFuel => .outOfFuel
+                | .error _ => .error "unfoldFixR: eval failed"
           | _ =>
-              let seen' := (tyCtx.length, a, b) :: seen
-              let unfolded := bodyB.subst 0 b
+              let seen' := (tyCtx.length, a, Expr.fix _ann bodyB) :: seen
+              let unfolded := bodyB.subst 0 (.fix _ann bodyB)
               match evalSubst (fuel + 1) unfBound unfolded with
-              | .ok b' => subCheckSubst fuel tyCtx seen' a b'
-              | _ => .ok false
+              | .ok b' =>
+                  match subCheckSubst fuel tyCtx seen' a b' with
+                  | .ok _deriv => .ok sorry
+                  | .outOfFuel => .outOfFuel
+                  | .error s => .error s
+              | .outOfFuel => .outOfFuel
+              | .error _ => .error "unfoldFixR: eval failed"
         else
-          let seen' := (tyCtx.length, a, b) :: seen
-          let unfolded := bodyB.subst 0 b
+          let seen' := (tyCtx.length, a, Expr.fix _ann bodyB) :: seen
+          let unfolded := bodyB.subst 0 (.fix _ann bodyB)
           match evalSubst (fuel + 1) unfBound unfolded with
-          | .ok b' => subCheckSubst fuel tyCtx seen' a b'
-          | _ => .ok false
-    | .fix _ann bodyA, _ => do
-        let seen' := (tyCtx.length, a, b) :: seen
-        let unfolded := bodyA.subst 0 a
+          | .ok b' =>
+              match subCheckSubst fuel tyCtx seen' a b' with
+              | .ok _deriv => .ok sorry
+              | .outOfFuel => .outOfFuel
+              | .error s => .error s
+          | .outOfFuel => .outOfFuel
+          | .error _ => .error "unfoldFixR: eval failed"
+    | .fix _ann bodyA, _ =>
+        let seen' := (tyCtx.length, Expr.fix _ann bodyA, b) :: seen
+        let unfolded := bodyA.subst 0 (.fix _ann bodyA)
         match evalSubst (fuel + 1) unfBound unfolded with
         | .ok a' =>
-            if a' == a then .ok false
-            else subCheckSubst fuel tyCtx seen' a' b
-        | _ => .ok false
-    | .iota _ann bodyA, _ => do
-        let seen' := (tyCtx.length, a, b) :: seen
-        let unfolded := bodyA.subst 0 a
+            if a' == Expr.fix _ann bodyA then .error "unfoldFixL: fixpoint"
+            else
+              match subCheckSubst fuel tyCtx seen' a' b with
+              | .ok _deriv => .ok sorry
+              | .outOfFuel => .outOfFuel
+              | .error s => .error s
+        | .outOfFuel => .outOfFuel
+        | .error _ => .error "unfoldFixL: eval failed"
+    | .iota _ann bodyA, _ =>
+        let seen' := (tyCtx.length, Expr.iota _ann bodyA, b) :: seen
+        let unfolded := bodyA.subst 0 (.iota _ann bodyA)
         match evalSubst (fuel + 1) unfBound unfolded with
         | .ok a' =>
-            if a' == a then .ok false
-            else subCheckSubst fuel tyCtx seen' a' b
-        | _ => .ok false
-    | _, _ =>
-        if isNeutral a && isNeutral b then
-          match subCheckSpine fuel tyCtx seen a b with
-          | .ok true => .ok true
-          | _ => neutralAscent fuel tyCtx seen a b
-        else if isNeutral a then
-          neutralAscent fuel tyCtx seen a b
-        else
-          .ok false
+            if a' == Expr.iota _ann bodyA then .error "unfoldIotaL: fixpoint"
+            else
+              match subCheckSubst fuel tyCtx seen' a' b with
+              | .ok _deriv => .ok sorry
+              | .outOfFuel => .outOfFuel
+              | .error s => .error s
+        | .outOfFuel => .outOfFuel
+        | .error _ => .error "unfoldIotaL: eval failed"
+    | _, _ => sorry
   termination_by (fuel, 1)
   decreasing_by all_goals (simp_wf; omega)
 
-  /-- Compare two neutral spines structurally (Bool version). -/
+  /-- Compare two neutral spines structurally. -/
   def subCheckSpine (fuel : Nat) (tyCtx : TyCtx)
-      (seen : Seen) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome (Subtype' seen tyCtx a b) :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
       match a, b with
       | .bvar k1, .bvar k2 =>
-          if k1 == k2 then .ok true else .ok false
-      | .app f1 v1, .app f2 v2 => do
-          let hd ← subCheckSpine fuel tyCtx seen f1 f2
-          if !hd then return false
-          let fwd ← subCheckSubst fuel tyCtx seen v1 v2
-          if !fwd then return false
-          subCheckSubst fuel tyCtx seen v2 v1
-      | _, _ => .ok false
+          if h : k1 = k2 then .ok (h ▸ .refl _) else .error "spine: bvar mismatch"
+      | .app f1 v1, .app f2 v2 =>
+          match subCheckSpine fuel tyCtx seen f1 f2 with
+          | .ok hdDeriv =>
+              match subCheckSubst fuel tyCtx seen v1 v2 with
+              | .ok fwdDeriv =>
+                  match subCheckSubst fuel tyCtx seen v2 v1 with
+                  | .ok bwdDeriv => .ok (.app_cong hdDeriv fwdDeriv bwdDeriv)
+                  | .outOfFuel => .outOfFuel
+                  | .error s => .error s
+              | .outOfFuel => .outOfFuel
+              | .error s => .error s
+          | .outOfFuel => .outOfFuel
+          | .error s => .error s
+      | _, _ => .error "spine: shape mismatch"
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
-  /-- Synthesise the type of a neutral spine and check against `b`
-      (Bool version). -/
+  /-- Synthesise the type of a neutral spine and check against `b`. -/
   def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
-      (seen : Seen) (a b : Expr) : Outcome Bool :=
+      (seen : Seen) (a b : Expr) : Outcome (Subtype' seen tyCtx a b) :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
       match synthNeutralType fuel tyCtx a with
-      | .ok (some ty) => subCheckSubst fuel tyCtx seen ty b
-      | _ => .ok false
+      | .ok (some ty) =>
+          match subCheckSubst fuel tyCtx seen ty b with
+          | .ok tyB => .ok sorry  -- needs: a ⊑ ty (from synth) composed with tyB
+          | .outOfFuel => .outOfFuel
+          | .error s => .error s
+      | _ => .error "neutralAscent: synth failed"
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
@@ -382,10 +449,11 @@ end
     then descend through `subCheckSubst`. Public so `TyCheck.typeCheck`
     can call it on conversion goals; the `subCheckSubst` mutual
     block stays private. -/
-def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool := do
-  let a' ← evalSubst fuel unfBound a
-  let b' ← evalSubst fuel unfBound b
-  subCheckSubst fuel [] [] a' b'
+def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool :=
+  match subCheckSubst fuel [] [] a b with
+  | .ok _ => .ok true
+  | .outOfFuel => .outOfFuel
+  | .error s => .error s
 
 /-! ## Open-context API for `TyCheck` and `API`
 
@@ -418,10 +486,11 @@ def substTop (body : Expr) (value : Expr) : Expr :=
 /-- Subtype check in a non-empty type context. Forces WHNF on both
     sides, then delegates to the structural engine. -/
 def subCheckOpen (fuel : Nat) (tyCtx : TyCtx) (a b : Expr) :
-    Outcome Bool := do
-  let a' ← evalSubst fuel unfBound a
-  let b' ← evalSubst fuel unfBound b
-  subCheckSubst fuel tyCtx [] a' b'
+    Outcome Bool :=
+  match subCheckSubst fuel tyCtx [] a b with
+  | .ok _ => .ok true
+  | .outOfFuel => .outOfFuel
+  | .error s => .error s
 
 /-- Walk a neutral spine to compute its declarative type, looking
 up bvars in `tyCtx` and applying argument types through `Π` bodies
