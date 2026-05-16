@@ -339,9 +339,8 @@ mutual
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
-      match hea : evalSubst (fuel + 1) unfBound a, heb : evalSubst (fuel + 1) unfBound b with
+      match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
       | .ok a', .ok b' =>
-          -- Now dispatch on the asc-stripped forms
           let a'' := match a' with | .asc _ ty => ty | x => x
           let b'' := match b' with | .asc e _ => e | x => x
           if a'' == b'' then .ok sorry
@@ -349,7 +348,7 @@ mutual
           else if b'' == .type then .ok sorry
           else
             match subCheckSubstMatch fuel tyCtx seen a'' b'' with
-            | .ok deriv => .ok sorry
+            | .ok _deriv => .ok sorry
             | .outOfFuel => .outOfFuel
             | .error s => .error s
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
