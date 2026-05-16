@@ -314,19 +314,114 @@ def evalSubst_equiv_open'
             simp only at h; simp only [Outcome.ok.injEq] at h; subst h
             exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
 
+/-- Strip LHS ascription: extract the annotation type from `.asc`. -/
+def stripAscL (e : Expr) : Expr :=
+  match e with | .asc _ ty => ty | x => x
+
+/-- Strip RHS ascription: extract the inner term from `.asc`. -/
+def stripAscR (e : Expr) : Expr :=
+  match e with | .asc inner _ => inner | x => x
+
 /-- LHS asc strip: `a' ⊑ stripAscL a'`. -/
 def stripAscL_super (S : Seen) (Γ : Ctx) (a' : Expr) :
-    Subtype' S Γ a' (match a' with | .asc _ ty => ty | x => x) :=
+    Subtype' S Γ a' (stripAscL a') :=
   match a' with
   | .asc _ _ => .asc_L_ann (.refl _)
   | .bvar _ | .lam _ _ | .app _ _ | .type | .bot | .iota _ _ | .fix _ _ | .letE _ _ => .refl _
 
 /-- RHS asc strip: `stripAscR b' ⊑ b'`. -/
 def stripAscR_sub (S : Seen) (Γ : Ctx) (b' : Expr) :
-    Subtype' S Γ (match b' with | .asc e _ => e | x => x) b' :=
+    Subtype' S Γ (stripAscR b') b' :=
   match b' with
   | .asc _ _ => .asc_R (.refl _)
   | .bvar _ | .lam _ _ | .app _ _ | .type | .bot | .iota _ _ | .fix _ _ | .letE _ _ => .refl _
+
+
+/-! ### exposePi derivation helpers (computable)
+
+These produce `Subtype'` derivations witnessing that `exposePi` (which
+unfolds fix/iota wrappers to expose a Π) preserves subtyping. Used by
+`synthNeutralWithDeriv` to construct the derivation for the `.app` case. -/
+
+/-- Computable inner-loop derivation for `exposePi.go`: if `go n e = some piExpr`
+and we have `Subtype' S Γ inhab e`, produce `Subtype' S Γ inhab piExpr`. -/
+def exposePi_go_deriv (fuel : Nat) (inhab : Expr) (S : Seen) (Γ : Ctx)
+    : (n : Nat) → (e piExpr : Expr) →
+      Subtype' S Γ inhab e →
+      exposePi.go fuel inhab n e = some piExpr →
+      Subtype' S Γ inhab piExpr := by
+  intro n
+  induction n with
+  | zero =>
+    intro e piExpr hsub hgo
+    simp only [exposePi.go] at hgo
+    cases e <;> (simp only [Option.some.injEq] at hgo; subst hgo; exact hsub)
+  | succ m ih =>
+    intro e piExpr hsub hgo
+    match e with
+    | .lam dom body =>
+      simp only [exposePi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .fix ann body =>
+      simp only [exposePi.go] at hgo
+      match hev : evalSubst fuel 4 (body.subst 0 (.fix ann body)) with
+      | .ok e' =>
+        rw [hev] at hgo
+        have ⟨_, hfwd⟩ := evalSubst_equiv_open' S Γ hev
+        have step_unfold : Subtype' S Γ (.fix ann body)
+            (body.subst 0 (.fix ann body)) :=
+          .unfold_fix_L (.refl _)
+        have hsub' : Subtype' S Γ inhab e' :=
+          .trans hsub (.trans step_unfold hfwd)
+        exact ih e' piExpr hsub' hgo
+      | .outOfFuel => rw [hev] at hgo; cases hgo
+      | .error _ => rw [hev] at hgo; cases hgo
+    | .iota _ann _body =>
+      simp only [exposePi.go] at hgo
+      match hev : evalSubst fuel 4 (_body.subst 0 inhab) with
+      | .ok e' =>
+        rw [hev] at hgo
+        have ⟨_, hfwd⟩ := evalSubst_equiv_open' S Γ hev
+        have step_elim : Subtype' S Γ inhab (_body.subst 0 inhab) :=
+          .iota_elim hsub
+        have hsub' : Subtype' S Γ inhab e' :=
+          .trans step_elim hfwd
+        exact ih e' piExpr hsub' hgo
+      | .outOfFuel => rw [hev] at hgo; cases hgo
+      | .error _ => rw [hev] at hgo; cases hgo
+    | .bot => simp only [exposePi.go] at hgo; cases hgo
+    | .bvar _ =>
+      simp only [exposePi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .type =>
+      simp only [exposePi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .app _ _ =>
+      simp only [exposePi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .asc _ _ =>
+      simp only [exposePi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+    | .letE _ _ =>
+      simp only [exposePi.go] at hgo
+      injection hgo with hgo; subst hgo; exact hsub
+
+/-- Computable `exposePi` soundness: if `exposePi fuel inhab ty = some piExpr`
+and `Subtype' S Γ inhab ty`, then `Subtype' S Γ inhab piExpr`. -/
+def exposePi_deriv
+    {fuel : Nat} {inhab ty piExpr : Expr} (S : Seen) (Γ : Ctx)
+    (hsub_inhab : Subtype' S Γ inhab ty)
+    (h : exposePi fuel inhab ty = some piExpr) :
+    Subtype' S Γ inhab piExpr := by
+  unfold exposePi at h
+  match hev : evalSubst fuel unfBound ty with
+  | .ok ty' =>
+    rw [hev] at h
+    have ⟨_, hfwd⟩ := evalSubst_equiv_open' S Γ hev
+    exact exposePi_go_deriv fuel inhab S Γ
+      unfBound ty' piExpr (.trans hsub_inhab hfwd) h
+  | .outOfFuel => rw [hev] at h; cases h
+  | .error _ => rw [hev] at h; cases h
 
 /-! ### Structural subtype checker -/
 
@@ -339,29 +434,43 @@ mutual
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
-      match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
-      | .ok a', .ok b' =>
-          let a'' := match a' with | .asc _ ty => ty | x => x
-          let b'' := match b' with | .asc e _ => e | x => x
-          if a'' == b'' then .ok sorry
-          else if seen.any (fun (d, av, bv) => d == tyCtx.length && a'' == av && b'' == bv) then .ok sorry
-          else if b'' == .type then .ok sorry
+      match h₁ : evalSubst (fuel + 1) unfBound a with
+      | .ok a' =>
+        match h₂ : evalSubst (fuel + 1) unfBound b with
+        | .ok b' =>
+          -- Strip ascriptions from WHNF forms
+          let a'' := stripAscL a'
+          let b'' := stripAscR b'
+          -- Bridge proofs: a ⊑ a'' and b'' ⊑ b
+          have ha : Subtype' seen tyCtx a a'' :=
+            (evalSubst_equiv_open' seen tyCtx h₁).2.trans (stripAscL_super seen tyCtx a')
+          have hb : Subtype' seen tyCtx b'' b :=
+            (stripAscR_sub seen tyCtx b').trans (evalSubst_equiv_open' seen tyCtx h₂).1
+          if heq : a'' = b'' then .ok (ha.trans (heq ▸ hb))
+          else if hseen : seen.any (fun (d, av, bv) => d == tyCtx.length && a'' == av && b'' == bv)
+          then .ok (ha.trans (.trans (.hyp_here (by
+            have hany := List.any_eq_true.mp hseen
+            obtain ⟨⟨d, av, bv⟩, hmem, hpred⟩ := hany
+            simp only [Bool.and_eq_true, beq_iff_eq] at hpred
+            obtain ⟨⟨hd, hav⟩, hbv⟩ := hpred
+            subst hd; subst hav; subst hbv; exact hmem)) hb))
+          else if htype : b'' = .type then .ok (ha.trans (.trans (.top a'') (htype ▸ hb)))
           else
             match subCheckSubstMatch fuel tyCtx seen a'' b'' with
-            | .ok _deriv => .ok sorry
+            | .ok deriv => .ok (ha.trans (deriv.trans hb))
             | .outOfFuel => .outOfFuel
             | .error s => .error s
-      | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
-      | .error s, _ | _, .error s => .error s
+        | .outOfFuel => .outOfFuel
+        | .error s => .error s
+      | .outOfFuel => .outOfFuel
+      | .error s => .error s
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
-  /-- Per-shape case-split. Uses `sorry` for derivation construction
-      in arms that need eval bridges or seen-set manipulation.
-      These will be filled in incrementally. -/
+  /-- Per-shape case-split on the WHNF-stripped forms `a`, `b`.
+      Each arm constructs the `Subtype'` derivation explicitly. -/
   def subCheckSubstMatch (fuel : Nat) (tyCtx : TyCtx)
-      (seen : Seen) (a b : Expr) : Outcome (Subtype' seen tyCtx a b) := by
-    exact
+      (seen : Seen) (a b : Expr) : Outcome (Subtype' seen tyCtx a b) :=
     match a, b with
     | .bot, _ => .ok .bot_L
     | .lam _domA _bodyA, .lam domB bodyB =>
@@ -386,14 +495,14 @@ mutual
         match structural with
         | .ok deriv => .ok deriv
         | _ =>
-          let seen' := (tyCtx.length, Expr.iota _annA _bodyA, Expr.iota annB bodyB) :: seen
-          match subCheckSubst fuel tyCtx seen' (.iota _annA _bodyA) annB with
-          | .ok _annDeriv =>
-              let bodyB' := bodyB.subst 0 (.iota _annA _bodyA)
-              match evalSubst (fuel + 1) unfBound bodyB' with
+          match subCheckSubst fuel tyCtx ((tyCtx.length, Expr.iota _annA _bodyA, Expr.iota annB bodyB) :: seen) (.iota _annA _bodyA) annB with
+          | .ok annDeriv =>
+              match hev : evalSubst (fuel + 1) unfBound (bodyB.subst 0 (.iota _annA _bodyA)) with
               | .ok bodyB'' =>
-                  match subCheckSubst fuel tyCtx seen' (.iota _annA _bodyA) bodyB'' with
-                  | .ok _bodyDeriv => .ok sorry
+                  match subCheckSubst fuel tyCtx ((tyCtx.length, Expr.iota _annA _bodyA, Expr.iota annB bodyB) :: seen) (.iota _annA _bodyA) bodyB'' with
+                  | .ok bodyDeriv =>
+                      have hbridge := (evalSubst_equiv_open' ((tyCtx.length, Expr.iota _annA _bodyA, Expr.iota annB bodyB) :: seen) tyCtx hev).1
+                      .ok (.iota_intro annDeriv (bodyDeriv.trans hbridge))
                   | .outOfFuel => .outOfFuel
                   | .error s => .error s
               | .outOfFuel => .outOfFuel
@@ -413,96 +522,108 @@ mutual
         match structural with
         | .ok deriv => .ok deriv
         | _ =>
-          let seen' := (tyCtx.length, Expr.fix _annA _bodyA, Expr.fix annB bodyB) :: seen
-          let unfolded := bodyB.subst 0 (.fix annB bodyB)
-          match evalSubst (fuel + 1) unfBound unfolded with
+          match hev : evalSubst (fuel + 1) unfBound (bodyB.subst 0 (.fix annB bodyB)) with
           | .ok b' =>
-              match subCheckSubst fuel tyCtx seen' (.fix _annA _bodyA) b' with
-              | .ok _deriv => .ok sorry
+              match subCheckSubst fuel tyCtx ((tyCtx.length, Expr.fix _annA _bodyA, Expr.fix annB bodyB) :: seen) (.fix _annA _bodyA) b' with
+              | .ok deriv =>
+                  have hbridge := (evalSubst_equiv_open' ((tyCtx.length, Expr.fix _annA _bodyA, Expr.fix annB bodyB) :: seen) tyCtx hev).1
+                  .ok (.unfold_fix_R (deriv.trans hbridge))
               | .outOfFuel => .outOfFuel
               | .error s => .error s
           | .outOfFuel => .outOfFuel
           | .error _ => .error "fix fallback: eval failed"
-    | _, .iota ann bodyB =>
-        let seen' := (tyCtx.length, a, .iota ann bodyB) :: seen
-        match subCheckSubst fuel tyCtx seen' a ann with
-        | .ok _annDeriv =>
-            let bodyB' := bodyB.subst 0 a
-            match evalSubst (fuel + 1) unfBound bodyB' with
+    | a, .iota ann bodyB =>
+        match subCheckSubst fuel tyCtx ((tyCtx.length, a, .iota ann bodyB) :: seen) a ann with
+        | .ok annDeriv =>
+            match hev : evalSubst (fuel + 1) unfBound (bodyB.subst 0 a) with
             | .ok bodyB'' =>
-                match subCheckSubst fuel tyCtx seen' a bodyB'' with
-                | .ok _bodyDeriv => .ok sorry
+                match subCheckSubst fuel tyCtx ((tyCtx.length, a, .iota ann bodyB) :: seen) a bodyB'' with
+                | .ok bodyDeriv =>
+                    have hbridge := (evalSubst_equiv_open' ((tyCtx.length, a, .iota ann bodyB) :: seen) tyCtx hev).1
+                    .ok (.iota_intro annDeriv (bodyDeriv.trans hbridge))
                 | .outOfFuel => .outOfFuel
                 | .error s => .error s
             | .outOfFuel => .outOfFuel
             | .error _ => .error "iotaIntro: eval body failed"
         | .outOfFuel => .outOfFuel
         | .error s => .error s
-    | _, .fix _ann bodyB =>
+    | a, .fix _ann bodyB =>
+        -- Try neutral ascent: if `a` is neutral with synthesized type = target fix
         if isNeutral a then
-          match synthNeutralType fuel tyCtx a with
-          | .ok (some ty) =>
-              if ty == Expr.fix _ann bodyB then .ok sorry
+          match synthNeutralWithDeriv fuel tyCtx seen a with
+          | .ok (some ⟨ty, haDeriv⟩) =>
+              if heq : ty = Expr.fix _ann bodyB then
+                .ok (heq ▸ haDeriv)
               else
-                let seen' := (tyCtx.length, a, Expr.fix _ann bodyB) :: seen
-                let unfolded := bodyB.subst 0 (.fix _ann bodyB)
-                match evalSubst (fuel + 1) unfBound unfolded with
+                match hev : evalSubst (fuel + 1) unfBound (bodyB.subst 0 (.fix _ann bodyB)) with
                 | .ok b' =>
-                    match subCheckSubst fuel tyCtx seen' a b' with
-                    | .ok _deriv => .ok sorry
+                    match subCheckSubst fuel tyCtx ((tyCtx.length, a, Expr.fix _ann bodyB) :: seen) a b' with
+                    | .ok deriv =>
+                        have hbridge := (evalSubst_equiv_open' ((tyCtx.length, a, Expr.fix _ann bodyB) :: seen) tyCtx hev).1
+                        .ok (.unfold_fix_R (deriv.trans hbridge))
                     | .outOfFuel => .outOfFuel
                     | .error s => .error s
                 | .outOfFuel => .outOfFuel
                 | .error _ => .error "unfoldFixR: eval failed"
           | _ =>
-              let seen' := (tyCtx.length, a, Expr.fix _ann bodyB) :: seen
-              let unfolded := bodyB.subst 0 (.fix _ann bodyB)
-              match evalSubst (fuel + 1) unfBound unfolded with
+              match hev : evalSubst (fuel + 1) unfBound (bodyB.subst 0 (.fix _ann bodyB)) with
               | .ok b' =>
-                  match subCheckSubst fuel tyCtx seen' a b' with
-                  | .ok _deriv => .ok sorry
+                  match subCheckSubst fuel tyCtx ((tyCtx.length, a, Expr.fix _ann bodyB) :: seen) a b' with
+                  | .ok deriv =>
+                      have hbridge := (evalSubst_equiv_open' ((tyCtx.length, a, Expr.fix _ann bodyB) :: seen) tyCtx hev).1
+                      .ok (.unfold_fix_R (deriv.trans hbridge))
                   | .outOfFuel => .outOfFuel
                   | .error s => .error s
               | .outOfFuel => .outOfFuel
               | .error _ => .error "unfoldFixR: eval failed"
         else
-          let seen' := (tyCtx.length, a, Expr.fix _ann bodyB) :: seen
-          let unfolded := bodyB.subst 0 (.fix _ann bodyB)
-          match evalSubst (fuel + 1) unfBound unfolded with
+          match hev : evalSubst (fuel + 1) unfBound (bodyB.subst 0 (.fix _ann bodyB)) with
           | .ok b' =>
-              match subCheckSubst fuel tyCtx seen' a b' with
-              | .ok _deriv => .ok sorry
+              match subCheckSubst fuel tyCtx ((tyCtx.length, a, Expr.fix _ann bodyB) :: seen) a b' with
+              | .ok deriv =>
+                  have hbridge := (evalSubst_equiv_open' ((tyCtx.length, a, Expr.fix _ann bodyB) :: seen) tyCtx hev).1
+                  .ok (.unfold_fix_R (deriv.trans hbridge))
               | .outOfFuel => .outOfFuel
               | .error s => .error s
           | .outOfFuel => .outOfFuel
           | .error _ => .error "unfoldFixR: eval failed"
-    | .fix _ann bodyA, _ =>
-        let seen' := (tyCtx.length, Expr.fix _ann bodyA, b) :: seen
-        let unfolded := bodyA.subst 0 (.fix _ann bodyA)
-        match evalSubst (fuel + 1) unfBound unfolded with
+    | .fix _ann bodyA, b =>
+        match hev : evalSubst (fuel + 1) unfBound (bodyA.subst 0 (.fix _ann bodyA)) with
         | .ok a' =>
             if a' == Expr.fix _ann bodyA then .error "unfoldFixL: fixpoint"
             else
-              match subCheckSubst fuel tyCtx seen' a' b with
-              | .ok _deriv => .ok sorry
+              match subCheckSubst fuel tyCtx ((tyCtx.length, Expr.fix _ann bodyA, b) :: seen) a' b with
+              | .ok deriv =>
+                  have hbridge := (evalSubst_equiv_open' ((tyCtx.length, Expr.fix _ann bodyA, b) :: seen) tyCtx hev).2
+                  .ok (.unfold_fix_L (hbridge.trans deriv))
               | .outOfFuel => .outOfFuel
               | .error s => .error s
         | .outOfFuel => .outOfFuel
         | .error _ => .error "unfoldFixL: eval failed"
-    | .iota _ann bodyA, _ =>
-        let seen' := (tyCtx.length, Expr.iota _ann bodyA, b) :: seen
-        let unfolded := bodyA.subst 0 (.iota _ann bodyA)
-        match evalSubst (fuel + 1) unfBound unfolded with
+    | .iota _ann bodyA, b =>
+        match hev : evalSubst (fuel + 1) unfBound (bodyA.subst 0 (.iota _ann bodyA)) with
         | .ok a' =>
             if a' == Expr.iota _ann bodyA then .error "unfoldIotaL: fixpoint"
             else
-              match subCheckSubst fuel tyCtx seen' a' b with
-              | .ok _deriv => .ok sorry
+              match subCheckSubst fuel tyCtx ((tyCtx.length, Expr.iota _ann bodyA, b) :: seen) a' b with
+              | .ok deriv =>
+                  have hbridge := (evalSubst_equiv_open' ((tyCtx.length, Expr.iota _ann bodyA, b) :: seen) tyCtx hev).2
+                  .ok (.unfold_iota_L (hbridge.trans deriv))
               | .outOfFuel => .outOfFuel
               | .error s => .error s
         | .outOfFuel => .outOfFuel
         | .error _ => .error "unfoldIotaL: eval failed"
-    | _, _ => sorry
+    | a, b =>
+        -- Neutral handling: try spine comparison, then neutral ascent
+        if isNeutral a then
+          match subCheckSpine fuel tyCtx seen a b with
+          | .ok deriv => .ok deriv
+          | _ =>
+            match neutralAscent fuel tyCtx seen a b with
+            | .ok deriv => .ok deriv
+            | .outOfFuel => .outOfFuel
+            | .error s => .error s
+        else .error "shape mismatch"
   termination_by (fuel, 1)
   decreasing_by all_goals (simp_wf; omega)
 
@@ -532,19 +653,60 @@ mutual
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
+  /-- Synthesise the type of a neutral spine and produce a derivation
+      that the neutral is a subtype of that type. -/
+  def synthNeutralWithDeriv (fuel : Nat) (tyCtx : TyCtx) (seen : Seen)
+      (a : Expr) : Outcome (Option (Σ ty : Expr, Subtype' seen tyCtx a ty)) :=
+    match fuel with
+    | 0 => .outOfFuel
+    | fuel + 1 =>
+      match a with
+      | .bvar k =>
+          match hget : tyCtx.get? k with
+          | some ty => .ok (some ⟨ty.shift (k + 1) 0, .bvar hget⟩)
+          | none => .ok none
+      | .fix ann _ =>
+          match hev : evalSubst (fuel + 1) unfBound ann with
+          | .ok ann' =>
+              let hbridge := (evalSubst_equiv_open' seen tyCtx hev).2
+              .ok (some ⟨ann', .trans .fix_ann hbridge⟩)
+          | _ => .ok none
+      | .app f arg =>
+          match synthNeutralWithDeriv fuel tyCtx seen f with
+          | .ok (some ⟨fTy, hfDeriv⟩) =>
+              match hwp : exposePi fuel f fTy with
+              | some (.lam _dom retTy) =>
+                  let retTy' := retTy.subst 0 arg
+                  match hev : evalSubst (fuel + 1) unfBound retTy' with
+                  | .ok r =>
+                      let hfPi := exposePi_deriv seen tyCtx hfDeriv hwp
+                      let hApp := Subtype'.app_elim hfPi
+                      let hbridge := (evalSubst_equiv_open' seen tyCtx hev).2
+                      .ok (some ⟨r, hApp.trans hbridge⟩)
+                  | _ => .ok none
+              | _ => .ok none
+          | .ok none => .ok none
+          | .outOfFuel => .outOfFuel
+          | .error s => .error s
+      | _ => .ok none
+  termination_by (fuel, 0)
+  decreasing_by all_goals (simp_wf; omega)
+
   /-- Synthesise the type of a neutral spine and check against `b`. -/
   def neutralAscent (fuel : Nat) (tyCtx : TyCtx)
       (seen : Seen) (a b : Expr) : Outcome (Subtype' seen tyCtx a b) :=
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
-      match synthNeutralType fuel tyCtx a with
-      | .ok (some ty) =>
+      match synthNeutralWithDeriv fuel tyCtx seen a with
+      | .ok (some ⟨ty, haDeriv⟩) =>
           match subCheckSubst fuel tyCtx seen ty b with
-          | .ok tyB => .ok sorry  -- needs: a ⊑ ty (from synth) composed with tyB
+          | .ok tyB => .ok (haDeriv.trans tyB)
           | .outOfFuel => .outOfFuel
           | .error s => .error s
-      | _ => .error "neutralAscent: synth failed"
+      | .ok none => .error "neutralAscent: synth failed"
+      | .outOfFuel => .outOfFuel
+      | .error s => .error s
   termination_by (fuel, 0)
   decreasing_by all_goals (simp_wf; omega)
 
@@ -595,7 +757,7 @@ def subCheck (fuel : Nat) (a b : Expr) : Outcome Bool :=
   match subCheckSubst fuel [] [] a b with
   | .ok _ => .ok true
   | .outOfFuel => .outOfFuel
-  | .error s => .error s
+  | .error _ => .ok false
 
 /-! ## Open-context API for `TyCheck` and `API`
 
@@ -632,7 +794,7 @@ def subCheckOpen (fuel : Nat) (tyCtx : TyCtx) (a b : Expr) :
   match subCheckSubst fuel tyCtx [] a b with
   | .ok _ => .ok true
   | .outOfFuel => .outOfFuel
-  | .error s => .error s
+  | .error _ => .ok false
 
 /-- Walk a neutral spine to compute its declarative type, looking
 up bvars in `tyCtx` and applying argument types through `Π` bodies
