@@ -212,6 +212,13 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   /-- Ascription on RHS: content is the inner value. -/
   | asc_R {S Γ a e τ} :
       Subtype' S Γ a e → Subtype' S Γ a (.asc e τ)
+  /-- Fixpoint annotation ascent: `fix A. body ⊑ A`.
+      The annotation records the fixpoint's type; the type checker
+      enforces `body[self := fix A. body] : A`, so `fix A. body : A`.
+      This is the ELIMINATION direction (trusting the annotation);
+      the old INTRODUCTION direction (`a ⊑ A → a ⊑ fix A. body`)
+      was unsound and was removed. -/
+  | fix_ann {S Γ ann body} : Subtype' S Γ (.fix ann body) ann
   /-- `[S-BotL]`: Bot is the universal lower bound. `Bot ⊑ e` for
       every `e`. No matching `bot_R` rule — Bot is only ⊑ Bot, and
       that's `[S-Refl]`. See `docs/ideas/bottom.md`. -/
@@ -276,6 +283,7 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
   | asc_L _ ih => exact .asc_L (ih hsub)
   | asc_L_ann _ ih => exact .asc_L_ann (ih hsub)
   | asc_R _ ih => exact .asc_R (ih hsub)
+  | fix_ann => exact .fix_ann
   | bot_L => exact .bot_L
 
 /-- `.hyp` specialised to same-depth use: an entry recorded
@@ -693,6 +701,10 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     intro Γpfx hpfx
     simp only [Expr.shift]
     exact .asc_R (ih Γpfx hpfx)
+  | fix_ann =>
+    intro Γpfx _
+    simp only [Expr.shift]
+    exact .fix_ann
   | bot_L =>
     intro Γpfx _
     simp only [Expr.shift]
@@ -874,6 +886,7 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
   | asc_L _ ih => exact fun Γ' hΔ => .asc_L (ih Γ' hΔ)
   | asc_L_ann _ ih => exact fun Γ' hΔ => .asc_L_ann (ih Γ' hΔ)
   | asc_R _ ih => exact fun Γ' hΔ => .asc_R (ih Γ' hΔ)
+  | fix_ann => exact fun _ _ => .fix_ann
   | bot_L => exact fun _ _ => .bot_L
 
 /-- Head-position context narrowing: replacing `Γ`'s innermost

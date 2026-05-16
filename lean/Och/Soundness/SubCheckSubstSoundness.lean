@@ -356,17 +356,21 @@ private noncomputable def synthNeutralType_to_sub
   | fix ann body =>
     -- synthNeutralType for (.fix ann body) returns evalSubst ann = ann'.
     -- We need: Subtype' S Γ (.fix ann body) ann'.
-    -- Using the eval bridge, ann' ⊑ ann ∧ ann ⊑ ann'.
-    -- So it suffices to show (.fix ann body) ⊑ ann.
-    -- However, Subtype' has no "fix annotation ascent" rule (fix_ann).
-    -- The available rule is unfold_fix_L: (.fix ann body) ⊑ c if
-    -- body[self:=fix ann body] ⊑ c. To use this, we'd need
-    -- body[self:=fix ann body] ⊑ ann, which is the well-typedness
-    -- condition of the fixpoint — not available as a Subtype' premise.
-    -- A dedicated Subtype' rule `fix_ann : Subtype' S Γ (.fix ann body) ann`
-    -- would close this directly but requires soundness justification
-    -- (the annotation records the type; the type checker enforces it).
-    sorry
+    -- fix_ann gives (.fix ann body) ⊑ ann, and evalSubst_equiv_open
+    -- gives ann ⊑ ann'. Compose via trans.
+    cases n with
+    | zero => rw [synthNeutralType.eq_def] at h; cases h
+    | succ m =>
+      rw [synthNeutralType.eq_def] at h; simp only [] at h
+      match hev : evalSubst (m + 1) unfBound ann with
+      | .ok ann' =>
+        rw [hev] at h
+        simp only [Outcome.ok.injEq, Option.some.injEq] at h
+        subst h
+        have ⟨_, hfwd⟩ := evalSubst_equiv_open S Γ hev
+        exact .trans .fix_ann hfwd
+      | .outOfFuel => rw [hev] at h; simp at h
+      | .error _ => rw [hev] at h; simp at h
   | _ =>
     -- Other cases: synthNeutralType returns .ok none or .outOfFuel
     cases n with
