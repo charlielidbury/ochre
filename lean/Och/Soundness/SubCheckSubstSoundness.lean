@@ -26,23 +26,31 @@ By induction on `fuel`:
 
 ## Sorry inventory (this file)
 
-- `subCheckSubst_sound_gen` fuel-inductive step: sorry'd due to
-  match-unfolding difficulties with the mutual def's equation lemma.
-  The proof obligation is clear (see comments) and each sub-case
-  independently closable.
-- `subCheckSubstMatch_sound_gen` arms:
-  - `lam, lam`: CLOSED
-  - `bot, _`: CLOSED
-  - All other arms: sorry'd (iota-iota, fix-fix, fallbacks, neutral)
-- `seen_hit` in `subCheckSubst_sound_gen`: needs depth-tag + shift invariant
-- `Och_subCheck_sound`: sorry'd (depends on API-level bridge)
+- `subCheckSubst_ite_sound` seen-set hit: needs depth-tag + shift
+  invariant to connect `List.any` match to `Subtype'.hyp`.
+- `subCheckSubstMatch_sound_gen` neutral arms:
+  - `(bvar, .fix)`: neutral LHS with synthNeutralType check
+  - `(bvar, _)`: neutral spine compare + neutralAscent
+  - `(app, .fix)`: neutral LHS with synthNeutralType check
+  - `(app, _)`: neutral spine compare + neutralAscent
+  These require proving soundness of `subCheckSpine` and
+  `synthNeutralType`/`neutralAscent`, connecting to `Subtype'.bvar`
+  and `Subtype'.app_cong`.
 
 ## Closed results
 
 - `evalSubst_equiv_open`: eval bridge for open terms (no sorry)
-- `stripAscL_super`, `stripAscR_sub`: ascription stripping bridge (no sorry)
-- `subCheckSubst_sound`: top-level composition (no sorry except in callees)
-- `subCheckSubstMatch_sound_gen` lam-lam arm (no sorry)
+- `stripAscL_super`, `stripAscR_sub`: ascription stripping bridge
+- `subCheckSubst_ite_sound`: equality, top, and match-delegation paths
+- `subCheckSubst_sound_gen`: fuel-inductive step (modulo ite_sound sorry)
+- `subCheckSubst_sound`: top-level composition
+- `Och_subCheck_sound`: surface-level bridge
+- `subCheckSubstMatch_sound_gen` closed arms:
+  - `bot, _`; `lam, lam`; all `(_, .iota)` iotaIntro;
+  - all `(.iota, _)` unfoldIotaL; all `(.fix, _)` unfoldFixL;
+  - `(iota, iota)` structural+fallback; `(fix, fix)` structural+fallback;
+  - non-neutral `(_, .fix)` unfoldFixR (type, asc, letE, lam, iota);
+  - all impossible arms (type/asc/letE/lam with non-matching b)
 -/
 
 namespace Och.Soundness
