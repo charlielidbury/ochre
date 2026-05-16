@@ -234,6 +234,8 @@ private noncomputable def subCheckSubstMatch_sound_gen
 
 /-! ## Soundness for `subCheckSubst` -/
 
+set_option maxHeartbeats 800000
+
 /-- Generalized soundness for `subCheckSubst` at any fuel/context/seen.
 
     The proof is by induction on fuel. At fuel `n+1`:
@@ -252,7 +254,36 @@ private noncomputable def subCheckSubst_sound_gen
     Subtype' S Γ a b := by
   induction fuel generalizing Γ S a b with
   | zero => unfold subCheckSubst at h; cases h
-  | succ n ih => sorry
+  | succ n ih =>
+    -- Unfold one step using the equation lemma
+    rw [subCheckSubst.eq_def] at h; simp only [] at h
+    -- Generalize and case-split on eval results
+    generalize hea : evalSubst (n + 1) unfBound a = ra at h
+    generalize heb : evalSubst (n + 1) unfBound b = rb at h
+    cases ra with
+    | outOfFuel => cases rb <;> simp_all
+    | error s => cases rb <;> simp_all
+    | ok a' =>
+      cases rb with
+      | outOfFuel => cases h
+      | error s => cases h
+      | ok b' =>
+        -- After cases, the match on (.ok a', .ok b') reduces
+        simp only [] at h
+        -- Now h is about the if-then-else chain.
+        -- The eval bridge connects a to a' and b to b'; the asc strip
+        -- bridges connect a' to strip(a') and strip(b') to b'.
+        -- The IH handles the match delegation to subCheckSubstMatch.
+        --
+        -- The remaining obligations:
+        -- 1. refl fast path: strip(a') = strip(b') → Subtype' S Γ a b
+        -- 2. seen hit: (d, strip(a'), strip(b')) ∈ S → Subtype' S Γ a b
+        -- 3. top: strip(b') = Type → Subtype' S Γ a b
+        -- 4. match: subCheckSubstMatch n Γ S strip(a') strip(b') = ok true
+        --    → Subtype' S Γ a b (via subCheckSubstMatch_sound_gen)
+        --
+        -- Each is closable by composing eval bridge + asc strip + the IH.
+        sorry
 
 /-- The main soundness theorem for the structural subtype checker. -/
 noncomputable def subCheckSubst_sound
