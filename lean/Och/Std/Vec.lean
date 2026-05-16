@@ -1,6 +1,5 @@
 import Och.Macro
 import Och.Eval
-import Och.TyCheck
 import Och.EvalSubst
 import Och.Std.DNat
 import Och.Std.Unit
@@ -162,13 +161,9 @@ example :
 --
 -- The public API `Och.synth` currently runs `tyInfer` for
 -- diagnostics but on `.error` falls back to `evalSubst` — the
--- bidirectional walk is incomplete on plenty of well-formed Std
--- programs (`succ_`, `mkVec`, `appendVec` itself), so its
--- `.error` outcomes can't be trusted as "definitely ill-typed".
--- This pin asserts the `tyInfer`-level rejection. Closing the
--- public-surface boundary requires the bidirectional-completeness
--- work documented in `Och/API.lean`.
-example : (TyCheck.tyInfer 200 #[] appendVec_wrong).isError
+-- synthCore correctly rejects the bug: arr2 (: Array_ n2 T) is passed
+-- where Array_ n1 T is expected, and n2 ≠ n1.
+example : (Och.synth appendVec_wrong 200).isError
        = true := by native_decide
 
 -- ── Concrete appendVec ──────────────────────────────────────

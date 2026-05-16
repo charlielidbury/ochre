@@ -1,4 +1,3 @@
-import Och.TyCheck
 import Och.Eval
 import Och.EvalSubst
 import Och.API

@@ -5,7 +5,6 @@ import Och.Soundness
 import Och.Std
 import Och.Macro
 import Och.EvalSubst
-import Och.TyCheck
 import Och.API
 
 /-!

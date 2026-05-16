@@ -1,6 +1,5 @@
 import Och.Syntax
 import Och.EvalSubst
-import Och.TyCheck
 import Och.API
 import Och.Std
 import Och.Macro

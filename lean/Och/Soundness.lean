@@ -2,7 +2,6 @@ import Och.Syntax
 import Och.Eval
 import Och.Subtyping
 import Och.EvalSubst
-import Och.TyCheck
 import Och.API
 import Och.Soundness.ConcEvalPreservation
 import Och.Soundness.SynthProgress

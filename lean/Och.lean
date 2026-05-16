@@ -4,7 +4,6 @@ import Och.Macro
 import Och.Outcome
 import Och.Eval
 import Och.EvalSubst
-import Och.TyCheck
 import Och.API
 import Och.Subtyping
 import Och.Soundness
@@ -59,13 +58,8 @@ intended user surface):
                      Most everything here is already `private`;
                      `subCheck` and `evalSubst` are the only
                      externally-consumed pieces.
-- `Och.TyCheck`    — bidirectional walk (`tyInfer`/`tyCheck`).
-                     Only `tyInfer` is referenced externally
-                     (from `Och.API.synth` and a handful of
-                     `tyInfer.isError` pins in `SoundnessAudit`
-                     / `Std/Vec` / `Std/Array` that test the
-                     bidirectional rejection at the internal
-                     level).
+- `Och.TyCheck`    — REMOVED. The bidirectional walk was
+                     superseded by `synthCore` (API.lean).
 
 Tests / audit / std-library / probes (built so their
 `native_decide` pins and witnesses are verified):

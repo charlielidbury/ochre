@@ -2,7 +2,6 @@ import Och.Macro
 import Och.Eval
 import Och.Std.Bool
 import Och.EvalSubst
-import Och.TyCheck
 import Och.API
 
 /-!

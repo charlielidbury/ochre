@@ -1,4 +1,3 @@
-import Och.TyCheck
 import Och.EvalSubst
 import Och.Std.DNat
 import Och.Std.Unit

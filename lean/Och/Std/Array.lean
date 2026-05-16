@@ -1,7 +1,6 @@
 import Och.Macro
 import Och.Eval
 import Och.EvalSubst
-import Och.TyCheck
 import Och.Std.DNat
 import Och.Std.Unit
 import Och.Std.Pair
@@ -254,12 +253,9 @@ example : concEval 200 (och{ indexArr Nat_ three_ arr3 two_ })
 -- `three_` as an index into a length-3 array is rejected (diagonal)
 -- by the bidirectional walk in `TyCheck.tyInfer`. The public API
 -- `Och.synth` currently runs `tyInfer` for diagnostics but on
--- `.error` falls back to `evalSubst` (Och.API module doc), so
--- this pin asserts the `tyInfer` rejection rather than an `synth`
--- rejection. Closing the boundary requires fixing the
--- bidirectional incompleteness so `tyInfer.error` can be trusted.
-example : (TyCheck.tyInfer 200 #[]
-            (och{ indexArr Nat_ three_ arr3 three_ })).isError
+-- synthCore rejects: indexing arr3 (length 3) at index three_ is
+-- out of bounds — the dependent type check fails.
+example : (Och.synth (och{ indexArr Nat_ three_ arr3 three_ }) 200).isError
         = true := by native_decide
 
 end IndexArrTests
