@@ -144,7 +144,15 @@ the return value. -/
 private theorem synthCore_lam_evalSubst {n : Nat} {dom body v : Expr}
     (h : synthCore (n+1) [] (.lam dom body) = .ok v) :
     evalSubst n unfBound (.lam dom body) = .ok v := by
-  sorry
+  rw [synthCore.eq_5] at h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨okDom, hOkDom, h⟩ := h
+  split at h <;> try cases h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨domV, hDomV, h⟩ := h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨_bodyTy, _hBody, h⟩ := h
+  exact h
 
 /-- Canonical-form refl: `evalSubst n unfBound (.lam dom body) = .ok v`
 implies `v = .lam dom body`.  Combined with `synthCore_lam_evalSubst`,
@@ -168,7 +176,15 @@ private theorem evalSubst_lam_refl {n : Nat} {dom body v : Expr}
 private theorem synthCore_iota_evalSubst {n : Nat} {ann body v : Expr}
     (h : synthCore (n+1) [] (.iota ann body) = .ok v) :
     evalSubst n unfBound (.iota ann body) = .ok v := by
-  sorry
+  rw [synthCore.eq_6] at h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨okAnn, hOkAnn, h⟩ := h
+  split at h <;> try cases h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨annV, hAnnV, h⟩ := h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨_bodyTy, _hBody, h⟩ := h
+  exact h
 
 private theorem evalSubst_iota_refl {n : Nat} {ann body v : Expr}
     (h : evalSubst n unfBound (.iota ann body) = .ok v) :
@@ -182,7 +198,15 @@ private theorem evalSubst_iota_refl {n : Nat} {ann body v : Expr}
 private theorem synthCore_fix_evalSubst {n : Nat} {ann body v : Expr}
     (h : synthCore (n+1) [] (.fix ann body) = .ok v) :
     evalSubst n unfBound (.fix ann body) = .ok v := by
-  sorry
+  rw [synthCore.eq_7] at h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨okAnn, hOkAnn, h⟩ := h
+  split at h <;> try cases h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨annV, hAnnV, h⟩ := h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨_bodyTy, _hBody, h⟩ := h
+  exact h
 
 private theorem evalSubst_fix_refl {n : Nat} {ann body v : Expr}
     (h : evalSubst n unfBound (.fix ann body) = .ok v) :
@@ -209,7 +233,21 @@ the predecessor fuel `n` to the inner call. -/
 private theorem synthCore_asc_inner {n : Nat} {inner τ v : Expr}
     (h : synthCore (n+1) [] (.asc inner τ) = .ok v) :
     synthCore n [] inner = .ok v := by
-  sorry
+  rw [synthCore.eq_8] at h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨okτ, _hOkτ, h⟩ := h
+  split at h <;> try cases h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨_τV, _hτV, h⟩ := h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨vInner, hInner, h⟩ := h
+  rw [Outcome.bind_eq_ok] at h
+  obtain ⟨ok, _hOk, h⟩ := h
+  split at h
+  · cases h
+  · simp only [Outcome.ok.injEq] at h
+    subst h
+    exact hInner
 
 /-- WALL: the residual `.app` arm.  synthCore on `.app f a`
 returns `evalSubst (.app piExpr aV)`, where `piExpr` is the
