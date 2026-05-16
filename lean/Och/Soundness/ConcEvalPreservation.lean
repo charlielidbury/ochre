@@ -45,10 +45,10 @@ The "bidirectional" form is essential because `app_cong` and
 `letE_cong` are not contravariant in their right-hand subterm: to
 swap `f`/`a` for `fv`/`av` inside an application or let-binding
 we need both `x ⊑ y` and `y ⊑ x` for each pair. -/
-theorem concEval_equiv {fuel : Nat} {e e' : Expr}
+noncomputable def concEval_equiv {fuel : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' e ∧ Subtype' [] [] e e' := by
+    Subtype' [] [] e' e × Subtype' [] [] e e' := by
   induction fuel generalizing e e' with
   | zero => simp [concEval] at hstep
   | succ n ih =>
@@ -261,7 +261,7 @@ theorem concEval_equiv {fuel : Nat} {e e' : Expr}
 declarative `Subtype'`. Falls out of `concEval_equiv` by `trans`. The
 public-facing alias is `Och.Soundness.concEval_preservation` in
 `lean/Och/Soundness.lean`. -/
-theorem concEval_preservation_aux
+noncomputable def concEval_preservation_aux
     {fuel : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)

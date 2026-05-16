@@ -25,7 +25,7 @@ Since `closeAll d e = e` in the pure de Bruijn regime, these
 simplify to direct rule applications. -/
 
 /-- C2: lam-lam structural arm. -/
-theorem subCheckSubst_arm_lam_lam_struct
+def subCheckSubst_arm_lam_lam_struct
     {S : Seen} {Γ : Ctx} {d : Nat}
     {domA bodyA domB bodyB : Expr}
     (ih_dom : Subtype' S Γ (closeAll d domB) (closeAll d domA))
@@ -39,7 +39,7 @@ theorem subCheckSubst_arm_lam_lam_struct
   exact .lam ih_dom ih_body
 
 /-- C3: iota-iota structural arm. -/
-theorem subCheckSubst_arm_iota_iota_struct
+def subCheckSubst_arm_iota_iota_struct
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (ih_ann : Subtype' S Γ (closeAll d annA) (closeAll d annB))
@@ -52,7 +52,7 @@ theorem subCheckSubst_arm_iota_iota_struct
   exact .iota_cong ih_ann ih_body
 
 /-- C4: fix-fix structural arm. -/
-theorem subCheckSubst_arm_fix_fix_struct
+def subCheckSubst_arm_fix_fix_struct
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (ih_ann : Subtype' S Γ (closeAll d annA) (closeAll d annB))
@@ -73,7 +73,7 @@ API compatibility with `SubCheckSubstSoundness.lean`. -/
 /-- C2 (lam-lam) composed. The `closedAtLvl`/`lvarLT` hypotheses
     are vestigial (always true in the new regime) but retained for
     signature compatibility. -/
-theorem subCheckSubst_arm_lam_lam
+def subCheckSubst_arm_lam_lam
     {S : Seen} {Γ : Ctx} {d : Nat}
     {domA bodyA domB bodyB : Expr}
     (_hclA : True) (_hclB : True)
@@ -89,7 +89,7 @@ theorem subCheckSubst_arm_lam_lam
   exact .lam ih_dom ih_body
 
 /-- C3 (iota-iota structural) composed. -/
-theorem subCheckSubst_arm_iota_iota
+def subCheckSubst_arm_iota_iota
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (_hclA : True) (_hclB : True)
@@ -105,7 +105,7 @@ theorem subCheckSubst_arm_iota_iota
   exact .iota_cong ih_ann ih_body
 
 /-- C4 (fix-fix structural) composed. -/
-theorem subCheckSubst_arm_fix_fix
+def subCheckSubst_arm_fix_fix
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (_hclA : True) (_hclB : True)

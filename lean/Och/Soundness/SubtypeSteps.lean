@@ -44,31 +44,31 @@ namespace Subtype'
 
 /-- B1 — β-step preservation. If the redex `(λA. b) a` is a subtype of
 `τ`, so is its reduct `b[a/0]`. -/
-theorem preserve_betaStep {S : Seen} {Γ : Ctx} {A b a τ : Expr}
+def preserve_betaStep {S : Seen} {Γ : Ctx} {A b a τ : Expr}
     (h : Subtype' S Γ (.app (.lam A b) a) τ) :
     Subtype' S Γ (b.subst 0 a) τ :=
   .trans (.beta_R (.refl _)) h
 
 /-- B2.1 — ι-unfold-step preservation. -/
-theorem preserve_iotaUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
+def preserve_iotaUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
     (h : Subtype' S Γ (.iota ann body) τ) :
     Subtype' S Γ (body.subst 0 (.iota ann body)) τ :=
   .trans (.unfold_iota_R (.refl _)) h
 
 /-- B2.2 — fix-unfold-step preservation. -/
-theorem preserve_fixUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
+def preserve_fixUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
     (h : Subtype' S Γ (.fix ann body) τ) :
     Subtype' S Γ (body.subst 0 (.fix ann body)) τ :=
   .trans (.unfold_fix_R (.refl _)) h
 
 /-- B2.3 — let-step preservation. -/
-theorem preserve_letStep {S : Seen} {Γ : Ctx} {val body τ : Expr}
+def preserve_letStep {S : Seen} {Γ : Ctx} {val body τ : Expr}
     (h : Subtype' S Γ (.letE val body) τ) :
     Subtype' S Γ (body.subst 0 val) τ :=
   .trans (.letE_R (.refl _)) h
 
 /-- B2.4 — ascription-strip preservation. -/
-theorem preserve_ascStep {S : Seen} {Γ : Ctx} {e t τ : Expr}
+def preserve_ascStep {S : Seen} {Γ : Ctx} {e t τ : Expr}
     (h : Subtype' S Γ (.asc e t) τ) :
     Subtype' S Γ e τ :=
   .trans (.asc_R (.refl _)) h
@@ -83,27 +83,27 @@ The `concEval_preservation` proof only needs the L-side forms, since
 mirrors are useful when working with `Subtype'` more generally. -/
 
 /-- β-step preservation, RHS form. -/
-theorem preserve_betaStep_R {S : Seen} {Γ : Ctx} {A b a a' : Expr}
+def preserve_betaStep_R {S : Seen} {Γ : Ctx} {A b a a' : Expr}
     (h : Subtype' S Γ a' (.app (.lam A b) a)) :
     Subtype' S Γ a' (b.subst 0 a) :=
   .trans h (.beta_L (.refl _))
 
 /-- ι-unfold preservation, RHS form. -/
-theorem preserve_iotaUnfoldStep_R {S : Seen} {Γ : Ctx}
+def preserve_iotaUnfoldStep_R {S : Seen} {Γ : Ctx}
     {ann body a' : Expr}
     (h : Subtype' S Γ a' (.iota ann body)) :
     Subtype' S Γ a' (body.subst 0 (.iota ann body)) :=
   .trans h (.unfold_iota_L (.refl _))
 
 /-- fix-unfold preservation, RHS form. -/
-theorem preserve_fixUnfoldStep_R {S : Seen} {Γ : Ctx}
+def preserve_fixUnfoldStep_R {S : Seen} {Γ : Ctx}
     {ann body a' : Expr}
     (h : Subtype' S Γ a' (.fix ann body)) :
     Subtype' S Γ a' (body.subst 0 (.fix ann body)) :=
   .trans h (.unfold_fix_L (.refl _))
 
 /-- let-step preservation, RHS form. -/
-theorem preserve_letStep_R {S : Seen} {Γ : Ctx} {val body a' : Expr}
+def preserve_letStep_R {S : Seen} {Γ : Ctx} {val body a' : Expr}
     (h : Subtype' S Γ a' (.letE val body)) :
     Subtype' S Γ a' (body.subst 0 val) :=
   .trans h (.letE_L (.refl _))
@@ -111,7 +111,7 @@ theorem preserve_letStep_R {S : Seen} {Γ : Ctx} {val body a' : Expr}
 /-- asc-strip preservation, RHS form. With mixed ascription rules,
     `a' ⊑ (.asc e t)` only gives `a' ⊑ e` (via asc_R), not `a' ⊑ t`.
     The LHS form gives `(.asc e t) ⊑ t` (via asc_L). -/
-theorem preserve_ascStep_R {S : Seen} {Γ : Ctx} {e t a' : Expr}
+def preserve_ascStep_R {S : Seen} {Γ : Ctx} {e t a' : Expr}
     (h : Subtype' S Γ a' (.asc e t)) :
     Subtype' S Γ a' t :=
   .trans h (.asc_L_ann (.refl _))

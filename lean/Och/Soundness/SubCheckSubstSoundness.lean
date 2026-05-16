@@ -33,7 +33,7 @@ open SubstEval
 
 /-- The main soundness theorem for the structural subtype checker.
     Sorry'd pending rewrite for pure de Bruijn indices. -/
-theorem subCheckSubst_sound
+noncomputable def subCheckSubst_sound
     {fuel : Nat} {a b : Expr}
     (h : SubstEval.subCheck fuel a b = .ok true) :
     Subtype' [] [] a b := by
@@ -41,7 +41,7 @@ theorem subCheckSubst_sound
 
 /-- Surface-level soundness: `Och.subCheck a b fuel = .ok true →
     Subtype' [] [] a.whnf b.whnf`. -/
-theorem Och_subCheck_sound
+noncomputable def Och_subCheck_sound
     {a b : Och.WTValue} {fuel : Nat}
     (_h : Och.subCheck a b fuel = .ok true) :
     Subtype' [] [] a.whnf b.whnf := by

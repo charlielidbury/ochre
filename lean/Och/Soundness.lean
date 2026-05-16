@@ -88,7 +88,7 @@ nature of `synthCore` in `Och/API.lean` blocks structural
 induction on synth's body.  See `Soundness/SynthSound.lean`'s
 module docstring for the proof skeleton and the three paths
 that lift the wall. -/
-theorem synth_sound
+noncomputable def synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
     Subtype' [] [] e v.whnf :=
@@ -107,7 +107,7 @@ on `h` cannot extract sub-call witnesses) and (b) the v2 substitution
 bridges in the fallback arms.  The arm-lemmas themselves are proven
 modulo those internal sorries; the composition skeleton is in
 `SubCheckSubstSoundness.lean`. -/
-theorem subCheck_sound
+noncomputable def subCheck_sound
     {fuel : Nat} {a b : Och.WTValue}
     (h : Och.subCheck a b fuel = .ok true) :
     Subtype' [] [] a.whnf b.whnf :=
@@ -125,7 +125,7 @@ Subtype' [] [] e e'`). The single-direction form below falls out by
 needed because `app_cong` and `letE_cong` are not contravariant in their
 right-hand subterms, so swapping `f`/`a` in/out of an application spine
 requires both directions of `f ≡ fv` and `a ≡ av`. -/
-theorem concEval_preservation
+noncomputable def concEval_preservation
     {fuel : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)
@@ -170,7 +170,7 @@ already routes through its own (potentially walled) proof, and
 The `hsynthB` hypothesis is unused at this composition level —
 it's there so callers can be confident `b.whnf` itself is
 synth-validated (i.e. `b` is not a "smuggled" `WTValue`). -/
-theorem soundness
+noncomputable def soundness
     {fuel : Nat} {e e' : Expr} {a b : Och.WTValue}
     (hsynthA : Och.synth e fuel = .ok a)
     (_hsynthB : Och.synth b.whnf fuel = .ok b)

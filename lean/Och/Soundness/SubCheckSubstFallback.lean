@@ -29,7 +29,7 @@ theorem closeAll_zero' (e : Expr) : closeAll 0 e = e := rfl
 
 /-- iotaIntro fallback: if the engine accepts `a ⊑ ι ann. body` via
     iotaIntro, then declaratively `Subtype' S Γ a (ι ann body)`. -/
-theorem iota_intro_arm
+noncomputable def iota_intro_arm
     {S : Seen} {Γ : Ctx} {fuel : Nat}
     {a ann body : Expr} {bodyV : Expr}
     (_h_eval : evalSubst fuel unfBound (body.subst 0 a) = .ok bodyV)
@@ -38,7 +38,7 @@ theorem iota_intro_arm
   sorry
 
 /-- unfoldFixR fallback. -/
-theorem unfold_fix_R_arm
+noncomputable def unfold_fix_R_arm
     {S : Seen} {Γ : Ctx} {fuel : Nat}
     {a ann body : Expr} {unfoldedV : Expr}
     (_h_eval : evalSubst fuel unfBound (body.subst 0 (.fix ann body)) = .ok unfoldedV)
@@ -47,7 +47,7 @@ theorem unfold_fix_R_arm
   sorry
 
 /-- unfoldFixL fallback. -/
-theorem unfold_fix_L_arm
+noncomputable def unfold_fix_L_arm
     {S : Seen} {Γ : Ctx} {fuel : Nat}
     {ann body b : Expr} {unfoldedV : Expr}
     (_h_eval : evalSubst fuel unfBound (body.subst 0 (.fix ann body)) = .ok unfoldedV)
@@ -56,7 +56,7 @@ theorem unfold_fix_L_arm
   sorry
 
 /-- unfoldIotaL fallback. -/
-theorem unfold_iota_L_arm
+noncomputable def unfold_iota_L_arm
     {S : Seen} {Γ : Ctx} {fuel : Nat}
     {ann body b : Expr} {unfoldedV : Expr}
     (_h_eval : evalSubst fuel unfBound (body.subst 0 (.iota ann body)) = .ok unfoldedV)

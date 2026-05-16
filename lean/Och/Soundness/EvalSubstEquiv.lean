@@ -186,10 +186,10 @@ We prove the bidirectional equivalence on `closedAt 0` inputs. -/
 
 /-- The two-direction subtype equivalence between an expression and
 the result of `evalSubst`.  Mirrors `concEval_equiv`. -/
-theorem evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
+noncomputable def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
     (hstep : evalSubst fuel unf e = .ok e') :
-    Subtype' [] [] e' e ∧ Subtype' [] [] e e' := by
+    Subtype' [] [] e' e × Subtype' [] [] e e' := by
   induction fuel generalizing unf e e' with
   | zero => rw [evalSubst.eq_1] at hstep; cases hstep
   | succ n ih =>
@@ -400,7 +400,7 @@ theorem evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
             exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
 
 /-- B3-substrate-style preservation, derived from `evalSubst_equiv`. -/
-theorem evalSubst_preservation_aux
+noncomputable def evalSubst_preservation_aux
     {fuel unf : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)

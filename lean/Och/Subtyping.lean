@@ -74,7 +74,7 @@ The "real" subtyping judgment is `Subtype' [] Γ a b` (empty
 hypothesis set). A non-empty `S` arises only inside a
 derivation, mirroring the algorithm's seen-set growth.
 -/
-inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
+inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   /-- Coinductive hypothesis: an ancestor goal in `S` may be
   assumed, shifted from its recorded depth `d` to the
   current depth `Γ.length`. The `d ≤ Γ.length` premise
@@ -213,7 +213,7 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Prop where
 derivation under any superset `S'`. (Adding hypotheses can
 only help.) The `subCheckVal_sound` proof uses this to thread
 the algorithmic seen-set into the declarative one. -/
-theorem Subtype'.weaken {S S' Γ a b}
+noncomputable def Subtype'.weaken {S S' Γ a b}
     (hsub : ∀ p, p ∈ S → p ∈ S') (h : Subtype' S Γ a b) :
     Subtype' S' Γ a b := by
   induction h generalizing S' with
@@ -273,13 +273,13 @@ theorem Subtype'.weaken {S S' Γ a b}
 at the *current* depth needs no shift. This is the form
 the algorithmic seen-bridge uses (`subCheckVal_subV` always
 records and uses at the same `Γ`). -/
-theorem Subtype'.hyp_here {S} {Γ : Ctx} {a b}
+def Subtype'.hyp_here {S} {Γ : Ctx} {a b}
     (h : (Γ.length, a, b) ∈ S) : Subtype' S Γ a b := by
   have := Subtype'.hyp h (Nat.le_refl _)
   simpa using this
 
 /-- The old same-domain rule is derivable. -/
-theorem Subtype'.lam_body {S Γ dom body₁ body₂}
+def Subtype'.lam_body {S Γ dom body₁ body₂}
     (h : Subtype' S (dom :: Γ) body₂ body₁) :
     Subtype' S Γ (.lam dom body₂) (.lam dom body₁) :=
   .lam (.refl dom) h
@@ -287,21 +287,21 @@ theorem Subtype'.lam_body {S Γ dom body₁ body₂}
 /-- Head congruence: derivable from `app_cong` with reflexive
 arg. Lets β/let/asc-conversion fire under an application spine
 via `trans`. -/
-theorem Subtype'.app_head {S Γ f f' a}
+def Subtype'.app_head {S Γ f f' a}
     (h : Subtype' S Γ f f') : Subtype' S Γ (.app f a) (.app f' a) :=
   .app_cong h (.refl a) (.refl a)
 
 /-- Application elimination: if `f` inhabits a Π-type, applying
 it lands in the (substituted) codomain. The standard elim rule,
 derived as `app_head hf ; beta_L`. Used by `tyInfer_sound .app`. -/
-theorem Subtype'.app_elim {S Γ f a A B}
+def Subtype'.app_elim {S Γ f a A B}
     (hf : Subtype' S Γ f (.lam A B)) :
     Subtype' S Γ (.app f a) (B.subst 0 a) :=
   (app_head hf).trans (.beta_L (.refl _))
 
 /-- Multi-step head reduction under a spine, then continue. The
 common pattern when the head is `(λx. …) v w …`. -/
-theorem Subtype'.beta_head {S Γ dom body arg a c}
+def Subtype'.beta_head {S Γ dom body arg a c}
     (h : Subtype' S Γ (.app (body.subst 0 arg) a) c) :
     Subtype' S Γ (.app (.app (.lam dom body) arg) a) c :=
   .trans (.app_head (.beta_L (.refl _))) h
@@ -392,7 +392,7 @@ is precisely what the depth tag buys: under the old
 untagged `Seen`, the conclusion seen-set was
 `S.map (shift |Δ| |Γpfx|)` and the binder cases were
 unprovable (DECISION-LOG 2026-04-18 route (a)). -/
-theorem Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
+noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     ∀ {S ΓA a b}, Subtype' S ΓA a b →
     ∀ Γpfx, ΓA = Γpfx ++ Γ →
     Subtype'
@@ -685,7 +685,7 @@ shifted by `|Δ|` at cutoff `0`. The seen-set is mapped
 through `Seen.extendEntry`; the common case `S = []`
 gives an empty conclusion seen-set, which `narrow_at`'s
 `.bvar` case then weakens to whatever `S` it needs. -/
-theorem Subtype'.ctx_extend {S Γ a b} (Δ : Ctx)
+noncomputable def Subtype'.ctx_extend {S Γ a b} (Δ : Ctx)
     (h : Subtype' S Γ a b) :
     Subtype' (S.map (Seen.extendEntry Δ.length Γ.length))
       (Δ ++ Γ) (a.shift Δ.length 0) (b.shift Δ.length 0) := by
@@ -737,7 +737,7 @@ vacuous. (The earlier formulation allowed an arbitrary
 closed `S₀ ⊆ S`; with depth-tagged `Seen` the
 "closed-so-shift-is-id" trick no longer applies, and all
 SoundnessProof.lean callers pass `[]` anyway.) -/
-theorem Subtype'.narrow_at {Γ domA domB}
+noncomputable def Subtype'.narrow_at {Γ domA domB}
     (hd : Subtype' [] Γ domB domA) :
     ∀ {S Δ x y}, Subtype' S Δ x y →
     ∀ Γ', Δ = Γ' ++ domA :: Γ →
@@ -863,7 +863,7 @@ the algorithm's `.lam,.lam` arm pushes `domA` while
 bridge's `.lam` case needs exactly this. The `hd` premise
 is at the empty seen-set; `subCheckVal_sound_open` (the
 sole caller, via `SubV_to_Subtype'`) supplies it at `[]`. -/
-theorem Subtype'.narrow {S Γ domA domB x y}
+noncomputable def Subtype'.narrow {S Γ domA domB x y}
     (hd : Subtype' [] Γ domB domA)
     (h : Subtype' S (domA :: Γ) x y) :
     Subtype' S (domB :: Γ) x y :=
@@ -876,7 +876,7 @@ instantiated codomain. Derivable: `f a ⊑ (Πx:dom. cod) a` by
 compose via `trans`. The domain check `a ⊑ dom` is *not* a
 premise — declaratively, β is type-blind (SoundnessAudit A3);
 the algorithmic `typeCheck` enforces it separately. -/
-theorem Subtype'.app_ascent {S Γ f a dom cod}
+def Subtype'.app_ascent {S Γ f a dom cod}
     (hf : Subtype' S Γ f (.lam dom cod)) :
     Subtype' S Γ (.app f a) (cod.subst 0 a) :=
   .trans (.app_head hf) (.beta_L (.refl _))
@@ -968,7 +968,7 @@ Subtype' schema change).
 The `shift_above_closed` / `shift_nil_closed` variants below
 are the practical versions for callers that supply closedness
 directly. -/
-theorem Subtype'.hyp_shift_above {S Γ d x y n}
+def Subtype'.hyp_shift_above {S Γ d x y n}
     (hS : Seen.wellClosed S)
     (hin : (d, x, y) ∈ S) (hle : d ≤ Γ.length) :
     Subtype' S Γ
@@ -991,7 +991,7 @@ theorem Subtype'.hyp_shift_above {S Γ d x y n}
 `Ctx.wellFormed`, `τ` at position `k` is closed at
 `(|Γ|-k-1)`; after the `.bvar` rule's `(k+1)`-shift, it's
 closed at `|Γ|`, so an outer `shift n |Γ|` is identity. -/
-theorem Subtype'.bvar_shift_above {S Γ k τ n}
+def Subtype'.bvar_shift_above {S Γ k τ n}
     (hΓ : Ctx.wellFormed Γ)
     (hget : Γ.get? k = some τ) :
     Subtype' S Γ ((Expr.bvar k).shift n Γ.length)
@@ -1024,7 +1024,7 @@ are closed-at-0 in all observed callers (substituends in
 `concEval_equiv` come from `concEval` of closed terms), so a
 closedness-carrying variant of `Equiv` would make `Equiv.shift`
 trivially provable via this helper. -/
-theorem Subtype'.shift_above_closed {S Γ a b} (n : Nat)
+def Subtype'.shift_above_closed {S Γ a b} (n : Nat)
     (ha : a.closedAt Γ.length = true)
     (hb : b.closedAt Γ.length = true)
     (h : Subtype' S Γ a b) :
@@ -1037,7 +1037,7 @@ theorem Subtype'.shift_above_closed {S Γ a b} (n : Nat)
 terms have trivial shift. This is the theorem `Equiv.shift`'s
 nil-Γ case reduces to, given a closedness-carrying variant of
 `Equiv`. -/
-theorem Subtype'.shift_nil_closed {S a b} (n c : Nat)
+def Subtype'.shift_nil_closed {S a b} (n c : Nat)
     (ha : a.closedAt 0 = true) (hb : b.closedAt 0 = true)
     (h : Subtype' S [] a b) :
     Subtype' S [] (a.shift n c) (b.shift n c) := by
@@ -1074,7 +1074,7 @@ form `tyInfer_sound_open` actually needs. Documented as
 to the input derivation at `(X :: Γ)`. This is the cutoff-`|Γ|`
 variant of UNSHIFT — NOT the cutoff-0 variant `tyInfer_sound_open`
 needs for its `.letE`/`.app β`/`.app let-float` arms. -/
-theorem Subtype'.unshift_trivial {S Γ X a b}
+def Subtype'.unshift_trivial {S Γ X a b}
     (ha : a.closedAt Γ.length = true)
     (hb : b.closedAt Γ.length = true)
     (h : Subtype' S (X :: Γ) (a.shift 1 Γ.length) (b.shift 1 Γ.length)) :

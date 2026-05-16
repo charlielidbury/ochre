@@ -250,7 +250,7 @@ closedAt_WALL` provides; for the sub-applications (`f`, `a`,
 `(.app piExpr aV)`) closedness propagation needs further
 infrastructure.  Closing wall 2 fully thus depends on wall 1's
 resolution. -/
-private theorem synthCore_app_WALL {n : Nat} {f a v : Expr}
+private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
     (_hclF : closedAt 0 f = true)
     (_hclA : closedAt 0 a = true)
     (_h : synthCore (n+1) #[] (.app f a) = .ok v) :
@@ -272,7 +272,7 @@ on the canonical-form arms (`.lam`, `.iota`, `.fix`, `.letE`,
 The `Γ = #[]` specialisation matters: at top level there are no
 level-vars in scope, so the `.bvar` arm must fail — hence the
 `.bvar` case is vacuous in the proof. -/
-private theorem synthCore_sound_aux :
+private noncomputable def synthCore_sound_aux :
     ∀ (e : Expr) (fuel : Nat) (v : Expr),
       e.closedAt 0 = true →
       synthCore fuel #[] e = .ok v →
@@ -362,7 +362,7 @@ The composition: `Och.synth e fuel = .ok v` unfolds to
 `synthCore fuel #[] e = .ok v.whnf`.  We feed this plus the
 closedAt-0 invariant (from the closedAt sub-wall) into
 `synthCore_sound_aux`. -/
-private theorem synthCore_opacity_WALL
+private noncomputable def synthCore_opacity_WALL
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
     Subtype' [] [] e v.whnf := by
@@ -389,7 +389,7 @@ Delegates through `synthCore_opacity_WALL`, which routes through
 two localised sub-obligations: `synthCore_topLevel_closedAt`
 (closed via the synth-entry check) and `synthCore_app_WALL`
 (the lone remaining synth wall). -/
-theorem Och_synth_sound
+noncomputable def Och_synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
     Subtype' [] [] e v.whnf :=

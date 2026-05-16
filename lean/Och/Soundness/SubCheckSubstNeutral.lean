@@ -133,7 +133,7 @@ This is the *only* part of C7 that closes without the level-var
 translation; everything else hits the wall described in
 `docs/ideas/c7-wall.md`. -/
 
-theorem subCheckSpine_sound_bvar_bvar
+def subCheckSpine_sound_bvar_bvar
     {S : Seen} {Γ : Ctx} {k1 k2 : Nat}
     (h : k1 == k2) :
     Subtype' S Γ (.bvar k1) (.bvar k2) := by
@@ -155,7 +155,7 @@ parameters since the full mutual block isn't built yet), the
 the level-var translation — `app_cong` is structural in the
 arguments. -/
 
-theorem app_cong_from_spine_ih
+def app_cong_from_spine_ih
     {S : Seen} {Γ : Ctx} {f1 f2 v1 v2 : Expr}
     (ih_head : Subtype' S Γ f1 f2)
     (ih_v12 : Subtype' S Γ v1 v2)
