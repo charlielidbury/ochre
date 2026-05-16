@@ -186,6 +186,148 @@ where
   | _, .bot => none
   | _, e => some e
 
+/-! ### Eval bridge and helpers for intrinsic derivation construction
+
+These are needed by `subCheckSubst` to bridge between the original
+inputs `a, b` and their WHNF forms `a', b'`. Defined here (not in
+Soundness/) to break the circular import. -/
+
+/-- `evalSubst` preserves subtype equivalence at arbitrary `S, Γ`.
+    Computable (no `noncomputable` needed) — Lean accepts the tactic
+    proof as kernel-reducible. -/
+def evalSubst_equiv_open'
+    {fuel unf : Nat} {e e' : Expr} (S : Seen) (Γ : Ctx)
+    (hstep : evalSubst fuel unf e = .ok e') :
+    Subtype' S Γ e' e × Subtype' S Γ e e' := by
+  induction fuel generalizing unf e e' with
+  | zero => rw [evalSubst.eq_1] at hstep; cases hstep
+  | succ n ih =>
+    match e, hstep with
+    | .bvar k, h =>
+      rw [evalSubst.eq_2] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .type, h =>
+      rw [evalSubst.eq_3] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .bot, h =>
+      rw [evalSubst.eq_4] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .lam dom body, h =>
+      rw [evalSubst.eq_5] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .iota ann body, h =>
+      rw [evalSubst.eq_6] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .fix ann body, h =>
+      rw [evalSubst.eq_7] at h
+      simp only [Outcome.ok.injEq] at h; subst h
+      exact ⟨.refl _, .refl _⟩
+    | .asc t ty, h =>
+      rw [evalSubst.eq_8] at h
+      match ht : evalSubst n unf t with
+      | .outOfFuel => rw [ht] at h; cases h
+      | .error _ => rw [ht] at h; cases h
+      | .ok tv =>
+        match hty : evalSubst n unf ty with
+        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
+        | .ok tyv =>
+          rw [ht, hty] at h
+          simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
+          have ⟨ht₁, ht₂⟩ := ih ht
+          exact ⟨.asc_L (.asc_R ht₁), .asc_L (.asc_R ht₂)⟩
+    | .letE val body, h =>
+      rw [evalSubst.eq_9] at h
+      match hvEv : evalSubst n unf val with
+      | .outOfFuel => rw [hvEv] at h; cases h
+      | .error _ => rw [hvEv] at h; cases h
+      | .ok vv =>
+        simp only [hvEv] at h
+        have ⟨hvv₁, hvv₂⟩ := ih hvEv
+        simp only [Outcome.ok_bind] at h
+        have ⟨he₁, he₂⟩ := ih h
+        exact ⟨.trans he₁ (.trans (.letE_R (.refl _)) (.letE_cong hvv₁ (.refl _))),
+               .trans (.letE_cong hvv₂ (.refl _)) (.trans (.letE_L (.refl _)) he₂)⟩
+    | .app f a, h =>
+      rw [evalSubst.eq_10] at h
+      match hfEv : evalSubst n unf f with
+      | .outOfFuel => rw [hfEv] at h; cases h
+      | .error _ => rw [hfEv] at h; cases h
+      | .ok fv =>
+        have ⟨hf₁, hf₂⟩ := ih hfEv
+        match haEv : evalSubst n unf a with
+        | .outOfFuel => rw [hfEv, haEv] at h; cases h
+        | .error _ => rw [hfEv, haEv] at h; cases h
+        | .ok av =>
+          have ⟨ha₁, ha₂⟩ := ih haEv
+          rw [hfEv, haEv] at h
+          simp only [Outcome.ok_bind] at h
+          cases fv with
+          | bvar _ =>
+            simp only at h; simp only [Outcome.ok.injEq] at h; subst h
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | type =>
+            simp only at h; simp only [Outcome.ok.injEq] at h; subst h
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | bot =>
+            simp only at h; simp only [Outcome.ok.injEq] at h; subst h
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | lam dom body =>
+            simp only at h
+            have ⟨he₁, he₂⟩ := ih h
+            exact ⟨.trans he₁ (.trans (.beta_R (.refl _)) (.app_cong hf₁ ha₁ ha₂)),
+              .trans (.app_cong hf₂ ha₂ ha₁) (.trans (.beta_L (.refl _)) he₂)⟩
+          | iota ann body =>
+            simp only at h
+            split at h
+            · simp only [Outcome.ok.injEq] at h; subst h
+              exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+            · have ⟨he₁, he₂⟩ := ih h
+              exact ⟨.trans he₁ (.trans (.app_cong (.unfold_iota_R (.refl _)) (.refl _) (.refl _))
+                  (.app_cong hf₁ ha₁ ha₂)),
+                .trans (.app_cong hf₂ ha₂ ha₁)
+                  (.trans (.app_cong (.unfold_iota_L (.refl _)) (.refl _) (.refl _)) he₂)⟩
+          | fix ann body =>
+            simp only at h
+            split at h
+            · simp only [Outcome.ok.injEq] at h; subst h
+              exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+            · have ⟨he₁, he₂⟩ := ih h
+              exact ⟨.trans he₁ (.trans (.app_cong (.unfold_fix_R (.refl _)) (.refl _) (.refl _))
+                  (.app_cong hf₁ ha₁ ha₂)),
+                .trans (.app_cong hf₂ ha₂ ha₁)
+                  (.trans (.app_cong (.unfold_fix_L (.refl _)) (.refl _) (.refl _)) he₂)⟩
+          | asc inner _ =>
+            simp only at h
+            have ⟨he₁, he₂⟩ := ih h
+            exact ⟨.trans he₁ (.app_cong (.trans (.asc_R (.refl _)) hf₁) ha₁ ha₂),
+              .trans (.app_cong (.trans hf₂ (.asc_L (.refl _))) ha₂ ha₁) he₂⟩
+          | letE vv b =>
+            simp only at h; simp only [Outcome.ok.injEq] at h; subst h
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+          | app f' a' =>
+            simp only at h; simp only [Outcome.ok.injEq] at h; subst h
+            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
+
+/-- LHS asc strip: `a' ⊑ stripAscL a'`. -/
+def stripAscL_super (S : Seen) (Γ : Ctx) (a' : Expr) :
+    Subtype' S Γ a' (match a' with | .asc _ ty => ty | x => x) :=
+  match a' with
+  | .asc _ _ => .asc_L_ann (.refl _)
+  | .bvar _ | .lam _ _ | .app _ _ | .type | .bot | .iota _ _ | .fix _ _ | .letE _ _ => .refl _
+
+/-- RHS asc strip: `stripAscR b' ⊑ b'`. -/
+def stripAscR_sub (S : Seen) (Γ : Ctx) (b' : Expr) :
+    Subtype' S Γ (match b' with | .asc e _ => e | x => x) b' :=
+  match b' with
+  | .asc _ _ => .asc_R (.refl _)
+  | .bvar _ | .lam _ _ | .app _ _ | .type | .bot | .iota _ _ | .fix _ _ | .letE _ _ => .refl _
+
 /-! ### Structural subtype checker -/
 
 mutual
@@ -197,8 +339,9 @@ mutual
     match fuel with
     | 0 => .outOfFuel
     | fuel + 1 =>
-      match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
+      match hea : evalSubst (fuel + 1) unfBound a, heb : evalSubst (fuel + 1) unfBound b with
       | .ok a', .ok b' =>
+          -- Now dispatch on the asc-stripped forms
           let a'' := match a' with | .asc _ ty => ty | x => x
           let b'' := match b' with | .asc e _ => e | x => x
           if a'' == b'' then .ok sorry

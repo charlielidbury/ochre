@@ -42,7 +42,7 @@ precondition. The proof is by induction on fuel, identical to
 instead of a vacuous truth. -/
 
 /-- `evalSubst` preserves subtype equivalence at arbitrary `S, Γ`. -/
-noncomputable def evalSubst_equiv_open
+def evalSubst_equiv_open
     {fuel unf : Nat} {e e' : Expr} (S : Seen) (Γ : Ctx)
     (hstep : evalSubst fuel unf e = .ok e') :
     Subtype' S Γ e' e × Subtype' S Γ e e' := by
