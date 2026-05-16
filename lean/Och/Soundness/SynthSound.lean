@@ -38,33 +38,28 @@ The `synthCore` function in `Och/API.lean` has been:
 
 ## Remaining sorry's
 
-  * `synthCore_closedAt` — `synthCore n [] e = .ok v` with `closedAt 0 e`
-    implies `closedAt 0 v`. Requires arm-by-arm induction mirroring
-    `synthCore_sound_aux`. Mechanical but ~100 LOC.
-
-  * `whnfPi_closedAt` — `whnfPi n inhab ty = some piExpr` with closed
-    inputs implies `closedAt 0 piExpr`. Requires induction on `whnfPi.go`.
-
-  * `whnfPi_go_sound` iota case — `whnfPi.go` substitutes `inhab` (not
-    self) into the iota body. The declarative `unfold_iota_L` substitutes
-    self. Bridging requires threading `inhab ⊑ (.iota ann body)` into
-    the lemma signature.
-
   * `synthCore_app_WALL` neutralType fallback — when `whnfPi` does not
     directly expose a `.lam`, the algorithm falls through to
-    `neutralType` to ascend. Closing this requires neutralType
-    soundness infrastructure.
+    `neutralType` to ascend. Closing this requires
+    `synthNeutralType_to_sub` for `.app` (in SubCheckSubstSoundness.lean),
+    which in turn needs open-context `whnfPi_sound`.
 
-## Closed walls (this session)
+## Closed walls
 
-  * `synthCore_app_WALL` primary path (direct `whnfPi` exposure):
-    fully closed for fix-type unfolds. The 4-step chain
-    `(.app f a) ⊑ (.app fV aV) ⊑ (.app vF aV) ⊑ (.app piExpr aV) ⊑ v`
-    is established via `app_cong`, `evalSubst_equiv`, `whnfPi_sound`,
-    and `evalSubst_equiv` respectively.
+  * `whnfPi_go_sound` iota case (Option B): Changed the proof strategy
+    from "e ⊑ piExpr" to "inhab ⊑ piExpr" with precondition "inhab ⊑ e".
+    For the iota case, `iota_elim` gives `inhab ⊑ body[self↦inhab]`,
+    which is exactly what the algorithm evaluates. No algorithm change
+    needed.
 
   * `whnfPi_go_sound` fix case: `(.fix ann body) ⊑ piExpr` via
     `unfold_fix_L` + `evalSubst_equiv` + IH.
+
+  * `synthCore_app_WALL` primary path (direct `whnfPi` exposure):
+    fully closed. The 3-step chain
+    `(.app f a) ⊑ (.app fV aV) ⊑ (.app piExpr aV) ⊑ v`
+    is established via `app_cong`, `whnfPi_sound` (Option B),
+    and `evalSubst_equiv` respectively.
 -/
 
 namespace Och.Soundness
@@ -566,37 +561,43 @@ private theorem synthCore_closedAt {n : Nat} {e v : Expr}
 /-! ## whnfPi soundness
 
 `whnfPi fuel inhab ty` unfolds fix/iota wrappers in `ty` until a
-`.lam` (Π) head is exposed. For the `.app` arm we need the forward
-direction `Subtype' [] [] e piExpr` (the original subtypes the
-unfolded result, since fix/iota unfold produces a supertype).
+`.lam` (Π) head is exposed.
 
-**Fix unfolds** close via `unfold_fix_L` + `evalSubst_equiv`.
-**Iota unfolds** are sorry'd: `whnfPi.go` substitutes `inhab`
-(the actual value), not self, into the iota body; the declarative
-`unfold_iota_L` substitutes self. Bridging requires threading
-`inhab ⊑ (.iota ann body)` into the lemma. -/
+**Strategy (Option B):** Instead of proving `e ⊑ piExpr` (which would
+require substitution monotonicity for the iota case), we prove
+`inhab ⊑ piExpr` given `inhab ⊑ e`. This works because:
+- **Fix case:** `inhab ⊑ fix ⊑ body[self↦fix]` (via `unfold_fix_L`),
+  then eval + IH.
+- **Iota case:** `inhab ⊑ iota` + `iota_elim` gives
+  `inhab ⊑ body[self↦inhab]`, which is exactly what the algorithm
+  evaluates. Then eval + IH.
+- **Other cases:** `go` returns `e` unchanged, so `inhab ⊑ e` suffices.
 
-/-- Inner loop soundness: `go n e = some piExpr` implies `e ⊑ piExpr`.
-Fix case closed; iota case sorry'd. -/
+At the call site, this directly gives `fV ⊑ piExpr`, simplifying the
+proof chain. -/
+
+/-- Inner loop soundness: if `go n e = some piExpr` and `inhab ⊑ e`,
+then `inhab ⊑ piExpr`. Both fix and iota cases are closed. -/
 private noncomputable def whnfPi_go_sound
     (fuel : Nat) (inhab : Expr)
     (hcl_inhab : closedAt 0 inhab = true)
     : ∀ (n : Nat) (e piExpr : Expr),
       closedAt 0 e = true →
+      Subtype' [] [] inhab e →
       whnfPi.go fuel inhab n e = some piExpr →
-      Subtype' [] [] e piExpr := by
+      Subtype' [] [] inhab piExpr := by
   intro n
   induction n with
   | zero =>
-    intro e piExpr _hcl hgo
+    intro e piExpr _hcl hsub hgo
     simp only [whnfPi.go] at hgo
-    injection hgo with hgo; subst hgo; exact .refl _
+    injection hgo with hgo; subst hgo; exact hsub
   | succ m ih =>
-    intro e piExpr hcl hgo
+    intro e piExpr hcl hsub hgo
     match e with
     | .lam dom body =>
       simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact .refl _
+      injection hgo with hgo; subst hgo; exact hsub
     | .fix ann body =>
       simp only [whnfPi.go] at hgo
       match hev : evalSubst fuel 4 (body.subst 0 (.fix ann body)) with
@@ -607,82 +608,87 @@ private noncomputable def whnfPi_go_sound
         have hcl_subst : closedAt 0 (body.subst 0 (.fix ann body)) = true :=
           Expr.subst_closedAt (by simpa using hcl.2) hcl_fix
         have hcl_e' := SubstEval.evalSubst_closedAt hcl_subst hev
-        have ih_step := ih e' piExpr hcl_e' hgo
         have ⟨_, hfwd⟩ := evalSubst_equiv hcl_subst hev
         -- fix ⊑ body.subst 0 fix (via unfold_fix_L + weaken from [])
         have step_unfold : Subtype' [] [] (.fix ann body)
             (body.subst 0 (.fix ann body)) :=
           .unfold_fix_L (Subtype'.weaken
             (fun _ hp => absurd hp (List.not_mem_nil _)) (.refl _))
-        exact .trans step_unfold (.trans hfwd ih_step)
+        -- inhab ⊑ fix ⊑ body.subst fix ⊑ e'
+        have hsub' : Subtype' [] [] inhab e' :=
+          .trans hsub (.trans step_unfold hfwd)
+        exact ih e' piExpr hcl_e' hsub' hgo
       | .outOfFuel => rw [hev] at hgo; cases hgo
       | .error _ => rw [hev] at hgo; cases hgo
     | .iota _ann _body =>
       simp only [whnfPi.go] at hgo
       match hev : evalSubst fuel 4 (_body.subst 0 inhab) with
-      | .ok _ =>
+      | .ok e' =>
         rw [hev] at hgo
-        -- WALL: substitution mismatch between algorithm and declaration.
-        -- Algorithm: body.subst 0 inhab (substitutes the actual inhabitant)
-        -- Declaration (unfold_iota_L): body.subst 0 (.iota ann body)
-        -- Closing requires either:
-        --   (a) Change whnfPi.go to substitute (.iota ann body) instead of inhab
-        --       (tried: closes proof but breaks PerfProbe regression test due
-        --       to larger terms requiring more fuel), OR
-        --   (b) Substitution monotonicity: a ⊑ b → e.subst 0 a ⊑ e.subst 0 b
-        --       (deep property, major proof effort)
-        sorry
+        simp only [closedAt, Bool.and_eq_true] at hcl
+        have hcl_subst : closedAt 0 (_body.subst 0 inhab) = true :=
+          Expr.subst_closedAt (by simpa using hcl.2) hcl_inhab
+        have hcl_e' := SubstEval.evalSubst_closedAt hcl_subst hev
+        have ⟨_, hfwd⟩ := evalSubst_equiv hcl_subst hev
+        -- inhab ⊑ iota, so iota_elim gives inhab ⊑ body[self↦inhab]
+        have step_elim : Subtype' [] [] inhab (_body.subst 0 inhab) :=
+          .iota_elim hsub
+        -- inhab ⊑ body[self↦inhab] ⊑ e'
+        have hsub' : Subtype' [] [] inhab e' :=
+          .trans step_elim hfwd
+        exact ih e' piExpr hcl_e' hsub' hgo
       | .outOfFuel => rw [hev] at hgo; cases hgo
       | .error _ => rw [hev] at hgo; cases hgo
     | .bot => simp only [whnfPi.go] at hgo; cases hgo
     | .bvar _ =>
       simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact .refl _
+      injection hgo with hgo; subst hgo; exact hsub
     | .type =>
       simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact .refl _
+      injection hgo with hgo; subst hgo; exact hsub
     | .app _ _ =>
       simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact .refl _
+      injection hgo with hgo; subst hgo; exact hsub
     | .asc _ _ =>
       simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact .refl _
+      injection hgo with hgo; subst hgo; exact hsub
     | .letE _ _ =>
       simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact .refl _
+      injection hgo with hgo; subst hgo; exact hsub
 
-/-- Top-level `whnfPi` soundness: `whnfPi fuel inhab ty = some piExpr`
-implies `ty ⊑ piExpr`. Composes the initial `evalSubst` step with
-`whnfPi_go_sound`. -/
+/-- Top-level `whnfPi` soundness: if `whnfPi fuel inhab ty = some piExpr`
+and `inhab ⊑ ty`, then `inhab ⊑ piExpr`. Composes the initial
+`evalSubst` step with `whnfPi_go_sound`. -/
 private noncomputable def whnfPi_sound
     {fuel : Nat} {inhab ty piExpr : Expr}
     (hcl_ty : closedAt 0 ty = true)
     (hcl_inhab : closedAt 0 inhab = true)
+    (hsub_inhab : Subtype' [] [] inhab ty)
     (h : whnfPi fuel inhab ty = some piExpr) :
-    Subtype' [] [] ty piExpr := by
+    Subtype' [] [] inhab piExpr := by
   unfold whnfPi at h
   match hev : evalSubst fuel SubstEval.unfBound ty with
   | .ok ty' =>
     rw [hev] at h
     have hcl_ty' := SubstEval.evalSubst_closedAt hcl_ty hev
     have ⟨_, hfwd⟩ := evalSubst_equiv hcl_ty hev
-    exact .trans hfwd (whnfPi_go_sound fuel inhab hcl_inhab
-      SubstEval.unfBound ty' piExpr hcl_ty' h)
+    exact whnfPi_go_sound fuel inhab hcl_inhab
+      SubstEval.unfBound ty' piExpr hcl_ty' (.trans hsub_inhab hfwd) h
   | .outOfFuel => rw [hev] at h; cases h
   | .error _ => rw [hev] at h; cases h
 
 /-! ## The .app arm
 
-The `.app` arm of synth-soundness composes a 4-step chain:
+The `.app` arm of synth-soundness composes a 3-step chain:
 
 1. `(.app f a) ⊑ (.app fV aV)` via `app_cong` + `evalSubst_equiv`
-2. `(.app fV aV) ⊑ (.app vF aV)` via `app_cong` + IH (`fV ⊑ f ⊑ vF`)
-3. `(.app vF aV) ⊑ (.app piExpr aV)` via `app_cong` + `whnfPi_sound`
-4. `(.app piExpr aV) ⊑ v` via `evalSubst_equiv` on the final eval
+2. `(.app fV aV) ⊑ (.app piExpr aV)` via `app_cong` + `whnfPi_sound`
+   (Option B: `whnfPi_sound` proves `fV ⊑ piExpr` given `fV ⊑ vF`,
+   composing iota_elim/unfold_fix_L with the eval bridge)
+3. `(.app piExpr aV) ⊑ v` via `evalSubst_equiv` on the final eval
 
 The proof destructures the bind chain of `synthCore.eq_10` inline,
-matching on intermediate `Outcome` results. The `whnfPi_sound`
-lemma (sorry'd for iota) provides step 3. -/
+matching on intermediate `Outcome` results. -/
 private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
     (hclF : closedAt 0 f = true)
     (hclA : closedAt 0 a = true)
@@ -714,26 +720,27 @@ private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
   | .error _ => rw [hfV_eq] at h; cases h
   | .ok fV =>
   rw [hfV_eq] at h; simp only [Outcome.ok_bind] at h
-  -- Build proof ingredients for steps 1-2
-  have ⟨_, hf_fV⟩ := evalSubst_equiv hclF hfV_eq
+  -- Build proof ingredients
+  have ⟨hfV_f, hf_fV⟩ := evalSubst_equiv hclF hfV_eq
   have ⟨haV_a, ha_aV⟩ := evalSubst_equiv hclA haV_eq
   have hcl_fV := Och.Soundness.evalSubst_closedAt hclF hfV_eq
   have hf_vF := ihF n vF hclF hvF_eq
+  -- fV ⊑ vF: chain through f
+  have hfV_vF : Subtype' [] [] fV vF := .trans hfV_f hf_vF
   -- Step 1: (.app f a) ⊑ (.app fV aV)
   have step1 : Subtype' [] [] (.app f a) (.app fV aV) :=
     .app_cong hf_fV ha_aV haV_a
-  -- Step 2: (.app fV aV) ⊑ (.app vF aV)
-  have step2 : Subtype' [] [] (.app fV aV) (.app vF aV) :=
-    .app_cong (.trans (evalSubst_equiv hclF hfV_eq).1 hf_vF) (.refl _) (.refl _)
   -- Dispatch on whnfPi: primary path (direct exposure) vs secondary (neutralType)
   match hwhnf : whnfPi n fV vF with
   | some (.lam piDom piBody) =>
     rw [hwhnf] at h; simp only [Outcome.ok_bind, Outcome.ok.injEq] at h
-    -- Step 3: vF ⊑ (.lam piDom piBody) via whnfPi_sound
+    -- Step 2: fV ⊑ (.lam piDom piBody) via whnfPi_sound (Option B)
     have hcl_vF : closedAt 0 vF = true :=
       synthCore_closedAt hclF hvF_eq
-    have step3 : Subtype' [] [] (.app vF aV) (.app (.lam piDom piBody) aV) :=
-      .app_cong (whnfPi_sound hcl_vF hcl_fV hwhnf) (.refl _) (.refl _)
+    have hfV_pi : Subtype' [] [] fV (.lam piDom piBody) :=
+      whnfPi_sound hcl_vF hcl_fV hfV_vF hwhnf
+    have step2 : Subtype' [] [] (.app fV aV) (.app (.lam piDom piBody) aV) :=
+      .app_cong hfV_pi (.refl _) (.refl _)
     -- Destructure domain check to extract final evalSubst = .ok v
     match hdomChk : subCheckOpen n [] aV piDom with
     | .outOfFuel => rw [hdomChk] at h; cases h
@@ -746,7 +753,7 @@ private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
       have hcl_pi : closedAt 0 (.app (.lam piDom piBody) aV) = true := by
         simp only [closedAt, Bool.and_eq_true] at hcl_piExpr ⊢
         exact ⟨hcl_piExpr, hcl_aV⟩
-      exact .trans step1 (.trans step2 (.trans step3 (evalSubst_equiv hcl_pi h).2))
+      exact .trans step1 (.trans step2 (evalSubst_equiv hcl_pi h).2)
     | .ok false =>
       rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
       -- Domain check failed initially, neutralType fallback for arg
@@ -763,7 +770,7 @@ private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
           have hcl_pi : closedAt 0 (.app (.lam piDom piBody) aV) = true := by
             simp only [closedAt, Bool.and_eq_true] at hcl_piExpr' ⊢
             exact ⟨hcl_piExpr', hcl_aV'⟩
-          exact .trans step1 (.trans step2 (.trans step3 (evalSubst_equiv hcl_pi h).2))
+          exact .trans step1 (.trans step2 (evalSubst_equiv hcl_pi h).2)
         | .ok false =>
           rw [hdomChk2] at h; simp only [Outcome.ok_bind] at h; cases h
       | .ok none =>
