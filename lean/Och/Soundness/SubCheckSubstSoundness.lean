@@ -24,20 +24,19 @@ By induction on `fuel`:
 - `subCheckSubstMatch n` calls `subCheckSubst n` recursively.
 - The eval bridge (`evalSubst_equiv_open`) connects inputs to WHNF.
 
-## Sorry inventory (this file) — 3 locations in 2 defs
+## Sorry inventory (this file) — 2 sorries in 1 def
 
-- `synthNeutralType_to_sub` (2 sorries): soundness of `synthNeutralType`
-  for `.app f arg` and `.fix ann body` heads. The `.app` case requires
-  proving that recursive spine-walk through `exposePi` + substitution
-  correctly produces the application type. The `.fix` case ascends to
-  the fix annotation via `evalSubst`. Both are used by
-  `neutralAscent_sound` and the `(app, .fix)` synth-hit arm.
-- `subCheckSubst_ite_sound` seen-set hit (1 sorry): the algorithm
-  checks `S.any (fun (_, av, bv) => a'' == av && b'' == bv)` but
-  ignores the depth tag `d`. Connecting to `Subtype'.hyp` requires
-  `d ≤ Γ.length` and showing the shift `(a.shift (Γ.length - d) 0)`
-  is identity when `d = Γ.length`. Needs a depth invariant
-  propagated through the recursion.
+- `synthNeutralType_to_sub` (2 sorries):
+  - `.app f arg`: requires `exposePi` soundness (fix/iota unfolding
+    preserves type equivalence), recursive IH on `synthNeutralType`,
+    and substitution + eval bridge. ~200 LOC once `exposePi_sound`
+    is available.
+  - `.fix ann body`: `synthNeutralType` returns the evaluated
+    annotation `ann'`, but `Subtype'` has no `fix_ann` rule
+    (`fix ann body ⊑ ann`). The annotation records the fixpoint's
+    type; the type checker enforces it but the subtyping relation
+    doesn't internalise this. Fix: add a `fix_ann` rule to
+    `Subtype'`, justified by the typing discipline.
 
 ## Closed results
 
@@ -48,7 +47,10 @@ By induction on `fuel`:
 - `neutralAscent_bvar_sound`: neutral ascent for `.bvar` heads
 - `neutralAscent_sound`: neutral ascent for all heads (modulo
   `synthNeutralType_to_sub`)
-- `subCheckSubst_ite_sound`: equality, top, and match-delegation paths
+- `subCheckSubst_ite_sound`: equality, seen-set hit, top, and match-delegation
+  paths. The seen-set hit was closed by fixing the algorithm to check the
+  depth tag (`d == Γ.length`) in the `S.any` predicate, then extracting the
+  witness via `List.find?` (Type-level) and applying `Subtype'.hyp_here`.
 - `subCheckSubst_sound_gen`: fuel-inductive step (strong induction)
 - `subCheckSubst_sound`: top-level composition
 - `Och_subCheck_sound`: surface-level bridge
@@ -338,8 +340,33 @@ private noncomputable def synthNeutralType_to_sub
     Subtype' S Γ a ty := by
   cases a with
   | bvar k => exact synthNeutralType_bvar_to_sub h
-  | app f arg => sorry
-  | fix ann body => sorry
+  | app f arg =>
+    -- synthNeutralType recurses on f to get fTy, applies exposePi to
+    -- get (.lam dom retTy), substitutes arg into retTy, and evaluates.
+    -- The proof chain:
+    --   (1) IH on f gives f ⊑ fTy
+    --   (2) exposePi soundness gives fTy ⊑ piExpr (.lam dom retTy)
+    --       via fix/iota unfolding equivalence
+    --   (3) app_cong + beta gives (.app f arg) ⊑ retTy.subst 0 arg
+    --   (4) eval bridge gives retTy.subst 0 arg ⊑ ty
+    -- Requires exposePi_sound (not yet available) and recursive IH
+    -- on synthNeutralType (the function itself is mutual-recursive
+    -- with the subCheckSubst block, so the IH needs fuel threading).
+    sorry
+  | fix ann body =>
+    -- synthNeutralType for (.fix ann body) returns evalSubst ann = ann'.
+    -- We need: Subtype' S Γ (.fix ann body) ann'.
+    -- Using the eval bridge, ann' ⊑ ann ∧ ann ⊑ ann'.
+    -- So it suffices to show (.fix ann body) ⊑ ann.
+    -- However, Subtype' has no "fix annotation ascent" rule (fix_ann).
+    -- The available rule is unfold_fix_L: (.fix ann body) ⊑ c if
+    -- body[self:=fix ann body] ⊑ c. To use this, we'd need
+    -- body[self:=fix ann body] ⊑ ann, which is the well-typedness
+    -- condition of the fixpoint — not available as a Subtype' premise.
+    -- A dedicated Subtype' rule `fix_ann : Subtype' S Γ (.fix ann body) ann`
+    -- would close this directly but requires soundness justification
+    -- (the annotation records the type; the type checker enforces it).
+    sorry
   | _ =>
     -- Other cases: synthNeutralType returns .ok none or .outOfFuel
     cases n with
@@ -1062,7 +1089,7 @@ private noncomputable def subCheckSubst_ite_sound
       subCheckSubst m Γ' S' a' b' = .ok true → Subtype' S' Γ' a' b')
     (Γ : Ctx) (S : Seen) (a'' b'' : Expr)
     (h : (if a'' == b'' then Outcome.ok true
-          else if S.any (fun x => match x with | (_, av, bv) => a'' == av && b'' == bv) then Outcome.ok true
+          else if S.any (fun x => match x with | (d, av, bv) => d == Γ.length && a'' == av && b'' == bv) then Outcome.ok true
           else if b'' == Expr.type then Outcome.ok true
           else subCheckSubstMatch n Γ S a'' b'') = Outcome.ok true) :
     Subtype' S Γ a'' b'' := by
@@ -1070,12 +1097,29 @@ private noncomputable def subCheckSubst_ite_sound
   · have heq' : a'' = b'' := by simpa using heq
     exact heq' ▸ .refl _
   · simp only [heq, Bool.false_eq_true, ite_false] at h
-    by_cases hseen : S.any (fun x => match x with | (_, av, bv) => a'' == av && b'' == bv)
-    · -- Seen-set hit: needs depth-tag invariant (all entries in S
-      -- have d ≤ Γ.length, and terms are shift-invariant at d = Γ.length)
-      -- to connect to Subtype'.hyp. Sorry'd pending invariant propagation.
-      sorry
-    · simp only [hseen, Bool.false_eq_true, ite_false] at h
+    -- The seen-set predicate (after algorithm fix to check depth tag)
+    let seenPred := fun (x : Nat × Expr × Expr) =>
+      x.1 == Γ.length && a'' == x.2.1 && b'' == x.2.2
+    by_cases hseen : S.any seenPred
+    · -- Seen-set hit: the algorithm found (d, av, bv) ∈ S with
+      -- d = Γ.length, av = a'', bv = b''. Extract via find? (which
+      -- lives in Type, unlike the Exists from any_eq_true which is Prop).
+      simp only [seenPred, hseen, ite_true] at h
+      -- Convert any → find? to get a concrete witness in Type
+      have hfind : (S.find? seenPred).isSome = true := by
+        rw [List.find?_isSome]
+        exact (List.any_eq_true).mp hseen
+      match hf : S.find? seenPred with
+      | none => simp [hf] at hfind
+      | some ⟨d, av, bv⟩ =>
+        have hmem := List.mem_of_find?_eq_some hf
+        have hpred := List.find?_some hf
+        simp only [seenPred, Bool.and_eq_true, beq_iff_eq] at hpred
+        obtain ⟨⟨hd, hav⟩, hbv⟩ := hpred
+        subst hd; subst hav; subst hbv
+        exact .hyp_here hmem
+    · simp only [seenPred] at hseen
+      simp only [hseen, Bool.false_eq_true, ite_false] at h
       by_cases htop : b'' == Expr.type
       · have htop' : b'' = .type := by simpa using htop
         exact htop' ▸ .top _

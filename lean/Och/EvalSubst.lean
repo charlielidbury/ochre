@@ -201,7 +201,7 @@ mutual
           let a'' := match a' with | .asc _ ty => ty | x => x
           let b'' := match b' with | .asc e _ => e | x => x
           if a'' == b'' then .ok true
-          else if seen.any (fun (_, av, bv) => a'' == av && b'' == bv) then .ok true
+          else if seen.any (fun (d, av, bv) => d == tyCtx.length && a'' == av && b'' == bv) then .ok true
           else if b'' == .type then .ok true
           else subCheckSubstMatch fuel tyCtx seen a'' b''
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
