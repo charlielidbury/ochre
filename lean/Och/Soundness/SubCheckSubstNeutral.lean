@@ -135,10 +135,9 @@ translation; everything else hits the wall described in
 
 theorem subCheckSpine_sound_bvar_bvar
     {S : Seen} {Γ : Ctx} {k1 k2 : Nat}
-    (h : k1 == k2 ∧ isLevelIdx k1) :
+    (h : k1 == k2) :
     Subtype' S Γ (.bvar k1) (.bvar k2) := by
-  obtain ⟨heq, _⟩ := h
-  have heq' : k1 = k2 := by simpa using heq
+  have heq' : k1 = k2 := by simpa using h
   subst heq'
   exact .refl _
 

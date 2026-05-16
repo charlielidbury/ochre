@@ -155,13 +155,13 @@ theorem subCheckOpen_ctx_independence :
       r0 == .ok true && r1 == .ok true && r2 == .ok true) = true := by
   native_decide
 
-/-- Adding a fresh `Nat_` entry to `tyCtx` doesn't break `level 0 ⊑
-Nat_` (it's the very entry being added). The widening to a 2-entry
-context preserves it. -/
+/-- Neutral ascent in single-entry context: `bvar 0` has type `Nat_`
+in `Γext1 = #[Nat_]`, so `bvar 0 ⊑ Nat_`. In the two-entry context
+`Γext2 = #[Nat_, Std.Bool]`, `bvar 1` (outermost) still has type
+`Nat_`, so `bvar 1 ⊑ Nat_` holds. -/
 theorem subCheckOpen_neutral_ascent_mono :
-    let q : Expr := freshLevelVar 0
-    subCheckOpen 200 Γext1 q Nat_ = .ok true ∧
-    subCheckOpen 200 Γext2 q Nat_ = .ok true := by
+    subCheckOpen 200 Γext1 (.bvar 0) Nat_ = .ok true ∧
+    subCheckOpen 200 Γext2 (.bvar 1) Nat_ = .ok true := by
   native_decide
 
 end CtxMono

@@ -77,7 +77,7 @@ synth-entry check.
 namespace Och.Soundness
 
 open SubstEval
-open Expr (closedAt closedAtLvl noLevelVars)
+open Expr (closedAt)
 
 /-! ## closedAt-0 propagation — RESOLVED via synth-entry check
 

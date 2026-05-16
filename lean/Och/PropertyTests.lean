@@ -33,47 +33,46 @@ open Std SubstEval
 
 /-! ## 1. Open-context `subCheckOpen`
 
-A two-entry type context: level 0 has type `Nat_`, level 1 has
-type `(Nat_ → Nat_)`. We use `freshLevelVar k` to refer to the
-`k`-th level-bvar.
+A two-entry type context (push-to-end convention):
+- `tyCtx[0] = Nat_` (outermost)
+- `tyCtx[1] = Nat_ → Nat_` (innermost)
+
+De Bruijn lookup: `bvar k` → `tyCtx[tyCtx.size - 1 - k]`, so:
+- `bvar 0` → `tyCtx[1] = Nat_ → Nat_`
+- `bvar 1` → `tyCtx[0] = Nat_`
 -/
 
 section OpenContext
 
 private def Γ₂ : Array Expr := #[Nat_, och{Nat_ → Nat_}]
 
--- (1a) Neutral ascent: `level 0 : Nat_`, so `level 0 ⊑ Nat_`.
--- Closes via the engine's neutral-LHS short-circuit in the
--- `_, .fix` arm: when LHS is a neutral whose ascended type IS
--- the RHS structurally, accept immediately rather than fall into
--- the unfold-RHS path (which produces a value the post-unfold
--- dispatch can't always reconcile against the original neutral).
-example : subCheckOpen 200 Γ₂ (freshLevelVar 0) Nat_ = .ok true := by
+-- (1a) Neutral ascent: `bvar 1` has type `Nat_` (outermost entry),
+-- so `bvar 1 ⊑ Nat_`.
+example : subCheckOpen 200 Γ₂ (.bvar 1) Nat_ = .ok true := by
   native_decide
 
--- (1b) Function-type ascent: `level 1 : Nat_ → Nat_` does close.
-example : subCheckOpen 200 Γ₂ (freshLevelVar 1) (och{Nat_ → Nat_}) = .ok true := by
+-- (1b) Function-type ascent: `bvar 0` has type `Nat_ → Nat_` (innermost).
+example : subCheckOpen 200 Γ₂ (.bvar 0) (och{Nat_ → Nat_}) = .ok true := by
   native_decide
 
--- (1c) Neutral-app ascent: `(level 1) (level 0) ⊑ Nat_`. Closes
--- the same way as (1a) — the LHS app's ascended type is `Nat_`
--- (apply `Nat_ → Nat_` to anything ⊑ Nat_), which the
--- `_, .fix`-arm short-circuit recognizes structurally.
-example : subCheckOpen 200 Γ₂ (.app (freshLevelVar 1) (freshLevelVar 0)) Nat_
+-- (1c) Neutral-app ascent: `(bvar 0) (bvar 1) ⊑ Nat_`.
+-- `bvar 0 : Nat_ → Nat_`, applied to `bvar 1 : Nat_`, yields `Nat_`.
+example : subCheckOpen 200 Γ₂ (.app (.bvar 0) (.bvar 1)) Nat_
         = .ok true := by native_decide
 
--- (1d) Cross-ascent failure: `level 0 : Nat_`, NOT `Unit_`.
-example : subCheckOpen 200 Γ₂ (freshLevelVar 0) Unit_ = .ok false := by
+-- (1d) Cross-ascent failure: `bvar 1 : Nat_`, NOT `Unit_`.
+example : subCheckOpen 200 Γ₂ (.bvar 1) Unit_ = .ok false := by
   native_decide
 
 -- (1e) `.lam,.lam` reflexivity under non-empty Γ. Both sides are
--- `λx:Nat_. (level 1) x` (using `bvar 0` for the bound x). Since
--- the binder is the lam, the body uses bvar 0 for x and the level-vars
--- live above.
+-- `λx:Nat_. (bvar 1) x`. After entering the lam, context becomes
+-- `#[Nat_, Nat_ → Nat_, Nat_]` (size 3). In the body:
+-- - `bvar 0` = lambda param (innermost, type `Nat_`)
+-- - `bvar 1` = `tyCtx[1] = Nat_ → Nat_`
 example :
     subCheckOpen 200 Γ₂
-      (.lam Nat_ (.app (freshLevelVar 1) (.bvar 0)))
-      (.lam Nat_ (.app (freshLevelVar 1) (.bvar 0))) = .ok true := by
+      (.lam Nat_ (.app (.bvar 1) (.bvar 0)))
+      (.lam Nat_ (.app (.bvar 1) (.bvar 0))) = .ok true := by
   native_decide
 
 end OpenContext
