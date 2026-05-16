@@ -581,8 +581,14 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
       simpa [Expr.shift, Expr.subst_shift_swap] using this
   | @iota_elim S' Γ' a' ann body _ ih =>
     intro Γpfx hpfx
-    have := ih Γpfx hpfx
-    exact sorry -- iota_elim shift: needs subst_shift_swap
+    have h := ih Γpfx hpfx
+    -- h : Subtype' ... (a'.shift d c) (.iota (ann.shift d c) (body.shift d (c+1)))
+    -- .iota_elim h : Subtype' ... (a'.shift d c) ((body.shift d (c+1)).subst 0 (a'.shift d c))
+    -- goal RHS: (body.subst 0 a').shift d c
+    -- subst_shift_swap: (body.subst 0 a').shift d c = (body.shift d (c+1)).subst 0 (a'.shift d c)
+    simp only [Expr.shift] at h
+    rw [Expr.subst_shift_swap]
+    exact .iota_elim h
   | @unfold_iota_L S' Γ' ann body c' _ ih =>
     intro Γpfx hpfx
     subst hpfx

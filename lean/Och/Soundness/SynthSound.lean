@@ -479,12 +479,13 @@ private theorem synthCore_closedAt {n : Nat} {e v : Expr}
       have hcl_fV := SubstEval.evalSubst_closedAt hcl.1 hfV_eq
       have hcl_aV := SubstEval.evalSubst_closedAt hcl.2 haV_eq
       have hcl_vF := ihF hcl.1 hvF_eq
-      -- piExpr comes from whnfPi; dispatch on which path succeeded
-      match hwhnf : whnfPi k fV vF with
-      | some (.lam piDom piBody) =>
-        rw [hwhnf] at h; simp only [Outcome.ok_bind, Outcome.ok.injEq] at h
-        have hcl_piExpr := whnfPi_closedAt hcl_vF hcl_fV hwhnf
-        -- Destructure domain check to extract final evalSubst
+      -- After the four initial bind extractions (synthCore f/a, evalSubst a/f),
+      -- h is a fully-inlined match on whnfPi. Use split to dispatch.
+      split at h
+      · -- Primary path: whnfPi returned some (.lam piDom piBody)
+        rename_i piLam piDom piBody hwp
+        have hcl_piExpr := whnfPi_closedAt hcl_vF hcl_fV hwp
+        simp only [] at h
         match hdomChk : subCheckOpen k [] aV piDom with
         | .outOfFuel => rw [hdomChk] at h; cases h
         | .error _ => rw [hdomChk] at h; cases h
@@ -495,7 +496,6 @@ private theorem synthCore_closedAt {n : Nat} {e v : Expr}
           exact SubstEval.evalSubst_closedAt hcl_app_pi h
         | .ok false =>
           rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
-          -- neutralType fallback for arg
           match hntA : neutralType k [] aV with
           | .ok (some aTy) =>
             rw [hntA] at h; simp only [Outcome.ok_bind] at h
@@ -513,15 +513,55 @@ private theorem synthCore_closedAt {n : Nat} {e v : Expr}
             rw [hntA] at h; simp only [Outcome.ok_bind] at h; cases h
           | .outOfFuel => rw [hntA] at h; cases h
           | .error _ => rw [hntA] at h; cases h
-      | _ =>
-        rw [hwhnf] at h
-        -- Secondary path: neutralType fallback for function type.
-        -- This path mirrors the primary path but obtains piExpr via
-        -- neutralType + whnfPi rather than direct whnfPi.
-        -- Sorry'd pending the same bind-chain destructuring; the
-        -- closedness ingredients (neutralType_closedAt, whnfPi_closedAt,
-        -- evalSubst_closedAt) are all available.
-        sorry
+      · -- Secondary path: whnfPi returned something else.
+        -- h is about the neutralType + whnfPi chain.
+        -- Dispatch on neutralType result.
+        rename_i _hwp
+        match hntF : neutralType k [] vF with
+        | .outOfFuel =>
+          simp only [hntF, Outcome.outOfFuel_bind] at h; cases h
+        | .error _ =>
+          simp only [hntF, Outcome.error_bind] at h; cases h
+        | .ok none =>
+          simp only [hntF, Outcome.ok_bind] at h; cases h
+        | .ok (some tyF) =>
+          simp only [hntF, Outcome.ok_bind] at h
+          have hcl_tyF := neutralType_closedAt hcl_vF hntF
+          -- Now h is about whnfPi k fV tyF + domain check chain
+          split at h
+          · -- whnfPi returned .lam
+            rename_i _piLam2 piDom2 piBody2 hwp2
+            have hcl_piExpr2 := whnfPi_closedAt hcl_tyF hcl_fV hwp2
+            simp only [] at h
+            match hdomChk : subCheckOpen k [] aV piDom2 with
+            | .outOfFuel => rw [hdomChk] at h; cases h
+            | .error _ => rw [hdomChk] at h; cases h
+            | .ok true =>
+              rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
+              have hcl_app_pi : closedAt 0 (.app (.lam piDom2 piBody2) aV) = true := by
+                simp only [closedAt, Bool.and_eq_true] at hcl_piExpr2 ⊢; exact ⟨hcl_piExpr2, hcl_aV⟩
+              exact SubstEval.evalSubst_closedAt hcl_app_pi h
+            | .ok false =>
+              rw [hdomChk] at h; simp only [Outcome.ok_bind] at h
+              match hntA : neutralType k [] aV with
+              | .ok (some aTy) =>
+                rw [hntA] at h; simp only [Outcome.ok_bind] at h
+                match hdomChk2 : subCheckOpen k [] aTy piDom2 with
+                | .outOfFuel => rw [hdomChk2] at h; cases h
+                | .error _ => rw [hdomChk2] at h; cases h
+                | .ok true =>
+                  rw [hdomChk2] at h; simp only [Outcome.ok_bind] at h
+                  have hcl_app_pi : closedAt 0 (.app (.lam piDom2 piBody2) aV) = true := by
+                    simp only [closedAt, Bool.and_eq_true] at hcl_piExpr2 ⊢; exact ⟨hcl_piExpr2, hcl_aV⟩
+                  exact SubstEval.evalSubst_closedAt hcl_app_pi h
+                | .ok false =>
+                  rw [hdomChk2] at h; simp only [Outcome.ok_bind] at h; cases h
+              | .ok none =>
+                rw [hntA] at h; simp only [Outcome.ok_bind] at h; cases h
+              | .outOfFuel => rw [hntA] at h; cases h
+              | .error _ => rw [hntA] at h; cases h
+          · -- whnfPi returned non-lam → error
+            cases h
 
 /-! ## whnfPi soundness
 
