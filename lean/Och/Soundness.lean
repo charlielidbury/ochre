@@ -48,7 +48,7 @@ inductive-up-to (seen-indexed) `Subtype'` defined in
   style. The declarative counterpart is a coinductive
   `Subtype'` (or an inductive one quotiented by the gfp). Lean
   4's coinductive support is limited; the inductive-up-to
-  encoding from `Simple/` may port directly.
+  encoding ports directly (the old `Simple/` prototype used this).
 -/
 
 namespace Och.Soundness

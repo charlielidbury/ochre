@@ -20,10 +20,7 @@ is straightforward arm-by-arm induction.
 
 ## Status
 
-All arms closed except the depth-budget threading through β/iota/fix
-substitution (sorry in `evalSubst_closedAt`'s substitution arms, which
-propagates to `evalSubst_equiv`). The sorry is inherited from
-`EvalSubstLemmas.subst_closedAt`.
+All arms closed. Sorry-free.
 -/
 
 namespace Och.Soundness
@@ -186,7 +183,7 @@ We prove the bidirectional equivalence on `closedAt 0` inputs. -/
 
 /-- The two-direction subtype equivalence between an expression and
 the result of `evalSubst`.  Mirrors `concEval_equiv`. -/
-noncomputable def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
+def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)
     (hstep : evalSubst fuel unf e = .ok e') :
     Subtype' [] [] e' e × Subtype' [] [] e e' := by
@@ -400,7 +397,7 @@ noncomputable def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
             exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
 
 /-- B3-substrate-style preservation, derived from `evalSubst_equiv`. -/
-noncomputable def evalSubst_preservation_aux
+def evalSubst_preservation_aux
     {fuel unf : Nat} {e e' τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hty : Subtype' [] [] e τ)

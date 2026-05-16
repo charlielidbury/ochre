@@ -216,7 +216,7 @@ pushes `domA` and `SubV → Subtype'` will need `narrow`.
 /-- The A6 incompleteness witness: NbE's bare value-level
 `subCheckVal` rejects this query (it pushes domA, not domB,
 in the lam-lam arm — see comment block above). However, the
-typed pipeline `subCheckT` accepts it: `tyCheck`'s `.lam`
+typed pipeline `subCheck` accepts it: `tyCheck`'s `.lam`
 arm pushes `expDom` (the right-side / target domain, =
 domB), so the contravariant check becomes `zero_ ⊑ Nat_`
 (true) and the body `bvar 0 ⊑ zero_` (true via type-ascent
@@ -330,8 +330,8 @@ Three encodings:
   (c) **Companion / parameterised coinduction**: heavyweight,
       not needed here.
 
-(a) is closest to the algorithm and to the existing `Simple/`
-proof; (b) is closest to the eventual semantic model
+(a) is closest to the algorithm; (b) is closest to the eventual
+semantic model
 (step-indexed logical relations). Either suffices for
 `subCheckVal_sound`. Soundness.lean records this as the next
 concrete task.
@@ -443,7 +443,7 @@ theorem sweep_top :
   native_decide
 
 /-- The documented A6 incompleteness witness, under the typed
-pipeline: closed under `subCheckT` (typed-NbE pass 2 win).
+pipeline: closed under `subCheck` (typed-NbE pass 2 win).
 Bare `subCheckVal` still has the A6 incompleteness — see
 `a6_subCheckIncompleteness`. Pinned to record both states. -/
 theorem sweep_a6_typedAccepts :

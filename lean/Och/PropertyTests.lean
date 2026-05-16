@@ -18,7 +18,7 @@ Three families targeting gaps the per-module tests don't cover:
      for pairs that *should* fail. Per-module tests are mostly
      positive; this pins down rejection.
   3. **Round-trip** — `evalSubst e` is convertible with `e` (both
-     directions of `subCheckT`) for a corpus of closed terms.
+     directions of `subCheck`) for a corpus of closed terms.
 
 Migrated from the env-NbE substrate (`subCheckVal` / `eval` / `nf`)
 to the substitution substrate (engine-collapse 2026-04-27). The

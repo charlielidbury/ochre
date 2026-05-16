@@ -14,9 +14,9 @@ Cross-cutting tests that span multiple Std modules and don't belong in any
 single file. Includes the Prop 5.2.9 regression test and §6.2 abstract
 instantiation tests.
 
-All algorithmic checks now run through `SubstEval.subCheckT`
+All algorithmic checks run through `SubstEval.subCheck`
 (post-engine-collapse, 2026-04-27). Tests originally phrased as
-`NbE.nf` equality are re-expressed as bidirectional `subCheckT`
+`NbE.nf` equality are re-expressed as bidirectional `subCheck`
 (convertibility) — same semantic content, no env-NbE substrate
 required.
 -/
@@ -111,7 +111,7 @@ example : Och.subCheckE 200
   (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ============================================================
--- Subtyping transitivity tests (SubstEval.subCheckT)
+-- Subtyping transitivity tests (SubstEval.subCheck)
 -- ============================================================
 
 -- Previously-known counterexample: Type ⊑ mu Type (bvar 0) ⊑ lam Type (bvar 0)

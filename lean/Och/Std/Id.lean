@@ -50,7 +50,7 @@ private def fuel : Nat := 100
 -- ----------------------------------------------------------
 
 -- id Nat 3 reduces to 3 (transparency preserved). §6.4. Phrased as
--- bidirectional `subCheckT` after the engine-collapse migration:
+-- bidirectional `subCheck` after the engine-collapse migration:
 -- two terms are convertible iff each subsumes the other.
 example : Och.subCheckE 200 (och{ id_ Nat_ three_ }) three_ = .ok true ∧
           Och.subCheckE 200 three_ (och{ id_ Nat_ three_ }) = .ok true := by
@@ -82,9 +82,9 @@ example : Och.subCheckE 200 Nat_ (och{ id_ Nat_ three_ }) = .ok false := by
   native_decide
 
 -- Semantic claim: `idAscribed Nat_ three_` is typeable at `Nat_`
--- (the ascription preserves the checked type). Use `subCheckT` —
--- the typed-pipeline+fallback wrapper — so the test stays robust
--- to which internal pathway dispatches it.
+-- (the ascription preserves the checked type). Uses `subCheckE` —
+-- the public entry point — so the test stays robust to which
+-- internal pathway dispatches it.
 example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) Nat_
   = .ok true := by native_decide
 

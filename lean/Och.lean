@@ -75,9 +75,7 @@ Tests / audit / std-library / probes (built so their
 ## Engine-collapse refactor (2026-04-27)
 
 This refactor (`docs/ideas/engine-collapse.md`) collapsed the
-multi-layered subtype-checking surface (`subCheckVal` /
-`typeCheck` / `subCheckT` / `subCheckSubst`) to a single public
-entry: `synth + subCheck`. The structural `SubstEval.subCheck`
-remains as the engine; everything above it goes through
-`Och.API`. The unsound `subCheckT` OR-wrapper is gone.
+multi-layered subtype-checking surface to a single public entry:
+`synth + subCheck`. The structural `SubstEval.subCheck` remains
+as the engine; everything above it goes through `Och.API`.
 -/

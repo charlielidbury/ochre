@@ -12,8 +12,7 @@ import Och.Std.DBool
 /-!
 # Substitution-based eval benchmark
 
-Times `evalSubst` / `subCheck` / `subCheckT` on representative
-Och workloads.
+Times `evalSubst` / `subCheck` on representative Och workloads.
 
 Originally a head-to-head comparison vs the env-NbE engine; the
 NbE substrate was retired in the engine-collapse refactor
@@ -350,7 +349,7 @@ def runArithSection (fuelRef : IO.Ref Nat) : IO Unit := do
 
 Tests that were left commented out in the Std/* files because the
 old env-NbE subCheck couldn't close them at any tractable fuel.
-With `SubstEval.subCheckT` they now run quickly. The env-NbE side
+With `SubstEval.subCheck` they now run quickly. The env-NbE side
 of the comparison was retired in the engine-collapse refactor —
 we just report substitution timings here. Historical NbE numbers
 live in `docs/ideas/eval-subst-vs-env-benchmark.md`.
