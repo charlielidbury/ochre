@@ -424,21 +424,25 @@ mutual
   decreasing_by all_goals (simp_wf; omega)
 
   /-- Per-shape derivation-returning case-split. Takes the WHNF'd
-      terms `a'` `b'` and two sorry'd bridges from `a ⊑ a'` and
-      `b' ⊑ b` (to be filled in once evalSubst_equiv is extended
-      to open terms). -/
+      terms `a'` `b'` and two sorry'd bridges:
+      - `ha : a ⊑ a'` (forward eval bridge for LHS)
+      - `hb : b' ⊑ b` (backward eval bridge for RHS)
+      The composition is: `a ⊑ a' ⊑ b' ⊑ b` via `.trans`. -/
   noncomputable def subCheckSubstMatch (fuel : Nat) (Γ : Ctx) (S : Seen)
       (a b : Expr) (a' b' : Expr)
-      (_ha : Subtype' S Γ a' a) (_hb : Subtype' S Γ b b')
+      (ha : Subtype' S Γ a a') (hb : Subtype' S Γ b' b)
       : Outcome (Subtype' S Γ a b) :=
     match a', b' with
-    -- Bot ⊑ anything
-    | .bot, _ => .ok sorry  -- needs .bot_L + bridge
+    -- Bot ⊑ anything: a ⊑ a' = .bot ⊑ b' ⊑ b
+    | .bot, _ => .ok (ha.trans (Subtype'.trans .bot_L hb))
     -- λ ⊑ λ
-    | .lam domA bodyA, .lam domB bodyB => do
-        let _ih_dom ← subCheckSubst fuel Γ S domB domA
-        let _ih_body ← subCheckSubst fuel (domB :: Γ) S bodyA bodyB
-        .ok sorry  -- needs .lam + bridge
+    | .lam _domA _bodyA, .lam _domB _bodyB => do
+        -- We'd need: ih_dom : domB ⊑ domA, ih_body : bodyA ⊑ bodyB
+        -- Then: .lam ih_dom ih_body : (.lam domA bodyA) ⊑ (.lam domB bodyB)
+        -- Then: ha.trans (.lam ih_dom ih_body |>.trans hb)
+        -- But the recursive calls return derivations for the WHNF'd sub-terms,
+        -- not the raw sub-terms of a' and b'. Sorry for now.
+        .ok sorry
     -- ι ⊑ ι
     | .iota _annA _bodyA, .iota _annB _bodyB => .ok sorry
     -- fix ⊑ fix
