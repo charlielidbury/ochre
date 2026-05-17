@@ -1,0 +1,5 @@
+{"log":
+ [{"message":
+   ".> LEAN_PATH=././.lake/build/lib LD_LIBRARY_PATH= /nix/store/36apymdbp72rf62wp1l4vb3wlvq8g33h-lean/bin/lean -DautoImplicit=false ././././PSS/Algorithmic.lean -R ./././. -o ././.lake/build/lib/PSS/Algorithmic.olean -i ././.lake/build/lib/PSS/Algorithmic.ilean -c ././.lake/build/ir/PSS/Algorithmic.c --json",
+   "level": "trace"}],
+ "depHash": "14449558180908060627"}
