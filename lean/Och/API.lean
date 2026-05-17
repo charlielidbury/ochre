@@ -31,6 +31,13 @@ engine `SubstEval.subCheckOpen`.
 In the pure de Bruijn regime, descending under a binder does NOT
 substitute — we recurse on the raw body with the context extended.
 `bvar 0` in the body naturally refers to the new innermost binder.
+
+## Intrinsic typing
+
+`synthCore` returns `Outcome (Σ v : Expr, Subtype' [] Γ e v)` —
+both the synthesized WHNF AND a derivation that `e ⊑ v`. This
+makes synth-soundness trivial: just extract the derivation from
+the Sigma.
 -/
 
 namespace Och
@@ -51,124 +58,250 @@ structure WTValue where
 `Γ[Γ.length - 1 - k]` is the type of `bvar k`. Push to the end
 when entering a binder.
 
-Public so soundness lemmas in `Soundness/SynthSound.lean` can
-mention `Γ`'s type when stating per-arm helper lemmas. -/
+Public so soundness lemmas can mention `Γ`'s type when stating
+per-arm helper lemmas. -/
 abbrev TyEnv := List Expr
 
-/-! ## Synth core (private mutual block)
+/-! ## Synth core (intrinsic)
 
 The walk takes an explicit type-environment `Γ` and threads
 fuel through. Each node validates its sub-terms recursively and
 calls `subCheckOpen` for the one typing question that arm asks
 (domain check at app, ascription consistency at asc).
 
+Returns both the WHNF value AND a `Subtype' [] Γ e v` derivation.
+
 Termination is fuel-bounded. -/
 
 /-- Synth helper: produce e's WHNF as a type-witness, validating
-each node.
+each node. Returns both the WHNF value AND a proof that `e ⊑ v`.
 
-Returns the *value* (WHNF) of `e` — for canonical forms (lam,
-iota, fix, top, bot) that's `e` itself; for neutrals it's the
-`Γ`-lookup type (which acts as the type-witness). For `.app`,
-it's the WHNF of the β-reduced result.
+For canonical forms (lam, iota, fix, type, bot) the result is `e`
+itself with `.refl`. For `.app`, it's the WHNF of the β-reduced
+result with a composed derivation chain. For `.asc`, it's the
+inner value's result with `.asc_L`.
 
 **Visibility.** Public so that soundness proofs can name it.
 
 **Termination.** Non-`partial`: `fuel` strictly decreases at every
 recursive call. -/
 def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
-    Outcome Expr :=
+    Outcome (Σ v : Expr, Subtype' [] Γ e v) :=
   match fuel with
   | 0 => .outOfFuel
   | fuel + 1 =>
     match e with
-    | .type => .ok .type
-    | .bot  => .ok .bot
+    | .type => .ok ⟨.type, .refl _⟩
+    | .bot  => .ok ⟨.bot, .refl _⟩
     | .bvar k =>
         -- Pure de Bruijn: bvar k is valid if k < Γ.length.
-        if k < Γ.length then
-          .ok e
+        if _h : k < Γ.length then
+          .ok ⟨.bvar k, .refl _⟩
         else
           .error s!"synth: unbound bvar {k} (|Γ|={Γ.length})"
-    | .lam dom body => do
-        let okDom ← subCheckOpen fuel Γ dom .type
-        if !okDom then
-          .error s!"synth: lam domain annotation is not a type"
-        else
-          let domV ← evalSubst fuel SubstEval.unfBound dom
-          -- Descend into body without substitution. bvar 0 in body
-          -- refers to the lambda parameter; extend Γ with domV.
-          let _bodyTy ← synthCore fuel (domV :: Γ) body
-          -- Canonical: a lambda is its own most-precise type.
-          evalSubst fuel SubstEval.unfBound e
-    | .iota ann body => do
-        let okAnn ← subCheckOpen fuel Γ ann .type
-        if !okAnn then
-          .error s!"synth: iota annotation is not a type"
-        else
-          let annV ← evalSubst fuel SubstEval.unfBound ann
-          let _bodyTy ← synthCore fuel (annV :: Γ) body
-          evalSubst fuel SubstEval.unfBound e
-    | .fix ann body => do
-        let okAnn ← subCheckOpen fuel Γ ann .type
-        if !okAnn then
-          .error s!"synth: fix annotation is not a type"
-        else
-          let annV ← evalSubst fuel SubstEval.unfBound ann
-          let _bodyTy ← synthCore fuel (annV :: Γ) body
-          evalSubst fuel SubstEval.unfBound e
-    | .asc inner τ => do
-        let okτ ← subCheckOpen fuel Γ τ .type
-        if !okτ then
-          .error s!"synth: ascription type is not a type"
-        else
-          let τV ← evalSubst fuel SubstEval.unfBound τ
-          let vInner ← synthCore fuel Γ inner
-          -- The single typing question: vInner ⊑ τV.
-          let ok ← subCheckOpen fuel Γ vInner τV
-          if !ok then
-            .error s!"synth: ascription rejected (term ⊄ annotation)"
-          else
-            .ok vInner
-    | .letE val body => do
-        let valV ← synthCore fuel Γ val
-        -- Descend into body without substitution.
-        let _bodyTy ← synthCore fuel (valV :: Γ) body
-        -- The whole `let` β-reduces to `body[val/0]`; return its WHNF.
-        evalSubst fuel SubstEval.unfBound e
-    | .app f a => do
-        let vF ← synthCore fuel Γ f
-        let _vA ← synthCore fuel Γ a   -- validates `a` recursively
-        let aV ← evalSubst fuel SubstEval.unfBound a
-        let fV ← evalSubst fuel SubstEval.unfBound f
-        -- Expose a Π for the function.
-        let piExpr ← do
-          match whnfPi fuel fV vF with
-          | some piLam@(.lam ..) => .ok piLam
-          | _ =>
-              match (← neutralType fuel Γ vF) with
-              | some ty =>
-                  match whnfPi fuel fV ty with
-                  | some piLam@(.lam ..) => .ok piLam
-                  | _ => .error s!"synth: applied non-Π head (ascended to non-Π)"
-              | none =>
-                  .error s!"synth: applied non-Π head (no ascent type)"
-        match piExpr with
-        | .lam dom _body =>
-            let okArg ← do
-              match (← subCheckOpen fuel Γ aV dom) with
-              | true => .ok true
-              | false =>
-                  match (← neutralType fuel Γ aV) with
-                  | some aTy => subCheckOpen fuel Γ aTy dom
-                  | none => .ok false
-            if !okArg then
-              .error s!"synth: arg ⊄ dom at .app"
-            else
-              -- Codomain at the argument: β over the exposed Π.
-              evalSubst fuel SubstEval.unfBound (.app piExpr aV)
-        | _ =>
-            .error s!"synth: internal: non-Π piExpr after exposure"
+    | .lam dom body =>
+        match subCheckOpen fuel Γ dom .type with
+        | .ok true =>
+          match evalSubst fuel SubstEval.unfBound dom with
+          | .ok domV =>
+            match synthCore fuel (domV :: Γ) body with
+            | .ok ⟨_, _⟩ =>
+              -- Canonical: a lambda is its own most-precise type.
+              -- evalSubst on .lam returns .ok (.lam dom body) immediately.
+              match hev : evalSubst fuel SubstEval.unfBound (.lam dom body) with
+              | .ok v => .ok ⟨v, (evalSubst_equiv_open' [] Γ hev).2⟩
+              | .outOfFuel => .outOfFuel
+              | .error msg => .error msg
+            | .outOfFuel => .outOfFuel
+            | .error msg => .error msg
+          | .outOfFuel => .outOfFuel
+          | .error msg => .error msg
+        | .ok false => .error s!"synth: lam domain annotation is not a type"
+        | .outOfFuel => .outOfFuel
+        | .error msg => .error msg
+    | .iota ann body =>
+        match subCheckOpen fuel Γ ann .type with
+        | .ok true =>
+          match evalSubst fuel SubstEval.unfBound ann with
+          | .ok annV =>
+            match synthCore fuel (annV :: Γ) body with
+            | .ok ⟨_, _⟩ =>
+              match hev : evalSubst fuel SubstEval.unfBound (.iota ann body) with
+              | .ok v => .ok ⟨v, (evalSubst_equiv_open' [] Γ hev).2⟩
+              | .outOfFuel => .outOfFuel
+              | .error msg => .error msg
+            | .outOfFuel => .outOfFuel
+            | .error msg => .error msg
+          | .outOfFuel => .outOfFuel
+          | .error msg => .error msg
+        | .ok false => .error s!"synth: iota annotation is not a type"
+        | .outOfFuel => .outOfFuel
+        | .error msg => .error msg
+    | .fix ann body =>
+        match subCheckOpen fuel Γ ann .type with
+        | .ok true =>
+          match evalSubst fuel SubstEval.unfBound ann with
+          | .ok annV =>
+            match synthCore fuel (annV :: Γ) body with
+            | .ok ⟨_, _⟩ =>
+              match hev : evalSubst fuel SubstEval.unfBound (.fix ann body) with
+              | .ok v => .ok ⟨v, (evalSubst_equiv_open' [] Γ hev).2⟩
+              | .outOfFuel => .outOfFuel
+              | .error msg => .error msg
+            | .outOfFuel => .outOfFuel
+            | .error msg => .error msg
+          | .outOfFuel => .outOfFuel
+          | .error msg => .error msg
+        | .ok false => .error s!"synth: fix annotation is not a type"
+        | .outOfFuel => .outOfFuel
+        | .error msg => .error msg
+    | .asc inner τ =>
+        match subCheckOpen fuel Γ τ .type with
+        | .ok true =>
+          match evalSubst fuel SubstEval.unfBound τ with
+          | .ok τV =>
+            match synthCore fuel Γ inner with
+            | .ok ⟨vInner, pInner⟩ =>
+              -- The single typing question: vInner ⊑ τV.
+              match subCheckOpen fuel Γ vInner τV with
+              | .ok true => .ok ⟨vInner, .asc_L pInner⟩
+              | .ok false =>
+                  .error s!"synth: ascription rejected (term ⊄ annotation)"
+              | .outOfFuel => .outOfFuel
+              | .error msg => .error msg
+            | .outOfFuel => .outOfFuel
+            | .error msg => .error msg
+          | .outOfFuel => .outOfFuel
+          | .error msg => .error msg
+        | .ok false => .error s!"synth: ascription type is not a type"
+        | .outOfFuel => .outOfFuel
+        | .error msg => .error msg
+    | .letE val body =>
+        match synthCore fuel Γ val with
+        | .ok ⟨valV, _⟩ =>
+          match synthCore fuel (valV :: Γ) body with
+          | .ok ⟨_, _⟩ =>
+            -- The whole `let` β-reduces; return its WHNF via evalSubst.
+            match hev : evalSubst fuel SubstEval.unfBound (.letE val body) with
+            | .ok v => .ok ⟨v, (evalSubst_equiv_open' [] Γ hev).2⟩
+            | .outOfFuel => .outOfFuel
+            | .error msg => .error msg
+          | .outOfFuel => .outOfFuel
+          | .error msg => .error msg
+        | .outOfFuel => .outOfFuel
+        | .error msg => .error msg
+    | .app f a =>
+        match synthCore fuel Γ f with
+        | .ok ⟨vF, pF⟩ =>
+          match synthCore fuel Γ a with
+          | .ok ⟨_vA, _pA⟩ =>
+            match haV : evalSubst fuel SubstEval.unfBound a with
+            | .ok aV =>
+              match hfV : evalSubst fuel SubstEval.unfBound f with
+              | .ok fV =>
+                -- Build derivation ingredients
+                let ha_aV := (evalSubst_equiv_open' [] Γ haV).2   -- a ⊑ aV
+                let haV_a := (evalSubst_equiv_open' [] Γ haV).1   -- aV ⊑ a
+                let hf_fV := (evalSubst_equiv_open' [] Γ hfV).2   -- f ⊑ fV
+                let hfV_f := (evalSubst_equiv_open' [] Γ hfV).1   -- fV ⊑ f
+                -- fV ⊑ vF via: fV ⊑ f ⊑ vF
+                let hfV_vF : Subtype' [] Γ fV vF := .trans hfV_f pF
+                -- Step 1: (.app f a) ⊑ (.app fV aV)
+                let step1 : Subtype' [] Γ (.app f a) (.app fV aV) :=
+                  .app_cong hf_fV ha_aV haV_a
+                -- Try primary path: whnfPi directly on vF
+                -- Use exposePi (= whnfPi) which has computable derivation
+                match hwp : exposePi fuel fV vF with
+                | some (.lam piDom piBody) =>
+                    -- fV ⊑ piExpr via exposePi_deriv
+                    let hfV_pi := exposePi_deriv [] Γ hfV_vF hwp
+                    let step2 : Subtype' [] Γ (.app fV aV) (.app (.lam piDom piBody) aV) :=
+                      .app_cong hfV_pi (.refl _) (.refl _)
+                    -- Domain check
+                    match subCheckOpen fuel Γ aV piDom with
+                    | .ok true =>
+                      match hev : evalSubst fuel SubstEval.unfBound
+                          (.app (.lam piDom piBody) aV) with
+                      | .ok v =>
+                          let step3 := (evalSubst_equiv_open' [] Γ hev).2
+                          .ok ⟨v, .trans step1 (.trans step2 step3)⟩
+                      | .outOfFuel => .outOfFuel
+                      | .error msg => .error msg
+                    | .ok false =>
+                      -- Arg direct check failed, try neutral ascent on arg
+                      match synthNeutralWithDeriv fuel Γ [] aV with
+                      | .ok (some ⟨aTy, _⟩) =>
+                        match subCheckOpen fuel Γ aTy piDom with
+                        | .ok true =>
+                          match hev : evalSubst fuel SubstEval.unfBound
+                              (.app (.lam piDom piBody) aV) with
+                          | .ok v =>
+                              let step3 := (evalSubst_equiv_open' [] Γ hev).2
+                              .ok ⟨v, .trans step1 (.trans step2 step3)⟩
+                          | .outOfFuel => .outOfFuel
+                          | .error msg => .error msg
+                        | .ok false => .error s!"synth: arg ⊄ dom at .app"
+                        | .outOfFuel => .outOfFuel
+                        | .error msg => .error msg
+                      | .ok none => .error s!"synth: arg ⊄ dom at .app (no ascent)"
+                      | .outOfFuel => .outOfFuel
+                      | .error msg => .error msg
+                    | .outOfFuel => .outOfFuel
+                    | .error msg => .error msg
+                | _ =>
+                  -- Primary path failed, try neutralType on vF
+                  match synthNeutralWithDeriv fuel Γ [] vF with
+                  | .ok (some ⟨tyF, hvF_tyF⟩) =>
+                    -- fV ⊑ tyF via: fV ⊑ vF ⊑ tyF
+                    let hfV_tyF : Subtype' [] Γ fV tyF := .trans hfV_vF hvF_tyF
+                    match hwp2 : exposePi fuel fV tyF with
+                    | some (.lam piDom piBody) =>
+                      let hfV_pi := exposePi_deriv [] Γ hfV_tyF hwp2
+                      let step2 : Subtype' [] Γ (.app fV aV) (.app (.lam piDom piBody) aV) :=
+                        .app_cong hfV_pi (.refl _) (.refl _)
+                      -- Domain check
+                      match subCheckOpen fuel Γ aV piDom with
+                      | .ok true =>
+                        match hev : evalSubst fuel SubstEval.unfBound
+                            (.app (.lam piDom piBody) aV) with
+                        | .ok v =>
+                            let step3 := (evalSubst_equiv_open' [] Γ hev).2
+                            .ok ⟨v, .trans step1 (.trans step2 step3)⟩
+                        | .outOfFuel => .outOfFuel
+                        | .error msg => .error msg
+                      | .ok false =>
+                        -- Arg check failed, try neutral ascent
+                        match synthNeutralWithDeriv fuel Γ [] aV with
+                        | .ok (some ⟨aTy, _⟩) =>
+                          match subCheckOpen fuel Γ aTy piDom with
+                          | .ok true =>
+                            match hev : evalSubst fuel SubstEval.unfBound
+                                (.app (.lam piDom piBody) aV) with
+                            | .ok v =>
+                                let step3 := (evalSubst_equiv_open' [] Γ hev).2
+                                .ok ⟨v, .trans step1 (.trans step2 step3)⟩
+                            | .outOfFuel => .outOfFuel
+                            | .error msg => .error msg
+                          | .ok false => .error s!"synth: arg ⊄ dom at .app"
+                          | .outOfFuel => .outOfFuel
+                          | .error msg => .error msg
+                        | .ok none => .error s!"synth: arg ⊄ dom at .app (no ascent)"
+                        | .outOfFuel => .outOfFuel
+                        | .error msg => .error msg
+                      | .outOfFuel => .outOfFuel
+                      | .error msg => .error msg
+                    | _ => .error s!"synth: applied non-Π head (ascended to non-Π)"
+                  | .ok none => .error s!"synth: applied non-Π head (no ascent type)"
+                  | .outOfFuel => .outOfFuel
+                  | .error msg => .error msg
+              | .outOfFuel => .outOfFuel
+              | .error msg => .error msg
+            | .outOfFuel => .outOfFuel
+            | .error msg => .error msg
+          | .outOfFuel => .outOfFuel
+          | .error msg => .error msg
+        | .outOfFuel => .outOfFuel
+        | .error msg => .error msg
   termination_by fuel
   decreasing_by all_goals first | (simp_wf; omega) | omega | simp_wf
 
@@ -181,7 +314,7 @@ def synth (e : Expr) (fuel : Nat := 5000) : Outcome WTValue := do
   if !e.closedAt 0 then
     .error s!"synth: input contains unbound bvars (not closed)"
   else
-    let v ← synthCore fuel [] e
+    let ⟨v, _⟩ ← synthCore fuel [] e
     pure ⟨v⟩
 
 /-- Structural subtype check on already-typed values. -/

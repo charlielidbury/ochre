@@ -165,7 +165,7 @@ abbrev TyCtx := Ctx
     self-eliminator `fix N. ι self:N. λP:..`). The `inhab`
     argument is what to substitute for the ι-self when unfolding
     (typically the spine-head being applied). -/
-private def exposePi (fuel : Nat) (inhab : Expr) (ty : Expr) :
+def exposePi (fuel : Nat) (inhab : Expr) (ty : Expr) :
     Option Expr :=
   match evalSubst fuel unfBound ty with
   | .ok ty' => go unfBound ty'

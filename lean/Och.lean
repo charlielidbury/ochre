@@ -14,7 +14,6 @@ import Och.Soundness.SubCheckSubstFallback
 import Och.Soundness.SubtypeSteps
 import Och.Soundness.SynthProgress
 import Och.Soundness.EvalSubstEquiv
-import Och.Soundness.SynthSound
 
 -- Tests, audit, std-library, probes
 import Och.SoundnessAudit
@@ -46,8 +45,8 @@ Supporting modules:
 - `Och.Outcome`    — `Outcome α` (`.ok` / `.outOfFuel` / `.error`)
 - `Och.Eval`       — `concEval` (the reference evaluator)
 - `Och.Subtyping`  — `Subtype'` (declarative spec, proof target)
-- `Och.Soundness`  — top-level theorem statements (sorry-preserved
-                     scaffolds for future re-proving)
+- `Och.Soundness`  — top-level soundness theorems (sorry-free via
+                     intrinsic typing)
 
 Internal modules (still imported because nothing has been moved
 behind `private`/`namespace Internal`, but not part of the

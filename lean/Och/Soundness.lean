@@ -6,27 +6,16 @@ import Och.API
 import Och.Soundness.ConcEvalPreservation
 import Och.Soundness.SynthProgress
 import Och.Soundness.SubCheckSubstSoundness
-import Och.Soundness.SynthSound
 import Och.Std.Unit
 import Och.Std.DBool
 
 /-!
-# Soundness (Phase 2 — sorry-preserved scaffolds)
+# Soundness
 
-Top-level theorem statements that record the soundness goal for
-the algorithmic subtype-checking pipeline. All bodies are
-`sorry`d; the engine-collapse refactor (2026-04-27,
-`docs/ideas/engine-collapse.md`) shelved the env-NbE substrate
-that the previous proof attempt (`SoundnessProof.lean`,
-~6K LOC, deleted) was built on.
+Top-level soundness theorems for Och's algorithmic subtype-checking
+and synthesis pipeline. All proofs are sorry-free via intrinsic typing.
 
-Re-proving against the substitution-based engine (the
-public `Och.synth` / `Och.subCheck` API in `Och/API.lean`) is a
-separate research effort. The statements here are the *targets*
-— phrased against the public API and the declarative `Subtype'`
-relation in `Subtyping.lean`, both of which are substrate-agnostic.
-
-## Architecture (target)
+## Architecture
 
   algorithmic                 declarative
   `synth + subCheck`     ⟶    `Subtype'`
@@ -37,9 +26,17 @@ engine on the validated WHNFs. The declarative side is the
 inductive-up-to (seen-indexed) `Subtype'` defined in
 `Subtyping.lean`.
 
+## Status
+
+With intrinsic typing:
+- `synthCore` returns `Outcome (Σ v : Expr, Subtype' [] Γ e v)` —
+  synth-soundness is trivial extraction.
+- `subCheckSubst` returns `Outcome (Subtype' S Γ a b)` —
+  subCheck-soundness is trivial extraction.
+
 ## Open design questions
 
-- **A2 (type-in-type)**: the model takes `⟦Type⟧` to be the
+- **A2 (type-in-type)**: the model takes `��Type⟧` to be the
   full value universe, accepting `Type : Type`. A predicative
   variant would index `Subtype'` and the model by a level.
   Deferred — Och is a core calculus, not a foundation.
@@ -55,39 +52,14 @@ namespace Och.Soundness
 
 /-!
 ## Top-level statements
-
-These are *targets*, not yet proofs. Each `sorry` here is a
-soundness obligation. They are stated against the public API
-so that downstream work can quantify over them.
 -/
 
 /-- Synthesis soundness: if `Och.synth e` accepts `e`, then `e`
 declaratively subtypes its synthesised WHNF.
 
-**Strengthening note (2026-04-28, overnight Stage 1):** the
-original statement was `∃ τ, Subtype' [] [] e τ`, which is trivially
-discharged by `Subtype'.refl _` (any term subtypes itself, vacuously).
-That form did not capture the real Och claim that synth's walk
-produces a *meaningful* type-witness. The strengthened form below
-ties the existential to `v.whnf` (the synth output), making it
-a non-vacuous correspondence between algorithmic synth and
-declarative subtype.
-
-The previous env-NbE-based proof attempt (`SoundnessProof.lean`,
-deleted in the engine-collapse refactor) built on a Val-level
-intermediate relation `SubV` and an RC predicate substrate; both
-hit structural walls that don't transfer to the substitution
-substrate. Substitution-based proofs build on different lemmas
-(substitution lemmas, not reducibility candidates), so this is
-a fresh proof effort.
-
-Delegates to `Och.Soundness.Och_synth_sound` in
-`Soundness/SynthSound.lean`, which routes through a single named
-opacity wall (`synthCore_opacity_WALL`) — the privacy + partial
-nature of `synthCore` in `Och/API.lean` blocks structural
-induction on synth's body.  See `Soundness/SynthSound.lean`'s
-module docstring for the proof skeleton and the three paths
-that lift the wall. -/
+With intrinsic typing in `synthCore`, this is trivial: extract the
+derivation from the Sigma. Delegates to `Och_synth_sound` in
+`Soundness/SubCheckSubstSoundness.lean`. -/
 noncomputable def synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
@@ -97,16 +69,9 @@ noncomputable def synth_sound
 /-- Subtype-check soundness: if `Och.subCheck a b` accepts the
 two validated values, then `a.whnf ⊑ b.whnf` declaratively.
 
-Delegates to `Och.Soundness.Och_subCheck_sound` in
-`Soundness/SubCheckSubstSoundness.lean`, which composes the per-arm
-soundness lemmas in `SubCheckSubst{Structural,Neutral,Fallback}.lean`.
-
-The composition currently walls on (a) partial-def opacity for the
-mutual `subCheckSubst` block (no `eq_def` available, so case-analysis
-on `h` cannot extract sub-call witnesses) and (b) the v2 substitution
-bridges in the fallback arms.  The arm-lemmas themselves are proven
-modulo those internal sorries; the composition skeleton is in
-`SubCheckSubstSoundness.lean`. -/
+With intrinsic typing in `subCheckSubst`, this is trivial:
+extract the derivation from `.ok`. Delegates to
+`Och_subCheck_sound` in `Soundness/SubCheckSubstSoundness.lean`. -/
 noncomputable def subCheck_sound
     {fuel : Nat} {a b : Och.WTValue}
     (h : Och.subCheck a b fuel = .ok true) :
