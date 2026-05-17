@@ -167,26 +167,21 @@ noncomputable def soundness_general
   let hCheck : Subtype' [] [] a.whnf b.whnf := subCheck_sound hcheck
   (soundness hsynthA hstep).trans hCheck
 
-/-- The result of evaluating a synth-accepted term: either a
-well-typed value, or fuel exhaustion. Never an error. -/
-inductive SafeEval (whnf : Expr) : Outcome Expr → Type where
-  | ok (e' : Expr) : Subtype' [] [] e' whnf → SafeEval whnf (.ok e')
-  | outOfFuel : SafeEval whnf .outOfFuel
-
 /-- **Combined soundness + progress**: if `synth` accepts `e`,
 then at any fuel, `concEval` either produces a well-typed value
 or runs out of fuel — it never gets stuck. -/
-noncomputable def soundness_and_progress
-    {e : Expr} {a : Och.WTValue} {fuel : Nat}
-    (hsynth : Och.synth e fuel = .ok a)
-    (f : Nat) :
-    SafeEval a.whnf (concEval f e) := by
+theorem soundness_and_progress
+    {e : Expr} {a : Och.WTValue} {fuel₁ fuel₂ : Nat}
+    (hsynth : Och.synth e fuel₁ = .ok a) :
+    (∃ e', concEval fuel₂ e = .ok e' ∧ Nonempty (Subtype' [] [] e' a.whnf))
+    ∨ concEval fuel₂ e = .outOfFuel := by
   have hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt hsynth
   have hSub : Subtype' [] [] e a.whnf := synth_sound hsynth
-  match hout : concEval f e with
-  | .ok e' => exact .ok e' (concEval_preservation hcl hSub hout)
-  | .outOfFuel => exact .outOfFuel
-  | .error msg => exact absurd hout (synth_progress hsynth f msg)
+  match hout : concEval fuel₂ e with
+  | .ok e' =>
+      left; exact ⟨e', rfl, ⟨concEval_preservation hcl hSub hout⟩⟩
+  | .outOfFuel => right; rfl
+  | .error msg => exact absurd hout (synth_progress hsynth fuel₂ msg)
 
 section Witnesses
 open Std
