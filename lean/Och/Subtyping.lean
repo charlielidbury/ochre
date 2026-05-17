@@ -1175,3 +1175,76 @@ expressions (including all Std library types, nested ι/fix, self-referential
 patterns). See `Tests.lean` (`checkTrans`). **Not yet proved** in Lean.
 
 **top-universal is FALSE.** `.type ⊑ τ` does NOT imply `v ⊑ τ` for all `v`. -/
+
+/-! ## Head-step preservation lemmas
+
+These say that `Subtype'` is closed under head-reduction steps that
+`concEval` performs: if the *redex* subtypes `τ`, so does its *reduct*
+(and dually for the RHS). Used by `ConcEvalPreservation`. -/
+
+namespace Subtype'
+
+/-- β-step preservation. If the redex `(λA. b) a` is a subtype of
+`τ`, so is its reduct `b[a/0]`. -/
+def preserve_betaStep {S : Seen} {Γ : Ctx} {A b a τ : Expr}
+    (h : Subtype' S Γ (.app (.lam A b) a) τ) :
+    Subtype' S Γ (b.subst 0 a) τ :=
+  .trans (.beta_R (.refl _)) h
+
+/-- ι-unfold-step preservation. -/
+def preserve_iotaUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
+    (h : Subtype' S Γ (.iota ann body) τ) :
+    Subtype' S Γ (body.subst 0 (.iota ann body)) τ :=
+  .trans (.unfold_iota_R (.refl _)) h
+
+/-- fix-unfold-step preservation. -/
+def preserve_fixUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
+    (h : Subtype' S Γ (.fix ann body) τ) :
+    Subtype' S Γ (body.subst 0 (.fix ann body)) τ :=
+  .trans (.unfold_fix_R (.refl _)) h
+
+/-- let-step preservation. -/
+def preserve_letStep {S : Seen} {Γ : Ctx} {val body τ : Expr}
+    (h : Subtype' S Γ (.letE val body) τ) :
+    Subtype' S Γ (body.subst 0 val) τ :=
+  .trans (.letE_R (.refl _)) h
+
+/-- ascription-strip preservation. -/
+def preserve_ascStep {S : Seen} {Γ : Ctx} {e t τ : Expr}
+    (h : Subtype' S Γ (.asc e t) τ) :
+    Subtype' S Γ e τ :=
+  .trans (.asc_R (.refl _)) h
+
+/-- β-step preservation, RHS form. -/
+def preserve_betaStep_R {S : Seen} {Γ : Ctx} {A b a a' : Expr}
+    (h : Subtype' S Γ a' (.app (.lam A b) a)) :
+    Subtype' S Γ a' (b.subst 0 a) :=
+  .trans h (.beta_L (.refl _))
+
+/-- ι-unfold preservation, RHS form. -/
+def preserve_iotaUnfoldStep_R {S : Seen} {Γ : Ctx}
+    {ann body a' : Expr}
+    (h : Subtype' S Γ a' (.iota ann body)) :
+    Subtype' S Γ a' (body.subst 0 (.iota ann body)) :=
+  .trans h (.unfold_iota_L (.refl _))
+
+/-- fix-unfold preservation, RHS form. -/
+def preserve_fixUnfoldStep_R {S : Seen} {Γ : Ctx}
+    {ann body a' : Expr}
+    (h : Subtype' S Γ a' (.fix ann body)) :
+    Subtype' S Γ a' (body.subst 0 (.fix ann body)) :=
+  .trans h (.unfold_fix_L (.refl _))
+
+/-- let-step preservation, RHS form. -/
+def preserve_letStep_R {S : Seen} {Γ : Ctx} {val body a' : Expr}
+    (h : Subtype' S Γ a' (.letE val body)) :
+    Subtype' S Γ a' (body.subst 0 val) :=
+  .trans h (.letE_L (.refl _))
+
+/-- asc-strip preservation, RHS form. -/
+def preserve_ascStep_R {S : Seen} {Γ : Ctx} {e t a' : Expr}
+    (h : Subtype' S Γ a' (.asc e t)) :
+    Subtype' S Γ a' t :=
+  .trans h (.asc_L_ann (.refl _))
+
+end Subtype'

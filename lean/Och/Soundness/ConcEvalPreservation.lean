@@ -1,7 +1,6 @@
 import Och.Syntax
 import Och.Eval
 import Och.Subtyping
-import Och.Soundness.SubtypeSteps
 
 /-!
 # B3: `concEval` preservation
