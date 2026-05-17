@@ -82,12 +82,7 @@ substrate. Substitution-based proofs build on different lemmas
 a fresh proof effort.
 
 Delegates to `Och.Soundness.Och_synth_sound` in
-`Soundness/SynthSound.lean`, which routes through a single named
-opacity wall (`synthCore_opacity_WALL`) — the privacy + partial
-nature of `synthCore` in `Och/API.lean` blocks structural
-induction on synth's body.  See `Soundness/SynthSound.lean`'s
-module docstring for the proof skeleton and the three paths
-that lift the wall. -/
+`Soundness/SynthSound.lean`. -/
 noncomputable def synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
@@ -98,15 +93,7 @@ noncomputable def synth_sound
 two validated values, then `a.whnf ⊑ b.whnf` declaratively.
 
 Delegates to `Och.Soundness.Och_subCheck_sound` in
-`Soundness/SubCheckSubstSoundness.lean`, which composes the per-arm
-soundness lemmas in `SubCheckSubst{Structural,Neutral,Fallback}.lean`.
-
-The composition currently walls on (a) partial-def opacity for the
-mutual `subCheckSubst` block (no `eq_def` available, so case-analysis
-on `h` cannot extract sub-call witnesses) and (b) the v2 substitution
-bridges in the fallback arms.  The arm-lemmas themselves are proven
-modulo those internal sorries; the composition skeleton is in
-`SubCheckSubstSoundness.lean`. -/
+`Soundness/SubCheckSubstSoundness.lean`. -/
 noncomputable def subCheck_sound
     {fuel : Nat} {a b : Och.WTValue}
     (h : Och.subCheck a b fuel = .ok true) :

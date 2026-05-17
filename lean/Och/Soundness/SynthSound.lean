@@ -39,7 +39,7 @@ The `synthCore` function in `Och/API.lean` has been:
 
 ## Status: sorry-free
 
-All arms are closed. The former last wall (`synthCore_app_WALL`
+All arms are closed. The former last wall (`synthCore_app_sound`
 neutralType fallback) was closed by generalizing `whnfPi_sound` to
 open contexts (`whnfPi_sound_open` in SubCheckSubstSoundness.lean)
 and proving `synthNeutralType_to_sub` for `.app` via fuel induction
@@ -56,7 +56,7 @@ and proving `synthNeutralType_to_sub` for `.app` via fuel induction
   * `whnfPi_go_sound` fix case: `(.fix ann body) ⊑ piExpr` via
     `unfold_fix_L` + `evalSubst_equiv` + IH.
 
-  * `synthCore_app_WALL` primary path (direct `whnfPi` exposure):
+  * `synthCore_app_sound` primary path (direct `whnfPi` exposure):
     fully closed. The 3-step chain
     `(.app f a) ⊑ (.app fV aV) ⊑ (.app piExpr aV) ⊑ v`
     is established via `app_cong`, `whnfPi_sound` (Option B),
@@ -693,7 +693,7 @@ The `.app` arm of synth-soundness composes a 3-step chain:
 
 The proof destructures the bind chain of `synthCore.eq_10` inline,
 matching on intermediate `Outcome` results. -/
-private noncomputable def synthCore_app_WALL {n : Nat} {f a v : Expr}
+private noncomputable def synthCore_app_sound {n : Nat} {f a v : Expr}
     (hclF : closedAt 0 f = true)
     (hclA : closedAt 0 a = true)
     (h : synthCore (n+1) [] (.app f a) = .ok v)
@@ -944,17 +944,17 @@ private noncomputable def synthCore_sound_aux :
     | zero => rw [synthCore.eq_1] at h; cases h
     | succ n =>
       simp only [closedAt, Bool.and_eq_true] at hcl
-      exact synthCore_app_WALL hcl.1 hcl.2 h ihF
+      exact synthCore_app_sound hcl.1 hcl.2 h ihF
 
 /-- The synthCore opacity wall, now decomposed into smaller pieces:
-`synthCore_sound_aux`, `synthCore_app_WALL`, and the closed
+`synthCore_sound_aux`, `synthCore_app_sound`, and the closed
 `synthCore_topLevel_closedAt` lemma.
 
 The composition: `Och.synth e fuel = .ok v` unfolds to
 `synthCore fuel [] e = .ok v.whnf`.  We feed this plus the
 closedAt-0 invariant (from the closedAt sub-wall) into
 `synthCore_sound_aux`. -/
-private noncomputable def synthCore_opacity_WALL
+private noncomputable def synthCore_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
     Subtype' [] [] e v.whnf := by
@@ -977,14 +977,14 @@ private noncomputable def synthCore_opacity_WALL
 /-- **synth-soundness**: if `Och.synth e fuel = .ok v`, then `e`
 declaratively subtypes its synthesised WHNF `v.whnf`.
 
-Delegates through `synthCore_opacity_WALL`, which routes through
+Delegates through `synthCore_sound`, which routes through
 two localised sub-obligations: `synthCore_topLevel_closedAt`
-(closed via the synth-entry check) and `synthCore_app_WALL`
+(closed via the synth-entry check) and `synthCore_app_sound`
 (the lone remaining synth wall). -/
 noncomputable def Och_synth_sound
     {fuel : Nat} {e : Expr} {v : Och.WTValue}
     (h : Och.synth e fuel = .ok v) :
     Subtype' [] [] e v.whnf :=
-  synthCore_opacity_WALL h
+  synthCore_sound h
 
 end Och.Soundness
