@@ -1,10 +1,6 @@
 import Och.Subtyping
 import Och.EvalSubst
 import Och.API
-import Och.Soundness.CloseAll
-import Och.Soundness.SubCheckSubstNeutral
-import Och.Soundness.SubCheckSubstStructural
-import Och.Soundness.SubCheckSubstFallback
 
 /-!
 # `subCheckSubst_sound` — the main soundness theorem
