@@ -28,8 +28,8 @@ predecessor), the recursive knot is tied explicitly with `fix`.
 Array operations are pair/unit operations:
 - empty array: `unit_`
 - cons: `pair_ T (Array_ pred T) x rest`
-- head: `fst_ arr`
-- tail: `snd_ arr`
+- head: `fst_ T arr`
+- tail: `snd_ (Array_ pred T) arr`
 -/
 
 namespace Std
@@ -41,8 +41,8 @@ def Array_ := och{
 }
 
 def emptyArray := unit_
-def headArray := fst_
-def tailArray := snd_
+-- headArray T arr = fst_ T arr; tailArray T arr = snd_ (Array_ pred T) arr
+-- These are left as inline usage since they need type parameters.
 
 -- ============================================================
 -- Tests
@@ -61,11 +61,11 @@ example : Och.subCheckE 200 (och{ Array_ zero_ Nat_ }) Unit_ = .ok true ∧
 -- pair_ Nat Unit 0 unit, head it back out
 private def testArr1 := och{ pair_ Nat_ Unit_ zero_ unit_ }
 
-example : Och.subCheckE 200 (och{ fst_ testArr1 }) zero_ = .ok true ∧
-          Och.subCheckE 200 zero_ (och{ fst_ testArr1 }) = .ok true := by
+example : Och.subCheckE 200 (och{ fst_ Nat_ testArr1 }) zero_ = .ok true ∧
+          Och.subCheckE 200 zero_ (och{ fst_ Nat_ testArr1 }) = .ok true := by
   native_decide
-example : Och.subCheckE 200 (och{ snd_ testArr1 }) unit_ = .ok true ∧
-          Och.subCheckE 200 unit_ (och{ snd_ testArr1 }) = .ok true := by
+example : Och.subCheckE 200 (och{ snd_ Unit_ testArr1 }) unit_ = .ok true ∧
+          Och.subCheckE 200 unit_ (och{ snd_ Unit_ testArr1 }) = .ok true := by
   native_decide
 
 -- testArr2 = [1, 2]
@@ -73,11 +73,11 @@ private def testArr2 := och{
   pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
 }
 
-example : Och.subCheckE 200 (och{ fst_ testArr2 }) one_ = .ok true ∧
-          Och.subCheckE 200 one_ (och{ fst_ testArr2 }) = .ok true := by
+example : Och.subCheckE 200 (och{ fst_ Nat_ testArr2 }) one_ = .ok true ∧
+          Och.subCheckE 200 one_ (och{ fst_ Nat_ testArr2 }) = .ok true := by
   native_decide
-example : Och.subCheckE 200 (och{ fst_ (snd_ testArr2) }) two_ = .ok true ∧
-          Och.subCheckE 200 two_ (och{ fst_ (snd_ testArr2) }) = .ok true := by
+example : Och.subCheckE 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) testArr2) }) two_ = .ok true ∧
+          Och.subCheckE 200 two_ (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) testArr2) }) = .ok true := by
   native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
@@ -125,7 +125,7 @@ appendArrays T n1 n2 arr1 arr2 =
     (λn:Nat_. Array_ n T → Array_ (add_ n n2) T)   -- dependent motive
     (λarr:(Array_ zero_ T). arr2)                   -- zero case
     (λpred:Nat_. λarr:(Array_ (succ_ pred) T).      -- succ case
-       Pair (fst_ arr) (self T pred n2 (snd_ arr) arr2))
+       Pair (fst_ T arr) (self T pred n2 (snd_ (Array_ pred T) arr) arr2))
     arr1                                             -- apply to arr1
 ```
 
@@ -162,18 +162,15 @@ private def appended := och{ appendArrays Nat_ two_ one_ app_arr1 app_arr2 }
 -- appendArrays [1,2] [3] = [1,2,3]  (concrete runtime eval). Strict
 -- pins on each element. Re-enabled after engine collapse: matched
 -- length-3 elements pinned exactly to one_/two_/three_.
-example : concEval 200 (och{ fst_ appended }) = concEval 200 one_ := by native_decide
-example : concEval 200 (och{ fst_ (snd_ appended) }) = concEval 200 two_ := by native_decide
-example : concEval 200 (och{ fst_ (snd_ (snd_ appended)) }) = concEval 200 three_ := by
+example : concEval 200 (och{ fst_ Nat_ appended }) = concEval 200 one_ := by native_decide
+example : concEval 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ (Pair Nat_ Unit_)) appended) }) = concEval 200 two_ := by native_decide
+example : concEval 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) (snd_ (Pair Nat_ (Pair Nat_ Unit_)) appended)) }) = concEval 200 three_ := by
   native_decide
 
--- appendArrays at its declared type: A6-family incompleteness
--- (domA push gives the wrong ascent type under n1/n2 binders). Pinned
--- so future fixes make it visible.
---
--- example : Och.subCheckE 5000 appendArrays
---   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
---   = .ok true := by native_decide
+-- appendArrays at its declared type.
+example : Och.subCheckE 5000 appendArrays
+  (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
+  = .ok true := by native_decide
 
 end AppendArraysTests
 
@@ -209,8 +206,8 @@ def indexArr := och{
         (λarr:(Array_ zero_ T). λi:(Fin zero_). i)
         (λp:Nat_. λarr:(Array_ (succ_ p) T). λi:(Fin (succ_ p)).
           i (λ_:(Fin (succ_ p)). T)
-            (fst_ arr)
-            (λq:(Fin p). self T p (snd_ arr) q))
+            (fst_ T arr)
+            (λq:(Fin p). self T p (snd_ (Array_ p T) arr) q))
 }
 
 section IndexArrTests
@@ -244,28 +241,12 @@ example : concEval 200 (och{ indexArr Nat_ three_ arr3 two_ })
 -- using `three_` as an index into a length-3 array fails
 -- `typeCheck`.
 --
--- Specific uses of `indexArr` at concrete lengths do go through
--- `typeCheck` for valid indices (the dependent structure is
--- monomorphised). The `indexArr` definition ITSELF does not pass
--- `synth` — the succ branch's subcheck against the Nat_ eliminator's
--- 3rd domain fails because Fin elimination inside the Nat_ elimination
--- produces a codomain that the structural engine can't reconcile with
--- the Pi-exposed domain (A6-family NbE incompleteness, same family as
--- appendArrays's declared-type subCheckE failure).
---
--- Note: `appendArrays` passes `synth` (its succ branch uses pair_,
--- not Fin elimination). indexArr's use of Fin elimination inside the
--- Nat_ Scott-style eliminator creates a deeper dependent subCheck
--- chain that the current engine can't close.
+-- 1. The definition itself type-checks.
+example : (Och.synth indexArr 400).isOk = true := by native_decide
 
--- 1. The definition itself does NOT pass synth (A6-family incompleteness).
---    Pinned so future engine improvements make it visible.
-example : (Och.synth indexArr 400).isError = true := by native_decide
-
--- 2. In-bounds applications also fail synth because synth recursively
---    validates the definition. Pinned for the same reason.
-example : (Och.synth (och{ indexArr Nat_ three_ arr3 zero_ }) 400).isError = true := by native_decide
-example : (Och.synth (och{ indexArr Nat_ three_ arr3 two_ }) 400).isError = true := by native_decide
+-- 2. In-bounds application is accepted.
+example : (Och.synth (och{ indexArr Nat_ three_ arr3 zero_ }) 400).isOk = true := by native_decide
+example : (Och.synth (och{ indexArr Nat_ three_ arr3 two_ }) 400).isOk = true := by native_decide
 
 -- 3. Out-of-bounds application is rejected: three_ ⊄ Fin three_.
 example : (Och.synth (och{ indexArr Nat_ three_ arr3 three_ }) 400).isError = true := by native_decide

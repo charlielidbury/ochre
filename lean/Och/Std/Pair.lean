@@ -13,8 +13,8 @@ The type constructor and the value constructor are separate:
 
   Pair  A B     = ΠX:Type. (A → B → X) → X        — the type
   pair_ A B a b = ΛX. λk. k a b                    — the constructor
-  fst_  p       = p Type (λa. λ_. a)
-  snd_  p       = p Type (λ_. λb. b)
+  fst_  T p     = p T (λa. λ_. a)       — returns T
+  snd_  T p     = p T (λ_. λb. b)       — returns T
 
 `pair_ A B a b ⊑ Pair A B` holds via *type-ascent* through the
 continuation `k`: the body `k a b` has synthesised type `X` (from
@@ -24,11 +24,12 @@ which relied on covariant neutral-app congruence (`k a b ⊑ k A B`)
 — sound only when `k` is covariant in both arguments, which is not
 guaranteed (`SoundnessAudit.lean`, A1).
 
-`fst_`/`snd_` stay monomorphic at `Pair Type Type`. Any `Pair A B`
-coerces to `Pair Type Type` via `A ⊑ Type`, `B ⊑ Type`
-(type-in-type, A2), so they accept any pair without explicit type
-arguments. The cost is precision: `fst_ p : Type`, not `: A`. For
-precise projections, write the eliminator inline (`p A (λa _. a)`).
+`fst_ T`/`snd_ T` take a single type parameter `T` for the
+component being projected. The other component's type is erased to
+`Type` in the domain annotation (`Pair T Type` / `Pair Type T`),
+so any concrete pair coerces in via `B ⊑ Type`. This gives precise
+return types (`fst_ T p : T`) while keeping call sites lightweight
+(only the returned component's type is needed).
 -/
 
 namespace Std
@@ -42,21 +43,21 @@ def pair_ := och{
 }
 
 def fst_ := och{
-  λp:(Pair Type Type). p Type (λa:Type. λb:Type. a)
+  λT:Type. λp:(Pair T Type). p T (λa:T. λb:Type. a)
 }
 
 def snd_ := och{
-  λp:(Pair Type Type). p Type (λa:Type. λb:Type. b)
+  λT:Type. λp:(Pair Type T). p T (λa:Type. λb:T. b)
 }
 
 private def p12 := och{ pair_ Nat_ Nat_ one_ two_ }
 
 -- ── Positive computation tests ──────────────────────────────
 
-example : concEval 100 (och{ fst_ p12 }) = concEval 100 one_ := by
+example : concEval 100 (och{ fst_ Nat_ p12 }) = concEval 100 one_ := by
   native_decide
 
-example : concEval 100 (och{ snd_ p12 }) = concEval 100 two_ := by
+example : concEval 100 (och{ snd_ Nat_ p12 }) = concEval 100 two_ := by
   native_decide
 
 -- ── Positive subtype checks ─────────────────────────────────
@@ -73,24 +74,24 @@ example : Och.subCheckE 100
     (och{ Pair Bool Bool })
   = .ok true := by native_decide
 
--- fst β-reduces through the constructor: fst (pair_ … true true) ⊑ true
+-- fst β-reduces through the constructor: fst Bool (pair_ … true true) ⊑ true
 example : Och.subCheckE 100
-    (och{ fst_ (pair_ Bool Bool true_ true_) }) true_
+    (och{ fst_ Bool (pair_ Bool Bool true_ true_) }) true_
   = .ok true := by native_decide
 
--- fst_ accepts any concrete pair via `Pair A B ⊑ Pair Type Type`
-example : Och.subCheckE 100 fst_ (och{ Pair Nat_ Nat_ → Type })
+-- fst_ T accepts any concrete pair whose first component is T
+example : Och.subCheckE 100 (och{ fst_ Nat_ }) (och{ Pair Nat_ Nat_ → Nat_ })
   = .ok true := by native_decide
 
-example : Och.subCheckE 100 snd_ (och{ Pair Nat_ Nat_ → Type })
+example : Och.subCheckE 100 (och{ snd_ Nat_ }) (och{ Pair Nat_ Nat_ → Nat_ })
   = .ok true := by native_decide
 
 -- ── Negative computation tests ──────────────────────────────
 
-example : concEval 100 (och{ fst_ p12 }) ≠ concEval 100 two_ := by
+example : concEval 100 (och{ fst_ Nat_ p12 }) ≠ concEval 100 two_ := by
   native_decide
 
-example : concEval 100 (och{ snd_ p12 }) ≠ concEval 100 one_ := by
+example : concEval 100 (och{ snd_ Nat_ p12 }) ≠ concEval 100 one_ := by
   native_decide
 
 -- ── Negative subtype checks ─────────────────────────────────
@@ -102,19 +103,19 @@ example : concEval 100 (och{ snd_ p12 }) ≠ concEval 100 one_ := by
 -- unlike the old `k l r` body (SoundnessAudit A1).
 example : Och.subCheckE 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
   = .ok true := by native_decide
--- …and the witness that broke the old encoding is now
+-- ...and the witness that broke the old encoding is now
 -- consistent (substitution principle holds):
 example : Och.subCheckE 200
     (och{ (Pair zero_ unit_) (zero_ → Unit_) })
     (och{ (Pair Nat_  Unit_) (zero_ → Unit_) })
   = .ok true := by native_decide
 
-example : Och.subCheckE 100 fst_ Nat_ = .ok false := by native_decide
+example : Och.subCheckE 100 (och{ fst_ Nat_ }) Nat_ = .ok false := by native_decide
 
 example : Och.subCheckE 200 p12 Bool = .ok false := by native_decide
 
 example : Och.subCheckE 100
-    (och{ fst_ (pair_ Bool Bool true_ true_) }) false_
+    (och{ fst_ Bool (pair_ Bool Bool true_ true_) }) false_
   = .ok false := by native_decide
 
 end Std

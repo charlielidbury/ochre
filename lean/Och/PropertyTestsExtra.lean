@@ -309,8 +309,8 @@ private def opEqPairs : List (Expr × Expr) := [
   (och{ and' false_ true_ }, false_),
   (och{ or true_ false_ }, true_),
   -- pair eliminators
-  (och{ fst_ (pair_ Nat_ Unit_ zero_ unit_) }, zero_),
-  (och{ snd_ (pair_ Nat_ Unit_ zero_ unit_) }, unit_)
+  (och{ fst_ Nat_ (pair_ Nat_ Unit_ zero_ unit_) }, zero_),
+  (och{ snd_ Unit_ (pair_ Nat_ Unit_ zero_ unit_) }, unit_)
 ]
 
 /-- Operational equivalence pinned: each pair has equal `concEval`
@@ -401,7 +401,7 @@ private def typedPairs : List (Expr × Expr) := [
   (och{ not' true_ }, Std.Bool),
   (och{ and' true_ false_ }, Std.Bool),
   -- pair eliminators (via concrete pair)
-  (och{ fst_ (pair_ Nat_ Unit_ zero_ unit_) }, Nat_),
+  (och{ fst_ Nat_ (pair_ Nat_ Unit_ zero_ unit_) }, Nat_),
   -- redex eliminations
   (och{ (λx:Nat_. x) zero_ }, Nat_)
 ]
