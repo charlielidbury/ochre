@@ -138,7 +138,7 @@ private def appendVec_wrong := och{
   λT:Type. λv1:(Vec T). λv2:(Vec T).
     v1 (Vec T) (λn1:Nat_. λarr1:(Array_ n1 T).
       v2 (Vec T) (λn2:Nat_. λarr2:(Array_ n2 T).
-        mkVec T (add_ n1 n1) (appendArrays T n1 n1 arr1 arr2)))
+        mkVec T (add_ n1 n1) (appendArrays T n1 n2 arr1 arr2)))
 }
 
 section AppendVecTests
