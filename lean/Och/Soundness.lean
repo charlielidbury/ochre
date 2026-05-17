@@ -155,36 +155,30 @@ theorem synth_progress
     ∀ f, ∀ msg, concEval f e ≠ .error msg :=
   fun _ msg => concEval_no_error (synthCore_topLevel_closedAt h) msg
 
-/-- End-to-end soundness: a well-checked term evaluates to
-something that still inhabits its declared type, AND eval doesn't
-get stuck. Combines `synth_sound`, `subCheck_sound`,
-`synth_progress`, and `concEval_preservation`.
-
-The closedness premise is now derived internally from
-`synthCore_topLevel_closedAt` — `Och.synth` validates `closedAt 0`
-at entry, so callers don't need to supply it.
-
-The composition itself is sorry-free: each of the four pieces
-already routes through its own (potentially walled) proof, and
-`Subtype'.trans` + `concEval_preservation` glue them together.
-The `hsynthB` hypothesis is unused at this composition level —
-it's there so callers can be confident `b.whnf` itself is
-synth-validated (i.e. `b` is not a "smuggled" `WTValue`). -/
+/-- **Headline soundness**: if `synth` accepts `e` with synthesised
+type `a`, and `concEval` produces `e'`, then `e' ⊑ a.whnf`
+declaratively. The runtime result subtypes the synthesised type. -/
 noncomputable def soundness
+    {fuel : Nat} {e e' : Expr} {a : Och.WTValue}
+    (hsynth : Och.synth e fuel = .ok a)
+    (hstep : concEval fuel e = .ok e') :
+    Subtype' [] [] e' a.whnf :=
+  let hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt hsynth
+  let hSynthA : Subtype' [] [] e a.whnf := synth_sound hsynth
+  concEval_preservation hcl hSynthA hstep
+
+/-- **General soundness**: if `synth` accepts, `subCheck` confirms
+`a ⊑ b`, and `concEval` produces `e'`, then `e' ⊑ b.whnf`. This
+is the widening form — the caller picks an expected type `b` that
+may be wider than the synthesised `a`. -/
+noncomputable def soundness_general
     {fuel : Nat} {e e' : Expr} {a b : Och.WTValue}
     (hsynthA : Och.synth e fuel = .ok a)
-    (_hsynthB : Och.synth b.whnf fuel = .ok b)
     (hcheck : Och.subCheck a b fuel = .ok true)
     (hstep : concEval fuel e = .ok e') :
     Subtype' [] [] e' b.whnf :=
-  -- Chain: e ⊑ a.whnf  (synth_sound)
-  --       ⊑ b.whnf     (subCheck_sound)
-  --     and e ⇒ e'      (concEval), so e' ⊑ b.whnf by preservation.
-  let hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt hsynthA
-  let hSynthA : Subtype' [] [] e a.whnf := synth_sound hsynthA
   let hCheck : Subtype' [] [] a.whnf b.whnf := subCheck_sound hcheck
-  let hChain : Subtype' [] [] e b.whnf := hSynthA.trans hCheck
-  concEval_preservation hcl hChain hstep
+  (soundness hsynthA hstep).trans hCheck
 
 section Witnesses
 open Std
