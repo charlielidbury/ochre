@@ -546,7 +546,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok annOk =>
         rw [hann] at h; simp only [Outcome.ok_bind] at h
         match annOk with
-        | false => simp at h
+        | false =>
+          simp only [Bool.not_false, ite_true] at h
+          exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
           match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.lam domA bodyA)) with
@@ -607,7 +609,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
         | .ok annOk2 =>
           rw [hann] at h; simp only [Outcome.ok_bind] at h
           match annOk2 with
-          | false => simp at h
+          | false =>
+            -- .iota is not neutral, so neutralAscent returns .ok false → contradiction
+            simp only [Bool.not_false, ite_true] at h; cases h
           | true =>
             simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
             match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.iota annA bodyA)) with
@@ -618,35 +622,18 @@ private noncomputable def subCheckSubstMatch_sound_gen
               have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
               refine .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann) ?_
               exact hsub.trans (evalSubst_equiv_open _ Γ hev).1
-      | .outOfFuel =>
+      | .outOfFuel | .error _ =>
         rw [hstr] at h; simp only [Outcome.ok_bind] at h
-        -- Same fallback as .ok false
+        -- Fallback to iotaIntro
         match hann : subCheckSubst n Γ ((Γ.length, Expr.iota annA bodyA, Expr.iota annB bodyB) :: S) (Expr.iota annA bodyA) annB with
         | .outOfFuel => rw [hann] at h; cases h
         | .error _ => rw [hann] at h; cases h
         | .ok annOk2 =>
           rw [hann] at h; simp only [Outcome.ok_bind] at h
           match annOk2 with
-          | false => simp at h
-          | true =>
-            simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
-            match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.iota annA bodyA)) with
-            | .outOfFuel => rw [hev] at h; simp at h
-            | .error _ => rw [hev] at h; simp at h
-            | .ok bodyB'' =>
-              rw [hev] at h; simp only [] at h
-              have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
-              refine .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann) ?_
-              exact hsub.trans (evalSubst_equiv_open _ Γ hev).1
-      | .error _ =>
-        rw [hstr] at h; simp only [Outcome.ok_bind] at h
-        match hann : subCheckSubst n Γ ((Γ.length, Expr.iota annA bodyA, Expr.iota annB bodyB) :: S) (Expr.iota annA bodyA) annB with
-        | .outOfFuel => rw [hann] at h; cases h
-        | .error _ => rw [hann] at h; cases h
-        | .ok annOk2 =>
-          rw [hann] at h; simp only [Outcome.ok_bind] at h
-          match annOk2 with
-          | false => simp at h
+          | false =>
+            -- .iota is not neutral, so neutralAscent returns .ok false → contradiction
+            simp only [Bool.not_false, ite_true] at h; cases h
           | true =>
             simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
             match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.iota annA bodyA)) with
@@ -706,7 +693,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
   | fix annA bodyA =>
     cases b with
     | iota annB bodyB =>
-      -- fix, iota: (_, .iota) = iotaIntro
+      -- fix, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
       match hann : subCheckSubst n Γ ((Γ.length, Expr.fix annA bodyA, Expr.iota annB bodyB) :: S) (Expr.fix annA bodyA) annB with
       | .outOfFuel => rw [hann] at h; cases h
@@ -714,7 +701,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok annOk =>
         rw [hann] at h; simp only [Outcome.ok_bind] at h
         match annOk with
-        | false => simp at h
+        | false =>
+          simp only [Bool.not_false, ite_true] at h
+          exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
           match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annA bodyA)) with
@@ -776,7 +765,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
   | bvar k =>
     cases b with
     | iota annB bodyB =>
-      -- bvar, iota: (_, .iota) = iotaIntro
+      -- bvar, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
       match hann : subCheckSubst n Γ ((Γ.length, Expr.bvar k, Expr.iota annB bodyB) :: S) (Expr.bvar k) annB with
       | .outOfFuel => rw [hann] at h; cases h
@@ -784,7 +773,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok annOk =>
         rw [hann] at h; simp only [Outcome.ok_bind] at h
         match annOk with
-        | false => simp at h
+        | false =>
+          simp only [Bool.not_false, ite_true] at h
+          exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
           match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.bvar k)) with
@@ -912,7 +903,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
   | app f arg =>
     cases b with
     | iota annB bodyB =>
-      -- app, iota: (_, .iota) = iotaIntro
+      -- app, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
       match hann : subCheckSubst n Γ ((Γ.length, Expr.app f arg, Expr.iota annB bodyB) :: S) (Expr.app f arg) annB with
       | .outOfFuel => rw [hann] at h; cases h
@@ -920,7 +911,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok annOk =>
         rw [hann] at h; simp only [Outcome.ok_bind] at h
         match annOk with
-        | false => simp at h
+        | false =>
+          simp only [Bool.not_false, ite_true] at h
+          exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
           match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.app f arg)) with
@@ -1069,7 +1062,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
   | type =>
     cases b with
     | iota annB bodyB =>
-      -- type, iota: (_, .iota) = iotaIntro
+      -- type, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
       match hann : subCheckSubst n Γ ((Γ.length, Expr.type, Expr.iota annB bodyB) :: S) Expr.type annB with
       | .outOfFuel => rw [hann] at h; cases h
@@ -1077,7 +1070,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok annOk =>
         rw [hann] at h; simp only [Outcome.ok_bind] at h
         match annOk with
-        | false => simp at h
+        | false =>
+          simp only [Bool.not_false, ite_true] at h
+          exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
           match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 Expr.type) with
@@ -1106,7 +1101,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
   | asc ascE ascTy =>
     cases b with
     | iota annB bodyB =>
-      -- asc, iota: (_, .iota) = iotaIntro
+      -- asc, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
       match hann : subCheckSubst n Γ ((Γ.length, Expr.asc ascE ascTy, Expr.iota annB bodyB) :: S) (Expr.asc ascE ascTy) annB with
       | .outOfFuel => rw [hann] at h; cases h
@@ -1114,7 +1109,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok annOk =>
         rw [hann] at h; simp only [Outcome.ok_bind] at h
         match annOk with
-        | false => simp at h
+        | false =>
+          simp only [Bool.not_false, ite_true] at h
+          exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
           match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.asc ascE ascTy)) with
@@ -1142,7 +1139,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
   | letE letV letB =>
     cases b with
     | iota annB bodyB =>
-      -- letE, iota: (_, .iota) = iotaIntro
+      -- letE, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
       match hann : subCheckSubst n Γ ((Γ.length, Expr.letE letV letB, Expr.iota annB bodyB) :: S) (Expr.letE letV letB) annB with
       | .outOfFuel => rw [hann] at h; cases h
@@ -1150,7 +1147,9 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok annOk =>
         rw [hann] at h; simp only [Outcome.ok_bind] at h
         match annOk with
-        | false => simp at h
+        | false =>
+          simp only [Bool.not_false, ite_true] at h
+          exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
           match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.letE letV letB)) with

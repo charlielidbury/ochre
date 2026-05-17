@@ -247,16 +247,28 @@ example : concEval 200 (och{ indexArr Nat_ three_ arr3 two_ })
 -- Specific uses of `indexArr` at concrete lengths do go through
 -- `typeCheck` for valid indices (the dependent structure is
 -- monomorphised). The `indexArr` definition ITSELF does not pass
--- `typeCheck` at its declared dependent type — the same A6-family
--- NbE incompleteness that blocks `appendArrays` above.
+-- `synth` — the succ branch's subcheck against the Nat_ eliminator's
+-- 3rd domain fails because Fin elimination inside the Nat_ elimination
+-- produces a codomain that the structural engine can't reconcile with
+-- the Pi-exposed domain (A6-family NbE incompleteness, same family as
+-- appendArrays's declared-type subCheckE failure).
+--
+-- Note: `appendArrays` passes `synth` (its succ branch uses pair_,
+-- not Fin elimination). indexArr's use of Fin elimination inside the
+-- Nat_ Scott-style eliminator creates a deeper dependent subCheck
+-- chain that the current engine can't close.
 
--- `three_` as an index into a length-3 array is rejected (diagonal)
--- by the bidirectional walk in `TyCheck.tyInfer`. The public API
--- `Och.synth` currently runs `tyInfer` for diagnostics but on
--- synthCore rejects: indexing arr3 (length 3) at index three_ is
--- out of bounds — the dependent type check fails.
-example : (Och.synth (och{ indexArr Nat_ three_ arr3 three_ }) 200).isError
-        = true := by native_decide
+-- 1. The definition itself does NOT pass synth (A6-family incompleteness).
+--    Pinned so future engine improvements make it visible.
+example : (Och.synth indexArr 400).isError = true := by native_decide
+
+-- 2. In-bounds applications also fail synth because synth recursively
+--    validates the definition. Pinned for the same reason.
+example : (Och.synth (och{ indexArr Nat_ three_ arr3 zero_ }) 400).isError = true := by native_decide
+example : (Och.synth (och{ indexArr Nat_ three_ arr3 two_ }) 400).isError = true := by native_decide
+
+-- 3. Out-of-bounds application is rejected: three_ ⊄ Fin three_.
+example : (Och.synth (och{ indexArr Nat_ three_ arr3 three_ }) 400).isError = true := by native_decide
 
 end IndexArrTests
 

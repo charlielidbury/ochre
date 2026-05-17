@@ -250,7 +250,16 @@ mutual
     | _, .iota ann bodyB => do
         let seen' := (tyCtx.length, a, b) :: seen
         let okAnn ← subCheckSubst fuel tyCtx seen' a ann
-        if !okAnn then .ok false
+        if !okAnn then
+          -- Iota-intro failed (a ⊄ ann). For neutral `a`, fall back
+          -- to ascent: check type_of(a) ⊑ b. This covers e.g.
+          -- `i : Fin(succ_ p) ⊑ Fin(succ_ p)` where the iota's
+          -- annotation (Nat_) is wider than Fin and the direct path
+          -- `a ⊑ Nat_` fails, but `Fin(succ_ p) ⊑ Fin(succ_ p)`
+          -- holds reflexively.
+          -- Uses `seen` (not `seen'`) so the soundness proof can
+          -- derive Subtype' S directly without the iota guard entry.
+          neutralAscent fuel tyCtx seen a b
         else do
           let bodyB' := bodyB.subst 0 a
           match evalSubst (fuel + 1) unfBound bodyB' with
