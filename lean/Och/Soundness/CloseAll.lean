@@ -1,7 +1,5 @@
 import Och.Subtyping
 import Och.EvalSubst
-import Och.Soundness.EvalSubstLemmas
-import Och.Soundness.EvalSubstEquiv
 
 /-!
 # `closeAll` — OBSOLETE (gutted by de Bruijn refactor)

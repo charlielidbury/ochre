@@ -1,6 +1,5 @@
 import Och.Subtyping
 import Och.EvalSubst
-import Och.Soundness.EvalSubstLemmas
 import Och.Soundness.CloseAll
 
 /-!

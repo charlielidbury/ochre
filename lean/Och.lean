@@ -7,13 +7,11 @@ import Och.EvalSubst
 import Och.API
 import Och.Subtyping
 import Och.Soundness
-import Och.Soundness.EvalSubstLemmas
 import Och.Soundness.SubCheckSubstNeutral
 import Och.Soundness.SubCheckSubstStructural
 import Och.Soundness.SubCheckSubstFallback
 import Och.Soundness.SubtypeSteps
 import Och.Soundness.SynthProgress
-import Och.Soundness.EvalSubstEquiv
 
 -- Tests, audit, std-library, probes
 import Och.SoundnessAudit

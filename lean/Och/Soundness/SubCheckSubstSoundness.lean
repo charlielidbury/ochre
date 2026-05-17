@@ -1,7 +1,6 @@
 import Och.Subtyping
 import Och.EvalSubst
 import Och.API
-import Och.Soundness.EvalSubstLemmas
 import Och.Soundness.CloseAll
 import Och.Soundness.SubCheckSubstNeutral
 import Och.Soundness.SubCheckSubstStructural
