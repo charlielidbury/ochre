@@ -15,8 +15,8 @@ Fin n = n.elim (λ_:Nat_. Type)
          Bot                            -- Fin zero_: uninhabited (primitive)
          (λpred:Nat_.                   -- Fin (succ_ pred):
            ι self:Nat_.                 -- self witnesses Fin ⊑ Nat_
-             λP:(self → Type).
-             λfz:(P self).
+             λP:(Nat_ → Type).
+             λfz:(P zero_).
              λfs:(λq:(Fin pred). P (succ_ q)).   -- **Option F**: codomain depends on q
              P self)
 ```
@@ -33,11 +33,27 @@ Mechanics: after iotaIntro with `self := succ_ m`, both sides'
 matches. The contra on `fs`'s domain (`Fin pred ⊑ m`) leverages Option
 A's singleton.
 
+## Motive domain: `Nat_`, not `self`
+
+The motive `P` has domain `Nat_` (matching `self`'s iota annotation),
+and the zero case is `fz:(P zero_)` (matching Nat_'s zero case). This
+mirrors Nat_'s own eliminator structure, which is what makes
+`Fin n ⊑ Nat_` hold structurally: every lambda in Fin's eliminator
+aligns contra/co with the corresponding lambda in Nat_.
+
+The alternative `P:(self → Type)` with `fz:(P self)` breaks
+`Fin n ⊑ Nat_` because the contra check on the zero case becomes
+`P zero_ ⊑ P self` which requires `zero_ ⊑ self` (false for abstract
+self). Using `P:(Nat_ → Type)` and `fz:(P zero_)` avoids this.
+
 ## Unified Nat/Fin
 
 Naturals flow into Fin by subsumption: write the Nat literal at a
 Fin-typed position and the subtype check carries it. No separate
 constructors needed. See `indexArr` in `Std/Array.lean` for the payoff.
+
+`Fin n ⊑ Nat_` also holds at the type level, so Fin values can be
+used anywhere a Nat_ is expected.
 
 ## `Bot` (primitive)
 
@@ -55,8 +71,8 @@ def Fin := och{
         Bot
         (λpred:Nat_.
           ι self:Nat_.
-            λP:(self → Type).
-            λfz:(P self).
+            λP:(Nat_ → Type).
+            λfz:(P zero_).
             λfs:(λq:(F pred). P (succ_ q)).   -- Option F: codomain depends on q
             P self)
 }
@@ -104,10 +120,13 @@ example : Och.subCheckE 200 Expr.type (och{ Fin one_ })    = .ok false := by nat
 -- Bot ⊑ Fin n (via S-BotL, the primitive rule).
 example : Och.subCheckE 200 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
 
--- Fin n ⊑ Nat_ at the TYPE level does NOT hold (Option F tradeoff).
--- Not required by indexArr / other ops — only value-level subsumption
--- of specific naturals into Fin n matters in practice.
-example : Och.subCheckE 200 (och{ Fin one_ }) Nat_     = .ok false := by native_decide
+-- ── Fin n ⊑ Nat_: Fin embeds into Nat_ at the type level ──
+--
+-- Every Fin value is a Nat_ value. This holds because Fin's eliminator
+-- structure (P:(Nat_→Type), fz:(P zero_)) aligns with Nat_'s.
+example : Och.subCheckE 200 (och{ Fin one_ })   Nat_ = .ok true := by native_decide
+example : Och.subCheckE 200 (och{ Fin two_ })   Nat_ = .ok true := by native_decide
+example : Och.subCheckE 200 (och{ Fin three_ }) Nat_ = .ok true := by native_decide
 
 end Tests
 

@@ -205,7 +205,7 @@ def indexArr := och{
       n (λm:Nat_. Array_ m T → Fin m → T)
         (λarr:(Array_ zero_ T). λi:(Fin zero_). i)
         (λp:Nat_. λarr:(Array_ (succ_ p) T). λi:(Fin (succ_ p)).
-          i (λ_:(Fin (succ_ p)). T)
+          i (λ_:Nat_. T)
             (fst_ T arr)
             (λq:(Fin p). self T p (snd_ (Array_ p T) arr) q))
 }
