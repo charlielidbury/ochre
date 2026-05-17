@@ -1,0 +1,15 @@
+;; The proof (at each commit) will be displayed in this buffer
+
+(start-term *1*)
+(start-goal *int*)
+(rewrite macro-expand :on-objectives t :path nil :desc "Macro expand to replace *int* by (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self))))))")
+(rewrite beta-substitute :on-objectives t :path nil :desc "Beta substitute to replace (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self)))))) by ((FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self))))) (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self)))))))")
+(rewrite beta-substitute-all :on-objectives t :path nil :desc "Beta substitute all to replace ((FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self))))) (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self))))))) by (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self))))))))))")
+(rewrite (objective-or-split 1) :on-objectives t :path (3 3) :desc "Objective OR split (1) to replace (OR 'zero-case ('succ-case (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self)))))))) by ('succ-case (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) (OR 'zero-case ('succ-case 'self)))))))")
+(rewrite (objective-or-split 0) :on-objectives t :path (3 3 1 1 3 3 3) :desc "Objective OR split (0) to replace (OR 'zero-case ('succ-case 'self)) by 'zero-case")
+(rewrite beta-substitute :on-objectives t :path (3 3 1) :desc "Beta substitute to replace (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) 'zero-case)))) by ((FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) 'zero-case))) (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) 'zero-case)))))")
+(rewrite beta-substitute-all :on-objectives t :path nil :desc "Beta substitute all to replace (FUN zero-case top (FUN succ-case (FUN n top top) ('succ-case ((FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) 'zero-case))) (y (FUN self top (FUN zero-case top (FUN succ-case (FUN n top top) 'zero-case)))))))) by (FUN zero-case top (FUN succ-case (FUN n top top) ('succ-case (FUN zero-case top (FUN succ-case (FUN n top top) 'zero-case)))))")
+(rewrite macro-expand :on-objectives nil :path nil :desc "Macro expand to replace *1* by (FUN zero-case top (FUN succ-case (FUN n top top) ('succ-case (FUN zero-case top (FUN succ-case (FUN n top top) 'zero-case)))))")
+(qed)
+(commit)
+
