@@ -219,14 +219,23 @@ mutual
         if !contra then return false
         subCheckSubst fuel (domB :: tyCtx) seen _bodyA bodyB
     | .iota _annA _bodyA, .iota annB bodyB =>
+        let seen' := (tyCtx.length, a, b) :: seen
         let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen _annA annB
+          -- Self-referential guard: if the annotations evaluate to
+          -- the same terms as a/b, the structural check would repeat
+          -- the original query. Short-circuit via the seen hypothesis.
+          match evalSubst (fuel + 1) unfBound _annA,
+                evalSubst (fuel + 1) unfBound annB with
+          | .ok annA', .ok annB' =>
+            if annA' == a && annB' == b then return true
+            else pure ()
+          | _, _ => pure ()
+          let annOk ← subCheckSubst fuel tyCtx seen' _annA annB
           if !annOk then return false
-          subCheckSubst fuel (annB :: tyCtx) seen _bodyA bodyB
+          subCheckSubst fuel (annB :: tyCtx) seen' _bodyA bodyB
         match structural with
         | .ok true => .ok true
         | _ => do
-          let seen' := (tyCtx.length, a, b) :: seen
           let okAnn ← subCheckSubst fuel tyCtx seen' a annB
           if !okAnn then .ok false
           else do
@@ -235,14 +244,20 @@ mutual
             | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
             | _ => .ok false
     | .fix _annA _bodyA, .fix annB bodyB =>
+        let seen' := (tyCtx.length, a, b) :: seen
         let structural := do
-          let annOk ← subCheckSubst fuel tyCtx seen _annA annB
+          match evalSubst (fuel + 1) unfBound _annA,
+                evalSubst (fuel + 1) unfBound annB with
+          | .ok annA', .ok annB' =>
+            if annA' == a && annB' == b then return true
+            else pure ()
+          | _, _ => pure ()
+          let annOk ← subCheckSubst fuel tyCtx seen' _annA annB
           if !annOk then return false
-          subCheckSubst fuel (annB :: tyCtx) seen _bodyA bodyB
+          subCheckSubst fuel (annB :: tyCtx) seen' _bodyA bodyB
         match structural with
         | .ok true => .ok true
         | _ => do
-          let seen' := (tyCtx.length, a, b) :: seen
           let unfolded := bodyB.subst 0 b
           match evalSubst (fuel + 1) unfBound unfolded with
           | .ok b' => subCheckSubst fuel tyCtx seen' a b'

@@ -113,20 +113,20 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   | fix_body {S Γ ann body₁ body₂} :
       Subtype' S (ann :: Γ) body₂ body₁ →
       Subtype' S Γ (.fix ann body₂) (.fix ann body₁)
-  /-- Full ι-congruence (varying both annotation and body).
-  Matches `SubV.iota_struct` and the algorithm's `.iota,.iota`
-  structural arm: covariant on annotation, body at the target
-  annotation. The same-annotation `.iota_body` is the special
-  case `iota_cong (.refl _)`. Needed for `Equiv.subst_resp`
-  (the existing `.iota_body` fixes the annotation, but
-  substituting into `.iota ann body` changes both). -/
+  /-- Guarded ι-congruence. The premises may use the conclusion
+  as a coinductive hypothesis (via `hyp`). This guards the
+  annotation sub-check against self-referential iota annotations
+  (e.g., `ι self:(F n). body` where `F n` unfolds back to the
+  same iota). Without the guard, the structural path would
+  recurse on the annotations indefinitely. -/
   | iota_cong {S Γ ann₁ ann₂ body₁ body₂} :
-      Subtype' S Γ ann₁ ann₂ →
-      Subtype' S (ann₂ :: Γ) body₁ body₂ →
+      Subtype' ((Γ.length, .iota ann₁ body₁, .iota ann₂ body₂) :: S) Γ ann₁ ann₂ →
+      Subtype' ((Γ.length, .iota ann₁ body₁, .iota ann₂ body₂) :: S) (ann₂ :: Γ) body₁ body₂ →
       Subtype' S Γ (.iota ann₁ body₁) (.iota ann₂ body₂)
+  /-- Guarded μ-congruence, same pattern as `iota_cong`. -/
   | fix_cong {S Γ ann₁ ann₂ body₁ body₂} :
-      Subtype' S Γ ann₁ ann₂ →
-      Subtype' S (ann₂ :: Γ) body₁ body₂ →
+      Subtype' ((Γ.length, .fix ann₁ body₁, .fix ann₂ body₂) :: S) Γ ann₁ ann₂ →
+      Subtype' ((Γ.length, .fix ann₁ body₁, .fix ann₂ body₂) :: S) (ann₂ :: Γ) body₁ body₂ →
       Subtype' S Γ (.fix ann₁ body₁) (.fix ann₂ body₂)
   /-- letE-congruence. Admissible via `.letE_L (.letE_R …)` +
   `subst_body` + `subst_resp`; having it as a constructor
@@ -242,8 +242,12 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
       exact .app_cong (ihf hsub) (iha hsub) (iha' hsub)
   | iota_body _ ih => exact .iota_body (ih hsub)
   | fix_body _ ih => exact .fix_body (ih hsub)
-  | iota_cong _ _ ihA ihB => exact .iota_cong (ihA hsub) (ihB hsub)
-  | fix_cong _ _ ihA ihB => exact .fix_cong (ihA hsub) (ihB hsub)
+  | iota_cong _ _ ihA ihB =>
+      exact .iota_cong (ihA (List.cons_subset_cons _ hsub))
+                        (ihB (List.cons_subset_cons _ hsub))
+  | fix_cong _ _ ihA ihB =>
+      exact .fix_cong (ihA (List.cons_subset_cons _ hsub))
+                       (ihB (List.cons_subset_cons _ hsub))
   | letE_cong _ _ ihV ihB => exact .letE_cong (ihV hsub) (ihB hsub)
   | iota_intro _ _ ih1 ih2 =>
       refine .iota_intro (ih1 ?_) (ih2 ?_) <;>
@@ -548,18 +552,42 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
-    refine .iota_cong (ihA Γpfx rfl) ?_
-    have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
-    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] using hb
+    have hhead :
+        Seen.extendEntry Δ.length Γ.length
+          ((Γpfx ++ Γ).length, .iota a₁ b₁, .iota a₂ b₂)
+        = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
+           (Expr.iota a₁ b₁).shift Δ.length Γpfx.length,
+           (Expr.iota a₂ b₂).shift Δ.length Γpfx.length) := by
+      simp [Seen.extendEntry, List.length_append,
+            Ctx.shiftPrefix_length, Expr.shift]; omega
+    refine .iota_cong ?_ ?_
+    · have := ihA Γpfx rfl
+      simp only [List.map_cons, hhead] at this
+      simpa [Expr.shift] using this
+    · have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
+      simp only [List.map_cons, hhead, List.length_cons,
+                 Ctx.shiftPrefix_cons, List.cons_append] at hb
+      simpa [Expr.shift] using hb
   | @fix_cong S' Γ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
-    refine .fix_cong (ihA Γpfx rfl) ?_
-    have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
-    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] using hb
+    have hhead :
+        Seen.extendEntry Δ.length Γ.length
+          ((Γpfx ++ Γ).length, .fix a₁ b₁, .fix a₂ b₂)
+        = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
+           (Expr.fix a₁ b₁).shift Δ.length Γpfx.length,
+           (Expr.fix a₂ b₂).shift Δ.length Γpfx.length) := by
+      simp [Seen.extendEntry, List.length_append,
+            Ctx.shiftPrefix_length, Expr.shift]; omega
+    refine .fix_cong ?_ ?_
+    · have := ihA Γpfx rfl
+      simp only [List.map_cons, hhead] at this
+      simpa [Expr.shift] using this
+    · have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
+      simp only [List.map_cons, hhead, List.length_cons,
+                 Ctx.shiftPrefix_cons, List.cons_append] at hb
+      simpa [Expr.shift] using hb
   | @letE_cong S' Γ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
     intro Γpfx hpfx
     subst hpfx
@@ -824,13 +852,19 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
   | @iota_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
       intro Γ' hΔ
       subst hΔ
-      exact .iota_cong (ihA Γ' rfl)
-        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl))
+      have hlen : (Γ' ++ domA :: Γ).length = (Γ' ++ domB :: Γ).length := by
+        simp [List.length_append, List.length_cons]
+      refine .iota_cong ?_ ?_
+      · exact hlen ▸ ihA Γ' rfl
+      · exact hlen ▸ ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl)
   | @fix_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
       intro Γ' hΔ
       subst hΔ
-      exact .fix_cong (ihA Γ' rfl)
-        (ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl))
+      have hlen : (Γ' ++ domA :: Γ).length = (Γ' ++ domB :: Γ).length := by
+        simp [List.length_append, List.length_cons]
+      refine .fix_cong ?_ ?_
+      · exact hlen ▸ ihA Γ' rfl
+      · exact hlen ▸ ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl)
   | @letE_cong S' Δ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
       intro Γ' hΔ
       subst hΔ

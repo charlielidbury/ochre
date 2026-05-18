@@ -39,7 +39,7 @@ def subCheckSubst_arm_lam_lam_struct
   exact .lam ih_dom ih_body
 
 /-- C3: iota-iota structural arm. -/
-def subCheckSubst_arm_iota_iota_struct
+noncomputable def subCheckSubst_arm_iota_iota_struct
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (ih_ann : Subtype' S Γ (closeAll d annA) (closeAll d annB))
@@ -49,10 +49,11 @@ def subCheckSubst_arm_iota_iota_struct
       (closeAll d (.iota annA bodyA))
       (closeAll d (.iota annB bodyB)) := by
   simp only [closeAll, closeAllAt] at *
-  exact .iota_cong ih_ann ih_body
+  exact .iota_cong (ih_ann.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
+    (ih_body.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
 
 /-- C4: fix-fix structural arm. -/
-def subCheckSubst_arm_fix_fix_struct
+noncomputable def subCheckSubst_arm_fix_fix_struct
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (ih_ann : Subtype' S Γ (closeAll d annA) (closeAll d annB))
@@ -62,7 +63,8 @@ def subCheckSubst_arm_fix_fix_struct
       (closeAll d (.fix annA bodyA))
       (closeAll d (.fix annB bodyB)) := by
   simp only [closeAll, closeAllAt] at *
-  exact .fix_cong ih_ann ih_body
+  exact .fix_cong (ih_ann.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
+    (ih_body.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
 
 /-! ## Composed arm lemmas
 
@@ -89,7 +91,7 @@ def subCheckSubst_arm_lam_lam
   exact .lam ih_dom ih_body
 
 /-- C3 (iota-iota structural) composed. -/
-def subCheckSubst_arm_iota_iota
+noncomputable def subCheckSubst_arm_iota_iota
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (_hclA : True) (_hclB : True)
@@ -102,10 +104,11 @@ def subCheckSubst_arm_iota_iota
       (closeAll d (.iota annA bodyA))
       (closeAll d (.iota annB bodyB)) := by
   simp only [closeAll, closeAllAt] at *
-  exact .iota_cong ih_ann ih_body
+  exact .iota_cong (ih_ann.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
+    (ih_body.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
 
 /-- C4 (fix-fix structural) composed. -/
-def subCheckSubst_arm_fix_fix
+noncomputable def subCheckSubst_arm_fix_fix
     {S : Seen} {Γ : Ctx} {d : Nat}
     {annA bodyA annB bodyB : Expr}
     (_hclA : True) (_hclB : True)
@@ -118,6 +121,7 @@ def subCheckSubst_arm_fix_fix
       (closeAll d (.fix annA bodyA))
       (closeAll d (.fix annB bodyB)) := by
   simp only [closeAll, closeAllAt] at *
-  exact .fix_cong ih_ann ih_body
+  exact .fix_cong (ih_ann.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
+    (ih_body.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
 
 end Och.Soundness
