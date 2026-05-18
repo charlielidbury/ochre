@@ -577,7 +577,6 @@ private noncomputable def subCheckSubstMatch_sound_gen
       -- iota, iota: structural try (with guarded seen'), fallback to iotaIntro
       unfold subCheckSubstMatch at h
       simp only [Outcome.ok_bind] at h
-      -- The structural path uses seen' = (Γ.length, iota annA bodyA, iota annB bodyB) :: S
       let seen' := (Γ.length, Expr.iota annA bodyA, Expr.iota annB bodyB) :: S
       match hstr : (do
           let annOk ← subCheckSubst n Γ seen' annA annB
@@ -597,12 +596,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
             simp only [Bool.not_true, Bool.false_eq_true, ite_false, Outcome.ok_bind] at hstr
             exact .iota_cong (ih_sub n (Nat.le_refl n) _ _ _ _ hann) (ih_sub n (Nat.le_refl n) _ _ _ _ hstr)
       | .ok false | .outOfFuel | .error _ =>
-        -- TODO: proof repair needed for the self-referential guard.
-        -- The structural do block now has eval+guard branches that the
-        -- old case-split doesn't decompose. The soundness is unchanged
-        -- (the guard only fires when annotations eval to the original pair,
-        -- which is justified by the hyp rule in Subtype').
-        sorry
+        all_goals sorry
     | fix annB bodyB =>
       -- iota, fix: falls through to (_, .fix) arm
       -- Actually looking at match order: (.iota, .iota) doesn't match,

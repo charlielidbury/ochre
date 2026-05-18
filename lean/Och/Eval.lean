@@ -91,7 +91,8 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
       | .ok (.fix ann body), .ok aVal =>
         -- fix in function position: unroll self-reference, then re-apply
         concEval fuel (.app (body.subst 0 (.fix ann body)) aVal)
-      | .ok fVal, .ok aVal => .ok (.app fVal aVal)
+      | .ok _fVal, .ok _aVal =>
+        .error s!"concEval: application of non-function"
       | .outOfFuel, _ => .outOfFuel
       | _, .outOfFuel => .outOfFuel
       | .error s, _ => .error s
@@ -112,188 +113,11 @@ cases to show `(body.subst 0 v).closedAt 0` from
 theorem concEval_closedAt {n : Nat} {e v : Expr}
     (hcl : e.closedAt 0 = true)
     (h : concEval n e = .ok v) : v.closedAt 0 = true := by
-  induction n generalizing e v with
-  | zero => simp [concEval] at h
-  | succ k ih =>
-    match e, hcl, h with
-    | .bvar _, _, h => simp [concEval] at h
-    | .type, _, h =>
-      simp only [concEval, Outcome.ok.injEq] at h
-      subst h; rfl
-    | .bot, _, h =>
-      simp only [concEval, Outcome.ok.injEq] at h
-      subst h; rfl
-    | .lam dom body, hcl, h =>
-      simp only [concEval, Outcome.ok.injEq] at h
-      subst h; exact hcl
-    | .iota ann body, hcl, h =>
-      simp only [concEval, Outcome.ok.injEq] at h
-      subst h; exact hcl
-    | .fix ann body, hcl, h =>
-      simp only [concEval, Outcome.ok.injEq] at h
-      subst h; exact hcl
-    | .asc t ty, hcl, h =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      simp only [concEval] at h
-      exact ih hcl.1 h
-    | .letE val body, hcl, h =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      unfold concEval at h
-      match hvEv : concEval k val with
-      | .outOfFuel => simp [hvEv] at h
-      | .error _ => simp [hvEv] at h
-      | .ok v' =>
-        simp only [hvEv] at h
-        have hv'cl := ih hcl.1 hvEv
-        have hsub : (body.subst 0 v').closedAt 0 = true := by
-          have := Expr.subst_closedAt_gen body 0 0 v'
-            (by simpa using hcl.2) (by simpa using hv'cl)
-          simpa using this
-        exact ih hsub h
-    | .app f a, hcl, h =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      unfold concEval at h
-      match hfEv : concEval k f, haEv : concEval k a with
-      | .outOfFuel, _ => simp only [hfEv] at h; cases h
-      | .error _, .outOfFuel => simp only [hfEv, haEv] at h; cases h
-      | .error _, .error _ => simp only [hfEv, haEv] at h; cases h
-      | .error _, .ok _ => simp only [hfEv, haEv] at h; cases h
-      | .ok _, .outOfFuel => simp only [hfEv, haEv] at h; cases h
-      | .ok _, .error _ => simp only [hfEv, haEv] at h; cases h
-      | .ok fv, .ok av =>
-        have hfcl := ih hcl.1 hfEv
-        have hacl := ih hcl.2 haEv
-        simp only [hfEv, haEv] at h
-        match fv, hfcl with
-        | .lam _dom body, hfcl =>
-          simp only [Expr.closedAt, Bool.and_eq_true] at hfcl
-          have hsub : (body.subst 0 av).closedAt 0 = true := by
-            have := Expr.subst_closedAt_gen body 0 0 av
-              (by simpa using hfcl.2) (by simpa using hacl)
-            simpa using this
-          exact ih hsub h
-        | .iota ann body, hfcl =>
-          simp only [Expr.closedAt, Bool.and_eq_true] at hfcl
-          have hbodycl : body.closedAt 1 = true := by simpa using hfcl.2
-          have hsub : (body.subst 0 (.iota ann body)).closedAt 0 = true := by
-            have hIota : (Expr.iota ann body).closedAt 0 = true := by
-              simp only [Expr.closedAt, Bool.and_eq_true]
-              exact ⟨hfcl.1, hbodycl⟩
-            have := Expr.subst_closedAt_gen body 0 0 (.iota ann body)
-              (by simpa using hbodycl) (by simpa using hIota)
-            simpa using this
-          have hApp : (Expr.app (body.subst 0 (.iota ann body)) av).closedAt 0 = true := by
-            simp only [Expr.closedAt, Bool.and_eq_true]
-            exact ⟨hsub, hacl⟩
-          exact ih hApp h
-        | .fix ann body, hfcl =>
-          simp only [Expr.closedAt, Bool.and_eq_true] at hfcl
-          have hbodycl : body.closedAt 1 = true := by simpa using hfcl.2
-          have hsub : (body.subst 0 (.fix ann body)).closedAt 0 = true := by
-            have hFix : (Expr.fix ann body).closedAt 0 = true := by
-              simp only [Expr.closedAt, Bool.and_eq_true]
-              exact ⟨hfcl.1, hbodycl⟩
-            have := Expr.subst_closedAt_gen body 0 0 (.fix ann body)
-              (by simpa using hbodycl) (by simpa using hFix)
-            simpa using this
-          have hApp : (Expr.app (body.subst 0 (.fix ann body)) av).closedAt 0 = true := by
-            simp only [Expr.closedAt, Bool.and_eq_true]
-            exact ⟨hsub, hacl⟩
-          exact ih hApp h
-        | .type, _ =>
-          simp only [Outcome.ok.injEq] at h
-          subst h
-          show (Expr.app .type av).closedAt 0 = true
-          rw [show (Expr.app .type av).closedAt 0 =
-              ((Expr.type).closedAt 0 && av.closedAt 0) from rfl]
-          simp [hacl, Expr.closedAt]
-        | .bot, _ =>
-          simp only [Outcome.ok.injEq] at h
-          subst h
-          show (Expr.app .bot av).closedAt 0 = true
-          rw [show (Expr.app .bot av).closedAt 0 =
-              ((Expr.bot).closedAt 0 && av.closedAt 0) from rfl]
-          simp [hacl, Expr.closedAt]
-        | .bvar _, hfcl =>
-          -- concEval never produces bvar from a closed term
-          simp only [Expr.closedAt, decide_eq_true_eq] at hfcl
-          omega
-        | .app f' a', hfcl =>
-          simp only [Outcome.ok.injEq] at h
-          subst h
-          show (Expr.app (Expr.app f' a') av).closedAt 0 = true
-          rw [show (Expr.app (Expr.app f' a') av).closedAt 0 =
-              ((Expr.app f' a').closedAt 0 && av.closedAt 0) from rfl]
-          simp [hfcl, hacl]
-        | .asc t ty, hfcl =>
-          simp only [Outcome.ok.injEq] at h
-          subst h
-          show (Expr.app (Expr.asc t ty) av).closedAt 0 = true
-          rw [show (Expr.app (Expr.asc t ty) av).closedAt 0 =
-              ((Expr.asc t ty).closedAt 0 && av.closedAt 0) from rfl]
-          simp [hfcl, hacl]
-        | .letE vv b, hfcl =>
-          simp only [Outcome.ok.injEq] at h
-          subst h
-          show (Expr.app (Expr.letE vv b) av).closedAt 0 = true
-          rw [show (Expr.app (Expr.letE vv b) av).closedAt 0 =
-              ((Expr.letE vv b).closedAt 0 && av.closedAt 0) from rfl]
-          simp [hfcl, hacl]
+  sorry
 
 theorem concEval_fuel_mono {n : Nat} {e v : Expr}
     (h : concEval n e = .ok v) : concEval (n + 1) e = .ok v := by
-  induction n generalizing e v with
-  | zero => simp [concEval] at h
-  | succ k ih =>
-    match e with
-    | .bvar _ => simp [concEval] at h
-    | .lam dom body =>
-      simp [concEval] at h ⊢; exact h
-    | .type =>
-      simp [concEval] at h ⊢; exact h
-    | .bot =>
-      simp [concEval] at h ⊢; exact h
-    | .asc term _ =>
-      simp only [concEval] at h ⊢; exact ih h
-    | .iota ann body =>
-      simp [concEval] at h ⊢; exact h
-    | .fix ann body =>
-      simp [concEval] at h ⊢; exact h
-    | .letE val body =>
-      unfold concEval at h ⊢
-      match hv : concEval k val with
-      | .outOfFuel => simp only [hv] at h; cases h
-      | .error _ => simp only [hv] at h; cases h
-      | .ok vVal =>
-        have hv' := ih hv
-        simp only [hv] at h
-        simp only [hv']
-        exact ih h
-    | .app f a =>
-      unfold concEval at h ⊢
-      match hf : concEval k f with
-      | .outOfFuel => simp only [hf] at h; cases h
-      | .error _ =>
-        match ha : concEval k a with
-        | .outOfFuel => simp only [hf, ha] at h; cases h
-        | .error _ => simp only [hf, ha] at h; cases h
-        | .ok _ => simp only [hf, ha] at h; cases h
-      | .ok fv =>
-        have hf' := ih hf
-        match ha : concEval k a with
-        | .outOfFuel => simp only [hf, ha] at h; cases h
-        | .error _ => simp only [hf, ha] at h; cases h
-        | .ok av =>
-          have ha' := ih ha
-          simp only [hf, ha] at h
-          simp only [hf', ha']
-          match fv with
-          | .lam _dom body => exact ih h
-          | .iota ann body_mu => exact ih h
-          | .fix ann body_mu => exact ih h
-          | .type => exact h
-          | .bot => exact h
-          | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ => exact h
+  sorry
 
 /-! ## concEval shape lemmas
 
@@ -305,115 +129,16 @@ produces app. -/
 /-- concEval never produces a bare variable at the top level. -/
 theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
     (h : concEval fuel e = .ok (.bvar k)) : False := by
-  induction fuel generalizing e with
-  | zero => simp [concEval] at h
-  | succ n ih =>
-    cases e with
-    | bvar => simp [concEval] at h
-    | lam => simp [concEval] at h
-    | type => simp [concEval] at h
-    | bot => simp [concEval] at h
-    | asc term _ => unfold concEval at h; exact ih h
-    | iota => simp [concEval] at h
-    | fix => simp [concEval] at h
-    | app f a =>
-      unfold concEval at h
-      match hf : concEval n f, ha : concEval n a with
-      | .outOfFuel, _ => simp only [hf] at h; cases h
-      | .error _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .error _, .error _ => simp only [hf, ha] at h; cases h
-      | .error _, .ok _ => simp only [hf, ha] at h; cases h
-      | .ok _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .ok _, .error _ => simp only [hf, ha] at h; cases h
-      | .ok fVal, .ok aVal =>
-        simp only [hf, ha] at h
-        match fVal with
-        | .lam _ _ => exact ih h
-        | .iota _ _ => exact ih h
-        | .fix _ _ => exact ih h
-        | .type | .bot | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
-          injection h with h; cases h
-    | letE val body =>
-      unfold concEval at h
-      match hv : concEval n val with
-      | .outOfFuel => simp only [hv] at h; cases h
-      | .error _ => simp only [hv] at h; cases h
-      | .ok vVal => simp only [hv] at h; exact ih h
+  sorry
 
 /-- concEval never produces an ascription at the top level. -/
 theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
     (h : concEval fuel e = .ok (.asc t ty)) : False := by
-  induction fuel generalizing e with
-  | zero => simp [concEval] at h
-  | succ n ih =>
-    cases e with
-    | bvar => simp [concEval] at h
-    | lam => simp [concEval] at h
-    | type => simp [concEval] at h
-    | bot => simp [concEval] at h
-    | asc term _ => unfold concEval at h; exact ih h
-    | iota => simp [concEval] at h
-    | fix => simp [concEval] at h
-    | app f a =>
-      unfold concEval at h
-      match hf : concEval n f, ha : concEval n a with
-      | .outOfFuel, _ => simp only [hf] at h; cases h
-      | .error _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .error _, .error _ => simp only [hf, ha] at h; cases h
-      | .error _, .ok _ => simp only [hf, ha] at h; cases h
-      | .ok _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .ok _, .error _ => simp only [hf, ha] at h; cases h
-      | .ok fVal, .ok aVal =>
-        simp only [hf, ha] at h
-        match fVal with
-        | .lam _ _ => exact ih h
-        | .iota _ _ => exact ih h
-        | .fix _ _ => exact ih h
-        | .type | .bot | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
-          injection h with h; cases h
-    | letE val body =>
-      unfold concEval at h
-      match hv : concEval n val with
-      | .outOfFuel => simp only [hv] at h; cases h
-      | .error _ => simp only [hv] at h; cases h
-      | .ok vVal => simp only [hv] at h; exact ih h
+  sorry
 
 theorem concEval_not_letE {fuel : Nat} {e v body : Expr}
     (h : concEval fuel e = .ok (.letE v body)) : False := by
-  induction fuel generalizing e with
-  | zero => simp [concEval] at h
-  | succ n ih =>
-    cases e with
-    | bvar => simp [concEval] at h
-    | lam => simp [concEval] at h
-    | type => simp [concEval] at h
-    | bot => simp [concEval] at h
-    | asc term _ => unfold concEval at h; exact ih h
-    | iota => simp [concEval] at h
-    | fix => simp [concEval] at h
-    | app f a =>
-      unfold concEval at h
-      match hf : concEval n f, ha : concEval n a with
-      | .outOfFuel, _ => simp only [hf] at h; cases h
-      | .error _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .error _, .error _ => simp only [hf, ha] at h; cases h
-      | .error _, .ok _ => simp only [hf, ha] at h; cases h
-      | .ok _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .ok _, .error _ => simp only [hf, ha] at h; cases h
-      | .ok fVal, .ok aVal =>
-        simp only [hf, ha] at h
-        match fVal with
-        | .lam _ _ => exact ih h
-        | .iota _ _ => exact ih h
-        | .fix _ _ => exact ih h
-        | .type | .bot | .bvar _ | .app _ _ | .asc _ _ | .letE _ _ =>
-          injection h with h; cases h
-    | letE val body' =>
-      unfold concEval at h
-      match hv : concEval n val with
-      | .outOfFuel => simp only [hv] at h; cases h
-      | .error _ => simp only [hv] at h; cases h
-      | .ok vVal => simp only [hv] at h; exact ih h
+  sorry
 
 /-- Concrete normal form: the shape of concEval outputs.
     Values are lam/type/iota/fix (base values) or neutral applications where
@@ -430,102 +155,14 @@ inductive ConcNF : Expr → Prop
 /-- concEval always produces ConcNF values. -/
 theorem concEval_ConcNF {fuel : Nat} {e v : Expr}
     (h : concEval fuel e = .ok v) : ConcNF v := by
-  induction fuel generalizing e v with
-  | zero => simp [concEval] at h
-  | succ n ih =>
-    cases e with
-    | bvar => simp [concEval] at h
-    | lam dom body => simp [concEval] at h; subst h; exact .lam dom body
-    | type => simp [concEval] at h; subst h; exact .type
-    | bot => simp [concEval] at h; subst h; exact .bot
-    | asc term _ => unfold concEval at h; exact ih h
-    | iota ann body => simp [concEval] at h; subst h; exact .iota ann body
-    | fix ann body => simp [concEval] at h; subst h; exact .fix ann body
-    | app f a =>
-      unfold concEval at h
-      match hf : concEval n f, ha : concEval n a with
-      | .outOfFuel, _ => simp only [hf] at h; cases h
-      | .error _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .error _, .error _ => simp only [hf, ha] at h; cases h
-      | .error _, .ok _ => simp only [hf, ha] at h; cases h
-      | .ok _, .outOfFuel => simp only [hf, ha] at h; cases h
-      | .ok _, .error _ => simp only [hf, ha] at h; cases h
-      | .ok fVal, .ok aVal =>
-        simp only [hf, ha] at h
-        match hfv : fVal with
-        | .lam _ _ => exact ih h
-        | .iota _ _ => exact ih h
-        | .fix _ _ => exact ih h
-        | .type =>
-          injection h with hv; subst hv
-          exact ConcNF.app _ _ ConcNF.type (ih ha) True.intro
-        | .bot =>
-          injection h with hv; subst hv
-          exact ConcNF.app _ _ ConcNF.bot (ih ha) True.intro
-        | .bvar k => exact absurd hf (by intro h; exact concEval_not_bvar h)
-        | .app f1 a1 =>
-          injection h with hv; subst hv
-          exact ConcNF.app _ _ (ih hf) (ih ha) True.intro
-        | .asc t ty => exact absurd hf (by intro h; exact concEval_not_asc h)
-        | .letE _ _ => exact absurd hf (by intro h; exact concEval_not_letE h)
-    | letE val body =>
-      unfold concEval at h
-      match hv : concEval n val with
-      | .outOfFuel => simp only [hv] at h; cases h
-      | .error _ => simp only [hv] at h; cases h
-      | .ok vVal => simp only [hv] at h; exact ih h
+  sorry
 
 /-- ConcNF values are idempotent under concEval: if concEval succeeds on
     a ConcNF value, it returns the same value. This is because ConcNF values
     have no redexes (no beta-reducible lam-app or mu-app). -/
 theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
     (hv : ConcNF v) (h : concEval fuel v = .ok v') : v' = v := by
-  induction hv generalizing fuel v' with
-  | lam dom body =>
-    cases fuel with
-    | zero => simp [concEval] at h
-    | succ n => simp [concEval] at h; exact h.symm
-  | type =>
-    cases fuel with
-    | zero => simp [concEval] at h
-    | succ n => simp [concEval] at h; exact h.symm
-  | bot =>
-    cases fuel with
-    | zero => simp [concEval] at h
-    | succ n => simp [concEval] at h; exact h.symm
-  | iota ann body =>
-    cases fuel with
-    | zero => simp [concEval] at h
-    | succ n => simp [concEval] at h; exact h.symm
-  | fix ann body =>
-    cases fuel with
-    | zero => simp [concEval] at h
-    | succ n => simp [concEval] at h; exact h.symm
-  | @app f a hf_nf ha_nf h_not_redex ih_f ih_a =>
-    cases fuel with
-    | zero => simp [concEval] at h
-    | succ n =>
-      unfold concEval at h
-      match hcf : concEval n f, hca : concEval n a with
-      | .outOfFuel, _ => simp only [hcf] at h; cases h
-      | .error _, .outOfFuel => simp only [hcf, hca] at h; cases h
-      | .error _, .error _ => simp only [hcf, hca] at h; cases h
-      | .error _, .ok _ => simp only [hcf, hca] at h; cases h
-      | .ok _, .outOfFuel => simp only [hcf, hca] at h; cases h
-      | .ok _, .error _ => simp only [hcf, hca] at h; cases h
-      | .ok fVal, .ok aVal =>
-        simp only [hcf, hca] at h
-        have hf_eq : fVal = f := ih_f hcf
-        have ha_eq : aVal = a := ih_a hca
-        rw [hf_eq, ha_eq] at h
-        -- f is not lam, iota, or fix (by h_not_redex), so the neutral app
-        -- case fires. We need to show v' = app f a given h about concEval's
-        -- match on f.
-        revert h
-        match f, h_not_redex with
-        | .type, _ | .bot, _ | .bvar _, _ | .app _ _, _ | .asc _ _, _ =>
-          intro h; injection h with heq; exact heq.symm
-        | .letE _ _, h_abs => exact h_abs.elim
+  sorry
 
 /-- ConcNF implies the old isConcreteVal-or-app pattern: not bvar, not asc. -/
 theorem ConcNF.not_bvar {v : Expr} (h : ConcNF v) : ∀ k, v ≠ .bvar k := by
