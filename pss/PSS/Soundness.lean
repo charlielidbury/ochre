@@ -28,36 +28,36 @@ open Expr
 Still fully proved — none of these cases use `trans`.
 -/
 
-private theorem step_sub_aux {t t' : Expr} (h : Step t t') :
-    ∀ (Γ : Ctx), PSS.Sub Γ t t' ∧ PSS.Sub Γ t' t := by
-  induction h with
-  | beta => intro Γ; exact ⟨.beta_L, .beta_R⟩
-  | app_fun _ ih =>
-    intro Γ; have := ih Γ
-    exact ⟨.app_cong this.1 (.refl _) (.refl _),
-           .app_cong this.2 (.refl _) (.refl _)⟩
-  | app_arg _ ih =>
-    intro Γ; have := ih Γ
-    exact ⟨.app_cong (.refl _) this.1 this.2,
-           .app_cong (.refl _) this.2 this.1⟩
-  | lam_dom _ ih =>
-    intro Γ; have := ih Γ
-    exact ⟨.lam this.1 this.2 (.refl _),
-           .lam this.2 this.1 (.refl _)⟩
-  | @lam_body dom _ _ _ ih =>
-    intro Γ; have := ih (dom :: Γ)
-    exact ⟨.lam (.refl _) (.refl _) this.1,
-           .lam (.refl _) (.refl _) this.2⟩
+private def step_sub_aux {t t' : Expr} (h : Step t t') :
+    ∀ (Γ : Ctx), PSS.Sub Γ t t' × PSS.Sub Γ t' t :=
+  match h with
+  | .beta => fun _Γ => ⟨.beta_L, .beta_R⟩
+  | .app_fun hf =>
+    let ih := step_sub_aux hf
+    fun Γ => let ⟨l, r⟩ := ih Γ
+      ⟨.app_cong l (.refl _) (.refl _), .app_cong r (.refl _) (.refl _)⟩
+  | .app_arg ha =>
+    let ih := step_sub_aux ha
+    fun Γ => let ⟨l, r⟩ := ih Γ
+      ⟨.app_cong (.refl _) l r, .app_cong (.refl _) r l⟩
+  | .lam_dom hd =>
+    let ih := step_sub_aux hd
+    fun Γ => let ⟨l, r⟩ := ih Γ
+      ⟨.lam l r (.refl _), .lam r l (.refl _)⟩
+  | @Step.lam_body dom _ _ hb =>
+    let ih := step_sub_aux hb
+    fun Γ => let ⟨l, r⟩ := ih (dom :: Γ)
+      ⟨.lam (.refl _) (.refl _) l, .lam (.refl _) (.refl _) r⟩
 
-theorem step_sub {Γ : Ctx} {t t' : Expr} (h : Step t t') :
-    PSS.Sub Γ t t' ∧ PSS.Sub Γ t' t :=
+def step_sub {Γ : Ctx} {t t' : Expr} (h : Step t t') :
+    PSS.Sub Γ t t' × PSS.Sub Γ t' t :=
   step_sub_aux h Γ
 
 /-!
 ## Preservation (sorry — needs Wf for trans midpoint)
 -/
 
-theorem step_preservation {Γ : Ctx} {t t' u : Expr}
+def step_preservation {Γ : Ctx} {t t' u : Expr}
     (hsub : PSS.Sub Γ t u) (hwf : PSS.Wf Γ t) (hstep : Step t t') :
     PSS.Sub Γ t' u :=
   sorry
@@ -102,18 +102,18 @@ theorem concEval_closedAt {fuel : Nat} {e v : Expr}
 ## Evaluation equivalence (sorry — needs Wf preservation)
 -/
 
-theorem concEval_equiv {fuel : Nat} {e v : Expr}
+def concEval_equiv {fuel : Nat} {e v : Expr}
     (hcl : e.closedAt 0 = true)
     (hwf : PSS.Wf [] e)
     (hev : concEval fuel e = .ok v) :
-    PSS.Sub [] v e ∧ PSS.Sub [] e v :=
+    PSS.Sub [] v e × PSS.Sub [] e v :=
   sorry
 
 /-!
 ## Preservation and progress (sorry — depend on the above)
 -/
 
-theorem concEval_preservation {fuel : Nat} {e v τ : Expr}
+def concEval_preservation {fuel : Nat} {e v τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hwf : PSS.Wf [] e)
     (hsub : PSS.Sub [] e τ)
@@ -135,6 +135,6 @@ theorem soundness_and_progress {fuel : Nat} {e τ : Expr}
     (hcl : e.closedAt 0 = true)
     (hwf : PSS.Wf [] e)
     (hsub : PSS.Sub [] e τ) :
-    (∃ v, concEval fuel e = .ok v ∧ PSS.Sub [] v τ)
+    (∃ v, concEval fuel e = .ok v ∧ Nonempty (PSS.Sub [] v τ))
     ∨ concEval fuel e = .outOfFuel :=
   sorry

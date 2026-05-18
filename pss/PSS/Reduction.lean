@@ -16,7 +16,7 @@ Evaluation contexts `C` are defined as:
 open Expr
 
 /-- One-step reduction: `Step t t'` means `t ⟶ t'`. -/
-inductive Step : Expr → Expr → Prop where
+inductive Step : Expr → Expr → Type where
   /-- E-APP: β-reduction. `(λx ≤ t. u)(s) ⟶ [x ↦ s]u` -/
   | beta {dom body arg} :
       Step (.app (.lam dom body) arg) (body.subst 0 arg)
@@ -34,6 +34,6 @@ inductive Step : Expr → Expr → Prop where
       Step body body' → Step (.lam dom body) (.lam dom body')
 
 /-- Reflexive-transitive closure of Step. -/
-inductive Steps : Expr → Expr → Prop where
+inductive Steps : Expr → Expr → Type where
   | refl {t : Expr} : Steps t t
   | step {t t' u : Expr} : Step t t' → Steps t' u → Steps t u

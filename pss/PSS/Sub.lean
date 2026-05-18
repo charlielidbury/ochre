@@ -21,7 +21,7 @@ namespace PSS
 
 mutual
 
-inductive Sub : Ctx → Expr → Expr → Prop where
+inductive Sub : Ctx → Expr → Expr → Type where
   | refl {Γ : Ctx} (e : Expr) : Sub Γ e e
   | top {Γ : Ctx} (e : Expr) : Sub Γ e .top
   /-- Transitivity with well-formedness guard on the middle term. -/
@@ -47,7 +47,7 @@ inductive Sub : Ctx → Expr → Expr → Prop where
       Sub Γ (body.subst 0 arg) (.app (.lam dom body) arg)
 
 /-- Well-formedness judgment. -/
-inductive Wf : Ctx → Expr → Prop where
+inductive Wf : Ctx → Expr → Type where
   | var {Γ : Ctx} {k : Nat} :
       k < Γ.length → Wf Γ (.bvar k)
   | top {Γ : Ctx} : Wf Γ .top
