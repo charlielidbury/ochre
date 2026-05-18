@@ -7,13 +7,25 @@ import PSS.Eval
 /-!
 # Soundness
 
-Och-style soundness proof for PSS (System λ_◁).
+Soundness proof for PSS (System λ_◁) with wf-guarded transitivity.
+
+## What's proved
+- `step_sub` — reduction implies bidirectional subtyping (no trans needed)
+- `concEval_closedAt` — evaluation preserves closedness
+
+## What's sorry'd (the hard parts)
+- `step_preservation` — needs `Wf` for the trans midpoint
+- `concEval_equiv` — needs `Wf` preservation through eval
+- `concEval_no_error` — needs inversion lemma (the open problem)
+- `soundness_and_progress` — depends on all the above
 -/
 
 open Expr
 
 /-!
 ## Small-step reduction implies bidirectional subtyping
+
+Still fully proved — none of these cases use `trans`.
 -/
 
 private theorem step_sub_aux {t t' : Expr} (h : Step t t') :
@@ -41,12 +53,19 @@ theorem step_sub {Γ : Ctx} {t t' : Expr} (h : Step t t') :
     PSS.Sub Γ t t' ∧ PSS.Sub Γ t' t :=
   step_sub_aux h Γ
 
+/-!
+## Preservation (sorry — needs Wf for trans midpoint)
+-/
+
 theorem step_preservation {Γ : Ctx} {t t' u : Expr}
-    (hsub : PSS.Sub Γ t u) (hstep : Step t t') : PSS.Sub Γ t' u :=
-  .trans (step_sub hstep).2 hsub
+    (hsub : PSS.Sub Γ t u) (hwf : PSS.Wf Γ t) (hstep : Step t t') :
+    PSS.Sub Γ t' u :=
+  sorry
 
 /-!
 ## Evaluation preserves closedness
+
+Still fully proved — doesn't use Sub at all.
 -/
 
 theorem concEval_closedAt {fuel : Nat} {e v : Expr}
@@ -57,147 +76,65 @@ theorem concEval_closedAt {fuel : Nat} {e v : Expr}
   | succ n ih =>
     unfold concEval at hev
     split at hev
-    · -- bvar
-      simp only [Expr.closedAt, decide_eq_true_eq] at hcl; omega
-    · -- top
-      cases hev; rfl
-    · -- lam
-      cases hev; exact hcl
-    · -- app f a
-      next f a =>
+    · simp only [Expr.closedAt, decide_eq_true_eq] at hcl; omega
+    · cases hev; rfl
+    · cases hev; exact hcl
+    · next f a =>
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       split at hev
-      · -- .ok (.lam dom body), .ok av => concEval n (body.subst 0 av)
-        rename_i dom body av hf ha
-        have hclf := ih hcl.1 hf
-        have hcla := ih hcl.2 ha
-        simp only [Expr.closedAt, Bool.and_eq_true] at hclf
-        exact ih (Expr.subst_closedAt_zero hclf.2 hcla) hev
-      · -- .ok fv, .ok av (non-lam) => .ok (.app fv av)
-        rename_i fv av _ hf ha
-        cases hev
-        simp only [Expr.closedAt, Bool.and_eq_true]
-        exact ⟨ih hcl.1 hf, ih hcl.2 ha⟩
-      · cases hev  -- .outOfFuel = .ok v
-      · cases hev  -- .outOfFuel = .ok v
-      · cases hev  -- .error = .ok v
-      · cases hev  -- .error = .ok v
+      · -- ok fv, ok av
+        rename_i fv av hf ha
+        split at hev
+        · -- fv = lam: beta reduction
+          rename_i dom body heq
+          have hfcl := ih hcl.1 hf
+          have hacl := ih hcl.2 ha
+          simp only [Expr.closedAt, Bool.and_eq_true] at hfcl
+          exact ih (Expr.subst_closedAt_zero hfcl.2 hacl) hev
+        · -- fv ≠ lam: error, contradicts hev
+          cases hev
+      · cases hev
+      · cases hev
+      · cases hev
+      · cases hev
 
 /-!
-## Big-step evaluation equivalence
+## Evaluation equivalence (sorry — needs Wf preservation)
 -/
 
 theorem concEval_equiv {fuel : Nat} {e v : Expr}
     (hcl : e.closedAt 0 = true)
+    (hwf : PSS.Wf [] e)
     (hev : concEval fuel e = .ok v) :
-    PSS.Sub [] v e ∧ PSS.Sub [] e v := by
-  induction fuel generalizing e v with
-  | zero => simp [concEval] at hev
-  | succ n ih =>
-    unfold concEval at hev
-    split at hev
-    · -- bvar
-      simp only [Expr.closedAt, decide_eq_true_eq] at hcl; omega
-    · -- top
-      cases hev; exact ⟨.refl _, .refl _⟩
-    · -- lam
-      cases hev; exact ⟨.refl _, .refl _⟩
-    · -- app f a
-      next f a =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      split at hev
-      · -- .ok (.lam dom body), .ok av => beta-reduction
-        rename_i dom body av hf ha
-        -- closedness of subterms
-        have hclf := concEval_closedAt hcl.1 hf
-        have hcla := concEval_closedAt hcl.2 ha
-        simp only [Expr.closedAt, Bool.and_eq_true] at hclf
-        have hcl_subst := Expr.subst_closedAt_zero hclf.2 hcla
-        -- IH on all three evaluations
-        have ihsub := ih hcl_subst hev
-        have ihf := ih hcl.1 hf
-        have iha := ih hcl.2 ha
-        constructor
-        · -- v ≤ app f a
-          exact .trans ihsub.1 (.trans .beta_R (.app_cong ihf.1 iha.1 iha.2))
-        · -- app f a ≤ v
-          exact .trans (.app_cong ihf.2 iha.2 iha.1) (.trans .beta_L ihsub.2)
-      · -- .ok fv, .ok av (non-lam) => stuck app
-        rename_i fv av _ hf ha
-        cases hev
-        have ihf := ih hcl.1 hf
-        have iha := ih hcl.2 ha
-        exact ⟨.app_cong ihf.1 iha.1 iha.2, .app_cong ihf.2 iha.2 iha.1⟩
-      · cases hev  -- .outOfFuel = .ok v
-      · cases hev  -- .outOfFuel = .ok v
-      · cases hev  -- .error = .ok v
-      · cases hev  -- .error = .ok v
+    PSS.Sub [] v e ∧ PSS.Sub [] e v :=
+  sorry
 
-/-- **Big-step preservation**: one-liner from `concEval_equiv` and `trans`. -/
+/-!
+## Preservation and progress (sorry — depend on the above)
+-/
+
 theorem concEval_preservation {fuel : Nat} {e v τ : Expr}
     (hcl : e.closedAt 0 = true)
+    (hwf : PSS.Wf [] e)
     (hsub : PSS.Sub [] e τ)
     (hev : concEval fuel e = .ok v) :
     PSS.Sub [] v τ :=
-  .trans (concEval_equiv hcl hev).1 hsub
-
-/-!
-## Progress: closed terms never crash
--/
+  sorry
 
 theorem concEval_no_error {fuel : Nat} {e : Expr}
-    (hcl : e.closedAt 0 = true) :
-    ∀ msg, concEval fuel e ≠ .error msg := by
-  induction fuel generalizing e with
-  | zero => intro; simp [concEval]
-  | succ n ih =>
-    intro msg hmsg
-    unfold concEval at hmsg
-    split at hmsg
-    · -- bvar
-      simp only [Expr.closedAt, decide_eq_true_eq] at hcl; omega
-    · simp at hmsg  -- top
-    · simp at hmsg  -- lam
-    · -- app f a
-      next f a =>
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      split at hmsg
-      · -- beta: concEval n (body.subst 0 av) = .error msg
-        rename_i dom body av hf ha
-        have hclf := concEval_closedAt hcl.1 hf
-        have hcla := concEval_closedAt hcl.2 ha
-        simp only [Expr.closedAt, Bool.and_eq_true] at hclf
-        exact ih (Expr.subst_closedAt_zero hclf.2 hcla) msg hmsg
-      · -- stuck: .ok (fv.app av) = .error msg — contradiction
-        cases hmsg
-      · cases hmsg  -- .outOfFuel = .error
-      · cases hmsg  -- .outOfFuel = .error
-      · -- .error s from f: concEval n f = .error s
-        rename_i s hf _
-        exact absurd hf (ih hcl.1 s)
-      · -- .error s from a: concEval n a = .error s
-        rename_i s ha _ _
-        exact absurd ha (ih hcl.2 s)
+    (hcl : e.closedAt 0 = true)
+    (hwf : PSS.Wf [] e) :
+    ∀ msg, concEval fuel e ≠ .error msg :=
+  sorry
 
 /-!
-## Top-level soundness theorems
+## Top-level soundness
 -/
 
-theorem soundness {fuel : Nat} {e v τ : Expr}
-    (hcl : e.closedAt 0 = true) (hsub : PSS.Sub [] e τ)
-    (hev : concEval fuel e = .ok v) : PSS.Sub [] v τ :=
-  concEval_preservation hcl hsub hev
-
-theorem soundness_no_error {fuel : Nat} {e τ : Expr}
-    (hcl : e.closedAt 0 = true) (_hsub : PSS.Sub [] e τ) :
-    ∀ msg, concEval fuel e ≠ .error msg :=
-  concEval_no_error hcl
-
 theorem soundness_and_progress {fuel : Nat} {e τ : Expr}
-    (hcl : e.closedAt 0 = true) (hsub : PSS.Sub [] e τ) :
+    (hcl : e.closedAt 0 = true)
+    (hwf : PSS.Wf [] e)
+    (hsub : PSS.Sub [] e τ) :
     (∃ v, concEval fuel e = .ok v ∧ PSS.Sub [] v τ)
-    ∨ concEval fuel e = .outOfFuel := by
-  match h : concEval fuel e with
-  | .ok v => left; exact ⟨v, rfl, concEval_preservation hcl hsub h⟩
-  | .outOfFuel => right; rfl
-  | .error msg => exact absurd h (concEval_no_error hcl msg)
+    ∨ concEval fuel e = .outOfFuel :=
+  sorry

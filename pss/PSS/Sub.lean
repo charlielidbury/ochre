@@ -1,53 +1,64 @@
 import PSS.Syntax
 
 /-!
-# Och-style Subtyping for PSS
+# Subtyping and Well-Formedness (mutual)
 
-An Och-inspired declarative subtyping relation for System λ_◁.
+Declarative subtyping for System λ_◁ with the paper's well-formedness
+guard on transitivity.
 
-Key differences from the paper's formulation (`DeclRel` in `Declarative.lean`):
-- `trans` does NOT require the middle term to be well-formed
-- Explicit `beta_L`/`beta_R` constructors for β-reduction equivalence
-- `app_cong` requires bidirectional argument equivalence (like Och)
-- No seen-set parameter (PSS has no recursive types)
+`Sub` and `Wf` are mutually defined:
+- `trans` requires the middle term to be well-formed
+- `Wf`'s W-APP rule requires subtyping witnesses
 
-These changes break the circularity between well-formedness and subtyping,
-making preservation provable without transitivity elimination.
+This coupling is the source of the paper's proof difficulties, but
+dropping it (as we showed with the counterexample) makes the relation
+unsound.
 -/
 
 open Expr
 
-/-- Och-style declarative subtyping for PSS.
+namespace PSS
 
-    `PSS.Sub Γ a b` means `a` is a subtype of `b` in context `Γ`.
-    Modelled on Och's `Subtype'` but without the seen-set parameter
-    (PSS has no equirecursive types). -/
-inductive PSS.Sub : Ctx → Expr → Expr → Prop where
-  /-- Reflexivity. -/
-  | refl {Γ : Ctx} (e : Expr) : PSS.Sub Γ e e
-  /-- Everything is a subtype of Top. -/
-  | top {Γ : Ctx} (e : Expr) : PSS.Sub Γ e .top
-  /-- Transitivity (NO well-formedness requirement on the middle term). -/
+mutual
+
+inductive Sub : Ctx → Expr → Expr → Prop where
+  | refl {Γ : Ctx} (e : Expr) : Sub Γ e e
+  | top {Γ : Ctx} (e : Expr) : Sub Γ e .top
+  /-- Transitivity with well-formedness guard on the middle term. -/
   | trans {Γ : Ctx} {a b c : Expr} :
-      PSS.Sub Γ a b → PSS.Sub Γ b c → PSS.Sub Γ a c
-  /-- Variable promotion: `x ≤ t ∈ Γ ⊢ x ≤ t`. -/
+      Sub Γ a b → Sub Γ b c → Wf Γ b → Sub Γ a c
   | bvar {Γ : Ctx} {k : Nat} {t : Expr} :
       Γ.get? k = some t →
-      PSS.Sub Γ (.bvar k) (t.shift (k + 1) 0)
-  /-- Function subtyping with invariant domain:
-      `dom ≡ dom'` (both directions) and `body ≤ body'` under the left domain. -/
+      Sub Γ (.bvar k) (t.shift (k + 1) 0)
+  /-- Function subtyping with invariant domain. -/
   | lam {Γ : Ctx} {dom dom' body body' : Expr} :
-      PSS.Sub Γ dom dom' → PSS.Sub Γ dom' dom →
+      Sub Γ dom dom' → Sub Γ dom' dom →
       Sub (dom :: Γ) body body' →
-      PSS.Sub Γ (.lam dom body) (.lam dom' body')
-  /-- Application congruence with bidirectional argument equivalence.
-      Needed because a neutral head can use its argument at any variance. -/
+      Sub Γ (.lam dom body) (.lam dom' body')
+  /-- Application congruence with bidirectional argument equivalence. -/
   | app_cong {Γ : Ctx} {f f' a a' : Expr} :
-      PSS.Sub Γ f f' → PSS.Sub Γ a a' → PSS.Sub Γ a' a →
-      PSS.Sub Γ (.app f a) (.app f' a')
+      Sub Γ f f' → Sub Γ a a' → Sub Γ a' a →
+      Sub Γ (.app f a) (.app f' a')
   /-- β-reduction forward: redex ≤ reduct. -/
   | beta_L {Γ : Ctx} {dom body arg : Expr} :
-      PSS.Sub Γ (.app (.lam dom body) arg) (body.subst 0 arg)
+      Sub Γ (.app (.lam dom body) arg) (body.subst 0 arg)
   /-- β-reduction backward: reduct ≤ redex. -/
   | beta_R {Γ : Ctx} {dom body arg : Expr} :
-      PSS.Sub Γ (body.subst 0 arg) (.app (.lam dom body) arg)
+      Sub Γ (body.subst 0 arg) (.app (.lam dom body) arg)
+
+/-- Well-formedness judgment. -/
+inductive Wf : Ctx → Expr → Prop where
+  | var {Γ : Ctx} {k : Nat} :
+      k < Γ.length → Wf Γ (.bvar k)
+  | top {Γ : Ctx} : Wf Γ .top
+  | lam {Γ : Ctx} {dom body : Expr} :
+      Wf Γ dom → Wf (dom :: Γ) body →
+      Wf Γ (.lam dom body)
+  | app {Γ : Ctx} {f a s : Expr} :
+      Wf Γ f → Wf Γ a → Wf Γ s →
+      Sub Γ f (.lam s .top) → Sub Γ a s →
+      Wf Γ (.app f a)
+
+end
+
+end PSS

@@ -20,11 +20,11 @@ inductive Outcome (α : Type) where
   | outOfFuel : Outcome α
 deriving Repr
 
-/-- Big-step evaluator. Only errors on free `bvar` (stuck variable).
+/-- Big-step evaluator. Errors on free `bvar` or application of a non-lambda.
 
     Lambdas and Top are values (returned immediately).
     Application evaluates both sides, then β-reduces if the function
-    is a lambda. Non-function applications return `.ok (.app fv av)`. -/
+    is a lambda. Applying a non-lambda (e.g. Top) is an error. -/
 def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
   match fuel with
   | 0 => .outOfFuel
@@ -35,10 +35,8 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
     | .lam _ _ => .ok e
     | .app f a =>
       match concEval fuel f, concEval fuel a with
-      | .ok (.lam _dom body), .ok av =>
-        concEval fuel (body.subst 0 av)
-      | .ok fv, .ok av => .ok (.app fv av)
-      | .outOfFuel, _ => .outOfFuel
-      | _, .outOfFuel => .outOfFuel
-      | .error s, _ => .error s
-      | _, .error s => .error s
+      | .ok fv, .ok av => match fv with
+        | .lam _dom body => concEval fuel (body.subst 0 av)
+        | _ => .error "application to non-lambda"
+      | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
+      | .error s, _ | _, .error s=> .error s
