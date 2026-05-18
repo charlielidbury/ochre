@@ -1,5 +1,0 @@
-{"log":
- [{"message":
-   ".> LEAN_PATH=././.lake/build/lib LD_LIBRARY_PATH= /nix/store/36apymdbp72rf62wp1l4vb3wlvq8g33h-lean/bin/lean -DautoImplicit=false ././././PSS/Declarative.lean -R ./././. -o ././.lake/build/lib/PSS/Declarative.olean -i ././.lake/build/lib/PSS/Declarative.ilean -c ././.lake/build/ir/PSS/Declarative.c --json",
-   "level": "trace"}],
- "depHash": "11503316128047366251"}

@@ -29,5 +29,8 @@ _build
 # Agda compiled interface files
 *.agdai
 
+# Lean build artifacts
+**/.lake/
+
 # direnv local cache (.envrc itself is checked in)
 .direnv/
