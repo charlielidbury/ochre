@@ -3,6 +3,7 @@ import PSS.SyntaxLemmas
 import PSS.Reduction
 import PSS.Sub
 import PSS.Eval
+import PSS.SubstWf
 
 /-!
 # Soundness
@@ -12,7 +13,8 @@ Soundness proof for PSS (System λ_◁) with wf-guarded transitivity.
 ## Axioms used
 - `PSS.top_not_sub_lam` — proved in CanonicalForms.lean; axiom due to Lean elaboration issues
 - `PSS.lam_sub_lam_inversion` — proved in CanonicalForms.lean; axiom due to Lean elaboration issues
-- `subst_wf` — standard metatheory (Lemma 5.4); axiom pending routine proof
+- `PSS.shift_sub_gen` — standard de Bruijn infrastructure; axiom in SubstWf.lean
+- `PSS.subst_sub_gen` — standard de Bruijn infrastructure; axiom in SubstWf.lean
 -/
 
 open Expr
@@ -23,11 +25,12 @@ axiom PSS.top_not_sub_lam {Γ : Ctx} {s t : Expr}
 axiom PSS.lam_sub_lam_inversion {Γ : Ctx} {a b s t : Expr}
     (h : PSS.Sub Γ (.lam a b) (.lam s t)) : PSS.Sub Γ a s × PSS.Sub Γ s a
 
--- Substitution lemma
-axiom subst_wf {Γ : Ctx} {σ body v : Expr}
+-- Substitution lemma (proved in SubstWf.lean, modulo Sub infrastructure axioms)
+noncomputable def subst_wf {Γ : Ctx} {σ body v : Expr}
     (hwfb : PSS.Wf (σ :: Γ) body)
     (hwfv : PSS.Wf Γ v) (hvsig : PSS.Sub Γ v σ) :
-    PSS.Wf Γ (body.subst 0 v)
+    PSS.Wf Γ (body.subst 0 v) :=
+  PSS.subst_wf hwfb hwfv hvsig
 
 /-! ## Step sub -/
 
