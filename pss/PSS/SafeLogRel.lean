@@ -2,115 +2,31 @@ import PSS.Sub
 import PSS.SubstWf
 import PSS.Eval
 import PSS.SyntaxLemmas
+import PSS.CanonicalForms
 
 /-!
-# Step-Indexed Logical Relation for PSS Type Safety
+# Type Safety for PSS via Direct Canonical Forms
 
-Uses semantic canonical forms to avoid the need for syntactic domain
-inversion (`lam_sub_lam_inv`).
+Uses `PSS.top_not_sub_lam` (Top cannot be a subtype of a lambda type) and
+`PSS.lam_sub_lam_inversion` (domain equivalence for lambda-to-lambda subtyping)
+from CanonicalForms.lean to prove type safety directly, without a step-indexed
+logical relation.
 
-Key idea: `SemVal_nf` at a lambda type stores domain equivalence data
-(Sub [] s d × Sub [] d s) between the *type* domain `s` and the
-*value* domain `d`.  `sub_sound` transforms this data when converting
-between types.  `eval_syntactic` extracts the domain equivalence to
-derive `Sub [] av d` from `Sub [] av s`, enabling `subst_wf` without
-syntactic inversion.
+## Architecture
 
-The ONLY remaining sorry is `app_cong` in `sub_sound` (inherited from before).
-The critical `lam_sub_lam_inv` sorry has been eliminated.
+`eval_syntactic` proves that evaluating a well-formed, closed expression:
+1. Never produces an error (type safety)
+2. Produces a value that is Sub-equivalent to the original and well-formed
+
+The key steps for the application case:
+- **Canonical forms**: `top_not_sub_lam` shows fv ≠ Top when f ≤ (λs.⊤)
+- **Domain equivalence**: `lam_sub_lam_inversion` extracts Sub [] s d from
+  Sub [] (λd.b) (λs.⊤), enabling `subst_wf` for the body substitution
 -/
 
 open Expr
 
 namespace PSS.SafeLogRel
-
-/-! ## Type Normalization -/
-
-def typeNorm : Nat → Expr → Option Expr
-  | 0, _ => none
-  | _ + 1, .top => some .top
-  | _ + 1, .lam d b => some (.lam d b)
-  | _ + 1, .bvar n => some (.bvar n)
-  | k + 1, .app f a => match typeNorm k f with
-    | some (.lam _d b) => typeNorm k (b.subst 0 a)
-    | _ => none
-
-/-! ## Semantic Value Type -/
-
-/-- Step-indexed semantic value relation on normal-form types.
-
-The λ-case stores domain equivalence data:
-* `Sub [] s d`, `Sub [] d s` — equivalence between type domain `s` and
-  value domain `d`
-* `Wf [d] b`, `Wf [] d` — well-formedness of the value's parts
-
-This is wrapped in `Nonempty` since `Sub`/`Wf` live in `Type` while
-`SemVal_nf` lives in `Prop`.
-
-No body condition is needed in the semantic relation; the body is handled
-syntactically via `eval_syntactic`'s IH once domain equivalence provides
-`Sub [] av d` for `subst_wf`.
--/
-noncomputable def SemVal_nf : Nat → Expr → Expr → Prop
-  | 0, _, _ => True
-  | _ + 1, .top, _ => True
-  | _ + 1, .bvar _, _ => True
-  | _ + 1, .app _ _, _ => True
-  | _ + 1, .lam s _t, v => ∃ d b, v = .lam d b ∧
-      Nonempty (PSS.Sub [] s d × PSS.Sub [] d s × PSS.Wf [d] b × PSS.Wf [] d)
-
-def SemVal (k : Nat) (τ : Expr) (v : Expr) : Prop :=
-  v.IsValue ∧ ∀ n τ_nf, typeNorm n τ = some τ_nf → SemVal_nf k τ_nf v
-
-theorem semVal_top {k : Nat} {v : Expr} (hv : v.IsValue) : SemVal k .top v := by
-  refine ⟨hv, fun n τ_nf hn => ?_⟩
-  cases n with
-  | zero => simp [typeNorm] at hn
-  | succ m =>
-    have : τ_nf = .top := by unfold typeNorm at hn; exact (Option.some.inj hn).symm
-    subst this; cases k <;> simp [SemVal_nf]
-
-theorem semVal_lam_is_lam {k : Nat} {s t v : Expr}
-    (h : SemVal (k + 1) (.lam s t) v) : ∃ d b, v = .lam d b := by
-  have h1 := h.2 1 (.lam s t) (by unfold typeNorm; rfl)
-  simp only [SemVal_nf] at h1
-  exact let ⟨d, b, heq, _⟩ := h1; ⟨d, b, heq⟩
-
-/-- Extract domain equivalence data from SemVal at a lambda type,
-    given that the value is already known to be `lam d b`. -/
-noncomputable def semVal_lam_dom_equiv {k : Nat} {s t d b : Expr}
-    (h : SemVal (k + 1) (.lam s t) (.lam d b)) :
-    PSS.Sub [] s d × PSS.Sub [] d s × PSS.Wf [d] b × PSS.Wf [] d := by
-  have h1 := h.2 1 (.lam s t) (by unfold typeNorm; rfl)
-  simp only [SemVal_nf] at h1
-  -- h1 : ∃ d' b', lam d b = lam d' b' ∧ Nonempty (Sub [] s d' × ...)
-  -- Since lam is injective, d' = d and b' = b
-  have : Nonempty (PSS.Sub [] s d × PSS.Sub [] d s × PSS.Wf [d] b × PSS.Wf [] d) := by
-    obtain ⟨d', b', heq, hdata⟩ := h1
-    cases heq
-    exact hdata
-  exact Classical.choice this
-
-theorem top_not_semVal_lam {k : Nat} {s t : Expr} :
-    ¬ SemVal (k + 1) (.lam s t) .top := by
-  intro h; obtain ⟨d, b, heq⟩ := semVal_lam_is_lam h; cases heq
-
-theorem semVal_nf_antimono (j k : Nat) (τ v : Expr)
-    (hjk : j ≤ k) (h : SemVal_nf k τ v) : SemVal_nf j τ v := by
-  induction j with
-  | zero => simp [SemVal_nf]
-  | succ j _ =>
-    cases k with | zero => omega | succ k =>
-    match τ with
-    | .top => simp only [SemVal_nf] at *
-    | .bvar _ => simp only [SemVal_nf] at *
-    | .app _ _ => simp only [SemVal_nf] at *
-    | .lam s t =>
-      simp only [SemVal_nf] at h ⊢
-      exact h  -- domain equiv data carries through unchanged
-
-theorem semVal_antimono (hjk : j ≤ k) (h : SemVal k τ v) : SemVal j τ v :=
-  ⟨h.1, fun n τ_nf hn => semVal_nf_antimono j k τ_nf v hjk (h.2 n τ_nf hn)⟩
 
 /-! ## concEval lemmas -/
 
@@ -159,75 +75,6 @@ private theorem concEval_closedAt' {fuel : Nat} {e v : Expr}
       · exact absurd hev (by intro h; cases h)
       · exact absurd hev (by intro h; cases h)
 
-/-! ## Sub soundness
-
-With the simplified SemVal_nf, sub_sound just transforms domain
-equivalence in the lambda case. The app_cong, beta_L, beta_R cases
-are straightforward since SemVal_nf at app/bvar/top types is trivially True. -/
-
-noncomputable def sub_sound (k : Nat) {a b : Expr} (hsub : PSS.Sub [] a b)
-    (hwfa : PSS.Wf [] a) (hwfb : PSS.Wf [] b) (v : Expr) (hv : SemVal k a v) :
-    SemVal k b v := by
-  match hsub with
-  | .refl _ => exact hv
-  | .top _ => exact semVal_top hv.1
-  | .trans h1 h2 hwm =>
-    exact sub_sound k h2 hwm hwfb v (sub_sound k h1 hwfa hwm v hv)
-  | .bvar hget => exact absurd hget (by simp [List.get?])
-  | .lam (dom := dom) (dom' := dom') (body := body) (body' := body')
-      h_dd' h_d'd h_bb' =>
-    have hwf_dom : PSS.Wf [] dom := match hwfa with | .lam hd _ => hd
-    refine ⟨hv.1, fun n τ_nf hn => ?_⟩
-    cases n with
-    | zero => simp [typeNorm] at hn
-    | succ m =>
-      have : τ_nf = .lam dom' body' := by unfold typeNorm at hn; exact (Option.some.inj hn).symm
-      subst this
-      cases k with
-      | zero => simp [SemVal_nf]
-      | succ k =>
-        have h_in := hv.2 1 (.lam dom body) (by unfold typeNorm; rfl)
-        simp only [SemVal_nf] at h_in ⊢
-        obtain ⟨d, b_val, heq_v, hdata_in⟩ := h_in
-        -- Produce the output Nonempty wrapper (all in Prop)
-        exact ⟨d, b_val, heq_v, by
-          have ⟨hsub_dom_d, hsub_d_dom, hwf_db, hwf_d⟩ := Classical.choice hdata_in
-          exact ⟨⟨.trans h_d'd hsub_dom_d hwf_dom,
-                  .trans hsub_d_dom h_dd' hwf_dom,
-                  hwf_db, hwf_d⟩⟩⟩
-  | .app_cong _ _ _ =>
-    -- Requires a "typeNorm respects Sub.app_cong" property.
-    -- typeNorm at an app type beta-reduces the function, so relating the
-    -- normalizations of (app f a) and (app f' a') requires connecting
-    -- the typeNorm results through the Sub derivations — a substantial
-    -- theorem about the interaction between syntactic normalization and
-    -- the subtyping relation.
-    exact ⟨hv.1, fun n τ_nf hn => sorry⟩
-  | .beta_L (dom := dom_) (body := bdy) (arg := arg) =>
-    refine ⟨hv.1, fun n τ_nf hn => ?_⟩
-    cases n with
-    | zero => simp [typeNorm] at hn
-    | succ n' =>
-      have hn' : typeNorm (n' + 2) (.app (.lam dom_ bdy) arg) = some τ_nf := by
-        change (match typeNorm (n' + 1) (.lam dom_ bdy) with
-          | some (.lam _d b) => typeNorm (n' + 1) (b.subst 0 arg) | _ => none) = some τ_nf
-        simp [typeNorm]; exact hn
-      exact hv.2 (n' + 2) τ_nf hn'
-  | .beta_R (dom := dom_) (body := bdy) (arg := arg) =>
-    refine ⟨hv.1, fun n τ_nf hn => ?_⟩
-    cases n with
-    | zero => simp [typeNorm] at hn
-    | succ n' =>
-      cases n' with
-      | zero => simp [typeNorm] at hn
-      | succ n'' =>
-        have hmatch : typeNorm (n'' + 1) (bdy.subst 0 arg) = some τ_nf := by
-          change (match typeNorm (n'' + 1) (.lam dom_ bdy) with
-            | some (.lam _d b) => typeNorm (n'' + 1) (b.subst 0 arg) | _ => none) = some τ_nf at hn
-          simp [typeNorm] at hn; exact hn
-        exact hv.2 (n'' + 1) τ_nf hmatch
-termination_by (k, sizeOf hsub)
-
 /-! ## Syntactic eval invariant -/
 
 structure SynEvalProps (fuel : Nat) (e : Expr) : Type where
@@ -260,14 +107,13 @@ private noncomputable def eval_syntactic (fuel : Nat) (e : Expr)
       | .app (s := s) hwf_f hwf_a hwf_s hsub_f_lam hsub_a_s =>
         have ihf := ih f hcl.1 hwf_f
         have iha := ih a hcl.2 hwf_a
-        -- fv can't be Top (semantic canonical forms)
+        -- fv can't be Top (canonical forms via top_not_sub_lam)
         have fv_not_top : ∀ fv, concEval n f = .ok fv → fv ≠ .top := by
           intro fv hf heq; subst heq
           have fv_data := ihf.props .top hf
           have hsub_top_lam : PSS.Sub [] .top (.lam s .top) :=
             .trans fv_data.1 hsub_f_lam hwf_f
-          exact top_not_semVal_lam (sub_sound 2 hsub_top_lam .top (.lam hwf_s .top) .top
-            (semVal_top trivial))
+          exact PSS.top_not_sub_lam hsub_top_lam
         -- fv must be a lambda
         have fv_is_lam : ∀ fv, concEval n f = .ok fv → Σ' (d b : Expr), fv = .lam d b := by
           intro fv hf
@@ -276,7 +122,7 @@ private noncomputable def eval_syntactic (fuel : Nat) (e : Expr)
           | .lam d b, _ => exact ⟨d, b, rfl⟩
           | .bvar _, hval => exact absurd hval id
           | .app _ _, hval => exact absurd hval id
-        -- Key: build SemVal for fv and extract domain equivalence
+        -- Key: extract domain equivalence directly from Sub
         have app_lam_data : ∀ (d b av : Expr),
             concEval n f = .ok (.lam d b) → concEval n a = .ok av →
             SynEvalProps n (b.subst 0 av) := by
@@ -289,23 +135,11 @@ private noncomputable def eval_syntactic (fuel : Nat) (e : Expr)
           have hwf_av : PSS.Wf [] av := av_data.2.2
           have hcl_av := concEval_closedAt' hcl.2 ha
           have hcl_fv := concEval_closedAt' hcl.1 hf
-          -- Build self-SemVal for lam d b (trivial with simplified SemVal_nf)
-          have semval_fv : SemVal 1 (.lam d b) (.lam d b) := by
-            refine ⟨trivial, fun nm τ_nf hn => ?_⟩
-            cases nm with
-            | zero => simp [typeNorm] at hn
-            | succ nm' =>
-              have : τ_nf = .lam d b := by unfold typeNorm at hn; exact (Option.some.inj hn).symm
-              subst this
-              simp only [SemVal_nf]
-              exact ⟨d, b, rfl, ⟨⟨.refl _, .refl _, hwf_db, hwf_d⟩⟩⟩
-          -- Use sub_sound to convert to the function type
+          -- Extract domain equivalence from Sub [] (.lam d b) (.lam s .top)
           have hfv_sub_lam : PSS.Sub [] (.lam d b) (.lam s .top) :=
             .trans fv_data.1 hsub_f_lam hwf_f
-          have semval_at_type := sub_sound 1 hfv_sub_lam hwf_fv (.lam hwf_s .top)
-            (.lam d b) semval_fv
-          -- Extract domain equivalence: Sub [] s d × Sub [] d s × Wf [d] b × Wf [] d
-          have ⟨hsub_sd, hsub_ds, _, _⟩ := semVal_lam_dom_equiv semval_at_type
+          -- Use lam_sub_lam_inversion to get Sub [] d s × Sub [] s d
+          have ⟨hsub_ds, hsub_sd⟩ := PSS.lam_sub_lam_inversion hfv_sub_lam
           -- Now derive Sub [] av d from Sub [] av s + Sub [] s d
           have hsub_av_s : PSS.Sub [] av s := .trans av_data.1 hsub_a_s hwf_a
           have hsub_av_d : PSS.Sub [] av d := .trans hsub_av_s hsub_sd hwf_s
@@ -316,7 +150,7 @@ private noncomputable def eval_syntactic (fuel : Nat) (e : Expr)
             Expr.subst_closedAt_zero
               (by simp [Expr.closedAt, Bool.and_eq_true] at hcl_fv; exact hcl_fv.2)
               hcl_av
-          -- Use the IH — no domain inversion needed!
+          -- Use the IH
           exact ih (b.subst 0 av) hcl_bsubst hwf_bsubst
         exact {
           no_error := by
@@ -349,25 +183,13 @@ private noncomputable def eval_syntactic (fuel : Nat) (e : Expr)
                 have fv_data := ihf.props (.lam d b) hf_eq
                 have av_data := iha.props av ha_eq
                 -- Build the Sub/Wf for the result
-                -- We need: Sub [] v (app f a) × Sub [] (app f a) v × Wf [] v
-                -- First extract domain equiv again
                 have hwf_fv : PSS.Wf [] (.lam d b) := fv_data.2.2
                 have hwf_d : PSS.Wf [] d := match hwf_fv with | .lam hd _ => hd
                 have hwf_db : PSS.Wf [d] b := match hwf_fv with | .lam _ hb => hb
                 have hwf_av : PSS.Wf [] av := av_data.2.2
-                have semval_fv : SemVal 1 (.lam d b) (.lam d b) :=
-                  ⟨trivial, fun nm τ_nf hn => by
-                    cases nm with
-                    | zero => simp [typeNorm] at hn
-                    | succ nm' =>
-                      have : τ_nf = .lam d b := by unfold typeNorm at hn; exact (Option.some.inj hn).symm
-                      subst this; simp only [SemVal_nf]
-                      exact ⟨d, b, rfl, ⟨⟨.refl _, .refl _, hwf_db, hwf_d⟩⟩⟩⟩
                 have hfv_sub_lam : PSS.Sub [] (.lam d b) (.lam s .top) :=
                   .trans fv_data.1 hsub_f_lam hwf_f
-                have semval_at_type := sub_sound 1 hfv_sub_lam hwf_fv (.lam hwf_s .top)
-                  (.lam d b) semval_fv
-                have ⟨hsub_sd, hsub_ds, _, _⟩ := semVal_lam_dom_equiv semval_at_type
+                have ⟨hsub_ds, hsub_sd⟩ := PSS.lam_sub_lam_inversion hfv_sub_lam
                 have hsub_av_s : PSS.Sub [] av s := .trans av_data.1 hsub_a_s hwf_a
                 have hsub_av_d : PSS.Sub [] av d := .trans hsub_av_s hsub_sd hwf_s
                 have hwf_bsubst : PSS.Wf [] (b.subst 0 av) :=
