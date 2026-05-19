@@ -46,7 +46,11 @@ Combined: `fundamental_trans (semExpr_refl ...) (fundamental_subSem ...)`
 - top: PROVED (subSem_top — everything is in SemVal Top)
 - bvar: PROVED (vacuous in empty context)
 - trans: PROVED (subSem_trans — one-line function composition!)
-- lam: sorry (needs closing substitution for body condition)
+- lam: sorry — partially proved (domain conversion works via ih2, blocked on
+  `Sub [] av dom` which needs `Wf [] dom'` for transitivity). Two known paths:
+  (a) Prove `Sub Γ a b → Wf Γ a → Wf Γ b` (needs mutual induction with subst_wf)
+  (b) Remove `Sub [] av s` from SemVal body condition and use a generalized
+      fundamental theorem with closing substitutions (needs de Bruijn commutation)
 - app_cong: sorry (needs concEval congruence)
 - beta_L: sorry (needs concEval beta-reduction facts)
 - beta_R: sorry (needs concEval beta-reduction facts)
@@ -352,124 +356,115 @@ theorem semExpr_top (k : Nat) (e : Expr) : SemExpr k .top e := by
   · exact semVal_top (k - j) .top isVal_top
   · exact semVal_top (k - j) (.lam d b) (isVal_lam d b)
 
-/-! ## Self-typing (identity extension) -/
+/-! ## Self-typing (identity extension)
 
-/-- Self-typing for values: a closed well-formed value is semantically in its
-    own type at any step index. Proved by strong induction on k. -/
-private noncomputable def semVal_self (k : Nat) (v : Expr)
-    (hcl : v.closedAt 0 = true) (hwf : PSS.Wf [] v) (hval : IsVal v) :
-    SemVal k v v := by
-  induction k using Nat.strongRecOn with
+`semExpr_refl_aux` is the core: by strong induction on k, it proves
+`SemExpr k e e` for any closed well-formed `e`. The key point is that
+the IH is generalized over `e` (not fixed), so the body condition for
+lambdas can recurse at a different expression `b.subst 0 av`. -/
+
+/-- Core identity extension lemma: closed well-formed expressions are
+    semantically self-typed. Proved by strong induction on k with e
+    generalized (essential for the lambda body condition). -/
+private noncomputable def semExpr_refl_aux : (k : Nat) → (e : Expr) →
+    e.closedAt 0 = true → PSS.Wf [] e → SemExpr k e e := by
+  intro k; induction k using Nat.strongRecOn with
   | _ k ih_k =>
-    match v, hval, hcl, hwf with
-    | .top, _, _, _ =>
-      exact semVal_top k .top isVal_top
-    | .lam d b, _, hcl, hwf =>
-      cases k with
-      | zero => exact isVal_lam d b
+    intro e hcl hwf j hj v hev
+    have hcl_v := concEval_closedAt hcl hev
+    have hval_v := concEval_isValue' hev
+    have hwf_v := (concEval_combined j e hcl hwf).props v hev |>.2.2
+    match e, hcl, hwf, hev with
+    | .top, _, _, hev =>
+      cases j with
+      | zero => simp [concEval] at hev
+      | succ n => simp [concEval] at hev; subst hev; exact semVal_top _ .top isVal_top
+    | .lam d b, hcl, hwf, hev =>
+      cases j with
+      | zero => simp [concEval] at hev
       | succ n =>
+        simp [concEval] at hev; subst hev
+        cases hm : k - (n + 1) with
+        | zero => unfold SemVal; exact isVal_lam d b
+        | succ m =>
+          unfold SemVal
+          exact ⟨d, b, rfl, fun j' hj' av hav hcl_av hwf_av hsub_av i hi w hw => by
+            have hwf_db : PSS.Wf [d] b := match hwf with | .lam _ hb => hb
+            have hwf_subst := PSS.subst_wf hwf_db hwf_av hsub_av
+            simp only [Expr.closedAt, Bool.and_eq_true] at hcl
+            have hcl_subst := Expr.subst_closedAt_zero hcl.2 hcl_av
+            -- j' < m + 1 ≤ k - (n+1) ≤ k, so j' < k
+            exact ih_k j' (by omega) (b.subst 0 av) hcl_subst hwf_subst i hi w hw⟩
+    | .app f a, hcl, _, hev =>
+      -- j ≥ 1 because concEval 0 = outOfFuel
+      have hj_pos : j ≥ 1 := by
+        cases j with | zero => simp [concEval] at hev | succ n => omega
+      cases hkj : k - j with
+      | zero =>
         unfold SemVal
-        exact ⟨d, b, rfl, fun j hj av hav hcl_av hwf_av hsub_av i hi w hw => by
-          -- We need SemVal (j - i) ((b.subst 0 av)) w
-          -- where concEval i (b.subst 0 av) = ok w
-          -- Since j < n + 1, j ≤ n, and j - i ≤ j ≤ n < n + 1 = k
-          -- So we can use ih_k at (j - i)
-          have hwf_d : PSS.Wf [] d := match hwf with | .lam hd _ => hd
-          have hwf_db : PSS.Wf [d] b := match hwf with | .lam _ hb => hb
-          have hwf_subst := PSS.subst_wf hwf_db hwf_av hsub_av
-          simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-          have hcl_subst := Expr.subst_closedAt_zero hcl.2 hcl_av
-          -- w is a value produced by concEval, so it's closed and well-formed
-          have hcl_w := concEval_closedAt hcl_subst hw
-          have hval_w := concEval_isValue' hw
-          have hwf_w := (concEval_combined i (b.subst 0 av) hcl_subst hwf_subst).props w hw |>.2.2
-          -- Use ih_k at (j - i) which is < n + 1 = k
-          have hjk : j - i < n + 1 := by omega
-          exact ih_k (j - i) hjk w hcl_w hwf_w (by rcases hval_w with rfl | ⟨_, _, rfl⟩ <;> trivial)⟩
-
-/-- Self-typing for expressions: a closed well-formed expression is
-    semantically in its own type at any step index.
-    Proved by strong induction on k. -/
-noncomputable def semExpr_refl (k : Nat) (e : Expr)
-    (hcl : e.closedAt 0 = true) (hwf : PSS.Wf [] e) :
-    SemExpr k e e := by
-  intro j hj v hev
-  -- v is the result of evaluating e at fuel j
-  have hcl_v := concEval_closedAt hcl hev
-  have hval_v := concEval_isValue' hev
-  have hwf_v := (concEval_combined j e hcl hwf).props v hev |>.2.2
-  -- Need SemVal (k - j) e v
-  -- Case analysis on e:
-  match e, hcl, hwf, hev with
-  | .top, _, _, hev =>
-    -- concEval j Top = ok v implies v = Top (for j ≥ 1) or outOfFuel (j = 0)
-    cases j with
-    | zero => simp [concEval] at hev
-    | succ n =>
-      simp [concEval] at hev; subst hev
-      exact semVal_top (k - (n + 1)) .top isVal_top
-  | .lam d b, hcl, hwf, hev =>
-    -- concEval j (lam d b) = ok (lam d b)
-    cases j with
-    | zero => simp [concEval] at hev
-    | succ n =>
-      simp [concEval] at hev; subst hev
-      -- Need SemVal (k - (n+1)) (lam d b) (lam d b)
-      exact semVal_self (k - (n + 1)) (Expr.lam d b) hcl hwf (isVal_lam d b)
-  | .app f a, hcl, hwf, hev =>
-    -- concEval j (app f a) = ok v
-    -- SemVal (k-j) (app f a) v
-    -- Unfolding SemVal at (k-j):
-    cases hkj : k - j with
-    | zero =>
-      -- SemVal 0 (app f a) v = IsVal v
-      rw [show k - j = 0 from hkj]; unfold SemVal
-      rcases hval_v with rfl | ⟨d', b', rfl⟩
-      · exact isVal_top
-      · exact isVal_lam d' b'
-    | succ n =>
-      -- SemVal (n+1) (app f a) v
-      -- Depends on concEval n (app f a)
-      rw [show k - j = n + 1 from hkj]; unfold SemVal
-      -- Need to relate concEval n (app f a) to concEval j (app f a) = ok v
-      -- By fuel monotonicity: min(j,n) ≤ max(j,n), so the lesser eval
-      -- determines the greater.
-      split
-      · -- concEval n (app f a) = ok τ_nf
-        rename_i τ_nf hev_n
-        -- By fuel mono: if j ≤ n then concEval n ... = ok v (so τ_nf = v)
-        --               if n ≤ j then concEval j ... = ok τ_nf (so v = τ_nf)
-        -- Either way, v = τ_nf.
-        have : v = τ_nf := by
-          by_cases hjn : j ≤ n
-          · have := concEval_fuel_mono hjn hev; rw [this] at hev_n; cases hev_n; rfl
-          · have := concEval_fuel_mono (by omega : n ≤ j) hev_n; rw [this] at hev; cases hev; rfl
-        subst this
-        -- Need SemVal n v v where n < k (since k - j = n + 1, n < k)
-        exact semVal_self n v hcl_v hwf_v
-          (by rcases hval_v with rfl | ⟨_, _, rfl⟩ <;> trivial)
-      · -- concEval n (app f a) ≠ ok (outOfFuel or error)
-        -- SemVal here is IsVal v
         rcases hval_v with rfl | ⟨d', b', rfl⟩
         · exact isVal_top
         · exact isVal_lam d' b'
+      | succ n =>
+        unfold SemVal; split
+        · rename_i τ_nf hev_n
+          have : v = τ_nf := by
+            by_cases hjn : j ≤ n
+            · have := concEval_fuel_mono hjn hev; rw [this] at hev_n; cases hev_n; rfl
+            · have := concEval_fuel_mono (by omega : n ≤ j) hev_n
+              rw [this] at hev; cases hev; rfl
+          subst this
+          -- SemVal n v v via ih_k at 1 step of fuel (v is a value)
+          have hval_v' : IsVal v := by
+            rcases hval_v with rfl | ⟨d', b', rfl⟩
+            · exact isVal_top
+            · exact isVal_lam _ _
+          cases n with
+          | zero =>
+            unfold SemVal
+            exact hval_v'
+          | succ m =>
+            have hev_v := concEval_val 1 v hval_v' (by omega)
+            have h := ih_k (m + 2) (by omega) v hcl_v hwf_v 1 (by omega) v hev_v
+            simp only [show m + 2 - 1 = m + 1 from by omega] at h
+            exact h
+        · rcases hval_v with rfl | ⟨d', b', rfl⟩
+          · exact isVal_top
+          · exact isVal_lam d' b'
+
+/-- Self-typing for values. -/
+private noncomputable def semVal_self (k : Nat) (v : Expr)
+    (hcl : v.closedAt 0 = true) (hwf : PSS.Wf [] v) (hval : IsVal v) :
+    SemVal k v v := by
+  cases k with
+  | zero => unfold SemVal; exact hval
+  | succ n =>
+    -- Use semExpr_refl_aux at k = n + 2, fuel = 1, getting SemVal (n+2-1) v v = SemVal (n+1) v v
+    have hev := concEval_val 1 v hval (by omega)
+    have h := semExpr_refl_aux (n + 2) v hcl hwf 1 (by omega) v hev
+    simp only [show n + 2 - 1 = n + 1 from by omega] at h
+    exact h
+
+/-- Self-typing for expressions. -/
+noncomputable def semExpr_refl (k : Nat) (e : Expr)
+    (hcl : e.closedAt 0 = true) (hwf : PSS.Wf [] e) :
+    SemExpr k e e :=
+  semExpr_refl_aux k e hcl hwf
 
 /-! ## Wf implies closedness -/
 
 /-- Well-formedness implies closedness at the context length. -/
-theorem wf_closedAt {Γ : Ctx} {e : Expr} (h : PSS.Wf Γ e) :
-    e.closedAt Γ.length = true := by
-  induction h with
-  | var hk =>
-    simp only [Expr.closedAt, decide_eq_true_eq]
-    exact hk
-  | top => rfl
-  | lam _ _ ih_dom ih_body =>
-    simp only [Expr.closedAt, Bool.and_eq_true, List.length_cons] at ih_body ⊢
-    exact ⟨ih_dom, ih_body⟩
-  | app _ _ _ _ _ ih_f ih_a _ _ _ =>
+noncomputable def wf_closedAt {Γ : Ctx} {e : Expr} (h : PSS.Wf Γ e) :
+    e.closedAt Γ.length = true :=
+  match h with
+  | .var hk => by simp only [Expr.closedAt, decide_eq_true_eq]; exact hk
+  | .top => rfl
+  | .lam hd hb => by
+    simp only [Expr.closedAt, Bool.and_eq_true, List.length_cons]
+    exact ⟨wf_closedAt hd, wf_closedAt hb⟩
+  | .app hf ha _ _ _ => by
     simp only [Expr.closedAt, Bool.and_eq_true]
-    exact ⟨ih_f, ih_a⟩
+    exact ⟨wf_closedAt hf, wf_closedAt ha⟩
 
 /-- In empty context, well-formedness implies closedness at 0. -/
 theorem wf_closed {e : Expr} (h : PSS.Wf [] e) : e.closedAt 0 = true :=
@@ -540,47 +535,23 @@ To recover `fundamental_closed` (SemExpr form), compose with `semExpr_refl`:
     This is strictly better than an axiom: it shows exactly which Sub
     constructors require additional work. -/
 noncomputable def fundamental_subSem {e τ : Expr} (hsub : PSS.Sub [] e τ) :
-    SubSem e τ := by
-  induction hsub with
-  | refl =>
-    -- SubSem e e: trivially true (identity).
-    exact subSem_refl _
-  | top =>
-    -- SubSem e Top: every value is in SemVal Top.
-    exact subSem_top _
-  | trans h1 h2 hw ih1 ih2 =>
-    -- SubSem a c from SubSem a b and SubSem b c: function composition.
-    exact subSem_trans ih1 ih2
-  | bvar hget =>
-    -- SubSem (bvar k) _: vacuously true in empty context.
-    -- SemVal k (bvar n) v = False at k+1, IsVal v at k=0.
-    -- So SubSem (bvar n) _ requires: SemVal k (bvar n) v → SemVal k τ v.
-    -- At k=0: SemVal 0 (bvar n) v = IsVal v, and SemVal 0 τ v = IsVal v. Trivial.
-    -- At k+1: SemVal (k+1) (bvar n) v = False. Ex falso.
-    exact absurd hget (by simp [List.get?])
-  | lam h1 h2 h3 ih1 ih2 ih3 =>
+    SubSem e τ :=
+  match hsub with
+  | .refl _ => subSem_refl _
+  | .top _ => subSem_top _
+  | .trans h1 h2 hw => subSem_trans (fundamental_subSem h1) (fundamental_subSem h2)
+  | .bvar hget => absurd hget (by simp [List.get?])
+  | .lam h1 h2 h3 =>
     -- SubSem (lam dom body) (lam dom' body')
-    -- At k=0: both sides are IsVal, trivial.
-    -- At k+1: need to show body condition transfers.
-    -- Given av in SemVal j dom', need av in SemVal j dom (via ih2: SubSem dom' dom)
-    -- and SemVal (j-i) (body'.subst 0 av) w from SemVal (j-i) (body.subst 0 av) w.
-    -- The latter needs SubSem (body.subst 0 av) (body'.subst 0 av), which requires
-    -- the generalized fundamental theorem under closing substitution.
+    -- h1 : Sub [] dom dom', h2 : Sub [] dom' dom, h3 : Sub [dom] body body'
+    -- Need: given SemVal k (lam dom body) v, show SemVal k (lam dom' body') v
+    -- Domain conversion works (ih2: SubSem dom' dom), but applying the input
+    -- body condition requires Sub [] av dom (see detailed analysis in header).
+    -- Blocked on: Wf [] dom' for transitivity, or removing Sub from SemVal.
     sorry
-  | app_cong hf ha ha' ihf iha iha' =>
-    -- SubSem (app f a) (app f' a')
-    -- Depends on how concEval interacts with the type structure.
-    sorry
-  | beta_L =>
-    -- SubSem (app (lam dom body) arg) (body.subst 0 arg)
-    -- At k=0: both sides are IsVal, trivial.
-    -- At k+1: SemVal (k+1) (app (lam dom body) arg) v depends on
-    -- concEval k (app (lam dom body) arg), which β-reduces.
-    -- Need to show the result matches SemVal (k+1) (body.subst 0 arg) v.
-    sorry
-  | beta_R =>
-    -- SubSem (body.subst 0 arg) (app (lam dom body) arg)
-    sorry
+  | .app_cong _ _ _ => sorry  -- needs concEval congruence
+  | .beta_L => sorry           -- needs concEval beta-reduction facts
+  | .beta_R => sorry           -- needs concEval beta-reduction facts
 
 /-- The fundamental theorem of the logical relation (closed setting).
 
@@ -702,7 +673,7 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
 | `top` | PROVED (subSem_top) |
 | `bvar` | PROVED (vacuous in empty context) |
 | `trans` | PROVED (subSem_trans — one line!) |
-| `lam` | sorry (needs closing substitution for body) |
+| `lam` | sorry (domain conversion done, blocked on Wf dom') |
 | `app_cong` | sorry (needs concEval congruence) |
 | `beta_L` | sorry (needs concEval beta-reduction facts) |
 | `beta_R` | sorry (needs concEval beta-reduction facts) |
@@ -710,8 +681,12 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
 ### Sorrys in fundamental_subSem (4 total):
 
 The remaining 4 sorrys are the "compatibility lemmas" — they need:
-1. **lam**: a generalized fundamental theorem under closing substitutions
-   so the lam body condition can go under the binder
+1. **lam**: The domain conversion (ih2: SubSem dom' dom) works, but applying
+   the input body condition requires `Sub [] av dom`, derivable from
+   `Sub [] av dom'` and `Sub [] dom' dom` via transitivity IF we have
+   `Wf [] dom'`. Two paths forward:
+   (a) Prove `Sub Γ a b → Wf Γ a → Wf Γ b` by mutual induction
+   (b) Remove `Sub [] av s` from SemVal, generalize to closing substitutions
 2. **beta_L/R**: concEval β-reduction facts relating `app (lam d b) arg`
    evaluation to `(body.subst 0 arg)` evaluation, plus SubSem between
    substituted expressions with different (but equivalent) arguments
