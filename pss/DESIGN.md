@@ -84,6 +84,42 @@ through an ill-formed β-redex `(λf:(Top→Top). f)(Top)` where `Top` is not a 
 of `Top→Top`. The wf guard blocks this because the ill-formed app can't be well-formed
 without first proving `Top ≤ Top→Top` — the very thing being derived.
 
+## MPSS mechanisation status
+
+`PSS/MPSS.lean` contains the MPSS calculus from Pasquale & Garcia-Perez (CSL 2026).
+
+### What's built
+- MPSS syntax (terms, annotations, stacks, extended contexts)
+- Equivalence reduction `MEquivRed` (8 rules)
+- Subtyping reduction `MSubRed` (7 rules)  
+- Context reduction `CtxRed`
+- `equivRed_refl`, `ctxRed_refl` (proved)
+- `ctxRed_nil_stack`, `ctxRed_nil_of_ctxRed` (proved)
+
+### Commutativity (Lemma 1): 5/7 cases structurally complete
+- MS-TOP, MS-APP+ME-APP, MS-APP+ME-TAP, MS-FUN+ME-FUN: closed
+- MS-EQU, MS-PRO+ME-VAR, MS-APP+ME-BET, MS-FOP+ME-FOP: structure set up, blocked on helpers
+
+### Diamond property (Lemma 2): 9/10 case pairs closed  
+- All pairs except ME-PRO+ME-PRO closed (modulo helpers)
+- ME-PRO+ME-PRO needs mutual diamond for MSubRed
+
+### Helper lemmas: 16 sorrys total
+Main blockers:
+- `weakening_equivRed_ctx` — stability of ≡→ under context reduction
+- `substitution_equivRed/subRed` — substitution commutes with reduction
+- `equivRed_change_ann` — annotation insensitivity
+
+### Key finding: de Bruijn friction
+The paper uses named variables with freshness. Several lemma statements
+are INCORRECT for de Bruijn and need reformulation:
+- `weakening_equivRed` needs the annotation to be REDUCED (Γ' has t', not t)
+- `equivRed_change_ann` (equiv→sub) fails when ME-PRO fires on bvar 0
+- Substitution lemmas need shift/subst commutation infrastructure
+
+This is a mechanisation challenge, not a mathematical one. The proofs are
+correct on paper. Switching to locally nameless would reduce this friction.
+
 ## File index
 
 - `PSS/Syntax.lean` — Expr, shift, subst, Ctx
@@ -94,3 +130,4 @@ without first proving `Top ≤ Top→Top` — the very thing being derived.
 - `PSS/CanonicalForms.lean` — top_not_sub_lam, top_not_sub_bvar (proved)
 - `PSS/Soundness.lean` — step_sub (proved), 5 sorry'd theorems
 - `Counterexample.lean` — Top ≤ Top→Top derivable without wf guard
+- `PSS/MPSS.lean` — MPSS calculus with commutativity/diamond (16 sorrys)
