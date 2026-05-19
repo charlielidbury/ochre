@@ -116,27 +116,29 @@ def shiftPrefix : Ctx → Nat → Ctx
   | nil => rfl
   | cons _ _ ih => simp [shiftPrefix, ih]
 
-/-! ## Axioms: shift/subst preserve Sub -/
+/-! ## shift/subst preserve Sub (sorry-based — mutual with Wf lemmas below) -/
 
-/-- Shift preserves subtyping at arbitrary depth.
-    By induction on Sub. Straightforward for most constructors.
-    beta_L/beta_R require `shift (subst body 0 arg) = subst (shift body) 0 (shift arg)`,
-    a standard shift/subst commutation lemma.
-    bvar requires `(Γ₁ ++ Γ₂).get? k` related to `(shiftPrefix Γ₁ d ++ Δ ++ Γ₂).get? k'`. -/
-axiom shift_sub_gen (Γ₁ : Ctx) (Δ : Ctx) {Γ₂ : Ctx} {a b : Expr}
+/-- Shift preserves subtyping at arbitrary depth. Proved by cases on h;
+    beta_L/beta_R use `shift_subst_comm`, bvar uses context lookup helpers.
+    The trans case calls `wf_shift_gen` (mutual dependency).
+    Currently `sorry` due to Lean 4 mutual-block termination issues. -/
+noncomputable def shift_sub_gen (Γ₁ : Ctx) (Δ : Ctx) {Γ₂ : Ctx} {a b : Expr}
     (h : Sub (Γ₁ ++ Γ₂) a b) :
     Sub (shiftPrefix Γ₁ Δ.length ++ Δ ++ Γ₂)
-        (a.shift Δ.length Γ₁.length) (b.shift Δ.length Γ₁.length)
+        (a.shift Δ.length Γ₁.length) (b.shift Δ.length Γ₁.length) := by
+  sorry
 
 /-- Substitution preserves subtyping at arbitrary depth.
-    By induction on Sub. Uses shift/subst commutation for beta_L/beta_R.
-    bvar case requires context lookup after substitution. -/
-axiom subst_sub_gen (Γ₁ : Ctx) {σ : Expr} {Γ₂ : Ctx} {a b v : Expr}
+    Proved by cases on hsub; beta_L/beta_R use `subst_subst_comm_zero`,
+    bvar needs context lookup. The trans case calls `subst_wf_gen` (mutual).
+    Currently `sorry` due to Lean 4 mutual-block termination issues. -/
+noncomputable def subst_sub_gen (Γ₁ : Ctx) {σ : Expr} {Γ₂ : Ctx} {a b v : Expr}
     (hsub : Sub (Γ₁ ++ σ :: Γ₂) a b)
     (hwfv : Wf Γ₂ v) (hvsig : Sub Γ₂ v σ) :
     Sub (substPrefix Γ₁ v ++ Γ₂)
         (a.subst Γ₁.length (v.shift Γ₁.length 0))
-        (b.subst Γ₁.length (v.shift Γ₁.length 0))
+        (b.subst Γ₁.length (v.shift Γ₁.length 0)) := by
+  sorry
 
 /-! ## Weakening (shift preserves Wf) -/
 
