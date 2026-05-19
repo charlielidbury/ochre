@@ -211,49 +211,31 @@ theorem ctxRed_nil_stack : CtxRed Γ [] Γ' s' → s' = []
   | .ct_ann_equiv h _ => ctxRed_nil_stack h
   | .ct_nil => rfl
 
-/-- Diamond property for ≡→ (Lemma 2 in paper).
-    If Γ₀;s₀ ⊢ t₀ ≡→ t₁ and Γ₀;s₀ ⊢ t₀ ≡→ t₂ then for any extended contexts
-    Γ₁;s₁ and Γ₂;s₂ with Γ₀;s₀ ↦ Γ₁;s₁ and Γ₀;s₀ ↦ Γ₂;s₂, there exists t₃
-    such that Γ₁;s₁ ⊢ t₁ ≡→ t₃ and Γ₂;s₂ ⊢ t₂ ≡→ t₃.
+/-- Weakening for MEquivRed under context reduction (Lemma 22 in paper).
+    If Γ₀;s₀ ⊢ t ≡→ t' and Γ₀;s₀ ↦ Γ₁;s₁, then Γ₁;s₁ ⊢ t ≡→ t'.
 
-    TODO: Full proof requires its own induction on ≡→ derivations. -/
-def diamond
-    {Γ₀ : MCtx} {s₀ : Stack} {t₀ t₁ t₂ : Expr}
-    {Γ₁ Γ₂ : MCtx} {s₁ s₂ : Stack}
-    (h₁ : MEquivRed Γ₀ s₀ t₀ t₁)
-    (h₂ : MEquivRed Γ₀ s₀ t₀ t₂)
-    (hc₁ : CtxRed Γ₀ s₀ Γ₁ s₁)
-    (hc₂ : CtxRed Γ₀ s₀ Γ₂ s₂)
-    : Σ' t₃ : Expr, MEquivRed Γ₁ s₁ t₁ t₃ × MEquivRed Γ₂ s₂ t₂ t₃ :=
+    TODO: Prove by induction on the MEquivRed derivation. -/
+def weakening_equivRed_ctx
+    {Γ₀ : MCtx} {s₀ : Stack} {Γ₁ : MCtx} {s₁ : Stack} {t t' : Expr}
+    (h : MEquivRed Γ₀ s₀ t t')
+    (hc : CtxRed Γ₀ s₀ Γ₁ s₁)
+    : MEquivRed Γ₁ s₁ t t' :=
   sorry
 
-/-- Context reduction preserves MS-PRO lookups (derived from Lemma 36 + Lemma 19).
-    If x ≤ t ∈ Γ and Γ;s ↦ Γ';s', then Γ';s' ⊢ x ≤→ t↑.
+/-- Substitution lemma for ≡→ (Lemma 32 in paper).
+    If Γ,x≡α;s ⊢ u ≡→ u' and Γ';s'@nil ⊢ v ≡→ v', then
+    Γ';s' ⊢ u[0↦v] ≡→ u'[0↦v'].
 
-    In full generality, the paper shows the annotation reduces pointwise,
-    giving t' with t ≡→ t' and Γ';s' ⊢ x ≤→ t'↑. Here we use the simpler
-    statement matching our MS-PRO output shape.
+    This is the simultaneous substitution variant: the substitutee can
+    also be reduced (v to v'), matching the paper's Lemma 32.
 
-    TODO: Full proof requires induction on CtxRed showing annotations reduce pointwise. -/
-def weakening_equivRed
-    {Γ : MCtx} {s : Stack} {Γ' : MCtx} {s' : Stack} {k : Nat} {t : Expr}
-    (h_lookup : Γ.get? k = some (Ann.sub t))
-    (h_ctx : CtxRed Γ s Γ' s')
-    : MSubRed Γ' s' (.bvar k) (t.shift (k + 1) 0) :=
-  sorry
-
-/-- Substitution lemma for ≤→ (Lemma 30 in paper).
-    If Γ,x≡v₀;s ⊢ u₁ ≤→ u₃, then Γ';s' ⊢ u₁[x↦v₁] ≤→ u₃[x↦v₁].
-
-    Used in the ME-BET + MS-APP case.
-
-    TODO: Full proof requires induction on the MSubRed derivation,
-    showing substitution commutes with each reduction rule. -/
-def substitution_subRed
-    {v₀ : Expr} {Γ' : MCtx} {s' : Stack}
-    {Γ : MCtx} {s : Stack} {u₁ u₃ v₁ : Expr}
-    (h : MSubRed (Ann.equiv v₀ :: Γ) s u₁ u₃)
-    : MSubRed Γ' s' (u₁.subst 0 v₁) (u₃.subst 0 v₁) :=
+    TODO: Prove by induction on MEquivRed derivation. -/
+def substitution_equivRed
+    {α : Expr} {Γ' : MCtx} {s' : Stack}
+    {Γ : MCtx} {s : Stack} {u u' v v' : Expr}
+    (h_body : MEquivRed (Ann.equiv α :: Γ) s u u')
+    (h_arg  : MEquivRed Γ' [] v v')
+    : MEquivRed Γ' s' (u.subst 0 v) (u'.subst 0 v') :=
   sorry
 
 /-- Annotation-insensitive equivalence reduction (equiv → sub direction).
@@ -286,17 +268,15 @@ def equivRed_change_ann_rev
     : MEquivRed (Ann.equiv v :: Γ) s body body' :=
   sorry
 
-/-- Decomposition of CtxRed with non-empty stack for the MS-FOP case.
+/-- Decomposition of CtxRed with non-empty stack for the ME-FOP case.
     Given Γ;(α :: s₀) ↦ Γ';s', produce a CtxRed for the body context
     (Ann.equiv α :: Γ);s₀ ↦ (Ann.equiv α' :: Γ₂);s₀' that is compatible
-    with MS-FOP reconstruction.
+    with ME-FOP reconstruction.
 
     More precisely: there exist α', s₀', Γ₂ such that s' = α' :: s₀',
     Γ' = Γ₂, and (Ann.equiv α :: Γ);s₀ ↦ (Ann.equiv α' :: Γ₂);s₀'.
 
-    This packages the needed data for ms_fop/me_fop completion.
-
-    TODO: Prove by induction on CtxRed with weakening for MEquivRed. -/
+    TODO: Prove by induction on CtxRed. -/
 def ctxRed_unstk
     {Γ : MCtx} {α : Expr} {s₀ : Stack} {Γ' : MCtx} {s' : Stack}
     (h : CtxRed Γ (α :: s₀) Γ' s')
@@ -304,6 +284,208 @@ def ctxRed_unstk
         PLift (s' = α' :: s₀') ×
         CtxRed (Ann.equiv α :: Γ) s₀ (Ann.equiv α' :: Γ₂) s₀' ×
         PLift (Γ' = Γ₂) :=
+  sorry
+
+/-- Lemma 36 in the paper: strip the stack component from a CtxRed.
+    If Γ;s ↦ Γ';s', then Γ;nil ↦ Γ';nil.
+    Proved by induction on CtxRed. -/
+def ctxRed_nil_of_ctxRed : CtxRed Γ s Γ' s' → CtxRed Γ [] Γ' []
+  | .ct_nil => .ct_nil
+  | .ct_ann_sub hc hd => .ct_ann_sub (ctxRed_nil_of_ctxRed hc) hd
+  | .ct_ann_equiv hc hα => .ct_ann_equiv (ctxRed_nil_of_ctxRed hc) hα
+  | .ct_stk hc _ => ctxRed_nil_of_ctxRed hc
+
+/-- Diamond property for ≡→ (Lemma 2 in paper).
+    If Γ₀;s₀ ⊢ t₀ ≡→ t₁ and Γ₀;s₀ ⊢ t₀ ≡→ t₂ then for any extended contexts
+    Γ₁;s₁ and Γ₂;s₂ with Γ₀;s₀ ↦ Γ₁;s₁ and Γ₀;s₀ ↦ Γ₂;s₂, there exists t₃
+    such that Γ₁;s₁ ⊢ t₁ ≡→ t₃ and Γ₂;s₂ ⊢ t₂ ≡→ t₃.
+
+    Proof by case analysis on (h₁, h₂). Recursive calls provide the IH. -/
+def diamond
+    {Γ₀ : MCtx} {s₀ : Stack} {t₀ t₁ t₂ : Expr}
+    {Γ₁ Γ₂ : MCtx} {s₁ s₂ : Stack}
+    (h₁ : MEquivRed Γ₀ s₀ t₀ t₁)
+    (h₂ : MEquivRed Γ₀ s₀ t₀ t₂)
+    (hc₁ : CtxRed Γ₀ s₀ Γ₁ s₁)
+    (hc₂ : CtxRed Γ₀ s₀ Γ₂ s₂)
+    : Σ' t₃ : Expr, MEquivRed Γ₁ s₁ t₁ t₃ × MEquivRed Γ₂ s₂ t₂ t₃ :=
+  match h₁, h₂ with
+  /-=== Case ME-TOP + ME-TOP: t₀ = Top, t₁ = Top, t₂ = Top ===-/
+  | .me_top, .me_top =>
+    ⟨.top, .me_top, .me_top⟩
+
+  /-=== Case ME-VAR + ME-VAR: t₀ = bvar k, t₁ = bvar k, t₂ = bvar k ===-/
+  | .me_var, .me_var =>
+    ⟨.bvar _, .me_var, .me_var⟩
+
+  /-=== Case ME-VAR + ME-PRO: t₀ = bvar k, t₁ = bvar k, t₂ = α' ===-/
+  | .me_var, @MEquivRed.me_pro _ _ α' k α hlook₂ hsub₂ =>
+    -- h₂ promotes x to α'. By weakening, Γ₁;s₁ ⊢ bvar k ≡→ α'.
+    ⟨α', weakening_equivRed_ctx (.me_pro hlook₂ hsub₂) hc₁, equivRed_refl Γ₂ s₂ α'⟩
+
+  /-=== Case ME-PRO + ME-VAR: symmetric ===-/
+  | @MEquivRed.me_pro _ _ α' k α hlook₁ hsub₁, .me_var =>
+    ⟨α', equivRed_refl Γ₁ s₁ α', weakening_equivRed_ctx (.me_pro hlook₁ hsub₁) hc₂⟩
+
+  /-=== Case ME-PRO + ME-PRO: both promote bvar k ===-/
+  -- Both look up x ≡ α₀ ∈ Γ₀. The annotation is unique, so α₀ is the same.
+  -- h₁ : Γ₀;s₀ ⊢ α₀↑ ≤→ α₁  and  h₂ : Γ₀;s₀ ⊢ α₀↑ ≤→ α₂
+  -- The IH would be on α₀ (which is structurally smaller), but this requires
+  -- a diamond property for MSubRed or a combined mutual diamond.
+  -- For now, sorry this case.
+  | .me_pro _ _, .me_pro _ _ =>
+    sorry
+
+  /-=== Case ME-TAP + ME-TAP: t₀ = app Top u, both give Top ===-/
+  | .me_tap, .me_tap =>
+    ⟨.top, .me_top, .me_top⟩
+
+  /-=== Case ME-TAP + ME-APP: t₀ = app Top u ===-/
+  -- h₁ = ME-TAP gives t₁ = Top
+  -- h₂ = ME-APP: the operator reduction on Top must be ME-TOP.
+  | .me_tap, .me_app h₂_u _ =>
+    match h₂_u with
+    | .me_top => ⟨.top, .me_top, .me_tap⟩
+
+  /-=== Case ME-APP + ME-TAP: symmetric ===-/
+  | .me_app h₁_u _, .me_tap =>
+    match h₁_u with
+    | .me_top => ⟨.top, .me_tap, .me_top⟩
+
+  /-=== Case ME-APP + ME-APP: t₀ = app u₀ v₀ ===-/
+  | @MEquivRed.me_app _ _ u₀ u₁ v₀ v₁ h₁_u h₁_v,
+    @MEquivRed.me_app _ _ _ u₂ _ v₂ h₂_u h₂_v =>
+    -- Build extended context reductions with v on stack
+    let hc₁' := CtxRed.ct_stk hc₁ h₁_v
+    let hc₂' := CtxRed.ct_stk hc₂ h₂_v
+    -- IH on operator u₀ with stack v₀::s₀
+    let ⟨u₃, hu₁, hu₂⟩ := diamond h₁_u h₂_u hc₁' hc₂'
+    -- IH on operand v₀ with nil stack (using Lemma 36)
+    let ⟨v₃, hv₁, hv₂⟩ := diamond h₁_v h₂_v
+      (ctxRed_nil_of_ctxRed hc₁) (ctxRed_nil_of_ctxRed hc₂)
+    ⟨.app u₃ v₃,
+      .me_app hu₁ hv₁,
+      .me_app hu₂ hv₂⟩
+
+  /-=== Case ME-APP + ME-BET: t₀ = app (lam dom body) v₀ ===-/
+  -- h₁ = ME-APP with ME-FOP on the lambda
+  -- h₂ = ME-BET: β-reduces
+  -- This is the key case from the paper (ME-App with ME-Bet).
+  -- For now, sorry this case as it requires careful unification of
+  -- the operand variable across both patterns.
+  | .me_app h₁_u h₁_v, .me_bet h₂_body h₂_v =>
+    match h₁_u with
+    | .me_fop h₁_dom h₁_body =>
+      -- h₁_body : MEquivRed (Ann.equiv v :: Γ₀) s₀ body body₁'
+      --   where v is the operand from the stack
+      -- h₂_body : MEquivRed (Ann.sub dom :: Γ₀) s₀ body body₂'
+      -- Convert h₂_body to equiv context:
+      let h₂_body_equiv := equivRed_change_ann_rev h₂_body
+      -- Build context reductions for (Ann.equiv v :: Γ₀);s₀
+      let hc₁_body := CtxRed.ct_ann_equiv hc₁ h₁_v
+      let hc₂_body := CtxRed.ct_ann_equiv hc₂ h₂_v
+      -- IH on body
+      let ⟨body₃, hbody₁, hbody₂⟩ := diamond h₁_body h₂_body_equiv hc₁_body hc₂_body
+      -- IH on operand
+      let ⟨v₃, hv₁, hv₂⟩ := diamond h₁_v h₂_v
+        (ctxRed_nil_of_ctxRed hc₁) (ctxRed_nil_of_ctxRed hc₂)
+      -- Left completion: ME-BET on t₁ = app (lam dom₁' body₁') v₁
+      let hbody₁_sub := equivRed_change_ann hbody₁
+      -- Right completion: substitution on t₂ = u'[0↦v₂]
+      -- hbody₂ : MEquivRed (Ann.equiv v₂' :: Γ₂) s₂ body₂'_equiv body₃
+      -- hv₂ : MEquivRed Γ₂ [] v₂ v₃
+      ⟨body₃.subst 0 v₃,
+        .me_bet hbody₁_sub hv₁,
+        substitution_equivRed hbody₂ hv₂⟩
+
+  /-=== Case ME-BET + ME-APP: symmetric ===-/
+  | .me_bet h₁_body h₁_v, .me_app h₂_u h₂_v =>
+    match h₂_u with
+    | .me_fop h₂_dom h₂_body =>
+      let h₁_body_equiv := equivRed_change_ann_rev h₁_body
+      let hc₁_body := CtxRed.ct_ann_equiv hc₁ h₁_v
+      let hc₂_body := CtxRed.ct_ann_equiv hc₂ h₂_v
+      let ⟨body₃, hbody₁, hbody₂⟩ := diamond h₁_body_equiv h₂_body hc₁_body hc₂_body
+      let ⟨v₃, hv₁, hv₂⟩ := diamond h₁_v h₂_v
+        (ctxRed_nil_of_ctxRed hc₁) (ctxRed_nil_of_ctxRed hc₂)
+      let hbody₂_sub := equivRed_change_ann hbody₂
+      ⟨body₃.subst 0 v₃,
+        substitution_equivRed hbody₁ hv₁,
+        .me_bet hbody₂_sub hv₂⟩
+
+  /-=== Case ME-BET + ME-BET: t₀ = app (lam dom body) v₀ ===-/
+  | .me_bet h₁_body h₁_v, .me_bet h₂_body h₂_v =>
+    -- Convert body reductions to equiv context
+    let h₁_body_equiv := equivRed_change_ann_rev h₁_body
+    let h₂_body_equiv := equivRed_change_ann_rev h₂_body
+    -- Build context reductions for body
+    let hc₁_body := CtxRed.ct_ann_equiv hc₁ h₁_v
+    let hc₂_body := CtxRed.ct_ann_equiv hc₂ h₂_v
+    -- IH on body and operand
+    let ⟨body₃, hbody₁, hbody₂⟩ := diamond h₁_body_equiv h₂_body_equiv hc₁_body hc₂_body
+    let ⟨v₃, hv₁, hv₂⟩ := diamond h₁_v h₂_v
+      (ctxRed_nil_of_ctxRed hc₁) (ctxRed_nil_of_ctxRed hc₂)
+    -- Substitution lemma for both sides
+    ⟨body₃.subst 0 v₃,
+      substitution_equivRed hbody₁ hv₁,
+      substitution_equivRed hbody₂ hv₂⟩
+
+  /-=== Case ME-FUN + ME-FUN: t₀ = lam dom body, s₀ = [] ===-/
+  | .me_fun h₁_dom h₁_body, .me_fun h₂_dom h₂_body => by
+    -- s₀ = nil, so s₁ = nil and s₂ = nil
+    have hs₁ : s₁ = [] := ctxRed_nil_stack hc₁
+    have hs₂ : s₂ = [] := ctxRed_nil_stack hc₂
+    subst hs₁; subst hs₂
+    -- IH on dom
+    obtain ⟨dom₃, hdom₁, hdom₂⟩ := diamond h₁_dom h₂_dom hc₁ hc₂
+    -- Build context reduction for body context: (Ann.sub dom :: Γ₀);nil ↦ ...
+    have hc₁_body := CtxRed.ct_ann_sub hc₁ h₁_dom
+    have hc₂_body := CtxRed.ct_ann_sub hc₂ h₂_dom
+    -- IH on body
+    obtain ⟨body₃, hbody₁, hbody₂⟩ := diamond h₁_body h₂_body hc₁_body hc₂_body
+    exact ⟨.lam dom₃ body₃, .me_fun hdom₁ hbody₁, .me_fun hdom₂ hbody₂⟩
+
+  /-=== Case ME-FOP + ME-FOP: t₀ = lam dom body, s₀ = α :: s₀' ===-/
+  | .me_fop h₁_dom h₁_body, .me_fop h₂_dom h₂_body => by
+    -- Decompose the context reduction: Γ₀;(α :: s₀') ↦ Γ₁;s₁
+    obtain ⟨α₁', s₁', Γ₁', ⟨hs₁_eq⟩, hc₁_body_raw, ⟨hΓ₁_eq⟩⟩ := ctxRed_unstk hc₁
+    obtain ⟨α₂', s₂', Γ₂', ⟨hs₂_eq⟩, hc₂_body_raw, ⟨hΓ₂_eq⟩⟩ := ctxRed_unstk hc₂
+    subst hs₁_eq; subst hΓ₁_eq; subst hs₂_eq; subst hΓ₂_eq
+    -- IH on dom: need CtxRed Γ₀ [] Γ₁' [] and CtxRed Γ₀ [] Γ₂' []
+    -- ctxRed_nil_of_ctxRed hc₁ : CtxRed Γ₀ [] Γ₁' [] (after subst)
+    obtain ⟨dom₃, hdom₁, hdom₂⟩ := diamond h₁_dom h₂_dom
+      (ctxRed_nil_of_ctxRed hc₁) (ctxRed_nil_of_ctxRed hc₂)
+    -- IH on body
+    obtain ⟨body₃, hbody₁, hbody₂⟩ := diamond h₁_body h₂_body hc₁_body_raw hc₂_body_raw
+    exact ⟨.lam dom₃ body₃, .me_fop hdom₁ hbody₁, .me_fop hdom₂ hbody₂⟩
+
+/-- Context reduction preserves MS-PRO lookups (derived from Lemma 36 + Lemma 19).
+    If x ≤ t ∈ Γ and Γ;s ↦ Γ';s', then Γ';s' ⊢ x ≤→ t↑.
+
+    In full generality, the paper shows the annotation reduces pointwise,
+    giving t' with t ≡→ t' and Γ';s' ⊢ x ≤→ t'↑. Here we use the simpler
+    statement matching our MS-PRO output shape.
+
+    TODO: Full proof requires induction on CtxRed showing annotations reduce pointwise. -/
+def weakening_equivRed
+    {Γ : MCtx} {s : Stack} {Γ' : MCtx} {s' : Stack} {k : Nat} {t : Expr}
+    (h_lookup : Γ.get? k = some (Ann.sub t))
+    (h_ctx : CtxRed Γ s Γ' s')
+    : MSubRed Γ' s' (.bvar k) (t.shift (k + 1) 0) :=
+  sorry
+
+/-- Substitution lemma for ≤→ (Lemma 30 in paper).
+    If Γ,x≡v₀;s ⊢ u₁ ≤→ u₃, then Γ';s' ⊢ u₁[x↦v₁] ≤→ u₃[x↦v₁].
+
+    Used in the ME-BET + MS-APP case.
+
+    TODO: Full proof requires induction on the MSubRed derivation,
+    showing substitution commutes with each reduction rule. -/
+def substitution_subRed
+    {v₀ : Expr} {Γ' : MCtx} {s' : Stack}
+    {Γ : MCtx} {s : Stack} {u₁ u₃ v₁ : Expr}
+    (h : MSubRed (Ann.equiv v₀ :: Γ) s u₁ u₃)
+    : MSubRed Γ' s' (u₁.subst 0 v₁) (u₃.subst 0 v₁) :=
   sorry
 
 /-- Main commutativity theorem (Lemma 1 / Theorem 1 in paper).
