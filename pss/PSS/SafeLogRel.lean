@@ -196,25 +196,13 @@ noncomputable def sub_sound (k : Nat) {a b : Expr} (hsub : PSS.Sub [] a b)
                   .trans hsub_d_dom h_dd' hwf_dom,
                   hwf_db, hwf_d⟩⟩⟩
   | .app_cong _ _ _ =>
-    -- SemVal_nf at app type is True, so this is trivial
-    refine ⟨hv.1, fun n τ_nf hn => ?_⟩
-    cases n with
-    | zero => simp [typeNorm] at hn
-    | succ n' =>
-      -- typeNorm (n'+1) (app f' a') depends on typeNorm n' f'
-      -- We need: SemVal_nf k τ_nf v
-      -- The issue is that typeNorm might reduce the app to something non-trivial
-      -- Let me check what typeNorm does for app
-      -- typeNorm (n'+1) (app f' a') = match typeNorm n' f' with
-      --   | some (lam _d b) => typeNorm n' (b.subst 0 a') | _ => none
-      -- If it normalizes to (lam s t), we need SemVal_nf k (lam s t) v
-      -- which needs domain equivalence data.
-      -- We can get this from the input SemVal via typeNorm of the input app type.
-      -- typeNorm (n'+1) (app f a) = match typeNorm n' f with
-      --   | some (lam _d b) => typeNorm n' (b.subst 0 a) | _ => none
-      -- The two apps might normalize differently...
-      -- Actually this is hard. Let me revisit.
-      sorry
+    -- Requires a "typeNorm respects Sub.app_cong" property.
+    -- typeNorm at an app type beta-reduces the function, so relating the
+    -- normalizations of (app f a) and (app f' a') requires connecting
+    -- the typeNorm results through the Sub derivations — a substantial
+    -- theorem about the interaction between syntactic normalization and
+    -- the subtyping relation.
+    exact ⟨hv.1, fun n τ_nf hn => sorry⟩
   | .beta_L (dom := dom_) (body := bdy) (arg := arg) =>
     refine ⟨hv.1, fun n τ_nf hn => ?_⟩
     cases n with
