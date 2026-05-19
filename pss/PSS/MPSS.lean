@@ -214,7 +214,17 @@ theorem ctxRed_nil_stack : CtxRed Γ [] Γ' s' → s' = []
 /-- Weakening for MEquivRed under context reduction (Lemma 22 in paper).
     If Γ₀;s₀ ⊢ t ≡→ t' and Γ₀;s₀ ↦ Γ₁;s₁, then Γ₁;s₁ ⊢ t ≡→ t'.
 
-    TODO: Prove by induction on the MEquivRed derivation. -/
+    BLOCKER: This lemma requires that ≡→ is stable under context reduction.
+    In the paper (named variables), this is Lemma 19/22 and follows from
+    prevalidity. In de Bruijn, the proof requires showing that ME-PRO
+    lookups remain valid after annotation reduction — i.e., if Γ has
+    x ≡ α and the annotation reduces to α', then the promotion result
+    is unchanged. This needs commutativity-like reasoning (α ≤→ α₁ and
+    α ≡→ α' implies α' ≤→ α₁), creating a potential circularity.
+
+    An alternative approach: reformulate this as a "weakening under
+    context extension" lemma (adding new bindings, not reducing
+    existing ones), which is simpler and avoids the circularity. -/
 def weakening_equivRed_ctx
     {Γ₀ : MCtx} {s₀ : Stack} {Γ₁ : MCtx} {s₁ : Stack} {t t' : Expr}
     (h : MEquivRed Γ₀ s₀ t t')
@@ -223,13 +233,27 @@ def weakening_equivRed_ctx
   sorry
 
 /-- Substitution lemma for ≡→ (Lemma 32 in paper).
-    If Γ,x≡α;s ⊢ u ≡→ u' and Γ';s'@nil ⊢ v ≡→ v', then
+    If Γ,x≡α;s ⊢ u ≡→ u' and Γ';nil ⊢ v ≡→ v', then
     Γ';s' ⊢ u[0↦v] ≡→ u'[0↦v'].
 
     This is the simultaneous substitution variant: the substitutee can
     also be reduced (v to v'), matching the paper's Lemma 32.
 
-    TODO: Prove by induction on MEquivRed derivation. -/
+    BLOCKER: The proof requires mutual induction on MEquivRed/MSubRed.
+    Key cases:
+    - ME-PRO at bvar 0: The lookup gives Ann.equiv α. After substitution,
+      bvar 0 is replaced by v. Need to show the shifted α (with v
+      substituted) reduces to the same result. This requires relating
+      α.shift with substitution (shifting/substitution commutation).
+    - ME-BET: The body goes under another binder (Ann.sub dom). After
+      substitution, the de Bruijn indices shift, requiring careful
+      handling of the substitution/shift interaction.
+    - ME-FUN/ME-FOP: Similar under-binder issues.
+
+    The paper's proof (Lemma 32, named variables) is straightforward
+    because substitution and α-equivalence handle variable scoping.
+    De Bruijn requires explicit shift/subst commutation lemmas in
+    PSS/Syntax.lean before this can be closed. -/
 def substitution_equivRed
     {α : Expr} {Γ' : MCtx} {s' : Stack}
     {Γ : MCtx} {s : Stack} {u u' v v' : Expr}
@@ -238,17 +262,133 @@ def substitution_equivRed
     : MEquivRed Γ' s' (u.subst 0 v) (u'.subst 0 v') :=
   sorry
 
+/-- Replace the element at position `n` in a list.
+    Returns the list unchanged if `n` is out of bounds. -/
+def setAnnAt (l : List Ann) (n : Nat) (a : Ann) : List Ann :=
+  match l, n with
+  | [], _ => []
+  | _ :: xs, 0 => a :: xs
+  | x :: xs, n + 1 => x :: setAnnAt xs n a
+
+/-- setAnnAt at a different position preserves get?. -/
+theorem setAnnAt_get?_ne {l : List Ann} {i n : Nat} {a : Ann} (h : i ≠ n) :
+    (setAnnAt l n a).get? i = l.get? i := by
+  induction l generalizing n i with
+  | nil => simp [setAnnAt]
+  | cons x xs ih =>
+    cases n with
+    | zero =>
+      cases i with
+      | zero => exact absurd rfl h
+      | succ i => simp [setAnnAt]
+    | succ n =>
+      cases i with
+      | zero => simp [setAnnAt]
+      | succ i =>
+        simp only [setAnnAt, List.get?]
+        exact ih (fun heq => h (by omega))
+
+/-- setAnnAt with a cons: setting at position n+1 is the same as setting in the tail. -/
+theorem setAnnAt_cons_succ {x : Ann} {xs : List Ann} {n : Nat} {a : Ann} :
+    setAnnAt (x :: xs) (n + 1) a = x :: setAnnAt xs n a := by
+  simp [setAnnAt]
+
+-- Generalized annotation change: replace a sub annotation at any position n
+-- with any other annotation. The key property is that ME-PRO cannot fire
+-- on Ann.sub annotations, so the derivation never depends on this position
+-- for promotion. MS-PRO at this position is also unreachable because shifted
+-- annotations from ME-PRO never reference the target position.
+--
+-- We prove both MEquivRed and MSubRed variants mutually.
+mutual
+
+private def equivRed_change_sub_at
+    {Γ : MCtx} {s : Stack} {t t' : Expr} (n : Nat) (a : Ann)
+    (h_sub : ∃ d, Γ.get? n = some (Ann.sub d))
+    (h : MEquivRed Γ s t t')
+    : MEquivRed (setAnnAt Γ n a) s t t' := by
+  match h with
+  | .me_top => exact .me_top
+  | .me_var => exact .me_var
+  | .me_tap => exact .me_tap
+  | @MEquivRed.me_pro _ _ _ k α hlook hsub' =>
+    have hne : k ≠ n := by
+      obtain ⟨d, hd⟩ := h_sub
+      intro heq; subst heq; rw [hlook] at hd; cases hd
+    have hlook' : (setAnnAt Γ n a).get? k = some (Ann.equiv α) := by
+      rw [setAnnAt_get?_ne hne]; exact hlook
+    exact .me_pro hlook' (subRed_change_sub_at n a h_sub hsub')
+  | .me_app h_u h_v =>
+    exact .me_app (equivRed_change_sub_at n a h_sub h_u)
+                  (equivRed_change_sub_at n a h_sub h_v)
+  | @MEquivRed.me_bet _ _ dom _ _ _ _ h_body h_arg =>
+    have h_sub' : ∃ d, (Ann.sub dom :: Γ).get? (n + 1) = some (Ann.sub d) := by
+      exact h_sub
+    have heq : setAnnAt (Ann.sub dom :: Γ) (n + 1) a = Ann.sub dom :: setAnnAt Γ n a := by
+      simp [setAnnAt]
+    rw [heq] at *
+    exact .me_bet (equivRed_change_sub_at (n + 1) a h_sub' h_body)
+                  (equivRed_change_sub_at n a h_sub h_arg)
+  | @MEquivRed.me_fun _ dom _ _ _ h_dom h_body =>
+    have h_sub' : ∃ d, (Ann.sub dom :: Γ).get? (n + 1) = some (Ann.sub d) := by
+      exact h_sub
+    have heq : setAnnAt (Ann.sub dom :: Γ) (n + 1) a = Ann.sub dom :: setAnnAt Γ n a := by
+      simp [setAnnAt]
+    exact .me_fun (equivRed_change_sub_at n a h_sub h_dom)
+                  (heq ▸ equivRed_change_sub_at (n + 1) a h_sub' h_body)
+  | @MEquivRed.me_fop _ _ α _ _ _ _ h_dom h_body =>
+    have h_sub' : ∃ d, (Ann.equiv α :: Γ).get? (n + 1) = some (Ann.sub d) := by
+      exact h_sub
+    have heq : setAnnAt (Ann.equiv α :: Γ) (n + 1) a = Ann.equiv α :: setAnnAt Γ n a := by
+      simp [setAnnAt]
+    exact .me_fop (equivRed_change_sub_at n a h_sub h_dom)
+                  (heq ▸ equivRed_change_sub_at (n + 1) a h_sub' h_body)
+
+private def subRed_change_sub_at
+    {Γ : MCtx} {s : Stack} {t t' : Expr} (n : Nat) (a : Ann)
+    (h_sub_ann : ∃ d, Γ.get? n = some (Ann.sub d))
+    (h : MSubRed Γ s t t')
+    : MSubRed (setAnnAt Γ n a) s t t' := by
+  match h with
+  | .ms_top => exact .ms_top
+  | @MSubRed.ms_pro _ _ k bound hlook =>
+    by_cases hne : k = n
+    · -- k = n: the derivation promotes bvar n using the sub annotation.
+      -- This case should be unreachable from the call sites.
+      exact sorry
+    · have hlook' : (setAnnAt Γ n a).get? k = some (Ann.sub bound) := by
+        rw [setAnnAt_get?_ne hne]; exact hlook
+      exact .ms_pro hlook'
+  | .ms_equ h_eq =>
+    exact .ms_equ (equivRed_change_sub_at n a h_sub_ann h_eq)
+  | .ms_app h_inner =>
+    exact .ms_app (subRed_change_sub_at n a h_sub_ann h_inner)
+  | @MSubRed.ms_fun _ dom _ _ h_body =>
+    have h_sub' : ∃ d, (Ann.sub dom :: Γ).get? (n + 1) = some (Ann.sub d) := by
+      exact h_sub_ann
+    have heq : setAnnAt (Ann.sub dom :: Γ) (n + 1) a = Ann.sub dom :: setAnnAt Γ n a := by
+      simp [setAnnAt]
+    rw [heq] at *
+    exact .ms_fun (subRed_change_sub_at (n + 1) a h_sub' h_body)
+  | @MSubRed.ms_fop _ _ α _ _ _ h_body =>
+    have h_sub' : ∃ d, (Ann.equiv α :: Γ).get? (n + 1) = some (Ann.sub d) := by
+      exact h_sub_ann
+    have heq : setAnnAt (Ann.equiv α :: Γ) (n + 1) a = Ann.equiv α :: setAnnAt Γ n a := by
+      simp [setAnnAt]
+    rw [heq] at *
+    exact .ms_fop (subRed_change_sub_at (n + 1) a h_sub' h_body)
+
+end
+
 /-- Annotation-insensitive equivalence reduction (equiv → sub direction).
     If MEquivRed (Ann.equiv v :: Γ) s body body', then also
     MEquivRed (Ann.sub dom :: Γ) s body body'.
 
-    In the paper's named-variable setting, ≡→ on a body doesn't depend on
-    whether bvar 0's annotation is ≤ or ≡, because the paper argues ME-PRO
-    isn't used on bvar 0 in this context (the variable is "fresh" from the
-    lambda). In our de Bruijn mechanisation, this requires showing the ≡→
-    derivation doesn't use ME-PRO on index 0.
-
-    TODO: Prove by induction on the MEquivRed derivation. -/
+    NOTE: This direction is harder because ME-PRO CAN fire on bvar 0
+    when the annotation is Ann.equiv. The generalized approach
+    (equivRed_change_sub_at) doesn't apply here because the source
+    annotation is Ann.equiv, not Ann.sub. A separate proof strategy
+    is needed. -/
 def equivRed_change_ann
     {Γ : MCtx} {s : Stack} {v dom body body' : Expr}
     (h : MEquivRed (Ann.equiv v :: Γ) s body body')
@@ -259,14 +399,21 @@ def equivRed_change_ann
     If MEquivRed (Ann.sub dom :: Γ) s body body', then also
     MEquivRed (Ann.equiv v :: Γ) s body body'.
 
-    Symmetric to equivRed_change_ann — same argument applies in reverse.
+    Proved via the generalized equivRed_change_sub_at: the source has
+    Ann.sub at position 0, which we replace with Ann.equiv v. ME-PRO
+    cannot fire on Ann.sub annotations, so the derivation doesn't
+    depend on the specific annotation at position 0.
 
-    TODO: Prove by induction on the MEquivRed derivation. -/
+    MS-PRO at position 0 is blocked by a sorry in the generalized
+    helper (the k=n case of subRed_change_sub_at). This case should
+    be unreachable from the call chain but hasn't been formally proven. -/
 def equivRed_change_ann_rev
     {Γ : MCtx} {s : Stack} {v dom body body' : Expr}
     (h : MEquivRed (Ann.sub dom :: Γ) s body body')
     : MEquivRed (Ann.equiv v :: Γ) s body body' :=
-  sorry
+  have h_sub : ∃ d, (Ann.sub dom :: Γ).get? 0 = some (Ann.sub d) := ⟨dom, by simp [List.get?]⟩
+  have heq : setAnnAt (Ann.sub dom :: Γ) 0 (Ann.equiv v) = Ann.equiv v :: Γ := by simp [setAnnAt]
+  heq ▸ equivRed_change_sub_at 0 (Ann.equiv v) h_sub h
 
 /-- Decomposition of CtxRed with non-empty stack for the ME-FOP case.
     Given Γ;(α :: s₀) ↦ Γ';s', produce a CtxRed for the body context
@@ -276,7 +423,15 @@ def equivRed_change_ann_rev
     More precisely: there exist α', s₀', Γ₂ such that s' = α' :: s₀',
     Γ' = Γ₂, and (Ann.equiv α :: Γ);s₀ ↦ (Ann.equiv α' :: Γ₂);s₀'.
 
-    TODO: Prove by induction on CtxRed. -/
+    The ct_stk case is direct. The ct_ann_sub/ct_ann_equiv cases require
+    weakening the stack element's MEquivRed from the inner context to the
+    full context (with the added annotation). In de Bruijn, this needs a
+    shifting-aware weakening lemma:
+      MEquivRed Γ [] α α' → MEquivRed (a :: Γ) [] (α.shift 1 0) (α'.shift 1 0)
+    But CtxRed stores unshifted stack elements, so the mismatch is
+    fundamental to the current encoding. A fix would be to normalize
+    CtxRed so ct_stk is always outermost, or to add shifting to the
+    ct_ann_sub/ct_ann_equiv constructors' interaction with the stack. -/
 def ctxRed_unstk
     {Γ : MCtx} {α : Expr} {s₀ : Stack} {Γ' : MCtx} {s' : Stack}
     (h : CtxRed Γ (α :: s₀) Γ' s')
@@ -462,11 +617,25 @@ def diamond
 /-- Context reduction preserves MS-PRO lookups (derived from Lemma 36 + Lemma 19).
     If x ≤ t ∈ Γ and Γ;s ↦ Γ';s', then Γ';s' ⊢ x ≤→ t↑.
 
-    In full generality, the paper shows the annotation reduces pointwise,
-    giving t' with t ≡→ t' and Γ';s' ⊢ x ≤→ t'↑. Here we use the simpler
-    statement matching our MS-PRO output shape.
+    ISSUE: The current statement claims the output is t.shift (the ORIGINAL
+    annotation), but CtxRed reduces annotations pointwise: if Γ has Ann.sub t
+    at position k, then Γ' has Ann.sub t' where t ≡→ t'. So MS-PRO in Γ'
+    gives t'.shift, not t.shift.
 
-    TODO: Full proof requires induction on CtxRed showing annotations reduce pointwise. -/
+    The correct statement should either:
+    (a) Return ∃ t', MSubRed Γ' s' (bvar k) (t'.shift (k+1) 0) — with the
+        REDUCED annotation, or
+    (b) Use MS-EQU to chain: first promote to t'.shift via MS-PRO, then
+        show t.shift ≡→ t'.shift so MS-EQU applies.
+
+    Option (b) would need the reverse direction (MSubRed from a LARGER
+    annotation to SMALLER), which is unnatural. Option (a) changes the
+    commutativity proof's structure.
+
+    For now, this remains sorry'd. The commutativity proof at line 525
+    uses this with equivRed_refl on the top edge (giving t₃ = t.shift),
+    which should instead use the non-trivial reduction t.shift ≡→ t'.shift
+    and set t₃ = t'.shift. -/
 def weakening_equivRed
     {Γ : MCtx} {s : Stack} {Γ' : MCtx} {s' : Stack} {k : Nat} {t : Expr}
     (h_lookup : Γ.get? k = some (Ann.sub t))
@@ -479,8 +648,15 @@ def weakening_equivRed
 
     Used in the ME-BET + MS-APP case.
 
-    TODO: Full proof requires induction on the MSubRed derivation,
-    showing substitution commutes with each reduction rule. -/
+    BLOCKER: Same de Bruijn difficulties as substitution_equivRed.
+    The proof requires mutual induction on MSubRed/MEquivRed and
+    shift/subst commutation lemmas. Key cases:
+    - MS-PRO at bvar 0: After substitution, bvar 0 becomes v₁.
+      The output t.shift(1,0) needs to be related to v₁'s subtyping.
+    - MS-FUN/MS-FOP: Going under binders shifts the substitution
+      index, requiring subst(j+1, shift(1,0,v₁)) = shift(...) type
+      commutation identities.
+    - MS-EQU: Delegates to the MEquivRed substitution lemma. -/
 def substitution_subRed
     {v₀ : Expr} {Γ' : MCtx} {s' : Stack}
     {Γ : MCtx} {s : Stack} {u₁ u₃ v₁ : Expr}
