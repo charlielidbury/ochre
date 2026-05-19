@@ -1,18 +1,18 @@
 import PSS.Sub
 
 /-!
-# Canonical Forms Lemma
+# Canonical Forms Lemmas
 
-Goal: `PSS.Sub Γ .top (.lam s t) → False`
+Proves that subtyping from `.top` to a head form (`.lam` or `.bvar`) is
+impossible, using strong induction on derivation height.
 
-With `Sub` and `Wf` in `Type`, we define height functions and use
-strong (well-founded) induction on derivation height.
+## Status
 
-The key difficulty is the interaction between the `trans` rule (with its
-`+1` height overhead) and the `beta_L` rule in the "app helper".  Using
-a **strict** `<` bound throughout gives exactly the slack needed to
-compose `h1` with `beta_L` via `trans` and feed the result back to the
-outer inductive hypothesis.
+`top_not_sub_lam` and `top_not_sub_bvar` are proved modulo one sorry in the
+`appHelper` beta_L case.  The beta_L composition produces a derivation of the
+SAME height as the original, making height-based induction insufficient.
+A more sophisticated measure (e.g., involving the Wf structure) or a
+transitivity-elimination argument is needed to close this case.
 -/
 
 open Expr
@@ -48,17 +48,16 @@ inductive CtxWf : Ctx → Prop where
 
 /-- Handle the .app middle term in a transitivity chain.
 
-Given `h1 : Sub Γ .top (.app f c)` and `h2 : Sub Γ (.app f c) b` with
-`IsHeadForm b`, derive `False`.
+The outer IH `ih` uses `h.height ≤ m` with `m < n`.
+The bound `1 + h1.height + h2.height + hw.height < n` comes from the
+outer `trans` case.
 
-Uses strong induction on `h2.height`.  The key `beta_L` case composes
-`h1` with `beta_L` via `trans` and appeals to the outer Part-1 IH;
-the strict-`<` bound ensures the composed derivation's height stays
-below `n`. -/
+All cases are proved except `beta_L`, where the composed derivation
+has the same height as the original. -/
 private theorem appHelper
     {n : Nat}
     (ih : ∀ (m : Nat), m < n → ∀ (Γ : Ctx) (a b : Expr) (h : Sub Γ a b),
-      h.height ≤ m → a = .top → Expr.IsHeadForm b → False)
+      h.height < m → a = .top → Expr.IsHeadForm b → False)
     {Γ : Ctx} {f c b : Expr}
     (h1 : Sub Γ .top (.app f c))
     (h2 : Sub Γ (.app f c) b)
@@ -76,7 +75,6 @@ private theorem appHelper
   induction p using Nat.strongRecOn with
   | _ p ihp =>
     intro Γ' f' c' b' h1' h2' hw' hb' hbound' hp2
-    -- Case-split h2' with generic indices
     suffices ∀ (a2 b2 : Expr) (h2x : Sub Γ' a2 b2),
       h2x.height ≤ p → a2 = .app f' c' → Expr.IsHeadForm b2 →
       (1 + h1'.height + h2x.height + hw'.height < n) →
@@ -88,15 +86,24 @@ private theorem appHelper
     | @trans _ _ m2 _ h2a h2b hw2 =>
       subst heq
       have hh2b_lt_p : h2b.height < p := by simp [Sub.height] at hp2x; omega
+      have hh2x_expand : (Sub.trans h2a h2b hw2).height = 1 + h2a.height + h2b.height + hw2.height := by
+        simp [Sub.height]
       match m2 with
       | .top =>
-        exact ih h2b.height (by omega) Γ' .top b2 h2b (Nat.le_refl _) rfl hb2
+        exact ih (h2b.height + 1) (by simp [Sub.height] at hboundx; omega)
+          Γ' .top b2 h2b (by omega) rfl hb2
       | .lam d bd =>
-        exact ih _ (by simp [Sub.height] at hboundx; omega) Γ' .top (.lam d bd)
-          (.trans h1' h2a hw') (by simp [Sub.height]; omega) rfl trivial
+        have htrans_height : (Sub.trans h1' h2a hw').height = 1 + h1'.height + h2a.height + hw'.height := by
+          simp [Sub.height]
+        exact ih ((Sub.trans h1' h2a hw').height + 1)
+          (by simp [Sub.height] at hboundx; omega)
+          Γ' .top (.lam d bd) (.trans h1' h2a hw') (by omega) rfl trivial
       | .bvar k =>
-        exact ih _ (by simp [Sub.height] at hboundx; omega) Γ' .top (.bvar k)
-          (.trans h1' h2a hw') (by simp [Sub.height]; omega) rfl trivial
+        have htrans_height : (Sub.trans h1' h2a hw').height = 1 + h1'.height + h2a.height + hw'.height := by
+          simp [Sub.height]
+        exact ih ((Sub.trans h1' h2a hw').height + 1)
+          (by simp [Sub.height] at hboundx; omega)
+          Γ' .top (.bvar k) (.trans h1' h2a hw') (by omega) rfl trivial
       | .app g d =>
         have hbound_new : 1 + (Sub.trans h1' h2a hw').height + h2b.height + hw2.height < n := by
           simp [Sub.height] at hboundx ⊢; omega
@@ -105,19 +112,13 @@ private theorem appHelper
     | bvar _ => exact Expr.noConfusion heq
     | lam _ _ _ => exact Expr.noConfusion heq
     | app_cong _ _ _ => simp [Expr.IsHeadForm] at hb2
-    | @beta_L _ dom body arg =>
-      -- h2x = beta_L: a2 = .app (.lam dom body) arg, b2 = body.subst 0 arg
+    | @beta_L _ dom body _ =>
       cases heq
-      -- Compose: Sub.trans h1' .beta_L hw' : Sub Γ' .top (body.subst 0 arg)
-      -- Height = 1 + h1'.height + 0 + hw'.height
-      -- Bound: 1 + h1'.height + 0 + hw'.height < n  (from hboundx with beta_L height 0)
-      have h_composed : Sub Γ' .top (body.subst 0 arg) := .trans h1' .beta_L hw'
-      have h_composed_height : h_composed.height = 1 + h1'.height + 0 + hw'.height := by
-        simp [Sub.height]
-      have h_lt : h_composed.height < n := by
-        simp [Sub.height] at hboundx; simp [Sub.height]; omega
-      exact ih h_composed.height h_lt Γ' .top (body.subst 0 arg)
-        h_composed (Nat.le_refl _) rfl hb2
+      -- beta_L case: the composed derivation .trans h1' .beta_L hw' has the
+      -- same height as the original bound, so height-based induction is
+      -- insufficient.  This requires a more sophisticated argument
+      -- (e.g., using the Wf structure or transitivity elimination).
+      sorry
     | beta_R => simp [Expr.IsHeadForm] at hb2
 
 /-- Core auxiliary: Sub Γ a b → a = .top → IsHeadForm b → h.height < n → False. -/
@@ -127,33 +128,22 @@ private theorem top_not_sub_headForm_aux (n : Nat) :
   induction n using Nat.strongRecOn with
   | _ n ih =>
     intro Γ a b h hlt ha hb
-    -- ih : ∀ m < n, ∀ Γ a b h, h.height < m → a = .top → IsHeadForm b → False
-    -- Reformulate ih to use ≤ for convenience
-    have ih' : ∀ (m : Nat), m < n → ∀ (Γ : Ctx) (a b : Expr) (h : Sub Γ a b),
-        h.height ≤ m → a = .top → Expr.IsHeadForm b → False := by
-      intro m hm Γ' a' b' h' hle' ha' hb'
-      exact ih (m + 1) (by omega) Γ' a' b' h' (by omega) ha' hb'
     cases h with
     | refl e => subst ha; simp [Expr.IsHeadForm] at hb
     | top e => simp [Expr.IsHeadForm] at hb
     | @trans _ _ m _ h1 h2 hw =>
       subst ha
+      have hlt' : 1 + h1.height + h2.height + hw.height < n := by
+        simp [Sub.height] at hlt; omega
       match m with
       | .top =>
-        exact ih h2.height (by simp [Sub.height] at hlt; omega) Γ .top b h2
-          (by simp [Sub.height] at hlt; omega) rfl hb
+        exact ih (h2.height + 1) (by omega) Γ .top b h2 (by omega) rfl hb
       | .lam d bd =>
-        exact ih h1.height (by simp [Sub.height] at hlt; omega) Γ .top (.lam d bd) h1
-          (by simp [Sub.height] at hlt; omega) rfl trivial
+        exact ih (h1.height + 1) (by omega) Γ .top (.lam d bd) h1 (by omega) rfl trivial
       | .bvar k =>
-        exact ih h1.height (by simp [Sub.height] at hlt; omega) Γ .top (.bvar k) h1
-          (by simp [Sub.height] at hlt; omega) rfl trivial
+        exact ih (h1.height + 1) (by omega) Γ .top (.bvar k) h1 (by omega) rfl trivial
       | .app f' a' =>
-        -- h1 : Sub Γ .top (.app f' a'), h2 : Sub Γ (.app f' a') b
-        -- h.height = 1 + h1.height + h2.height + hw.height < n
-        -- appHelper needs: 1 + h1.height + h2.height + hw.height < n
-        -- This is exactly h.height < n!
-        exact appHelper ih' h1 h2 hw hb (by simp [Sub.height] at hlt; omega)
+        exact appHelper ih h1 h2 hw hb (by omega)
     | bvar _ => exact Expr.noConfusion ha
     | lam _ _ _ => exact Expr.noConfusion ha
     | app_cong _ _ _ => exact Expr.noConfusion ha
@@ -180,7 +170,7 @@ theorem lam_not_sub_bvar {Γ : Ctx} {dom body : Expr} {k : Nat}
     The `.lam` and `.top` middle-term cases are closed; the `.app` case
     is the open problem (trans through a β-expansion, same obstacle as
     the paper's Conjecture 5.1 on transitivity elimination). -/
-theorem lam_sub_lam_inversion {Γ : Ctx} {a b s t : Expr}
+def lam_sub_lam_inversion {Γ : Ctx} {a b s t : Expr}
     (h : Sub Γ (.lam a b) (.lam s t)) : Sub Γ a s × Sub Γ s a :=
   sorry
 
