@@ -9,32 +9,13 @@ If `Wf (σ :: Γ) body`, `Wf Γ v`, and `Sub Γ v σ`, then `Wf Γ (body.subst 0
 
 ## Structure
 
-We prove a generalized form (`subst_wf_gen`) at arbitrary substitution depth j
-with a context split `Γ₁ ++ σ :: Γ₂` where `j = Γ₁.length`. This is required
-because the lambda case produces a recursive call at depth `j + 1`.
+All four generalized lemmas (`shift_sub_gen`, `wf_shift_gen`, `subst_sub_gen`,
+`subst_wf_gen`) are proved in a single `mutual` block because:
+- The Sub lemmas' `trans` case needs the Wf lemmas (for the middle-term guard)
+- The Wf lemmas' `app` case needs the Sub lemmas (for the subtyping witnesses)
 
-### What is proved (no sorry)
-- `subst_wf_gen`: the generalized Wf substitution lemma
-  - VAR case: all three sub-cases (k < j, k = j, k > j)
-  - TOP case: trivial
-  - LAM case: uses shift composition lemma and the generalized IH
-  - APP case: delegates to `subst_sub_gen` for subtyping
-- `subst_wf`: the top-level theorem (specialization of `subst_wf_gen` at j = 0)
-- `wf_shift_gen`: generalized weakening (shift preserves Wf)
-- `wf_shift`: weakening specialized to position 0
-- `Expr.shift_zero`, `Expr.shift_shift`, `Expr.shift_succ_zero`:
-  shift algebra lemmas
-
-### Remaining axioms (standard de Bruijn infrastructure)
-- `shift_sub_gen`: shift preserves Sub at arbitrary depth.
-  By induction on Sub. Straightforward for refl/top/trans/lam/app_cong.
-  beta_L/beta_R need shift/subst commutation; bvar needs context lookup
-  after shift.
-- `subst_sub_gen`: substitution preserves Sub at arbitrary depth.
-  By induction on Sub. Uses shift/subst commutation for beta_L/beta_R;
-  uses context lookup for bvar.
-
-Both are standard and self-contained (no mutual dependency with Wf).
+Termination: all recursive calls are on strict sub-terms of the mutually
+inductive `Sub`/`Wf` derivation.
 -/
 
 open Expr
@@ -71,9 +52,7 @@ theorem Expr.shift_shift (e : Expr) (d d' c : Nat) :
     simp only [Expr.shift]
     exact congr (congrArg Expr.app (ih_f c)) (ih_a c)
 
-/-- Corollary: `(v.shift j 0).shift 1 0 = v.shift (j + 1) 0`.
-    Used in the lambda case to match the substitution definition's
-    `body.subst (j+1) (s.shift 1 0)` with the IH at depth `j + 1`. -/
+/-- Corollary: `(v.shift j 0).shift 1 0 = v.shift (j + 1) 0`. -/
 theorem Expr.shift_succ_zero (v : Expr) (j : Nat) :
     (v.shift j 0).shift 1 0 = v.shift (j + 1) 0 := by
   have h := Expr.shift_shift v j 1 0
@@ -81,9 +60,6 @@ theorem Expr.shift_succ_zero (v : Expr) (j : Nat) :
 
 /-! ## substPrefix: the output context after substitution -/
 
-/-- After substituting away the variable at position `|Γ₁|` in context
-    `Γ₁ ++ σ :: Γ₂` with value `v`, the prefix entries become:
-    entry at index `i` is substituted at depth `|Γ₁| - 1 - i`. -/
 def substPrefix : Ctx → Expr → Ctx
   | [], _ => []
   | dom :: Γ₁, v => dom.subst Γ₁.length (v.shift Γ₁.length 0) :: substPrefix Γ₁ v
@@ -100,10 +76,6 @@ def substPrefix : Ctx → Expr → Ctx
 
 /-! ## shiftPrefix: the output context after weakening -/
 
-/-- After inserting `|Δ|` new binders at position `|Γ₁|` in context
-    `Γ₁ ++ Γ₂`, the prefix entries are shifted. Entry at index `i`
-    is shifted by `d` at cutoff `|Γ₁| - 1 - i` (= the number of
-    binders between it and the insertion point). -/
 def shiftPrefix : Ctx → Nat → Ctx
   | [], _ => []
   | dom :: Γ₁, d => dom.shift d Γ₁.length :: shiftPrefix Γ₁ d
@@ -116,34 +88,204 @@ def shiftPrefix : Ctx → Nat → Ctx
   | nil => rfl
   | cons _ _ ih => simp [shiftPrefix, ih]
 
-/-! ## shift/subst preserve Sub (sorry-based — mutual with Wf lemmas below) -/
+/-! ## Context lookup helpers -/
 
-/-- Shift preserves subtyping at arbitrary depth. Proved by cases on h;
-    beta_L/beta_R use `shift_subst_comm`, bvar uses context lookup helpers.
-    The trans case calls `wf_shift_gen` (mutual dependency).
-    Currently `sorry` due to Lean 4 mutual-block termination issues. -/
+private theorem list_get?_append_left {α : Type} {l₁ l₂ : List α} {k : Nat}
+    (h : k < l₁.length) : (l₁ ++ l₂).get? k = l₁.get? k := by
+  simp only [List.get?_eq_getElem?, List.getElem?_append_left (by exact h)]
+
+private theorem list_get?_append_right {α : Type} {l₁ l₂ : List α} {k : Nat}
+    (h : l₁.length ≤ k) : (l₁ ++ l₂).get? k = l₂.get? (k - l₁.length) := by
+  simp only [List.get?_eq_getElem?]
+  rw [List.getElem?_append_right (by exact h)]
+
+/-! ### shiftPrefix lookup -/
+
+/-- Lookup in shiftPrefix: the k-th entry of `shiftPrefix Γ₁ d` is the k-th entry
+    of `Γ₁` shifted by `d` at cutoff `|Γ₁| - 1 - k`. -/
+theorem shiftPrefix_get? {Γ₁ : Ctx} {d : Nat}
+    (k : Nat) (hk : k < Γ₁.length) :
+    (shiftPrefix Γ₁ d).get? k = (Γ₁.get? k).map (fun t => t.shift d (Γ₁.length - 1 - k)) := by
+  induction Γ₁ generalizing k with
+  | nil => simp at hk
+  | cons hd tl ih =>
+    cases k with
+    | zero =>
+      simp only [shiftPrefix, List.get?, List.length_cons, Option.map]
+      rfl
+    | succ k' =>
+      simp only [shiftPrefix, List.get?, List.length_cons]
+      have hk' : k' < tl.length := by simp [List.length_cons] at hk; omega
+      rw [ih k' hk']
+      cases htl : tl.get? k' with
+      | none => rfl
+      | some t =>
+        simp only [Option.map]
+        congr 2; omega
+
+/-- Lookup in the full shifted context for an index in the prefix. -/
+theorem shiftCtx_get?_prefix {Γ₁ Δ Γ₂ : Ctx} {k : Nat} {t : Expr}
+    (hk : k < Γ₁.length)
+    (hget : (Γ₁ ++ Γ₂).get? k = some t) :
+    (shiftPrefix Γ₁ Δ.length ++ Δ ++ Γ₂).get? k =
+      some (t.shift Δ.length (Γ₁.length - 1 - k)) := by
+  have hget' : Γ₁.get? k = some t := by
+    rwa [list_get?_append_left hk] at hget
+  rw [list_get?_append_left (by simp [shiftPrefix_length]; omega)]
+  rw [list_get?_append_left (by simp [shiftPrefix_length]; omega)]
+  rw [shiftPrefix_get? k hk, hget']
+  rfl
+
+/-- Lookup in the full shifted context for an index past the prefix. -/
+theorem shiftCtx_get?_suffix {Γ₁ Δ Γ₂ : Ctx} {k : Nat} {t : Expr}
+    (hge : ¬(k < Γ₁.length))
+    (hget : (Γ₁ ++ Γ₂).get? k = some t) :
+    (shiftPrefix Γ₁ Δ.length ++ Δ ++ Γ₂).get? (k + Δ.length) = some t := by
+  have hge' : Γ₁.length ≤ k := by omega
+  have hget' : Γ₂.get? (k - Γ₁.length) = some t := by
+    rwa [list_get?_append_right hge'] at hget
+  -- Rewrite the list as (prefix ++ Δ) ++ Γ₂
+  rw [show (shiftPrefix Γ₁ Δ.length ++ Δ ++ Γ₂) =
+    (shiftPrefix Γ₁ Δ.length ++ Δ) ++ Γ₂ from by rw [List.append_assoc]]
+  have hlen : (shiftPrefix Γ₁ Δ.length ++ Δ).length ≤ k + Δ.length := by
+    simp [shiftPrefix_length]; omega
+  rw [list_get?_append_right hlen]
+  have : k + Δ.length - (shiftPrefix Γ₁ Δ.length ++ Δ).length = k - Γ₁.length := by
+    simp [shiftPrefix_length]; omega
+  rw [this]
+  exact hget'
+
+/-! ### substPrefix lookup -/
+
+/-- Lookup in substPrefix: the k-th entry is the k-th entry of Γ₁ after substitution. -/
+theorem substPrefix_get? {Γ₁ : Ctx} {v : Expr}
+    (k : Nat) (hk : k < Γ₁.length) :
+    (substPrefix Γ₁ v).get? k =
+      (Γ₁.get? k).map (fun t => t.subst (Γ₁.length - 1 - k) (v.shift (Γ₁.length - 1 - k) 0)) := by
+  induction Γ₁ generalizing k with
+  | nil => simp at hk
+  | cons hd tl ih =>
+    cases k with
+    | zero =>
+      simp only [substPrefix, List.get?, List.length_cons, Option.map]
+      rfl
+    | succ k' =>
+      simp only [substPrefix, List.get?, List.length_cons]
+      have hk' : k' < tl.length := by simp [List.length_cons] at hk; omega
+      rw [ih k' hk']
+      cases htl : tl.get? k' with
+      | none => rfl
+      | some t =>
+        simp only [Option.map]
+        have h1 : tl.length - 1 - k' = tl.length + 1 - 1 - (k' + 1) := by omega
+        rw [h1]
+
+/-- Lookup in substPrefix ++ Γ₂ for k < |Γ₁| (prefix). -/
+theorem substCtx_get?_prefix {Γ₁ : Ctx} {Γ₂ : Ctx} {σ : Expr} {k : Nat} {t v : Expr}
+    (hk : k < Γ₁.length)
+    (hget : (Γ₁ ++ σ :: Γ₂).get? k = some t) :
+    (substPrefix Γ₁ v ++ Γ₂).get? k =
+      some (t.subst (Γ₁.length - 1 - k) (v.shift (Γ₁.length - 1 - k) 0)) := by
+  have hget' : Γ₁.get? k = some t := by
+    rwa [list_get?_append_left hk] at hget
+  rw [list_get?_append_left (by simp; omega)]
+  rw [substPrefix_get? k hk, hget']
+  rfl
+
+/-- Lookup in substPrefix ++ Γ₂ for k > |Γ₁| (suffix). -/
+theorem substCtx_get?_suffix {Γ₁ : Ctx} {Γ₂ : Ctx} {σ : Expr} {k : Nat} {t v : Expr}
+    (hk : k > Γ₁.length)
+    (hget : (Γ₁ ++ σ :: Γ₂).get? k = some t) :
+    (substPrefix Γ₁ v ++ Γ₂).get? (k - 1) = some t := by
+  have hget' : Γ₂.get? (k - Γ₁.length - 1) = some t := by
+    rw [list_get?_append_right (by omega)] at hget
+    -- hget : (σ :: Γ₂).get? (k - |Γ₁|) = some t, and k - |Γ₁| ≥ 1
+    -- Rewrite index: k - |Γ₁| = (k - |Γ₁| - 1) + 1
+    rw [show k - Γ₁.length = (k - Γ₁.length - 1) + 1 from by omega] at hget
+    -- Now hget : (σ :: Γ₂).get? ((k - |Γ₁| - 1) + 1) = some t
+    -- which is Γ₂.get? (k - |Γ₁| - 1) = some t
+    exact hget
+  have hlen : (substPrefix Γ₁ v).length ≤ k - 1 := by simp; omega
+  rw [list_get?_append_right hlen]
+  simp only [substPrefix_length]
+  have : k - 1 - Γ₁.length = k - Γ₁.length - 1 := by omega
+  rw [this]
+  exact hget'
+
+/-! ## Mutual block: shift/subst preserve Sub and Wf -/
+
+mutual
+
+/-- Shift preserves subtyping at arbitrary depth. -/
 noncomputable def shift_sub_gen (Γ₁ : Ctx) (Δ : Ctx) {Γ₂ : Ctx} {a b : Expr}
     (h : Sub (Γ₁ ++ Γ₂) a b) :
     Sub (shiftPrefix Γ₁ Δ.length ++ Δ ++ Γ₂)
         (a.shift Δ.length Γ₁.length) (b.shift Δ.length Γ₁.length) := by
-  sorry
+  match h with
+  | .refl e => exact .refl (e.shift Δ.length Γ₁.length)
+  | .top e => simp [Expr.shift]; exact .top (e.shift Δ.length Γ₁.length)
+  | .trans h1 h2 hw =>
+    exact .trans (shift_sub_gen Γ₁ Δ h1) (shift_sub_gen Γ₁ Δ h2) (wf_shift_gen Γ₁ Δ hw)
+  | .bvar (k := k) (t := t) hk =>
+    simp only [Expr.shift]
+    split
+    · -- k < |Γ₁|: variable is in the prefix
+      next hlt =>
+      have hlook := shiftCtx_get?_prefix (Δ := Δ) (Γ₂ := Γ₂) hlt hk
+      have hsub := Sub.bvar hlook
+      -- hsub : Sub _ (.bvar k) ((t.shift d (|Γ₁|-1-k)).shift (k+1) 0)
+      -- goal : Sub _ (.bvar k) ((t.shift (k+1) 0).shift d |Γ₁|)
+      -- By shift_comm: (t.shift d₂ c₂).shift d₁ c₁ = (t.shift d₁ c₁).shift d₂ (c₂ + d₁) when c₁ ≤ c₂
+      -- With d₂ = |Δ|, c₂ = |Γ₁|-1-k, d₁ = k+1, c₁ = 0:
+      -- LHS of shift_comm = (t.shift |Δ| (|Γ₁|-1-k)).shift (k+1) 0
+      -- RHS = (t.shift (k+1) 0).shift |Δ| (|Γ₁|-1-k + (k+1))
+      --     = (t.shift (k+1) 0).shift |Δ| |Γ₁|
+      conv at hsub =>
+        rhs
+        rw [Expr.shift_comm t (k + 1) Δ.length 0 (Γ₁.length - 1 - k) (Nat.zero_le _)]
+        rw [show Γ₁.length - 1 - k + (k + 1) = Γ₁.length from by omega]
+      exact hsub
+    · -- k ≥ |Γ₁|: variable is in Γ₂
+      next hge =>
+      have hlook := shiftCtx_get?_suffix (Γ₁ := Γ₁) (Δ := Δ) (Γ₂ := Γ₂) hge hk
+      have hsub := Sub.bvar hlook
+      -- hsub : Sub _ (.bvar (k+|Δ|)) (t.shift (k+|Δ|+1) 0)
+      -- goal : Sub _ (.bvar (k+|Δ|)) ((t.shift (k+1) 0).shift |Δ| |Γ₁|)
+      have hle : Γ₁.length ≤ k + 1 := by omega
+      -- Rewrite goal: (t.shift (k+1) 0).shift |Δ| |Γ₁|
+      -- = (t.shift (k+1) 0).shift |Δ| (0 + |Γ₁|)
+      -- = t.shift (k+1+|Δ|) 0                          by shift_shift_of_le
+      -- = t.shift (k+|Δ|+1) 0
+      have hconv : (Expr.shift (k + 1) 0 t).shift Δ.length Γ₁.length =
+          Expr.shift (k + Δ.length + 1) 0 t := by
+        rw [show Γ₁.length = 0 + Γ₁.length from by omega]
+        rw [Expr.shift_shift_of_le t (k + 1) Δ.length Γ₁.length 0 hle]
+        congr 1; omega
+      rw [hconv]
+      exact hsub
+  | .lam (dom := dom) (dom' := dom') (body := body) (body' := body')
+      hsub1 hsub2 hsub3 =>
+    simp only [Expr.shift]
+    apply Sub.lam
+    · exact shift_sub_gen Γ₁ Δ hsub1
+    · exact shift_sub_gen Γ₁ Δ hsub2
+    · have ih := shift_sub_gen (dom :: Γ₁) Δ hsub3
+      simp only [shiftPrefix_cons, List.length_cons, List.cons_append] at ih
+      exact ih
+  | .app_cong hf ha ha' =>
+    simp only [Expr.shift]
+    exact .app_cong (shift_sub_gen Γ₁ Δ hf) (shift_sub_gen Γ₁ Δ ha)
+      (shift_sub_gen Γ₁ Δ ha')
+  | .beta_L (dom := dom) (body := body) (arg := arg) =>
+    simp only [Expr.shift]
+    rw [Expr.shift_subst_comm body arg Δ.length Γ₁.length 0 (Nat.zero_le _)]
+    exact .beta_L
+  | .beta_R (dom := dom) (body := body) (arg := arg) =>
+    simp only [Expr.shift]
+    rw [Expr.shift_subst_comm body arg Δ.length Γ₁.length 0 (Nat.zero_le _)]
+    exact .beta_R
 
-/-- Substitution preserves subtyping at arbitrary depth.
-    Proved by cases on hsub; beta_L/beta_R use `subst_subst_comm_zero`,
-    bvar needs context lookup. The trans case calls `subst_wf_gen` (mutual).
-    Currently `sorry` due to Lean 4 mutual-block termination issues. -/
-noncomputable def subst_sub_gen (Γ₁ : Ctx) {σ : Expr} {Γ₂ : Ctx} {a b v : Expr}
-    (hsub : Sub (Γ₁ ++ σ :: Γ₂) a b)
-    (hwfv : Wf Γ₂ v) (hvsig : Sub Γ₂ v σ) :
-    Sub (substPrefix Γ₁ v ++ Γ₂)
-        (a.subst Γ₁.length (v.shift Γ₁.length 0))
-        (b.subst Γ₁.length (v.shift Γ₁.length 0)) := by
-  sorry
-
-/-! ## Weakening (shift preserves Wf) -/
-
-/-- Generalized weakening: inserting binders at position `|Γ₁|` preserves Wf.
-    Proved by matching on the Wf derivation. Uses `shift_sub_gen` for the app case. -/
+/-- Generalized weakening: inserting binders at position `|Γ₁|` preserves Wf. -/
 noncomputable def wf_shift_gen (Γ₁ : Ctx) (Δ : Ctx) {Γ₂ : Ctx} {e : Expr}
     (h : Wf (Γ₁ ++ Γ₂) e) :
     Wf (shiftPrefix Γ₁ Δ.length ++ Δ ++ Γ₂) (e.shift Δ.length Γ₁.length) := by
@@ -179,18 +321,117 @@ noncomputable def wf_shift_gen (Γ₁ : Ctx) (Δ : Ctx) {Γ₂ : Ctx} {e : Expr}
       (hshift_lam ▸ shift_sub_gen Γ₁ Δ hsub_f)
       (shift_sub_gen Γ₁ Δ hsub_a)
 
-/-- Weakening at position 0: if `Wf Γ e` then `Wf (Δ ++ Γ) (e.shift |Δ| 0)`. -/
-noncomputable def wf_shift (Δ : Ctx) {Γ : Ctx} {e : Expr}
-    (h : Wf Γ e) : Wf (Δ ++ Γ) (e.shift Δ.length 0) := by
-  have h' := wf_shift_gen (Γ₁ := []) Δ h
-  simp [shiftPrefix] at h'
-  exact h'
-
-/-! ## Substitution preserves Wf (generalized) -/
+/-- Substitution preserves subtyping at arbitrary depth. -/
+noncomputable def subst_sub_gen (Γ₁ : Ctx) {σ : Expr} {Γ₂ : Ctx} {a b v : Expr}
+    (hsub : Sub (Γ₁ ++ σ :: Γ₂) a b)
+    (hwfv : Wf Γ₂ v) (hvsig : Sub Γ₂ v σ) :
+    Sub (substPrefix Γ₁ v ++ Γ₂)
+        (a.subst Γ₁.length (v.shift Γ₁.length 0))
+        (b.subst Γ₁.length (v.shift Γ₁.length 0)) := by
+  match hsub with
+  | .refl e => exact .refl (e.subst Γ₁.length (v.shift Γ₁.length 0))
+  | .top e =>
+    simp only [Expr.subst]
+    exact .top (e.subst Γ₁.length (v.shift Γ₁.length 0))
+  | .trans h1 h2 hw =>
+    exact .trans (subst_sub_gen Γ₁ h1 hwfv hvsig)
+                 (subst_sub_gen Γ₁ h2 hwfv hvsig)
+                 (subst_wf_gen Γ₁ σ Γ₂ _ v hw hwfv hvsig)
+  | .bvar (k := k) (t := t) hk =>
+    simp only [Expr.subst]
+    split
+    · -- k = j (= |Γ₁|): the substituted variable
+      next heq =>
+      simp only [beq_iff_eq] at heq; subst heq
+      -- (Γ₁ ++ σ :: Γ₂).get? |Γ₁| = some t, so t = σ
+      have ht : t = σ := by
+        rw [list_get?_append_right (by omega)] at hk
+        simp only [List.get?, Nat.sub_self] at hk
+        exact (Option.some.injEq _ _).mp hk |>.symm
+      -- Goal: Sub _ (v.shift |Γ₁| 0) ((t.shift (|Γ₁|+1) 0).subst |Γ₁| (v.shift |Γ₁| 0))
+      -- Rewrite t to σ, then use shift_subst_cancel
+      rw [ht]
+      -- Goal: Sub _ (v.shift |Γ₁| 0) ((σ.shift (|Γ₁|+1) 0).subst |Γ₁| (v.shift |Γ₁| 0))
+      have heq : (σ.shift Γ₁.length 0).shift 1 Γ₁.length = σ.shift (Γ₁.length + 1) 0 := by
+        have h := Expr.shift_shift_of_le σ Γ₁.length 1 Γ₁.length 0 (Nat.le_refl _)
+        simp only [Nat.zero_add] at h
+        exact h
+      rw [← heq, Expr.shift_subst_cancel]
+      -- Now: Sub _ (v.shift |Γ₁| 0) σ
+      -- By weakening hvsig at position 0 with Δ = substPrefix Γ₁ v:
+      have hsub_shifted := shift_sub_gen (Γ₁ := []) (substPrefix Γ₁ v) hvsig
+      simp only [shiftPrefix, List.nil_append, substPrefix_length] at hsub_shifted
+      exact hsub_shifted
+    · split
+      · -- k > j: bvar (k - 1)
+        next hne hgt =>
+        simp only [beq_iff_eq] at hne
+        have hgt' : k > Γ₁.length := by omega
+        -- Lookup: (Γ₁ ++ σ :: Γ₂).get? k = some t with k > |Γ₁|
+        have hlook := substCtx_get?_suffix (v := v) hgt' hk
+        have hsub' := Sub.bvar hlook
+        -- hsub' : Sub _ (.bvar (k-1)) (t.shift ((k-1)+1) 0)
+        -- goal  : Sub _ (.bvar (k-1)) ((t.shift (k+1) 0).subst |Γ₁| (v.shift |Γ₁| 0))
+        -- Since (k-1)+1 = k (because k > 0):
+        have hk_pos : k ≥ 1 := by omega
+        have hk_eq : k - 1 + 1 = k := by omega
+        rw [hk_eq] at hsub'
+        -- hsub' : Sub _ (.bvar (k-1)) (t.shift k 0)
+        -- Rewrite target: t.shift (k+1) 0 = (t.shift k 0).shift 1 |Γ₁| since |Γ₁| ≤ k
+        have hle : Γ₁.length ≤ k := by omega
+        have heq2 : (t.shift k 0).shift 1 Γ₁.length = t.shift (k + 1) 0 := by
+          rw [show Γ₁.length = 0 + Γ₁.length from by omega]
+          exact Expr.shift_shift_of_le t k 1 Γ₁.length 0 hle
+        rw [← heq2, Expr.shift_subst_cancel]
+        exact hsub'
+      · -- k < j: bvar k
+        next hne hle =>
+        simp only [beq_iff_eq] at hne
+        have hlt : k < Γ₁.length := by omega
+        have hlook := substCtx_get?_prefix (σ := σ) (v := v) hlt hk
+        have hsub' := Sub.bvar hlook
+        -- hsub' : Sub _ (.bvar k) ((t.subst (|Γ₁|-1-k) (v.shift (|Γ₁|-1-k) 0)).shift (k+1) 0)
+        -- goal  : Sub _ (.bvar k) ((t.shift (k+1) 0).subst |Γ₁| (v.shift |Γ₁| 0))
+        -- By shift_subst_comm_ge:
+        -- (t.subst j s).shift d c = (t.shift d c).subst (j+d) (s.shift d c)  when c ≤ j
+        -- With j = |Γ₁|-1-k, s = v.shift (|Γ₁|-1-k) 0, d = k+1, c = 0:
+        rw [Expr.shift_subst_comm_ge t (v.shift (Γ₁.length - 1 - k) 0)
+            (k + 1) 0 (Γ₁.length - 1 - k) (Nat.zero_le _)] at hsub'
+        -- Now hsub' has: (t.shift (k+1) 0).subst (|Γ₁|-1-k+(k+1)) ((v.shift (|Γ₁|-1-k) 0).shift (k+1) 0)
+        rw [show Γ₁.length - 1 - k + (k + 1) = Γ₁.length from by omega] at hsub'
+        -- Simplify the value: (v.shift (|Γ₁|-1-k) 0).shift (k+1) 0 = v.shift |Γ₁| 0
+        rw [Expr.shift_shift] at hsub'
+        rw [show Γ₁.length - 1 - k + (k + 1) = Γ₁.length from by omega] at hsub'
+        exact hsub'
+  | .lam (dom := dom) (dom' := dom') (body := body) (body' := body')
+      hsub1 hsub2 hsub3 =>
+    simp only [Expr.subst]
+    apply Sub.lam
+    · exact subst_sub_gen Γ₁ hsub1 hwfv hvsig
+    · exact subst_sub_gen Γ₁ hsub2 hwfv hvsig
+    · rw [Expr.shift_succ_zero]
+      have ih := subst_sub_gen (dom :: Γ₁) hsub3 hwfv hvsig
+      simp only [substPrefix_cons, List.length_cons, List.cons_append] at ih
+      exact ih
+  | .app_cong hf ha ha' =>
+    simp only [Expr.subst]
+    exact .app_cong (subst_sub_gen Γ₁ hf hwfv hvsig) (subst_sub_gen Γ₁ ha hwfv hvsig)
+      (subst_sub_gen Γ₁ ha' hwfv hvsig)
+  | .beta_L (dom := dom) (body := body) (arg := arg) =>
+    simp only [Expr.subst]
+    rw [Expr.subst_subst_comm_zero body arg (v.shift Γ₁.length 0) Γ₁.length]
+    rw [Expr.shift_succ_zero]
+    exact .beta_L
+  | .beta_R (dom := dom) (body := body) (arg := arg) =>
+    simp only [Expr.subst]
+    rw [Expr.subst_subst_comm_zero body arg (v.shift Γ₁.length 0) Γ₁.length]
+    rw [Expr.shift_succ_zero]
+    exact .beta_R
+termination_by sizeOf hsub
+decreasing_by all_goals (simp_wf; omega)
 
 /-- Generalized substitution lemma: substituting at position `j = |Γ₁|`
-    in context `Γ₁ ++ σ :: Γ₂` preserves well-formedness.
-    All cases fully proved; the app case uses `subst_sub_gen`. -/
+    in context `Γ₁ ++ σ :: Γ₂` preserves well-formedness. -/
 noncomputable def subst_wf_gen (Γ₁ : Ctx) (σ : Expr) (Γ₂ : Ctx)
     (body v : Expr)
     (hwfb : Wf (Γ₁ ++ σ :: Γ₂) body)
@@ -202,10 +443,9 @@ noncomputable def subst_wf_gen (Γ₁ : Ctx) (σ : Expr) (Γ₂ : Ctx)
     simp only [Expr.subst]
     split
     · -- k = j: replaced by v.shift j 0
-      -- Need: Wf (substPrefix Γ₁ v ++ Γ₂) (v.shift |Γ₁| 0)
-      -- By weakening at position 0 with Δ = substPrefix Γ₁ v
-      have h := wf_shift (substPrefix Γ₁ v) hwfv
-      rw [substPrefix_length] at h
+      -- Weakening at position 0 with Δ = substPrefix Γ₁ v
+      have h := wf_shift_gen (Γ₁ := []) (substPrefix Γ₁ v) hwfv
+      simp only [shiftPrefix, List.nil_append, substPrefix_length] at h
       exact h
     · split
       · -- k > j: bvar (k - 1)
@@ -228,10 +468,7 @@ noncomputable def subst_wf_gen (Γ₁ : Ctx) (σ : Expr) (Γ₂ : Ctx)
     simp only [Expr.subst]
     apply Wf.lam
     · exact subst_wf_gen Γ₁ σ Γ₂ dom v hdom hwfv hvsig
-    · -- Rewrite the shift composition:
-      -- (v.shift j 0).shift 1 0 = v.shift (j + 1) 0
-      rw [Expr.shift_succ_zero]
-      -- Apply IH with extended prefix (dom :: Γ₁):
+    · rw [Expr.shift_succ_zero]
       have ih := subst_wf_gen (dom :: Γ₁) σ Γ₂ bd v hbody hwfv hvsig
       simp only [substPrefix_cons, List.length_cons, List.cons_append] at ih
       exact ih
@@ -243,11 +480,21 @@ noncomputable def subst_wf_gen (Γ₁ : Ctx) (σ : Expr) (Γ₂ : Ctx)
       (subst_wf_gen Γ₁ σ Γ₂ s v hwf_s hwfv hvsig)
       (subst_sub_gen Γ₁ hsub_f hwfv hvsig)
       (subst_sub_gen Γ₁ hsub_a hwfv hvsig)
+termination_by sizeOf hwfb
+decreasing_by all_goals (simp_wf; omega)
+
+end
+
+/-- Weakening at position 0: if `Wf Γ e` then `Wf (Δ ++ Γ) (e.shift |Δ| 0)`. -/
+noncomputable def wf_shift (Δ : Ctx) {Γ : Ctx} {e : Expr}
+    (h : Wf Γ e) : Wf (Δ ++ Γ) (e.shift Δ.length 0) := by
+  have h' := wf_shift_gen (Γ₁ := []) Δ h
+  simp [shiftPrefix] at h'
+  exact h'
 
 /-! ## Top-level theorem: subst_wf (Lemma 5.4) -/
 
-/-- Substitution preserves well-formedness (Lemma 5.4).
-    Replaces the `subst_wf` axiom in Soundness.lean. -/
+/-- Substitution preserves well-formedness (Lemma 5.4). -/
 noncomputable def subst_wf {Γ : Ctx} {σ body v : Expr}
     (hwfb : Wf (σ :: Γ) body)
     (hwfv : Wf Γ v) (hvsig : Sub Γ v σ) :
