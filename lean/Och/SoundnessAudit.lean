@@ -266,7 +266,7 @@ The R-side `_, .fix` was already correct (the coinductive
 accept of `X ⊑ ⊤` is *right*).
 -/
 
-private def fixSelf : Expr := .fix .type (.bvar 0)
+private def fixSelf : Expr := .fix (.bvar 0)
 private def iotaSelf : Expr := .iota .type (.bvar 0)
 
 theorem a7_lhs_rejected :
@@ -358,23 +358,23 @@ engine-collapse migration, the negative cases route through
 *structural* subCheck unfolds the fix/ι and surfaces the body
 mismatch (`unit_ ⊄ Nat_`). Same semantic outcome via the new API. -/
 theorem a9_fixIotaBodyChecked :
-    Och.checkSubtype 200 (.fix Nat_ unit_) Nat_ = .ok false ∧
+    Och.checkSubtype 200 (.fix unit_) Nat_ = .ok false ∧
     Och.checkSubtype 200 (.iota Nat_ unit_) Nat_ = .ok false ∧
     -- The `.app`-head paths (letE removed; desugared to (λx:v. x) v):
     Och.checkSubtype 200
-      (.app (.lam (.fix Nat_ unit_) (.bvar 0)) (.fix Nat_ unit_)) Nat_
+      (.app (.lam (.fix unit_) (.bvar 0)) (.fix unit_)) Nat_
       = .ok false ∧
-    Och.checkSubtype 200 (.app (.fix Nat_ unit_) zero_) Nat_
+    Och.checkSubtype 200 (.app (.fix unit_) zero_) Nat_
       = .ok false ∧
     Och.checkSubtype 200
-      (.app (.app (.lam (.fix (och{Nat_ → Nat_}) unit_) (.bvar 0)) (.fix (och{Nat_ → Nat_}) unit_)) zero_)
+      (.app (.app (.lam (.fix unit_) (.bvar 0)) (.fix unit_)) zero_)
       Nat_ = .ok false ∧
     -- positive controls: a *well-formed* fix still checks,
     -- and the let-bound ill-formed fix checks at its *actual*
     -- type (the value unfolds to `unit_`):
-    Och.checkSubtype 200 (.fix Nat_ zero_) Nat_ = .ok true ∧
+    Och.checkSubtype 200 (.fix zero_) Nat_ = .ok true ∧
     Och.checkSubtype 200
-      (.app (.lam (.fix Nat_ unit_) (.bvar 0)) (.fix Nat_ unit_)) Unit_
+      (.app (.lam (.fix unit_) (.bvar 0)) (.fix unit_)) Unit_
       = .ok true := by
   native_decide
 -- Regression for nested-fix-annotation programs (`appendVec`)
@@ -413,7 +413,7 @@ properties more thoroughly.
 private def sweepCorpus : List Expr := [
   .type, zero_, Nat_, Bool, true_, dtrue, dBool, Nat_, one_,
   zero_, Unit_, unit_, .iota Nat_ .type, .iota .type Nat_,
-  .iota .type (.bvar 0), .fix .type Nat_, .fix .type (.bvar 0),
+  .iota .type (.bvar 0), .fix Nat_, .fix (.bvar 0),
   och{ Nat_ → Nat_ }, och{ zero_ → Nat_ }, och{ Nat_ → zero_ },
   och{ λx:Nat_. x }, och{ λx:zero_. zero_ },
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ }

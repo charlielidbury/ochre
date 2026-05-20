@@ -30,7 +30,7 @@ All arms are closed. `synthNeutralType_to_sub` is fully proved:
 - `.bvar`: via context lookup (`Subtype'.bvar`)
 - `.app f arg`: fuel induction + `whnfPi_sound_open` + `app_elim`
   + `evalSubst_equiv_open`
-- `.fix ann body`: `fix_ann` + `evalSubst_equiv_open`
+- `.fix body`: `fix_ann` + `evalSubst_equiv_open`
 
 ## Closed results
 
@@ -102,7 +102,7 @@ noncomputable def evalSubst_equiv_open
       rw [evalSubst.eq_6] at h
       simp only [Outcome.ok.injEq] at h; subst h
       exact ⟨.refl _, .refl _⟩
-    | .fix ann body, h =>
+    | .fix body, h =>
       rw [evalSubst.eq_7] at h
       simp only [Outcome.ok.injEq] at h; subst h
       exact ⟨.refl _, .refl _⟩
@@ -145,7 +145,7 @@ noncomputable def evalSubst_equiv_open
                   (.app_cong hf₁ ha₁ ha₂)),
                 .trans (.app_cong hf₂ ha₂ ha₁)
                   (.trans (.app_cong (.unfold_iota_L (.refl _)) (.refl _) (.refl _)) he₂)⟩
-          | fix ann body =>
+          | fix body =>
             simp only at h
             split at h
             · simp only [Outcome.ok.injEq] at h; subst h
@@ -301,14 +301,14 @@ noncomputable def whnfPi_go_sound_open
     | .lam dom body =>
       simp only [whnfPi.go] at hgo
       injection hgo with hgo; subst hgo; exact hsub
-    | .fix ann body =>
+    | .fix body =>
       simp only [whnfPi.go] at hgo
-      match hev : evalSubst fuel 4 (body.subst 0 (.fix ann body)) with
+      match hev : evalSubst fuel 4 (body.subst 0 (.fix body)) with
       | .ok e' =>
         rw [hev] at hgo
         have ⟨_, hfwd⟩ := evalSubst_equiv_open S Γ hev
-        have step_unfold : Subtype' S Γ (.fix ann body)
-            (body.subst 0 (.fix ann body)) :=
+        have step_unfold : Subtype' S Γ (.fix body)
+            (body.subst 0 (.fix body)) :=
           .unfold_fix_L (.refl _)
         have hsub' : Subtype' S Γ inhab e' :=
           .trans hsub (.trans step_unfold hfwd)
@@ -414,17 +414,8 @@ noncomputable def synthNeutralType_to_sub
         · -- whnfPi returned something else; algorithm returns .ok none
           -- which contradicts h : ... = .ok (some ty)
           simp at h
-    | fix ann body =>
-      rw [synthNeutralType.eq_def] at h; simp only [] at h
-      match hev : evalSubst (m + 1) unfBound ann with
-      | .ok ann' =>
-        rw [hev] at h
-        simp only [Outcome.ok.injEq, Option.some.injEq] at h
-        subst h
-        have ⟨_, hfwd⟩ := evalSubst_equiv_open S Γ hev
-        exact .trans .fix_ann hfwd
-      | .outOfFuel => rw [hev] at h; simp at h
-      | .error _ => rw [hev] at h; simp at h
+    | fix body =>
+      rw [synthNeutralType.eq_def] at h; simp at h
     | _ =>
       rw [synthNeutralType.eq_def] at h; simp at h
 
@@ -511,16 +502,16 @@ private noncomputable def subCheckSubstMatch_sound_gen
               ((Γ.length, Expr.lam domA bodyA, Expr.iota annB bodyB) :: S) Γ hev
             exact .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann)
               (.trans (ih_sub n (Nat.le_refl n) _ _ _ _ h) hev_sub)
-    | fix annB bodyB =>
+    | fix bodyB =>
       -- lam, fix: falls through to (_, .fix) arm = unfoldFixR
       unfold subCheckSubstMatch at h; simp only [isNeutral, Outcome.ok_bind] at h
-      match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+      match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
       | .outOfFuel => rw [hev] at h; simp at h
       | .error _ => rw [hev] at h; simp at h
       | .ok b' =>
         rw [hev] at h; simp only [] at h
         have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-          ((Γ.length, Expr.lam domA bodyA, Expr.fix annB bodyB) :: S) Γ hev
+          ((Γ.length, Expr.lam domA bodyA, Expr.fix bodyB) :: S) Γ hev
         exact .unfold_fix_R (.trans (ih_sub n (Nat.le_refl n) _ _ _ _ h) hev_sub)
   | iota annA bodyA =>
     cases b with
@@ -548,7 +539,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
             exact .iota_cong (ih_sub n (Nat.le_refl n) _ _ _ _ hann) (ih_sub n (Nat.le_refl n) _ _ _ _ hstr)
       | .ok false | .outOfFuel | .error _ =>
         all_goals sorry
-    | fix annB bodyB =>
+    | fix bodyB =>
       -- iota, fix: falls through to (_, .fix) arm
       -- Actually looking at match order: (.iota, .iota) doesn't match,
       -- (.iota, .fix) is NOT (_, .iota) since b=.fix, NOT (.fix, _) since a=.iota,
@@ -567,7 +558,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
       unfold subCheckSubstMatch at h
       -- isNeutral (.iota ..) = false, so straight to unfoldFixR
       simp only [isNeutral, Outcome.ok_bind] at h
-      match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+      match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
       | .outOfFuel => rw [hev] at h; simp at h
       | .error _ => rw [hev] at h; simp at h
       | .ok b' =>
@@ -594,12 +585,12 @@ private noncomputable def subCheckSubstMatch_sound_gen
             -- We get this from eval bridge (at any S) + ih_sub
             refine .unfold_iota_L ?_
             exact .trans (evalSubst_equiv_open _ Γ hev).2 hsub)
-  | fix annA bodyA =>
+  | fix bodyA =>
     cases b with
     | iota annB bodyB =>
       -- fix, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
-      match hann : subCheckSubst n Γ ((Γ.length, Expr.fix annA bodyA, Expr.iota annB bodyB) :: S) (Expr.fix annA bodyA) annB with
+      match hann : subCheckSubst n Γ ((Γ.length, Expr.fix bodyA, Expr.iota annB bodyB) :: S) (Expr.fix bodyA) annB with
       | .outOfFuel => rw [hann] at h; cases h
       | .error _ => rw [hann] at h; cases h
       | .ok annOk =>
@@ -610,50 +601,31 @@ private noncomputable def subCheckSubstMatch_sound_gen
           exact neutralAscent_sound n ih_sub Γ S _ _ h
         | true =>
           simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
-          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annA bodyA)) with
+          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyA)) with
           | .outOfFuel => rw [hev] at h; simp at h
           | .error _ => rw [hev] at h; simp at h
           | .ok bodyB'' =>
             rw [hev] at h; simp only [] at h
             have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-              ((Γ.length, Expr.fix annA bodyA, Expr.iota annB bodyB) :: S) Γ hev
+              ((Γ.length, Expr.fix bodyA, Expr.iota annB bodyB) :: S) Γ hev
             exact .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann)
               (.trans (ih_sub n (Nat.le_refl n) _ _ _ _ h) hev_sub)
-    | fix annB bodyB =>
+    | fix bodyB =>
       -- fix, fix: structural try (with guarded seen'), fallback to unfoldFixR
       unfold subCheckSubstMatch at h
       simp only [Outcome.ok_bind] at h
-      let seen' := (Γ.length, Expr.fix annA bodyA, Expr.fix annB bodyB) :: S
-      match hstr : (do
-          let annOk ← subCheckSubst n Γ seen' annA annB
-          if !annOk then return false
-          subCheckSubst n (annB :: Γ) seen' bodyA bodyB : Outcome Bool) with
-      | .ok true =>
-        rw [hstr] at h
-        simp only [Outcome.ok_bind] at hstr
-        match hann : subCheckSubst n Γ seen' annA annB with
-        | .outOfFuel => rw [hann] at hstr; cases hstr
-        | .error _ => rw [hann] at hstr; cases hstr
-        | .ok annOk =>
-          rw [hann] at hstr; simp only [Outcome.ok_bind] at hstr
-          match annOk with
-          | false => simp at hstr
-          | true =>
-            simp only [Bool.not_true, Bool.false_eq_true, ite_false, Outcome.ok_bind] at hstr
-            exact .fix_cong (ih_sub n (Nat.le_refl n) _ _ _ _ hann) (ih_sub n (Nat.le_refl n) _ _ _ _ hstr)
-      | .ok false | .outOfFuel | .error _ =>
-        -- TODO: proof repair needed for the self-referential guard (fix-fix case).
-        sorry
+      let seen' := (Γ.length, Expr.fix bodyA, Expr.fix bodyB) :: S
+      sorry
     | bvar _ | lam _ _ | app _ _ | type | bot =>
       -- fix, other: (.fix, _) = unfoldFixL
       all_goals (
         unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
-        match hev : evalSubst (n + 1) unfBound (bodyA.subst 0 (Expr.fix annA bodyA)) with
+        match hev : evalSubst (n + 1) unfBound (bodyA.subst 0 (Expr.fix bodyA)) with
         | .outOfFuel => rw [hev] at h; simp at h
         | .error _ => rw [hev] at h; simp at h
         | .ok a' =>
           rw [hev] at h; simp only [] at h
-          by_cases heqa : a' == Expr.fix annA bodyA
+          by_cases heqa : a' == Expr.fix bodyA
           · simp [heqa] at h
           · simp only [heqa, ite_false] at h
             have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
@@ -684,7 +656,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
               ((Γ.length, Expr.bvar k, Expr.iota annB bodyB) :: S) Γ hev
             exact .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann)
               (.trans (ih_sub n (Nat.le_refl n) _ _ _ _ h) hev_sub)
-    | fix annB bodyB =>
+    | fix bodyB =>
       -- bvar, fix: (_, .fix) arm
       -- isNeutral (.bvar k) = true, so we hit the synthNeutralType branch
       unfold subCheckSubstMatch at h
@@ -695,55 +667,55 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .outOfFuel =>
         rw [hsynth] at h; simp only [Outcome.ok_bind] at h
         -- Fallback: unfold fix
-        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
         | .outOfFuel => rw [hev] at h; simp at h
         | .error _ => rw [hev] at h; simp at h
         | .ok b' =>
           rw [hev] at h; simp only [] at h
           have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
           have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-            ((Γ.length, Expr.bvar k, Expr.fix annB bodyB) :: S) Γ hev
+            ((Γ.length, Expr.bvar k, Expr.fix bodyB) :: S) Γ hev
           exact .unfold_fix_R (.trans hsub hev_sub)
       | .error _ =>
         rw [hsynth] at h; simp only [] at h
-        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
         | .outOfFuel => rw [hev] at h; simp at h
         | .error _ => rw [hev] at h; simp at h
         | .ok b' =>
           rw [hev] at h; simp only [] at h
           have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
           have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-            ((Γ.length, Expr.bvar k, Expr.fix annB bodyB) :: S) Γ hev
+            ((Γ.length, Expr.bvar k, Expr.fix bodyB) :: S) Γ hev
           exact .unfold_fix_R (.trans hsub hev_sub)
       | .ok none =>
         rw [hsynth] at h; simp only [] at h
-        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
         | .outOfFuel => rw [hev] at h; simp at h
         | .error _ => rw [hev] at h; simp at h
         | .ok b' =>
           rw [hev] at h; simp only [] at h
           have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
           have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-            ((Γ.length, Expr.bvar k, Expr.fix annB bodyB) :: S) Γ hev
+            ((Γ.length, Expr.bvar k, Expr.fix bodyB) :: S) Γ hev
           exact .unfold_fix_R (.trans hsub hev_sub)
       | .ok (some ty) =>
         rw [hsynth] at h; simp only [] at h
-        by_cases htyeq : ty == Expr.fix annB bodyB
+        by_cases htyeq : ty == Expr.fix bodyB
         · -- ty == b: synthNeutralType says (.bvar k) has type ty = b
           simp only [htyeq, ite_true] at h
-          have htyeq' : ty = Expr.fix annB bodyB := by simpa using htyeq
+          have htyeq' : ty = Expr.fix bodyB := by simpa using htyeq
           subst htyeq'
           exact synthNeutralType_bvar_to_sub hsynth
         · -- ty ≠ b: fallback to unfold fix
           simp only [htyeq, ite_false] at h
-          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
           | .outOfFuel => rw [hev] at h; simp at h
           | .error _ => rw [hev] at h; simp at h
           | .ok b' =>
             rw [hev] at h; simp only [] at h
             have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
             have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-              ((Γ.length, Expr.bvar k, Expr.fix annB bodyB) :: S) Γ hev
+              ((Γ.length, Expr.bvar k, Expr.fix bodyB) :: S) Γ hev
             exact .unfold_fix_R (.trans hsub hev_sub)
     | bvar k2 =>
       -- bvar, bvar: (_, _) wildcard = neutral arm (both neutral)
@@ -812,7 +784,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
               ((Γ.length, Expr.app f arg, Expr.iota annB bodyB) :: S) Γ hev
             exact .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann)
               (.trans (ih_sub n (Nat.le_refl n) _ _ _ _ h) hev_sub)
-    | fix annB bodyB =>
+    | fix bodyB =>
       -- app, fix: (_, .fix) arm
       -- isNeutral (.app f arg) depends on isNeutral f
       unfold subCheckSubstMatch at h
@@ -826,65 +798,65 @@ private noncomputable def subCheckSubstMatch_sound_gen
         match hsynth : synthNeutralType n Γ (.app f arg) with
         | .outOfFuel =>
           rw [hsynth] at h; simp only [Outcome.ok_bind] at h
-          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
           | .outOfFuel => rw [hev] at h; simp at h
           | .error _ => rw [hev] at h; simp at h
           | .ok b' =>
             rw [hev] at h; simp only [] at h
             have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
             have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-              ((Γ.length, Expr.app f arg, Expr.fix annB bodyB) :: S) Γ hev
+              ((Γ.length, Expr.app f arg, Expr.fix bodyB) :: S) Γ hev
             exact .unfold_fix_R (.trans hsub hev_sub)
         | .error _ =>
           rw [hsynth] at h; simp only [] at h
-          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
           | .outOfFuel => rw [hev] at h; simp at h
           | .error _ => rw [hev] at h; simp at h
           | .ok b' =>
             rw [hev] at h; simp only [] at h
             have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
             have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-              ((Γ.length, Expr.app f arg, Expr.fix annB bodyB) :: S) Γ hev
+              ((Γ.length, Expr.app f arg, Expr.fix bodyB) :: S) Γ hev
             exact .unfold_fix_R (.trans hsub hev_sub)
         | .ok none =>
           rw [hsynth] at h; simp only [] at h
-          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
           | .outOfFuel => rw [hev] at h; simp at h
           | .error _ => rw [hev] at h; simp at h
           | .ok b' =>
             rw [hev] at h; simp only [] at h
             have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
             have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-              ((Γ.length, Expr.app f arg, Expr.fix annB bodyB) :: S) Γ hev
+              ((Γ.length, Expr.app f arg, Expr.fix bodyB) :: S) Γ hev
             exact .unfold_fix_R (.trans hsub hev_sub)
         | .ok (some ty) =>
           rw [hsynth] at h; simp only [] at h
-          by_cases htyeq : ty == Expr.fix annB bodyB
+          by_cases htyeq : ty == Expr.fix bodyB
           · simp only [htyeq, ite_true] at h
-            have htyeq' : ty = Expr.fix annB bodyB := by simpa using htyeq
+            have htyeq' : ty = Expr.fix bodyB := by simpa using htyeq
             subst htyeq'
             exact synthNeutralType_to_sub hsynth
           · simp only [htyeq, ite_false] at h
-            match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+            match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
             | .outOfFuel => rw [hev] at h; simp at h
             | .error _ => rw [hev] at h; simp at h
             | .ok b' =>
               rw [hev] at h; simp only [] at h
               have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
               have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-                ((Γ.length, Expr.app f arg, Expr.fix annB bodyB) :: S) Γ hev
+                ((Γ.length, Expr.app f arg, Expr.fix bodyB) :: S) Γ hev
               exact .unfold_fix_R (.trans hsub hev_sub)
       · -- isNeutral f = false, so isNeutral (.app f arg) = false
         simp only [hnf, ite_false] at h
         -- Non-neutral path: straight unfold fix
-        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+        match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
         | .outOfFuel => rw [hev] at h; simp at h
         | .error _ => rw [hev] at h; simp at h
         | .ok b' =>
           rw [hev] at h; simp only [] at h
           have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
           have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-            ((Γ.length, Expr.app f arg, Expr.fix annB bodyB) :: S) Γ hev
+            ((Γ.length, Expr.app f arg, Expr.fix bodyB) :: S) Γ hev
           exact .unfold_fix_R (.trans hsub hev_sub)
     | bvar k2 =>
       -- app, bvar: (_, _) wildcard = neutral arm
@@ -959,16 +931,16 @@ private noncomputable def subCheckSubstMatch_sound_gen
               ((Γ.length, Expr.type, Expr.iota annB bodyB) :: S) Γ hev
             exact .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann)
               (.trans (ih_sub n (Nat.le_refl n) _ _ _ _ h) hev_sub)
-    | fix annB bodyB =>
+    | fix bodyB =>
       -- type, fix: (_, .fix) arm
       unfold subCheckSubstMatch at h; simp only [isNeutral, Outcome.ok_bind] at h
-      match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
+      match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix bodyB)) with
       | .outOfFuel => rw [hev] at h; simp at h
       | .error _ => rw [hev] at h; simp at h
       | .ok b' =>
         rw [hev] at h; simp only [] at h
         have ⟨hev_sub, _⟩ := evalSubst_equiv_open
-          ((Γ.length, Expr.type, Expr.fix annB bodyB) :: S) Γ hev
+          ((Γ.length, Expr.type, Expr.fix bodyB) :: S) Γ hev
         exact .unfold_fix_R (.trans (ih_sub n (Nat.le_refl n) _ _ _ _ h) hev_sub)
     | _ =>
       -- type, other: (_, _), isNeutral type = false → .ok false → contradiction

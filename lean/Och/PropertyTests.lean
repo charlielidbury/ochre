@@ -136,7 +136,7 @@ private def rtCorpus : List Expr := [
   dtrue, dfalse, dBool,
   och{ Nat_ → Nat_ }, och{ λx:Nat_. x }, och{ succ_ zero_ },
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
-  .iota .type Nat_, .fix .type Nat_
+  .iota .type Nat_, .fix Nat_
   -- `.asc zero_ Nat_` removed: the structural engine's asymmetric
   -- `.asc` stripping (LHS→ty, RHS→inner) makes `.asc e τ ⊑ .asc e τ`
   -- fail reflexivity. See `SubstEval.subCheckSubst` lines 202-203.

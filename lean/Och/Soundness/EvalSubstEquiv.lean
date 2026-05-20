@@ -52,7 +52,7 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
     | .iota ann body =>
       rw [evalSubst.eq_6] at h
       simp only [Outcome.ok.injEq] at h; subst h; exact hcl
-    | .fix ann body =>
+    | .fix body =>
       rw [evalSubst.eq_7] at h
       simp only [Outcome.ok.injEq] at h; subst h; exact hcl
     | .app f a =>
@@ -109,23 +109,23 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
                     = (closedAt 0 (body.subst 0 (.iota ann body)) && closedAt 0 av) := rfl
                 rw [this, Bool.and_eq_true]; exact ⟨hsub, hacl⟩
               exact ih hApp h
-          | fix ann body =>
+          | fix body =>
             simp only at h
             split at h
             · simp only [Outcome.ok.injEq] at h
               subst h
-              have : (Expr.app (.fix ann body) av).closedAt 0
-                  = (closedAt 0 (.fix ann body) && closedAt 0 av) := rfl
+              have : (Expr.app (.fix body) av).closedAt 0
+                  = (closedAt 0 (.fix body) && closedAt 0 av) := rfl
               rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
-            · have hself : (Expr.fix ann body).closedAt 0 = true := hfcl
-              simp only [closedAt, Bool.and_eq_true] at hfcl
-              have hbody : body.closedAt 1 = true := by simpa using hfcl.2
-              have hsub : (body.subst 0 (.fix ann body)).closedAt 0 = true :=
+            · have hself : (Expr.fix body).closedAt 0 = true := hfcl
+              simp only [closedAt] at hfcl
+              have hbody : body.closedAt 1 = true := hfcl
+              have hsub : (body.subst 0 (.fix body)).closedAt 0 = true :=
                 Expr.subst_closedAt hbody hself
-              have hApp : (Expr.app (body.subst 0 (.fix ann body)) av).closedAt 0
+              have hApp : (Expr.app (body.subst 0 (.fix body)) av).closedAt 0
                   = true := by
-                have : (Expr.app (body.subst 0 (.fix ann body)) av).closedAt 0
-                    = (closedAt 0 (body.subst 0 (.fix ann body)) && closedAt 0 av) := rfl
+                have : (Expr.app (body.subst 0 (.fix body)) av).closedAt 0
+                    = (closedAt 0 (body.subst 0 (.fix body)) && closedAt 0 av) := rfl
                 rw [this, Bool.and_eq_true]; exact ⟨hsub, hacl⟩
               exact ih hApp h
           | app f' a' =>
@@ -168,7 +168,7 @@ def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
       rw [evalSubst.eq_6] at h
       simp only [Outcome.ok.injEq] at h; subst h
       exact ⟨.refl _, .refl _⟩
-    | .fix ann body, _, h =>
+    | .fix body, _, h =>
       rw [evalSubst.eq_7] at h
       simp only [Outcome.ok.injEq] at h; subst h
       exact ⟨.refl _, .refl _⟩
@@ -253,39 +253,39 @@ def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
                     (.app (body.subst 0 (.iota ann body)) av) :=
                   .app_cong hUnfoldF (.refl _) (.refl _)
                 exact .trans step1 (.trans step2 he₂)
-          | fix ann body =>
+          | fix body =>
             simp only at h
             split at h
             · rename_i hcond
               simp only [Outcome.ok.injEq] at h; subst h
               exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
             · rename_i hcond
-              have hself : (Expr.fix ann body).closedAt 0 = true := hfv_cl
-              simp only [closedAt, Bool.and_eq_true] at hfv_cl
-              have hbody : body.closedAt 1 = true := by simpa using hfv_cl.2
-              have hbsub_cl : (body.subst 0 (.fix ann body)).closedAt 0 = true :=
+              have hself : (Expr.fix body).closedAt 0 = true := hfv_cl
+              simp only [closedAt] at hfv_cl
+              have hbody : body.closedAt 1 = true := hfv_cl
+              have hbsub_cl : (body.subst 0 (.fix body)).closedAt 0 = true :=
                 Expr.subst_closedAt hbody hself
-              have hAppCl : (Expr.app (body.subst 0 (.fix ann body)) av).closedAt 0
+              have hAppCl : (Expr.app (body.subst 0 (.fix body)) av).closedAt 0
                   = true := by
                 simp only [closedAt, Bool.and_eq_true]; exact ⟨hbsub_cl, hav_cl⟩
               have ⟨he₁, he₂⟩ := ih hAppCl h
-              have hUnfoldF : Subtype' [] [] (.fix ann body)
-                  (body.subst 0 (.fix ann body)) :=
+              have hUnfoldF : Subtype' [] [] (.fix body)
+                  (body.subst 0 (.fix body)) :=
                 .unfold_fix_L (.refl _)
-              have hUnfoldB : Subtype' [] [] (body.subst 0 (.fix ann body))
-                  (.fix ann body) :=
+              have hUnfoldB : Subtype' [] [] (body.subst 0 (.fix body))
+                  (.fix body) :=
                 .unfold_fix_R (.refl _)
               refine ⟨?_, ?_⟩
-              · have step1 : Subtype' [] [] (.app (body.subst 0 (.fix ann body)) av)
-                    (.app (.fix ann body) av) :=
+              · have step1 : Subtype' [] [] (.app (body.subst 0 (.fix body)) av)
+                    (.app (.fix body) av) :=
                   .app_cong hUnfoldB (.refl _) (.refl _)
-                have step2 : Subtype' [] [] (.app (.fix ann body) av)
+                have step2 : Subtype' [] [] (.app (.fix body) av)
                     (.app f a) := .app_cong hf₁ ha₁ ha₂
                 exact .trans he₁ (.trans step1 step2)
               · have step1 : Subtype' [] [] (.app f a)
-                    (.app (.fix ann body) av) := .app_cong hf₂ ha₂ ha₁
-                have step2 : Subtype' [] [] (.app (.fix ann body) av)
-                    (.app (body.subst 0 (.fix ann body)) av) :=
+                    (.app (.fix body) av) := .app_cong hf₂ ha₂ ha₁
+                have step2 : Subtype' [] [] (.app (.fix body) av)
+                    (.app (body.subst 0 (.fix body)) av) :=
                   .app_cong hUnfoldF (.refl _) (.refl _)
                 exact .trans step1 (.trans step2 he₂)
           | app f' a' =>

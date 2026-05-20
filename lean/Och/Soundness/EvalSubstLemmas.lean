@@ -63,7 +63,7 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
       rw [evalSubst.eq_4] at h ⊢; exact h
     | .iota _ _ =>
       rw [evalSubst.eq_6] at h ⊢; exact h
-    | .fix _ _ =>
+    | .fix _ =>
       rw [evalSubst.eq_7] at h ⊢; exact h
     | .app f a =>
       rw [evalSubst.eq_8] at h ⊢
@@ -98,7 +98,7 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
             split at h
             · rename_i hcond; rw [if_pos hcond]; exact h
             · rename_i hcond; rw [if_neg hcond]; exact ih h
-          | fix _ann body =>
+          | fix body =>
             simp only at h ⊢
             split at h
             · rename_i hcond; rw [if_pos hcond]; exact h
@@ -150,11 +150,10 @@ private theorem subst_closedAt_gen (body : Expr) (s : Expr) (n j : Nat)
     exact ⟨ih_ann s n j hj hbody.1 hs,
            ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
              (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
-  | fix ann body ih_ann ih_body =>
-    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
-    exact ⟨ih_ann s n j hj hbody.1 hs,
-           ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
-             (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
+  | fix body ih_body =>
+    simp only [Expr.subst, Expr.closedAt] at hbody ⊢
+    exact ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody
+             (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)
 
 /-- `Expr.subst` preserves closedness: substituting a closed term
     into a body that's closed at depth 1 yields a closed term. -/
@@ -183,7 +182,7 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
       rw [evalSubst.eq_5] at h; cases h; exact hcl
     | .iota _ _ =>
       rw [evalSubst.eq_6] at h; cases h; exact hcl
-    | .fix _ _ =>
+    | .fix _ =>
       rw [evalSubst.eq_7] at h; cases h; exact hcl
     | .app f a =>
       rw [evalSubst.eq_8] at h
@@ -229,16 +228,16 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
               have happCl : (Expr.app (body.subst 0 (.iota _ann body)) av).closedAt 0 = true := by
                 simp only [Expr.closedAt, Bool.and_eq_true]; exact ⟨hsubCl, haCl⟩
               exact ih happCl h
-          | fix _ann body =>
+          | fix body =>
             simp only at h
             split at h
             · cases h
               simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢
-              exact ⟨⟨hfCl.1, hfCl.2⟩, haCl⟩
-            · simp only [Expr.closedAt, Bool.and_eq_true] at hfCl
-              have hsubCl := subst_closedAt body (.fix _ann body) hfCl.2
-                (by simp [Expr.closedAt, Bool.and_eq_true]; exact hfCl)
-              have happCl : (Expr.app (body.subst 0 (.fix _ann body)) av).closedAt 0 = true := by
+              exact ⟨hfCl, haCl⟩
+            · simp only [Expr.closedAt] at hfCl
+              have hsubCl := subst_closedAt body (.fix body) hfCl
+                (by simp [Expr.closedAt]; exact hfCl)
+              have happCl : (Expr.app (body.subst 0 (.fix body)) av).closedAt 0 = true := by
                 simp only [Expr.closedAt, Bool.and_eq_true]; exact ⟨hsubCl, haCl⟩
               exact ih happCl h
           | app _ _ =>

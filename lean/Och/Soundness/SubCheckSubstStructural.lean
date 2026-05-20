@@ -55,15 +55,14 @@ noncomputable def subCheckSubst_arm_iota_iota_struct
 /-- C4: fix-fix structural arm. -/
 noncomputable def subCheckSubst_arm_fix_fix_struct
     {S : Seen} {Γ : Ctx} {d : Nat}
-    {annA bodyA annB bodyB : Expr}
-    (ih_ann : Subtype' S Γ (closeAll d annA) (closeAll d annB))
-    (ih_body : Subtype' S (closeAll d annB :: Γ)
+    {bodyA bodyB : Expr}
+    (ih_body : Subtype' S (closeAll d (.fix bodyB) :: Γ)
         (closeAllAt 1 d bodyA) (closeAllAt 1 d bodyB)) :
     Subtype' S Γ
-      (closeAll d (.fix annA bodyA))
-      (closeAll d (.fix annB bodyB)) := by
+      (closeAll d (.fix bodyA))
+      (closeAll d (.fix bodyB)) := by
   simp only [closeAll, closeAllAt] at *
-  exact .fix_cong (ih_ann.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
+  exact .fix_cong
     (ih_body.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
 
 /-! ## Composed arm lemmas
@@ -110,18 +109,17 @@ noncomputable def subCheckSubst_arm_iota_iota
 /-- C4 (fix-fix structural) composed. -/
 noncomputable def subCheckSubst_arm_fix_fix
     {S : Seen} {Γ : Ctx} {d : Nat}
-    {annA bodyA annB bodyB : Expr}
+    {bodyA bodyB : Expr}
     (_hclA : True) (_hclB : True)
     (_hlvA : True) (_hlvB : True)
-    (ih_ann : Subtype' S Γ (closeAll d annA) (closeAll d annB))
-    (ih_body : Subtype' S (closeAll d annB :: Γ)
+    (ih_body : Subtype' S (closeAll d (.fix bodyB) :: Γ)
         (closeAll (d + 1) bodyA)
         (closeAll (d + 1) bodyB)) :
     Subtype' S Γ
-      (closeAll d (.fix annA bodyA))
-      (closeAll d (.fix annB bodyB)) := by
+      (closeAll d (.fix bodyA))
+      (closeAll d (.fix bodyB)) := by
   simp only [closeAll, closeAllAt] at *
-  exact .fix_cong (ih_ann.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
+  exact .fix_cong
     (ih_body.weaken (List.subset_cons_of_subset _ (List.Subset.refl _)))
 
 end Och.Soundness

@@ -65,28 +65,13 @@ def check (e : Expr) (fuel : Nat := 5000) (Γ : TyEnv := []) :
         else
           .error s!"synth: unbound bvar {k} (|Γ|={Γ.length})"
     | .lam dom body => do
-        let okDom ← subCheckOpen fuel Γ dom .type
-        if !okDom then
-          .error s!"synth: lam domain annotation is not a type"
-        else
-          let domV ← evalSubst fuel SubstEval.unfBound dom
-          -- Descend into body without substitution. bvar 0 in body
-          -- refers to the lambda parameter; extend Γ with domV.
-          check body fuel (domV :: Γ)
+        let domV ← evalSubst fuel SubstEval.unfBound dom
+        check body fuel (domV :: Γ)
     | .iota ann body => do
-        let okAnn ← subCheckOpen fuel Γ ann .type
-        if !okAnn then
-          .error s!"synth: iota annotation is not a type"
-        else
-          let annV ← evalSubst fuel SubstEval.unfBound ann
-          check body fuel (annV :: Γ)
-    | .fix ann body => do
-        let okAnn ← subCheckOpen fuel Γ ann .type
-        if !okAnn then
-          .error s!"synth: fix annotation is not a type"
-        else
-          let annV ← evalSubst fuel SubstEval.unfBound ann
-          check body fuel (annV :: Γ)
+        let annV ← evalSubst fuel SubstEval.unfBound ann
+        check body fuel (annV :: Γ)
+    | .fix body =>
+        check body fuel (.fix body :: Γ)
     | .app f a => do
         check f fuel Γ
         check a fuel Γ

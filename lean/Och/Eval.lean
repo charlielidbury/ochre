@@ -69,7 +69,7 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
   | fuel + 1 =>
     match e with
     | .bvar k => .error s!"concEval: stuck on free bvar {k}"
-    | .lam _ _ | .type | .bot | .iota _ _ | .fix _ _ => .ok e -- direct values
+    | .lam _ _ | .type | .bot | .iota _ _ | .fix _ => .ok e -- direct values
     | .app f a =>
       match concEval fuel f, concEval fuel a with
       | .ok (.lam _dom body), .ok aVal =>
@@ -78,9 +78,9 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
       | .ok (.iota ann body), .ok aVal =>
         -- iota in function position: unroll self-reference, then re-apply
         concEval fuel (.app (body.subst 0 (.iota ann body)) aVal)
-      | .ok (.fix ann body), .ok aVal =>
+      | .ok (.fix body), .ok aVal =>
         -- fix in function position: unroll self-reference, then re-apply
-        concEval fuel (.app (body.subst 0 (.fix ann body)) aVal)
+        concEval fuel (.app (body.subst 0 (.fix body)) aVal)
       | .ok _fVal, .ok _aVal =>
         .error s!"concEval: application of non-function"
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
@@ -127,9 +127,9 @@ inductive ConcNF : Expr → Prop
   | type : ConcNF .type
   | bot : ConcNF .bot
   | iota (ann body : Expr) : ConcNF (.iota ann body)
-  | fix (ann body : Expr) : ConcNF (.fix ann body)
+  | fix (body : Expr) : ConcNF (.fix body)
   | app (f a : Expr) : ConcNF f → ConcNF a →
-      (match f with | .lam _ _ | .iota _ _ | .fix _ _ => False | _ => True) → ConcNF (.app f a)
+      (match f with | .lam _ _ | .iota _ _ | .fix _ => False | _ => True) → ConcNF (.app f a)
 
 /-- concEval always produces ConcNF values. -/
 theorem concEval_ConcNF {fuel : Nat} {e v : Expr}

@@ -110,9 +110,9 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   | iota_body {S Γ ann body₁ body₂} :
       Subtype' S (ann :: Γ) body₂ body₁ →
       Subtype' S Γ (.iota ann body₂) (.iota ann body₁)
-  | fix_body {S Γ ann body₁ body₂} :
-      Subtype' S (ann :: Γ) body₂ body₁ →
-      Subtype' S Γ (.fix ann body₂) (.fix ann body₁)
+  | fix_body {S Γ body₁ body₂} :
+      Subtype' S ((.fix body₁) :: Γ) body₂ body₁ →
+      Subtype' S Γ (.fix body₂) (.fix body₁)
   /-- Guarded ι-congruence. The premises may use the conclusion
   as a coinductive hypothesis (via `hyp`). This guards the
   annotation sub-check against self-referential iota annotations
@@ -124,10 +124,9 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
       Subtype' ((Γ.length, .iota ann₁ body₁, .iota ann₂ body₂) :: S) (ann₂ :: Γ) body₁ body₂ →
       Subtype' S Γ (.iota ann₁ body₁) (.iota ann₂ body₂)
   /-- Guarded μ-congruence, same pattern as `iota_cong`. -/
-  | fix_cong {S Γ ann₁ ann₂ body₁ body₂} :
-      Subtype' ((Γ.length, .fix ann₁ body₁, .fix ann₂ body₂) :: S) Γ ann₁ ann₂ →
-      Subtype' ((Γ.length, .fix ann₁ body₁, .fix ann₂ body₂) :: S) (ann₂ :: Γ) body₁ body₂ →
-      Subtype' S Γ (.fix ann₁ body₁) (.fix ann₂ body₂)
+  | fix_cong {S Γ body₁ body₂} :
+      Subtype' ((Γ.length, .fix body₁, .fix body₂) :: S) ((.fix body₂) :: Γ) body₁ body₂ →
+      Subtype' S Γ (.fix body₁) (.fix body₂)
   /-- iotaIntro (value-sub, Cedille-style). The goal is added
   to `S` (tagged with the current depth) before recursing —
   both premises may use it. -/
@@ -162,19 +161,16 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
       Subtype' ((Γ.length, a, .iota ann body) :: S) Γ
         a (body.subst 0 (.iota ann body)) →
       Subtype' S Γ a (.iota ann body)
-  /-- [unfoldFixL]: `fix A. body ⊑ c` if `body[self := fix A. body] ⊑ c`. -/
-  | unfold_fix_L {S Γ ann body c} :
-      Subtype' ((Γ.length, .fix ann body, c) :: S) Γ
-        (body.subst 0 (.fix ann body)) c →
-      Subtype' S Γ (.fix ann body) c
-  /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`.
-      The previous `[fix-ann]` (`a ⊑ A → a ⊑ fix A. body`) was removed:
-      `A` is the type of the recursion variable, not an upper bound on
-      the fixpoint, so with `A = Type` it admitted `Nat ⊑ dBool`. -/
-  | unfold_fix_R {S Γ a ann body} :
-      Subtype' ((Γ.length, a, .fix ann body) :: S) Γ
-        a (body.subst 0 (.fix ann body)) →
-      Subtype' S Γ a (.fix ann body)
+  /-- [unfoldFixL]: `fix body ⊑ c` if `body[self := fix body] ⊑ c`. -/
+  | unfold_fix_L {S Γ body c} :
+      Subtype' ((Γ.length, .fix body, c) :: S) Γ
+        (body.subst 0 (.fix body)) c →
+      Subtype' S Γ (.fix body) c
+  /-- [unfoldFixR]: `a ⊑ fix body` if `a ⊑ body[self := fix body]`. -/
+  | unfold_fix_R {S Γ a body} :
+      Subtype' ((Γ.length, a, .fix body) :: S) Γ
+        a (body.subst 0 (.fix body)) →
+      Subtype' S Γ a (.fix body)
   /-- β-conversion on the left. The algorithm normalises before
   comparing; declaratively, a β-redex on either side may be
   contracted. This (with `trans`) makes `Subtype'` closed under
@@ -185,13 +181,6 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   | beta_R {S Γ a dom body arg} :
       Subtype' S Γ a (body.subst 0 arg) →
       Subtype' S Γ a (.app (.lam dom body) arg)
-  /-- Fixpoint annotation ascent: `fix A. body ⊑ A`.
-      The annotation records the fixpoint's type; the type checker
-      enforces `body[self := fix A. body] : A`, so `fix A. body : A`.
-      This is the ELIMINATION direction (trusting the annotation);
-      the old INTRODUCTION direction (`a ⊑ A → a ⊑ fix A. body`)
-      was unsound and was removed. -/
-  | fix_ann {S Γ ann body} : Subtype' S Γ (.fix ann body) ann
   /-- `[S-BotL]`: Bot is the universal lower bound. `Bot ⊑ e` for
       every `e`. No matching `bot_R` rule — Bot is only ⊑ Bot, and
       that's `[S-Refl]`. See `docs/ideas/bottom.md`. -/
@@ -218,9 +207,8 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
   | iota_cong _ _ ihA ihB =>
       exact .iota_cong (ihA (List.cons_subset_cons _ hsub))
                         (ihB (List.cons_subset_cons _ hsub))
-  | fix_cong _ _ ihA ihB =>
-      exact .fix_cong (ihA (List.cons_subset_cons _ hsub))
-                       (ihB (List.cons_subset_cons _ hsub))
+  | fix_cong _ ihB =>
+      exact .fix_cong (ihB (List.cons_subset_cons _ hsub))
   | iota_intro _ _ ih1 ih2 =>
       refine .iota_intro (ih1 ?_) (ih2 ?_) <;>
       · intro p hp
@@ -254,7 +242,6 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
       | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
   | beta_L _ ih => exact .beta_L (ih hsub)
   | beta_R _ ih => exact .beta_R (ih hsub)
-  | fix_ann => exact .fix_ann
   | bot_L => exact .bot_L
 
 /-- `.hyp` specialised to same-depth use: an entry recorded
@@ -507,14 +494,14 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     have hb := ih (ann :: Γpfx) (List.cons_append .. ▸ rfl)
     simpa only [List.length_cons, Ctx.shiftPrefix_cons,
                List.cons_append] using hb
-  | @fix_body S' Γ' ann b₁ b₂ _ ih =>
+  | @fix_body S' Γ' b₁ b₂ _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     refine .fix_body ?_
-    have hb := ih (ann :: Γpfx) (List.cons_append .. ▸ rfl)
+    have hb := ih ((.fix b₁) :: Γpfx) (List.cons_append .. ▸ rfl)
     simpa only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] using hb
+               List.cons_append, Expr.shift] using hb
   | @iota_cong S' Γ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
     intro Γpfx hpfx
     subst hpfx
@@ -535,26 +522,23 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
       simp only [List.map_cons, hhead, List.length_cons,
                  Ctx.shiftPrefix_cons, List.cons_append] at hb
       simpa [Expr.shift] using hb
-  | @fix_cong S' Γ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
+  | @fix_cong S' Γ' b₁ b₂ _ ihB =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     have hhead :
         Seen.extendEntry Δ.length Γ.length
-          ((Γpfx ++ Γ).length, .fix a₁ b₁, .fix a₂ b₂)
+          ((Γpfx ++ Γ).length, .fix b₁, .fix b₂)
         = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
-           (Expr.fix a₁ b₁).shift Δ.length Γpfx.length,
-           (Expr.fix a₂ b₂).shift Δ.length Γpfx.length) := by
+           (Expr.fix b₁).shift Δ.length Γpfx.length,
+           (Expr.fix b₂).shift Δ.length Γpfx.length) := by
       simp [Seen.extendEntry, List.length_append,
             Ctx.shiftPrefix_length, Expr.shift]; omega
-    refine .fix_cong ?_ ?_
-    · have := ihA Γpfx rfl
-      simp only [List.map_cons, hhead] at this
-      simpa [Expr.shift] using this
-    · have hb := ihB (a₂ :: Γpfx) (List.cons_append .. ▸ rfl)
-      simp only [List.map_cons, hhead, List.length_cons,
-                 Ctx.shiftPrefix_cons, List.cons_append] at hb
-      simpa [Expr.shift] using hb
+    refine .fix_cong ?_
+    have hb := ihB ((.fix b₂) :: Γpfx) (List.cons_append .. ▸ rfl)
+    simp only [List.map_cons, hhead, List.length_cons,
+               Ctx.shiftPrefix_cons, List.cons_append] at hb
+    simpa [Expr.shift] using hb
   | @iota_intro S' Γ' a' ann body _ _ ih1 ih2 =>
     intro Γpfx hpfx
     subst hpfx
@@ -600,15 +584,15 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     have := ih Γpfx rfl
     simp only [List.map_cons, hhead] at this
     simpa [Expr.shift, Expr.subst_shift_swap] using this
-  | @unfold_fix_L S' Γ' ann body c' _ ih =>
+  | @unfold_fix_L S' Γ' body c' _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     have hhead :
         Seen.extendEntry Δ.length Γ.length
-          ((Γpfx ++ Γ).length, .fix ann body, c')
+          ((Γpfx ++ Γ).length, .fix body, c')
         = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
-           (Expr.fix ann body).shift Δ.length Γpfx.length,
+           (Expr.fix body).shift Δ.length Γpfx.length,
            c'.shift Δ.length Γpfx.length) := by
       simp [Seen.extendEntry, List.length_append,
             Ctx.shiftPrefix_length, Expr.shift]; omega
@@ -616,16 +600,16 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     have := ih Γpfx rfl
     simp only [List.map_cons, hhead] at this
     simpa [Expr.shift, Expr.subst_shift_swap] using this
-  | @unfold_fix_R S' Γ' a' ann body _ ih =>
+  | @unfold_fix_R S' Γ' a' body _ ih =>
     intro Γpfx hpfx
     subst hpfx
     simp only [Expr.shift]
     have hhead :
         Seen.extendEntry Δ.length Γ.length
-          ((Γpfx ++ Γ).length, a', .fix ann body)
+          ((Γpfx ++ Γ).length, a', .fix body)
         = ((Γpfx.shiftPrefix Δ.length ++ Δ ++ Γ).length,
            a'.shift Δ.length Γpfx.length,
-           (Expr.fix ann body).shift Δ.length Γpfx.length) := by
+           (Expr.fix body).shift Δ.length Γpfx.length) := by
       simp [Seen.extendEntry, List.length_append,
             Ctx.shiftPrefix_length, Expr.shift]; omega
     refine .unfold_fix_R ?_
@@ -662,10 +646,6 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     refine .beta_R ?_
     have := ih Γpfx rfl
     simpa [Expr.subst_shift_swap] using this
-  | fix_ann =>
-    intro Γpfx _
-    simp only [Expr.shift]
-    exact .fix_ann
   | bot_L =>
     intro Γpfx _
     simp only [Expr.shift]
@@ -777,11 +757,11 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       subst hΔ
       exact .iota_body
         (ih (ann :: Γ') (List.cons_append .. ▸ rfl))
-  | @fix_body S' Δ' ann b₁ b₂ _ ih =>
+  | @fix_body S' Δ' b₁ b₂ _ ih =>
       intro Γ' hΔ
       subst hΔ
       exact .fix_body
-        (ih (ann :: Γ') (List.cons_append .. ▸ rfl))
+        (ih ((.fix b₁) :: Γ') (List.cons_append .. ▸ rfl))
   | @iota_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
       intro Γ' hΔ
       subst hΔ
@@ -790,14 +770,13 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       refine .iota_cong ?_ ?_
       · exact hlen ▸ ihA Γ' rfl
       · exact hlen ▸ ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl)
-  | @fix_cong S' Δ' a₁ a₂ b₁ b₂ _ _ ihA ihB =>
+  | @fix_cong S' Δ' b₁ b₂ _ ihB =>
       intro Γ' hΔ
       subst hΔ
       have hlen : (Γ' ++ domA :: Γ).length = (Γ' ++ domB :: Γ).length := by
         simp [List.length_append, List.length_cons]
-      refine .fix_cong ?_ ?_
-      · exact hlen ▸ ihA Γ' rfl
-      · exact hlen ▸ ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl)
+      refine .fix_cong ?_
+      exact hlen ▸ ihB ((.fix b₂) :: Γ') (List.cons_append .. ▸ rfl)
   | @iota_intro S' Δ' a' ann body _ _ ih1 ih2 =>
       intro Γ' hΔ
       subst hΔ
@@ -817,7 +796,7 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       have h1 := ih Γ' rfl
       rw [hlen] at h1
       exact .unfold_iota_L h1
-  | @unfold_fix_L S' Δ' ann body c' _ ih =>
+  | @unfold_fix_L S' Δ' body c' _ ih =>
       intro Γ' hΔ
       subst hΔ
       have hlen : (Γ' ++ domA :: Γ).length
@@ -825,7 +804,7 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       have h1 := ih Γ' rfl
       rw [hlen] at h1
       exact .unfold_fix_L h1
-  | @unfold_fix_R S' Δ' a' ann body _ ih =>
+  | @unfold_fix_R S' Δ' a' body _ ih =>
       intro Γ' hΔ
       subst hΔ
       have hlen : (Γ' ++ domA :: Γ).length
@@ -843,7 +822,6 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       exact .unfold_iota_R h1
   | beta_L _ ih => exact fun Γ' hΔ => .beta_L (ih Γ' hΔ)
   | beta_R _ ih => exact fun Γ' hΔ => .beta_R (ih Γ' hΔ)
-  | fix_ann => exact fun _ _ => .fix_ann
   | bot_L => exact fun _ _ => .bot_L
 
 /-- Head-position context narrowing: replacing `Γ`'s innermost

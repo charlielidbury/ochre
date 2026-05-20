@@ -50,17 +50,16 @@ inductive WellFormed : Ctx → Expr → Prop where
       k < Γ.length →
       WellFormed Γ (.bvar k)
   | lam {Γ : Ctx} {dom body : Expr} :
-      Subtype' [] Γ dom .type →
+      WellFormed Γ dom →
       WellFormed (dom :: Γ) body →
       WellFormed Γ (.lam dom body)
   | iota {Γ : Ctx} {ann body : Expr} :
-      Subtype' [] Γ ann .type →
+      WellFormed Γ ann →
       WellFormed (ann :: Γ) body →
       WellFormed Γ (.iota ann body)
-  | fix {Γ : Ctx} {ann body : Expr} :
-      Subtype' [] Γ ann .type →
-      WellFormed (ann :: Γ) body →
-      WellFormed Γ (.fix ann body)
+  | fix {Γ : Ctx} {body : Expr} :
+      WellFormed ((.fix body) :: Γ) body →
+      WellFormed Γ (.fix body)
   /-- Application: function and argument must be well-formed,
       function must subtype a Π (possibly after fix/iota unfolding
       via `Subtype'`), and argument must subtype the domain.

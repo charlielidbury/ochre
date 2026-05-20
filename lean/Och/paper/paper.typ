@@ -54,13 +54,13 @@ TODO: get rid of the "but why are these features important" feeling
 The term language is
 
 $
-  e, tau ::= & x                      &                       "variable" \
-           | & lambda(x lt.eq tau). e &                         "lambda" \
-           | & e_1 space e_2          &                    "application" \
-           | & top                    &                 "universe (top)" \
-           | & bot                    &               "primitive bottom" \
-           | & iota(x lt.eq tau). e   &               "self-type binder" \
-           | & "fix"(x lt.eq tau). e  &               "recursive binder" \
+  e, tau ::= & x                      &         "variable" \
+           | & lambda(x lt.eq tau). e &           "lambda" \
+           | & e_1 space e_2          &      "application" \
+           | & top                    &   "universe (top)" \
+           | & bot                    & "primitive bottom" \
+           | & iota(x lt.eq tau). e   & "self-type binder" \
+           | & "fix"(x lt.eq tau). e  & "recursive binder" \
 $
 
 There is no separate type category: every $tau$ above is itself a term.
@@ -139,43 +139,6 @@ Och's type system is structured around two relations:
 
 *Subtyping* $S ; Gamma tack.r a subset.sq.eq b$ --- is $a$ a subtype of $b$ under $Gamma$, assuming coinductive hypotheses $S$? Subtyping in Och means set inclusion: $A subset.sq.eq B$ iff every value of $A$ is also a value of $B$.
 
-== Well-formedness <well-formed>
-
-The well-formedness judgment $Gamma tack.r e "wf"$ determines whether term $e$ is well-formed under context $Gamma$. It does not assign a type --- in Och's "terms are types" world, a value IS its own most-precise type (by [S-Refl]), and all type-comparison questions are handled by subtyping. Well-formedness validates purely structural conditions: annotations are types, binders are in scope, and applications have Π-typed functions with domain-inhabiting arguments.
-
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("W-Var", wf($Gamma$, $x$), $x in "dom"(Gamma)$),
-  irule("W-Type", wf($Gamma$, $top$)),
-  irule("W-Bot", wf($Gamma$, $bot$)),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("W-Lam", wf($Gamma$, $lambda(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf(
-    $Gamma\, x lt.eq A$,
-    $b$,
-  )),
-  irule("W-App", wf($Gamma$, $f space a$), wf($Gamma$, $f$), wf($Gamma$, $a$), sub($emptyset$, $Gamma$, $f$, $lambda(x lt.eq A). B$), sub($emptyset$, $Gamma$, $a$, $A$)),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("W-Iota", wf($Gamma$, $iota(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf($Gamma\, x lt.eq A$, $b$)),
-  irule("W-Fix", wf($Gamma$, $"fix"(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf($Gamma\, x lt.eq A$, $b$)),
-))
-
-*[W-Var]* requires the variable to be in scope.
-
-*[W-Type]* and *[W-Bot]* are always well-formed.
-
-*[W-Lam], [W-Iota], [W-Fix]* check that the annotation is a type ($A subset.sq.eq top$) and that the body is well-formed under the extended context.
-
-*[W-App]* is the only rule with subtyping premises: the function must subtype some $lambda(x lt.eq A). B$ (it has a Π-type), and the argument must subtype the domain $A$. No type is assigned to the result --- the result's type is the result itself (by [S-Refl]), and if the caller needs to know it subtypes something, that is a separate subtyping question.
-
 == Context $Gamma$ <context>
 
 $Gamma$ is the typing context --- a finite ordered list of
@@ -194,6 +157,58 @@ goal cannot be closed by a hypothesis. In effect, $S$ is a finite representation
 
 The "real" subtyping judgment is $emptyset ; Gamma tack.r a subset.sq.eq b$ (empty hypothesis set);
 non-empty $S$ arises only inside a derivation.
+
+
+== Well-formedness <well-formed>
+
+The well-formedness judgment $Gamma tack.r e "wf"$ determines whether term $e$ is well-formed under context $Gamma$. It does not assign a type --- in Och's "terms are types" world, a value IS its own most-precise type (by [S-Refl]), and all type-comparison questions are handled by subtyping. Well-formedness validates purely structural conditions: annotations are types, binders are in scope, and applications have Π-typed functions with domain-inhabiting arguments.
+
+#align(center, grid(
+  columns: (1fr, 1fr, 1fr),
+  gutter: 1.5em,
+  irule("W-Var", wf($Gamma$, $x$), $x in "dom"(Gamma)$),
+  irule("W-Type", wf($Gamma$, $top$)),
+  irule("W-Bot", wf($Gamma$, $bot$)),
+))
+
+#align(center, grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  irule("W-Lam", wf($Gamma$, $lambda(x lt.eq A). b$), wf($Gamma$, $A$), wf(
+    $Gamma\, x lt.eq A$,
+    $b$,
+  )),
+  irule(
+    "W-App",
+    wf($Gamma$, $f space a$),
+    wf($Gamma$, $f$),
+    wf($Gamma$, $a$),
+    sub($emptyset$, $Gamma$, $f$, $lambda(x lt.eq A). B$),
+    sub($emptyset$, $Gamma$, $a$, $A$),
+  ),
+))
+
+#align(center, grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  irule("W-Iota", wf($Gamma$, $iota(x lt.eq A). b$), wf($Gamma$, $A$), wf(
+    $Gamma\, x lt.eq A$,
+    $b$,
+  )),
+  irule("W-Fix", wf($Gamma$, $"fix"(x lt.eq A). b$), wf($Gamma$, $A$), wf(
+    $Gamma\, x lt.eq A$,
+    $b$,
+  )),
+))
+
+*[W-Var]* requires the variable to be in scope.
+
+*[W-Type]* and *[W-Bot]* are always well-formed.
+
+*[W-Lam], [W-Iota], [W-Fix]* check that the annotation is well-formed and that the body is well-formed under the extended context.
+
+*[W-App]* is the only rule with subtyping premises: the function must subtype some $lambda(x lt.eq A). B$ (it has a Π-type), and the argument must subtype the domain $A$. No type is assigned to the result --- the result's type is the result itself (by [S-Refl]), and if the caller needs to know it subtypes something, that is a separate subtyping question.
+
 
 == Rule taxonomy <rule-taxonomy>
 

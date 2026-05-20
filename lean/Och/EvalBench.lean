@@ -47,7 +47,7 @@ def Expr.size : Expr → Nat
   | .type | .bot => 1
   | .lam d b => 1 + Expr.size d + Expr.size b
   | .iota a b => 1 + Expr.size a + Expr.size b
-  | .fix a b => 1 + Expr.size a + Expr.size b
+  | .fix b => 1 + Expr.size b
   | .app f a => 1 + Expr.size f + Expr.size a
 
 /-! ## Section 1: Eval-only

@@ -56,9 +56,9 @@ def preserve_iotaUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
   .trans (.unfold_iota_R (.refl _)) h
 
 /-- B2.2 — fix-unfold-step preservation. -/
-def preserve_fixUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
-    (h : Subtype' S Γ (.fix ann body) τ) :
-    Subtype' S Γ (body.subst 0 (.fix ann body)) τ :=
+def preserve_fixUnfoldStep {S : Seen} {Γ : Ctx} {body τ : Expr}
+    (h : Subtype' S Γ (.fix body) τ) :
+    Subtype' S Γ (body.subst 0 (.fix body)) τ :=
   .trans (.unfold_fix_R (.refl _)) h
 
 /-! ## R-side mirror lemmas
@@ -85,9 +85,9 @@ def preserve_iotaUnfoldStep_R {S : Seen} {Γ : Ctx}
 
 /-- fix-unfold preservation, RHS form. -/
 def preserve_fixUnfoldStep_R {S : Seen} {Γ : Ctx}
-    {ann body a' : Expr}
-    (h : Subtype' S Γ a' (.fix ann body)) :
-    Subtype' S Γ a' (body.subst 0 (.fix ann body)) :=
+    {body a' : Expr}
+    (h : Subtype' S Γ a' (.fix body)) :
+    Subtype' S Γ a' (body.subst 0 (.fix body)) :=
   .trans h (.unfold_fix_L (.refl _))
 
 end Subtype'

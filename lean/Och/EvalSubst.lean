@@ -105,7 +105,7 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
     | .bot => .ok .bot
     | .lam _ _ => .ok e
     | .iota _ _ => .ok e
-    | .fix _ _ => .ok e
+    | .fix _ => .ok e
     | .app f a => do
         let f' ← evalSubst fuel unf f
         let a' ← evalSubst fuel unf a
@@ -120,7 +120,7 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
               -- ι unfold: substitute self with the ι-value, then re-apply.
               let unfolded := body.subst 0 f'
               evalSubst fuel (unf - 1) (.app unfolded a')
-        | .fix _ann body =>
+        | .fix body =>
             if isNeutral a' || unf == 0 then
               .ok (.app f' a')
             else
@@ -166,7 +166,7 @@ where
   go : Nat → Expr → Option Expr
   | 0, e => some e
   | _+1, e@(.lam ..) => some e
-  | n+1, e@(.fix _ann body) =>
+  | n+1, e@(.fix body) =>
       match evalSubst fuel 4 (body.subst 0 e) with
       | .ok e' => go n e'
       | _ => none
@@ -232,18 +232,10 @@ mutual
             match evalSubst (fuel + 1) unfBound bodyB' with
             | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
             | _ => .ok false
-    | .fix _annA _bodyA, .fix annB bodyB =>
+    | .fix _bodyA, .fix bodyB =>
         let seen' := (tyCtx.length, a, b) :: seen
         let structural := do
-          match evalSubst (fuel + 1) unfBound _annA,
-                evalSubst (fuel + 1) unfBound annB with
-          | .ok annA', .ok annB' =>
-            if annA' == a && annB' == b then return true
-            else pure ()
-          | _, _ => pure ()
-          let annOk ← subCheckSubst fuel tyCtx seen' _annA annB
-          if !annOk then return false
-          subCheckSubst fuel (annB :: tyCtx) seen' _bodyA bodyB
+          subCheckSubst fuel (b :: tyCtx) seen' _bodyA bodyB
         match structural with
         | .ok true => .ok true
         | _ => do
@@ -269,7 +261,7 @@ mutual
           match evalSubst (fuel + 1) unfBound bodyB' with
           | .ok bodyB'' => subCheckSubst fuel tyCtx seen' a bodyB''
           | _ => .ok false
-    | _, .fix _ann bodyB => do
+    | _, .fix bodyB => do
         if isNeutral a then
           match synthNeutralType fuel tyCtx a with
           | .ok (some ty) =>
@@ -292,7 +284,7 @@ mutual
           match evalSubst (fuel + 1) unfBound unfolded with
           | .ok b' => subCheckSubst fuel tyCtx seen' a b'
           | _ => .ok false
-    | .fix _ann bodyA, _ => do
+    | .fix bodyA, _ => do
         let seen' := (tyCtx.length, a, b) :: seen
         let unfolded := bodyA.subst 0 a
         match evalSubst (fuel + 1) unfBound unfolded with
@@ -370,10 +362,7 @@ mutual
           | some ty =>
               .ok (some (ty.shift (k + 1) 0))
           | none => .ok none
-      | .fix ann _ =>
-          match evalSubst (fuel + 1) unfBound ann with
-          | .ok ann' => .ok (some ann')
-          | _ => .ok none
+      | .fix _ => .ok none
       | .app f arg => do
           match (← synthNeutralType fuel tyCtx f) with
           | some ty =>
@@ -474,7 +463,7 @@ where
   go : Nat → Expr → Option Expr
   | 0, e => some e
   | _+1, e@(.lam ..) => some e
-  | n+1, e@(.fix _ann body) =>
+  | n+1, e@(.fix body) =>
       match evalSubst fuel 4 (body.subst 0 e) with
       | .ok e' => go n e'
       | _ => none
@@ -496,9 +485,9 @@ private theorem exposePi_go_eq_whnfPi_go (fuel : Nat) (inhab : Expr)
     intro e
     match e with
     | .lam _ _ => rfl
-    | .fix _ann body =>
+    | .fix body =>
       simp only [exposePi.go, whnfPi.go]
-      match evalSubst fuel 4 (body.subst 0 (.fix _ann body)) with
+      match evalSubst fuel 4 (body.subst 0 (.fix body)) with
       | .ok e' => exact ih e'
       | .outOfFuel => rfl
       | .error _ => rfl

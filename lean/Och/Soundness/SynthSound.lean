@@ -81,15 +81,15 @@ private theorem whnfPi_go_closedAt (fuel : Nat) (inhab : Expr)
     | .lam dom body =>
       simp only [whnfPi.go] at hgo
       injection hgo with hgo; subst hgo; exact hcl
-    | .fix ann body =>
+    | .fix body =>
       simp only [whnfPi.go] at hgo
-      match hev : evalSubst fuel 4 (body.subst 0 (.fix ann body)) with
+      match hev : evalSubst fuel 4 (body.subst 0 (.fix body)) with
       | .ok e' =>
         rw [hev] at hgo
-        have hcl_fix : closedAt 0 (.fix ann body) = true := hcl
-        simp only [closedAt, Bool.and_eq_true] at hcl
-        have hcl_subst : closedAt 0 (body.subst 0 (.fix ann body)) = true :=
-          Expr.subst_closedAt (by simpa using hcl.2) hcl_fix
+        have hcl_fix : closedAt 0 (.fix body) = true := hcl
+        simp only [closedAt] at hcl
+        have hcl_subst : closedAt 0 (body.subst 0 (.fix body)) = true :=
+          Expr.subst_closedAt hcl hcl_fix
         have hcl_e' := SubstEval.evalSubst_closedAt hcl_subst hev
         exact ih e' piExpr hcl_e' hgo
       | .outOfFuel => rw [hev] at hgo; cases hgo
@@ -151,17 +151,9 @@ private theorem neutralType_closedAt {fuel : Nat} {e ty : Expr}
       simp only [] at h
       simp only [List.get?] at h
       cases h
-    | .fix ann _ =>
+    | .fix body =>
       simp only [] at h
-      match hev : evalSubst (k + 1) SubstEval.unfBound ann with
-      | .ok ann' =>
-        rw [hev] at h
-        simp only [Outcome.ok.injEq, Option.some.injEq] at h
-        subst h
-        simp only [closedAt, Bool.and_eq_true] at hcl
-        exact SubstEval.evalSubst_closedAt hcl.1 hev
-      | .outOfFuel => rw [hev] at h; simp at h
-      | .error _ => rw [hev] at h; simp at h
+      simp at h
     | .app f arg =>
       simp only [] at h
       simp only [closedAt, Bool.and_eq_true] at hcl
@@ -239,20 +231,20 @@ private noncomputable def whnfPi_go_sound
     | .lam dom body =>
       simp only [whnfPi.go] at hgo
       injection hgo with hgo; subst hgo; exact hsub
-    | .fix ann body =>
+    | .fix body =>
       simp only [whnfPi.go] at hgo
-      match hev : evalSubst fuel 4 (body.subst 0 (.fix ann body)) with
+      match hev : evalSubst fuel 4 (body.subst 0 (.fix body)) with
       | .ok e' =>
         rw [hev] at hgo
-        have hcl_fix : closedAt 0 (.fix ann body) = true := hcl
-        simp only [closedAt, Bool.and_eq_true] at hcl
-        have hcl_subst : closedAt 0 (body.subst 0 (.fix ann body)) = true :=
-          Expr.subst_closedAt (by simpa using hcl.2) hcl_fix
+        have hcl_fix : closedAt 0 (.fix body) = true := hcl
+        simp only [closedAt] at hcl
+        have hcl_subst : closedAt 0 (body.subst 0 (.fix body)) = true :=
+          Expr.subst_closedAt hcl hcl_fix
         have hcl_e' := SubstEval.evalSubst_closedAt hcl_subst hev
         have ⟨_, hfwd⟩ := evalSubst_equiv hcl_subst hev
         -- fix ⊑ body.subst 0 fix (via unfold_fix_L + weaken from [])
-        have step_unfold : Subtype' [] [] (.fix ann body)
-            (body.subst 0 (.fix ann body)) :=
+        have step_unfold : Subtype' [] [] (.fix body)
+            (body.subst 0 (.fix body)) :=
           .unfold_fix_L (Subtype'.weaken
             (fun _ hp => absurd hp (List.not_mem_nil _)) (.refl _))
         -- inhab ⊑ fix ⊑ body.subst fix ⊑ e'

@@ -95,12 +95,12 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.iota Expr.type $body')
   | `(och| fix $x:ident : $ann:och . $body:och) =>
-    let ann' ← expand ctx ann
+    let _ann' ← expand ctx ann
     let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.fix $ann' $body')
+    `(Expr.fix $body')
   | `(och| fix $x:ident . $body:och) =>
     let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.fix Expr.type $body')
+    `(Expr.fix $body')
   | `(och| $x:ident) =>
     let name := x.getId.toString
     match findIdx? ctx name with
@@ -114,11 +114,11 @@ macro_rules
   | `(och{ $body:och }) => OchMacro.expand [] body
 
 -- Smoke tests: annotation-free ι/fix produce *identical* Exprs
--- to the explicit `:Type` form (so existing encodings can drop
--- the annotation without changing their compiled `Expr`).
+-- to the explicit `:Type` form (annotations on fix are now ignored).
 example : (och{ ι s. λP:(s → Type). P s })
         = (och{ ι s:Type. λP:(s → Type). P s }) := rfl
 example : (och{ fix r. r }) = (och{ fix r:Type. r }) := rfl
+example : (och{ fix r. r }) = Expr.fix (.bvar 0) := rfl
 example : (och{ ι s. λP:(s → Type). λt:(P s). λf:Type. t })
         = Expr.iota .type
             (.lam (.lam (.bvar 0) .type)
