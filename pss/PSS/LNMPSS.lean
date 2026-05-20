@@ -81,6 +81,13 @@ are listed below with their status:
   well-formed contexts, but this invariant is not formally tracked).
 - **weaken**: needs the annotation reduction relationship from LNCtxRed, not
   just context inclusion; essentially requires commutativity-like reasoning.
+- **noPromoAt**: The old axioms `me_bet_body_noPromoAt` and
+  `commutativity_noPromoAt` were FALSE — they required only `x ∉ dom Γ`,
+  but this allowed x to appear in Γ's annotations, enabling promotion chains
+  through other variables. Formal counterexamples are proved in the file.
+  Now strengthened to require `x ∉ LNCtx.all_fvs Γ` (x not a key AND not
+  in any annotation) plus `x ∉ dom.fvs` / `x ∉ ann.fvs` (x not in its own
+  annotation term). Still axioms pending mutual induction with commutativity.
 
 ## Sorry'd Theorems (formerly axioms)
 - `equivRed_subst` / `subRed_subst`: converted from axioms to sorry'd theorems.
@@ -272,6 +279,34 @@ def LNCtx.mem_equiv (Γ : LNCtx) (x : String) (α : LNExpr) : Prop :=
 
 /-- Continuation stack: a list of terms (operands pushed during application). -/
 abbrev LNStack := List LNExpr
+
+/-- Free variables of an annotation. -/
+def LNAnn.fvs : LNAnn → List String
+  | .sub t => t.fvs
+  | .equiv α => α.fvs
+
+/-- All free variables in a context: both keys and annotation free variables. -/
+def LNCtx.all_fvs (Γ : LNCtx) : List String :=
+  Γ.flatMap (fun (x, ann) => x :: ann.fvs)
+
+/-- Context domain is a subset of all_fvs: every key appears in all_fvs. -/
+theorem LNCtx.mem_all_fvs_of_mem_dom {Γ : LNCtx} {x : String}
+    (h : x ∈ LNCtx.dom Γ) : x ∈ LNCtx.all_fvs Γ := by
+  simp only [LNCtx.dom, LNCtx.all_fvs] at *
+  induction Γ with
+  | nil => exact absurd h (List.not_mem_nil _)
+  | cons p rest ih =>
+    obtain ⟨y, ann⟩ := p
+    simp only [List.map, List.mem_cons] at h
+    simp only [List.flatMap_cons, List.mem_append]
+    cases h with
+    | inl heq => left; simp [heq]
+    | inr hmem => right; exact ih hmem
+
+/-- If x ∉ all_fvs Γ then x ∉ dom Γ. -/
+theorem LNCtx.not_mem_dom_of_not_mem_all_fvs {Γ : LNCtx} {x : String}
+    (h : x ∉ LNCtx.all_fvs Γ) : x ∉ LNCtx.dom Γ :=
+  fun hmem => h (LNCtx.mem_all_fvs_of_mem_dom hmem)
 
 /-- An annotation is locally closed if its embedded term is. -/
 def LNAnn.lc : LNAnn → Prop
@@ -1567,20 +1602,72 @@ theorem equivRed_change_equiv_to_sub_bet
     : LNEquivRed ((x, .sub dom) :: Γ) s e u :=
   equivRed_change_equiv_to_sub h hnp
 
+/-! #### Counterexamples: the old noPromoAt axioms were FALSE
+
+The old `me_bet_body_noPromoAt` and `commutativity_noPromoAt` axioms
+required only `x ∉ LNCtx.dom Γ`, which is too weak. The following
+counterexamples show that the conclusion can be unprovable even when
+the hypothesis is satisfied.
+
+**commutativity_noPromoAt counterexample** (the simpler one):
+Let Γ = [], ann = .equiv .top, s = [], e = fvar "x", u = .top.
+- Derivation: ME-PRO on "x" (mem_equiv gives .top) then MS-EQU + ME-TOP.
+- Freshness: "x" ∉ dom [] trivially.
+- Conclusion noPromoAt "x" [("x", .equiv .top)] [] (fvar "x") .top
+  is impossible: me_pro needs z ≠ "x" (fails for z = "x"),
+  me_var gives fvar "x" → fvar "x" ≠ .top, no other constructor applies.
+
+**me_bet_body_noPromoAt counterexample**:
+Let Γ = [("y", .equiv (fvar "x"))], dom = .lam .top .top,
+    s = [.top], body = .fvar "y".
+- body.open_at 0 (fvar "x") = fvar "y" (no bvar to open).
+- Derivation: ME-PRO on "y" gives α = fvar "x", then
+  LNSubRed on fvar "x" via MS-PRO on "x" gives .lam .top .top.
+  Result: LNEquivRed Γ [.top] (fvar "y") (.lam .top .top).
+- Freshness: "x" ∉ dom [("y", ...)] = "x" ∉ ["y"] ✓.
+- Conclusion noPromoAt "x" Γ [.top] (fvar "y") (.lam .top .top)
+  needs me_pro z="y", z≠"x" ✓, but then needs
+  LNSubRed.noPromoAt "x" Γ [.top] (fvar "x") (.lam .top .top),
+  which is impossible: ms_pro needs z≠"x" (fails), ms_top needs
+  target = .top (target is .lam .top .top), ms_equ needs
+  LNEquivRed.noPromoAt "x" Γ [.top] (fvar "x") (.lam .top .top)
+  which has no applicable constructor for fvar "x" → .lam .top .top.
+
+Root cause: `x ∉ dom Γ` allows x to appear in Γ's annotations,
+so promotion chains through other variables can reach x's annotation.
+Fix: strengthen to `x ∉ LNCtx.all_fvs Γ`, which implies both
+x ∉ dom Γ AND x does not appear in any annotation in Γ. -/
+
+/-- commutativity_noPromoAt is FALSE: the noPromoAt conclusion is
+    underivable even when the hypothesis holds. -/
+theorem commutativity_noPromoAt_false :
+    ¬ LNEquivRed.noPromoAt "x" [("x", .equiv .top)] [] (.fvar "x") .top := by
+  intro h_np
+  cases h_np with
+  | me_pro hne _ _ => exact hne rfl
+
+/-- The derivation that the old axiom would apply to does exist. -/
+theorem commutativity_noPromoAt_false_deriv :
+    LNEquivRed [("x", .equiv .top)] [] (.fvar "x") .top :=
+  .me_pro (by simp [LNCtx.mem_equiv, LNCtx.lookup']) (.ms_equ .me_top)
+
 /-- Lemma 2 non-promotion clause (part 1): the body premise of ME-BET
     does not promote the fresh variable x.
     In the paper, this is proved simultaneously with commutativity and diamond
     by mutual induction. Here it is an axiom because the mutual induction
     has not been fully mechanised.
-    The key argument: since x is fresh (not a key in Γ, and by the
-    well-formedness invariant, not free in any annotation in Γ), no sub-derivation
+    The key argument: since x is fresh (not in all_fvs Γ, hence not a key
+    in Γ AND not free in any annotation in Γ), no sub-derivation
     within the body reduction can reach x's sub-annotation via a chain of
-    promotions starting from variables in Γ. -/
+    promotions starting from variables in Γ.
+    Additionally, x ∉ dom.fvs ensures x's own annotation doesn't reference
+    itself, preventing self-referential promotion chains. -/
 axiom me_bet_body_noPromoAt
     {Γ : LNCtx} {s : LNStack} {x : String} {dom : LNExpr}
     {body u : LNExpr}
     (h : LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u)
-    (hfresh : x ∉ LNCtx.dom Γ)
+    (hfresh_ctx : x ∉ LNCtx.all_fvs Γ)
+    (hfresh_dom : x ∉ dom.fvs)
     : LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u
 
 /-- Lemma 2 non-promotion clause (part 2): the top edge produced by
@@ -1589,12 +1676,15 @@ axiom me_bet_body_noPromoAt
     commutativity, diamond, and non-promotion together.
     The argument: the commutativity construction builds the top-edge derivation
     by composing sub-derivations that individually do not promote x (by the IH
-    of the mutual induction), so the composed derivation also does not promote x. -/
+    of the mutual induction), so the composed derivation also does not promote x.
+    Strengthened from the old version: requires x ∉ all_fvs Γ (not just dom Γ),
+    and x ∉ ann.fvs so the annotation itself doesn't reference x. -/
 axiom commutativity_noPromoAt
     {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
     {e u : LNExpr}
     (h : LNEquivRed ((x, ann) :: Γ) s e u)
-    (hfresh : x ∉ LNCtx.dom Γ)
+    (hfresh_ctx : x ∉ LNCtx.all_fvs Γ)
+    (hfresh_ann : x ∉ ann.fvs)
     : LNEquivRed.noPromoAt x ((x, ann) :: Γ) s e u
 
 /-- Inversion on LNCtxRed for stack cons:
@@ -1748,19 +1838,22 @@ theorem commutativity
       | @ms_fop _ _ _ _ _ body₂ L_s h_sub_body_s =>
         -- h_sub_body_s : ∀ y, y ∉ L_s → LNSubRed ((y, .equiv v) :: Γ) s (body^y) (body₂^y)
         -- h_body_e : ∀ x, x ∉ L_e → LNEquivRed ((x, .sub dom) :: Γ) s (body^x) (t_e^x)
-        -- Pick x fresh for both L_e, L_s, dom(Γ), dom(Γ')
-        obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
-        have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
-        have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-        have hx_dom : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
-        have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_right _ h)
+        -- Pick x fresh for L_e, L_s, all_fvs(Γ), dom(Γ'), dom.fvs, v.fvs
+        obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.dom Γ' ++ dom.fvs ++ v.fvs)
+        have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))
+        have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+        have hx_all_fvs : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+        have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+        have hx_dom_fvs : x ∉ dom.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+        have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
+        have hx_v_fvs : x ∉ v.fvs := fun h => hx (List.mem_append_right _ h)
         -- Instantiate the cofinite premises at x
         have h_body_e_x := h_body_e x hx_Le
         -- h_body_e_x : LNEquivRed ((x, .sub dom) :: Γ) s (body^x) (t_e^x)
         have h_sub_body_s_x := h_sub_body_s x hx_Ls
         -- h_sub_body_s_x : LNSubRed ((x, .equiv v) :: Γ) s (body^x) (body₂^x)
         -- Change annotation on h_body_e_x from .sub to .equiv
-        have hnp_body := me_bet_body_noPromoAt h_body_e_x hx_dom
+        have hnp_body := me_bet_body_noPromoAt h_body_e_x hx_all_fvs hx_dom_fvs
         have h_body_e_eq : LNEquivRed ((x, .equiv v) :: Γ) s
             (body.open_at 0 (.fvar x)) (t_e.open_at 0 (.fvar x)) :=
           equivRed_change_sub_to_equiv_bet h_body_e_x hnp_body
@@ -1773,7 +1866,7 @@ theorem commutativity
         obtain ⟨u₃, htop_body, hright_body⟩ :=
           commutativity (body.open_at 0 (.fvar x)) h_body_e_eq h_sub_body_s_x h_ctx_body hbody_lc
         -- Change annotation back from .equiv to .sub for ME-BET
-        have hnp_top := commutativity_noPromoAt htop_body hx_dom
+        have hnp_top := commutativity_noPromoAt htop_body hx_all_fvs hx_v_fvs
         have htop_body_sub : LNEquivRed ((x, .sub dom) :: Γ) s
             (body₂.open_at 0 (.fvar x)) u₃ :=
           equivRed_change_equiv_to_sub_bet htop_body hnp_top
