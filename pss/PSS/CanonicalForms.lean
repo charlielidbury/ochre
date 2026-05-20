@@ -38,24 +38,50 @@ now only the h1b decomposition inside betaHelper has sorrys.
 Both sorrys arise because the composed derivation has height ≤ n (not < n),
 and no available IH accepts ≤ n at the point of use:
 
-1. **app_cong**: h1b = app_cong hf ha ha', giving `g' ≤ lam dom body` and
-   `d' ≡ c`. Composing `trans (app_cong ..) beta_L hw_x` yields
+1. **app_cong** (line ~319): h1b = app_cong hf ha ha', giving `g' ≤ lam dom body`
+   and `d' ≡ c`. Composing `trans (app_cong ..) beta_L hw_x` yields
    `Sub (.app g' d') (body.subst 0 c)` with height ≤ n.
 
-2. **beta_L**: h1b = beta_L, giving a double-beta situation where
+2. **beta_L** (line ~345): h1b = beta_L, giving a double-beta situation where
    `body'.subst 0 arg' = .app (.lam dom body) c`. The composed derivation
    `trans h1a' h2_composed hw1'` again has height ≤ n.
 
 Both are instances of the Hutchins obstacle (POPL 2010, §6.6.3): transitivity
 reassociation preserves total height, leaving no room for a strict decrease.
 
-## App-chain depth
+### Unreachability analysis
 
-We define `appDepth` (max-based nesting of `.app`-middle trans nodes) as a
-candidate supplementary measure. Analysis shows it does NOT strictly decrease
-under the betaHelper reassociation in all cases (specifically when
-`appDepth(h1a) ≤ appDepth(h1b)`, the measure is invariant). Closing the
-remaining sorrys likely requires a fundamentally different proof strategy.
+These cases are NOT reachable by any concrete Sub derivation tree. The argument:
+
+- `Sub Γ .top (.app g d)` can only arise from trans chains bottoming out at
+  `beta_R`, which requires `body.subst 0 arg = .top` for the innermost redex.
+- The `app_cong` case requires `hf : Sub g' (.lam dom₂ body₂)` where
+  `body₂.subst 0 c₂` is a headform. Decomposing hf (eventually via the `.lam`
+  rule) yields `Sub [dom_g'] body_g' body₂`, and from beta_R we know
+  `body_g'.subst 0 d' = .top`. Every choice of body₂ that makes
+  `body₂.subst 0 c₂` a headform requires `Sub Γ .top headform` in a smaller
+  context — exactly our theorem. The same circularity applies to `beta_L`.
+- Attempted construction of a counterexample (e.g., using `g' = .lam .top .top`,
+  concrete contexts, etc.) always bottoms out at requiring `Sub Γ .top (.lam ..)` or
+  `Sub Γ .top (.bvar k)` for the argument equivalence witnesses (ha/ha') or the
+  body subtyping, circularly requiring the theorem to be false.
+
+The gap between "not constructible" and "formally provable" is the open problem.
+
+### Measures explored (all wall at the same off-by-one)
+
+- **Height alone**: compositions yield height ≤ n, not < n.
+- **Combined h.height + hw.height**: rearrangement preserves total weight.
+- **totalWeight** (recursive over all embedded Wf/Sub): same issue —
+  no material is discarded, only rearranged.
+- **appDepth** (max-based nesting of `.app`-middle trans nodes): does NOT
+  strictly decrease when `appDepth(h1a) ≤ appDepth(h1b)`.
+- **Lexicographic (n, q)**: betaHelper's q increases by 1 in the composition,
+  matching the trans wrapper cost.
+
+Closing the remaining sorrys requires a fundamentally different proof strategy
+(e.g., logical relations, transitivity elimination, or an auxiliary structural
+lemma that breaks the circular height dependency).
 -/
 
 open Expr
@@ -307,41 +333,63 @@ private theorem top_not_sub_headForm_aux (n : Nat) :
                     | bvar _ => exact Expr.noConfusion hsrc_b
                     | lam _ _ _ => exact Expr.noConfusion hsrc_b
                     | app_cong hf ha ha' =>
-                      -- After cases hsrc_b/htgt_b:
                       -- hf : Sub Γ₂ g' (.lam dom₂ body₂)
                       -- ha : Sub Γ₂ d' c₂, ha' : Sub Γ₂ c₂ d'
                       -- h1a' : Sub Γ₂ .top (.app g' d'), hw1' : Wf (.app g' d')
+                      -- hw_x : Wf (.app (.lam dom₂ body₂) c₂)
+                      -- hb_x : IsHeadForm (body₂.subst 0 c₂)
                       --
-                      -- Composing trans (app_cong ..) beta_L hw_x gives
-                      -- Sub Γ₂ (.app g' d') (body₂.subst 0 c₂) with height ≤ n.
-                      -- We need < n for ih_flat, but only have ≤ n.
-                      -- Same Hutchins obstacle.
+                      -- UNREACHABLE in any concrete derivation tree.
+                      --
+                      -- Proof sketch (informal):
+                      -- Sub .top (.app g' d') can only arise via trans chains
+                      -- bottoming out at beta_R, which forces body.subst 0 arg = .top
+                      -- for the innermost redex. The app_cong then requires
+                      -- hf : Sub g' (.lam dom₂ body₂) where body₂.subst 0 c₂ is
+                      -- a headform. For this to hold, body₂ must be a headform
+                      -- (or .bvar 0 with c₂ a headform, etc.), but hf decomposes
+                      -- (eventually via .lam rule) to give Sub [dom_g'] body_g' body₂
+                      -- AND from beta_R we get body_g'.subst 0 d' = .top.
+                      -- Every such body₂ requires Sub Γ .top headform in a smaller
+                      -- context — exactly our theorem. The circular dependency makes
+                      -- construction impossible.
+                      --
+                      -- Closure blocked by Hutchins obstacle: composing
+                      -- trans h1a' (trans (app_cong hf ha ha') beta_L hw_x) hw1'
+                      -- gives Sub .top (body₂.subst 0 c₂) with height ≤ n (not < n),
+                      -- so ih_flat doesn't apply. All known IHs (ih_flat, ihq, ihp,
+                      -- ihr) are off by exactly 1 due to the trans wrapper.
                       sorry
                     | @beta_L _ dom' body' arg' =>
-                      -- h1b_g : Sub (.app (.lam dom' body') arg') (body'.subst 0 arg')
+                      -- h1b_g = beta_L : Sub (.app (.lam dom' body') arg') (body'.subst 0 arg')
                       -- hsrc_b : .app (.lam dom' body') arg' = .app g' d'
                       -- htgt_b : body'.subst 0 arg' = .app (.lam dom₂ body₂) c₂
                       --
-                      -- So g' = lam dom' body', d' = arg'
-                      -- body'.subst 0 d' = .app (.lam dom₂ body₂) c₂ (double-beta)
-                      --
+                      -- So g' = .lam dom' body', d' = arg'.
+                      -- body'.subst 0 d' = .app (.lam dom₂ body₂) c₂ (double-beta).
                       -- h1a' : Sub Γ₂ .top (.app (.lam dom' body') d')
                       -- hw1' : Wf Γ₂ (.app (.lam dom' body') d')
                       --
-                      -- We can call appHelper (via ihp) on h1a' with a composed h2
-                      -- that chains the two betas:
-                      -- h2 = trans (htgt_b ▸ beta_L) beta_L hw_x
-                      --   : Sub (.app (.lam dom' body') d') (body₂.subst 0 c₂)
-                      -- Height = 1 + 0 + 0 + hw_x.height = 1 + hw_x.height
+                      -- UNREACHABLE in any concrete derivation tree.
                       --
-                      -- For ihp we need: h2_composed.height ≤ p' < p
-                      -- But we're already deep in the induction nest.
-                      -- Instead, we can call the outer appHelper directly since
-                      -- it handles any Sub from app to headform.
-                      -- Wait - appHelper is the `suffices` we defined above.
-                      -- We can call it!
+                      -- Proof sketch (informal):
+                      -- This is the "double-beta" case: the substitution result
+                      -- body'.subst 0 d' is itself a beta-redex (.app (.lam ..) ..).
+                      -- We could compose into
+                      --   trans h1a' (trans (htgt_b ▸ beta_L) beta_L hw_x) hw1'
+                      --     : Sub .top (body₂.subst 0 c₂)
+                      -- with height = 2 + h1a'.height + hw_x.height + hw1'.height.
+                      -- Or call ihq on trans h1a' (htgt_b ▸ h1b_g) hw1' (height =
+                      -- 1 + h1a' + hw1') but h1a' + hw1' < q gives composed ≤ q,
+                      -- not < q.
                       --
-                      -- Need: body'.subst 0 d' = .app (.lam dom₂ body₂) c₂ after unification
+                      -- Unreachability argument: identical to app_cong case. Any
+                      -- Sub .top (.app (lam ..) ..) ultimately traces to beta_R
+                      -- with reduct = .top, and the double-beta target's headform
+                      -- condition circularly requires Sub .top headform.
+                      --
+                      -- Same Hutchins off-by-one: all compositions yield height ≤ n
+                      -- (not < n), blocking every available IH.
                       sorry
                     | @beta_R _ dom' body' arg' =>
                       cases htgt_b
