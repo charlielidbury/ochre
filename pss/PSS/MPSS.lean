@@ -23,6 +23,73 @@ between equivalence reduction (≡→) and subtyping reduction (≤→).
 
 open Expr
 
+/-! ## Shift / substitution infrastructure lemmas
+    These are used by the substitution and weakening lemmas below. -/
+
+theorem Expr.shift_shift (e : Expr) (d d' c : Nat) :
+    (e.shift d c).shift d' c = e.shift (d + d') c := by
+  induction e generalizing c with
+  | bvar k =>
+    simp only [Expr.shift]
+    by_cases hkc : k < c
+    · simp only [if_pos hkc, Expr.shift, if_pos hkc]
+    · simp only [if_neg hkc, Expr.shift, if_neg (show ¬ (k + d < c) by omega), if_neg hkc]
+      congr 1; omega
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    simp only [Expr.shift]
+    exact congr (congrArg Expr.lam (ih_dom c)) (ih_body (c + 1))
+  | app f a ih_f ih_a =>
+    simp only [Expr.shift]
+    exact congr (congrArg Expr.app (ih_f c)) (ih_a c)
+
+/-- `(e.shift 1 c).subst c s = e` — shifting by 1 then substituting cancels. -/
+theorem Expr.shift_subst_cancel (e s : Expr) (c : Nat) :
+    (e.shift 1 c).subst c s = e := by
+  induction e generalizing s c with
+  | bvar k =>
+    simp only [Expr.shift]
+    by_cases hk : k < c
+    · simp only [if_pos hk, Expr.subst, beq_iff_eq,
+                  if_neg (show ¬(k = c) by omega), if_neg (show ¬(k > c) by omega)]
+    · simp only [if_neg hk, Expr.subst, beq_iff_eq,
+                  if_neg (show ¬(k + 1 = c) by omega), if_pos (show k + 1 > c by omega)]
+      simp only [Expr.bvar.injEq]; omega
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    simp only [Expr.shift, Expr.subst]
+    exact congr (congrArg Expr.lam (ih_dom s c)) (ih_body (s.shift 1 0) (c + 1))
+  | app f a ih_f ih_a =>
+    simp only [Expr.shift, Expr.subst]
+    exact congr (congrArg Expr.app (ih_f s c)) (ih_a s c)
+
+/-- Generalized shift-subst cancellation:
+    `(e.shift (d+1) c).subst (d + c) s = e.shift d c` for any `s`. -/
+theorem Expr.shift_subst_cancel_gen (e s : Expr) (d c : Nat) :
+    (e.shift (d + 1) c).subst (d + c) s = e.shift d c := by
+  induction e generalizing s d c with
+  | bvar k =>
+    simp only [Expr.shift]
+    by_cases hk : k < c
+    · simp only [if_pos hk, Expr.subst, beq_iff_eq,
+                  if_neg (show ¬(k = d + c) by omega), if_neg (show ¬(k > d + c) by omega),
+                  if_pos hk]
+    · simp only [if_neg hk, Expr.subst, beq_iff_eq,
+                  if_neg (show ¬(k + (d + 1) = d + c) by omega),
+                  if_pos (show k + (d + 1) > d + c by omega),
+                  if_neg hk]
+      simp only [Expr.bvar.injEq]; omega
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    simp only [Expr.shift, Expr.subst]
+    have hd := ih_dom s d c
+    have hb := ih_body (s.shift 1 0) d (c + 1)
+    rw [show d + (c + 1) = d + c + 1 from by omega] at hb
+    exact congr (congrArg Expr.lam hd) hb
+  | app f a ih_f ih_a =>
+    simp only [Expr.shift, Expr.subst]
+    exact congr (congrArg Expr.app (ih_f s d c)) (ih_a s d c)
+
 namespace MPSS
 
 /-! ## Syntax -/
@@ -268,25 +335,116 @@ def weakening_equivRed_ctx
     : MEquivRed Γ₁ s₁ t t' :=
   sorry
 
-/-- Substitution lemma for ≡→ (Lemma 32 in paper).
-    If Γ,x≡α;s ⊢ u ≡→ u' and Γ;nil ⊢ α ≡→ v', then
-    Γ;s ⊢ u[0↦α] ≡→ u'[0↦v'].
+/-! ### Substitution lemmas for ≡→ and ≤→
 
-    The old statement was FALSE because it universally quantified over
-    Γ' and s', allowing arbitrary target contexts. The correct statement
-    specializes: the target context is Γ (the tail of the body's context),
-    the target stack is s (the body's stack), and the substitutee is α
-    (the annotation value), which may be reduced to v' in the output.
+Proved by mutual structural induction on the derivation.
 
-    BLOCKER: The proof requires mutual induction on MEquivRed/MSubRed
-    and shift/subst commutation lemmas from PSS/Syntax.lean. -/
+Key stuck cases (sorry'd):
+- ME-PRO at index 0: gives MSubRed but needs MEquivRed (fundamental mismatch)
+- ME-VAR at index 0: needs α ≡→ v' under non-empty stack (stack weakening)
+- Under-binder cases (ME-FUN, ME-FOP, ME-BET): need generalized index substitution -/
+
+mutual
+
 def substitution_equivRed
     {α : Expr}
     {Γ : MCtx} {s : Stack} {u u' v' : Expr}
     (h_body : MEquivRed (Ann.equiv α :: Γ) s u u')
     (h_arg  : MEquivRed Γ [] α v')
-    : MEquivRed Γ s (u.subst 0 α) (u'.subst 0 v') :=
-  sorry
+    : MEquivRed Γ s (u.subst 0 α) (u'.subst 0 v') := by
+  match h_body with
+  | .me_top => exact .me_top
+  | @MEquivRed.me_tap _ _ u_arg =>
+    -- u = app top u_arg, u' = top
+    -- Goal: MEquivRed Γ s (app top (u_arg.subst 0 α)) top
+    exact .me_tap
+  | @MEquivRed.me_var _ _ k =>
+    show MEquivRed _ _ ((Expr.bvar k).subst 0 _) ((Expr.bvar k).subst 0 _)
+    simp only [Expr.subst]
+    by_cases hk0 : k = 0
+    · subst hk0; simp only [beq_self_eq_true, ite_true]
+      sorry  -- STUCK: need MEquivRed Γ s α v', have MEquivRed Γ [] α v'
+    · simp only [show (k == 0) = false from by simp [beq_iff_eq, hk0]]
+      have : k > 0 := Nat.pos_of_ne_zero hk0
+      simp only [if_pos this]
+      exact .me_var
+  | @MEquivRed.me_pro _ _ _ k α_ann hlook hsub =>
+    show MEquivRed _ _ ((Expr.bvar k).subst 0 _) _
+    simp only [Expr.subst]
+    by_cases hk0 : k = 0
+    · subst hk0; simp only [beq_self_eq_true, ite_true]
+      -- hlook : (Ann.equiv α :: Γ).get? 0 = some (Ann.equiv α_ann)
+      -- So α_ann = α.  hsub : MSubRed (Ann.equiv α :: Γ) s (α.shift 1 0) α'
+      -- After substitution_subRed on hsub:
+      --   MSubRed Γ s ((α.shift 1 0).subst 0 α) (α'.subst 0 α)
+      --   = MSubRed Γ s α (α'.subst 0 α)  by shift_subst_cancel
+      -- But we need MEquivRed, not MSubRed.
+      sorry  -- STUCK: MSubRed → MEquivRed conversion
+    · simp only [show (k == 0) = false from by simp [beq_iff_eq, hk0]]
+      have hk_pos : k > 0 := Nat.pos_of_ne_zero hk0
+      simp only [if_pos hk_pos]
+      -- hlook : (Ann.equiv α :: Γ).get? k = some (Ann.equiv α_ann) where k > 0
+      -- So Γ.get? (k-1) = some (Ann.equiv α_ann)
+      sorry  -- STUCK: needs shift/subst algebra for the promotion result at k > 0
+  | .me_app h_u h_v =>
+    -- STUCK: me_app pushes operand v onto stack. The IH gives a derivation
+    -- with the UN-substituted v in the stack, but constructing me_app needs
+    -- v.subst 0 α in the stack. Requires the generalized version that also
+    -- substitutes in the stack (List.map (·.subst 0 α)).
+    sorry
+  | .me_bet h_body_inner h_v =>
+    sorry  -- STUCK: under-binder case, needs generalized index
+  | .me_fun h_dom h_body_inner =>
+    sorry  -- STUCK: under-binder case, needs generalized index
+  | .me_fop h_dom h_body_inner =>
+    sorry  -- STUCK: under-binder case, needs generalized index
+
+def substitution_subRed
+    {v₀ : Expr}
+    {Γ : MCtx} {s : Stack} {u₁ u₃ : Expr}
+    (h : MSubRed (Ann.equiv v₀ :: Γ) s u₁ u₃)
+    : MSubRed Γ s (u₁.subst 0 v₀) (u₃.subst 0 v₀) := by
+  match h with
+  | .ms_top => exact .ms_top
+  | @MSubRed.ms_pro _ _ k bound hlook =>
+    show MSubRed _ _ ((Expr.bvar k).subst 0 _) _
+    simp only [Expr.subst]
+    by_cases hk0 : k = 0
+    · subst hk0
+      -- hlook : (Ann.equiv v₀ :: Γ).get? 0 = some (Ann.sub bound)
+      -- But position 0 is Ann.equiv, contradiction with Ann.sub
+      simp only [List.get?] at hlook; cases hlook
+    · simp only [show (k == 0) = false from by simp [beq_iff_eq, hk0]]
+      have hk_pos : k > 0 := Nat.pos_of_ne_zero hk0
+      simp only [if_pos hk_pos]
+      -- hlook : (Ann.equiv v₀ :: Γ).get? k = some (Ann.sub bound), k > 0
+      have hlook' : Γ.get? (k - 1) = some (Ann.sub bound) := by
+        have : k = (k - 1) + 1 := by omega
+        rw [this] at hlook
+        simp only [List.get?] at hlook
+        exact hlook
+      -- output: (bound.shift (k+1) 0).subst 0 v₀ = bound.shift k 0
+      have h_cancel : (bound.shift (k + 1) 0).subst 0 v₀ = bound.shift k 0 := by
+        have : bound.shift (k + 1) 0 = (bound.shift k 0).shift 1 0 :=
+          (Expr.shift_shift bound k 1 0).symm
+        rw [this]
+        exact Expr.shift_subst_cancel (bound.shift k 0) v₀ 0
+      rw [h_cancel]
+      -- ms_pro at k-1: MSubRed Γ s (bvar (k-1)) (bound.shift ((k-1)+1) 0)
+      have hk_eq : k - 1 + 1 = k := by omega
+      rw [← hk_eq]
+      exact .ms_pro hlook'
+  | @MSubRed.ms_equ _ _ _ _ h_eq =>
+    exact .ms_equ (substitution_equivRed h_eq (equivRed_refl _ [] v₀))
+  | .ms_app h_inner =>
+    -- STUCK: same stack-substitution issue as me_app
+    sorry
+  | .ms_fun h_body =>
+    sorry  -- STUCK: under-binder case, needs generalized index
+  | .ms_fop h_body =>
+    sorry  -- STUCK: under-binder case, needs generalized index
+
+end
 
 /-- Replace the element at position `n` in a list.
     Returns the list unchanged if `n` is out of bounds. -/
@@ -811,30 +969,6 @@ def weakening_equivRed
   -- The top edge (equiv reduction of the shifted annotation) requires
   -- a weakening/shift lemma for MEquivRed which is non-trivial in de Bruijn.
   exact ⟨t', .ms_pro h_lookup', sorry⟩
-
-/-- Substitution lemma for ≤→ (Lemma 30 in paper).
-    If Γ,x≡v₀;s ⊢ u₁ ≤→ u₃, then Γ;s ⊢ u₁[0↦v₀] ≤→ u₃[0↦v₀].
-
-    The old statement was FALSE because it universally quantified over
-    Γ', s', and v₁, allowing arbitrary target contexts and substitutees.
-    The correct statement specializes: the target context is Γ (the tail),
-    the target stack is s, and the substitutee is v₀ (the annotation value).
-
-    In the paper (named variables), this corresponds to Lemma 30 which
-    additionally requires that the derivation does not promote x. In de
-    Bruijn, since the annotation at index 0 is Ann.equiv (not Ann.sub),
-    MS-PRO cannot fire at index 0. ME-PRO CAN fire at index 0 (via
-    ms_equ), but substituting v₀ for bvar 0 when the annotation IS v₀
-    preserves the reduction.
-
-    BLOCKER: The proof requires mutual induction on MSubRed/MEquivRed
-    and shift/subst commutation lemmas from PSS/Syntax.lean. -/
-def substitution_subRed
-    {v₀ : Expr}
-    {Γ : MCtx} {s : Stack} {u₁ u₃ : Expr}
-    (h : MSubRed (Ann.equiv v₀ :: Γ) s u₁ u₃)
-    : MSubRed Γ s (u₁.subst 0 v₀) (u₃.subst 0 v₀) :=
-  sorry
 
 /-- Main commutativity theorem (Lemma 1 / Theorem 1 in paper).
 
