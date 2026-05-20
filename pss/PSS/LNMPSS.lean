@@ -102,7 +102,28 @@ def lc_at (k : Nat) : LNExpr → Prop
   | .app f a => f.lc_at k ∧ a.lc_at k
 
 /-- A term is locally closed (no dangling bound variables at all). -/
-def lc : LNExpr → Prop := lc_at 0
+abbrev lc : LNExpr → Prop := lc_at 0
+
+/-- Opening a body that is lc_at (k+1) with a free variable yields lc_at k. -/
+theorem lc_at_open_fvar {e : LNExpr} {k : Nat} {x : String}
+    (h : e.lc_at (k + 1)) : (e.open_at k (.fvar x)).lc_at k := by
+  induction e generalizing k with
+  | bvar n =>
+    simp [LNExpr.lc_at] at h
+    simp [LNExpr.open_at]
+    split
+    · simp [LNExpr.lc_at]
+    · simp [LNExpr.lc_at]; omega
+  | fvar _ => simp [LNExpr.open_at, LNExpr.lc_at]
+  | top => simp [LNExpr.open_at, LNExpr.lc_at]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.lc_at] at h
+    simp [LNExpr.open_at, LNExpr.lc_at]
+    exact ⟨ih_dom h.1, ih_body h.2⟩
+  | app f a ih_f ih_a =>
+    simp [LNExpr.lc_at] at h
+    simp [LNExpr.open_at, LNExpr.lc_at]
+    exact ⟨ih_f h.1, ih_a h.2⟩
 
 /-- Size of a term (for termination proofs).
     This counts the number of constructors. -/
@@ -149,6 +170,17 @@ def LNCtx.mem_equiv (Γ : LNCtx) (x : String) (α : LNExpr) : Prop :=
 
 /-- Continuation stack: a list of terms (operands pushed during application). -/
 abbrev LNStack := List LNExpr
+
+/-- An annotation is locally closed if its embedded term is. -/
+def LNAnn.lc : LNAnn → Prop
+  | .sub t => t.lc
+  | .equiv α => α.lc
+
+/-- A context is well-formed: all annotation terms are locally closed. -/
+def LNCtx.wf (Γ : LNCtx) : Prop := ∀ p ∈ Γ, p.2.lc
+
+/-- A stack is well-formed: all elements are locally closed. -/
+def LNStack.wf (s : LNStack) : Prop := ∀ e ∈ s, e.lc
 
 /-! ## Equivalence and Subtyping Reduction (Figure 2)
 
@@ -357,14 +389,15 @@ mutual induction on the reduction relations.
 -/
 
 /-- Reflexivity of ≡→ (Proposition 18).
-    Every term equiv-reduces to itself. -/
+    Every locally-closed term equiv-reduces to itself. -/
 axiom equivRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
+    (hlc : u.lc)
     : LNEquivRed Γ s u u
 
 /-- Reflexivity of ≤→ (via MS-EQU + reflexivity of ≡→). -/
 theorem subRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
-    : LNSubRed Γ s u u :=
-  .ms_equ (equivRed_refl Γ s u)
+    (hlc : u.lc) : LNSubRed Γ s u u :=
+  .ms_equ (equivRed_refl Γ s u hlc)
 
 /-- Weakening for ≡→ via context reduction (Lemma 22).
     If Γ;s ⊢ u ≡→ v and Γ;s ↦ Γ';s' then Γ';s' ⊢ u ≡→ v. -/
@@ -391,18 +424,27 @@ axiom subRed_stack_ext
     {Γ : LNCtx} {u v : LNExpr} {s : LNStack}
     (h : LNSubRed Γ [] u v) : LNSubRed Γ s u v
 
-/-- Context reduction is reflexive. -/
-theorem ctxRed_refl (Γ : LNCtx) (s : LNStack) : LNCtxRed Γ s Γ s := by
+/-- Context reduction is reflexive (requires all embedded terms to be lc). -/
+theorem ctxRed_refl (Γ : LNCtx) (s : LNStack)
+    (hwf_ctx : Γ.wf) (hwf_stk : s.wf) : LNCtxRed Γ s Γ s := by
   induction Γ with
   | nil =>
     induction s with
     | nil => exact .ct_nil
-    | cons α s ih => exact .ct_stk ih (equivRed_refl [] [] α)
+    | cons α s ih =>
+      have hα : α.lc := hwf_stk α (List.mem_cons_self α s)
+      have hs_wf : LNStack.wf s := fun e he => hwf_stk e (List.mem_cons_of_mem α he)
+      exact .ct_stk (ih hs_wf) (equivRed_refl [] [] α hα)
   | cons p Γ ih =>
     obtain ⟨x, ann⟩ := p
+    have htail_wf : LNCtx.wf Γ := fun q hq => hwf_ctx q (List.mem_cons_of_mem (x, ann) hq)
     cases ann with
-    | sub t => exact .ct_ann_sub ih (equivRed_refl Γ [] t)
-    | equiv α' => exact .ct_ann_equiv ih (equivRed_refl Γ [] α')
+    | sub t =>
+      have ht : t.lc := hwf_ctx (x, .sub t) (List.mem_cons_self _ _)
+      exact .ct_ann_sub (ih htail_wf) (equivRed_refl Γ [] t ht)
+    | equiv α' =>
+      have hα : α'.lc := hwf_ctx (x, .equiv α') (List.mem_cons_self _ _)
+      exact .ct_ann_equiv (ih htail_wf) (equivRed_refl Γ [] α' hα)
 
 /-- Lemma 36: stripping the stack from a context reduction. -/
 theorem ctxRed_nil_of_ctxRed
@@ -791,6 +833,7 @@ The decrease `sz (open_at 0 (fvar x) body) < sz (lam dom body)`
 follows from `sz_open_at_fvar` and arithmetic.
 -/
 
+set_option maxHeartbeats 800000 in
 theorem commutativity
     (t₀ : LNExpr)
     {Γ : LNCtx} {s : LNStack} {t₁ t₂ : LNExpr}
@@ -798,6 +841,7 @@ theorem commutativity
     (h_equiv : LNEquivRed Γ s t₀ t₁)
     (h_sub   : LNSubRed Γ s t₀ t₂)
     (h_ctx   : LNCtxRed Γ s Γ' s')
+    (h_lc    : t₀.lc)
     : ∃ t₃ : LNExpr, LNEquivRed Γ s t₂ t₃ ∧ LNSubRed Γ' s' t₁ t₃ := by
   -- Case analysis on the sub (left/vertical) edge first.
   -- This determines the shape of t₀ and t₂.
@@ -838,8 +882,9 @@ theorem commutativity
     ---------------------------------------------------------------
     | @me_app _ _ _ u₁ _ v₁ h_equiv_u h_equiv_v =>
       have h_ctx_ext := LNCtxRed.ct_stk h_ctx h_equiv_v
+      have hu₀_lc : u₀.lc := h_lc.1
       obtain ⟨u₃, htop_u, hright_u⟩ :=
-        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext
+        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc
       exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u⟩
     ---------------------------------------------------------------
     -- ME-BET / MS-APP:  THE KEY CASE
@@ -849,8 +894,9 @@ theorem commutativity
       | ms_top =>
         exact ⟨.top, .me_tap, .ms_top⟩
       | ms_equ h_eq_lam =>
+        have hv_lc : v.lc := h_lc.2
         have h_equiv2 : LNEquivRed Γ s (.app (.lam dom body) v) (.app u₂ v) :=
-          .me_app h_eq_lam (equivRed_refl Γ [] v)
+          .me_app h_eq_lam (equivRed_refl Γ [] v hv_lc)
         have h_equiv_orig : LNEquivRed Γ s (.app (.lam dom body) v)
             (u'.subst_fvar x v') :=
           .me_bet hfresh h_equiv_body h_equiv_v
@@ -865,8 +911,10 @@ theorem commutativity
           equivRed_change_sub_to_equiv_bet h_equiv_body hfresh
         have h_ctx_body : LNCtxRed ((x, .equiv v) :: Γ) s ((x, .equiv v') :: Γ') s' :=
           LNCtxRed.ct_ann_equiv h_ctx h_equiv_v
+        have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
+          LNExpr.lc_at_open_fvar h_lc.1.2
         obtain ⟨u₃, htop_body, hright_body⟩ :=
-          commutativity (body.open_at 0 (.fvar x)) h_equiv_body' h_sub_body_x h_ctx_body
+          commutativity (body.open_at 0 (.fvar x)) h_equiv_body' h_sub_body_x h_ctx_body hbody_lc
         -- Change annotation back from ≡v to ≤dom for ME-BET
         have htop_body_sub : LNEquivRed ((x, .sub dom) :: Γ) s
             (body₂_fop.subst_fvar y (.fvar x)) u₃ :=
@@ -900,8 +948,10 @@ theorem commutativity
       have h_ctx_nil := ctxRed_nil_of_ctxRed h_ctx
       have h_ctx_body : LNCtxRed ((x_e, .sub dom) :: Γ) [] ((x_e, .sub dom') :: Γ') [] :=
         LNCtxRed.ct_ann_sub h_ctx_nil h_equiv_dom
+      have hbody_lc : (body.open_at 0 (.fvar x_e)).lc :=
+        LNExpr.lc_at_open_fvar h_lc.2
       obtain ⟨u₃, htop_body, hright_body⟩ :=
-        commutativity (body.open_at 0 (.fvar x_e)) h_equiv_body h_sub_body' h_ctx_body
+        commutativity (body.open_at 0 (.fvar x_e)) h_equiv_body h_sub_body' h_ctx_body hbody_lc
       have hfresh_e' : x_e ∉ LNCtx.dom Γ' := ctxRed_dom_eq h_ctx ▸ hfresh_e
       have hs' := ctxRed_nil_stack h_ctx; subst hs'
       refine ⟨.lam dom' (u₃.close_at 0 x_e), ?_, ?_⟩
@@ -929,8 +979,10 @@ theorem commutativity
       subst hs'eq
       have h_ctx_body : LNCtxRed ((x_e, .equiv α) :: Γ) s_inner ((x_e, .equiv α') :: Γ') s₁ :=
         LNCtxRed.ct_ann_equiv h_ctx_inner hα_red
+      have hbody_lc : (body.open_at 0 (.fvar x_e)).lc :=
+        LNExpr.lc_at_open_fvar h_lc.2
       obtain ⟨u₃, htop_body, hright_body⟩ :=
-        commutativity (body.open_at 0 (.fvar x_e)) h_equiv_body h_sub_body' h_ctx_body
+        commutativity (body.open_at 0 (.fvar x_e)) h_equiv_body h_sub_body' h_ctx_body hbody_lc
       have hfresh_e' : x_e ∉ LNCtx.dom Γ' := ctxRed_dom_eq h_ctx_inner ▸ hfresh_e
       refine ⟨.lam dom' (u₃.close_at 0 x_e), ?_, ?_⟩
       · have h : LNEquivRed ((x_e, .equiv α) :: Γ) s_inner
