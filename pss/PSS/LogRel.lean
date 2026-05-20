@@ -37,7 +37,7 @@ using the RAW body `b`. This makes beta_L trivial.
 - trans: PROVED
 - beta_L: PROVED (was FALSE in old definition!)
 - beta_R: PROVED (was sorry in old definition)
-- lam: sorry (needs context generalization / closing substitution)
+- lam: PROVED (via WF induction on (k, sizeOf hsub) + Wf hypotheses)
 - app_cong: sorry (needs typeNorm congruence for Sub-related apps)
 -/
 
@@ -613,22 +613,101 @@ theorem fundamental_trans {k : Nat} {e m τ : Expr}
 
 /-! ### Semantic soundness of Sub -/
 
-noncomputable def fundamental_subSem {e τ : Expr} (hsub : PSS.Sub [] e τ) :
-    SubSem e τ :=
+/-- Helper: specialize subst_sub_gen at Γ₁ = [] to get Sub [] (a.subst 0 v) (b.subst 0 v)
+    from Sub [σ] a b, Wf [] v, Sub [] v σ. -/
+private noncomputable def subst_sub_zero {σ a b v : Expr}
+    (hsub : PSS.Sub [σ] a b) (hwfv : PSS.Wf [] v) (hvsig : PSS.Sub [] v σ) :
+    PSS.Sub [] (a.subst 0 v) (b.subst 0 v) := by
+  have h := PSS.subst_sub_gen (Γ₁ := []) (σ := σ) (Γ₂ := []) hsub hwfv hvsig
+  simp only [PSS.substPrefix, List.nil_append, List.length_nil] at h
+  rw [Expr.shift_zero] at h
+  exact h
+
+/-- Fundamental theorem: Sub [] e τ implies SubSem e τ (semantic subtyping).
+
+    Proved by well-founded induction on (k, sizeOf hsub) with lexicographic ordering.
+    The lam case uses k-decrease (body condition quantifies over j < k).
+    The trans case uses sizeOf-decrease (sub-derivations are smaller).
+    Requires Wf hypotheses for both sides to enable domain/body conversion in the lam case. -/
+noncomputable def fundamental_subSem_aux
+    (k : Nat) {e τ : Expr} (hsub : PSS.Sub [] e τ)
+    (hwf_e : PSS.Wf [] e) (hwf_τ : PSS.Wf [] τ) :
+    ∀ v, SemVal k e v → SemVal k τ v := by
   match hsub with
-  | .refl _ => subSem_refl _
-  | .top _ => subSem_top _
-  | .trans h1 h2 hw => subSem_trans (fundamental_subSem h1) (fundamental_subSem h2)
-  | .bvar hget => absurd hget (by simp [List.get?])
-  | .lam _ _ _ => sorry  -- needs context generalization
-  | .app_cong _ _ _ => sorry  -- needs typeNorm congruence for Sub-related apps
-  | .beta_L => subSem_beta_L
-  | .beta_R => subSem_beta_R
+  | .refl _ => exact fun v hv => hv
+  | .top _ => exact fun v hv => semVal_top k v hv.1
+  | .trans h1 h2 hw =>
+    exact fun v hv =>
+      fundamental_subSem_aux k h2 hw hwf_τ v
+        (fundamental_subSem_aux k h1 hwf_e hw v hv)
+  | .bvar hget => exact absurd hget (by simp [List.get?])
+  | .beta_L => exact fun v hv => subSem_beta_L k v hv
+  | .beta_R => exact fun v hv => subSem_beta_R k v hv
+  | .app_cong _ _ _ => exact fun _ _ => sorry  -- needs typeNorm congruence
+  | .lam (dom := dom) (dom' := dom') (body := body) (body' := body')
+      hsub_dd' hsub_d'd hsub_bb' =>
+    -- Extract Wf components
+    have hwf_dom : PSS.Wf [] dom := match hwf_e with | .lam hd _ => hd
+    have hwf_body : PSS.Wf [dom] body := match hwf_e with | .lam _ hb => hb
+    have hwf_dom' : PSS.Wf [] dom' := match hwf_τ with | .lam hd _ => hd
+    have hwf_body' : PSS.Wf [dom'] body' := match hwf_τ with | .lam _ hb => hb
+    intro v hv
+    obtain ⟨hval, h_all⟩ := hv
+    refine ⟨hval, fun n nf hn => ?_⟩
+    -- typeNorm n (lam dom' body') = some nf ⟹ nf = lam dom' body'
+    have hn_pos : n > 0 := by
+      cases n with | zero => simp [typeNorm] at hn | succ _ => omega
+    rw [typeNorm_lam_eq hn_pos] at hn; cases hn
+    -- Get SemVal_nf k (lam dom body) v from h_all
+    have hsrc := h_all 1 (.lam dom body) (typeNorm_lam_eq (by omega))
+    -- Case split on k
+    cases k with
+    | zero => exact (semVal_nf_zero (.lam dom' body') v).mpr hval
+    | succ m =>
+    -- hsrc : SemVal_nf (m+1) (lam dom body) v
+    unfold SemVal_nf at hsrc
+    obtain ⟨s', t', heq_v, body_cond_dom⟩ := hsrc
+    -- Need: SemVal_nf (m+1) (lam dom' body') v
+    unfold SemVal_nf
+    subst heq_v
+    refine ⟨s', t', rfl, fun j hj av hav hcl_av hwf_av hsub_av_dom' i hi w hw => ?_⟩
+    -- Step A: Get Sub [] av dom from Sub [] av dom' and Sub [] dom' dom
+    have hsub_av_dom : PSS.Sub [] av dom :=
+      .trans hsub_av_dom' hsub_d'd hwf_dom'
+    -- Step B: Get SemVal j dom av from SemVal j dom' av
+    -- hav : IsVal av ∧ ∀ n nf, typeNorm n dom' = some nf → SemVal_nf j nf av
+    -- This is SemVal j dom' av
+    have semval_dom'_av : SemVal j dom' av := hav
+    have semval_dom_av : SemVal j dom av :=
+      fundamental_subSem_aux j hsub_d'd hwf_dom' hwf_dom av semval_dom'_av
+    -- Step C: Use body_cond_dom to get SemVal (j-i) (body.subst 0 av) w
+    have hdom_cond : IsVal av ∧ ∀ n nf, typeNorm n dom = some nf → SemVal_nf j nf av :=
+      semval_dom_av
+    have body_result := body_cond_dom j hj av hdom_cond hcl_av hwf_av hsub_av_dom i hi w hw
+    -- body_result : IsVal w ∧ ∀ n nf, typeNorm n (body.subst 0 av) = some nf → SemVal_nf (j-i) nf w
+    -- This is SemVal (j-i) (body.subst 0 av) w
+    have semval_body : SemVal (j - i) (body.subst 0 av) w := body_result
+    -- Step D: Convert to SemVal (j-i) (body'.subst 0 av) w
+    -- Get Sub [] (body.subst 0 av) (body'.subst 0 av) from Sub [dom] body body'
+    have hsub_bodies : PSS.Sub [] (body.subst 0 av) (body'.subst 0 av) :=
+      subst_sub_zero hsub_bb' hwf_av hsub_av_dom
+    have hwf_body_subst : PSS.Wf [] (body.subst 0 av) :=
+      PSS.subst_wf hwf_body hwf_av hsub_av_dom
+    have hwf_body'_subst : PSS.Wf [] (body'.subst 0 av) :=
+      PSS.subst_wf hwf_body' hwf_av hsub_av_dom'
+    exact fundamental_subSem_aux (j - i) hsub_bodies hwf_body_subst hwf_body'_subst w semval_body
+termination_by (k, sizeOf hsub)
+
+noncomputable def fundamental_subSem {e τ : Expr} (hsub : PSS.Sub [] e τ)
+    (hwf_e : PSS.Wf [] e) (hwf_τ : PSS.Wf [] τ) :
+    SubSem e τ :=
+  fun k v hv => fundamental_subSem_aux k hsub hwf_e hwf_τ v hv
 
 noncomputable def fundamental_closed (e τ : Expr)
-    (hcl : e.closedAt 0 = true) (hwf : PSS.Wf [] e) (hsub : PSS.Sub [] e τ) :
+    (hcl : e.closedAt 0 = true) (hwf_e : PSS.Wf [] e) (hwf_τ : PSS.Wf [] τ)
+    (hsub : PSS.Sub [] e τ) :
     ∀ k, SemExpr k τ e :=
-  fun k => fundamental_trans (semExpr_refl k e hcl hwf) (fundamental_subSem hsub)
+  fun k => fundamental_trans (semExpr_refl k e hcl hwf_e) (fundamental_subSem hsub hwf_e hwf_τ)
 
 /-! ## Type safety -/
 
@@ -708,10 +787,10 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
 | `trans` | PROVED |
 | `beta_L` | **PROVED** (was FALSE in old concEval-based definition!) |
 | `beta_R` | **PROVED** (was sorry in old definition) |
-| `lam` | sorry (needs context generalization) |
+| `lam` | **PROVED** (via WF induction on (k, sizeOf hsub) + Wf hypotheses) |
 | `app_cong` | sorry (needs typeNorm congruence for Sub-related apps) |
 
-### Remaining sorrys (3 total):
+### Remaining sorrys (2 total):
 
 1. `semExpr_refl_aux` app case (lam sub-case only): requires Church-Rosser.
    When concEval j (app f a) = ok v and typeNorm m (app f a) = some (lam s t),
@@ -725,12 +804,24 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
    lambdas with equivalent behavior requires a form of Church-Rosser.
    NOT FALSE: extensive counterexample search confirms the statement holds.
 
-2. `fundamental_subSem` lam case: needs context generalization (same as old definition).
-   The body sub-judgment Sub [dom] body body' needs a generalized fundamental theorem
-   with closing substitution environments to break the structural recursion circularity.
-
-3. `fundamental_subSem` app_cong case: needs typeNorm congruence for Sub-related apps.
+2. `fundamental_subSem` app_cong case: needs typeNorm congruence for Sub-related apps.
    Given Sub [] f f' and Sub [] a a', need to relate typeNorm(app f a) to typeNorm(app f' a').
+
+### Key insight: lam case via WF induction
+
+The lam case was the hardest. The challenge: Sub [dom] body body' is an open-context
+judgment, but fundamental_subSem only handles closed (empty context) Sub.
+
+Solution: well-founded induction on (k, sizeOf hsub) lexicographically, with Wf
+hypotheses for both sides. In the lam case at step k+1:
+1. Domain conversion (dom' to dom): uses IH at step j < k+1 (first component decreases)
+2. Body conversion: subst_sub_gen gives Sub [] (body.subst 0 av) (body'.subst 0 av),
+   then IH at step j-i < k+1 (first component decreases, sizeOf may grow but doesn't matter)
+3. Sub [] av dom: from Sub.trans (Sub [] av dom') (Sub [] dom' dom) using Wf [] dom'
+   (available from the Wf hypothesis on the target type)
+
+The Wf hypotheses are essential: without Wf [] dom', we cannot compose Sub [] av dom'
+with Sub [] dom' dom to get Sub [] av dom (trans requires Wf for the middle term).
 
 ### Key insight: typeNorm_beta
 
