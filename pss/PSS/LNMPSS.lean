@@ -17,17 +17,30 @@ This file encodes MPSS using the **locally nameless** representation:
 - LNSubRed: subtyping reduction (Figure 2, bottom half)
 - LNCtxRed: context reduction (Section 3)
 - noPromoAt: non-promotion predicates for annotation swap axioms
+- diamond_full / diamond: Lemma 2, the diamond property for ≡→
 - commutativity: Lemma 1, the main theorem
 
 ## Sorrys
-Two kinds of `sorry` remain:
-1. `lc_at 0` witnesses in the commutativity proof, needed by
-   `open_close_id` and `open_close_subst`. These would be discharged by
-   proving that reduction preserves local closure (mutual induction).
+Several kinds of `sorry` remain:
+1. `lc_at 0` witnesses in commutativity and diamond proofs, needed by
+   `open_close_id`, `open_close_subst`, `equivRed_refl`, `ctxRed_refl`.
+   These would be discharged by proving that reduction preserves local
+   closure (mutual induction).
 2. `y ∉ dom Γ_inner` freshness witnesses in ctxRed_lookup_sub,
    ctxRed_lookup_equiv, and ctxRed_stack_inv. These hold for
    well-formed (no-shadowing) contexts, which is an invariant of
    reduction but not formally enforced by the context type.
+3. ME-PRO/ME-PRO case in diamond_full. The paper handles this via
+   derivation-tree induction (IH on α), but our induction is on term
+   size, so α (from context lookup) may be larger than `fvar x`.
+   Resolving requires either switching to derivation-tree induction
+   or proving a separate lemma about sub-reduction diamond.
+4. Double substitution `(u[x₂↦fvar x₁])[x₁↦v] = u[x₂↦v]` in
+   ME-APP/ME-BET and ME-BET/ME-BET cases of diamond. The helper lemma
+   `subst_fvar_double` is proved; what remains is obtaining the
+   freshness witness `x₁ ∉ fvs(u)` (which holds because x₁ is fresh).
+5. One termination goal in diamond_full where `simp_all` + `omega`
+   doesn't discharge the goal automatically.
 -/
 
 /-! ## Terms -/
@@ -667,23 +680,6 @@ theorem no_sub_and_equiv
   rw [hsub] at hequiv
   exact absurd hequiv (by simp)
 
-/-- Diamond property for ≡→ (Lemma 2).
-    If Γ;s ⊢ t₀ ≡→ t₁ and Γ;s ⊢ t₀ ≡→ t₂ and Γ;s ↦ Γ₁;s₁
-    and Γ;s ↦ Γ₂;s₂ then ∃ t₃ with Γ₁;s₁ ⊢ t₂ ≡→ t₃
-    and Γ₂;s₂ ⊢ t₁ ≡→ t₃.
-
-    The paper proves this by a similar induction to commutativity.
-    We state the special case needed: when one context is (Γ,s)
-    itself (via reflexivity of ↦) and the other is (Γ',s').
-    Combined: if Γ;s ⊢ t₀ ≡→ t₁ and Γ;s ⊢ t₀ ≡→ t₂
-    then ∃ t₃ with Γ;s ⊢ t₂ ≡→ t₃ and Γ';s' ⊢ t₁ ≡→ t₃
-    for any Γ';s' with Γ;s ↦ Γ';s'. -/
-axiom diamond
-    {Γ Γ' : LNCtx} {s s' : LNStack} {t₀ t₁ t₂ : LNExpr}
-    (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
-    (hctx : LNCtxRed Γ s Γ' s')
-    : ∃ t₃, LNEquivRed Γ s t₂ t₃ ∧ LNEquivRed Γ' s' t₁ t₃
-
 /-- Alpha-renaming for ≡→ under binders.
     If (x,ann)::Γ; s ⊢ body^x ≡→ u and y ∉ dom(Γ) and x ∉ dom(Γ),
     then (y,ann)::Γ; s ⊢ body^y ≡→ u[x↦fvar y].
@@ -874,6 +870,29 @@ theorem subst_fvar_fvar_open_fvar (e : LNExpr) (x y z : String) (k : Nat)
     have : ¬ (z == x) = true := by simp [beq_iff_eq]; exact Ne.symm hxz
     simp [this]
   rw [this]
+
+/-- Double substitution: (e[x↦fvar y])[y↦v] = e[x↦v] when y ∉ fvs(e).
+    Standard locally nameless infrastructure. -/
+theorem subst_fvar_double (e : LNExpr) (x y : String) (v : LNExpr)
+    (hfresh : y ∉ e.fvs)
+    : (e.subst_fvar x (.fvar y)).subst_fvar y v = e.subst_fvar x v := by
+  induction e with
+  | bvar _ => simp [LNExpr.subst_fvar]
+  | fvar z =>
+    simp [LNExpr.fvs, List.mem_singleton] at hfresh
+    simp only [LNExpr.subst_fvar]
+    by_cases hzx : z == x
+    · simp [hzx, LNExpr.subst_fvar]
+    · simp only [hzx, ite_false, LNExpr.subst_fvar]
+      have hzy : ¬(z == y) = true := by simp [beq_iff_eq]; exact Ne.symm hfresh
+      simp [hzy, LNExpr.subst_fvar]
+  | top => simp [LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.fvs, List.mem_append] at hfresh
+    simp [LNExpr.subst_fvar, ih_dom hfresh.1, ih_body hfresh.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.fvs, List.mem_append] at hfresh
+    simp [LNExpr.subst_fvar, ih_f hfresh.1, ih_a hfresh.2]
 
 /-- Top sub-reduces only to Top (or itself via MS-EQU).
     If Γ;s ⊢ Top ≤→ t then t = Top.
@@ -1314,6 +1333,317 @@ theorem ctxRed_stack_inv
     cases hs; exact ⟨α₀', s₁, rfl, hctx_i, hred_α⟩
   | ct_nil => cases hs
 
+
+/-! ### Diamond property (Lemma 2)
+
+Proof by induction on the term structure of t₀, case analysis on the pair
+of rules applied by h1 and h2.  Follows Appendix A of Pasquale & Garcia-Perez.
+-/
+
+set_option maxHeartbeats 3200000 in
+theorem diamond_full
+    (t₀ : LNExpr)
+    {Γ Γ₁ Γ₂ : LNCtx} {s s₁ s₂ : LNStack} {t₁ t₂ : LNExpr}
+    (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
+    (hctx1 : LNCtxRed Γ s Γ₁ s₁) (hctx2 : LNCtxRed Γ s Γ₂ s₂)
+    : ∃ t₃, LNEquivRed Γ₁ s₁ t₁ t₃ ∧ LNEquivRed Γ₂ s₂ t₂ t₃ := by
+  cases h1 with
+
+  --=== ME-TOP ===
+  | me_top =>
+    -- t₁ = Top. h2 must be me_top (only rule for Top).
+    cases h2 with
+    | me_top => exact ⟨.top, .me_top, .me_top⟩
+
+  --=== ME-VAR ===
+  | @me_var _ _ x =>
+    cases h2 with
+    | me_var => exact ⟨.fvar x, .me_var, .me_var⟩
+    | me_pro hmem h_sub =>
+      -- t₁ = fvar x, t₂ from ME-PRO. Take t₃ = t₂.
+      -- Left: Γ₁;s₁ ⊢ fvar x ≡→ t₂: weaken h2.
+      -- Right: Γ₂;s₂ ⊢ t₂ ≡→ t₂: weaken h2 gives fvar x ≡→ t₂, need t₂ ≡→ t₂.
+      -- Use sorry for the lc witness needed by equivRed_refl.
+      refine ⟨_, equivRed_weaken (.me_pro hmem h_sub) hctx1, equivRed_refl Γ₂ s₂ _ sorry⟩
+
+  --=== ME-PRO ===
+  | me_pro hmem h_sub =>
+    cases h2 with
+    | me_var =>
+      -- t₁ from ME-PRO, t₂ = fvar x. Take t₃ = t₁.
+      refine ⟨_, equivRed_refl Γ₁ s₁ _ sorry, equivRed_weaken (.me_pro hmem h_sub) hctx2⟩
+    | me_pro hmem₂ h_sub₂ =>
+      -- Both ME-PRO on same x: lookup is unique so α is the same.
+      -- t₁ = α', t₂ = α₂'. Both obtained from sub-reds of same α.
+      -- Use commutativity for sub reds? No, we don't have it yet.
+      -- Use weakening: transport me_pro derivations to target contexts.
+      -- Γ₁;s₁ ⊢ α' ≡→ t₃ and Γ₂;s₂ ⊢ α₂' ≡→ t₃.
+      -- Simplest: use t₃ = α' and t₃ = α₂'. But they must be the same.
+      -- Can't guarantee α' = α₂' in general.
+      -- Use t₃ = α' : left is refl (needs lc), right: weaken me_pro(α ≤→ α').
+      -- Actually right edge starts from α₂', not from x.
+      -- OK use weakening of the original h1 and h2:
+      -- equivRed_weaken (.me_pro hmem h_sub) hctx1 : Γ₁;s₁ ⊢ x ≡→ α'
+      -- That starts from x, not α'. Not what we need.
+      -- Need: Γ₁;s₁ ⊢ α' ≡→ t₃. We don't have any derivation for α'.
+      -- For the paper, this uses derivation-tree IH on α.
+      -- With term-size induction, α can be larger than fvar x.
+      -- Use the context lookup approach:
+      -- ctxRed_lookup_equiv gives α₁'' with x ≡ α₁'' ∈ Γ₁ and Γ;[] ⊢ α ≡→ α₁''.
+      -- But we need Γ₁;s₁ ⊢ α' ≡→ t₃, not a derivation from α.
+      -- Fallback: sorry for this specific subcase.
+      -- Actually: let's use a helper. The result of ME-PRO is α ≤→ α'.
+      -- If h_sub is MS-EQU, then α ≡→ α'. If h_sub is MS-TOP, α' = Top.
+      -- Similarly for h_sub₂.
+      -- Case h_sub = MS-TOP: α' = Top. Then Γ₁;s₁ ⊢ Top ≡→ Top (me_top).
+      --   Γ₂;s₂ ⊢ α₂' ≡→ Top. Use: if α₂' from MS-TOP then α₂' = Top, me_top.
+      --   If α₂' from MS-EQU or MS-PRO etc., need more work.
+      -- This case analysis is very deep. Let me just sorry this subcase for now.
+      sorry
+
+  --=== ME-TAP ===
+  | @me_tap _ _ u =>
+    cases h2 with
+    | me_tap => exact ⟨.top, .me_top, .me_top⟩
+    | @me_app _ _ _ u₂ _ v₂ h2_u h2_v =>
+      -- h2 uses ME-APP on (app Top u). h2_u: Γ;u::s ⊢ Top ≡→ u₂.
+      -- Top only reduces to Top, so u₂ = Top.
+      cases h2_u with
+      | me_top => exact ⟨.top, .me_top, .me_tap⟩
+
+  --=== ME-APP ===
+  | @me_app _ _ u₀ u₁ v₀ v₁ h1_u h1_v =>
+    cases h2 with
+    | @me_app _ _ _ u₂ _ v₂ h2_u h2_v =>
+      -- ME-APP / ME-APP: IH on u₀ (with extended stack) and v₀ (with nil stack)
+      have h_ctx1_ext := LNCtxRed.ct_stk hctx1 h1_v
+      have h_ctx2_ext := LNCtxRed.ct_stk hctx2 h2_v
+      obtain ⟨u₃, h_u₃_1, h_u₃_2⟩ :=
+        diamond_full u₀ h1_u h2_u h_ctx1_ext h_ctx2_ext
+      have h_ctx1_nil := ctxRed_nil_of_ctxRed hctx1
+      have h_ctx2_nil := ctxRed_nil_of_ctxRed hctx2
+      obtain ⟨v₃, h_v₃_1, h_v₃_2⟩ :=
+        diamond_full v₀ h1_v h2_v h_ctx1_nil h_ctx2_nil
+      exact ⟨.app u₃ v₃, .me_app h_u₃_1 h_v₃_1, .me_app h_u₃_2 h_v₃_2⟩
+
+    | @me_bet _ _ dom body u₂ _ v₂ x₂ hfresh₂ h2_body h2_v =>
+      -- ME-APP / ME-BET: h1 applies ME-APP to (lam dom body) v₀.
+      -- h1_u: Γ; v₀::s ⊢ lam dom body ≡→ u₁. Must be ME-FOP (stack non-nil).
+      cases h1_u with
+      | @me_fop _ _ _ _ dom₁' _ body₁' x₁ hfresh₁ h1_dom h1_body_inner =>
+        -- u₁ = lam dom₁' (close x₁ body₁'), so t₁ = app (lam dom₁' (close x₁ body₁')) v₁
+        -- Rename h2_body to use x₁
+        have h2_body_x₁ := equivRed_rename h2_body hfresh₂ hfresh₁
+        -- Change annotation from .sub to .equiv for the body
+        have hnp := me_bet_body_noPromoAt h2_body_x₁ hfresh₁
+        have h2_body_eq : LNEquivRed ((x₁, .equiv v₀) :: Γ) s
+            (body.open_at 0 (.fvar x₁)) (u₂.subst_fvar x₂ (.fvar x₁)) :=
+          equivRed_change_sub_to_equiv_bet h2_body_x₁ hnp
+        -- IH on body^x₁ with equiv annotation contexts
+        have h_ctx1_body : LNCtxRed ((x₁, .equiv v₀) :: Γ) s
+            ((x₁, .equiv v₁) :: Γ₁) s₁ := .ct_ann_equiv hctx1 h1_v
+        have h_ctx2_body : LNCtxRed ((x₁, .equiv v₀) :: Γ) s
+            ((x₁, .equiv v₂) :: Γ₂) s₂ := .ct_ann_equiv hctx2 h2_v
+        obtain ⟨u₃, h_u₃_1, h_u₃_2⟩ :=
+          diamond_full (body.open_at 0 (.fvar x₁))
+            h1_body_inner h2_body_eq h_ctx1_body h_ctx2_body
+        -- IH on v₀
+        have h_ctx1_nil := ctxRed_nil_of_ctxRed hctx1
+        have h_ctx2_nil := ctxRed_nil_of_ctxRed hctx2
+        obtain ⟨v₃, h_v₃_1, h_v₃_2⟩ :=
+          diamond_full v₀ h1_v h2_v h_ctx1_nil h_ctx2_nil
+        -- Assemble: t₃ = u₃[x₁ ↦ v₃]
+        have hfresh₁_1 : x₁ ∉ LNCtx.dom Γ₁ := ctxRed_dom_eq hctx1 ▸ hfresh₁
+        have hfresh₁_2 : x₁ ∉ LNCtx.dom Γ₂ := ctxRed_dom_eq hctx2 ▸ hfresh₁
+        refine ⟨u₃.subst_fvar x₁ v₃, ?_, ?_⟩
+        · -- Left: Γ₁;s₁ ⊢ app (lam dom₁' (close x₁ body₁')) v₁ ≡→ u₃[x₁↦v₃]
+          -- By ME-BET with x₁: need body premise and v premise.
+          -- Body: (x₁,.sub dom₁')::Γ₁; s₁ ⊢ (close x₁ body₁')^x₁ ≡→ u₃
+          -- (close x₁ body₁')^x₁ = body₁' (by open_close_id, needs lc)
+          -- Change annotation from .equiv v₁ to .sub dom₁':
+          have hnp₁ := commutativity_noPromoAt h_u₃_1 hfresh₁_1
+          have h_body_sub : LNEquivRed ((x₁, .sub dom₁') :: Γ₁) s₁
+              ((body₁'.close_at 0 x₁).open_at 0 (.fvar x₁)) u₃ := by
+            rw [open_close_id sorry]  -- sorry: body₁'.lc
+            exact equivRed_change_equiv_to_sub_bet h_u₃_1 hnp₁
+          exact .me_bet hfresh₁_1 h_body_sub h_v₃_1
+        · -- Right: Γ₂;s₂ ⊢ u₂[x₂↦v₂] ≡→ u₃[x₁↦v₃]
+          -- By equivRed_subst on h_u₃_2 with h_v₃_2:
+          -- h_u₃_2: (x₁,≡v₂)::Γ₂; s₂ ⊢ u₂[x₂↦fvar x₁] ≡→ u₃
+          -- equivRed_subst gives: Γ₂;s₂ ⊢ (u₂[x₂↦fvar x₁])[x₁↦v₂] ≡→ u₃[x₁↦v₃]
+          -- (u₂[x₂↦fvar x₁])[x₁↦v₂] should simplify, but it's complex.
+          -- Actually we want: u₂[x₂↦v₂] on the left. Since x₁ is fresh for u₂,
+          -- (u₂[x₂↦fvar x₁])[x₁↦v₂] = u₂[x₂↦v₂] (double substitution).
+          -- This is a standard LN fact. Let's use sorry for it.
+          have h := equivRed_subst h_u₃_2 h_v₃_2
+          -- h : Γ₂;s₂ ⊢ (u₂.subst_fvar x₂ (fvar x₁)).subst_fvar x₁ v₂ ≡→ u₃.subst_fvar x₁ v₃
+          -- Need to show LHS = u₂.subst_fvar x₂ v₂
+          -- This requires that x₁ ∉ fvs u₂ (since x₁ is fresh).
+          sorry -- double substitution simplification
+
+    | me_tap =>
+      -- h1: ME-APP on app Top v₀, h2: ME-TAP
+      -- h1_u: Γ;v₀::s ⊢ Top ≡→ u₁. Must be me_top.
+      cases h1_u with
+      | me_top => exact ⟨.top, .me_tap, .me_top⟩
+
+  --=== ME-BET ===
+  | @me_bet _ _ dom body u₁ v₀ v₁' x₁ hfresh₁ h1_body h1_v =>
+    cases h2 with
+    | @me_app _ _ _ u₂ _ v₂ h2_u h2_v =>
+      -- ME-BET / ME-APP: symmetric to ME-APP / ME-BET
+      cases h2_u with
+      | @me_fop _ _ _ _ dom₂' _ body₂' x₂ hfresh₂ h2_dom h2_body_inner =>
+        -- Rename h1_body to use x₂
+        have h1_body_x₂ := equivRed_rename h1_body hfresh₁ hfresh₂
+        have hnp := me_bet_body_noPromoAt h1_body_x₂ hfresh₂
+        have h1_body_eq : LNEquivRed ((x₂, .equiv v₀) :: Γ) s
+            (body.open_at 0 (.fvar x₂)) (u₁.subst_fvar x₁ (.fvar x₂)) :=
+          equivRed_change_sub_to_equiv_bet h1_body_x₂ hnp
+        have h_ctx1_body : LNCtxRed ((x₂, .equiv v₀) :: Γ) s
+            ((x₂, .equiv v₁') :: Γ₁) s₁ := .ct_ann_equiv hctx1 h1_v
+        have h_ctx2_body : LNCtxRed ((x₂, .equiv v₀) :: Γ) s
+            ((x₂, .equiv v₂) :: Γ₂) s₂ := .ct_ann_equiv hctx2 h2_v
+        obtain ⟨u₃, h_u₃_1, h_u₃_2⟩ :=
+          diamond_full (body.open_at 0 (.fvar x₂))
+            h1_body_eq h2_body_inner h_ctx1_body h_ctx2_body
+        have h_ctx1_nil := ctxRed_nil_of_ctxRed hctx1
+        have h_ctx2_nil := ctxRed_nil_of_ctxRed hctx2
+        obtain ⟨v₃, h_v₃_1, h_v₃_2⟩ :=
+          diamond_full v₀ h1_v h2_v h_ctx1_nil h_ctx2_nil
+        have hfresh₂_1 : x₂ ∉ LNCtx.dom Γ₁ := ctxRed_dom_eq hctx1 ▸ hfresh₂
+        have hfresh₂_2 : x₂ ∉ LNCtx.dom Γ₂ := ctxRed_dom_eq hctx2 ▸ hfresh₂
+        refine ⟨u₃.subst_fvar x₂ v₃, ?_, ?_⟩
+        · -- Left: Γ₁;s₁ ⊢ u₁[x₁↦v₁'] ≡→ u₃[x₂↦v₃]
+          have h := equivRed_subst h_u₃_1 h_v₃_1
+          sorry -- double substitution simplification
+        · -- Right: Γ₂;s₂ ⊢ app (lam dom₂' (close x₂ body₂')) v₂ ≡→ u₃[x₂↦v₃]
+          have hnp₂ := commutativity_noPromoAt h_u₃_2 hfresh₂_2
+          have h_body_sub : LNEquivRed ((x₂, .sub dom₂') :: Γ₂) s₂
+              ((body₂'.close_at 0 x₂).open_at 0 (.fvar x₂)) u₃ := by
+            rw [open_close_id sorry]  -- sorry: body₂'.lc
+            exact equivRed_change_equiv_to_sub_bet h_u₃_2 hnp₂
+          exact .me_bet hfresh₂_2 h_body_sub h_v₃_2
+
+    | @me_bet _ _ _ _ u₂ _ v₂' x₂ hfresh₂ h2_body h2_v =>
+      -- ME-BET / ME-BET: both β-reduce the same redex
+      -- Rename to use common fresh variable x₁
+      have h2_body_x₁ := equivRed_rename h2_body hfresh₂ hfresh₁
+      -- IH on body^x₁ in (x₁,.sub dom)::Γ context
+      -- Need context reductions extending with annotation on dom
+      -- For CT-ANN, need Γ;[] ⊢ dom ≡→ dom'. Use refl (needs lc).
+      -- Build: (x₁,.sub dom)::Γ; s ↦ (x₁,.sub dom)::Γ₁; s₁
+      -- This requires Γ;[] ⊢ dom ≡→ dom (refl). Use equivRed_refl (needs lc).
+      -- For now use sorry for lc.
+      have h_ctx1_body : LNCtxRed ((x₁, .sub dom) :: Γ) s
+          ((x₁, .sub dom) :: Γ₁) s₁ :=
+        .ct_ann_sub hctx1 (equivRed_refl Γ [] dom sorry)  -- sorry: dom.lc
+      have h_ctx2_body : LNCtxRed ((x₁, .sub dom) :: Γ) s
+          ((x₁, .sub dom) :: Γ₂) s₂ :=
+        .ct_ann_sub hctx2 (equivRed_refl Γ [] dom sorry)  -- sorry: dom.lc
+      obtain ⟨u₃, h_u₃_1, h_u₃_2⟩ :=
+        diamond_full (body.open_at 0 (.fvar x₁))
+          h1_body h2_body_x₁ h_ctx1_body h_ctx2_body
+      -- IH on v₀
+      have h_ctx1_nil := ctxRed_nil_of_ctxRed hctx1
+      have h_ctx2_nil := ctxRed_nil_of_ctxRed hctx2
+      obtain ⟨v₃, h_v₃_1, h_v₃_2⟩ :=
+        diamond_full v₀ h1_v h2_v h_ctx1_nil h_ctx2_nil
+      -- Assemble: t₃ = u₃[x₁↦v₃]
+      have hfresh₁_1 : x₁ ∉ LNCtx.dom Γ₁ := ctxRed_dom_eq hctx1 ▸ hfresh₁
+      have hfresh₁_2 : x₁ ∉ LNCtx.dom Γ₂ := ctxRed_dom_eq hctx2 ▸ hfresh₁
+      refine ⟨u₃.subst_fvar x₁ v₃, ?_, ?_⟩
+      · -- Left: Γ₁;s₁ ⊢ u₁[x₁↦v₁'] ≡→ u₃[x₁↦v₃]
+        exact equivRed_subst h_u₃_1 h_v₃_1
+      · -- Right: Γ₂;s₂ ⊢ u₂[x₂↦v₂'] ≡→ u₃[x₁↦v₃]
+        -- h_u₃_2: (x₁,.sub dom)::Γ₂; s₂ ⊢ u₂[x₂↦fvar x₁] ≡→ u₃
+        -- equivRed_subst h_u₃_2 h_v₃_2:
+        --   Γ₂;s₂ ⊢ (u₂[x₂↦fvar x₁])[x₁↦v₂'] ≡→ u₃[x₁↦v₃]
+        -- Need: (u₂[x₂↦fvar x₁])[x₁↦v₂'] = u₂[x₂↦v₂']
+        sorry -- double substitution
+
+  --=== ME-FUN ===
+  | @me_fun _ dom dom₁' body body₁' x₁ hfresh₁ h1_dom h1_body =>
+    cases h2 with
+    | @me_fun _ _ dom₂' _ body₂' x₂ hfresh₂ h2_dom h2_body =>
+      -- ME-FUN / ME-FUN: both go under the binder with empty stack
+      have h2_body_x₁ := equivRed_rename h2_body hfresh₂ hfresh₁
+      have h_ctx1_nil := ctxRed_nil_of_ctxRed hctx1
+      have h_ctx2_nil := ctxRed_nil_of_ctxRed hctx2
+      -- IH on dom
+      obtain ⟨dom₃, h_dom₃_1, h_dom₃_2⟩ :=
+        diamond_full dom h1_dom h2_dom h_ctx1_nil h_ctx2_nil
+      -- IH on body^x₁
+      have h_ctx1_body : LNCtxRed ((x₁, .sub dom) :: Γ) []
+          ((x₁, .sub dom₁') :: Γ₁) [] := .ct_ann_sub h_ctx1_nil h1_dom
+      have h_ctx2_body : LNCtxRed ((x₁, .sub dom) :: Γ) []
+          ((x₁, .sub dom₂') :: Γ₂) [] := .ct_ann_sub h_ctx2_nil h2_dom
+      obtain ⟨u₃, h_u₃_1, h_u₃_2⟩ :=
+        diamond_full (body.open_at 0 (.fvar x₁))
+          h1_body h2_body_x₁ h_ctx1_body h_ctx2_body
+      have hs₁ := ctxRed_nil_stack hctx1; subst hs₁
+      have hs₂ := ctxRed_nil_stack hctx2; subst hs₂
+      have hfresh₁_1 : x₁ ∉ LNCtx.dom Γ₁ := ctxRed_dom_eq hctx1 ▸ hfresh₁
+      have hfresh₁_2 : x₁ ∉ LNCtx.dom Γ₂ := ctxRed_dom_eq hctx2 ▸ hfresh₁
+      refine ⟨.lam dom₃ (u₃.close_at 0 x₁), ?_, ?_⟩
+      · have h : LNEquivRed ((x₁, .sub dom₁') :: Γ₁) []
+            ((body₁'.close_at 0 x₁).open_at 0 (.fvar x₁)) u₃ := by
+          rw [open_close_id sorry]; exact h_u₃_1  -- sorry: body₁'.lc
+        exact .me_fun hfresh₁_1 h_dom₃_1 h
+      · have h : LNEquivRed ((x₁, .sub dom₂') :: Γ₂) []
+            ((body₂'.close_at 0 x₂).open_at 0 (.fvar x₁)) u₃ := by
+          rw [open_close_subst sorry]; exact h_u₃_2  -- sorry: body₂' renamed lc
+        exact .me_fun hfresh₁_2 h_dom₃_2 h
+
+  --=== ME-FOP ===
+  | @me_fop _ s_inner α dom dom₁' body body₁' x₁ hfresh₁ h1_dom h1_body =>
+    cases h2 with
+    | @me_fop _ _ _ _ dom₂' _ body₂' x₂ hfresh₂ h2_dom h2_body =>
+      -- ME-FOP / ME-FOP: both pop α from the stack
+      have h2_body_x₁ := equivRed_rename h2_body hfresh₂ hfresh₁
+      have h_ctx1_nil := ctxRed_nil_of_ctxRed hctx1
+      have h_ctx2_nil := ctxRed_nil_of_ctxRed hctx2
+      obtain ⟨dom₃, h_dom₃_1, h_dom₃_2⟩ :=
+        diamond_full dom h1_dom h2_dom h_ctx1_nil h_ctx2_nil
+      obtain ⟨α₁', s₁_inner, hs₁eq, hctx1_inner, hα_red₁⟩ := ctxRed_stack_inv hctx1
+      obtain ⟨α₂', s₂_inner, hs₂eq, hctx2_inner, hα_red₂⟩ := ctxRed_stack_inv hctx2
+      subst hs₁eq; subst hs₂eq
+      have h_ctx1_body : LNCtxRed ((x₁, .equiv α) :: Γ) s_inner
+          ((x₁, .equiv α₁') :: Γ₁) s₁_inner := .ct_ann_equiv hctx1_inner hα_red₁
+      have h_ctx2_body : LNCtxRed ((x₁, .equiv α) :: Γ) s_inner
+          ((x₁, .equiv α₂') :: Γ₂) s₂_inner := .ct_ann_equiv hctx2_inner hα_red₂
+      obtain ⟨u₃, h_u₃_1, h_u₃_2⟩ :=
+        diamond_full (body.open_at 0 (.fvar x₁))
+          h1_body h2_body_x₁ h_ctx1_body h_ctx2_body
+      have hfresh₁_1 : x₁ ∉ LNCtx.dom Γ₁ := ctxRed_dom_eq hctx1_inner ▸ hfresh₁
+      have hfresh₁_2 : x₁ ∉ LNCtx.dom Γ₂ := ctxRed_dom_eq hctx2_inner ▸ hfresh₁
+      refine ⟨.lam dom₃ (u₃.close_at 0 x₁), ?_, ?_⟩
+      · have h : LNEquivRed ((x₁, .equiv α₁') :: Γ₁) s₁_inner
+            ((body₁'.close_at 0 x₁).open_at 0 (.fvar x₁)) u₃ := by
+          rw [open_close_id sorry]; exact h_u₃_1  -- sorry: body₁'.lc
+        exact .me_fop hfresh₁_1 h_dom₃_1 h
+      · have h : LNEquivRed ((x₁, .equiv α₂') :: Γ₂) s₂_inner
+            ((body₂'.close_at 0 x₂).open_at 0 (.fvar x₁)) u₃ := by
+          rw [open_close_subst sorry]; exact h_u₃_2  -- sorry: lc for renamed body
+        exact .me_fop hfresh₁_2 h_dom₃_2 h
+
+termination_by t₀.sz
+decreasing_by
+  all_goals first
+    | (simp_all [LNExpr.sz, sz_open_at_fvar]; omega)
+    | omega
+    | sorry
+
+/-- Diamond (one-context version used by commutativity).
+    Derived from `diamond_full` by using `ctxRed_refl` for one context. -/
+theorem diamond
+    {Γ Γ' : LNCtx} {s s' : LNStack} {t₀ t₁ t₂ : LNExpr}
+    (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
+    (hctx : LNCtxRed Γ s Γ' s')
+    : ∃ t₃, LNEquivRed Γ s t₂ t₃ ∧ LNEquivRed Γ' s' t₁ t₃ := by
+  have hid : LNCtxRed Γ s Γ s := ctxRed_refl Γ s sorry sorry  -- sorry: wf witnesses
+  obtain ⟨t₃, h_left, h_right⟩ := diamond_full t₀ h2 h1 hid hctx
+  exact ⟨t₃, h_left, h_right⟩
 
 /-! ### Commutativity (Lemma 1)
 
