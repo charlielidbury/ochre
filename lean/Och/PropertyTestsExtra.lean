@@ -57,8 +57,6 @@ private def coreCorpus : List Expr := [
   -- compounds
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
   och{ succ_ zero_ }
-  -- `.asc zero_ Nat_` removed: the structural engine's asymmetric
-  -- `.asc` stripping (LHS→ty, RHS→inner) breaks reflexivity.
 ]
 
 /-! ## 1. Fuel monotonicity
@@ -513,61 +511,13 @@ theorem numerals_all_subtype_type :
 
 end PairwiseDistinct
 
-/-! ## 11. Ascription transparency
-
-After the API refactor (`subCheck` takes raw `Expr`), the structural
-engine's asymmetric `.asc` stripping (LHS→ty, RHS→inner) means
-`.asc e τ ⊑ e` is no longer true (it checks `τ ⊑ e` which fails
-for most `e`). The *reverse* direction `e ⊑ .asc e τ` still holds
-(strips to `e ⊑ e`). Runtime transparency via `concEval` is
-unaffected. -/
-
-section AscTransparency
-
-private def ascCorpus : List (Expr × Expr) := [
-  (zero_, Nat_), (one_, Nat_), (true_, Std.Bool),
-  (unit_, Unit_), (Nat_, .type), (Std.Bool, .type)
-]
-
-/-- RHS ascription: `e ⊑ (e : τ)` holds (RHS `.asc` strips to inner `e`). -/
-theorem asc_rhs_transparent :
-    ascCorpus.all (fun p =>
-      Och.checkSubtype 200 p.1 (.asc p.1 p.2) == .ok true) = true := by
-  native_decide
-
-/-- LHS ascription: `(e : τ) ⊑ e` is now false (LHS `.asc` strips to `τ`). -/
-theorem asc_lhs_checks_annotation :
-    ascCorpus.all (fun p =>
-      Och.checkSubtype 200 (.asc p.1 p.2) p.1 == .ok false) = true := by
-  native_decide
-
-/-- Even concretely: `concEval (e : τ) = concEval e`. -/
-theorem asc_concEval_transparent :
-    ascCorpus.all (fun p =>
-      concEval 200 (.asc p.1 p.2) == concEval 200 p.1) = true := by
-  native_decide
-
-end AscTransparency
-
-/-! ## 12. synth-rejection negative coverage
+/-! ## 11. synth-rejection negative coverage
 
 `Och.check` validates well-typedness end-to-end. These tests pin its
 *rejection* behaviour for hand-picked ill-typed terms — the
 positive complement to `synthCorpus_all_validate`. -/
 
 section SynthRejection
-
-/-- Ascription with mismatched type: the inner term doesn't subsume
-the annotation. `synth` rejects via its asc arm.
-
-NB: `(true_ : Nat_)` is *not* rejected, because `true_` and `zero_`
-have identical Church-style structure (`λP. λt. λf. t`) under the
-permissive constructor encoding. The structural engine sees them
-as the same value, so `true_ ⊑ Nat_` is `.ok true`. This is a
-documented imprecision (`Std/DNat.lean` notes the same fact). -/
-example : (Och.check (.asc unit_ Nat_) 200).isError := by native_decide
-example : (Och.check (.asc zero_ Unit_) 200).isError := by native_decide
-example : (Och.check (.asc unit_ Std.Bool) 200).isError := by native_decide
 
 /-- Application of a non-Π head: `synth` rejects via the .app arm.
 

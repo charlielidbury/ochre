@@ -22,7 +22,7 @@ Every other arm is either:
 
 - A pure value form (`.lam`, `.iota`, `.fix`, `.type`, `.bot`)
   that returns `.ok` immediately;
-- An eliminator (`.app`, `.asc`) that *propagates* the
+- An eliminator (`.app`) that *propagates* the
   results of recursive calls — in particular, the `.app` arm
   has a catch-all `.ok fVal, .ok aVal => .ok (.app fVal aVal)`
   that never errors on a non-functional head, it merely

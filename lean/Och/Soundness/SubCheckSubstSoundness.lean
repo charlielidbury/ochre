@@ -19,7 +19,7 @@ subCheck fuel a b = .ok true → Subtype' [] [] a b
 ## Proof structure
 
 By induction on `fuel`:
-- `subCheckSubst (n+1)` evaluates both sides, strips ascriptions,
+- `subCheckSubst (n+1)` evaluates both sides,
   checks fast paths, delegates to `subCheckSubstMatch n`.
 - `subCheckSubstMatch n` calls `subCheckSubst n` recursively.
 - The eval bridge (`evalSubst_equiv_open`) connects inputs to WHNF.
@@ -35,7 +35,7 @@ All arms are closed. `synthNeutralType_to_sub` is fully proved:
 ## Closed results
 
 - `evalSubst_equiv_open`: eval bridge for open terms
-- `stripAscL_super`, `stripAscR_sub`: ascription stripping bridge
+- `stripAscL_super`, `stripAscR_sub`: identity bridge (ascription removed)
 - `synthNeutralType_bvar_to_sub`: synth soundness for `.bvar` heads
 - `subCheckSpine_sound`: spine-compare soundness (bvar-bvar + app_cong)
 - `neutralAscent_bvar_sound`: neutral ascent for `.bvar` heads
@@ -52,8 +52,8 @@ All arms are closed. `synthNeutralType_to_sub` is fully proved:
   - `bot, _`; `lam, lam`; all `(_, .iota)` iotaIntro;
   - all `(.iota, _)` unfoldIotaL; all `(.fix, _)` unfoldFixL;
   - `(iota, iota)` structural+fallback; `(fix, fix)` structural+fallback;
-  - non-neutral `(_, .fix)` unfoldFixR (type, asc, lam, iota);
-  - all impossible arms (type/asc/lam with non-matching b)
+  - non-neutral `(_, .fix)` unfoldFixR (type, lam, iota);
+  - all impossible arms (type/lam with non-matching b)
   - `(bvar, .fix)`: full (synth-hit via bvar + unfold fallback)
   - `(bvar, _)`: full (spine + neutralAscent via bvar)
   - `(app, .fix)`: synth-hit delegates to `synthNeutralType_to_sub`;
@@ -106,24 +106,8 @@ noncomputable def evalSubst_equiv_open
       rw [evalSubst.eq_7] at h
       simp only [Outcome.ok.injEq] at h; subst h
       exact ⟨.refl _, .refl _⟩
-    | .asc t ty, h =>
-      rw [evalSubst.eq_8] at h
-      match ht : evalSubst n unf t with
-      | .outOfFuel => rw [ht] at h; cases h
-      | .error _ => rw [ht] at h; cases h
-      | .ok tv =>
-        match hty : evalSubst n unf ty with
-        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .ok tyv =>
-          rw [ht, hty] at h
-          simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
-          have ⟨ht₁, ht₂⟩ := ih ht
-          refine ⟨?_, ?_⟩
-          · exact .asc_L (.asc_R ht₁)
-          · exact .asc_L (.asc_R ht₂)
     | .app f a, h =>
-      rw [evalSubst.eq_9] at h
+      rw [evalSubst.eq_8] at h
       match hfEv : evalSubst n unf f with
       | .outOfFuel => rw [hfEv] at h; cases h
       | .error _ => rw [hfEv] at h; cases h
@@ -171,11 +155,6 @@ noncomputable def evalSubst_equiv_open
                   (.app_cong hf₁ ha₁ ha₂)),
                 .trans (.app_cong hf₂ ha₂ ha₁)
                   (.trans (.app_cong (.unfold_fix_L (.refl _)) (.refl _) (.refl _)) he₂)⟩
-          | asc inner _ =>
-            simp only at h
-            have ⟨he₁, he₂⟩ := ih h
-            exact ⟨.trans he₁ (.app_cong (.trans (.asc_R (.refl _)) hf₁) ha₁ ha₂),
-              .trans (.app_cong (.trans hf₂ (.asc_L (.refl _))) ha₂ ha₁) he₂⟩
           | app f' a' =>
             simp only at h; simp only [Outcome.ok.injEq] at h; subst h
             exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
@@ -184,17 +163,13 @@ noncomputable def evalSubst_equiv_open
 
 /-- LHS asc strip: `a' ⊑ stripAscL a'`. -/
 private noncomputable def stripAscL_super (S : Seen) (Γ : Ctx) (a' : Expr) :
-    Subtype' S Γ a' (match a' with | .asc _ ty => ty | x => x) :=
-  match a' with
-  | .asc _ _ => .asc_L_ann (.refl _)
-  | .bvar _ | .lam _ _ | .app _ _ | .type | .bot | .iota _ _ | .fix _ _ => .refl _
+    Subtype' S Γ a' (match a' with | x => x) :=
+  .refl _
 
-/-- RHS asc strip: `stripAscR b' ⊑ b'`. -/
+/-- RHS identity (asc stripping was removed with ascription constructor). -/
 private noncomputable def stripAscR_sub (S : Seen) (Γ : Ctx) (b' : Expr) :
-    Subtype' S Γ (match b' with | .asc e _ => e | x => x) b' :=
-  match b' with
-  | .asc _ _ => .asc_R (.refl _)
-  | .bvar _ | .lam _ _ | .app _ _ | .type | .bot | .iota _ _ | .fix _ _ => .refl _
+    Subtype' S Γ (match b' with | x => x) b' :=
+  .refl _
 
 /-! ## Common arm helpers -/
 
@@ -363,12 +338,6 @@ noncomputable def whnfPi_go_sound_open
     | .app _ _ =>
       simp only [whnfPi.go] at hgo
       injection hgo with hgo; subst hgo; exact hsub
-    | .asc inner _annTy =>
-      simp only [whnfPi.go] at hgo
-      -- whnfPi.go strips the ascription and recurses on inner.
-      -- Derive: inhab ⊑ inner from inhab ⊑ .asc inner ty via
-      -- trans with asc_L (refl inner) : (.asc inner ty) ⊑ inner.
-      exact ih inner piExpr (hsub.trans (.asc_L (.refl inner))) hgo
 
 /-- Open-context `whnfPi` soundness: if `whnfPi fuel inhab ty = some piExpr`
 and `Subtype' S Γ inhab ty`, then `Subtype' S Γ inhab piExpr`.
@@ -519,7 +488,6 @@ private noncomputable def subCheckSubstMatch_sound_gen
     | app _ _ => unfold subCheckSubstMatch at h; simp [isNeutral] at h
     | type => unfold subCheckSubstMatch at h; simp [isNeutral] at h
     | bot => unfold subCheckSubstMatch at h; simp [isNeutral] at h
-    | asc _ _ => unfold subCheckSubstMatch at h; simp [isNeutral] at h
     | iota annB bodyB =>
       -- lam, iota: falls through to (_, .iota) arm = iotaIntro
       unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
@@ -607,7 +575,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
         have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
         refine .unfold_fix_R ?_
         exact hsub.trans (evalSubst_equiv_open _ Γ hev).1
-    | bvar _ | lam _ _ | app _ _ | type | bot | asc _ _ =>
+    | bvar _ | lam _ _ | app _ _ | type | bot =>
       -- iota, other: (.iota, _) = unfoldIotaL
       all_goals (
         unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
@@ -676,7 +644,7 @@ private noncomputable def subCheckSubstMatch_sound_gen
       | .ok false | .outOfFuel | .error _ =>
         -- TODO: proof repair needed for the self-referential guard (fix-fix case).
         sorry
-    | bvar _ | lam _ _ | app _ _ | type | bot | asc _ _ =>
+    | bvar _ | lam _ _ | app _ _ | type | bot =>
       -- fix, other: (.fix, _) = unfoldFixL
       all_goals (
         unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
@@ -819,11 +787,6 @@ private noncomputable def subCheckSubstMatch_sound_gen
       unfold subCheckSubstMatch at h
       simp only [isNeutral, ite_false, ite_true] at h
       exact neutralAscent_bvar_sound n ih_sub Γ S k .bot h
-    | asc e ty =>
-      -- bvar, asc: isNeutral (.asc ..) = false, so neutralAscent
-      unfold subCheckSubstMatch at h
-      simp only [isNeutral, ite_false, ite_true] at h
-      exact neutralAscent_bvar_sound n ih_sub Γ S k (.asc e ty) h
   | app f arg =>
     cases b with
     | iota annB bodyB =>
@@ -971,12 +934,6 @@ private noncomputable def subCheckSubstMatch_sound_gen
       · simp only [hnf, Bool.false_and, ite_false, ite_true] at h
         exact neutralAscent_sound n ih_sub Γ S (.app f arg) .bot h
       · simp only [hnf, Bool.false_and, ite_false] at h; cases h
-    | asc e ty =>
-      unfold subCheckSubstMatch at h; simp only [isNeutral] at h
-      by_cases hnf : isNeutral f
-      · simp only [hnf, Bool.false_and, ite_false, ite_true] at h
-        exact neutralAscent_sound n ih_sub Γ S (.app f arg) (.asc e ty) h
-      · simp only [hnf, Bool.false_and, ite_false] at h; cases h
   | type =>
     cases b with
     | iota annB bodyB =>
@@ -1016,51 +973,13 @@ private noncomputable def subCheckSubstMatch_sound_gen
     | _ =>
       -- type, other: (_, _), isNeutral type = false → .ok false → contradiction
       unfold subCheckSubstMatch at h; simp [isNeutral] at h
-  | asc ascE ascTy =>
-    cases b with
-    | iota annB bodyB =>
-      -- asc, iota: (_, .iota) = iotaIntro, with neutralAscent fallback
-      unfold subCheckSubstMatch at h; simp only [Outcome.ok_bind] at h
-      match hann : subCheckSubst n Γ ((Γ.length, Expr.asc ascE ascTy, Expr.iota annB bodyB) :: S) (Expr.asc ascE ascTy) annB with
-      | .outOfFuel => rw [hann] at h; cases h
-      | .error _ => rw [hann] at h; cases h
-      | .ok annOk =>
-        rw [hann] at h; simp only [Outcome.ok_bind] at h
-        match annOk with
-        | false =>
-          simp only [Bool.not_false, ite_true] at h
-          exact neutralAscent_sound n ih_sub Γ S _ _ h
-        | true =>
-          simp only [Bool.not_true, Bool.false_eq_true, ite_false] at h
-          match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.asc ascE ascTy)) with
-          | .outOfFuel => rw [hev] at h; simp at h
-          | .error _ => rw [hev] at h; simp at h
-          | .ok bodyB'' =>
-            rw [hev] at h; simp only [] at h
-            have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
-            refine .iota_intro (ih_sub n (Nat.le_refl n) _ _ _ _ hann) ?_
-            exact hsub.trans (evalSubst_equiv_open _ Γ hev).1
-    | fix annB bodyB =>
-      -- asc, fix: (_, .fix) arm
-      unfold subCheckSubstMatch at h; simp only [isNeutral, Outcome.ok_bind] at h
-      match hev : evalSubst (n + 1) unfBound (bodyB.subst 0 (Expr.fix annB bodyB)) with
-      | .outOfFuel => rw [hev] at h; simp at h
-      | .error _ => rw [hev] at h; simp at h
-      | .ok b' =>
-        rw [hev] at h; simp only [] at h
-        have hsub := ih_sub n (Nat.le_refl n) _ _ _ _ h
-        refine .unfold_fix_R ?_
-        exact hsub.trans (evalSubst_equiv_open _ Γ hev).1
-    | _ =>
-      -- asc, other: (_, _), isNeutral (asc ..) = false → .ok false → contradiction
-      unfold subCheckSubstMatch at h; simp [isNeutral] at h
 
 /-! ## Soundness for `subCheckSubst` -/
 
 /-- Helper: given that the if-then-else chain in `subCheckSubst` returns
     `.ok true`, produce the declarative subtype derivation.
     This factors out the common logic that applies regardless of whether
-    the ascription-stripped forms came from `.asc` or not. -/
+    the WHNF forms. -/
 private noncomputable def subCheckSubst_ite_sound
     (n : Nat)
     (ih_sub : ∀ (m : Nat), m ≤ n → ∀ (Γ' : Ctx) (S' : Seen) (a' b' : Expr),
@@ -1110,8 +1029,7 @@ set_option maxHeartbeats 800000
 
     The proof is by induction on fuel. At fuel `n+1`:
     1. Evaluate both sides to WHNF (eval bridge connects to original)
-    2. Strip ascriptions (bridge via `asc_L_ann`, `asc_R`)
-    3. Fast-path checks (equality → refl, seen → hyp, top → top)
+    2. Fast-path checks (equality → refl, seen → hyp, top → top)
     4. Delegate to `subCheckSubstMatch n` (IH provides soundness)
 
     Sorry'd: the equation-lemma unfolding for the mutual def creates
@@ -1145,32 +1063,10 @@ private noncomputable def subCheckSubst_sound_gen
         | outOfFuel => cases h
         | error s => cases h
         | ok b' =>
-          -- h is about the let-if chain with asc stripping.
-          -- simp to reduce the Outcome.ok match
           simp only [] at h
-          -- Bridge: eval + asc strip
           have ⟨_, haa'⟩ := evalSubst_equiv_open S Γ hea
           have ⟨hb'b, _⟩ := evalSubst_equiv_open S Γ heb
-          -- Case-split on a' to reduce the LHS asc-strip let binding in h,
-          -- and on b' to reduce the RHS asc-strip let binding.
-          -- After these cases, the matches in h reduce and we can apply ite_sound.
-          cases a' with
-          | asc _ ty =>
-            cases b' with
-            | asc e _ =>
-              exact .trans haa' (.trans (.asc_L_ann (.refl _))
-                (.trans (subCheckSubst_ite_sound n ih_strong Γ S _ _ h)
-                (.trans (.asc_R (.refl _)) hb'b)))
-            | _ =>
-              exact .trans haa' (.trans (.asc_L_ann (.refl _))
-                (.trans (subCheckSubst_ite_sound n ih_strong Γ S _ _ h) hb'b))
-          | _ =>
-            cases b' with
-            | asc e _ =>
-              exact .trans haa' (.trans (subCheckSubst_ite_sound n ih_strong Γ S _ _ h)
-                (.trans (.asc_R (.refl _)) hb'b))
-            | _ =>
-              exact .trans haa' (.trans (subCheckSubst_ite_sound n ih_strong Γ S _ _ h) hb'b)
+          exact .trans haa' (.trans (subCheckSubst_ite_sound n ih_strong Γ S _ _ h) hb'b)
 
 /-- The main soundness theorem for the structural subtype checker. -/
 noncomputable def subCheckSubst_sound

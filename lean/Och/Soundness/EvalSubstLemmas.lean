@@ -27,7 +27,7 @@ Mirror of `concEval_fuel_mono` (`Och/Eval.lean`).  The proof structure
 is arm-for-arm identical; the only differences are:
 
 * `evalSubst` is `def` (not `partial def`) — and crucially, Lean
-  generates per-arm equation lemmas `evalSubst.eq_1` … `evalSubst.eq_9`
+  generates per-arm equation lemmas `evalSubst.eq_1` … `evalSubst.eq_8`
   that give us syntactic control over each step.  We rewrite with them
   directly rather than fighting `unfold` / `simp [evalSubst]` (the
   latter recurses; the former leaves un-reduced inner matches).
@@ -65,23 +65,8 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
       rw [evalSubst.eq_6] at h ⊢; exact h
     | .fix _ _ =>
       rw [evalSubst.eq_7] at h ⊢; exact h
-    | .asc t ty =>
-      rw [evalSubst.eq_8] at h ⊢
-      match ht : evalSubst k unf t with
-      | .outOfFuel => rw [ht] at h; cases h
-      | .error _ => rw [ht] at h; cases h
-      | .ok tv =>
-        have ht' := ih ht
-        match hty : evalSubst k unf ty with
-        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .ok tyv =>
-          have hty' := ih hty
-          rw [ht, hty] at h
-          rw [ht', hty']
-          exact h
     | .app f a =>
-      rw [evalSubst.eq_9] at h ⊢
+      rw [evalSubst.eq_8] at h ⊢
       match hf : evalSubst k unf f with
       | .outOfFuel => rw [hf] at h; cases h
       | .error _ => rw [hf] at h; cases h
@@ -118,7 +103,6 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
             split at h
             · rename_i hcond; rw [if_pos hcond]; exact h
             · rename_i hcond; rw [if_neg hcond]; exact ih h
-          | asc _ _ => simp only at h ⊢; exact ih h
           | app _ _ => simp only at h ⊢; exact h
 
 /-! ## Closedness preservation for `Expr.subst` and `evalSubst`
@@ -159,9 +143,6 @@ private theorem subst_closedAt_gen (body : Expr) (s : Expr) (n j : Nat)
   | app f a ih_f ih_a =>
     simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
     exact ⟨ih_f s n j hj hbody.1 hs, ih_a s n j hj hbody.2 hs⟩
-  | asc t y ih_t ih_y =>
-    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
-    exact ⟨ih_t s n j hj hbody.1 hs, ih_y s n j hj hbody.2 hs⟩
   | type => simp [Expr.subst, Expr.closedAt]
   | bot => simp [Expr.subst, Expr.closedAt]
   | iota ann body ih_ann ih_body =>
@@ -204,24 +185,8 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
       rw [evalSubst.eq_6] at h; cases h; exact hcl
     | .fix _ _ =>
       rw [evalSubst.eq_7] at h; cases h; exact hcl
-    | .asc t ty =>
-      rw [evalSubst.eq_8] at h
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      match ht : evalSubst k unf t with
-      | .outOfFuel => rw [ht] at h; cases h
-      | .error _ => rw [ht] at h; cases h
-      | .ok tv =>
-        match hty : evalSubst k unf ty with
-        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .ok tyv =>
-          rw [ht, hty] at h
-          simp only [Outcome.ok_bind] at h
-          cases h
-          simp only [Expr.closedAt, Bool.and_eq_true]
-          exact ⟨ih hcl.1 ht, ih hcl.2 hty⟩
     | .app f a =>
-      rw [evalSubst.eq_9] at h
+      rw [evalSubst.eq_8] at h
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       match hf : evalSubst k unf f with
       | .outOfFuel => rw [hf] at h; cases h
@@ -276,10 +241,6 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
               have happCl : (Expr.app (body.subst 0 (.fix _ann body)) av).closedAt 0 = true := by
                 simp only [Expr.closedAt, Bool.and_eq_true]; exact ⟨hsubCl, haCl⟩
               exact ih happCl h
-          | asc inner _ =>
-            simp only at h
-            simp only [Expr.closedAt, Bool.and_eq_true] at hfCl
-            exact ih (by simp [Expr.closedAt, Bool.and_eq_true]; exact ⟨hfCl.1, haCl⟩) h
           | app _ _ =>
             simp only at h; cases h
             simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢

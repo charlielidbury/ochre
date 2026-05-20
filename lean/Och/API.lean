@@ -87,20 +87,6 @@ def check (e : Expr) (fuel : Nat := 5000) (Γ : TyEnv := []) :
         else
           let annV ← evalSubst fuel SubstEval.unfBound ann
           check body fuel (annV :: Γ)
-    | .asc inner τ => do
-        let okτ ← subCheckOpen fuel Γ τ .type
-        if !okτ then
-          .error s!"synth: ascription type is not a type"
-        else
-          let τV ← evalSubst fuel SubstEval.unfBound τ
-          check inner fuel Γ
-          let innerV ← evalSubst fuel SubstEval.unfBound inner
-          -- The single typing question: innerV ⊑ τV.
-          let ok ← subCheckOpen fuel Γ innerV τV
-          if !ok then
-            .error s!"synth: ascription rejected (term ⊄ annotation)"
-          else
-            .ok ()
     | .app f a => do
         check f fuel Γ
         check a fuel Γ

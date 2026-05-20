@@ -70,7 +70,6 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
     match e with
     | .bvar k => .error s!"concEval: stuck on free bvar {k}"
     | .lam _ _ | .type | .bot | .iota _ _ | .fix _ _ => .ok e -- direct values
-    | .asc term _ => concEval fuel term  -- runtime: erase ascription
     | .app f a =>
       match concEval fuel f, concEval fuel a with
       | .ok (.lam _dom body), .ok aVal =>
@@ -110,7 +109,7 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
 
 /-! ## concEval shape lemmas
 
-concEval never produces bvar/asc at the top level. This is a structural
+concEval never produces bvar at the top level. This is a structural
 invariant: the base cases (lam, type, ι, fix) never produce them, and the
 recursive cases just propagate inner results. The catch-all (neutral app)
 produces app. -/
@@ -118,11 +117,6 @@ produces app. -/
 /-- concEval never produces a bare variable at the top level. -/
 theorem concEval_not_bvar {fuel : Nat} {e : Expr} {k : Nat}
     (h : concEval fuel e = .ok (.bvar k)) : False := by
-  sorry
-
-/-- concEval never produces an ascription at the top level. -/
-theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
-    (h : concEval fuel e = .ok (.asc t ty)) : False := by
   sorry
 
 /-- Concrete normal form: the shape of concEval outputs.
@@ -149,9 +143,6 @@ theorem ConcNF_concEval_idem {v v' : Expr} {fuel : Nat}
     (hv : ConcNF v) (h : concEval fuel v = .ok v') : v' = v := by
   sorry
 
-/-- ConcNF implies the old isConcreteVal-or-app pattern: not bvar, not asc. -/
+/-- ConcNF implies the old isConcreteVal-or-app pattern: not bvar. -/
 theorem ConcNF.not_bvar {v : Expr} (h : ConcNF v) : ∀ k, v ≠ .bvar k := by
   intro k; cases h <;> intro heq <;> cases heq
-
-theorem ConcNF.not_asc {v : Expr} (h : ConcNF v) : ∀ t ty, v ≠ .asc t ty := by
-  intro t ty; cases h <;> intro heq <;> cases heq

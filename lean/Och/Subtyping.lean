@@ -67,7 +67,7 @@ SoundnessAudit pass:
     fix-unfold, transitivity is not obviously admissible
     (the unfold rules don't decrease a syntactic measure), so
     it's taken as primitive.
-  - β/let/asc-conversion rules so the relation is closed under
+  - β-conversion rules so the relation is closed under
     head reduction (the algorithm normalises before comparing).
 
 The "real" subtyping judgment is `Subtype' [] Γ a b` (empty
@@ -185,17 +185,6 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   | beta_R {S Γ a dom body arg} :
       Subtype' S Γ a (body.subst 0 arg) →
       Subtype' S Γ a (.app (.lam dom body) arg)
-  /-- Ascription on LHS: transparent (sees inner value).
-      Needed by `concEval_equiv` since runtime erases ascriptions. -/
-  | asc_L {S Γ e τ b} :
-      Subtype' S Γ e b → Subtype' S Γ (.asc e τ) b
-  /-- Ascription on LHS: narrows to annotation.
-      The algorithmic checker uses this form (not `asc_L`). -/
-  | asc_L_ann {S Γ e τ b} :
-      Subtype' S Γ τ b → Subtype' S Γ (.asc e τ) b
-  /-- Ascription on RHS: content is the inner value. -/
-  | asc_R {S Γ a e τ} :
-      Subtype' S Γ a e → Subtype' S Γ a (.asc e τ)
   /-- Fixpoint annotation ascent: `fix A. body ⊑ A`.
       The annotation records the fixpoint's type; the type checker
       enforces `body[self := fix A. body] : A`, so `fix A. body : A`.
@@ -265,9 +254,6 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
       | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
   | beta_L _ ih => exact .beta_L (ih hsub)
   | beta_R _ ih => exact .beta_R (ih hsub)
-  | asc_L _ ih => exact .asc_L (ih hsub)
-  | asc_L_ann _ ih => exact .asc_L_ann (ih hsub)
-  | asc_R _ ih => exact .asc_R (ih hsub)
   | fix_ann => exact .fix_ann
   | bot_L => exact .bot_L
 
@@ -287,7 +273,7 @@ def Subtype'.lam_body {S Γ dom body₁ body₂}
   .lam (.refl dom) h
 
 /-- Head congruence: derivable from `app_cong` with reflexive
-arg. Lets β/let/asc-conversion fire under an application spine
+arg. Lets β-conversion fire under an application spine
 via `trans`. -/
 def Subtype'.app_head {S Γ f f' a}
     (h : Subtype' S Γ f f') : Subtype' S Γ (.app f a) (.app f' a) :=
@@ -676,18 +662,6 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     refine .beta_R ?_
     have := ih Γpfx rfl
     simpa [Expr.subst_shift_swap] using this
-  | asc_L _ ih =>
-    intro Γpfx hpfx
-    simp only [Expr.shift]
-    exact .asc_L (ih Γpfx hpfx)
-  | asc_L_ann _ ih =>
-    intro Γpfx hpfx
-    simp only [Expr.shift]
-    exact .asc_L_ann (ih Γpfx hpfx)
-  | asc_R _ ih =>
-    intro Γpfx hpfx
-    simp only [Expr.shift]
-    exact .asc_R (ih Γpfx hpfx)
   | fix_ann =>
     intro Γpfx _
     simp only [Expr.shift]
@@ -869,9 +843,6 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       exact .unfold_iota_R h1
   | beta_L _ ih => exact fun Γ' hΔ => .beta_L (ih Γ' hΔ)
   | beta_R _ ih => exact fun Γ' hΔ => .beta_R (ih Γ' hΔ)
-  | asc_L _ ih => exact fun Γ' hΔ => .asc_L (ih Γ' hΔ)
-  | asc_L_ann _ ih => exact fun Γ' hΔ => .asc_L_ann (ih Γ' hΔ)
-  | asc_R _ ih => exact fun Γ' hΔ => .asc_R (ih Γ' hΔ)
   | fix_ann => exact fun _ _ => .fix_ann
   | bot_L => exact fun _ _ => .bot_L
 

@@ -59,7 +59,6 @@ $
            | & e_1 space e_2          &                    "application" \
            | & top                    &                 "universe (top)" \
            | & bot                    &               "primitive bottom" \
-           | & (e lt.eq tau)          & "ascription (erased at runtime)" \
            | & iota(x lt.eq tau). e   &               "self-type binder" \
            | & "fix"(x lt.eq tau). e  &               "recursive binder" \
 $
@@ -71,10 +70,6 @@ variable names to their declared types).
 *Variables, lambdas, application* as per the standard λ-calculus, except $lambda$ has a domain type annotation which is respected by the type checker.
 
 *$top$ and $bot$* are the top and bottom of the subtyping lattice. $top$ represents the widest possible type, which tells you nothing about the term being typed, and $bot$ is the empty type.
-
-*Ascription* $(e lt.eq tau)$ asserts that $e$ subtypes $tau$ and
-returns $e$. When typing this expression the checker sees $tau$
-rather than the precise type of $e$. From a theory perspective ascription is somewhat uninteresting but it is quite useful for test cases and building out motivating examples. TODO: can we remove this?
 
 *Fix* $"fix"(x lt.eq tau). e$ allows a term to be defined in terms of itself. $x$ is the reference to self, and $tau$ is the "upper bound" which the whole expression can be assumed to have while it's being type checked (which prevents loops during type checking).
 
@@ -100,7 +95,7 @@ value $v$."
 #align(center, grid(
   columns: (1fr, 1fr),
   gutter: 1.5em,
-  irule("E-Val", eval($v$, $v$)), irule("E-Asc", eval($(e lt.eq tau)$, $v$), eval($e$, $v$)),
+  irule("E-Val", eval($v$, $v$)),
 
   irule("E-App", eval($f space a$, $v$), eval($f$, $lambda(x lt.eq tau). b$), eval($a$, $v_a$), eval(
     $b[x arrow.r.bar v_a]$,
@@ -127,10 +122,6 @@ $
 
 
 Free variables are not values.
-
-Ascription is erased at runtime
-([E-Asc]); the declarative [S-Asc-L] rule (@conversion) provides the
-corresponding transparency.
 
 *$bot$ is a self-evaluating value.* Like $top$, $bot$ evaluates to
 itself via [E-Val] and has no application dispatch arm, so applying
@@ -197,7 +188,7 @@ knowing which category a rule belongs to predicts its shape.
     [*yes*],
     [Conversion (@conversion)],
     [Close under head reduction so subtyping is closed under computation],
-    [S-Beta-L/R, S-Asc-L, S-Asc-L-Ann, S-Asc-R],
+    [S-Beta-L/R],
     [no],
   ),
   caption: [Rule taxonomy for declarative subtyping],
@@ -447,36 +438,6 @@ The subtyping relation must be closed under head reduction: if $a$ computes to $
   )),
 ))
 
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("S-Asc-L", sub($S$, $Gamma$, $(e lt.eq tau)$, $b$), sub($S$, $Gamma$, $e$, $b$)),
-  irule("S-Asc-L-Ann", sub($S$, $Gamma$, $(e lt.eq tau)$, $b$), sub($S$, $Gamma$, $tau$, $b$)),
-  irule("S-Asc-R", sub($S$, $Gamma$, $a$, $(e lt.eq tau)$), sub($S$, $Gamma$, $a$, $e$)),
-))
-
-*Ascription rules: mixed transparency.* Ascription has three
-rules, not two. On the *RHS*, [S-Asc-R] sees through to the
-inner value $e$ --- the ascription doesn't widen the set of values it
-contains. On the *LHS*, both rules coexist: [S-Asc-L]
-(transparent, sees $e$) is needed because the runtime erases
-ascriptions, while [S-Asc-L-Ann] (narrowing, sees $tau$) provides the complementary view --- it peels an LHS ascription to the annotation, so the subtyping relation sees $tau$, not the precise inner value.
-
-Given $A subset.sq.eq B subset.sq.eq C$, the mixed rules give the expected behavior:
-
-#figure(
-  table(
-    columns: 4,
-    align: (left, left, left, left),
-    table.header([*Goal*], [*Rule*], [*Reduces to*], [*Holds?*]),
-    table.hline(),
-    [$(A lt.eq B) subset.sq.eq C$], [Asc-L-Ann], [$B subset.sq.eq C$], [yes],
-    [$A subset.sq.eq (B lt.eq C)$], [Asc-R], [$A subset.sq.eq B$], [yes],
-    [$B subset.sq.eq (A lt.eq C)$], [Asc-R], [$B subset.sq.eq A$], [*no*],
-    [$(A lt.eq C) subset.sq.eq B$], [Asc-L-Ann], [$C subset.sq.eq B$], [*no*],
-  ),
-)
-
 = Declarative Typing <decl-typing>
 
 The typing judgment $Gamma tack.r e arrow.squiggly tau$ determines whether term $e$ is well-formed under context $Gamma$ with type $tau$. It is defined by structural rules over the term language, delegating all type-comparison questions to the subtyping relation (@decl-sub).
@@ -504,12 +465,6 @@ The key design consequence of Och's "terms are types" philosophy is that there i
     $a$,
     $A$,
   )),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("D-Asc", ty($Gamma$, $(e lt.eq tau)$, $tau$), ty($Gamma$, $tau$, $top$), ty($Gamma$, $e$, $tau$)),
 ))
 
 #align(center, grid(

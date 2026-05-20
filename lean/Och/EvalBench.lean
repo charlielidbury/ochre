@@ -49,7 +49,6 @@ def Expr.size : Expr → Nat
   | .iota a b => 1 + Expr.size a + Expr.size b
   | .fix a b => 1 + Expr.size a + Expr.size b
   | .app f a => 1 + Expr.size f + Expr.size a
-  | .asc t y => 1 + Expr.size t + Expr.size y
 
 /-! ## Section 1: Eval-only
 

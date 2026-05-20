@@ -1,7 +1,7 @@
 /-!
 # Och Syntax (de Bruijn indices)
 
-The core calculus has eight term forms. Terms and types share a single
+The core calculus has seven term forms. Terms and types share a single
 syntactic category — there is no separate type language.
 
 Uses de Bruijn indices for bound variables. This eliminates capture issues in
@@ -29,7 +29,6 @@ See `docs/research/iota-fix-split.md` for the design rationale.
       | n              — bound variable (de Bruijn index)
       | λτ. e          — lambda abstraction (domain + body, bvar 0 = param)
       | e₁ e₂         — application
-      | (e : τ)        — ascription (precision loss)
       | Type           — universe / top
       | ιA. e          — self-type binder (bvar 0 = self)
       | fix A. e       — recursive binder (bvar 0 = self-reference)
@@ -38,7 +37,6 @@ inductive Expr where
   | bvar   : Nat → Expr
   | lam    : (dom : Expr) → (body : Expr) → Expr
   | app    : Expr → Expr → Expr
-  | asc    : (term : Expr) → (ty : Expr) → Expr
   | type   : Expr
   /-- Primitive bottom type. Empty set; `Bot ⊑ e` for every `e`
       (the `[S-BotL]` declarative rule, §3.1). Self-evaluating like
@@ -72,8 +70,6 @@ def pretty (e : Expr) (names : List String := []) (prec : Nat := 0) : String :=
   | .type => "Type"
   | .bot => "Bot"
   | .bvar k => names.get? k |>.getD s!"?{k}"
-  | .asc term ty =>
-    s!"({term.pretty names 0} : {ty.pretty names 0})"
   | .lam dom body =>
     let n := nameAt names.length
     let s := s!"λ{n}:{dom.pretty names 10}. {body.pretty (n :: names) 0}"
@@ -120,7 +116,6 @@ def shift (d c : Nat) : Expr → Expr
   | .bvar k => if k < c then .bvar k else .bvar (k + d)
   | .lam dom body => .lam (shift d c dom) (shift d (c + 1) body)
   | .app f a => .app (shift d c f) (shift d c a)
-  | .asc term ty => .asc (shift d c term) (shift d c ty)
   | .type => .type
   | .bot => .bot
   | .iota ann body => .iota (shift d c ann) (shift d (c + 1) body)
@@ -137,7 +132,6 @@ def subst (e : Expr) (j : Nat) (s : Expr) : Expr :=
     else .bvar k
   | .lam dom body => .lam (dom.subst j s) (body.subst (j + 1) (s.shift 1 0))
   | .app f a => .app (f.subst j s) (a.subst j s)
-  | .asc term ty => .asc (term.subst j s) (ty.subst j s)
   | .type => .type
   | .bot => .bot
   | .iota ann body => .iota (ann.subst j s) (body.subst (j + 1) (s.shift 1 0))
@@ -175,10 +169,6 @@ theorem shift_subst_cancel_gen (e : Expr) (c : Nat) (s : Expr)
     unfold shift; unfold subst
     simp only [Expr.app.injEq]
     exact ⟨ih_f c s, ih_a c s⟩
-  | asc t y ih_t ih_y =>
-    unfold shift; unfold subst
-    simp only [Expr.asc.injEq]
-    exact ⟨ih_t c s, ih_y c s⟩
   | type => rfl
   | bot => rfl
   | iota ann body ih_ann ih_body =>
@@ -215,7 +205,6 @@ def substEnv (γ : List Expr) : Expr → Expr
   | .lam dom body =>
     .lam (substEnv γ dom) (substEnv ((.bvar 0) :: γ.map (·.shift 1 0)) body)
   | .app f a => .app (substEnv γ f) (substEnv γ a)
-  | .asc term ty => .asc (substEnv γ term) (substEnv γ ty)
   | .type => .type
   | .bot => .bot
   | .iota ann body =>
@@ -273,11 +262,6 @@ theorem substEnv_idEnv (n : Nat) (e : Expr) : substEnv (idEnv n) e = e := by
     congr 1
     · exact ih_f n
     · exact ih_a n
-  | asc t y ih_t ih_y =>
-    simp only [substEnv]
-    congr 1
-    · exact ih_t n
-    · exact ih_y n
   | type => rfl
   | bot => rfl
   | iota ann body ih_ann ih_body =>
@@ -307,9 +291,6 @@ theorem substEnv_nil (e : Expr) : substEnv [] e = e :=
   | app f a ih_f ih_a =>
     show Expr.app (f.shift 0 c) (a.shift 0 c) = .app f a
     congr 1; exact ih_f c; exact ih_a c
-  | asc t y ih_t ih_y =>
-    show Expr.asc (t.shift 0 c) (y.shift 0 c) = .asc t y
-    congr 1; exact ih_t c; exact ih_y c
   | type => rfl
   | bot => rfl
   | iota a b ih_a ih_b =>
@@ -342,10 +323,6 @@ theorem shift_shift (e : Expr) (d1 d2 c : Nat) :
     show Expr.app ((f.shift d2 c).shift d1 (c+d2)) ((a.shift d2 c).shift d1 (c+d2)) =
          .app (f.shift (d1+d2) c) (a.shift (d1+d2) c)
     congr 1; exact ih_f c; exact ih_a c
-  | asc t y ih_t ih_y =>
-    show Expr.asc ((t.shift d2 c).shift d1 (c+d2)) ((y.shift d2 c).shift d1 (c+d2)) =
-         .asc (t.shift (d1+d2) c) (y.shift (d1+d2) c)
-    congr 1; exact ih_t c; exact ih_y c
   | type => rfl
   | bot => rfl
   | iota ann body ih_ann ih_body =>
@@ -380,10 +357,6 @@ theorem shift_shift_same (e : Expr) (d1 d2 c : Nat) :
     show Expr.app ((f.shift d2 c).shift d1 c) ((a.shift d2 c).shift d1 c) =
          .app (f.shift (d1+d2) c) (a.shift (d1+d2) c)
     congr 1; exact ih_f c; exact ih_a c
-  | asc t y ih_t ih_y =>
-    show Expr.asc ((t.shift d2 c).shift d1 c) ((y.shift d2 c).shift d1 c) =
-         .asc (t.shift (d1+d2) c) (y.shift (d1+d2) c)
-    congr 1; exact ih_t c; exact ih_y c
   | type => rfl
   | bot => rfl
   | iota ann body ih_ann ih_body =>
@@ -407,7 +380,6 @@ def closedAt (n : Nat) : Expr → Bool
   | .bvar k => k < n
   | .lam dom body => closedAt n dom && closedAt (n + 1) body
   | .app f a => closedAt n f && closedAt n a
-  | .asc term ty => closedAt n term && closedAt n ty
   | .type => true
   | .bot => true
   | .iota ann body => closedAt n ann && closedAt (n + 1) body
@@ -433,9 +405,6 @@ theorem shift_closedAt (e : Expr) (n d c : Nat) (hc : c ≤ n)
   | app f a ih_f ih_a =>
     simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
     exact ⟨ih_f n c hc h.1, ih_a n c hc h.2⟩
-  | asc t y ih_t ih_y =>
-    simp only [shift, closedAt, Bool.and_eq_true] at h ⊢
-    exact ⟨ih_t n c hc h.1, ih_y n c hc h.2⟩
   | type => simp [shift, closedAt]
   | bot => simp [shift, closedAt]
   | iota ann body ih_ann ih_body =>
@@ -460,9 +429,6 @@ theorem closedAt_mono {e : Expr} {n m : Nat} (h : e.closedAt n = true) (hnm : n 
   | app f a ih_f ih_a =>
     simp [closedAt, Bool.and_eq_true] at h ⊢
     exact ⟨ih_f h.1 hnm, ih_a h.2 hnm⟩
-  | asc t y ih_t ih_y =>
-    simp [closedAt, Bool.and_eq_true] at h ⊢
-    exact ⟨ih_t h.1 hnm, ih_y h.2 hnm⟩
   | type => simp [closedAt]
   | bot => simp [closedAt]
   | iota ann body ih_ann ih_body =>
@@ -494,10 +460,6 @@ theorem shift_of_closedAt {e : Expr} :
     intro n h d c hc
     simp only [closedAt, Bool.and_eq_true] at h
     simp only [shift, ihf h.1 d hc, iha h.2 d hc]
-  | asc t ty iht ihty =>
-    intro n h d c hc
-    simp only [closedAt, Bool.and_eq_true] at h
-    simp only [shift, iht h.1 d hc, ihty h.2 d hc]
   | iota ann body iha ihb =>
     intro n h d c hc
     simp only [closedAt, Bool.and_eq_true] at h
@@ -545,10 +507,6 @@ theorem shift_shift_comm_at (e : Expr) (d c k : Nat) :
     intro c₀; simp only [shift]; congr 1
     · exact ihf c₀
     · exact iha c₀
-  | asc t ty iht ihty =>
-    intro c₀; simp only [shift]; congr 1
-    · exact iht c₀
-    · exact ihty c₀
   | iota ann body iha ihb =>
     intro c₀; simp only [shift]; congr 1
     · exact iha c₀
@@ -597,10 +555,6 @@ theorem shift_shift_between (e : Expr) (d₁ d₂ c₀ c : Nat)
     simp only [shift]; congr 1
     · exact ihf c₀ c h₁ h₂
     · exact iha c₀ c h₁ h₂
-  | asc t ty iht ihty =>
-    simp only [shift]; congr 1
-    · exact iht c₀ c h₁ h₂
-    · exact ihty c₀ c h₁ h₂
   | iota ann body iha ihb =>
     simp only [shift]; congr 1
     · exact iha c₀ c h₁ h₂
@@ -664,10 +618,6 @@ theorem subst_shift_swap_gen (e s : Expr) (d c : Nat) :
     intro j; simp only [subst, shift]; congr 1
     · exact ihf j
     · exact iha j
-  | asc t ty iht ihty =>
-    intro j; simp only [subst, shift]; congr 1
-    · exact iht j
-    · exact ihty j
   | iota ann body iha ihb =>
     intro j
     simp only [subst, shift]
@@ -737,11 +687,6 @@ theorem subst_closedAt_gen (e : Expr) (j n : Nat) (s : Expr)
     obtain ⟨he_f, he_a⟩ := he
     simp only [subst, closedAt, Bool.and_eq_true]
     exact ⟨ih_f j s he_f hs, ih_a j s he_a hs⟩
-  | asc t y ih_t ih_y =>
-    simp only [closedAt, Bool.and_eq_true] at he
-    obtain ⟨he_t, he_y⟩ := he
-    simp only [subst, closedAt, Bool.and_eq_true]
-    exact ⟨ih_t j s he_t hs, ih_y j s he_y hs⟩
   | iota ann body ih_ann ih_body =>
     simp only [closedAt, Bool.and_eq_true] at he
     obtain ⟨he_ann, he_body⟩ := he
@@ -898,12 +843,6 @@ theorem shift_subst_comm_gen (e : Expr) (j d : Nat) (t : Expr) :
        = Expr.app ((f.subst (j + d) (t.shift d 0)).shift 1 d)
                   ((a.subst (j + d) (t.shift d 0)).shift 1 d)
     congr 1; exact ih_f j d; exact ih_a j d
-  | asc tm ty ih_t ih_y =>
-    show Expr.asc ((shift 1 d tm).subst (j + d + 1) (t.shift (d + 1) 0))
-                  ((shift 1 d ty).subst (j + d + 1) (t.shift (d + 1) 0))
-       = Expr.asc ((tm.subst (j + d) (t.shift d 0)).shift 1 d)
-                  ((ty.subst (j + d) (t.shift d 0)).shift 1 d)
-    congr 1; exact ih_t j d; exact ih_y j d
   | iota ann body ih_ann ih_body =>
     show Expr.iota ((shift 1 d ann).subst (j + d + 1) (t.shift (d + 1) 0))
                  ((shift 1 (d + 1) body).subst (j + d + 2) ((t.shift (d + 1) 0).shift 1 0))
@@ -996,7 +935,7 @@ private theorem liftEnvN_entry_subst (c : Nat) (γ : List Expr) (s : Expr) (k : 
     - bvar: via liftEnvN_entry_subst (induction on c, uses shift_subst_comm)
     - lam/mu: IH on domain at depth c, IH on body at depth c+1
       (substEnv's lifting = liftEnvN (c+1), shift_succ converts the subst value)
-    - app/asc: IH on both parts at depth c
+    - app: IH on both parts at depth c
     - type: trivial -/
 theorem substEnv_subst_comp_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
     (h : e.closedAt (c + γ.length + 1) = true)
@@ -1035,13 +974,6 @@ theorem substEnv_subst_comp_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
       ((a.substEnv (liftEnvN c _)).subst c (s.shift c 0))
     = Expr.app (f.substEnv (liftEnvN c _)) (a.substEnv (liftEnvN c _))
     congr 1; exact ih_f c h.1; exact ih_a c h.2
-  | asc t y ih_t ih_y =>
-    simp [closedAt, Bool.and_eq_true] at h
-    show Expr.asc
-      ((t.substEnv (liftEnvN c _)).subst c (s.shift c 0))
-      ((y.substEnv (liftEnvN c _)).subst c (s.shift c 0))
-    = Expr.asc (t.substEnv (liftEnvN c _)) (y.substEnv (liftEnvN c _))
-    congr 1; exact ih_t c h.1; exact ih_y c h.2
   | iota ann body ih_ann ih_body =>
     simp [closedAt, Bool.and_eq_true] at h
     obtain ⟨h_ann, h_body⟩ := h
@@ -1177,13 +1109,6 @@ theorem shift_substEnv_liftEnvN (s : Expr) (c d : Nat) (γ : List Expr)
        = Expr.app ((f.substEnv (liftEnvN d γ)).shift c d)
                   ((a.substEnv (liftEnvN d γ)).shift c d)
     congr 1; exact ih_f c d hs.1; exact ih_a c d hs.2
-  | asc t y ih_t ih_y =>
-    simp [closedAt, Bool.and_eq_true] at hs
-    show Expr.asc ((t.shift c d).substEnv (liftEnvN (c + d) γ))
-                  ((y.shift c d).substEnv (liftEnvN (c + d) γ))
-       = Expr.asc ((t.substEnv (liftEnvN d γ)).shift c d)
-                  ((y.substEnv (liftEnvN d γ)).shift c d)
-    congr 1; exact ih_t c d hs.1; exact ih_y c d hs.2
 
 /-- Reverse composition: subst then substEnv = substEnv with substituted entry.
     Generalized over binder depth c.
@@ -1270,13 +1195,6 @@ theorem subst_substEnv_comm_gen (c : Nat) (e : Expr) (γ : List Expr) (s : Expr)
        = Expr.app (f.substEnv (liftEnvN c (s.substEnv γ :: γ)))
                   (a.substEnv (liftEnvN c (s.substEnv γ :: γ)))
     congr 1; exact ih_f c he.1; exact ih_a c he.2
-  | asc t y ih_t ih_y =>
-    simp [closedAt, Bool.and_eq_true] at he
-    show Expr.asc ((t.subst c (s.shift c 0)).substEnv (liftEnvN c γ))
-                  ((y.subst c (s.shift c 0)).substEnv (liftEnvN c γ))
-       = Expr.asc (t.substEnv (liftEnvN c (s.substEnv γ :: γ)))
-                  (y.substEnv (liftEnvN c (s.substEnv γ :: γ)))
-    congr 1; exact ih_t c he.1; exact ih_y c he.2
   | iota ann body ih_ann ih_body =>
     simp [closedAt, Bool.and_eq_true] at he
     show Expr.iota ((ann.subst c (s.shift c 0)).substEnv (liftEnvN c γ))
@@ -1334,10 +1252,6 @@ theorem substEnv_closedAt (e : Expr) (γ : List Expr) (d : Nat)
     simp [closedAt, Bool.and_eq_true] at he
     simp [substEnv, closedAt, Bool.and_eq_true]
     exact ⟨ih_f γ d he.1 hγ, ih_a γ d he.2 hγ⟩
-  | asc t y ih_t ih_y =>
-    simp [closedAt, Bool.and_eq_true] at he
-    simp [substEnv, closedAt, Bool.and_eq_true]
-    exact ⟨ih_t γ d he.1 hγ, ih_y γ d he.2 hγ⟩
   | lam dom body ih_dom ih_body =>
     simp [closedAt, Bool.and_eq_true] at he
     simp [substEnv, closedAt, Bool.and_eq_true]

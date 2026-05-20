@@ -55,24 +55,9 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
     | .fix ann body =>
       rw [evalSubst.eq_7] at h
       simp only [Outcome.ok.injEq] at h; subst h; exact hcl
-    | .asc t ty =>
-      simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_8] at h
-      match ht : evalSubst k unf t with
-      | .outOfFuel => rw [ht] at h; cases h
-      | .error _ => rw [ht] at h; cases h
-      | .ok tv =>
-        match hty : evalSubst k unf ty with
-        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .ok tyv =>
-          rw [ht, hty] at h
-          simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
-          simp only [closedAt, Bool.and_eq_true]
-          exact ⟨ih hcl.1 ht, ih hcl.2 hty⟩
     | .app f a =>
       simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_9] at h
+      rw [evalSubst.eq_8] at h
       match hf : evalSubst k unf f with
       | .outOfFuel => rw [hf] at h; cases h
       | .error _ => rw [hf] at h; cases h
@@ -143,14 +128,6 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
                     = (closedAt 0 (body.subst 0 (.fix ann body)) && closedAt 0 av) := rfl
                 rw [this, Bool.and_eq_true]; exact ⟨hsub, hacl⟩
               exact ih hApp h
-          | asc inner _ =>
-            simp only at h
-            have hApp : (Expr.app inner av).closedAt 0 = true := by
-              simp only [closedAt, Bool.and_eq_true] at hfcl
-              have : (Expr.app inner av).closedAt 0
-                  = (inner.closedAt 0 && av.closedAt 0) := rfl
-              rw [this, Bool.and_eq_true]; exact ⟨hfcl.1, hacl⟩
-            exact ih hApp h
           | app f' a' =>
             simp only at h
             simp only [Outcome.ok.injEq] at h; subst h
@@ -195,26 +172,9 @@ def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
       rw [evalSubst.eq_7] at h
       simp only [Outcome.ok.injEq] at h; subst h
       exact ⟨.refl _, .refl _⟩
-    | .asc t ty, hcl, h =>
-      simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_8] at h
-      match ht : evalSubst n unf t with
-      | .outOfFuel => rw [ht] at h; cases h
-      | .error _ => rw [ht] at h; cases h
-      | .ok tv =>
-        match hty : evalSubst n unf ty with
-        | .outOfFuel => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .error _ => rw [ht, hty] at h; simp only [Outcome.ok_bind] at h; cases h
-        | .ok tyv =>
-          rw [ht, hty] at h
-          simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
-          have ⟨ht₁, ht₂⟩ := ih hcl.1 ht
-          refine ⟨?_, ?_⟩
-          · exact .asc_L (.asc_R ht₁)
-          · exact .asc_L (.asc_R ht₂)
     | .app f a, hcl, h =>
       simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_9] at h
+      rw [evalSubst.eq_8] at h
       match hfEv : evalSubst n unf f with
       | .outOfFuel => rw [hfEv] at h; cases h
       | .error _ => rw [hfEv] at h; cases h
@@ -328,21 +288,6 @@ def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
                     (.app (body.subst 0 (.fix ann body)) av) :=
                   .app_cong hUnfoldF (.refl _) (.refl _)
                 exact .trans step1 (.trans step2 he₂)
-          | asc inner _ =>
-            simp only at h
-            have hApp_cl : (Expr.app inner av).closedAt 0 = true := by
-              simp only [closedAt, Bool.and_eq_true] at hfv_cl
-              have : (Expr.app inner av).closedAt 0
-                  = (inner.closedAt 0 && av.closedAt 0) := rfl
-              rw [this, Bool.and_eq_true]; exact ⟨hfv_cl.1, hav_cl⟩
-            have ⟨he₁, he₂⟩ := ih hApp_cl h
-            have hInner_f : Subtype' [] [] inner f :=
-              .trans (.asc_R (.refl _)) hf₁
-            have hf_inner : Subtype' [] [] f inner :=
-              .trans hf₂ (.asc_L (.refl _))
-            refine ⟨?_, ?_⟩
-            · exact .trans he₁ (.app_cong hInner_f ha₁ ha₂)
-            · exact .trans (.app_cong hf_inner ha₂ ha₁) he₂
           | app f' a' =>
             simp only at h
             simp only [Outcome.ok.injEq] at h; subst h

@@ -24,9 +24,9 @@ i.e. if the *redex* has a declarative supertype `τ`, then so does its
 
 ## Proof shape
 
-All five proofs are one-liners exploiting the fact that `Subtype'`
+All proofs are one-liners exploiting the fact that `Subtype'`
 already has the dual constructors `beta_R`, `unfold_iota_R`,
-`unfold_fix_R`, `asc_R`: these say `reduct ⊑ redex`. Composed
+`unfold_fix_R`: these say `reduct ⊑ redex`. Composed
 with the hypothesis `redex ⊑ τ` via `Subtype'.trans`, we get
 `reduct ⊑ τ`.
 
@@ -61,12 +61,6 @@ def preserve_fixUnfoldStep {S : Seen} {Γ : Ctx} {ann body τ : Expr}
     Subtype' S Γ (body.subst 0 (.fix ann body)) τ :=
   .trans (.unfold_fix_R (.refl _)) h
 
-/-- B2.3 — ascription-strip preservation. -/
-def preserve_ascStep {S : Seen} {Γ : Ctx} {e t τ : Expr}
-    (h : Subtype' S Γ (.asc e t) τ) :
-    Subtype' S Γ e τ :=
-  .trans (.asc_R (.refl _)) h
-
 /-! ## R-side mirror lemmas
 
 For completeness we also provide the *RHS* preservation forms — `redex
@@ -95,13 +89,5 @@ def preserve_fixUnfoldStep_R {S : Seen} {Γ : Ctx}
     (h : Subtype' S Γ a' (.fix ann body)) :
     Subtype' S Γ a' (body.subst 0 (.fix ann body)) :=
   .trans h (.unfold_fix_L (.refl _))
-
-/-- asc-strip preservation, RHS form. With mixed ascription rules,
-    `a' ⊑ (.asc e t)` only gives `a' ⊑ e` (via asc_R), not `a' ⊑ t`.
-    The LHS form gives `(.asc e t) ⊑ t` (via asc_L). -/
-def preserve_ascStep_R {S : Seen} {Γ : Ctx} {e t a' : Expr}
-    (h : Subtype' S Γ a' (.asc e t)) :
-    Subtype' S Γ a' t :=
-  .trans h (.asc_L_ann (.refl _))
 
 end Subtype'

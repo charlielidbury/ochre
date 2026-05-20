@@ -69,16 +69,6 @@ inductive WfWhnf : Ctx → Expr → Expr → Type where
       Subtype' [] Γ ann .type →
       WfWhnf (ann :: Γ) body bodyV →
       WfWhnf Γ (.fix ann body) (.fix ann body)
-  /-- Ascription: annotation must be a type, inner must be well-formed,
-      and inner's type-witness must subtype the annotation.
-      Output is the inner's type-witness (ascription stripped),
-      matching `Och.check`'s behavior and the runtime erasure of
-      ascriptions. -/
-  | asc {Γ : Ctx} {e τ eV : Expr} :
-      Subtype' [] Γ τ .type →
-      WfWhnf Γ e eV →
-      Subtype' [] Γ eV τ →
-      WfWhnf Γ (.asc e τ) eV
   /-- Application: function and argument must be well-formed,
       function's type-witness must subtype a Π (possibly after
       fix/iota unfolding via `Subtype'`), and argument must subtype

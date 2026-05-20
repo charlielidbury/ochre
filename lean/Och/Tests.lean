@@ -45,70 +45,27 @@ example : Och.checkSubtype 200 (och{ Not' true_ }) Bool = .ok true := by native_
 example : Och.checkSubtype 200 (och{ Not' false_ }) Bool = .ok true := by native_decide
 
 -- ============================================================
--- §6.2 Abstract instantiation (ascription-based type-level tests)
+-- §6.2 Concrete instantiation (operations on concrete values)
 -- ============================================================
 
--- These tests verify that ascription + operations on abstract values
--- produce correct types. They use Std definitions directly.
+-- add zero zero ⊑ Nat
+example : Och.checkSubtype 200 (och{ add_ zero_ zero_ }) Nat_ = .ok true := by native_decide
 
--- Abstract Nat: add (... : Nat) (... : Nat) ⊑ Nat
-example : Och.checkSubtype 200
-  (och{ add_ (zero_ : Nat_) (zero_ : Nat_) })
-  Nat_ = .ok true := by native_decide
+-- succ zero ⊑ Nat
+example : Och.checkSubtype 200 (och{ succ_ zero_ }) Nat_ = .ok true := by native_decide
 
--- succ (... : Nat) ⊑ Nat
+-- isZero (succ zero) = false (precisely): convertibility.
 example : Och.checkSubtype 200
-  (och{ succ_ (zero_ : Nat_) })
-  Nat_ = .ok true := by native_decide
-
--- isZero (succ (... : Nat)) = false (precisely): convertibility.
-example : Och.checkSubtype 200
-  (och{ isZero_ (succ_ (zero_ : Nat_)) }) false_ = .ok true ∧
+  (och{ isZero_ (succ_ zero_) }) false_ = .ok true ∧
   Och.checkSubtype 200
-  false_ (och{ isZero_ (succ_ (zero_ : Nat_)) }) = .ok true := by
+  false_ (och{ isZero_ (succ_ zero_) }) = .ok true := by
   native_decide
 
--- isZero (... : Nat) ⊑ Bool
-example : Och.checkSubtype 200
-  (och{ isZero_ (zero_ : Nat_) })
-  Bool = .ok true := by native_decide
+-- isZero zero ⊑ Bool
+example : Och.checkSubtype 200 (och{ isZero_ zero_ }) Bool = .ok true := by native_decide
 
--- double (... : Nat) ⊑ Nat
-example : Och.checkSubtype 200
-  (och{ double_ (zero_ : Nat_) })
-  Nat_ = .ok true := by native_decide
-
--- ============================================================
--- §6.2 Abstract vector instantiation
--- ============================================================
-
--- testVec1 = mkVec Nat one_ [0]   (one_ is the Nat_ 1)
-private def testVec1 := och{ mkVec Nat_ one_ (pair_ Nat_ Unit_ zero_ unit_) }
-
--- Abstract vector unpack. Ascription widens `testVec1` to its type
--- After A8, `(testVec1 : Vec Nat_)` evaluates to `testVec1`
--- (asc is value-transparent), so eliminating with the
--- continuation `λn. λarr. n` gives the *concrete* length
--- witness `one_`, not the motive `Nat_`. The pre-A8 test
--- here asserted `= .ok ⟨Nat_⟩`, relying on the unsound
--- widening where `(testVec1 : Vec Nat_)` evaluated to the
--- *type* `Vec Nat_` and `(Vec Nat_) X k = X`. That widening
--- accepted `Nat_ ⊑ (zero_:Nat_)` (subject-reduction failure;
--- SoundnessAudit A8). Now we check the result is the
--- concrete length, and that it inhabits `Nat_`.
-example : Och.checkSubtype 200
-  (och{ (testVec1 : Vec Nat_) Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-  one_ = .ok true := by native_decide
-example : Och.checkSubtype 200
-  (och{ (testVec1 : Vec Nat_) Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) })
-  Nat_ = .ok true := by native_decide
-
--- Rewrapped abstract vector ⊑ Vec Nat. The neutral-head gate leaves
--- `Array_ n Nat_` (abstract `n`) stuck so the motive normalises, and
--- the stuck-head re-eval rule lets the existential repack.
-example : Och.checkSubtype 200
-  (och{ (testVec1 : Vec Nat_) (Vec Nat_) (λn:Nat_. λarr:(Array_ n Nat_). mkVec Nat_ n arr) })
-  (och{ Vec Nat_ }) = .ok true := by native_decide
+-- double zero ⊑ Nat
+example : Och.checkSubtype 200 (och{ double_ zero_ }) Nat_ = .ok true := by native_decide
 
 -- ============================================================
 -- Subtyping transitivity tests (SubstEval.subCheck)
@@ -218,10 +175,6 @@ example : Expr.closedAt 0 (och{ succ_ two_ }) = true := by native_decide
 example : Expr.closedAt 0 (och{ isZero_ zero_ }) = true := by native_decide
 example : Expr.closedAt 0 (och{ add_ two_ three_ }) = true := by native_decide
 example : Expr.closedAt 0 (och{ double_ three_ }) = true := by native_decide
-
--- Ascriptions (key for asc case)
-example : Expr.closedAt 0 (och{ (zero_ : Nat_) }) = true := by native_decide
-example : Expr.closedAt 0 (och{ succ_ (zero_ : Nat_) }) = true := by native_decide
 
 -- Recursive types and north star
 example : Expr.closedAt 0 Nat_ = true := by native_decide

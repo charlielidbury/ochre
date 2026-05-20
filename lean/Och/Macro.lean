@@ -20,7 +20,7 @@ term ::=
   | ιx. term                   --   (annotation-free; defaults to :Type)
   | fix x:term. term           -- recursive binder
   | fix x. term                --   (annotation-free; defaults to :Type)
-  | (term : term)              -- ascription
+  -- ascription syntax removed (Expr.asc constructor eliminated)
   | term term                  -- application (left-associative)
   | term → term                -- arrow (right-assoc, sugar for λ_:A. B)
   | Type                       -- universe
@@ -39,7 +39,6 @@ declare_syntax_cat och
 syntax:100 ident                                    : och
 syntax:100 "Type"                                   : och
 syntax:100 "Bot"                                    : och
-syntax:100 "(" och ":" och ")"                      : och
 syntax:100 "(" och ")"                              : och
 syntax:50  och:50 och:51                            : och
 syntax:30  och:31 " → " och:30                      : och
@@ -69,9 +68,6 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
     `(Expr.type)
   | `(och| Bot) =>
     `(Expr.bot)
-  | `(och| ($a : $b)) =>
-    let a' ← expand ctx a; let b' ← expand ctx b
-    `(Expr.asc $a' $b')
   | `(och| ($a)) =>
     expand ctx a
   | `(och| $f:och $a:och) =>

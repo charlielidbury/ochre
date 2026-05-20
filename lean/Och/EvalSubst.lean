@@ -106,10 +106,6 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
     | .lam _ _ => .ok e
     | .iota _ _ => .ok e
     | .fix _ _ => .ok e
-    | .asc t ty => do
-        let t' ← evalSubst fuel unf t
-        let ty' ← evalSubst fuel unf ty
-        .ok (.asc t' ty')
     | .app f a => do
         let f' ← evalSubst fuel unf f
         let a' ← evalSubst fuel unf a
@@ -130,8 +126,6 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
             else
               let unfolded := body.subst 0 f'
               evalSubst fuel (unf - 1) (.app unfolded a')
-        | .asc inner _ =>
-            evalSubst fuel unf (.app inner a')
         | _ => .ok (.app f' a')
 
 /-! ## Subtype check on Expr
@@ -180,7 +174,6 @@ where
       match evalSubst fuel 4 (body.subst 0 inhab) with
       | .ok e' => go n e'
       | _ => none
-  | n+1, .asc inner _ => go n inner
   | _, .bot => none
   | _, e => some e
 
@@ -196,12 +189,10 @@ mutual
     | fuel + 1 =>
       match evalSubst (fuel + 1) unfBound a, evalSubst (fuel + 1) unfBound b with
       | .ok a', .ok b' =>
-          let a'' := match a' with | .asc _ ty => ty | x => x
-          let b'' := match b' with | .asc e _ => e | x => x
-          if a'' == b'' then .ok true
-          else if seen.any (fun (d, av, bv) => d == tyCtx.length && a'' == av && b'' == bv) then .ok true
-          else if b'' == .type then .ok true
-          else subCheckSubstMatch fuel tyCtx seen a'' b''
+          if a' == b' then .ok true
+          else if seen.any (fun (d, av, bv) => d == tyCtx.length && a' == av && b' == bv) then .ok true
+          else if b' == .type then .ok true
+          else subCheckSubstMatch fuel tyCtx seen a' b'
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
       | .error s, _ | _, .error s => .error s
   termination_by (fuel, 0)
@@ -491,7 +482,6 @@ where
       match evalSubst fuel 4 (body.subst 0 inhab) with
       | .ok e' => go n e'
       | _ => none
-  | n+1, .asc inner _ => go n inner
   | _, .bot => none
   | _, e => some e
 
@@ -518,9 +508,6 @@ private theorem exposePi_go_eq_whnfPi_go (fuel : Nat) (inhab : Expr)
       | .ok e' => exact ih e'
       | .outOfFuel => rfl
       | .error _ => rfl
-    | .asc inner _ =>
-      simp only [exposePi.go, whnfPi.go]
-      exact ih inner
     | .bot => rfl
     | .bvar _ => rfl
     | .type => rfl

@@ -268,19 +268,6 @@ accept of `X ⊑ ⊤` is *right*).
 
 private def fixSelf : Expr := .fix .type (.bvar 0)
 private def iotaSelf : Expr := .iota .type (.bvar 0)
-private def ascZN : Expr := .asc zero_ Nat_
-
-/-- A8: ascription handling. After the API refactor (Och.check
-returns `Outcome Unit`, `subCheck` takes raw `Expr`), the structural
-engine's asymmetric `.asc` stripping (LHS→ty, RHS→inner) means
-`(zero_:Nat_) ⊑ zero_` is no longer `.ok true` at the `checkSubtype`
-surface. Both directions are now `.ok false` through `checkSubtype`.
-The runtime erasure of ascriptions is still correct (tested via
-`concEval` in PropertyTestsExtra). -/
-theorem a8_ascTransparent :
-    Och.checkSubtype 200 ascZN zero_ = .ok false ∧
-    Och.checkSubtype 200 Nat_ ascZN = .ok false := by
-  native_decide
 
 theorem a7_lhs_rejected :
     Och.checkSubtype 200 fixSelf Nat_ = .ok false ∧
@@ -406,7 +393,6 @@ theorem a9_fixIotaBodyChecked :
 | A5 | iotaIntro skipped annotation | **resolved** | check `a ⊑ ann` under extended seen (both arms) |
 | A6 | lam-lam pushed `domA` (incomplete) | **deferred** | `domB` blows up on Nat_ (closure-body mismatch); `domA` is sound |
 | A7 | `.fix/.iota,_` no productivity guard | **resolved** | `a' == a → false`; R-side `→ true` |
-| A8 | `.asc t τ` evaluated to `τ` | **resolved** | evaluate `t`; keep ascription check |
 | A9 | `tyInfer` trusted fix/ι annotation | **resolved** | check `body : ann` under `self : ann` |
 
 ## Property sweep (NbE-only)
@@ -431,9 +417,6 @@ private def sweepCorpus : List Expr := [
   och{ Nat_ → Nat_ }, och{ zero_ → Nat_ }, och{ Nat_ → zero_ },
   och{ λx:Nat_. x }, och{ λx:zero_. zero_ },
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ }
-  -- `.asc` terms removed: the structural engine's asymmetric `.asc`
-  -- stripping (LHS→ty, RHS→inner) means `.asc e τ ⊑ .asc e τ`
-  -- fails reflexivity. See SubstEval.subCheckSubst lines 202-203.
 ]
 
 /-- Reflexivity on the corpus. -/
