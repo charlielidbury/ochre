@@ -1,4 +1,4 @@
-# PSS Type Safety Research Status
+# PSS Type Safety Research Status (Updated)
 
 ## The Problem
 Prove type safety for Pure Subtype Systems (Hutchins, POPL 2010).
@@ -48,6 +48,34 @@ fundamental scope mismatches:
 ### 3. LogRel SemVal definition
 The concEval-based app-type normalization makes SubSem false for beta_L.
 The typeNorm-based version (SafeLogRel) avoids this but needs CanonicalForms.
+
+## Why the Problem is Hard (Formally Proved)
+
+### All additive measures are invariant
+
+Proved `totalWeight_reassoc_eq`: for the trans reassociation
+`trans (trans A B W₁) C W₂ ↔ trans A (trans B C W₂) W₁`,
+both sides have IDENTICAL totalWeight for ANY additive weight function.
+This rules out height, sizeOf, nodeCount, totalWeight, and all linear
+combinations.
+
+### Max-based measures are invariant in key cases
+
+`appDepth` (max of app-middle trans nesting) decreases when `a > b` but
+is invariant when `a ≤ b`. No single max-based measure covers all cases.
+
+### The sorry cases are unreachable but unprovable
+
+The 2 remaining sorrys in CanonicalForms correspond to Sub derivation
+patterns (app_cong and beta_L at the h1b position) that NO concrete
+derivation tree can produce. But proving unreachability requires the
+theorem being proved — circular.
+
+### Cut-free Sub is trivially canonical
+
+`SubR` (Sub minus trans) trivially satisfies `top_not_sub_lam` (no base
+rule can produce Top ≤ lambda). The ENTIRE difficulty is cut elimination:
+`Sub ⊆ SubR`. This IS Hutchins' Conjecture 5.1.
 
 ## Recommended Next Steps (by estimated impact)
 
