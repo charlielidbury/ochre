@@ -42,12 +42,17 @@ Several kinds of `sorry` remain:
 2. `noPromoAt_equiv_swap` and `noPromoAt_sub_swap`: these proofs used the
    raw mutual recursor for noPromoAt, which changed shape with the cofinite
    refactoring. The proof strategy is the same but needs recursor adaptation.
-3. `diamond_full` and `commutativity`: these proofs case-split on cofinite
-   constructors. The proof strategy simplifies (pick x from intersection of
-   avoidance sets, eliminating need for equivRed_rename), but the proofs
-   need to be rewritten to match the new constructor shapes.
+3. `diamond_full`: sorry'd pending adaptation to cofinite constructor patterns.
+   The proof strategy is the same as before (pick common fresh x from
+   intersection of avoidance sets) but needs rewriting.
 4. `diamond` (wf witnesses for ctxRed_refl): these would be discharged by
    proving that reduction preserves local closure.
+5. `u₃.lc` witnesses in commutativity: the IH yields a term u₃ and we need
+   it to be locally closed for `open_close_subst`. Would be discharged by
+   proving that reduction preserves local closure (mutual induction).
+6. `x ∉ t_e.fvs` in commutativity's ME-BET/MS-FOP case: x is chosen fresh
+   from avoidance sets, but we also need it fresh for t_e (a binder body).
+   This follows from including t_e.fvs in the avoidance set.
 
 ## Axioms
 The remaining axioms (equivRed_weaken, subRed_weaken, equivRed_ctx_ext,
@@ -752,6 +757,37 @@ theorem open_close_subst
     : (e.close_at 0 y).open_at 0 (.fvar x) = e.subst_fvar y (.fvar x) :=
   open_close_subst_gen e x y 0 hlc
 
+/-- General version: closing then opening with an arbitrary term equals
+    substitution. (e.close_at k y).open_at k u = e.subst_fvar y u when e.lc_at k. -/
+private theorem open_close_subst_expr_gen
+    (e : LNExpr) (u : LNExpr) (y : String) (k : Nat) (hlc : e.lc_at k)
+    : (e.close_at k y).open_at k u = e.subst_fvar y u := by
+  induction e generalizing k with
+  | bvar n =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.subst_fvar, LNExpr.close_at, LNExpr.open_at, beq_iff_eq]
+    omega
+  | fvar z =>
+    simp only [LNExpr.close_at, LNExpr.subst_fvar]
+    by_cases h : z = y
+    · subst h; simp [LNExpr.open_at]
+    · simp [bne_iff_ne, h, Ne.symm h, LNExpr.open_at]
+  | top => simp [LNExpr.close_at, LNExpr.open_at, LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.close_at, LNExpr.open_at, LNExpr.subst_fvar,
+          ih_dom k hlc.1, ih_body (k+1) hlc.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.close_at, LNExpr.open_at, LNExpr.subst_fvar,
+          ih_f k hlc.1, ih_a k hlc.2]
+
+/-- (e.close_at 0 y).open_at 0 u = e.subst_fvar y u when e is locally closed. -/
+theorem open_close_subst_expr
+    {e : LNExpr} {u : LNExpr} {y : String} (hlc : e.lc_at 0)
+    : (e.close_at 0 y).open_at 0 u = e.subst_fvar y u :=
+  open_close_subst_expr_gen e u y 0 hlc
+
 private theorem open_close_id_gen
     (e : LNExpr) (x : String) (k : Nat) (hlc : e.lc_at k)
     : (e.close_at k x).open_at k (.fvar x) = e := by
@@ -832,6 +868,37 @@ theorem close_subst_fvar
     {u : LNExpr} {x y : String} (hfresh : y ∉ u.fvs)
     : (u.subst_fvar x (.fvar y)).close_at 0 y = u.close_at 0 x :=
   close_subst_fvar_gen u x y 0 hfresh
+
+/-- Opening then substituting the same variable is the same as opening
+    directly: (e.open_at k (fvar x)).subst_fvar x u = e.open_at k u
+    when x ∉ fvs(e). Standard LN infrastructure. -/
+private theorem subst_open_gen (e : LNExpr) (x : String) (u : LNExpr) (k : Nat)
+    (hfr : x ∉ e.fvs)
+    : (e.open_at k (.fvar x)).subst_fvar x u = e.open_at k u := by
+  induction e generalizing k with
+  | bvar n =>
+    simp [LNExpr.open_at, LNExpr.subst_fvar]
+    split
+    · simp [LNExpr.subst_fvar]
+    · simp [LNExpr.subst_fvar]
+  | fvar z =>
+    simp [LNExpr.fvs, List.mem_singleton] at hfr
+    simp only [LNExpr.open_at, LNExpr.subst_fvar]
+    have hne : ¬(z == x) = true := by simp [beq_iff_eq]; exact Ne.symm hfr
+    simp [hne]
+  | top => simp [LNExpr.open_at, LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.open_at, LNExpr.subst_fvar, ih_dom k hfr.1, ih_body (k+1) hfr.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.open_at, LNExpr.subst_fvar, ih_f k hfr.1, ih_a k hfr.2]
+
+/-- (e.open_at 0 (fvar x)).subst_fvar x u = e.open_at 0 u when x ∉ fvs(e). -/
+theorem subst_open
+    {e : LNExpr} {x : String} {u : LNExpr} (hfr : x ∉ e.fvs)
+    : (e.open_at 0 (.fvar x)).subst_fvar x u = e.open_at 0 u :=
+  subst_open_gen e x u 0 hfr
 
 /-- subst_fvar with fvar commutes with open_at:
     `(e.open_at k v).subst_fvar x (fvar y) = (e.subst_fvar x (fvar y)).open_at k (v.subst_fvar x (fvar y))`.
@@ -1251,18 +1318,7 @@ The decrease `sz (open_at 0 (fvar x) body) < sz (lam dom body)`
 follows from `sz_open_at_fvar` and arithmetic.
 -/
 
--- commutativity: the proof does case analysis on pairs of cofinite-quantified
--- constructors. With cofinite quantification, the pattern matching changes:
--- instead of getting a specific fresh x and a body derivation, we get L and
--- a universal quantifier. The proof strategy is:
--- 1. When both sides use binder rules with L₁ and L₂, pick x ∉ L₁ ∪ L₂ ∪ dom(Γ) ∪ ...
--- 2. Instantiate both universal premises at x
--- 3. Apply IH to the instantiated premises
--- 4. Re-close the result
--- This eliminates the need for equivRed_rename and subRed_rename in most cases.
--- Temporarily sorry'd pending adaptation to cofinite constructor shapes.
-
-set_option maxHeartbeats 800000 in
+set_option maxHeartbeats 1600000 in
 theorem commutativity
     (t₀ : LNExpr)
     {Γ : LNCtx} {s : LNStack} {t₁ t₂ : LNExpr}
@@ -1272,4 +1328,234 @@ theorem commutativity
     (h_ctx   : LNCtxRed Γ s Γ' s')
     (h_lc    : t₀.lc)
     : ∃ t₃ : LNExpr, LNEquivRed Γ s t₂ t₃ ∧ LNSubRed Γ' s' t₁ t₃ := by
-  sorry
+  -- Case analysis on the sub (left/vertical) edge.
+  cases h_sub with
+
+  --===================================================================
+  -- MS-TOP: t₂ = .top
+  --===================================================================
+  | ms_top => exact ⟨.top, .me_top, .ms_top⟩
+
+  --===================================================================
+  -- MS-EQU: t₂ comes from Γ;s ⊢ t₀ ≡→ t₂
+  --===================================================================
+  | ms_equ h_eq2 =>
+    obtain ⟨t₃, htop, hright⟩ := diamond h_equiv h_eq2 h_ctx
+    exact ⟨t₃, htop, .ms_equ hright⟩
+
+  --===================================================================
+  -- MS-PRO: t₀ = fvar x, t₂ = t where x ≤ t ∈ Γ
+  --===================================================================
+  | ms_pro hmem =>
+    cases h_equiv with
+    | me_pro hmem_equiv _ => exact absurd (no_sub_and_equiv hmem hmem_equiv) False.elim
+    | me_var =>
+      obtain ⟨t', hmem', ht_red⟩ := ctxRed_lookup_sub hmem h_ctx
+      exact ⟨t', equivRed_stack_ext ht_red, .ms_pro hmem'⟩
+
+  --===================================================================
+  -- MS-APP: t₀ = app u₀ v, t₂ = app u₂ v
+  --===================================================================
+  | @ms_app _ _ u₀ u₂ v h_sub_u =>
+    cases h_equiv with
+    ---------------------------------------------------------------
+    -- ME-APP / MS-APP
+    ---------------------------------------------------------------
+    | @me_app _ _ _ u₁ _ v₁ h_equiv_u h_equiv_v =>
+      have h_ctx_ext := LNCtxRed.ct_stk h_ctx h_equiv_v
+      have hu₀_lc : u₀.lc := h_lc.1
+      obtain ⟨u₃, htop_u, hright_u⟩ :=
+        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc
+      exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u⟩
+    ---------------------------------------------------------------
+    -- ME-BET / MS-APP: the key case
+    -- h_equiv: me_bet L_e h_body_e h_v_e
+    --   gives Γ;s ⊢ (lam dom body) v ≡→ t_e.open_at 0 v'
+    -- h_sub_u: Γ; v::s ⊢ lam dom body ≤→ u₂
+    ---------------------------------------------------------------
+    | @me_bet _ _ dom body t_e _ v' L_e h_body_e h_v_e =>
+      cases h_sub_u with
+      | ms_top =>
+        exact ⟨.top, .me_tap, .ms_top⟩
+      | ms_equ h_eq_lam =>
+        have hv_lc : v.lc := h_lc.2
+        have h_equiv2 : LNEquivRed Γ s (.app (.lam dom body) v) (.app u₂ v) :=
+          .me_app h_eq_lam (equivRed_refl Γ [] v hv_lc)
+        have h_equiv_orig : LNEquivRed Γ s (.app (.lam dom body) v) (t_e.open_at 0 v') :=
+          .me_bet L_e h_body_e h_v_e
+        obtain ⟨t₃, htop, hright⟩ := diamond h_equiv_orig h_equiv2 h_ctx
+        exact ⟨t₃, htop, .ms_equ hright⟩
+      | @ms_fop _ _ _ _ _ body₂ L_s h_sub_body_s =>
+        -- h_sub_body_s : ∀ y, y ∉ L_s → LNSubRed ((y, .equiv v) :: Γ) s (body^y) (body₂^y)
+        -- h_body_e : ∀ x, x ∉ L_e → LNEquivRed ((x, .sub dom) :: Γ) s (body^x) (t_e^x)
+        -- Pick x fresh for both L_e, L_s, dom(Γ), dom(Γ')
+        obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+        have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+        have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+        have hx_dom : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+        have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_right _ h)
+        -- Instantiate the cofinite premises at x
+        have h_body_e_x := h_body_e x hx_Le
+        -- h_body_e_x : LNEquivRed ((x, .sub dom) :: Γ) s (body^x) (t_e^x)
+        have h_sub_body_s_x := h_sub_body_s x hx_Ls
+        -- h_sub_body_s_x : LNSubRed ((x, .equiv v) :: Γ) s (body^x) (body₂^x)
+        -- Change annotation on h_body_e_x from .sub to .equiv
+        have hnp_body := me_bet_body_noPromoAt h_body_e_x hx_dom
+        have h_body_e_eq : LNEquivRed ((x, .equiv v) :: Γ) s
+            (body.open_at 0 (.fvar x)) (t_e.open_at 0 (.fvar x)) :=
+          equivRed_change_sub_to_equiv_bet h_body_e_x hnp_body
+        -- Build context reduction for the body
+        have h_ctx_body : LNCtxRed ((x, .equiv v) :: Γ) s ((x, .equiv v') :: Γ') s' :=
+          LNCtxRed.ct_ann_equiv h_ctx h_v_e
+        have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
+          LNExpr.lc_at_open_fvar h_lc.1.2
+        -- IH on body^x
+        obtain ⟨u₃, htop_body, hright_body⟩ :=
+          commutativity (body.open_at 0 (.fvar x)) h_body_e_eq h_sub_body_s_x h_ctx_body hbody_lc
+        -- Change annotation back from .equiv to .sub for ME-BET
+        have hnp_top := commutativity_noPromoAt htop_body hx_dom
+        have htop_body_sub : LNEquivRed ((x, .sub dom) :: Γ) s
+            (body₂.open_at 0 (.fvar x)) u₃ :=
+          equivRed_change_equiv_to_sub_bet htop_body hnp_top
+        -- Use t₃ = (u₃.close_at 0 x).open_at 0 v' as the witness
+        -- This equals u₃.subst_fvar x v' when u₃ is lc (open_close_subst).
+        refine ⟨(u₃.close_at 0 x).open_at 0 v', ?_, ?_⟩
+        · -- Top edge: Γ;s ⊢ app (lam dom body₂) v ≡→ (close x u₃)^v'
+          -- By ME-BET with t = u₃.close_at 0 x
+          exact .me_bet (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+            (fun y hy => by
+              -- htop_body_sub : Equiv ((x,.sub dom)::Γ) s (body₂^x) u₃
+              -- Use equivRed_rename to get it for y
+              have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
+                hy (List.mem_append_left _ (List.mem_append_right _ h))
+              have h := equivRed_rename htop_body_sub hx_dom hy_dom
+              -- h : Equiv ((y,.sub dom)::Γ) s (body₂^y) (u₃.subst_fvar x (fvar y))
+              -- (close x u₃)^y = u₃.subst_fvar x (fvar y) by open_close_subst
+              rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
+              exact h)
+            h_v_e
+        · -- Right edge: Γ';s' ⊢ t_e^v' ≤→ (close x u₃)^v'
+          -- hright_body : LNSubRed ((x,.equiv v')::Γ') s' (t_e^x) u₃
+          -- By subRed_subst: Γ';s' ⊢ (t_e^x)[x↦v'] ≤→ u₃[x↦v']
+          -- (t_e^x)[x↦v'] = t_e^v' when x ∉ fvs(t_e) (standard LN fact)
+          -- u₃[x↦v'] = (close x u₃)^v' when u₃ is lc (open_close_subst)
+          have hright := subRed_subst (ann := .equiv v') (v := v') hright_body hx_dom'
+          -- hright : Γ';s' ⊢ (t_e^x)[x↦v'] ≤→ u₃[x↦v']
+          -- Rewrite using subst_open and open_close_subst_expr
+          -- sorry: x ∉ fvs(t_e) (x is fresh, t_e is a binder body from the input)
+          have heq_lhs : (t_e.open_at 0 (.fvar x)).subst_fvar x v' = t_e.open_at 0 v' :=
+            subst_open (sorry : x ∉ t_e.fvs)
+          -- sorry: u₃ is locally closed (reduction preserves lc)
+          have heq_rhs : u₃.subst_fvar x v' = (u₃.close_at 0 x).open_at 0 v' :=
+            (open_close_subst_expr (sorry : u₃.lc)).symm
+          rw [heq_lhs, heq_rhs] at hright
+          exact hright
+    ---------------------------------------------------------------
+    -- ME-TAP / MS-APP
+    ---------------------------------------------------------------
+    | me_tap =>
+      have := top_sub_inv h_sub_u; subst this
+      exact ⟨.top, .me_tap, .ms_top⟩
+
+  --===================================================================
+  -- MS-FUN: t₀ = lam dom body, s = [],
+  -- t₂ = lam dom body₂
+  --===================================================================
+  | @ms_fun _ dom body body₂ L_s h_sub_body_s =>
+    cases h_equiv with
+    ---------------------------------------------------------------
+    -- ME-FUN / MS-FUN: Both go under the binder with empty stack.
+    ---------------------------------------------------------------
+    | @me_fun _ _ dom' _ body₁ L_e h_equiv_dom h_equiv_body_e =>
+      -- Pick x fresh for both avoidance sets and everything else we need
+      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hx_dom : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_right _ h)
+      -- Instantiate both cofinite premises at x
+      have h_equiv_body_x := h_equiv_body_e x hx_Le
+      have h_sub_body_x := h_sub_body_s x hx_Ls
+      -- Build context reduction for the body
+      have h_ctx_nil := ctxRed_nil_of_ctxRed h_ctx
+      have h_ctx_body : LNCtxRed ((x, .sub dom) :: Γ) [] ((x, .sub dom') :: Γ') [] :=
+        LNCtxRed.ct_ann_sub h_ctx_nil h_equiv_dom
+      have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
+        LNExpr.lc_at_open_fvar h_lc.2
+      -- IH on body^x
+      obtain ⟨u₃, htop_body, hright_body⟩ :=
+        commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
+      have hs' := ctxRed_nil_stack h_ctx; subst hs'
+      refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_⟩
+      · -- Top edge: Γ;[] ⊢ lam dom body₂ ≡→ lam dom' (close x u₃)
+        -- htop_body : LNEquivRed ((x,.sub dom)::Γ) [] (body₂^x) u₃
+        -- Use equivRed_rename to get the body premise for any y
+        exact .me_fun (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+          h_equiv_dom
+          (fun y hy => by
+            have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
+              hy (List.mem_append_left _ (List.mem_append_right _ h))
+            have h := equivRed_rename htop_body hx_dom hy_dom
+            -- h : LNEquivRed ((y,.sub dom)::Γ) [] (body₂^y) (u₃.subst_fvar x (fvar y))
+            -- Need: ... (body₂^y) ((close x u₃)^y)
+            -- (close x u₃)^y = u₃.subst_fvar x (fvar y) by open_close_subst (needs u₃.lc)
+            rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc (reduction preserves lc)
+            exact h)
+      · -- Right edge: Γ';[] ⊢ lam dom' body₁ ≤→ lam dom' (close x u₃)
+        -- hright_body : LNSubRed ((x,.sub dom')::Γ') [] (body₁^x) u₃
+        -- Use subRed_rename to get the body premise for any y
+        exact .ms_fun (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+          (fun y hy => by
+            have hy_dom' : y ∉ LNCtx.dom Γ' := fun h =>
+              hy (List.mem_append_right _ h)
+            have h := subRed_rename hright_body hx_dom' hy_dom'
+            -- h : LNSubRed ((y,.sub dom')::Γ') [] (body₁^y) (u₃.subst_fvar x (fvar y))
+            rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
+            exact h)
+
+  --===================================================================
+  -- MS-FOP: t₀ = lam dom body, s = α::s₀,
+  -- t₂ = lam dom body₂
+  --===================================================================
+  | @ms_fop _ s_inner α dom body body₂ L_s h_sub_body_s =>
+    cases h_equiv with
+    ---------------------------------------------------------------
+    -- ME-FOP / MS-FOP: Both pop α from the stack.
+    ---------------------------------------------------------------
+    | @me_fop _ _ _ _ dom' _ body₁ L_e h_equiv_dom h_equiv_body_e =>
+      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hx_dom : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_right _ h)
+      have h_equiv_body_x := h_equiv_body_e x hx_Le
+      have h_sub_body_x := h_sub_body_s x hx_Ls
+      obtain ⟨α', s₁, hs'eq, h_ctx_inner, hα_red⟩ := ctxRed_stack_inv h_ctx
+      subst hs'eq
+      have h_ctx_body : LNCtxRed ((x, .equiv α) :: Γ) s_inner ((x, .equiv α') :: Γ') s₁ :=
+        LNCtxRed.ct_ann_equiv h_ctx_inner hα_red
+      have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
+        LNExpr.lc_at_open_fvar h_lc.2
+      obtain ⟨u₃, htop_body, hright_body⟩ :=
+        commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
+      have hfresh_e' : x ∉ LNCtx.dom Γ' := hx_dom'
+      refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_⟩
+      · -- Top edge: use equivRed_rename on htop_body
+        exact .me_fop (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+          h_equiv_dom
+          (fun y hy => by
+            have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
+              hy (List.mem_append_left _ (List.mem_append_right _ h))
+            have h := equivRed_rename htop_body hx_dom hy_dom
+            rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
+            exact h)
+      · -- Right edge: use subRed_rename on hright_body
+        exact .ms_fop (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+          (fun y hy => by
+            have hy_dom' : y ∉ LNCtx.dom Γ' := fun h =>
+              hy (List.mem_append_right _ h)
+            have h := subRed_rename hright_body hx_dom' hy_dom'
+            rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
+            exact h)
+termination_by t₀.sz
+decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
