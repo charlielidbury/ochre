@@ -61,14 +61,18 @@ Several kinds of `sorry` remain:
   pass through directly via `LNCtx.sub_cons`.
 - `equivRed_ctx_ext` / `subRed_ctx_ext`: structural context extension — if
   x ∉ dom(Γ), adding (x,ann) preserves reductions. Derived from ctx_mono.
+- `equivRed_rename` / `subRed_rename`: alpha-renaming under binders — if
+  (x,ann)::Γ; s ⊢ body^x ≡→ u (resp. ≤→), then (y,ann)::Γ; s ⊢ body^y ≡→
+  u[x↦fvar y]. Proved by combining ctx_mono + equivRed_subst (resp. subRed_subst).
+  Requires x ∉ fvs(body), which holds at all call sites since x is chosen fresh.
 
 ## Remaining Axioms
 The remaining axioms (equivRed_weaken, subRed_weaken,
 equivRed_stack_ext, subRed_stack_ext, equivRed_subst, subRed_subst,
-equivRed_rename, subRed_rename, me_bet_body_noPromoAt, commutativity_noPromoAt)
+me_bet_body_noPromoAt, commutativity_noPromoAt)
 are standard LN infrastructure lemmas that require additional machinery:
-- **rename/subst**: need a well-formedness invariant (x ∉ fvs of the annotation
-  at position x) to handle the me_pro case where the renamed variable is promoted.
+- **subst**: needs a well-formedness invariant (x ∉ fvs of the annotation
+  at position x) to handle the me_pro case where the substituted variable is promoted.
   This invariant holds by construction (annotation values are determined before
   the fresh variable is chosen) but is not formally tracked.
 - **stack_ext**: needs annotation swap (changing .sub to .equiv when a lambda
@@ -828,24 +832,37 @@ theorem no_sub_and_equiv
   rw [hsub] at hequiv
   exact absurd hequiv (by simp)
 
-/-- Alpha-renaming for ≡→ under binders.
-    If (x,ann)::Γ; s ⊢ body^x ≡→ u and y ∉ dom(Γ) and x ∉ dom(Γ),
-    then (y,ann)::Γ; s ⊢ body^y ≡→ u[x↦fvar y].
-    This is a standard locally-nameless infrastructure lemma. -/
-axiom equivRed_rename
-    {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
-    {body u : LNExpr} {x y : String}
-    (h : LNEquivRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
-    (hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
-    : LNEquivRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y))
+/-- Self-substitution is the identity: e.subst_fvar x (.fvar x) = e. -/
+theorem subst_fvar_self (e : LNExpr) (x : String)
+    : e.subst_fvar x (.fvar x) = e := by
+  induction e with
+  | bvar _ => simp [LNExpr.subst_fvar]
+  | fvar z =>
+    simp only [LNExpr.subst_fvar]
+    split <;> simp_all [beq_iff_eq]
+  | top => simp [LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.subst_fvar, ih_dom, ih_body]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.subst_fvar, ih_f, ih_a]
 
-/-- Alpha-renaming for ≤→ under binders. -/
-axiom subRed_rename
-    {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
-    {body u : LNExpr} {x y : String}
-    (h : LNSubRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
-    (hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
-    : LNSubRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y))
+/-- Substitution is a no-op when the variable doesn't occur free. -/
+theorem subst_fvar_notin {e : LNExpr} {x : String} {u : LNExpr}
+    (hfr : x ∉ e.fvs) : e.subst_fvar x u = e := by
+  induction e with
+  | bvar _ => simp [LNExpr.subst_fvar]
+  | fvar z =>
+    simp [LNExpr.fvs, List.mem_singleton] at hfr
+    simp only [LNExpr.subst_fvar]
+    have : ¬(z == x) = true := by simp [beq_iff_eq]; exact Ne.symm hfr
+    simp [this]
+  | top => simp [LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.subst_fvar, ih_dom hfr.1, ih_body hfr.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.subst_fvar, ih_f hfr.1, ih_a hfr.2]
 
 /-! ### Locally-nameless infrastructure lemmas (now proved) -/
 
@@ -1103,6 +1120,67 @@ theorem subst_fvar_double (e : LNExpr) (x y : String) (v : LNExpr)
   | app f a ih_f ih_a =>
     simp [LNExpr.fvs, List.mem_append] at hfresh
     simp [LNExpr.subst_fvar, ih_f hfresh.1, ih_a hfresh.2]
+
+/-- Alpha-renaming for ≡→ under binders.
+    If (x,ann)::Γ; s ⊢ body^x ≡→ u and y ∉ dom(Γ) and x ∉ dom(Γ),
+    and x ∉ fvs(body), then (y,ann)::Γ; s ⊢ body^y ≡→ u[x↦fvar y].
+    Proved by combining context monotonicity + substitution lemma (equivRed_subst).
+    The key steps: (1) lift the derivation to (x,ann)::(y,ann)::Γ via ctx_mono,
+    (2) apply equivRed_subst to substitute x for fvar y, (3) rewrite the LHS
+    using subst_fvar_fvar_open_at + subst_fvar_notin. -/
+theorem equivRed_rename
+    {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
+    {body u : LNExpr} {x y : String}
+    (h : LNEquivRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
+    (_hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
+    (hfr : x ∉ body.fvs)
+    : LNEquivRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y)) := by
+  by_cases hxy : x = y
+  · subst hxy; rw [subst_fvar_self]; exact h
+  · -- Step 1: lift h into extended context (x,ann)::(y,ann)::Γ via ctx_mono
+    have hsub : LNCtx.sub_ctx ((x, ann) :: Γ) ((x, ann) :: (y, ann) :: Γ) :=
+      LNCtx.sub_cons (LNCtx.sub_of_cons_fresh hy)
+    have h1 := equivRed_ctx_mono h hsub
+    -- Step 2: apply equivRed_subst — substitute fvar y for x
+    have harg : LNEquivRed ((y, ann) :: Γ) [] (.fvar y) (.fvar y) := .me_var
+    have h2 := equivRed_subst h1 harg
+    -- h2 : LNEquivRed ((y,ann)::Γ) s ((body^x)[x↦fvar y]) (u[x↦fvar y])
+    -- Step 3: rewrite the LHS using (body^x)[x↦fvar y] = body^(fvar y)
+    have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
+      rw [subst_fvar_fvar_open_at]
+      simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
+      rw [subst_fvar_notin hfr]
+    rw [hlhs] at h2
+    exact h2
+
+/-- Alpha-renaming for ≤→ under binders.
+    Proved by combining context monotonicity + substitution lemma (subRed_subst). -/
+theorem subRed_rename
+    {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
+    {body u : LNExpr} {x y : String}
+    (h : LNSubRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
+    (hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
+    (hfr : x ∉ body.fvs)
+    : LNSubRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y)) := by
+  by_cases hxy : x = y
+  · subst hxy; rw [subst_fvar_self]; exact h
+  · -- Step 1: lift h into extended context (x,ann)::(y,ann)::Γ via ctx_mono
+    have hsub : LNCtx.sub_ctx ((x, ann) :: Γ) ((x, ann) :: (y, ann) :: Γ) :=
+      LNCtx.sub_cons (LNCtx.sub_of_cons_fresh hy)
+    have h1 := subRed_ctx_mono h hsub
+    -- Step 2: apply subRed_subst — substitute fvar y for x
+    have hx_ext : x ∉ LNCtx.dom ((y, ann) :: Γ) := by
+      simp only [LNCtx.dom, List.map, List.mem_cons, not_or]
+      exact ⟨hxy, hx⟩
+    have h2 := subRed_subst (v := .fvar y) h1 hx_ext
+    -- h2 : LNSubRed ((y,ann)::Γ) s ((body^x)[x↦fvar y]) (u[x↦fvar y])
+    -- Step 3: rewrite the LHS using (body^x)[x↦fvar y] = body^(fvar y)
+    have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
+      rw [subst_fvar_fvar_open_at]
+      simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
+      rw [subst_fvar_notin hfr]
+    rw [hlhs] at h2
+    exact h2
 
 /-- Top sub-reduces only to Top (or itself via MS-EQU).
     If Γ;s ⊢ Top ≤→ t then t = Top.
@@ -1576,7 +1654,7 @@ theorem commutativity
               -- Use equivRed_rename to get it for y
               have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
                 hy (List.mem_append_left _ (List.mem_append_right _ h))
-              have h := equivRed_rename htop_body_sub hx_dom hy_dom
+              have h := equivRed_rename htop_body_sub hx_dom hy_dom (sorry : x ∉ body₂.fvs)
               -- h : Equiv ((y,.sub dom)::Γ) s (body₂^y) (u₃.subst_fvar x (fvar y))
               -- (close x u₃)^y = u₃.subst_fvar x (fvar y) by open_close_subst
               rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
@@ -1643,7 +1721,7 @@ theorem commutativity
           (fun y hy => by
             have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
               hy (List.mem_append_left _ (List.mem_append_right _ h))
-            have h := equivRed_rename htop_body hx_dom hy_dom
+            have h := equivRed_rename htop_body hx_dom hy_dom (sorry : x ∉ body₂.fvs)
             -- h : LNEquivRed ((y,.sub dom)::Γ) [] (body₂^y) (u₃.subst_fvar x (fvar y))
             -- Need: ... (body₂^y) ((close x u₃)^y)
             -- (close x u₃)^y = u₃.subst_fvar x (fvar y) by open_close_subst (needs u₃.lc)
@@ -1656,7 +1734,7 @@ theorem commutativity
           (fun y hy => by
             have hy_dom' : y ∉ LNCtx.dom Γ' := fun h =>
               hy (List.mem_append_right _ h)
-            have h := subRed_rename hright_body hx_dom' hy_dom'
+            have h := subRed_rename hright_body hx_dom' hy_dom' (sorry : x ∉ body₁.fvs)
             -- h : LNSubRed ((y,.sub dom')::Γ') [] (body₁^y) (u₃.subst_fvar x (fvar y))
             rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
             exact h)
@@ -1694,7 +1772,7 @@ theorem commutativity
           (fun y hy => by
             have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
               hy (List.mem_append_left _ (List.mem_append_right _ h))
-            have h := equivRed_rename htop_body hx_dom hy_dom
+            have h := equivRed_rename htop_body hx_dom hy_dom (sorry : x ∉ body₂.fvs)
             rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
             exact h)
       · -- Right edge: use subRed_rename on hright_body
@@ -1702,7 +1780,7 @@ theorem commutativity
           (fun y hy => by
             have hy_dom' : y ∉ LNCtx.dom Γ' := fun h =>
               hy (List.mem_append_right _ h)
-            have h := subRed_rename hright_body hx_dom' hy_dom'
+            have h := subRed_rename hright_body hx_dom' hy_dom' (sorry : x ∉ body₁.fvs)
             rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
             exact h)
 termination_by t₀.sz
