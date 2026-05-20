@@ -110,9 +110,6 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
         let t' ← evalSubst fuel unf t
         let ty' ← evalSubst fuel unf ty
         .ok (.asc t' ty')
-    | .letE val body => do
-        let v ← evalSubst fuel unf val
-        evalSubst fuel unf (body.subst 0 v)
     | .app f a => do
         let f' ← evalSubst fuel unf f
         let a' ← evalSubst fuel unf a
@@ -528,7 +525,6 @@ private theorem exposePi_go_eq_whnfPi_go (fuel : Nat) (inhab : Expr)
     | .bvar _ => rfl
     | .type => rfl
     | .app _ _ => rfl
-    | .letE _ _ => rfl
 
 /-- `exposePi` (private, used by `synthNeutralType`) computes the same
 result as `whnfPi` (public). Proved inside the section where

@@ -27,11 +27,11 @@ Mirror of `concEval_fuel_mono` (`Och/Eval.lean`).  The proof structure
 is arm-for-arm identical; the only differences are:
 
 * `evalSubst` is `def` (not `partial def`) — and crucially, Lean
-  generates per-arm equation lemmas `evalSubst.eq_1` … `evalSubst.eq_10`
+  generates per-arm equation lemmas `evalSubst.eq_1` … `evalSubst.eq_9`
   that give us syntactic control over each step.  We rewrite with them
   directly rather than fighting `unfold` / `simp [evalSubst]` (the
   latter recurses; the former leaves un-reduced inner matches).
-* `evalSubst` uses `do`-notation in `letE` / `app`, which is
+* `evalSubst` uses `do`-notation in `app`, which is
   `Outcome.bind`.
 * `evalSubst` has more "value" arms: `.bvar k` for level-vars,
   `.bot`.  And the neutral-app cases return `.ok (.app f' a')`
@@ -80,19 +80,8 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
           rw [ht, hty] at h
           rw [ht', hty']
           exact h
-    | .letE val body =>
-      rw [evalSubst.eq_9] at h ⊢
-      -- `do let v ← X; Y v` reduces by cases on `X`.
-      match hv : evalSubst k unf val with
-      | .outOfFuel => rw [hv] at h; cases h
-      | .error _ => rw [hv] at h; cases h
-      | .ok vVal =>
-        have hv' := ih hv
-        rw [hv] at h
-        rw [hv']
-        exact ih h
     | .app f a =>
-      rw [evalSubst.eq_10] at h ⊢
+      rw [evalSubst.eq_9] at h ⊢
       match hf : evalSubst k unf f with
       | .outOfFuel => rw [hf] at h; cases h
       | .error _ => rw [hf] at h; cases h
@@ -130,7 +119,6 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
             · rename_i hcond; rw [if_pos hcond]; exact h
             · rename_i hcond; rw [if_neg hcond]; exact ih h
           | asc _ _ => simp only at h ⊢; exact ih h
-          | letE _ _ => simp only at h ⊢; exact h
           | app _ _ => simp only at h ⊢; exact h
 
 /-! ## Closedness preservation for `Expr.subst` and `evalSubst`
@@ -186,11 +174,6 @@ private theorem subst_closedAt_gen (body : Expr) (s : Expr) (n j : Nat)
     exact ⟨ih_ann s n j hj hbody.1 hs,
            ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
              (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
-  | letE val body ih_val ih_body =>
-    simp only [Expr.subst, Expr.closedAt, Bool.and_eq_true] at hbody ⊢
-    exact ⟨ih_val s n j hj hbody.1 hs,
-           ih_body (s.shift 1 0) (n + 1) (j + 1) (by omega) hbody.2
-             (Expr.shift_closedAt s n 1 0 (Nat.zero_le n) hs)⟩
 
 /-- `Expr.subst` preserves closedness: substituting a closed term
     into a body that's closed at depth 1 yields a closed term. -/
@@ -237,19 +220,8 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
           cases h
           simp only [Expr.closedAt, Bool.and_eq_true]
           exact ⟨ih hcl.1 ht, ih hcl.2 hty⟩
-    | .letE val body =>
-      rw [evalSubst.eq_9] at h
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      match hv : evalSubst k unf val with
-      | .outOfFuel => rw [hv] at h; cases h
-      | .error _ => rw [hv] at h; cases h
-      | .ok vVal =>
-        rw [hv] at h
-        have hvCl := ih hcl.1 hv
-        have hsubCl := subst_closedAt body vVal hcl.2 hvCl
-        exact ih hsubCl h
     | .app f a =>
-      rw [evalSubst.eq_10] at h
+      rw [evalSubst.eq_9] at h
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
       match hf : evalSubst k unf f with
       | .outOfFuel => rw [hf] at h; cases h
@@ -308,10 +280,6 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
             simp only at h
             simp only [Expr.closedAt, Bool.and_eq_true] at hfCl
             exact ih (by simp [Expr.closedAt, Bool.and_eq_true]; exact ⟨hfCl.1, haCl⟩) h
-          | letE _ _ =>
-            simp only at h; cases h
-            simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢
-            exact ⟨⟨hfCl.1, hfCl.2⟩, haCl⟩
           | app _ _ =>
             simp only at h; cases h
             simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢

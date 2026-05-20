@@ -22,7 +22,7 @@ Every other arm is either:
 
 - A pure value form (`.lam`, `.iota`, `.fix`, `.type`, `.bot`)
   that returns `.ok` immediately;
-- An eliminator (`.app`, `.letE`, `.asc`) that *propagates* the
+- An eliminator (`.app`, `.asc`) that *propagates* the
   results of recursive calls — in particular, the `.app` arm
   has a catch-all `.ok fVal, .ok aVal => .ok (.app fVal aVal)`
   that never errors on a non-functional head, it merely
@@ -72,7 +72,7 @@ depth 0 fails the predicate). All other cases either return
 `.ok` directly (lam/iota/fix/type/bot) or propagate via
 sub-evaluation, which we discharge by the inductive hypothesis
 on the closed sub-terms (using `subst_closedAt` for the
-`.letE`/β/μ-app reduction steps). -/
+β/μ-app reduction steps). -/
 theorem concEval_no_error {fuel : Nat} {e : Expr}
     (hcl : e.closedAt 0 = true) :
     ∀ msg, concEval fuel e ≠ .error msg := by

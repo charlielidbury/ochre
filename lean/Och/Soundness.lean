@@ -95,7 +95,7 @@ Proof in `Soundness/ConcEvalPreservation.lean` via the strengthened
 *bidirectional* equivalence `concEval_equiv` (`Subtype' [] [] e' e ∧
 Subtype' [] [] e e'`). The single-direction form below falls out by
 `Subtype'.trans` with the user's hypothesis. The bidirectional form is
-needed because `app_cong` and `letE_cong` are not contravariant in their
+needed because `app_cong` is not contravariant in its
 right-hand subterms, so swapping `f`/`a` in/out of an application spine
 requires both directions of `f ≡ fv` and `a ≡ av`. -/
 noncomputable def concEval_preservation

@@ -109,14 +109,17 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
   | `(och| fix $x:ident . $body:och) =>
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.fix Expr.type $body')
-  | `(och| let $x:ident : $ty:och = $val:och in $body:och) =>
-    let _ty' ← expand ctx ty; let val' ← expand ctx val
-    let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.letE $val' $body')
-  | `(och| let $x:ident = $val:och in $body:och) =>
+  | `(och| let $x:ident : $_ty:och = $val:och in $body:och) =>
+    -- Desugar: let x : T = v in body  ⟶  (λx:v. body) v
+    -- The domain is the value itself (singleton typing via top rule).
     let val' ← expand ctx val
     let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.letE $val' $body')
+    `(Expr.app (Expr.lam $val' $body') $val')
+  | `(och| let $x:ident = $val:och in $body:och) =>
+    -- Desugar: let x = v in body  ⟶  (λx:v. body) v
+    let val' ← expand ctx val
+    let body' ← expand (x.getId.toString :: ctx) body
+    `(Expr.app (Expr.lam $val' $body') $val')
   | `(och| $x:ident) =>
     let name := x.getId.toString
     match findIdx? ctx name with

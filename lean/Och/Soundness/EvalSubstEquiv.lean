@@ -70,22 +70,9 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
           simp only [Outcome.ok_bind, Outcome.ok.injEq] at h; subst h
           simp only [closedAt, Bool.and_eq_true]
           exact ⟨ih hcl.1 ht, ih hcl.2 hty⟩
-    | .letE val body =>
-      simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_9] at h
-      match hv : evalSubst k unf val with
-      | .outOfFuel => rw [hv] at h; cases h
-      | .error _ => rw [hv] at h; cases h
-      | .ok vVal =>
-        have hvcl := ih hcl.1 hv
-        rw [hv] at h
-        simp only [Outcome.ok_bind] at h
-        have hsub : (body.subst 0 vVal).closedAt 0 = true :=
-          Expr.subst_closedAt (by simpa using hcl.2) hvcl
-        exact ih hsub h
     | .app f a =>
       simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_10] at h
+      rw [evalSubst.eq_9] at h
       match hf : evalSubst k unf f with
       | .outOfFuel => rw [hf] at h; cases h
       | .error _ => rw [hf] at h; cases h
@@ -164,12 +151,6 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
                   = (inner.closedAt 0 && av.closedAt 0) := rfl
               rw [this, Bool.and_eq_true]; exact ⟨hfcl.1, hacl⟩
             exact ih hApp h
-          | letE vv b =>
-            simp only at h
-            simp only [Outcome.ok.injEq] at h; subst h
-            have : (Expr.app (.letE vv b) av).closedAt 0
-                = (closedAt 0 (.letE vv b) && closedAt 0 av) := rfl
-            rw [this, Bool.and_eq_true]; exact ⟨hfcl, hacl⟩
           | app f' a' =>
             simp only at h
             simp only [Outcome.ok.injEq] at h; subst h
@@ -231,34 +212,9 @@ def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
           refine ⟨?_, ?_⟩
           · exact .asc_L (.asc_R ht₁)
           · exact .asc_L (.asc_R ht₂)
-    | .letE val body, hcl, h =>
-      simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_9] at h
-      match hvEv : evalSubst n unf val with
-      | .outOfFuel => rw [hvEv] at h; cases h
-      | .error _ => rw [hvEv] at h; cases h
-      | .ok vv =>
-        simp only [hvEv] at h
-        have ⟨hvv₁, hvv₂⟩ := ih hcl.1 hvEv
-        have hvv_cl : vv.closedAt 0 = true := evalSubst_closedAt hcl.1 hvEv
-        simp only [Outcome.ok_bind] at h
-        have hbsub_cl : (body.subst 0 vv).closedAt 0 = true :=
-          Expr.subst_closedAt (by simpa using hcl.2) hvv_cl
-        have ⟨he₁, he₂⟩ := ih hbsub_cl h
-        refine ⟨?_, ?_⟩
-        · have step1 : Subtype' [] [] (body.subst 0 vv) (.letE vv body) :=
-            .letE_R (.refl _)
-          have step2 : Subtype' [] [] (.letE vv body) (.letE val body) :=
-            .letE_cong hvv₁ (.refl _)
-          exact .trans he₁ (.trans step1 step2)
-        · have step1 : Subtype' [] [] (.letE val body) (.letE vv body) :=
-            .letE_cong hvv₂ (.refl _)
-          have step2 : Subtype' [] [] (.letE vv body) (body.subst 0 vv) :=
-            .letE_L (.refl _)
-          exact .trans step1 (.trans step2 he₂)
     | .app f a, hcl, h =>
       simp only [closedAt, Bool.and_eq_true] at hcl
-      rw [evalSubst.eq_10] at h
+      rw [evalSubst.eq_9] at h
       match hfEv : evalSubst n unf f with
       | .outOfFuel => rw [hfEv] at h; cases h
       | .error _ => rw [hfEv] at h; cases h
@@ -387,10 +343,6 @@ def evalSubst_equiv {fuel unf : Nat} {e e' : Expr}
             refine ⟨?_, ?_⟩
             · exact .trans he₁ (.app_cong hInner_f ha₁ ha₂)
             · exact .trans (.app_cong hf_inner ha₂ ha₁) he₂
-          | letE vv b =>
-            simp only at h
-            simp only [Outcome.ok.injEq] at h; subst h
-            exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
           | app f' a' =>
             simp only at h
             simp only [Outcome.ok.injEq] at h; subst h

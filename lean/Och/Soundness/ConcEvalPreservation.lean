@@ -27,7 +27,7 @@ concEval fuel e = .ok e' → Subtype' [] [] e' e ∧ Subtype' [] [] e e'
 ```
 
 With both directions in hand, every sub-evaluation can be plugged
-into `app_cong` (and `letE_cong`) freely. The single-direction
+into `app_cong` freely. The single-direction
 preservation falls out by `Subtype'.trans` with the user's hypothesis.
 
 The closedness side-condition is needed to (a) rule out free `bvar`
@@ -42,8 +42,8 @@ the result of `concEval`. Strictly stronger than B3's
 single-direction preservation; closing this also closes B3.
 
 The "bidirectional" form is essential because `app_cong` and
-`letE_cong` are not contravariant in their right-hand subterm: to
-swap `f`/`a` for `fv`/`av` inside an application or let-binding
+`app_cong` is not contravariant in its right-hand subterm: to
+swap `f`/`a` for `fv`/`av` inside an application
 we need both `x ⊑ y` and `y ⊑ x` for each pair. -/
 def concEval_equiv {fuel : Nat} {e e' : Expr}
     (hcl : e.closedAt 0 = true)

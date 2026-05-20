@@ -354,10 +354,7 @@ the `.fix`/`.iota` case had no premise to discharge.
 
 **Fix**: a `.fix`/`.iota` arm in `tyCheck` that checks
 `subCheckVal (eval e) expected` directly (bypassing the
-annotation-trusting `tyInfer` path). `tyCheck`'s `.letE`
-arm, which consults `tyInfer val` to get the binder type,
-now also verifies `tyCheck val valTy` (which routes through
-the new `.fix`/`.iota` arm) before trusting it. `tyInfer`
+annotation-trusting `tyInfer` path). `tyInfer`
 itself is unchanged — `.app`-chains with fix heads
 (`add_ n m`, `appendArrays …`) need it to return the
 annotation so the head's domain/codomain can be computed,
@@ -376,19 +373,21 @@ mismatch (`unit_ ⊄ Nat_`). Same semantic outcome via the new API. -/
 theorem a9_fixIotaBodyChecked :
     Och.checkSubtype 200 (.fix Nat_ unit_) Nat_ = .ok false ∧
     Och.checkSubtype 200 (.iota Nat_ unit_) Nat_ = .ok false ∧
-    -- The `.letE`/`.app`-head paths:
-    Och.checkSubtype 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Nat_
+    -- The `.app`-head paths (letE removed; desugared to (λx:v. x) v):
+    Och.checkSubtype 200
+      (.app (.lam (.fix Nat_ unit_) (.bvar 0)) (.fix Nat_ unit_)) Nat_
       = .ok false ∧
     Och.checkSubtype 200 (.app (.fix Nat_ unit_) zero_) Nat_
       = .ok false ∧
     Och.checkSubtype 200
-      (.app (.letE (.fix (och{Nat_ → Nat_}) unit_) (.bvar 0)) zero_)
+      (.app (.app (.lam (.fix (och{Nat_ → Nat_}) unit_) (.bvar 0)) (.fix (och{Nat_ → Nat_}) unit_)) zero_)
       Nat_ = .ok false ∧
     -- positive controls: a *well-formed* fix still checks,
     -- and the let-bound ill-formed fix checks at its *actual*
     -- type (the value unfolds to `unit_`):
     Och.checkSubtype 200 (.fix Nat_ zero_) Nat_ = .ok true ∧
-    Och.checkSubtype 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Unit_
+    Och.checkSubtype 200
+      (.app (.lam (.fix Nat_ unit_) (.bvar 0)) (.fix Nat_ unit_)) Unit_
       = .ok true := by
   native_decide
 -- Regression for nested-fix-annotation programs (`appendVec`)

@@ -50,7 +50,6 @@ def Expr.size : Expr → Nat
   | .fix a b => 1 + Expr.size a + Expr.size b
   | .app f a => 1 + Expr.size f + Expr.size a
   | .asc t y => 1 + Expr.size t + Expr.size y
-  | .letE v b => 1 + Expr.size v + Expr.size b
 
 /-! ## Section 1: Eval-only
 

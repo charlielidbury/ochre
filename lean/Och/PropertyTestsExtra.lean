@@ -54,8 +54,6 @@ private def coreCorpus : List Expr := [
   och{ λx:Bool. x }, och{ λx:Type. x },
   -- ι / fix at small shapes
   .iota .type Nat_, .fix .type Nat_,
-  -- let
-  .letE zero_ (.bvar 0),
   -- compounds
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
   och{ succ_ zero_ }
@@ -551,33 +549,7 @@ theorem asc_concEval_transparent :
 
 end AscTransparency
 
-/-! ## 12. let-binding transparency
-
-`let x = v in body` β-reduces to `body[v/0]`. Pinned operationally:
-`concEval (let x = v in x) = concEval v`. -/
-
-section LetTransparency
-
-private def letCorpus : List Expr := [
-  zero_, one_, true_, unit_, Nat_, Std.Bool, dtrue
-]
-
-/-- `let x = v in x` evaluates to `v`. -/
-theorem letE_identity :
-    letCorpus.all (fun v =>
-      concEval 200 (.letE v (.bvar 0)) == concEval 200 v) = true := by
-  native_decide
-
-/-- Through the public surface: let is convertible with body[v/0]. -/
-theorem letE_subCheckE_transparent :
-    letCorpus.all (fun v =>
-      Och.checkSubtype 200 (.letE v (.bvar 0)) v == .ok true &&
-      Och.checkSubtype 200 v (.letE v (.bvar 0)) == .ok true) = true := by
-  native_decide
-
-end LetTransparency
-
-/-! ## 13. synth-rejection negative coverage
+/-! ## 12. synth-rejection negative coverage
 
 `Och.check` validates well-typedness end-to-end. These tests pin its
 *rejection* behaviour for hand-picked ill-typed terms — the

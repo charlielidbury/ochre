@@ -79,14 +79,6 @@ inductive WfWhnf : Ctx → Expr → Expr → Type where
       WfWhnf Γ e eV →
       Subtype' [] Γ eV τ →
       WfWhnf Γ (.asc e τ) eV
-  /-- Let-binding: value must be well-formed, body well-formed under
-      context extended with the value's type-witness. Self-typing
-      (the conversion rules S-Let-L/R in `Subtype'` relate the let
-      to its substituted form). -/
-  | letE {Γ : Ctx} {val body valV bodyV : Expr} :
-      WfWhnf Γ val valV →
-      WfWhnf (valV :: Γ) body bodyV →
-      WfWhnf Γ (.letE val body) (.letE val body)
   /-- Application: function and argument must be well-formed,
       function's type-witness must subtype a Π (possibly after
       fix/iota unfolding via `Subtype'`), and argument must subtype

@@ -101,11 +101,6 @@ def check (e : Expr) (fuel : Nat := 5000) (Γ : TyEnv := []) :
             .error s!"synth: ascription rejected (term ⊄ annotation)"
           else
             .ok ()
-    | .letE val body => do
-        check val fuel Γ
-        let valV ← evalSubst fuel SubstEval.unfBound val
-        -- Descend into body without substitution.
-        check body fuel (valV :: Γ)
     | .app f a => do
         check f fuel Γ
         check a fuel Γ

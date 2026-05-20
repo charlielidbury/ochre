@@ -62,7 +62,6 @@ $
            | & (e lt.eq tau)          & "ascription (erased at runtime)" \
            | & iota(x lt.eq tau). e   &               "self-type binder" \
            | & "fix"(x lt.eq tau). e  &               "recursive binder" \
-           | & "let" x = e_1 "in" e_2 &                    "let-binding"
 $
 
 There is no separate type category: every $tau$ above is itself a term.
@@ -80,8 +79,6 @@ rather than the precise type of $e$. From a theory perspective ascription is som
 *Fix* $"fix"(x lt.eq tau). e$ allows a term to be defined in terms of itself. $x$ is the reference to self, and $tau$ is the "upper bound" which the whole expression can be assumed to have while it's being type checked (which prevents loops during type checking).
 
 *Iota* $iota(x lt.eq tau). e$ allows a type to be defined in terms of *the term inhabiting it*. This means $e subset.sq.eq iota (x:tau_0). tau_1$ is reduced to $e subset.sq.eq tau_1[x arrow.r.bar e]$ during checking (notice: the LHS has moved to the RHS). This is a Cedille-style self type @fu-stump-2014, and allows for church encodings with dependent elimination instead of having to add datatypes to the language as a primitive.
-
-*Let* $"let" x = e_1 "in" e_2$ binds $e_1$ to $x$. We can't define $"let"$ in terms of $lambda$ + immediate application because lambdas require us to give an approximation of $e_1$ (the domain annotation) and for $e_2$ to work under that approximation. TODO: can we remove this?
 
 == Concrete semantics — the evaluation judgment <conc-eval>
 
@@ -105,7 +102,6 @@ value $v$."
   gutter: 1.5em,
   irule("E-Val", eval($v$, $v$)), irule("E-Asc", eval($(e lt.eq tau)$, $v$), eval($e$, $v$)),
 
-  irule("E-Let", eval($("let" x = e_1 "in" e_2)$, $v$), eval($e_1$, $v_1$), eval($e_2[x arrow.r.bar v_1]$, $v$)),
   irule("E-App", eval($f space a$, $v$), eval($f$, $lambda(x lt.eq tau). b$), eval($a$, $v_a$), eval(
     $b[x arrow.r.bar v_a]$,
     $v$,
@@ -193,7 +189,7 @@ knowing which category a rule belongs to predicts its shape.
     [no],
     [Congruence (@congruence)],
     [Match constructor on both sides; reduce to sub-obligations with variance],
-    [S-Lam, S-App-Cong, S-Iota-Cong, S-Fix-Cong, S-LetE-Cong],
+    [S-Lam, S-App-Cong, S-Iota-Cong, S-Fix-Cong],
     [no],
     [Productive unfolding (@productive)],
     [Unfold a recursive binder (ι/fix); extend $S$; enable coinductive closure],
@@ -201,7 +197,7 @@ knowing which category a rule belongs to predicts its shape.
     [*yes*],
     [Conversion (@conversion)],
     [Close under head reduction so subtyping is closed under computation],
-    [S-Beta-L/R, S-Let-L/R, S-Asc-L, S-Asc-L-Ann, S-Asc-R],
+    [S-Beta-L/R, S-Asc-L, S-Asc-L-Ann, S-Asc-R],
     [no],
   ),
   caption: [Rule taxonomy for declarative subtyping],
@@ -298,12 +294,6 @@ variance.
       sub($S$, $Gamma$, $"fix"(x lt.eq A_1). b_1$, $"fix"(x lt.eq A_2). b_2$),
       sub($S$, $Gamma$, $A_1$, $A_2$),
       sub($S$, $Gamma\, x lt.eq A_2$, $b_1$, $b_2$),
-    ),
-    irule(
-      "S-LetE-Cong",
-      sub($S$, $Gamma$, $"let" x = v_1 "in" b_1$, $"let" x = v_2 "in" b_2$),
-      sub($S$, $Gamma$, $v_1$, $v_2$),
-      sub($S$, $Gamma\, x lt.eq v_2$, $b_1$, $b_2$),
     ),
   ),
 ))
@@ -458,23 +448,6 @@ The subtyping relation must be closed under head reduction: if $a$ computes to $
 ))
 
 #align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("S-Let-L", sub($S$, $Gamma$, $"let" x = "val" "in" "body"$, $b$), sub(
-    $S$,
-    $Gamma$,
-    $"body"[x arrow.r.bar "val"]$,
-    $b$,
-  )),
-  irule("S-Let-R", sub($S$, $Gamma$, $a$, $"let" x = "val" "in" "body"$), sub(
-    $S$,
-    $Gamma$,
-    $a$,
-    $"body"[x arrow.r.bar "val"]$,
-  )),
-))
-
-#align(center, grid(
   columns: (1fr, 1fr, 1fr),
   gutter: 1.5em,
   irule("S-Asc-L", sub($S$, $Gamma$, $(e lt.eq tau)$, $b$), sub($S$, $Gamma$, $e$, $b$)),
@@ -536,7 +509,6 @@ The key design consequence of Och's "terms are types" philosophy is that there i
 #align(center, grid(
   columns: (1fr, 1fr),
   gutter: 1.5em,
-  irule("D-Let", ty($Gamma$, $"let" x = v "in" b$, $tau$), ty($Gamma$, $v$, $A$), ty($Gamma\, x lt.eq A$, $b$, $tau$)),
   irule("D-Asc", ty($Gamma$, $(e lt.eq tau)$, $tau$), ty($Gamma$, $tau$, $top$), ty($Gamma$, $e$, $tau$)),
 ))
 

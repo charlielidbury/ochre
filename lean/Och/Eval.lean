@@ -71,11 +71,6 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
     | .bvar k => .error s!"concEval: stuck on free bvar {k}"
     | .lam _ _ | .type | .bot | .iota _ _ | .fix _ _ => .ok e -- direct values
     | .asc term _ => concEval fuel term  -- runtime: erase ascription
-    | .letE val body =>
-      match concEval fuel val with
-      | .ok v => concEval fuel (body.subst 0 v)
-      | .outOfFuel => .outOfFuel
-      | .error s => .error s
     | .app f a =>
       match concEval fuel f, concEval fuel a with
       | .ok (.lam _dom body), .ok aVal =>
@@ -101,7 +96,7 @@ the pragmatic route for closing `Equiv.shift`'s nil-Γ sorry
 (see DECISION-LOG 2026-04-21).
 
 Proof by induction on fuel + case on `e`. Uses
-`Expr.subst_closedAt_gen` at `j=0, n=0` for the β/let-binder
+`Expr.subst_closedAt_gen` at `j=0, n=0` for the β-binder
 cases to show `(body.subst 0 v).closedAt 0` from
 `body.closedAt 1` and `v.closedAt 0`. -/
 theorem concEval_closedAt {n : Nat} {e v : Expr}
@@ -115,7 +110,7 @@ theorem concEval_fuel_mono {n : Nat} {e v : Expr}
 
 /-! ## concEval shape lemmas
 
-concEval never produces bvar/asc/letE at the top level. This is a structural
+concEval never produces bvar/asc at the top level. This is a structural
 invariant: the base cases (lam, type, ι, fix) never produce them, and the
 recursive cases just propagate inner results. The catch-all (neutral app)
 produces app. -/
@@ -130,10 +125,6 @@ theorem concEval_not_asc {fuel : Nat} {e : Expr} {t ty : Expr}
     (h : concEval fuel e = .ok (.asc t ty)) : False := by
   sorry
 
-theorem concEval_not_letE {fuel : Nat} {e v body : Expr}
-    (h : concEval fuel e = .ok (.letE v body)) : False := by
-  sorry
-
 /-- Concrete normal form: the shape of concEval outputs.
     Values are lam/type/iota/fix (base values) or neutral applications where
     the function is not lam/iota/fix (not a redex) and sub-expressions are ConcNF. -/
@@ -144,7 +135,7 @@ inductive ConcNF : Expr → Prop
   | iota (ann body : Expr) : ConcNF (.iota ann body)
   | fix (ann body : Expr) : ConcNF (.fix ann body)
   | app (f a : Expr) : ConcNF f → ConcNF a →
-      (match f with | .lam _ _ | .iota _ _ | .fix _ _ | .letE _ _ => False | _ => True) → ConcNF (.app f a)
+      (match f with | .lam _ _ | .iota _ _ | .fix _ _ => False | _ => True) → ConcNF (.app f a)
 
 /-- concEval always produces ConcNF values. -/
 theorem concEval_ConcNF {fuel : Nat} {e v : Expr}

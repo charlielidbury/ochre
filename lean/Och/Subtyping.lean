@@ -128,15 +128,6 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
       Subtype' ((Γ.length, .fix ann₁ body₁, .fix ann₂ body₂) :: S) Γ ann₁ ann₂ →
       Subtype' ((Γ.length, .fix ann₁ body₁, .fix ann₂ body₂) :: S) (ann₂ :: Γ) body₁ body₂ →
       Subtype' S Γ (.fix ann₁ body₁) (.fix ann₂ body₂)
-  /-- letE-congruence. Admissible via `.letE_L (.letE_R …)` +
-  `subst_body` + `subst_resp`; having it as a constructor
-  breaks the circularity in `Equiv.subst_resp`'s `.letE`
-  case. The body is at `(val₂ :: Γ)` so `.bvar 0` ascends to
-  the (target) bound value — singleton typing of the let. -/
-  | letE_cong {S Γ val₁ val₂ body₁ body₂} :
-      Subtype' S Γ val₁ val₂ →
-      Subtype' S (val₂ :: Γ) body₁ body₂ →
-      Subtype' S Γ (.letE val₁ body₁) (.letE val₂ body₂)
   /-- iotaIntro (value-sub, Cedille-style). The goal is added
   to `S` (tagged with the current depth) before recursing —
   both premises may use it. -/
@@ -194,13 +185,6 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   | beta_R {S Γ a dom body arg} :
       Subtype' S Γ a (body.subst 0 arg) →
       Subtype' S Γ a (.app (.lam dom body) arg)
-  /-- let-conversion (`let x = v in e ↝ e[x:=v]`). -/
-  | letE_L {S Γ val body b} :
-      Subtype' S Γ (body.subst 0 val) b →
-      Subtype' S Γ (.letE val body) b
-  | letE_R {S Γ a val body} :
-      Subtype' S Γ a (body.subst 0 val) →
-      Subtype' S Γ a (.letE val body)
   /-- Ascription on LHS: transparent (sees inner value).
       Needed by `concEval_equiv` since runtime erases ascriptions. -/
   | asc_L {S Γ e τ b} :
@@ -248,7 +232,6 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
   | fix_cong _ _ ihA ihB =>
       exact .fix_cong (ihA (List.cons_subset_cons _ hsub))
                        (ihB (List.cons_subset_cons _ hsub))
-  | letE_cong _ _ ihV ihB => exact .letE_cong (ihV hsub) (ihB hsub)
   | iota_intro _ _ ih1 ih2 =>
       refine .iota_intro (ih1 ?_) (ih2 ?_) <;>
       · intro p hp
@@ -282,8 +265,6 @@ noncomputable def Subtype'.weaken {S S' Γ a b}
       | tail _ h => exact List.mem_cons_of_mem _ (hsub _ h)
   | beta_L _ ih => exact .beta_L (ih hsub)
   | beta_R _ ih => exact .beta_R (ih hsub)
-  | letE_L _ ih => exact .letE_L (ih hsub)
-  | letE_R _ ih => exact .letE_R (ih hsub)
   | asc_L _ ih => exact .asc_L (ih hsub)
   | asc_L_ann _ ih => exact .asc_L_ann (ih hsub)
   | asc_R _ ih => exact .asc_R (ih hsub)
@@ -588,14 +569,6 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
       simp only [List.map_cons, hhead, List.length_cons,
                  Ctx.shiftPrefix_cons, List.cons_append] at hb
       simpa [Expr.shift] using hb
-  | @letE_cong S' Γ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
-    intro Γpfx hpfx
-    subst hpfx
-    simp only [Expr.shift]
-    refine .letE_cong (ihV Γpfx rfl) ?_
-    have hb := ihB (v₂ :: Γpfx) (List.cons_append .. ▸ rfl)
-    simpa only [List.length_cons, Ctx.shiftPrefix_cons,
-               List.cons_append] using hb
   | @iota_intro S' Γ' a' ann body _ _ ih1 ih2 =>
     intro Γpfx hpfx
     subst hpfx
@@ -701,20 +674,6 @@ noncomputable def Subtype'.ctx_extend_at {Γ} (Δ : Ctx) :
     subst hpfx
     simp only [Expr.shift]
     refine .beta_R ?_
-    have := ih Γpfx rfl
-    simpa [Expr.subst_shift_swap] using this
-  | @letE_L S' Γ' val body b' _ ih =>
-    intro Γpfx hpfx
-    subst hpfx
-    simp only [Expr.shift]
-    refine .letE_L ?_
-    have := ih Γpfx rfl
-    simpa [Expr.subst_shift_swap] using this
-  | @letE_R S' Γ' a' val body _ ih =>
-    intro Γpfx hpfx
-    subst hpfx
-    simp only [Expr.shift]
-    refine .letE_R ?_
     have := ih Γpfx rfl
     simpa [Expr.subst_shift_swap] using this
   | asc_L _ ih =>
@@ -865,11 +824,6 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       refine .fix_cong ?_ ?_
       · exact hlen ▸ ihA Γ' rfl
       · exact hlen ▸ ihB (a₂ :: Γ') (List.cons_append .. ▸ rfl)
-  | @letE_cong S' Δ' v₁ v₂ b₁ b₂ _ _ ihV ihB =>
-      intro Γ' hΔ
-      subst hΔ
-      exact .letE_cong (ihV Γ' rfl)
-        (ihB (v₂ :: Γ') (List.cons_append .. ▸ rfl))
   | @iota_intro S' Δ' a' ann body _ _ ih1 ih2 =>
       intro Γ' hΔ
       subst hΔ
@@ -915,8 +869,6 @@ noncomputable def Subtype'.narrow_at {Γ domA domB}
       exact .unfold_iota_R h1
   | beta_L _ ih => exact fun Γ' hΔ => .beta_L (ih Γ' hΔ)
   | beta_R _ ih => exact fun Γ' hΔ => .beta_R (ih Γ' hΔ)
-  | letE_L _ ih => exact fun Γ' hΔ => .letE_L (ih Γ' hΔ)
-  | letE_R _ ih => exact fun Γ' hΔ => .letE_R (ih Γ' hΔ)
   | asc_L _ ih => exact fun Γ' hΔ => .asc_L (ih Γ' hΔ)
   | asc_L_ann _ ih => exact fun Γ' hΔ => .asc_L_ann (ih Γ' hΔ)
   | asc_R _ ih => exact fun Γ' hΔ => .asc_R (ih Γ' hΔ)
@@ -1141,7 +1093,7 @@ form `tyInfer_sound_open` actually needs. Documented as
 `Γ.length` is the identity, so the statement trivially reduces
 to the input derivation at `(X :: Γ)`. This is the cutoff-`|Γ|`
 variant of UNSHIFT — NOT the cutoff-0 variant `tyInfer_sound_open`
-needs for its `.letE`/`.app β`/`.app let-float` arms. -/
+needs for its `.app β` arms. -/
 def Subtype'.unshift_trivial {S Γ X a b}
     (ha : a.closedAt Γ.length = true)
     (hb : b.closedAt Γ.length = true)
@@ -1153,8 +1105,7 @@ def Subtype'.unshift_trivial {S Γ X a b}
 
 /-! ### UNSHIFT at cutoff 0, head-position
 
-The key lemma needed by `tyInfer_sound_open`'s `.letE`/`.app β`/
-`.app let-float` arms:
+The key lemma needed by `tyInfer_sound_open`'s `.app β` arms:
 
 ```
   Subtype' [] (X :: Γ) (a.shift 1 0) (b.shift 1 0) →
@@ -1176,7 +1127,7 @@ their `a`, `b` substituted. Productive rules (`iota_intro`,
 `unfold_*`) maintain this invariant.
 
 **Binder generalisation**. Binder cases (`.lam`, iota/fix body
-rules, `letE_cong`, `iota_intro` producing body subst, the four
+rules, `iota_intro` producing body subst, the four
 `unfold_*` rules' body substitution arithmetic) require
 recursing at `(dB :: X :: Γ)` where the inner IH would need
 substitution at position 1 (not 0). This necessitates a

@@ -121,9 +121,6 @@ private theorem whnfPi_go_closedAt (fuel : Nat) (inhab : Expr)
       -- whnfPi.go strips the ascription and recurses on inner.
       simp only [closedAt, Bool.and_eq_true] at hcl
       exact ih inner piExpr hcl.1 hgo
-    | .letE _ _ =>
-      simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact hcl
 
 /-- `whnfPi` preserves `closedAt 0`: if the input type and inhabitant
 are closed, the output is closed. -/
@@ -207,7 +204,6 @@ private theorem neutralType_closedAt {fuel : Nat} {e ty : Expr}
     | .lam _ _ => simp only [] at h; cases h
     | .iota _ _ => simp only [] at h; cases h
     | .asc _ _ => simp only [] at h; cases h
-    | .letE _ _ => simp only [] at h; cases h
 
 /-! ## whnfPi soundness
 
@@ -307,9 +303,6 @@ private noncomputable def whnfPi_go_sound
       -- Derive: inhab ⊑ inner from inhab ⊑ .asc inner ty via
       -- trans with asc_L (refl inner) : (.asc inner ty) ⊑ inner.
       exact ih inner piExpr hcl.1 (hsub.trans (.asc_L (.refl inner))) hgo
-    | .letE _ _ =>
-      simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact hsub
 
 /-- Top-level `whnfPi` soundness: if `whnfPi fuel inhab ty = some piExpr`
 and `inhab ⊑ ty`, then `inhab ⊑ piExpr`. Composes the initial
