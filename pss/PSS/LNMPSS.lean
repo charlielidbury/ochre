@@ -68,17 +68,31 @@ Several kinds of `sorry` remain:
 
 ## Remaining Axioms
 The remaining axioms (equivRed_weaken, subRed_weaken,
-equivRed_stack_ext, subRed_stack_ext, equivRed_subst, subRed_subst,
+equivRed_stack_ext, subRed_stack_ext,
 me_bet_body_noPromoAt, commutativity_noPromoAt)
 are standard LN infrastructure lemmas that require additional machinery:
-- **subst**: needs a well-formedness invariant (x ∉ fvs of the annotation
-  at position x) to handle the me_pro case where the substituted variable is promoted.
-  This invariant holds by construction (annotation values are determined before
-  the fresh variable is chosen) but is not formally tracked.
 - **stack_ext**: needs annotation swap (changing .sub to .equiv when a lambda
   meets a non-empty stack via me_fop instead of me_fun).
 - **weaken**: needs the annotation reduction relationship from LNCtxRed, not
   just context inclusion; essentially requires commutativity-like reasoning.
+
+## Sorry'd Theorems (formerly axioms)
+- `equivRed_subst` / `subRed_subst`: converted from axioms to sorry'd theorems.
+  Full proof requires mutual induction on derivation structure. Key blockers:
+  (1) ME-APP case: the stack parameter in the conclusion is not substituted,
+      but the me_app constructor pushes an operand onto the stack that DOES
+      need substitution. Requires a strengthened motive that substitutes
+      stack elements, then a final step showing s.map (subst x v) = s
+      when x does not appear free in stack elements (well-formedness).
+  (2) Cofinite body cases (ME-BET/ME-FUN/MS-FUN): the body premise has
+      context (y,ann_y)::(x,ann)::G where x is not at the head. The recursor
+      IH can only peel the head binding. Requires context permutation
+      (ctx_swap_sub_ctx, now proved) plus annotation well-formedness
+      (dom.subst x v = dom when x not free in dom).
+  (3) ME-PRO/MS-PRO cases: need x not free in annotation terms from the
+      context (well-formedness invariant not formally tracked).
+  Infrastructure lemmas proved toward this: subst_open_at_gen, open_subst_comm,
+  ctx_swap_sub_ctx.
 -/
 
 /-! ## Terms -/
@@ -734,23 +748,34 @@ theorem ctxRed_nil_of_ctxRed
 
 /-- Substitution for ≡→ (Lemma 32).
     If (x,ann)::Γ; s ⊢ u ≡→ u' and Γ;[] ⊢ v ≡→ v'
-    then Γ;s ⊢ u[x↦v] ≡→ u'[x↦v']. -/
-axiom equivRed_subst
+    then Γ;s ⊢ u[x↦v] ≡→ u'[x↦v'].
+
+    Formerly an axiom, now a sorry'd theorem. The proof requires mutual
+    induction with `subRed_subst` and a strengthened motive that also
+    substitutes stack elements. See the file header for details on blockers.
+    Infrastructure lemmas `subst_open_at_gen`, `open_subst_comm`, and
+    `ctx_swap_sub_ctx` are proved toward this goal. -/
+theorem equivRed_subst
     {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
     {u u' v v' : LNExpr}
     (hbody : LNEquivRed ((x, ann) :: Γ) s u u')
     (harg  : LNEquivRed Γ [] v v')
-    : LNEquivRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v')
+    : LNEquivRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v') := by
+  sorry
 
 /-- Substitution for ≤→ (Lemma 30).
     If (x,ann)::Γ; s ⊢ u ≤→ u' and x ∉ dom(Γ)
-    then Γ;s ⊢ u[x↦v] ≤→ u'[x↦v]. -/
-axiom subRed_subst
+    then Γ;s ⊢ u[x↦v] ≤→ u'[x↦v].
+
+    Formerly an axiom, now a sorry'd theorem. See `equivRed_subst` for
+    proof strategy and blockers. -/
+theorem subRed_subst
     {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
     {u u' v : LNExpr}
     (hbody : LNSubRed ((x, ann) :: Γ) s u u')
     (hfresh : x ∉ LNCtx.dom Γ)
-    : LNSubRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v)
+    : LNSubRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v) := by
+  sorry
 
 /-- Context lookup: x ≤ t ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≤ t' ∈ Γ'
     with Γ;[] ⊢ t ≡→ t'.
@@ -1120,6 +1145,95 @@ theorem subst_fvar_double (e : LNExpr) (x y : String) (v : LNExpr)
   | app f a ih_f ih_a =>
     simp [LNExpr.fvs, List.mem_append] at hfresh
     simp [LNExpr.subst_fvar, ih_f hfresh.1, ih_a hfresh.2]
+
+/-- lc_at is monotone: if lc_at k then lc_at k' for any k' >= k. -/
+private theorem lc_at_mono {e : LNExpr} {k k' : Nat} (hle : k ≤ k')
+    (h : e.lc_at k) : e.lc_at k' := by
+  induction e generalizing k k' with
+  | bvar n => simp [LNExpr.lc_at] at *; omega
+  | fvar _ => trivial
+  | top => trivial
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.lc_at] at *
+    exact ⟨ih_dom hle h.1, ih_body (by omega) h.2⟩
+  | app f a ih_f ih_a =>
+    simp [LNExpr.lc_at] at *
+    exact ⟨ih_f hle h.1, ih_a hle h.2⟩
+
+/-- Opening a locally-closed term with any term at any depth is a no-op.
+    If `e.lc_at k` then `e.open_at k u = e`. -/
+private theorem open_at_lc {e : LNExpr} {k : Nat} {u : LNExpr}
+    (hlc : e.lc_at k) : e.open_at k u = e := by
+  induction e generalizing k with
+  | bvar n =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.open_at]
+    omega
+  | fvar _ => rfl
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.open_at, ih_dom hlc.1, ih_body hlc.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.open_at, ih_f hlc.1, ih_a hlc.2]
+
+/-- Substitution commutes with opening by a fresh variable:
+    `(e.open_at k (fvar y)).subst_fvar x v = (e.subst_fvar x v).open_at k (fvar y)`
+    when `y != x` and `v` is locally closed at depth `k`.
+    Standard locally nameless infrastructure.
+    Proved by structural induction on `e`. -/
+theorem open_subst_comm (e : LNExpr) (x y : String) (v : LNExpr) (k : Nat)
+    (hyx : y ≠ x) (hlc : v.lc_at k)
+    : (e.open_at k (.fvar y)).subst_fvar x v = (e.subst_fvar x v).open_at k (.fvar y) := by
+  induction e generalizing k with
+  | bvar n =>
+    simp only [LNExpr.open_at]
+    split
+    · -- n == k: LHS = (fvar y).subst_fvar x v = fvar y (since y != x)
+      simp only [LNExpr.subst_fvar]
+      have : ¬(y == x) = true := by simp [beq_iff_eq]; exact hyx
+      simp [this, LNExpr.subst_fvar, LNExpr.open_at, *]
+    · simp [LNExpr.subst_fvar, LNExpr.open_at, *]
+  | fvar z =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar]
+    by_cases hzx : z == x
+    · -- z = x: LHS = v, RHS = v.open_at k (fvar y)
+      -- v is lc at k, so open_at k is a no-op on v
+      simp [hzx, open_at_lc hlc]
+    · simp [hzx, LNExpr.open_at]
+  | top => simp [LNExpr.open_at, LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.open_at, LNExpr.subst_fvar, ih_dom k hlc,
+      ih_body (k + 1) (lc_at_mono (by omega) hlc)]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.open_at, LNExpr.subst_fvar, ih_f k hlc, ih_a k hlc]
+
+/-- Context permutation: swapping two bindings with different names
+    preserves lookup results. -/
+theorem ctx_swap_sub_ctx {x y : String} {ann_x ann_y : LNAnn} {Γ : LNCtx}
+    (hne : y ≠ x)
+    : LNCtx.sub_ctx ((y, ann_y) :: (x, ann_x) :: Γ) ((x, ann_x) :: (y, ann_y) :: Γ) := by
+  intro z a hlook
+  simp only [LNCtx.lookup'] at *
+  by_cases hyz : y = z
+  · -- y = z: in the swapped context, y is second, skip x first
+    subst hyz
+    have hxny : ¬ x = y := Ne.symm hne
+    simp only [beq_self_eq_true, ite_true] at hlook
+    simp only [show (x == y) = false from by rw [beq_eq_false_iff_ne]; exact hxny,
+      ite_false, beq_self_eq_true, ite_true]
+    exact hlook
+  · -- y != z: skip y in both
+    have hyzf : (y == z) = false := by rw [beq_eq_false_iff_ne]; exact hyz
+    simp only [hyzf, ite_false] at hlook
+    by_cases hxz : x = z
+    · subst hxz
+      simp only [beq_self_eq_true, ite_true] at hlook ⊢
+      exact hlook
+    · have hxzf : (x == z) = false := by rw [beq_eq_false_iff_ne]; exact hxz
+      simp only [hxzf, ite_false, hyzf, ite_false] at hlook ⊢
+      exact hlook
 
 /-- Alpha-renaming for ≡→ under binders.
     If (x,ann)::Γ; s ⊢ body^x ≡→ u and y ∉ dom(Γ) and x ∉ dom(Γ),
