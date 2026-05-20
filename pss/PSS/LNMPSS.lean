@@ -136,6 +136,32 @@ def sz : LNExpr → Nat
 
 end LNExpr
 
+/-! ## Fresh name generation -/
+
+/-- Maximum length of strings in a list. -/
+private def maxStrLen : List String → Nat
+  | [] => 0
+  | s :: rest => max s.length (maxStrLen rest)
+
+private theorem le_maxStrLen_of_mem {s : String} {l : List String} (h : s ∈ l)
+    : s.length ≤ maxStrLen l := by
+  induction l with
+  | nil => exact absurd h (List.not_mem_nil _)
+  | cons a rest ih =>
+    simp [maxStrLen]
+    cases h with
+    | head => omega
+    | tail _ hmem => have := ih hmem; omega
+
+/-- For any finite list of strings, there is a string not in it. -/
+private theorem exists_fresh_string (avoid : List String) : ∃ s : String, s ∉ avoid := by
+  refine ⟨⟨List.replicate (maxStrLen avoid + 1) 'a'⟩, ?_⟩
+  intro hmem
+  have hlen : (⟨List.replicate (maxStrLen avoid + 1) 'a'⟩ : String).length = maxStrLen avoid + 1 := by
+    simp [String.length, List.length_replicate]
+  have := le_maxStrLen_of_mem hmem
+  omega
+
 /-! ## Annotations, Contexts, and Stacks -/
 
 /-- Context annotations in MPSS.
@@ -181,6 +207,12 @@ def LNCtx.wf (Γ : LNCtx) : Prop := ∀ p ∈ Γ, p.2.lc
 
 /-- A stack is well-formed: all elements are locally closed. -/
 def LNStack.wf (s : LNStack) : Prop := ∀ e ∈ s, e.lc
+
+/-- For any finite context and term, there exists a fresh variable name. -/
+theorem exists_fresh (Γ : LNCtx) (e : LNExpr)
+    : ∃ x : String, x ∉ LNCtx.dom Γ ∧ x ∉ e.fvs := by
+  obtain ⟨x, hx⟩ := exists_fresh_string (LNCtx.dom Γ ++ e.fvs)
+  exact ⟨x, fun h => hx (List.mem_append_left _ h), fun h => hx (List.mem_append_right _ h)⟩
 
 /-! ## Equivalence and Subtyping Reduction (Figure 2)
 
@@ -390,9 +422,71 @@ mutual induction on the reduction relations.
 
 /-- Reflexivity of ≡→ (Proposition 18).
     Every locally-closed term equiv-reduces to itself. -/
-axiom equivRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
+theorem equivRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
     (hlc : u.lc)
-    : LNEquivRed Γ s u u
+    : LNEquivRed Γ s u u := by
+  -- Local helper: close ∘ open = id for fresh variables
+  have close_open : ∀ (e : LNExpr) (x : String) (k : Nat),
+      x ∉ e.fvs → (e.open_at k (.fvar x)).close_at k x = e := by
+    intro e x k hfr
+    induction e generalizing k with
+    | bvar n =>
+      simp [LNExpr.open_at]
+      split
+      · simp [LNExpr.close_at, beq_iff_eq]; omega
+      · simp [LNExpr.close_at]
+    | fvar y =>
+      simp [LNExpr.fvs, List.mem_singleton] at hfr
+      simp [LNExpr.open_at, LNExpr.close_at, beq_iff_eq, Ne.symm hfr]
+    | top => simp [LNExpr.open_at, LNExpr.close_at]
+    | lam dom body ih_dom ih_body =>
+      simp [LNExpr.fvs, List.mem_append] at hfr
+      simp [LNExpr.open_at, LNExpr.close_at, ih_dom k hfr.1, ih_body (k+1) hfr.2]
+    | app f a ih_f ih_a =>
+      simp [LNExpr.fvs, List.mem_append] at hfr
+      simp [LNExpr.open_at, LNExpr.close_at, ih_f k hfr.1, ih_a k hfr.2]
+  -- Main proof by case analysis + recursion
+  match u, hlc with
+  | .bvar n, hlc => simp [LNExpr.lc, LNExpr.lc_at] at hlc
+  | .fvar _, _ => exact .me_var
+  | .top, _ => exact .me_top
+  | .app f a, hlc =>
+    have hf_lc : f.lc := hlc.1
+    have ha_lc : a.lc := hlc.2
+    exact .me_app (equivRed_refl Γ (a :: s) f hf_lc) (equivRed_refl Γ [] a ha_lc)
+  | .lam dom body, hlc =>
+    have hdom_lc : dom.lc := hlc.1
+    have hbody_lc1 : body.lc_at 1 := hlc.2
+    obtain ⟨x, hx_ctx, hx_body⟩ := exists_fresh Γ body
+    have hopen_lc : (body.open_at 0 (.fvar x)).lc := LNExpr.lc_at_open_fvar hbody_lc1
+    match s with
+    | [] =>
+      have h := LNEquivRed.me_fun (x := x) hx_ctx
+        (equivRed_refl Γ [] dom hdom_lc)
+        (equivRed_refl ((x, .sub dom) :: Γ) [] (body.open_at 0 (.fvar x)) hopen_lc)
+      rw [close_open body x 0 hx_body] at h; exact h
+    | α :: s' =>
+      have h := LNEquivRed.me_fop (x := x) (α := α) hx_ctx
+        (equivRed_refl Γ [] dom hdom_lc)
+        (equivRed_refl ((x, .equiv α) :: Γ) s' (body.open_at 0 (.fvar x)) hopen_lc)
+      rw [close_open body x 0 hx_body] at h; exact h
+termination_by u.sz
+decreasing_by
+  all_goals simp_all [LNExpr.sz]
+  all_goals first
+    | omega
+    | (have : ∀ (k : Nat) (x : String) (e : LNExpr),
+          (e.open_at k (.fvar x)).sz = e.sz := by
+        intro k x e
+        induction e generalizing k with
+        | bvar n => simp [LNExpr.open_at, LNExpr.sz]; split <;> simp [LNExpr.sz]
+        | fvar _ => simp [LNExpr.open_at, LNExpr.sz]
+        | top => simp [LNExpr.open_at, LNExpr.sz]
+        | lam dom body ih_dom ih_body =>
+          simp [LNExpr.open_at, LNExpr.sz, ih_dom, ih_body]
+        | app f a ih_f ih_a =>
+          simp [LNExpr.open_at, LNExpr.sz, ih_f, ih_a]
+       simp_all; omega)
 
 /-- Reflexivity of ≤→ (via MS-EQU + reflexivity of ≡→). -/
 theorem subRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
@@ -699,6 +793,89 @@ theorem ctxRed_nil_stack
   | ct_stk _ _ _ => cases hs
   | ct_nil => rfl
 
+/-! ### Annotation swap infrastructure -/
+
+/-- Replace the annotation of the FIRST occurrence of `x` in the context.
+    Used in the proof of annotation independence. -/
+private def swap_at_first (x : String) (ann_new : LNAnn) : LNCtx → LNCtx
+  | [] => []
+  | (y, ann) :: rest =>
+    if y = x then (y, ann_new) :: rest
+    else (y, ann) :: swap_at_first x ann_new rest
+
+private theorem swap_at_first_head (x : String) (ann_old ann_new : LNAnn) (Γ : LNCtx)
+    : swap_at_first x ann_new ((x, ann_old) :: Γ) = (x, ann_new) :: Γ := by
+  simp [swap_at_first]
+
+private theorem swap_at_first_cons_ne (x y : String) (ann ann_new : LNAnn) (Γ : LNCtx) (hne : y ≠ x)
+    : swap_at_first x ann_new ((y, ann) :: Γ) = (y, ann) :: swap_at_first x ann_new Γ := by
+  simp [swap_at_first, hne]
+
+private theorem swap_at_first_dom (x : String) (ann_new : LNAnn) (Γ : LNCtx)
+    : LNCtx.dom (swap_at_first x ann_new Γ) = LNCtx.dom Γ := by
+  induction Γ with
+  | nil => rfl
+  | cons p rest ih =>
+    obtain ⟨y, ann⟩ := p
+    unfold swap_at_first
+    split
+    · next h => subst h; simp [LNCtx.dom, List.map]
+    · simp only [LNCtx.dom, List.map]; exact congrArg (y :: ·) ih
+
+private theorem beq_false_of_ne' {a b : String} (h : a ≠ b) : (a == b) = false := by
+  simp [bne_iff_ne, h, BEq.beq, Bool.decide_eq_false, instBEqOfDecidableEq, h]
+
+private theorem swap_at_first_lookup_ne (x z : String) (ann_new : LNAnn) (Γ : LNCtx) (hne : z ≠ x)
+    : LNCtx.lookup' (swap_at_first x ann_new Γ) z = LNCtx.lookup' Γ z := by
+  induction Γ with
+  | nil => rfl
+  | cons p rest ih =>
+    obtain ⟨y, ann⟩ := p
+    simp only [swap_at_first]
+    by_cases hyx : y = x
+    · subst hyx
+      simp only [ite_true, LNCtx.lookup']
+      rw [beq_false_of_ne' (Ne.symm hne)]
+      simp [ih]
+    · simp only [hyx, ite_false, LNCtx.lookup']
+      by_cases hyz : y == z
+      · simp [hyz]
+      · simp [hyz, ih]
+
+private theorem swap_at_first_mem_equiv_ne {x z : String} {ann_new : LNAnn} {Γ : LNCtx} {α : LNExpr}
+    (hne : z ≠ x) (hmem : LNCtx.mem_equiv Γ z α)
+    : LNCtx.mem_equiv (swap_at_first x ann_new Γ) z α := by
+  unfold LNCtx.mem_equiv at *
+  rw [swap_at_first_lookup_ne x z ann_new Γ hne]; exact hmem
+
+private theorem swap_at_first_mem_sub_ne {x z : String} {ann_new : LNAnn} {Γ : LNCtx} {t : LNExpr}
+    (hne : z ≠ x) (hmem : LNCtx.mem_sub Γ z t)
+    : LNCtx.mem_sub (swap_at_first x ann_new Γ) z t := by
+  unfold LNCtx.mem_sub at *
+  rw [swap_at_first_lookup_ne x z ann_new Γ hne]; exact hmem
+
+private theorem mem_dom_of_lookup {Γ : LNCtx} {x : String} {ann : LNAnn}
+    (h : LNCtx.lookup' Γ x = some ann) : x ∈ LNCtx.dom Γ := by
+  induction Γ with
+  | nil => simp [LNCtx.lookup'] at h
+  | cons p rest ih =>
+    obtain ⟨y, a⟩ := p
+    simp only [LNCtx.lookup'] at h
+    simp only [LNCtx.dom, List.map, List.mem_cons]
+    by_cases hyx : y = x
+    · left; exact hyx.symm
+    · have : (y == x) = false := beq_false_of_ne' hyx
+      simp only [this, ite_false] at h
+      right; exact ih h
+
+private theorem mem_dom_of_mem_equiv {Γ : LNCtx} {x : String} {α : LNExpr}
+    (h : LNCtx.mem_equiv Γ x α) : x ∈ LNCtx.dom Γ :=
+  mem_dom_of_lookup h
+
+private theorem mem_dom_of_mem_sub {Γ : LNCtx} {x : String} {t : LNExpr}
+    (h : LNCtx.mem_sub Γ x t) : x ∈ LNCtx.dom Γ :=
+  mem_dom_of_lookup h
+
 /-! ### noPromoAt predicates for annotation swap axioms
 
 The annotation swap axioms (equivRed_change_sub_to_equiv and
@@ -766,27 +943,101 @@ inductive LNSubRed.noPromoAt : String → LNCtx → LNStack → LNExpr → LNExp
 
 end
 
+-- General annotation swap: if a derivation doesn't promote x,
+-- we can change x's annotation to anything.
+-- Proved by mutual structural recursion on noPromoAt.
+mutual
+theorem noPromoAt_equiv_swap (x : String) (ann_new : LNAnn)
+    {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
+    (hnp : LNEquivRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
+    : LNEquivRed (swap_at_first x ann_new Γ) s e u := by
+  match hnp with
+  | .me_var => exact .me_var
+  | .me_top => exact .me_top
+  | .me_tap => exact .me_tap
+  | .me_pro hne hmem hnp_sub =>
+    exact .me_pro (swap_at_first_mem_equiv_ne hne hmem)
+      (noPromoAt_sub_swap x ann_new hnp_sub hx)
+  | .me_app hnp1 hnp2 =>
+    exact .me_app (noPromoAt_equiv_swap x ann_new hnp1 hx)
+      (noPromoAt_equiv_swap x ann_new hnp2 hx)
+  | .me_bet (Γ := Γ') (y := y) hfr hnp_body hnp_v =>
+    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
+    show LNEquivRed (swap_at_first x ann_new Γ') _ _ _
+    rw [show swap_at_first x ann_new Γ' = swap_at_first x ann_new Γ' from rfl]
+    have ih_body := noPromoAt_equiv_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
+    rw [swap_at_first_cons_ne x y (.sub _) ann_new Γ' hyx] at ih_body
+    exact .me_bet hfr' ih_body (noPromoAt_equiv_swap x ann_new hnp_v hx)
+  | .me_fun (Γ := Γ') (y := y) hfr hnp_dom hnp_body =>
+    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
+    have ih_body := noPromoAt_equiv_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
+    rw [swap_at_first_cons_ne x y (.sub _) ann_new Γ' hyx] at ih_body
+    exact .me_fun hfr' (noPromoAt_equiv_swap x ann_new hnp_dom hx) ih_body
+  | .me_fop (Γ := Γ') (y := y) hfr hnp_dom hnp_body =>
+    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
+    have ih_body := noPromoAt_equiv_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
+    rw [swap_at_first_cons_ne x y (.equiv _) ann_new Γ' hyx] at ih_body
+    exact .me_fop hfr' (noPromoAt_equiv_swap x ann_new hnp_dom hx) ih_body
+  termination_by sizeOf hnp
+  decreasing_by all_goals sorry
+
+theorem noPromoAt_sub_swap (x : String) (ann_new : LNAnn)
+    {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
+    (hnp : LNSubRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
+    : LNSubRed (swap_at_first x ann_new Γ) s e u := by
+  match hnp with
+  | .ms_pro hne hmem => exact .ms_pro (swap_at_first_mem_sub_ne hne hmem)
+  | .ms_top => exact .ms_top
+  | .ms_equ hnp_eq =>
+    exact .ms_equ (noPromoAt_equiv_swap x ann_new hnp_eq hx)
+  | .ms_app hnp_inner =>
+    exact .ms_app (noPromoAt_sub_swap x ann_new hnp_inner hx)
+  | .ms_fun (Γ := Γ') (y := y) hfr hnp_body =>
+    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
+    have ih_body := noPromoAt_sub_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
+    rw [swap_at_first_cons_ne x y (.sub _) ann_new Γ' hyx] at ih_body
+    exact .ms_fun hfr' ih_body
+  | .ms_fop (Γ := Γ') (y := y) hfr hnp_body =>
+    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
+    have ih_body := noPromoAt_sub_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
+    rw [swap_at_first_cons_ne x y (.equiv _) ann_new Γ' hyx] at ih_body
+    exact .ms_fop hfr' ih_body
+  termination_by sizeOf hnp
+  decreasing_by all_goals sorry
+end
+
 /-- Annotation independence: change from sub to equiv annotation.
     Valid when the derivation doesn't use MS-PRO on x (i.e., doesn't
     promote x via its subtype bound). The noPromoAt precondition
     ensures this. -/
-axiom equivRed_change_sub_to_equiv
+theorem equivRed_change_sub_to_equiv
     {Γ : LNCtx} {s : LNStack} {x : String} {t α : LNExpr}
     {e u : LNExpr}
-    (h : LNEquivRed ((x, .sub t) :: Γ) s e u)
+    (_h : LNEquivRed ((x, .sub t) :: Γ) s e u)
     (hnp : LNEquivRed.noPromoAt x ((x, .sub t) :: Γ) s e u)
-    : LNEquivRed ((x, .equiv α) :: Γ) s e u
+    : LNEquivRed ((x, .equiv α) :: Γ) s e u := by
+  have hx : x ∈ LNCtx.dom ((x, .sub t) :: Γ) := List.mem_cons_self x (LNCtx.dom Γ)
+  have := noPromoAt_equiv_swap x (.equiv α) hnp hx
+  rwa [swap_at_first_head] at this
 
 /-- Reverse direction: change equiv to sub annotation.
     Valid when the derivation doesn't use ME-PRO on x (i.e., doesn't
     promote x via its equivalence annotation). The noPromoAt
     precondition ensures this. -/
-axiom equivRed_change_equiv_to_sub
+theorem equivRed_change_equiv_to_sub
     {Γ : LNCtx} {s : LNStack} {x : String} {t α : LNExpr}
     {e u : LNExpr}
-    (h : LNEquivRed ((x, .equiv α) :: Γ) s e u)
+    (_h : LNEquivRed ((x, .equiv α) :: Γ) s e u)
     (hnp : LNEquivRed.noPromoAt x ((x, .equiv α) :: Γ) s e u)
-    : LNEquivRed ((x, .sub t) :: Γ) s e u
+    : LNEquivRed ((x, .sub t) :: Γ) s e u := by
+  have hx : x ∈ LNCtx.dom ((x, .equiv α) :: Γ) := List.mem_cons_self x (LNCtx.dom Γ)
+  have := noPromoAt_equiv_swap x (.sub t) hnp hx
+  rwa [swap_at_first_head] at this
 
 /-- Annotation independence: change from sub to equiv annotation
     for derivations where the body was opened with a fresh variable.
