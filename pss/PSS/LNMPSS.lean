@@ -45,8 +45,9 @@ Several kinds of `sorry` remain:
 3. `diamond_full`: sorry'd pending adaptation to cofinite constructor patterns.
    The proof strategy is the same as before (pick common fresh x from
    intersection of avoidance sets) but needs rewriting.
-4. `diamond` (wf witnesses for ctxRed_refl): these would be discharged by
-   proving that reduction preserves local closure.
+4. CLOSED: `diamond` now takes Gamma.wf and s.wf hypotheses, which are
+   passed to ctxRed_refl. Commutativity propagates these through recursive
+   calls by constructing wf for extended contexts/stacks.
 5. `u₃.lc` witnesses in commutativity: the IH yields a term u₃ and we need
    it to be locally closed for `open_close_subst`. Would be discharged by
    proving that reduction preserves local closure (mutual induction).
@@ -2037,8 +2038,9 @@ theorem diamond
     {Γ Γ' : LNCtx} {s s' : LNStack} {t₀ t₁ t₂ : LNExpr}
     (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
     (hctx : LNCtxRed Γ s Γ' s')
+    (hwf_ctx : Γ.wf) (hwf_stk : s.wf)
     : ∃ t₃, LNEquivRed Γ s t₂ t₃ ∧ LNEquivRed Γ' s' t₁ t₃ := by
-  have hid : LNCtxRed Γ s Γ s := ctxRed_refl Γ s sorry sorry  -- sorry: wf witnesses
+  have hid : LNCtxRed Γ s Γ s := ctxRed_refl Γ s hwf_ctx hwf_stk
   obtain ⟨t₃, h_left, h_right⟩ := diamond_full t₀ h2 h1 hid hctx
   exact ⟨t₃, h_left, h_right⟩
 
@@ -2064,6 +2066,8 @@ theorem commutativity
     (h_ctx   : LNCtxRed Γ s Γ' s')
     (h_lc    : t₀.lc)
     (h_nd    : (LNCtx.dom Γ).Nodup)
+    (hwf_ctx : Γ.wf)
+    (hwf_stk : s.wf)
     : ∃ t₃ : LNExpr, LNEquivRed Γ s t₂ t₃ ∧ LNSubRed Γ' s' t₁ t₃ ∧
         (∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃) := by
   -- Case analysis on the sub (left/vertical) edge.
@@ -2078,7 +2082,7 @@ theorem commutativity
   -- MS-EQU: t₂ comes from Γ;s ⊢ t₀ ≡→ t₂
   --===================================================================
   | ms_equ h_eq2 =>
-    obtain ⟨t₃, htop, hright⟩ := diamond h_equiv h_eq2 h_ctx
+    obtain ⟨t₃, htop, hright⟩ := diamond h_equiv h_eq2 h_ctx hwf_ctx hwf_stk
     exact ⟨t₃, htop, .ms_equ hright, sorry⟩  -- sorry: noPromoAt preservation for MS-EQU/diamond case
 
   --===================================================================
@@ -2117,7 +2121,8 @@ theorem commutativity
       have h_ctx_ext := LNCtxRed.ct_stk h_ctx h_equiv_v
       have hu₀_lc : u₀.lc := h_lc.1
       obtain ⟨u₃, htop_u, hright_u, hnp_u⟩ :=
-        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc h_nd
+        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc h_nd hwf_ctx
+          (fun e he => by cases he with | head => exact h_lc.2 | tail _ hmem => exact hwf_stk e hmem)
       exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u, sorry⟩  -- sorry: noPromoAt preservation for ME-APP/MS-APP
     ---------------------------------------------------------------
     -- ME-BET / MS-APP: the key case
@@ -2135,7 +2140,7 @@ theorem commutativity
           .me_app h_eq_lam (equivRed_refl Γ [] v hv_lc)
         have h_equiv_orig : LNEquivRed Γ s (.app (.lam dom body) v) (t_e.open_at 0 v') :=
           .me_bet L_e h_body_e h_v_e
-        obtain ⟨t₃, htop, hright⟩ := diamond h_equiv_orig h_equiv2 h_ctx
+        obtain ⟨t₃, htop, hright⟩ := diamond h_equiv_orig h_equiv2 h_ctx hwf_ctx hwf_stk
         exact ⟨t₃, htop, .ms_equ hright, sorry⟩  -- sorry: noPromoAt preservation for ME-BET/MS-EQU
       | @ms_fop _ _ _ _ _ body₂ L_s h_sub_body_s =>
         -- h_sub_body_s : ∀ y, y ∉ L_s → LNSubRed ((y, .equiv v) :: Γ) s (body^y) (body₂^y)
@@ -2175,6 +2180,8 @@ theorem commutativity
         obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
           commutativity (body.open_at 0 (.fvar x)) h_body_e_eq h_sub_body_s_x h_ctx_body hbody_lc
             (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
+            (fun p hp => by cases hp with | head => exact h_lc.2 | tail _ hmem => exact hwf_ctx p hmem)
+            hwf_stk
         -- Change annotation back from .equiv to .sub for ME-BET.
         -- The old `commutativity_noPromoAt` axiom was FALSE (see counterexamples
         -- above). With the strengthened IH, we can extract noPromoAt from
@@ -2257,6 +2264,8 @@ theorem commutativity
       obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
         commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
           (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
+          (fun p hp => by cases hp with | head => exact h_lc.1 | tail _ hmem => exact hwf_ctx p hmem)
+          (fun _ he => absurd he (List.not_mem_nil _))
       have hs' := ctxRed_nil_stack h_ctx; subst hs'
       refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge: Γ;[] ⊢ lam dom body₂ ≡→ lam dom' (close x u₃)
@@ -2313,6 +2322,10 @@ theorem commutativity
       obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
         commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
           (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
+          (fun p hp => by cases hp with
+            | head => exact hwf_stk α (List.mem_cons_self _ _)
+            | tail _ hmem => exact hwf_ctx p hmem)
+          (fun e he => hwf_stk e (List.mem_cons_of_mem _ he))
       have _hfresh_e' : x ∉ LNCtx.dom Γ' := hx_dom'
       refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge: use equivRed_rename on htop_body
