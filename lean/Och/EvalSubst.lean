@@ -122,7 +122,13 @@ def evalSubst (fuel unf : Nat) (e : Expr) : Outcome Expr :=
               evalSubst fuel (unf - 1) (.app unfolded a')
         | .fix body =>
             if isNeutral a' || unf == 0 then
-              .ok (.app f' a')
+              -- Try one-step unfolding to expose a lambda (like whnfPi)
+              let unfolded := body.subst 0 f'
+              match evalSubst fuel unfBound unfolded with
+              | .ok (.lam dom lbody) =>
+                  -- Fix unfolded to a lambda: β-reduce with the argument
+                  evalSubst fuel unf (lbody.subst 0 a')
+              | _ => .ok (.app f' a')
             else
               let unfolded := body.subst 0 f'
               evalSubst fuel (unf - 1) (.app unfolded a')

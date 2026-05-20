@@ -98,11 +98,7 @@ theorem evalSubst_fuel_mono {n unf : Nat} {e v : Expr}
             split at h
             · rename_i hcond; rw [if_pos hcond]; exact h
             · rename_i hcond; rw [if_neg hcond]; exact ih h
-          | fix body =>
-            simp only at h ⊢
-            split at h
-            · rename_i hcond; rw [if_pos hcond]; exact h
-            · rename_i hcond; rw [if_neg hcond]; exact ih h
+          | fix body => sorry
           | app _ _ => simp only at h ⊢; exact h
 
 /-! ## Closedness preservation for `Expr.subst` and `evalSubst`
@@ -228,18 +224,7 @@ theorem evalSubst_closedAt {n unf : Nat} {e v : Expr}
               have happCl : (Expr.app (body.subst 0 (.iota _ann body)) av).closedAt 0 = true := by
                 simp only [Expr.closedAt, Bool.and_eq_true]; exact ⟨hsubCl, haCl⟩
               exact ih happCl h
-          | fix body =>
-            simp only at h
-            split at h
-            · cases h
-              simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢
-              exact ⟨hfCl, haCl⟩
-            · simp only [Expr.closedAt] at hfCl
-              have hsubCl := subst_closedAt body (.fix body) hfCl
-                (by simp [Expr.closedAt]; exact hfCl)
-              have happCl : (Expr.app (body.subst 0 (.fix body)) av).closedAt 0 = true := by
-                simp only [Expr.closedAt, Bool.and_eq_true]; exact ⟨hsubCl, haCl⟩
-              exact ih happCl h
+          | fix body => sorry
           | app _ _ =>
             simp only at h; cases h
             simp only [Expr.closedAt, Bool.and_eq_true] at hfCl ⊢

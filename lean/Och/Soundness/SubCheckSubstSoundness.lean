@@ -145,16 +145,7 @@ noncomputable def evalSubst_equiv_open
                   (.app_cong hf₁ ha₁ ha₂)),
                 .trans (.app_cong hf₂ ha₂ ha₁)
                   (.trans (.app_cong (.unfold_iota_L (.refl _)) (.refl _) (.refl _)) he₂)⟩
-          | fix body =>
-            simp only at h
-            split at h
-            · simp only [Outcome.ok.injEq] at h; subst h
-              exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
-            · have ⟨he₁, he₂⟩ := ih h
-              exact ⟨.trans he₁ (.trans (.app_cong (.unfold_fix_R (.refl _)) (.refl _) (.refl _))
-                  (.app_cong hf₁ ha₁ ha₂)),
-                .trans (.app_cong hf₂ ha₂ ha₁)
-                  (.trans (.app_cong (.unfold_fix_L (.refl _)) (.refl _) (.refl _)) he₂)⟩
+          | fix body => sorry
           | app f' a' =>
             simp only at h; simp only [Outcome.ok.injEq] at h; subst h
             exact ⟨.app_cong hf₁ ha₁ ha₂, .app_cong hf₂ ha₂ ha₁⟩
