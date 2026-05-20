@@ -70,9 +70,15 @@ Several kinds of `sorry` remain:
 The remaining axioms (equivRed_weaken, subRed_weaken,
 equivRed_stack_ext, subRed_stack_ext,
 me_bet_body_noPromoAt, commutativity_noPromoAt)
-are standard LN infrastructure lemmas that require additional machinery:
-- **stack_ext**: needs annotation swap (changing .sub to .equiv when a lambda
-  meets a non-empty stack via me_fop instead of me_fun).
+are listed below with their status:
+- **stack_ext**: FALSE as stated. Counterexample at end of file. The failure
+  mode: ME-PRO on a variable whose .equiv annotation is a lambda. The SubRed
+  of that lambda uses MS-FUN (empty stack) with .sub annotation in the body,
+  allowing MS-PRO on the fresh variable. Under non-empty stack, MS-FOP would
+  give .equiv annotation, making MS-PRO unreachable and the result unattainable.
+  The commutativity proof uses equivRed_stack_ext; a fix likely requires either
+  restricting SubRed lambdas to always use .sub, or stating stack extension
+  relative to context well-formedness.
 - **weaken**: needs the annotation reduction relationship from LNCtxRed, not
   just context inclusion; essentially requires commutativity-like reasoning.
 
@@ -704,12 +710,27 @@ theorem subRed_ctx_ext
 
 /-- Stack extension for ≡→ (Lemma 19, part).
     If Γ;[] ⊢ u ≡→ v then Γ;s ⊢ u ≡→ v.
-    Derivations with empty stack can be replayed in any stack. -/
+
+    STATUS: FALSE as stated. Counterexample at end of file.
+    The failure mode: ME-PRO on variable x (with x ≡ α ∈ Γ where α is a lambda)
+    requires LNSubRed Γ s α α', but subRed_stack_ext is false because MS-FUN gives
+    the body variable a .sub annotation while MS-FOP gives .equiv, and MS-PRO can
+    fire with .sub but not .equiv, making certain results unreachable under non-empty
+    stacks.
+
+    Retained as axiom because commutativity depends on it. The fix likely requires
+    either: (1) a well-formedness condition on contexts ensuring annotation terms
+    are "stack-stable", or (2) a different statement (e.g., weakening via ctxRed
+    instead of raw stack extension), or (3) restricting MS-FUN/MS-FOP to always
+    use .sub annotations in SubRed. -/
 axiom equivRed_stack_ext
     {Γ : LNCtx} {u v : LNExpr} {s : LNStack}
     (h : LNEquivRed Γ [] u v) : LNEquivRed Γ s u v
 
-/-- Stack extension for ≤→ (Lemma 19, part). -/
+/-- Stack extension for ≤→ (Lemma 19, part).
+
+    STATUS: FALSE as stated. See equivRed_stack_ext for explanation.
+    Same counterexample applies (SubRed is the root cause). -/
 axiom subRed_stack_ext
     {Γ : LNCtx} {u v : LNExpr} {s : LNStack}
     (h : LNSubRed Γ [] u v) : LNSubRed Γ s u v
@@ -2010,13 +2031,63 @@ example : LNEquivRed [("y", .equiv .top)] [.top]
     .me_top
     (fun x _ => .me_app .me_var .me_var)
 
--- CONCLUSION: All tested instances are consistent with equivRed_stack_ext being TRUE.
--- The annotation of the cofinitely-quantified variable x is never consulted in
--- the body derivation (because ME-PRO requires .equiv but ME-FUN gives .sub,
--- and no other variable's annotation references fvar x by freshness).
--- The axiom appears TRUE but requires a complex proof involving:
--- (1) A generalized stack-append formulation to handle ME-APP
--- (2) An annotation-irrelevance lemma for the ME-FUN→ME-FOP case
--- (3) Mutual induction over both EquivRed and SubRed
+-- NOTE: Tests 1-4 above are consistent with stack_ext because they never
+-- trigger ME-PRO on a variable whose annotation is a lambda that promotes
+-- the cofinitely-quantified variable. The counterexample below shows the
+-- failure mode.
+
+/-! ### COUNTEREXAMPLE: equivRed_stack_ext and subRed_stack_ext are FALSE
+
+The failure mode involves ME-PRO on a variable x whose annotation α is a lambda.
+Under empty stack, SubRed of α uses MS-FUN which gives the cofinitely-quantified
+body variable z a `.sub dom` annotation. Under this annotation, MS-PRO on z can
+fire, producing `dom` as output. Under non-empty stack, SubRed of α would use
+MS-FOP which gives z a `.equiv α_stack` annotation. Under this annotation, MS-PRO
+on z CANNOT fire (needs `.sub`), and the result `dom` is unreachable.
+
+Concrete instance:
+  Γ = [x ≡ (λy.0), y ≤ ⊤]
+  Under Γ;[]: fvar "x" ≡→ λ(fvar "y").(fvar "y")
+    via ME-PRO with α = λ(fvar "y").(bvar 0)
+    then SubRed via MS-FUN: body z ≤→ fvar "y" via MS-PRO (z ≤ fvar "y")
+  Under Γ;[⊤]: ME-PRO would need SubRed Γ [⊤] α α'
+    MS-FOP body: z ≡ ⊤, need fvar z ≤→ fvar "y"
+    But under .equiv ⊤: MS-PRO fails (need .sub), ME-PRO gives ⊤' not fvar "y"
+    Result fvar "y" is UNREACHABLE.
+-/
+
+-- The [] derivation EXISTS (verified by Lean):
+private def cex_Γ : LNCtx := [("x", .equiv (.lam (.fvar "y") (.bvar 0))), ("y", .sub .top)]
+
+example : LNEquivRed cex_Γ []
+    (.fvar "x") (.lam (.fvar "y") (.fvar "y")) := by
+  unfold cex_Γ
+  exact .me_pro (α := .lam (.fvar "y") (.bvar 0))
+    (by simp [LNCtx.mem_equiv, LNCtx.lookup'])
+    (.ms_fun (L := ["x", "y"]) (fun z hz => by
+      simp [LNExpr.open_at]
+      exact .ms_pro (by simp [LNCtx.mem_sub, LNCtx.lookup'])
+      ))
+
+-- The [.top] derivation is NOT derivable:
+-- LNEquivRed cex_Γ [.top] (.fvar "x") (.lam (.fvar "y") (.fvar "y"))
+-- would require LNSubRed cex_Γ [.top] (.lam (.fvar "y") (.bvar 0)) (.lam (.fvar "y") (fvar "y"))
+-- which requires MS-FOP body: LNSubRed [(z, .equiv .top), ...] [] (fvar z) (fvar "y")
+-- This is unreachable: MS-PRO needs .sub (have .equiv), MS-EQU+ME-PRO gives ⊤' not fvar "y",
+-- MS-TOP gives .top not fvar "y", ME-VAR gives fvar z not fvar "y".
+
+-- Similarly, subRed_stack_ext is FALSE:
+-- LNSubRed cex_Γ [] (.lam (.fvar "y") (.bvar 0)) (.lam (.fvar "y") (.fvar "y")) holds
+-- (via MS-FUN with body MS-PRO), but
+-- LNSubRed cex_Γ [.top] (.lam (.fvar "y") (.bvar 0)) (.lam (.fvar "y") (.fvar "y"))
+-- does not (MS-FOP body can't reach fvar "y" from fvar z under .equiv .top).
+
+example : LNSubRed cex_Γ []
+    (.lam (.fvar "y") (.bvar 0)) (.lam (.fvar "y") (.fvar "y")) := by
+  unfold cex_Γ
+  exact .ms_fun (L := ["x", "y"]) (fun z hz => by
+    simp [LNExpr.open_at]
+    exact .ms_pro (by simp [LNCtx.mem_sub, LNCtx.lookup'])
+    )
 
 end StackExtInvestigation
