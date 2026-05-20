@@ -54,15 +54,27 @@ Several kinds of `sorry` remain:
    from avoidance sets, but we also need it fresh for t_e (a binder body).
    This follows from including t_e.fvs in the avoidance set.
 
-## Axioms
-The remaining axioms (equivRed_weaken, subRed_weaken, equivRed_ctx_ext,
+## Proved Lemmas
+- `equivRed_ctx_mono` / `subRed_ctx_mono`: context monotonicity — if every
+  lookup in Γ is preserved in Γ', then any reduction in Γ holds in Γ'. Proved
+  by mutual induction using the combined recursor; the cofinite binder cases
+  pass through directly via `LNCtx.sub_cons`.
+- `equivRed_ctx_ext` / `subRed_ctx_ext`: structural context extension — if
+  x ∉ dom(Γ), adding (x,ann) preserves reductions. Derived from ctx_mono.
+
+## Remaining Axioms
+The remaining axioms (equivRed_weaken, subRed_weaken,
 equivRed_stack_ext, subRed_stack_ext, equivRed_subst, subRed_subst,
 equivRed_rename, subRed_rename, me_bet_body_noPromoAt, commutativity_noPromoAt)
-are standard LN infrastructure lemmas. The cofinite encoding is designed to
-make them provable by mutual induction on the derivation: the cofinite
-universal quantifier lets us pick fresh variables that avoid everything
-we need (including the goal context, other derivations, etc.), which breaks
-the circular dependency that blocked these proofs in the existential encoding.
+are standard LN infrastructure lemmas that require additional machinery:
+- **rename/subst**: need a well-formedness invariant (x ∉ fvs of the annotation
+  at position x) to handle the me_pro case where the renamed variable is promoted.
+  This invariant holds by construction (annotation values are determined before
+  the fresh variable is chosen) but is not formally tracked.
+- **stack_ext**: needs annotation swap (changing .sub to .equiv when a lambda
+  meets a non-empty stack via me_fop instead of me_fun).
+- **weaken**: needs the annotation reduction relationship from LNCtxRed, not
+  just context inclusion; essentially requires commutativity-like reasoning.
 -/
 
 /-! ## Terms -/
@@ -247,6 +259,41 @@ def LNCtx.wf (Γ : LNCtx) : Prop := ∀ p ∈ Γ, p.2.lc
 
 /-- A stack is well-formed: all elements are locally closed. -/
 def LNStack.wf (s : LNStack) : Prop := ∀ e ∈ s, e.lc
+
+/-- Context inclusion: every lookup in Γ is preserved in Γ'. -/
+def LNCtx.sub_ctx (Γ Γ' : LNCtx) : Prop :=
+  ∀ x ann, Γ.lookup' x = some ann → Γ'.lookup' x = some ann
+
+/-- Monotonicity of context inclusion under prepend of the same binding. -/
+theorem LNCtx.sub_cons {Γ Γ' : LNCtx} {y : String} {ann : LNAnn}
+    (h : LNCtx.sub_ctx Γ Γ') : LNCtx.sub_ctx ((y, ann) :: Γ) ((y, ann) :: Γ') := by
+  intro x a hlook
+  simp only [LNCtx.lookup'] at *
+  split at hlook <;> simp_all
+  exact h x a hlook
+
+/-- If x has a binding in Γ, then x is in dom(Γ). -/
+private theorem mem_dom_of_lookup' {Γ : LNCtx} {x : String} {a : LNAnn}
+    (h : LNCtx.lookup' Γ x = some a) : x ∈ LNCtx.dom Γ := by
+  induction Γ with
+  | nil => simp [LNCtx.lookup'] at h
+  | cons p rest ih =>
+    obtain ⟨y, a'⟩ := p
+    simp only [LNCtx.lookup'] at h
+    simp only [LNCtx.dom, List.map, List.mem_cons]
+    by_cases hyx : y == x
+    · left; exact (beq_iff_eq.mp hyx).symm
+    · simp [hyx] at h; right; exact ih h
+
+/-- A fresh variable's binding can be prepended without affecting existing lookups. -/
+theorem LNCtx.sub_of_cons_fresh {Γ : LNCtx} {z : String} {ann : LNAnn}
+    (hz : z ∉ LNCtx.dom Γ) : LNCtx.sub_ctx Γ ((z, ann) :: Γ) := by
+  intro x a hlook
+  simp only [LNCtx.lookup']
+  have hne : ¬(z == x) = true := by
+    simp [beq_iff_eq]
+    intro heq; subst heq; exact hz (mem_dom_of_lookup' hlook)
+  simp [hne, hlook]
 
 /-- For any finite context and term, there exists a fresh variable name. -/
 theorem exists_fresh (Γ : LNCtx) (e : LNExpr)
@@ -511,6 +558,100 @@ theorem subRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
     (hlc : u.lc) : LNSubRed Γ s u u :=
   .ms_equ (equivRed_refl Γ s u hlc)
 
+set_option maxHeartbeats 800000 in
+/-- Context monotonicity for ≡→: if every lookup in Γ is preserved in Γ',
+    then any derivation in Γ holds in Γ'. Proved by mutual induction using
+    the combined recursor for LNEquivRed/LNSubRed. The cofinite binder cases
+    pass through directly via LNCtx.sub_cons (prepending the same binding
+    preserves context inclusion). -/
+theorem equivRed_ctx_mono
+    {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
+    (h : LNEquivRed Γ s u v) {Γ' : LNCtx} (hsub : LNCtx.sub_ctx Γ Γ')
+    : LNEquivRed Γ' s u v := by
+  have go :=
+    @LNEquivRed.rec
+      (motive_1 := fun Γ s u v _ => ∀ Γ', LNCtx.sub_ctx Γ Γ' → LNEquivRed Γ' s u v)
+      (motive_2 := fun Γ s u v _ => ∀ Γ', LNCtx.sub_ctx Γ Γ' → LNSubRed Γ' s u v)
+      -- me_pro
+      (fun hmem _hsub_red ih_sub Γ' hsc => .me_pro (hsc _ _ hmem) (ih_sub Γ' hsc))
+      -- me_bet
+      (fun L _hbody _hv ih_body ih_v Γ' hsc =>
+        .me_bet L (fun y hy => ih_body y hy ((y, .sub _) :: Γ') (LNCtx.sub_cons hsc)) (ih_v Γ' hsc))
+      -- me_top
+      (fun Γ' _hsc => .me_top)
+      -- me_var
+      (fun Γ' _hsc => .me_var)
+      -- me_tap
+      (fun Γ' _hsc => .me_tap)
+      -- me_app
+      (fun _hu _hv ih_u ih_v Γ' hsc => .me_app (ih_u Γ' hsc) (ih_v Γ' hsc))
+      -- me_fun
+      (fun L _hdom _hbody ih_dom ih_body Γ' hsc =>
+        .me_fun L (ih_dom Γ' hsc) (fun y hy => ih_body y hy ((y, .sub _) :: Γ') (LNCtx.sub_cons hsc)))
+      -- me_fop
+      (fun L _hdom _hbody ih_dom ih_body Γ' hsc =>
+        .me_fop L (ih_dom Γ' hsc) (fun y hy => ih_body y hy ((y, .equiv _) :: Γ') (LNCtx.sub_cons hsc)))
+      -- ms_pro
+      (fun hmem Γ' hsc => .ms_pro (hsc _ _ hmem))
+      -- ms_top
+      (fun Γ' _hsc => .ms_top)
+      -- ms_equ
+      (fun _hequ ih_equ Γ' hsc => .ms_equ (ih_equ Γ' hsc))
+      -- ms_app
+      (fun _hsub_u ih_sub_u Γ' hsc => .ms_app (ih_sub_u Γ' hsc))
+      -- ms_fun
+      (fun L _hbody ih_body Γ' hsc =>
+        .ms_fun L (fun y hy => ih_body y hy ((y, .sub _) :: Γ') (LNCtx.sub_cons hsc)))
+      -- ms_fop
+      (fun L _hbody ih_body Γ' hsc =>
+        .ms_fop L (fun y hy => ih_body y hy ((y, .equiv _) :: Γ') (LNCtx.sub_cons hsc)))
+  exact go h Γ' hsub
+
+set_option maxHeartbeats 800000 in
+/-- Context monotonicity for ≤→. -/
+theorem subRed_ctx_mono
+    {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
+    (h : LNSubRed Γ s u v) {Γ' : LNCtx} (hsub : LNCtx.sub_ctx Γ Γ')
+    : LNSubRed Γ' s u v := by
+  have go :=
+    @LNSubRed.rec
+      (motive_1 := fun Γ s u v _ => ∀ Γ', LNCtx.sub_ctx Γ Γ' → LNEquivRed Γ' s u v)
+      (motive_2 := fun Γ s u v _ => ∀ Γ', LNCtx.sub_ctx Γ Γ' → LNSubRed Γ' s u v)
+      -- me_pro
+      (fun hmem _hsub_red ih_sub Γ' hsc => .me_pro (hsc _ _ hmem) (ih_sub Γ' hsc))
+      -- me_bet
+      (fun L _hbody _hv ih_body ih_v Γ' hsc =>
+        .me_bet L (fun y hy => ih_body y hy ((y, .sub _) :: Γ') (LNCtx.sub_cons hsc)) (ih_v Γ' hsc))
+      -- me_top
+      (fun Γ' _hsc => .me_top)
+      -- me_var
+      (fun Γ' _hsc => .me_var)
+      -- me_tap
+      (fun Γ' _hsc => .me_tap)
+      -- me_app
+      (fun _hu _hv ih_u ih_v Γ' hsc => .me_app (ih_u Γ' hsc) (ih_v Γ' hsc))
+      -- me_fun
+      (fun L _hdom _hbody ih_dom ih_body Γ' hsc =>
+        .me_fun L (ih_dom Γ' hsc) (fun y hy => ih_body y hy ((y, .sub _) :: Γ') (LNCtx.sub_cons hsc)))
+      -- me_fop
+      (fun L _hdom _hbody ih_dom ih_body Γ' hsc =>
+        .me_fop L (ih_dom Γ' hsc) (fun y hy => ih_body y hy ((y, .equiv _) :: Γ') (LNCtx.sub_cons hsc)))
+      -- ms_pro
+      (fun hmem Γ' hsc => .ms_pro (hsc _ _ hmem))
+      -- ms_top
+      (fun Γ' _hsc => .ms_top)
+      -- ms_equ
+      (fun _hequ ih_equ Γ' hsc => .ms_equ (ih_equ Γ' hsc))
+      -- ms_app
+      (fun _hsub_u ih_sub_u Γ' hsc => .ms_app (ih_sub_u Γ' hsc))
+      -- ms_fun
+      (fun L _hbody ih_body Γ' hsc =>
+        .ms_fun L (fun y hy => ih_body y hy ((y, .sub _) :: Γ') (LNCtx.sub_cons hsc)))
+      -- ms_fop
+      (fun L _hbody ih_body Γ' hsc =>
+        .ms_fop L (fun y hy => ih_body y hy ((y, .equiv _) :: Γ') (LNCtx.sub_cons hsc)))
+  exact go h Γ' hsub
+
 /-- Weakening for ≡→ via context reduction (Lemma 22).
     If Γ;s ⊢ u ≡→ v and Γ;s ↦ Γ';s' then Γ';s' ⊢ u ≡→ v. -/
 axiom equivRed_weaken
@@ -526,15 +667,22 @@ axiom subRed_weaken
 
 /-- Structural context extension for ≡→ (standard LN infrastructure).
     If Γ;s ⊢ u ≡→ v and x ∉ dom(Γ), then (x,ann)::Γ; s ⊢ u ≡→ v.
-    Proof: by mutual induction on the reduction derivation. The derivation
-    cannot promote x (since x ∉ dom(Γ)), so adding x is harmless. Binder
-    cases require alpha-renaming of fresh variables to avoid x, which is
-    where the mutual induction does the heavy lifting. -/
-axiom equivRed_ctx_ext
+    Derived from context monotonicity (equivRed_ctx_mono) and the fact
+    that a fresh binding doesn't affect existing lookups. -/
+theorem equivRed_ctx_ext
     {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
     (h : LNEquivRed Γ s u v) {x : String} {ann : LNAnn}
     (hfresh : x ∉ LNCtx.dom Γ)
-    : LNEquivRed ((x, ann) :: Γ) s u v
+    : LNEquivRed ((x, ann) :: Γ) s u v :=
+  equivRed_ctx_mono h (LNCtx.sub_of_cons_fresh hfresh)
+
+/-- Structural context extension for ≤→ (standard LN infrastructure). -/
+theorem subRed_ctx_ext
+    {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
+    (h : LNSubRed Γ s u v) {x : String} {ann : LNAnn}
+    (hfresh : x ∉ LNCtx.dom Γ)
+    : LNSubRed ((x, ann) :: Γ) s u v :=
+  subRed_ctx_mono h (LNCtx.sub_of_cons_fresh hfresh)
 
 /-- Stack extension for ≡→ (Lemma 19, part).
     If Γ;[] ⊢ u ≡→ v then Γ;s ⊢ u ≡→ v.
