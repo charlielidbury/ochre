@@ -945,71 +945,160 @@ end
 
 -- General annotation swap: if a derivation doesn't promote x,
 -- we can change x's annotation to anything.
--- Proved by mutual structural recursion on noPromoAt.
-mutual
+-- Proved by mutual induction using the mutual recursor for noPromoAt,
+-- since sizeOf-based termination fails for Prop-valued mutual inductives.
+
+/-- Transport an equiv-reduction along a context equality. -/
+private theorem equivRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExpr}
+    (h : Γ₁ = Γ₂) (hr : LNEquivRed Γ₁ s e u) : LNEquivRed Γ₂ s e u :=
+  h ▸ hr
+
+/-- Transport a sub-reduction along a context equality. -/
+private theorem subRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExpr}
+    (h : Γ₁ = Γ₂) (hr : LNSubRed Γ₁ s e u) : LNSubRed Γ₂ s e u :=
+  h ▸ hr
+
+set_option maxHeartbeats 800000 in
 theorem noPromoAt_equiv_swap (x : String) (ann_new : LNAnn)
     {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
     (hnp : LNEquivRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
     : LNEquivRed (swap_at_first x ann_new Γ) s e u := by
-  match hnp with
-  | .me_var => exact .me_var
-  | .me_top => exact .me_top
-  | .me_tap => exact .me_tap
-  | .me_pro hne hmem hnp_sub =>
-    exact .me_pro (swap_at_first_mem_equiv_ne hne hmem)
-      (noPromoAt_sub_swap x ann_new hnp_sub hx)
-  | .me_app hnp1 hnp2 =>
-    exact .me_app (noPromoAt_equiv_swap x ann_new hnp1 hx)
-      (noPromoAt_equiv_swap x ann_new hnp2 hx)
-  | .me_bet (Γ := Γ') (y := y) hfr hnp_body hnp_v =>
-    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
-    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
-    show LNEquivRed (swap_at_first x ann_new Γ') _ _ _
-    rw [show swap_at_first x ann_new Γ' = swap_at_first x ann_new Γ' from rfl]
-    have ih_body := noPromoAt_equiv_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
-    rw [swap_at_first_cons_ne x y (.sub _) ann_new Γ' hyx] at ih_body
-    exact .me_bet hfr' ih_body (noPromoAt_equiv_swap x ann_new hnp_v hx)
-  | .me_fun (Γ := Γ') (y := y) hfr hnp_dom hnp_body =>
-    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
-    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
-    have ih_body := noPromoAt_equiv_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
-    rw [swap_at_first_cons_ne x y (.sub _) ann_new Γ' hyx] at ih_body
-    exact .me_fun hfr' (noPromoAt_equiv_swap x ann_new hnp_dom hx) ih_body
-  | .me_fop (Γ := Γ') (y := y) hfr hnp_dom hnp_body =>
-    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
-    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
-    have ih_body := noPromoAt_equiv_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
-    rw [swap_at_first_cons_ne x y (.equiv _) ann_new Γ' hyx] at ih_body
-    exact .me_fop hfr' (noPromoAt_equiv_swap x ann_new hnp_dom hx) ih_body
-  termination_by sizeOf hnp
-  decreasing_by all_goals sorry
+  revert hx
+  exact LNEquivRed.noPromoAt.rec
+    (motive_1 := fun Γ s e u _ => x ∈ LNCtx.dom Γ → LNEquivRed (swap_at_first x ann_new Γ) s e u)
+    (motive_2 := fun Γ s e u _ => x ∈ LNCtx.dom Γ → LNSubRed (swap_at_first x ann_new Γ) s e u)
+    -- me_pro
+    (fun hne hmem _ ih_sub hx =>
+      .me_pro (swap_at_first_mem_equiv_ne hne hmem) (ih_sub hx))
+    -- me_bet
+    (fun {Γ' _ dom _ _ _ _ y} hfr _ _ ih_body ih_v hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .me_bet hfr'
+        (equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub dom) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx)))
+        (ih_v hx))
+    -- me_top
+    (fun _ => .me_top)
+    -- me_var
+    (fun _ => .me_var)
+    -- me_tap
+    (fun _ => .me_tap)
+    -- me_app
+    (fun _ _ ih1 ih2 hx => .me_app (ih1 hx) (ih2 hx))
+    -- me_fun
+    (fun {Γ' dom _ _ _ y} hfr _ _ ih_dom ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .me_fun hfr' (ih_dom hx)
+        (equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub dom) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    -- me_fop
+    (fun {Γ' _ α _ _ _ _ y} hfr _ _ ih_dom ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .me_fop hfr' (ih_dom hx)
+        (equivRed_cast_ctx (swap_at_first_cons_ne x y (.equiv α) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    -- ms_pro
+    (fun hne hmem _ => .ms_pro (swap_at_first_mem_sub_ne hne hmem))
+    -- ms_top
+    (fun _ => .ms_top)
+    -- ms_equ
+    (fun _ ih hx => .ms_equ (ih hx))
+    -- ms_app
+    (fun _ ih hx => .ms_app (ih hx))
+    -- ms_fun
+    (fun {Γ' dom _ _ y} hfr _ ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .ms_fun hfr'
+        (subRed_cast_ctx (swap_at_first_cons_ne x y (.sub dom) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    -- ms_fop
+    (fun {Γ' _ α _ _ _ y} hfr _ ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .ms_fop hfr'
+        (subRed_cast_ctx (swap_at_first_cons_ne x y (.equiv α) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    hnp
 
+set_option maxHeartbeats 400000 in
 theorem noPromoAt_sub_swap (x : String) (ann_new : LNAnn)
     {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
     (hnp : LNSubRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
     : LNSubRed (swap_at_first x ann_new Γ) s e u := by
-  match hnp with
-  | .ms_pro hne hmem => exact .ms_pro (swap_at_first_mem_sub_ne hne hmem)
-  | .ms_top => exact .ms_top
-  | .ms_equ hnp_eq =>
-    exact .ms_equ (noPromoAt_equiv_swap x ann_new hnp_eq hx)
-  | .ms_app hnp_inner =>
-    exact .ms_app (noPromoAt_sub_swap x ann_new hnp_inner hx)
-  | .ms_fun (Γ := Γ') (y := y) hfr hnp_body =>
-    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
-    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
-    have ih_body := noPromoAt_sub_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
-    rw [swap_at_first_cons_ne x y (.sub _) ann_new Γ' hyx] at ih_body
-    exact .ms_fun hfr' ih_body
-  | .ms_fop (Γ := Γ') (y := y) hfr hnp_body =>
-    have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
-    have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') := swap_at_first_dom x ann_new Γ' ▸ hfr
-    have ih_body := noPromoAt_sub_swap x ann_new hnp_body (List.mem_cons_of_mem _ hx)
-    rw [swap_at_first_cons_ne x y (.equiv _) ann_new Γ' hyx] at ih_body
-    exact .ms_fop hfr' ih_body
-  termination_by sizeOf hnp
-  decreasing_by all_goals sorry
-end
+  revert hx
+  exact LNSubRed.noPromoAt.rec
+    (motive_1 := fun Γ s e u _ => x ∈ LNCtx.dom Γ → LNEquivRed (swap_at_first x ann_new Γ) s e u)
+    (motive_2 := fun Γ s e u _ => x ∈ LNCtx.dom Γ → LNSubRed (swap_at_first x ann_new Γ) s e u)
+    -- me_pro
+    (fun hne hmem _ ih_sub hx =>
+      .me_pro (swap_at_first_mem_equiv_ne hne hmem) (ih_sub hx))
+    -- me_bet
+    (fun {Γ' _ dom _ _ _ _ y} hfr _ _ ih_body ih_v hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .me_bet hfr'
+        (equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub dom) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx)))
+        (ih_v hx))
+    -- me_top
+    (fun _ => .me_top)
+    -- me_var
+    (fun _ => .me_var)
+    -- me_tap
+    (fun _ => .me_tap)
+    -- me_app
+    (fun _ _ ih1 ih2 hx => .me_app (ih1 hx) (ih2 hx))
+    -- me_fun
+    (fun {Γ' dom _ _ _ y} hfr _ _ ih_dom ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .me_fun hfr' (ih_dom hx)
+        (equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub dom) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    -- me_fop
+    (fun {Γ' _ α _ _ _ _ y} hfr _ _ ih_dom ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .me_fop hfr' (ih_dom hx)
+        (equivRed_cast_ctx (swap_at_first_cons_ne x y (.equiv α) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    -- ms_pro
+    (fun hne hmem _ => .ms_pro (swap_at_first_mem_sub_ne hne hmem))
+    -- ms_top
+    (fun _ => .ms_top)
+    -- ms_equ
+    (fun _ ih hx => .ms_equ (ih hx))
+    -- ms_app
+    (fun _ ih hx => .ms_app (ih hx))
+    -- ms_fun
+    (fun {Γ' dom _ _ y} hfr _ ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .ms_fun hfr'
+        (subRed_cast_ctx (swap_at_first_cons_ne x y (.sub dom) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    -- ms_fop
+    (fun {Γ' _ α _ _ _ y} hfr _ ih_body hx =>
+      have hyx : y ≠ x := fun heq => hfr (heq ▸ hx)
+      have hfr' : y ∉ LNCtx.dom (swap_at_first x ann_new Γ') :=
+        swap_at_first_dom x ann_new Γ' ▸ hfr
+      .ms_fop hfr'
+        (subRed_cast_ctx (swap_at_first_cons_ne x y (.equiv α) ann_new Γ' hyx)
+          (ih_body (List.mem_cons_of_mem _ hx))))
+    hnp
 
 /-- Annotation independence: change from sub to equiv annotation.
     Valid when the derivation doesn't use MS-PRO on x (i.e., doesn't
