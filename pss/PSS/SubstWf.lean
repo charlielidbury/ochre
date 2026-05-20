@@ -24,39 +24,8 @@ namespace PSS
 
 /-! ## Shift algebra -/
 
-/-- Shifting by 0 is the identity. -/
-theorem Expr.shift_zero (e : Expr) (c : Nat) : e.shift 0 c = e := by
-  induction e generalizing c with
-  | bvar k => simp only [Expr.shift]; split <;> simp
-  | top => rfl
-  | lam dom body ih_dom ih_body => simp [Expr.shift, ih_dom, ih_body]
-  | app f a ih_f ih_a => simp [Expr.shift, ih_f, ih_a]
-
-/-- Two shifts at the same cutoff compose additively. -/
-theorem Expr.shift_shift (e : Expr) (d d' c : Nat) :
-    (e.shift d c).shift d' c = e.shift (d + d') c := by
-  induction e generalizing c with
-  | bvar k =>
-    show (if k < c then Expr.bvar k else Expr.bvar (k + d)).shift d' c =
-         if k < c then Expr.bvar k else Expr.bvar (k + (d + d'))
-    by_cases hkc : k < c
-    · simp only [if_pos hkc, Expr.shift, if_pos hkc]
-    · simp only [if_neg hkc, Expr.shift]
-      have : ¬ (k + d < c) := by omega
-      simp only [if_neg this]; congr 1; omega
-  | top => rfl
-  | lam dom body ih_dom ih_body =>
-    simp only [Expr.shift]
-    exact congr (congrArg Expr.lam (ih_dom c)) (ih_body (c + 1))
-  | app f a ih_f ih_a =>
-    simp only [Expr.shift]
-    exact congr (congrArg Expr.app (ih_f c)) (ih_a c)
-
-/-- Corollary: `(v.shift j 0).shift 1 0 = v.shift (j + 1) 0`. -/
-theorem Expr.shift_succ_zero (v : Expr) (j : Nat) :
-    (v.shift j 0).shift 1 0 = v.shift (j + 1) 0 := by
-  have h := Expr.shift_shift v j 1 0
-  simp [Nat.add_comm] at h; exact h
+-- shift_zero, shift_shift, shift_comm are defined in Syntax.lean
+-- shift_succ_zero is defined in SyntaxLemmas.lean
 
 /-! ## substPrefix: the output context after substitution -/
 
@@ -242,7 +211,7 @@ noncomputable def shift_sub_gen (Γ₁ : Ctx) (Δ : Ctx) {Γ₂ : Ctx} {a b : Ex
       --     = (t.shift (k+1) 0).shift |Δ| |Γ₁|
       conv at hsub =>
         rhs
-        rw [Expr.shift_comm t (k + 1) Δ.length 0 (Γ₁.length - 1 - k) (Nat.zero_le _)]
+        rw [Expr.shift_comm Δ.length (k + 1) (Γ₁.length - 1 - k) 0 t (Nat.zero_le _)]
         rw [show Γ₁.length - 1 - k + (k + 1) = Γ₁.length from by omega]
       exact hsub
     · -- k ≥ |Γ₁|: variable is in Γ₂

@@ -10,12 +10,7 @@ open Expr
 
 /-! ## Basic shift lemmas -/
 
-theorem Expr.shift_zero (e : Expr) (c : Nat) : e.shift 0 c = e := by
-  induction e generalizing c with
-  | bvar k => simp only [Expr.shift]; split <;> simp
-  | top => rfl
-  | lam dom body ih_dom ih_body => simp [Expr.shift, ih_dom, ih_body]
-  | app f a ih_f ih_a => simp [Expr.shift, ih_f, ih_a]
+-- shift_zero and shift_comm are defined in Syntax.lean
 
 theorem Expr.shift_shift (e : Expr) (d d' c : Nat) :
     (e.shift d c).shift d' c = e.shift (d + d') c := by
@@ -40,32 +35,13 @@ theorem Expr.shift_succ_zero (v : Expr) (j : Nat) :
 
 /-! ## Shift commutation -/
 
-theorem Expr.shift_comm (e : Expr) (d1 d2 c1 c2 : Nat) (h : c1 ≤ c2) :
-    (e.shift d2 c2).shift d1 c1 = (e.shift d1 c1).shift d2 (c2 + d1) := by
-  induction e generalizing c1 c2 with
-  | bvar k =>
-    simp only [Expr.shift]
-    by_cases hk2 : k < c2
-    · simp only [if_pos hk2, Expr.shift]
-      by_cases hk1 : k < c1
-      · simp only [if_pos hk1, Expr.shift, if_pos (show k < c2 + d1 by omega)]
-      · simp only [if_neg hk1, Expr.shift, if_pos (show k + d1 < c2 + d1 by omega)]
-    · simp only [if_neg hk2, Expr.shift, if_neg (show ¬(k + d2 < c1) by omega)]
-      by_cases hk1 : k < c1
-      · simp only [if_pos hk1, Expr.shift, if_neg (show ¬(k < c2 + d1) by omega)]
-        congr 1; omega
-      · simp only [if_neg hk1, Expr.shift, if_neg (show ¬(k + d1 < c2 + d1) by omega)]
-        congr 1; omega
-  | top => rfl
-  | lam dom body ih_dom ih_body =>
-    simp only [Expr.shift]
-    have hd := ih_dom c1 c2 h
-    have hb := ih_body (c1 + 1) (c2 + 1) (by omega)
-    simp only [show c2 + 1 + d1 = c2 + d1 + 1 from by omega] at hb
-    exact congr (congrArg Expr.lam hd) hb
-  | app f a ih_f ih_a =>
-    simp only [Expr.shift]
-    exact congr (congrArg Expr.app (ih_f c1 c2 h)) (ih_a c1 c2 h)
+-- shift_comm is defined in Syntax.lean with signature:
+--   Expr.shift_comm (d₁ d₂ c₁ c₂ : Nat) (e : Expr) (h : c₂ ≤ c₁)
+-- proving: (e.shift d₁ c₁).shift d₂ c₂ = (e.shift d₂ c₂).shift d₁ (c₁ + d₂)
+--
+-- The old SyntaxLemmas signature was (e d1 d2 c1 c2) with c1 ≤ c2,
+-- proving (e.shift d2 c2).shift d1 c1 = (e.shift d1 c1).shift d2 (c2 + d1).
+-- This is the same theorem with d1↔d2, c1↔c2.
 
 theorem Expr.shift_shift_of_le (e : Expr) (n d c c0 : Nat) (h : c ≤ n) :
     (e.shift n c0).shift d (c0 + c) = e.shift (n + d) c0 := by
@@ -136,7 +112,7 @@ theorem Expr.shift_subst_comm (e s : Expr) (d c j : Nat) (hle : j ≤ c) :
     have hb := ih_body (s.shift 1 0) (c + 1) (j + 1) (by omega)
     -- Goal has (s.shift d c).shift 1 0, IH has (s.shift 1 0).shift d (c+1)
     -- By shift_comm: (s.shift d c).shift 1 0 = (s.shift 1 0).shift d (c + 1)
-    rw [Expr.shift_comm s 1 d 0 c (Nat.zero_le _)]
+    rw [Expr.shift_comm d 1 c 0 s (Nat.zero_le c)]
     exact congr (congrArg Expr.lam hd) hb
   | app f a ih_f ih_a =>
     simp only [Expr.shift, Expr.subst]
@@ -170,7 +146,7 @@ theorem Expr.shift_subst_comm_ge (e s : Expr) (d c j : Nat) (hge : c ≤ j) :
     simp only [Expr.shift, Expr.subst]
     have hd := ih_dom s c j hge
     have hb := ih_body (s.shift 1 0) (c + 1) (j + 1) (by omega)
-    rw [Expr.shift_comm s 1 d 0 c (Nat.zero_le _), show j + d + 1 = j + 1 + d from by omega]
+    rw [Expr.shift_comm d 1 c 0 s (Nat.zero_le c), show j + d + 1 = j + 1 + d from by omega]
     exact congr (congrArg Expr.lam hd) hb
   | app f a ih_f ih_a =>
     simp only [Expr.shift, Expr.subst]
@@ -206,7 +182,7 @@ theorem Expr.subst_subst_comm_gen (e arg v : Expr) (i j : Nat) :
           have : v.shift (i + 1) 0 = (v.shift i 0).shift 1 i := by
             -- (v.shift i 0).shift 1 i = (v.shift 1 0).shift i (0 + i) by shift_comm
             -- = (v.shift 1 0).shift i 0 = v.shift (1 + i) 0 by shift_shift
-            have hc := Expr.shift_comm v i 1 0 0 (Nat.zero_le _)
+            have hc := Expr.shift_comm 1 i 0 0 v (Nat.le_refl 0)
             simp only [Nat.zero_add] at hc  -- hc : (v.shift 1 0).shift i 0 = (v.shift i 0).shift 1 i
             rw [← hc, Expr.shift_shift, show 1 + i = i + 1 from by omega]
           rw [this, Expr.shift_subst_cancel]

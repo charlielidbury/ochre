@@ -40,20 +40,18 @@ now a theorem derived from two components:
 
 Combined: `fundamental_trans (semExpr_refl ...) (fundamental_subSem ...)`
 
-### fundamental_subSem case status (4 of 8 proved):
+### fundamental_subSem case status (4 of 8 proved, 2 FALSE):
 
 - refl: PROVED (subSem_refl — trivial identity)
 - top: PROVED (subSem_top — everything is in SemVal Top)
 - bvar: PROVED (vacuous in empty context)
 - trans: PROVED (subSem_trans — one-line function composition!)
-- lam: sorry — partially proved (domain conversion works via ih2, blocked on
-  `Sub [] av dom` which needs `Wf [] dom'` for transitivity). Two known paths:
-  (a) Prove `Sub Γ a b → Wf Γ a → Wf Γ b` (needs mutual induction with subst_wf)
-  (b) Remove `Sub [] av s` from SemVal body condition and use a generalized
-      fundamental theorem with closing substitutions (needs de Bruijn commutation)
-- app_cong: sorry (needs concEval congruence)
-- beta_L: sorry (needs concEval beta-reduction facts)
-- beta_R: sorry (needs concEval beta-reduction facts)
+- lam: sorry — blocked on context generalization. The body sub-judgment
+  `Sub [dom] body body'` needs a generalized fundamental theorem with
+  closing substitution environments to be discharged.
+- app_cong: **FALSE** — counterexample proved (`app_cong_counterexample`)
+- beta_L: **FALSE** — counterexample proved (`beta_L_counterexample`)
+- beta_R: sorry — likely true but needs eval/subst commutation lemma
 
 ### semExpr_refl / semVal_self status: FULLY PROVED (zero sorry)
 
@@ -544,14 +542,128 @@ noncomputable def fundamental_subSem {e τ : Expr} (hsub : PSS.Sub [] e τ) :
   | .lam h1 h2 h3 =>
     -- SubSem (lam dom body) (lam dom' body')
     -- h1 : Sub [] dom dom', h2 : Sub [] dom' dom, h3 : Sub [dom] body body'
-    -- Need: given SemVal k (lam dom body) v, show SemVal k (lam dom' body') v
-    -- Domain conversion works (ih2: SubSem dom' dom), but applying the input
-    -- body condition requires Sub [] av dom (see detailed analysis in header).
-    -- Blocked on: Wf [] dom' for transitivity, or removing Sub from SemVal.
+    -- Need: for same av, SemVal (j-i) (body.subst 0 av) w → SemVal (j-i) (body'.subst 0 av) w,
+    -- i.e. SubSem (body.subst 0 av) (body'.subst 0 av). Derivable from h3 via subst_sub_gen +
+    -- fundamental_subSem, but the resulting Sub derivation is not structurally smaller,
+    -- so structural recursion fails. Needs generalized fundamental theorem with closing
+    -- substitution environments to break the circularity.
     sorry
-  | .app_cong _ _ _ => sorry  -- needs concEval congruence
-  | .beta_L => sorry           -- needs concEval beta-reduction facts
-  | .beta_R => sorry           -- needs concEval beta-reduction facts
+  | .app_cong _ _ _ => sorry  -- FALSE: see app_cong_counterexample below
+  | .beta_L => sorry           -- FALSE: see beta_L_counterexample below
+  | .beta_R => sorry           -- likely TRUE but needs eval/subst commutation lemma
+
+/-! ### beta_L is FALSE for this SemVal definition
+
+    **Counterexample**: `dom = top, body = lam top (bvar 0), arg = top, k = 2, v = top`.
+
+    `SemVal 2 (app (lam top (lam top (bvar 0))) top) top` is TRUE:
+      concEval 1 (app (lam top (lam top (bvar 0))) top)
+        = match concEval 0 (lam ...), concEval 0 top
+        = outOfFuel (since concEval 0 = outOfFuel)
+      So SemVal falls back to IsVal top = True.
+
+    `SemVal 2 ((lam top (bvar 0)).subst 0 top) top` is FALSE:
+      (lam top (bvar 0)).subst 0 top = lam top (bvar 0)  [closed, no free vars]
+      SemVal 2 (lam top (bvar 0)) top requires top = lam s' t', which is False.
+
+    Therefore `SubSem (app (lam top (lam top (bvar 0))) top) (lam top (bvar 0))` is False.
+    This is exactly what `fundamental_subSem` would need for `beta_L` with these terms.
+-/
+
+/-- concEval 1 of app (lam top (lam top (bvar 0))) top gives outOfFuel. -/
+private theorem concEval_one_redex :
+    concEval 1 (.app (.lam .top (.lam .top (.bvar 0))) .top) = .outOfFuel := by
+  rfl
+
+/-- The reductum (lam top (bvar 0)).subst 0 top = lam top (bvar 0). -/
+private theorem beta_L_reductum :
+    (Expr.lam .top (.bvar 0)).subst 0 .top = .lam .top (.bvar 0) := by
+  rfl
+
+/-- **beta_L is FALSE for this SemVal definition.**
+
+    There exist dom, body, arg, k, v such that
+    SemVal k (app (lam dom body) arg) v holds but
+    SemVal k (body.subst 0 arg) v does not.
+
+    Concretely: dom = top, body = lam top (bvar 0), arg = top, k = 2, v = top.
+
+    Root cause: the app case of SemVal falls back to `IsVal v` when concEval
+    runs out of fuel. The redex `app (lam top (lam top (bvar 0))) top` takes
+    more fuel to evaluate than the reductum `lam top (bvar 0)`, so at low fuel
+    the redex permits `v = top` while the reductum (a lam type) requires `v`
+    to be a lambda. -/
+theorem beta_L_counterexample :
+    ¬ SubSem (.app (.lam .top (.lam .top (.bvar 0))) .top) (.lam .top (.bvar 0)) := by
+  intro h
+  -- Apply SubSem at k = 2, v = top
+  have h2 := h 2 .top
+  -- The hypothesis: SemVal 2 (app (lam top (lam top (bvar 0))) top) top
+  -- concEval 1 of the app = outOfFuel (proved above)
+  -- So SemVal 2 (app ...) top = IsVal top = True
+  have hyp : SemVal 2 (.app (.lam .top (.lam .top (.bvar 0))) .top) .top := by
+    unfold SemVal
+    rw [concEval_one_redex]
+    exact isVal_top
+  have h3 := h2 hyp
+  -- h3 : SemVal 2 (lam top (bvar 0)) top
+  -- This requires top = lam s' t', which is False
+  unfold SemVal at h3
+  obtain ⟨_, _, h_eq, _⟩ := h3
+  cases h_eq
+
+/-! ### app_cong is FALSE for this SemVal definition
+
+    Same root cause as beta_L: the outOfFuel fallback makes the "slower" type
+    more permissive than the "faster" one.
+
+    **Counterexample**: f = app (lam top (lam top (lam top (bvar 0)))) top,
+    f' = lam top (lam top (bvar 0)), a = a' = top, k = 3, v = top.
+
+    Sub [] f f' via beta_L, Sub [] f' f via beta_R (the body is closed, so
+    body.subst 0 top = body), Sub [] a a' = refl, Sub [] a' a = refl.
+
+    concEval 2 (app f top) = outOfFuel → SemVal 3 (app f top) top = IsVal top = True
+    concEval 2 (app f' top) = ok (lam top (bvar 0)) →
+      SemVal 3 (app f' top) top = SemVal 2 (lam top (bvar 0)) top
+      = (exists s' t', top = lam s' t') = False
+-/
+
+private theorem concEval_two_app_f_top :
+    concEval 2 (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top) =
+    .outOfFuel := by rfl
+
+private theorem concEval_two_app_f'_top :
+    concEval 2 (.app (.lam .top (.lam .top (.bvar 0))) .top) =
+    .ok (.lam .top (.bvar 0)) := by rfl
+
+/-- **app_cong is FALSE for this SemVal definition.**
+
+    Concretely: f = app (lam top (lam top (lam top (bvar 0)))) top,
+    f' = lam top (lam top (bvar 0)), a = a' = top, k = 3, v = top.
+
+    Root cause: same as beta_L — the app case of SemVal falls back to
+    `IsVal v` when concEval runs out of fuel. Type (app f a) takes more fuel
+    to evaluate than (app f' a'), so at low fuel (app f a) permits v = top
+    while (app f' a') evaluates to a lambda type that excludes v = top. -/
+theorem app_cong_counterexample :
+    ¬ SubSem (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top)
+             (.app (.lam .top (.lam .top (.bvar 0))) .top) := by
+  intro h
+  have h3 := h 3 .top
+  -- Hypothesis: SemVal 3 (app (app ...) top) top
+  have hyp : SemVal 3 (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top) .top := by
+    unfold SemVal
+    rw [concEval_two_app_f_top]
+    exact isVal_top
+  have h4 := h3 hyp
+  -- Conclusion: SemVal 3 (app (lam top (lam top (bvar 0))) top) top
+  unfold SemVal at h4
+  rw [concEval_two_app_f'_top] at h4
+  -- h4 : SemVal 2 (lam top (bvar 0)) top
+  unfold SemVal at h4
+  obtain ⟨_, _, h_eq, _⟩ := h4
+  cases h_eq
 
 /-- The fundamental theorem of the logical relation (closed setting).
 
@@ -664,40 +776,88 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
 | `semExpr_refl` | Identity extension for expressions |
 | `wf_closedAt` / `wf_closed` | Wf implies closedness |
 | `concEval_safe` | **TYPE SAFETY** (zero sorry!) |
+| `beta_L_counterexample` | beta_L is FALSE for this SemVal |
+| `app_cong_counterexample` | app_cong is FALSE for this SemVal |
 
 ### fundamental_subSem cases:
 
 | Case | Status |
 |------|--------|
-| `refl` | PROVED (subSem_refl — identity) |
+| `refl` | PROVED (subSem_refl) |
 | `top` | PROVED (subSem_top) |
 | `bvar` | PROVED (vacuous in empty context) |
-| `trans` | PROVED (subSem_trans — one line!) |
-| `lam` | sorry (domain conversion done, blocked on Wf dom') |
-| `app_cong` | sorry (needs concEval congruence) |
-| `beta_L` | sorry (needs concEval beta-reduction facts) |
-| `beta_R` | sorry (needs concEval beta-reduction facts) |
+| `trans` | PROVED (subSem_trans) |
+| `lam` | sorry (needs generalized fundamental theorem, see below) |
+| `app_cong` | **FALSE** (see `app_cong_counterexample`) |
+| `beta_L` | **FALSE** (see `beta_L_counterexample`) |
+| `beta_R` | sorry (likely true, needs eval/subst commutation) |
 
-### Sorrys in fundamental_subSem (4 total):
+### Analysis of the 4 sorrys:
 
-The remaining 4 sorrys are the "compatibility lemmas" — they need:
-1. **lam**: The domain conversion (ih2: SubSem dom' dom) works, but applying
-   the input body condition requires `Sub [] av dom`, derivable from
-   `Sub [] av dom'` and `Sub [] dom' dom` via transitivity IF we have
-   `Wf [] dom'`. Two paths forward:
-   (a) Prove `Sub Γ a b → Wf Γ a → Wf Γ b` by mutual induction
-   (b) Remove `Sub [] av s` from SemVal, generalize to closing substitutions
-2. **beta_L/R**: concEval β-reduction facts relating `app (lam d b) arg`
-   evaluation to `(body.subst 0 arg)` evaluation, plus SubSem between
-   substituted expressions with different (but equivalent) arguments
-3. **app_cong**: concEval congruence (evaluating equivalent apps gives
-   equivalent results)
+#### beta_L and app_cong are FALSE
 
-### Path to closing the remaining sorrys:
+Root cause: the app case of SemVal falls back to `IsVal v` when concEval runs
+out of fuel. A redex `app (lam dom body) arg` takes more fuel to evaluate
+than the reductum `body.subst 0 arg` (or an equivalent app with simpler
+sub-expressions), so at low fuel the redex admits `v = Top` while the target
+type (a lam normal form) rejects it.
 
-1. Define semantic substitution environments for contexts
-2. Generalize fundamental theorem to: `Sub Γ e τ → SemSubst k Γ γ → SubSem (e[γ]) (τ[γ])`
-3. Specialize to empty context to recover `fundamental_closed`
+Both counterexamples exploit this: at the right step index, the source type's
+concEval returns outOfFuel (giving IsVal, which admits Top) while the target
+type's concEval converges to a lambda type (excluding Top).
+
+This is NOT a flaw in the overall approach — it is specific to the IsVal
+fallback in the app case of SemVal. Possible fixes:
+  (a) Use `False` instead of `IsVal v` on outOfFuel (bottom type semantics)
+  (b) Use an existential: `exists n, concEval n tau = ok nf /\ SemVal k nf v`
+  (c) Normalize types before interpreting them (type-level evaluator)
+Each fix requires reworking the entire SemVal infrastructure.
+
+#### lam is blocked on context generalization
+
+The body sub-judgment `Sub [dom] body body'` lives in context [dom], not [].
+To derive `SubSem (body.subst 0 av) (body'.subst 0 av)`, we need to apply
+`subst_sub_gen` to h3, obtaining `Sub [] (body.subst 0 av) (body'.subst 0 av)`,
+and then call `fundamental_subSem` recursively. But the resulting Sub derivation
+is not structurally smaller, so structural recursion fails.
+
+The standard fix is to generalize the fundamental theorem to arbitrary contexts
+with semantic substitution environments:
+  `Sub G e t -> SemSubst k G gamma -> SubSem (e[gamma]) (t[gamma])`
+The lam case then extends gamma with the argument, avoiding the circularity.
+
+#### beta_R is likely true but hard
+
+The reverse direction (reductum <= redex) does not suffer from the outOfFuel
+counterexample because:
+- When the redex's concEval runs out of fuel, the conclusion is `IsVal v`,
+  which follows from `semVal_isVal` applied to the hypothesis.
+- When the redex converges, it evaluates `body.subst 0 av` (where `av` is
+  the value of `arg`). Relating this to `body.subst 0 arg` requires a
+  "substitution commutes with evaluation" lemma: if `concEval n arg = ok av`,
+  then `concEval m (body.subst 0 arg)` and `concEval m' (body.subst 0 av)`
+  give the same result (with appropriate fuel adjustment).
+  When body.subst 0 arg is a lam value, the body conditions differ in their
+  domains (arg vs av), requiring the same kind of semantic equivalence that
+  the lam case needs.
+
+### Path forward
+
+The SemVal definition needs revision to handle beta_L and app_cong. Two
+promising approaches:
+
+1. **Normalize-then-interpret**: define `typeNorm` that fully normalizes a type
+   expression, then have SemVal only interpret normal forms. This avoids the
+   outOfFuel problem entirely since types are always fully normalized before
+   semantic interpretation.
+
+2. **Existential fuel**: replace `match concEval k (app f a)` with
+   `exists n, concEval n (app f a) = ok nf /\ SemVal k nf v`. The step index
+   k bounds observations, not evaluation. This decouples type normalization
+   fuel from the step index.
+
+Both approaches also require the context-generalized fundamental theorem to
+close the lam case.
 -/
 
 end PSS.LogRel
