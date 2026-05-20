@@ -39,9 +39,9 @@ Several kinds of `sorry` remain:
    ctxRed_lookup_equiv, and ctxRed_stack_inv. These hold for
    well-formed (no-shadowing) contexts, which is an invariant of
    reduction but not formally enforced by the context type.
-2. `noPromoAt_equiv_swap` and `noPromoAt_sub_swap`: these proofs used the
-   raw mutual recursor for noPromoAt, which changed shape with the cofinite
-   refactoring. The proof strategy is the same but needs recursor adaptation.
+2. CLOSED: `noPromoAt_equiv_swap` and `noPromoAt_sub_swap` are now fully
+   proved using the mutual recursor @LNEquivRed.noPromoAt.rec, with cofinite
+   binder cases handled by augmenting avoidance sets with x to ensure y ≠ x.
 3. `diamond_full`: sorry'd pending adaptation to cofinite constructor patterns.
    The proof strategy is the same as before (pick common fresh x from
    intersection of avoidance sets) but needs rewriting.
@@ -70,6 +70,12 @@ Several kinds of `sorry` remain:
   (x,ann)::Γ; s ⊢ body^x ≡→ u (resp. ≤→), then (y,ann)::Γ; s ⊢ body^y ≡→
   u[x↦fvar y]. Proved by combining ctx_mono + equivRed_subst (resp. subRed_subst).
   Requires x ∉ fvs(body), which holds at all call sites since x is chosen fresh.
+- `noPromoAt_equiv_swap` / `noPromoAt_sub_swap`: annotation swap under
+  non-promotion — if a derivation doesn't promote x, changing x's annotation
+  in the context preserves the derivation. Proved by mutual induction using
+  @LNEquivRed.noPromoAt.rec, with cofinite binder cases handled by
+  augmenting avoidance sets with x. Enables `equivRed_change_sub_to_equiv`
+  and `equivRed_change_equiv_to_sub` (previously depended on sorry'd swaps).
 
 ## Remaining Axioms
 None. All former axioms have been removed:
@@ -1529,27 +1535,143 @@ private theorem subRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExp
     (h : Γ₁ = Γ₂) (hr : LNSubRed Γ₁ s e u) : LNSubRed Γ₂ s e u :=
   h ▸ hr
 
--- noPromoAt_equiv_swap and noPromoAt_sub_swap: these proofs use the raw
--- mutual recursor for noPromoAt, which changed shape with the cofinite
--- quantification refactoring. The proof strategy is the same (mutual
--- induction on noPromoAt, swapping annotations for non-promoted variables),
--- but the recursor arguments for the cofinite binder cases now receive
--- universally-quantified body premises instead of existential ones.
--- Temporarily sorry'd pending adaptation to the new recursor shape.
+-- noPromoAt_equiv_swap and noPromoAt_sub_swap: proved by mutual induction
+-- using @LNEquivRed.noPromoAt.rec / @LNSubRed.noPromoAt.rec. The cofinite
+-- binder cases augment the avoidance set L with x (to ensure y ≠ x), then
+-- use swap_at_first_cons_ne to rewrite the context and equivRed_cast_ctx /
+-- subRed_cast_ctx to transport the IH result.
 
-set_option maxHeartbeats 800000 in
+set_option maxHeartbeats 1600000 in
 theorem noPromoAt_equiv_swap (x : String) (ann_new : LNAnn)
     {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
     (hnp : LNEquivRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
     : LNEquivRed (swap_at_first x ann_new Γ) s e u := by
-  sorry
+  exact
+    @LNEquivRed.noPromoAt.rec x
+      (fun Γ s e u _ => LNEquivRed (swap_at_first x ann_new Γ) s e u)
+      (fun Γ s e u _ => LNSubRed (swap_at_first x ann_new Γ) s e u)
+      -- me_pro: z ≠ x, z ≡ α ∈ Γ, noPromoAt x Γ s α α'
+      (fun hne hmem _hnp ih_sub =>
+        .me_pro (swap_at_first_mem_equiv_ne hne hmem) ih_sub)
+      -- me_bet: L, ∀ y ∉ L, noPromoAt x ((y,.sub dom)::Γ) s body^y t^y, noPromoAt x Γ [] v v'
+      (fun L _hbody _hv ih_body ih_v =>
+        .me_bet (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub _) ann_new _ hy_ne) (ih_body y hy_L))
+          ih_v)
+      -- me_top
+      .me_top
+      -- me_var
+      .me_var
+      -- me_tap
+      .me_tap
+      -- me_app
+      (fun _hnp_u _hnp_v ih_u ih_v => .me_app ih_u ih_v)
+      -- me_fun: L, noPromoAt dom, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fun (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub _) ann_new _ hy_ne) (ih_body y hy_L)))
+      -- me_fop: L, noPromoAt dom, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fop (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (swap_at_first_cons_ne x y (.equiv _) ann_new _ hy_ne) (ih_body y hy_L)))
+      -- ms_pro: z ≠ x, z ≤ t ∈ Γ
+      (fun hne hmem => .ms_pro (swap_at_first_mem_sub_ne hne hmem))
+      -- ms_top
+      .ms_top
+      -- ms_equ: noPromoAt equiv
+      (fun _hnp ih_equiv => .ms_equ ih_equiv)
+      -- ms_app
+      (fun _hnp_u ih_u => .ms_app ih_u)
+      -- ms_fun: L, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_body ih_body =>
+        .ms_fun (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (swap_at_first_cons_ne x y (.sub _) ann_new _ hy_ne) (ih_body y hy_L)))
+      -- ms_fop: L, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_body ih_body =>
+        .ms_fop (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (swap_at_first_cons_ne x y (.equiv _) ann_new _ hy_ne) (ih_body y hy_L)))
+      Γ s e u hnp
 
-set_option maxHeartbeats 400000 in
+set_option maxHeartbeats 1600000 in
 theorem noPromoAt_sub_swap (x : String) (ann_new : LNAnn)
     {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
     (hnp : LNSubRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
     : LNSubRed (swap_at_first x ann_new Γ) s e u := by
-  sorry
+  exact
+    @LNSubRed.noPromoAt.rec x
+      (fun Γ s e u _ => LNEquivRed (swap_at_first x ann_new Γ) s e u)
+      (fun Γ s e u _ => LNSubRed (swap_at_first x ann_new Γ) s e u)
+      -- me_pro
+      (fun hne hmem _hnp ih_sub =>
+        .me_pro (swap_at_first_mem_equiv_ne hne hmem) ih_sub)
+      -- me_bet
+      (fun L _hbody _hv ih_body ih_v =>
+        .me_bet (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub _) ann_new _ hy_ne) (ih_body y hy_L))
+          ih_v)
+      -- me_top
+      .me_top
+      -- me_var
+      .me_var
+      -- me_tap
+      .me_tap
+      -- me_app
+      (fun _hnp_u _hnp_v ih_u ih_v => .me_app ih_u ih_v)
+      -- me_fun
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fun (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (swap_at_first_cons_ne x y (.sub _) ann_new _ hy_ne) (ih_body y hy_L)))
+      -- me_fop
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fop (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (swap_at_first_cons_ne x y (.equiv _) ann_new _ hy_ne) (ih_body y hy_L)))
+      -- ms_pro
+      (fun hne hmem => .ms_pro (swap_at_first_mem_sub_ne hne hmem))
+      -- ms_top
+      .ms_top
+      -- ms_equ
+      (fun _hnp ih_equiv => .ms_equ ih_equiv)
+      -- ms_app
+      (fun _hnp_u ih_u => .ms_app ih_u)
+      -- ms_fun
+      (fun L _hnp_body ih_body =>
+        .ms_fun (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (swap_at_first_cons_ne x y (.sub _) ann_new _ hy_ne) (ih_body y hy_L)))
+      -- ms_fop
+      (fun L _hnp_body ih_body =>
+        .ms_fop (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := by intro heq; exact hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (swap_at_first_cons_ne x y (.equiv _) ann_new _ hy_ne) (ih_body y hy_L)))
+      Γ s e u hnp
 
 /-- Annotation independence: change from sub to equiv annotation.
     Valid when the derivation doesn't use MS-PRO on x (i.e., doesn't
