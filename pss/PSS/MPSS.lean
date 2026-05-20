@@ -186,6 +186,37 @@ inductive CtxRed : MCtx → Stack → MCtx → Stack → Type where
   | ct_nil :
       CtxRed [] [] [] []
 
+/-! ## Non-promotion predicate (Section 2.2 of MPSS_REDESIGN.md)
+
+`noPromoAt k h` asserts that derivation `h` does not use ME-PRO or MS-PRO
+to look up the context annotation at de Bruijn index `k`. This predicate
+enables the annotation-change lemma: if a derivation doesn't consult the
+annotation at index `k`, the annotation there can be replaced freely. -/
+
+mutual
+
+/-- A `MEquivRed` derivation does not promote (ME-PRO) at index `k`. -/
+def MEquivRed.noPromoAt (k : Nat) : MEquivRed Γ s t t' → Prop
+  | .me_pro (k := j) _hlook hsub => j ≠ k ∧ hsub.noPromoAt k
+  | .me_bet hbody harg => hbody.noPromoAt (k + 1) ∧ harg.noPromoAt k
+  | .me_top => True
+  | .me_var => True
+  | .me_tap => True
+  | .me_app hu hv => hu.noPromoAt k ∧ hv.noPromoAt k
+  | .me_fun hdom hbody => hdom.noPromoAt k ∧ hbody.noPromoAt (k + 1)
+  | .me_fop hdom hbody => hdom.noPromoAt k ∧ hbody.noPromoAt (k + 1)
+
+/-- A `MSubRed` derivation does not promote (MS-PRO) at index `k`. -/
+def MSubRed.noPromoAt (k : Nat) : MSubRed Γ s t t' → Prop
+  | .ms_pro (k := j) _hlook => j ≠ k
+  | .ms_top => True
+  | .ms_equ h => h.noPromoAt k
+  | .ms_app h => h.noPromoAt k
+  | .ms_fun h => h.noPromoAt (k + 1)
+  | .ms_fop h => h.noPromoAt (k + 1)
+
+end
+
 /-! ## Auxiliary lemmas and commutativity (Section 3) -/
 
 /-- Reflexivity of ≡→: every term reduces to itself (Proposition 18 in paper).
@@ -297,6 +328,115 @@ theorem setAnnAt_get?_ne {l : List Ann} {i n : Nat} {a : Ann} (h : i ≠ n) :
 theorem setAnnAt_cons_succ {x : Ann} {xs : List Ann} {n : Nat} {a : Ann} :
     setAnnAt (x :: xs) (n + 1) a = x :: setAnnAt xs n a := by
   simp [setAnnAt]
+
+/-! ### Annotation-change lemma (replaces false `equivRed_change_ann`)
+
+If a derivation under `Γ` does not promote at index `n`, then the
+annotation at position `n` is never consulted, so we can replace it
+with any other annotation `ann2`. We prove the generalized version
+for arbitrary `n`, then specialise to `n = 0`.
+
+The proof is mutual structural induction on `MEquivRed`/`MSubRed`.
+Under binders (`me_bet`, `me_fun`, `me_fop`, `ms_fun`, `ms_fop`) the
+index shifts by 1, matching the `noPromoAt (k + 1)` in the predicate.
+For `me_pro`/`ms_pro` at index `j`, the hypothesis `j ≠ n` (from
+`noPromoAt`) ensures the lookup `Γ.get? j` is unaffected by the
+replacement at position `n`. -/
+
+mutual
+
+def equivRed_no_promo_change_ann_at
+    {Γ : MCtx} {s : Stack} {t t' : Expr} (n : Nat) (ann2 : Ann)
+    (h : MEquivRed Γ s t t')
+    (hnp : h.noPromoAt n) :
+    MEquivRed (setAnnAt Γ n ann2) s t t' := by
+  match h with
+  | .me_top => exact .me_top
+  | .me_var => exact .me_var
+  | .me_tap => exact .me_tap
+  | @MEquivRed.me_pro _ _ _ j α hlook hsub =>
+    simp only [MEquivRed.noPromoAt] at hnp
+    obtain ⟨hne, hnp_sub⟩ := hnp
+    have hlook' : (setAnnAt Γ n ann2).get? j = some (Ann.equiv α) := by
+      rw [setAnnAt_get?_ne hne]; exact hlook
+    exact .me_pro hlook' (subRed_no_promo_change_ann_at n ann2 hsub hnp_sub)
+  | .me_app hu hv =>
+    simp only [MEquivRed.noPromoAt] at hnp
+    obtain ⟨hnp_u, hnp_v⟩ := hnp
+    exact .me_app (equivRed_no_promo_change_ann_at n ann2 hu hnp_u)
+                  (equivRed_no_promo_change_ann_at n ann2 hv hnp_v)
+  | @MEquivRed.me_bet _ _ dom _ _ _ _ hbody harg =>
+    simp only [MEquivRed.noPromoAt] at hnp
+    obtain ⟨hnp_body, hnp_arg⟩ := hnp
+    have heq : setAnnAt (Ann.sub dom :: Γ) (n + 1) ann2 = Ann.sub dom :: setAnnAt Γ n ann2 := by
+      simp [setAnnAt]
+    exact .me_bet (heq ▸ equivRed_no_promo_change_ann_at (n + 1) ann2 hbody hnp_body)
+                  (equivRed_no_promo_change_ann_at n ann2 harg hnp_arg)
+  | @MEquivRed.me_fun _ dom _ _ _ hdom hbody =>
+    simp only [MEquivRed.noPromoAt] at hnp
+    obtain ⟨hnp_dom, hnp_body⟩ := hnp
+    have heq : setAnnAt (Ann.sub dom :: Γ) (n + 1) ann2 = Ann.sub dom :: setAnnAt Γ n ann2 := by
+      simp [setAnnAt]
+    exact .me_fun (equivRed_no_promo_change_ann_at n ann2 hdom hnp_dom)
+                  (heq ▸ equivRed_no_promo_change_ann_at (n + 1) ann2 hbody hnp_body)
+  | @MEquivRed.me_fop _ _ α _ _ _ _ hdom hbody =>
+    simp only [MEquivRed.noPromoAt] at hnp
+    obtain ⟨hnp_dom, hnp_body⟩ := hnp
+    have heq : setAnnAt (Ann.equiv α :: Γ) (n + 1) ann2 = Ann.equiv α :: setAnnAt Γ n ann2 := by
+      simp [setAnnAt]
+    exact .me_fop (equivRed_no_promo_change_ann_at n ann2 hdom hnp_dom)
+                  (heq ▸ equivRed_no_promo_change_ann_at (n + 1) ann2 hbody hnp_body)
+
+def subRed_no_promo_change_ann_at
+    {Γ : MCtx} {s : Stack} {t t' : Expr} (n : Nat) (ann2 : Ann)
+    (h : MSubRed Γ s t t')
+    (hnp : h.noPromoAt n) :
+    MSubRed (setAnnAt Γ n ann2) s t t' := by
+  match h with
+  | .ms_top => exact .ms_top
+  | @MSubRed.ms_pro _ _ j bound hlook =>
+    simp only [MSubRed.noPromoAt] at hnp
+    have hlook' : (setAnnAt Γ n ann2).get? j = some (Ann.sub bound) := by
+      rw [setAnnAt_get?_ne hnp]; exact hlook
+    exact .ms_pro hlook'
+  | .ms_equ heq =>
+    simp only [MSubRed.noPromoAt] at hnp
+    exact .ms_equ (equivRed_no_promo_change_ann_at n ann2 heq hnp)
+  | .ms_app hinner =>
+    simp only [MSubRed.noPromoAt] at hnp
+    exact .ms_app (subRed_no_promo_change_ann_at n ann2 hinner hnp)
+  | @MSubRed.ms_fun _ dom _ _ hbody =>
+    simp only [MSubRed.noPromoAt] at hnp
+    have heq : setAnnAt (Ann.sub dom :: Γ) (n + 1) ann2 = Ann.sub dom :: setAnnAt Γ n ann2 := by
+      simp [setAnnAt]
+    exact .ms_fun (heq ▸ subRed_no_promo_change_ann_at (n + 1) ann2 hbody hnp)
+  | @MSubRed.ms_fop _ _ α _ _ _ hbody =>
+    simp only [MSubRed.noPromoAt] at hnp
+    have heq : setAnnAt (Ann.equiv α :: Γ) (n + 1) ann2 = Ann.equiv α :: setAnnAt Γ n ann2 := by
+      simp [setAnnAt]
+    exact .ms_fop (heq ▸ subRed_no_promo_change_ann_at (n + 1) ann2 hbody hnp)
+
+end
+
+/-- Specialization: if a derivation under `(ann1 :: Γ)` does not promote at
+    index 0, the head annotation can be replaced by any `ann2`. -/
+def equivRed_no_promo_change_ann_at_zero
+    {Γ : MCtx} {s : Stack} {t t' : Expr} {ann1 ann2 : Ann}
+    (h : MEquivRed (ann1 :: Γ) s t t')
+    (hnp : h.noPromoAt 0) :
+    MEquivRed (ann2 :: Γ) s t t' :=
+  have heq : setAnnAt (ann1 :: Γ) 0 ann2 = ann2 :: Γ := by simp [setAnnAt]
+  heq ▸ equivRed_no_promo_change_ann_at 0 ann2 h hnp
+
+/-- Specialization for MSubRed: if a derivation under `(ann1 :: Γ)` does not
+    promote at index 0, the head annotation can be replaced by any `ann2`. -/
+def subRed_no_promo_change_ann_at_zero
+    {Γ : MCtx} {s : Stack} {t t' : Expr} {ann1 ann2 : Ann}
+    (h : MSubRed (ann1 :: Γ) s t t')
+    (hnp : h.noPromoAt 0) :
+    MSubRed (ann2 :: Γ) s t t' :=
+  have heq : setAnnAt (ann1 :: Γ) 0 ann2 = ann2 :: Γ := by simp [setAnnAt]
+  heq ▸ subRed_no_promo_change_ann_at 0 ann2 h hnp
 
 -- Generalized annotation change: replace a sub annotation at any position n
 -- with any other annotation. The key property is that ME-PRO cannot fire
