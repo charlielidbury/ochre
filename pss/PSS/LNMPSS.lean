@@ -347,6 +347,65 @@ be a large amount of code; the point of this file is to mechanise the
 *commutativity proof structure* itself.
 -/
 
+/-! ## AUDIT RESULTS — SUMMARY
+
+### Root cause: Lean 4 dot notation for `open_at` and `subst_fvar`
+
+Both `open_at` and `subst_fvar` take two `LNExpr` arguments:
+  - `def open_at (k : Nat) (u : LNExpr) : LNExpr → LNExpr`
+  - `def subst_fvar (x : String) (u : LNExpr) : LNExpr → LNExpr`
+
+Lean 4 dot notation `e.f args` fills the first parameter matching `e`'s type.
+For these functions, that's the `u` (replacement) parameter, NOT the expression
+being operated on. So:
+  - `body.open_at 0 (.fvar x)` = `open_at 0 body (.fvar x)` = "replace bvar 0 with body in (fvar x)" = fvar x
+  - `u'.subst_fvar x v'` = `subst_fvar x u' v'` = "replace x with u' in v'" = v'[x := u']
+
+The INTENDED semantics were:
+  - `body.open_at 0 (.fvar x)` should be "open body with fvar x" = body[bvar 0 := fvar x]
+  - `u'.subst_fvar x v'` should be "substitute v' for x in u'" = u'[x := v']
+
+This affects:
+  1. The INDUCTIVE RULES themselves (ME-BET, ME-FUN, ME-FOP, MS-FUN, MS-FOP all use `body.open_at`)
+  2. Multiple axioms that use `open_at` or `subst_fvar` in their statements
+
+### Axioms proven FALSE (with Lean-verified `def ... : False`):
+  - `equivRed_subst` — dot notation bug on subst_fvar
+  - `subRed_subst` — dot notation bug on subst_fvar
+  - `equivRed_change_equiv_to_sub` — semantic issue (ME-PRO can fire on x with .equiv)
+  - `equivRed_change_sub_to_equiv` — semantic issue (MS-PRO can fire on x with .sub)
+  - `close_subst_fvar` — dot notation bug on subst_fvar
+  - `sz_open_at_fvar` — dot notation bug on open_at
+  - `close_open_id` — dot notation bug on open_at
+  - `open_close_id` — dot notation bug on open_at
+  - `open_close_subst` — dot notation bug on both
+
+### Axioms that are TRIVIALLY TRUE but vacuous (not what was intended):
+  - `equivRed_rename` — body.open_at collapses to fvar, making both sides trivial
+  - `subRed_rename` — same
+
+### Axioms likely TRUE (no counterexample found):
+  - `equivRed_refl`, `ctxRed_refl`, `ctxRed_nil_of_ctxRed`
+  - `ctxRed_lookup_sub`, `ctxRed_lookup_equiv`, `no_sub_and_equiv`
+  - `ctxRed_dom_eq`, `top_sub_inv`, `ctxRed_nil_stack`, `ctxRed_stack_inv`
+  - `diamond` (assuming paper proof correctness)
+
+### Axioms with UNCERTAIN status:
+  - `equivRed_weaken`, `subRed_weaken` — suspicious (context annotation changes)
+  - `equivRed_stack_ext`, `subRed_stack_ext` — likely false for same reason as
+    equivRed_change_sub_to_equiv (ME-FUN uses .sub, ME-FOP uses .equiv), but
+    dot notation bug makes the rules semantically different from intended so
+    it's unclear whether the BUG-AFFECTED versions of these axioms are also false.
+
+### Recommended fix
+  Change `open_at` and `subst_fvar` so the dot-notation target is the LAST argument:
+    def open_at (k : Nat) (u : LNExpr) (e : LNExpr) : LNExpr := ...
+    def subst_fvar (x : String) (u : LNExpr) (e : LNExpr) : LNExpr := ...
+  Or equivalently, swap the argument order to put the "self" expression first:
+    def open_at (e : LNExpr) (k : Nat) (u : LNExpr) : LNExpr := ...
+  This way `body.open_at 0 (.fvar x)` would correctly mean "open body at 0 with fvar x".
+-/
+
 /-- Reflexivity of ≡→ (Proposition 18).
     Every term equiv-reduces to itself. -/
 axiom equivRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
@@ -400,6 +459,55 @@ axiom equivRed_subst
     (harg  : LNEquivRed Γ [] v v')
     : LNEquivRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v')
 
+/-! ### AUDIT: equivRed_subst is FALSE
+
+    Dot notation: e.subst_fvar x u = LNExpr.subst_fvar x e u = "replace x with e in u".
+    So the axiom says: if (x,ann)::Γ;s ⊢ u ≡→ u' and Γ;[] ⊢ v ≡→ v',
+    then Γ;s ⊢ (replace x with u in v) ≡→ (replace x with u' in v').
+
+    Counterexample: ann = .equiv .top, u = fvar "x", u' = .top, v = v' = fvar "x", Γ=[], s=[].
+    - hbody: [("x", .equiv .top)]; [] ⊢ fvar "x" ≡→ .top  by ME-PRO
+    - harg:  []; [] ⊢ fvar "x" ≡→ fvar "x"  by ME-VAR
+    - LHS: replace x with (fvar "x") in (fvar "x") = fvar "x"
+    - RHS: replace x with .top in (fvar "x") = .top
+    - Conclusion: []; [] ⊢ fvar "x" ≡→ .top — underivable in empty context
+-/
+
+private theorem audit4_mem : LNCtx.mem_equiv [("x", .equiv .top)] "x" .top := by
+  simp [LNCtx.mem_equiv, LNCtx.lookup']
+
+private def audit4_derivation :
+    LNEquivRed [("x", .equiv .top)] [] (.fvar "x") .top :=
+  .me_pro audit4_mem .ms_top
+
+private def audit4_arg :
+    LNEquivRed ([] : LNCtx) [] (.fvar "x") (.fvar "x") :=
+  .me_var
+
+-- Check the substitution results via native_decide
+-- u.subst_fvar x v = (fvar "x").subst_fvar "x" (fvar "x")
+--   = subst_fvar "x" (fvar "x") (fvar "x") = "replace x with fvar x in fvar x" = fvar "x"
+private theorem audit4_subst_lhs :
+    (LNExpr.fvar "x").subst_fvar "x" (LNExpr.fvar "x") = .fvar "x" := by native_decide
+
+-- u'.subst_fvar x v' = (.top).subst_fvar "x" (fvar "x")
+--   = subst_fvar "x" .top (fvar "x") = "replace x with .top in fvar x" = .top
+private theorem audit4_subst_rhs :
+    (LNExpr.top).subst_fvar "x" (LNExpr.fvar "x") = .top := by native_decide
+
+private def audit4_after_subst :
+    LNEquivRed [] [] (.fvar "x") .top :=
+  audit4_subst_lhs ▸ audit4_subst_rhs ▸
+    equivRed_subst (ann := .equiv .top) (v := .fvar "x") (v' := .fvar "x")
+      audit4_derivation audit4_arg
+
+def equivRed_subst_gives_false : False := by
+  have h := audit4_after_subst
+  -- h : LNEquivRed [] [] (fvar "x") .top
+  -- In empty context: only ME-PRO and ME-VAR match fvar input.
+  -- ME-VAR gives fvar "x", not .top. ME-PRO needs mem_equiv in [].
+  exact nomatch h
+
 /-- Substitution for ≤→ (Lemma 30).
     If (x,ann)::Γ; s ⊢ u ≤→ u' and x ∉ dom(Γ)
     then Γ;s ⊢ u[x↦v] ≤→ u'[x↦v]. -/
@@ -409,6 +517,79 @@ axiom subRed_subst
     (hbody : LNSubRed ((x, ann) :: Γ) s u u')
     (hfresh : x ∉ LNCtx.dom Γ)
     : LNSubRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v)
+
+/-! ### AUDIT: subRed_subst is FALSE
+
+    NOTE on dot notation: e.subst_fvar x u = subst_fvar x e u = u[x := e].
+    So the axiom says: if (x,ann)::Γ;s ⊢ u ≤→ u' then Γ;s ⊢ v[x:=u] ≤→ v[x:=u'].
+
+    Counterexample: ann = .sub (lam .top (bvar 0)), u = fvar "x", v = fvar "x".
+    - hbody: [("x", .sub (lam .top (bvar 0)))]; [] ⊢ fvar "x" ≤→ lam .top (bvar 0)  by MS-PRO
+    - u' = lam .top (bvar 0)
+    - v[x:=u] = (fvar "x")[x := fvar "x"] = fvar "x"
+    - v[x:=u'] = (fvar "x")[x := lam .top (bvar 0)] = lam .top (bvar 0)
+    - Conclusion: []; [] ⊢ fvar "x" ≤→ lam .top (bvar 0)
+    - But in empty context, fvar "x" can only sub-reduce to .top (MS-TOP)
+      or itself (MS-EQU+ME-VAR). No rule reaches lam .top (bvar 0).
+
+    Root cause: The axiom claims v[x:=u] ≤→ v[x:=u'] for any v.
+    When v = fvar x, this becomes u ≤→ u' in context Γ (without x).
+    But the premise has the reduction in (x,ann)::Γ, and if the derivation
+    uses MS-PRO on x (only available with .sub), removing x from context
+    breaks the derivation.
+-/
+
+private def audit3_lam : LNExpr := .lam .top (.bvar 0)
+
+private theorem audit3_mem_sub :
+    LNCtx.mem_sub [("x", .sub audit3_lam)] "x" audit3_lam := by
+  simp [LNCtx.mem_sub, LNCtx.lookup', audit3_lam]
+
+private def audit3_sub_derivation :
+    LNSubRed [("x", .sub audit3_lam)] [] (.fvar "x") audit3_lam :=
+  .ms_pro audit3_mem_sub
+
+-- v = fvar "x". v.subst_fvar x u = subst_fvar "x" u (fvar "x") = u (for any u)
+-- So v[x:=u] = u, v[x:=u'] = u'.
+-- Axiom conclusion: LNSubRed [] [] (fvar "x") (lam .top (bvar 0))
+-- (because u.subst_fvar "x" (fvar "x") = subst_fvar "x" u (fvar "x") = u
+-- since fvar "x" has x as free var and gets replaced)
+
+-- Check the concrete subst_fvar computations
+private theorem audit3_subst_lhs :
+    (LNExpr.fvar "x").subst_fvar "x" (LNExpr.fvar "x") = .fvar "x" := by
+  native_decide
+
+private theorem audit3_subst_rhs :
+    audit3_lam.subst_fvar "x" (LNExpr.fvar "x") = audit3_lam := by
+  native_decide
+
+private def audit3_after_subst :
+    LNSubRed [] [] (.fvar "x") audit3_lam :=
+  audit3_subst_lhs ▸ audit3_subst_rhs ▸
+    subRed_subst (ann := .sub audit3_lam) (v := .fvar "x") audit3_sub_derivation (by simp [LNCtx.dom])
+
+def subRed_subst_gives_false : False := by
+  have h := audit3_after_subst
+  -- h : LNSubRed [] [] (fvar "x") audit3_lam
+  -- audit3_lam = lam .top (bvar 0)
+  -- Input = fvar "x", output = lam .top (bvar 0) in empty context
+  -- ms_pro: mem_sub [] "x" t is impossible (empty context)
+  -- ms_top: output = .top ≠ lam. Ruled out.
+  -- ms_equ: need LNEquivRed [] [] (fvar "x") audit3_lam
+  --   me_pro: mem_equiv [] "x" α impossible (empty context). Ruled out.
+  --   me_var: gives fvar "x" ≠ audit3_lam. Ruled out.
+  -- ms_app: input must be app. Ruled out.
+  -- ms_fun: input must be lam. Ruled out.
+  -- ms_fop: stack must be non-empty. Ruled out.
+  cases h with
+  | ms_pro hmem =>
+    simp [LNCtx.mem_sub, LNCtx.lookup'] at hmem
+  | ms_equ heq =>
+    simp only [audit3_lam] at heq
+    cases heq with
+    | me_pro hmem _ =>
+      simp [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
 
 /-- Context lookup: x ≤ t ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≤ t' ∈ Γ'
     with Γ;[] ⊢ t ≡→ t'. -/
@@ -459,6 +640,22 @@ axiom equivRed_rename
     (hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
     : LNEquivRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y))
 
+/-! ### AUDIT: equivRed_rename — TRIVIALLY TRUE (but vacuously, due to dot notation bug)
+
+    Due to the dot notation bug on open_at:
+      body.open_at 0 (fvar x) = open_at 0 body (fvar x) = fvar x  (for ALL body)
+    The premise becomes: (x,ann)::Γ; s ⊢ fvar x ≡→ u
+    The conclusion becomes: (y,ann)::Γ; s ⊢ fvar y ≡→ u.subst_fvar x (fvar y)
+      = (y,ann)::Γ; s ⊢ fvar y ≡→ (fvar y)[x := u]
+    When y ≠ x: (fvar y)[x := u] = fvar y, so conclusion is fvar y ≡→ fvar y (by ME-VAR).
+    When y = x: (fvar x)[x := u] = u, so conclusion is (x,ann)::Γ; s ⊢ fvar x ≡→ u (= premise).
+    So the axiom is trivially true — but expresses NOTHING about actual renaming,
+    because body is never used (open_at is backwards).
+    NOT FALSE but USELESS due to the dot notation bug.
+-/
+
+/-! ### AUDIT: subRed_rename — same situation, TRIVIALLY TRUE but vacuous. -/
+
 /-- Alpha-renaming for ≤→ under binders. -/
 axiom subRed_rename
     {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
@@ -467,6 +664,8 @@ axiom subRed_rename
     (hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
     : LNSubRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y))
 
+/-! ### AUDIT: subRed_rename — TRIVIALLY TRUE but vacuous (same as equivRed_rename). -/
+
 /-- close ∘ rename = close: close_at 0 y (u.subst_fvar x (fvar y))
     = close_at 0 x u, when y is fresh for u.
     Standard LN infrastructure. -/
@@ -474,10 +673,40 @@ axiom close_subst_fvar
     {u : LNExpr} {x y : String}
     : (u.subst_fvar x (.fvar y)).close_at 0 y = u.close_at 0 x
 
+/-! ### AUDIT: close_subst_fvar is FALSE (dot notation bug on subst_fvar)
+
+    u.subst_fvar x (fvar y) = subst_fvar x u (fvar y) = (fvar y)[x := u].
+    When y ≠ x: = fvar y.  close_at 0 y (fvar y) = bvar 0.
+    RHS: u.close_at 0 x = close_at 0 x u — depends on u.
+    For u = .top: RHS = .top ≠ bvar 0.
+-/
+def close_subst_fvar_gives_false : False := by
+  have h := @close_subst_fvar .top "x" "y"
+  -- LHS: (.top.subst_fvar "x" (fvar "y")).close_at 0 "y"
+  --     = (subst_fvar "x" .top (fvar "y")).close_at 0 "y"
+  --     = (fvar "y").close_at 0 "y"  (since "y" ≠ "x")
+  --     = bvar 0
+  -- RHS: .top.close_at 0 "x" = .top
+  -- So h : bvar 0 = .top
+  simp [LNExpr.subst_fvar, LNExpr.close_at] at h
+
 /-- Opening with a free variable preserves sz.
     Provable by structural induction on e. -/
 axiom sz_open_at_fvar (k : Nat) (x : String) (e : LNExpr)
     : (e.open_at k (.fvar x)).sz = e.sz
+
+/-! ### AUDIT: sz_open_at_fvar is FALSE (dot notation bug on open_at)
+
+    e.open_at k (fvar x) = open_at k e (fvar x) = "replace bvar k with e in (fvar x)".
+    Since fvar x has no bvar, this is always fvar x.
+    So (fvar x).sz = 1 but e.sz can be anything.
+-/
+def sz_open_at_fvar_gives_false : False := by
+  have h := sz_open_at_fvar 0 "x" (.app .top .top)
+  -- LHS: (app .top .top).open_at 0 (fvar "x").sz = (fvar "x").sz = 1
+  -- RHS: (app .top .top).sz = 1 + 1 + 1 = 3
+  -- So h : 1 = 3
+  simp [LNExpr.open_at, LNExpr.sz] at h
 
 /-- Context reduction preserves the domain. -/
 axiom ctxRed_dom_eq
@@ -491,11 +720,36 @@ axiom close_open_id
     {e : LNExpr} {x : String} (hfresh : x ∉ e.fvs)
     : (e.open_at 0 (.fvar x)).close_at 0 x = e
 
+/-! ### AUDIT: close_open_id is FALSE (dot notation bug on open_at)
+
+    e.open_at 0 (fvar x) = open_at 0 e (fvar x) = fvar x (for any e).
+    close_at 0 x (fvar x) = bvar 0. So the claim is bvar 0 = e. FALSE for e ≠ bvar 0.
+-/
+def close_open_id_gives_false : False := by
+  have h := @close_open_id .top "x" (by simp [LNExpr.fvs])
+  -- LHS: (.top.open_at 0 (fvar "x")).close_at 0 "x"
+  --     = (fvar "x").close_at 0 "x" = bvar 0
+  -- RHS: .top
+  -- h : bvar 0 = .top
+  simp [LNExpr.open_at, LNExpr.close_at] at h
+
 /-- open_at 0 (fvar x) (close_at 0 x e) = e when e is locally closed.
     close is the right-inverse of open for locally closed terms. -/
 axiom open_close_id
     {e : LNExpr} {x : String}
     : (e.close_at 0 x).open_at 0 (.fvar x) = e
+
+/-! ### AUDIT: open_close_id is FALSE (dot notation bug on open_at)
+
+    (e.close_at 0 x).open_at 0 (fvar x) = open_at 0 (close_at 0 x e) (fvar x)
+    = "replace bvar 0 with (close_at 0 x e) in (fvar x)" = fvar x.
+    So the claim is fvar x = e. FALSE for e ≠ fvar x.
+-/
+def open_close_id_gives_false : False := by
+  have h := @open_close_id .top "x"
+  -- (top.close_at 0 "x").open_at 0 (fvar "x") = fvar "x"
+  -- but RHS = .top
+  simp [LNExpr.open_at, LNExpr.close_at] at h
 
 /-- Opening a closed term with a different variable is the same as
     substituting. (close_at 0 y e).open_at 0 (fvar x) = e.subst_fvar y (fvar x).
@@ -503,6 +757,20 @@ axiom open_close_id
 axiom open_close_subst
     {e : LNExpr} {x y : String}
     : (e.close_at 0 y).open_at 0 (.fvar x) = e.subst_fvar y (.fvar x)
+
+/-! ### AUDIT: open_close_subst is FALSE (dot notation bug)
+
+    LHS: open_at 0 (close_at 0 y e) (fvar x) = fvar x (for any e, y).
+    RHS: subst_fvar y e (fvar x) = if x=y then e else fvar x.
+    When x = y and e ≠ fvar x: LHS = fvar x ≠ e = RHS.
+-/
+def open_close_subst_gives_false : False := by
+  have h := @open_close_subst .top "x" "x"
+  -- LHS: (.top.close_at 0 "x").open_at 0 (fvar "x") = fvar "x"
+  -- RHS: .top.subst_fvar "x" (fvar "x") = subst_fvar "x" .top (fvar "x")
+  --    = "replace x with .top in fvar x" = .top
+  -- h : fvar "x" = .top
+  simp [LNExpr.open_at, LNExpr.close_at, LNExpr.subst_fvar] at h
 
 /-- Top sub-reduces only to Top (or itself via MS-EQU).
     If Γ;s ⊢ Top ≤→ t then t = Top.
@@ -538,6 +806,80 @@ axiom equivRed_change_sub_to_equiv
     (hfresh : x ∉ LNCtx.dom Γ)
     : LNEquivRed ((x, .equiv α) :: Γ) s e u
 
+/-! ### AUDIT: equivRed_change_sub_to_equiv is FALSE
+
+    Counterexample: With `.sub` annotation, MS-PRO can fire on x in sub-derivations
+    (inside ME-PRO on another variable). When changed to `.equiv`, MS-PRO can't fire
+    and the resulting derivation is underivable (for a bad choice of α).
+
+    Context: [("x", .sub (lam top (bvar 0))), ("y", .equiv (fvar "x"))]
+    Derivation: fvar "y" ≡→ lam top (bvar 0) via ME-PRO on "y":
+      - lookup "y" gives .equiv (fvar "x")
+      - sub-derivation: fvar "x" ≤→ lam top (bvar 0) via MS-PRO on "x"
+    After change to ("x", .equiv (fvar "z")):
+      - ME-PRO on "y" still works (lookup "y" gives fvar "x")
+      - But LNSubRed [("x", .equiv (fvar "z")), ...] [] (fvar "x") (lam top (bvar 0))
+        is underivable: MS-PRO needs .sub but we have .equiv; MS-EQU+ME-PRO gives
+        fvar "z" which can't reach lam top (bvar 0).
+-/
+
+private def audit2_lam : LNExpr := .lam .top (.bvar 0)
+
+private theorem audit2_mem_equiv_y :
+    LNCtx.mem_equiv [("x", .sub audit2_lam), ("y", .equiv (.fvar "x"))] "y" (.fvar "x") := by
+  simp [LNCtx.mem_equiv, LNCtx.lookup', audit2_lam]
+
+private theorem audit2_mem_sub_x :
+    LNCtx.mem_sub [("x", .sub audit2_lam), ("y", .equiv (.fvar "x"))] "x" audit2_lam := by
+  simp [LNCtx.mem_sub, LNCtx.lookup', audit2_lam]
+
+private def audit2_derivation :
+    LNEquivRed [("x", .sub audit2_lam), ("y", .equiv (.fvar "x"))] [] (.fvar "y") audit2_lam :=
+  .me_pro audit2_mem_equiv_y (.ms_pro audit2_mem_sub_x)
+
+-- Apply the false axiom with α := fvar "z" (a term not in context)
+private def audit2_after_change :
+    LNEquivRed [("x", .equiv (.fvar "z")), ("y", .equiv (.fvar "x"))] [] (.fvar "y") audit2_lam :=
+  equivRed_change_sub_to_equiv (α := .fvar "z") audit2_derivation (by simp [LNCtx.dom])
+
+def equivRed_change_sub_to_equiv_gives_false : False := by
+  have h := audit2_after_change
+  -- Input = fvar "y", output = lam .top (bvar 0). Only ME-PRO can apply.
+  cases h with
+  | me_pro hmem hsub =>
+    -- hmem : mem_equiv [("x", .equiv (fvar "z")), ("y", .equiv (fvar "x"))] "y" α
+    -- So α = fvar "x"
+    -- hsub : LNSubRed [("x", .equiv (fvar "z")), ("y", .equiv (fvar "x"))] [] (fvar "x") audit2_lam
+    simp [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+    -- After simp, hmem should tell us α = fvar "x"
+    subst hmem
+    -- hsub : LNSubRed ... [] (fvar "x") audit2_lam
+    -- Case split on hsub. Input = fvar "x", output = lam .top (bvar 0)
+    cases hsub with
+    | ms_pro hmem_sub =>
+      -- hmem_sub : mem_sub [("x", .equiv (fvar "z")), ...] "x" audit2_lam
+      -- But lookup "x" gives .equiv (fvar "z"), not .sub
+      simp [LNCtx.mem_sub, LNCtx.lookup', audit2_lam] at hmem_sub
+    | ms_equ heq =>
+      -- heq : LNEquivRed ... [] (fvar "x") audit2_lam
+      -- Case split: ME-PRO or ME-VAR (ME-VAR ruled out, output mismatch)
+      cases heq with
+      | me_pro hmem2 hsub2 =>
+        -- hmem2 : mem_equiv ... "x" α₂ → α₂ = fvar "z"
+        simp [LNCtx.mem_equiv, LNCtx.lookup'] at hmem2
+        subst hmem2
+        -- hsub2 : LNSubRed ... [] (fvar "z") audit2_lam
+        cases hsub2 with
+        | ms_pro hmem3 =>
+          -- "z" not in context
+          simp [LNCtx.mem_sub, LNCtx.lookup', audit2_lam] at hmem3
+        | ms_equ heq2 =>
+          -- heq2 : LNEquivRed ... [] (fvar "z") audit2_lam
+          -- "z" not in context, ME-PRO fails, ME-VAR gives fvar "z" ≠ audit2_lam
+          cases heq2 with
+          | me_pro hmem4 _ =>
+            simp [LNCtx.mem_equiv, LNCtx.lookup', audit2_lam] at hmem4
+
 /-- Reverse direction: change equiv to sub annotation.
     Valid when the derivation does not use ME-PRO on x.
     By the non-promotion property (Lemma 2, second clause),
@@ -549,6 +891,47 @@ axiom equivRed_change_equiv_to_sub
     (h : LNEquivRed ((x, .equiv α) :: Γ) s e u)
     (hfresh : x ∉ LNCtx.dom Γ)
     : LNEquivRed ((x, .sub t) :: Γ) s e u
+
+/-! ### AUDIT: equivRed_change_equiv_to_sub is FALSE
+
+    Counterexample: In context [("x", .equiv .top)], we can derive
+      fvar "x" ≡→ .top   via ME-PRO (lookup gives x ≡ .top, then .top ≤→ .top by MS-TOP).
+    The axiom then gives LNEquivRed [("x", .sub t)] [] (fvar "x") .top,
+    but no constructor of LNEquivRed can produce this:
+      - me_pro needs .equiv annotation at "x", but we have .sub
+      - me_var gives fvar "x" ≡→ fvar "x", not .top
+      - all other constructors require the input to not be fvar
+    Hence False.
+-/
+
+-- Step 1: Build a derivation that uses ME-PRO on x
+private theorem audit_mem_equiv : LNCtx.mem_equiv [("x", .equiv .top)] "x" .top := by
+  simp [LNCtx.mem_equiv, LNCtx.lookup']
+
+private def audit_me_pro_on_x : LNEquivRed [("x", .equiv .top)] [] (.fvar "x") .top :=
+  .me_pro audit_mem_equiv .ms_top
+
+-- Step 2: Apply the false axiom
+private def audit_after_change : LNEquivRed [("x", .sub .top)] [] (.fvar "x") .top :=
+  equivRed_change_equiv_to_sub audit_me_pro_on_x (by simp [LNCtx.dom])
+
+-- Step 3: Invert to get False
+-- The only constructors matching input=fvar are me_pro and me_var.
+-- me_pro needs mem_equiv which fails (we have .sub), me_var gives fvar "x" ≠ .top.
+-- Helper: no equiv annotation for "x" in [("x", .sub .top)]
+private theorem no_equiv_in_sub_ctx (α : LNExpr) :
+    ¬ LNCtx.mem_equiv [("x", .sub .top)] "x" α := by
+  simp [LNCtx.mem_equiv, LNCtx.lookup']
+
+def equivRed_change_equiv_to_sub_gives_false : False := by
+  have h := audit_after_change
+  -- We show by inversion that no constructor can produce this.
+  -- Use the mutual induction principle to case-split.
+  -- Input is (fvar "x"), output is .top, context is [("x", .sub .top)], stack is [].
+  -- Only me_pro and me_var can have input=fvar.
+  -- Lean auto-rules out me_var (output fvar "x" ≠ .top).
+  -- For me_pro: we need LNCtx.mem_equiv [("x", .sub .top)] "x" α, which is impossible.
+  exact nomatch h
 
 /-- Inversion on LNCtxRed for stack cons:
     If Γ; α::s ↦ Γ'; s', then s' = α'::s₁ and Γ;s ↦ Γ';s₁
