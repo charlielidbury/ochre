@@ -72,8 +72,19 @@ The gap between "not constructible" and "formally provable" is the open problem.
 
 - **Height alone**: compositions yield height ≤ n, not < n.
 - **Combined h.height + hw.height**: rearrangement preserves total weight.
-- **totalWeight** (recursive over all embedded Wf/Sub): same issue —
-  no material is discarded, only rearranged.
+- **totalWeight** (recursive over all embedded Wf/Sub, with beta_L/beta_R
+  weight 1 not 0): same issue. The rearrangement at the sorry points swaps
+  sub-trees between trans wrappers but preserves the total count of both
+  wrapper nodes and leaf nodes. Concretely, at sorry 1 the original is
+    `trans (trans h1a (app_cong hf ha ha') hw1) beta_L hw_x`
+  and the composed is
+    `trans h1a (trans (app_cong hf ha ha') beta_L hw_x) hw1`.
+  Both contain exactly 2 trans nodes, 1 app_cong node, and 1 beta_L node,
+  plus the same set of sub-derivations {h1a, hf, ha, ha', hw1, hw_x}.
+  `totalWeight_reassoc_eq` proves this equality in Lean: the rearrangement
+  is totalWeight-preserving by `omega`. Making beta_L weight 1 (not 0)
+  gains 1 extra unit of slack from the consumed beta_L but spends it on
+  the new inner trans wrapper, netting zero. See `totalWeight_app_cong_beta_eq`.
 - **appDepth** (max-based nesting of `.app`-middle trans nodes): does NOT
   strictly decrease when `appDepth(h1a) ≤ appDepth(h1b)`.
 - **Lexicographic (n, q)**: betaHelper's q increases by 1 in the composition,
@@ -137,6 +148,103 @@ def Wf.appDepth : Wf Γ e → Nat
   | .app hf ha hs hsub harg =>
     max (hf.appDepth) (max (ha.appDepth) (max (hs.appDepth) (max (hsub.appDepth) (harg.appDepth))))
 end
+
+-- ============================================================================
+-- Total weight: counts EVERY node in the derivation tree, including Sub
+-- derivations embedded inside Wf (e.g., from Wf.app).
+-- Key difference from height: beta_L and beta_R get weight 1, not 0.
+-- ============================================================================
+
+mutual
+/-- Total weight of a Sub derivation, counting every node including
+    sub-derivations embedded in Wf witnesses. -/
+def Sub.totalWeight : Sub Γ a b → Nat
+  | .refl _       => 1
+  | .top _        => 1
+  | .trans h1 h2 hw => 1 + h1.totalWeight + h2.totalWeight + hw.totalWeight
+  | .bvar _       => 1
+  | .lam h1 h2 h3  => 1 + h1.totalWeight + h2.totalWeight + h3.totalWeight
+  | .app_cong h1 h2 h3 => 1 + h1.totalWeight + h2.totalWeight + h3.totalWeight
+  | .beta_L       => 1
+  | .beta_R       => 1
+
+/-- Total weight of a Wf derivation. -/
+def Wf.totalWeight : Wf Γ e → Nat
+  | .var _         => 1
+  | .top           => 1
+  | .lam hd hb     => 1 + hd.totalWeight + hb.totalWeight
+  | .app hf ha hs hsub harg => 1 + hf.totalWeight + ha.totalWeight + hs.totalWeight + hsub.totalWeight + harg.totalWeight
+end
+
+-- All totalWeights are ≥ 1
+mutual
+theorem Sub.totalWeight_pos (h : Sub Γ a b) : 1 ≤ h.totalWeight := by
+  cases h <;> simp [Sub.totalWeight] <;> omega
+
+theorem Wf.totalWeight_pos (hw : Wf Γ e) : 1 ≤ hw.totalWeight := by
+  cases hw <;> simp [Wf.totalWeight] <;> omega
+end
+
+-- ============================================================================
+-- Weight-preservation of transitivity reassociation
+--
+-- The key obstacle: every rearrangement that arises at the sorry points
+-- preserves totalWeight EXACTLY. The proof below demonstrates this for
+-- the critical app_cong sorry:
+--
+-- ORIGINAL derivation (schematic, what the main theorem sees):
+--   trans (trans h1a (app_cong hf ha ha') hw1) beta_L hw_x
+--
+-- COMPOSED derivation (what we'd like to recurse on):
+--   trans h1a (trans (app_cong hf ha ha') beta_L hw_x) hw1
+--
+-- Both use the SAME set of leaf/intermediate sub-derivations
+-- {h1a, hf, ha, ha', hw1, hw_x, beta_L}, wrapped in exactly two
+-- trans nodes and one app_cong node. Since totalWeight is additive
+-- over the tree, the totals are identical:
+--
+--   original = 4 + tw(h1a) + tw(hf) + tw(ha) + tw(ha') + ww(hw1) + ww(hw_x)
+--   composed = 4 + tw(h1a) + tw(hf) + tw(ha) + tw(ha') + ww(hw_x) + ww(hw1)
+--
+-- So if original.totalWeight ≤ n, composed.totalWeight ≤ n (not < n).
+-- The ih_flat IH requires STRICT decrease (< n), which is off by exactly 1.
+--
+-- This is true regardless of how we weight beta_L (0, 1, or any constant):
+-- the rearrangement swaps sub-trees between wrapper nodes but preserves
+-- the total count of wrapper nodes and leaves.
+-- ============================================================================
+
+/-- The transitivity reassociation preserves totalWeight: the "original"
+    and "composed" derivation trees at the app_cong sorry have identical
+    totalWeight. This proves the totalWeight approach fundamentally cannot
+    close the off-by-one gap. -/
+theorem totalWeight_reassoc_eq
+    {Γ : Ctx} {a m1 m2 b : Expr}
+    (h1a : Sub Γ a m1) (h1b : Sub Γ m1 m2) (hw1 : Wf Γ m1)
+    (h2 : Sub Γ m2 b) (hw2 : Wf Γ m2) :
+    -- original: trans (trans h1a h1b hw1) h2 hw2
+    -- composed: trans h1a (trans h1b h2 hw2) hw1
+    (Sub.trans (Sub.trans h1a h1b hw1) h2 hw2).totalWeight =
+    (Sub.trans h1a (Sub.trans h1b h2 hw2) hw1).totalWeight := by
+  simp [Sub.totalWeight, Wf.totalWeight]; omega
+
+/-- Specific instance for the app_cong sorry: the composed derivation
+    `trans h1a (trans (app_cong hf ha ha') beta_L hw_x) hw1`
+    has the same totalWeight as the original
+    `trans (trans h1a (app_cong hf ha ha') hw1) beta_L hw_x`.
+    Since any additive measure gives the same value for both, no
+    additive measure can provide the strict decrease needed. -/
+theorem totalWeight_app_cong_beta_eq
+    {Γ : Ctx} {a g d dom body c : Expr}
+    (h1a : Sub Γ a (.app g d))
+    (hf : Sub Γ g (.lam dom body)) (ha : Sub Γ d c) (ha' : Sub Γ c d)
+    (hw1 : Wf Γ (.app g d))
+    (hw_x : Wf Γ (.app (.lam dom body) c)) :
+    -- original shape (how the derivation looked before decomposition):
+    (Sub.trans (Sub.trans h1a (.app_cong hf ha ha') hw1) .beta_L hw_x).totalWeight =
+    -- composed shape (what we want to recurse on):
+    (Sub.trans h1a (Sub.trans (.app_cong hf ha ha') .beta_L hw_x) hw1).totalWeight := by
+  simp [Sub.totalWeight, Wf.totalWeight]; omega
 
 def Expr.IsHeadForm : Expr → Prop
   | .lam _ _ => True
