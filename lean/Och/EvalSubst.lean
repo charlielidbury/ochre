@@ -362,7 +362,10 @@ mutual
           | some ty =>
               .ok (some (ty.shift (k + 1) 0))
           | none => .ok none
-      | .fix _ => .ok none
+      | .fix body =>
+          match evalSubst (fuel + 1) unfBound (body.subst 0 (.fix body)) with
+          | .ok unfolded => .ok (some unfolded)
+          | _ => .ok none
       | .app f arg => do
           match (← synthNeutralType fuel tyCtx f) with
           | some ty =>

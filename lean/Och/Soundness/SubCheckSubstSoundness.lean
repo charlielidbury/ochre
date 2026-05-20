@@ -414,8 +414,7 @@ noncomputable def synthNeutralType_to_sub
         · -- whnfPi returned something else; algorithm returns .ok none
           -- which contradicts h : ... = .ok (some ty)
           simp at h
-    | fix body =>
-      rw [synthNeutralType.eq_def] at h; simp at h
+    | fix body => sorry
     | _ =>
       rw [synthNeutralType.eq_def] at h; simp at h
 

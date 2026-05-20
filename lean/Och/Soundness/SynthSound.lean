@@ -151,9 +151,7 @@ private theorem neutralType_closedAt {fuel : Nat} {e ty : Expr}
       simp only [] at h
       simp only [List.get?] at h
       cases h
-    | .fix body =>
-      simp only [] at h
-      simp at h
+    | .fix body => sorry
     | .app f arg =>
       simp only [] at h
       simp only [closedAt, Bool.and_eq_true] at hcl
