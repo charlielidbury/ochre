@@ -24,7 +24,7 @@
 
 // Judgment shorthands
 #let sub(S, G, a, b) = $#S ; #G tack.r #a subset.sq.eq #b$
-#let ty(G, e, t) = $#G tack.r #e arrow.squiggly #t$
+#let wf(G, e) = $#G tack.r #e "wf"$
 #let eval(e, v) = $#e arrow.b.double #v$
 #let subst(body, x, v) = $#body [#x arrow.r.bar #v]$
 
@@ -133,16 +133,48 @@ This is the *operational specification* of the language.
 
 = Typing Rules <decl-sub>
 
-Och's type system is structured around two central relations:
+Och's type system is structured around two relations:
 
-*$Gamma tack.r a arrow.squiggly tau$* - Is $a$ well formed under $Gamma$? (additionally gives us the weak head normal form in $tau$)
+*Well-formedness* $Gamma tack.r e "wf"$ --- is $e$ well-formed under $Gamma$? Defined by structural rules (@well-formed), delegating all type-comparison questions to subtyping. No type is assigned; in Och, a value IS its own type (by [S-Refl]).
 
-*$S;Gamma tack.r a subset.sq.eq b$* - Is $a$ a subtype of $b$ under $Gamma$? (assuming co-inductive hypotheses $S$)
+*Subtyping* $S ; Gamma tack.r a subset.sq.eq b$ --- is $a$ a subtype of $b$ under $Gamma$, assuming coinductive hypotheses $S$? Subtyping in Och means set inclusion: $A subset.sq.eq B$ iff every value of $A$ is also a value of $B$.
 
-Subtyping in Och means set inclusion: $A subset.sq.eq B$ iff every value of $A$ is
-also a value of $B$. The relation is written
+== Well-formedness <well-formed>
 
-$ S ; Gamma tack.r a subset.sq.eq b $
+The well-formedness judgment $Gamma tack.r e "wf"$ determines whether term $e$ is well-formed under context $Gamma$. It does not assign a type --- in Och's "terms are types" world, a value IS its own most-precise type (by [S-Refl]), and all type-comparison questions are handled by subtyping. Well-formedness validates purely structural conditions: annotations are types, binders are in scope, and applications have Π-typed functions with domain-inhabiting arguments.
+
+#align(center, grid(
+  columns: (1fr, 1fr, 1fr),
+  gutter: 1.5em,
+  irule("W-Var", wf($Gamma$, $x$), $x in "dom"(Gamma)$),
+  irule("W-Type", wf($Gamma$, $top$)),
+  irule("W-Bot", wf($Gamma$, $bot$)),
+))
+
+#align(center, grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  irule("W-Lam", wf($Gamma$, $lambda(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf(
+    $Gamma\, x lt.eq A$,
+    $b$,
+  )),
+  irule("W-App", wf($Gamma$, $f space a$), wf($Gamma$, $f$), wf($Gamma$, $a$), sub($emptyset$, $Gamma$, $f$, $lambda(x lt.eq A). B$), sub($emptyset$, $Gamma$, $a$, $A$)),
+))
+
+#align(center, grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  irule("W-Iota", wf($Gamma$, $iota(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf($Gamma\, x lt.eq A$, $b$)),
+  irule("W-Fix", wf($Gamma$, $"fix"(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf($Gamma\, x lt.eq A$, $b$)),
+))
+
+*[W-Var]* requires the variable to be in scope.
+
+*[W-Type]* and *[W-Bot]* are always well-formed.
+
+*[W-Lam], [W-Iota], [W-Fix]* check that the annotation is a type ($A subset.sq.eq top$) and that the body is well-formed under the extended context.
+
+*[W-App]* is the only rule with subtyping premises: the function must subtype some $lambda(x lt.eq A). B$ (it has a Π-type), and the argument must subtype the domain $A$. No type is assigned to the result --- the result's type is the result itself (by [S-Refl]), and if the caller needs to know it subtypes something, that is a separate subtyping question.
 
 == Context $Gamma$ <context>
 
@@ -438,72 +470,9 @@ The subtyping relation must be closed under head reduction: if $a$ computes to $
   )),
 ))
 
-= Declarative Typing <decl-typing>
-
-The typing judgment $Gamma tack.r e arrow.squiggly tau$ determines whether term $e$ is well-formed under context $Gamma$ with type $tau$. It is defined by structural rules over the term language, delegating all type-comparison questions to the subtyping relation (@decl-sub).
-
-The key design consequence of Och's "terms are types" philosophy is that there is no separate kind system. Annotations must subtype $top$ (i.e., be well-formed types), but this is a subtyping check, not a kinding check. The subsumption rule [D-Sub] allows any term to be retyped at a supertype, connecting the typing judgment directly to the subtyping lattice.
-
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("D-Var", ty($Gamma$, $x$, $Gamma(x)$)),
-  irule("D-Type", ty($Gamma$, $top$, $top$)),
-  irule("D-Bot", ty($Gamma$, $bot$, $bot$)),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("D-Lam", ty($Gamma$, $lambda(x lt.eq A). b$, $lambda(x lt.eq A). B$), ty($Gamma$, $A$, $top$), ty(
-    $Gamma\, x lt.eq A$,
-    $b$,
-    $B$,
-  )),
-  irule("D-App", ty($Gamma$, $f space a$, $B[x arrow.r.bar a]$), ty($Gamma$, $f$, $lambda(x lt.eq A). B$), ty(
-    $Gamma$,
-    $a$,
-    $A$,
-  )),
-))
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule(
-    "D-Iota",
-    ty($Gamma$, $v$, $iota(x lt.eq A). B$),
-    ty($Gamma$, $A$, $top$),
-    ty($Gamma\, x lt.eq A$, $B$, $top$),
-    ty($Gamma$, $v$, $A$),
-    ty($Gamma$, $v$, $B[x arrow.r.bar v]$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("D-Fix", ty($Gamma$, $"fix"(x lt.eq A). b$, $A$), ty($Gamma$, $A$, $top$), ty($Gamma\, x lt.eq A$, $b$, $A$)),
-  irule("D-Sub", ty($Gamma$, $e$, $B$), ty($Gamma$, $e$, $A$), sub($emptyset$, $Gamma$, $A$, $B$)),
-))
-
-*[D-Var]* looks up the variable's declared type in the context.
-
-*[D-Type]* and *[D-Bot]* are self-typing: $top$ has type $top$, and $bot$ has type $bot$. By [D-Sub] with [S-BotL], $bot$ can be given any type.
-
-*[D-Lam]* checks that the domain annotation is a type ($A arrow.squiggly top$) and that the body is well-typed under the extended context. The result type is a lambda with the same domain --- since in Och, a lambda IS a Π-type.
-
-*[D-App]* requires the function to have a Π-type (a lambda type) and the argument to inhabit the domain. The result type is the codomain with the argument substituted for the bound variable.
-
-*[D-Iota]* is Cedille-style self-type introduction. It requires four things: the annotation and body are types; the value inhabits the annotation; and the value inhabits the body with itself substituted for the self-reference. This last premise is what makes iota useful for dependent elimination --- the type can refer to the value itself.
-
-*[D-Fix]* types a recursive definition: the body must inhabit the annotation $A$ under the assumption that the recursive reference also inhabits $A$. The fixpoint as a whole then has type $A$.
-
-*[D-Sub]* (subsumption) allows any term to be retyped at a supertype, connecting typing to the subtyping lattice.
-
 = Metatheory <metatheory>
 
-Soundness connects the concrete semantics (@conc-eval), the declarative subtyping (@decl-sub), and the typing judgment (@decl-typing).
+Soundness connects the concrete semantics (@conc-eval), subtyping (@decl-sub), and well-formedness (@well-formed).
 
 *Evaluation equivalence.* If $e$ evaluates to $e'$, both directions of subtyping hold.
 
@@ -511,18 +480,18 @@ $
   e "closed" and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq e and emptyset ; emptyset tack.r e subset.sq.eq e'
 $
 
-*Preservation.* Standard type preservation (derives from evaluation equivalence via transitivity).
+*Preservation.* Evaluation preserves well-formedness (derives from evaluation equivalence).
 
 $
-  tack.r e arrow.squiggly tau and e arrow.b.double e' arrow.double tack.r e' arrow.squiggly tau
+  tack.r e "wf" and e arrow.b.double e' arrow.double tack.r e' "wf"
 $
 
-*Progress.* A well-typed closed term doesn't get stuck during evaluation. The evaluator may return a value or run out of fuel but never reaches an error state.
+*Progress.* A well-formed closed term doesn't get stuck during evaluation. The evaluator may return a value or run out of fuel but never reaches an error state.
 
-*End-to-end.* Composing the above: if $e$ is well-typed at $tau$ and evaluates to $e'$, the result subtypes the declared type.
+*End-to-end.* Composing the above: if $e$ is well-formed and subtypes $tau$, and $e$ evaluates to $e'$, the result subtypes $tau$.
 
 $
-  tack.r e arrow.squiggly tau and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq tau
+  tack.r e "wf" and emptyset ; emptyset tack.r e subset.sq.eq tau and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq tau
 $
 
 == What soundness promises to the programmer <promises>
@@ -574,7 +543,7 @@ A named variable $x$ bound at the innermost binder becomes `bvar 0`; a variable 
   caption: [Paper-to-Lean correspondence],
 )
 
-The formalisation also includes an algorithmic decision procedure for these judgments (`evalSubst`, `subCheckSubst`, `synthCore` in `EvalSubst.lean` and `API.lean`), with partial soundness verification against the declarative `Subtype'` relation.
+The formalisation also includes an algorithmic decision procedure for these judgments (`evalSubst`, `subCheckSubst`, `Och.check` in `EvalSubst.lean` and `API.lean`), with partial soundness verification against the declarative `Subtype'` relation.
 
 == De Bruijn details <lean-db>
 

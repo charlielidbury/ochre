@@ -2,18 +2,17 @@ import Och.Syntax
 import Och.Subtyping
 
 /-!
-# Well-formed WHNF (declarative typing)
+# Well-formedness (declarative)
 
-`WfWhnf Γ e v` is the declarative typing judgment: under context `Γ`,
-expression `e` is well-formed, and `v` is its type-witness.
+`WellFormed Γ e` is the declarative well-formedness judgment: under
+context `Γ`, expression `e` is well-formed.
 
-For canonical forms (lam, iota, fix, type, bot, bvar), the type-witness
-is the expression itself — this is Och's refl-typing convention where a
-value IS its own most-precise type.
-
-For elimination forms (app, let, asc), the type-witness is determined
-structurally: application produces the instantiated codomain, let
-produces itself, and ascription strips to the inner expression's witness.
+In Och's "values are types" world, a separate type assignment is
+unnecessary — every value IS its own most-precise type (by
+`Subtype'.refl`), and all type-comparison questions are handled by
+the subtyping relation. Well-formedness just validates structural
+conditions: annotations are types, binders are in scope, applications
+have Π-typed functions with domain-inhabiting arguments.
 
 ## Relationship to other definitions
 
@@ -22,64 +21,56 @@ This is the declarative counterpart of the algorithmic `Och.check`
 declarative counterpart of `subCheckSubst` (`EvalSubst.lean`).
 
 ```
-Subtype'  ←  subCheckSubst     (subtype-check soundness)
-WfWhnf    ←  Och.check          (synthesis soundness, target)
+Subtype'     ←  subCheckSubst     (subtype-check soundness)
+WellFormed   ←  Och.check          (well-formedness soundness)
 ```
 
 ## Soundness target
 
-  `Och.check fuel Γ e = ok v → WfWhnf Γ e v`
+  `Och.check e fuel Γ = .ok () → WellFormed Γ e`
 -/
 
 open Expr
 
-/-- Declarative typing / well-formedness judgment.
+/-- Declarative well-formedness judgment.
 
-`WfWhnf Γ e v` means: under context `Γ`, term `e` is well-formed,
-and `v` is its type-witness (most-precise type).
+`WellFormed Γ e` means: under context `Γ`, term `e` is well-formed.
+
+No type witness is returned — in Och, a value IS its own type
+(`Subtype'.refl`), and subtyping handles all type comparisons.
 
 The `Subtype'` premises always use the empty seen-set `[]`,
 matching the "real" subtyping judgment `∅; Γ ⊢ a ⊑ b`. -/
-inductive WfWhnf : Ctx → Expr → Expr → Type where
-  /-- `⊤` is self-typing: `Γ ⊢ ⊤ ⇝ ⊤`. -/
+inductive WellFormed : Ctx → Expr → Prop where
   | type {Γ : Ctx} :
-      WfWhnf Γ .type .type
-  /-- `⊥` is self-typing: `Γ ⊢ ⊥ ⇝ ⊥`. -/
+      WellFormed Γ .type
   | bot {Γ : Ctx} :
-      WfWhnf Γ .bot .bot
-  /-- A bound variable is well-formed if in scope. Self-typing. -/
+      WellFormed Γ .bot
   | bvar {Γ : Ctx} {k : Nat} :
       k < Γ.length →
-      WfWhnf Γ (.bvar k) (.bvar k)
-  /-- Lambda: domain must be a type, body well-formed under extended
-      context. Self-typing (a lambda IS its own Π-type in Och). -/
-  | lam {Γ : Ctx} {dom body bodyV : Expr} :
+      WellFormed Γ (.bvar k)
+  | lam {Γ : Ctx} {dom body : Expr} :
       Subtype' [] Γ dom .type →
-      WfWhnf (dom :: Γ) body bodyV →
-      WfWhnf Γ (.lam dom body) (.lam dom body)
-  /-- Iota: annotation must be a type, body well-formed under extended
-      context. Self-typing. -/
-  | iota {Γ : Ctx} {ann body bodyV : Expr} :
+      WellFormed (dom :: Γ) body →
+      WellFormed Γ (.lam dom body)
+  | iota {Γ : Ctx} {ann body : Expr} :
       Subtype' [] Γ ann .type →
-      WfWhnf (ann :: Γ) body bodyV →
-      WfWhnf Γ (.iota ann body) (.iota ann body)
-  /-- Fix: annotation must be a type, body well-formed under extended
-      context. Self-typing. -/
-  | fix {Γ : Ctx} {ann body bodyV : Expr} :
+      WellFormed (ann :: Γ) body →
+      WellFormed Γ (.iota ann body)
+  | fix {Γ : Ctx} {ann body : Expr} :
       Subtype' [] Γ ann .type →
-      WfWhnf (ann :: Γ) body bodyV →
-      WfWhnf Γ (.fix ann body) (.fix ann body)
+      WellFormed (ann :: Γ) body →
+      WellFormed Γ (.fix ann body)
   /-- Application: function and argument must be well-formed,
-      function's type-witness must subtype a Π (possibly after
-      fix/iota unfolding via `Subtype'`), and argument must subtype
-      the domain. Output is the codomain with the argument substituted.
+      function must subtype a Π (possibly after fix/iota unfolding
+      via `Subtype'`), and argument must subtype the domain.
 
       The existentially quantified `dom` and `body` are the Π's
-      domain and codomain — they may not appear directly in `fV`
-      (e.g. when `fV` is a fix that unfolds to a lambda). -/
-  | app {Γ : Ctx} {f a fV aV dom body : Expr} :
-      WfWhnf Γ f fV →
-      WfWhnf Γ a aV →
-      Subtype' [] Γ fV (.lam dom body) →
-      Subtype' [] Γ aV dom →
-      WfWhnf Γ (.app f a) (body.subst 0 a)
+      domain and codomain — they may not appear directly in `f`
+      (e.g. when `f` is a fix that unfolds to a lambda). -/
+  | app {Γ : Ctx} {f a dom body : Expr} :
+      WellFormed Γ f →
+      WellFormed Γ a →
+      Subtype' [] Γ f (.lam dom body) →
+      Subtype' [] Γ a dom →
+      WellFormed Γ (.app f a)
