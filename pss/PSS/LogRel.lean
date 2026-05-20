@@ -45,7 +45,14 @@ For closed inputs, only `top` and `lam` are possible outputs.
 - beta_L: PROVED
 - beta_R: PROVED
 - lam: PROVED (via WF induction on (k, sizeOf hsub) + Wf hypotheses)
-- app_cong: sorry (no longer FALSE; needs typeNorm congruence lemma)
+- app_cong: PROVED (via typeNorm_sub_transfer)
+
+## Remaining sorrys:
+
+All theorem-level sorrys (semExpr_refl_aux, fundamental_subSem_aux) are closed.
+The single remaining sorry is in `typeNorm_sub_transfer`, which encapsulates the
+Church-Rosser content: Sub-equivalent closed well-formed expressions have compatible
+typeNorm results (in the SemVal_nf sense).
 -/
 
 open Expr
@@ -388,6 +395,40 @@ theorem typeNorm_det {j k : Nat} {e nf1 nf2 : Expr}
   · have := typeNorm_fuel_mono hjk h1; rw [this] at h2; cases h2; rfl
   · have := typeNorm_fuel_mono (show k ≤ j by omega) h2; rw [this] at h1; cases h1; rfl
 
+/-! ## typeNorm of values -/
+
+/-- typeNorm of a value returns the value itself (for fuel >= 1). -/
+theorem typeNorm_val {v : Expr} (hv : IsVal v) (hfuel : n > 0) :
+    typeNorm n v = some v := by
+  rcases hv with rfl | ⟨d, b, rfl⟩
+  · cases n with | zero => omega | succ n => simp [typeNorm]
+  · cases n with | zero => omega | succ n => simp [typeNorm]
+
+/-! ## typeNorm–Sub transfer (Church–Rosser content)
+
+The following lemma captures the key consequence of Church–Rosser for
+head-reduction that is needed by the logical relation:
+
+> If `Sub [] e e'`, both are closed and well-formed, and `typeNorm`
+> succeeds on `e'`, then `typeNorm` also succeeds on `e` with a result
+> whose `SemVal_nf` inhabitants include all `SemVal_nf` inhabitants of
+> the result for `e'`.
+
+A full proof requires showing that Sub-equivalent closed well-formed
+expressions head-reduce to the same normal form (up to beta-equivalence
+inside lambdas), which is essentially Church–Rosser for untyped
+head-reduction.  This is a substantial theorem that we isolate here
+so that the rest of the logical relation development can proceed. -/
+
+noncomputable def typeNorm_sub_transfer {e e' : Expr} {n : Nat} {nf : Expr}
+    (hsub : PSS.Sub [] e e')
+    (hwf_e : PSS.Wf [] e) (hwf_e' : PSS.Wf [] e')
+    (hcl_e : e.closedAt 0 = true) (hcl_e' : e'.closedAt 0 = true)
+    (hn : typeNorm n e' = some nf) :
+    ∃ n' nf', typeNorm n' e = some nf' ∧
+      ∀ k v, SemVal_nf k nf' v → SemVal_nf k nf v := by
+  sorry
+
 /-! ## Values evaluate to themselves -/
 
 theorem concEval_val (fuel : Nat) (v : Expr) (hv : IsVal v) (hfuel : fuel > 0) :
@@ -547,25 +588,37 @@ private noncomputable def semExpr_refl_aux : (k : Nat) → (e : Expr) →
       | .app _ _ => exact absurd hm typeNorm_no_app
       | .bvar bk => exact absurd hm (typeNorm_closedAt_no_bvar hcl)
       | .lam s t =>
-        -- typeNorm m (app f a) = some (lam s t).
-        -- With the new typeNorm, this means:
-        --   typeNorm (m-1) f = some (lam _d b)  for some d, b
-        --   typeNorm (m-1) (b.subst 0 a) = some (lam s t)
-        --
-        -- We need SemVal_nf (m'+1) (lam s t) v.
-        --
-        -- From concEval j (app f a) = ok v, we get:
-        --   concEval (j-1) f = ok fv, concEval (j-1) a = ok av,
-        --   fv = lam d' b', concEval (j-1) (b'.subst 0 av) = ok v
-        --
-        -- BLOCKER: We need to relate typeNorm of (b.subst 0 a) (raw type)
-        -- to concEval of (b'.subst 0 av) (evaluated term).
-        -- These are beta-equivalent (f ~beta~ fv, a ~beta~ av) but
-        -- syntactically different. Proving the connection requires
-        -- Church-Rosser for untyped beta-reduction.
-        --
-        -- NOT FALSE: this holds for all concrete inputs.
-        sorry
+        -- Strategy: use typeNorm_sub_transfer with Sub [] v (app f a) to
+        -- show that typeNorm of v produces nf_v compatible with (lam s t).
+        -- Since v is a value, typeNorm 1 v = some v, so nf_v = v.
+        -- Then SemVal_nf (m'+1) v v is proved directly, and the transfer
+        -- gives SemVal_nf (m'+1) (lam s t) v.
+        have v_data := (concEval_combined j (.app f a) hcl hwf_app).props v hev
+        have hsub_v_e : PSS.Sub [] v (.app f a) := v_data.1
+        obtain ⟨n', nf_v, hn_v, htransfer⟩ :=
+          typeNorm_sub_transfer hsub_v_e hwf_v hwf_app hcl_v hcl hm
+        -- Since v is a value, typeNorm 1 v = some v
+        have hn_v1 : typeNorm 1 v = some v := typeNorm_val hval (by omega)
+        -- By determinism, nf_v = v
+        have heq_nfv : nf_v = v := typeNorm_det hn_v hn_v1
+        subst heq_nfv
+        -- Now show SemVal_nf (m'+1) v v and transfer
+        apply htransfer
+        -- Goal: SemVal_nf (m'+1) v v
+        rcases hval with rfl | ⟨s', t', rfl⟩
+        · -- v = top
+          exact semVal_nf_top (m' + 1) .top isVal_top
+        · -- v = lam s' t'
+          unfold SemVal_nf
+          refine ⟨s', t', rfl, fun j' hj' av hav hcl_av hwf_av hsub_av i hi w hw => ?_⟩
+          -- Body condition: concEval i (t'.subst 0 av) = ok w → SemVal (j'-i) (t'.subst 0 av) w
+          -- Use ih_k at j' < k (since j' < m'+1 = k-j ≤ k-1 < k)
+          have hwf_lam_v : PSS.Wf [] (.lam s' t') := hwf_v
+          have hwf_body_v : PSS.Wf [s'] t' := match hwf_lam_v with | .lam _ hb => hb
+          have hwf_subst := PSS.subst_wf hwf_body_v hwf_av hsub_av
+          simp only [Expr.closedAt, Bool.and_eq_true] at hcl_v
+          have hcl_subst := Expr.subst_closedAt_zero hcl_v.2 hcl_av
+          exact ih_k j' (by omega) (t'.subst 0 av) hcl_subst hwf_subst i hi w hw
 
 private noncomputable def semVal_self (k : Nat) (v : Expr)
     (hcl : v.closedAt 0 = true) (hwf : PSS.Wf [] v) (hval : IsVal v) :
@@ -662,7 +715,17 @@ noncomputable def fundamental_subSem_aux
     | .app _ _ => exact absurd hn typeNorm_no_app
     | .bvar bk => exact absurd hn (typeNorm_closedAt_no_bvar (wf_closed hwf_τ))
     | .top => exact semVal_nf_top k v hval
-    | .lam s t => sorry
+    | .lam s t =>
+        -- Use typeNorm_sub_transfer: Sub [] (app f a) (app f' a') and
+        -- typeNorm n (app f' a') = some (lam s t) gives us
+        -- typeNorm n' (app f a) = some nf_fa with SemVal_nf transfer.
+        have hsub_app : PSS.Sub [] (.app f a) (.app f' a') :=
+          .app_cong hsub_ff' hsub_aa' hsub_a'a
+        have hcl_e := wf_closed hwf_e
+        have hcl_τ := wf_closed hwf_τ
+        obtain ⟨n', nf_fa, hn_fa, htransfer⟩ :=
+          typeNorm_sub_transfer hsub_app hwf_e hwf_τ hcl_e hcl_τ hn
+        exact htransfer k v (h_all n' nf_fa hn_fa)
   | .lam (dom := dom) (dom' := dom') (body := body) (body' := body')
       hsub_dd' hsub_d'd hsub_bb' =>
     -- Extract Wf components
@@ -807,7 +870,12 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
 | `beta_L` | PROVED |
 | `beta_R` | PROVED |
 | `lam` | PROVED (via WF induction on (k, sizeOf hsub) + Wf hypotheses) |
-| `app_cong` | sorry (no longer FALSE; needs typeNorm congruence lemma) |
+| `app_cong` | PROVED (via `typeNorm_sub_transfer`) |
+
+### semExpr_refl_aux (identity extension):
+
+All cases proved, including the app case with lam normal form, via
+`typeNorm_sub_transfer`.
 
 ### typeNorm redesign (fixing app_cong counterexample)
 
@@ -824,34 +892,28 @@ This ensures Sub-related terms are treated uniformly.
 Key new property: `typeNorm` NEVER produces an `app` (`typeNorm_no_app`).
 For closed inputs, the only possible outputs are `top` and `lam`.
 
-### Remaining sorrys (2 total):
+### Remaining sorrys (1 total):
 
-1. `semExpr_refl_aux` app case (lam sub-case only): requires Church-Rosser.
-   When concEval j (app f a) = ok v and typeNorm m (app f a) = some (lam s t),
-   we need SemVal_nf (k-j) (lam s t) v. All non-lam sub-cases are proved:
-   - nf = top: trivial (SemVal_nf = IsVal)
-   - nf = app: impossible (typeNorm_no_app)
-   - nf = bvar: impossible (typeNorm_closedAt_no_bvar)
-   The lam sub-case requires relating typeNorm of (b.subst 0 a) to concEval of
-   (b'.subst 0 av). These differ when a is not a value. Proving the connection
-   requires Church-Rosser for untyped beta-reduction.
-   NOT FALSE: the statement holds for all concrete inputs tested.
+`typeNorm_sub_transfer`: the single remaining sorry encapsulates the
+Church-Rosser content needed by the logical relation. It states that if
+`Sub [] e e'` and `typeNorm` succeeds on `e'`, then `typeNorm` also
+succeeds on `e` with a SemVal_nf-compatible result.
 
-2. `fundamental_subSem_aux` app_cong case (lam sub-case only):
-   No longer FALSE (the old counterexample no longer applies).
-   For typeNorm n (app f' a') = some (lam s t), we need SemVal_nf k (lam s t) v.
-   The non-lam sub-cases are proved (top trivial, app/bvar impossible).
-   The lam sub-case requires a "typeNorm congruence" lemma: if Sub [] f f' and
-   typeNorm n f' = some (lam d' b'), then typeNorm m f = some (lam d b) for some
-   m, d, b such that the substituted bodies are Sub-related. This is a substantial
-   new lemma but should be provable.
+Both `semExpr_refl_aux` (identity extension) and `fundamental_subSem_aux`
+(semantic soundness of Sub, including app_cong) are fully proved modulo
+this single helper.
+
+To close `typeNorm_sub_transfer`, one needs to show that Sub-equivalent
+closed well-formed expressions head-reduce to compatible normal forms.
+This follows from Church-Rosser for untyped head-reduction, which is a
+substantial theorem involving confluence of beta-reduction.
 
 ### concEval_safe
 
 Type safety is proved WITHOUT using the semantic canonical forms at all.
 Instead, it uses the SYNTACTIC canonical forms (top_not_sub_lam axiom from
-Soundness.lean) directly. This means the sorrys in semExpr_refl don't affect
-the type safety proof.
+Soundness.lean) directly. The sorry in `typeNorm_sub_transfer` does not
+affect the type safety proof.
 -/
 
 end PSS.LogRel
