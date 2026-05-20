@@ -72,15 +72,20 @@ Several kinds of `sorry` remain:
   Requires x ∉ fvs(body), which holds at all call sites since x is chosen fresh.
 
 ## Remaining Axioms
-The remaining axioms are `equivRed_weaken` and `subRed_weaken`:
-- **stack_ext**: REMOVED. Former axioms `equivRed_stack_ext` / `subRed_stack_ext`
-  were FALSE (counterexample at end of file). The commutativity MS-PRO case
-  now sorry's a restricted form inline (annotation terms are stack-stable under
-  well-formed contexts, but this invariant is not formally tracked).
-- **weaken**: needs the annotation reduction relationship from LNCtxRed, not
-  just context inclusion; essentially requires commutativity-like reasoning.
-- **noPromoAt**: REMOVED. The former axioms `me_bet_body_noPromoAt` and
-  `commutativity_noPromoAt` were FALSE as standalone statements (formal
+None. All former axioms have been removed:
+- **stack_ext**: REMOVED (FALSE). Former axioms `equivRed_stack_ext` /
+  `subRed_stack_ext` — counterexample at end of file. The commutativity
+  MS-PRO case now sorry's a restricted form inline (annotation terms are
+  stack-stable under well-formed contexts, but this invariant is not
+  formally tracked).
+- **weaken**: REMOVED (FALSE). Former axioms `equivRed_weaken` /
+  `subRed_weaken` — counterexample at end of file. CtxRed can reduce
+  annotations more than the original derivation did, making the original
+  output unreachable in the reduced context. The MS-PRO/ME-VAR case now
+  uses `equivRed_ctx_ext` (context extension) plus restricted stack
+  extension (sorry'd) instead.
+- **noPromoAt**: REMOVED (FALSE). The former axioms `me_bet_body_noPromoAt`
+  and `commutativity_noPromoAt` were FALSE as standalone statements (formal
   counterexamples preserved in the file). The correct formulation co-proves
   noPromoAt preservation with commutativity: the strengthened return type
   includes `∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃`.
@@ -709,18 +714,17 @@ theorem subRed_ctx_mono
         .ms_fop L (fun y hy => ih_body y hy ((y, .equiv _) :: Γ') (LNCtx.sub_cons hsc)))
   exact go h Γ' hsub
 
-/-- Weakening for ≡→ via context reduction (Lemma 22).
-    If Γ;s ⊢ u ≡→ v and Γ;s ↦ Γ';s' then Γ';s' ⊢ u ≡→ v. -/
-axiom equivRed_weaken
-    {Γ Γ' : LNCtx} {s s' : LNStack} {u v : LNExpr}
-    (h : LNEquivRed Γ s u v) (hctx : LNCtxRed Γ s Γ' s')
-    : LNEquivRed Γ' s' u v
+/-! ### equivRed_weaken / subRed_weaken: REMOVED (FALSE)
 
-/-- Weakening for ≤→ via context reduction (Lemma 21). -/
-axiom subRed_weaken
-    {Γ Γ' : LNCtx} {s s' : LNStack} {u v : LNExpr}
-    (h : LNSubRed Γ s u v) (hctx : LNCtxRed Γ s Γ' s')
-    : LNSubRed Γ' s' u v
+The former axioms `equivRed_weaken` and `subRed_weaken` claimed that
+reduction is preserved under context reduction (Γ;s ↦ Γ';s'). This is
+FALSE — see the counterexample at the end of this file.
+
+The commutativity MS-PRO/ME-VAR case that previously motivated these
+axioms is now handled by `equivRed_ctx_ext` (for the context part)
+and a restricted stack-extension sorry for annotation terms (see the
+inline comment in the MS-PRO/ME-VAR case).
+-/
 
 /-- Structural context extension for ≡→ (standard LN infrastructure).
     If Γ;s ⊢ u ≡→ v and x ∉ dom(Γ), then (x,ann)::Γ; s ⊢ u ≡→ v.
@@ -1930,16 +1934,22 @@ theorem commutativity
     cases h_equiv with
     | me_pro hmem_equiv _ => exact absurd (no_sub_and_equiv hmem hmem_equiv) False.elim
     | me_var =>
+      -- ctxRed_lookup_sub: from x ≤ t ∈ Γ and Γ;s ↦ Γ';s', get t' with
+      -- x ≤ t' ∈ Γ' and LNEquivRed Γ [] t t' (context extension via
+      -- equivRed_ctx_ext, empty stack from CT-ANN definition).
       obtain ⟨t', hmem', ht_red⟩ := ctxRed_lookup_sub hmem h_ctx
-      -- ht_red : LNEquivRed Γ [] t t' (annotation reduced with empty stack)
-      -- Need : LNEquivRed Γ s t t' (same reduction under current stack s)
-      -- This is a restricted form of stack extension: the reduction is of an
-      -- annotation term extracted from the context. A full proof requires showing
-      -- that annotation terms are "stack-stable" (their reduction doesn't depend
-      -- on the stack), which holds under well-formedness of contexts but is not
-      -- yet formalized. See header comment on stack_ext for the counterexample
-      -- that prevents a blanket stack extension axiom.
-      exact ⟨t', sorry, .ms_pro hmem', sorry⟩  -- sorry: stack extension + noPromoAt preservation
+      -- Top edge needs: LNEquivRed Γ s t t' (stack s, not [])
+      -- Right edge:     LNSubRed Γ' s' (fvar x) t' via ms_pro hmem' ✓
+      --
+      -- The top edge sorry is restricted stack extension for annotation
+      -- terms: we have LNEquivRed Γ [] t t' and need LNEquivRed Γ s t t'.
+      -- This holds because annotation terms in well-formed contexts are
+      -- "stack-stable" (their reduction doesn't depend on the stack), but
+      -- proving this requires formalizing context well-formedness.
+      -- Note: this is NOT the false equivRed_weaken (which changes BOTH
+      -- context and stack via CtxRed). Here the context stays as Γ; only
+      -- the stack changes from [] to s.
+      exact ⟨t', sorry, .ms_pro hmem', sorry⟩  -- sorry: stack extension for annotation terms + noPromoAt
 
   --===================================================================
   -- MS-APP: t₀ = app u₀ v, t₂ = app u₂ v
