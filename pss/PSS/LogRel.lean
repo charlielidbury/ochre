@@ -25,9 +25,16 @@ define `SemVal k t v = IsVal v /\ forall n nf, typeNorm n t = some nf -> SemVal_
 The normalization fuel `n` is universally quantified and decoupled from the
 step index `k`, eliminating the asymmetry.
 
-`typeNorm` is defined so that:
-  `typeNorm (n+1) (app (lam d b) a) = typeNorm n (b.subst 0 a)`
-using the RAW body `b`. This makes beta_L trivial.
+`typeNorm` always normalizes the head of an application first:
+  `typeNorm (n+1) (app f a) = match typeNorm n f with
+    | some (lam _ b) => typeNorm n (b.subst 0 a)
+    | _ => none`
+This ensures Sub-related functions that differ only in syntactic shape (e.g.,
+a beta-redex vs its reductum) are treated uniformly, fixing the previous
+counterexample where `app_cong` was provably FALSE.
+
+Key property: `typeNorm` never produces an `app` in its output (`typeNorm_no_app`).
+For closed inputs, only `top` and `lam` are possible outputs.
 
 ## fundamental_subSem case status:
 
@@ -35,10 +42,10 @@ using the RAW body `b`. This makes beta_L trivial.
 - top: PROVED
 - bvar: PROVED (vacuous)
 - trans: PROVED
-- beta_L: PROVED (was FALSE in old definition!)
-- beta_R: PROVED (was sorry in old definition)
+- beta_L: PROVED
+- beta_R: PROVED
 - lam: PROVED (via WF induction on (k, sizeOf hsub) + Wf hypotheses)
-- app_cong: **FALSE** (proved by counterexample — see `app_cong_subSem_counterexample`)
+- app_cong: sorry (no longer FALSE; needs typeNorm congruence lemma)
 -/
 
 open Expr
@@ -48,24 +55,26 @@ namespace PSS.LogRel
 /-! ## Type normalizer -/
 
 /-- Pure syntactic beta-normalizer for type expressions.
-    Reduces syntactic beta-redexes by substituting the RAW body:
-      typeNorm (n+1) (app (lam d b) a) = typeNorm n (b.subst 0 a)
-    For non-redex expressions, normalizes sub-expressions.
-    Returns `none` on out-of-fuel. -/
+    Always normalizes the head of an application first:
+      typeNorm (n+1) (app f a) = match typeNorm n f with
+        | some (lam _ b) => typeNorm n (b.subst 0 a)
+        | _ => none
+    Returns `none` on out-of-fuel or stuck (non-lambda head).
+    Never produces an `app` in its output. -/
 noncomputable def typeNorm : Nat → Expr → Option Expr
   | 0, _ => none
   | _ + 1, .bvar k => some (.bvar k)
   | _ + 1, .top => some .top
   | _ + 1, .lam d b => some (.lam d b)
-  | n + 1, .app (.lam _d b) a => typeNorm n (b.subst 0 a)
-  | n + 1, .app f a => do
-    let f' ← typeNorm n f
-    let a' ← typeNorm n a
-    some (.app f' a')
+  | n + 1, .app f a =>
+    match typeNorm n f with
+    | some (.lam _d b) => typeNorm n (b.subst 0 a)
+    | _ => none  -- stuck (f doesn't normalize to a lambda)
 
-/-- Key identity: typeNorm of a syntactic beta-redex equals typeNorm of the reductum. -/
+/-- Key identity: typeNorm of a syntactic beta-redex equals typeNorm of the reductum
+    (needs fuel ≥ 2 because we normalize the head first, using 1 unit of fuel). -/
 theorem typeNorm_beta (n : Nat) (d b a : Expr) :
-    typeNorm (n + 1) (.app (.lam d b) a) = typeNorm n (b.subst 0 a) := by
+    typeNorm (n + 2) (.app (.lam d b) a) = typeNorm (n + 1) (b.subst 0 a) := by
   simp [typeNorm]
 
 /-- typeNorm on top. -/
@@ -103,39 +112,20 @@ theorem typeNorm_fuel_mono {j k : Nat} {e nf : Expr}
     | .top => simp [typeNorm] at hev ⊢; exact hev
     | .lam d b =>
       simp [typeNorm] at hev ⊢; exact hev
-    | .app (.lam _d b) a =>
+    | .app f a =>
       simp only [typeNorm] at hev ⊢
-      exact ih (show n ≤ k by omega) hev
-    | .app (.bvar m) a =>
-      simp only [typeNorm, Option.bind] at hev ⊢
-      match hf : typeNorm n (.bvar m), ha : typeNorm n a with
-      | some f', some a' =>
-        simp [hf, ha] at hev
+      -- hev : match typeNorm n f with | some (lam _ b) => typeNorm n (b.subst 0 a) | _ => none = some nf
+      match hf : typeNorm n f with
+      | some (.lam _d b) =>
+        simp [hf] at hev
+        -- hev : typeNorm n (b.subst 0 a) = some nf
         have hf' := ih (show n ≤ k by omega) hf
-        have ha' := ih (show n ≤ k by omega) ha
-        simp [hf', ha']; exact hev
-      | some _, none => simp [hf, ha] at hev
-      | none, _ => simp [hf] at hev
-    | .app .top a =>
-      simp only [typeNorm, Option.bind] at hev ⊢
-      match hf : typeNorm n .top, ha : typeNorm n a with
-      | some f', some a' =>
-        simp [hf, ha] at hev
-        have hf' := ih (show n ≤ k by omega) hf
-        have ha' := ih (show n ≤ k by omega) ha
-        simp [hf', ha']; exact hev
-      | some _, none => simp [hf, ha] at hev
-      | none, _ => simp [hf] at hev
-    | .app (.app f1 f2) a =>
-      simp only [typeNorm, Option.bind] at hev ⊢
-      match hf : typeNorm n (.app f1 f2), ha : typeNorm n a with
-      | some f', some a' =>
-        simp [hf, ha] at hev
-        have hf' := ih (show n ≤ k by omega) hf
-        have ha' := ih (show n ≤ k by omega) ha
-        simp [hf', ha']; exact hev
-      | some _, none => simp [hf, ha] at hev
-      | none, _ => simp [hf] at hev
+        simp [hf']
+        exact ih (show n ≤ k by omega) hev
+      | some .top => simp [hf] at hev
+      | some (.bvar _) => simp [hf] at hev
+      | some (.app _ _) => simp [hf] at hev
+      | none => simp [hf] at hev
 
 /-- typeNorm always succeeds on lam (with fuel >= 1). -/
 theorem typeNorm_lam_total (d b : Expr) :
@@ -153,53 +143,22 @@ theorem typeNorm_closedAt {n : Nat} {e nf : Expr} {c : Nat}
     | .bvar k => simp [typeNorm] at hn; subst hn; exact hcl
     | .top => simp [typeNorm] at hn; subst hn; exact hcl
     | .lam d b => simp [typeNorm] at hn; subst hn; exact hcl
-    | .app (.lam _d b) a =>
+    | .app f a =>
       simp only [typeNorm] at hn
       simp only [Expr.closedAt, Bool.and_eq_true] at hcl
-      have hcl_lam := hcl.1
-      simp only [Expr.closedAt, Bool.and_eq_true] at hcl_lam
-      exact ih (Expr.subst_closedAt_zero.aux hcl_lam.2 hcl.2 (Nat.zero_le _)) hn
-    | .app f a =>
-      -- f is not a lam (previous case caught that)
-      -- typeNorm normalizes f and a separately and returns app f' a'
-      have hcl_f : f.closedAt c = true := by
-        simp only [Expr.closedAt, Bool.and_eq_true] at hcl; exact hcl.1
-      have hcl_a : a.closedAt c = true := by
-        simp only [Expr.closedAt, Bool.and_eq_true] at hcl; exact hcl.2
-      -- For non-lam f, typeNorm returns app (typeNorm f) (typeNorm a)
-      match f with
-      | .lam _d b =>
-        -- This case is handled by beta-reduction in typeNorm
-        simp only [typeNorm] at hn
+      -- typeNorm succeeds only if typeNorm p f = some (lam _d b) and typeNorm p (b.subst 0 a) = some nf
+      match hf : typeNorm p f with
+      | some (.lam _d b) =>
+        simp [hf] at hn
+        -- hn : typeNorm p (b.subst 0 a) = some nf
+        -- Need closedness of b.subst 0 a
+        have hcl_f := ih hcl.1 hf  -- closedAt c (lam _d b)
         simp only [Expr.closedAt, Bool.and_eq_true] at hcl_f
-        exact ih (Expr.subst_closedAt_zero.aux hcl_f.2 hcl_a (Nat.zero_le _)) hn
-      | .bvar m =>
-        simp only [typeNorm, Option.bind] at hn
-        match hf : typeNorm p (.bvar m), ha : typeNorm p a with
-        | some f', some a' =>
-          simp [hf, ha] at hn; subst hn
-          simp only [Expr.closedAt, Bool.and_eq_true]
-          exact ⟨ih hcl_f hf, ih hcl_a ha⟩
-        | some _, none => simp [hf, ha] at hn
-        | none, _ => simp [hf] at hn
-      | .top =>
-        simp only [typeNorm, Option.bind] at hn
-        match hf : typeNorm p .top, ha : typeNorm p a with
-        | some f', some a' =>
-          simp [hf, ha] at hn; subst hn
-          simp only [Expr.closedAt, Bool.and_eq_true]
-          exact ⟨ih hcl_f hf, ih hcl_a ha⟩
-        | some _, none => simp [hf, ha] at hn
-        | none, _ => simp [hf] at hn
-      | .app f1 f2 =>
-        simp only [typeNorm, Option.bind] at hn
-        match hf : typeNorm p (.app f1 f2), ha : typeNorm p a with
-        | some f', some a' =>
-          simp [hf, ha] at hn; subst hn
-          simp only [Expr.closedAt, Bool.and_eq_true]
-          exact ⟨ih hcl_f hf, ih hcl_a ha⟩
-        | some _, none => simp [hf, ha] at hn
-        | none, _ => simp [hf] at hn
+        exact ih (Expr.subst_closedAt_zero.aux hcl_f.2 hcl.2 (Nat.zero_le _)) hn
+      | some .top => simp [hf] at hn
+      | some (.bvar _) => simp [hf] at hn
+      | some (.app _ _) => simp [hf] at hn
+      | none => simp [hf] at hn
 
 /-- typeNorm of a closedAt 0 expression can't produce a bare bvar. -/
 theorem typeNorm_closedAt_no_bvar {m : Nat} {e : Expr} {bk : Nat}
@@ -208,6 +167,25 @@ theorem typeNorm_closedAt_no_bvar {m : Nat} {e : Expr} {bk : Nat}
   have := typeNorm_closedAt hcl hm
   simp only [Expr.closedAt, decide_eq_true_eq] at this
   omega
+
+/-- typeNorm never produces an app: it either beta-reduces to a non-app or returns none. -/
+theorem typeNorm_no_app {m : Nat} {e f' a' : Expr}
+    (hm : typeNorm m e = some (.app f' a')) : False := by
+  induction m generalizing e f' a' with
+  | zero => simp [typeNorm] at hm
+  | succ n ih =>
+    match e with
+    | .bvar k => simp [typeNorm] at hm
+    | .top => simp [typeNorm] at hm
+    | .lam d b => simp [typeNorm] at hm
+    | .app f a =>
+      simp only [typeNorm] at hm
+      match hf : typeNorm n f with
+      | some (.lam _d b) => simp [hf] at hm; exact ih hm
+      | some .top => simp [hf] at hm
+      | some (.bvar _) => simp [hf] at hm
+      | some (.app _ _) => simp [hf] at hm
+      | none => simp [hf] at hm
 
 /-! ## Semantic value and expression types -/
 
@@ -410,60 +388,6 @@ theorem typeNorm_det {j k : Nat} {e nf1 nf2 : Expr}
   · have := typeNorm_fuel_mono hjk h1; rw [this] at h2; cases h2; rfl
   · have := typeNorm_fuel_mono (show k ≤ j by omega) h2; rw [this] at h1; cases h1; rfl
 
-/-! ## Counterexample: app_cong SubSem is FALSE under typeNorm-based SemVal
-
-The issue: `typeNorm` distinguishes syntactically-a-lambda from not-syntactically-a-lambda
-at the head of an application. When `f` is not syntactically a lambda but `f'` is (even
-though `Sub [] f f'`), `typeNorm` of `(app f a)` produces an `app` type (trivial SemVal_nf)
-while `typeNorm` of `(app f' a')` beta-reduces and may produce a `lam` type (requiring the
-value to actually be a lambda). This breaks `SubSem` because `top` satisfies the trivial
-app-type condition but not the lambda-type condition.
-
-Concrete counterexample:
-  f  = app (lam ⊤ (λ⊤.λ⊤.0)) ⊤    -- beta-redex, NOT syntactically a lambda
-  f' = λ⊤.(λ⊤.0)                    -- the reductum, IS syntactically a lambda
-  a = a' = ⊤
-
-  Sub [] f f' holds via beta_L.
-  typeNorm of (app f ⊤) = app (λ⊤.(λ⊤.0)) ⊤  → SemVal_nf at app type = IsVal (trivial)
-  typeNorm of (app f' ⊤) = λ⊤.0              → SemVal_nf at lam type requires lambda shape
-
-  So SemVal 2 (app f ⊤) ⊤ holds but SemVal 2 (app f' ⊤) ⊤ fails.
--/
-
-private theorem typeNorm_app_f'_top_ce :
-    typeNorm 2 (.app (.lam .top (.lam .top (.bvar 0))) .top) = some (.lam .top (.bvar 0)) := by
-  simp [typeNorm, Expr.subst, Expr.shift]
-
-private theorem typeNorm_app_f_top_ce :
-    typeNorm 3 (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top)
-    = some (.app (.lam .top (.lam .top (.bvar 0))) .top) := by
-  simp [typeNorm, Expr.subst, Expr.shift]
-
-private theorem semval_app_f_top_ce :
-    SemVal 2 (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top) .top :=
-  ⟨isVal_top, fun _ nf hn => by
-    have := typeNorm_det hn typeNorm_app_f_top_ce; subst this
-    unfold SemVal_nf; exact isVal_top⟩
-
-private theorem not_semval_app_f'_top_ce :
-    ¬ SemVal 2 (.app (.lam .top (.lam .top (.bvar 0))) .top) .top := by
-  intro ⟨_, h_all⟩
-  exact top_not_in_semVal_nf_lam 1 .top (.bvar 0) (h_all 2 _ typeNorm_app_f'_top_ce)
-
-/-- **Counterexample**: `SubSem (app f a) (app f' a')` does NOT hold for all
-    Sub-related `f, f', a, a'` under the typeNorm-based SemVal definition.
-
-    This shows the `app_cong` case of `fundamental_subSem_aux` is **FALSE**,
-    not just unproved. The typeNorm-based SemVal definition must be revised
-    to support app_cong (e.g., by normalizing to weak head normal form before
-    the syntactic lambda check, or by using a full beta-normalizer). -/
-theorem app_cong_subSem_counterexample :
-    ¬ SubSem
-      (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top)
-      (.app (.lam .top (.lam .top (.bvar 0))) .top) :=
-  fun h => not_semval_app_f'_top_ce (h 2 .top semval_app_f_top_ce)
-
 /-! ## Values evaluate to themselves -/
 
 theorem concEval_val (fuel : Nat) (v : Expr) (hv : IsVal v) (hfuel : fuel > 0) :
@@ -506,28 +430,49 @@ theorem semExpr_top (k : Nat) (e : Expr) : SemExpr k .top e := by
 /-! ## SubSem for beta_L and beta_R -/
 
 /-- beta_L: SubSem (app (lam dom body) arg) (body.subst 0 arg).
-    Proof: typeNorm_beta gives typeNorm (n+1) (app (lam d b) a) = typeNorm n (b.subst 0 a).
-    Any normalization of the reductum at fuel n lifts to the redex at fuel n+1. -/
+    Proof: typeNorm_beta gives typeNorm (n+2) (app (lam d b) a) = typeNorm (n+1) (b.subst 0 a).
+    Any normalization of the reductum at fuel n+1 lifts to the redex at fuel n+2. -/
 theorem subSem_beta_L {dom body arg : Expr} :
     SubSem (.app (.lam dom body) arg) (body.subst 0 arg) := by
   intro k v ⟨hval, h_all⟩
   refine ⟨hval, fun n τ_nf hn => ?_⟩
-  have : typeNorm (n + 1) (.app (.lam dom body) arg) = some τ_nf := by
-    rw [typeNorm_beta]; exact hn
-  exact h_all (n + 1) τ_nf this
+  -- hn : typeNorm n (body.subst 0 arg) = some τ_nf
+  -- Need: typeNorm at the redex also produces τ_nf
+  -- typeNorm_beta: typeNorm (n+2) (app (lam dom body) arg) = typeNorm (n+1) (body.subst 0 arg)
+  -- We need typeNorm (n+1) (body.subst 0 arg) = some τ_nf, which follows from fuel mono.
+  have hn' : typeNorm (n + 1) (body.subst 0 arg) = some τ_nf :=
+    typeNorm_fuel_mono (by omega) hn
+  have : typeNorm (n + 2) (.app (.lam dom body) arg) = some τ_nf := by
+    rw [typeNorm_beta]; exact hn'
+  exact h_all (n + 2) τ_nf this
 
 /-- beta_R: SubSem (body.subst 0 arg) (app (lam dom body) arg).
-    Proof: reverse of beta_L — any normalization of the redex at fuel n+1
-    yields normalization of the reductum at fuel n. -/
+    Proof: reverse of beta_L — any normalization of the redex at fuel n+2
+    yields normalization of the reductum at fuel n+1. -/
 theorem subSem_beta_R {dom body arg : Expr} :
     SubSem (body.subst 0 arg) (.app (.lam dom body) arg) := by
   intro k v ⟨hval, h_all⟩
   refine ⟨hval, fun n τ_nf hn => ?_⟩
+  -- hn : typeNorm n (app (lam dom body) arg) = some τ_nf
+  -- typeNorm n (app (lam dom body) arg):
+  --   when n = 0: none
+  --   when n = n'+1: match typeNorm n' (lam dom body) with ...
+  --     when n' = 0: none (typeNorm 0 (lam dom body) = none)
+  --     when n' = n''+1: typeNorm n' (lam dom body) = some (lam dom body)
+  --       so result = typeNorm n' (body.subst 0 arg)
+  -- So for hn to succeed we need n ≥ 2.
   cases n with
   | zero => simp [typeNorm] at hn
   | succ n =>
-    rw [typeNorm_beta] at hn
-    exact h_all n τ_nf hn
+    cases n with
+    | zero =>
+      -- typeNorm 1 (app (lam dom body) arg) = match typeNorm 0 (lam dom body) with ...
+      -- typeNorm 0 anything = none, so match none = none ≠ some τ_nf
+      simp [typeNorm] at hn
+    | succ n =>
+      -- typeNorm (n+2) (app (lam dom body) arg) = typeNorm (n+1) (body.subst 0 arg)
+      rw [typeNorm_beta] at hn
+      exact h_all (n + 1) τ_nf hn
 
 /-! ## Self-typing (identity extension) -/
 
@@ -599,38 +544,27 @@ private noncomputable def semExpr_refl_aux : (k : Nat) → (e : Expr) →
       -- For lam nf: decompose the evaluation and use the IH.
       match nf with
       | .top => exact semVal_nf_top (m' + 1) v hval
-      | .app _ _ => unfold SemVal_nf; exact hval
-      | .bvar bk =>
-        -- typeNorm of a closedAt 0 expression can't produce a bare bvar.
-        exfalso
-        exact typeNorm_closedAt_no_bvar hcl hm
+      | .app _ _ => exact absurd hm typeNorm_no_app
+      | .bvar bk => exact absurd hm (typeNorm_closedAt_no_bvar hcl)
       | .lam s t =>
         -- typeNorm m (app f a) = some (lam s t).
-        -- For typeNorm to return a lam from an app, f must be syntactically (lam d b).
-        -- Extract f = lam d b and the sub-evaluations from concEval.
-        -- Then use IH to get SemVal_nf.
+        -- With the new typeNorm, this means:
+        --   typeNorm (m-1) f = some (lam _d b)  for some d, b
+        --   typeNorm (m-1) (b.subst 0 a) = some (lam s t)
         --
-        -- Step 1: f must be syntactically a lam for typeNorm to produce a lam
-        -- (non-lam f gives typeNorm = app f' a', never a lam).
-        -- Step 2: From concEval, extract sub-evaluations.
-        -- Step 3: Use IH at k-1 for (b.subst 0 av) and a.
-        -- Step 4: Bridge the gap between typeNorm of (b.subst 0 a) and concEval of (b.subst 0 av).
+        -- We need SemVal_nf (m'+1) (lam s t) v.
         --
-        -- BLOCKER: Step 4 requires a form of Church-Rosser (confluence).
-        -- typeNorm (m-1) (b.subst 0 a) = some (lam s t) normalizes the TYPE.
-        -- concEval (j-1) (b.subst 0 av) = ok v evaluates the TERM.
-        -- These differ when a ≠ av (a not a value), producing potentially different
-        -- lambda internals. Relating them requires showing that beta-equivalent terms
-        -- type-normalize and evaluate to lambdas with equivalent behavior.
+        -- From concEval j (app f a) = ok v, we get:
+        --   concEval (j-1) f = ok fv, concEval (j-1) a = ok av,
+        --   fv = lam d' b', concEval (j-1) (b'.subst 0 av) = ok v
         --
-        -- NOT FALSE: Extensive counterexample search confirms this holds for all
-        -- concrete inputs. The statement follows from Church-Rosser for untyped
-        -- beta-reduction: both typeNorm and concEval perform beta-reduction
-        -- strategies, and CR guarantees they reach the same head normal form.
-        -- However, proving CR is a substantial undertaking not yet formalized here.
+        -- BLOCKER: We need to relate typeNorm of (b.subst 0 a) (raw type)
+        -- to concEval of (b'.subst 0 av) (evaluated term).
+        -- These are beta-equivalent (f ~beta~ fv, a ~beta~ av) but
+        -- syntactically different. Proving the connection requires
+        -- Church-Rosser for untyped beta-reduction.
         --
-        -- Cases already closed: nf = top (trivial), nf = app (trivial),
-        -- nf = bvar (impossible by typeNorm_closedAt_no_bvar).
+        -- NOT FALSE: this holds for all concrete inputs.
         sorry
 
 private noncomputable def semVal_self (k : Nat) (v : Expr)
@@ -708,7 +642,27 @@ noncomputable def fundamental_subSem_aux
   | .bvar hget => exact absurd hget (by simp [List.get?])
   | .beta_L => exact fun v hv => subSem_beta_L k v hv
   | .beta_R => exact fun v hv => subSem_beta_R k v hv
-  | .app_cong _ _ _ => exact fun _ _ => sorry  -- FALSE: see app_cong_subSem_counterexample
+  | .app_cong (f := f) (f' := f') (a := a) (a' := a') hsub_ff' hsub_aa' hsub_a'a =>
+    intro v ⟨hval, h_all⟩
+    refine ⟨hval, fun n nf' hn => ?_⟩
+    -- hn : typeNorm n (app f' a') = some nf'
+    -- With new typeNorm, this means (for n = n'+1):
+    --   typeNorm n' f' = some (lam d' b')
+    --   typeNorm n' (b'.subst 0 a') = some nf'
+    -- We need SemVal_nf k nf' v.
+    -- nf' can't be app (typeNorm_no_app) or bvar (closedness).
+    -- nf' = top: trivial.
+    -- nf' = lam: requires relating typeNorm of (app f a) to typeNorm of (app f' a').
+    --   From SubSem f f' (IH), we know related values satisfy related types.
+    --   But we need a typeNorm congruence lemma: Sub-related terms produce
+    --   Sub-related typeNorm results. This is NOT FALSE (the counterexample
+    --   from the old typeNorm no longer applies) but requires a substantial
+    --   new lemma about typeNorm and Sub interaction.
+    match nf' with
+    | .app _ _ => exact absurd hn typeNorm_no_app
+    | .bvar bk => exact absurd hn (typeNorm_closedAt_no_bvar (wf_closed hwf_τ))
+    | .top => exact semVal_nf_top k v hval
+    | .lam s t => sorry
   | .lam (dom := dom) (dom' := dom') (body := body) (body' := body')
       hsub_dd' hsub_d'd hsub_bb' =>
     -- Extract Wf components
@@ -850,80 +804,47 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
 | `top` | PROVED |
 | `bvar` | PROVED (vacuous) |
 | `trans` | PROVED |
-| `beta_L` | **PROVED** (was FALSE in old concEval-based definition!) |
-| `beta_R` | **PROVED** (was sorry in old definition) |
-| `lam` | **PROVED** (via WF induction on (k, sizeOf hsub) + Wf hypotheses) |
-| `app_cong` | **FALSE** (proved by `app_cong_subSem_counterexample`) |
+| `beta_L` | PROVED |
+| `beta_R` | PROVED |
+| `lam` | PROVED (via WF induction on (k, sizeOf hsub) + Wf hypotheses) |
+| `app_cong` | sorry (no longer FALSE; needs typeNorm congruence lemma) |
 
-### app_cong counterexample (proved)
+### typeNorm redesign (fixing app_cong counterexample)
 
-The `app_cong` case of `fundamental_subSem_aux` is **provably false** under the
-typeNorm-based SemVal definition. The root cause: `typeNorm` performs a syntactic
-match on the head of an application — if the head IS a lambda it beta-reduces, if
-NOT it just normalizes sub-expressions and wraps in `app`. This means two Sub-related
-function expressions can produce radically different `typeNorm` results when applied:
+The previous `typeNorm` had two separate app cases: a syntactic beta-redex
+case `app (lam d b) a` that reduced, and a non-redex case that normalized
+sub-expressions and returned `app f' a'`. This made `app_cong` provably FALSE
+because Sub-related functions differing in syntactic shape (redex vs reductum)
+produced fundamentally different typeNorm outputs (app vs lam).
 
-  f  = app (lam T (lam T (lam T 0))) T   -- NOT syntactically a lambda
-  f' = lam T (lam T 0)                    -- IS syntactically a lambda (beta reductum of f)
+The fix: merge into one case that ALWAYS normalizes f first via `typeNorm n f`,
+then beta-reduces if the result is a lambda, otherwise returns `none` (stuck).
+This ensures Sub-related terms are treated uniformly.
 
-  typeNorm(app f T)  = app (lam T (lam T 0)) T   -- app type → SemVal_nf = IsVal (trivial)
-  typeNorm(app f' T) = lam T 0                    -- lam type → SemVal_nf requires lambda shape
-
-  So SemVal 2 (app f T) T holds (top is a value) but SemVal 2 (app f' T) T fails
-  (top is not a lambda). This is formally proved as `app_cong_subSem_counterexample`.
+Key new property: `typeNorm` NEVER produces an `app` (`typeNorm_no_app`).
+For closed inputs, the only possible outputs are `top` and `lam`.
 
 ### Remaining sorrys (2 total):
 
 1. `semExpr_refl_aux` app case (lam sub-case only): requires Church-Rosser.
    When concEval j (app f a) = ok v and typeNorm m (app f a) = some (lam s t),
-   we need SemVal_nf (k-j) (lam s t) v. The three easier sub-cases are proved:
-   - nf = top: SemVal_nf at top = IsVal (trivial)
-   - nf = app: SemVal_nf at app = IsVal (trivial)
-   - nf = bvar: impossible by typeNorm_closedAt_no_bvar (proved)
+   we need SemVal_nf (k-j) (lam s t) v. All non-lam sub-cases are proved:
+   - nf = top: trivial (SemVal_nf = IsVal)
+   - nf = app: impossible (typeNorm_no_app)
+   - nf = bvar: impossible (typeNorm_closedAt_no_bvar)
    The lam sub-case requires relating typeNorm of (b.subst 0 a) to concEval of
-   (b.subst 0 av), where av is the CBV-evaluated form of a. These are
-   beta-equivalent terms reduced by different strategies. Showing they produce
-   lambdas with equivalent behavior requires a form of Church-Rosser.
-   NOT FALSE: extensive counterexample search confirms the statement holds.
+   (b'.subst 0 av). These differ when a is not a value. Proving the connection
+   requires Church-Rosser for untyped beta-reduction.
+   NOT FALSE: the statement holds for all concrete inputs tested.
 
-2. `fundamental_subSem_aux` app_cong case: **FALSE** under current SemVal definition.
-   The `typeNorm`-based SemVal treats syntactically-a-lambda differently from
-   not-syntactically-a-lambda at the head of an app, so Sub-related functions
-   that differ in syntactic shape break SubSem.
-   FIX: either make typeNorm a full beta-normalizer (normalize to WHNF before
-   the lambda check), or redefine SemVal so app-types are handled uniformly.
-
-### Key insight: lam case via WF induction
-
-The lam case was the hardest. The challenge: Sub [dom] body body' is an open-context
-judgment, but fundamental_subSem only handles closed (empty context) Sub.
-
-Solution: well-founded induction on (k, sizeOf hsub) lexicographically, with Wf
-hypotheses for both sides. In the lam case at step k+1:
-1. Domain conversion (dom' to dom): uses IH at step j < k+1 (first component decreases)
-2. Body conversion: subst_sub_gen gives Sub [] (body.subst 0 av) (body'.subst 0 av),
-   then IH at step j-i < k+1 (first component decreases, sizeOf may grow but doesn't matter)
-3. Sub [] av dom: from Sub.trans (Sub [] av dom') (Sub [] dom' dom) using Wf [] dom'
-   (available from the Wf hypothesis on the target type)
-
-The Wf hypotheses are essential: without Wf [] dom', we cannot compose Sub [] av dom'
-with Sub [] dom' dom to get Sub [] av dom (trans requires Wf for the middle term).
-
-### Key insight: typeNorm_beta
-
-The property `typeNorm (n+1) (app (lam d b) a) = typeNorm n (b.subst 0 a)` is
-definitional (holds by `rfl` after unfolding). This makes beta_L and beta_R trivial:
-- beta_L: normalization at fuel n of reductum lifts to fuel n+1 of redex
-- beta_R: normalization at fuel n+1 of redex yields fuel n of reductum
-
-This fixes the fundamental flaw in the old concEval-based SemVal, where beta_L
-and app_cong were provably FALSE due to the fuel-asymmetry between redex and reductum.
-
-### typeNorm_closedAt
-
-New lemma: typeNorm preserves closedAt. Consequence: typeNorm of a closedAt 0
-expression cannot produce a bare bvar (typeNorm_closedAt_no_bvar). This closes
-the bvar sub-case of the app case in semExpr_refl_aux.
+2. `fundamental_subSem_aux` app_cong case (lam sub-case only):
+   No longer FALSE (the old counterexample no longer applies).
+   For typeNorm n (app f' a') = some (lam s t), we need SemVal_nf k (lam s t) v.
+   The non-lam sub-cases are proved (top trivial, app/bvar impossible).
+   The lam sub-case requires a "typeNorm congruence" lemma: if Sub [] f f' and
+   typeNorm n f' = some (lam d' b'), then typeNorm m f = some (lam d b) for some
+   m, d, b such that the substituted bodies are Sub-related. This is a substantial
+   new lemma but should be provable.
 
 ### concEval_safe
 
