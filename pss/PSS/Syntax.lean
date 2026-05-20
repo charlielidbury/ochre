@@ -85,6 +85,77 @@ def pretty (e : Expr) (names : List String := []) (prec : Nat := 0) : String :=
 instance : ToString Expr where
   toString e := e.pretty
 
+/-! ## Shift lemmas -/
+
+/-- Shifting by 0 is the identity. -/
+@[simp] theorem shift_zero (e : Expr) (c : Nat) : e.shift 0 c = e := by
+  induction e generalizing c with
+  | bvar k =>
+    simp only [shift]
+    split <;> simp_all <;> omega
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    show Expr.lam (dom.shift 0 c) (body.shift 0 (c + 1)) = Expr.lam dom body
+    rw [ih_dom, ih_body]
+  | app f a ih_f ih_a =>
+    show Expr.app (f.shift 0 c) (a.shift 0 c) = Expr.app f a
+    rw [ih_f, ih_a]
+
+/-- Helper: shift on bvar unfolds to an if-then-else. -/
+private theorem shift_bvar (d c k : Nat) :
+    (Expr.bvar k).shift d c = if k < c then .bvar k else .bvar (k + d) := rfl
+
+/-- Generalized shift commutation: when c₂ ≤ c₁, shifting at a lower cutoff
+    commutes with shifting at a higher cutoff (adjusting the higher cutoff).
+    (e.shift d₁ c₁).shift d₂ c₂ = (e.shift d₂ c₂).shift d₁ (c₁ + d₂)  when c₂ ≤ c₁ -/
+theorem shift_comm (d₁ d₂ c₁ c₂ : Nat) (e : Expr) (h : c₂ ≤ c₁) :
+    (e.shift d₁ c₁).shift d₂ c₂ = (e.shift d₂ c₂).shift d₁ (c₁ + d₂) := by
+  induction e generalizing c₁ c₂ with
+  | bvar k =>
+    simp only [shift_bvar]
+    by_cases hkc₁ : k < c₁
+    · -- k < c₁: shift d₁ c₁ gives bvar k
+      simp only [hkc₁, ite_true, shift_bvar]
+      by_cases hkc₂ : k < c₂
+      · -- k < c₂: both sides give bvar k
+        simp only [hkc₂, ite_true, shift_bvar]
+        have : k < c₁ + d₂ := by omega
+        simp only [this, ite_true]
+      · -- k ≥ c₂: shift d₂ c₂ gives bvar (k + d₂)
+        simp only [hkc₂, ite_false, shift_bvar]
+        have : k + d₂ < c₁ + d₂ := by omega
+        simp only [this, ite_true]
+    · -- k ≥ c₁: shift d₁ c₁ gives bvar (k + d₁)
+      simp only [hkc₁, ite_false, shift_bvar]
+      have hkc₂ : ¬ (k < c₂) := by omega
+      simp only [hkc₂, ite_false, shift_bvar]
+      -- LHS: shift d₂ c₂ (bvar (k + d₁)): k + d₁ ≥ c₂ (since k ≥ c₁ ≥ c₂)
+      have : ¬ (k + d₁ < c₂) := by omega
+      simp only [this, ite_false]
+      -- RHS: shift d₁ (c₁ + d₂) (bvar (k + d₂)): k + d₂ ≥ c₁ + d₂ (since k ≥ c₁)
+      have : ¬ (k + d₂ < c₁ + d₂) := by omega
+      simp only [this, ite_false]
+      congr 1; omega
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    show Expr.lam _ _ = Expr.lam _ _
+    congr 1
+    · exact ih_dom c₁ c₂ h
+    · have := ih_body (c₁ + 1) (c₂ + 1) (by omega)
+      rw [show c₁ + 1 + d₂ = c₁ + d₂ + 1 from by omega] at this
+      exact this
+  | app f a ih_f ih_a =>
+    show Expr.app _ _ = Expr.app _ _
+    congr 1
+    · exact ih_f c₁ c₂ h
+    · exact ih_a c₁ c₂ h
+
+/-- Specialization: shift at cutoff 0 commutes with shift at any cutoff c.
+    (e.shift d₁ c).shift d₂ 0 = (e.shift d₂ 0).shift d₁ (c + d₂) -/
+theorem shift_comm_zero (d₁ d₂ c : Nat) (e : Expr) :
+    (e.shift d₁ c).shift d₂ 0 = (e.shift d₂ 0).shift d₁ (c + d₂) :=
+  shift_comm d₁ d₂ c 0 e (Nat.zero_le c)
+
 end Expr
 
 /-- Typing context: `Ctx[k]` is the declared bound of `.bvar k`.

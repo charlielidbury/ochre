@@ -153,6 +153,11 @@ Used in the statement of commutativity.
 
 - CT-ANN: Annotation `x ⊲ t` in the context is reduced pointwise via ≡→
 - CT-STK: Stack element `α` is reduced pointwise via ≡→
+
+Note on de Bruijn scoping: ct_stk's MEquivRed uses the context Γ at
+the level where ct_stk appears in the derivation. If ct_stk is nested
+inside ct_ann_sub, the MEquivRed uses the inner context. Stack elements
+are therefore scoped to the context level at which they were reduced.
 -/
 
 inductive CtxRed : MCtx → Stack → MCtx → Stack → Type where
@@ -416,22 +421,33 @@ def equivRed_change_ann_rev
   heq ▸ equivRed_change_sub_at 0 (Ann.equiv v) h_sub h
 
 /-- Decomposition of CtxRed with non-empty stack for the ME-FOP case.
-    Given Γ;(α :: s₀) ↦ Γ';s', produce a CtxRed for the body context
-    (Ann.equiv α :: Γ);s₀ ↦ (Ann.equiv α' :: Γ₂);s₀' that is compatible
-    with ME-FOP reconstruction.
+    Given Γ;(α :: s₀) ↦ Γ';s', decompose into:
+    1. The output stack is α' :: s₀' (non-empty)
+    2. The body CtxRed: (Ann.equiv α :: Γ);s₀ ↦ (Ann.equiv α' :: Γ₂);s₀'
+    3. Γ' = Γ₂
 
-    More precisely: there exist α', s₀', Γ₂ such that s' = α' :: s₀',
-    Γ' = Γ₂, and (Ann.equiv α :: Γ);s₀ ↦ (Ann.equiv α' :: Γ₂);s₀'.
+    The ct_stk case is closed: ct_ann_equiv hc hα directly gives
+    the desired body CtxRed.
 
-    The ct_stk case is direct. The ct_ann_sub/ct_ann_equiv cases require
-    weakening the stack element's MEquivRed from the inner context to the
-    full context (with the added annotation). In de Bruijn, this needs a
-    shifting-aware weakening lemma:
-      MEquivRed Γ [] α α' → MEquivRed (a :: Γ) [] (α.shift 1 0) (α'.shift 1 0)
-    But CtxRed stores unshifted stack elements, so the mismatch is
-    fundamental to the current encoding. A fix would be to normalize
-    CtxRed so ct_stk is always outermost, or to add shifting to the
-    ct_ann_sub/ct_ann_equiv constructors' interaction with the stack. -/
+    The ct_ann_sub/ct_ann_equiv cases are BLOCKED. When ct_stk is nested
+    inside ct_ann_sub, the stack element's MEquivRed uses the inner context
+    Γ_tail, but we need a CtxRed in the extended context (Ann.sub t :: Γ_tail).
+    Building the body CtxRed requires:
+      MEquivRed (Ann.sub t :: Γ_tail) [] α α'
+    from MEquivRed Γ_tail [] α α' — a weakening-under-context-extension lemma.
+    In de Bruijn, this requires shifting (α, α') and proving:
+      equivRed_weaken_one : MEquivRed Γ s t t' → MEquivRed (a :: Γ) s (t.shift 1 0) (t'.shift 1 0)
+    But the stack elements are stored UNSHIFTED in CtxRed, so the shifted
+    version doesn't match the expected type. This is a fundamental encoding
+    issue: the paper uses named variables where context extension doesn't
+    affect term representations.
+
+    Possible fixes:
+    1. Prove equivRed_weaken_one (using shift_comm from Syntax.lean) and
+       store SHIFTED stack elements in CtxRed.
+    2. Restructure CtxRed so ct_stk is always outermost (but then extending
+       with ct_ann_sub also needs weakening for ct_stk's MEquivRed).
+    3. Add a separate "stack reduction" layer decoupled from context reduction. -/
 def ctxRed_unstk
     {Γ : MCtx} {α : Expr} {s₀ : Stack} {Γ' : MCtx} {s' : Stack}
     (h : CtxRed Γ (α :: s₀) Γ' s')
@@ -439,7 +455,23 @@ def ctxRed_unstk
         PLift (s' = α' :: s₀') ×
         CtxRed (Ann.equiv α :: Γ) s₀ (Ann.equiv α' :: Γ₂) s₀' ×
         PLift (Γ' = Γ₂) :=
-  sorry
+  match h with
+  | .ct_stk hc hα =>
+    -- Direct: hc : CtxRed Γ s₀ Γ' s₀', hα : MEquivRed Γ [] α α'
+    ⟨_, _, _, ⟨rfl⟩, .ct_ann_equiv hc hα, ⟨rfl⟩⟩
+  | .ct_ann_sub hc_inner _ => by
+    -- Γ = Ann.sub t :: Γ_tail. Recurse on the inner CtxRed.
+    obtain ⟨α', s₀', Γ₂, ⟨hs'_eq⟩, hc_body, ⟨hΓ_eq⟩⟩ := ctxRed_unstk hc_inner
+    subst hs'_eq; subst hΓ_eq
+    -- hc_body : CtxRed (Ann.equiv α :: Γ_tail) s₀ (Ann.equiv α' :: Γ₂) s₀'
+    -- Need: CtxRed (Ann.equiv α :: Ann.sub t :: Γ_tail) s₀ (Ann.equiv α' :: Ann.sub t' :: Γ₂) s₀'
+    -- BLOCKED: needs MEquivRed weakening under context extension.
+    exact ⟨α', s₀', _, ⟨rfl⟩, sorry, ⟨rfl⟩⟩
+  | .ct_ann_equiv hc_inner _ => by
+    -- Same blocker as ct_ann_sub.
+    obtain ⟨α', s₀', Γ₂, ⟨hs'_eq⟩, _, ⟨hΓ_eq⟩⟩ := ctxRed_unstk hc_inner
+    subst hs'_eq; subst hΓ_eq
+    exact ⟨α', s₀', _, ⟨rfl⟩, sorry, ⟨rfl⟩⟩
 
 /-- Lemma 36 in the paper: strip the stack component from a CtxRed.
     If Γ;s ↦ Γ';s', then Γ;nil ↦ Γ';nil.
@@ -737,7 +769,7 @@ def commutativity
           equivRed_change_ann_rev (v := v_op) h_eq_body
         -- IH on body in context (Ann.equiv v_op :: Γ);s:
         let ⟨body₃, h_eq_body₂, h_sub_body₁⟩ :=
-          commutativity h_eq_body_equiv h_sub_body₂ (.ct_ann_equiv h_ctx h_eq_v)
+          commutativity h_eq_body_equiv h_sub_body₂ (CtxRed.ct_ann_equiv h_ctx h_eq_v)
         -- h_eq_body₂ : MEquivRed (Ann.equiv v_op :: Γ) s body₂ body₃
         -- h_sub_body₁ : MSubRed (Ann.equiv v' :: Γ') s' body' body₃
         -- t₃ = body₃.subst 0 v' where v' is the reduced v (from h_eq_v).
@@ -762,7 +794,7 @@ def commutativity
       subst hs'
       -- IH on body in context (Ann.sub dom :: Γ);[]:
       let ⟨body₃, h_eq_body₂, h_sub_body'⟩ :=
-        commutativity h_eq_body h_sub_body (.ct_ann_sub h_ctx h_eq_dom)
+        commutativity h_eq_body h_sub_body (CtxRed.ct_ann_sub h_ctx h_eq_dom)
       exact ⟨_, .me_fun h_eq_dom h_eq_body₂, .ms_fun h_sub_body'⟩
   | .ms_fop h_sub_body =>
     -- t₀ = lam dom body, s = α :: s₀, ms_fop pops from stack
