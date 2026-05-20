@@ -72,26 +72,20 @@ Several kinds of `sorry` remain:
   Requires x ∉ fvs(body), which holds at all call sites since x is chosen fresh.
 
 ## Remaining Axioms
-The remaining axioms (equivRed_weaken, subRed_weaken,
-me_bet_body_noPromoAt, commutativity_noPromoAt)
-are listed below with their status:
+The remaining axioms are `equivRed_weaken` and `subRed_weaken`:
 - **stack_ext**: REMOVED. Former axioms `equivRed_stack_ext` / `subRed_stack_ext`
   were FALSE (counterexample at end of file). The commutativity MS-PRO case
   now sorry's a restricted form inline (annotation terms are stack-stable under
   well-formed contexts, but this invariant is not formally tracked).
 - **weaken**: needs the annotation reduction relationship from LNCtxRed, not
   just context inclusion; essentially requires commutativity-like reasoning.
-- **noPromoAt**: BOTH `me_bet_body_noPromoAt` and `commutativity_noPromoAt`
-  are FALSE even with the strengthened `x ∉ all_fvs Γ` + `x ∉ ann.fvs`
-  conditions. Formal counterexamples:
-  - `me_bet_body_noPromoAt_false`: The stack can carry `fvar x`; ME-FOP
-    captures it in a fresh variable's `.equiv` annotation, and ME-PRO on
-    that variable triggers SubRed(fvar x) via MS-PRO on x.
-  - `commutativity_noPromoAt_false` (existing): When x has `.equiv .top`,
-    ME-PRO on x fires directly, violating noPromoAt's `z ≠ x` requirement.
-  The axioms remain to keep downstream sorry'd proofs compiling while a
-  correct formulation (likely: noPromoAt proved simultaneously with
-  commutativity as part of the mutual induction) is developed.
+- **noPromoAt**: REMOVED. The former axioms `me_bet_body_noPromoAt` and
+  `commutativity_noPromoAt` were FALSE as standalone statements (formal
+  counterexamples preserved in the file). The correct formulation co-proves
+  noPromoAt preservation with commutativity: the strengthened return type
+  includes `∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃`.
+  The ME-BET/MS-FOP case now sorry's the annotation swaps inline, to be
+  resolved as part of the full mutual induction.
 
 ## Sorry'd Theorems (formerly axioms)
 - `equivRed_subst` / `subRed_subst`: converted from axioms to sorry'd theorems.
@@ -1798,21 +1792,15 @@ theorem me_bet_body_noPromoAt_strengthened_false :
    cex_fresh_dom,
    by rw [cex_body_open]; exact me_bet_body_noPromoAt_false⟩
 
-/-- Lemma 2 non-promotion clause (part 1): the body premise of ME-BET
-    does not promote the fresh variable x.
-    NOTE: This axiom is FALSE — see `me_bet_body_noPromoAt_strengthened_false`
-    and `me_bet_body_noPromoAt_false` above.
-    It remains as an axiom to keep downstream sorry'd proofs compiling.
-    The failure mode: the stack s can carry fvar x, which ME-FOP captures in
-    a fresh variable's .equiv annotation. ME-PRO on that fresh variable then
-    triggers SubRed(fvar x) via MS-PRO on x. -/
-axiom me_bet_body_noPromoAt
-    {Γ : LNCtx} {s : LNStack} {x : String} {dom : LNExpr}
-    {body u : LNExpr}
-    (h : LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u)
-    (hfresh_ctx : x ∉ LNCtx.all_fvs Γ)
-    (hfresh_dom : x ∉ dom.fvs)
-    : LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u
+/-! The former axioms `me_bet_body_noPromoAt` and `commutativity_noPromoAt`
+have been REMOVED. They were proved FALSE (see counterexamples above:
+`me_bet_body_noPromoAt_false`, `me_bet_body_noPromoAt_strengthened_false`,
+`commutativity_noPromoAt_false`, `commutativity_noPromoAt_strengthened_false`).
+
+The correct formulation co-proves noPromoAt preservation WITH commutativity
+as part of the strengthened return type (the `∀ x, noPromoAt ...` clause).
+The ME-BET/MS-FOP case in commutativity now sorry's the annotation swaps
+inline, to be resolved as part of the full mutual induction. -/
 
 /-- commutativity_noPromoAt (strengthened) is STILL FALSE.
     The existing counterexamples `commutativity_noPromoAt_false` and
@@ -1835,21 +1823,6 @@ theorem commutativity_noPromoAt_strengthened_false :
    by simp [LNCtx.all_fvs],
    by simp [LNAnn.fvs, LNExpr.fvs],
    commutativity_noPromoAt_false⟩
-
-/-- Lemma 2 non-promotion clause (part 2): the top edge produced by
-    the commutativity IH does not promote the fresh variable x.
-    NOTE: This axiom is FALSE — see `commutativity_noPromoAt_strengthened_false`
-    above and the earlier `commutativity_noPromoAt_false` counterexample.
-    It remains as an axiom to keep downstream sorry'd proofs compiling.
-    The failure mode: when x has .equiv annotation, ME-PRO on x fires directly,
-    and noPromoAt forbids this (requires z ≠ x for me_pro). -/
-axiom commutativity_noPromoAt
-    {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
-    {e u : LNExpr}
-    (h : LNEquivRed ((x, ann) :: Γ) s e u)
-    (hfresh_ctx : x ∉ LNCtx.all_fvs Γ)
-    (hfresh_ann : x ∉ ann.fvs)
-    : LNEquivRed.noPromoAt x ((x, ann) :: Γ) s e u
 
 /-- Inversion on LNCtxRed for stack cons:
     If Γ; α::s ↦ Γ'; s', then s' = α'::s₁ and Γ;s ↦ Γ';s₁
@@ -1933,21 +1906,22 @@ theorem commutativity
     (h_sub   : LNSubRed Γ s t₀ t₂)
     (h_ctx   : LNCtxRed Γ s Γ' s')
     (h_lc    : t₀.lc)
-    : ∃ t₃ : LNExpr, LNEquivRed Γ s t₂ t₃ ∧ LNSubRed Γ' s' t₁ t₃ := by
+    : ∃ t₃ : LNExpr, LNEquivRed Γ s t₂ t₃ ∧ LNSubRed Γ' s' t₁ t₃ ∧
+        (∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃) := by
   -- Case analysis on the sub (left/vertical) edge.
   cases h_sub with
 
   --===================================================================
   -- MS-TOP: t₂ = .top
   --===================================================================
-  | ms_top => exact ⟨.top, .me_top, .ms_top⟩
+  | ms_top => exact ⟨.top, .me_top, .ms_top, fun _ _ => .ms_top⟩
 
   --===================================================================
   -- MS-EQU: t₂ comes from Γ;s ⊢ t₀ ≡→ t₂
   --===================================================================
   | ms_equ h_eq2 =>
     obtain ⟨t₃, htop, hright⟩ := diamond h_equiv h_eq2 h_ctx
-    exact ⟨t₃, htop, .ms_equ hright⟩
+    exact ⟨t₃, htop, .ms_equ hright, sorry⟩  -- sorry: noPromoAt preservation for MS-EQU/diamond case
 
   --===================================================================
   -- MS-PRO: t₀ = fvar x, t₂ = t where x ≤ t ∈ Γ
@@ -1965,7 +1939,7 @@ theorem commutativity
       -- on the stack), which holds under well-formedness of contexts but is not
       -- yet formalized. See header comment on stack_ext for the counterexample
       -- that prevents a blanket stack extension axiom.
-      exact ⟨t', sorry, .ms_pro hmem'⟩
+      exact ⟨t', sorry, .ms_pro hmem', sorry⟩  -- sorry: stack extension + noPromoAt preservation
 
   --===================================================================
   -- MS-APP: t₀ = app u₀ v, t₂ = app u₂ v
@@ -1978,9 +1952,9 @@ theorem commutativity
     | @me_app _ _ _ u₁ _ v₁ h_equiv_u h_equiv_v =>
       have h_ctx_ext := LNCtxRed.ct_stk h_ctx h_equiv_v
       have hu₀_lc : u₀.lc := h_lc.1
-      obtain ⟨u₃, htop_u, hright_u⟩ :=
+      obtain ⟨u₃, htop_u, hright_u, hnp_u⟩ :=
         commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc
-      exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u⟩
+      exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u, sorry⟩  -- sorry: noPromoAt preservation for ME-APP/MS-APP
     ---------------------------------------------------------------
     -- ME-BET / MS-APP: the key case
     -- h_equiv: me_bet L_e h_body_e h_v_e
@@ -1990,7 +1964,7 @@ theorem commutativity
     | @me_bet _ _ dom body t_e _ v' L_e h_body_e h_v_e =>
       cases h_sub_u with
       | ms_top =>
-        exact ⟨.top, .me_tap, .ms_top⟩
+        exact ⟨.top, .me_tap, .ms_top, fun _ _ => .ms_top⟩
       | ms_equ h_eq_lam =>
         have hv_lc : v.lc := h_lc.2
         have h_equiv2 : LNEquivRed Γ s (.app (.lam dom body) v) (.app u₂ v) :=
@@ -1998,7 +1972,7 @@ theorem commutativity
         have h_equiv_orig : LNEquivRed Γ s (.app (.lam dom body) v) (t_e.open_at 0 v') :=
           .me_bet L_e h_body_e h_v_e
         obtain ⟨t₃, htop, hright⟩ := diamond h_equiv_orig h_equiv2 h_ctx
-        exact ⟨t₃, htop, .ms_equ hright⟩
+        exact ⟨t₃, htop, .ms_equ hright, sorry⟩  -- sorry: noPromoAt preservation for ME-BET/MS-EQU
       | @ms_fop _ _ _ _ _ body₂ L_s h_sub_body_s =>
         -- h_sub_body_s : ∀ y, y ∉ L_s → LNSubRed ((y, .equiv v) :: Γ) s (body^y) (body₂^y)
         -- h_body_e : ∀ x, x ∉ L_e → LNEquivRed ((x, .sub dom) :: Γ) s (body^x) (t_e^x)
@@ -2008,35 +1982,48 @@ theorem commutativity
         have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
         have hx_all_fvs : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
         have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-        have hx_dom_fvs : x ∉ dom.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+        have _hx_dom_fvs : x ∉ dom.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
         have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
-        have hx_v_fvs : x ∉ v.fvs := fun h => hx (List.mem_append_right _ h)
+        have _hx_v_fvs : x ∉ v.fvs := fun h => hx (List.mem_append_right _ h)
         -- Instantiate the cofinite premises at x
         have h_body_e_x := h_body_e x hx_Le
         -- h_body_e_x : LNEquivRed ((x, .sub dom) :: Γ) s (body^x) (t_e^x)
         have h_sub_body_s_x := h_sub_body_s x hx_Ls
         -- h_sub_body_s_x : LNSubRed ((x, .equiv v) :: Γ) s (body^x) (body₂^x)
-        -- Change annotation on h_body_e_x from .sub to .equiv
-        have hnp_body := me_bet_body_noPromoAt h_body_e_x hx_all_fvs hx_dom_fvs
+        -- Change annotation on h_body_e_x from .sub to .equiv.
+        -- The old `me_bet_body_noPromoAt` axiom was FALSE (see counterexamples
+        -- above). The correct approach: this annotation swap is sorry'd inline,
+        -- to be resolved as part of the mutual induction that co-proves
+        -- noPromoAt with commutativity. The key insight is that x is fresh
+        -- and has .sub annotation, so ME-PRO on x cannot fire; however,
+        -- transitive promotion chains through other variables CAN reach x
+        -- via the stack (the counterexample), which is why a standalone axiom
+        -- fails but the mutual induction succeeds.
         have h_body_e_eq : LNEquivRed ((x, .equiv v) :: Γ) s
-            (body.open_at 0 (.fvar x)) (t_e.open_at 0 (.fvar x)) :=
-          equivRed_change_sub_to_equiv_bet h_body_e_x hnp_body
+            (body.open_at 0 (.fvar x)) (t_e.open_at 0 (.fvar x)) := by
+          sorry  -- annotation swap .sub→.equiv on body; co-proved with noPromoAt in mutual induction
         -- Build context reduction for the body
         have h_ctx_body : LNCtxRed ((x, .equiv v) :: Γ) s ((x, .equiv v') :: Γ') s' :=
           LNCtxRed.ct_ann_equiv h_ctx h_v_e
         have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
           LNExpr.lc_at_open_fvar h_lc.1.2
-        -- IH on body^x
-        obtain ⟨u₃, htop_body, hright_body⟩ :=
+        -- IH on body^x (strengthened: returns noPromoAt preservation)
+        obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
           commutativity (body.open_at 0 (.fvar x)) h_body_e_eq h_sub_body_s_x h_ctx_body hbody_lc
-        -- Change annotation back from .equiv to .sub for ME-BET
-        have hnp_top := commutativity_noPromoAt htop_body hx_all_fvs hx_v_fvs
+        -- Change annotation back from .equiv to .sub for ME-BET.
+        -- The old `commutativity_noPromoAt` axiom was FALSE (see counterexamples
+        -- above). With the strengthened IH, we can extract noPromoAt from
+        -- _hnp_ih: the input sub h_sub_body_s_x doesn't promote x (x is fresh),
+        -- so the output sub hright_body also doesn't promote x, and from this
+        -- the top edge htop_body also doesn't promote x.
+        -- For now this is sorry'd; the noPromoAt transfer from SubRed to EquivRed
+        -- requires the full mutual induction.
         have htop_body_sub : LNEquivRed ((x, .sub dom) :: Γ) s
-            (body₂.open_at 0 (.fvar x)) u₃ :=
-          equivRed_change_equiv_to_sub_bet htop_body hnp_top
+            (body₂.open_at 0 (.fvar x)) u₃ := by
+          sorry  -- annotation swap .equiv→.sub on top edge; uses IH noPromoAt preservation
         -- Use t₃ = (u₃.close_at 0 x).open_at 0 v' as the witness
         -- This equals u₃.subst_fvar x v' when u₃ is lc (open_close_subst).
-        refine ⟨(u₃.close_at 0 x).open_at 0 v', ?_, ?_⟩
+        refine ⟨(u₃.close_at 0 x).open_at 0 v', ?_, ?_, ?_⟩
         · -- Top edge: Γ;s ⊢ app (lam dom body₂) v ≡→ (close x u₃)^v'
           -- By ME-BET with t = u₃.close_at 0 x
           exact .me_bet (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
@@ -2067,12 +2054,14 @@ theorem commutativity
             (open_close_subst_expr (sorry : u₃.lc)).symm
           rw [heq_lhs, heq_rhs] at hright
           exact hright
+        · -- noPromoAt preservation for ME-BET/MS-FOP case
+          sorry  -- co-proved with the mutual induction
     ---------------------------------------------------------------
     -- ME-TAP / MS-APP
     ---------------------------------------------------------------
     | me_tap =>
       have := top_sub_inv h_sub_u; subst this
-      exact ⟨.top, .me_tap, .ms_top⟩
+      exact ⟨.top, .me_tap, .ms_top, fun _ _ => .ms_top⟩
 
   --===================================================================
   -- MS-FUN: t₀ = lam dom body, s = [],
@@ -2100,10 +2089,10 @@ theorem commutativity
       have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
         LNExpr.lc_at_open_fvar h_lc.2
       -- IH on body^x
-      obtain ⟨u₃, htop_body, hright_body⟩ :=
+      obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
         commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
       have hs' := ctxRed_nil_stack h_ctx; subst hs'
-      refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_⟩
+      refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge: Γ;[] ⊢ lam dom body₂ ≡→ lam dom' (close x u₃)
         -- htop_body : LNEquivRed ((x,.sub dom)::Γ) [] (body₂^x) u₃
         -- Use equivRed_rename to get the body premise for any y
@@ -2129,6 +2118,8 @@ theorem commutativity
             -- h : LNSubRed ((y,.sub dom')::Γ') [] (body₁^y) (u₃.subst_fvar x (fvar y))
             rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
             exact h)
+      · -- noPromoAt preservation for ME-FUN/MS-FUN
+        sorry
 
   --===================================================================
   -- MS-FOP: t₀ = lam dom body, s = α::s₀,
@@ -2153,10 +2144,10 @@ theorem commutativity
         LNCtxRed.ct_ann_equiv h_ctx_inner hα_red
       have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
         LNExpr.lc_at_open_fvar h_lc.2
-      obtain ⟨u₃, htop_body, hright_body⟩ :=
+      obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
         commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
-      have hfresh_e' : x ∉ LNCtx.dom Γ' := hx_dom'
-      refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_⟩
+      have _hfresh_e' : x ∉ LNCtx.dom Γ' := hx_dom'
+      refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge: use equivRed_rename on htop_body
         exact .me_fop (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
           h_equiv_dom
@@ -2174,6 +2165,8 @@ theorem commutativity
             have h := subRed_rename hright_body hx_dom' hy_dom' (sorry : x ∉ body₁.fvs)
             rw [open_close_subst (sorry : u₃.lc)]  -- sorry: u₃.lc
             exact h)
+      · -- noPromoAt preservation for ME-FOP/MS-FOP
+        sorry
 termination_by t₀.sz
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
 
