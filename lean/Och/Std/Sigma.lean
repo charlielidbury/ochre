@@ -58,10 +58,10 @@ example : concEval 100 snd_1_2 = concEval 100 two_ := by native_decide
 -- ---- Positive: subtype checking ----
 
 -- dpair Nat (λ_.Nat) 1 2 : Sigma Nat (λ_.Nat)
-example : Och.subCheckE 200 pair_1_2 (och{ Sigma Nat_ constNat }) = .ok true := by native_decide
+example : Och.checkSubtype 200 pair_1_2 (och{ Sigma Nat_ constNat }) = .ok true := by native_decide
 
 -- dpair : its full type
-example : Och.subCheckE 200 dpair (och{
+example : Och.checkSubtype 200 dpair (och{
   λA:Type. λB:(A → Type). λa:A. λ_:(B a). Sigma A B }) = .ok true := by native_decide
 
 -- ---- Negative: computation ----
@@ -78,10 +78,10 @@ example : concEval 100 fst_1_2 ≠ concEval 100 zero_ := by native_decide
 -- ---- Negative: subtype checking ----
 
 -- Sigma Nat (λ_.Nat) is not a Nat (it's a different type)
-example : Och.subCheckE 100 (och{ Sigma Nat_ constNat }) Nat_ = .ok false := by native_decide
+example : Och.checkSubtype 100 (och{ Sigma Nat_ constNat }) Nat_ = .ok false := by native_decide
 
 -- dpair is not itself a Sigma type (it's a constructor, not a value of Sigma)
-example : Och.subCheckE 100 dpair (och{ Sigma Nat_ constNat }) = .ok false := by native_decide
+example : Och.checkSubtype 100 dpair (och{ Sigma Nat_ constNat }) = .ok false := by native_decide
 
 end Tests
 end Std

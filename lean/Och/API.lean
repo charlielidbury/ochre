@@ -11,22 +11,18 @@ subtype-checking pipeline.
 ## Surface
 
 ```
-structure Och.WTValue where
-  private mk ::
-  whnf : Expr      -- well-typed value (in WHNF) by construction
-
-def Och.synth (e : Expr) (fuel : Nat := 5000) : Outcome WTValue
-def Och.subCheck (a b : WTValue) (fuel : Nat := 5000) : Outcome Bool
-def Och.subCheckE (fuel : Nat) (e τ : Expr) : Outcome Bool
+def Och.check (e : Expr) (fuel : Nat := 5000) (Γ : TyEnv := []) : Outcome Unit
+def Och.subCheck (a b : Expr) (fuel : Nat := 5000) : Outcome Bool
+def Och.checkSubtype (fuel : Nat) (e τ : Expr) : Outcome Bool
 ```
 
-## Design (synth = structural walk + the engine for typing questions)
+## Design (check = pure validation walk)
 
-`synth Γ e` is a structural walk that returns `e`'s WHNF (which
-is its most-precise type via `Subtype'.refl`), validating
-well-typedness at every node. All "is X well-typed at Y?"
-questions are delegated to the existing complete structural
-engine `SubstEval.subCheckOpen`.
+`Och.check e` is a structural walk that validates well-typedness
+at every node, returning `Outcome Unit`. Callers that need a WHNF
+call `evalSubst` separately. All "is X well-typed at Y?" questions
+are delegated to the existing complete structural engine
+`SubstEval.subCheckOpen`.
 
 In the pure de Bruijn regime, descending under a binder does NOT
 substitute — we recurse on the raw body with the context extended.
@@ -37,17 +33,7 @@ namespace Och
 
 open SubstEval
 
-/-- A well-typed value: `whnf` is an `Expr` in head-normal form
-that has been validated by the structural walk in `synth`. The
-`mk` constructor is `private`; the only public way to obtain a
-`WTValue` is via `synth`. -/
-structure WTValue where
-  private mk ::
-  /-- The validated expression in head-normal form. -/
-  whnf : Expr
-  deriving Repr
-
-/-- Type context for `synth`: stores the types of free variables.
+/-- Type context for `check`: stores the types of free variables.
 `Γ[Γ.length - 1 - k]` is the type of `bvar k`. Push to the end
 when entering a binder.
 
@@ -55,39 +41,27 @@ Public so soundness lemmas in `Soundness/SynthSound.lean` can
 mention `Γ`'s type when stating per-arm helper lemmas. -/
 abbrev TyEnv := List Expr
 
-/-! ## Synth core (private mutual block)
+/-- Pure validation walk: checks that `e` is well-typed under `Γ`,
+returning `Outcome Unit`. Does NOT return a WHNF witness; callers
+that need a WHNF should call `evalSubst` separately.
 
-The walk takes an explicit type-environment `Γ` and threads
-fuel through. Each node validates its sub-terms recursively and
-calls `subCheckOpen` for the one typing question that arm asks
-(domain check at app, ascription consistency at asc).
-
-Termination is fuel-bounded. -/
-
-/-- Synth helper: produce e's WHNF as a type-witness, validating
-each node.
-
-Returns the *value* (WHNF) of `e` — for canonical forms (lam,
-iota, fix, top, bot) that's `e` itself; for neutrals it's the
-`Γ`-lookup type (which acts as the type-witness). For `.app`,
-it's the WHNF of the β-reduced result.
-
-**Visibility.** Public so that soundness proofs can name it.
+Top-level callers use the defaults: `Och.check e` checks a closed
+term with `fuel = 5000` and `Γ = []`.
 
 **Termination.** Non-`partial`: `fuel` strictly decreases at every
 recursive call. -/
-def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
-    Outcome Expr :=
+def check (e : Expr) (fuel : Nat := 5000) (Γ : TyEnv := []) :
+    Outcome Unit :=
   match fuel with
   | 0 => .outOfFuel
   | fuel + 1 =>
     match e with
-    | .type => .ok .type
-    | .bot  => .ok .bot
+    | .type => .ok ()
+    | .bot  => .ok ()
     | .bvar k =>
         -- Pure de Bruijn: bvar k is valid if k < Γ.length.
         if k < Γ.length then
-          .ok e
+          .ok ()
         else
           .error s!"synth: unbound bvar {k} (|Γ|={Γ.length})"
     | .lam dom body => do
@@ -98,55 +72,51 @@ def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
           let domV ← evalSubst fuel SubstEval.unfBound dom
           -- Descend into body without substitution. bvar 0 in body
           -- refers to the lambda parameter; extend Γ with domV.
-          let _bodyTy ← synthCore fuel (domV :: Γ) body
-          -- Canonical: a lambda is its own most-precise type.
-          evalSubst fuel SubstEval.unfBound e
+          check body fuel (domV :: Γ)
     | .iota ann body => do
         let okAnn ← subCheckOpen fuel Γ ann .type
         if !okAnn then
           .error s!"synth: iota annotation is not a type"
         else
           let annV ← evalSubst fuel SubstEval.unfBound ann
-          let _bodyTy ← synthCore fuel (annV :: Γ) body
-          evalSubst fuel SubstEval.unfBound e
+          check body fuel (annV :: Γ)
     | .fix ann body => do
         let okAnn ← subCheckOpen fuel Γ ann .type
         if !okAnn then
           .error s!"synth: fix annotation is not a type"
         else
           let annV ← evalSubst fuel SubstEval.unfBound ann
-          let _bodyTy ← synthCore fuel (annV :: Γ) body
-          evalSubst fuel SubstEval.unfBound e
+          check body fuel (annV :: Γ)
     | .asc inner τ => do
         let okτ ← subCheckOpen fuel Γ τ .type
         if !okτ then
           .error s!"synth: ascription type is not a type"
         else
           let τV ← evalSubst fuel SubstEval.unfBound τ
-          let vInner ← synthCore fuel Γ inner
-          -- The single typing question: vInner ⊑ τV.
-          let ok ← subCheckOpen fuel Γ vInner τV
+          check inner fuel Γ
+          let innerV ← evalSubst fuel SubstEval.unfBound inner
+          -- The single typing question: innerV ⊑ τV.
+          let ok ← subCheckOpen fuel Γ innerV τV
           if !ok then
             .error s!"synth: ascription rejected (term ⊄ annotation)"
           else
-            .ok vInner
+            .ok ()
     | .letE val body => do
-        let valV ← synthCore fuel Γ val
+        check val fuel Γ
+        let valV ← evalSubst fuel SubstEval.unfBound val
         -- Descend into body without substitution.
-        let _bodyTy ← synthCore fuel (valV :: Γ) body
-        -- The whole `let` β-reduces to `body[val/0]`; return its WHNF.
-        evalSubst fuel SubstEval.unfBound e
+        check body fuel (valV :: Γ)
     | .app f a => do
-        let vF ← synthCore fuel Γ f
-        let _vA ← synthCore fuel Γ a   -- validates `a` recursively
+        check f fuel Γ
+        check a fuel Γ
         let aV ← evalSubst fuel SubstEval.unfBound a
         let fV ← evalSubst fuel SubstEval.unfBound f
         -- Expose a Π for the function.
         let piExpr ← do
-          match whnfPi fuel fV vF with
+          match whnfPi fuel fV fV with
           | some piLam@(.lam ..) => .ok piLam
           | _ =>
-              match (← neutralType fuel Γ vF) with
+              match (← neutralType fuel Γ fV) with
               | some ty =>
                   match whnfPi fuel fV ty with
                   | some piLam@(.lam ..) => .ok piLam
@@ -165,33 +135,20 @@ def synthCore (fuel : Nat) (Γ : TyEnv) (e : Expr) :
             if !okArg then
               .error s!"synth: arg ⊄ dom at .app"
             else
-              -- Codomain at the argument: β over the exposed Π.
-              evalSubst fuel SubstEval.unfBound (.app piExpr aV)
+              .ok ()
         | _ =>
             .error s!"synth: internal: non-Π piExpr after exposure"
   termination_by fuel
   decreasing_by all_goals first | (simp_wf; omega) | omega | simp_wf
 
-/-! ## Public surface -/
+/-- Structural subtype check on `Expr`s. -/
+def subCheck (a b : Expr) (fuel : Nat := 5000) : Outcome Bool :=
+  SubstEval.subCheck fuel a b
 
-/-- Produce a `WTValue` for `e`. Validates well-typedness via a
-structural walk that delegates each typing question to the
-complete structural engine `SubstEval.subCheckOpen`. -/
-def synth (e : Expr) (fuel : Nat := 5000) : Outcome WTValue := do
-  if !e.closedAt 0 then
-    .error s!"synth: input contains unbound bvars (not closed)"
-  else
-    let v ← synthCore fuel [] e
-    pure ⟨v⟩
-
-/-- Structural subtype check on already-typed values. -/
-def subCheck (a b : WTValue) (fuel : Nat := 5000) : Outcome Bool :=
-  SubstEval.subCheck fuel a.whnf b.whnf
-
-/-- Convenience: run `synth` on both inputs, then `subCheck`. -/
-def subCheckE (fuel : Nat) (e τ : Expr) : Outcome Bool := do
-  let a ← synth e fuel
-  let b ← synth τ fuel
-  subCheck a b fuel
+/-- Convenience: validate both `e` and `τ`, then check `e ⊑ τ`. -/
+def checkSubtype (fuel : Nat) (e τ : Expr) : Outcome Bool := do
+  check e fuel
+  check τ fuel
+  subCheck e τ fuel
 
 end Och

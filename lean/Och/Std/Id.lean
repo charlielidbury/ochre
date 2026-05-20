@@ -52,24 +52,24 @@ private def fuel : Nat := 100
 -- id Nat 3 reduces to 3 (transparency preserved). §6.4. Phrased as
 -- bidirectional `subCheck` after the engine-collapse migration:
 -- two terms are convertible iff each subsumes the other.
-example : Och.subCheckE 200 (och{ id_ Nat_ three_ }) three_ = .ok true ∧
-          Och.subCheckE 200 three_ (och{ id_ Nat_ three_ }) = .ok true := by
+example : Och.checkSubtype 200 (och{ id_ Nat_ three_ }) three_ = .ok true ∧
+          Och.checkSubtype 200 three_ (och{ id_ Nat_ three_ }) = .ok true := by
   native_decide
 
 -- Ascription narrows asymmetrically: on the LHS, `(three_ : Nat_)`
 -- presents as `Nat_` (annotation); on the RHS, as `three_` (inner).
 -- So `three_ ⊑ (idAscribed Nat_ three_)` holds but not vice versa.
-example : Och.subCheckE 200 three_ (och{ idAscribed Nat_ three_ }) = .ok true := by
+example : Och.checkSubtype 200 three_ (och{ idAscribed Nat_ three_ }) = .ok true := by
   native_decide
-example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) three_ = .ok false := by
+example : Och.checkSubtype 200 (och{ idAscribed Nat_ three_ }) three_ = .ok false := by
   native_decide
 
 -- id_ preserves singleton; idAscribed widens to annotation.
 -- id_ Nat_ three_ ⊑ idAscribed Nat_ three_ (three_ ⊑ three_ via RHS)
 -- but not vice versa (Nat_ ⊄ three_ via LHS).
-example : Och.subCheckE 200 (och{ id_ Nat_ three_ }) (och{ idAscribed Nat_ three_ })
+example : Och.checkSubtype 200 (och{ id_ Nat_ three_ }) (och{ idAscribed Nat_ three_ })
             = .ok true := by native_decide
-example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) (och{ id_ Nat_ three_ })
+example : Och.checkSubtype 200 (och{ idAscribed Nat_ three_ }) (och{ id_ Nat_ three_ })
             = .ok false := by native_decide
 
 -- ----------------------------------------------------------
@@ -78,14 +78,14 @@ example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) (och{ id_ Nat_ three
 
 -- id Nat 3 should NOT equal Nat — it is more precise (singleton 3).
 -- One-directional rejection: `Nat_ ⊑ id Nat_ three_` is false.
-example : Och.subCheckE 200 Nat_ (och{ id_ Nat_ three_ }) = .ok false := by
+example : Och.checkSubtype 200 Nat_ (och{ id_ Nat_ three_ }) = .ok false := by
   native_decide
 
 -- Semantic claim: `idAscribed Nat_ three_` is typeable at `Nat_`
 -- (the ascription preserves the checked type). Uses `subCheckE` —
 -- the public entry point — so the test stays robust to which
 -- internal pathway dispatches it.
-example : Och.subCheckE 200 (och{ idAscribed Nat_ three_ }) Nat_
+example : Och.checkSubtype 200 (och{ idAscribed Nat_ three_ }) Nat_
   = .ok true := by native_decide
 
 -- ----------------------------------------------------------

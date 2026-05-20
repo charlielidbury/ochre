@@ -33,7 +33,7 @@ def mkVec := och{ λT:Type. λn:Nat_. λarr:(Array_ n T). dpair Nat_ (λn2:Nat_.
 section AscBug
 
 -- BUG: `(x : Type)` should erase x's type to Type, so passing it
--- where Nat_ is expected should reject. But synthCore's .asc arm
+-- where Nat_ is expected should reject. But Och.check's .asc arm
 -- returns the inner value (not the annotation), and the .app arm's
 -- fallback re-discovers x:Nat_ from Γ via neutral ascent on the
 -- evalSubst'd argument (which strips the ascription).
@@ -41,8 +41,7 @@ private def asc_transparent := och{
   λx:Nat_. (λy:Nat_. y) (x : Type)
 }
 example : -- correctly rejects: (x : Type) narrows to Type, Type ⊄ Nat_
-    (match Och.synth asc_transparent 200 with
-     | .ok _ => false | _ => true) = true := by native_decide
+    (Och.check asc_transparent 200).isError = true := by native_decide
 
 -- Concrete value (not neutral): ascription transparency in .asc arm
 -- still fires (returns zero_ not Type), but no neutral-ascent
@@ -51,16 +50,14 @@ private def asc_concrete := och{
   (λy:Unit_. y) (zero_ : Type)
 }
 example : -- correctly rejects (zero_ ⊑ Unit_ fails, no fallback)
-    (match Och.synth asc_concrete 200 with
-     | .ok _ => false | _ => true) = true := by native_decide
+    (Och.check asc_concrete 200).isError = true := by native_decide
 
 -- Baseline: genuine type mismatch without ascription.
 private def genuinely_wrong := och{
   λx:Nat_. (λy:Unit_. y) x
 }
 example : -- correctly rejects
-    (match Och.synth genuinely_wrong 200 with
-     | .ok _ => false | _ => true) = true := by native_decide
+    (Och.check genuinely_wrong 200).isError = true := by native_decide
 
 end AscBug
 
@@ -82,8 +79,8 @@ private def testVec2 := och{ mkVec Nat_ two_
 
 -- ── Positive subtype checks ──────────────────────────────────
 
-example : Och.subCheckE 200 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
-example : Och.subCheckE 200 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : Och.checkSubtype 200 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : Och.checkSubtype 200 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
 
 -- ── Positive computation: unpack to get length ───────────────
 
@@ -95,8 +92,8 @@ example : concEval 100 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) 
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : Och.subCheckE 200 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
-example : Och.subCheckE 200 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
+example : Och.checkSubtype 200 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
+example : Och.checkSubtype 200 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
 
 -- ── Negative computation ─────────────────────────────────────
 
@@ -148,22 +145,17 @@ section AppendVecTests
 -- inline eliminators on `arr` instead of `fst_`/`snd_` (precision
 -- loss at the loose `Pair Type Type → Type` Std-level boundary
 -- was the bail; see `docs/ideas/appendvec-investigation.md`).
--- synth validates, and the WTValue is reflexive under subCheck.
-example :
-    (match Och.synth Std.appendVec 200 with
-     | .ok v => Och.subCheck v v 200 == .ok true
-     | _ => false) = true := by native_decide
+-- check validates.
+example : (Och.check Std.appendVec 200).isOk = true := by native_decide
 
 -- appendVec_wrong has a deliberate bug: the inner `appendArrays`
 -- call uses `n1` twice instead of `n1, n2`. The bidirectional
 -- walk (`TyCheck.tyInfer`) domain-checks each argument and rejects
 -- `arr2 : Array_ n2 T` against the expected `Array_ n1 T`.
 --
--- The public API `Och.synth` currently runs `tyInfer` for
--- diagnostics but on `.error` falls back to `evalSubst` — the
--- synthCore correctly rejects the bug: arr2 (: Array_ n2 T) is passed
--- where Array_ n1 T is expected, and n2 ≠ n1.
-example : (Och.synth appendVec_wrong 200).isError
+-- The public API `Och.check` correctly rejects the bug: arr2
+-- (: Array_ n2 T) is passed where Array_ n1 T is expected, and n2 ≠ n1.
+example : (Och.check appendVec_wrong 200).isError
        = true := by native_decide
 
 -- ── Concrete appendVec ──────────────────────────────────────
@@ -173,7 +165,7 @@ private def vec1 := och{ mkVec Nat_ two_
 private def vec2 := och{ mkVec Nat_ one_ (pair_ Nat_ Unit_ three_ unit_) }
 private def vecResult := och{ appendVec Nat_ vec1 vec2 }
 
--- `Och.subCheckE 400 vecResult (Vec Nat_) = .ok true` would be
+-- `Och.checkSubtype 400 vecResult (Vec Nat_) = .ok true` would be
 -- the natural pin, but the public `Och.synth` walks `vecResult`
 -- through `appendVec`/`appendArrays`, both of which exercise
 -- abstract dependent-domain checks the structural engine can't

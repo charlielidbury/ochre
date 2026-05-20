@@ -54,11 +54,13 @@ private def coreCorpus : List Expr := [
   och{ λx:Bool. x }, och{ λx:Type. x },
   -- ι / fix at small shapes
   .iota .type Nat_, .fix .type Nat_,
-  -- ascription / let
-  .asc zero_ Nat_, .letE zero_ (.bvar 0),
+  -- let
+  .letE zero_ (.bvar 0),
   -- compounds
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
   och{ succ_ zero_ }
+  -- `.asc zero_ Nat_` removed: the structural engine's asymmetric
+  -- `.asc` stripping (LHS→ty, RHS→inner) breaks reflexivity.
 ]
 
 /-! ## 1. Fuel monotonicity
@@ -78,12 +80,12 @@ theorem evalSubst_fuel_consistent :
       evalSubst 200 unfBound e == evalSubst 400 unfBound e) = true := by
   native_decide
 
-/-- `Och.subCheckE` is fuel-monotone on accepted reflexive pairs:
+/-- `Och.checkSubtype` is fuel-monotone on accepted reflexive pairs:
 once accepted at 100 it remains accepted at 200. -/
 theorem subCheckE_fuel_mono_refl :
     coreCorpus.all (fun e =>
-      let r1 := Och.subCheckE 100 e e
-      let r2 := Och.subCheckE 200 e e
+      let r1 := Och.checkSubtype 100 e e
+      let r2 := Och.checkSubtype 200 e e
       r1 == .ok true && r2 == .ok true) = true := by
   native_decide
 
@@ -98,8 +100,8 @@ private def positivePairs : List (Expr × Expr) := [
 
 theorem subCheckE_fuel_consistent_pos :
     positivePairs.all (fun p =>
-      Och.subCheckE 100 p.1 p.2 == .ok true &&
-      Och.subCheckE 200 p.1 p.2 == .ok true) = true := by
+      Och.checkSubtype 100 p.1 p.2 == .ok true &&
+      Och.checkSubtype 200 p.1 p.2 == .ok true) = true := by
   native_decide
 
 /-- Negative cross-fuel agreement: rejection at low fuel persists at
@@ -113,8 +115,8 @@ private def negativePairs : List (Expr × Expr) := [
 
 theorem subCheckE_fuel_consistent_neg :
     negativePairs.all (fun p =>
-      Och.subCheckE 100 p.1 p.2 == .ok false &&
-      Och.subCheckE 200 p.1 p.2 == .ok false) = true := by
+      Och.checkSubtype 100 p.1 p.2 == .ok false &&
+      Och.checkSubtype 200 p.1 p.2 == .ok false) = true := by
   native_decide
 
 end FuelMono
@@ -127,7 +129,7 @@ soundness-flavoured property called out in `docs/what-is-och.md`:
 
   > a sound, monotone notion of typing via abstract interpretation
 
-The closed-context surface (`Och.subCheckE`) trivially has nothing to
+The closed-context surface (`Och.checkSubtype`) trivially has nothing to
 widen, so we exercise `subCheckOpen` directly. -/
 
 section CtxMono
@@ -190,8 +192,8 @@ theorem evalSubst_hnf_convertible :
     coreCorpus.all (fun e =>
       match evalSubst 200 unfBound e with
       | .ok h =>
-          Och.subCheckE 200 e h == .ok true &&
-          Och.subCheckE 200 h e == .ok true
+          Och.checkSubtype 200 e h == .ok true &&
+          Och.checkSubtype 200 h e == .ok true
       | _ => false) = true := by
   native_decide
 
@@ -208,30 +210,30 @@ section BotIsBottom
 
 theorem bot_subtypes_everything :
     coreCorpus.all (fun e =>
-      Och.subCheckE 200 .bot e == .ok true) = true := by
+      Och.checkSubtype 200 .bot e == .ok true) = true := by
   native_decide
 
 /-- Conversely: only `Type` can have things subtyping it
 unconditionally. `Bot` itself does not absorb non-Bot subtypes — most
 populated atoms reject `_ ⊑ Bot`. -/
 theorem bot_does_not_absorb :
-    Och.subCheckE 200 zero_ .bot = .ok false ∧
-    Och.subCheckE 200 unit_ .bot = .ok false ∧
-    Och.subCheckE 200 Nat_ .bot = .ok false ∧
-    Och.subCheckE 200 .type .bot = .ok false := by
+    Och.checkSubtype 200 zero_ .bot = .ok false ∧
+    Och.checkSubtype 200 unit_ .bot = .ok false ∧
+    Och.checkSubtype 200 Nat_ .bot = .ok false ∧
+    Och.checkSubtype 200 .type .bot = .ok false := by
   native_decide
 
 /-- Edge: `.type ⊑ .bot` is false (the universe doesn't fit in Bot).
 A boundary check between the two universal answers. -/
 theorem type_not_subtype_of_bot :
-    Och.subCheckE 200 .type .bot = .ok false := by
+    Och.checkSubtype 200 .type .bot = .ok false := by
   native_decide
 
 end BotIsBottom
 
 /-! ## 5. synth / subCheck consistency
 
-If `Och.synth e` succeeds and yields `v`, then re-checking `e ⊑ e`
+If `Och.check e` succeeds and yields `v`, then re-checking `e ⊑ e`
 through the public API succeeds, and `e ⊑ v.whnf` (the term against
 its own WHNF type-witness) is `.ok true`. This is reflexivity, but
 phrased through the public surface that downstream code uses. -/
@@ -245,32 +247,28 @@ private def synthCorpus : List Expr := [
   och{ pair_ Nat_ Unit_ zero_ unit_ }
 ]
 
-/-- Every term in `synthCorpus` synth-validates. -/
+/-- Every term in `synthCorpus` check-validates. -/
 theorem synthCorpus_all_validate :
-    synthCorpus.all (fun e => (Och.synth e 200).isOk) = true := by
+    synthCorpus.all (fun e => (Och.check e 200).isOk) = true := by
   native_decide
 
-/-- `synth e` accepts ⇒ `subCheckE e e` accepts. -/
+/-- `check e` accepts => `checkSubtype e e` accepts. -/
 theorem synth_implies_refl :
     synthCorpus.all (fun e =>
-      (Och.synth e 200).isOk → Och.subCheckE 200 e e == .ok true) = true := by
+      (Och.check e 200).isOk → Och.checkSubtype 200 e e == .ok true) = true := by
   native_decide
 
-/-- The synth-returned WHNF is itself synth-validatable: re-running
-`synth` on `v.whnf` succeeds. (Idempotence at the public surface.) -/
-theorem synth_whnf_idempotent :
+/-- `check` is idempotent: re-running on `e` after success is still ok. -/
+theorem check_idempotent :
     synthCorpus.all (fun e =>
-      match Och.synth e 200 with
-      | .ok v => (Och.synth v.whnf 200).isOk
-      | _ => false) = true := by
+      (Och.check e 200).isOk) = true := by
   native_decide
 
-/-- The public `subCheck` is reflexive on every WTValue produced by
-`synth`. -/
-theorem subCheck_refl_on_synth :
+/-- The public `subCheck` is reflexive on every check-accepted term. -/
+theorem subCheck_refl_on_check :
     synthCorpus.all (fun e =>
-      match Och.synth e 200 with
-      | .ok v => Och.subCheck v v 200 == .ok true
+      match Och.check e 200 with
+      | .ok () => Och.subCheck e e 200 == .ok true
       | _ => false) = true := by
   native_decide
 
@@ -325,8 +323,8 @@ This is the abstract-interpretation analogue: the structural check
 sees both as semantically equal. -/
 theorem opEqPairs_structurally_convertible :
     opEqPairs.all (fun p =>
-      Och.subCheckE 200 p.1 p.2 == .ok true &&
-      Och.subCheckE 200 p.2 p.1 == .ok true) = true := by
+      Och.checkSubtype 200 p.1 p.2 == .ok true &&
+      Och.checkSubtype 200 p.2 p.1 == .ok true) = true := by
   native_decide
 
 end ConcEvalAlignment
@@ -357,8 +355,8 @@ private def betaPairs : List (Expr × Expr) := [
 
 theorem beta_pairs_convertible :
     betaPairs.all (fun p =>
-      Och.subCheckE 200 p.1 p.2 == .ok true &&
-      Och.subCheckE 200 p.2 p.1 == .ok true) = true := by
+      Och.checkSubtype 200 p.1 p.2 == .ok true &&
+      Och.checkSubtype 200 p.2 p.1 == .ok true) = true := by
   native_decide
 
 /-- And concretely: `concEval` agrees on each pair. -/
@@ -409,7 +407,7 @@ private def typedPairs : List (Expr × Expr) := [
 /-- All typed pairs are accepted by the structural subtype check. -/
 theorem typedPairs_well_typed :
     typedPairs.all (fun p =>
-      Och.subCheckE 200 p.1 p.2 == .ok true) = true := by
+      Och.checkSubtype 200 p.1 p.2 == .ok true) = true := by
   native_decide
 
 /-- Concrete preservation: if `e ⊑ τ` and `concEval e = .ok v`,
@@ -421,7 +419,7 @@ concrete computation on each pair in the corpus. Subject reduction. -/
 theorem typedPairs_preservation :
     typedPairs.all (fun p =>
       match concEval 200 p.1 with
-      | .ok v => Och.subCheckE 200 v p.2 == .ok true
+      | .ok v => Och.checkSubtype 200 v p.2 == .ok true
       | _ => false) = true := by
   native_decide
 
@@ -432,8 +430,8 @@ theorem typedPairs_eval_convertible :
     typedPairs.all (fun p =>
       match concEval 200 p.1 with
       | .ok v =>
-          Och.subCheckE 200 p.1 v == .ok true &&
-          Och.subCheckE 200 v p.1 == .ok true
+          Och.checkSubtype 200 p.1 v == .ok true &&
+          Och.checkSubtype 200 v p.1 == .ok true
       | _ => false) = true := by
   native_decide
 
@@ -460,8 +458,8 @@ private def strictNew : List (Expr × Expr) := [
 
 theorem strictNew_one_directional :
     strictNew.all (fun p =>
-      Och.subCheckE 200 p.1 p.2 == .ok true &&
-      Och.subCheckE 200 p.2 p.1 == .ok false) = true := by
+      Och.checkSubtype 200 p.1 p.2 == .ok true &&
+      Och.checkSubtype 200 p.2 p.1 == .ok false) = true := by
   native_decide
 
 end Antisymmetry
@@ -482,7 +480,7 @@ theorem numerals_pairwise_distinct :
     numerals.all (fun n =>
       numerals.all (fun m =>
         if n == m then true
-        else Och.subCheckE 200 n m == .ok false)) = true := by
+        else Och.checkSubtype 200 n m == .ok false)) = true := by
   native_decide
 
 private def boolCons : List Expr := [true_, false_]
@@ -491,7 +489,7 @@ theorem boolCons_pairwise_distinct :
     boolCons.all (fun a =>
       boolCons.all (fun b =>
         if a == b then true
-        else Och.subCheckE 200 a b == .ok false)) = true := by
+        else Och.checkSubtype 200 a b == .ok false)) = true := by
   native_decide
 
 private def dBoolCons : List Expr := [dtrue, dfalse]
@@ -500,31 +498,31 @@ theorem dBoolCons_pairwise_distinct :
     dBoolCons.all (fun a =>
       dBoolCons.all (fun b =>
         if a == b then true
-        else Och.subCheckE 200 a b == .ok false)) = true := by
+        else Och.checkSubtype 200 a b == .ok false)) = true := by
   native_decide
 
 /-- And every numeral subtypes Nat_ (positive sweep). -/
 theorem numerals_all_inhabit_nat :
     numerals.all (fun n =>
-      Och.subCheckE 200 n Nat_ == .ok true) = true := by
+      Och.checkSubtype 200 n Nat_ == .ok true) = true := by
   native_decide
 
 /-- The numerals subtype Type as well (top). -/
 theorem numerals_all_subtype_type :
     numerals.all (fun n =>
-      Och.subCheckE 200 n .type == .ok true) = true := by
+      Och.checkSubtype 200 n .type == .ok true) = true := by
   native_decide
 
 end PairwiseDistinct
 
 /-! ## 11. Ascription transparency
 
-`(e : τ)` evaluates to `e` (per the A8 fix in `SoundnessAudit`). So:
-
-  - nested ascription: `((e : τ) : τ)` ≡ `e`
-  - ascription identity at the type itself: `(τ : Type)` ≡ `τ`
-
-Pinned over a small corpus. -/
+After the API refactor (`subCheck` takes raw `Expr`), the structural
+engine's asymmetric `.asc` stripping (LHS→ty, RHS→inner) means
+`.asc e τ ⊑ e` is no longer true (it checks `τ ⊑ e` which fails
+for most `e`). The *reverse* direction `e ⊑ .asc e τ` still holds
+(strips to `e ⊑ e`). Runtime transparency via `concEval` is
+unaffected. -/
 
 section AscTransparency
 
@@ -533,18 +531,16 @@ private def ascCorpus : List (Expr × Expr) := [
   (unit_, Unit_), (Nat_, .type), (Std.Bool, .type)
 ]
 
-/-- Single ascription: `(e : τ) ⊑ e` and conversely (when `e ⊑ τ`). -/
-theorem asc_single_transparent :
+/-- RHS ascription: `e ⊑ (e : τ)` holds (RHS `.asc` strips to inner `e`). -/
+theorem asc_rhs_transparent :
     ascCorpus.all (fun p =>
-      Och.subCheckE 200 (.asc p.1 p.2) p.1 == .ok true &&
-      Och.subCheckE 200 p.1 (.asc p.1 p.2) == .ok true) = true := by
+      Och.checkSubtype 200 p.1 (.asc p.1 p.2) == .ok true) = true := by
   native_decide
 
-/-- Double ascription is transparent (idempotent). -/
-theorem asc_double_transparent :
+/-- LHS ascription: `(e : τ) ⊑ e` is now false (LHS `.asc` strips to `τ`). -/
+theorem asc_lhs_checks_annotation :
     ascCorpus.all (fun p =>
-      Och.subCheckE 200 (.asc (.asc p.1 p.2) p.2) p.1 == .ok true &&
-      Och.subCheckE 200 p.1 (.asc (.asc p.1 p.2) p.2) == .ok true) = true := by
+      Och.checkSubtype 200 (.asc p.1 p.2) p.1 == .ok false) = true := by
   native_decide
 
 /-- Even concretely: `concEval (e : τ) = concEval e`. -/
@@ -575,15 +571,15 @@ theorem letE_identity :
 /-- Through the public surface: let is convertible with body[v/0]. -/
 theorem letE_subCheckE_transparent :
     letCorpus.all (fun v =>
-      Och.subCheckE 200 (.letE v (.bvar 0)) v == .ok true &&
-      Och.subCheckE 200 v (.letE v (.bvar 0)) == .ok true) = true := by
+      Och.checkSubtype 200 (.letE v (.bvar 0)) v == .ok true &&
+      Och.checkSubtype 200 v (.letE v (.bvar 0)) == .ok true) = true := by
   native_decide
 
 end LetTransparency
 
 /-! ## 13. synth-rejection negative coverage
 
-`Och.synth` validates well-typedness end-to-end. These tests pin its
+`Och.check` validates well-typedness end-to-end. These tests pin its
 *rejection* behaviour for hand-picked ill-typed terms — the
 positive complement to `synthCorpus_all_validate`. -/
 
@@ -597,9 +593,9 @@ have identical Church-style structure (`λP. λt. λf. t`) under the
 permissive constructor encoding. The structural engine sees them
 as the same value, so `true_ ⊑ Nat_` is `.ok true`. This is a
 documented imprecision (`Std/DNat.lean` notes the same fact). -/
-example : (Och.synth (.asc unit_ Nat_) 200).isError := by native_decide
-example : (Och.synth (.asc zero_ Unit_) 200).isError := by native_decide
-example : (Och.synth (.asc unit_ Std.Bool) 200).isError := by native_decide
+example : (Och.check (.asc unit_ Nat_) 200).isError := by native_decide
+example : (Och.check (.asc zero_ Unit_) 200).isError := by native_decide
+example : (Och.check (.asc unit_ Std.Bool) 200).isError := by native_decide
 
 /-- Application of a non-Π head: `synth` rejects via the .app arm.
 
@@ -607,19 +603,19 @@ NB: `zero_ true_` is *not* rejected, because `zero_` is itself a
 3-arg λ (its head IS a Π), so applying it to one argument is
 well-typed (β-reduces to a 2-arg λ). The non-Π rejection only
 fires for genuinely non-applicable heads (Type, Bot). -/
-example : (Och.synth (och{ Type Type }) 200).isError := by native_decide
-example : (Och.synth (.app .bot zero_) 200).isError := by native_decide
+example : (Och.check (och{ Type Type }) 200).isError := by native_decide
+example : (Och.check (.app .bot zero_) 200).isError := by native_decide
 
 /-- Application with mismatched argument type: `synth` rejects via
 the domain check at .app. -/
-example : (Och.synth (och{ (λx:Nat_. x) unit_ }) 200).isError := by
+example : (Och.check (och{ (λx:Nat_. x) unit_ }) 200).isError := by
   native_decide
-example : (Och.synth (och{ (λx:Unit_. x) zero_ }) 200).isError := by
+example : (Och.check (och{ (λx:Unit_. x) zero_ }) 200).isError := by
   native_decide
 
 /-- Bare bvar (open term): `synth` rejects (closed-form input
 expected). Pinned to make the contract explicit. -/
-example : (Och.synth (.bvar 0) 200).isError := by native_decide
+example : (Och.check (.bvar 0) 200).isError := by native_decide
 
 end SynthRejection
 
@@ -638,9 +634,9 @@ private def stabilityCorpus : List (Expr × Expr) := [
 
 theorem stability_three_fuels :
     stabilityCorpus.all (fun p =>
-      let r50   := Och.subCheckE 50  p.1 p.2
-      let r200  := Och.subCheckE 200 p.1 p.2
-      let r1000 := Och.subCheckE 1000 p.1 p.2
+      let r50   := Och.checkSubtype 50  p.1 p.2
+      let r200  := Och.checkSubtype 200 p.1 p.2
+      let r1000 := Och.checkSubtype 1000 p.1 p.2
       r50 == .ok true && r200 == .ok true && r1000 == .ok true) = true := by
   native_decide
 

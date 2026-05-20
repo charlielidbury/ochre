@@ -379,9 +379,12 @@ noncomputable def whnfPi_go_sound_open
     | .app _ _ =>
       simp only [whnfPi.go] at hgo
       injection hgo with hgo; subst hgo; exact hsub
-    | .asc _ _ =>
+    | .asc inner _annTy =>
       simp only [whnfPi.go] at hgo
-      injection hgo with hgo; subst hgo; exact hsub
+      -- whnfPi.go strips the ascription and recurses on inner.
+      -- Derive: inhab ⊑ inner from inhab ⊑ .asc inner ty via
+      -- trans with asc_L (refl inner) : (.asc inner ty) ⊑ inner.
+      exact ih inner piExpr (hsub.trans (.asc_L (.refl inner))) hgo
     | .letE _ _ =>
       simp only [whnfPi.go] at hgo
       injection hgo with hgo; subst hgo; exact hsub
@@ -1258,11 +1261,11 @@ noncomputable def subCheckSubst_sound
       exact .trans haa' (.trans (subCheckSubst_sound_gen fuel [] [] a' b' h) hb'b)
 
 /-- Surface-level soundness: `Och.subCheck a b fuel = .ok true →
-    Subtype' [] [] a.whnf b.whnf`. -/
+    Subtype' [] [] a b`. -/
 noncomputable def Och_subCheck_sound
-    {a b : Och.WTValue} {fuel : Nat}
+    {a b : Expr} {fuel : Nat}
     (h : Och.subCheck a b fuel = .ok true) :
-    Subtype' [] [] a.whnf b.whnf := by
+    Subtype' [] [] a b := by
   -- Och.subCheck unfolds to SubstEval.subCheck
   simp only [Och.subCheck, SubstEval.subCheck] at h
   exact subCheckSubst_sound h

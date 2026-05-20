@@ -54,18 +54,18 @@ open Expr
 -- ── Positive computation tests ─────────────────────────────
 
 -- Array_ zero_ T ≡ Unit_ (bidirectional subsumption).
-example : Och.subCheckE 200 (och{ Array_ zero_ Nat_ }) Unit_ = .ok true ∧
-          Och.subCheckE 200 Unit_ (och{ Array_ zero_ Nat_ }) = .ok true := by
+example : Och.checkSubtype 200 (och{ Array_ zero_ Nat_ }) Unit_ = .ok true ∧
+          Och.checkSubtype 200 Unit_ (och{ Array_ zero_ Nat_ }) = .ok true := by
   native_decide
 
 -- pair_ Nat Unit 0 unit, head it back out
 private def testArr1 := och{ pair_ Nat_ Unit_ zero_ unit_ }
 
-example : Och.subCheckE 200 (och{ fst_ Nat_ testArr1 }) zero_ = .ok true ∧
-          Och.subCheckE 200 zero_ (och{ fst_ Nat_ testArr1 }) = .ok true := by
+example : Och.checkSubtype 200 (och{ fst_ Nat_ testArr1 }) zero_ = .ok true ∧
+          Och.checkSubtype 200 zero_ (och{ fst_ Nat_ testArr1 }) = .ok true := by
   native_decide
-example : Och.subCheckE 200 (och{ snd_ Unit_ testArr1 }) unit_ = .ok true ∧
-          Och.subCheckE 200 unit_ (och{ snd_ Unit_ testArr1 }) = .ok true := by
+example : Och.checkSubtype 200 (och{ snd_ Unit_ testArr1 }) unit_ = .ok true ∧
+          Och.checkSubtype 200 unit_ (och{ snd_ Unit_ testArr1 }) = .ok true := by
   native_decide
 
 -- testArr2 = [1, 2]
@@ -73,38 +73,38 @@ private def testArr2 := och{
   pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
 }
 
-example : Och.subCheckE 200 (och{ fst_ Nat_ testArr2 }) one_ = .ok true ∧
-          Och.subCheckE 200 one_ (och{ fst_ Nat_ testArr2 }) = .ok true := by
+example : Och.checkSubtype 200 (och{ fst_ Nat_ testArr2 }) one_ = .ok true ∧
+          Och.checkSubtype 200 one_ (och{ fst_ Nat_ testArr2 }) = .ok true := by
   native_decide
-example : Och.subCheckE 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) testArr2) }) two_ = .ok true ∧
-          Och.subCheckE 200 two_ (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) testArr2) }) = .ok true := by
+example : Och.checkSubtype 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) testArr2) }) two_ = .ok true ∧
+          Och.checkSubtype 200 two_ (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) testArr2) }) = .ok true := by
   native_decide
 
 -- ── Positive subtype checks ────────────────────────────────
 
-example : Och.subCheckE 200 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
-example : Och.subCheckE 200 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
+example : Och.checkSubtype 200 testArr1 (och{ Array_ one_ Nat_ }) = .ok true := by native_decide
+example : Och.checkSubtype 200 testArr2 (och{ Array_ two_ Nat_ }) = .ok true := by native_decide
 
 -- ── Negative subtype checks ────────────────────────────────
 
-example : Och.subCheckE 200 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
+example : Och.checkSubtype 200 unit_ (och{ Array_ one_ Nat_ }) = .ok false := by native_decide
 
 -- ── Smoke: Array_ applied with abstract-friendly Nat_ index ───
 
 -- `succ_ zero_` is the unfolded `one_`; the value-side computation
 -- closes through and the result is convertible with `Pair Nat_ Unit_`
 -- (which is what `Array_ one_ Nat_` reduces to).
-example : Och.subCheckE 200 (och{ Array_ (succ_ zero_) Nat_ }) (och{ Pair Nat_ Unit_ })
+example : Och.checkSubtype 200 (och{ Array_ (succ_ zero_) Nat_ }) (och{ Pair Nat_ Unit_ })
             = .ok true ∧
-          Och.subCheckE 200 (och{ Pair Nat_ Unit_ }) (och{ Array_ (succ_ zero_) Nat_ })
+          Och.checkSubtype 200 (och{ Pair Nat_ Unit_ }) (och{ Array_ (succ_ zero_) Nat_ })
             = .ok true := by native_decide
 
-example : Och.subCheckE 200 (och{ Array_ one_ Nat_ }) (och{ Pair Nat_ Unit_ }) = .ok true ∧
-          Och.subCheckE 200 (och{ Pair Nat_ Unit_ }) (och{ Array_ one_ Nat_ }) = .ok true := by
+example : Och.checkSubtype 200 (och{ Array_ one_ Nat_ }) (och{ Pair Nat_ Unit_ }) = .ok true ∧
+          Och.checkSubtype 200 (och{ Pair Nat_ Unit_ }) (och{ Array_ one_ Nat_ }) = .ok true := by
   native_decide
-example : Och.subCheckE 200 (och{ Array_ two_ Nat_ }) (och{ Pair Nat_ (Pair Nat_ Unit_) })
+example : Och.checkSubtype 200 (och{ Array_ two_ Nat_ }) (och{ Pair Nat_ (Pair Nat_ Unit_) })
             = .ok true ∧
-          Och.subCheckE 200 (och{ Pair Nat_ (Pair Nat_ Unit_) }) (och{ Array_ two_ Nat_ })
+          Och.checkSubtype 200 (och{ Pair Nat_ (Pair Nat_ Unit_) }) (och{ Array_ two_ Nat_ })
             = .ok true := by
   native_decide
 
@@ -147,11 +147,8 @@ def appendArrays := och{
 
 section AppendArraysTests
 
--- synth validates, and the WTValue is reflexive under subCheck.
-example :
-    (match Och.synth Std.appendArrays 100 with
-     | .ok v => Och.subCheck v v 100 == .ok true
-     | _ => false) = true := by native_decide
+-- check validates.
+example : (Och.check Std.appendArrays 100).isOk = true := by native_decide
 
 private def app_arr1 := och{
   pair_ Nat_ (Pair Nat_ Unit_) one_ (pair_ Nat_ Unit_ two_ unit_)
@@ -168,7 +165,7 @@ example : concEval 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) (snd_ (Pair Nat_ 
   native_decide
 
 -- appendArrays at its declared type.
-example : Och.subCheckE 5000 appendArrays
+example : Och.checkSubtype 5000 appendArrays
   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
   = .ok true := by native_decide
 
@@ -245,14 +242,14 @@ example : concEval 200 (och{ indexArr Nat_ three_ arr3 two_ })
 -- `typeCheck`.
 --
 -- 1. The definition itself type-checks.
-example : (Och.synth indexArr 400).isOk = true := by native_decide
+example : (Och.check indexArr 400).isOk = true := by native_decide
 
 -- 2. In-bounds application is accepted.
-example : (Och.synth (och{ indexArr Nat_ three_ arr3 zero_ }) 400).isOk = true := by native_decide
-example : (Och.synth (och{ indexArr Nat_ three_ arr3 two_ }) 400).isOk = true := by native_decide
+example : (Och.check (och{ indexArr Nat_ three_ arr3 zero_ }) 400).isOk = true := by native_decide
+example : (Och.check (och{ indexArr Nat_ three_ arr3 two_ }) 400).isOk = true := by native_decide
 
 -- 3. Out-of-bounds application is rejected: three_ ⊄ Fin three_.
-example : (Och.synth (och{ indexArr Nat_ three_ arr3 three_ }) 400).isError = true := by native_decide
+example : (Och.check (och{ indexArr Nat_ three_ arr3 three_ }) 400).isError = true := by native_decide
 
 end IndexArrTests
 

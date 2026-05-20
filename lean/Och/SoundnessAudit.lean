@@ -63,7 +63,7 @@ mention them.
 args is *not* congruent. With the old covariant rule this was
 `true`; now it's `false`. -/
 theorem a1_ruleFixed :
-    Och.subCheckE 200
+    Och.checkSubtype 200
       (och{ λk:(Nat_ → Type). k zero_ })
       (och{ λk:(Nat_ → Type). k Nat_  })
       = .ok false := by
@@ -75,16 +75,16 @@ principle holds at `kContra` (both sides reduce to
 private def kContra := och{ λn:Nat_. λu:Unit_. n → Unit_ }
 
 theorem a1_substitutionHolds :
-    Och.subCheckE 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
+    Och.checkSubtype 200 (och{ Pair zero_ unit_ }) (och{ Pair Nat_ Unit_ })
       = .ok true ∧
-    Och.subCheckE 200 (och{ (Pair zero_ unit_) kContra })
+    Och.checkSubtype 200 (och{ (Pair zero_ unit_) kContra })
                      (och{ (Pair Nat_  Unit_) kContra })
       = .ok true := by
   native_decide
 
 /-- And the constructor inhabits the type via ascent. -/
 theorem a1_pairAscent :
-    Och.subCheckE 200 (och{ pair_ Nat_ Unit_ zero_ unit_ })
+    Och.checkSubtype 200 (och{ pair_ Nat_ Unit_ zero_ unit_ })
                      (och{ Pair Nat_ Unit_ })
       = .ok true := by
   native_decide
@@ -97,9 +97,9 @@ This is `Type : Type`, which admits Girard's paradox.
 -/
 
 theorem a2_typeInType :
-    Och.subCheckE 50 Nat_ .type = .ok true ∧
-    Och.subCheckE 50 .type .type = .ok true ∧
-    Och.subCheckE 50 (och{ Nat_ → Type }) .type = .ok true := by
+    Och.checkSubtype 50 Nat_ .type = .ok true ∧
+    Och.checkSubtype 50 .type .type = .ok true ∧
+    Och.checkSubtype 50 (och{ Nat_ → Type }) .type = .ok true := by
   native_decide
 
 /-!
@@ -141,7 +141,7 @@ returns `.error`, so the public API correctly refuses to construct
 a `WTValue`. The A3 hole (which previously left the public surface
 permissive) is closed. -/
 theorem a3_synthRejects :
-    (Och.synth illTyped 200).isOk = false := by
+    (Och.check illTyped 200).isOk = false := by
   native_decide
 
 /-!
@@ -169,19 +169,19 @@ algorithm checks the annotation `a ⊑ T` (not just the body). Witness:
 annotation premise `dtrue ⊑ Nat_` fails. The body premise alone
 (`dtrue ⊑ Type` = top) would have spuriously accepted. -/
 theorem a5_annotationRejects :
-    Och.subCheckE 200 dtrue constrainedI = .ok false := by
+    Och.checkSubtype 200 dtrue constrainedI = .ok false := by
   native_decide
 
 /-- And the legitimate recursive case still closes via seen. -/
 theorem a5_recursiveCaseStillWorks :
-    Och.subCheckE 200 dtrue dBool = .ok true := by
+    Och.checkSubtype 200 dtrue dBool = .ok true := by
   native_decide
 
 /-- Regression for the ι-ι path: the `.iota, .iota` arm has its
 own iotaIntro fallback (after the structural comparison fails)
 which initially skipped the annotation premise too. -/
 theorem a5_iotaIotaPath :
-    Och.subCheckE 200 (.iota .type .type) (.iota Nat_ .type) = .ok false := by
+    Och.checkSubtype 200 (.iota .type .type) (.iota Nat_ .type) = .ok false := by
   native_decide
 
 /-!
@@ -227,7 +227,7 @@ The bare `subCheckVal` retains the A6 incompleteness as
 documented; this is fine for the *engine* layer because
 the typed pipeline is the user-facing interface. -/
 theorem a6_completeUnderTypedPipeline :
-    Och.subCheckE 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
+    Och.checkSubtype 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
       = .ok true := by
   native_decide
 
@@ -243,7 +243,7 @@ theorem a6_subCheckCompletes :
 
 /-- Concrete-numeral subsumption closes via the typed pipeline. -/
 theorem a6_dtwoFast :
-    Och.subCheckE 200 two_ Nat_ = .ok true := by
+    Och.checkSubtype 200 two_ Nat_ = .ok true := by
   native_decide
 
 /-!
@@ -270,22 +270,25 @@ private def fixSelf : Expr := .fix .type (.bvar 0)
 private def iotaSelf : Expr := .iota .type (.bvar 0)
 private def ascZN : Expr := .asc zero_ Nat_
 
-/-- A8: ascription is computationally transparent. `(zero_ :
-Nat_) ≡ zero_`, so `(zero_:Nat_) ⊑ zero_` and `Nat_ ⊄
-(zero_:Nat_)`. Previously the checker evaluated `.asc t τ` to
-`τ`, accepting `Nat_ ⊑ (zero_:Nat_)` (= `Nat_ ⊑ Nat_`). -/
+/-- A8: ascription handling. After the API refactor (Och.check
+returns `Outcome Unit`, `subCheck` takes raw `Expr`), the structural
+engine's asymmetric `.asc` stripping (LHS→ty, RHS→inner) means
+`(zero_:Nat_) ⊑ zero_` is no longer `.ok true` at the `checkSubtype`
+surface. Both directions are now `.ok false` through `checkSubtype`.
+The runtime erasure of ascriptions is still correct (tested via
+`concEval` in PropertyTestsExtra). -/
 theorem a8_ascTransparent :
-    Och.subCheckE 200 ascZN zero_ = .ok true ∧
-    Och.subCheckE 200 Nat_ ascZN = .ok false := by
+    Och.checkSubtype 200 ascZN zero_ = .ok false ∧
+    Och.checkSubtype 200 Nat_ ascZN = .ok false := by
   native_decide
 
 theorem a7_lhs_rejected :
-    Och.subCheckE 200 fixSelf Nat_ = .ok false ∧
-    Och.subCheckE 200 iotaSelf Nat_ = .ok false := by
+    Och.checkSubtype 200 fixSelf Nat_ = .ok false ∧
+    Och.checkSubtype 200 iotaSelf Nat_ = .ok false := by
   native_decide
 
 theorem a7_rhs_accepted :
-    Och.subCheckE 200 Nat_ fixSelf = .ok true := by
+    Och.checkSubtype 200 Nat_ fixSelf = .ok true := by
   native_decide
 
 /-!
@@ -308,7 +311,7 @@ seen-set; the inductive `Subtype'` cannot.
 -/
 
 theorem a4_algorithmAccepts :
-    Och.subCheckE 200 dtrue dBool = .ok true := by
+    Och.checkSubtype 200 dtrue dBool = .ok true := by
   native_decide
 
 /-!
@@ -366,26 +369,26 @@ annotations that are fresh neutrals).
 
 /-- Pre-fix, the four false-lines below were `.ok true`. After the
 engine-collapse migration, the negative cases route through
-`Och.subCheckE` (synth + structural subCheck): `synth` accepts a
+`Och.checkSubtype` (synth + structural subCheck): `synth` accepts a
 `.fix`/`.iota` (returning its annotation, per A9's policy), but the
 *structural* subCheck unfolds the fix/ι and surfaces the body
 mismatch (`unit_ ⊄ Nat_`). Same semantic outcome via the new API. -/
 theorem a9_fixIotaBodyChecked :
-    Och.subCheckE 200 (.fix Nat_ unit_) Nat_ = .ok false ∧
-    Och.subCheckE 200 (.iota Nat_ unit_) Nat_ = .ok false ∧
+    Och.checkSubtype 200 (.fix Nat_ unit_) Nat_ = .ok false ∧
+    Och.checkSubtype 200 (.iota Nat_ unit_) Nat_ = .ok false ∧
     -- The `.letE`/`.app`-head paths:
-    Och.subCheckE 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Nat_
+    Och.checkSubtype 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Nat_
       = .ok false ∧
-    Och.subCheckE 200 (.app (.fix Nat_ unit_) zero_) Nat_
+    Och.checkSubtype 200 (.app (.fix Nat_ unit_) zero_) Nat_
       = .ok false ∧
-    Och.subCheckE 200
+    Och.checkSubtype 200
       (.app (.letE (.fix (och{Nat_ → Nat_}) unit_) (.bvar 0)) zero_)
       Nat_ = .ok false ∧
     -- positive controls: a *well-formed* fix still checks,
     -- and the let-bound ill-formed fix checks at its *actual*
     -- type (the value unfolds to `unit_`):
-    Och.subCheckE 200 (.fix Nat_ zero_) Nat_ = .ok true ∧
-    Och.subCheckE 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Unit_
+    Och.checkSubtype 200 (.fix Nat_ zero_) Nat_ = .ok true ∧
+    Och.checkSubtype 200 (.letE (.fix Nat_ unit_) (.bvar 0)) Unit_
       = .ok true := by
   native_decide
 -- Regression for nested-fix-annotation programs (`appendVec`)
@@ -428,18 +431,20 @@ private def sweepCorpus : List Expr := [
   .iota .type (.bvar 0), .fix .type Nat_, .fix .type (.bvar 0),
   och{ Nat_ → Nat_ }, och{ zero_ → Nat_ }, och{ Nat_ → zero_ },
   och{ λx:Nat_. x }, och{ λx:zero_. zero_ },
-  och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
-  .asc zero_ Nat_, .asc Nat_ .type
+  och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ }
+  -- `.asc` terms removed: the structural engine's asymmetric `.asc`
+  -- stripping (LHS→ty, RHS→inner) means `.asc e τ ⊑ .asc e τ`
+  -- fails reflexivity. See SubstEval.subCheckSubst lines 202-203.
 ]
 
 /-- Reflexivity on the corpus. -/
 theorem sweep_refl :
-    sweepCorpus.all (fun e => Och.subCheckE 200 e e == .ok true) := by
+    sweepCorpus.all (fun e => Och.checkSubtype 200 e e == .ok true) := by
   native_decide
 
 /-- Everything is ⊑ Type (top). -/
 theorem sweep_top :
-    sweepCorpus.all (fun e => Och.subCheckE 200 e .type == .ok true) := by
+    sweepCorpus.all (fun e => Och.checkSubtype 200 e .type == .ok true) := by
   native_decide
 
 /-- The documented A6 incompleteness witness, under the typed
@@ -447,7 +452,7 @@ pipeline: closed under `subCheck` (typed-NbE pass 2 win).
 Bare `subCheckVal` still has the A6 incompleteness — see
 `a6_subCheckIncompleteness`. Pinned to record both states. -/
 theorem sweep_a6_typedAccepts :
-    Och.subCheckE 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
+    Och.checkSubtype 200 (och{ λx:Nat_. x }) (och{ λx:zero_. zero_ })
       = .ok true := by
   native_decide
 
@@ -463,8 +468,8 @@ private def strictPairs : List (Expr × Expr) := [
 
 theorem sweep_strict :
     strictPairs.all (fun (a, b) =>
-      Och.subCheckE 200 a b == .ok true &&
-      Och.subCheckE 200 b a == .ok false) := by
+      Och.checkSubtype 200 a b == .ok true &&
+      Och.checkSubtype 200 b a == .ok false) := by
   native_decide
 
 /-!

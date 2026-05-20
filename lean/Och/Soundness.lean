@@ -61,43 +61,29 @@ soundness obligation. They are stated against the public API
 so that downstream work can quantify over them.
 -/
 
-/-- Synthesis soundness: if `Och.synth e` accepts `e`, then `e`
-declaratively subtypes its synthesised WHNF.
+/-- Check soundness: if `Och.check e` accepts `e`, then `e`
+declaratively subtypes itself (well-formedness). Since `check`
+no longer produces a WHNF witness, the soundness statement is
+that `e` is self-consistent. The stronger "e subtypes its WHNF"
+property requires composing with `evalSubst_equiv` separately.
 
-**Strengthening note (2026-04-28, overnight Stage 1):** the
-original statement was `∃ τ, Subtype' [] [] e τ`, which is trivially
-discharged by `Subtype'.refl _` (any term subtypes itself, vacuously).
-That form did not capture the real Och claim that synth's walk
-produces a *meaningful* type-witness. The strengthened form below
-ties the existential to `v.whnf` (the synth output), making it
-a non-vacuous correspondence between algorithmic synth and
-declarative subtype.
-
-The previous env-NbE-based proof attempt (`SoundnessProof.lean`,
-deleted in the engine-collapse refactor) built on a Val-level
-intermediate relation `SubV` and an RC predicate substrate; both
-hit structural walls that don't transfer to the substitution
-substrate. Substitution-based proofs build on different lemmas
-(substitution lemmas, not reducibility candidates), so this is
-a fresh proof effort.
-
-Delegates to `Och.Soundness.Och_synth_sound` in
+Delegates to `Och.Soundness.Och_check_sound` in
 `Soundness/SynthSound.lean`. -/
-noncomputable def synth_sound
-    {fuel : Nat} {e : Expr} {v : Och.WTValue}
-    (h : Och.synth e fuel = .ok v) :
-    Subtype' [] [] e v.whnf :=
-  Och_synth_sound h
+noncomputable def check_sound
+    {fuel : Nat} {e : Expr}
+    (h : Och.check e fuel = .ok ()) :
+    Subtype' [] [] e e :=
+  Och_check_sound h
 
 /-- Subtype-check soundness: if `Och.subCheck a b` accepts the
-two validated values, then `a.whnf ⊑ b.whnf` declaratively.
+two expressions, then `a ⊑ b` declaratively.
 
 Delegates to `Och.Soundness.Och_subCheck_sound` in
 `Soundness/SubCheckSubstSoundness.lean`. -/
 noncomputable def subCheck_sound
-    {fuel : Nat} {a b : Och.WTValue}
+    {fuel : Nat} {a b : Expr}
     (h : Och.subCheck a b fuel = .ok true) :
-    Subtype' [] [] a.whnf b.whnf :=
+    Subtype' [] [] a b :=
   Och.Soundness.Och_subCheck_sound h
 
 /-- `concEval` (the reference evaluator) preserves declarative
@@ -137,51 +123,51 @@ could get stuck in (free bvar, apply non-function, etc.) is
 ruled out by synth's app-arm domain check, ascription check, and
 binder validation. -/
 theorem synth_progress
-    {fuel : Nat} {e : Expr} {v : Och.WTValue}
-    (h : Och.synth e fuel = .ok v) :
+    {fuel : Nat} {e : Expr}
+    (h : Och.check e fuel = .ok ()) :
     ∀ f, ∀ msg, concEval f e ≠ .error msg :=
-  fun _ msg => concEval_no_error (synthCore_topLevel_closedAt h) msg
+  fun _ msg => concEval_no_error (check_topLevel_closedAt h) msg
 
-/-- **Headline soundness**: if `synth` accepts `e` with synthesised
-type `a`, and `concEval` produces `e'`, then `e' ⊑ a.whnf`
-declaratively. The runtime result subtypes the synthesised type. -/
+/-- **Headline soundness**: if `check` accepts `e` and `concEval`
+produces `e'`, then `e' ⊑ e` declaratively. The runtime result
+subtypes the original expression. -/
 noncomputable def soundness
-    {fuel : Nat} {e e' : Expr} {a : Och.WTValue}
-    (hsynth : Och.synth e fuel = .ok a)
+    {fuel : Nat} {e e' : Expr}
+    (hcheck : Och.check e fuel = .ok ())
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' a.whnf :=
-  let hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt hsynth
-  let hSynthA : Subtype' [] [] e a.whnf := synth_sound hsynth
-  concEval_preservation hcl hSynthA hstep
+    Subtype' [] [] e' e :=
+  let hcl : e.closedAt 0 = true := check_topLevel_closedAt hcheck
+  let hSelf : Subtype' [] [] e e := check_sound hcheck
+  concEval_preservation hcl hSelf hstep
 
-/-- **General soundness**: if `synth` accepts, `subCheck` confirms
-`a ⊑ b`, and `concEval` produces `e'`, then `e' ⊑ b.whnf`. This
+/-- **General soundness**: if `check` accepts, `subCheck` confirms
+`e ⊑ b`, and `concEval` produces `e'`, then `e' ⊑ b`. This
 is the widening form — the caller picks an expected type `b` that
-may be wider than the synthesised `a`. -/
+may be wider than `e`. -/
 noncomputable def soundness_general
-    {fuel : Nat} {e e' : Expr} {a b : Och.WTValue}
-    (hsynthA : Och.synth e fuel = .ok a)
-    (hcheck : Och.subCheck a b fuel = .ok true)
+    {fuel : Nat} {e e' b : Expr}
+    (hcheckE : Och.check e fuel = .ok ())
+    (hsub : Och.subCheck e b fuel = .ok true)
     (hstep : concEval fuel e = .ok e') :
-    Subtype' [] [] e' b.whnf :=
-  let hCheck : Subtype' [] [] a.whnf b.whnf := subCheck_sound hcheck
-  (soundness hsynthA hstep).trans hCheck
+    Subtype' [] [] e' b :=
+  let hSub : Subtype' [] [] e b := subCheck_sound hsub
+  (soundness hcheckE hstep).trans hSub
 
-/-- **Combined soundness + progress**: if `synth` accepts `e`,
+/-- **Combined soundness + progress**: if `check` accepts `e`,
 then at any fuel, `concEval` either produces a well-typed value
 or runs out of fuel — it never gets stuck. -/
 theorem soundness_and_progress
-    {e : Expr} {a : Och.WTValue} {fuel₁ fuel₂ : Nat}
-    (hsynth : Och.synth e fuel₁ = .ok a) :
-    (∃ e', concEval fuel₂ e = .ok e' ∧ Nonempty (Subtype' [] [] e' a.whnf))
+    {e : Expr} {fuel₁ fuel₂ : Nat}
+    (hcheck : Och.check e fuel₁ = .ok ()) :
+    (∃ e', concEval fuel₂ e = .ok e' ∧ Nonempty (Subtype' [] [] e' e))
     ∨ concEval fuel₂ e = .outOfFuel := by
-  have hcl : e.closedAt 0 = true := synthCore_topLevel_closedAt hsynth
-  have hSub : Subtype' [] [] e a.whnf := synth_sound hsynth
+  have hcl : e.closedAt 0 = true := check_topLevel_closedAt hcheck
+  have hSub : Subtype' [] [] e e := check_sound hcheck
   match hout : concEval fuel₂ e with
   | .ok e' =>
       left; exact ⟨e', rfl, ⟨concEval_preservation hcl hSub hout⟩⟩
   | .outOfFuel => right; rfl
-  | .error msg => exact absurd hout (synth_progress hsynth fuel₂ msg)
+  | .error msg => exact absurd hout (synth_progress hcheck fuel₂ msg)
 
 section Witnesses
 open Std

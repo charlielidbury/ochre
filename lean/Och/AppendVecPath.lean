@@ -210,16 +210,8 @@ the bidirectional walk asks "does loose-`Type` ⊑ precise-`T`?",
 which is structurally false. Inlining the eliminator restores
 precision because the motive carries the precise type. -/
 
--- synth-validation succeeds, and the resulting WTValue is
--- reflexively a subtype of itself (sanity-check that the synth
--- output passes the public subCheck surface).
-example :
-    (match Och.synth Std.appendArrays 200 with
-     | .ok v => Och.subCheck v v 200 == .ok true
-     | _ => false) = true := by native_decide
-example :
-    (match Och.synth Std.appendVec 200 with
-     | .ok v => Och.subCheck v v 200 == .ok true
-     | _ => false) = true := by native_decide
+-- check-validation succeeds.
+example : (Och.check Std.appendArrays 200).isOk = true := by native_decide
+example : (Och.check Std.appendVec 200).isOk = true := by native_decide
 
 end Och.AppendVecPath

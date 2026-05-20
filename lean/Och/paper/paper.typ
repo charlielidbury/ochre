@@ -22,47 +22,46 @@
   }
 }
 
-// Subtyping judgment shorthand
+// Judgment shorthands
 #let sub(S, G, a, b) = $#S ; #G tack.r #a subset.sq.eq #b$
-#let sube(S, G, a, b) = $#S ; #G tack.r #a attach(subset.sq.eq, br: e) #b$
-#let synth(G, e, v) = $#G tack.r #e arrow.squiggly #v$
+#let ty(G, e, t) = $#G tack.r #e arrow.squiggly #t$
 #let eval(e, v) = $#e arrow.b.double #v$
 #let subst(body, x, v) = $#body [#x arrow.r.bar #v]$
 
-#align(center, text(size: 17pt, weight: "bold")[Och: A Core Calculus with Iota/Fix and Equirecursive Subtyping])
+#align(center, text(size: 17pt, weight: "bold")[Och])
 #v(1em)
 
-Och is a dependently-typed λ-calculus with two recursive-binder
-forms --- *ι* (Cedille-style self-types) and *fix* (general
-recursion at the type and term level) --- and a single syntactic
-category in which terms and types coincide. The checker is a
-structural type-synthesis walk layered on a substitution-based WHNF
-evaluator, and the subtyping relation is equirecursive with
-Brandt--Henglein coinductive hypotheses.
+= Introduction <intro>
+After playing around with dependent types in an imperative programming setting during the masters thesis, I came to the conclusion that a fairly uncommon combination of language features would lead to an excellent combination of developer ergonomics and expressivity.
 
-This document specifies Och as a type system: the term syntax, the
-concrete operational semantics, the declarative subtyping relation, and
-the algorithmic typing/subtyping judgments. Throughout, binders and
-variables are written with ordinary names ($x$, $y$, $x$, $A$, $B$,
-$f$, $a$, …) and substitution is written $"body"[x arrow.r.bar v]$.
-Binders are annotated with their bound name: $lambda(x lt.eq A). e$,
-$iota(x lt.eq A). B$, $"fix"(x lt.eq A). b$,
-$"let" x = v "in" "body"$. Context lookup is $Gamma(x)$; context
-extension is $Gamma, x lt.eq A$.
+I want to study the most unusual + unweildly of these features in isolation with a core calculus before building full Ochre, specifically:
+- The "terms are types" philosophy, as exonerated by PSS @hutchins-2010. In Och this comes out roughly to "types are terms with holes".
+- Terms/types form a subtyping lattice, where supertypes can be freely substituted for any subtype without any coercions.
+TODO: get rid of the "but why are these features important" feeling
 
-= Syntax
+== Goals
+*Soundness* - Ochre is only valuable if they can trust that the compiler will catch runtime errors at compile time. Proving the soundness of systems with the above features, let alone ownership + mutation is new research, Och is a place to do that research.
+
+*Expressivity* - The type system must be able to articulate properties and catch bugs that people care about. E.g. it must be expressive enough to tell the difference between $x + y$ and $x + x$ if one is correct and the other incorrect.
+
+*Extensibility* - Och is the first in a series of languages which will eventually culminate in full Ochre. As such, there is no point working with features which won't be re-usable. This has already manifested in the decision to tackle arbitrary unbounded recursion via $"fix"$ instead of having to add primitive inductive types and only well-founded induction.
+
+= Related Work <related>
+*Pure Subtype Systems* @hutchins-2010
+
+= Language Semantics <lang-sem>
 
 The term language is
 
 $
   e, tau ::= & x                      &                       "variable" \
-           | & top                    &                 "universe (top)" \
-           | & bot                    &               "primitive bottom" \
            | & lambda(x lt.eq tau). e &                         "lambda" \
            | & e_1 space e_2          &                    "application" \
+           | & top                    &                 "universe (top)" \
+           | & bot                    &               "primitive bottom" \
+           | & (e lt.eq tau)          & "ascription (erased at runtime)" \
            | & iota(x lt.eq tau). e   &               "self-type binder" \
            | & "fix"(x lt.eq tau). e  &               "recursive binder" \
-           | & (e lt.eq tau)          & "ascription (erased at runtime)" \
            | & "let" x = e_1 "in" e_2 &                    "let-binding"
 $
 
@@ -70,51 +69,49 @@ There is no separate type category: every $tau$ above is itself a term.
 Throughout the paper $Gamma$ denotes a typing context (a finite map from
 variable names to their declared types).
 
-*Variables, lambdas, application* are the standard λ-calculus.
+*Variables, lambdas, application* as per the standard λ-calculus, except $lambda$ has a domain type annotation which is respected by the type checker.
 
-*$top$ and $bot$* are the top and bottom of the subtyping lattice:
-every term subtypes $top$, and $bot$ subtypes everything.
-
-*Iota and fix* both bind a self-reference with an annotation
-$tau$ recording its type, but differ in how they unfold.
-A value $v lt.eq iota(x lt.eq A). B$ inhabits $B[x arrow.r.bar v]$ ---
-the body's self-reference points at the inhabitant itself, giving
-dependent elimination (Cedille-style self-types @fu-stump-2014).
-A value $v lt.eq "fix"(x lt.eq A). B$ equi-recursively equals its
-unfolding $B[x arrow.r.bar v]$ --- general recursion at the type and
-term level.
+*$top$ and $bot$* are the top and bottom of the subtyping lattice. $top$ represents the widest possible type, which tells you nothing about the term being typed, and $bot$ is the empty type.
 
 *Ascription* $(e lt.eq tau)$ asserts that $e$ subtypes $tau$ and
-instructs the type checker to forget information: the checker sees $tau$
-rather than the precise type of $e$.
+returns $e$. When typing this expression the checker sees $tau$
+rather than the precise type of $e$. From a theory perspective ascription is somewhat uninteresting but it is quite useful for test cases and building out motivating examples. TODO: can we remove this?
 
-*Let* $"let" x = e_1 "in" e_2$ is sugar that allows defining a
-variable without first giving it a type --- the checker infers the type
-of $e_1$ and binds $x$ to it.
+*Fix* $"fix"(x lt.eq tau). e$ allows a term to be defined in terms of itself. $x$ is the reference to self, and $tau$ is the "upper bound" which the whole expression can be assumed to have while it's being type checked (which prevents loops during type checking).
 
-= Concrete semantics --- the evaluation judgment
+*Iota* $iota(x lt.eq tau). e$ allows a type to be defined in terms of *the term inhabiting it*. This means $e subset.sq.eq iota (x:tau_0). tau_1$ is reduced to $e subset.sq.eq tau_1[x arrow.r.bar e]$ during checking (notice: the LHS has moved to the RHS). This is a Cedille-style self type @fu-stump-2014, and allows for church encodings with dependent elimination instead of having to add datatypes to the language as a primitive.
+
+*Let* $"let" x = e_1 "in" e_2$ binds $e_1$ to $x$. We can't define $"let"$ in terms of $lambda$ + immediate application because lambdas require us to give an approximation of $e_1$ (the domain annotation) and for $e_2$ to work under that approximation. TODO: can we remove this?
+
+== Concrete semantics — the evaluation judgment <conc-eval>
 
 The concrete evaluator is a substitution-based call-by-value big-step
 interpreter on closed terms. Lambdas, ι, and fix are values;
 applications in function position unroll the recursive binder by
 substituting its self-reference, then re-apply.
 
-Write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to
-value $v$." Values
-$v ::= lambda(x lt.eq tau).e | iota(x lt.eq tau).e | "fix"(x lt.eq tau).e | top | x space arrow(e)$ (neutral
-application spine with a stuck variable head).
+Concrete evaluation is _supposed_ to represent Och's runtime semantics, but Och has no concept of levels/universes/stages, so the type checker cannot enforce that ${top, bot, iota}$ don't turn up at runtime.
+Since soundness is defined roughly as "terms accepted by the type checker never crash at runtime", we must handle these values in the concrete semantics to avoid making our soundness completely unprovable.
+
+This can and should be solved in the future by adding levels to all binders (see §3.6 "Adding Universes" of @hutchins-2010 for roughly how I plan on doing this).
+
+We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to
+value $v$."
+
+
 
 #align(center, grid(
   columns: (1fr, 1fr),
   gutter: 1.5em,
-  irule("E-Val", eval($e$, $e$)), irule("E-Asc", eval($(e lt.eq tau)$, $v$), eval($e$, $v$)),
+  irule("E-Val", eval($v$, $v$)), irule("E-Asc", eval($(e lt.eq tau)$, $v$), eval($e$, $v$)),
+
   irule("E-Let", eval($("let" x = e_1 "in" e_2)$, $v$), eval($e_1$, $v_1$), eval($e_2[x arrow.r.bar v_1]$, $v$)),
-  irule("E-App-β", eval($f space a$, $v$), eval($f$, $lambda(x lt.eq tau). b$), eval($a$, $v_a$), eval(
+  irule("E-App", eval($f space a$, $v$), eval($f$, $lambda(x lt.eq tau). b$), eval($a$, $v_a$), eval(
     $b[x arrow.r.bar v_a]$,
     $v$,
   )),
 
-  irule("E-App-ι", eval($f space a$, $v$), eval($f$, $iota(x lt.eq tau). b$), eval($a$, $v_a$), eval(
+  irule("E-App-Iota", eval($f space a$, $v$), eval($f$, $iota(x lt.eq tau). b$), eval($a$, $v_a$), eval(
     $(b[x arrow.r.bar iota(x lt.eq tau).b]) space v_a$,
     $v$,
   )),
@@ -122,14 +119,21 @@ application spine with a stuck variable head).
     $(b[x arrow.r.bar "fix"(x lt.eq tau).b]) space v_a$,
     $v$,
   )),
-
-  irule("E-App-Neutral", eval($f space a$, $f' space v_a$), eval($f$, $f'$), eval($a$, $v_a$)),
 ))
 
-Where [E-Val] applies when $e in {top, lambda .., iota .., "fix" ..}$, and [E-App-Neutral] when the head is stuck.
+$
+  "where" v in "Value" ::= & lambda(x lt.eq tau). e &           "lambda" \
+                         | & bot                    & "primitive bottom" \
+                         | & top                    &   "universe (top)" \
+                         | & iota(x lt.eq tau). e   & "self-type binder" \
+                         | & "fix"(x lt.eq tau). e  & "recursive binder" \
+$
 
-Free variables are not values. Ascription is erased at evaluation
-([E-Asc]); the declarative [S-Asc-L] rule (§4.4) provides the
+
+Free variables are not values.
+
+Ascription is erased at runtime
+([E-Asc]); the declarative [S-Asc-L] rule (@conversion) provides the
 corresponding transparency.
 
 *$bot$ is a self-evaluating value.* Like $top$, $bot$ evaluates to
@@ -140,114 +144,30 @@ ensure well-typed programs never reach $bot space a$ at runtime.
 
 This is the *operational specification* of the language.
 
-= Overview of the algorithmic relations
+= Typing Rules <decl-sub>
 
-Three judgments make up the algorithmic side of Och. This section
-introduces each one's semantic role and explains how they compose; the
-full rules appear in §§5--7.
+Och's type system is structured around two central relations:
 
-== $S ; Gamma tack.r a attach(subset.sq.eq, br: e) b$ --- structural subtype check (§6)
+*$Gamma tack.r a arrow.squiggly tau$* - Is $a$ well formed under $Gamma$? (additionally gives us the weak head normal form in $tau$)
 
-Decides whether well-typed WHNF term $a$ is a subtype of well-typed WHNF
-term $b$ under context $Gamma$, given coinductive hypotheses $S$. Both
-inputs must already be well-typed and in WHNF --- the caller ($arrow.squiggly$) is
-responsible for ensuring this.
-
-The check is purely structural: it pattern-matches on the head
-constructors of $a$ and $b$ and recurses. Under binders it opens both
-sides with a fresh variable and extends $Gamma$ with the narrower of
-the two domains (always the RHS, since the contravariance check
-$"dom"_B subset.sq.eq "dom"_A$ has already passed). The seen-set $S$ provides coinductive
-closure for equirecursive types (§4.3 of the declarative subtyping).
-Internally, $attach(subset.sq.eq, br: e)$ normalises intermediate terms (e.g. after substituting
-into an unfolded body) via a WHNF evaluator (§5) --- this
-is safe because substituting a well-typed term into a well-typed body
-preserves well-typedness.
-
-The key property: $attach(subset.sq.eq, br: e)$ is *monotone in $Gamma$* --- narrowing any
-context entry preserves the judgment.
-
-== $Gamma tack.r e arrow.squiggly v$ --- type synthesis (§7)
-
-Validates that $e$ is well-typed under context $Gamma$ and returns its WHNF
-$v$ as a type-witness (since in Och a value _is_ its own
-most-precise type, by [S-Refl]). This is where type checking happens:
-at every application $f space a$, the walk synthesises both sides, exposes a Π
-from the function, and asks $attach(subset.sq.eq, br: e)$ whether the argument inhabits the
-domain. Binder annotations must subtype $top$.
-
-The semantic guarantee of $arrow.squiggly$ is that the term it accepts will remain
-well-typed under any narrowing of the context --- that is, when abstract
-variables are replaced by narrower (more specific) values. This is the
-bridge between static checking and runtime execution: when we check a
-function body $b$ under $(Gamma, x : A)$ with $x$ abstract, the synthesis
-walk asks $attach(subset.sq.eq, br: e)$ questions like "does this expression inhabit the domain
-$A$?" Later, when the evaluator runs $b[x arrow.r.bar v]$ with a concrete $v$ that is
-narrower than $A$, every subtype question the walk asked is at least as
-easy --- a narrower context can only make more things provable, never
-fewer. So the abstract check is a sound over-approximation of every
-possible concrete execution.
-
-== $e arrow.b.double v$ --- concrete evaluation (§2)
-
-The reference big-step interpreter on closed terms (no open context).
-This is what actually runs programs. It is defined independently of the
-type-checker and has no access to a context or type information --- it is
-a pure untyped evaluator.
-
-The connection to the type-checker is through two soundness theorems:
-*preservation* ($e subset.sq.eq tau$ and $e arrow.b.double v$ imply $v subset.sq.eq tau$) and
-*progress* ($arrow.squiggly$ accepted $e$ implies $arrow.b.double$ never gets stuck).
-Together these say: if you type-check first, the evaluator either
-produces a well-typed value or runs out of fuel --- it never reaches a
-stuck state.
-
-== How they compose
-
-#figure(
-  diagram(
-    node-stroke: 0.5pt,
-    node-inset: 8pt,
-    spacing: (2.5em, 2em),
-
-    node((0, 0), [source term], stroke: none),
-    node((0, 1), [$Gamma tack.r e arrow.squiggly v$ (§7) -- _type synthesis_], shape: rect),
-    node((0, 2), [$S ; Gamma tack.r a attach(subset.sq.eq, br: e) b$ (§6) -- _domain checks_], shape: rect),
-    node((0, 3), [accept / reject], stroke: none),
-    node((0, 4), [$e arrow.b.double v$ (§2) -- _runtime, closed terms only_], shape: rect),
-
-    edge((0, 0), (0, 1), "->"),
-    edge((0, 1), (0, 2), "->", label: [calls], label-side: right),
-    edge((0, 2), (0, 3), "->"),
-    edge((0, 3), (0, 4), "->", label: [if accepted], label-side: right),
-  ),
-  caption: [Static and runtime phases],
-)
-
-The top box is the static phase: $arrow.squiggly$ walks the term, calling $attach(subset.sq.eq, br: e)$ for
-each typing obligation. If the walk accepts, the term enters the runtime
-phase: $arrow.b.double$ evaluates it without any type information. Soundness (§8)
-connects the two phases --- the static acceptance guarantees that the
-runtime evaluation is well-behaved.
-
-= Declarative subtyping
+*$S;Gamma tack.r a subset.sq.eq b$* - Is $a$ a subtype of $b$ under $Gamma$? (assuming co-inductive hypotheses $S$)
 
 Subtyping in Och means set inclusion: $A subset.sq.eq B$ iff every value of $A$ is
 also a value of $B$. The relation is written
 
 $ S ; Gamma tack.r a subset.sq.eq b $
 
-== Context $Gamma$
+== Context $Gamma$ <context>
 
 $Gamma$ is the typing context --- a finite ordered list of
 $(upright("variable"), upright("type"))$ pairs, with the most recent binder at the front.
 Lookup is $Gamma(x)$ for the declared type of $x$; extension is $Gamma, x lt.eq A$.
 
-== Seen set $S$
+== Seen set $S$ <seen-set>
 
 $S$ is a set of pairs $(a, b)$ --- ancestor subtyping goals introduced
 by productive unfolding rules (ι-introduction and the four unfold
-rules, §4.3). The invariant: only those five rules extend $S$; every
+rules, @productive). The invariant: only those five rules extend $S$; every
 other rule propagates it unchanged. This is the Brandt--Henglein device @brandt-henglein-1998
 for equirecursive subtyping --- coinductive assumptions are only legal
 after at least one productive step, so reflexivity of a non-productive
@@ -256,7 +176,7 @@ goal cannot be closed by a hypothesis. In effect, $S$ is a finite representation
 The "real" subtyping judgment is $emptyset ; Gamma tack.r a subset.sq.eq b$ (empty hypothesis set);
 non-empty $S$ arises only inside a derivation.
 
-== Rule taxonomy
+== Rule taxonomy <rule-taxonomy>
 
 The rules fall into four categories. Each serves a distinct purpose;
 knowing which category a rule belongs to predicts its shape.
@@ -267,20 +187,20 @@ knowing which category a rule belongs to predicts its shape.
     align: (left, left, left, center),
     table.header([*Category*], [*Purpose*], [*Rules*], [*Extends $S$?*]),
     table.hline(),
-    [Structural (§4.1)],
+    [Structural (@structural)],
     [Plumbing: compose, lookup, without inspecting constructors on either side],
     [S-Refl, S-Top, S-BotL, S-Trans, S-Hyp, S-Var],
     [no],
-    [Congruence (§4.2)],
+    [Congruence (@congruence)],
     [Match constructor on both sides; reduce to sub-obligations with variance],
     [S-Lam, S-App-Cong, S-Iota-Cong, S-Fix-Cong, S-LetE-Cong],
     [no],
-    [Productive unfolding (§4.3)],
+    [Productive unfolding (@productive)],
     [Unfold a recursive binder (ι/fix); extend $S$; enable coinductive closure],
     [S-Iota-Intro, S-Unfold-Iota-L/R, S-Unfold-Fix-L/R],
     [*yes*],
-    [Conversion (§4.4)],
-    [Close under head reduction so the algorithmic evaluator is sound],
+    [Conversion (@conversion)],
+    [Close under head reduction so subtyping is closed under computation],
     [S-Beta-L/R, S-Let-L/R, S-Asc-L, S-Asc-L-Ann, S-Asc-R],
     [no],
   ),
@@ -291,7 +211,7 @@ The $S$-extension column matters: S-Hyp can only fire against entries
 that some ancestor productive rule installed, so any path to S-Hyp
 must cross an unfold --- the productivity requirement made mechanical.
 
-== Structural rules
+== Structural rules <structural>
 
 "Structural" rules talk about $subset.sq.eq$ as a relation on terms without
 inspecting either side's head constructor: reflexivity, transitivity,
@@ -330,13 +250,13 @@ $"fix"(x lt.eq A). "body"$ replaces it with
 $"body"[x arrow.r.bar "fix"(x lt.eq A). "body"]$, which is _larger_ than the
 original. There's no obvious structural measure on derivations that
 decreases through an unfold, so transitivity is not derivable by
-induction on derivations. The seen-set discipline of §4.3 is the
+induction on derivations. The seen-set discipline of @productive is the
 coinductive counterpart that keeps the relation consistent, but it
 doesn't by itself give admissibility of transitivity.
 
 Eliminating transitivity as a primitive rule (_transitivity elimination_) is highly desirable: it simplifies metatheory and makes the relation syntax-directed. Hutchins' Pure Subtype Systems @hutchins-2010 --- a closely related system --- did not manage to eliminate transitivity. Pasquale and García-Pérez @pasquale-garcia-perez-2026 succeeded in a continuation of that work, but required switching the entire theory to a Krivine machine.
 
-== Congruence rules
+== Congruence rules <congruence>
 
 Congruence rules _do_ inspect
 the head constructor on both sides, require it to match, and reduce the
@@ -393,7 +313,7 @@ argument) is necessary because a neutral head
 can use its argument at any variance, so equivalence is the only sound
 congruence.
 
-== Productive unfolding (extend $S$)
+== Productive unfolding (extend $S$) <productive>
 
 A rule is _productive_ when it replaces a goal whose head is a
 recursive binder (ι or fix) with a goal where that binder has been
@@ -453,55 +373,72 @@ The rules below are the only ones that extend $S$. Let $S' = S union {(a, b)}$ w
 S-Unfold-Iota-R is the weaker sibling of S-Iota-Intro (same conclusion, no annotation
 premise), needed to close the equivalence of ι-unfolding.
 
-*Worked example: $"dtrue" subset.sq.eq "dBool"$.* With
+// *Worked example: $"dtrue" subset.sq.eq "dBool"$.* With
 
-$
-  "dtrue" &:= iota(x lt.eq top). lambda(P lt.eq x arrow top). lambda(t lt.eq P space x). lambda(f lt.eq top). t \
-  "dBool" &:= "fix"(B lt.eq top). iota(x lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space x
-$
+// $
+//   "dtrue" &:= iota(x lt.eq top). lambda(P lt.eq x arrow top). lambda(t lt.eq P space x). lambda(f lt.eq top). t \
+//   "dBool" &:= "fix"(B lt.eq top). iota(x lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space x
+// $
 
-the subtyping check $emptyset ; Gamma tack.r "dtrue" subset.sq.eq "dBool"$ loops through a
-contravariant domain: dBool's motive parameter is $P lt.eq "dBool" arrow top$,
-while dtrue's is $P lt.eq x arrow top$ where $x$ is the inhabitant ---
-ultimately dtrue. So the [S-Lam] contravariant premise for the
-$P$ binder demands $"dBool" subset.sq.eq "dtrue"$… which needs the original relationship
-back. Without the seen set this loops forever; with it, the productive
-unfold at the top installs $("dtrue", "dBool")$ into $S$, and the loop
-closes via [S-Hyp]:
+// the subtyping check $emptyset ; Gamma tack.r "dtrue" subset.sq.eq "dBool"$ loops through a
+// contravariant domain: dBool's motive parameter is $P lt.eq "dBool" arrow top$,
+// while dtrue's is $P lt.eq x arrow top$ where $x$ is the inhabitant ---
+// ultimately dtrue. So the [S-Lam] contravariant premise for the
+// $P$ binder demands $"dBool" subset.sq.eq "dtrue"$… which needs the original relationship
+// back. Without the seen set this loops forever; with it, the productive
+// unfold at the top installs $("dtrue", "dBool")$ into $S$, and the loop
+// closes via [S-Hyp]:
 
-#let dstep(depth, judgment, rulename) = {
-  pad(left: depth * 1.5em, grid(
-    columns: (1fr, auto),
-    $#judgment$, text(size: 8pt, fill: luma(100))[#rulename],
-  ))
-}
-#let dnote(depth, note) = {
-  pad(left: depth * 1.5em, text(size: 9pt, style: "italic", fill: luma(100))[#note])
-}
-#block(inset: (y: 0.5em),
-  stack(dir: ttb, spacing: 0.4em,
-    dstep(0, sub($emptyset$, $Gamma$, $"dtrue"$, $"dBool"$), [root goal]),
-    dstep(1, sub($S_1$, $Gamma$, $"dtrue"$, $iota(x lt.eq "dBool"). lambda(P lt.eq "dBool" arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space x$), [S-Unfold-Fix-R]),
-    dnote(1, [where $S_1 = {("dtrue", "dBool")}$]),
-    dnote(1, [Annotation premise:]),
-    dstep(2, sub($S_1$, $Gamma$, $"dtrue"$, $"dBool"$), [S-Hyp #sym.checkmark]),
-    dnote(2, [root goal reappears --- closed by $(upright("dtrue"), upright("dBool")) in S_1$]),
-    dnote(1, [Body premise (after $[x arrow.r.bar "dtrue"]$):]),
-    dstep(2, sub($S_1$, $Gamma$, $"dtrue"$, $lambda(P lt.eq "dBool" arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space "dtrue"$), [S-Lam …]),
-    dnote(2, [further structural reduction; any recurrence of $"dtrue" subset.sq.eq "dBool"$ closes via S-Hyp]),
-  ),
-)
+// #let dstep(depth, judgment, rulename) = {
+//   pad(left: depth * 1.5em, grid(
+//     columns: (1fr, auto),
+//     $#judgment$, text(size: 8pt, fill: luma(100))[#rulename],
+//   ))
+// }
+// #let dnote(depth, note) = {
+//   pad(left: depth * 1.5em, text(size: 9pt, style: "italic", fill: luma(100))[#note])
+// }
+// #block(inset: (y: 0.5em), stack(
+//   dir: ttb,
+//   spacing: 0.4em,
+//   dstep(0, sub($emptyset$, $Gamma$, $"dtrue"$, $"dBool"$), [root goal]),
+//   dstep(
+//     1,
+//     sub(
+//       $S_1$,
+//       $Gamma$,
+//       $"dtrue"$,
+//       $iota(x lt.eq "dBool"). lambda(P lt.eq "dBool" arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space x$,
+//     ),
+//     [S-Unfold-Fix-R],
+//   ),
+//   dnote(1, [where $S_1 = {("dtrue", "dBool")}$]),
+//   dnote(1, [Annotation premise:]),
+//   dstep(2, sub($S_1$, $Gamma$, $"dtrue"$, $"dBool"$), [S-Hyp #sym.checkmark]),
+//   dnote(2, [root goal reappears --- closed by $(upright("dtrue"), upright("dBool")) in S_1$]),
+//   dnote(1, [Body premise (after $[x arrow.r.bar "dtrue"]$):]),
+//   dstep(
+//     2,
+//     sub(
+//       $S_1$,
+//       $Gamma$,
+//       $"dtrue"$,
+//       $lambda(P lt.eq "dBool" arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space "dtrue"$,
+//     ),
+//     [S-Lam …],
+//   ),
+//   dnote(2, [further structural reduction; any recurrence of $"dtrue" subset.sq.eq "dBool"$ closes via S-Hyp]),
+// ))
 
-Both branches of [S-Iota-Intro] find the root goal waiting in $S_1$ and
-close via [S-Hyp]. This is the Brandt--Henglein discipline in action:
-recursion in the subtyping judgment is legal _only across a
-productive unfold_, so non-productive loops (e.g. reflexivity-by-loop)
-cannot sneak through.
+// Both branches of [S-Iota-Intro] find the root goal waiting in $S_1$ and
+// close via [S-Hyp]. This is the Brandt--Henglein discipline in action:
+// recursion in the subtyping judgment is legal _only across a
+// productive unfold_, so non-productive loops (e.g. reflexivity-by-loop)
+// cannot sneak through.
 
-== Conversion
+== Conversion <conversion>
 
-The algorithm normalises before comparing, so the declarative relation
-must be closed under head reduction. These rules provide that closure.
+The subtyping relation must be closed under head reduction: if $a$ computes to $a'$, then $a subset.sq.eq b$ should hold iff $a' subset.sq.eq b$. These rules provide that closure.
 
 #align(center, grid(
   columns: (1fr, 1fr),
@@ -550,9 +487,7 @@ rules, not two. On the *RHS*, [S-Asc-R] sees through to the
 inner value $e$ --- the ascription doesn't widen the set of values it
 contains. On the *LHS*, both rules coexist: [S-Asc-L]
 (transparent, sees $e$) is needed because the runtime erases
-ascriptions, while [S-Asc-L-Ann] (narrowing, sees $tau$) is what the
-algorithmic checker uses --- it peels an LHS ascription to the
-annotation, so the caller sees $tau$, not the precise inner value.
+ascriptions, while [S-Asc-L-Ann] (narrowing, sees $tau$) provides the complementary view --- it peels an LHS ascription to the annotation, so the subtyping relation sees $tau$, not the precise inner value.
 
 Given $A subset.sq.eq B subset.sq.eq C$, the mixed rules give the expected behavior:
 
@@ -569,447 +504,18 @@ Given $A subset.sq.eq B subset.sq.eq C$, the mixed rules give the expected behav
   ),
 )
 
-= Substitution-based evaluation
+= Declarative Typing <decl-typing>
 
-The WHNF evaluator takes an expression and reduces it to weak head
-normal form via syntactic substitution. Input and output are both
-terms --- there is no separate value type, no closures, no environments,
-and no quoting step.
+The typing judgment $Gamma tack.r e arrow.squiggly tau$ determines whether term $e$ is well-formed under context $Gamma$ with type $tau$. It is defined by structural rules over the term language, delegating all type-comparison questions to the subtyping relation (@decl-sub).
 
-== Design
-
-The key simplification: because the term language serves as both AST and
-value, β-reduction is literal syntactic substitution --- $"body"[x arrow.r.bar "arg"]$.
-Lambdas, ι-binders, and fix-binders are already in WHNF and
-evaluate to themselves. Applications reduce by substituting the
-evaluated argument into the function's body.
-
-Two fuel parameters bound the computation:
-
-- *fuel*: overall step budget. Every recursive call decrements it.
-- *unf*: unfold budget for ι/fix heads in application
-  position. Decremented on each self-referential unfold; when exhausted,
-  the application is left as a stuck neutral $(f space a)$. Prevents
-  divergence on non-terminating self-application chains.
-
-The lex ordering $("fuel", "unf")$ gives a structurally decreasing
-termination measure.
-
-== De Bruijn indices for open terms
-
-The subtype checker (§6) needs to compare terms under binders --- e.g.
-to check $lambda(x lt.eq A).b_1 subset.sq.eq lambda(x lt.eq A).b_2$, it recurses on both bodies
-directly, extending the context $Gamma$ with the domain type. No
-substitution is performed when entering a binder: the raw body is
-used as-is. Any `bvar k` encountered by `evalSubst` is a free variable
-in the current scope (since the evaluator never descends under
-binders) and is treated as neutral --- it evaluates to itself.
-
-To look up the type of a free `bvar k`, the checker accesses
-$Gamma(k)$ (the $k$-th most recently bound variable). When a neutral
-`bvar k` ascends to its declared type $tau$, the result is shifted by
-$k + 1$ to account for the binders between the variable's binding
-site and the current scope.
-
-This encoding lets the entire algorithmic pipeline --- evaluation,
-subtype checking, type synthesis --- operate on a single term type
-with no separate value/neutral/closure machinery. The algorithmic and
-declarative representations share the same de Bruijn variable
-encoding directly.
-
-== Evaluation rules
-
-Write the judgment $e arrow.double.r v$ for "the evaluator reduces $e$ to WHNF $v$."
-
-#let es(e, v) = $#e arrow.double.r #v$
+The key design consequence of Och's "terms are types" philosophy is that there is no separate kind system. Annotations must subtype $top$ (i.e., be well-formed types), but this is a subtyping check, not a kinding check. The subsumption rule [D-Sub] allows any term to be retyped at a supertype, connecting the typing judgment directly to the subtyping lattice.
 
 #align(center, grid(
   columns: (1fr, 1fr, 1fr),
   gutter: 1.5em,
-  irule("ES-Type", es($top$, $top$)),
-  irule("ES-Bot", es($bot$, $bot$)),
-  irule("ES-Lam", es($lambda(x lt.eq A). b$, $lambda(x lt.eq A). b$)),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("ES-Iota", es($iota(x lt.eq A). b$, $iota(x lt.eq A). b$)),
-  irule("ES-Fix", es($"fix"(x lt.eq A). b$, $"fix"(x lt.eq A). b$)),
-  irule("ES-BVar", es($x$, $x$)),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("ES-Asc", es($(e lt.eq tau)$, $(e' lt.eq tau')$), es($e$, $e'$), es($tau$, $tau'$)),  // ascription preserved as WHNF
-  irule("ES-Let", es($"let" x = "val" "in" "body"$, $v$), es($"val"$, $v_1$), es($"body"[x arrow.r.bar v_1]$, $v$)),
-))
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule("ES-App-β", es($f space a$, $v$), es($f$, $lambda(x lt.eq A). "body"$), es($a$, $v_a$), es(
-    $"body"[x arrow.r.bar v_a]$,
-    $v$,
-  )),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("ES-App-ι-Unfold", es($f space a$, $v$), es($f$, $iota(x lt.eq A). "body"$), es($a$, $v_a$), es(
-    $("body"[x arrow.r.bar f]) space v_a$,
-    $v$,
-  )),
-  irule("ES-App-fix-Unfold", es($f space a$, $v$), es($f$, $"fix"(x lt.eq A). "body"$), es($a$, $v_a$), es(
-    $("body"[x arrow.r.bar f]) space v_a$,
-    $v$,
-  )),
-))
-
-Where ι/fix unfold rules require $not "neutral"(v_a) and "unf" > 0$. When $"neutral"(v_a) or "unf" = 0$, the application is stuck:
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("ES-App-ι-Stuck", es($f space a$, $f' space v_a$), es($f$, $f'$), es($a$, $v_a$)),
-  irule("ES-App-fix-Stuck", es($f space a$, $f' space v_a$), es($f$, $f'$), es($a$, $v_a$)),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("ES-App-Asc", es($f space a$, $v$), es($f$, $("inner" lt.eq tau)$), es($"inner" space a$, $v$)),
-  irule("ES-App-Neutral", es($f space a$, $f' space v_a$), es($f$, $f'$), es($a$, $v_a$)),
-))
-
-Where [ES-App-Neutral] applies when $"neutral"(f') or f' in {top, bot}$.
-
-*Ascription is preserved.* Unlike the concrete evaluator (§2) which
-erases ascription via [E-Asc], the WHNF evaluator preserves
-ascriptions: [ES-Asc] reduces both the inner term and the annotation
-to WHNF but keeps the ascription wrapper. This is essential for the
-algorithmic subtype checker's LHS peeling (§6.1): if the WHNF
-evaluator stripped ascriptions, the checker would lose narrowing
-information that the programmer explicitly wrote.
-
-= Algorithmic subtyping on expressions
-
-The algorithmic subtype checker is the realisation of §4. It operates directly on terms in WHNF.
-The subtype checker and the WHNF evaluator form a mutual block with a lex $("fuel", "phase")$ termination
-measure --- the checker calls the evaluator to force WHNF before
-comparing, and calls itself recursively under binders.
-
-Write the judgment $S ; Gamma tack.r a attach(subset.sq.eq, br: e) b$ for the algorithmic check, where
-$a, b$ are in WHNF, $S$ is a list of pairs (the
-seen-set), and $Gamma$ maps level indices to their declared types.
-
-== Top-level dispatch
-
-Before case-splitting on shapes, the checker forces both sides to
-WHNF, then *peels ascriptions asymmetrically*:
-
-- LHS ascription → replace with the annotation (narrowing)
-- RHS ascription → replace with the inner value (content)
-
-After peeling, three fast paths fire in order:
-
-+ *Syntactic equality* ($a'' = b''$): immediate accept.
-+ *Seen-set hit* ($(a'', b'') in S$): coinductive accept.
-+ *Top* ($b'' = top$): immediate accept.
-
-If none fires, it delegates to the per-shape case analysis.
-
-== Per-shape rules
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("AS-BotL", sube($S$, $Gamma$, $bot$, $b$)),
-  irule(
-    "AS-Lam",
-    sube($S$, $Gamma$, $lambda(x lt.eq A_1). b_1$, $lambda(x lt.eq A_2). b_2$),
-    sube($S$, $Gamma$, $A_2$, $A_1$),
-    sube($S$, $Gamma\, x lt.eq A_2$, $b_1["fresh"]$, $b_2["fresh"]$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule(
-    "AS-Iota-Iota",
-    sube($S$, $Gamma$, $iota(x lt.eq A_1). B_1$, $iota(x lt.eq A_2). B_2$),
-    sube($S$, $Gamma$, $A_1$, $A_2$),
-    sube($S$, $Gamma\, x lt.eq A_2$, $B_1["fresh"]$, $B_2["fresh"]$),
-  ),
-))
-
-With fallback to iota-intro if structural match fails. Similarly:
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule(
-    "AS-Fix-Fix",
-    sube($S$, $Gamma$, $"fix"(x lt.eq A_1). b_1$, $"fix"(x lt.eq A_2). b_2$),
-    sube($S$, $Gamma$, $A_1$, $A_2$),
-    sube($S$, $Gamma\, x lt.eq A_2$, $b_1["fresh"]$, $b_2["fresh"]$),
-  ),
-))
-
-With fallback to unfold-R if structural match fails.
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("AS-Iota-Intro", sube($S$, $Gamma$, $a$, $iota(x lt.eq A). B$), sube($S'$, $Gamma$, $a$, $A$), sube(
-    $S'$,
-    $Gamma$,
-    $a$,
-    $B[x arrow.r.bar a]$,
-  )),
-  irule("AS-Unfold-Fix-R", sube($S$, $Gamma$, $a$, $"fix"(x lt.eq A). b$), sube(
-    $S'$,
-    $Gamma$,
-    $a$,
-    $b[x arrow.r.bar "fix"(x lt.eq A).b]$,
-  )),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("AS-Unfold-Fix-L", sube($S$, $Gamma$, $"fix"(x lt.eq A). b$, $c$), sube(
-    $S'$,
-    $Gamma$,
-    $b[x arrow.r.bar "fix"(x lt.eq A).b]$,
-    $c$,
-  )),
-  irule("AS-Unfold-Iota-L", sube($S$, $Gamma$, $iota(x lt.eq A). B$, $c$), sube(
-    $S'$,
-    $Gamma$,
-    $B[x arrow.r.bar iota(x lt.eq A).B]$,
-    $c$,
-  )),
-))
-
-Where $S' = (a, b) :: S$ in each productive rule.
-
-== Neutral handling
-
-When both sides are neutral (`bvar`-headed application spines), the
-checker tries *spine comparison*: heads must be the same
-`bvar` index; arguments must be pairwise _equivalent_ (checked in both
-directions, matching [S-App-Cong]).
-
-If spine comparison fails, or if only the LHS is neutral, the checker
-falls back to *neutral ascent*: it looks up the head `bvar k` in
-$Gamma$ to obtain its declared type, shifts by $k + 1$, and applies
-the spine's arguments through the resulting Π-chain. It then recurses
-with the synthesised type on the LHS. This corresponds to [S-Var] in
-the declarative relation --- a neutral ascends to its declared type.
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule(
-    "AS-Spine",
-    sube($S$, $Gamma$, $x space e_1 dots e_n$, $x space e'_1 dots e'_n$),
-    sube($S$, $Gamma$, $e_i$, $e'_i$),
-    sube($S$, $Gamma$, $e'_i$, $e_i$),
-  ),
-  irule("AS-Ascent", sube($S$, $Gamma$, $n$, $b$), $"synthType"(Gamma, n) = "some" space tau$, sube(
-    $S$,
-    $Gamma$,
-    $tau$,
-    $b$,
-  )),
-))
-
-== Π-exposure helper
-
-The Π-exposure helper unfolds a fix/ι wrapper in a type
-until a $lambda$ (Π) head is exposed. For fix, the self-reference is the
-fix itself (μ-unfold); for ι, the self-reference is the
-_inhabitant_ whose type is being computed --- $n lt.eq iota(x lt.eq A). B$
-means $n lt.eq B[x arrow.r.bar n]$. Returns nothing on $bot$ (Bot is not a Π head).
-
-= Algorithmic typing (synthesis)
-
-The type-synthesis walk is a single structural recursion over terms
-that delegates all typing questions to the subtype checker (§6).
-Where a bidirectional checker dispatches between synthesis and checking
-modes, this walk has no separate checking mode --- it asks the
-_complete_ structural engine to decide each domain check directly.
-
-== Design
-
-The synthesis walk over $Gamma$ and $e$ returns the WHNF of $e$ --- which, by
-Och's Refl-typing convention ($a subset.sq.eq a$), doubles as the most-precise
-type. At every node that introduces a typing obligation (applications,
-ascriptions), it calls the subtype checker to verify the obligation. The $Gamma$
-argument maps de Bruijn indices to the WHNF types of free variables
-introduced by binder-opening.
-
-== Synthesis rules
-
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("I-Type", synth($Gamma$, $top$, $top$)),
-  irule("I-Bot", synth($Gamma$, $bot$, $bot$)),
-  irule("I-Var", synth($Gamma$, $x$, $x$)),
-))
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule(
-    "I-Lam",
-    synth($Gamma$, $lambda(x lt.eq A). b$, $"whnf"(lambda(x lt.eq A). b)$),
-    sube($emptyset$, $Gamma$, $A$, $top$),
-    synth($Gamma\, x lt.eq "whnf"(A)$, $b["fresh"]$, $dot.c$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule(
-    "I-Iota",
-    synth($Gamma$, $iota(x lt.eq A). b$, $"whnf"(iota(x lt.eq A). b)$),
-    sube($emptyset$, $Gamma$, $A$, $top$),
-    synth($Gamma\, x lt.eq "whnf"(A)$, $b["fresh"]$, $dot.c$),
-  ),
-  irule(
-    "I-Fix",
-    synth($Gamma$, $"fix"(x lt.eq A). b$, $"whnf"("fix"(x lt.eq A). b)$),
-    sube($emptyset$, $Gamma$, $A$, $top$),
-    synth($Gamma\, x lt.eq "whnf"(A)$, $b["fresh"]$, $dot.c$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule(
-    "I-Asc",
-    synth($Gamma$, $(e lt.eq tau)$, $"whnf"(e lt.eq tau)$),
-    sube($emptyset$, $Gamma$, $tau$, $top$),
-    synth($Gamma$, $e$, $v$),
-    sube($emptyset$, $Gamma$, $v$, $"whnf"(tau)$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule(
-    "I-Let",
-    synth($Gamma$, $"let" x = "val" "in" "body"$, $"whnf"("let" x = "val" "in" "body")$),
-    synth($Gamma$, $"val"$, $v_"val"$),
-    synth($Gamma\, x lt.eq v_"val"$, $"body"["fresh"]$, $dot.c$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr,),
-  gutter: 1.5em,
-  irule(
-    "I-App",
-    synth($Gamma$, $f space a$, $"whnf"(pi_"expr" space a_v)$),
-    synth($Gamma$, $f$, $v_F$),
-    synth($Gamma$, $a$, $v_A$),
-    $pi_"expr" arrow.l "exposePi"(v_F)$,
-    sube($emptyset$, $Gamma$, $v_A$, $"dom"$),
-  ),
-))
-
-*Refl-typing convention.* Canonical forms (lam, iota, fix)
-synthesise themselves: the walk returns $"whnf"(e)$ for these nodes.
-Since $a subset.sq.eq a$ holds declaratively by [S-Refl], the synthesised WHNF is
-trivially a valid type-witness.
-
-*$bot$ in synthesis.* $bot$ synthesises itself via [I-Bot].
-$bot$ is not a Π head, so applying an argument to a $bot$-typed function
-fails at the Π-exposure step in [I-App].
-
-== Abstract interpretation of bodies
-
-When the synthesis walk enters a binder (lam, iota, fix, let), it
-extends $Gamma$ with the annotation's WHNF and recurses on the raw
-body --- no substitution is performed. The bound variable `bvar 0` is
-*neutral* with respect to evaluation: it evaluates to itself, blocks
-β-reduction, and propagates through application spines as a stuck
-head. This is the de Bruijn analogue of opening a closure with a
-fresh free variable: the `bvar` acts as a symbolic "any value of this
-type," and the structural subtype checker can compare bodies
-containing free `bvar`s by spine-walking and ascending through $Gamma$.
-
-= Metatheory
-
-Soundness connects the concrete semantics (§2), the declarative subtyping (§4), and
-the algorithmic checker (§§5--7).
-
-*Subtyping soundness.* If the algorithm accepts two values, they are declaratively subtypes.
-
-$ "subCheck" space a space b = "ok" arrow.double emptyset ; emptyset tack.r a subset.sq.eq b $
-
-*Synthesis soundness.* If synthesis accepts $e$, then $e$ declaratively subtypes its
-synthesised WHNF.
-
-$ "synth" space e = "ok" space v arrow.double emptyset ; emptyset tack.r e subset.sq.eq v $
-
-*Evaluation equivalence.* If $e$ evaluates to $e'$, both directions of subtyping hold (*sorry-free*).
-
-$
-  e "closed" and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq e and emptyset ; emptyset tack.r e subset.sq.eq e'
-$
-
-*Preservation.* Standard type preservation (*sorry-free*; derives from evaluation equivalence via transitivity).
-
-*Progress.* A synthesis-accepted term doesn't get stuck during evaluation. The evaluator may
-return a value or run out of fuel but never reaches an error state (*sorry-free*).
-
-*End-to-end.* Composing the above:
-
-$
-  "synth" space e = "ok" space a and "subCheck" space a space b = "ok" and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq b
-$
-
-== What soundness promises to the programmer
-
-Two separable runtime properties a type system can promise:
-
-+ *Termination.* Running a well-typed program eventually produces
-  a value. A totality / normalization claim.
-+ *No runtime type errors.* Conditional on the program _not_
-  diverging, the value it produces is well-formed and the program never
-  reaches a stuck state.
-
-Och *does not aim to prove (1).* Consistency and normalization
-are explicitly deferred; the calculus admits non-terminating terms by
-design (type-in-type; general recursion via fix).
-
-Och *does aim to prove (2)*, and this is the real runtime
-guarantee of the type system. The language expects the following
-discipline: *run synthesis first; only evaluate if it succeeded.*
-
-= Appendix A. Declarative typing (derived)
-
-Och has no declarative typing relation as a first-class definition; the
-algorithmic synthesis walk (§7) is the typing spec, with soundness
-against $subset.sq.eq$ in §8. For readers who want the textbook form, the following
-relation $Gamma tack.r e : tau$ is the clean projection of the algorithm.
-
-#let ty(G, e, t) = $#G tack.r #e : #t$
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("D-Var", ty($Gamma$, $x$, $Gamma(x)$)), irule("D-Type", ty($Gamma$, $top$, $top$)),
+  irule("D-Var", ty($Gamma$, $x$, $Gamma(x)$)),
+  irule("D-Type", ty($Gamma$, $top$, $top$)),
+  irule("D-Bot", ty($Gamma$, $bot$, $bot$)),
 ))
 
 #align(center, grid(
@@ -1054,19 +560,75 @@ relation $Gamma tack.r e : tau$ is the clean projection of the algorithm.
   irule("D-Sub", ty($Gamma$, $e$, $B$), ty($Gamma$, $e$, $A$), sub($emptyset$, $Gamma$, $A$, $B$)),
 ))
 
-= Appendix B. Lean formalisation
+*[D-Var]* looks up the variable's declared type in the context.
+
+*[D-Type]* and *[D-Bot]* are self-typing: $top$ has type $top$, and $bot$ has type $bot$. By [D-Sub] with [S-BotL], $bot$ can be given any type.
+
+*[D-Lam]* checks that the domain annotation is a type ($A arrow.squiggly top$) and that the body is well-typed under the extended context. The result type is a lambda with the same domain --- since in Och, a lambda IS a Π-type.
+
+*[D-App]* requires the function to have a Π-type (a lambda type) and the argument to inhabit the domain. The result type is the codomain with the argument substituted for the bound variable.
+
+*[D-Iota]* is Cedille-style self-type introduction. It requires four things: the annotation and body are types; the value inhabits the annotation; and the value inhabits the body with itself substituted for the self-reference. This last premise is what makes iota useful for dependent elimination --- the type can refer to the value itself.
+
+*[D-Fix]* types a recursive definition: the body must inhabit the annotation $A$ under the assumption that the recursive reference also inhabits $A$. The fixpoint as a whole then has type $A$.
+
+*[D-Sub]* (subsumption) allows any term to be retyped at a supertype, connecting typing to the subtyping lattice.
+
+= Metatheory <metatheory>
+
+Soundness connects the concrete semantics (@conc-eval), the declarative subtyping (@decl-sub), and the typing judgment (@decl-typing).
+
+*Evaluation equivalence.* If $e$ evaluates to $e'$, both directions of subtyping hold.
+
+$
+  e "closed" and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq e and emptyset ; emptyset tack.r e subset.sq.eq e'
+$
+
+*Preservation.* Standard type preservation (derives from evaluation equivalence via transitivity).
+
+$
+  tack.r e arrow.squiggly tau and e arrow.b.double e' arrow.double tack.r e' arrow.squiggly tau
+$
+
+*Progress.* A well-typed closed term doesn't get stuck during evaluation. The evaluator may return a value or run out of fuel but never reaches an error state.
+
+*End-to-end.* Composing the above: if $e$ is well-typed at $tau$ and evaluates to $e'$, the result subtypes the declared type.
+
+$
+  tack.r e arrow.squiggly tau and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq tau
+$
+
+== What soundness promises to the programmer <promises>
+
+Two separable runtime properties a type system can promise:
+
++ *Termination.* Running a well-typed program eventually produces
+  a value. A totality / normalization claim.
++ *No runtime type errors.* Conditional on the program _not_
+  diverging, the value it produces is well-formed and the program never
+  reaches a stuck state.
+
+Och *does not aim to prove (1).* Consistency and normalization
+are explicitly deferred; the calculus admits non-terminating terms by
+design (type-in-type; general recursion via fix).
+
+Och *does aim to prove (2)*, and this is the real runtime
+guarantee of the type system. The language expects the following
+discipline: *type-check first; only evaluate if it succeeded.*
+
+= Appendix A. Lean Formalisation <lean-formal>
 
 The entire calculus described in this paper is formalised in Lean 4. This appendix maps the paper's named-variable presentation to the
 mechanised definitions, and notes the one systematic difference: the formalisation uses *de Bruijn indices* throughout, so named variables
 $x$ become positional indices, substitution $"body"[x arrow.r.bar v]$ becomes index arithmetic, and context lookup $Gamma(x)$ becomes list indexing.
 
-== Representation
+== Representation <lean-repr>
 
 All terms, types, and values share a single inductive `Expr`. Named variables $x$ are represented by `Expr.bvar` (a natural-number index); substitution uses `Expr.subst`/`Expr.shift` for standard de Bruijn arithmetic. The context $Gamma$ is `List Expr`, indexed by position with the innermost binder at index 0.
 
 A named variable $x$ bound at the innermost binder becomes `bvar 0`; a variable bound $k$ binders out becomes `bvar k`; substitution $"body"[x arrow.r.bar v]$ becomes `body.subst 0 v`.
 
-== Correspondence
+== Correspondence <lean-corr>
 
 #figure(
   table(
@@ -1077,10 +639,6 @@ A named variable $x$ bound at the innermost binder becomes `bvar 0`; a variable 
     [Term syntax ($e, tau$)], [`Expr`], [`Syntax.lean`],
     [Concrete evaluation ($e arrow.b.double v$)], [`concEval`], [`Eval.lean`],
     [Declarative subtyping ($S ; Gamma tack.r a subset.sq.eq b$)], [`Subtype'`], [`Subtyping.lean`],
-    [WHNF evaluator ($e arrow.double.r v$)], [`evalSubst`], [`EvalSubst.lean`],
-    [Algorithmic subtype check ($attach(subset.sq.eq, br: e)$)], [`subCheckSubst`], [`EvalSubst.lean`],
-    [Type synthesis ($Gamma tack.r e arrow.squiggly v$)], [`synthCore`], [`API.lean`],
-    [Public entry point], [`Och.synth`], [`API.lean`],
     [Evaluation equivalence], [`concEval_equiv`], [`Soundness/ConcEvalPreservation.lean`],
     [Preservation], [`concEval_preservation`], [`Soundness.lean`],
     [Progress], [`synth_progress`], [`Soundness.lean`],
@@ -1089,17 +647,17 @@ A named variable $x$ bound at the innermost binder becomes `bvar 0`; a variable 
   caption: [Paper-to-Lean correspondence],
 )
 
-== De Bruijn details
+The formalisation also includes an algorithmic decision procedure for these judgments (`evalSubst`, `subCheckSubst`, `synthCore` in `EvalSubst.lean` and `API.lean`), with partial soundness verification against the declarative `Subtype'` relation.
+
+== De Bruijn details <lean-db>
 
 The formalisation's seen-set $S$ is `List (Nat × Expr × Expr)` --- each entry is depth-tagged with
 $|Gamma|$ at which it was recorded, and the hypothesis rule shifts entries to the current depth on use.
 This bookkeeping is invisible in the named presentation: free variables carry their own names, so no
 shift is ever required at lookup time.
 
-The algorithmic and declarative representations share the same de Bruijn variable encoding directly --- there is no translation layer between them. Free variables are plain `bvar k` indices looked up in the context as $Gamma(k)$ with a shift of $k + 1$ on neutral ascent.
+== Proof status <lean-proof>
 
-== Proof status
-
-Evaluation equivalence, preservation, and progress are *sorry-free*. Synthesis soundness and subtype-check soundness carry upstream sorries at engineering walls (app-arm of synthesis). The end-to-end composition is sorry-free in its own body.
+Evaluation equivalence, preservation, and progress are *sorry-free*. The end-to-end composition is sorry-free in its own body.
 
 #bibliography("refs.bib")

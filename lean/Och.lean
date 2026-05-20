@@ -59,7 +59,7 @@ intended user surface):
                      `subCheck` and `evalSubst` are the only
                      externally-consumed pieces.
 - `Och.TyCheck`    — REMOVED. The bidirectional walk was
-                     superseded by `synthCore` (API.lean).
+                     superseded by `Och.check` (API.lean).
 
 Tests / audit / std-library / probes (built so their
 `native_decide` pins and witnesses are verified):

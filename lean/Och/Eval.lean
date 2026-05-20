@@ -69,12 +69,8 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
   | fuel + 1 =>
     match e with
     | .bvar k => .error s!"concEval: stuck on free bvar {k}"
-    | .lam _ _ => .ok e  -- lambda is a VALUE — body not evaluated
-    | .type => .ok .type
-    | .bot => .ok .bot  -- Bot is a value (self-evaluating, like Type)
+    | .lam _ _ | .type | .bot | .iota _ _ | .fix _ _ => .ok e -- direct values
     | .asc term _ => concEval fuel term  -- runtime: erase ascription
-    | .iota _ _ => .ok e  -- iota is a value (only unrolled when applied)
-    | .fix _ _ => .ok e   -- fix is a value (only unrolled when applied)
     | .letE val body =>
       match concEval fuel val with
       | .ok v => concEval fuel (body.subst 0 v)
@@ -93,10 +89,8 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
         concEval fuel (.app (body.subst 0 (.fix ann body)) aVal)
       | .ok _fVal, .ok _aVal =>
         .error s!"concEval: application of non-function"
-      | .outOfFuel, _ => .outOfFuel
-      | _, .outOfFuel => .outOfFuel
-      | .error s, _ => .error s
-      | _, .error s => .error s
+      | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
+      | .error s, _ | _, .error s => .error s
 
 /-! ## Fuel monotonicity -/
 

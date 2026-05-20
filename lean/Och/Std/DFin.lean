@@ -85,48 +85,48 @@ section Tests
 
 -- ── Positive: naturals inhabit Fin n directly (no wrapper) ──
 
-example : Och.subCheckE 200 zero_ (och{ Fin one_ })    = .ok true := by native_decide
-example : Och.subCheckE 200 zero_ (och{ Fin two_ })    = .ok true := by native_decide
-example : Och.subCheckE 200 zero_ (och{ Fin three_ })  = .ok true := by native_decide
-example : Och.subCheckE 200 one_  (och{ Fin two_ })    = .ok true := by native_decide
-example : Och.subCheckE 200 one_  (och{ Fin three_ })  = .ok true := by native_decide
+example : Och.checkSubtype 200 zero_ (och{ Fin one_ })    = .ok true := by native_decide
+example : Och.checkSubtype 200 zero_ (och{ Fin two_ })    = .ok true := by native_decide
+example : Och.checkSubtype 200 zero_ (och{ Fin three_ })  = .ok true := by native_decide
+example : Och.checkSubtype 200 one_  (och{ Fin two_ })    = .ok true := by native_decide
+example : Och.checkSubtype 200 one_  (och{ Fin three_ })  = .ok true := by native_decide
 
 -- `two_ ⊑ Fin three_` was previously commented because env-based subCheck
 -- couldn't close it at any tractable fuel. The production substitution-
--- based engine (now `Och.subCheckE` post-collapse) closes it at fuel 200.
-example : Och.subCheckE 200 two_ (och{ Fin three_ }) = .ok true := by native_decide
+-- based engine (now `Och.checkSubtype` post-collapse) closes it at fuel 200.
+example : Och.checkSubtype 200 two_ (och{ Fin three_ }) = .ok true := by native_decide
 
 -- ── Negative: diagonal and out-of-bounds rejected ──
 
 -- Diagonal: n ⊄ Fin n
-example : Och.subCheckE 200 one_   (och{ Fin one_ })   = .ok false := by native_decide
-example : Och.subCheckE 200 two_  (och{ Fin two_ }) = .ok false := by native_decide
+example : Och.checkSubtype 200 one_   (och{ Fin one_ })   = .ok false := by native_decide
+example : Och.checkSubtype 200 two_  (och{ Fin two_ }) = .ok false := by native_decide
 
 -- Out-of-bounds: n ⊄ Fin m for n ≥ m
-example : Och.subCheckE 200 one_  (och{ Fin zero_ })   = .ok false := by native_decide
-example : Och.subCheckE 200 two_  (och{ Fin one_ })    = .ok false := by native_decide
-example : Och.subCheckE 200 three_ (och{ Fin two_ }) = .ok false := by native_decide
+example : Och.checkSubtype 200 one_  (och{ Fin zero_ })   = .ok false := by native_decide
+example : Och.checkSubtype 200 two_  (och{ Fin one_ })    = .ok false := by native_decide
+example : Och.checkSubtype 200 three_ (och{ Fin two_ }) = .ok false := by native_decide
 
 -- Nat_ itself is too wide to inhabit Fin n.
-example : Och.subCheckE 200 Nat_  (och{ Fin two_ })    = .ok false := by native_decide
+example : Och.checkSubtype 200 Nat_  (och{ Fin two_ })    = .ok false := by native_decide
 
 -- Width monotonicity: smaller Fin embeds into larger.
-example : Och.subCheckE 200 (och{ Fin one_ }) (och{ Fin two_ })  = .ok true := by native_decide
-example : Och.subCheckE 200 (och{ Fin two_ }) (och{ Fin one_ })  = .ok false := by native_decide
+example : Och.checkSubtype 200 (och{ Fin one_ }) (och{ Fin two_ })  = .ok true := by native_decide
+example : Och.checkSubtype 200 (och{ Fin two_ }) (och{ Fin one_ })  = .ok false := by native_decide
 
 -- Type is not a Fin n.
-example : Och.subCheckE 200 Expr.type (och{ Fin one_ })    = .ok false := by native_decide
+example : Och.checkSubtype 200 Expr.type (och{ Fin one_ })    = .ok false := by native_decide
 
 -- Bot ⊑ Fin n (via S-BotL, the primitive rule).
-example : Och.subCheckE 200 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
+example : Och.checkSubtype 200 (och{ Bot }) (och{ Fin two_ })  = .ok true := by native_decide
 
 -- ── Fin n ⊑ Nat_: Fin embeds into Nat_ at the type level ──
 --
 -- Every Fin value is a Nat_ value. This holds because Fin's eliminator
 -- structure (P:(Nat_→Type), fz:(P zero_)) aligns with Nat_'s.
-example : Och.subCheckE 200 (och{ Fin one_ })   Nat_ = .ok true := by native_decide
-example : Och.subCheckE 200 (och{ Fin two_ })   Nat_ = .ok true := by native_decide
-example : Och.subCheckE 200 (och{ Fin three_ }) Nat_ = .ok true := by native_decide
+example : Och.checkSubtype 200 (och{ Fin one_ })   Nat_ = .ok true := by native_decide
+example : Och.checkSubtype 200 (och{ Fin two_ })   Nat_ = .ok true := by native_decide
+example : Och.checkSubtype 200 (och{ Fin three_ }) Nat_ = .ok true := by native_decide
 
 end Tests
 

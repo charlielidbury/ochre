@@ -183,6 +183,7 @@ where
       match evalSubst fuel 4 (body.subst 0 inhab) with
       | .ok e' => go n e'
       | _ => none
+  | n+1, .asc inner _ => go n inner
   | _, .bot => none
   | _, e => some e
 
@@ -493,6 +494,7 @@ where
       match evalSubst fuel 4 (body.subst 0 inhab) with
       | .ok e' => go n e'
       | _ => none
+  | n+1, .asc inner _ => go n inner
   | _, .bot => none
   | _, e => some e
 
@@ -519,11 +521,13 @@ private theorem exposePi_go_eq_whnfPi_go (fuel : Nat) (inhab : Expr)
       | .ok e' => exact ih e'
       | .outOfFuel => rfl
       | .error _ => rfl
+    | .asc inner _ =>
+      simp only [exposePi.go, whnfPi.go]
+      exact ih inner
     | .bot => rfl
     | .bvar _ => rfl
     | .type => rfl
     | .app _ _ => rfl
-    | .asc _ _ => rfl
     | .letE _ _ => rfl
 
 /-- `exposePi` (private, used by `synthNeutralType`) computes the same

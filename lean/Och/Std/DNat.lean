@@ -152,20 +152,20 @@ example : concEval 200 (och{ depElim one_ }) = .ok Std.true_ := by native_decide
 -- need much more fuel (16k–500k, see `Och.EvalBench`'s
 -- impossibleCases) and are checked at runtime in `eval_bench`.
 
-example : Och.subCheckE 200 zero_ Nat_ = .ok true := by native_decide
-example : Och.subCheckE 200 one_ Nat_ = .ok true := by native_decide
-example : Och.subCheckE 200 two_ Nat_ = .ok true := by native_decide
+example : Och.checkSubtype 200 zero_ Nat_ = .ok true := by native_decide
+example : Och.checkSubtype 200 one_ Nat_ = .ok true := by native_decide
+example : Och.checkSubtype 200 two_ Nat_ = .ok true := by native_decide
 -- three_/four_/five_ ⊑ Nat_: now structural-only; bench-only.
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : Och.subCheckE 200 Nat_ zero_ = .ok false := by native_decide
+example : Och.checkSubtype 200 Nat_ zero_ = .ok false := by native_decide
 -- Note: under the permissive Bool encoding, `true_` and `zero_` are
 -- structurally identical (both `λP:Type. λt:Type. λf:Type. t`), so
 -- `true_ ⊑ Nat_` correctly succeeds. Use `Std.Bool` (the type) as
 -- the non-Nat witness instead.
-example : Och.subCheckE 200 Std.Bool Nat_ = .ok false := by native_decide
-example : Och.subCheckE 200 zero_ one_ = .ok false := by native_decide
+example : Och.checkSubtype 200 Std.Bool Nat_ = .ok false := by native_decide
+example : Och.checkSubtype 200 zero_ one_ = .ok false := by native_decide
 
 -- ── Computation tests for add_ / double_ ────────────────────
 --

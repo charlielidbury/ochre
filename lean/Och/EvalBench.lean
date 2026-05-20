@@ -373,12 +373,12 @@ def impossibleCases : List ImpossibleCase :=
 
 def runImpossibleCase (c : ImpossibleCase) (fuelRef : IO.Ref Nat)
     : IO (String × Nat × Outcome Bool) := do
-  let (subst_ms, substR) ← time (fun n => Och.subCheckE (c.fuel + n) c.a c.b) fuelRef
+  let (subst_ms, substR) ← time (fun n => Och.checkSubtype (c.fuel + n) c.a c.b) fuelRef
   return (c.label, subst_ms, substR)
 
 def runImpossibleSection (fuelRef : IO.Ref Nat) : IO Unit := do
   IO.println ""
-  IO.println "=== Section 6: previously-impossible tests (Och.subCheckE) ==="
+  IO.println "=== Section 6: previously-impossible tests (Och.checkSubtype) ==="
   IO.println "label                         | subst_ms | subst verdict"
   for c in impossibleCases do
     let (lbl, subst_ms, substR) ← runImpossibleCase c fuelRef
