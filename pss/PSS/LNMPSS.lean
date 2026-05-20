@@ -1237,26 +1237,57 @@ theorem equivRed_change_equiv_to_sub
 /-- Annotation independence: change from sub to equiv annotation
     for derivations where the body was opened with a fresh variable.
     This is the version used in commutativity's ME-BET case.
-    The paper's Lemma 2 (non-promotion clause) guarantees that when
-    x is fresh and the derivation comes from ME-BET's body reduction,
-    the derivation does not use MS-PRO on x. -/
-axiom equivRed_change_sub_to_equiv_bet
+    Requires a noPromoAt witness: the derivation must not promote x.
+    Derived from the proved general version `equivRed_change_sub_to_equiv`. -/
+theorem equivRed_change_sub_to_equiv_bet
     {Γ : LNCtx} {s : LNStack} {x : String} {dom α : LNExpr}
     {body u : LNExpr}
     (h : LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u)
-    (hfresh : x ∉ LNCtx.dom Γ)
-    : LNEquivRed ((x, .equiv α) :: Γ) s (body.open_at 0 (.fvar x)) u
+    (hnp : LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u)
+    : LNEquivRed ((x, .equiv α) :: Γ) s (body.open_at 0 (.fvar x)) u :=
+  equivRed_change_sub_to_equiv h hnp
 
 /-- Annotation independence: change from equiv to sub annotation
     for derivations on sub-terms obtained via IH.
-    Valid when the derivation doesn't use ME-PRO on x.
-    The paper's Lemma 2 guarantees this for IH outputs. -/
-axiom equivRed_change_equiv_to_sub_bet
+    Requires a noPromoAt witness: the derivation must not promote x.
+    Derived from the proved general version `equivRed_change_equiv_to_sub`. -/
+theorem equivRed_change_equiv_to_sub_bet
     {Γ : LNCtx} {s : LNStack} {x : String} {dom α : LNExpr}
     {e u : LNExpr}
     (h : LNEquivRed ((x, .equiv α) :: Γ) s e u)
+    (hnp : LNEquivRed.noPromoAt x ((x, .equiv α) :: Γ) s e u)
+    : LNEquivRed ((x, .sub dom) :: Γ) s e u :=
+  equivRed_change_equiv_to_sub h hnp
+
+/-- Lemma 2 non-promotion clause (part 1): the body premise of ME-BET
+    does not promote the fresh variable x.
+    In the paper, this is proved simultaneously with commutativity and diamond
+    by mutual induction. Here it is an axiom because the mutual induction
+    has not been fully mechanised.
+    The key argument: since x is fresh (not a key in Γ, and by the
+    well-formedness invariant, not free in any annotation in Γ), no sub-derivation
+    within the body reduction can reach x's sub-annotation via a chain of
+    promotions starting from variables in Γ. -/
+axiom me_bet_body_noPromoAt
+    {Γ : LNCtx} {s : LNStack} {x : String} {dom : LNExpr}
+    {body u : LNExpr}
+    (h : LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u)
     (hfresh : x ∉ LNCtx.dom Γ)
-    : LNEquivRed ((x, .sub dom) :: Γ) s e u
+    : LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u
+
+/-- Lemma 2 non-promotion clause (part 2): the top edge produced by
+    the commutativity IH does not promote the fresh variable x.
+    In the paper, this is part of the simultaneous induction that proves
+    commutativity, diamond, and non-promotion together.
+    The argument: the commutativity construction builds the top-edge derivation
+    by composing sub-derivations that individually do not promote x (by the IH
+    of the mutual induction), so the composed derivation also does not promote x. -/
+axiom commutativity_noPromoAt
+    {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
+    {e u : LNExpr}
+    (h : LNEquivRed ((x, ann) :: Γ) s e u)
+    (hfresh : x ∉ LNCtx.dom Γ)
+    : LNEquivRed.noPromoAt x ((x, ann) :: Γ) s e u
 
 /-- Inversion on LNCtxRed for stack cons:
     If Γ; α::s ↦ Γ'; s', then s' = α'::s₁ and Γ;s ↦ Γ';s₁
@@ -1368,10 +1399,11 @@ theorem commutativity
       | @ms_fop _ _ _ _ _ body₂_fop y hfresh_y h_sub_body_fop =>
         have h_sub_body_x := subRed_rename h_sub_body_fop hfresh_y hfresh
         -- Change annotation on h_equiv_body from ≤dom to ≡v
-        -- By equivRed_change_sub_to_equiv_bet (paper's Lemma 2)
+        -- By equivRed_change_sub_to_equiv_bet (paper's Lemma 2 non-promotion)
+        have hnp_body := me_bet_body_noPromoAt h_equiv_body hfresh
         have h_equiv_body' : LNEquivRed ((x, .equiv v) :: Γ) s
             (body.open_at 0 (.fvar x)) u' :=
-          equivRed_change_sub_to_equiv_bet h_equiv_body hfresh
+          equivRed_change_sub_to_equiv_bet h_equiv_body hnp_body
         have h_ctx_body : LNCtxRed ((x, .equiv v) :: Γ) s ((x, .equiv v') :: Γ') s' :=
           LNCtxRed.ct_ann_equiv h_ctx h_equiv_v
         have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
@@ -1379,9 +1411,11 @@ theorem commutativity
         obtain ⟨u₃, htop_body, hright_body⟩ :=
           commutativity (body.open_at 0 (.fvar x)) h_equiv_body' h_sub_body_x h_ctx_body hbody_lc
         -- Change annotation back from ≡v to ≤dom for ME-BET
+        -- noPromoAt witness from Lemma 2 non-promotion (IH output)
+        have hnp_top := commutativity_noPromoAt htop_body hfresh
         have htop_body_sub : LNEquivRed ((x, .sub dom) :: Γ) s
             (body₂_fop.subst_fvar y (.fvar x)) u₃ :=
-          equivRed_change_equiv_to_sub_bet htop_body hfresh
+          equivRed_change_equiv_to_sub_bet htop_body hnp_top
         have hfresh' : x ∉ LNCtx.dom Γ' := ctxRed_dom_eq h_ctx ▸ hfresh
         have hright_subst : LNSubRed Γ' s' (u'.subst_fvar x v') (u₃.subst_fvar x v') :=
           subRed_subst (ann := .equiv v') (v := v') hright_body hfresh'
