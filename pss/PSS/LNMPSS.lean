@@ -1899,3 +1899,124 @@ theorem commutativity
             exact h)
 termination_by t₀.sz
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
+
+/-! ## Investigation: are the stack_ext axioms TRUE or FALSE?
+
+The axiom `equivRed_stack_ext` claims:
+  `LNEquivRed Γ [] u v → LNEquivRed Γ s u v`
+
+The critical case is ME-FUN: under `Γ; []`, a lambda `lam dom body` reduces
+via ME-FUN with body context `(x, .sub dom) :: Γ; []`. Under `Γ; α :: s`,
+ME-FOP fires with body context `(x, .equiv α) :: Γ; s`.
+
+KEY QUESTION: can the body derivation under `.sub dom` always be replayed
+under `.equiv α` for arbitrary `α`?
+
+ANALYSIS: YES, because:
+1. ME-PRO on `x` requires `.equiv`, so it CANNOT fire under `.sub dom`.
+   Therefore the body's EquivRed derivation never promotes `x` via ME-PRO.
+2. SubRed on `fvar x` (via MS-PRO) can only be reached through ME-PRO on
+   OTHER variables whose annotations contain `fvar x`. But `x` is fresh
+   (cofinite quantification), so no annotation in `Γ` contains `fvar x`.
+3. Therefore the body derivation is independent of `x`'s annotation.
+4. A generalized stack-append lemma would handle the ME-APP case.
+
+The following examples test specific instances to verify consistency.
+-/
+
+section StackExtInvestigation
+
+-- Test 1: identity function (lam top (bvar 0))
+-- Under []: ME-FUN, body fvar x ≡→ fvar x via ME-VAR
+-- Under [α]: ME-FOP, body fvar x ≡→ fvar x via ME-VAR (annotation irrelevant)
+example : LNEquivRed [] [] (.lam .top (.bvar 0)) (.lam .top (.bvar 0)) := by
+  exact .me_fun (L := [])
+    .me_top
+    (fun x _ => .me_var)
+
+example : LNEquivRed [] [.top] (.lam .top (.bvar 0)) (.lam .top (.bvar 0)) := by
+  exact .me_fop (L := [])
+    .me_top
+    (fun x _ => .me_var)
+
+-- Test 2: nested lambda, body uses fvar y from outer context (not x)
+-- Under []: ME-FUN with (x, .sub top), body fvar y ≡→ fvar y via ME-VAR
+-- Under [α]: ME-FOP with (x, .equiv α), body fvar y ≡→ fvar y via ME-VAR
+-- Annotation of x is irrelevant because body only references y
+example : LNEquivRed [("y", .equiv .top)] []
+    (.lam .top (.fvar "y")) (.lam .top (.fvar "y")) := by
+  exact .me_fun (L := ["y"])
+    .me_top
+    (fun x _ => .me_var)
+
+example : LNEquivRed [("y", .equiv .top)] [.top]
+    (.lam .top (.fvar "y")) (.lam .top (.fvar "y")) := by
+  exact .me_fop (L := ["y"])
+    .me_top
+    (fun x _ => .me_var)
+
+-- Test 3: ME-PRO on y (not x) in body — annotation of x still irrelevant
+-- body: fvar y ≡→ top' via ME-PRO (y ≡ top ∈ Γ, then top ≤→ top via MS-TOP)
+-- This works identically regardless of x's annotation
+example : LNEquivRed [("y", .equiv .top)] []
+    (.lam .top (.fvar "y")) (.lam .top .top) := by
+  exact .me_fun (L := ["y"])
+    .me_top
+    (fun x hx =>
+      have hx_ne_y : x ≠ "y" := fun h => hx (h ▸ List.mem_cons_self _ _)
+      -- ME-PRO on y: lookup y in ((x, .sub top) :: [(y, .equiv top)])
+      .me_pro
+        (show LNCtx.mem_equiv ((x, .sub .top) :: [("y", .equiv .top)]) "y" .top by
+          unfold LNCtx.mem_equiv LNCtx.lookup'
+          simp [hx_ne_y, Ne.symm hx_ne_y]
+          native_decide)
+        .ms_top)
+
+-- Same derivation under non-empty stack: ME-FOP, same ME-PRO on y
+example : LNEquivRed [("y", .equiv .top)] [.top]
+    (.lam .top (.fvar "y")) (.lam .top .top) := by
+  exact .me_fop (L := ["y"])
+    .me_top
+    (fun x hx =>
+      have hx_ne_y : x ≠ "y" := fun h => hx (h ▸ List.mem_cons_self _ _)
+      .me_pro
+        (show LNCtx.mem_equiv ((x, .equiv .top) :: [("y", .equiv .top)]) "y" .top by
+          unfold LNCtx.mem_equiv LNCtx.lookup'
+          simp [hx_ne_y, Ne.symm hx_ne_y]
+          native_decide)
+        .ms_top)
+
+-- Test 4: application in body — ME-APP pushes onto stack, annotation still irrelevant
+-- body = app (fvar y) (fvar x), where y ≡ top ∈ Γ
+-- ME-APP: push fvar x, reduce fvar y in stack [fvar x]
+-- fvar y ≡→ fvar y via ME-VAR (not using annotation)
+-- fvar x ≡→ fvar x via ME-VAR (not using annotation)
+-- Result: app (fvar y) (fvar x) ≡→ app (fvar y) (fvar x)
+-- body' = app (fvar y) (bvar 0) after closing x
+
+-- Under []:
+example : LNEquivRed [("y", .equiv .top)] []
+    (.lam .top (.app (.fvar "y") (.bvar 0)))
+    (.lam .top (.app (.fvar "y") (.bvar 0))) := by
+  exact .me_fun (L := ["y"])
+    .me_top
+    (fun x _ => .me_app .me_var .me_var)
+
+-- Under [α]:
+example : LNEquivRed [("y", .equiv .top)] [.top]
+    (.lam .top (.app (.fvar "y") (.bvar 0)))
+    (.lam .top (.app (.fvar "y") (.bvar 0))) := by
+  exact .me_fop (L := ["y"])
+    .me_top
+    (fun x _ => .me_app .me_var .me_var)
+
+-- CONCLUSION: All tested instances are consistent with equivRed_stack_ext being TRUE.
+-- The annotation of the cofinitely-quantified variable x is never consulted in
+-- the body derivation (because ME-PRO requires .equiv but ME-FUN gives .sub,
+-- and no other variable's annotation references fvar x by freshness).
+-- The axiom appears TRUE but requires a complex proof involving:
+-- (1) A generalized stack-append formulation to handle ME-APP
+-- (2) An annotation-irrelevance lemma for the ME-FUN→ME-FOP case
+-- (3) Mutual induction over both EquivRed and SubRed
+
+end StackExtInvestigation
