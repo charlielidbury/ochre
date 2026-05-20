@@ -20,9 +20,14 @@ This file encodes MPSS using the **locally nameless** representation:
 - commutativity: Lemma 1, the main theorem
 
 ## Sorrys
-The remaining `sorry`s are all for `lc_at 0` witnesses needed by
-`open_close_id` and `open_close_subst`. These would be discharged by
-proving that reduction preserves local closure.
+Two kinds of `sorry` remain:
+1. `lc_at 0` witnesses in the commutativity proof, needed by
+   `open_close_id` and `open_close_subst`. These would be discharged by
+   proving that reduction preserves local closure (mutual induction).
+2. `y ∉ dom Γ_inner` freshness witnesses in ctxRed_lookup_sub,
+   ctxRed_lookup_equiv, and ctxRed_stack_inv. These hold for
+   well-formed (no-shadowing) contexts, which is an invariant of
+   reduction but not formally enforced by the context type.
 -/
 
 /-! ## Terms -/
@@ -506,6 +511,18 @@ axiom subRed_weaken
     (h : LNSubRed Γ s u v) (hctx : LNCtxRed Γ s Γ' s')
     : LNSubRed Γ' s' u v
 
+/-- Structural context extension for ≡→ (standard LN infrastructure).
+    If Γ;s ⊢ u ≡→ v and x ∉ dom(Γ), then (x,ann)::Γ; s ⊢ u ≡→ v.
+    Proof: by mutual induction on the reduction derivation. The derivation
+    cannot promote x (since x ∉ dom(Γ)), so adding x is harmless. Binder
+    cases require alpha-renaming of fresh variables to avoid x, which is
+    where the mutual induction does the heavy lifting. -/
+axiom equivRed_ctx_ext
+    {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
+    (h : LNEquivRed Γ s u v) {x : String} {ann : LNAnn}
+    (hfresh : x ∉ LNCtx.dom Γ)
+    : LNEquivRed ((x, ann) :: Γ) s u v
+
 /-- Stack extension for ≡→ (Lemma 19, part).
     If Γ;[] ⊢ u ≡→ v then Γ;s ⊢ u ≡→ v.
     Derivations with empty stack can be replayed in any stack. -/
@@ -571,18 +588,74 @@ axiom subRed_subst
     : LNSubRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v)
 
 /-- Context lookup: x ≤ t ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≤ t' ∈ Γ'
-    with Γ;[] ⊢ t ≡→ t'. -/
-axiom ctxRed_lookup_sub
+    with Γ;[] ⊢ t ≡→ t'.
+    Proved by induction on the context reduction derivation, using
+    equivRed_ctx_ext to lift the equiv-red through context layers. -/
+theorem ctxRed_lookup_sub
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {t : LNExpr}
     (hmem : LNCtx.mem_sub Γ x t) (hctx : LNCtxRed Γ s Γ' s')
-    : ∃ t', LNCtx.mem_sub Γ' x t' ∧ LNEquivRed Γ [] t t'
+    : ∃ t', LNCtx.mem_sub Γ' x t' ∧ LNEquivRed Γ [] t t' := by
+  induction hctx with
+  | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
+    simp only [LNCtx.mem_sub, LNCtx.lookup'] at hmem
+    by_cases hyx : y == x
+    · -- y = x: the head entry matches, t = u
+      simp only [hyx, ite_true] at hmem; cases hmem
+      refine ⟨u', ?_, equivRed_ctx_ext hred_u sorry⟩  -- sorry: y ∉ dom Γ_i (no-shadowing)
+      show LNCtx.lookup' ((y, .sub u') :: Γ_i') x = some (.sub u')
+      simp only [LNCtx.lookup', hyx, ite_true]
+    · -- y ≠ x: the entry is deeper in the context
+      simp only [hyx, ite_false] at hmem
+      obtain ⟨t', hmem', hred_t⟩ := ih hmem
+      refine ⟨t', ?_, equivRed_ctx_ext hred_t sorry⟩  -- sorry: y ∉ dom Γ_i
+      show LNCtx.lookup' ((y, .sub u') :: Γ_i') x = some (.sub t')
+      simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
+  | @ct_ann_equiv Γ_i _ Γ_i' _ y α α' hctx_i hred_α ih =>
+    simp only [LNCtx.mem_sub, LNCtx.lookup'] at hmem
+    by_cases hyx : y == x
+    · -- y = x but has .equiv not .sub: contradiction
+      simp only [hyx, ite_true] at hmem; cases hmem
+    · simp only [hyx, ite_false] at hmem
+      obtain ⟨t', hmem', hred_t⟩ := ih hmem
+      refine ⟨t', ?_, equivRed_ctx_ext hred_t sorry⟩  -- sorry: y ∉ dom Γ_i
+      show LNCtx.lookup' ((y, .equiv α') :: Γ_i') x = some (.sub t')
+      simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
+  | ct_stk _ _ ih => exact ih hmem
+  | ct_nil => simp [LNCtx.mem_sub, LNCtx.lookup'] at hmem
 
 /-- Context lookup: x ≡ α ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≡ α' ∈ Γ'
-    with Γ;[] ⊢ α ≡→ α'. -/
-axiom ctxRed_lookup_equiv
+    with Γ;[] ⊢ α ≡→ α'.
+    Proved by induction on the context reduction derivation. -/
+theorem ctxRed_lookup_equiv
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {α : LNExpr}
     (hmem : LNCtx.mem_equiv Γ x α) (hctx : LNCtxRed Γ s Γ' s')
-    : ∃ α', LNCtx.mem_equiv Γ' x α' ∧ LNEquivRed Γ [] α α'
+    : ∃ α', LNCtx.mem_equiv Γ' x α' ∧ LNEquivRed Γ [] α α' := by
+  induction hctx with
+  | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
+    simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+    by_cases hyx : y == x
+    · -- y = x but has .sub not .equiv: contradiction
+      simp only [hyx, ite_true] at hmem; cases hmem
+    · simp only [hyx, ite_false] at hmem
+      obtain ⟨α', hmem', hred_α⟩ := ih hmem
+      refine ⟨α', ?_, equivRed_ctx_ext hred_α sorry⟩  -- sorry: y ∉ dom Γ_i
+      show LNCtx.lookup' ((y, .sub u') :: Γ_i') x = some (.equiv α')
+      simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
+  | @ct_ann_equiv Γ_i _ Γ_i' _ y β β' hctx_i hred_β ih =>
+    simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+    by_cases hyx : y == x
+    · -- y = x: the head entry matches, α = β
+      simp only [hyx, ite_true] at hmem; cases hmem
+      refine ⟨β', ?_, equivRed_ctx_ext hred_β sorry⟩  -- sorry: y ∉ dom Γ_i
+      show LNCtx.lookup' ((y, .equiv β') :: Γ_i') x = some (.equiv β')
+      simp only [LNCtx.lookup', hyx, ite_true]
+    · simp only [hyx, ite_false] at hmem
+      obtain ⟨α', hmem', hred_α⟩ := ih hmem
+      refine ⟨α', ?_, equivRed_ctx_ext hred_α sorry⟩  -- sorry: y ∉ dom Γ_i
+      show LNCtx.lookup' ((y, .equiv β') :: Γ_i') x = some (.equiv α')
+      simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
+  | ct_stk _ _ ih => exact ih hmem
+  | ct_nil => simp [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
 
 /-- A variable cannot simultaneously have a sub and equiv annotation.
     Proved: lookup' returns a unique result per key. -/
@@ -768,6 +841,39 @@ theorem close_subst_fvar
     {u : LNExpr} {x y : String} (hfresh : y ∉ u.fvs)
     : (u.subst_fvar x (.fvar y)).close_at 0 y = u.close_at 0 x :=
   close_subst_fvar_gen u x y 0 hfresh
+
+/-- subst_fvar with fvar commutes with open_at:
+    `(e.open_at k v).subst_fvar x (fvar y) = (e.subst_fvar x (fvar y)).open_at k (v.subst_fvar x (fvar y))`.
+    Standard LN infrastructure. -/
+theorem subst_fvar_fvar_open_at (e : LNExpr) (x y : String) (k : Nat) (v : LNExpr)
+    : (e.open_at k v).subst_fvar x (.fvar y) = (e.subst_fvar x (.fvar y)).open_at k (v.subst_fvar x (.fvar y)) := by
+  induction e generalizing k with
+  | bvar n =>
+    show (if n == k then v else .bvar n).subst_fvar x (.fvar y) =
+         if n == k then v.subst_fvar x (.fvar y) else .bvar n
+    split <;> rfl
+  | fvar z =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar]
+    split <;> rfl
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar, ih_dom k, ih_body (k+1)]
+  | app f a ih_f ih_a =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar, ih_f k, ih_a k]
+
+/-- Specialized version: subst_fvar with fvar commutes with open_at when the
+    opening variable is different from the substituted variable.
+    `(e.open_at k (fvar z)).subst_fvar x (fvar y) = (e.subst_fvar x (fvar y)).open_at k (fvar z)`
+    when `x ≠ z`. -/
+theorem subst_fvar_fvar_open_fvar (e : LNExpr) (x y z : String) (k : Nat)
+    (hxz : x ≠ z)
+    : (e.open_at k (.fvar z)).subst_fvar x (.fvar y) = (e.subst_fvar x (.fvar y)).open_at k (.fvar z) := by
+  rw [subst_fvar_fvar_open_at]
+  have : (LNExpr.fvar z).subst_fvar x (.fvar y) = .fvar z := by
+    simp only [LNExpr.subst_fvar]
+    have : ¬ (z == x) = true := by simp [beq_iff_eq]; exact Ne.symm hxz
+    simp [this]
+  rw [this]
 
 /-- Top sub-reduces only to Top (or itself via MS-EQU).
     If Γ;s ⊢ Top ≤→ t then t = Top.
@@ -1154,11 +1260,28 @@ axiom equivRed_change_equiv_to_sub_bet
 
 /-- Inversion on LNCtxRed for stack cons:
     If Γ; α::s ↦ Γ'; s', then s' = α'::s₁ and Γ;s ↦ Γ';s₁
-    and Γ;[] ⊢ α ≡→ α'. -/
-axiom ctxRed_stack_inv
+    and Γ;[] ⊢ α ≡→ α'.
+    Proved by induction on the context reduction, using equivRed_ctx_ext
+    to lift the equiv-red witness through context annotation layers. -/
+theorem ctxRed_stack_inv
     {Γ : LNCtx} {α : LNExpr} {s : LNStack} {Γ' : LNCtx} {s' : LNStack}
     (h : LNCtxRed Γ (α :: s) Γ' s')
-    : ∃ α' s₁, s' = α' :: s₁ ∧ LNCtxRed Γ s Γ' s₁ ∧ LNEquivRed Γ [] α α'
+    : ∃ α' s₁, s' = α' :: s₁ ∧ LNCtxRed Γ s Γ' s₁ ∧ LNEquivRed Γ [] α α' := by
+  generalize hs : α :: s = stk at h
+  induction h with
+  | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
+    obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hs
+    exact ⟨α', s₁, hs'eq,
+      .ct_ann_sub hctx' hred_u,
+      equivRed_ctx_ext hα_red sorry⟩  -- sorry: y ∉ dom Γ_i
+  | @ct_ann_equiv Γ_i _ Γ_i' _ y β β' hctx_i hred_β ih =>
+    obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hs
+    exact ⟨α', s₁, hs'eq,
+      .ct_ann_equiv hctx' hred_β,
+      equivRed_ctx_ext hα_red sorry⟩  -- sorry: y ∉ dom Γ_i
+  | @ct_stk Γ_i _ Γ_i' s₁ α₀ α₀' hctx_i hred_α _ =>
+    cases hs; exact ⟨α₀', s₁, rfl, hctx_i, hred_α⟩
+  | ct_nil => cases hs
 
 
 /-! ### Commutativity (Lemma 1)
