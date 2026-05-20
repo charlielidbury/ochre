@@ -81,13 +81,17 @@ are listed below with their status:
   well-formed contexts, but this invariant is not formally tracked).
 - **weaken**: needs the annotation reduction relationship from LNCtxRed, not
   just context inclusion; essentially requires commutativity-like reasoning.
-- **noPromoAt**: The old axioms `me_bet_body_noPromoAt` and
-  `commutativity_noPromoAt` were FALSE — they required only `x ∉ dom Γ`,
-  but this allowed x to appear in Γ's annotations, enabling promotion chains
-  through other variables. Formal counterexamples are proved in the file.
-  Now strengthened to require `x ∉ LNCtx.all_fvs Γ` (x not a key AND not
-  in any annotation) plus `x ∉ dom.fvs` / `x ∉ ann.fvs` (x not in its own
-  annotation term). Still axioms pending mutual induction with commutativity.
+- **noPromoAt**: BOTH `me_bet_body_noPromoAt` and `commutativity_noPromoAt`
+  are FALSE even with the strengthened `x ∉ all_fvs Γ` + `x ∉ ann.fvs`
+  conditions. Formal counterexamples:
+  - `me_bet_body_noPromoAt_false`: The stack can carry `fvar x`; ME-FOP
+    captures it in a fresh variable's `.equiv` annotation, and ME-PRO on
+    that variable triggers SubRed(fvar x) via MS-PRO on x.
+  - `commutativity_noPromoAt_false` (existing): When x has `.equiv .top`,
+    ME-PRO on x fires directly, violating noPromoAt's `z ≠ x` requirement.
+  The axioms remain to keep downstream sorry'd proofs compiling while a
+  correct formulation (likely: noPromoAt proved simultaneously with
+  commutativity as part of the mutual induction) is developed.
 
 ## Sorry'd Theorems (formerly axioms)
 - `equivRed_subst` / `subRed_subst`: converted from axioms to sorry'd theorems.
@@ -1651,17 +1655,157 @@ theorem commutativity_noPromoAt_false_deriv :
     LNEquivRed [("x", .equiv .top)] [] (.fvar "x") .top :=
   .me_pro (by simp [LNCtx.mem_equiv, LNCtx.lookup']) (.ms_equ .me_top)
 
+/-! #### Counterexample: me_bet_body_noPromoAt (strengthened) is STILL FALSE
+
+The strengthened axiom `me_bet_body_noPromoAt` requires `x ∉ all_fvs(Γ)` and
+`x ∉ dom.fvs`, but this is still insufficient. The failure mode:
+
+The body `body^x` may contain `fvar x` (from opening bvar 0). If the body
+applies an inner lambda to `fvar x`, ME-APP pushes `fvar x` onto the stack.
+ME-FOP then pops it into a fresh variable's `.equiv (fvar x)` annotation.
+ME-PRO on that fresh variable triggers SubRed of `fvar x`, which uses MS-PRO
+on x (since x has .sub in the context), violating noPromoAt.
+
+Concrete instance:
+  Γ = [], dom = lam ⊤ ⊤, x = "x", s = [⊤]
+  body = app (lam ⊤ (bvar 0)) (bvar 0)
+  body^x = app (lam ⊤ (bvar 0)) (fvar "x")
+
+Derivation: ME-APP pushes fvar "x" onto stack [fvar "x", ⊤].
+  Then ME-FOP pops fvar "x", introducing (y, .equiv (fvar "x")).
+  Body fvar y reduces via ME-PRO on y: y ≡ fvar "x", then
+  SubRed of fvar "x" via MS-PRO on "x": "x" ≤ (lam ⊤ ⊤) → lam ⊤ ⊤.
+  Result for fvar y: lam ⊤ ⊤.
+  ME-FOP conclusion: lam ⊤ (lam ⊤ ⊤).
+  ME-APP conclusion: app (lam ⊤ (lam ⊤ ⊤)) (fvar "x").
+
+noPromoAt is impossible because the only path to the output
+  app (lam ⊤ (lam ⊤ ⊤)) (fvar "x")
+requires SubRed.noPromoAt for fvar "x" → lam ⊤ ⊤,
+which has no applicable constructor:
+  ms_pro needs z ≠ x (fails, z = x),
+  ms_top needs output ⊤ (output is lam ⊤ ⊤),
+  ms_equ needs EquivRed.noPromoAt for fvar "x" → lam ⊤ ⊤ (impossible).
+-/
+
+private abbrev cex_dom := LNExpr.lam .top .top
+private abbrev cex_body := LNExpr.lam .top (.bvar 0)
+private abbrev cex_ctx := [("x", LNAnn.sub cex_dom)]
+private abbrev cex_result := LNExpr.lam .top (.lam .top .top)
+
+/-- The body^x term: lam ⊤ (bvar 0) (the inner bvar 0 refers to the inner
+    binder, not x, so opening is identity). -/
+private theorem cex_body_open :
+    cex_body.open_at 0 (.fvar "x") = .lam .top (.bvar 0) := by
+  native_decide
+
+/-- The derivation exists: lam ⊤ (bvar 0) ≡→ lam ⊤ (lam ⊤ ⊤) under
+    stack [fvar "x"]. ME-FOP pops fvar "x", fresh y gets .equiv (fvar "x"),
+    body fvar y ≡→ lam ⊤ ⊤ via ME-PRO on y → SubRed(fvar "x") → MS-PRO → dom. -/
+private theorem me_bet_body_noPromoAt_false_deriv :
+    LNEquivRed cex_ctx [.fvar "x"]
+      (.lam .top (.bvar 0)) (.lam .top (.lam .top .top)) := by
+  apply LNEquivRed.me_fop (L := ["x"])
+  · exact LNEquivRed.me_top  -- dom: ⊤ ≡→ ⊤
+  · intro y hy
+    have hne : y ≠ "x" := fun h => hy (h ▸ List.mem_cons_self _ _)
+    simp only [LNExpr.open_at]
+    -- ME-PRO on y: y ≡ fvar "x"
+    apply LNEquivRed.me_pro
+    · show LNCtx.mem_equiv ((y, .equiv (.fvar "x")) :: cex_ctx) y (.fvar "x")
+      simp [LNCtx.mem_equiv, LNCtx.lookup']
+    · -- SubRed of fvar "x" via MS-PRO: "x" ≤ (lam ⊤ ⊤)
+      apply LNSubRed.ms_pro
+      show LNCtx.mem_sub ((y, .equiv (.fvar "x")) :: cex_ctx) "x" cex_dom
+      simp [LNCtx.mem_sub, LNCtx.lookup', cex_ctx, cex_dom, bne_iff_ne, hne, Ne.symm hne]
+
+/-- Freshness: "x" ∉ all_fvs []. -/
+private theorem cex_fresh_ctx : "x" ∉ LNCtx.all_fvs ([] : LNCtx) := by
+  simp [LNCtx.all_fvs]
+
+/-- Freshness: "x" ∉ fvs(lam ⊤ ⊤). -/
+private theorem cex_fresh_dom : "x" ∉ cex_dom.fvs := by
+  simp [cex_dom, LNExpr.fvs]
+
+/-- SubRed.noPromoAt "x" for fvar "x" → lam ⊤ ⊤ is impossible
+    (regardless of context/stack): ms_pro needs z ≠ x, ms_top needs
+    output = ⊤, ms_equ needs equiv_noPromoAt which also fails. -/
+private theorem sub_noPromoAt_fvar_x_lam_impossible
+    {Γ : LNCtx} {s : LNStack}
+    : ¬ LNSubRed.noPromoAt "x" Γ s (.fvar "x") (.lam .top .top) := by
+  intro h
+  cases h with
+  | ms_pro hne _ => exact hne rfl
+  | ms_equ h_eq =>
+    cases h_eq with
+    | me_pro hne _ _ => exact hne rfl
+
+/-- me_bet_body_noPromoAt is FALSE even with the strengthened freshness
+    conditions x ∉ all_fvs(Γ) and x ∉ dom.fvs.
+    Counterexample: body = lam ⊤ (bvar 0), Γ = [], dom = lam ⊤ ⊤,
+    s = [fvar "x"]. The stack carries fvar "x" which ME-FOP captures in a
+    fresh variable's .equiv annotation. The fresh variable then promotes via
+    ME-PRO, triggering SubRed(fvar "x") → MS-PRO(x) → dom = lam ⊤ ⊤. -/
+theorem me_bet_body_noPromoAt_false :
+    ¬ LNEquivRed.noPromoAt "x" cex_ctx [.fvar "x"]
+      (.lam .top (.bvar 0)) (.lam .top (.lam .top .top)) := by
+  intro h
+  -- Input .lam .top (.bvar 0), output .lam .top (.lam .top .top), stack [fvar "x"].
+  -- Only me_fop matches (lam input with non-empty stack).
+  cases h with
+  | @me_fop _ _ _ _ _ _ _ L h_dom h_body =>
+    -- h_body : ∀ y ∉ L, noPromoAt "x" [(y, .equiv (fvar "x")), ("x", .sub cex_dom)]
+    --   [] ((bvar 0)^y) ((lam ⊤ ⊤)^y)
+    obtain ⟨y, hy⟩ := exists_fresh_string (L ++ ["x"])
+    have hy_L : y ∉ L := fun h => hy (List.mem_append_left _ h)
+    have hy_ne_x : y ≠ "x" := fun h => hy (List.mem_append_right _ (h ▸ List.mem_cons_self _ _))
+    have h_np := h_body y hy_L
+    -- Simplify: (bvar 0)^y = fvar y, (lam ⊤ ⊤)^y = lam ⊤ ⊤
+    simp only [LNExpr.open_at] at h_np
+    -- h_np : noPromoAt "x" [(y, .equiv (fvar "x")), ...] [] (fvar y) (.lam .top .top)
+    -- For fvar y → lam ⊤ ⊤: only me_pro can match (me_var gives fvar y)
+    cases h_np with
+    | me_pro hne hmem h_sub_np =>
+      -- hmem : mem_equiv ((y, .equiv (fvar "x")) :: cex_ctx) z α
+      -- z is the promoted variable. Since the context is
+      -- [(y, .equiv (fvar "x")), ("x", .sub (lam .top .top))],
+      -- and mem_equiv requires .equiv annotation, z must be y and α = fvar "x".
+      -- (z = "x" has .sub, z ∉ {y, "x"} gives empty lookup)
+      unfold LNCtx.mem_equiv LNCtx.lookup' at hmem
+      -- hmem now involves if-then-else on y == z
+      -- If y = z, then α = .fvar "x"
+      -- If y ≠ z, lookup in cex_ctx for .equiv gives contradiction
+      split at hmem
+      · -- y = z case: hmem : some (.equiv (fvar "x")) = some (.equiv α)
+        cases hmem; exact sub_noPromoAt_fvar_x_lam_impossible h_sub_np
+      · -- y ≠ z case: lookup in cex_ctx for .equiv gives contradiction
+        -- cex_ctx = [("x", .sub (lam ⊤ ⊤))], so "x" has .sub not .equiv, and
+        -- any other variable is not in the context at all.
+        simp [cex_ctx, LNCtx.lookup'] at hmem
+
+/-- me_bet_body_noPromoAt (strengthened) is STILL FALSE: there exist
+    concrete Γ, s, x, dom, body, u satisfying all premises but violating
+    the noPromoAt conclusion. -/
+theorem me_bet_body_noPromoAt_strengthened_false :
+    ∃ (Γ : LNCtx) (s : LNStack) (x : String) (dom body u : LNExpr),
+      LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u ∧
+      x ∉ LNCtx.all_fvs Γ ∧
+      x ∉ dom.fvs ∧
+      ¬ LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u :=
+  ⟨[], [.fvar "x"], "x", cex_dom, cex_body, cex_result,
+   by rw [cex_body_open]; exact me_bet_body_noPromoAt_false_deriv,
+   cex_fresh_ctx,
+   cex_fresh_dom,
+   by rw [cex_body_open]; exact me_bet_body_noPromoAt_false⟩
+
 /-- Lemma 2 non-promotion clause (part 1): the body premise of ME-BET
     does not promote the fresh variable x.
-    In the paper, this is proved simultaneously with commutativity and diamond
-    by mutual induction. Here it is an axiom because the mutual induction
-    has not been fully mechanised.
-    The key argument: since x is fresh (not in all_fvs Γ, hence not a key
-    in Γ AND not free in any annotation in Γ), no sub-derivation
-    within the body reduction can reach x's sub-annotation via a chain of
-    promotions starting from variables in Γ.
-    Additionally, x ∉ dom.fvs ensures x's own annotation doesn't reference
-    itself, preventing self-referential promotion chains. -/
+    NOTE: This axiom is FALSE — see `me_bet_body_noPromoAt_strengthened_false`
+    and `me_bet_body_noPromoAt_false` above.
+    It remains as an axiom to keep downstream sorry'd proofs compiling.
+    The failure mode: the stack s can carry fvar x, which ME-FOP captures in
+    a fresh variable's .equiv annotation. ME-PRO on that fresh variable then
+    triggers SubRed(fvar x) via MS-PRO on x. -/
 axiom me_bet_body_noPromoAt
     {Γ : LNCtx} {s : LNStack} {x : String} {dom : LNExpr}
     {body u : LNExpr}
@@ -1670,15 +1814,35 @@ axiom me_bet_body_noPromoAt
     (hfresh_dom : x ∉ dom.fvs)
     : LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u
 
+/-- commutativity_noPromoAt (strengthened) is STILL FALSE.
+    The existing counterexamples `commutativity_noPromoAt_false` and
+    `commutativity_noPromoAt_false_deriv` directly refute the strengthened
+    version: Γ = [], ann = .equiv .top, x = "x", s = [], e = fvar "x", u = .top.
+    The freshness conditions are trivially satisfied:
+      "x" ∉ all_fvs [] = "x" ∉ [] ✓
+      "x" ∉ (.equiv .top).fvs = "x" ∉ [] ✓
+    Yet `noPromoAt "x" [("x", .equiv .top)] [] (fvar "x") .top` is impossible
+    because ME-PRO on "x" is the only derivation path (since x has .equiv .top),
+    and noPromoAt.me_pro requires z ≠ "x" which fails for z = "x". -/
+theorem commutativity_noPromoAt_strengthened_false :
+    ∃ (Γ : LNCtx) (s : LNStack) (x : String) (ann : LNAnn) (e u : LNExpr),
+      LNEquivRed ((x, ann) :: Γ) s e u ∧
+      x ∉ LNCtx.all_fvs Γ ∧
+      x ∉ ann.fvs ∧
+      ¬ LNEquivRed.noPromoAt x ((x, ann) :: Γ) s e u :=
+  ⟨[], [], "x", .equiv .top, .fvar "x", .top,
+   commutativity_noPromoAt_false_deriv,
+   by simp [LNCtx.all_fvs],
+   by simp [LNAnn.fvs, LNExpr.fvs],
+   commutativity_noPromoAt_false⟩
+
 /-- Lemma 2 non-promotion clause (part 2): the top edge produced by
     the commutativity IH does not promote the fresh variable x.
-    In the paper, this is part of the simultaneous induction that proves
-    commutativity, diamond, and non-promotion together.
-    The argument: the commutativity construction builds the top-edge derivation
-    by composing sub-derivations that individually do not promote x (by the IH
-    of the mutual induction), so the composed derivation also does not promote x.
-    Strengthened from the old version: requires x ∉ all_fvs Γ (not just dom Γ),
-    and x ∉ ann.fvs so the annotation itself doesn't reference x. -/
+    NOTE: This axiom is FALSE — see `commutativity_noPromoAt_strengthened_false`
+    above and the earlier `commutativity_noPromoAt_false` counterexample.
+    It remains as an axiom to keep downstream sorry'd proofs compiling.
+    The failure mode: when x has .equiv annotation, ME-PRO on x fires directly,
+    and noPromoAt forbids this (requires z ≠ x for me_pro). -/
 axiom commutativity_noPromoAt
     {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
     {e u : LNExpr}
