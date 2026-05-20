@@ -53,6 +53,11 @@ Several kinds of `sorry` remain:
 6. `x ∉ t_e.fvs` in commutativity's ME-BET/MS-FOP case: x is chosen fresh
    from avoidance sets, but we also need it fresh for t_e (a binder body).
    This follows from including t_e.fvs in the avoidance set.
+7. Stack extension for annotation terms in commutativity's MS-PRO/ME-VAR case:
+   `ctxRed_lookup_sub` gives `LNEquivRed Γ [] t t'` (empty stack) but the top
+   edge needs `LNEquivRed Γ s t t'` (current stack). This holds for well-formed
+   contexts (annotation terms are stack-stable) but requires formalizing
+   context well-formedness. Replaces the former FALSE axiom `equivRed_stack_ext`.
 
 ## Proved Lemmas
 - `equivRed_ctx_mono` / `subRed_ctx_mono`: context monotonicity — if every
@@ -68,17 +73,12 @@ Several kinds of `sorry` remain:
 
 ## Remaining Axioms
 The remaining axioms (equivRed_weaken, subRed_weaken,
-equivRed_stack_ext, subRed_stack_ext,
 me_bet_body_noPromoAt, commutativity_noPromoAt)
 are listed below with their status:
-- **stack_ext**: FALSE as stated. Counterexample at end of file. The failure
-  mode: ME-PRO on a variable whose .equiv annotation is a lambda. The SubRed
-  of that lambda uses MS-FUN (empty stack) with .sub annotation in the body,
-  allowing MS-PRO on the fresh variable. Under non-empty stack, MS-FOP would
-  give .equiv annotation, making MS-PRO unreachable and the result unattainable.
-  The commutativity proof uses equivRed_stack_ext; a fix likely requires either
-  restricting SubRed lambdas to always use .sub, or stating stack extension
-  relative to context well-formedness.
+- **stack_ext**: REMOVED. Former axioms `equivRed_stack_ext` / `subRed_stack_ext`
+  were FALSE (counterexample at end of file). The commutativity MS-PRO case
+  now sorry's a restricted form inline (annotation terms are stack-stable under
+  well-formed contexts, but this invariant is not formally tracked).
 - **weaken**: needs the annotation reduction relationship from LNCtxRed, not
   just context inclusion; essentially requires commutativity-like reasoning.
 
@@ -708,32 +708,23 @@ theorem subRed_ctx_ext
     : LNSubRed ((x, ann) :: Γ) s u v :=
   subRed_ctx_mono h (LNCtx.sub_of_cons_fresh hfresh)
 
-/-- Stack extension for ≡→ (Lemma 19, part).
-    If Γ;[] ⊢ u ≡→ v then Γ;s ⊢ u ≡→ v.
+/-! ### Stack extension: FALSE as stated
 
-    STATUS: FALSE as stated. Counterexample at end of file.
-    The failure mode: ME-PRO on variable x (with x ≡ α ∈ Γ where α is a lambda)
-    requires LNSubRed Γ s α α', but subRed_stack_ext is false because MS-FUN gives
-    the body variable a .sub annotation while MS-FOP gives .equiv, and MS-PRO can
-    fire with .sub but not .equiv, making certain results unreachable under non-empty
-    stacks.
+Stack extension (Lemma 19 in the paper) claims:
+  If Γ;[] ⊢ u ≡→ v then Γ;s ⊢ u ≡→ v  (and similarly for ≤→).
 
-    Retained as axiom because commutativity depends on it. The fix likely requires
-    either: (1) a well-formedness condition on contexts ensuring annotation terms
-    are "stack-stable", or (2) a different statement (e.g., weakening via ctxRed
-    instead of raw stack extension), or (3) restricting MS-FUN/MS-FOP to always
-    use .sub annotations in SubRed. -/
-axiom equivRed_stack_ext
-    {Γ : LNCtx} {u v : LNExpr} {s : LNStack}
-    (h : LNEquivRed Γ [] u v) : LNEquivRed Γ s u v
+This is FALSE in general. Counterexample at end of file. The failure mode:
+ME-PRO on variable x (with x ≡ α ∈ Γ where α is a lambda) requires
+LNSubRed Γ s α α'. Under empty stack MS-FUN gives the body variable a .sub
+annotation (allowing MS-PRO), while under non-empty stack MS-FOP gives .equiv
+(blocking MS-PRO), making certain results unreachable.
 
-/-- Stack extension for ≤→ (Lemma 19, part).
-
-    STATUS: FALSE as stated. See equivRed_stack_ext for explanation.
-    Same counterexample applies (SubRed is the root cause). -/
-axiom subRed_stack_ext
-    {Γ : LNCtx} {u v : LNExpr} {s : LNStack}
-    (h : LNSubRed Γ [] u v) : LNSubRed Γ s u v
+A restricted form holds for "stack-stable" terms (those whose reduction does
+not depend on the stack). Annotation terms in well-formed contexts satisfy
+this, but well-formedness is not formally tracked in the current development.
+The commutativity proof's MS-PRO case requires this restricted form; the
+needed fact is sorry'd inline there.
+-/
 
 /-- Context reduction is reflexive (requires all embedded terms to be lc). -/
 theorem ctxRed_refl (Γ : LNCtx) (s : LNStack)
@@ -1712,7 +1703,15 @@ theorem commutativity
     | me_pro hmem_equiv _ => exact absurd (no_sub_and_equiv hmem hmem_equiv) False.elim
     | me_var =>
       obtain ⟨t', hmem', ht_red⟩ := ctxRed_lookup_sub hmem h_ctx
-      exact ⟨t', equivRed_stack_ext ht_red, .ms_pro hmem'⟩
+      -- ht_red : LNEquivRed Γ [] t t' (annotation reduced with empty stack)
+      -- Need : LNEquivRed Γ s t t' (same reduction under current stack s)
+      -- This is a restricted form of stack extension: the reduction is of an
+      -- annotation term extracted from the context. A full proof requires showing
+      -- that annotation terms are "stack-stable" (their reduction doesn't depend
+      -- on the stack), which holds under well-formedness of contexts but is not
+      -- yet formalized. See header comment on stack_ext for the counterexample
+      -- that prevents a blanket stack extension axiom.
+      exact ⟨t', sorry, .ms_pro hmem'⟩
 
   --===================================================================
   -- MS-APP: t₀ = app u₀ v, t₂ = app u₂ v
@@ -1921,9 +1920,9 @@ theorem commutativity
 termination_by t₀.sz
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
 
-/-! ## Investigation: are the stack_ext axioms TRUE or FALSE?
+/-! ## Investigation: stack extension is FALSE
 
-The axiom `equivRed_stack_ext` claims:
+The former axiom `equivRed_stack_ext` claimed:
   `LNEquivRed Γ [] u v → LNEquivRed Γ s u v`
 
 The critical case is ME-FUN: under `Γ; []`, a lambda `lam dom body` reduces
