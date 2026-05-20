@@ -35,10 +35,10 @@ and `body'` (a term with `bvar 0`) in conclusions, eliminating explicit
 
 ## Sorrys
 Several kinds of `sorry` remain:
-1. `y ∉ dom Γ_inner` freshness witnesses in ctxRed_lookup_sub,
-   ctxRed_lookup_equiv, and ctxRed_stack_inv. These hold for
-   well-formed (no-shadowing) contexts, which is an invariant of
-   reduction but not formally enforced by the context type.
+1. CLOSED: `y ∉ dom Γ_inner` freshness witnesses in ctxRed_lookup_sub,
+   ctxRed_lookup_equiv, and ctxRed_stack_inv now discharged by adding
+   a `(LNCtx.dom Γ).Nodup` hypothesis. Commutativity also takes this
+   hypothesis and propagates it to recursive calls via List.nodup_cons.
 2. CLOSED: `noPromoAt_equiv_swap` and `noPromoAt_sub_swap` are now fully
    proved using the mutual recursor @LNEquivRed.noPromoAt.rec, with cofinite
    binder cases handled by augmenting avoidance sets with x to ensure y ≠ x.
@@ -76,6 +76,10 @@ Several kinds of `sorry` remain:
   @LNEquivRed.noPromoAt.rec, with cofinite binder cases handled by
   augmenting avoidance sets with x. Enables `equivRed_change_sub_to_equiv`
   and `equivRed_change_equiv_to_sub` (previously depended on sorry'd swaps).
+- `ctxRed_lookup_sub` / `ctxRed_lookup_equiv` / `ctxRed_stack_inv`:
+  context lookup and stack inversion through context reduction. Now fully
+  proved by adding a `(LNCtx.dom Γ).Nodup` hypothesis (no-shadowing),
+  which provides `y ∉ dom Γ_i` at each inductive step.
 
 ## Remaining Axioms
 None. All former axioms have been removed:
@@ -839,33 +843,42 @@ theorem subRed_subst
 theorem ctxRed_lookup_sub
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {t : LNExpr}
     (hmem : LNCtx.mem_sub Γ x t) (hctx : LNCtxRed Γ s Γ' s')
+    (hnd : (LNCtx.dom Γ).Nodup)
     : ∃ t', LNCtx.mem_sub Γ' x t' ∧ LNEquivRed Γ [] t t' := by
   induction hctx with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
     simp only [LNCtx.mem_sub, LNCtx.lookup'] at hmem
+    have hnd_inner : (LNCtx.dom Γ_i).Nodup :=
+      (List.nodup_cons.mp hnd).2
+    have hy_fresh : y ∉ LNCtx.dom Γ_i :=
+      (List.nodup_cons.mp hnd).1
     by_cases hyx : y == x
     · -- y = x: the head entry matches, t = u
       simp only [hyx, ite_true] at hmem; cases hmem
-      refine ⟨u', ?_, equivRed_ctx_ext hred_u sorry⟩  -- sorry: y ∉ dom Γ_i (no-shadowing)
+      refine ⟨u', ?_, equivRed_ctx_ext hred_u hy_fresh⟩
       show LNCtx.lookup' ((y, .sub u') :: Γ_i') x = some (.sub u')
       simp only [LNCtx.lookup', hyx, ite_true]
     · -- y ≠ x: the entry is deeper in the context
       simp only [hyx, ite_false] at hmem
-      obtain ⟨t', hmem', hred_t⟩ := ih hmem
-      refine ⟨t', ?_, equivRed_ctx_ext hred_t sorry⟩  -- sorry: y ∉ dom Γ_i
+      obtain ⟨t', hmem', hred_t⟩ := ih hmem hnd_inner
+      refine ⟨t', ?_, equivRed_ctx_ext hred_t hy_fresh⟩
       show LNCtx.lookup' ((y, .sub u') :: Γ_i') x = some (.sub t')
       simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
   | @ct_ann_equiv Γ_i _ Γ_i' _ y α α' hctx_i hred_α ih =>
     simp only [LNCtx.mem_sub, LNCtx.lookup'] at hmem
+    have hnd_inner : (LNCtx.dom Γ_i).Nodup :=
+      (List.nodup_cons.mp hnd).2
+    have hy_fresh : y ∉ LNCtx.dom Γ_i :=
+      (List.nodup_cons.mp hnd).1
     by_cases hyx : y == x
     · -- y = x but has .equiv not .sub: contradiction
       simp only [hyx, ite_true] at hmem; cases hmem
     · simp only [hyx, ite_false] at hmem
-      obtain ⟨t', hmem', hred_t⟩ := ih hmem
-      refine ⟨t', ?_, equivRed_ctx_ext hred_t sorry⟩  -- sorry: y ∉ dom Γ_i
+      obtain ⟨t', hmem', hred_t⟩ := ih hmem hnd_inner
+      refine ⟨t', ?_, equivRed_ctx_ext hred_t hy_fresh⟩
       show LNCtx.lookup' ((y, .equiv α') :: Γ_i') x = some (.sub t')
       simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
-  | ct_stk _ _ ih => exact ih hmem
+  | ct_stk _ _ ih => exact ih hmem hnd
   | ct_nil => simp [LNCtx.mem_sub, LNCtx.lookup'] at hmem
 
 /-- Context lookup: x ≡ α ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≡ α' ∈ Γ'
@@ -874,32 +887,41 @@ theorem ctxRed_lookup_sub
 theorem ctxRed_lookup_equiv
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {α : LNExpr}
     (hmem : LNCtx.mem_equiv Γ x α) (hctx : LNCtxRed Γ s Γ' s')
+    (hnd : (LNCtx.dom Γ).Nodup)
     : ∃ α', LNCtx.mem_equiv Γ' x α' ∧ LNEquivRed Γ [] α α' := by
   induction hctx with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
     simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+    have hnd_inner : (LNCtx.dom Γ_i).Nodup :=
+      (List.nodup_cons.mp hnd).2
+    have hy_fresh : y ∉ LNCtx.dom Γ_i :=
+      (List.nodup_cons.mp hnd).1
     by_cases hyx : y == x
     · -- y = x but has .sub not .equiv: contradiction
       simp only [hyx, ite_true] at hmem; cases hmem
     · simp only [hyx, ite_false] at hmem
-      obtain ⟨α', hmem', hred_α⟩ := ih hmem
-      refine ⟨α', ?_, equivRed_ctx_ext hred_α sorry⟩  -- sorry: y ∉ dom Γ_i
+      obtain ⟨α', hmem', hred_α⟩ := ih hmem hnd_inner
+      refine ⟨α', ?_, equivRed_ctx_ext hred_α hy_fresh⟩
       show LNCtx.lookup' ((y, .sub u') :: Γ_i') x = some (.equiv α')
       simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
   | @ct_ann_equiv Γ_i _ Γ_i' _ y β β' hctx_i hred_β ih =>
     simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+    have hnd_inner : (LNCtx.dom Γ_i).Nodup :=
+      (List.nodup_cons.mp hnd).2
+    have hy_fresh : y ∉ LNCtx.dom Γ_i :=
+      (List.nodup_cons.mp hnd).1
     by_cases hyx : y == x
     · -- y = x: the head entry matches, α = β
       simp only [hyx, ite_true] at hmem; cases hmem
-      refine ⟨β', ?_, equivRed_ctx_ext hred_β sorry⟩  -- sorry: y ∉ dom Γ_i
+      refine ⟨β', ?_, equivRed_ctx_ext hred_β hy_fresh⟩
       show LNCtx.lookup' ((y, .equiv β') :: Γ_i') x = some (.equiv β')
       simp only [LNCtx.lookup', hyx, ite_true]
     · simp only [hyx, ite_false] at hmem
-      obtain ⟨α', hmem', hred_α⟩ := ih hmem
-      refine ⟨α', ?_, equivRed_ctx_ext hred_α sorry⟩  -- sorry: y ∉ dom Γ_i
+      obtain ⟨α', hmem', hred_α⟩ := ih hmem hnd_inner
+      refine ⟨α', ?_, equivRed_ctx_ext hred_α hy_fresh⟩
       show LNCtx.lookup' ((y, .equiv β') :: Γ_i') x = some (.equiv α')
       simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
-  | ct_stk _ _ ih => exact ih hmem
+  | ct_stk _ _ ih => exact ih hmem hnd
   | ct_nil => simp [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
 
 /-- A variable cannot simultaneously have a sub and equiv annotation.
@@ -1958,19 +1980,28 @@ theorem commutativity_noPromoAt_strengthened_false :
 theorem ctxRed_stack_inv
     {Γ : LNCtx} {α : LNExpr} {s : LNStack} {Γ' : LNCtx} {s' : LNStack}
     (h : LNCtxRed Γ (α :: s) Γ' s')
+    (hnd : (LNCtx.dom Γ).Nodup)
     : ∃ α' s₁, s' = α' :: s₁ ∧ LNCtxRed Γ s Γ' s₁ ∧ LNEquivRed Γ [] α α' := by
   generalize hs : α :: s = stk at h
   induction h with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
-    obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hs
+    have hnd_inner : (LNCtx.dom Γ_i).Nodup :=
+      (List.nodup_cons.mp hnd).2
+    have hy_fresh : y ∉ LNCtx.dom Γ_i :=
+      (List.nodup_cons.mp hnd).1
+    obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hnd_inner hs
     exact ⟨α', s₁, hs'eq,
       .ct_ann_sub hctx' hred_u,
-      equivRed_ctx_ext hα_red sorry⟩  -- sorry: y ∉ dom Γ_i
+      equivRed_ctx_ext hα_red hy_fresh⟩
   | @ct_ann_equiv Γ_i _ Γ_i' _ y β β' hctx_i hred_β ih =>
-    obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hs
+    have hnd_inner : (LNCtx.dom Γ_i).Nodup :=
+      (List.nodup_cons.mp hnd).2
+    have hy_fresh : y ∉ LNCtx.dom Γ_i :=
+      (List.nodup_cons.mp hnd).1
+    obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hnd_inner hs
     exact ⟨α', s₁, hs'eq,
       .ct_ann_equiv hctx' hred_β,
-      equivRed_ctx_ext hα_red sorry⟩  -- sorry: y ∉ dom Γ_i
+      equivRed_ctx_ext hα_red hy_fresh⟩
   | @ct_stk Γ_i _ Γ_i' s₁ α₀ α₀' hctx_i hred_α _ =>
     cases hs; exact ⟨α₀', s₁, rfl, hctx_i, hred_α⟩
   | ct_nil => cases hs
@@ -2032,6 +2063,7 @@ theorem commutativity
     (h_sub   : LNSubRed Γ s t₀ t₂)
     (h_ctx   : LNCtxRed Γ s Γ' s')
     (h_lc    : t₀.lc)
+    (h_nd    : (LNCtx.dom Γ).Nodup)
     : ∃ t₃ : LNExpr, LNEquivRed Γ s t₂ t₃ ∧ LNSubRed Γ' s' t₁ t₃ ∧
         (∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃) := by
   -- Case analysis on the sub (left/vertical) edge.
@@ -2059,7 +2091,7 @@ theorem commutativity
       -- ctxRed_lookup_sub: from x ≤ t ∈ Γ and Γ;s ↦ Γ';s', get t' with
       -- x ≤ t' ∈ Γ' and LNEquivRed Γ [] t t' (context extension via
       -- equivRed_ctx_ext, empty stack from CT-ANN definition).
-      obtain ⟨t', hmem', ht_red⟩ := ctxRed_lookup_sub hmem h_ctx
+      obtain ⟨t', hmem', ht_red⟩ := ctxRed_lookup_sub hmem h_ctx h_nd
       -- Top edge needs: LNEquivRed Γ s t t' (stack s, not [])
       -- Right edge:     LNSubRed Γ' s' (fvar x) t' via ms_pro hmem' ✓
       --
@@ -2085,7 +2117,7 @@ theorem commutativity
       have h_ctx_ext := LNCtxRed.ct_stk h_ctx h_equiv_v
       have hu₀_lc : u₀.lc := h_lc.1
       obtain ⟨u₃, htop_u, hright_u, hnp_u⟩ :=
-        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc
+        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc h_nd
       exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u, sorry⟩  -- sorry: noPromoAt preservation for ME-APP/MS-APP
     ---------------------------------------------------------------
     -- ME-BET / MS-APP: the key case
@@ -2142,6 +2174,7 @@ theorem commutativity
         -- IH on body^x (strengthened: returns noPromoAt preservation)
         obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
           commutativity (body.open_at 0 (.fvar x)) h_body_e_eq h_sub_body_s_x h_ctx_body hbody_lc
+            (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
         -- Change annotation back from .equiv to .sub for ME-BET.
         -- The old `commutativity_noPromoAt` axiom was FALSE (see counterexamples
         -- above). With the strengthened IH, we can extract noPromoAt from
@@ -2223,6 +2256,7 @@ theorem commutativity
       -- IH on body^x
       obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
         commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
+          (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
       have hs' := ctxRed_nil_stack h_ctx; subst hs'
       refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge: Γ;[] ⊢ lam dom body₂ ≡→ lam dom' (close x u₃)
@@ -2270,7 +2304,7 @@ theorem commutativity
       have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_right _ h)
       have h_equiv_body_x := h_equiv_body_e x hx_Le
       have h_sub_body_x := h_sub_body_s x hx_Ls
-      obtain ⟨α', s₁, hs'eq, h_ctx_inner, hα_red⟩ := ctxRed_stack_inv h_ctx
+      obtain ⟨α', s₁, hs'eq, h_ctx_inner, hα_red⟩ := ctxRed_stack_inv h_ctx h_nd
       subst hs'eq
       have h_ctx_body : LNCtxRed ((x, .equiv α) :: Γ) s_inner ((x, .equiv α') :: Γ') s₁ :=
         LNCtxRed.ct_ann_equiv h_ctx_inner hα_red
@@ -2278,6 +2312,7 @@ theorem commutativity
         LNExpr.lc_at_open_fvar h_lc.2
       obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
         commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
+          (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
       have _hfresh_e' : x ∉ LNCtx.dom Γ' := hx_dom'
       refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge: use equivRed_rename on htop_body
