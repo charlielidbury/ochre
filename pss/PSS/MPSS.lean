@@ -338,113 +338,167 @@ def weakening_equivRed_ctx
 /-! ### Substitution lemmas for ≡→ and ≤→
 
 Proved by mutual structural induction on the derivation.
+The generalized version substitutes at arbitrary de Bruijn index j
+(needed for under-binder cases) and also substitutes in the stack
+(needed for me_app). The specialized index-0 version is derived from it.
 
-Key stuck cases (sorry'd):
-- ME-PRO at index 0: gives MSubRed but needs MEquivRed (fundamental mismatch)
-- ME-VAR at index 0: needs α ≡→ v' under non-empty stack (stack weakening)
-- Under-binder cases (ME-FUN, ME-FOP, ME-BET): need generalized index substitution -/
+Remaining sorrys:
+- ME-VAR at target index: needs α ≡→ v' under non-empty stack
+- ME-PRO at target index: gives MSubRed but needs MEquivRed
+- ME-PRO at k < j and k > j: needs lookup lemmas for adjusted context -/
+
+/-- Adjust context prefix when removing Ann.equiv α at position j.
+    Entry at position i < j has its annotation substituted at index (j-i-1)
+    with α shifted appropriately. -/
+def adjustPrefix : List Ann → Expr → List Ann
+  | [], _ => []
+  | Ann.sub dom :: rest, α =>
+    Ann.sub (dom.subst rest.length (α.shift rest.length 0)) :: adjustPrefix rest α
+  | Ann.equiv β :: rest, α =>
+    Ann.equiv (β.subst rest.length (α.shift rest.length 0)) :: adjustPrefix rest α
 
 mutual
 
+def substitution_equivRed_gen
+    {α : Expr}
+    {Γ_above : List Ann} {Γ : MCtx} {s : Stack} {u u' v' : Expr}
+    (h_body : MEquivRed (Γ_above ++ Ann.equiv α :: Γ) s u u')
+    (h_arg  : MEquivRed Γ [] α v')
+    : let j := Γ_above.length
+      MEquivRed (adjustPrefix Γ_above α ++ Γ)
+                (s.map (·.subst j (α.shift j 0)))
+                (u.subst j (α.shift j 0))
+                (u'.subst j (v'.shift j 0)) := by
+  let j := Γ_above.length
+  match h_body with
+  | .me_top => exact .me_top
+  | @MEquivRed.me_tap _ _ u_arg => exact .me_tap
+  | @MEquivRed.me_var _ _ k =>
+    show MEquivRed _ _ ((Expr.bvar k).subst j _) ((Expr.bvar k).subst j _)
+    simp only [Expr.subst]
+    by_cases hkj : k = j
+    · subst hkj; simp only [beq_self_eq_true, ite_true]
+      sorry  -- STUCK: need α ≡→ v' under stack s.map
+    · simp only [show (k == j) = false from by simp [beq_iff_eq, hkj]]
+      by_cases hkj' : k > j
+      · simp only [if_pos hkj']; exact .me_var
+      · simp only [if_neg hkj']; exact .me_var
+  | @MEquivRed.me_pro _ _ _ k α_ann hlook hsub =>
+    show MEquivRed _ _ ((Expr.bvar k).subst j _) _
+    simp only [Expr.subst]
+    by_cases hkj : k = j
+    · subst hkj; simp only [beq_self_eq_true, ite_true]
+      sorry  -- STUCK: MSubRed → MEquivRed conversion
+    · simp only [show (k == j) = false from by simp [beq_iff_eq, hkj]]
+      by_cases hkj' : k > j
+      · simp only [if_pos hkj']
+        sorry  -- needs lookup lemma for k > j in adjusted context
+      · simp only [if_neg hkj']
+        sorry  -- needs lookup lemma for k < j in adjusted context
+  | @MEquivRed.me_app _ _ _ u₁ _ v₁ h_u h_v =>
+    -- me_app: IH on operator with v₁::s stack, IH on operand with [] stack
+    have h_u' := substitution_equivRed_gen h_u h_arg
+    simp only [List.map_cons] at h_u'
+    have h_v' := substitution_equivRed_gen h_v h_arg
+    simp only [List.map_nil] at h_v'
+    exact .me_app h_u' h_v'
+  | @MEquivRed.me_bet _ _ dom body _ v₁ _ h_body_inner h_v =>
+    -- me_bet: body under (Ann.sub dom :: Γ_above ++ Ann.equiv α :: Γ)
+    -- Use IH with extended Γ_above' = Ann.sub dom :: Γ_above
+    have h_v' := substitution_equivRed_gen h_v h_arg
+    simp only [List.map_nil] at h_v'
+    have h_body' := @substitution_equivRed_gen α (Ann.sub dom :: Γ_above) Γ _ _ _ _ h_body_inner h_arg
+    simp only [List.length_cons] at h_body'
+    -- Need to show output equation: (body'.subst 0 v₁').subst j (v'.shift j 0)
+    -- = (body'.subst (j+1) (v'.shift (j+1) 0)).subst 0 (v₁'.subst j (v'.shift j 0))
+    -- This is subst_subst_comm_zero applied appropriately.
+    sorry  -- STUCK: needs subst_subst_comm for me_bet output
+  | @MEquivRed.me_fun _ dom _ body' _ h_dom h_body_inner =>
+    -- me_fun: s = [], body under (Ann.sub dom :: Γ_above ++ Ann.equiv α :: Γ)
+    simp only [List.map_nil]
+    have h_dom' := substitution_equivRed_gen h_dom h_arg
+    simp only [List.map_nil] at h_dom'
+    have h_body' := @substitution_equivRed_gen α (Ann.sub dom :: Γ_above) Γ [] _ _ _ h_body_inner h_arg
+    simp only [List.map_nil, List.length_cons, adjustPrefix] at h_body'
+    -- Unfold subst on lam to expose the shift pattern
+    simp only [Expr.subst]
+    rw [@Expr.shift_shift α Γ_above.length 1 0, @Expr.shift_shift v' Γ_above.length 1 0]
+    exact .me_fun h_dom' h_body'
+  | @MEquivRed.me_fop _ _ α_stk dom _ body' _ h_dom h_body_inner =>
+    -- STUCK: the body IH substitutes the stack at index j+1 (body scope),
+    -- but me_fop needs the stack substituted at index j (outer scope).
+    -- These differ because stack elements are at the outer scope.
+    sorry
+
+def substitution_subRed_gen
+    {α : Expr}
+    {Γ_above : List Ann} {Γ : MCtx} {s : Stack} {u u' : Expr}
+    (h : MSubRed (Γ_above ++ Ann.equiv α :: Γ) s u u')
+    : let j := Γ_above.length
+      MSubRed (adjustPrefix Γ_above α ++ Γ)
+              (s.map (·.subst j (α.shift j 0)))
+              (u.subst j (α.shift j 0))
+              (u'.subst j (α.shift j 0)) := by
+  let j := Γ_above.length
+  match h with
+  | .ms_top => exact .ms_top
+  | @MSubRed.ms_pro _ _ k bound hlook =>
+    show MSubRed _ _ ((Expr.bvar k).subst j _) _
+    simp only [Expr.subst]
+    by_cases hkj : k = j
+    · -- k = j: impossible! Position j is Ann.equiv α, but ms_pro needs Ann.sub.
+      subst hkj
+      have : (Γ_above ++ Ann.equiv α :: Γ).get? Γ_above.length = some (Ann.equiv α) := by
+        rw [List.get?_append_right (Nat.le_refl _)]; simp
+      rw [this] at hlook; cases hlook
+    · simp only [show (k == j) = false from by simp [beq_iff_eq, hkj]]
+      by_cases hkj' : k > j
+      · simp only [if_pos hkj']
+        sorry  -- needs lookup lemma for k > j
+      · simp only [if_neg hkj']
+        sorry  -- needs lookup lemma for k < j
+  | @MSubRed.ms_equ _ _ _ _ h_eq =>
+    exact .ms_equ (substitution_equivRed_gen h_eq (equivRed_refl Γ [] α))
+  | @MSubRed.ms_app _ _ _ _ v₁ h_inner =>
+    simp only [List.map_cons]
+    exact .ms_app (substitution_subRed_gen h_inner)
+  | @MSubRed.ms_fun _ dom _ _ h_body =>
+    simp only [List.map_nil, Expr.subst]
+    have h_body' := @substitution_subRed_gen α (Ann.sub dom :: Γ_above) Γ [] _ _ h_body
+    simp only [List.map_nil, List.length_cons, adjustPrefix] at h_body'
+    rw [@Expr.shift_shift α Γ_above.length 1 0]
+    exact .ms_fun h_body'
+  | @MSubRed.ms_fop _ _ α_stk _ _ _ h_body =>
+    -- STUCK: same stack scope mismatch as me_fop
+    sorry
+
+end
+
+/-- Substitution lemma for ≡→ (Lemma 32, specialized to index 0).
+    The generalized version outputs stack `s.map (·.subst 0 α)`, but at call
+    sites the stack is at the outer scope (no bvar 0 refs), so the map is id.
+    This is sorry'd pending a formal well-scopedness argument. -/
 def substitution_equivRed
     {α : Expr}
     {Γ : MCtx} {s : Stack} {u u' v' : Expr}
     (h_body : MEquivRed (Ann.equiv α :: Γ) s u u')
     (h_arg  : MEquivRed Γ [] α v')
     : MEquivRed Γ s (u.subst 0 α) (u'.subst 0 v') := by
-  match h_body with
-  | .me_top => exact .me_top
-  | @MEquivRed.me_tap _ _ u_arg =>
-    -- u = app top u_arg, u' = top
-    -- Goal: MEquivRed Γ s (app top (u_arg.subst 0 α)) top
-    exact .me_tap
-  | @MEquivRed.me_var _ _ k =>
-    show MEquivRed _ _ ((Expr.bvar k).subst 0 _) ((Expr.bvar k).subst 0 _)
-    simp only [Expr.subst]
-    by_cases hk0 : k = 0
-    · subst hk0; simp only [beq_self_eq_true, ite_true]
-      sorry  -- STUCK: need MEquivRed Γ s α v', have MEquivRed Γ [] α v'
-    · simp only [show (k == 0) = false from by simp [beq_iff_eq, hk0]]
-      have : k > 0 := Nat.pos_of_ne_zero hk0
-      simp only [if_pos this]
-      exact .me_var
-  | @MEquivRed.me_pro _ _ _ k α_ann hlook hsub =>
-    show MEquivRed _ _ ((Expr.bvar k).subst 0 _) _
-    simp only [Expr.subst]
-    by_cases hk0 : k = 0
-    · subst hk0; simp only [beq_self_eq_true, ite_true]
-      -- hlook : (Ann.equiv α :: Γ).get? 0 = some (Ann.equiv α_ann)
-      -- So α_ann = α.  hsub : MSubRed (Ann.equiv α :: Γ) s (α.shift 1 0) α'
-      -- After substitution_subRed on hsub:
-      --   MSubRed Γ s ((α.shift 1 0).subst 0 α) (α'.subst 0 α)
-      --   = MSubRed Γ s α (α'.subst 0 α)  by shift_subst_cancel
-      -- But we need MEquivRed, not MSubRed.
-      sorry  -- STUCK: MSubRed → MEquivRed conversion
-    · simp only [show (k == 0) = false from by simp [beq_iff_eq, hk0]]
-      have hk_pos : k > 0 := Nat.pos_of_ne_zero hk0
-      simp only [if_pos hk_pos]
-      -- hlook : (Ann.equiv α :: Γ).get? k = some (Ann.equiv α_ann) where k > 0
-      -- So Γ.get? (k-1) = some (Ann.equiv α_ann)
-      sorry  -- STUCK: needs shift/subst algebra for the promotion result at k > 0
-  | .me_app h_u h_v =>
-    -- STUCK: me_app pushes operand v onto stack. The IH gives a derivation
-    -- with the UN-substituted v in the stack, but constructing me_app needs
-    -- v.subst 0 α in the stack. Requires the generalized version that also
-    -- substitutes in the stack (List.map (·.subst 0 α)).
-    sorry
-  | .me_bet h_body_inner h_v =>
-    sorry  -- STUCK: under-binder case, needs generalized index
-  | .me_fun h_dom h_body_inner =>
-    sorry  -- STUCK: under-binder case, needs generalized index
-  | .me_fop h_dom h_body_inner =>
-    sorry  -- STUCK: under-binder case, needs generalized index
+  have h := @substitution_equivRed_gen α [] Γ s u u' v' h_body h_arg
+  simp only [adjustPrefix, List.nil_append, List.length_nil, Expr.shift_zero] at h
+  -- h has s.map (·.subst 0 α) but we need s. At call sites, stack is at outer
+  -- scope so map is identity, but this needs a well-scopedness proof.
+  exact sorry
 
+/-- Substitution lemma for ≤→ (Lemma 30, specialized to index 0). -/
 def substitution_subRed
     {v₀ : Expr}
     {Γ : MCtx} {s : Stack} {u₁ u₃ : Expr}
     (h : MSubRed (Ann.equiv v₀ :: Γ) s u₁ u₃)
     : MSubRed Γ s (u₁.subst 0 v₀) (u₃.subst 0 v₀) := by
-  match h with
-  | .ms_top => exact .ms_top
-  | @MSubRed.ms_pro _ _ k bound hlook =>
-    show MSubRed _ _ ((Expr.bvar k).subst 0 _) _
-    simp only [Expr.subst]
-    by_cases hk0 : k = 0
-    · subst hk0
-      -- hlook : (Ann.equiv v₀ :: Γ).get? 0 = some (Ann.sub bound)
-      -- But position 0 is Ann.equiv, contradiction with Ann.sub
-      simp only [List.get?] at hlook; cases hlook
-    · simp only [show (k == 0) = false from by simp [beq_iff_eq, hk0]]
-      have hk_pos : k > 0 := Nat.pos_of_ne_zero hk0
-      simp only [if_pos hk_pos]
-      -- hlook : (Ann.equiv v₀ :: Γ).get? k = some (Ann.sub bound), k > 0
-      have hlook' : Γ.get? (k - 1) = some (Ann.sub bound) := by
-        have : k = (k - 1) + 1 := by omega
-        rw [this] at hlook
-        simp only [List.get?] at hlook
-        exact hlook
-      -- output: (bound.shift (k+1) 0).subst 0 v₀ = bound.shift k 0
-      have h_cancel : (bound.shift (k + 1) 0).subst 0 v₀ = bound.shift k 0 := by
-        have : bound.shift (k + 1) 0 = (bound.shift k 0).shift 1 0 :=
-          (Expr.shift_shift bound k 1 0).symm
-        rw [this]
-        exact Expr.shift_subst_cancel (bound.shift k 0) v₀ 0
-      rw [h_cancel]
-      -- ms_pro at k-1: MSubRed Γ s (bvar (k-1)) (bound.shift ((k-1)+1) 0)
-      have hk_eq : k - 1 + 1 = k := by omega
-      rw [← hk_eq]
-      exact .ms_pro hlook'
-  | @MSubRed.ms_equ _ _ _ _ h_eq =>
-    exact .ms_equ (substitution_equivRed h_eq (equivRed_refl _ [] v₀))
-  | .ms_app h_inner =>
-    -- STUCK: same stack-substitution issue as me_app
-    sorry
-  | .ms_fun h_body =>
-    sorry  -- STUCK: under-binder case, needs generalized index
-  | .ms_fop h_body =>
-    sorry  -- STUCK: under-binder case, needs generalized index
-
-end
+  have h' := @substitution_subRed_gen v₀ [] Γ s u₁ u₃ h
+  simp only [adjustPrefix, List.nil_append, List.length_nil, Expr.shift_zero] at h'
+  exact sorry
 
 /-- Replace the element at position `n` in a list.
     Returns the list unchanged if `n` is out of bounds. -/
