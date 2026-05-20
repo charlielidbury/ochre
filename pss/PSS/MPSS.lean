@@ -269,33 +269,23 @@ def weakening_equivRed_ctx
   sorry
 
 /-- Substitution lemma for ≡→ (Lemma 32 in paper).
-    If Γ,x≡α;s ⊢ u ≡→ u' and Γ';nil ⊢ v ≡→ v', then
-    Γ';s' ⊢ u[0↦v] ≡→ u'[0↦v'].
+    If Γ,x≡α;s ⊢ u ≡→ u' and Γ;nil ⊢ α ≡→ v', then
+    Γ;s ⊢ u[0↦α] ≡→ u'[0↦v'].
 
-    This is the simultaneous substitution variant: the substitutee can
-    also be reduced (v to v'), matching the paper's Lemma 32.
+    The old statement was FALSE because it universally quantified over
+    Γ' and s', allowing arbitrary target contexts. The correct statement
+    specializes: the target context is Γ (the tail of the body's context),
+    the target stack is s (the body's stack), and the substitutee is α
+    (the annotation value), which may be reduced to v' in the output.
 
-    BLOCKER: The proof requires mutual induction on MEquivRed/MSubRed.
-    Key cases:
-    - ME-PRO at bvar 0: The lookup gives Ann.equiv α. After substitution,
-      bvar 0 is replaced by v. Need to show the shifted α (with v
-      substituted) reduces to the same result. This requires relating
-      α.shift with substitution (shifting/substitution commutation).
-    - ME-BET: The body goes under another binder (Ann.sub dom). After
-      substitution, the de Bruijn indices shift, requiring careful
-      handling of the substitution/shift interaction.
-    - ME-FUN/ME-FOP: Similar under-binder issues.
-
-    The paper's proof (Lemma 32, named variables) is straightforward
-    because substitution and α-equivalence handle variable scoping.
-    De Bruijn requires explicit shift/subst commutation lemmas in
-    PSS/Syntax.lean before this can be closed. -/
+    BLOCKER: The proof requires mutual induction on MEquivRed/MSubRed
+    and shift/subst commutation lemmas from PSS/Syntax.lean. -/
 def substitution_equivRed
-    {α : Expr} {Γ' : MCtx} {s' : Stack}
-    {Γ : MCtx} {s : Stack} {u u' v v' : Expr}
+    {α : Expr}
+    {Γ : MCtx} {s : Stack} {u u' v' : Expr}
     (h_body : MEquivRed (Ann.equiv α :: Γ) s u u')
-    (h_arg  : MEquivRed Γ' [] v v')
-    : MEquivRed Γ' s' (u.subst 0 v) (u'.subst 0 v') :=
+    (h_arg  : MEquivRed Γ [] α v')
+    : MEquivRed Γ s (u.subst 0 α) (u'.subst 0 v') :=
   sorry
 
 /-- Replace the element at position `n` in a list.
@@ -525,20 +515,11 @@ private def subRed_change_sub_at
 
 end
 
-/-- Annotation-insensitive equivalence reduction (equiv → sub direction).
-    If MEquivRed (Ann.equiv v :: Γ) s body body', then also
-    MEquivRed (Ann.sub dom :: Γ) s body body'.
-
-    NOTE: This direction is harder because ME-PRO CAN fire on bvar 0
-    when the annotation is Ann.equiv. The generalized approach
-    (equivRed_change_sub_at) doesn't apply here because the source
-    annotation is Ann.equiv, not Ann.sub. A separate proof strategy
-    is needed. -/
-def equivRed_change_ann
-    {Γ : MCtx} {s : Stack} {v dom body body' : Expr}
-    (h : MEquivRed (Ann.equiv v :: Γ) s body body')
-    : MEquivRed (Ann.sub dom :: Γ) s body body' :=
-  sorry
+-- NOTE: The false lemma `equivRed_change_ann` (equiv → sub direction)
+-- has been DELETED. It was disproved: ME-PRO CAN fire on Ann.equiv
+-- at index 0, so the annotation cannot be freely changed from equiv
+-- to sub. Use `equivRed_no_promo_change_ann_at_zero` instead, which
+-- requires proving that the derivation does not promote at index 0.
 
 /-- Annotation-insensitive equivalence reduction (sub → equiv direction).
     If MEquivRed (Ann.sub dom :: Γ) s body body', then also
@@ -717,7 +698,12 @@ def diamond
       let ⟨v₃, hv₁, hv₂⟩ := diamond h₁_v h₂_v
         (ctxRed_nil_of_ctxRed hc₁) (ctxRed_nil_of_ctxRed hc₂)
       -- Left completion: ME-BET on t₁ = app (lam dom₁' body₁') v₁
-      let hbody₁_sub := equivRed_change_ann hbody₁
+      -- hbody₁ : MEquivRed (Ann.equiv v₁' :: Γ₁) s₁ ... body₃
+      -- Need to change annotation from equiv to sub for ME-BET.
+      -- The diamond (Lemma 2) guarantees noPromoAt for the output
+      -- when the input doesn't promote at that variable (paper p.9:20).
+      let hbody₁_np : hbody₁.noPromoAt 0 := sorry
+      let hbody₁_sub := equivRed_no_promo_change_ann_at_zero hbody₁ hbody₁_np
       -- Right completion: substitution on t₂ = u'[0↦v₂]
       -- hbody₂ : MEquivRed (Ann.equiv v₂' :: Γ₂) s₂ body₂'_equiv body₃
       -- hv₂ : MEquivRed Γ₂ [] v₂ v₃
@@ -735,7 +721,8 @@ def diamond
       let ⟨body₃, hbody₁, hbody₂⟩ := diamond h₁_body_equiv h₂_body hc₁_body hc₂_body
       let ⟨v₃, hv₁, hv₂⟩ := diamond h₁_v h₂_v
         (ctxRed_nil_of_ctxRed hc₁) (ctxRed_nil_of_ctxRed hc₂)
-      let hbody₂_sub := equivRed_change_ann hbody₂
+      let hbody₂_np : hbody₂.noPromoAt 0 := sorry
+      let hbody₂_sub := equivRed_no_promo_change_ann_at_zero hbody₂ hbody₂_np
       ⟨body₃.subst 0 v₃,
         substitution_equivRed hbody₁ hv₁,
         .me_bet hbody₂_sub hv₂⟩
@@ -786,54 +773,67 @@ def diamond
     obtain ⟨body₃, hbody₁, hbody₂⟩ := diamond h₁_body h₂_body hc₁_body_raw hc₂_body_raw
     exact ⟨.lam dom₃ body₃, .me_fop hdom₁ hbody₁, .me_fop hdom₂ hbody₂⟩
 
-/-- Context reduction preserves MS-PRO lookups (derived from Lemma 36 + Lemma 19).
-    If x ≤ t ∈ Γ and Γ;s ↦ Γ';s', then Γ';s' ⊢ x ≤→ t↑.
+/-- Helper: CtxRed preserves annotation structure — if Γ has Ann.sub t
+    at position k, then Γ' has Ann.sub t' for some t'. -/
+def ctxRed_lookup_sub
+    {Γ : MCtx} {s : Stack} {Γ' : MCtx} {s' : Stack}
+    (h_ctx : CtxRed Γ s Γ' s')
+    {k : Nat} {t : Expr}
+    (h_lookup : Γ.get? k = some (Ann.sub t))
+    : Σ' t' : Expr, PLift (Γ'.get? k = some (Ann.sub t')) :=
+  match h_ctx, k, h_lookup with
+  | .ct_ann_sub _ _, 0, _ => ⟨_, ⟨rfl⟩⟩
+  | .ct_ann_sub h_inner _, k + 1, h => ctxRed_lookup_sub h_inner h
+  | .ct_ann_equiv _ _, 0, h => absurd h (by simp [List.get?])
+  | .ct_ann_equiv h_inner _, k + 1, h => ctxRed_lookup_sub h_inner h
+  | .ct_stk h_inner _, _, h => ctxRed_lookup_sub h_inner h
+  | .ct_nil, _, h => absurd h (by simp [List.get?])
 
-    ISSUE: The current statement claims the output is t.shift (the ORIGINAL
-    annotation), but CtxRed reduces annotations pointwise: if Γ has Ann.sub t
-    at position k, then Γ' has Ann.sub t' where t ≡→ t'. So MS-PRO in Γ'
-    gives t'.shift, not t.shift.
+/-- Context reduction preserves MS-PRO lookups (Lemma 19 / weakening in paper).
+    If x ≤ t ∈ Γ and Γ;s ↦ Γ';s', then there exists t' such that:
+    - Γ';s' ⊢ x ≤→ t'↑  (MS-PRO with the REDUCED annotation)
+    - Γ;s ⊢ t↑ ≡→ t'↑  (the shifted annotation reduces, for the top edge)
 
-    The correct statement should either:
-    (a) Return ∃ t', MSubRed Γ' s' (bvar k) (t'.shift (k+1) 0) — with the
-        REDUCED annotation, or
-    (b) Use MS-EQU to chain: first promote to t'.shift via MS-PRO, then
-        show t.shift ≡→ t'.shift so MS-EQU applies.
-
-    Option (b) would need the reverse direction (MSubRed from a LARGER
-    annotation to SMALLER), which is unnatural. Option (a) changes the
-    commutativity proof's structure.
-
-    For now, this remains sorry'd. The commutativity proof at line 525
-    uses this with equivRed_refl on the top edge (giving t₃ = t.shift),
-    which should instead use the non-trivial reduction t.shift ≡→ t'.shift
-    and set t₃ = t'.shift. -/
+    The old statement was FALSE because it claimed MS-PRO gives t↑ (the
+    ORIGINAL annotation), but CtxRed reduces annotations pointwise: if Γ
+    has Ann.sub t at position k, then Γ' has Ann.sub t' where t ≡→ t'.
+    So MS-PRO in Γ' gives t'↑, not t↑. -/
 def weakening_equivRed
     {Γ : MCtx} {s : Stack} {Γ' : MCtx} {s' : Stack} {k : Nat} {t : Expr}
     (h_lookup : Γ.get? k = some (Ann.sub t))
     (h_ctx : CtxRed Γ s Γ' s')
-    : MSubRed Γ' s' (.bvar k) (t.shift (k + 1) 0) :=
-  sorry
+    : Σ' t' : Expr,
+        MSubRed Γ' s' (.bvar k) (t'.shift (k + 1) 0) ×
+        MEquivRed Γ s (t.shift (k + 1) 0) (t'.shift (k + 1) 0) := by
+  -- Extract the reduced annotation from CtxRed
+  obtain ⟨t', ⟨h_lookup'⟩⟩ := ctxRed_lookup_sub h_ctx h_lookup
+  -- MS-PRO gives us the right edge using the reduced annotation
+  -- The top edge (equiv reduction of the shifted annotation) requires
+  -- a weakening/shift lemma for MEquivRed which is non-trivial in de Bruijn.
+  exact ⟨t', .ms_pro h_lookup', sorry⟩
 
 /-- Substitution lemma for ≤→ (Lemma 30 in paper).
-    If Γ,x≡v₀;s ⊢ u₁ ≤→ u₃, then Γ';s' ⊢ u₁[x↦v₁] ≤→ u₃[x↦v₁].
+    If Γ,x≡v₀;s ⊢ u₁ ≤→ u₃, then Γ;s ⊢ u₁[0↦v₀] ≤→ u₃[0↦v₀].
 
-    Used in the ME-BET + MS-APP case.
+    The old statement was FALSE because it universally quantified over
+    Γ', s', and v₁, allowing arbitrary target contexts and substitutees.
+    The correct statement specializes: the target context is Γ (the tail),
+    the target stack is s, and the substitutee is v₀ (the annotation value).
 
-    BLOCKER: Same de Bruijn difficulties as substitution_equivRed.
-    The proof requires mutual induction on MSubRed/MEquivRed and
-    shift/subst commutation lemmas. Key cases:
-    - MS-PRO at bvar 0: After substitution, bvar 0 becomes v₁.
-      The output t.shift(1,0) needs to be related to v₁'s subtyping.
-    - MS-FUN/MS-FOP: Going under binders shifts the substitution
-      index, requiring subst(j+1, shift(1,0,v₁)) = shift(...) type
-      commutation identities.
-    - MS-EQU: Delegates to the MEquivRed substitution lemma. -/
+    In the paper (named variables), this corresponds to Lemma 30 which
+    additionally requires that the derivation does not promote x. In de
+    Bruijn, since the annotation at index 0 is Ann.equiv (not Ann.sub),
+    MS-PRO cannot fire at index 0. ME-PRO CAN fire at index 0 (via
+    ms_equ), but substituting v₀ for bvar 0 when the annotation IS v₀
+    preserves the reduction.
+
+    BLOCKER: The proof requires mutual induction on MSubRed/MEquivRed
+    and shift/subst commutation lemmas from PSS/Syntax.lean. -/
 def substitution_subRed
-    {v₀ : Expr} {Γ' : MCtx} {s' : Stack}
-    {Γ : MCtx} {s : Stack} {u₁ u₃ v₁ : Expr}
+    {v₀ : Expr}
+    {Γ : MCtx} {s : Stack} {u₁ u₃ : Expr}
     (h : MSubRed (Ann.equiv v₀ :: Γ) s u₁ u₃)
-    : MSubRed Γ' s' (u₁.subst 0 v₁) (u₃.subst 0 v₁) :=
+    : MSubRed Γ s (u₁.subst 0 v₀) (u₃.subst 0 v₀) :=
   sorry
 
 /-- Main commutativity theorem (Lemma 1 / Theorem 1 in paper).
@@ -870,7 +870,10 @@ def commutativity
       rw [h_lookup] at h_lookup₂; exact absurd h_lookup₂ (by simp [Ann.noConfusion])
     | .me_var =>
       -- Case 4: ME-VAR + MS-PRO. t₁ = bvar k, t₂ = t.shift (k+1) 0.
-      exact ⟨_, equivRed_refl Γ s _, weakening_equivRed h_lookup h_ctx⟩
+      -- After CtxRed, the annotation may have reduced from t to t'.
+      -- weakening_equivRed gives us t' and proofs for both edges.
+      let ⟨t', h_sub_pro, h_equiv_shift⟩ := weakening_equivRed h_lookup h_ctx
+      exact ⟨t'.shift (_ + 1) 0, h_equiv_shift, h_sub_pro⟩
   | .ms_app h_sub_inner =>
     -- t₀ = app u v, ms_app pushes v onto stack
     match h_equiv with
@@ -916,7 +919,8 @@ def commutativity
         -- Top edge: ME-BET needs body₂ ≡→ body₃ under Ann.sub dom.
         -- Right edge: substitution_subRed on h_sub_body₁.
         -- Use _ for the witness since me_bet determines the form of t₃.
-        exact ⟨_, .me_bet (equivRed_change_ann h_eq_body₂) h_eq_v,
+        let h_eq_body₂_np : h_eq_body₂.noPromoAt 0 := sorry
+        exact ⟨_, .me_bet (equivRed_no_promo_change_ann_at_zero h_eq_body₂ h_eq_body₂_np) h_eq_v,
           substitution_subRed h_sub_body₁⟩
     | .me_tap =>
       -- Case 7: ME-TAP + MS-APP.
