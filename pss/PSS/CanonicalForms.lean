@@ -33,62 +33,43 @@ directly without boundary issues. Previously, both the main theorem's
 `.app` h2-trans-app case AND betaHelper's h1-trans-app case had sorrys;
 now only the h1b decomposition inside betaHelper has sorrys.
 
-## Remaining sorrys (2 in betaHelper h1b decomposition)
+## Remaining sorrys (3 in betaHelper h1b decomposition)
 
-Both sorrys arise because the composed derivation has height ≤ n (not < n),
-and no available IH accepts ≤ n at the point of use:
+All sorrys arise because the composed derivation has height ≤ n (not < n),
+and no available IH accepts ≤ n at the point of use.
 
-1. **app_cong** (line ~319): h1b = app_cong hf ha ha', giving `g' ≤ lam dom body`
-   and `d' ≡ c`. Composing `trans (app_cong ..) beta_L hw_x` yields
-   `Sub (.app g' d') (body.subst 0 c)` with height ≤ n.
+1. **app_cong, body₂ = .bvar k**: h1b = app_cong hf ha ha' and the lambda
+   body is a variable. The substitution `(.bvar k).subst 0 c₂` gives either
+   `c₂` (if k=0) or `.bvar (k-1)` (if k>0), both headforms.
+   NOTE: The cases body₂ = .top and body₂ = .app are CLOSED (substitution
+   gives non-headform, contradicting hb_x).
 
-2. **beta_L** (line ~345): h1b = beta_L, giving a double-beta situation where
-   `body'.subst 0 arg' = .app (.lam dom body) c`. The composed derivation
-   `trans h1a' h2_composed hw1'` again has height ≤ n.
+2. **app_cong, body₂ = .lam d b**: h1b = app_cong hf ha ha' and the lambda
+   body is itself a lambda. Substitution gives `.lam (d.subst 0 c₂) ...`
+   which IS a headform.
 
-Both are instances of the Hutchins obstacle (POPL 2010, §6.6.3): transitivity
-reassociation preserves total height, leaving no room for a strict decrease.
+3. **beta_L** (double-beta): h1b = beta_L, giving `body'.subst 0 d'` =
+   `.app (.lam dom₂ body₂) c₂` (the substitution result is another redex).
 
-### Unreachability analysis
+All three are instances of the Hutchins obstacle (POPL 2010, S6.6.3):
+transitivity reassociation preserves total height. The `totalWeight_reassoc_eq`
+theorem proves that ANY additive measure is invariant under the rearrangement.
 
-These cases are NOT reachable by any concrete Sub derivation tree. The argument:
+### Approaches explored
 
-- `Sub Γ .top (.app g d)` can only arise from trans chains bottoming out at
-  `beta_R`, which requires `body.subst 0 arg = .top` for the innermost redex.
-- The `app_cong` case requires `hf : Sub g' (.lam dom₂ body₂)` where
-  `body₂.subst 0 c₂` is a headform. Decomposing hf (eventually via the `.lam`
-  rule) yields `Sub [dom_g'] body_g' body₂`, and from beta_R we know
-  `body_g'.subst 0 d' = .top`. Every choice of body₂ that makes
-  `body₂.subst 0 c₂` a headform requires `Sub Γ .top headform` in a smaller
-  context — exactly our theorem. The same circularity applies to `beta_L`.
-- Attempted construction of a counterexample (e.g., using `g' = .lam .top .top`,
-  concrete contexts, etc.) always bottoms out at requiring `Sub Γ .top (.lam ..)` or
-  `Sub Γ .top (.bvar k)` for the argument equivalence witnesses (ha/ha') or the
-  body subtyping, circularly requiring the theorem to be false.
-
-The gap between "not constructible" and "formally provable" is the open problem.
-
-### Measures explored (all wall at the same off-by-one)
-
-- **Height alone**: compositions yield height ≤ n, not < n.
-- **Combined h.height + hw.height**: rearrangement preserves total weight.
-- **totalWeight** (recursive over all embedded Wf/Sub, with beta_L/beta_R
-  weight 1 not 0): same issue. The rearrangement at the sorry points swaps
-  sub-trees between trans wrappers but preserves the total count of both
-  wrapper nodes and leaf nodes. Concretely, at sorry 1 the original is
-    `trans (trans h1a (app_cong hf ha ha') hw1) beta_L hw_x`
-  and the composed is
-    `trans h1a (trans (app_cong hf ha ha') beta_L hw_x) hw1`.
-  Both contain exactly 2 trans nodes, 1 app_cong node, and 1 beta_L node,
-  plus the same set of sub-derivations {h1a, hf, ha, ha', hw1, hw_x}.
-  `totalWeight_reassoc_eq` proves this equality in Lean: the rearrangement
-  is totalWeight-preserving by `omega`. Making beta_L weight 1 (not 0)
-  gains 1 extra unit of slack from the consumed beta_L but spends it on
-  the new inner trans wrapper, netting zero. See `totalWeight_app_cong_beta_eq`.
-- **appDepth** (max-based nesting of `.app`-middle trans nodes): does NOT
-  strictly decrease when `appDepth(h1a) ≤ appDepth(h1b)`.
-- **Lexicographic (n, q)**: betaHelper's q increases by 1 in the composition,
-  matching the trans wrapper cost.
+- **All additive measures** (height, totalWeight, height + hw.height, etc.):
+  invariant under reassociation, proven by `totalWeight_reassoc_eq`.
+- **Max-based measures** (appDepth): sometimes equal, sometimes wrong direction.
+- **Fuel / extra budget**: adding a fuel parameter to the main theorem provides
+  one extra composition per unit of fuel, but the loop repeats identically
+  so fuel eventually exhausts without convergence.
+- **Wf decomposition**: extracting `Sub (.lam dom₂ body₂) (.lam s .top)` from
+  `hw_x` closes the body₂ = .top and body₂ = .app cases (non-headform subst
+  results). The body₂ = .bvar and body₂ = .lam cases remain open because
+  they produce genuine headform substitution results.
+- **Lexicographic (n, q)**: betaHelper's q increases by 1 in the composition.
+- **Ordinal-valued measures**: the number of app-middle trans layers and
+  beta_L nodes are preserved by reassociation.
 
 Closing the remaining sorrys requires a fundamentally different proof strategy
 (e.g., logical relations, transitivity elimination, or an auxiliary structural
@@ -441,33 +422,40 @@ private theorem top_not_sub_headForm_aux (n : Nat) :
                     | bvar _ => exact Expr.noConfusion hsrc_b
                     | lam _ _ _ => exact Expr.noConfusion hsrc_b
                     | app_cong hf ha ha' =>
-                      -- hf : Sub Γ₂ g' (.lam dom₂ body₂)
-                      -- ha : Sub Γ₂ d' c₂, ha' : Sub Γ₂ c₂ d'
-                      -- h1a' : Sub Γ₂ .top (.app g' d'), hw1' : Wf (.app g' d')
-                      -- hw_x : Wf (.app (.lam dom₂ body₂) c₂)
-                      -- hb_x : IsHeadForm (body₂.subst 0 c₂)
+                      -- Unify the implicit variables from app_cong with g'/d' and dom₂/body₂/c₂.
+                      cases hsrc_b; cases htgt_b
+                      -- Now: hf : Sub Γ₂ g' (.lam dom₂ body₂)
+                      --      ha : Sub Γ₂ d' c₂, ha' : Sub Γ₂ c₂ d'
                       --
-                      -- UNREACHABLE in any concrete derivation tree.
+                      -- Decompose hw_x to extract the Sub inside Wf.app.
+                      -- Use auxiliary induction on hsub_lam to find a
+                      -- Sub .top (.lam s .top) with height < n.
                       --
-                      -- Proof sketch (informal):
-                      -- Sub .top (.app g' d') can only arise via trans chains
-                      -- bottoming out at beta_R, which forces body.subst 0 arg = .top
-                      -- for the innermost redex. The app_cong then requires
-                      -- hf : Sub g' (.lam dom₂ body₂) where body₂.subst 0 c₂ is
-                      -- a headform. For this to hold, body₂ must be a headform
-                      -- (or .bvar 0 with c₂ a headform, etc.), but hf decomposes
-                      -- (eventually via .lam rule) to give Sub [dom_g'] body_g' body₂
-                      -- AND from beta_R we get body_g'.subst 0 d' = .top.
-                      -- Every such body₂ requires Sub Γ .top headform in a smaller
-                      -- context — exactly our theorem. The circular dependency makes
-                      -- construction impossible.
+                      -- First, extract components from hw_x : Wf (.app (.lam dom₂ body₂) c₂).
+                      -- We need to do the match inside a proof term context.
+                      -- The key fact: hw_x contains hsub_lam : Sub (.lam dom₂ body₂) (.lam s_hw .top)
+                      -- with hsub_lam.height < hw_x.height.
                       --
-                      -- Closure blocked by Hutchins obstacle: composing
-                      -- trans h1a' (trans (app_cong hf ha ha') beta_L hw_x) hw1'
-                      -- gives Sub .top (body₂.subst 0 c₂) with height ≤ n (not < n),
-                      -- so ih_flat doesn't apply. All known IHs (ih_flat, ihq, ihp,
-                      -- ihr) are off by exactly 1 due to the trans wrapper.
-                      sorry
+                      -- Approach: suffices ∀ ... hsub_lam ... → False, then extract from hw_x.
+                      -- Decompose hw_x and case-split on body₂.
+                      -- hw_x : Wf (.app (.lam dom₂ body₂) c₂) = Wf.app (lam hwf_dom hwf_body) ...
+                      -- Extract Wf of body₂ to rule out .bvar (k+1).
+                      -- Cases body₂ = .top and .app give ¬IsHeadForm → contradiction.
+                      -- Cases .bvar 0 and .lam remain open (Hutchins obstacle).
+                      -- Case-split body₂ to rule out non-headform substitution results.
+                      -- .top and .app produce non-headform results → contradiction with hb_x.
+                      -- .bvar and .lam produce headform results → Hutchins obstacle remains.
+                      match body₂, hb_x with
+                      | .top, hb_x => simp [Expr.subst, Expr.IsHeadForm] at hb_x
+                      | .app e1 e2, hb_x => simp [Expr.subst, Expr.IsHeadForm] at hb_x
+                      | .bvar _, hb_x =>
+                        -- body₂ = .bvar k: subst gives c₂ (if k=0) or .bvar (k-1) (if k>0)
+                        -- Both can be headforms. Composed derivation has height = n.
+                        sorry
+                      | .lam d_body b_body, hb_x =>
+                        -- body₂ = .lam d_body b_body: subst gives .lam ..., IS a headform.
+                        -- Composed derivation has height = n.
+                        sorry
                     | @beta_L _ dom' body' arg' =>
                       -- h1b_g = beta_L : Sub (.app (.lam dom' body') arg') (body'.subst 0 arg')
                       -- hsrc_b : .app (.lam dom' body') arg' = .app g' d'
