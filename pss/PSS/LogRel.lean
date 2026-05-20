@@ -38,7 +38,7 @@ using the RAW body `b`. This makes beta_L trivial.
 - beta_L: PROVED (was FALSE in old definition!)
 - beta_R: PROVED (was sorry in old definition)
 - lam: PROVED (via WF induction on (k, sizeOf hsub) + Wf hypotheses)
-- app_cong: sorry (needs typeNorm congruence for Sub-related apps)
+- app_cong: **FALSE** (proved by counterexample — see `app_cong_subSem_counterexample`)
 -/
 
 open Expr
@@ -399,6 +399,71 @@ theorem subSem_top_not_lam {s t : Expr}
     (h : SubSem .top (.lam s t)) : False :=
   top_not_in_semVal_lam 0 s t hnorm (h 1 .top (semVal_top 1 .top isVal_top))
 
+/-! ## typeNorm determinism -/
+
+/-- typeNorm is deterministic: if it succeeds at two fuel levels, the results agree.
+    Follows immediately from fuel monotonicity. -/
+theorem typeNorm_det {j k : Nat} {e nf1 nf2 : Expr}
+    (h1 : typeNorm j e = some nf1) (h2 : typeNorm k e = some nf2) :
+    nf1 = nf2 := by
+  by_cases hjk : j ≤ k
+  · have := typeNorm_fuel_mono hjk h1; rw [this] at h2; cases h2; rfl
+  · have := typeNorm_fuel_mono (show k ≤ j by omega) h2; rw [this] at h1; cases h1; rfl
+
+/-! ## Counterexample: app_cong SubSem is FALSE under typeNorm-based SemVal
+
+The issue: `typeNorm` distinguishes syntactically-a-lambda from not-syntactically-a-lambda
+at the head of an application. When `f` is not syntactically a lambda but `f'` is (even
+though `Sub [] f f'`), `typeNorm` of `(app f a)` produces an `app` type (trivial SemVal_nf)
+while `typeNorm` of `(app f' a')` beta-reduces and may produce a `lam` type (requiring the
+value to actually be a lambda). This breaks `SubSem` because `top` satisfies the trivial
+app-type condition but not the lambda-type condition.
+
+Concrete counterexample:
+  f  = app (lam ⊤ (λ⊤.λ⊤.0)) ⊤    -- beta-redex, NOT syntactically a lambda
+  f' = λ⊤.(λ⊤.0)                    -- the reductum, IS syntactically a lambda
+  a = a' = ⊤
+
+  Sub [] f f' holds via beta_L.
+  typeNorm of (app f ⊤) = app (λ⊤.(λ⊤.0)) ⊤  → SemVal_nf at app type = IsVal (trivial)
+  typeNorm of (app f' ⊤) = λ⊤.0              → SemVal_nf at lam type requires lambda shape
+
+  So SemVal 2 (app f ⊤) ⊤ holds but SemVal 2 (app f' ⊤) ⊤ fails.
+-/
+
+private theorem typeNorm_app_f'_top_ce :
+    typeNorm 2 (.app (.lam .top (.lam .top (.bvar 0))) .top) = some (.lam .top (.bvar 0)) := by
+  simp [typeNorm, Expr.subst, Expr.shift]
+
+private theorem typeNorm_app_f_top_ce :
+    typeNorm 3 (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top)
+    = some (.app (.lam .top (.lam .top (.bvar 0))) .top) := by
+  simp [typeNorm, Expr.subst, Expr.shift]
+
+private theorem semval_app_f_top_ce :
+    SemVal 2 (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top) .top :=
+  ⟨isVal_top, fun _ nf hn => by
+    have := typeNorm_det hn typeNorm_app_f_top_ce; subst this
+    unfold SemVal_nf; exact isVal_top⟩
+
+private theorem not_semval_app_f'_top_ce :
+    ¬ SemVal 2 (.app (.lam .top (.lam .top (.bvar 0))) .top) .top := by
+  intro ⟨_, h_all⟩
+  exact top_not_in_semVal_nf_lam 1 .top (.bvar 0) (h_all 2 _ typeNorm_app_f'_top_ce)
+
+/-- **Counterexample**: `SubSem (app f a) (app f' a')` does NOT hold for all
+    Sub-related `f, f', a, a'` under the typeNorm-based SemVal definition.
+
+    This shows the `app_cong` case of `fundamental_subSem_aux` is **FALSE**,
+    not just unproved. The typeNorm-based SemVal definition must be revised
+    to support app_cong (e.g., by normalizing to weak head normal form before
+    the syntactic lambda check, or by using a full beta-normalizer). -/
+theorem app_cong_subSem_counterexample :
+    ¬ SubSem
+      (.app (.app (.lam .top (.lam .top (.lam .top (.bvar 0)))) .top) .top)
+      (.app (.lam .top (.lam .top (.bvar 0))) .top) :=
+  fun h => not_semval_app_f'_top_ce (h 2 .top semval_app_f_top_ce)
+
 /-! ## Values evaluate to themselves -/
 
 theorem concEval_val (fuel : Nat) (v : Expr) (hv : IsVal v) (hfuel : fuel > 0) :
@@ -643,7 +708,7 @@ noncomputable def fundamental_subSem_aux
   | .bvar hget => exact absurd hget (by simp [List.get?])
   | .beta_L => exact fun v hv => subSem_beta_L k v hv
   | .beta_R => exact fun v hv => subSem_beta_R k v hv
-  | .app_cong _ _ _ => exact fun _ _ => sorry  -- needs typeNorm congruence
+  | .app_cong _ _ _ => exact fun _ _ => sorry  -- FALSE: see app_cong_subSem_counterexample
   | .lam (dom := dom) (dom' := dom') (body := body) (body' := body')
       hsub_dd' hsub_d'd hsub_bb' =>
     -- Extract Wf components
@@ -788,7 +853,24 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
 | `beta_L` | **PROVED** (was FALSE in old concEval-based definition!) |
 | `beta_R` | **PROVED** (was sorry in old definition) |
 | `lam` | **PROVED** (via WF induction on (k, sizeOf hsub) + Wf hypotheses) |
-| `app_cong` | sorry (needs typeNorm congruence for Sub-related apps) |
+| `app_cong` | **FALSE** (proved by `app_cong_subSem_counterexample`) |
+
+### app_cong counterexample (proved)
+
+The `app_cong` case of `fundamental_subSem_aux` is **provably false** under the
+typeNorm-based SemVal definition. The root cause: `typeNorm` performs a syntactic
+match on the head of an application — if the head IS a lambda it beta-reduces, if
+NOT it just normalizes sub-expressions and wraps in `app`. This means two Sub-related
+function expressions can produce radically different `typeNorm` results when applied:
+
+  f  = app (lam T (lam T (lam T 0))) T   -- NOT syntactically a lambda
+  f' = lam T (lam T 0)                    -- IS syntactically a lambda (beta reductum of f)
+
+  typeNorm(app f T)  = app (lam T (lam T 0)) T   -- app type → SemVal_nf = IsVal (trivial)
+  typeNorm(app f' T) = lam T 0                    -- lam type → SemVal_nf requires lambda shape
+
+  So SemVal 2 (app f T) T holds (top is a value) but SemVal 2 (app f' T) T fails
+  (top is not a lambda). This is formally proved as `app_cong_subSem_counterexample`.
 
 ### Remaining sorrys (2 total):
 
@@ -804,8 +886,12 @@ noncomputable def concEval_safe (k : Nat) (e : Expr)
    lambdas with equivalent behavior requires a form of Church-Rosser.
    NOT FALSE: extensive counterexample search confirms the statement holds.
 
-2. `fundamental_subSem` app_cong case: needs typeNorm congruence for Sub-related apps.
-   Given Sub [] f f' and Sub [] a a', need to relate typeNorm(app f a) to typeNorm(app f' a').
+2. `fundamental_subSem_aux` app_cong case: **FALSE** under current SemVal definition.
+   The `typeNorm`-based SemVal treats syntactically-a-lambda differently from
+   not-syntactically-a-lambda at the head of an app, so Sub-related functions
+   that differ in syntactic shape break SubSem.
+   FIX: either make typeNorm a full beta-normalizer (normalize to WHNF before
+   the lambda check), or redefine SemVal so app-types are handled uniformly.
 
 ### Key insight: lam case via WF induction
 
