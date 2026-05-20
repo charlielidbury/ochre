@@ -2340,3 +2340,72 @@ example : LNSubRed cex_Γ []
     )
 
 end StackExtInvestigation
+
+/-! ### COUNTEREXAMPLE: equivRed_weaken and subRed_weaken are FALSE
+
+The statement of equivRed_weaken claims: if Γ;s ⊢ u ≡→ v and Γ;s ↦ Γ';s',
+then Γ';s' ⊢ u ≡→ v (same u and v). This fails because CtxRed can reduce
+an annotation MORE than the original derivation did, making the original
+output unreachable in Γ'.
+
+Concrete instance:
+  Γ  = [(x ≡ fvar y), (y ≡ ⊤)]
+  Γ' = [(x ≡ ⊤),     (y ≡ ⊤)]
+
+  In Γ;[]:  fvar x ≡→ fvar y  via ME-PRO (lookup x → fvar y) + MS-EQU (ME-VAR)
+  CtxRed:   x's annotation fvar y reduces to ⊤ via ME-PRO on y, so Γ' has x ≡ ⊤.
+  In Γ';[]: Need fvar x ≡→ fvar y. But x ≡ ⊤ now, and:
+    - ME-PRO on x gives SubRed of ⊤, which can only reach ⊤ (MS-TOP/ME-TOP),
+      never fvar y.
+    - ME-VAR gives fvar x, not fvar y.
+  So LNEquivRed Γ' [] (fvar x) (fvar y) is NOT derivable.
+
+Root cause: the original derivation used MS-EQU + ME-VAR on the annotation
+(α = fvar y ≡→ fvar y, reflexive), but CtxRed non-trivially reduced the
+annotation (fvar y → ⊤ via ME-PRO). After this, there is no path from ⊤
+back to fvar y.
+
+subRed_weaken is also FALSE by wrapping with MS-EQU.
+-/
+
+section WeakenInvestigation
+
+private def weaken_Γ : LNCtx := [("x", .equiv (.fvar "y")), ("y", .equiv .top)]
+private def weaken_Γ' : LNCtx := [("x", .equiv .top), ("y", .equiv .top)]
+
+-- Step 1: The original derivation exists.
+-- LNEquivRed weaken_Γ [] (fvar "x") (fvar "y")
+-- via ME-PRO (lookup x → fvar y) + MS-EQU (ME-VAR on fvar y)
+example : LNEquivRed weaken_Γ []
+    (.fvar "x") (.fvar "y") := by
+  unfold weaken_Γ
+  exact .me_pro
+    (by simp [LNCtx.mem_equiv, LNCtx.lookup'])
+    (.ms_equ .me_var)
+
+-- Step 2: CtxRed from Γ to Γ' is valid.
+-- y's annotation ⊤ → ⊤ via ME-TOP.
+-- x's annotation fvar y → ⊤ via ME-PRO (lookup y → ⊤) + MS-EQU ME-TOP.
+example : LNCtxRed weaken_Γ [] weaken_Γ' [] := by
+  unfold weaken_Γ weaken_Γ'
+  exact .ct_ann_equiv
+    (.ct_ann_equiv .ct_nil .me_top)
+    (.me_pro (by simp [LNCtx.mem_equiv, LNCtx.lookup']) (.ms_equ .me_top))
+
+-- Step 3: The weakened conclusion is NOT derivable.
+-- LNEquivRed weaken_Γ' [] (fvar "x") (fvar "y") is FALSE.
+-- In Γ', x ≡ ⊤. ME-PRO on x can only produce results of SubRed on ⊤,
+-- which are ⊤ (MS-TOP, MS-EQU+ME-TOP). ME-VAR gives fvar x.
+-- Neither produces fvar y.
+
+-- Similarly for subRed_weaken: LNSubRed weaken_Γ [] (fvar "x") (fvar "y")
+-- holds via MS-EQU of the above, but LNSubRed weaken_Γ' [] (fvar "x") (fvar "y")
+-- is not derivable for the same reason.
+example : LNSubRed weaken_Γ []
+    (.fvar "x") (.fvar "y") := by
+  unfold weaken_Γ
+  exact .ms_equ (.me_pro
+    (by simp [LNCtx.mem_equiv, LNCtx.lookup'])
+    (.ms_equ .me_var))
+
+end WeakenInvestigation
