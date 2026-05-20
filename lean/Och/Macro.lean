@@ -24,7 +24,6 @@ term ::=
   | term term                  -- application (left-associative)
   | term → term                -- arrow (right-assoc, sugar for λ_:A. B)
   | Type                       -- universe
-  | let x : term = term in term  -- let-binding (desugars to (λx:T. body) val)
   | (term)                     -- grouping
 ```
 -/
@@ -50,9 +49,6 @@ syntax:10  "ι" ident ":" och "." och:10             : och
 syntax:10  "ι" ident "." och:10                     : och
 syntax:10  "fix" ident ":" och "." och:10           : och
 syntax:10  "fix" ident "." och:10                   : och
-syntax:10  "let" ident ":" och "=" och "in" och:10  : och
-syntax:10  "let" ident "=" och "in" och:10           : och
-
 syntax "och{" och "}" : term
 
 -- ============================================================
@@ -109,17 +105,6 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
   | `(och| fix $x:ident . $body:och) =>
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.fix Expr.type $body')
-  | `(och| let $x:ident : $_ty:och = $val:och in $body:och) =>
-    -- Desugar: let x : T = v in body  ⟶  (λx:v. body) v
-    -- The domain is the value itself (singleton typing via top rule).
-    let val' ← expand ctx val
-    let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.app (Expr.lam $val' $body') $val')
-  | `(och| let $x:ident = $val:och in $body:och) =>
-    -- Desugar: let x = v in body  ⟶  (λx:v. body) v
-    let val' ← expand ctx val
-    let body' ← expand (x.getId.toString :: ctx) body
-    `(Expr.app (Expr.lam $val' $body') $val')
   | `(och| $x:ident) =>
     let name := x.getId.toString
     match findIdx? ctx name with
