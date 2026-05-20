@@ -392,12 +392,27 @@ axiom subRed_stack_ext
     (h : LNSubRed Γ [] u v) : LNSubRed Γ s u v
 
 /-- Context reduction is reflexive. -/
-axiom ctxRed_refl (Γ : LNCtx) (s : LNStack) : LNCtxRed Γ s Γ s
+theorem ctxRed_refl (Γ : LNCtx) (s : LNStack) : LNCtxRed Γ s Γ s := by
+  induction Γ with
+  | nil =>
+    induction s with
+    | nil => exact .ct_nil
+    | cons α s ih => exact .ct_stk ih (equivRed_refl [] [] α)
+  | cons p Γ ih =>
+    obtain ⟨x, ann⟩ := p
+    cases ann with
+    | sub t => exact .ct_ann_sub ih (equivRed_refl Γ [] t)
+    | equiv α' => exact .ct_ann_equiv ih (equivRed_refl Γ [] α')
 
 /-- Lemma 36: stripping the stack from a context reduction. -/
-axiom ctxRed_nil_of_ctxRed
+theorem ctxRed_nil_of_ctxRed
     {Γ Γ' : LNCtx} {s s' : LNStack}
-    (h : LNCtxRed Γ s Γ' s') : LNCtxRed Γ [] Γ' []
+    (h : LNCtxRed Γ s Γ' s') : LNCtxRed Γ [] Γ' [] := by
+  induction h with
+  | ct_ann_sub _ hred ih => exact .ct_ann_sub ih hred
+  | ct_ann_equiv _ hred ih => exact .ct_ann_equiv ih hred
+  | ct_stk _ _ ih => exact ih
+  | ct_nil => exact .ct_nil
 
 /-- Substitution for ≡→ (Lemma 32).
     If (x,ann)::Γ; s ⊢ u ≡→ u' and Γ;[] ⊢ v ≡→ v'
@@ -505,31 +520,118 @@ theorem ctxRed_dom_eq
   | ct_stk _ _ ih => exact ih
   | ct_nil => rfl
 
+private theorem open_close_subst_gen
+    (e : LNExpr) (x y : String) (k : Nat) (hlc : e.lc_at k)
+    : (e.close_at k y).open_at k (.fvar x) = e.subst_fvar y (.fvar x) := by
+  induction e generalizing k with
+  | bvar n =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.subst_fvar, LNExpr.close_at, LNExpr.open_at, beq_iff_eq]
+    omega
+  | fvar z =>
+    simp only [LNExpr.close_at, LNExpr.subst_fvar]
+    by_cases h : z = y
+    · subst h; simp [LNExpr.open_at]
+    · simp [bne_iff_ne, h, Ne.symm h, LNExpr.open_at]
+  | top => simp [LNExpr.close_at, LNExpr.open_at, LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.close_at, LNExpr.open_at, LNExpr.subst_fvar,
+          ih_dom k hlc.1, ih_body (k+1) hlc.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.close_at, LNExpr.open_at, LNExpr.subst_fvar,
+          ih_f k hlc.1, ih_a k hlc.2]
+
 /-- Opening a closed term with a different variable is the same as
     substituting. (e.close_at 0 y).open_at 0 (fvar x) = e.subst_fvar y (fvar x).
     Standard LN infrastructure. Requires e to be locally closed (no dangling
     bound variables). -/
-axiom open_close_subst
+theorem open_close_subst
     {e : LNExpr} {x y : String} (hlc : e.lc_at 0)
-    : (e.close_at 0 y).open_at 0 (.fvar x) = e.subst_fvar y (.fvar x)
+    : (e.close_at 0 y).open_at 0 (.fvar x) = e.subst_fvar y (.fvar x) :=
+  open_close_subst_gen e x y 0 hlc
+
+private theorem open_close_id_gen
+    (e : LNExpr) (x : String) (k : Nat) (hlc : e.lc_at k)
+    : (e.close_at k x).open_at k (.fvar x) = e := by
+  induction e generalizing k with
+  | bvar n =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.close_at, LNExpr.open_at, beq_iff_eq]
+    omega
+  | fvar y =>
+    simp only [LNExpr.close_at]
+    by_cases h : y = x
+    · subst h; simp [LNExpr.open_at]
+    · simp [bne_iff_ne, h, LNExpr.open_at]
+  | top => simp [LNExpr.close_at, LNExpr.open_at]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.close_at, LNExpr.open_at, ih_dom k hlc.1, ih_body (k+1) hlc.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.lc_at] at hlc
+    simp [LNExpr.close_at, LNExpr.open_at, ih_f k hlc.1, ih_a k hlc.2]
 
 /-- (e.close_at 0 x).open_at 0 (fvar x) = e when e is locally closed.
     Standard LN infrastructure. -/
-axiom open_close_id
+theorem open_close_id
     {e : LNExpr} {x : String} (hlc : e.lc_at 0)
-    : (e.close_at 0 x).open_at 0 (.fvar x) = e
+    : (e.close_at 0 x).open_at 0 (.fvar x) = e :=
+  open_close_id_gen e x 0 hlc
+
+private theorem close_open_id_gen
+    (e : LNExpr) (x : String) (k : Nat) (hfr : x ∉ e.fvs)
+    : (e.open_at k (.fvar x)).close_at k x = e := by
+  induction e generalizing k with
+  | bvar n =>
+    simp [LNExpr.open_at]
+    split
+    · simp [LNExpr.close_at, beq_iff_eq]; omega
+    · simp [LNExpr.close_at]
+  | fvar y =>
+    simp [LNExpr.fvs, List.mem_singleton] at hfr
+    simp [LNExpr.open_at, LNExpr.close_at, beq_iff_eq, Ne.symm hfr]
+  | top => simp [LNExpr.open_at, LNExpr.close_at]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.open_at, LNExpr.close_at, ih_dom k hfr.1, ih_body (k+1) hfr.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.open_at, LNExpr.close_at, ih_f k hfr.1, ih_a k hfr.2]
 
 /-- close_at 0 x (e.open_at 0 (fvar x)) = e when x is not free in e.
     Standard LN infrastructure. -/
-axiom close_open_id
+theorem close_open_id
     {e : LNExpr} {x : String} (hfresh : x ∉ e.fvs)
-    : (e.open_at 0 (.fvar x)).close_at 0 x = e
+    : (e.open_at 0 (.fvar x)).close_at 0 x = e :=
+  close_open_id_gen e x 0 hfresh
+
+private theorem close_subst_fvar_gen
+    (u : LNExpr) (x y : String) (k : Nat) (hfr : y ∉ u.fvs)
+    : (u.subst_fvar x (.fvar y)).close_at k y = u.close_at k x := by
+  induction u generalizing k with
+  | bvar n => simp [LNExpr.subst_fvar, LNExpr.close_at]
+  | fvar z =>
+    simp [LNExpr.fvs, List.mem_singleton] at hfr
+    simp only [LNExpr.subst_fvar]
+    by_cases h : z = x
+    · subst h; simp [LNExpr.close_at]
+    · simp [bne_iff_ne, h, LNExpr.close_at, Ne.symm hfr]
+  | top => simp [LNExpr.subst_fvar, LNExpr.close_at]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.subst_fvar, LNExpr.close_at, ih_dom k hfr.1, ih_body (k+1) hfr.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.subst_fvar, LNExpr.close_at, ih_f k hfr.1, ih_a k hfr.2]
 
 /-- close ∘ rename = close: close_at 0 y (u[x↦fvar y]) = close_at 0 x u,
     when y is fresh for u. Standard LN infrastructure. -/
-axiom close_subst_fvar
+theorem close_subst_fvar
     {u : LNExpr} {x y : String} (hfresh : y ∉ u.fvs)
-    : (u.subst_fvar x (.fvar y)).close_at 0 y = u.close_at 0 x
+    : (u.subst_fvar x (.fvar y)).close_at 0 y = u.close_at 0 x :=
+  close_subst_fvar_gen u x y 0 hfresh
 
 /-- Top sub-reduces only to Top (or itself via MS-EQU).
     If Γ;s ⊢ Top ≤→ t then t = Top.
