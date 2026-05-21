@@ -52,9 +52,9 @@ Several kinds of `sorry` remain:
    `subRed_preserves_lc`, proved by mutual induction.
 6. CLOSED: `x ∉ t_e.fvs` now discharged by including t_e.fvs in the
    avoidance set when picking x fresh.
-8. `promotion_collapse` ms_fun/ms_fop cases: the cofinite binder cases
-   require classical logic + equivRed_rename to build ME-FUN/ME-FOP from
-   one representative y₀'s EquivRed. Standard LN infrastructure.
+8. CLOSED: `promotion_collapse` ms_fun/ms_fop cases now proved using
+   classical dichotomy (by_cases on ∃ y₀ giving EquivRed) +
+   equivRed_rename to build ME-FUN/ME-FOP from one witness y₀.
 9. Commutativity ME-BET/MS-FOP `.inr` case: when the body SubRed collapses
    to EquivRed (via promotion_collapse), the two EquivReds are in different
    contexts (.sub vs .equiv) and diamond cannot be applied directly.
@@ -90,8 +90,8 @@ Several kinds of `sorry` remain:
   which provides `y ∉ dom Γ_i` at each inductive step.
 - `promotion_collapse`: if x has .equiv annotation in Γ, any SubRed either
   has noPromoAt x (allowing annotation swap) or is actually an EquivRed.
-  Key cases (ms_pro, ms_top, ms_equ, ms_app) fully proved; cofinite binder
-  cases (ms_fun, ms_fop) sorry'd pending classical + renaming infrastructure.
+  All cases fully proved including cofinite binder cases (ms_fun, ms_fop)
+  via classical dichotomy + equivRed_rename.
   Enables the ME-BET/MS-FOP case of commutativity: the `.inl` path (noPromoAt)
   is now fully proved using `noPromoAt_sub_swap` without annotation swaps.
 - `equivRed_preserves_lc` / `subRed_preserves_lc`: reduction preserves
@@ -2505,15 +2505,90 @@ theorem promotion_collapse
           exact .inr (.me_app eq_inner (equivRed_refl _ [] _ hv_lc)))
       -- ms_fun: L, ∀ y ∉ L, SubRed ((y,.sub dom)::Γ) [] (body^y) (body'^y)
       -- Classical dichotomy: either noPromoAt for all y, or EquivRed via ME-FUN.
-      -- The cofinite quantification + equivRed_rename handles the .inr case.
-      -- Sorry: requires classical logic on the Prop-valued motive and
-      -- equivRed_rename to build ME-FUN from one representative y₀'s EquivRed.
-      (fun _L _h_body _ih_body _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
-        sorry)
+      (fun L h_body ih_body x_var α_var hlk hlc_e hwf_e _hswf_e => by
+        -- Name the implicit recursor variables
+        rename_i Γ_fun dom_fun body_fun body'_fun
+        -- L' avoids L, dom(Γ), body.fvs, body'.fvs, x_var
+        let L' := L ++ LNCtx.dom Γ_fun ++ body_fun.fvs ++ body'_fun.fvs ++ [x_var]
+        -- Classical: either some y₀ ∉ L' gives EquivRed, or all give noPromoAt
+        by_cases hex : ∃ y₀, y₀ ∉ L' ∧ LNEquivRed ((y₀, .sub dom_fun) :: Γ_fun) [] (body_fun.open_at 0 (.fvar y₀)) (body'_fun.open_at 0 (.fvar y₀))
+        · -- Case: ∃ y₀ giving EquivRed → build ME-FUN via equivRed_rename
+          obtain ⟨y₀, hy₀L', heq_y₀⟩ := hex
+          have hy₀Γ : y₀ ∉ LNCtx.dom Γ_fun := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+          have hy₀body : y₀ ∉ body_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+          have hy₀body' : y₀ ∉ body'_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
+          exact .inr (.me_fun L' (equivRed_refl Γ_fun [] dom_fun hlc_e.1) (fun y hyL' => by
+            have hyΓ : y ∉ LNCtx.dom Γ_fun := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body
+            have hrhs : (body'_fun.open_at 0 (.fvar y₀)).subst_fvar y₀ (.fvar y) = body'_fun.open_at 0 (.fvar y) := by
+              rw [subst_fvar_fvar_open_at]
+              simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
+              rw [subst_fvar_notin hy₀body']
+            rw [hrhs] at h_renamed
+            exact h_renamed))
+        · -- Case: ¬∃ y₀ ∉ L' with EquivRed → all y ∉ L' give noPromoAt
+          have hall : ∀ y₀, y₀ ∉ L' → ¬ LNEquivRed ((y₀, .sub dom_fun) :: Γ_fun) [] (body_fun.open_at 0 (.fvar y₀)) (body'_fun.open_at 0 (.fvar y₀)) := by
+            intro y₀ hy₀ heq; exact hex ⟨y₀, hy₀, heq⟩
+          exact .inl (.ms_fun L' (fun y hyL' => by
+            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))
+            have hyx' : y ≠ x_var := by
+              intro heq; subst heq; exact hyL' (List.mem_append_right _ (List.mem_cons_self _ _))
+            have hlk_ext : LNCtx.lookup' ((y, LNAnn.sub dom_fun) :: Γ_fun) x_var = some (.equiv α_var) := by
+              simp only [LNCtx.lookup']
+              have : ¬(y == x_var) = true := by simp [beq_iff_eq]; exact hyx'
+              simp [this, hlk]
+            have hlc_body : (body_fun.open_at 0 (.fvar y)).lc := LNExpr.lc_at_open_fvar hlc_e.2
+            have hwf_ext : LNCtx.wf ((y, LNAnn.sub dom_fun) :: Γ_fun) :=
+              fun p hp => by cases hp with | head => exact hlc_e.1 | tail _ h => exact hwf_e p h
+            have hswf_nil : LNStack.wf ([] : LNStack) := fun _ he => absurd he (List.not_mem_nil _)
+            have h_ih := ih_body y hyL x_var α_var hlk_ext hlc_body hwf_ext hswf_nil
+            cases h_ih with
+            | inl np => exact np
+            | inr heq => exact absurd heq (hall y hyL'))))
       -- ms_fop: L, ∀ y ∉ L, SubRed ((y,.equiv α_fop)::Γ) s (body^y) (body'^y)
-      -- Same classical argument as ms_fun.
-      (fun _L _h_body _ih_body _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
-        sorry)
+      -- Same classical argument as ms_fun, but with .equiv annotation and stack s.
+      (fun L h_body ih_body x_var α_var hlk hlc_e hwf_e hswf_e => by
+        -- Name the implicit recursor variables
+        rename_i Γ_fop s_fop α_fop dom_fop body_fop body'_fop
+        -- L' avoids L, dom(Γ), body.fvs, body'.fvs, x_var
+        let L' := L ++ LNCtx.dom Γ_fop ++ body_fop.fvs ++ body'_fop.fvs ++ [x_var]
+        -- α_fop is lc from the stack wf hypothesis
+        have hα_lc : α_fop.lc := hswf_e α_fop (List.mem_cons_self _ _)
+        have hs_wf : LNStack.wf s_fop := fun e he => hswf_e e (List.mem_cons_of_mem α_fop he)
+        -- Classical: either some y₀ ∉ L' gives EquivRed, or all give noPromoAt
+        by_cases hex : ∃ y₀, y₀ ∉ L' ∧ LNEquivRed ((y₀, .equiv α_fop) :: Γ_fop) s_fop (body_fop.open_at 0 (.fvar y₀)) (body'_fop.open_at 0 (.fvar y₀))
+        · -- Case: ∃ y₀ giving EquivRed → build ME-FOP via equivRed_rename
+          obtain ⟨y₀, hy₀L', heq_y₀⟩ := hex
+          have hy₀Γ : y₀ ∉ LNCtx.dom Γ_fop := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+          have hy₀body : y₀ ∉ body_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+          have hy₀body' : y₀ ∉ body'_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
+          exact .inr (.me_fop L' (equivRed_refl Γ_fop [] dom_fop hlc_e.1) (fun y hyL' => by
+            have hyΓ : y ∉ LNCtx.dom Γ_fop := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body
+            have hrhs : (body'_fop.open_at 0 (.fvar y₀)).subst_fvar y₀ (.fvar y) = body'_fop.open_at 0 (.fvar y) := by
+              rw [subst_fvar_fvar_open_at]
+              simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
+              rw [subst_fvar_notin hy₀body']
+            rw [hrhs] at h_renamed
+            exact h_renamed))
+        · -- Case: ¬∃ y₀ ∉ L' with EquivRed → all y ∉ L' give noPromoAt
+          have hall : ∀ y₀, y₀ ∉ L' → ¬ LNEquivRed ((y₀, .equiv α_fop) :: Γ_fop) s_fop (body_fop.open_at 0 (.fvar y₀)) (body'_fop.open_at 0 (.fvar y₀)) := by
+            intro y₀ hy₀ heq; exact hex ⟨y₀, hy₀, heq⟩
+          exact .inl (.ms_fop L' (fun y hyL' => by
+            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))
+            have hyx' : y ≠ x_var := by
+              intro heq; subst heq; exact hyL' (List.mem_append_right _ (List.mem_cons_self _ _))
+            have hlk_ext : LNCtx.lookup' ((y, LNAnn.equiv α_fop) :: Γ_fop) x_var = some (.equiv α_var) := by
+              simp only [LNCtx.lookup']
+              have : ¬(y == x_var) = true := by simp [beq_iff_eq]; exact hyx'
+              simp [this, hlk]
+            have hlc_body : (body_fop.open_at 0 (.fvar y)).lc := LNExpr.lc_at_open_fvar hlc_e.2
+            have hwf_ext : LNCtx.wf ((y, LNAnn.equiv α_fop) :: Γ_fop) :=
+              fun p hp => by cases hp with | head => exact hα_lc | tail _ h => exact hwf_e p h
+            have h_ih := ih_body y hyL x_var α_var hlk_ext hlc_body hwf_ext hs_wf
+            cases h_ih with
+            | inl np => exact np
+            | inr heq => exact absurd heq (hall y hyL'))))
   exact go h x α hlook hlc hwf hswf
 
 /-! ### Diamond property (Lemma 2)
