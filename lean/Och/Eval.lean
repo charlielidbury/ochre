@@ -70,17 +70,14 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
     match e with
     | .bvar k => .error s!"concEval: stuck on free bvar {k}"
     | .type => .error s!"concEval: Type is not a runtime value"
-    | .lam _ _ | .bot | .iota _ _ | .fix _ _ => .ok e -- direct values
+    | .lam _ _ | .bot | .iota _ _ | .fix _ _ => .ok e
     | .app f a =>
       match concEval fuel f, concEval fuel a with
       | .ok (.lam _dom body), .ok aVal =>
-        -- Beta-reduce via substitution
         concEval fuel (body.subst 0 aVal)
       | .ok (.iota ann body), .ok aVal =>
-        -- iota in function position: unroll self-reference, then re-apply
         concEval fuel (.app (body.subst 0 (.iota ann body)) aVal)
       | .ok (.fix ann body), .ok aVal =>
-        -- fix in function position: unroll self-reference, then re-apply
         concEval fuel (.app (body.subst 0 (.fix ann body)) aVal)
       | .ok _fVal, .ok _aVal =>
         .error s!"concEval: application of non-function"
