@@ -385,6 +385,52 @@ theorem LNCtx.not_mem_dom_of_not_mem_all_fvs {Γ : LNCtx} {x : String}
     (h : x ∉ LNCtx.all_fvs Γ) : x ∉ LNCtx.dom Γ :=
   fun hmem => h (LNCtx.mem_all_fvs_of_mem_dom hmem)
 
+/-- If x ∉ all_fvs Γ and z has annotation ann in Γ, then x ∉ ann.fvs. -/
+theorem LNCtx.not_mem_ann_fvs_of_not_mem_all_fvs {Γ : LNCtx} {x z : String} {ann : LNAnn}
+    (hfresh : x ∉ LNCtx.all_fvs Γ) (hlook : Γ.lookup' z = some ann) : x ∉ ann.fvs := by
+  induction Γ with
+  | nil => simp [LNCtx.lookup'] at hlook
+  | cons p rest ih =>
+    obtain ⟨y, a⟩ := p
+    simp only [LNCtx.lookup'] at hlook
+    have hfresh_rest : x ∉ LNCtx.all_fvs rest := fun hmem =>
+      hfresh (List.mem_append_right _ hmem)
+    by_cases hyz : y == z
+    · simp [hyz] at hlook; subst hlook
+      intro hmem
+      apply hfresh
+      show x ∈ LNCtx.all_fvs ((y, a) :: rest)
+      simp only [LNCtx.all_fvs, List.flatMap_cons]
+      exact List.mem_append_left _ (List.mem_cons_of_mem _ hmem)
+    · simp [hyz] at hlook; exact ih hfresh_rest hlook
+
+/-- Free variables of opening: if x ∉ e.fvs and x ≠ y, then x ∉ (e.open_at k (fvar y)).fvs. -/
+theorem LNExpr.not_mem_fvs_open_at (e : LNExpr) {x y : String} {k : Nat}
+    (hfvs : x ∉ e.fvs) (hne : x ≠ y) : x ∉ (e.open_at k (.fvar y)).fvs := by
+  match e with
+  | .bvar n =>
+    unfold open_at; split
+    · exact fun h => hne (List.mem_singleton.mp h)
+    · exact fun h => (List.not_mem_nil x) h
+  | .fvar _ => exact hfvs
+  | .top => exact fun h => (List.not_mem_nil x) h
+  | .lam dom body =>
+    have hdom : x ∉ dom.fvs := fun h => hfvs (List.mem_append_left _ h)
+    have hbody : x ∉ body.fvs := fun h => hfvs (List.mem_append_right _ h)
+    intro hmem
+    simp only [open_at, fvs] at hmem
+    cases List.mem_append.mp hmem with
+    | inl h => exact not_mem_fvs_open_at dom hdom hne h
+    | inr h => exact not_mem_fvs_open_at body hbody hne h
+  | .app f a =>
+    have hf : x ∉ f.fvs := fun h => hfvs (List.mem_append_left _ h)
+    have ha : x ∉ a.fvs := fun h => hfvs (List.mem_append_right _ h)
+    intro hmem
+    simp only [open_at, fvs] at hmem
+    cases List.mem_append.mp hmem with
+    | inl h => exact not_mem_fvs_open_at f hf hne h
+    | inr h => exact not_mem_fvs_open_at a ha hne h
+
 /-- An annotation is locally closed if its embedded term is. -/
 def LNAnn.lc : LNAnn → Prop
   | .sub t => t.lc
