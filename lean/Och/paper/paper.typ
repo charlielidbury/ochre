@@ -379,15 +379,15 @@ S-Unfold-Iota-R is the weaker sibling of S-Iota-Intro (same conclusion, no annot
 
 S-Iota-Intro is *the* rule which allows dependent elimitation: it pust the thing being typed *into* the type, allowing the type to depend on the inhabitant.
 
-*Worked S-Iota-Intro example:* $"dtrue" subset.sq.eq "dBool"$. With
+*Worked S-Iota-Intro example:* $"true" subset.sq.eq "DBool"$. With
 
 $
-  "dtrue" &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
-  "dfalse" &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
-  "dBool" &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space "self"
+  "true" &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
+  "false" &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
+  "DBool" &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "self"
 $
 
-the constructors are plain lambdas with $top$ domains --- they carry no recursive reference to $"dBool"$. The subtyping check $emptyset ; Gamma tack.r "dtrue" subset.sq.eq "dBool"$ still requires the coinductive seen-set to close, because [S-Iota-Intro]'s annotation premise cycles back to the root goal:
+the constructors are plain lambdas with $top$ domains --- they carry no recursive reference to $"DBool"$. The subtyping check $emptyset ; Gamma tack.r "true" subset.sq.eq "DBool"$ still requires the coinductive seen-set to close, because [S-Iota-Intro]'s annotation premise cycles back to the root goal:
 
 #let dstep(depth, judgment, rulename) = {
   pad(left: depth * 1.5em, grid(
@@ -401,50 +401,50 @@ the constructors are plain lambdas with $top$ domains --- they carry no recursiv
 #block(inset: (y: 0.5em), stack(
   dir: ttb,
   spacing: 0.4em,
-  dstep(0, sub($emptyset$, $Gamma$, $"dtrue"$, $"dBool"$), [root goal]),
+  dstep(0, sub($emptyset$, $Gamma$, $"true"$, $"DBool"$), [root goal]),
   dstep(
     1,
     sub(
       $S_1$,
       $Gamma$,
-      $"dtrue"$,
-      $iota("self" lt.eq "dBool"). lambda(P lt.eq "dBool" arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space "self"$,
+      $"true"$,
+      $iota("self" lt.eq "DBool"). lambda(P lt.eq "DBool" arrow top). lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "self"$,
     ),
     [S-Unfold-Fix-R],
   ),
-  dnote(1, [where $S_1 = {("dtrue", "dBool")}$]),
+  dnote(1, [where $S_1 = {("true", "DBool")}$]),
   dnote(1, [S-Iota-Intro --- annotation premise:]),
-  dstep(2, sub($S_1$, $Gamma$, $"dtrue"$, $"dBool"$), [S-Hyp #sym.checkmark]),
-  dnote(2, [root goal reappears --- closed by $(upright("dtrue"), upright("dBool")) in S_1$]),
-  dnote(1, [S-Iota-Intro --- body premise (after $["self" arrow.r.bar "dtrue"]$):]),
+  dstep(2, sub($S_1$, $Gamma$, $"true"$, $"DBool"$), [S-Hyp #sym.checkmark]),
+  dnote(2, [root goal reappears --- closed by $(upright("true"), upright("DBool")) in S_1$]),
+  dnote(1, [S-Iota-Intro --- body premise (after $["self" arrow.r.bar "true"]$):]),
   dstep(
     2,
     sub(
       $S_1$,
       $Gamma$,
-      $"dtrue"$,
-      $lambda(P lt.eq "dBool" arrow top). lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space "dtrue"$,
+      $"true"$,
+      $lambda(P lt.eq "DBool" arrow top). lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "true"$,
     ),
     [S-Lam],
   ),
-  dnote(2, [contravariant: $("dBool" arrow top) subset.sq.eq top$ by S-Top #sym.checkmark]),
-  dnote(2, [covariant body under $P lt.eq "dBool" arrow top$:]),
+  dnote(2, [contravariant: $("DBool" arrow top) subset.sq.eq top$ by S-Top #sym.checkmark]),
+  dnote(2, [covariant body under $P lt.eq "DBool" arrow top$:]),
   dstep(
     3,
     sub(
       $S_1$,
       $Gamma$,
       $lambda(t lt.eq top). lambda(f lt.eq top). t$,
-      $lambda(t lt.eq P space "dtrue"). lambda(f lt.eq P space "dfalse"). P space "dtrue"$,
+      $lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "true"$,
     ),
     [S-Lam],
   ),
-  dnote(3, [contravariant: $P space "dtrue" subset.sq.eq top$ by S-Top #sym.checkmark]),
-  dnote(3, [covariant body under $t lt.eq P space "dtrue"$: S-Lam again]),
-  dnote(4, [contravariant: $P space "dfalse" subset.sq.eq top$ by S-Top #sym.checkmark]),
+  dnote(3, [contravariant: $P space "true" subset.sq.eq top$ by S-Top #sym.checkmark]),
+  dnote(3, [covariant body under $t lt.eq P space "true"$: S-Lam again]),
+  dnote(4, [contravariant: $P space "false" subset.sq.eq top$ by S-Top #sym.checkmark]),
   dnote(
     4,
-    [covariant body: $t subset.sq.eq P space "dtrue"$ by S-Var ($t lt.eq P space "dtrue" in Gamma$) #sym.checkmark],
+    [covariant body: $t subset.sq.eq P space "true"$ by S-Var ($t lt.eq P space "true" in Gamma$) #sym.checkmark],
   ),
 ))
 
@@ -480,9 +480,18 @@ All encodings below are Church/Scott-style: data types are represented as their 
 $
    "true" & := lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
   "false" & := lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
+   "Bool" & := lambda(X lt.eq top). lambda(t lt.eq X). lambda(f lt.eq X). X
 $
 
-Standard Church-encoded booleans. Types and constructors share the same syntax --- both are plain $lambda$-terms.
+$"Bool"$ is a standard Church-encoded boolean: the eliminator takes two branches and a return type $X$, and the type itself is $X$. Elimination is non-dependent --- the return type $X$ is the same regardless of whether the value is $"true"$ or $"false"$.
+
+$
+  "DBool" &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P "true"). lambda(f lt.eq P "false"). P "self"
+$
+
+$"DBool"$ is the _dependent_ counterpart: its motive $P$ is a function from values to types, so the return type $P "self"$ varies with the value being eliminated. This is what $iota$ enables --- the $"self"$ binder in $iota("self" lt.eq B)$ refers to the actual value inhabiting the type, and [S-Iota-Intro] substitutes it into $P "self"$ during type checking.
+
+Crucially, $"Bool"$ and $"DBool"$ _share the same constructors_ ${"true", "false"}$. The dependent elimination machinery lives entirely in the type ($"DBool"$'s $iota$ and motive), not in the constructors. At runtime, a $"DBool"$ value is identical to a $"Bool"$ value --- the difference is purely compile-time. This pattern recurs later with $"Fin"$ reusing $"Nat"$'s constructors (@fin-encoding).
 
 == Pairs <pair-encoding>
 
@@ -496,14 +505,11 @@ Church-encoded binary products. Pair projections $"fst"$/$"snd"$ erase the unuse
 == Natural numbers <nat-encoding>
 
 $
-  "zero" &:= lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq top). z \
-  "succ" &:= lambda("pred" lt.eq top). lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq "pred" arrow top). s space "pred" \
-$
-
-$
-  "Nat" & := "fix"(N lt.eq top). iota("self" lt.eq N). \
-        & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space "zero"). \
-        & quad lambda(s lt.eq lambda("pred" lt.eq N). P space ("succ" "pred")). P space "self"
+  "zero" & := lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq top). z \
+  "succ" & := lambda(n lt.eq top). lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq n arrow top). s space n \
+   "Nat" & := "fix"(N lt.eq top). iota("self" lt.eq N). \
+         & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space "zero"). \
+         & quad lambda(s lt.eq lambda(n lt.eq N). P space ("succ" n)). P space "self"
 $
 
 Nat uses both key features of Och. The outer $"fix"$ ties the recursive knot (Nat refers to itself in the motive domain). The inner $iota$ binds $"self"$ to the value being typed, enabling _dependent_ elimination: the return type $P space "self"$ varies with the value.
@@ -584,8 +590,8 @@ In the zero-length branch, $i$ has type $"Fin" "zero" = bot$, so the branch body
 The payoff is at call sites:
 
 $
-  "indexArr" "Nat" "three" "arr" "zero" quad & checkmark quad ("zero" subset.sq.eq "Fin" "three") \
-  "indexArr" "Nat" "three" "arr" "two" quad & checkmark quad ("two" subset.sq.eq "Fin" "three") \
+   "indexArr" "Nat" "three" "arr" "zero" quad & checkmark quad ("zero" subset.sq.eq "Fin" "three") \
+    "indexArr" "Nat" "three" "arr" "two" quad & checkmark quad ("two" subset.sq.eq "Fin" "three") \
   "indexArr" "Nat" "three" "arr" "three" quad & times quad ("three" subset.sq.eq.not "Fin" "three")
 $
 
