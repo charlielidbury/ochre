@@ -3017,6 +3017,179 @@ theorem noPromoAt_sub_head_ann_swap
           exact subRed_noPromoAt_cast_ctx (swap_at_first_cons_ne x y (.equiv _) ann₂ _ hy_ne) (ih y hy_L)))
       ((x, ann₁) :: Γ) s u u' hnp
 
+-- noPromoAt when x has no .equiv in the context and x ∉ u.fvs.
+-- Generalisation of noPromoAt_fresh_equiv: handles contexts where x IS in dom(Γ)
+-- (e.g. with .sub annotation) as long as x ∉ u.fvs.
+-- The key case (x at the head with .sub) is the main intended application:
+-- `(x, .sub dom) :: Γ_tail` where x ∉ all_fvs(Γ_tail), x ∉ dom.fvs, x ∉ u.fvs.
+--
+-- NOTE: the `x ∉ u.fvs` condition is NECESSARY for the EquivRed motive.
+-- Counterexample without it: context `[(x, .sub .top)]`, stack `[]`,
+-- term `app (lam .top (bvar 0)) (fvar x)`.
+-- ME-APP pushes (fvar x) onto the stack; ME-FOP pops it into an .equiv
+-- annotation for a fresh y; ME-PRO on y triggers SubRed on (fvar x);
+-- MS-PRO on x fires (x has .sub .top) → noPromoAt x FAILS.
+set_option maxHeartbeats 12800000 in
+theorem noPromoAt_no_equiv_fresh
+    {x : String} {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
+    (h : LNEquivRed Γ s u v)
+    (hA : ∀ α, ¬ LNCtx.mem_equiv Γ x α)
+    (hB : ∀ z α, LNCtx.mem_equiv Γ z α → x ∉ α.fvs)
+    (hC : ∀ e ∈ s, x ∉ e.fvs)
+    (hD : x ∉ u.fvs)
+    : LNEquivRed.noPromoAt x Γ s u v := by
+  have go :=
+    @LNEquivRed.rec
+      (motive_1 := fun Γ s u v _ =>
+        ∀ x,
+        (∀ α, ¬ LNCtx.mem_equiv Γ x α) →
+        (∀ z α, LNCtx.mem_equiv Γ z α → x ∉ α.fvs) →
+        (∀ e ∈ s, x ∉ e.fvs) →
+        x ∉ u.fvs →
+        LNEquivRed.noPromoAt x Γ s u v)
+      (motive_2 := fun Γ s u v _ =>
+        ∀ x,
+        (∀ α, ¬ LNCtx.mem_equiv Γ x α) →
+        (∀ z α, LNCtx.mem_equiv Γ z α → x ∉ α.fvs) →
+        (∀ e ∈ s, x ∉ e.fvs) →
+        x ∉ u.fvs →
+        LNSubRed.noPromoAt x Γ s u v)
+      -- ME-PRO: z ≡ α ∈ Γ, SubRed Γ s α α'
+      (fun hmem _hsub ih_sub x hA hB hC hD =>
+        .me_pro (fun heq => hA _ (heq ▸ hmem)) hmem (ih_sub x hA hB hC (hB _ _ hmem)))
+      -- ME-BET: L, body, v; input = app (lam dom body) v
+      (fun L _hbody _hv ih_body ih_v x hA hB hC hD =>
+        have hD_v : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_right _ h)
+        have hD_lam : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_left _ h)
+        have hD_body : x ∉ LNExpr.fvs _ := fun h => hD_lam (List.mem_append_right _ h)
+        .me_bet (x :: L)
+          (fun y hy =>
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            ih_body y hy_L x
+              (fun α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                simp [show ¬(y == x) = true from by simp [beq_iff_eq]; exact hy_ne] at hmem
+                exact hA α hmem)
+              (fun z α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                by_cases hzy : y == z
+                · simp [hzy] at hmem
+                · simp [hzy] at hmem; exact hB z α hmem)
+              hC
+              (LNExpr.not_mem_fvs_open_at _ hD_body (Ne.symm hy_ne)))
+          (ih_v x hA hB (fun _ he => absurd he (List.not_mem_nil _)) hD_v))
+      -- ME-TOP
+      (fun _ _ _ _ _ => .me_top)
+      -- ME-VAR
+      (fun _ _ _ _ _ => .me_var)
+      -- ME-TAP
+      (fun _ _ _ _ _ => .me_tap)
+      -- ME-APP: app u v
+      (fun _hu _hv ih_u ih_v x hA hB hC hD => by
+        have hD_u : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_left _ h)
+        have hD_v : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_right _ h)
+        exact .me_app
+          (ih_u x hA hB (fun e he => by
+            cases List.mem_cons.mp he with
+            | inl heq => exact heq ▸ hD_v
+            | inr hmem => exact hC e hmem) hD_u)
+          (ih_v x hA hB (fun _ he => absurd he (List.not_mem_nil _)) hD_v))
+      -- ME-FUN: L, dom, body; input = lam dom body, stack = []
+      (fun L _hdom _hbody ih_dom ih_body x hA hB hC hD =>
+        have hD_dom : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_left _ h)
+        have hD_body : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_right _ h)
+        .me_fun (x :: L)
+          (ih_dom x hA hB (fun _ he => absurd he (List.not_mem_nil _)) hD_dom)
+          (fun y hy =>
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            ih_body y (fun h => hy (List.mem_cons_of_mem _ h)) x
+              (fun α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                simp [show ¬(y == x) = true from by simp [beq_iff_eq]; exact hy_ne] at hmem
+                exact hA α hmem)
+              (fun z α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                by_cases hzy : y == z
+                · simp [hzy] at hmem
+                · simp [hzy] at hmem; exact hB z α hmem)
+              (fun _ he => absurd he (List.not_mem_nil _))
+              (LNExpr.not_mem_fvs_open_at _ hD_body (Ne.symm hy_ne))))
+      -- ME-FOP: L, dom, body, stack α :: s_rest; input = lam dom body
+      (fun L _hdom _hbody ih_dom ih_body x hA hB hC hD =>
+        have hD_dom : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_left _ h)
+        have hD_body : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_right _ h)
+        have hC_head : x ∉ LNExpr.fvs _ := hC _ (List.mem_cons_self _ _)
+        .me_fop (x :: L)
+          (ih_dom x hA hB (fun _ he => absurd he (List.not_mem_nil _)) hD_dom)
+          (fun y hy =>
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            ih_body y (fun h => hy (List.mem_cons_of_mem _ h)) x
+              (fun α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                simp [show ¬(y == x) = true from by simp [beq_iff_eq]; exact hy_ne] at hmem
+                exact hA α hmem)
+              (fun z α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                by_cases hzy : y == z
+                · simp [hzy] at hmem; subst hmem; exact hC_head
+                · simp [hzy] at hmem; exact hB z α hmem)
+              (fun e he => hC e (List.mem_cons_of_mem _ he))
+              (LNExpr.not_mem_fvs_open_at _ hD_body (Ne.symm hy_ne))))
+      -- MS-PRO: z ≤ t ∈ Γ
+      (fun hmem x _hA _hB _hC hD =>
+        .ms_pro (fun heq => by simp only [LNExpr.fvs] at hD; exact hD (heq ▸ List.mem_cons_self _ _)) hmem)
+      -- MS-TOP
+      (fun _ _ _ _ _ => .ms_top)
+      -- MS-EQU
+      (fun _hequ ih_equ x hA hB hC hD => .ms_equ (ih_equ x hA hB hC hD))
+      -- MS-APP: app u v
+      (fun _hsub ih_sub x hA hB hC hD => by
+        have hD_u : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_left _ h)
+        have hD_v : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_right _ h)
+        exact .ms_app (ih_sub x hA hB (fun e he => by
+            cases List.mem_cons.mp he with
+            | inl heq => exact heq ▸ hD_v
+            | inr hmem => exact hC e hmem) hD_u))
+      -- MS-FUN: L, body; input = lam dom body, stack = []
+      (fun L _hbody ih_body x hA hB _hC hD =>
+        have hD_body : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_right _ h)
+        .ms_fun (x :: L)
+          (fun y hy =>
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            ih_body y (fun h => hy (List.mem_cons_of_mem _ h)) x
+              (fun α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                simp [show ¬(y == x) = true from by simp [beq_iff_eq]; exact hy_ne] at hmem
+                exact hA α hmem)
+              (fun z α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                by_cases hzy : y == z
+                · simp [hzy] at hmem
+                · simp [hzy] at hmem; exact hB z α hmem)
+              (fun _ he => absurd he (List.not_mem_nil _))
+              (LNExpr.not_mem_fvs_open_at _ hD_body (Ne.symm hy_ne))))
+      -- MS-FOP: L, body, stack α :: s_rest; input = lam dom body
+      (fun L _hbody ih_body x hA hB hC hD =>
+        have hD_body : x ∉ LNExpr.fvs _ := fun h => hD (List.mem_append_right _ h)
+        have hC_head : x ∉ LNExpr.fvs _ := hC _ (List.mem_cons_self _ _)
+        .ms_fop (x :: L)
+          (fun y hy =>
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            ih_body y (fun h => hy (List.mem_cons_of_mem _ h)) x
+              (fun α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                simp [show ¬(y == x) = true from by simp [beq_iff_eq]; exact hy_ne] at hmem
+                exact hA α hmem)
+              (fun z α hmem => by
+                simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
+                by_cases hzy : y == z
+                · simp [hzy] at hmem; subst hmem; exact hC_head
+                · simp [hzy] at hmem; exact hB z α hmem)
+              (fun e he => hC e (List.mem_cons_of_mem _ he))
+              (LNExpr.not_mem_fvs_open_at _ hD_body (Ne.symm hy_ne))))
+  exact go h x hA hB hC hD
+
 /-! #### subRed_subst_noPromo: substitute a general term for a non-promoted variable
 
 By mutual induction on the noPromoAt derivation. The context transformation
