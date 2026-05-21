@@ -103,16 +103,57 @@ Full consistency would require either:
 
 Both are substantial changes beyond the scope of a universe annotation.
 
+## Compile-time vs runtime: erasure as evaluation
+
+The key insight: U(1) functions are **compile-time functions**. They
+don't exist at runtime — they run during compilation and produce
+runtime values.
+
+Example: `id_ = λT:Type. λx:T. x`. `id_` is a U(1) function.
+`id_ Nat_` evaluates at compile time to `λx.x`, which IS a runtime
+value. The type argument `Nat_` never reaches the runtime.
+
+So "erasure" is not removing arguments from function calls — it's
+evaluating the compile-time layer. The pipeline becomes:
+
+```
+source → synthCore (type check) → compile-time eval → runtime expr → concEval (run)
+```
+
+The compile-time evaluator is essentially `evalSubst` — it already
+handles WHNF computation, open terms, β-reduction. The missing piece
+is the universe annotation to know WHICH applications to evaluate at
+compile time vs defer to runtime.
+
+After compile-time evaluation, the runtime program contains only
+lambdas and applications. No fix, no iota, no Type, no Bot.
+`concEval` becomes trivial: pure β-reduction.
+
+### Experimental evidence
+
+Attempting to remove fix/iota/bot from `concEval` values WITHOUT
+erasure fails: CBV evaluates ALL arguments (including type arguments
+like `Nat_`), so `id_ Nat_ three_` evaluates `Nat_` (a fix) before
+β-reducing. With erasure, `id_ Nat_` is computed away at compile
+time, and concEval only sees `(λx.x) three_`.
+
+`Type` was the one value we COULD remove without erasure (commit
+9da8e94) because it's a leaf — never produced by unrolling a
+type argument.
+
 ## Implementation effort
 
-Moderate. The universe check is a separate judgment that can be
-implemented as a standalone pass after `synthCore`, reusing the existing
-AST. No changes to `evalSubst`, `subCheckSubst`, or `Subtype'`.
+Moderate. The universe system is a separate layer on top of the
+existing type checker and evaluator.
 
 Steps:
 1. Add universe inference (walk the term, classify each subterm)
 2. Add universe checking to `synthCore`'s app arm
-3. Gate `concEval` on `U(0)`
-4. Update soundness theorem statement
+3. Add compile-time evaluation pass (evaluate U(1) applications,
+   erase U(1) binders — this changes arities and de Bruijn indices)
+4. Gate `concEval` on the erased output (lambdas + apps only)
+5. Update soundness theorem to chain: type check → compile-time
+   eval preserves semantics → runtime eval is safe
 
-The proofs are unaffected — universes are orthogonal to subtyping.
+The subtyping relation and its proofs are unaffected — universes
+are orthogonal to subtyping.
