@@ -220,7 +220,7 @@ As far as I can tell the reason it is remarkable enough to have a name is not th
 
 The "real" subtyping judgment is $emptyset ; Gamma tack.r a subset.sq.eq b$ (empty hypothesis set); non-empty $S$ arises only inside a derivation.
 
-== Subtyping Rules <rule-taxonomy>
+== Subtyping Rules <subtyping>
 
 The subtyping rules fall into four categories. Each serves a distinct purpose; knowing which category a rule belongs to predicts its shape.
 
@@ -599,18 +599,12 @@ Out-of-bounds access is a _compile-time_ error: the index literal fails to subty
 
 = Metatheory <metatheory>
 
-Soundness connects the concrete semantics (@conc-eval), subtyping (@decl-sub), and well-formedness (@well-formed).
+Soundness connects the concrete semantics (@conc-eval), subtyping (@subtyping), and well-formedness (@well-formed).
 
 *Evaluation equivalence.* If $e$ evaluates to $e'$, both directions of subtyping hold.
 
 $
-  e "closed" and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq e and emptyset ; emptyset tack.r e subset.sq.eq e'
-$
-
-*Preservation.* Evaluation preserves well-formedness (derives from evaluation equivalence).
-
-$
-  tack.r e "wf" and e arrow.b.double e' arrow.double tack.r e' "wf"
+  e arrow.b.double e' "implies" emptyset ; emptyset tack.r e' subset.sq.eq e "and" emptyset ; emptyset tack.r e subset.sq.eq e'
 $
 
 *Progress.* A well-formed closed term doesn't get stuck during evaluation. The evaluator may return a value or run out of fuel but never reaches an error state.
@@ -618,7 +612,7 @@ $
 *End-to-end.* Composing the above: if $e$ is well-formed and subtypes $tau$, and $e$ evaluates to $e'$, the result subtypes $tau$.
 
 $
-  tack.r e "wf" and emptyset ; emptyset tack.r e subset.sq.eq tau and e arrow.b.double e' arrow.double emptyset ; emptyset tack.r e' subset.sq.eq tau
+  wf(emptyset, e) "and" sub(emptyset, emptyset, e, tau) "and" e arrow.b.double e' "implies" emptyset ; emptyset tack.r e' subset.sq.eq tau
 $
 
 == What soundness promises to the programmer <promises>
