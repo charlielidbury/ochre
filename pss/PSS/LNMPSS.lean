@@ -2379,13 +2379,137 @@ of rules applied by h1 and h2.  Follows Appendix A of Pasquale & Garcia-Perez.
 -- with sets L₁ and L₂, we pick x ∉ L₁ ∪ L₂ ∪ dom(Γ) ∪ ... and instantiate
 -- both, eliminating the need for equivRed_rename entirely.
 
+set_option maxHeartbeats 3200000 in
 theorem diamond_full
     (t₀ : LNExpr)
     {Γ Γ₁ Γ₂ : LNCtx} {s s₁ s₂ : LNStack} {t₁ t₂ : LNExpr}
     (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
     (hctx1 : LNCtxRed Γ s Γ₁ s₁) (hctx2 : LNCtxRed Γ s Γ₂ s₂)
+    (hlc : t₀.lc) (hwf : Γ.wf) (hswf : s.wf) (hnd : (LNCtx.dom Γ).Nodup)
     : ∃ t₃, LNEquivRed Γ₁ s₁ t₁ t₃ ∧ LNEquivRed Γ₂ s₂ t₂ t₃ := by
-  sorry
+  cases h1 with
+  | me_pro _ _ => sorry
+  | me_top => cases h2 with | me_top => exact ⟨.top, .me_top, .me_top⟩
+  | me_var =>
+    cases h2 with
+    | me_var => exact ⟨.fvar _, .me_var, .me_var⟩
+    | me_pro _ _ => sorry
+  | me_tap =>
+    cases h2 with
+    | me_tap => exact ⟨.top, .me_top, .me_top⟩
+    | @me_app _ _ _ u₂' _ v₂' h2_u h2_v =>
+      cases h2_u with | me_top => exact ⟨.top, .me_top, .me_tap⟩
+  | @me_app _ _ u_head u₁' v_head v₁' h1_u h1_v =>
+    cases h2 with
+    | @me_app _ _ _ u₂' _ v₂' h2_u h2_v =>
+      obtain ⟨v₃, hv₃l, hv₃r⟩ := diamond_full v_head h1_v h2_v
+        (ctxRed_nil_of_ctxRed hctx1) (ctxRed_nil_of_ctxRed hctx2)
+        hlc.2 hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
+      obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full u_head h1_u h2_u
+        (.ct_stk hctx1 h1_v) (.ct_stk hctx2 h2_v) hlc.1 hwf
+        (fun e he => by cases he with | head => exact hlc.2 | tail _ h => exact hswf e h) hnd
+      exact ⟨.app u₃ v₃, .me_app hu₃l hv₃l, .me_app hu₃r hv₃r⟩
+    | me_tap => cases h1_u with | me_top => exact ⟨.top, .me_tap, .me_top⟩
+    | me_bet _ _ => sorry
+  | me_bet _ _ =>
+    cases h2 with
+    | me_bet _ _ => sorry
+    | me_app _ _ => sorry
+  | @me_fun _ dom₁ dom₁' body₁ body₁' L₁ h1_dom h1_body =>
+    cases h2 with
+    | @me_fun _ _ dom₂' _ body₂' L₂ h2_dom h2_body =>
+      have hdom_lc := hlc.1
+      obtain ⟨dom₃, hd₃l, hd₃r⟩ := diamond_full dom₁ h1_dom h2_dom
+        (ctxRed_nil_of_ctxRed hctx1) (ctxRed_nil_of_ctxRed hctx2)
+        hdom_lc hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
+      obtain ⟨x, hx⟩ := exists_fresh_string
+        (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
+      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+      have hxΓ : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hxΓ₁ : x ∉ LNCtx.dom Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hxΓ₂ : x ∉ LNCtx.dom Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_right _ h)
+      have hs₁ := ctxRed_nil_stack hctx1; subst hs₁
+      have hs₂ := ctxRed_nil_stack hctx2; subst hs₂
+      have hwf_body : LNCtx.wf ((x, .sub dom₁) :: Γ) :=
+        fun p hp => by cases hp with | head => exact hdom_lc | tail _ h => exact hwf p h
+      obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body₁.open_at 0 (.fvar x))
+        (h1_body x hxL₁) (h2_body x hxL₂)
+        (.ct_ann_sub (ctxRed_nil_of_ctxRed hctx1) h1_dom)
+        (.ct_ann_sub (ctxRed_nil_of_ctxRed hctx2) h2_dom)
+        (LNExpr.lc_at_open_fvar hlc.2) hwf_body
+        (fun _ he => absurd he (List.not_mem_nil _))
+        (List.nodup_cons.mpr ⟨hxΓ, hnd⟩)
+      have hb₁lc := equivRed_preserves_lc (h1_body x hxL₁) (LNExpr.lc_at_open_fvar hlc.2)
+        hwf_body (fun _ he => absurd he (List.not_mem_nil _))
+      have hd₁lc := equivRed_preserves_lc h1_dom hdom_lc hwf
+        (fun _ he => absurd he (List.not_mem_nil _))
+      have u₃lc : u₃.lc := equivRed_preserves_lc hu₃l hb₁lc
+        (fun p hp => by cases hp with | head => exact hd₁lc | tail _ h => sorry) -- Γ₁.wf
+        (fun _ he => absurd he (List.not_mem_nil _))
+      exact ⟨.lam dom₃ (u₃.close_at 0 x),
+        .me_fun (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+          hd₃l (fun y hy => by
+            have := equivRed_rename hu₃l hxΓ₁
+              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+              hxb₁
+            rw [open_close_subst u₃lc]; exact this),
+        .me_fun (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+          hd₃r (fun y hy => by
+            have := equivRed_rename hu₃r hxΓ₂
+              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+              hxb₂
+            rw [open_close_subst u₃lc]; exact this)⟩
+  | @me_fop _ s' α₁ dom₁ dom₁' body₁ body₁' L₁ h1_dom h1_body =>
+    cases h2 with
+    | @me_fop _ _ _ _ dom₂' _ body₂' L₂ h2_dom h2_body =>
+      have hα_lc := hswf α₁ (List.mem_cons_self _ _)
+      have hs'_wf : LNStack.wf s' := fun e he => hswf e (List.mem_cons_of_mem _ he)
+      obtain ⟨α', s₁', hs₁eq, hctx1_inner, hα₁_red⟩ := ctxRed_stack_inv hctx1 hnd; subst hs₁eq
+      obtain ⟨α'', s₂', hs₂eq, hctx2_inner, hα₂_red⟩ := ctxRed_stack_inv hctx2 hnd; subst hs₂eq
+      obtain ⟨dom₃, hd₃l, hd₃r⟩ := diamond_full dom₁ h1_dom h2_dom
+        (ctxRed_nil_of_ctxRed hctx1_inner) (ctxRed_nil_of_ctxRed hctx2_inner)
+        hlc.1 hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
+      obtain ⟨x, hx⟩ := exists_fresh_string
+        (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
+      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+      have hxΓ : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hxΓ₁ : x ∉ LNCtx.dom Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hxΓ₂ : x ∉ LNCtx.dom Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_right _ h)
+      have hwf_body : LNCtx.wf ((x, .equiv α₁) :: Γ) :=
+        fun p hp => by cases hp with | head => exact hα_lc | tail _ h => exact hwf p h
+      obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body₁.open_at 0 (.fvar x))
+        (h1_body x hxL₁) (h2_body x hxL₂)
+        (.ct_ann_equiv hctx1_inner hα₁_red) (.ct_ann_equiv hctx2_inner hα₂_red)
+        (LNExpr.lc_at_open_fvar hlc.2) hwf_body hs'_wf
+        (List.nodup_cons.mpr ⟨hxΓ, hnd⟩)
+      have hb₁lc := equivRed_preserves_lc (h1_body x hxL₁)
+        (LNExpr.lc_at_open_fvar hlc.2) hwf_body hs'_wf
+      have hα'lc := equivRed_preserves_lc hα₁_red hα_lc hwf
+        (fun _ he => absurd he (List.not_mem_nil _))
+      have u₃lc : u₃.lc := equivRed_preserves_lc hu₃l hb₁lc
+        (fun p hp => by cases hp with | head => exact hα'lc | tail _ h => sorry) -- Γ₁.wf
+        (sorry) -- s₁'.wf
+      exact ⟨.lam dom₃ (u₃.close_at 0 x),
+        .me_fop (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+          hd₃l (fun y hy => by
+            have := equivRed_rename hu₃l hxΓ₁
+              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+              hxb₁
+            rw [open_close_subst u₃lc]; exact this),
+        .me_fop (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+          hd₃r (fun y hy => by
+            have := equivRed_rename hu₃r hxΓ₂
+              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+              hxb₂
+            rw [open_close_subst u₃lc]; exact this)⟩
+termination_by t₀.sz
+decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
 
 /-- Diamond (one-context version used by commutativity).
     Derived from `diamond_full` by using `ctxRed_refl` for one context. -/
@@ -2394,9 +2518,10 @@ theorem diamond
     (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
     (hctx : LNCtxRed Γ s Γ' s')
     (hwf_ctx : Γ.wf) (hwf_stk : s.wf)
+    (hlc : t₀.lc) (hnd : (LNCtx.dom Γ).Nodup)
     : ∃ t₃, LNEquivRed Γ s t₂ t₃ ∧ LNEquivRed Γ' s' t₁ t₃ := by
   have hid : LNCtxRed Γ s Γ s := ctxRed_refl Γ s hwf_ctx hwf_stk
-  obtain ⟨t₃, h_left, h_right⟩ := diamond_full t₀ h2 h1 hid hctx
+  obtain ⟨t₃, h_left, h_right⟩ := diamond_full t₀ h2 h1 hid hctx hlc hwf_ctx hwf_stk hnd
   exact ⟨t₃, h_left, h_right⟩
 
 /-! ### Commutativity (Lemma 1)
@@ -2437,7 +2562,7 @@ theorem commutativity
   -- MS-EQU: t₂ comes from Γ;s ⊢ t₀ ≡→ t₂
   --===================================================================
   | ms_equ h_eq2 =>
-    obtain ⟨t₃, htop, hright⟩ := diamond h_equiv h_eq2 h_ctx hwf_ctx hwf_stk
+    obtain ⟨t₃, htop, hright⟩ := diamond h_equiv h_eq2 h_ctx hwf_ctx hwf_stk h_lc h_nd
     exact ⟨t₃, htop, .ms_equ hright, sorry⟩  -- sorry: noPromoAt preservation for MS-EQU/diamond case
 
   --===================================================================
@@ -2495,7 +2620,7 @@ theorem commutativity
           .me_app h_eq_lam (equivRed_refl Γ [] v hv_lc)
         have h_equiv_orig : LNEquivRed Γ s (.app (.lam dom body) v) (t_e.open_at 0 v') :=
           .me_bet L_e h_body_e h_v_e
-        obtain ⟨t₃, htop, hright⟩ := diamond h_equiv_orig h_equiv2 h_ctx hwf_ctx hwf_stk
+        obtain ⟨t₃, htop, hright⟩ := diamond h_equiv_orig h_equiv2 h_ctx hwf_ctx hwf_stk h_lc h_nd
         exact ⟨t₃, htop, .ms_equ hright, sorry⟩  -- sorry: noPromoAt preservation for ME-BET/MS-EQU
       | @ms_fop _ _ _ _ _ body₂ L_s h_sub_body_s =>
         -- h_sub_body_s : ∀ y, y ∉ L_s → LNSubRed ((y, .equiv v) :: Γ) s (body^y) (body₂^y)
