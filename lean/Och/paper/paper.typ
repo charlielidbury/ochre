@@ -80,13 +80,16 @@ variable names to their declared types).
 You may think the runtime semantics of Och are unimportant since this is type systems research, but with how I've laid out the soundness proofs $arrow.b.double$ plays a crucial role: soundness states "if a program type checks, it will succeed at runtime", therefore $arrow.b.double$ must _reject_ ill-formed programs, otherwise our soundness becomes vacuously solvable (via $"false"$ on the RHS of an implication).
 
 The concrete evaluator is a substitution-based call-by-value big-step
-interpreter on closed terms. Lambdas, ι, and fix are values;
-applications in function position unroll the recursive binder by
-substituting its self-reference, then re-apply.
+interpreter on closed terms. Lambdas are the only values. Fix and iota
+eagerly unroll by substituting their self-reference into the body.
+Application is pure β-reduction — only lambdas can be applied.
 
-Concrete evaluation is supposed to only represent Och's _runtime_ semantics, but Och has no concept of levels/universes/stages, so for now the type checker cannot enforce that ${top, bot, iota}$ don't turn up at runtime. Since soundness is defined roughly as "type correct implies runtime correct", we must handle these values in the concrete semantics to avoid making our soundness completely unprovable.
-
-This can and should be solved in the future by adding levels to all binders (see §3.6 "Adding Universes" of PSS @hutchins-2010 for roughly how I plan on doing this).
+Och has no concept of levels/universes/stages, so the type checker
+cannot enforce that $top$ and $bot$ don't appear at runtime. These are
+kept as values to avoid making soundness unprovable. Adding universes
+(see §3.6 of PSS @hutchins-2010) would let us erase type-level
+arguments during compilation, after which $top$, $bot$, $iota$, and
+$"fix"$ would never appear at runtime.
 
 We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to
 value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in.
@@ -101,12 +104,12 @@ value $v$". Note: there is no context and no free/abstract variables: everything
     $v$,
   )),
 
-  irule("E-App-Iota", eval($f space a$, $v$), eval($f$, $iota(x lt.eq tau). b$), eval($a$, $v_a$), eval(
-    $(b[x arrow.r.bar iota(x lt.eq tau).b]) space v_a$,
+  irule("E-Iota", eval($iota(x lt.eq tau). b$, $v$), eval(
+    $b[x arrow.r.bar iota(x lt.eq tau).b]$,
     $v$,
   )),
-  irule("E-App-fix", eval($f space a$, $v$), eval($f$, $"fix"(x lt.eq tau). b$), eval($a$, $v_a$), eval(
-    $(b[x arrow.r.bar "fix"(x lt.eq tau).b]) space v_a$,
+  irule("E-Fix", eval($"fix"(x lt.eq tau). b$, $v$), eval(
+    $b[x arrow.r.bar "fix"(x lt.eq tau).b]$,
     $v$,
   )),
 ))
@@ -115,13 +118,12 @@ $
   "where" v in "Value" ::= & lambda(x lt.eq tau). e &           "lambda" \
                          | & bot                    & "primitive bottom" \
                          | & top                    &   "universe (top)" \
-                         | & iota(x lt.eq tau). e   & "self-type binder" \
-                         | & "fix"(x lt.eq tau). e  & "recursive binder" \
 $
 
 The most important aspect of the runtime semantics are what is *_missing_* from the above rules:
-- Free variables are not values, therefore they cannot occur at runtime, *which forces the type system must rule out ill-scoped variables*.
-- Application can only apply to lambdas, *which forces the type system to verify applications are well typed w.r.t. the function domain.*
+- Free variables are not values, therefore they cannot occur at runtime, *which forces the type system to rule out ill-scoped variables*.
+- Application can only apply to lambdas, *which forces the type system to verify applications are well typed w.r.t. the function domain*.
+- Fix and iota eagerly unroll — a program like $"fix"(x lt.eq tau). x$ loops forever (consuming fuel), which is the correct behaviour for non-terminating recursion.
 
 = Typing Rules <decl-sub>
 
