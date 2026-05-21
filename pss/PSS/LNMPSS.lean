@@ -55,12 +55,33 @@ Several kinds of `sorry` remain:
 8. CLOSED: `promotion_collapse` ms_fun/ms_fop cases now proved using
    classical dichotomy (by_cases on ∃ y₀ giving EquivRed) +
    equivRed_rename to build ME-FUN/ME-FOP from one witness y₀.
-9. Commutativity ME-BET/MS-FOP `.inr` case: when the body SubRed collapses
-   to EquivRed (via promotion_collapse), the two EquivReds are in different
-   contexts (.sub vs .equiv) and diamond cannot be applied directly.
-   Requires either annotation swap on the EquivRed (which may fail due to
-   stack-induced promotion chains, per the me_bet_body_noPromoAt
-   counterexample) or the full mutual induction co-proving noPromoAt.
+9. Commutativity ME-BET/MS-FOP `.inr` case (BLOCKED): when the body SubRed
+   collapses to EquivRed (via promotion_collapse), the two EquivReds are in
+   different contexts (.sub vs .equiv) and diamond cannot be applied directly.
+   All known approaches are blocked:
+   - Annotation swap via noPromoAt: FALSE in general. The EquivRed from
+     promotion_collapse can promote x via me_pro (counterexample: body^x =
+     fvar x triggers me_pro on x accessing v). The .sub-context EquivRed
+     can also promote x via stack-induced chains (ME-APP pushes fvar x,
+     ME-FOP captures it, ME-PRO + MS-PRO on x fires). See
+     me_bet_body_noPromoAt_strengthened_false.
+   - Two-context diamond: FALSE. Different annotations enable genuinely
+     different reductions (e.g., fvar x with .sub gives me_var, with
+     .equiv gives me_pro), so a common reduct need not exist.
+   - Possible resolutions: (1) mutual induction co-proving a stronger
+     invariant, (2) simulation lemma between annotation contexts,
+     (3) refined promotion_collapse returning a noPromoAt-compatible EquivRed
+     (at cost of different target).
+10. Commutativity noPromoAt preservation sorrys: every case of commutativity
+   that produces a result needs noPromoAt z on the output SubRed for any z
+   that had noPromoAt z on the input SubRed. Currently sorry'd in MS-EQU,
+   MS-PRO (also needs stack extension), ME-APP/MS-APP, ME-BET/MS-EQU,
+   and ME-BET/MS-FOP case (a). The general approach requires:
+   - Inverting noPromoAt through the input SubRed structure
+   - Applying the IH (which co-proves noPromoAt)
+   - A noPromoAt_subst lemma (substituting x → v' preserves noPromoAt z
+     when z ≠ x) for binder cases
+   The z = x special case is easier (noPromoAt_fresh_sub since x ∉ dom Γ').
 7. Stack extension for annotation terms in commutativity's MS-PRO/ME-VAR case:
    `ctxRed_lookup_sub` gives `LNEquivRed Γ [] t t'` (empty stack) but the top
    edge needs `LNEquivRed Γ s t t'` (current stack). This holds for well-formed
@@ -121,9 +142,10 @@ None. All former axioms have been removed:
   includes `∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃`.
   The ME-BET/MS-FOP case now uses `promotion_collapse` to split into:
   (a) noPromoAt holds → swap annotation to .sub via `noPromoAt_sub_swap`,
-      apply IH under .sub, no annotation swaps needed (FULLY PROVED path).
-  (b) SubRed collapses to EquivRed → sorry'd pending diamond in unified
-      context or full mutual induction.
+      apply IH under .sub, fully proved EXCEPT noPromoAt preservation
+      (sorry #10). The main diagram (top + right edges) is complete.
+  (b) SubRed collapses to EquivRed → sorry'd (single sorry, see #9).
+      All approaches to close this gap are known to be blocked.
 
 ## Sorry'd Theorems
 - `equivRed_rename_strong` / `subRed_rename_strong`: fvar renaming for reductions.
@@ -4869,75 +4891,59 @@ theorem commutativity
             exact h_subst
           · -- noPromoAt preservation
             intro z hnp_z
-            -- The witness is (u₃.close 0 x)^v', built via subRed_subst_noPromo
-            -- For any z, if noPromoAt z on the original SubRed, we need noPromoAt z on the result
-            -- This follows from noPromoAt_fresh_sub since z ∉ dom Γ' (if z ∉ dom Γ)
-            -- or from the IH's noPromoAt preservation
+            -- hnp_z : noPromoAt z Γ s (app (lam dom body) v) (app (lam dom body₂) v)
+            -- Need : noPromoAt z Γ' s' (t_e^v') ((u₃.close x)^v')
+            --
+            -- Strategy: The IH (_hnp_ih) gives noPromoAt z in the extended
+            -- context ((x,.sub dom)::Γ') if we can provide noPromoAt z in
+            -- ((x,.sub dom)::Γ). To get there from hnp_z, we need:
+            --   (1) Invert hnp_z through ms_app to get noPromoAt z Γ (v::s) ...
+            --   (2) Invert through ms_fop to get noPromoAt z ((y,.equiv v)::Γ) s ...
+            --   (3) Swap annotation from .equiv v to .sub dom (needs noPromoAt y)
+            -- Step (3) needs noPromoAt for the HEAD variable y, which is a
+            -- different question from noPromoAt z. This is blocked by the same
+            -- stack-induced promotion issue as case (b).
+            --
+            -- Special case z = x: since x ∉ dom Γ', this follows from
+            -- noPromoAt_fresh_sub on the result SubRed.
+            --
+            -- General case z ≠ x: requires a noPromoAt_subst lemma (substituting
+            -- x → v' preserves noPromoAt z when z ≠ x) which doesn't exist yet.
             sorry
         | inr h_eq_body =>
           -- ─── Case (b): SubRed collapses to EquivRed ───
           -- h_eq_body : EquivRed ((x,.equiv v)::Γ) s (body^x) (body₂^x)
-          -- We swap h_eq_body's annotation from .equiv to .sub using noPromoAt,
-          -- then apply diamond with h_body_e_x (both in .sub context).
-          have hnp_eq_body : LNEquivRed.noPromoAt x ((x, .equiv v) :: Γ) s
-              (body.open_at 0 (.fvar x)) (body₂.open_at 0 (.fvar x)) :=
-            -- h_eq_body came from promotion_collapse's .inr path. The EquivRed
-            -- doesn't promote x because: x has .equiv annotation, and me_pro
-            -- on x would access v where x ∉ v.fvs, so SubRed on v can't use ms_pro on x.
-            -- x ∉ all_fvs Γ means no other promotion path reaches x.
-            sorry -- noPromoAt_head_fresh for the EquivRed
-          have h_eq_body_swapped : LNEquivRed ((x, .sub dom) :: Γ) s
-              (body.open_at 0 (.fvar x)) (body₂.open_at 0 (.fvar x)) :=
-            equivRed_change_equiv_to_sub h_eq_body hnp_eq_body
-          -- Now both EquivReds are in the same context: apply diamond
-          have h_ctx_body_sub : LNCtxRed ((x, .sub dom) :: Γ) s ((x, .sub dom) :: Γ') s' :=
-            LNCtxRed.ct_ann_sub h_ctx (equivRed_refl Γ [] dom h_lc.1.1)
-          obtain ⟨u₃, htop_body, hright_body⟩ :=
-            diamond h_body_e_x h_eq_body_swapped h_ctx_body_sub
-              (fun p hp => by cases hp with | head => exact h_lc.1.1 | tail _ hmem => exact hwf_ctx p hmem)
-              hwf_stk hbody_lc (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
-          -- htop_body : EquivRed ((x,.sub dom)::Γ) s (body₂^x) u₃
-          -- hright_body : EquivRed ((x,.sub dom)::Γ') s' (t_e^x) u₃
-          have hwf_ctx_ext_sub' : LNCtx.wf ((x, .sub dom) :: Γ) :=
-            fun p hp => by cases hp with | head => exact h_lc.1.1 | tail _ hmem => exact hwf_ctx p hmem
-          have hbody₂_x_lc : (body₂.open_at 0 (.fvar x)).lc :=
-            equivRed_preserves_lc h_eq_body_swapped hbody_lc hwf_ctx_ext_sub' hwf_stk
-          have u₃_lc : u₃.lc :=
-            equivRed_preserves_lc htop_body hbody₂_x_lc hwf_ctx_ext_sub' hwf_stk
-          -- Build witness: t₃ = (u₃.close 0 x)^v'
-          refine ⟨(u₃.close_at 0 x).open_at 0 v', ?_, ?_, ?_⟩
-          · -- Top edge: same as case (a) — ME-BET using htop_body
-            exact .me_bet (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.dom Γ' ++ dom.fvs)
-              (fun y hy => by
-                have hy_all_fvs : y ∉ LNCtx.all_fvs Γ := fun h =>
-                  hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-                have hy_dom_fvs : y ∉ dom.fvs := fun h =>
-                  hy (List.mem_append_right _ h)
-                have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs _hx_dom_fvs hx_s_fvs
-                rw [open_close_subst u₃_lc]
-                exact h)
-              h_v_e
-          · -- Right edge: SubRed Γ' s' (t_e^v') ((u₃.close x)^v')
-            -- hright_body is EquivRed, wrap with ms_equ
-            have hv'_lc : v'.lc := equivRed_preserves_lc h_v_e h_lc.2 hwf_ctx
-              (fun _ he => absurd he (List.not_mem_nil _))
-            -- Get noPromoAt x on hright_body (EquivRed in .sub context)
-            -- x has .sub dom, so me_pro on x fails; x ∉ all_fvs Γ' so no indirect path
-            have hnp_right : LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ') s'
-                (t_e.open_at 0 (.fvar x)) u₃ :=
-              sorry -- noPromoAt_head_fresh for EquivRed
-            have h_subst := subRed_subst_noPromo (.ms_equ hnp_right) (v := v') hv'_lc
-            rw [ctx_subst_drop_cons_eq, ctx_subst_drop_id hx_all_fvs',
-                stack_map_subst_gen_id hx_s'_fvs] at h_subst
-            rw [← open_close_subst_expr (y := x) (u := v') u₃_lc] at h_subst
-            have h_te_subst : (t_e.open_at 0 (.fvar x)).subst_fvar x v' = t_e.open_at 0 v' := by
-              rw [subst_fvar_gen_open_at t_e x v' (.fvar x) 0 hv'_lc]
-              simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
-              rw [subst_fvar_notin hx_t_e_fvs]
-            rw [h_te_subst] at h_subst
-            exact h_subst
-          · -- noPromoAt preservation
-            sorry
+          -- h_body_e_x : EquivRed ((x,.sub dom)::Γ) s (body^x) (t_e^x)
+          --
+          -- BLOCKED: The two EquivReds are in DIFFERENT contexts (.equiv v
+          -- vs .sub dom for x's annotation). To apply diamond, we need them
+          -- in the same context, which requires annotation swap via noPromoAt.
+          --
+          -- noPromoAt x on h_eq_body is FALSE in general:
+          --   In context ((x,.equiv v)::Γ), me_pro on x CAN fire (x has
+          --   .equiv), and promotion_collapse's .inr path preserves the
+          --   original me_pro derivation. Concrete counterexample: if
+          --   body^x = fvar x, then me_pro on x fires, accessing v.
+          --
+          -- noPromoAt x on h_body_e_x is also potentially FALSE:
+          --   In context ((x,.sub dom)::Γ), me_pro on x can't fire (.sub),
+          --   BUT nested reductions can promote x: if body^x contains a
+          --   sub-expression (app (lam D B) A) where A contains fvar x,
+          --   then ME-APP pushes A onto the stack, ME-FOP pops it into
+          --   (y,.equiv A), ME-PRO on y SubReduces A, and MS-PRO on x fires.
+          --   (See me_bet_body_noPromoAt_strengthened_false for the .sub case.)
+          --
+          -- Two-context diamond is also FALSE: different annotations enable
+          -- genuinely different reductions, so a common reduct need not exist.
+          --
+          -- Resolution requires either:
+          -- (1) A mutual induction that co-proves commutativity with a
+          --     stronger invariant handling both annotation types, or
+          -- (2) A simulation lemma: any EquivRed step in one annotation
+          --     context can be matched by steps in the other, or
+          -- (3) A refined promotion_collapse that returns an EquivRed which
+          --     avoids promoting x (at the cost of a different target term).
+          sorry
     ---------------------------------------------------------------
     -- ME-TAP / MS-APP
     ---------------------------------------------------------------
