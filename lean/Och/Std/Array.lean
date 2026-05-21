@@ -166,10 +166,10 @@ example : concEval 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ (Pair Nat_ Unit_)) appen
 example : concEval 200 (och{ fst_ Nat_ (snd_ (Pair Nat_ Unit_) (snd_ (Pair Nat_ (Pair Nat_ Unit_)) appended)) }) = concEval 200 three_ := by
   native_decide
 
--- appendArrays at its declared type. (sorry: same neutral-head issue)
+-- appendArrays at its declared type.
 example : Och.checkSubtype 5000 appendArrays
   (och{ λT:Type. λn1:Nat_. λn2:Nat_. Array_ n1 T → Array_ n2 T → Array_ (add_ n1 n2) T })
-  = .ok true := by sorry
+  = .ok true := by native_decide
 
 end AppendArraysTests
 

@@ -48,8 +48,8 @@ example : Och.checkSubtype 200 (och{ Not' false_ }) Bool = .ok true := by native
 -- §6.2 Concrete instantiation (operations on concrete values)
 -- ============================================================
 
--- add zero zero ⊑ Nat (sorry: needs fuel/subcheck tuning post fix-ann removal)
-example : Och.checkSubtype 2000 (och{ add_ zero_ zero_ }) Nat_ = .ok true := by sorry
+-- add zero zero ⊑ Nat
+example : Och.checkSubtype 2000 (och{ add_ zero_ zero_ }) Nat_ = .ok true := by native_decide
 
 -- succ zero ⊑ Nat
 example : Och.checkSubtype 200 (och{ succ_ zero_ }) Nat_ = .ok true := by native_decide
@@ -64,8 +64,8 @@ example : Och.checkSubtype 200
 -- isZero zero ⊑ Bool
 example : Och.checkSubtype 200 (och{ isZero_ zero_ }) Bool = .ok true := by native_decide
 
--- double zero ⊑ Nat (sorry: same)
-example : Och.checkSubtype 2000 (och{ double_ zero_ }) Nat_ = .ok true := by sorry
+-- double zero ⊑ Nat
+example : Och.checkSubtype 2000 (och{ double_ zero_ }) Nat_ = .ok true := by native_decide
 
 -- ============================================================
 -- Subtyping transitivity tests (SubstEval.subCheck)
