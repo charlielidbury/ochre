@@ -937,6 +937,576 @@ theorem ctxRed_nil_of_ctxRed
   | ct_stk _ _ ih => exact ih
   | ct_nil => exact .ct_nil
 
+/-! ### Context renaming infrastructure for equivRed_rename_strong / subRed_rename_strong
+
+We define `ctx_rename Γ x y` which renames the variable `x` to `y` throughout
+a context (both in binding names and in annotation terms). The mutual induction
+proof uses this as its motive's context transformation, which handles binder
+cases cleanly: when the derivation extends the context with `(w, .sub dom)`,
+the renamed context becomes `(w, .sub (dom[x↦y]))` automatically.
+-/
+
+/-- Rename variable `x` to `y` throughout a context: change binding names
+    and substitute `x ↦ fvar y` in annotation terms. -/
+def ctx_rename (Γ : LNCtx) (x y : String) : LNCtx :=
+  Γ.map (fun (z, ann) => (if z == x then y else z, ann.subst_fvar x (.fvar y)))
+
+/-- Substitution is a no-op when the variable doesn't occur free (local copy). -/
+private theorem subst_fvar_notin' {e : LNExpr} {x : String} {u : LNExpr}
+    (hfr : x ∉ e.fvs) : e.subst_fvar x u = e := by
+  induction e with
+  | bvar _ => simp [LNExpr.subst_fvar]
+  | fvar z =>
+    simp [LNExpr.fvs, List.mem_singleton] at hfr
+    simp only [LNExpr.subst_fvar]
+    have : ¬(z == x) = true := by simp [beq_iff_eq]; exact Ne.symm hfr
+    simp [this]
+  | top => simp [LNExpr.subst_fvar]
+  | lam dom body ih_dom ih_body =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.subst_fvar, ih_dom hfr.1, ih_body hfr.2]
+  | app f a ih_f ih_a =>
+    simp [LNExpr.fvs, List.mem_append] at hfr
+    simp [LNExpr.subst_fvar, ih_f hfr.1, ih_a hfr.2]
+
+/-- Substitution on annotation is a no-op when the variable doesn't occur free (local copy). -/
+private theorem ann_subst_fvar_notin' {ann : LNAnn} {x : String} {u : LNExpr}
+    (hfr : x ∉ ann.fvs) : ann.subst_fvar x u = ann := by
+  cases ann with
+  | sub t => show LNAnn.sub (t.subst_fvar x u) = LNAnn.sub t; congr 1; exact subst_fvar_notin' hfr
+  | equiv α => show LNAnn.equiv (α.subst_fvar x u) = LNAnn.equiv α; congr 1; exact subst_fvar_notin' hfr
+
+/-- subst_fvar with fvar commutes with open_at for arbitrary terms (local copy). -/
+private theorem subst_fvar_fvar_open_at' (e : LNExpr) (x y : String) (k : Nat) (v : LNExpr)
+    : (e.open_at k v).subst_fvar x (.fvar y) = (e.subst_fvar x (.fvar y)).open_at k (v.subst_fvar x (.fvar y)) := by
+  induction e generalizing k with
+  | bvar n =>
+    show (if n == k then v else .bvar n).subst_fvar x (.fvar y) =
+         if n == k then v.subst_fvar x (.fvar y) else .bvar n
+    split <;> rfl
+  | fvar z =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar]
+    split <;> rfl
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar, ih_dom k, ih_body (k+1)]
+  | app f a ih_f ih_a =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar, ih_f k, ih_a k]
+
+/-- subst_fvar with fvar commutes with open_at (local copy). -/
+private theorem subst_fvar_fvar_open_fvar' (e : LNExpr) (x y z : String) (k : Nat)
+    (hxz : x ≠ z)
+    : (e.open_at k (.fvar z)).subst_fvar x (.fvar y) = (e.subst_fvar x (.fvar y)).open_at k (.fvar z) := by
+  induction e generalizing k with
+  | bvar n =>
+    show (if n == k then LNExpr.fvar z else .bvar n).subst_fvar x (.fvar y) =
+         if n == k then .fvar z else .bvar n
+    split
+    · simp only [LNExpr.subst_fvar]
+      have : ¬ (z == x) = true := by simp [beq_iff_eq]; exact Ne.symm hxz
+      simp [this]
+    · rfl
+  | fvar w =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar]
+    split <;> rfl
+  | top => rfl
+  | lam dom body ih_dom ih_body =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar, ih_dom k, ih_body (k+1)]
+  | app f a ih_f ih_a =>
+    simp only [LNExpr.open_at, LNExpr.subst_fvar, ih_f k, ih_a k]
+
+private theorem ctx_rename_cons (z : String) (ann : LNAnn) (Γ : LNCtx) (x y : String)
+    : ctx_rename ((z, ann) :: Γ) x y =
+      (if z == x then y else z, ann.subst_fvar x (.fvar y)) :: ctx_rename Γ x y := by
+  simp [ctx_rename, List.map]
+
+/-- When `x ∉ all_fvs(Γ)`, renaming `x → y` is the identity on Γ. -/
+private theorem ctx_rename_id_fresh {Γ : LNCtx} {x y : String}
+    (hfx : x ∉ LNCtx.all_fvs Γ) : ctx_rename Γ x y = Γ := by
+  induction Γ with
+  | nil => rfl
+  | cons p rest ih =>
+    obtain ⟨z, ann⟩ := p
+    have hfx_head : x ∉ (z :: ann.fvs) := by
+      intro hmem; apply hfx
+      show x ∈ ((z, ann) :: rest).flatMap (fun p => p.1 :: p.2.fvs)
+      simp only [List.flatMap_cons]
+      exact List.mem_append_left _ hmem
+    have hx_ne_z : x ≠ z := fun heq => hfx_head (heq ▸ List.mem_cons_self _ _)
+    have hx_ann : x ∉ ann.fvs := fun hmem => hfx_head (List.mem_cons_of_mem _ hmem)
+    have hfx_rest : x ∉ LNCtx.all_fvs rest := by
+      intro hmem; apply hfx
+      show x ∈ ((z, ann) :: rest).flatMap (fun p => p.1 :: p.2.fvs)
+      simp only [List.flatMap_cons]
+      exact List.mem_append_right _ hmem
+    show ctx_rename ((z, ann) :: rest) x y = (z, ann) :: rest
+    simp only [ctx_rename, List.map]
+    have h1 : ¬(z == x) = true := by rw [beq_iff_eq]; exact Ne.symm hx_ne_z
+    simp only [h1, decide_false, ite_false, ann_subst_fvar_notin' hx_ann]
+    congr 1; exact ih hfx_rest
+
+/-- Lookup in a renamed context: if `Γ.lookup' z = some ann` and the renaming
+    `x → y` is injective on `dom(Γ)` (ensured by `x ≠ y → y ∉ dom(Γ)`),
+    then `(ctx_rename Γ x y).lookup' z' = some (ann.subst_fvar x (.fvar y))`
+    where `z' = if z == x then y else z`. -/
+private theorem ctx_rename_lookup {Γ : LNCtx} {x y z : String} {ann : LNAnn}
+    (hlook : LNCtx.lookup' Γ z = some ann)
+    (hinj : x ≠ y → y ∉ LNCtx.dom Γ) :
+    LNCtx.lookup' (ctx_rename Γ x y) (if z == x then y else z) =
+      some (ann.subst_fvar x (.fvar y)) := by
+  induction Γ with
+  | nil => simp [LNCtx.lookup'] at hlook
+  | cons p rest ih =>
+    obtain ⟨w, ann_w⟩ := p
+    have hinj_rest : x ≠ y → y ∉ LNCtx.dom rest :=
+      fun hne hmem => hinj hne (List.mem_cons_of_mem _ hmem)
+    simp only [ctx_rename, List.map, LNCtx.lookup']
+    simp only [LNCtx.lookup'] at hlook
+    by_cases hwz' : (w == z) = true
+    · have hwz_eq := beq_iff_eq.mp hwz'; subst hwz_eq
+      simp only [beq_self_eq_true, ite_true] at hlook ⊢
+      cases hlook; rfl
+    · simp only [hwz', ite_false] at hlook
+      -- Need: the renamed head doesn't match the renamed key
+      have hskip : ¬((if (w == x) = true then y else w) == (if (z == x) = true then y else z)) = true := by
+        intro heq_str
+        have hw_ne_z : w ≠ z := fun h => by simp [beq_iff_eq, h] at hwz'
+        -- heq_str : (if (w == x) = true then y else w) = (if (z == x) = true then y else z)
+        -- We derive a contradiction from hw_ne_z and the injectivity hinj.
+        by_cases hzx : (z == x) = true <;> by_cases hwx : (w == x) = true
+        · -- w = x, z = x: w = z, contradiction
+          exact hw_ne_z (by rw [beq_iff_eq.mp hwx, beq_iff_eq.mp hzx])
+        · -- w ≠ x, z = x: head = w, target = y. So w = y.
+          rw [if_neg hwx, if_pos hzx] at heq_str
+          have := beq_iff_eq.mp heq_str  -- w = y
+          by_cases hxy : x = y
+          · subst hxy; exact hw_ne_z (by rw [this, beq_iff_eq.mp hzx])
+          · exact hinj (fun (h : x = y) => hxy h) (this ▸ List.mem_cons_self _ _)
+        · -- w = x, z ≠ x: head = y, target = z. So y = z.
+          rw [if_pos hwx, if_neg hzx] at heq_str
+          have := beq_iff_eq.mp heq_str  -- y = z
+          by_cases hxy : x = y
+          · subst hxy; exact hw_ne_z (by rw [beq_iff_eq.mp hwx, ← this])
+          · exact hinj (fun (h : x = y) => hxy h) (this ▸ List.mem_cons_of_mem _ (mem_dom_of_lookup' hlook))
+        · -- w ≠ x, z ≠ x: head = w, target = z. So w = z, contradiction.
+          rw [if_neg hwx, if_neg hzx] at heq_str
+          exact hw_ne_z (beq_iff_eq.mp heq_str)
+      simp only [hskip, ite_false]
+      exact ih hlook hinj_rest
+
+set_option maxHeartbeats 6400000 in
+private theorem equivRed_rename_gen
+    {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
+    (h : LNEquivRed Γ s u u')
+    {x y : String}
+    (hinj : x ≠ y → y ∉ LNCtx.dom Γ)
+    : LNEquivRed (ctx_rename Γ x y)
+        (s.map (fun e => e.subst_fvar x (.fvar y)))
+        (u.subst_fvar x (.fvar y))
+        (u'.subst_fvar x (.fvar y)) := by
+  have go :=
+    @LNEquivRed.rec
+      (motive_1 := fun Γ s u u' _ =>
+        ∀ x y, (x ≠ y → y ∉ LNCtx.dom Γ) →
+          LNEquivRed (ctx_rename Γ x y)
+            (s.map (fun e => e.subst_fvar x (.fvar y)))
+            (u.subst_fvar x (.fvar y))
+            (u'.subst_fvar x (.fvar y)))
+      (motive_2 := fun Γ s u u' _ =>
+        ∀ x y, (x ≠ y → y ∉ LNCtx.dom Γ) →
+          LNSubRed (ctx_rename Γ x y)
+            (s.map (fun e => e.subst_fvar x (.fvar y)))
+            (u.subst_fvar x (.fvar y))
+            (u'.subst_fvar x (.fvar y)))
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-PRO: fvar z with z ≡ α ∈ Γ, SubRed Γ s α α'
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_pro s_pro z_pro α_pro α'_pro} hmem _hsub ih_sub x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have ih := ih_sub x y hinj
+        -- lookup z_pro in the renamed context
+        have hlook := ctx_rename_lookup hmem hinj
+        by_cases hzx : z_pro == x
+        · simp [hzx]; simp [hzx] at hlook; exact .me_pro hlook ih
+        · simp [hzx]; simp [hzx] at hlook; exact .me_pro hlook ih)
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-BET: app (lam dom body) v ≡→ t^v'
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_bet s_bet dom_bet body_bet t_bet v_bet v'_bet}
+           L _hbody _hv ih_body ih_v x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        rw [subst_fvar_fvar_open_at' t_bet x y 0 v'_bet]
+        -- Rename body and value
+        have ihv := ih_v x y hinj
+        simp [List.map] at ihv
+        -- Pick fresh w for the body
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_bet ++
+                  LNCtx.dom (ctx_rename Γ_bet x y)
+        apply LNEquivRed.me_bet (L := L')
+        · intro w hw
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have hw_dom : w ∉ LNCtx.dom Γ_bet := fun h =>
+            hw (List.mem_append_left _ (List.mem_append_right _ h))
+          have hw_dom_ren : w ∉ LNCtx.dom (ctx_rename Γ_bet x y) := fun h =>
+            hw (List.mem_append_right _ h)
+          -- IH at w: operates on context (w, .sub dom) :: Γ_bet
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          -- Rewrite: ctx_rename ((w, .sub dom) :: Γ) x y
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar] at ih
+          -- Rewrite: (body^w)[x↦y] = (body[x↦y])^w since x ≠ w
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          -- Rewrite: (t^w)[x↦y] = (t[x↦y])^w since x ≠ w
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih
+        · exact ihv)
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-TOP
+      -- ═══════════════════════════════════════════════════════════════
+      (fun x y _hinj => by simp [LNExpr.subst_fvar]; exact .me_top)
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-VAR
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_var s_var z_var} x y _hinj => by
+        simp only [LNExpr.subst_fvar]
+        split <;> exact .me_var)
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-TAP
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_tap s_tap u_tap} x y _hinj => by
+        simp only [LNExpr.subst_fvar]; exact .me_tap)
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-APP: app u v ≡→ app u' v'
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_app s_app u_app u'_app v_app v'_app} _hu _hv ih_u ih_v x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have ihu := ih_u x y hinj
+        have ihv := ih_v x y hinj
+        simp [List.map] at ihu
+        simp [List.map] at ihv
+        exact .me_app ihu ihv)
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-FUN: lam dom body ≡→ lam dom' body' (stack = [])
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_fun dom_fun dom'_fun body_fun body'_fun}
+           L _hdom _hbody ih_dom ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have ihdom := ih_dom x y hinj
+        simp [List.map] at ihdom
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_fun ++
+                  LNCtx.dom (ctx_rename Γ_fun x y)
+        exact .me_fun L' ihdom (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar, List.map] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+      -- ═══════════════════════════════════════════════════════════════
+      -- ME-FOP: lam dom body ≡→ lam dom' body' (stack = α :: s)
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_fop s_fop α_fop dom_fop dom'_fop body_fop body'_fop}
+           L _hdom _hbody ih_dom ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        have ihdom := ih_dom x y hinj
+        simp [List.map] at ihdom
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_fop ++
+                  LNCtx.dom (ctx_rename Γ_fop x y)
+        exact .me_fop L' ihdom (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+      -- ═══════════════════════════════════════════════════════════════
+      -- MS-PRO: fvar z with z ≤ t ∈ Γ
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_sp s_sp z_sp t_sp} hmem x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have hlook := ctx_rename_lookup hmem hinj
+        by_cases hzx : z_sp == x
+        · simp [hzx]; simp [hzx] at hlook; exact .ms_pro hlook
+        · simp [hzx]; simp [hzx] at hlook; exact .ms_pro hlook)
+      -- ═══════════════════════════════════════════════════════════════
+      -- MS-TOP
+      -- ═══════════════════════════════════════════════════════════════
+      (fun x y _hinj => by simp [LNExpr.subst_fvar]; exact .ms_top)
+      -- ═══════════════════════════════════════════════════════════════
+      -- MS-EQU: from EquivRed
+      -- ═══════════════════════════════════════════════════════════════
+      (fun _hequ ih_equ x y hinj => .ms_equ (ih_equ x y hinj))
+      -- ═══════════════════════════════════════════════════════════════
+      -- MS-APP: app u v ≤→ app u' v
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_sa s_sa u_sa u'_sa v_sa} _hsub ih_sub x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        exact .ms_app (ih_sub x y hinj))
+      -- ═══════════════════════════════════════════════════════════════
+      -- MS-FUN: lam dom body ≤→ lam dom body' (stack = [])
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_sf dom_sf body_sf body'_sf}
+           L _hbody ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_sf ++
+                  LNCtx.dom (ctx_rename Γ_sf x y)
+        exact .ms_fun L' (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar, List.map] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+      -- ═══════════════════════════════════════════════════════════════
+      -- MS-FOP: lam dom body ≤→ lam dom body' (stack = α :: s)
+      -- ═══════════════════════════════════════════════════════════════
+      (fun {Γ_sfop s_sfop α_sfop dom_sfop body_sfop body'_sfop}
+           L _hbody ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_sfop ++
+                  LNCtx.dom (ctx_rename Γ_sfop x y)
+        exact .ms_fop L' (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by
+            intro heq; subst heq
+            exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+  exact go h x y hinj
+
+set_option maxHeartbeats 6400000 in
+private theorem subRed_rename_gen
+    {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
+    (h : LNSubRed Γ s u u')
+    {x y : String}
+    (hinj : x ≠ y → y ∉ LNCtx.dom Γ)
+    : LNSubRed (ctx_rename Γ x y)
+        (s.map (fun e => e.subst_fvar x (.fvar y)))
+        (u.subst_fvar x (.fvar y))
+        (u'.subst_fvar x (.fvar y)) := by
+  have go :=
+    @LNSubRed.rec
+      (motive_1 := fun Γ s u u' _ =>
+        ∀ x y, (x ≠ y → y ∉ LNCtx.dom Γ) →
+          LNEquivRed (ctx_rename Γ x y)
+            (s.map (fun e => e.subst_fvar x (.fvar y)))
+            (u.subst_fvar x (.fvar y))
+            (u'.subst_fvar x (.fvar y)))
+      (motive_2 := fun Γ s u u' _ =>
+        ∀ x y, (x ≠ y → y ∉ LNCtx.dom Γ) →
+          LNSubRed (ctx_rename Γ x y)
+            (s.map (fun e => e.subst_fvar x (.fvar y)))
+            (u.subst_fvar x (.fvar y))
+            (u'.subst_fvar x (.fvar y)))
+      -- ME-PRO
+      (fun {Γ_pro s_pro z_pro α_pro α'_pro} hmem _hsub ih_sub x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have ih := ih_sub x y hinj
+        have hlook := ctx_rename_lookup hmem hinj
+        by_cases hzx : z_pro == x
+        · simp [hzx]; simp [hzx] at hlook; exact .me_pro hlook ih
+        · simp [hzx]; simp [hzx] at hlook; exact .me_pro hlook ih)
+      -- ME-BET
+      (fun {Γ_bet s_bet dom_bet body_bet t_bet v_bet v'_bet}
+           L _hbody _hv ih_body ih_v x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        rw [subst_fvar_fvar_open_at' t_bet x y 0 v'_bet]
+        have ihv := ih_v x y hinj
+        simp [List.map] at ihv
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_bet ++ LNCtx.dom (ctx_rename Γ_bet x y)
+        apply LNEquivRed.me_bet (L := L')
+        · intro w hw
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih
+        · exact ihv)
+      -- ME-TOP
+      (fun x y _hinj => by simp [LNExpr.subst_fvar]; exact .me_top)
+      -- ME-VAR
+      (fun {Γ_var s_var z_var} x y _hinj => by
+        simp only [LNExpr.subst_fvar]; split <;> exact .me_var)
+      -- ME-TAP
+      (fun {Γ_tap s_tap u_tap} x y _hinj => by simp only [LNExpr.subst_fvar]; exact .me_tap)
+      -- ME-APP
+      (fun {Γ_app s_app u_app u'_app v_app v'_app} _hu _hv ih_u ih_v x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have ihu := ih_u x y hinj
+        have ihv := ih_v x y hinj
+        simp [List.map] at ihu ihv
+        exact .me_app ihu ihv)
+      -- ME-FUN
+      (fun {Γ_fun dom_fun dom'_fun body_fun body'_fun}
+           L _hdom _hbody ih_dom ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have ihdom := ih_dom x y hinj
+        simp [List.map] at ihdom
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_fun ++ LNCtx.dom (ctx_rename Γ_fun x y)
+        exact .me_fun L' ihdom (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar, List.map] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+      -- ME-FOP
+      (fun {Γ_fop s_fop α_fop dom_fop dom'_fop body_fop body'_fop}
+           L _hdom _hbody ih_dom ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        have ihdom := ih_dom x y hinj
+        simp [List.map] at ihdom
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_fop ++ LNCtx.dom (ctx_rename Γ_fop x y)
+        exact .me_fop L' ihdom (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+      -- MS-PRO
+      (fun {Γ_sp s_sp z_sp t_sp} hmem x y hinj => by
+        simp only [LNExpr.subst_fvar]
+        have hlook := ctx_rename_lookup hmem hinj
+        by_cases hzx : z_sp == x
+        · simp [hzx]; simp [hzx] at hlook; exact .ms_pro hlook
+        · simp [hzx]; simp [hzx] at hlook; exact .ms_pro hlook)
+      -- MS-TOP
+      (fun x y _hinj => by simp [LNExpr.subst_fvar]; exact .ms_top)
+      -- MS-EQU
+      (fun _hequ ih_equ x y hinj => .ms_equ (ih_equ x y hinj))
+      -- MS-APP
+      (fun {Γ_sa s_sa u_sa u'_sa v_sa} _hsub ih_sub x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        exact .ms_app (ih_sub x y hinj))
+      -- MS-FUN
+      (fun {Γ_sf dom_sf body_sf body'_sf}
+           L _hbody ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_sf ++ LNCtx.dom (ctx_rename Γ_sf x y)
+        exact .ms_fun L' (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar, List.map] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+      -- MS-FOP
+      (fun {Γ_sfop s_sfop α_sfop dom_sfop body_sfop body'_sfop}
+           L _hbody ih_body x y hinj => by
+        simp only [LNExpr.subst_fvar, List.map]
+        let L' := L ++ [x, y] ++ LNCtx.dom Γ_sfop ++ LNCtx.dom (ctx_rename Γ_sfop x y)
+        exact .ms_fop L' (fun w hw => by
+          have hwL : w ∉ L := fun h => hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))
+          have hwx : w ≠ x := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _))))
+          have hwy : w ≠ y := by intro heq; subst heq; exact hw (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_of_mem _ (List.mem_cons_self _ _)))))
+          have ih := ih_body w hwL x y (fun hne hmem => by
+            cases List.mem_cons.mp hmem with
+            | inl heq => exact hwy heq.symm
+            | inr hmem_rest => exact hinj hne hmem_rest)
+          rw [ctx_rename_cons] at ih
+          have hwx_f : ¬(w == x) = true := by rw [beq_iff_eq]; exact hwx
+          simp only [hwx_f, ite_false, LNAnn.subst_fvar] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          rw [subst_fvar_fvar_open_fvar' _ x y w 0 hwx.symm] at ih
+          exact ih))
+  exact go h x y hinj
+
+/-- Stack substitution simplification: when `x` is not free in any element
+    of the stack, `s.map (subst_fvar x (fvar y)) = s`. -/
+private theorem stack_map_subst_id {s : LNStack} {x y : String}
+    (hfresh : ∀ e ∈ s, x ∉ e.fvs) : s.map (fun e => e.subst_fvar x (.fvar y)) = s := by
+  induction s with
+  | nil => rfl
+  | cons a rest ih =>
+    simp [List.map]
+    constructor
+    · exact subst_fvar_notin' (hfresh a (List.mem_cons_self _ _))
+    · exact ih (fun e he => hfresh e (List.mem_cons_of_mem _ he))
+
 set_option maxHeartbeats 1600000 in
 theorem equivRed_rename_strong
     {Γ : LNCtx} {s : LNStack} {x y : String} {ann : LNAnn}
@@ -946,8 +1516,16 @@ theorem equivRed_rename_strong
     (hfy : y ∉ LNCtx.all_fvs Γ)
     (hfx_ann : x ∉ ann.fvs)
     (hx_ne_y : x ≠ y → y ∉ LNCtx.dom Γ)
+    (hsfresh : ∀ e ∈ s, x ∉ e.fvs)
     : LNEquivRed ((y, ann) :: Γ) s (u.subst_fvar x (.fvar y)) (u'.subst_fvar x (.fvar y)) := by
-  sorry
+  have hgen := equivRed_rename_gen h (x := x) (y := y) (fun hne hmem => by
+    cases List.mem_cons.mp hmem with
+    | inl heq => exact hne heq.symm
+    | inr hmem_rest => exact hx_ne_y hne hmem_rest)
+  rw [ctx_rename_cons, show (x == x) = true from beq_self_eq_true x,
+      ann_subst_fvar_notin' hfx_ann, ctx_rename_id_fresh hfx,
+      stack_map_subst_id hsfresh] at hgen
+  simpa using hgen
 
 set_option maxHeartbeats 1600000 in
 theorem subRed_rename_strong
@@ -958,8 +1536,16 @@ theorem subRed_rename_strong
     (hfy : y ∉ LNCtx.all_fvs Γ)
     (hfx_ann : x ∉ ann.fvs)
     (hx_ne_y : x ≠ y → y ∉ LNCtx.dom Γ)
+    (hsfresh : ∀ e ∈ s, x ∉ e.fvs)
     : LNSubRed ((y, ann) :: Γ) s (u.subst_fvar x (.fvar y)) (u'.subst_fvar x (.fvar y)) := by
-  sorry
+  have hgen := subRed_rename_gen h (x := x) (y := y) (fun hne hmem => by
+    cases List.mem_cons.mp hmem with
+    | inl heq => exact hne heq.symm
+    | inr hmem_rest => exact hx_ne_y hne hmem_rest)
+  rw [ctx_rename_cons, show (x == x) = true from beq_self_eq_true x,
+      ann_subst_fvar_notin' hfx_ann, ctx_rename_id_fresh hfx,
+      stack_map_subst_id hsfresh] at hgen
+  simpa using hgen
 
 /-- Context lookup: x ≤ t ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≤ t' ∈ Γ'
     with Γ;[] ⊢ t ≡→ t'.
@@ -1460,9 +2046,10 @@ theorem equivRed_rename
     (hfx : x ∉ LNCtx.all_fvs Γ) (hfy : y ∉ LNCtx.all_fvs Γ)
     (hfr : x ∉ body.fvs)
     (hfx_ann : x ∉ ann.fvs)
+    (hsfresh : ∀ e ∈ s, x ∉ e.fvs)
     : LNEquivRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y)) := by
   have h1 := equivRed_rename_strong h hfx hfy hfx_ann
-    (fun hne => LNCtx.not_mem_dom_of_not_mem_all_fvs hfy)
+    (fun hne => LNCtx.not_mem_dom_of_not_mem_all_fvs hfy) hsfresh
   -- Rewrite LHS: (body^x)[x↦fvar y] = body^y
   have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
     rw [subst_fvar_fvar_open_at]
@@ -1480,9 +2067,10 @@ theorem subRed_rename
     (hfx : x ∉ LNCtx.all_fvs Γ) (hfy : y ∉ LNCtx.all_fvs Γ)
     (hfr : x ∉ body.fvs)
     (hfx_ann : x ∉ ann.fvs)
+    (hsfresh : ∀ e ∈ s, x ∉ e.fvs)
     : LNSubRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y)) := by
   have h1 := subRed_rename_strong h hfx hfy hfx_ann
-    (fun hne => LNCtx.not_mem_dom_of_not_mem_all_fvs hfy)
+    (fun hne => LNCtx.not_mem_dom_of_not_mem_all_fvs hfy) hsfresh
   -- Rewrite LHS: (body^x)[x↦fvar y] = body^y
   have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
     rw [subst_fvar_fvar_open_at]
@@ -2510,7 +3098,7 @@ theorem promotion_collapse
           have hy₀dom : y₀ ∉ dom_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
           exact .inr (.me_fun L' (equivRed_refl Γ_fun [] dom_fun hlc_e.1) (fun y hyL' => by
             have hyΓ : y ∉ LNCtx.all_fvs Γ_fun := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body hy₀dom
+            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body hy₀dom (fun _ he => absurd he (List.not_mem_nil _))
             have hrhs : (body'_fun.open_at 0 (.fvar y₀)).subst_fvar y₀ (.fvar y) = body'_fun.open_at 0 (.fvar y) := by
               rw [subst_fvar_fvar_open_at]
               simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
@@ -2541,8 +3129,8 @@ theorem promotion_collapse
       (fun L h_body ih_body x_var α_var hlk hlc_e hwf_e hswf_e => by
         -- Name the implicit recursor variables
         rename_i Γ_fop s_fop α_fop dom_fop body_fop body'_fop
-        -- L' avoids L, all_fvs(Γ), body.fvs, body'.fvs, α_fop.fvs, x_var
-        let L' := L ++ LNCtx.all_fvs Γ_fop ++ body_fop.fvs ++ body'_fop.fvs ++ α_fop.fvs ++ [x_var]
+        -- L' avoids L, all_fvs(Γ), body.fvs, body'.fvs, α_fop.fvs, x_var, s_fop.fvs
+        let L' := L ++ LNCtx.all_fvs Γ_fop ++ body_fop.fvs ++ body'_fop.fvs ++ α_fop.fvs ++ [x_var] ++ s_fop.flatMap LNExpr.fvs
         -- α_fop is lc from the stack wf hypothesis
         have hα_lc : α_fop.lc := hswf_e α_fop (List.mem_cons_self _ _)
         have hs_wf : LNStack.wf s_fop := fun e he => hswf_e e (List.mem_cons_of_mem α_fop he)
@@ -2550,13 +3138,15 @@ theorem promotion_collapse
         by_cases hex : ∃ y₀, y₀ ∉ L' ∧ LNEquivRed ((y₀, .equiv α_fop) :: Γ_fop) s_fop (body_fop.open_at 0 (.fvar y₀)) (body'_fop.open_at 0 (.fvar y₀))
         · -- Case: ∃ y₀ giving EquivRed → build ME-FOP via equivRed_rename
           obtain ⟨y₀, hy₀L', heq_y₀⟩ := hex
-          have hy₀Γ : y₀ ∉ LNCtx.all_fvs Γ_fop := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-          have hy₀body : y₀ ∉ body_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-          have hy₀body' : y₀ ∉ body'_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-          have hy₀α : y₀ ∉ α_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
+          have hy₀Γ : y₀ ∉ LNCtx.all_fvs Γ_fop := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+          have hy₀body : y₀ ∉ body_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+          have hy₀body' : y₀ ∉ body'_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+          have hy₀α : y₀ ∉ α_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+          have hy₀s : ∀ e ∈ s_fop, y₀ ∉ e.fvs := fun e he hfv =>
+            hy₀L' (List.mem_append_right _ (List.mem_flatMap.mpr ⟨e, he, hfv⟩))
           exact .inr (.me_fop L' (equivRed_refl Γ_fop [] dom_fop hlc_e.1) (fun y hyL' => by
-            have hyΓ : y ∉ LNCtx.all_fvs Γ_fop := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body hy₀α
+            have hyΓ : y ∉ LNCtx.all_fvs Γ_fop := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body hy₀α hy₀s
             have hrhs : (body'_fop.open_at 0 (.fvar y₀)).subst_fvar y₀ (.fvar y) = body'_fop.open_at 0 (.fvar y) := by
               rw [subst_fvar_fvar_open_at]
               simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
@@ -2567,9 +3157,9 @@ theorem promotion_collapse
           have hall : ∀ y₀, y₀ ∉ L' → ¬ LNEquivRed ((y₀, .equiv α_fop) :: Γ_fop) s_fop (body_fop.open_at 0 (.fvar y₀)) (body'_fop.open_at 0 (.fvar y₀)) := by
             intro y₀ hy₀ heq; exact hex ⟨y₀, hy₀, heq⟩
           exact .inl (.ms_fop L' (fun y hyL' => by
-            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))
+            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
             have hyx' : y ≠ x_var := by
-              intro heq; subst heq; exact hyL' (List.mem_append_right _ (List.mem_cons_self _ _))
+              intro heq; subst heq; exact hyL' (List.mem_append_left _ (List.mem_append_right _ (List.mem_cons_self _ _)))
             have hlk_ext : LNCtx.lookup' ((y, LNAnn.equiv α_fop) :: Γ_fop) x_var = some (.equiv α_var) := by
               simp only [LNCtx.lookup']
               have : ¬(y == x_var) = true := by simp [beq_iff_eq]; exact hyx'
@@ -2677,14 +3267,14 @@ theorem diamond_full
             have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
             -- Need x ∉ dom₁'.fvs (the reduced dom). Sorry'd pending reduction-preserves-freshness.
             have hxdom₁' : x ∉ (LNAnn.sub dom₁').fvs := sorry
-            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxdom₁'
+            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxdom₁' (fun _ he => absurd he (List.not_mem_nil _))
             rw [open_close_subst u₃lc]; exact this),
         .me_fun (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ dom₁.fvs)
           hd₃r (fun y hy => by
             have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
             -- Need x ∉ dom₂'.fvs (the reduced dom). Sorry'd pending reduction-preserves-freshness.
             have hxdom₂' : x ∉ (LNAnn.sub dom₂').fvs := sorry
-            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxdom₂'
+            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxdom₂' (fun _ he => absurd he (List.not_mem_nil _))
             rw [open_close_subst u₃lc]; exact this)⟩
   | @me_fop _ s' α₁ dom₁ dom₁' body₁ body₁' L₁ h1_dom h1_body =>
     cases h2 with
@@ -2727,14 +3317,14 @@ theorem diamond_full
             have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
             -- Need x ∉ α'.fvs (the reduced α). Sorry'd pending reduction-preserves-freshness.
             have hxα' : x ∉ (LNAnn.equiv α').fvs := sorry
-            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxα'
+            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxα' sorry
             rw [open_close_subst u₃lc]; exact this),
         .me_fop (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs)
           hd₃r (fun y hy => by
             have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
             -- Need x ∉ α''.fvs (the reduced α). Sorry'd pending reduction-preserves-freshness.
             have hxα'' : x ∉ (LNAnn.equiv α'').fvs := sorry
-            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxα''
+            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxα'' sorry
             rw [open_close_subst u₃lc]; exact this)⟩
 termination_by t₀.sz
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
@@ -2922,7 +3512,7 @@ theorem commutativity
                   hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
                 have hy_dom_fvs : y ∉ dom.fvs := fun h =>
                   hy (List.mem_append_right _ h)
-                have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs _hx_dom_fvs
+                have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs _hx_dom_fvs sorry
                 rw [open_close_subst u₃_lc]
                 exact h)
               h_v_e
@@ -3007,7 +3597,7 @@ theorem commutativity
               hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
             have hy_dom_fvs : y ∉ dom.fvs := fun h =>
               hy (List.mem_append_right _ h)
-            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_dom_fvs
+            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_dom_fvs (fun _ he => absurd he (List.not_mem_nil _))
             rw [open_close_subst u₃_lc]
             exact h)
       · -- Right edge
@@ -3078,7 +3668,7 @@ theorem commutativity
               hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
             have hy_α_fvs : y ∉ α.fvs := fun h =>
               hy (List.mem_append_right _ h)
-            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_α_fvs
+            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_α_fvs sorry
             rw [open_close_subst u₃_lc]
             exact h)
       · -- Right edge: use subRed_rename on hright_body
