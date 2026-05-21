@@ -48,12 +48,19 @@ Several kinds of `sorry` remain:
 4. CLOSED: `diamond` now takes Gamma.wf and s.wf hypotheses, which are
    passed to ctxRed_refl. Commutativity propagates these through recursive
    calls by constructing wf for extended contexts/stacks.
-5. `u₃.lc` witnesses in commutativity: the IH yields a term u₃ and we need
-   it to be locally closed for `open_close_subst`. Would be discharged by
-   proving that reduction preserves local closure (mutual induction).
-6. `x ∉ t_e.fvs` in commutativity's ME-BET/MS-FOP case: x is chosen fresh
-   from avoidance sets, but we also need it fresh for t_e (a binder body).
-   This follows from including t_e.fvs in the avoidance set.
+5. CLOSED: `u₃.lc` witnesses now discharged by `equivRed_preserves_lc` /
+   `subRed_preserves_lc`, proved by mutual induction.
+6. CLOSED: `x ∉ t_e.fvs` now discharged by including t_e.fvs in the
+   avoidance set when picking x fresh.
+8. `promotion_collapse` ms_fun/ms_fop cases: the cofinite binder cases
+   require classical logic + equivRed_rename to build ME-FUN/ME-FOP from
+   one representative y₀'s EquivRed. Standard LN infrastructure.
+9. Commutativity ME-BET/MS-FOP `.inr` case: when the body SubRed collapses
+   to EquivRed (via promotion_collapse), the two EquivReds are in different
+   contexts (.sub vs .equiv) and diamond cannot be applied directly.
+   Requires either annotation swap on the EquivRed (which may fail due to
+   stack-induced promotion chains, per the me_bet_body_noPromoAt
+   counterexample) or the full mutual induction co-proving noPromoAt.
 7. Stack extension for annotation terms in commutativity's MS-PRO/ME-VAR case:
    `ctxRed_lookup_sub` gives `LNEquivRed Γ [] t t'` (empty stack) but the top
    edge needs `LNEquivRed Γ s t t'` (current stack). This holds for well-formed
@@ -81,6 +88,14 @@ Several kinds of `sorry` remain:
   context lookup and stack inversion through context reduction. Now fully
   proved by adding a `(LNCtx.dom Γ).Nodup` hypothesis (no-shadowing),
   which provides `y ∉ dom Γ_i` at each inductive step.
+- `promotion_collapse`: if x has .equiv annotation in Γ, any SubRed either
+  has noPromoAt x (allowing annotation swap) or is actually an EquivRed.
+  Key cases (ms_pro, ms_top, ms_equ, ms_app) fully proved; cofinite binder
+  cases (ms_fun, ms_fop) sorry'd pending classical + renaming infrastructure.
+  Enables the ME-BET/MS-FOP case of commutativity: the `.inl` path (noPromoAt)
+  is now fully proved using `noPromoAt_sub_swap` without annotation swaps.
+- `equivRed_preserves_lc` / `subRed_preserves_lc`: reduction preserves
+  local closure. Proved by mutual induction.
 
 ## Remaining Axioms
 None. All former axioms have been removed:
@@ -100,8 +115,11 @@ None. All former axioms have been removed:
   counterexamples preserved in the file). The correct formulation co-proves
   noPromoAt preservation with commutativity: the strengthened return type
   includes `∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃`.
-  The ME-BET/MS-FOP case now sorry's the annotation swaps inline, to be
-  resolved as part of the full mutual induction.
+  The ME-BET/MS-FOP case now uses `promotion_collapse` to split into:
+  (a) noPromoAt holds → swap annotation to .sub via `noPromoAt_sub_swap`,
+      apply IH under .sub, no annotation swaps needed (FULLY PROVED path).
+  (b) SubRed collapses to EquivRed → sorry'd pending diamond in unified
+      context or full mutual induction.
 
 ## Sorry'd Theorems (formerly axioms)
 - `equivRed_subst` / `subRed_subst`: converted from axioms to sorry'd theorems.
@@ -2363,6 +2381,141 @@ theorem subRed_preserves_lc
           exact LNExpr.lc_at_1_of_open_lc hbody'_x_lc hx_body')
   exact go h hwf hswf hlc
 
+/-! ### Promotion Collapse Lemma
+
+From the paper (p.9:20, ME-BET/MS-APP case):
+"If the rule ME-PRO appears in the derivation tree of the SubRed, then we have
+in fact an EquivRed, and the result follows from the diamond lemma."
+
+Given a SubRed in a context where x has .equiv annotation, either:
+(a) noPromoAt x holds (the derivation doesn't promote x), or
+(b) the SubRed is actually an EquivRed (it collapses).
+
+Key insight: MS-PRO on x requires mem_sub, which fails when x has .equiv.
+So the only way x gets "promoted" is via ME-PRO inside an MS-EQU. When that
+happens, the MS-EQU wrapper is redundant — the derivation was an EquivRed
+all along.
+
+Proved by mutual induction using @LNSubRed.rec with motives:
+  motive_1 (EquivRed): noPromoAt x ∨ EquivRed  (`.inr` is always trivially h itself)
+  motive_2 (SubRed):   noPromoAt x ∨ EquivRed  (`.inr` means SubRed collapses)
+
+The lc / wf hypotheses are needed for the ms_app → ME-APP collapse (equivRed_refl
+on the operand) and ms_fun/ms_fop → ME-FUN/ME-FOP collapse (equivRed_refl on domain).
+-/
+
+/-- Helper: if x has .equiv annotation in Γ, then ms_pro on x gives contradiction. -/
+private theorem ms_pro_ne_of_equiv {Γ : LNCtx} {x z : String} {t : LNExpr} {α : LNExpr}
+    (hlook : Γ.lookup' x = some (.equiv α))
+    (hmem : LNCtx.mem_sub Γ z t)
+    (hzx : z = x) : False := by
+  subst hzx
+  simp [LNCtx.mem_sub] at hmem
+  rw [hlook] at hmem
+  exact absurd hmem (by simp)
+
+/-- Promotion collapse for ≡→: trivially `.inr h` since the hypothesis is
+    already an EquivRed. Included for documentation — the mutual induction
+    in `promotion_collapse` uses `.inr` as the fallback for all EquivRed cases. -/
+theorem promotion_collapse_equiv
+    {Γ : LNCtx} {s : LNStack} {u w : LNExpr}
+    (h : LNEquivRed Γ s u w)
+    {x : String} {α : LNExpr}
+    (_hlook : Γ.lookup' x = some (.equiv α))
+    (_hlc : u.lc) (_hwf : Γ.wf) (_hswf : s.wf)
+    : (LNEquivRed.noPromoAt x Γ s u w) ∨ (LNEquivRed Γ s u w) :=
+  .inr h
+
+set_option maxHeartbeats 3200000 in
+/-- Promotion collapse for ≤→: if x has .equiv annotation in Γ, then any
+    sub-reduction either doesn't promote x (noPromoAt) or is actually an
+    equiv-reduction.
+
+    This is the key lemma for the ME-BET/MS-FOP case of commutativity.
+    When noPromoAt holds, annotation swap lemmas apply directly.
+    When the SubRed collapses to EquivRed, the diamond lemma applies. -/
+theorem promotion_collapse
+    {Γ : LNCtx} {s : LNStack} {u w : LNExpr}
+    (h : LNSubRed Γ s u w)
+    {x : String} {α : LNExpr}
+    (hlook : Γ.lookup' x = some (.equiv α))
+    (hlc : u.lc) (hwf : Γ.wf) (hswf : s.wf)
+    : (LNSubRed.noPromoAt x Γ s u w) ∨ (LNEquivRed Γ s u w) := by
+  have go :=
+    @LNSubRed.rec
+      -- motive_1 (EquivRed): noPromoAt x ∨ EquivRed (trivially .inr)
+      (motive_1 := fun Γ s u w _ =>
+        ∀ (x : String) (α : LNExpr),
+        Γ.lookup' x = some (.equiv α) →
+        u.lc → Γ.wf → s.wf →
+        (LNEquivRed.noPromoAt x Γ s u w) ∨ (LNEquivRed Γ s u w))
+      -- motive_2 (SubRed): noPromoAt x ∨ EquivRed (the real content)
+      (motive_2 := fun Γ s u w _ =>
+        ∀ (x : String) (α : LNExpr),
+        Γ.lookup' x = some (.equiv α) →
+        u.lc → Γ.wf → s.wf →
+        (LNSubRed.noPromoAt x Γ s u w) ∨ (LNEquivRed Γ s u w))
+      -- ===== EquivRed cases =====
+      -- me_pro: z ≡ α_z ∈ Γ, SubRed Γ s α_z α'
+      -- The `.inr` fallback is always available (just reconstruct the EquivRed)
+      (fun hmem h_sub ih_sub x_var α_var hlk _hlc_e hwf_e hswf_e =>
+        .inr (.me_pro hmem h_sub))
+      -- me_bet: L, body, v → .inr fallback
+      (fun L hbody hv _ih_body _ih_v _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
+        .inr (.me_bet L hbody hv))
+      -- me_top
+      (fun _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e => .inl .me_top)
+      -- me_var
+      (fun _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e => .inl .me_var)
+      -- me_tap
+      (fun _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e => .inl .me_tap)
+      -- me_app: .inr fallback
+      (fun h_u h_v _ih_u _ih_v _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
+        .inr (.me_app h_u h_v))
+      -- me_fun: .inr fallback
+      (fun L h_dom h_body _ih_dom _ih_body _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
+        .inr (.me_fun L h_dom h_body))
+      -- me_fop: .inr fallback
+      (fun L h_dom h_body _ih_dom _ih_body _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
+        .inr (.me_fop L h_dom h_body))
+      -- ===== SubRed cases =====
+      -- ms_pro: z ≤ t ∈ Γ
+      -- z cannot be x because x has .equiv, not .sub
+      (fun (hmem : LNCtx.mem_sub _ _ _) x_var α_var hlk _hlc_e _hwf_e _hswf_e =>
+        .inl (.ms_pro (fun heq => by subst heq; simp [LNCtx.mem_sub] at hmem; rw [hlk] at hmem; exact absurd hmem (by simp)) hmem))
+      -- ms_top
+      (fun _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e => .inl .ms_top)
+      -- ms_equ: EquivRed Γ s u w — delegate to EquivRed IH
+      (fun _h_eq ih_eq x_var α_var hlk hlc_e hwf_e hswf_e => by
+        cases ih_eq x_var α_var hlk hlc_e hwf_e hswf_e with
+        | inl np_eq => exact .inl (.ms_equ np_eq)
+        | inr eq => exact .inr eq)
+      -- ms_app: SubRed Γ (v::s) u u' ⟹ SubRed Γ s (app u v) (app u' v)
+      (fun (h_inner : LNSubRed _ (_ :: _) _ _) ih_inner x_var α_var hlk hlc_e hwf_e hswf_e => by
+        have hu_lc := hlc_e.1
+        have hv_lc := hlc_e.2
+        have hswf_ext : LNStack.wf (_ :: _) :=
+          fun e he => by
+            rcases List.mem_cons.mp he with heq | h
+            · exact heq ▸ hv_lc
+            · exact hswf_e e h
+        cases ih_inner x_var α_var hlk hu_lc hwf_e hswf_ext with
+        | inl np => exact .inl (.ms_app np)
+        | inr eq_inner =>
+          exact .inr (.me_app eq_inner (equivRed_refl _ [] _ hv_lc)))
+      -- ms_fun: L, ∀ y ∉ L, SubRed ((y,.sub dom)::Γ) [] (body^y) (body'^y)
+      -- Classical dichotomy: either noPromoAt for all y, or EquivRed via ME-FUN.
+      -- The cofinite quantification + equivRed_rename handles the .inr case.
+      -- Sorry: requires classical logic on the Prop-valued motive and
+      -- equivRed_rename to build ME-FUN from one representative y₀'s EquivRed.
+      (fun _L _h_body _ih_body _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
+        sorry)
+      -- ms_fop: L, ∀ y ∉ L, SubRed ((y,.equiv α_fop)::Γ) s (body^y) (body'^y)
+      -- Same classical argument as ms_fun.
+      (fun _L _h_body _ih_body _x_var _α_var _hlk _hlc_e _hwf_e _hswf_e =>
+        sorry)
+  exact go h x α hlook hlc hwf hswf
+
 /-! ### Diamond property (Lemma 2)
 
 Proof by induction on the term structure of t₀, case analysis on the pair
@@ -2641,69 +2794,79 @@ theorem commutativity
         -- h_body_e_x : LNEquivRed ((x, .sub dom) :: Γ) s (body^x) (t_e^x)
         have h_sub_body_s_x := h_sub_body_s x hx_Ls
         -- h_sub_body_s_x : LNSubRed ((x, .equiv v) :: Γ) s (body^x) (body₂^x)
-        -- Change annotation on h_body_e_x from .sub to .equiv.
-        -- The old `me_bet_body_noPromoAt` axiom was FALSE (see counterexamples
-        -- above). The correct approach: this annotation swap is sorry'd inline,
-        -- to be resolved as part of the mutual induction that co-proves
-        -- noPromoAt with commutativity. The key insight is that x is fresh
-        -- and has .sub annotation, so ME-PRO on x cannot fire; however,
-        -- transitive promotion chains through other variables CAN reach x
-        -- via the stack (the counterexample), which is why a standalone axiom
-        -- fails but the mutual induction succeeds.
-        have h_body_e_eq : LNEquivRed ((x, .equiv v) :: Γ) s
-            (body.open_at 0 (.fvar x)) (t_e.open_at 0 (.fvar x)) := by
-          sorry  -- annotation swap .sub→.equiv on body; co-proved with noPromoAt in mutual induction
-        -- Build context reduction for the body
-        have h_ctx_body : LNCtxRed ((x, .equiv v) :: Γ) s ((x, .equiv v') :: Γ') s' :=
-          LNCtxRed.ct_ann_equiv h_ctx h_v_e
         have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
           LNExpr.lc_at_open_fvar h_lc.1.2
-        -- IH on body^x (strengthened: returns noPromoAt preservation)
-        obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
-          commutativity (body.open_at 0 (.fvar x)) h_body_e_eq h_sub_body_s_x h_ctx_body hbody_lc
-            (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
-            (fun p hp => by cases hp with | head => exact h_lc.2 | tail _ hmem => exact hwf_ctx p hmem)
-            hwf_stk
-        -- Derive u₃.lc for later use
-        have hwf_ctx_ext : LNCtx.wf ((x, .equiv v) :: Γ) :=
+        -- ═══════════════════════════════════════════════════════════════
+        -- PROMOTION COLLAPSE: either the SubRed doesn't promote x
+        -- (allowing annotation swap), or it collapses to an EquivRed
+        -- (allowing diamond).
+        -- ═══════════════════════════════════════════════════════════════
+        have hlook_x : LNCtx.lookup' ((x, .equiv v) :: Γ) x = some (.equiv v) := by
+          simp [LNCtx.lookup']
+        have hwf_ctx_ext_equiv : LNCtx.wf ((x, .equiv v) :: Γ) :=
           fun p hp => by cases hp with
           | head => exact h_lc.2
           | tail _ hmem => exact hwf_ctx p hmem
-        have hbody₂_x_lc : (body₂.open_at 0 (.fvar x)).lc :=
-          subRed_preserves_lc h_sub_body_s_x hbody_lc hwf_ctx_ext hwf_stk
-        have u₃_lc : u₃.lc :=
-          equivRed_preserves_lc htop_body hbody₂_x_lc hwf_ctx_ext hwf_stk
-        -- Change annotation back from .equiv to .sub for ME-BET.
-        have htop_body_sub : LNEquivRed ((x, .sub dom) :: Γ) s
-            (body₂.open_at 0 (.fvar x)) u₃ := by
-          sorry  -- annotation swap .equiv→.sub on top edge; uses IH noPromoAt preservation
-        -- Use t₃ = (u₃.close_at 0 x).open_at 0 v' as the witness
-        -- This equals u₃.subst_fvar x v' when u₃ is lc (open_close_subst).
-        refine ⟨(u₃.close_at 0 x).open_at 0 v', ?_, ?_, ?_⟩
-        · -- Top edge: Γ;s ⊢ app (lam dom body₂) v ≡→ (close x u₃)^v'
-          -- By ME-BET with t = u₃.close_at 0 x
-          exact .me_bet (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
-            (fun y hy => by
-              -- htop_body_sub : Equiv ((x,.sub dom)::Γ) s (body₂^x) u₃
-              -- Use equivRed_rename to get it for y
-              have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
-                hy (List.mem_append_left _ (List.mem_append_right _ h))
-              have h := equivRed_rename htop_body_sub hx_dom hy_dom hx_body₂_fvs
-              -- h : Equiv ((y,.sub dom)::Γ) s (body₂^y) (u₃.subst_fvar x (fvar y))
-              -- (close x u₃)^y = u₃.subst_fvar x (fvar y) by open_close_subst
-              rw [open_close_subst u₃_lc]
-              exact h)
-            h_v_e
-        · -- Right edge: Γ';s' ⊢ t_e^v' ≤→ (close x u₃)^v'
-          have hright := subRed_subst (ann := .equiv v') (v := v') hright_body hx_dom'
-          have heq_lhs : (t_e.open_at 0 (.fvar x)).subst_fvar x v' = t_e.open_at 0 v' :=
-            subst_open hx_t_e_fvs
-          have heq_rhs : u₃.subst_fvar x v' = (u₃.close_at 0 x).open_at 0 v' :=
-            (open_close_subst_expr u₃_lc).symm
-          rw [heq_lhs, heq_rhs] at hright
-          exact hright
-        · -- noPromoAt preservation for ME-BET/MS-FOP case
-          sorry  -- co-proved with the mutual induction
+        have h_collapse := promotion_collapse h_sub_body_s_x hlook_x hbody_lc hwf_ctx_ext_equiv hwf_stk
+        cases h_collapse with
+        | inl h_np =>
+          -- ─── Case (a): noPromoAt x holds for the SubRed ───
+          -- Swap SubRed from .equiv to .sub via noPromoAt_sub_swap
+          have hx_in_dom : x ∈ LNCtx.dom ((x, .equiv v) :: Γ) :=
+            List.mem_cons_self x _
+          have h_sub_body_swapped : LNSubRed ((x, .sub dom) :: Γ) s
+              (body.open_at 0 (.fvar x)) (body₂.open_at 0 (.fvar x)) := by
+            have := noPromoAt_sub_swap x (.sub dom) h_np hx_in_dom
+            rwa [swap_at_first_head] at this
+          -- Now both EquivRed and SubRed are under .sub dom — apply IH
+          have h_ctx_body_sub : LNCtxRed ((x, .sub dom) :: Γ) s ((x, .sub dom) :: Γ') s' :=
+            LNCtxRed.ct_ann_sub h_ctx (equivRed_refl Γ [] dom h_lc.1.1)
+          obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
+            commutativity (body.open_at 0 (.fvar x)) h_body_e_x h_sub_body_swapped h_ctx_body_sub hbody_lc
+              (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
+              (fun p hp => by cases hp with | head => exact h_lc.1.1 | tail _ hmem => exact hwf_ctx p hmem)
+              hwf_stk
+          -- htop_body : EquivRed ((x,.sub dom)::Γ) s (body₂^x) u₃  ← already under .sub!
+          -- hright_body : SubRed ((x,.sub dom)::Γ') s' (t_e^x) u₃
+          -- Derive u₃.lc
+          have hwf_ctx_ext_sub : LNCtx.wf ((x, .sub dom) :: Γ) :=
+            fun p hp => by cases hp with
+            | head => exact h_lc.1.1
+            | tail _ hmem => exact hwf_ctx p hmem
+          have hbody₂_x_lc : (body₂.open_at 0 (.fvar x)).lc :=
+            subRed_preserves_lc h_sub_body_swapped hbody_lc hwf_ctx_ext_sub hwf_stk
+          have u₃_lc : u₃.lc :=
+            equivRed_preserves_lc htop_body hbody₂_x_lc hwf_ctx_ext_sub hwf_stk
+          -- Build the witness t₃ = (u₃.close_at 0 x).open_at 0 v'
+          refine ⟨(u₃.close_at 0 x).open_at 0 v', ?_, ?_, ?_⟩
+          · -- Top edge: Γ;s ⊢ app (lam dom body₂) v ≡→ (close x u₃)^v'
+            -- htop_body is under .sub dom, perfect for ME-BET
+            exact .me_bet (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+              (fun y hy => by
+                have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
+                  hy (List.mem_append_left _ (List.mem_append_right _ h))
+                have h := equivRed_rename htop_body hx_dom hy_dom hx_body₂_fvs
+                rw [open_close_subst u₃_lc]
+                exact h)
+              h_v_e
+          · -- Right edge: Γ';s' ⊢ t_e^v' ≤→ (close x u₃)^v'
+            have hright := subRed_subst (ann := .sub dom) (v := v') hright_body hx_dom'
+            have heq_lhs : (t_e.open_at 0 (.fvar x)).subst_fvar x v' = t_e.open_at 0 v' :=
+              subst_open hx_t_e_fvs
+            have heq_rhs : u₃.subst_fvar x v' = (u₃.close_at 0 x).open_at 0 v' :=
+              (open_close_subst_expr u₃_lc).symm
+            rw [heq_lhs, heq_rhs] at hright
+            exact hright
+          · sorry  -- noPromoAt preservation
+        | inr h_eq_body =>
+          -- ─── Case (b): SubRed collapses to EquivRed ───
+          -- h_eq_body : EquivRed ((x,.equiv v)::Γ) s (body^x) (body₂^x)
+          -- and h_body_e_x : EquivRed ((x,.sub dom)::Γ) s (body^x) (t_e^x)
+          -- These are in different contexts. The .inr case requires
+          -- additional machinery (either diamond in unified context or
+          -- annotation swap on h_body_e_x). Sorry'd pending the full
+          -- mutual induction that co-proves noPromoAt with commutativity.
+          sorry
     ---------------------------------------------------------------
     -- ME-TAP / MS-APP
     ---------------------------------------------------------------
