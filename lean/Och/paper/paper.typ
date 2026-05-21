@@ -38,7 +38,6 @@ I want to study the most unusual + unweildly of these features in isolation with
 
 - The "terms are types" philosophy, as exonerated by PSS @hutchins-2010. In Och this comes out roughly to "types are terms with holes".
 - Terms/types form a subtyping lattice, where supertypes can be freely substituted for any subtype without any coercions.
-TODO: get rid of the "but why are these features important" feeling
 
 == Methodology
 Och has been designed in an experimental fashion, where I come up with programs which should be rejected/accepted, then tweak the rules until the tests pass.
