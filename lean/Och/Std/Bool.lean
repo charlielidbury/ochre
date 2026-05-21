@@ -19,7 +19,7 @@ namespace Std
 
 def Bool := och{ λX:Type. λt:X. λf:X. X }
 -- Permissive constructors: domains all Type. The constraint comes
--- from the type they're checked against (Bool / dBool), not from
+-- from the type they're checked against (Bool / DBool), not from
 -- the constructors themselves. Same shape as DNat's zero_/succ_.
 def true_  := och{ λP:Type. λt:Type. λf:Type. t }
 def false_ := och{ λP:Type. λt:Type. λf:Type. f }

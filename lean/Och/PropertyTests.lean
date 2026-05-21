@@ -99,9 +99,9 @@ example : Och.checkSubtype 200 (och{ λx:Unit_. x }) (och{ λx:Nat_. x })
 -- DBool: the type is not one of its constructors, and the
 -- constructors are mutually unrelated. (Already in DBool.lean,
 -- duplicated here so this file alone covers the negative shape.)
-example : Och.checkSubtype 200 dBool dtrue = .ok false := by native_decide
-example : Och.checkSubtype 200 dfalse dtrue = .ok false := by native_decide
-example : Och.checkSubtype 200 dtrue dfalse = .ok false := by native_decide
+example : Och.checkSubtype 200 DBool true_ = .ok false := by native_decide
+example : Och.checkSubtype 200 false_ true_ = .ok false := by native_decide
+example : Och.checkSubtype 200 true_ false_ = .ok false := by native_decide
 
 -- Parametric: `Pair A B` is invariant in both arguments
 -- (post-A1, neutral-app args are bidirectional).
@@ -133,7 +133,7 @@ section RoundTrip
 
 private def rtCorpus : List Expr := [
   .type, zero_, one_, Nat_, Std.Bool, true_, Unit_, unit_,
-  dtrue, dfalse, dBool,
+  true_, false_, DBool,
   och{ Nat_ → Nat_ }, och{ λx:Nat_. x }, och{ succ_ zero_ },
   och{ Pair Nat_ Unit_ }, och{ pair_ Nat_ Unit_ zero_ unit_ },
   .iota .type Nat_, .fix .type Nat_

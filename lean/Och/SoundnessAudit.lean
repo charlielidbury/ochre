@@ -148,9 +148,9 @@ theorem a3_synthRejects :
 ## A5: iotaIntro skipped the annotation check — RESOLVED
 
 **Was**: the checker's `_, .iota ann body` arm checked only
-`a ⊑ body[self:=a]`, ignoring `a ⊑ ann`. So `dtrue ⊑ ι
+`a ⊑ body[self:=a]`, ignoring `a ⊑ ann`. So `true_ ⊑ ι
 self:Nat_. Type` was accepted (the body `Type` is `top`)
-despite `dtrue ⊄ Nat_` — the ι-type's "intersection with the
+despite `true_ ⊄ Nat_` — the ι-type's "intersection with the
 annotation" semantics was lost.
 
 **Fix** (9a9d198): the checker now requires `a ⊑ ann ∧
@@ -165,16 +165,16 @@ private def constrainedI := och{ ι self:Nat_. Type }
 
 -- /-- A5's semantic intent: when proving `a ⊑ ι self:T. body`, the
 -- algorithm checks the annotation `a ⊑ T` (not just the body). Witness:
--- `dtrue ⊑ constrainedI = ι self:Nat_. Type` is rejected because the
--- annotation premise `dtrue ⊑ Nat_` fails. The body premise alone
--- (`dtrue ⊑ Type` = top) would have spuriously accepted. -/
+-- `true_ ⊑ constrainedI = ι self:Nat_. Type` is rejected because the
+-- annotation premise `true_ ⊑ Nat_` fails. The body premise alone
+-- (`true_ ⊑ Type` = top) would have spuriously accepted. -/
 -- theorem a5_annotationRejects :
---     Och.checkSubtype 200 dtrue constrainedI = .ok false := by
+--     Och.checkSubtype 200 true_ constrainedI = .ok false := by
 --   native_decide
 
 /-- And the legitimate recursive case still closes via seen. -/
 theorem a5_recursiveCaseStillWorks :
-    Och.checkSubtype 200 dtrue dBool = .ok true := by
+    Och.checkSubtype 200 true_ DBool = .ok true := by
   native_decide
 
 /-- Regression for the ι-ι path: the `.iota, .iota` arm has its
@@ -285,20 +285,20 @@ Not an *algorithm* unsoundness — the algorithm is correct here
 — but a gap in the *declarative* relation that makes
 `subCheckVal_sound` unprovable as stated.
 
-`dtrue ⊑ dBool` is accepted by the checker (it's the very
+`true_ ⊑ DBool` is accepted by the checker (it's the very
 first DBool test). But every attempted `Subtype'` derivation
 loops: after `unfold_fix_R` + `iota_intro` + `unfold_iota_L`,
 the goal becomes the lam-lam comparison
 
-  `λP:(dtrue→Type). … ⊑ λP:(dBool→Type). …`
+  `λP:(true_→Type). … ⊑ λP:(DBool→Type). …`
 
-whose contravariant domain premise needs `dtrue ⊑ dBool`
+whose contravariant domain premise needs `true_ ⊑ DBool`
 again. The algorithm closes this coinductively via the
 seen-set; the inductive `Subtype'` cannot.
 -/
 
 theorem a4_algorithmAccepts :
-    Och.checkSubtype 200 dtrue dBool = .ok true := by
+    Och.checkSubtype 200 true_ DBool = .ok true := by
   native_decide
 
 /-!
@@ -411,7 +411,7 @@ properties more thoroughly.
 -/
 
 private def sweepCorpus : List Expr := [
-  .type, zero_, Nat_, Bool, true_, dtrue, dBool, Nat_, one_,
+  .type, zero_, Nat_, Bool, true_, DBool, Nat_, one_,
   zero_, Unit_, unit_, .iota Nat_ .type, .iota .type Nat_,
   .iota .type (.bvar 0), .fix .type Nat_, .fix .type (.bvar 0),
   och{ Nat_ → Nat_ }, och{ zero_ → Nat_ }, och{ Nat_ → zero_ },
@@ -444,7 +444,7 @@ on the corpus is not asserted — many corpus pairs are
 incomparable, and equivalent pairs would need an exclusion
 list.) -/
 private def strictPairs : List (Expr × Expr) := [
-  (zero_, Nat_), (true_, Bool), (dtrue, dBool), (one_, Nat_),
+  (zero_, Nat_), (true_, Bool), (true_, DBool), (one_, Nat_),
   (unit_, Unit_), (Nat_, .type), (och{ Nat_ → Nat_ }, och{ zero_ → Nat_ })
 ]
 
@@ -461,7 +461,7 @@ concerns the *declarative* side. All four addressable items
 are now resolved: every algorithmic arm maps to a declarative
 constructor, the algorithmic seen-set has a declarative
 counterpart (`.hyp`), and the entire stack (subCheckVal, eval,
-quote) is non-partial. The `dtrue ⊑ dBool` annotation-premise
+quote) is non-partial. The `true_ ⊑ DBool` annotation-premise
 witness in `Soundness.lean` confirms `.hyp` closes the cycle
 that previously had no finite derivation. The
 `subCheckVal_sound` proof can now be attempted by fuel

@@ -118,13 +118,13 @@ Different approaches close different test categories. A bidirectional + inductiv
 1. **μ-free first.** Pretend `μ` does not exist in the language. Build `⇝` for the other five forms and pass the μ-free tests. This is already non-trivial: ascription, `⊤`-widening in application, and the existential nature of "the type of `F A`" are all live issues.
 2. **Pick a notion of soundness and prove it** for the μ-free fragment.
 3. **Add `μ` back.** Decide how `μ` should be abstractly interpreted — the hints above are starting points.
-4. **Attempt the aspirational self-type tests** (`dtrue ⊑ dBool`, the dependent Church-Bool introduction, etc.). These are genuinely hard — do not start here.
+4. **Attempt the aspirational self-type tests** (`true_ ⊑ DBool`, the dependent Church-Bool introduction, etc.). These are genuinely hard — do not start here.
 
 ## Pitfalls and tips
 
 - **Termination.** Lean wants total functions. Options: `(a)` an explicit `fuel : Nat` parameter (easiest, most honest), `(b)` `partial def` (forfeits provable termination — soundness theorems become unreachable), `(c)` a cleverly-chosen `termination_by` measure (hard — many obvious measures fail). Most solvers will want fuel.
 - **Normal form is slippery.** `NFExpr` as a synonym for `Expr` is a fine starting point — "normal form" is then a convention you maintain, not a type-level guarantee. Strengthening it into an inductive with its own grammar helps you avoid bugs at the cost of more plumbing.
-- **Self-types are productive cycles.** `dtrue ⊑ dBool` unfolds to a subgoal that structurally contains *itself*. Plain inductive reasoning cannot close this. Coinductive, step-indexed, and seen-set approaches all work in principle.
+- **Self-types are productive cycles.** `true_ ⊑ DBool` unfolds to a subgoal that structurally contains *itself*. Plain inductive reasoning cannot close this. Coinductive, step-indexed, and seen-set approaches all work in principle.
 - **Ascriptions are the sneaky case.** `(E : T)` on the left means "trust me, `E` has type `T`". On the right it means "check that `E` and your candidate agree, **and** that `T` is actually a valid type for it". Half-formed checkers usually get one direction wrong.
 - **`⊤` is not a universe.** It is the top of the subtype lattice and doubles as the unit type — every expression is compatible with `⊤`. There is no `⊤ : ⊤` paradox because `⊤` is not a type *universe*, just a maximal element.
 

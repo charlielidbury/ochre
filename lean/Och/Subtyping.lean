@@ -170,7 +170,7 @@ inductive Subtype' : Seen → Ctx → Expr → Expr → Type where
   /-- [unfoldFixR]: `a ⊑ fix A. body` if `a ⊑ body[self := fix A. body]`.
       The previous `[fix-ann]` (`a ⊑ A → a ⊑ fix A. body`) was removed:
       `A` is the type of the recursion variable, not an upper bound on
-      the fixpoint, so with `A = Type` it admitted `Nat ⊑ dBool`. -/
+      the fixpoint, so with `A = Type` it admitted `Nat ⊑ DBool`. -/
   | unfold_fix_R {S Γ a ann body} :
       Subtype' ((Γ.length, a, .fix ann body) :: S) Γ
         a (body.subst 0 (.fix ann body)) →

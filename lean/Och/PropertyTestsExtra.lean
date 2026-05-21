@@ -46,9 +46,9 @@ A spread across syntactic shapes Och cares about. -/
 private def coreCorpus : List Expr := [
   -- atoms
   .type, .bot, zero_, one_, two_, true_, false_, unit_,
-  dtrue, dfalse,
+  true_, false_,
   -- types
-  Nat_, Std.Bool, Unit_, dBool,
+  Nat_, Std.Bool, Unit_, DBool,
   -- arrows / lambdas
   och{ Nat_ → Nat_ }, och{ Bool → Bool }, och{ λx:Nat_. x },
   och{ λx:Bool. x }, och{ λx:Type. x },
@@ -89,7 +89,7 @@ theorem subCheckE_fuel_mono_refl :
 private def positivePairs : List (Expr × Expr) := [
   (zero_, Nat_), (one_, Nat_), (two_, Nat_),
   (true_, Std.Bool), (false_, Std.Bool),
-  (unit_, Unit_), (dtrue, dBool), (dfalse, dBool),
+  (unit_, Unit_), (true_, DBool), (false_, DBool),
   (zero_, .type), (Nat_, .type),
   (och{ pair_ Nat_ Unit_ zero_ unit_ }, och{ Pair Nat_ Unit_ })
 ]
@@ -105,7 +105,7 @@ high fuel. (Vacuously: subCheckE never returns `.outOfFuel` for these
 inputs, so the same `.ok false` answer is reproduced.) -/
 private def negativePairs : List (Expr × Expr) := [
   (Nat_, zero_), (Nat_, Unit_), (Std.Bool, Nat_),
-  (one_, zero_), (two_, one_), (dBool, dtrue),
+  (one_, zero_), (two_, one_), (DBool, true_),
   (.type, Nat_)
 ]
 
@@ -139,7 +139,7 @@ extra entries (the engine never consults `tyCtx` on level-vars it
 doesn't see). -/
 private def closedPairs : List (Expr × Expr) := [
   (zero_, Nat_), (true_, Std.Bool), (unit_, Unit_),
-  (dtrue, dBool), (dfalse, dBool), (Nat_, .type),
+  (true_, DBool), (false_, DBool), (Nat_, .type),
   (och{ pair_ Nat_ Unit_ zero_ unit_ }, och{ Pair Nat_ Unit_ })
 ]
 
@@ -237,8 +237,8 @@ phrased through the public surface that downstream code uses. -/
 section SynthConsistency
 
 private def synthCorpus : List Expr := [
-  zero_, one_, two_, true_, false_, unit_, dtrue, dfalse,
-  Nat_, Std.Bool, Unit_, dBool,
+  zero_, one_, two_, true_, false_, unit_, true_, false_,
+  Nat_, Std.Bool, Unit_, DBool,
   och{ λx:Nat_. x }, och{ λx:Bool. x }, och{ succ_ zero_ },
   och{ pair_ Nat_ Unit_ zero_ unit_ }
 ]
@@ -444,8 +444,8 @@ private def strictNew : List (Expr × Expr) := [
   (zero_, Nat_), (one_, Nat_), (two_, Nat_),
   -- bool constructors are strict in Bool
   (true_, Std.Bool), (false_, Std.Bool),
-  -- dependent bool constructors are strict in dBool
-  (dtrue, dBool), (dfalse, dBool),
+  -- dependent bool constructors are strict in DBool
+  (true_, DBool), (false_, DBool),
   -- product introduction is strict in the product type
   (och{ pair_ Nat_ Unit_ zero_ unit_ }, och{ Pair Nat_ Unit_ })
 ]
@@ -486,11 +486,11 @@ theorem boolCons_pairwise_distinct :
         else Och.checkSubtype 200 a b == .ok false)) = true := by
   native_decide
 
-private def dBoolCons : List Expr := [dtrue, dfalse]
+private def DBoolCons : List Expr := [true_, false_]
 
-theorem dBoolCons_pairwise_distinct :
-    dBoolCons.all (fun a =>
-      dBoolCons.all (fun b =>
+theorem DBoolCons_pairwise_distinct :
+    DBoolCons.all (fun a =>
+      DBoolCons.all (fun b =>
         if a == b then true
         else Och.checkSubtype 200 a b == .ok false)) = true := by
   native_decide
@@ -548,7 +548,7 @@ section FuelStability
 
 private def stabilityCorpus : List (Expr × Expr) := [
   (zero_, Nat_), (one_, Nat_), (two_, Nat_),
-  (true_, Std.Bool), (dtrue, dBool),
+  (true_, Std.Bool), (true_, DBool),
   (och{ pair_ Nat_ Unit_ zero_ unit_ }, och{ Pair Nat_ Unit_ })
 ]
 

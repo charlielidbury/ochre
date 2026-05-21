@@ -66,7 +66,7 @@ def evalCases : List EvalCase :=
   [ ⟨"Type",   200, Expr.type ⟩
   , ⟨"Unit_",  200, Unit_ ⟩
   , ⟨"unit_",  200, unit_ ⟩
-  , ⟨"dtrue",  200, dtrue ⟩
+  , ⟨"true_",  200, true_ ⟩
   , ⟨"true_",  200, true_ ⟩
   , ⟨"zero_", 1000, zero_ ⟩
   , ⟨"one_",  5000, one_ ⟩
@@ -125,7 +125,7 @@ def subCases : List SubCase :=
   [ ⟨"01 typeRefl                       ",   50,  Expr.type, Expr.type ⟩
   , ⟨"02 Unit_  ⊑ Type                  ",   50,  Unit_, Expr.type ⟩
   , ⟨"03 unit_  ⊑ Unit_                 ",   50,  unit_, Unit_ ⟩
-  , ⟨"04 dtrue  ⊑ dBool                 ",  200,  dtrue, dBool ⟩
+  , ⟨"04 true_  ⊑ DBool                 ",  200,  true_, DBool ⟩
   , ⟨"05 true_  ⊑ Bool                  ",   50,  true_, Bool ⟩
   , ⟨"06 zero_  ⊑ Nat_                  ",  200,  zero_, Nat_ ⟩
   , ⟨"07 one_   ⊑ Nat_                  ",  200,  one_,  Nat_ ⟩

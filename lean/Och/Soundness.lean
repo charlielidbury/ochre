@@ -180,65 +180,65 @@ example : Subtype' [] [] unit_ Unit_ := by
   exact Subtype'.bvar (k := 0) (τ := .bvar 0) rfl
 
 /-!
-The flagship coinductive case (SoundnessAudit A4): `dtrue ⊑ dBool`
-fully derived. With `dtrue` as a plain lambda (no ι wrapper), the
+The flagship coinductive case (SoundnessAudit A4): `true_ ⊑ DBool`
+fully derived. With `true_` as a plain lambda (no ι wrapper), the
 proof is straightforward: after `unfold_fix_R` and `iota_intro`
 on the RHS, the LHS is already a 3-ary lambda that can be
 compared structurally against the iota body. All contravariant
-domain checks are trivial (`.top`) because `dtrue`'s domains are
+domain checks are trivial (`.top`) because `true_`'s domains are
 all `Type`.
 -/
 
-private def dBoolIota : Expr :=
-  .iota dBool
-    (.lam (.lam dBool .type)
-      (.lam (.app (.bvar 0) dtrue)
-        (.lam (.app (.bvar 1) dfalse)
+private def DBoolIota : Expr :=
+  .iota DBool
+    (.lam (.lam DBool .type)
+      (.lam (.app (.bvar 0) true_)
+        (.lam (.app (.bvar 1) false_)
           (.app (.bvar 2) (.bvar 3)))))
 
 private def bodyRHS : Expr :=
-  .lam (.lam dBool .type)
-    (.lam (.app (.bvar 0) dtrue)
-      (.lam (.app (.bvar 1) dfalse)
-        (.app (.bvar 2) dtrue)))
+  .lam (.lam DBool .type)
+    (.lam (.app (.bvar 0) true_)
+      (.lam (.app (.bvar 1) false_)
+        (.app (.bvar 2) true_)))
 
-/-- `dtrue ⊑ dBool`. Constructor path:
+/-- `true_ ⊑ DBool`. Constructor path:
 
   `unfold_fix_R` → `iota_intro` (annotation via `.hyp`) →
   `lam`³ (all contra-domain via `.top`) → body via `.bvar`
 
-The `.hyp` discharges `dtrue ⊑ dBool` from the seen-set entry
+The `.hyp` discharges `true_ ⊑ DBool` from the seen-set entry
 added by the very first `unfold_fix_R`; without seen-indexing
 this was the unbreakable cycle.
 
-With `dtrue` now a plain lambda (`λP:Type. λt:Type. λf:Type. t`),
+With `true_` now a plain lambda (`λP:Type. λt:Type. λf:Type. t`),
 there is no `unfold_iota_L` step, and the contravariant domain
-checks (`(dBool→Type) ⊑ Type`, `(P dtrue) ⊑ Type`,
-`(P dfalse) ⊑ Type`) are all `.top`. -/
-example : Subtype' [] [] dtrue dBool := by
-  unfold dBool
+checks (`(DBool→Type) ⊑ Type`, `(P true_) ⊑ Type`,
+`(P false_) ⊑ Type`) are all `.top`. -/
+example : Subtype' [] [] true_ DBool := by
+  unfold DBool
   apply Subtype'.unfold_fix_R
-  change Subtype' _ [] dtrue dBoolIota
+  change Subtype' _ [] true_ DBoolIota
   apply Subtype'.iota_intro
-  · -- annotation: dtrue ⊑ dBool, found in seen-set
+  · -- annotation: true_ ⊑ DBool, found in seen-set
     exact Subtype'.hyp_here (List.Mem.tail _ (List.Mem.head _))
-  · -- body: dtrue ⊑ λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dtrue
-    change Subtype' _ [] dtrue bodyRHS
-    unfold dtrue
+  · -- body: true_ ⊑ λP:(DBool→Type). λt:(P true_). λf:(P false_). P true_
+    change Subtype' _ [] true_ bodyRHS
+    unfold true_
     -- λP:Type. λt:Type. λf:Type. t
-    --   ⊑ λP:(dBool→Type). λt:(P dtrue). λf:(P dfalse). P dtrue
+    --   ⊑ λP:(DBool→Type). λt:(P true_). λf:(P false_). P true_
     apply Subtype'.lam
-    · -- (dBool→Type) ⊑ Type: top
+    · -- (DBool→Type) ⊑ Type: top
       exact Subtype'.top _
     · apply Subtype'.lam
-      · -- (P dtrue) ⊑ Type: top
+      · -- (P true_) ⊑ Type: top
         exact Subtype'.top _
       · apply Subtype'.lam
-        · -- (P dfalse) ⊑ Type: top
+        · -- (P false_) ⊑ Type: top
           exact Subtype'.top _
-        · -- t ⊑ P dtrue, i.e. bvar 1 ⊑ (bvar 2) dtrue.
-          show Subtype' _ _ (.bvar 1) ((Expr.app (.bvar 0) dtrue).shift 2 0)
-          exact Subtype'.bvar (k := 1) (τ := .app (.bvar 0) dtrue) rfl
+        · -- t ⊑ P true_, i.e. bvar 1 ⊑ (bvar 2) true_.
+          show Subtype' _ _ (.bvar 1) ((Expr.app (.bvar 0) true_).shift 2 0)
+          exact Subtype'.bvar (k := 1) (τ := .app (.bvar 0) true_) rfl
 
 end Witnesses
 

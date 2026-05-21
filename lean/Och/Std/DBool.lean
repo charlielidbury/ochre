@@ -10,28 +10,28 @@ import Och.API
 
 Scott-style dependent Bool where the motive's domain is the value
 itself, `P : (self → Type)`. The constructors are plain lambdas
-(no ι/fix wrapper) and don't reference `dBool`, so there is no
-forward-reference cycle: `dtrue`/`dfalse` are defined first,
-`dBool` references them.
+(no ι/fix wrapper) and don't reference `DBool`, so there is no
+forward-reference cycle: `true_`/`false_` are defined first (in
+`Bool.lean`), `DBool` references them.
 
 ```
-dtrue  = λP:Type. λt:Type. λf:Type. t
-dfalse = λP:Type. λt:Type. λf:Type. f
-dBool  = fix B:Type. ι self:B. λP:(B → Type). λt:(P dtrue). λf:(P dfalse). P self
+true_  = λP:Type. λt:Type. λf:Type. t
+false_ = λP:Type. λt:Type. λf:Type. f
+DBool  = fix B:Type. ι self:B. λP:(B → Type). λt:(P true_). λf:(P false_). P self
 ```
 
-## How `dtrue ⊑ dBool` closes
+## How `true_ ⊑ DBool` closes
 
-When checking `dtrue ⊑ dBool`:
+When checking `true_ ⊑ DBool`:
 
-  1. `_, .fix` unfolds dBool, extending `seen` with `(dtrue, dBool)`.
-  2. `iotaIntro`'s `okAnn` check (`dtrue ⊑ B = dBool`) hits `seen` ✓.
-     RHS body opens with `self ↦ dtrue`.
-  3. `.lam,.lam` on `P`: contravariant `(dBool → Type) ⊑ Type`
+  1. `_, .fix` unfolds DBool, extending `seen` with `(true_, DBool)`.
+  2. `iotaIntro`'s `okAnn` check (`true_ ⊑ B = DBool`) hits `seen` ✓.
+     RHS body opens with `self ↦ true_`.
+  3. `.lam,.lam` on `P`: contravariant `(DBool → Type) ⊑ Type`
      → `.top` ✓.
-  4. `t`-domain `(P dtrue) ⊑ Type`: top. `f`-domain
-     `(P dfalse) ⊑ Type`: top. Body `t ⊑ P dtrue`: ascent via
-     `tyCtx[t] = P dtrue` (domA), refl. ✓
+  4. `t`-domain `(P true_) ⊑ Type`: top. `f`-domain
+     `(P false_) ⊑ Type`: top. Body `t ⊑ P true_`: ascent via
+     `tyCtx[t] = P true_` (domA), refl. ✓
 
 Since the constructors are plain lambdas with `Type` domains,
 all contravariant domain checks are trivially `.top` — no
@@ -45,24 +45,16 @@ namespace Std
 -- Exported definitions
 -- ============================================================
 
-def dtrue := och{
-  λP:Type. λt:Type. λf:Type. t
-}
-
-def dfalse := och{
-  λP:Type. λt:Type. λf:Type. f
-}
-
-def dBool := och{
-  fix B. ι self:B. λP:(B → Type). λt:(P dtrue). λf:(P dfalse). P self
+def DBool := och{
+  fix B. ι self:B. λP:(B → Type). λt:(P true_). λf:(P false_). P self
 }
 
 def not := och{
-  λb:dBool. b (λ_:dBool. dBool) dfalse dtrue
+  λb:DBool. b (λ_:DBool. DBool) false_ true_
 }
 
 def and := och{
-  λa:dBool. λb:dBool. a (λ_:dBool. dBool) b dfalse
+  λa:DBool. λb:DBool. a (λ_:DBool. DBool) b false_
 }
 
 -- ============================================================
@@ -76,25 +68,25 @@ section Tests
 -- in head position so the Church-style bodies reduce as before.
 -- -----------------------------------------------------------
 
-example : concEval 100 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) = concEval 100 zero_ := by
+example : concEval 100 (och{ true_ (λ_:DBool. Nat_) zero_ one_ }) = concEval 100 zero_ := by
   native_decide
-example : concEval 100 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) = concEval 100 one_ := by
+example : concEval 100 (och{ false_ (λ_:DBool. Nat_) zero_ one_ }) = concEval 100 one_ := by
   native_decide
 
 private def dbcase := och{
-  λb:dBool. b (λ_:dBool. Nat_) zero_ one_
+  λb:DBool. b (λ_:DBool. Nat_) zero_ one_
 }
 
-example : concEval 100 (och{ dbcase dtrue }) = concEval 100 zero_ := by native_decide
-example : concEval 100 (och{ dbcase dfalse }) = concEval 100 one_ := by native_decide
+example : concEval 100 (och{ dbcase true_ }) = concEval 100 zero_ := by native_decide
+example : concEval 100 (och{ dbcase false_ }) = concEval 100 one_ := by native_decide
 
 -- Dependent elimination. depMotive picks Nat for true, Bool for false.
 private def depMotive := och{
-  λb:dBool. b (λ_:dBool. Type) Nat_ Bool
+  λb:DBool. b (λ_:DBool. Type) Nat_ Bool
 }
 
-example : concEval 100 (och{ dtrue depMotive zero_ true_ }) = .ok zero_ := by native_decide
-example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = .ok true_ := by native_decide
+example : concEval 100 (och{ true_ depMotive zero_ true_ }) = .ok zero_ := by native_decide
+example : concEval 100 (och{ false_ depMotive zero_ true_ }) = .ok true_ := by native_decide
 
 -- -----------------------------------------------------------
 -- Subtyping: the central aspirational tests. Closed via the
@@ -102,40 +94,40 @@ example : concEval 100 (och{ dfalse depMotive zero_ true_ }) = .ok true_ := by n
 -- the assumption set, ann-widening does not).
 -- -----------------------------------------------------------
 
-example : Och.checkSubtype 50 dtrue dBool = .ok true := by native_decide
-example : Och.checkSubtype 50 dfalse dBool = .ok true := by native_decide
+example : Och.checkSubtype 50 true_ DBool = .ok true := by native_decide
+example : Och.checkSubtype 50 false_ DBool = .ok true := by native_decide
 
--- dBool ⋢ dtrue: dBool's motive demands both P(dtrue) and P(dfalse)
--- but dtrue only demands P(self), so the body check fails at
--- `Type ⊑ P dfalse`.
-example : Och.checkSubtype 50 dBool dtrue = .ok false := by native_decide
+-- DBool ⋢ true_: DBool's motive demands both P(true_) and P(false_)
+-- but true_ only demands P(self), so the body check fails at
+-- `Type ⊑ P false_`.
+example : Och.checkSubtype 50 DBool true_ = .ok false := by native_decide
 
 -- The constructors are pairwise unrelated.
-example : Och.checkSubtype 50 dtrue dfalse = .ok false := by native_decide
-example : Och.checkSubtype 50 dfalse dtrue = .ok false := by native_decide
+example : Och.checkSubtype 50 true_ false_ = .ok false := by native_decide
+example : Och.checkSubtype 50 false_ true_ = .ok false := by native_decide
 
 -- -----------------------------------------------------------
 -- Operations (not / and).
 -- -----------------------------------------------------------
 
-example : concEval 100 (och{ not dtrue }) = concEval 100 dfalse := by native_decide
-example : concEval 100 (och{ not dfalse }) = concEval 100 dtrue := by native_decide
+example : concEval 100 (och{ not true_ }) = concEval 100 false_ := by native_decide
+example : concEval 100 (och{ not false_ }) = concEval 100 true_ := by native_decide
 
-example : concEval 100 (och{ and dtrue dtrue }) = concEval 100 dtrue := by native_decide
-example : concEval 100 (och{ and dtrue dfalse }) = concEval 100 dfalse := by native_decide
-example : concEval 100 (och{ and dfalse dtrue }) = concEval 100 dfalse := by native_decide
-example : concEval 100 (och{ and dfalse dfalse }) = concEval 100 dfalse := by native_decide
+example : concEval 100 (och{ and true_ true_ }) = concEval 100 true_ := by native_decide
+example : concEval 100 (och{ and true_ false_ }) = concEval 100 false_ := by native_decide
+example : concEval 100 (och{ and false_ true_ }) = concEval 100 false_ := by native_decide
+example : concEval 100 (och{ and false_ false_ }) = concEval 100 false_ := by native_decide
 
 -- -----------------------------------------------------------
 -- Negative / sanity checks
 -- -----------------------------------------------------------
 
-example : concEval 100 (och{ dtrue (λ_:dBool. Nat_) zero_ one_ }) ≠ .ok one_ := by native_decide
-example : concEval 100 (och{ dfalse (λ_:dBool. Nat_) zero_ one_ }) ≠ .ok zero_ := by native_decide
-example : concEval 100 (och{ not dtrue }) ≠ concEval 100 dtrue := by native_decide
-example : concEval 100 (och{ not dfalse }) ≠ concEval 100 dfalse := by native_decide
-example : concEval 100 (och{ and dfalse dtrue }) ≠ concEval 100 dtrue := by native_decide
-example : concEval 100 (och{ and dtrue dfalse }) ≠ concEval 100 dtrue := by native_decide
+example : concEval 100 (och{ true_ (λ_:DBool. Nat_) zero_ one_ }) ≠ .ok one_ := by native_decide
+example : concEval 100 (och{ false_ (λ_:DBool. Nat_) zero_ one_ }) ≠ .ok zero_ := by native_decide
+example : concEval 100 (och{ not true_ }) ≠ concEval 100 true_ := by native_decide
+example : concEval 100 (och{ not false_ }) ≠ concEval 100 false_ := by native_decide
+example : concEval 100 (och{ and false_ true_ }) ≠ concEval 100 true_ := by native_decide
+example : concEval 100 (och{ and true_ false_ }) ≠ concEval 100 true_ := by native_decide
 
 end Tests
 end Std
