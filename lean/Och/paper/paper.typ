@@ -51,16 +51,16 @@ TODO: get rid of the "but why are these features important" feeling
 
 = Language Semantics <lang-sem>
 
-The term language is
+This section describes "what does each piece of the language do" in natural language.
 
 $
-  e, tau ::= & x                      &                       "variable" \
-           | & lambda(x lt.eq tau). e &                         "lambda" \
-           | & e_1 space e_2          &                    "application" \
-           | & top                    &                 "universe (top)" \
-           | & bot                    &               "primitive bottom" \
-           | & iota(x lt.eq tau). e   &               "self-type binder" \
-           | & "fix"(x lt.eq tau). e  &               "recursive binder" \
+  e, tau ::= & x                      &         "variable" \
+           | & lambda(x lt.eq tau). e &           "lambda" \
+           | & e_1 space e_2          &      "application" \
+           | & top                    &   "universe (top)" \
+           | & bot                    & "primitive bottom" \
+           | & iota(x lt.eq tau). e   & "self-type binder" \
+           | & "fix"(x lt.eq tau). e  & "recursive binder" \
 $
 
 There is no separate type category: every $tau$ above is itself a term.
@@ -75,22 +75,21 @@ variable names to their declared types).
 
 *Iota* $iota(x lt.eq tau). e$ allows a type to be defined in terms of *the term inhabiting it*. This means $e subset.sq.eq iota (x:tau_0). tau_1$ is reduced to $e subset.sq.eq tau_1[x arrow.r.bar e]$ during checking (notice: the LHS has moved to the RHS). This is a Cedille-style self type @fu-stump-2014, and allows for church encodings with dependent elimination instead of having to add datatypes to the language as a primitive.
 
-== Concrete semantics — the evaluation judgment <conc-eval>
+== Runtime semantics <conc-eval>
+
+You may think the runtime semantics of Och are unimportant since this is type systems research, but with how I've laid out the soundness proofs $arrow.b.double$ plays a crucial role: soundness states "if a program type checks, it will succeed at runtime", therefore $arrow.b.double$ must _reject_ ill-formed programs, otherwise our soundness becomes vacuously solvable (via $"false"$ on the RHS of an implication).
 
 The concrete evaluator is a substitution-based call-by-value big-step
 interpreter on closed terms. Lambdas, ι, and fix are values;
 applications in function position unroll the recursive binder by
 substituting its self-reference, then re-apply.
 
-Concrete evaluation is _supposed_ to represent Och's runtime semantics, but Och has no concept of levels/universes/stages, so the type checker cannot enforce that ${top, bot, iota}$ don't turn up at runtime.
-Since soundness is defined roughly as "terms accepted by the type checker never crash at runtime", we must handle these values in the concrete semantics to avoid making our soundness completely unprovable.
+Concrete evaluation is supposed to only represent Och's _runtime_ semantics, but Och has no concept of levels/universes/stages, so for now the type checker cannot enforce that ${top, bot, iota}$ don't turn up at runtime. Since soundness is defined roughly as "type correct implies runtime correct", we must handle these values in the concrete semantics to avoid making our soundness completely unprovable.
 
-This can and should be solved in the future by adding levels to all binders (see §3.6 "Adding Universes" of @hutchins-2010 for roughly how I plan on doing this).
+This can and should be solved in the future by adding levels to all binders (see §3.6 "Adding Universes" of PSS @hutchins-2010 for roughly how I plan on doing this).
 
 We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to
-value $v$."
-
-
+value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in.
 
 #align(center, grid(
   columns: (1fr, 1fr),
@@ -120,16 +119,9 @@ $
                          | & "fix"(x lt.eq tau). e  & "recursive binder" \
 $
 
-
-Free variables are not values.
-
-*$bot$ is a self-evaluating value.* Like $top$, $bot$ evaluates to
-itself via [E-Val] and has no application dispatch arm, so applying
-an argument to $bot$ is _stuck_ (parallel to $top$-application). This is
-intentional: $bot$ is a type, not a callable. The typing discipline must
-ensure well-typed programs never reach $bot space a$ at runtime.
-
-This is the *operational specification* of the language.
+The most important aspect of the runtime semantics are what is *_missing_* from the above rules:
+- Free variables are not values, therefore they cannot occur at runtime, *which forces the type system must rule out ill-scoped variables*.
+- Application can only apply to lambdas, *which forces the type system to verify applications are well typed w.r.t. the function domain.*
 
 = Typing Rules <decl-sub>
 
@@ -158,14 +150,27 @@ The well-formedness judgment $Gamma tack.r e "wf"$ determines whether term $e$ i
     $Gamma\, x lt.eq A$,
     $b$,
   )),
-  irule("W-App", wf($Gamma$, $f space a$), wf($Gamma$, $f$), wf($Gamma$, $a$), sub($emptyset$, $Gamma$, $f$, $lambda(x lt.eq A). B$), sub($emptyset$, $Gamma$, $a$, $A$)),
+  irule(
+    "W-App",
+    wf($Gamma$, $f space a$),
+    wf($Gamma$, $f$),
+    wf($Gamma$, $a$),
+    sub($emptyset$, $Gamma$, $f$, $lambda(x lt.eq A). B$),
+    sub($emptyset$, $Gamma$, $a$, $A$),
+  ),
 ))
 
 #align(center, grid(
   columns: (1fr, 1fr),
   gutter: 1.5em,
-  irule("W-Iota", wf($Gamma$, $iota(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf($Gamma\, x lt.eq A$, $b$)),
-  irule("W-Fix", wf($Gamma$, $"fix"(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf($Gamma\, x lt.eq A$, $b$)),
+  irule("W-Iota", wf($Gamma$, $iota(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf(
+    $Gamma\, x lt.eq A$,
+    $b$,
+  )),
+  irule("W-Fix", wf($Gamma$, $"fix"(x lt.eq A). b$), sub($emptyset$, $Gamma$, $A$, $top$), wf(
+    $Gamma\, x lt.eq A$,
+    $b$,
+  )),
 ))
 
 *[W-Var]* requires the variable to be in scope.

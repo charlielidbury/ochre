@@ -126,21 +126,14 @@ example : concEval 200 (och{ pred_ two_ }) = concEval 200 one_ := by native_deci
 
 -- ── Dependent elimination ───────────────────────────────────
 
--- depMotive: zero_ → (Type, here used as a placeholder 'metatype')
-private def depMotive := och{
-  λn:Nat_. n (λ_:Nat_. Type) Type (λpred:Nat_. Std.Bool)
-}
-
-example : concEval 200 (och{ depMotive zero_ }) = concEval 200 Expr.type := by native_decide
-example : concEval 200 (och{ depMotive one_ }) = concEval 200 Std.Bool := by native_decide
-
--- Different branches return values of DIFFERENT types.
+-- depElim: different branches return values of DIFFERENT types.
+-- The motive computes the return type; the eliminator produces values.
 private def depElim := och{
-  λn:Nat_. n depMotive Type (λpred:Nat_. Std.true_)
+  λn:Nat_. n (λ_:Nat_. Type) zero_ (λpred:Nat_. succ_ pred)
 }
 
-example : concEval 200 (och{ depElim zero_ }) = .ok Expr.type := by native_decide
-example : concEval 200 (och{ depElim one_ }) = .ok Std.true_ := by native_decide
+example : concEval 200 (och{ depElim zero_ }) = concEval 200 zero_ := by native_decide
+example : concEval 200 (och{ depElim one_ }) = concEval 200 (och{ succ_ zero_ }) := by native_decide
 
 -- ── Positive subtype checks ─────────────────────────────────
 --
