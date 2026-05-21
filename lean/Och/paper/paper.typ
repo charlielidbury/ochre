@@ -94,15 +94,11 @@ There is no separate syntactic category for types: every $tau$ above is itself a
 
 You may think the runtime semantics of Och are unimportant since this is type systems research, but with how I've laid out the soundness proofs $arrow.b.double$ plays a crucial role: soundness states "if a program type checks, it will succeed at runtime", therefore $arrow.b.double$ must _reject_ ill-formed programs, otherwise our soundness becomes vacuously solvable ($"true"$ on the RHS of an implication).
 
-The concrete evaluator is a substitution-based call-by-value big-step
-interpreter on closed terms. ${lambda, top, bot}$ are the only values. $"fix"$ and $iota$ eagerly unroll by substituting their self-reference into the body.
-Application is pure β-reduction — only lambdas can be applied.
+The concrete evaluator is a substitution-based call-by-value big-step interpreter on closed terms. ${lambda, top, bot}$ are the only values. $"fix"$ and $iota$ eagerly unroll by substituting their self-reference into the body. Application is pure β-reduction — only lambdas can be applied.
 
-Och has no concept of levels/universes/stages, so the type checker
-cannot enforce that {$top$, $bot$, $iota$} don't appear at runtime. These are kept as values to avoid making soundness unprovable. Adding universes (see §3.6 of PSS @hutchins-2010) would let us erase type-level arguments during compilation, after which {$top$, $bot$, $iota$} would never appear at level 0.
+Och has no concept of levels/universes/stages, so the type checker cannot enforce that {$top$, $bot$, $iota$} don't appear at runtime. These are kept as values to avoid making soundness unprovable. Adding universes (see §3.6 of PSS @hutchins-2010) would let us erase type-level arguments during compilation, after which {$top$, $bot$, $iota$} would never appear at level 0.
 
-We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to
-value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in.
+We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in.
 
 #align(center, grid(
   columns: (1fr, 1fr),
@@ -222,8 +218,7 @@ To derive these infinite trees in finite time Claude said I should use "the Bran
 
 As far as I can tell the reason it is remarkable enough to have a name is not that using it is particularly hard, but that convincing oneself it is a sound technique is hard, and Brandt/Henglein did just that. I am informed it only works when the cycles it closes contain at least one "productive" step, which are grouped together into @productive.
 
-The "real" subtyping judgment is $emptyset ; Gamma tack.r a subset.sq.eq b$ (empty hypothesis set);
-non-empty $S$ arises only inside a derivation.
+The "real" subtyping judgment is $emptyset ; Gamma tack.r a subset.sq.eq b$ (empty hypothesis set); non-empty $S$ arises only inside a derivation.
 
 == Subtyping Rules <rule-taxonomy>
 
@@ -259,15 +254,11 @@ The subtyping rules fall into four categories. Each serves a distinct purpose; k
   caption: [Rule taxonomy for declarative subtyping],
 )
 
-The $S$-extension column matters: S-Hyp can only fire against entries
-that some ancestor productive rule installed, so any path to S-Hyp
-must cross an unfold --- the productivity requirement made mechanical.
+The $S$-extension column matters: S-Hyp can only fire against entries that some ancestor productive rule installed, so any path to S-Hyp must cross an unfold --- the productivity requirement made mechanical.
 
 == Structural rules <structural>
 
-"Structural" rules talk about $subset.sq.eq$ as a relation on terms without
-inspecting either side's head constructor: reflexivity, transitivity,
-the top element, hypothesis lookup, and variable lookup.
+"Structural" rules talk about $subset.sq.eq$ as a relation on terms without inspecting either side's head constructor: reflexivity, transitivity, the top element, hypothesis lookup, and variable lookup.
 
 #align(center, grid(
   columns: (1fr, 1fr, 1fr),
@@ -285,33 +276,15 @@ the top element, hypothesis lookup, and variable lookup.
   irule("S-BotL", sub($S$, $Gamma$, $bot$, $e$)),
 ))
 
-*Ex falso via subsumption.* There is no dedicated "absurd"
-eliminator. If $a subset.sq.eq bot$ is derivable, then
-$a subset.sq.eq e$ for every $e$ via [S-Trans] on [S-BotL]. The "contradiction"
-discharge is subsumption alone. This matches the DOT @amin-moors-odersky-2012 tradition: $bot$
-inhabits every type trivially in subtyping, so any term whose type is
-already $bot$ flows into any expected type without further ceremony.
+*Ex falso via subsumption.* There is no dedicated "absurd" eliminator. If $a subset.sq.eq bot$ is derivable, then $a subset.sq.eq e$ for every $e$ via [S-Trans] on [S-BotL]. The "contradiction" discharge is subsumption alone. This matches the DOT @amin-moors-odersky-2012 tradition: $bot$ inhabits every type trivially in subtyping, so any term whose type is already $bot$ flows into any expected type without further ceremony.
 
-*Why [S-Trans] is a constructor, not a derived theorem.* In a
-normal simply-typed subtyping relation, transitivity is admissible: a
-standard induction on the shape of the two derivations composes them.
-That argument requires a decreasing syntactic measure --- typically,
-both derivations get strictly smaller in each case of the composition.
-Och's four unfold rules and iota-intro break this: unfolding
-$"fix"(x lt.eq A). "body"$ replaces it with
-$"body"[x arrow.r.bar "fix"(x lt.eq A). "body"]$, which is _larger_ than the
-original. There's no obvious structural measure on derivations that
-decreases through an unfold, so transitivity is not derivable by
-induction on derivations. The seen-set discipline of @productive is the
-coinductive counterpart that keeps the relation consistent, but it
-doesn't by itself give admissibility of transitivity.
+*Why [S-Trans] is a constructor, not a derived theorem.* In a normal simply-typed subtyping relation, transitivity is admissible: a standard induction on the shape of the two derivations composes them. That argument requires a decreasing syntactic measure --- typically, both derivations get strictly smaller in each case of the composition. Och's four unfold rules and iota-intro break this: unfolding $"fix"(x lt.eq A). "body"$ replaces it with $"body"[x arrow.r.bar "fix"(x lt.eq A). "body"]$, which is _larger_ than the original. There's no obvious structural measure on derivations that decreases through an unfold, so transitivity is not derivable by induction on derivations. The seen-set discipline of @productive is the coinductive counterpart that keeps the relation consistent, but it doesn't by itself give admissibility of transitivity.
 
 Eliminating transitivity as a primitive rule (_transitivity elimination_) is highly desirable: it simplifies metatheory and makes the relation syntax-directed. PSS @hutchins-2010 --- a closely related system --- did not manage to eliminate transitivity. Pasquale and García-Pérez @pasquale-garcia-perez-2026 partially succeeded in a continuation of that work, but required switching the entire theory to a Krivine machine.
 
 == Congruence rules <congruence>
 
-Congruence rules do inspect the head constructor on both sides, _require it to match_, and reduce the goal to sub-obligations on the immediate sub-terms with appropriate
-variance.
+Congruence rules do inspect the head constructor on both sides, _require it to match_, and reduce the goal to sub-obligations on the immediate sub-terms with appropriate variance.
 
 #align(center, grid(
   columns: (1fr, 1fr),
@@ -348,21 +321,11 @@ variance.
   ),
 ))
 
-The equivalence premise on [S-App-Cong] (both directions on the
-argument) is necessary because a neutral head
-can use its argument at any variance, so equivalence is the only sound
-congruence.
+The equivalence premise on [S-App-Cong] (both directions on the argument) is necessary because a neutral head can use its argument at any variance, so equivalence is the only sound congruence.
 
 == Productive unfolding (extend $S$) <productive>
 
-A rule is _productive_ when it replaces a goal whose head is a
-recursive binder (ι or fix) with a goal where that binder has been
-unfolded once. Unfolding makes the term _larger_ in syntactic size, so
-no structural induction can traverse an arbitrary chain of unfolds.
-Productivity instead provides a _coinductive_ handle: once at least
-one unfold has fired, the original goal is guaranteed to eventually
-re-appear as an ancestor, at which point [S-Hyp] can close the
-derivation.
+A rule is _productive_ when it replaces a goal whose head is a recursive binder (ι or fix) with a goal where that binder has been unfolded once. Unfolding makes the term _larger_ in syntactic size, so no structural induction can traverse an arbitrary chain of unfolds. Productivity instead provides a _coinductive_ handle: once at least one unfold has fired, the original goal is guaranteed to eventually re-appear as an ancestor, at which point [S-Hyp] can close the derivation.
 
 The rules below are the only ones that extend $S$.
 
@@ -412,8 +375,7 @@ Let $S' = S, (a, b)$ where $sub(S, Gamma, a, b)$ is the current goal.
   ),
 ))
 
-S-Unfold-Iota-R is the weaker sibling of S-Iota-Intro (same conclusion, no annotation
-premise), needed to close the equivalence of ι-unfolding.
+S-Unfold-Iota-R is the weaker sibling of S-Iota-Intro (same conclusion, no annotation premise), needed to close the equivalence of ι-unfolding.
 
 S-Iota-Intro is *the* rule which allows dependent elimitation: it pust the thing being typed *into* the type, allowing the type to depend on the inhabitant.
 
@@ -480,7 +442,10 @@ the constructors are plain lambdas with $top$ domains --- they carry no recursiv
   dnote(3, [contravariant: $P space "dtrue" subset.sq.eq top$ by S-Top #sym.checkmark]),
   dnote(3, [covariant body under $t lt.eq P space "dtrue"$: S-Lam again]),
   dnote(4, [contravariant: $P space "dfalse" subset.sq.eq top$ by S-Top #sym.checkmark]),
-  dnote(4, [covariant body: $t subset.sq.eq P space "dtrue"$ by S-Var ($t lt.eq P space "dtrue" in Gamma$) #sym.checkmark]),
+  dnote(
+    4,
+    [covariant body: $t subset.sq.eq P space "dtrue"$ by S-Var ($t lt.eq P space "dtrue" in Gamma$) #sym.checkmark],
+  ),
 ))
 
 Because the constructors have $top$ domains, every contravariant [S-Lam] premise is discharged by [S-Top]. The only coinductive step is the [S-Iota-Intro] annotation premise, which closes via [S-Hyp] after one productive unfold. This is the Brandt--Henglein discipline in action: recursion in the subtyping judgment is legal _only across a productive unfold_, so non-productive loops (e.g. reflexivity-by-loop) cannot sneak through.
@@ -513,8 +478,8 @@ All encodings below are Church/Scott-style: data types are represented as their 
 == Booleans <bool-encoding>
 
 $
-  "true"  &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
-  "false" &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
+   "true" & := lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
+  "false" & := lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
 $
 
 Standard Church-encoded booleans. Types and constructors share the same syntax --- both are plain $lambda$-terms.
@@ -522,8 +487,8 @@ Standard Church-encoded booleans. Types and constructors share the same syntax -
 == Pairs <pair-encoding>
 
 $
-  "Pair" space A space B &:= lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). X \
-  "pair" space A space B space a space b &:= lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). k space a space b \
+                  "Pair" space A space B & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). X \
+  "pair" space A space B space a space b & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). k space a space b \
 $
 
 Church-encoded binary products. Pair projections $"fst"$/$"snd"$ erase the unused component's type to $top$, so call sites only supply the type of the component being projected.
@@ -536,9 +501,9 @@ $
 $
 
 $
-  "Nat" &:= "fix"(N lt.eq top). iota("self" lt.eq N). \
-  & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space "zero"). \
-  & quad lambda(s lt.eq lambda("pred" lt.eq N). P space ("succ" space "pred")). P space "self"
+  "Nat" & := "fix"(N lt.eq top). iota("self" lt.eq N). \
+        & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space "zero"). \
+        & quad lambda(s lt.eq lambda("pred" lt.eq N). P space ("succ" space "pred")). P space "self"
 $
 
 Nat uses both key features of Och. The outer $"fix"$ ties the recursive knot (Nat refers to itself in the motive domain). The inner $iota$ binds $"self"$ to the value being typed, enabling _dependent_ elimination: the return type $P space "self"$ varies with the value.
@@ -556,11 +521,11 @@ $
 == Finite sets <fin-encoding>
 
 $
-  "Fin" &:= "fix"(F lt.eq "Nat" arrow top). lambda(n lt.eq "Nat"). \
-  & quad n space (lambda(\_ lt.eq "Nat"). top) space bot \
-  & quad (lambda("pred" lt.eq "Nat"). iota("self" lt.eq "Nat"). \
-  & quad quad lambda(P lt.eq "Nat" arrow top). lambda("fz" lt.eq P space "zero"). \
-  & quad quad lambda("fs" lt.eq lambda(q lt.eq F space "pred"). P space ("succ" space q)). P space "self")
+  "Fin" & := "fix"(F lt.eq "Nat" arrow top). lambda(n lt.eq "Nat"). \
+        & quad n space (lambda(\_ lt.eq "Nat"). top) space bot \
+        & quad (lambda("pred" lt.eq "Nat"). iota("self" lt.eq "Nat"). \
+        & quad quad lambda(P lt.eq "Nat" arrow top). lambda("fz" lt.eq P space "zero"). \
+        & quad quad lambda("fs" lt.eq lambda(q lt.eq F space "pred"). P space ("succ" space q)). P space "self")
 $
 
 $"Fin" space n$ is the type of naturals strictly less than $n$. The zero-length case is $bot$ (primitive bottom), so $"Fin" space "zero"$ is uninhabited. The successor case is an $iota$-type whose $"self"$ is a $"Nat"$ --- this means every $"Fin"$ value is automatically a $"Nat"$ value ($"Fin" space n subset.sq.eq "Nat"$).
@@ -579,7 +544,7 @@ $"Array" space n space T$ computes by eliminating the length index: $"Array" spa
 Vectors package a length with an array of that length, using a dependent pair ($"Sigma"$):
 
 $
-  "Vec" space T &:= "Sigma" space "Nat" space (lambda(n lt.eq "Nat"). "Array" space n space T)
+  "Vec" space T & := "Sigma" space "Nat" space (lambda(n lt.eq "Nat"). "Array" space n space T)
 $
 
 == appendVec: catching the wrong addition <appendvec>
@@ -589,8 +554,8 @@ The north-star example. $"appendVec"$ unpacks two vectors, concatenates their ar
 $
   "appendVec" := lambda(T lt.eq top). lambda(v_1 lt.eq "Vec" space T). lambda(v_2 lt.eq "Vec" space T). \
   quad v_1 space ("Vec" space T) space (lambda(n_1 lt.eq "Nat"). lambda("arr"_1 lt.eq "Array" space n_1 space T). \
-  quad quad v_2 space ("Vec" space T) space (lambda(n_2 lt.eq "Nat"). lambda("arr"_2 lt.eq "Array" space n_2 space T). \
-  quad quad quad "mkVec" space T space ("add" space n_1 space n_2) space ("appendArrays" space T space n_1 space n_2 space "arr"_1 space "arr"_2)))
+    quad quad v_2 space ("Vec" space T) space (lambda(n_2 lt.eq "Nat"). lambda("arr"_2 lt.eq "Array" space n_2 space T). \
+      quad quad quad "mkVec" space T space ("add" space n_1 space n_2) space ("appendArrays" space T space n_1 space n_2 space "arr"_1 space "arr"_2)))
 $
 
 This type-checks: the length $"add" space n_1 space n_2$ matches the length of the concatenated array.
@@ -605,7 +570,7 @@ The type checker _rejects_ this: $"arr"_2 subset.sq.eq "Array" space n_1 space T
 
 == indexArr: safe array indexing <indexarr>
 
-$"indexArr"$ looks up the $i$-th element of an $"Array" space n space T$, where $i$ has type $"Fin" space n$:
+$"indexArr"$ looks up the $i$-th element of an $"Array" space n space T$, where $i$ has type $"Fin" n$:
 
 $
   "indexArr" := "fix" space "self" lt.eq (lambda(T lt.eq top). lambda(n lt.eq "Nat"). "Array" space n space T arrow "Fin" space n arrow T). \
@@ -660,19 +625,13 @@ Two separable runtime properties a type system can promise:
   diverging, the value it produces is well-formed and the program never
   reaches a stuck state.
 
-Och *does not aim to prove (1).* Consistency and normalization
-are explicitly deferred; the calculus admits non-terminating terms by
-design (type-in-type; general recursion via fix).
+Och *does not aim to prove (1).* Consistency and normalization are explicitly deferred; the calculus admits non-terminating terms by design (type-in-type; general recursion via fix).
 
-Och *does aim to prove (2)*, and this is the real runtime
-guarantee of the type system. The language expects the following
-discipline: *type-check first; only evaluate if it succeeded.*
+Och *does aim to prove (2)*, and this is the real runtime guarantee of the type system. The language expects the following discipline: *type-check first; only evaluate if it succeeded.*
 
 = Appendix A. Lean Formalisation <lean-formal>
 
-The entire calculus described in this paper is formalised in Lean 4. This appendix maps the paper's named-variable presentation to the
-mechanised definitions, and notes the one systematic difference: the formalisation uses *de Bruijn indices* throughout, so named variables
-$x$ become positional indices, substitution $"body"[x arrow.r.bar v]$ becomes index arithmetic, and context lookup $Gamma(x)$ becomes list indexing.
+The entire calculus described in this paper is formalised in Lean 4. This appendix maps the paper's named-variable presentation to the mechanised definitions, and notes the one systematic difference: the formalisation uses *de Bruijn indices* throughout, so named variables $x$ become positional indices, substitution $"body"[x arrow.r.bar v]$ becomes index arithmetic, and context lookup $Gamma(x)$ becomes list indexing.
 
 == Representation <lean-repr>
 
@@ -703,10 +662,7 @@ The formalisation also includes an algorithmic decision procedure for these judg
 
 == De Bruijn details <lean-db>
 
-The formalisation's seen-set $S$ is `List (Nat × Expr × Expr)` --- each entry is depth-tagged with
-$|Gamma|$ at which it was recorded, and the hypothesis rule shifts entries to the current depth on use.
-This bookkeeping is invisible in the named presentation: free variables carry their own names, so no
-shift is ever required at lookup time.
+The formalisation's seen-set $S$ is `List (Nat × Expr × Expr)` --- each entry is depth-tagged with $|Gamma|$ at which it was recorded, and the hypothesis rule shifts entries to the current depth on use. This bookkeeping is invisible in the named presentation: free variables carry their own names, so no shift is ever required at lookup time.
 
 == Proof status <lean-proof>
 
