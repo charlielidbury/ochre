@@ -4,7 +4,7 @@
 #set document(title: "Och: A Core Calculus with Iota/Fix and Equirecursive Subtyping")
 #let dark-mode = false
 #set text(font: "New Computer Modern", size: 10pt, fill: if dark-mode { white } else { black })
-#set page(margin: 2.5cm, fill: if dark-mode { rgb("#1a1a2e") } else { white })
+#set page(margin: 2.5cm, fill: if dark-mode { rgb("#1a1a2e") } else { white }, numbering: "1")
 #set par(justify: true)
 #set heading(numbering: "1.1")
 
@@ -487,8 +487,8 @@ Standard Church-encoded booleans. Types and constructors share the same syntax -
 == Pairs <pair-encoding>
 
 $
-                  "Pair" space A space B & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). X \
-  "pair" space A space B space a space b & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). k space a space b \
+                  "Pair" A space B & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). X \
+  "pair" A space B space a space b & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). k space a space b \
 $
 
 Church-encoded binary products. Pair projections $"fst"$/$"snd"$ erase the unused component's type to $top$, so call sites only supply the type of the component being projected.
@@ -503,19 +503,19 @@ $
 $
   "Nat" & := "fix"(N lt.eq top). iota("self" lt.eq N). \
         & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space "zero"). \
-        & quad lambda(s lt.eq lambda("pred" lt.eq N). P space ("succ" space "pred")). P space "self"
+        & quad lambda(s lt.eq lambda("pred" lt.eq N). P space ("succ" "pred")). P space "self"
 $
 
 Nat uses both key features of Och. The outer $"fix"$ ties the recursive knot (Nat refers to itself in the motive domain). The inner $iota$ binds $"self"$ to the value being typed, enabling _dependent_ elimination: the return type $P space "self"$ varies with the value.
 
-The constructors are plain lambdas with $top$ domains --- they carry no reference to $"Nat"$, so $"zero" subset.sq.eq "Nat"$ and $"succ" space n subset.sq.eq "Nat"$ hold by the coinductive seen-set discipline (productive unfold of $"fix"$/$iota$, then all contravariant domain checks discharge via [S-Top]).
+The constructors are plain lambdas with $top$ domains --- they carry no reference to $"Nat"$, so $"zero" subset.sq.eq "Nat"$ and $"succ" n subset.sq.eq "Nat"$ hold by the coinductive seen-set discipline (productive unfold of $"fix"$/$iota$, then all contravariant domain checks discharge via [S-Top]).
 
 Addition is defined with an explicit $"fix"$ since the Scott-style eliminator provides no induction hypothesis:
 
 $
-  "add" &:= "fix" space "add" lt.eq "Nat" arrow "Nat" arrow "Nat". \
+  "add" &:= "fix" "add" lt.eq "Nat" arrow "Nat" arrow "Nat". \
   & quad lambda(n lt.eq "Nat"). lambda(m lt.eq "Nat"). \
-  & quad n space (lambda(\_ lt.eq "Nat"). "Nat") space m space (lambda("pred" lt.eq "Nat"). "succ" space ("add" space "pred" space m))
+  & quad n space (lambda(\_ lt.eq "Nat"). "Nat") space m space (lambda("pred" lt.eq "Nat"). "succ" ("add" "pred" m))
 $
 
 == Finite sets <fin-encoding>
@@ -525,26 +525,26 @@ $
         & quad n space (lambda(\_ lt.eq "Nat"). top) space bot \
         & quad (lambda("pred" lt.eq "Nat"). iota("self" lt.eq "Nat"). \
         & quad quad lambda(P lt.eq "Nat" arrow top). lambda("fz" lt.eq P space "zero"). \
-        & quad quad lambda("fs" lt.eq lambda(q lt.eq F space "pred"). P space ("succ" space q)). P space "self")
+        & quad quad lambda("fs" lt.eq lambda(q lt.eq F space "pred"). P space ("succ" q)). P space "self")
 $
 
-$"Fin" space n$ is the type of naturals strictly less than $n$. The zero-length case is $bot$ (primitive bottom), so $"Fin" space "zero"$ is uninhabited. The successor case is an $iota$-type whose $"self"$ is a $"Nat"$ --- this means every $"Fin"$ value is automatically a $"Nat"$ value ($"Fin" space n subset.sq.eq "Nat"$).
+$"Fin" n$ is the type of naturals strictly less than $n$. The zero-length case is $bot$ (primitive bottom), so $"Fin" "zero"$ is uninhabited. The successor case is an $iota$-type whose $"self"$ is a $"Nat"$ --- this means every $"Fin"$ value is automatically a $"Nat"$ value ($"Fin" n subset.sq.eq "Nat"$).
 
-Natural number literals inhabit $"Fin"$ by subsumption: $"zero" subset.sq.eq "Fin" space ("succ" space n)$ holds for any $n$, and $n subset.sq.eq "Fin" space n$ is correctly rejected (the diagonal). No separate $"FZ"$/$"FS"$ constructors are needed.
+Natural number literals inhabit $"Fin"$ by subsumption: $"zero" subset.sq.eq "Fin" ("succ" n)$ holds for any $n$, and $n subset.sq.eq "Fin" n$ is correctly rejected (the diagonal). No separate $"FZ"$/$"FS"$ constructors are needed.
 
 == Length-indexed arrays <array-encoding>
 
 $
   "Array" &:= "fix"("Arr" lt.eq "Nat" arrow top arrow top). lambda(n lt.eq "Nat"). lambda(T lt.eq top). \
-  & quad n space (lambda(\_ lt.eq "Nat"). top) space "Unit" space (lambda("pred" lt.eq "Nat"). "Pair" space T space ("Arr" space "pred" space T))
+  & quad n space (lambda(\_ lt.eq "Nat"). top) space "Unit" (lambda("pred" lt.eq "Nat"). "Pair" T space ("Arr" "pred" T))
 $
 
-$"Array" space n space T$ computes by eliminating the length index: $"Array" space "zero" space T equiv "Unit"$ and $"Array" space ("succ" space k) space T equiv "Pair" space T space ("Array" space k space T)$. Arrays are built with $"unit"$/$"pair"$ directly.
+$"Array" n space T$ computes by eliminating the length index: $"Array" "zero" T equiv "Unit"$ and $"Array" ("succ" k) space T equiv "Pair" T space ("Array" k space T)$. Arrays are built with $"unit"$/$"pair"$ directly.
 
 Vectors package a length with an array of that length, using a dependent pair ($"Sigma"$):
 
 $
-  "Vec" space T & := "Sigma" space "Nat" space (lambda(n lt.eq "Nat"). "Array" space n space T)
+  "Vec" T & := "Sigma" "Nat" (lambda(n lt.eq "Nat"). "Array" n space T)
 $
 
 == appendVec: catching the wrong addition <appendvec>
@@ -552,44 +552,44 @@ $
 The north-star example. $"appendVec"$ unpacks two vectors, concatenates their arrays with $"appendArrays"$, and repacks the result with the summed length:
 
 $
-  "appendVec" := lambda(T lt.eq top). lambda(v_1 lt.eq "Vec" space T). lambda(v_2 lt.eq "Vec" space T). \
-  quad v_1 space ("Vec" space T) space (lambda(n_1 lt.eq "Nat"). lambda("arr"_1 lt.eq "Array" space n_1 space T). \
-    quad quad v_2 space ("Vec" space T) space (lambda(n_2 lt.eq "Nat"). lambda("arr"_2 lt.eq "Array" space n_2 space T). \
-      quad quad quad "mkVec" space T space ("add" space n_1 space n_2) space ("appendArrays" space T space n_1 space n_2 space "arr"_1 space "arr"_2)))
+  "appendVec" := lambda(T lt.eq top). lambda(v_1 lt.eq "Vec" T). lambda(v_2 lt.eq "Vec" T). \
+  quad v_1 space ("Vec" T) space (lambda(n_1 lt.eq "Nat"). lambda("arr"_1 lt.eq "Array" n_1 space T). \
+    quad quad v_2 space ("Vec" T) space (lambda(n_2 lt.eq "Nat"). lambda("arr"_2 lt.eq "Array" n_2 space T). \
+      quad quad quad "mkVec" T space ("add" n_1 space n_2) space ("appendArrays" T space n_1 space n_2 space "arr"_1 space "arr"_2)))
 $
 
-This type-checks: the length $"add" space n_1 space n_2$ matches the length of the concatenated array.
+This type-checks: the length $"add" n_1 space n_2$ matches the length of the concatenated array.
 
-Now consider a version with a deliberate bug --- $"add" space n_1 space n_1$ instead of $"add" space n_1 space n_2$:
+Now consider a version with a deliberate bug --- $"add" n_1 space n_1$ instead of $"add" n_1 space n_2$:
 
 $
-  "appendVec"_"wrong" := dots.h "mkVec" space T space ("add" space n_1 space n_1) space ("appendArrays" space T space n_1 space n_2 space "arr"_1 space "arr"_2) dots.h
+  "appendVec"_"wrong" := dots.h "mkVec" T space ("add" n_1 space n_1) space ("appendArrays" T space n_1 space n_2 space "arr"_1 space "arr"_2) dots.h
 $
 
-The type checker _rejects_ this: $"arr"_2 subset.sq.eq "Array" space n_1 space T$ fails because $"arr"_2$ has type $"Array" space n_2 space T$ and $n_2 eq.not n_1$ in general. The system catches a bug as subtle as adding the wrong two numbers.
+The type checker _rejects_ this: $"arr"_2 subset.sq.eq "Array" n_1 space T$ fails because $"arr"_2$ has type $"Array" n_2 space T$ and $n_2 eq.not n_1$ in general. The system catches a bug as subtle as adding the wrong two numbers.
 
 == indexArr: safe array indexing <indexarr>
 
-$"indexArr"$ looks up the $i$-th element of an $"Array" space n space T$, where $i$ has type $"Fin" n$:
+$"indexArr"$ looks up the $i$-th element of an $"Array" n space T$, where $i$ has type $"Fin" n$:
 
 $
-  "indexArr" := "fix" space "self" lt.eq (lambda(T lt.eq top). lambda(n lt.eq "Nat"). "Array" space n space T arrow "Fin" space n arrow T). \
-  quad lambda(T lt.eq top). lambda(n lt.eq "Nat"). n space (lambda(m lt.eq "Nat"). "Array" space m space T arrow "Fin" space m arrow T) \
-  quad quad (lambda("arr" lt.eq "Array" space "zero" space T). lambda(i lt.eq "Fin" space "zero"). i) \
-  quad quad (lambda(p lt.eq "Nat"). lambda("arr" lt.eq "Array" space ("succ" space p) space T). lambda(i lt.eq "Fin" space ("succ" space p)). dots.h)
+  "indexArr" := "fix" "self" lt.eq (lambda(T lt.eq top). lambda(n lt.eq "Nat"). "Array" n space T arrow "Fin" n arrow T). \
+  quad lambda(T lt.eq top). lambda(n lt.eq "Nat"). n space (lambda(m lt.eq "Nat"). "Array" m space T arrow "Fin" m arrow T) \
+  quad quad (lambda("arr" lt.eq "Array" "zero" T). lambda(i lt.eq "Fin" "zero"). i) \
+  quad quad (lambda(p lt.eq "Nat"). lambda("arr" lt.eq "Array" ("succ" p) space T). lambda(i lt.eq "Fin" ("succ" p)). dots.h)
 $
 
-In the zero-length branch, $i$ has type $"Fin" space "zero" = bot$, so the branch body is $i$ itself --- ex falso via [S-BotL]. In the successor branch, the array is destructured as a pair and $i$ eliminates to either the head or a recursive call on the tail.
+In the zero-length branch, $i$ has type $"Fin" "zero" = bot$, so the branch body is $i$ itself --- ex falso via [S-BotL]. In the successor branch, the array is destructured as a pair and $i$ eliminates to either the head or a recursive call on the tail.
 
 The payoff is at call sites:
 
 $
-  "indexArr" space "Nat" space "three" space "arr" space "zero" quad & checkmark quad ("zero" subset.sq.eq "Fin" space "three") \
-  "indexArr" space "Nat" space "three" space "arr" space "two" quad & checkmark quad ("two" subset.sq.eq "Fin" space "three") \
-  "indexArr" space "Nat" space "three" space "arr" space "three" quad & times quad ("three" subset.sq.eq.not "Fin" space "three")
+  "indexArr" "Nat" "three" "arr" "zero" quad & checkmark quad ("zero" subset.sq.eq "Fin" "three") \
+  "indexArr" "Nat" "three" "arr" "two" quad & checkmark quad ("two" subset.sq.eq "Fin" "three") \
+  "indexArr" "Nat" "three" "arr" "three" quad & times quad ("three" subset.sq.eq.not "Fin" "three")
 $
 
-Out-of-bounds access is a _compile-time_ error: the index literal fails to subtype $"Fin" space n$, and no runtime check is needed.
+Out-of-bounds access is a _compile-time_ error: the index literal fails to subtype $"Fin" n$, and no runtime check is needed.
 
 = Metatheory <metatheory>
 
