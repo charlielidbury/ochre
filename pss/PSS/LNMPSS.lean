@@ -453,6 +453,59 @@ theorem LNExpr.not_mem_fvs_open_at (e : LNExpr) {x y : String} {k : Nat}
     | inl h => exact not_mem_fvs_open_at f hf hne h
     | inr h => exact not_mem_fvs_open_at a ha hne h
 
+/-- fvs(e) ⊆ fvs(e.open_at k u): any free variable in e is also in e^u.
+    Opening only replaces bound variables, so existing free variables are preserved. -/
+theorem LNExpr.mem_fvs_of_mem_fvs_open_at (e : LNExpr) {x : String} {u : LNExpr} {k : Nat}
+    (h : x ∈ e.fvs) : x ∈ (e.open_at k u).fvs := by
+  match e with
+  | .bvar _ => exact absurd h (List.not_mem_nil _)
+  | .fvar _ => exact h
+  | .top => exact absurd h (List.not_mem_nil _)
+  | .lam dom body =>
+    simp only [fvs] at h; simp only [open_at, fvs]
+    cases List.mem_append.mp h with
+    | inl hd => exact List.mem_append_left _ (mem_fvs_of_mem_fvs_open_at dom hd)
+    | inr hb => exact List.mem_append_right _ (mem_fvs_of_mem_fvs_open_at body hb)
+  | .app f a =>
+    simp only [fvs] at h; simp only [open_at, fvs]
+    cases List.mem_append.mp h with
+    | inl hf => exact List.mem_append_left _ (mem_fvs_of_mem_fvs_open_at f hf)
+    | inr ha => exact List.mem_append_right _ (mem_fvs_of_mem_fvs_open_at a ha)
+
+/-- Reverse direction: if x ∉ (e.open_at k u).fvs then x ∉ e.fvs.
+    Immediate from mem_fvs_of_mem_fvs_open_at by contraposition. -/
+theorem LNExpr.not_mem_fvs_of_not_mem_fvs_open (e : LNExpr) {x : String} {u : LNExpr} {k : Nat}
+    (h : x ∉ (e.open_at k u).fvs) : x ∉ e.fvs :=
+  fun hmem => h (mem_fvs_of_mem_fvs_open_at e hmem)
+
+/-- General opening with an arbitrary term: if x ∉ e.fvs and x ∉ u.fvs,
+    then x ∉ (e.open_at k u).fvs. -/
+theorem LNExpr.not_mem_fvs_open_at_term (e : LNExpr) {x : String} {u : LNExpr} {k : Nat}
+    (he : x ∉ e.fvs) (hu : x ∉ u.fvs) : x ∉ (e.open_at k u).fvs := by
+  match e with
+  | .bvar n =>
+    simp only [open_at]; split
+    · exact hu
+    · exact fun hmem => (List.not_mem_nil x) hmem
+  | .fvar _ => exact he
+  | .top => exact fun hmem => (List.not_mem_nil x) hmem
+  | .lam dom body =>
+    have hdom : x ∉ dom.fvs := fun h => he (List.mem_append_left _ h)
+    have hbody : x ∉ body.fvs := fun h => he (List.mem_append_right _ h)
+    intro hmem
+    simp only [open_at, fvs] at hmem
+    cases List.mem_append.mp hmem with
+    | inl h => exact not_mem_fvs_open_at_term dom hdom hu h
+    | inr h => exact not_mem_fvs_open_at_term body hbody hu h
+  | .app f a =>
+    have hf : x ∉ f.fvs := fun h => he (List.mem_append_left _ h)
+    have ha : x ∉ a.fvs := fun h => he (List.mem_append_right _ h)
+    intro hmem
+    simp only [open_at, fvs] at hmem
+    cases List.mem_append.mp hmem with
+    | inl h => exact not_mem_fvs_open_at_term f hf hu h
+    | inr h => exact not_mem_fvs_open_at_term a ha hu h
+
 /-- An annotation is locally closed if its embedded term is. -/
 def LNAnn.lc : LNAnn → Prop
   | .sub t => t.lc
@@ -2959,6 +3012,405 @@ theorem subRed_preserves_lc
           exact LNExpr.lc_at_1_of_open_lc hbody'_x_lc hx_body')
   exact go h hwf hswf hlc
 
+/-! ### Reduction preserves freshness -/
+
+/-- Extract x ∉ α.fvs from mem_equiv and x ∉ all_fvs Γ. -/
+private theorem not_mem_fvs_of_mem_equiv {Γ : LNCtx} {x z : String} {α : LNExpr}
+    (hmem : LNCtx.mem_equiv Γ z α) (hfresh : x ∉ LNCtx.all_fvs Γ) : x ∉ α.fvs := by
+  have := LNCtx.not_mem_ann_fvs_of_not_mem_all_fvs hfresh hmem
+  simp only [LNAnn.fvs] at this; exact this
+
+/-- Extract x ∉ t.fvs from mem_sub and x ∉ all_fvs Γ. -/
+private theorem not_mem_fvs_of_mem_sub {Γ : LNCtx} {x z : String} {t : LNExpr}
+    (hmem : LNCtx.mem_sub Γ z t) (hfresh : x ∉ LNCtx.all_fvs Γ) : x ∉ t.fvs := by
+  have := LNCtx.not_mem_ann_fvs_of_not_mem_all_fvs hfresh hmem
+  simp only [LNAnn.fvs] at this; exact this
+
+/-- Helper: x ∉ all_fvs ((y, ann) :: Γ) when x ≠ y, x ∉ ann.fvs, x ∉ all_fvs Γ. -/
+private theorem not_mem_all_fvs_cons {x y : String} {ann : LNAnn} {Γ : LNCtx}
+    (hne : x ≠ y) (hann : x ∉ ann.fvs) (hΓ : x ∉ LNCtx.all_fvs Γ)
+    : x ∉ LNCtx.all_fvs ((y, ann) :: Γ) := by
+  simp only [LNCtx.all_fvs, List.flatMap_cons]
+  intro hmem
+  cases List.mem_append.mp hmem with
+  | inl h =>
+    cases List.mem_cons.mp h with
+    | inl heq => exact hne heq
+    | inr hfvs => exact hann hfvs
+  | inr h => exact hΓ h
+
+set_option maxHeartbeats 1600000 in
+/-- Equivalence reduction preserves freshness of free variables.
+    If Γ;s ⊢ u ≡→ v and x ∉ u.fvs and x ∉ all_fvs(Γ) and x ∉ stack fvs,
+    then x ∉ v.fvs. Reduction can only introduce variables from the context
+    (ME-PRO) or stack (ME-FOP), so if x is absent from both, it stays absent. -/
+theorem equivRed_preserves_not_mem_fvs
+    {Γ : LNCtx} {s : LNStack} {u v : LNExpr} {x : String}
+    (h : LNEquivRed Γ s u v)
+    (hfvs : x ∉ u.fvs)
+    (hctx : x ∉ LNCtx.all_fvs Γ)
+    (hstk : ∀ e ∈ s, x ∉ e.fvs)
+    : x ∉ v.fvs := by
+  have go :=
+    @LNEquivRed.rec
+      (motive_1 := fun Γ s u v _ =>
+        x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
+      (motive_2 := fun Γ s u v _ =>
+        x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
+      -- me_pro: output is α' from SubRed Γ s α α'; x ∉ α.fvs from context freshness
+      (fun hmem _hsub ih_sub _hfvs hctx hstk =>
+        ih_sub (not_mem_fvs_of_mem_equiv hmem hctx) hctx hstk)
+      -- me_bet: output is t.open_at 0 v'
+      (fun (L : List String) _hbody _hv ih_body ih_v hfvs hctx hstk => by
+        rename_i Γ_i s_i dom_i body_i t_i v_i v'_i
+        -- fvs(app (lam dom body) v) = (dom.fvs ++ body.fvs) ++ v.fvs
+        have hlam_fvs : x ∉ (LNExpr.lam dom_i body_i).fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hv_fvs : x ∉ v_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hlam_fvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hlam_fvs (List.mem_append_right _ h)
+        -- Get x ∉ v'.fvs from IH on v
+        have hv'_fvs := ih_v hv_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        -- Pick y fresh for L ++ [x]
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        -- x ∉ (body^y).fvs
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        -- x ∉ all_fvs((y, .sub dom) :: Γ)
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .sub dom_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hdom_fvs) hctx
+        -- IH on body gives x ∉ (t^y).fvs
+        have ht_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext hstk
+        -- From x ∉ (t^y).fvs, get x ∉ t.fvs
+        have ht_fvs : x ∉ t_i.fvs := LNExpr.not_mem_fvs_of_not_mem_fvs_open t_i ht_y_fvs
+        -- x ∉ (t.open_at 0 v').fvs
+        exact LNExpr.not_mem_fvs_open_at_term t_i ht_fvs hv'_fvs)
+      -- me_top
+      (fun _hfvs _hctx _hstk => fun hmem => (List.not_mem_nil _) hmem)
+      -- me_var
+      (fun hfvs _hctx _hstk => hfvs)
+      -- me_tap
+      (fun _hfvs _hctx _hstk => fun hmem => (List.not_mem_nil _) hmem)
+      -- me_app: output is app u' v'
+      (fun _hu _hv ih_u ih_v hfvs hctx hstk => by
+        rename_i Γ_i s_i u_i u'_i v_i v'_i
+        have hu_fvs : x ∉ u_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hv_fvs : x ∉ v_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hu'_fvs := ih_u hu_fvs hctx
+          (fun e he => by cases he with | head => exact hv_fvs | tail _ h => exact hstk e h)
+        have hv'_fvs := ih_v hv_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hu'_fvs h
+          | inr h => exact hv'_fvs h)
+      -- me_fun: output is lam dom' body', stack is []
+      (fun (L : List String) _hdom _hbody ih_dom ih_body hfvs hctx _hstk => by
+        rename_i Γ_i dom_i dom'_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hdom'_fvs := ih_dom hdom_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        -- Pick y fresh
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .sub dom_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hdom_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom'_fvs h
+          | inr h => exact hbody'_fvs h)
+      -- me_fop: output is lam dom' body', stack is α :: s_i
+      (fun (L : List String) _hdom _hbody ih_dom ih_body hfvs hctx hstk => by
+        rename_i Γ_i s_i α_i dom_i dom'_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hα_fvs : x ∉ α_i.fvs := hstk _ (List.mem_cons_self _ _)
+        have hs_fvs : ∀ e ∈ s_i, x ∉ e.fvs := fun e he => hstk e (List.mem_cons_of_mem _ he)
+        have hdom'_fvs := ih_dom hdom_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        -- Pick y fresh
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .equiv α_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hα_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext hs_fvs
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom'_fvs h
+          | inr h => exact hbody'_fvs h)
+      -- ms_pro: output is t from context
+      (fun hmem _hfvs hctx _hstk => not_mem_fvs_of_mem_sub hmem hctx)
+      -- ms_top
+      (fun _hfvs _hctx _hstk => fun hmem => (List.not_mem_nil _) hmem)
+      -- ms_equ
+      (fun _hequ ih_equ hfvs hctx hstk => ih_equ hfvs hctx hstk)
+      -- ms_app: output is app u' v (v unchanged)
+      (fun _hsub ih_sub hfvs hctx hstk => by
+        rename_i Γ_i s_i u_i u'_i v_i
+        have hu_fvs : x ∉ u_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hv_fvs : x ∉ v_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hu'_fvs := ih_sub hu_fvs hctx
+          (fun e he => by cases he with | head => exact hv_fvs | tail _ h => exact hstk e h)
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hu'_fvs h
+          | inr h => exact hv_fvs h)
+      -- ms_fun: output is lam dom body', stack is []
+      (fun (L : List String) _hbody ih_body hfvs hctx _hstk => by
+        rename_i Γ_i dom_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        -- Pick y fresh
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .sub dom_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hdom_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom_fvs h
+          | inr h => exact hbody'_fvs h)
+      -- ms_fop: output is lam dom body', stack is α :: s_i
+      (fun (L : List String) _hbody ih_body hfvs hctx hstk => by
+        rename_i Γ_i s_i α_i dom_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hα_fvs : x ∉ α_i.fvs := hstk _ (List.mem_cons_self _ _)
+        have hs_fvs : ∀ e ∈ s_i, x ∉ e.fvs := fun e he => hstk e (List.mem_cons_of_mem _ he)
+        -- Pick y fresh
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .equiv α_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hα_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext hs_fvs
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom_fvs h
+          | inr h => exact hbody'_fvs h)
+  exact go h hfvs hctx hstk
+
+set_option maxHeartbeats 1600000 in
+/-- Subtyping reduction preserves freshness of free variables.
+    Derived from the same mutual induction as equivRed_preserves_not_mem_fvs. -/
+theorem subRed_preserves_not_mem_fvs
+    {Γ : LNCtx} {s : LNStack} {u v : LNExpr} {x : String}
+    (h : LNSubRed Γ s u v)
+    (hfvs : x ∉ u.fvs)
+    (hctx : x ∉ LNCtx.all_fvs Γ)
+    (hstk : ∀ e ∈ s, x ∉ e.fvs)
+    : x ∉ v.fvs := by
+  have go :=
+    @LNSubRed.rec
+      (motive_1 := fun Γ s u v _ =>
+        x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
+      (motive_2 := fun Γ s u v _ =>
+        x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
+      -- me_pro
+      (fun hmem _hsub ih_sub _hfvs hctx hstk =>
+        ih_sub (not_mem_fvs_of_mem_equiv hmem hctx) hctx hstk)
+      -- me_bet
+      (fun (L : List String) _hbody _hv ih_body ih_v hfvs hctx hstk => by
+        rename_i Γ_i s_i dom_i body_i t_i v_i v'_i
+        -- fvs(app (lam dom body) v) = (dom.fvs ++ body.fvs) ++ v.fvs
+        have hlam_fvs : x ∉ (LNExpr.lam dom_i body_i).fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hv_fvs : x ∉ v_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hlam_fvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hlam_fvs (List.mem_append_right _ h)
+        have hv'_fvs := ih_v hv_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .sub dom_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hdom_fvs) hctx
+        have ht_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext hstk
+        have ht_fvs : x ∉ t_i.fvs := LNExpr.not_mem_fvs_of_not_mem_fvs_open t_i ht_y_fvs
+        exact LNExpr.not_mem_fvs_open_at_term t_i ht_fvs hv'_fvs)
+      -- me_top
+      (fun _hfvs _hctx _hstk => fun hmem => (List.not_mem_nil _) hmem)
+      -- me_var
+      (fun hfvs _hctx _hstk => hfvs)
+      -- me_tap
+      (fun _hfvs _hctx _hstk => fun hmem => (List.not_mem_nil _) hmem)
+      -- me_app
+      (fun _hu _hv ih_u ih_v hfvs hctx hstk => by
+        rename_i Γ_i s_i u_i u'_i v_i v'_i
+        have hu_fvs : x ∉ u_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hv_fvs : x ∉ v_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hu'_fvs := ih_u hu_fvs hctx
+          (fun e he => by cases he with | head => exact hv_fvs | tail _ h => exact hstk e h)
+        have hv'_fvs := ih_v hv_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hu'_fvs h
+          | inr h => exact hv'_fvs h)
+      -- me_fun
+      (fun (L : List String) _hdom _hbody ih_dom ih_body hfvs hctx _hstk => by
+        rename_i Γ_i dom_i dom'_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hdom'_fvs := ih_dom hdom_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .sub dom_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hdom_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom'_fvs h
+          | inr h => exact hbody'_fvs h)
+      -- me_fop
+      (fun (L : List String) _hdom _hbody ih_dom ih_body hfvs hctx hstk => by
+        rename_i Γ_i s_i α_i dom_i dom'_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hα_fvs : x ∉ α_i.fvs := hstk _ (List.mem_cons_self _ _)
+        have hs_fvs : ∀ e ∈ s_i, x ∉ e.fvs := fun e he => hstk e (List.mem_cons_of_mem _ he)
+        have hdom'_fvs := ih_dom hdom_fvs hctx (fun _ he => absurd he (List.not_mem_nil _))
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .equiv α_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hα_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext hs_fvs
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom'_fvs h
+          | inr h => exact hbody'_fvs h)
+      -- ms_pro
+      (fun hmem _hfvs hctx _hstk => not_mem_fvs_of_mem_sub hmem hctx)
+      -- ms_top
+      (fun _hfvs _hctx _hstk => fun hmem => (List.not_mem_nil _) hmem)
+      -- ms_equ
+      (fun _hequ ih_equ hfvs hctx hstk => ih_equ hfvs hctx hstk)
+      -- ms_app
+      (fun _hsub ih_sub hfvs hctx hstk => by
+        rename_i Γ_i s_i u_i u'_i v_i
+        have hu_fvs : x ∉ u_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hv_fvs : x ∉ v_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hu'_fvs := ih_sub hu_fvs hctx
+          (fun e he => by cases he with | head => exact hv_fvs | tail _ h => exact hstk e h)
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hu'_fvs h
+          | inr h => exact hv_fvs h)
+      -- ms_fun
+      (fun (L : List String) _hbody ih_body hfvs hctx _hstk => by
+        rename_i Γ_i dom_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .sub dom_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hdom_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom_fvs h
+          | inr h => exact hbody'_fvs h)
+      -- ms_fop
+      (fun (L : List String) _hbody ih_body hfvs hctx hstk => by
+        rename_i Γ_i s_i α_i dom_i body_i body'_i
+        have hdom_fvs : x ∉ dom_i.fvs := fun h => hfvs (List.mem_append_left _ h)
+        have hbody_fvs : x ∉ body_i.fvs := fun h => hfvs (List.mem_append_right _ h)
+        have hα_fvs : x ∉ α_i.fvs := hstk _ (List.mem_cons_self _ _)
+        have hs_fvs : ∀ e ∈ s_i, x ∉ e.fvs := fun e he => hstk e (List.mem_cons_of_mem _ he)
+        obtain ⟨y, hy_fresh⟩ := exists_fresh_string (L ++ [x])
+        have hy_L : y ∉ L := fun h => hy_fresh (List.mem_append_left _ h)
+        have hx_ne_y : x ≠ y := fun h => by subst h; exact hy_fresh (List.mem_append_right _ (List.mem_cons_self _ _))
+        have hbody_y_fvs : x ∉ (body_i.open_at 0 (.fvar y)).fvs :=
+          LNExpr.not_mem_fvs_open_at body_i hbody_fvs hx_ne_y
+        have hctx_ext : x ∉ LNCtx.all_fvs ((y, .equiv α_i) :: Γ_i) :=
+          not_mem_all_fvs_cons hx_ne_y (by simp [LNAnn.fvs]; exact hα_fvs) hctx
+        have hbody'_y_fvs := ih_body y hy_L hbody_y_fvs hctx_ext hs_fvs
+        have hbody'_fvs : x ∉ body'_i.fvs :=
+          LNExpr.not_mem_fvs_of_not_mem_fvs_open body'_i hbody'_y_fvs
+        exact fun hmem => by
+          simp only [LNExpr.fvs] at hmem
+          cases List.mem_append.mp hmem with
+          | inl h => exact hdom_fvs h
+          | inr h => exact hbody'_fvs h)
+  exact go h hfvs hctx hstk
+
+/-- Context reduction preserves stack freshness.
+    If Γ;s ↦ Γ';s' and x ∉ all_fvs Γ and ∀ e ∈ s, x ∉ e.fvs,
+    then ∀ e ∈ s', x ∉ e.fvs. -/
+theorem ctxRed_preserves_stack_freshness
+    {Γ : LNCtx} {s : LNStack} {Γ' : LNCtx} {s' : LNStack} {x : String}
+    (h : LNCtxRed Γ s Γ' s')
+    (hctx : x ∉ LNCtx.all_fvs Γ)
+    (hstk : ∀ e ∈ s, x ∉ e.fvs)
+    : ∀ e ∈ s', x ∉ e.fvs := by
+  induction h with
+  | ct_ann_sub _ _ ih =>
+    exact ih (fun hmem => hctx (List.mem_append_right _ hmem))
+      hstk
+  | ct_ann_equiv _ _ ih =>
+    exact ih (fun hmem => hctx (List.mem_append_right _ hmem))
+      hstk
+  | ct_stk hctx_inner hred ih =>
+    intro e he
+    cases he with
+    | head =>
+      -- e = α', the reduced stack head
+      exact equivRed_preserves_not_mem_fvs hred
+        (hstk _ (List.mem_cons_self _ _))
+        hctx
+        (fun _ he => absurd he (List.not_mem_nil _))
+    | tail _ hmem =>
+      exact ih hctx (fun e' he' => hstk e' (List.mem_cons_of_mem _ he')) e hmem
+  | ct_nil => intro _ he; exact absurd he (List.not_mem_nil _)
+
 /-! ### Promotion Collapse Lemma
 
 From the paper (p.9:20, ME-BET/MS-APP case):
@@ -3265,15 +3717,17 @@ theorem diamond_full
         .me_fun (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ dom₁.fvs)
           hd₃l (fun y hy => by
             have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-            -- Need x ∉ dom₁'.fvs (the reduced dom). Sorry'd pending reduction-preserves-freshness.
-            have hxdom₁' : x ∉ (LNAnn.sub dom₁').fvs := sorry
+            have hxdom₁' : x ∉ (LNAnn.sub dom₁').fvs := by
+              simp [LNAnn.fvs]; exact equivRed_preserves_not_mem_fvs h1_dom hxdom₁ hxΓ_all
+                (fun _ he => absurd he (List.not_mem_nil _))
             have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxdom₁' (fun _ he => absurd he (List.not_mem_nil _))
             rw [open_close_subst u₃lc]; exact this),
         .me_fun (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ dom₁.fvs)
           hd₃r (fun y hy => by
             have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            -- Need x ∉ dom₂'.fvs (the reduced dom). Sorry'd pending reduction-preserves-freshness.
-            have hxdom₂' : x ∉ (LNAnn.sub dom₂').fvs := sorry
+            have hxdom₂' : x ∉ (LNAnn.sub dom₂').fvs := by
+              simp [LNAnn.fvs]; exact equivRed_preserves_not_mem_fvs h2_dom hxdom₁ hxΓ_all
+                (fun _ he => absurd he (List.not_mem_nil _))
             have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxdom₂' (fun _ he => absurd he (List.not_mem_nil _))
             rw [open_close_subst u₃lc]; exact this)⟩
   | @me_fop _ s' α₁ dom₁ dom₁' body₁ body₁' L₁ h1_dom h1_body =>
@@ -3286,17 +3740,20 @@ theorem diamond_full
       obtain ⟨dom₃, hd₃l, hd₃r⟩ := diamond_full dom₁ h1_dom h2_dom
         (ctxRed_nil_of_ctxRed hctx1_inner) (ctxRed_nil_of_ctxRed hctx2_inner)
         hlc.1 hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
+      -- Include s' fvs in avoidance set so x is fresh for the entire inner stack
       obtain ⟨x, hx⟩ := exists_fresh_string
-        (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs)
-      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))))
-      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))))
-      have hxΓ_all : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+        (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs ++ s'.flatMap LNExpr.fvs)
+      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))))
+      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))))
+      have hxΓ_all : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))))
       have hxΓ : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hxΓ_all
-      have hxΓ₁_all : x ∉ LNCtx.all_fvs Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-      have hxΓ₂_all : x ∉ LNCtx.all_fvs Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
-      have hxα₁ : x ∉ α₁.fvs := fun h => hx (List.mem_append_right _ h)
+      have hxΓ₁_all : x ∉ LNCtx.all_fvs Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+      have hxΓ₂_all : x ∉ LNCtx.all_fvs Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hxα₁ : x ∉ α₁.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hx_s'_fvs : ∀ e ∈ s', x ∉ e.fvs := fun e he hm =>
+        hx (List.mem_append_right _ (List.mem_flatMap.mpr ⟨e, he, hm⟩))
       have hwf_body : LNCtx.wf ((x, .equiv α₁) :: Γ) :=
         fun p hp => by cases hp with | head => exact hα_lc | tail _ h => exact hwf p h
       obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body₁.open_at 0 (.fvar x))
@@ -3311,20 +3768,26 @@ theorem diamond_full
       have u₃lc : u₃.lc := equivRed_preserves_lc hu₃l hb₁lc
         (fun p hp => by cases hp with | head => exact hα'lc | tail _ h => sorry) -- Γ₁.wf
         (sorry) -- s₁'.wf
+      have hxα' : x ∉ α'.fvs := equivRed_preserves_not_mem_fvs hα₁_red hxα₁ hxΓ_all
+        (fun _ he => absurd he (List.not_mem_nil _))
+      have hxα'' : x ∉ α''.fvs := equivRed_preserves_not_mem_fvs hα₂_red hxα₁ hxΓ_all
+        (fun _ he => absurd he (List.not_mem_nil _))
+      have hx_s₁'_fvs : ∀ e ∈ s₁', x ∉ e.fvs :=
+        ctxRed_preserves_stack_freshness hctx1_inner hxΓ_all hx_s'_fvs
+      have hx_s₂'_fvs : ∀ e ∈ s₂', x ∉ e.fvs :=
+        ctxRed_preserves_stack_freshness hctx2_inner hxΓ_all hx_s'_fvs
       exact ⟨.lam dom₃ (u₃.close_at 0 x),
-        .me_fop (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs)
+        .me_fop (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs ++ s'.flatMap LNExpr.fvs)
           hd₃l (fun y hy => by
-            have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-            -- Need x ∉ α'.fvs (the reduced α). Sorry'd pending reduction-preserves-freshness.
-            have hxα' : x ∉ (LNAnn.equiv α').fvs := sorry
-            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxα' sorry
+            have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁
+              (by simp [LNAnn.fvs]; exact hxα') hx_s₁'_fvs
             rw [open_close_subst u₃lc]; exact this),
-        .me_fop (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs)
+        .me_fop (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs ++ s'.flatMap LNExpr.fvs)
           hd₃r (fun y hy => by
-            have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            -- Need x ∉ α''.fvs (the reduced α). Sorry'd pending reduction-preserves-freshness.
-            have hxα'' : x ∉ (LNAnn.equiv α'').fvs := sorry
-            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxα'' sorry
+            have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂
+              (by simp [LNAnn.fvs]; exact hxα'') hx_s₂'_fvs
             rw [open_close_subst u₃lc]; exact this)⟩
 termination_by t₀.sz
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
@@ -3601,17 +4064,18 @@ theorem commutativity
             rw [open_close_subst u₃_lc]
             exact h)
       · -- Right edge
+        have hx_dom'_fvs : x ∉ dom'.fvs :=
+          equivRed_preserves_not_mem_fvs h_equiv_dom hx_dom_fvs hx_all_fvs
+            (fun _ he => absurd he (List.not_mem_nil _))
         exact .ms_fun (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ dom.fvs)
           (fun y hy => by
             have hy_all_fvs' : y ∉ LNCtx.all_fvs Γ' := fun h =>
               hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            have hy_dom_fvs : y ∉ dom.fvs := fun h =>
-              hy (List.mem_append_right _ h)
-            -- Note: subRed_rename needs x fresh for all_fvs Γ', but hright_body
-            -- is in context (x, .sub dom') :: Γ'. We need x ∉ all_fvs Γ' and x ∉ dom'.fvs.
-            -- We have x ∉ all_fvs Γ', but dom' might contain x.
-            -- For now, sorry this case pending dom' freshness tracking.
-            sorry)
+            have h := subRed_rename hright_body hx_all_fvs' hy_all_fvs' hx_body₁_fvs
+              (by simp [LNAnn.fvs]; exact hx_dom'_fvs)
+              (fun _ he => absurd he (List.not_mem_nil _))
+            rw [open_close_subst u₃_lc]
+            exact h)
       · -- noPromoAt preservation for ME-FUN/MS-FUN
         sorry
 
@@ -3625,15 +4089,18 @@ theorem commutativity
     -- ME-FOP / MS-FOP: Both pop α from the stack.
     ---------------------------------------------------------------
     | @me_fop _ _ _ _ dom' _ body₁ L_e h_equiv_dom h_equiv_body_e =>
-      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ α.fvs)
-      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
-      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
-      have hx_all_fvs : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      -- Include s_inner fvs in avoidance set so x is fresh for the entire stack
+      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ α.fvs ++ s_inner.flatMap LNExpr.fvs)
+      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))))
+      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))))
+      have hx_all_fvs : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
       have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
-      have hx_all_fvs' : x ∉ LNCtx.all_fvs Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-      have hx_body₂_fvs : x ∉ body₂.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-      have hx_body₁_fvs : x ∉ body₁.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
-      have hx_α_fvs : x ∉ α.fvs := fun h => hx (List.mem_append_right _ h)
+      have hx_all_fvs' : x ∉ LNCtx.all_fvs Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hx_body₂_fvs : x ∉ body₂.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hx_body₁_fvs : x ∉ body₁.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hx_α_fvs : x ∉ α.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hx_s_inner_fvs : ∀ e ∈ s_inner, x ∉ e.fvs := fun e he hm =>
+        hx (List.mem_append_right _ (List.mem_flatMap.mpr ⟨e, he, hm⟩))
       have h_equiv_body_x := h_equiv_body_e x hx_Le
       have h_sub_body_x := h_sub_body_s x hx_Ls
       obtain ⟨α', s₁, hs'eq, h_ctx_inner, hα_red⟩ := ctxRed_stack_inv h_ctx h_nd
@@ -3668,17 +4135,24 @@ theorem commutativity
               hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
             have hy_α_fvs : y ∉ α.fvs := fun h =>
               hy (List.mem_append_right _ h)
-            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_α_fvs sorry
+            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_α_fvs hx_s_inner_fvs
             rw [open_close_subst u₃_lc]
             exact h)
       · -- Right edge: use subRed_rename on hright_body
+        have hx_α'_fvs : x ∉ α'.fvs :=
+          equivRed_preserves_not_mem_fvs hα_red hx_α_fvs hx_all_fvs
+            (fun _ he => absurd he (List.not_mem_nil _))
+        have hx_s₁_fvs : ∀ e ∈ s₁, x ∉ e.fvs :=
+          ctxRed_preserves_stack_freshness h_ctx_inner hx_all_fvs hx_s_inner_fvs
         exact .ms_fop (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ α.fvs)
           (fun y hy => by
             have hy_all_fvs' : y ∉ LNCtx.all_fvs Γ' := fun h =>
               hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            -- hright_body : SubRed ((x, .equiv α') :: Γ') s₁ ...
-            -- Need x ∉ α'.fvs. Sorry'd pending reduction-preserves-freshness lemma.
-            sorry)
+            have h := subRed_rename hright_body hx_all_fvs' hy_all_fvs' hx_body₁_fvs
+              (by simp [LNAnn.fvs]; exact hx_α'_fvs)
+              hx_s₁_fvs
+            rw [open_close_subst u₃_lc]
+            exact h)
       · -- noPromoAt preservation for ME-FOP/MS-FOP
         sorry
 termination_by t₀.sz
