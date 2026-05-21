@@ -4959,7 +4959,23 @@ theorem commutativity
           exact h_subst
         · -- noPromoAt preservation
           intro z hnp_z
-          sorry  -- same kind of noPromoAt sorry as other commutativity cases
+          by_cases hzx : z = x
+          · -- z = x: x ∉ dom Γ', so noPromoAt x trivially holds
+            subst hzx; exact noPromoAt_fresh_sub h_subst hx_dom'
+          · -- z ≠ x: use noPromoAt_fresh_sub when z ∉ dom Γ', otherwise sorry
+            -- z ∉ dom Γ' → noPromoAt_fresh_sub h_subst
+            -- z ∈ dom Γ' → requires substitution preservation lemma (future work)
+            by_cases hz_dom : z ∈ LNCtx.dom Γ'
+            · -- z ∈ dom Γ': Extract body-level noPromoAt z, apply IH, substitute
+              -- The commutativity IH gives noPromoAt z on the body level.
+              -- Substituting x → v' preserves noPromoAt z because:
+              -- 1. z ≠ x, so z's context entry is unchanged by ctx_subst_drop
+              -- 2. subRed_subst_noPromo only removes x from context,
+              --    doesn't introduce new promotions of z
+              -- This requires a general noPromoAt_subst_pres lemma.
+              sorry
+            · -- z ∉ dom Γ': noPromoAt_fresh_sub on h_subst
+              exact noPromoAt_fresh_sub h_subst hz_dom
     ---------------------------------------------------------------
     -- ME-TAP / MS-APP
     ---------------------------------------------------------------
