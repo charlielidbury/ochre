@@ -74,10 +74,14 @@ Several kinds of `sorry` remain:
   pass through directly via `LNCtx.sub_cons`.
 - `equivRed_ctx_ext` / `subRed_ctx_ext`: structural context extension — if
   x ∉ dom(Γ), adding (x,ann) preserves reductions. Derived from ctx_mono.
+- `equivRed_rename_strong` / `subRed_rename_strong`: fvar renaming for reductions.
+  If (x,ann)::G; s |- u =-> u' then (y,ann)::G; s |- u[x:=fvar y] =-> u'[x:=fvar y],
+  given freshness of x,y w.r.t. all_fvs(G) and ann.fvs. Replaces the former
+  (false) equivRed_subst / subRed_subst. Sorry'd pending mutual induction proof.
 - `equivRed_rename` / `subRed_rename`: alpha-renaming under binders — if
-  (x,ann)::Γ; s ⊢ body^x ≡→ u (resp. ≤→), then (y,ann)::Γ; s ⊢ body^y ≡→
-  u[x↦fvar y]. Proved by combining ctx_mono + equivRed_subst (resp. subRed_subst).
-  Requires x ∉ fvs(body), which holds at all call sites since x is chosen fresh.
+  (x,ann)::G; s |- body^x =-> u (resp. <=->), then (y,ann)::G; s |- body^y =->
+  u[x:=fvar y]. Derived from equivRed_rename_strong (resp. subRed_rename_strong).
+  Requires x not in fvs(body) and x not in all_fvs(G) and x not in ann.fvs.
 - `noPromoAt_equiv_swap` / `noPromoAt_sub_swap`: annotation swap under
   non-promotion — if a derivation doesn't promote x, changing x's annotation
   in the context preserves the derivation. Proved by mutual induction using
@@ -121,23 +125,16 @@ None. All former axioms have been removed:
   (b) SubRed collapses to EquivRed → sorry'd pending diamond in unified
       context or full mutual induction.
 
-## Sorry'd Theorems (formerly axioms)
-- `equivRed_subst` / `subRed_subst`: converted from axioms to sorry'd theorems.
-  Full proof requires mutual induction on derivation structure. Key blockers:
-  (1) ME-APP case: the stack parameter in the conclusion is not substituted,
-      but the me_app constructor pushes an operand onto the stack that DOES
-      need substitution. Requires a strengthened motive that substitutes
-      stack elements, then a final step showing s.map (subst x v) = s
-      when x does not appear free in stack elements (well-formedness).
-  (2) Cofinite body cases (ME-BET/ME-FUN/MS-FUN): the body premise has
-      context (y,ann_y)::(x,ann)::G where x is not at the head. The recursor
-      IH can only peel the head binding. Requires context permutation
-      (ctx_swap_sub_ctx, now proved) plus annotation well-formedness
-      (dom.subst x v = dom when x not free in dom).
-  (3) ME-PRO/MS-PRO cases: need x not free in annotation terms from the
-      context (well-formedness invariant not formally tracked).
-  Infrastructure lemmas proved toward this: subst_open_at_gen, open_subst_comm,
-  ctx_swap_sub_ctx.
+## Sorry'd Theorems
+- `equivRed_rename_strong` / `subRed_rename_strong`: fvar renaming for reductions.
+  Replaces the former (false) `equivRed_subst` / `subRed_subst`. The key insight
+  is that fvar renaming (specializing substitution to x -> fvar y) avoids the
+  blockers that made general substitution false: stacks don't need substituting,
+  annotation terms are preserved (since x is fresh for them), and context lookups
+  commute with renaming. Sorry'd pending mutual induction proof using the combined
+  recursor.
+  Infrastructure lemmas available: subst_fvar_fvar_open_at, subst_fvar_notin,
+  ctx_swap_sub_ctx, open_subst_comm.
 -/
 
 /-! ## Terms -/
@@ -379,6 +376,13 @@ abbrev LNStack := List LNExpr
 def LNAnn.fvs : LNAnn → List String
   | .sub t => t.fvs
   | .equiv α => α.fvs
+
+/-- Substitution on annotations: replace fvar x with fvar y in the embedded term. -/
+def LNAnn.subst_fvar (ann : LNAnn) (x : String) (u : LNExpr) : LNAnn :=
+  match ann with
+  | .sub t => .sub (t.subst_fvar x u)
+  | .equiv α => .equiv (α.subst_fvar x u)
+
 
 /-- All free variables in a context: both keys and annotation free variables. -/
 def LNCtx.all_fvs (Γ : LNCtx) : List String :=
@@ -933,35 +937,28 @@ theorem ctxRed_nil_of_ctxRed
   | ct_stk _ _ ih => exact ih
   | ct_nil => exact .ct_nil
 
-/-- Substitution for ≡→ (Lemma 32).
-    If (x,ann)::Γ; s ⊢ u ≡→ u' and Γ;[] ⊢ v ≡→ v'
-    then Γ;s ⊢ u[x↦v] ≡→ u'[x↦v'].
-
-    Formerly an axiom, now a sorry'd theorem. The proof requires mutual
-    induction with `subRed_subst` and a strengthened motive that also
-    substitutes stack elements. See the file header for details on blockers.
-    Infrastructure lemmas `subst_open_at_gen`, `open_subst_comm`, and
-    `ctx_swap_sub_ctx` are proved toward this goal. -/
-theorem equivRed_subst
-    {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
-    {u u' v v' : LNExpr}
-    (hbody : LNEquivRed ((x, ann) :: Γ) s u u')
-    (harg  : LNEquivRed Γ [] v v')
-    : LNEquivRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v') := by
+set_option maxHeartbeats 1600000 in
+theorem equivRed_rename_strong
+    {Γ : LNCtx} {s : LNStack} {x y : String} {ann : LNAnn}
+    {u u' : LNExpr}
+    (h : LNEquivRed ((x, ann) :: Γ) s u u')
+    (hfx : x ∉ LNCtx.all_fvs Γ)
+    (hfy : y ∉ LNCtx.all_fvs Γ)
+    (hfx_ann : x ∉ ann.fvs)
+    (hx_ne_y : x ≠ y → y ∉ LNCtx.dom Γ)
+    : LNEquivRed ((y, ann) :: Γ) s (u.subst_fvar x (.fvar y)) (u'.subst_fvar x (.fvar y)) := by
   sorry
 
-/-- Substitution for ≤→ (Lemma 30).
-    If (x,ann)::Γ; s ⊢ u ≤→ u' and x ∉ dom(Γ)
-    then Γ;s ⊢ u[x↦v] ≤→ u'[x↦v].
-
-    Formerly an axiom, now a sorry'd theorem. See `equivRed_subst` for
-    proof strategy and blockers. -/
-theorem subRed_subst
-    {Γ : LNCtx} {s : LNStack} {x : String} {ann : LNAnn}
-    {u u' v : LNExpr}
-    (hbody : LNSubRed ((x, ann) :: Γ) s u u')
-    (hfresh : x ∉ LNCtx.dom Γ)
-    : LNSubRed Γ s (u.subst_fvar x v) (u'.subst_fvar x v) := by
+set_option maxHeartbeats 1600000 in
+theorem subRed_rename_strong
+    {Γ : LNCtx} {s : LNStack} {x y : String} {ann : LNAnn}
+    {u u' : LNExpr}
+    (h : LNSubRed ((x, ann) :: Γ) s u u')
+    (hfx : x ∉ LNCtx.all_fvs Γ)
+    (hfy : y ∉ LNCtx.all_fvs Γ)
+    (hfx_ann : x ∉ ann.fvs)
+    (hx_ne_y : x ≠ y → y ∉ LNCtx.dom Γ)
+    : LNSubRed ((y, ann) :: Γ) s (u.subst_fvar x (.fvar y)) (u'.subst_fvar x (.fvar y)) := by
   sorry
 
 /-- Context lookup: x ≤ t ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≤ t' ∈ Γ'
@@ -1093,6 +1090,17 @@ theorem subst_fvar_notin {e : LNExpr} {x : String} {u : LNExpr}
   | app f a ih_f ih_a =>
     simp [LNExpr.fvs, List.mem_append] at hfr
     simp [LNExpr.subst_fvar, ih_f hfr.1, ih_a hfr.2]
+
+/-- Substitution on annotation is a no-op when the variable doesn't occur free. -/
+theorem ann_subst_fvar_notin {ann : LNAnn} {x : String} {u : LNExpr}
+    (hfr : x ∉ ann.fvs) : ann.subst_fvar x u = ann := by
+  cases ann with
+  | sub t =>
+    show LNAnn.sub (t.subst_fvar x u) = LNAnn.sub t
+    congr 1; exact subst_fvar_notin hfr
+  | equiv α =>
+    show LNAnn.equiv (α.subst_fvar x u) = LNAnn.equiv α
+    congr 1; exact subst_fvar_notin hfr
 
 /-! ### Locally-nameless infrastructure lemmas (now proved) -/
 
@@ -1441,65 +1449,47 @@ theorem ctx_swap_sub_ctx {x y : String} {ann_x ann_y : LNAnn} {Γ : LNCtx}
       exact hlook
 
 /-- Alpha-renaming for ≡→ under binders.
-    If (x,ann)::Γ; s ⊢ body^x ≡→ u and y ∉ dom(Γ) and x ∉ dom(Γ),
-    and x ∉ fvs(body), then (y,ann)::Γ; s ⊢ body^y ≡→ u[x↦fvar y].
-    Proved by combining context monotonicity + substitution lemma (equivRed_subst).
-    The key steps: (1) lift the derivation to (x,ann)::(y,ann)::Γ via ctx_mono,
-    (2) apply equivRed_subst to substitute x for fvar y, (3) rewrite the LHS
-    using subst_fvar_fvar_open_at + subst_fvar_notin. -/
+    If (x,ann)::Γ; s ⊢ body^x ≡→ u and x,y are fresh for Γ and ann,
+    then (y,ann)::Γ; s ⊢ body^y ≡→ u[x↦fvar y].
+    Derived from equivRed_rename_strong by rewriting the LHS using
+    subst_fvar_fvar_open_at + subst_fvar_notin. -/
 theorem equivRed_rename
     {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
     {body u : LNExpr} {x y : String}
     (h : LNEquivRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
-    (_hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
+    (hfx : x ∉ LNCtx.all_fvs Γ) (hfy : y ∉ LNCtx.all_fvs Γ)
     (hfr : x ∉ body.fvs)
+    (hfx_ann : x ∉ ann.fvs)
     : LNEquivRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y)) := by
-  by_cases hxy : x = y
-  · subst hxy; rw [subst_fvar_self]; exact h
-  · -- Step 1: lift h into extended context (x,ann)::(y,ann)::Γ via ctx_mono
-    have hsub : LNCtx.sub_ctx ((x, ann) :: Γ) ((x, ann) :: (y, ann) :: Γ) :=
-      LNCtx.sub_cons (LNCtx.sub_of_cons_fresh hy)
-    have h1 := equivRed_ctx_mono h hsub
-    -- Step 2: apply equivRed_subst — substitute fvar y for x
-    have harg : LNEquivRed ((y, ann) :: Γ) [] (.fvar y) (.fvar y) := .me_var
-    have h2 := equivRed_subst h1 harg
-    -- h2 : LNEquivRed ((y,ann)::Γ) s ((body^x)[x↦fvar y]) (u[x↦fvar y])
-    -- Step 3: rewrite the LHS using (body^x)[x↦fvar y] = body^(fvar y)
-    have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
-      rw [subst_fvar_fvar_open_at]
-      simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
-      rw [subst_fvar_notin hfr]
-    rw [hlhs] at h2
-    exact h2
+  have h1 := equivRed_rename_strong h hfx hfy hfx_ann
+    (fun hne => LNCtx.not_mem_dom_of_not_mem_all_fvs hfy)
+  -- Rewrite LHS: (body^x)[x↦fvar y] = body^y
+  have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
+    rw [subst_fvar_fvar_open_at]
+    simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
+    rw [subst_fvar_notin hfr]
+  rw [hlhs] at h1
+  exact h1
 
 /-- Alpha-renaming for ≤→ under binders.
-    Proved by combining context monotonicity + substitution lemma (subRed_subst). -/
+    Derived from subRed_rename_strong by rewriting the LHS. -/
 theorem subRed_rename
     {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
     {body u : LNExpr} {x y : String}
     (h : LNSubRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
-    (hx : x ∉ LNCtx.dom Γ) (hy : y ∉ LNCtx.dom Γ)
+    (hfx : x ∉ LNCtx.all_fvs Γ) (hfy : y ∉ LNCtx.all_fvs Γ)
     (hfr : x ∉ body.fvs)
+    (hfx_ann : x ∉ ann.fvs)
     : LNSubRed ((y, ann) :: Γ) s (body.open_at 0 (.fvar y)) (u.subst_fvar x (.fvar y)) := by
-  by_cases hxy : x = y
-  · subst hxy; rw [subst_fvar_self]; exact h
-  · -- Step 1: lift h into extended context (x,ann)::(y,ann)::Γ via ctx_mono
-    have hsub : LNCtx.sub_ctx ((x, ann) :: Γ) ((x, ann) :: (y, ann) :: Γ) :=
-      LNCtx.sub_cons (LNCtx.sub_of_cons_fresh hy)
-    have h1 := subRed_ctx_mono h hsub
-    -- Step 2: apply subRed_subst — substitute fvar y for x
-    have hx_ext : x ∉ LNCtx.dom ((y, ann) :: Γ) := by
-      simp only [LNCtx.dom, List.map, List.mem_cons, not_or]
-      exact ⟨hxy, hx⟩
-    have h2 := subRed_subst (v := .fvar y) h1 hx_ext
-    -- h2 : LNSubRed ((y,ann)::Γ) s ((body^x)[x↦fvar y]) (u[x↦fvar y])
-    -- Step 3: rewrite the LHS using (body^x)[x↦fvar y] = body^(fvar y)
-    have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
-      rw [subst_fvar_fvar_open_at]
-      simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
-      rw [subst_fvar_notin hfr]
-    rw [hlhs] at h2
-    exact h2
+  have h1 := subRed_rename_strong h hfx hfy hfx_ann
+    (fun hne => LNCtx.not_mem_dom_of_not_mem_all_fvs hfy)
+  -- Rewrite LHS: (body^x)[x↦fvar y] = body^y
+  have hlhs : (body.open_at 0 (.fvar x)).subst_fvar x (.fvar y) = body.open_at 0 (.fvar y) := by
+    rw [subst_fvar_fvar_open_at]
+    simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
+    rw [subst_fvar_notin hfr]
+  rw [hlhs] at h1
+  exact h1
 
 /-- Top sub-reduces only to Top (or itself via MS-EQU).
     If Γ;s ⊢ Top ≤→ t then t = Top.
@@ -2508,18 +2498,19 @@ theorem promotion_collapse
       (fun L h_body ih_body x_var α_var hlk hlc_e hwf_e _hswf_e => by
         -- Name the implicit recursor variables
         rename_i Γ_fun dom_fun body_fun body'_fun
-        -- L' avoids L, dom(Γ), body.fvs, body'.fvs, x_var
-        let L' := L ++ LNCtx.dom Γ_fun ++ body_fun.fvs ++ body'_fun.fvs ++ [x_var]
+        -- L' avoids L, all_fvs(Γ), body.fvs, body'.fvs, dom.fvs, x_var
+        let L' := L ++ LNCtx.all_fvs Γ_fun ++ body_fun.fvs ++ body'_fun.fvs ++ dom_fun.fvs ++ [x_var]
         -- Classical: either some y₀ ∉ L' gives EquivRed, or all give noPromoAt
         by_cases hex : ∃ y₀, y₀ ∉ L' ∧ LNEquivRed ((y₀, .sub dom_fun) :: Γ_fun) [] (body_fun.open_at 0 (.fvar y₀)) (body'_fun.open_at 0 (.fvar y₀))
         · -- Case: ∃ y₀ giving EquivRed → build ME-FUN via equivRed_rename
           obtain ⟨y₀, hy₀L', heq_y₀⟩ := hex
-          have hy₀Γ : y₀ ∉ LNCtx.dom Γ_fun := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-          have hy₀body : y₀ ∉ body_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-          have hy₀body' : y₀ ∉ body'_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
+          have hy₀Γ : y₀ ∉ LNCtx.all_fvs Γ_fun := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+          have hy₀body : y₀ ∉ body_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+          have hy₀body' : y₀ ∉ body'_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+          have hy₀dom : y₀ ∉ dom_fun.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
           exact .inr (.me_fun L' (equivRed_refl Γ_fun [] dom_fun hlc_e.1) (fun y hyL' => by
-            have hyΓ : y ∉ LNCtx.dom Γ_fun := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body
+            have hyΓ : y ∉ LNCtx.all_fvs Γ_fun := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body hy₀dom
             have hrhs : (body'_fun.open_at 0 (.fvar y₀)).subst_fvar y₀ (.fvar y) = body'_fun.open_at 0 (.fvar y) := by
               rw [subst_fvar_fvar_open_at]
               simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
@@ -2530,7 +2521,7 @@ theorem promotion_collapse
           have hall : ∀ y₀, y₀ ∉ L' → ¬ LNEquivRed ((y₀, .sub dom_fun) :: Γ_fun) [] (body_fun.open_at 0 (.fvar y₀)) (body'_fun.open_at 0 (.fvar y₀)) := by
             intro y₀ hy₀ heq; exact hex ⟨y₀, hy₀, heq⟩
           exact .inl (.ms_fun L' (fun y hyL' => by
-            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))
+            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))
             have hyx' : y ≠ x_var := by
               intro heq; subst heq; exact hyL' (List.mem_append_right _ (List.mem_cons_self _ _))
             have hlk_ext : LNCtx.lookup' ((y, LNAnn.sub dom_fun) :: Γ_fun) x_var = some (.equiv α_var) := by
@@ -2550,8 +2541,8 @@ theorem promotion_collapse
       (fun L h_body ih_body x_var α_var hlk hlc_e hwf_e hswf_e => by
         -- Name the implicit recursor variables
         rename_i Γ_fop s_fop α_fop dom_fop body_fop body'_fop
-        -- L' avoids L, dom(Γ), body.fvs, body'.fvs, x_var
-        let L' := L ++ LNCtx.dom Γ_fop ++ body_fop.fvs ++ body'_fop.fvs ++ [x_var]
+        -- L' avoids L, all_fvs(Γ), body.fvs, body'.fvs, α_fop.fvs, x_var
+        let L' := L ++ LNCtx.all_fvs Γ_fop ++ body_fop.fvs ++ body'_fop.fvs ++ α_fop.fvs ++ [x_var]
         -- α_fop is lc from the stack wf hypothesis
         have hα_lc : α_fop.lc := hswf_e α_fop (List.mem_cons_self _ _)
         have hs_wf : LNStack.wf s_fop := fun e he => hswf_e e (List.mem_cons_of_mem α_fop he)
@@ -2559,12 +2550,13 @@ theorem promotion_collapse
         by_cases hex : ∃ y₀, y₀ ∉ L' ∧ LNEquivRed ((y₀, .equiv α_fop) :: Γ_fop) s_fop (body_fop.open_at 0 (.fvar y₀)) (body'_fop.open_at 0 (.fvar y₀))
         · -- Case: ∃ y₀ giving EquivRed → build ME-FOP via equivRed_rename
           obtain ⟨y₀, hy₀L', heq_y₀⟩ := hex
-          have hy₀Γ : y₀ ∉ LNCtx.dom Γ_fop := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-          have hy₀body : y₀ ∉ body_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-          have hy₀body' : y₀ ∉ body'_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
+          have hy₀Γ : y₀ ∉ LNCtx.all_fvs Γ_fop := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+          have hy₀body : y₀ ∉ body_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+          have hy₀body' : y₀ ∉ body'_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+          have hy₀α : y₀ ∉ α_fop.fvs := fun h => hy₀L' (List.mem_append_left _ (List.mem_append_right _ h))
           exact .inr (.me_fop L' (equivRed_refl Γ_fop [] dom_fop hlc_e.1) (fun y hyL' => by
-            have hyΓ : y ∉ LNCtx.dom Γ_fop := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body
+            have hyΓ : y ∉ LNCtx.all_fvs Γ_fop := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+            have h_renamed := equivRed_rename heq_y₀ hy₀Γ hyΓ hy₀body hy₀α
             have hrhs : (body'_fop.open_at 0 (.fvar y₀)).subst_fvar y₀ (.fvar y) = body'_fop.open_at 0 (.fvar y) := by
               rw [subst_fvar_fvar_open_at]
               simp only [LNExpr.subst_fvar, beq_self_eq_true, ite_true]
@@ -2575,7 +2567,7 @@ theorem promotion_collapse
           have hall : ∀ y₀, y₀ ∉ L' → ¬ LNEquivRed ((y₀, .equiv α_fop) :: Γ_fop) s_fop (body_fop.open_at 0 (.fvar y₀)) (body'_fop.open_at 0 (.fvar y₀)) := by
             intro y₀ hy₀ heq; exact hex ⟨y₀, hy₀, heq⟩
           exact .inl (.ms_fop L' (fun y hyL' => by
-            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))
+            have hyL : y ∉ L := fun h => hyL' (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))
             have hyx' : y ≠ x_var := by
               intro heq; subst heq; exact hyL' (List.mem_append_right _ (List.mem_cons_self _ _))
             have hlk_ext : LNCtx.lookup' ((y, LNAnn.equiv α_fop) :: Γ_fop) x_var = some (.equiv α_var) := by
@@ -2651,14 +2643,16 @@ theorem diamond_full
         (ctxRed_nil_of_ctxRed hctx1) (ctxRed_nil_of_ctxRed hctx2)
         hdom_lc hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
       obtain ⟨x, hx⟩ := exists_fresh_string
-        (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
-      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
-      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
-      have hxΓ : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-      have hxΓ₁ : x ∉ LNCtx.dom Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-      have hxΓ₂ : x ∉ LNCtx.dom Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
-      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_right _ h)
+        (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ dom₁.fvs)
+      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))))
+      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))))
+      have hxΓ_all : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+      have hxΓ : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hxΓ_all
+      have hxΓ₁_all : x ∉ LNCtx.all_fvs Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hxΓ₂_all : x ∉ LNCtx.all_fvs Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hxdom₁ : x ∉ dom₁.fvs := fun h => hx (List.mem_append_right _ h)
       have hs₁ := ctxRed_nil_stack hctx1; subst hs₁
       have hs₂ := ctxRed_nil_stack hctx2; subst hs₂
       have hwf_body : LNCtx.wf ((x, .sub dom₁) :: Γ) :=
@@ -2678,17 +2672,19 @@ theorem diamond_full
         (fun p hp => by cases hp with | head => exact hd₁lc | tail _ h => sorry) -- Γ₁.wf
         (fun _ he => absurd he (List.not_mem_nil _))
       exact ⟨.lam dom₃ (u₃.close_at 0 x),
-        .me_fun (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+        .me_fun (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ dom₁.fvs)
           hd₃l (fun y hy => by
-            have := equivRed_rename hu₃l hxΓ₁
-              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-              hxb₁
+            have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+            -- Need x ∉ dom₁'.fvs (the reduced dom). Sorry'd pending reduction-preserves-freshness.
+            have hxdom₁' : x ∉ (LNAnn.sub dom₁').fvs := sorry
+            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxdom₁'
             rw [open_close_subst u₃lc]; exact this),
-        .me_fun (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+        .me_fun (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ dom₁.fvs)
           hd₃r (fun y hy => by
-            have := equivRed_rename hu₃r hxΓ₂
-              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-              hxb₂
+            have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+            -- Need x ∉ dom₂'.fvs (the reduced dom). Sorry'd pending reduction-preserves-freshness.
+            have hxdom₂' : x ∉ (LNAnn.sub dom₂').fvs := sorry
+            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxdom₂'
             rw [open_close_subst u₃lc]; exact this)⟩
   | @me_fop _ s' α₁ dom₁ dom₁' body₁ body₁' L₁ h1_dom h1_body =>
     cases h2 with
@@ -2701,14 +2697,16 @@ theorem diamond_full
         (ctxRed_nil_of_ctxRed hctx1_inner) (ctxRed_nil_of_ctxRed hctx2_inner)
         hlc.1 hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
       obtain ⟨x, hx⟩ := exists_fresh_string
-        (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
-      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
-      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
-      have hxΓ : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-      have hxΓ₁ : x ∉ LNCtx.dom Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-      have hxΓ₂ : x ∉ LNCtx.dom Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
-      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_right _ h)
+        (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs)
+      have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))))
+      have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))))
+      have hxΓ_all : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+      have hxΓ : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hxΓ_all
+      have hxΓ₁_all : x ∉ LNCtx.all_fvs Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hxΓ₂_all : x ∉ LNCtx.all_fvs Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hxα₁ : x ∉ α₁.fvs := fun h => hx (List.mem_append_right _ h)
       have hwf_body : LNCtx.wf ((x, .equiv α₁) :: Γ) :=
         fun p hp => by cases hp with | head => exact hα_lc | tail _ h => exact hwf p h
       obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body₁.open_at 0 (.fvar x))
@@ -2724,17 +2722,19 @@ theorem diamond_full
         (fun p hp => by cases hp with | head => exact hα'lc | tail _ h => sorry) -- Γ₁.wf
         (sorry) -- s₁'.wf
       exact ⟨.lam dom₃ (u₃.close_at 0 x),
-        .me_fop (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+        .me_fop (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs)
           hd₃l (fun y hy => by
-            have := equivRed_rename hu₃l hxΓ₁
-              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-              hxb₁
+            have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+            -- Need x ∉ α'.fvs (the reduced α). Sorry'd pending reduction-preserves-freshness.
+            have hxα' : x ∉ (LNAnn.equiv α').fvs := sorry
+            have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁ hxα'
             rw [open_close_subst u₃lc]; exact this),
-        .me_fop (L₁ ++ L₂ ++ LNCtx.dom Γ ++ LNCtx.dom Γ₁ ++ LNCtx.dom Γ₂ ++ body₁'.fvs ++ body₂'.fvs)
+        .me_fop (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ α₁.fvs)
           hd₃r (fun y hy => by
-            have := equivRed_rename hu₃r hxΓ₂
-              (fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-              hxb₂
+            have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+            -- Need x ∉ α''.fvs (the reduced α). Sorry'd pending reduction-preserves-freshness.
+            have hxα'' : x ∉ (LNAnn.equiv α'').fvs := sorry
+            have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂ hxα''
             rw [open_close_subst u₃lc]; exact this)⟩
 termination_by t₀.sz
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
@@ -2916,22 +2916,23 @@ theorem commutativity
           refine ⟨(u₃.close_at 0 x).open_at 0 v', ?_, ?_, ?_⟩
           · -- Top edge: Γ;s ⊢ app (lam dom body₂) v ≡→ (close x u₃)^v'
             -- htop_body is under .sub dom, perfect for ME-BET
-            exact .me_bet (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ')
+            exact .me_bet (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.dom Γ' ++ dom.fvs)
               (fun y hy => by
-                have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
-                  hy (List.mem_append_left _ (List.mem_append_right _ h))
-                have h := equivRed_rename htop_body hx_dom hy_dom hx_body₂_fvs
+                have hy_all_fvs : y ∉ LNCtx.all_fvs Γ := fun h =>
+                  hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+                have hy_dom_fvs : y ∉ dom.fvs := fun h =>
+                  hy (List.mem_append_right _ h)
+                have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs _hx_dom_fvs
                 rw [open_close_subst u₃_lc]
                 exact h)
               h_v_e
           · -- Right edge: Γ';s' ⊢ t_e^v' ≤→ (close x u₃)^v'
-            have hright := subRed_subst (ann := .sub dom) (v := v') hright_body hx_dom'
-            have heq_lhs : (t_e.open_at 0 (.fvar x)).subst_fvar x v' = t_e.open_at 0 v' :=
-              subst_open hx_t_e_fvs
-            have heq_rhs : u₃.subst_fvar x v' = (u₃.close_at 0 x).open_at 0 v' :=
-              (open_close_subst_expr u₃_lc).symm
-            rw [heq_lhs, heq_rhs] at hright
-            exact hright
+            -- The old subRed_subst (general substitution) was FALSE and has been removed.
+            -- This case requires general substitution of v' for x in the SubRed derivation,
+            -- which cannot be done with fvar renaming alone. Sorry'd pending either:
+            -- (a) a restricted subRed_subst for annotation-stable terms, or
+            -- (b) restructuring the proof to avoid general substitution.
+            sorry
           · sorry  -- noPromoAt preservation
         | inr h_eq_body =>
           -- ─── Case (b): SubRed collapses to EquivRed ───
@@ -2960,13 +2961,16 @@ theorem commutativity
     ---------------------------------------------------------------
     | @me_fun _ _ dom' _ body₁ L_e h_equiv_dom h_equiv_body_e =>
       -- Pick x fresh for both avoidance sets, contexts, and body fvs
-      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ' ++ body₂.fvs ++ body₁.fvs)
-      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))
-      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-      have hx_dom : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-      have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-      have hx_body₂_fvs : x ∉ body₂.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
-      have hx_body₁_fvs : x ∉ body₁.fvs := fun h => hx (List.mem_append_right _ h)
+      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ dom.fvs)
+      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
+      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+      have hx_all_fvs : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
+      have hx_all_fvs' : x ∉ LNCtx.all_fvs Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hx_dom' : x ∉ LNCtx.dom Γ' := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs'
+      have hx_body₂_fvs : x ∉ body₂.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hx_body₁_fvs : x ∉ body₁.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hx_dom_fvs : x ∉ dom.fvs := fun h => hx (List.mem_append_right _ h)
       -- Instantiate both cofinite premises at x
       have h_equiv_body_x := h_equiv_body_e x hx_Le
       have h_sub_body_x := h_sub_body_s x hx_Ls
@@ -2996,22 +3000,28 @@ theorem commutativity
           (fun _ he => absurd he (List.not_mem_nil _))
       refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge
-        exact .me_fun (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ' ++ body₂.fvs ++ body₁.fvs)
+        exact .me_fun (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ dom.fvs)
           h_equiv_dom
           (fun y hy => by
-            have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
-              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            have h := equivRed_rename htop_body hx_dom hy_dom hx_body₂_fvs
+            have hy_all_fvs : y ∉ LNCtx.all_fvs Γ := fun h =>
+              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+            have hy_dom_fvs : y ∉ dom.fvs := fun h =>
+              hy (List.mem_append_right _ h)
+            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_dom_fvs
             rw [open_close_subst u₃_lc]
             exact h)
       · -- Right edge
-        exact .ms_fun (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ' ++ body₂.fvs ++ body₁.fvs)
+        exact .ms_fun (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ dom.fvs)
           (fun y hy => by
-            have hy_dom' : y ∉ LNCtx.dom Γ' := fun h =>
-              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-            have h := subRed_rename hright_body hx_dom' hy_dom' hx_body₁_fvs
-            rw [open_close_subst u₃_lc]
-            exact h)
+            have hy_all_fvs' : y ∉ LNCtx.all_fvs Γ' := fun h =>
+              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+            have hy_dom_fvs : y ∉ dom.fvs := fun h =>
+              hy (List.mem_append_right _ h)
+            -- Note: subRed_rename needs x fresh for all_fvs Γ', but hright_body
+            -- is in context (x, .sub dom') :: Γ'. We need x ∉ all_fvs Γ' and x ∉ dom'.fvs.
+            -- We have x ∉ all_fvs Γ', but dom' might contain x.
+            -- For now, sorry this case pending dom' freshness tracking.
+            sorry)
       · -- noPromoAt preservation for ME-FUN/MS-FUN
         sorry
 
@@ -3025,13 +3035,15 @@ theorem commutativity
     -- ME-FOP / MS-FOP: Both pop α from the stack.
     ---------------------------------------------------------------
     | @me_fop _ _ _ _ dom' _ body₁ L_e h_equiv_dom h_equiv_body_e =>
-      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ' ++ body₂.fvs ++ body₁.fvs)
-      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h)))))
-      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
-      have hx_dom : x ∉ LNCtx.dom Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-      have hx_dom' : x ∉ LNCtx.dom Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-      have hx_body₂_fvs : x ∉ body₂.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
-      have hx_body₁_fvs : x ∉ body₁.fvs := fun h => hx (List.mem_append_right _ h)
+      obtain ⟨x, hx⟩ := exists_fresh_string (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ α.fvs)
+      have hx_Le : x ∉ L_e := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))
+      have hx_Ls : x ∉ L_s := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+      have hx_all_fvs : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+      have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
+      have hx_all_fvs' : x ∉ LNCtx.all_fvs Γ' := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+      have hx_body₂_fvs : x ∉ body₂.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+      have hx_body₁_fvs : x ∉ body₁.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+      have hx_α_fvs : x ∉ α.fvs := fun h => hx (List.mem_append_right _ h)
       have h_equiv_body_x := h_equiv_body_e x hx_Le
       have h_sub_body_x := h_sub_body_s x hx_Ls
       obtain ⟨α', s₁, hs'eq, h_ctx_inner, hα_red⟩ := ctxRed_stack_inv h_ctx h_nd
@@ -3047,7 +3059,6 @@ theorem commutativity
             | head => exact hwf_stk α (List.mem_cons_self _ _)
             | tail _ hmem => exact hwf_ctx p hmem)
           (fun e he => hwf_stk e (List.mem_cons_of_mem _ he))
-      have _hfresh_e' : x ∉ LNCtx.dom Γ' := hx_dom'
       -- Derive u₃.lc
       have hwf_ctx_ext_equiv : LNCtx.wf ((x, .equiv α) :: Γ) :=
         fun p hp => by cases hp with
@@ -3060,22 +3071,24 @@ theorem commutativity
         equivRed_preserves_lc htop_body hbody₂_x_lc hwf_ctx_ext_equiv hs_inner_wf
       refine ⟨.lam dom' (u₃.close_at 0 x), ?_, ?_, ?_⟩
       · -- Top edge: use equivRed_rename on htop_body
-        exact .me_fop (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ' ++ body₂.fvs ++ body₁.fvs)
+        exact .me_fop (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ α.fvs)
           h_equiv_dom
           (fun y hy => by
-            have hy_dom : y ∉ LNCtx.dom Γ := fun h =>
-              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
-            have h := equivRed_rename htop_body hx_dom hy_dom hx_body₂_fvs
+            have hy_all_fvs : y ∉ LNCtx.all_fvs Γ := fun h =>
+              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+            have hy_α_fvs : y ∉ α.fvs := fun h =>
+              hy (List.mem_append_right _ h)
+            have h := equivRed_rename htop_body hx_all_fvs hy_all_fvs hx_body₂_fvs hx_α_fvs
             rw [open_close_subst u₃_lc]
             exact h)
       · -- Right edge: use subRed_rename on hright_body
-        exact .ms_fop (L_e ++ L_s ++ LNCtx.dom Γ ++ LNCtx.dom Γ' ++ body₂.fvs ++ body₁.fvs)
+        exact .ms_fop (L_e ++ L_s ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ' ++ body₂.fvs ++ body₁.fvs ++ α.fvs)
           (fun y hy => by
-            have hy_dom' : y ∉ LNCtx.dom Γ' := fun h =>
-              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
-            have h := subRed_rename hright_body hx_dom' hy_dom' hx_body₁_fvs
-            rw [open_close_subst u₃_lc]
-            exact h)
+            have hy_all_fvs' : y ∉ LNCtx.all_fvs Γ' := fun h =>
+              hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+            -- hright_body : SubRed ((x, .equiv α') :: Γ') s₁ ...
+            -- Need x ∉ α'.fvs. Sorry'd pending reduction-preserves-freshness lemma.
+            sorry)
       · -- noPromoAt preservation for ME-FOP/MS-FOP
         sorry
 termination_by t₀.sz
