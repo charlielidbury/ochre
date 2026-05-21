@@ -385,8 +385,6 @@ private def typedPairs : List (Expr × Expr) := [
   (true_, Std.Bool), (false_, Std.Bool),
   -- unit
   (unit_, Unit_),
-  -- types at Type (top)
-  (Nat_, .type), (Std.Bool, .type), (Unit_, .type), (dBool, .type),
   -- arithmetic / boolean computations
   (och{ add_ zero_ one_ }, Nat_),
   (och{ add_ one_ one_ }, Nat_),

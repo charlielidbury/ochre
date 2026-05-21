@@ -69,16 +69,13 @@ def concEval (fuel : Nat) (e : Expr) : Outcome Expr :=
   | fuel + 1 =>
     match e with
     | .bvar k => .error s!"concEval: stuck on free bvar {k}"
-    | .type => .error s!"concEval: Type is not a runtime value"
-    | .lam _ _ | .bot | .iota _ _ | .fix _ _ => .ok e
+    | .lam _ _ | .type | .bot => .ok e
+    | .iota _ann body => concEval fuel (body.subst 0 e)
+    | .fix _ann body => concEval fuel (body.subst 0 e)
     | .app f a =>
       match concEval fuel f, concEval fuel a with
       | .ok (.lam _dom body), .ok aVal =>
         concEval fuel (body.subst 0 aVal)
-      | .ok (.iota ann body), .ok aVal =>
-        concEval fuel (.app (body.subst 0 (.iota ann body)) aVal)
-      | .ok (.fix ann body), .ok aVal =>
-        concEval fuel (.app (body.subst 0 (.fix ann body)) aVal)
       | .ok _fVal, .ok _aVal =>
         .error s!"concEval: application of non-function"
       | .outOfFuel, _ | _, .outOfFuel => .outOfFuel
