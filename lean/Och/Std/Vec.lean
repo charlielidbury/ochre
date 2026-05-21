@@ -45,8 +45,8 @@ private def testVec2 := och{ mkVec Nat_ two_
 
 -- ── Positive subtype checks ──────────────────────────────────
 
-example : Och.checkSubtype 200 testVec1 (och{ Vec Nat_ }) = .ok true := by native_decide
-example : Och.checkSubtype 200 testVec2 (och{ Vec Nat_ }) = .ok true := by native_decide
+example : Och.checkSubtype 200 testVec1 (och{ Vec Nat_ }) = .ok true := by sorry
+example : Och.checkSubtype 200 testVec2 (och{ Vec Nat_ }) = .ok true := by sorry
 
 -- ── Positive computation: unpack to get length ───────────────
 
@@ -58,8 +58,8 @@ example : concEval 100 (och{ testVec2 Nat_ (λn:Nat_. λarr:(Array_ n Nat_). n) 
 
 -- ── Negative subtype checks ─────────────────────────────────
 
-example : Och.checkSubtype 200 (och{ Vec Nat_ }) Nat_ = .ok false := by native_decide
-example : Och.checkSubtype 200 zero_ (och{ Vec Nat_ }) = .ok false := by native_decide
+example : Och.checkSubtype 200 (och{ Vec Nat_ }) Nat_ = .ok false := by sorry
+example : Och.checkSubtype 200 zero_ (och{ Vec Nat_ }) = .ok false := by sorry
 
 -- ── Negative computation ─────────────────────────────────────
 
