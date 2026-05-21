@@ -473,7 +473,7 @@ The subtyping relation must be closed under head reduction: if $a$ computes to $
 
 = Example Programs <examples>
 
-All encodings below are Church/Scott-style: data types are represented as their own eliminators, with no primitive inductive types in the language. Every definition is mechanised and tested in Lean (see @lean-formal). This section builds from simple encodings to two programs that demonstrate Och's ability to catch subtle bugs in dependently-typed code.
+All encodings below are Church/Scott-style: data types are represented as their own eliminators, with no primitive inductive types in the language. Every definition is mechanised and tested in Lean 4 (see @lean-formal). This section builds from simple encodings to two programs that demonstrate Och's ability to catch subtle bugs in dependently-typed code.
 
 == Booleans <bool-encoding>
 
@@ -534,7 +534,7 @@ $
         & quad quad lambda("fs" lt.eq lambda(q lt.eq F space "pred"). P space ("succ" q)). P space "self")
 $
 
-$"Fin" n$ is the type of naturals strictly less than $n$. The zero-length case is $bot$ (primitive bottom), so $"Fin" "zero"$ is uninhabited. The successor case is an $iota$-type whose $"self"$ is a $"Nat"$ --- this means every $"Fin"$ value is automatically a $"Nat"$ value ($"Fin" n subset.sq.eq "Nat"$).
+$"Fin" n$ is the type of naturals strictly less than $n$. The zero-length case is $bot$ (primitive bottom), so $"Fin" "zero"$ is uninhabited. The successor case is an $iota$-type whose $"self"$ is a $"Nat"$ --- this means every $"Fin"$ value is automatically a $"Nat"$ value ($"Fin" n subset.sq.eq "Nat"$). *(I consider this a majorly cool result)*
 
 Natural number literals inhabit $"Fin"$ by subsumption: $"zero" subset.sq.eq "Fin" ("succ" n)$ holds for any $n$, and $n subset.sq.eq "Fin" n$ is correctly rejected (the diagonal). No separate $"FZ"$/$"FS"$ constructors are needed.
 
@@ -572,14 +572,14 @@ $
   "appendVec"_"wrong" := dots.h "mkVec" T space ("add" n_1 space n_1) space ("appendArrays" T space n_1 space n_2 space "arr"_1 space "arr"_2) dots.h
 $
 
-The type checker _rejects_ this: $"arr"_2 subset.sq.eq "Array" n_1 space T$ fails because $"arr"_2$ has type $"Array" n_2 space T$ and $n_2 eq.not n_1$ in general. The system catches a bug as subtle as adding the wrong two numbers.
+The type checker _rejects_ this: $"arr"_2 subset.sq.eq "Array" n_1 space T$ fails because $"arr"_2$ has type $"Array" n_2 space T$ and $n_2 eq.not n_1$. The system catches a bug as subtle as adding the wrong two numbers.
 
 == indexArr: safe array indexing <indexarr>
 
 $"indexArr"$ looks up the $i$-th element of an $"Array" n space T$, where $i$ has type $"Fin" n$:
 
 $
-  "indexArr" := "fix" "self" lt.eq (lambda(T lt.eq top). lambda(n lt.eq "Nat"). "Array" n space T arrow "Fin" n arrow T). \
+  "indexArr" := "fix" ("self" lt.eq (lambda(T lt.eq top). lambda(n lt.eq "Nat"). "Array" n space T arrow "Fin" n arrow T)). \
   quad lambda(T lt.eq top). lambda(n lt.eq "Nat"). n space (lambda(m lt.eq "Nat"). "Array" m space T arrow "Fin" m arrow T) \
   quad quad (lambda("arr" lt.eq "Array" "zero" T). lambda(i lt.eq "Fin" "zero"). i) \
   quad quad (lambda(p lt.eq "Nat"). lambda("arr" lt.eq "Array" ("succ" p) space T). lambda(i lt.eq "Fin" ("succ" p)). dots.h)
@@ -635,43 +635,8 @@ Och *does not aim to prove (1).* Consistency and normalization are explicitly de
 
 Och *does aim to prove (2)*, and this is the real runtime guarantee of the type system. The language expects the following discipline: *type-check first; only evaluate if it succeeded.*
 
-= Appendix A. Lean Formalisation <lean-formal>
+= Lean Formalisation <lean-formal>
 
-The entire calculus described in this paper is formalised in Lean 4. This appendix maps the paper's named-variable presentation to the mechanised definitions, and notes the one systematic difference: the formalisation uses *de Bruijn indices* throughout, so named variables $x$ become positional indices, substitution $"body"[x arrow.r.bar v]$ becomes index arithmetic, and context lookup $Gamma(x)$ becomes list indexing.
-
-== Representation <lean-repr>
-
-All terms, types, and values share a single inductive `Expr`. Named variables $x$ are represented by `Expr.bvar` (a natural-number index); substitution uses `Expr.subst`/`Expr.shift` for standard de Bruijn arithmetic. The context $Gamma$ is `List Expr`, indexed by position with the innermost binder at index 0.
-
-A named variable $x$ bound at the innermost binder becomes `bvar 0`; a variable bound $k$ binders out becomes `bvar k`; substitution $"body"[x arrow.r.bar v]$ becomes `body.subst 0 v`.
-
-== Correspondence <lean-corr>
-
-#figure(
-  table(
-    columns: (1fr, 1fr, auto),
-    align: (left, left, left),
-    table.header([*Paper concept*], [*Lean definition*], [*File*]),
-    table.hline(),
-    [Term syntax ($e, tau$)], [`Expr`], [`Syntax.lean`],
-    [Concrete evaluation ($e arrow.b.double v$)], [`concEval`], [`Eval.lean`],
-    [Declarative subtyping ($S ; Gamma tack.r a subset.sq.eq b$)], [`Subtype'`], [`Subtyping.lean`],
-    [Evaluation equivalence], [`concEval_equiv`], [`Soundness/ConcEvalPreservation.lean`],
-    [Preservation], [`concEval_preservation`], [`Soundness.lean`],
-    [Progress], [`synth_progress`], [`Soundness.lean`],
-    [End-to-end soundness], [`soundness`], [`Soundness.lean`],
-  ),
-  caption: [Paper-to-Lean correspondence],
-)
-
-The formalisation also includes an algorithmic decision procedure for these judgments (`evalSubst`, `subCheckSubst`, `Och.check` in `EvalSubst.lean` and `API.lean`), with partial soundness verification against the declarative `Subtype'` relation.
-
-== De Bruijn details <lean-db>
-
-The formalisation's seen-set $S$ is `List (Nat × Expr × Expr)` --- each entry is depth-tagged with $|Gamma|$ at which it was recorded, and the hypothesis rule shifts entries to the current depth on use. This bookkeeping is invisible in the named presentation: free variables carry their own names, so no shift is ever required at lookup time.
-
-== Proof status <lean-proof>
-
-Evaluation equivalence, preservation, and progress are *sorry-free*. The end-to-end composition is sorry-free in its own body.
+The calculus described above has been formalised in Lean 4, which is used to maintain a test suite of example programs and allow AI agents to iterate on the metatheory. The source is available at #link("https://github.com/charlielidbury/ochre")[github.com/charlielidbury/ochre].
 
 #bibliography("refs.bib", style: "chicago-author-date")
