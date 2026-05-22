@@ -3549,8 +3549,29 @@ private theorem mem_equiv_unique {Γ : LNCtx} {x : String} {α α₂ : LNExpr}
 
 -- Substitution preserves noPromoAt z: if y is not promoted and z is not promoted,
 -- then substituting y -> v preserves noPromoAt z.
--- Proved by mutual induction on noPromoAt y, carrying noPromoAt z and decomposing
--- it at each case. The EquivRed/SubRed output is co-proved alongside noPromoAt z.
+--
+-- Proved by mutual induction on noPromoAt y using @LNSubRed.noPromoAt.rec,
+-- carrying noPromoAt z and decomposing it at each case.
+--
+-- WELL-FOUNDED INDUCTION ON u.sz WAS ATTEMPTED BUT DOES NOT WORK because:
+-- (1) The me_pro case recurses on annotation terms from the context, whose size
+--     is unrelated to u.sz (u = fvar has sz=1, but annotations can be arbitrarily
+--     large). The structural recursor handles this naturally.
+-- (2) Even in the me_bet/me_bet sub-case (both y and z use me_bet), the internal
+--     body result terms t_y and t_z can differ (while t_y.open v'_y = t_z.open v'_z
+--     at the top level). The recursor IH is typed for y's t, making z's pieces
+--     incompatible regardless of the induction scheme.
+-- (3) Dependent elimination on EquivRed/SubRed constructors causes failures because
+--     output terms are determined by the constructor (me_bet vs me_app give
+--     different output shapes that can't be unified during case analysis).
+--
+-- The fundamental blocker is Category A: different noPromoAt derivations on the
+-- same (u, u') can use different constructors (me_bet vs me_app) with different
+-- internal sub-term outputs. No induction scheme on u alone can bridge this gap.
+-- Resolution requires either: (a) a joint co-induction walking BOTH trees with a
+-- combined measure, or (b) an inversion lemma showing all noPromoAt derivations
+-- on the same (u, u') must share compatible internal structure.
+
 set_option maxHeartbeats 25600000 in
 theorem subRed_subst_noPromo_noPromoAt
     {y : String} {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
@@ -3586,11 +3607,13 @@ theorem subRed_subst_noPromo_noPromoAt
         | me_var =>
           simp only [LNExpr.subst_fvar, hne_beq]; exact .me_var)
       -- me_bet: y used me_bet on (app (lam dom body) v_bet) → (t_y^v'_y)
-      -- Category A sorry: me_bet/me_app mismatch when z decomposes differently.
-      -- The fundamental issue: ih_body expects noPromoAt z with output t_y^w,
-      -- but z's me_bet body may have a different output t_z^w. Closing this
-      -- requires either a generalized theorem (different outputs) or an
-      -- inversion lemma converting me_bet to me_app.
+      -- Category A sorry: the recursor IH is typed for y's body result term `t`,
+      -- but z's noPromoAt (whether me_bet or me_app) uses a potentially different
+      -- output. Even in the me_bet/me_bet sub-case, z may use a different body
+      -- result `t_z ≠ t`, making ih_body inapplicable. Requires well-founded
+      -- induction on term size with a generalized statement allowing different
+      -- outputs, or an inversion lemma showing all me_bet derivations on the same
+      -- (u, u') must share the same body result term.
       (fun _ _ _ _ _ _ _ _ _ _ => sorry)
       -- me_top
       (fun z _hzy _hnp_z v _hlcv => by simp [LNExpr.subst_fvar]; exact .me_top)
@@ -3605,9 +3628,6 @@ theorem subRed_subst_noPromo_noPromoAt
       -- me_app
       (fun {Γ_a s_a u_a u'_a v_a v'_a} _hnp_u _hnp_v ih_u ih_v z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
-        -- hnp_z : noPromoAt z Γ_a s_a (.app u_a v_a) (.app u'_a v'_a)
-        -- We need to invert hnp_z. Cases fails for me_bet due to dependent elimination.
-        -- Use generalize to abstract the output before cases.
         revert ih_u ih_v
         generalize he : LNExpr.app u'_a v'_a = out at hnp_z
         intro ih_u ih_v
@@ -3616,12 +3636,7 @@ theorem subRed_subst_noPromo_noPromoAt
           cases he
           exact .me_app (ih_u z hzy hnp_z_u v hlcv) (ih_v z hzy hnp_z_v v hlcv)
         | me_bet L_z hbody_z hv_z =>
-          -- The z-derivation used me_bet while y used me_app. To apply ih_u/ih_v we
-          -- need the me_app decomposition of hnp_z, i.e., an inversion lemma
-          -- (noPromoAt_app_app_inv) converting a me_bet derivation into me_app pieces.
-          -- This requires proving that any noPromoAt on (.app (.lam ..) v) (.app u' v')
-          -- admits an me_app factorization when u' is a lambda (guaranteed by the
-          -- y-derivation via me_fop). Deferred pending a dedicated inversion lemma.
+          -- Cross-constructor: y uses me_app, z uses me_bet.
           simp only [← he, LNExpr.subst_fvar, List.map]
           exact .me_app (ih_u z hzy sorry v hlcv) (ih_v z hzy sorry v hlcv)
         | me_tap =>
