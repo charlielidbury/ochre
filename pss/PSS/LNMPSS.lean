@@ -629,7 +629,7 @@ inductive LNEquivRed : LNCtx → LNStack → LNExpr → LNExpr → Prop where
       Here `t` is a term with bvar 0 representing the closed body result.
       Opening `t` with `v'` gives the β-reduct. -/
   | me_bet {Γ : LNCtx} {s : LNStack} {dom body t v v' : LNExpr} (L : List String) :
-      (∀ x, x ∉ L → LNEquivRed ((x, .equiv v) :: Γ) s (body.open_at 0 (.fvar x)) (t.open_at 0 (.fvar x))) →
+      (∀ x, x ∉ L → LNEquivRed ((x, LNAnn.equiv v) :: Γ) s (body.open_at 0 (.fvar x)) (t.open_at 0 (.fvar x))) →
       LNEquivRed Γ [] v v' →
       LNEquivRed Γ s (.app (.lam dom body) v) (t.open_at 0 v')
 
@@ -2282,7 +2282,7 @@ inductive LNEquivRed.noPromoAt : String → LNCtx → LNStack → LNExpr → LNE
       LNSubRed.noPromoAt x Γ s α α' →
       LNEquivRed.noPromoAt x Γ s (.fvar z) α'
   | me_bet {x : String} {Γ : LNCtx} {s : LNStack} {dom body t v v' : LNExpr} (L : List String) :
-      (∀ y, y ∉ L → LNEquivRed.noPromoAt x ((y, .equiv v) :: Γ) s (body.open_at 0 (.fvar y)) (t.open_at 0 (.fvar y))) →
+      (∀ y, y ∉ L → LNEquivRed.noPromoAt x ((y, LNAnn.equiv v) :: Γ) s (body.open_at 0 (.fvar y)) (t.open_at 0 (.fvar y))) →
       LNEquivRed.noPromoAt x Γ [] v v' →
       LNEquivRed.noPromoAt x Γ s (.app (.lam dom body) v) (t.open_at 0 v')
   | me_top {x Γ s} :
