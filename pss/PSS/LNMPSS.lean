@@ -5279,12 +5279,7 @@ termination_by t₀.sz
 decreasing_by
   all_goals first
     | (simp_all [LNExpr.sz, sz_open_at_fvar]; omega)
-    | (-- Fallback for me_bet/me_app termination goals where simp_all loops.
-       -- The goals are trivially true (sub-term sz < whole-term sz) but simp_all
-       -- loops on EquivRed/SubRed hypotheses at the current heartbeat limit.
-       -- Category D sorry: fix by using a targeted tactic that avoids processing
-       -- large inductive hypotheses, or by increasing the heartbeat limit.
-       sorry)
+    | sorry -- termination: simp_all loops; goal is trivially true (sub-term sz < whole)
 
 /-- Diamond (one-context version used by commutativity).
     Derived from `diamond_full` by using `ctxRed_refl` for one context. -/
