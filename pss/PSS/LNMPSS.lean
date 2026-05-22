@@ -237,6 +237,52 @@ This would resolve:
   recursor.
   Infrastructure lemmas available: subst_fvar_fvar_open_at, subst_fvar_notin,
   ctx_swap_sub_ctx, open_subst_comm.
+
+## Sorry Categorization (25 code sorrys)
+
+All remaining sorrys fall into four categories:
+
+### Category A: me_bet inversion (7 sorrys)
+Lines: 3573, 3605 (×2), 3676, 3683, 5427, 5627
+These are in `subRed_subst_noPromo_noPromoAt` and commutativity's noPromoAt
+preservation. When `noPromoAt z` on `app (lam dom body) v` uses `me_bet`
+while the y-derivation uses a different constructor (me_app, ms_app, ms_fop),
+we cannot decompose z's derivation into body/arg components. This requires a
+dedicated inversion lemma: `noPromoAt_me_bet_inv`.
+NOTE: The ME-APP/MS-APP noPromoAt case in commutativity is partially closed
+(ms_app and me_app sub-cases proved; only me_bet sub-case remains sorry'd).
+
+### Category B: Stack alignment / equivRed_subst_diamond (15 sorrys)
+Lines: 4993, 4998, 5086, 5094, 5151, 5390 (×2), 5562, 6014, 6039,
+       6084 (×2), 6091, 6092, 6123
+These are in `diamond_full`, `commutativity`, `equivRed_subst_diamond`, and
+`subRed_subst_diamond`. The paper's Lemma 22 (stack extension) is FALSE for
+non-empty stacks. The mutual block is wired and terminates, but individual
+cases need:
+- `x ∉ u'.fvs` for extended contexts (line 6039: needs
+  `subRed_preserves_not_mem_fvs` variant where x is in the domain)
+- Context translation after commutativity (lines 6084: results in extended
+  context need translation to base context)
+- Structural recursion cases in equivRed/subRed_subst_diamond (lines 6092,
+  6123: ME-APP, ME-BET, ME-FUN, ME-FOP, MS-PRO, MS-APP, MS-FUN, MS-FOP)
+
+### Category C: noPromoAt preservation via diamond (2 sorrys)
+Lines: 5353, 5446
+These are in commutativity's MS-EQU and ME-BET/MS-EQU cases. The `diamond`
+lemma does NOT co-prove noPromoAt preservation. Fix: extend `diamond_full` to
+co-prove `∀ x, noPromoAt x input → noPromoAt x output`.
+
+### Category D: Termination (1 sorry)
+Line: 5284
+In `diamond_full`'s `decreasing_by`. `simp_all [LNExpr.sz, sz_open_at_fvar]`
+loops on context hypotheses in me_bet/me_app cases. The goals are trivially
+true (`body.sz < (app (lam dom body) v).sz`). Fix: targeted tactic avoiding
+large inductive hypotheses, or increase heartbeat limit.
+
+### Overlap note
+Line 5427 (ME-APP/MS-APP noPromoAt me_bet sub-case) is Category A.
+Line 5562 (ME-BET/MS-FOP .inr noPromoAt) is Category B (needs
+equivRed_subst_diamond, not me_bet inversion).
 -/
 
 /-! ## Terms -/
@@ -5234,9 +5280,10 @@ decreasing_by
   all_goals first
     | (simp_all [LNExpr.sz, sz_open_at_fvar]; omega)
     | (-- Fallback for me_bet/me_app termination goals where simp_all loops.
-       -- These are trivially true: body.sz < (app (lam dom body) v).sz
-       -- and v.sz < (app (lam dom body) v).sz.
-       -- The issue is a simp_all rewrite loop from context hypotheses.
+       -- The goals are trivially true (sub-term sz < whole-term sz) but simp_all
+       -- loops on EquivRed/SubRed hypotheses at the current heartbeat limit.
+       -- Category D sorry: fix by using a targeted tactic that avoids processing
+       -- large inductive hypotheses, or by increasing the heartbeat limit.
        sorry)
 
 /-- Diamond (one-context version used by commutativity).
@@ -5360,7 +5407,28 @@ theorem commutativity
         commutativity budget u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc h_nd hwf_ctx
           (fun e he => by cases he with | head => exact h_lc.2 | tail _ hmem => exact hwf_stk e hmem)
           (Nat.le_trans (by simp [LNExpr.sz]; omega) hbudget)
-      exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u, sorry⟩  -- sorry: noPromoAt preservation for ME-APP/MS-APP
+      exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u, fun x hnp_x => by
+        -- noPromoAt preservation for ME-APP/MS-APP
+        -- Input: noPromoAt x Γ s (app u₀ v) (app u₂ v)
+        -- Output: noPromoAt x Γ' s' (app u₁ v₁) (app u₃ v₁)
+        cases hnp_x with
+        | ms_app hnp_inner =>
+          -- hnp_inner : SubRed.noPromoAt x Γ (v::s) u₀ u₂
+          exact .ms_app (hnp_u x hnp_inner)
+        | ms_equ hnp_equiv =>
+          -- z saw the whole app as an EquivRed; generalize output to avoid dep elim
+          revert hnp_u
+          generalize he : LNExpr.app u₂ v = out at hnp_equiv
+          intro hnp_u
+          cases hnp_equiv with
+          | me_app hnp_op hnp_arg =>
+            cases he
+            exact .ms_app (hnp_u x (.ms_equ hnp_op))
+          | me_bet L_z hbody_z hv_z =>
+            -- me_bet: output is t_z.open_at 0 v_z' = app u₂ v (from he)
+            -- Requires me_bet inversion; sorry for now
+            sorry
+          | me_tap => exact absurd he (by simp [LNExpr.app])⟩
     ---------------------------------------------------------------
     -- ME-BET / MS-APP: the key case
     -- h_equiv: me_bet L_e h_body_e h_v_e
