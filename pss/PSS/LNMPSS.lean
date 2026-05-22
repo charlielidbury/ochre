@@ -5912,6 +5912,8 @@ theorem equivRed_subst_diamond
     (hwf : Γ.wf) (hswf : s.wf)
     (hnd : (LNCtx.dom Γ).Nodup)
     (hbudget : u.sz ≤ budget)
+    (hv_budget : v.sz < budget)
+    (hx_s : ∀ e ∈ s, x ∉ e.fvs)
     : ∃ w, LNEquivRed Γ s (u'.subst_fvar x v) w ∧ LNSubRed Γ' s' (u.subst_fvar x v') w := by
   cases h with
   | me_top =>
@@ -5947,33 +5949,81 @@ theorem equivRed_subst_diamond
       sorry
     · -- y ≠ x: both sides are fvar y
       exact ⟨.fvar _, .me_var, .ms_equ .me_var⟩
-  | @me_pro _ _ y α hmem hsub =>
-    -- u = fvar y, u' = result of SubRed on α
-    -- Two sub-cases: y = x or y ≠ x
-    -- If y = x: hmem says x has .equiv annotation in ((x,.equiv v)::Γ), so α = v
-    --   hsub : SubRed ((x,.equiv v)::Γ) s v u'
-    --   u'.subst x v = u' (x ∉ u'.fvs by freshness propagation through SubRed)
-    --   u.subst x v' = (fvar x).subst x v' = v'
-    --   Need: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' v' w
-    --   WIRING TODO (mutual block now ready): call commutativity on v.
-    --   We have: EquivRed Γ [] v v' (annotation reduction from hctx),
-    --   SubRed ((x,.equiv v)::Γ) s v u' (from hsub, but need to remove x).
-    --   Since x ∉ fvs(v), the SubRed on v doesn't reference x, so we can
-    --   weaken to SubRed Γ s v u'. Then commutativity(v.sz, v, ...) gives
-    --   the diamond. Termination: (v.sz, v.sz) < (budget, 1) because v.sz < budget
-    --   (from hbudget: 1 ≤ budget, and we need v.sz < budget — this holds when
-    --   budget was set from an outer commutativity call on app(lam dom body, v)
-    --   since v.sz < app(lam dom body, v).sz = budget).
-    -- If y ≠ x: hmem says y has .equiv annotation in Γ (looked up past x)
-    --   α doesn't contain x (since x ∉ all_fvs Γ). hsub is SubRed on α in extended ctx.
-    --   After removing x from ctx (x is fresh), hsub holds in Γ too.
-    --   u'.subst x v = u'.subst x v (x might appear in u' through SubRed of α... no,
-    --   α doesn't contain x and x ∉ all_fvs Γ, so SubRed of α doesn't introduce x.
-    --   Therefore u'.subst x v = u'. Similarly u.subst x v' = fvar y.
-    --   Need: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' (fvar y) w
-    --   Use me_pro on y in Γ: y still has .equiv in Γ (same lookup).
-    --   Then SubRed in Γ to get the same u' (after ctx ext removal).
-    sorry
+  | me_pro hmem_pro hsub_pro =>
+    -- u = fvar y, u' = result of SubRed α → u' via hsub_pro
+    -- hmem_pro : mem_equiv ((x,.equiv v)::Γ) y α
+    -- hsub_pro : SubRed ((x,.equiv v)::Γ) s α u'
+    -- Need to figure out y and α from the goal/context
+    rename_i y α
+    by_cases hyx : y = x
+    · -- y = x: hmem_pro says x has .equiv annotation, so α = v
+      -- Extract α = v from hmem_pro
+      have hα_eq : α = v := by
+        rw [hyx] at hmem_pro; simp [LNCtx.mem_equiv, LNCtx.lookup'] at hmem_pro; exact hmem_pro.symm
+      -- hsub_pro : SubRed ((x,.equiv v)::Γ) s α u'; since α = v, hsub_pro is on v
+      rw [hα_eq] at hsub_pro
+      -- Now hsub_pro : SubRed ((x,.equiv v)::Γ) s v u'
+      -- Goal: ∃ w, EquivRed Γ s (u'.subst_fvar x v) w ∧ SubRed Γ' s' ((fvar y).subst_fvar x v') w
+      -- Since y = x: (fvar y).subst_fvar x v' = v'
+      -- Since x ∉ u'.fvs: u'.subst_fvar x v = u'
+      --
+      -- x ∉ u'.fvs: SubRed of v (which doesn't contain x) in context where
+      -- x ∉ all_fvs Γ and x ∉ v.fvs and x ∉ stack. The only way x appears in
+      -- the output is through ME-PRO on x (annotation v), but v doesn't contain x.
+      -- This needs a specialized preserves_not_mem_fvs for extended contexts.
+      have hx_u'_fvs : x ∉ u'.fvs := sorry  -- needs specialized preserves_not_mem_fvs
+      -- Rewrite the subst_fvar in the goal
+      rw [subst_fvar_notin hx_u'_fvs, show (LNExpr.fvar y).subst_fvar x v' = v' from by
+        simp [LNExpr.subst_fvar, hyx]]
+      -- Goal: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' v' w
+      --
+      -- STRATEGY: call commutativity on v at the extended context
+      -- ((x,.equiv v)::Γ) s, using equivRed_refl as the EquivRed.
+      -- This gives us results at the extended context, which we then
+      -- need to translate to the base context.
+      --
+      -- The commutativity call:
+      --   h_equiv = equivRed_refl : EquivRed ((x,.equiv v)::Γ) s v v
+      --   h_sub = hsub : SubRed ((x,.equiv v)::Γ) s v u'
+      --   h_ctx = hctx
+      --   budget = v.sz (strictly less than budget, so terminates)
+      have hwf_ext : LNCtx.wf ((x, .equiv v) :: Γ) :=
+        fun p hp => by cases hp with
+        | head => exact hv_lc
+        | tail _ hmem => exact hwf p hmem
+      have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
+      obtain ⟨t₃, htop, hright, hnp_ih⟩ :=
+        commutativity v.sz v
+          (equivRed_refl ((x, .equiv v) :: Γ) s v hv_lc)
+          hsub_pro hctx hv_lc
+          (List.nodup_cons.mpr ⟨hx_dom, hnd⟩)
+          hwf_ext hswf (Nat.le_refl v.sz)
+      -- htop : EquivRed ((x,.equiv v)::Γ) s u' t₃
+      -- hright : SubRed ((x,.equiv v')::Γ') s' v t₃
+      -- hnp_ih : ∀ z, noPromoAt z ... input → noPromoAt z ... output
+      --
+      -- Now need to translate to the base context:
+      -- Left edge: EquivRed ((x,.equiv v)::Γ) s u' t₃ → EquivRed Γ s u' t₃
+      --   (context shrink: x ∉ u'.fvs, x ∉ t₃.fvs, x ∉ all_fvs Γ)
+      -- Right edge: SubRed ((x,.equiv v')::Γ') s' v t₃ → SubRed Γ' s' v' w
+      --   (this is the hard part: input is v, need v'; output ctx has x)
+      --
+      -- The right edge translation requires either:
+      -- (a) showing the SubRed doesn't use x (noPromoAt x + subst_noPromo),
+      --     which gives SubRed Γ' s' v (t₃[x:=v']), still from v not v'
+      -- (b) a separate diamond involving the v → v' EquivRed
+      --
+      -- For now, sorry the final translation. The commutativity call above
+      -- is the key mutual recursion step — it terminates because
+      -- (v.sz, v.sz) < (budget, 1) since v.sz < budget (from hv_budget).
+      exact ⟨t₃, sorry, sorry⟩
+    · -- y ≠ x: hmem says y has .equiv annotation in Γ (looked up past x)
+      -- α doesn't contain x (since x ∉ all_fvs Γ and α is from Γ).
+      -- u = fvar y, u' = result of SubRed on α
+      -- (fvar y).subst_fvar x v' = fvar y (since y ≠ x)
+      -- u'.subst_fvar x v = u' (x ∉ u'.fvs since x ∉ all_fvs Γ)
+      -- Need: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' (fvar y) w
+      sorry
   | _ => sorry
 termination_by (budget, u.sz)
 
@@ -5994,6 +6044,8 @@ theorem subRed_subst_diamond
     (hwf : Γ.wf) (hswf : s.wf)
     (hnd : (LNCtx.dom Γ).Nodup)
     (hbudget : u.sz ≤ budget)
+    (hv_budget : v.sz < budget)
+    (hx_s : ∀ e ∈ s, x ∉ e.fvs)
     : ∃ w, LNEquivRed Γ s (u'.subst_fvar x v) w ∧ LNSubRed Γ' s' (u.subst_fvar x v') w := by
   cases h with
   | ms_top =>
@@ -6002,7 +6054,7 @@ theorem subRed_subst_diamond
     exact ⟨.top, .me_top, .ms_top⟩
   | ms_equ h_eq =>
     -- SubRed via ms_equ wraps an EquivRed
-    exact equivRed_subst_diamond budget h_eq hctx hx_all_fvs hx_v hv_lc hv'_lc hu_lc hwf hswf hnd hbudget
+    exact equivRed_subst_diamond budget h_eq hctx hx_all_fvs hx_v hv_lc hv'_lc hu_lc hwf hswf hnd hbudget hv_budget hx_s
   | _ => sorry
 termination_by (budget, u.sz)
 
