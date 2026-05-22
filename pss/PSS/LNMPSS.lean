@@ -242,13 +242,26 @@ This would resolve:
 
 All remaining sorrys fall into four categories:
 
-### Category A: me_bet inversion (7 sorrys)
-Lines: 3573, 3605 (×2), 3676, 3683, 5427, 5627
+### Category A: me_bet inversion / noPromoAt output mismatch (7 sorrys)
+Lines: 3581, 3613 (×2), 3684, 3691, 5434, 5634
 These are in `subRed_subst_noPromo_noPromoAt` and commutativity's noPromoAt
-preservation. When `noPromoAt z` on `app (lam dom body) v` uses `me_bet`
-while the y-derivation uses a different constructor (me_app, ms_app, ms_fop),
-we cannot decompose z's derivation into body/arg components. This requires a
-dedicated inversion lemma: `noPromoAt_me_bet_inv`.
+preservation. The fundamental issue: when `noPromoAt y` and `noPromoAt z` are
+on the same `(u, u')` but decompose the term differently (y uses me_app while
+z uses me_bet, or vice versa), the INTERNAL sub-term outputs differ:
+  - y's me_app gives body output `u'_body^w` (from me_fop)
+  - z's me_bet gives body output `t_z^w` (possibly ≠ u'_body^w)
+The recursor IH expects noPromoAt z on y's output (`body^w → u'_body^w`), but
+z's tree provides noPromoAt z on (`body^w → t_z^w`). These don't match.
+RESOLUTION APPROACHES:
+  (a) Generalized theorem allowing different outputs at sub-levels, proved by
+      well-founded induction on term size rather than noPromoAt-y recursor.
+  (b) Inversion lemma showing me_bet → me_app conversion is always possible
+      when the outputs match at the top level (requires deep structural analysis).
+  (c) Joint co-induction walking BOTH trees simultaneously with a combined measure.
+None are implemented yet. The ms_app(y)/ms_equ(z) case (line 3691) has a
+partial proof: the me_app sub-case of z's EquivRed works (extract operator,
+wrap with ms_equ, apply IH) but is blocked by dependent elimination in the
+recursor context.
 NOTE: The ME-APP/MS-APP noPromoAt case in commutativity is partially closed
 (ms_app and me_app sub-cases proved; only me_bet sub-case remains sorry'd).
 
@@ -3572,7 +3585,12 @@ theorem subRed_subst_noPromo_noPromoAt
           exact .me_pro hne_z (ctx_subst_drop_mem_equiv hne hmem_z) (ih_sub z hzy hnp_z_sub v hlcv)
         | me_var =>
           simp only [LNExpr.subst_fvar, hne_beq]; exact .me_var)
-      -- me_bet: sorry for dependent elimination issues
+      -- me_bet: y used me_bet on (app (lam dom body) v_bet) → (t_y^v'_y)
+      -- Category A sorry: me_bet/me_app mismatch when z decomposes differently.
+      -- The fundamental issue: ih_body expects noPromoAt z with output t_y^w,
+      -- but z's me_bet body may have a different output t_z^w. Closing this
+      -- requires either a generalized theorem (different outputs) or an
+      -- inversion lemma converting me_bet to me_app.
       (fun _ _ _ _ _ _ _ _ _ _ => sorry)
       -- me_top
       (fun z _hzy _hnp_z v _hlcv => by simp [LNExpr.subst_fvar]; exact .me_top)
@@ -3676,14 +3694,24 @@ theorem subRed_subst_noPromo_noPromoAt
               · exact True.intro)
           | me_pro hne_y hmem_equiv _ =>
             exact absurd (no_sub_and_equiv hmem_z hmem_equiv) False.elim
-        | _ => sorry -- ms_app/ms_fun/ms_fop: structural mismatch (y used ms_equ, z used SubRed decomposition)
+        | _ => sorry
+          -- ms_equ(y)/ms_app|ms_fun|ms_fop(z): y wraps EquivRed via ms_equ, but
+          -- z decomposes structurally. The IH `ih` expects EquivRed.noPromoAt z,
+          -- but z gives SubRed.noPromoAt z via ms_app/ms_fun/ms_fop. Converting
+          -- SubRed.noPromoAt → EquivRed.noPromoAt is NOT generally valid (SubRed
+          -- can use ms_pro which has no EquivRed analog). Same Category A root
+          -- cause: recursor IH is tied to y's decomposition structure.
         )
       -- ms_app
       (fun _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
         cases hnp_z with
         | ms_app hnp_z_sub => exact .ms_app (ih z hzy hnp_z_sub v hlcv)
-        | ms_equ hnp_z_eq => sorry) -- structural mismatch: y used ms_app, z used ms_equ; needs me_bet inversion
+        | ms_equ hnp_z_eq => sorry)
+          -- ms_app(y)/ms_equ(z): if z's EquivRed uses me_app, we can extract the
+          -- operator piece, wrap with ms_equ, and apply ih. The me_bet sub-case
+          -- is the same Category A mismatch. Blocked by dependent elimination in
+          -- the recursor context (generalize fails on the app output shape).
       -- ms_fun
       (fun {Γ_sf dom body body'} L _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
