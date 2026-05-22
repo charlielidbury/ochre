@@ -5984,6 +5984,96 @@ example : LNSubRed weaken_Γ []
 
 end WeakenInvestigation
 
+/-! ### COUNTEREXAMPLE: subRed_subst_equiv is FALSE
+
+The proposed statement:
+  If `LNSubRed ((x, .equiv v) :: Γ) s u u'` with freshness
+  (x ∉ all_fvs Γ, x ∉ v.fvs, x ∉ stack fvs, v.lc),
+  then `LNSubRed Γ s (u[x↦v]) (u'[x↦v])`.
+
+This is FALSE. The failure mode: me_app reduces both operator AND operand
+simultaneously. After substitution, the operand's EquivRed may need to reduce
+through an .equiv annotation (via me_pro), but the substituted operand now has
+only a .sub annotation, so EquivRed can't match it. SubRed's ms_app only
+reduces the operator and leaves the operand unchanged.
+
+Concrete counterexample:
+  Γ = [("y", .sub .top), ("z", .equiv .top)]
+  x = "x", v = fvar "y", s = []
+  u = app (fvar "z") (fvar "x")
+  u' = app .top .top
+
+  Original derivation:
+    SubRed (("x", .equiv (fvar "y")) :: Γ) [] (app (fvar "z") (fvar "x")) (app .top .top)
+    via ms_equ (me_app):
+      Operator: EquivRed Γ_ext [(fvar "x")] (fvar "z") .top
+        via me_pro z: z ≡ .top, SubRed Γ_ext [(fvar "x")] .top .top → ms_top
+      Operand: EquivRed Γ_ext [] (fvar "x") .top
+        via me_pro x: x ≡ (fvar "y"), SubRed Γ_ext [] (fvar "y") .top → ms_pro y
+
+  After substitution x ↦ fvar "y":
+    u[x↦v] = app (fvar "z") (fvar "y")
+    u'[x↦v] = app .top .top
+
+  Need: SubRed Γ [] (app (fvar "z") (fvar "y")) (app .top .top)
+
+  But this is NOT derivable:
+    - ms_equ (me_app): needs EquivRed Γ [] (fvar "y") .top for the operand.
+      But y has .sub annotation, not .equiv, so me_pro doesn't fire.
+      Only me_var is available: (fvar "y") → (fvar "y"). NOT .top.
+    - ms_app: SubRed Γ [(fvar "y")] (fvar "z") .top → ms_app gives
+      SubRed Γ [] (app (fvar "z") (fvar "y")) (app .top (fvar "y")).
+      The operand is (fvar "y"), NOT .top.
+    - No other rule can produce (app .top .top) from (app (fvar "z") (fvar "y")).
+
+  The root cause: me_app reduces operator and operand simultaneously,
+  but after substitution, SubRed can only reduce the operator (ms_app)
+  or needs EquivRed of both sub-terms (ms_equ + me_app). The operand
+  (fvar "y") can be promoted via SubRed (ms_pro) but NOT via EquivRed
+  (me_pro requires .equiv), so ms_equ + me_app fails. -/
+
+section SubRedSubstEquivCounterexample
+
+private def sse_Γ : LNCtx := [("y", .sub .top), ("z", .equiv .top)]
+private def sse_Γ_ext : LNCtx := [("x", .equiv (.fvar "y")), ("y", .sub .top), ("z", .equiv .top)]
+
+-- Step 1: The original derivation exists in the extended context.
+example : LNSubRed sse_Γ_ext [] (.app (.fvar "z") (.fvar "x")) (.app .top .top) := by
+  unfold sse_Γ_ext
+  exact .ms_equ (.me_app
+    (.me_pro
+      (show LNCtx.mem_equiv [("x", .equiv (.fvar "y")), ("y", .sub .top), ("z", .equiv .top)] "z" .top from rfl)
+      .ms_top)
+    (.me_pro
+      (show LNCtx.mem_equiv [("x", .equiv (.fvar "y")), ("y", .sub .top), ("z", .equiv .top)] "x" (.fvar "y") from rfl)
+      (.ms_pro (show LNCtx.mem_sub [("x", .equiv (.fvar "y")), ("y", .sub .top), ("z", .equiv .top)] "y" .top from rfl))))
+
+-- Step 2: Freshness conditions.
+example : "x" ∉ LNCtx.all_fvs sse_Γ := by native_decide
+example : "x" ∉ (LNExpr.fvar "y").fvs := by native_decide
+example : (LNExpr.fvar "y").lc := trivial
+
+-- Step 3: After substitution, the BEST SubRed we can get has the operand unreduced.
+-- SubRed sse_Γ [] (app (fvar "z") (fvar "y")) (app .top (fvar "y")) via ms_app.
+-- We CANNOT get (app .top .top).
+example : LNSubRed sse_Γ [] (.app (.fvar "z") (.fvar "y")) (.app .top (.fvar "y")) := by
+  unfold sse_Γ
+  exact .ms_app (.ms_equ (.me_pro
+    (show LNCtx.mem_equiv [("y", .sub .top), ("z", .equiv .top)] "z" .top from rfl)
+    .ms_top))
+
+-- We can also promote the operand SEPARATELY via SubRed:
+example : LNSubRed sse_Γ [] (.fvar "y") .top := by
+  unfold sse_Γ
+  exact .ms_pro (show LNCtx.mem_sub [("y", .sub .top), ("z", .equiv .top)] "y" .top from rfl)
+
+-- But we CANNOT combine them into a single SubRed reducing both simultaneously.
+-- SubRed (app (fvar z) (fvar y)) (app .top .top) requires ms_equ(me_app(...))
+-- which requires EquivRed of the operand, but EquivRed of (fvar y) can only
+-- produce (fvar y) (via me_var), not .top (me_pro needs .equiv annotation).
+
+end SubRedSubstEquivCounterexample
+
 /-! ### COUNTEREXAMPLE: equivRed_subst_equiv is FALSE
 
 The proposed statement: if `LNEquivRed ((x, .equiv v) :: Γ) s u u'` with
