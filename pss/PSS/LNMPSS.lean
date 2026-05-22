@@ -3439,9 +3439,29 @@ theorem subRed_subst_noPromo_noPromoAt
       -- me_tap
       (fun z _hzy _hnp_z v _hlcv => by simp only [LNExpr.subst_fvar]; exact .me_tap)
       -- me_app
-      (fun _hnp_u _hnp_v ih_u ih_v z hzy hnp_z v hlcv => by
+      (fun {Γ_a s_a u_a u'_a v_a v'_a} _hnp_u _hnp_v ih_u ih_v z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
-        sorry)
+        -- hnp_z : noPromoAt z Γ_a s_a (.app u_a v_a) (.app u'_a v'_a)
+        -- We need to invert hnp_z. Cases fails for me_bet due to dependent elimination.
+        -- Use generalize to abstract the output before cases.
+        revert ih_u ih_v
+        generalize he : LNExpr.app u'_a v'_a = out at hnp_z
+        intro ih_u ih_v
+        cases hnp_z with
+        | me_app hnp_z_u hnp_z_v =>
+          cases he
+          exact .me_app (ih_u z hzy hnp_z_u v hlcv) (ih_v z hzy hnp_z_v v hlcv)
+        | me_bet L_z hbody_z hv_z =>
+          -- The z-derivation used me_bet while y used me_app. To apply ih_u/ih_v we
+          -- need the me_app decomposition of hnp_z, i.e., an inversion lemma
+          -- (noPromoAt_app_app_inv) converting a me_bet derivation into me_app pieces.
+          -- This requires proving that any noPromoAt on (.app (.lam ..) v) (.app u' v')
+          -- admits an me_app factorization when u' is a lambda (guaranteed by the
+          -- y-derivation via me_fop). Deferred pending a dedicated inversion lemma.
+          simp only [← he, LNExpr.subst_fvar, List.map]
+          exact .me_app (ih_u z hzy sorry v hlcv) (ih_v z hzy sorry v hlcv)
+        | me_tap =>
+          exact absurd he (by simp [LNExpr.app]))
       -- me_fun
       (fun {Γ_fun dom dom' body body'} L _hnp_dom _hnp_body ih_dom ih_body z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
@@ -3457,8 +3477,7 @@ theorem subRed_subst_noPromo_noPromoAt
             simp [List.map] at ih
             rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
                 ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ih
-            exact ih)
-        | _ => sorry)
+            exact ih))
       -- me_fop
       (fun {Γ_fop s_fop α dom dom' body body'} L _hnp_dom _hnp_body ih_dom ih_body z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
@@ -3473,8 +3492,7 @@ theorem subRed_subst_noPromo_noPromoAt
             rw [ctx_subst_drop_cons_ne hwy] at ih
             rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
                 ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ih
-            exact ih)
-        | _ => sorry)
+            exact ih))
       -- ═══════════════════ SubRed cases ═══════════════════
       -- ms_pro: z_pro ≠ y, z_pro ≤ t ∈ Γ
       (fun {z_pro Γ_sp s_sp t_sp} hne hmem z hzy hnp_z v _hlcv => by
@@ -3488,8 +3506,7 @@ theorem subRed_subst_noPromo_noPromoAt
           cases hnp_z_eq with
           | me_pro hne_z hmem_z _ =>
             exact absurd (no_sub_and_equiv hmem hmem_z) False.elim
-          | me_var => simp only [LNExpr.subst_fvar, hne_beq]; exact .ms_equ .me_var
-        | _ => sorry)
+          | me_var => simp only [LNExpr.subst_fvar, hne_beq]; exact .ms_equ .me_var)
       -- ms_top
       (fun z _hzy _hnp_z v _hlcv => by simp [LNExpr.subst_fvar]; exact .ms_top)
       -- ms_equ
@@ -3503,7 +3520,7 @@ theorem subRed_subst_noPromo_noPromoAt
         simp only [LNExpr.subst_fvar, List.map]
         cases hnp_z with
         | ms_app hnp_z_sub => exact .ms_app (ih z hzy hnp_z_sub v hlcv)
-        | _ => sorry)
+        | ms_equ hnp_z_eq => sorry)
       -- ms_fun
       (fun {Γ_sf dom body body'} L _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
@@ -3531,9 +3548,7 @@ theorem subRed_subst_noPromo_noPromoAt
               rw [ctx_subst_drop_cons_ne hwy, show List.map (fun e => LNExpr.subst_fvar e y v) [] = [] from rfl] at ihw
               rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
                   ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ihw
-              exact ihw)
-          | _ => sorry
-        | _ => sorry)
+              exact ihw))
       -- ms_fop
       (fun {Γ_sf s_sf α dom body body'} L _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
@@ -3561,9 +3576,7 @@ theorem subRed_subst_noPromo_noPromoAt
               rw [ctx_subst_drop_cons_ne hwy] at ihw
               rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
                   ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ihw
-              exact ihw)
-          | _ => sorry
-        | _ => sorry)
+              exact ihw))
       Γ s u u' hnp) z hzy hnp_z v hlc_v
 
 /-- Annotation independence: change from sub to equiv annotation.
