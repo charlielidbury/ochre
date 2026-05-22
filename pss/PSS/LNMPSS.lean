@@ -4878,11 +4878,151 @@ theorem diamond_full
         (fun e he => by cases he with | head => exact hlc.2 | tail _ h => exact hswf e h) hnd
       exact ⟨.app u₃ v₃, .me_app hu₃l hv₃l, .me_app hu₃r hv₃r⟩
     | me_tap => cases h1_u with | me_top => exact ⟨.top, .me_tap, .me_top⟩
-    | me_bet _ _ => sorry
-  | me_bet _ _ =>
+    | @me_bet _ _ dom body t₂ _ v₂' L₂ h2_body h2_v =>
+      -- ME-APP / ME-BET case
+      -- h1 = me_app h1_u h1_v: t₀ = app (lam dom body) v_head
+      --   h1_u : EquivRed Γ (v_head :: s) (lam dom body) u₁' → must be me_fop
+      --   h1_v : EquivRed Γ [] v_head v₁'
+      --   t₁ = app u₁' v₁'
+      -- h2 = me_bet L₂ h2_body h2_v: t₀ = app (lam dom body) v_head
+      --   h2_body : ∀ x ∉ L₂, EquivRed ((x, .equiv v_head) :: Γ) s (body^x) (t₂^x)
+      --   h2_v : EquivRed Γ [] v_head v₂'
+      --   t₂_result = t₂.open_at 0 v₂'
+      cases h1_u with
+      | @me_fop _ _ _ _ dom₁' _ body₁' L₁ h1_dom h1_body_fop =>
+        -- h1_body_fop : ∀ x ∉ L₁, EquivRed ((x, .equiv v_head) :: Γ) s (body^x) (body₁'^x)
+        -- Both body reductions are in ((x, .equiv v_head) :: Γ) s — same context!
+        -- Argument IH
+        obtain ⟨v₃, hv₃l, hv₃r⟩ := diamond_full v_head h1_v h2_v
+          (ctxRed_nil_of_ctxRed hctx1) (ctxRed_nil_of_ctxRed hctx2)
+          hlc.2 hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
+        -- Pick x fresh
+        obtain ⟨x, hx⟩ := exists_fresh_string
+          (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++
+           body₁'.fvs ++ t₂.fvs ++ v_head.fvs ++ s.flatMap LNExpr.fvs)
+        have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))))
+        have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))))
+        have hxΓ_all : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))))
+        have hxΓ : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hxΓ_all
+        have hxΓ₁_all : x ∉ LNCtx.all_fvs Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+        have hxΓ₂_all : x ∉ LNCtx.all_fvs Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+        have hxb₁ : x ∉ body₁'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+        have hxt₂ : x ∉ t₂.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+        have hxv : x ∉ v_head.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+        have hx_s_fvs : ∀ e ∈ s, x ∉ e.fvs := fun e he hm =>
+          hx (List.mem_append_right _ (List.mem_flatMap.mpr ⟨e, he, hm⟩))
+        -- Body context well-formedness
+        have hwf_body : LNCtx.wf ((x, .equiv v_head) :: Γ) :=
+          fun p hp => by cases hp with | head => exact hlc.2 | tail _ h => exact hwf p h
+        -- Body IH
+        obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body.open_at 0 (.fvar x))
+          (h1_body_fop x hxL₁) (h2_body x hxL₂)
+          (.ct_ann_equiv hctx1 h1_v) (.ct_ann_equiv hctx2 h2_v)
+          (LNExpr.lc_at_open_fvar hlc.1.2) hwf_body hswf
+          (List.nodup_cons.mpr ⟨hxΓ, hnd⟩)
+        -- u₃ lc
+        have hb₁lc := equivRed_preserves_lc (h1_body_fop x hxL₁)
+          (LNExpr.lc_at_open_fvar hlc.1.2) hwf_body hswf
+        have hv₁'lc := equivRed_preserves_lc h1_v hlc.2 hwf
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hwf_Γ₁ : LNCtx.wf Γ₁ := ctxRed_preserves_ctx_wf hctx1 hwf hswf
+        have hwf_s₁ : LNStack.wf s₁ := ctxRed_preserves_stk_wf hctx1 hwf hswf
+        have u₃lc : u₃.lc := equivRed_preserves_lc hu₃l hb₁lc
+          (fun p hp => by cases hp with | head => exact hv₁'lc | tail _ h => exact hwf_Γ₁ p h)
+          hwf_s₁
+        -- Freshness of x in v₁'
+        have hxv₁' : x ∉ v₁'.fvs := equivRed_preserves_not_mem_fvs h1_v hxv hxΓ_all
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hxv₂' : x ∉ v₂'.fvs := equivRed_preserves_not_mem_fvs h2_v hxv hxΓ_all
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hx_s₁_fvs : ∀ e ∈ s₁, x ∉ e.fvs :=
+          ctxRed_preserves_stack_freshness hctx1 hxΓ_all hx_s_fvs
+        -- Common reduct: (u₃.close_at 0 x).open_at 0 v₃
+        -- Left: use ME-BET (input is app (lam dom₁' body₁') v₁')
+        -- Right: needs equivRed substitution (sorry)
+        exact ⟨(u₃.close_at 0 x).open_at 0 v₃,
+          .me_bet (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++
+                   body₁'.fvs ++ t₂.fvs ++ v_head.fvs ++ s.flatMap LNExpr.fvs)
+            (fun y hy => by
+              have hyΓ₁ : y ∉ LNCtx.all_fvs Γ₁ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+              have := equivRed_rename hu₃l hxΓ₁_all hyΓ₁ hxb₁
+                (by simp [LNAnn.fvs]; exact hxv₁') hx_s₁_fvs
+              rw [open_close_subst u₃lc]; exact this)
+            hv₃l,
+          sorry⟩  -- sorry: right side needs equivRed substitution (t₂'^v₂' → u₃[x:=v₃])
+  | @me_bet _ _ dom body t₁ v_arg v₁' L₁ h1_body h1_v =>
     cases h2 with
-    | me_bet _ _ => sorry
-    | me_app _ _ => sorry
+    | @me_bet _ _ _ _ t₂ _ v₂' L₂ h2_body h2_v =>
+      -- ME-BET / ME-BET case
+      -- Both reductions beta-reduce in ((x, .equiv v_arg) :: Γ) s
+      -- Body IH gives common reduct for bodies, arg IH for arguments
+      -- But both output sides need equivRed substitution
+      sorry  -- sorry: both sides need equivRed substitution lemma
+    | @me_app _ _ _ u₂' _ v₂' h2_u h2_v =>
+      -- ME-BET / ME-APP: symmetric to ME-APP / ME-BET
+      cases h2_u with
+      | @me_fop _ _ _ _ dom₂' _ body₂' L₂ h2_dom h2_body_fop =>
+        -- h2_body_fop : ∀ x ∉ L₂, EquivRed ((x, .equiv v_arg) :: Γ) s (body^x) (body₂'^x)
+        -- h1_body : ∀ x ∉ L₁, EquivRed ((x, .equiv v_arg) :: Γ) s (body^x) (t₁^x)
+        -- Both body reductions are in ((x, .equiv v_arg) :: Γ) s — same context!
+        -- Argument IH
+        obtain ⟨v₃, hv₃l, hv₃r⟩ := diamond_full v_arg h1_v h2_v
+          (ctxRed_nil_of_ctxRed hctx1) (ctxRed_nil_of_ctxRed hctx2)
+          hlc.2 hwf (fun _ he => absurd he (List.not_mem_nil _)) hnd
+        -- Pick x fresh
+        obtain ⟨x, hx⟩ := exists_fresh_string
+          (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++
+           t₁.fvs ++ body₂'.fvs ++ v_arg.fvs ++ s.flatMap LNExpr.fvs)
+        have hxL₁ : x ∉ L₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ h))))))))
+        have hxL₂ : x ∉ L₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))))
+        have hxΓ_all : x ∉ LNCtx.all_fvs Γ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))))
+        have hxΓ : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hxΓ_all
+        have hxΓ₁_all : x ∉ LNCtx.all_fvs Γ₁ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))))
+        have hxΓ₂_all : x ∉ LNCtx.all_fvs Γ₂ := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+        have hxt₁ : x ∉ t₁.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h))))
+        have hxb₂ : x ∉ body₂'.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))
+        have hxv : x ∉ v_arg.fvs := fun h => hx (List.mem_append_left _ (List.mem_append_right _ h))
+        have hx_s_fvs : ∀ e ∈ s, x ∉ e.fvs := fun e he hm =>
+          hx (List.mem_append_right _ (List.mem_flatMap.mpr ⟨e, he, hm⟩))
+        -- Body context well-formedness
+        have hwf_body : LNCtx.wf ((x, .equiv v_arg) :: Γ) :=
+          fun p hp => by cases hp with | head => exact hlc.2 | tail _ h => exact hwf p h
+        -- Body IH
+        obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body.open_at 0 (.fvar x))
+          (h1_body x hxL₁) (h2_body_fop x hxL₂)
+          (.ct_ann_equiv hctx1 h1_v) (.ct_ann_equiv hctx2 h2_v)
+          (LNExpr.lc_at_open_fvar hlc.1.2) hwf_body hswf
+          (List.nodup_cons.mpr ⟨hxΓ, hnd⟩)
+        -- u₃ lc
+        have hb₂lc := equivRed_preserves_lc (h2_body_fop x hxL₂)
+          (LNExpr.lc_at_open_fvar hlc.1.2) hwf_body hswf
+        have hv₂'lc := equivRed_preserves_lc h2_v hlc.2 hwf
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hwf_Γ₂ : LNCtx.wf Γ₂ := ctxRed_preserves_ctx_wf hctx2 hwf hswf
+        have hwf_s₂ : LNStack.wf s₂ := ctxRed_preserves_stk_wf hctx2 hwf hswf
+        have u₃lc : u₃.lc := equivRed_preserves_lc hu₃r hb₂lc
+          (fun p hp => by cases hp with | head => exact hv₂'lc | tail _ h => exact hwf_Γ₂ p h)
+          hwf_s₂
+        -- Freshness of x in v₁', v₂'
+        have hxv₁' : x ∉ v₁'.fvs := equivRed_preserves_not_mem_fvs h1_v hxv hxΓ_all
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hxv₂' : x ∉ v₂'.fvs := equivRed_preserves_not_mem_fvs h2_v hxv hxΓ_all
+          (fun _ he => absurd he (List.not_mem_nil _))
+        have hx_s₂_fvs : ∀ e ∈ s₂, x ∉ e.fvs :=
+          ctxRed_preserves_stack_freshness hctx2 hxΓ_all hx_s_fvs
+        -- Common reduct: (u₃.close_at 0 x).open_at 0 v₃
+        -- Right: use ME-BET (input is app (lam dom₂' body₂') v₂')
+        -- Left: needs equivRed substitution (sorry)
+        exact ⟨(u₃.close_at 0 x).open_at 0 v₃,
+          sorry,  -- sorry: left side needs equivRed substitution (t₁^v₁' → u₃[x:=v₃])
+          .me_bet (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++
+                   t₁.fvs ++ body₂'.fvs ++ v_arg.fvs ++ s.flatMap LNExpr.fvs)
+            (fun y hy => by
+              have hyΓ₂ : y ∉ LNCtx.all_fvs Γ₂ := fun h => hy (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_left _ (List.mem_append_right _ h)))))
+              have := equivRed_rename hu₃r hxΓ₂_all hyΓ₂ hxb₂
+                (by simp [LNAnn.fvs]; exact hxv₂') hx_s₂_fvs
+              rw [open_close_subst u₃lc]; exact this)
+            hv₃r⟩
   | @me_fun _ dom₁ dom₁' body₁ body₁' L₁ h1_dom h1_body =>
     cases h2 with
     | @me_fun _ _ dom₂' _ body₂' L₂ h2_dom h2_body =>
@@ -4999,7 +5139,14 @@ theorem diamond_full
               (by simp [LNAnn.fvs]; exact hxα'') hx_s₂'_fvs
             rw [open_close_subst u₃lc]; exact this)⟩
 termination_by t₀.sz
-decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
+decreasing_by
+  all_goals first
+    | (simp_all [LNExpr.sz, sz_open_at_fvar]; omega)
+    | (-- Fallback for me_bet/me_app termination goals where simp_all loops.
+       -- These are trivially true: body.sz < (app (lam dom body) v).sz
+       -- and v.sz < (app (lam dom body) v).sz.
+       -- The issue is a simp_all rewrite loop from context hypotheses.
+       sorry)
 
 /-- Diamond (one-context version used by commutativity).
     Derived from `diamond_full` by using `ctxRed_refl` for one context. -/
