@@ -164,7 +164,7 @@ None. All former axioms have been removed:
   of file. The failure: me_app reduces both operator and operand simultaneously,
   but after substitution only SubRed (not EquivRed) is available for the operand.
 
-## equivRed_subst_diamond: the correct substitution lemma (DEFINED, sorry'd)
+## equivRed_subst_diamond: the correct substitution lemma (IN MUTUAL BLOCK, sorry'd)
 
 The flat substitution lemmas (equivRed_subst_equiv, subRed_subst_equiv) are both
 FALSE because they demand the exact same source→target pair after substitution.
@@ -178,15 +178,17 @@ The CORRECT formulation is a DIAMOND:
 
   (and the mutual SubRed variant: subRed_subst_diamond)
 
-Both theorems are now DEFINED with the correct type signature. Partially proved
-cases: ME-TOP, ME-TAP (trivially .top), ME-VAR y≠x (reflexivity), MS-TOP,
+Both theorems are now in a MUTUAL BLOCK with commutativity, sharing the
+termination measure `(budget, term.sz)`. Partially proved cases:
+ME-TOP, ME-TAP (trivially .top), ME-VAR y≠x (reflexivity), MS-TOP,
 MS-EQU (delegates to equivRed_subst_diamond). Remaining sorry'd cases:
 - ME-VAR y=x: the "stack alignment problem" — have EquivRed Γ [] v v' but
-  need something at stack s. Requires mutual structure with commutativity.
+  need something at stack s. Now structurally possible via the mutual block
+  (call commutativity on v), but wiring not yet done.
 - ME-PRO y=x: the core case that motivates the diamond. SubRed gives v→result,
   need ∃ w, EquivRed Γ s result w ∧ SubRed Γ' s' v' w. This IS commutativity
-  on v, but the stack mismatch ([] vs s) prevents direct application — requires
-  mutual induction where commutativity recurses into equivRed_subst_diamond.
+  on v. Now structurally possible via the mutual block (commutativity on v has
+  v.sz < budget, so the first component of the measure decreases).
 - ME-PRO y≠x: context lookup past x; SubRed on annotation not containing x.
   Should be straightforward but needs careful ctx extension/shrink plumbing.
 - ME-APP, ME-BET, ME-FUN, ME-FOP: structural recursion with budget decreasing.
@@ -199,13 +201,13 @@ the promotion gives SubRed(v → result). After subst:
 - This is COMMUTATIVITY on v (EquivRed v→v', SubRed v→result, CtxRed)
 - And v.sz < app(lam dom body, v).sz, so the IH applies.
 
-Termination (for future mutual block with commutativity):
+Termination (NOW IMPLEMENTED in the mutual block):
   commutativity(app(lam dom body, v)) calls
   equivRed_subst_diamond on body^x (smaller), which calls
   commutativity on v at ME-PRO-on-x points (v.sz < app(..).sz). Well-founded.
   Shared measure: (budget, u.sz) with lexicographic ordering.
-  - commutativity(t₀): (t₀.sz, t₀.sz)
-  - equivRed_subst_diamond(budget, u): (budget, u.sz)
+  - commutativity(budget, t₀): (budget, t₀.sz), with t₀.sz ≤ budget
+  - equivRed_subst_diamond(budget, u): (budget, u.sz), with u.sz ≤ budget
   All call patterns strictly decrease.
 
 NOTE: The ME-APP case has a stack alignment subtlety. The IH on the operator
@@ -5250,20 +5252,34 @@ theorem diamond
   obtain ⟨t₃, h_left, h_right⟩ := diamond_full t₀ h2 h1 hid hctx hlc hwf_ctx hwf_stk hnd
   exact ⟨t₃, h_left, h_right⟩
 
-/-! ### Commutativity (Lemma 1)
+/- ### Commutativity + equivRed_subst_diamond (mutual block)
 
-The main theorem. By induction on the term t₀ and case analysis on the
-pair of rules (h_equiv : ≡→, h_sub : ≤→) applied to t₀.
+Commutativity is the main theorem. By induction on the term t₀ and case
+analysis on the pair of rules (h_equiv : ≡→, h_sub : ≤→) applied to t₀.
+
+equivRed_subst_diamond / subRed_subst_diamond are the diamond substitution
+lemmas for EquivRed/SubRed under .equiv annotations. They are co-proved
+with commutativity because:
+- commutativity's ME-BET/MS-FOP `.inr` case calls equivRed_subst_diamond
+- equivRed_subst_diamond's ME-PRO-on-x case calls commutativity on v
+
+Shared termination measure: `(budget, term.sz)` with lexicographic ordering.
+- commutativity(budget, t₀): measure (budget, t₀.sz), with t₀.sz ≤ budget
+- equivRed_subst_diamond(budget, u): measure (budget, u.sz), with u.sz ≤ budget
+- commutativity → commutativity on sub-terms: budget stays, t₀.sz decreases
+- commutativity → equivRed_subst_diamond on body: budget stays, u.sz < t₀.sz
+- equivRed_subst_diamond → equivRed_subst_diamond: budget stays, u.sz decreases
+- equivRed_subst_diamond → commutativity on v: v.sz < budget (strict), so
+  first component decreases
 
 Proof structure follows Appendix A of Pasquale & Garcia-Perez.
-
-We make t₀ explicit so we can use `termination_by t₀.sz`.
-The decrease `sz (open_at 0 (fvar x) body) < sz (lam dom body)`
-follows from `sz_open_at_fvar` and arithmetic.
 -/
 
 set_option maxHeartbeats 1600000 in
+mutual
+
 theorem commutativity
+    (budget : Nat)
     (t₀ : LNExpr)
     {Γ : LNCtx} {s : LNStack} {t₁ t₂ : LNExpr}
     {Γ' : LNCtx} {s' : LNStack}
@@ -5274,6 +5290,7 @@ theorem commutativity
     (h_nd    : (LNCtx.dom Γ).Nodup)
     (hwf_ctx : Γ.wf)
     (hwf_stk : s.wf)
+    (hbudget : t₀.sz ≤ budget)
     : ∃ t₃ : LNExpr, LNEquivRed Γ s t₂ t₃ ∧ LNSubRed Γ' s' t₁ t₃ ∧
         (∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃) := by
   -- Case analysis on the sub (left/vertical) edge.
@@ -5317,17 +5334,16 @@ theorem commutativity
       -- (equivRed_refl), but NOT SUFFICIENT: the right edge constrains t₃ = t'
       -- (via ms_pro hmem'), so the top edge must produce exactly t'.
       --
-      -- CORRECT RESOLUTION: This sorry dissolves into a mutual block where
-      -- commutativity and equivRed_subst_diamond are co-proved. The MS-PRO/ME-VAR
-      -- case IS the equivRed_subst_diamond ME-VAR y=x case (same stack mismatch:
-      -- have EquivRed Γ [] v v', need result at stack s). In the mutual block:
-      -- commutativity(fvar x) at MS-PRO/ME-VAR calls equivRed_subst_diamond on t
-      -- (with budget = t.sz < not directly available — needs reformulation so
-      -- that the "budget" parameter captures the annotation term size). Then
-      -- equivRed_subst_diamond's ME-PRO-on-x case calls commutativity on the
+      -- RESOLUTION: The mutual block is now in place. This case needs
+      -- equivRed_subst_diamond to provide the top edge. The MS-PRO/ME-VAR case
+      -- IS the equivRed_subst_diamond ME-VAR y=x case (same stack mismatch:
+      -- have EquivRed Γ [] v v', need result at stack s). The mutual block enables:
+      -- commutativity(fvar x) at MS-PRO/ME-VAR calls equivRed_subst_diamond on t,
+      -- then equivRed_subst_diamond's ME-PRO-on-x case calls commutativity on the
       -- annotation (which is smaller in the shared termination measure).
-      -- See "equivRed_subst_diamond" section in file header for full analysis.
-      exact ⟨t', sorry, .ms_pro hmem', sorry⟩  -- sorry: needs mutual block with equivRed_subst_diamond
+      -- WIRING TODO: call equivRed_subst_diamond here (need to construct the right
+      -- context reduction and freshness conditions from the MS-PRO lookup).
+      exact ⟨t', sorry, .ms_pro hmem', sorry⟩  -- sorry: needs equivRed_subst_diamond call (mutual block ready)
 
   --===================================================================
   -- MS-APP: t₀ = app u₀ v, t₂ = app u₂ v
@@ -5341,8 +5357,9 @@ theorem commutativity
       have h_ctx_ext := LNCtxRed.ct_stk h_ctx h_equiv_v
       have hu₀_lc : u₀.lc := h_lc.1
       obtain ⟨u₃, htop_u, hright_u, hnp_u⟩ :=
-        commutativity u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc h_nd hwf_ctx
+        commutativity budget u₀ h_equiv_u h_sub_u h_ctx_ext hu₀_lc h_nd hwf_ctx
           (fun e he => by cases he with | head => exact h_lc.2 | tail _ hmem => exact hwf_stk e hmem)
+          (Nat.le_trans (by simp [LNExpr.sz]; omega) hbudget)
       exact ⟨.app u₃ v₁, .me_app htop_u h_equiv_v, .ms_app hright_u, sorry⟩  -- sorry: noPromoAt preservation for ME-APP/MS-APP
     ---------------------------------------------------------------
     -- ME-BET / MS-APP: the key case
@@ -5410,10 +5427,11 @@ theorem commutativity
         -- with h_sub_body_s_x, then use noPromoAt x from the IH to substitute.
         -- ═══════════════════════════════════════════════════════════════
         obtain ⟨u₃, htop_body, hright_body, hnp_ih⟩ :=
-          commutativity (body.open_at 0 (.fvar x)) h_body_e_x h_sub_body_s_x h_ctx_body hbody_lc
+          commutativity budget (body.open_at 0 (.fvar x)) h_body_e_x h_sub_body_s_x h_ctx_body hbody_lc
             (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
             hwf_ctx_ext_equiv
             hwf_stk
+            (Nat.le_trans (by simp [LNExpr.sz, sz_open_at_fvar]; omega) hbudget)
         -- htop_body : EquivRed ((x,.equiv v)::Γ) s (body₂^x) u₃
         -- hright_body : SubRed ((x,.equiv v')::Γ') s' (t_e^x) u₃
         have hbody₂_x_lc : (body₂.open_at 0 (.fvar x)).lc :=
@@ -5467,7 +5485,15 @@ theorem commutativity
               (fun h_eq_right => by
                 -- h_eq_right : EquivRed ((x,.equiv v')::Γ') s' (t_e^x) u₃
                 -- noPromoAt x fails here because h_eq_right can promote x.
-                -- Needs equivRed_subst_diamond (co-proved with commutativity).
+                -- WIRING TODO: call equivRed_subst_diamond budget h_eq_right
+                -- with the right context reduction. The mutual block is ready.
+                -- The call would be:
+                --   equivRed_subst_diamond budget h_eq_right h_ctx_body'
+                --     hx_all_fvs' hx_v'_fvs hv'_lc hv''_lc hte_x_lc hwf' hswf' hnd'
+                --     (Nat.le_trans ... hbudget)
+                -- where h_ctx_body' reduces ((x,.equiv v')::Γ') to some Γ'';
+                -- this gives the SubRed edge. The EquivRed edge comes from the
+                -- diamond's substitution of u₃[x↦v'].
                 exact .ms_equ (sorry))
         -- Apply subRed_subst_noPromo to hright_body
         have h_subst := subRed_subst_noPromo h_np_right (v := v') hv'_lc
@@ -5606,10 +5632,11 @@ theorem commutativity
         LNExpr.lc_at_open_fvar h_lc.2
       -- IH on body^x
       obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
-        commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
+        commutativity budget (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
           (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
           (fun p hp => by cases hp with | head => exact h_lc.1 | tail _ hmem => exact hwf_ctx p hmem)
           (fun _ he => absurd he (List.not_mem_nil _))
+          (Nat.le_trans (by rw [sz_open_at_fvar]; simp [LNExpr.sz]) hbudget)
       have hs' := ctxRed_nil_stack h_ctx; subst hs'
       -- Derive u₃.lc
       have hwf_ctx_ext_sub : LNCtx.wf ((x, .sub dom) :: Γ) :=
@@ -5736,12 +5763,13 @@ theorem commutativity
       have hbody_lc : (body.open_at 0 (.fvar x)).lc :=
         LNExpr.lc_at_open_fvar h_lc.2
       obtain ⟨u₃, htop_body, hright_body, _hnp_ih⟩ :=
-        commutativity (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
+        commutativity budget (body.open_at 0 (.fvar x)) h_equiv_body_x h_sub_body_x h_ctx_body hbody_lc
           (List.nodup_cons.mpr ⟨hx_dom, h_nd⟩)
           (fun p hp => by cases hp with
             | head => exact hwf_stk α (List.mem_cons_self _ _)
             | tail _ hmem => exact hwf_ctx p hmem)
           (fun e he => hwf_stk e (List.mem_cons_of_mem _ he))
+          (Nat.le_trans (by rw [sz_open_at_fvar]; simp [LNExpr.sz]) hbudget)
       -- Derive u₃.lc
       have hwf_ctx_ext_equiv : LNCtx.wf ((x, .equiv α) :: Γ) :=
         fun p hp => by cases hp with
@@ -5850,29 +5878,8 @@ theorem commutativity
                 (fun _ => Ne.symm hy_ne_z)
               rw [open_close_subst u₃_lc]
               exact hnp_y_out)
-termination_by t₀.sz
+termination_by (budget, t₀.sz)
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
-
-/-! ### equivRed_subst_diamond (sorry'd)
-
-The correct substitution lemma for EquivRed under .equiv annotations.
-This is the key lemma that would resolve the remaining equivRed-substitution sorrys
-in diamond_full and commutativity (see file header "equivRed_subst_diamond" section).
-
-When fully proved, this should be in a mutual block with commutativity:
-- commutativity's ME-BET/MS-FOP `.inr` case calls equivRed_subst_diamond
-- equivRed_subst_diamond's ME-PRO-on-x case calls commutativity on v (v.sz < budget)
-
-For now, the theorem is stated with a sorry'd body. The ME-PRO-on-x case WOULD
-call commutativity (already available since this is defined after it), but the
-stack alignment problem (EquivRed at stack [] vs SubRed at stack s) prevents a
-direct application — it requires the mutual induction structure.
-
-The `budget` parameter enables the termination argument when placed in a mutual
-block: budget = t₀.sz of the calling commutativity instance, and all recursive
-calls (commutativity on v, equivRed_subst_diamond on sub-derivations) decrease
-under `(budget, u.sz)` with lexicographic ordering.
--/
 
 /-- The substitution diamond for EquivRed under .equiv annotations.
 
@@ -5929,7 +5936,14 @@ theorem equivRed_subst_diamond
       -- Actually: take w = v. EquivRed Γ s v v (refl). SubRed Γ' s' v' v?
       -- That requires SubRed from v' back to v — not generally true.
       -- Take w = .top: EquivRed Γ s v .top (not generally true).
-      -- This case is genuinely stuck without the mutual structure.
+      -- WIRING TODO (mutual block now ready): This case can be resolved by
+      -- calling commutativity on v. We have EquivRed Γ [] v v' (from hctx,
+      -- which provides the annotation reduction). We need to construct
+      -- an appropriate SubRed on v and CtxRed to pass to commutativity.
+      -- The key: me_var on x means u = fvar x, and after subst we get v and v'.
+      -- commutativity(budget', v, ...) with budget' = v.sz ≤ v.sz works,
+      -- and (v.sz, v.sz) < (budget, u.sz) iff v.sz < budget (since u.sz = 1 for fvar).
+      -- For budget ≥ 1 and v.sz < budget, this terminates.
       sorry
     · -- y ≠ x: both sides are fvar y
       exact ⟨.fvar _, .me_var, .ms_equ .me_var⟩
@@ -5941,7 +5955,15 @@ theorem equivRed_subst_diamond
     --   u'.subst x v = u' (x ∉ u'.fvs by freshness propagation through SubRed)
     --   u.subst x v' = (fvar x).subst x v' = v'
     --   Need: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' v' w
-    --   This requires commutativity on v (the stack alignment problem).
+    --   WIRING TODO (mutual block now ready): call commutativity on v.
+    --   We have: EquivRed Γ [] v v' (annotation reduction from hctx),
+    --   SubRed ((x,.equiv v)::Γ) s v u' (from hsub, but need to remove x).
+    --   Since x ∉ fvs(v), the SubRed on v doesn't reference x, so we can
+    --   weaken to SubRed Γ s v u'. Then commutativity(v.sz, v, ...) gives
+    --   the diamond. Termination: (v.sz, v.sz) < (budget, 1) because v.sz < budget
+    --   (from hbudget: 1 ≤ budget, and we need v.sz < budget — this holds when
+    --   budget was set from an outer commutativity call on app(lam dom body, v)
+    --   since v.sz < app(lam dom body, v).sz = budget).
     -- If y ≠ x: hmem says y has .equiv annotation in Γ (looked up past x)
     --   α doesn't contain x (since x ∉ all_fvs Γ). hsub is SubRed on α in extended ctx.
     --   After removing x from ctx (x is fresh), hsub holds in Γ too.
@@ -5953,6 +5975,7 @@ theorem equivRed_subst_diamond
     --   Then SubRed in Γ to get the same u' (after ctx ext removal).
     sorry
   | _ => sorry
+termination_by (budget, u.sz)
 
 /-- The substitution diamond for SubRed under .equiv annotations (mutual variant).
 
@@ -5981,6 +6004,9 @@ theorem subRed_subst_diamond
     -- SubRed via ms_equ wraps an EquivRed
     exact equivRed_subst_diamond budget h_eq hctx hx_all_fvs hx_v hv_lc hv'_lc hu_lc hwf hswf hnd hbudget
   | _ => sorry
+termination_by (budget, u.sz)
+
+end -- mutual commutativity / equivRed_subst_diamond / subRed_subst_diamond
 
 /-! ## Investigation: stack extension is FALSE
 
