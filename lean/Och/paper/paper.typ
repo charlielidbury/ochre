@@ -95,7 +95,7 @@ You may think the runtime semantics of Och are unimportant since this is type sy
 
 The concrete evaluator is a substitution-based call-by-value big-step interpreter on closed terms. ${lambda, top, bot}$ are the only values. $"fix"$ and $iota$ eagerly unroll by substituting their self-reference into the body. Application is pure β-reduction — only lambdas can be applied.
 
-Och has no concept of levels/universes/stages, so the type checker cannot enforce that {$top$, $bot$, $iota$} don't appear at runtime. These are kept as values to avoid making soundness unprovable. Adding universes (see §3.6 of PSS @hutchins-2010) would let us erase type-level arguments during compilation, after which {$top$, $bot$, $iota$} would never appear at level 0.
+Och has no concept of levels/universes/stages, so the type checker cannot enforce that {$top$, $bot$, $iota$} don't go into runtime, so runtime needs to handle them gracefully. Adding universes (see §3.6 of PSS @hutchins-2010) would let us erase type-level arguments during compilation, after which {$top$, $bot$, $iota$} would never appear at level 0.
 
 We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in.
 
@@ -277,9 +277,9 @@ The $S$-extension column matters: S-Hyp can only fire against entries that some 
 
 *Ex falso via subsumption.* There is no dedicated "absurd" eliminator. If $a subset.sq.eq bot$ is derivable, then $a subset.sq.eq e$ for every $e$ via [S-Trans] on [S-BotL]. The "contradiction" discharge is subsumption alone. This matches the DOT @amin-moors-odersky-2012 tradition: $bot$ inhabits every type trivially in subtyping, so any term whose type is already $bot$ flows into any expected type without further ceremony.
 
-*Why [S-Trans] is a constructor, not a derived theorem.* In a normal simply-typed subtyping relation, transitivity is admissible: a standard induction on the shape of the two derivations composes them. That argument requires a decreasing syntactic measure --- typically, both derivations get strictly smaller in each case of the composition. Och's four unfold rules and iota-intro break this: unfolding $"fix"(x lt.eq A). "body"$ replaces it with $"body"[x arrow.r.bar "fix"(x lt.eq A). "body"]$, which is _larger_ than the original. There's no obvious structural measure on derivations that decreases through an unfold, so transitivity is not derivable by induction on derivations. The seen-set discipline of @productive is the coinductive counterpart that keeps the relation consistent, but it doesn't by itself give admissibility of transitivity.
+*[S-Trans] is a constructor, not a derived theorem.* Given the interpretation of types as sets of terms, and subtyping as subset over those sets, one would expect transitivity to be provable instead of axiomatic. Eliminating transitivity as a primitive rule (_transitivity elimination_) is highly desirable: it simplifies metatheory and makes the relation syntax-directed. PSS @hutchins-2010 --- a closely related system --- did not manage to eliminate transitivity. Pasquale and García-Pérez @pasquale-garcia-perez-2026 partially succeeded in a continuation of that work, but required switching the entire theory to a Krivine machine.
 
-Eliminating transitivity as a primitive rule (_transitivity elimination_) is highly desirable: it simplifies metatheory and makes the relation syntax-directed. PSS @hutchins-2010 --- a closely related system --- did not manage to eliminate transitivity. Pasquale and García-Pérez @pasquale-garcia-perez-2026 partially succeeded in a continuation of that work, but required switching the entire theory to a Krivine machine.
+I have no satisfying answer to whether or not transitivity is eliminatable in Och, but I will try get one.
 
 == Congruence rules <congruence>
 
