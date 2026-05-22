@@ -78,9 +78,13 @@ Several kinds of `sorry` remain:
    The z = x special case is easier (noPromoAt_fresh_sub since x ∉ dom Γ').
 7. Stack extension for annotation terms in commutativity's MS-PRO/ME-VAR case:
    `ctxRed_lookup_sub` gives `LNEquivRed Γ [] t t'` (empty stack) but the top
-   edge needs `LNEquivRed Γ s t t'` (current stack). This holds for well-formed
-   contexts (annotation terms are stack-stable) but requires formalizing
-   context well-formedness. Replaces the former FALSE axiom `equivRed_stack_ext`.
+   edge needs `LNEquivRed Γ s t t'` (current stack). Same-output stack extension
+   is FALSE even for annotation terms (counterexample: lam top (bvar 0) at
+   stack [.top] — ME-FOP's ME-PRO on the body variable produces a different
+   result than ME-FUN). The existential version (∃ v', EquivRed Γ s t v') is
+   trivially true but NOT SUFFICIENT: the right edge forces t₃ = t' via ms_pro.
+   RESOLUTION: dissolve into mutual block with equivRed_subst_diamond (same
+   stack mismatch as ME-VAR y=x there). See equivRed_subst_diamond section.
 
 ## Proved Lemmas
 - `equivRed_ctx_mono` / `subRed_ctx_mono`: context monotonicity — if every
@@ -1047,11 +1051,25 @@ LNSubRed Γ s α α'. Under empty stack MS-FUN gives the body variable a .sub
 annotation (allowing MS-PRO), while under non-empty stack MS-FOP gives .equiv
 (blocking MS-PRO), making certain results unreachable.
 
-A restricted form holds for "stack-stable" terms (those whose reduction does
-not depend on the stack). Annotation terms in well-formed contexts satisfy
-this, but well-formedness is not formally tracked in the current development.
-The commutativity proof's MS-PRO case requires this restricted form; the
-needed fact is sorry'd inline there.
+IMPORTANT: Same-output stack extension is FALSE even for annotation terms.
+Counterexample: Γ = [(x, .equiv (lam (fvar y) (bvar 0))), (y, .sub top)].
+Under []: ME-PRO on x gives SubRed via MS-FUN, body z gets .sub (fvar y),
+MS-PRO on z gives (fvar y). Output: lam (fvar y) (fvar y).
+Under [.top]: ME-PRO on x would need SubRed via MS-FOP, body z gets
+.equiv .top, MS-PRO on z is BLOCKED (needs .sub). Output (fvar y) is
+UNREACHABLE. See cex_Γ examples at end of file for formal verification.
+
+The existential version (∃ v', EquivRed Γ s t v') is trivially true via
+equivRed_refl but NOT SUFFICIENT for commutativity's MS-PRO/ME-VAR case:
+the right edge (ms_pro hmem') forces the witness to be t', requiring the
+top edge to produce exactly t'. No alternative diagram completion exists
+because SubRed from (fvar x) with .sub annotation can only reach t' (via
+ms_pro), fvar x (via ms_equ me_var), or .top (via ms_top).
+
+RESOLUTION: The MS-PRO/ME-VAR case must be dissolved into the mutual block
+with equivRed_subst_diamond. The "stack alignment problem" here is identical
+to the ME-VAR y=x case of equivRed_subst_diamond. See that section for the
+shared termination measure and call pattern.
 -/
 
 /-- Context reduction is reflexive (requires all embedded terms to be lc). -/
@@ -5287,15 +5305,29 @@ theorem commutativity
       -- Top edge needs: LNEquivRed Γ s t t' (stack s, not [])
       -- Right edge:     LNSubRed Γ' s' (fvar x) t' via ms_pro hmem' ✓
       --
-      -- The top edge sorry is restricted stack extension for annotation
-      -- terms: we have LNEquivRed Γ [] t t' and need LNEquivRed Γ s t t'.
-      -- This holds because annotation terms in well-formed contexts are
-      -- "stack-stable" (their reduction doesn't depend on the stack), but
-      -- proving this requires formalizing context well-formedness.
-      -- Note: this is NOT the false equivRed_weaken (which changes BOTH
-      -- context and stack via CtxRed). Here the context stays as Γ; only
-      -- the stack changes from [] to s.
-      exact ⟨t', sorry, .ms_pro hmem', sorry⟩  -- sorry: stack extension for annotation terms + noPromoAt
+      -- ANALYSIS (2026-05-22): Same-output stack extension is FALSE even
+      -- for annotation terms. Counterexample (cex_Γ at end of file):
+      -- Γ = [(x, .equiv (lam (fvar y) (bvar 0))), (y, .sub top)].
+      -- Under []: ME-PRO on x, SubRed via MS-FUN, body z gets .sub (fvar y),
+      -- MS-PRO on z gives fvar y. Output: lam (fvar y) (fvar y).
+      -- Under [.top]: ME-PRO, SubRed via MS-FOP, body z gets .equiv .top,
+      -- MS-PRO BLOCKED (needs .sub). Output fvar y is UNREACHABLE.
+      --
+      -- The existential version (∃ v', LNEquivRed Γ s t v') is trivially true
+      -- (equivRed_refl), but NOT SUFFICIENT: the right edge constrains t₃ = t'
+      -- (via ms_pro hmem'), so the top edge must produce exactly t'.
+      --
+      -- CORRECT RESOLUTION: This sorry dissolves into a mutual block where
+      -- commutativity and equivRed_subst_diamond are co-proved. The MS-PRO/ME-VAR
+      -- case IS the equivRed_subst_diamond ME-VAR y=x case (same stack mismatch:
+      -- have EquivRed Γ [] v v', need result at stack s). In the mutual block:
+      -- commutativity(fvar x) at MS-PRO/ME-VAR calls equivRed_subst_diamond on t
+      -- (with budget = t.sz < not directly available — needs reformulation so
+      -- that the "budget" parameter captures the annotation term size). Then
+      -- equivRed_subst_diamond's ME-PRO-on-x case calls commutativity on the
+      -- annotation (which is smaller in the shared termination measure).
+      -- See "equivRed_subst_diamond" section in file header for full analysis.
+      exact ⟨t', sorry, .ms_pro hmem', sorry⟩  -- sorry: needs mutual block with equivRed_subst_diamond
 
   --===================================================================
   -- MS-APP: t₀ = app u₀ v, t₂ = app u₂ v
@@ -5962,16 +5994,31 @@ ME-FOP fires with body context `(x, .equiv α) :: Γ; s`.
 KEY QUESTION: can the body derivation under `.sub dom` always be replayed
 under `.equiv α` for arbitrary `α`?
 
-ANALYSIS: YES, because:
+ANALYSIS: The annotation swap part is correct (noPromoAt x holds because
+ME-PRO on x requires .equiv, blocked by .sub dom). So the derivation is
+independent of x's ANNOTATION. HOWEVER, it is NOT independent of the STACK.
+Points 1-3 below only address the annotation dimension, not the stack:
 1. ME-PRO on `x` requires `.equiv`, so it CANNOT fire under `.sub dom`.
    Therefore the body's EquivRed derivation never promotes `x` via ME-PRO.
 2. SubRed on `fvar x` (via MS-PRO) can only be reached through ME-PRO on
    OTHER variables whose annotations contain `fvar x`. But `x` is fresh
    (cofinite quantification), so no annotation in `Γ` contains `fvar x`.
 3. Therefore the body derivation is independent of `x`'s annotation.
-4. A generalized stack-append lemma would handle the ME-APP case.
+
+BUT: After annotation swap from `.sub dom` to `.equiv α`, we still have
+the body derivation at stack [] (from ME-FUN), and need it at stack s (for
+ME-FOP). This is recursively the same stack extension problem on body^x.
+Under .equiv α, ME-PRO CAN fire on x, making the output DIFFERENT.
+
+COUNTEREXAMPLE (same-output stack ext for annotation terms):
+  t = lam top (bvar 0), s = [.top].
+  ME-FUN body: (x,.sub top)::Γ;[] ⊢ fvar x ≡→ fvar x (ME-VAR). Output: lam top (bvar 0).
+  ME-FOP body: (x,.equiv .top)::Γ;[] ⊢ fvar x ≡→ .top (ME-PRO + MS-TOP). Output: lam top .top.
+  Outputs differ. Same-output stack extension is FALSE even for annotation terms.
 
 The following examples test specific instances to verify consistency.
+Note: Tests 1-4 below work because they never trigger ME-PRO on the
+cofinitely-quantified body variable under .equiv α.
 -/
 
 section StackExtInvestigation
@@ -6064,6 +6111,45 @@ example : LNEquivRed [("y", .equiv .top)] [.top]
 -- trigger ME-PRO on a variable whose annotation is a lambda that promotes
 -- the cofinitely-quantified variable. The counterexample below shows the
 -- failure mode.
+
+/-! ### Investigation: stack extension for annotation terms (lam top (bvar 0))
+
+The identity function lam top (bvar 0) illustrates the subtlety.
+Under both [] and [.top], the same output (lam top (bvar 0)) IS reachable —
+but via DIFFERENT derivation paths. The [] derivation uses ME-FUN + ME-VAR;
+the [.top] derivation uses ME-FOP + ME-VAR (both give body fvar x → fvar x,
+ignoring the annotation). Additionally, [.top] enables an EXTRA output
+(lam top .top) via ME-PRO on the body variable.
+
+For the commutativity MS-PRO/ME-VAR case: we need to lift a SPECIFIC
+derivation (LNEquivRed Γ [] t t' from ctxRed_lookup_sub) to stack s,
+preserving the EXACT output t'. The question is not whether SOME derivation
+producing t' exists at s, but whether a particular output reachable at [] is
+also reachable at s. For simple terms (like identity), the answer is yes.
+The cex_Γ example below shows a case where a particular output reachable at
+[] is NOT reachable at s (via ME-PRO on a variable whose lambda annotation
+uses MS-PRO internally — see detailed explanation below).
+-/
+
+-- Under []: identity reduces to itself via ME-FUN
+example : LNEquivRed [] [] (.lam .top (.bvar 0)) (.lam .top (.bvar 0)) := by
+  exact .me_fun (L := []) .me_top (fun x _ => .me_var)
+
+-- Under [.top]: the SAME output is also derivable via ME-FOP + ME-VAR
+example : LNEquivRed [] [.top] (.lam .top (.bvar 0)) (.lam .top (.bvar 0)) := by
+  exact .me_fop (L := []) .me_top (fun x _ => .me_var)
+
+-- Under [.top]: an ADDITIONAL output (lam top .top) is also derivable via ME-PRO
+example : LNEquivRed [] [.top] (.lam .top (.bvar 0)) (.lam .top .top) := by
+  refine .me_fop (L := []) .me_top (fun x _ => ?_)
+  simp only [LNExpr.open_at]
+  exact .me_pro (show LNCtx.mem_equiv [(x, .equiv .top)] x .top by
+    simp [LNCtx.mem_equiv, LNCtx.lookup']) (.ms_equ .me_top)
+
+-- Both outputs are reachable under [.top]. EquivRed is non-deterministic.
+-- For this term, same-output stack extension holds trivially.
+-- The REAL counterexample needs a derivation at [] whose output is NOT
+-- achievable at s — see cex_Γ below.
 
 /-! ### COUNTEREXAMPLE: equivRed_stack_ext and subRed_stack_ext are FALSE
 
