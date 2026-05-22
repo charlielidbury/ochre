@@ -149,6 +149,13 @@ None. All former axioms have been removed:
   (b) SubRed collapses to EquivRed → apply IH via ms_equ. Main diagram
       mostly proved; the right-edge substitution for `.inr` of a second
       promotion_collapse remains sorry'd (needs subRed_subst_equiv).
+- **equivRed_subst_equiv**: DISPROVED. The statement "if EquivRed ((x,.equiv v)::Γ)
+  s u u' with freshness, then EquivRed Γ s (u[x↦v]) (u'[x↦v])" is FALSE.
+  Counterexample at end of file. The failure: ME-PRO on x yields SubRed of v,
+  which can use ms_pro on .sub-annotated variables. After substitution, the
+  conclusion demands EquivRed on v, but me_pro only works with .equiv annotations.
+  A SubRed version (subRed_subst_equiv) might still hold, but the EquivRed
+  version is strictly false.
 
 ## Sorry'd Theorems
 - `equivRed_rename_strong` / `subRed_rename_strong`: fvar renaming for reductions.
@@ -5976,3 +5983,76 @@ example : LNSubRed weaken_Γ []
     (.ms_equ .me_var))
 
 end WeakenInvestigation
+
+/-! ### COUNTEREXAMPLE: equivRed_subst_equiv is FALSE
+
+The proposed statement: if `LNEquivRed ((x, .equiv v) :: Γ) s u u'` with
+freshness (x ∉ v.fvs, x ∉ all_fvs Γ), then `LNEquivRed Γ s (u[x↦v]) (u'[x↦v])`.
+
+This is FALSE. The failure mode: ME-PRO on x uses SubRed on v (the annotation
+term). SubRed can promote through .sub annotations (MS-PRO), which is strictly
+more powerful than EquivRed. After substitution, the conclusion demands EquivRed
+on v, but v's only EquivRed derivation is me_var (reflexivity) when v is a
+variable with a .sub annotation.
+
+Concrete counterexample:
+  Γ = [(y, .sub .top)], x = "x", v = fvar "y", s = []
+  u = fvar "x", u' = .top
+
+  Original derivation: LNEquivRed ((x, .equiv (fvar y)) :: [(y, .sub .top)]) [] (fvar x) .top
+    via ME-PRO: x ≡ fvar "y" ∈ Γ, then SubRed of (fvar "y"):
+      ms_pro: y ≤ .top ∈ Γ  →  fvar "y" ≤→ .top
+
+  After substitution x ↦ fvar "y":
+    u[x↦v] = fvar "y"
+    u'[x↦v] = .top
+
+  Need: LNEquivRed [(y, .sub .top)] [] (fvar "y") .top
+  But this is NOT derivable:
+    - me_var: fvar "y" ≡→ fvar "y"  (not .top)
+    - me_pro: requires mem_equiv for "y", but y has .sub annotation, not .equiv
+    - No other rule applies (fvar "y" is not top/app/lam)
+
+  The root cause is the asymmetry between SubRed (which has ms_pro for .sub
+  annotations) and EquivRed (which only has me_pro for .equiv annotations).
+  SubRed can promote through .sub bounds, but EquivRed cannot.
+-/
+
+section SubstEquivInvestigation
+
+private def substEquiv_Γ : LNCtx := [("y", .sub .top)]
+private def substEquiv_Γ_ext : LNCtx := [("x", .equiv (.fvar "y")), ("y", .sub .top)]
+
+-- Step 1: The original derivation exists in the extended context.
+-- LNEquivRed substEquiv_Γ_ext [] (fvar "x") .top
+-- via ME-PRO (x ≡ fvar "y") then SubRed of fvar "y" via ms_pro (y ≤ .top)
+example : LNEquivRed substEquiv_Γ_ext [] (.fvar "x") .top := by
+  unfold substEquiv_Γ_ext
+  exact .me_pro
+    (show LNCtx.mem_equiv [("x", .equiv (.fvar "y")), ("y", .sub .top)] "x" (.fvar "y") from rfl)
+    (.ms_pro (show LNCtx.mem_sub [("x", .equiv (.fvar "y")), ("y", .sub .top)] "y" .top from rfl))
+
+-- Step 2: Freshness conditions are satisfied.
+-- x = "x", v = fvar "y"
+-- x ∉ v.fvs: "x" ∉ ["y"] ✓
+-- x ∉ all_fvs Γ: "x" ∉ ["y"] ++ top.fvs = ["y"] ✓
+example : "x" ∉ (LNExpr.fvar "y").fvs := by native_decide
+example : "x" ∉ LNCtx.all_fvs substEquiv_Γ := by native_decide
+
+-- Step 3: After substitution, the conclusion is NOT derivable.
+-- Need: LNEquivRed [(y, .sub .top)] [] (fvar "y") .top
+-- This requires EquivRed to produce .top from fvar "y" where y has .sub .top.
+-- me_var gives fvar "y" (reflexive), me_pro needs .equiv (y has .sub).
+-- No other rule applies. NOT DERIVABLE.
+
+-- We CAN prove the SubRed version (which would hold if the conclusion were SubRed):
+example : LNSubRed substEquiv_Γ [] (.fvar "y") .top := by
+  unfold substEquiv_Γ
+  exact .ms_pro (by simp [LNCtx.mem_sub, LNCtx.lookup'])
+
+-- But the EquivRed version is NOT derivable. The best EquivRed can do is:
+example : LNEquivRed substEquiv_Γ [] (.fvar "y") (.fvar "y") := by
+  unfold substEquiv_Γ
+  exact .me_var
+
+end SubstEquivInvestigation
