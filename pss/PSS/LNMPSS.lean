@@ -42,9 +42,11 @@ Several kinds of `sorry` remain:
 2. CLOSED: `noPromoAt_equiv_swap` and `noPromoAt_sub_swap` are now fully
    proved using the mutual recursor @LNEquivRed.noPromoAt.rec, with cofinite
    binder cases handled by augmenting avoidance sets with x to ensure y ≠ x.
-3. `diamond_full`: sorry'd pending adaptation to cofinite constructor patterns.
-   The proof strategy is the same as before (pick common fresh x from
-   intersection of avoidance sets) but needs rewriting.
+3. `diamond_full`: ME-FUN/ME-FUN and ME-FOP/ME-FOP cases fully proved
+   (including Γ₁.wf and s₁'.wf via ctxRed_preserves_ctx_wf/stk_wf).
+   Remaining sorry'd cases: ME-PRO (needs commutativity for SubRed diamond),
+   ME-APP/ME-BET and ME-BET/ME-BET,ME-APP (structural mismatch between
+   me_bet and me_app decompositions of app (lam ..) v).
 4. CLOSED: `diamond` now takes Gamma.wf and s.wf hypotheses, which are
    passed to ctxRed_refl. Commutativity propagates these through recursive
    calls by constructing wf for extended contexts/stacks.
@@ -113,6 +115,13 @@ Several kinds of `sorry` remain:
   is now fully proved using `noPromoAt_sub_swap` without annotation swaps.
 - `equivRed_preserves_lc` / `subRed_preserves_lc`: reduction preserves
   local closure. Proved by mutual induction.
+- `ctxRed_preserves_ctx_wf` / `ctxRed_preserves_stk_wf`: context reduction
+  preserves context and stack well-formedness. Proved by induction on ctxRed.
+  Moved before diamond_full to enable closing Γ₁.wf and s₁'.wf sorrys.
+- `subRed_subst_noPromo_noPromoAt` ms_pro case: when z's noPromoAt uses
+  ms_pro and y's uses ms_equ, the only possible EquivRed on fvar is me_var
+  (me_pro contradicts mem_sub via no_sub_and_equiv). After subst, both
+  sides are the same term, so reflexivity closes the goal.
 
 ## Remaining Axioms
 None. All former axioms have been removed:
@@ -3510,17 +3519,34 @@ theorem subRed_subst_noPromo_noPromoAt
       -- ms_top
       (fun z _hzy _hnp_z v _hlcv => by simp [LNExpr.subst_fvar]; exact .ms_top)
       -- ms_equ
-      (fun _hnp ih z hzy hnp_z v hlcv => by
+      (fun hnp_y ih z hzy hnp_z v hlcv => by
         cases hnp_z with
         | ms_equ hnp_z_eq => exact .ms_equ (ih z hzy hnp_z_eq v hlcv)
         | ms_top => exact .ms_top
-        | _ => sorry)
+        | ms_pro hne_z hmem_z =>
+          -- u = fvar z_pro, u' = t from mem_sub. hnp_y : EquivRed.noPromoAt y ... (fvar z_pro) t
+          -- me_pro on z_pro would give mem_equiv, contradicting mem_sub (no_sub_and_equiv).
+          -- So hnp_y must be me_var, hence t = fvar z_pro, hence u = u' after subst.
+          cases hnp_y with
+          | me_var =>
+            -- u = u' = fvar z_pro. After subst both sides are the same.
+            simp only [LNExpr.subst_fvar]
+            exact subRed_refl_noPromoAt z _ _ _ (by
+              show (LNExpr.subst_fvar (.fvar _) y v).lc
+              simp only [LNExpr.subst_fvar]
+              split
+              · exact hlcv
+              · exact True.intro)
+          | me_pro hne_y hmem_equiv _ =>
+            exact absurd (no_sub_and_equiv hmem_z hmem_equiv) False.elim
+        | _ => sorry -- ms_app/ms_fun/ms_fop: structural mismatch (y used ms_equ, z used SubRed decomposition)
+        )
       -- ms_app
       (fun _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
         cases hnp_z with
         | ms_app hnp_z_sub => exact .ms_app (ih z hzy hnp_z_sub v hlcv)
-        | ms_equ hnp_z_eq => sorry)
+        | ms_equ hnp_z_eq => sorry) -- structural mismatch: y used ms_app, z used ms_equ; needs me_bet inversion
       -- ms_fun
       (fun {Γ_sf dom body body'} L _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
@@ -4751,6 +4777,60 @@ theorem promotion_collapse
             | inr heq => exact absurd heq (hall y hyL'))))
   exact go h x α hlook hlc hwf hswf
 
+/-- Context reduction preserves context well-formedness:
+    if `Γ` is wf and `Γ; s ↦ Γ'; s'`, then `Γ'` is wf. -/
+theorem ctxRed_preserves_ctx_wf
+    {Γ Γ' : LNCtx} {s s' : LNStack}
+    (h : LNCtxRed Γ s Γ' s') (hwf : Γ.wf) (hswf : s.wf) : Γ'.wf := by
+  induction h with
+  | @ct_ann_sub _ _ _ _ x t t' _ hred ih =>
+    intro p hp
+    cases hp with
+    | head =>
+      show t'.lc
+      have ht_lc : t.lc := hwf (x, .sub t) (List.mem_cons_self _ _)
+      exact equivRed_preserves_lc hred ht_lc
+        (fun q hq => hwf q (List.mem_cons_of_mem _ hq))
+        (fun _ he => absurd he (List.not_mem_nil _))
+    | tail _ hmem =>
+      exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf p hmem
+  | @ct_ann_equiv _ _ _ _ x α α' _ hred ih =>
+    intro p hp
+    cases hp with
+    | head =>
+      show α'.lc
+      have hα_lc : α.lc := hwf (x, .equiv α) (List.mem_cons_self _ _)
+      exact equivRed_preserves_lc hred hα_lc
+        (fun q hq => hwf q (List.mem_cons_of_mem _ hq))
+        (fun _ he => absurd he (List.not_mem_nil _))
+    | tail _ hmem =>
+      exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf p hmem
+  | ct_stk _ _ ih =>
+    exact ih hwf (fun e he => hswf e (List.mem_cons_of_mem _ he))
+  | ct_nil => intro _ hp; exact absurd hp (List.not_mem_nil _)
+
+/-- Context reduction preserves stack well-formedness:
+    if `s` is wf and `Γ; s ↦ Γ'; s'`, then `s'` is wf. -/
+theorem ctxRed_preserves_stk_wf
+    {Γ Γ' : LNCtx} {s s' : LNStack}
+    (h : LNCtxRed Γ s Γ' s') (hwf : Γ.wf) (hswf : s.wf) : s'.wf := by
+  induction h with
+  | ct_ann_sub _ _ ih => exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf
+  | ct_ann_equiv _ _ ih => exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf
+  | @ct_stk _ s_inner _ s'_inner α α' _ hred ih =>
+    -- Goal: (α' :: s'_inner).wf
+    -- hswf : (α :: s_inner).wf
+    intro e he
+    cases he with
+    | head =>
+      -- e = α', need α'.lc
+      exact equivRed_preserves_lc hred (hswf α (List.mem_cons_self _ _)) hwf
+        (fun _ he => absurd he (List.not_mem_nil _))
+    | tail _ hmem =>
+      -- e ∈ s'_inner
+      exact ih hwf (fun e' he' => hswf e' (List.mem_cons_of_mem _ he')) e hmem
+  | ct_nil => intro _ he; exact absurd he (List.not_mem_nil _)
+
 /-! ### Diamond property (Lemma 2)
 
 Proof by induction on the term structure of t₀, case analysis on the pair
@@ -4836,8 +4916,9 @@ theorem diamond_full
         hwf_body (fun _ he => absurd he (List.not_mem_nil _))
       have hd₁lc := equivRed_preserves_lc h1_dom hdom_lc hwf
         (fun _ he => absurd he (List.not_mem_nil _))
+      have hwf_Γ₁ : LNCtx.wf Γ₁ := ctxRed_preserves_ctx_wf (ctxRed_nil_of_ctxRed hctx1) hwf (fun _ he => absurd he (List.not_mem_nil _))
       have u₃lc : u₃.lc := equivRed_preserves_lc hu₃l hb₁lc
-        (fun p hp => by cases hp with | head => exact hd₁lc | tail _ h => sorry) -- Γ₁.wf
+        (fun p hp => by cases hp with | head => exact hd₁lc | tail _ h => exact hwf_Γ₁ p h)
         (fun _ he => absurd he (List.not_mem_nil _))
       exact ⟨.lam dom₃ (u₃.close_at 0 x),
         .me_fun (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++ body₁'.fvs ++ body₂'.fvs ++ dom₁.fvs)
@@ -4891,9 +4972,11 @@ theorem diamond_full
         (LNExpr.lc_at_open_fvar hlc.2) hwf_body hs'_wf
       have hα'lc := equivRed_preserves_lc hα₁_red hα_lc hwf
         (fun _ he => absurd he (List.not_mem_nil _))
+      have hwf_Γ₁_fop : LNCtx.wf Γ₁ := ctxRed_preserves_ctx_wf hctx1_inner hwf hs'_wf
+      have hwf_s₁' : LNStack.wf s₁' := ctxRed_preserves_stk_wf hctx1_inner hwf hs'_wf
       have u₃lc : u₃.lc := equivRed_preserves_lc hu₃l hb₁lc
-        (fun p hp => by cases hp with | head => exact hα'lc | tail _ h => sorry) -- Γ₁.wf
-        (sorry) -- s₁'.wf
+        (fun p hp => by cases hp with | head => exact hα'lc | tail _ h => exact hwf_Γ₁_fop p h)
+        hwf_s₁'
       have hxα' : x ∉ α'.fvs := equivRed_preserves_not_mem_fvs hα₁_red hxα₁ hxΓ_all
         (fun _ he => absurd he (List.not_mem_nil _))
       have hxα'' : x ∉ α''.fvs := equivRed_preserves_not_mem_fvs hα₂_red hxα₁ hxΓ_all
@@ -4942,60 +5025,6 @@ We make t₀ explicit so we can use `termination_by t₀.sz`.
 The decrease `sz (open_at 0 (fvar x) body) < sz (lam dom body)`
 follows from `sz_open_at_fvar` and arithmetic.
 -/
-
-/-- Context reduction preserves context well-formedness:
-    if `Γ` is wf and `Γ; s ↦ Γ'; s'`, then `Γ'` is wf. -/
-theorem ctxRed_preserves_ctx_wf
-    {Γ Γ' : LNCtx} {s s' : LNStack}
-    (h : LNCtxRed Γ s Γ' s') (hwf : Γ.wf) (hswf : s.wf) : Γ'.wf := by
-  induction h with
-  | @ct_ann_sub _ _ _ _ x t t' _ hred ih =>
-    intro p hp
-    cases hp with
-    | head =>
-      show t'.lc
-      have ht_lc : t.lc := hwf (x, .sub t) (List.mem_cons_self _ _)
-      exact equivRed_preserves_lc hred ht_lc
-        (fun q hq => hwf q (List.mem_cons_of_mem _ hq))
-        (fun _ he => absurd he (List.not_mem_nil _))
-    | tail _ hmem =>
-      exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf p hmem
-  | @ct_ann_equiv _ _ _ _ x α α' _ hred ih =>
-    intro p hp
-    cases hp with
-    | head =>
-      show α'.lc
-      have hα_lc : α.lc := hwf (x, .equiv α) (List.mem_cons_self _ _)
-      exact equivRed_preserves_lc hred hα_lc
-        (fun q hq => hwf q (List.mem_cons_of_mem _ hq))
-        (fun _ he => absurd he (List.not_mem_nil _))
-    | tail _ hmem =>
-      exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf p hmem
-  | ct_stk _ _ ih =>
-    exact ih hwf (fun e he => hswf e (List.mem_cons_of_mem _ he))
-  | ct_nil => intro _ hp; exact absurd hp (List.not_mem_nil _)
-
-/-- Context reduction preserves stack well-formedness:
-    if `s` is wf and `Γ; s ↦ Γ'; s'`, then `s'` is wf. -/
-theorem ctxRed_preserves_stk_wf
-    {Γ Γ' : LNCtx} {s s' : LNStack}
-    (h : LNCtxRed Γ s Γ' s') (hwf : Γ.wf) (hswf : s.wf) : s'.wf := by
-  induction h with
-  | ct_ann_sub _ _ ih => exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf
-  | ct_ann_equiv _ _ ih => exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf
-  | @ct_stk _ s_inner _ s'_inner α α' _ hred ih =>
-    -- Goal: (α' :: s'_inner).wf
-    -- hswf : (α :: s_inner).wf
-    intro e he
-    cases he with
-    | head =>
-      -- e = α', need α'.lc
-      exact equivRed_preserves_lc hred (hswf α (List.mem_cons_self _ _)) hwf
-        (fun _ he => absurd he (List.not_mem_nil _))
-    | tail _ hmem =>
-      -- e ∈ s'_inner
-      exact ih hwf (fun e' he' => hswf e' (List.mem_cons_of_mem _ he')) e hmem
-  | ct_nil => intro _ he; exact absurd he (List.not_mem_nil _)
 
 set_option maxHeartbeats 1600000 in
 theorem commutativity
