@@ -147,15 +147,54 @@ None. All former axioms have been removed:
   (a) noPromoAt holds → apply IH directly, fully proved EXCEPT
       noPromoAt preservation (sorry #10). Main diagram complete.
   (b) SubRed collapses to EquivRed → apply IH via ms_equ. Main diagram
-      mostly proved; the right-edge substitution for `.inr` of a second
-      promotion_collapse remains sorry'd (needs subRed_subst_equiv).
+      mostly proved; the right-edge noPromoAt for `.inr` of a second
+      promotion_collapse remains sorry'd. The correct resolution is
+      equivRed_subst_diamond (see dedicated section below), NOT the false
+      subRed_subst_equiv or equivRed_subst_equiv.
 - **equivRed_subst_equiv**: DISPROVED. The statement "if EquivRed ((x,.equiv v)::Γ)
   s u u' with freshness, then EquivRed Γ s (u[x↦v]) (u'[x↦v])" is FALSE.
   Counterexample at end of file. The failure: ME-PRO on x yields SubRed of v,
   which can use ms_pro on .sub-annotated variables. After substitution, the
   conclusion demands EquivRed on v, but me_pro only works with .equiv annotations.
-  A SubRed version (subRed_subst_equiv) might still hold, but the EquivRed
-  version is strictly false.
+  A SubRed version (subRed_subst_equiv) is ALSO FALSE — counterexample at end
+  of file. The failure: me_app reduces both operator and operand simultaneously,
+  but after substitution only SubRed (not EquivRed) is available for the operand.
+
+## equivRed_subst_diamond: the correct substitution lemma (proposed)
+
+The flat substitution lemmas (equivRed_subst_equiv, subRed_subst_equiv) are both
+FALSE because they demand the exact same source→target pair after substitution.
+The CORRECT formulation is a DIAMOND:
+
+  equivRed_subst_diamond:
+    EquivRed ((x,.equiv v)::Γ) s u u'
+    → CtxRed ((x,.equiv v)::Γ) s ((x,.equiv v')::Γ') s'
+    → freshness conditions (x ∉ all_fvs Γ, x ∉ v.fvs, v.lc, etc.)
+    → ∃ w, EquivRed Γ s (u'[x↦v]) w ∧ SubRed Γ' s' (u[x↦v']) w
+
+  (and the mutual SubRed variant)
+
+The key insight: at ME-PRO on x (the case that breaks flat substitution),
+the promotion gives SubRed(v → result). After subst:
+- u[x↦v'] = v' and u'[x↦v] = result (since x ∉ fvs(result))
+- Need: ∃ w, EquivRed Γ s result w ∧ SubRed Γ' s' v' w
+- This is COMMUTATIVITY on v (EquivRed v→v', SubRed v→result, CtxRed)
+- And v.sz < app(lam dom body, v).sz, so the IH applies.
+
+Termination: commutativity(app(lam dom body, v)) calls
+equivRed_subst_diamond on body^x (smaller), which calls
+commutativity on v at ME-PRO-on-x points (v.sz < app(..).sz). Well-founded.
+
+NOTE: The ME-APP case has a stack alignment subtlety. The IH on the operator
+gives EquivRed with the pre-substitution operand in the stack, but the outer
+me_app construction needs the post-substitution operand. Resolving this likely
+requires the IH on the operand (which gives EquivRed/SubRed relating pre/post)
+plus a stack update lemma. This needs careful formulation.
+
+This would resolve:
+- commutativity ME-BET/MS-FOP `.inr` case sorry (noPromoAt x on output)
+- diamond_full ME-PRO cases (SubRed diamond via commutativity)
+- diamond_full ME-APP/ME-BET, ME-BET/ME-BET, ME-BET/ME-APP (equivRed subst)
 
 ## Sorry'd Theorems
 - `equivRed_rename_strong` / `subRed_rename_strong`: fvar renaming for reductions.
@@ -4863,12 +4902,12 @@ theorem diamond_full
     (hlc : t₀.lc) (hwf : Γ.wf) (hswf : s.wf) (hnd : (LNCtx.dom Γ).Nodup)
     : ∃ t₃, LNEquivRed Γ₁ s₁ t₁ t₃ ∧ LNEquivRed Γ₂ s₂ t₂ t₃ := by
   cases h1 with
-  | me_pro _ _ => sorry
+  | me_pro _ _ => sorry  -- needs commutativity for SubRed diamond; see equivRed_subst_diamond
   | me_top => cases h2 with | me_top => exact ⟨.top, .me_top, .me_top⟩
   | me_var =>
     cases h2 with
     | me_var => exact ⟨.fvar _, .me_var, .me_var⟩
-    | me_pro _ _ => sorry
+    | me_pro _ _ => sorry  -- symmetric ME-PRO case; same blocker as above
   | me_tap =>
     cases h2 with
     | me_tap => exact ⟨.top, .me_top, .me_top⟩
@@ -4956,15 +4995,15 @@ theorem diamond_full
                 (by simp [LNAnn.fvs]; exact hxv₁') hx_s₁_fvs
               rw [open_close_subst u₃lc]; exact this)
             hv₃l,
-          sorry⟩  -- sorry: right side needs equivRed substitution (t₂'^v₂' → u₃[x:=v₃])
+          sorry⟩  -- sorry: right side needs equivRed_subst_diamond (see file header)
   | @me_bet _ _ dom body t₁ v_arg v₁' L₁ h1_body h1_v =>
     cases h2 with
     | @me_bet _ _ _ _ t₂ _ v₂' L₂ h2_body h2_v =>
       -- ME-BET / ME-BET case
       -- Both reductions beta-reduce in ((x, .equiv v_arg) :: Γ) s
       -- Body IH gives common reduct for bodies, arg IH for arguments
-      -- But both output sides need equivRed substitution
-      sorry  -- sorry: both sides need equivRed substitution lemma
+      -- Both sides need equivRed_subst_diamond (see file header)
+      sorry  -- sorry: both sides need equivRed_subst_diamond
     | @me_app _ _ _ u₂' _ v₂' h2_u h2_v =>
       -- ME-BET / ME-APP: symmetric to ME-APP / ME-BET
       cases h2_u with
@@ -5019,9 +5058,9 @@ theorem diamond_full
           ctxRed_preserves_stack_freshness hctx2 hxΓ_all hx_s_fvs
         -- Common reduct: (u₃.close_at 0 x).open_at 0 v₃
         -- Right: use ME-BET (input is app (lam dom₂' body₂') v₂')
-        -- Left: needs equivRed substitution (sorry)
+        -- Left: needs equivRed_subst_diamond (see file header)
         exact ⟨(u₃.close_at 0 x).open_at 0 v₃,
-          sorry,  -- sorry: left side needs equivRed substitution (t₁^v₁' → u₃[x:=v₃])
+          sorry,  -- sorry: left side needs equivRed_subst_diamond (t₁^v₁' → u₃[x:=v₃])
           .me_bet (L₁ ++ L₂ ++ LNCtx.all_fvs Γ ++ LNCtx.all_fvs Γ₁ ++ LNCtx.all_fvs Γ₂ ++
                    t₁.fvs ++ body₂'.fvs ++ v_arg.fvs ++ s.flatMap LNExpr.fvs)
             (fun y hy => by
@@ -5348,17 +5387,30 @@ theorem commutativity
           | inl h_np => exact hnp_ih x h_np
           | inr h_eq_body =>
             -- h_eq_body : EquivRed ((x,.equiv v)::Γ) s (body^x) (body₂^x)
-            -- The SubRed h_sub_body_s_x is also an EquivRed. But noPromoAt x on
-            -- h_sub_body_s_x might hold or not.
-            -- Use promotion_collapse on the OUTPUT instead.
+            -- The SubRed h_sub_body_s_x is actually an EquivRed. The EquivRed might
+            -- promote x (via me_pro on fvar x in body^x), so noPromoAt x does NOT
+            -- hold on the input, and hnp_ih cannot be applied.
+            --
+            -- The output hright_body : SubRed ((x,.equiv v')::Γ') s' (t_e^x) u₃
+            -- can also promote x, so promotion_collapse gives .inr (EquivRed).
+            -- noPromoAt x on this EquivRed fails because the EquivRed can use
+            -- me_pro on x wherever fvar x appears in t_e^x.
+            --
+            -- CORRECT APPROACH (see "equivRed_subst_diamond" in file header):
+            -- Instead of trying to get noPromoAt x on hright_body and substituting,
+            -- co-prove a diamond-shaped substitution lemma with commutativity:
+            --   EquivRed ((x,.equiv v')::Γ') s' (t_e^x) u₃
+            --   → EquivRed Γ [] v v'  (already have: h_v_e, transported through ctx)
+            --   → ∃ w, EquivRed Γ s (u₃[x↦v]) w ∧ SubRed Γ' s' (t_e^v') w
+            -- At me_pro-on-x points, this uses commutativity on v (which has
+            -- v.sz < app(lam dom body, v).sz, so the IH applies).
+            -- This eliminates the need for noPromoAt x entirely in the .inr case.
             exact (promotion_collapse hright_body hlook_x' hte_x_lc hwf_ctx_ext_equiv' hwf_stk').elim
               (fun h => h)
               (fun h_eq_right => by
                 -- h_eq_right : EquivRed ((x,.equiv v')::Γ') s' (t_e^x) u₃
-                -- The output SubRed is also an EquivRed. Use noPromoAt_fresh_sub?
-                -- No, x IS in dom. But this EquivRed was produced by diamond/commutativity
-                -- and x was chosen fresh. Use promotion_collapse recursively... still same issue.
-                -- For now, extract from the EquivRed structure.
+                -- noPromoAt x fails here because h_eq_right can promote x.
+                -- Needs equivRed_subst_diamond (co-proved with commutativity).
                 exact .ms_equ (sorry))
         -- Apply subRed_subst_noPromo to hright_body
         have h_subst := subRed_subst_noPromo h_np_right (v := v') hv'_lc
@@ -6146,3 +6198,74 @@ example : LNEquivRed substEquiv_Γ [] (.fvar "y") (.fvar "y") := by
   exact .me_var
 
 end SubstEquivInvestigation
+
+/-! ### PROPOSED: equivRed_subst_diamond — the correct substitution lemma
+
+Both `equivRed_subst_equiv` and `subRed_subst_equiv` are FALSE because they
+demand that the exact substituted pair `(u[x↦v], u'[x↦v])` lies in the same
+reduction relation. The CORRECT formulation is a **diamond**:
+
+```
+equivRed_subst_diamond:
+  EquivRed ((x,.equiv v)::Γ) s u u'
+  → EquivRed Γ [] v v'
+  → CtxRed Γ s Γ' s'
+  → x ∉ all_fvs Γ, x ∉ v.fvs, ...
+  → ∃ w, EquivRed Γ s (u'[x↦v]) w ∧ SubRed Γ' s' (u[x↦v']) w
+```
+
+**Why the diamond version is TRUE when the flat version is FALSE:**
+
+At ME-PRO on x: the promotion gives `me_pro x (SubRed v → result)`. After subst:
+- Left side: `u'[x↦v] = result[x↦v] = result` (x fresh for v, Γ, so x ∉ result.fvs)
+- Right side: `u[x↦v'] = (fvar x)[x↦v'] = v'`
+
+The flat version needs `EquivRed Γ s v' result` or `SubRed Γ s v' result` — FALSE
+in general (the counterexamples above). The diamond version needs:
+  `∃ w, EquivRed Γ s result w ∧ SubRed Γ' s' v' w`
+
+This is exactly COMMUTATIVITY on v! We have:
+- EquivRed Γ [] v v' (input)
+- SubRed Γ s v result (from me_pro, with ctx_ext since x is fresh)
+- CtxRed Γ s Γ' s' (input)
+
+And commutativity gives `∃ w, EquivRed Γ s result w ∧ SubRed Γ' s' v' w`. ✓
+
+**Termination:** commutativity on `app(lam dom body, v)` calls
+equivRed_subst_diamond on `body^x` (body^x.sz < app(..).sz), which calls
+commutativity on `v` at ME-PRO-on-x points (v.sz < app(..).sz). Well-founded.
+
+**Impact:** this single mutual induction resolves ALL equivRed-substitution sorrys:
+- commutativity ME-BET/MS-FOP `.inr` case (line ~5375)
+- diamond_full ME-PRO cases (lines ~4897, 4902)
+- diamond_full ME-APP/ME-BET, ME-BET/ME-BET, ME-BET/ME-APP (lines ~4990, 4998, 5055)
+
+**Verification:** The subRed_subst_equiv counterexample ALSO has a diamond solution.
+See EquivSubstDiamondVerification section below. -/
+
+section EquivSubstDiamondVerification
+
+-- Verify the diamond version IS satisfiable for the subRed_subst_equiv counterexample:
+--   Γ = [("y", .sub .top), ("z", .equiv .top)]
+--   u = app (fvar "z") (fvar "x"), u' = app .top .top
+--   v = fvar "y", v' = fvar "y" (EquivRed Γ [] v v' via me_var)
+-- After subst:
+--   u'[x↦v] = app .top .top
+--   u[x↦v'] = app (fvar "z") (fvar "y")
+-- Need: ∃ w, EquivRed Γ [] (app .top .top) w ∧ SubRed Γ [] (app (fvar z) (fvar y)) w
+--
+-- w = .top works: EquivRed via me_tap, SubRed via ms_top.
+-- (The flat version demanded SubRed Γ [] (app (fvar z) (fvar y)) (app .top .top),
+--  which is NOT derivable because EquivRed of (fvar "y") cannot reach .top
+--  since y has .sub annotation. The diamond lets us choose a different target.)
+
+-- Left edge: app .top .top ≡→ .top via me_tap
+example : LNEquivRed sse_Γ [] (.app .top .top) .top := .me_tap
+
+-- Right edge: app (fvar "z") (fvar "y") ≤→ .top via ms_top
+example : LNSubRed sse_Γ [] (.app (.fvar "z") (.fvar "y")) .top := .ms_top
+
+-- The diamond IS satisfiable. The existential quantifier (∃ w) gives the
+-- flexibility that makes the diamond TRUE where the flat version is FALSE.
+
+end EquivSubstDiamondVerification
