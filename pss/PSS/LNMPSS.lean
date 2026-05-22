@@ -160,7 +160,7 @@ None. All former axioms have been removed:
   of file. The failure: me_app reduces both operator and operand simultaneously,
   but after substitution only SubRed (not EquivRed) is available for the operand.
 
-## equivRed_subst_diamond: the correct substitution lemma (proposed)
+## equivRed_subst_diamond: the correct substitution lemma (DEFINED, sorry'd)
 
 The flat substitution lemmas (equivRed_subst_equiv, subRed_subst_equiv) are both
 FALSE because they demand the exact same source→target pair after substitution.
@@ -172,7 +172,21 @@ The CORRECT formulation is a DIAMOND:
     → freshness conditions (x ∉ all_fvs Γ, x ∉ v.fvs, v.lc, etc.)
     → ∃ w, EquivRed Γ s (u'[x↦v]) w ∧ SubRed Γ' s' (u[x↦v']) w
 
-  (and the mutual SubRed variant)
+  (and the mutual SubRed variant: subRed_subst_diamond)
+
+Both theorems are now DEFINED with the correct type signature. Partially proved
+cases: ME-TOP, ME-TAP (trivially .top), ME-VAR y≠x (reflexivity), MS-TOP,
+MS-EQU (delegates to equivRed_subst_diamond). Remaining sorry'd cases:
+- ME-VAR y=x: the "stack alignment problem" — have EquivRed Γ [] v v' but
+  need something at stack s. Requires mutual structure with commutativity.
+- ME-PRO y=x: the core case that motivates the diamond. SubRed gives v→result,
+  need ∃ w, EquivRed Γ s result w ∧ SubRed Γ' s' v' w. This IS commutativity
+  on v, but the stack mismatch ([] vs s) prevents direct application — requires
+  mutual induction where commutativity recurses into equivRed_subst_diamond.
+- ME-PRO y≠x: context lookup past x; SubRed on annotation not containing x.
+  Should be straightforward but needs careful ctx extension/shrink plumbing.
+- ME-APP, ME-BET, ME-FUN, ME-FOP: structural recursion with budget decreasing.
+- MS-PRO, MS-APP, MS-FUN, MS-FOP: structural SubRed cases.
 
 The key insight: at ME-PRO on x (the case that breaks flat substitution),
 the promotion gives SubRed(v → result). After subst:
@@ -181,9 +195,14 @@ the promotion gives SubRed(v → result). After subst:
 - This is COMMUTATIVITY on v (EquivRed v→v', SubRed v→result, CtxRed)
 - And v.sz < app(lam dom body, v).sz, so the IH applies.
 
-Termination: commutativity(app(lam dom body, v)) calls
-equivRed_subst_diamond on body^x (smaller), which calls
-commutativity on v at ME-PRO-on-x points (v.sz < app(..).sz). Well-founded.
+Termination (for future mutual block with commutativity):
+  commutativity(app(lam dom body, v)) calls
+  equivRed_subst_diamond on body^x (smaller), which calls
+  commutativity on v at ME-PRO-on-x points (v.sz < app(..).sz). Well-founded.
+  Shared measure: (budget, u.sz) with lexicographic ordering.
+  - commutativity(t₀): (t₀.sz, t₀.sz)
+  - equivRed_subst_diamond(budget, u): (budget, u.sz)
+  All call patterns strictly decrease.
 
 NOTE: The ME-APP case has a stack alignment subtlety. The IH on the operator
 gives EquivRed with the pre-substitution operand in the stack, but the outer
@@ -197,6 +216,12 @@ This would resolve:
 - diamond_full ME-APP/ME-BET, ME-BET/ME-BET, ME-BET/ME-APP (equivRed subst)
 
 ## Sorry'd Theorems
+- `equivRed_subst_diamond` / `subRed_subst_diamond`: the diamond substitution lemma.
+  Partially proved (ME-TOP, ME-TAP, ME-VAR y≠x, MS-TOP, MS-EQU cases closed).
+  Key remaining cases: ME-VAR y=x and ME-PRO y=x (stack alignment — need mutual
+  block with commutativity), ME-PRO y≠x (ctx plumbing), structural cases (ME-APP,
+  ME-BET, ME-FUN, ME-FOP, MS-PRO, MS-APP, MS-FUN, MS-FOP — recursive with budget).
+  See "equivRed_subst_diamond" section above for full analysis.
 - `equivRed_rename_strong` / `subRed_rename_strong`: fvar renaming for reductions.
   Replaces the former (false) `equivRed_subst` / `subRed_subst`. The key insight
   is that fvar renaming (specializing substitution to x -> fvar y) avoids the
@@ -5795,6 +5820,135 @@ theorem commutativity
               exact hnp_y_out)
 termination_by t₀.sz
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
+
+/-! ### equivRed_subst_diamond (sorry'd)
+
+The correct substitution lemma for EquivRed under .equiv annotations.
+This is the key lemma that would resolve the remaining equivRed-substitution sorrys
+in diamond_full and commutativity (see file header "equivRed_subst_diamond" section).
+
+When fully proved, this should be in a mutual block with commutativity:
+- commutativity's ME-BET/MS-FOP `.inr` case calls equivRed_subst_diamond
+- equivRed_subst_diamond's ME-PRO-on-x case calls commutativity on v (v.sz < budget)
+
+For now, the theorem is stated with a sorry'd body. The ME-PRO-on-x case WOULD
+call commutativity (already available since this is defined after it), but the
+stack alignment problem (EquivRed at stack [] vs SubRed at stack s) prevents a
+direct application — it requires the mutual induction structure.
+
+The `budget` parameter enables the termination argument when placed in a mutual
+block: budget = t₀.sz of the calling commutativity instance, and all recursive
+calls (commutativity on v, equivRed_subst_diamond on sub-derivations) decrease
+under `(budget, u.sz)` with lexicographic ordering.
+-/
+
+/-- The substitution diamond for EquivRed under .equiv annotations.
+
+Given `EquivRed ((x,.equiv v)::Γ) s u u'` and a context reduction that reduces
+v to v' and Γ;s to Γ';s', there exists a common reduct w such that:
+- `EquivRed Γ s (u'[x↦v]) w` (top edge: substitute original annotation into output)
+- `SubRed Γ' s' (u[x↦v']) w` (right edge: substitute reduced annotation into input)
+
+At ME-PRO on x:
+- u = fvar x, u' = result of SubRed on v
+- u'[x↦v] = result (x fresh for result), u[x↦v'] = v'
+- Need: ∃ w, EquivRed Γ s result w ∧ SubRed Γ' s' v' w
+- This follows from commutativity on v (with appropriate stack handling)
+
+At ME-VAR on y ≠ x:
+- Both sides are fvar y after subst; take w = fvar y, use refl
+
+At structural cases (ME-APP, ME-FUN, ME-FOP, ME-BET, ME-TOP, ME-TAP):
+- Recurse on sub-derivations with same budget (u.sz decreases)
+-/
+theorem equivRed_subst_diamond
+    (budget : Nat)
+    {x : String} {v : LNExpr} {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
+    {Γ' : LNCtx} {s' : LNStack} {v' : LNExpr}
+    (h : LNEquivRed ((x, .equiv v) :: Γ) s u u')
+    (hctx : LNCtxRed ((x, .equiv v) :: Γ) s ((x, .equiv v') :: Γ') s')
+    (hx_all_fvs : x ∉ LNCtx.all_fvs Γ)
+    (hx_v : x ∉ v.fvs) (hv_lc : v.lc) (hv'_lc : v'.lc)
+    (hu_lc : u.lc)
+    (hwf : Γ.wf) (hswf : s.wf)
+    (hnd : (LNCtx.dom Γ).Nodup)
+    (hbudget : u.sz ≤ budget)
+    : ∃ w, LNEquivRed Γ s (u'.subst_fvar x v) w ∧ LNSubRed Γ' s' (u.subst_fvar x v') w := by
+  cases h with
+  | me_top =>
+    -- u = .top, u' = .top
+    simp [LNExpr.subst_fvar]
+    exact ⟨.top, .me_top, .ms_top⟩
+  | me_tap =>
+    -- u = app .top v_arg, u' = .top
+    -- u'.subst x v = .top, u.subst x v' = app .top (v_arg.subst x v')
+    simp [LNExpr.subst_fvar]
+    exact ⟨.top, .me_top, .ms_top⟩
+  | me_var =>
+    -- u = fvar y, u' = fvar y
+    simp [LNExpr.subst_fvar]
+    split
+    · -- y = x: u'.subst = v, u.subst = v'
+      -- Need: ∃ w, EquivRed Γ s v w ∧ SubRed Γ' s' v' w
+      -- This is the stack alignment problem. In the mutual block, this case
+      -- doesn't arise for me_var (me_pro handles x instead). But me_var on x
+      -- IS valid (it's weaker than me_pro). The natural witness is v' with
+      -- equivRed_refl on v→v (wrong) or some derived fact.
+      -- Actually: take w = v. EquivRed Γ s v v (refl). SubRed Γ' s' v' v?
+      -- That requires SubRed from v' back to v — not generally true.
+      -- Take w = .top: EquivRed Γ s v .top (not generally true).
+      -- This case is genuinely stuck without the mutual structure.
+      sorry
+    · -- y ≠ x: both sides are fvar y
+      exact ⟨.fvar _, .me_var, .ms_equ .me_var⟩
+  | @me_pro _ _ y α hmem hsub =>
+    -- u = fvar y, u' = result of SubRed on α
+    -- Two sub-cases: y = x or y ≠ x
+    -- If y = x: hmem says x has .equiv annotation in ((x,.equiv v)::Γ), so α = v
+    --   hsub : SubRed ((x,.equiv v)::Γ) s v u'
+    --   u'.subst x v = u' (x ∉ u'.fvs by freshness propagation through SubRed)
+    --   u.subst x v' = (fvar x).subst x v' = v'
+    --   Need: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' v' w
+    --   This requires commutativity on v (the stack alignment problem).
+    -- If y ≠ x: hmem says y has .equiv annotation in Γ (looked up past x)
+    --   α doesn't contain x (since x ∉ all_fvs Γ). hsub is SubRed on α in extended ctx.
+    --   After removing x from ctx (x is fresh), hsub holds in Γ too.
+    --   u'.subst x v = u'.subst x v (x might appear in u' through SubRed of α... no,
+    --   α doesn't contain x and x ∉ all_fvs Γ, so SubRed of α doesn't introduce x.
+    --   Therefore u'.subst x v = u'. Similarly u.subst x v' = fvar y.
+    --   Need: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' (fvar y) w
+    --   Use me_pro on y in Γ: y still has .equiv in Γ (same lookup).
+    --   Then SubRed in Γ to get the same u' (after ctx ext removal).
+    sorry
+  | _ => sorry
+
+/-- The substitution diamond for SubRed under .equiv annotations (mutual variant).
+
+Same as equivRed_subst_diamond but for SubRed input. Needed for the ME-PRO case
+of equivRed_subst_diamond (ME-PRO gives a SubRed on v, which needs its own diamond).
+-/
+theorem subRed_subst_diamond
+    (budget : Nat)
+    {x : String} {v : LNExpr} {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
+    {Γ' : LNCtx} {s' : LNStack} {v' : LNExpr}
+    (h : LNSubRed ((x, .equiv v) :: Γ) s u u')
+    (hctx : LNCtxRed ((x, .equiv v) :: Γ) s ((x, .equiv v') :: Γ') s')
+    (hx_all_fvs : x ∉ LNCtx.all_fvs Γ)
+    (hx_v : x ∉ v.fvs) (hv_lc : v.lc) (hv'_lc : v'.lc)
+    (hu_lc : u.lc)
+    (hwf : Γ.wf) (hswf : s.wf)
+    (hnd : (LNCtx.dom Γ).Nodup)
+    (hbudget : u.sz ≤ budget)
+    : ∃ w, LNEquivRed Γ s (u'.subst_fvar x v) w ∧ LNSubRed Γ' s' (u.subst_fvar x v') w := by
+  cases h with
+  | ms_top =>
+    -- u' = .top
+    simp [LNExpr.subst_fvar]
+    exact ⟨.top, .me_top, .ms_top⟩
+  | ms_equ h_eq =>
+    -- SubRed via ms_equ wraps an EquivRed
+    exact equivRed_subst_diamond budget h_eq hctx hx_all_fvs hx_v hv_lc hv'_lc hu_lc hwf hswf hnd hbudget
+  | _ => sorry
 
 /-! ## Investigation: stack extension is FALSE
 
