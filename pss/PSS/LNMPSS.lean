@@ -5224,7 +5224,24 @@ theorem commutativity
                     exact ⟨L_np, fun w hw => .ms_equ (h_body_np w hw)⟩
               | ms_equ h_equiv_np =>
                 -- me_app gives (.app u v, .app u' v') where inner could be me_fop
-                sorry
+                -- Generalize the RHS to avoid dependent elimination issues with me_bet
+                generalize he : LNExpr.app (.lam dom body₂) v = out at h_equiv_np
+                cases h_equiv_np with
+                | me_app h_op_np h_arg_np =>
+                  -- h_op_np : EquivRed.noPromoAt z Γ (v::s) (lam dom body) u'
+                  -- h_arg_np : EquivRed.noPromoAt z Γ [] v v'
+                  -- he : app (lam dom body₂) v = app u' v'
+                  cases he
+                  -- Now u' = lam dom body₂, v' = v
+                  -- Stack is non-empty (v::s), term is lambda → must be me_fop
+                  cases h_op_np with
+                  | me_fop L_np h_dom_np h_body_np =>
+                    exact ⟨L_np, fun w hw => .ms_equ (h_body_np w hw)⟩
+                | me_bet L_bet h_body_bet h_v_bet =>
+                  -- me_bet: body-level noPromoAt has target t^w (not body₂^w).
+                  -- Inverting me_bet to extract body₂-targeted noPromoAt requires
+                  -- the noPromoAt_app_app_inv lemma (see line ~3457).
+                  exact ⟨L_bet, fun w hw => sorry⟩
             -- Step 2: rename to x and apply IH
             -- Pick a fresh w from L_np_z and the avoidance sets
             obtain ⟨w, hw⟩ := exists_fresh_string (L_np_z ++ LNCtx.all_fvs Γ ++ body.fvs ++ body₂.fvs ++ v.fvs ++ s.flatMap LNExpr.fvs ++ [x, z])
