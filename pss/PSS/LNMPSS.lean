@@ -3127,6 +3127,45 @@ private theorem ctx_subst_drop_cons_ne {y w : String} (hne : w ≠ y) (ann : LNA
   have : ¬(w == y) = true := by simp [beq_iff_eq]; exact hne
   simp [this]
 
+/-- Domain of ctx_subst_drop: z ∉ dom(Γ) → z ∉ dom(ctx_subst_drop Γ y v). -/
+private theorem ctx_subst_drop_not_mem_dom {Γ : LNCtx} {z y : String} {v : LNExpr}
+    (hdom : z ∉ LNCtx.dom Γ)
+    : z ∉ LNCtx.dom (ctx_subst_drop Γ y v) := by
+  induction Γ with
+  | nil => simp [ctx_subst_drop, LNCtx.dom, List.filterMap]
+  | cons p rest ih =>
+    obtain ⟨w, ann⟩ := p
+    have hzw : z ≠ w := fun heq => hdom (heq ▸ List.mem_cons_self _ _)
+    have hdom_rest : z ∉ LNCtx.dom rest := fun h => hdom (List.mem_cons_of_mem _ h)
+    by_cases hwy : w == y
+    · rw [show w = y from by simpa [beq_iff_eq] using hwy]
+      rw [ctx_subst_drop_cons_eq]
+      exact ih hdom_rest
+    · have hne : w ≠ y := by simpa [beq_iff_eq] using hwy
+      rw [ctx_subst_drop_cons_ne hne]
+      simp only [LNCtx.dom, List.map, List.mem_cons]
+      intro h; cases h with
+      | inl heq => exact hzw heq
+      | inr hmem => exact ih hdom_rest hmem
+
+/-- Domain of ctx_subst_drop: y ∉ dom(ctx_subst_drop Γ y v). -/
+private theorem ctx_subst_drop_self_not_mem_dom {Γ : LNCtx} {y : String} {v : LNExpr}
+    : y ∉ LNCtx.dom (ctx_subst_drop Γ y v) := by
+  induction Γ with
+  | nil => simp [ctx_subst_drop, LNCtx.dom, List.filterMap]
+  | cons p rest ih =>
+    obtain ⟨w, ann⟩ := p
+    by_cases hwy : w == y
+    · rw [show w = y from by simpa [beq_iff_eq] using hwy]
+      rw [ctx_subst_drop_cons_eq]
+      exact ih
+    · have hne : w ≠ y := by simpa [beq_iff_eq] using hwy
+      rw [ctx_subst_drop_cons_ne hne]
+      simp only [LNCtx.dom, List.map, List.mem_cons]
+      intro h; cases h with
+      | inl heq => exact hne heq.symm
+      | inr hmem => exact ih hmem
+
 /-- Lookup in ctx_subst_drop: if z ≠ y and z has annotation ann in Γ,
     then z has annotation ann.subst_fvar y v in ctx_subst_drop Γ y v. -/
 private theorem ctx_subst_drop_mem_sub {Γ : LNCtx} {z y : String} {t v : LNExpr}
@@ -5104,8 +5143,18 @@ set_option maxHeartbeats 3200000 in
     This is the key lemma for the ME-BET/MS-FOP case of commutativity.
     When noPromoAt holds, annotation swap lemmas apply directly.
     When the SubRed collapses to EquivRed, the diamond lemma applies. -/
--- NOTE: sorry'd because LNSubRed is Prop — cannot eliminate into Type (noPromoAt).
-def promotion_collapse
+-- NOTE: stale comment — LNSubRed is Type (not Prop), so elimination into Type
+-- (Sum/noPromoAt) IS valid. The proof requires mutual induction using @LNSubRed.rec.
+-- Non-cofinite cases are straightforward: ms_pro → .inl (x has .equiv so z ≠ x),
+-- ms_top → .inl, ms_equ → .inr (it IS an EquivRed), ms_app → recurse.
+-- Cofinite cases (ms_fun, ms_fop) are blocked: the IH for the body gives Sum for
+-- each w independently, but different w could give different branches (one .inl,
+-- another .inr). Constructing ms_fun-of-noPromoAt requires ALL w to give .inl;
+-- constructing me_fun requires ALL w to give EquivRed. A fresh witness w₀ decides
+-- one branch, but the other branch for a different w cannot be excluded without
+-- alpha-invariance of the specific derivation tree. The correct resolution likely
+-- uses derivation-tree induction or a custom well-founded order.
+noncomputable def promotion_collapse
     {Γ : LNCtx} {s : LNStack} {u w : LNExpr}
     (h : LNSubRed Γ s u w)
     {x : String} {α : LNExpr}
