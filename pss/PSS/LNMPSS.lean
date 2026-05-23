@@ -84,6 +84,37 @@ Several kinds of `sorry` remain:
    result than ME-FUN). The existential version (∃ v', EquivRed Γ s t v') is
    trivially true but NOT SUFFICIENT: the right edge forces t₃ = t' via ms_pro.
 
+   ### Restricted variants investigated and found insufficient
+
+   Several restricted forms of stack extension were investigated:
+
+   (a) `u.lc ∧ ¬∃ d b, u = .lam d b → EquivRed Γ [] u v → EquivRed Γ s u v`
+       FALSE. Restricting u doesn't help because stack sensitivity propagates
+       through ANNOTATIONS, not u itself. When u = fvar x and x has .equiv
+       annotation pointing to a lambda, ME-PRO on x triggers SubRed on the
+       annotation. The annotation's SubRed uses MS-FUN (empty stack) or MS-FOP
+       (non-empty stack), producing different body contexts and thus different
+       outputs. The counterexample cex_Γ at end of file demonstrates this:
+       u = fvar "x" is lc and not a lambda, but ME-PRO reduces through the
+       annotation lam (fvar "y") (bvar 0), which behaves differently at [].
+
+   (b) All annotations in Γ are non-lambdas: too restrictive for practice.
+       Annotations CAN be lambdas in well-formed contexts. Even if we
+       restricted to non-lambda annotations, nested ME-PRO chains could still
+       reach lambdas through transitive lookups.
+
+   (c) All annotations in Γ are values + existential witness:
+       `∃ v', EquivRed Γ s t v'` is trivially true via equivRed_refl, but
+       the right edge of the commutativity diagram forces t₃ = t' (the
+       specific output from ctxRed_lookup_sub), not an arbitrary witness.
+       MS-PRO gives t' (the reduced annotation in Γ'), so t₃ must be t'.
+
+   Root cause across all variants: stack sensitivity enters through the
+   REDUCTION RULES applied to annotations (MS-FUN vs MS-FOP), not through
+   any property of the input term u. No restriction on u alone can work.
+   The only fix is changing CT-ANN to reduce annotations at the full stack s
+   instead of nil (see resolution below).
+
    ### Detailed analysis of the MS-PRO/ME-VAR blocker
 
    The commutativity diagram for this case:
@@ -6353,6 +6384,9 @@ noncomputable def commutativity
   -- - t₃ = t' : top edge needs EquivRed Γ s t t' (stack extension — FALSE)
   -- - t₃ = t  : right edge needs x ≤ t ∈ Γ' but Γ' has x ≤ t' (reduced)
   -- - t₃ via diamond/recursion: no applicable SubRed of t at stack s exists
+  -- Restricted stack extension (u.lc ∧ u ≠ lam) is also FALSE: stack sensitivity
+  -- propagates through ANNOTATIONS via ME-PRO, not through u itself. See sorry #7
+  -- "Restricted variants investigated" for the full analysis.
   -- The root cause is CT-ANN's nil stack. If CT-ANN used the full stack s,
   -- ctxRed_lookup_sub would give EquivRed Γ s t t' directly. See sorry #7.
   sorry
