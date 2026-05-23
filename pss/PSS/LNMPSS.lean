@@ -245,23 +245,23 @@ All remaining sorrys fall into four categories:
 ### Category A: me_bet inversion / noPromoAt output mismatch (7 sorrys)
 Lines: 3581, 3613 (×2), 3684, 3691, 5434, 5634
 These are in `subRed_subst_noPromo_noPromoAt` and commutativity's noPromoAt
-preservation. The fundamental issue: when `noPromoAt y` and `noPromoAt z` are
-on the same `(u, u')` but decompose the term differently (y uses me_app while
-z uses me_bet, or vice versa), the INTERNAL sub-term outputs differ:
-  - y's me_app gives body output `u'_body^w` (from me_fop)
-  - z's me_bet gives body output `t_z^w` (possibly ≠ u'_body^w)
-The recursor IH expects noPromoAt z on y's output (`body^w → u'_body^w`), but
-z's tree provides noPromoAt z on (`body^w → t_z^w`). These don't match.
-RESOLUTION APPROACHES:
-  (a) Generalized theorem allowing different outputs at sub-levels, proved by
-      well-founded induction on term size rather than noPromoAt-y recursor.
-  (b) Inversion lemma showing me_bet → me_app conversion is always possible
-      when the outputs match at the top level (requires deep structural analysis).
-  (c) Joint co-induction walking BOTH trees simultaneously with a combined measure.
-None are implemented yet. The ms_app(y)/ms_equ(z) case (line 3691) has a
-partial proof: the me_app sub-case of z's EquivRed works (extract operator,
-wrap with ms_equ, apply IH) but is blocked by dependent elimination in the
-recursor context.
+preservation. There are TWO distinct failure modes:
+
+(A1) Recursor lock-in: The recursor IH for ms_equ expects EquivRed.noPromoAt z,
+     but z provides SubRed.noPromoAt z (ms_app/ms_fun/ms_fop). A mutual WF
+     rewrite with `termination_by (sizeOf hnp_y + sizeOf hnp_z)` would resolve
+     the non-cofinite sub-cases (e.g., ms_equ(me_app)/ms_app can produce ms_app
+     output via the SubRed IH). Verified: noPromoAt is now Type-valued, sizeOf
+     is non-trivial, and the WF mutual structure type-checks with sorry'd
+     termination proofs (termination goals are true by sizeOf_spec + omega).
+
+(A2) me_bet output mismatch: When one side uses me_bet and the other me_app,
+     the sub-derivation outputs differ (y's me_fop body output `body'_u^w` vs
+     z's me_bet body output `t_z^w`). This makes the IH inapplicable regardless
+     of induction strategy — it's a fundamental type mismatch, not an artifact
+     of the recursor. Cofinite binder fields also have sizeOf = 0 (functions),
+     blocking WF recursion through them.
+
 NOTE: The ME-APP/MS-APP noPromoAt case in commutativity is partially closed
 (ms_app and me_app sub-cases proved; only me_bet sub-case remains sorry'd).
 
@@ -3312,25 +3312,42 @@ private theorem mem_equiv_unique {Γ : LNCtx} {x : String} {α α₂ : LNExpr}
 --    me_bet sub-case needs EquivRed.noPromoAt z at operator level from me_bet's
 --    body-level pieces.
 --
--- ROOT CAUSE: noPromoAt is Prop-valued, so sizeOf is always 0 and well-founded
--- induction on the proof is impossible. The noPromoAt recursor locks the IH to y's
--- specific decomposition (me_bet vs me_app), and z may disagree.
+-- ROOT CAUSE: The noPromoAt recursor locks the IH to y's specific decomposition
+-- (me_bet vs me_app), and z may disagree. This creates two distinct failure modes:
+--
+-- (A) Recursor lock-in: The recursor IH for ms_equ expects EquivRed.noPromoAt z,
+--     but z provides SubRed.noPromoAt z (ms_app/ms_fun/ms_fop). A mutual WF
+--     rewrite with termination_by (sizeOf hnp_y + sizeOf hnp_z) resolves this
+--     for non-cofinite cases (e.g., ms_equ(me_app)/ms_app, ms_app/ms_equ(me_app))
+--     since sizeOf strictly decreases when unwrapping constructors.
+--
+-- (B) me_bet output mismatch: When one side uses me_bet and the other uses me_app
+--     (or me_bet with a different body result t), the sub-derivations have
+--     DIFFERENT output terms (e.g., t_y^w vs body'_u^w), making the IH
+--     inapplicable regardless of induction strategy. This is fundamental —
+--     not an artifact of the recursor approach.
+--
+-- NOTE: noPromoAt is now Type-valued (not Prop), so sizeOf gives non-trivial values
+-- for non-cofinite constructors. However, cofinite binder fields (∀ y ∉ L, ...)
+-- contribute sizeOf = 0 as functions, so WF induction cannot recurse through them.
+-- A custom `sz` measure using the recursor (picking fresh witnesses for cofinite
+-- binders) is definable but proving decrease requires alpha-invariance of derivation
+-- tree size across fresh name choices.
 --
 -- APPROACHES INVESTIGATED AND RULED OUT:
--- - Well-founded induction on sizeOf(hnp_y): sizeOf = 0 for all Props.
+-- - Well-founded induction on sizeOf(hnp_y) alone: needs z-side witness too.
 -- - Well-founded induction on u.sz: me_pro recurses on annotation terms whose
 --   size is unrelated to u.sz.
--- - SubRed derivation induction (@LNSubRed.rec): same cross-constructor issue,
---   noPromoAt witnesses don't match the derivation's constructor choices.
 -- - me_bet-free normalization: impossible when output is not an app.
 -- - App inversion lemma: false in general (me_bet body result `t` is existential
 --   and different decompositions give incompatible sub-terms).
 --
--- POTENTIAL RESOLUTION: Define a Type-valued analog of noPromoAt (with computable
--- sizeOf) and prove equivalence, enabling well-founded induction. Or: prove a
--- "joint noPromoAt" lemma showing that if noPromoAt y and noPromoAt z both hold
--- for (u, u'), there exists a derivation tree where BOTH are non-promoting,
--- allowing the recursor to walk this joint tree.
+-- VIABLE PATH FORWARD: A mutual WF rewrite (equivRed/subRed pair with
+-- termination_by sizeOf hnp_y + sizeOf hnp_z) would close the recursor
+-- lock-in cases (#3-5 above, where the cross is ms_equ vs ms_app/ms_fun/ms_fop
+-- with matching inner constructors). The me_bet output mismatch cases (#1-2)
+-- require a different approach — either a "joint noPromoAt" normalization lemma
+-- or term-level induction with separate noPromoAt reconstruction.
 
 set_option maxHeartbeats 25600000 in
 noncomputable def subRed_subst_noPromo_noPromoAt
