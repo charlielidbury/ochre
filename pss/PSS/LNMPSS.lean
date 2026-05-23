@@ -3553,24 +3553,47 @@ private theorem mem_equiv_unique {Γ : LNCtx} {x : String} {α α₂ : LNExpr}
 -- Proved by mutual induction on noPromoAt y using @LNSubRed.noPromoAt.rec,
 -- carrying noPromoAt z and decomposing it at each case.
 --
--- WELL-FOUNDED INDUCTION ON u.sz WAS ATTEMPTED BUT DOES NOT WORK because:
--- (1) The me_pro case recurses on annotation terms from the context, whose size
---     is unrelated to u.sz (u = fvar has sz=1, but annotations can be arbitrarily
---     large). The structural recursor handles this naturally.
--- (2) Even in the me_bet/me_bet sub-case (both y and z use me_bet), the internal
---     body result terms t_y and t_z can differ (while t_y.open v'_y = t_z.open v'_z
---     at the top level). The recursor IH is typed for y's t, making z's pieces
---     incompatible regardless of the induction scheme.
--- (3) Dependent elimination on EquivRed/SubRed constructors causes failures because
---     output terms are determined by the constructor (me_bet vs me_app give
---     different output shapes that can't be unified during case analysis).
+-- REMAINING SORRYS (all Category A — me_bet cross-constructor mismatch):
 --
--- The fundamental blocker is Category A: different noPromoAt derivations on the
--- same (u, u') can use different constructors (me_bet vs me_app) with different
--- internal sub-term outputs. No induction scheme on u alone can bridge this gap.
--- Resolution requires either: (a) a joint co-induction walking BOTH trees with a
--- combined measure, or (b) an inversion lemma showing all noPromoAt derivations
--- on the same (u, u') must share compatible internal structure.
+-- 1. me_bet(y) case (line ~3617): entire case sorry'd. y's me_bet introduces
+--    body result term `t` that z's noPromoAt may not share. Even me_bet/me_bet
+--    sub-case is stuck because t_y and t_z can differ.
+--
+-- 2. me_app(y)/me_bet(z) case (line ~3641): y decomposes app via operator+argument,
+--    z via body+argument. y's IH needs EquivRed.noPromoAt z at operator level,
+--    but z's me_bet provides body-level pieces. Two sorrys (operator and argument).
+--
+-- 3. ms_equ(y)/ms_app(z) case (line ~3718): y wraps EquivRed, z decomposes app
+--    structurally. ih expects EquivRed.noPromoAt z at full app level, but z gives
+--    SubRed at operator level. Converting SubRed.noPromoAt → EquivRed.noPromoAt
+--    fails when z internally uses ms_pro (no EquivRed analog).
+--
+-- 4. ms_equ(y)/ms_fun(z) and ms_equ(y)/ms_fop(z) cases (lines ~3722,3725): same
+--    SubRed→EquivRed conversion issue as #3.
+--
+-- 5. ms_app(y)/ms_equ(me_bet)(z) case (line ~3744): me_app sub-case proved, but
+--    me_bet sub-case needs EquivRed.noPromoAt z at operator level from me_bet's
+--    body-level pieces.
+--
+-- ROOT CAUSE: noPromoAt is Prop-valued, so sizeOf is always 0 and well-founded
+-- induction on the proof is impossible. The noPromoAt recursor locks the IH to y's
+-- specific decomposition (me_bet vs me_app), and z may disagree.
+--
+-- APPROACHES INVESTIGATED AND RULED OUT:
+-- - Well-founded induction on sizeOf(hnp_y): sizeOf = 0 for all Props.
+-- - Well-founded induction on u.sz: me_pro recurses on annotation terms whose
+--   size is unrelated to u.sz.
+-- - SubRed derivation induction (@LNSubRed.rec): same cross-constructor issue,
+--   noPromoAt witnesses don't match the derivation's constructor choices.
+-- - me_bet-free normalization: impossible when output is not an app.
+-- - App inversion lemma: false in general (me_bet body result `t` is existential
+--   and different decompositions give incompatible sub-terms).
+--
+-- POTENTIAL RESOLUTION: Define a Type-valued analog of noPromoAt (with computable
+-- sizeOf) and prove equivalence, enabling well-founded induction. Or: prove a
+-- "joint noPromoAt" lemma showing that if noPromoAt y and noPromoAt z both hold
+-- for (u, u'), there exists a derivation tree where BOTH are non-promoting,
+-- allowing the recursor to walk this joint tree.
 
 set_option maxHeartbeats 25600000 in
 theorem subRed_subst_noPromo_noPromoAt
@@ -3709,24 +3732,41 @@ theorem subRed_subst_noPromo_noPromoAt
               · exact True.intro)
           | me_pro hne_y hmem_equiv _ =>
             exact absurd (no_sub_and_equiv hmem_z hmem_equiv) False.elim
-        | _ => sorry
-          -- ms_equ(y)/ms_app|ms_fun|ms_fop(z): y wraps EquivRed via ms_equ, but
-          -- z decomposes structurally. The IH `ih` expects EquivRed.noPromoAt z,
-          -- but z gives SubRed.noPromoAt z via ms_app/ms_fun/ms_fop. Converting
-          -- SubRed.noPromoAt → EquivRed.noPromoAt is NOT generally valid (SubRed
-          -- can use ms_pro which has no EquivRed analog). Same Category A root
-          -- cause: recursor IH is tied to y's decomposition structure.
+        | ms_app hnp_z_sub =>
+          -- ms_equ(y)/ms_app(z): y wraps EquivRed, z uses ms_app.
+          -- hnp_y : EquivRed.noPromoAt y Γ s (app u_op v_arg) (app u'_op v_arg)
+          -- Need to decompose hnp_y and produce ms_app output for z.
+          -- me_app(y): extract operator piece, use ih at operator level → sorry
+          -- me_bet(y): cross-constructor → sorry
+          sorry
+        | ms_fun L_z hnp_z_body =>
+          -- ms_equ(y)/ms_fun(z): z decomposes lam via ms_fun.
+          -- SubRed→EquivRed conversion blocked when z uses ms_pro internally.
+          exact .ms_equ (ih z hzy sorry v hlcv)
+        | ms_fop L_z hnp_z_body =>
+          -- ms_equ(y)/ms_fop(z): same as ms_fun case.
+          exact .ms_equ (ih z hzy sorry v hlcv)
         )
       -- ms_app
-      (fun _hnp ih z hzy hnp_z v hlcv => by
+      (fun {Γ_ma s_ma u_ma u'_ma v_ma} _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
         cases hnp_z with
         | ms_app hnp_z_sub => exact .ms_app (ih z hzy hnp_z_sub v hlcv)
-        | ms_equ hnp_z_eq => sorry)
-          -- ms_app(y)/ms_equ(z): if z's EquivRed uses me_app, we can extract the
-          -- operator piece, wrap with ms_equ, and apply ih. The me_bet sub-case
-          -- is the same Category A mismatch. Blocked by dependent elimination in
-          -- the recursor context (generalize fails on the app output shape).
+        | ms_equ hnp_z_eq =>
+          -- ms_app(y)/ms_equ(z): decompose z's EquivRed.noPromoAt
+          -- Use generalize+cases to handle dependent elimination of me_bet
+          revert ih
+          generalize he : LNExpr.app u'_ma v_ma = out at hnp_z_eq
+          intro ih
+          cases hnp_z_eq with
+          | me_app hnp_z_u hnp_z_v =>
+            cases he
+            exact .ms_app (ih z hzy (.ms_equ hnp_z_u) v hlcv)
+          | me_bet L_z hbody_z hv_z =>
+            simp only [← he, LNExpr.subst_fvar, List.map]
+            exact .ms_app (ih z hzy sorry v hlcv)
+          | me_tap =>
+            exact absurd he (by simp [LNExpr.app]))
       -- ms_fun
       (fun {Γ_sf dom body body'} L _hnp ih z hzy hnp_z v hlcv => by
         simp only [LNExpr.subst_fvar, List.map]
