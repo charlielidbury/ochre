@@ -137,6 +137,16 @@ Several kinds of `sorry` remain:
   ME-APP/ME-FOP. These are useful for constructing noPromoAt witnesses
   from scratch (e.g., for freshly-picked cofinite variables whose
   annotations are .sub, not .equiv).
+- `equivRed_ctx_drop_fresh` / `subRed_ctx_drop_fresh`: context drop via
+  freshness — if `EquivRed/SubRed ((x,.equiv v)::Γ) s u u'` and x is fresh
+  in u, v, Γ (all_fvs), and the stack, then `EquivRed/SubRed Γ s u u'`.
+  Unlike `subRed_ctx_drop` which requires an explicit `noPromoAt x` witness,
+  these construct the drop directly by mutual induction, using `fresh_in_anns`
+  to propagate freshness. The EquivRed version was already present; the SubRed
+  version mirrors it using `@LNSubRed.rec`.
+- `ctxRed_nil_equiv_head_inv`: inversion of `CtxRed ((x,.equiv v)::Γ) []
+  ((x,.equiv v')::Γ') []` into inner `CtxRed Γ [] Γ' []` and
+  `EquivRed Γ [] v v'`. At empty stack, only ct_ann_equiv applies.
 
 ## Remaining Axioms
 None. All former axioms have been removed:
@@ -200,13 +210,13 @@ MS-EQU (delegates to equivRed_subst_diamond). Remaining sorry'd cases:
   commutativity(v.sz, v, equivRed_refl, hsub_pro, hctx) produces
   htop : EquivRed ((x,.equiv v)::Γ) s u' t₃ and
   hright : SubRed ((x,.equiv v')::Γ') s' v t₃.
-  The `x ∉ u'.fvs` sorry is CLOSED via `subRed_preserves_not_mem_fvs_gen`
-  (a generalized freshness lemma using `fresh_in_anns` instead of `all_fvs`).
-  Two translation sorrys remain:
-  (a) Left edge: need EquivRed Γ s u' t₃ from EquivRed ((x,.equiv v)::Γ) s u' t₃
-      (context shrink — need noPromoAt x + equivRed context drop lemma)
-  (b) Right edge: need SubRed Γ' s' v' w from SubRed ((x,.equiv v')::Γ') s' v t₃
-      (both context shrink AND input translation from v to v')
+  Left edge is CLOSED: equivRed_ctx_drop_fresh drops x to get EquivRed Γ s u' t₃.
+  Right edge sorry remains: need SubRed Γ' s' v' t₃ from
+  SubRed ((x,.equiv v')::Γ') s' v t₃.
+  Infrastructure for context drop (subRed_ctx_drop_fresh) is available.
+  Remaining gap: "input translation" — changing input from v to v' where
+  EquivRed Γ [] v v'. This is the stack alignment problem (EquivRed at
+  stack [] vs SubRed at stack s').
 - ME-PRO y≠x: PARTIALLY WIRED. Freshness established (x ∉ α.fvs, x ∉ u'.fvs
   via subRed_preserves_not_mem_fvs_gen). Substitutions rewritten. Core sorry:
   need diamond of SubRed Γ s α u' and EquivRed Γ [] α α' at different stacks.
@@ -5606,6 +5616,140 @@ noncomputable def equivRed_ctx_drop_fresh
   have final := result h hfresh hx_s hx_u
   rwa [drop_first_head] at final
 
+set_option maxHeartbeats 3200000 in
+/-- SubRed version of `equivRed_ctx_drop_fresh`: if `SubRed ((x,.equiv v)::Γ) s u u'`
+    and x is fresh in u, v, Γ (all_fvs), and the stack, then `SubRed Γ s u u'`.
+
+    Uses the same mutual induction technique as `equivRed_ctx_drop_fresh` but starts
+    from a SubRed derivation using `@LNSubRed.rec`. -/
+noncomputable def subRed_ctx_drop_fresh
+    {x : String} {v : LNExpr} {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
+    (h : LNSubRed ((x, .equiv v) :: Γ) s u u')
+    (hx_u : x ∉ u.fvs)
+    (hx_v : x ∉ v.fvs)
+    (hx_Γ : x ∉ LNCtx.all_fvs Γ)
+    (hx_s : ∀ e ∈ s, x ∉ e.fvs)
+    : LNSubRed Γ s u u' := by
+  have hfresh : LNCtx.fresh_in_anns x ((x, .equiv v) :: Γ) :=
+    LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hx_v)
+      (LNCtx.fresh_in_anns_of_not_mem_all_fvs hx_Γ)
+  have result :=
+    @LNSubRed.rec
+      (motive_1 := fun Γ_r s_r u_r v_r _ =>
+        LNCtx.fresh_in_anns x Γ_r → (∀ e ∈ s_r, x ∉ e.fvs) → x ∉ u_r.fvs →
+        LNEquivRed (drop_first x Γ_r) s_r u_r v_r)
+      (motive_2 := fun Γ_r s_r u_r v_r _ =>
+        LNCtx.fresh_in_anns x Γ_r → (∀ e ∈ s_r, x ∉ e.fvs) → x ∉ u_r.fvs →
+        LNSubRed (drop_first x Γ_r) s_r u_r v_r)
+      -- me_pro z: fvar z → α' via SubRed on z's equiv annotation α
+      (fun {Γ_p s_p z α α'} hmem _hsub ih_sub hfresh_p hstk_p hfvs_p => by
+        have hne : z ≠ x := fun heq => hfvs_p (heq ▸ List.mem_cons_self _ _)
+        have hx_α : x ∉ α.fvs := not_mem_fvs_of_mem_equiv_gen hmem hfresh_p
+        exact .me_pro (drop_first_mem_equiv_ne hne hmem) (ih_sub hfresh_p hstk_p hx_α))
+      -- me_bet: app (lam dom body) v_bet → t^v'
+      (fun {Γ_b s_b dom body t v_bet v'_bet} L _hbody _hv ih_body ih_v hfresh_b hstk_b hfvs_b => by
+        have hv_fvs : x ∉ v_bet.fvs := fun hmem => hfvs_b (List.mem_append_right _ hmem)
+        have hbody_fvs : x ∉ body.fvs := fun hmem =>
+          hfvs_b (List.mem_append_left _ (List.mem_append_right _ hmem))
+        exact .me_bet (x :: L)
+          (fun w hw => by
+            have hw_ne : w ≠ x := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+            have hw_L : w ∉ L := fun h => hw (List.mem_cons_of_mem _ h)
+            have hfresh_ext : LNCtx.fresh_in_anns x ((w, .equiv v_bet) :: Γ_b) :=
+              LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hv_fvs) hfresh_b
+            have hbody_w_fvs : x ∉ (body.open_at 0 (.fvar w)).fvs :=
+              LNExpr.not_mem_fvs_open_at body hbody_fvs (Ne.symm hw_ne)
+            exact equivRed_cast_ctx (drop_first_cons_ne x w (.equiv _) _ hw_ne)
+              (ih_body w hw_L hfresh_ext hstk_b hbody_w_fvs))
+          (ih_v hfresh_b (fun _ he => absurd he (List.not_mem_nil _)) hv_fvs))
+      -- me_top
+      (fun _hfresh _hstk _hfvs => .me_top)
+      -- me_var
+      (fun _hfresh _hstk _hfvs => .me_var)
+      -- me_tap
+      (fun _hfresh _hstk _hfvs => .me_tap)
+      -- me_app
+      (fun {Γ_a s_a u_a u'_a v_a v'_a} _hu _hv ih_u ih_v hfresh_a hstk_a hfvs_a => by
+        have hu_fvs : x ∉ u_a.fvs := fun hmem => hfvs_a (List.mem_append_left _ hmem)
+        have hv_fvs : x ∉ v_a.fvs := fun hmem => hfvs_a (List.mem_append_right _ hmem)
+        exact .me_app
+          (ih_u hfresh_a
+            (fun e he => by cases he with | head => exact hv_fvs | tail _ h => exact hstk_a e h) hu_fvs)
+          (ih_v hfresh_a (fun _ he => absurd he (List.not_mem_nil _)) hv_fvs))
+      -- me_fun
+      (fun {Γ_f dom dom' body body'} L _hdom _hbody ih_dom ih_body hfresh_f _hstk_f hfvs_f => by
+        have hdom_fvs : x ∉ dom.fvs := fun hmem => hfvs_f (List.mem_append_left _ hmem)
+        have hbody_fvs : x ∉ body.fvs := fun hmem => hfvs_f (List.mem_append_right _ hmem)
+        exact .me_fun (x :: L)
+          (ih_dom hfresh_f (fun _ he => absurd he (List.not_mem_nil _)) hdom_fvs)
+          (fun w hw => by
+            have hw_ne : w ≠ x := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+            have hw_L : w ∉ L := fun h => hw (List.mem_cons_of_mem _ h)
+            have hfresh_ext : LNCtx.fresh_in_anns x ((w, .sub dom) :: Γ_f) :=
+              LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hdom_fvs) hfresh_f
+            have hbody_w_fvs : x ∉ (body.open_at 0 (.fvar w)).fvs :=
+              LNExpr.not_mem_fvs_open_at body hbody_fvs (Ne.symm hw_ne)
+            exact equivRed_cast_ctx (drop_first_cons_ne x w (.sub _) _ hw_ne)
+              (ih_body w hw_L hfresh_ext (fun _ he => absurd he (List.not_mem_nil _)) hbody_w_fvs)))
+      -- me_fop
+      (fun {Γ_f s_f α dom dom' body body'} L _hdom _hbody ih_dom ih_body hfresh_f hstk_f hfvs_f => by
+        have hdom_fvs : x ∉ dom.fvs := fun hmem => hfvs_f (List.mem_append_left _ hmem)
+        have hbody_fvs : x ∉ body.fvs := fun hmem => hfvs_f (List.mem_append_right _ hmem)
+        have hα_fvs : x ∉ α.fvs := hstk_f α (List.mem_cons_self _ _)
+        exact .me_fop (x :: L)
+          (ih_dom hfresh_f (fun _ he => absurd he (List.not_mem_nil _)) hdom_fvs)
+          (fun w hw => by
+            have hw_ne : w ≠ x := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+            have hw_L : w ∉ L := fun h => hw (List.mem_cons_of_mem _ h)
+            have hfresh_ext : LNCtx.fresh_in_anns x ((w, .equiv α) :: Γ_f) :=
+              LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hα_fvs) hfresh_f
+            have hbody_w_fvs : x ∉ (body.open_at 0 (.fvar w)).fvs :=
+              LNExpr.not_mem_fvs_open_at body hbody_fvs (Ne.symm hw_ne)
+            exact equivRed_cast_ctx (drop_first_cons_ne x w (.equiv _) _ hw_ne)
+              (ih_body w hw_L hfresh_ext (fun e he => hstk_f e (List.mem_cons_of_mem _ he)) hbody_w_fvs)))
+      -- ms_pro z
+      (fun {Γ_sp s_sp z t} hmem hfresh_sp _hstk_sp hfvs_sp => by
+        have hne : z ≠ x := fun heq => hfvs_sp (heq ▸ List.mem_cons_self _ _)
+        exact .ms_pro (drop_first_mem_sub_ne hne hmem))
+      -- ms_top
+      (fun _hfresh _hstk _hfvs => .ms_top)
+      -- ms_equ
+      (fun _hequ ih_equ hfresh_e hstk_e hfvs_e => .ms_equ (ih_equ hfresh_e hstk_e hfvs_e))
+      -- ms_app
+      (fun {Γ_a s_a u_a u'_a v_a} _hsub ih hfresh_a hstk_a hfvs_a => by
+        have hu_fvs : x ∉ u_a.fvs := fun hmem => hfvs_a (List.mem_append_left _ hmem)
+        have hv_fvs : x ∉ v_a.fvs := fun hmem => hfvs_a (List.mem_append_right _ hmem)
+        exact .ms_app (ih hfresh_a
+          (fun e he => by cases he with | head => exact hv_fvs | tail _ h => exact hstk_a e h) hu_fvs))
+      -- ms_fun
+      (fun {Γ_f dom body body'} L _hbody ih hfresh_f _hstk_f hfvs_f => by
+        have hbody_fvs : x ∉ body.fvs := fun hmem => hfvs_f (List.mem_append_right _ hmem)
+        have hdom_fvs : x ∉ dom.fvs := fun hmem => hfvs_f (List.mem_append_left _ hmem)
+        exact .ms_fun (x :: L) (fun w hw => by
+          have hw_ne : w ≠ x := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+          have hw_L : w ∉ L := fun h => hw (List.mem_cons_of_mem _ h)
+          have hfresh_ext : LNCtx.fresh_in_anns x ((w, .sub dom) :: Γ_f) :=
+            LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hdom_fvs) hfresh_f
+          have hbody_w_fvs : x ∉ (body.open_at 0 (.fvar w)).fvs :=
+            LNExpr.not_mem_fvs_open_at body hbody_fvs (Ne.symm hw_ne)
+          exact subRed_cast_ctx (drop_first_cons_ne x w (.sub _) _ hw_ne)
+            (ih w hw_L hfresh_ext (fun _ he => absurd he (List.not_mem_nil _)) hbody_w_fvs)))
+      -- ms_fop
+      (fun {Γ_f s_f α dom body body'} L _hbody ih hfresh_f hstk_f hfvs_f => by
+        have hbody_fvs : x ∉ body.fvs := fun hmem => hfvs_f (List.mem_append_right _ hmem)
+        have hα_fvs : x ∉ α.fvs := hstk_f α (List.mem_cons_self _ _)
+        exact .ms_fop (x :: L) (fun w hw => by
+          have hw_ne : w ≠ x := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+          have hw_L : w ∉ L := fun h => hw (List.mem_cons_of_mem _ h)
+          have hfresh_ext : LNCtx.fresh_in_anns x ((w, .equiv α) :: Γ_f) :=
+            LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hα_fvs) hfresh_f
+          have hbody_w_fvs : x ∉ (body.open_at 0 (.fvar w)).fvs :=
+            LNExpr.not_mem_fvs_open_at body hbody_fvs (Ne.symm hw_ne)
+          exact subRed_cast_ctx (drop_first_cons_ne x w (.equiv _) _ hw_ne)
+            (ih w hw_L hfresh_ext (fun e he => hstk_f e (List.mem_cons_of_mem _ he)) hbody_w_fvs)))
+  have final := result h hfresh hx_s hx_u
+  rwa [drop_first_head] at final
+
 /-! ### Promotion Collapse Lemma
 
 From the paper (p.9:20, ME-BET/MS-APP case):
@@ -6060,6 +6204,17 @@ noncomputable def diamond
   obtain ⟨t₃, h_left, h_right⟩ := diamond_full t₀ h2 h1 hid hctx hlc hwf_ctx hwf_stk hnd
   exact ⟨t₃, h_left, h_right⟩
 
+/-- Inversion on ctxRed at empty stack for equiv annotation head:
+    If (x,.equiv v)::Γ; [] ↦ (x,.equiv v')::Γ'; [], extract inner CtxRed and EquivRed.
+    At empty stack, the only applicable constructor for a context cons is ct_ann_equiv. -/
+noncomputable def ctxRed_nil_equiv_head_inv
+    {x : String} {v : LNExpr} {Γ : LNCtx}
+    {v' : LNExpr} {Γ' : LNCtx}
+    (h : LNCtxRed ((x, .equiv v) :: Γ) [] ((x, .equiv v') :: Γ') [])
+    : (LNCtxRed Γ [] Γ' []) × (LNEquivRed Γ [] v v') := by
+  cases h with
+  | ct_ann_equiv hctx_i hred => exact ⟨hctx_i, hred⟩
+
 /- ### Commutativity + equivRed_subst_diamond (mutual block)
 
 Commutativity is the main theorem. By induction on the term t₀ and case
@@ -6189,37 +6344,26 @@ noncomputable def equivRed_subst_diamond
       -- Goal: ∃ w, EquivRed Γ s (u'.subst_fvar x v) w ∧ SubRed Γ' s' ((fvar y).subst_fvar x v') w
       -- Since y = x: (fvar y).subst_fvar x v' = v'
       -- Since x ∉ u'.fvs: u'.subst_fvar x v = u'
-      --
-      -- x ∉ u'.fvs: SubRed of v (which doesn't contain x) in context where
-      -- x ∉ all_fvs Γ and x ∉ v.fvs and x ∉ stack. The only way x appears in
-      -- the output is through ME-PRO on x (annotation v), but v doesn't contain x.
-      -- This needs a specialized preserves_not_mem_fvs for extended contexts.
       have hx_u'_fvs : x ∉ u'.fvs :=
         subRed_preserves_not_mem_fvs_gen hsub_pro hx_v
           (LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hx_v)
             (LNCtx.fresh_in_anns_of_not_mem_all_fvs hx_all_fvs))
           hx_s
-      -- Rewrite the subst_fvar in the goal
       rw [subst_fvar_notin hx_u'_fvs, show (LNExpr.fvar y).subst_fvar x v' = v' from by
         simp [LNExpr.subst_fvar, hyx]]
       -- Goal: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' v' w
       --
-      -- STRATEGY: call commutativity on v at the extended context
-      -- ((x,.equiv v)::Γ) s, using equivRed_refl as the EquivRed.
-      -- This gives us results at the extended context, which we then
-      -- need to translate to the base context.
-      --
-      -- The commutativity call:
-      --   h_equiv = equivRed_refl : EquivRed ((x,.equiv v)::Γ) s v v
-      --   h_sub = hsub : SubRed ((x,.equiv v)::Γ) s v u'
-      --   h_ctx = hctx
-      --   budget = v.sz (strictly less than budget, so terminates)
+      -- STRATEGY: call commutativity on v at the extended context, then:
+      -- - Left edge: drop x via equivRed_ctx_drop_fresh (x fresh in u', v, Γ, s)
+      -- - Right edge: drop x via subRed_ctx_drop_fresh (x fresh in v, v', Γ', s')
+      --   This yields SubRed Γ' s' v t₃ — but we need SubRed Γ' s' v' t₃.
+      --   The v → v' input translation is the remaining gap (stack alignment problem).
       have hwf_ext : LNCtx.wf ((x, .equiv v) :: Γ) :=
         fun p hp => by cases hp with
         | head => exact hv_lc
         | tail _ hmem => exact hwf p hmem
       have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
-      obtain ⟨t₃, htop, hright, hnp_ih⟩ :=
+      obtain ⟨t₃, htop, hright, _hnp_ih⟩ :=
         commutativity v.sz v
           (equivRed_refl ((x, .equiv v) :: Γ) s v hv_lc)
           hsub_pro hctx hv_lc
@@ -6227,16 +6371,14 @@ noncomputable def equivRed_subst_diamond
           hwf_ext hswf (Nat.le_refl v.sz)
       -- htop : PLift (EquivRed ((x,.equiv v)::Γ) s u' t₃)
       -- hright : PLift (SubRed ((x,.equiv v')::Γ') s' v t₃)
-      -- hnp_ih : ∀ z, noPromoAt z ... input → noPromoAt z ... output
       --
-      -- LEFT EDGE: EquivRed ((x,.equiv v)::Γ) s u' t₃ → EquivRed Γ s u' t₃
-      -- Use equivRed_ctx_drop_fresh: x ∉ u'.fvs, x ∉ v.fvs, x ∉ all_fvs Γ, x ∉ stack
+      -- LEFT EDGE: drop x from EquivRed
       have hleft : LNEquivRed Γ s u' t₃ :=
         equivRed_ctx_drop_fresh htop.down hx_u'_fvs hx_v hx_all_fvs hx_s
       -- RIGHT EDGE: SubRed ((x,.equiv v')::Γ') s' v t₃ → SubRed Γ' s' v' t₃
-      -- This is the hard part: the input is v (not v') and the context has x.
-      -- Requires either a diamond combining v→v' with v→t₃, or noPromoAt x +
-      -- substitution + context drop. Not closed yet.
+      -- Currently blocked: need both context drop (x fresh) AND input translation
+      -- (v → v'). The input translation requires stack alignment (EquivRed Γ [] v v'
+      -- needs to be at stack s'). This is the fundamental "stack alignment problem".
       exact ⟨t₃, hleft, sorry⟩
     · -- y ≠ x: hmem says y has .equiv annotation in Γ (looked up past x)
       -- Extract α from Γ (past the head x entry)
