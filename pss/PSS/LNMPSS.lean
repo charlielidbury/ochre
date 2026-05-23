@@ -83,8 +83,72 @@ Several kinds of `sorry` remain:
    stack [.top] — ME-FOP's ME-PRO on the body variable produces a different
    result than ME-FUN). The existential version (∃ v', EquivRed Γ s t v') is
    trivially true but NOT SUFFICIENT: the right edge forces t₃ = t' via ms_pro.
-   RESOLUTION: dissolve into mutual block with equivRed_subst_diamond (same
-   stack mismatch as ME-VAR y=x there). See equivRed_subst_diamond section.
+
+   ### Detailed analysis of the MS-PRO/ME-VAR blocker
+
+   The commutativity diagram for this case:
+   ```
+   t₂ ──≡→── t₃
+   ≤↑          ≤↑
+   t₀ ──≡→── t₁
+   ```
+   Bottom: `Γ;s ⊢ fvar x ≡→ fvar x` (ME-VAR)
+   Left:   `Γ;s ⊢ fvar x ≤→ t` (MS-PRO, x ≤ t ∈ Γ)
+   So t₀ = fvar x, t₁ = fvar x, t₂ = t (annotation looked up by MS-PRO).
+   We need t₃ with `Γ;s ⊢ t ≡→ t₃` (top) and `Γ';s' ⊢ fvar x ≤→ t₃` (right).
+
+   **Candidate t₃ = t' (from ctxRed):**
+   Top: EquivRed Γ s t t' — BLOCKED. We have EquivRed Γ [] t t' (from
+   ctxRed_lookup_sub, since CT-ANN reduces annotations at nil stack), but
+   need it at stack s. Stack extension is FALSE (see counterexamples below).
+   Right: MS-PRO with x ≤ t' ∈ Γ' — works via ctxRed_lookup_sub.
+
+   **Candidate t₃ = t (identity):**
+   Top: equivRed_refl Γ s t t — works if t is lc.
+   Right: MS-PRO needs x ≤ t ∈ Γ'. But Γ' has x ≤ t' (reduced annotation).
+   MS-PRO gives t', not t. ✗
+
+   **Candidate t₃ via diamond on two EquivReds of t:**
+   We have EquivRed Γ [] t t' (ctxRed) and equivRed_refl Γ s t t (identity).
+   Diamond requires SAME context (Γ, Γ) but DIFFERENT stacks ([], s). ✗
+
+   **Candidate t₃ via commutativity recursion:**
+   We don't have a SubRed of t at stack s to feed into commutativity.
+   MS-PRO gives fvar x ≤→ t, not a SubRed ON t.
+
+   **Candidate using other SubRed constructors for right edge:**
+   SubRed Γ' s' (fvar x) t₃ can only be:
+   - MS-PRO: t₃ = t' (blocked as above)
+   - MS-EQU + ME-VAR: t₃ = fvar x (top edge needs t ≡→ fvar x — not general)
+   - MS-TOP: t₃ = Top (top edge needs t ≡→ Top — not general)
+   No alternative completion exists.
+
+   **Root cause:** CT-ANN reduces annotations at nil stack ([] in the
+   EquivRed premise of ct_ann_sub/ct_ann_equiv), but commutativity needs
+   the annotation's EquivRed at the CURRENT stack s.
+
+   ### Potential resolution: fix CT-ANN to use full stack
+
+   If CT-ANN used `Γ;s ⊢ t ≡→ t'` instead of `Γ;[] ⊢ t ≡→ t'`, then
+   ctxRed_lookup_sub would give `EquivRed Γ s t t'` directly, and the
+   MS-PRO/ME-VAR case closes trivially (top = EquivRed Γ s t t', right =
+   MS-PRO with x ≤ t' ∈ Γ'). The same fix would resolve the identical
+   stack alignment problem in equivRed_subst_diamond's ME-VAR y=x and
+   ME-PRO y≠x cases.
+
+   This is likely a gap in the paper's definition (Section 3, CT-ANN rule).
+   The nil-stack choice for CT-ANN is not motivated in the paper and appears
+   to be an oversight — annotations are not intrinsically stack-independent
+   (counterexample: lam top (bvar 0) at different stacks gives different
+   outputs). Changing CT-ANN to use the full stack would NOT affect ctxRed_refl
+   (which already builds EquivRed at arbitrary stacks via equivRed_refl) and
+   would make stack extension unnecessary throughout the development.
+
+   STATUS: blocked on this paper gap. The commutativity theorem and
+   equivRed_subst_diamond remain sorry'd at the stack alignment cases.
+   Dissolving into the mutual block (as attempted) does NOT help because the
+   fundamental mismatch (EquivRed at [] vs need at s) persists regardless of
+   proof structure.
 
 ## Proved Lemmas
 - `equivRed_ctx_mono` / `subRed_ctx_mono`: context monotonicity — if every
@@ -205,7 +269,9 @@ ME-TOP, ME-TAP (trivially .top), ME-VAR y≠x (reflexivity), MS-TOP,
 MS-EQU (delegates to equivRed_subst_diamond). Remaining sorry'd cases:
 - ME-VAR y=x: the "stack alignment problem" — need EquivRed Γ s v w ∧
   SubRed Γ' s' v' w. Have EquivRed Γ [] v v' (from hctx) but need it at
-  stack s. Stack extension is FALSE. Blocked on context/stack translation.
+  stack s. Stack extension is FALSE. Root cause: CT-ANN reduces annotations
+  at nil stack. Would be resolved by changing CT-ANN to use full stack s
+  (see sorry #7 in file header).
 - ME-PRO y=x: PARTIALLY WIRED. The commutativity call is in place:
   commutativity(v.sz, v, equivRed_refl, hsub_pro, hctx) produces
   htop : EquivRed ((x,.equiv v)::Γ) s u' t₃ and
@@ -300,8 +366,12 @@ Lines: 4993, 4998, 5086, 5094, 5151, 5390 (×2), 5562, 6014, 6039,
        6084 (×2), 6091, 6092, 6123
 These are in `diamond_full`, `commutativity`, `equivRed_subst_diamond`, and
 `subRed_subst_diamond`. The paper's Lemma 22 (stack extension) is FALSE for
-non-empty stacks. The mutual block is wired and terminates, but individual
-cases need:
+non-empty stacks. ROOT CAUSE: CT-ANN reduces annotations at nil stack ([])
+instead of the current stack s. This means ctxRed_lookup_sub yields
+`EquivRed Γ [] t t'` when commutativity/equivRed_subst_diamond need
+`EquivRed Γ s t t'`. Changing CT-ANN to use full stack s would resolve all
+of these (see sorry #7 in file header). The mutual block is wired and
+terminates, but individual cases need:
 - `x ∉ u'.fvs` for extended contexts (line 6039: needs
   `subRed_preserves_not_mem_fvs` variant where x is in the domain)
 - Context translation after commutativity (lines 6084: results in extended
@@ -940,12 +1010,24 @@ Used in the statement of commutativity (Lemma 1).
 - CT-STK: Stack element `α` is reduced pointwise via ≡→
 
 In locally nameless, no shifting is needed when extending contexts.
+
+NOTE (paper gap): CT-ANN reduces annotations at nil stack (`Γ; [] ⊢ t ≡→ t'`),
+following the paper's Section 3 definition. This causes the "stack alignment
+problem" in commutativity's MS-PRO/ME-VAR case and equivRed_subst_diamond's
+ME-VAR y=x case: ctxRed_lookup_sub yields `EquivRed Γ [] t t'` but these
+cases need `EquivRed Γ s t t'` at the current stack s. Stack extension
+(`EquivRed Γ [] t t' → EquivRed Γ s t t'`) is FALSE (counterexample at end
+of file). Changing CT-ANN to use the full stack s would resolve all stack
+alignment sorrys without affecting ctxRed_refl or other proved lemmas.
+See sorry #7 in the file header for the full analysis.
 -/
 
 inductive LNCtxRed : LNCtx → LNStack → LNCtx → LNStack → Type where
   /-- CT-ANN (sub): Reduce a subtype annotation.
       `Γ; s ↦ Γ'; s'`  and  `Γ; nil ⊢ t ≡→ t'`
-      ⟹  `(x ≤ t, Γ); s ↦ (x ≤ t', Γ'); s'` -/
+      ⟹  `(x ≤ t, Γ); s ↦ (x ≤ t', Γ'); s'`
+      NOTE: the nil stack here (not s) is the root cause of the stack alignment
+      problem. See sorry #7 and the CT-ANN note above. -/
   | ct_ann_sub {Γ s Γ' s' x t t'} :
       LNCtxRed Γ s Γ' s' →
       LNEquivRed Γ [] t t' →
@@ -953,7 +1035,8 @@ inductive LNCtxRed : LNCtx → LNStack → LNCtx → LNStack → Type where
 
   /-- CT-ANN (equiv): Reduce an equivalence annotation.
       `Γ; s ↦ Γ'; s'`  and  `Γ; nil ⊢ α ≡→ α'`
-      ⟹  `(x ≡ α, Γ); s ↦ (x ≡ α', Γ'); s'` -/
+      ⟹  `(x ≡ α, Γ); s ↦ (x ≡ α', Γ'); s'`
+      NOTE: same nil-stack issue as ct_ann_sub. See sorry #7. -/
   | ct_ann_equiv {Γ s Γ' s' x α α'} :
       LNCtxRed Γ s Γ' s' →
       LNEquivRed Γ [] α α' →
@@ -1189,10 +1272,16 @@ top edge to produce exactly t'. No alternative diagram completion exists
 because SubRed from (fvar x) with .sub annotation can only reach t' (via
 ms_pro), fvar x (via ms_equ me_var), or .top (via ms_top).
 
-RESOLUTION: The MS-PRO/ME-VAR case must be dissolved into the mutual block
-with equivRed_subst_diamond. The "stack alignment problem" here is identical
-to the ME-VAR y=x case of equivRed_subst_diamond. See that section for the
-shared termination measure and call pattern.
+PREVIOUS RESOLUTION ATTEMPT: dissolve into the mutual block with
+equivRed_subst_diamond (same stack mismatch as ME-VAR y=x there).
+This does NOT help — the fundamental mismatch (EquivRed at [] vs need at s)
+persists regardless of proof structure because CT-ANN inherently reduces
+annotations at nil stack.
+
+ACTUAL RESOLUTION: change CT-ANN to reduce annotations at the full stack s
+instead of nil. See sorry #7 in the file header for the complete analysis
+and rationale. This would make ctxRed_lookup_sub yield EquivRed Γ s t t'
+directly, eliminating the need for stack extension entirely.
 -/
 
 /-- Context reduction is reflexive (requires all embedded terms to be lc). -/
@@ -6256,6 +6345,16 @@ noncomputable def commutativity
     (hbudget : t₀.sz ≤ budget)
     : Σ' t₃ : LNExpr, PLift (LNEquivRed Γ s t₂ t₃) × PLift (LNSubRed Γ' s' t₁ t₃) ×
         (∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃) := by
+  -- BLOCKED: The MS-PRO/ME-VAR case (h_sub = ms_pro, h_equiv = me_var) requires
+  -- EquivRed Γ s t t' for the top edge, where t is an annotation from the context
+  -- and t' is its reduction. We have EquivRed Γ [] t t' from ctxRed_lookup_sub
+  -- (CT-ANN reduces annotations at nil stack), but stack extension from [] to s
+  -- is FALSE (counterexample at end of file). All candidate witnesses t₃ fail:
+  -- - t₃ = t' : top edge needs EquivRed Γ s t t' (stack extension — FALSE)
+  -- - t₃ = t  : right edge needs x ≤ t ∈ Γ' but Γ' has x ≤ t' (reduced)
+  -- - t₃ via diamond/recursion: no applicable SubRed of t at stack s exists
+  -- The root cause is CT-ANN's nil stack. If CT-ANN used the full stack s,
+  -- ctxRed_lookup_sub would give EquivRed Γ s t t' directly. See sorry #7.
   sorry
 termination_by (budget, t₀.sz)
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
@@ -6324,6 +6423,8 @@ noncomputable def equivRed_subst_diamond
       -- doesn't help. The actual resolution may require rethinking how me_var
       -- on x interacts with the substitution diamond — in practice, me_pro y=x
       -- handles the interesting case and me_var y=x is subsumed.
+      -- ROOT CAUSE: CT-ANN's nil stack. Same as commutativity MS-PRO/ME-VAR.
+      -- See sorry #7 in the file header.
       sorry
     · -- y ≠ x: both sides are fvar y
       exact ⟨.fvar _, .me_var, .ms_equ .me_var⟩
