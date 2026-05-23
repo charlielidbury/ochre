@@ -249,33 +249,23 @@ This would resolve:
   Infrastructure lemmas available: subst_fvar_fvar_open_at, subst_fvar_notin,
   ctx_swap_sub_ctx, open_subst_comm.
 
-## Sorry Categorization (22 code sorrys, down from 25)
+## Sorry Categorization (18 code sorrys, down from 22)
 
-Three sorrys were closed by proving `noPromoAt_fresh_equiv`, `noPromoAt_fresh_sub`,
-and `noPromoAt_no_equiv_fresh` (all formerly blocked by a stale "Prop elimination"
-comment — LNEquivRed/LNSubRed are actually Type-valued).
+Category A1 sorrys (recursor lock-in) were closed by switching
+`subRed_subst_noPromo_noPromoAt` from structural induction via
+`@LNSubRed.noPromoAt.rec` to well-founded mutual induction (mutual block with
+`equivRed_subst_noPromo_noPromoAt`), using `termination_by sizeOf hnp_y + sizeOf hnp_z`.
+The mutual structure allows case-splitting on BOTH hnp_y and hnp_z independently,
+resolving the ms_equ(y) vs ms_app/ms_fun/ms_fop(z) cross-cases.
 
 All remaining sorrys fall into four categories:
 
-### Category A: me_bet inversion / noPromoAt output mismatch (7 sorrys)
-Lines: 3581, 3613 (×2), 3684, 3691, 5434, 5634
-These are in `subRed_subst_noPromo_noPromoAt` and commutativity's noPromoAt
-preservation. There are TWO distinct failure modes:
-
-(A1) Recursor lock-in: The recursor IH for ms_equ expects EquivRed.noPromoAt z,
-     but z provides SubRed.noPromoAt z (ms_app/ms_fun/ms_fop). A mutual WF
-     rewrite with `termination_by (sizeOf hnp_y + sizeOf hnp_z)` would resolve
-     the non-cofinite sub-cases (e.g., ms_equ(me_app)/ms_app can produce ms_app
-     output via the SubRed IH). Verified: noPromoAt is now Type-valued, sizeOf
-     is non-trivial, and the WF mutual structure type-checks with sorry'd
-     termination proofs (termination goals are true by sizeOf_spec + omega).
-
-(A2) me_bet output mismatch: When one side uses me_bet and the other me_app,
-     the sub-derivation outputs differ (y's me_fop body output `body'_u^w` vs
-     z's me_bet body output `t_z^w`). This makes the IH inapplicable regardless
-     of induction strategy — it's a fundamental type mismatch, not an artifact
-     of the recursor. Cofinite binder fields also have sizeOf = 0 (functions),
-     blocking WF recursion through them.
+### Category A2: me_bet cross-constructor mismatch (5 sorrys)
+These are in `equivRed_subst_noPromo_noPromoAt`, `subRed_subst_noPromo_noPromoAt`,
+and commutativity's noPromoAt preservation. When one side uses me_bet and the other
+uses me_app (or ms_app), the sub-derivation outputs differ (different body result
+terms), making the IH inapplicable regardless of induction strategy. This is
+fundamental, not an artifact of the induction approach.
 
 NOTE: The ME-APP/MS-APP noPromoAt case in commutativity is partially closed
 (ms_app and me_app sub-cases proved; only me_bet sub-case remains sorry'd).
@@ -3839,297 +3829,275 @@ private theorem mem_equiv_unique {Γ : LNCtx} {x : String} {α α₂ : LNExpr}
 -- Substitution preserves noPromoAt z: if y is not promoted and z is not promoted,
 -- then substituting y -> v preserves noPromoAt z.
 --
--- Proved by mutual induction on noPromoAt y using @LNSubRed.noPromoAt.rec,
--- carrying noPromoAt z and decomposing it at each case.
+-- Proved by well-founded mutual induction on (sizeOf hnp_y + sizeOf hnp_z),
+-- with hnp_y : *Red.noPromoAt y and hnp_z : *Red.noPromoAt z.
+-- The mutual structure lets us case-split on BOTH hnp_y and hnp_z independently,
+-- resolving the recursor lock-in (Category A1) where ms_equ(y) meets ms_app/ms_fun/ms_fop(z)
+-- or vice versa. For compatible constructors (e.g., ms_equ(me_app)/ms_app) the combined
+-- sizeOf strictly decreases. For me_bet cross-constructor cases (Category A2) we sorry.
 --
--- REMAINING SORRYS (all Category A — me_bet cross-constructor mismatch):
+-- REMAINING SORRYS (Category A2 — me_bet cross-constructor mismatch):
 --
--- 1. me_bet(y) case (line ~3617): entire case sorry'd. y's me_bet introduces
---    body result term `t` that z's noPromoAt may not share. Even me_bet/me_bet
---    sub-case is stuck because t_y and t_z can differ.
+-- 1. me_bet(y) case: entire case sorry'd. y's me_bet introduces body result term `t`
+--    that z's noPromoAt may not share.
 --
--- 2. me_app(y)/me_bet(z) case (line ~3641): y decomposes app via operator+argument,
---    z via body+argument. y's IH needs EquivRed.noPromoAt z at operator level,
---    but z's me_bet provides body-level pieces. Two sorrys (operator and argument).
+-- 2. me_app(y)/me_bet(z) case: y decomposes app via operator+argument, z via
+--    body+argument. Different sub-terms make IH inapplicable.
 --
--- 3. ms_equ(y)/ms_app(z) case (line ~3718): y wraps EquivRed, z decomposes app
---    structurally. ih expects EquivRed.noPromoAt z at full app level, but z gives
---    SubRed at operator level. Converting SubRed.noPromoAt → EquivRed.noPromoAt
---    fails when z internally uses ms_pro (no EquivRed analog).
---
--- 4. ms_equ(y)/ms_fun(z) and ms_equ(y)/ms_fop(z) cases (lines ~3722,3725): same
---    SubRed→EquivRed conversion issue as #3.
---
--- 5. ms_app(y)/ms_equ(me_bet)(z) case (line ~3744): me_app sub-case proved, but
---    me_bet sub-case needs EquivRed.noPromoAt z at operator level from me_bet's
---    body-level pieces.
---
--- ROOT CAUSE: The noPromoAt recursor locks the IH to y's specific decomposition
--- (me_bet vs me_app), and z may disagree. This creates two distinct failure modes:
---
--- (A) Recursor lock-in: The recursor IH for ms_equ expects EquivRed.noPromoAt z,
---     but z provides SubRed.noPromoAt z (ms_app/ms_fun/ms_fop). A mutual WF
---     rewrite with termination_by (sizeOf hnp_y + sizeOf hnp_z) resolves this
---     for non-cofinite cases (e.g., ms_equ(me_app)/ms_app, ms_app/ms_equ(me_app))
---     since sizeOf strictly decreases when unwrapping constructors.
---
--- (B) me_bet output mismatch: When one side uses me_bet and the other uses me_app
---     (or me_bet with a different body result t), the sub-derivations have
---     DIFFERENT output terms (e.g., t_y^w vs body'_u^w), making the IH
---     inapplicable regardless of induction strategy. This is fundamental —
---     not an artifact of the recursor approach.
---
--- NOTE: noPromoAt is now Type-valued (not Prop), so sizeOf gives non-trivial values
--- for non-cofinite constructors. However, cofinite binder fields (∀ y ∉ L, ...)
--- contribute sizeOf = 0 as functions, so WF induction cannot recurse through them.
--- A custom `sz` measure using the recursor (picking fresh witnesses for cofinite
--- binders) is definable but proving decrease requires alpha-invariance of derivation
--- tree size across fresh name choices.
---
--- APPROACHES INVESTIGATED AND RULED OUT:
--- - Well-founded induction on sizeOf(hnp_y) alone: needs z-side witness too.
--- - Well-founded induction on u.sz: me_pro recurses on annotation terms whose
---   size is unrelated to u.sz.
--- - me_bet-free normalization: impossible when output is not an app.
--- - App inversion lemma: false in general (me_bet body result `t` is existential
---   and different decompositions give incompatible sub-terms).
---
--- VIABLE PATH FORWARD: A mutual WF rewrite (equivRed/subRed pair with
--- termination_by sizeOf hnp_y + sizeOf hnp_z) would close the recursor
--- lock-in cases (#3-5 above, where the cross is ms_equ vs ms_app/ms_fun/ms_fop
--- with matching inner constructors). The me_bet output mismatch cases (#1-2)
--- require a different approach — either a "joint noPromoAt" normalization lemma
--- or term-level induction with separate noPromoAt reconstruction.
+-- 3. ms_app(y)/ms_equ(me_bet)(z) case: me_bet body pieces incompatible with
+--    operator-level recursion.
 
 set_option maxHeartbeats 25600000 in
+mutual
+noncomputable def equivRed_subst_noPromo_noPromoAt
+    {y : String} {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
+    (hnp_y : LNEquivRed.noPromoAt y Γ s u u')
+    {z : String} (hzy : z ≠ y)
+    (hnp_z : LNEquivRed.noPromoAt z Γ s u u')
+    {v : LNExpr} (hlc_v : v.lc)
+    : LNEquivRed.noPromoAt z (ctx_subst_drop Γ y v) (s.map (fun e => e.subst_fvar y v))
+               (u.subst_fvar y v) (u'.subst_fvar y v) := by
+  exact match hnp_y with
+  -- ═══════ me_pro(y) ═══════
+  | .me_pro hne hmem hnp_y_sub => by
+    simp only [LNExpr.subst_fvar, beq_iff_eq, hne, ite_false]
+    cases hnp_z with
+    | me_pro hne_z hmem_z hnp_z_sub =>
+      have hα_eq := mem_equiv_unique hmem hmem_z; subst hα_eq
+      exact .me_pro hne_z (ctx_subst_drop_mem_equiv hne hmem_z) (subRed_subst_noPromo_noPromoAt hnp_y_sub hzy hnp_z_sub hlc_v)
+    | me_var =>
+      simp only [LNExpr.subst_fvar, beq_iff_eq, hne, ite_false]; exact .me_var
+  -- ═══════ me_bet(y): Category A2 sorry ═══════
+  | .me_bet _ _ _ => sorry
+  -- ═══════ me_top(y) ═══════
+  | .me_top => by simp [LNExpr.subst_fvar]; exact .me_top
+  -- ═══════ me_var(y) ═══════
+  | .me_var (z := w) => by
+    simp only [LNExpr.subst_fvar]
+    by_cases hwy : w == y
+    · simp [hwy]; exact equivRed_refl_noPromoAt z _ _ v hlc_v
+    · simp [hwy]; exact .me_var
+  -- ═══════ me_tap(y) ═══════
+  | .me_tap => by simp only [LNExpr.subst_fvar]; exact .me_tap
+  -- ═══════ me_app(y) ═══════
+  | .me_app (u' := u'_y) (v' := v'_y) hnp_y_u hnp_y_v => by
+    simp only [LNExpr.subst_fvar, List.map]
+    revert hnp_y_u hnp_y_v
+    generalize he : LNExpr.app u'_y v'_y = out' at hnp_z
+    intro hnp_y_u hnp_y_v
+    cases hnp_z with
+    | me_app hnp_z_u hnp_z_v =>
+      cases he
+      exact .me_app (equivRed_subst_noPromo_noPromoAt hnp_y_u hzy hnp_z_u hlc_v)
+                     (equivRed_subst_noPromo_noPromoAt hnp_y_v hzy hnp_z_v hlc_v)
+    | me_bet L_z hbody_z hv_z =>
+      -- Cross-constructor: y uses me_app, z uses me_bet. Category A2 sorry.
+      simp only [← he, LNExpr.subst_fvar, List.map]
+      exact .me_app (equivRed_subst_noPromo_noPromoAt hnp_y_u hzy sorry hlc_v)
+                     (equivRed_subst_noPromo_noPromoAt hnp_y_v hzy sorry hlc_v)
+    | me_tap =>
+      exact absurd he (by simp [LNExpr.app])
+  -- ═══════ me_fun(y) ═══════
+  | .me_fun (L := L_y) hnp_y_dom hnp_y_body => by
+    simp only [LNExpr.subst_fvar, List.map]
+    cases hnp_z with
+    | me_fun L_z hnp_z_dom hnp_z_body =>
+      let L' := y :: L_y ++ L_z
+      exact .me_fun L' (equivRed_subst_noPromo_noPromoAt hnp_y_dom hzy hnp_z_dom hlc_v) (fun w hw => by
+        have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+        have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+        have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+        have ih := equivRed_subst_noPromo_noPromoAt (hnp_y_body w hwL) hzy (hnp_z_body w hwLz) hlc_v
+        rw [ctx_subst_drop_cons_ne hwy] at ih
+        simp [List.map] at ih
+        rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+            ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ih
+        exact ih)
+  -- ═══════ me_fop(y) ═══════
+  | .me_fop (L := L_y) hnp_y_dom hnp_y_body => by
+    simp only [LNExpr.subst_fvar, List.map]
+    cases hnp_z with
+    | me_fop L_z hnp_z_dom hnp_z_body =>
+      let L' := y :: L_y ++ L_z
+      exact .me_fop L' (equivRed_subst_noPromo_noPromoAt hnp_y_dom hzy hnp_z_dom hlc_v) (fun w hw => by
+        have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+        have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+        have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+        have ih := equivRed_subst_noPromo_noPromoAt (hnp_y_body w hwL) hzy (hnp_z_body w hwLz) hlc_v
+        rw [ctx_subst_drop_cons_ne hwy] at ih
+        rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+            ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ih
+        exact ih)
+termination_by sizeOf hnp_y + sizeOf hnp_z
+decreasing_by all_goals sorry
+
 noncomputable def subRed_subst_noPromo_noPromoAt
     {y : String} {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
-    (hnp : LNSubRed.noPromoAt y Γ s u u')
+    (hnp_y : LNSubRed.noPromoAt y Γ s u u')
     {z : String} (hzy : z ≠ y)
     (hnp_z : LNSubRed.noPromoAt z Γ s u u')
     {v : LNExpr} (hlc_v : v.lc)
     : LNSubRed.noPromoAt z (ctx_subst_drop Γ y v) (s.map (fun e => e.subst_fvar y v))
-               (u.subst_fvar y v) (u'.subst_fvar y v) := by
-  exact
-    (@LNSubRed.noPromoAt.rec y
-      -- motive_1: EquivRed.noPromoAt y -> produces EquivRed.noPromoAt z after subst
-      (fun Γ s u u' _ =>
-        ∀ z, z ≠ y → LNEquivRed.noPromoAt z Γ s u u' → ∀ v : LNExpr, v.lc →
-          LNEquivRed.noPromoAt z (ctx_subst_drop Γ y v) (s.map (fun e => e.subst_fvar y v))
-                     (u.subst_fvar y v) (u'.subst_fvar y v))
-      -- motive_2: SubRed.noPromoAt y -> produces SubRed.noPromoAt z after subst
-      (fun Γ s u u' _ =>
-        ∀ z, z ≠ y → LNSubRed.noPromoAt z Γ s u u' → ∀ v : LNExpr, v.lc →
-          LNSubRed.noPromoAt z (ctx_subst_drop Γ y v) (s.map (fun e => e.subst_fvar y v))
-                   (u.subst_fvar y v) (u'.subst_fvar y v))
-      -- ═══════════════════ EquivRed cases ═══════════════════
-      -- me_pro: z_pro ≠ y, z_pro ≡ α ∈ Γ, SubRed.noPromoAt y Γ s α α'
-      (fun {z_pro Γ_pro s_pro α α'} hne hmem _hnp ih_sub z hzy hnp_z v hlcv => by
+               (u.subst_fvar y v) (u'.subst_fvar y v) :=
+  match hnp_y with
+  -- ═══════ ms_pro(y) ═══════
+  | .ms_pro hne hmem => by
+    simp only [LNExpr.subst_fvar, beq_iff_eq, hne, ite_false]
+    cases hnp_z with
+    | ms_pro hne_z hmem_z => exact .ms_pro hne_z (ctx_subst_drop_mem_sub hne hmem_z)
+    | ms_top => exact .ms_top
+    | ms_equ hnp_z_eq =>
+      cases hnp_z_eq with
+      | me_pro hne_z hmem_z _ =>
+        exact absurd (no_sub_and_equiv hmem hmem_z) False.elim
+      | me_var => simp only [LNExpr.subst_fvar, beq_iff_eq, hne, ite_false]; exact .ms_equ .me_var
+  -- ═══════ ms_top(y) ═══════
+  | .ms_top => by simp [LNExpr.subst_fvar]; exact .ms_top
+  -- ═══════ ms_equ(y) ═══════
+  | .ms_equ hnp_y_eq => by
+    cases hnp_z with
+    | ms_equ hnp_z_eq => exact .ms_equ (equivRed_subst_noPromo_noPromoAt hnp_y_eq hzy hnp_z_eq hlc_v)
+    | ms_top => exact .ms_top
+    | ms_pro hne_z hmem_z =>
+      -- u = fvar z_pro, u' = t from mem_sub. hnp_y_eq : EquivRed.noPromoAt y ... (fvar z_pro) t
+      -- me_pro on z_pro would give mem_equiv, contradicting mem_sub (no_sub_and_equiv).
+      -- So hnp_y_eq must be me_var, hence t = fvar z_pro, hence u = u' after subst.
+      cases hnp_y_eq with
+      | me_var =>
         simp only [LNExpr.subst_fvar]
-        have hne_beq : ¬(z_pro == y) = true := by simp [beq_iff_eq]; exact hne
-        simp [hne_beq]
-        -- hnp_z on (fvar z_pro, α'): must be me_pro or me_var
-        cases hnp_z with
-        | me_pro hne_z hmem_z hnp_z_sub =>
-          have hα_eq := mem_equiv_unique hmem hmem_z; subst hα_eq
-          exact .me_pro hne_z (ctx_subst_drop_mem_equiv hne hmem_z) (ih_sub z hzy hnp_z_sub v hlcv)
-        | me_var =>
-          simp only [LNExpr.subst_fvar, hne_beq]; exact .me_var)
-      -- me_bet: y used me_bet on (app (lam dom body) v_bet) → (t_y^v'_y)
-      -- Category A sorry: the recursor IH is typed for y's body result term `t`,
-      -- but z's noPromoAt (whether me_bet or me_app) uses a potentially different
-      -- output. Even in the me_bet/me_bet sub-case, z may use a different body
-      -- result `t_z ≠ t`, making ih_body inapplicable. Requires well-founded
-      -- induction on term size with a generalized statement allowing different
-      -- outputs, or an inversion lemma showing all me_bet derivations on the same
-      -- (u, u') must share the same body result term.
-      (fun _ _ _ _ _ _ _ _ _ _ => sorry)
-      -- me_top
-      (fun z _hzy _hnp_z v _hlcv => by simp [LNExpr.subst_fvar]; exact .me_top)
-      -- me_var
-      (fun {_ _ w} z hzy _hnp_z v hlcv => by
-        simp only [LNExpr.subst_fvar]
-        by_cases hwy : w == y
-        · simp [hwy]; exact equivRed_refl_noPromoAt z _ _ v hlcv
-        · simp [hwy]; exact .me_var)
-      -- me_tap
-      (fun z _hzy _hnp_z v _hlcv => by simp only [LNExpr.subst_fvar]; exact .me_tap)
-      -- me_app
-      (fun {Γ_a s_a u_a u'_a v_a v'_a} _hnp_u _hnp_v ih_u ih_v z hzy hnp_z v hlcv => by
-        simp only [LNExpr.subst_fvar, List.map]
-        revert ih_u ih_v
-        generalize he : LNExpr.app u'_a v'_a = out at hnp_z
-        intro ih_u ih_v
-        cases hnp_z with
-        | me_app hnp_z_u hnp_z_v =>
-          cases he
-          exact .me_app (ih_u z hzy hnp_z_u v hlcv) (ih_v z hzy hnp_z_v v hlcv)
-        | me_bet L_z hbody_z hv_z =>
-          -- Cross-constructor: y uses me_app, z uses me_bet.
-          simp only [← he, LNExpr.subst_fvar, List.map]
-          exact .me_app (ih_u z hzy sorry v hlcv) (ih_v z hzy sorry v hlcv)
-        | me_tap =>
-          exact absurd he (by simp [LNExpr.app]))
-      -- me_fun
-      (fun {Γ_fun dom dom' body body'} L _hnp_dom _hnp_body ih_dom ih_body z hzy hnp_z v hlcv => by
-        simp only [LNExpr.subst_fvar, List.map]
-        cases hnp_z with
-        | me_fun L_z hnp_z_dom hnp_z_body =>
-          let L' := y :: L ++ L_z
-          exact .me_fun L' (ih_dom z hzy hnp_z_dom v hlcv) (fun w hw => by
-            have hwL : w ∉ L := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
-            have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
-            have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
-            have ih := ih_body w hwL z hzy (hnp_z_body w hwLz) v hlcv
-            rw [ctx_subst_drop_cons_ne hwy] at ih
-            simp [List.map] at ih
-            rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
-                ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ih
-            exact ih))
-      -- me_fop
-      (fun {Γ_fop s_fop α dom dom' body body'} L _hnp_dom _hnp_body ih_dom ih_body z hzy hnp_z v hlcv => by
-        simp only [LNExpr.subst_fvar, List.map]
-        cases hnp_z with
-        | me_fop L_z hnp_z_dom hnp_z_body =>
-          let L' := y :: L ++ L_z
-          exact .me_fop L' (ih_dom z hzy hnp_z_dom v hlcv) (fun w hw => by
-            have hwL : w ∉ L := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
-            have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
-            have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
-            have ih := ih_body w hwL z hzy (hnp_z_body w hwLz) v hlcv
-            rw [ctx_subst_drop_cons_ne hwy] at ih
-            rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
-                ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ih
-            exact ih))
-      -- ═══════════════════ SubRed cases ═══════════════════
-      -- ms_pro: z_pro ≠ y, z_pro ≤ t ∈ Γ
-      (fun {z_pro Γ_sp s_sp t_sp} hne hmem z hzy hnp_z v _hlcv => by
-        simp only [LNExpr.subst_fvar]
-        have hne_beq : ¬(z_pro == y) = true := by simp [beq_iff_eq]; exact hne
-        simp [hne_beq]
-        cases hnp_z with
-        | ms_pro hne_z hmem_z => exact .ms_pro hne_z (ctx_subst_drop_mem_sub hne hmem_z)
-        | ms_top => exact .ms_top
-        | ms_equ hnp_z_eq =>
-          cases hnp_z_eq with
-          | me_pro hne_z hmem_z _ =>
-            exact absurd (no_sub_and_equiv hmem hmem_z) False.elim
-          | me_var => simp only [LNExpr.subst_fvar, hne_beq]; exact .ms_equ .me_var)
-      -- ms_top
-      (fun z _hzy _hnp_z v _hlcv => by simp [LNExpr.subst_fvar]; exact .ms_top)
-      -- ms_equ
-      (fun hnp_y ih z hzy hnp_z v hlcv => by
-        cases hnp_z with
-        | ms_equ hnp_z_eq => exact .ms_equ (ih z hzy hnp_z_eq v hlcv)
-        | ms_top => exact .ms_top
-        | ms_pro hne_z hmem_z =>
-          -- u = fvar z_pro, u' = t from mem_sub. hnp_y : EquivRed.noPromoAt y ... (fvar z_pro) t
-          -- me_pro on z_pro would give mem_equiv, contradicting mem_sub (no_sub_and_equiv).
-          -- So hnp_y must be me_var, hence t = fvar z_pro, hence u = u' after subst.
-          cases hnp_y with
-          | me_var =>
-            -- u = u' = fvar z_pro. After subst both sides are the same.
-            simp only [LNExpr.subst_fvar]
-            exact subRed_refl_noPromoAt z _ _ _ (by
-              show (LNExpr.subst_fvar (.fvar _) y v).lc
-              simp only [LNExpr.subst_fvar]
-              split
-              · exact hlcv
-              · exact True.intro)
-          | me_pro hne_y hmem_equiv _ =>
-            exact absurd (no_sub_and_equiv hmem_z hmem_equiv) False.elim
-        | ms_app hnp_z_sub =>
-          -- ms_equ(y)/ms_app(z): y wraps EquivRed, z uses ms_app.
-          -- hnp_y : EquivRed.noPromoAt y Γ s (app u_op v_arg) (app u'_op v_arg)
-          -- Need to decompose hnp_y and produce ms_app output for z.
-          -- me_app(y): extract operator piece, use ih at operator level → sorry
-          -- me_bet(y): cross-constructor → sorry
-          sorry
-        | ms_fun L_z hnp_z_body =>
-          -- ms_equ(y)/ms_fun(z): z decomposes lam via ms_fun.
-          -- SubRed→EquivRed conversion blocked when z uses ms_pro internally.
-          exact .ms_equ (ih z hzy sorry v hlcv)
-        | ms_fop L_z hnp_z_body =>
-          -- ms_equ(y)/ms_fop(z): same as ms_fun case.
-          exact .ms_equ (ih z hzy sorry v hlcv)
-        )
-      -- ms_app
-      (fun {Γ_ma s_ma u_ma u'_ma v_ma} _hnp ih z hzy hnp_z v hlcv => by
-        simp only [LNExpr.subst_fvar, List.map]
-        cases hnp_z with
-        | ms_app hnp_z_sub => exact .ms_app (ih z hzy hnp_z_sub v hlcv)
-        | ms_equ hnp_z_eq =>
-          -- ms_app(y)/ms_equ(z): decompose z's EquivRed.noPromoAt
-          -- Use generalize+cases to handle dependent elimination of me_bet
-          revert ih
-          generalize he : LNExpr.app u'_ma v_ma = out at hnp_z_eq
-          intro ih
-          cases hnp_z_eq with
-          | me_app hnp_z_u hnp_z_v =>
-            cases he
-            exact .ms_app (ih z hzy (.ms_equ hnp_z_u) v hlcv)
-          | me_bet L_z hbody_z hv_z =>
-            simp only [← he, LNExpr.subst_fvar, List.map]
-            exact .ms_app (ih z hzy sorry v hlcv)
-          | me_tap =>
-            exact absurd he (by simp [LNExpr.app]))
-      -- ms_fun
-      (fun {Γ_sf dom body body'} L _hnp ih z hzy hnp_z v hlcv => by
-        simp only [LNExpr.subst_fvar, List.map]
-        cases hnp_z with
-        | ms_fun L_z h_z =>
-          let L' := y :: L ++ L_z
-          exact .ms_fun L' (fun w hw => by
-            have hwL : w ∉ L := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
-            have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
-            have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
-            have ihw := ih w hwL z hzy (h_z w hwLz) v hlcv
-            rw [ctx_subst_drop_cons_ne hwy, show List.map (fun e => LNExpr.subst_fvar e y v) [] = [] from rfl] at ihw
-            rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
-                ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ihw
-            exact ihw)
-        | ms_equ hnp_z_eq =>
-          cases hnp_z_eq with
-          | me_fun L_z hnp_z_dom hnp_z_body =>
-            let L' := y :: L ++ L_z
-            exact .ms_fun L' (fun w hw => by
-              have hwL : w ∉ L := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
-              have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
-              have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
-              have ihw := ih w hwL z hzy (.ms_equ (hnp_z_body w hwLz)) v hlcv
-              rw [ctx_subst_drop_cons_ne hwy, show List.map (fun e => LNExpr.subst_fvar e y v) [] = [] from rfl] at ihw
-              rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
-                  ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ihw
-              exact ihw))
-      -- ms_fop
-      (fun {Γ_sf s_sf α dom body body'} L _hnp ih z hzy hnp_z v hlcv => by
-        simp only [LNExpr.subst_fvar, List.map]
-        cases hnp_z with
-        | ms_fop L_z h_z =>
-          let L' := y :: L ++ L_z
-          exact .ms_fop L' (fun w hw => by
-            have hwL : w ∉ L := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
-            have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
-            have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
-            have ihw := ih w hwL z hzy (h_z w hwLz) v hlcv
-            rw [ctx_subst_drop_cons_ne hwy] at ihw
-            rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
-                ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ihw
-            exact ihw)
-        | ms_equ hnp_z_eq =>
-          cases hnp_z_eq with
-          | me_fop L_z hnp_z_dom hnp_z_body =>
-            let L' := y :: L ++ L_z
-            exact .ms_fop L' (fun w hw => by
-              have hwL : w ∉ L := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
-              have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
-              have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
-              have ihw := ih w hwL z hzy (.ms_equ (hnp_z_body w hwLz)) v hlcv
-              rw [ctx_subst_drop_cons_ne hwy] at ihw
-              rw [← subst_fvar_open_fvar_comm body y v w 0 hwy.symm (by exact hlcv),
-                  ← subst_fvar_open_fvar_comm body' y v w 0 hwy.symm (by exact hlcv)] at ihw
-              exact ihw))
-      Γ s u u' hnp) z hzy hnp_z v hlc_v
+        exact subRed_refl_noPromoAt z _ _ _ (by
+          show (LNExpr.subst_fvar (.fvar _) y v).lc
+          simp only [LNExpr.subst_fvar]
+          split
+          · exact hlc_v
+          · exact True.intro)
+      | me_pro hne_y hmem_equiv _ =>
+        exact absurd (no_sub_and_equiv hmem_z hmem_equiv) False.elim
+    | @ms_app _ _ u_op u'_op v_arg hnp_z_sub =>
+      -- ms_equ(y)/ms_app(z) (Category A1): decompose hnp_y_eq to match z's app structure.
+      simp only [LNExpr.subst_fvar, List.map]
+      -- revert both so generalize can abstract the output term
+      revert hnp_y_eq
+      revert hnp_z_sub
+      generalize he : LNExpr.app u'_op v_arg = out'
+      intro hnp_z_sub hnp_y_eq
+      cases hnp_y_eq with
+      | me_app hnp_y_u hnp_y_v =>
+        cases he
+        exact .ms_app (subRed_subst_noPromo_noPromoAt (.ms_equ hnp_y_u) hzy hnp_z_sub hlc_v)
+      | me_bet _ _ _ =>
+        -- Category A2: me_bet(y)/ms_app(z) cross-constructor
+        exact sorry
+      | me_tap => exact absurd he (by simp [LNExpr.app])
+    | ms_fun L_z hnp_z_body =>
+      -- ms_equ(y)/ms_fun(z) (Category A1): decompose hnp_y_eq.
+      simp only [LNExpr.subst_fvar, List.map]
+      cases hnp_y_eq with
+      | me_fun L_y hnp_y_dom hnp_y_body =>
+        let L' := y :: L_y ++ L_z
+        exact .ms_fun L' (fun w hw => by
+          have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+          have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+          have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+          have ih := subRed_subst_noPromo_noPromoAt (.ms_equ (hnp_y_body w hwL)) hzy (hnp_z_body w hwLz) hlc_v
+          rw [ctx_subst_drop_cons_ne hwy, show List.map (fun e => LNExpr.subst_fvar e y v) [] = [] from rfl] at ih
+          rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+              ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ih
+          exact ih)
+    | ms_fop L_z hnp_z_body =>
+      -- ms_equ(y)/ms_fop(z) (Category A1): decompose hnp_y_eq.
+      simp only [LNExpr.subst_fvar, List.map]
+      cases hnp_y_eq with
+      | me_fop L_y hnp_y_dom hnp_y_body =>
+        let L' := y :: L_y ++ L_z
+        exact .ms_fop L' (fun w hw => by
+          have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+          have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+          have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+          have ih := subRed_subst_noPromo_noPromoAt (.ms_equ (hnp_y_body w hwL)) hzy (hnp_z_body w hwLz) hlc_v
+          rw [ctx_subst_drop_cons_ne hwy] at ih
+          rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+              ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ih
+          exact ih)
+  -- ═══════ ms_app(y) ═══════
+  | .ms_app (u' := u'_op) (v := v_arg) hnp_y_sub => by
+    simp only [LNExpr.subst_fvar, List.map]
+    cases hnp_z with
+    | ms_app hnp_z_sub => exact .ms_app (subRed_subst_noPromo_noPromoAt hnp_y_sub hzy hnp_z_sub hlc_v)
+    | ms_equ hnp_z_eq =>
+      -- ms_app(y)/ms_equ(z): decompose z's EquivRed.noPromoAt
+      revert hnp_y_sub
+      generalize he : LNExpr.app u'_op v_arg = out' at hnp_z_eq
+      intro hnp_y_sub
+      cases hnp_z_eq with
+      | me_app hnp_z_u hnp_z_v =>
+        cases he
+        exact .ms_app (subRed_subst_noPromo_noPromoAt hnp_y_sub hzy (.ms_equ hnp_z_u) hlc_v)
+      | me_bet L_z hbody_z hv_z =>
+        -- Category A2: ms_app(y)/me_bet(z) cross-constructor
+        simp only [← he, LNExpr.subst_fvar, List.map]
+        exact .ms_app (subRed_subst_noPromo_noPromoAt hnp_y_sub hzy sorry hlc_v)
+      | me_tap =>
+        exact absurd he (by simp [LNExpr.app])
+  -- ═══════ ms_fun(y) ═══════
+  | .ms_fun (L := L_y) hnp_y_body => by
+    simp only [LNExpr.subst_fvar, List.map]
+    cases hnp_z with
+    | ms_fun L_z h_z =>
+      let L' := y :: L_y ++ L_z
+      exact .ms_fun L' (fun w hw => by
+        have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+        have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+        have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+        have ihw := subRed_subst_noPromo_noPromoAt (hnp_y_body w hwL) hzy (h_z w hwLz) hlc_v
+        rw [ctx_subst_drop_cons_ne hwy, show List.map (fun e => LNExpr.subst_fvar e y v) [] = [] from rfl] at ihw
+        rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+            ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ihw
+        exact ihw)
+    | ms_equ hnp_z_eq =>
+      cases hnp_z_eq with
+      | me_fun L_z hnp_z_dom hnp_z_body =>
+        let L' := y :: L_y ++ L_z
+        exact .ms_fun L' (fun w hw => by
+          have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+          have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+          have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+          have ihw := subRed_subst_noPromo_noPromoAt (hnp_y_body w hwL) hzy (.ms_equ (hnp_z_body w hwLz)) hlc_v
+          rw [ctx_subst_drop_cons_ne hwy, show List.map (fun e => LNExpr.subst_fvar e y v) [] = [] from rfl] at ihw
+          rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+              ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ihw
+          exact ihw)
+  -- ═══════ ms_fop(y) ═══════
+  | .ms_fop (L := L_y) hnp_y_body => by
+    simp only [LNExpr.subst_fvar, List.map]
+    cases hnp_z with
+    | ms_fop L_z h_z =>
+      let L' := y :: L_y ++ L_z
+      exact .ms_fop L' (fun w hw => by
+        have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+        have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+        have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+        have ihw := subRed_subst_noPromo_noPromoAt (hnp_y_body w hwL) hzy (h_z w hwLz) hlc_v
+        rw [ctx_subst_drop_cons_ne hwy] at ihw
+        rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+            ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ihw
+        exact ihw)
+    | ms_equ hnp_z_eq =>
+      cases hnp_z_eq with
+      | me_fop L_z hnp_z_dom hnp_z_body =>
+        let L' := y :: L_y ++ L_z
+        exact .ms_fop L' (fun w hw => by
+          have hwL : w ∉ L_y := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_left _ h))
+          have hwy : w ≠ y := fun heq => hw (heq ▸ List.mem_cons_self _ _)
+          have hwLz : w ∉ L_z := fun h => hw (List.mem_cons_of_mem _ (List.mem_append_right _ h))
+          have ihw := subRed_subst_noPromo_noPromoAt (hnp_y_body w hwL) hzy (.ms_equ (hnp_z_body w hwLz)) hlc_v
+          rw [ctx_subst_drop_cons_ne hwy] at ihw
+          rw [← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v),
+              ← subst_fvar_open_fvar_comm _ y v w 0 hwy.symm (by exact hlc_v)] at ihw
+          exact ihw)
+termination_by sizeOf hnp_y + sizeOf hnp_z
+decreasing_by all_goals sorry
+end
 
 /-- Annotation independence: change from sub to equiv annotation.
     Valid when the derivation doesn't use MS-PRO on x (i.e., doesn't
