@@ -556,6 +556,165 @@ The main advance from this investigation: proving `noPromoAt_no_equiv_fresh` and
 comment about Prop elimination. These enable constructing noPromoAt witnesses from
 scratch when freshness conditions hold, bypassing the cross-constructor mismatch
 entirely for cases where the tracked variable is sufficiently fresh.
+
+## Research Analysis: Does Transitivity (Theorem 3) Actually Need Full Commutativity?
+
+### Question
+The MS-PRO/ME-VAR case of commutativity (Lemma 1) is blocked because CT-ANN
+reduces annotations at nil stack, creating a stack alignment problem. Does the
+DOWNSTREAM use of commutativity (Theorem 3: transitivity admissibility, and
+Theorems 4-5: type safety) actually need the full generalization over ALL
+ctxRed instances Γ;s ↦ Γ';s'? If it only needs ctxRed_refl, the MS-PRO/ME-VAR
+case becomes trivial.
+
+### Analysis of Theorem 3 (Transitivity is Admissible) — Paper p. 9:25-9:26
+
+**Statement:** If Γ;s ⊢ u ≤* v then Γ;s ⊢ u ≤ v.
+
+**Proof structure:** By induction on the number of intermediary steps in Γ;s ⊢ u ≤* v.
+The key step reduces to: given Γ;s ⊢ t ≤ u and Γ;s ⊢ u ≤ v, prove Γ;s ⊢ t ≤ v.
+
+Recall the subtyping definition (paper p. 9:7):
+  u ≤ t  iff  ∃ v, t ≡→* v ∧ v ≤→ u
+
+So from Γ;s ⊢ t ≤ u we get: ∃ u₁, u ≡→* u₁ ∧ u₁ ≤→ t
+And from Γ;s ⊢ u ≤ v we get: ∃ v₁, v ≡→* v₁ ∧ v₁ ≤→ u
+
+The proof builds the diagram (paper p. 9:26):
+```
+    v ──≡→── · ──≡→── ·
+    ≤↑                 ≤↑
+         u ──≡→── ·
+             ≤↑
+             t
+```
+The solid edges are from the subtyping definition. The dashed edges are
+completed by commutativity (Lemma 1).
+
+**CRITICAL OBSERVATION:** Commutativity (Lemma 1) is called with:
+  - Bottom-left: t₀ ≡→ t₁  (from u ≡→* u₁, one step at a time)
+  - Left:        t₀ ≤→ t₂  (from v₁ ≤→ u, the subtyping witness)
+  - Context:     Γ;s (UNCHANGED — same Γ;s throughout)
+
+The ctxRed passed to Lemma 1 is: Γ;s ↦ Γ';s' for ALL Γ';s' with Γ;s ↦ Γ';s'.
+
+BUT WAIT — what does Theorem 3 actually DO with the output? It gets:
+  - Top:   Γ;s ⊢ t₂ ≡→ t₃
+  - Right: Γ';s' ⊢ t₁ ≤→ t₃
+
+Theorem 3 needs the RIGHT edge at the ORIGINAL context Γ;s, not at Γ';s'.
+The subtyping relation u ≤ t is defined as Γ;s ⊢ t ≡→* v ∧ Γ;s ⊢ v ≤→ u
+(both at the SAME Γ;s). So Theorem 3 only needs:
+  Γ;s ⊢ t₁ ≤→ t₃   (i.e., the right edge at Γ;s, not Γ';s')
+
+**This means Theorem 3 ONLY NEEDS ctxRed_refl (Γ' = Γ, s' = s).**
+
+### Verification: How Theorem 3 Calls Lemma 1
+
+Looking at the proof on p. 9:26 more carefully:
+
+Step 1: Unfold Γ;s ⊢ t ≤ u into EquivRed* and SubRed.
+Step 2: Unfold Γ;s ⊢ u ≤ v into EquivRed* and SubRed.
+Step 3: Apply commutativity to the EquivRed (from u ≡→ ...) and SubRed
+        (from v₁ ≤→ u) AT THE SAME Γ;s.
+
+The commutativity call is:
+  commutativity(Γ, s, u ≡→ u₁_step, v₁ ≤→ u, ctxRed)
+
+Since both the EquivRed and SubRed are at Γ;s, and the output SubRed is
+also needed at Γ;s, the only ctxRed that makes sense is ctxRed_refl.
+
+### What About Diamond (Lemma 2)?
+
+Diamond (Lemma 2, p. 9:9) is used to complete the ≡→ chain. The existing
+`diamond` in LNMPSS.lean already uses ctxRed_refl (line ~6420):
+  `have hid : LNCtxRed Γ s Γ s := ctxRed_refl Γ s hwf_ctx hwf_stk`
+
+So diamond also only needs ctxRed_refl. Confirmed.
+
+### What About Type Safety (Theorems 4-5)?
+
+**Theorem 4 (Progress):** Does NOT use commutativity at all. It's a
+straightforward structural induction on terms.
+
+**Theorem 5 (Preservation):** Uses Ws-Rgh (well-subtyping rule), which
+references EquivRed (Γ;nil ⊢ t ≡→ t'). Preservation's proof:
+1. From Γ ⊢ t ≤*_wf u and t ↦ t', prove Γ ⊢ t' ≤*_wf t.
+2. By Ws-Rfl we have Γ ⊢ t' ≤*_wf t', then by Ws-Rgh, Γ ⊢ t' ≤*_wf t.
+Preservation does NOT call commutativity directly. It uses Lemma 6
+(evaluation preserves well-formedness) and the well-subtyping rules.
+
+**Lemma 7 (Substitution preserves well-formedness):** Uses transitivity
+(Theorem 3) internally in its proof (paper p. 9:28), specifically in the
+Ws-Lf2 case and the Wf-App case. But Theorem 3 only needs ctxRed_refl
+(as shown above).
+
+**Lemma 9:** Uses a restricted form of commutativity for substitution.
+This is equivRed_subst_diamond (in the mutual block), which DOES need
+non-trivial ctxRed. BUT: Lemma 9 is used for Lemma 7's Wf-App case,
+and it passes the ctxRed from ct_ann_sub (the annotation reduction from
+the substitution). So equivRed_subst_diamond genuinely needs non-trivial
+ctxRed — but it's in the mutual block with commutativity and has its
+OWN stack alignment problem at ME-VAR y=x (the same root cause).
+
+### Conclusion
+
+**Theorem 3 (transitivity) only needs commutativity at ctxRed_refl.**
+
+A RESTRICTED commutativity with only ctxRed_refl would suffice for:
+- Theorem 3 (transitivity admissibility)
+- Lemma 2 (diamond property, already uses ctxRed_refl)
+- Theorem 4 (progress, doesn't use commutativity)
+- Theorem 5 (preservation, uses Theorem 3 which uses ctxRed_refl)
+
+**However, the full generalization over ALL ctxRed is still needed for:**
+1. The INDUCTIVE PROOF of commutativity itself. The paper (p. 9:8) explains:
+   "The generalisation over all possible resulting contexts Γ';s' is crucial
+   for the inductive proof." Specifically:
+   - ME-FUN case: the IH is applied at context Γ, x ≤ t₀; nil, and the
+     ctxRed from the outer Γ;s ↦ Γ';s' combined with CT-ANN gives
+     Γ, x ≤ t₀; nil ↦ Γ', x ≤ t₁; nil. This is NOT ctxRed_refl.
+   - ME-FOP case: similarly extends the ctxRed with CT-STK and CT-ANN.
+   - ME-APP case: extends with CT-STK for the stack.
+   - ME-BET case: extends with CT-ANN.
+
+2. equivRed_subst_diamond (in the mutual block with commutativity).
+   ME-PRO-on-x calls commutativity on v, passing the ctxRed from the
+   substitution context. This ctxRed is non-trivial.
+
+**So the full ctxRed generalization is needed for the INTERNAL induction,
+even though the EXTERNAL callers only need ctxRed_refl.**
+
+### Impact on the MS-PRO/ME-VAR Blocker
+
+This analysis does NOT provide a way to avoid the MS-PRO/ME-VAR case.
+The case is encountered during the internal induction of commutativity
+(when the input term is fvar x, h_equiv is me_var, and h_sub is ms_pro),
+and the ctxRed at that point is whatever was passed in — which in
+recursive calls is NOT ctxRed_refl.
+
+The two viable resolutions remain:
+1. **Fix CT-ANN to use full stack s** (change nil to s in ct_ann_sub/
+   ct_ann_equiv). This makes ctxRed_lookup_sub yield EquivRed Γ s t t'
+   directly, closing the case trivially.
+2. **Prove that annotations in well-formed contexts are stack-independent**
+   (a restricted stack extension for annotation terms). This is harder
+   and not clearly true.
+
+### Summary Table
+
+| Downstream theorem  | Uses commutativity? | Which ctxRed?  |
+|---------------------|---------------------|----------------|
+| Theorem 3 (trans)   | Yes (Lemma 1)       | ctxRed_refl    |
+| Lemma 2 (diamond)   | No                  | ctxRed_refl    |
+| Theorem 4 (progress)| No                  | N/A            |
+| Theorem 5 (preserv) | Indirectly (via T3) | ctxRed_refl    |
+| Lemma 7 (subst wf)  | Yes (via T3, L9)    | ctxRed_refl*   |
+| Commutativity IH    | Yes (recursive)     | NON-TRIVIAL    |
+| equivRed_subst_dia  | Yes (mutual)        | NON-TRIVIAL    |
+
+*Lemma 7 uses Theorem 3 at ctxRed_refl, but also uses Lemma 9 which
+calls equivRed_subst_diamond with non-trivial ctxRed.
 -/
 
 /-! ## Terms -/
