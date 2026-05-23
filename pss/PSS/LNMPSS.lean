@@ -76,19 +76,76 @@ Several kinds of `sorry` remain:
    - A noPromoAt_subst lemma (substituting x → v' preserves noPromoAt z
      when z ≠ x) for binder cases
    The z = x special case is easier (noPromoAt_fresh_sub since x ∉ dom Γ').
-7. RESOLVED: CT-ANN now uses full stack s (not nil) for annotation reduction.
-   ctxRed_lookup_sub/equiv now yield `EquivRed Γ s t t'` at the full stack,
-   resolving the former stack alignment blocker. Commutativity's MS-PRO/ME-VAR
-   case closes: witness t₃ = t', top = EquivRed Γ s t t' (from lookup), right =
-   MS-PRO with x ≤ t' ∈ Γ'. equivRed_subst_diamond's ME-VAR y=x case is
-   also resolved (ct_ann_equiv inversion gives EquivRed Γ s v v' directly).
+7. Stack extension for annotation terms in commutativity's MS-PRO/ME-VAR case:
+   `ctxRed_lookup_sub` gives `LNEquivRed Γ [] t t'` (empty stack) but the top
+   edge needs `LNEquivRed Γ s t t'` (current stack). Same-output stack extension
+   is FALSE even for annotation terms (counterexample: lam top (bvar 0) at
+   stack [.top] — ME-FOP's ME-PRO on the body variable produces a different
+   result than ME-FUN). The existential version (∃ v', EquivRed Γ s t v') is
+   trivially true but NOT SUFFICIENT: the right edge forces t₃ = t' via ms_pro.
 
-   Trade-off: ctxRed_nil_of_ctxRed, ctxRed_stack_inv, and diamond_full's
-   body ctxRed construction now need stack extension/shrinking for annotation
-   terms (sorry'd). These are structurally present but vacuous in canonical
-   ctxRed built by ctxRed_refl (stacks first, then context). A canonical-form
-   invariant or restructured ctxRed (separating context and stack reductions)
-   would close these.
+   ### Detailed analysis of the MS-PRO/ME-VAR blocker
+
+   The commutativity diagram for this case:
+   ```
+   t₂ ──≡→── t₃
+   ≤↑          ≤↑
+   t₀ ──≡→── t₁
+   ```
+   Bottom: `Γ;s ⊢ fvar x ≡→ fvar x` (ME-VAR)
+   Left:   `Γ;s ⊢ fvar x ≤→ t` (MS-PRO, x ≤ t ∈ Γ)
+   So t₀ = fvar x, t₁ = fvar x, t₂ = t (annotation looked up by MS-PRO).
+   We need t₃ with `Γ;s ⊢ t ≡→ t₃` (top) and `Γ';s' ⊢ fvar x ≤→ t₃` (right).
+
+   **Candidate t₃ = t' (from ctxRed):**
+   Top: EquivRed Γ s t t' — BLOCKED. We have EquivRed Γ [] t t' (from
+   ctxRed_lookup_sub, since CT-ANN reduces annotations at nil stack), but
+   need it at stack s. Stack extension is FALSE (see counterexamples below).
+   Right: MS-PRO with x ≤ t' ∈ Γ' — works via ctxRed_lookup_sub.
+
+   **Candidate t₃ = t (identity):**
+   Top: equivRed_refl Γ s t t — works if t is lc.
+   Right: MS-PRO needs x ≤ t ∈ Γ'. But Γ' has x ≤ t' (reduced annotation).
+   MS-PRO gives t', not t. ✗
+
+   **Candidate t₃ via diamond on two EquivReds of t:**
+   We have EquivRed Γ [] t t' (ctxRed) and equivRed_refl Γ s t t (identity).
+   Diamond requires SAME context (Γ, Γ) but DIFFERENT stacks ([], s). ✗
+
+   **Candidate t₃ via commutativity recursion:**
+   We don't have a SubRed of t at stack s to feed into commutativity.
+   MS-PRO gives fvar x ≤→ t, not a SubRed ON t.
+
+   **Candidate using other SubRed constructors for right edge:**
+   SubRed Γ' s' (fvar x) t₃ can only be:
+   - MS-PRO: t₃ = t' (blocked as above)
+   - MS-EQU + ME-VAR: t₃ = fvar x (top edge needs t ≡→ fvar x — not general)
+   - MS-TOP: t₃ = Top (top edge needs t ≡→ Top — not general)
+   No alternative completion exists.
+
+   **Root cause:** CT-ANN reduces annotations at nil stack ([] in the
+   EquivRed premise of ct_ann_sub/ct_ann_equiv), but commutativity needs
+   the annotation's EquivRed at the CURRENT stack s.
+
+   ### Potential resolution: fix CT-ANN to use full stack
+
+   If CT-ANN used `Γ;s ⊢ t ≡→ t'` instead of `Γ;[] ⊢ t ≡→ t'`, then
+   ctxRed_lookup_sub would give `EquivRed Γ s t t'` directly, and the
+   MS-PRO/ME-VAR case closes trivially (top = EquivRed Γ s t t', right =
+   MS-PRO with x ≤ t' ∈ Γ'). The same fix would resolve the identical
+   stack alignment problem in equivRed_subst_diamond's ME-VAR y=x and
+   ME-PRO y≠x cases.
+
+   This is likely a gap in the paper's definition (Section 3, CT-ANN rule).
+   The nil-stack choice for CT-ANN is not motivated in the paper and appears
+   to be an oversight — annotations are not intrinsically stack-independent
+   (counterexample: lam top (bvar 0) at different stacks gives different
+   outputs). Changing CT-ANN to use the full stack would NOT affect ctxRed_refl
+   (which already builds EquivRed at arbitrary stacks via equivRed_refl) and
+   would make stack extension unnecessary throughout the development.
+
+   STATUS: blocked on this paper gap. The commutativity theorem and
+   equivRed_subst_diamond remain sorry'd at the stack alignment cases.
    Dissolving into the mutual block (as attempted) does NOT help because the
    fundamental mismatch (EquivRed at [] vs need at s) persists regardless of
    proof structure.
@@ -209,19 +266,26 @@ The CORRECT formulation is a DIAMOND:
 Both theorems are now in a MUTUAL BLOCK with commutativity, sharing the
 termination measure `(budget, term.sz)`. Partially proved cases:
 ME-TOP, ME-TAP (trivially .top), ME-VAR y≠x (reflexivity), MS-TOP,
-MS-EQU (delegates to equivRed_subst_diamond). Status of formerly-sorry'd cases:
-- ME-VAR y=x: MOSTLY CLOSED (after CT-ANN change to full stack). ct_ann_equiv
-  inversion gives EquivRed Γ s v v' directly, witness w = v'. Only the degenerate
-  ct_stk case (v = v', Γ = Γ') remains sorry'd.
-- ME-PRO y=x: PARTIALLY WIRED. The commutativity call is in place.
+MS-EQU (delegates to equivRed_subst_diamond). Remaining sorry'd cases:
+- ME-VAR y=x: the "stack alignment problem" — need EquivRed Γ s v w ∧
+  SubRed Γ' s' v' w. Have EquivRed Γ [] v v' (from hctx) but need it at
+  stack s. Stack extension is FALSE. Root cause: CT-ANN reduces annotations
+  at nil stack. Would be resolved by changing CT-ANN to use full stack s
+  (see sorry #7 in file header).
+- ME-PRO y=x: PARTIALLY WIRED. The commutativity call is in place:
+  commutativity(v.sz, v, equivRed_refl, hsub_pro, hctx) produces
+  htop : EquivRed ((x,.equiv v)::Γ) s u' t₃ and
+  hright : SubRed ((x,.equiv v')::Γ') s' v t₃.
   Left edge is CLOSED: equivRed_ctx_drop_fresh drops x to get EquivRed Γ s u' t₃.
   Right edge sorry remains: need SubRed Γ' s' v' t₃ from
-  SubRed ((x,.equiv v')::Γ') s' v t₃. The "input translation" (v → v') is the
-  remaining gap. With CT-ANN at full stack, EquivRed Γ s v v' is now available,
-  which may help but the composition mechanism is still missing.
-- ME-PRO y≠x: PARTIALLY WIRED. Freshness established. Core sorry:
-  need diamond of SubRed Γ s α u' and EquivRed Γ s α α' (now both at stack s
-  after CT-ANN change), but termination doesn't permit recursive call on α.
+  SubRed ((x,.equiv v')::Γ') s' v t₃.
+  Infrastructure for context drop (subRed_ctx_drop_fresh) is available.
+  Remaining gap: "input translation" — changing input from v to v' where
+  EquivRed Γ [] v v'. This is the stack alignment problem (EquivRed at
+  stack [] vs SubRed at stack s').
+- ME-PRO y≠x: PARTIALLY WIRED. Freshness established (x ∉ α.fvs, x ∉ u'.fvs
+  via subRed_preserves_not_mem_fvs_gen). Substitutions rewritten. Core sorry:
+  need diamond of SubRed Γ s α u' and EquivRed Γ [] α α' at different stacks.
 - ME-APP, ME-BET, ME-FUN, ME-FOP: structural recursion with budget decreasing.
   ME-APP has stack alignment subtlety (see NOTE below).
 - MS-PRO, MS-APP, MS-FUN, MS-FOP: structural SubRed cases.
@@ -297,24 +361,23 @@ fundamental, not an artifact of the induction approach.
 NOTE: The ME-APP/MS-APP noPromoAt case in commutativity is partially closed
 (ms_app and me_app sub-cases proved; only me_bet sub-case remains sorry'd).
 
-### Category B: Stack alignment (PARTIALLY RESOLVED by CT-ANN change)
-CT-ANN now uses full stack s instead of nil for annotation reduction.
-This RESOLVES the core stack alignment problem: ctxRed_lookup_sub/equiv
-now yield EquivRed at the full stack s. Specifically:
-- Commutativity MS-PRO/ME-VAR: now closeable (ctxRed_lookup_sub gives EquivRed at s)
-- equivRed_subst_diamond ME-VAR y=x: MOSTLY CLOSED (ct_ann_equiv inversion works)
-REMAINING sorrys introduced by the change (stack extension/shrinking for
-annotation terms, vacuous in canonical ctxRed built by ctxRed_refl):
-- ctxRed_nil_of_ctxRed: 2 sorrys (needs stack shrinking for annotation EquivRed)
-- ctxRed_lookup_sub/equiv ct_stk: 2 sorrys (needs stack extension for annotations)
-- ctxRed_stack_inv ct_ann: 2 sorrys (needs stack shrinking for annotations)
-- diamond_full body ctxRed: 6 sorrys (stack ext for argument/stack-head terms)
-- equivRed_subst_diamond ME-VAR y=x ct_stk: 1 sorry (degenerate, v=v')
-Pre-existing sorrys still in this category:
-- equivRed_subst_diamond ME-PRO y=x right edge: input translation
-- equivRed_subst_diamond ME-PRO y≠x: needs recursive call on annotation (termination)
-- equivRed_subst_diamond structural cases: ME-APP, ME-BET, ME-FUN, ME-FOP etc.
-- commutativity: full case analysis not yet written
+### Category B: Stack alignment / equivRed_subst_diamond (15 sorrys)
+Lines: 4993, 4998, 5086, 5094, 5151, 5390 (×2), 5562, 6014, 6039,
+       6084 (×2), 6091, 6092, 6123
+These are in `diamond_full`, `commutativity`, `equivRed_subst_diamond`, and
+`subRed_subst_diamond`. The paper's Lemma 22 (stack extension) is FALSE for
+non-empty stacks. ROOT CAUSE: CT-ANN reduces annotations at nil stack ([])
+instead of the current stack s. This means ctxRed_lookup_sub yields
+`EquivRed Γ [] t t'` when commutativity/equivRed_subst_diamond need
+`EquivRed Γ s t t'`. Changing CT-ANN to use full stack s would resolve all
+of these (see sorry #7 in file header). The mutual block is wired and
+terminates, but individual cases need:
+- `x ∉ u'.fvs` for extended contexts (line 6039: needs
+  `subRed_preserves_not_mem_fvs` variant where x is in the domain)
+- Context translation after commutativity (lines 6084: results in extended
+  context need translation to base context)
+- Structural recursion cases in equivRed/subRed_subst_diamond (lines 6092,
+  6123: ME-APP, ME-BET, ME-FUN, ME-FOP, MS-PRO, MS-APP, MS-FUN, MS-FOP)
 
 ### Category C: noPromoAt preservation via diamond (2 sorrys)
 Lines: 5353, 5446
@@ -949,33 +1012,34 @@ Used in the statement of commutativity (Lemma 1).
 In locally nameless, no shifting is needed when extending contexts.
 
 NOTE (paper gap): CT-ANN reduces annotations at nil stack (`Γ; [] ⊢ t ≡→ t'`),
-CHANGED from the paper: CT-ANN now uses full stack s (not nil) for annotation
-reduction. This means ctxRed_lookup_sub/equiv now yield `EquivRed Γ s t t'`
-at the full stack, resolving the stack alignment problem in commutativity's
-MS-PRO/ME-VAR case and equivRed_subst_diamond's ME-VAR y=x case. The trade-off:
-- ctxRed_nil_of_ctxRed (stack stripping) now needs stack shrinking (sorry'd)
-- ctxRed_stack_inv ct_ann cases need stack shrinking (sorry'd)
-- diamond_full ME-FOP/ME-BET body ctxRed construction needs stack extension
-  for argument/stack-head terms (sorry'd)
-- ctxRed_lookup_sub/equiv ct_stk case needs stack extension (sorry'd, vacuous
-  in canonical ctxRed built by ctxRed_refl)
+following the paper's Section 3 definition. This causes the "stack alignment
+problem" in commutativity's MS-PRO/ME-VAR case and equivRed_subst_diamond's
+ME-VAR y=x case: ctxRed_lookup_sub yields `EquivRed Γ [] t t'` but these
+cases need `EquivRed Γ s t t'` at the current stack s. Stack extension
+(`EquivRed Γ [] t t' → EquivRed Γ s t t'`) is FALSE (counterexample at end
+of file). Changing CT-ANN to use the full stack s would resolve all stack
+alignment sorrys without affecting ctxRed_refl or other proved lemmas.
+See sorry #7 in the file header for the full analysis.
 -/
 
 inductive LNCtxRed : LNCtx → LNStack → LNCtx → LNStack → Type where
   /-- CT-ANN (sub): Reduce a subtype annotation.
-      `Γ; s ↦ Γ'; s'`  and  `Γ; s ⊢ t ≡→ t'`
-      ⟹  `(x ≤ t, Γ); s ↦ (x ≤ t', Γ'); s'` -/
+      `Γ; s ↦ Γ'; s'`  and  `Γ; nil ⊢ t ≡→ t'`
+      ⟹  `(x ≤ t, Γ); s ↦ (x ≤ t', Γ'); s'`
+      NOTE: the nil stack here (not s) is the root cause of the stack alignment
+      problem. See sorry #7 and the CT-ANN note above. -/
   | ct_ann_sub {Γ s Γ' s' x t t'} :
       LNCtxRed Γ s Γ' s' →
-      LNEquivRed Γ s t t' →
+      LNEquivRed Γ [] t t' →
       LNCtxRed ((x, .sub t) :: Γ) s ((x, .sub t') :: Γ') s'
 
   /-- CT-ANN (equiv): Reduce an equivalence annotation.
-      `Γ; s ↦ Γ'; s'`  and  `Γ; s ⊢ α ≡→ α'`
-      ⟹  `(x ≡ α, Γ); s ↦ (x ≡ α', Γ'); s'` -/
+      `Γ; s ↦ Γ'; s'`  and  `Γ; nil ⊢ α ≡→ α'`
+      ⟹  `(x ≡ α, Γ); s ↦ (x ≡ α', Γ'); s'`
+      NOTE: same nil-stack issue as ct_ann_sub. See sorry #7. -/
   | ct_ann_equiv {Γ s Γ' s' x α α'} :
       LNCtxRed Γ s Γ' s' →
-      LNEquivRed Γ s α α' →
+      LNEquivRed Γ [] α α' →
       LNCtxRed ((x, .equiv α) :: Γ) s ((x, .equiv α') :: Γ') s'
 
   /-- CT-STK: Reduce a stack element.
@@ -1237,23 +1301,18 @@ noncomputable def ctxRed_refl (Γ : LNCtx) (s : LNStack)
     cases ann with
     | sub t =>
       have ht : t.lc := hwf_ctx (x, .sub t) (List.mem_cons_self _ _)
-      exact .ct_ann_sub (ih htail_wf) (equivRed_refl Γ s t ht)
+      exact .ct_ann_sub (ih htail_wf) (equivRed_refl Γ [] t ht)
     | equiv α' =>
       have hα : α'.lc := hwf_ctx (x, .equiv α') (List.mem_cons_self _ _)
-      exact .ct_ann_equiv (ih htail_wf) (equivRed_refl Γ s α' hα)
+      exact .ct_ann_equiv (ih htail_wf) (equivRed_refl Γ [] α' hα)
 
 /-- Lemma 36: stripping the stack from a context reduction. -/
 noncomputable def ctxRed_nil_of_ctxRed
     {Γ Γ' : LNCtx} {s s' : LNStack}
     (h : LNCtxRed Γ s Γ' s') : LNCtxRed Γ [] Γ' [] := by
   induction h with
-  | ct_ann_sub _ _hred ih =>
-    -- hred : EquivRed Γ s t t' — need EquivRed Γ [] t t'
-    -- With CT-ANN at full stack, stripping requires stack shrinking on annotations.
-    -- TODO: this may require wf hypotheses or a different approach.
-    sorry
-  | ct_ann_equiv _ _hred ih =>
-    sorry
+  | ct_ann_sub _ hred ih => exact .ct_ann_sub ih hred
+  | ct_ann_equiv _ hred ih => exact .ct_ann_equiv ih hred
   | ct_stk _ _ ih => exact ih
   | ct_nil => exact .ct_nil
 
@@ -1868,14 +1927,14 @@ noncomputable def subRed_rename_strong
   simpa using hgen
 
 /-- Context lookup: x ≤ t ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≤ t' ∈ Γ'
-    with Γ;s ⊢ t ≡→ t'.
+    with Γ;[] ⊢ t ≡→ t'.
     Proved by induction on the context reduction derivation, using
     equivRed_ctx_ext to lift the equiv-red through context layers. -/
 noncomputable def ctxRed_lookup_sub
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {t : LNExpr}
     (hmem : LNCtx.mem_sub Γ x t) (hctx : LNCtxRed Γ s Γ' s')
     (hnd : (LNCtx.dom Γ).Nodup)
-    : Σ' (t' : LNExpr) (_ : LNCtx.mem_sub Γ' x t'), LNEquivRed Γ s t t' := by
+    : Σ' (t' : LNExpr) (_ : LNCtx.mem_sub Γ' x t'), LNEquivRed Γ [] t t' := by
   induction hctx with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
     simp only [LNCtx.mem_sub, LNCtx.lookup'] at hmem
@@ -1909,23 +1968,17 @@ noncomputable def ctxRed_lookup_sub
       refine ⟨t', ?_, equivRed_ctx_ext hred_t hy_fresh⟩
       show LNCtx.lookup' ((y, .equiv α') :: Γ_i') x = some (.sub t')
       simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
-  | ct_stk _ _ ih =>
-    -- IH gives EquivRed Γ s_inner t t', but we need EquivRed Γ (α::s_inner) t t'.
-    -- This is stack extension for annotation terms. In canonical ctxRed (stacks first,
-    -- then context), this case is vacuous (Γ = []).
-    -- TODO: enforce canonical ordering or prove stack extension for annotation terms.
-    obtain ⟨t', hmem', hred⟩ := ih hmem hnd
-    exact ⟨t', hmem', sorry⟩
+  | ct_stk _ _ ih => exact ih hmem hnd
   | ct_nil => simp [LNCtx.mem_sub, LNCtx.lookup'] at hmem
 
 /-- Context lookup: x ≡ α ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≡ α' ∈ Γ'
-    with Γ;s ⊢ α ≡→ α'.
+    with Γ;[] ⊢ α ≡→ α'.
     Proved by induction on the context reduction derivation. -/
 noncomputable def ctxRed_lookup_equiv
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {α : LNExpr}
     (hmem : LNCtx.mem_equiv Γ x α) (hctx : LNCtxRed Γ s Γ' s')
     (hnd : (LNCtx.dom Γ).Nodup)
-    : Σ' (α' : LNExpr) (_ : LNCtx.mem_equiv Γ' x α'), LNEquivRed Γ s α α' := by
+    : Σ' (α' : LNExpr) (_ : LNCtx.mem_equiv Γ' x α'), LNEquivRed Γ [] α α' := by
   induction hctx with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
     simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
@@ -1958,10 +2011,7 @@ noncomputable def ctxRed_lookup_equiv
       refine ⟨α', ?_, equivRed_ctx_ext hred_α hy_fresh⟩
       show LNCtx.lookup' ((y, .equiv β') :: Γ_i') x = some (.equiv α')
       simp only [LNCtx.lookup', hyx, ite_false]; exact hmem'
-  | ct_stk _ _ ih =>
-    -- Same stack extension issue as ctxRed_lookup_sub; see comment there.
-    obtain ⟨α', hmem', hred⟩ := ih hmem hnd
-    exact ⟨α', hmem', sorry⟩
+  | ct_stk _ _ ih => exact ih hmem hnd
   | ct_nil => simp [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
 
 /-- A variable cannot simultaneously have a sub and equiv annotation.
@@ -4658,11 +4708,8 @@ noncomputable def ctxRed_stack_inv
     have hy_fresh : y ∉ LNCtx.dom Γ_i :=
       (List.nodup_cons.mp hnd).1
     obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hnd_inner hs
-    -- hred_u : EquivRed Γ_i (α::s) u u' but ct_ann_sub needs EquivRed Γ_i s u u'
-    -- (stack shrank by one after stripping the stack head via IH).
-    -- This requires stack shrinking for annotation terms — sorry for now.
     exact ⟨α', s₁, hs'eq,
-      .ct_ann_sub hctx' sorry,
+      .ct_ann_sub hctx' hred_u,
       equivRed_ctx_ext hα_red hy_fresh⟩
   | @ct_ann_equiv Γ_i _ Γ_i' _ y β β' hctx_i hred_β ih =>
     have hnd_inner : (LNCtx.dom Γ_i).Nodup :=
@@ -4671,7 +4718,7 @@ noncomputable def ctxRed_stack_inv
       (List.nodup_cons.mp hnd).1
     obtain ⟨α', s₁, hs'eq, hctx', hα_red⟩ := ih hnd_inner hs
     exact ⟨α', s₁, hs'eq,
-      .ct_ann_equiv hctx' sorry,
+      .ct_ann_equiv hctx' hred_β,
       equivRed_ctx_ext hα_red hy_fresh⟩
   | @ct_stk Γ_i _ Γ_i' s₁ α₀ α₀' hctx_i hred_α _ =>
     cases hs; exact ⟨α₀', s₁, rfl, hctx_i, hred_α⟩
@@ -5880,7 +5927,7 @@ theorem ctxRed_preserves_ctx_wf
       have ht_lc : t.lc := hwf (x, .sub t) (List.mem_cons_self _ _)
       exact equivRed_preserves_lc hred ht_lc
         (fun q hq => hwf q (List.mem_cons_of_mem _ hq))
-        hswf
+        (fun _ he => absurd he (List.not_mem_nil _))
     | tail _ hmem =>
       exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf p hmem
   | @ct_ann_equiv _ _ _ _ x α α' _ hred ih =>
@@ -5891,7 +5938,7 @@ theorem ctxRed_preserves_ctx_wf
       have hα_lc : α.lc := hwf (x, .equiv α) (List.mem_cons_self _ _)
       exact equivRed_preserves_lc hred hα_lc
         (fun q hq => hwf q (List.mem_cons_of_mem _ hq))
-        hswf
+        (fun _ he => absurd he (List.not_mem_nil _))
     | tail _ hmem =>
       exact ih (fun q hq => hwf q (List.mem_cons_of_mem _ hq)) hswf p hmem
   | ct_stk _ _ ih =>
@@ -6004,12 +6051,9 @@ noncomputable def diamond_full
         have hwf_body : LNCtx.wf ((x, .equiv v_head) :: Γ) :=
           fun p hp => by cases hp with | head => exact hlc.2 | tail _ h => exact hwf p h
         -- Body IH
-        -- h1_v/h2_v : EquivRed Γ [] v_head _ (from ME-APP), need EquivRed Γ s for ct_ann_equiv
-        have h1_v_s : LNEquivRed Γ s v_head v₁' := sorry  -- stack ext for argument
-        have h2_v_s : LNEquivRed Γ s v_head v₂' := sorry  -- stack ext for argument
         obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body.open_at 0 (.fvar x))
           (h1_body_fop x hxL₁) (h2_body x hxL₂)
-          (.ct_ann_equiv hctx1 h1_v_s) (.ct_ann_equiv hctx2 h2_v_s)
+          (.ct_ann_equiv hctx1 h1_v) (.ct_ann_equiv hctx2 h2_v)
           (LNExpr.lc_at_open_fvar hlc.1.2) hwf_body hswf
           (List.nodup_cons.mpr ⟨hxΓ, hnd⟩)
         -- u₃ lc
@@ -6080,12 +6124,9 @@ noncomputable def diamond_full
         have hwf_body : LNCtx.wf ((x, .equiv v_arg) :: Γ) :=
           fun p hp => by cases hp with | head => exact hlc.2 | tail _ h => exact hwf p h
         -- Body IH
-        -- h1_v/h2_v : EquivRed Γ [] v_arg _ (from ME-APP/ME-BET), need EquivRed Γ s for ct_ann_equiv
-        have h1_v_s : LNEquivRed Γ s v_arg v₁' := sorry  -- stack ext for argument
-        have h2_v_s : LNEquivRed Γ s v_arg v₂' := sorry  -- stack ext for argument
         obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body.open_at 0 (.fvar x))
           (h1_body x hxL₁) (h2_body_fop x hxL₂)
-          (.ct_ann_equiv hctx1 h1_v_s) (.ct_ann_equiv hctx2 h2_v_s)
+          (.ct_ann_equiv hctx1 h1_v) (.ct_ann_equiv hctx2 h2_v)
           (LNExpr.lc_at_open_fvar hlc.1.2) hwf_body hswf
           (List.nodup_cons.mpr ⟨hxΓ, hnd⟩)
         -- u₃ lc
@@ -6198,12 +6239,9 @@ noncomputable def diamond_full
         hx (List.mem_append_right _ (List.mem_flatMap.mpr ⟨e, he, hm⟩))
       have hwf_body : LNCtx.wf ((x, .equiv α₁) :: Γ) :=
         fun p hp => by cases hp with | head => exact hα_lc | tail _ h => exact hwf p h
-      -- hα₁_red/hα₂_red : EquivRed Γ [] α₁ _ (from ctxRed_stack_inv), need EquivRed Γ s' for ct_ann_equiv
-      have hα₁_red_s : LNEquivRed Γ s' α₁ α' := sorry  -- stack ext for stack head
-      have hα₂_red_s : LNEquivRed Γ s' α₁ α'' := sorry  -- stack ext for stack head
       obtain ⟨u₃, hu₃l, hu₃r⟩ := diamond_full (body₁.open_at 0 (.fvar x))
         (h1_body x hxL₁) (h2_body x hxL₂)
-        (.ct_ann_equiv hctx1_inner hα₁_red_s) (.ct_ann_equiv hctx2_inner hα₂_red_s)
+        (.ct_ann_equiv hctx1_inner hα₁_red) (.ct_ann_equiv hctx2_inner hα₂_red)
         (LNExpr.lc_at_open_fvar hlc.2) hwf_body hs'_wf
         (List.nodup_cons.mpr ⟨hxΓ, hnd⟩)
       have hb₁lc := equivRed_preserves_lc (h1_body x hxL₁)
@@ -6307,11 +6345,16 @@ noncomputable def commutativity
     (hbudget : t₀.sz ≤ budget)
     : Σ' t₃ : LNExpr, PLift (LNEquivRed Γ s t₂ t₃) × PLift (LNSubRed Γ' s' t₁ t₃) ×
         (∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃) := by
-  -- With CT-ANN at full stack, ctxRed_lookup_sub now gives EquivRed Γ s t t'
-  -- directly, resolving the former stack alignment blocker (sorry #7).
-  -- The MS-PRO/ME-VAR case now closes: witness t₃ = t', top = EquivRed Γ s t t'
-  -- (from ctxRed_lookup_sub), right = MS-PRO with x ≤ t' ∈ Γ'.
-  -- Full case analysis not yet written; needs all case pairs.
+  -- BLOCKED: The MS-PRO/ME-VAR case (h_sub = ms_pro, h_equiv = me_var) requires
+  -- EquivRed Γ s t t' for the top edge, where t is an annotation from the context
+  -- and t' is its reduction. We have EquivRed Γ [] t t' from ctxRed_lookup_sub
+  -- (CT-ANN reduces annotations at nil stack), but stack extension from [] to s
+  -- is FALSE (counterexample at end of file). All candidate witnesses t₃ fail:
+  -- - t₃ = t' : top edge needs EquivRed Γ s t t' (stack extension — FALSE)
+  -- - t₃ = t  : right edge needs x ≤ t ∈ Γ' but Γ' has x ≤ t' (reduced)
+  -- - t₃ via diamond/recursion: no applicable SubRed of t at stack s exists
+  -- The root cause is CT-ANN's nil stack. If CT-ANN used the full stack s,
+  -- ctxRed_lookup_sub would give EquivRed Γ s t t' directly. See sorry #7.
   sorry
 termination_by (budget, t₀.sz)
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
@@ -6366,17 +6409,23 @@ noncomputable def equivRed_subst_diamond
     split
     · -- y = x: u'.subst = v, u.subst = v'
       -- Need: ∃ w, EquivRed Γ s v w ∧ SubRed Γ' s' v' w
-      -- With CT-ANN at full stack, extract EquivRed Γ s v v' from hctx.
-      -- Witness w = v': Left = EquivRed Γ s v v', Right = SubRed Γ' s' v' v' (refl).
-      -- Invert hctx to extract the annotation EquivRed at full stack.
-      -- ct_ann_equiv is the primary case; ct_stk is degenerate (v = v', Γ = Γ').
-      match hctx with
-      | .ct_ann_equiv hctx_inner hv_red =>
-        exact ⟨v', hv_red, subRed_refl Γ' s' v' hv'_lc⟩
-      | .ct_stk hctx_stk_inner hstk_red =>
-        -- ct_stk: context unchanged, so v = v' and Γ = Γ'.
-        -- Degenerate case: annotation didn't change, only stack reduced.
-        exact sorry
+      -- Left edge with w = v: equivRed_refl Γ s v hv_lc gives EquivRed Γ s v v ✓
+      -- Right edge: SubRed Γ' s' v' v — backwards! v' is the reduced annotation,
+      -- v is the original. There is no SubRed from v' back to v in general.
+      --
+      -- Alternative witness w = v': Left needs EquivRed Γ s v v'. We have
+      -- EquivRed Γ [] v v' (from hctx), but need it at stack s. Stack extension
+      -- is FALSE in general. This is the fundamental stack alignment problem.
+      --
+      -- The correct approach requires the mutual block: call commutativity on v
+      -- with a non-trivial SubRed (e.g., via the annotation's own reduction).
+      -- For me_var y=x, the input SubRed is the identity (subRed_refl), which
+      -- doesn't help. The actual resolution may require rethinking how me_var
+      -- on x interacts with the substitution diamond — in practice, me_pro y=x
+      -- handles the interesting case and me_var y=x is subsumed.
+      -- ROOT CAUSE: CT-ANN's nil stack. Same as commutativity MS-PRO/ME-VAR.
+      -- See sorry #7 in the file header.
+      sorry
     · -- y ≠ x: both sides are fvar y
       exact ⟨.fvar _, .me_var, .ms_equ .me_var⟩
   | me_pro hmem_pro hsub_pro =>
