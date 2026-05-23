@@ -81,3 +81,100 @@ simp_all loops on large hypotheses, cofinite sizeOf = 0, etc.
 | LN subst variants | 4 | equivRed_subst_equiv, subRed_subst_equiv |
 | PSS wf-free trans | 1 | Top ≤ Top→Top |
 | LogRel SemVal | 2 | beta_L, app_cong with concEval-based def |
+
+## Design Analysis: Eliminating ME-FUN to Fix Stack Alignment
+
+### Motivation
+
+The stack alignment problem exists because ME-FUN (empty stack) and
+ME-FOP (non-empty stack) assign different annotations to the body
+variable of a lambda:
+
+- ME-FUN at `Gamma; [] |- lam d b`: body variable x gets `.sub d`
+- ME-FOP at `Gamma; alpha::s |- lam d b`: body variable x gets `.equiv alpha`
+
+This divergence is the root cause of Lemma 22's failure: lifting a
+derivation from empty to non-empty stack changes which rule fires,
+which changes the annotation, which changes the body's behavior.
+
+### Proposal: Unified ME-FOP
+
+Eliminate ME-FUN entirely. When the stack is empty and we encounter
+`lam d b`, push a default element (the domain `d` itself) and use
+ME-FOP-style reasoning:
+
+```
+ME-FOP-UNIFIED (empty stack case):
+  Gamma;nil |- d ==-> d'    Gamma, x EQUIV d; nil |- b^x ==-> b'^x
+  -----------------------------------------------------------------
+  Gamma; nil |- lam d b ==-> lam d' b'
+
+ME-FOP-UNIFIED (non-empty stack case):
+  Gamma;nil |- d ==-> d'    Gamma, x EQUIV alpha; s |- b^x ==-> b'^x
+  -------------------------------------------------------------------
+  Gamma; alpha::s |- lam d b ==-> lam d' b'
+```
+
+Both cases use `.equiv` annotation (no `.sub`). This eliminates the
+sub-vs-equiv annotation mismatch.
+
+### Analysis: Does This Fix Stack Extension?
+
+No. The annotation VALUES still differ across stacks:
+
+- Empty stack: body variable x gets `.equiv d` (the domain)
+- Stack [alpha]: body variable x gets `.equiv alpha`
+- Stack [beta, alpha]: body variable x gets `.equiv beta`
+
+The annotation always depends on the top of the stack (or the domain
+when empty). These are different values in general (`d != alpha`),
+so Lemma 22's inductive step for the body still fails: the IH gives
+a derivation under `.equiv d` but we need one under `.equiv alpha`.
+
+The unification only eliminates the `.sub`-vs-`.equiv` KIND mismatch.
+It does NOT eliminate the VALUE mismatch (which value is stored in
+the annotation). Stack extension requires annotations to be
+stack-independent, but the whole point of the annotation is to track
+the actual argument flowing through the stack.
+
+### Alternative: Constant Annotation (Always `.equiv d`)
+
+What if the annotation is ALWAYS `.equiv d` (the domain), regardless
+of the stack? Then ME-FOP would ignore the stack element for the
+annotation:
+
+```
+  Gamma;nil |- d ==-> d'    Gamma, x EQUIV d; s' |- b^x ==-> b'^x
+  -----------------------------------------------------------------
+  Gamma; s |- lam d b ==-> lam d' b'
+  (where s' = [] if s = [], or tail(s) if s non-empty)
+```
+
+This WOULD make annotations stack-independent, fixing Lemma 22.
+But it BREAKS beta-reduction semantics: when `(lam d b)` is applied
+to argument `alpha`, the body variable x must be equivalent to `alpha`
+(the actual argument), not `d` (the declared domain). Without this
+connection, the calculus cannot model function application correctly.
+
+### Conclusion
+
+The stack alignment problem is inherent in MPSS's design. The body
+variable's annotation MUST differ between the applied case (tracks
+the actual argument from the stack) and the unapplied case (tracks
+the declared domain). No unification of ME-FUN and ME-FOP can
+simultaneously preserve both:
+
+1. **Stack extension** (Lemma 22): annotations must be independent
+   of which stack elements are present, so that derivations can be
+   lifted across stacks.
+
+2. **Beta-reduction semantics**: annotations must track the actual
+   argument, so that the body variable's behavior reflects what was
+   passed, not just what was declared.
+
+These are fundamentally incompatible requirements. The paper's proof
+has a genuine gap at this point, and no local redesign of the lambda
+rules resolves it. The viable path forward remains dissolving the
+MS-PRO/ME-VAR case into the mutual commutativity block (Option 3
+from STACK_EXTENSION_ANALYSIS.md) rather than relying on standalone
+stack extension.
