@@ -1563,6 +1563,43 @@ noncomputable def subRed_ctx_ext
     : LNSubRed ((x, ann) :: Γ) s u v :=
   subRed_ctx_mono h (LNCtx.sub_of_cons_fresh hfresh)
 
+/-! ### Existential weakening through context reduction
+
+Same-output weakening (`EquivRed Γ s u v → CtxRed Γ s Γ' s' → EquivRed Γ' s' u v`)
+is FALSE — see counterexample at end of file. However, the EXISTENTIAL version
+is TRUE: if u reduces in Γ;s, then u reduces to SOMETHING in Γ';s'. The witness
+v' may differ from v (because annotations changed), but some reduction exists.
+
+The proof is trivial via `equivRed_refl` / `subRed_refl`: the term u always
+reduces to itself (reflexivity) in any well-formed context, as long as u is
+locally closed. The derivation `h` is not inspected — it serves only to
+witness that u participated in a reduction (and hence lives in a context
+where reduction makes sense).
+
+Note: u.lc does NOT follow from `EquivRed Γ s u v` alone (counterexample:
+`me_tap` gives `EquivRed Γ s (app .top (bvar 0)) .top` with non-lc input).
+It must be provided as a hypothesis. -/
+
+/-- Existential weakening for ≡→: if Γ;s ⊢ u ≡→ v and Γ;s ↦ Γ';s',
+    then ∃ v', Γ';s' ⊢ u ≡→ v'. Proved via reflexivity. -/
+noncomputable def equivRed_weaken_exist
+    {Γ Γ' : LNCtx} {s s' : LNStack} {u v : LNExpr}
+    (_h : LNEquivRed Γ s u v)
+    (_hctx : LNCtxRed Γ s Γ' s')
+    (hlc : u.lc)
+    : Σ' v', LNEquivRed Γ' s' u v' :=
+  ⟨u, equivRed_refl Γ' s' u hlc⟩
+
+/-- Existential weakening for ≤→: if Γ;s ⊢ u ≤→ v and Γ;s ↦ Γ';s',
+    then ∃ v', Γ';s' ⊢ u ≤→ v'. Proved via reflexivity (ms_equ + equivRed_refl). -/
+noncomputable def subRed_weaken_exist
+    {Γ Γ' : LNCtx} {s s' : LNStack} {u v : LNExpr}
+    (_h : LNSubRed Γ s u v)
+    (_hctx : LNCtxRed Γ s Γ' s')
+    (hlc : u.lc)
+    : Σ' v', LNSubRed Γ' s' u v' :=
+  ⟨u, subRed_refl Γ' s' u hlc⟩
+
 /-! ### Stack extension: FALSE as stated
 
 Stack extension (Lemma 19 in the paper) claims:
