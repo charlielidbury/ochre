@@ -168,13 +168,65 @@ termination measure approach (already sketched in LNMPSS.lean) treats
 the annotation reduction as a sub-problem of the commutativity proof
 itself, avoiding the need for Lemma 22 as a separate tool.
 
-## Recommendation
+### Option 4: Weakening lemma in the mutual block
 
-The evidence strongly suggests the paper has a gap in Lemma 22's
-ME-FUN case. Our counterexamples in LNMPSS.lean formally verify that
-the underlying property (same-output stack extension) is false.
+Add `equivRed_weaken` / `subRed_weaken` to the mutual block alongside
+commutativity, diamond, and equivRed_subst_diamond.
 
-The path forward is Option 3: dissolve the MS-PRO/ME-VAR case into
-the mutual commutativity block rather than relying on Lemma 22 as a
-standalone weakening lemma. This is already the approach taken in the
-LNMPSS.lean mutual block (equivRed_subst_diamond).
+**4a. Same-output weakening:**
+`EquivRed G s u v -> CtxRed G s G' s' -> EquivRed G' s' u v`
+
+Previously DISPROVED. CtxRed changes annotations in the context. If the
+original derivation used ME-PRO to look up an annotation, the reduced
+context has a different annotation, producing a different output. The
+original v is unreachable in the reduced context.
+
+**4b. Existential-output weakening:**
+`EquivRed G s u v -> CtxRed G s G' s' -> exists v', EquivRed G' s' u v'`
+
+TRUE (trivially via equivRed_refl: take v' = u). But NOT SUFFICIENT
+for the MS-PRO/ME-VAR case. The right edge SubRed G' s' (fvar x) t3
+forces t3 to be one of {t' (via MS-PRO), .top (via MS-TOP), fvar x
+(via MS-EQU+ME-VAR, requires .equiv annotation)}. An arbitrary existential
+witness v' does not help because the right edge pins t3 to a specific
+value. See the QED argument in LNMPSS.lean sorry #7.
+
+**4c. Restructuring diamond_full to avoid G1;s1 output:**
+Have diamond_full return results in the original G;s, then apply weakening
+to lift. Fails because weakening (4a) is false.
+
+### Option 5: CT-ANN at full stack
+
+Change CT-ANN to use `EquivRed G s t t'` instead of `EquivRed G [] t t'`.
+This was tried (commit 79aa0ff8) and reverted (commit 9f8d8381). It DOES
+fix MS-PRO/ME-VAR trivially (ctxRed_lookup_sub gives EquivRed at stack s
+directly). However, it breaks ctxRed_nil_of_ctxRed, ctxRed_lookup,
+ctxRed_stack_inv, and diamond_full body construction. The paper's nil-stack
+CT-ANN is designed to work WITH Lemma 22; without Lemma 22, neither choice
+of CT-ANN avoids the gap.
+
+## Conclusion (Updated)
+
+All five options have been exhaustively investigated:
+
+| Option | Status | Why it fails |
+|--------|--------|-------------|
+| 1. Paper gap (Lemma 22 broken) | Confirmed | Machine-checked counterexample |
+| 2. Subtlety we're missing | Unlikely | All variants analyzed |
+| 3. Dissolve into mutual block | Investigated | Same stack alignment problem resurfaces |
+| 4. Weakening in mutual block | Failed | Same-output FALSE; existential insufficient |
+| 5. CT-ANN at full stack | Reverted | Shifts problem to infrastructure |
+
+The MS-PRO/ME-VAR case requires either stack extension (FALSE), weakening
+through ctxRed (FALSE or insufficient), or changing CT-ANN (shifts but does
+not resolve the problem). The paper's proof has a genuine gap at this case
+that cannot be fixed with local changes.
+
+The commutativity theorem is likely still TRUE -- the gap is in the proof
+strategy, not the statement. A fundamental rethinking of how MPSS handles
+the interaction between annotations and stacks is needed. Possible
+directions for future work:
+- A novel proof strategy for commutativity that avoids Lemma 22 entirely
+- A redesigned ctxRed that separates context and stack reductions
+- A different annotation scheme that makes annotations stack-independent
+- A completely different approach to PSS type safety (see APPROACHES.md)

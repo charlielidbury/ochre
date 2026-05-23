@@ -22,6 +22,56 @@ Lemma 22 to lift annotation EquivRed from empty to full stack.
 The commutativity theorem is likely still TRUE — but the paper's proof
 has an incomplete argument at this specific case.
 
+## Exhaustive Exploration of Weakening-Based Approaches
+
+Every plausible strategy for resolving the MS-PRO/ME-VAR case WITHOUT
+changing CT-ANN has been investigated and found to fail:
+
+### 1. equivRed_weaken in the mutual block (same output v)
+Statement: `EquivRed G s u v -> CtxRed G s G' s' -> EquivRed G' s' u v`
+Status: FALSE. Previously disproved — ctxRed changes annotations, making
+the original output v unreachable in the reduced context G'.
+
+### 2. equivRed_weaken with existential output (exists v')
+Statement: `EquivRed G s u v -> CtxRed G s G' s' -> exists v', EquivRed G' s' u v'`
+Status: TRUE (trivially via equivRed_refl), but NOT SUFFICIENT. The
+MS-PRO/ME-VAR case forces t3 = t' (the reduced annotation in G'), not
+an arbitrary witness. The right edge SubRed G' s' (fvar x) t3 can only
+be: MS-PRO (t3=t'), MS-TOP (t3=.top), or MS-EQU+ME-VAR (t3=fvar x,
+requires .equiv annotation). An existential t3 doesn't help because all
+three specific choices fail for the top edge.
+
+### 3. Restructuring diamond_full to avoid context change
+Idea: have diamond_full return results in the ORIGINAL G;s rather than
+G1;s1, then apply weakening to lift. Fails because weakening itself is
+false (approach 1).
+
+### 4. Using ctxRed_refl to dodge the problem
+Commutativity's inductive cases (ME-FUN, ME-FOP, ME-APP, ME-BET) pass
+non-trivial ctxRed to recursive calls. Even though external callers
+(Theorem 3, diamond) only need ctxRed_refl, the internal induction
+encounters MS-PRO/ME-VAR with non-trivial ctxRed. Cannot be avoided.
+
+### 5. CT-ANN at full stack (previously tried and reverted)
+Changing CT-ANN to use EquivRed G s t t' instead of EquivRed G [] t t'
+DOES fix MS-PRO/ME-VAR trivially. However, it breaks ctxRed_nil_of_ctxRed,
+ctxRed_lookup, ctxRed_stack_inv, and diamond_full body construction —
+shifting the stack alignment problem from commutativity to infrastructure.
+The paper's nil-stack CT-ANN works WITH Lemma 22; without Lemma 22, neither
+choice of CT-ANN avoids the gap.
+
+### Conclusion
+
+The MS-PRO/ME-VAR case genuinely requires either:
+(a) Stack extension/shrinking — FALSE (machine-checked counterexample)
+(b) Weakening through ctxRed — FALSE (same/existential both fail)
+(c) Changing CT-ANN — shifts the problem without resolving it
+
+The paper's proof has a gap that cannot be fixed with local changes. A
+fundamental rethinking of how MPSS handles the interaction between
+annotations and stacks is needed. The commutativity theorem itself may
+still be TRUE, but the paper's proof strategy at this case is incomplete.
+
 ## Remaining Obstacles (3 independent)
 
 ### 1. Stack alignment (15 sorrys)

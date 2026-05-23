@@ -266,6 +266,42 @@ Several kinds of `sorry` remain:
    without changing the system. The ONLY resolution is fixing CT-ANN to
    reduce annotations at the full stack s instead of nil.
 
+   ### Weakening-based approaches also fail
+
+   Adding `equivRed_weaken` / `subRed_weaken` to the mutual block with
+   commutativity was investigated as an alternative to stack extension:
+
+   (a) Same-output weakening:
+       `EquivRed Γ s u v → CtxRed Γ s Γ' s' → EquivRed Γ' s' u v`
+       Previously DISPROVED. CtxRed changes annotations, making the
+       original output v unreachable in the reduced context Γ'.
+
+   (b) Existential-output weakening:
+       `EquivRed Γ s u v → CtxRed Γ s Γ' s' → ∃ v', EquivRed Γ' s' u v'`
+       TRUE (trivially via equivRed_refl). But NOT SUFFICIENT: the right
+       edge forces t₃ to be one of {t', .top, fvar x} (see QED argument
+       above). An existential witness cannot guarantee t₃ = t'.
+
+   (c) Restructuring diamond_full to return results in original Γ;s, then
+       applying weakening to lift to Γ₁;s₁:
+       Fails because weakening (a) is false.
+
+   (d) CT-ANN at full stack (previously tried, commit 79aa0ff8, reverted
+       in 9f8d8381): DOES fix MS-PRO/ME-VAR trivially. But breaks
+       ctxRed_nil_of_ctxRed, ctxRed_lookup, ctxRed_stack_inv, and
+       diamond_full body construction. Shifts the stack alignment problem
+       from commutativity to infrastructure. The paper's nil-stack CT-ANN
+       is designed to work WITH Lemma 22; without Lemma 22, neither
+       choice of CT-ANN avoids the gap.
+
+   CONCLUSION: The MS-PRO/ME-VAR case requires either stack extension
+   (FALSE), weakening through ctxRed (FALSE in same-output form,
+   insufficient in existential form), or changing CT-ANN (shifts but does
+   not resolve the problem). The paper's proof has a genuine gap at this
+   case that cannot be fixed with local changes to the proof strategy.
+   A fundamental rethinking of how MPSS handles the interaction between
+   annotations and stacks is needed.
+
 ## Proved Lemmas
 - `equivRed_ctx_mono` / `subRed_ctx_mono`: context monotonicity — if every
   lookup in Γ is preserved in Γ', then any reduction in Γ holds in Γ'. Proved
