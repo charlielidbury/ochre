@@ -79,51 +79,41 @@ Several kinds of `sorry` remain:
 7. Stack extension for annotation terms in commutativity's MS-PRO/ME-VAR case:
    `ctxRed_lookup_sub` gives `LNEquivRed Γ [] t t'` (empty stack) but the top
    edge needs `LNEquivRed Γ s t t'` (current stack). Same-output stack extension
-   is FALSE even for annotation terms (counterexample: lam top (bvar 0) at
-   stack [.top] — ME-FOP's ME-PRO on the body variable produces a different
-   result than ME-FUN). The existential version (∃ v', EquivRed Γ s t v') is
-   trivially true but NOT SUFFICIENT: the right edge forces t₃ = t' via ms_pro.
+   is FALSE when the annotation t is a lambda (ME-FUN at [] vs ME-FOP at s
+   produce different body contexts). The existential version is trivially true
+   but NOT SUFFICIENT: the right edge forces t₃ = t' via ms_pro.
 
-   ### Restricted variants investigated and found insufficient
+   NOTE: ME-PRO now uses nil stack for its SubRed premise (see rule definition).
+   This eliminates the former counterexample cex_Γ at end of file: ME-PRO
+   output is now stack-independent (always reduces via SubRed at []). However,
+   stack extension is still FALSE for lambda terms directly (ME-FUN vs ME-FOP),
+   and .sub annotations CAN be lambdas, so the MS-PRO/ME-VAR blocker persists.
 
-   Several restricted forms of stack extension were investigated:
+   ### Impact of nil-stack ME-PRO on stack extension
 
-   (a) `u.lc ∧ ¬∃ d b, u = .lam d b → EquivRed Γ [] u v → EquivRed Γ s u v`
-       FALSE. Restricting u doesn't help because stack sensitivity propagates
-       through ANNOTATIONS, not u itself. When u = fvar x and x has .equiv
-       annotation pointing to a lambda, ME-PRO on x triggers SubRed on the
-       annotation. The annotation's SubRed uses MS-FUN (empty stack) or MS-FOP
-       (non-empty stack), producing different body contexts and thus different
-       outputs. The counterexample cex_Γ at end of file demonstrates this:
-       u = fvar "x" is lc and not a lambda, but ME-PRO reduces through the
-       annotation lam (fvar "y") (bvar 0), which behaves differently at [].
+   With nil-stack ME-PRO, stack sensitivity now enters ONLY through ME-FUN
+   vs ME-FOP (top-level lambda terms at different stacks). ME-PRO no longer
+   propagates stack sensitivity through annotation lookups. Specifically:
+   - EquivRed on fvar terms: stack extension NOW HOLDS (ME-VAR is trivially
+     stack-independent, ME-PRO uses SubRed at [] regardless of outer stack)
+   - EquivRed on lambda terms: stack extension still FALSE (ME-FUN vs ME-FOP)
+   - EquivRed on app/top terms: depends on sub-terms
 
-   (b) All annotations in Γ are non-lambdas: too restrictive for practice.
-       Annotations CAN be lambdas in well-formed contexts. Even if we
-       restricted to non-lambda annotations, nested ME-PRO chains could still
-       reach lambdas through transitive lookups.
+   The former cex_Γ counterexample (fvar "x" with annotation lam(fvar "y")(bvar 0))
+   is INVALIDATED: with nil-stack ME-PRO, the SubRed of the annotation always
+   uses MS-FUN (at []) regardless of the outer stack, so the output is identical
+   at [] and [.top]. The cex_Γ example at end of file still compiles (the []
+   derivation is unchanged) but the comment saying the [.top] derivation is
+   "NOT derivable" is now incorrect — it IS derivable via nil-stack ME-PRO.
 
-   (c) All annotations in Γ are values + existential witness:
-       `∃ v', EquivRed Γ s t v'` is trivially true via equivRed_refl, but
-       the right edge of the commutativity diagram forces t₃ = t' (the
-       specific output from ctxRed_lookup_sub), not an arbitrary witness.
-       MS-PRO gives t' (the reduced annotation in Γ'), so t₃ must be t'.
+   ### Remaining restricted variants (still insufficient)
 
-   (d) Stack-independent reduction (SIEquivRed/SISubRed): define a sub-relation
-       that omits ME-FUN, ME-FOP, MS-FUN, MS-FOP entirely. Stack extension is
-       PROVABLE for this fragment (siEquivRed_at_any_stack, siSubRed_at_any_stack).
-       However, this does NOT resolve the MS-PRO/ME-VAR case: ctxRed_lookup_sub
-       gives EquivRed Γ [] t t', but this derivation is generally NOT
-       stack-independent. ME-PRO on a variable whose annotation is a lambda
-       triggers SubRed → MS-FUN (stack-dependent). No restriction on the
-       input term u can make the derivation stack-independent, because stack
-       sensitivity enters through annotations, not u itself.
+   (a) Non-lambda restriction: `¬∃ d b, u = .lam d b → EquivRed Γ [] u v → EquivRed Γ s u v`
+       With nil-stack ME-PRO, this is now TRUE for fvar terms! But .sub
+       annotations CAN be lambdas (e.g., domain of λ(λT.0).body), so
+       the MS-PRO/ME-VAR case still encounters lambda annotations.
 
-   Root cause across all variants: stack sensitivity enters through the
-   REDUCTION RULES applied to annotations (MS-FUN vs MS-FOP), not through
-   any property of the input term u. No restriction on u alone can work.
-   The only fix is changing CT-ANN to reduce annotations at the full stack s
-   instead of nil (see resolution below).
+   (b)-(d) Same as before: insufficiently general.
 
    ### Detailed analysis of the MS-PRO/ME-VAR blocker
 
@@ -1201,14 +1191,18 @@ with the Krivine-style stack mechanism.
 -/
 inductive LNEquivRed : LNCtx → LNStack → LNExpr → LNExpr → Type where
   /-- ME-PRO: Promote through equivalence annotation.
-      `x ≡ α ∈ Γ`  and  `Γ; s ⊢ α ≤→ α'`
+      `x ≡ α ∈ Γ`  and  `Γ; [] ⊢ α ≤→ α'`
       ⟹  `Γ; s ⊢ fvar x ≡→ α'`
 
-      In locally nameless, free variables are looked up directly by name.
-      No shifting is needed (unlike de Bruijn). -/
+      The SubRed premise uses the NIL stack [], not the ambient stack s.
+      Annotations are always reduced stack-independently: they don't receive
+      arguments from the stack. This makes ME-PRO's output deterministic
+      regardless of the ambient stack, which eliminates the stack-sensitivity
+      that previously entered through annotation reductions (MS-FUN vs MS-FOP
+      producing different body contexts). -/
   | me_pro {Γ s x α α'} :
       LNCtx.mem_equiv Γ x α →
-      LNSubRed Γ s α α' →
+      LNSubRed Γ [] α α' →
       LNEquivRed Γ s (.fvar x) α'
 
   /-- ME-BET: Simultaneous β-reduction (cofinite quantification).
@@ -2903,7 +2897,7 @@ inductive LNEquivRed.noPromoAt : String → LNCtx → LNStack → LNExpr → LNE
   | me_pro {x z Γ s α α'} :
       z ≠ x →
       LNCtx.mem_equiv Γ z α →
-      LNSubRed.noPromoAt x Γ s α α' →
+      LNSubRed.noPromoAt x Γ [] α α' →
       LNEquivRed.noPromoAt x Γ s (.fvar z) α'
   | me_bet {x : String} {Γ : LNCtx} {s : LNStack} {dom body t v v' : LNExpr} (L : List String) :
       (∀ y, y ∉ L → LNEquivRed.noPromoAt x ((y, LNAnn.equiv v) :: Γ) s (body.open_at 0 (.fvar y)) (t.open_at 0 (.fvar y))) →
@@ -4007,7 +4001,7 @@ noncomputable def noPromoAt_no_equiv_fresh
           intro heq; subst heq; exact hD (List.mem_cons_self _ _)
         -- x ∉ α.fvs from hB
         have hx_α : x ∉ α.fvs := hB x' α hmem
-        exact .me_pro hne hmem (ih_sub hA hB hC hx_α))
+        exact .me_pro hne hmem (ih_sub hA hB (fun _ he => absurd he (List.not_mem_nil _)) hx_α))
       -- me_bet: app (lam dom body) v_bet → t^v'
       (fun {Γ_b s_b dom body t v_bet v'_bet} L _hbody _hv ih_body ih_v hA hB hC hD => by
         have hD_v : x ∉ v_bet.fvs := fun hmem =>
@@ -4195,7 +4189,7 @@ noncomputable def noPromoAt_no_equiv_fresh_sub
       -- me_pro
       (fun {Γ_p s_p x' α α'} hmem _hsub ih_sub hA hB hC hD => by
         have hne : x' ≠ x := by intro heq; subst heq; exact hD (List.mem_cons_self _ _)
-        exact .me_pro hne hmem (ih_sub hA hB hC (hB x' α hmem)))
+        exact .me_pro hne hmem (ih_sub hA hB (fun _ he => absurd he (List.not_mem_nil _)) (hB x' α hmem)))
       -- me_bet
       (fun {Γ_b s_b dom body t v_bet v'_bet} L _hbody _hv ih_body ih_v hA hB hC hD => by
         have hD_v : x ∉ v_bet.fvs := fun hmem => hD (List.mem_append_right _ hmem)
@@ -5087,9 +5081,9 @@ theorem equivRed_preserves_lc
     @LNEquivRed.rec
       (motive_1 := fun Γ s u v _ => Γ.wf → s.wf → u.lc → v.lc)
       (motive_2 := fun Γ s u v _ => Γ.wf → s.wf → u.lc → v.lc)
-      -- me_pro: result is α' from SubRed Γ s α α'
-      (fun hmem _hsub ih_sub hwf hswf _hlc =>
-        ih_sub hwf hswf (mem_equiv_lc hmem hwf))
+      -- me_pro: result is α' from SubRed Γ [] α α'
+      (fun hmem _hsub ih_sub hwf _hswf _hlc =>
+        ih_sub hwf (fun _ he => absurd he (List.not_mem_nil _)) (mem_equiv_lc hmem hwf))
       -- me_bet: result is t.open_at 0 v'
       (fun (L : List String) _hbody _hv ih_body ih_v hwf hswf hlc => by
         rename_i Γ_i s_i dom_i body_i t_i v_i v'_i
@@ -5196,9 +5190,9 @@ theorem subRed_preserves_lc
     @LNSubRed.rec
       (motive_1 := fun Γ s u v _ => Γ.wf → s.wf → u.lc → v.lc)
       (motive_2 := fun Γ s u v _ => Γ.wf → s.wf → u.lc → v.lc)
-      -- me_pro
-      (fun hmem _hsub ih_sub hwf hswf _hlc =>
-        ih_sub hwf hswf (mem_equiv_lc hmem hwf))
+      -- me_pro: SubRed is now at stack []
+      (fun hmem _hsub ih_sub hwf _hswf _hlc =>
+        ih_sub hwf (fun _ he => absurd he (List.not_mem_nil _)) (mem_equiv_lc hmem hwf))
       -- me_bet
       (fun (L : List String) _hbody _hv ih_body ih_v hwf hswf hlc => by
         rename_i Γ_i s_i dom_i body_i t_i v_i v'_i
@@ -5339,9 +5333,9 @@ theorem equivRed_preserves_not_mem_fvs
         x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
       (motive_2 := fun Γ s u v _ =>
         x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
-      -- me_pro: output is α' from SubRed Γ s α α'; x ∉ α.fvs from context freshness
-      (fun hmem _hsub ih_sub _hfvs hctx hstk =>
-        ih_sub (not_mem_fvs_of_mem_equiv hmem hctx) hctx hstk)
+      -- me_pro: output is α' from SubRed Γ [] α α'; x ∉ α.fvs from context freshness
+      (fun hmem _hsub ih_sub _hfvs hctx _hstk =>
+        ih_sub (not_mem_fvs_of_mem_equiv hmem hctx) hctx (fun _ he => absurd he (List.not_mem_nil _)))
       -- me_bet: output is t.open_at 0 v'
       (fun (L : List String) _hbody _hv ih_body ih_v hfvs hctx hstk => by
         rename_i Γ_i s_i dom_i body_i t_i v_i v'_i
@@ -5515,9 +5509,9 @@ theorem subRed_preserves_not_mem_fvs
         x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
       (motive_2 := fun Γ s u v _ =>
         x ∉ u.fvs → x ∉ LNCtx.all_fvs Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
-      -- me_pro
-      (fun hmem _hsub ih_sub _hfvs hctx hstk =>
-        ih_sub (not_mem_fvs_of_mem_equiv hmem hctx) hctx hstk)
+      -- me_pro: SubRed now at stack []
+      (fun hmem _hsub ih_sub _hfvs hctx _hstk =>
+        ih_sub (not_mem_fvs_of_mem_equiv hmem hctx) hctx (fun _ he => absurd he (List.not_mem_nil _)))
       -- me_bet
       (fun (L : List String) _hbody _hv ih_body ih_v hfvs hctx hstk => by
         rename_i Γ_i s_i dom_i body_i t_i v_i v'_i
@@ -5712,9 +5706,9 @@ theorem subRed_preserves_not_mem_fvs_gen
         x ∉ u.fvs → LNCtx.fresh_in_anns x Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
       (motive_2 := fun Γ s u v _ =>
         x ∉ u.fvs → LNCtx.fresh_in_anns x Γ → (∀ e ∈ s, x ∉ e.fvs) → x ∉ v.fvs)
-      -- me_pro
-      (fun hmem _hsub ih_sub _hfvs hctx hstk =>
-        ih_sub (not_mem_fvs_of_mem_equiv_gen hmem hctx) hctx hstk)
+      -- me_pro: SubRed now at stack []
+      (fun hmem _hsub ih_sub _hfvs hctx _hstk =>
+        ih_sub (not_mem_fvs_of_mem_equiv_gen hmem hctx) hctx (fun _ he => absurd he (List.not_mem_nil _)))
       -- me_bet
       (fun (L : List String) _hbody _hv ih_body ih_v hfvs hctx hstk => by
         rename_i Γ_i s_i dom_i body_i t_i v_i v'_i
@@ -5919,11 +5913,11 @@ noncomputable def equivRed_ctx_drop_fresh
       (motive_2 := fun Γ_r s_r u_r v_r _ =>
         LNCtx.fresh_in_anns x Γ_r → (∀ e ∈ s_r, x ∉ e.fvs) → x ∉ u_r.fvs →
         LNSubRed (drop_first x Γ_r) s_r u_r v_r)
-      -- me_pro z: fvar z → α' via SubRed on z's equiv annotation α
-      (fun {Γ_p s_p z α α'} hmem _hsub ih_sub hfresh_p hstk_p hfvs_p => by
+      -- me_pro z: fvar z → α' via SubRed Γ [] on z's equiv annotation α
+      (fun {Γ_p s_p z α α'} hmem _hsub ih_sub hfresh_p _hstk_p hfvs_p => by
         have hne : z ≠ x := fun heq => hfvs_p (heq ▸ List.mem_cons_self _ _)
         have hx_α : x ∉ α.fvs := not_mem_fvs_of_mem_equiv_gen hmem hfresh_p
-        exact .me_pro (drop_first_mem_equiv_ne hne hmem) (ih_sub hfresh_p hstk_p hx_α))
+        exact .me_pro (drop_first_mem_equiv_ne hne hmem) (ih_sub hfresh_p (fun _ he => absurd he (List.not_mem_nil _)) hx_α))
       -- me_bet: app (lam dom body) v_bet → t^v'
       (fun {Γ_b s_b dom body t v_bet v'_bet} L _hbody _hv ih_body ih_v hfresh_b hstk_b hfvs_b => by
         have hv_fvs : x ∉ v_bet.fvs := fun hmem => hfvs_b (List.mem_append_right _ hmem)
@@ -6053,11 +6047,11 @@ noncomputable def subRed_ctx_drop_fresh
       (motive_2 := fun Γ_r s_r u_r v_r _ =>
         LNCtx.fresh_in_anns x Γ_r → (∀ e ∈ s_r, x ∉ e.fvs) → x ∉ u_r.fvs →
         LNSubRed (drop_first x Γ_r) s_r u_r v_r)
-      -- me_pro z: fvar z → α' via SubRed on z's equiv annotation α
-      (fun {Γ_p s_p z α α'} hmem _hsub ih_sub hfresh_p hstk_p hfvs_p => by
+      -- me_pro z: fvar z → α' via SubRed Γ [] on z's equiv annotation α
+      (fun {Γ_p s_p z α α'} hmem _hsub ih_sub hfresh_p _hstk_p hfvs_p => by
         have hne : z ≠ x := fun heq => hfvs_p (heq ▸ List.mem_cons_self _ _)
         have hx_α : x ∉ α.fvs := not_mem_fvs_of_mem_equiv_gen hmem hfresh_p
-        exact .me_pro (drop_first_mem_equiv_ne hne hmem) (ih_sub hfresh_p hstk_p hx_α))
+        exact .me_pro (drop_first_mem_equiv_ne hne hmem) (ih_sub hfresh_p (fun _ he => absurd he (List.not_mem_nil _)) hx_α))
       -- me_bet: app (lam dom body) v_bet → t^v'
       (fun {Γ_b s_b dom body t v_bet v'_bet} L _hbody _hv ih_body ih_v hfresh_b hstk_b hfvs_b => by
         have hv_fvs : x ∉ v_bet.fvs := fun hmem => hfvs_b (List.mem_append_right _ hmem)
@@ -6785,20 +6779,19 @@ noncomputable def equivRed_subst_diamond
       -- Goal: ∃ w, EquivRed Γ s (u'.subst_fvar x v) w ∧ SubRed Γ' s' ((fvar y).subst_fvar x v') w
       -- Since y = x: (fvar y).subst_fvar x v' = v'
       -- Since x ∉ u'.fvs: u'.subst_fvar x v = u'
+      -- With nil-stack ME-PRO, hsub_pro : SubRed ((x,.equiv v)::Γ) [] v u'
       have hx_u'_fvs : x ∉ u'.fvs :=
         subRed_preserves_not_mem_fvs_gen hsub_pro hx_v
           (LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hx_v)
             (LNCtx.fresh_in_anns_of_not_mem_all_fvs hx_all_fvs))
-          hx_s
+          (fun _ he => absurd he (List.not_mem_nil _))
       rw [subst_fvar_notin hx_u'_fvs, show (LNExpr.fvar y).subst_fvar x v' = v' from by
         simp [LNExpr.subst_fvar, hyx]]
       -- Goal: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' v' w
       --
-      -- STRATEGY: call commutativity on v at the extended context, then:
-      -- - Left edge: drop x via equivRed_ctx_drop_fresh (x fresh in u', v, Γ, s)
-      -- - Right edge: drop x via subRed_ctx_drop_fresh (x fresh in v, v', Γ', s')
-      --   This yields SubRed Γ' s' v t₃ — but we need SubRed Γ' s' v' t₃.
-      --   The v → v' input translation is the remaining gap (stack alignment problem).
+      -- STRATEGY: call commutativity on v at the extended context at stack [], then:
+      -- - Left edge: drop x via equivRed_ctx_drop_fresh
+      -- - Right edge: still blocked (v → v' input translation + stack [] → s')
       have hwf_ext : LNCtx.wf ((x, .equiv v) :: Γ) :=
         fun p hp => by cases hp with
         | head => exact hv_lc
@@ -6806,21 +6799,20 @@ noncomputable def equivRed_subst_diamond
       have hx_dom : x ∉ LNCtx.dom Γ := LNCtx.not_mem_dom_of_not_mem_all_fvs hx_all_fvs
       obtain ⟨t₃, htop, hright, _hnp_ih⟩ :=
         commutativity v.sz v
-          (equivRed_refl ((x, .equiv v) :: Γ) s v hv_lc)
-          hsub_pro hctx hv_lc
+          (equivRed_refl ((x, .equiv v) :: Γ) [] v hv_lc)
+          hsub_pro (ctxRed_nil_of_ctxRed hctx) hv_lc
           (List.nodup_cons.mpr ⟨hx_dom, hnd⟩)
-          hwf_ext hswf (Nat.le_refl v.sz)
-      -- htop : PLift (EquivRed ((x,.equiv v)::Γ) s u' t₃)
-      -- hright : PLift (SubRed ((x,.equiv v')::Γ') s' v t₃)
+          hwf_ext (fun _ he => absurd he (List.not_mem_nil _)) (Nat.le_refl v.sz)
+      -- htop : PLift (EquivRed ((x,.equiv v)::Γ) [] u' t₃) — note: at stack []
+      -- hright : PLift (SubRed ((x,.equiv v')::Γ') [] v t₃) — note: at stack []
       --
-      -- LEFT EDGE: drop x from EquivRed
-      have hleft : LNEquivRed Γ s u' t₃ :=
-        equivRed_ctx_drop_fresh htop.down hx_u'_fvs hx_v hx_all_fvs hx_s
-      -- RIGHT EDGE: SubRed ((x,.equiv v')::Γ') s' v t₃ → SubRed Γ' s' v' t₃
-      -- Currently blocked: need both context drop (x fresh) AND input translation
-      -- (v → v'). The input translation requires stack alignment (EquivRed Γ [] v v'
-      -- needs to be at stack s'). This is the fundamental "stack alignment problem".
-      exact ⟨t₃, hleft, sorry⟩
+      -- LEFT EDGE: need EquivRed Γ s u' t₃ but htop is at stack [].
+      -- After ctx_drop we get EquivRed Γ [] u' t₃, still at [].
+      -- Need stack extension from [] to s on u' — same class of problem.
+      -- RIGHT EDGE: SubRed ((x,.equiv v')::Γ') [] v t₃ → SubRed Γ' s' v' t₃
+      -- Need context drop + input translation + stack extension from [] to s'.
+      -- Both edges are still blocked by stack alignment (now at [] vs s/s').
+      exact ⟨t₃, sorry, sorry⟩
     · -- y ≠ x: hmem says y has .equiv annotation in Γ (looked up past x)
       -- Extract α from Γ (past the head x entry)
       have hmem_Γ : LNCtx.mem_equiv Γ y α := by
@@ -6829,12 +6821,12 @@ noncomputable def equivRed_subst_diamond
         simp only [hyx', ite_false] at hmem_pro; exact hmem_pro
       -- x ∉ α.fvs (since α is from Γ and x ∉ all_fvs Γ)
       have hx_α : x ∉ α.fvs := not_mem_fvs_of_mem_equiv hmem_Γ hx_all_fvs
-      -- x ∉ u'.fvs (SubRed from α in extended context preserves freshness)
+      -- x ∉ u'.fvs (SubRed Γ [] from α in extended context preserves freshness)
       have hx_u'_fvs : x ∉ u'.fvs :=
         subRed_preserves_not_mem_fvs_gen hsub_pro hx_α
           (LNCtx.fresh_in_anns_cons (by simp [LNAnn.fvs]; exact hx_v)
             (LNCtx.fresh_in_anns_of_not_mem_all_fvs hx_all_fvs))
-          hx_s
+          (fun _ he => absurd he (List.not_mem_nil _))
       -- Rewrite the subst_fvar in the goal
       have hyx_beq : ¬(y == x) = true := by simp [beq_iff_eq]; exact hyx
       rw [subst_fvar_notin hx_u'_fvs,
@@ -6842,9 +6834,13 @@ noncomputable def equivRed_subst_diamond
             simp [LNExpr.subst_fvar, hyx_beq]]
       -- Goal: ∃ w, EquivRed Γ s u' w ∧ SubRed Γ' s' (fvar y) w
       -- y has .equiv annotation α in Γ; after ctxRed, y has .equiv α' in Γ'
-      -- with EquivRed Γ [] α α'. Need a diamond of SubRed Γ s α u' and
-      -- EquivRed Γ [] α α' at different stacks (s vs []).
-      -- This is the stack alignment problem (same as ME-PRO y=x / ME-VAR y=x).
+      -- with EquivRed Γ [] α α'.
+      -- With nil-stack ME-PRO: hsub_pro is SubRed ((x,.equiv v)::Γ) [] α u'.
+      -- After dropping x: SubRed Γ [] α u'.
+      -- ctxRed_lookup_equiv gives: EquivRed Γ [] α α'.
+      -- Now BOTH are at stack [] — this is a commutativity instance at matching stacks!
+      -- However, the goal edges are at stacks s and s', so we still need
+      -- stack extension for the output (u' at [] → s, and fvar y at [] → s').
       sorry
   | _ => sorry
 termination_by (budget, u.sz)
@@ -7053,22 +7049,32 @@ example : LNEquivRed [] [.top] (.lam .top (.bvar 0)) (.lam .top .top) := by
 
 /-! ### COUNTEREXAMPLE: equivRed_stack_ext and subRed_stack_ext are FALSE
 
-The failure mode involves ME-PRO on a variable x whose annotation α is a lambda.
-Under empty stack, SubRed of α uses MS-FUN which gives the cofinitely-quantified
-body variable z a `.sub dom` annotation. Under this annotation, MS-PRO on z can
-fire, producing `dom` as output. Under non-empty stack, SubRed of α would use
-MS-FOP which gives z a `.equiv α_stack` annotation. Under this annotation, MS-PRO
-on z CANNOT fire (needs `.sub`), and the result `dom` is unreachable.
+NOTE (post nil-stack ME-PRO): With nil-stack ME-PRO, equivRed_stack_ext is now
+TRUE for fvar terms (ME-PRO always reduces at [], ME-VAR is trivially stable).
+The counterexample below is INVALIDATED for equivRed on fvar. However,
+subRed_stack_ext remains FALSE for lambda terms (MS-FUN vs MS-FOP) and
+equivRed_stack_ext remains FALSE for lambda terms (ME-FUN vs ME-FOP).
+
+FORMER failure mode (pre nil-stack ME-PRO): ME-PRO on variable x whose annotation
+α is a lambda would use SubRed at the ambient stack, causing MS-FUN (at []) vs
+MS-FOP (at non-empty stack) to produce different body contexts.
+With nil-stack ME-PRO, this no longer applies — ME-PRO always uses SubRed at [].
+
+REMAINING failure mode: direct SubRed/EquivRed on lambda terms still differs
+at different stacks. MS-FUN gives `.sub dom` annotation, MS-FOP gives `.equiv α`.
 
 Concrete instance:
   Γ = [x ≡ (λy.0), y ≤ ⊤]
   Under Γ;[]: fvar "x" ≡→ λ(fvar "y").(fvar "y")
     via ME-PRO with α = λ(fvar "y").(bvar 0)
     then SubRed via MS-FUN: body z ≤→ fvar "y" via MS-PRO (z ≤ fvar "y")
-  Under Γ;[⊤]: ME-PRO would need SubRed Γ [⊤] α α'
-    MS-FOP body: z ≡ ⊤, need fvar z ≤→ fvar "y"
-    But under .equiv ⊤: MS-PRO fails (need .sub), ME-PRO gives ⊤' not fvar "y"
-    Result fvar "y" is UNREACHABLE.
+
+  NOTE (post nil-stack ME-PRO): With nil-stack ME-PRO, this EquivRed counterexample
+  is INVALIDATED for fvar terms. ME-PRO always uses SubRed at [], so the [.top]
+  derivation IS derivable: ME-PRO with SubRed at [] uses MS-FUN (not MS-FOP),
+  giving z a .sub annotation, allowing MS-PRO to fire. The output is the same
+  at both stacks. However, subRed_stack_ext remains FALSE for lambda terms
+  (MS-FUN vs MS-FOP give different body contexts).
 -/
 
 -- The [] derivation EXISTS (verified by Lean):
@@ -7084,14 +7090,12 @@ example : LNEquivRed cex_Γ []
       exact .ms_pro (by simp [LNCtx.mem_sub, LNCtx.lookup'])
       ))
 
--- The [.top] derivation is NOT derivable:
--- LNEquivRed cex_Γ [.top] (.fvar "x") (.lam (.fvar "y") (.fvar "y"))
--- would require LNSubRed cex_Γ [.top] (.lam (.fvar "y") (.bvar 0)) (.lam (.fvar "y") (fvar "y"))
--- which requires MS-FOP body: LNSubRed [(z, .equiv .top), ...] [] (fvar z) (fvar "y")
--- This is unreachable: MS-PRO needs .sub (have .equiv), MS-EQU+ME-PRO gives ⊤' not fvar "y",
--- MS-TOP gives .top not fvar "y", ME-VAR gives fvar z not fvar "y".
+-- NOTE (post nil-stack ME-PRO): The [.top] derivation IS now derivable!
+-- With nil-stack ME-PRO, SubRed is always at [], so MS-FUN is used regardless
+-- of the outer stack. The cex_Γ EquivRed counterexample for equivRed_stack_ext
+-- on fvar terms is invalidated. Stack extension for EquivRed on fvar terms NOW HOLDS.
 
--- Similarly, subRed_stack_ext is FALSE:
+-- However, subRed_stack_ext is STILL FALSE for lambda terms:
 -- LNSubRed cex_Γ [] (.lam (.fvar "y") (.bvar 0)) (.lam (.fvar "y") (.fvar "y")) holds
 -- (via MS-FUN with body MS-PRO), but
 -- LNSubRed cex_Γ [.top] (.lam (.fvar "y") (.bvar 0)) (.lam (.fvar "y") (.fvar "y"))
@@ -7175,7 +7179,7 @@ def siEquivRed_at_any_stack {Γ : LNCtx} {u v : LNExpr}
   | .me_var => .me_var
   | .me_tap => .me_tap
   | .me_pro hmem hsub =>
-    .me_pro hmem (siSubRed_at_any_stack hsub s)
+    .me_pro hmem (siSubRed_at_any_stack hsub [])
   | .me_app (v := v) hf hv =>
     -- ME-APP pushes v onto the stack for f, and reduces v at []
     .me_app (siEquivRed_at_any_stack hf (v :: s)) (siEquivRed_at_any_stack hv [])
