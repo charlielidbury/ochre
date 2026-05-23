@@ -2876,6 +2876,205 @@ noncomputable def noPromoAt_fresh_sub
           exact ih w hw_L (not_mem_dom_cons (Ne.symm hw_ne_x) hx)))
   exact go h hx
 
+/-! #### Context drop: remove an unused .equiv binding
+
+If `noPromoAt x` holds for an EquivRed/SubRed derivation in context `(x,.equiv v)::Γ`,
+then the derivation is valid in `Γ` alone — the `x` binding is never used.
+
+We define `drop_first x Γ` to remove the first entry with key `x`, prove helper
+lemmas, and then prove the main theorem by mutual induction on noPromoAt using
+`@LNEquivRed.noPromoAt.rec`. -/
+
+/-- Remove the first entry with key `x` from a context. -/
+private def drop_first (x : String) : LNCtx → LNCtx
+  | [] => []
+  | (y, ann) :: rest =>
+    if y = x then rest
+    else (y, ann) :: drop_first x rest
+
+private theorem drop_first_head (x : String) (ann : LNAnn) (Γ : LNCtx)
+    : drop_first x ((x, ann) :: Γ) = Γ := by
+  simp [drop_first]
+
+private theorem drop_first_cons_ne (x y : String) (ann : LNAnn) (Γ : LNCtx) (hne : y ≠ x)
+    : drop_first x ((y, ann) :: Γ) = (y, ann) :: drop_first x Γ := by
+  simp [drop_first, hne]
+
+private theorem drop_first_lookup_ne (x z : String) (Γ : LNCtx) (hne : z ≠ x)
+    : LNCtx.lookup' (drop_first x Γ) z = LNCtx.lookup' Γ z := by
+  induction Γ with
+  | nil => rfl
+  | cons p rest ih =>
+    obtain ⟨y, ann⟩ := p
+    simp only [drop_first]
+    by_cases hyx : y = x
+    · subst hyx
+      simp only [ite_true, LNCtx.lookup']
+      rw [beq_false_of_ne' (Ne.symm hne)]
+      simp [ih]
+    · simp only [hyx, ite_false, LNCtx.lookup']
+      by_cases hyz : y == z
+      · simp [hyz]
+      · simp [hyz, ih]
+
+private theorem drop_first_mem_equiv_ne {x z : String} {Γ : LNCtx} {α : LNExpr}
+    (hne : z ≠ x) (hmem : LNCtx.mem_equiv Γ z α)
+    : LNCtx.mem_equiv (drop_first x Γ) z α := by
+  unfold LNCtx.mem_equiv at *
+  rw [drop_first_lookup_ne x z Γ hne]; exact hmem
+
+private theorem drop_first_mem_sub_ne {x z : String} {Γ : LNCtx} {t : LNExpr}
+    (hne : z ≠ x) (hmem : LNCtx.mem_sub Γ z t)
+    : LNCtx.mem_sub (drop_first x Γ) z t := by
+  unfold LNCtx.mem_sub at *
+  rw [drop_first_lookup_ne x z Γ hne]; exact hmem
+
+set_option maxHeartbeats 1600000 in
+/-- Context drop for EquivRed: if `noPromoAt x` holds, removing `x`'s binding
+    from the context preserves the reduction.
+
+    The proof is by mutual induction on the noPromoAt derivation using
+    `@LNEquivRed.noPromoAt.rec`, producing `EquivRed (drop_first x Γ) s e u`
+    (resp. `SubRed (drop_first x Γ) s e u`).
+
+    For the top-level statement where `Γ = (x, .equiv v) :: Γ_tail`, we have
+    `drop_first x ((x, .equiv v) :: Γ_tail) = Γ_tail`, so the conclusion
+    simplifies to `EquivRed Γ_tail s e u`. -/
+noncomputable def equivRed_ctx_drop
+    {x : String} {v : LNExpr} {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
+    (hnp : LNEquivRed.noPromoAt x ((x, .equiv v) :: Γ) s e u)
+    : LNEquivRed Γ s e u := by
+  have result :=
+    @LNEquivRed.noPromoAt.rec x
+      (fun Γ_np s e u _ => LNEquivRed (drop_first x Γ_np) s e u)
+      (fun Γ_np s e u _ => LNSubRed (drop_first x Γ_np) s e u)
+      -- me_pro: z ≠ x, z ≡ α ∈ Γ_np, SubRed.noPromoAt x Γ_np s α α'
+      (fun hne hmem _hnp ih_sub =>
+        .me_pro (drop_first_mem_equiv_ne hne hmem) ih_sub)
+      -- me_bet: L, ∀ y ∉ L, noPromoAt x ((y,.equiv v_bet)::Γ_np) s body^y t^y,
+      --         noPromoAt x Γ_np [] v_bet v'_bet
+      (fun L _hbody _hv ih_body ih_v =>
+        .me_bet (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (drop_first_cons_ne x y (.equiv _) _ hy_ne) (ih_body y hy_L))
+          ih_v)
+      -- me_top
+      .me_top
+      -- me_var
+      .me_var
+      -- me_tap
+      .me_tap
+      -- me_app
+      (fun _hnp_u _hnp_v ih_u ih_v => .me_app ih_u ih_v)
+      -- me_fun: L, noPromoAt dom, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fun (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (drop_first_cons_ne x y (.sub _) _ hy_ne) (ih_body y hy_L)))
+      -- me_fop: L, noPromoAt dom, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fop (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (drop_first_cons_ne x y (.equiv _) _ hy_ne) (ih_body y hy_L)))
+      -- ms_pro: z ≠ x, z ≤ t ∈ Γ_np
+      (fun hne hmem => .ms_pro (drop_first_mem_sub_ne hne hmem))
+      -- ms_top
+      .ms_top
+      -- ms_equ: noPromoAt equiv
+      (fun _hnp ih_equiv => .ms_equ ih_equiv)
+      -- ms_app
+      (fun _hnp_u ih_u => .ms_app ih_u)
+      -- ms_fun: L, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_body ih_body =>
+        .ms_fun (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (drop_first_cons_ne x y (.sub _) _ hy_ne) (ih_body y hy_L)))
+      -- ms_fop: L, ∀ y ∉ L, noPromoAt body
+      (fun L _hnp_body ih_body =>
+        .ms_fop (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (drop_first_cons_ne x y (.equiv _) _ hy_ne) (ih_body y hy_L)))
+      ((x, .equiv v) :: Γ) s e u hnp
+  rwa [drop_first_head] at result
+
+/-- Context drop for SubRed: if `noPromoAt x` holds, removing `x`'s binding
+    from the context preserves the reduction. -/
+noncomputable def subRed_ctx_drop
+    {x : String} {v : LNExpr} {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
+    (hnp : LNSubRed.noPromoAt x ((x, .equiv v) :: Γ) s e u)
+    : LNSubRed Γ s e u := by
+  have result :=
+    @LNSubRed.noPromoAt.rec x
+      (fun Γ_np s e u _ => LNEquivRed (drop_first x Γ_np) s e u)
+      (fun Γ_np s e u _ => LNSubRed (drop_first x Γ_np) s e u)
+      -- me_pro: z ≠ x, z ≡ α ∈ Γ_np, SubRed.noPromoAt x Γ_np s α α'
+      (fun hne hmem _hnp ih_sub =>
+        .me_pro (drop_first_mem_equiv_ne hne hmem) ih_sub)
+      -- me_bet
+      (fun L _hbody _hv ih_body ih_v =>
+        .me_bet (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (drop_first_cons_ne x y (.equiv _) _ hy_ne) (ih_body y hy_L))
+          ih_v)
+      -- me_top
+      .me_top
+      -- me_var
+      .me_var
+      -- me_tap
+      .me_tap
+      -- me_app
+      (fun _hnp_u _hnp_v ih_u ih_v => .me_app ih_u ih_v)
+      -- me_fun
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fun (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (drop_first_cons_ne x y (.sub _) _ hy_ne) (ih_body y hy_L)))
+      -- me_fop
+      (fun L _hnp_dom _hnp_body ih_dom ih_body =>
+        .me_fop (x :: L) ih_dom
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact equivRed_cast_ctx (drop_first_cons_ne x y (.equiv _) _ hy_ne) (ih_body y hy_L)))
+      -- ms_pro
+      (fun hne hmem => .ms_pro (drop_first_mem_sub_ne hne hmem))
+      -- ms_top
+      .ms_top
+      -- ms_equ
+      (fun _hnp ih_equiv => .ms_equ ih_equiv)
+      -- ms_app
+      (fun _hnp_u ih_u => .ms_app ih_u)
+      -- ms_fun
+      (fun L _hnp_body ih_body =>
+        .ms_fun (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (drop_first_cons_ne x y (.sub _) _ hy_ne) (ih_body y hy_L)))
+      -- ms_fop
+      (fun L _hnp_body ih_body =>
+        .ms_fop (x :: L)
+          (fun y hy => by
+            have hy_ne : y ≠ x := fun heq => hy (heq ▸ List.mem_cons_self _ _)
+            have hy_L : y ∉ L := fun h => hy (List.mem_cons_of_mem _ h)
+            exact subRed_cast_ctx (drop_first_cons_ne x y (.equiv _) _ hy_ne) (ih_body y hy_L)))
+      ((x, .equiv v) :: Γ) s e u hnp
+  rwa [drop_first_head] at result
+
 -- noPromoAt rename: binder rename x → y preserves noPromoAt z (when z ≠ y or x = y)
 -- Proved by mutual induction on noPromoAt using the mutual recursor.
 set_option maxHeartbeats 12800000 in
