@@ -164,6 +164,32 @@ Several kinds of `sorry` remain:
    - MS-TOP: t₃ = Top (top edge needs t ≡→ Top — not general)
    No alternative completion exists.
 
+   **Candidate t₃ = t via equivRed_refl + original annotation in Γ':**
+   Top: EquivRed Γ s t t via equivRed_refl — works if t is lc. ✓
+   Right: MS-PRO needs x ≤ t ∈ Γ'. But Γ' has x ≤ t' (reduced), not x ≤ t. ✗
+
+   **Candidate t₃ = fvar x via MS-EQU + ME-VAR for right edge:**
+   Right: SubRed Γ' s' (fvar x) (fvar x) via ms_equ(me_var) — requires x to
+   have .equiv annotation, but MS-PRO gave x a .sub annotation. ✗
+   (Even if it worked, top edge needs t ≡→ fvar x — not general.)
+
+   **Candidate t₃ = .top via MS-TOP for right edge:**
+   Right: SubRed Γ' s' (fvar x) .top via ms_top — always works. ✓
+   Top: EquivRed Γ s t .top — only holds if t reduces to Top. Not general. ✗
+
+   **Candidate: choose ctxRed_refl (Γ' = Γ, s' = s) to avoid the problem:**
+   This would give: Right = MS-PRO with x ≤ t ∈ Γ (original, unreduced). ✓
+   Top = equivRed_refl Γ s t t. ✓ Both edges close.
+   BUT commutativity takes hctx as INPUT — the caller provides a specific
+   ctxRed. The theorem must work for ALL Γ';s' with Γ;s ↦ Γ';s', so we
+   cannot choose ctxRed_refl; we must handle the given Γ'. ✗
+
+   **Candidate: weaken conclusion to use Γ;[] instead of Γ';s':**
+   Even with Γ' = Γ, the right edge MS-PRO gives x ≤ t (original), so
+   t₃ = t and top = equivRed_refl. But the right edge is at stack [] while
+   the top edge is at stack s — different stacks. And the conclusion
+   quantifies over ALL extended contexts anyway, so weakening doesn't help. ✗
+
    **Root cause:** CT-ANN reduces annotations at nil stack ([] in the
    EquivRed premise of ct_ann_sub/ct_ann_equiv), but commutativity needs
    the annotation's EquivRed at the CURRENT stack s.
@@ -185,11 +211,20 @@ Several kinds of `sorry` remain:
    (which already builds EquivRed at arbitrary stacks via equivRed_refl) and
    would make stack extension unnecessary throughout the development.
 
-   STATUS: blocked on this paper gap. The commutativity theorem and
-   equivRed_subst_diamond remain sorry'd at the stack alignment cases.
-   Dissolving into the mutual block (as attempted) does NOT help because the
-   fundamental mismatch (EquivRed at [] vs need at s) persists regardless of
-   proof structure.
+   STATUS: EXHAUSTIVELY BLOCKED. Every possible witness t₃ and every
+   possible right-edge SubRed constructor has been tried:
+   - t₃ = t' via MS-PRO: top edge needs stack extension (FALSE)
+   - t₃ = t via MS-PRO: Γ' has t' not t
+   - t₃ = fvar x via MS-EQU+ME-VAR: x has .sub annotation, not .equiv
+   - t₃ = .top via MS-TOP: top edge t ≡→ .top not general
+   - ctxRed_refl dodge: theorem must work for ALL ctxRed, not just refl
+   - Weakened conclusion (Γ;[] not Γ';s'): stacks still mismatch
+   - equivRed_refl + original annotation: Γ' has reduced annotation
+   - Diamond of two EquivReds: different stacks ([], s)
+   - Commutativity recursion: no SubRed ON t at stack s
+   The fundamental mismatch (EquivRed at [] vs need at s) persists
+   regardless of proof structure, witness choice, or ctxRed variant.
+   The ONLY resolution is changing CT-ANN to use the full stack s.
 
 ## Proved Lemmas
 - `equivRed_ctx_mono` / `subRed_ctx_mono`: context monotonicity — if every
