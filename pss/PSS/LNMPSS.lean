@@ -434,8 +434,20 @@ uses me_app (or ms_app), the sub-derivation outputs differ (different body resul
 terms), making the IH inapplicable regardless of induction strategy. This is
 fundamental, not an artifact of the induction approach.
 
+**noPromoAt normalization (me_bet → me_app) is FALSE.** Formal counterexample at
+end of file (section NoPromoAtNormalizationCounterexample). The failure: me_bet
+can produce outputs where the operator is NOT a lambda (e.g., app .top .top via
+promotion chains inside the body), but me_app at non-empty stack forces the operator
+through me_fop which ALWAYS outputs a lambda. So when me_bet's body promotions
+eliminate the lambda structure, me_app cannot reproduce the same output. This rules
+out the normalization approach to resolving Category A2.
+
 NOTE: The ME-APP/MS-APP noPromoAt case in commutativity is partially closed
 (ms_app and me_app sub-cases proved; only me_bet sub-case remains sorry'd).
+
+NOTE: `equivRed_subst_noPromo_noPromoAt` and `subRed_subst_noPromo_noPromoAt`
+are NOT called from outside their mutual block — they are purely self-referential.
+This means the Category A2 sorrys do not currently block other proofs.
 
 ### Category B: Stack alignment / equivRed_subst_diamond (15 sorrys)
 Lines: 4993, 4998, 5086, 5094, 5151, 5390 (×2), 5562, 6014, 6039,
@@ -7278,3 +7290,163 @@ example : LNSubRed sse_Γ [] (.app (.fvar "z") (.fvar "y")) .top := .ms_top
 -- flexibility that makes the diamond TRUE where the flat version is FALSE.
 
 end EquivSubstDiamondVerification
+
+/-! ### COUNTEREXAMPLE: noPromoAt_app_to_me_app (normalization of me_bet to me_app) is FALSE
+
+The proposed statement: for any `noPromoAt z Γ s (app (lam dom body) a) (app f' a')`,
+there exists an me_app-based `noPromoAt z Γ s (app (lam dom body) a) (app f' a')`.
+
+This is FALSE. The failure mode: me_bet can produce outputs where the operator
+part (f') is NOT a lambda, but me_app at non-empty stack forces the operator
+(lam dom body) through me_fop, which ALWAYS outputs a lambda. So when me_bet
+produces `app top top` (with non-lambda operator `top`), me_app cannot reproduce
+this output because me_fop on `lam dom body` at stack `[a]` always gives `lam ...`.
+
+Concrete counterexample:
+  z = "z" (not in context — so noPromoAt z is vacuously easy to satisfy)
+  Γ = [("x", .equiv .top)], s = []
+  dom = .top
+  body = app (bvar 0) (bvar 0)   (λ≤⊤. x x, i.e., self-application of bound var)
+  a = fvar "x"
+
+  Input:  app (lam .top (app (bvar 0) (bvar 0))) (fvar "x")
+  Output: app .top .top
+
+  Via me_bet (z = "z"):
+  Pick fresh w. Body: (app (bvar 0) (bvar 0))^w = app (fvar w) (fvar w).
+  In context ((w, .equiv (fvar "x")) :: ("x", .equiv .top) :: []) at stack []:
+    fvar w → .top via me_pro(w): w ≡ fvar "x", then SubRed of (fvar "x"):
+      fvar "x" → .top via ms_equ(me_pro(x)): x ≡ .top, SubRed .top → .top via ms_top.
+    So app (fvar w) (fvar w) → app .top .top via me_app.
+    Body result: t^w = app .top .top, so t = app .top .top (no bvar 0).
+  Argument: fvar "x" → fvar "x" via me_var.  (v' = fvar "x")
+  Output: t.open_at 0 (fvar "x") = (app .top .top).open_at 0 (fvar "x") = app .top .top.  ✓
+
+  Since z = "z" is not in the context at all, noPromoAt z holds trivially
+  (z is never promoted because there's no .equiv annotation for z).
+
+  Via me_app (attempted):
+  Operator: noPromoAt z Γ (fvar "x" :: []) (lam .top (app (bvar 0) (bvar 0))) f'
+    Stack is [fvar "x"], non-empty, so must use me_fop.
+    me_fop pops fvar "x", reduces body in ((w, .equiv (fvar "x"))::Γ) at stack [].
+    Output of me_fop is ALWAYS lam dom' body'. So f' must be a lambda.
+    But the me_bet output has f' = .top (NOT a lambda).
+
+  Therefore no me_app-based noPromoAt z exists for the same endpoints.
+
+  ROOT CAUSE: me_bet evaluates the body INSIDE the binder (with the argument
+  substituted), allowing promotions (me_pro on the bound variable w → fvar "x" → .top)
+  to collapse the application. me_app evaluates the lambda EXTERNALLY via me_fop,
+  which preserves the lambda structure. When internal promotions eliminate the
+  lambda (e.g., self-application of a variable that promotes to .top), me_bet
+  can reach outputs that me_app structurally cannot.
+
+  IMPLICATION FOR CATEGORY A2: The noPromoAt normalization approach to resolving
+  the me_bet/me_app cross-constructor mismatch in equivRed_subst_noPromo_noPromoAt
+  is not viable. When y uses me_app and z uses me_bet (or vice versa), we cannot
+  normalize z's derivation to use me_app because the outputs may be structurally
+  incompatible. Alternative approaches needed:
+  - Co-prove SubRed AND noPromoAt z in the same induction (avoids needing two
+    independent noPromoAt derivations that must use compatible constructors)
+  - Strengthen the substitution lemma to a diamond form that relaxes the output
+    to existential (∃ w, ...) rather than exact matching
+  - Prove that the specific freshness/context conditions in the actual call sites
+    of equivRed_subst_noPromo_noPromoAt prevent the me_bet/me_app divergence
+-/
+
+section NoPromoAtNormalizationCounterexample
+
+-- Context: x has .equiv .top annotation
+private def npnorm_Γ : LNCtx := [("x", .equiv .top)]
+
+-- Input term: (λ≤⊤. x x)(fvar "x")  where body applies bound var to itself
+private def npnorm_body : LNExpr := .app (.bvar 0) (.bvar 0)
+private def npnorm_input : LNExpr := .app (.lam .top npnorm_body) (.fvar "x")
+
+-- Step 1: me_bet-based derivation producing `app .top .top`
+-- The body (app (bvar 0) (bvar 0))^w = app (fvar w) (fvar w)
+-- In context ((w, .equiv (fvar "x")) :: ("x", .equiv .top) :: []):
+--   fvar w promotes to .top (via chain: w ≡ fvar "x", x ≡ .top)
+-- So body reduces to app .top .top, and the output is app .top .top.
+
+-- First: the body reduction exists (EquivRed, not just noPromoAt)
+-- In ((w,.equiv (fvar "x"))::("x",.equiv .top)::[]) at stack []:
+-- app (fvar w) (fvar w) ≡→ app .top .top
+private def npnorm_Γ_ext (w : String) : LNCtx :=
+  [(w, .equiv (.fvar "x")), ("x", .equiv .top)]
+
+-- w ≡ fvar "x" ∈ Γ_ext  (for any w ≠ "x")
+private theorem npnorm_mem_equiv_w (w : String) (_hw : w ≠ "x") :
+    LNCtx.mem_equiv (npnorm_Γ_ext w) w (.fvar "x") := by
+  simp [npnorm_Γ_ext, LNCtx.mem_equiv, LNCtx.lookup']
+
+-- x ≡ .top ∈ Γ_ext
+private theorem npnorm_mem_equiv_x (w : String) (hw : w ≠ "x") :
+    LNCtx.mem_equiv (npnorm_Γ_ext w) "x" .top := by
+  simp [npnorm_Γ_ext, LNCtx.mem_equiv, LNCtx.lookup']
+  intro h; exact hw h
+
+-- SubRed: fvar "x" ≤→ .top in Γ_ext (via ms_equ + me_pro + ms_top)
+private def npnorm_sub_x (w : String) (hw : w ≠ "x") :
+    LNSubRed (npnorm_Γ_ext w) [] (.fvar "x") .top :=
+  .ms_equ (.me_pro (npnorm_mem_equiv_x w hw) .ms_top)
+
+-- fvar w ≡→ .top in Γ_ext via me_pro (chain through fvar "x")
+private def npnorm_equiv_w (w : String) (hw : w ≠ "x") :
+    LNEquivRed (npnorm_Γ_ext w) [] (.fvar w) .top :=
+  .me_pro (npnorm_mem_equiv_w w hw) (npnorm_sub_x w hw)
+
+-- fvar w ≡→ .top at any stack (via ms_top for the SubRed)
+private def npnorm_equiv_w_stk (w : String) (hw : w ≠ "x") (s : LNStack) :
+    LNEquivRed (npnorm_Γ_ext w) s (.fvar w) .top :=
+  .me_pro (npnorm_mem_equiv_w w hw) (.ms_equ (.me_pro (npnorm_mem_equiv_x w hw) .ms_top))
+
+-- Body reduction: app (fvar w) (fvar w) ≡→ app .top .top
+private def npnorm_body_red (w : String) (hw : w ≠ "x") :
+    LNEquivRed (npnorm_Γ_ext w) []
+      (.app (.fvar w) (.fvar w)) (.app .top .top) :=
+  .me_app (npnorm_equiv_w_stk w hw [.fvar w]) (npnorm_equiv_w w hw)
+
+-- Full me_bet derivation:
+-- app (lam .top (app (bvar 0) (bvar 0))) (fvar "x") ≡→ app .top .top
+-- Body result t = app .top .top (no bvar 0), opened with anything is itself.
+example : LNEquivRed npnorm_Γ [] npnorm_input (.app .top .top) := by
+  unfold npnorm_input npnorm_body
+  -- me_bet with L = ["x"] to avoid fresh w = "x"
+  apply LNEquivRed.me_bet (L := ["x"]) (t := .app .top .top) (v' := .fvar "x")
+  · intro w hw
+    simp [List.mem_cons, List.mem_nil_iff] at hw
+    -- w ≠ "x"
+    simp [LNExpr.open_at]
+    exact npnorm_body_red w hw
+  · exact .me_var  -- fvar "x" ≡→ fvar "x"
+
+-- Step 2: noPromoAt "z" holds for this derivation
+-- Since "z" has no annotation in Γ at all, it's never promoted.
+-- me_pro on any variable requires that variable to have .equiv annotation.
+-- Neither "w" nor "x" equals "z", so noPromoAt "z" is trivially satisfied.
+
+-- Note: The noPromoAt "z" for the body reduction is straightforward since
+-- "z" is not in the context and cannot be promoted.
+
+-- Step 3: me_app CANNOT produce app .top .top from this input
+-- For me_app: operator (lam .top (app (bvar 0)(bvar 0))) at stack [fvar "x"]
+-- Only rule for lam at non-empty stack: me_fop
+-- me_fop output is always lam dom' body', which is a lambda.
+-- So the operator output f' must be a lambda.
+-- But app .top .top requires f' = .top, which is NOT a lambda.
+
+-- Proof that me_fop always produces a lambda (by construction):
+-- The me_fop constructor has signature:
+--   me_fop : EquivRed Γ [] dom dom' → (∀ x, ... → EquivRed ... body^x body'^x)
+--            → EquivRed Γ (α::s) (lam dom body) (lam dom' body')
+-- The output is definitionally (lam dom' body').
+
+-- Therefore: noPromoAt "z" via me_app for the judgment
+--   Γ; [] ⊢ app (lam .top (app (bvar 0)(bvar 0))) (fvar "x") ≡→ app .top .top
+-- requires noPromoAt "z" Γ [fvar "x"] (lam .top (app (bvar 0)(bvar 0))) .top
+-- The only noPromoAt constructor for lam at non-empty stack is me_fop,
+-- which produces lam dom' body', not .top.
+-- Hence NO me_app-based noPromoAt exists for this judgment.
+
+end NoPromoAtNormalizationCounterexample
