@@ -157,6 +157,31 @@ Several kinds of `sorry` remain:
    We don't have a SubRed of t at stack s to feed into commutativity.
    MS-PRO gives fvar x ≤→ t, not a SubRed ON t.
 
+   **Candidate: weakened return type with connecting edge:**
+   Instead of requiring both edges to meet at a single t₃, allow:
+   `∃ t₃ t₄, EquivRed Γ s t₂ t₃ × SubRed Γ' s' t₁ t₄ × EquivRed Γ' s' t₃ t₄`
+   (a connecting edge between the top and right results). This gives the diagram:
+   ```
+   t₂ ──≡→── t₃
+   ≤↑          ≡↕
+   t₀ ──≡→── t₁
+                ≤↓
+                t₄
+   ```
+   For the MS-PRO/ME-VAR case: top edge EquivRed Γ s t t₃ (e.g. t₃ = t via
+   equivRed_refl). Right edge SubRed Γ' s' (fvar x) t₄ = t' via MS-PRO.
+   Connecting edge: EquivRed Γ' s' t t' — still needs stack extension (we
+   have EquivRed Γ [] t t' from ctxRed, not at stack s'). This alternative
+   return type does NOT avoid the fundamental stack alignment problem. ✗
+
+   **Candidate: reflexive top edge (if annotations are normal forms):**
+   If t = t' (annotation already fully reduced), then: top edge equivRed_refl
+   Γ s t t ✓, right edge MS-PRO with x ≤ t ∈ Γ' ✓ (since t' = t). But
+   annotations are NOT always normal forms — e.g. `app (lam .top .top) .top`
+   is a valid annotation (a beta-redex). ctxRed would reduce it. The
+   commutativity theorem must handle ALL contexts, including ones with
+   non-normal annotations. ✗
+
    **Candidate using other SubRed constructors for right edge:**
    SubRed Γ' s' (fvar x) t₃ can only be:
    - MS-PRO: t₃ = t' (blocked as above)
@@ -222,9 +247,24 @@ Several kinds of `sorry` remain:
    - equivRed_refl + original annotation: Γ' has reduced annotation
    - Diamond of two EquivReds: different stacks ([], s)
    - Commutativity recursion: no SubRed ON t at stack s
-   The fundamental mismatch (EquivRed at [] vs need at s) persists
-   regardless of proof structure, witness choice, or ctxRed variant.
-   The ONLY resolution is changing CT-ANN to use the full stack s.
+   - Weakened return type (connecting edge t₃↔t₄): connecting edge
+     still needs stack extension
+   - Normal form assumption on annotations: not general (beta-redexes
+     are valid annotations)
+
+   **Why no construction of t₃ can work (QED argument):**
+   The right edge SubRed Γ' s' (fvar x) t₃ can ONLY be constructed by:
+   (1) MS-PRO: t₃ = t' (the annotation of x in Γ'). Forced.
+   (2) MS-TOP: t₃ = .top. Always available.
+   (3) MS-EQU(ME-VAR): t₃ = fvar x. Requires x to have .equiv annotation.
+   No other SubRed constructor applies to fvar x.
+   For (1): top edge needs EquivRed Γ s t t' — stack extension (FALSE).
+   For (2): top edge needs EquivRed Γ s t .top — not true for all t.
+   For (3): x has .sub annotation (MS-PRO premise), not .equiv. ✗
+   Since t₃ is forced to one of {t', .top, fvar x} by the right edge, and
+   every choice fails for the top edge, the case is IMPOSSIBLE to close
+   without changing the system. The ONLY resolution is fixing CT-ANN to
+   reduce annotations at the full stack s instead of nil.
 
 ## Proved Lemmas
 - `equivRed_ctx_mono` / `subRed_ctx_mono`: context monotonicity — if every
@@ -6433,19 +6473,33 @@ noncomputable def commutativity
     (hbudget : t₀.sz ≤ budget)
     : Σ' t₃ : LNExpr, PLift (LNEquivRed Γ s t₂ t₃) × PLift (LNSubRed Γ' s' t₁ t₃) ×
         (∀ x, LNSubRed.noPromoAt x Γ s t₀ t₂ → LNSubRed.noPromoAt x Γ' s' t₁ t₃) := by
-  -- BLOCKED: The MS-PRO/ME-VAR case (h_sub = ms_pro, h_equiv = me_var) requires
-  -- EquivRed Γ s t t' for the top edge, where t is an annotation from the context
-  -- and t' is its reduction. We have EquivRed Γ [] t t' from ctxRed_lookup_sub
-  -- (CT-ANN reduces annotations at nil stack), but stack extension from [] to s
-  -- is FALSE (counterexample at end of file). All candidate witnesses t₃ fail:
-  -- - t₃ = t' : top edge needs EquivRed Γ s t t' (stack extension — FALSE)
-  -- - t₃ = t  : right edge needs x ≤ t ∈ Γ' but Γ' has x ≤ t' (reduced)
-  -- - t₃ via diamond/recursion: no applicable SubRed of t at stack s exists
-  -- Restricted stack extension (u.lc ∧ u ≠ lam) is also FALSE: stack sensitivity
-  -- propagates through ANNOTATIONS via ME-PRO, not through u itself. See sorry #7
-  -- "Restricted variants investigated" for the full analysis.
-  -- The root cause is CT-ANN's nil stack. If CT-ANN used the full stack s,
-  -- ctxRed_lookup_sub would give EquivRed Γ s t t' directly. See sorry #7.
+  -- DEFINITIVELY BLOCKED: The MS-PRO/ME-VAR case (h_sub = ms_pro, h_equiv = me_var).
+  --
+  -- The right edge SubRed Γ' s' (fvar x) t₃ can ONLY use three constructors:
+  --   (1) MS-PRO: forces t₃ = t' (annotation of x in Γ')
+  --   (2) MS-TOP: forces t₃ = .top
+  --   (3) MS-EQU(ME-VAR): forces t₃ = fvar x (requires .equiv annotation)
+  -- No other SubRed constructor applies to fvar x.
+  --
+  -- For (1): top edge needs EquivRed Γ s t t'. We have EquivRed Γ [] t t' from
+  --   ctxRed_lookup_sub (CT-ANN reduces at nil stack), but stack extension from
+  --   [] to s is FALSE (counterexample at end of file).
+  -- For (2): top edge needs EquivRed Γ s t .top — not true for all t.
+  -- For (3): x has .sub annotation (MS-PRO premise), not .equiv — constructor
+  --   inapplicable.
+  --
+  -- Alternative approaches also fail:
+  -- - Weakened return type (∃ t₃ t₄, ... × EquivRed t₃ t₄ connecting edge):
+  --   connecting edge still needs stack extension.
+  -- - Reflexive top edge (t₃ = t via equivRed_refl): Γ' has x ≤ t' not x ≤ t.
+  -- - Assuming annotations are normal forms (t = t'): not general — beta-redexes
+  --   are valid annotations.
+  -- - Commutativity recursion: no SubRed ON t at stack s to feed in.
+  --
+  -- Since t₃ is forced to one of {t', .top, fvar x} by the right edge, and all
+  -- three fail for the top edge, the case is IMPOSSIBLE without system changes.
+  -- Root cause: CT-ANN's nil stack. Fix: CT-ANN at full stack s.
+  -- See sorry #7 "QED argument" in the file header for the complete analysis.
   sorry
 termination_by (budget, t₀.sz)
 decreasing_by all_goals simp_all [LNExpr.sz, sz_open_at_fvar]; omega
