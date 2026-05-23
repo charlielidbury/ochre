@@ -109,6 +109,16 @@ Several kinds of `sorry` remain:
        specific output from ctxRed_lookup_sub), not an arbitrary witness.
        MS-PRO gives t' (the reduced annotation in Γ'), so t₃ must be t'.
 
+   (d) Stack-independent reduction (SIEquivRed/SISubRed): define a sub-relation
+       that omits ME-FUN, ME-FOP, MS-FUN, MS-FOP entirely. Stack extension is
+       PROVABLE for this fragment (siEquivRed_at_any_stack, siSubRed_at_any_stack).
+       However, this does NOT resolve the MS-PRO/ME-VAR case: ctxRed_lookup_sub
+       gives EquivRed Γ [] t t', but this derivation is generally NOT
+       stack-independent. ME-PRO on a variable whose annotation is a lambda
+       triggers SubRed → MS-FUN (stack-dependent). No restriction on the
+       input term u can make the derivation stack-independent, because stack
+       sensitivity enters through annotations, not u itself.
+
    Root cause across all variants: stack sensitivity enters through the
    REDUCTION RULES applied to annotations (MS-FUN vs MS-FOP), not through
    any property of the input term u. No restriction on u alone can work.
@@ -6800,6 +6810,136 @@ example : LNSubRed cex_Γ []
     )
 
 end StackExtInvestigation
+
+/-! ### Stack-Independent Reduction
+
+Stack-independent reduction is the sub-relation of LNEquivRed / LNSubRed that
+omits ME-FUN, ME-FOP, MS-FUN, and MS-FOP — exactly the rules that differ
+between empty and non-empty stacks. For derivations in this fragment, the
+stack is irrelevant: the same derivation can be replayed at any stack.
+
+**Motivation:** The stack alignment problem (sorry #7) arises because
+ctxRed_lookup_sub yields `EquivRed Γ [] t t'` but commutativity needs
+`EquivRed Γ s t t'`. If the derivation at [] is stack-independent, we can
+lift it to any stack s, resolving the mismatch.
+
+**Result:** Stack extension is PROVABLE for stack-independent reductions
+(theorem `siEquivRed_at_any_stack` / `siSubRed_at_any_stack` below). However,
+this does NOT resolve the MS-PRO/ME-VAR case of commutativity. The reason:
+ME-PRO on x triggers SubRed on x's annotation α. When α is a lambda (e.g.,
+`lam (fvar "y") (bvar 0)`), the SubRed uses MS-FUN (empty stack) or MS-FOP
+(non-empty stack) — exactly the stack-dependent rules excluded from this
+fragment. So the reduction through annotations is NOT stack-independent in
+general, even when the top-level term u is not a lambda.
+
+The counterexample `cex_Γ` above demonstrates this: `fvar "x" ≡→ lam (fvar
+"y") (fvar "y")` uses ME-PRO, whose SubRed on `lam (fvar "y") (bvar 0)`
+goes through MS-FUN. This derivation is NOT stack-independent.
+
+**Conclusion:** No restriction on the input term u makes its EquivRed
+derivation stack-independent. Stack sensitivity enters through ANNOTATIONS
+(via ME-PRO → SubRed → MS-FUN/MS-FOP), not through u itself. The paper's
+Lemma 22 gap is genuine and cannot be patched by identifying a
+stack-independent fragment.
+-/
+
+section StackIndepReduction
+
+mutual
+/-- Stack-independent equivalence reduction: the sub-relation of LNEquivRed
+    that omits ME-FUN and ME-FOP (the only stack-dependent rules). -/
+inductive SIEquivRed : LNCtx → LNExpr → LNExpr → Type where
+  | me_top : SIEquivRed Γ .top .top
+  | me_var : SIEquivRed Γ (.fvar x) (.fvar x)
+  | me_tap : SIEquivRed Γ (.app .top u) .top
+  | me_pro : LNCtx.mem_equiv Γ x α → SISubRed Γ α α' → SIEquivRed Γ (.fvar x) α'
+  | me_app {Γ : LNCtx} {f f' v v' : LNExpr} :
+      SIEquivRed Γ f f' → SIEquivRed Γ v v' → SIEquivRed Γ (.app f v) (.app f' v')
+  | me_bet {Γ : LNCtx} {dom body t v v' : LNExpr} (L : List String) :
+      (∀ x, x ∉ L → SIEquivRed ((x, .equiv v) :: Γ) (body.open_at 0 (.fvar x)) (t.open_at 0 (.fvar x))) →
+      SIEquivRed Γ v v' →
+      SIEquivRed Γ (.app (.lam dom body) v) (t.open_at 0 v')
+
+/-- Stack-independent subtyping reduction: the sub-relation of LNSubRed
+    that omits MS-FUN and MS-FOP (the only stack-dependent rules). -/
+inductive SISubRed : LNCtx → LNExpr → LNExpr → Type where
+  | ms_pro : LNCtx.mem_sub Γ x t → SISubRed Γ (.fvar x) t
+  | ms_top : SISubRed Γ u .top
+  | ms_equ : SIEquivRed Γ u v → SISubRed Γ u v
+  | ms_app {Γ : LNCtx} {f f' v : LNExpr} :
+      SISubRed Γ f f' → SISubRed Γ (.app f v) (.app f' v)
+end
+
+mutual
+/-- Stack-independent EquivRed embeds into LNEquivRed at ANY stack. -/
+def siEquivRed_at_any_stack {Γ : LNCtx} {u v : LNExpr}
+    (h : SIEquivRed Γ u v) (s : LNStack) : LNEquivRed Γ s u v :=
+  match h with
+  | .me_top => .me_top
+  | .me_var => .me_var
+  | .me_tap => .me_tap
+  | .me_pro hmem hsub =>
+    .me_pro hmem (siSubRed_at_any_stack hsub s)
+  | .me_app (v := v) hf hv =>
+    -- ME-APP pushes v onto the stack for f, and reduces v at []
+    .me_app (siEquivRed_at_any_stack hf (v :: s)) (siEquivRed_at_any_stack hv [])
+  | .me_bet (L := L) hbody hv =>
+    .me_bet L
+      (fun x hx => siEquivRed_at_any_stack (hbody x hx) s)
+      (siEquivRed_at_any_stack hv [])
+
+/-- Stack-independent SubRed embeds into LNSubRed at ANY stack. -/
+def siSubRed_at_any_stack {Γ : LNCtx} {u v : LNExpr}
+    (h : SISubRed Γ u v) (s : LNStack) : LNSubRed Γ s u v :=
+  match h with
+  | .ms_pro hmem => .ms_pro hmem
+  | .ms_top => .ms_top
+  | .ms_equ he => .ms_equ (siEquivRed_at_any_stack he s)
+  | .ms_app (v := v) hf => .ms_app (siSubRed_at_any_stack hf (v :: s))
+end
+
+/-! #### Why stack-independent reduction does NOT resolve the MS-PRO/ME-VAR case
+
+The MS-PRO/ME-VAR case of commutativity has:
+- Bottom: `Γ;s ⊢ fvar x ≡→ fvar x` (ME-VAR)
+- Left: `Γ;s ⊢ fvar x ≤→ t` (MS-PRO, x ≤ t ∈ Γ)
+- ctxRed_lookup_sub gives `LNEquivRed Γ [] t t'`
+
+We need `LNEquivRed Γ s t t'` (top edge). If the derivation of
+`EquivRed Γ [] t t'` were stack-independent, `siEquivRed_at_any_stack`
+would give us `EquivRed Γ s t t'`.
+
+But the derivation is NOT stack-independent in general:
+- t is an annotation looked up from Γ. Annotations CAN be lambdas.
+- If t = lam dom body, then EquivRed Γ [] t t' uses ME-FUN (stack-dependent).
+- Even if t is not a lambda, ME-PRO on a variable in t can reach a lambda
+  annotation. E.g., t = fvar "y" where y ≡ lam ... ∈ Γ. ME-PRO on y triggers
+  SubRed on the lambda, which uses MS-FUN (stack-dependent).
+
+The counterexample `cex_Γ` demonstrates exactly this: `fvar "x"` is reduced
+via ME-PRO, whose SubRed on `lam (fvar "y") (bvar 0)` uses MS-FUN. The
+output `lam (fvar "y") (fvar "y")` is reachable at [] but NOT at [.top].
+
+No restriction on the input term u can make the reduction stack-independent,
+because stack sensitivity enters through ANNOTATIONS (via ME-PRO), not
+through u itself. The only fix is changing CT-ANN to reduce annotations at
+the full stack s instead of nil (see sorry #7 in the file header).
+-/
+
+-- Demonstrate: the cex_Γ derivation is NOT stack-independent.
+-- It uses ME-PRO → MS-FUN, which is excluded from SIEquivRed/SISubRed.
+-- The derivation LNEquivRed cex_Γ [] (fvar "x") (lam (fvar "y") (fvar "y"))
+-- (proved above) goes through:
+--   ME-PRO: x ≡ lam (fvar "y") (bvar 0), then SubRed via MS-FUN
+-- MS-FUN is a stack-dependent rule, so this derivation has no SIEquivRed analog.
+-- No SIEquivRed derivation producing (lam (fvar "y") (fvar "y")) from (fvar "x")
+-- exists in cex_Γ, because the only SIEquivRed rules for fvar are:
+--   me_var: fvar "x" → fvar "x" (wrong output)
+--   me_pro: needs SISubRed of the annotation lam (fvar "y") (bvar 0),
+--           but SISubRed has no rule for lambdas except ms_top and ms_equ,
+--           neither of which produces lam (fvar "y") (fvar "y").
+
+end StackIndepReduction
 
 /-! ### COUNTEREXAMPLE: equivRed_weaken and subRed_weaken are FALSE
 
