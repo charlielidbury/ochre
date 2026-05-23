@@ -490,7 +490,7 @@ private theorem le_maxStrLen_of_mem {s : String} {l : List String} (h : s ∈ l)
     | tail _ hmem => have := ih hmem; omega
 
 /-- For any finite list of strings, there is a string not in it. -/
-private theorem exists_fresh_string (avoid : List String) : ∃ s : String, s ∉ avoid := by
+private def exists_fresh_string (avoid : List String) : Σ' s : String, s ∉ avoid := by
   refine ⟨⟨List.replicate (maxStrLen avoid + 1) 'a'⟩, ?_⟩
   intro hmem
   have hlen : (⟨List.replicate (maxStrLen avoid + 1) 'a'⟩ : String).length = maxStrLen avoid + 1 := by
@@ -714,10 +714,10 @@ theorem LNCtx.sub_of_cons_fresh {Γ : LNCtx} {z : String} {ann : LNAnn}
   simp [hne, hlook]
 
 /-- For any finite context and term, there exists a fresh variable name. -/
-theorem exists_fresh (Γ : LNCtx) (e : LNExpr)
-    : ∃ x : String, x ∉ LNCtx.dom Γ ∧ x ∉ e.fvs := by
+def exists_fresh (Γ : LNCtx) (e : LNExpr)
+    : Σ' x : String, PLift (x ∉ LNCtx.dom Γ) × PLift (x ∉ e.fvs) := by
   obtain ⟨x, hx⟩ := exists_fresh_string (LNCtx.dom Γ ++ e.fvs)
-  exact ⟨x, fun h => hx (List.mem_append_left _ h), fun h => hx (List.mem_append_right _ h)⟩
+  exact ⟨x, ⟨fun h => hx (List.mem_append_left _ h)⟩, ⟨fun h => hx (List.mem_append_right _ h)⟩⟩
 
 /-! ## Equivalence and Subtyping Reduction (Figure 2)
 
@@ -744,7 +744,7 @@ Equivalence reduction  `LNEquivRed Γ s u v`  means  `Γ; s ⊢ u ≡→ v`.
 Models reflexive, small-step, simultaneous β-reduction instrumented
 with the Krivine-style stack mechanism.
 -/
-inductive LNEquivRed : LNCtx → LNStack → LNExpr → LNExpr → Prop where
+inductive LNEquivRed : LNCtx → LNStack → LNExpr → LNExpr → Type where
   /-- ME-PRO: Promote through equivalence annotation.
       `x ≡ α ∈ Γ`  and  `Γ; s ⊢ α ≤→ α'`
       ⟹  `Γ; s ⊢ fvar x ≡→ α'`
@@ -820,7 +820,7 @@ Subtyping reduction  `LNSubRed Γ s u v`  means  `Γ; s ⊢ u ≤→ v`.
 Defines promotion (subtyping) in a stack-aware manner.
 Note: subtyping does NOT change the type annotation of abstractions.
 -/
-inductive LNSubRed : LNCtx → LNStack → LNExpr → LNExpr → Prop where
+inductive LNSubRed : LNCtx → LNStack → LNExpr → LNExpr → Type where
   /-- MS-PRO: Promote variable to its subtype bound.
       `x ≤ t ∈ Γ`
       ⟹  `Γ; s ⊢ fvar x ≤→ t`
@@ -880,7 +880,7 @@ Used in the statement of commutativity (Lemma 1).
 In locally nameless, no shifting is needed when extending contexts.
 -/
 
-inductive LNCtxRed : LNCtx → LNStack → LNCtx → LNStack → Prop where
+inductive LNCtxRed : LNCtx → LNStack → LNCtx → LNStack → Type where
   /-- CT-ANN (sub): Reduce a subtype annotation.
       `Γ; s ↦ Γ'; s'`  and  `Γ; nil ⊢ t ≡→ t'`
       ⟹  `(x ≤ t, Γ); s ↦ (x ≤ t', Γ'); s'` -/
@@ -929,7 +929,7 @@ mutual induction on the reduction relations.
 
 /-- Reflexivity of ≡→ (Proposition 18).
     Every locally-closed term equiv-reduces to itself. -/
-theorem equivRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
+def equivRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
     (hlc : u.lc)
     : LNEquivRed Γ s u u := by
   -- Main proof by case analysis + recursion
@@ -972,7 +972,7 @@ decreasing_by
        simp_all; omega)
 
 /-- Reflexivity of ≤→ (via MS-EQU + reflexivity of ≡→). -/
-theorem subRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
+def subRed_refl (Γ : LNCtx) (s : LNStack) (u : LNExpr)
     (hlc : u.lc) : LNSubRed Γ s u u :=
   .ms_equ (equivRed_refl Γ s u hlc)
 
@@ -982,7 +982,7 @@ set_option maxHeartbeats 800000 in
     the combined recursor for LNEquivRed/LNSubRed. The cofinite binder cases
     pass through directly via LNCtx.sub_cons (prepending the same binding
     preserves context inclusion). -/
-theorem equivRed_ctx_mono
+noncomputable def equivRed_ctx_mono
     {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
     (h : LNEquivRed Γ s u v) {Γ' : LNCtx} (hsub : LNCtx.sub_ctx Γ Γ')
     : LNEquivRed Γ' s u v := by
@@ -1027,7 +1027,7 @@ theorem equivRed_ctx_mono
 
 set_option maxHeartbeats 800000 in
 /-- Context monotonicity for ≤→. -/
-theorem subRed_ctx_mono
+noncomputable def subRed_ctx_mono
     {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
     (h : LNSubRed Γ s u v) {Γ' : LNCtx} (hsub : LNCtx.sub_ctx Γ Γ')
     : LNSubRed Γ' s u v := by
@@ -1086,7 +1086,7 @@ inline comment in the MS-PRO/ME-VAR case).
     If Γ;s ⊢ u ≡→ v and x ∉ dom(Γ), then (x,ann)::Γ; s ⊢ u ≡→ v.
     Derived from context monotonicity (equivRed_ctx_mono) and the fact
     that a fresh binding doesn't affect existing lookups. -/
-theorem equivRed_ctx_ext
+noncomputable def equivRed_ctx_ext
     {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
     (h : LNEquivRed Γ s u v) {x : String} {ann : LNAnn}
     (hfresh : x ∉ LNCtx.dom Γ)
@@ -1094,7 +1094,7 @@ theorem equivRed_ctx_ext
   equivRed_ctx_mono h (LNCtx.sub_of_cons_fresh hfresh)
 
 /-- Structural context extension for ≤→ (standard LN infrastructure). -/
-theorem subRed_ctx_ext
+noncomputable def subRed_ctx_ext
     {Γ : LNCtx} {s : LNStack} {u v : LNExpr}
     (h : LNSubRed Γ s u v) {x : String} {ann : LNAnn}
     (hfresh : x ∉ LNCtx.dom Γ)
@@ -1134,7 +1134,7 @@ shared termination measure and call pattern.
 -/
 
 /-- Context reduction is reflexive (requires all embedded terms to be lc). -/
-theorem ctxRed_refl (Γ : LNCtx) (s : LNStack)
+noncomputable def ctxRed_refl (Γ : LNCtx) (s : LNStack)
     (hwf_ctx : Γ.wf) (hwf_stk : s.wf) : LNCtxRed Γ s Γ s := by
   induction Γ with
   | nil =>
@@ -1156,7 +1156,7 @@ theorem ctxRed_refl (Γ : LNCtx) (s : LNStack)
       exact .ct_ann_equiv (ih htail_wf) (equivRed_refl Γ [] α' hα)
 
 /-- Lemma 36: stripping the stack from a context reduction. -/
-theorem ctxRed_nil_of_ctxRed
+noncomputable def ctxRed_nil_of_ctxRed
     {Γ Γ' : LNCtx} {s s' : LNStack}
     (h : LNCtxRed Γ s Γ' s') : LNCtxRed Γ [] Γ' [] := by
   induction h with
@@ -1323,7 +1323,7 @@ private theorem ctx_rename_lookup {Γ : LNCtx} {x y z : String} {ann : LNAnn}
       exact ih hlook hinj_rest
 
 set_option maxHeartbeats 6400000 in
-private theorem equivRed_rename_gen
+private noncomputable def equivRed_rename_gen
     {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
     (h : LNEquivRed Γ s u u')
     {x y : String}
@@ -1557,7 +1557,7 @@ private theorem equivRed_rename_gen
   exact go h x y hinj
 
 set_option maxHeartbeats 6400000 in
-private theorem subRed_rename_gen
+private noncomputable def subRed_rename_gen
     {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
     (h : LNSubRed Γ s u u')
     {x y : String}
@@ -1736,7 +1736,7 @@ private theorem stack_map_subst_id {s : LNStack} {x y : String}
     · exact ih (fun e he => hfresh e (List.mem_cons_of_mem _ he))
 
 set_option maxHeartbeats 1600000 in
-theorem equivRed_rename_strong
+noncomputable def equivRed_rename_strong
     {Γ : LNCtx} {s : LNStack} {x y : String} {ann : LNAnn}
     {u u' : LNExpr}
     (h : LNEquivRed ((x, ann) :: Γ) s u u')
@@ -1756,7 +1756,7 @@ theorem equivRed_rename_strong
   simpa using hgen
 
 set_option maxHeartbeats 1600000 in
-theorem subRed_rename_strong
+noncomputable def subRed_rename_strong
     {Γ : LNCtx} {s : LNStack} {x y : String} {ann : LNAnn}
     {u u' : LNExpr}
     (h : LNSubRed ((x, ann) :: Γ) s u u')
@@ -1779,11 +1779,11 @@ theorem subRed_rename_strong
     with Γ;[] ⊢ t ≡→ t'.
     Proved by induction on the context reduction derivation, using
     equivRed_ctx_ext to lift the equiv-red through context layers. -/
-theorem ctxRed_lookup_sub
+noncomputable def ctxRed_lookup_sub
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {t : LNExpr}
     (hmem : LNCtx.mem_sub Γ x t) (hctx : LNCtxRed Γ s Γ' s')
     (hnd : (LNCtx.dom Γ).Nodup)
-    : ∃ t', LNCtx.mem_sub Γ' x t' ∧ LNEquivRed Γ [] t t' := by
+    : Σ' (t' : LNExpr) (_ : LNCtx.mem_sub Γ' x t'), LNEquivRed Γ [] t t' := by
   induction hctx with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
     simp only [LNCtx.mem_sub, LNCtx.lookup'] at hmem
@@ -1823,11 +1823,11 @@ theorem ctxRed_lookup_sub
 /-- Context lookup: x ≡ α ∈ Γ and Γ;s ↦ Γ';s'  ⟹  x ≡ α' ∈ Γ'
     with Γ;[] ⊢ α ≡→ α'.
     Proved by induction on the context reduction derivation. -/
-theorem ctxRed_lookup_equiv
+noncomputable def ctxRed_lookup_equiv
     {Γ Γ' : LNCtx} {s s' : LNStack} {x : String} {α : LNExpr}
     (hmem : LNCtx.mem_equiv Γ x α) (hctx : LNCtxRed Γ s Γ' s')
     (hnd : (LNCtx.dom Γ).Nodup)
-    : ∃ α', LNCtx.mem_equiv Γ' x α' ∧ LNEquivRed Γ [] α α' := by
+    : Σ' (α' : LNExpr) (_ : LNCtx.mem_equiv Γ' x α'), LNEquivRed Γ [] α α' := by
   induction hctx with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
     simp only [LNCtx.mem_equiv, LNCtx.lookup'] at hmem
@@ -2267,7 +2267,7 @@ theorem ctx_swap_sub_ctx {x y : String} {ann_x ann_y : LNAnn} {Γ : LNCtx}
     then (y,ann)::Γ; s ⊢ body^y ≡→ u[x↦fvar y].
     Derived from equivRed_rename_strong by rewriting the LHS using
     subst_fvar_fvar_open_at + subst_fvar_notin. -/
-theorem equivRed_rename
+noncomputable def equivRed_rename
     {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
     {body u : LNExpr} {x y : String}
     (h : LNEquivRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
@@ -2288,7 +2288,7 @@ theorem equivRed_rename
 
 /-- Alpha-renaming for ≤→ under binders.
     Derived from subRed_rename_strong by rewriting the LHS. -/
-theorem subRed_rename
+noncomputable def subRed_rename
     {Γ : LNCtx} {s : LNStack} {ann : LNAnn}
     {body u : LNExpr} {x y : String}
     (h : LNSubRed ((x, ann) :: Γ) s (body.open_at 0 (.fvar x)) u)
@@ -2532,12 +2532,12 @@ def subRed_refl_noPromoAt (z : String) (Γ : LNCtx) (s : LNStack) (u : LNExpr)
 -- since sizeOf-based termination fails for Prop-valued mutual inductives.
 
 /-- Transport an equiv-reduction along a context equality. -/
-private theorem equivRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExpr}
+private def equivRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExpr}
     (h : Γ₁ = Γ₂) (hr : LNEquivRed Γ₁ s e u) : LNEquivRed Γ₂ s e u :=
   h ▸ hr
 
 /-- Transport a sub-reduction along a context equality. -/
-private theorem subRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExpr}
+private def subRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExpr}
     (h : Γ₁ = Γ₂) (hr : LNSubRed Γ₁ s e u) : LNSubRed Γ₂ s e u :=
   h ▸ hr
 
@@ -2548,7 +2548,7 @@ private theorem subRed_cast_ctx {Γ₁ Γ₂ : LNCtx} {s : LNStack} {e u : LNExp
 -- subRed_cast_ctx to transport the IH result.
 
 set_option maxHeartbeats 1600000 in
-theorem noPromoAt_equiv_swap (x : String) (ann_new : LNAnn)
+noncomputable def noPromoAt_equiv_swap (x : String) (ann_new : LNAnn)
     {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
     (hnp : LNEquivRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
     : LNEquivRed (swap_at_first x ann_new Γ) s e u := by
@@ -2614,7 +2614,7 @@ theorem noPromoAt_equiv_swap (x : String) (ann_new : LNAnn)
       Γ s e u hnp
 
 set_option maxHeartbeats 1600000 in
-theorem noPromoAt_sub_swap (x : String) (ann_new : LNAnn)
+noncomputable def noPromoAt_sub_swap (x : String) (ann_new : LNAnn)
     {Γ : LNCtx} {s : LNStack} {e u : LNExpr}
     (hnp : LNSubRed.noPromoAt x Γ s e u) (hx : x ∈ LNCtx.dom Γ)
     : LNSubRed (swap_at_first x ann_new Γ) s e u := by
@@ -3160,7 +3160,7 @@ is `ctx_subst_drop` (remove y's entry and substitute y → v in remaining annota
 and the stack transformation is `s.map (subst_fvar y v)`. -/
 
 set_option maxHeartbeats 12800000 in
-theorem subRed_subst_noPromo
+noncomputable def subRed_subst_noPromo
     {y : String} {Γ : LNCtx} {s : LNStack} {u u' : LNExpr}
     (hnp : LNSubRed.noPromoAt y Γ s u u')
     {v : LNExpr} (hlc_v : v.lc)
@@ -3566,7 +3566,7 @@ noncomputable def subRed_subst_noPromo_noPromoAt
     Valid when the derivation doesn't use MS-PRO on x (i.e., doesn't
     promote x via its subtype bound). The noPromoAt precondition
     ensures this. -/
-theorem equivRed_change_sub_to_equiv
+noncomputable def equivRed_change_sub_to_equiv
     {Γ : LNCtx} {s : LNStack} {x : String} {t α : LNExpr}
     {e u : LNExpr}
     (_h : LNEquivRed ((x, .sub t) :: Γ) s e u)
@@ -3580,7 +3580,7 @@ theorem equivRed_change_sub_to_equiv
     Valid when the derivation doesn't use ME-PRO on x (i.e., doesn't
     promote x via its equivalence annotation). The noPromoAt
     precondition ensures this. -/
-theorem equivRed_change_equiv_to_sub
+noncomputable def equivRed_change_equiv_to_sub
     {Γ : LNCtx} {s : LNStack} {x : String} {t α : LNExpr}
     {e u : LNExpr}
     (_h : LNEquivRed ((x, .equiv α) :: Γ) s e u)
@@ -3595,7 +3595,7 @@ theorem equivRed_change_equiv_to_sub
     This is the version used in commutativity's ME-BET case.
     Requires a noPromoAt witness: the derivation must not promote x.
     Derived from the proved general version `equivRed_change_sub_to_equiv`. -/
-theorem equivRed_change_sub_to_equiv_bet
+noncomputable def equivRed_change_sub_to_equiv_bet
     {Γ : LNCtx} {s : LNStack} {x : String} {dom α : LNExpr}
     {body u : LNExpr}
     (h : LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u)
@@ -3607,7 +3607,7 @@ theorem equivRed_change_sub_to_equiv_bet
     for derivations on sub-terms obtained via IH.
     Requires a noPromoAt witness: the derivation must not promote x.
     Derived from the proved general version `equivRed_change_equiv_to_sub`. -/
-theorem equivRed_change_equiv_to_sub_bet
+noncomputable def equivRed_change_equiv_to_sub_bet
     {Γ : LNCtx} {s : LNStack} {x : String} {dom α : LNExpr}
     {e u : LNExpr}
     (h : LNEquivRed ((x, .equiv α) :: Γ) s e u)
@@ -3660,7 +3660,7 @@ theorem commutativity_noPromoAt_false :
   | me_pro hne _ _ => exact hne rfl
 
 /-- The derivation that the old axiom would apply to does exist. -/
-theorem commutativity_noPromoAt_false_deriv :
+def commutativity_noPromoAt_false_deriv :
     LNEquivRed [("x", .equiv .top)] [] (.fvar "x") .top :=
   .me_pro (by simp [LNCtx.mem_equiv, LNCtx.lookup']) (.ms_equ .me_top)
 
@@ -3711,7 +3711,7 @@ private theorem cex_body_open :
 /-- The derivation exists: lam ⊤ (bvar 0) ≡→ lam ⊤ (lam ⊤ ⊤) under
     stack [fvar "x"]. ME-FOP pops fvar "x", fresh y gets .equiv (fvar "x"),
     body fvar y ≡→ lam ⊤ ⊤ via ME-PRO on y → SubRed(fvar "x") → MS-PRO → dom. -/
-private theorem me_bet_body_noPromoAt_false_deriv :
+private def me_bet_body_noPromoAt_false_deriv :
     LNEquivRed cex_ctx [.fvar "x"]
       (.lam .top (.bvar 0)) (.lam .top (.lam .top .top)) := by
   apply LNEquivRed.me_fop (L := ["x"])
@@ -3795,17 +3795,17 @@ theorem me_bet_body_noPromoAt_false :
 /-- me_bet_body_noPromoAt (strengthened) is STILL FALSE: there exist
     concrete Γ, s, x, dom, body, u satisfying all premises but violating
     the noPromoAt conclusion. -/
-theorem me_bet_body_noPromoAt_strengthened_false :
-    ∃ (Γ : LNCtx) (s : LNStack) (x : String) (dom body u : LNExpr),
-      LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u ∧
-      x ∉ LNCtx.all_fvs Γ ∧
-      x ∉ dom.fvs ∧
-      (LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u → False) :=
+def me_bet_body_noPromoAt_strengthened_false :
+    Σ' (Γ : LNCtx) (s : LNStack) (x : String) (dom body u : LNExpr),
+      LNEquivRed ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u ×
+      PLift (x ∉ LNCtx.all_fvs Γ) ×
+      PLift (x ∉ dom.fvs) ×
+      PLift (LNEquivRed.noPromoAt x ((x, .sub dom) :: Γ) s (body.open_at 0 (.fvar x)) u → False) :=
   ⟨[], [.fvar "x"], "x", cex_dom, cex_body, cex_result,
    by rw [cex_body_open]; exact me_bet_body_noPromoAt_false_deriv,
-   cex_fresh_ctx,
-   cex_fresh_dom,
-   by rw [cex_body_open]; exact me_bet_body_noPromoAt_false⟩
+   ⟨cex_fresh_ctx⟩,
+   ⟨cex_fresh_dom⟩,
+   ⟨by rw [cex_body_open]; exact me_bet_body_noPromoAt_false⟩⟩
 
 /-! The former axioms `me_bet_body_noPromoAt` and `commutativity_noPromoAt`
 have been REMOVED. They were proved FALSE (see counterexamples above:
@@ -3828,28 +3828,28 @@ that previously blocked the ME-BET/MS-FOP case. -/
     Yet `noPromoAt "x" [("x", .equiv .top)] [] (fvar "x") .top` is impossible
     because ME-PRO on "x" is the only derivation path (since x has .equiv .top),
     and noPromoAt.me_pro requires z ≠ "x" which fails for z = "x". -/
-theorem commutativity_noPromoAt_strengthened_false :
-    ∃ (Γ : LNCtx) (s : LNStack) (x : String) (ann : LNAnn) (e u : LNExpr),
-      LNEquivRed ((x, ann) :: Γ) s e u ∧
-      x ∉ LNCtx.all_fvs Γ ∧
-      x ∉ ann.fvs ∧
-      (LNEquivRed.noPromoAt x ((x, ann) :: Γ) s e u → False) :=
+def commutativity_noPromoAt_strengthened_false :
+    Σ' (Γ : LNCtx) (s : LNStack) (x : String) (ann : LNAnn) (e u : LNExpr),
+      LNEquivRed ((x, ann) :: Γ) s e u ×
+      PLift (x ∉ LNCtx.all_fvs Γ) ×
+      PLift (x ∉ ann.fvs) ×
+      PLift (LNEquivRed.noPromoAt x ((x, ann) :: Γ) s e u → False) :=
   ⟨[], [], "x", .equiv .top, .fvar "x", .top,
    commutativity_noPromoAt_false_deriv,
-   by simp [LNCtx.all_fvs],
-   by simp [LNAnn.fvs, LNExpr.fvs],
-   commutativity_noPromoAt_false⟩
+   ⟨by simp [LNCtx.all_fvs]⟩,
+   ⟨by simp [LNAnn.fvs, LNExpr.fvs]⟩,
+   ⟨commutativity_noPromoAt_false⟩⟩
 
 /-- Inversion on LNCtxRed for stack cons:
     If Γ; α::s ↦ Γ'; s', then s' = α'::s₁ and Γ;s ↦ Γ';s₁
     and Γ;[] ⊢ α ≡→ α'.
     Proved by induction on the context reduction, using equivRed_ctx_ext
     to lift the equiv-red witness through context annotation layers. -/
-theorem ctxRed_stack_inv
+noncomputable def ctxRed_stack_inv
     {Γ : LNCtx} {α : LNExpr} {s : LNStack} {Γ' : LNCtx} {s' : LNStack}
     (h : LNCtxRed Γ (α :: s) Γ' s')
     (hnd : (LNCtx.dom Γ).Nodup)
-    : ∃ α' s₁, s' = α' :: s₁ ∧ LNCtxRed Γ s Γ' s₁ ∧ LNEquivRed Γ [] α α' := by
+    : Σ' (α' : LNExpr) (s₁ : LNStack) (_ : s' = α' :: s₁), LNCtxRed Γ s Γ' s₁ × LNEquivRed Γ [] α α' := by
   generalize hs : α :: s = stk at h
   induction h with
   | @ct_ann_sub Γ_i _ Γ_i' _ y u u' hctx_i hred_u ih =>
@@ -4655,13 +4655,13 @@ of rules applied by h1 and h2.  Follows Appendix A of Pasquale & Garcia-Perez.
 -- both, eliminating the need for equivRed_rename entirely.
 
 set_option maxHeartbeats 3200000 in
-theorem diamond_full
+noncomputable def diamond_full
     (t₀ : LNExpr)
     {Γ Γ₁ Γ₂ : LNCtx} {s s₁ s₂ : LNStack} {t₁ t₂ : LNExpr}
     (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
     (hctx1 : LNCtxRed Γ s Γ₁ s₁) (hctx2 : LNCtxRed Γ s Γ₂ s₂)
     (hlc : t₀.lc) (hwf : Γ.wf) (hswf : s.wf) (hnd : (LNCtx.dom Γ).Nodup)
-    : ∃ t₃, LNEquivRed Γ₁ s₁ t₁ t₃ ∧ LNEquivRed Γ₂ s₂ t₂ t₃ := by
+    : Σ' t₃, LNEquivRed Γ₁ s₁ t₁ t₃ × LNEquivRed Γ₂ s₂ t₂ t₃ := by
   cases h1 with
   | me_pro _ _ => sorry  -- needs commutativity for SubRed diamond; see equivRed_subst_diamond
   | me_top => cases h2 with | me_top => exact ⟨.top, .me_top, .me_top⟩
@@ -4953,13 +4953,13 @@ decreasing_by
 
 /-- Diamond (one-context version used by commutativity).
     Derived from `diamond_full` by using `ctxRed_refl` for one context. -/
-theorem diamond
+noncomputable def diamond
     {Γ Γ' : LNCtx} {s s' : LNStack} {t₀ t₁ t₂ : LNExpr}
     (h1 : LNEquivRed Γ s t₀ t₁) (h2 : LNEquivRed Γ s t₀ t₂)
     (hctx : LNCtxRed Γ s Γ' s')
     (hwf_ctx : Γ.wf) (hwf_stk : s.wf)
     (hlc : t₀.lc) (hnd : (LNCtx.dom Γ).Nodup)
-    : ∃ t₃, LNEquivRed Γ s t₂ t₃ ∧ LNEquivRed Γ' s' t₁ t₃ := by
+    : Σ' t₃, LNEquivRed Γ s t₂ t₃ × LNEquivRed Γ' s' t₁ t₃ := by
   have hid : LNCtxRed Γ s Γ s := ctxRed_refl Γ s hwf_ctx hwf_stk
   obtain ⟨t₃, h_left, h_right⟩ := diamond_full t₀ h2 h1 hid hctx hlc hwf_ctx hwf_stk hnd
   exact ⟨t₃, h_left, h_right⟩
@@ -5042,7 +5042,7 @@ noncomputable def equivRed_subst_diamond
     (hbudget : u.sz ≤ budget)
     (hv_budget : v.sz < budget)
     (hx_s : ∀ e ∈ s, x ∉ e.fvs)
-    : ∃ w, LNEquivRed Γ s (u'.subst_fvar x v) w ∧ LNSubRed Γ' s' (u.subst_fvar x v') w := by
+    : Σ' w, LNEquivRed Γ s (u'.subst_fvar x v) w × LNSubRed Γ' s' (u.subst_fvar x v') w := by
   cases h with
   | me_top =>
     -- u = .top, u' = .top
@@ -5174,7 +5174,7 @@ noncomputable def subRed_subst_diamond
     (hbudget : u.sz ≤ budget)
     (hv_budget : v.sz < budget)
     (hx_s : ∀ e ∈ s, x ∉ e.fvs)
-    : ∃ w, LNEquivRed Γ s (u'.subst_fvar x v) w ∧ LNSubRed Γ' s' (u.subst_fvar x v') w := by
+    : Σ' w, LNEquivRed Γ s (u'.subst_fvar x v) w × LNSubRed Γ' s' (u.subst_fvar x v') w := by
   cases h with
   | ms_top =>
     -- u' = .top
