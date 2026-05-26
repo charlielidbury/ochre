@@ -43,11 +43,11 @@ There is a large intersection between software which requires low-level control 
 
 _Ochre_ is a planned language which aims to inhabit this gap: a systems programming language with native support for dependent types. One might summarise the goal as combining Rust's ownership model and low-level control with Lean's proof capabilities in a single language and type system. The key mechanisms are a unified term/type language (following the Pure Subtype Systems tradition @hutchins-2010), structural subtyping, strong mutation, and ownership-based resource tracking.
 
-Two recent trends make this research direction timely. First, the cost of unverified software is rising: AI-assisted vulnerability discovery has dramatically increased the rate at which security bugs are found in critical infrastructure --- Mozilla closed as many Firefox vulnerabilities in April 2026 as in the previous two years combined @firefox-vuln-2026, and a nine-year dormant Linux kernel privilege escalation was surfaced by automated analysis @linux-copyfail-2026. Second, the cost of writing software is falling: AI coding agents have reduced the labour involved in software engineering to the point where ambitious rewrites that were previously infeasible are now routine --- Bun, a major open-source JavaScript runtime, was rewritten from Zig to Rust in nine days via a single million-line pull request @bun-rewrite-2026. The bottleneck for software engineering is shifting from writing code to specifying what correct code looks like; the value proposition of a language whose type system _is_ a specification language is growing stronger.
+Two recent trends make this research direction timely. First, the cost of unverified software is rising: AI-assisted vulnerability discovery has dramatically increased the rate at which security bugs are found in critical infrastructure --- Mozilla closed as many Firefox vulnerabilities in April 2026 as in the previous two years combined @firefox-vuln-2026, and a nine-year dormant Linux kernel privilege escalation was surfaced by automated analysis @linux-copyfail-2026. Second, the cost of writing software is falling: AI coding agents have reduced the labour involved in software engineering to the point where ambitious rewrites that were previously infeasible are now routine @bun-rewrite-2026. The bottleneck for software engineering is shifting from writing code to specifying what correct code looks like; the value proposition of a language whose type system _is_ a specification language is growing stronger.
 
 During a previous attempt to develop Ochre @lidburyOchreDependentlyTyped2024, the project was held back by soundness bugs in the type system and a general lack of clarity on the semantics of the objects in the language. A counterexample was found in which narrowing a variable's type --- the operation which underlies strong mutation --- invalidated a previously valid subtyping judgment. The root cause was not in the mutation or ownership machinery, but in the foundational interaction between subtyping and type-level computation: the core semantic idea that terms and types share a common language had not been studied carefully enough to support the full system built on top of it.
 
-This paper presents _Och_, a core calculus designed to isolate and study these foundational features before reintroducing the complexity of mutation and ownership. Och combines $lambda$-calculus with equirecursive subtyping, self-types ($iota$), and general recursion ($"fix"$) in a setting where terms and types are syntactically and semantically unified. It is the first in a planned sequence of calculi --- Och, Ochr (adding ownership/linearity), and finally Ochre (adding mutable references) --- each of which answers a distinct research question while building toward the full language.
+This paper presents _Och_, a core calculus designed to isolate and study these foundational features before reintroducing the complexity of mutation and ownership. Och combines $lambda$-calculus with equirecursive subtyping, self-types ($iota$), and general recursion ($"fix"$) in a setting where terms and types are syntactically and semantically unified --- concretely, there is no separate $Pi$-type constructor for function types; the type of a function is itself a function, and types reduce by the same $beta$-rule as terms. Och is the first in a planned sequence of calculi --- Och, Ochr (adding ownership/linearity), and finally Ochre (adding mutable references) --- each of which answers a distinct research question while building toward the full language.
 
 == Methodology
 
@@ -65,26 +65,42 @@ Second, the resulting test suite (see @examples) provides strong evidence of exp
 
 *Extensibility.* Och is the first in a series of calculi building toward Ochre. Features which do not generalise to the full language are not worth investigating here. This consideration has already manifested in the decision to use general recursion via $"fix"$ rather than adding primitive inductive types with only well-founded induction.
 
-= Related Work <related>
-*Pure Subtype Systems* @hutchins-2010 --- PSS explores the idea that terms and types inhabit the same syntactic and semantic domain. Och was mostly developed independently, but PSS captures the core philosophy so well that Och is best understood as an extension of it: PSS plus self-types ($iota$), general recursion ($"fix"$), and coinductive subtyping.
+= Background <related>
+
+== Pure Subtype Systems <pss>
+
+In a conventional type theory, there is a sharp syntactic distinction between terms and their types. Functions are introduced by $lambda$ and their types by $Pi$: the term $lambda(x : A). b$ has type $Pi(x : A). B$. These are different constructors with different reduction rules --- $lambda$ participates in $beta$-reduction, while $Pi$ does not compute.
+
+Pure Subtype Systems @hutchins-2010 collapse this distinction. There is only $lambda$: the type of a function _is_ a function. Where a conventional system writes $Pi(x : A). B$ for the type of functions from $A$ to $B$, PSS writes $lambda(x : A). B$ --- the same constructor used for the functions themselves. This means types compute by exactly the same rules as terms: $beta$-reduction, substitution, and application all apply uniformly.
+
+The consequence is that every term is trivially its own most precise type. A value like $3$ does not merely _have_ type $"Nat"$; it _is_ a type, the singleton type whose only inhabitant is $3$. The subtyping relation then does all the work that a typing judgment would normally do: $3 subset.sq.eq "Nat"$ is the statement that $3$ is a natural number. There is no need for a separate $Gamma tack.r e : tau$ judgment --- well-formedness (@well-formed) checks structural validity, and subtyping (@subtyping) answers every question about type compatibility.
+
+Och adopts PSS's core design and extends it with self-types ($iota$), general recursion ($"fix"$), and coinductive subtyping.
+
+== Self Types <self-types>
+
+Church encodings represent data as their own eliminators: a boolean is a function that takes two branches and returns one of them, a natural number is a function that takes a zero case and a successor case and folds over itself. This is elegant but has a well-known limitation: the eliminator's return type cannot depend on the value being eliminated. A Church-encoded boolean can branch on itself to return values of some fixed type $X$, but it cannot branch to return values of type $P "true"$ or $P "false"$ for a type-level function $P$ --- the eliminator does not know which boolean it is.
+
+Self types, introduced by @fu-stump-2014, solve this problem. The binder $iota(x lt.eq tau). e$ introduces a type in which the variable $x$ refers to _the term inhabiting the type_. When checking whether $a subset.sq.eq iota(x lt.eq tau). e$, the rule [S-Iota-Intro] substitutes $a$ for $x$ in the body, reducing the goal to $a subset.sq.eq e[x arrow.r.bar a]$. This feeds the value being typed _into_ its own type, enabling the return type to depend on the inhabitant.
+
+For example, the dependent boolean type $"DBool"$ is defined so that its eliminator takes a motive $P : "DBool" arrow top$ and branches of type $P "true"$ and $P "false"$, returning *$P "self"$* where $"self"$ is the boolean value currently being typed. The constructors $"true"$ and $"false"$ are plain $lambda$-terms, identical to their non-dependent counterparts --- the dependent elimination machinery lives entirely in the type, not in the constructors. See @bool-encoding for the full definitions and @examples for further encodings built on this pattern.
 
 = Language Semantics <lang-sem>
 
-This section describes what each piece of the language does in natural language to give the reader an intuition for the objects involved before we get into the hard typing rules examples and metatheory.
+This section describes what each piece of the language does in natural language to give the reader an intuition for the objects involved before we get into the typing rules, examples, and metatheory. The full syntax is given in @syntax.
 
-Och syntax:
-
-$
-  e, tau ::= & x                      &         "variable" \
-           | & lambda(x lt.eq tau). e &           "lambda" \
-           | & e_1 space e_2          &      "application" \
-           | & top                    &   "universe (top)" \
-           | & bot                    & "primitive bottom" \
-           | & iota(x lt.eq tau). e   & "self-type binder" \
-           | & "fix"(x lt.eq tau). e  & "recursive binder" \
-$
-
-There is no separate syntactic category for types: every $tau$ above is itself a term.
+#figure(
+  $
+    e, tau ::= & x                      &         "variable" \
+             | & lambda(x lt.eq tau). e &           "lambda" \
+             | & e_1 space e_2          &      "application" \
+             | & top                    &   "universe (top)" \
+             | & bot                    & "primitive bottom" \
+             | & iota(x lt.eq tau). e   & "self-type binder" \
+             | & "fix"(x lt.eq tau). e  & "recursive binder" \
+  $,
+  caption: [Och syntax.],
+) <syntax>
 
 *Variables, lambdas, application* as per the standard λ-calculus, except $lambda$ has a domain type annotation which is respected by the type checker.
 
@@ -102,33 +118,41 @@ The concrete evaluator is a substitution-based call-by-value big-step interprete
 
 Och has no concept of levels/universes/stages, so the type checker cannot enforce that {$top$, $bot$, $iota$} don't go into runtime, so runtime needs to handle them gracefully. Adding universes (see §3.6 of PSS @hutchins-2010) would let us erase type-level arguments during compilation, after which {$top$, $bot$, $iota$} would never appear at level 0.
 
-We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in.
+We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in. The rules are given in @eval-rules.
 
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("E-Val", eval($v$, $v$)),
-
-  irule("E-App", eval($f space a$, $v$), eval($f$, $lambda(x lt.eq tau). b$), eval($a$, $v_a$), eval(
-    $b[x arrow.r.bar v_a]$,
-    $v$,
-  )),
-
-  irule("E-Iota", eval($iota(x lt.eq tau). b$, $v$), eval(
-    $b[x arrow.r.bar iota(x lt.eq tau).b]$,
-    $v$,
-  )),
-  irule("E-Fix", eval($"fix"(x lt.eq tau). b$, $v$), eval(
-    $b[x arrow.r.bar "fix"(x lt.eq tau).b]$,
-    $v$,
-  )),
-))
-
-$
-  "where" v in "Value" ::= & lambda(x lt.eq tau). e &           "lambda" \
-                         | & bot                    & "primitive bottom" \
-                         | & top                    &   "universe (top)" \
-$
+#figure(
+  stack(
+    dir: ttb,
+    spacing: 1.5em,
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule("E-Val", eval($v$, $v$)),
+      irule("E-App", eval($f space a$, $v$), eval($f$, $lambda(x lt.eq tau). b$), eval($a$, $v_a$), eval(
+        $b[x arrow.r.bar v_a]$,
+        $v$,
+      )),
+    ),
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule("E-Iota", eval($iota(x lt.eq tau). b$, $v$), eval(
+        $b[x arrow.r.bar iota(x lt.eq tau).b]$,
+        $v$,
+      )),
+      irule("E-Fix", eval($"fix"(x lt.eq tau). b$, $v$), eval(
+        $b[x arrow.r.bar "fix"(x lt.eq tau).b]$,
+        $v$,
+      )),
+    ),
+    $
+      "where" v in "Value" ::= & lambda(x lt.eq tau). e &           "lambda" \
+                             | & bot                    & "primitive bottom" \
+                             | & top                    &   "universe (top)" \
+    $,
+  ),
+  caption: [Evaluation rules. Big-step, substitution-based, call-by-value on closed terms.],
+) <eval-rules>
 
 The most important aspect of the runtime semantics are what is _missing_ from the runtime semantics:
 - Free variables are not values and have no rule, therefore they cannot occur at runtime, which is what forces the type system to rule out ill-scoped variables.
@@ -153,60 +177,65 @@ $Gamma$ is the typing context defined as $Gamma ::= emptyset | Gamma, x lt.eq a$
 
 The well-formedness judgment $Gamma tack.r e "wf"$ determines whether term $e$ is well-formed under context $Gamma$. In other systems this role would be served by a $Gamma tack.r a : tau$ rule which assigns a type to a term, but there is no need to assign a type to terms in Och because every term is already trivially its own type by [S-Refl].
 
-Well-formedness validates purely structural conditions: annotations are types, binders are in scope, and applications have Π-typed functions with domain-inhabiting arguments.
+Well-formedness validates purely structural conditions: annotations are types, binders are in scope, and applications have Π-typed functions with domain-inhabiting arguments. The rules are given in @wf-rules.
 
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("W-Var", wf($Gamma$, $x$), $x in "dom"(Gamma)$),
-  irule("W-Type", wf($Gamma$, $top$)),
-  irule("W-Bot", wf($Gamma$, $bot$)),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule(
-    "W-Lam",
-    wf($Gamma$, $lambda(x lt.eq A). b$),
-    wf($Gamma$, $A$),
-    wf(
-      $Gamma\, x lt.eq A$,
-      $b$,
+#figure(
+  stack(
+    dir: ttb,
+    spacing: 1.5em,
+    grid(
+      columns: (1fr, 1fr, 1fr),
+      gutter: 1.5em,
+      irule("W-Var", wf($Gamma$, $x$), $x in "dom"(Gamma)$),
+      irule("W-Type", wf($Gamma$, $top$)),
+      irule("W-Bot", wf($Gamma$, $bot$)),
+    ),
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule(
+        "W-Lam",
+        wf($Gamma$, $lambda(x lt.eq A). b$),
+        wf($Gamma$, $A$),
+        wf(
+          $Gamma\, x lt.eq A$,
+          $b$,
+        ),
+      ),
+      irule(
+        "W-App",
+        wf($Gamma$, $f space a$),
+        wf($Gamma$, $f$),
+        wf($Gamma$, $a$),
+        sub($emptyset$, $Gamma$, $f$, $lambda(x lt.eq A). B$),
+        sub($emptyset$, $Gamma$, $a$, $A$),
+      ),
+    ),
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule(
+        "W-Iota",
+        wf($Gamma$, $iota(x lt.eq A). b$),
+        wf($Gamma$, $A$),
+        wf(
+          $Gamma\, x lt.eq A$,
+          $b$,
+        ),
+      ),
+      irule(
+        "W-Fix",
+        wf($Gamma$, $"fix"(x lt.eq A). b$),
+        wf($Gamma$, $A$),
+        wf(
+          $Gamma\, x lt.eq A$,
+          $b$,
+        ),
+      ),
     ),
   ),
-  irule(
-    "W-App",
-    wf($Gamma$, $f space a$),
-    wf($Gamma$, $f$),
-    wf($Gamma$, $a$),
-    sub($emptyset$, $Gamma$, $f$, $lambda(x lt.eq A). B$),
-    sub($emptyset$, $Gamma$, $a$, $A$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule(
-    "W-Iota",
-    wf($Gamma$, $iota(x lt.eq A). b$),
-    wf($Gamma$, $A$),
-    wf(
-      $Gamma\, x lt.eq A$,
-      $b$,
-    ),
-  ),
-  irule(
-    "W-Fix",
-    wf($Gamma$, $"fix"(x lt.eq A). b$),
-    wf($Gamma$, $A$),
-    wf(
-      $Gamma\, x lt.eq A$,
-      $b$,
-    ),
-  ),
-))
+  caption: [Well-formedness rules.],
+) <wf-rules>
 
 *[W-Var]* requires variables be well-scoped.
 
@@ -237,22 +266,22 @@ The subtyping rules fall into four categories. Each serves a distinct purpose; k
     [Structural\
       (@structural)],
     [Plumbing: recurse without inspecting constructors on either side],
-    [S-Refl, S-Top, S-BotL, S-Trans, S-Hyp, S-Var],
+    [@structural-rules],
     [no],
     [Congruence\
       (@congruence)],
     [Match constructor on both sides; reduce to sub-obligations with variance],
-    [S-Lam, S-App-Cong, S-Iota-Cong, S-Fix-Cong],
+    [@congruence-rules],
     [no],
     [Productive unfolding\
       (@productive)],
     [Unfold a recursive binder (ι/fix); extend $S$; enable coinductive closure],
-    [S-Iota-Intro, S-Unfold-Iota-L/R, S-Unfold-Fix-L/R],
+    [@productive-rules],
     [*yes*],
     [Conversion\
       (@conversion)],
     [Close under head reduction so subtyping is closed under computation],
-    [S-Beta-L/R],
+    [@conversion-rules],
     [no],
   ),
   caption: [Rule taxonomy for declarative subtyping],
@@ -262,23 +291,29 @@ The $S$-extension column matters: S-Hyp can only fire against entries that some 
 
 == Structural rules <structural>
 
-"Structural" rules talk about $subset.sq.eq$ as a relation on terms without inspecting either side's head constructor: reflexivity, transitivity, the top element, hypothesis lookup, and variable lookup.
+Structural rules (@structural-rules) talk about $subset.sq.eq$ as a relation on terms without inspecting either side's head constructor: reflexivity, transitivity, the top element, hypothesis lookup, and variable lookup.
 
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("S-Refl", sub($S$, $Gamma$, $e$, $e$)),
-  irule("S-Trans", sub($S$, $Gamma$, $a$, $c$), sub($S$, $Gamma$, $a$, $b$), sub($S$, $Gamma$, $b$, $c$)),
-  irule("S-Hyp", sub($S$, $Gamma$, $a$, $b$), $(a, b) in S$),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr, 1fr),
-  gutter: 1.5em,
-  irule("S-Var", sub($S$, $Gamma$, $x$, $Gamma(x)$)),
-  irule("S-Top", sub($S$, $Gamma$, $e$, $top$)),
-  irule("S-BotL", sub($S$, $Gamma$, $bot$, $e$)),
-))
+#figure(
+  stack(
+    dir: ttb,
+    spacing: 1.5em,
+    grid(
+      columns: (1fr, 1fr, 1fr),
+      gutter: 1.5em,
+      irule("S-Refl", sub($S$, $Gamma$, $e$, $e$)),
+      irule("S-Trans", sub($S$, $Gamma$, $a$, $c$), sub($S$, $Gamma$, $a$, $b$), sub($S$, $Gamma$, $b$, $c$)),
+      irule("S-Hyp", sub($S$, $Gamma$, $a$, $b$), $(a, b) in S$),
+    ),
+    grid(
+      columns: (1fr, 1fr, 1fr),
+      gutter: 1.5em,
+      irule("S-Var", sub($S$, $Gamma$, $x$, $Gamma(x)$)),
+      irule("S-Top", sub($S$, $Gamma$, $e$, $top$)),
+      irule("S-BotL", sub($S$, $Gamma$, $bot$, $e$)),
+    ),
+  ),
+  caption: [Structural subtyping rules.],
+) <structural-rules>
 
 *Ex falso via subsumption.* There is no dedicated "absurd" eliminator. If $a subset.sq.eq bot$ is derivable, then $a subset.sq.eq e$ for every $e$ via [S-Trans] on [S-BotL]. The "contradiction" discharge is subsumption alone. This matches the DOT @amin-moors-odersky-2012 tradition: $bot$ inhabits every type trivially in subtyping, so any term whose type is already $bot$ flows into any expected type without further ceremony.
 
@@ -288,42 +323,48 @@ I have no satisfying answer to whether or not transitivity is eliminatable in Oc
 
 == Congruence rules <congruence>
 
-Congruence rules do inspect the head constructor on both sides, _require it to match_, and reduce the goal to sub-obligations on the immediate sub-terms with appropriate variance.
+Congruence rules (@congruence-rules) inspect the head constructor on both sides, _require it to match_, and reduce the goal to sub-obligations on the immediate sub-terms with appropriate variance.
 
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule(
-    "S-Lam-Cong",
-    sub($S$, $Gamma$, $lambda(x lt.eq A_1). b_1$, $lambda(x lt.eq A_2). b_2$),
-    sub($S$, $Gamma$, $A_2$, $A_1$),
-    sub($S$, $Gamma\, x lt.eq A_2$, $b_1$, $b_2$),
+#figure(
+  stack(
+    dir: ttb,
+    spacing: 1.5em,
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule(
+        "S-Lam-Cong",
+        sub($S$, $Gamma$, $lambda(x lt.eq A_1). b_1$, $lambda(x lt.eq A_2). b_2$),
+        sub($S$, $Gamma$, $A_2$, $A_1$),
+        sub($S$, $Gamma\, x lt.eq A_2$, $b_1$, $b_2$),
+      ),
+      irule(
+        "S-App-Cong",
+        sub($S$, $Gamma$, $f_2 space a_2$, $f_1 space a_1$),
+        sub($S$, $Gamma$, $f_2$, $f_1$),
+        sub($S$, $Gamma$, $a_2$, $a_1$),
+        sub($S$, $Gamma$, $a_1$, $a_2$),
+      ),
+    ),
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule(
+        "S-Iota-Cong",
+        sub($S$, $Gamma$, $iota(x lt.eq A_1). B_1$, $iota(x lt.eq A_2). B_2$),
+        sub($S$, $Gamma$, $A_1$, $A_2$),
+        sub($S$, $Gamma\, x lt.eq A_2$, $B_1$, $B_2$),
+      ),
+      irule(
+        "S-Fix-Cong",
+        sub($S$, $Gamma$, $"fix"(x lt.eq A_1). b_1$, $"fix"(x lt.eq A_2). b_2$),
+        sub($S$, $Gamma$, $A_1$, $A_2$),
+        sub($S$, $Gamma\, x lt.eq A_2$, $b_1$, $b_2$),
+      ),
+    ),
   ),
-  irule(
-    "S-App-Cong",
-    sub($S$, $Gamma$, $f_2 space a_2$, $f_1 space a_1$),
-    sub($S$, $Gamma$, $f_2$, $f_1$),
-    sub($S$, $Gamma$, $a_2$, $a_1$),
-    sub($S$, $Gamma$, $a_1$, $a_2$),
-  ),
-))
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule(
-    "S-Iota-Cong",
-    sub($S$, $Gamma$, $iota(x lt.eq A_1). B_1$, $iota(x lt.eq A_2). B_2$),
-    sub($S$, $Gamma$, $A_1$, $A_2$),
-    sub($S$, $Gamma\, x lt.eq A_2$, $B_1$, $B_2$),
-  ),
-  irule(
-    "S-Fix-Cong",
-    sub($S$, $Gamma$, $"fix"(x lt.eq A_1). b_1$, $"fix"(x lt.eq A_2). b_2$),
-    sub($S$, $Gamma$, $A_1$, $A_2$),
-    sub($S$, $Gamma\, x lt.eq A_2$, $b_1$, $b_2$),
-  ),
-))
+  caption: [Congruence subtyping rules.],
+) <congruence-rules>
 
 The equivalence premise on [S-App-Cong] (both directions on the argument) is necessary because a neutral head can use its argument at any variance, so equivalence is the only sound congruence.
 
@@ -331,53 +372,53 @@ The equivalence premise on [S-App-Cong] (both directions on the argument) is nec
 
 A rule is _productive_ when it replaces a goal whose head is a recursive binder (ι or fix) with a goal where that binder has been unfolded once. Unfolding makes the term _larger_ in syntactic size, so no structural induction can traverse an arbitrary chain of unfolds. Productivity instead provides a _coinductive_ handle: once at least one unfold has fired, the original goal is guaranteed to eventually re-appear as an ancestor, at which point [S-Hyp] can close the derivation.
 
-The rules below are the only ones that extend $S$.
+The rules (@productive-rules) are the only ones that extend $S$.
 
-Let $S' = S, (a, b)$ where $sub(S, Gamma, a, b)$ is the current goal.
-
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("S-Iota-Intro", sub($S$, $Gamma$, $a$, $iota(x lt.eq A). B$), sub($S'$, $Gamma$, $a$, $A$), sub(
-    $S'$,
-    $Gamma$,
-    $a$,
-    $B[x arrow.r.bar a]$,
-  )),
-  irule("S-Unfold-Iota-L", sub($S$, $Gamma$, $iota(x lt.eq A). B$, $c$), sub(
-    $S'$,
-    $Gamma$,
-    $B[x arrow.r.bar iota(x lt.eq A).B]$,
-    $c$,
-  )),
-))
-
-#align(center, stack(
-  dir: ttb,
-  spacing: 1.5em,
-  irule("S-Unfold-Iota-R", sub($S$, $Gamma$, $a$, $iota(x lt.eq A). B$), sub(
-    $S'$,
-    $Gamma$,
-    $a$,
-    $B[x arrow.r.bar iota(x lt.eq A).B]$,
-  )),
-  grid(
-    columns: (1fr, 1fr),
-    gutter: 1.5em,
-    irule("S-Unfold-Fix-L", sub($S$, $Gamma$, $"fix"(x lt.eq A). b$, $c$), sub(
-      $S'$,
-      $Gamma$,
-      $b[x arrow.r.bar "fix"(x lt.eq A).b]$,
-      $c$,
-    )),
-    irule("S-Unfold-Fix-R", sub($S$, $Gamma$, $a$, $"fix"(x lt.eq A). b$), sub(
+#figure(
+  stack(
+    dir: ttb,
+    spacing: 1.5em,
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule("S-Iota-Intro", sub($S$, $Gamma$, $a$, $iota(x lt.eq A). B$), sub($S'$, $Gamma$, $a$, $A$), sub(
+        $S'$,
+        $Gamma$,
+        $a$,
+        $B[x arrow.r.bar a]$,
+      )),
+      irule("S-Unfold-Iota-L", sub($S$, $Gamma$, $iota(x lt.eq A). B$, $c$), sub(
+        $S'$,
+        $Gamma$,
+        $B[x arrow.r.bar iota(x lt.eq A).B]$,
+        $c$,
+      )),
+    ),
+    irule("S-Unfold-Iota-R", sub($S$, $Gamma$, $a$, $iota(x lt.eq A). B$), sub(
       $S'$,
       $Gamma$,
       $a$,
-      $b[x arrow.r.bar "fix"(x lt.eq A).b]$,
+      $B[x arrow.r.bar iota(x lt.eq A).B]$,
     )),
+    grid(
+      columns: (1fr, 1fr),
+      gutter: 1.5em,
+      irule("S-Unfold-Fix-L", sub($S$, $Gamma$, $"fix"(x lt.eq A). b$, $c$), sub(
+        $S'$,
+        $Gamma$,
+        $b[x arrow.r.bar "fix"(x lt.eq A).b]$,
+        $c$,
+      )),
+      irule("S-Unfold-Fix-R", sub($S$, $Gamma$, $a$, $"fix"(x lt.eq A). b$), sub(
+        $S'$,
+        $Gamma$,
+        $a$,
+        $b[x arrow.r.bar "fix"(x lt.eq A).b]$,
+      )),
+    ),
   ),
-))
+  caption: [Productive unfolding rules. $S' = S, (a, b)$ where $sub(S, Gamma, a, b)$ is the current goal.],
+) <productive-rules>
 
 S-Unfold-Iota-R is the weaker sibling of S-Iota-Intro (same conclusion, no annotation premise), needed to close the equivalence of ι-unfolding.
 
@@ -456,24 +497,27 @@ Because the constructors have $top$ domains, every contravariant [S-Lam] premise
 
 == Conversion <conversion>
 
-The subtyping relation must be closed under head reduction: if $a$ computes to $a'$, then $a subset.sq.eq b$ should hold iff $a' subset.sq.eq b$. These rules provide that closure.
+The subtyping relation must be closed under head reduction: if $a$ computes to $a'$, then $a subset.sq.eq b$ should hold iff $a' subset.sq.eq b$. The conversion rules (@conversion-rules) provide that closure.
 
-#align(center, grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  irule("S-Beta-L", sub($S$, $Gamma$, $(lambda(x lt.eq A). "body") space "arg"$, $b$), sub(
-    $S$,
-    $Gamma$,
-    $"body"[x arrow.r.bar "arg"]$,
-    $b$,
-  )),
-  irule("S-Beta-R", sub($S$, $Gamma$, $a$, $(lambda(x lt.eq A). "body") space "arg"$), sub(
-    $S$,
-    $Gamma$,
-    $a$,
-    $"body"[x arrow.r.bar "arg"]$,
-  )),
-))
+#figure(
+  grid(
+    columns: (1fr, 1fr),
+    gutter: 1.5em,
+    irule("S-Beta-L", sub($S$, $Gamma$, $(lambda(x lt.eq A). "body") space "arg"$, $b$), sub(
+      $S$,
+      $Gamma$,
+      $"body"[x arrow.r.bar "arg"]$,
+      $b$,
+    )),
+    irule("S-Beta-R", sub($S$, $Gamma$, $a$, $(lambda(x lt.eq A). "body") space "arg"$), sub(
+      $S$,
+      $Gamma$,
+      $a$,
+      $"body"[x arrow.r.bar "arg"]$,
+    )),
+  ),
+  caption: [Conversion rules.],
+) <conversion-rules>
 
 = Example Programs <examples>
 
@@ -638,6 +682,140 @@ Och *does aim to prove (2)*, and this is the real runtime guarantee of the type 
 The calculus described above has been formalised in Lean 4, which is used to maintain a test suite of example programs and allow AI agents to iterate on the metatheory. The source is available at #link("https://github.com/charlielidbury/ochre")[github.com/charlielidbury/ochre].
 
 = Related Work <related-work>
-Placeholder
+
+Existing approaches to verified systems software can be grouped by how they relate the verified artifact to the executable one. To make the comparison concrete, each subsection illustrates how safe array indexing --- accessing element $i$ of an array of length $n$ with a static guarantee that $i < n$, eliminating the runtime bounds check --- is expressed under each approach. Ochre's position, a single language serving both roles, is informed by the trade-offs each approach makes.
+
+== Verification-first, then extraction <rw-extraction>
+
+In this approach the program is written inside a theorem prover, and executable code is extracted or compiled from it. CompCert @leroy-2009 is a C compiler written and verified in Coq, with executable code extracted via Coq's extraction mechanism. seL4 @klein-2009 verified a C microkernel by maintaining a formal model in Isabelle/HOL alongside the C implementation, with a proof that the C code refines the model. Project Everest @project-everest-2017 verified an HTTPS stack using F\* and extracted C code via KReMLin.
+
+In F\*, safe indexing into a length-indexed vector can be expressed directly via a refinement type on the index:
+
+#figure(
+  ```fstar
+  type vec (a:Type) : nat -> Type =
+    | Nil : vec a 0
+    | Cons : #n:nat -> hd:a -> tl:vec a n -> vec a (n + 1)
+
+  let rec get #a #n (i:nat{i < n}) (v:vec a n) : a =
+    let Cons hd tl = v in
+    if i = 0 then hd else get (i - 1) tl
+  ```,
+  caption: [Safe array indexing in F\*. The refinement `i:nat{i < n}` is a compile-time proof obligation; callers must prove `i < n` to the type checker. The `Nil` case is statically unreachable.],
+)
+
+For systems code, Low\*'s buffer operations carry the same refinement pattern: `b.(n)` requires a proof that `n < length b`, and after verification KReMLin extracts this to a bare C array access `b[n]` with no bounds check. The result is zero-overhead verified code, but the programmer must express their algorithm in F\*'s purely functional, monadic-effect style, thread heap invariants through a state monad, and maintain separation-logic-like permissions on buffer liveness --- all of which are far removed from the C code they ultimately target. The development cost is very high: the ratio of proof to code is typically 10:1 or greater.
+
+== Translation-based verification <rw-translation>
+
+Aeneas @aeneas-2022 takes an existing Rust program, translates it to a pure functional model in a theorem prover (Lean, Coq, F\*, or HOL4), and lets the programmer verify properties of the model. The key insight is that Rust's ownership discipline guarantees that each mutable borrow has exclusive access, so an in-place mutation `x[i] = v` can be modelled as a pure functional update that returns a new collection.
+
+#figure(
+  grid(
+    columns: (1fr, 1fr),
+    gutter: 2em,
+    [
+      ```rust
+      // Rust source
+      pub fn zero(x: &mut Vec<u32>) {
+          let mut i = 0;
+          while i < x.len() {
+              x[i] = 0;
+              i += 1;
+          }
+      }
+      ```
+    ],
+    [
+      ```lean
+      -- Aeneas-generated Lean
+      def zero_loop (x : Vec U32) (i : Usize)
+        : Result (Vec U32) :=
+        if i < Vec.len x then do
+          let (_, back) ←
+            Vec.index_mut x i
+          let x1 := back 0#u32
+          zero_loop x1 (i + 1#usize)
+        else Result.ok x
+      ```
+    ],
+  ),
+  caption: [Aeneas translation of in-place vector zeroing. The `&mut Vec<u32>` becomes a value that is returned; `x[i] = 0` becomes a call to `index_mut` returning a backward continuation `back` which, applied to the new value, produces the updated vector. Failable operations (indexing, arithmetic) live inside the `Result` monad.],
+)
+
+This avoids the need to write systems code in a theorem prover, but introduces an architectural boundary: the programmer writes Rust, the toolchain generates functional models, and the prover reasons about those models. The verified artifact and the executable artifact are different objects in different languages, so proof obligations live outside the source language and cannot influence compilation (e.g., by eliding a bounds check). The programmer must also trust the translation and the Rust compiler.
+
+== Bolt-on verification for Rust <rw-bolton>
+
+Prusti @astrauskas-2022, Creusot @denis-2022, and Verus @lattuada-2023 add specification and verification capabilities to Rust via annotations, macros, or embedded DSLs. The programmer writes Rust code as normal and adds pre/postconditions and loop invariants; an automated verifier (typically backed by an SMT solver) checks them.
+
+#figure(
+  ```rust
+  // Verus: verified binary search (from verus-lang/verus examples)
+  verus! {
+  fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
+      requires
+          forall|i: int, j: int|
+              0 <= i <= j < v.len() ==> v[i] <= v[j],
+          exists|i: int| 0 <= i < v.len() && k == v[i],
+      ensures
+          r < v.len(),
+          k == v[r as int],
+  {
+      let mut lo: usize = 0;
+      let mut hi: usize = v.len() - 1;
+      while lo != hi
+          invariant
+              hi < v.len(),
+              exists|i: int| lo <= i <= hi && k == v[i],
+              forall|i: int, j: int|
+                  0 <= i <= j < v.len() ==> v[i] <= v[j],
+          decreases hi - lo,
+      {
+          let mid = lo + (hi - lo) / 2;
+          if v[mid] < k { lo = mid + 1; } else { hi = mid; }
+      }
+      lo
+  }
+  } // verus!
+  ```,
+  caption: [Verified binary search in Verus. Specifications are written in a first-order logic DSL inside `requires`/`ensures`/`invariant` blocks. Each `v[mid]` access is verified to be in bounds from the loop invariant. Specifications operate over a ghost `Seq<T>` model, not Rust's native `Vec<T>`.],
+)
+
+These tools have the lowest adoption barrier: the programmer stays in Rust and adds specifications incrementally. However, the specification and implementation remain in separate languages that the programmer must keep in sync. Specifications operate over ghost models (`Seq<T>`, accessed via `v@`) since Rust's native types cannot appear in logical formulas. The expressivity of specifications is limited by what the SMT backend can decide, and the verification is incomplete --- the solver may time out or fail to find a proof, requiring manual intervention in the form of assertions or lemma calls. In a language with native dependent types, by contrast, the precondition $i < n$ is the type of the index argument, not a side-channel annotation, and the type checker itself is the verification engine.
+
+== Dependently typed systems languages <rw-depsys>
+
+ATS @xi-2017 and Low\* (the systems fragment of F\* @protzenko-2017) are the closest prior art to Ochre's vision: languages which combine dependent types with low-level control in a single system.
+
+#figure(
+  ```ats
+  (* ATS: safe array access via dependent sorts *)
+  fun{a:t@ype} arrayref_get_at
+    {n:int}{i:nat | i < n}
+    (A: arrayref(a, n), i: size_t i): (a)
+
+  (* Binary search with compile-time bounds proof *)
+  fun{a:t@ype} bsearch_arr{n:nat}
+    (A: arrayref(a, n), n: int n, x0: a,
+     cmp: (a, a) -> int) : int = let
+    fun loop {i,j:int | 0 <= i; i <= j+1; j+1 <= n}
+      (A: arrayref(a, n), l: int i, u: int j)
+      :<cloref1> int =
+      if l <= u then let
+        val m = l + half(u - l)
+        val x = A[m]  // bounds proof discharged by {i,j} constraint
+        val sgn = cmp(x0, x)
+      in
+        if sgn >= 0 then loop(A, m+1, u) else loop(A, l, m-1)
+      end else u
+  in loop(A, 0, n-1) end
+  ```,
+  caption: [Safe array access in ATS. The constraint `{i,j:int | 0 <= i; i <= j+1; j+1 <= n}` on the inner loop statically guarantees every `A[m]` access is in bounds. ATS's constraint solver discharges these obligations automatically.],
+)
+
+ATS demonstrates that statically guaranteed bounds safety in systems code is achievable, but at a significant ergonomic cost: programmers must work within a bespoke constraint language (the `{...}` sort annotations) that is syntactically and semantically separated from the term language. Low\* achieves similar guarantees via refinement types and SMT discharge, but inherits F\*'s purely functional programming model --- mutation is expressed via a monadic state effect, not via direct mutable references as in Rust.
+
+Ochre aims to differ from both by adopting Rust's ownership model as the mechanism for safe mutation, rather than linear types (ATS) or monadic effects (Low\*), and by unifying the type and term languages so that specifications are written in the same language as the code they describe. The hypothesis is that ownership is a more natural fit for systems programmers, since Rust has demonstrated that the model is learnable at scale, and that a unified language reduces the cognitive overhead of switching between specification and implementation.
 
 #bibliography("refs.bib", style: "chicago-author-date")
