@@ -8,6 +8,8 @@
 #set par(justify: true)
 #set heading(numbering: "1.1")
 
+#show link: underline
+
 // Helper for inference rules: named rule with premises above, conclusion below
 #let irule(name, conclusion, ..premises) = {
   let prems = premises.pos()
@@ -32,40 +34,43 @@
 #v(1em)
 
 = Introduction <intro>
-After playing around with dependent types in an imperative programming setting during the masters thesis, I came to the conclusion that a fairly uncommon combination of language features would lead to an excellent combination of developer ergonomics and expressivity.
 
-I want to study the most unusual + unweildly of these features in isolation with a core calculus before building full Ochre, specifically:
+Static analysis catches bugs before software is deployed, notifying developers of mistakes earlier in the development pipeline than testing or user reports can. Type systems are the most widely adopted form of static analysis, and the strength of guarantees they provide varies enormously: from freedom from runtime type errors (TypeScript) through ownership-based resource safety (Rust) to full functional correctness (Lean, Agda, Coq). At the strong end of this spectrum lies _formal verification_: a compiler-checked mathematical proof that a program satisfies its specification across all possible inputs.
 
-- The "terms are types" philosophy, as exonerated by PSS @hutchins-2010. In Och this comes out roughly to "types are terms with holes".
-- Terms/types form a subtyping lattice, where supertypes can be freely substituted for any subtype without any coercions.
+Formal verification has been applied at scale: a verified C compiler @leroy-2009, a verified operating system kernel @klein-2009, and a verified HTTPS stack @project-everest-2017 all demonstrate that proving the correctness of real systems software is feasible. These projects used a variety of proof technologies, but a common thread among the most ergonomic approaches is _dependent types_: a type-theoretic mechanism by which types may depend on values, allowing the programmer to state properties such as "this function returns a list of the same length as its input" directly in a type signature, with the compiler verifying the property as a condition of successful compilation.
+
+There is a large intersection between software which requires low-level control and performance, and software where correctness is most critical. Operating system kernels, cryptographic libraries, network protocol implementations, and compiler backends all occupy this intersection --- they are _systems software_. Today, the languages which offer the necessary control (C, C++, Rust) lack the type-theoretic machinery for formal verification, while the languages which support dependent types (Lean, Agda, F\*) lack the control over memory layout, allocation, and mutation that systems programming demands.
+
+_Ochre_ is a planned language which aims to inhabit this gap: a systems programming language with native support for dependent types. One might summarise the goal as combining Rust's ownership model and low-level control with Lean's proof capabilities in a single language and type system. The key mechanisms are a unified term/type language (following the Pure Subtype Systems tradition @hutchins-2010), structural subtyping, strong mutation, and ownership-based resource tracking.
+
+Two recent trends make this research direction timely. First, the cost of unverified software is rising: AI-assisted vulnerability discovery has dramatically increased the rate at which security bugs are found in critical infrastructure --- Mozilla closed as many Firefox vulnerabilities in April 2026 as in the previous two years combined @firefox-vuln-2026, and a nine-year dormant Linux kernel privilege escalation was surfaced by automated analysis @linux-copyfail-2026. Second, the cost of writing software is falling: AI coding agents have reduced the labour involved in software engineering to the point where ambitious rewrites that were previously infeasible are now routine --- Bun, a major open-source JavaScript runtime, was rewritten from Zig to Rust in nine days via a single million-line pull request @bun-rewrite-2026. The bottleneck for software engineering is shifting from writing code to specifying what correct code looks like; the value proposition of a language whose type system _is_ a specification language is growing stronger.
+
+During a previous attempt to develop Ochre @lidburyOchreDependentlyTyped2024, the project was held back by soundness bugs in the type system and a general lack of clarity on the semantics of the objects in the language. A counterexample was found in which narrowing a variable's type --- the operation which underlies strong mutation --- invalidated a previously valid subtyping judgment. The root cause was not in the mutation or ownership machinery, but in the foundational interaction between subtyping and type-level computation: the core semantic idea that terms and types share a common language had not been studied carefully enough to support the full system built on top of it.
+
+This paper presents _Och_, a core calculus designed to isolate and study these foundational features before reintroducing the complexity of mutation and ownership. Och combines $lambda$-calculus with equirecursive subtyping, self-types ($iota$), and general recursion ($"fix"$) in a setting where terms and types are syntactically and semantically unified. It is the first in a planned sequence of calculi --- Och, Ochr (adding ownership/linearity), and finally Ochre (adding mutable references) --- each of which answers a distinct research question while building toward the full language.
 
 == Methodology
-Och has been designed in an experimental fashion, where I come up with programs which should be rejected/accepted, then tweak the rules until the tests pass.
 
-As a result of this
-- Och is lacking a satisfying unifying theory and attempts of the soundness proof have been unsuccessful. This makes for a natural next step now that I have a set of rules which "mostly work".
-- There is quite an impressive set of test cases (see ) which demonstrate that this idea has impressive expressivity both in terms of the complexity of the programs it as able to accept, and the subtelty of the bugs it is able to catch. *The most succinct answer to "why Och" is that I wanted these example programs to be handled correctly, and no system I could find does it quite to my liking.*
+Och has been designed experimentally: a set of _goal programs_ drove the design of the typing rules. When a candidate rule set accepted all current goal programs and rejected their deliberately buggy variants, new and more demanding goal programs were added and the process iterated. This methodology has two consequences.
 
-As a taster of what is to come: using Church/Scott encodings I have expressed booleans, natural numbers, finite sets ($"Fin n"$), pairs, lists, lists with compile-time-known-length, and safe list indexing.
+First, Och does not yet rest on a unifying semantic theory, and attempts at a soundness proof are ongoing. Establishing such a theory is a natural next step now that the rule set has stabilised around a substantial body of examples.
 
-
-These encodings use dependent elimination throughout, allowing the type system to catch bugs as subtle as adding the _wrong_ two numbers, instead of just checking that the addition was well-shaped.
-
-
+Second, the resulting test suite (see @examples) provides strong evidence of expressivity. Using Church/Scott encodings, Och expresses booleans, natural numbers, finite sets ($"Fin" n$), pairs, length-indexed arrays, and safe indexing --- all with dependent elimination. The type system catches bugs as subtle as adding the _wrong_ two numbers (see @appendvec), not merely checking that an addition is well-shaped.
 
 == Goals
-*Soundness* - Ochre is only valuable if programmers can trust the compiler to catch runtime errors. Proving the soundness of systems with the above features, let alone ownership + mutation is novel research as far as I can tell, Och is a place to do that research.
 
-*Expressivity* - The type system must be able to articulate properties and catch bugs that people care about. E.g. it must be expressive enough to tell the difference between $x + y$ and $x + x$ if one is correct and the other incorrect.
+*Soundness.* Ochre is only valuable if programmers can trust the compiler to catch runtime errors. Proving the soundness of a system which combines equirecursive subtyping, self-types, and general recursion in a unified term/type language is, as far as I can tell, novel. Och is the setting in which to carry out this research.
 
-*Extensibility* - Och is the first in a series of languages which will eventually culminate in full Ochre. As such, there is no point working with features which won't be re-usable. This has already manifested in the decision to tackle arbitrary unbounded recursion via $"fix"$ instead of having to add primitive inductive types and only well-founded induction.
+*Expressivity.* The type system must articulate properties and catch bugs that programmers care about. It must be expressive enough to distinguish $x + y$ from $x + x$ when one is correct and the other is not.
+
+*Extensibility.* Och is the first in a series of calculi building toward Ochre. Features which do not generalise to the full language are not worth investigating here. This consideration has already manifested in the decision to use general recursion via $"fix"$ rather than adding primitive inductive types with only well-founded induction.
 
 = Related Work <related>
-*Pure Subtype Systems* @hutchins-2010 - Och was mostly developed before I found PSS, and to my delight PSS is an excellent execution on my core ideas, so I am in the process of re-framing Och as an _extension_ of PSS instead of a new system. PSS explores the idea that "terms and types are the same thing" not just in terms of syntax but also semantics. The PSS paper is quite short, very easy to understand, and strongly reccomended reading for anyone engaging with Och.
+*Pure Subtype Systems* @hutchins-2010 --- PSS explores the idea that terms and types inhabit the same syntactic and semantic domain. Och was mostly developed independently, but PSS captures the core philosophy so well that Och is best understood as an extension of it: PSS plus self-types ($iota$), general recursion ($"fix"$), and coinductive subtyping.
 
 = Language Semantics <lang-sem>
 
-This section describes "what does each piece of the language do" in natural language to give the reader an intuition for the objects involved before we get into the hard typing rules examples and metatheory.
+This section describes what each piece of the language does in natural language to give the reader an intuition for the objects involved before we get into the hard typing rules examples and metatheory.
 
 Och syntax:
 
@@ -85,9 +90,9 @@ There is no separate syntactic category for types: every $tau$ above is itself a
 
 *$top$ and $bot$* are the top and bottom of the subtyping lattice. $top$ represents the widest possible type, which tells you nothing about the term being typed, and $bot$ is the empty type.
 
-*Fix* $"fix"(x lt.eq tau). e$ allows a term to be defined in terms of itself. $x$ is the reference to self, and $tau$ is the "upper bound" which the whole expression can be assumed to have while it's being type checked (which prevents loops during type checking).
+*Fix* $"fix"(x lt.eq tau). e$ allows a term to be defined in terms of itself. $x$ is the reference to the whole fix expression itself, and $tau$ is the "upper bound" which the whole expression can be assumed to have while it's being type checked (which prevents loops during type checking). // potentially needs to be made more crisp - look for explanations of fix in the wild
 
-*Iota* $iota(x lt.eq tau). e$ allows a type to be defined in terms of *the term inhabiting it*. This means $e subset.sq.eq iota (x:tau_0). tau_1$ is reduced to $e subset.sq.eq tau_1[x arrow.r.bar e]$ during checking (notice: the LHS has moved to the RHS). This is a Cedille-style self type @fu-stump-2014, and allows for church encodings with dependent elimination instead of having to add inductive datatypes to the language as a primitive.
+*Iota* $iota(x lt.eq tau). e$ allows the definition of a type to include a reference to _the term inhabiting it_. This means $e subset.sq.eq iota (x:tau_0). tau_1$ is reduced to $e subset.sq.eq tau_1[x arrow.r.bar e]$ during checking (notice: the LHS has moved to the RHS). This is a Cedille-style self type @fu-stump-2014, and allows for church encodings with dependent elimination instead of having to add inductive datatypes to the language as a primitive.
 
 == Runtime semantics <conc-eval>
 
@@ -125,15 +130,15 @@ $
                          | & top                    &   "universe (top)" \
 $
 
-The most important aspect of the runtime semantics are what is *_missing_* from the runtime semantics:
-- Free variables are not values and have no rule, therefore they cannot occur at runtime, *which forces the type system to rule out ill-scoped variables*.
-- Application can only apply to lambdas, *which forces the type system to verify applications are well typed w.r.t. the function domain*.
+The most important aspect of the runtime semantics are what is _missing_ from the runtime semantics:
+- Free variables are not values and have no rule, therefore they cannot occur at runtime, which is what forces the type system to rule out ill-scoped variables.
+- Application can only apply to lambdas, which is what forces the type system to verify applications are well typed w.r.t. the function domain.
 
-Fix and iota eagerly unroll — a program like $"fix"(x lt.eq top). x$ loops forever (consuming fuel), which is the correct behaviour for non-terminating recursion. This lines up with what a programmer would expect to happen if they wrote `while True: pass` in Python or `let x = x in x` in Haskell.
+Fix and iota eagerly unroll — a program like $"fix"(x lt.eq top). x$ loops forever, which is the correct behaviour for non-terminating recursion. This lines up with what a programmer would expect to happen if they wrote `while true {}` in Rust or a lesser programmer would expect if they wrote `let x = x in x` in Haskell.
 
 = Typing Rules <decl-sub>
 
-Och's type system is structured around two relations:
+Och's type system is structured around two judgements:
 
 *Well-formedness* $Gamma tack.r e "wf"$ states "$e$ is well-formed under $Gamma$" and is the "entry point" for the type system. Defined in @well-formed. Delegates all type-comparison questions to subtyping.
 
@@ -213,7 +218,7 @@ Well-formedness validates purely structural conditions: annotations are types, b
 
 Due to the prevelant usage of unbounded recursion in type definitions and encodings, many subtype checks involve infinite proof trees (e.g. $sub(emptyset, emptyset, "add" "one" "two", "Nat")$).
 
-To derive these infinite trees in finite time Claude said I should use "the Brandt-Henglein device for equirecursive subtyping" as used in #cite(<brandt-henglein-1998>, form: "prose"). Claude explains it as: "$S$ is a finite representation of a coinductive (potentially infinite) proof tree: when a goal recurs, the branch closes rather than recursing forever, encoding a regular infinite derivation as a finite one."
+To derive these infinite trees in finite time Claude said I should use "the Brandt-Henglein device for equirecursive subtyping" as used by #cite(<brandt-henglein-1998>, form: "prose"). Claude explains it as: "$S$ is a finite representation of a coinductive (potentially infinite) proof tree: when a goal recurs, the branch closes rather than recursing forever, encoding a regular infinite derivation as a finite one."
 
 As far as I can tell the reason it is remarkable enough to have a name is not that using it is particularly hard, but that convincing oneself it is a sound technique is hard, and Brandt/Henglein did just that. I am informed it only works when the cycles it closes contain at least one "productive" step, which are grouped together into @productive.
 
@@ -631,5 +636,8 @@ Och *does aim to prove (2)*, and this is the real runtime guarantee of the type 
 = Lean Formalisation <lean-formal>
 
 The calculus described above has been formalised in Lean 4, which is used to maintain a test suite of example programs and allow AI agents to iterate on the metatheory. The source is available at #link("https://github.com/charlielidbury/ochre")[github.com/charlielidbury/ochre].
+
+= Related Work <related-work>
+Placeholder
 
 #bibliography("refs.bib", style: "chicago-author-date")
