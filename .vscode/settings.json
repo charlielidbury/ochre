@@ -2,5 +2,6 @@
   "ocaml.sandbox": {
     "kind": "global"
   },
-  "ocaml.terminal.shell.osx": ""
+  "ocaml.terminal.shell.osx": "",
+  "lean4.showSetupWarnings": false
 }
