@@ -66,8 +66,10 @@
             (agda.withPackages (p: [ p.standard-library ]))
             # OCaml scaffolding
             ocaml dune_3
+            # Haskell
+            ghc
             # Typesetting
-            typst pandoc
+            typst pandoc tinymist
           ];
         };
       });
