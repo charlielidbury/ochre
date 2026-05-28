@@ -84,13 +84,13 @@ Och adopts PSS's core design and extends it with self-types ($iota$), general re
 
 Church encodings represent data as their own eliminators: a boolean is a function that takes two branches and returns one of them, a natural number is a function that takes a zero case and a successor case and folds over itself. This is elegant but has a well-known limitation: the eliminator's return type cannot depend on the value being eliminated. A Church-encoded boolean can branch on itself to return values of some fixed type $X$, but it cannot branch to return values of type $P "true"$ or $P "false"$ for a type-level function $P$ --- the eliminator does not know which boolean it is.
 
-Self types, introduced by @fu-stump-2014, solve this problem. The binder $iota(x lt.eq tau). e$ introduces a type in which the variable $x$ refers to _the term inhabiting the type_. When checking whether $a subset.sq.eq iota(x lt.eq tau). e$, the rule [S-Iota-Intro] substitutes $a$ for $x$ in the body, reducing the goal to $a subset.sq.eq e[x arrow.r.bar a]$. This feeds the value being typed _into_ its own type, enabling the return type to depend on the inhabitant.
+Self types, introduced by @fu-stump-2014, solve this problem. The binder $iota(x lt.eq tau). e$ introduces a type in which the variable $x$ refers to _the term inhabiting the type_. When checking whether $a subset.sq.eq iota(x lt.eq tau). e$, the rule [S-Iota-Intro] substitutes $a$ for $x$ in the body, reducing the goal to $a subset.sq.eq e[x arrow.r.bar a]$. This feeds the value being typed _into_ its own type, enabling the return type to depend on the inhabitant. Self types are also used by Kind @kind-blog, a (now-defunct) proof language by Victor Maia (AKA Victor Taelin online), which provides an accessible introduction to the idea.
 
 For example, the dependent boolean type $"DBool"$ is defined so that its eliminator takes a motive $P : "DBool" arrow top$ and branches of type $P "true"$ and $P "false"$, returning *$P "self"$* where $"self"$ is the boolean value currently being typed. The constructors $"true"$ and $"false"$ are plain $lambda$-terms, identical to their non-dependent counterparts --- the dependent elimination machinery lives entirely in the type, not in the constructors. See @bool-encoding for the full definitions and @examples for further encodings built on this pattern.
 
 = Language Semantics <lang-sem>
 
-This section describes what each piece of the language does in natural language to give the reader an intuition for the objects involved before we get into the typing rules, examples, and metatheory. The full syntax is given in @syntax.
+This section describes what each piece of the language does in natural language to give the reader an intuition for the objects involved before we get into the typing rules, examples, and metatheory. The full syntax is given in @syntax. When the annotation $tau$ in a binder is $top$, we omit it: $lambda x. e$ abbreviates $lambda(x lt.eq top). e$, and similarly for $iota$ and $"fix"$.
 
 #figure(
   $
@@ -113,15 +113,21 @@ This section describes what each piece of the language does in natural language 
 
 *Iota* $iota(x lt.eq tau). e$ allows the definition of a type to include a reference to _the term inhabiting it_. This means $e subset.sq.eq iota (x:tau_0). tau_1$ is reduced to $e subset.sq.eq tau_1[x arrow.r.bar e]$ during checking (notice: the LHS has moved to the RHS). This is a Cedille-style self type @fu-stump-2014, and allows for church encodings with dependent elimination instead of having to add inductive datatypes to the language as a primitive. See @self-types for a longer explanation of self types.
 
-== Runtime semantics <conc-eval>
+== Concrete evaluation <conc-eval>
 
-You may think the runtime semantics of Och are unimportant since this is type systems research, but with how I've laid out the soundness proofs $arrow.b.double$ plays a crucial role: soundness states "if a program type checks, it will succeed at runtime", therefore $arrow.b.double$ must _reject_ ill-formed programs, otherwise our soundness becomes vacuously solvable ($"true"$ on the RHS of an implication).
+The concrete evaluator defines what it means for a closed term to produce a value at runtime. It plays a crucial role in the soundness statement: soundness asserts "if a program is well-formed, it will not get stuck during evaluation." For this to be non-vacuous, the evaluator must be _partial_ --- it must reject ill-formed programs by having no applicable rule, rather than silently succeeding on all inputs.
 
-The concrete evaluator is a substitution-based call-by-value big-step interpreter on closed terms. ${lambda, top, bot}$ are the only values. $"fix"$ and $iota$ eagerly unroll by substituting their self-reference into the body. Application is pure β-reduction — only lambdas can be applied.
+Concrete evaluation is a substitution-based, call-by-value, big-step semantics on closed terms. The judgment $e arrow.b.double v$ states that closed term $e$ evaluates to value $v$. There is no context and no free variables: binders are eliminated by eager substitution. The rules are given in @eval-rules.
 
-Och has no concept of levels/universes/stages, so the type checker cannot enforce that {$top$, $bot$, $iota$} don't go into runtime, so runtime needs to handle them gracefully. Adding universes (see §3.6 of PSS @hutchins-2010) would let us erase type-level arguments during compilation, after which {$top$, $bot$, $iota$} would never appear at level 0.
+The value forms are ${lambda, top, bot}$. [E-Val] states that values evaluate to themselves. [E-App] evaluates the function to a $lambda$, evaluates the argument, substitutes, and evaluates the body. [E-Iota] and [E-Fix] eagerly unroll by substituting the binder's self-reference into the body and evaluating the result.
 
-We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evaluates to value $v$". Note: there is no context and no free/abstract variables: everything is eagerly substituted in. The rules are given in @eval-rules.
+As a worked example, evaluating the application $(lambda(x lt.eq top). x) space top$:
+$
+  (lambda(x lt.eq top). x) space top arrow.b.double top
+$
+by [E-App]: the function $(lambda(x lt.eq top). x)$ is already a value, the argument $top$ is a value by [E-Val], and the substituted body $x[x arrow.r.bar top] = top$ evaluates to $top$ by [E-Val].
+
+Aside: Och has no concept of levels or universes, so the type checker cannot enforce that ${top, bot, iota}$ do not appear at runtime; the evaluator must handle them gracefully. Adding a universe hierarchy (see §3.6 of PSS @hutchins-2010) would allow type-level arguments to be erased during compilation, after which ${top, bot, iota}$ would never appear at level 0. I plan on doing this in the future.
 
 #figure(
   stack(
@@ -157,11 +163,11 @@ We write the judgment $e arrow.b.double v$ for "closed term $e$ concretely evalu
   caption: [Evaluation rules. Big-step, substitution-based, call-by-value on closed terms.],
 ) <eval-rules>
 
-The most important aspect of the runtime semantics are what is _missing_ from the runtime semantics:
-- Free variables are not values and have no rule, therefore they cannot occur at runtime, which is what forces the type system to rule out ill-scoped variables.
-- Application can only apply to lambdas, which is what forces the type system to verify applications are well typed w.r.t. the function domain.
+The most important aspect of the evaluation rules is what is _absent_:
+- Free variables are not values and have no evaluation rule, so they cannot occur at runtime. This is what forces the type system to rule out ill-scoped variables.
+- [E-App] requires the function position to evaluate to a $lambda$. Applying $top$, $bot$, or any non-function term is stuck --- there is no rule for it. This is what forces the type system to verify that the function position has an appropriate type before allowing an application.
 
-Fix and iota eagerly unroll — a program like $"fix"(x lt.eq top). x$ loops forever, which is the correct behaviour for non-terminating recursion. This lines up with what a programmer would expect to happen if they wrote `while true {}` in Rust or a lesser programmer would expect if they wrote `let x = x in x` in Haskell.
+A term like $"fix"(x lt.eq top). x$ unrolls indefinitely via [E-Fix]: the body $x$ is replaced by the whole expression, producing the same term again. This is the correct behaviour for non-terminating recursion.
 
 = Typing Rules <decl-sub>
 
@@ -262,7 +268,7 @@ The subtyping rules fall into four categories. Each serves a distinct purpose; k
 
 #figure(
   table(
-    columns: (auto, 1fr, 1fr, auto),
+    columns: (auto, 1fr, auto, auto),
     align: (left, left, left, center),
     table.header([*Category*], [*Purpose*], [*Rules*], [*Extends $S$?*]),
     table.hline(),
@@ -427,19 +433,19 @@ S-Unfold-Iota-R is the weaker sibling of S-Iota-Intro (same conclusion, no annot
 
 S-Iota-Intro is *the* rule which allows dependent elimitation: it pust the thing being typed *into* the type, allowing the type to depend on the inhabitant.
 
-*Worked S-Iota-Intro example:* $"true" subset.sq.eq "DBool"$. With
+*Worked S-Iota-Intro example:* $underline("true") subset.sq.eq underline("DBool")$. With
 
 $
-  "true" &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
-  "false" &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
-  "DBool" &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "self"
+  underline("true") &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
+  underline("false") &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
+  underline("DBool") &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P space "self"
 $
 
-the constructors are plain lambdas with $top$ domains --- they carry no recursive reference to $"DBool"$. The subtyping check $emptyset ; Gamma tack.r "true" subset.sq.eq "DBool"$ still requires the coinductive seen-set to close, because [S-Iota-Intro]'s annotation premise cycles back to the root goal:
+the constructors are plain lambdas with $top$ domains --- they carry no recursive reference to $underline("DBool")$. The subtyping check $emptyset ; Gamma tack.r underline("true") subset.sq.eq underline("DBool")$ still requires the coinductive seen-set to close, because [S-Iota-Intro]'s annotation premise cycles back to the root goal:
 
 #let dstep(depth, judgment, rulename) = {
   pad(left: depth * 1.5em, grid(
-    columns: (1fr, auto),
+    columns: (1fr, 14em),
     $#judgment$, text(size: 8pt, fill: luma(100))[#rulename],
   ))
 }
@@ -449,50 +455,50 @@ the constructors are plain lambdas with $top$ domains --- they carry no recursiv
 #block(inset: (y: 0.5em), stack(
   dir: ttb,
   spacing: 0.4em,
-  dstep(0, sub($emptyset$, $Gamma$, $"true"$, $"DBool"$), [root goal]),
+  dstep(0, sub($emptyset$, $Gamma$, $underline("true")$, $underline("DBool")$), [root goal]),
   dstep(
     1,
     sub(
       $S_1$,
       $Gamma$,
-      $"true"$,
-      $iota("self" lt.eq "DBool"). lambda(P lt.eq "DBool" arrow top). lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "self"$,
+      $underline("true")$,
+      $iota("self" lt.eq underline("DBool")). lambda(P lt.eq underline("DBool") arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P space "self"$,
     ),
     [S-Unfold-Fix-R],
   ),
-  dnote(1, [where $S_1 = {("true", "DBool")}$]),
+  dnote(1, [where $S_1 = {(underline("true"), underline("DBool"))}$]),
   dnote(1, [S-Iota-Intro --- annotation premise:]),
-  dstep(2, sub($S_1$, $Gamma$, $"true"$, $"DBool"$), [S-Hyp #sym.checkmark]),
-  dnote(2, [root goal reappears --- closed by $(upright("true"), upright("DBool")) in S_1$]),
-  dnote(1, [S-Iota-Intro --- body premise (after $["self" arrow.r.bar "true"]$):]),
+  dstep(2, sub($S_1$, $Gamma$, $underline("true")$, $underline("DBool")$), [S-Hyp #sym.checkmark]),
+  dnote(2, [root goal reappears --- closed by $(underline("true"), underline("DBool")) in S_1$]),
+  dnote(1, [S-Iota-Intro --- body premise (after $["self" arrow.r.bar underline("true")]$):]),
   dstep(
     2,
     sub(
       $S_1$,
       $Gamma$,
-      $"true"$,
-      $lambda(P lt.eq "DBool" arrow top). lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "true"$,
+      $underline("true")$,
+      $lambda(P lt.eq underline("DBool") arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P space underline("true")$,
     ),
     [S-Lam],
   ),
-  dnote(2, [contravariant: $("DBool" arrow top) subset.sq.eq top$ by S-Top #sym.checkmark]),
-  dnote(2, [covariant body under $P lt.eq "DBool" arrow top$:]),
+  dnote(2, [contravariant: $(underline("DBool") arrow top) subset.sq.eq top$ by S-Top #sym.checkmark]),
+  dnote(2, [covariant body under $P lt.eq underline("DBool") arrow top$:]),
   dstep(
     3,
     sub(
       $S_1$,
       $Gamma$,
       $lambda(t lt.eq top). lambda(f lt.eq top). t$,
-      $lambda(t lt.eq P space "true"). lambda(f lt.eq P space "false"). P space "true"$,
+      $lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P space underline("true")$,
     ),
     [S-Lam],
   ),
-  dnote(3, [contravariant: $P space "true" subset.sq.eq top$ by S-Top #sym.checkmark]),
-  dnote(3, [covariant body under $t lt.eq P space "true"$: S-Lam again]),
-  dnote(4, [contravariant: $P space "false" subset.sq.eq top$ by S-Top #sym.checkmark]),
+  dnote(3, [contravariant: $P space underline("true") subset.sq.eq top$ by S-Top #sym.checkmark]),
+  dnote(3, [covariant body under $t lt.eq P space underline("true")$: S-Lam again]),
+  dnote(4, [contravariant: $P space underline("false") subset.sq.eq top$ by S-Top #sym.checkmark]),
   dnote(
     4,
-    [covariant body: $t subset.sq.eq P space "true"$ by S-Var ($t lt.eq P space "true" in Gamma$) #sym.checkmark],
+    [covariant body: $t subset.sq.eq P space underline("true")$ by S-Var ($t lt.eq P space underline("true") in Gamma$) #sym.checkmark],
   ),
 ))
 
@@ -524,129 +530,479 @@ The subtyping relation must be closed under head reduction: if $a$ computes to $
 
 = Example Programs <examples>
 
-All encodings below are Church/Scott-style: data types are represented as their own eliminators, with no primitive inductive types in the language. Every definition is mechanised and tested in Lean 4 (see @lean-formal). This section builds from simple encodings to two programs that demonstrate Och's ability to catch subtle bugs in dependently-typed code.
+All encodings below are Church/Scott-style: data types are represented as their own eliminators, with no primitive inductive types in the language. Every definition is mechanised and tested in Lean 4 (see @lean-formal). This section builds from simple encodings to two programs that demonstrate Och's ability to catch subtle bugs in dependently-typed code. Throughout, underlined names ($underline("true")$, $underline("Nat")$, etc.) denote meta-level definitions, as opposed to object-level bound variables ($x$, $n$, $P$, etc.).
 
 == Booleans <bool-encoding>
 
-$
-   "true" & := lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
-  "false" & := lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
-   "Bool" & := lambda(X lt.eq top). lambda(t lt.eq X). lambda(f lt.eq X). X
-$
+#grid(
+  columns: (2fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+       underline("true") & := lambda \_. lambda t. lambda \_. t \
+      underline("false") & := lambda \_. lambda \_. lambda f. f \
+       underline("Bool") & := lambda X. lambda(t lt.eq X). lambda(f lt.eq X). X
+    $
+  ],
+  [
+    ```agda
+    data Bool : Set where
+      true  : Bool
+      false : Bool
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
 
-$"Bool"$ is a standard Church-encoded boolean: the eliminator takes two branches and a return type $X$, and the type itself is $X$. Elimination is non-dependent --- the return type $X$ is the same regardless of whether the value is $"true"$ or $"false"$.
+$underline("Bool")$ is a standard Church-encoded boolean: the eliminator takes two branches and a return type $X$, and the type itself is $X$. Elimination is non-dependent --- the return type $X$ is the same regardless of whether the value is $underline("true")$ or $underline("false")$.
 
-$
-  "DBool" &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P "true"). lambda(f lt.eq P "false"). P "self"
-$
+#grid(
+  columns: (2fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("DBool") & := "fix" B. space iota("self" lt.eq B). \
+      & lambda(P lt.eq B arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P "self" \
+      & quad \
+      & quad
+    $
+  ],
+  [
+    ```agda
+    data DBool : Set where
+      true  : DBool
+      false : DBool
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
 
-$"DBool"$ is the _dependent_ counterpart: its motive $P$ is a function from values to types, so the return type $P "self"$ varies with the value being eliminated. This is what $iota$ enables --- the $"self"$ binder in $iota("self" lt.eq B)$ refers to the actual value inhabiting the type, and [S-Iota-Intro] substitutes it into $P "self"$ during type checking.
+$underline("DBool")$ is the _dependent_ counterpart: its motive $P$ is a function from values to types, so the return type $P "self"$ varies with the value being eliminated. This is what $iota$ enables --- the $"self"$ binder in $iota("self" lt.eq B)$ refers to the actual value inhabiting the type, and [S-Iota-Intro] substitutes it into $P "self"$ during type checking.
 
-Crucially, $"Bool"$ and $"DBool"$ _share the same constructors_ ${"true", "false"}$. The dependent elimination machinery lives entirely in the type ($"DBool"$'s $iota$ and motive), not in the constructors. At runtime, a $"DBool"$ value is identical to a $"Bool"$ value --- the difference is purely compile-time. This pattern recurs later with $"Fin"$ reusing $"Nat"$'s constructors (@fin-encoding).
+Crucially, $underline("Bool")$ and $underline("DBool")$ _share the same constructors_ ${underline("true"), underline("false")}$ (@bool-lattice). The dependent elimination machinery lives entirely in the type ($underline("DBool")$'s $iota$ and motive), not in the constructors. At runtime, a $underline("DBool")$ value is identical to a $underline("Bool")$ value --- the difference is purely compile-time. This pattern recurs later with $underline("Fin")$ reusing $underline("Nat")$'s constructors (@fin-encoding).
+
+#figure(
+  diagram(
+    node-stroke: none,
+    node-inset: 4pt,
+    edge-stroke: 0.6pt,
+    node((0, 0), $top$),
+    node((-0.75, 1), $underline("Bool")$),
+    node((0.75, 1), $underline("DBool")$),
+    node((-0.75, 2), $underline("true")$),
+    node((0.75, 2), $underline("false")$),
+    node((0, 3), $bot$),
+    edge((-0.75, 1), (0, 0), "->"),
+    edge((0.75, 1), (0, 0), "->"),
+    edge((-0.75, 2), (-0.75, 1), "->"),
+    edge((-0.75, 2), (0.75, 1), "->"),
+    edge((0.75, 2), (-0.75, 1), "->"),
+    edge((0.75, 2), (0.75, 1), "->"),
+    edge((0, 3), (-0.75, 2), "->"),
+    edge((0, 3), (0.75, 2), "->"),
+  ),
+  caption: [Subtyping lattice for booleans. Arrows denote $subset.sq.eq$.],
+) <bool-lattice>
 
 == Pairs <pair-encoding>
 
-$
-                  "Pair" A space B & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). X \
-  "pair" A space B space a space b & := lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). k space a space b \
-$
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("Pair") & := lambda A. lambda B. \
+                        & quad lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). X \
+      underline("pair") & := lambda A. lambda B. lambda(a lt.eq A). lambda(b lt.eq B). \
+                        & quad lambda(X lt.eq top). lambda(k lt.eq A arrow B arrow X). k a b \
+    $
+  ],
+  [
+    ```agda
+    record Pair (A B : Set) : Set where
+      constructor pair
+      field fst : A; snd : B
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
 
-Church-encoded binary products. Pair projections $"fst"$/$"snd"$ erase the unused component's type to $top$, so call sites only supply the type of the component being projected.
+Church-encoded binary products. Pair projections $underline("fst")$/$underline("snd")$ erase the unused component's type to $top$, so call sites only supply the type of the component being projected.
 
 == Natural numbers <nat-encoding>
 
-$
-  "zero" & := lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq top). z \
-  "succ" & := lambda(n lt.eq top). lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq n arrow top). s space n \
-   "Nat" & := "fix"(N lt.eq top). iota("self" lt.eq N). \
-         & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space "zero"). \
-         & quad lambda(s lt.eq lambda(n lt.eq N). P space ("succ" n)). P space "self"
-$
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("zero") & := lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq top). z \
+      underline("succ") & := lambda(n lt.eq top). lambda(P lt.eq top). lambda(z lt.eq top). \
+                        & quad lambda(s lt.eq n arrow top). s space n \
+       underline("Nat") & := "fix"(N lt.eq top). iota("self" lt.eq N). \
+                        & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space underline("zero")). \
+                        & quad lambda(s lt.eq lambda(n lt.eq N). P space (underline("succ") space n)). \
+                        & quad P "self"
+    $
+  ],
+  [
+    ```agda
+    data Nat : Set where
+      zero : Nat
+      succ : Nat → Nat
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
 
-Nat uses both key features of Och. The outer $"fix"$ ties the recursive knot (Nat refers to itself in the motive domain). The inner $iota$ binds $"self"$ to the value being typed, enabling _dependent_ elimination: the return type $P space "self"$ varies with the value.
+$underline("Nat")$ uses both key features of Och. The outer $"fix"$ ties the recursive knot ($underline("Nat")$ refers to itself in the motive domain). The inner $iota$ binds $"self"$ to the value being typed, enabling _dependent_ elimination: the return type $P space "self"$ varies with the value.
 
-The constructors are plain lambdas with $top$ domains --- they carry no reference to $"Nat"$, so $"zero" subset.sq.eq "Nat"$ and $"succ" n subset.sq.eq "Nat"$ hold by the coinductive seen-set discipline (productive unfold of $"fix"$/$iota$, then all contravariant domain checks discharge via [S-Top]).
+The constructors are plain lambdas with $top$ domains --- they carry no reference to $underline("Nat")$, so $underline("zero") subset.sq.eq underline("Nat")$ and $underline("succ") space n subset.sq.eq underline("Nat")$ hold by the coinductive seen-set discipline (productive unfold of $"fix"$/$iota$, then all contravariant domain checks discharge via [S-Top]).
 
 Addition is defined with an explicit $"fix"$ since the Scott-style eliminator provides no induction hypothesis:
 
-$
-  "add" &:= "fix" "add" lt.eq "Nat" arrow "Nat" arrow "Nat". \
-  & quad lambda(n lt.eq "Nat"). lambda(m lt.eq "Nat"). \
-  & quad n space (lambda(\_ lt.eq "Nat"). "Nat") space m space (lambda("pred" lt.eq "Nat"). "succ" ("add" "pred" m))
-$
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("add") & := "fix"("add" lt.eq underline("Nat") arrow underline("Nat") arrow underline("Nat")). \
+                       & quad lambda(n lt.eq underline("Nat")). lambda(m lt.eq underline("Nat")). \
+                       & quad n space (underline("Nat") arrow underline("Nat")) \
+                       & quad quad m \
+                       & quad quad (lambda("pred" lt.eq underline("Nat")). \
+                       & quad quad quad underline("succ") space ("add" space "pred" space m))
+    $
+  ],
+  [
+    ```agda
+    add : Nat → Nat → Nat
+    add zero      m = m
+    add (succ pred) m = succ (add pred m)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
 
 == Finite sets <fin-encoding>
 
-$
-  "Fin" & := "fix"(F lt.eq "Nat" arrow top). lambda(n lt.eq "Nat"). \
-        & quad n space (lambda(\_ lt.eq "Nat"). top) space bot \
-        & quad (lambda("pred" lt.eq "Nat"). iota("self" lt.eq "Nat"). \
-        & quad quad lambda(P lt.eq "Nat" arrow top). lambda("fz" lt.eq P space "zero"). \
-        & quad quad lambda("fs" lt.eq lambda(q lt.eq F space "pred"). P space ("succ" q)). P space "self")
-$
+$underline("Fin") space n$ is the type of naturals strictly less than $n$. The encoding strategy is: eliminate $n$ to compute the type.
+- The zero case yields $bot$ (uninhabited --- there are no naturals less than zero).
+- The successor case yields an $iota$-type which is the same as $underline("Nat")$ except it is more precise about which number is passed to the succ case $"fs"$.
+The overall structure --- case-split on the index, $bot$ for the empty case, $iota$ for the successor case --- is shared with Kind @kind-legacy, which uses self-types nearly identically to $iota$ (see `base/Fin.kind` in the Kind-Legacy repository). The general machinery for elaborating inductive definitions to lambda-encodings with self-types is developed by @fu-stump-2014 and extended to indexed families in Cedille's implementation, though no published work gives an explicit lambda-encoding of $underline("Fin")$ specifically.
 
-$"Fin" n$ is the type of naturals strictly less than $n$. The zero-length case is $bot$ (primitive bottom), so $"Fin" "zero"$ is uninhabited. The successor case is an $iota$-type whose $"self"$ is a $"Nat"$ --- this means every $"Fin"$ value is automatically a $"Nat"$ value ($"Fin" n subset.sq.eq "Nat"$). *(I consider this a majorly cool result)*
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("Fin") & := "fix"(F lt.eq underline("Nat") arrow top). lambda(n lt.eq underline("Nat")). \
+                       & quad n space (lambda(\_ lt.eq underline("Nat")). top) space bot \
+                       & quad (lambda("pred" lt.eq underline("Nat")). \
+                       & quad quad iota("self" lt.eq underline("Nat")). \
+                       & quad quad lambda(P lt.eq underline("Nat") arrow top). \
+                       & quad quad lambda("fz" lt.eq P space underline("zero")). \
+                       & quad quad lambda(
+                           "fs" lt.eq lambda(q lt.eq F space "pred"). \
+                                                                      & quad quad quad P space (underline("succ") space q)
+                         ). \
+                       & quad quad P space "self")
+    $
+  ],
+  [
+    ```agda
+    data Fin : Nat → Set where
+      fzero : Fin (succ n)
+      fsucc : Fin n → Fin (succ n)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
 
-Natural number literals inhabit $"Fin"$ by subsumption: $"zero" subset.sq.eq "Fin" ("succ" n)$ holds for any $n$, and $n subset.sq.eq "Fin" n$ is correctly rejected (the diagonal). No separate $"FZ"$/$"FS"$ constructors are needed.
+A key design choice is that $"self"$ is typed as a $underline("Nat")$, not as a $underline("Fin")$. This means every $underline("Fin")$ value is automatically a $underline("Nat")$ value ($underline("Fin") space n subset.sq.eq underline("Nat")$), which is the correct set-theoretic relationship. Kind's encoding @kind-legacy types $"self"$ as `Fin(Nat.succ(lim.pred))` instead, which requires an explicit coercion function `Fin.to_nat` to recover the embedding.
+
+Natural number literals inhabit $underline("Fin")$ by subsumption: $underline("zero") subset.sq.eq underline("Fin") space (underline("succ") space n)$ holds for any $n$, and $n subset.sq.eq underline("Fin") space n$ is correctly rejected (the diagonal). No separate $underline("FZ")$/$underline("FS")$ constructors are needed --- the $underline("Nat")$ constructors are reused directly, just as $underline("Bool")$ and $underline("DBool")$ share constructors (@bool-encoding). @nat-lattice illustrates the subtyping relationships.
+
+#figure(
+  diagram(
+    node-stroke: none,
+    node-inset: 4pt,
+    edge-stroke: 0.6pt,
+    node((0, 0), $top$),
+    node((1.2, 1), $underline("Nat")$),
+    node((0, 1.5), $underline("Fin") space n$),
+    node((-1.5, 2.2), $underline("Fin") space 1$),
+    node((-0.5, 3.2), $0$),
+    node((0.5, 3.2), $1$),
+    node((1.5, 3.2), $n$),
+    node((0.5, 4.2), $bot$),
+    // Nat, Fin n → ⊤
+    edge((1.2, 1), (0, 0), "->"),
+    edge((0, 1.5), (0, 0), "->"),
+    // Fin n → Nat
+    edge((0, 1.5), (1.2, 1), "->"),
+    // Fin 1 → Fin n, ⊤
+    edge((-1.5, 2.2), (0, 0), "->"),
+    edge((-1.5, 2.2), (0, 1.5), "->"),
+    // 0 → Fin 1, Fin n, Nat
+    edge((-0.5, 3.2), (-1.5, 2.2), "->"),
+    edge((-0.5, 3.2), (0, 1.5), "->"),
+    edge((-0.5, 3.2), (1.2, 1), "->"),
+    // 1 → Fin n, Nat
+    edge((0.5, 3.2), (0, 1.5), "->"),
+    edge((0.5, 3.2), (1.2, 1), "->"),
+    // n → Nat (but NOT Fin n — the diagonal)
+    edge((1.5, 3.2), (1.2, 1), "->"),
+    // ⊥ → 0, 1, n
+    edge((0.5, 4.2), (-0.5, 3.2), "->"),
+    edge((0.5, 4.2), (0.5, 3.2), "->"),
+    edge((0.5, 4.2), (1.5, 3.2), "->"),
+  ),
+  caption: [Subtyping lattice for natural numbers and finite sets. Laid out such that subtypes are physically beneath their supertypes.],
+) <nat-lattice>
 
 == Length-indexed arrays <array-encoding>
 
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("Array") & := "fix"(underline("Arr") lt.eq underline("Nat") arrow top arrow top). \
+                         & quad lambda(n lt.eq underline("Nat")). lambda(T lt.eq top). \
+                         & quad n space (lambda(\_ lt.eq underline("Nat")). top) \
+                         & quad quad underline("Unit") \
+                         & quad quad (lambda("pred" lt.eq underline("Nat")). \
+                         & quad quad quad underline("Pair") space T space (underline("Arr") space "pred" space T))
+    $
+  ],
+  [
+    ```agda
+    Array : Nat → Set → Set
+    Array zero    T = Unit
+    Array (succ n) T = Pair T (Array n T)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
+
+$underline("Array") space n space T$ computes by eliminating the length index: $underline("Array") space underline("zero") space T equiv underline("Unit")$ and $underline("Array") space (underline("succ") space k) space T equiv underline("Pair") space T space (underline("Array") space k space T)$. Arrays are built with $underline("unit")$/$underline("pair")$ directly.
+
+== Dependent pairs <sigma-encoding>
+
+The dependent pair $underline("Sigma")$ packages a witness with a payload whose type depends on the witness. This is a primitive in Agda (`Σ`); in Och it is Church-encoded:
+
 $
-  "Array" &:= "fix"("Arr" lt.eq "Nat" arrow top arrow top). lambda(n lt.eq "Nat"). lambda(T lt.eq top). \
-  & quad n space (lambda(\_ lt.eq "Nat"). top) space "Unit" (lambda("pred" lt.eq "Nat"). "Pair" T space ("Arr" "pred" T))
+  underline("Sigma") & := lambda A. lambda(B lt.eq A arrow top). \
+                     & quad lambda(X lt.eq top). lambda(k lt.eq lambda(a lt.eq A). B space a arrow X). X \
+  underline("dpair") & := lambda A. lambda(B lt.eq A arrow top). lambda(a lt.eq A). lambda(b lt.eq B space a). \
+                     & quad lambda(X lt.eq top). lambda(k lt.eq lambda(a lt.eq A). B space a arrow X). k space a space b
 $
 
-$"Array" n space T$ computes by eliminating the length index: $"Array" "zero" T equiv "Unit"$ and $"Array" ("succ" k) space T equiv "Pair" T space ("Array" k space T)$. Arrays are built with $"unit"$/$"pair"$ directly.
+== Vectors <vec-encoding>
 
-Vectors package a length with an array of that length, using a dependent pair ($"Sigma"$):
+Vectors package a length with an array of that length:
 
-$
-  "Vec" T & := "Sigma" "Nat" (lambda(n lt.eq "Nat"). "Array" n space T)
-$
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("Vec") space T & := underline("Sigma") space underline("Nat") space (lambda(n lt.eq underline("Nat")). underline("Array") space n space T)
+    $
+  ],
+  [
+    ```agda
+    Vec : Set → Set
+    Vec T = Σ Nat (λ n → Array n T)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
+
+== appendArrays <appendarrays>
+
+$underline("appendArrays")$ concatenates two arrays by recursion on the first array's length index:
+
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("appendArrays") &:= \
+      & "fix"("self" lt.eq underline("Nat") arrow underline("Nat") arrow top arrow top). \
+      & lambda(T lt.eq top). lambda(n_1 lt.eq underline("Nat")). lambda(n_2 lt.eq underline("Nat")). \
+      & lambda("arr"_1 lt.eq underline("Array") space n_1 space T). \
+      & lambda("arr"_2 lt.eq underline("Array") space n_2 space T). \
+      & n_1 \
+      & quad (lambda(n lt.eq underline("Nat")). underline("Array") space n space T \
+        & quad quad arrow underline("Array") space (underline("add") space n space n_2) space T) \
+      & quad (lambda(\_ lt.eq underline("Array") space underline("zero") space T). "arr"_2) \
+      & quad (lambda("pred" lt.eq underline("Nat")). \
+        & quad quad lambda("arr" lt.eq underline("Array") space (underline("succ") space "pred") space T). \
+        & quad quad underline("pair") dots.h space ("fst" space "arr") \
+        & quad quad quad ("self" space T space "pred" space n_2 \
+          & quad quad quad quad ("snd" space "arr") space "arr"_2)) \
+      & quad "arr"_1
+    $
+  ],
+  [
+    ```agda
+    appendArrays : ∀ {T n₁ n₂}
+      → Array n₁ T → Array n₂ T
+      → Array (add n₁ n₂) T
+    appendArrays {n₁ = zero}    _   arr₂ = arr₂
+    appendArrays {n₁ = succ p} arr₁ arr₂ =
+      let (hd , tl) = arr₁ in
+      (hd , appendArrays tl arr₂)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
+
+The zero case returns the second array unchanged. The successor case destructures the first array as a pair, keeps the head, and recursively appends the tail.
 
 == appendVec: catching the wrong addition <appendvec>
 
-The north-star example. $"appendVec"$ unpacks two vectors, concatenates their arrays with $"appendArrays"$, and repacks the result with the summed length:
+The north-star example. $underline("appendVec")$ unpacks two vectors, concatenates their arrays with $underline("appendArrays")$, and repacks the result with the summed length using $underline("dpair")$:
+
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("appendVec") &:= lambda(T lt.eq top). \
+      & quad lambda(v_1 lt.eq underline("Vec") space T). lambda(v_2 lt.eq underline("Vec") space T). \
+      & quad v_1 space (underline("Vec") space T) \
+      & quad quad (lambda(n_1 lt.eq underline("Nat")). lambda("arr"_1 lt.eq underline("Array") space n_1 space T). \
+        & quad quad v_2 space (underline("Vec") space T) \
+        & quad quad quad (lambda(n_2 lt.eq underline("Nat")). lambda("arr"_2 lt.eq underline("Array") space n_2 space T). \
+          & quad quad quad underline("dpair") space underline("Nat") space dots.h \
+          & quad quad quad quad (underline("add") space n_1 space n_2) \
+          & quad quad quad quad (underline("appendArrays") space T space n_1 space n_2 space "arr"_1 space "arr"_2)))
+    $
+  ],
+  [
+    ```agda
+    appendVec : ∀ {T} → Vec T → Vec T → Vec T
+    appendVec (n₁ , arr₁) (n₂ , arr₂) =
+      (add n₁ n₂ , appendArrays arr₁ arr₂)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
+
+This type-checks: the length $underline("add") space n_1 space n_2$ matches the length of the concatenated array.
+
+Now consider a version with a deliberate bug --- $underline("add") space n_1 space n_1$ instead of $underline("add") space n_1 space n_2$:
 
 $
-  "appendVec" := lambda(T lt.eq top). lambda(v_1 lt.eq "Vec" T). lambda(v_2 lt.eq "Vec" T). \
-  quad v_1 space ("Vec" T) space (lambda(n_1 lt.eq "Nat"). lambda("arr"_1 lt.eq "Array" n_1 space T). \
-    quad quad v_2 space ("Vec" T) space (lambda(n_2 lt.eq "Nat"). lambda("arr"_2 lt.eq "Array" n_2 space T). \
-      quad quad quad "mkVec" T space ("add" n_1 space n_2) space ("appendArrays" T space n_1 space n_2 space "arr"_1 space "arr"_2)))
+  underline("appendVec")_"wrong" := dots.h underline("dpair") space underline("Nat") space dots.h space (underline("add") space n_1 space n_1) space (underline("appendArrays") space T space n_1 space n_2 space "arr"_1 space "arr"_2) dots.h
 $
 
-This type-checks: the length $"add" n_1 space n_2$ matches the length of the concatenated array.
-
-Now consider a version with a deliberate bug --- $"add" n_1 space n_1$ instead of $"add" n_1 space n_2$:
-
-$
-  "appendVec"_"wrong" := dots.h "mkVec" T space ("add" n_1 space n_1) space ("appendArrays" T space n_1 space n_2 space "arr"_1 space "arr"_2) dots.h
-$
-
-The type checker _rejects_ this: $"arr"_2 subset.sq.eq "Array" n_1 space T$ fails because $"arr"_2$ has type $"Array" n_2 space T$ and $n_2 eq.not n_1$. The system catches a bug as subtle as adding the wrong two numbers.
+The type checker _rejects_ this: $"arr"_2 subset.sq.eq underline("Array") space n_1 space T$ fails because $"arr"_2$ has type $underline("Array") space n_2 space T$ and $n_2 eq.not n_1$. The system catches a bug as subtle as adding the wrong two numbers.
 
 == indexArr: safe array indexing <indexarr>
 
-$"indexArr"$ looks up the $i$-th element of an $"Array" n space T$, where $i$ has type $"Fin" n$:
+$underline("indexArr")$ looks up the $i$-th element of an $underline("Array") space n space T$, where $i$ has type $underline("Fin") space n$:
 
-$
-  "indexArr" := "fix" ("self" lt.eq (lambda(T lt.eq top). lambda(n lt.eq "Nat"). "Array" n space T arrow "Fin" n arrow T)). \
-  quad lambda(T lt.eq top). lambda(n lt.eq "Nat"). n space (lambda(m lt.eq "Nat"). "Array" m space T arrow "Fin" m arrow T) \
-  quad quad (lambda("arr" lt.eq "Array" "zero" T). lambda(i lt.eq "Fin" "zero"). i) \
-  quad quad (lambda(p lt.eq "Nat"). lambda("arr" lt.eq "Array" ("succ" p) space T). lambda(i lt.eq "Fin" ("succ" p)). dots.h)
-$
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("indexArr") & := "fix" "self". \
+      & quad lambda(T lt.eq top). lambda(n lt.eq underline("Nat")). \
+      & quad n space (lambda(m lt.eq underline("Nat")). \
+        & quad quad underline("Array") space m space T arrow underline("Fin") space m arrow T) \
+      & quad quad (lambda("arr" lt.eq underline("Array") space underline("zero") space T). \
+        & quad quad quad lambda(i lt.eq underline("Fin") space underline("zero")). i) \
+      & quad quad (lambda(p lt.eq underline("Nat")). \
+        & quad quad quad lambda("arr" lt.eq underline("Array") space (underline("succ") space p) space T). \
+        & quad quad quad lambda(i lt.eq underline("Fin") space (underline("succ") space p)). dots.h)
+    $
+  ],
+  [
+    ```agda
+    indexArr : ∀ {T n}
+      → Array n T → Fin n → T
+    indexArr {n = zero}  arr i = absurd i
+    indexArr {n = succ p} arr i =
+      let (hd , tl) = arr in
+      i (λ _ → T)
+        hd
+        (λ j → indexArr tl j)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
 
-In the zero-length branch, $i$ has type $"Fin" "zero" = bot$, so the branch body is $i$ itself --- ex falso via [S-BotL]. In the successor branch, the array is destructured as a pair and $i$ eliminates to either the head or a recursive call on the tail.
+In the zero-length branch, $i$ has type $underline("Fin") space underline("zero") = bot$, so the branch body is $i$ itself --- ex falso via [S-BotL]. In the successor branch, the array is destructured as a pair and $i$ eliminates to either the head or a recursive call on the tail.
 
 The payoff is at call sites:
 
 $
-   "indexArr" "Nat" "three" "arr" "zero" quad & checkmark quad ("zero" subset.sq.eq "Fin" "three") \
-    "indexArr" "Nat" "three" "arr" "two" quad & checkmark quad ("two" subset.sq.eq "Fin" "three") \
-  "indexArr" "Nat" "three" "arr" "three" quad & times quad ("three" subset.sq.eq.not "Fin" "three")
+  underline("indexArr") space underline("Nat") space underline("three") space "arr" space underline("zero") quad & checkmark quad (underline("zero") subset.sq.eq underline("Fin") space underline("three")) \
+  underline("indexArr") space underline("Nat") space underline("three") space "arr" space underline("two") quad & checkmark quad (underline("two") subset.sq.eq underline("Fin") space underline("three")) \
+  underline("indexArr") space underline("Nat") space underline("three") space "arr" space underline("three") quad & times quad (underline("three") subset.sq.eq.not underline("Fin") space underline("three"))
 $
 
-Out-of-bounds access is a _compile-time_ error: the index literal fails to subtype $"Fin" n$, and no runtime check is needed.
+Out-of-bounds access is a _compile-time_ error: the index literal fails to subtype $underline("Fin") space n$, and no runtime check is needed.
+
+== Eater: concrete evaluation with fix <eater>
+
+The following example demonstrates concrete evaluation of a recursive term defined via $"fix"$.
+
+$
+   underline("bool") & := lambda t. lambda f. top \
+   underline("true") & := lambda t. lambda f. t \
+  underline("false") & := lambda t. lambda f. f \
+  underline("eater") & := "fix" e. lambda(b lt.eq underline("bool")). b top e
+$
+
+$underline("eater")$ is a recursive function that consumes $underline("false")$ arguments until it hits a $underline("true")$, at which point it returns $top$. At each step, $"fix"$ unrolls via [E-Fix], and the boolean argument selects between $top$ (stop) and the self-reference $e$ (continue). E.g. $eval(underline("eater") space underline("true"), top)$ and similarly $eval(underline("eater") space underline("false") space underline("false") space underline("false") space underline("true"), top)$.
+
+*Evaluation of* $underline("eater") space underline("false") space underline("true")$. We abbreviate $underline("eater")$'s unrolled form $lambda(b lt.eq underline("bool")). b top space underline("eater")$ as $underline("eater")^circle.small$ for readability.
+
+#let eu = $underline("eater")^circle.small$
+#block(inset: (y: 0.5em), stack(
+  dir: ttb,
+  spacing: 0.4em,
+  dstep(0, eval($underline("eater") space underline("false") space underline("true")$, $top$), [E-App]),
+  dstep(1, eval($underline("eater") space underline("false")$, $#eu$), [E-App]),
+  dstep(2, eval($underline("eater")$, $#eu$), [E-Fix]),
+  dstep(2, eval($underline("false")$, $underline("false")$), [E-Val]),
+  dstep(
+    2,
+    eval($(b top space underline("eater"))[b arrow.r.bar underline("false")]$, $#eu$),
+    [$underline("false")$ selects second arg],
+  ),
+  dstep(1, eval($underline("true")$, $underline("true")$), [E-Val]),
+  dstep(
+    1,
+    eval($(b top space underline("eater"))[b arrow.r.bar underline("true")]$, $top$),
+    [$underline("true")$ selects first arg #sym.checkmark],
+  ),
+))
+
+Each [E-Fix] step replaces the bound variable $e$ with the entire $"fix"$ expression, producing a $lambda$ that is ready to accept the next argument. The recursion terminates when $underline("true")$ selects $top$ instead of the self-reference.
+
+*Evaluation of* $underline("eater") space underline("true") space underline("false")$ *(explodes):*
+
+#block(inset: (y: 0.5em), stack(
+  dir: ttb,
+  spacing: 0.4em,
+  dstep(0, eval($underline("eater") space underline("true") space underline("false")$, $?$), [E-App]),
+  dstep(
+    1,
+    eval($underline("eater") space underline("true")$, $top$),
+    [as above --- $underline("true")$ selects first arg],
+  ),
+  dstep(1, eval($underline("false")$, $underline("false")$), [E-Val]),
+  dstep(1, eval($top space underline("false")$, $?$), [*stuck* — $top$ is not a $lambda$ #sym.times]),
+))
+
+There is no rule whose conclusion matches $top space underline("false") arrow.b.double v$: [E-App] requires the function position to evaluate to a $lambda$, and $top$ is not one. The derivation is stuck --- this is exactly the kind of runtime error the type system is designed to prevent.
 
 = Metatheory <metatheory>
 
@@ -686,13 +1042,13 @@ The calculus described above has been formalised in Lean 4, which is used to mai
 
 = Related Work <related-work>
 
-Existing approaches to verified systems software can be grouped by how they relate the verified artifact to the executable one. To make the comparison concrete, each subsection illustrates how safe array indexing --- accessing element $i$ of an array of length $n$ with a static guarantee that $i < n$, eliminating the runtime bounds check --- is expressed under each approach. Ochre's position, a single language serving both roles, is informed by the trade-offs each approach makes.
+Large-scale verification projects have demonstrated that formal verification of systems software is feasible: CompCert @leroy-2009 is a verified C compiler (written in Coq, extracted to OCaml), seL4 @klein-2009 is a verified OS microkernel (C code with a separate Isabelle/HOL refinement proof), and Project Everest @project-everest-2017 produced a verified HTTPS stack (F\*, extracted to C via KReMLin). These projects validate the _goal_ of verified systems software but do not provide a programming model where the systems programmer writes verified code directly --- the verification happens in a separate language from the executable artifact.
 
-== Verification-first, then extraction <rw-extraction>
+The approaches below _do_ aim to give the programmer a direct path from code to proof. To make the comparison concrete, each subsection illustrates how safe array indexing --- accessing element $i$ of an array of length $n$ with a static guarantee that $i < n$, eliminating the runtime bounds check --- is expressed under each approach.
 
-In this approach the program is written inside a theorem prover, and executable code is extracted or compiled from it. CompCert @leroy-2009 is a C compiler written and verified in Coq, with executable code extracted via Coq's extraction mechanism. seL4 @klein-2009 verified a C microkernel by maintaining a formal model in Isabelle/HOL alongside the C implementation, with a proof that the C code refines the model. Project Everest @project-everest-2017 verified an HTTPS stack using F\* and extracted C code via KReMLin.
+== Verification via extraction <rw-extraction>
 
-In F\*, safe indexing into a length-indexed vector can be expressed directly via a refinement type on the index:
+In the extraction approach, the programmer writes verified code in a theorem prover and a compiler extracts executable systems code. Low\* (the systems fragment of F\* @protzenko-2017) is the most developed example: after verification, KReMLin extracts Low\* to idiomatic C. Safe indexing into a length-indexed vector is expressed via a refinement type on the index:
 
 #figure(
   ```fstar

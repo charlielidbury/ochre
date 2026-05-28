@@ -43,7 +43,9 @@ syntax:100 "(" och ")"                              : och
 syntax:50  och:50 och:51                            : och
 syntax:30  och:31 " → " och:30                      : och
 syntax:10  "λ" ident ":" och "." och:10             : och
+syntax:10  "λ" ident "." och:10                     : och
 syntax:10  "λ" "_" ":" och "." och:10               : och
+syntax:10  "λ" "_" "." och:10                       : och
 syntax:10  "ι" ident ":" och "." och:10             : och
 syntax:10  "ι" ident "." och:10                     : och
 syntax:10  "fix" ident ":" och "." och:10           : och
@@ -80,10 +82,16 @@ partial def expand (ctx : List String) (stx : TSyntax `och) : MacroM (TSyntax `t
     let dom' ← expand ctx dom
     let body' ← expand (x.getId.toString :: ctx) body
     `(Expr.lam $dom' $body')
+  | `(och| λ $x:ident . $body:och) =>
+    let body' ← expand (x.getId.toString :: ctx) body
+    `(Expr.lam Expr.type $body')
   | `(och| λ _ : $dom:och . $body:och) =>
     let dom' ← expand ctx dom
     let body' ← expand ("_" :: ctx) body
     `(Expr.lam $dom' $body')
+  | `(och| λ _ . $body:och) =>
+    let body' ← expand ("_" :: ctx) body
+    `(Expr.lam Expr.type $body')
   | `(och| ι $x:ident : $ann:och . $body:och) =>
     let ann' ← expand ctx ann
     let body' ← expand (x.getId.toString :: ctx) body
@@ -119,6 +127,8 @@ macro_rules
 example : (och{ ι s. λP:(s → Type). P s })
         = (och{ ι s:Type. λP:(s → Type). P s }) := rfl
 example : (och{ fix r. r }) = (och{ fix r:Type. r }) := rfl
+example : (och{ λ x. x }) = (och{ λ x:Type. x }) := rfl
+example : (och{ λ _. Type }) = (och{ λ _:Type. Type }) := rfl
 example : (och{ ι s. λP:(s → Type). λt:(P s). λf:Type. t })
         = Expr.iota .type
             (.lam (.lam (.bvar 0) .type)

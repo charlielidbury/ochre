@@ -9,3 +9,4 @@ import Och.Std.Vec
 import Och.Std.DFin
 import Och.Std.Id
 import Och.Std.Mu
+import Och.Std.Eater
