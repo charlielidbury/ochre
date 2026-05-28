@@ -55,7 +55,7 @@ Och has been designed experimentally: a set of _goal programs_ drove the design 
 
 First, Och does not yet rest on a unifying semantic theory, and attempts at a soundness proof are ongoing. Establishing such a theory is a natural next step now that the rule set has stabilised around a substantial body of examples.
 
-Second, the resulting test suite (see @examples) provides strong evidence of expressivity. Using Church/Scott encodings, Och expresses booleans, natural numbers, finite sets ($"Fin" n$), pairs, length-indexed arrays, and safe indexing --- all with dependent elimination. The type system catches bugs as subtle as adding the _wrong_ two numbers (see @appendvec), not merely checking that an addition is well-shaped.
+Second, the resulting test suite (see @examples) provides strong evidence of expressivity. Using Church/Scott encodings, Och expresses booleans, natural numbers, finite sets ($"Fin" n$), pairs, length-indexed arrays, and safe indexing --- all with dependent elimination. The type system catches bugs as subtle as adding the _wrong_ two numbers (see @vec-encoding), not merely checking that an addition is well-shaped.
 
 == Goals
 
@@ -438,7 +438,7 @@ S-Iota-Intro is *the* rule which allows dependent elimitation: it pust the thing
 $
   underline("true") &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). t \
   underline("false") &:= lambda(P lt.eq top). lambda(t lt.eq top). lambda(f lt.eq top). f \
-  underline("DBool") &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P space "self"
+  underline("DBool") &:= "fix"(B lt.eq top). iota("self" lt.eq B). lambda(P lt.eq B arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P "self"
 $
 
 the constructors are plain lambdas with $top$ domains --- they carry no recursive reference to $underline("DBool")$. The subtyping check $emptyset ; Gamma tack.r underline("true") subset.sq.eq underline("DBool")$ still requires the coinductive seen-set to close, because [S-Iota-Intro]'s annotation premise cycles back to the root goal:
@@ -627,9 +627,10 @@ Crucially, $underline("Bool")$ and $underline("DBool")$ _share the same construc
   ],
 )
 
-Church-encoded binary products. Pair projections $underline("fst")$/$underline("snd")$ erase the unused component's type to $top$, so call sites only supply the type of the component being projected.
+Church-encoded binary products. Projection is performed by applying the pair to a continuation that selects the desired component: $underline("pair") space A space B space a space b space X space (lambda(a lt.eq A). lambda(\_ lt.eq B). a)$ returns $a$.
 
 == Natural numbers <nat-encoding>
+For natural numbers we use Scott encodings in which a natural is still it's own eliminator, but only eliminates a single level instead of encoding a full fold. This lines up closer to how pattern matching works with standard datatypes in languages like Haskell than Church encodings.
 
 #grid(
   columns: (1fr, 1fr),
@@ -657,7 +658,9 @@ Church-encoded binary products. Pair projections $underline("fst")$/$underline("
 
 $underline("Nat")$ uses both key features of Och. The outer $"fix"$ ties the recursive knot ($underline("Nat")$ refers to itself in the motive domain). The inner $iota$ binds $"self"$ to the value being typed, enabling _dependent_ elimination: the return type $P space "self"$ varies with the value.
 
-The constructors are plain lambdas with $top$ domains --- they carry no reference to $underline("Nat")$, so $underline("zero") subset.sq.eq underline("Nat")$ and $underline("succ") space n subset.sq.eq underline("Nat")$ hold by the coinductive seen-set discipline (productive unfold of $"fix"$/$iota$, then all contravariant domain checks discharge via [S-Top]).
+One thing to note is the constructors have very wide types compared to $underline("Nat")$:
+- $underline("zero")$ will return $z$ regardless of it's type, whereas in $underline("Nat")$ that $z$ argument is restricted down to $P space underline("zero")$.
+- $underline("succ")$ calls the continuation $s$ with the predecessor $n$, and therefore only requires that $s$ accepts $n$ (i.e. $lambda(s lt.eq n arrow top). s space n$) instead of requiring that it accept any $underline("Nat")$ (i.e. $lambda(s lt.eq underline("Nat") arrow top). s space n$).
 
 Addition is defined with an explicit $"fix"$ since the Scott-style eliminator provides no induction hypothesis:
 
@@ -671,7 +674,7 @@ Addition is defined with an explicit $"fix"$ since the Scott-style eliminator pr
                        & quad n space (underline("Nat") arrow underline("Nat")) \
                        & quad quad m \
                        & quad quad (lambda("pred" lt.eq underline("Nat")). \
-                       & quad quad quad underline("succ") space ("add" space "pred" space m))
+                       & quad quad quad underline("succ") space ("add" "pred" m))
     $
   ],
   [
@@ -719,7 +722,7 @@ The overall structure --- case-split on the index, $bot$ for the empty case, $io
   ],
 )
 
-A key design choice is that $"self"$ is typed as a $underline("Nat")$, not as a $underline("Fin")$. This means every $underline("Fin")$ value is automatically a $underline("Nat")$ value ($underline("Fin") space n subset.sq.eq underline("Nat")$), which is the correct set-theoretic relationship. Kind's encoding @kind-legacy types $"self"$ as `Fin(Nat.succ(lim.pred))` instead, which requires an explicit coercion function `Fin.to_nat` to recover the embedding.
+In this encoding $"self"$ is typed as a $underline("Nat")$, not as a $underline("Fin")$. This is imprecise because in reality the term will always be a Fin, but it's not _wrong_ to approximate it as a Nat because $underline("Fin") space n subset.sq.eq underline("Nat")$, and difficulties were encountered when trying to type $"self"$ as a $underline("Fin")$.
 
 Natural number literals inhabit $underline("Fin")$ by subsumption: $underline("zero") subset.sq.eq underline("Fin") space (underline("succ") space n)$ holds for any $n$, and $n subset.sq.eq underline("Fin") space n$ is correctly rejected (the diagonal). No separate $underline("FZ")$/$underline("FS")$ constructors are needed --- the $underline("Nat")$ constructors are reused directly, just as $underline("Bool")$ and $underline("DBool")$ share constructors (@bool-encoding). @nat-lattice illustrates the subtyping relationships.
 
@@ -768,18 +771,18 @@ Natural number literals inhabit $underline("Fin")$ by subsumption: $underline("z
   gutter: 1.5em,
   [
     $
-      underline("Array") & := "fix"(underline("Arr") lt.eq underline("Nat") arrow top arrow top). \
+      underline("Array") & := "fix"("Arr" lt.eq underline("Nat") arrow top arrow top). \
                          & quad lambda(n lt.eq underline("Nat")). lambda(T lt.eq top). \
-                         & quad n space (lambda(\_ lt.eq underline("Nat")). top) \
+                         & quad n space (underline("Nat") arrow top) \
                          & quad quad underline("Unit") \
                          & quad quad (lambda("pred" lt.eq underline("Nat")). \
-                         & quad quad quad underline("Pair") space T space (underline("Arr") space "pred" space T))
+                         & quad quad quad underline("Pair") space T space ("Arr" "pred" T))
     $
   ],
   [
     ```agda
     Array : Nat → Set → Set
-    Array zero    T = Unit
+    Array zero     T = Unit
     Array (succ n) T = Pair T (Array n T)
     ```
     #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
@@ -790,14 +793,101 @@ $underline("Array") space n space T$ computes by eliminating the length index: $
 
 == Dependent pairs <sigma-encoding>
 
-The dependent pair $underline("Sigma")$ packages a witness with a payload whose type depends on the witness. This is a primitive in Agda (`Σ`); in Och it is Church-encoded:
+The dependent pair $underline("Sigma")$ packages a witness with a payload whose type depends on the witness:
 
-$
-  underline("Sigma") & := lambda A. lambda(B lt.eq A arrow top). \
-                     & quad lambda(X lt.eq top). lambda(k lt.eq lambda(a lt.eq A). B space a arrow X). X \
-  underline("dpair") & := lambda A. lambda(B lt.eq A arrow top). lambda(a lt.eq A). lambda(b lt.eq B space a). \
-                     & quad lambda(X lt.eq top). lambda(k lt.eq lambda(a lt.eq A). B space a arrow X). k space a space b
-$
+#grid(
+  columns: (1fr, 1fr),
+  gutter: 1.5em,
+  [
+    $
+      underline("Sigma") & := lambda A. lambda(B lt.eq A arrow top). \
+                         & quad lambda(X lt.eq top). \
+                         & quad lambda(k lt.eq lambda(a lt.eq A). B space a arrow X). X \
+      underline("dpair") & := lambda A. lambda(B lt.eq A arrow top). \
+                         & quad lambda(a lt.eq A). lambda(b lt.eq B space a). \
+                         & quad lambda(X lt.eq top). \
+                         & quad lambda(k lt.eq lambda(a lt.eq A). B space a arrow X). \
+                         & quad k space a space b
+    $
+  ],
+  [
+    ```agda
+    record Sigma (A : Set) (B : A → Set)
+        : Set where
+      constructor dpair
+      field fst : A
+      field snd : B fst
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+  ],
+)
+
+It is unusual that $Sigma$ can be defined in terms of $Pi$ in Och instead of $Sigma$ needing to be a primitive, further research required to get to the bottom of whether this is a contribution or a symptom of an inconsistency.
+
+$underline("appendArrays")$ concatenates two arrays by recursion on the first array's length index:
+
+#grid(
+  columns: (1.4fr, 1fr),
+  gutter: 0.0em,
+  [
+    #block[
+      #show math.equation: set align(left)
+      $ underline("appendArrays") := $
+      $ quad "fix"("appendArrays" lt.eq underline("Nat") arrow underline("Nat") arrow top arrow top). $
+      $ quad lambda(T lt.eq top). lambda(n_1 lt.eq underline("Nat")). lambda(n_2 lt.eq underline("Nat")). $
+      $
+        quad lambda("arr"_1 lt.eq underline("Array") space n_1 space T). lambda("arr"_2 lt.eq underline("Array") space n_2 space T).
+      $
+      $ quad n_1 $
+      $
+        quad quad (lambda(n_1 ' lt.eq underline("Nat")). underline("Array") space n_1 ' space T arrow underline("Array") space (underline("add") space n_1 ' space n_2) space T)
+      $
+      $ quad quad (lambda("arr"_1 ' lt.eq underline("Array") space underline("zero") space T). "arr"_2) $
+      $
+        quad quad (lambda(p lt.eq underline("Nat")). lambda("arr"_1 ' lt.eq underline("Array") space (underline("succ") space p) space T).
+      $
+      $ quad quad quad "arr"_1 ' space (underline("Array") space (underline("add") space p space n_2) space T) $
+      $ quad quad quad quad (lambda("hd" lt.eq T). lambda("tl" lt.eq underline("Array") space p space T). $
+      $
+        quad quad quad quad quad underline("pair") space T space (underline("Array") space (underline("add") space p space n_2) space T)
+      $
+      $ quad quad quad quad quad quad "hd" $
+      $ quad quad quad quad quad quad ("appendArrays" space T space p space n_2 space "tl" space "arr"_2))) $
+      $ quad quad "arr"_1 $
+    ]
+  ],
+  [
+    ```agda
+    appendArrays : ∀ {T n₁ n₂}
+      → Array n₁ T → Array n₂ T
+      → Array (add n₁ n₂) T
+    appendArrays {n₁ = zero}    _   arr₂ =
+      arr₂
+    appendArrays {n₁ = succ p} arr₁ arr₂ =
+      let (hd , tl) = arr₁ in
+      (hd , appendArrays tl arr₂)
+    ```
+    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+
+    ```agda
+    appendArrays : ∀ {T n₁ n₂}
+      → Array n₁ T → Array n₂ T
+      → Array (add n₁ n₂) T
+    appendArrays {n₁} arr₁ arr₂ = (
+      case n₁ of
+        | zero   => λ arr₁' → arr₂
+        | succ p => λ arr₁' →
+          let (hd , tl) = arr₁' in
+          (hd , appendArrays tl arr₂)
+    ) arr₁
+    ```
+    #text(size: 8pt, fill: luma(100))[(a more literal translation)]
+  ],
+)
+
+The zero case returns the second array unchanged. The successor case destructures the first array as a pair, keeps the head, and recursively appends the tail.
+
+One peculiarity with the above definition is that when we eliminate $n_1$ our motive is $lambda(n_1 ' lt.eq underline("Nat")). underline("Array") space n_1 ' space T arrow underline("Array") space (underline("add") space n_1 ' space n_2) space T$ (aka "eliminting $n_1$ will give us a function") instead of the simpler $lambda(n_1 ' lt.eq underline("Nat")). underline("Array") space (underline("add") space n_1 ' space n_2) space T$ (aka "eliminating $n_1$ will give us an array"). The reason is that in the $"arr"_1$-is-not-empty case ($n_1 = underline("succ") space p$) we need to get the head and tail of $"arr"_1$, but the type system does not know statically that $"arr"_1$ is non-empty. A Sufficiently Smart Compiler would narrow the type of $"arr"_1$ down to $underline("Array") space (underline("succ") space p) space T$ (a pair), but alas Och is not there yet, so instead we must make a function expecting $"arr"_1'$ and immediately pass it $"arr"_1$. This is reflected in the _second_ Agda translation, which has the pattern match expression return a function expecting $"arr"_1'$ and immediately passes it $"arr"_1$.
 
 == Vectors <vec-encoding>
 
@@ -814,55 +904,11 @@ Vectors package a length with an array of that length:
   [
     ```agda
     Vec : Set → Set
-    Vec T = Σ Nat (λ n → Array n T)
+    Vec T = Sigma Nat (λ n → Array n T)
     ```
     #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
   ],
 )
-
-== appendArrays <appendarrays>
-
-$underline("appendArrays")$ concatenates two arrays by recursion on the first array's length index:
-
-#grid(
-  columns: (1fr, 1fr),
-  gutter: 1.5em,
-  [
-    $
-      underline("appendArrays") &:= \
-      & "fix"("self" lt.eq underline("Nat") arrow underline("Nat") arrow top arrow top). \
-      & lambda(T lt.eq top). lambda(n_1 lt.eq underline("Nat")). lambda(n_2 lt.eq underline("Nat")). \
-      & lambda("arr"_1 lt.eq underline("Array") space n_1 space T). \
-      & lambda("arr"_2 lt.eq underline("Array") space n_2 space T). \
-      & n_1 \
-      & quad (lambda(n lt.eq underline("Nat")). underline("Array") space n space T \
-        & quad quad arrow underline("Array") space (underline("add") space n space n_2) space T) \
-      & quad (lambda(\_ lt.eq underline("Array") space underline("zero") space T). "arr"_2) \
-      & quad (lambda("pred" lt.eq underline("Nat")). \
-        & quad quad lambda("arr" lt.eq underline("Array") space (underline("succ") space "pred") space T). \
-        & quad quad underline("pair") dots.h space ("fst" space "arr") \
-        & quad quad quad ("self" space T space "pred" space n_2 \
-          & quad quad quad quad ("snd" space "arr") space "arr"_2)) \
-      & quad "arr"_1
-    $
-  ],
-  [
-    ```agda
-    appendArrays : ∀ {T n₁ n₂}
-      → Array n₁ T → Array n₂ T
-      → Array (add n₁ n₂) T
-    appendArrays {n₁ = zero}    _   arr₂ = arr₂
-    appendArrays {n₁ = succ p} arr₁ arr₂ =
-      let (hd , tl) = arr₁ in
-      (hd , appendArrays tl arr₂)
-    ```
-    #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
-  ],
-)
-
-The zero case returns the second array unchanged. The successor case destructures the first array as a pair, keeps the head, and recursively appends the tail.
-
-== appendVec: catching the wrong addition <appendvec>
 
 The north-star example. $underline("appendVec")$ unpacks two vectors, concatenates their arrays with $underline("appendArrays")$, and repacks the result with the summed length using $underline("dpair")$:
 
@@ -877,7 +923,7 @@ The north-star example. $underline("appendVec")$ unpacks two vectors, concatenat
       & quad quad (lambda(n_1 lt.eq underline("Nat")). lambda("arr"_1 lt.eq underline("Array") space n_1 space T). \
         & quad quad v_2 space (underline("Vec") space T) \
         & quad quad quad (lambda(n_2 lt.eq underline("Nat")). lambda("arr"_2 lt.eq underline("Array") space n_2 space T). \
-          & quad quad quad underline("dpair") space underline("Nat") space dots.h \
+          & quad quad quad underline("dpair") space underline("Nat") space (lambda(n lt.eq underline("Nat")). underline("Array") space n space T) \
           & quad quad quad quad (underline("add") space n_1 space n_2) \
           & quad quad quad quad (underline("appendArrays") space T space n_1 space n_2 space "arr"_1 space "arr"_2)))
     $
@@ -897,7 +943,7 @@ This type-checks: the length $underline("add") space n_1 space n_2$ matches the 
 Now consider a version with a deliberate bug --- $underline("add") space n_1 space n_1$ instead of $underline("add") space n_1 space n_2$:
 
 $
-  underline("appendVec")_"wrong" := dots.h underline("dpair") space underline("Nat") space dots.h space (underline("add") space n_1 space n_1) space (underline("appendArrays") space T space n_1 space n_2 space "arr"_1 space "arr"_2) dots.h
+  underline("appendVec")_"wrong" := dots.h underline("dpair") space underline("Nat") space (lambda(n lt.eq underline("Nat")). underline("Array") space n space T) space (underline("add") space n_1 space n_1) space (underline("appendArrays") space T space n_1 space n_2 space "arr"_1 space "arr"_2) dots.h
 $
 
 The type checker _rejects_ this: $"arr"_2 subset.sq.eq underline("Array") space n_1 space T$ fails because $"arr"_2$ has type $underline("Array") space n_2 space T$ and $n_2 eq.not n_1$. The system catches a bug as subtle as adding the wrong two numbers.
@@ -907,31 +953,45 @@ The type checker _rejects_ this: $"arr"_2 subset.sq.eq underline("Array") space 
 $underline("indexArr")$ looks up the $i$-th element of an $underline("Array") space n space T$, where $i$ has type $underline("Fin") space n$:
 
 #grid(
-  columns: (1fr, 1fr),
+  columns: (2fr, 1fr),
   gutter: 1.5em,
   [
-    $
-      underline("indexArr") & := "fix" "self". \
-      & quad lambda(T lt.eq top). lambda(n lt.eq underline("Nat")). \
-      & quad n space (lambda(m lt.eq underline("Nat")). \
-        & quad quad underline("Array") space m space T arrow underline("Fin") space m arrow T) \
-      & quad quad (lambda("arr" lt.eq underline("Array") space underline("zero") space T). \
-        & quad quad quad lambda(i lt.eq underline("Fin") space underline("zero")). i) \
-      & quad quad (lambda(p lt.eq underline("Nat")). \
-        & quad quad quad lambda("arr" lt.eq underline("Array") space (underline("succ") space p) space T). \
-        & quad quad quad lambda(i lt.eq underline("Fin") space (underline("succ") space p)). dots.h)
-    $
+    #block[
+      #show math.equation: set align(left)
+      $ underline("indexArr") := "fix" "indexArr". lambda(T lt.eq top). lambda(n lt.eq underline("Nat")). $
+      $
+        quad n space (lambda(m lt.eq underline("Nat")). underline("Array") space m space T arrow underline("Fin") space m arrow T)
+      $
+      $
+        quad quad (lambda("arr" lt.eq underline("Array") space underline("zero") space T). lambda(i lt.eq underline("Fin") space underline("zero")). i)
+      $
+      $
+        quad quad (lambda(p lt.eq underline("Nat")). lambda("arr" lt.eq underline("Array") space (underline("succ") space p) space T). lambda(i lt.eq underline("Fin") space (underline("succ") space p)).
+      $
+      $
+        quad quad quad "arr" space T space (lambda("hd" lt.eq T). lambda("tl" lt.eq underline("Array") space p space T).
+      $
+      $
+        quad quad quad quad i space (lambda(\_ lt.eq underline("Nat")). T)
+      $
+      $
+        quad quad quad quad quad "hd"
+      $
+      $
+        quad quad quad quad quad (lambda(q lt.eq underline("Fin") space p). "indexArr" space T space p space "tl" space q))
+      $
+    ]
   ],
   [
     ```agda
     indexArr : ∀ {T n}
       → Array n T → Fin n → T
-    indexArr {n = zero}  arr i = absurd i
-    indexArr {n = succ p} arr i =
-      let (hd , tl) = arr in
-      i (λ _ → T)
-        hd
-        (λ j → indexArr tl j)
+    indexArr {n = zero}  arr i =
+      absurd i
+    indexArr {n = succ p} (hd , tl) fzero =
+      hd
+    indexArr {n = succ p} (hd , tl) (fsucc j) =
+      indexArr tl j
     ```
     #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
   ],

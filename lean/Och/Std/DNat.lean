@@ -116,6 +116,8 @@ section Tests
 
 -- ── Positive computation tests (concEval) ───────────────────
 
+example : Och.check Nat_ = .ok () := by native_decide
+
 example : concEval 200 (och{ isZero_ zero_ }) = .ok Std.true_ := by native_decide
 example : concEval 200 (och{ isZero_ one_ }) = .ok Std.false_ := by native_decide
 example : concEval 200 (och{ isZero_ two_ }) = .ok Std.false_ := by native_decide
