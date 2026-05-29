@@ -30,7 +30,7 @@ def eater  := och{ fix e. λb:bool_. b Type e }
 section Tests
 
 -- eater is well-formed
-example : (Och.check och{ eater }).isOk := by native_decide
+example : (Och.check och{ eater false_  }).isOk := by native_decide
 example : (Och.check och{ eater false_ }).isOk := by native_decide
 example : (Och.check och{ eater false_ true_ }).isOk := by native_decide
 example : (Och.check och{ eater true_ false_ }).isError := by native_decide
