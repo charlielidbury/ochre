@@ -1065,6 +1065,7 @@ Each [E-Fix] step replaces the bound variable $e$ with the entire $"fix"$ expres
 There is no rule whose conclusion matches $top space underline("false") arrow.b.double v$: [E-App] requires the function position to evaluate to a $lambda$, and $top$ is not one. The derivation is stuck --- this is exactly the kind of runtime error the type system is designed to prevent.
 
 = Metatheory <metatheory>
+(This section is a stub, significant attempts at soundness have been made but have so far only resulted in proofs of un-soundness.)
 
 Soundness connects the concrete semantics (@conc-eval), subtyping (@subtyping), and well-formedness (@well-formed).
 
@@ -1102,32 +1103,36 @@ The calculus described above has been formalised in Lean 4, which is used to mai
 
 = Related Work <related-work>
 
-Large-scale verification projects have demonstrated that formal verification of systems software is feasible: CompCert @leroy-2009 is a verified C compiler (written in Coq, extracted to OCaml), seL4 @klein-2009 is a verified OS microkernel (C code with a separate Isabelle/HOL refinement proof), and Project Everest @project-everest-2017 produced a verified HTTPS stack (F\*, extracted to C via KReMLin). These projects validate the _goal_ of verified systems software but do not provide a programming model where the systems programmer writes verified code directly --- the verification happens in a separate language from the executable artifact.
+Large-scale verification projects have demonstrated that formal verification of systems software is feasible: CompCert @leroy-2009 is a verified C compiler (written in Coq, extracted to OCaml), seL4 @klein-2009 is a verified OS microkernel (C code with a separate Isabelle/HOL refinement proof), and Project Everest @project-everest-2017 produced a verified HTTPS stack
+(F\*, extracted to C via KReMLin). These projects use a wide variety of verification techniques, which we overview in this section, with the most relevant/directly comparible to Ochre first.
 
-The approaches below _do_ aim to give the programmer a direct path from code to proof. To make the comparison concrete, each subsection illustrates how safe array indexing --- accessing element $i$ of an array of length $n$ with a static guarantee that $i < n$, eliminating the runtime bounds check --- is expressed under each approach.
+== Dependently typed systems languages <rw-depsys>
 
-== Verification via extraction <rw-extraction>
-
-In the extraction approach, the programmer writes verified code in a theorem prover and a compiler extracts executable systems code. Low\* (the systems fragment of F\* @protzenko-2017) is the most developed example: after verification, KReMLin extracts Low\* to idiomatic C. Safe indexing into a length-indexed vector is expressed via a refinement type on the index:
+Low\* (the systems fragment of F\* @protzenko-2017) and ATS @xi-2017 are the closest prior art to Ochre's vision: languages which combine dependent types with low-level control in a single system. Low\* is by far the more widely used of the two --- it is the language behind HACL\* @hacl-2017 and Project Everest @project-everest-2017 --- so we illustrate with it.
 
 #figure(
   ```fstar
-  type vec (a:Type) : nat -> Type =
-    | Nil : vec a 0
-    | Cons : #n:nat -> hd:a -> tl:vec a n -> vec a (n + 1)
+  (* Low*: safe buffer indexing (systems fragment of F*) *)
+  val index (#a:Type) (b:buffer a) (i:U32.t)
+    : Stack a
+      (requires fun h -> live h b /\ U32.v i < length b)
+      (ensures  fun h0 r h1 ->
+        h0 == h1 /\ r == Seq.index (as_seq h0 b) (U32.v i))
 
-  let rec get #a #n (i:nat{i < n}) (v:vec a n) : a =
-    let Cons hd tl = v in
-    if i = 0 then hd else get (i - 1) tl
+  let index #a b i = b.(i)
   ```,
-  caption: [Safe array indexing in F\*. The refinement `i:nat{i < n}` is a compile-time proof obligation; callers must prove `i < n` to the type checker. The `Nil` case is statically unreachable.],
+  caption: [Safe buffer indexing in Low\*. The refinement `U32.v i < length b` in the `requires` clause is a compile-time proof obligation, discharged by F\*'s SMT backend; callers must prove the index is in bounds. The liveness precondition `live h b` and the heap `h` are threaded through the `Stack` effect --- mutation lives in a monadic state effect rather than in the term language. After verification, KaRaMeL extracts `b.(i)` to a bare C array access `b[i]` with no runtime bounds check.],
 )
 
-For systems code, Low\*'s buffer operations carry the same refinement pattern: `b.(n)` requires a proof that `n < length b`, and after verification KReMLin extracts this to a bare C array access `b[n]` with no bounds check. The result is zero-overhead verified code, but the programmer must express their algorithm in F\*'s purely functional, monadic-effect style, thread heap invariants through a state monad, and maintain separation-logic-like permissions on buffer liveness --- all of which are far removed from the C code they ultimately target. The development cost is very high: the ratio of proof to code is typically 10:1 or greater.
+Low\* achieves statically guaranteed bounds safety with zero runtime overhead, but inherits F\*'s purely functional programming model: mutation is expressed via a monadic state effect (the `Stack`/heap-passing discipline above), not via direct mutable references as in Rust, and the programmer must thread heap invariants and buffer-liveness obligations through that effect by hand. ATS reaches comparable guarantees by a different route --- a bespoke constraint language of dependent sorts (the `{i:nat | i < n}` annotations) discharged by its own constraint solver, and linear types rather than an effect for safe mutation --- but at the cost of a sort language that is syntactically and semantically separated from the term language.
 
-== Translation-based verification <rw-translation>
+Ochre aims to differ from both by adopting Rust's ownership model as the mechanism for safe mutation, rather than monadic effects (Low\*). The hypothesis is that ownership is a more natural fit for systems programmers, since Rust has demonstrated that the model is learnable at scale, and that a unified language reduces the cognitive overhead of switching between specification and implementation.
 
-Aeneas @aeneas-2022 takes an existing Rust program, translates it to a pure functional model in a theorem prover (Lean, Coq, F\*, or HOL4), and lets the programmer verify properties of the model. The key insight is that Rust's ownership discipline guarantees that each mutable borrow has exclusive access, so an in-place mutation `x[i] = v` can be modelled as a pure functional update that returns a new collection.
+== Parallel Codebases <rw-translation>
+
+Aeneas @aeneas-2022 takes an existing Rust program, translates it to a pure functional model in a theorem prover (Lean, Coq, F\*, or HOL4), and lets the programmer verify properties of the model. The programmer is left with two version of their codebase: the executable artifact and the verified artifact. This decouples the two languages, allowing them the best tool for the job (in Aeneas' case, Rust for execution and Lean for verification).
+
+The key insight is that Rust's ownership discipline guarantees that each mutable borrow has exclusive access, so an in-place mutation `x[i] = v` can be modelled as a pure functional update that returns a new collection.
 
 #figure(
   grid(
@@ -1162,11 +1167,30 @@ Aeneas @aeneas-2022 takes an existing Rust program, translates it to a pure func
   caption: [Aeneas translation of in-place vector zeroing. The `&mut Vec<u32>` becomes a value that is returned; `x[i] = 0` becomes a call to `index_mut` returning a backward continuation `back` which, applied to the new value, produces the updated vector. Failable operations (indexing, arithmetic) live inside the `Result` monad.],
 )
 
-This avoids the need to write systems code in a theorem prover, but introduces an architectural boundary: the programmer writes Rust, the toolchain generates functional models, and the prover reasons about those models. The verified artifact and the executable artifact are different objects in different languages, so proof obligations live outside the source language and cannot influence compilation (e.g., by eliding a bounds check). The programmer must also trust the translation and the Rust compiler.
+This avoids the need to write efficient code in a theorem prover, or reason about the correctness of imperative Rust code. It is the verification technique chosen for Signal Shot @signal-shot-2026, an initiative to formally verify the Signal protocol's Rust implementation (`libsignal`) in Lean by translating it with Aeneas.
+
+The downside of this two-copies-of-the-code approach is that the programmer must maintain and understand two versions of the codebase in two languages with different semantics. This might involve a proof engineer tweaking the Rust so different Lean is emitted which is more ameenable to the particular proof they are attempting. This is a messy workaround --- it would be cleaner if it was all under a single language.
 
 == Bolt-on verification for Rust <rw-bolton>
 
-Prusti @astrauskas-2022, Creusot @denis-2022, and Verus @lattuada-2023 add specification and verification capabilities to Rust via annotations, macros, or embedded DSLs. The programmer writes Rust code as normal and adds pre/postconditions and loop invariants; an automated verifier (typically backed by an SMT solver) checks them.
+Prusti @astrauskas-2022, Creusot @denis-2022, and Verus @lattuada-2023 add specification and verification capabilities to Rust via annotations, macros, or embedded DSLs. The programmer writes Rust code as normal and adds pre/postconditions and loop invariants; an automated verifier (typically backed by an SMT solver) checks them. These tools verify only _safe_ Rust; Gillian-Rust @gillian-rust-2025 complements Creusot by verifying the type safety and functional correctness of `unsafe` Rust through separation-logic symbolic execution (embedding the lifetime logic of RustBelt @rustbelt-2018 and the prophecies of RustHornBelt @rusthornbelt-2022), discharging exactly the unsafe-code specifications Creusot can express but not verify.
+
+#figure(
+  ```rust
+  // Verus: safe array indexing
+  verus! {
+  fn get(v: &Vec<u64>, i: usize) -> (r: u64)
+      requires i < v.len(),
+      ensures  r == v@[i as int],
+  {
+      v[i]
+  }
+  } // verus!
+  ```,
+  caption: [Safe array indexing in Verus. The precondition `i < v.len()` is a first-order proof obligation discharged by Verus's SMT backend; every caller must prove the index in bounds, after which the access is statically guaranteed safe (and the runtime bounds check can be elided via a trusted `get_unchecked` primitive, #cite(<lattuada-2023>, form: "prose") §3. The postcondition relates the result to a ghost `Seq<u64>` model `v@`, since Rust's native `Vec<u64>` cannot appear in logical formulas.],
+) <verus-index>
+
+As a demonstration of quite how ergonomic Verus is, @verus-binary-search gives an entire `binary_search` algorithm verified in Verus --- the sortedness and membership preconditions, the loop invariant, and the `decreases` termination measure all sit inline as annotations on otherwise-ordinary Rust, and each `v[mid]` access is proven in bounds from the invariant.
 
 #figure(
   ```rust
@@ -1198,43 +1222,22 @@ Prusti @astrauskas-2022, Creusot @denis-2022, and Verus @lattuada-2023 add speci
   }
   } // verus!
   ```,
-  caption: [Verified binary search in Verus. Specifications are written in a first-order logic DSL inside `requires`/`ensures`/`invariant` blocks. Each `v[mid]` access is verified to be in bounds from the loop invariant. Specifications operate over a ghost `Seq<T>` model, not Rust's native `Vec<T>`.],
-)
+  caption: [Verified binary search in Verus. Specifications are written in a first-order logic DSL inside `requires`/`ensures`/`invariant` blocks. Each `v[mid]` access is verified to be in bounds from the loop invariant.],
+) <verus-binary-search>
 
-These tools have the lowest adoption barrier: the programmer stays in Rust and adds specifications incrementally. However, the specification and implementation remain in separate languages that the programmer must keep in sync. Specifications operate over ghost models (`Seq<T>`, accessed via `v@`) since Rust's native types cannot appear in logical formulas. The expressivity of specifications is limited by what the SMT backend can decide, and the verification is incomplete --- the solver may time out or fail to find a proof, requiring manual intervention in the form of assertions or lemma calls. In a language with native dependent types, by contrast, the precondition $i < n$ is the type of the index argument, not a side-channel annotation, and the type checker itself is the verification engine.
+These tools have the lowest adoption barrier: the programmer stays in Rust and adds specifications incrementally. However, specifications operate over ghost models (`Seq<T>`, accessed via `v@`) since Rust's native types cannot appear in logical formulas. The expressivity of specifications is limited by what the SMT backend can decide, and the verification is incomplete --- the solver may time out or fail to find a proof, requiring manual intervention in the form of assertions or lemma calls. In a language with native dependent types, by contrast, the precondition $i < n$ is the type of the index argument, not a side-channel annotation, and the type checker itself is the verification engine.
 
-== Dependently typed systems languages <rw-depsys>
+*The expressivity ceiling, made concrete.* It is worth asking precisely how far this bolt-on approach can reach, because the answer delimits what a unified dependently-typed language buys over it. A potential test case is Project Everest @project-everest-2017: could its verified HTTPS stack --- built in F\*/Low\* @protzenko-2017 --- be rebuilt in Verus instead? A large fraction of Everest is exactly Verus's strength: the functional correctness of imperative byte-manipulation code (record-layer formatting, parsers, the handshake state machines). For this class Verus would likely fare _better_ than F\*, because Rust's borrow checker discharges the aliasing reasoning that is Everest's worst accidental complexity, rather than requiring a separation-logic memory model to be threaded through by hand. But two of Everest's deliverables lie structurally beyond Verus. First, HACL\* @hacl-2017 guarantees _secret independence_ (constant-time execution): branching and memory-access patterns must not depend on secret data. This is a _relational_ (2-safety) property --- it quantifies over _pairs_ of executions that differ only in secrets and asserts their observable traces coincide --- and Low\* discharges it by parametricity over an abstract secret-integer type, preserved through extraction to C @protzenko-2017. Verus generates its verification condition by weakest-precondition reasoning over a _single_ execution and discharges it with an SMT solver; a single-trace logic cannot so much as _state_ a 2-safety property without an explicit product-program encoding, and Verus offers no secret/public type discipline for it. Second, Vale @vale-2019 verifies hand-optimised cryptographic _assembly_ using a verified verification-condition generator implemented by proof-by-reflection over F\*'s dependent types; Verus has no machine model and, lacking dependent types, tactics, or explicit proof terms, no analogue of the proof-structuring machinery the task relies on.
 
-ATS @xi-2017 and Low\* (the systems fragment of F\* @protzenko-2017) are the closest prior art to Ochre's vision: languages which combine dependent types with low-level control in a single system.
+Tellingly, Verus's authors draw exactly this line themselves: Verus is "closely tied to Rust's type system, which is more limited in some ways than the dependent type systems of Coq and F\*[, which] may preclude some more sophisticated styles of structuring proofs," and --- in contrast to the engineering limitations they expect to lift --- "limitations tied to Rust's type system are imposed by Verus's design choices" @lattuada-2023. The leading "stay in Rust" verifier thus trades away dependent-type proof power for ergonomics, by construction. Ochre's bet is that unifying the term and type languages need not force that trade: when the specification _is_ the type and the type checker _is_ the verifier, the proof power of dependent types and the ergonomics of working in one language are no longer in tension. Whether Och's subtyping can be made expressive/sound enough to deliver on that bet in practice is exactly the metatheoretic question this paper opens (@metatheory).
 
-#figure(
-  ```ats
-  (* ATS: safe array access via dependent sorts *)
-  fun{a:t@ype} arrayref_get_at
-    {n:int}{i:nat | i < n}
-    (A: arrayref(a, n), i: size_t i): (a)
+== Refinement Types <rw-refinement>
 
-  (* Binary search with compile-time bounds proof *)
-  fun{a:t@ype} bsearch_arr{n:nat}
-    (A: arrayref(a, n), n: int n, x0: a,
-     cmp: (a, a) -> int) : int = let
-    fun loop {i,j:int | 0 <= i; i <= j+1; j+1 <= n}
-      (A: arrayref(a, n), l: int i, u: int j)
-      :<cloref1> int =
-      if l <= u then let
-        val m = l + half(u - l)
-        val x = A[m]  // bounds proof discharged by {i,j} constraint
-        val sgn = cmp(x0, x)
-      in
-        if sgn >= 0 then loop(A, m+1, u) else loop(A, l, m-1)
-      end else u
-  in loop(A, 0, n-1) end
-  ```,
-  caption: [Safe array access in ATS. The constraint `{i,j:int | 0 <= i; i <= j+1; j+1 <= n}` on the inner loop statically guarantees every `A[m]` access is in bounds. ATS's constraint solver discharges these obligations automatically.],
-)
+Refinement types augment a base type with a logical predicate that constrains its inhabitants --- an in-bounds index, for instance, has the refinement type `{v: Nat | v < n}` --- and discharge the resulting subtyping obligations automatically with an SMT solver. Liquid Haskell @liquidhaskell-2014 is the canonical example, and Flux @flux-2023 brings the same liquid-types discipline to Rust, attaching refinements to Rust's types and checking them alongside the ownership information the borrow checker already provides. Safe array indexing is the textbook application: the index is refined to be smaller than the length, and the resulting obligation is dispatched by the solver.
 
-ATS demonstrates that statically guaranteed bounds safety in systems code is achievable, but at a significant ergonomic cost: programmers must work within a bespoke constraint language (the `{...}` sort annotations) that is syntactically and semantically separated from the term language. Low\* achieves similar guarantees via refinement types and SMT discharge, but inherits F\*'s purely functional programming model --- mutation is expressed via a monadic state effect, not via direct mutable references as in Rust.
+The defining design choice is that refinement predicates are drawn from a _decidable_ logic, which is what keeps checking fully automatic. This is precisely a restriction relative to dependent types: the predicate language is deliberately weaker than the term language, so specifications that require quantifier reasoning, induction, or arbitrary value-dependent computation. Och sits on the dependently-typed side of this trade-off: its types are arbitrary terms rather than predicates in a fixed decidable theory, buying expressive power at the (here, still open) cost of decidable checking.
 
-Ochre aims to differ from both by adopting Rust's ownership model as the mechanism for safe mutation, rather than linear types (ATS) or monadic effects (Low\*), and by unifying the type and term languages so that specifications are written in the same language as the code they describe. The hypothesis is that ownership is a more natural fit for systems programmers, since Rust has demonstrated that the model is learnable at scale, and that a unified language reduces the cognitive overhead of switching between specification and implementation.
+Aside: I should find examples of examples where refinement types are not expressive enough to prove desireable properties, but I do not know refinement types well enough to effectively make that argument --- so take the claim with a grain of salt!
+
 
 #bibliography("refs.bib", style: "chicago-author-date")
