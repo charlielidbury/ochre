@@ -1,0 +1,17 @@
+package quicksort
+
+-- Two modules:
+--   Quicksort        — provably-correct quicksort on `List Nat`
+--                      (Sorted ∧ Perm, fully machine-checked).
+--   QuicksortLinear  — the in-place QTT/linear-array version (kept as the
+--                      "QTT can't express disjointness" data point; runs but
+--                      its functional spec can't be stated, let alone proved).
+-- `contrib` is needed by QuicksortLinear for Data.Linear.Array.
+
+depends = contrib
+
+modules = Quicksort
+        , QuicksortLinear
+
+main = Quicksort
+executable = quicksort
