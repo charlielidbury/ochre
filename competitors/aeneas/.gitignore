@@ -1,0 +1,17 @@
+# Cargo build artifacts
+**/target/
+
+# Lean build artifacts + lake-fetched deps (Mathlib etc.), at any depth
+**/.lake/
+**/build/
+*.olean
+*.ilean
+
+# elan-installed Lean toolchain (full v4.30 toolchain, ~800M, fetched per-machine)
+**/.elan/
+
+# Charon LLBC output is regenerated; keep it out of the proof project
+lean-proof/quicksort.llbc
+
+# direnv
+.direnv/
