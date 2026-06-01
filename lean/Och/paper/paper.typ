@@ -181,6 +181,19 @@ Och's type system is structured around two judgements:
 
 $Gamma$ is the typing context defined as $Gamma ::= emptyset | Gamma, x lt.eq a$. Lookup is $Gamma(x)$. Each entry describes what the type checker knows about a variable statically.
 
+A context is _well-formed_ when every annotation is itself well-formed under the prefix that precedes it:
+
+#figure(
+  grid(
+    columns: (1fr, 1fr),
+    gutter: 1.5em,
+    irule("Ctx-Empty", $tack.r emptyset "wf"$),
+    irule("Ctx-Ext", $tack.r Gamma, x lt.eq A "wf"$, $tack.r Gamma "wf"$, wf($Gamma$, $A$)),
+  ),
+  caption: [Context well-formedness rules.],
+) <ctx-wf-rules>
+
+The leaf well-formedness rules ([W-Var], [W-Type], [W-Bot]) require $tack.r Gamma "wf"$ as a premise, following PSS @hutchins-2010, so that $Gamma tack.r e "wf"$ implies $tack.r Gamma "wf"$ by straightforward induction on the derivation. The binder rules ([W-Lam], [W-Iota], [W-Fix]) maintain the invariant by checking the annotation before extending the context.
 
 == Well-formedness <well-formed>
 
@@ -195,9 +208,9 @@ Well-formedness validates purely structural conditions: annotations are types, b
     grid(
       columns: (1fr, 1fr, 1fr),
       gutter: 1.5em,
-      irule("W-Var", wf($Gamma$, $x$), $x in "dom"(Gamma)$),
-      irule("W-Type", wf($Gamma$, $top$)),
-      irule("W-Bot", wf($Gamma$, $bot$)),
+      irule("W-Var", wf($Gamma$, $x$), $tack.r Gamma "wf"$, $x in "dom"(Gamma)$),
+      irule("W-Type", wf($Gamma$, $top$), $tack.r Gamma "wf"$),
+      irule("W-Bot", wf($Gamma$, $bot$), $tack.r Gamma "wf"$),
     ),
     grid(
       columns: (1fr, 1fr),
@@ -246,7 +259,7 @@ Well-formedness validates purely structural conditions: annotations are types, b
   caption: [Well-formedness rules.],
 ) <wf-rules>
 
-*[W-Var]* requires variables be well-scoped.
+*[W-Var], [W-Type], [W-Bot]* are the leaf rules and require $tack.r Gamma "wf"$ to ensure context well-formedness is intrinsic to the judgment. *[W-Var]* additionally requires variables be well-scoped.
 
 *[W-Lam], [W-Iota], [W-Fix]* check that the annotation is well-formed and that the body is well-formed under the extended context.
 
@@ -254,7 +267,9 @@ Well-formedness validates purely structural conditions: annotations are types, b
 
 == Seen set $S$ <seen-set>
 
-Due to the prevelant usage of unbounded recursion in type definitions and encodings, many subtype checks involve infinite proof trees (e.g. $sub(emptyset, emptyset, "add" "one" "two", "Nat")$).
+$S$ is the coinductive hypothesis set, defined as $S ::= emptyset | S, (a, b)$. Each entry $(a, b)$ records a subtyping goal $a subset.sq.eq b$ that has already been encountered on the current derivation path.
+
+Due to the prevalent usage of unbounded recursion in type definitions and encodings, many subtype checks involve infinite proof trees (e.g. $sub(emptyset, emptyset, "add" "one" "two", "Nat")$).
 
 To derive these infinite trees in finite time Claude said I should use "the Brandt-Henglein device for equirecursive subtyping" as used by #cite(<brandt-henglein-1998>, form: "prose"). Claude explains it as: "$S$ is a finite representation of a coinductive (potentially infinite) proof tree: when a goal recurs, the branch closes rather than recursing forever, encoding a regular infinite derivation as a finite one."
 
