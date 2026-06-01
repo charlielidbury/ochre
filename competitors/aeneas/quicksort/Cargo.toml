@@ -1,0 +1,12 @@
+[package]
+name = "quicksort"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "quicksort"
+path = "src/lib.rs"
+
+[package.metadata.charon]
+# Charon options read from Cargo.toml when running `charon cargo`.
+# We extract structured LLBC (the default) of just this crate.
