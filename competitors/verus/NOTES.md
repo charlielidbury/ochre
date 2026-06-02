@@ -98,25 +98,62 @@ through `==` on `to_multiset()`.
 
 ## Toolchain / packaging
 
-Verus is **not** in nixpkgs. We wire in the **prebuilt release**
-`verus-0.2026.05.31.5dd6d83-x86-linux.zip` from
-`github.com/verus-lang/verus/releases`. The interesting packaging wrinkle:
+Verus is **not** in nixpkgs, and there is no community flake / cachix binary
+cache for it (the upstream repo only ships a non-hermetic `tools/shell.nix` that
+expects a system `rustup` and downloads z3 over the network). So we build Verus
+**from source** via its `vargo` build system, off a content-addressed
+`fetchFromGitHub` of the pinned release tag — **no** `fetchurl` of a prebuilt
+`*-x86-linux.zip`. Because the input is *source*, the derivation is portable:
+`meta.platforms = lib.platforms.unix` and it goes through `eachDefaultSystem`, so
+it is not nailed to `x86_64-linux` the way a prebuilt release archive is. (Only
+`x86_64-linux` has actually been built/tested here, but nothing in the flake
+hard-codes the platform.)
 
-- `rust_verify` is a **rustc driver** that dlopens
-  `librustc_driver-6108105cd7e839cf.so` from the *exact* toolchain Verus was
-  compiled against (stable `1.95.0`), and the `verus` launcher *insists on a
-  `rustup` installation* to locate it (it shells out to `rustup toolchain list`
-  and `rustup run <tc> -- rust_verify …`).
-- We satisfy this **without rustup** by: (a) pinning the official stable
-  `rustc 1.95.0` via `rust-overlay` — its `librustc_driver` hash is
-  **bit-identical** to the one the prebuilt links against (the flake asserts this
-  at build time and fails loudly if a future Verus bumps its rustc), and (b)
-  shipping a tiny `rustup` **shim** implementing the only two sub-commands the
-  launcher uses, pointing `LD_LIBRARY_PATH` at the pinned toolchain's `lib/`.
-- `autoPatchelfHook` fixes the ELF interpreter; the bundled `z3` is wired via
-  `VERUS_Z3_PATH`. The result is a self-contained `verus` on PATH.
+How the source build is wired:
 
-(`x86_64-linux` only — the release zip is platform-specific.)
+- **Pin.** `verusRev = 5dd6d836…` is the commit behind the
+  `release/0.2026.05.31.5dd6d83` tag. The Verus version string embeds the short
+  sha (`…5dd6d83`), so `verusVersion` and `verusRev` stay in lock-step and the
+  toolchain that checks `quicksort.rs` is exactly the release version — the proof
+  stays in sync with the pin.
+- **Rust toolchain.** Upstream `rust-toolchain.toml` pins stable `1.95.0` with
+  `rustc-dev` + `llvm-tools`; we provide that via `rust-overlay`
+  (`rust-bin.stable."1.95.0"` with `rustc-dev`, `rust-src`, `llvm-tools-preview`).
+  `rust_verify` is a **rustc driver** that links `librustc_driver-<hash>.so`; the
+  from-source build links the **bit-identical** `librustc_driver-6108105cd7e839cf.so`
+  out of this very toolchain (visible in the build's autoPatchelf log), and the
+  flake asserts at install time that the toolchain provides that exact soname.
+- **rustup shim.** `vargo` (and the `verus` launcher) shell out to `rustup`
+  (`rustup show active-toolchain`, `rustup toolchain list`, `rustup run <tc> -- …`).
+  We have no rustup; a tiny `writeShellScriptBin "rustup"` shim implements exactly
+  those subcommands, pointing `LD_LIBRARY_PATH`/`RUSTC` at the nix toolchain. The
+  same shim is used both at **build** time (so `vargo build` works) and at
+  **run** time (wrapped onto the launchers' PATH).
+- **Offline cargo.** The whole workspace builds offline against an
+  `importCargoLock` vendor dir (`source/Cargo.lock`); the one git dependency
+  (`utaal/getopts`) gets its FOD hash supplied via `outputHashes`. A generated
+  `$CARGO_HOME/config.toml` redirects crates.io + that git source to the vendor
+  dir. `vargo` itself has its **own** `Cargo.lock` (a few crates not in the
+  workspace lock, e.g. `filetime`), so it is built as a **separate**
+  `rustPlatform.buildRustPackage` (with `cargoRoot = "vargo"` because the lock
+  lives in `tools/vargo`, and the whole `tools/` tree as `src` because
+  `vargo/main.rs` does `#[path = "../../common/consts.rs"]`).
+- **z3 from source.** Verus pins **z3 4.12.5** and `vargo` verifies vstd against
+  it (with a version check on by default). We build z3 4.12.5 from source
+  (`fetchFromGitHub`, not a prebuilt z3 binary) so the whole toolchain stays
+  multi-platform and the proof runs against the *exact* solver a stock Verus
+  install uses. z3 4.12.5 predates gcc-15 and fails to compile with it (a
+  `-Werror=template-body` regression in `static_matrix.h`), so its derivation is
+  pinned to `gcc13Stdenv`; the produced binary is unaffected.
+- **vstd.** `vargo build --release` builds `rust_verify`, the support libs, the
+  `verus`/`cargo-verus` launchers, and then **verifies + compiles vstd** (this
+  step runs verus, hence needs z3). vstd verifies clean: `1690 verified, 0 errors`.
+- `autoPatchelfHook` fixes the freshly built ELF interpreters/rpaths (with the
+  rust toolchain added as a `runtimeDependencies` so it finds `librustc_driver`).
+  The result is a self-contained `verus` on PATH.
+
+Verify: `nix build ./competitors/verus#verus` (builds the toolchain),
+`nix build ./competitors/verus#quicksort` (`8 verified, 0 errors`).
 
 The `#quicksort` derivation additionally puts a C compiler on PATH because Verus
 runs rustc's lifetime/borrow check (which links) on the proof code.
