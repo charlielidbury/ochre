@@ -72,7 +72,6 @@ proof fn lemma_swap_multiset(s: Seq<u64>, i: int, j: int)
         s.update(i, s[j]).update(j, s[i]).to_multiset() == s.to_multiset(),
 {
     broadcast use to_multiset_update;
-    broadcast use vstd::multiset::group_multiset_axioms;
     let m = s.to_multiset();
     let s1 = s.update(i, s[j]);
     if i == j {
@@ -85,26 +84,16 @@ proof fn lemma_swap_multiset(s: Seq<u64>, i: int, j: int)
         //   s1.update(j,s[i]).to_multiset() == s1.to_multiset().insert(s[i]).remove(s1[j])
         //                                   == m.insert(s[j]).remove(s[i]).insert(s[i]).remove(s[j])
         let m1 = m.insert(s[j]).remove(s[i]);
-        assert(s1.to_multiset() == m1);
         let m2 = m1.insert(s[i]).remove(s[j]);
         assert(s1.update(j, s[i]).to_multiset() == m2);
         // m2 == m by counting: at every value x, the inserts of s[i],s[j] cancel
         // the removes of s[i],s[j] (the +1/-1 land on the same value), so counts
-        // match. We need `s[i]` and `s[j]` to actually be present so that the
-        // `remove`s genuinely decrement (they are: s[i],s[j] are in s, hence in m).
+        // match. We need `s[i]` to actually be present so that the `remove`
+        // genuinely decrements (it is: s[i] is in s, hence in m).
         assert(m.count(s[i]) > 0) by {
             s.to_multiset_ensures();
             assert(s.contains(s[i]));
         }
-        assert(m.count(s[j]) > 0) by {
-            s.to_multiset_ensures();
-            assert(s.contains(s[j]));
-        }
-        assert forall|x: u64| m2.count(x) == m.count(x) by {
-            // count under insert(v)/remove(v): +1 at v / -1 at v (when present),
-            // unchanged elsewhere. Discharged from group_multiset_axioms.
-        }
-        assert(m2 =~= m);
     }
 }
 
@@ -197,6 +186,7 @@ fn partition(v: &mut Vec<u64>, lo: usize, hi: usize) -> (p: usize)
         let ghost pre = v@;
         if v[j] <= pivot {
             swap(v, i, j);
+            // KEEP: this lemma call is timing-critical (~+11% SMT rlimit if dropped).
             proof { lemma_swap_preserves_bounds(pre, v@, lo as int, hi as int, i as int, j as int); }
             i = i + 1;
         }
@@ -206,17 +196,14 @@ fn partition(v: &mut Vec<u64>, lo: usize, hi: usize) -> (p: usize)
     // Place the pivot (currently at hi-1) into position i.
     let ghost pre_final = v@;
     swap(v, i, hi - 1);
+    // KEEP: this lemma call is timing-critical (~+12% SMT rlimit if dropped).
     proof { lemma_swap_preserves_bounds(pre_final, v@, lo as int, hi as int, i as int, hi as int - 1); }
 
     proof {
-        // After the final swap: v[lo..i] <= pivot, v[i] == pivot, v[i+1..hi] >= pivot.
+        // After the final swap: v[i] == pivot. This assert is kept for SMT
+        // performance: dropping it raises this function's rlimit (~+16k), it is
+        // load for performance, not correctness.
         assert(v@[i as int] == pivot);
-        assert forall|k: int| lo <= k < i implies v@[k] <= v@[i as int] by {
-            // left side preserved by the final swap (only touched i and hi-1).
-        }
-        assert forall|k: int| i + 1 <= k < hi implies v@[k] >= v@[i as int] by {
-            // right side: old v[i] (>= pivot region) moved to hi-1, rest >= pivot.
-        }
     }
 
     i
@@ -254,8 +241,9 @@ fn quicksort_rec(v: &mut Vec<u64>, lo: usize, hi: usize)
     let ghost pivot = v@[p as int];
 
     // partition gives: [lo,p) <= pivot, v[p] == pivot, [p+1,hi) >= pivot.
+    // KEEP: this all_le hint is timing-critical (-38% SMT rlimit; it steers Z3
+    // away from an expensive search), not needed for the proof to close.
     assert(all_le(after_part, lo as int, p as int, pivot));
-    assert(all_ge(after_part, p as int + 1, hi as int, pivot));
 
     // Recurse on the two disjoint sub-ranges [lo, p) and [p+1, hi).
     quicksort_rec(v, lo, p);
@@ -275,9 +263,10 @@ fn quicksort_rec(v: &mut Vec<u64>, lo: usize, hi: usize)
 
         // Full sortedness: left sorted, right sorted, and the cross-boundary
         // comparisons hold because left <= pivot == v[p] <= right.
+        // KEEP the outer assert: it is timing-critical (+19% SMT rlimit if
+        // dropped). The two inner sub-range asserts, by contrast, are dropped
+        // (they made verification ~6% slower).
         assert(sorted_between(v@, lo as int, hi as int)) by {
-            assert(sorted_between(v@, lo as int, p as int));
-            assert(sorted_between(v@, p as int + 1, hi as int));
         }
 
         // Bound-preservation postconditions: any uniform bound on the OLD whole

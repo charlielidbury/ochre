@@ -195,3 +195,43 @@ butterfly effect. Once enough intermediate facts are gone simultaneously, Z3 can
 no longer reconstruct the `partition` bound-preservation chain that several of
 those asserts were each independently propping up. This is why a "minimal proof"
 cannot be obtained by naively deleting every individually-removable item.
+
+## Trimmed result (applied to `quicksort.rs`)
+
+Acting on the data above, the **neutral / counterproductive** removable asserts
+were trimmed from `quicksort.rs` while every **load-bearing**, **structural**, and
+**performance-bearing** item was kept. The performance-bearing keeps (A22, A28,
+A19, and the two `lemma_swap_preserves_bounds` calls A16/A17) carry inline
+`// KEEP: timing-critical ...` comments so a future reader does not re-delete them.
+
+**9 annotations removed** (all category-(a), each individually neutral or
+rlimit-reducing):
+
+| ID | line(s) | snippet | individual Δ | why removed |
+|----|--------|---------|-----------:|-------------|
+| A03 | 75 | `broadcast use group_multiset_axioms` | +1 523 | neutral; no longer needed once the empty `m2.count` forall (A10) is gone |
+| A06 | 88 | `assert(s1.to_multiset() == m1)` | +4 329 | neutral intermediate step |
+| A09 | 99–102 | `assert(m.count(s[j]) > 0) by {..}` | −38 922 | counterproductive (sibling of the kept `s[i]` fact; Z3 finds it itself) |
+| A10 | 103–106 | `assert forall x. m2.count==m.count by { }` (empty) | −15 771 | counterproductive empty-body scaffold |
+| A11 | 107 | `assert(m2 =~= m)` | +2 396 | neutral; Z3 derives `m2 == m` on its own |
+| A20 | 214–216 | `assert forall k. left <= v@[i] by { }` (empty) | −30 118 | counterproductive empty-body scaffold |
+| A21 | 217–219 | `assert forall k. right >= v@[i] by { }` (empty) | −1 329 | neutral empty-body scaffold |
+| A23 | 258 | `assert(all_ge(after_part, p+1, hi, pivot))` | −10 940 | counterproductive (asymmetric with the kept A22 `all_le` hint) |
+| A29 | 279–280 | inner 2 asserts of the `sorted_between` block | −64 829 | counterproductive; outer A28 kept |
+
+**Nothing had to be added back.** The trimmed file verifies first try:
+`8 verified, 0 errors` (canonical `--no-cheating --triggers-mode silent`).
+
+**Final rlimit-run: 1 256 527** (deterministic, confirmed identical over 3 runs)
+vs the committed-file baseline **1 276 279** → **−19 752 (−1.5%)**, i.e. *faster*
+than baseline, satisfying the "no slower than baseline" goal. (Baselines here are
+the committed-`main` variant; the proof-body-only ablation baseline of 1 118 952
+used the working-tree `main` — see the baseline note above. The trim is measured
+against the committed file it actually edits.)
+
+The net improvement (−1.5%) is far smaller than the sum of the individual
+reductions (which exceed 160k) — another instance of the butterfly effect: the
+counterproductive asserts interact, so removing them jointly recovers only a
+fraction of each one's solo benefit. The dominant value of the trim is therefore
+**clutter removal and correctness of intent** (no misleading "needed" asserts that
+are actually inert), with a modest speed bonus, rather than a large speedup.
