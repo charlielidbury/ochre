@@ -15,55 +15,53 @@ set_option maxRecDepth 2048
 namespace quicksort
 
 /-- [quicksort::partition]: loop body 0:
-    Source: 'src/lib.rs', lines 28:4-34:5 -/
+    Source: 'src/lib.rs', lines 27:4-32:5 -/
 @[rust_loop_body]
 def partition_loop.body
-  (len : Std.Usize) (pivot : Std.U32) (s : Slice Std.U32) (i : Std.Usize)
-  (j : Std.Usize) :
-  Result (ControlFlow ((Slice Std.U32) × Std.Usize × Std.Usize) ((Slice
-    Std.U32) × Std.Usize))
+  (pivot : Std.U32) (iter : core.ops.range.Range Std.Usize) (s : Slice Std.U32)
+  (i : Std.Usize) :
+  Result (ControlFlow ((core.ops.range.Range Std.Usize) × (Slice Std.U32) ×
+    Std.Usize) ((Slice Std.U32) × Std.Usize))
   := do
-  let i1 ← len - 1#usize
-  if j < i1
-  then
-    let i2 ← Slice.index_usize s j
-    let (s1, i3) ←
-      if i2 <= pivot
-      then
-        do
-        let s2 ← core.slice.Slice.swap s i j
-        let i4 ← i + 1#usize
-        ok (s2, i4)
-      else ok (s, i)
-    let j1 ← j + 1#usize
-    ok (cont (s1, i3, j1))
-  else ok (done (s, i))
+  let (o, iter1) ←
+    core.iter.range.IteratorRange.next core.iter.range.StepUsize iter
+  match o with
+  | none => ok (done (s, i))
+  | some j =>
+    let i1 ← Slice.index_usize s j
+    if i1 <= pivot
+    then
+      let s1 ← core.slice.Slice.swap s i j
+      let i2 ← i + 1#usize
+      ok (cont (iter1, s1, i2))
+    else ok (cont (iter1, s, i))
 
 /-- [quicksort::partition]: loop 0:
-    Source: 'src/lib.rs', lines 28:4-34:5 -/
+    Source: 'src/lib.rs', lines 27:4-32:5 -/
 @[rust_loop]
 def partition_loop
-  (s : Slice Std.U32) (len : Std.Usize) (pivot : Std.U32) (i : Std.Usize)
-  (j : Std.Usize) :
+  (iter : core.ops.range.Range Std.Usize) (s : Slice Std.U32) (pivot : Std.U32)
+  (i : Std.Usize) :
   Result ((Slice Std.U32) × Std.Usize)
   := do
   loop
-    (fun (s1, i1, j1) => partition_loop.body len pivot s1 i1 j1)
-    (s, i, j)
+    (fun (iter1, s1, i1) => partition_loop.body pivot iter1 s1 i1)
+    (iter, s, i)
 
 /-- [quicksort::partition]:
-    Source: 'src/lib.rs', lines 22:0-38:1 -/
+    Source: 'src/lib.rs', lines 22:0-36:1 -/
 def partition (s : Slice Std.U32) : Result (Std.Usize × (Slice Std.U32)) := do
   let len := Slice.len s
   let i ← len - 1#usize
   let pivot ← Slice.index_usize s i
-  let (s1, i1) ← partition_loop s len pivot 0#usize 0#usize
+  let (s1, i1) ←
+    partition_loop { start := 0#usize, «end» := i } s pivot 0#usize
   let i2 ← len - 1#usize
   let s2 ← core.slice.Slice.swap s1 i1 i2
   ok (i1, s2)
 
 /-- [quicksort::quicksort]:
-    Source: 'src/lib.rs', lines 50:0-68:1
+    Source: 'src/lib.rs', lines 48:0-66:1
     Visibility: public -/
 def quicksort (s : Slice Std.U32) : Result (Slice Std.U32) := do
   let len := Slice.len s

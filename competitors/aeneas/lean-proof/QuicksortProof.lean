@@ -91,15 +91,47 @@ theorem swap_props {α} [Inhabited α] [BEq α] [LawfulBEq α] (s : Slice α) (a
     · simp_lists
   · intro k hka hkb; rw [hval]; simp_lists
 
+/-- Spec for the range iterator's `next` (the `for j in 0..len-1` desugaring).
+
+    `core.iter.range.IteratorRange.next StepUsize {start, end}` returns
+    `(some start, {start+1, end})` when `start < end`, and `(none, _)` otherwise.
+    This is the single new ingredient the `for`-loop translation requires that the
+    `while`-loop did not: Aeneas turned the explicit `j`/`j += 1` counter into a
+    `core::ops::range::Range` carried *inside the loop state*, stepped by this
+    `next`. We prove its behaviour once and `step` against it in the body spec. -/
+theorem iter_range_next_spec (r : core.ops.range.Range Std.Usize)
+    (hb : r.start.val < r.«end».val) :
+    core.iter.range.IteratorRange.next core.iter.range.StepUsize r ⦃ res =>
+      res.1 = some r.start ∧ res.2.start.val = r.start.val + 1 ∧
+      res.2.«end» = r.«end» ⦄ := by
+  unfold core.iter.range.IteratorRange.next
+  -- `clone`, `lt` and `forward_checked` are all reducible/computational; reduce them.
+  simp only [core.iter.range.StepUsize, core.iter.range.StepUsize.forward_checked,
+    core.cmp.PartialOrdUsize, core.clone.CloneUsize, core.cmp.impls.PartialOrdUsize.lt,
+    core.clone.impls.CloneUsize.clone, liftFun1, liftFun2, bind, Bind.bind]
+  -- the partialOrd `lt` reduces to a decidable `r.start.val < r.end.val` which holds
+  have hlt : (decide (r.start.val < r.«end».val)) = true := by simp [hb]
+  simp only [hlt, if_true, spec_ok]
+  -- `forward_checked r.start 1 = Usize.checked_add r.start 1 = some z` with `z.val = start+1`
+  have h := Usize.checked_add_bv_spec r.start 1#usize
+  cases hc : Usize.checked_add r.start 1#usize with
+  | none => rw [hc] at h; simp only [Usize.max] at h; scalar_tac
+  | some z =>
+    rw [hc] at h; simp only at h
+    obtain ⟨_, hzval, _⟩ := h
+    simp only [hc, spec_ok]
+    refine ⟨?_, ?_, ?_⟩ <;> first | rfl | (try trivial) | simpa using hzval
+
 theorem partition_loop_body_spec (s0 : Slice Std.U32) (len : Std.Usize) (pivot : Std.U32)
     (hlen : len.val = s0.length) (hlen1 : 1 ≤ len.val)
-    (s' : Slice Std.U32) (i' j' : Std.Usize)
+    (iter : core.ops.range.Range Std.Usize) (s' : Slice Std.U32) (i' : Std.Usize)
+    (hend : iter.«end».val = len.val - 1)
     (hsl : s'.length = len.val) (hpm : s'.val.Perm s0.val)
-    (hi'j' : i'.val ≤ j'.val) (hj' : j'.val ≤ len.val - 1)
+    (hi'j' : i'.val ≤ iter.start.val) (hj' : iter.start.val ≤ len.val - 1)
     (hlst : s'.val[len.val - 1]! = s0.val[len.val - 1]!)
     (hlo' : ∀ k, k < i'.val → s'.val[k]! ≤ pivot)
-    (hhi' : ∀ k, i'.val ≤ k → k < j'.val → pivot < s'.val[k]!) :
-    partition_loop.body len pivot s' i' j' ⦃ r =>
+    (hhi' : ∀ k, i'.val ≤ k → k < iter.start.val → pivot < s'.val[k]!) :
+    partition_loop.body pivot iter s' i' ⦃ r =>
       match r with
       | .done y =>
         y.1.length = len.val ∧ y.1.val.Perm s0.val ∧ y.2.val ≤ len.val - 1 ∧
@@ -107,104 +139,110 @@ theorem partition_loop_body_spec (s0 : Slice Std.U32) (len : Std.Usize) (pivot :
         (∀ k, k < y.2.val → y.1.val[k]! ≤ pivot) ∧
         (∀ k, y.2.val ≤ k → k < len.val - 1 → pivot < y.1.val[k]!)
       | .cont st =>
-        (st.1.length = len.val ∧ st.1.val.Perm s0.val ∧
-         st.2.1.val ≤ st.2.2.val ∧ st.2.2.val ≤ len.val - 1 ∧
-         st.1.val[len.val - 1]! = s0.val[len.val - 1]! ∧
-         (∀ k, k < st.2.1.val → st.1.val[k]! ≤ pivot) ∧
-         (∀ k, st.2.1.val ≤ k → k < st.2.2.val → pivot < st.1.val[k]!)) ∧
-        (len.val - 1) - st.2.2.val < (len.val - 1) - j'.val ⦄ := by
+        (st.1.«end».val = len.val - 1 ∧
+         st.2.1.length = len.val ∧ st.2.1.val.Perm s0.val ∧
+         st.2.2.val ≤ st.1.start.val ∧ st.1.start.val ≤ len.val - 1 ∧
+         st.2.1.val[len.val - 1]! = s0.val[len.val - 1]! ∧
+         (∀ k, k < st.2.2.val → st.2.1.val[k]! ≤ pivot) ∧
+         (∀ k, st.2.2.val ≤ k → k < st.1.start.val → pivot < st.2.1.val[k]!)) ∧
+        (len.val - 1) - st.1.start.val < (len.val - 1) - iter.start.val ⦄ := by
   unfold partition_loop.body
-  step as ⟨ i1, hi1 ⟩
-  by_cases hcond : j' < i1
-  · simp only [hcond, if_true]
-    have hjlt : j'.val < len.val - 1 := by
-      have h : j'.val < i1.val := by simpa using hcond
-      omega
-    have hjb : j'.val < s'.length := by omega
+  by_cases hcond : iter.start.val < iter.«end».val
+  · -- iterator yields `some j` with j = iter.start
+    step with iter_range_next_spec iter hcond as ⟨ o, iter1, ho, hstart1, hend1 ⟩
+    have hjlt : iter.start.val < len.val - 1 := by omega
+    have hjb : iter.start.val < s'.length := by omega
     have hib : i'.val < s'.length := by omega
+    simp only [ho]
     step as ⟨ i2, hi2 ⟩
     by_cases hle : i2 ≤ pivot
     · simp only [hle, if_true]
-      step with swap_props s' i' j' hib hjb as ⟨ s2, hslen2, hsperm2, hsa, hsb, hsk ⟩
+      step with swap_props s' i' iter.start hib hjb as ⟨ s2, hslen2, hsperm2, hsa, hsb, hsk ⟩
       step as ⟨ i4, hi4 ⟩
-      step as ⟨ j1, hj1 ⟩
-      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-      · simp [hslen2, hsl]
+      refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+      · rw [hend1]; exact hend
+      · rw [hslen2]; exact hsl
       · exact hsperm2.trans hpm
-      · simp [hi4, hj1]; omega
-      · simp [hj1]; omega
+      · rw [hstart1, hi4]; omega
+      · rw [hstart1]; omega
       · rw [hsk (len.val - 1) (by omega) (by omega)]; exact hlst
       · intro k hk
-        simp only [hi4] at hk
+        rw [hi4] at hk
         by_cases hki : k = i'.val
         · subst hki; rw [hsa]
-          have : s'.val[j'.val]! = i2 := by rw [hi2]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem hjb]
+          have : s'.val[iter.start.val]! = i2 := by rw [hi2]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem hjb]
           rw [this]; exact hle
         · rw [hsk k hki (by omega)]; exact hlo' k (by omega)
       · intro k hk1 hk2
-        simp only [hi4] at hk1
-        simp only [hj1] at hk2
-        by_cases hkj : k = j'.val
+        rw [hi4] at hk1
+        rw [hstart1] at hk2
+        by_cases hkj : k = iter.start.val
         · subst hkj; rw [hsb]
-          rcases Nat.lt_or_ge i'.val j'.val with hlt | hge
+          rcases Nat.lt_or_ge i'.val iter.start.val with hlt | hge
           · exact hhi' i'.val (le_refl _) hlt
           · exfalso; omega
         · rw [hsk k (by omega) hkj]; exact hhi' k (by omega) (by omega)
-      · simp [hj1]; omega
-    · -- no swap: i2 > pivot, keep s', i', j+1
+      · rw [hstart1]; omega
+    · -- no swap: i2 > pivot, keep s', i', step iter
       simp only [hle, if_false]
-      step as ⟨ j1, hj1 ⟩
-      refine ⟨hsl, hpm, ?_, ?_, hlst, hlo', ?_, ?_⟩
-      · simp [hj1]; omega
-      · simp [hj1]; omega
+      refine ⟨?_, hsl, hpm, ?_, ?_, hlst, hlo', ?_, ?_⟩
+      · rw [hend1]; exact hend
+      · rw [hstart1]; scalar_tac
+      · rw [hstart1]; scalar_tac
       · intro k hk1 hk2
-        simp only [hj1] at hk2
-        by_cases hkj : k = j'.val
+        rw [hstart1] at hk2
+        by_cases hkj : k = iter.start.val
         · subst hkj
-          have heq : s'.val[j'.val]! = i2 := by rw [hi2]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem hjb]
+          have heq : s'.val[iter.start.val]! = i2 := by rw [hi2]; simp [List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem hjb]
           rw [heq]; simp at hle; exact hle
         · exact hhi' k hk1 (by omega)
-      · simp [hj1]; omega
-  · simp only [hcond, if_false]
-    simp only [spec_ok]
-    have hjeq : j'.val = len.val - 1 := by
-      have h : ¬ (j'.val < i1.val) := by simpa using hcond
-      omega
+      · rw [hstart1]; scalar_tac
+  · -- iterator is exhausted: `next` returns `none`, loop is `done`
+    have hjeq : iter.start.val = len.val - 1 := by omega
+    unfold core.iter.range.IteratorRange.next
+    simp only [core.iter.range.StepUsize, core.iter.range.StepUsize.forward_checked,
+      core.cmp.PartialOrdUsize, core.clone.CloneUsize, core.cmp.impls.PartialOrdUsize.lt,
+      core.clone.impls.CloneUsize.clone, liftFun1, liftFun2, bind, Bind.bind]
+    have hnlt : (decide (iter.start.val < iter.«end».val)) = false := by simp; omega
+    simp only [hnlt, if_false, spec_ok]
     refine ⟨hsl, hpm, ?_, hlst, hlo', ?_⟩
-    · omega
+    · scalar_tac
     · intro k hk1 hk2; exact hhi' k hk1 (by omega)
 
 theorem partition_loop_spec (s0 : Slice Std.U32) (len : Std.Usize) (pivot : Std.U32)
-    (s : Slice Std.U32) (i j : Std.Usize)
+    (iter : core.ops.range.Range Std.Usize) (s : Slice Std.U32) (i : Std.Usize)
     (hlen : len.val = s0.length) (hlen1 : 1 ≤ len.val)
+    (hend : iter.«end».val = len.val - 1)
     (hslen : s.length = len.val) (hperm : s.val.Perm s0.val)
-    (hij : i.val ≤ j.val) (hj : j.val ≤ len.val - 1)
+    (hij : i.val ≤ iter.start.val) (hj : iter.start.val ≤ len.val - 1)
     (hlast : s.val[len.val - 1]! = s0.val[len.val - 1]!)
     (hlo : ∀ k, k < i.val → s.val[k]! ≤ pivot)
-    (hhi : ∀ k, i.val ≤ k → k < j.val → pivot < s.val[k]!) :
-    partition_loop s len pivot i j ⦃ p =>
+    (hhi : ∀ k, i.val ≤ k → k < iter.start.val → pivot < s.val[k]!) :
+    partition_loop iter s pivot i ⦃ p =>
       p.1.length = len.val ∧ p.1.val.Perm s0.val ∧ p.2.val ≤ len.val - 1 ∧
       p.1.val[len.val - 1]! = s0.val[len.val - 1]! ∧
       (∀ k, k < p.2.val → p.1.val[k]! ≤ pivot) ∧
       (∀ k, p.2.val ≤ k → k < len.val - 1 → pivot < p.1.val[k]!) ⦄ := by
   unfold partition_loop
   apply loop.spec_decr_nat
-    (measure := fun (st : Slice Std.U32 × Std.Usize × Std.Usize) => (len.val - 1) - st.2.2.val)
-    (inv := fun (st : Slice Std.U32 × Std.Usize × Std.Usize) =>
-      st.1.length = len.val ∧ st.1.val.Perm s0.val ∧
-      st.2.1.val ≤ st.2.2.val ∧ st.2.2.val ≤ len.val - 1 ∧
-      st.1.val[len.val - 1]! = s0.val[len.val - 1]! ∧
-      (∀ k, k < st.2.1.val → st.1.val[k]! ≤ pivot) ∧
-      (∀ k, st.2.1.val ≤ k → k < st.2.2.val → pivot < st.1.val[k]!))
-  · rintro ⟨s', i', j'⟩ hinv
-    obtain ⟨hsl, hpm, hi'j', hj', hlst, hlo', hhi'⟩ := hinv
-    have H := partition_loop_body_spec s0 len pivot hlen hlen1 s' i' j' hsl hpm hi'j' hj' hlst hlo' hhi'
+    (measure := fun (st : core.ops.range.Range Std.Usize × Slice Std.U32 × Std.Usize) =>
+      (len.val - 1) - st.1.start.val)
+    (inv := fun (st : core.ops.range.Range Std.Usize × Slice Std.U32 × Std.Usize) =>
+      st.1.«end».val = len.val - 1 ∧
+      st.2.1.length = len.val ∧ st.2.1.val.Perm s0.val ∧
+      st.2.2.val ≤ st.1.start.val ∧ st.1.start.val ≤ len.val - 1 ∧
+      st.2.1.val[len.val - 1]! = s0.val[len.val - 1]! ∧
+      (∀ k, k < st.2.2.val → st.2.1.val[k]! ≤ pivot) ∧
+      (∀ k, st.2.2.val ≤ k → k < st.1.start.val → pivot < st.2.1.val[k]!))
+  · rintro ⟨iter', s', i'⟩ hinv
+    obtain ⟨hend', hsl, hpm, hi'j', hj', hlst, hlo', hhi'⟩ := hinv
+    have H := partition_loop_body_spec s0 len pivot hlen hlen1 iter' s' i' hend' hsl hpm hi'j' hj' hlst hlo' hhi'
     apply WP.spec_mono H
     rintro r hr
     cases r with
     | done y => exact hr
     | cont st => exact hr
-  · exact ⟨hslen, hperm, hij, hj, hlast, hlo, hhi⟩
+  · exact ⟨hend, hslen, hperm, hij, hj, hlast, hlo, hhi⟩
 theorem partition_spec (s : Slice Std.U32) (hs : 1 ≤ s.length) :
     partition s ⦃ p =>
       p.1.val < s.length ∧ p.2.length = s.length ∧ p.2.val.Perm s.val ∧
@@ -216,9 +254,9 @@ theorem partition_spec (s : Slice Std.U32) (hs : 1 ≤ s.length) :
   have hlenval : (s.len).val = s.length := by simp
   have hpiv_eq : pivot = s.val[s.length - 1]! := by
     rw [hpivot]; simp [hi, hlenval, List.getElem!_eq_getElem?_getD, List.getElem?_eq_getElem (show s.length - 1 < s.length by omega)]
-  have Hloop := partition_loop_spec s s.len pivot s 0#usize 0#usize
-    hlenval.symm (by simp [hlenval]; omega) (by simp [hlenval]) (List.Perm.refl _)
-    (by simp) (by simp) rfl (by simp) (by simp)
+  have Hloop := partition_loop_spec s s.len pivot { start := 0#usize, «end» := i } s 0#usize
+    hlenval.symm (by simp [hlenval]; omega) (by simp only []; rw [hi, hlenval]) (by simp [hlenval])
+    (List.Perm.refl _) (by simp) (by simp) rfl (by simp) (by simp)
   have ⟨⟨s1, i1⟩, hHeq, hHpost⟩ := spec_imp_exists Hloop
   simp only [hHeq]
   obtain ⟨hs1len, hs1perm, hi1le, hs1last, hs1lo, hs1hi⟩ := hHpost

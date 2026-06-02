@@ -24,13 +24,11 @@ fn partition(s: &mut [u32]) -> usize {
     // Pivot is the last element.
     let pivot = s[len - 1];
     let mut i = 0usize;
-    let mut j = 0usize;
-    while j < len - 1 {
+    for j in 0..len - 1 {
         if s[j] <= pivot {
             s.swap(i, j);
             i += 1;
         }
-        j += 1;
     }
     // Put the pivot into its final place.
     s.swap(i, len - 1);
