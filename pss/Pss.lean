@@ -3,6 +3,8 @@ import Pss.Syntax
 import Pss.Reduction
 import Pss.Declarative
 import Pss.Algorithmic
+import Pss.Induction
+import Pss.Basic
 
 /-!
 # Pure Subtype Systems, mechanized
