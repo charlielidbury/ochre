@@ -326,26 +326,27 @@ private theorem mem_of_beta_all_of_tier (gap : TierTransport)
   · exact ⟨.lam p q, w, hTw, hwval,
       match_transport_of_tier gap hp hq hwval hAll⟩
 
-/-- **Lemma 4.5 (member conversion)**: ∀-index hypothesis, single-index
-conclusion — `i′` (the converted member's evaluation length) is
-unrelated to `k`, which is why the hypothesis must be ∀-quantified
-(doc §4). -/
-theorem mem_of_beta_all {k : Nat} {s s' T : Term}
-    (hs : Beta s s') (h : ∀ k', Mem k' s' T) : Mem k s T := by
-  -- UNPROVABLE — the statement is FALSE. See
-  -- `Pss.Semantic.Cx45.mem_of_beta_all_refuted` in
-  -- `Pss/Semantic/ConversionCounterexample.lean`: a kernel-checked
-  -- closed-term countermodel (`k = 4`, `s = λy≤c.y(⊤)`,
-  -- `s′ = λy≤c.I(I(y(⊤)))`, `T = λy≤c.⊤`, `c := λy≤K⊤.y(⊤)(⊤)`).
-  -- The residual `gap` below this sorry is exactly the false step
-  -- (`Cx45.tierTransport_false`); `mem_of_beta_all_of_tier` above —
-  -- the rest of the doc §4 proof — is kernel-checked but now vacuous
-  -- (its hypothesis is false). The doc's justification for the residual
-  -- ("[c]β′ ∈ ⟦[c]b⟧ at every index, from MATCH at every index") needed
-  -- `Good i a c` at every `i`, while tiers supply it only at `i ≤ j₁`;
-  -- the countermodel realizes the gap. This sorry is permanent until
-  -- the orchestrator retires the statement.
-  exact mem_of_beta_all_of_tier (fun j₁ α' β' a b q c hq hAll hc => by
-    sorry) hs h
+/-! ### Lemma 4.5 (member conversion) is FALSE — statement retired
+
+The predecessor document's Lemma 4.5 — `Beta s s' → (∀ k', Mem k' s' T) →
+Mem k s T` — is **refuted on closed terms**: see
+`Pss.Semantic.Cx45.mem_of_beta_all_refuted` in
+`Pss/Semantic/ConversionCounterexample.lean` (`k = 4`, `s = λy≤c.y(⊤)`,
+`s′ = λy≤c.I(I(y(⊤)))`, `T = λy≤c.⊤`, with `c := λy≤K⊤.y(⊤)(⊤)` a bound
+whose self-capping goodness starves the ∀-index hypothesis), and
+`Cx45.tierTransport_false` for the refutation of the `TierTransport`
+residual itself. The model genuinely distinguishes `=β`-equal members —
+member-side conversion fails even though type-side conversion (Lemma
+4.4 above) holds with set equality.
+
+`mem_of_beta_all_of_tier` above — the remainder of the doc's §4 proof,
+kernel-checked — is retained for the record: it isolates the falsity to
+exactly the doc's tier-(t1) step, whose justification ("[c]β′ ∈ ⟦[c]b⟧
+at every index, from MATCH at every index") needed `Good i a c` at every
+`i` while tiers supply it only at `i ≤ j₁`. No development downstream
+consumes member conversion: its single intended use (doc §6, DS-APP
+step (d)) is derivable from the carried instrumentations and Lemma 4.4
+alone (cf. `RulesApp.lean`). See `pss/docs/04-depth-transport-problem.md`
+§4.4 for the full story. -/
 
 end Pss.Semantic
