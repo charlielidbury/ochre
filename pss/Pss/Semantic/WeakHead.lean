@@ -357,33 +357,95 @@ implementer).
 /-- Closedness is monotone in the bound. -/
 theorem closedUnder_mono {n m : Nat} {t : Term} (hnm : n ≤ m)
     (h : ClosedUnder n t) : ClosedUnder m t := by
-  sorry
+  induction h generalizing m with
+  | var hx => exact .var (by omega)
+  | top => exact .top
+  | lam _ _ iht ihu => exact .lam (iht hnm) (ihu (by omega))
+  | app _ _ iht ihu => exact .app (iht hnm) (ihu hnm)
+
+/-- A renaming that maps indices `< m` into `< n` preserves closedness:
+`ClosedUnder m t → ClosedUnder n (t.rename ρ)`. -/
+private theorem closedUnder_rename {m n : Nat} {ρ : Nat → Nat} {t : Term}
+    (hρ : ∀ x, x < m → ρ x < n) (h : ClosedUnder m t) :
+    ClosedUnder n (t.rename ρ) := by
+  induction h generalizing n ρ with
+  | var hx => exact .var (hρ _ hx)
+  | top => exact .top
+  | @lam m a b _ _ iha ihb =>
+    refine .lam (iha hρ) (ihb ?_)
+    intro x hx
+    cases x with
+    | zero => simp [Term.liftRen]
+    | succ x => exact Nat.succ_lt_succ (hρ x (by omega))
+  | app _ _ iha ihb => exact .app (iha hρ) (ihb hρ)
+
+/-- A substitution closed pointwise below `m` (each `σ x` for `x < m` is
+closed under `n`) sends `m`-closed terms to `n`-closed terms. -/
+private theorem closedUnder_subst {m n : Nat} {σ : Nat → Term} {t : Term}
+    (hσ : ∀ x, x < m → ClosedUnder n (σ x)) (h : ClosedUnder m t) :
+    ClosedUnder n (t.subst σ) := by
+  induction h generalizing n σ with
+  | var hx => exact hσ _ hx
+  | top => exact .top
+  | @lam m a b _ _ iha ihb =>
+    refine .lam (iha hσ) (ihb ?_)
+    intro x hx
+    cases x with
+    | zero => exact .var (by omega)
+    | succ x =>
+      show ClosedUnder (n + 1) ((σ x).rename (· + 1))
+      exact closedUnder_rename (fun y _ => by omega) (hσ x (by omega))
+  | app _ _ iha ihb => exact .app (iha hσ) (ihb hσ)
 
 /-- `subst1` preserves closedness: `[x ↦ s]u` is closed under `n` when
 `u` is closed under `n + 1` and `s` under `n`. -/
 theorem closedUnder_subst1 {n : Nat} {u s : Term}
     (hu : ClosedUnder (n + 1) u) (hs : ClosedUnder n s) :
     ClosedUnder n (u.subst1 s) := by
-  sorry
+  apply closedUnder_subst _ hu
+  intro x hx
+  cases x with
+  | zero => exact hs
+  | succ x => exact .var (by omega)
 
 /-- Full reduction preserves closedness. -/
 theorem closedUnder_step {n : Nat} {t t' : Term}
     (hc : ClosedUnder n t) (h : Step t t') : ClosedUnder n t' := by
-  sorry
+  rw [Step.step_iff_compat] at h
+  induction h generalizing n with
+  | @eapp a b s =>
+    cases hc with
+    | app hlam hs =>
+      cases hlam with
+      | lam ha hb => exact closedUnder_subst1 hb hs
+  | appL u _ ih =>
+    cases hc with
+    | app ht hu => exact .app (ih ht) hu
+  | appR t _ ih =>
+    cases hc with
+    | app ht hu => exact .app ht (ih hu)
+  | lamBound u _ ih =>
+    cases hc with
+    | lam ht hu => exact .lam (ih ht) hu
+  | lamBody t _ ih =>
+    cases hc with
+    | lam ht hu => exact .lam ht (ih hu)
 
 /-- Weak-head reduction preserves closedness. -/
 theorem closedUnder_whStep {n : Nat} {t t' : Term}
-    (hc : ClosedUnder n t) (h : WHStep t t') : ClosedUnder n t' := by
-  sorry
+    (hc : ClosedUnder n t) (h : WHStep t t') : ClosedUnder n t' :=
+  closedUnder_step hc h.toStep
 
 /-- Multi-step reduction preserves closedness. -/
 theorem closedUnder_steps {n : Nat} {t t' : Term}
     (hc : ClosedUnder n t) (h : Steps t t') : ClosedUnder n t' := by
-  sorry
+  induction h with
+  | refl => exact hc
+  | head hs _ ih => exact ih (closedUnder_step hc hs)
 
 /-- Exact-step weak-head evaluation preserves closedness. -/
 theorem closedUnder_evals {n j : Nat} {t t' : Term}
-    (hc : ClosedUnder n t) (h : Evals j t t') : ClosedUnder n t' := by
-  sorry
+    (hc : ClosedUnder n t) (h : Evals j t t') : ClosedUnder n t' :=
+  closedUnder_steps hc h.toSteps
 
 end Pss.Semantic
