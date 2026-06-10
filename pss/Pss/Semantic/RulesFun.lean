@@ -67,7 +67,52 @@ theorem sound_fn_le {Γ : Ctx} {t t' u u' : Term}
     (h₁ : SemEq Γ t t') (h₂ : SemLe (t :: Γ) u u')
     (hw₁ : SemWf Γ (.lam t u)) (hw₂ : SemWf Γ (.lam t' u')) :
     SemLe Γ (.lam t u) (.lam t' u') := by
-  sorry
+  -- Lemma 3.3: the membership half follows from the inclusion half.
+  refine semLe_of_inclusion hw₁ ?_
+  intro k γ hγ s hs
+  -- The bound conversion under γ, used for both the bound clause and
+  -- the goodness transport: `γt =β γt′` from `h₁`'s `t =β t′`.
+  have hβt : Beta (t.subst γ) (t'.subst γ) := Beta.subst γ h₁.1
+  have hs' : Mem k s (.lam (t.subst γ) (u.subst (Term.liftSubst γ))) := hs
+  show Mem k s (.lam (t'.subst γ) (u'.subst (Term.liftSubst γ)))
+  rw [Mem_unfold] at hs' ⊢
+  intro j v hj hconv
+  obtain ⟨hv, w, hw, _, hmatch⟩ := hs' j v hj hconv
+  -- `Λ` is a value, so the member's (m2) witness is `Λ` itself.
+  have hΛval : Term.Value (Term.lam (t.subst γ) (u.subst (Term.liftSubst γ))) :=
+    .lam _ _
+  obtain ⟨jw, hjw⟩ := hw
+  obtain ⟨-, hweq⟩ := Converges.deterministic hjw
+    ⟨.refl, whNormal_of_value hΛval⟩
+  subst hweq
+  -- (m2) for `Λ′`: a value, `Λ′ ⇓⁰ Λ′`.
+  have hΛ'val : Term.Value (Term.lam (t'.subst γ) (u'.subst (Term.liftSubst γ))) :=
+    .lam _ _
+  refine ⟨hv, _, ⟨0, .refl, whNormal_of_value hΛ'val⟩, hΛ'val, ?_⟩
+  -- (m3): transport the member's match across the rule's conversions.
+  rw [Match_unfold] at hmatch ⊢
+  rcases hmatch with htop | ⟨a, b, α, β, hΛeq, hveq, hbound, htier⟩
+  · exact Term.noConfusion htop
+  injection hΛeq with ha hb
+  subst ha hb
+  -- Bound clause: `α =β γt =β γt′`.
+  refine .inr ⟨t'.subst γ, u'.subst (Term.liftSubst γ), α, β, rfl, hveq,
+    Beta.trans hbound hβt, ?_⟩
+  intro j' c hj' hgood'
+  -- Goodness transports back across the bound conversion (Lemma 4.4):
+  -- `⟨γt′⟩ⱼ′ = ⟨γt⟩ⱼ′`.
+  have hgood : Good j' (t.subst γ) c := (good_beta_bound hβt).mpr hgood'
+  obtain ⟨ht1, ht2⟩ := htier j' c hj' hgood
+  -- The body premise's inclusion at the fixed index `j′` (note the
+  -- context extension uses the unprimed bound `t`).
+  have hj'k : j' < k := by omega
+  have hctx : SemCtx j' (t :: Γ) (Term.scons c γ) :=
+    SemCtx.cons (semCtx_antitone (Nat.le_of_lt hj'k) hγ) hgood
+  have hincl := (h₂ j' (Term.scons c γ) hctx).2
+  -- Align `(·[⇑γ])[x↦c]` with `·[γ[x↦c]]` and compose the member's
+  -- tier through the inclusion — everything at `j′`, no ∀-escalation.
+  rw [subst_liftSubst_subst1] at ht1 ht2 ⊢
+  exact ⟨hincl _ ht1, fun s'' hs'' => hincl _ (ht2 s'' hs'')⟩
 
 /-- **DS-FUN, ≡-form** (doc §6): needs only the conversion components
 and the instrumented wf of both λs. Matches `SubI.fn` at `r = .eq`. -/
