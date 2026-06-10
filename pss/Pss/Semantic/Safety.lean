@@ -103,13 +103,35 @@ safety is built in: the statement quantifies over all reducts, so it is
 closed under `⟶` by construction. -/
 theorem safety {t s : Term} (hwf : WfI [] t) (hsteps : Steps t s) :
     Value s ∨ ∃ s', Step s s' := by
-  sorry
+  rcases Classical.em (Value s) with hsv | hsv
+  · exact Or.inl hsv
+  rcases Classical.em (∃ s', Step s s') with hstep | hstep
+  · exact Or.inr hstep
+  exfalso
+  -- `s` is `⟶`-normal and not a value.
+  have hsn : StepNormal s := fun s' hs => hstep ⟨s', hs⟩
+  -- Closedness: `t` is closed (Γ = []), hence so is its reduct `s`.
+  have hct : ClosedUnder 0 t := wfI_closedUnder hwf
+  have hcs : ClosedUnder 0 s := closedUnder_steps hct hsteps
+  -- Fact 1.1: a closed `⟶`-normal non-value is a spine.
+  obtain ⟨ds, hsp, _⟩ := fact_1_1_step_normal hcs hsn hsv
+  -- Shape standardization: `t` itself weak-head converges to a spine.
+  obtain ⟨j, u, es, hconv, hspu, _⟩ := steps_spine_standard hsteps hsp
+  -- Fundamental theorem at `k := j + 1`, empty substitution.
+  have hmem : Mem (j + 1) t t := by
+    have := fundamental_wf hwf (j + 1) Term.var semCtx_nil
+    rwa [Term.subst_var] at this
+  -- (m1) at the convergence `t ⇓ʲ u` says `u` is a value.
+  have hu_val : Value u :=
+    (Mem_unfold.mp hmem j u (Nat.lt_succ_self j) hconv).1
+  -- But `u` is a spine, contradiction.
+  exact Spine.not_value ⟨es, hspu⟩ hu_val
 
 /-- **Corollary 7.2 (progress)** (doc §7): `safety` at the empty
 reduction sequence. -/
 theorem progress {t : Term} (hwf : WfI [] t) :
-    Value t ∨ ∃ t', Step t t' := by
-  sorry
+    Value t ∨ ∃ t', Step t t' :=
+  safety hwf Star.refl
 
 /-- **Corollary 7.3 (semantic inversion — the paper's Lemma 5.2's
 content)** (doc §7): related λs have `=β` bounds, and their bodies are
