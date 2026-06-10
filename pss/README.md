@@ -102,11 +102,25 @@ under `Pss/`, imported or not.
 | `a = b ⇒ a ⟶⟶ · ⟵⟵ b` under confluence | `conv_joinable_of_confluent`, `conv_iff_joinable_of_confluent` | **proved** |
 | confluence of the §7 system | `Statements.simpleARS_confluent` | stated (open; paper conjectures a proof adapts to λ⊲) |
 
-### §4, §5, §6 (statuses finalized at merge)
+### §4 — embedding of a PTS (`Embedding/`; intentionally minimal)
+
+The user-facing focus of this development is λ⊲ itself and its type safety,
+so §4 gets the minimal honest treatment: systems and translation defined,
+the mechanical results proved, the thesis-level one stated.
 
 | Paper | Lean | Status |
 |---|---|---|
-| §4 λ* embedding, Lemma 4.1, Thms 4.2–4.4 | `Pss/Embedding/` | _in progress_ |
+| System λ* (PTS, `* : *`) | `Pss.LambdaStar` (`Tm`, `Beta`, `Conv`, `Typing`) | defined |
+| translation `⟨·⟩` | `Embedding.transTm` / `transCtx` | defined |
+| Lemma 4.1 (substitution preserved) | `Embedding.lemma_4_1` | **proved** |
+| Theorem 4.2 (reduction preserved) | `Embedding.thm_4_2` | **proved** |
+| Theorem 4.3 (typing preserved) | `Statements.thm_4_3` | stated (thesis-level [19]; blockers documented) |
+| Theorem 4.4 (λ⊲ not SN) | `Embedding.thm_4_4` | **proved** conditional on `GirardsParadox` (Barendregt [4]) and `Statements.thm_4_3` |
+
+### §5, §6 (statuses finalized at merge)
+
+| Paper | Lean | Status |
+|---|---|---|
 | §5 Conjecture 5.1, Lemmas 5.2–5.4, Thms 5.5–5.6 | `Pss/Safety.lean` & co. | _in progress_ |
 | §6 Thm 6.1, Conjecture 6.2, Lemmas 6.3–6.4 | `Pss/Transitivity.lean` & co. | _in progress_ |
 
