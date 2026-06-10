@@ -209,6 +209,29 @@ theorem St.toSteps {t u : Term} (h : St t u) : Steps t u := by
   | app hap _ _ ih₁ ih₂ =>
     exact (starWH_toSteps hap).trans (Steps.app ih₁ ih₂)
 
+/-- Inversion of standard reduction at a spine target: the weak-head
+prefixes of the head chain compose to a weak-head reduct that is itself
+a spine, with componentwise-`⟶*` arguments. -/
+theorem st_spine {s : Term} {ds : List Term} (hs : SpineArgs s ds) :
+    ∀ {t : Term}, St t s →
+      ∃ u es, Star WHStep t u ∧ SpineArgs u es ∧ Forall2 Steps es ds := by
+  induction hs with
+  | head =>
+    intro t hst
+    cases hst with
+    | app hap h₁ h₂ =>
+      cases h₁ with
+      | top hap₁ =>
+        exact ⟨.app .top _, [_], hap.trans (starWH_appL _ hap₁), .head,
+          .cons (St.toSteps h₂) .nil⟩
+  | app _ ih =>
+    intro t hst
+    cases hst with
+    | app hap h₁ h₂ =>
+      obtain ⟨u₁, es', hap₁, hsp, hf2⟩ := ih h₁
+      exact ⟨.app u₁ _, _ :: es', hap.trans (starWH_appL _ hap₁),
+        .app hsp, .cons (St.toSteps h₂) hf2⟩
+
 end Standardization
 
 /-! ## Lemma 2.2 (shape standardization) -/
@@ -217,12 +240,19 @@ end Standardization
 `t ⇓ λx≤p′.q′` with `p′ ⟶* p` and `q′ ⟶* q`. -/
 theorem steps_lam_standard {t p q : Term} (h : Steps t (.lam p q)) :
     ∃ j p' q', Converges j t (.lam p' q') ∧ Steps p' p ∧ Steps q' q := by
-  sorry
+  cases Standardization.st_of_steps h with
+  | lam hap ha hb =>
+    obtain ⟨j, hj⟩ := Standardization.starWH_evals hap
+    exact ⟨j, _, _, ⟨hj, whNormal_of_value (.lam _ _)⟩,
+      Standardization.St.toSteps ha, Standardization.St.toSteps hb⟩
 
 /-- **Lemma 2.2, `Top` case** (doc §2): if `t ⟶* Top` then `t ⇓ Top`. -/
 theorem steps_top_standard {t : Term} (h : Steps t .top) :
     ∃ j, Converges j t .top := by
-  sorry
+  cases Standardization.st_of_steps h with
+  | top hap =>
+    obtain ⟨j, hj⟩ := Standardization.starWH_evals hap
+    exact ⟨j, hj, whNormal_of_value .top⟩
 
 /-- **Lemma 2.2, spine case** (doc §2): if `t ⟶* Top(d₁)…(dₙ)` then
 `t ⇓ Top(e₁)…(eₙ)` — a spine of the same length — with `eᵢ ⟶* dᵢ`
@@ -230,7 +260,10 @@ componentwise. -/
 theorem steps_spine_standard {t s : Term} {ds : List Term}
     (h : Steps t s) (hs : SpineArgs s ds) :
     ∃ j u es, Converges j t u ∧ SpineArgs u es ∧ Forall2 Steps es ds := by
-  sorry
+  obtain ⟨u, es, hap, hsp, hf2⟩ :=
+    Standardization.st_spine hs (Standardization.st_of_steps h)
+  obtain ⟨j, hj⟩ := Standardization.starWH_evals hap
+  exact ⟨j, u, es, ⟨hj, Spine.whNormal ⟨es, hsp⟩⟩, hsp, hf2⟩
 
 /-! ## Corollary 2.3 (convergence transfer)
 
@@ -243,12 +276,19 @@ lemmas (doc 4.4/4.5) consume: the λ case needs the bound and body
 `t ⇓ λx≤a′.b′` with `a′ =β a` and `b′ =β b`. -/
 theorem beta_lam_converges {t a b : Term} (h : Beta t (.lam a b)) :
     ∃ j a' b', Converges j t (.lam a' b') ∧ Beta a' a ∧ Beta b' b := by
-  sorry
+  obtain ⟨d, htd, hld⟩ := beta_iff_common_reduct.mp h
+  obtain ⟨a₂, b₂, rfl, ha₂, hb₂⟩ := steps_lam_inv hld
+  obtain ⟨j, a', b', hconv, ha', hb'⟩ := steps_lam_standard htd
+  exact ⟨j, a', b', hconv,
+    (Beta.of_steps ha').trans (Beta.symm (Beta.of_steps ha₂)),
+    (Beta.of_steps hb').trans (Beta.symm (Beta.of_steps hb₂))⟩
 
 /-- **Corollary 2.3, `Top` case** (doc §2): if `t =β Top` then
 `t ⇓ Top`. -/
 theorem beta_top_converges {t : Term} (h : Beta t .top) :
     ∃ j, Converges j t .top := by
-  sorry
+  obtain ⟨d, htd, htop⟩ := beta_iff_common_reduct.mp h
+  obtain rfl := steps_top_inv htop
+  exact steps_top_standard htd
 
 end Pss.Semantic
