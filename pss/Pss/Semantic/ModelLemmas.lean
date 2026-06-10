@@ -61,13 +61,34 @@ theorem semCtx_antitone {j k : Nat} {Γ : Ctx} {γ : Nat → Term}
 `↦` is a member one index up (`s ⇓^{j+1} v ⟺ s₁ ⇓ʲ v`). -/
 theorem mem_whStep_intro {k : Nat} {s s₁ T : Term}
     (hs : WHStep s s₁) (h : Mem k s₁ T) : Mem (k + 1) s T := by
-  sorry
+  rw [Mem_unfold] at h ⊢
+  intro j v hj hconv
+  cases j with
+  | zero =>
+    -- `Converges 0 s v` forces `s` weak-head normal, contradicting `s ↦ s₁`.
+    obtain ⟨he, hn⟩ := hconv
+    cases he
+    exact absurd hs (hn s₁)
+  | succ j' =>
+    have hconv' : Converges j' s₁ v := Converges.whStep_inv hs hconv
+    obtain ⟨hv, w, hTw, hvw, hmatch⟩ := h j' v (by omega) hconv'
+    refine ⟨hv, w, hTw, hvw, ?_⟩
+    have : k + 1 - (j' + 1) = k - j' := by omega
+    rw [this]
+    exact hmatch
 
 /-- **Lemma 4.2 (step shift)**, forwards: stepping a member costs one
 index (determinism of `↦`). -/
 theorem mem_whStep_elim {k : Nat} {s s₁ T : Term}
     (hs : WHStep s s₁) (h : Mem (k + 1) s T) : Mem k s₁ T := by
-  sorry
+  rw [Mem_unfold] at h ⊢
+  intro j v hj hconv
+  have hconv' : Converges (j + 1) s v := Converges.of_whStep hs hconv
+  obtain ⟨hv, w, hTw, hvw, hmatch⟩ := h (j + 1) v (by omega) hconv'
+  refine ⟨hv, w, hTw, hvw, ?_⟩
+  have : k + 1 - (j + 1) = k - j := by omega
+  rw [this] at hmatch
+  exact hmatch
 
 /-- **Lemma 4.3 (type evaluation invariance)**: the clause inspects only
 the type's weak-head value, so a weak-head step of the type changes
