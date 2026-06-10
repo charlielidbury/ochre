@@ -135,4 +135,188 @@ theorem progress (te : TransitivityElimination) {t : Term}
     (sub_evar := fun _ => trivial)
   exact H.2.1 [] t h rfl
 
+/-! ## Theorem 5.6 — preservation
+
+The paper's proof has two parts: (1) subject reduction for the subtyping
+half, which follows from Lemma 5.3 and DS-TRANS; (2) preservation of
+well-formedness, by induction on the well-formedness derivation with case
+analysis on where the step occurred. -/
+
+/-! ### Step and well-formedness inversions -/
+
+theorem Step.not_var {x : Nat} {t' : Term} (h : Step (.var x) t') : False := by
+  cases Step.step_iff_compat.mp h
+
+theorem Step.not_top {t' : Term} (h : Step .top t') : False := by
+  cases Step.step_iff_compat.mp h
+
+/-- A step from `λx ≤ a. b` is a step in the bound or in the body. -/
+theorem Step.lam_inv {a b c : Term} (h : Step (.lam a b) c) :
+    (∃ a', c = .lam a' b ∧ Step a a') ∨ (∃ b', c = .lam a b' ∧ Step b b') := by
+  cases Step.step_iff_compat.mp h with
+  | lamBound u hc => exact .inl ⟨_, rfl, Step.step_iff_compat.mpr hc⟩
+  | lamBody t hc => exact .inr ⟨_, rfl, Step.step_iff_compat.mpr hc⟩
+
+/-- A step from `f(u)` is the β-redex or a step in either component. -/
+theorem Step.app_inv {f u c : Term} (h : Step (.app f u) c) :
+    (∃ a b, f = .lam a b ∧ c = b.subst1 u)
+    ∨ (∃ f', c = .app f' u ∧ Step f f')
+    ∨ (∃ u', c = .app f u' ∧ Step u u') := by
+  cases Step.step_iff_compat.mp h with
+  | eapp => exact .inl ⟨_, _, rfl, rfl⟩
+  | appL u hc => exact .inr (.inl ⟨_, rfl, Step.step_iff_compat.mpr hc⟩)
+  | appR t hc => exact .inr (.inr ⟨_, rfl, Step.step_iff_compat.mpr hc⟩)
+
+/-- Inversion of W-FUN. -/
+theorem Wf.lam_inv {Γ : Ctx} {a b : Term} (h : Wf Γ (.lam a b)) :
+    Wf (a :: Γ) b := by
+  cases h with | fn h => exact h
+
+/-- Inversion of W-APP. -/
+theorem Wf.app_inv {Γ : Ctx} {f u : Term} (h : Wf Γ (.app f u)) :
+    ∃ s, WellSub Γ f .le (.lam s .top) ∧ WellSub Γ u .le s := by
+  cases h with | app h1 h2 => exact ⟨_, h1, h2⟩
+
+/-- The left-hand side of a well-subtyping is well-formed (W-SUB inversion). -/
+theorem WellSub.wf_left {Γ : Ctx} {t u : Term} {r : Rel}
+    (h : WellSub Γ t r u) : Wf Γ t := by
+  cases h with | sub h _ _ => exact h
+
+/-- The right-hand side of a well-subtyping is well-formed (W-SUB inversion). -/
+theorem WellSub.wf_right {Γ : Ctx} {t u : Term} {r : Rel}
+    (h : WellSub Γ t r u) : Wf Γ u := by
+  cases h with | sub _ h _ => exact h
+
+/-- The subtyping component of a well-subtyping (W-SUB inversion). -/
+theorem WellSub.to_sub {Γ : Ctx} {t u : Term} {r : Rel}
+    (h : WellSub Γ t r u) : Sub Γ t r u := by
+  cases h with | sub _ _ h => exact h
+
+/-! ### Part 1: subject reduction for well-subtyping -/
+
+/-- **Theorem 5.6, part 1**: if `Γ ⊢ t ⊲wf u` and `t ⟶ t'` then
+`Γ ⊢ t' ⊲wf u`, *given* preservation of well-formedness (part 2, proved
+conditionally below). Exactly the paper's argument: by Lemma 5.3
+(reduction implies equivalence) `t ≡ t'`, hence `t' ⊲ t` by DS-SYM (and
+DS-EQ at `≤`), and `t' ⊲ u` follows by DS-TRANS — whose middle-term
+well-formedness premise `Γ ⊢ t wf` is the hypothesis's own left
+well-formedness. -/
+theorem WellSub.preservation_of_wf_preservation
+    (hwf : ∀ (Γ : Ctx) (a a' : Term), Wf Γ a → Step a a' → Wf Γ a')
+    {Γ : Ctx} {t t' u : Term} {r : Rel}
+    (h : WellSub Γ t r u) (hs : Step t t') : WellSub Γ t' r u := by
+  cases h with
+  | sub hW1 hW2 hSub =>
+    have heq : Sub Γ t' .eq t := (hs.to_sub_eq Γ).symm
+    exact .sub (hwf Γ t t' hW1 hs) hW2 (.trans (heq.of_eq r) hSub hW1)
+
+/-! ### Part 2: preservation of well-formedness -/
+
+namespace Statements
+
+/-- **Context conversion (narrowing)**, used by the paper's Theorem 5.6 in
+the bound-step case `λx ≤ a. b` with `a ⟶ a'`: a judgment under `x ≤ a`
+transports to `x ≤ a'` when `Γ ⊢ a' ≡ a` and `a'` is well-formed.
+
+**Status: open**, blocked by the same obstruction as Lemma 5.4
+(`Statements.SubstitutionLemma`): at a DS-EVAR leaf for the converted
+variable one must weaken `Γ ⊢ a' ≤ a` and the middle-term well-formedness
+of a DS-TRANS into the local context, but DS-FUN extends contexts with
+arbitrary, possibly ill-formed bounds, into which neither `Sub` nor `Wf`
+weakening is derivable by rule induction. -/
+def Narrowing : Prop :=
+  ∀ (Γ : Ctx) (a a' u : Term), Sub Γ a' .eq a → Wf Γ a' →
+    Wf (a :: Γ) u → Wf (a' :: Γ) u
+
+end Statements
+
+/-- **Theorem 5.6, redex case**: the paper's "most interesting case".
+If `(λx ≤ a. b)(c)` is well-formed then so is `[x ↦ c]b`. The two premises
+of well-formedness are `λx ≤ a. b ≤wf λx ≤ a'. Top` and `c ≤wf a'`; Lemma
+5.2 (inversion, from Conjecture 5.1) gives `a ≡ a'`, DS-TRANS gives
+`c ≤wf a`, and the substitution transport (`subst_transport`, the proved
+content of Lemma 5.4) finishes — its hypothesis family discharged by
+`SubShiftWeakening`. -/
+theorem wf_redex (te : TransitivityElimination) (hw : SubShiftWeakening)
+    {Γ : Ctx} {a b u : Term} (h : Wf Γ (.app (.lam a b) u)) :
+    Wf Γ (b.subst1 u) := by
+  obtain ⟨s, h1, h2⟩ := h.app_inv
+  have hb : Wf (a :: Γ) b := h1.wf_left.lam_inv
+  have hinv : Sub Γ a .eq s := Sub.inversion te h1
+  have hua : Sub Γ u .le a := .trans h2.to_sub (Sub.eq hinv.symm) h2.wf_right
+  exact (subst_transport h2.wf_left (fun Ξ' => hw Γ u a Ξ' hua)).2.1
+    (a :: Γ) b hb [] rfl
+
+/-- **Theorem 5.6, part 2** (preservation of well-formedness), conditional
+on the two open structural lemmas: if `Γ ⊢ t wf` and `t ⟶ t'` then
+`Γ ⊢ t' wf`. By induction on the term with case analysis on where the step
+occurred: the redex case is `wf_redex` (Lemma 5.2 + Lemma 5.4); a step in a
+λ-bound needs `Narrowing`; all congruence cases re-derive the W-APP
+premises via Lemma 5.3 + DS-TRANS. -/
+theorem wf_preservation_of (te : TransitivityElimination)
+    (hw : SubShiftWeakening) (hnar : Statements.Narrowing) :
+    ∀ (t : Term) {Γ : Ctx} {t' : Term}, Wf Γ t → Step t t' → Wf Γ t' := by
+  intro t
+  induction t with
+  | var x => intro Γ t' _ hs; exact hs.not_var.elim
+  | top => intro Γ t' _ hs; exact hs.not_top.elim
+  | lam a b iha ihb =>
+    intro Γ t' hW hs
+    have hb : Wf (a :: Γ) b := hW.lam_inv
+    rcases hs.lam_inv with ⟨a', rfl, hsa⟩ | ⟨b', rfl, hsb⟩
+    · have ha' : Wf Γ a' := iha hb.ctxWf.head_wf hsa
+      exact .fn (hnar Γ a a' b (hsa.to_sub_eq Γ).symm ha' hb)
+    · exact .fn (ihb hb hsb)
+  | app f u ihf ihu =>
+    intro Γ t' hW hs
+    obtain ⟨s, h1, h2⟩ := hW.app_inv
+    rcases hs.app_inv with ⟨a, b, rfl, rfl⟩ | ⟨f', rfl, hsf⟩ | ⟨u', rfl, hsu⟩
+    · exact wf_redex te hw hW
+    · have h1' : WellSub Γ f' .le (.lam s .top) :=
+        .sub (ihf h1.wf_left hsf) h1.wf_right
+          (.trans ((hsf.to_sub_eq Γ).symm.of_eq .le) h1.to_sub h1.wf_left)
+      exact .app h1' h2
+    · have h2' : WellSub Γ u' .le s :=
+        .sub (ihu h2.wf_left hsu) h2.wf_right
+          (.trans ((hsu.to_sub_eq Γ).symm.of_eq .le) h2.to_sub h2.wf_left)
+      exact .app h1 h2'
+
+namespace Statements
+
+/-- **Theorem 5.6 (Preservation)**, p. 293:
+
+> If `Γ ⊢ t ≤wf u` and `t ⟶ t'` then `Γ ⊢ t' ≤wf u`.
+
+(`⊲` generalized over both relations, with the well-formedness half — the
+paper's part 2 — alongside, since the proof needs them jointly.) Stated
+under Conjecture 5.1, as the whole of §5 is.
+
+**Status: partially proved.** Part 1 is fully proved relative to part 2
+(`WellSub.preservation_of_wf_preservation` — Lemma 5.3 + DS-SYM/DS-EQ +
+DS-TRANS, with the middle well-formedness from the hypothesis). Part 2 is
+proved (`wf_preservation_of`, including the paper's "most interesting"
+redex case via `wf_redex`) conditional on the two open structural lemmas:
+`SubShiftWeakening` (the isolated gap of Lemma 5.4, used in the redex
+case) and `Narrowing` (used when the step is inside a λ-bound). So
+`preservation_of_assumptions` below reduces this statement to those two
+assumptions; neither is derivable by rule induction from Figure 1 (see
+their docstrings), and Conjecture 5.1 (values only) does not supply them. -/
+def Preservation : Prop :=
+  TransitivityElimination →
+    ∀ (Γ : Ctx) (t t' u : Term) (r : Rel),
+      (WellSub Γ t r u → Step t t' → WellSub Γ t' r u)
+      ∧ (Wf Γ t → Step t t' → Wf Γ t')
+
+end Statements
+
+/-- Theorem 5.6 holds given the two open structural lemmas: shift
+weakening of `≤` into arbitrary extensions (the Lemma 5.4 gap) and
+narrowing. Both halves of the paper's statement. -/
+theorem preservation_of_assumptions (hw : SubShiftWeakening)
+    (hnar : Statements.Narrowing) : Statements.Preservation := by
+  intro te Γ t t' u r
+  refine ⟨fun h hs => ?_, fun h hs => wf_preservation_of te hw hnar t h hs⟩
+  exact h.preservation_of_wf_preservation
+    (fun Γ a a' hW hsa => wf_preservation_of te hw hnar a hW hsa) hs
+
 end Pss
