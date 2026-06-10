@@ -2,6 +2,8 @@ import Pss.Reduction
 import Pss.Declarative
 import Pss.Induction
 import Pss.Basic
+import Pss.Weakening
+import Pss.Substitution
 
 /-!
 # Type safety for System λ⊲ (§5, p. 293)
@@ -79,5 +81,58 @@ theorem Step.to_sub_eq {t t' : Term} (h : Step t t') :
   | appR t _ ih => exact fun Γ => .app (Sub.refl_eq t Γ) (ih Γ)
   | lamBound u _ ih => exact fun Γ => .fn (ih Γ) (Sub.refl_eq u _)
   | lamBody t _ ih => exact fun Γ => .fn (Sub.refl_eq t Γ) (ih _)
+
+/-! ## Theorem 5.5 — progress -/
+
+/-- **Theorem 5.5 (Progress)**, p. 293:
+
+> If `∅ ⊢ t wf` then either `t = v` for some `v` (i.e. `t` is a value), or
+> there exists a `t'` such that `t ⟶ t'`.
+
+By induction on the derivation of `t wf`. The hypothesis
+`TransitivityElimination` (Conjecture 5.1) is needed in exactly one place:
+in the application case `t(u)`, when the function part is the value `Top`,
+the well-formedness premise `∅ ⊢ Top ≤wf λx ≤ s. Top` must be refuted —
+transitivity elimination forces such a derivation to end in (DS-ETOP)
+(impossible: `λx ≤ s. Top ≠ Top`) or (DS-FUN) (impossible: `Top` is not a
+λ-abstraction). Without 5.1, a derivation built from DS-TRANS chains cannot
+be ruled out and `Top(u)` would be stuck. When the function part is a
+λ-abstraction, (E-APP) fires unconditionally (no value or typing condition
+on the argument). -/
+theorem progress (te : TransitivityElimination) {t : Term}
+    (h : Wf [] t) : Term.Value t ∨ ∃ t', Step t t' := by
+  have H := decl_induction
+    (motC := fun _ => True)
+    (motW := fun Γ u => Γ = [] → Term.Value u ∨ ∃ u', Step u u')
+    (motWS := fun Γ u _ _ => Γ = [] → Term.Value u ∨ ∃ u', Step u u')
+    (motS := fun _ _ _ _ => True)
+    (ctx_nil := trivial)
+    (ctx_cons := fun _ _ _ _ => trivial)
+    (wf_var := fun _ hx _ hΓ => by subst hΓ; simp at hx)
+    (wf_top := fun _ _ _ => .inl .top)
+    (wf_fn := fun _ _ _ => .inl (.lam _ _))
+    (wf_app := fun {Γ a u s} h1 _ ih1 _ hΓ => by
+      subst hΓ
+      rcases ih1 rfl with hv | ⟨a2, hstep⟩
+      · cases hv with
+        | top =>
+          rcases te [] .top (.lam s .top) .top (.lam s .top) h1 with
+            htop | ⟨w1, w2, w3, w4, hveq, _, _, _⟩
+          · cases htop
+          · cases hveq
+        | lam c d => exact .inr ⟨d.subst1 u, .eapp⟩
+      · exact .inr ⟨.app a2 u, Step.appL u hstep⟩)
+    (wsub_sub := fun _ _ _ ihW _ _ => ihW)
+    (sub_trans := fun _ _ _ _ _ _ => trivial)
+    (sub_symm := fun _ _ => trivial)
+    (sub_eq := fun _ _ => trivial)
+    (sub_var := trivial)
+    (sub_top := trivial)
+    (sub_fn := fun _ _ _ _ => trivial)
+    (sub_app := fun _ _ _ _ => trivial)
+    (sub_eapp := trivial)
+    (sub_etop := trivial)
+    (sub_evar := fun _ => trivial)
+  exact H.2.1 [] t h rfl
 
 end Pss
