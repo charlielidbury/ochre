@@ -42,7 +42,71 @@ theorem sound_wapp {Γ : Ctx} {t u s : Term}
     (h₁ : SemLe Γ t (.lam s .top)) (h₂ : SemLe Γ u s)
     (hwt : SemWf Γ t) (hwu : SemWf Γ u) :
     SemWf Γ (.app t u) := by
-  sorry
+  intro k γ hγ
+  rw [Mem_unfold]
+  intro j v hj hconv
+  obtain ⟨j₁, w, hj₁le, hconvT, hcase⟩ := converges_app_factor hconv
+  -- (1) The head's value is a λ whose bound is β-convertible to `S`, by the
+  -- `t ≤ λx≤s.Top` premise at index `j₁ + 1 ≤ k` — were it `Top`, the member
+  -- side of (m3) would fail: the progress-critical step.
+  have hlam : ∃ A B, w = .lam A B ∧ Beta A (s.subst γ) := by
+    have hmem : Mem (j₁ + 1) (t.subst γ) ((Term.lam s .top).subst γ) :=
+      (h₁ (j₁ + 1) γ (semCtx_antitone (by omega) hγ)).1
+    rw [Mem_unfold] at hmem
+    obtain ⟨-, w', hw'conv, -, hmatch⟩ := hmem j₁ w (by omega) hconvT
+    obtain ⟨i', hw'c⟩ := hw'conv
+    have hself : Converges 0 ((Term.lam s .top).subst γ) ((Term.lam s .top).subst γ) :=
+      ⟨.refl, whNormal_of_value (.lam _ _)⟩
+    obtain ⟨-, rfl⟩ := Converges.deterministic hw'c hself
+    rw [Match_unfold] at hmatch
+    rcases hmatch with htop | ⟨a, b, α, β, hweq, hveq, hβ, -⟩
+    · exact Term.noConfusion htop
+    · injection hweq with ha hb
+      exact ⟨α, β, hveq, ha ▸ hβ⟩
+  rcases hcase with ⟨A, B, rfl, j₂, hjeq, hconvB⟩ | ⟨hnotlam, -, -⟩
+  · -- λ branch: `j = j₁ + 1 + j₂`, `Converges j₂ ([U]B) v`.
+    obtain ⟨A', B', heq, hAS⟩ := hlam
+    injection heq with hA hB
+    subst hA; subst hB
+    -- (2) Self-MATCH of the head's value at the ambient index `k`, from `hwt`.
+    have hmemTT : Mem k (t.subst γ) (t.subst γ) := hwt k γ hγ
+    rw [Mem_unfold] at hmemTT
+    obtain ⟨-, w'', hw''conv, -, hmatchTT⟩ := hmemTT j₁ (.lam A B) (by omega) hconvT
+    obtain ⟨i'', hw''c⟩ := hw''conv
+    obtain ⟨-, rfl⟩ := Converges.deterministic hw''c hconvT
+    rw [Match_unfold] at hmatchTT
+    rcases hmatchTT with htop | ⟨a, b, α, β, hweq, hveq, -, htier⟩
+    · exact Term.noConfusion htop
+    · injection hweq with ha hb
+      subst ha; subst hb
+      injection hveq with hα hβ
+      subst hα; subst hβ
+      -- (3) `U` is a good argument of `A` at depth `k - j₁ - 1`: memberships
+      -- and inclusions from the `u ≤ s` premise (indices ≤ k), transported
+      -- across `Beta A S` by Lemma 4.4.
+      have hgood : Good (k - j₁ - 1) A (u.subst γ) := by
+        rw [Good_unfold]
+        refine ⟨?_, ?_, ?_⟩
+        · exact (mem_beta_type hAS).mpr
+            (h₂ (k - j₁ - 1) γ (semCtx_antitone (by omega) hγ)).1
+        · exact hwu (k - j₁ - 1) γ (semCtx_antitone (by omega) hγ)
+        · intro i s' hi hmem
+          exact (mem_beta_type hAS).mpr
+            ((h₂ i γ (semCtx_antitone (by omega) hγ)).2 s' hmem)
+      -- (4) The tier at depth `j' = k - j₁ - 1` self-describes the contractum.
+      have hmemB := (htier (k - j₁ - 1) (u.subst γ) (by omega) hgood).1
+      -- (5) Run the contractum's membership on `[U]B ⇓^{j₂} v`; its (m3) value
+      -- is `v` itself by determinism, and `(k-j₁-1) - j₂ = k - j` exactly.
+      rw [Mem_unfold] at hmemB
+      obtain ⟨hvval, w₃, hw₃conv, -, hmatchv⟩ := hmemB j₂ v (by omega) hconvB
+      obtain ⟨i₃, hw₃c⟩ := hw₃conv
+      obtain ⟨-, rfl⟩ := Converges.deterministic hconvB hw₃c
+      refine ⟨hvval, v, ⟨j, hconv⟩, hvval, ?_⟩
+      have harith : k - j₁ - 1 - j₂ = k - j := by omega
+      rwa [harith] at hmatchv
+  · -- Stuck branch refuted: the head's value is a λ by (1).
+    obtain ⟨A, B, heq, -⟩ := hlam
+    exact absurd heq (hnotlam A B)
 
 /-- **DS-APP, ≤-form** (doc §6, steps (a)–(g)): both applications
 weak-head factor (4.3), the function values MATCH at every index, `U` is
