@@ -133,6 +133,30 @@ theorem progress {t : Term} (hwf : WfI [] t) :
     Value t ∨ ∃ t', Step t t' :=
   safety hwf Star.refl
 
+/-- The λ-membership underlying semantic inversion: from a `SemLe`
+between two λs over the empty context, the type side weak-head converges
+only to itself (a value), so `Mem`'s (m1)/(m3) at index `0` deliver
+`Match k` between the two literal λs, at every `k`. -/
+private theorem inversion_match {a b a' b' : Term}
+    (hle : SemLe [] (.lam a b) (.lam a' b')) (k : Nat) :
+    Match (k + 1) (.lam a b) (.lam a' b') := by
+  -- Instantiate the `SemLe` membership at index `k + 1`, `γ = Term.var`.
+  have hmem : Mem (k + 1) (.lam a b) (.lam a' b') := by
+    have := (hle (k + 1) Term.var semCtx_nil).1
+    rwa [Term.subst_var, Term.subst_var] at this
+  -- The member λ converges to itself in `0` steps (values are normal).
+  have hconv : Converges 0 (.lam a b) (.lam a b) :=
+    ⟨Evals.refl, whNormal_of_value (.lam a b)⟩
+  obtain ⟨_, w, hcw, _, hmatch⟩ :=
+    Mem_unfold.mp hmem 0 (.lam a b) (Nat.succ_pos k) hconv
+  -- The type λ also converges only to itself, so `w = .lam a' b'`.
+  obtain ⟨jw, hcw'⟩ := hcw
+  have hwconv : Converges 0 (.lam a' b') (.lam a' b') :=
+    ⟨Evals.refl, whNormal_of_value (.lam a' b')⟩
+  obtain ⟨_, hweq⟩ := Converges.deterministic hcw' hwconv
+  subst hweq
+  simpa using hmatch
+
 /-- **Corollary 7.3 (semantic inversion — the paper's Lemma 5.2's
 content)** (doc §7): related λs have `=β` bounds, and their bodies are
 related — membership and inclusion — at every depth, on every good
@@ -144,7 +168,23 @@ theorem semantic_inversion {a b a' b' : Term}
     ∀ j c, Good j a' c →
       Mem j (b.subst1 c) (b'.subst1 c) ∧
       ∀ s, Mem j s (b.subst1 c) → Mem j s (b'.subst1 c) := by
-  sorry
+  -- The fundamental theorem gives the semantic ≤ between the two λs.
+  have hle : SemLe [] (.lam a b) (.lam a' b') := (fundamental_wellSub h).2.2
+  -- The bound conversion: read off `Match 1`'s lam disjunct.
+  refine ⟨?_, ?_⟩
+  · have hm := inversion_match hle 0
+    rcases Match_unfold.mp hm with htop | ⟨A, B, α, β, hAB, hαβ, hβa, _⟩
+    · exact absurd htop (by simp)
+    · obtain ⟨rfl, rfl⟩ := Term.lam.injEq .. |>.mp hAB
+      obtain ⟨rfl, rfl⟩ := Term.lam.injEq .. |>.mp hαβ
+      exact hβa
+  · intro j c hgood
+    have hm := inversion_match hle j
+    rcases Match_unfold.mp hm with htop | ⟨A, B, α, β, hAB, hαβ, _, htier⟩
+    · exact absurd htop (by simp)
+    · obtain ⟨rfl, rfl⟩ := Term.lam.injEq .. |>.mp hAB
+      obtain ⟨rfl, rfl⟩ := Term.lam.injEq .. |>.mp hαβ
+      exact htier j c (Nat.lt_succ_self j) hgood
 
 /-- **Corollary 7.4 (Top is not a function)** (doc §7):
 `∅ ⊢ Top ≤wf λx≤s.Top` is underivable — it would put `Top` in
