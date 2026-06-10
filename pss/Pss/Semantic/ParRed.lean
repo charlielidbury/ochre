@@ -41,76 +41,185 @@ abbrev Beta : Term → Term → Prop := EqClosure Step
 /-! ## `⟶ ⊆ Par ⊆ ⟶*` and the `Steps` congruence kit -/
 
 /-- Parallel reduction is reflexive (the empty redex set). -/
-theorem Par.refl (t : Term) : Par t t := by
-  sorry
+theorem Par.refl : (t : Term) → Par t t
+  | .var _ => .var
+  | .top => .top
+  | .lam a b => .lam (Par.refl a) (Par.refl b)
+  | .app t u => .app (Par.refl t) (Par.refl u)
 
 /-- `⟶ ⊆ Par`: a single β-step is a parallel step. -/
 theorem Par.of_step {t t' : Term} (h : Step t t') : Par t t' := by
-  sorry
-
-/-- `Par ⊆ ⟶*`: a parallel step sequentializes. -/
-theorem Par.toSteps {t t' : Term} (h : Par t t') : Steps t t' := by
-  sorry
-
-/-- `⟶*` coincides with iterated parallel reduction. -/
-theorem steps_iff_star_par {t u : Term} : Steps t u ↔ Star Par t u := by
-  sorry
+  rw [Step.step_iff_compat] at h
+  induction h with
+  | eapp => exact .beta (Par.refl _) (Par.refl _)
+  | appL u _ ih => exact .app ih (Par.refl u)
+  | appR t _ ih => exact .app (Par.refl t) ih
+  | lamBound u _ ih => exact .lam ih (Par.refl u)
+  | lamBody t _ ih => exact .lam (Par.refl t) ih
 
 /-- `⟶*` congruence in function position. -/
 theorem Steps.appL {t t' : Term} (u : Term) (h : Steps t t') :
-    Steps (.app t u) (.app t' u) := by
-  sorry
+    Steps (.app t u) (.app t' u) :=
+  h.map (fun x => Term.app x u) fun hs => Step.appL u hs
 
 /-- `⟶*` congruence in argument position. -/
 theorem Steps.appR (t : Term) {u u' : Term} (h : Steps u u') :
-    Steps (.app t u) (.app t u') := by
-  sorry
+    Steps (.app t u) (.app t u') :=
+  h.map (Term.app t) fun hs => Step.appR t hs
 
 /-- `⟶*` congruence in bound position. -/
 theorem Steps.lamBound {t t' : Term} (u : Term) (h : Steps t t') :
-    Steps (.lam t u) (.lam t' u) := by
-  sorry
+    Steps (.lam t u) (.lam t' u) :=
+  h.map (fun x => Term.lam x u) fun hs => Step.lamBound u hs
 
 /-- `⟶*` congruence in body position. -/
 theorem Steps.lamBody (t : Term) {u u' : Term} (h : Steps u u') :
-    Steps (.lam t u) (.lam t u') := by
-  sorry
+    Steps (.lam t u) (.lam t u') :=
+  h.map (Term.lam t) fun hs => Step.lamBody t hs
 
 /-- `⟶*` congruence at an application, both positions. -/
 theorem Steps.app {t t' u u' : Term} (ht : Steps t t') (hu : Steps u u') :
-    Steps (.app t u) (.app t' u') := by
-  sorry
+    Steps (.app t u) (.app t' u') :=
+  (Steps.appL u ht).trans (Steps.appR t' hu)
 
 /-- `⟶*` congruence at a λ, both positions. -/
 theorem Steps.lam {a a' b b' : Term} (ha : Steps a a') (hb : Steps b b') :
-    Steps (.lam a b) (.lam a' b') := by
-  sorry
+    Steps (.lam a b) (.lam a' b') :=
+  (Steps.lamBound b ha).trans (Steps.lamBody a' hb)
+
+/-- `Par ⊆ ⟶*`: a parallel step sequentializes. -/
+theorem Par.toSteps {t t' : Term} (h : Par t t') : Steps t t' := by
+  induction h with
+  | var => exact .refl
+  | top => exact .refl
+  | lam _ _ iha ihb => exact Steps.lam iha ihb
+  | app _ _ iht ihu => exact Steps.app iht ihu
+  | beta _ _ ihb ihs =>
+    exact (Steps.app (Steps.lam .refl ihb) ihs).tail Step.eapp
+
+/-- `⟶*` coincides with iterated parallel reduction. -/
+theorem steps_iff_star_par {t u : Term} : Steps t u ↔ Star Par t u := by
+  constructor
+  · intro h; exact h.mono fun hs => Par.of_step hs
+  · intro h
+    induction h with
+    | refl => exact .refl
+    | head hab _ ih => exact (Par.toSteps hab).trans ih
 
 /-! ## Substitutivity (the Takahashi substitution lemma) -/
 
 /-- A single β-step is stable under simultaneous substitution. -/
 theorem Step.subst (σ : Nat → Term) {t t' : Term} (h : Step t t') :
     Step (t.subst σ) (t'.subst σ) := by
-  sorry
+  rw [Step.step_iff_compat] at h
+  induction h generalizing σ with
+  | @eapp t u s =>
+    show Step (.app (.lam (t.subst σ) (u.subst (Term.liftSubst σ))) (s.subst σ))
+      ((u.subst1 s).subst σ)
+    rw [Term.subst_subst1]
+    exact Step.eapp
+  | appL u _ ih => exact Step.appL _ (ih σ)
+  | appR t _ ih => exact Step.appR _ (ih σ)
+  | lamBound u _ ih => exact Step.lamBound _ (ih σ)
+  | lamBody t _ ih => exact Step.lamBody _ (ih (Term.liftSubst σ))
 
-/-- `⟶*` substitutivity in σ-calculus form: reduce the term and the
-substitution simultaneously. -/
-theorem Steps.subst {σ τ : Nat → Term} (hστ : ∀ x, Steps (σ x) (τ x))
-    {t t' : Term} (h : Steps t t') : Steps (t.subst σ) (t'.subst τ) := by
-  sorry
+/-! ## Private auxiliaries (renaming stability) -/
+
+/-- `liftRen` is the pointwise-`Par` lift of a renaming substitution: if
+`σ`, `τ` are pointwise `Par`, so are `liftSubst σ`, `liftSubst τ`. The
+zero index is `var 0` (reflexive); successors are the original entries
+renamed by `(· + 1)`, stable by the renaming auxiliary `Par.rename`. -/
+private theorem Par.rename {ρ : Nat → Nat} {t t' : Term} (h : Par t t') :
+    Par (t.rename ρ) (t'.rename ρ) := by
+  induction h generalizing ρ with
+  | var => exact .var
+  | top => exact .top
+  | lam _ _ iha ihb => exact .lam (iha) (ihb)
+  | app _ _ iht ihu => exact .app iht ihu
+  | @beta a b b' s s' _ _ ihb ihs =>
+    show Par (.app (.lam (a.rename ρ) (b.rename (Term.liftRen ρ)))
+        (s.rename ρ)) ((b'.subst1 s').rename ρ)
+    rw [Term.rename_subst1]
+    exact .beta ihb ihs
+
+/-- `liftSubst` preserves pointwise-`Par`. -/
+private theorem Par.liftSubst_pointwise {σ τ : Nat → Term}
+    (hστ : ∀ x, Par (σ x) (τ x)) :
+    ∀ x, Par (Term.liftSubst σ x) (Term.liftSubst τ x)
+  | 0 => Par.var
+  | x + 1 => Par.rename (hστ x)
 
 /-- **Parallel substitutivity** (Takahashi's substitution lemma, doc §2),
 σ-calculus form: `Par` is closed under simultaneous substitution by
 pointwise-`Par` substitutions. -/
 theorem Par.subst {σ τ : Nat → Term} (hστ : ∀ x, Par (σ x) (τ x))
     {t t' : Term} (h : Par t t') : Par (t.subst σ) (t'.subst τ) := by
-  sorry
+  induction h generalizing σ τ with
+  | var => exact hστ _
+  | top => exact .top
+  | lam _ _ iha ihb =>
+    exact .lam (iha hστ) (ihb (Par.liftSubst_pointwise hστ))
+  | app _ _ iht ihu => exact .app (iht hστ) (ihu hστ)
+  | @beta a b b' s s' _ _ ihb ihs =>
+    show Par (.app (.lam (a.subst σ) (b.subst (Term.liftSubst σ)))
+        (s.subst σ)) ((b'.subst1 s').subst τ)
+    rw [Term.subst_subst1]
+    exact .beta (ihb (Par.liftSubst_pointwise hστ)) (ihs hστ)
 
 /-- Parallel substitutivity, `subst1` form: the β-case combinator of the
 diamond proof. -/
 theorem Par.subst1 {b b' s s' : Term} (hb : Par b b') (hs : Par s s') :
     Par (b.subst1 s) (b'.subst1 s') := by
-  sorry
+  apply Par.subst _ hb
+  intro x
+  cases x with
+  | zero => exact hs
+  | succ n => exact Par.var
+
+/-- `liftSubst` preserves pointwise-`Star Par`. -/
+private theorem starPar_liftSubst_pointwise {σ τ : Nat → Term}
+    (hστ : ∀ x, Star Par (σ x) (τ x)) :
+    ∀ x, Star Par (Term.liftSubst σ x) (Term.liftSubst τ x)
+  | 0 => .refl
+  | n + 1 => (hστ n).map (Term.rename (· + 1)) (fun hs => Par.rename hs)
+
+/-- `Star Par` substitutivity in the substitution argument: reduce the
+substitution pointwise under a fixed term skeleton. -/
+private theorem starPar_subst_point {σ τ : Nat → Term}
+    (hστ : ∀ x, Star Par (σ x) (τ x)) :
+    ∀ t : Term, Star Par (t.subst σ) (t.subst τ)
+  | .var x => hστ x
+  | .top => .refl
+  | .lam a b =>
+      have ha := (starPar_subst_point hστ a).map
+        (fun x => Term.lam x (b.subst (Term.liftSubst σ)))
+        (fun hs => Par.lam hs (Par.refl _))
+      have hb := (starPar_subst_point
+        (starPar_liftSubst_pointwise hστ) b).map
+        (fun x => Term.lam (a.subst τ) x)
+        (fun hs => Par.lam (Par.refl _) hs)
+      ha.trans hb
+  | .app f u =>
+      have hf := (starPar_subst_point hστ f).map
+        (fun x => Term.app x (u.subst σ))
+        (fun hs => Par.app hs (Par.refl _))
+      have hu := (starPar_subst_point hστ u).map
+        (fun x => Term.app (f.subst τ) x)
+        (fun hs => Par.app (Par.refl _) hs)
+      hf.trans hu
+
+/-- `⟶*` substitutivity in σ-calculus form: reduce the term and the
+substitution simultaneously. -/
+theorem Steps.subst {σ τ : Nat → Term} (hστ : ∀ x, Steps (σ x) (τ x))
+    {t t' : Term} (h : Steps t t') : Steps (t.subst σ) (t'.subst τ) := by
+  rw [steps_iff_star_par] at h ⊢
+  have hpoint : ∀ x, Star Par (σ x) (τ x) :=
+    fun x => steps_iff_star_par.mp (hστ x)
+  have step1 : Star Par (t.subst σ) (t'.subst σ) := by
+    induction h with
+    | refl => exact .refl
+    | head hab _ ih => exact .head (Par.subst (fun _ => Par.refl _) hab) ih
+  exact step1.trans (starPar_subst_point hpoint t')
 
 /-! ## Diamond, confluence (Lemma 2.1), Church–Rosser -/
 
