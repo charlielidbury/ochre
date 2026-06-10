@@ -15,27 +15,47 @@ are downward-closed by fiat (`i ≤ j` in `Good`).
 
 namespace Pss.Semantic
 
+/-- Private engine for `match_antitone` (placed before `mem_antitone`,
+which consumes it). The `top` disjunct is index-free; the `lam` disjunct's
+tier quantifier domain `j' < m₁ ⊆ j' < m₂` shrinks. No recursion. -/
+private theorem match_antitone_aux {m₁ m₂ : Nat} {v w : Term} (hm : m₁ ≤ m₂)
+    (h : Match m₂ v w) : Match m₁ v w := by
+  rw [Match_unfold] at h ⊢
+  rcases h with htop | ⟨a, b, α, β, hw, hv, hbound, htier⟩
+  · exact .inl htop
+  · refine .inr ⟨a, b, α, β, hw, hv, hbound, ?_⟩
+    intro j' c hj' hgood
+    exact htier j' c (Nat.lt_of_lt_of_le hj' hm) hgood
+
 /-- **Lemma 4.1 (antitonicity)**, membership: a larger index imposes a
 superset of obligations. -/
 theorem mem_antitone {j k : Nat} {s T : Term} (hjk : j ≤ k)
     (h : Mem k s T) : Mem j s T := by
-  sorry
+  rw [Mem_unfold] at h ⊢
+  intro j' v hj' hconv
+  obtain ⟨hv, w, hTw, hvw, hmatch⟩ := h j' v (Nat.lt_of_lt_of_le hj' hjk) hconv
+  exact ⟨hv, w, hTw, hvw, match_antitone_aux (by omega) hmatch⟩
 
 /-- **Lemma 4.1**, MATCH tiers: antitone in the tier index. -/
 theorem match_antitone {m₁ m₂ : Nat} {v w : Term} (hm : m₁ ≤ m₂)
-    (h : Match m₂ v w) : Match m₁ v w := by
-  sorry
+    (h : Match m₂ v w) : Match m₁ v w :=
+  match_antitone_aux hm h
 
 /-- **Lemma 4.1**, goodness: membership components by `mem_antitone`,
 inclusion components by their explicit `i ≤ j` downward closure. -/
 theorem good_antitone {j k : Nat} {a c : Term} (hjk : j ≤ k)
     (h : Good k a c) : Good j a c := by
-  sorry
+  rw [Good_unfold] at h ⊢
+  obtain ⟨hca, hcc, hincl⟩ := h
+  refine ⟨mem_antitone hjk hca, mem_antitone hjk hcc, ?_⟩
+  intro i s' hij hmem
+  exact hincl i s' (Nat.le_trans hij hjk) hmem
 
 /-- **Lemma 4.1**, contexts: `⟦Γ⟧ₖ ⊆ ⟦Γ⟧ⱼ`. -/
 theorem semCtx_antitone {j k : Nat} {Γ : Ctx} {γ : Nat → Term}
     (hjk : j ≤ k) (h : SemCtx k Γ γ) : SemCtx j Γ γ := by
-  sorry
+  intro x t hbound
+  exact good_antitone hjk (h x t hbound)
 
 /-- **Lemma 4.2 (step shift)**, backwards: a member's predecessor along
 `↦` is a member one index up (`s ⇓^{j+1} v ⟺ s₁ ⇓ʲ v`). -/
