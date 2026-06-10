@@ -275,4 +275,16 @@ theorem Wf.weaken_append {Γ : Ctx} {a : Term} :
     have ih := Wf.weaken_append Ξ hC.tail ha
     simpa [Term.shift_shift] using ih.weaken hC.head_wf
 
+/-- Iterated weakening for `Γ ⊢ t ⊲ u` into a *well-formed* extension.
+This is exactly the provable fragment of the open `SubShiftWeakening`
+(`Pss.Substitution`): for ill-formed extensions the transport of
+DS-TRANS's well-formedness premise fails. -/
+theorem Sub.weaken_append {Γ : Ctx} {u v : Term} {r : Rel} :
+    ∀ (Ξ : Ctx), CtxWf (Ξ ++ Γ) → Sub Γ u r v →
+      Sub (Ξ ++ Γ) (u.shift Ξ.length) r (v.shift Ξ.length)
+  | [], _, h => by simpa [Term.shift_zero] using h
+  | s :: Ξ, hC, h => by
+    have ih := Sub.weaken_append Ξ hC.tail h
+    simpa [Term.shift_shift] using ih.weaken hC.head_wf
+
 end Pss

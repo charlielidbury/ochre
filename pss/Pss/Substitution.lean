@@ -302,4 +302,18 @@ theorem substitution_of_subShiftWeakening (hw : SubShiftWeakening) :
     exact (subst_transport hWt' (fun Ξ' => hw Γ t' t Ξ' hSub)).2.2.1
       _ u r s h Ξ rfl
 
+/-- **Lemma 5.4, unconditionally, for `Top`-bounded binders**: when the
+eliminated binding is `x ≤ Top`, the hypothesis family of
+`subst_transport` is discharged outright by DS-ETOP (`t'.shift ≤ Top` in
+*any* context, well-formed or not), so this instance of the substitution
+lemma needs no assumption at all. -/
+theorem substitution_top {Γ : Ctx} {t' : Term} {Ξ : Ctx} {u s : Term}
+    {r : Rel} (h : WellSub (Ξ ++ .top :: Γ) u r s)
+    (ht' : WellSub Γ t' .le .top) :
+    WellSub (Ctx.substAt t' Ξ ++ Γ) (u.subst (sigmaAt Ξ.length t')) r
+      (s.subst (sigmaAt Ξ.length t')) := by
+  cases ht' with
+  | sub hWt' _ _ =>
+    exact (subst_transport hWt' (fun Ξ' => .etop)).2.2.1 _ u r s h Ξ rfl
+
 end Pss
