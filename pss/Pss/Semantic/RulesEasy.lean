@@ -28,12 +28,33 @@ namespace Pss.Semantic
 
 open Term (Value)
 
+/-- Every in-range index is bound: `x < |Γ| ⟹ ∃ t, Ctx.Bound Γ x t`.
+Induction on `Γ` with cases on `x` (cf. `Ctx.Bound`'s `here`/`there`). -/
+private theorem exists_bound {Γ : Ctx} {x : Nat} (hx : x < Γ.length) :
+    ∃ t, Ctx.Bound Γ x t := by
+  induction Γ generalizing x with
+  | nil => exact absurd hx (by simp)
+  | cons a Γ' ih =>
+    cases x with
+    | zero => exact ⟨a.shift 1, .here⟩
+    | succ n =>
+      obtain ⟨t', hb⟩ := ih (by simpa using Nat.lt_of_succ_lt_succ hx)
+      exact ⟨t'.shift 1, .there hb⟩
+
 /-- **W-VAR** (doc §6): `γx ∈ ⟦γx⟧ₖ` is the self-membership component of
 the goodness of `γx` — a `Ctx.Bound` witness exists for every
 `x < Γ.length`. Matches `WfI.var` (its `CtxWfI` premise is dropped). -/
 theorem sound_wvar {Γ : Ctx} {x : Nat} (hx : x < Γ.length) :
     SemWf Γ (.var x) := by
-  sorry
+  intro k γ hγ
+  -- `(.var x).subst γ = γ x`; goal is `Mem k (γ x) (γ x)`.
+  show Mem k (γ x) (γ x)
+  -- Some `t` binds `x`; `SemCtx` at that bound gives `Good k (γt) (γx)`,
+  -- whose self-membership component (second conjunct) is the goal.
+  obtain ⟨t, hb⟩ := exists_bound hx
+  have hg := hγ x t hb
+  rw [Good_unfold] at hg
+  exact hg.2.1
 
 /-- **W-TOP** (doc §6): `Top ⇓⁰ Top`, `MATCH(Top, Top)`. Matches
 `WfI.top`. -/
