@@ -38,7 +38,19 @@ theorem sound_wvar {Γ : Ctx} {x : Nat} (hx : x < Γ.length) :
 /-- **W-TOP** (doc §6): `Top ⇓⁰ Top`, `MATCH(Top, Top)`. Matches
 `WfI.top`. -/
 theorem sound_wtop {Γ : Ctx} : SemWf Γ .top := by
-  sorry
+  intro k γ _
+  -- `.top.subst γ = .top`; show `Mem k .top .top`.
+  show Mem k .top .top
+  rw [Mem_unfold]
+  intro j v hj hconv
+  -- `.top` is whnf, so the only convergence is `Converges 0 .top .top`.
+  have htop : Converges 0 .top .top := ⟨.refl, whNormal_of_value .top⟩
+  obtain ⟨hjeq, hveq⟩ := Converges.deterministic hconv htop
+  subst hjeq; subst hveq
+  refine ⟨.top, .top, ⟨0, htop⟩, .top, ?_⟩
+  -- (m3) `Match k .top .top` is the left disjunct of `Match_unfold`.
+  rw [Match_unfold]
+  exact Or.inl rfl
 
 /-- **DS-VAR** (doc §6): reflexivity at a variable. Matches `SubI.var`. -/
 theorem sound_var {Γ : Ctx} {x : Nat} (hx : x < Γ.length) :
@@ -54,7 +66,18 @@ theorem sound_top {Γ : Ctx} : SemEq Γ .top .top :=
 free. Matches `SubI.etop` (the wf premise feeds Lemma 3.3). -/
 theorem sound_etop {Γ : Ctx} {t : Term} (hwf : SemWf Γ t) :
     SemLe Γ t .top := by
-  sorry
+  -- Lemma 3.3: the membership half follows from the inclusion half, which
+  -- is `Mem k s .top` for any `s ∈ ⟦γt⟧ₖ` (doc §6 DS-ETOP).
+  refine semLe_of_inclusion hwf (fun k γ _ s hs => ?_)
+  show Mem k s .top
+  rw [Mem_unfold]
+  intro j v hj hconv
+  -- (m1) `v` is a value, read off `s`'s own membership in `⟦γt⟧ₖ`.
+  have hv : Value v := ((Mem_unfold.mp hs) j v hj hconv).1
+  -- (m2) `.top ⇓⁰ .top`; (m3) `Match (k−j) v .top` = left disjunct.
+  refine ⟨hv, .top, ⟨0, .refl, whNormal_of_value .top⟩, .top, ?_⟩
+  rw [Match_unfold]
+  exact Or.inl rfl
 
 /-- **DS-EQ** (doc §6): conversion gives the set *equality* of
 extensions (Lemma 4.4 after `Beta.subst`), hence both halves via
