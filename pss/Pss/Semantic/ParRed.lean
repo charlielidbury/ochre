@@ -223,28 +223,90 @@ theorem Steps.subst {σ τ : Nat → Term} (hστ : ∀ x, Steps (σ x) (τ x))
 
 /-! ## Diamond, confluence (Lemma 2.1), Church–Rosser -/
 
-/-- The diamond property of parallel reduction (Takahashi; doc §2). -/
+/-- **Takahashi's complete development** `t∗`: contract *every* redex of
+`t` simultaneously. The diamond follows from the triangle property
+`Par t u → Par u t∗` (every parallel reduct of `t` parallel-reduces to
+the maximal one). -/
+private def devel : Term → Term
+  | .var x => .var x
+  | .top => .top
+  | .lam a b => .lam (devel a) (devel b)
+  | .app (.lam _a b) s => (devel b).subst1 (devel s)
+  | .app f s => .app (devel f) (devel s)
+
+/-- A `Par`-application whose function reduces to `.lam a' b'` can be
+β-contracted in one parallel step, *provided* the reduction of the
+function arose from a `λ`-congruence (so `f = .lam a b₀`). Used to feed
+the triangle's `app`/redex case. -/
+private theorem Par.beta_of_lam {a b b' s s' : Term}
+    (hb : Par b b') (hs : Par s s') :
+    Par (.app (.lam a b) s) (b'.subst1 s') := .beta hb hs
+
+/-- **Triangle / star property**: every parallel reduct of `t` itself
+parallel-reduces to the complete development `t∗`. Induction on the
+`Par` derivation; the `app`-with-`lam`-function and `beta` cases both
+land on the same `app (.lam ..) ..` branch of `devel`, joined by
+`Par.subst1`. -/
+private theorem Par.triangle {t u : Term} (h : Par t u) :
+    Par u (devel t) := by
+  induction h with
+  | var => exact .var
+  | top => exact .top
+  | lam _ _ iha ihb => exact .lam iha ihb
+  | @app f f' u u' hf _ ihf ihu =>
+    -- `devel` peeks at whether the function is a `λ`.
+    cases f with
+    | lam _a b =>
+      -- `t = (λa.b)(u)`, `devel = b∗.subst1 u∗`. `f' = .lam a' b'` since
+      -- `Par (.lam a b) f'`; contract.
+      cases hf with
+      | lam _ hbb =>
+        -- ihf : Par f' (.lam (devel a) (devel b)); f' = .lam a' b'.
+        cases ihf with
+        | lam _ hb' => exact Par.beta_of_lam hb' ihu
+    | var x => exact .app ihf ihu
+    | top => exact .app ihf ihu
+    | app g w => exact .app ihf ihu
+  | @beta a b b' s s' _ _ ihb ihs =>
+    -- `t = (λa.b)(s)`, `devel = (devel b).subst1 (devel s)`.
+    exact Par.subst1 ihb ihs
+
+/-- The diamond property of parallel reduction (Takahashi; doc §2), via
+the triangle property: both reducts parallel-reduce to the complete
+development `t∗`. -/
 theorem Par.diamond {t t₁ t₂ : Term} (h₁ : Par t t₁) (h₂ : Par t t₂) :
-    ∃ t₃, Par t₁ t₃ ∧ Par t₂ t₃ := by
-  sorry
+    ∃ t₃, Par t₁ t₃ ∧ Par t₂ t₃ :=
+  ⟨devel t, Par.triangle h₁, Par.triangle h₂⟩
 
 /-- Strip lemma: one parallel step against a `Par`-sequence. -/
 theorem Par.strip {t t₁ t₂ : Term} (h₁ : Par t t₁) (h₂ : Star Par t t₂) :
     ∃ t₃, Star Par t₁ t₃ ∧ Par t₂ t₃ := by
-  sorry
+  induction h₂ generalizing t₁ with
+  | refl => exact ⟨t₁, .refl, h₁⟩
+  | head hab _ ih =>
+    obtain ⟨c, hc1, hc2⟩ := Par.diamond h₁ hab
+    obtain ⟨t₃, h31, h32⟩ := ih hc2
+    exact ⟨t₃, .head hc1 h31, h32⟩
+
+/-- The diamond tiles to confluence of `Par`-sequences. -/
+private theorem starPar_confluent {t t₁ t₂ : Term}
+    (h₁ : Star Par t t₁) (h₂ : Star Par t t₂) :
+    ∃ t₃, Star Par t₁ t₃ ∧ Star Par t₂ t₃ := by
+  induction h₁ generalizing t₂ with
+  | refl => exact ⟨t₂, h₂, .refl⟩
+  | head hab _ ih =>
+    obtain ⟨c, hc1, hc2⟩ := Par.strip hab h₂
+    obtain ⟨t₃, h31, h32⟩ := ih hc1
+    exact ⟨t₃, h31, .head hc2 h32⟩
 
 /-- **Lemma 2.1 (Church–Rosser), confluence half** (doc §2): `⟶` is
 confluent. -/
 theorem steps_confluent {t u₁ u₂ : Term}
     (h₁ : Steps t u₁) (h₂ : Steps t u₂) :
     ∃ d, Steps u₁ d ∧ Steps u₂ d := by
-  sorry
-
-/-- **Lemma 2.1, conversion half** (doc §2): `t =β u` iff `t, u` have a
-common reduct. -/
-theorem beta_iff_common_reduct {t u : Term} :
-    Beta t u ↔ ∃ d, Steps t d ∧ Steps u d := by
-  sorry
+  rw [steps_iff_star_par] at h₁ h₂
+  obtain ⟨d, hd1, hd2⟩ := starPar_confluent h₁ h₂
+  exact ⟨d, steps_iff_star_par.mpr hd1, steps_iff_star_par.mpr hd2⟩
 
 /-! ## The `=β` kit
 
@@ -254,78 +316,166 @@ model files consume (doc Lemmas 4.4/4.5, FT cases DS-EQ/DS-FUN/DS-APP).
 -/
 
 /-- `=β` is reflexive. -/
-theorem Beta.refl (t : Term) : Beta t t := by
-  sorry
+theorem Beta.refl (t : Term) : Beta t t := .refl
+
+/-- `Sym` of a relation is symmetric. -/
+private theorem symStep_symm {a b : Term}
+    (h : Sym Step a b) : Sym Step b a := by
+  cases h with
+  | fwd h => exact .bwd h
+  | bwd h => exact .fwd h
 
 /-- `=β` is symmetric. -/
 theorem Beta.symm {t u : Term} (h : Beta t u) : Beta u t := by
-  sorry
+  induction h with
+  | refl => exact Star.refl
+  | head hab _ ih => exact ih.trans (Star.single (symStep_symm hab))
 
 /-- `=β` is transitive. -/
 theorem Beta.trans {t u v : Term} (h₁ : Beta t u) (h₂ : Beta u v) :
-    Beta t v := by
-  sorry
+    Beta t v := Star.trans h₁ h₂
 
 /-- `⟶ ⊆ =β`. -/
-theorem Beta.of_step {t u : Term} (h : Step t u) : Beta t u := by
-  sorry
+theorem Beta.of_step {t u : Term} (h : Step t u) : Beta t u :=
+  Star.single (.fwd h)
 
 /-- `⟶* ⊆ =β`. -/
-theorem Beta.of_steps {t u : Term} (h : Steps t u) : Beta t u := by
-  sorry
+theorem Beta.of_steps {t u : Term} (h : Steps t u) : Beta t u :=
+  h.mono fun hs => .fwd hs
+
+/-- **Lemma 2.1, conversion half** (doc §2): `t =β u` iff `t, u` have a
+common reduct.
+
+`→`: induction on the `EqClosure` chain. Each `Sym Step` head either
+extends `t`'s reduction (`fwd`) or — when it folds a step *backwards*
+(`bwd`) — re-joins via confluence of the two forward reducts.
+`←`: `Beta.of_steps` on each leg, symmetry, transitivity. -/
+theorem beta_iff_common_reduct {t u : Term} :
+    Beta t u ↔ ∃ d, Steps t d ∧ Steps u d := by
+  constructor
+  · intro h
+    induction h with
+    | refl => exact ⟨_, Star.refl, Star.refl⟩
+    | @head a b c hab _ ih =>
+      obtain ⟨d, hbd, hcd⟩ := ih
+      cases hab with
+      | fwd hab =>
+        -- a ⟶ b ⟶* d, and c ⟶* d.
+        exact ⟨d, .head hab hbd, hcd⟩
+      | bwd hab =>
+        -- b ⟶ a, and b ⟶* d. Confluence of a and d (both reducts of b).
+        obtain ⟨e, hae, hde⟩ := steps_confluent (Star.single hab) hbd
+        exact ⟨e, hae, hcd.trans hde⟩
+  · intro ⟨d, htd, hud⟩
+    exact (Beta.of_steps htd).trans (Beta.of_steps hud).symm
 
 /-- `=β` congruence in function position. -/
 theorem Beta.appL {t t' : Term} (u : Term) (h : Beta t t') :
-    Beta (.app t u) (.app t' u) := by
-  sorry
+    Beta (.app t u) (.app t' u) :=
+  h.map (fun x => Term.app x u) fun hs => by
+    cases hs with
+    | fwd hs => exact .fwd (Step.appL u hs)
+    | bwd hs => exact .bwd (Step.appL u hs)
 
 /-- `=β` congruence in argument position. -/
 theorem Beta.appR (t : Term) {u u' : Term} (h : Beta u u') :
-    Beta (.app t u) (.app t u') := by
-  sorry
+    Beta (.app t u) (.app t u') :=
+  h.map (Term.app t) fun hs => by
+    cases hs with
+    | fwd hs => exact .fwd (Step.appR t hs)
+    | bwd hs => exact .bwd (Step.appR t hs)
 
 /-- `=β` congruence at an application, both positions. -/
 theorem Beta.app {t t' u u' : Term} (ht : Beta t t') (hu : Beta u u') :
-    Beta (.app t u) (.app t' u') := by
-  sorry
+    Beta (.app t u) (.app t' u') :=
+  (Beta.appL u ht).trans (Beta.appR t' hu)
 
 /-- `=β` congruence in bound position. -/
 theorem Beta.lamBound {t t' : Term} (u : Term) (h : Beta t t') :
-    Beta (.lam t u) (.lam t' u) := by
-  sorry
+    Beta (.lam t u) (.lam t' u) :=
+  h.map (fun x => Term.lam x u) fun hs => by
+    cases hs with
+    | fwd hs => exact .fwd (Step.lamBound u hs)
+    | bwd hs => exact .bwd (Step.lamBound u hs)
 
 /-- `=β` congruence in body position. -/
 theorem Beta.lamBody (t : Term) {u u' : Term} (h : Beta u u') :
-    Beta (.lam t u) (.lam t u') := by
-  sorry
+    Beta (.lam t u) (.lam t u') :=
+  h.map (Term.lam t) fun hs => by
+    cases hs with
+    | fwd hs => exact .fwd (Step.lamBody t hs)
+    | bwd hs => exact .bwd (Step.lamBody t hs)
 
 /-- `=β` congruence at a λ, both positions (the componentwise transport
 of doc Lemma 4.4's MATCH case). -/
 theorem Beta.lam {a a' b b' : Term} (ha : Beta a a') (hb : Beta b b') :
-    Beta (.lam a b) (.lam a' b') := by
-  sorry
+    Beta (.lam a b) (.lam a' b') :=
+  (Beta.lamBound b ha).trans (Beta.lamBody a' hb)
 
 /-- `=β` congruence under any simultaneous substitution. -/
 theorem Beta.subst (σ : Nat → Term) {t t' : Term} (h : Beta t t') :
-    Beta (t.subst σ) (t'.subst σ) := by
-  sorry
+    Beta (t.subst σ) (t'.subst σ) :=
+  h.map (Term.subst σ) fun hs => by
+    cases hs with
+    | fwd hs => exact .fwd (Step.subst σ hs)
+    | bwd hs => exact .bwd (Step.subst σ hs)
 
 /-- **`=β` substitutivity** (Lemma 2.1, doc §2):
-`t =β t', s =β s' ⟹ [x↦s]t =β [x↦s']t'`. -/
+`t =β t', s =β s' ⟹ [x↦s]t =β [x↦s']t'`.
+
+`subst1` substitutes the *same* `s` everywhere on each side, so the two
+arguments are handled separately: convert the term skeleton with `s`
+fixed (via `Beta.subst`), then convert the substituted term with the
+skeleton fixed, sequentializing the conversion of `s` through every
+occurrence. -/
 theorem Beta.subst1 {t t' s s' : Term} (ht : Beta t t') (hs : Beta s s') :
     Beta (t.subst1 s) (t'.subst1 s') := by
-  sorry
+  -- step 1: `[x↦s]t =β [x↦s]t'` by `Beta.subst` at `σ = scons s var`.
+  have h1 : Beta (t.subst1 s) (t'.subst1 s) := Beta.subst _ ht
+  -- step 2: `[x↦s]t' =β [x↦s']t'` by converting `s` through `t'`.
+  have h2 : Beta (t'.subst1 s) (t'.subst1 s') := by
+    -- both common-reduct: `s ⟶* d ⟵* s'` then substitute.
+    obtain ⟨d, hsd, hs'd⟩ := beta_iff_common_reduct.mp hs
+    have left : Steps (t'.subst1 s) (t'.subst1 d) :=
+      Steps.subst (σ := Term.scons s Term.var) (τ := Term.scons d Term.var)
+        (fun x => by cases x with
+          | zero => exact hsd
+          | succ n => exact .refl) .refl
+    have right : Steps (t'.subst1 s') (t'.subst1 d) :=
+      Steps.subst (σ := Term.scons s' Term.var) (τ := Term.scons d Term.var)
+        (fun x => by cases x with
+          | zero => exact hs'd
+          | succ n => exact .refl) .refl
+    exact (Beta.of_steps left).trans (Beta.of_steps right).symm
+  exact h1.trans h2
 
 /-! ## Reducts of values keep their constructor (feeding Cor 2.3) -/
 
 /-- A `⟶*`-reduct of a λ is a λ with componentwise-reduced bound and
-body. -/
+body. The shape is stable: every `Step` from a `λ` is a `lamBound` or
+`lamBody` congruence (`step_iff_compat`). -/
 theorem steps_lam_inv {a b v : Term} (h : Steps (.lam a b) v) :
     ∃ a' b', v = .lam a' b' ∧ Steps a a' ∧ Steps b b' := by
-  sorry
+  generalize he : Term.lam a b = t at h
+  induction h generalizing a b with
+  | refl => exact ⟨a, b, he.symm, .refl, .refl⟩
+  | @head t' w _ hstep _ ih =>
+    subst he
+    rw [Step.step_iff_compat] at hstep
+    cases hstep with
+    | lamBound u hs =>
+      obtain ⟨a', b', heq, ha', hb'⟩ := ih rfl
+      exact ⟨a', b', heq, .head (Step.step_iff_compat.mpr hs) ha', hb'⟩
+    | lamBody u hs =>
+      obtain ⟨a', b', heq, ha', hb'⟩ := ih rfl
+      exact ⟨a', b', heq, ha', .head (Step.step_iff_compat.mpr hs) hb'⟩
 
 /-- `Top` only `⟶*`-reduces to itself. -/
 theorem steps_top_inv {v : Term} (h : Steps .top v) : v = .top := by
-  sorry
+  cases h with
+  | refl => rfl
+  | head hstep _ =>
+    rw [Step.step_iff_compat] at hstep
+    cases hstep
 
 end Pss.Semantic
