@@ -374,5 +374,220 @@ theorem ATSub.fn {Γ : Ctx} {a u u' : Term} {r : Rel}
       exact .trans (ih1 _ _ _ _ rfl rfl rfl) (ih2 _ _ _ _ rfl rfl rfl))
     Γ a u u' rfl rfl rfl
 
+/-! ## Substitution (context morphisms)
+
+This is the §6.2 lemma shape: a substitution maps each variable `x` with
+`x ≤ t ∈ Γ` to a term `σ x` that is `≤*`-below `t[σ]`. Transporting a
+single `≤→`-step (a promotion of a substituted variable) then yields a
+transitive subtyping *judgment* `≤*` rather than a reduction — "both of
+these lemmas require transitivity. ... This potential circularity is
+eliminated by using `≤*`, which is transitive by definition." (§6.2). -/
+
+/-- Result of transporting one `⊲→` step along a substitution morphism:
+`≡`-steps stay single steps, `≤`-steps become `≤*` judgments. -/
+def SubstRed (Δ : Ctx) (t : Term) : Rel → Term → Prop
+  | .eq, t' => Red Δ t .eq t'
+  | .le, t' => ATSub Δ t .le t'
+
+/-- Either way, the transported step is a `⊲*` judgment. -/
+theorem SubstRed.toATSub {Δ : Ctx} {t t' : Term} :
+    {r : Rel} → SubstRed Δ t r t' → ATSub Δ t r t'
+  | .eq, h => .of_red h
+  | .le, h => h
+
+/-- Context morphism for substitutions. -/
+structure SubstMorph (σ : Nat → Term) (Γ Δ : Ctx) : Prop where
+  prevalid : Prevalid Δ
+  closed : ∀ {x : Nat}, x < Γ.length → Term.ClosedUnder Δ.length (σ x)
+  bound : ∀ {x : Nat} {t : Term},
+    Ctx.Bound Γ x t → ATSub Δ (σ x) .le (t.subst σ)
+
+/-- Push a substitution morphism under one binder. -/
+theorem SubstMorph.lift {σ : Nat → Term} {Γ Δ : Ctx} {a : Term}
+    (hm : SubstMorph σ Γ Δ) (ha : Term.ClosedUnder Γ.length a) :
+    SubstMorph (Term.liftSubst σ) (a :: Γ) (a.subst σ :: Δ) where
+  prevalid := .cons hm.prevalid (ha.subst fun _ hx => hm.closed hx)
+  closed := by
+    intro x hx
+    cases x with
+    | zero => exact .var (Nat.zero_lt_succ _)
+    | succ x =>
+      exact (hm.closed (Nat.lt_of_succ_lt_succ hx)).rename
+        fun _ hy => Nat.succ_lt_succ hy
+  bound := by
+    intro x t hb
+    cases hb with
+    | here =>
+      rw [Term.shift_subst_lift]
+      exact .of_red (.prom
+        (.cons hm.prevalid (ha.subst fun _ hx => hm.closed hx)) .here)
+    | there hb =>
+      rw [Term.shift_subst_lift]
+      exact (hm.bound hb).weaken (ha.subst fun _ hx => hm.closed hx)
+
+/-- **Substitution for the algorithmic block** (§6.2): `≡→`-steps are
+preserved as single steps; `≤→`-steps and both judgments become `⊲*`
+judgments. -/
+theorem alg_subst :
+    (∀ Γ t r t', Red Γ t r t' → ∀ Δ σ, SubstMorph σ Γ Δ →
+      SubstRed Δ (t.subst σ) r (t'.subst σ))
+    ∧ (∀ Γ t r u, ASub Γ t r u → ∀ Δ σ, SubstMorph σ Γ Δ →
+      ATSub Δ (t.subst σ) r (u.subst σ))
+    ∧ (∀ Γ t r u, ATSub Γ t r u → ∀ Δ σ, SubstMorph σ Γ Δ →
+      ATSub Δ (t.subst σ) r (u.subst σ)) :=
+  alg_induction
+    (motR := fun Γ t r t' => ∀ Δ σ, SubstMorph σ Γ Δ →
+      SubstRed Δ (t.subst σ) r (t'.subst σ))
+    (motA := fun Γ t r u => ∀ Δ σ, SubstMorph σ Γ Δ →
+      ATSub Δ (t.subst σ) r (u.subst σ))
+    (motT := fun Γ t r u => ∀ Δ σ, SubstMorph σ Γ Δ →
+      ATSub Δ (t.subst σ) r (u.subst σ))
+    (red_prom := fun _ hb _ _ hm => hm.bound hb)
+    (red_rtop := fun _ _ _ hm => ATSub.of_red (.rtop hm.prevalid))
+    (red_beta := fun _ ih Δ σ hm => by
+      show Red Δ _ .eq _
+      rw [Term.subst_subst1]
+      exact .beta (ih Δ σ hm))
+    (red_topApp := fun _ _ _ hm => by
+      show Red _ _ .eq _
+      exact .topApp hm.prevalid)
+    (red_cong := fun {_ _ _ r} E _ ih Δ σ hm => by
+      cases r with
+      | eq =>
+        show Red Δ _ .eq _
+        rw [ECtx.fill_subst, ECtx.fill_subst]
+        exact .cong (E.subst σ) (ih Δ σ hm)
+      | le =>
+        show ATSub Δ _ .le _
+        rw [ECtx.fill_subst, ECtx.fill_subst]
+        exact (ih Δ σ hm).cong (E.subst σ))
+    (red_fn := fun {_ t _ _ r} h ih Δ σ hm => by
+      have ih' := ih (t.subst σ :: Δ) _ (hm.lift h.prevalid.head)
+      cases r with
+      | eq => exact Red.fn ih'
+      | le => exact ATSub.fn ih')
+    (red_eq := fun _ ih Δ σ hm => ATSub.of_red (.eq (ih Δ σ hm)))
+    (asub_refl := fun _ _ _ hm => .sub (.refl hm.prevalid))
+    (asub_left := fun _ _ ihred ih Δ σ hm =>
+      ((ihred Δ σ hm).toATSub).trans (ih Δ σ hm))
+    (asub_right := fun {_ _ _ _ r} _ _ ihred ih Δ σ hm =>
+      (ih Δ σ hm).trans (.sub (ASub.of_red_rev r (ihred Δ σ hm))))
+    (atsub_sub := fun _ ih => ih)
+    (atsub_trans := fun _ _ ih1 ih2 Δ σ hm =>
+      .trans (ih1 Δ σ hm) (ih2 Δ σ hm))
+
+/-! ### Single-variable substitution (the SRE-APP / β instance)
+
+Substituting `c` for the outermost variable of `a :: Γ` is a morphism
+into `Γ` provided `c ≤* a` — exactly the situation at a β-redex
+`(λx ≤ a. b)(c)` whose SRE-APP premise gives `c ≤* a`. -/
+
+/-- `[x ↦ c] : (a :: Γ) → Γ` is a substitution morphism when `c ≤* a`. -/
+theorem SubstMorph.subst1 {Γ : Ctx} {a c : Term}
+    (hc : ATSub Γ c .le a) (hcc : Term.ClosedUnder Γ.length c) :
+    SubstMorph (Term.scons c Term.var) (a :: Γ) Γ where
+  prevalid := hc.prevalid
+  closed := by
+    intro x hx
+    cases x with
+    | zero => exact hcc
+    | succ x => exact .var (Nat.lt_of_succ_lt_succ hx)
+  bound := by
+    intro x t hb
+    cases hb with
+    | here =>
+      show ATSub Γ c .le ((a.shift 1).subst1 c)
+      rw [Term.shift_subst1]
+      exact hc
+    | there hb =>
+      show ATSub Γ (.var _) .le ((_root_.Pss.Term.shift _ 1).subst1 c)
+      rw [Term.shift_subst1]
+      exact .of_red (.prom hc.prevalid hb)
+
+/-- Substitution for `⊲*`: instantiating the bound variable by `c ≤* a`. -/
+theorem ATSub.subst1 {Γ : Ctx} {a c u v : Term} {r : Rel}
+    (h : ATSub (a :: Γ) u r v) (hc : ATSub Γ c .le a)
+    (hcc : Term.ClosedUnder Γ.length c) :
+    ATSub Γ (u.subst1 c) r (v.subst1 c) :=
+  alg_subst.2.2 _ _ _ _ h Γ _ (SubstMorph.subst1 hc hcc)
+
+/-- Substitution for `⊲`: the result is a `⊲*` judgment (§6.2). -/
+theorem ASub.subst1 {Γ : Ctx} {a c u v : Term} {r : Rel}
+    (h : ASub (a :: Γ) u r v) (hc : ATSub Γ c .le a)
+    (hcc : Term.ClosedUnder Γ.length c) :
+    ATSub Γ (u.subst1 c) r (v.subst1 c) :=
+  alg_subst.2.1 _ _ _ _ h Γ _ (SubstMorph.subst1 hc hcc)
+
+/-- Substitution for `≡→` steps: single steps are preserved. -/
+theorem Red.subst1_eq {Γ : Ctx} {a c u u' : Term}
+    (h : Red (a :: Γ) u .eq u') (hc : ATSub Γ c .le a)
+    (hcc : Term.ClosedUnder Γ.length c) :
+    Red Γ (u.subst1 c) .eq (u'.subst1 c) :=
+  alg_subst.1 _ _ _ _ h Γ _ (SubstMorph.subst1 hc hcc)
+
+/-- Substitution for `≤→` steps: a promoted occurrence of the
+substituted variable turns the step into a `≤*` judgment (§6.2). -/
+theorem Red.subst1_le {Γ : Ctx} {a c u u' : Term}
+    (h : Red (a :: Γ) u .le u') (hc : ATSub Γ c .le a)
+    (hcc : Term.ClosedUnder Γ.length c) :
+    ATSub Γ (u.subst1 c) .le (u'.subst1 c) :=
+  alg_subst.1 _ _ _ _ h Γ _ (SubstMorph.subst1 hc hcc)
+
+/-! ### Narrowing
+
+Replacing a context bound by a `≤*`-smaller one is the substitution
+morphism along the identity substitution. -/
+
+/-- The narrowing morphism `(a :: Γ) → (a' :: Γ)` for `a' ≤* a`. -/
+theorem SubstMorph.narrow {Γ : Ctx} {a a' : Term}
+    (hsub : ATSub Γ a' .le a) (ha' : Term.ClosedUnder Γ.length a') :
+    SubstMorph Term.var (a :: Γ) (a' :: Γ) where
+  prevalid := .cons hsub.prevalid ha'
+  closed := fun hx => .var hx
+  bound := by
+    intro x t hb
+    cases hb with
+    | here =>
+      rw [Term.subst_var]
+      exact .trans
+        (.of_red (.prom (.cons hsub.prevalid ha') .here))
+        (hsub.weaken ha')
+    | there hb =>
+      rw [Term.subst_var]
+      exact .of_red (.prom (.cons hsub.prevalid ha') (.there hb))
+
+/-- Narrowing for `⊲*`: a bound may be replaced by a `≤*`-smaller one. -/
+theorem ATSub.narrow {Γ : Ctx} {a a' u v : Term} {r : Rel}
+    (h : ATSub (a :: Γ) u r v) (hsub : ATSub Γ a' .le a)
+    (ha' : Term.ClosedUnder Γ.length a') :
+    ATSub (a' :: Γ) u r v := by
+  have := alg_subst.2.2 _ _ _ _ h (a' :: Γ) _ (SubstMorph.narrow hsub ha')
+  rwa [Term.subst_var, Term.subst_var] at this
+
+/-- Narrowing for `⊲`: the result is a `⊲*` judgment. -/
+theorem ASub.narrow {Γ : Ctx} {a a' u v : Term} {r : Rel}
+    (h : ASub (a :: Γ) u r v) (hsub : ATSub Γ a' .le a)
+    (ha' : Term.ClosedUnder Γ.length a') :
+    ATSub (a' :: Γ) u r v := by
+  have := alg_subst.2.1 _ _ _ _ h (a' :: Γ) _ (SubstMorph.narrow hsub ha')
+  rwa [Term.subst_var, Term.subst_var] at this
+
+/-- Narrowing for `≡→` steps: single steps are preserved. -/
+theorem Red.narrow_eq {Γ : Ctx} {a a' u u' : Term}
+    (h : Red (a :: Γ) u .eq u') (hsub : ATSub Γ a' .le a)
+    (ha' : Term.ClosedUnder Γ.length a') :
+    Red (a' :: Γ) u .eq u' := by
+  have := alg_subst.1 _ _ _ _ h (a' :: Γ) _ (SubstMorph.narrow hsub ha')
+  rwa [Term.subst_var, Term.subst_var] at this
+
+/-- Narrowing for `≤→` steps: a promotion of the narrowed variable
+turns the step into a `≤*` judgment. -/
+theorem Red.narrow_le {Γ : Ctx} {a a' u u' : Term}
+    (h : Red (a :: Γ) u .le u') (hsub : ATSub Γ a' .le a)
+    (ha' : Term.ClosedUnder Γ.length a') :
+    ATSub (a' :: Γ) u .le u' := by
+  have := alg_subst.1 _ _ _ _ h (a' :: Γ) _ (SubstMorph.narrow hsub ha')
+  rwa [Term.subst_var, Term.subst_var] at this
+
 end Pss
 
