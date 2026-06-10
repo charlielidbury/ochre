@@ -117,12 +117,28 @@ the mechanical results proved, the thesis-level one stated.
 | Theorem 4.3 (typing preserved) | `Statements.thm_4_3` | stated (thesis-level [19]; blockers documented) |
 | Theorem 4.4 (λ⊲ not SN) | `Embedding.thm_4_4` | **proved** conditional on `GirardsParadox` (Barendregt [4]) and `Statements.thm_4_3` |
 
-### §5, §6 (statuses finalized at merge)
+### §6 — transitivity elimination (`Transitivity/AlgWeakening/Confluence.lean`)
+
+| Paper | Lean | Status |
+|---|---|---|
+| `≡→` confluence property (Thm 6.1's statement) | `EqConfluent` | defined |
+| Conjecture 6.2 (`≡→` commutes with `≤→`) | `Commutes`, `Statements.conjecture_6_2` | stated (**open problem**, as in the paper) |
+| Lemma 6.3 (commutativity ⇒ transitivity) | `lemma_6_3`, `atsub_to_asub`, `transitivity_admissible_of` | **proved** |
+| algorithmic substitution & narrowing (§6.2) | `alg_rename`, `alg_subst`, `ATSub.narrow`, `ASub.cong/fn`, … | **proved** (≤-steps become `≤*` judgments, exactly the §6.2 observation) |
+| Lemma 6.4 (local commutativity) | `lemma_6_4 : LocallyCommutes` | **proved** — but *degenerately*: the `≤*` completing edge admits folding the spanning edges backwards (`t3 = t2`), which the paper's literal statement permits; useless for the §6.6.2 decreasing-diagrams program (documented) |
+| §6.6.1 showcase diagrams | `lemma_6_4_top_case`, `lemma_6_4_prom_case` | **proved** with the paper's *intended* completions |
+| Theorem 6.1 (`≡→` is confluent) | `Par`, `Par.of_red`, `Par.to_redStar`, `parStrip`, `parStar_confluent`, `eqConfluent_of_parDiamond`; `Statements.thm_6_1` | reduced to the single `ParDiamond` residual (Takahashi sandwich `≡→ ⊆ Par ⊆ ≡→*` proved); full proof is thesis-scale [19] |
+
+A by-product of mechanization: the paper's literal Lemma 6.4 is *weaker than
+its own case analysis suggests* — because the completing right edge is a
+transitive subtyping judgment, the diagram closes degenerately. Any index on
+`≤*` derivations for the §6.6.2 program must rule this folding out.
+
+### §5 (status finalized at merge)
 
 | Paper | Lean | Status |
 |---|---|---|
 | §5 Conjecture 5.1, Lemmas 5.2–5.4, Thms 5.5–5.6 | `Pss/Safety.lean` & co. | _in progress_ |
-| §6 Thm 6.1, Conjecture 6.2, Lemmas 6.3–6.4 | `Pss/Transitivity.lean` & co. | _in progress_ |
 
 ## Layout
 

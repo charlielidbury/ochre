@@ -11,6 +11,9 @@ import Pss.Universes
 import Pss.SimpleARS
 import Pss.Embedding.LambdaStar
 import Pss.Embedding.Translation
+import Pss.AlgWeakening
+import Pss.Transitivity
+import Pss.Confluence
 
 /-!
 # Pure Subtype Systems, mechanized
