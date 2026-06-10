@@ -33,12 +33,69 @@ namespace Pss.Semantic
 
 open Term (Value ClosedUnder)
 
+/-- All bounds in a context are closed under their respective suffixes.
+The `WfI.fn` rule (Figure 1's W-FUN) carries no separate well-formedness
+premise for the bound `t`; the bound's closedness is enforced *only*
+indirectly, through the `CtxWfI (t :: Γ)` premise that every leaf rule
+(`WfI.var`/`WfI.top`/`WfI.app`) of a non-vacuous body derivation carries.
+Threading this structural invariant through the recursor is what lets the
+`fn` case recover `ClosedUnder Γ.length t` for the bound. -/
+private def CtxClosed : Ctx → Prop
+  | [] => True
+  | t :: Γ => ClosedUnder Γ.length t ∧ CtxClosed Γ
+
+/-- A well-formed term is closed under its context, and that context's
+bounds are themselves closed (the strengthened invariant the recursor
+needs — see `CtxClosed`). -/
+private theorem wfI_closedUnder_aux {Γ : Ctx} {t : Term} (h : WfI Γ t) :
+    CtxClosed Γ ∧ ClosedUnder Γ.length t :=
+  WfI.rec (motive_1 := fun Γ _ => CtxClosed Γ)
+    (motive_2 := fun Γ t _ => CtxClosed Γ ∧ ClosedUnder Γ.length t)
+    (motive_3 := fun Γ t _ u _ =>
+      CtxClosed Γ ∧ ClosedUnder Γ.length t ∧ ClosedUnder Γ.length u)
+    (motive_4 := fun Γ _ _ _ _ => CtxClosed Γ)
+    -- CtxWfI.nil, CtxWfI.cons
+    trivial
+    (fun _ _ _ ih => ⟨ih.2, ih.1⟩)
+    -- WfI.var: x < Γ.length, context closed from CtxWfI IH
+    (fun _ hx ihc => ⟨ihc, ClosedUnder.var hx⟩)
+    -- WfI.top
+    (fun _ ihc => ⟨ihc, ClosedUnder.top⟩)
+    -- WfI.fn: body IH gives CtxClosed (t :: Γ), whose head is the bound
+    (fun _ ih => ⟨ih.1.2, ClosedUnder.lam ih.1.1 ih.2⟩)
+    -- WfI.app: context + both endpoints from the two WellSub IHs
+    (fun _ _ ih₁ ih₂ => ⟨ih₁.1, ClosedUnder.app ih₁.2.1 ih₂.2.1⟩)
+    -- WellSubI.sub: context, t (from WfI t IH), u (from WfI u IH)
+    (fun _ _ _ ihw₁ ihw₂ _ => ⟨ihw₁.1, ihw₁.2, ihw₂.2⟩)
+    -- SubI cases: motive_4 = CtxClosed Γ, threaded from sub-derivations
+    -- trans: SubI s t, SubI t u, WfI t + 3 IHs
+    (fun _ _ _ ih₁ _ _ => ih₁)
+    -- symm: SubI u eq t + ih
+    (fun _ ih => ih)
+    -- eq: SubI t eq u + ih
+    (fun _ ih => ih)
+    -- var: CtxWfI Γ, x<len + CtxWfI-IH (CtxClosed Γ)
+    (fun _ _ ihc => ihc)
+    -- top: CtxWfI Γ + CtxWfI-IH
+    (fun _ ihc => ihc)
+    -- fn: SubI t eq t', SubI u u', WfI λ, WfI λ' + 4 IHs (ih₁ = eq IH)
+    (fun _ _ _ _ ih₁ _ _ _ => ih₁)
+    -- app: SubI t t', SubI u eq u', 4 WellSubI + 6 IHs (ih₁ at pos 7)
+    (fun _ _ _ _ _ _ ih₁ _ _ _ _ _ => ih₁)
+    -- eapp: WfI redex, WfI contractum + 2 IHs (ih₁ = redex motive_2 pair)
+    (fun _ _ ih₁ _ => ih₁.1)
+    -- etop: WfI t + ih (motive_2 pair)
+    (fun _ ih => ih.1)
+    -- evar: Ctx.Bound, CtxWfI Γ + CtxWfI-IH
+    (fun _ _ ihc => ihc)
+    h
+
 /-- Well-formed terms are closed under their context (Figure 1's
 `fv(t) ⊆ dom(Γ)` discipline, recovered from the instrumented system;
 feeds Fact 1.1, which needs closed programs). -/
 theorem wfI_closedUnder {Γ : Ctx} {t : Term} (h : WfI Γ t) :
-    ClosedUnder Γ.length t := by
-  sorry
+    ClosedUnder Γ.length t :=
+  (wfI_closedUnder_aux h).2
 
 /-- **Theorem 7.1 (type safety)** (doc §7): a well-formed closed program
 never goes wrong — every reduct is a value or reduces. Preservation of
