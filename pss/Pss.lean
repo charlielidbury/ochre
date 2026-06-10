@@ -5,6 +5,10 @@ import Pss.Declarative
 import Pss.Algorithmic
 import Pss.Induction
 import Pss.Basic
+import Pss.Notation
+import Pss.Examples
+import Pss.Universes
+import Pss.SimpleARS
 
 /-!
 # Pure Subtype Systems, mechanized
