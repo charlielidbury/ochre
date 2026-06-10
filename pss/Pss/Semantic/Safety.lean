@@ -186,13 +186,43 @@ theorem semantic_inversion {a b a' b' : Term}
       obtain ⟨rfl, rfl⟩ := Term.lam.injEq .. |>.mp hαβ
       exact htier j c (Nat.lt_succ_self j) hgood
 
+/-- The model-theoretic core of "Top is not a function": `MATCH` between
+the value `Top` (member) and a λ (type) is impossible — its top disjunct
+needs the type side to be `Top`, its lam disjunct needs the member side
+`Top` to be a λ. Both refuted by constructor disjointness. -/
+private theorem match_top_lam_absurd {m : Nat} {s b : Term}
+    (hm : Match m .top (.lam s b)) : False := by
+  rcases Match_unfold.mp hm with htop | ⟨A, B, α, β, _, hαβ, _, _⟩
+  · exact absurd htop (by simp)
+  · exact absurd hαβ (by simp)
+
+/-- From `SemLe [] t (.lam s b)` and a convergence `t ⇓ Top`, the (m3)
+clause forces `MATCH .top (.lam s b)` — impossible. The shared engine of
+both `top_not_fn` and `top_le_lam_refuted`. -/
+private theorem semLe_top_lam_absurd {t s b : Term}
+    (hle : SemLe [] t (.lam s b)) {j : Nat} (hconv : Converges j t .top) :
+    False := by
+  have hmem : Mem (j + 1) t (.lam s b) := by
+    have := (hle (j + 1) Term.var semCtx_nil).1
+    rwa [Term.subst_var, Term.subst_var] at this
+  obtain ⟨_, w, hcw, _, hmatch⟩ :=
+    Mem_unfold.mp hmem j .top (Nat.lt_succ_self j) hconv
+  -- The type λ converges only to itself, so `w = .lam s b`.
+  obtain ⟨jw, hcw'⟩ := hcw
+  obtain ⟨_, hweq⟩ :=
+    Converges.deterministic hcw' ⟨Evals.refl, whNormal_of_value (.lam s b)⟩
+  subst hweq
+  exact match_top_lam_absurd hmatch
+
 /-- **Corollary 7.4 (Top is not a function)** (doc §7):
 `∅ ⊢ Top ≤wf λx≤s.Top` is underivable — it would put `Top` in
 `⟦λx≤s.Top⟧₁`, whose (m3) demands a λ on the member side. The paper
 needed this for progress; here it is a one-line consequence of the
 model. -/
 theorem top_not_fn {s : Term} : ¬ WellSubI [] .top .le (.lam s .top) := by
-  sorry
+  intro h
+  exact semLe_top_lam_absurd (fundamental_wellSub h).2.2
+    ⟨Evals.refl, whNormal_of_value .top⟩
 
 /-- **Corollary 7.4, generalized** (doc §7): the model refutes
 non-derivability statements wholesale — any `t ≤wf λx≤s.b` with
@@ -200,6 +230,7 @@ non-derivability statements wholesale — any `t ≤wf λx≤s.b` with
 theorem top_le_lam_refuted {t s b : Term}
     (h : WellSubI [] t .le (.lam s b)) (htop : ConvergesTo t .top) :
     False := by
-  sorry
+  obtain ⟨j, hconv⟩ := htop
+  exact semLe_top_lam_absurd (fundamental_wellSub h).2.2 hconv
 
 end Pss.Semantic
