@@ -1,5 +1,41 @@
 # Progress
 
+## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
+
+New self-contained Lean 4.16 package `pss/` (no mathlib) formalizing
+Hutchins, *Pure Subtype Systems*, POPL 2010 (`docs/papers/pss.pdf`) — the
+original paper, per user request, **not** the machine-based reformulation
+from `ochre-pss-A/`. See `pss/README.md` for the full paper ↔ Lean
+correspondence table. Build green, zero `sorry`, zero `axiom`; paper
+conjectures are `Prop`s taken as hypotheses where needed.
+
+Status by section: Figures 1+2 encoded verbatim (de Bruijn; ⊲ as a `Rel`
+index; both mutual blocks preserved, with hand-rolled joint induction
+principles since Lean's `induction` refuses mutual predicates). §3.5 fully
+proved (3 ≤ Nat three ways; Nat + 3 ≡ Nat algorithmically). §3.6/§4.1
+universes + §7 toy ARS done. §4 descoped by user (4.1/4.2 proved, 4.3
+stated). §5: 5.2/5.3/weakening proved, progress proved from Conjecture 5.1,
+preservation from 5.1 + two isolated structural Props; §6: Lemma 6.3 proved,
+Lemma 6.4 proved (degenerately — see below), Thm 6.1 reduced to the
+`ParDiamond` residual.
+
+Two mechanization findings about the paper itself:
+1. **Lemma 5.4's proof sketch has an unstated assumption** (hit
+   independently by two agents): weakening `Sub`/`Wf` into context
+   extensions with *ill-formed* bounds is not derivable by rule induction
+   (DS-FUN extends contexts unvalidated; every `Wf` forces `CtxWf`).
+   Isolated as `SubShiftWeakening`; both Lemma 5.4 and narrowing reduce to
+   exactly it, and Conjecture 5.1 does not supply it.
+2. **The paper's literal Lemma 6.4 is degenerate**: its `≤*` completing
+   edge admits folding the spanning edges backwards (`t3 = t2`), so the
+   lemma as stated is provable outright yet useless for the §6.6.2
+   decreasing-diagrams program. The intended §6.6.1 completions are proved
+   separately. Any future index on `≤*` derivations must exclude this.
+
+Process note: parallel worktree agents writing large Lean files died on the
+64k output-token cap until dispatched with incremental-write discipline
+(≤120-line writes, build-per-chunk, commit-per-milestone).
+
 ## 2026-04-23 — Phase 1 sorry-closure: blocked; boundary documented
 
 After landing primitive Bot and the Fin-as-subtype-of-Nat work, I
