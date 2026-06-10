@@ -22,6 +22,33 @@ length is forced by `Forall2` itself.
 
 namespace Pss.Semantic
 
+/-! ## Implementation route (internal machinery)
+
+Kashima-style inductive standard reduction (R. Kashima, *A proof of the
+standardization theorem in λ-calculus*, 2000), specialized to the three
+target shapes. `Standardization.St t u` packages "a standard reduction
+from `t` to `u`": a weak-head prefix `t ↦* ·` followed by standard
+reductions of the components of `u`'s top constructor. The engine is
+`St.par_absorb : St t p → Par p n → St t n`, a *structural* induction on
+the `Par` derivation (no step-count fuel, no lexicographic measure): its
+`Par.beta` case composes the two inverted weak-head prefixes with one
+`WHStep.beta` and closes by the `St` substitution lemma, recursing only
+on `Par` subderivations. Folding along `steps_iff_star_par` from
+`St.refl` gives `Steps t u → St t u`; inverting `St` at each target
+shape reads off Lemma 2.2.
+
+The direct `Par` head lemma (doc §9's sketch) was rejected: its
+`Par.beta` case must recurse on `Par (b[s]) (b'[s'])` at the *same*
+convergence index `j` with a non-smaller derivation, so the suggested
+lex `(j, Par-derivation)` measure fails unless the statement is
+substitution-generalized — at which point it carries strictly more
+bookkeeping (exact step arithmetic, `Match` composition along the
+`Star Par` fold) than `St` does. -/
+
+namespace Standardization
+
+end Standardization
+
 /-! ## Lemma 2.2 (shape standardization) -/
 
 /-- **Lemma 2.2, λ case** (doc §2): if `t ⟶* λx≤p.q` then
