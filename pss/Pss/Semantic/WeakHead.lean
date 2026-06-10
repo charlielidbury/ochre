@@ -212,24 +212,80 @@ inductive Forall2 {α β : Type _} (R : α → β → Prop) : List α → List �
 
 /-- Spines are not values — "going wrong" (doc §1). -/
 theorem Spine.not_value {t : Term} (h : Spine t) : ¬ Value t := by
-  sorry
+  obtain ⟨ds, hsp⟩ := h
+  intro hv
+  cases hsp <;> cases hv
 
 /-- Spines are weak-head normal (the head `Top` is rigid). -/
 theorem Spine.whNormal {t : Term} (h : Spine t) : WHNormal t := by
-  sorry
+  obtain ⟨ds, hsp⟩ := h
+  induction hsp with
+  | head =>
+    intro t' hs
+    cases hs with
+    | head u hs => exact (whNormal_of_value .top) _ hs
+  | @app t d ds h' ih =>
+    intro t' hs
+    cases hs with
+    | beta => cases h'
+    | head u hs => exact ih _ hs
 
 /-- **Fact 1.1** (doc §1), weak-head form: a closed weak-head normal term
 is a value (`Top` or a λ) or a spine. -/
 theorem fact_1_1 {t : Term} (hc : ClosedUnder 0 t) (hn : WHNormal t) :
     Value t ∨ Spine t := by
-  sorry
+  induction t with
+  | var x => cases hc; omega
+  | top => exact .inl .top
+  | lam a b => exact .inl (.lam a b)
+  | app f u ihf _ =>
+    obtain ⟨hnf, hf_not_lam⟩ := whNormal_app_inv hn
+    cases hc with
+    | app hcf _ =>
+      rcases ihf hcf hnf with hv | ⟨ds, hsp⟩
+      · -- Value f, not a λ, so f = .top: spine Top(u)
+        cases hv with
+        | top => exact .inr ⟨[u], .head⟩
+        | lam a b => exact absurd rfl (hf_not_lam a b)
+      · -- f is a spine: f(u) is a spine
+        exact .inr ⟨u :: ds, .app hsp⟩
+
+/-- Inverting `⟶`-normality at an application: head and argument are
+`⟶`-normal, and the head is not a λ (else `Step.eapp` fires). -/
+private theorem stepNormal_app_inv {f u : Term} (h : StepNormal (.app f u)) :
+    StepNormal f ∧ StepNormal u ∧ ∀ a b, f ≠ .lam a b := by
+  refine ⟨?_, ?_, ?_⟩
+  · intro f' hs; exact h _ (hs.appL u)
+  · intro u' hs; exact h _ (Step.appR f hs)
+  · intro a b heq; subst heq; exact h (b.subst1 u) .eapp
 
 /-- **Fact 1.1** (doc §1), full-reduction form: a closed `⟶`-normal
 non-value is a spine with `⟶`-normal arguments. -/
 theorem fact_1_1_step_normal {t : Term} (hc : ClosedUnder 0 t)
     (hn : StepNormal t) (hv : ¬ Value t) :
     ∃ ds, SpineArgs t ds ∧ ∀ d ∈ ds, StepNormal d := by
-  sorry
+  induction t with
+  | var x => cases hc; omega
+  | top => exact absurd .top hv
+  | lam a b => exact absurd (.lam a b) hv
+  | app f u ihf _ =>
+    obtain ⟨hnf, hnu, hf_not_lam⟩ := stepNormal_app_inv hn
+    cases hc with
+    | app hcf _ =>
+      by_cases hfv : Value f
+      · -- f is a value but not a λ, so f = .top: spine Top(u)
+        cases hfv with
+        | top =>
+          refine ⟨[u], .head, ?_⟩
+          intro d hd; simp only [List.mem_singleton] at hd; subst hd; exact hnu
+        | lam a b => exact absurd rfl (hf_not_lam a b)
+      · -- f is a non-value spine: prepend u
+        obtain ⟨ds, hsp, hds⟩ := ihf hcf hnf hfv
+        refine ⟨u :: ds, .app hsp, ?_⟩
+        intro d hd
+        rcases List.mem_cons.mp hd with h | h
+        · subst h; exact hnu
+        · exact hds d h
 
 /-! ## Head factorization of `⇓` through application
 
