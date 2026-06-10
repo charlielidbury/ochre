@@ -134,11 +134,28 @@ its own case analysis suggests* — because the completing right edge is a
 transitive subtyping judgment, the diagram closes degenerately. Any index on
 `≤*` derivations for the §6.6.2 program must rule this folding out.
 
-### §5 (status finalized at merge)
+### §5 — type safety (`Weakening/Substitution/Safety.lean`)
 
 | Paper | Lean | Status |
 |---|---|---|
-| §5 Conjecture 5.1, Lemmas 5.2–5.4, Thms 5.5–5.6 | `Pss/Safety.lean` & co. | _in progress_ |
+| Conjecture 5.1 (transitivity elimination) | `TransitivityElimination` | stated (**open problem**, as in the paper; never assumed globally — theorems take it as a hypothesis) |
+| Lemma 5.2 (inversion of subtyping) | `Sub.inversion` | **proved** from 5.1 |
+| Lemma 5.3 (reduction implies equivalence) | `Step.to_sub_eq` | **proved** (unconditional) |
+| weakening (presupposed by §5) | `weakening_insertAt` + shift corollaries | **proved** (insertion-based; see finding below) |
+| Lemma 5.4 (substitution) | `subst_transport` (all 17 rules), `substitution_of_subShiftWeakening`, `substitution_top` | inductive content **proved** relative to one named assumption `SubShiftWeakening`; **unconditional** for Top-bounded variables |
+| Theorem 5.5 (progress) | `progress` | **proved** from 5.1 (Top-function refutation exactly as in the paper) |
+| Theorem 5.6 (preservation) | `WellSub.preservation_of_wf_preservation` (part 1), `wf_redex`, `wf_preservation_of` (part 2), `preservation_of_assumptions` | **proved** from 5.1 + `SubShiftWeakening` + `Narrowing`; packaged as `Statements.Preservation` |
+
+**Mechanization finding** (hit independently by the §4 and §5 agents): the
+paper's Lemma 5.4 proof sketch silently assumes that `Sub`/`Wf` judgments can
+be weakened into context extensions whose new bounds are *ill-formed*. That
+is not derivable by rule induction — DS-FUN extends contexts with arbitrary
+unvalidated bounds, while every `Wf` derivation forces `CtxWf` of its own
+context, so DS-TRANS's `wf` premise cannot transport. Both Lemma 5.4 and
+narrowing reduce to exactly this one Prop (`SubShiftWeakening`), which
+Conjecture 5.1 (a values-only statement) does not supply. The paper's §5 is
+therefore conditional not only on Conjecture 5.1 but on this (unstated)
+structural assumption.
 
 ## Layout
 
