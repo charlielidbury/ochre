@@ -307,7 +307,32 @@ theorem converges_app_factor {j : Nat} {T U v : Term}
       ((∃ A B, w = .lam A B ∧
           ∃ j₂, j = j₁ + 1 + j₂ ∧ Converges j₂ (B.subst1 U) v) ∨
        ((∀ A B, w ≠ .lam A B) ∧ v = .app w U ∧ j = j₁)) := by
-  sorry
+  obtain ⟨he, hn⟩ := h
+  induction j generalizing T with
+  | zero =>
+    -- app T U is already weak-head normal; T converges to itself, not a λ
+    cases he with
+    | refl =>
+      obtain ⟨hnT, hT_not_lam⟩ := whNormal_app_inv hn
+      refine ⟨0, T, Nat.le_refl _, ⟨.refl, hnT⟩, .inr ⟨?_, rfl, rfl⟩⟩
+      intro A B heq; exact hT_not_lam A B heq
+  | succ j ih =>
+    cases he with
+    | step hs he' =>
+      cases hs with
+      | beta =>
+        -- T = lam A B fires immediately: j₁ = 0
+        rename_i A B
+        refine ⟨0, .lam A B, Nat.zero_le _,
+          ⟨.refl, whNormal_of_value (.lam A B)⟩, .inl ⟨A, B, rfl, j, by omega, he', hn⟩⟩
+      | head u hs' =>
+        -- T ↦ T'; recurse on the head, prepend the step
+        rename_i T'
+        obtain ⟨j₁, w, hle, ⟨heT', hnw⟩, hcase⟩ := ih he'
+        refine ⟨j₁ + 1, w, by omega, ⟨.step hs' heT', hnw⟩, ?_⟩
+        rcases hcase with ⟨A, B, hwlam, j₂, hjeq, hconv⟩ | ⟨hnotlam, hveq, hjeq⟩
+        · exact .inl ⟨A, B, hwlam, j₂, by omega, hconv⟩
+        · exact .inr ⟨hnotlam, hveq, by omega⟩
 
 /-- Composition direction of head factorization: rebuild the evaluation
 of an application from its head's evaluation to a λ and the contractum's
@@ -315,7 +340,10 @@ convergence — with the exact arithmetic `j₁ + 1 + j₂`. -/
 theorem converges_app_beta {j₁ j₂ : Nat} {T A B U v : Term}
     (hT : Evals j₁ T (.lam A B)) (hv : Converges j₂ (B.subst1 U) v) :
     Converges (j₁ + 1 + j₂) (.app T U) v := by
-  sorry
+  refine ⟨?_, hv.2⟩
+  have step1 : Evals j₁ (.app T U) (.app (.lam A B) U) := hT.appL U
+  have step2 : Evals (j₁ + 1) (.app T U) (B.subst1 U) := step1.tail .beta
+  exact step2.trans hv.1
 
 /-! ## Closedness
 
