@@ -332,21 +332,19 @@ unrelated to `k`, which is why the hypothesis must be ∀-quantified
 (doc §4). -/
 theorem mem_of_beta_all {k : Nat} {s s' T : Term}
     (hs : Beta s s') (h : ∀ k', Mem k' s' T) : Mem k s T := by
-  -- UNPROVEN: doc §4's proof of Lemma 4.5 has a quantifier gap at the
-  -- tier's (t1) component. `mem_of_beta_all_of_tier` above is the whole
-  -- doc proof, kernel-checked, conditional on exactly the residual
-  -- `TierTransport`; the doc's justification for that residual ("[c]β′ ∈
-  -- ⟦[c]b⟧ at every index, from MATCH at every index") needs `Good i a c`
-  -- at every `i`, but the tier supplies it only at `i ≤ j₁` (goodness is
-  -- downward-closed only). Counterexample attempts against the statement
-  -- itself fail systematically (divergent arguments are good at every
-  -- depth, forcing ∀-index tier facts; goodness's self-membership
-  -- component caps exactly compensate member-side padding), so the
-  -- statement is conjectured true — but a proof needs an argument beyond
-  -- the doc's. See the commit message for the full analysis, and note
-  -- the FT's only planned use site (`sound_app_le`, doc §6 step (d)) can
-  -- be closed without 4.5: `U ∈ ⟦U⟧ᵢ ⊆ ⟦S⟧ᵢ = ⟦S′⟧ᵢ = ⟦A′⟧ᵢ` via IH(1),
-  -- the unprimed inclusion, and 4.4 along the bound chain (c).
+  -- UNPROVABLE — the statement is FALSE. See
+  -- `Pss.Semantic.Cx45.mem_of_beta_all_refuted` in
+  -- `Pss/Semantic/ConversionCounterexample.lean`: a kernel-checked
+  -- closed-term countermodel (`k = 4`, `s = λy≤c.y(⊤)`,
+  -- `s′ = λy≤c.I(I(y(⊤)))`, `T = λy≤c.⊤`, `c := λy≤K⊤.y(⊤)(⊤)`).
+  -- The residual `gap` below this sorry is exactly the false step
+  -- (`Cx45.tierTransport_false`); `mem_of_beta_all_of_tier` above —
+  -- the rest of the doc §4 proof — is kernel-checked but now vacuous
+  -- (its hypothesis is false). The doc's justification for the residual
+  -- ("[c]β′ ∈ ⟦[c]b⟧ at every index, from MATCH at every index") needed
+  -- `Good i a c` at every `i`, while tiers supply it only at `i ≤ j₁`;
+  -- the countermodel realizes the gap. This sorry is permanent until
+  -- the orchestrator retires the statement.
   exact mem_of_beta_all_of_tier (fun j₁ α' β' a b q c hq hAll hc => by
     sorry) hs h
 
