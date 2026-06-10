@@ -90,6 +90,23 @@ theorem mem_whStep_elim {k : Nat} {s s₁ T : Term}
   rw [this] at hmatch
   exact hmatch
 
+/-- Convergence of the type is invariant under a weak-head step: a step
+`T ↦ T'` neither creates nor destroys a weak-head normal form. Forward:
+a `Converges 0 T w` is impossible (`T` would be whnf with a step), so the
+step is peeled by `whStep_inv`; backward: `of_whStep` prepends it. -/
+private theorem convergesTo_whStep_iff {T T' w : Term} (hT : WHStep T T') :
+    ConvergesTo T w ↔ ConvergesTo T' w := by
+  constructor
+  · rintro ⟨j, hconv⟩
+    cases j with
+    | zero =>
+      obtain ⟨he, hn⟩ := hconv
+      cases he
+      exact absurd hT (hn T')
+    | succ j₀ => exact ⟨j₀, Converges.whStep_inv hT hconv⟩
+  · rintro ⟨j, hconv⟩
+    exact ⟨j + 1, Converges.of_whStep hT hconv⟩
+
 /-- **Lemma 4.3 (type evaluation invariance)**: the clause inspects only
 the type's weak-head value, so a weak-head step of the type changes
 nothing — at the *same* index. Presupposes the step exists (doc: uses
@@ -97,12 +114,19 @@ establish the type's convergence first, typically from (m2) of a
 converging member). -/
 theorem mem_type_whStep {k : Nat} {s T T' : Term}
     (hT : WHStep T T') : Mem k s T ↔ Mem k s T' := by
-  sorry
+  rw [Mem_unfold, Mem_unfold]
+  constructor <;> intro h j v hj hconv
+  · obtain ⟨hv, w, hTw, hvw, hmatch⟩ := h j v hj hconv
+    exact ⟨hv, w, (convergesTo_whStep_iff hT).mp hTw, hvw, hmatch⟩
+  · obtain ⟨hv, w, hTw, hvw, hmatch⟩ := h j v hj hconv
+    exact ⟨hv, w, (convergesTo_whStep_iff hT).mpr hTw, hvw, hmatch⟩
 
 /-- **Lemma 4.3**, iterated: `⟦T⟧ₖ = ⟦T′⟧ₖ` along any weak-head
 evaluation of the type. -/
 theorem mem_type_evals {k j : Nat} {s T T' : Term}
     (hT : Evals j T T') : Mem k s T ↔ Mem k s T' := by
-  sorry
+  induction hT with
+  | refl => exact Iff.rfl
+  | step hs _ ih => exact (mem_type_whStep (s := s) (k := k) hs).trans ih
 
 end Pss.Semantic
