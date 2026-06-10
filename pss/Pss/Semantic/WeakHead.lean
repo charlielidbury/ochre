@@ -51,23 +51,41 @@ def Diverges (t : Term) : Prop := ∀ w, ¬ ConvergesTo t w
 
 /-- `↦ ⊆ ⟶`: a weak-head step is a full-reduction step (doc §1). -/
 theorem WHStep.toStep {t t' : Term} (h : WHStep t t') : Step t t' := by
-  sorry
+  induction h with
+  | beta => exact .eapp
+  | head u _ ih => exact ih.appL u
 
 /-- `↦` is deterministic (doc §1). -/
 theorem WHStep.deterministic {t t₁ t₂ : Term}
     (h₁ : WHStep t t₁) (h₂ : WHStep t t₂) : t₁ = t₂ := by
-  sorry
+  induction h₁ generalizing t₂ with
+  | beta =>
+    cases h₂ with
+    | beta => rfl
+    | head u h => cases h
+  | head u h ih =>
+    cases h₂ with
+    | beta => cases h
+    | head u h₂ => rw [ih h₂]
 
 /-- Values are weak-head normal (doc §1: `Top` and λs are answers). -/
 theorem whNormal_of_value {v : Term} (h : Value v) : WHNormal v := by
-  sorry
+  intro v' hs
+  cases h with
+  | top => cases hs
+  | lam t u => cases hs
 
 /-- Inverting weak-head normality at an application: the head is
 weak-head normal and is not a λ (else `WHStep.head` / `WHStep.beta`
 would fire). The engine of Fact 1.1's induction. -/
 theorem whNormal_app_inv {t u : Term} (h : WHNormal (.app t u)) :
     WHNormal t ∧ ∀ a b, t ≠ .lam a b := by
-  sorry
+  refine ⟨?_, ?_⟩
+  · intro t' hs
+    exact h (.app t' u) (.head u hs)
+  · intro a b heq
+    subst heq
+    exact h (b.subst1 u) .beta
 
 /-! ## Step arithmetic for `↦ʲ` and `⇓ʲ`
 
@@ -79,52 +97,91 @@ helpers fix the arithmetic once.
 /-- Composition of exact-step evaluations. -/
 theorem Evals.trans {j₁ j₂ : Nat} {t u v : Term}
     (h₁ : Evals j₁ t u) (h₂ : Evals j₂ u v) : Evals (j₁ + j₂) t v := by
-  sorry
+  induction h₁ with
+  | refl => simpa using h₂
+  | step hs _ ih =>
+    rename_i j _ _ _ _
+    have := Evals.step hs (ih h₂)
+    simpa [Nat.add_right_comm, Nat.add_assoc] using this
 
 /-- Extend an evaluation by one step at the end. -/
 theorem Evals.tail {j : Nat} {t u v : Term}
-    (h : Evals j t u) (hs : WHStep u v) : Evals (j + 1) t v := by
-  sorry
+    (h : Evals j t u) (hs : WHStep u v) : Evals (j + 1) t v :=
+  h.trans (.step hs .refl)
 
 /-- Decomposition of an evaluation at an additive split of its length. -/
 theorem Evals.add_inv {j₁ j₂ : Nat} {t v : Term}
     (h : Evals (j₁ + j₂) t v) : ∃ u, Evals j₁ t u ∧ Evals j₂ u v := by
-  sorry
+  induction j₁ generalizing t with
+  | zero => exact ⟨t, .refl, by simpa using h⟩
+  | succ j₁ ih =>
+    rw [Nat.succ_add] at h
+    cases h with
+    | step hs h' =>
+      obtain ⟨u, h1, h2⟩ := ih h'
+      exact ⟨u, .step hs h1, h2⟩
 
 /-- Evaluation of the same length is deterministic. -/
 theorem Evals.deterministic {j : Nat} {t u₁ u₂ : Term}
     (h₁ : Evals j t u₁) (h₂ : Evals j t u₂) : u₁ = u₂ := by
-  sorry
+  induction h₁ with
+  | refl => cases h₂; rfl
+  | step hs _ ih =>
+    cases h₂ with
+    | step hs₂ h₂' =>
+      rw [hs.deterministic hs₂] at *
+      exact ih h₂'
 
 /-- `↦ʲ ⊆ ⟶*` (each weak-head step is a full step). -/
 theorem Evals.toSteps {j : Nat} {t u : Term} (h : Evals j t u) :
     Steps t u := by
-  sorry
+  induction h with
+  | refl => exact .refl
+  | step hs _ ih => exact .head hs.toStep ih
 
 /-- Head closure lifts through exact-step evaluation:
 `t ↦ʲ t' ⟹ t(u) ↦ʲ t'(u)`. -/
 theorem Evals.appL {j : Nat} {t t' : Term} (u : Term)
     (h : Evals j t t') : Evals j (.app t u) (.app t' u) := by
-  sorry
+  induction h with
+  | refl => exact .refl
+  | step hs _ ih => exact .step (.head u hs) ih
 
 /-- Convergence extends backwards along a weak-head step
 (one half of the engine of doc Lemma 4.2). -/
 theorem Converges.of_whStep {j : Nat} {t t' w : Term}
-    (hs : WHStep t t') (h : Converges j t' w) : Converges (j + 1) t w := by
-  sorry
+    (hs : WHStep t t') (h : Converges j t' w) : Converges (j + 1) t w :=
+  ⟨.step hs h.1, h.2⟩
 
 /-- Convergence factors forwards through a weak-head step, by determinism
 (the other half of the engine of doc Lemma 4.2). -/
 theorem Converges.whStep_inv {j : Nat} {t t' w : Term}
     (hs : WHStep t t') (h : Converges (j + 1) t w) : Converges j t' w := by
-  sorry
+  obtain ⟨he, hn⟩ := h
+  cases he with
+  | step hs' he' =>
+    rw [hs.deterministic hs'] at *
+    exact ⟨he', hn⟩
 
 /-- Convergence is unique, in both the step count and the result
 (doc §1: `↦` is deterministic). -/
 theorem Converges.deterministic {j₁ j₂ : Nat} {t w₁ w₂ : Term}
     (h₁ : Converges j₁ t w₁) (h₂ : Converges j₂ t w₂) :
     j₁ = j₂ ∧ w₁ = w₂ := by
-  sorry
+  obtain ⟨he₁, hn₁⟩ := h₁
+  obtain ⟨he₂, hn₂⟩ := h₂
+  induction he₁ generalizing j₂ with
+  | refl =>
+    cases he₂ with
+    | refl => exact ⟨rfl, rfl⟩
+    | step hs₂ _ => exact absurd hs₂ (hn₁ _)
+  | step hs₁ he₁' ih =>
+    cases he₂ with
+    | refl => exact absurd hs₁ (hn₂ _)
+    | step hs₂ he₂' =>
+      rw [hs₁.deterministic hs₂] at *
+      obtain ⟨hj, hw⟩ := ih hn₁ he₂'
+      exact ⟨by omega, hw⟩
 
 /-! ## Spines
 
