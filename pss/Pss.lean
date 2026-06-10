@@ -14,6 +14,9 @@ import Pss.Embedding.Translation
 import Pss.AlgWeakening
 import Pss.Transitivity
 import Pss.Confluence
+import Pss.Weakening
+import Pss.Substitution
+import Pss.Safety
 
 /-!
 # Pure Subtype Systems, mechanized
