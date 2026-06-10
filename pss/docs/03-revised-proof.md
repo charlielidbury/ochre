@@ -194,7 +194,11 @@ Sanity checks against the paper's examples: `3 ≤ Nat` (§3.5) — Church `3` a
 
 ## 9. Mechanization notes
 
-Target: Lean 4, extending the existing development under `pss/` (no mathlib). What exists and what to build:
+Target: Lean 4, extending the existing development under `pss/` (no mathlib).
+
+> **File discipline (hard rule).** Every file you create goes under `pss/Pss/Semantic/` — nothing anywhere else, and **no existing file is modified** (the lakefile glob builds everything under `Pss/` automatically, so your files compile without being wired into `Pss.lean`; the maintainer adds root imports at merge). Import only `Pss.Syntax`, `Pss.Star`, `Pss.Reduction`, and (for rule-naming conventions and statement-level comparisons only, not its metatheory) `Pss.Declarative`. Do not import or read `Pss/Induction.lean`, `Pss/Weakening.lean`, `Pss/Substitution.lean`, `Pss/Safety.lean`, `Pss/AlgWeakening.lean`, `Pss/Transitivity.lean`, `Pss/Examples.lean`, `Pss/Universes.lean`, or `Pss/SimpleARS.lean` — they are metatheory for a different route and will only burn your attention; the single exception is `Pss/Confluence.lean`, which you may *read* as a Takahashi parallel-reduction template (delete the guard machinery for plain β).
+
+What exists and what to build:
 
 **Already in the repo** (reuse, do not redefine): `Pss.Term` syntax with the σ-calculus substitution library (`Pss/Syntax.lean` — `rename`/`subst`/`subst1`, composition lemmas, `shift_subst1`); full reduction `Pss.Step` and `Steps` (`Pss/Reduction.lean` — `Step.Compat` gives the per-constructor induction principle); `Star`/`Sym` closures (`Pss/Star.lean`). The Figure-1 judgments in `Pss/Declarative.lean` are the *uninstrumented* system — do **not** modify them.
 
@@ -213,7 +217,7 @@ Target: Lean 4, extending the existing development under `pss/` (no mathlib). Wh
 - W-APP's step-accounting (`j = j₁+1+j₂` paying for tier depth `k−j₁−1`) is exact; off-by-ones here are the likeliest mechanical bug. Prove the head-factorization of `⇓` through application as a standalone lemma first.
 - Closedness: the model is on closed terms; `γ` ranges over closing substitutions (telescope discipline: `γtᵢ` closed). Reuse `Term.ClosedUnder`; expect a small lemma kit relating `subst`, closedness, and `γ[x↦c]`.
 
-**Statement-fidelity rules** (same as the rest of `pss/`): no `sorry`, no `axiom`; anything unfinished becomes a `Prop` in `Pss.Statements` with a status docstring; Conjectures 5.1/6.2 of the paper remain untouched statements; the deliverables are Theorem 7.1, Corollaries 7.2–7.4, and the fundamental theorem 6.2, in a new file group (suggested: `Pss/Semantic/WeakHead.lean`, `Pss/Semantic/BetaTheory.lean`, `Pss/Semantic/Instrumented.lean`, `Pss/Semantic/Model.lean`, `Pss/Semantic/Fundamental.lean`, `Pss/Semantic/Safety.lean`).
+**Statement-fidelity rules** (same as the rest of `pss/`): no `sorry`, no `axiom`; anything unfinished becomes a `Prop` in `Pss.Statements` with a status docstring; Conjectures 5.1/6.2 of the paper remain untouched statements; the deliverables are Theorem 7.1, Corollaries 7.2–7.4, and the fundamental theorem 6.2, all under `Pss/Semantic/` per the file discipline above (suggested split: `Pss/Semantic/WeakHead.lean`, `Pss/Semantic/BetaTheory.lean`, `Pss/Semantic/Instrumented.lean`, `Pss/Semantic/Model.lean`, `Pss/Semantic/Fundamental.lean`, `Pss/Semantic/Safety.lean`).
 
 ---
 
