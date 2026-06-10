@@ -124,6 +124,33 @@ theorem sound_app_le {Γ : Ctx} {t t' u u' s s' : Term}
     (hi₃ : SemWf Γ t' ∧ SemWf Γ (.lam s' .top) ∧ SemLe Γ t' (.lam s' .top))
     (hi₄ : SemWf Γ u' ∧ SemWf Γ s' ∧ SemLe Γ u' s') :
     SemLe Γ (.app t u) (.app t' u') := by
+  /- IMPLEMENTER WALL REPORT (sem/impl-rulesapp). The doc's §6 DS-APP proof
+  has a quantifier-budget gap for nonempty `Γ`; it does not transcribe.
+
+  Root cause: Definition 3.2 binds the index and `γ ∈ ⟦Γ⟧ₖ` *jointly*; with
+  `γ` fixed by the conclusion, premises are usable only at indices ≤ k
+  (`semCtx_antitone` is downward-only). The doc's preamble claim "at ∀-index
+  via the ∀ in Definition 3.2" is false for fixed `γ`, and DS-APP — alone
+  among the cases — consumes premises above `k`:
+  · (a′) forcing `w_{T'}` λ-shaped needs `hi₃` above `T'`'s own evaluation
+    length `j₁'` (type side, unbudgeted; may exceed `k`);
+  · (b)→(e)→(g): the goal's elementwise obligation at a member `σ ⇓ʲ v`,
+    `j < k`, is `Match (k−j) v w''`, which needs the function-pair tier (t2)
+    at depth `j' = k`, i.e. `Match (k+1) w_T w_{T'}`, i.e. `Mem (k+j₁+1) T T'`
+    — over budget by `j₁+1 ≥ 1` even when `j₁ = 0`;
+  · (d) needs `Mem k' U' S'` at all `k'` for 4.5's ∀-index hypothesis —
+    available only for `k' ≤ k`.
+  The deficit is irreducible: `σ`'s steps `j` and the type side's steps
+  `j₁+1+j₂'` are independent, so the W-APP diagonal accounting
+  (`j = j₁+1+j₂` pays for the tier descent — see `sound_wapp` above, which
+  is proven, entirely within budget) is unavailable; composing through σ's
+  own MATCH, through `mem_whStep_intro` index-raising (founders on needing
+  the self-MATCH `Match k w_T w_T`, underivable above `k−j₁`), or through a
+  budgeted 4.5 variant all reproduce the same `j₁+1+j₂'` shortfall.
+  Whether the *statement* is true is open: an extensive countermodel search
+  (capped junk-tower substitutions realising the off-by-one at the model
+  level) found every candidate refuted by a different hypothesis — see the
+  commit message and the implementer's report for the full analysis. -/
   sorry
 
 /-- **DS-APP, ≡-form** (doc §6): conversion by congruence, wf of both
