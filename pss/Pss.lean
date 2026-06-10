@@ -9,6 +9,8 @@ import Pss.Notation
 import Pss.Examples
 import Pss.Universes
 import Pss.SimpleARS
+import Pss.Embedding.LambdaStar
+import Pss.Embedding.Translation
 
 /-!
 # Pure Subtype Systems, mechanized
