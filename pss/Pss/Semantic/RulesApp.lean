@@ -108,6 +108,186 @@ theorem sound_wapp {Γ : Ctx} {t u s : Term}
     obtain ⟨A, B, heq, -⟩ := hlam
     exact absurd heq (hnotlam A B)
 
+/-! ## The definable-observer kit (research phase, sem/impl-rulesapp)
+
+Private, fully proven. `Ω := (λx≤⊤.x x)(λx≤⊤.x x)` weak-head loops, so
+`λx≤A.Ω` is a *universal probe* for λ-shaped types: it matches every λ-value
+with bound `=β A` at **every** index (its tiers are vacuous by divergence),
+and `⊤` probes exactly the ⊤-valued types. Pushed through the **inclusion
+halves** of the DS-APP hypotheses — which fire at *member* steps, not type
+steps — these probes extract the primed head's convergence, λ-shape, and the
+full bound chain `A =β A′ =β S′` at index 1, with **no budget condition on
+`j₁`/`j₁′`** (`primed_head` below). This closes the (a′) sub-gap of the wall
+report and reduces the remaining gap to the deep tier content alone. -/
+
+/-- The looping combinator's half: `λx≤⊤. x x`. -/
+private def OmegaArg : Term := .lam .top (.app (.var 0) (.var 0))
+
+/-- `Ω := (λx≤⊤. x x)(λx≤⊤. x x)` (weak-head loops in one step). -/
+private def Omega : Term := .app OmegaArg OmegaArg
+
+/-- `Ω` is closed: substitution fixes it (definitional). -/
+private theorem omega_subst (σ : Nat → Term) : Omega.subst σ = Omega := rfl
+
+private theorem omega_whStep : WHStep Omega Omega := WHStep.beta
+
+private theorem evals_omega {j : Nat} {u : Term} (h : Evals j Omega u) :
+    u = Omega := by
+  induction j generalizing u with
+  | zero => cases h; rfl
+  | succ j ih =>
+    cases h with
+    | step hs h' =>
+      rw [hs.deterministic omega_whStep] at h'
+      exact ih h'
+
+/-- `Ω ⇑`: no weak-head normal form. -/
+private theorem omega_diverges : Diverges Omega := by
+  rintro w ⟨j, he, hn⟩
+  rw [evals_omega he] at hn
+  exact hn Omega omega_whStep
+
+/-- A term with no weak-head normal form is in every extension. -/
+private theorem mem_of_diverges {k : Nat} {s T : Term} (h : Diverges s) :
+    Mem k s T := by
+  rw [Mem_unfold]
+  intro j v _ hc
+  exact absurd ⟨j, hc⟩ (h v)
+
+/-- Members of `⟦Ω⟧` are divergent, hence members of everything. -/
+private theorem mem_of_mem_omega {k : Nat} {s T : Term}
+    (h : Mem k s Omega) : Mem k s T := by
+  rw [Mem_unfold] at h ⊢
+  intro j v hj hc
+  obtain ⟨-, w, hw, -, -⟩ := h j v hj hc
+  exact absurd hw (omega_diverges w)
+
+/-- **Probe introduction**: `λx≤A.Ω ∈ ⟦X⟧ₖ` for every `k`, as soon as `X`
+converges to `⊤` or to a λ whose bound is `=β A`. The tiers are vacuous:
+`Ω[c] = Ω` diverges. -/
+private theorem lamOmega_mem_intro {k : Nat} {A X w : Term}
+    (hX : ConvergesTo X w) (hval : Term.Value w)
+    (hshape : w = .top ∨ ∃ a b, w = .lam a b ∧ Beta A a) :
+    Mem k (.lam A Omega) X := by
+  rw [Mem_unfold]
+  intro j v hj hc
+  obtain ⟨-, rfl⟩ := Converges.deterministic hc
+    ⟨.refl, whNormal_of_value (.lam _ _)⟩
+  refine ⟨.lam _ _, w, hX, hval, ?_⟩
+  rw [Match_unfold]
+  rcases hshape with rfl | ⟨a, b, rfl, hba⟩
+  · exact .inl rfl
+  · refine .inr ⟨a, b, A, Omega, rfl, rfl, hba, ?_⟩
+    intro j' c _ _
+    have hΩ : Omega.subst1 c = Omega := omega_subst _
+    rw [hΩ]
+    exact ⟨mem_of_diverges omega_diverges,
+           fun s' hs' => mem_of_mem_omega hs'⟩
+
+/-- **Probe elimination**: a membership of `λx≤A.Ω` at any positive index
+yields the type's weak-head value together with its shape/bound link. -/
+private theorem lamOmega_mem_elim {k : Nat} {A X : Term} (hk : 1 ≤ k)
+    (h : Mem k (.lam A Omega) X) :
+    ∃ w, ConvergesTo X w ∧ Term.Value w ∧
+      (w = .top ∨ ∃ a b, w = .lam a b ∧ Beta A a) := by
+  rw [Mem_unfold] at h
+  obtain ⟨-, w, hw, hval, hmatch⟩ :=
+    h 0 (.lam A Omega) hk ⟨.refl, whNormal_of_value (.lam _ _)⟩
+  refine ⟨w, hw, hval, ?_⟩
+  rw [Match_unfold] at hmatch
+  rcases hmatch with htop | ⟨a, b, α, β, hweq, hveq, hβ, -⟩
+  · exact .inl htop
+  · injection hveq with h1 _
+    exact .inr ⟨a, b, hweq, h1 ▸ hβ⟩
+
+/-- **⊤-probe introduction**: `⊤ ∈ ⟦X⟧ₖ` whenever `X ⇓ ⊤`. -/
+private theorem top_mem_intro {k : Nat} {X : Term}
+    (hX : ConvergesTo X .top) : Mem k .top X := by
+  rw [Mem_unfold]
+  intro j v hj hc
+  obtain ⟨-, rfl⟩ := Converges.deterministic hc ⟨.refl, whNormal_of_value .top⟩
+  refine ⟨.top, .top, hX, .top, ?_⟩
+  rw [Match_unfold]
+  exact .inl rfl
+
+/-- **⊤-probe elimination**: `⊤`'s membership at a positive index forces the
+type's weak-head value to be `⊤` (the member side of a λ-MATCH must be a λ). -/
+private theorem top_mem_elim {k : Nat} {X : Term} (hk : 1 ≤ k)
+    (h : Mem k .top X) : ∃ w, ConvergesTo X w ∧ w = .top := by
+  rw [Mem_unfold] at h
+  obtain ⟨-, w, hw, -, hmatch⟩ := h 0 .top hk ⟨.refl, whNormal_of_value .top⟩
+  refine ⟨w, hw, ?_⟩
+  rw [Match_unfold] at hmatch
+  rcases hmatch with htop | ⟨a, b, α, β, -, hveq, -, -⟩
+  · exact htop
+  · exact Term.noConfusion hveq
+
+/-- **(P1), budget-free primed head** (research phase): under DS-APP's
+hypotheses, if the unprimed head converges to `λA.B` — at *any* evaluation
+length `j₁`, in or out of budget — then the primed head converges to a value
+`λA′.B′` with the full bound chain `Beta A S`, `Beta A A′`, `Beta A′ S′`.
+
+Proof = the observer argument: `λx≤A.Ω ∈ ⟦T⟧₁` (probe introduction on `T`'s
+own convergence, which is a type-side, unbudgeted fact); the inclusion halves
+of `h₁`/`hle₁`/`hle₃` at index `1 ≤ k` transport the probe; elimination reads
+off shape and bounds. `w_{T′} = ⊤` is refuted by transporting the ⊤-probe
+into `⟦λx≤S′.⊤⟧₁`. This discharges the wall report's (a′) and the chain (c)
+with no appeal to memberships above the budget. -/
+private theorem primed_head {Γ : Ctx} {t t' s s' : Term} {k j₁ : Nat}
+    {γ : Nat → Term} {A B : Term}
+    (h₁ : SemLe Γ t t') (hle₁ : SemLe Γ t (.lam s .top))
+    (hle₃ : SemLe Γ t' (.lam s' .top))
+    (hγ : SemCtx k Γ γ) (hk : 1 ≤ k)
+    (hT : Converges j₁ (t.subst γ) (.lam A B)) :
+    Beta A (s.subst γ) ∧
+    ∃ A' B', ConvergesTo (t'.subst γ) (.lam A' B') ∧
+      Beta A A' ∧ Beta A' (s'.subst γ) := by
+  have hγ1 : SemCtx 1 Γ γ := semCtx_antitone hk hγ
+  -- The probe is in ⟦T⟧₁ by T's own convergence (type side, unbudgeted).
+  have hprobeT : Mem 1 (.lam A Omega) (t.subst γ) :=
+    lamOmega_mem_intro ⟨j₁, hT⟩ (.lam A B) (.inr ⟨A, B, rfl, Beta.refl A⟩)
+  -- (c) unprimed link: transport the probe into ⟦λx≤S.⊤⟧₁ and eliminate.
+  have hAS : Beta A (s.subst γ) := by
+    have hmem : Mem 1 (.lam A Omega) ((Term.lam s .top).subst γ) :=
+      (hle₁ 1 γ hγ1).2 _ hprobeT
+    obtain ⟨w, hw, -, hshape⟩ := lamOmega_mem_elim (Nat.le_refl 1) hmem
+    obtain ⟨-, rfl⟩ := Converges.deterministic hw.choose_spec
+      ⟨.refl, whNormal_of_value (.lam _ _)⟩
+    rcases hshape with htop | ⟨a, b, heq, hba⟩
+    · exact Term.noConfusion htop
+    · injection heq with ha _
+      exact ha ▸ hba
+  -- Transport the probe into ⟦T′⟧₁: T′ converges to a value.
+  have hprobeT' : Mem 1 (.lam A Omega) (t'.subst γ) :=
+    (h₁ 1 γ hγ1).2 _ hprobeT
+  obtain ⟨w', hw', hval', hshape'⟩ := lamOmega_mem_elim (Nat.le_refl 1) hprobeT'
+  -- (c) primed link, for any probe bound β-convertible to A.
+  have hS' : ∀ {A₀ : Term}, Mem 1 (.lam A₀ Omega) (t'.subst γ) →
+      Beta A₀ (s'.subst γ) := by
+    intro A₀ hmem
+    have hmem' : Mem 1 (.lam A₀ Omega) ((Term.lam s' .top).subst γ) :=
+      (hle₃ 1 γ hγ1).2 _ hmem
+    obtain ⟨w, hw, -, hshape⟩ := lamOmega_mem_elim (Nat.le_refl 1) hmem'
+    obtain ⟨-, rfl⟩ := Converges.deterministic hw.choose_spec
+      ⟨.refl, whNormal_of_value (.lam _ _)⟩
+    rcases hshape with htop | ⟨a, b, heq, hba⟩
+    · exact Term.noConfusion htop
+    · injection heq with ha _
+      exact ha ▸ hba
+  rcases hshape' with rfl | ⟨a', b', rfl, hAa'⟩
+  · -- w′ = ⊤ is refuted by the ⊤-probe through hle₃'s inclusion.
+    exfalso
+    have htop : Mem 1 (Term.top) (t'.subst γ) := top_mem_intro hw'
+    have htop' : Mem 1 (Term.top) ((Term.lam s' .top).subst γ) :=
+      (hle₃ 1 γ hγ1).2 _ htop
+    obtain ⟨w, hw, hweq⟩ := top_mem_elim (Nat.le_refl 1) htop'
+    obtain ⟨-, rfl⟩ := Converges.deterministic hw.choose_spec
+      ⟨.refl, whNormal_of_value (.lam _ _)⟩
+    exact Term.noConfusion hweq
+  · -- w′ = λA′.B′ with Beta A A′; close the chain with Beta A′ S′.
+    have hAS' : Beta A (s'.subst γ) := hS' hprobeT'
+    exact ⟨hAS, a', b', hw', hAa', (Beta.symm hAa').trans hAS'⟩
+
 /-- **DS-APP, ≤-form** (doc §6, steps (a)–(g)): both applications
 weak-head factor (4.3), the function values MATCH at every index, `U` is
 ∀-good at `A′` via member conversion (4.5, ∀-index available) and the
@@ -124,33 +304,44 @@ theorem sound_app_le {Γ : Ctx} {t t' u u' s s' : Term}
     (hi₃ : SemWf Γ t' ∧ SemWf Γ (.lam s' .top) ∧ SemLe Γ t' (.lam s' .top))
     (hi₄ : SemWf Γ u' ∧ SemWf Γ s' ∧ SemLe Γ u' s') :
     SemLe Γ (.app t u) (.app t' u') := by
-  /- IMPLEMENTER WALL REPORT (sem/impl-rulesapp). The doc's §6 DS-APP proof
-  has a quantifier-budget gap for nonempty `Γ`; it does not transcribe.
+  /- IMPLEMENTER WALL REPORT (sem/impl-rulesapp), rev. 2 after the research
+  phase. The doc's §6 DS-APP proof has a quantifier-budget gap for nonempty
+  `Γ`: Definition 3.2 binds the index and `γ ∈ ⟦Γ⟧ₖ` jointly, antitonicity is
+  downward-only, and §6 instantiates premises at indices up to `k+j₁+1` —
+  the preamble's "at ∀-index via the ∀ in Definition 3.2" is false for the
+  fixed `γ`. Status of the doc's steps after this session:
 
-  Root cause: Definition 3.2 binds the index and `γ ∈ ⟦Γ⟧ₖ` *jointly*; with
-  `γ` fixed by the conclusion, premises are usable only at indices ≤ k
-  (`semCtx_antitone` is downward-only). The doc's preamble claim "at ∀-index
-  via the ∀ in Definition 3.2" is false for fixed `γ`, and DS-APP — alone
-  among the cases — consumes premises above `k`:
-  · (a′) forcing `w_{T'}` λ-shaped needs `hi₃` above `T'`'s own evaluation
-    length `j₁'` (type side, unbudgeted; may exceed `k`);
-  · (b)→(e)→(g): the goal's elementwise obligation at a member `σ ⇓ʲ v`,
-    `j < k`, is `Match (k−j) v w''`, which needs the function-pair tier (t2)
-    at depth `j' = k`, i.e. `Match (k+1) w_T w_{T'}`, i.e. `Mem (k+j₁+1) T T'`
-    — over budget by `j₁+1 ≥ 1` even when `j₁ = 0`;
-  · (d) needs `Mem k' U' S'` at all `k'` for 4.5's ∀-index hypothesis —
-    available only for `k' ≤ k`.
-  The deficit is irreducible: `σ`'s steps `j` and the type side's steps
-  `j₁+1+j₂'` are independent, so the W-APP diagonal accounting
-  (`j = j₁+1+j₂` pays for the tier descent — see `sound_wapp` above, which
-  is proven, entirely within budget) is unavailable; composing through σ's
-  own MATCH, through `mem_whStep_intro` index-raising (founders on needing
-  the self-MATCH `Match k w_T w_T`, underivable above `k−j₁`), or through a
-  budgeted 4.5 variant all reproduce the same `j₁+1+j₂'` shortfall.
-  Whether the *statement* is true is open: an extensive countermodel search
-  (capped junk-tower substitutions realising the off-by-one at the model
-  level) found every candidate refuted by a different hypothesis — see the
-  commit message and the implementer's report for the full analysis. -/
+  CLOSED IN BUDGET (kernel-checked above, no `j₁`/`j₂′` conditions):
+  · (a′) + chain (c): `primed_head` — the `λx≤A.Ω`/`⊤` probes pushed through
+    the INCLUSION halves (which fire at member steps, never type steps)
+    force `T′ ⇓ λA′.B′` and `S =β A =β A′ =β S′` at index 1.
+  · (d): needs no 4.5 — `U ∈ ⟦A′⟧ᵢ` follows from hi₂'s wf + inclusion halves
+    and `mem_beta_type` (4.4, now fully proven) along the chain (c).
+  · `[U]B′ ⇓ value` + shape/bound link: the same probes through the
+    function-pair tier (t2) at `j′ = 1` — needs only `j₁ ≤ k−2`.
+
+  THE RESIDUAL (the precise open core): the goal's deep tier content.
+  Elementwise at `σ ⇓ʲ v`, `j < k`, the goal `Match (k−j) v w″` composes σ's
+  own MATCH with pair facts on the contracta; every derivable pair fact caps
+  at tier depth `(k−j₁−1) − j₂′`, and `j` is independent of `j₁+1+j₂′`, so
+  fast members of slow types need depths the budget cannot reach. The same
+  self-MATCH wall recurs at every level of the descent (`Match m w w` above
+  `k − (steps of w's source)` is underivable). This is the same root cause
+  as Conversion.lean's `TierTransport` residual (4.5, doc §4 tier (t1)) —
+  one joint invariant would close both.
+
+  TRUTH: conjectured TRUE, open. The countermodel constraint system is
+  near-exhaustively closed: closed pairs die at ∀-good substitutions;
+  context-manufactured pairs (`x₂ ≤ x₁`) hand the conclusion over via
+  `Good`'s own inclusion components at full `k`; padding the heads
+  (`t := I^N t₀`) strips memberships but inclusions and the goal are
+  4.3-invariant; divergence cannot be capped (divergent bodies are good at
+  every bound, so caps require reachable defects, and evaluation cannot
+  distinguish capped towers from their ⊤-completions without sticking).
+  What is missing in both directions is a quantitative lemma linking
+  goodness depth, evaluation length, and value self-description — beyond
+  transcription of the doc. See the commit history of this file for the
+  full constraint-system analysis and the erratum draft for doc §6. -/
   sorry
 
 /-- **DS-APP, ≡-form** (doc §6): conversion by congruence, wf of both
