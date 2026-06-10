@@ -1,5 +1,22 @@
 # Suggestions
 
+## pss/ (branch pss-2) — Problem D2: what to try next, what not to
+
+`pss/docs/05-conservation-law-and-escape-routes.md` (2026-06-10) maps the
+full attack space for the one remaining `sorry` (`sound_app_le`, Problem D2):
+
+- **Do not re-budget the model.** The doc's §2 "conservation law" ledger
+  shows every uniform re-grading (lags, degrees, recursive/coinductive pair
+  relations, type-side budgets, syntactic tier domains, ~14 variants) fails
+  by exactly one index level, with the pin that kills each one named.
+- **Try first (hardest-first):** Escape A — *graded Howe's method*. The
+  single pivot: write the λ-case of the graded key lemma on paper, tracking
+  every consumption of the base relation (doc §3). 1–2 focused days decides
+  the program; if it survives, `sound_app_le` closes as a drop-in theorem.
+- **Try second:** Escape B — the γ-truncation/Top-completion reduction of
+  open-D2 to the proven ∅-case (doc §4); run the cheap definability
+  falsification before committing.
+
 ## Phase 2 — soundness proof (current)
 
 `Soundness.lean` is sorry-free. `Subtyping.lean` now contains
