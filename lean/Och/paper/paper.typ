@@ -576,8 +576,8 @@ $underline("Bool")$ is a standard Church-encoded boolean: the eliminator takes t
   gutter: 1.5em,
   [
     $
-      underline("DBool") & := "fix" B. space iota("self" lt.eq B). \
-      & lambda(P lt.eq B arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P "self" \
+      underline("DBool") & := "fix" "DBool". space iota("self" lt.eq "DBool"). \
+      & lambda(P lt.eq "DBool" arrow top). lambda(t lt.eq P space underline("true")). lambda(f lt.eq P space underline("false")). P "self" \
       & quad \
       & quad
     $
@@ -655,9 +655,9 @@ For natural numbers we use Scott encodings in which a natural is still it's own 
       underline("zero") & := lambda(P lt.eq top). lambda(z lt.eq top). lambda(s lt.eq top). z \
       underline("succ") & := lambda(n lt.eq top). lambda(P lt.eq top). lambda(z lt.eq top). \
                         & quad lambda(s lt.eq n arrow top). s space n \
-       underline("Nat") & := "fix"(N lt.eq top). iota("self" lt.eq N). \
-                        & quad lambda(P lt.eq N arrow top). lambda(z lt.eq P space underline("zero")). \
-                        & quad lambda(s lt.eq lambda(n lt.eq N). P space (underline("succ") space n)). \
+       underline("Nat") & := "fix"("Nat" lt.eq top). iota("self" lt.eq "Nat"). \
+                        & quad lambda(P lt.eq "Nat" arrow top). lambda(z lt.eq P space underline("zero")). \
+                        & quad lambda(s lt.eq lambda(n lt.eq "Nat"). P space (underline("succ") space n)). \
                         & quad P "self"
     $
   ],
@@ -695,7 +695,7 @@ Addition is defined with an explicit $"fix"$ since the Scott-style eliminator pr
   [
     ```agda
     add : Nat → Nat → Nat
-    add zero      m = m
+    add zero        m = m
     add (succ pred) m = succ (add pred m)
     ```
     #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
@@ -714,15 +714,15 @@ The overall structure --- case-split on the index, $bot$ for the empty case, $io
   gutter: 1.5em,
   [
     $
-      underline("Fin") & := "fix"(F lt.eq underline("Nat") arrow top). lambda(n lt.eq underline("Nat")). \
+      underline("Fin") & := "fix"("Fin" lt.eq underline("Nat") arrow top). lambda(n lt.eq underline("Nat")). \
                        & quad n space (lambda(\_ lt.eq underline("Nat")). top) space bot \
                        & quad (lambda("pred" lt.eq underline("Nat")). \
                        & quad quad iota("self" lt.eq underline("Nat")). \
                        & quad quad lambda(P lt.eq underline("Nat") arrow top). \
                        & quad quad lambda("fz" lt.eq P space underline("zero")). \
                        & quad quad lambda(
-                           "fs" lt.eq lambda(q lt.eq F space "pred"). \
-                                                                      & quad quad quad P space (underline("succ") space q)
+                           "fs" lt.eq lambda(q lt.eq "Fin" "pred"). \
+                                                                    & quad quad quad P space (underline("succ") space q)
                          ). \
                        & quad quad P space "self")
     $
@@ -748,11 +748,11 @@ Natural number literals inhabit $underline("Fin")$ by subsumption: $underline("z
     edge-stroke: 0.6pt,
     node((0, 0), $top$),
     node((1.2, 1), $underline("Nat")$),
-    node((0, 1.5), $underline("Fin") space n$),
+    node((0, 1.5), $underline("Fin") space m$),
     node((-1.5, 2.2), $underline("Fin") space 1$),
     node((-0.5, 3.2), $0$),
     node((0.5, 3.2), $1$),
-    node((1.5, 3.2), $n$),
+    node((1.5, 3.2), $m$),
     node((0.5, 4.2), $bot$),
     // Nat, Fin n → ⊤
     edge((1.2, 1), (0, 0), "->"),
@@ -776,7 +776,7 @@ Natural number literals inhabit $underline("Fin")$ by subsumption: $underline("z
     edge((0.5, 4.2), (0.5, 3.2), "->"),
     edge((0.5, 4.2), (1.5, 3.2), "->"),
   ),
-  caption: [Subtyping lattice for natural numbers and finite sets. Laid out such that subtypes are physically beneath their supertypes.],
+  caption: [Subtyping lattice for natural numbers and finite sets. Laid out such that subtypes are physically beneath their supertypes. $"m"$ is some natural $> 1$.],
 ) <nat-lattice>
 
 == Length-indexed arrays <array-encoding>
@@ -786,12 +786,12 @@ Natural number literals inhabit $underline("Fin")$ by subsumption: $underline("z
   gutter: 1.5em,
   [
     $
-      underline("Array") & := "fix"("Arr" lt.eq underline("Nat") arrow top arrow top). \
+      underline("Array") & := "fix"("Array" lt.eq underline("Nat") arrow top arrow top). \
                          & quad lambda(n lt.eq underline("Nat")). lambda(T lt.eq top). \
                          & quad n space (underline("Nat") arrow top) \
                          & quad quad underline("Unit") \
                          & quad quad (lambda("pred" lt.eq underline("Nat")). \
-                         & quad quad quad underline("Pair") space T space ("Arr" "pred" T))
+                         & quad quad quad underline("Pair") space T space ("Array" "pred" T))
     $
   ],
   [
@@ -883,17 +883,21 @@ $underline("appendArrays")$ concatenates two arrays by recursion on the first ar
       (hd , appendArrays tl arr₂)
     ```
     #text(size: 8pt, fill: luma(100))[(roughly equivalent Agda)]
+    \
+    \
+    \
+    \
 
     ```agda
-    appendArrays : ∀ {T n₁ n₂}
+    appendArrays' : ∀ {T n₁ n₂}
       → Array n₁ T → Array n₂ T
       → Array (add n₁ n₂) T
-    appendArrays {n₁} arr₁ arr₂ = (
+    appendArrays' {n₁} arr₁ arr₂ = (
       case n₁ of
         | zero   => λ arr₁' → arr₂
         | succ p => λ arr₁' →
           let (hd , tl) = arr₁' in
-          (hd , appendArrays tl arr₂)
+          (hd , appendArrays' tl arr₂)
     ) arr₁
     ```
     #text(size: 8pt, fill: luma(100))[(a more literal translation)]
@@ -1032,12 +1036,16 @@ $
    underline("bool") & := lambda t. lambda f. top \
    underline("true") & := lambda t. lambda f. t \
   underline("false") & := lambda t. lambda f. f \
-  underline("eater") & := "fix" e. lambda(b lt.eq underline("bool")). b top e
+  underline("eater") & := "fix" "eater". lambda(b lt.eq underline("bool")). b space top "eater"
 $
 
-$underline("eater")$ is a recursive function that consumes $underline("false")$ arguments until it hits a $underline("true")$, at which point it returns $top$. At each step, $"fix"$ unrolls via [E-Fix], and the boolean argument selects between $top$ (stop) and the self-reference $e$ (continue). E.g. $eval(underline("eater") space underline("true"), top)$ and similarly $eval(underline("eater") space underline("false") space underline("false") space underline("false") space underline("true"), top)$.
+$underline("eater")$ is a recursive function that consumes $underline("false")$ arguments until it hits a $underline("true")$, at which point it returns $top$. At each step, $"fix"$ unrolls via [E-Fix], and the boolean argument selects between $top$ (stop) and the self-reference $e$ (continue). E.g:
+$
+  eval(underline("eater") space underline("true"), top)\
+  eval(underline("eater") space underline("false") space underline("false") space underline("false") space underline("true"), top)
+$
 
-*Evaluation of* $underline("eater") space underline("false") space underline("true")$. We abbreviate $underline("eater")$'s unrolled form $lambda(b lt.eq underline("bool")). b top space underline("eater")$ as $underline("eater")^circle.small$ for readability.
+Example: evaluation of $underline("eater") space underline("false") space underline("true")$. We abbreviate $underline("eater")$'s unrolled form $lambda(b lt.eq underline("bool")). b top space underline("eater")$ as $underline("eater")^circle.small$ for readability.
 
 #let eu = $underline("eater")^circle.small$
 #block(inset: (y: 0.5em), stack(
