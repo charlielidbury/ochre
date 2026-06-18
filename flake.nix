@@ -60,8 +60,13 @@
           packages = with pkgs; [
             # Rust (nightly, matching the build)
             (fenix.packages.${system}.default.toolchain)
-            # Lean (pinned via lean4-nix to lean/lean-toolchain)
-            lean.lean-all
+            # Lean via elan: per-project toolchain auto-selection.
+            # elan reads each project's lean-toolchain (cwd-relative), so
+            # lean/ + pss/ get 4.16.0 and competitors/aeneas get 4.30.0-rc2
+            # without a single pinned version. Downloaded toolchains run via
+            # nix-ld (their only dynamic deps are glibc libs; gmp/uv are static).
+            # NOTE: `nix build .#och-lean` still uses the lean4-nix overlay above.
+            elan
             # Agda playground
             (agda.withPackages (p: [ p.standard-library ]))
             # OCaml scaffolding
