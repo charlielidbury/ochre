@@ -29,6 +29,24 @@ broadcast proof fn lemma_swap_preserves_multiset(s: Seq<i32>, i: usize, j: usize
     broadcast use vstd::seq_lib::to_multiset_contains;
 }
 
+/// A predicate that holds for every element of a sequence is preserved under
+/// any permutation (here: any sequence with the same multiset).
+proof fn lemma_multiset_preserves_forall(s1: Seq<i32>, s2: Seq<i32>, pred: spec_fn(i32) -> bool)
+    requires
+        s1.to_multiset() == s2.to_multiset(),
+        forall|i: int| 0 <= i < s1.len() ==> pred(s1[i])
+    ensures
+        forall|i: int| 0 <= i < s2.len() ==> pred(s2[i])
+{
+    broadcast use vstd::seq_lib::group_seq_properties;
+
+    assert forall|i: int| 0 <= i < s2.len() implies pred(s2[i]) by {
+        // s1 and s2's multisets are equal, so s2[i] is somewhere in s1,
+        // where pred holds for every element.
+        assert(s1.to_multiset().contains(s2[i]));
+    };
+}
+
 
 // HELPER FUNCTIONS
 
@@ -69,7 +87,7 @@ fn partition(arr: &mut [i32]) -> (pivot: usize)
     let mut hi = 0;
     while hi < arr.len() - 1
         invariant
-            lo <= hi < arr.len(), // "loop preseves {lo, hi} ordering and validity"
+            lo <= hi < arr.len(), // "loop preserves {lo, hi} ordering and validity"
             arr.len() == old(arr).len(), // "loop preserves arr len"
             perm(arr@, old(arr)@), // "loop only moves elements"
             forall|k: int| 0 <= k < lo ==> arr[k] < p, // "low region is lt pivot"
@@ -85,38 +103,14 @@ fn partition(arr: &mut [i32]) -> (pivot: usize)
             lo += 1;
         }
         hi += 1;
-        broadcast use lemma_swap_preserves_multiset; // needed for it to get the perm loop invariant
+        broadcast use lemma_swap_preserves_multiset; // needed for the perm loop invariant
     }
 
     // arr = [<p, ...] ++ [>=p, ...] ++ [p]
-    let ghost arr_pre = arr@;
     swap(arr, arr.len() - 1, lo);
-    assert(arr_pre.subrange(0, lo as int) == arr@.subrange(0, lo as int)); // elements before lo are uneffected
     // arr = [<p, ...] ++ [p] ++ [>=p, ...]
 
     lo
-}
-
-proof fn lemma_multiset_preserves_forall(s1: Seq<i32>, s2: Seq<i32>, pred: spec_fn(i32) -> bool)
-    requires
-        s1.to_multiset() == s2.to_multiset(),
-        forall|i: int| 0 <= i < s1.len() ==> pred(s1[i])
-    ensures
-        forall|i: int| 0 <= i < s2.len() ==> pred(s2[i])
-{
-    broadcast use vstd::seq_lib::group_seq_properties;
-
-    assert(s1.len() == s2.len()) by {
-        let ghost sm1 = s1.to_multiset().len();
-    };
-    assert forall|i: int| 0 <= i < s2.len() implies pred(s2[i]) by {
-        let ghost e = s2[i];
-
-        // s1 and s2's multisets are equal, so anything in one is in the other
-        assert(s1.to_multiset().contains(s2[i]));
-        // once solver realises s2[i] is somewhere in s1
-        // it notices that pred holds forall elements and closes the goal
-    };
 }
 
 fn quicksort(arr: &mut [i32])
@@ -136,11 +130,9 @@ fn quicksort(arr: &mut [i32])
 
     let (lo, p_hi) = arr.split_at_mut(p);
     broadcast use vstd::seq_lib::lemma_multiset_commutative;
-    assert(partitioned_arr == lo@ + p_hi@);
 
-    let (_p, hi) = p_hi.split_at_mut(1);
-    assert(partitioned_arr == lo@ + _p@ + hi@);
-
+    let (mid, hi) = p_hi.split_at_mut(1);
+    assert(partitioned_arr == lo@ + mid@ + hi@);
 
     // Sort each half
     let ghost pre_lo = lo@;
@@ -154,19 +146,7 @@ fn quicksort(arr: &mut [i32])
         lemma_multiset_preserves_forall(pre_hi, hi@, |e: i32| e >= pivot);
     }
 
-    assert((lo@ + _p@ + hi@).to_multiset() == final(arr)@.to_multiset());
-}
-
-fn test() {
-    let mut v1: Vec<i32> = vec![4, 3, 5, 1, 2];
-    let mut v2: Vec<i32> = vec![1, 2, 3, 4, 5];
-
-    // intermediate proof BS
-    broadcast use vstd::seq_lib::group_to_multiset_ensures;
-    assert(v1@ == Seq::<i32>::empty().push(4).push(3).push(5).push(1).push(2));
-    assert(v2@ == Seq::<i32>::empty().push(1).push(2).push(3).push(4).push(5));
-
-    assert(v1@.to_multiset() == v2@.to_multiset());
+    assert((lo@ + mid@ + hi@).to_multiset() == final(arr)@.to_multiset());
 }
 
 }
