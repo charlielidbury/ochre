@@ -36,6 +36,16 @@
         verusVersion = "0.2026.05.31.5dd6d83";
         verusRev = "5dd6d836101ac38ed3ebcfdff61a0e98e0c586fe";
         verusToolchain = "1.95.0"; # from upstream rust-toolchain.toml
+        # The Rust toolchain the verus-analyzer VS Code extension demands. It is
+        # INDEPENDENT of `verusToolchain`: the extension (0.3.264) hard-codes a
+        # bootstrap gate that greps `rustup toolchain list` for a `1.96.0-<triple>`
+        # line and refuses to start its language server otherwise — regardless of
+        # which toolchain the `verus` CLI itself was built against. We therefore
+        # provide this exact toolchain from nix and surface it through a rustup
+        # shim (see `mkRustupShim` / `devRustupShim`), so the IDE is satisfied with
+        # zero global `~/.rustup` state. Bump this to match the extension if it
+        # ever raises its required version.
+        analyzerToolchain = "1.96.0";
         z3Version = "4.12.5"; # the z3 version Verus pins (source/tools/get-z3.sh)
 
         verusSrc = pkgs.fetchFromGitHub {
@@ -50,6 +60,14 @@
         # (which is a rustc driver linking against librustc_driver).
         rustToolchain = pkgs.rust-bin.stable.${verusToolchain}.default.override {
           extensions = [ "rustc-dev" "rust-src" "llvm-tools-preview" ];
+        };
+
+        # The toolchain the verus-analyzer IDE uses for ordinary Rust analysis
+        # (sysroot, std go-to-def, proc-macro server). `rust-src` is added so the
+        # editor can navigate into the standard library. This is a real nix-built
+        # toolchain (patchelf'd for NixOS), so `cargo`/`rustc` work without nix-ld.
+        devToolchain = pkgs.rust-bin.stable.${analyzerToolchain}.default.override {
+          extensions = [ "rust-src" ];
         };
 
         # z3 built from source at the version Verus pins. Building from source
@@ -100,39 +118,55 @@
           doCheck = false;
         };
 
-        # A minimal `rustup` shim. vargo (and the prebuilt launcher) shell out
-        # to rustup to (a) discover the active toolchain and (b) run commands
-        # under it. We have no rustup; instead we point everything at the
-        # nix-provided `rustToolchain`. This implements exactly the three
-        # subcommands vargo/the launcher use:
+        # A minimal `rustup` shim, parameterised over the toolchain it should
+        # report and the nix-built rust package it should point at. Some tools
+        # (vargo, the verus launcher, the verus-analyzer extension) shell out to
+        # `rustup` to (a) discover/validate the active toolchain and (b) run
+        # commands under it. We have no real rustup on PATH inside nix; instead we
+        # point everything at a nix-provided toolchain. This implements exactly
+        # the subcommands those tools use:
         #   - rustup show active-toolchain   (vargo: validate channel)
-        #   - rustup toolchain list          (launcher)
+        #   - rustup toolchain list          (launcher; verus-analyzer GATE)
+        #   - rustup which <bin>             (rust-analyzer sysroot discovery)
         #   - rustup run <tc> -- <cmd...>    (vargo build + launcher)
-        rustupShim = pkgs.writeShellScriptBin "rustup" ''
-          tc="${verusToolchain}-${pkgs.stdenv.hostPlatform.rust.rustcTarget}"
+        # The `toolchain list` line is what the verus-analyzer 0.3.264 bootstrap
+        # greps for a `<ver>-<triple>` entry, so reporting `${analyzerToolchain}`
+        # here is what lets the IDE start with no global `~/.rustup` state.
+        mkRustupShim = { toolchain, rust }: pkgs.writeShellScriptBin "rustup" ''
+          tc="${toolchain}-${pkgs.stdenv.hostPlatform.rust.rustcTarget}"
           case "$1" in
             show)
               # `rustup show active-toolchain` -> "<tc> (overridden by ...)"
               echo "$tc (default)"
               ;;
             toolchain)
-              # `rustup toolchain list`
+              # `rustup toolchain list` -> one `<ver>-<triple>` line
               echo "$tc (default)"
+              ;;
+            which)
+              # `rustup which rustc` -> absolute path to the binary
+              shift
+              echo "${rust}/bin/$1"
               ;;
             run)
               shift            # drop 'run'
               shift            # drop toolchain name
               if [ "$1" = "--" ]; then shift; fi
-              export LD_LIBRARY_PATH="${rustToolchain}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-              export RUSTC="${rustToolchain}/bin/rustc"
+              export LD_LIBRARY_PATH="${rust}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+              export RUSTC="${rust}/bin/rustc"
               exec "$@"
               ;;
             *)
-              echo "verus-rustup-shim: unsupported subcommand: $@" >&2
+              echo "rustup-shim: unsupported subcommand: $@" >&2
               exit 1
               ;;
           esac
         '';
+
+        # The 1.95.0 shim baked into the `verus` build/launcher wrappers.
+        rustupShim = mkRustupShim { toolchain = verusToolchain; rust = rustToolchain; };
+        # The 1.96.0 shim the verus-analyzer IDE sees on PATH via direnv.
+        devRustupShim = mkRustupShim { toolchain = analyzerToolchain; rust = devToolchain; };
 
         verus = pkgs.stdenv.mkDerivation {
           pname = "verus";
@@ -274,7 +308,17 @@
         };
 
         devShells.default = pkgs.mkShell {
-          packages = [ verus ];
+          # `verus`        — the verifier CLI (its own 1.95.0 toolchain is baked in).
+          # `devToolchain` — real nix `cargo`/`rustc` (1.96.0) shadowing any global
+          #                  rustup proxies, so this project never uses a global rustc.
+          # `devRustupShim`— a `rustup` that reports 1.96.0, satisfying the
+          #                  verus-analyzer bootstrap gate with no global state.
+          # direnv (`use flake`) + the mkhl.direnv VS Code extension put all three on
+          # the extension host's PATH, so the IDE resolves everything to /nix/store.
+          packages = [ verus devToolchain devRustupShim ];
+
+          # Let rust-analyzer find the std sources for go-to-definition.
+          RUST_SRC_PATH = "${devToolchain}/lib/rustlib/src/rust/library";
         };
       });
 }

@@ -1,0 +1,14 @@
+{
+  // verus-analyzer 0.3.264 is a rust-analyzer fork that speaks proc-macro
+  // bridge API v4, but a current toolchain's proc-macro server (Rust 1.96.0)
+  // speaks v6 — so launching it fails with:
+  //   "proc-macro server's api version (6) is newer than rust-analyzer's (4)"
+  //
+  // This crate has no proc-macro dependencies (empty [dependencies]) and
+  // verus-analyzer parses `verus! { ... }` natively rather than via macro
+  // expansion, so the proc-macro server does nothing useful here. Disabling it
+  // removes the error with no loss of analysis. Revisit if real proc-macro
+  // deps are ever added (would need a toolchain whose srv API matches the
+  // extension).
+  "verus-analyzer.procMacro.enable": false
+}
