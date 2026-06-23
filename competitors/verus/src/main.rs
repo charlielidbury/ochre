@@ -9,19 +9,14 @@ fn partition(arr: &mut [i32]) -> usize {
             // hi is in the wrong place
             // move it into the low region
 
-            //arr.swap(hi, lo);
-            let tmp = arr[hi];
-            arr[hi] = arr[lo];
-            arr[lo] = tmp;
+            arr.swap(hi, lo);
 
             lo += 1;
         }
     }
 
     // arrr = [<p, ...] ++ [>=p, ...] ++ [p]
-    let pivot = arr[arr.len() - 1];
-    arr[arr.len() - 1] = arr[lo];
-    arr[lo] = pivot;
+    arr.swap(arr.len() - 1, lo);
     // arrr = [<p, ...] ++ [p] ++ [>=p, ...]
 
     lo
