@@ -1,0 +1,9 @@
+package competitor
+
+-- Anchors the package root for idris2-lsp: it reads this .ipkg from its
+-- working directory and sets `sourcedir` from it, instead of relying on
+-- VS Code handing the server a usable rootUri. `sourcedir = "."` means
+-- modules live directly in this folder, so `module Main` resolves to `Main`.
+sourcedir = "."
+main = Main
+modules = Main
