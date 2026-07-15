@@ -1,0 +1,6 @@
+(include_subdirs qualified)
+(rocq.theory
+ (name Mechanized_LLBC)
+ (theories stdpp Stdlib)
+ (rocqdoc_flags (:standard --lib-subtitles))
+ (package mechanized-llbc))

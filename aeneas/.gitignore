@@ -1,0 +1,3 @@
+_build
+.lia.cache
+src/*.aux
