@@ -215,6 +215,25 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
   | none => do
     obs.forM (auditObligation fuel [])
+    -- §6.2 for a value/Unit-returning body that mutates an argument borrow IN
+    -- PLACE (swapS, partScan): the back spec describes what the argument borrow's
+    -- payload becomes, and there are no issued result borrows — so the spec is
+    -- applied to NO holes and checked against the borrow's suspension tree
+    -- directly. (Without this, an in-place fn's back was unchecked at the callee
+    -- and only validated by the differential — the M20 finding.)
+    match (← get).selfBack with
+    | none => pure ()
+    | some backV => do
+      let spec := Val.nfV fuel (Val.rebuildSpine backV [])
+      match obs.head? with
+      | none => pure ()
+      | some ob =>
+        match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
+        | some payload => do
+          let tree ← resolveTree [] payload
+          if Val.convert fuel tree spec then pure ()
+          else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
+        | none => pure ()
     -- The return type was pinned at entry (§5.3 dependent types over consumed
     -- params); fall back to reading it here only if it was never pinned.
     let retTy ← match (← get).retTyVal with

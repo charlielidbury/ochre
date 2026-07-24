@@ -44,6 +44,8 @@ example : chk StdLemmas.le_add StdLemmas.le_add_ty = true := by native_decide
 example : chk StdLemmas.le_add_l StdLemmas.le_add_l_ty = true := by native_decide
 example : chk StdLemmas.le_add_succ StdLemmas.le_add_succ_ty = true := by native_decide
 example : chk StdLemmas.le_rw_r StdLemmas.le_rw_r_ty = true := by native_decide
+example : chk StdLemmas.hshift_true StdLemmas.hshift_true_ty = true := by native_decide
+example : chk StdLemmas.hshift_false StdLemmas.hshift_false_ty = true := by native_decide
 
 /-! ## M19-A opener — the architecture's smallest complete instance
 
@@ -62,6 +64,13 @@ def countT (m l : Term) : Term := .app (.app Std.countFnT m) l
 def swapLT (i j l : Term) : Term := .app (.app (.app StdLemmas.swapL i) j) l
 def cslP (m i j l pij p2 : Term) : Term :=
   .app (.app (.app (.app (.app (.app StdLemmas.count_swapL' m) i) j) l) pij) p2
+
+-- The pivot-placement back-spec, CASED on i so the no-op path (i = Z) is literally
+-- `*v` (not `swapL Z Z *v`, which is stuck on a symbolic list). Mirrors partScanL's
+-- base. v=0, i=1. Used by the pivotPlace scaffolding fns' declared backs.
+def baseBack : Term :=
+  .app (.app (.app (.app (.const "natRec") (.lam natT listNatT)) (.deref (V 0 "v")))
+    (.lam natT (.lam listNatT (swapLT (.ctorApp "Z" []) (tS (.pvar 1)) (.deref (V 0 "v")))))) (V 1 "i")
 
 -- s=0, m=1, i=2, j=3, pij=4, p2=5; body binders cert=6, b=7.
 def certSwapCount : Decl :=
@@ -89,13 +98,14 @@ example : checkFnErr certSwapCountLie "does not have return type" [Dllbc.Tests.S
 /-! ## M20-2 (conformance, base case) — the pivot placement, checked against its spec
 
     The base of partition's recursion, isolated: place the pivot at the boundary
-    `i` with a final swap, declared `back = swapL Z i (*v)`. Cased on `i` because
-    swapS cannot self-swap (`i = Z` is the no-op). The bound `pib : Le (S i) (len
-    *v)` (boundary in range) discharges swapS's `p2` after `i` refines to `S i'`
-    (`Le (S 0) (S i') = Le Z i' = ⊤`, so its `pij` is `unit`). Per path the declared
-    spec refines with the scrutinee — `swapL Z Z (*v) ≡ *v` on the no-op path,
-    `swapL Z (S i') (*v)` on the swap path, matching swapS's composed backward tree
-    (resolveTree following the sub-call group). The mechanism the recursion builds on. -/
+    `i` with a final swap, declared `back = baseBack` (partScanL's base — cased on
+    `i` so the `i = Z` no-op is literally `*v`, not the stuck `swapL Z Z *v`). Cased
+    on `i` because swapS cannot self-swap. The bound `pib : Le (S i) (len *v)`
+    discharges swapS's `p2` after `i` refines to `S i'` (its `pij` is `Le Z i' = ⊤`,
+    `unit`). Per path the declared spec refines with the scrutinee (`*v` on the
+    no-op path, `swapL Z (S i') (*v)` on the swap path) and converts with swapS's
+    composed backward tree — the §6.2 callee check now firing for a Unit-returning
+    in-place body (the M20 auditAction extension). The mechanism partScan builds on. -/
 
 open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
 
@@ -107,7 +117,7 @@ def pivotPlace : Decl :=
     body := .matchE ⟨1, "i"⟩ [
       .mk "Z" [] .unit,
       .mk "S" [⟨3, "i2"⟩] (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 3 "i2"), .unit, V 2 "pib"]) .unit) ],
-    back := some (swapLT (.ctorApp "Z" []) (V 1 "i") (.deref (V 0 "v"))) }
+    back := some baseBack }
 def confTable : List Decl := [nthS, nth2S, swapSN, pivotPlace]
 example : checkFnOk pivotPlace confTable = true := by native_decide
 
@@ -142,8 +152,102 @@ def pivotPlaceH : Decl :=
             (tS (tS (addTmH (V 4 "i2") (V 2 "g"))))) (V 3 "hlen")))
           (.app (.app StdLemmas.le_add (V 4 "i2")) (V 2 "g")))
         (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 4 "i2"), .unit, V 5 "p2"]) .unit)) ],
-    back := some (swapLT (.ctorApp "Z" []) (V 1 "i") (.deref (V 0 "v"))) }
+    back := some baseBack }
 example : checkFnOk pivotPlaceH confTable = true := by native_decide
+
+/-! ## M20-2 (the recursive partScan) — partition's scan loop, checked against partScanL
+
+    The full recursive scan, declared `back = partScanL pivot k i g (*v)`. Telescope
+    carries the length equation `hlen : len *v = S (add k (add i g))` (k-first, so the
+    step reduces definitionally). Body mirrors the M19 executing partition; the three
+    step cases each derive their swapS bound (let-FIRST, per the §5.3 finding) and
+    recurse with an UPDATED hlen (an hshift arithmetic transport — definitional total,
+    plus a len_swapL bridge in the swap case). resolveTree composes the recursive
+    call's back-spec with swapS's, exactly as pivotPlace proved for one swap. -/
+
+def partScanLT (pivot k i g l : Term) : Term := .app (.app (.app (.app (.app StdLemmas.partScanL pivot) k) i) g) l
+def nthP (k l : Term) : Term := .app (.app StdLemmas.nth k) l
+def lebP (a b : Term) : Term := .app (.app Std.lebFnT a) b
+def dv : Term := .deref (V 0 "v")
+def sLam : Term := .lam natT (tS (.pvar 0))
+def idTr (x y z p q : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_trans natT) x) y) z) p) q
+def idCgS (x y p : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_congr natT) natT) sLam) x) y) p
+def idSy (x y p : Term) : Term := .app (.app (.app (.app StdLemmas.id_sym natT) x) y) p
+def hsF (k i g : Term) : Term := .app (.app (.app StdLemmas.hshift_false k) i) g
+def hsT (k i g : Term) : Term := .app (.app (.app StdLemmas.hshift_true k) i) g
+def leAdd (i g : Term) : Term := .app (.app StdLemmas.le_add i) g
+def leAddL (b a : Term) : Term := .app (.app StdLemmas.le_add_l b) a
+def leAddS (i g : Term) : Term := .app (.app StdLemmas.le_add_succ i) g
+def leRwR (a x y h p : Term) : Term := .app (.app (.app (.app (.app StdLemmas.le_rw_r a) x) y) h) p
+def lenSwapL (i j l : Term) : Term := .app (.app (.app StdLemmas.len_swapL i) j) l
+
+-- Abbreviations for the current-branch index expressions (i2/g2 are the peeled
+-- successors; kk is k'). Built with addTmH (defined above).
+-- v=0, k=1, i=2, g=3, pivot=4, hlen=5; binders k'=6, c/i'=7, g'/hlenX=8, pij=9, p2=10, hlenTSg=11.
+def partScan : Decl :=
+  { name := "partScan", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("k", natT), ("i", natT), ("g", natT), ("pivot", natT),
+      ("hlen", .idT natT (lenT dv) (tS (addTmH (V 1 "k") (addTmH (V 2 "i") (V 3 "g")))))],
+    body := .matchE ⟨1, "k"⟩ [
+      -- BASE (k = Z): place the pivot (pivotPlaceH's validated body; hlen reduces to k=Z form).
+      .mk "Z" [] (.matchE ⟨2, "i"⟩ [
+        .mk "Z" [] .unit,
+        .mk "S" [⟨7, "i2"⟩] (.letIn ⟨8, "p2b"⟩
+          (leRwR (tS (tS (V 7 "i2"))) (tS (tS (addTmH (V 7 "i2") (V 3 "g")))) (lenT dv)
+            (idSy (lenT dv) (tS (tS (addTmH (V 7 "i2") (V 3 "g")))) (V 5 "hlen"))
+            (leAdd (V 7 "i2") (V 3 "g")))
+          (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 7 "i2"), .unit, V 8 "p2b"]) .unit)) ]),
+      -- STEP (k = S k'): the scan.
+      .mk "S" [⟨6, "k2"⟩] (.letIn ⟨7, "c"⟩ (lebP (nthP (tS (addTmH (V 2 "i") (V 3 "g"))) dv) (V 4 "pivot"))
+        (.matchE ⟨7, "c"⟩ [
+          .mk "True" [] (.matchE ⟨3, "g"⟩ [
+            -- True, g = Z: advance boundary, no swap.
+            .mk "Z" [] (.letIn ⟨8, "hlZ"⟩
+              (idTr (lenT dv) (tS (addTmH (tS (V 6 "k2")) (addTmH (V 2 "i") (.ctorApp "Z" []))))
+                (tS (addTmH (V 6 "k2") (addTmH (tS (V 2 "i")) (.ctorApp "Z" []))))
+                (V 5 "hlen")
+                (idCgS (addTmH (tS (V 6 "k2")) (addTmH (V 2 "i") (.ctorApp "Z" [])))
+                  (addTmH (V 6 "k2") (addTmH (tS (V 2 "i")) (.ctorApp "Z" [])))
+                  (hsT (V 6 "k2") (V 2 "i") (.ctorApp "Z" []))))
+              (.call "partScan" [.var ⟨0, "v"⟩, V 6 "k2", tS (V 2 "i"), .ctorApp "Z" [], V 4 "pivot", V 8 "hlZ"])),
+            -- True, g = S g': swap boundary↔scan, then advance.
+            .mk "S" [⟨8, "g2"⟩] (.letIn ⟨9, "pij"⟩ (leAddS (V 2 "i") (V 8 "g2"))
+              (.letIn ⟨10, "p2"⟩
+                (leRwR (tS (tS (addTmH (V 2 "i") (tS (V 8 "g2")))))
+                  (tS (tS (addTmH (V 6 "k2") (addTmH (V 2 "i") (tS (V 8 "g2"))))))
+                  (lenT dv)
+                  (idSy (lenT dv) (tS (tS (addTmH (V 6 "k2") (addTmH (V 2 "i") (tS (V 8 "g2")))))) (V 5 "hlen"))
+                  (leAddL (addTmH (V 2 "i") (tS (V 8 "g2"))) (V 6 "k2")))
+                (.letIn ⟨11, "hlS"⟩
+                  (idTr (lenT (swapLT (tS (V 2 "i")) (tS (addTmH (V 2 "i") (tS (V 8 "g2")))) dv)) (lenT dv)
+                    (tS (addTmH (V 6 "k2") (addTmH (tS (V 2 "i")) (tS (V 8 "g2")))))
+                    (lenSwapL (tS (V 2 "i")) (tS (addTmH (V 2 "i") (tS (V 8 "g2")))) dv)
+                    (idTr (lenT dv) (tS (addTmH (tS (V 6 "k2")) (addTmH (V 2 "i") (tS (V 8 "g2")))))
+                      (tS (addTmH (V 6 "k2") (addTmH (tS (V 2 "i")) (tS (V 8 "g2")))))
+                      (V 5 "hlen")
+                      (idCgS (addTmH (tS (V 6 "k2")) (addTmH (V 2 "i") (tS (V 8 "g2"))))
+                        (addTmH (V 6 "k2") (addTmH (tS (V 2 "i")) (tS (V 8 "g2"))))
+                        (hsT (V 6 "k2") (V 2 "i") (tS (V 8 "g2"))))))
+                  (.seq (.call "swapS" [.borrow dv, tS (V 2 "i"), tS (addTmH (V 2 "i") (tS (V 8 "g2"))), V 9 "pij", V 10 "p2"])
+                    (.call "partScan" [.var ⟨0, "v"⟩, V 6 "k2", tS (V 2 "i"), tS (V 8 "g2"), V 4 "pivot", V 11 "hlS"]))))) ]),
+          -- False: grow gap, no swap.
+          .mk "False" [] (.letIn ⟨8, "hlF"⟩
+            (idTr (lenT dv) (tS (addTmH (tS (V 6 "k2")) (addTmH (V 2 "i") (V 3 "g"))))
+              (tS (addTmH (V 6 "k2") (addTmH (V 2 "i") (tS (V 3 "g")))))
+              (V 5 "hlen")
+              (idCgS (addTmH (tS (V 6 "k2")) (addTmH (V 2 "i") (V 3 "g")))
+                (addTmH (V 6 "k2") (addTmH (V 2 "i") (tS (V 3 "g"))))
+                (hsF (V 6 "k2") (V 2 "i") (V 3 "g"))))
+            (.call "partScan" [.var ⟨0, "v"⟩, V 6 "k2", V 2 "i", tS (V 3 "g"), V 4 "pivot", V 8 "hlF"])) ])) ],
+    back := some (partScanLT (V 4 "pivot") (V 1 "k") (V 2 "i") (V 3 "g") dv) }
+def scanTable : List Decl := [nthS, nth2S, swapSN, partScan]
+example : checkFnOk partScan scanTable = true := by native_decide
+
+-- Not vacuous: a lying spec (i and g swapped in the declared back) is rejected —
+-- the body's composed backward tree does not converge with the wrong partScanL.
+def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 "i") dv
+def partScanLie : Decl := { partScan with name := "partScanLie", back := some partScanLieBack }
+example : checkFnErr partScanLie "does not match" [nthS, nth2S, swapSN, partScan, partScanLie] = true := by native_decide
 
 /-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
 
@@ -292,4 +396,3 @@ example : runPart [5,3,8,1,9,2] 6 = true := by native_decide    -- mixed, multip
 example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates around the pivot
 
 end Dllbc.Tests.S19Partition
-

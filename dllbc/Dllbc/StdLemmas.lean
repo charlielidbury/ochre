@@ -162,6 +162,36 @@ def add_assoc : Term := pure{
       id_congr Nat Nat (λ (n : Nat). S n) (add (add a' b) c) (add a' (add b c)) (ih b c) } }
 def add_assoc_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Id Nat (add (add a b) c) (add a (add b c)) }
 
+/-! ## The length-equation shift lemmas — `hlen` updates for the recursive partScan
+
+    The recursion's loop invariant is `len *v = S (add k (add i g))`, and `k+i+g`
+    is constant across every step (each moves one successor between the `k`, `i`,
+    `g` slots). So each recursive `hlen` update is an arithmetic-identity transport
+    of the same total, provable by `add_succ` (the only non-definitional step, since
+    Std `add` recurses on its first argument). Two shapes cover all three cases:
+    boundary advance (True-Z, True-S g') and gap growth (False). -/
+
+-- Boundary advance: `add (S k) (add i g) = add k (add (S i) g)` (move a successor
+-- from k to i). `add (S i) g = S (add i g)` is definitional, so only the `add k
+-- (S ·)` step needs add_succ.
+def hshift_true : Term := pure{
+  λ (k : Nat). λ (i : Nat). λ (g : Nat).
+    id_sym Nat (add k (S (add i g))) (S (add k (add i g))) (add_succ k (add i g)) }
+def hshift_true_ty : Term := pure{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
+  Id Nat (add (S k) (add i g)) (add k (add (S i) g)) }
+
+-- Gap growth: `add (S k) (add i g) = add k (add i (S g))` (move a successor from k
+-- to g). `add i (S g)` is stuck (add recurses on i), so this needs add_succ TWICE
+-- — once under `add k` to grow the gap, once to pull the successor out front.
+def hshift_false : Term := pure{
+  λ (k : Nat). λ (i : Nat). λ (g : Nat).
+    id_sym Nat (add k (add i (S g))) (S (add k (add i g)))
+      (id_trans Nat (add k (add i (S g))) (add k (S (add i g))) (S (add k (add i g)))
+        (id_congr Nat Nat (λ (x : Nat). add k x) (add i (S g)) (S (add i g)) (add_succ i g))
+        (add_succ k (add i g))) }
+def hshift_false_ty : Term := pure{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
+  Id Nat (add (S k) (add i g)) (add k (add i (S g))) }
+
 -- `count`'s Cons-unfolding equation as an Id — definitional, a `Refl` after whnf.
 def count_cons : Term := pure{ λ (m : Nat). λ (h : Nat). λ (t : List Nat). Refl }
 def count_cons_ty : Term := pure{
