@@ -653,6 +653,65 @@ def partGapRangeL : Term := pure{
       Z => Z,
       S (cnt') rec => partScanGapRangeL (nth lo l) lo cnt' Z Z l } }
 
+-- The scan's size invariant: the boundary `idx` plus the gap `gap` always sum to
+-- `k + i + g` — the scan neither creates nor destroys total budget, it only shifts
+-- successors between the `k`/`i`/`g` slots (the same move the `hshift` lemmas
+-- encode). Induction on `k` with `i`,`g`,`l` quantified AFTER `k` in the motive, so
+-- the IH is usable at the shifted arguments each recursive step takes. The `S k`
+-- step cases on the SAME `leb` scrutinee that both `partScanIdxRangeL` and
+-- `partScanGapRangeL` branch on, abstracting that `Bool` uniformly across the idx
+-- and gap elims; each leaf is one `hshift` transport (`id_sym`/`id_trans`).
+def partScanSizeL : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+        Id Nat (add (partScanIdxRangeL pivot lo kz i g l) (partScanGapRangeL pivot lo kz i g l)) (add kz (add i g))) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). Refl,
+      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim (leb (nth (add lo (S (add i g))) l) pivot)
+          return (λ (w : Bool). Id Nat
+            (add (elim w return (λ (ww : Bool). Nat) {
+                    True => elim g return (λ (gz : Nat). Nat) {
+                      Z => partScanIdxRangeL pivot lo k' (S i) Z l,
+                      S (g') gih => partScanIdxRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                    False => partScanIdxRangeL pivot lo k' i (S g) l })
+                 (elim w return (λ (ww : Bool). Nat) {
+                    True => elim g return (λ (gz : Nat). Nat) {
+                      Z => partScanGapRangeL pivot lo k' (S i) Z l,
+                      S (g') gih => partScanGapRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                    False => partScanGapRangeL pivot lo k' i (S g) l }))
+            (add (S k') (add i g))) {
+          True => elim g return (λ (gz : Nat). Id Nat
+                    (add (elim gz return (λ (gy : Nat). Nat) {
+                            Z => partScanIdxRangeL pivot lo k' (S i) Z l,
+                            S (g') gih => partScanIdxRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) })
+                         (elim gz return (λ (gy : Nat). Nat) {
+                            Z => partScanGapRangeL pivot lo k' (S i) Z l,
+                            S (g') gih => partScanGapRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) }))
+                    (add (S k') (add i gz))) {
+            Z => id_trans Nat
+                   (add (partScanIdxRangeL pivot lo k' (S i) Z l) (partScanGapRangeL pivot lo k' (S i) Z l))
+                   (add k' (add (S i) Z))
+                   (add (S k') (add i Z))
+                   (ih (S i) Z l)
+                   (id_sym Nat (add (S k') (add i Z)) (add k' (add (S i) Z)) (hshift_true k' i Z)),
+            S (g') gih => id_trans Nat
+                   (add (partScanIdxRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l)) (partScanGapRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l)))
+                   (add k' (add (S i) (S g')))
+                   (add (S k') (add i (S g')))
+                   (ih (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l))
+                   (id_sym Nat (add (S k') (add i (S g'))) (add k' (add (S i) (S g'))) (hshift_true k' i (S g')))
+          },
+          False => id_trans Nat
+                     (add (partScanIdxRangeL pivot lo k' i (S g) l) (partScanGapRangeL pivot lo k' i (S g) l))
+                     (add k' (add i (S g)))
+                     (add (S k') (add i g))
+                     (ih i (S g) l)
+                     (id_sym Nat (add (S k') (add i g)) (add k' (add i (S g))) (hshift_false k' i g))
+        }
+    } }
+def partScanSizeL_ty : Term := pure{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+  Id Nat (add (partScanIdxRangeL pivot lo k i g l) (partScanGapRangeL pivot lo k i g l)) (add k (add i g)) }
+
 /-- `sortRangeL fuel lo cnt l` — sort the `cnt` elements of `l` at offset `lo` in
     place. Fuel-structural; base = out of fuel or `cnt ≤ 1`; step partitions the
     range, then sorts the left sub-range `[lo, lo+i)` (count `i`) and the right
