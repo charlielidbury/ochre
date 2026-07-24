@@ -326,6 +326,34 @@ mutual
   termination_by vs => sizeOf vs
 end
 
+/-! Abstract a whole sub-value `target` into `sym σb` **everywhere** — the
+    inverse of `substSym`, keyed on structural identity of the whole subterm
+    rather than a σ id. It is the value-level core of the §19 stuck-spine split:
+    a Bool scrutinee that reduced to a stuck spine (`leb σ σp`, not a bare σ) is
+    generalized to a fresh σb, so the ordinary True/False refinement can fire.
+    `target` must be pvar-free (a spine over σ's — no bound variables to shift),
+    which the Bool spines it is used on always are; NF it before abstracting so
+    the match is up to conversion-stable syntactic identity. -/
+mutual
+  def abstractInto (target : Val) (σb : Nat) (v : Val) : Val :=
+    if v == target then .sym σb
+    else match v with
+      | .borrowM ℓ p => .borrowM ℓ (abstractInto target σb p)
+      | .ctor n args => .ctor n (abstractIntoList target σb args)
+      | .pi d c => .pi (abstractInto target σb d) (abstractInto target σb c)
+      | .sigmaT d c => .sigmaT (abstractInto target σb d) (abstractInto target σb c)
+      | .lam d c => .lam (abstractInto target σb d) (abstractInto target σb c)
+      | .app d c => .app (abstractInto target σb d) (abstractInto target σb c)
+      | .idT a b c => .idT (abstractInto target σb a) (abstractInto target σb b) (abstractInto target σb c)
+      | v' => v'
+  termination_by sizeOf v
+  def abstractIntoList (target : Val) (σb : Nat) (vs : List Val) : List Val :=
+    match vs with
+    | [] => []
+    | v :: rest => abstractInto target σb v :: abstractIntoList target σb rest
+  termination_by sizeOf vs
+end
+
 /-! ## The two Ω-primitives
 
     Everything the borrow machinery does is one of these two, aimed at Ω's
@@ -466,6 +494,31 @@ def refineSym (σ : Nat) (v : Val) : M Unit :=
       backSpec := g.backSpec.map (substSym σ v) }),
     retTyVal := s.retTyVal.map (substSym σ v),
     selfBack := s.selfBack.map (substSym σ v) })
+
+/-- **Generalize a stuck Bool spine** (§19) — the inverse of `refineSym`, and the
+    two-layer principle at the machine level. When a match/`if` scrutinee reduces
+    to a stuck spine `leb σ σp` (a neutral, not a bare σ), the ⇜ split cannot fire
+    (it needs a substitutable σ). So NF the spine, mint a fresh `σb : Bool`, and
+    `abstractInto` it across ALL σ-bearing state — the SAME targets `refineSym`
+    reaches (Ω, sctx, obligations, groups, retTyVal, selfBack: the M10 invariant).
+    Every occurrence of the spine in values AND types now reads `σb`, so the
+    ordinary owned-sym split (`symOwnedSetup`'s `writeC`/`refineSym`) refines the
+    spine to `True`/`False` per branch — including inside a declared spec's
+    instantiation, which is exactly what the per-path back-spec conversion needs. -/
+def generalizeStuck (fuel : Nat) (spine : Val) : M Nat := do
+  let sp := Val.nfV fuel spine
+  let σb ← freshSym
+  modify (fun s => { s with
+    env := s.env.map (fun kv => (kv.1, abstractInto sp σb kv.2)),
+    sctx := (σb, .const "Bool") :: s.sctx.map (fun p => (p.1, abstractInto sp σb p.2)),
+    obligations := s.obligations.map (fun ob => { ob with owed := abstractInto sp σb ob.owed }),
+    groups := s.groups.map (fun g => { g with
+      captured := g.captured.map (fun p => (p.1, abstractInto sp σb p.2)),
+      issued := g.issued.map (fun p => (p.1, abstractInto sp σb p.2)),
+      backSpec := g.backSpec.map (abstractInto sp σb) }),
+    retTyVal := s.retTyVal.map (abstractInto sp σb),
+    selfBack := s.selfBack.map (abstractInto sp σb) })
+  pure σb
 
 /-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
     `writeR`. Defined on the same place shapes (a variable under peels). The
@@ -1080,6 +1133,10 @@ def reorgScrut : Nat → Var → M Dispatch
         match v with
         | .ctor name fields => pure (.ownedCtor name fields)
         | .sym σ => pure (.ownedSym σ)
+        -- §19: a stuck spine (`leb σ σp`, a neutral application). Generalize it to
+        -- a fresh σb : Bool across all σ-bearing state, then split on σb as an
+        -- ordinary owned sym — the True/False refinement rewrites the spine per path.
+        | .app _ _ => do let σb ← generalizeStuck fuel v; pure (.ownedSym σb)
         | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor or symbolic value"
 
 /-- Mint fresh σ's for the given field types, typing each in `sctx`

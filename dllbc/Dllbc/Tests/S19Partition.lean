@@ -80,4 +80,53 @@ def certSwapCountLieRet : Term := .idT natT (countT (V 1 "m") (swapLT (V 2 "i") 
 def certSwapCountLie : Decl := { certSwapCount with name := "certSwapCountLie", retType := certSwapCountLieRet }
 example : checkFnErr certSwapCountLie "does not have return type" [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCountLie] = true := by native_decide
 
+/-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
+
+    The imperative partition branches on `if leb x pivot` with `x` symbolic; the
+    scrutinee reduces to a stuck spine `leb σ σp`, NOT a bare σ, and the ⇜ split
+    (M3) needs a substitutable variable. The machine now GENERALIZES: on an owned
+    stuck spine, `generalizeStuck` NF's it and `abstractInto`s it to a fresh
+    `σb : Bool` across all σ-bearing state (the M10 invariant's targets), then the
+    ordinary owned-sym split refines σb → True/False per branch.
+
+    The probe: a fn whose RETURN TYPE mentions the same `leb n 2` spine, with two
+    `boolRec` sides that converge ONLY per branch (`add Z x ≡ x`). Without the
+    split the two stuck `boolRec`s differ and neither `Refl` checks; with it, both
+    paths reduce and check. Both the spine-in-the-value (the scrutinee) and the
+    spine-in-the-type (the pinned return) must refine together — which is exactly
+    what generalizing across ALL σ-bearing state delivers. -/
+
+def zt : Term := .ctorApp "Z" []
+def tnat : Nat → Term | 0 => zt | k + 1 => tS (tnat k)
+def lebSp (n : Term) : Term := .app (.app Std.lebFnT n) (tnat 2)
+def addT (a b : Term) : Term := .app (.app Std.addFnT a) b
+def boolRecNat (t f sp : Term) : Term :=
+  .app (.app (.app (.app (.const "boolRec") (.lam (.const "Bool") natT)) t) f) sp
+def Refl : Term := .ctorApp "Refl" []
+
+-- n = 0; the `if` binds a fresh scrutinee (id 1).
+def stuckProbe : Decl :=
+  { name := "stuckProbe",
+    retType := .idT natT
+      (boolRecNat (tS zt) zt (lebSp (V 0 "n")))
+      (boolRecNat (addT zt (tS zt)) (addT zt zt) (lebSp (V 0 "n"))),
+    telescope := [("n", natT)],
+    body := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n"))
+      (.matchE ⟨1, "c"⟩ [.mk "True" [] Refl, .mk "False" [] Refl]) }
+example : checkFnOk stuckProbe = true := by native_decide
+
+-- Not vacuous (a): the True side does NOT converge (`S Z` vs `S (S Z)`). The
+-- generalized σb refines to True in that path and the `boolRec` reduces to two
+-- distinct values, so `Refl` fails — proving the per-branch refinement is real.
+def stuckProbeLieRet : Term := .idT natT
+  (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
+def stuckProbeLie : Decl := { stuckProbe with name := "stuckProbeLie", retType := stuckProbeLieRet }
+example : checkFnErr stuckProbeLie "does not have return type" = true := by native_decide
+
+-- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
+-- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
+def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ [.mk "True" [] Refl])
+def stuckProbeNonExh : Decl := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
+example : checkFnErr stuckProbeNonExh "non-exhaustive" = true := by native_decide
+
 end Dllbc.Tests.S19Partition
