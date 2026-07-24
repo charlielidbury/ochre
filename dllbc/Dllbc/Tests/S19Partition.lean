@@ -243,6 +243,43 @@ def partScan : Decl :=
 def scanTable : List Decl := [nthS, nth2S, swapSN, partScan]
 example : checkFnOk partScan scanTable = true := by native_decide
 
+/-! ## M21-1 — the partition wrapper (back = partitionL, the partScanL composition)
+
+    partition fixes the public interface: pivot placement + the scan, over a
+    segment of length `n` (`hlenW : len *v = n`). Declared `back = partitionL n
+    (*v)` — authored (in StdLemmas) as exactly `n = Z ⇒ *v`, `n = S n' ⇒ partScanL
+    (nth 0 *v) n' 0 0 *v`, the raw composition of partScan's declared back. The
+    scan call's hlen is hlenW transported by add_zero (the wrapper's `i = g = 0`,
+    so partScan's `S (add n' (add 0 0))` is `S (add n' Z)`, bridged to `S n'`). -/
+
+def partitionLT2 (n l : Term) : Term := .app (.app StdLemmas.partitionL n) l
+def addZeroT (n : Term) : Term := .app StdLemmas.add_zero n
+
+-- v=0, n=1, hlenW=2; body binders n'=3, pivot=4, hlen=5.
+def partition : Decl :=
+  { name := "partition", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("n", natT),
+      ("hlenW", .idT natT (lenT dv) (V 1 "n"))],
+    body := .matchE ⟨1, "n"⟩ [
+      .mk "Z" [] .unit,
+      .mk "S" [⟨3, "n2"⟩] (.letIn ⟨4, "pivot"⟩ (nthP (.ctorApp "Z" []) dv)
+        (.letIn ⟨5, "hlen"⟩
+          -- hlen : Id (len *v) (S (add n' Z)), from hlenW : Id (len *v) (S n') via add_zero.
+          (idTr (lenT dv) (tS (V 3 "n2")) (tS (addTmH (V 3 "n2") (.ctorApp "Z" [])))
+            (V 2 "hlenW")
+            (idSy (tS (addTmH (V 3 "n2") (.ctorApp "Z" []))) (tS (V 3 "n2"))
+              (idCgS (addTmH (V 3 "n2") (.ctorApp "Z" [])) (V 3 "n2") (addZeroT (V 3 "n2")))))
+          (.call "partScan" [.var ⟨0, "v"⟩, V 3 "n2", .ctorApp "Z" [], .ctorApp "Z" [], V 4 "pivot", V 5 "hlen"]))) ],
+    back := some (partitionLT2 (V 1 "n") dv) }
+def partTable2 : List Decl := [nthS, nth2S, swapSN, partScan, partition]
+example : checkFnOk partition partTable2 = true := by native_decide
+
+-- Not vacuous: a back that swaps unconditionally (≠ identity at n = Z) is rejected
+-- on the untouched-borrow n = Z path, where `partitionL Z *v = *v`.
+def partitionLieBack : Term := swapLT (.ctorApp "Z" []) (tS (.ctorApp "Z" [])) dv
+def partitionLie : Decl := { partition with name := "partitionLie", back := some partitionLieBack }
+example : checkFnErr partitionLie "does not match" [nthS, nth2S, swapSN, partScan, partitionLie] = true := by native_decide
+
 -- Not vacuous: a lying spec (i and g swapped in the declared back) is rejected —
 -- the body's composed backward tree does not converge with the wrong partScanL.
 def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 "i") dv
