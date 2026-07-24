@@ -93,11 +93,11 @@ example : expectEnv dllbc{
 } [("x", .loanM 0), ("b", .borrowM 0 .bot), ("tail", cons (nat 3) nil)] = true := by
   native_decide
 
--- The refill closes the hole. `tail` is marker-free, so reading it into the new
--- node COPIES it (§2.1) — it stays live (the `*b` take above still consumes,
--- since a deref-take is not a variable read).
+-- The refill closes the hole; no list node was copied. `tail` is DATA (a
+-- Cons-tree), so reading it into the new node MOVES it (§2.1 keeps Rust's line
+-- for aggregates) — tail ↦ ⊥.
 -- … *b := Cons(7, tail)
---   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (Cons 7 (Cons 3 Nil)), tail ↦ Cons 3 Nil
+--   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (Cons 7 (Cons 3 Nil)), tail ↦ ⊥
 example : expectEnv dllbc{
   let x = Cons(3, Nil);
   let b = &mut x;
@@ -106,7 +106,7 @@ example : expectEnv dllbc{
   ()
 } [("x", .loanM 0),
    ("b", .borrowM 0 (cons (nat 7) (cons (nat 3) nil))),
-   ("tail", cons (nat 3) nil)] = true := by native_decide
+   ("tail", .bot)] = true := by native_decide
 
 /-! ## §2.5 Reborrow -/
 

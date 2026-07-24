@@ -45,8 +45,8 @@ example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0
     let y = x;
     ()
   }
-  [ [("x", cons (nat 0) (.sym 0)), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (nat 0) (.sym 0))],
-    [("x", nil), ("b", .bot), ("y", nil)] ] = true := by native_decide
+  [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (nat 0) (.sym 0))],
+    [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
 /-! ## §3.4 Symbolic variant change -/
 
@@ -58,8 +58,8 @@ example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0
     let y = x;
     ()
   }
-  [ [("x", nil), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)],
-    [("x", nil), ("b", .bot), ("y", nil)] ] = true := by native_decide
+  [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)],
+    [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
 /-! ## Two-level symbolic match (composed refinements) -/
 
@@ -76,10 +76,10 @@ example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0
       Nil => { let y = x; () }
     }
   }
-  [ [("x", cons (.sym 0) (cons (nat 0) (.sym 1))), ("b", .bot), ("hd", .bot), ("tl", .bot), ("h2", .bot), ("t2", .bot),
+  [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("h2", .bot), ("t2", .bot),
      ("y", cons (.sym 0) (cons (nat 0) (.sym 1)))],
-    [("x", cons (.sym 0) nil), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (.sym 0) nil)],
-    [("x", nil), ("b", .bot), ("y", nil)] ] = true := by native_decide
+    [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (.sym 0) nil)],
+    [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
 /-! ## Rejections -/
 

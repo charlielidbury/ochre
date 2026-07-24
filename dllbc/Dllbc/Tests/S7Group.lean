@@ -86,10 +86,10 @@ def throughCaller : Decl :=
       let y = x;
       () } }
 
--- y is a fresh σ (the write is forgotten — deliberate, per the soundness fix);
--- reading x copies that σ (§2.1), so x holds it too.
+-- y is a fresh σ (the write is forgotten — deliberate, per the soundness fix).
+-- `x`'s recovered σ is typed `List Nat` (DATA), so reading it MOVES it (§2.1).
 example : expectFnEnv [through, throughCaller] throughCaller
-  [("x", .sym 0), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
+  [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## Rejections -/
 

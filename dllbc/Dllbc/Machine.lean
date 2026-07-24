@@ -302,34 +302,45 @@ mutual
   termination_by vs => sizeOf vs
 end
 
-/-! Is a value **hereditarily marker-free** — no `borrowM`, no `loanM`, no `⊥`
-    anywhere in its tree (`sym σ` is fine — a symbolic value is itself an
-    unrestricted snapshot, §2.1)? This is the operational test for §2.1's
-    copy-on-read: such a value is `unrestricted` (its generated `T.copy` would be
-    total), so `readR` of a variable holding one reads by COPY, leaving the owner
-    intact — the ownership machinery is vacuous on it (§0), so a move would be
-    gratuitous. A marker-carrying value moves exactly as before. -/
-mutual
-  def markerFree : Val → Bool
-    | .borrowM _ _ => false
-    | .loanM _ => false
-    | .bot => false
-    | .ctor _ args => markerFreeList args
-    | .sym _ => true
-    | .pvar _ => true
-    | .type => true
-    | .const _ => true
-    | .pi d c => markerFree d && markerFree c
-    | .sigmaT d c => markerFree d && markerFree c
-    | .lam d c => markerFree d && markerFree c
-    | .app d c => markerFree d && markerFree c
-    | .idT a b c => markerFree a && markerFree b && markerFree c
-  termination_by v => sizeOf v
-  def markerFreeList : List Val → Bool
-    | [] => true
-    | v :: vs => markerFree v && markerFreeList vs
-  termination_by vs => sizeOf vs
-end
+/-! Is a **type** index-kind (§2.1) — `Nat`/`Bool`/`Unit`, or a pure-former type
+    (an `Id` proof type, a `Type`, a function type)? A σ of such a type reads by
+    copy. `List`/`Σ`/user types are data. -/
+def indexKindTy : Val → Bool
+  | .const "Nat" => true
+  | .const "Bool" => true
+  | .const "Unit" => true
+  | .idT _ _ _ => true
+  | .type => true
+  | .pi _ _ => true
+  | _ => false
+
+/-! Is a **value** index-kind, so §2.1's copy-on-read applies? A concrete
+    `Nat`/`Bool`/`Unit` tree, a pure-former value (a proof — `Refl` or a neutral
+    proof spine — a type, a λ), or a σ whose `sctx` type is index-kind. Data
+    proper (`Cons`-trees, pairs, user constructors) MOVES even when marker-free:
+    silent aggregate duplication is the cost-opacity Rust's move discipline
+    prevents, so the calculus keeps Rust's line (§2.1). Copy-or-move is decided by
+    value shape — the σ-context's type for symbolic values — not a declared trait. -/
+def indexKindV (sctx : List (Nat × Val)) : Val → Bool
+  | .ctor "Z" [] => true
+  | .ctor "S" [n] => indexKindV sctx n
+  | .ctor "True" [] => true
+  | .ctor "False" [] => true
+  | .ctor "unit" [] => true
+  | .ctor "Refl" _ => true                                  -- a proof
+  | .ctor _ _ => false                                      -- data → move
+  | .sym σ => match sctx.lookup σ with | some τ => indexKindTy τ | none => false
+  | .type => true
+  | .const _ => true
+  | .pi _ _ => true
+  | .lam _ _ => true
+  | .idT _ _ _ => true
+  | .app _ _ => true                                        -- a pure-former spine (proof/type)
+  | .pvar _ => true
+  | .sigmaT _ _ => true                                     -- a type
+  | .borrowM _ _ => false
+  | .loanM _ => false
+  | .bot => false
 
 /-! Substitute `newV` for every `sym σ` occurrence in `v` — the value-tree
     core of ⇜ (§3.2 refinement substitutes σ *everywhere*). -/
@@ -945,12 +956,13 @@ mutual
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
           | none =>
-            -- §2.1 copy-on-read: a hereditarily marker-free value (an index, a
-            -- proof, any unrestricted datum — `sym σ` included) is read by COPY,
-            -- leaving the owner intact. The ownership machinery is vacuous on it,
-            -- so a move would be gratuitous — and it is what lets a comptime index
-            -- be used more than once (`swapS(v, S i, S (add i g), …)`).
-            if markerFree v then pure v
+            -- §2.1 copy-on-read: an INDEX-KIND value (a Nat/Bool/Unit tree, a
+            -- proof, a type, a λ, or a σ typed as one of these) is read by COPY,
+            -- leaving the owner intact — the ownership machinery is doubly vacuous
+            -- on it (marker-free AND erasure-bound), and it is what lets a comptime
+            -- index be used more than once. Data proper moves even when
+            -- marker-free (Rust's line — §2.1).
+            if indexKindV (← get).sctx v then pure v
             -- §19: moving a borrow whose PAYLOAD is a suspended reborrow (a `&mut
             -- *v` handed to a call that has since returned) must first end that
             -- reborrow, so its mutations flow back into the payload before the

@@ -66,8 +66,9 @@ example : expectEnv dllbc{
    ("tl", .borrowM 2 nil)] = true := by native_decide
 
 -- Reading the owner back collapses the chain lazily: End-Mut ℓ0 (parent), then
--- the owned-position field loans ℓ1, ℓ2 are ended in turn, so `x`'s value
--- arrives fully updated; the retry read then COPIES it (§2.1). y ↦ Cons 0 Nil.
+-- the owned-position field loans ℓ1, ℓ2 are ended in turn as the value is moved,
+-- so `x`'s value arrives fully updated. `x` is a Cons-tree (DATA), so the read
+-- MOVES it (§2.1). y ↦ Cons 0 Nil.
 example : expectEnv dllbc{
   let x = Cons(3, Nil);
   let b = &mut x;
@@ -77,7 +78,7 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", cons (nat 0) nil), ("b", .bot), ("hd", .bot), ("tl", .bot),
+} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot),
    ("y", cons (nat 0) nil)] = true := by native_decide
 
 -- The nullary branch binds nothing and issues no loans (degenerate case).
@@ -90,7 +91,7 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", nil), ("b", .bot), ("y", nil)] = true := by native_decide
+} [("x", .bot), ("b", .bot), ("y", nil)] = true := by native_decide
 
 /-! ## §3.4 Variant change through the parent -/
 
@@ -107,7 +108,7 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", nil), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)] = true := by
+} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)] = true := by
   native_decide
 
 /-! ## Nested borrow-mode match (through a field binder) -/
@@ -128,20 +129,19 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", cons (nat 1) (cons (nat 0) nil)), ("b", .bot), ("hd", .bot), ("tl", .bot),
+} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot),
    ("h2", .bot), ("t2", .bot), ("y", cons (nat 1) (cons (nat 0) nil))] = true := by
   native_decide
 
 /-! ## Rejections -/
 
--- §2.1: `let q = p` COPIES the marker-free `p` (owner intact), so the later
--- match on `p` succeeds — the match then ⇒-consumes `p` (⊥). A use-after-move
--- rejection now requires a marker-carrying value (a moved borrow); see S7Group.
-example : expectEnv dllbc{
+-- Match on a moved variable: `p = Nil` is DATA (a List), so `let q = p` MOVES it
+-- (§2.1 keeps Rust's line for aggregates), and the later match finds the slot ⊥.
+example : expectErr dllbc{
   let p = Nil;
   let q = p;
   match p { Nil => () }
-} [("p", .bot), ("q", nil)] = true := by native_decide
+} "use-after-move" = true := by native_decide
 
 -- No branch matches the head constructor (no exhaustiveness checking — there
 -- are no inductive declarations yet — so an unmatched head is a runtime stuck).
