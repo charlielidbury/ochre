@@ -9,3 +9,4 @@ import Dllbc.Tests.S3
 import Dllbc.Tests.S3Sym
 import Dllbc.Tests.S4Pure
 import Dllbc.Tests.S5Bound
+import Dllbc.Tests.S6Call
