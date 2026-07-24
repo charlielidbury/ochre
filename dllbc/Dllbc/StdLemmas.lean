@@ -218,4 +218,139 @@ def len_swapL : Term := pure{
             S (j') jih => id_congr Nat Nat (λ (n : Nat). S n) (len (swapL i' j' ys)) (len ys) (ih j' ys) } } } }
 def len_swapL_ty : Term := pure{ Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Id Nat (len (swapL i j l)) (len l) }
 
+/-! ## The bounded `count_swapL` stack (§18)
+
+    `count_swapL` — `swapL i j` preserves the multiset — is FALSE unbounded (off
+    the end `nth` defaults to `Z` and `set` no-ops, so the head becomes `Z ≠ x`).
+    With `Le (S i) (len l)` and `Le (S j) (len l)` the indices are in range and the
+    swap is a genuine permutation. The proof decomposes into a small stack, each
+    node an ordinary Id-algebra fact composed by `id_trans`/`id_congr`:
+
+    - `cons2_comm` — count is invariant under swapping two ADJACENT heads. Proven
+      by the §18 nested `generalizing` casing (the report card; the named copy the
+      stack consumes). The base case of the head-swap.
+    - `count_cons_congr` — `count m l₁ = count m l₂ ⟹ count m (Cons h l₁) =
+      count m (Cons h l₂)`. One `id_congr` whose `f` abstracts `count m ·` out of
+      the `boolRec` that `count (Cons …)` unfolds to (both occurrences at once).
+    - `count_headswap` — bounded: swapping the head `x` with position `j` of the
+      tail preserves count. The meaty double-induction (on `j`, casing `xs`); its
+      step is a three-link `id_trans` chain `cons2_comm ∘ (count_cons_congr on IH)
+      ∘ cons2_comm`, its `Nil` leaves ⊥-discharged by the range bound.
+    - `count_swapL` — bounded: the top statement, by induction on `i` with `j`/`l`
+      casing. Head case delegates to `count_headswap`; recursive case is
+      `count_cons_congr` on the IH; the degenerate `j = Z` / `i > j` cases are the
+      identity, so `Refl`.
+
+    No J-transport (rewrite-by-Id) is needed here: the decomposition localises ALL
+    `eqb`/knowledge reasoning inside `cons2_comm` (via `generalizing`) and
+    `count_cons_congr` (via `id_congr` on the `boolRec`), leaving the head-swap and
+    `swapL` levels as pure `id_trans` chains. rewrite-by-Id (S18) remains the tool
+    for a subterm STUCK behind an abstract scrutinee, which this stack avoids by
+    construction. -/
+
+def cons2_comm : Term := pure{
+  λ (m : Nat). λ (a : Nat). λ (b : Nat). λ (l : List Nat).
+    elim (eqb m a) generalizing (Id Nat (count m (Cons a (Cons b l))) (count m (Cons b (Cons a l)))) {
+      True => elim (eqb m b) generalizing
+        (Id Nat (S (count m (Cons b l)))
+                (boolRec (λ (w : Bool). Nat) (S (S (count m l))) (S (count m l)) (eqb m b))) {
+        True => Refl, False => Refl },
+      False => Refl } }
+def cons2_comm_ty : Term := pure{
+  Π (m : Nat) → Π (a : Nat) → Π (b : Nat) → Π (l : List Nat) →
+    Id Nat (count m (Cons a (Cons b l))) (count m (Cons b (Cons a l))) }
+
+-- Congruence of `count` under `Cons`: the `f` abstracts `count m ·` out of BOTH
+-- occurrences in the `boolRec` that `count m (Cons h ·)` whnf's to, so a single
+-- `id_congr` transports the tail equation through the head.
+def count_cons_congr : Term := pure{
+  λ (m : Nat). λ (h : Nat). λ (l1 : List Nat). λ (l2 : List Nat). λ (p : Id Nat (count m l1) (count m l2)).
+    id_congr Nat Nat (λ (r : Nat). boolRec (λ (w : Bool). Nat) (S r) r (eqb m h)) (count m l1) (count m l2) p }
+def count_cons_congr_ty : Term := pure{
+  Π (m : Nat) → Π (h : Nat) → Π (l1 : List Nat) → Π (l2 : List Nat) →
+    Id Nat (count m l1) (count m l2) → Id Nat (count m (Cons h l1)) (count m (Cons h l2)) }
+
+-- Bounded head-swap: exchanging the head `x` with position `j` of the tail `xs`
+-- preserves count, PROVIDED `j` is in range (`Le (S j) (len xs)`). Induction on
+-- `j`, casing `xs`; the `Nil` leaves are ⊥-discharged by the bound (`Le (S _) Z`).
+-- Base (`j = Z`): the swap is `Cons y (Cons x ys) ↔ Cons x (Cons y ys)`, exactly
+-- `cons2_comm`. Step (`j = S j'`): a three-link `id_trans` chain — float the
+-- swapped-in element past the head with `cons2_comm`, apply the IH under the head
+-- via `count_cons_congr`, then `cons2_comm` back.
+def count_headswap : Term := pure{
+  λ (m : Nat). λ (x : Nat). λ (j : Nat).
+    elim j return (λ (jz : Nat).
+        Π (xs : List Nat) → Le (S jz) (len xs) →
+          Id Nat (count m (Cons (nth jz xs) (set jz x xs))) (count m (Cons x xs))) {
+      Z => λ (xs : List Nat).
+        elim xs return (λ (xz : List Nat).
+            Le (S Z) (len xz) →
+              Id Nat (count m (Cons (nth Z xz) (set Z x xz))) (count m (Cons x xz))) {
+          Nil => λ (bnd0 : Le (S Z) (len Nil)).
+            botElim (Id Nat (count m (Cons (nth Z Nil) (set Z x Nil))) (count m (Cons x Nil))) bnd0,
+          Cons (y) (ys) ihx => λ (bnd0 : Le (S Z) (len (Cons y ys))).
+            cons2_comm m y x ys },
+      S (j') ih => λ (xs : List Nat).
+        elim xs return (λ (xz : List Nat).
+            Le (S (S j')) (len xz) →
+              Id Nat (count m (Cons (nth (S j') xz) (set (S j') x xz))) (count m (Cons x xz))) {
+          Nil => λ (bnd0 : Le (S (S j')) (len Nil)).
+            botElim (Id Nat (count m (Cons (nth (S j') Nil) (set (S j') x Nil))) (count m (Cons x Nil))) bnd0,
+          Cons (y) (ys) ihx => λ (bnd0 : Le (S (S j')) (len (Cons y ys))).
+            id_trans Nat
+              (count m (Cons (nth j' ys) (Cons y (set j' x ys))))
+              (count m (Cons y (Cons (nth j' ys) (set j' x ys))))
+              (count m (Cons x (Cons y ys)))
+              (cons2_comm m (nth j' ys) y (set j' x ys))
+              (id_trans Nat
+                (count m (Cons y (Cons (nth j' ys) (set j' x ys))))
+                (count m (Cons y (Cons x ys)))
+                (count m (Cons x (Cons y ys)))
+                (count_cons_congr m y (Cons (nth j' ys) (set j' x ys)) (Cons x ys) (ih ys bnd0))
+                (cons2_comm m y x ys)) } } }
+def count_headswap_ty : Term := pure{
+  Π (m : Nat) → Π (x : Nat) → Π (j : Nat) → Π (xs : List Nat) → Le (S j) (len xs) →
+    Id Nat (count m (Cons (nth j xs) (set j x xs))) (count m (Cons x xs)) }
+
+-- The top: `swapL i j` preserves count when both indices are in range. Induction
+-- on `i`, casing `l` then `j`. The head case (`i = Z`, `j = S j'`) is exactly a
+-- `count_headswap` (`swapL Z (S j') (Cons y ys) = Cons (nth j' ys) (set j' y ys)`);
+-- the recursive case (`i = S i'`, `j = S j'`) rebuilds `Cons y (swapL i' j' ys)`,
+-- discharged by `count_cons_congr` on the IH; the degenerate `j = Z` / `i > j`
+-- cases are the identity swap (`Refl`); `Nil` is ⊥-discharged by `Le (S i) …`.
+def count_swapL : Term := pure{
+  λ (m : Nat). λ (i : Nat).
+    elim i return (λ (iz : Nat).
+        Π (j : Nat) → Π (l : List Nat) → Le (S iz) (len l) → Le (S j) (len l) →
+          Id Nat (count m (swapL iz j l)) (count m l)) {
+      Z => λ (j : Nat). λ (l : List Nat).
+        elim l return (λ (lz : List Nat).
+            Le (S Z) (len lz) → Le (S j) (len lz) → Id Nat (count m (swapL Z j lz)) (count m lz)) {
+          Nil => λ (bi0 : Le (S Z) (len Nil)). λ (bj0 : Le (S j) (len Nil)).
+            botElim (Id Nat (count m (swapL Z j Nil)) (count m Nil)) bi0,
+          Cons (y) (ys) ihl => λ (bi0 : Le (S Z) (len (Cons y ys))). λ (bj0 : Le (S j) (len (Cons y ys))).
+            elim j return (λ (jz : Nat).
+                Le (S jz) (len (Cons y ys)) →
+                  Id Nat (count m (swapL Z jz (Cons y ys))) (count m (Cons y ys))) {
+              Z => λ (bj1 : Le (S Z) (len (Cons y ys))). Refl,
+              S (j') jih => λ (bj1 : Le (S (S j')) (len (Cons y ys))).
+                count_headswap m y j' ys bj1
+            } bj0 },
+      S (i') ih => λ (j : Nat). λ (l : List Nat).
+        elim l return (λ (lz : List Nat).
+            Le (S (S i')) (len lz) → Le (S j) (len lz) → Id Nat (count m (swapL (S i') j lz)) (count m lz)) {
+          Nil => λ (bi0 : Le (S (S i')) (len Nil)). λ (bj0 : Le (S j) (len Nil)).
+            botElim (Id Nat (count m (swapL (S i') j Nil)) (count m Nil)) bi0,
+          Cons (y) (ys) ihl => λ (bi0 : Le (S (S i')) (len (Cons y ys))). λ (bj0 : Le (S j) (len (Cons y ys))).
+            elim j return (λ (jz : Nat).
+                Le (S jz) (len (Cons y ys)) →
+                  Id Nat (count m (swapL (S i') jz (Cons y ys))) (count m (Cons y ys))) {
+              Z => λ (bj1 : Le (S Z) (len (Cons y ys))). Refl,
+              S (j') jih => λ (bj1 : Le (S (S j')) (len (Cons y ys))).
+                count_cons_congr m y (swapL i' j' ys) ys (ih j' ys bi0 bj1)
+            } bj0 } } }
+def count_swapL_ty : Term := pure{
+  Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
+    Le (S i) (len l) → Le (S j) (len l) → Id Nat (count m (swapL i j l)) (count m l) }
+
 end Dllbc.StdLemmas

@@ -84,22 +84,26 @@ example : chk
 
     Count is invariant under swapping two adjacent heads. The outer `generalizing`
     takes the NATURAL goal; the True arm nests a `generalizing` whose goal is the
-    outer-True instance (a `boolRec` form — the residual the branch-hypothesis
-    layer will make natural); every leaf is `Refl`; the False arm collapses to
-    `Refl` outright. The macro abstracts `eqb` at every occurrence, so the M16
-    missed-occurrence bug cannot recur. -/
+    outer-True instance (a `boolRec` form — the residual is STRUCTURAL to
+    nesting-by-casing, since the casing already delivers the knowledge a branch
+    hypothesis would); every leaf is `Refl`; the False arm collapses to `Refl`
+    outright. The macro abstracts `eqb` at every occurrence, so the M16
+    missed-occurrence bug cannot recur. The ~8-line proof now lives in `StdLemmas`
+    as the named `cons2_comm` the count_swapL stack consumes; this checks it. -/
 
-open Dllbc.Std (eqbFnT countFnT) in
-example : chk
-  (pure{ λ (m : Nat). λ (a : Nat). λ (b : Nat). λ (l : List Nat).
-    elim (eqbFnT m a) generalizing (Id Nat (countFnT m (Cons a (Cons b l))) (countFnT m (Cons b (Cons a l)))) {
-      True => elim (eqbFnT m b) generalizing
-        (Id Nat (S (countFnT m (Cons b l)))
-                (boolRec (λ (w : Bool). Nat) (S (S (countFnT m l))) (S (countFnT m l)) (eqbFnT m b))) {
-        True => Refl, False => Refl },
-      False => Refl } })
-  (pure{ Π (m : Nat) → Π (a : Nat) → Π (b : Nat) → Π (l : List Nat) →
-    Id Nat (countFnT m (Cons a (Cons b l))) (countFnT m (Cons b (Cons a l))) }) = true := by native_decide
+example : chk StdLemmas.cons2_comm StdLemmas.cons2_comm_ty = true := by native_decide
+
+/-! ## The bounded `count_swapL` stack (§18)
+
+    `cons2_comm` (above) is the base; `count_cons_congr` lifts a tail equation
+    through `Cons`; `count_headswap` is the bounded head-swap double-induction; and
+    `count_swapL` is the top. All four are authored in `StdLemmas`; here we check
+    each type-checks. See the `StdLemmas` header for why no rewrite-by-Id is needed
+    (the eqb reasoning is localised in `cons2_comm` and `count_cons_congr`). -/
+
+example : chk StdLemmas.count_cons_congr StdLemmas.count_cons_congr_ty = true := by native_decide
+example : chk StdLemmas.count_headswap StdLemmas.count_headswap_ty = true := by native_decide
+example : chk StdLemmas.count_swapL StdLemmas.count_swapL_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
