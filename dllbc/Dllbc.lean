@@ -2,8 +2,10 @@ import Dllbc.Syntax
 import Dllbc.Value
 import Dllbc.Pure
 import Dllbc.Machine
+import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Tests.S2
 import Dllbc.Tests.S3
 import Dllbc.Tests.S3Sym
 import Dllbc.Tests.S4Pure
+import Dllbc.Tests.S5Bound
