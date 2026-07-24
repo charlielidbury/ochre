@@ -63,7 +63,7 @@ def collapseArg : Nat → Var → M Unit
     match ← lookupSlot arg with
     | .borrowM _ payload =>
       match firstLoanMarker payload with
-      | some ℓ => do endLoan ℓ; collapseArg fuel arg     -- normal or owed (§5.3) loan
+      | some ℓ => do endLoan fuel ℓ; collapseArg fuel arg   -- normal or group (§6.1) loan
       | none => pure ()
     | _ => pure ()
 
@@ -81,13 +81,34 @@ def auditOne (fuel : Nat) (ob : Obligation) : M Unit := do
       else throwErr s!"audit: {ob.arg.name}'s payload ({payload.pretty}) does not have its owed type ({ob.owed.pretty})"
   | _ => throwErr s!"audit: argument {ob.arg.name} is not a borrow at return"
 
-/-- The §5.4 audit for one path: every argument borrow meets its obligation,
-    and the result has the return type. -/
+/-- The audit for one path. For a **value-returning** body (§5.4): every
+    argument borrow meets its obligation, and the result has the return type.
+    For a **borrow-returning** body (§6.1 callee side — the reshaped audit,
+    first stated precisely here): the result is ⇒-read; an argument borrow
+    consumed INTO the result (its loan is the result's) is exempt — its loan's
+    story continues caller-side through the group; argument borrows still live
+    in Ω are audited as usual; and the returned borrow's payload must have the
+    return type's owed type. (An argument borrow consumed *onward* into another
+    call is also exempt — see the report's note.) -/
 def auditAction (fuel : Nat) (retType : Term) (obs : List Obligation) (resultVal : Val) : M Unit := do
-  obs.forM (auditOne fuel)
-  let retTy ← readC fuel retType
-  if ← hasType fuel resultVal retTy then pure ()
-  else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
+  match retType with
+  | .borrowT _ S =>
+    match resultVal with
+    | .borrowM ℓr payload => do
+      obs.forM (fun ob => do
+        if ob.loan == ℓr then pure ()                       -- this arg borrow IS the result
+        else match ← lookupSlot ob.arg with
+          | .borrowM _ _ => auditOne fuel ob                -- still live: audit
+          | _ => pure ())                                   -- consumed onward: exempt
+      let owedR := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
+      if ← hasType fuel payload owedR then pure ()
+      else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owedR.pretty})"
+    | _ => throwErr s!"audit: borrow-returning body did not return a borrow (got {resultVal.pretty})"
+  | _ => do
+    obs.forM (auditOne fuel)
+    let retTy ← readC fuel retType
+    if ← hasType fuel resultVal retTy then pure ()
+    else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
 
 /-- Audit every explored path; the whole function checks iff all do. -/
 def auditPaths (retType : Term) (obs : List Obligation) :

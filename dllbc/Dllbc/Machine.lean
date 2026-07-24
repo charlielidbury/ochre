@@ -42,6 +42,19 @@ structure Decl where
   retType : Term
   body : Term
 
+/-- A **loan group** (§6.1): the node a call mints, tying the loans it
+    **captured** (the argument borrows' loans, with their owed types) to the
+    borrows it **issued** (loans of any borrows in the result, owed-typed from
+    the return type). The ending discipline is the group's whole content —
+    every issued borrow ends first, then the group ends atomically, releasing
+    each captured loan. A §5.3 wire is the degenerate `issued = []` group; an
+    identity wire (`constrained`) releases its one captured loan with the
+    issued borrow's surrendered payload rather than a fresh existential. -/
+structure Group where
+  captured : List (Nat × Val)   -- (ℓ, owed type)
+  issued : List (Nat × Val)     -- (ℓ, owed type)
+  constrained : Bool            -- identity wire: captured release = surrendered payload
+
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
     the runtime-binder minting later milestones (match) will need. -/
@@ -52,10 +65,10 @@ structure St where
   nextSym : Nat
   /-- The σ-context (§3.2's seam, §4): each symbolic id's type. -/
   sctx : List (Nat × Val) := []
-  /-- Owed loans (§5.3): a loan annotated at a call with the type it will
-      surrender. Ending an owed loan mints a fresh existential at this type
-      *without* a borrow in Ω (the call consumed the borrow). -/
-  owed : List (Nat × Val) := []
+  /-- Loan groups (§6.1). A call mints one; ending a captured loan ends the
+      whole group. Replaces M6's flat owed map — a wire is the degenerate
+      `issued = []` group. -/
+  groups : List Group := []
   /-- The function table, for the call rule. -/
   decls : List Decl := []
 deriving Inhabited
@@ -272,28 +285,8 @@ def sendPayloadToLoan (ℓ : Nat) (p : Val) : M Unit := do
   else
     throwErr s!"end: loan ℓ{ℓ} is not an entry of Ω (cannot plug payload back)"
 
-/-- The value that ending loan `ℓ` sends home. Normally (§2.2 End-Mut) that is
-    the borrow's current payload, and killing the borrow yields it. But an
-    **owed** loan (§5.3, call-annotated) has no borrow — the call consumed it —
-    so ending it mints a fresh existential at the owed type (sctx-typed): "the
-    promise is collected … an existential, opened at loan-end." An owed loan
-    must not also have a live borrow (the call consumed it); that shape is an
-    error rather than a silent preference. -/
-def takeLoanPayload (ℓ : Nat) : M Val := do
-  let st ← get
-  match st.owed.find? (fun p => p.1 == ℓ) with
-  | some (_, τ) => do
-    if st.env.any (fun kv => (findBorrowPayload ℓ kv.2).isSome) then
-      throwErr s!"end: loan ℓ{ℓ} is owed (call-annotated) but also has a live borrow in Ω"
-    let σ ← freshSym
-    modify (fun s => { s with sctx := (σ, τ) :: s.sctx, owed := s.owed.filter (fun p => p.1 != ℓ) })
-    pure (.sym σ)
-  | none => killBorrowInΩ ℓ
-
-/-- **End loan** ℓ: send its payload (real, or a minted existential for an owed
-    loan) home to where the marker sits. Subsumes §2.2's End-Mut. -/
-def endLoan (ℓ : Nat) : M Unit := do
-  sendPayloadToLoan ℓ (← takeLoanPayload ℓ)
+-- `endLoan` (group-aware, §6.1) is defined after `hasType`, which it needs to
+-- audit issued-borrow payloads at group end.
 
 /-- **Drop** (§2.3): the total procedure that vacates a displaced value. End
     its ownership nodes innermost-first — a `loanM ℓ` in the value kills its
@@ -310,7 +303,7 @@ def drop : Nat → Val → M Unit
     match firstOwnNode v with
     | none => pure ()                                   -- ownership-free: discard
     | some (ℓ, .loanMarker) => do
-      let p ← takeLoanPayload ℓ                         -- kill borrow (or mint owed existential)
+      let p ← killBorrowInΩ ℓ                           -- kill borrow, payload returns
       drop fuel (replaceLoanMarker ℓ p v)
     | some (ℓ, .borrowNode) =>
       match findBorrowPayload ℓ v with
@@ -478,6 +471,58 @@ mutual
   termination_by fuel _ tys => (fuel, 1, tys.length)
 end
 
+/-! ## Loan groups (§6.1): the ending cascade
+
+    A call mints a `Group`. Ending a captured loan does not end it alone — it
+    triggers the whole group's end: **every issued borrow ends first** (locate
+    it, audit its payload against its owed type, surrender it), **then the
+    group ends atomically**, releasing each captured loan. A constrained
+    (identity-wire) group releases its one captured loan with the single
+    surrendered payload; otherwise each captured loan gets a fresh, unconstrained
+    existential at its owed type. The ordering *is* the soundness argument
+    (§6.1): a captured owner cannot recover while an issued borrow lives. -/
+
+/-- End one issued borrow: locate it in Ω, audit its (collapsed) payload against
+    its owed type, kill it, and return the surrendered payload. -/
+def endIssued (fuel : Nat) (ℓ : Nat) (owed : Val) : M Val := do
+  match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
+  | none => throwErr s!"group end: issued borrow ℓ{ℓ} is not locatable in Ω (cannot end the group)"
+  | some payload => do
+    match payload with
+    | .bot => throwErr s!"group end: issued borrow ℓ{ℓ} holds a hole (⊥) — nothing surrendered"
+    | _ =>
+      if ← hasType fuel payload owed then do
+        setEnv ((← getEnv).map (fun kv => (kv.1, replaceBorrowWithBot ℓ kv.2)))   -- kill
+        pure payload
+      else
+        throwErr s!"group end: issued borrow ℓ{ℓ}'s payload ({payload.pretty}) does not have its owed type ({owed.pretty})"
+
+/-- Release one captured loan: plug `v` where its marker sits. -/
+def releaseCaptured (ℓ : Nat) (v : Val) : M Unit := sendPayloadToLoan ℓ v
+
+/-- End a whole loan group (§6.1): issued borrows first, then captured atomically. -/
+def endGroup (fuel : Nat) (grp : Group) : M Unit := do
+  -- 1. end every issued borrow, collecting surrendered payloads (in order)
+  let surrendered ← grp.issued.mapM (fun (ℓ, owed) => endIssued fuel ℓ owed)
+  -- 2. remove the group from the table (identified by its captured loans, which
+  --    are globally unique)
+  modify (fun s => { s with groups := s.groups.filter (fun g => g.captured != grp.captured) })
+  -- 3. release captured loans atomically
+  match grp.constrained, grp.captured, surrendered with
+  | true, [(ℓc, _)], [p] => releaseCaptured ℓc p          -- identity wire: recover the written value
+  | _, _, _ =>
+    grp.captured.forM (fun (ℓc, owed) => do               -- opaque: fresh existential each
+      let σ ← freshSym
+      modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
+      releaseCaptured ℓc (.sym σ))
+
+/-- **End loan** ℓ (§6.1-aware). If ℓ is a group's captured loan, ending it
+    ends the whole group (issued first, then captured). Otherwise it is an
+    ordinary loan: kill its borrow and plug the payload home (§2.2 End-Mut). -/
+def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
+  match (← get).groups.find? (fun g => g.captured.any (·.1 == ℓ)) with
+  | some grp => endGroup fuel grp
+  | none => sendPayloadToLoan ℓ (← killBorrowInΩ ℓ)
 
 /-! ## Match branch selection (§3)
 
@@ -552,7 +597,7 @@ mutual
           -- a top-level loanM (§2.2/§2.5) and a Cons of field-loans left by a
           -- borrow-mode match (§3.3) are the same case.
           match firstLoanMarker v with
-          | some ℓ => do endLoan ℓ; readR fuel (.var x)
+          | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
           | none => do setSlot x .bot; pure v            -- move out, leave ⊥
       | .deref t' => do
         -- take: read the payload through the borrow, leaving a hole (⊥) in it
@@ -587,14 +632,14 @@ mutual
         | .borrowM ℓ payload =>
           match payload with
           | .ctor name fields => do readR fuel (← borrowSelect scrut branches ℓ name fields)
-          | .loanM ℓ' => do endLoan ℓ'; readR fuel (.matchE scrut branches)  -- reborrowed payload: end, retry
+          | .loanM ℓ' => do endLoan fuel ℓ'; readR fuel (.matchE scrut branches)  -- reborrowed payload: end, retry
           | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
           | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
           | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
           | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
         | v =>
           match firstLoanMarker v with
-          | some ℓ => do endLoan ℓ; readR fuel (.matchE scrut branches)      -- suspended owner: end, retry
+          | some ℓ => do endLoan fuel ℓ; readR fuel (.matchE scrut branches)      -- suspended owner: end, retry
           | none =>
             match v with
             | .ctor name fields => do readR fuel (← ownedSelect scrut branches name fields)
@@ -604,15 +649,30 @@ mutual
         let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
       | .call f args => do
-        -- §5.3: check the call against the SIGNATURE alone (never another body).
+        -- §5.3/§6.1: check the call against the SIGNATURE alone (never another
+        -- body), and mint one loan group tying captured to issued.
         match (← get).decls.find? (fun d => d.name == f) with
         | none => throwErr s!"call: unknown function '{f}'"
         | some decl => do
-          processArgs fuel decl.telescope args           -- consume args, annotate owed loans
-          let retTy ← readC fuel decl.retType            -- mint a fresh result at the return type
-          let σ ← freshSym
-          modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
-          pure (.sym σ)
+          let captured ← processArgs fuel decl.telescope args   -- (ℓ × owed) per argument borrow
+          match decl.retType with
+          | .borrowT τ S => do
+            -- borrow-returning (§6.1): result is a fresh reborrow; its loan is
+            -- issued, owed the return type. One captured borrow ⇒ identity wire.
+            let τVal ← readC fuel τ
+            let σ ← freshSym
+            let ℓr ← freshLoan
+            let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) (← readC fuel S))
+            let grp : Group := { captured := captured, issued := [(ℓr, owedR)], constrained := captured.length == 1 }
+            modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, groups := grp :: s.groups })
+            pure (.borrowM ℓr (.sym σ))
+          | _ => do
+            -- value-returning: a fresh σ at the return type; degenerate group.
+            let retTy ← readC fuel decl.retType
+            let σ ← freshSym
+            let grp : Group := { captured := captured, issued := [], constrained := false }
+            modify (fun s => { s with sctx := (σ, retTy) :: s.sctx, groups := grp :: s.groups })
+            pure (.sym σ)
       | .unit => pure (.ctor "unit" [])
       | _ => throwErr "readR (⇒): pure formers (λ/app/Π/Σ/Type/const) are read by ⇝ (readC), not ⇒"
   termination_by fuel _ => (fuel, 0, 0)
@@ -623,12 +683,12 @@ mutual
       pure (v :: (← readArgs fuel as))
   termination_by fuel as => (fuel, 1, as.length)
   /-- Consume a call's arguments left-to-right, checking each against its
-      telescope entry. A pure argument must `hasType` its parameter type. A
-      borrow argument must be a `borrowM ℓ v` whose payload `v` has the
-      parameter type τ; the borrow is consumed and its loan ℓ is annotated
-      **owed** the type `S[s := v]` (§5.3's promise). -/
-  def processArgs : Nat → List (String × Term) → List Term → M Unit
-    | _, [], [] => pure ()
+      telescope entry, and RETURN the captured loans (§6.1): each argument
+      borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
+      `hasType` its parameter type; a borrow argument must be a `borrowM ℓ v`
+      whose payload `v` has the parameter type τ, and is consumed. -/
+  def processArgs : Nat → List (String × Term) → List Term → M (List (Nat × Val))
+    | _, [], [] => pure []
     | fuel, (_, tyTerm) :: tRest, arg :: aRest => do
       match tyTerm with
       | .borrowT τ S => do
@@ -636,9 +696,8 @@ mutual
         | .borrowM ℓ payload => do
           let τVal ← readC fuel τ
           if ← hasType fuel payload τVal then do
-            let SVal ← readC fuel S
-            modify (fun s => { s with owed := (ℓ, Val.nfV fuel (Val.substPure 0 payload SVal)) :: s.owed })
-            processArgs fuel tRest aRest
+            let owed := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
+            pure ((ℓ, owed) :: (← processArgs fuel tRest aRest))
           else
             throwErr s!"call: borrow argument's payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
         | v => throwErr s!"call: expected a borrow argument (&mut …), got {v.pretty}"
@@ -708,13 +767,13 @@ def reorgScrut : Nat → Var → M Dispatch
       match payload with
       | .ctor name fields => pure (.borrowCtor ℓ name fields)
       | .sym σ => pure (.borrowSym ℓ σ)
-      | .loanM ℓ' => do endLoan ℓ'; reorgScrut fuel scrut
+      | .loanM ℓ' => do endLoan fuel ℓ'; reorgScrut fuel scrut
       | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
       | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
       | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
     | v =>
       match firstLoanMarker v with
-      | some ℓ => do endLoan ℓ; reorgScrut fuel scrut
+      | some ℓ => do endLoan fuel ℓ; reorgScrut fuel scrut
       | none =>
         match v with
         | .ctor name fields => pure (.ownedCtor name fields)
