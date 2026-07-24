@@ -249,6 +249,31 @@ def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 
 def partScanLie : Decl := { partScan with name := "partScanLie", back := some partScanLieBack }
 example : checkFnErr partScanLie "does not match" [nthS, nth2S, swapSN, partScan, partScanLie] = true := by native_decide
 
+/-! ## The lying-back sweep — one lie per CALLEE-CHECKED declared-spec branch
+
+    A negative test per rule branch, not per feature (the M20 lesson). The §6.2
+    callee convert-check catches a lie only where the declared back is authored as
+    the raw suspension TREE (so tree ≡ back definitionally). Two such branches
+    beyond the ones already covered:
+    - borrow-returning multi-issued  → nth2Lie   (below)
+    - borrow-returning single-issued → throughLie (S17Spec — the M8 arc)
+    - Unit-returning recursive        → partScanLie (above; caught where an
+      untouched argument-borrow path exposes the swapped spec)
+
+    NOT callee-checked, by design: a back that is a higher-level REFORMULATION of
+    the raw tree — swapS's `swapL i j *v` vs its set-based nth2 composition, and
+    pivotPlace's swapL-based `baseBack` — never converts and is validated by the
+    DIFFERENTIAL (executing recovery = checking recovery), as M17 established. The
+    M20 auditAction extension checks in-place backs authored AS the tree (partScan);
+    reformulated backs remain the differential's job. -/
+
+def setL (k v l : Term) : Term := .app (.app (.app StdLemmas.set k) v) l
+
+-- Borrow-returning multi-issued: nth2 with i and j swapped in the two sets.
+def nth2LieBack : Term := .lam natT (.lam natT (setL (V 2 "j") (.pvar 1) (setL (V 1 "i") (.pvar 0) (.deref (V 0 "v")))))
+def nth2Lie : Decl := { nth2S with name := "nth2Lie", back := some nth2LieBack }
+example : checkFnErr nth2Lie "does not match" [nthS, nth2Lie] = true := by native_decide
+
 /-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
 
     The imperative partition branches on `if leb x pivot` with `x` symbolic; the

@@ -225,6 +225,12 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     | none => pure ()
     | some backV => do
       let spec := Val.nfV fuel (Val.rebuildSpine backV [])
+      -- Check the back against the argument borrow's suspension tree WHERE it is
+      -- directly locatable (untouched, or composed from Unit-returning sub-groups
+      -- whose declared backs the spec is authored from — partScan). NOT resolved
+      -- through a sub-call that ISSUES borrows with a REFORMULATED back (swapS's
+      -- `swapL` vs nth2's set-based tree): those backs are higher-level than the
+      -- raw tree, so they never convert and stay differential-validated (M17).
       match obs.head? with
       | none => pure ()
       | some ob =>
