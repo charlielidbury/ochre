@@ -449,7 +449,7 @@ Out-of-bounds is unrepresentable: `Fin (len *b)` replaces the error monad. The d
 
 ### 5.3 Calls: consume and promise
 
-A call is checked against the signature alone — recursion forces this (the checker cannot unroll), and all calls get it uniformly. The rule: ⇒-consume the arguments; for each argument borrow, annotate its loan with the owed type from the signature, instantiated at the actual arguments; mint a fresh symbolic value for the result.
+A call is checked against the signature alone — recursion forces this (the checker cannot unroll), and all calls get it uniformly. The rule: ⇒-consume the arguments; for each argument borrow, annotate its loan with the owed type from the signature, instantiated at the actual arguments; mint a fresh symbolic value for the result. Instantiation is caller-side telescope discipline, symmetric to the callee's seeding: each checked actual is substituted into the remaining parameter types before they are consulted, so `Fin (len *b)` at a call site means the `b` just passed.
 
 ```rust
 let x = Cons(1, Nil);
