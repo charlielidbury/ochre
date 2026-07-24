@@ -116,7 +116,7 @@ def diffCheck (decl : Decl) (concreteArgs : List Val) : Bool :=
     0 < paths.length && paths.all (fun r =>
       match r with
       | .ok (v, st') =>
-        match (auditAction defaultFuel decl.retType obs v).run st' with
+        match (auditAction defaultFuel decl.retType v).run { st' with obligations := obs } with
         | .ok _ _ => true
         | .error _ _ => false
       | .error _ => false)

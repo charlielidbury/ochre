@@ -85,6 +85,7 @@ inductive Term where
   | lam    : Term → Term → Term      -- λ (dom) (body); body binds var 0
   | app    : Term → Term → Term      -- application
   | const  : String → Term           -- a built-in constant (recursor or type former)
+  | idT    : Term → Term → Term → Term  -- Id A a b (§10): the identity type
   /-- The borrow type `&mut (s : τ ↝ S)` (§5.1): exclusive access to a `τ`,
       owing an `S` at the boundary. `S` is under one pure de Bruijn binder for
       the entry snapshot `s`. Plain `&mut τ` is `borrowT τ (weaken τ)`. Only

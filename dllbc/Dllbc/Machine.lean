@@ -42,6 +42,18 @@ structure Decl where
   retType : Term
   body : Term
 
+/-- What an argument borrow owes at the boundary: its slot variable, its loan
+    id, and the owed type (§5.1's `S`, instantiated at the entry snapshot).
+    Lives in `St` (not just returned by `seedTelescope`) so that a §10 Refl
+    refinement — which substitutes a σ everywhere — reaches the owed types too:
+    a through-borrow `p : &mut (Id A a b)` matched against `Refl` refines the
+    σ that its *own* owed type mentions, and the audit must see the refined
+    type, not the frozen entry snapshot. -/
+structure Obligation where
+  arg : Var
+  loan : Nat
+  owed : Val
+
 /-- A **loan group** (§6.1): the node a call mints, tying the loans it
     **captured** (the argument borrows' loans, with their owed types) to the
     borrows it **issued** (loans of any borrows in the result, owed-typed from
@@ -78,6 +90,11 @@ structure St where
   nextGroup : Nat := 0
   /-- The function table, for the call rule. -/
   decls : List Decl := []
+  /-- The argument-borrow obligations (§5.1), seeded from the telescope and
+      audited at return. Held in state (not just returned by `seedTelescope`)
+      so a §10 Refl refinement propagates into the owed types — see
+      `Obligation`. Each explored path carries (and refines) its own copy. -/
+  obligations : List Obligation := []
   /-- Execution mode (§8/§9 differential). `false` = CHECKING (the call rule
       uses the §5.3/§6.1 signature rule — groups, existentials); `true` =
       EXECUTING (a call runs the callee's actual body concretely). checkFn is
@@ -276,6 +293,7 @@ mutual
     | .sigmaT d c => .sigmaT (substSym σ newV d) (substSym σ newV c)
     | .lam d c => .lam (substSym σ newV d) (substSym σ newV c)
     | .app d c => .app (substSym σ newV d) (substSym σ newV c)
+    | .idT a b c => .idT (substSym σ newV a) (substSym σ newV b) (substSym σ newV c)
   termination_by v => sizeOf v
   def substSymList (σ : Nat) (newV : Val) : List Val → List Val
     | [] => []
@@ -404,17 +422,24 @@ def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
     drop fuel old                                  -- drop the displaced value
     setAtPos pos newval                            -- fill
 
+/-- Refine `σ := v` **everywhere** — in every Ω slot AND every `sctx` type
+    (§3.2's "everywhere", now including the type layer: a snapshot type that
+    mentions the refined σ, e.g. `Id Nat σ 2`, is substituted like anything
+    else — the seam §10 exercises). -/
+def refineSym (σ : Nat) (v : Val) : M Unit :=
+  modify (fun s => { s with
+    env := s.env.map (fun kv => (kv.1, substSym σ v kv.2)),
+    sctx := s.sctx.map (fun p => (p.1, substSym σ v p.2)),
+    obligations := s.obligations.map (fun ob => { ob with owed := substSym σ v ob.owed }) })
+
 /-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
     `writeR`. Defined on the same place shapes (a variable under peels). The
-    place must currently hold a symbolic value `sym σ` (reached through borrow
-    payloads by the peels); the effect is **global substitution** — every
-    occurrence of `sym σ` in *every* slot of Ω is replaced by `refined`
-    (§3.2's "everywhere"). Minting fresh σ's is the caller's job. Errors
-    distinctively if the place holds anything other than a `sym`. -/
+    place must currently hold a symbolic value `sym σ`; the effect is global
+    refinement `σ := refined` (Ω and sctx). Errors distinctively otherwise. -/
 def writeC (place : Term) (refined : Val) : M Unit := do
   let pos ← placeToPos place
   match ← getAtPos pos with
-  | .sym σ => modify (fun s => { s with env := s.env.map (fun kv => (kv.1, substSym σ refined kv.2)) })
+  | .sym σ => refineSym σ refined
   | v => throwErr s!"writeC (⇜): place holds {v.pretty}, expected a symbolic value (sym σ)"
 
 /-! ## ⇝ (comptime read) and value typing (§4)
@@ -443,6 +468,7 @@ mutual
     | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
     | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
     | .app f a => do pure (.app (← reflectC f) (← reflectC a))
+    | .idT a b c => do pure (.idT (← reflectC a) (← reflectC b) (← reflectC c))
     | .unit => pure (.ctor "unit" [])
     | .letIn _ _ _ => throwErr "readC (⇝): pure `let` not implemented (no test needs it this milestone)"
     | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
@@ -482,6 +508,28 @@ mutual
       | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
       | .pi _ _ => pure (Val.convert fuel ty .type)
       | .sigmaT _ _ => pure (Val.convert fuel ty .type)
+      | .idT _ _ _ => pure (Val.convert fuel ty .type)   -- Id A a b : Type
+      | .app _ _ =>
+        -- A neutral spine. We synthesize a type only for the eliminator
+        -- constants (§10 elaboration of `match` to eliminators): their result
+        -- type is the motive applied to the target(s), and their premises are
+        -- checked recursively. This is what lets the *library* fording terms
+        -- (`natNoConf` via `j`, `botElim` on a derived ⊥) type-check as ordinary
+        -- terms — no new machine rule, just the eliminators' typing.
+        let (head, args) := Val.collectSpine v
+        match head, args with
+        | .const "botElim", [t, x] =>                     -- botElim T x : T   (x : ⊥)
+          let xOk ← hasType fuel x (.const "Bot")
+          pure (Val.convert fuel ty t && xOk)
+        | .const "j", [a, aa, p, d, b, pf] =>             -- j A a P d b p : P b p
+          let dOk ← hasType fuel d (Val.nfV fuel (.app (.app p aa) (.ctor "Refl" [])))
+          let pOk ← hasType fuel pf (.idT a aa b)
+          pure (Val.convert fuel ty (Val.nfV fuel (.app (.app p b) pf)) && dOk && pOk)
+        | .const "k", [a, aa, p, d, pf] =>                -- k A a P d p : P p
+          let dOk ← hasType fuel d (Val.nfV fuel (.app p (.ctor "Refl" [])))
+          let pOk ← hasType fuel pf (.idT a aa aa)
+          pure (Val.convert fuel ty (Val.nfV fuel (.app p pf)) && dOk && pOk)
+        | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
       | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
   termination_by fuel _ _ => (fuel, 0, 0)
   /-- Check a constructor's fields against its field-type telescope, threading
@@ -866,16 +914,43 @@ def typeFieldSyms : List Var → List Val → M (List Nat)
     pure (σ :: rest)
   | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
 
-/-- Mint the field σ's for a symbolic branch. When the scrutinee's σ has a type
-    in `sctx` (§3.2's seam, closed in §5): require the branch constructor to be
-    a constructor of that type (per the signature table) and type each field σ
-    by the instantiated field types. When it has no type (an untyped testing
-    scrutinee, pre-telescope), fall back to fresh untyped σ's (M3 behavior). -/
+/-- **Refl-match — the solution transition** (§10). Matching against `Refl` at
+    scrutinee type `Id A a b` unifies the endpoints: whnf both; if one is a
+    substitutable σ not occurring on the other side, ⇜-refine it to the other,
+    everywhere; if already equal, nothing; if BOTH are rigid, the match is
+    STUCK — no unification beyond solution (no injectivity/conflict/cycle in the
+    kernel; those are the fording library's job via j/k). -/
+def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
+  let a' := Val.whnfV fuel a
+  let b' := Val.whnfV fuel b
+  if Val.convert fuel a' b' then pure ()                         -- endpoints already equal
+  else match a', b' with
+    | .sym σa, _ =>
+      if b'.symIds.contains σa then
+        throwErr s!"Refl: occurs check — endpoint σ{σa} occurs in the other endpoint ({b'.pretty})"
+      else refineSym σa b'
+    | _, .sym σb =>
+      if a'.symIds.contains σb then
+        throwErr s!"Refl: occurs check — endpoint σ{σb} occurs in the other endpoint ({a'.pretty})"
+      else refineSym σb a'
+    | _, _ =>
+      throwErr s!"Refl: both endpoints are rigid ({a'.pretty} vs {b'.pretty}) — no solution by refinement; use j/k to eliminate the identity"
+
+/-- Mint the field σ's for a symbolic branch. `Refl` is special (§10): it has
+    no fields, and it unifies the `Id` endpoints (`reflUnify`) rather than
+    consulting the signature table's field types. When the scrutinee's σ has a
+    type in `sctx` (§3.2's seam, closed in §5): require the branch constructor
+    to be a constructor of that type and type each field σ by the instantiated
+    field types. When untyped (pre-telescope), fall back to fresh untyped σ's. -/
 def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := do
   match (← get).sctx.lookup scrutσ with
   | none => br.binders.mapM (fun _ => freshSym)     -- untyped scrutinee (M3)
   | some τ =>
-    match Val.ctorSig br.ctor with
+    if br.ctor == "Refl" then
+      match Val.whnfV fuel τ with
+      | .idT _ a b => do reflUnify fuel a b; pure []            -- unify endpoints, no fields
+      | _ => throwErr "match: Refl branch on a non-Id scrutinee"
+    else match Val.ctorSig br.ctor with
     | none => throwErr s!"match: unknown constructor '{br.ctor}'"
     | some sig =>
       match sig.fieldTypes (Val.whnfV fuel τ) with

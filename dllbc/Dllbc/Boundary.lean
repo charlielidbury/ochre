@@ -17,13 +17,8 @@ This module makes the machine a *type checker* for closed function bodies:
 
 namespace Dllbc
 
-/-- What an argument borrow owes at the boundary: its slot variable, its loan
-    id, and the owed type (§5.1's `S`, instantiated at the entry snapshot).
-    (`Decl` itself now lives in `Machine.lean` so the call rule can see it.) -/
-structure Obligation where
-  arg : Var
-  loan : Nat
-  owed : Val
+-- `Obligation` now lives in `Machine.lean` (so it can be an `St` field that a
+-- §10 Refl refinement reaches — see its docstring there).
 
 /-- Seed the telescope into Ω and `sctx`, returning the borrow obligations.
     Argument `i` gets runtime var id `i`. A pure (unrestricted) type τ →
@@ -98,7 +93,8 @@ def auditObligation (fuel : Nat) (resultLoan : Option Nat) (ob : Obligation) : M
     must be a borrow; the argument borrows are audited under `auditObligation`
     (the one consumed into the result is exempt); and the returned borrow's
     payload must have the return type's owed type. -/
-def auditAction (fuel : Nat) (retType : Term) (obs : List Obligation) (resultVal : Val) : M Unit := do
+def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
+  let obs := (← get).obligations                    -- this path's (refined) obligations
   match retType with
   | .borrowT _ S =>
     match resultVal with
@@ -114,15 +110,16 @@ def auditAction (fuel : Nat) (retType : Term) (obs : List Obligation) (resultVal
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
 
-/-- Audit every explored path; the whole function checks iff all do. -/
-def auditPaths (retType : Term) (obs : List Obligation) :
+/-- Audit every explored path; the whole function checks iff all do. Each path
+    carries its own (refinement-updated) obligations in `St`. -/
+def auditPaths (retType : Term) :
     List (Except String (Val × St)) → Except String Unit
   | [] => .ok ()
   | .error e :: _ => .error e
   | .ok (v, st) :: rest =>
-    match (auditAction defaultFuel retType obs v).run st with
+    match (auditAction defaultFuel retType v).run st with
     | .error e _ => .error e
-    | .ok _ _ => auditPaths retType obs rest
+    | .ok _ _ => auditPaths retType rest
 
 /-- Check a function declaration end-to-end: seed the telescope, explore the
     body (one path per symbolic branch), audit each path at return. `table` is
@@ -131,7 +128,7 @@ def auditPaths (retType : Term) (obs : List Obligation) :
 def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
   match (seedTelescope defaultFuel 0 decl.telescope).run { initSt with decls := table } with
   | .error e _ => .error e
-  | .ok obs st => auditPaths decl.retType obs (explore defaultFuel (pushContinuations decl.body) st)
+  | .ok obs st => auditPaths decl.retType (explore defaultFuel (pushContinuations decl.body) { st with obligations := obs })
 
 /-- Run a declaration's body (no audit), returning one canonicalized final Ω
     per path — for inspecting *what* a body leaves in Ω (e.g. §5.3's fresh

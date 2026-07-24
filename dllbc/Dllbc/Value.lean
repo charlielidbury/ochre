@@ -56,6 +56,11 @@ inductive Val where
   | lam     : Val → Val → Val        -- λ (dom) (body); body binds var 0
   | app     : Val → Val → Val        -- application (a redex, or a stuck neutral spine)
   | const   : String → Val           -- a built-in constant: a recursor or a type former
+  -- The identity type `Id A a b` (§10): the v0 basis's one genuine indexed
+  -- family. Its constructor is `Refl` (a nullary `ctor "Refl" []` whose type
+  -- `Id A a a` determines the endpoints); eliminated by the constants `j`
+  -- (Paulin-Mohring J) and `k` (Streicher K).
+  | idT     : Val → Val → Val → Val  -- Id (type) (lhs) (rhs); no binders
 deriving Inhabited
 
 namespace Val
@@ -77,6 +82,7 @@ mutual
     | .lam d1 b1,  .lam d2 b2   => beq d1 d2 && beq b1 b2
     | .app f1 a1,  .app f2 a2   => beq f1 f2 && beq a1 a2
     | .const x,    .const y     => x == y
+    | .idT a1 b1 c1, .idT a2 b2 c2 => beq a1 a2 && beq b1 b2 && beq c1 c2
     | _,           _           => false
   termination_by v => sizeOf v
   def beqList : List Val → List Val → Bool
@@ -133,6 +139,9 @@ mutual
     | .app f a =>
       let s := prettyPrec 0 f ++ " " ++ prettyPrec 1 a
       if prec > 0 then s!"({s})" else s
+    | .idT _ a b =>
+      let s := s!"Id {prettyPrec 1 a} {prettyPrec 1 b}"
+      if prec > 0 then s!"({s})" else s
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -165,6 +174,7 @@ mutual
     | .sigmaT d c => loanIds d ++ loanIds c
     | .lam d c => loanIds d ++ loanIds c
     | .app d c => loanIds d ++ loanIds c
+    | .idT a b c => loanIds a ++ loanIds b ++ loanIds c
   termination_by v => sizeOf v
   def loanIdsList : List Val → List Nat
     | [] => []
@@ -187,6 +197,7 @@ mutual
     | .sigmaT d c => symIds d ++ symIds c
     | .lam d c => symIds d ++ symIds c
     | .app d c => symIds d ++ symIds c
+    | .idT a b c => symIds a ++ symIds b ++ symIds c
   termination_by v => sizeOf v
   def symIdsList : List Val → List Nat
     | [] => []
@@ -210,6 +221,7 @@ mutual
     | .sigmaT d c => .sigmaT (renumber fℓ fσ d) (renumber fℓ fσ c)
     | .lam d b => .lam (renumber fℓ fσ d) (renumber fℓ fσ b)
     | .app f a => .app (renumber fℓ fσ f) (renumber fℓ fσ a)
+    | .idT a b c => .idT (renumber fℓ fσ a) (renumber fℓ fσ b) (renumber fℓ fσ c)
   termination_by v => sizeOf v
   def renumberList (fℓ fσ : Nat → Nat) : List Val → List Val
     | [] => []

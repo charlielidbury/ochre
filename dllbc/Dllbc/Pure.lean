@@ -37,6 +37,7 @@ mutual
     | .sigmaT dom cod => .sigmaT (shiftPure d c dom) (shiftPure d (c + 1) cod)
     | .app f a => .app (shiftPure d c f) (shiftPure d c a)
     | .ctor n args => .ctor n (shiftPureList d c args)
+    | .idT a b b' => .idT (shiftPure d c a) (shiftPure d c b) (shiftPure d c b')
     | v => v                                   -- type, const, sym, ⊥, loanM, borrowM: leaves
   termination_by v => sizeOf v
   def shiftPureList (d c : Nat) : List Val → List Val
@@ -56,6 +57,7 @@ mutual
     | .sigmaT dom cod => .sigmaT (substPure j s dom) (substPure (j + 1) (shiftPure 1 0 s) cod)
     | .app f a => .app (substPure j s f) (substPure j s a)
     | .ctor n args => .ctor n (substPureList j s args)
+    | .idT a b b' => .idT (substPure j s a) (substPure j s b) (substPure j s b')
     | v => v                                   -- leaves (see shiftPure)
   termination_by v => sizeOf v
   def substPureList (j : Nat) (s : Val) : List Val → List Val
@@ -104,6 +106,16 @@ def whnfV : Nat → Val → Val
       | .ctor "True" [] => whnfV fuel (rebuildSpine t rest)
       | .ctor "False" [] => whnfV fuel (rebuildSpine f rest)
       | b' => rebuildSpine (.const "boolRec") (motive :: t :: f :: b' :: rest)  -- stuck
+    -- Paulin-Mohring J (§10): j A a P d b p ; ι fires on Refl (b = a there), → d.
+    | .const "j", _A :: _a :: _P :: d :: _b :: p :: rest =>
+      match whnfV fuel p with
+      | .ctor "Refl" [] => whnfV fuel (rebuildSpine d rest)
+      | p' => rebuildSpine (.const "j") (_A :: _a :: _P :: d :: _b :: p' :: rest)  -- stuck
+    -- Streicher K (§10): k A a P d p ; ι fires on Refl, → d.
+    | .const "k", _A :: _a :: _P :: d :: p :: rest =>
+      match whnfV fuel p with
+      | .ctor "Refl" [] => whnfV fuel (rebuildSpine d rest)
+      | p' => rebuildSpine (.const "k") (_A :: _a :: _P :: d :: p' :: rest)  -- stuck
     -- botElim never fires (⊥ has no constructors); it is always a stuck value.
     | _, _ => rebuildSpine head args
 
@@ -122,6 +134,7 @@ mutual
       | .lam d b => .lam (nfV fuel d) (nfV fuel b)
       | .ctor n args => .ctor n (nfVList fuel args)
       | .app f a => .app (nfV fuel f) (nfV fuel a)
+      | .idT a b b' => .idT (nfV fuel a) (nfV fuel b) (nfV fuel b')
       | w => w                                       -- pvar, sym, type, const, and runtime leaves
   termination_by fuel _ => (fuel, 0, 0)
   def nfVList : Nat → List Val → List Val
@@ -160,6 +173,10 @@ def ctorSig : String → Option CtorSig
   | "Cons"  => some { fieldTypes := fun ty =>
       match ty with | .app (.const "List") t => some [t, .app (.const "List") t] | _ => none }
   | "Pair"  => some { fieldTypes := fun ty => match ty with | .sigmaT a b => some [a, b] | _ => none }
+  -- Refl : Id A a a — a nullary constructor whose type demands equal endpoints.
+  -- (Fixed fuel for the endpoint convert; construction sites are small.)
+  | "Refl"  => some { fieldTypes := fun ty =>
+      match ty with | .idT _ a b => if Val.convert 1000 a b then some [] else none | _ => none }
   | _ => none
 
 /-- The full constructor set of a whnf'd type (§9 exhaustiveness). `none` for a
@@ -173,6 +190,7 @@ def typeCtors : Val → Option (List String)
   | .const "Bot"  => some []
   | .app (.const "List") _ => some ["Nil", "Cons"]
   | .sigmaT _ _   => some ["Pair"]
+  | .idT _ _ _    => some ["Refl"]                 -- §10: Id's only constructor
   | _ => none
 
 end Dllbc.Val
