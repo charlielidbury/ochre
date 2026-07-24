@@ -111,4 +111,103 @@ def Branch.binders : Branch → List Var | .mk _ b _ => b
 /-- The branch's body. -/
 def Branch.body : Branch → Term | .mk _ _ t => t
 
+/-! ## Structural term equality (manual; `deriving` can't cross the nesting) -/
+
+mutual
+  def Term.beq : Term → Term → Bool
+    | .var x, .var y => x == y
+    | .letIn x a b, .letIn y c d => x == y && Term.beq a c && Term.beq b d
+    | .assign a b c, .assign d e f => Term.beq a d && Term.beq b e && Term.beq c f
+    | .ctorApp n as, .ctorApp m bs => n == m && Term.beqList as bs
+    | .borrow a, .borrow b => Term.beq a b
+    | .deref a, .deref b => Term.beq a b
+    | .matchE x as, .matchE y bs => x == y && Term.beqBranches as bs
+    | .seq a b, .seq c d => Term.beq a c && Term.beq b d
+    | .call f as, .call g bs => f == g && Term.beqList as bs
+    | .unit, .unit => true
+    | .pvar k, .pvar j => k == j
+    | .type, .type => true
+    | .pi a b, .pi c d => Term.beq a c && Term.beq b d
+    | .sigmaT a b, .sigmaT c d => Term.beq a c && Term.beq b d
+    | .lam a b, .lam c d => Term.beq a c && Term.beq b d
+    | .app a b, .app c d => Term.beq a c && Term.beq b d
+    | .const n, .const m => n == m
+    | .idT a b c, .idT d e f => Term.beq a d && Term.beq b e && Term.beq c f
+    | .borrowT a b, .borrowT c d => Term.beq a c && Term.beq b d
+    | _, _ => false
+  termination_by t _ => sizeOf t
+  def Term.beqList : List Term → List Term → Bool
+    | [], [] => true
+    | a :: as, b :: bs => Term.beq a b && Term.beqList as bs
+    | _, _ => false
+  termination_by ts _ => sizeOf ts
+  def Term.beqBranches : List Branch → List Branch → Bool
+    | [], [] => true
+    | .mk c bs a :: r, .mk d es b :: s => c == d && bs == es && Term.beq a b && Term.beqBranches r s
+    | _, _ => false
+  termination_by ts _ => sizeOf ts
+end
+
+instance : BEq Term := ⟨Term.beq⟩
+
+/-! ## Pure de Bruijn shift on `Term` (mirror of `Val.shiftPure`), and syntactic
+    subterm abstraction — the §18 rewriting layer's mechanism. -/
+
+mutual
+  def Term.shiftPure (d c : Nat) : Term → Term
+    | .pvar k => if k < c then .pvar k else .pvar (k + d)
+    | .lam dom b => .lam (Term.shiftPure d c dom) (Term.shiftPure d (c + 1) b)
+    | .pi dom cod => .pi (Term.shiftPure d c dom) (Term.shiftPure d (c + 1) cod)
+    | .sigmaT dom cod => .sigmaT (Term.shiftPure d c dom) (Term.shiftPure d (c + 1) cod)
+    | .app f a => .app (Term.shiftPure d c f) (Term.shiftPure d c a)
+    | .ctorApp n args => .ctorApp n (Term.shiftPureList d c args)
+    | .idT a b b' => .idT (Term.shiftPure d c a) (Term.shiftPure d c b) (Term.shiftPure d c b')
+    | t => t                                             -- runtime forms / leaves
+  termination_by t => sizeOf t
+  def Term.shiftPureList (d c : Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => Term.shiftPure d c t :: Term.shiftPureList d c ts
+  termination_by ts => sizeOf ts
+end
+
+/-! Abstract every occurrence of `e` at binder `depth` (mutual with the ctor-arg
+    list helper). `e` is shifted under each binder crossed; a match replaces it
+    with `pvar depth`; a free pure variable is lifted to make room. -/
+mutual
+  def absOcc (e : Term) (depth : Nat) : Term → Term
+    | .lam dom b =>
+      if Term.beq (.lam dom b) (Term.shiftPure depth 0 e) then .pvar depth
+      else .lam (absOcc e depth dom) (absOcc e (depth + 1) b)
+    | .pi dom cod =>
+      if Term.beq (.pi dom cod) (Term.shiftPure depth 0 e) then .pvar depth
+      else .pi (absOcc e depth dom) (absOcc e (depth + 1) cod)
+    | .sigmaT dom cod =>
+      if Term.beq (.sigmaT dom cod) (Term.shiftPure depth 0 e) then .pvar depth
+      else .sigmaT (absOcc e depth dom) (absOcc e (depth + 1) cod)
+    | .app f a =>
+      if Term.beq (.app f a) (Term.shiftPure depth 0 e) then .pvar depth
+      else .app (absOcc e depth f) (absOcc e depth a)
+    | .idT a b c =>
+      if Term.beq (.idT a b c) (Term.shiftPure depth 0 e) then .pvar depth
+      else .idT (absOcc e depth a) (absOcc e depth b) (absOcc e depth c)
+    | .ctorApp n args =>
+      if Term.beq (.ctorApp n args) (Term.shiftPure depth 0 e) then .pvar depth
+      else .ctorApp n (absOccList e depth args)
+    | .pvar k =>
+      if Term.beq (.pvar k) (Term.shiftPure depth 0 e) then .pvar depth
+      else .pvar (if k < depth then k else k + 1)
+    | s => if Term.beq s (Term.shiftPure depth 0 e) then .pvar depth else s   -- leaves
+  termination_by s => sizeOf s
+  def absOccList (e : Term) (depth : Nat) : List Term → List Term
+    | [] => []
+    | s :: ss => absOcc e depth s :: absOccList e depth ss
+  termination_by ss => sizeOf ss
+end
+
+/-- Abstract every occurrence of `e` in `t` by a fresh de Bruijn binder.
+    `Term.lam τ (abstractOccurrences e t)` applied to `e` β-reduces back to `t`.
+    The §18 motive-generalization mechanism: no matching by eye, no missed
+    occurrence. -/
+def abstractOccurrences (e t : Term) : Term := absOcc e 0 t
+
 end Dllbc
