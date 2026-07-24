@@ -110,6 +110,40 @@ def pivotPlace : Decl :=
 def confTable : List Decl := [nthS, nth2S, swapSN, pivotPlace]
 example : checkFnOk pivotPlace confTable = true := by native_decide
 
+/-! ## M20-2 (bound derivation) — the base swap's `p2` derived from the length eqn
+
+    Same pivot placement, but the bound is DERIVED from the length equation the
+    recursion carries (`hlen : len *v = S (add i g)`, the k=Z instance) rather than
+    handed in directly. In the `S i'` branch the equation reduces definitionally to
+    `len *v = S (S (add i' g))` (add on a constructor head), so `le_add i' g`
+    (whose type is `Le (S (S i')) (S (S (add i' g)))` up to Le reduction) transports
+    onto `len *v` via `le_rw_r (id_sym hlen)`. This validates the full
+    length-equation → swapS-bound chain the recursive partScan threads. -/
+
+def addTmH (a b : Term) : Term := .app (.app Std.addFnT a) b
+
+-- v=0, i=1, g=2, hlen=3; body binder i2=4.
+def pivotPlaceH : Decl :=
+  { name := "pivotPlaceH", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("i", natT), ("g", natT),
+      ("hlen", .idT natT (lenT (.deref (V 0 "v"))) (tS (addTmH (V 1 "i") (V 2 "g"))))],
+    body := .matchE ⟨1, "i"⟩ [
+      .mk "Z" [] .unit,
+      -- Derive the bound in a `let` FIRST, while `v` is still live (the `len *v`
+      -- read is comptime/non-consuming); THEN call swapS (which consumes `v`).
+      .mk "S" [⟨4, "i2"⟩] (.letIn ⟨5, "p2"⟩
+        -- p2 = le_rw_r (S(S i')) (S(S(add i' g))) (len *v) (id_sym hlen) (le_add i' g)
+        (.app (.app (.app (.app (.app StdLemmas.le_rw_r
+          (tS (tS (V 4 "i2"))))
+          (tS (tS (addTmH (V 4 "i2") (V 2 "g")))))
+          (lenT (.deref (V 0 "v"))))
+          (.app (.app (.app (.app StdLemmas.id_sym natT) (lenT (.deref (V 0 "v"))))
+            (tS (tS (addTmH (V 4 "i2") (V 2 "g"))))) (V 3 "hlen")))
+          (.app (.app StdLemmas.le_add (V 4 "i2")) (V 2 "g")))
+        (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 4 "i2"), .unit, V 5 "p2"]) .unit)) ],
+    back := some (swapLT (.ctorApp "Z" []) (V 1 "i") (.deref (V 0 "v"))) }
+example : checkFnOk pivotPlaceH confTable = true := by native_decide
+
 /-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
 
     The imperative partition branches on `if leb x pivot` with `x` symbolic; the
@@ -257,3 +291,4 @@ example : runPart [5,3,8,1,9,2] 6 = true := by native_decide    -- mixed, multip
 example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates around the pivot
 
 end Dllbc.Tests.S19Partition
+
