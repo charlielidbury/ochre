@@ -52,6 +52,7 @@ t, τ, S ::=
 
     let x = t ; t′                 declaration
     t := t′ ; t′′                  assignment
+    t ; t′                         sequencing (sugar for let _ = t ; t′)
     &mut t                         mutable borrow
     &mut (s : τ ↝ S)               borrow type; s (the snapshot) bound in S
     *t                             dereference
@@ -65,7 +66,7 @@ Three grammar-level decisions, each argued in later sections but recorded here:
 
 *No `copy`, no `take`, no `reborrow`.* All three are derived. `take` is `*x` read under ⇒ (destructive read through a borrow, leaving a hole). `reborrow` is `&mut *x`. `copy` is a *generated function* `T.copy : T → T × T` (consume-and-rebuild, §7), used via the idiom `match T.copy x { Pair(l, r) => { x := l ; …r… } }` — and rarely needed at all, because type-level reads go through snapshots (⇝) at no runtime cost.
 
-*One grammar, positional restrictions in the rules.* The targets of `:=` and the subjects of `&mut` are syntactically arbitrary terms; the ⇐ rules are simply only *defined* on the shapes a location can take — a variable under zero or more peels, `x`, `*x`, `**x`, … Writing through anything else is spelled with a `let` first: `let tmp = f a ; *tmp := v`. There is no field path in any position — field access is match's job (§3). This keeps the grammar to a single category, with the arrows (not the syntax) determining where each construct is meaningful — the table below is exactly that determination.
+*One grammar, positional restrictions in the rules.* The targets of `:=` and the subjects of `&mut` are syntactically arbitrary terms; the ⇐ rules are simply only *defined* on the shapes a location can take — a variable under zero or more peels, `x`, `*x`, `**x`, … Writing through anything else is spelled with a `let` first: `let tmp = f a ; *tmp := v`. The scrutinee of `match` is the same story: grammatically arbitrary, with rules defined only on variables (§3.2 gives the reason — refinement is substitution, and only a variable has a substitutable identity). There is no field path in any position — field access is match's job (§3). This keeps the grammar to a single category, with the arrows (not the syntax) determining where each construct is meaningful — the table below is exactly that determination.
 
 ### 1.2 Declarations
 
@@ -152,6 +153,8 @@ let y = x;
 Line two mints a fresh loan identifier ℓ: ownership of `3` transfers to `b`, and the marker `loanₘ ℓ` parks at `x`, rendering it unusable — not vacant (⊥ says "nothing here"; a loan says "something is owed here") but equally excluded from every read rule. Line three writes *through* the borrow: under ⇐, the `*` peels one indirection **without consuming `b`** — the target is located, not read — and the payload is replaced in place. Note there is no contract governing this write; within a body, borrowing is contract-free, and the checker (a symbolic interpreter running these very rules) simply watches the payload change.
 
 Line four is where laziness pays out. The move needs to ⇒-read `x`, but `x` holds a loan — no rule applies. The environment reorganizes first: **End-Mut** takes the borrow's current payload, plugs it back where the loan marker sits, and kills the borrow (`b ↦ ⊥`). End-Mut is itself just a ⇐-fill at the loan marker followed by the kill — the write arrow, aimed at the environment's own bookkeeping. Then the move proceeds. Nothing marked *when* ℓ had to end; the demand for `x` did.
+
+One generalization, recorded now for §3's sake: what a ⇒-read ends is not just a marker sitting at the top of a slot but every loan marker in **owned position** within the value it is about to move, innermost first — a marker buried in a constructor field blocks the move identically, and the collapse of a borrow-match's field loans when the owner is later demanded (§3.3) is this same rule, not a new one. Markers *under a `borrowₘ` payload* are not in owned position: a carried borrow relocates as-is on a move, its suspensions travelling with it.
 
 ### 2.3 Drop
 
