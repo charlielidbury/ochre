@@ -850,6 +850,28 @@ def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat) (br : 
   bindBorrowFields br.binders ℓs (σs.map Val.sym)
   pure br.body
 
+/-- **Exhaustiveness** (§9): a match on a *symbolic* scrutinee must cover the
+    full constructor set of the scrutinee's type (read from the signature
+    table). This is what makes "accepted ⟹ concrete-safe" unconditional — a
+    concrete run cannot hit a constructor no branch handles. Skipped when the
+    scrutinee σ is untyped (a pre-telescope testing artifact) or its type has
+    no known constructor set. A ⊥-typed scrutinee has the empty set, so an
+    empty match on it is vacuously exhaustive. Concrete-scrutinee matches are
+    NOT checked here — dynamic selection is stuck-prone only on a genuinely
+    missing branch, which stays the runtime error it is. -/
+def checkExhaustive (fuel : Nat) (scrutσ : Nat) (branches : List Branch) : M Unit := do
+  match (← get).sctx.lookup scrutσ with
+  | none => pure ()                                   -- untyped scrutinee: skip
+  | some τ =>
+    match Val.typeCtors (Val.whnfV fuel τ) with
+    | none => pure ()                                 -- unknown type: nothing to check against
+    | some ctors =>
+      let covered := branches.map (·.ctor)
+      match ctors.find? (fun c => !covered.contains c) with
+      | some missing =>
+        throwErr s!"match: non-exhaustive — no branch for constructor '{missing}' of the scrutinee's type"
+      | none => pure ()
+
 /-! Move each statement-spine match into tail position by pushing the
     continuation into every branch (duplicating it): `seq (matchE) k` and
     `let y = matchE; k` become terminal matches. Match in *expression*
@@ -921,8 +943,14 @@ mutual
           match (borrowSelect scrut branches ℓ name fields).run st' with
           | .error e _ => [.error e]
           | .ok body st'' => explore fuel body st''
-        | .ownedSym σ => exploreSymBranches fuel scrut false 0 σ branches st'
-        | .borrowSym ℓ σ => exploreSymBranches fuel scrut true ℓ σ branches st'
+        | .ownedSym σ =>
+          match (checkExhaustive fuel σ branches).run st' with
+          | .error e _ => [.error e]
+          | .ok _ st'' => exploreSymBranches fuel scrut false 0 σ branches st''
+        | .borrowSym ℓ σ =>
+          match (checkExhaustive fuel σ branches).run st' with
+          | .error e _ => [.error e]
+          | .ok _ st'' => exploreSymBranches fuel scrut true ℓ σ branches st''
   termination_by fuel _ _ _ => (fuel, 2, 0)
   /-- One symbolic path per branch, in declaration order. `borrow` selects the
       setup; `ℓ` is the parent loan (borrow mode only); `σ` is the scrutinee's

@@ -162,4 +162,17 @@ def ctorSig : String → Option CtorSig
   | "Pair"  => some { fieldTypes := fun ty => match ty with | .sigmaT a b => some [a, b] | _ => none }
   | _ => none
 
+/-- The full constructor set of a whnf'd type (§9 exhaustiveness). `none` for a
+    type whose constructors aren't known (nothing to check against). `Bot` has
+    an EMPTY set — an empty match on a ⊥-typed scrutinee is vacuously
+    exhaustive. -/
+def typeCtors : Val → Option (List String)
+  | .const "Nat"  => some ["Z", "S"]
+  | .const "Bool" => some ["True", "False"]
+  | .const "Unit" => some ["unit"]
+  | .const "Bot"  => some []
+  | .app (.const "List") _ => some ["Nil", "Cons"]
+  | .sigmaT _ _   => some ["Pair"]
+  | _ => none
+
 end Dllbc.Val

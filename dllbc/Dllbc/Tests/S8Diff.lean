@@ -132,6 +132,20 @@ def vDiffOk : Bool := vAccepted.all (fun b => vPool.all (fun cv => diffCheck (vD
 
 example : vDiffOk = true := by native_decide
 
+/-! ## Non-exhaustive bodies are now all rejected (§9)
+
+    With exhaustiveness checking, "accepted ⟹ concrete-safe" is unconditional
+    over the generator's grammar: a symbolic match missing a constructor is
+    rejected, so no accepted body can be concretely stuck on a missing branch. -/
+
+def vNonExhaustive : List Term :=
+  (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
+  ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ [.mk "Nil" [] b])                       -- missing Cons
+
+def vAllRejected : Bool := vNonExhaustive.all (fun b => !checkFnOk (vDecl b))
+
+example : vAllRejected = true := by native_decide
+
 /-! ## Telescope `(n : Nat) → Nat` (owned symbolic argument, value return) -/
 
 def n0 : Term := .var ⟨0, "n"⟩

@@ -94,12 +94,29 @@ example : checkFnOk
 /-! ## σ-typing at branch entry, and an owned-symbolic function -/
 
 -- A `Cons` pattern on a `&mut Nat`: the branch constructor does not belong to
--- the scrutinee's type (§3.2's seam, now enforced).
+-- the scrutinee's type (§3.2's seam). The `Z`/`S` branches make the match
+-- exhaustive over Nat, so it is the σ-typing check (not exhaustiveness, §9)
+-- that catches the stray `Cons` branch.
 example : checkFnErr {
   name := "f", retType := .const "Unit"
   telescope := [("b", .borrowT natT natT)]
-  body := dllbcWith [b] { match b { Cons(h, t) => () } }
+  body := dllbcWith [b] { match b { Z => (), S(m) => (), Cons(h, t) => () } }
 } "does not belong" = true := by native_decide
+
+-- Exhaustiveness (§9): a symbolic match must cover the scrutinee type's full
+-- constructor set. is_zero missing its `S` branch is rejected.
+example : checkFnErr {
+  name := "is_zero", retType := .const "Bool"
+  telescope := [("n", natT)]
+  body := dllbcWith [n] { match n { Z => True } }
+} "non-exhaustive" = true := by native_decide
+
+-- A borrow-mode match on `&mut List Nat` missing its `Nil` branch is rejected.
+example : checkFnErr {
+  name := "f", retType := .const "Unit"
+  telescope := [("v", .borrowT listNatT listNatT)]
+  body := dllbcWith [v] { match v { Cons(hd, tl) => { *hd := 0; () } } }
+} "non-exhaustive" = true := by native_decide
 
 -- `is_zero (n : Nat) → Bool`: an owned symbolic argument, both branches audited
 -- against the return type.
