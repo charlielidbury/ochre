@@ -87,7 +87,7 @@ All evaluation and checking is organized by four judgment forms over one grammar
 | **runtime** | Ω ⊢ t **⇒** v ⊣ Ω′ — consume-read: evaluate `t` to a value, with move semantics | Ω ⊢ t **⇐** v ⊣ Ω′ — destructive write: push `v` into the location `t` denotes |
 | **comptime** | Ω ⊢ t **⇝** v ⊣ Ω′ — comptime read: evaluate in the borrow-free fragment | Ω ⊢ x **⇜** t ⊣ Ω′ — comptime write: refine the snapshot layer by substitution |
 
-The comptime pair is not a second semantics: it is the **same machine restricted to the borrow-free, assignment-free fragment** — comptime evaluation threads Ω over pure entries; it excludes the constructs that *touch the loan state* (minting a borrow, consuming through one — though not `*t` as pure projection; see §5), and it excludes `:=` outright, so a ⇝-evaluation's only footprint on Ω is the fresh pure entries its `let`s introduce. (The comptime *write* ⇜ is unaffected: it is the checker's refinement judgment, fired at match branch entry — never the elaboration of a surface `:=`.) "No side effects at the type level" is a fragment property, not a separate rule set. It is also future-proofing: one can imagine a later version making **erasure** formal, in which type annotations, indices, and everything else evaluated only by the comptime arrows is deleted before the program runs. In that future it is essential that comptime evaluation has no effect on the state the runtime sees — types will not exist at runtime, so nothing the runtime depends on may have happened inside them. The fragment restriction is that guarantee, stated today. A second dividend lands in §9: conversion compares substituted terms with no Ω in sight, which an assigning ⇝ would forbid.
+The comptime pair is not a second semantics: it is the **same machine restricted to the borrow-free, assignment-free fragment** — comptime evaluation threads Ω over pure entries; it excludes the constructs that *touch the loan state* (minting a borrow, consuming through one — though not `*t` as pure projection; see §5), and it excludes `:=` outright, so a ⇝-evaluation's only footprint on Ω is the fresh pure entries its `let`s introduce. (The comptime *write* ⇜ is unaffected: it is the checker's refinement judgment, fired at match branch entry. It has no surface syntax at all — no program text elaborates to ⇜.) "No side effects at the type level" is a fragment property, not a separate rule set. It is also future-proofing: one can imagine a later version making **erasure** formal, in which type annotations, indices, and everything else evaluated only by the comptime arrows is deleted before the program runs. In that future it is essential that comptime evaluation has no effect on the state the runtime sees — types will not exist at runtime, so nothing the runtime depends on may have happened inside them. The fragment restriction is that guarantee, stated today. A second dividend lands in §9: conversion compares substituted terms with no Ω in sight, which an assigning ⇝ would forbid.
 
 Which arrows are defined on which constructs is the language's skeleton:
 
@@ -269,6 +269,8 @@ fn is_zero (n : Nat) = {
 
 Entering a branch performs a **comptime write at the scrutinee**: the judgment Ω ⊢ n ⇜ S σ′ ⊣ Ω′, which substitutes `S σ′` for σ in *every* entry and *every* type in Ω — the environment's knowledge is upgraded wholesale, not locally. This is dependent elimination in the Agda style — by unification and substitution, not by threading equality proofs — and it is why the scrutinee must be a variable: substitution is defined on variables, and an arbitrary expression has no substitutable identity. It is also, verbatim, what LLBC's symbolic interpreter does when matching a symbolic scrutinee; the observation that this mechanism *is* dependent pattern matching is the founding identification of this calculus.
 
+An obligation is hiding in the refinement, recorded for the type layer: the branch constructors must be constructors *of the scrutinee's type* — σ := S σ′ is well-formed because σ is a Nat. The symbolic machinery alone cannot see this; the σ-context of the comptime fragment (§9) is what discharges it.
+
 Note the two layers of new names in the `S` branch. The binder `m` is a runtime entry, holding a value that can be moved, borrowed, matched. The symbolic σ′ is a pure entry, and it can outlive `m`: move `m` away, and σ′ persists wherever types and other entries mention it. Snapshots have independent lives.
 
 ### 3.3 Borrow mode: matching through
@@ -292,7 +294,7 @@ fn zero_head (b : &mut List Nat) = {
       // forced before the next line: drop hd's payload (a plain Nat — discard)
       *hd := 0;
       // Ω = …, hd ↦ borrowₘ ℓ₁ 0, …
-      // forced at branch exit (at latest, by return): End-Mut ℓ₁, then ℓ₂
+      // forced, at latest, by the return audit's demand on b: End-Mut ℓ₁, then ℓ₂
       // Ω = b ↦ borrowₘ ℓ (Cons 0 σ₂)
       ()
     }
@@ -301,6 +303,8 @@ fn zero_head (b : &mut List Nat) = {
 ```
 
 Three things happened at the `Cons` boundary, and each is an instance of machinery already introduced. **Refinement**: ⇜ fires exactly as in §3.2, but at the *payload* — the deref cell of the ⇜ column — refining σ in the parent's borrow and everywhere else at once. **Reborrowing**: each field binder is a whole-value borrow of its component, a fresh loan (ℓ₁, ℓ₂) parked in the parent's value tree; the parent is suspended — its payload is now a `Cons` of loan markers, and no rule reads through a loan, so the intermediate states of the children are unobservable through `b`. **Contract-freedom**: the loans ℓ₁, ℓ₂ carry no obligations, and the write `*hd := 0` is a *strong update* — it replaces the payload and, in general, its type, with the checker simply tracking the new state. The suspension is what makes this sound: nothing can examine the parent until the children's loans end, and when they do, End-Mut plugs each final payload into its marker. The single point where `b`'s contents are ever *judged* is the function boundary — at return, `b` must hold a value of the type its signature owes (here `List Nat`, and `Cons 0 σ₂` converts) — a story told properly in §5.
+
+One trigger deserves precision, because the trace's "forced at branch exit" shorthand elides it: nothing at branch exit itself ends ℓ₁ and ℓ₂. Field loans collapse when a demand arrives *through the parent chain* — the parent's owner is read (End-Mut on ℓ plugs the marker-bearing payload into owned position, where §2.2's rule finishes the job), or the boundary audit demands the argument borrow's payload (§5). Reading `b` itself collapses nothing: its payload's markers sit under a borrow, not in owned position. Laziness, as ever — the demand does the work, and the boundary is merely the canonical demander.
 
 The nullary branch shows the degenerate case for free: `Nil()` binds nothing, issues no loans, and the refinement alone updates the parent's payload.
 
@@ -334,6 +338,8 @@ LLBC restricts disjunctions to terminal position, deferring what it calls the me
 3. Everything is up to renaming of loan identifiers and symbolic names, since branches mint fresh ones independently.
 
 If reorganization cannot bring the shapes into agreement — one branch returns a borrow into `x`, another does not — the match is rejected in that position; moving it to terminal position, where each branch simply flows to the function boundary and no join is needed, is always available and is exactly LLBC's regime. The information loss in step 2 is the same loss a shared match motive imposes in any dependent type theory; a program that needs branch-specific knowledge downstream should return evidence of it — which, in a language where types are first-class, is what Σ-types are for.
+
+A v0 note from the mechanization: the join is not the baseline — duplication is. The checker checks the continuation once per branch (an expression-position match is let-lifted first, and the continuation is then pushed into the branches), which is maximally precise, needs no generalization step at all, and costs worst-case exponential checking in match-nesting depth. The join above is the *widening* that will one day control that cost — an optimization with a precision price, not a semantic obligation. Nothing downstream commits to its existence.
 
 ---
 
