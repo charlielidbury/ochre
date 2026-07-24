@@ -270,6 +270,22 @@ def count_cons_congr_ty : Term := pure{
   Π (m : Nat) → Π (h : Nat) → Π (l1 : List Nat) → Π (l2 : List Nat) →
     Id Nat (count m l1) (count m l2) → Id Nat (count m (Cons h l1)) (count m (Cons h l2)) }
 
+-- The §18 rewrite-by-Id lemma, named: from a RECEIVED equation `eqb m a = True`,
+-- resolve the STUCK `count m (Cons a l)` to `S (count m l)`. J transports `Refl`
+-- along `id_sym hq`, the motive abstracting the scrutinee `z` out of the `boolRec`
+-- that `count (Cons …)` unfolds to. Abstraction alone cannot do this (the subterm
+-- hides behind the scrutinee's own reduction); this is the knowledge half. The
+-- imperative tie-in returns THIS applied to its params.
+def count_cons_hit : Term := pure{
+  λ (m : Nat). λ (a : Nat). λ (l : List Nat). λ (hq : Id Bool (eqb m a) True).
+    j Bool True
+      (λ (z : Bool). λ (h : Id Bool True z).
+        Id Nat (boolRec (λ (w : Bool). Nat) (S (count m l)) (count m l) z) (S (count m l)))
+      Refl (eqb m a) (id_sym Bool (eqb m a) True hq) }
+def count_cons_hit_ty : Term := pure{
+  Π (m : Nat) → Π (a : Nat) → Π (l : List Nat) → Id Bool (eqb m a) True →
+    Id Nat (count m (Cons a l)) (S (count m l)) }
+
 -- Bounded head-swap: exchanging the head `x` with position `j` of the tail `xs`
 -- preserves count, PROVIDED `j` is in range (`Le (S j) (len xs)`). Induction on
 -- `j`, casing `xs`; the `Nil` leaves are ⊥-discharged by the bound (`Le (S _) Z`).

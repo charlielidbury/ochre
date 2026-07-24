@@ -21,6 +21,8 @@ namespace Dllbc.Tests.S18Rewrite
 
 def eqbA (a b : Term) : Term := .app (.app Std.eqbFnT a) b
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
+def V (i : Nat) (n : String) : Term := .var ⟨i, n⟩
+def listNatT : Term := .app (.const "List") (.const "Nat")
 
 /-- The round-trip property: abstracting `e` out of `t` and applying it back
     recovers `t` (by conversion). -/
@@ -111,18 +113,46 @@ example : chk StdLemmas.count_swapL StdLemmas.count_swapL_ty = true := by native
     with the abstractOccurrences motive. The essential use (which the abstraction
     layer CANNOT do — the subterm hides behind the scrutinee's own reduction):
     resolve a STUCK `count m (Cons a l)` using a RECEIVED equation `eqb m a =
-    True`. This is what the count_swapL stack chains; here as the calculus-honest
-    j+id_sym+abstractOccurrences construction. -/
+    True`. Named in `StdLemmas` as `count_cons_hit`; this checks it, and the
+    imperative tie-in below returns it applied to its params. -/
 
-open Dllbc.Std (eqbFnT countFnT) in
-open Dllbc.StdLemmas (id_sym) in
-example : chk
-  (pure{ λ (m : Nat). λ (a : Nat). λ (l : List Nat). λ (hq : Id Bool (eqbFnT m a) True).
-    j Bool True
-      (λ (z : Bool). λ (h : Id Bool True z).
-        Id Nat (boolRec (λ (w : Bool). Nat) (S (countFnT m l)) (countFnT m l) z) (S (countFnT m l)))
-      Refl (eqbFnT m a) (id_sym Bool (eqbFnT m a) True hq) })
-  (pure{ Π (m : Nat) → Π (a : Nat) → Π (l : List Nat) → Id Bool (eqbFnT m a) True →
-    Id Nat (countFnT m (Cons a l)) (S (countFnT m l)) }) = true := by native_decide
+example : chk StdLemmas.count_cons_hit StdLemmas.count_cons_hit_ty = true := by native_decide
+
+/-! ## The imperative tie-in — a surface-rewritten proof through ⇒-lift + hasType
+
+    `certConsHit` is an IMPERATIVE function: it holds a mutable borrow `v` and
+    mutates through it (`*v := Nil`, exercising the ⇐ writeR arrow and the argument
+    borrow's owed-type obligation). Its RESULT is the §18 rewrite-by-Id proof
+    `count_cons_hit` applied to the pure params — a surface-authored proof term
+    that, at the value-returning audit, must be read in the imperative regime and
+    type-checked. The pure lift (⇒⊇⇝, §1.3) carries the proof through: the `count`
+    /`j`/`Id` formers are comptime, so `readR` delegates to `readC`, and the audit
+    discharges the return obligation with the same `hasType` that `chk` runs above.
+    The tie-in thus proves surface-rewritten proofs flow through the borrow
+    machinery — the shape the quicksort caller uses when it applies count lemmas to
+    the M17-recovered result. -/
+
+def certConsHit : Decl :=
+  { name := "certConsHit",
+    retType := .idT (.const "Nat")
+      (.app (.app Std.countFnT (V 1 "m")) (.ctorApp "Cons" [V 2 "a", V 3 "l"]))
+      (.ctorApp "S" [.app (.app Std.countFnT (V 1 "m")) (V 3 "l")]),
+    telescope := [
+      ("v", .borrowT listNatT listNatT),
+      ("m", .const "Nat"), ("a", .const "Nat"), ("l", listNatT),
+      ("hq", .idT (.const "Bool") (eqbA (V 1 "m") (V 2 "a")) (.ctorApp "True" []))],
+    body := .assign (.deref (V 0 "v")) (.ctorApp "Nil" [])
+      (.app (.app (.app (.app StdLemmas.count_cons_hit (V 1 "m")) (V 2 "a")) (V 3 "l")) (V 4 "hq")) }
+example : checkFnOk certConsHit = true := by native_decide
+
+-- Negative control: the same body, but the return type claims `S (S (count m l))`
+-- — a count the rewrite-by-Id proof does NOT prove. The value-returning audit runs
+-- `hasType` on the proof against the (lying) pinned return type and rejects it, so
+-- the tie-in's acceptance above is not vacuous.
+def certConsHitLieRet : Term := .idT (.const "Nat")
+  (.app (.app Std.countFnT (V 1 "m")) (.ctorApp "Cons" [V 2 "a", V 3 "l"]))
+  (.ctorApp "S" [.ctorApp "S" [.app (.app Std.countFnT (V 1 "m")) (V 3 "l")]])
+def certConsHitLie : Decl := { certConsHit with name := "certConsHitLie", retType := certConsHitLieRet }
+example : checkFnErr certConsHitLie "does not have return type" = true := by native_decide
 
 end Dllbc.Tests.S18Rewrite
