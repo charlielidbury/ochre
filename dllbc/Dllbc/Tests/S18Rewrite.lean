@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.Std
+import Dllbc.StdLemmas
 import Dllbc.PureMacro
 
 /-!
@@ -99,5 +100,25 @@ example : chk
       False => Refl } })
   (pure{ Π (m : Nat) → Π (a : Nat) → Π (b : Nat) → Π (l : List Nat) →
     Id Nat (countFnT m (Cons a (Cons b l))) (countFnT m (Cons b (Cons a l))) }) = true := by native_decide
+
+/-! ## rewrite-by-Id — the branch-equation / knowledge layer
+
+    Given an equation as an ORDINARY Id hypothesis, transport a proof by it via J
+    with the abstractOccurrences motive. The essential use (which the abstraction
+    layer CANNOT do — the subterm hides behind the scrutinee's own reduction):
+    resolve a STUCK `count m (Cons a l)` using a RECEIVED equation `eqb m a =
+    True`. This is what the count_swapL stack chains; here as the calculus-honest
+    j+id_sym+abstractOccurrences construction. -/
+
+open Dllbc.Std (eqbFnT countFnT) in
+open Dllbc.StdLemmas (id_sym) in
+example : chk
+  (pure{ λ (m : Nat). λ (a : Nat). λ (l : List Nat). λ (hq : Id Bool (eqbFnT m a) True).
+    j Bool True
+      (λ (z : Bool). λ (h : Id Bool True z).
+        Id Nat (boolRec (λ (w : Bool). Nat) (S (countFnT m l)) (countFnT m l) z) (S (countFnT m l)))
+      Refl (eqbFnT m a) (id_sym Bool (eqbFnT m a) True hq) })
+  (pure{ Π (m : Nat) → Π (a : Nat) → Π (l : List Nat) → Id Bool (eqbFnT m a) True →
+    Id Nat (countFnT m (Cons a l)) (S (countFnT m l)) }) = true := by native_decide
 
 end Dllbc.Tests.S18Rewrite
