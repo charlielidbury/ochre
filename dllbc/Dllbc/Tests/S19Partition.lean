@@ -503,5 +503,24 @@ example : runScan [3,2,1] 2 3 = true := by native_decide         -- reverse sort
 example : runScan [3,5,1,2,4] 4 3 = true := by native_decide     -- interior g=S g' swap
 example : runScan [5,3,8,1,9,2] 5 5 = true := by native_decide   -- mixed, multiple swaps
 
+
+def partitionQ : Decl :=
+  { name := "partitionQ",
+    retType := .sigmaT natT (.idT natT (.pvar 0) (.app (.app StdLemmas.partIdxL (V 1 "n")) dv)),
+    telescope := [("v", .borrowT listNatT listNatT), ("n", natT), ("hlenW", .idT natT (lenT dv) (V 1 "n"))],
+    body := .matchE ⟨1, "n"⟩ [
+      .mk "Z" [] (.ctorApp "Pair" [.ctorApp "Z" [], .ctorApp "Refl" []]),
+      .mk "S" [⟨3, "n2"⟩] (.letIn ⟨4, "i"⟩ (.app (.app StdLemmas.partIdxL (.ctorApp "S" [V 3 "n2"])) dv)
+        (.letIn ⟨5, "pivot"⟩ (nthP (.ctorApp "Z" []) dv)
+          (.letIn ⟨6, "hlen"⟩
+            (idTr (lenT dv) (tS (V 3 "n2")) (tS (addTmH (V 3 "n2") (.ctorApp "Z" [])))
+              (V 2 "hlenW")
+              (idSy (tS (addTmH (V 3 "n2") (.ctorApp "Z" []))) (tS (V 3 "n2"))
+                (idCgS (addTmH (V 3 "n2") (.ctorApp "Z" [])) (V 3 "n2") (addZeroT (V 3 "n2")))))
+            (.seq (.call "partScan" [.var ⟨0, "v"⟩, V 3 "n2", .ctorApp "Z" [], .ctorApp "Z" [], V 5 "pivot", V 6 "hlen"])
+              (.ctorApp "Pair" [V 4 "i", .ctorApp "Refl" []]))))) ],
+    back := some (partitionLT2 (V 1 "n") dv) }
+#eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScan, partitionQ] partitionQ with | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 200))
+
 end Dllbc.Tests.S19Partition
 
