@@ -41,11 +41,46 @@ collapse-then-convert, not a bare hasType; and the §4.2 "write order
 forced by types" claim does not survive the recursive-family encoding
 (no index argument at the constructor) — it returns with native VCons.
 
-Next: M6 calls-as-wires (§5.3), then loan groups (§6), then the fording
-kit (Id/J/K, native indexed families). Deferred throughout: shared
-borrows, [k] termination guard, metatheory (a differential
-symbolic-vs-concrete test suite is the planned counterexample-finder
-before any proofs).
+Same-day continuation, M6–M8:
+
+6. Calls as wires (§5.3): owed loans minting typed existentials at
+   loan-end; the §5.3 imprecision trace (the caller learns exactly the
+   signature); the RECURSIVE CURSOR zero_all checking — §2.5's promised
+   counterpart to the self-reborrow rejection, tail borrow passed as an
+   argument; type-changing ↝ (Bool ↝ Nat) exercised on both sides.
+7. Loan groups (§6.1): group nodes (captured loans × issued borrows),
+   the ending cascade (issued surrender first — audited — then all
+   captured release atomically), choose checking under the per-branch
+   callee audit rule (first precise statement, now in the doc), opaque
+   groups forgetting as specified. En route: the project's FIRST GENUINE
+   SOUNDNESS BUG, introduced by the orchestrator's M7 spec —
+   signature-inferred "constrained wire" release. through and advance
+   share a signature and differ only in body; constraining advance's
+   captured release to the surrendered field payload lets the checker
+   refine an owner to its own tail. Caught by the implementing agent's
+   precondition analysis plus orchestrator escalation; doc carries the
+   provisos (§6.1).
+8. Soundness pass + the differential suite: constrained inference
+   removed (opaque groups always release fresh existentials — through's
+   precision is §6.2's to recover); callee exemption narrowed
+   (consumed-into-result/-call, else by-loan locatability, else
+   rejected); group ρ ids. And the counterexample-finder: 136 generated
+   bodies over three telescopes, 75 accepted by checkFn, 238 concrete
+   runs — zero divergences from "accepted ⟹ concrete run completes and
+   audits" (native_decide, ~7s clean build). Two metatheory precursors
+   surfaced and flagged, not hidden: the simulation theorem needs an
+   EXHAUSTIVENESS precondition (a non-exhaustive match is accepted but
+   concretely stuck; generator scoped to exhaustive matches meanwhile);
+   and v1 is callee-side only — the constrained bug class is
+   caller-side, needing calls in the generator plus final-environment
+   σ-instance comparison (the simulation relation proper) to catch.
+
+Next: M9 = exhaustiveness checking in checkFn + differential v2
+(whole-program caller+callee concrete runs, calls in the generator, the
+property upgraded to "the concrete final environment is a σ-instance of
+an accepted symbolic path's final environment"). Then §6.2's precision
+spectrum or the fording kit (Id/J/K, native indexed families). Deferred
+throughout: shared borrows, [k] termination guard, proofs.
 
 ## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
 
