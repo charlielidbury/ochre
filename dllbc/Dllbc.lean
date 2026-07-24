@@ -5,6 +5,8 @@ import Dllbc.Machine
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
+import Dllbc.PureMacro
+import Dllbc.StdLemmas
 import Dllbc.Tests.S2
 import Dllbc.Tests.S3
 import Dllbc.Tests.S3Sym
@@ -18,3 +20,4 @@ import Dllbc.Tests.S10Ford
 import Dllbc.Tests.S11Lib
 import Dllbc.Tests.S12Inst
 import Dllbc.Tests.S14Bounds
+import Dllbc.Tests.S15Elab

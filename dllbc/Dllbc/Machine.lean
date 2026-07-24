@@ -581,36 +581,54 @@ mutual
         -- (`natNoConf` via `j`, `botElim` on a derived ⊥) type-check as ordinary
         -- terms — no new machine rule, just the eliminators' typing.
         let (head, args) := Val.collectSpine v
+        -- An eliminator may be OVER-applied (its result is a function further
+        -- applied — `natRec … n` returning `P n = A → B`, then given the `A`):
+        -- type the fixed part to its base result, then `synthSpine` the extras.
+        let finish (baseTy : Val) (rest : List Val) (premises : Bool) : M Bool := do
+          match ← synthSpine fuel baseTy rest with
+          | some resTy => pure (Val.convert fuel ty resTy && premises)
+          | none => pure false
         match head, args with
-        | .const "botElim", [t, x] =>                     -- botElim T x : T   (x : ⊥)
+        | .const "botElim", t :: x :: rest =>            -- botElim T x : T   (x : ⊥)
           let xOk ← hasType fuel x (.const "Bot")
-          pure (Val.convert fuel ty t && xOk)
-        | .const "j", [a, aa, p, d, b, pf] =>             -- j A a P d b p : P b p
+          finish t rest xOk
+        | .const "j", a :: aa :: p :: d :: b :: pf :: rest =>   -- j A a P d b p : P b p
           let dOk ← hasType fuel d (Val.nfV fuel (.app (.app p aa) (.ctor "Refl" [])))
           let pOk ← hasType fuel pf (.idT a aa b)
-          pure (Val.convert fuel ty (Val.nfV fuel (.app (.app p b) pf)) && dOk && pOk)
-        | .const "k", [a, aa, p, d, pf] =>                -- k A a P d p : P p
+          finish (Val.nfV fuel (.app (.app p b) pf)) rest (dOk && pOk)
+        | .const "k", a :: aa :: p :: d :: pf :: rest =>        -- k A a P d p : P p
           let dOk ← hasType fuel d (Val.nfV fuel (.app p (.ctor "Refl" [])))
           let pOk ← hasType fuel pf (.idT a aa aa)
-          pure (Val.convert fuel ty (Val.nfV fuel (.app p pf)) && dOk && pOk)
-        | .const "natRec", [p, z, s, n] =>               -- natRec P z s n : P n
+          finish (Val.nfV fuel (.app p pf)) rest (dOk && pOk)
+        | .const "natRec", p :: z :: s :: n :: rest =>   -- natRec P z s n : P n
           let zOk ← hasType fuel z (Val.nfV fuel (.app p (.ctor "Z" [])))
           let sTy : Val := .pi (.const "Nat") (.pi (.app p (.pvar 0)) (.app p (.ctor "S" [.pvar 1])))
           let sOk ← hasType fuel s sTy
           let nOk ← hasType fuel n (.const "Nat")
-          pure (Val.convert fuel ty (Val.nfV fuel (.app p n)) && zOk && sOk && nOk)
-        | .const "boolRec", [p, t, f, b] =>              -- boolRec P t f b : P b
+          finish (Val.nfV fuel (.app p n)) rest (zOk && sOk && nOk)
+        | .const "boolRec", p :: t :: f :: b :: rest =>  -- boolRec P t f b : P b
           let tOk ← hasType fuel t (Val.nfV fuel (.app p (.ctor "True" [])))
           let fOk ← hasType fuel f (Val.nfV fuel (.app p (.ctor "False" [])))
           let bOk ← hasType fuel b (.const "Bool")
-          pure (Val.convert fuel ty (Val.nfV fuel (.app p b)) && tOk && fOk && bOk)
-        | .const "listRec", [a, p, pn, pc, l] =>         -- listRec A P pn pc l : P l
+          finish (Val.nfV fuel (.app p b)) rest (tOk && fOk && bOk)
+        | .const "listRec", a :: p :: pn :: pc :: l :: rest =>  -- listRec A P pn pc l : P l
           let listA : Val := .app (.const "List") a
           let pnOk ← hasType fuel pn (Val.nfV fuel (.app p (.ctor "Nil" [])))
           let pcTy : Val := .pi a (.pi listA (.pi (.app p (.pvar 0)) (.app p (.ctor "Cons" [.pvar 2, .pvar 1]))))
           let pcOk ← hasType fuel pc pcTy
           let lOk ← hasType fuel l listA
-          pure (Val.convert fuel ty (Val.nfV fuel (.app p l)) && pnOk && pcOk && lOk)
+          finish (Val.nfV fuel (.app p l)) rest (pnOk && pcOk && lOk)
+        | .sym σ, args =>
+          -- A bound function variable applied (`ih b c hab hbc`): synthesize by
+          -- iterating Π-instantiation from its `sctx` type, checking each argument
+          -- against the domain. This is ordinary application typing — what a
+          -- surface lemma application (§15) or a proof reused under a binder needs.
+          match (← get).sctx.lookup σ with
+          | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
+          | some hty =>
+            match ← synthSpine fuel hty args with
+            | some resTy => pure (Val.convert fuel ty resTy)
+            | none => pure false
         | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
       | .lam d b =>
         -- λ against Π: check the domains convert, then the body under a fresh σ
@@ -628,6 +646,18 @@ mutual
         | _ => pure false
       | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
   termination_by fuel _ _ => (fuel, 0, 0)
+  /-- Synthesize the result type of applying a value of type `hty` to `args`:
+      each argument's domain (a Π) is checked, and the codomain is instantiated at
+      the argument. `none` if an argument mistypes or a non-Π is applied. -/
+  def synthSpine : Nat → Val → List Val → M (Option Val)
+    | _, hty, [] => pure (some hty)
+    | fuel, hty, a :: rest => do
+      match Val.whnfV fuel hty with
+      | .pi dom cod =>
+        if ← hasType fuel a dom then synthSpine fuel (Val.substPure 0 a cod) rest
+        else pure none
+      | _ => pure none                                 -- applied a non-function
+  termination_by fuel _ args => (fuel, 2, args.length)
   /-- Check a constructor's fields against its field-type telescope, threading
       each checked field value into the remaining (dependent) field types. -/
   def checkFields : Nat → List Val → List Val → M Bool
