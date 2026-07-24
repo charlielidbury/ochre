@@ -30,13 +30,13 @@ example : expectEnv dllbc{
   ()
 } [("x", nat 7), ("y", nat 3)] = true := by native_decide
 
--- The move alone leaves ⊥ in the source slot (before any refill).
--- let x = 3; let y = x  ⟹  x ↦ ⊥, y ↦ 3
+-- §2.1 copy-on-read: reading a marker-free value copies it, the owner stays.
+-- let x = 3; let y = x  ⟹  x ↦ 3 (copied), y ↦ 3
 example : expectEnv dllbc{
   let x = 3;
   let y = x;
   ()
-} [("x", .bot), ("y", nat 3)] = true := by native_decide
+} [("x", nat 3), ("y", nat 3)] = true := by native_decide
 
 /-! ## §2.2 Borrowing, writing through, and ending -/
 
@@ -57,15 +57,16 @@ example : expectEnv dllbc{
   ()
 } [("x", .loanM 0), ("b", .borrowM 0 (nat 7))] = true := by native_decide
 
--- Reading x forces a lazy End-Mut on ℓ0 first: 7 returns to x, b dies to ⊥.
--- … let y = x  ⟹  x ↦ ⊥, b ↦ ⊥, y ↦ 7
+-- Reading x forces a lazy End-Mut on ℓ0 first: 7 returns to x, b dies to ⊥; the
+-- retry read then COPIES x (§2.1 — now marker-free), so x stays.
+-- … let y = x  ⟹  x ↦ 7 (copied), b ↦ ⊥, y ↦ 7
 example : expectEnv dllbc{
   let x = 3;
   let b = &mut x;
   *b := 7;
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("y", nat 7)] = true := by native_decide
+} [("x", nat 7), ("b", .bot), ("y", nat 7)] = true := by native_decide
 
 /-! ## §2.3 Drop -/
 
@@ -92,9 +93,11 @@ example : expectEnv dllbc{
 } [("x", .loanM 0), ("b", .borrowM 0 .bot), ("tail", cons (nat 3) nil)] = true := by
   native_decide
 
--- The refill closes the hole; no list node was copied.
+-- The refill closes the hole. `tail` is marker-free, so reading it into the new
+-- node COPIES it (§2.1) — it stays live (the `*b` take above still consumes,
+-- since a deref-take is not a variable read).
 -- … *b := Cons(7, tail)
---   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (Cons 7 (Cons 3 Nil)), tail ↦ ⊥
+--   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (Cons 7 (Cons 3 Nil)), tail ↦ Cons 3 Nil
 example : expectEnv dllbc{
   let x = Cons(3, Nil);
   let b = &mut x;
@@ -103,7 +106,7 @@ example : expectEnv dllbc{
   ()
 } [("x", .loanM 0),
    ("b", .borrowM 0 (cons (nat 7) (cons (nat 3) nil))),
-   ("tail", .bot)] = true := by native_decide
+   ("tail", cons (nat 3) nil)] = true := by native_decide
 
 /-! ## §2.5 Reborrow -/
 
@@ -120,25 +123,28 @@ example : expectEnv dllbc{
   native_decide
 
 -- Reading x through the suspended reborrow collapses the whole chain: End-Mut
--- ℓ0 then End-Mut ℓ1 fire in turn (the fuel-bounded reorganize-retry loop),
--- and x's value arrives.  ⟹  x ↦ ⊥, b ↦ ⊥, c ↦ ⊥, z ↦ 3
+-- ℓ0 then End-Mut ℓ1 fire in turn (the fuel-bounded reorganize-retry loop), and
+-- x's value arrives; the retry read then COPIES it (§2.1).
+--   ⟹  x ↦ 3 (copied), b ↦ ⊥, c ↦ ⊥, z ↦ 3
 example : expectEnv dllbc{
   let x = 3;
   let b = &mut x;
   let c = &mut *b;
   let z = x;
   ()
-} [("x", .bot), ("b", .bot), ("c", .bot), ("z", nat 3)] = true := by native_decide
+} [("x", nat 3), ("b", .bot), ("c", .bot), ("z", nat 3)] = true := by native_decide
 
 /-! ## Rejections (stuckness = no applicable rule) -/
 
--- Use-after-move: a second ⇒-read of a moved variable is stuck (slot is ⊥).
-example : expectErr dllbc{
+-- §2.1 copy-on-read makes a marker-free value re-readable: the second read of x
+-- copies again — no use-after-move. (Use-after-move rejections now live on
+-- marker-carrying values — a moved borrow, a taken payload.)
+example : expectEnv dllbc{
   let x = 3;
   let y = x;
   let z = x;
   ()
-} "use-after-move" = true := by native_decide
+} [("x", nat 3), ("y", nat 3), ("z", nat 3)] = true := by native_decide
 
 -- Fill through a non-place term: ⇐ is only defined on places.
 example : expectErr dllbc{

@@ -44,7 +44,7 @@ def wireCaller : Decl :=
     body := dllbcWith [] { let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () } }
 
 example : expectFnEnv [pushList, wireCaller] wireCaller
-  [("x", .bot), ("b", .bot), ("y", .sym 0)] = true := by native_decide
+  [("x", .sym 0), ("b", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## The recursive cursor (§2.5's promised counterpart) -/
 

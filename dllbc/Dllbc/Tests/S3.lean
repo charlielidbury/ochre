@@ -27,12 +27,13 @@ def pair (a b : Val) : Val := .ctor "Pair" [a, b]
 /-! ## §3.1 Owned mode: destructuring -/
 
 -- The scrutinee is ⇒-consumed, its fields move into the binders; the branch
--- rebuilds the pair. p ↦ ⊥, a ↦ ⊥, b ↦ ⊥, q ↦ Pair 3 7.
+-- rebuilds the pair, reading `a`/`b` by copy (§2.1, marker-free), so they stay.
+-- p ↦ ⊥, a ↦ 3, b ↦ 7, q ↦ Pair 3 7.
 example : expectEnv dllbc{
   let p = Pair(3, 7);
   let q = match p { Pair(a, b) => Pair(a, b) };
   ()
-} [("p", .bot), ("a", .bot), ("b", .bot), ("q", pair (nat 3) (nat 7))] = true := by
+} [("p", .bot), ("a", nat 3), ("b", nat 7), ("q", pair (nat 3) (nat 7))] = true := by
   native_decide
 
 -- A nested owned match: destructure the pair, then destructure its second
@@ -43,7 +44,7 @@ example : expectEnv dllbc{
     Pair(a, rest) => match rest { Cons(h, t) => Pair(a, h), Nil => Pair(a, a) }
   };
   ()
-} [("p", .bot), ("a", .bot), ("rest", .bot), ("h", .bot), ("t", nil),
+} [("p", .bot), ("a", nat 1), ("rest", .bot), ("h", nat 2), ("t", nil),
    ("r", pair (nat 1) (nat 2))] = true := by native_decide
 
 /-! ## §3.3 Borrow mode: matching through -/
@@ -64,9 +65,9 @@ example : expectEnv dllbc{
    ("hd", .borrowM 1 (nat 0)),
    ("tl", .borrowM 2 nil)] = true := by native_decide
 
--- Reading the owner back collapses the chain lazily: End-Mut ℓ0 (parent),
--- then the owned-position field loans ℓ1, ℓ2 are ended in turn as the value is
--- moved, so `x`'s value arrives fully updated. y ↦ Cons 0 Nil.
+-- Reading the owner back collapses the chain lazily: End-Mut ℓ0 (parent), then
+-- the owned-position field loans ℓ1, ℓ2 are ended in turn, so `x`'s value
+-- arrives fully updated; the retry read then COPIES it (§2.1). y ↦ Cons 0 Nil.
 example : expectEnv dllbc{
   let x = Cons(3, Nil);
   let b = &mut x;
@@ -76,7 +77,7 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot),
+} [("x", cons (nat 0) nil), ("b", .bot), ("hd", .bot), ("tl", .bot),
    ("y", cons (nat 0) nil)] = true := by native_decide
 
 -- The nullary branch binds nothing and issues no loans (degenerate case).
@@ -89,7 +90,7 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("y", nil)] = true := by native_decide
+} [("x", nil), ("b", .bot), ("y", nil)] = true := by native_decide
 
 /-! ## §3.4 Variant change through the parent -/
 
@@ -106,7 +107,7 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)] = true := by
+} [("x", nil), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)] = true := by
   native_decide
 
 /-! ## Nested borrow-mode match (through a field binder) -/
@@ -127,18 +128,20 @@ example : expectEnv dllbc{
   };
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot),
+} [("x", cons (nat 1) (cons (nat 0) nil)), ("b", .bot), ("hd", .bot), ("tl", .bot),
    ("h2", .bot), ("t2", .bot), ("y", cons (nat 1) (cons (nat 0) nil))] = true := by
   native_decide
 
 /-! ## Rejections -/
 
--- Match on a moved variable: the scrutinee slot is ⊥.
-example : expectErr dllbc{
+-- §2.1: `let q = p` COPIES the marker-free `p` (owner intact), so the later
+-- match on `p` succeeds — the match then ⇒-consumes `p` (⊥). A use-after-move
+-- rejection now requires a marker-carrying value (a moved borrow); see S7Group.
+example : expectEnv dllbc{
   let p = Nil;
   let q = p;
   match p { Nil => () }
-} "use-after-move" = true := by native_decide
+} [("p", .bot), ("q", nil)] = true := by native_decide
 
 -- No branch matches the head constructor (no exhaustiveness checking — there
 -- are no inductive declarations yet — so an unmatched head is a runtime stuck).

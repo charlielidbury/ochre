@@ -181,12 +181,12 @@ def partScanE : Decl :=
             .mk "True" [] (.matchE ⟨3, "g"⟩ [
               .mk "Z" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), tnat 0, V 4 "pivot"]),
               -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
-              -- + the recursion), so every index is a PURE `add` spine — `readR`
-              -- delegates those to `readC` (non-consuming), unlike a `.ctorApp "S"`
-              -- arg which moves the var. `add i 1 = S i`, `add i (add g2 2) =
-              -- S (add i (S g2))`, `add g2 1 = S g2` (for the concrete executing i/g).
-              .mk "S" [⟨7, "g2"⟩] (.seq (.call "swapS" [.borrow (dV 0 "v"), addTm (V 2 "i") (tnat 1), addTm (V 2 "i") (addTm (V 7 "g2") (tnat 2)), u, u])
-                (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", addTm (V 2 "i") (tnat 1), addTm (V 7 "g2") (tnat 1), V 4 "pivot"])) ]),
+              -- + the recursion), and §2.1 copy-on-read now makes that natural: a
+              -- `.ctorApp "S"` arg reads its var by copy (marker-free Nat), so the
+              -- indices are the plain `S i`, `S (add i (S g2))`, `S g2` — no
+              -- add-spine workaround, and these convert with the model's forms.
+              .mk "S" [⟨7, "g2"⟩] (.seq (.call "swapS" [.borrow (dV 0 "v"), tS (V 2 "i"), tS (addTm (V 2 "i") (tS (V 7 "g2"))), u, u])
+                (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), tS (V 7 "g2"), V 4 "pivot"])) ]),
             .mk "False" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", V 2 "i", tS (V 3 "g"), V 4 "pivot"]) ])) ] }
 
 -- v=0, n=1; body binders n2=5, pivot=6.

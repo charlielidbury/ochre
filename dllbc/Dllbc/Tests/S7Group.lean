@@ -54,8 +54,11 @@ def chooseCaller : Decl :=
       let z = a;
       () } }
 
+-- `let z = a` ends the group (fresh existentials for a and b) and then COPIES
+-- a's existential (§2.1), so a and z share it; canonicalization numbers a's σ
+-- first (it now appears in a's own slot), b's second.
 example : expectFnEnv [choose, chooseCaller] chooseCaller
-  [("a", .bot), ("b", .sym 0), ("pa", .bot), ("pb", .bot), ("r", .bot), ("z", .sym 1)]
+  [("a", .sym 0), ("b", .sym 1), ("pa", .bot), ("pb", .bot), ("r", .bot), ("z", .sym 0)]
   = true := by native_decide
 
 /-! ## A single-borrow wire is opaque too (no signature-driven precision) -/
@@ -83,9 +86,10 @@ def throughCaller : Decl :=
       let y = x;
       () } }
 
--- y is a fresh σ (the write is forgotten — deliberate, per the soundness fix).
+-- y is a fresh σ (the write is forgotten — deliberate, per the soundness fix);
+-- reading x copies that σ (§2.1), so x holds it too.
 example : expectFnEnv [through, throughCaller] throughCaller
-  [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
+  [("x", .sym 0), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## Rejections -/
 

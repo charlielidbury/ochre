@@ -101,7 +101,7 @@ def learnObs : Decl :=
     telescope := [("n", natT), ("p", .idT natT (.var ⟨0, "n"⟩) (tnat 2))],
     body := dllbcWith [n, p] { match p { Refl => { let m = n; () } } } }
 
-example : expectFnEnv [learnObs] learnObs [("n", .bot), ("p", .bot), ("m", vnat 2)] = true := by
+example : expectFnEnv [learnObs] learnObs [("n", vnat 2), ("p", .bot), ("m", vnat 2)] = true := by
   native_decide
 
 -- Through a borrow: `pb : &mut (Id Nat n 2)`. The refl-match reads through the
@@ -116,7 +116,7 @@ def learnBorrow : Decl :=
 
 example : checkFnOk learnBorrow = true := by native_decide
 example : expectFnEnv [learnBorrow] learnBorrow
-  [("n", .bot), ("pb", .borrowM 0 refl), ("m", vnat 2)] = true := by native_decide
+  [("n", vnat 2), ("pb", .borrowM 0 refl), ("m", vnat 2)] = true := by native_decide
 
 -- Rigid-rigid: `p : Id Nat Z (S Z)`. Neither endpoint is a σ, so there is no
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The

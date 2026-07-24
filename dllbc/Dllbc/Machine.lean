@@ -302,6 +302,35 @@ mutual
   termination_by vs => sizeOf vs
 end
 
+/-! Is a value **hereditarily marker-free** — no `borrowM`, no `loanM`, no `⊥`
+    anywhere in its tree (`sym σ` is fine — a symbolic value is itself an
+    unrestricted snapshot, §2.1)? This is the operational test for §2.1's
+    copy-on-read: such a value is `unrestricted` (its generated `T.copy` would be
+    total), so `readR` of a variable holding one reads by COPY, leaving the owner
+    intact — the ownership machinery is vacuous on it (§0), so a move would be
+    gratuitous. A marker-carrying value moves exactly as before. -/
+mutual
+  def markerFree : Val → Bool
+    | .borrowM _ _ => false
+    | .loanM _ => false
+    | .bot => false
+    | .ctor _ args => markerFreeList args
+    | .sym _ => true
+    | .pvar _ => true
+    | .type => true
+    | .const _ => true
+    | .pi d c => markerFree d && markerFree c
+    | .sigmaT d c => markerFree d && markerFree c
+    | .lam d c => markerFree d && markerFree c
+    | .app d c => markerFree d && markerFree c
+    | .idT a b c => markerFree a && markerFree b && markerFree c
+  termination_by v => sizeOf v
+  def markerFreeList : List Val → Bool
+    | [] => true
+    | v :: vs => markerFree v && markerFreeList vs
+  termination_by vs => sizeOf vs
+end
+
 /-! Substitute `newV` for every `sym σ` occurrence in `v` — the value-tree
     core of ⇜ (§3.2 refinement substitutes σ *everywhere*). -/
 mutual
@@ -916,11 +945,17 @@ mutual
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
           | none =>
+            -- §2.1 copy-on-read: a hereditarily marker-free value (an index, a
+            -- proof, any unrestricted datum — `sym σ` included) is read by COPY,
+            -- leaving the owner intact. The ownership machinery is vacuous on it,
+            -- so a move would be gratuitous — and it is what lets a comptime index
+            -- be used more than once (`swapS(v, S i, S (add i g), …)`).
+            if markerFree v then pure v
             -- §19: moving a borrow whose PAYLOAD is a suspended reborrow (a `&mut
             -- *v` handed to a call that has since returned) must first end that
             -- reborrow, so its mutations flow back into the payload before the
             -- move. Mirrors the match-scrutinee "reborrowed payload: end, retry".
-            match v with
+            else match v with
             | .borrowM _ payload =>
               match firstLoanMarker payload with
               | some ℓ' => do endLoan fuel ℓ'; readR fuel (.var x)
