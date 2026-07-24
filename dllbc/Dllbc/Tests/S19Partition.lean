@@ -280,6 +280,7 @@ def partitionLieBack : Term := swapLT (.ctorApp "Z" []) (tS (.ctorApp "Z" [])) d
 def partitionLie : Decl := { partition with name := "partitionLie", back := some partitionLieBack }
 example : checkFnErr partitionLie "does not match" [nthS, nth2S, swapSN, partScan, partitionLie] = true := by native_decide
 
+
 -- Not vacuous: a lying spec (i and g swapped in the declared back) is rejected —
 -- the body's composed backward tree does not converge with the wrong partScanL.
 def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 "i") dv
@@ -503,3 +504,4 @@ example : runScan [3,5,1,2,4] 4 3 = true := by native_decide     -- interior g=S
 example : runScan [5,3,8,1,9,2] 5 5 = true := by native_decide   -- mixed, multiple swaps
 
 end Dllbc.Tests.S19Partition
+
