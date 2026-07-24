@@ -791,4 +791,40 @@ def sortRangeL : Term := pure{
           } } } }
 def sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat }
 
+-- sortRangeL is a permutation, so it preserves length. Fuel-structural induction
+-- mirroring sortRangeL's own shape (base fuel Z / cnt ≤ 1 are Refl); the step is
+-- the IH applied to each of the two recursive sorts, chained onto
+-- len_partitionRangeL for the partition underneath. The quicksort recursion needs
+-- this for its SECOND range bound: the second recursive call runs after the first
+-- has permuted *v, so the bound (over len *v-after-first) moves back through this.
+def len_sortRangeL : Term := pure{
+  λ (fuel : Nat).
+    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (sortRangeL fz lo cnt l)) (len l)) {
+      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). Refl,
+      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+        elim cnt return (λ (cz : Nat). Id Nat (len (elim cz return (λ (cy : Nat). List Nat) {
+              Z => l,
+              S (cnt') nih => elim cnt' return (λ (my : Nat). List Nat) {
+                Z => l,
+                S (cnt'') n2ih => sortRangeL f' (S (add lo (partIdxRangeL lo cnt l))) (partGapRangeL lo cnt l) (sortRangeL f' lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l)) } })) (len l)) {
+          Z => Refl,
+          S (cnt') nih => elim cnt' return (λ (my : Nat). Id Nat (len (elim my return (λ (myy : Nat). List Nat) {
+                Z => l,
+                S (cnt'') n2ih => sortRangeL f' (S (add lo (partIdxRangeL lo cnt l))) (partGapRangeL lo cnt l) (sortRangeL f' lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l)) })) (len l)) {
+            Z => Refl,
+            S (cnt'') n2ih =>
+              id_trans Nat
+                (len (sortRangeL f' (S (add lo (partIdxRangeL lo cnt l))) (partGapRangeL lo cnt l) (sortRangeL f' lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l))))
+                (len (sortRangeL f' lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l)))
+                (len l)
+                (ih (S (add lo (partIdxRangeL lo cnt l))) (partGapRangeL lo cnt l) (sortRangeL f' lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l)))
+                (id_trans Nat
+                  (len (sortRangeL f' lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l)))
+                  (len (partitionRangeL lo cnt l))
+                  (len l)
+                  (ih lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l))
+                  (len_partitionRangeL lo cnt l))
+          } } } }
+def len_sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (sortRangeL fuel lo cnt l)) (len l) }
+
 end Dllbc.StdLemmas
