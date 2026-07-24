@@ -420,4 +420,31 @@ example : runPart [3,5,1,2,4] 5 = true := by native_decide      -- interior g=S 
 example : runPart [5,3,8,1,9,2] 6 = true := by native_decide    -- mixed, multiple interior swaps
 example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates around the pivot
 
+/-! ## M20-3 differential — the CHECKING partScan Decl, run EXECUTING, = partScanL
+
+    The load-bearing conformance validator (the callee convert-check reaches the
+    back only where it's authored as the tree; the swapS leaf's reformulated back
+    is the differential's job). We run the SAME partScan Decl that checkFnOk
+    accepts — bounds, hlen proofs and all — in EXECUTING mode on concrete lists,
+    and confirm its recovered list equals `partScanL pivot k 0 0 l`. So the body's
+    actual effect matches the declared back on every input class: since checkFnOk
+    accepts `back = partScanL`, executing = partScanL = the recovered value. -/
+
+def partScanCaller (lst : List Nat) (k pivot : Nat) : Term :=
+  .letIn ⟨0, "x"⟩ (tlist lst)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
+      (.seq (.call "partScan" [.var ⟨1, "b"⟩, tnat k, tnat 0, tnat 0, tnat pivot, .ctorApp "Refl" []])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
+
+def runScan (lst : List Nat) (k pivot : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, partScan] (partScanCaller lst k pivot) with
+  | .ok env => env.lookup "y" == some (pv (partScanLT (tnat pivot) (tnat k) (.ctorApp "Z" []) (.ctorApp "Z" []) (tlist lst)))
+  | .error _ => false
+
+example : runScan [3,1,2] 2 3 = true := by native_decide        -- [2,1,3]
+example : runScan [1,2,3] 2 1 = true := by native_decide         -- already partitioned
+example : runScan [3,2,1] 2 3 = true := by native_decide         -- reverse sorted → [1,2,3]
+example : runScan [3,5,1,2,4] 4 3 = true := by native_decide     -- interior g=S g' swap
+example : runScan [5,3,8,1,9,2] 5 5 = true := by native_decide   -- mixed, multiple swaps
+
 end Dllbc.Tests.S19Partition
