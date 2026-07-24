@@ -1,5 +1,49 @@
 # Suggestions
 
+## dllbc/ — NORTH STAR: verified in-place quicksort, as natural as possible (2026-07-24, user-set)
+
+The target program, and the iteration policy for reaching it:
+
+**The program.** Quicksort in the shape a Rust programmer would write it —
+swap-based in-place partition, recursion on sub-slices, no allocation, no
+take-and-rebuild of whole sublists — with the signature carrying full
+verification: sorted, and a permutation of the entry snapshot.
+
+**The slice equivalent.** DLLBC has no heap by design (no-heap is what makes
+types-never-stale work), so "mutable slice" is represented as what a slice
+IS — a fat pointer: **a mutable borrow plus a comptime length bound**,
+`(v : &mut List T, n : Nat)`, with segment-scoped specs (`SortedUpto n`,
+count-on-`take n`, and `↝`-obligations pinning the untouched remainder to
+the entry snapshot). Suffix sub-slices are tail reborrows; prefix recursion
+rides the bound, not a prefix borrow. Element access/swap is nested
+reborrow cursors (the zero_all pattern, two live cursors at different
+depths — disjoint by the suspension tree). True random-access arrays are a
+compilation-story question, out of calculus scope; the calculus-level claim
+is O(1)-extra-space swap-based mutation through borrows.
+
+**Why in-place is also the easier verification.** With count-based Perm
+(`Perm s l := Π n. Id (count n s) (count n l)` — no indexed Perm family
+needed), a swap is one count-preservation lemma and partition is a
+composition of swaps: transitivity does the rest. The functional version
+has to reason about filter/append counts instead.
+
+**The iteration policy (user-set): naturalness first.** Each milestone
+writes the DESIRED surface program first, then makes the checker accept
+it. When the program comes out contorted, the finding is a missing
+rule/sugar in the calculus (field-path reborrows, cursor idioms,
+implicits...) — fix the calculus, don't contort the program. Gaps go in
+the milestone ambiguity lists like everything else.
+
+**The milestone train** (M10 fording in flight; then, in order): listRec +
+pure let + the Sorted/Le/count pure library; dependent call-site
+instantiation (§5.3's stated rule, unimplemented — every lemma application
+needs it); the two-cursor swap milestone (make-or-break for naturalness —
+if swap is contorted, iterate the rules there); leb-reflection + order
+lemmas; Lomuto partition segment-scoped + spec; quicksort assembly.
+Partial correctness first (signature-only recursion — no termination
+story); totality later via fuel or §8 measures. Known caveat: type-in-type
+means "verified modulo Girard" until the universe hierarchy returns.
+
 ## pss/ (branch pss-2) — Problem D2: what to try next, what not to
 
 `pss/docs/05-conservation-law-and-escape-routes.md` (2026-06-10) maps the
