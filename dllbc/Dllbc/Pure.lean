@@ -106,6 +106,14 @@ def whnfV : Nat → Val → Val
       | .ctor "True" [] => whnfV fuel (rebuildSpine t rest)
       | .ctor "False" [] => whnfV fuel (rebuildSpine f rest)
       | b' => rebuildSpine (.const "boolRec") (motive :: t :: f :: b' :: rest)  -- stuck
+    -- listRec A P pn pc l : P l ; ι on Nil ↦ pn, on Cons h t ↦ pc h t (rec on t).
+    | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
+      match whnfV fuel l with
+      | .ctor "Nil" [] => whnfV fuel (rebuildSpine pn rest)
+      | .ctor "Cons" [h, t] =>
+        let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
+        whnfV fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
+      | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)  -- stuck
     -- Paulin-Mohring J (§10): j A a P d b p ; ι fires on Refl (b = a there), → d.
     | .const "j", _A :: _a :: _P :: d :: _b :: p :: rest =>
       match whnfV fuel p with

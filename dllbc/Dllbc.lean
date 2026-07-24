@@ -4,6 +4,7 @@ import Dllbc.Pure
 import Dllbc.Machine
 import Dllbc.Boundary
 import Dllbc.Macro
+import Dllbc.Std
 import Dllbc.Tests.S2
 import Dllbc.Tests.S3
 import Dllbc.Tests.S3Sym
@@ -14,3 +15,4 @@ import Dllbc.Tests.S7Group
 import Dllbc.Tests.S8Diff
 import Dllbc.Tests.S9Diff
 import Dllbc.Tests.S10Ford
+import Dllbc.Tests.S11Lib

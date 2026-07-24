@@ -470,7 +470,15 @@ mutual
     | .app f a => do pure (.app (← reflectC f) (← reflectC a))
     | .idT a b c => do pure (.idT (← reflectC a) (← reflectC b) (← reflectC c))
     | .unit => pure (.ctor "unit" [])
-    | .letIn _ _ _ => throwErr "readC (⇝): pure `let` not implemented (no test needs it this milestone)"
+    | .letIn x rhs rest => do
+      -- Pure `let` (§1.3): reflect the rhs and bind it as a fresh Ω entry, then
+      -- reflect the body. The fresh pure entry is the comptime read's *only*
+      -- sanctioned footprint on Ω (the doc's §1.3 "no side effects at the type
+      -- level" is stated modulo exactly these let entries). Proof terms name
+      -- intermediates constantly, so this is un-deferred here.
+      let v ← reflectC rhs
+      bindSlot x v
+      reflectC rest
     | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
@@ -529,7 +537,39 @@ mutual
           let dOk ← hasType fuel d (Val.nfV fuel (.app p (.ctor "Refl" [])))
           let pOk ← hasType fuel pf (.idT a aa aa)
           pure (Val.convert fuel ty (Val.nfV fuel (.app p pf)) && dOk && pOk)
+        | .const "natRec", [p, z, s, n] =>               -- natRec P z s n : P n
+          let zOk ← hasType fuel z (Val.nfV fuel (.app p (.ctor "Z" [])))
+          let sTy : Val := .pi (.const "Nat") (.pi (.app p (.pvar 0)) (.app p (.ctor "S" [.pvar 1])))
+          let sOk ← hasType fuel s sTy
+          let nOk ← hasType fuel n (.const "Nat")
+          pure (Val.convert fuel ty (Val.nfV fuel (.app p n)) && zOk && sOk && nOk)
+        | .const "boolRec", [p, t, f, b] =>              -- boolRec P t f b : P b
+          let tOk ← hasType fuel t (Val.nfV fuel (.app p (.ctor "True" [])))
+          let fOk ← hasType fuel f (Val.nfV fuel (.app p (.ctor "False" [])))
+          let bOk ← hasType fuel b (.const "Bool")
+          pure (Val.convert fuel ty (Val.nfV fuel (.app p b)) && tOk && fOk && bOk)
+        | .const "listRec", [a, p, pn, pc, l] =>         -- listRec A P pn pc l : P l
+          let listA : Val := .app (.const "List") a
+          let pnOk ← hasType fuel pn (Val.nfV fuel (.app p (.ctor "Nil" [])))
+          let pcTy : Val := .pi a (.pi listA (.pi (.app p (.pvar 0)) (.app p (.ctor "Cons" [.pvar 2, .pvar 1]))))
+          let pcOk ← hasType fuel pc pcTy
+          let lOk ← hasType fuel l listA
+          pure (Val.convert fuel ty (Val.nfV fuel (.app p l)) && pnOk && pcOk && lOk)
         | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
+      | .lam d b =>
+        -- λ against Π: check the domains convert, then the body under a fresh σ
+        -- witness for the binder (a checking-time hypothesis added to `sctx`).
+        -- This is what lets a Π-typed lemma (`le_refl : Π n. Le n n`) and the
+        -- recursors' step arguments — both λs — type-check. No arrow of its own;
+        -- it is the elaboration of dependent elimination (§10/§11).
+        match Val.whnfV fuel ty with
+        | .pi d' c =>
+          if Val.convert fuel d d' then do
+            let σ ← freshSym
+            modify (fun st => { st with sctx := (σ, d') :: st.sctx })
+            hasType fuel (Val.substPure 0 (.sym σ) b) (Val.substPure 0 (.sym σ) c)
+          else pure false
+        | _ => pure false
       | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
   termination_by fuel _ _ => (fuel, 0, 0)
   /-- Check a constructor's fields against its field-type telescope, threading
@@ -786,7 +826,25 @@ mutual
               modify (fun s => { s with sctx := (σ, retTy) :: s.sctx, groups := grp :: s.groups })
               pure (.sym σ)
       | .unit => pure (.ctor "unit" [])
-      | _ => throwErr "readR (⇒): pure formers (λ/app/Π/Σ/Type/const) are read by ⇝ (readC), not ⇒"
+      -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
+      -- to variable consumption. A comptime-only former (a proof term — an
+      -- eliminator application, a Π-typed λ, `Id A a b`, a type) is an
+      -- unrestricted value, so ⇒ delegates to ⇝ (`readC`) and hands back the
+      -- result as an ordinary runtime datum: it can be stored in a constructor
+      -- field, passed to a call, or returned. (Snapshot reads are
+      -- non-destructive; that is the "up to consumption" — these values are
+      -- copyable/erasable, so nothing is moved out.) `Refl` needs no lift (it is
+      -- an ordinary `ctorApp`, handled above); `borrowT` is a telescope-position
+      -- type, never a value.
+      | .type => readC fuel t
+      | .const _ => readC fuel t
+      | .pvar _ => readC fuel t
+      | .pi _ _ => readC fuel t
+      | .sigmaT _ _ => readC fuel t
+      | .lam _ _ => readC fuel t
+      | .app _ _ => readC fuel t
+      | .idT _ _ _ => readC fuel t
+      | .borrowT _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
   termination_by fuel _ => (fuel, 0, 0)
   def readArgs : Nat → List Term → M (List Val)
     | _, [] => pure []
