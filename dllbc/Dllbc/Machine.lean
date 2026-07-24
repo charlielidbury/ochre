@@ -41,6 +41,15 @@ structure Decl where
   telescope : List (String × Term)
   retType : Term
   body : Term
+  /-- §6.2 declared backward spec: a pure function from the issued borrows'
+      surrendered values (in issued order) to the captured borrow's release
+      value. `none` = opaque parameter-end (a fresh existential on release, the
+      default, §6.1). DECLARED here and CHECKED against the body (the sound
+      reincarnation of M8's removed inferred `constrained` wire): a caller of a
+      spec'd fn recovers the COMPUTED release, not a fresh σ. Written over the
+      telescope's snapshots and `%rᵢ` for the surrendered values (via pure de
+      Bruijn: `rᵢ` are the leading λ binders). -/
+  back : Option Term := none
 
 /-- What an argument borrow owes at the boundary: its slot variable, its loan
     id, and the owed type (§5.1's `S`, instantiated at the entry snapshot).
@@ -66,11 +75,15 @@ structure Group where
   id : Nat                      -- the group node's ρ, its identity in the table
   captured : List (Nat × Val)   -- (ℓ, owed type)
   issued : List (Nat × Val)     -- (ℓ, owed type)
-  /-- Identity-wire flag (§6.2). DEAD under opaque calls: signature-only
-      checking cannot tell `through` from an `advance` that returns a field
-      reborrow, so inferring it is UNSOUND — no call sets it. Kept, with its
-      `endGroup` branch, for §6.2's transparent/spec group ends. -/
+  /-- Identity-wire flag (§6.2). DEAD in real checking (inferring it is unsound);
+      the test-only `forceConstrained` flag flips it to validate the differential
+      harness goes RED under the removed inference. -/
   constrained : Bool
+  /-- §6.2 declared backward spec, reflected and instantiated at the call
+      (`Decl.back`): a function `surrendered values → captured release`. Some ⇒
+      `endGroup` releases the COMPUTED value; none ⇒ opaque (fresh existential).
+      Refined with the caller's σ's like the owed types. -/
+  backSpec : Option Val := none
 
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
@@ -102,6 +115,11 @@ structure St where
       `none` for a borrow-returning body, whose owed type is read at return
       against the surrendered payload. -/
   retTyVal : Option Val := none
+  /-- §6.2: this function's OWN declared backward spec, reflected at entry (over
+      the telescope snapshots). The callee audit checks the body against it — the
+      captured borrow's payload-with-issued-holes must convert with the spec
+      applied to fresh hole variables. Refined per-path like the owed types. -/
+  selfBack : Option Val := none
   /-- Execution mode (§8/§9 differential). `false` = CHECKING (the call rule
       uses the §5.3/§6.1 signature rule — groups, existentials); `true` =
       EXECUTING (a call runs the callee's actual body concretely). checkFn is
@@ -444,8 +462,10 @@ def refineSym (σ : Nat) (v : Val) : M Unit :=
     -- invariant (§3.2), of which §5.3 instantiation is the first consumer.
     groups := s.groups.map (fun g => { g with
       captured := g.captured.map (fun p => (p.1, substSym σ v p.2)),
-      issued := g.issued.map (fun p => (p.1, substSym σ v p.2)) }),
-    retTyVal := s.retTyVal.map (substSym σ v) })
+      issued := g.issued.map (fun p => (p.1, substSym σ v p.2)),
+      backSpec := g.backSpec.map (substSym σ v) }),
+    retTyVal := s.retTyVal.map (substSym σ v),
+    selfBack := s.selfBack.map (substSym σ v) })
 
 /-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
     `writeR`. Defined on the same place shapes (a variable under peels). The
@@ -706,9 +726,15 @@ def endGroup (fuel : Nat) (grp : Group) : M Unit := do
   -- 2. remove the group from the table (by its ρ id)
   modify (fun s => { s with groups := s.groups.filter (fun g => g.id != grp.id) })
   -- 3. release captured loans atomically
-  match grp.constrained, grp.captured, surrendered with
-  | true, [(ℓc, _)], [p] => releaseCaptured ℓc p          -- identity wire: recover the written value
-  | _, _, _ =>
+  match grp.backSpec, grp.constrained, grp.captured, surrendered with
+  | some f, _, [(ℓc, _)], _ =>
+    -- §6.2 spec end: the captured release is the declared backward function
+    -- applied to the surrendered values (in issued order) — the COMPUTED value,
+    -- not a fresh existential. Precision recovered soundly (the spec was checked
+    -- against the body at the callee's return).
+    releaseCaptured ℓc (Val.nfV fuel (Val.rebuildSpine f surrendered))
+  | none, true, [(ℓc, _)], [p] => releaseCaptured ℓc p    -- test-only identity wire (harness)
+  | _, _, _, _ =>
     grp.captured.forM (fun (ℓc, owed) => do               -- opaque: fresh existential each
       let σ ← freshSym
       modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
@@ -899,7 +925,13 @@ mutual
             let ρ ← freshGroup
             let fc := (← get).forceConstrained
             let cons := fc && captured.length == 1 && issued.length == 1
-            let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons }
+            -- §6.2: reflect the DECLARED backward spec (if any) at the actuals, so
+            -- the group can compute the captured release from the surrendered
+            -- values instead of a fresh existential.
+            let backV ← match decl.back with
+              | some b => do pure (some (← readCWith fuel inst b))
+              | none => pure none
+            let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, backSpec := backV }
             modify (fun s => { s with groups := grp :: s.groups })
             pure resultVal
       | .unit => pure (.ctor "unit" [])

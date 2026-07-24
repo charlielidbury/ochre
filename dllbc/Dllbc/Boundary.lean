@@ -150,11 +150,38 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
   | _ =>
   match ← collectResultBorrows fuel retType resultVal with
   | some checks => do
-    obs.forM (auditObligation fuel (checks.map (·.1)))
+    let issuedLoans := checks.map (·.1)
+    obs.forM (auditObligation fuel issuedLoans)
     checks.forM (fun c =>
       let (_, payload, owed) := c
       do if ← hasType fuel payload owed then pure ()
          else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owed.pretty})")
+    -- §6.2 callee check: if a backward spec is declared, the captured borrow's
+    -- payload-with-issued-holes must convert with the spec applied to fresh hole
+    -- variables. The suspension tree IS the backward function; we check the
+    -- DECLARED one against it (sound where M8's inferred wire was not).
+    match (← get).selfBack with
+    | none => pure ()
+    | some backV => do
+      -- the captured borrow: the (single) obligation consumed into a result,
+      -- directly (`through` — its loan IS a result loan) or as a field reborrow's
+      -- owner (`advance`/`nth2` — it reaches a result loan).
+      let caps ← obs.filterMapM (fun ob => do
+        let direct := issuedLoans.contains ob.loan
+        let viaField ← issuedLoans.anyM (fun rl => reachesLoan ob.loan rl)
+        pure (if direct || viaField then some ob else none))
+      match caps.head? with
+      | none => pure ()                                  -- no captured borrow to check
+      | some ob =>
+        -- the tree with holes: the captured borrow's payload (or, if it WAS the
+        -- returned borrow, the hole itself), issued loans → pvars.
+        let tree : Val ← match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
+          | some payload => pure (Val.loanToPvar issuedLoans payload)
+          | none => pure (Val.loanToPvar issuedLoans (.loanM ob.loan))   -- returned directly
+        let holes := (List.range issuedLoans.length).map Val.pvar
+        let spec := Val.nfV fuel (Val.rebuildSpine backV holes)
+        if Val.convert fuel tree spec then pure ()
+        else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
   | none => do
     obs.forM (auditObligation fuel [])
     -- The return type was pinned at entry (§5.3 dependent types over consumed
@@ -203,6 +230,13 @@ def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
     else do
       let rv ← readC defaultFuel decl.retType
       modify (fun s => { s with retTyVal := some rv })
+    -- §6.2: reflect this fn's own declared backward spec over the seeded
+    -- telescope snapshots, so the callee audit can check the body against it.
+    match decl.back with
+    | some b => do
+      let bv ← readC defaultFuel b
+      modify (fun s => { s with selfBack := some bv })
+    | none => pure ()
     pure obs
   match seed.run { initSt with decls := table } with
   | .error e _ => .error e

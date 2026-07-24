@@ -182,6 +182,24 @@ mutual
   termination_by vs => sizeOf vs
 end
 
+/-! Replace each loan marker (`loanM ℓ` or `borrowM ℓ …`) whose ℓ is in `loans`
+    with the pure de Bruijn `pvar` at ℓ's position in `loans` — the §6.2
+    "suspension tree with holes": a captured borrow's payload rewritten as the
+    backward function of the surrendered values. -/
+mutual
+  def loanToPvar (loans : List Nat) : Val → Val
+    | .loanM ℓ => match loans.findIdx? (· == ℓ) with | some i => .pvar i | none => .loanM ℓ
+    | .borrowM ℓ p =>
+      match loans.findIdx? (· == ℓ) with | some i => .pvar i | none => .borrowM ℓ (loanToPvar loans p)
+    | .ctor n args => .ctor n (loanToPvarList loans args)
+    | v => v
+  termination_by v => sizeOf v
+  def loanToPvarList (loans : List Nat) : List Val → List Val
+    | [] => []
+    | v :: vs => loanToPvar loans v :: loanToPvarList loans vs
+  termination_by vs => sizeOf vs
+end
+
 /-! Symbolic ids occurring in `v`, in pre-order of first appearance. -/
 mutual
   def symIds : Val → List Nat

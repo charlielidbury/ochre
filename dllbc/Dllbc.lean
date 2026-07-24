@@ -22,3 +22,4 @@ import Dllbc.Tests.S12Inst
 import Dllbc.Tests.S14Bounds
 import Dllbc.Tests.S15Elab
 import Dllbc.Tests.S16Spec
+import Dllbc.Tests.S17Spec
