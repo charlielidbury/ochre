@@ -510,4 +510,57 @@ def partitionL : Term := pure{
       S (n') rec => partScanL (nth Z l) n' Z Z l } }
 def partitionL_ty : Term := pure{ Π (n : Nat) → List Nat → List Nat }
 
+/-! ## `partScanIdxL` / `partIdxL` — the boundary INDEX the scan produces (§21)
+
+    Mirror of partScanL's recursion but returning the boundary `i` (the pivot's
+    final position) at `k = Z` instead of the placed list. This is the index the
+    imperative partition returns transparently (a Σ pinning it to `partIdxL`), and
+    the split point sortL's two recursive calls ride. Same casings/arithmetic as
+    partScanL, so the two stay in lockstep. -/
+
+def partScanIdxL : Term := pure{
+  λ (pivot : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). i,
+      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim (leb (nth (S (add i g)) l) pivot) return (λ (w : Bool). Nat) {
+          True => elim g return (λ (gz : Nat). Nat) {
+            Z => rec (S i) Z l,
+            S (g') gih => rec (S i) (S g') (swapL (S i) (S (add i g)) l) },
+          False => rec i (S g) l } } }
+
+def partIdxL : Term := pure{
+  λ (n : Nat). λ (l : List Nat).
+    elim n return (λ (nz : Nat). Nat) {
+      Z => Z,
+      S (n') rec => partScanIdxL (nth Z l) n' Z Z l } }
+def partIdxL_ty : Term := pure{ Π (n : Nat) → List Nat → Nat }
+
+/-! ## `sortL` — the pure quicksort model (§21)
+
+    Fuel-structural (natRec on `fuel`; the caller passes `fuel = n` at the top).
+    Base: out of fuel, or a segment of length ≤ 1 (already sorted) → identity. Step
+    (n ≥ 2): partition the segment (`p = partitionL n l`, pivot lands at `i =
+    partIdxL n l`), then recursively sort the two sub-slices — the prefix `take i p`
+    (length `i`) and the suffix `drop (S i) p` (length `len (drop (S i) p)`, which
+    avoids Nat subtraction) — reassembling `sortedPrefix ++ [pivot] ++ sortedSuffix`.
+    The imperative quicksort mirrors this exactly (partition returns the transparent
+    `i`, both recursions ride it), so the conformance is conversion. -/
+
+def sortL : Term := pure{
+  λ (fuel : Nat).
+    elim fuel return (λ (fz : Nat). Π (n : Nat) → List Nat → List Nat) {
+      Z => λ (n : Nat). λ (l : List Nat). l,
+      S (f') rec => λ (n : Nat). λ (l : List Nat).
+        elim n return (λ (nz : Nat). List Nat) {
+          Z => l,
+          S (n') nih => elim n' return (λ (mz : Nat). List Nat) {
+            Z => l,
+            S (n'') n2ih =>
+              let p = partitionL n l;
+              let i = partIdxL n l;
+              append (rec i (take i p)) (Cons (nth i p) (rec (len (drop (S i) p)) (drop (S i) p)))
+          } } } }
+def sortL_ty : Term := pure{ Π (fuel : Nat) → Π (n : Nat) → List Nat → List Nat }
+
 end Dllbc.StdLemmas

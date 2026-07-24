@@ -379,6 +379,24 @@ example : (pv (partLT 3 [1,2,3]) == vlist [1,2,3]) = true := by native_decide   
 example : (pv (partLT 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
 example : (pv (partLT 5 [3,5,1,2,4]) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
 
+/-! ## M21-2 — partIdxL (the boundary index) and sortL (the quicksort model) -/
+
+def idxLT (n : Nat) (l : List Nat) : Term := .app (.app StdLemmas.partIdxL (tnat n)) (tlist l)
+def sortLT (fuel n : Nat) (l : List Nat) : Term := .app (.app (.app StdLemmas.sortL (tnat fuel)) (tnat n)) (tlist l)
+
+-- partIdxL = the pivot's final position (matches where the partition run lands it):
+example : (pv (idxLT 3 [3,1,2]) == vnat 2) = true := by native_decide    -- pivot 3 → index 2
+example : (pv (idxLT 3 [1,2,3]) == vnat 0) = true := by native_decide     -- pivot 1 stays at 0
+example : (pv (idxLT 3 [3,2,1]) == vnat 2) = true := by native_decide
+example : (pv (idxLT 5 [3,5,1,2,4]) == vnat 2) = true := by native_decide -- [2,1,3,5,4], pivot at 2
+
+-- sortL sorts (fuel = length). Small cases only — sortL's toValPure inlines the
+-- whole partition/scan stack, so pv/nfV on it is heavy; the executing quicksort
+-- (M21-3) validates it on the larger input classes far more cheaply.
+example : (pv (sortLT 2 2 [2,1]) == vlist [1,2]) = true := by native_decide          -- the smallest sort
+example : (pv (sortLT 1 1 [7]) == vlist [7]) = true := by native_decide              -- singleton
+example : (pv (sortLT 0 0 []) == vlist []) = true := by native_decide                -- empty
+
 /-! ## M19-C (imperative, executing mode) — the body computes `partitionL`
 
     The in-place Lomuto partition through a mutable borrow, mirroring `partitionL`
