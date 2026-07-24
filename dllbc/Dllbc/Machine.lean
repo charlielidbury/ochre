@@ -78,6 +78,18 @@ structure St where
   nextGroup : Nat := 0
   /-- The function table, for the call rule. -/
   decls : List Decl := []
+  /-- Execution mode (§8/§9 differential). `false` = CHECKING (the call rule
+      uses the §5.3/§6.1 signature rule — groups, existentials); `true` =
+      EXECUTING (a call runs the callee's actual body concretely). checkFn is
+      always checking; the differential's concrete side is executing. -/
+  executing : Bool := false
+  /-- Base var id for inlined-callee frames in executing mode; caller-own vars
+      stay below it, so a body's own environment is `env.filter (·.1.id < this)`. -/
+  nextFrame : Nat := 10000
+  /-- TEST-ONLY: force the (unsound, removed) constrained wire on, to validate
+      the differential harness actually goes RED under the bug. Never set by the
+      call rule; only a validation test flips it. -/
+  forceConstrained : Bool := false
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -589,6 +601,34 @@ def borrowSelect (scrut : Var) (branches : List Branch) (ℓ : Nat) (name : Stri
     bindBorrowFields br.binders ℓs fields
     pure br.body
 
+/-! Shift every runtime `Var` id in a term (and its match binders) up by `d`.
+    Used to inline a callee body under a fresh id window in executing mode
+    (§9 differential), so its frame cannot collide with the caller's ids. Pure
+    formers hold no runtime vars (the pool's types are closed), so they are
+    left as-is. -/
+mutual
+  def shiftVars (d : Nat) : Term → Term
+    | .var x => .var ⟨x.id + d, x.name⟩
+    | .letIn x rhs rest => .letIn ⟨x.id + d, x.name⟩ (shiftVars d rhs) (shiftVars d rest)
+    | .assign p e rest => .assign (shiftVars d p) (shiftVars d e) (shiftVars d rest)
+    | .ctorApp n args => .ctorApp n (shiftVarsList d args)
+    | .borrow t => .borrow (shiftVars d t)
+    | .deref t => .deref (shiftVars d t)
+    | .matchE scrut brs => .matchE ⟨scrut.id + d, scrut.name⟩ (shiftBranches d brs)
+    | .seq a b => .seq (shiftVars d a) (shiftVars d b)
+    | .call f args => .call f (shiftVarsList d args)
+    | t => t                                            -- unit / pure formers: no runtime vars
+  termination_by t => sizeOf t
+  def shiftVarsList (d : Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => shiftVars d t :: shiftVarsList d ts
+  termination_by ts => sizeOf ts
+  def shiftBranches (d : Nat) : List Branch → List Branch
+    | [] => []
+    | (.mk c bs body) :: rest => .mk c (bs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVars d body) :: shiftBranches d rest
+  termination_by bs => sizeOf bs
+end
+
 /-! ## ⇒ (read): the move arrow
 
     `readR` evaluates a term to a value with move semantics. Fuel decreases on
@@ -661,35 +701,42 @@ mutual
         let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
       | .call f args => do
-        -- §5.3/§6.1: check the call against the SIGNATURE alone (never another
-        -- body), and mint one loan group tying captured to issued.
         match (← get).decls.find? (fun d => d.name == f) with
         | none => throwErr s!"call: unknown function '{f}'"
-        | some decl => do
-          let captured ← processArgs fuel decl.telescope args   -- (ℓ × owed) per argument borrow
-          match decl.retType with
-          | .borrowT τ S => do
-            -- borrow-returning (§6.1): result is a fresh reborrow; its loan is
-            -- issued, owed the return type. OPAQUE — `constrained := false`
-            -- always: signature-only checking cannot see whether the callee is
-            -- the identity, so inferring the constrained wire would be unsound
-            -- (`through` vs `advance` share this signature). §6.2 recovers it.
-            let τVal ← readC fuel τ
-            let σ ← freshSym
-            let ℓr ← freshLoan
-            let ρ ← freshGroup
-            let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) (← readC fuel S))
-            let grp : Group := { id := ρ, captured := captured, issued := [(ℓr, owedR)], constrained := false }
-            modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, groups := grp :: s.groups })
-            pure (.borrowM ℓr (.sym σ))
-          | _ => do
-            -- value-returning: a fresh σ at the return type; degenerate group.
-            let retTy ← readC fuel decl.retType
-            let σ ← freshSym
-            let ρ ← freshGroup
-            let grp : Group := { id := ρ, captured := captured, issued := [], constrained := false }
-            modify (fun s => { s with sctx := (σ, retTy) :: s.sctx, groups := grp :: s.groups })
-            pure (.sym σ)
+        | some decl =>
+          if (← get).executing then do
+            -- EXECUTING (§9 differential): run the callee's ACTUAL body under a
+            -- fresh var-id window, so shared borrows propagate naturally.
+            let offset ← (do let s ← get; set { s with nextFrame := s.nextFrame + 128 }; pure s.nextFrame)
+            bindActuals fuel offset 0 decl.telescope args
+            readR fuel (shiftVars offset decl.body)
+          else do
+            -- CHECKING (§5.3/§6.1): signature only, mint one loan group.
+            let captured ← processArgs fuel decl.telescope args   -- (ℓ × owed) per argument borrow
+            match decl.retType with
+            | .borrowT τ S => do
+              -- borrow-returning (§6.1): result is a fresh reborrow; its loan is
+              -- issued. `constrained := false` always (inferring it is unsound —
+              -- `through` vs `advance` share this signature); the test-only
+              -- `forceConstrained` flag reintroduces the bug for harness
+              -- validation, never in real checking.
+              let τVal ← readC fuel τ
+              let σ ← freshSym
+              let ℓr ← freshLoan
+              let ρ ← freshGroup
+              let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) (← readC fuel S))
+              let fc := (← get).forceConstrained
+              let cons := fc && captured.length == 1
+              let grp : Group := { id := ρ, captured := captured, issued := [(ℓr, owedR)], constrained := cons }
+              modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, groups := grp :: s.groups })
+              pure (.borrowM ℓr (.sym σ))
+            | _ => do
+              let retTy ← readC fuel decl.retType
+              let σ ← freshSym
+              let ρ ← freshGroup
+              let grp : Group := { id := ρ, captured := captured, issued := [], constrained := false }
+              modify (fun s => { s with sctx := (σ, retTy) :: s.sctx, groups := grp :: s.groups })
+              pure (.sym σ)
       | .unit => pure (.ctor "unit" [])
       | _ => throwErr "readR (⇒): pure formers (λ/app/Π/Σ/Type/const) are read by ⇝ (readC), not ⇒"
   termination_by fuel _ => (fuel, 0, 0)
@@ -725,6 +772,16 @@ mutual
         else throwErr s!"call: argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
     | _, _, _ => throwErr "call: arity mismatch (arguments vs telescope)"
   termination_by fuel _ args => (fuel, 1, args.length)
+  /-- Executing mode (§9): ⇒-read each actual and bind it to the callee's
+      argument var, shifted into the fresh frame window at `offset`. -/
+  def bindActuals (fuel offset : Nat) : Nat → List (String × Term) → List Term → M Unit
+    | _, [], [] => pure ()
+    | i, (name, _) :: tRest, arg :: aRest => do
+      let v ← readR fuel arg
+      bindSlot ⟨i + offset, name⟩ v
+      bindActuals fuel offset (i + 1) tRest aRest
+    | _, _, _ => throwErr "executeCall: arity mismatch (actuals vs telescope)"
+  termination_by _ _ args => (fuel, 1, args.length)
 end
 
 /-! ## Running programs -/
@@ -871,6 +928,7 @@ def checkExhaustive (fuel : Nat) (scrutσ : Nat) (branches : List Branch) : M Un
       | some missing =>
         throwErr s!"match: non-exhaustive — no branch for constructor '{missing}' of the scrutinee's type"
       | none => pure ()
+
 
 /-! Move each statement-spine match into tail position by pushing the
     continuation into every branch (duplicating it): `seq (matchE) k` and

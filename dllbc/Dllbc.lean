@@ -12,3 +12,4 @@ import Dllbc.Tests.S5Bound
 import Dllbc.Tests.S6Call
 import Dllbc.Tests.S7Group
 import Dllbc.Tests.S8Diff
+import Dllbc.Tests.S9Diff
