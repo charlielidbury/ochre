@@ -573,12 +573,40 @@ def reorgScrut : Nat → Var → M Dispatch
         | .sym σ => pure (.ownedSym σ)
         | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor or symbolic value"
 
-/-- Symbolic **owned** branch entry (§3.2): mint fresh σ's for the pattern
-    fields, ⇜-refine the scrutinee to `C (sym σ₁) … (sym σₙ)` *everywhere*,
-    then destructure as owned match (scrutinee → ⊥, binders ↦ `sym σᵢ`).
-    Returns the branch body. -/
-def symOwnedSetup (scrut : Var) (br : Branch) : M Term := do
-  let σs ← br.binders.mapM (fun _ => freshSym)
+/-- Mint fresh σ's for the given field types, typing each in `sctx`
+    (dependent positions instantiated at earlier fresh σ's — a real telescope).
+    Returns the fresh σ ids. -/
+def typeFieldSyms : List Var → List Val → M (List Nat)
+  | [], [] => pure []
+  | _ :: bs, ty :: tys => do
+    let σ ← freshSym
+    modify (fun s => { s with sctx := (σ, ty) :: s.sctx })
+    let rest ← typeFieldSyms bs (tys.map (Val.substPure 0 (Val.sym σ)))
+    pure (σ :: rest)
+  | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
+
+/-- Mint the field σ's for a symbolic branch. When the scrutinee's σ has a type
+    in `sctx` (§3.2's seam, closed in §5): require the branch constructor to be
+    a constructor of that type (per the signature table) and type each field σ
+    by the instantiated field types. When it has no type (an untyped testing
+    scrutinee, pre-telescope), fall back to fresh untyped σ's (M3 behavior). -/
+def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := do
+  match (← get).sctx.lookup scrutσ with
+  | none => br.binders.mapM (fun _ => freshSym)     -- untyped scrutinee (M3)
+  | some τ =>
+    match Val.ctorSig br.ctor with
+    | none => throwErr s!"match: unknown constructor '{br.ctor}'"
+    | some sig =>
+      match sig.fieldTypes (Val.whnfV fuel τ) with
+      | none => throwErr s!"match: constructor '{br.ctor}' does not belong to the scrutinee's type"
+      | some ftys => typeFieldSyms br.binders ftys
+
+/-- Symbolic **owned** branch entry (§3.2): mint (σ-typed) fresh σ's for the
+    pattern fields, ⇜-refine the scrutinee to `C (sym σ₁) … (sym σₙ)`
+    *everywhere*, then destructure as owned match (scrutinee → ⊥, binders ↦
+    `sym σᵢ`). Returns the branch body. -/
+def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (br : Branch) : M Term := do
+  let σs ← mintFieldSyms fuel scrutσ br
   writeC (.var scrut) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ everywhere (refinement first)
   setSlot scrut .bot                                     -- owned consume
   bindFields br.binders (σs.map Val.sym)
@@ -590,8 +618,8 @@ def symOwnedSetup (scrut : Var) (br : Branch) : M Term := do
     (suspended parent), each binder ↦ `borrowM ℓᵢ (sym σᵢ)`. Order matters:
     ⇜ hits every occurrence of σ across Ω; only the scrutinee payload is then
     rewritten to markers (§3.2 "everywhere"; M5 depends on this). -/
-def symBorrowSetup (scrut : Var) (ℓ : Nat) (br : Branch) : M Term := do
-  let σs ← br.binders.mapM (fun _ => freshSym)
+def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat) (br : Branch) : M Term := do
+  let σs ← mintFieldSyms fuel scrutσ br
   writeC (.deref (.var scrut)) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ at payload, everywhere
   let ℓs ← br.binders.mapM (fun _ => freshLoan)
   setSlot scrut (.borrowM ℓ (.ctor br.ctor (ℓs.map Val.loanM)))   -- suspend the parent
@@ -669,19 +697,20 @@ mutual
           match (borrowSelect scrut branches ℓ name fields).run st' with
           | .error e _ => [.error e]
           | .ok body st'' => explore fuel body st''
-        | .ownedSym _ => exploreSymBranches fuel scrut false 0 branches st'
-        | .borrowSym ℓ _ => exploreSymBranches fuel scrut true ℓ branches st'
+        | .ownedSym σ => exploreSymBranches fuel scrut false 0 σ branches st'
+        | .borrowSym ℓ σ => exploreSymBranches fuel scrut true ℓ σ branches st'
   termination_by fuel _ _ _ => (fuel, 2, 0)
   /-- One symbolic path per branch, in declaration order. `borrow` selects the
-      setup; `ℓ` is the parent loan (borrow mode only). -/
-  def exploreSymBranches : Nat → Var → Bool → Nat → List Branch → St → List (Except String (Val × St))
-    | _, _, _, _, [], _ => []
-    | fuel, scrut, borrow, ℓ, br :: rest, st =>
-      (match ((if borrow then symBorrowSetup scrut ℓ br else symOwnedSetup scrut br)).run st with
+      setup; `ℓ` is the parent loan (borrow mode only); `σ` is the scrutinee's
+      symbolic id (used to type the field σ's). -/
+  def exploreSymBranches : Nat → Var → Bool → Nat → Nat → List Branch → St → List (Except String (Val × St))
+    | _, _, _, _, _, [], _ => []
+    | fuel, scrut, borrow, ℓ, σ, br :: rest, st =>
+      (match ((if borrow then symBorrowSetup fuel scrut ℓ σ br else symOwnedSetup fuel scrut σ br)).run st with
        | .error e _ => [.error e]
        | .ok body st' => explore fuel body st')
-      ++ exploreSymBranches fuel scrut borrow ℓ rest st
-  termination_by fuel _ _ _ branches _ => (fuel, 1, branches.length)
+      ++ exploreSymBranches fuel scrut borrow ℓ σ rest st
+  termination_by fuel _ _ _ _ branches _ => (fuel, 1, branches.length)
 end
 
 /-! ## Running symbolic programs -/
@@ -754,6 +783,7 @@ mutual
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
     | .matchE _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
+    | .borrowT _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
   def reflectCList : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
