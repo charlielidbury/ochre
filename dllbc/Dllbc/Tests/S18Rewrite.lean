@@ -79,4 +79,25 @@ example : chk
   (pure{ Π (m : Nat) → Π (a : Nat) → Π (l : List Nat) →
     Id Nat (countFnT m (Cons a l)) (countFnT m (Cons a l)) }) = true := by native_decide
 
+/-! ## cons2_comm — the report card (M16 ~18 hand-motive lines → ~8 here)
+
+    Count is invariant under swapping two adjacent heads. The outer `generalizing`
+    takes the NATURAL goal; the True arm nests a `generalizing` whose goal is the
+    outer-True instance (a `boolRec` form — the residual the branch-hypothesis
+    layer will make natural); every leaf is `Refl`; the False arm collapses to
+    `Refl` outright. The macro abstracts `eqb` at every occurrence, so the M16
+    missed-occurrence bug cannot recur. -/
+
+open Dllbc.Std (eqbFnT countFnT) in
+example : chk
+  (pure{ λ (m : Nat). λ (a : Nat). λ (b : Nat). λ (l : List Nat).
+    elim (eqbFnT m a) generalizing (Id Nat (countFnT m (Cons a (Cons b l))) (countFnT m (Cons b (Cons a l)))) {
+      True => elim (eqbFnT m b) generalizing
+        (Id Nat (S (countFnT m (Cons b l)))
+                (boolRec (λ (w : Bool). Nat) (S (S (countFnT m l))) (S (countFnT m l)) (eqbFnT m b))) {
+        True => Refl, False => Refl },
+      False => Refl } })
+  (pure{ Π (m : Nat) → Π (a : Nat) → Π (b : Nat) → Π (l : List Nat) →
+    Id Nat (countFnT m (Cons a (Cons b l))) (countFnT m (Cons b (Cons a l))) }) = true := by native_decide
+
 end Dllbc.Tests.S18Rewrite
