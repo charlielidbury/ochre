@@ -148,4 +148,82 @@ example : (pv (partLT 3 [1,2,3]) == vlist [1,2,3]) = true := by native_decide   
 example : (pv (partLT 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
 example : (pv (partLT 5 [3,5,1,2,4]) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
 
+/-! ## M19-C (imperative, executing mode) — the body computes `partitionL`
+
+    The in-place Lomuto partition through a mutable borrow, mirroring `partitionL`
+    exactly. `partScanE` recurses on the scan counter `k`; each step reads the scan
+    element with the PURE `nth` on `*v` (a comptime read, the `leb` condition), and
+    branches: the `g = S g'` case does an in-place `swapS` then recurses; the base
+    places the pivot with a final `swapS` (guarded on `i = S i'` — swapS cannot
+    self-swap). Run in executing mode (bounds proofs are placeholders `()`, which
+    the run does not type-check) to confirm the imperative algorithm agrees with the
+    pure model on concrete inputs — the conformance the checking mode will prove. -/
+
+open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
+
+def nthPureT (k l : Term) : Term := .app (.app StdLemmas.nth k) l
+def lebPureT (a b : Term) : Term := .app (.app Std.lebFnT a) b
+def addTm (a b : Term) : Term := .app (.app Std.addFnT a) b
+def dV (i : Nat) (n : String) : Term := .deref (.var ⟨i, n⟩)
+def u : Term := .unit
+
+-- v=0, k=1, i=2, g=3, pivot=4; body binders k2=5, c/i2=6, g2=7.
+def partScanE : Decl :=
+  { name := "partScanE", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("k", natT), ("i", natT), ("g", natT), ("pivot", natT)],
+    body := .matchE ⟨1, "k"⟩ [
+      .mk "Z" [] (.matchE ⟨2, "i"⟩ [
+        .mk "Z" [] u,
+        .mk "S" [⟨6, "i2"⟩] (.seq (.call "swapS" [.var ⟨0, "v"⟩, tnat 0, tS (V 6 "i2"), u, u]) u) ]),
+      .mk "S" [⟨5, "k2"⟩]
+        (.letIn ⟨6, "c"⟩ (lebPureT (nthPureT (tS (addTm (V 2 "i") (V 3 "g"))) (dV 0 "v")) (V 4 "pivot"))
+          (.matchE ⟨6, "c"⟩ [
+            .mk "True" [] (.matchE ⟨3, "g"⟩ [
+              .mk "Z" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), tnat 0, V 4 "pivot"]),
+              -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
+              -- + the recursion), so every index is a PURE `add` spine — `readR`
+              -- delegates those to `readC` (non-consuming), unlike a `.ctorApp "S"`
+              -- arg which moves the var. `add i 1 = S i`, `add i (add g2 2) =
+              -- S (add i (S g2))`, `add g2 1 = S g2` (for the concrete executing i/g).
+              .mk "S" [⟨7, "g2"⟩] (.seq (.call "swapS" [.borrow (dV 0 "v"), addTm (V 2 "i") (tnat 1), addTm (V 2 "i") (addTm (V 7 "g2") (tnat 2)), u, u])
+                (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", addTm (V 2 "i") (tnat 1), addTm (V 7 "g2") (tnat 1), V 4 "pivot"])) ]),
+            .mk "False" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", V 2 "i", tS (V 3 "g"), V 4 "pivot"]) ])) ] }
+
+-- v=0, n=1; body binders n2=5, pivot=6.
+def partitionE : Decl :=
+  { name := "partitionE", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("n", natT)],
+    body := .matchE ⟨1, "n"⟩ [
+      .mk "Z" [] u,
+      .mk "S" [⟨5, "n2"⟩] (.letIn ⟨6, "pivot"⟩ (nthPureT (tnat 0) (dV 0 "v"))
+        (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "n2", tnat 0, tnat 0, V 6 "pivot"])) ] }
+
+def partTable : List Decl := [nthS, nth2S, swapSN, partScanE, partitionE]
+
+-- Executing-mode caller: create a concrete list, borrow, partition in place, recover.
+def partCaller (lst : List Nat) (n : Nat) : Term :=
+  .letIn ⟨0, "x"⟩ (tlist lst)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
+      (.seq (.call "partitionE" [.var ⟨1, "b"⟩, tnat n])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
+
+def runPart (lst : List Nat) (n : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec partTable (partCaller lst n) with
+  | .ok env => env.lookup "y" == some (pv (partLT n lst))
+  | .error _ => false
+
+-- The executing-mode partition agrees with the pure model on every input class:
+-- already-partitioned (no swaps), reverse-sorted (all ≤, boundary walks to the
+-- end), and mixed inputs that exercise the interior `g = S g'` swap (the reborrow
+-- `&mut *v` path). Getting here surfaced and fixed three machine gaps (see the M19
+-- report): shiftVars now shifts runtime vars inside pure spines; readR's var-move
+-- ends a suspended reborrow in a borrow's payload; and a reused comptime index is
+-- authored as a pure `add` spine so readR delegates to (non-consuming) readC.
+example : runPart [3,1,2] 3 = true := by native_decide
+example : runPart [1,2,3] 3 = true := by native_decide          -- already partitioned (no swaps)
+example : runPart [3,2,1] 3 = true := by native_decide          -- reverse sorted
+example : runPart [3,5,1,2,4] 5 = true := by native_decide      -- interior g=S g' swap
+example : runPart [5,3,8,1,9,2] 6 = true := by native_decide    -- mixed, multiple interior swaps
+example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates around the pivot
+
 end Dllbc.Tests.S19Partition

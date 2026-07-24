@@ -873,6 +873,15 @@ mutual
     | .matchE scrut brs => .matchE ⟨scrut.id + d, scrut.name⟩ (shiftBranches d brs)
     | .seq a b => .seq (shiftVars d a) (shiftVars d b)
     | .call f args => .call f (shiftVarsList d args)
+    -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
+    -- — a pure spine over the runtime `v`, `i`, `g`). Their `.var` leaves must
+    -- shift with the executing-mode frame too; `.pvar`/`.type`/`.const` (no
+    -- runtime vars) stay in the catch-all.
+    | .app f a => .app (shiftVars d f) (shiftVars d a)
+    | .idT a b c => .idT (shiftVars d a) (shiftVars d b) (shiftVars d c)
+    | .pi a b => .pi (shiftVars d a) (shiftVars d b)
+    | .lam a b => .lam (shiftVars d a) (shiftVars d b)
+    | .sigmaT a b => .sigmaT (shiftVars d a) (shiftVars d b)
     | t => t                                            -- unit / pure formers: no runtime vars
   termination_by t => sizeOf t
   def shiftVarsList (d : Nat) : List Term → List Term
@@ -906,7 +915,17 @@ mutual
           -- borrow-mode match (§3.3) are the same case.
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
-          | none => do setSlot x .bot; pure v            -- move out, leave ⊥
+          | none =>
+            -- §19: moving a borrow whose PAYLOAD is a suspended reborrow (a `&mut
+            -- *v` handed to a call that has since returned) must first end that
+            -- reborrow, so its mutations flow back into the payload before the
+            -- move. Mirrors the match-scrutinee "reborrowed payload: end, retry".
+            match v with
+            | .borrowM _ payload =>
+              match firstLoanMarker payload with
+              | some ℓ' => do endLoan fuel ℓ'; readR fuel (.var x)
+              | none => do setSlot x .bot; pure v
+            | _ => do setSlot x .bot; pure v            -- move out, leave ⊥
       | .deref t' => do
         -- take: read the payload through the borrow, leaving a hole (⊥) in it
         let pos ← placeToPos (.deref t')
