@@ -43,4 +43,16 @@ example : chk StdLemmas.count_cons StdLemmas.count_cons_ty = true := by native_d
 example : chk StdLemmas.count_append StdLemmas.count_append_ty = true := by native_decide
 example : chk StdLemmas.take_drop_id StdLemmas.take_drop_id_ty = true := by native_decide
 
+/-! ## `swapL` computes (the pure swap specification) -/
+
+def rd (t : Term) : Val := match (readC 3000 t).run (seedPure [] []) with | .ok v _ => v | .error _ _ => .const "ERR"
+def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
+def tlist : List Nat → Term | [] => .ctorApp "Nil" [] | h :: t => .ctorApp "Cons" [tnat h, tlist t]
+def swapLApp (i j l : Term) : Term := .app (.app (.app StdLemmas.swapL i) j) l
+
+example : (rd (swapLApp (tnat 0) (tnat 2) (tlist [1, 2, 3])) == Std.ofList [Std.ofNat 3, Std.ofNat 2, Std.ofNat 1]) = true := by
+  native_decide
+example : (rd (swapLApp (tnat 1) (tnat 2) (tlist [1, 2, 3])) == Std.ofList [Std.ofNat 1, Std.ofNat 3, Std.ofNat 2]) = true := by
+  native_decide
+
 end Dllbc.Tests.S16Spec

@@ -149,4 +149,37 @@ def take_drop_id : Term := pure{
 def take_drop_id_ty : Term := pure{
   Π (i : Nat) → Π (l : List Nat) → Id (List Nat) (append (take i l) (drop i l)) l }
 
+/-! ## `nth`, `set`, `swapL` — the pure specification of swap (§16-2)
+
+    Authored in the surface (dogfooding §15 — a first raw-de-Bruijn `set` had a
+    `pvar 4`-vs-`pvar 3` slip; the surface version cannot slip). `swapL` mirrors
+    the cursor walk: recurse past the prefix, then at `i = 0` exchange the head
+    with position `j` of the tail (`Cons (nth j' xs) (set j' x xs)`). Reduces:
+    `swapL 0 2 [1,2,3] = [3,2,1]`. `count_swapL` is the pending node — see the
+    milestone report: it requires a BOUND (`swapL` off the end defaults `nth` to
+    `Z`, breaking count preservation), so it decomposes into a bounded stack. -/
+
+def nth : Term := pure{
+  λ (k : Nat). elim k return (λ (z : Nat). List Nat → Nat) {
+    Z => λ (l : List Nat). elim l return (λ (z : List Nat). Nat) { Nil => Z, Cons (h) (t) ihl => h },
+    S (k') rec => λ (l : List Nat). elim l return (λ (z : List Nat). Nat) { Nil => Z, Cons (h) (t) ihl => rec t } } }
+
+def set : Term := pure{
+  λ (k : Nat). λ (v : Nat). elim k return (λ (z : Nat). List Nat → List Nat) {
+    Z => λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) { Nil => Nil, Cons (h) (t) ihl => Cons v t },
+    S (k') rec => λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) { Nil => Nil, Cons (h) (t) ihl => Cons h (rec t) } } }
+
+def swapL : Term := pure{
+  λ (i : Nat). elim i return (λ (z : Nat). Nat → List Nat → List Nat) {
+    Z => λ (j : Nat). λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) {
+      Nil => Nil,
+      Cons (x) (xs) ihl => elim j return (λ (z : Nat). List Nat) {
+        Z => Cons x xs,
+        S (j') jih => Cons (nth j' xs) (set j' x xs) } },
+    S (i') reci => λ (j : Nat). λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) {
+      Nil => Nil,
+      Cons (x) (xs) ihl => elim j return (λ (z : Nat). List Nat) {
+        Z => Cons x xs,
+        S (j') jih => Cons x (reci j' xs) } } } }
+
 end Dllbc.StdLemmas
