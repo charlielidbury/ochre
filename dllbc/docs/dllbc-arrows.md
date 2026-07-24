@@ -68,6 +68,8 @@ Three grammar-level decisions, each argued in later sections but recorded here:
 
 *One grammar, positional restrictions in the rules.* The targets of `:=` and the subjects of `&mut` are syntactically arbitrary terms; the ⇐ rules are simply only *defined* on the shapes a location can take — a variable under zero or more peels, `x`, `*x`, `**x`, … Writing through anything else is spelled with a `let` first: `let tmp = f a ; *tmp := v`. The scrutinee of `match` is the same story: grammatically arbitrary, with rules defined only on variables (§3.2 gives the reason — refinement is substitution, and only a variable has a substitutable identity). There is no field path in any position — field access is match's job (§3). This keeps the grammar to a single category, with the arrows (not the syntax) determining where each construct is meaningful — the table below is exactly that determination.
 
+A mechanization note on universes: `Typeᵢ` is the eventual story (§9); the v0 mechanization deliberately collapses the hierarchy to type-in-type, which surrenders strong normalization (Girard's paradox lives there), so its conversion is a fuel-bounded partial decision procedure — correct on the normalizing fragment, where all of v0's programs live. Consistency is deferred project-wide; the hierarchy returns when it is.
+
 ### 1.2 Declarations
 
 ```
@@ -243,7 +245,7 @@ match p {
 }
 ```
 
-Nothing here is new: the match is a ⇒-read of `p` followed by fills of the binders. On concrete values this is ι-reduction wearing binder syntax; the comptime arrow ⇝ evaluates the same construct the same way on the pure fragment.
+Nothing here is new: the match is a ⇒-read of `p` followed by fills of the binders. On concrete values this is ι-reduction wearing binder syntax; the comptime arrow ⇝ evaluates the same construct the same way on the pure fragment. (How match's binders meet the pure fragment's substitution discipline is a §9 obligation; the v0 mechanization defers comptime match entirely, so type-level case analysis waits on it.)
 
 ### 3.2 Symbolic scrutinees, and refinement as ⇜
 
@@ -376,6 +378,8 @@ inductive Vec (T : Type₀) : Nat → Type₀ :=
 
 and a dependent pair Σ (l : Nat). Vec T l — a declared two-field inductive, constructor `Pair`, whose second field's type mentions the first. This is the type of "a vector that carries its own length," and the two fields are *coupled*: not every length-vector pair inhabits it, only the honest ones.
 
+A mechanization note: until native indexed families arrive with the fording kit (§9), `Vec` lives in the calculus as its recursive-family encoding — `Vec T n` computed from `n` by large elimination (`Vec T Z = ⊤`, `Vec T (S n) = T × Vec T n`), with `VNil`/`VCons` as notation for unit and pairing, the index argument vanishing. Everything below runs on the encoding, whose load-bearing property — the type computing under a stuck index, `Vec T (S σₗ)` unfolding while σₗ is unknown — is exactly what large elimination provides. One claim below is presentation-specific and does not survive the encoding: with no index argument at the constructor, *both* write orders check (and both are honest by the audit); the forced order returns with native `VCons`.
+
 The task: push an element, mutating both fields in place — no new pair, no vector copy.
 
 ```rust
@@ -441,7 +445,7 @@ A signature is a telescope: each argument's type may mention earlier arguments. 
 fn nth (b : &mut List T, i : Fin (len *b)) → &mut T
 ```
 
-Out-of-bounds is unrepresentable: `Fin (len *b)` replaces the error monad. The division of labor is exact: **`*b` means the payload now** (⇝-projected wherever the type is consulted); **`s` means the payload at entry** (bound once, for the one position — the obligation — that must outlive its moment). And since `Σ (l : &mut List T). Fin (len *l)` is likewise well-formed, the telescope pattern "a borrow, plus data typed by its payload" is an ordinary first-class type. This is a payoff of the value semantics: a borrow *carries* its payload, so `*l` in a type is a pure projection — `*(borrowₘ ℓ v) ⇝ v` — never a store lookup, never stale.
+Out-of-bounds is unrepresentable: `Fin (len *b)` replaces the error monad. The division of labor is exact: **`*b` means the payload now** (⇝-projected wherever the type is consulted); **`s` means the payload at entry** (bound once, for the one position — the obligation — that must outlive its moment). And since `Σ (l : &mut List T). Fin (len *l)` is likewise well-formed, the telescope pattern "a borrow, plus data typed by its payload" is an ordinary first-class type. This is a payoff of the value semantics: a borrow *carries* its payload, so `*l` in a type is a pure projection — `*(borrowₘ ℓ v) ⇝ v` — never a store lookup, never stale. One proviso: the projection is defined only on a proper payload — a *suspended* borrow, its payload holding loan markers mid-§3.3, has no meaningful snapshot, and comptime deref is stuck on it until the reborrows end.
 
 ### 5.3 Calls: consume and promise
 
