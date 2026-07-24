@@ -200,15 +200,55 @@ Plus the imperative tie-in (certConsHit: a mutating fn whose audit
 obligation is discharged by a surface-authored rewrite proof, with a
 lying-twin rejected) — the quicksort-caller shape in miniature.
 
-Remaining train: M19 partitionL (the exact Lomuto recursion as pure
-model) + imperative partition declared back = partitionL — with one
-anticipated machine addition: splitting on a STUCK Bool spine
-(leb x pivot), which needs state-level generalize (abstract the spine
-across Ω/σ-state, instantiate per branch — the two-layer principle at
-the machine level); opener: the swapS caller certifying count on the
-M17-recovered result. M20 sortL + quicksort assembly + the
-model-correctness lemmas (partial correctness; totality after, via
-fuel or §8 measures).
+M19–M20: partition conformance closed; two corrections to this log.
+
+- M19: the stuck-Bool-spine split gate HELD as designed
+  (generalizeStuck = state-level abstraction of the NF'd spine across
+  all σ-bearing state, then ordinary refinement — the two-layer
+  principle at machine level); partitionL with the GAP-COUNTER design
+  (structural swap decision, no second stuck split, self-swap
+  impossible — textbook Lomuto's self-swap cannot be expressed by
+  nth2's two distinct cursors); executing-mode partition agrees with
+  the model on every input class; certSwapCount = the architecture's
+  smallest complete instance. Three machine gaps found (shiftVars
+  through pure formers; suspended-reborrow end on var move; and the
+  big one:) readR moved EVERY var — resolved by COPY-ON-READ for
+  INDEX-KIND values only (Nat/Bool/Unit trees, pure-former values,
+  σ's sctx-typed as such; data moves even when marker-free — the
+  broad marker-free version was briefly decided, implemented, and
+  narrowed back: it would have legalized Rust's E0382 aggregate
+  class). Process outcome: after repeated message crossings, the
+  standing coordination tiebreak is DOC WINS over messages.
+- M20: the recursive partScan, declared back = partScanL, ACCEPTED by
+  checkFnOk with the full length-equation bound threading — and
+  rejected when lying. En route, the second lying-spec-class bug:
+  value-returning bodies' declared backs were NEVER callee-checked
+  (only the borrow-returning branch ran the §6.2 conversion); fixed
+  as the value-returning DUAL (zero-hole spec vs the suspension
+  tree). Its PRECISE REACH, corrected mid-milestone by the agent's
+  own sweep: the callee check reaches backs authored AS the raw tree
+  (partScanL, nth2, through); a REFORMULATED back (swapS's swapL vs
+  its set-based tree — semantically equal, never definitionally) is
+  the differential's to validate. CORRECTIONS TO THIS LOG: the
+  M16–M17 entry's "the M16 convergence crux is discharged INSIDE the
+  checker" was FALSE — the value-returning check did not run then, so
+  the discharge was vacuous; swapS's back is differential-validated,
+  exactly as M17 built it. The deferred principled close: admit a
+  reformulated back with a cited bridging equation (audit-side
+  rewrite-by-Id). Lying-back sweep per CALLEE-CHECKED branch all
+  rejecting; the differential now load-bearing for reformulated
+  backs; executing body = declared back = recovered value on every
+  input class.
+
+Remaining train: M21 the final assembly — partition wrapper (back =
+partitionL), sortL (fuel-structural pure model, authored as the raw
+composition of partitionL + recursive backs so the callee check
+reaches it), quicksort (back = sortL). M22 the model-correctness
+lemmas (count-preservation of partitionL/sortL via the count_swapL
+stack; Sorted (sortL s) via AllLe/AllGe + gluing) and the final
+caller applying both to the recovered result — the north-star
+artifact. Partial correctness; totality after, via fuel or §8
+measures.
 
 ## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
 
