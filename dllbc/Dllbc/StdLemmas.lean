@@ -182,4 +182,40 @@ def swapL : Term := pure{
         Z => Cons x xs,
         S (j') jih => Cons x (reci j' xs) } } } }
 
+/-! ## Length preservation — the spec `swapS` carries (§16, len variant)
+
+    `len_set`/`len_swapL` hold UNCONDITIONALLY — no bounds — because `set`
+    preserves length even off the end (it replaces or no-ops, never resizes) and
+    `swapL` only ever rebuilds the same spine. Unlike count, length needs no
+    `eqb`, so these are clean surface inductions (no rewriting layer required). -/
+
+abbrev len : Term := Std.lenFnT
+
+def len_set : Term := pure{
+  λ (k : Nat). λ (v : Nat).
+    elim k return (λ (z : Nat). Π (l : List Nat) → Id Nat (len (set z v l)) (len l)) {
+      Z => λ (l : List Nat). elim l return (λ (x : List Nat). Id Nat (len (set Z v x)) (len x)) {
+        Nil => Refl, Cons (h) (t) ihl => Refl },
+      S (k') ih => λ (l : List Nat). elim l return (λ (x : List Nat). Id Nat (len (set (S k') v x)) (len x)) {
+        Nil => Refl,
+        Cons (h) (t) ihl => id_congr Nat Nat (λ (n : Nat). S n) (len (set k' v t)) (len t) (ih t) } } }
+def len_set_ty : Term := pure{ Π (k : Nat) → Π (v : Nat) → Π (l : List Nat) → Id Nat (len (set k v l)) (len l) }
+
+def len_swapL : Term := pure{
+  λ (i : Nat).
+    elim i return (λ (z : Nat). Π (j : Nat) → Π (l : List Nat) → Id Nat (len (swapL z j l)) (len l)) {
+      Z => λ (j : Nat). λ (l : List Nat).
+        elim l return (λ (x : List Nat). Id Nat (len (swapL Z j x)) (len x)) {
+          Nil => Refl,
+          Cons (y) (ys) ihl => elim j return (λ (w : Nat). Id Nat (len (swapL Z w (Cons y ys))) (len (Cons y ys))) {
+            Z => Refl,
+            S (j') jih => id_congr Nat Nat (λ (n : Nat). S n) (len (set j' y ys)) (len ys) (len_set j' y ys) } },
+      S (i') ih => λ (j : Nat). λ (l : List Nat).
+        elim l return (λ (x : List Nat). Id Nat (len (swapL (S i') j x)) (len x)) {
+          Nil => Refl,
+          Cons (y) (ys) ihl => elim j return (λ (w : Nat). Id Nat (len (swapL (S i') w (Cons y ys))) (len (Cons y ys))) {
+            Z => Refl,
+            S (j') jih => id_congr Nat Nat (λ (n : Nat). S n) (len (swapL i' j' ys)) (len ys) (ih j' ys) } } } }
+def len_swapL_ty : Term := pure{ Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Id Nat (len (swapL i j l)) (len l) }
+
 end Dllbc.StdLemmas

@@ -55,4 +55,9 @@ example : (rd (swapLApp (tnat 0) (tnat 2) (tlist [1, 2, 3])) == Std.ofList [Std.
 example : (rd (swapLApp (tnat 1) (tnat 2) (tlist [1, 2, 3])) == Std.ofList [Std.ofNat 1, Std.ofNat 3, Std.ofNat 2]) = true := by
   native_decide
 
+/-! ## Length preservation (the spec swapS carries) — unconditional, no bounds -/
+
+example : chk StdLemmas.len_set StdLemmas.len_set_ty = true := by native_decide
+example : chk StdLemmas.len_swapL StdLemmas.len_swapL_ty = true := by native_decide
+
 end Dllbc.Tests.S16Spec
