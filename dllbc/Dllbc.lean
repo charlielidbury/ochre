@@ -16,3 +16,4 @@ import Dllbc.Tests.S8Diff
 import Dllbc.Tests.S9Diff
 import Dllbc.Tests.S10Ford
 import Dllbc.Tests.S11Lib
+import Dllbc.Tests.S12Inst

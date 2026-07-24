@@ -106,7 +106,11 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     | _ => throwErr s!"audit: borrow-returning body did not return a borrow (got {resultVal.pretty})"
   | _ => do
     obs.forM (auditObligation fuel none)
-    let retTy ← readC fuel retType
+    -- The return type was pinned at entry (§5.3 dependent types over consumed
+    -- params); fall back to reading it here only if it was never pinned.
+    let retTy ← match (← get).retTyVal with
+      | some v => pure v
+      | none => readC fuel retType
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
 
@@ -126,7 +130,18 @@ def auditPaths (retType : Term) :
     the function context calls resolve against (signature-only, §5.3) — it
     includes `decl` itself for recursion. -/
 def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
-  match (seedTelescope defaultFuel 0 decl.telescope).run { initSt with decls := table } with
+  -- Seed the telescope, then pin the (non-borrow) return type while the params
+  -- are still live (§5.3): a dependent return type may mention a param the body
+  -- consumes, so it must be evaluated at entry, not re-read at return.
+  let seed : M (List Obligation) := do
+    let obs ← seedTelescope defaultFuel 0 decl.telescope
+    match decl.retType with
+    | .borrowT _ _ => pure ()
+    | rt => do
+      let rv ← readC defaultFuel rt
+      modify (fun s => { s with retTyVal := some rv })
+    pure obs
+  match seed.run { initSt with decls := table } with
   | .error e _ => .error e
   | .ok obs st => auditPaths decl.retType (explore defaultFuel (pushContinuations decl.body) { st with obligations := obs })
 

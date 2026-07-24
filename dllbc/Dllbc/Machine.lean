@@ -95,6 +95,13 @@ structure St where
       so a §10 Refl refinement propagates into the owed types — see
       `Obligation`. Each explored path carries (and refines) its own copy. -/
   obligations : List Obligation := []
+  /-- The return type, evaluated ONCE at function entry (where the telescope
+      params are live) and pinned. A dependent return type (§5.3) may mention a
+      param the body then consumes — re-reading it at return would find a ⊥ — so
+      it is fixed at entry and refined per-path with the σ's (like obligations).
+      `none` for a borrow-returning body, whose owed type is read at return
+      against the surrendered payload. -/
+  retTyVal : Option Val := none
   /-- Execution mode (§8/§9 differential). `false` = CHECKING (the call rule
       uses the §5.3/§6.1 signature rule — groups, existentials); `true` =
       EXECUTING (a call runs the callee's actual body concretely). checkFn is
@@ -430,7 +437,15 @@ def refineSym (σ : Nat) (v : Val) : M Unit :=
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, substSym σ v kv.2)),
     sctx := s.sctx.map (fun p => (p.1, substSym σ v p.2)),
-    obligations := s.obligations.map (fun ob => { ob with owed := substSym σ v ob.owed }) })
+    obligations := s.obligations.map (fun ob => { ob with owed := substSym σ v ob.owed }),
+    -- A dependent call's captured/issued owed types may mention a caller σ (via
+    -- an instantiated actual, §5.3); they live in group state, so a refinement
+    -- must reach them too — the "refinement reaches all σ-bearing state"
+    -- invariant (§3.2), of which §5.3 instantiation is the first consumer.
+    groups := s.groups.map (fun g => { g with
+      captured := g.captured.map (fun p => (p.1, substSym σ v p.2)),
+      issued := g.issued.map (fun p => (p.1, substSym σ v p.2)) }),
+    retTyVal := s.retTyVal.map (substSym σ v) })
 
 /-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
     `writeR`. Defined on the same place shapes (a variable under peels). The
@@ -492,6 +507,19 @@ end
 
 /-- ⇝: reflect then normalize. Ω is read-only throughout. -/
 def readC (fuel : Nat) (t : Term) : M Val := do pure (Val.nfV fuel (← reflectC t))
+
+/-- ⇝ against extra bindings prepended to Ω — how a dependent call instantiates a
+    callee telescope type (§5.3): the decl's parameter vars are bound to the
+    caller's actuals in `extra`, so a `.var`-reference to an earlier parameter
+    (the §5.2 convention) reflects to the value passed for it. The decl's types
+    mention only decl vars, so `extra` shadows any id clash with caller slots.
+    Env is restored afterward (the reflection's let-footprint is discarded). -/
+def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Val := do
+  let saved := (← get).env
+  modify (fun s => { s with env := extra ++ s.env })
+  let v ← readC fuel t
+  modify (fun s => { s with env := saved })
+  pure v
 
 /-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
     and conversion; a constructor value by the signature table, checking each
@@ -799,8 +827,10 @@ mutual
             bindActuals fuel offset 0 decl.telescope args
             readR fuel (shiftVars offset decl.body)
           else do
-            -- CHECKING (§5.3/§6.1): signature only, mint one loan group.
-            let captured ← processArgs fuel decl.telescope args   -- (ℓ × owed) per argument borrow
+            -- CHECKING (§5.3/§6.1): signature only, mint one loan group. The
+            -- instantiation `inst` (decl var → actual, §5.3) instantiates the
+            -- return and owed types at the actuals this call was given.
+            let (captured, inst) ← processArgs fuel 0 [] decl.telescope args
             match decl.retType with
             | .borrowT τ S => do
               -- borrow-returning (§6.1): result is a fresh reborrow; its loan is
@@ -808,18 +838,18 @@ mutual
               -- `through` vs `advance` share this signature); the test-only
               -- `forceConstrained` flag reintroduces the bug for harness
               -- validation, never in real checking.
-              let τVal ← readC fuel τ
+              let τVal ← readCWith fuel inst τ
               let σ ← freshSym
               let ℓr ← freshLoan
               let ρ ← freshGroup
-              let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) (← readC fuel S))
+              let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) (← readCWith fuel inst S))
               let fc := (← get).forceConstrained
               let cons := fc && captured.length == 1
               let grp : Group := { id := ρ, captured := captured, issued := [(ℓr, owedR)], constrained := cons }
               modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, groups := grp :: s.groups })
               pure (.borrowM ℓr (.sym σ))
             | _ => do
-              let retTy ← readC fuel decl.retType
+              let retTy ← readCWith fuel inst decl.retType
               let σ ← freshSym
               let ρ ← freshGroup
               let grp : Group := { id := ρ, captured := captured, issued := [], constrained := false }
@@ -857,27 +887,37 @@ mutual
       borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
       `hasType` its parameter type; a borrow argument must be a `borrowM ℓ v`
       whose payload `v` has the parameter type τ, and is consumed. -/
-  def processArgs : Nat → List (String × Term) → List Term → M (List (Nat × Val))
-    | _, [], [] => pure []
-    | fuel, (_, tyTerm) :: tRest, arg :: aRest => do
+  def processArgs : Nat → Nat → Omega → List (String × Term) → List Term → M (List (Nat × Val) × Omega)
+    | _, _, inst, [], [] => pure ([], inst)
+    | fuel, i, inst, (name, tyTerm) :: tRest, arg :: aRest => do
+      -- Parameter `i`'s runtime var (the §5.2 convention: a later type mentions
+      -- it as `.var ⟨i, name⟩`). `inst` binds parameters `0 … i-1` to the
+      -- actuals already checked, so this type is read at those actuals.
+      let declVar : Var := ⟨i, name⟩
       match tyTerm with
       | .borrowT τ S => do
         match ← readR fuel arg with
         | .borrowM ℓ payload => do
-          let τVal ← readC fuel τ
+          let τVal ← readCWith fuel inst τ
           if ← hasType fuel payload τVal then do
-            let owed := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
-            pure ((ℓ, owed) :: (← processArgs fuel tRest aRest))
+            let SVal ← readCWith fuel inst S
+            let owed := Val.nfV fuel (Val.substPure 0 payload SVal)
+            -- A borrow parameter is bound to the actual borrow itself, so a later
+            -- type mentioning `*b` (§5.2's comptime-deref at the call site)
+            -- reflects the peel to the payload snapshot just passed.
+            let (rest, inst') ← processArgs fuel (i + 1) ((declVar, .borrowM ℓ payload) :: inst) tRest aRest
+            pure ((ℓ, owed) :: rest, inst')
           else
             throwErr s!"call: borrow argument's payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
         | v => throwErr s!"call: expected a borrow argument (&mut …), got {v.pretty}"
       | tyTerm => do
         let argVal ← readR fuel arg
-        let τVal ← readC fuel tyTerm
-        if ← hasType fuel argVal τVal then processArgs fuel tRest aRest
+        let τVal ← readCWith fuel inst tyTerm
+        if ← hasType fuel argVal τVal then
+          processArgs fuel (i + 1) ((declVar, argVal) :: inst) tRest aRest
         else throwErr s!"call: argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
-    | _, _, _ => throwErr "call: arity mismatch (arguments vs telescope)"
-  termination_by fuel _ args => (fuel, 1, args.length)
+    | _, _, _, _, _ => throwErr "call: arity mismatch (arguments vs telescope)"
+  termination_by fuel _ _ _ args => (fuel, 1, args.length)
   /-- Executing mode (§9): ⇒-read each actual and bind it to the callee's
       argument var, shifted into the fresh frame window at `offset`. -/
   def bindActuals (fuel offset : Nat) : Nat → List (String × Term) → List Term → M Unit

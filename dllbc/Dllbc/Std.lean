@@ -1,4 +1,5 @@
 import Dllbc.Value
+import Dllbc.Syntax
 
 /-!
 # `Dllbc.Std` — the quicksort pure library (§11)
@@ -100,5 +101,42 @@ def le_refl : Val :=
   .lam natTy (natRecS (.lam natTy (Le (.pvar 0) (.pvar 0))) star
     (.lam natTy (.lam (Le (.pvar 0) (.pvar 0)) (.pvar 0))) (.pvar 0))
 def le_refl_ty : Val := .pi natTy (Le (.pvar 0) (.pvar 0))
+
+/-! ## Term-level Std (§12): the library at telescope/return/owed positions
+
+    A program's telescope, return, and owed types are `Term`s; the library above
+    is `Val`s. `toTerm` reifies the (pure) library `Val`s back to `Term`s once —
+    single source of truth — so `LeT`/`SortedT`/`countT`/`BoundT`/`le_reflT` can
+    sit in a `Decl`. Runtime `Val` forms (`sym`/`loanM`/`borrowM`/`bot`) never
+    occur in the pure library, so `toTerm`'s fallback is unreachable here. -/
+
+mutual
+  def toTerm : Val → Dllbc.Term
+    | .type => .type
+    | .const c => .const c
+    | .pvar k => .pvar k
+    | .lam d b => .lam (toTerm d) (toTerm b)
+    | .pi d c => .pi (toTerm d) (toTerm c)
+    | .sigmaT d c => .sigmaT (toTerm d) (toTerm c)
+    | .app f a => .app (toTerm f) (toTerm a)
+    | .idT a b c => .idT (toTerm a) (toTerm b) (toTerm c)
+    | .ctor n args => .ctorApp n (toTermList args)
+    | _ => .unit                                   -- runtime forms: unreachable in the pure library
+  termination_by v => sizeOf v
+  def toTermList : List Val → List Dllbc.Term
+    | [] => []
+    | v :: vs => toTerm v :: toTermList vs
+  termination_by vs => sizeOf vs
+end
+
+def LeFnT : Dllbc.Term := toTerm LeFn
+def LeT (a b : Dllbc.Term) : Dllbc.Term := .app (.app LeFnT a) b
+def countFnT : Dllbc.Term := toTerm countFn
+def countT (n l : Dllbc.Term) : Dllbc.Term := .app (.app countFnT n) l
+def BoundFnT : Dllbc.Term := toTerm BoundFn
+def BoundT (h l : Dllbc.Term) : Dllbc.Term := .app (.app BoundFnT h) l
+def SortedFnT : Dllbc.Term := toTerm SortedFn
+def SortedT (l : Dllbc.Term) : Dllbc.Term := .app SortedFnT l
+def le_reflT : Dllbc.Term := toTerm le_refl
 
 end Dllbc.Std
