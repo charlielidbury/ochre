@@ -85,6 +85,31 @@ def certSwapCountLieRet : Term := .idT natT (countT (V 1 "m") (swapLT (V 2 "i") 
 def certSwapCountLie : Decl := { certSwapCount with name := "certSwapCountLie", retType := certSwapCountLieRet }
 example : checkFnErr certSwapCountLie "does not have return type" [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCountLie] = true := by native_decide
 
+/-! ## M20-2 (conformance, base case) — the pivot placement, checked against its spec
+
+    The base of partition's recursion, isolated: place the pivot at the boundary
+    `i` with a final swap, declared `back = swapL Z i (*v)`. Cased on `i` because
+    swapS cannot self-swap (`i = Z` is the no-op). The bound `pib : Le (S i) (len
+    *v)` (boundary in range) discharges swapS's `p2` after `i` refines to `S i'`
+    (`Le (S 0) (S i') = Le Z i' = ⊤`, so its `pij` is `unit`). Per path the declared
+    spec refines with the scrutinee — `swapL Z Z (*v) ≡ *v` on the no-op path,
+    `swapL Z (S i') (*v)` on the swap path, matching swapS's composed backward tree
+    (resolveTree following the sub-call group). The mechanism the recursion builds on. -/
+
+open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
+
+-- v=0, i=1, pib=2; body binder i2=3.
+def pivotPlace : Decl :=
+  { name := "pivotPlace", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("i", natT),
+      ("pib", LeT (tS (V 1 "i")) (lenT (.deref (V 0 "v"))))],
+    body := .matchE ⟨1, "i"⟩ [
+      .mk "Z" [] .unit,
+      .mk "S" [⟨3, "i2"⟩] (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 3 "i2"), .unit, V 2 "pib"]) .unit) ],
+    back := some (swapLT (.ctorApp "Z" []) (V 1 "i") (.deref (V 0 "v"))) }
+def confTable : List Decl := [nthS, nth2S, swapSN, pivotPlace]
+example : checkFnOk pivotPlace confTable = true := by native_decide
+
 /-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
 
     The imperative partition branches on `if leb x pivot` with `x` symbolic; the
