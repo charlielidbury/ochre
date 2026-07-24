@@ -645,6 +645,38 @@ def partitionQ : Decl :=
     back := some (partitionLT2 (V 1 "n") dv) }
 #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScan, partitionQ] partitionQ with | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 200))
 
+/-! ## M21-3 — partitionRange: the subrange partition wrapper (Σ-pinned relative index)
+
+    partitions the range [lo, lo+cnt) in place and returns the pivot's RELATIVE
+    offset `i` (absolute = add lo i), Σ-pinned to `partIdxRangeL lo cnt *v`. The
+    precondition is the range-fits inequality `hbnd : Le (add lo cnt) (len *v)`;
+    the partScanRange call's entry bound (i = g = 0) is hbnd bridged by add_zero
+    (`add cnt2 Z = cnt2`), mirroring partition's (M21-1) hlenW-via-add_zero. -/
+
+def partIdxRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partIdxRangeL lo) cnt) l
+def partitionRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partitionRangeL lo) cnt) l
+
+def partitionRange : Decl :=
+  { name := "partitionRange",
+    retType := .sigmaT natT (.idT natT (.pvar 0) (partIdxRangeLT (V 1 "lo") (V 2 "cnt") dv)),
+    telescope := [("v", .borrowT listNatT listNatT), ("lo", natT), ("cnt", natT),
+      ("hbnd", LeT (addTmH (V 1 "lo") (V 2 "cnt")) (lenT dv))],
+    body := .matchE ⟨2, "cnt"⟩ [
+      .mk "Z" [] (.ctorApp "Pair" [.ctorApp "Z" [], .ctorApp "Refl" []]),
+      .mk "S" [⟨4, "cnt2"⟩] (.letIn ⟨5, "i"⟩ (partIdxRangeLT (V 1 "lo") (tS (V 4 "cnt2")) dv)
+        (.letIn ⟨6, "pivot"⟩ (nthP (V 1 "lo") dv)
+          (.letIn ⟨7, "hle"⟩
+            (leRwL (lenT dv)
+              (addTmH (V 1 "lo") (tS (V 4 "cnt2")))
+              (addTmH (V 1 "lo") (tS (addTmH (V 4 "cnt2") (.ctorApp "Z" []))))
+              (idCgLoS (V 1 "lo") (V 4 "cnt2") (addTmH (V 4 "cnt2") (.ctorApp "Z" []))
+                (idSy (addTmH (V 4 "cnt2") (.ctorApp "Z" [])) (V 4 "cnt2") (addZeroT (V 4 "cnt2"))))
+              (V 3 "hbnd"))
+            (.seq (.call "partScanRange" [.var ⟨0, "v"⟩, V 1 "lo", V 4 "cnt2", .ctorApp "Z" [], .ctorApp "Z" [], V 6 "pivot", V 7 "hle"])
+              (.ctorApp "Pair" [V 5 "i", .ctorApp "Refl" []]))))) ],
+    back := some (partitionRangeLT (V 1 "lo") (V 2 "cnt") dv) }
+#eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScanRange, partitionRange] partitionRange with | .ok _ => "partitionRange OK" | .error e => "ERR: " ++ (e.take 200))
+
 -- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
 -- reborrows *v twice in sequence for two recursive calls. This only checks
 -- because `&mut` on a place holding a parked `loanₘ` now DEMAND-ENDS the prior
