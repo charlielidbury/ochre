@@ -84,7 +84,7 @@ All evaluation and checking is organized by four judgment forms over one grammar
 | **runtime** | Ω ⊢ t **⇒** v ⊣ Ω′ — consume-read: evaluate `t` to a value, with move semantics | Ω ⊢ t **⇐** v ⊣ Ω′ — destructive write: push `v` into the location `t` denotes |
 | **comptime** | Ω ⊢ t **⇝** v ⊣ Ω′ — comptime read: evaluate in the borrow-free fragment | Ω ⊢ x **⇜** t ⊣ Ω′ — comptime write: refine the snapshot layer by substitution |
 
-The comptime pair is not a second semantics: it is the **same machine restricted to the borrow-free fragment** — comptime evaluation threads Ω over pure entries and may assign to them; it merely excludes the constructs that *touch the loan state* (minting a borrow, consuming through one — though not `*t` as pure projection; see §5). "No borrowing side effects at the type level" is a fragment property, not a separate rule set. It is also future-proofing: one can imagine a later version making **erasure** formal, in which type annotations, indices, and everything else evaluated only by the comptime arrows is deleted before the program runs. In that future it is essential that comptime evaluation has no effect on the borrow state — types will not exist at runtime, so nothing the runtime depends on may have happened inside them. The fragment restriction is that guarantee, stated today.
+The comptime pair is not a second semantics: it is the **same machine restricted to the borrow-free, assignment-free fragment** — comptime evaluation threads Ω over pure entries; it excludes the constructs that *touch the loan state* (minting a borrow, consuming through one — though not `*t` as pure projection; see §5), and it excludes `:=` outright, so a ⇝-evaluation's only footprint on Ω is the fresh pure entries its `let`s introduce. (The comptime *write* ⇜ is unaffected: it is the checker's refinement judgment, fired at match branch entry — never the elaboration of a surface `:=`.) "No side effects at the type level" is a fragment property, not a separate rule set. It is also future-proofing: one can imagine a later version making **erasure** formal, in which type annotations, indices, and everything else evaluated only by the comptime arrows is deleted before the program runs. In that future it is essential that comptime evaluation has no effect on the state the runtime sees — types will not exist at runtime, so nothing the runtime depends on may have happened inside them. The fragment restriction is that guarantee, stated today. A second dividend lands in §9: conversion compares substituted terms with no Ω in sight, which an assigning ⇝ would forbid.
 
 Which arrows are defined on which constructs is the language's skeleton:
 
@@ -99,12 +99,12 @@ Which arrows are defined on which constructs is the language's skeleton:
 | `T.c` | ✓ | ✗ | ✓ | ✗ | constructor values exist in both worlds; ⇒ on the applied form consumes its fields |
 | `match t { … }` | ✓ | ✗ | ✓ | ✗ | ⇒: two modes by scrutinee type, branch entry refines by ⇜; ⇝: ι-reduction, stuck on symbolic |
 | `let x = t ; t′` | ✓ | ✗ | ✓ | ✗ | sequencing in both fragments |
-| `t := t′ ; t′′` | ✓ | ✗ | ✓ | ✗ | ⇒: RHS by ⇒, target by ⇐; comptime assignment permitted (fragment reading) |
+| `t := t′ ; t′′` | ✓ | ✗ | ✗ | ✗ | ⇒: RHS by ⇒, target by ⇐; excluded from the comptime fragment — pure code sequences with `let`, never `:=` |
 | `&mut t` | ✓ | ✗ | ✗ | ✗ | mints a loan; `&mut *x` is reborrow |
 | `&mut (s : τ ↝ S)` | ✗ | ✗ | ✓ | ✗ | the borrow *type* is comptime even though borrow *values* are excluded from the fragment |
 | `*t` | ✓ | ✓ | ✓ | ✓ | the peel, arrow-generic: under ⇒ reads through destructively (take); under ⇐ locates through non-destructively (write-through); under ⇝ projects the payload snapshot; under ⇜ refines it |
 
-Two regularities to notice, since they organize everything that follows. **Down the columns**: the ⇝ column is the ⇒ column minus the borrowing rows and minus consumption — the comptime fragment made visible. **Across the rows**: several constructs mean different things under different arrows (`*t` reads destructively, locates non-destructively, or projects a snapshot; `match` destructures or reborrows by mode; `x` is a move, a target, a snapshot, or a refinement site) — one grammar, with the arrows carrying all the behavioral variation. The remainder of this document is the unpacking of this table, one region at a time.
+Two regularities to notice, since they organize everything that follows. **Down the columns**: the ⇝ column is the ⇒ column minus the borrowing rows, minus assignment, and minus consumption — the comptime fragment made visible. **Across the rows**: several constructs mean different things under different arrows (`*t` reads destructively, locates non-destructively, or projects a snapshot; `match` destructures or reborrows by mode; `x` is a move, a target, a snapshot, or a refinement site) — one grammar, with the arrows carrying all the behavioral variation. The remainder of this document is the unpacking of this table, one region at a time.
 
 ---
 
@@ -420,7 +420,7 @@ Inside a body, borrowing is contract-free: the checker watches every step. Contr
 fn push (n : Nat, e : T, v : &mut (Vec T n ↝ Vec T (S n))) = { … }
 ```
 
-Pushing changes the type: the caller knows, from the signature alone, that the vector behind `v` is one longer at exit. We write `&mut (τ ↝ S)` when `S` ignores `s`, and `&mut τ` when moreover `S = τ`. Where LLBC's toolchain synthesizes a *backward function* to describe what flows back through a borrow, here that description is the obligation: ↝ is the backward function's type, moved into the signature. Where LLBC's toolchain synthesizes a *backward function* to describe what flows back through a borrow, here that description is the obligation: ↝ is the backward function's type, moved into the signature.
+Pushing changes the type: the caller knows, from the signature alone, that the vector behind `v` is one longer at exit. We write `&mut (τ ↝ S)` when `S` ignores `s`, and `&mut τ` when moreover `S = τ`. Where LLBC's toolchain synthesizes a *backward function* to describe what flows back through a borrow, here that description is the obligation: ↝ is the backward function's type, moved into the signature.
 
 ### 5.2 Telescopes, and *b in types
 
