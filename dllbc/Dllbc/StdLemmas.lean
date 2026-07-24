@@ -712,6 +712,63 @@ def partScanSizeL : Term := pure{
 def partScanSizeL_ty : Term := pure{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
   Id Nat (add (partScanIdxRangeL pivot lo k i g l) (partScanGapRangeL pivot lo k i g l)) (add k (add i g)) }
 
+-- The range scan preserves length — it only ever rebuilds the same spine (swapL,
+-- which len_swapL knows preserves length) or leaves it. Same induction shape as
+-- partScanSizeL (on k, elim the leb Bool, elim g in True), but the leaves are
+-- simpler: each recursive step is the IH, and the two swapL cases (Z-base pivot
+-- placement, True/S-g swap) bridge through len_swapL. The quicksort recursion
+-- needs this because partitionRange MUTATES *v, and the two recursive-call range
+-- bounds refer to len (*v-after-partition) — this moves them back onto len (entry).
+def len_partScanRangeL : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+        Id Nat (len (partScanRangeL pivot lo kz i g l)) (len l)) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim i return (λ (iz : Nat). Id Nat
+            (len (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => swapL lo (add lo (S i')) l }))
+            (len l)) {
+          Z => Refl,
+          S (i') iih => len_swapL lo (add lo (S i')) l },
+      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim (leb (nth (add lo (S (add i g))) l) pivot)
+          return (λ (w : Bool). Id Nat
+            (len (elim w return (λ (ww : Bool). List Nat) {
+                    True => elim g return (λ (gz : Nat). List Nat) {
+                      Z => partScanRangeL pivot lo k' (S i) Z l,
+                      S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                    False => partScanRangeL pivot lo k' i (S g) l }))
+            (len l)) {
+          True => elim g return (λ (gz : Nat). Id Nat
+                    (len (elim gz return (λ (gy : Nat). List Nat) {
+                            Z => partScanRangeL pivot lo k' (S i) Z l,
+                            S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) }))
+                    (len l)) {
+            Z => ih (S i) Z l,
+            S (g') gih => id_trans Nat
+                   (len (partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l)))
+                   (len (swapL (add lo (S i)) (add lo (S (add i g))) l))
+                   (len l)
+                   (ih (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l))
+                   (len_swapL (add lo (S i)) (add lo (S (add i g))) l)
+          },
+          False => ih i (S g) l
+        }
+    } }
+def len_partScanRangeL_ty : Term := pure{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+  Id Nat (len (partScanRangeL pivot lo k i g l)) (len l) }
+
+-- The wrapper form the quicksort recursion consumes: partitionRangeL is
+-- partScanRangeL after picking the pivot, so its length preservation is the scan's
+-- (Z base is Refl, S cnt' is len_partScanRangeL at the entry offsets).
+def len_partitionRangeL : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat). Id Nat
+        (len (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l }))
+        (len l)) {
+      Z => Refl,
+      S (cnt') rec => len_partScanRangeL (nth lo l) lo cnt' Z Z l } }
+def len_partitionRangeL_ty : Term := pure{ Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (partitionRangeL lo cnt l)) (len l) }
+
 /-- `sortRangeL fuel lo cnt l` — sort the `cnt` elements of `l` at offset `lo` in
     place. Fuel-structural; base = out of fuel or `cnt ≤ 1`; step partitions the
     range, then sorts the left sub-range `[lo, lo+i)` (count `i`) and the right
