@@ -75,12 +75,37 @@ Same-day continuation, M6–M8:
    caller-side, needing calls in the generator plus final-environment
    σ-instance comparison (the simulation relation proper) to catch.
 
-Next: M9 = exhaustiveness checking in checkFn + differential v2
-(whole-program caller+callee concrete runs, calls in the generator, the
-property upgraded to "the concrete final environment is a σ-instance of
-an accepted symbolic path's final environment"). Then §6.2's precision
-spectrum or the fording kit (Id/J/K, native indexed families). Deferred
-throughout: shared borrows, [k] termination guard, proofs.
+M9–M11, same day: M9 exhaustiveness (the simulation precondition made
+syntactic) + differential v2 — whole-program caller+callee runs with
+the σ-instance simulation relation, VALIDATED red-then-green (with the
+constrained-wire bug test-forced on, the advance-caller differential
+goes red; off, green — the harness demonstrably catches its target bug
+class). M10 the fording kit: Id/J/K in the kernel, refl-match = the
+solution transition only (flex ⇒ ⇜-refine with occurs check;
+rigid-rigid ⇒ stuck naming j/k), and the unification library —
+NatCode no-confusion, conflict discharge, S-injectivity, UIP — DERIVED
+inside the calculus as checked terms: the kernel needs solution only,
+the rest is a library, as designed. En route: the "refinement reaches
+all σ-bearing state" invariant (an obligations-staleness bug found and
+fixed at the through-borrow refl-match). M11 the pure lift (⇒ ⊇ ⇝ on
+the borrow-free fragment — bodies now produce, store, and return proof
+terms), listRec, pure let, and the quicksort pure library
+(Le/eqb/leb/count/Bound/Sorted, le_refl checked). le_trans hit the
+raw-eliminator wall — three-level nested dependent induction in
+hand-built de Bruijn does not scale; the concrete, attempted-not-
+preemptive case for dependent-match elaboration.
+
+NORTH STAR (user-set, 2026-07-24): a fully verified NATURAL in-place
+quicksort — see SUGGESTIONS.md's top section for the representation
+decisions (slice = mutable borrow + comptime length bound; Perm by
+counting; naturalness-first iteration: the calculus bends, not the
+program) and the milestone train. The annotated dream program
+(S11Lib.lean §11.4) is the live gap list, dependency-ordered:
+(1) dependent call-site instantiation [M12, the keystone],
+(2) Term-level Std at telescope positions, (3) the cursor-at-depth
+idiom [the naturalness make-or-break], (4) sub-slice surface forms,
+(5) if-sugar. Deferred throughout: shared borrows, [k]/termination,
+§6.2's precision spectrum, proofs.
 
 ## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
 
