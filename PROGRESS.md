@@ -1,5 +1,52 @@
 # Progress
 
+## 2026-07-24 — dllbc/: DLLBC mechanized through boundaries; both §4 flagships check
+
+New self-contained Lean package `dllbc/` (package root is the tld; lib
+`Dllbc`) mechanizing `dllbc/docs/dllbc-arrows.md` — the Dependent
+Low-Level Borrow Calculus, the "one grammar, four arrows" presentation.
+Five milestones landed in one day, all sequential dispatches to a single
+resumed agent (dllbc-m1), 50 native_decide tests green:
+
+1. §2 concrete machine (moves, borrows, End-Mut, drop, take/refill,
+   reborrow; self-reborrow rejected for the doc's stated reason).
+2. §3 match, owned + borrow mode (field reborrows, suspension, variant
+   change — which needed zero new drop code).
+3. Symbolic layer: σ values, ⇜ refinement as global substitution, and
+   the explore driver (path-sensitive checking — duplication is the v0
+   baseline; the §3.5 join is demoted to a future widening).
+4. Pure fragment: readC (⇝), fuel-bounded conversion, hasType, σ-context.
+   Fixed MLTT basis (⊥/⊤/Bool/Nat/Σ + List) with recursors as constants —
+   deliberately NOT scheme-CIC; type-in-type (consistency deferred).
+   Vec exists as its recursive-family encoding via large elimination
+   (VecF by natRec), so no indexed families in the kernel; Id/J/K +
+   fording is the planned route when they arrive.
+5. Boundaries: telescopes with `&mut (s : τ ↝ S)`, checkFn, the §5.4
+   audit (collapse-then-convert). **Both §4 flagships check end-to-end**:
+   list push (take/rebuild, Rust's E0507), and the Σ-paired VecF push
+   mutating both fields in place. The money test: the same body with
+   `*l := S(*l)` forgotten is REJECTED — the pair's second field is
+   checked against the stuck type `VecF Nat σₗ`, and no constructor
+   inhabits a stuck type. Dependent correctness catching a forgotten
+   length update through a mutable borrow.
+
+Working method that produced this: the doc's annotated Ω-traces are the
+test suite (golden environments up to ℓ/σ renaming); every milestone's
+report includes an ambiguity list, folded back into the doc same-day
+(commits 040b4698 → c484e8c1 + the M5 batch). Notable spec findings en
+route: the owned-position move rule (§2.2) is the single mechanism
+behind both forced End-Mut and the §3.3 collapse; the collapse is
+demand-driven (owner or audit), never "branch exit"; the audit is
+collapse-then-convert, not a bare hasType; and the §4.2 "write order
+forced by types" claim does not survive the recursive-family encoding
+(no index argument at the constructor) — it returns with native VCons.
+
+Next: M6 calls-as-wires (§5.3), then loan groups (§6), then the fording
+kit (Id/J/K, native indexed families). Deferred throughout: shared
+borrows, [k] termination guard, metatheory (a differential
+symbolic-vs-concrete test suite is the planned counterexample-finder
+before any proofs).
+
 ## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
 
 New self-contained Lean 4.16 package `pss/` (no mathlib) formalizing
