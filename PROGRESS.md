@@ -179,13 +179,36 @@ pure lemmas the caller applies to the precisely-recovered result.
 The Σ-wrapped count spec for swapS is OBSOLETE — spec-ends are
 strictly stronger.
 
-Remaining train: M18 the rewriting layer (abstractOccurrences +
-generalize-elim + rewrite-by-Id; acceptance: cons2_comm ~4 lines,
-then the bounded count_swapL stack — now serving the pure-model
-correctness track), M19 partitionL (pure model) + imperative
-partition declared back = partitionL, M20 sortL + quicksort assembly
-+ the model-correctness lemmas (partial correctness; totality after,
-via fuel or §8 measures).
+M18 (closed): the rewriting layer, both halves executable, honest
+numbers. Abstraction (generalize-elim over abstractOccurrences,
+NF-then-abstract motives) takes cons2_comm ~18 → ~8 and makes the
+missed-occurrence bug class impossible; ~8 is the structural FLOOR
+for casing-shaped lemmas (casing already delivers the knowledge a
+branch equation would — the boolRec residual is intrinsic to
+nesting-by-casing). rewrite-by-Id (J-transport by a received Id) is
+the equation-chaining tool whose win is EXPRESSIBILITY — it un-walls
+the M16 stuck-behind-scrutinee class (count_cons_hit). The TWO-LAYER
+PRINCIPLE, §9-ready: motive abstraction handles OCCURRENCES; branch
+equations handle KNOWLEDGE; orthogonal, composing — and each maps to
+a standard-prover feature (generalize / destruct-eqn:). The payoff:
+the bounded count_swapL stack checked FIRST-TRY (cons2_comm →
+count_cons_congr → count_headswap → count_swapL, with the load-bearing
+Le range bounds — unbounded it is FALSE); the decomposition localizes
+all eqb-knowledge into the two small lemmas, leaving pure id_trans
+chains, which is WHY the head-swap double-induction never walled.
+Plus the imperative tie-in (certConsHit: a mutating fn whose audit
+obligation is discharged by a surface-authored rewrite proof, with a
+lying-twin rejected) — the quicksort-caller shape in miniature.
+
+Remaining train: M19 partitionL (the exact Lomuto recursion as pure
+model) + imperative partition declared back = partitionL — with one
+anticipated machine addition: splitting on a STUCK Bool spine
+(leb x pivot), which needs state-level generalize (abstract the spine
+across Ω/σ-state, instantiate per branch — the two-layer principle at
+the machine level); opener: the swapS caller certifying count on the
+M17-recovered result. M20 sortL + quicksort assembly + the
+model-correctness lemmas (partial correctness; totality after, via
+fuel or §8 measures).
 
 ## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
 
