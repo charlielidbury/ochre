@@ -50,6 +50,9 @@ syntax:10 "let" ident "=" pterm ";" pterm:10 : pterm             -- pure let (β
 syntax ident ("(" ident ")")* (ident)? "=>" pterm : pelimArm
 -- `elim SCRUT return MOTIVE { arms }` — recursor sugar (§15b).
 syntax:max "elim" pterm:max "return" pterm:max "{" pelimArm,* "}" : pterm
+-- `elim SCRUT generalizing GOAL { arms }` (§18) — the motive is formed by
+-- abstracting SCRUT out of the (un-abstracted, natural) GOAL, at all occurrences.
+syntax:max "elim" pterm:max "generalizing" pterm:max "{" pelimArm,* "}" : pterm
 
 syntax "pure{" pterm "}" : term
 
@@ -109,6 +112,8 @@ partial def elabP (ctx : List String) (stx : TSyntax `pterm) : MacroM (TSyntax `
     `(Dllbc.Term.app (Dllbc.Term.lam Dllbc.Term.type $(← elabP (x.getId.toString :: ctx) b)) $(← elabP ctx e))
   | `(pterm| elim $scrut:pterm return $motive:pterm { $arms,* }) =>
     elabElim ctx scrut motive arms.getElems
+  | `(pterm| elim $scrut:pterm generalizing $goal:pterm { $arms,* }) =>
+    elabGenElim ctx scrut goal arms.getElems
   | `(pterm| $_:pterm $_:pterm) => do              -- application spine
     let (head, args) := collectApp stx
     let argTerms ← args.toList.mapM (elabP ctx)
@@ -187,6 +192,38 @@ partial def elabElim (ctx : List String) (scrut motive : TSyntax `pterm)
         (Dllbc.Term.lam (Dllbc.Term.const "Nat") (Dllbc.Term.lam (Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat")) (Dllbc.Term.lam $ihDom $body)))) $scrutT)
   else
     Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List)"
+
+/-- `elim SCRUT generalizing GOAL { arms }` (§18): the motive is
+    `λ x. abstractOccurrences SCRUT GOAL` — the natural goal with the computed
+    subterm abstracted at all its occurrences, mechanically. Bool motives only
+    for now (the count algebra's case-on-`eqb`); Nat/List use the `return` form. -/
+partial def elabGenElim (ctx : List String) (scrut goal : TSyntax `pterm)
+    (arms : Array (TSyntax `pelimArm)) : MacroM (TSyntax `term) := do
+  let scrutT ← elabP ctx scrut
+  let goalT ← elabP ctx goal
+  let armBody (c : String) : MacroM (TSyntax `term) := do
+    for arm in arms do
+      match arm with
+      | `(pelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $body:pterm) =>
+        if ctor.getId.toString == c then return (← elabP ctx body)
+      | _ => pure ()
+    Macro.throwError s!"elim generalizing: missing arm '{c}'"
+  let names := arms.filterMap (fun a => match a with
+    | `(pelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:pterm) => some ctor.getId.toString
+    | _ => none)
+  if names.contains "True" || names.contains "False" then
+    let t ← armBody "True"
+    let f ← armBody "False"
+    -- Normalize scrut and goal (`Std.nfTerm`, referenced unhygienically so it
+    -- resolves at the use site — the macro layer need not import Std) so a
+    -- computed subterm hidden in a definition (`eqb` inside `count`) is exposed
+    -- before abstraction. Then abstract at all occurrences.
+    let nf := Lean.mkIdent `Dllbc.Std.nfTerm
+    let motive ← `(Dllbc.Term.lam (Dllbc.Term.const "Bool")
+      (Dllbc.abstractOccurrences ($nf $scrutT) ($nf $goalT)))
+    `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "boolRec") $motive) $t) $f) $scrutT)
+  else
+    Macro.throwError "elim generalizing: only Bool motives supported (§18); Nat/List use the `return` form"
 
 end
 

@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.Std
+import Dllbc.PureMacro
 
 /-!
 # §18 test suite — the rewriting layer
@@ -42,5 +43,40 @@ example : roundTrips (eqbA (tnat 1) (tnat 2)) (.idT (.const "Nat") (tnat 3) (tna
 example : roundTrips (eqbA (tnat 1) (tnat 2))
   (.idT (.const "Nat") (eqbA (tnat 1) (tnat 2)) (.lam (.const "Nat") (eqbA (tnat 1) (tnat 2)))) = true := by
   native_decide
+
+/-! ## The `generalizing` surface form — motive by auto-abstraction
+
+    `elim SCRUT generalizing GOAL { arms }` forms the motive by NF-ing the goal
+    (so a computed subterm hidden in a definition — `eqb` inside `count` — is
+    exposed) and abstracting SCRUT at every occurrence. The user writes the
+    NATURAL goal; the macro places the holes, mechanically. -/
+
+def chk (tm ty : Term) : Bool :=
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  | .ok r _ => r
+  | .error _ _ => false
+
+open Dllbc.Std (eqbFnT addFnT countFnT) in
+-- Casing on `eqb m a` makes two syntactically-different sides converge per branch
+-- (`add Z X ≡ X`). The macro abstracts `eqb m a` at both occurrences; both Refl.
+example : chk
+  (pure{ λ (m : Nat). λ (a : Nat).
+    elim (eqbFnT m a) generalizing
+      (Id Nat (boolRec (λ (w : Bool). Nat) (S Z) Z (eqbFnT m a))
+              (boolRec (λ (w : Bool). Nat) (addFnT Z (S Z)) (addFnT Z Z) (eqbFnT m a))) {
+      True => Refl, False => Refl } })
+  (pure{ Π (m : Nat) → Π (a : Nat) →
+    Id Nat (boolRec (λ (w : Bool). Nat) (S Z) Z (eqbFnT m a))
+           (boolRec (λ (w : Bool). Nat) (addFnT Z (S Z)) (addFnT Z Z) (eqbFnT m a)) }) = true := by native_decide
+
+open Dllbc.Std (eqbFnT countFnT) in
+-- The subterm hidden in `count`: the NATURAL goal (no unfolding) works because
+-- the macro NF's it to expose `eqb m a` before abstracting.
+example : chk
+  (pure{ λ (m : Nat). λ (a : Nat). λ (l : List Nat).
+    elim (eqbFnT m a) generalizing (Id Nat (countFnT m (Cons a l)) (countFnT m (Cons a l))) {
+      True => Refl, False => Refl } })
+  (pure{ Π (m : Nat) → Π (a : Nat) → Π (l : List Nat) →
+    Id Nat (countFnT m (Cons a l)) (countFnT m (Cons a l)) }) = true := by native_decide
 
 end Dllbc.Tests.S18Rewrite

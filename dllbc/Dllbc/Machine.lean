@@ -577,6 +577,9 @@ mutual
   def hasType : Nat → Val → Val → M Bool
     | 0, _, _ => throwErr "hasType: out of fuel"
     | fuel + 1, v, ty => do
+      -- Whnf the value first: a β-redex or stuck recursor (e.g. `eqb m a`,
+      -- a λ-headed spine) must reduce to its weak head before we can type it.
+      let v := Val.whnfV fuel v
       match v with
       | .sym σ =>
         match (← get).sctx.lookup σ with

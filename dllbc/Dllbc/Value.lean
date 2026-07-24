@@ -200,6 +200,31 @@ mutual
   termination_by vs => sizeOf vs
 end
 
+/-! Reflect a PURE `Term` into a `Val` (no monad, no Ω): the borrow-free fragment
+    only — `var`/`deref`/runtime forms map to `⊥` (they never occur in a pure
+    goal). Used by `Std.nfTerm` to normalize a §18 generalize goal so a computed
+    subterm (an `eqb`-spine hidden in a `count`-unfolding) is exposed before
+    `abstractOccurrences`. -/
+mutual
+  def Term.toValPure : Term → Val
+    | .type => .type
+    | .const c => .const c
+    | .pvar k => .pvar k
+    | .pi d c => .pi (Term.toValPure d) (Term.toValPure c)
+    | .sigmaT d c => .sigmaT (Term.toValPure d) (Term.toValPure c)
+    | .lam d b => .lam (Term.toValPure d) (Term.toValPure b)
+    | .app f a => .app (Term.toValPure f) (Term.toValPure a)
+    | .idT a b c => .idT (Term.toValPure a) (Term.toValPure b) (Term.toValPure c)
+    | .ctorApp n args => .ctor n (Term.toValPureList args)
+    | .unit => .ctor "unit" []
+    | _ => .bot                                          -- runtime forms: absent in pure goals
+  termination_by t => sizeOf t
+  def Term.toValPureList : List Term → List Val
+    | [] => []
+    | t :: ts => Term.toValPure t :: Term.toValPureList ts
+  termination_by ts => sizeOf ts
+end
+
 /-! Symbolic ids occurring in `v`, in pre-order of first appearance. -/
 mutual
   def symIds : Val → List Nat

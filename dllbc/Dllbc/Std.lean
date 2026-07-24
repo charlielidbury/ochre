@@ -1,5 +1,6 @@
 import Dllbc.Value
 import Dllbc.Syntax
+import Dllbc.Pure
 
 /-!
 # `Dllbc.Std` — the quicksort pure library (§11)
@@ -176,6 +177,12 @@ def BoundT (h l : Dllbc.Term) : Dllbc.Term := .app (.app BoundFnT h) l
 def SortedFnT : Dllbc.Term := toTerm SortedFn
 def SortedT (l : Dllbc.Term) : Dllbc.Term := .app SortedFnT l
 def le_reflT : Dllbc.Term := toTerm le_refl
+
+/-- Normalize a pure `Term` (reflect → `nfV` → reify). §18: exposes a computed
+    subterm (e.g. an `eqb`-spine hidden in a `count`-unfolding) so
+    `abstractOccurrences` can find it in a natural goal. Emitted by the
+    generalize-elim macro by NAME, so no import cycle with the macro layer. -/
+def nfTerm (t : Dllbc.Term) : Dllbc.Term := toTerm (Dllbc.Val.nfV 1000 (Dllbc.Val.Term.toValPure t))
 def lenFnT : Dllbc.Term := toTerm lenFn
 def lenT (l : Dllbc.Term) : Dllbc.Term := .app lenFnT l
 def takeFnT : Dllbc.Term := toTerm takeFn
