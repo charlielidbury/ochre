@@ -112,6 +112,29 @@ def le_rw_r : Term := pure{
     j Nat x (λ (y' : Nat). λ (hh : Id Nat x y'). Le a y') p y h }
 def le_rw_r_ty : Term := pure{ Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le a x → Le a y }
 
+-- Transport a `Le` along an `Id` on its FIRST (smaller) argument: `x = y ⟹ Le x
+-- b → Le y b`. The range partition's bound `Le (add lo (S (add k (add i g))))
+-- (len *v)` is invariant across the recursion (the sum k+i+g is preserved), but
+-- its SYNTACTIC form shifts as k descends and i/g grow; this moves the bound
+-- between forms via the hshift identities — the Le mirror of le_rw_r, and the one
+-- lemma the M20 Id-toolkit lacked for the subrange generalization (§21).
+def le_rw_l : Term := pure{
+  λ (b : Nat). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (p : Le x b).
+    j Nat x (λ (y' : Nat). λ (hh : Id Nat x y'). Le y' b) p y h }
+def le_rw_l_ty : Term := pure{ Π (b : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le x b → Le y b }
+
+-- Left-add monotonicity: `a ≤ b ⟹ lo + a ≤ lo + b`. Induction on `lo`: base is
+-- the hypothesis (`add Z x = x`), step is the IH verbatim (`add (S lo') x =
+-- S (add lo' x)` and `Le (S _) (S _) = Le _ _` are both definitional). The range
+-- partition's swap bounds shift the entry bound `Le (S i) (S (add i g))` through
+-- `add lo` to reach `Le (add lo (S i)) (add lo (S (add i g)))` (§21).
+def le_add_mono_l : Term := pure{
+  λ (lo : Nat). λ (a : Nat). λ (b : Nat). λ (h : Le a b).
+    elim lo return (λ (loz : Nat). Le (add loz a) (add loz b)) {
+      Z => h,
+      S (lo') ih => ih } }
+def le_add_mono_l_ty : Term := pure{ Π (lo : Nat) → Π (a : Nat) → Π (b : Nat) → Le a b → Le (add lo a) (add lo b) }
+
 /-! ## `id_trans`, `id_congr` — the J warm-ups partition's count-chaining consumes -/
 
 def id_trans : Term := pure{

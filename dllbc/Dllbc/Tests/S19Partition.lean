@@ -181,6 +181,15 @@ def leAddS (i g : Term) : Term := .app (.app StdLemmas.le_add_succ i) g
 def leRwR (a x y h p : Term) : Term := .app (.app (.app (.app (.app StdLemmas.le_rw_r a) x) y) h) p
 def lenSwapL (i j l : Term) : Term := .app (.app (.app StdLemmas.len_swapL i) j) l
 
+-- Le-toolkit for the range partition (§21): the left-transport, left-add
+-- monotonicity, add_succ bridge, le_trans, and id_congr through `λx. add lo (S x)`.
+def leRwL (b x y h p : Term) : Term := .app (.app (.app (.app (.app StdLemmas.le_rw_l b) x) y) h) p
+def leAddMonoL (lo a b h : Term) : Term := .app (.app (.app (.app StdLemmas.le_add_mono_l lo) a) b) h
+def addSuccT (a b : Term) : Term := .app (.app StdLemmas.add_succ a) b
+def leTrans (a b c hab hbc : Term) : Term := .app (.app (.app (.app (.app StdLemmas.le_trans a) b) c) hab) hbc
+def loSLam (lo : Term) : Term := .lam natT (addTmH lo (tS (.pvar 0)))
+def idCgLoS (lo x y p : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_congr natT) natT) (loSLam lo)) x) y) p
+
 -- Abbreviations for the current-branch index expressions (i2/g2 are the peeled
 -- successors; kk is k'). Built with addTmH (defined above).
 -- v=0, k=1, i=2, g=3, pivot=4, hlen=5; binders k'=6, c/i'=7, g'/hlenX=8, pij=9, p2=10, hlenTSg=11.
@@ -242,6 +251,104 @@ def partScan : Decl :=
     back := some (partScanLT (V 4 "pivot") (V 1 "k") (V 2 "i") (V 3 "g") dv) }
 def scanTable : List Decl := [nthS, nth2S, swapSN, partScan]
 example : checkFnOk partScan scanTable = true := by native_decide
+
+/-! ## M21-3 — partScanRange: the subrange scan (partScan shifted by `lo`)
+
+    `partScanRange(v, lo, k, i, g, pivot, hle)` — partScan over the range `[lo, …)`.
+    Every position is `add lo`-shifted; the boundary `i` and gap `g` are RELATIVE
+    to `lo`. The bound is now an INEQUALITY `hle : Le (add lo (S (add k (add i g))))
+    (len *v)` — a sub-range does not span to the end, so the old equation is false;
+    the Le is the honest invariant (the top scan/swap position stays < len). The
+    M20 Id-toolkit ports through the new `le_rw_l`/`le_add_mono_l`/`add_succ`
+    bridges: swap bounds are `le_trans` of a `le_add_mono_l` lifted from the entry
+    bound, and each recursion threads `hle` via `le_rw_l` + `id_congr` through
+    `λx. add lo (S x)` over the SAME hshift identities partScan uses. -/
+
+def partScanRangeLT (pivot lo k i g l : Term) : Term :=
+  .app (.app (.app (.app (.app (.app StdLemmas.partScanRangeL pivot) lo) k) i) g) l
+
+def partScanRange : Decl :=
+  { name := "partScanRange", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("lo", natT), ("k", natT), ("i", natT), ("g", natT), ("pivot", natT),
+      ("hle", LeT (addTmH (V 1 "lo") (tS (addTmH (V 2 "k") (addTmH (V 3 "i") (V 4 "g"))))) (lenT dv))],
+    body := .matchE ⟨2, "k"⟩ [
+      -- BASE (k = Z): place the pivot at lo → lo+i (no-op when relative i = 0).
+      .mk "Z" [] (.matchE ⟨3, "i"⟩ [
+        .mk "Z" [] .unit,
+        .mk "S" [⟨7, "i2"⟩] (.letIn ⟨8, "pij"⟩ (leAddS (V 1 "lo") (V 7 "i2"))
+          (.letIn ⟨9, "p2"⟩
+            (leTrans (tS (addTmH (V 1 "lo") (tS (V 7 "i2"))))
+              (addTmH (V 1 "lo") (tS (tS (addTmH (V 7 "i2") (V 4 "g")))))
+              (lenT dv)
+              (leRwL (addTmH (V 1 "lo") (tS (tS (addTmH (V 7 "i2") (V 4 "g")))))
+                (addTmH (V 1 "lo") (tS (tS (V 7 "i2"))))
+                (tS (addTmH (V 1 "lo") (tS (V 7 "i2"))))
+                (addSuccT (V 1 "lo") (tS (V 7 "i2")))
+                (leAddMonoL (V 1 "lo") (tS (tS (V 7 "i2"))) (tS (tS (addTmH (V 7 "i2") (V 4 "g")))) (leAdd (V 7 "i2") (V 4 "g"))))
+              (V 6 "hle"))
+            (.seq (.call "swapS" [.var ⟨0, "v"⟩, V 1 "lo", addTmH (V 1 "lo") (tS (V 7 "i2")), V 8 "pij", V 9 "p2"]) .unit))) ]),
+      -- STEP (k = S k2): the scan at position lo + 1 + i + g.
+      .mk "S" [⟨7, "k2"⟩] (.letIn ⟨8, "c"⟩ (lebP (nthP (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (V 4 "g")))) dv) (V 5 "pivot"))
+        (.matchE ⟨8, "c"⟩ [
+          .mk "True" [] (.matchE ⟨4, "g"⟩ [
+            -- True, g = Z: advance boundary, no swap.
+            .mk "Z" [] (.letIn ⟨9, "hlZ"⟩
+              (leRwL (lenT dv)
+                (addTmH (V 1 "lo") (tS (addTmH (tS (V 7 "k2")) (addTmH (V 3 "i") (.ctorApp "Z" [])))))
+                (addTmH (V 1 "lo") (tS (addTmH (V 7 "k2") (addTmH (tS (V 3 "i")) (.ctorApp "Z" [])))))
+                (idCgLoS (V 1 "lo")
+                  (addTmH (tS (V 7 "k2")) (addTmH (V 3 "i") (.ctorApp "Z" [])))
+                  (addTmH (V 7 "k2") (addTmH (tS (V 3 "i")) (.ctorApp "Z" [])))
+                  (hsT (V 7 "k2") (V 3 "i") (.ctorApp "Z" [])))
+                (V 6 "hle"))
+              (.call "partScanRange" [.var ⟨0, "v"⟩, V 1 "lo", V 7 "k2", tS (V 3 "i"), .ctorApp "Z" [], V 5 "pivot", V 9 "hlZ"])),
+            -- True, g = S g2: swap boundary↔scan, then advance.
+            .mk "S" [⟨9, "g2"⟩] (.letIn ⟨10, "pij"⟩
+              (leRwL (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2")))))
+                (addTmH (V 1 "lo") (tS (tS (V 3 "i"))))
+                (tS (addTmH (V 1 "lo") (tS (V 3 "i"))))
+                (addSuccT (V 1 "lo") (tS (V 3 "i")))
+                (leAddMonoL (V 1 "lo") (tS (tS (V 3 "i"))) (tS (addTmH (V 3 "i") (tS (V 9 "g2")))) (leAddS (V 3 "i") (V 9 "g2"))))
+              (.letIn ⟨11, "p2"⟩
+                (leTrans (tS (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2"))))))
+                  (addTmH (V 1 "lo") (tS (tS (addTmH (V 7 "k2") (addTmH (V 3 "i") (tS (V 9 "g2")))))))
+                  (lenT dv)
+                  (leRwL (addTmH (V 1 "lo") (tS (tS (addTmH (V 7 "k2") (addTmH (V 3 "i") (tS (V 9 "g2")))))))
+                    (addTmH (V 1 "lo") (tS (tS (addTmH (V 3 "i") (tS (V 9 "g2"))))))
+                    (tS (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2"))))))
+                    (addSuccT (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2")))))
+                    (leAddMonoL (V 1 "lo") (tS (tS (addTmH (V 3 "i") (tS (V 9 "g2"))))) (tS (tS (addTmH (V 7 "k2") (addTmH (V 3 "i") (tS (V 9 "g2")))))) (leAddL (addTmH (V 3 "i") (tS (V 9 "g2"))) (V 7 "k2"))))
+                  (V 6 "hle"))
+                (.letIn ⟨12, "hlS"⟩
+                  (leRwR (addTmH (V 1 "lo") (tS (addTmH (V 7 "k2") (addTmH (tS (V 3 "i")) (tS (V 9 "g2"))))))
+                    (lenT dv)
+                    (lenT (swapLT (addTmH (V 1 "lo") (tS (V 3 "i"))) (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2"))))) dv))
+                    (idSy (lenT (swapLT (addTmH (V 1 "lo") (tS (V 3 "i"))) (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2"))))) dv)) (lenT dv)
+                      (lenSwapL (addTmH (V 1 "lo") (tS (V 3 "i"))) (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2"))))) dv))
+                    (leRwL (lenT dv)
+                      (addTmH (V 1 "lo") (tS (addTmH (tS (V 7 "k2")) (addTmH (V 3 "i") (tS (V 9 "g2"))))))
+                      (addTmH (V 1 "lo") (tS (addTmH (V 7 "k2") (addTmH (tS (V 3 "i")) (tS (V 9 "g2"))))))
+                      (idCgLoS (V 1 "lo")
+                        (addTmH (tS (V 7 "k2")) (addTmH (V 3 "i") (tS (V 9 "g2"))))
+                        (addTmH (V 7 "k2") (addTmH (tS (V 3 "i")) (tS (V 9 "g2"))))
+                        (hsT (V 7 "k2") (V 3 "i") (tS (V 9 "g2"))))
+                      (V 6 "hle")))
+                  (.seq (.call "swapS" [.borrow dv, addTmH (V 1 "lo") (tS (V 3 "i")), addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (tS (V 9 "g2")))), V 10 "pij", V 11 "p2"])
+                    (.call "partScanRange" [.var ⟨0, "v"⟩, V 1 "lo", V 7 "k2", tS (V 3 "i"), tS (V 9 "g2"), V 5 "pivot", V 12 "hlS"]))))) ]),
+          -- False: grow gap, no swap.
+          .mk "False" [] (.letIn ⟨9, "hlF"⟩
+            (leRwL (lenT dv)
+              (addTmH (V 1 "lo") (tS (addTmH (tS (V 7 "k2")) (addTmH (V 3 "i") (V 4 "g")))))
+              (addTmH (V 1 "lo") (tS (addTmH (V 7 "k2") (addTmH (V 3 "i") (tS (V 4 "g"))))))
+              (idCgLoS (V 1 "lo")
+                (addTmH (tS (V 7 "k2")) (addTmH (V 3 "i") (V 4 "g")))
+                (addTmH (V 7 "k2") (addTmH (V 3 "i") (tS (V 4 "g"))))
+                (hsF (V 7 "k2") (V 3 "i") (V 4 "g")))
+              (V 6 "hle"))
+            (.call "partScanRange" [.var ⟨0, "v"⟩, V 1 "lo", V 7 "k2", V 3 "i", tS (V 4 "g"), V 5 "pivot", V 9 "hlF"])) ])) ],
+    back := some (partScanRangeLT (V 5 "pivot") (V 1 "lo") (V 2 "k") (V 3 "i") (V 4 "g") dv) }
+def scanRangeTable : List Decl := [nthS, nth2S, swapSN, partScanRange]
+example : checkFnOk partScanRange scanRangeTable = true := by native_decide
 
 /-! ## M21-1 — the partition wrapper (back = partitionL, the partScanL composition)
 
