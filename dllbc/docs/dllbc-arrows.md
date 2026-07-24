@@ -57,6 +57,8 @@ t, τ, S ::=
     *t                             dereference
 ```
 
+Two surface conventions the examples lean on, stated once: constructors are uppercase-initial (`Z`, `Cons`; a bare uppercase name like `Nil` is a nullary constructor application), ordinary variables are lowercase (type parameters such as `T` are the customary exception, disambiguated by their declaration); and the continuations of `let` and `:=` are part of the form, so a program with nothing further to return ends in the unit value `()` — traces sometimes elide it.
+
 Three grammar-level decisions, each argued in later sections but recorded here:
 
 *No capture.* A λ may mention global declarations and enclosing **pure** variables (snapshots, type parameters); it may not close over runtime variables. Callers pack data into arguments. Consequence: every function value is unrestricted, and closure formation is inert (§2). The capture rule returns, richer, with borrow-capturing closures (§10).
@@ -165,7 +167,7 @@ b := 9;
 // Ω = x ↦ 3, b ↦ 9
 ```
 
-Drop is a total procedure, not a choice: **end the displaced value's loans, innermost first — each end requires both the loan and its borrow to be entries in Ω — then discard what remains.** A value containing no borrows and no loans skips straight to the discard, so ordinary code pays nothing. A chain-link value like `borrowₘ ℓ 3` dies naturally: ending ℓ sends the payload home to `x` *before* the slot is vacated, so no ownership is ever stranded. And if some loan in the displaced value *cannot* be ended — its other end is not in Ω — then no rule applies and the program is rejected, the same stuckness discipline as everything else in the calculus. Section 2.5 exhibits the one program shape that gets rejected this way, and why rejecting it is a bargain.
+Drop is a total procedure, not a choice: **end the displaced value's loans, innermost first — an end requires both halves of the loan, marker and borrow, each locatable as an entry in Ω or a position within the value being dropped — then discard what remains.** A value containing no borrows and no loans skips straight to the discard, so ordinary code pays nothing. A chain-link value like `borrowₘ ℓ 3` dies naturally: ending ℓ sends the payload home to `x` *before* the slot is vacated, so no ownership is ever stranded. And if some loan in the displaced value *cannot* be ended — its other half is locatable in neither place, as when the borrow is in flight (§2.5) — then no rule applies and the program is rejected, the same stuckness discipline as everything else in the calculus. Section 2.5 exhibits the one program shape that gets rejected this way, and why rejecting it is a bargain.
 
 (Readers from Rust may recognize drop by name: overwriting a slot runs `Drop` on the old contents. Ours is that operation, with "return what you borrowed" playing the role of the destructor.)
 
