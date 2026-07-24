@@ -35,11 +35,16 @@ structure Var where
   name : String
 deriving DecidableEq, BEq, Repr, Inhabited
 
-/-- Core term syntax of DLLBC's §2 concrete fragment.
+/-! Core term syntax of DLLBC's concrete fragment (§2 forms plus §3 `match`).
 
     Constructor names are `String`s (a placeholder until `inductive`
     declarations arrive). Numeric literals are macro-level sugar for
-    `S (S (… Z))` and so need no dedicated term form. -/
+    `S (S (… Z))` and so need no dedicated term form.
+
+    `Term` is mutual with `Branch` for the `match` case. The scrutinee of a
+    match is a `Var` (grammar-enforced, §3: "the scrutinee must be a
+    variable"); patterns are one constructor deep. -/
+mutual
 inductive Term where
   /-- Variable occurrence. Under ⇒ this is a *move*. -/
   | var    : Var → Term
@@ -56,12 +61,34 @@ inductive Term where
   /-- `*t` — the peel. Arrow-generic in the doc; here used under ⇒ (take)
       and ⇐ (write-through / locate). -/
   | deref  : Term → Term
+  /-- `match x { … }` — one-constructor-deep pattern match on a variable
+      scrutinee (§3). Owned or borrow mode is chosen at runtime by what the
+      scrutinee's slot holds. -/
+  | matchE : Var → List Branch → Term
+  /-- `e ; rest` — expression statement: ⇒-evaluate `e` for effect, discard
+      its value, then run `rest`. Sequences a `match` (or any effectful term)
+      used in statement position without binding a throwaway slot. -/
+  | seq    : Term → Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
-deriving Inhabited
--- No `deriving DecidableEq`: the `List Term` nesting is unsupported by the
--- derive handler, and nothing in the machine needs term equality (the macro
--- produces terms; tests compare *values*).
+/-- A match branch: a constructor name, one-level-deep field binders (display
+    names carrying fresh runtime ids), and a body term. -/
+inductive Branch where
+  | mk : (ctor : String) → (binders : List Var) → (body : Term) → Branch
+end
+
+-- Manual instances: `deriving` can't cross the `List Term`/`List Branch`
+-- nesting, and nothing in the machine needs term equality (the macro produces
+-- terms; tests compare *values*).
+instance : Inhabited Term := ⟨.unit⟩
+instance : Inhabited Branch := ⟨.mk "" [] .unit⟩
+
+/-- The branch's constructor name. -/
+def Branch.ctor : Branch → String | .mk c _ _ => c
+/-- The branch's field binders. -/
+def Branch.binders : Branch → List Var | .mk _ b _ => b
+/-- The branch's body. -/
+def Branch.body : Branch → Term | .mk _ _ t => t
 
 end Dllbc

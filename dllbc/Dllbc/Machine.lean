@@ -172,6 +172,29 @@ mutual
   termination_by vs => sizeOf vs
 end
 
+/-! A loan marker in *owned position* of `v` — the constructor spine — if any,
+    leftmost-innermost first. Crucially this does NOT descend into `borrowM`
+    payloads: a borrow the value *carries* is relocated as-is on a move, its
+    internal reborrow suspension travelling with it; only markers in owned
+    position must be ended (End-Mut) before the value can be moved or matched.
+    This is what makes a match's field-loan chain collapse lazily when the
+    owner is finally read back (§3.3). -/
+mutual
+  def firstLoanMarker : Val → Option Nat
+    | .loanM ℓ => some ℓ
+    | .borrowM _ _ => none
+    | .ctor _ args => firstLoanMarkerList args
+    | .bot => none
+  termination_by v => sizeOf v
+  def firstLoanMarkerList : List Val → Option Nat
+    | [] => none
+    | v :: vs =>
+      match firstLoanMarker v with
+      | some ℓ => some ℓ
+      | none => firstLoanMarkerList vs
+  termination_by vs => sizeOf vs
+end
+
 /-! ## The two Ω-primitives
 
     Everything the borrow machinery does is one of these two, aimed at Ω's
@@ -293,6 +316,59 @@ def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
     drop fuel old                                  -- drop the displaced value
     setAtPos pos newval                            -- fill
 
+/-! ## Match branch selection (§3)
+
+    These set up Ω for a branch and return the body term to evaluate; they do
+    not call `readR`, so they stay outside the read recursion. `readR`'s match
+    case reorganizes the scrutinee, then calls one of these, then reads the
+    returned body. -/
+
+/-- Find the branch whose constructor name matches `name`. -/
+def findBranch (branches : List Branch) (name : String) : Option Branch :=
+  branches.find? (fun b => b.ctor == name)
+
+/-- Bind constructor fields to fresh binder entries (owned mode: the fields
+    move in as owned values). Errors on arity mismatch. -/
+def bindFields : List Var → List Val → M Unit
+  | [], [] => pure ()
+  | x :: xs, v :: vs => do bindSlot x v; bindFields xs vs
+  | _, _ => throwErr "match: constructor arity mismatch (binders vs fields)"
+
+/-- Bind each field binder to a whole-value reborrow `borrowM ℓᵢ fieldᵢ`
+    (borrow mode, §3.3). Errors on arity mismatch. -/
+def bindBorrowFields : List Var → List Nat → List Val → M Unit
+  | [], [], [] => pure ()
+  | x :: xs, ℓ :: ℓs, v :: vs => do bindSlot x (.borrowM ℓ v); bindBorrowFields xs ℓs vs
+  | _, _, _ => throwErr "match: constructor arity mismatch (borrow mode)"
+
+/-- **Owned mode** (§3.1): ⇒-consume the scrutinee (slot → ⊥), select the
+    branch by head constructor, move the fields into fresh binders, and return
+    the branch body. -/
+def ownedSelect (scrut : Var) (branches : List Branch) (name : String)
+    (fields : List Val) : M Term := do
+  match findBranch branches name with
+  | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
+  | some br => do
+    setSlot scrut .bot                         -- ⇒-consume
+    bindFields br.binders fields
+    pure br.body
+
+/-- **Borrow mode** (§3.3): the binders become reborrows of the fields. Mint a
+    fresh loan ℓᵢ per field, park a `loanM ℓᵢ` in the parent's payload (which
+    suspends the parent — no rule reads through a loan), bind each binder to
+    `borrowM ℓᵢ fieldᵢ`, and return the branch body. -/
+def borrowSelect (scrut : Var) (branches : List Branch) (ℓ : Nat) (name : String)
+    (fields : List Val) : M Term := do
+  match findBranch branches name with
+  | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
+  | some br => do
+    if br.binders.length != fields.length then
+      throwErr "match: constructor arity mismatch (borrow mode)"
+    let ℓs ← fields.mapM (fun _ => freshLoan)
+    setSlot scrut (.borrowM ℓ (.ctor name (ℓs.map Val.loanM)))   -- suspend the parent
+    bindBorrowFields br.binders ℓs fields
+    pure br.body
+
 /-! ## ⇒ (read): the move arrow
 
     `readR` evaluates a term to a value with move semantics. Fuel decreases on
@@ -307,8 +383,14 @@ mutual
       | .var x => do
         match ← lookupSlot x with
         | .bot => throwErr s!"readR: {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
-        | .loanM ℓ => do endMut ℓ; readR fuel (.var x)   -- End-Mut, then retry the move
-        | v => do setSlot x .bot; pure v                  -- move out, leave ⊥
+        | v =>
+          -- A value with a loan marker in owned position cannot be moved: end
+          -- it first (End-Mut), then retry. This is the lazy chain-collapse —
+          -- a top-level loanM (§2.2/§2.5) and a Cons of field-loans left by a
+          -- borrow-mode match (§3.3) are the same case.
+          match firstLoanMarker v with
+          | some ℓ => do endMut ℓ; readR fuel (.var x)
+          | none => do setSlot x .bot; pure v            -- move out, leave ⊥
       | .deref t' => do
         -- take: read the payload through the borrow, leaving a hole (⊥) in it
         let pos ← placeToPos (.deref t')
@@ -333,6 +415,27 @@ mutual
       | .assign place rhs rest => do
         let v ← readR fuel rhs                           -- RHS by ⇒ first (§2.5 ordering)
         writeR fuel place v                              -- target by ⇐
+        readR fuel rest
+      | .matchE scrut branches => do
+        -- Mode is chosen by what the scrutinee's slot holds, after the usual
+        -- lazy reorganization. Both retries decrease fuel.
+        match ← lookupSlot scrut with
+        | .bot => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} holds ⊥ (use-after-move)"
+        | .borrowM ℓ payload =>
+          match payload with
+          | .ctor name fields => do readR fuel (← borrowSelect scrut branches ℓ name fields)
+          | .loanM ℓ' => do endMut ℓ'; readR fuel (.matchE scrut branches)  -- reborrowed payload: end, retry
+          | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
+          | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
+        | v =>
+          match firstLoanMarker v with
+          | some ℓ => do endMut ℓ; readR fuel (.matchE scrut branches)      -- suspended owner: end, retry
+          | none =>
+            match v with
+            | .ctor name fields => do readR fuel (← ownedSelect scrut branches name fields)
+            | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor value"
+      | .seq e rest => do
+        let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
       | .unit => pure (.ctor "unit" [])
   termination_by fuel _ => (fuel, 0, 0)

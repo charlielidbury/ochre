@@ -8,12 +8,12 @@ Compiles the doc's surface syntax to `Term` at elaboration time, mirroring
 `Och/Macro.lean`'s discipline: a binding-context list resolves names to
 globally-unique runtime `Var` ids, and an unresolved *lowercase* name is an
 elaboration-time error (no silent fallback — the lesson of Och's silent-999
-bug). Shadowing mints a fresh id.
+bug). Shadowing and every match binder mint fresh ids.
 
-## Conventions
+## Conventions (now codified in doc §1.1)
 
   * **Lowercase-initial** identifiers are runtime **variables**; they must be
-    bound by an enclosing `let`, else it is an error.
+    bound by an enclosing `let` or match pattern, else it is an error.
   * **Uppercase-initial** identifiers are **constructors** (`Nil`, `Z`,
     `Cons(a, b)`). A bare uppercase name is a nullary constructor.
   * Numeric literals are sugar for `S (S (… Z))` (`0 = Z`).
@@ -21,20 +21,27 @@ bug). Shadowing mints a fresh id.
 ## Surface grammar
 
 ```
-e ::= x | N | C | C(e, …) | &mut e | *e | (e) | ()
-b ::= let x = e ; b | e := e ; b | e            -- statements, then a final expression
+e ::= x | N | C | C(e, …) | &mut e | *e | (e) | () | match x { arm, … }
+arm  ::= C => body | C(x, …) => body
+body ::= { b } | e
+b ::= let x = e ; b | e := e ; b | e ; b | e     -- statements, then a final expression
 ```
 
-A statement sequence with no meaningful result ends in `()` (unit).
+`match` in statement position sequences via `e ; b`. A statement sequence with
+no meaningful result ends in `()`.
+
+Because `match` introduces binders, the fresh-id counter is threaded through
+*every* expander (not only blocks): each function returns the next free id.
 -/
 
 open Lean
 
 namespace Dllbc
 
--- Expressions and blocks (statement sequences producing a final value).
 declare_syntax_cat dlle
 declare_syntax_cat dllb
+declare_syntax_cat dllArm
+declare_syntax_cat dllArmBody
 
 syntax:max ident : dlle
 syntax:max num : dlle
@@ -43,9 +50,16 @@ syntax:max "(" dlle ")" : dlle                -- grouping
 syntax:max ident "(" dlle,* ")" : dlle        -- constructor application C(a, b)
 syntax:70 "&mut" dlle:70 : dlle               -- mutable borrow
 syntax:75 "*" dlle:75 : dlle                  -- dereference / peel
+syntax:max "match" ident "{" dllArm,* "}" : dlle   -- pattern match (§3)
+
+syntax "{" dllb "}" : dllArmBody              -- braced block body
+syntax dlle : dllArmBody                      -- bare expression body
+syntax ident "=>" dllArmBody : dllArm                 -- nullary pattern
+syntax ident "(" ident,* ")" "=>" dllArmBody : dllArm -- applied pattern C(x, y)
 
 syntax "let" ident "=" dlle ";" dllb : dllb   -- declaration
 syntax dlle ":=" dlle ";" dllb : dllb         -- assignment
+syntax dlle ";" dllb : dllb                   -- expression statement (seq)
 syntax dlle : dllb                            -- final expression
 
 syntax "dllbc{" dllb "}" : term
@@ -64,47 +78,131 @@ partial def buildNat : Nat → MacroM (TSyntax `term)
   | 0 => `(Dllbc.Term.ctorApp "Z" [])
   | k + 1 => do let inner ← buildNat k; `(Dllbc.Term.ctorApp "S" [$inner])
 
-/-- Expand an expression. Expressions never bind, so no id counter is
-    threaded; `ctx` maps in-scope names to their runtime ids. -/
-partial def expandE (ctx : List (String × Nat)) (stx : TSyntax `dlle) : MacroM (TSyntax `term) := do
+/-- Resolve a scrutinee/variable identifier to its runtime id, erroring if it
+    is a constructor (uppercase) or unbound. -/
+def lookupVarId (ctx : List (String × Nat)) (x : Ident) : MacroM Nat := do
+  let s := x.getId.toString
+  if isUpperInit s then
+    Macro.throwErrorAt x s!"dllbc: '{s}' is a constructor, expected a variable"
+  match ctx.lookup s with
+  | some id => pure id
+  | none => Macro.throwErrorAt x s!"dllbc: unbound variable '{s}' (lowercase names must be bound)"
+
+/-- Mint fresh runtime ids for a list of pattern binders, extending `ctx` and
+    returning the extended context, the next free id, and the binder `Var`
+    syntaxes (in order). -/
+partial def mintBinders (ctx : List (String × Nat)) (next : Nat) :
+    List Ident → MacroM (List (String × Nat) × Nat × Array (TSyntax `term))
+  | [] => pure (ctx, next, #[])
+  | b :: bs => do
+    let name := b.getId.toString
+    let vSyntax ← `((⟨$(quote next), $(quote name)⟩ : Dllbc.Var))
+    let (ctx', next', rest) ← mintBinders ((name, next) :: ctx) (next + 1) bs
+    pure (ctx', next', #[vSyntax] ++ rest)
+
+mutual
+
+/-- Expand an expression, threading the fresh-id counter (needed because a
+    `match` expression introduces pattern binders). Returns the term and the
+    next free id. -/
+partial def expandE (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dlle) :
+    MacroM (TSyntax `term × Nat) := do
   match stx with
-  | `(dlle| ()) => `(Dllbc.Term.unit)
-  | `(dlle| ($e:dlle)) => expandE ctx e
-  | `(dlle| &mut $e:dlle) => do `(Dllbc.Term.borrow $(← expandE ctx e))
-  | `(dlle| *$e:dlle) => do `(Dllbc.Term.deref $(← expandE ctx e))
+  | `(dlle| ()) => return (← `(Dllbc.Term.unit), next)
+  | `(dlle| ($e:dlle)) => expandE ctx next e
+  | `(dlle| &mut $e:dlle) => do
+    let (e', n) ← expandE ctx next e
+    return (← `(Dllbc.Term.borrow $e'), n)
+  | `(dlle| *$e:dlle) => do
+    let (e', n) ← expandE ctx next e
+    return (← `(Dllbc.Term.deref $e'), n)
   | `(dlle| $c:ident ($args,*)) => do
-    let name := c.getId.toString
-    let args' ← args.getElems.mapM (expandE ctx)
-    `(Dllbc.Term.ctorApp $(quote name) [$args',*])
-  | `(dlle| $n:num) => buildNat n.getNat
+    let (args', n) ← expandEList ctx next args.getElems.toList
+    return (← `(Dllbc.Term.ctorApp $(quote c.getId.toString) [$args',*]), n)
+  | `(dlle| $num:num) => return (← buildNat num.getNat, next)
+  | `(dlle| match $x:ident { $arms,* }) => do
+    let id ← lookupVarId ctx x
+    let (arms', n) ← expandArms ctx next arms.getElems.toList
+    return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote x.getId.toString)⟩ [$arms',*]), n)
   | `(dlle| $x:ident) => do
     let s := x.getId.toString
     if isUpperInit s then
-      `(Dllbc.Term.ctorApp $(quote s) [])
+      return (← `(Dllbc.Term.ctorApp $(quote s) []), next)
     else
       match ctx.lookup s with
-      | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
-      | none => Macro.throwErrorAt x s!"dllbc: unbound variable '{s}' (lowercase names must be let-bound)"
+      | some id => return (← `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩), next)
+      | none => Macro.throwErrorAt x s!"dllbc: unbound variable '{s}' (lowercase names must be bound)"
   | _ => Macro.throwErrorAt stx "dllbc: unexpected expression syntax"
 
-/-- Expand a block, threading the fresh-id counter `next` through `let`s. -/
-partial def expandB (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dllb) : MacroM (TSyntax `term) := do
+/-- Expand a comma-separated list of expressions, threading the counter. -/
+partial def expandEList (ctx : List (String × Nat)) (next : Nat) :
+    List (TSyntax `dlle) → MacroM (Array (TSyntax `term) × Nat)
+  | [] => pure (#[], next)
+  | a :: as => do
+    let (a', n1) ← expandE ctx next a
+    let (rest, n2) ← expandEList ctx n1 as
+    pure (#[a'] ++ rest, n2)
+
+/-- Expand the arms of a match, threading the counter (binder ids stay
+    globally unique across arms). -/
+partial def expandArms (ctx : List (String × Nat)) (next : Nat) :
+    List (TSyntax `dllArm) → MacroM (Array (TSyntax `term) × Nat)
+  | [] => pure (#[], next)
+  | a :: as => do
+    let (a', n1) ← expandArm ctx next a
+    let (rest, n2) ← expandArms ctx n1 as
+    pure (#[a'] ++ rest, n2)
+
+/-- Expand one match arm to a `Branch.mk` term. -/
+partial def expandArm (ctx : List (String × Nat)) (next : Nat) (arm : TSyntax `dllArm) :
+    MacroM (TSyntax `term × Nat) := do
+  match arm with
+  | `(dllArm| $c:ident => $body:dllArmBody) => do
+    let (body', n) ← expandArmBody ctx next body
+    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [] $body'), n)
+  | `(dllArm| $c:ident ($binders,*) => $body:dllArmBody) => do
+    let (ctx', next', binderVars) ← mintBinders ctx next binders.getElems.toList
+    let (body', n) ← expandArmBody ctx' next' body
+    return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$binderVars,*] $body'), n)
+  | _ => Macro.throwErrorAt arm "dllbc: unexpected match arm"
+
+/-- Expand an arm body: a braced block `{ b }` or a bare expression. -/
+partial def expandArmBody (ctx : List (String × Nat)) (next : Nat) (body : TSyntax `dllArmBody) :
+    MacroM (TSyntax `term × Nat) := do
+  match body with
+  | `(dllArmBody| { $b:dllb }) => expandB ctx next b
+  | `(dllArmBody| $e:dlle) => expandE ctx next e
+  | _ => Macro.throwErrorAt body "dllbc: unexpected arm body"
+
+/-- Expand a block, threading the fresh-id counter through `let`s and any
+    `match` binders in expressions. -/
+partial def expandB (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dllb) :
+    MacroM (TSyntax `term × Nat) := do
   match stx with
   | `(dllb| let $x:ident = $e:dlle ; $rest:dllb) => do
-    let e' ← expandE ctx e
+    let (e', n1) ← expandE ctx next e
     let name := x.getId.toString
-    let rest' ← expandB ((name, next) :: ctx) (next + 1) rest
-    `(Dllbc.Term.letIn ⟨$(quote next), $(quote name)⟩ $e' $rest')
+    let (rest', n2) ← expandB ((name, n1) :: ctx) (n1 + 1) rest
+    return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
   | `(dllb| $p:dlle := $e:dlle ; $rest:dllb) => do
-    let p' ← expandE ctx p
-    let e' ← expandE ctx e
-    `(Dllbc.Term.assign $p' $e' $(← expandB ctx next rest))
-  | `(dllb| $e:dlle) => expandE ctx e
+    let (p', n1) ← expandE ctx next p
+    let (e', n2) ← expandE ctx n1 e
+    let (rest', n3) ← expandB ctx n2 rest
+    return (← `(Dllbc.Term.assign $p' $e' $rest'), n3)
+  | `(dllb| $e:dlle ; $rest:dllb) => do
+    let (e', n1) ← expandE ctx next e
+    let (rest', n2) ← expandB ctx n1 rest
+    return (← `(Dllbc.Term.seq $e' $rest'), n2)
+  | `(dllb| $e:dlle) => expandE ctx next e
   | _ => Macro.throwErrorAt stx "dllbc: unexpected block syntax"
+
+end
 
 end Macro
 
 macro_rules
-  | `(dllbc{ $b:dllb }) => Dllbc.Macro.expandB [] 0 b
+  | `(dllbc{ $b:dllb }) => do
+    let (t, _) ← Dllbc.Macro.expandB [] 0 b
+    return t
 
 end Dllbc
