@@ -563,4 +563,93 @@ def sortL : Term := pure{
           } } } }
 def sortL_ty : Term := pure{ Π (fuel : Nat) → Π (n : Nat) → List Nat → List Nat }
 
+/-! ## Range-aware models — the index-bounded quicksort spec (§21, plan of record)
+
+    SUGGESTIONS.md's north star: "suffix sub-slices are tail reborrows; PREFIX
+    RECURSION RIDES THE BOUND, not a prefix borrow." So the imperative quicksort
+    is CLRS-form `quicksort(v, lo, cnt)` — reborrow the whole *v, sort the `cnt`
+    elements at offset `lo` by index swaps, recurse on the two sub-ranges. These
+    models are `partScanL`/`partIdxL`/`sortL` with every position shifted by `lo`
+    (the pivot sits at `lo`, scan positions are `lo + 1 + i + g`), the boundary
+    `i` tracked RELATIVE to `lo`. Two facts make the recursion subtraction-free:
+    the relative boundary `i` at `k = Z` IS the left sub-count (elements ≤ pivot),
+    and the gap `g` at `k = Z` IS the right sub-count (elements > pivot) — the scan
+    maintains `i + g = k`, so no `hi - lo` ever appears. -/
+
+def partScanRangeL : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → List Nat) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim i return (λ (iz : Nat). List Nat) {
+          Z => l,
+          S (i') iih => swapL lo (add lo (S i')) l },
+      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim (leb (nth (add lo (S (add i g))) l) pivot) return (λ (w : Bool). List Nat) {
+          True => elim g return (λ (gz : Nat). List Nat) {
+            Z => rec (S i) Z l,
+            S (g') gih => rec (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+          False => rec i (S g) l } } }
+
+def partitionRangeL : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat). List Nat) {
+      Z => l,
+      S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l } }
+
+def partScanIdxRangeL : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). i,
+      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim (leb (nth (add lo (S (add i g))) l) pivot) return (λ (w : Bool). Nat) {
+          True => elim g return (λ (gz : Nat). Nat) {
+            Z => rec (S i) Z l,
+            S (g') gih => rec (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+          False => rec i (S g) l } } }
+
+def partIdxRangeL : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat). Nat) {
+      Z => Z,
+      S (cnt') rec => partScanIdxRangeL (nth lo l) lo cnt' Z Z l } }
+
+def partScanGapRangeL : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). g,
+      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim (leb (nth (add lo (S (add i g))) l) pivot) return (λ (w : Bool). Nat) {
+          True => elim g return (λ (gz : Nat). Nat) {
+            Z => rec (S i) Z l,
+            S (g') gih => rec (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+          False => rec i (S g) l } } }
+
+def partGapRangeL : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat). Nat) {
+      Z => Z,
+      S (cnt') rec => partScanGapRangeL (nth lo l) lo cnt' Z Z l } }
+
+/-- `sortRangeL fuel lo cnt l` — sort the `cnt` elements of `l` at offset `lo` in
+    place. Fuel-structural; base = out of fuel or `cnt ≤ 1`; step partitions the
+    range, then sorts the left sub-range `[lo, lo+i)` (count `i`) and the right
+    `[lo+i+1, …)` (count `g`), the right on the result of the left — the raw
+    composition the imperative body implements. `partitionQ` is the `lo = 0` slice. -/
+def sortRangeL : Term := pure{
+  λ (fuel : Nat).
+    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat) {
+      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). l,
+      S (f') rec => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+        elim cnt return (λ (cz : Nat). List Nat) {
+          Z => l,
+          S (cnt') nih => elim cnt' return (λ (mz : Nat). List Nat) {
+            Z => l,
+            S (cnt'') n2ih =>
+              let p = partitionRangeL lo cnt l;
+              let i = partIdxRangeL lo cnt l;
+              let g = partGapRangeL lo cnt l;
+              rec (S (add lo i)) g (rec lo i p)
+          } } } }
+def sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat }
+
 end Dllbc.StdLemmas

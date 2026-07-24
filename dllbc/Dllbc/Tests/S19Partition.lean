@@ -398,6 +398,22 @@ example : (pv (sortLT 2 2 [2,1]) == vlist [1,2]) = true := by native_decide     
 example : (pv (sortLT 1 1 [7]) == vlist [7]) = true := by native_decide              -- singleton
 example : (pv (sortLT 0 0 []) == vlist []) = true := by native_decide                -- empty
 
+/-! ## M21-3 — sortRangeL (the index-bounded quicksort spec, plan of record) -/
+
+def sortRangeLT (fuel lo cnt : Nat) (l : List Nat) : Term :=
+  .app (.app (.app (.app StdLemmas.sortRangeL (tnat fuel)) (tnat lo)) (tnat cnt)) (tlist l)
+
+-- Full-range (lo=0, cnt=len): sortRangeL 0 (len l) l is a full sort — the top-
+-- level shape the imperative quicksort's back carries.
+example : (pv (sortRangeLT 2 0 2 [2,1]) == vlist [1,2]) = true := by native_decide
+example : (pv (sortRangeLT 1 0 1 [7]) == vlist [7]) = true := by native_decide
+example : (pv (sortRangeLT 0 0 0 []) == vlist []) = true := by native_decide
+example : (pv (sortRangeLT 3 0 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide   -- recursion fires
+-- Sub-range (lo>0): sort only [lo, lo+cnt), leaving the rest untouched — the new
+-- capability the recursion rides. [5,3,2,9] sorting [3,2] at offset 1 → [5,2,3,9].
+example : (pv (sortRangeLT 2 1 2 [5,3,2,9]) == vlist [5,2,3,9]) = true := by native_decide
+example : (pv (sortRangeLT 3 1 3 [9,3,1,2,7]) == vlist [9,1,2,3,7]) = true := by native_decide
+
 /-! ## M19-C (imperative, executing mode) — the body computes `partitionL`
 
     The in-place Lomuto partition through a mutable borrow, mirroring `partitionL`
