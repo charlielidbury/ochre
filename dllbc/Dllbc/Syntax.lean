@@ -72,6 +72,16 @@ inductive Term where
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
+  -- Pure fragment (§4): the comptime type theory's formers. Pure binders use
+  -- de Bruijn indices (`pvar`); `readC` (⇝) reflects these into the matching
+  -- `Val` forms and reduces. Runtime `var`/`let` (named ids) are unaffected.
+  | pvar   : Nat → Term              -- pure de Bruijn variable
+  | type   : Term                    -- the universe
+  | pi     : Term → Term → Term      -- Π (dom) (cod); cod binds var 0
+  | sigmaT : Term → Term → Term      -- Σ (fst-type) (snd-type); snd binds var 0
+  | lam    : Term → Term → Term      -- λ (dom) (body); body binds var 0
+  | app    : Term → Term → Term      -- application
+  | const  : String → Term           -- a built-in constant (recursor or type former)
 /-- A match branch: a constructor name, one-level-deep field binders (display
     names carrying fresh runtime ids), and a body term. -/
 inductive Branch where

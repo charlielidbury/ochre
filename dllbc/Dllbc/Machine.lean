@@ -1,5 +1,6 @@
 import Dllbc.Syntax
 import Dllbc.Value
+import Dllbc.Pure
 
 /-!
 # DLLBC Concrete Machine (§2)
@@ -39,6 +40,9 @@ structure St where
   nextLoan : Nat
   nextVar : Nat
   nextSym : Nat
+  /-- The σ-context (§3.2's seam, §4): each symbolic id's type. Seeded by the
+      test helpers this milestone; telescopes fill it in M5. -/
+  sctx : List (Nat × Val) := []
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -111,7 +115,7 @@ mutual
       | some r => some r            -- payload (deeper) first
       | none => some (ℓ, .borrowNode)
     | .ctor _ args => firstOwnNodeList args
-    | .sym _ => none                -- a snapshot holds no ownership nodes
+    | _ => none                    -- sym and pure values hold no ownership nodes
   termination_by v => sizeOf v
   def firstOwnNodeList : List Val → Option (Nat × OwnKind)
     | [] => none
@@ -144,8 +148,7 @@ mutual
     | .loanM ℓ' => if ℓ' == ℓ then newV else .loanM ℓ'
     | .borrowM ℓ' p => .borrowM ℓ' (replaceLoanMarker ℓ newV p)
     | .ctor n args => .ctor n (replaceLoanMarkerList ℓ newV args)
-    | .bot => .bot
-    | .sym σ => .sym σ
+    | v => v                       -- ⊥, sym, pure values: no loan markers
   termination_by v => sizeOf v
   def replaceLoanMarkerList (ℓ : Nat) (newV : Val) : List Val → List Val
     | [] => []
@@ -159,8 +162,7 @@ mutual
     | .borrowM ℓ' p => if ℓ' == ℓ then .bot else .borrowM ℓ' (replaceBorrowWithBot ℓ p)
     | .loanM ℓ' => .loanM ℓ'
     | .ctor n args => .ctor n (replaceBorrowWithBotList ℓ args)
-    | .bot => .bot
-    | .sym σ => .sym σ
+    | v => v                       -- ⊥, sym, pure values: no borrow to kill
   termination_by v => sizeOf v
   def replaceBorrowWithBotList (ℓ : Nat) : List Val → List Val
     | [] => []
@@ -174,8 +176,7 @@ mutual
     | .loanM ℓ' => ℓ' == ℓ
     | .borrowM _ p => containsLoan ℓ p
     | .ctor _ args => containsLoanList ℓ args
-    | .bot => false
-    | .sym _ => false
+    | _ => false                   -- ⊥, sym, pure values: no loan markers
   termination_by v => sizeOf v
   def containsLoanList (ℓ : Nat) : List Val → Bool
     | [] => false
@@ -195,8 +196,7 @@ mutual
     | .loanM ℓ => some ℓ
     | .borrowM _ _ => none
     | .ctor _ args => firstLoanMarkerList args
-    | .bot => none
-    | .sym _ => none
+    | _ => none                    -- ⊥, sym, pure values: no owned loan marker
   termination_by v => sizeOf v
   def firstLoanMarkerList : List Val → Option Nat
     | [] => none
@@ -216,6 +216,13 @@ mutual
     | .ctor n args => .ctor n (substSymList σ newV args)
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
+    | .pvar k => .pvar k
+    | .type => .type
+    | .const c => .const c
+    | .pi d c => .pi (substSym σ newV d) (substSym σ newV c)
+    | .sigmaT d c => .sigmaT (substSym σ newV d) (substSym σ newV c)
+    | .lam d c => .lam (substSym σ newV d) (substSym σ newV c)
+    | .app d c => .app (substSym σ newV d) (substSym σ newV c)
   termination_by v => sizeOf v
   def substSymList (σ : Nat) (newV : Val) : List Val → List Val
     | [] => []
@@ -309,6 +316,7 @@ def navRead : Nat → Val → M Val
   | _ + 1, .loanM ℓ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
   | _ + 1, .ctor n _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
   | _ + 1, .sym σ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
+  | _ + 1, _ => throwErr "*: cannot peel a pure value (not a borrow)"
 
 /-- Functionally set the value `n` borrow layers deep inside `v` to `newLeaf`. -/
 def navWrite : Nat → Val → Val → M Val
@@ -320,6 +328,7 @@ def navWrite : Nat → Val → Val → M Val
   | _ + 1, .loanM ℓ, _ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
   | _ + 1, .ctor n _, _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
   | _ + 1, .sym σ, _ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
+  | _ + 1, _, _ => throwErr "*: cannot peel a pure value (not a borrow)"
 
 /-- Read the value at a resolved position (peeks; no side effect). -/
 def getAtPos (pos : Pos) : M Val := do
@@ -471,6 +480,7 @@ mutual
           | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
           | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
           | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
+          | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
         | v =>
           match firstLoanMarker v with
           | some ℓ => do endMut ℓ; readR fuel (.matchE scrut branches)      -- suspended owner: end, retry
@@ -483,6 +493,7 @@ mutual
         let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
       | .unit => pure (.ctor "unit" [])
+      | _ => throwErr "readR (⇒): pure formers (λ/app/Π/Σ/Type/const) are read by ⇝ (readC), not ⇒"
   termination_by fuel _ => (fuel, 0, 0)
   def readArgs : Nat → List Term → M (List Val)
     | _, [] => pure []
@@ -552,6 +563,7 @@ def reorgScrut : Nat → Var → M Dispatch
       | .loanM ℓ' => do endMut ℓ'; reorgScrut fuel scrut
       | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
       | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
+      | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
     | v =>
       match firstLoanMarker v with
       | some ℓ => do endMut ℓ; reorgScrut fuel scrut
@@ -709,5 +721,109 @@ def expectMErr (seed : Omega) (m : M Unit) (needle : String) : Bool :=
   match m.run (seedSt seed) with
   | .ok _ _ => false
   | .error e _ => strContains e needle
+
+/-! ## ⇝ (comptime read) and value typing (§4)
+
+    `readC` is the ⇝ column: it evaluates a term in the borrow-free fragment.
+    Discipline (to be a lemma later): it NEVER writes a slot. Reflection reads
+    Ω only for snapshots — a variable reads its slot non-destructively, `*x`
+    projects a borrow's payload — and `&mut`, assignment, and consumption
+    through a loan are all outside the fragment (errors). Reflected pure terms
+    are then normalized by `nfV`. -/
+
+/-! Reflect a comptime term into a value, resolving Ω snapshot reads. Pure
+    formers map to their `Val` counterparts; runtime-only constructs error. -/
+mutual
+  def reflectC : Term → M Val
+    | .var x => lookupSlot x                        -- snapshot read (non-destructive)
+    | .deref t => do
+      match ← reflectC t with
+      | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
+      | _ => throwErr "readC (⇝ *): dereferenced value is not a borrow"
+    | .ctorApp n args => do pure (.ctor n (← reflectCList args))
+    | .type => pure .type
+    | .const c => pure (.const c)
+    | .pvar k => pure (.pvar k)
+    | .pi d c => do pure (.pi (← reflectC d) (← reflectC c))
+    | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
+    | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
+    | .app f a => do pure (.app (← reflectC f) (← reflectC a))
+    | .unit => pure (.ctor "unit" [])
+    | .letIn _ _ _ => throwErr "readC (⇝): pure `let` not implemented (no test needs it this milestone)"
+    | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
+    | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
+    | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
+    | .matchE _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
+  def reflectCList : List Term → M (List Val)
+    | [] => pure []
+    | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
+end
+
+/-- ⇝: reflect then normalize. Ω is read-only throughout. -/
+def readC (fuel : Nat) (t : Term) : M Val := do pure (Val.nfV fuel (← reflectC t))
+
+/-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
+    and conversion; a constructor value by the signature table, checking each
+    field against its (dependently instantiated) type; a type former inhabits
+    the universe. Cases no test forces error distinctively (M5 grows them). -/
+mutual
+  def hasType : Nat → Val → Val → M Bool
+    | 0, _, _ => throwErr "hasType: out of fuel"
+    | fuel + 1, v, ty => do
+      match v with
+      | .sym σ =>
+        match (← get).sctx.lookup σ with
+        | some vty => pure (Val.convert fuel vty ty)
+        | none => throwErr s!"hasType: σ{σ} has no type in sctx"
+      | .ctor name args =>
+        match Val.ctorSig name with
+        | none => throwErr s!"hasType: unknown constructor '{name}'"
+        | some sig =>
+          match sig.fieldTypes (Val.whnfV fuel ty) with
+          | none => pure false                       -- constructor does not inhabit this type
+          | some ftys => checkFields fuel args ftys
+      | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
+      | .pi _ _ => pure (Val.convert fuel ty .type)
+      | .sigmaT _ _ => pure (Val.convert fuel ty .type)
+      | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
+  termination_by fuel _ _ => (fuel, 0, 0)
+  /-- Check a constructor's fields against its field-type telescope, threading
+      each checked field value into the remaining (dependent) field types. -/
+  def checkFields : Nat → List Val → List Val → M Bool
+    | _, [], [] => pure true
+    | fuel, v :: vs, ty :: tys => do
+      if ← hasType fuel v ty then
+        checkFields fuel vs (tys.map (Val.substPure 0 v))
+      else pure false
+    | _, _, _ => pure false                          -- arity mismatch
+  termination_by fuel _ tys => (fuel, 1, tys.length)
+end
+
+/-! ## Pure test helpers -/
+
+/-- Seed a state with an Ω and a σ-context. -/
+def seedPure (env : Omega) (sctx : List (Nat × Val)) : St := { seedSt env with sctx := sctx }
+
+/-- Test helper: `readC t` equals `expected` (by structural value equality). -/
+def expectReadC (env : Omega) (sctx : List (Nat × Val)) (t : Term) (expected : Val)
+    (fuel : Nat := defaultFuel) : Bool :=
+  match (readC fuel t).run (seedPure env sctx) with
+  | .ok v _ => v == expected
+  | .error _ _ => false
+
+/-- Test helper: `readC t₁` and `readC t₂` are convertible. -/
+def expectConv (env : Omega) (sctx : List (Nat × Val)) (t1 t2 : Term)
+    (fuel : Nat := defaultFuel) : Bool :=
+  match (do let a ← readC fuel t1; let b ← readC fuel t2; pure (Val.convert fuel a b)).run
+      (seedPure env sctx) with
+  | .ok r _ => r
+  | .error _ _ => false
+
+/-- Test helper: value `v` has type `ty` under the σ-context. -/
+def expectHasType (env : Omega) (sctx : List (Nat × Val)) (v ty : Val)
+    (fuel : Nat := defaultFuel) : Bool :=
+  match (hasType fuel v ty).run (seedPure env sctx) with
+  | .ok r _ => r
+  | .error _ _ => false
 
 end Dllbc

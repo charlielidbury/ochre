@@ -43,6 +43,19 @@ inductive Val where
   | loanM   : Nat → Val
   | borrowM : Nat → Val → Val
   | sym     : Nat → Val
+  -- Pure fragment (§4): types are terms of universe sort, and the borrow-free
+  -- ("pure") fragment is an ordinary tiny type theory whose formers live in
+  -- `Val` too, so a pure value (a type, a stuck neutral, a λ) is a first-class
+  -- runtime value. Pure binders use de Bruijn indices (`pvar`), managed by the
+  -- pure substitution in `Pure.lean`; runtime var ids, σ ids and ℓ ids are
+  -- globally named and untouched by it.
+  | pvar    : Nat → Val              -- pure de Bruijn variable (bound by lam/pi/sigmaT)
+  | type    : Val                    -- the single universe (type-in-type)
+  | pi      : Val → Val → Val        -- Π (dom) (cod); cod binds var 0
+  | sigmaT  : Val → Val → Val        -- Σ (fst-type) (snd-type); snd binds var 0
+  | lam     : Val → Val → Val        -- λ (dom) (body); body binds var 0
+  | app     : Val → Val → Val        -- application (a redex, or a stuck neutral spine)
+  | const   : String → Val           -- a built-in constant: a recursor or a type former
 deriving Inhabited
 
 namespace Val
@@ -57,6 +70,13 @@ mutual
     | .loanM x,    .loanM y    => x == y
     | .borrowM x p, .borrowM y q => x == y && beq p q
     | .sym x,      .sym y       => x == y
+    | .pvar x,     .pvar y      => x == y
+    | .type,       .type        => true
+    | .pi d1 c1,   .pi d2 c2    => beq d1 d2 && beq c1 c2
+    | .sigmaT d1 c1, .sigmaT d2 c2 => beq d1 d2 && beq c1 c2
+    | .lam d1 b1,  .lam d2 b2   => beq d1 d2 && beq b1 b2
+    | .app f1 a1,  .app f2 a2   => beq f1 f2 && beq a1 a2
+    | .const x,    .const y     => x == y
     | _,           _           => false
   termination_by v => sizeOf v
   def beqList : List Val → List Val → Bool
@@ -98,6 +118,21 @@ mutual
     | .ctor name args =>
       let s := name ++ prettyArgs args
       if prec > 0 then s!"({s})" else s
+    | .pvar k => s!"#{k}"
+    | .type => "Type"
+    | .const c => c
+    | .pi d c =>
+      let s := s!"Π{prettyPrec 1 d}. {prettyPrec 0 c}"
+      if prec > 0 then s!"({s})" else s
+    | .sigmaT d c =>
+      let s := s!"Σ{prettyPrec 1 d}. {prettyPrec 0 c}"
+      if prec > 0 then s!"({s})" else s
+    | .lam d b =>
+      let s := s!"λ{prettyPrec 1 d}. {prettyPrec 0 b}"
+      if prec > 0 then s!"({s})" else s
+    | .app f a =>
+      let s := prettyPrec 0 f ++ " " ++ prettyPrec 1 a
+      if prec > 0 then s!"({s})" else s
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -123,6 +158,13 @@ mutual
     | .ctor _ args => loanIdsList args
     | .bot => []
     | .sym _ => []
+    | .pvar _ => []
+    | .type => []
+    | .const _ => []
+    | .pi d c => loanIds d ++ loanIds c
+    | .sigmaT d c => loanIds d ++ loanIds c
+    | .lam d c => loanIds d ++ loanIds c
+    | .app d c => loanIds d ++ loanIds c
   termination_by v => sizeOf v
   def loanIdsList : List Val → List Nat
     | [] => []
@@ -138,6 +180,13 @@ mutual
     | .ctor _ args => symIdsList args
     | .loanM _ => []
     | .bot => []
+    | .pvar _ => []
+    | .type => []
+    | .const _ => []
+    | .pi d c => symIds d ++ symIds c
+    | .sigmaT d c => symIds d ++ symIds c
+    | .lam d c => symIds d ++ symIds c
+    | .app d c => symIds d ++ symIds c
   termination_by v => sizeOf v
   def symIdsList : List Val → List Nat
     | [] => []
@@ -154,6 +203,13 @@ mutual
     | .ctor n args => .ctor n (renumberList fℓ fσ args)
     | .bot => .bot
     | .sym σ => .sym (fσ σ)
+    | .pvar k => .pvar k
+    | .type => .type
+    | .const c => .const c
+    | .pi d c => .pi (renumber fℓ fσ d) (renumber fℓ fσ c)
+    | .sigmaT d c => .sigmaT (renumber fℓ fσ d) (renumber fℓ fσ c)
+    | .lam d b => .lam (renumber fℓ fσ d) (renumber fℓ fσ b)
+    | .app f a => .app (renumber fℓ fσ f) (renumber fℓ fσ a)
   termination_by v => sizeOf v
   def renumberList (fℓ fσ : Nat → Nat) : List Val → List Val
     | [] => []
