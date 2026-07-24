@@ -992,7 +992,7 @@ mutual
         let pos ← placeToPos t'
         match ← getAtPos pos with
         | .bot => throwErr "&mut: target place holds ⊥ (nothing to borrow)"
-        | .loanM ℓ => throwErr s!"&mut: target place holds loanₘ ℓ{ℓ} (already borrowed / suspended)"
+        | .loanM ℓ => do endLoan fuel ℓ; readR fuel (.borrow t')   -- suspended: demand-end the group, then reborrow
         | v => do
           let ℓ ← freshLoan
           setAtPos pos (.loanM ℓ)                        -- park the loan marker

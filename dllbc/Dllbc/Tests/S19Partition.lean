@@ -522,5 +522,24 @@ def partitionQ : Decl :=
     back := some (partitionLT2 (V 1 "n") dv) }
 #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScan, partitionQ] partitionQ with | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 200))
 
+-- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
+-- reborrows *v twice in sequence for two recursive calls. This only checks
+-- because `&mut` on a place holding a parked `loanₘ` now DEMAND-ENDS the prior
+-- call's loan group (releasing *v with its back applied) before reborrowing —
+-- the concrete demand-driven ending (§6.1, dllbc-arrows.md:508) rather than the
+-- atomic-at-audit over-approximation, which suspended *v for the whole body and
+-- blocked the second reborrow. back = identity (the recursion mutates nothing).
+def twoRec : Decl :=
+  { name := "twoRec",
+    retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("f", natT)],
+    body := .matchE ⟨1, "f"⟩ [
+      .mk "Z" [] .unit,
+      .mk "S" [⟨2, "f2"⟩]
+        (.seq (.call "twoRec" [.borrow (.deref (V 0 "v")), V 2 "f2"])
+          (.seq (.call "twoRec" [.borrow (.deref (V 0 "v")), V 2 "f2"]) .unit)) ],
+    back := some dv }
+example : checkFnOk twoRec [twoRec] = true := by native_decide
+
 end Dllbc.Tests.S19Partition
 
