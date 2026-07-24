@@ -112,6 +112,36 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
       if ← hasType fuel payload ob.owed then pure ()
       else throwErr s!"audit: {ob.arg.name}'s payload ({payload.pretty}) does not have its owed type ({ob.owed.pretty})"
 
+/-- Reconstruct a captured borrow's payload as the §6.2 suspension tree with
+    holes: follow each loan marker — an ISSUED loan (reached directly or down its
+    reborrow chain) becomes the fresh de Bruijn hole `pvar i`; a non-issued field
+    loan collapses to its current payload (the field the body left in place). The
+    result is the backward function the body implements, to convert against the
+    declared spec. -/
+partial def resolveTree (issued : List Nat) : Val → M Val
+  | .loanM ℓ => do
+    match issued.findIdx? (· == ℓ) with
+    | some i => pure (.pvar i)
+    | none =>
+      -- captured by a sub-call's group? its release is the sub-spec applied to
+      -- (the resolved) issued borrows — LLBC's backward function composing.
+      match (← get).groups.find? (fun g => g.captured.any (·.1 == ℓ)) with
+      | some g =>
+        match g.backSpec with
+        | some f => do
+          let ievs ← g.issued.mapM (fun p => resolveTree issued (.loanM p.1))
+          pure (Val.nfV 1000 (Val.rebuildSpine f ievs))
+        | none => pure (.loanM ℓ)                        -- opaque sub-group — unresolvable
+      | none => match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
+        | some p => resolveTree issued p                 -- follow the reborrow chain / collapse
+        | none => pure (.loanM ℓ)
+  | .borrowM ℓ p =>
+    match issued.findIdx? (· == ℓ) with
+    | some i => pure (.pvar i)
+    | none => do pure (.borrowM ℓ (← resolveTree issued p))
+  | .ctor n args => do pure (.ctor n (← args.mapM (resolveTree issued)))
+  | v => pure v
+
 /-- Walk a return type against the result value, collecting each borrow position
     as `(issued loan, payload, owed type)`. `none` = value-returning (no borrow);
     a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1). -/
@@ -174,10 +204,11 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
       | none => pure ()                                  -- no captured borrow to check
       | some ob =>
         -- the tree with holes: the captured borrow's payload (or, if it WAS the
-        -- returned borrow, the hole itself), issued loans → pvars.
-        let tree : Val ← match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-          | some payload => pure (Val.loanToPvar issuedLoans payload)
-          | none => pure (Val.loanToPvar issuedLoans (.loanM ob.loan))   -- returned directly
+        -- returned borrow, the hole itself), resolved down the reborrow chains.
+        let raw : Val ← match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
+          | some payload => pure payload
+          | none => pure (.loanM ob.loan)                  -- returned directly
+        let tree ← resolveTree issuedLoans raw
         let holes := (List.range issuedLoans.length).map Val.pvar
         let spec := Val.nfV fuel (Val.rebuildSpine backV holes)
         if Val.convert fuel tree spec then pure ()
