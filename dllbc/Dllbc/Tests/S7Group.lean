@@ -58,11 +58,15 @@ example : expectFnEnv [choose, chooseCaller] chooseCaller
   [("a", .bot), ("b", .sym 0), ("pa", .bot), ("pb", .bot), ("r", .bot), ("z", .sym 1)]
   = true := by native_decide
 
-/-! ## The identity wire: constrained precision -/
+/-! ## A single-borrow wire is opaque too (no signature-driven precision) -/
 
--- through (b : &mut List Nat) → &mut List Nat = b. One captured, one issued,
--- backward flow the identity — so the group is `constrained` and the captured
--- loan releases the issued borrow's surrendered payload, not a fresh σ.
+-- through (b : &mut List Nat) → &mut List Nat = b. It shares its SIGNATURE with
+-- an `advance` that returns a field reborrow of the tail — signature-only
+-- checking cannot tell them apart, so constraining the captured release to the
+-- surrendered payload would be UNSOUND. Every opaque group therefore releases
+-- a fresh existential: the caller below recovers a FRESH σ : List Nat, NOT the
+-- written `Cons 9 Nil`. Precision is deliberately lost; §6.2's transparent/spec
+-- group ends are the recovery route.
 def through : Decl :=
   { name := "through", retType := .borrowT listNatT listNatT,
     telescope := [("b", .borrowT listNatT listNatT)],
@@ -70,9 +74,6 @@ def through : Decl :=
 
 example : checkFnOk through = true := by native_decide
 
--- The caller writes `Cons(9, Nil)` through r and ends the wire: the owner
--- recovers exactly the WRITTEN value (`Cons 9 Nil`), not a fresh σ. Contrast
--- with `choose` above — the degenerate-wire sentence of §6.1, mechanized.
 def throughCaller : Decl :=
   { name := "caller", retType := .const "Unit", telescope := [],
     body := dllbcWith [] {
@@ -82,8 +83,9 @@ def throughCaller : Decl :=
       let y = x;
       () } }
 
+-- y is a fresh σ (the write is forgotten — deliberate, per the soundness fix).
 example : expectFnEnv [through, throughCaller] throughCaller
-  [("x", .bot), ("b", .bot), ("r", .bot), ("y", cons (nat 9) nil)] = true := by native_decide
+  [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## Rejections -/
 
@@ -106,5 +108,33 @@ example : checkFnErr
     telescope := [("b", .borrowT natT natT)],
     body := dllbcWith [b] { b } }
   "owed type" = true := by native_decide
+
+/-! ## The constrained branch, exercised directly (dead under opaque calls) -/
+
+def listNatV : Val := .app (.const "List") (.const "Nat")
+
+/-- A hand-built `constrained` group: owner `o ↦ loanₘ 100`, issued borrow
+    `i ↦ borrowₘ 200 (Cons 9 Nil)`, tied by ρ0. -/
+def constrainedGroup : Group :=
+  { id := 0, captured := [(100, listNatV)], issued := [(200, listNatV)], constrained := true }
+
+def constrainedSt : St :=
+  { initSt with
+    env := [(⟨0, "o"⟩, .loanM 100), (⟨1, "i"⟩, .borrowM 200 (cons (nat 9) nil))],
+    groups := [constrainedGroup] }
+
+/-- Ending the constrained group directly: the owner recovers the surrendered
+    payload. -/
+def constrainedResult : Bool :=
+  match (endGroup 1000 constrainedGroup).run constrainedSt with
+  | .ok _ st' => canonicalize st'.env == [("o", cons (nat 9) nil), ("i", .bot)]
+  | .error _ _ => false
+
+-- No call mints a `constrained` group (that inference is unsound, removed), so
+-- `endGroup`'s constrained branch is unreachable through the checker. It stays
+-- for §6.2's transparent/spec ends; this drives it directly so the branch is
+-- not dead-untested: the captured owner recovers the issued borrow's
+-- SURRENDERED payload (`Cons 9 Nil`), not a fresh σ.
+example : constrainedResult = true := by native_decide
 
 end Dllbc.Tests.S7Group

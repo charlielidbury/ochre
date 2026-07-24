@@ -51,9 +51,14 @@ structure Decl where
     identity wire (`constrained`) releases its one captured loan with the
     issued borrow's surrendered payload rather than a fresh existential. -/
 structure Group where
+  id : Nat                      -- the group node's ρ, its identity in the table
   captured : List (Nat × Val)   -- (ℓ, owed type)
   issued : List (Nat × Val)     -- (ℓ, owed type)
-  constrained : Bool            -- identity wire: captured release = surrendered payload
+  /-- Identity-wire flag (§6.2). DEAD under opaque calls: signature-only
+      checking cannot tell `through` from an `advance` that returns a field
+      reborrow, so inferring it is UNSOUND — no call sets it. Kept, with its
+      `endGroup` branch, for §6.2's transparent/spec group ends. -/
+  constrained : Bool
 
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
@@ -69,6 +74,8 @@ structure St where
       whole group. Replaces M6's flat owed map — a wire is the degenerate
       `issued = []` group. -/
   groups : List Group := []
+  /-- Fresh-supply for group ρ ids. -/
+  nextGroup : Nat := 0
   /-- The function table, for the call rule. -/
   decls : List Decl := []
 deriving Inhabited
@@ -93,6 +100,12 @@ def freshSym : M Nat := do
   let s ← get
   set { s with nextSym := s.nextSym + 1 }
   pure s.nextSym
+
+/-- Mint a fresh group ρ id. -/
+def freshGroup : M Nat := do
+  let s ← get
+  set { s with nextGroup := s.nextGroup + 1 }
+  pure s.nextGroup
 
 /-- Read Ω. -/
 def getEnv : M Omega := do pure (← get).env
@@ -504,9 +517,8 @@ def releaseCaptured (ℓ : Nat) (v : Val) : M Unit := sendPayloadToLoan ℓ v
 def endGroup (fuel : Nat) (grp : Group) : M Unit := do
   -- 1. end every issued borrow, collecting surrendered payloads (in order)
   let surrendered ← grp.issued.mapM (fun (ℓ, owed) => endIssued fuel ℓ owed)
-  -- 2. remove the group from the table (identified by its captured loans, which
-  --    are globally unique)
-  modify (fun s => { s with groups := s.groups.filter (fun g => g.captured != grp.captured) })
+  -- 2. remove the group from the table (by its ρ id)
+  modify (fun s => { s with groups := s.groups.filter (fun g => g.id != grp.id) })
   -- 3. release captured loans atomically
   match grp.constrained, grp.captured, surrendered with
   | true, [(ℓc, _)], [p] => releaseCaptured ℓc p          -- identity wire: recover the written value
@@ -658,19 +670,24 @@ mutual
           match decl.retType with
           | .borrowT τ S => do
             -- borrow-returning (§6.1): result is a fresh reborrow; its loan is
-            -- issued, owed the return type. One captured borrow ⇒ identity wire.
+            -- issued, owed the return type. OPAQUE — `constrained := false`
+            -- always: signature-only checking cannot see whether the callee is
+            -- the identity, so inferring the constrained wire would be unsound
+            -- (`through` vs `advance` share this signature). §6.2 recovers it.
             let τVal ← readC fuel τ
             let σ ← freshSym
             let ℓr ← freshLoan
+            let ρ ← freshGroup
             let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) (← readC fuel S))
-            let grp : Group := { captured := captured, issued := [(ℓr, owedR)], constrained := captured.length == 1 }
+            let grp : Group := { id := ρ, captured := captured, issued := [(ℓr, owedR)], constrained := false }
             modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, groups := grp :: s.groups })
             pure (.borrowM ℓr (.sym σ))
           | _ => do
             -- value-returning: a fresh σ at the return type; degenerate group.
             let retTy ← readC fuel decl.retType
             let σ ← freshSym
-            let grp : Group := { captured := captured, issued := [], constrained := false }
+            let ρ ← freshGroup
+            let grp : Group := { id := ρ, captured := captured, issued := [], constrained := false }
             modify (fun s => { s with sctx := (σ, retTy) :: s.sctx, groups := grp :: s.groups })
             pure (.sym σ)
       | .unit => pure (.ctor "unit" [])

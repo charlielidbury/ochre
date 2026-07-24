@@ -67,45 +67,49 @@ def collapseArg : Nat → Var → M Unit
       | none => pure ()
     | _ => pure ()
 
-/-- Audit one obligation: collapse the borrow, reject a hole (⊥ — the
-    take-without-refill of §2.4/§4.1), else type the payload against its owed
-    type. -/
-def auditOne (fuel : Nat) (ob : Obligation) : M Unit := do
-  collapseArg fuel ob.arg
-  match ← lookupSlot ob.arg with
-  | .borrowM _ payload =>
-    match payload with
-    | .bot => throwErr s!"audit: argument {ob.arg.name} holds a hole (⊥) at return — take without refill"
-    | _ =>
+/-- Audit one argument-borrow obligation (§6.1's narrowed rule). `resultLoan`
+    is the returned borrow's loan (for a borrow-returning body). Exempt iff the
+    borrow was consumed into the result OR into another call (its loan is
+    captured by some group). Otherwise it must be **locatable** — as a live
+    `borrowM ℓ` anywhere in Ω's values, not just at its own slot (it may have
+    been moved into a local value) — and its (collapsed) payload is typed
+    against the owed type. Neither locatable nor continued rejects distinctively. -/
+def auditObligation (fuel : Nat) (resultLoan : Option Nat) (ob : Obligation) : M Unit := do
+  if resultLoan == some ob.loan then pure ()                              -- consumed into the result
+  else if (← get).groups.any (fun g => g.captured.any (·.1 == ob.loan)) then pure ()  -- into another call
+  else
+    -- Still at its own slot? collapse its field loans first, in place.
+    match ← lookupSlot ob.arg with
+    | .borrowM _ _ => collapseArg fuel ob.arg
+    | _ => pure ()
+    -- Locate the borrow anywhere in Ω and audit its payload.
+    match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
+    | none =>
+      throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) is neither locatable in Ω nor continued into a call — it was lost"
+    | some .bot =>
+      throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) holds a hole (⊥) at return — take without refill"
+    | some payload =>
       if ← hasType fuel payload ob.owed then pure ()
       else throwErr s!"audit: {ob.arg.name}'s payload ({payload.pretty}) does not have its owed type ({ob.owed.pretty})"
-  | _ => throwErr s!"audit: argument {ob.arg.name} is not a borrow at return"
 
 /-- The audit for one path. For a **value-returning** body (§5.4): every
     argument borrow meets its obligation, and the result has the return type.
-    For a **borrow-returning** body (§6.1 callee side — the reshaped audit,
-    first stated precisely here): the result is ⇒-read; an argument borrow
-    consumed INTO the result (its loan is the result's) is exempt — its loan's
-    story continues caller-side through the group; argument borrows still live
-    in Ω are audited as usual; and the returned borrow's payload must have the
-    return type's owed type. (An argument borrow consumed *onward* into another
-    call is also exempt — see the report's note.) -/
+    For a **borrow-returning** body (§6.1 callee side): the result is ⇒-read and
+    must be a borrow; the argument borrows are audited under `auditObligation`
+    (the one consumed into the result is exempt); and the returned borrow's
+    payload must have the return type's owed type. -/
 def auditAction (fuel : Nat) (retType : Term) (obs : List Obligation) (resultVal : Val) : M Unit := do
   match retType with
   | .borrowT _ S =>
     match resultVal with
     | .borrowM ℓr payload => do
-      obs.forM (fun ob => do
-        if ob.loan == ℓr then pure ()                       -- this arg borrow IS the result
-        else match ← lookupSlot ob.arg with
-          | .borrowM _ _ => auditOne fuel ob                -- still live: audit
-          | _ => pure ())                                   -- consumed onward: exempt
+      obs.forM (auditObligation fuel (some ℓr))
       let owedR := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
       if ← hasType fuel payload owedR then pure ()
       else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owedR.pretty})"
     | _ => throwErr s!"audit: borrow-returning body did not return a borrow (got {resultVal.pretty})"
   | _ => do
-    obs.forM (auditOne fuel)
+    obs.forM (auditObligation fuel none)
     let retTy ← readC fuel retType
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
