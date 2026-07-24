@@ -522,11 +522,36 @@ def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
     drop fuel old                                  -- drop the displaced value
     setAtPos pos newval                            -- fill
 
+-- Does a value carry a STATE marker — a hole (`⊥`), a loan, or a borrow —
+-- anywhere in its tree? §3.2's knowledge/state invariant: a σ names ENTRY
+-- knowledge (a constructor shape true at entry, or an equation solution), never
+-- the present state of a slot. So a σ-substitution's replacement must be
+-- marker-free; a marker is state and belongs in an Ω tree, never substituted for
+-- a σ. Asserted at the substitution site (`refineSym`) so a regression that tries
+-- to substitute state is caught immediately, not layers downstream.
+mutual
+  def hasStateMarker : Val → Bool
+    | .bot => true
+    | .loanM _ => true
+    | .borrowM _ _ => true
+    | .ctor _ args => hasStateMarkerList args
+    | .pi d c | .sigmaT d c | .lam d c | .app d c => hasStateMarker d || hasStateMarker c
+    | .idT a b c => hasStateMarker a || hasStateMarker b || hasStateMarker c
+    | _ => false
+  def hasStateMarkerList : List Val → Bool
+    | [] => false
+    | v :: vs => hasStateMarker v || hasStateMarkerList vs
+end
+
 /-- Refine `σ := v` **everywhere** — in every Ω slot AND every `sctx` type
     (§3.2's "everywhere", now including the type layer: a snapshot type that
     mentions the refined σ, e.g. `Id Nat σ 2`, is substituted like anything
-    else — the seam §10 exercises). -/
-def refineSym (σ : Nat) (v : Val) : M Unit :=
+    else — the seam §10 exercises). The replacement `v` must be marker-free
+    (§3.2 knowledge/state): substituting a hole/loan/borrow for a σ would smuggle
+    state into entry-knowledge — the etiology of the M21 `partIdxL n ⊥` bug. -/
+def refineSym (σ : Nat) (v : Val) : M Unit := do
+  if hasStateMarker v then
+    throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, substSym σ v kv.2)),
     sctx := s.sctx.map (fun p => (p.1, substSym σ v p.2)),
@@ -590,7 +615,15 @@ def writeC (place : Term) (refined : Val) : M Unit := do
     formers map to their `Val` counterparts; runtime-only constructs error. -/
 mutual
   def reflectC : Term → M Val
-    | .var x => lookupSlot x                        -- snapshot read (non-destructive)
+    | .var x => do
+      -- snapshot read (non-destructive) — but §2.1: every read-shaped rule
+      -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
+      -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
+      -- pure value and surfacing layers later as an opaque untypeable ⊥ (the
+      -- M21 `partIdxL n ⊥` etiology: reading the owned-consumed scrutinee).
+      match ← lookupSlot x with
+      | .bot => throwErr s!"readC (⇝): {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized in a comptime read)"
+      | v => pure v
     | .deref t => do
       match ← reflectC t with
       | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
