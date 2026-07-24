@@ -42,6 +42,7 @@ example : chk StdLemmas.count_swapL' StdLemmas.count_swapL'_ty = true := by nati
 -- M20-2 length-equation plumbing: the bound-derivation glue.
 example : chk StdLemmas.le_add StdLemmas.le_add_ty = true := by native_decide
 example : chk StdLemmas.le_add_l StdLemmas.le_add_l_ty = true := by native_decide
+example : chk StdLemmas.le_add_succ StdLemmas.le_add_succ_ty = true := by native_decide
 example : chk StdLemmas.le_rw_r StdLemmas.le_rw_r_ty = true := by native_decide
 
 /-! ## M19-A opener — the architecture's smallest complete instance

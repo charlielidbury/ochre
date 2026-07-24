@@ -93,6 +93,16 @@ def le_add_l : Term := pure{
       S (a') ih => le_up_r b (add a' b) ih } }
 def le_add_l_ty : Term := pure{ Π (b : Nat) → Π (a : Nat) → Le b (add a b) }
 
+-- `S i ≤ i + (S g)` — the swap's `pij`: the boundary `S i` is below the scan
+-- position `S (add i (S g))` whenever the gap is non-empty. Induction on `i`
+-- avoids an add_succ transport (`add (S i') x = S (add i' x)` is definitional),
+-- so no rewrite is needed here.
+def le_add_succ : Term := pure{
+  λ (i : Nat). elim i return (λ (iz : Nat). Π (g : Nat) → Le (S iz) (add iz (S g))) {
+    Z => λ (g : Nat). unit,
+    S (i') ih => λ (g : Nat). ih g } }
+def le_add_succ_ty : Term := pure{ Π (i : Nat) → Π (g : Nat) → Le (S i) (add i (S g)) }
+
 -- Transport a `Le` along an `Id` on its SECOND argument: `x = y ⟹ Le a x → Le a
 -- y`. The bounds derived over the arithmetic normal form are moved onto `len *v`
 -- (and back through `len_swapL`) with this J-transport — the "le_trans/le_step
