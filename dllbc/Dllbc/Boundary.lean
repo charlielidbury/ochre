@@ -62,15 +62,40 @@ def collapseArg : Nat → Var → M Unit
       | none => pure ()
     | _ => pure ()
 
+/-- Does borrow `ℓ` transitively reborrow into `target`? An `advance`-style body
+    returns a reborrow of a FIELD of an argument borrow (`&mut *hd` after
+    matching `v`); that argument is then the CAPTURED OWNER of the issued result
+    and must be exempt from the callee-side obligation audit, exactly as a
+    directly-returned borrow is (§6.1) — its field loan is legitimately in
+    flight. We follow the loan markers parked in each borrow's payload down to
+    the result loan. -/
+partial def reachesLoan (ℓ target : Nat) : M Bool := do
+  if ℓ == target then pure true
+  else
+    -- (a) reborrow chain: loan markers parked in ℓ's payload.
+    let viaBorrow ← match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
+      | some payload => (Val.loanIds payload).anyM (fun ℓc => reachesLoan ℓc target)
+      | none => pure false
+    if viaBorrow then pure true
+    else
+      -- (b) group link: if ℓ was captured by a call, that call's issued borrows
+      -- are reachable through it — this is how a returned reborrow that came out
+      -- of a recursive call connects back to the argument that fed the call.
+      let grps := (← get).groups
+      (grps.filter (fun g => g.captured.any (·.1 == ℓ))).anyM (fun g =>
+        g.issued.anyM (fun iss => reachesLoan iss.1 target))
+
 /-- Audit one argument-borrow obligation (§6.1's narrowed rule). `resultLoan`
     is the returned borrow's loan (for a borrow-returning body). Exempt iff the
-    borrow was consumed into the result OR into another call (its loan is
+    borrow was consumed into the result (directly, or as the captured owner of a
+    field reborrow that became the result) OR into another call (its loan is
     captured by some group). Otherwise it must be **locatable** — as a live
     `borrowM ℓ` anywhere in Ω's values, not just at its own slot (it may have
     been moved into a local value) — and its (collapsed) payload is typed
     against the owed type. Neither locatable nor continued rejects distinctively. -/
-def auditObligation (fuel : Nat) (resultLoan : Option Nat) (ob : Obligation) : M Unit := do
-  if resultLoan == some ob.loan then pure ()                              -- consumed into the result
+def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M Unit := do
+  if resultLoans.contains ob.loan then pure ()                            -- consumed into a result borrow
+  else if (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl)) then pure ()  -- captured owner of a field reborrow
   else if (← get).groups.any (fun g => g.captured.any (·.1 == ob.loan)) then pure ()  -- into another call
   else
     -- Still at its own slot? collapse its field loans first, in place.
@@ -87,25 +112,42 @@ def auditObligation (fuel : Nat) (resultLoan : Option Nat) (ob : Obligation) : M
       if ← hasType fuel payload ob.owed then pure ()
       else throwErr s!"audit: {ob.arg.name}'s payload ({payload.pretty}) does not have its owed type ({ob.owed.pretty})"
 
-/-- The audit for one path. For a **value-returning** body (§5.4): every
-    argument borrow meets its obligation, and the result has the return type.
-    For a **borrow-returning** body (§6.1 callee side): the result is ⇒-read and
-    must be a borrow; the argument borrows are audited under `auditObligation`
-    (the one consumed into the result is exempt); and the returned borrow's
-    payload must have the return type's owed type. -/
+/-- Walk a return type against the result value, collecting each borrow position
+    as `(issued loan, payload, owed type)`. `none` = value-returning (no borrow);
+    a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1). -/
+def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Val)))
+  | .borrowT _ S, .borrowM ℓ payload => do
+    let owed := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
+    pure (some [(ℓ, payload, owed)])
+  | .borrowT _ _, other =>
+    throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
+  | .sigmaT a b, .ctor "Pair" [va, vb] => do
+    let ra ← collectResultBorrows fuel a va
+    let rb ← collectResultBorrows fuel b vb
+    match ra, rb with
+    | none, none => pure none                        -- a genuine value pair, not borrows
+    | _, _ => pure (some (ra.getD [] ++ rb.getD []))
+  | _, _ => pure none                                -- value-returning
+  termination_by t _ => sizeOf t
+
+/-- The audit for one path. A **value-returning** body (§5.4): every argument
+    borrow meets its obligation and the result has the (entry-pinned) return
+    type. A **borrow-returning** body (§6.1 callee side): the result carries one
+    or more issued borrows (a single `&mut`, or a `Pair` of them — the
+    multi-issued group); each argument borrow that was consumed into a result
+    borrow (directly or as its captured owner) is exempt, the rest meet their
+    obligations, and every issued borrow's payload has its owed type. -/
 def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
   let obs := (← get).obligations                    -- this path's (refined) obligations
-  match retType with
-  | .borrowT _ S =>
-    match resultVal with
-    | .borrowM ℓr payload => do
-      obs.forM (auditObligation fuel (some ℓr))
-      let owedR := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
-      if ← hasType fuel payload owedR then pure ()
-      else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owedR.pretty})"
-    | _ => throwErr s!"audit: borrow-returning body did not return a borrow (got {resultVal.pretty})"
-  | _ => do
-    obs.forM (auditObligation fuel none)
+  match ← collectResultBorrows fuel retType resultVal with
+  | some checks => do
+    obs.forM (auditObligation fuel (checks.map (·.1)))
+    checks.forM (fun c =>
+      let (_, payload, owed) := c
+      do if ← hasType fuel payload owed then pure ()
+         else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owed.pretty})")
+  | none => do
+    obs.forM (auditObligation fuel [])
     -- The return type was pinned at entry (§5.3 dependent types over consumed
     -- params); fall back to reading it here only if it was never pinned.
     let retTy ← match (← get).retTyVal with
@@ -125,20 +167,32 @@ def auditPaths (retType : Term) :
     | .error e _ => .error e
     | .ok _ _ => auditPaths retType rest
 
+/-- Does a (return) type contain a borrow anywhere? A borrow-carrying return
+    (a `&mut`, or a `Pair` of them) is audited by `collectResultBorrows`, never
+    reflected, so it must NOT be pinned/`readC`'d (which rejects `borrowT`). -/
+def hasBorrowT : Term → Bool
+  | .borrowT _ _ => true
+  | .sigmaT a b => hasBorrowT a || hasBorrowT b
+  | .pi a b => hasBorrowT a || hasBorrowT b
+  | .app a b => hasBorrowT a || hasBorrowT b
+  | .lam a b => hasBorrowT a || hasBorrowT b
+  | .idT a b c => hasBorrowT a || hasBorrowT b || hasBorrowT c
+  | _ => false
+
 /-- Check a function declaration end-to-end: seed the telescope, explore the
     body (one path per symbolic branch), audit each path at return. `table` is
     the function context calls resolve against (signature-only, §5.3) — it
     includes `decl` itself for recursion. -/
 def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
-  -- Seed the telescope, then pin the (non-borrow) return type while the params
-  -- are still live (§5.3): a dependent return type may mention a param the body
-  -- consumes, so it must be evaluated at entry, not re-read at return.
+  -- Seed the telescope, then pin the (value) return type while the params are
+  -- still live (§5.3): a dependent return type may mention a param the body
+  -- consumes, so it must be evaluated at entry, not re-read at return. A
+  -- borrow-carrying return is not pinned (it is audited structurally instead).
   let seed : M (List Obligation) := do
     let obs ← seedTelescope defaultFuel 0 decl.telescope
-    match decl.retType with
-    | .borrowT _ _ => pure ()
-    | rt => do
-      let rv ← readC defaultFuel rt
+    if hasBorrowT decl.retType then pure ()
+    else do
+      let rv ← readC defaultFuel decl.retType
       modify (fun s => { s with retTyVal := some rv })
     pure obs
   match seed.run { initSt with decls := table } with

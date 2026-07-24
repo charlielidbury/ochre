@@ -521,6 +521,34 @@ def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Val := do
   modify (fun s => { s with env := saved })
   pure v
 
+/-- Build a call's fresh result value from the (instantiated) return type, and
+    collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ S)` position mints a
+    fresh issued reborrow `borrowₘ ℓ σ` with `σ : τ` in `sctx` and owed type
+    `S[s := σ]`; a `Pair`/`Σ` of results issues one loan PER borrow component
+    (the multi-issued group — `nth2`); a non-borrow leaf is a plain fresh
+    existential `σ` with no issued loan (the §5.3 wire). The second Σ component
+    is built independently (a dependent product over the first is not supported;
+    no test needs it). -/
+def buildResult (fuel : Nat) (inst : Omega) : Term → M (Val × List (Nat × Val))
+  | .borrowT τ S => do
+    let τVal ← readCWith fuel inst τ
+    let σ ← freshSym
+    let ℓr ← freshLoan
+    let sVal ← readCWith fuel inst S
+    let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) sVal)
+    modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+    pure (.borrowM ℓr (.sym σ), [(ℓr, owedR)])
+  | .sigmaT a b => do
+    let (vA, issA) ← buildResult fuel inst a
+    let (vB, issB) ← buildResult fuel inst b
+    pure (.ctor "Pair" [vA, vB], issA ++ issB)
+  | rt => do
+    let retTy ← readCWith fuel inst rt
+    let σ ← freshSym
+    modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
+    pure (.sym σ, [])
+  termination_by t => sizeOf t
+
 /-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
     and conversion; a constructor value by the signature table, checking each
     field against its (dependently instantiated) type; a type former inhabits
@@ -831,30 +859,19 @@ mutual
             -- instantiation `inst` (decl var → actual, §5.3) instantiates the
             -- return and owed types at the actuals this call was given.
             let (captured, inst) ← processArgs fuel 0 [] decl.telescope args
-            match decl.retType with
-            | .borrowT τ S => do
-              -- borrow-returning (§6.1): result is a fresh reborrow; its loan is
-              -- issued. `constrained := false` always (inferring it is unsound —
-              -- `through` vs `advance` share this signature); the test-only
-              -- `forceConstrained` flag reintroduces the bug for harness
-              -- validation, never in real checking.
-              let τVal ← readCWith fuel inst τ
-              let σ ← freshSym
-              let ℓr ← freshLoan
-              let ρ ← freshGroup
-              let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) (← readCWith fuel inst S))
-              let fc := (← get).forceConstrained
-              let cons := fc && captured.length == 1
-              let grp : Group := { id := ρ, captured := captured, issued := [(ℓr, owedR)], constrained := cons }
-              modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, groups := grp :: s.groups })
-              pure (.borrowM ℓr (.sym σ))
-            | _ => do
-              let retTy ← readCWith fuel inst decl.retType
-              let σ ← freshSym
-              let ρ ← freshGroup
-              let grp : Group := { id := ρ, captured := captured, issued := [], constrained := false }
-              modify (fun s => { s with sctx := (σ, retTy) :: s.sctx, groups := grp :: s.groups })
-              pure (.sym σ)
+            -- Build the result and the loans it issues from the return type (a
+            -- single borrow, a Pair/Σ of borrows for a multi-issued group, or a
+            -- plain existential wire). One group ties captured to issued. The
+            -- `constrained` flag stays false in real checking — inferring it is
+            -- unsound (`through` vs `advance` share a signature); the test-only
+            -- `forceConstrained` flag reintroduces the bug for harness validation.
+            let (resultVal, issued) ← buildResult fuel inst decl.retType
+            let ρ ← freshGroup
+            let fc := (← get).forceConstrained
+            let cons := fc && captured.length == 1 && issued.length == 1
+            let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons }
+            modify (fun s => { s with groups := grp :: s.groups })
+            pure resultVal
       | .unit => pure (.ctor "unit" [])
       -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
       -- to variable consumption. A comptime-only former (a proof term — an
