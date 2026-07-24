@@ -24,3 +24,4 @@ import Dllbc.Tests.S15Elab
 import Dllbc.Tests.S16Spec
 import Dllbc.Tests.S17Spec
 import Dllbc.Tests.S18Rewrite
+import Dllbc.Tests.S19Partition

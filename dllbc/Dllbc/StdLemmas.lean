@@ -57,6 +57,21 @@ def le_trans : Term := pure{
 def le_trans_ty : Term := pure{
   Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Le a b → Le b c → Le a c }
 
+-- Right-successor monotonicity: `a ≤ b ⟹ a ≤ S b`. Double induction (on `a`,
+-- casing `b`): the `Z` head is trivial (`Le Z _ = ⊤`); the `S a'` head cases `b`
+-- (`Le (S a') Z = ⊥`, else `Le a' b'` and the IH lifts it to `Le a' (S b')`).
+-- The glue `count_swapL'` needs to bend swapS's `Le (S i) j` into count_swapL's
+-- `Le (S i) (len l)` via one `le_trans`.
+def le_up_r : Term := pure{
+  λ (a : Nat). elim a return (λ (az : Nat). Π (b : Nat) → Le az b → Le az (S b)) {
+    Z => λ (b : Nat). λ (h : Le Z b). unit,
+    S (a') ih => λ (b : Nat). λ (h : Le (S a') b).
+      elim b return (λ (bz : Nat). Le (S a') bz → Le (S a') (S bz)) {
+        Z => λ (h0 : Le (S a') Z). botElim (Le (S a') (S Z)) h0,
+        S (b') ihb => λ (h0 : Le (S a') (S b')). ih b' h0
+      } h } }
+def le_up_r_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → Le a (S b) }
+
 /-! ## `id_trans`, `id_congr` — the J warm-ups partition's count-chaining consumes -/
 
 def id_trans : Term := pure{
@@ -368,5 +383,19 @@ def count_swapL : Term := pure{
 def count_swapL_ty : Term := pure{
   Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) (len l) → Le (S j) (len l) → Id Nat (count m (swapL i j l)) (count m l) }
+
+-- The friction-free corollary: count_swapL with swapS's telescope-mirrored
+-- premises (`Le (S i) j`, `Le (S j) (len l)` — exactly the `pij`/`p2` a swapS
+-- caller holds). The general count_swapL is the mathematically right statement
+-- (independent bounds, no `i ≤ j` needed); this derives the caller's hand-off from
+-- it. `Le (S i) (len l)` comes by `le_trans (S i) (S j) (len l)`: `le_up_r` lifts
+-- `pij : Le (S i) j` to `Le (S i) (S j)`, then chain with `p2`.
+def count_swapL' : Term := pure{
+  λ (m : Nat). λ (i : Nat). λ (j : Nat). λ (l : List Nat).
+    λ (pij : Le (S i) j). λ (p2 : Le (S j) (len l)).
+      count_swapL m i j l (le_trans (S i) (S j) (len l) (le_up_r (S i) j pij) p2) p2 }
+def count_swapL'_ty : Term := pure{
+  Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
+    Le (S i) j → Le (S j) (len l) → Id Nat (count m (swapL i j l)) (count m l) }
 
 end Dllbc.StdLemmas
