@@ -82,6 +82,26 @@ def le_add : Term := pure{
     S (i') ih => λ (g : Nat). ih g } }
 def le_add_ty : Term := pure{ Π (i : Nat) → Π (g : Nat) → Le i (add i g) }
 
+-- `b ≤ a + b` — the companion where the summand is on the LEFT (`le_add` has it on
+-- the right). Induction on `a`: base is `le_refl` (`add Z b = b`), step lifts the
+-- IH with `le_up_r` (`add (S a') b = S (add a' b)`). The scan-position bound uses
+-- this because the length equation carries the remaining count `k` on the left.
+def le_add_l : Term := pure{
+  λ (b : Nat). λ (a : Nat).
+    elim a return (λ (az : Nat). Le b (add az b)) {
+      Z => le_refl b,
+      S (a') ih => le_up_r b (add a' b) ih } }
+def le_add_l_ty : Term := pure{ Π (b : Nat) → Π (a : Nat) → Le b (add a b) }
+
+-- Transport a `Le` along an `Id` on its SECOND argument: `x = y ⟹ Le a x → Le a
+-- y`. The bounds derived over the arithmetic normal form are moved onto `len *v`
+-- (and back through `len_swapL`) with this J-transport — the "le_trans/le_step
+-- glue where descent is not definitional".
+def le_rw_r : Term := pure{
+  λ (a : Nat). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (p : Le a x).
+    j Nat x (λ (y' : Nat). λ (hh : Id Nat x y'). Le a y') p y h }
+def le_rw_r_ty : Term := pure{ Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le a x → Le a y }
+
 /-! ## `id_trans`, `id_congr` — the J warm-ups partition's count-chaining consumes -/
 
 def id_trans : Term := pure{

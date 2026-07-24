@@ -39,6 +39,11 @@ def chk (tm ty : Term) : Bool :=
 example : chk StdLemmas.le_up_r StdLemmas.le_up_r_ty = true := by native_decide
 example : chk StdLemmas.count_swapL' StdLemmas.count_swapL'_ty = true := by native_decide
 
+-- M20-2 length-equation plumbing: the bound-derivation glue.
+example : chk StdLemmas.le_add StdLemmas.le_add_ty = true := by native_decide
+example : chk StdLemmas.le_add_l StdLemmas.le_add_l_ty = true := by native_decide
+example : chk StdLemmas.le_rw_r StdLemmas.le_rw_r_ty = true := by native_decide
+
 /-! ## M19-A opener — the architecture's smallest complete instance
 
     A `swapS` caller over a SYMBOLIC list: it borrows `s`, swaps positions `i`/`j`
