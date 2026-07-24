@@ -320,7 +320,11 @@ def indexKindTy : Val → Bool
     proper (`Cons`-trees, pairs, user constructors) MOVES even when marker-free:
     silent aggregate duplication is the cost-opacity Rust's move discipline
     prevents, so the calculus keeps Rust's line (§2.1). Copy-or-move is decided by
-    value shape — the σ-context's type for symbolic values — not a declared trait. -/
+    value shape — the σ-context's type for symbolic values — not a declared trait.
+    A σ with NO sctx entry moves (the conservative default). DEFERRED (until
+    measured pain, per team-lead): tuple-of-copyables (a `Pair Nat Nat` as Copy,
+    Rust-style) — a data ctor all of whose fields are index-kind stays a MOVE for
+    now. -/
 def indexKindV (sctx : List (Nat × Val)) : Val → Bool
   | .ctor "Z" [] => true
   | .ctor "S" [n] => indexKindV sctx n

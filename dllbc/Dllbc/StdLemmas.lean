@@ -443,7 +443,11 @@ def count_swapL'_ty : Term := pure{
     cannot self-swap, so `i = Z` is the no-op the imperative body also special-cases.
     Step: `leb (nth j l) pivot` — True with `g = Z` advances the boundary (the
     ≤-prefix stays contiguous, no swap); True with `g = S g'` swaps `S i`↔`j`
-    (a >-pivot element out, the ≤ element in) keeping the gap; False grows the gap. -/
+    (a >-pivot element out, the ≤ element in) keeping the gap; False grows the gap.
+
+    INTERFACE CONTRACT (M21 inheritance): the boundary index `i` at `k = Z` is the
+    pivot's final position — the split point the caller recurses on (`[0, i)` and
+    `(i, len)`). partition exposes it as its return value; sortL rides it. -/
 
 def partScanL : Term := pure{
   λ (pivot : Nat). λ (k : Nat).
