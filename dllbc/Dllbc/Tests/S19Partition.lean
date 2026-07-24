@@ -39,4 +39,45 @@ def chk (tm ty : Term) : Bool :=
 example : chk StdLemmas.le_up_r StdLemmas.le_up_r_ty = true := by native_decide
 example : chk StdLemmas.count_swapL' StdLemmas.count_swapL'_ty = true := by native_decide
 
+/-! ## M19-A opener — the architecture's smallest complete instance
+
+    A `swapS` caller over a SYMBOLIC list: it borrows `s`, swaps positions `i`/`j`
+    in place (imperative mutation), and its result is the count-preservation
+    CERTIFICATE `count_swapL' m i j s pij p2`. After the swap the M17 spec-end
+    recovers `s = swapL i j σ` precisely; the certificate — computed over the entry
+    snapshot, whose subject `swapL i j s` is definitionally that recovered value —
+    proves `count m (swapL i j s) = count m s` in the caller's own environment.
+    Imperative mutation + precise recovery (M17) + pure lemma (M18), end to end. -/
+
+def tS (t : Term) : Term := .ctorApp "S" [t]
+def LeT (a b : Term) : Term := Std.LeT a b
+def lenT (l : Term) : Term := Std.lenT l
+def countT (m l : Term) : Term := .app (.app Std.countFnT m) l
+def swapLT (i j l : Term) : Term := .app (.app (.app StdLemmas.swapL i) j) l
+def cslP (m i j l pij p2 : Term) : Term :=
+  .app (.app (.app (.app (.app (.app StdLemmas.count_swapL' m) i) j) l) pij) p2
+
+-- s=0, m=1, i=2, j=3, pij=4, p2=5; body binders cert=6, b=7.
+def certSwapCount : Decl :=
+  { name := "certSwapCount",
+    retType := .idT natT (countT (V 1 "m") (swapLT (V 2 "i") (V 3 "j") (V 0 "s"))) (countT (V 1 "m") (V 0 "s")),
+    telescope := [
+      ("s", listNatT), ("m", natT), ("i", natT), ("j", natT),
+      ("pij", LeT (tS (V 2 "i")) (V 3 "j")),
+      ("p2", LeT (tS (V 3 "j")) (lenT (V 0 "s")))],
+    body := .letIn ⟨6, "cert"⟩ (cslP (V 1 "m") (V 2 "i") (V 3 "j") (V 0 "s") (V 4 "pij") (V 5 "p2"))
+      (.letIn ⟨7, "b"⟩ (.borrow (.var ⟨0, "s"⟩))
+        (.seq (.call "swapS" [.var ⟨7, "b"⟩, V 2 "i", V 3 "j", V 4 "pij", V 5 "p2"])
+          (.var ⟨6, "cert"⟩))) }
+
+def openerTable : List Decl := [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCount]
+example : checkFnOk certSwapCount openerTable = true := by native_decide
+
+-- Negative control: claim the count GREW by one across the swap. The certificate
+-- proves equality, so the value-returning audit rejects the lying return type —
+-- the opener's acceptance is a real check of a real certificate.
+def certSwapCountLieRet : Term := .idT natT (countT (V 1 "m") (swapLT (V 2 "i") (V 3 "j") (V 0 "s"))) (tS (countT (V 1 "m") (V 0 "s")))
+def certSwapCountLie : Decl := { certSwapCount with name := "certSwapCountLie", retType := certSwapCountLieRet }
+example : checkFnErr certSwapCountLie "does not have return type" [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCountLie] = true := by native_decide
+
 end Dllbc.Tests.S19Partition
