@@ -138,13 +138,54 @@ M12–M15, same day, the quicksort train:
   mis-indexed one. Friction noted, not built: lemma application
   inside Decl bodies is still raw-Term splicing.
 
-Remaining to the north star: M16 swap's Σ-wrapped count spec +
-count_swapL and its arithmetic prerequisites (the proof core — also
-measures the unpack/repack pain that decides the refined-obligation-
-sugar question), M17 segment-scoped Lomuto partition with the count
-spec, M18 ordering evidence (AllLe/AllGe + Sorted gluing), M19
-assembly (partial correctness; totality after, via fuel or §8
-measures).
+M16–M17: the crux found, then dissolved — and the architecture
+crystallized.
+
+- M16: the lemma stack (arithmetic, count_append, take_drop_id — all
+  first-try in the M15 surface), swapL and the UNCONDITIONAL len
+  lemmas. count_swapL walled on the missing equational-rewriting
+  layer (motive abstraction over computed subterms — cons2_comm is
+  "four Refls" morally, ~18 hand-motive lines actually). Then the
+  campaign's real crux: an nth2 CALL consumes the slice borrow into
+  an opaque group, so a spec-carrying body cannot observe its own
+  mutation's result — §6.2's precision spectrum given operational
+  meaning. Closed with swapS01: the first spec-carrying in-place
+  mutation (inlined cursor work = the contract-free interior;
+  Σ-obligation carrying a len-preservation proof checked against the
+  actual writes by computation), evidence surviving an opaque
+  boundary, ~2 unpack lines per call site measured.
+- M17: §6.2 spec group-ends — the M8 constrained-wire arc completed
+  soundly (DECLARED backward specs, callee-checked by converting the
+  suspension-tree-with-issued-markers-as-holes against the
+  declaration, caller-side releases COMPUTED). The headline: specs
+  COMPOSE along call chains (sub-call groups resolve through their
+  declared specs; recursion through the function's own declaration) —
+  LLBC's backward-function composition as checked declarations. The
+  real swapS-via-nth2 checks with back = swapL i j s; a caller
+  recovers the exact swapped list in checking mode, ZERO unpack
+  lines, full precision (0-vs-2 and precision both beat the Σ form);
+  the M16 convergence crux is discharged INSIDE the checker; lying
+  specs rejected; spec-less calls stay opaque (opt-in, no
+  regression).
+
+THE ARCHITECTURE, crystallized by M17: with the whole call tree
+spec'd, the imperative program is a checked implementation of a PURE
+MODEL, and verification splits into conformance (the ↝/back audit,
+mechanical) and model correctness (lemmas about the pure model, in
+the comptime fragment). Quicksort's endgame is therefore: sortL as a
+fuel-structural pure function, the imperative quicksort declared
+back = sortL, and Sorted (sortL s) / count-preservation of sortL as
+pure lemmas the caller applies to the precisely-recovered result.
+The Σ-wrapped count spec for swapS is OBSOLETE — spec-ends are
+strictly stronger.
+
+Remaining train: M18 the rewriting layer (abstractOccurrences +
+generalize-elim + rewrite-by-Id; acceptance: cons2_comm ~4 lines,
+then the bounded count_swapL stack — now serving the pure-model
+correctness track), M19 partitionL (pure model) + imperative
+partition declared back = partitionL, M20 sortL + quicksort assembly
++ the model-correctness lemmas (partial correctness; totality after,
+via fuel or §8 measures).
 
 ## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
 
