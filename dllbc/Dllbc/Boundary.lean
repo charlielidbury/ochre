@@ -17,17 +17,9 @@ This module makes the machine a *type checker* for closed function bodies:
 
 namespace Dllbc
 
-/-- A function declaration to check. The telescope binds each argument's
-    display name to its type (a `Term`; later entries' types may mention
-    earlier arguments via their runtime vars, ids `0, 1, …`). -/
-structure Decl where
-  name : String
-  telescope : List (String × Term)
-  retType : Term
-  body : Term
-
 /-- What an argument borrow owes at the boundary: its slot variable, its loan
-    id, and the owed type (§5.1's `S`, instantiated at the entry snapshot). -/
+    id, and the owed type (§5.1's `S`, instantiated at the entry snapshot).
+    (`Decl` itself now lives in `Machine.lean` so the call rule can see it.) -/
 structure Obligation where
   arg : Var
   loan : Nat
@@ -71,7 +63,7 @@ def collapseArg : Nat → Var → M Unit
     match ← lookupSlot arg with
     | .borrowM _ payload =>
       match firstLoanMarker payload with
-      | some ℓ => do endMut ℓ; collapseArg fuel arg
+      | some ℓ => do endLoan ℓ; collapseArg fuel arg     -- normal or owed (§5.3) loan
       | none => pure ()
     | _ => pure ()
 
@@ -108,20 +100,38 @@ def auditPaths (retType : Term) (obs : List Obligation) :
     | .ok _ _ => auditPaths retType obs rest
 
 /-- Check a function declaration end-to-end: seed the telescope, explore the
-    body (one path per symbolic branch), audit each path at return. -/
-def checkFn (decl : Decl) : Except String Unit :=
-  match (seedTelescope defaultFuel 0 decl.telescope).run initSt with
+    body (one path per symbolic branch), audit each path at return. `table` is
+    the function context calls resolve against (signature-only, §5.3) — it
+    includes `decl` itself for recursion. -/
+def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
+  match (seedTelescope defaultFuel 0 decl.telescope).run { initSt with decls := table } with
   | .error e _ => .error e
   | .ok obs st => auditPaths decl.retType obs (explore defaultFuel (pushContinuations decl.body) st)
 
+/-- Run a declaration's body (no audit), returning one canonicalized final Ω
+    per path — for inspecting *what* a body leaves in Ω (e.g. §5.3's fresh
+    existential y). -/
+def runFn (table : List Decl) (decl : Decl) : List (Except String Env) :=
+  match (seedTelescope defaultFuel 0 decl.telescope).run { initSt with decls := table } with
+  | .error e _ => [.error e]
+  | .ok _ st => (explore defaultFuel (pushContinuations decl.body) st).map
+      (fun r => r.map (fun p => canonicalize p.2.env))
+
 /-! ## Test helpers -/
 
-/-- The declaration checks. -/
-def checkFnOk (decl : Decl) : Bool :=
-  match checkFn decl with | .ok _ => true | .error _ => false
+/-- The declaration checks. `table` defaults to `[decl]` (self-recursion). -/
+def checkFnOk (decl : Decl) (table : List Decl := [decl]) : Bool :=
+  match checkFn table decl with | .ok _ => true | .error _ => false
 
 /-- The declaration is rejected with an error containing `needle`. -/
-def checkFnErr (decl : Decl) (needle : String) : Bool :=
-  match checkFn decl with | .ok _ => false | .error e => strContains e needle
+def checkFnErr (decl : Decl) (needle : String) (table : List Decl := [decl]) : Bool :=
+  match checkFn table decl with | .ok _ => false | .error e => strContains e needle
+
+/-- A single-path body leaves exactly the given final Ω (for inspecting §5.3's
+    fresh existential). -/
+def expectFnEnv (table : List Decl) (decl : Decl) (expected : Env) : Bool :=
+  match runFn table decl with
+  | [.ok env] => env == expected
+  | _ => false
 
 end Dllbc

@@ -32,6 +32,16 @@ is kernel-transparent for the later proof phase. Later milestones add
 
 namespace Dllbc
 
+/-- A function declaration (§1.2). Lives here so the checking context (`St`)
+    can carry a table of them — a call is checked against a *signature only*,
+    never another body (recursion forces this, §5.3). Full construction/audit
+    is in `Boundary.lean`. -/
+structure Decl where
+  name : String
+  telescope : List (String × Term)
+  retType : Term
+  body : Term
+
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
     the runtime-binder minting later milestones (match) will need. -/
@@ -40,9 +50,14 @@ structure St where
   nextLoan : Nat
   nextVar : Nat
   nextSym : Nat
-  /-- The σ-context (§3.2's seam, §4): each symbolic id's type. Seeded by the
-      test helpers this milestone; telescopes fill it in M5. -/
+  /-- The σ-context (§3.2's seam, §4): each symbolic id's type. -/
   sctx : List (Nat × Val) := []
+  /-- Owed loans (§5.3): a loan annotated at a call with the type it will
+      surrender. Ending an owed loan mints a fresh existential at this type
+      *without* a borrow in Ω (the call consumed the borrow). -/
+  owed : List (Nat × Val) := []
+  /-- The function table, for the call rule. -/
+  decls : List Decl := []
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -257,12 +272,28 @@ def sendPayloadToLoan (ℓ : Nat) (p : Val) : M Unit := do
   else
     throwErr s!"end: loan ℓ{ℓ} is not an entry of Ω (cannot plug payload back)"
 
-/-- **End-Mut** (§2.2): take the borrow's current payload, plug it back where
-    the loan marker sits, and kill the borrow to ⊥. Both ends must be entries
-    of Ω (they are, whenever a ⇒-read forces this on a slot holding a loan). -/
-def endMut (ℓ : Nat) : M Unit := do
-  let p ← killBorrowInΩ ℓ
-  sendPayloadToLoan ℓ p
+/-- The value that ending loan `ℓ` sends home. Normally (§2.2 End-Mut) that is
+    the borrow's current payload, and killing the borrow yields it. But an
+    **owed** loan (§5.3, call-annotated) has no borrow — the call consumed it —
+    so ending it mints a fresh existential at the owed type (sctx-typed): "the
+    promise is collected … an existential, opened at loan-end." An owed loan
+    must not also have a live borrow (the call consumed it); that shape is an
+    error rather than a silent preference. -/
+def takeLoanPayload (ℓ : Nat) : M Val := do
+  let st ← get
+  match st.owed.find? (fun p => p.1 == ℓ) with
+  | some (_, τ) => do
+    if st.env.any (fun kv => (findBorrowPayload ℓ kv.2).isSome) then
+      throwErr s!"end: loan ℓ{ℓ} is owed (call-annotated) but also has a live borrow in Ω"
+    let σ ← freshSym
+    modify (fun s => { s with sctx := (σ, τ) :: s.sctx, owed := s.owed.filter (fun p => p.1 != ℓ) })
+    pure (.sym σ)
+  | none => killBorrowInΩ ℓ
+
+/-- **End loan** ℓ: send its payload (real, or a minted existential for an owed
+    loan) home to where the marker sits. Subsumes §2.2's End-Mut. -/
+def endLoan (ℓ : Nat) : M Unit := do
+  sendPayloadToLoan ℓ (← takeLoanPayload ℓ)
 
 /-- **Drop** (§2.3): the total procedure that vacates a displaced value. End
     its ownership nodes innermost-first — a `loanM ℓ` in the value kills its
@@ -279,7 +310,7 @@ def drop : Nat → Val → M Unit
     match firstOwnNode v with
     | none => pure ()                                   -- ownership-free: discard
     | some (ℓ, .loanMarker) => do
-      let p ← killBorrowInΩ ℓ                           -- kill borrow, payload returns
+      let p ← takeLoanPayload ℓ                         -- kill borrow (or mint owed existential)
       drop fuel (replaceLoanMarker ℓ p v)
     | some (ℓ, .borrowNode) =>
       match findBorrowPayload ℓ v with
@@ -368,6 +399,86 @@ def writeC (place : Term) (refined : Val) : M Unit := do
   | .sym σ => modify (fun s => { s with env := s.env.map (fun kv => (kv.1, substSym σ refined kv.2)) })
   | v => throwErr s!"writeC (⇜): place holds {v.pretty}, expected a symbolic value (sym σ)"
 
+/-! ## ⇝ (comptime read) and value typing (§4)
+
+    `readC` is the ⇝ column: it evaluates a term in the borrow-free fragment.
+    Discipline (to be a lemma later): it NEVER writes a slot. Reflection reads
+    Ω only for snapshots — a variable reads its slot non-destructively, `*x`
+    projects a borrow's payload — and `&mut`, assignment, and consumption
+    through a loan are all outside the fragment (errors). Reflected pure terms
+    are then normalized by `nfV`. -/
+
+/-! Reflect a comptime term into a value, resolving Ω snapshot reads. Pure
+    formers map to their `Val` counterparts; runtime-only constructs error. -/
+mutual
+  def reflectC : Term → M Val
+    | .var x => lookupSlot x                        -- snapshot read (non-destructive)
+    | .deref t => do
+      match ← reflectC t with
+      | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
+      | _ => throwErr "readC (⇝ *): dereferenced value is not a borrow"
+    | .ctorApp n args => do pure (.ctor n (← reflectCList args))
+    | .type => pure .type
+    | .const c => pure (.const c)
+    | .pvar k => pure (.pvar k)
+    | .pi d c => do pure (.pi (← reflectC d) (← reflectC c))
+    | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
+    | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
+    | .app f a => do pure (.app (← reflectC f) (← reflectC a))
+    | .unit => pure (.ctor "unit" [])
+    | .letIn _ _ _ => throwErr "readC (⇝): pure `let` not implemented (no test needs it this milestone)"
+    | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
+    | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
+    | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
+    | .matchE _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
+    | .borrowT _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
+    | .call _ _ => throwErr "readC (⇝): a call is not in the comptime fragment (its result is a fresh existential)"
+  def reflectCList : List Term → M (List Val)
+    | [] => pure []
+    | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
+end
+
+/-- ⇝: reflect then normalize. Ω is read-only throughout. -/
+def readC (fuel : Nat) (t : Term) : M Val := do pure (Val.nfV fuel (← reflectC t))
+
+/-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
+    and conversion; a constructor value by the signature table, checking each
+    field against its (dependently instantiated) type; a type former inhabits
+    the universe. Cases no test forces error distinctively (M5 grows them). -/
+mutual
+  def hasType : Nat → Val → Val → M Bool
+    | 0, _, _ => throwErr "hasType: out of fuel"
+    | fuel + 1, v, ty => do
+      match v with
+      | .sym σ =>
+        match (← get).sctx.lookup σ with
+        | some vty => pure (Val.convert fuel vty ty)
+        | none => throwErr s!"hasType: σ{σ} has no type in sctx"
+      | .ctor name args =>
+        match Val.ctorSig name with
+        | none => throwErr s!"hasType: unknown constructor '{name}'"
+        | some sig =>
+          match sig.fieldTypes (Val.whnfV fuel ty) with
+          | none => pure false                       -- constructor does not inhabit this type
+          | some ftys => checkFields fuel args ftys
+      | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
+      | .pi _ _ => pure (Val.convert fuel ty .type)
+      | .sigmaT _ _ => pure (Val.convert fuel ty .type)
+      | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
+  termination_by fuel _ _ => (fuel, 0, 0)
+  /-- Check a constructor's fields against its field-type telescope, threading
+      each checked field value into the remaining (dependent) field types. -/
+  def checkFields : Nat → List Val → List Val → M Bool
+    | _, [], [] => pure true
+    | fuel, v :: vs, ty :: tys => do
+      if ← hasType fuel v ty then
+        checkFields fuel vs (tys.map (Val.substPure 0 v))
+      else pure false
+    | _, _, _ => pure false                          -- arity mismatch
+  termination_by fuel _ tys => (fuel, 1, tys.length)
+end
+
+
 /-! ## Match branch selection (§3)
 
     These set up Ω for a branch and return the body term to evaluate; they do
@@ -441,7 +552,7 @@ mutual
           -- a top-level loanM (§2.2/§2.5) and a Cons of field-loans left by a
           -- borrow-mode match (§3.3) are the same case.
           match firstLoanMarker v with
-          | some ℓ => do endMut ℓ; readR fuel (.var x)
+          | some ℓ => do endLoan ℓ; readR fuel (.var x)
           | none => do setSlot x .bot; pure v            -- move out, leave ⊥
       | .deref t' => do
         -- take: read the payload through the borrow, leaving a hole (⊥) in it
@@ -476,14 +587,14 @@ mutual
         | .borrowM ℓ payload =>
           match payload with
           | .ctor name fields => do readR fuel (← borrowSelect scrut branches ℓ name fields)
-          | .loanM ℓ' => do endMut ℓ'; readR fuel (.matchE scrut branches)  -- reborrowed payload: end, retry
+          | .loanM ℓ' => do endLoan ℓ'; readR fuel (.matchE scrut branches)  -- reborrowed payload: end, retry
           | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
           | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
           | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
           | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
         | v =>
           match firstLoanMarker v with
-          | some ℓ => do endMut ℓ; readR fuel (.matchE scrut branches)      -- suspended owner: end, retry
+          | some ℓ => do endLoan ℓ; readR fuel (.matchE scrut branches)      -- suspended owner: end, retry
           | none =>
             match v with
             | .ctor name fields => do readR fuel (← ownedSelect scrut branches name fields)
@@ -492,6 +603,16 @@ mutual
       | .seq e rest => do
         let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
+      | .call f args => do
+        -- §5.3: check the call against the SIGNATURE alone (never another body).
+        match (← get).decls.find? (fun d => d.name == f) with
+        | none => throwErr s!"call: unknown function '{f}'"
+        | some decl => do
+          processArgs fuel decl.telescope args           -- consume args, annotate owed loans
+          let retTy ← readC fuel decl.retType            -- mint a fresh result at the return type
+          let σ ← freshSym
+          modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
+          pure (.sym σ)
       | .unit => pure (.ctor "unit" [])
       | _ => throwErr "readR (⇒): pure formers (λ/app/Π/Σ/Type/const) are read by ⇝ (readC), not ⇒"
   termination_by fuel _ => (fuel, 0, 0)
@@ -501,6 +622,33 @@ mutual
       let v ← readR fuel a
       pure (v :: (← readArgs fuel as))
   termination_by fuel as => (fuel, 1, as.length)
+  /-- Consume a call's arguments left-to-right, checking each against its
+      telescope entry. A pure argument must `hasType` its parameter type. A
+      borrow argument must be a `borrowM ℓ v` whose payload `v` has the
+      parameter type τ; the borrow is consumed and its loan ℓ is annotated
+      **owed** the type `S[s := v]` (§5.3's promise). -/
+  def processArgs : Nat → List (String × Term) → List Term → M Unit
+    | _, [], [] => pure ()
+    | fuel, (_, tyTerm) :: tRest, arg :: aRest => do
+      match tyTerm with
+      | .borrowT τ S => do
+        match ← readR fuel arg with
+        | .borrowM ℓ payload => do
+          let τVal ← readC fuel τ
+          if ← hasType fuel payload τVal then do
+            let SVal ← readC fuel S
+            modify (fun s => { s with owed := (ℓ, Val.nfV fuel (Val.substPure 0 payload SVal)) :: s.owed })
+            processArgs fuel tRest aRest
+          else
+            throwErr s!"call: borrow argument's payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
+        | v => throwErr s!"call: expected a borrow argument (&mut …), got {v.pretty}"
+      | tyTerm => do
+        let argVal ← readR fuel arg
+        let τVal ← readC fuel tyTerm
+        if ← hasType fuel argVal τVal then processArgs fuel tRest aRest
+        else throwErr s!"call: argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
+    | _, _, _ => throwErr "call: arity mismatch (arguments vs telescope)"
+  termination_by fuel _ args => (fuel, 1, args.length)
 end
 
 /-! ## Running programs -/
@@ -560,13 +708,13 @@ def reorgScrut : Nat → Var → M Dispatch
       match payload with
       | .ctor name fields => pure (.borrowCtor ℓ name fields)
       | .sym σ => pure (.borrowSym ℓ σ)
-      | .loanM ℓ' => do endMut ℓ'; reorgScrut fuel scrut
+      | .loanM ℓ' => do endLoan ℓ'; reorgScrut fuel scrut
       | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
       | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
       | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
     | v =>
       match firstLoanMarker v with
-      | some ℓ => do endMut ℓ; reorgScrut fuel scrut
+      | some ℓ => do endLoan ℓ; reorgScrut fuel scrut
       | none =>
         match v with
         | .ctor name fields => pure (.ownedCtor name fields)
@@ -750,84 +898,6 @@ def expectMErr (seed : Omega) (m : M Unit) (needle : String) : Bool :=
   match m.run (seedSt seed) with
   | .ok _ _ => false
   | .error e _ => strContains e needle
-
-/-! ## ⇝ (comptime read) and value typing (§4)
-
-    `readC` is the ⇝ column: it evaluates a term in the borrow-free fragment.
-    Discipline (to be a lemma later): it NEVER writes a slot. Reflection reads
-    Ω only for snapshots — a variable reads its slot non-destructively, `*x`
-    projects a borrow's payload — and `&mut`, assignment, and consumption
-    through a loan are all outside the fragment (errors). Reflected pure terms
-    are then normalized by `nfV`. -/
-
-/-! Reflect a comptime term into a value, resolving Ω snapshot reads. Pure
-    formers map to their `Val` counterparts; runtime-only constructs error. -/
-mutual
-  def reflectC : Term → M Val
-    | .var x => lookupSlot x                        -- snapshot read (non-destructive)
-    | .deref t => do
-      match ← reflectC t with
-      | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
-      | _ => throwErr "readC (⇝ *): dereferenced value is not a borrow"
-    | .ctorApp n args => do pure (.ctor n (← reflectCList args))
-    | .type => pure .type
-    | .const c => pure (.const c)
-    | .pvar k => pure (.pvar k)
-    | .pi d c => do pure (.pi (← reflectC d) (← reflectC c))
-    | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
-    | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
-    | .app f a => do pure (.app (← reflectC f) (← reflectC a))
-    | .unit => pure (.ctor "unit" [])
-    | .letIn _ _ _ => throwErr "readC (⇝): pure `let` not implemented (no test needs it this milestone)"
-    | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
-    | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
-    | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
-    | .matchE _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
-    | .borrowT _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
-  def reflectCList : List Term → M (List Val)
-    | [] => pure []
-    | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
-end
-
-/-- ⇝: reflect then normalize. Ω is read-only throughout. -/
-def readC (fuel : Nat) (t : Term) : M Val := do pure (Val.nfV fuel (← reflectC t))
-
-/-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
-    and conversion; a constructor value by the signature table, checking each
-    field against its (dependently instantiated) type; a type former inhabits
-    the universe. Cases no test forces error distinctively (M5 grows them). -/
-mutual
-  def hasType : Nat → Val → Val → M Bool
-    | 0, _, _ => throwErr "hasType: out of fuel"
-    | fuel + 1, v, ty => do
-      match v with
-      | .sym σ =>
-        match (← get).sctx.lookup σ with
-        | some vty => pure (Val.convert fuel vty ty)
-        | none => throwErr s!"hasType: σ{σ} has no type in sctx"
-      | .ctor name args =>
-        match Val.ctorSig name with
-        | none => throwErr s!"hasType: unknown constructor '{name}'"
-        | some sig =>
-          match sig.fieldTypes (Val.whnfV fuel ty) with
-          | none => pure false                       -- constructor does not inhabit this type
-          | some ftys => checkFields fuel args ftys
-      | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
-      | .pi _ _ => pure (Val.convert fuel ty .type)
-      | .sigmaT _ _ => pure (Val.convert fuel ty .type)
-      | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
-  termination_by fuel _ _ => (fuel, 0, 0)
-  /-- Check a constructor's fields against its field-type telescope, threading
-      each checked field value into the remaining (dependent) field types. -/
-  def checkFields : Nat → List Val → List Val → M Bool
-    | _, [], [] => pure true
-    | fuel, v :: vs, ty :: tys => do
-      if ← hasType fuel v ty then
-        checkFields fuel vs (tys.map (Val.substPure 0 v))
-      else pure false
-    | _, _, _ => pure false                          -- arity mismatch
-  termination_by fuel _ tys => (fuel, 1, tys.length)
-end
 
 /-! ## Pure test helpers -/
 

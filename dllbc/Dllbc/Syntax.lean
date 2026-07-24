@@ -69,6 +69,9 @@ inductive Term where
       its value, then run `rest`. Sequences a `match` (or any effectful term)
       used in statement position without binding a throwaway slot. -/
   | seq    : Term → Term → Term
+  /-- `f(a, …)` — a call to a declared function (§5.3), checked against the
+      signature alone. Unifying `fn` with λ is deferred (§10). -/
+  | call   : String → List Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term

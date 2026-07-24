@@ -118,7 +118,13 @@ partial def expandE (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dl
     return (← `(Dllbc.Term.deref $e'), n)
   | `(dlle| $c:ident ($args,*)) => do
     let (args', n) ← expandEList ctx next args.getElems.toList
-    return (← `(Dllbc.Term.ctorApp $(quote c.getId.toString) [$args',*]), n)
+    let name := c.getId.toString
+    -- Uppercase-initial `C(…)` is a constructor application; lowercase `f(…)`
+    -- is a call to a declared function (§5.3).
+    if isUpperInit name then
+      return (← `(Dllbc.Term.ctorApp $(quote name) [$args',*]), n)
+    else
+      return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
   | `(dlle| $num:num) => return (← buildNat num.getNat, next)
   | `(dlle| match $x:ident { $arms,* }) => do
     let id ← lookupVarId ctx x
