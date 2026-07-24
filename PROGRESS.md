@@ -107,6 +107,45 @@ idiom [the naturalness make-or-break], (4) sub-slice surface forms,
 (5) if-sugar. Deferred throughout: shared borrows, [k]/termination,
 §6.2's precision spectrum, proofs.
 
+M12–M15, same day, the quicksort train:
+
+- M12 dependent call-site instantiation (the §5.3 keystone). Two
+  semantic rules the tests forced: return types PINNED AT ENTRY (a
+  dependent return type may mention arguments the body consumes — it
+  means their entry values), and instantiated types joining refinable
+  σ-bearing state (first external consumer of the M10 invariant,
+  held on first contact). Plus Term-level Std and if-sugar.
+- M13 the two-cursor swap gate: nth (borrow-returning recursive
+  cursor) and nth2 : (&mut List, i, j) → &mut × &mut — the calculus's
+  split_at_mut (two sequential nth calls CANNOT give two live cursors;
+  one call returning the pair is the answer to disjointness), and the
+  first exercise of M7's multi-issued group end. Naturalness memo:
+  ~26 library + ~6 per-site lines, dominant contortion = the
+  default-element OOB parameter.
+- M14 bounds-proof cursors: prerequisite VERIFIED with negative
+  controls (borrow-mode symbolic match refines the payload snapshot;
+  len *v computes per branch in sctx-held types), default params
+  replaced by Le proofs passing down DEFINITIONALLY (no le_trans
+  needed), OOB now a call-site rejection, per-site cost ~5 → 1 line.
+  The audit gained the ex-falso branch admission.
+- M15 the pure surface authoring layer: pure{} named binders + elim
+  recursor sugar with explicit motives — deliberately no unifier, no
+  case trees, no motive inference. THE M11 WALL COLLAPSED: le_trans
+  authored in 14 lines, checked, applied through instantiation. The
+  surface exposed two real hasType gaps (bound-function application
+  spines; eliminator over-application) that raw terms could not have
+  localized — a mis-typed raw term is indistinguishable from a
+  mis-indexed one. Friction noted, not built: lemma application
+  inside Decl bodies is still raw-Term splicing.
+
+Remaining to the north star: M16 swap's Σ-wrapped count spec +
+count_swapL and its arithmetic prerequisites (the proof core — also
+measures the unpack/repack pain that decides the refined-obligation-
+sugar question), M17 segment-scoped Lomuto partition with the count
+spec, M18 ordering evidence (AllLe/AllGe + Sorted gluing), M19
+assembly (partial correctness; totality after, via fuel or §8
+measures).
+
 ## 2026-06-10 — pss/: full Lean formalization of the original PSS paper (branch pss-2)
 
 New self-contained Lean 4.16 package `pss/` (no mathlib) formalizing
