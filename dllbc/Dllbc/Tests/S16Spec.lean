@@ -38,4 +38,9 @@ example : chk StdLemmas.add_comm StdLemmas.add_comm_ty = true := by native_decid
 example : chk StdLemmas.add_assoc StdLemmas.add_assoc_ty = true := by native_decide
 example : chk StdLemmas.count_cons StdLemmas.count_cons_ty = true := by native_decide
 
+/-! ## The count/append/take/drop lemmas -/
+
+example : chk StdLemmas.count_append StdLemmas.count_append_ty = true := by native_decide
+example : chk StdLemmas.take_drop_id StdLemmas.take_drop_id_ty = true := by native_decide
+
 end Dllbc.Tests.S16Spec

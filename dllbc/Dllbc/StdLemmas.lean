@@ -113,4 +113,40 @@ def count_cons_ty : Term := pure{
   Π (m : Nat) → Π (h : Nat) → Π (t : List Nat) →
     Id Nat (count m (Cons h t)) (boolRec (λ (b : Bool). Nat) (S (count m t)) (count m t) (eqb m h)) }
 
+/-! ## The `count`/`append`/`take`/`drop` lemmas (§16-2)
+
+    `count_append` — count distributes over `append` — needs a dependent Bool-elim
+    on `eqb m h` in the `Cons` case (the motive abstracts the `boolRec` that
+    `count (Cons …)` unfolds to). `take_drop_id` reassembles a list from its
+    prefix and suffix. Both are the building blocks the swap-count lemma consumes. -/
+
+def count_append : Term := pure{
+  λ (m : Nat). λ (a : List Nat). λ (b : List Nat).
+    elim a return (λ (x : List Nat). Id Nat (count m (append x b)) (add (count m x) (count m b))) {
+      Nil => Refl,
+      Cons (h) (t) ih =>
+        elim (eqb m h) return (λ (bv : Bool).
+          Id Nat (boolRec (λ (w : Bool). Nat) (S (count m (append t b))) (count m (append t b)) bv)
+                 (add (boolRec (λ (w : Bool). Nat) (S (count m t)) (count m t) bv) (count m b))) {
+          True => id_congr Nat Nat (λ (n : Nat). S n) (count m (append t b)) (add (count m t) (count m b)) ih,
+          False => ih
+        }
+    } }
+def count_append_ty : Term := pure{
+  Π (m : Nat) → Π (a : List Nat) → Π (b : List Nat) →
+    Id Nat (count m (append a b)) (add (count m a) (count m b)) }
+
+def take_drop_id : Term := pure{
+  λ (i : Nat). elim i return (λ (k : Nat). Π (l : List Nat) → Id (List Nat) (append (take k l) (drop k l)) l) {
+    Z => λ (l : List Nat). Refl,
+    S (i') ih => λ (l : List Nat).
+      elim l return (λ (x : List Nat). Id (List Nat) (append (take (S i') x) (drop (S i') x)) x) {
+        Nil => Refl,
+        Cons (h) (t) ihl =>
+          id_congr (List Nat) (List Nat) (λ (r : List Nat). Cons h r)
+            (append (take i' t) (drop i' t)) t (ih t)
+      } } }
+def take_drop_id_ty : Term := pure{
+  Π (i : Nat) → Π (l : List Nat) → Id (List Nat) (append (take i l) (drop i l)) l }
+
 end Dllbc.StdLemmas
