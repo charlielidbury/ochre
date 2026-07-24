@@ -129,4 +129,23 @@ def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.match
 def stuckProbeNonExh : Decl := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
 example : checkFnErr stuckProbeNonExh "non-exhaustive" = true := by native_decide
 
+/-! ## M19-C (model) — `partitionL` computes the Lomuto partition
+
+    Concrete validation of the pure model before wiring the imperative body to it:
+    first-element pivot, `≤`-elements moved before it, `>`-elements after, pivot
+    landing at the boundary. Covers an already-partitioned input (pivot smallest,
+    no swaps), a reverse-sorted input (all `≤`, boundary walks to the end), and a
+    mixed input that exercises the `g = S g'` swap branch. -/
+
+def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
+def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
+def vlist : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnat x, vlist xs]
+def tlist : List Nat → Term | [] => .ctorApp "Nil" [] | x :: xs => .ctorApp "Cons" [tnat x, tlist xs]
+def partLT (n : Nat) (l : List Nat) : Term := .app (.app StdLemmas.partitionL (tnat n)) (tlist l)
+
+example : (pv (partLT 3 [3,1,2]) == vlist [2,1,3]) = true := by native_decide
+example : (pv (partLT 3 [1,2,3]) == vlist [1,2,3]) = true := by native_decide          -- already partitioned
+example : (pv (partLT 3 [3,2,1]) == vlist [1,2,3]) = true := by native_decide          -- reverse sorted
+example : (pv (partLT 5 [3,5,1,2,4]) == vlist [2,1,3,5,4]) = true := by native_decide   -- exercises the swap
+
 end Dllbc.Tests.S19Partition

@@ -27,6 +27,7 @@ abbrev append : Term := Std.appendFnT
 abbrev eqb : Term := Std.eqbFnT
 abbrev take : Term := Std.takeFnT
 abbrev drop : Term := Std.dropFnT
+abbrev leb : Term := Std.lebFnT
 
 /-! ## `le_refl`, `le_trans` — the acceptance test -/
 
@@ -71,6 +72,15 @@ def le_up_r : Term := pure{
         S (b') ihb => λ (h0 : Le (S a') (S b')). ih b' h0
       } h } }
 def le_up_r_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → Le a (S b) }
+
+-- `i ≤ i + g`: the boundary never passes the scan position it feeds. A clean
+-- induction on `i` (`add (S i') g = S (add i' g)`, so `Le (S i') (add (S i') g)`
+-- reduces to the IH). The partition swaps consume this as their `pij`.
+def le_add : Term := pure{
+  λ (i : Nat). elim i return (λ (iz : Nat). Π (g : Nat) → Le iz (add iz g)) {
+    Z => λ (g : Nat). unit,
+    S (i') ih => λ (g : Nat). ih g } }
+def le_add_ty : Term := pure{ Π (i : Nat) → Π (g : Nat) → Le i (add i g) }
 
 /-! ## `id_trans`, `id_congr` — the J warm-ups partition's count-chaining consumes -/
 
@@ -397,5 +407,43 @@ def count_swapL' : Term := pure{
 def count_swapL'_ty : Term := pure{
   Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) j → Le (S j) (len l) → Id Nat (count m (swapL i j l)) (count m l) }
+
+/-! ## `partScanL` / `partitionL` — the pure Lomuto model (§19)
+
+    The EXACT recursion the imperative body performs, so the conformance check
+    (convert the body's composed backward tree against this per path) holds. Pivot
+    is the FIRST element; the scan carries a boundary `i` (size of the ≤-pivot
+    region after the pivot) and a GAP counter `g` (the >-pivot elements found so
+    far) — so the scan position is `j = S (add i g)` and the swap decision is
+    STRUCTURAL on `g` (no second stuck-spine split), and the swap is never a
+    self-swap (`g = S g'` guarantees `S i < j`). One `leb` casing per step is the
+    only Bool spine, the M19-B gate's job.
+
+    Base (`k = Z`): place the pivot with `swapL Z i` — cased on `i` because swapS
+    cannot self-swap, so `i = Z` is the no-op the imperative body also special-cases.
+    Step: `leb (nth j l) pivot` — True with `g = Z` advances the boundary (the
+    ≤-prefix stays contiguous, no swap); True with `g = S g'` swaps `S i`↔`j`
+    (a >-pivot element out, the ≤ element in) keeping the gap; False grows the gap. -/
+
+def partScanL : Term := pure{
+  λ (pivot : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → List Nat) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim i return (λ (iz : Nat). List Nat) {
+          Z => l,
+          S (i') iih => swapL Z (S i') l },
+      S (k') rec => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim (leb (nth (S (add i g)) l) pivot) return (λ (w : Bool). List Nat) {
+          True => elim g return (λ (gz : Nat). List Nat) {
+            Z => rec (S i) Z l,
+            S (g') gih => rec (S i) (S g') (swapL (S i) (S (add i g)) l) },
+          False => rec i (S g) l } } }
+
+def partitionL : Term := pure{
+  λ (n : Nat). λ (l : List Nat).
+    elim n return (λ (nz : Nat). List Nat) {
+      Z => l,
+      S (n') rec => partScanL (nth Z l) n' Z Z l } }
+def partitionL_ty : Term := pure{ Π (n : Nat) → List Nat → List Nat }
 
 end Dllbc.StdLemmas
