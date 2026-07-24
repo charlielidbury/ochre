@@ -139,6 +139,15 @@ def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat ×
     obligations, and every issued borrow's payload has its owed type. -/
 def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
   let obs := (← get).obligations                    -- this path's (refined) obligations
+  -- Ex falso: a branch whose result is `botElim _ x` with `x : ⊥` is
+  -- unreachable (a bounds-proof `nth`'s `Nil` branch, where `p : Le (S i) 0 = ⊥`).
+  -- It is vacuously well-formed at ANY return type — no borrow/obligation audit,
+  -- and the `botElim` motive need not be the (unreflectable) borrow return type.
+  match Val.collectSpine resultVal with
+  | (.const "botElim", [_, x]) =>
+    if ← hasType fuel x (.const "Bot") then pure ()
+    else throwErr s!"audit: botElim result on a non-⊥ argument ({x.pretty})"
+  | _ =>
   match ← collectResultBorrows fuel retType resultVal with
   | some checks => do
     obs.forM (auditObligation fuel (checks.map (·.1)))

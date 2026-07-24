@@ -91,6 +91,33 @@ def sortedArm : Val := .lam natTy (.lam listNatTy (.lam .type (.sigmaT (Bound (.
 def SortedFn : Val := .lam listNatTy (listRecS natTy (.lam listNatTy .type) unitTy sortedArm (.pvar 0))
 def Sorted (l : Val) : Val := .app SortedFn l
 
+/-! ## `len`, `take`, `drop` — the segment vocabulary (§14)
+
+    `len` by `listRec`; `take`/`drop` by `natRec` on the count giving a
+    `List Nat → List Nat` (a `listRec` inside the successor arm), the double-
+    recursion shape. These are the length bound and the prefix/suffix a
+    segment-scoped spec talks about. -/
+
+def lenArm : Val := .lam natTy (.lam listNatTy (.lam natTy (suc (.pvar 0))))
+def lenFn : Val := .lam listNatTy (listRecS natTy (.lam listNatTy natTy) zero lenArm (.pvar 0))
+def len (l : Val) : Val := .app lenFn l
+
+def takeArm : Val :=
+  .lam natTy (.lam (.pi listNatTy listNatTy) (.lam listNatTy
+    (listRecS natTy (.lam listNatTy listNatTy) nilV
+      (.lam natTy (.lam listNatTy (.lam listNatTy (consV (.pvar 2) (.app (.pvar 4) (.pvar 1)))))) (.pvar 0))))
+def takeFn : Val :=
+  .lam natTy (natRecS (.lam natTy (.pi listNatTy listNatTy)) (.lam listNatTy nilV) takeArm (.pvar 0))
+def take (n l : Val) : Val := .app (.app takeFn n) l
+
+def dropArm : Val :=
+  .lam natTy (.lam (.pi listNatTy listNatTy) (.lam listNatTy
+    (listRecS natTy (.lam listNatTy listNatTy) nilV
+      (.lam natTy (.lam listNatTy (.lam listNatTy (.app (.pvar 4) (.pvar 1))))) (.pvar 0))))
+def dropFn : Val :=
+  .lam natTy (natRecS (.lam natTy (.pi listNatTy listNatTy)) (.lam listNatTy (.pvar 0)) dropArm (.pvar 0))
+def drop (n l : Val) : Val := .app (.app dropFn n) l
+
 /-! ## First lemma: `le_refl : Π n. Le n n`, by `natRec`
 
     `λn. natRec (λm. Le m m) ⋆ (λm. λrec. rec) n`. The base is `⋆ : Le Z Z = ⊤`;
@@ -138,5 +165,11 @@ def BoundT (h l : Dllbc.Term) : Dllbc.Term := .app (.app BoundFnT h) l
 def SortedFnT : Dllbc.Term := toTerm SortedFn
 def SortedT (l : Dllbc.Term) : Dllbc.Term := .app SortedFnT l
 def le_reflT : Dllbc.Term := toTerm le_refl
+def lenFnT : Dllbc.Term := toTerm lenFn
+def lenT (l : Dllbc.Term) : Dllbc.Term := .app lenFnT l
+def takeFnT : Dllbc.Term := toTerm takeFn
+def takeT (n l : Dllbc.Term) : Dllbc.Term := .app (.app takeFnT n) l
+def dropFnT : Dllbc.Term := toTerm dropFn
+def dropT (n l : Dllbc.Term) : Dllbc.Term := .app (.app dropFnT n) l
 
 end Dllbc.Std
