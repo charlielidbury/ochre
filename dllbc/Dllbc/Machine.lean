@@ -38,6 +38,7 @@ structure St where
   env : Omega
   nextLoan : Nat
   nextVar : Nat
+  nextSym : Nat
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -54,6 +55,12 @@ def freshLoan : M Nat := do
   let s ← get
   set { s with nextLoan := s.nextLoan + 1 }
   pure s.nextLoan
+
+/-- Mint a fresh symbolic id. -/
+def freshSym : M Nat := do
+  let s ← get
+  set { s with nextSym := s.nextSym + 1 }
+  pure s.nextSym
 
 /-- Read Ω. -/
 def getEnv : M Omega := do pure (← get).env
@@ -104,6 +111,7 @@ mutual
       | some r => some r            -- payload (deeper) first
       | none => some (ℓ, .borrowNode)
     | .ctor _ args => firstOwnNodeList args
+    | .sym _ => none                -- a snapshot holds no ownership nodes
   termination_by v => sizeOf v
   def firstOwnNodeList : List Val → Option (Nat × OwnKind)
     | [] => none
@@ -137,6 +145,7 @@ mutual
     | .borrowM ℓ' p => .borrowM ℓ' (replaceLoanMarker ℓ newV p)
     | .ctor n args => .ctor n (replaceLoanMarkerList ℓ newV args)
     | .bot => .bot
+    | .sym σ => .sym σ
   termination_by v => sizeOf v
   def replaceLoanMarkerList (ℓ : Nat) (newV : Val) : List Val → List Val
     | [] => []
@@ -151,6 +160,7 @@ mutual
     | .loanM ℓ' => .loanM ℓ'
     | .ctor n args => .ctor n (replaceBorrowWithBotList ℓ args)
     | .bot => .bot
+    | .sym σ => .sym σ
   termination_by v => sizeOf v
   def replaceBorrowWithBotList (ℓ : Nat) : List Val → List Val
     | [] => []
@@ -165,6 +175,7 @@ mutual
     | .borrowM _ p => containsLoan ℓ p
     | .ctor _ args => containsLoanList ℓ args
     | .bot => false
+    | .sym _ => false
   termination_by v => sizeOf v
   def containsLoanList (ℓ : Nat) : List Val → Bool
     | [] => false
@@ -185,6 +196,7 @@ mutual
     | .borrowM _ _ => none
     | .ctor _ args => firstLoanMarkerList args
     | .bot => none
+    | .sym _ => none
   termination_by v => sizeOf v
   def firstLoanMarkerList : List Val → Option Nat
     | [] => none
@@ -192,6 +204,22 @@ mutual
       match firstLoanMarker v with
       | some ℓ => some ℓ
       | none => firstLoanMarkerList vs
+  termination_by vs => sizeOf vs
+end
+
+/-! Substitute `newV` for every `sym σ` occurrence in `v` — the value-tree
+    core of ⇜ (§3.2 refinement substitutes σ *everywhere*). -/
+mutual
+  def substSym (σ : Nat) (newV : Val) : Val → Val
+    | .sym σ' => if σ' == σ then newV else .sym σ'
+    | .borrowM ℓ p => .borrowM ℓ (substSym σ newV p)
+    | .ctor n args => .ctor n (substSymList σ newV args)
+    | .loanM ℓ => .loanM ℓ
+    | .bot => .bot
+  termination_by v => sizeOf v
+  def substSymList (σ : Nat) (newV : Val) : List Val → List Val
+    | [] => []
+    | v :: vs => substSym σ newV v :: substSymList σ newV vs
   termination_by vs => sizeOf vs
 end
 
@@ -280,6 +308,7 @@ def navRead : Nat → Val → M Val
   | _ + 1, .bot => throwErr "*: cannot peel a vacant slot (⊥)"
   | _ + 1, .loanM ℓ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
   | _ + 1, .ctor n _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
+  | _ + 1, .sym σ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
 
 /-- Functionally set the value `n` borrow layers deep inside `v` to `newLeaf`. -/
 def navWrite : Nat → Val → Val → M Val
@@ -290,6 +319,7 @@ def navWrite : Nat → Val → Val → M Val
   | _ + 1, .bot, _ => throwErr "*: cannot peel a vacant slot (⊥)"
   | _ + 1, .loanM ℓ, _ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
   | _ + 1, .ctor n _, _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
+  | _ + 1, .sym σ, _ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
 
 /-- Read the value at a resolved position (peeks; no side effect). -/
 def getAtPos (pos : Pos) : M Val := do
@@ -315,6 +345,19 @@ def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
     setAtPos pos .bot                              -- vacate first (no stale copy in Ω scans)
     drop fuel old                                  -- drop the displaced value
     setAtPos pos newval                            -- fill
+
+/-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
+    `writeR`. Defined on the same place shapes (a variable under peels). The
+    place must currently hold a symbolic value `sym σ` (reached through borrow
+    payloads by the peels); the effect is **global substitution** — every
+    occurrence of `sym σ` in *every* slot of Ω is replaced by `refined`
+    (§3.2's "everywhere"). Minting fresh σ's is the caller's job. Errors
+    distinctively if the place holds anything other than a `sym`. -/
+def writeC (place : Term) (refined : Val) : M Unit := do
+  let pos ← placeToPos place
+  match ← getAtPos pos with
+  | .sym σ => modify (fun s => { s with env := s.env.map (fun kv => (kv.1, substSym σ refined kv.2)) })
+  | v => throwErr s!"writeC (⇜): place holds {v.pretty}, expected a symbolic value (sym σ)"
 
 /-! ## Match branch selection (§3)
 
@@ -426,6 +469,7 @@ mutual
           | .ctor name fields => do readR fuel (← borrowSelect scrut branches ℓ name fields)
           | .loanM ℓ' => do endMut ℓ'; readR fuel (.matchE scrut branches)  -- reborrowed payload: end, retry
           | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
+          | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
           | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
         | v =>
           match firstLoanMarker v with
@@ -433,6 +477,7 @@ mutual
           | none =>
             match v with
             | .ctor name fields => do readR fuel (← ownedSelect scrut branches name fields)
+            | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
             | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor value"
       | .seq e rest => do
         let _ ← readR fuel e                             -- evaluate for effect, discard
@@ -450,7 +495,7 @@ end
 /-! ## Running programs -/
 
 /-- The initial machine state: empty Ω, fresh supplies at 0. -/
-def initSt : St := { env := [], nextLoan := 0, nextVar := 0 }
+def initSt : St := { env := [], nextLoan := 0, nextVar := 0, nextSym := 0 }
 
 /-- Generous default fuel; §2 programs use only a handful. -/
 def defaultFuel : Nat := 1000
@@ -477,5 +522,192 @@ def expectErr (t : Term) (needle : String) : Bool :=
   match runProg t with
   | .ok _ => false
   | .error e => strContains e needle
+
+/-! ## The symbolic driver (§3.2): matching a symbolic scrutinee splits the run
+
+    The four arrows stay single-path in `M`; a driver on top owns the split.
+    A statement-spine pre-pass makes every match terminal, then `explore`
+    walks the spine — non-match steps delegate to the `M` machinery, and a
+    terminal match on a symbolic scrutinee forks one path per branch. -/
+
+/-- What a match scrutinee resolves to after lazy reorganization. -/
+inductive Dispatch where
+  | ownedCtor  : String → List Val → Dispatch        -- owned concrete constructor
+  | borrowCtor : Nat → String → List Val → Dispatch  -- borrow mode, loan ℓ + payload ctor
+  | ownedSym   : Nat → Dispatch                      -- owned symbolic value sym σ
+  | borrowSym  : Nat → Nat → Dispatch                -- borrow mode, loan ℓ + payload sym σ
+
+/-- Reorganize a match scrutinee (exactly as `readR`'s match would — End-Mut a
+    suspended owner or a reborrowed payload, innermost first) and classify what
+    it holds. Fuel bounds the reorganize-retry loop. -/
+def reorgScrut : Nat → Var → M Dispatch
+  | 0, _ => throwErr "match: out of fuel (scrutinee reorganization)"
+  | fuel + 1, scrut => do
+    match ← lookupSlot scrut with
+    | .bot => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} holds ⊥ (use-after-move)"
+    | .borrowM ℓ payload =>
+      match payload with
+      | .ctor name fields => pure (.borrowCtor ℓ name fields)
+      | .sym σ => pure (.borrowSym ℓ σ)
+      | .loanM ℓ' => do endMut ℓ'; reorgScrut fuel scrut
+      | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
+      | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
+    | v =>
+      match firstLoanMarker v with
+      | some ℓ => do endMut ℓ; reorgScrut fuel scrut
+      | none =>
+        match v with
+        | .ctor name fields => pure (.ownedCtor name fields)
+        | .sym σ => pure (.ownedSym σ)
+        | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor or symbolic value"
+
+/-- Symbolic **owned** branch entry (§3.2): mint fresh σ's for the pattern
+    fields, ⇜-refine the scrutinee to `C (sym σ₁) … (sym σₙ)` *everywhere*,
+    then destructure as owned match (scrutinee → ⊥, binders ↦ `sym σᵢ`).
+    Returns the branch body. -/
+def symOwnedSetup (scrut : Var) (br : Branch) : M Term := do
+  let σs ← br.binders.mapM (fun _ => freshSym)
+  writeC (.var scrut) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ everywhere (refinement first)
+  setSlot scrut .bot                                     -- owned consume
+  bindFields br.binders (σs.map Val.sym)
+  pure br.body
+
+/-- Symbolic **borrow** branch entry (§3.3): mint fresh σ's, ⇜-refine the
+    payload to `C (sym σ₁) … (sym σₙ)` *everywhere* (refinement first), THEN
+    reborrow the fields — the scrutinee payload becomes `C (loanM ℓ₁) …`
+    (suspended parent), each binder ↦ `borrowM ℓᵢ (sym σᵢ)`. Order matters:
+    ⇜ hits every occurrence of σ across Ω; only the scrutinee payload is then
+    rewritten to markers (§3.2 "everywhere"; M5 depends on this). -/
+def symBorrowSetup (scrut : Var) (ℓ : Nat) (br : Branch) : M Term := do
+  let σs ← br.binders.mapM (fun _ => freshSym)
+  writeC (.deref (.var scrut)) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ at payload, everywhere
+  let ℓs ← br.binders.mapM (fun _ => freshLoan)
+  setSlot scrut (.borrowM ℓ (.ctor br.ctor (ℓs.map Val.loanM)))   -- suspend the parent
+  bindBorrowFields br.binders ℓs (σs.map Val.sym)
+  pure br.body
+
+/-! Move each statement-spine match into tail position by pushing the
+    continuation into every branch (duplicating it): `seq (matchE) k` and
+    `let y = matchE; k` become terminal matches. Match in *expression*
+    position is left where it is — `explore`/`readR` reject it clearly. -/
+mutual
+  def pushContinuations : Term → Term
+    | .letIn x rhs rest =>
+      match pushContinuations rhs with
+      | .matchE s bs =>
+        let k := pushContinuations rest
+        .matchE s (bs.map (fun br => Branch.mk br.ctor br.binders (.letIn x br.body k)))
+      | rhs' => .letIn x rhs' (pushContinuations rest)
+    | .seq e rest =>
+      match pushContinuations e with
+      | .matchE s bs =>
+        let k := pushContinuations rest
+        .matchE s (bs.map (fun br => Branch.mk br.ctor br.binders (.seq br.body k)))
+      | e' => .seq e' (pushContinuations rest)
+    | .assign p rhs rest => .assign p rhs (pushContinuations rest)
+    | .matchE s bs => .matchE s (pushBranches bs)
+    | t => t
+  termination_by t => sizeOf t
+  def pushBranches : List Branch → List Branch
+    | [] => []
+    | (.mk c bs body) :: rest => Branch.mk c bs (pushContinuations body) :: pushBranches rest
+  termination_by bs => sizeOf bs
+end
+
+/-! Walk the (already `pushContinuations`-normalized) statement spine,
+    returning one result per execution path. Non-match steps delegate to the
+    single-path `M` machinery; a terminal match forks per branch on a symbolic
+    scrutinee, stays single-path on a concrete one. Fuel bounds spine depth.
+    The lexicographic `(fuel, tag, len)` measure admits the same-fuel handoffs
+    (match → per-branch loop → branch body). -/
+mutual
+  def explore : Nat → Term → St → List (Except String (Val × St))
+    | 0, _, _ => [.error "explore: out of fuel"]
+    | fuel + 1, t, st =>
+      match t with
+      | .matchE scrut branches => exploreMatch fuel scrut branches st
+      | .letIn x rhs rest =>
+        match (do let v ← readR fuel rhs; bindSlot x v).run st with
+        | .error e _ => [.error e]
+        | .ok _ st' => explore fuel rest st'
+      | .seq e rest =>
+        match (do let _ ← readR fuel e; pure ()).run st with
+        | .error e _ => [.error e]
+        | .ok _ st' => explore fuel rest st'
+      | .assign p rhs rest =>
+        match (do let v ← readR fuel rhs; writeR fuel p v).run st with
+        | .error e _ => [.error e]
+        | .ok _ st' => explore fuel rest st'
+      | other =>                                     -- final expression
+        match (readR fuel other).run st with
+        | .error e _ => [.error e]
+        | .ok v st' => [.ok (v, st')]
+  termination_by fuel _ _ => (fuel, 0, 0)
+  def exploreMatch : Nat → Var → List Branch → St → List (Except String (Val × St))
+    | fuel, scrut, branches, st =>
+      match (reorgScrut fuel scrut).run st with
+      | .error e _ => [.error e]
+      | .ok disp st' =>
+        match disp with
+        | .ownedCtor name fields =>
+          match (ownedSelect scrut branches name fields).run st' with
+          | .error e _ => [.error e]
+          | .ok body st'' => explore fuel body st''
+        | .borrowCtor ℓ name fields =>
+          match (borrowSelect scrut branches ℓ name fields).run st' with
+          | .error e _ => [.error e]
+          | .ok body st'' => explore fuel body st''
+        | .ownedSym _ => exploreSymBranches fuel scrut false 0 branches st'
+        | .borrowSym ℓ _ => exploreSymBranches fuel scrut true ℓ branches st'
+  termination_by fuel _ _ _ => (fuel, 2, 0)
+  /-- One symbolic path per branch, in declaration order. `borrow` selects the
+      setup; `ℓ` is the parent loan (borrow mode only). -/
+  def exploreSymBranches : Nat → Var → Bool → Nat → List Branch → St → List (Except String (Val × St))
+    | _, _, _, _, [], _ => []
+    | fuel, scrut, borrow, ℓ, br :: rest, st =>
+      (match ((if borrow then symBorrowSetup scrut ℓ br else symOwnedSetup scrut br)).run st with
+       | .error e _ => [.error e]
+       | .ok body st' => explore fuel body st')
+      ++ exploreSymBranches fuel scrut borrow ℓ rest st
+  termination_by fuel _ _ _ branches _ => (fuel, 1, branches.length)
+end
+
+/-! ## Running symbolic programs -/
+
+/-- Largest element of a `Nat` list, or 0 if empty. -/
+def maxNat (xs : List Nat) : Nat := xs.foldl Nat.max 0
+
+/-- Build a machine state from a seed Ω, with fresh supplies set safely above
+    every id already present (loan, sym, var). Stands in for a telescope entry
+    until §5 gives borrow arguments a real frame. -/
+def seedSt (seed : Omega) : St :=
+  { env := seed
+    nextLoan := maxNat (seed.flatMap (fun kv => kv.2.loanIds)) + 1
+    nextVar := maxNat (seed.map (fun kv => kv.1.id)) + 1
+    nextSym := maxNat (seed.flatMap (fun kv => kv.2.symIds)) + 1 }
+
+/-- Explore a program from a seeded Ω, returning one canonicalized final
+    environment (or error) per execution path, in branch-declaration order. -/
+def runExplore (seed : Omega) (t : Term) (fuel : Nat := defaultFuel) : List (Except String Env) :=
+  (explore fuel (pushContinuations t) (seedSt seed)).map
+    (fun r => r.map (fun p => canonicalize p.2.env))
+
+/-- Test helper: the program has exactly the given paths (each an `Env`), in
+    order, all succeeding. -/
+def expectPaths (seed : Omega) (t : Term) (expected : List Env) : Bool :=
+  let rs := runExplore seed t
+  rs.length == expected.length &&
+    (rs.zip expected).all (fun pr => match pr.1 with | .ok env => env == pr.2 | .error _ => false)
+
+/-- Test helper: some path is rejected with an error containing `needle`. -/
+def expectSomePathErr (seed : Omega) (t : Term) (needle : String) : Bool :=
+  (runExplore seed t).any (fun r => match r with | .error e => strContains e needle | .ok _ => false)
+
+/-- Run an `M` action against a seeded Ω, projecting to `Except String Unit`
+    (for direct arrow tests such as `writeC` on a non-symbolic place). -/
+def expectMErr (seed : Omega) (m : M Unit) (needle : String) : Bool :=
+  match m.run (seedSt seed) with
+  | .ok _ _ => false
+  | .error e _ => strContains e needle
 
 end Dllbc

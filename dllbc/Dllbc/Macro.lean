@@ -205,4 +205,18 @@ macro_rules
     let (t, _) ← Dllbc.Macro.expandB [] 0 b
     return t
 
+/-- `dllbcWith [x, y, …]{ … }` pre-binds the named variables to runtime ids
+    `0, 1, …` (in listed order), so a program can reference slots seeded
+    directly into Ω (symbolic entries have no surface syntax). Fresh binders
+    (let, match patterns) mint ids from `n` onward, never colliding with the
+    seeded ids. -/
+syntax "dllbcWith" "[" ident,* "]" "{" dllb "}" : term
+
+macro_rules
+  | `(dllbcWith [ $names,* ] { $b:dllb }) => do
+    let nameList := names.getElems.toList.map (fun nm => nm.getId.toString)
+    let ctx := nameList.zip (List.range nameList.length)
+    let (t, _) ← Dllbc.Macro.expandB ctx nameList.length b
+    return t
+
 end Dllbc

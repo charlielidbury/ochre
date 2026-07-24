@@ -30,12 +30,19 @@ namespace Dllbc
 /-- Runtime value tree.
 
     `ctor` is a declared/anonymous constructor applied to argument values.
-    The other three are the ownership machinery of §0. -/
+    `bot`/`loanM`/`borrowM` are the ownership machinery of §0. `sym σ` is a
+    **symbolic value** (§3.2): an unknown value of the borrow-free
+    (*unrestricted*) fragment — a snapshot the checker knows the type of but
+    not the value of. Because snapshots are unrestricted, a `sym` never
+    contains or hides borrows or loan markers: it is a leaf, it moves like any
+    owned value, and `drop` discards it. (No σ-context/types yet — those
+    arrive with the pure layer; here σ is just a fresh id.) -/
 inductive Val where
   | ctor    : String → List Val → Val
   | bot     : Val
   | loanM   : Nat → Val
   | borrowM : Nat → Val → Val
+  | sym     : Nat → Val
 deriving Inhabited
 
 namespace Val
@@ -49,6 +56,7 @@ mutual
     | .bot,        .bot        => true
     | .loanM x,    .loanM y    => x == y
     | .borrowM x p, .borrowM y q => x == y && beq p q
+    | .sym x,      .sym y       => x == y
     | _,           _           => false
   termination_by v => sizeOf v
   def beqList : List Val → List Val → Bool
@@ -81,6 +89,7 @@ def cons (h t : Val) : Val := .ctor "Cons" [h, t]
 mutual
   def prettyPrec (prec : Nat) : Val → String
     | .bot => "⊥"
+    | .sym σ => s!"σ{σ}"
     | .loanM ℓ => s!"loanₘ ℓ{ℓ}"
     | .borrowM ℓ p =>
       let s := "borrowₘ ℓ" ++ toString ℓ ++ " " ++ prettyPrec 1 p
@@ -113,6 +122,7 @@ mutual
     | .borrowM ℓ p => ℓ :: loanIds p
     | .ctor _ args => loanIdsList args
     | .bot => []
+    | .sym _ => []
   termination_by v => sizeOf v
   def loanIdsList : List Val → List Nat
     | [] => []
@@ -120,17 +130,34 @@ mutual
   termination_by vs => sizeOf vs
 end
 
-/-! Rewrite every loan id `ℓ` to `f ℓ` (used by canonicalization). -/
+/-! Symbolic ids occurring in `v`, in pre-order of first appearance. -/
 mutual
-  def renumber (f : Nat → Nat) : Val → Val
-    | .loanM ℓ => .loanM (f ℓ)
-    | .borrowM ℓ p => .borrowM (f ℓ) (renumber f p)
-    | .ctor n args => .ctor n (renumberList f args)
-    | .bot => .bot
+  def symIds : Val → List Nat
+    | .sym σ => [σ]
+    | .borrowM _ p => symIds p
+    | .ctor _ args => symIdsList args
+    | .loanM _ => []
+    | .bot => []
   termination_by v => sizeOf v
-  def renumberList (f : Nat → Nat) : List Val → List Val
+  def symIdsList : List Val → List Nat
     | [] => []
-    | v :: vs => renumber f v :: renumberList f vs
+    | v :: vs => symIds v ++ symIdsList vs
+  termination_by vs => sizeOf vs
+end
+
+/-! Rewrite every loan id `ℓ` to `fℓ ℓ` and every symbolic id `σ` to `fσ σ`
+    (used by canonicalization, which renumbers both id spaces). -/
+mutual
+  def renumber (fℓ fσ : Nat → Nat) : Val → Val
+    | .loanM ℓ => .loanM (fℓ ℓ)
+    | .borrowM ℓ p => .borrowM (fℓ ℓ) (renumber fℓ fσ p)
+    | .ctor n args => .ctor n (renumberList fℓ fσ args)
+    | .bot => .bot
+    | .sym σ => .sym (fσ σ)
+  termination_by v => sizeOf v
+  def renumberList (fℓ fσ : Nat → Nat) : List Val → List Val
+    | [] => []
+    | v :: vs => renumber fℓ fσ v :: renumberList fℓ fσ vs
   termination_by vs => sizeOf vs
 end
 
@@ -163,20 +190,22 @@ def natIndexOf (x : Nat) : List Nat → Nat
   | [] => 0
   | y :: ys => if y == x then 0 else 1 + natIndexOf x ys
 
-/-- Canonicalize Ω: renumber loan ids in first-appearance order across the
-    whole environment (slot order, pre-order within each value), and project
-    each variable to its display name. Two environments equal up to loan-id
-    renaming produce identical `Env`s. -/
+/-- Canonicalize Ω: renumber loan ids AND symbolic ids in first-appearance
+    order across the whole environment (slot order, pre-order within each
+    value), and project each variable to its display name. Two environments
+    equal up to ℓ- and σ-renaming produce identical `Env`s. -/
 def canonicalize (ω : Omega) : Env :=
-  let order := dedupNat (ω.flatMap (fun kv => kv.2.loanIds))
-  ω.map (fun kv => (kv.1.name, kv.2.renumber (fun ℓ => natIndexOf ℓ order)))
+  let ℓorder := dedupNat (ω.flatMap (fun kv => kv.2.loanIds))
+  let σorder := dedupNat (ω.flatMap (fun kv => kv.2.symIds))
+  ω.map (fun kv =>
+    (kv.1.name, kv.2.renumber (fun ℓ => natIndexOf ℓ ℓorder) (fun σ => natIndexOf σ σorder)))
 
-/-- Render Ω as a single doc-trace line: `x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 3`.
-    Loan ids are canonicalized first, so the output is renaming-stable. -/
+/-- Render Ω as a single doc-trace line, ℓ- and σ-canonicalized. -/
 def prettyOmega (ω : Omega) : String :=
-  let order := dedupNat (ω.flatMap (fun kv => kv.2.loanIds))
+  let ℓorder := dedupNat (ω.flatMap (fun kv => kv.2.loanIds))
+  let σorder := dedupNat (ω.flatMap (fun kv => kv.2.symIds))
   String.intercalate ", "
     (ω.map (fun kv =>
-      s!"{kv.1.name} ↦ {(kv.2.renumber (fun ℓ => natIndexOf ℓ order)).pretty}"))
+      s!"{kv.1.name} ↦ {(kv.2.renumber (fun ℓ => natIndexOf ℓ ℓorder) (fun σ => natIndexOf σ σorder)).pretty}"))
 
 end Dllbc
