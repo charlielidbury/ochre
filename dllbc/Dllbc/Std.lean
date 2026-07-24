@@ -118,6 +118,17 @@ def dropFn : Val :=
   .lam natTy (natRecS (.lam natTy (.pi listNatTy listNatTy)) (.lam listNatTy (.pvar 0)) dropArm (.pvar 0))
 def drop (n l : Val) : Val := .app (.app dropFn n) l
 
+/-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
+def addFn : Val :=
+  .lam natTy (.lam natTy (natRecS (.lam natTy natTy) (.pvar 0) (.lam natTy (.lam natTy (suc (.pvar 0)))) (.pvar 1)))
+def add (a b : Val) : Val := .app (.app addFn a) b
+
+/-- `append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (append t b)`). -/
+def appendFn : Val :=
+  .lam listNatTy (.lam listNatTy (listRecS natTy (.lam listNatTy listNatTy) (.pvar 0)
+    (.lam natTy (.lam listNatTy (.lam listNatTy (consV (.pvar 2) (.pvar 0))))) (.pvar 1)))
+def append (a b : Val) : Val := .app (.app appendFn a) b
+
 /-! ## First lemma: `le_refl : Π n. Le n n`, by `natRec`
 
     `λn. natRec (λm. Le m m) ⋆ (λm. λrec. rec) n`. The base is `⋆ : Le Z Z = ⊤`;
@@ -171,5 +182,11 @@ def takeFnT : Dllbc.Term := toTerm takeFn
 def takeT (n l : Dllbc.Term) : Dllbc.Term := .app (.app takeFnT n) l
 def dropFnT : Dllbc.Term := toTerm dropFn
 def dropT (n l : Dllbc.Term) : Dllbc.Term := .app (.app dropFnT n) l
+def eqbFnT : Dllbc.Term := toTerm eqbFn
+def lebFnT : Dllbc.Term := toTerm lebFn
+def addFnT : Dllbc.Term := toTerm addFn
+def addT (a b : Dllbc.Term) : Dllbc.Term := .app (.app addFnT a) b
+def appendFnT : Dllbc.Term := toTerm appendFn
+def appendT (a b : Dllbc.Term) : Dllbc.Term := .app (.app appendFnT a) b
 
 end Dllbc.Std

@@ -22,6 +22,11 @@ open Dllbc
 abbrev Le : Term := Std.LeFnT
 /-- Surface name for the multiset counter. -/
 abbrev count : Term := Std.countFnT
+abbrev add : Term := Std.addFnT
+abbrev append : Term := Std.appendFnT
+abbrev eqb : Term := Std.eqbFnT
+abbrev take : Term := Std.takeFnT
+abbrev drop : Term := Std.dropFnT
 
 /-! ## `le_refl`, `le_trans` — the acceptance test -/
 
@@ -65,5 +70,47 @@ def id_congr : Term := pure{
     j A x (λ (y' : A). λ (h : Id A x y'). Id B (f x) (f y')) Refl y p }
 def id_congr_ty : Term := pure{
   Π (A : Type) → Π (B : Type) → Π (f : A → B) → Π (x : A) → Π (y : A) → Id A x y → Id B (f x) (f y) }
+
+def id_sym : Term := pure{
+  λ (A : Type). λ (x : A). λ (y : A). λ (p : Id A x y).
+    j A x (λ (y' : A). λ (h : Id A x y'). Id A y' x) Refl y p }
+def id_sym_ty : Term := pure{ Π (A : Type) → Π (x : A) → Π (y : A) → Id A x y → Id A y x }
+
+/-! ## Arithmetic — the first double-inductions after the wall (§16 calibration) -/
+
+def add_zero : Term := pure{
+  λ (a : Nat). elim a return (λ (x : Nat). Id Nat (add x Z) x) {
+    Z => Refl,
+    S (a') ih => id_congr Nat Nat (λ (n : Nat). S n) (add a' Z) a' ih } }
+def add_zero_ty : Term := pure{ Π (a : Nat) → Id Nat (add a Z) a }
+
+def add_succ : Term := pure{
+  λ (a : Nat). λ (b : Nat). elim a return (λ (x : Nat). Id Nat (add x (S b)) (S (add x b))) {
+    Z => Refl,
+    S (a') ih => id_congr Nat Nat (λ (n : Nat). S n) (add a' (S b)) (S (add a' b)) ih } }
+def add_succ_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a (S b)) (S (add a b)) }
+
+-- Commutativity: the classic proof, authored in the surface and checked first try.
+def add_comm : Term := pure{
+  λ (a : Nat). elim a return (λ (x : Nat). Π (b : Nat) → Id Nat (add x b) (add b x)) {
+    Z => λ (b : Nat). id_sym Nat (add b Z) b (add_zero b),
+    S (a') ih => λ (b : Nat).
+      id_trans Nat (S (add a' b)) (S (add b a')) (add b (S a'))
+        (id_congr Nat Nat (λ (n : Nat). S n) (add a' b) (add b a') (ih b))
+        (id_sym Nat (add b (S a')) (S (add b a')) (add_succ b a')) } }
+def add_comm_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a b) (add b a) }
+
+def add_assoc : Term := pure{
+  λ (a : Nat). elim a return (λ (x : Nat). Π (b : Nat) → Π (c : Nat) → Id Nat (add (add x b) c) (add x (add b c))) {
+    Z => λ (b : Nat). λ (c : Nat). Refl,
+    S (a') ih => λ (b : Nat). λ (c : Nat).
+      id_congr Nat Nat (λ (n : Nat). S n) (add (add a' b) c) (add a' (add b c)) (ih b c) } }
+def add_assoc_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Id Nat (add (add a b) c) (add a (add b c)) }
+
+-- `count`'s Cons-unfolding equation as an Id — definitional, a `Refl` after whnf.
+def count_cons : Term := pure{ λ (m : Nat). λ (h : Nat). λ (t : List Nat). Refl }
+def count_cons_ty : Term := pure{
+  Π (m : Nat) → Π (h : Nat) → Π (t : List Nat) →
+    Id Nat (count m (Cons h t)) (boolRec (λ (b : Bool). Nat) (S (count m t)) (count m t) (eqb m h)) }
 
 end Dllbc.StdLemmas
