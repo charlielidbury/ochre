@@ -325,15 +325,18 @@ def indexKindTy : Val → Bool
     measured pain, per team-lead): tuple-of-copyables (a `Pair Nat Nat` as Copy,
     Rust-style) — a data ctor all of whose fields are index-kind stays a MOVE for
     now. -/
-def indexKindV (sctx : List (Nat × Val)) : Val → Bool
+def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   | .ctor "Z" [] => true
-  | .ctor "S" [n] => indexKindV sctx n
+  | .ctor "S" [n] => indexKindV fuel sctx n
   | .ctor "True" [] => true
   | .ctor "False" [] => true
   | .ctor "unit" [] => true
   | .ctor "Refl" _ => true                                  -- a proof
   | .ctor _ _ => false                                      -- data → move
-  | .sym σ => match sctx.lookup σ with | some τ => indexKindTy τ | none => false
+  -- whnf the σ's type before classifying: a redex-headed type that reduces to
+  -- Nat should copy, not be mistaken for data. Misclassification is otherwise
+  -- only ever toward MOVE (conservative), but the whnf hardens the σ side.
+  | .sym σ => match sctx.lookup σ with | some τ => indexKindTy (Val.whnfV fuel τ) | none => false
   | .type => true
   | .const _ => true
   | .pi _ _ => true
@@ -966,7 +969,7 @@ mutual
             -- on it (marker-free AND erasure-bound), and it is what lets a comptime
             -- index be used more than once. Data proper moves even when
             -- marker-free (Rust's line — §2.1).
-            if indexKindV (← get).sctx v then pure v
+            if indexKindV fuel (← get).sctx v then pure v
             -- §19: moving a borrow whose PAYLOAD is a suspended reborrow (a `&mut
             -- *v` handed to a call that has since returned) must first end that
             -- reborrow, so its mutations flow back into the payload before the
