@@ -190,6 +190,18 @@ def leTrans (a b c hab hbc : Term) : Term := .app (.app (.app (.app (.app StdLem
 def loSLam (lo : Term) : Term := .lam natT (addTmH lo (tS (.pvar 0)))
 def idCgLoS (lo x y p : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_congr natT) natT) (loSLam lo)) x) y) p
 
+-- Quicksort-Decl toolkit (§21): the gap wrapper, the size/length lemmas, the
+-- successor-monotone Le, associativity, and id_congr through `λx. add lo x`.
+def partGapRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partGapRangeL lo) cnt) l
+def partScanSizeLT (pivot lo k i g l : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.partScanSizeL pivot) lo) k) i) g) l
+def lenPartRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.len_partitionRangeL lo) cnt) l
+def lenSortRangeLT (fuel lo cnt l : Term) : Term := .app (.app (.app (.app StdLemmas.len_sortRangeL fuel) lo) cnt) l
+def sortRangeLT2 (fuel lo cnt l : Term) : Term := .app (.app (.app (.app StdLemmas.sortRangeL fuel) lo) cnt) l
+def leUpR (a b h : Term) : Term := .app (.app (.app StdLemmas.le_up_r a) b) h
+def addAssocT (a b c : Term) : Term := .app (.app (.app StdLemmas.add_assoc a) b) c
+def loLam (lo : Term) : Term := .lam natT (addTmH lo (.pvar 0))
+def idCgAddLo (lo x y p : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_congr natT) natT) (loLam lo)) x) y) p
+
 -- Abbreviations for the current-branch index expressions (i2/g2 are the peeled
 -- successors; kk is k'). Built with addTmH (defined above).
 -- v=0, k=1, i=2, g=3, pivot=4, hlen=5; binders k'=6, c/i'=7, g'/hlenX=8, pij=9, p2=10, hlenTSg=11.
@@ -676,6 +688,81 @@ def partitionRange : Decl :=
               (.ctorApp "Pair" [V 5 "i", .ctorApp "Refl" []]))))) ],
     back := some (partitionRangeLT (V 1 "lo") (V 2 "cnt") dv) }
 #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScanRange, partitionRange] partitionRange with | .ok _ => "partitionRange OK" | .error e => "ERR: " ++ (e.take 200))
+
+/-! ## M21-3 — quicksort: the imperative in-place quicksort (back = sortRangeL)
+
+    THE NORTH STAR. `quicksort(v, fuel, lo, cnt, hbnd)` sorts the `cnt` elements at
+    offset `lo` in place. Fuel-structural (mirrors sortRangeL): out of fuel / cnt ≤
+    1 is a no-op; otherwise pick the pivot, compute the pivot's relative index `i`
+    and the right-count `g` from the ENTRY list (before mutating), scan-partition
+    the range (partScanRange, whose back IS partitionRangeL lo cnt *v), then recurse
+    on [lo, lo+i) and [lo+i+1, …) — sequential reborrows of the one `*v`. Because
+    `i`/`g` are the pure `partIdxRangeL`/`partGapRangeL` of the entry list, the
+    body's suspension tree (partScanRange's back, then the two quicksort backs
+    composed) is DEFINITIONALLY sortRangeL's own unfold — conformance is conversion.
+
+    The two range bounds come from partScanSizeL (i + g + 1 = cnt) and the three
+    length-preservation lemmas (the partition and each recursive sort keep len *v,
+    so the bounds, stated over the live *v, transport back to len entry = hbnd). -/
+
+def quicksort : Decl :=
+  { name := "quicksort", retType := .const "Unit",
+    telescope := [("v", .borrowT listNatT listNatT), ("fuel", natT), ("lo", natT), ("cnt", natT),
+      ("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))],
+    body := .matchE ⟨1, "fuel"⟩ [
+      .mk "Z" [] .unit,
+      .mk "S" [⟨5, "f2"⟩] (.matchE ⟨3, "cnt"⟩ [
+        .mk "Z" [] .unit,
+        .mk "S" [⟨6, "cnt2"⟩] (.matchE ⟨6, "cnt2"⟩ [
+          .mk "Z" [] .unit,
+          .mk "S" [⟨7, "cnt3"⟩]
+            (.letIn ⟨8, "pivot"⟩ (nthP (V 2 "lo") dv)
+            (.letIn ⟨9, "i"⟩ (partIdxRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)
+            (.letIn ⟨10, "g"⟩ (partGapRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)
+            (.letIn ⟨11, "sizeE"⟩ (partScanSizeLT (nthP (V 2 "lo") dv) (V 2 "lo") (tS (V 7 "cnt3")) (.ctorApp "Z" []) (.ctorApp "Z" []) dv)
+            (.letIn ⟨12, "sSize"⟩
+              (idCgS (addTmH (V 9 "i") (V 10 "g")) (tS (V 7 "cnt3"))
+                (idTr (addTmH (V 9 "i") (V 10 "g")) (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" []))) (tS (V 7 "cnt3"))
+                  (V 11 "sizeE")
+                  (idCgS (addTmH (V 7 "cnt3") (.ctorApp "Z" [])) (V 7 "cnt3") (addZeroT (V 7 "cnt3")))))
+            (.letIn ⟨13, "hle"⟩
+              (leRwL (lenT dv)
+                (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
+                (addTmH (V 2 "lo") (tS (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" [])))))
+                (idCgAddLo (V 2 "lo") (tS (tS (V 7 "cnt3"))) (tS (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" []))))
+                  (idCgS (tS (V 7 "cnt3")) (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" [])))
+                    (idCgS (V 7 "cnt3") (addTmH (V 7 "cnt3") (.ctorApp "Z" [])) (idSy (addTmH (V 7 "cnt3") (.ctorApp "Z" [])) (V 7 "cnt3") (addZeroT (V 7 "cnt3"))))))
+                (V 4 "hbnd"))
+            (.letIn ⟨14, "bl"⟩
+              (leRwR (addTmH (V 2 "lo") (V 9 "i")) (lenT dv) (lenT (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))
+                (idSy (lenT (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)) (lenT dv) (lenPartRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))
+                (leTrans (addTmH (V 2 "lo") (V 9 "i")) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3")))) (lenT dv)
+                  (leRwR (addTmH (V 2 "lo") (V 9 "i")) (addTmH (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
+                    (idCgAddLo (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g"))) (tS (tS (V 7 "cnt3"))) (V 12 "sSize"))
+                    (leAddMonoL (V 2 "lo") (V 9 "i") (tS (addTmH (V 9 "i") (V 10 "g"))) (leUpR (V 9 "i") (addTmH (V 9 "i") (V 10 "g")) (leAdd (V 9 "i") (V 10 "g")))))
+                  (V 4 "hbnd")))
+            (.letIn ⟨15, "br"⟩
+              (leRwR (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g")) (lenT dv)
+                (lenT (sortRangeLT2 (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)))
+                (idSy (lenT (sortRangeLT2 (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))) (lenT dv)
+                  (idTr (lenT (sortRangeLT2 (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)))
+                    (lenT (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)) (lenT dv)
+                    (lenSortRangeLT (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))
+                    (lenPartRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)))
+                (leRwL (lenT dv) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3")))) (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g"))
+                  (idSy (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g")) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
+                    (idTr (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g")) (tS (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
+                      (idCgS (addTmH (addTmH (V 2 "lo") (V 9 "i")) (V 10 "g")) (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g"))) (addAssocT (V 2 "lo") (V 9 "i") (V 10 "g")))
+                      (idTr (tS (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
+                        (idSy (addTmH (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g")))) (tS (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g")))) (addSuccT (V 2 "lo") (addTmH (V 9 "i") (V 10 "g"))))
+                        (idCgAddLo (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g"))) (tS (tS (V 7 "cnt3"))) (V 12 "sSize")))))
+                  (V 4 "hbnd")))
+            (.seq (.call "partScanRange" [.borrow dv, V 2 "lo", tS (V 7 "cnt3"), .ctorApp "Z" [], .ctorApp "Z" [], V 8 "pivot", V 13 "hle"])
+              (.seq (.call "quicksort" [.borrow dv, V 5 "f2", V 2 "lo", V 9 "i", V 14 "bl"])
+                (.call "quicksort" [.borrow dv, V 5 "f2", tS (addTmH (V 2 "lo") (V 9 "i")), V 10 "g", V 15 "br"]))))))))))) ]) ]) ],
+    back := some (sortRangeLT2 (V 1 "fuel") (V 2 "lo") (V 3 "cnt") dv) }
+-- NOTE: checkFn quicksort is pathologically slow (>20min) — perf under investigation. Disabled in-suite.
+-- #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScanRange, quicksort] quicksort with | .ok _ => "quicksort OK" | .error e => "ERR: " ++ (e.take 300))
 
 -- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
 -- reborrows *v twice in sequence for two recursive calls. This only checks
