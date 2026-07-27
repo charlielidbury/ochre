@@ -7,6 +7,7 @@ import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.PureMacro
 import Dllbc.StdLemmas
+import Dllbc.DeclMacro
 import Dllbc.Tests.S2
 import Dllbc.Tests.S3
 import Dllbc.Tests.S3Sym
@@ -25,3 +26,4 @@ import Dllbc.Tests.S16Spec
 import Dllbc.Tests.S17Spec
 import Dllbc.Tests.S18Rewrite
 import Dllbc.Tests.S19Partition
+import Dllbc.Tests.SDeclMacro
