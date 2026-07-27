@@ -708,15 +708,15 @@ mutual
       match ← reflectC t with
       | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
       | _ => throwErr "readC (⇝ *): dereferenced value is not a borrow"
-    | .ctorApp n args => do pure (.ctor n (← reflectCList args))
+    | .ctorApp n args => do pure (Val.intern (.ctor n (← reflectCList args)))
     | .type => pure .type
     | .const c => pure (.const c)
     | .pvar k => pure (.pvar k)
-    | .pi d c => do pure (.pi (← reflectC d) (← reflectC c))
-    | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
-    | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
-    | .app f a => do pure (.app (← reflectC f) (← reflectC a))
-    | .idT a b c => do pure (.idT (← reflectC a) (← reflectC b) (← reflectC c))
+    | .pi d c => do pure (Val.intern (.pi (← reflectC d) (← reflectC c)))
+    | .sigmaT d c => do pure (Val.intern (.sigmaT (← reflectC d) (← reflectC c)))
+    | .lam d b => do pure (Val.intern (.lam (← reflectC d) (← reflectC b)))
+    | .app f a => do pure (Val.intern (.app (← reflectC f) (← reflectC a)))
+    | .idT a b c => do pure (Val.intern (.idT (← reflectC a) (← reflectC b) (← reflectC c)))
     | .unit => pure (.ctor "unit" [])
     | .letIn x rhs rest => do
       -- Pure `let` (§1.3): reflect the rhs and bind it as a fresh Ω entry, then

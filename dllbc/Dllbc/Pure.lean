@@ -145,10 +145,109 @@ def collectSpine : Val → Val × List Val
   | .app f a => let (h, as) := collectSpine f; (h, as ++ [a])
   | v => (v, [])
 
-/-- Rebuild an application spine from a head and argument list. -/
+/-! ## Interning (hash-consing)
+
+    `intern` is LOGICALLY the identity — every use is semantically invisible —
+    with an `implemented_by` runtime that returns a canonical representative
+    for the node: a previously-interned node with the same constructor, the
+    same leaf data, and POINTER-identical children (which entails structural
+    equality). Keying on child pointers makes the probe O(arity), not
+    O(subtree); effectiveness (not soundness) relies on building bottom-up so
+    children are already canonical. Independently-constructed duplicates —
+    each `readC` re-reflecting the same model term, each unfolding rebuilding
+    the same spine — then become ONE object, so the rigid-table hits fire and
+    `beqFast`'s pointer short-circuit decides equality without traversal. The
+    table holds strong references, pinning addresses (no recycling) at the
+    price of process-lifetime retention — acceptable for a checker run. -/
+
+private unsafe def internTableRef : IO.Ref (Std.HashMap UInt64 (List Val)) :=
+  unsafeBaseIO (IO.mkRef ∅)
+
+/-- Child key hash: LEAVES by value (a fresh `.const "natRec"` is minted at
+    every stuck rebuild — pointer identity would never unify spines),
+    composites by address. -/
+private unsafe def childHash (v : Val) : UInt64 :=
+  match v with
+  | .const s => mixHash 101 (hash s)
+  | .pvar k => mixHash 103 (hash k)
+  | .sym x => mixHash 107 (hash x)
+  | .type => 109
+  | .bot => 113
+  | .loanM x => mixHash 127 (hash x)
+  | _ => (ptrAddrUnsafe v).toUInt64
+
+/-- Child equality matching `childHash`: leaf value, or same object. Either
+    way the children are structurally equal. -/
+private unsafe def childEq (a b : Val) : Bool :=
+  match a, b with
+  | .const x, .const y => x == y
+  | .pvar x, .pvar y => x == y
+  | .sym x, .sym y => x == y
+  | .type, .type => true
+  | .bot, .bot => true
+  | .loanM x, .loanM y => x == y
+  | _, _ => ptrEq a b
+
+/-- O(arity) node hash: constructor tag + leaf data + child ADDRESSES. -/
+private unsafe def nodeHashU : Val → UInt64
+  | .ctor n args => mixHash 3 (mixHash (hash n) (args.foldl (fun h a => mixHash h (childHash a)) 47))
+  | .bot => 5
+  | .loanM x => mixHash 7 (hash x)
+  | .borrowM x p => mixHash 11 (mixHash (hash x) (childHash p))
+  | .sym x => mixHash 13 (hash x)
+  | .pvar x => mixHash 17 (hash x)
+  | .type => 19
+  | .pi d c => mixHash 23 (mixHash (childHash d) (childHash c))
+  | .sigmaT d c => mixHash 29 (mixHash (childHash d) (childHash c))
+  | .lam d b => mixHash 31 (mixHash (childHash d) (childHash b))
+  | .app f a => mixHash 37 (mixHash (childHash f) (childHash a))
+  | .const s => mixHash 41 (hash s)
+  | .idT a b c => mixHash 43 (mixHash (childHash a) (mixHash (childHash b) (childHash c)))
+
+/-- O(arity) shallow equality: same tag and leaf data, children the SAME
+    objects — which entails structural equality of the whole nodes. -/
+private unsafe def nodeEqU : Val → Val → Bool
+  | .ctor n1 a1, .ctor n2 a2 =>
+    n1 == n2 && a1.length == a2.length && (List.zip a1 a2).all (fun p => childEq p.1 p.2)
+  | .bot, .bot => true
+  | .loanM x, .loanM y => x == y
+  | .borrowM x p, .borrowM y q => x == y && childEq p q
+  | .sym x, .sym y => x == y
+  | .pvar x, .pvar y => x == y
+  | .type, .type => true
+  | .pi d1 c1, .pi d2 c2 => childEq d1 d2 && childEq c1 c2
+  | .sigmaT d1 c1, .sigmaT d2 c2 => childEq d1 d2 && childEq c1 c2
+  | .lam d1 b1, .lam d2 b2 => childEq d1 d2 && childEq b1 b2
+  | .app f1 a1, .app f2 a2 => childEq f1 f2 && childEq a1 a2
+  | .const x, .const y => x == y
+  | .idT a1 b1 c1, .idT a2 b2 c2 => childEq a1 a2 && childEq b1 b2 && childEq c1 c2
+  | _, _ => false
+
+private unsafe def findBucket (v : Val) : List Val → Option Val
+  | [] => none
+  | w :: ws => if nodeEqU v w then some w else findBucket v ws
+
+private unsafe def internU (v : Val) : Val :=
+  unsafeBaseIO do
+    let h := nodeHashU v
+    let m ← internTableRef.get
+    let bucket := m.getD h []
+    match findBucket v bucket with
+    | some w => pure w
+    | none =>
+      internTableRef.set (m.insert h (v :: bucket))
+      pure v
+
+/-- Canonicalize a node against the intern table. LOGICALLY THE IDENTITY. -/
+@[implemented_by internU]
+def intern (v : Val) : Val := v
+
+/-- Rebuild an application spine from a head and argument list (interning each
+    node, so every spine construction site — whnf reducts, resolved back
+    compositions, audit specs — produces canonical objects). -/
 def rebuildSpine : Val → List Val → Val
   | h, [] => h
-  | h, a :: as => rebuildSpine (.app h a) as
+  | h, a :: as => rebuildSpine (intern (.app h a)) as
 
 /-- Weak-head-normalize: reduce the head redex (β / ι) only, fuel-bounded.
     Leaves (`pvar`, `sym`, `type`, `const`, `pi`, `sigmaT`, `lam`, `ctor`) and
@@ -354,37 +453,37 @@ mutual
       | .pi d k =>
         let (d', bd, chd, c) := nfS fuel d c
         let (k', bk, chk, c) := nfS fuel k c
-        let w' := if chd || chk then Val.pi d' k' else w
+        let w' := if chd || chk then intern (Val.pi d' k') else w
         if bd && bk then (w', true, cw || chd || chk, c.insert w')
         else (w', false, cw || chd || chk, c)
       | .sigmaT d k =>
         let (d', bd, chd, c) := nfS fuel d c
         let (k', bk, chk, c) := nfS fuel k c
-        let w' := if chd || chk then Val.sigmaT d' k' else w
+        let w' := if chd || chk then intern (Val.sigmaT d' k') else w
         if bd && bk then (w', true, cw || chd || chk, c.insert w')
         else (w', false, cw || chd || chk, c)
       | .lam d b =>
         let (d', bd, chd, c) := nfS fuel d c
         let (b', bb, chb, c) := nfS fuel b c
-        let w' := if chd || chb then Val.lam d' b' else w
+        let w' := if chd || chb then intern (Val.lam d' b') else w
         if bd && bb then (w', true, cw || chd || chb, c.insert w')
         else (w', false, cw || chd || chb, c)
       | .ctor n args =>
         let (args', bs, chs, c) := nfSList fuel args c
-        let w' := if chs then Val.ctor n args' else w
+        let w' := if chs then intern (Val.ctor n args') else w
         if bs then (w', true, cw || chs, c.insert w')
         else (w', false, cw || chs, c)
       | .app f a =>
         let (f', bf, chf, c) := nfS fuel f c
         let (a', ba, cha, c) := nfS fuel a c
-        let w' := if chf || cha then Val.app f' a' else w
+        let w' := if chf || cha then intern (Val.app f' a') else w
         if bf && ba && !headRedexApp w' then (w', true, cw || chf || cha, c.insert w')
         else (w', false, cw || chf || cha, c)
       | .idT x y z =>
         let (x', bx, chx, c) := nfS fuel x c
         let (y', by', chy, c) := nfS fuel y c
         let (z', bz, chz, c) := nfS fuel z c
-        let w' := if chx || chy || chz then Val.idT x' y' z' else w
+        let w' := if chx || chy || chz then intern (Val.idT x' y' z') else w
         if bx && by' && bz then (w', true, cw || chx || chy || chz, c.insert w')
         else (w', false, cw || chx || chy || chz, c)
       | w => (w, true, cw, c.insert w)   -- leaves: rigid by definition (see above)
@@ -449,37 +548,37 @@ mutual
       | .pi d k =>
         let (d', bd, chd, c) := nfSU fuel d c
         let (k', bk, chk, c) := nfSU fuel k c
-        let w' := if chd || chk then Val.pi d' k' else w
+        let w' := if chd || chk then intern (Val.pi d' k') else w
         if bd && bk then (w', true, cw || chd || chk, rigidRemember w' c)
         else (w', false, cw || chd || chk, c)
       | .sigmaT d k =>
         let (d', bd, chd, c) := nfSU fuel d c
         let (k', bk, chk, c) := nfSU fuel k c
-        let w' := if chd || chk then Val.sigmaT d' k' else w
+        let w' := if chd || chk then intern (Val.sigmaT d' k') else w
         if bd && bk then (w', true, cw || chd || chk, rigidRemember w' c)
         else (w', false, cw || chd || chk, c)
       | .lam d b =>
         let (d', bd, chd, c) := nfSU fuel d c
         let (b', bb, chb, c) := nfSU fuel b c
-        let w' := if chd || chb then Val.lam d' b' else w
+        let w' := if chd || chb then intern (Val.lam d' b') else w
         if bd && bb then (w', true, cw || chd || chb, rigidRemember w' c)
         else (w', false, cw || chd || chb, c)
       | .ctor n args =>
         let (args', bs, chs, c) := nfSListU fuel args c
-        let w' := if chs then Val.ctor n args' else w
+        let w' := if chs then intern (Val.ctor n args') else w
         if bs then (w', true, cw || chs, rigidRemember w' c)
         else (w', false, cw || chs, c)
       | .app f a =>
         let (f', bf, chf, c) := nfSU fuel f c
         let (a', ba, cha, c) := nfSU fuel a c
-        let w' := if chf || cha then Val.app f' a' else w
+        let w' := if chf || cha then intern (Val.app f' a') else w
         if bf && ba && !headRedexApp w' then (w', true, cw || chf || cha, rigidRemember w' c)
         else (w', false, cw || chf || cha, c)
       | .idT x y z =>
         let (x', bx, chx, c) := nfSU fuel x c
         let (y', by', chy, c) := nfSU fuel y c
         let (z', bz, chz, c) := nfSU fuel z c
-        let w' := if chx || chy || chz then Val.idT x' y' z' else w
+        let w' := if chx || chy || chz then intern (Val.idT x' y' z') else w
         if bx && by' && bz then (w', true, cw || chx || chy || chz, rigidRemember w' c)
         else (w', false, cw || chx || chy || chz, c)
       | w => (w, true, cw, rigidRemember w c)   -- leaves: rigid by definition (see above)
