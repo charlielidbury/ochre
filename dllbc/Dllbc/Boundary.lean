@@ -211,7 +211,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         let tree ← resolveTree issuedLoans raw
         let holes := (List.range issuedLoans.length).map Val.pvar
         let spec := Val.nfV fuel (Val.rebuildSpine backV holes)
-        if Val.convert fuel tree spec then pure ()
+        if ← convertM fuel tree spec then pure ()
         else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
   | none => do
     obs.forM (auditObligation fuel [])
@@ -237,7 +237,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
         | some payload => do
           let tree ← resolveTree [] payload
-          if Val.convert fuel tree spec then pure ()
+          if ← convertM fuel tree spec then pure ()
           else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
         | none => pure ()
     -- The return type was pinned at entry (§5.3 dependent types over consumed

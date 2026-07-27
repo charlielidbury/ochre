@@ -1,6 +1,7 @@
 import Dllbc.Syntax
 import Dllbc.Value
 import Dllbc.Pure
+import Std.Data.HashMap
 
 /-!
 # DLLBC Concrete Machine (§2)
@@ -85,6 +86,32 @@ structure Group where
       Refined with the caller's σ's like the owed types. -/
   backSpec : Option Val := none
 
+/-! Structural hash on `Val`, for the per-path conversion cache (below). Written
+    by hand mutually with the list case (as `Val.beq` was — `deriving Hashable`
+    chokes on the `List Val` nesting). Total; consistent with `Val.beq`. -/
+mutual
+  def Val.hashVal : Val → UInt64
+    | .ctor n args => mixHash 1 (mixHash (hash n) (Val.hashValList args))
+    | .bot => 2
+    | .loanM x => mixHash 3 (hash x)
+    | .borrowM x p => mixHash 4 (mixHash (hash x) (Val.hashVal p))
+    | .sym x => mixHash 5 (hash x)
+    | .pvar x => mixHash 6 (hash x)
+    | .type => 7
+    | .pi d c => mixHash 8 (mixHash (Val.hashVal d) (Val.hashVal c))
+    | .sigmaT d c => mixHash 9 (mixHash (Val.hashVal d) (Val.hashVal c))
+    | .lam d b => mixHash 10 (mixHash (Val.hashVal d) (Val.hashVal b))
+    | .app f a => mixHash 11 (mixHash (Val.hashVal f) (Val.hashVal a))
+    | .const x => mixHash 12 (hash x)
+    | .idT a b c => mixHash 13 (mixHash (Val.hashVal a) (mixHash (Val.hashVal b) (Val.hashVal c)))
+  termination_by v => sizeOf v
+  def Val.hashValList : List Val → UInt64
+    | [] => 17
+    | v :: vs => mixHash (Val.hashVal v) (Val.hashValList vs)
+  termination_by vs => sizeOf vs
+end
+instance : Hashable Val := ⟨Val.hashVal⟩
+
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
     the runtime-binder minting later milestones (match) will need. -/
@@ -132,6 +159,15 @@ structure St where
       the differential harness actually goes RED under the bug. Never set by the
       call rule; only a validation test flips it. -/
   forceConstrained : Bool := false
+  /-- PERF (fallback experiment, task #55): a COARSE per-path memo of whole
+      `convert` calls, keyed on `(fuel, a, b)`. `convert` is a pure function of
+      its arguments, so this is behaviourally identical; keeping it PER-PATH (in
+      `St`, forked with the path) is what makes it sound — `explore` reuses the
+      same σ ids across sibling paths, so a global cache keyed on σ-bearing terms
+      would collide. Coarse (top-level calls only, thousands of them) so the
+      O(size) key hash amortises — unlike a per-node memo, which reintroduces the
+      quadratic. -/
+  convCache : Std.HashMap (Nat × Val × Val) Bool := ∅
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -140,6 +176,18 @@ abbrev M := EStateM String St
 /-- Raise a machine error. Errors are rich and stably-shaped (operation +
     variable/loan + reason); tests assert on distinctive substrings. -/
 def throwErr {α : Type} (msg : String) : M α := fun s => EStateM.Result.error msg s
+
+/-- Cached `Val.convert` (task #55 fallback): consult the per-path `convCache`;
+    on a miss compute `Val.convert` and store it. Returns exactly what
+    `Val.convert fuel a b` would — a pure function memoised per path. -/
+def convertM (fuel : Nat) (a b : Val) : M Bool := do
+  let key := (fuel, a, b)
+  match (← get).convCache[key]? with
+  | some r => pure r
+  | none =>
+    let r := Val.convert fuel a b
+    modify (fun s => { s with convCache := s.convCache.insert key r })
+    pure r
 
 /-! ## State helpers -/
 
@@ -716,7 +764,7 @@ mutual
       match v with
       | .sym σ =>
         match (← get).sctx.lookup σ with
-        | some vty => pure (Val.convert fuel vty ty)
+        | some vty => convertM fuel vty ty
         | none => throwErr s!"hasType: σ{σ} has no type in sctx"
       | .ctor name args =>
         match Val.ctorSig name with
@@ -725,10 +773,10 @@ mutual
           match sig.fieldTypes (Val.whnfV fuel ty) with
           | none => pure false                       -- constructor does not inhabit this type
           | some ftys => checkFields fuel args ftys
-      | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
-      | .pi _ _ => pure (Val.convert fuel ty .type)
-      | .sigmaT _ _ => pure (Val.convert fuel ty .type)
-      | .idT _ _ _ => pure (Val.convert fuel ty .type)   -- Id A a b : Type
+      | .type => convertM fuel ty .type     -- Type : Type (type-in-type)
+      | .pi _ _ => convertM fuel ty .type
+      | .sigmaT _ _ => convertM fuel ty .type
+      | .idT _ _ _ => convertM fuel ty .type   -- Id A a b : Type
       | .app _ _ =>
         -- A neutral spine. We synthesize a type only for the eliminator
         -- constants (§10 elaboration of `match` to eliminators): their result
@@ -742,7 +790,7 @@ mutual
         -- type the fixed part to its base result, then `synthSpine` the extras.
         let finish (baseTy : Val) (rest : List Val) (premises : Bool) : M Bool := do
           match ← synthSpine fuel baseTy rest with
-          | some resTy => pure (Val.convert fuel ty resTy && premises)
+          | some resTy => do pure ((← convertM fuel ty resTy) && premises)
           | none => pure false
         match head, args with
         | .const "botElim", t :: x :: rest =>            -- botElim T x : T   (x : ⊥)
@@ -783,7 +831,7 @@ mutual
           | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
           | some hty =>
             match ← synthSpine fuel hty args with
-            | some resTy => pure (Val.convert fuel ty resTy)
+            | some resTy => convertM fuel ty resTy
             | none => pure false
         | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
       | .lam d b =>
@@ -794,7 +842,7 @@ mutual
         -- it is the elaboration of dependent elimination (§10/§11).
         match Val.whnfV fuel ty with
         | .pi d' c =>
-          if Val.convert fuel d d' then do
+          if ← convertM fuel d d' then do
             let σ ← freshSym
             modify (fun st => { st with sctx := (σ, d') :: st.sctx })
             hasType fuel (Val.substPure 0 (.sym σ) b) (Val.substPure 0 (.sym σ) c)
