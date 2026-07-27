@@ -39,7 +39,7 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       bindSlot x (.borrowM ℓ (.sym σ))
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
       let SVal ← readC fuel S
-      let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
+      let owed ← nfM fuel (Val.substPure 0 (Val.sym σ) SVal)        -- S[s := σ]
       pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
     | tyTerm => do
       let τVal ← readC fuel tyTerm
@@ -130,7 +130,7 @@ partial def resolveTree (issued : List Nat) : Val → M Val
         match g.backSpec with
         | some f => do
           let ievs ← g.issued.mapM (fun p => resolveTree issued (.loanM p.1))
-          pure (Val.nfV 1000 (Val.rebuildSpine f ievs))
+          nfM 1000 (Val.rebuildSpine f ievs)
         | none => pure (.loanM ℓ)                        -- opaque sub-group — unresolvable
       | none => match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
         | some p => resolveTree issued p                 -- follow the reborrow chain / collapse
@@ -147,7 +147,7 @@ partial def resolveTree (issued : List Nat) : Val → M Val
     a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1). -/
 def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Val)))
   | .borrowT _ S, .borrowM ℓ payload => do
-    let owed := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
+    let owed ← nfM fuel (Val.substPure 0 payload (← readC fuel S))
     pure (some [(ℓ, payload, owed)])
   | .borrowT _ _, other =>
     throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
@@ -210,8 +210,8 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
           | none => pure (.loanM ob.loan)                  -- returned directly
         let tree ← resolveTree issuedLoans raw
         let holes := (List.range issuedLoans.length).map Val.pvar
-        let spec := Val.nfV fuel (Val.rebuildSpine backV holes)
-        if Val.convert fuel tree spec then pure ()
+        let spec ← nfM fuel (Val.rebuildSpine backV holes)
+        if ← convertM fuel tree spec then pure ()
         else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
   | none => do
     obs.forM (auditObligation fuel [])
@@ -224,7 +224,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     match (← get).selfBack with
     | none => pure ()
     | some backV => do
-      let spec := Val.nfV fuel (Val.rebuildSpine backV [])
+      let spec ← nfM fuel (Val.rebuildSpine backV [])
       -- Check the back against the argument borrow's suspension tree WHERE it is
       -- directly locatable (untouched, or composed from Unit-returning sub-groups
       -- whose declared backs the spec is authored from — partScan). NOT resolved
@@ -237,7 +237,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
         | some payload => do
           let tree ← resolveTree [] payload
-          if Val.convert fuel tree spec then pure ()
+          if ← convertM fuel tree spec then pure ()
           else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
         | none => pure ()
     -- The return type was pinned at entry (§5.3 dependent types over consumed

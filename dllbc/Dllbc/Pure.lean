@@ -1,3 +1,4 @@
+import Std.Data.HashSet
 import Dllbc.Value
 
 /-!
@@ -190,6 +191,111 @@ mutual
     | fuel, v :: vs, w :: ws => convert fuel v w && convertList fuel vs ws
     | _, _, _ => false
   termination_by fuel _ ws => (fuel, 1, ws.length)
+end
+
+/-! ## Shared normalization: the rigid-term cache
+
+    `nfV` has no term sharing: a subterm embedded k times is re-normalized k
+    times, and the conformance audit's trees embed the same model spines
+    (`partIdxRangeL lo cnt *v`, a whole `partitionRangeL` unfolding) many times
+    over. Measured on the partScanRange check: 94,930 `nfV` node visits over
+    only 2,672 distinct terms — 35.5x visit redundancy, 65% of size-weighted
+    normalization work spent on re-visits — and one recursion level up
+    (quicksort) the repetition compounds multiplicatively.
+
+    `nfS` is `nfV` plus a cache of terms *certified rigid*: hereditarily β/ι-
+    irreducible, so `nfV f w = w` and `whnfV f w = w` for EVERY fuel f — fuel
+    only gates reduction steps, and a rigid term admits none. That makes the
+    cache sound to consult at any fuel and immune to the checker's state
+    mutations (`refineSym`/`abstractInto` build NEW terms; rigidity is a
+    property of the term itself, so no invalidation exists to miss).
+
+    Certification is syntactic and bottom-up, never trusted from fuel: a leaf
+    is rigid by definition (`nfV`/`whnfV` return `pvar`/`sym`/`type`/`const`/
+    `⊥`/`loanM`/`borrowM` unchanged — `borrowM` payloads are runtime state the
+    pure layer never enters); a composite is certified iff its children were
+    (cache membership) AND its own head is not a β/ι-redex (`headRedexApp`,
+    conservative: ANY constructor-headed scrutinee under a recursor blocks
+    certification, a superset of the exact `Z`/`S`/… patterns `whnfV` fires
+    on). Fuel-0 truncation returns uncertified, so a truncated (possibly still
+    reducible) result never enters the cache.
+
+    BEHAVIORAL IDENTITY: the value component of `nfS` is pointwise `nfV`, for
+    any cache satisfying the invariant. The recursion mirrors `nfV`'s equations
+    (same whnf at entry fuel, same decrement per level); the only new branch is
+    the cache hit, which returns `v` where `nfV` computes `nfV f v` — equal
+    because members are rigid. Any change to `nfV`/`whnfV` must be mirrored
+    here (and `convert` above), or the mirror arguments break. -/
+
+/-- The set of terms certified rigid (hereditarily β/ι-irreducible). -/
+abbrev NormCache := Std.HashSet Val
+
+/-- Constructor-headed? (the shapes ι could fire on — checked conservatively:
+    arity/name mismatches still block certification, they never fire). -/
+def isCtorV : Val → Bool
+  | .ctor _ _ => true
+  | _ => false
+
+/-- Is this spine a head β/ι-redex (or possibly one)? Callers guarantee the
+    spine's components are rigid, so the scrutinee IS its own whnf and a shape
+    check suffices. Mirrors `whnfV`'s redex cases, conservatively. -/
+def headRedexApp (v : Val) : Bool :=
+  match collectSpine v with
+  | (.lam _ _, _ :: _) => true
+  | (.const "natRec", _ :: _ :: _ :: n :: _) => isCtorV n
+  | (.const "boolRec", _ :: _ :: _ :: b :: _) => isCtorV b
+  | (.const "listRec", _ :: _ :: _ :: _ :: l :: _) => isCtorV l
+  | (.const "j", _ :: _ :: _ :: _ :: _ :: p :: _) => isCtorV p
+  | (.const "k", _ :: _ :: _ :: _ :: p :: _) => isCtorV p
+  | _ => false
+
+/-! `nfS fuel v c` = `(nfV fuel v, certified?, updated cache)`. The Bool means
+    "the result is in the cache" (hence rigid); `false` is always safe. -/
+mutual
+  def nfS : Nat → Val → NormCache → Val × Bool × NormCache
+    | 0, v, c => (v, false, c)
+    | fuel + 1, v, c =>
+      if c.contains v then (v, true, c) else
+      match whnfV (fuel + 1) v with
+      | .pi d k =>
+        let (d', bd, c) := nfS fuel d c
+        let (k', bk, c) := nfS fuel k c
+        let w := Val.pi d' k'
+        if bd && bk then (w, true, c.insert w) else (w, false, c)
+      | .sigmaT d k =>
+        let (d', bd, c) := nfS fuel d c
+        let (k', bk, c) := nfS fuel k c
+        let w := Val.sigmaT d' k'
+        if bd && bk then (w, true, c.insert w) else (w, false, c)
+      | .lam d b =>
+        let (d', bd, c) := nfS fuel d c
+        let (b', bb, c) := nfS fuel b c
+        let w := Val.lam d' b'
+        if bd && bb then (w, true, c.insert w) else (w, false, c)
+      | .ctor n args =>
+        let (args', bs, c) := nfSList fuel args c
+        let w := Val.ctor n args'
+        if bs then (w, true, c.insert w) else (w, false, c)
+      | .app f a =>
+        let (f', bf, c) := nfS fuel f c
+        let (a', ba, c) := nfS fuel a c
+        let w := Val.app f' a'
+        if bf && ba && !headRedexApp w then (w, true, c.insert w) else (w, false, c)
+      | .idT x y z =>
+        let (x', bx, c) := nfS fuel x c
+        let (y', by', c) := nfS fuel y c
+        let (z', bz, c) := nfS fuel z c
+        let w := Val.idT x' y' z'
+        if bx && by' && bz then (w, true, c.insert w) else (w, false, c)
+      | w => (w, true, c.insert w)     -- leaves: rigid by definition (see above)
+  termination_by fuel _ _ => (fuel, 0, 0)
+  def nfSList : Nat → List Val → NormCache → List Val × Bool × NormCache
+    | _, [], c => ([], true, c)
+    | fuel, v :: vs, c =>
+      let (v', bv, c) := nfS fuel v c
+      let (vs', bs, c) := nfSList fuel vs c
+      (v' :: vs', bv && bs, c)
+  termination_by fuel vs _ => (fuel, 1, vs.length)
 end
 
 /-! ## Constructor signature table (§4)

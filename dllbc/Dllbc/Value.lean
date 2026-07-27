@@ -94,6 +94,35 @@ end
 
 instance : BEq Val := ⟨Val.beq⟩
 
+/-! Structural hash, mutually with the list case (same shape as `beq`, for the
+    same reason). The `Hashable` contract holds by construction: `beq` is
+    structural equality and `hashV` is a function of the structure, so equal
+    values hash equally. Consumer: the normal-form cache (`Pure.lean`'s
+    `NormCache`), which keys a `Std.HashSet` by whole terms. -/
+mutual
+  def hashV : Val → UInt64
+    | .ctor n args => mixHash 3 (mixHash (hash n) (hashVList args))
+    | .bot => 5
+    | .loanM x => mixHash 7 (hash x)
+    | .borrowM x p => mixHash 11 (mixHash (hash x) (hashV p))
+    | .sym x => mixHash 13 (hash x)
+    | .pvar x => mixHash 17 (hash x)
+    | .type => 19
+    | .pi d c => mixHash 23 (mixHash (hashV d) (hashV c))
+    | .sigmaT d c => mixHash 29 (mixHash (hashV d) (hashV c))
+    | .lam d b => mixHash 31 (mixHash (hashV d) (hashV b))
+    | .app f a => mixHash 37 (mixHash (hashV f) (hashV a))
+    | .const s => mixHash 41 (hash s)
+    | .idT a b c => mixHash 43 (mixHash (hashV a) (mixHash (hashV b) (hashV c)))
+  termination_by v => sizeOf v
+  def hashVList : List Val → UInt64
+    | [] => 47
+    | v :: vs => mixHash (hashV v) (hashVList vs)
+  termination_by vs => sizeOf vs
+end
+
+instance : Hashable Val := ⟨Val.hashV⟩
+
 /-- `Z`, the numeral zero. -/
 def zero : Val := .ctor "Z" []
 /-- Successor. -/

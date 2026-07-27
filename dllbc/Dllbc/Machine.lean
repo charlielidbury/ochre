@@ -120,6 +120,13 @@ structure St where
       captured borrow's payload-with-issued-holes must convert with the spec
       applied to fresh hole variables. Refined per-path like the owed types. -/
   selfBack : Option Val := none
+  /-- The rigid-term cache (`Pure.lean`'s shared normalization): terms
+      certified hereditarily β/ι-irreducible, so `nfV`/`whnfV` fix them at any
+      fuel. Threaded by `nfM`; sound across `refineSym`/`abstractInto` (those
+      build new terms — rigidity is a property of the term itself) and across
+      path forks (a certificate is globally true, never path-relative). Purely
+      an evaluation cache: it never influences a result, only its cost. -/
+  normCache : Val.NormCache := ∅
   /-- Execution mode (§8/§9 differential). `false` = CHECKING (the call rule
       uses the §5.3/§6.1 signature rule — groups, existentials); `true` =
       EXECUTING (a call runs the callee's actual body concretely). checkFn is
@@ -567,6 +574,27 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     retTyVal := s.retTyVal.map (substSym σ v),
     selfBack := s.selfBack.map (substSym σ v) })
 
+/-- `nfV` through the state's rigid-term cache (`Pure.lean`'s `nfS`): the
+    value returned is pointwise `Val.nfV fuel v`; the cache only shares the
+    work. Every checking-path normalization goes through here — the repeated
+    model spines the conformance audit embeds (the a3300a19 diagnosis) then
+    normalize once and hit the cache thereafter. -/
+def nfM (fuel : Nat) (v : Val) : M Val :=
+  modifyGet (fun st =>
+    let (w, _, c) := Val.nfS fuel v st.normCache
+    (w, { st with normCache := c }))
+
+/-- `convert` through the rigid-term cache: pointwise equal to `Val.convert`
+    (both compute `nfV fuel a == nfV fuel b`; `nfS` is pointwise `nfV`), but a
+    refined type that gets conversion-checked repeatedly — every `hasType` leaf
+    on every path — normalizes once and is beq thereafter. Used where BOTH
+    sides can be large; a comparison against a small rigid head (`ty` vs
+    `.type`) stays on the incremental `Val.convert`, which fails at the head
+    without normalizing anything. -/
+def convertM (fuel : Nat) (a b : Val) : M Bool :=
+  if a == b then pure true
+  else do pure ((← nfM fuel a) == (← nfM fuel b))
+
 /-- **Generalize a stuck Bool spine** (§19) — the inverse of `refineSym`, and the
     two-layer principle at the machine level. When a match/`if` scrutinee reduces
     to a stuck spine `leb σ σp` (a neutral, not a bare σ), the ⇜ split cannot fire
@@ -578,7 +606,7 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     spine to `True`/`False` per branch — including inside a declared spec's
     instantiation, which is exactly what the per-path back-spec conversion needs. -/
 def generalizeStuck (fuel : Nat) (spine : Val) : M Nat := do
-  let sp := Val.nfV fuel spine
+  let sp ← nfM fuel spine
   let σb ← freshSym
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, abstractInto sp σb kv.2)),
@@ -659,7 +687,7 @@ mutual
 end
 
 /-- ⇝: reflect then normalize. Ω is read-only throughout. -/
-def readC (fuel : Nat) (t : Term) : M Val := do pure (Val.nfV fuel (← reflectC t))
+def readC (fuel : Nat) (t : Term) : M Val := do nfM fuel (← reflectC t)
 
 /-- ⇝ against extra bindings prepended to Ω — how a dependent call instantiates a
     callee telescope type (§5.3): the decl's parameter vars are bound to the
@@ -688,7 +716,7 @@ def buildResult (fuel : Nat) (inst : Omega) : Term → M (Val × List (Nat × Va
     let σ ← freshSym
     let ℓr ← freshLoan
     let sVal ← readCWith fuel inst S
-    let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) sVal)
+    let owedR ← nfM fuel (Val.substPure 0 (Val.sym σ) sVal)
     modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
     pure (.borrowM ℓr (.sym σ), [(ℓr, owedR)])
   | .sigmaT a b => do
@@ -716,7 +744,7 @@ mutual
       match v with
       | .sym σ =>
         match (← get).sctx.lookup σ with
-        | some vty => pure (Val.convert fuel vty ty)
+        | some vty => convertM fuel vty ty
         | none => throwErr s!"hasType: σ{σ} has no type in sctx"
       | .ctor name args =>
         match Val.ctorSig name with
@@ -742,38 +770,38 @@ mutual
         -- type the fixed part to its base result, then `synthSpine` the extras.
         let finish (baseTy : Val) (rest : List Val) (premises : Bool) : M Bool := do
           match ← synthSpine fuel baseTy rest with
-          | some resTy => pure (Val.convert fuel ty resTy && premises)
+          | some resTy => do pure ((← convertM fuel ty resTy) && premises)
           | none => pure false
         match head, args with
         | .const "botElim", t :: x :: rest =>            -- botElim T x : T   (x : ⊥)
           let xOk ← hasType fuel x (.const "Bot")
           finish t rest xOk
         | .const "j", a :: aa :: p :: d :: b :: pf :: rest =>   -- j A a P d b p : P b p
-          let dOk ← hasType fuel d (Val.nfV fuel (.app (.app p aa) (.ctor "Refl" [])))
+          let dOk ← hasType fuel d (← nfM fuel (.app (.app p aa) (.ctor "Refl" [])))
           let pOk ← hasType fuel pf (.idT a aa b)
-          finish (Val.nfV fuel (.app (.app p b) pf)) rest (dOk && pOk)
+          finish (← nfM fuel (.app (.app p b) pf)) rest (dOk && pOk)
         | .const "k", a :: aa :: p :: d :: pf :: rest =>        -- k A a P d p : P p
-          let dOk ← hasType fuel d (Val.nfV fuel (.app p (.ctor "Refl" [])))
+          let dOk ← hasType fuel d (← nfM fuel (.app p (.ctor "Refl" [])))
           let pOk ← hasType fuel pf (.idT a aa aa)
-          finish (Val.nfV fuel (.app p pf)) rest (dOk && pOk)
+          finish (← nfM fuel (.app p pf)) rest (dOk && pOk)
         | .const "natRec", p :: z :: s :: n :: rest =>   -- natRec P z s n : P n
-          let zOk ← hasType fuel z (Val.nfV fuel (.app p (.ctor "Z" [])))
+          let zOk ← hasType fuel z (← nfM fuel (.app p (.ctor "Z" [])))
           let sTy : Val := .pi (.const "Nat") (.pi (.app p (.pvar 0)) (.app p (.ctor "S" [.pvar 1])))
           let sOk ← hasType fuel s sTy
           let nOk ← hasType fuel n (.const "Nat")
-          finish (Val.nfV fuel (.app p n)) rest (zOk && sOk && nOk)
+          finish (← nfM fuel (.app p n)) rest (zOk && sOk && nOk)
         | .const "boolRec", p :: t :: f :: b :: rest =>  -- boolRec P t f b : P b
-          let tOk ← hasType fuel t (Val.nfV fuel (.app p (.ctor "True" [])))
-          let fOk ← hasType fuel f (Val.nfV fuel (.app p (.ctor "False" [])))
+          let tOk ← hasType fuel t (← nfM fuel (.app p (.ctor "True" [])))
+          let fOk ← hasType fuel f (← nfM fuel (.app p (.ctor "False" [])))
           let bOk ← hasType fuel b (.const "Bool")
-          finish (Val.nfV fuel (.app p b)) rest (tOk && fOk && bOk)
+          finish (← nfM fuel (.app p b)) rest (tOk && fOk && bOk)
         | .const "listRec", a :: p :: pn :: pc :: l :: rest =>  -- listRec A P pn pc l : P l
           let listA : Val := .app (.const "List") a
-          let pnOk ← hasType fuel pn (Val.nfV fuel (.app p (.ctor "Nil" [])))
+          let pnOk ← hasType fuel pn (← nfM fuel (.app p (.ctor "Nil" [])))
           let pcTy : Val := .pi a (.pi listA (.pi (.app p (.pvar 0)) (.app p (.ctor "Cons" [.pvar 2, .pvar 1]))))
           let pcOk ← hasType fuel pc pcTy
           let lOk ← hasType fuel l listA
-          finish (Val.nfV fuel (.app p l)) rest (pnOk && pcOk && lOk)
+          finish (← nfM fuel (.app p l)) rest (pnOk && pcOk && lOk)
         | .sym σ, args =>
           -- A bound function variable applied (`ih b c hab hbc`): synthesize by
           -- iterating Π-instantiation from its `sctx` type, checking each argument
@@ -783,7 +811,7 @@ mutual
           | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
           | some hty =>
             match ← synthSpine fuel hty args with
-            | some resTy => pure (Val.convert fuel ty resTy)
+            | some resTy => convertM fuel ty resTy
             | none => pure false
         | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
       | .lam d b =>
@@ -794,7 +822,7 @@ mutual
         -- it is the elaboration of dependent elimination (§10/§11).
         match Val.whnfV fuel ty with
         | .pi d' c =>
-          if Val.convert fuel d d' then do
+          if ← convertM fuel d d' then do
             let σ ← freshSym
             modify (fun st => { st with sctx := (σ, d') :: st.sctx })
             hasType fuel (Val.substPure 0 (.sym σ) b) (Val.substPure 0 (.sym σ) c)
@@ -868,7 +896,7 @@ def endGroup (fuel : Nat) (grp : Group) : M Unit := do
     -- applied to the surrendered values (in issued order) — the COMPUTED value,
     -- not a fresh existential. Precision recovered soundly (the spec was checked
     -- against the body at the callee's return).
-    releaseCaptured ℓc (Val.nfV fuel (Val.rebuildSpine f surrendered))
+    releaseCaptured ℓc (← nfM fuel (Val.rebuildSpine f surrendered))
   | none, true, [(ℓc, _)], [p] => releaseCaptured ℓc p    -- test-only identity wire (harness)
   | _, _, _, _ =>
     grp.captured.forM (fun (ℓc, owed) => do               -- opaque: fresh existential each
@@ -1142,7 +1170,7 @@ mutual
           let τVal ← readCWith fuel inst τ
           if ← hasType fuel payload τVal then do
             let SVal ← readCWith fuel inst S
-            let owed := Val.nfV fuel (Val.substPure 0 payload SVal)
+            let owed ← nfM fuel (Val.substPure 0 payload SVal)
             -- A borrow parameter is bound to the actual borrow itself, so a later
             -- type mentioning `*b` (§5.2's comptime-deref at the call site)
             -- reflects the peel to the payload snapshot just passed.
@@ -1266,7 +1294,7 @@ def typeFieldSyms : List Var → List Val → M (List Nat)
 def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
   let a' := Val.whnfV fuel a
   let b' := Val.whnfV fuel b
-  if Val.convert fuel a' b' then pure ()                         -- endpoints already equal
+  if ← convertM fuel a' b' then pure ()                         -- endpoints already equal
   else match a', b' with
     | .sym σa, _ =>
       if b'.symIds.contains σa then
@@ -1494,7 +1522,7 @@ def expectReadC (env : Omega) (sctx : List (Nat × Val)) (t : Term) (expected : 
 /-- Test helper: `readC t₁` and `readC t₂` are convertible. -/
 def expectConv (env : Omega) (sctx : List (Nat × Val)) (t1 t2 : Term)
     (fuel : Nat := defaultFuel) : Bool :=
-  match (do let a ← readC fuel t1; let b ← readC fuel t2; pure (Val.convert fuel a b)).run
+  match (do let a ← readC fuel t1; let b ← readC fuel t2; convertM fuel a b).run
       (seedPure env sctx) with
   | .ok r _ => r
   | .error _ _ => false
