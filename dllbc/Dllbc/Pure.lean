@@ -1,4 +1,5 @@
 import Std.Data.HashSet
+import Std.Data.HashMap
 import Dllbc.Value
 
 /-!
@@ -29,43 +30,108 @@ namespace Dllbc.Val
     like `S #0` carries pure variables); `sym`/`const`/runtime forms are
     leaves — σ, ℓ and constant names are global, not de Bruijn. -/
 
-/-! Shift pure de Bruijn indices ≥ `c` up by `d`. -/
+/-! Shift pure de Bruijn indices ≥ `c` up by `d`. SHARING-PRESERVING: the
+    primed helpers return a "changed" flag, and a node none of whose children
+    changed is returned as the SAME object rather than rebuilt. The flag is
+    sound in one direction only — `false` guarantees the result IS the input
+    (so a conservative `true` is always allowed) — and behavior is pointwise
+    identical to the naive rebuild: a `false` subtree is structurally equal to
+    what the rebuild would have produced. Physical sharing is what pointer-
+    fast equality and pointer-keyed memoization downstream feed on; a β-step
+    that copies its argument into k occurrences now inserts k pointers to ONE
+    object, and untouched proof-term regions survive substitution un-copied. -/
 mutual
-  def shiftPure (d c : Nat) : Val → Val
-    | .pvar k => if k < c then .pvar k else .pvar (k + d)
-    | .lam dom b => .lam (shiftPure d c dom) (shiftPure d (c + 1) b)
-    | .pi dom cod => .pi (shiftPure d c dom) (shiftPure d (c + 1) cod)
-    | .sigmaT dom cod => .sigmaT (shiftPure d c dom) (shiftPure d (c + 1) cod)
-    | .app f a => .app (shiftPure d c f) (shiftPure d c a)
-    | .ctor n args => .ctor n (shiftPureList d c args)
-    | .idT a b b' => .idT (shiftPure d c a) (shiftPure d c b) (shiftPure d c b')
-    | v => v                                   -- type, const, sym, ⊥, loanM, borrowM: leaves
+  def shiftPure' (d c : Nat) : Val → Val × Bool
+    | v@(.pvar k) =>
+      if k < c || d == 0 then (v, false) else (.pvar (k + d), true)
+    | v@(.lam dom b) =>
+      let (dom', bd) := shiftPure' d c dom
+      let (b', bb) := shiftPure' d (c + 1) b
+      if bd || bb then (.lam dom' b', true) else (v, false)
+    | v@(.pi dom cod) =>
+      let (dom', bd) := shiftPure' d c dom
+      let (cod', bc) := shiftPure' d (c + 1) cod
+      if bd || bc then (.pi dom' cod', true) else (v, false)
+    | v@(.sigmaT dom cod) =>
+      let (dom', bd) := shiftPure' d c dom
+      let (cod', bc) := shiftPure' d (c + 1) cod
+      if bd || bc then (.sigmaT dom' cod', true) else (v, false)
+    | v@(.app f a) =>
+      let (f', bf) := shiftPure' d c f
+      let (a', ba) := shiftPure' d c a
+      if bf || ba then (.app f' a', true) else (v, false)
+    | v@(.ctor n args) =>
+      let (args', bs) := shiftPureList' d c args
+      if bs then (.ctor n args', true) else (v, false)
+    | v@(.idT a b b') =>
+      let (a', ba) := shiftPure' d c a
+      let (b2, bb) := shiftPure' d c b
+      let (b2', bb') := shiftPure' d c b'
+      if ba || bb || bb' then (.idT a' b2 b2', true) else (v, false)
+    | v => (v, false)                          -- type, const, sym, ⊥, loanM, borrowM: leaves
   termination_by v => sizeOf v
-  def shiftPureList (d c : Nat) : List Val → List Val
-    | [] => []
-    | v :: vs => shiftPure d c v :: shiftPureList d c vs
+  def shiftPureList' (d c : Nat) : List Val → List Val × Bool
+    | [] => ([], false)
+    | vs@(v :: rest) =>
+      let (v', bv) := shiftPure' d c v
+      let (rest', br) := shiftPureList' d c rest
+      if bv || br then (v' :: rest', true) else (vs, false)
   termination_by vs => sizeOf vs
 end
 
+/-- Shift pure de Bruijn indices ≥ `c` up by `d` (sharing-preserving). -/
+def shiftPure (d c : Nat) (v : Val) : Val := (shiftPure' d c v).1
+/-- List version of `shiftPure`. -/
+def shiftPureList (d c : Nat) (vs : List Val) : List Val := (shiftPureList' d c vs).1
+
 /-! Substitute `s` for pure de Bruijn variable `j` in a value; indices `> j`
     shift down by one (the binder at `j` is eliminated). `s` is shifted when
-    going under a binder. -/
+    going under a binder. Sharing-preserving like `shiftPure'` — a subtree
+    without the variable comes back as the same object, and every occurrence
+    of `s` in the result is the same physical `s`. -/
 mutual
-  def substPure (j : Nat) (s : Val) : Val → Val
-    | .pvar k => if k == j then s else if k > j then .pvar (k - 1) else .pvar k
-    | .lam dom b => .lam (substPure j s dom) (substPure (j + 1) (shiftPure 1 0 s) b)
-    | .pi dom cod => .pi (substPure j s dom) (substPure (j + 1) (shiftPure 1 0 s) cod)
-    | .sigmaT dom cod => .sigmaT (substPure j s dom) (substPure (j + 1) (shiftPure 1 0 s) cod)
-    | .app f a => .app (substPure j s f) (substPure j s a)
-    | .ctor n args => .ctor n (substPureList j s args)
-    | .idT a b b' => .idT (substPure j s a) (substPure j s b) (substPure j s b')
-    | v => v                                   -- leaves (see shiftPure)
+  def substPure' (j : Nat) (s : Val) : Val → Val × Bool
+    | v@(.pvar k) =>
+      if k == j then (s, true) else if k > j then (.pvar (k - 1), true) else (v, false)
+    | v@(.lam dom b) =>
+      let (dom', bd) := substPure' j s dom
+      let (b', bb) := substPure' (j + 1) (shiftPure 1 0 s) b
+      if bd || bb then (.lam dom' b', true) else (v, false)
+    | v@(.pi dom cod) =>
+      let (dom', bd) := substPure' j s dom
+      let (cod', bc) := substPure' (j + 1) (shiftPure 1 0 s) cod
+      if bd || bc then (.pi dom' cod', true) else (v, false)
+    | v@(.sigmaT dom cod) =>
+      let (dom', bd) := substPure' j s dom
+      let (cod', bc) := substPure' (j + 1) (shiftPure 1 0 s) cod
+      if bd || bc then (.sigmaT dom' cod', true) else (v, false)
+    | v@(.app f a) =>
+      let (f', bf) := substPure' j s f
+      let (a', ba) := substPure' j s a
+      if bf || ba then (.app f' a', true) else (v, false)
+    | v@(.ctor n args) =>
+      let (args', bs) := substPureList' j s args
+      if bs then (.ctor n args', true) else (v, false)
+    | v@(.idT a b b') =>
+      let (a', ba) := substPure' j s a
+      let (b2, bb) := substPure' j s b
+      let (b2', bb') := substPure' j s b'
+      if ba || bb || bb' then (.idT a' b2 b2', true) else (v, false)
+    | v => (v, false)                          -- leaves (see shiftPure')
   termination_by v => sizeOf v
-  def substPureList (j : Nat) (s : Val) : List Val → List Val
-    | [] => []
-    | v :: vs => substPure j s v :: substPureList j s vs
+  def substPureList' (j : Nat) (s : Val) : List Val → List Val × Bool
+    | [] => ([], false)
+    | vs@(v :: rest) =>
+      let (v', bv) := substPure' j s v
+      let (rest', br) := substPureList' j s rest
+      if bv || br then (v' :: rest', true) else (vs, false)
   termination_by vs => sizeOf vs
 end
+
+/-- Substitute `s` for pure de Bruijn `j` (sharing-preserving). -/
+def substPure (j : Nat) (s : Val) (v : Val) : Val := (substPure' j s v).1
+/-- List version of `substPure`. -/
+def substPureList (j : Nat) (s : Val) (vs : List Val) : List Val := (substPureList' j s vs).1
 
 /-! ## Weak-head normalization (β and ι)
 
@@ -86,47 +152,70 @@ def rebuildSpine : Val → List Val → Val
 
 /-- Weak-head-normalize: reduce the head redex (β / ι) only, fuel-bounded.
     Leaves (`pvar`, `sym`, `type`, `const`, `pi`, `sigmaT`, `lam`, `ctor`) and
-    stuck neutral spines are returned as-is. -/
-def whnfV : Nat → Val → Val
-  | 0, v => v
+    stuck neutral spines are returned as-is. SHARING-PRESERVING (`whnfV'`
+    carries a "changed" flag): a spine on which no rule fires — including a
+    recursor stuck on an already-whnf target — is returned as the ORIGINAL
+    object, where the old code rebuilt a structurally identical fresh spine
+    (`rebuildSpine (collectSpine v)` and the stuck-recursor rebuilds are the
+    identity up to structure). Pointwise identical results, shared objects. -/
+def whnfV' : Nat → Val → Val × Bool
+  | 0, v => (v, false)
   | fuel + 1, v =>
     let (head, args) := collectSpine v
     match head, args with
     | .lam _ b, a :: rest =>                        -- β
-      whnfV fuel (rebuildSpine (substPure 0 a b) rest)
+      ((whnfV' fuel (rebuildSpine (substPure 0 a b) rest)).1, true)
     | .const "natRec", motive :: z :: s :: n :: rest =>
-      match whnfV fuel n with
-      | .ctor "Z" [] => whnfV fuel (rebuildSpine z rest)
+      let (n', bn) := whnfV' fuel n
+      match n' with
+      | .ctor "Z" [] => ((whnfV' fuel (rebuildSpine z rest)).1, true)
       | .ctor "S" [m] =>
         -- natRec P z s (S m) ↦ s m (natRec P z s m)
         let recCall := .app (.app (.app (.app (.const "natRec") motive) z) s) m
-        whnfV fuel (rebuildSpine (.app (.app s m) recCall) rest)
-      | n' => rebuildSpine (.const "natRec") (motive :: z :: s :: n' :: rest)  -- stuck
+        ((whnfV' fuel (rebuildSpine (.app (.app s m) recCall) rest)).1, true)
+      | n'' =>                                       -- stuck
+        if bn then (rebuildSpine (.const "natRec") (motive :: z :: s :: n'' :: rest), true)
+        else (v, false)
     | .const "boolRec", motive :: t :: f :: b :: rest =>
-      match whnfV fuel b with
-      | .ctor "True" [] => whnfV fuel (rebuildSpine t rest)
-      | .ctor "False" [] => whnfV fuel (rebuildSpine f rest)
-      | b' => rebuildSpine (.const "boolRec") (motive :: t :: f :: b' :: rest)  -- stuck
+      let (b', bb) := whnfV' fuel b
+      match b' with
+      | .ctor "True" [] => ((whnfV' fuel (rebuildSpine t rest)).1, true)
+      | .ctor "False" [] => ((whnfV' fuel (rebuildSpine f rest)).1, true)
+      | b'' =>                                       -- stuck
+        if bb then (rebuildSpine (.const "boolRec") (motive :: t :: f :: b'' :: rest), true)
+        else (v, false)
     -- listRec A P pn pc l : P l ; ι on Nil ↦ pn, on Cons h t ↦ pc h t (rec on t).
     | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
-      match whnfV fuel l with
-      | .ctor "Nil" [] => whnfV fuel (rebuildSpine pn rest)
+      let (l', bl) := whnfV' fuel l
+      match l' with
+      | .ctor "Nil" [] => ((whnfV' fuel (rebuildSpine pn rest)).1, true)
       | .ctor "Cons" [h, t] =>
         let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
-        whnfV fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
-      | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)  -- stuck
+        ((whnfV' fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)).1, true)
+      | l'' =>                                       -- stuck
+        if bl then (rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l'' :: rest), true)
+        else (v, false)
     -- Paulin-Mohring J (§10): j A a P d b p ; ι fires on Refl (b = a there), → d.
     | .const "j", _A :: _a :: _P :: d :: _b :: p :: rest =>
-      match whnfV fuel p with
-      | .ctor "Refl" [] => whnfV fuel (rebuildSpine d rest)
-      | p' => rebuildSpine (.const "j") (_A :: _a :: _P :: d :: _b :: p' :: rest)  -- stuck
+      let (p', bp) := whnfV' fuel p
+      match p' with
+      | .ctor "Refl" [] => ((whnfV' fuel (rebuildSpine d rest)).1, true)
+      | p'' =>                                       -- stuck
+        if bp then (rebuildSpine (.const "j") (_A :: _a :: _P :: d :: _b :: p'' :: rest), true)
+        else (v, false)
     -- Streicher K (§10): k A a P d p ; ι fires on Refl, → d.
     | .const "k", _A :: _a :: _P :: d :: p :: rest =>
-      match whnfV fuel p with
-      | .ctor "Refl" [] => whnfV fuel (rebuildSpine d rest)
-      | p' => rebuildSpine (.const "k") (_A :: _a :: _P :: d :: p' :: rest)  -- stuck
+      let (p', bp) := whnfV' fuel p
+      match p' with
+      | .ctor "Refl" [] => ((whnfV' fuel (rebuildSpine d rest)).1, true)
+      | p'' =>                                       -- stuck
+        if bp then (rebuildSpine (.const "k") (_A :: _a :: _P :: d :: p'' :: rest), true)
+        else (v, false)
     -- botElim never fires (⊥ has no constructors); it is always a stuck value.
-    | _, _ => rebuildSpine head args
+    | _, _ => (v, false)
+
+/-- Weak-head-normalize (sharing-preserving; see `whnfV'`). -/
+def whnfV (fuel : Nat) (v : Val) : Val := (whnfV' fuel v).1
 
 /-! ## Full normalization and conversion -/
 
@@ -249,54 +338,162 @@ def headRedexApp (v : Val) : Bool :=
   | (.const "k", _ :: _ :: _ :: _ :: p :: _) => isCtorV p
   | _ => false
 
-/-! `nfS fuel v c` = `(nfV fuel v, certified?, updated cache)`. The Bool means
-    "the result is in the cache" (hence rigid); `false` is always safe. -/
+/-! `nfS fuel v c` = `(nfV fuel v, certified?, changed?, updated cache)`.
+    `certified` means the result is in the cache (hence rigid); `false` is
+    always safe. `changed = false` guarantees the result IS the input object
+    (sharing-preservation, like `substPure'`): an already-normal subterm comes
+    back as itself, so re-normalizing a term yields physically the same
+    objects and downstream equality gets pointer-fast. -/
 mutual
-  def nfS : Nat → Val → NormCache → Val × Bool × NormCache
-    | 0, v, c => (v, false, c)
+  def nfS : Nat → Val → NormCache → Val × Bool × Bool × NormCache
+    | 0, v, c => (v, false, false, c)
     | fuel + 1, v, c =>
-      if c.contains v then (v, true, c) else
-      match whnfV (fuel + 1) v with
+      if c.contains v then (v, true, false, c) else
+      let (w, cw) := whnfV' (fuel + 1) v
+      match w with
       | .pi d k =>
-        let (d', bd, c) := nfS fuel d c
-        let (k', bk, c) := nfS fuel k c
-        let w := Val.pi d' k'
-        if bd && bk then (w, true, c.insert w) else (w, false, c)
+        let (d', bd, chd, c) := nfS fuel d c
+        let (k', bk, chk, c) := nfS fuel k c
+        let w' := if chd || chk then Val.pi d' k' else w
+        if bd && bk then (w', true, cw || chd || chk, c.insert w')
+        else (w', false, cw || chd || chk, c)
       | .sigmaT d k =>
-        let (d', bd, c) := nfS fuel d c
-        let (k', bk, c) := nfS fuel k c
-        let w := Val.sigmaT d' k'
-        if bd && bk then (w, true, c.insert w) else (w, false, c)
+        let (d', bd, chd, c) := nfS fuel d c
+        let (k', bk, chk, c) := nfS fuel k c
+        let w' := if chd || chk then Val.sigmaT d' k' else w
+        if bd && bk then (w', true, cw || chd || chk, c.insert w')
+        else (w', false, cw || chd || chk, c)
       | .lam d b =>
-        let (d', bd, c) := nfS fuel d c
-        let (b', bb, c) := nfS fuel b c
-        let w := Val.lam d' b'
-        if bd && bb then (w, true, c.insert w) else (w, false, c)
+        let (d', bd, chd, c) := nfS fuel d c
+        let (b', bb, chb, c) := nfS fuel b c
+        let w' := if chd || chb then Val.lam d' b' else w
+        if bd && bb then (w', true, cw || chd || chb, c.insert w')
+        else (w', false, cw || chd || chb, c)
       | .ctor n args =>
-        let (args', bs, c) := nfSList fuel args c
-        let w := Val.ctor n args'
-        if bs then (w, true, c.insert w) else (w, false, c)
+        let (args', bs, chs, c) := nfSList fuel args c
+        let w' := if chs then Val.ctor n args' else w
+        if bs then (w', true, cw || chs, c.insert w')
+        else (w', false, cw || chs, c)
       | .app f a =>
-        let (f', bf, c) := nfS fuel f c
-        let (a', ba, c) := nfS fuel a c
-        let w := Val.app f' a'
-        if bf && ba && !headRedexApp w then (w, true, c.insert w) else (w, false, c)
+        let (f', bf, chf, c) := nfS fuel f c
+        let (a', ba, cha, c) := nfS fuel a c
+        let w' := if chf || cha then Val.app f' a' else w
+        if bf && ba && !headRedexApp w' then (w', true, cw || chf || cha, c.insert w')
+        else (w', false, cw || chf || cha, c)
       | .idT x y z =>
-        let (x', bx, c) := nfS fuel x c
-        let (y', by', c) := nfS fuel y c
-        let (z', bz, c) := nfS fuel z c
-        let w := Val.idT x' y' z'
-        if bx && by' && bz then (w, true, c.insert w) else (w, false, c)
-      | w => (w, true, c.insert w)     -- leaves: rigid by definition (see above)
+        let (x', bx, chx, c) := nfS fuel x c
+        let (y', by', chy, c) := nfS fuel y c
+        let (z', bz, chz, c) := nfS fuel z c
+        let w' := if chx || chy || chz then Val.idT x' y' z' else w
+        if bx && by' && bz then (w', true, cw || chx || chy || chz, c.insert w')
+        else (w', false, cw || chx || chy || chz, c)
+      | w => (w, true, cw, c.insert w)   -- leaves: rigid by definition (see above)
   termination_by fuel _ _ => (fuel, 0, 0)
-  def nfSList : Nat → List Val → NormCache → List Val × Bool × NormCache
-    | _, [], c => ([], true, c)
-    | fuel, v :: vs, c =>
-      let (v', bv, c) := nfS fuel v c
-      let (vs', bs, c) := nfSList fuel vs c
-      (v' :: vs', bv && bs, c)
+  def nfSList : Nat → List Val → NormCache → List Val × Bool × Bool × NormCache
+    | _, [], c => ([], true, false, c)
+    | fuel, vs@(v :: rest), c =>
+      let (v', bv, chv, c) := nfS fuel v c
+      let (rest', bs, chr, c) := nfSList fuel rest c
+      if chv || chr then (v' :: rest', bv && bs, true, c)
+      else (vs, bv && bs, false, c)
   termination_by fuel vs _ => (fuel, 1, vs.length)
 end
+
+/-! ## Runtime rigid-term table (pointer-keyed)
+
+    The pure `nfS` above is the SPEC: its cache is a structural `HashSet`, and
+    its value component is pointwise `nfV` for any cache satisfying the rigid
+    invariant — including the empty one. The `implemented_by` mirror below
+    keeps the recursion case-for-case identical but consults a GLOBAL
+    pointer-keyed table instead of the threaded set, because structural
+    hashing is O(subtree) per probe and re-introduces the quadratic that
+    sharing is meant to remove (the M22 finding: any content-addressed lookup
+    on unshared trees is as expensive as the work it saves). Soundness:
+
+      * a table hit requires the probe object and the stored object to have
+        the SAME address while both are live — the table holds a strong
+        reference to every key, so addresses cannot be recycled — hence the
+        probe IS a term previously certified rigid, and returning it
+        unchanged is what `nfV` computes on it (rigid terms are nfV-fixed at
+        every fuel);
+      * a pointer miss on a structurally-cached term merely re-normalizes —
+        the pure spec's value is cache-independent, so EVERY miss is safe;
+      * the threaded `NormCache` passes through untouched (stays ∅ at
+        runtime), so `St` forks copy nothing.
+
+    The certified/changed flags may differ from the pure run (they reflect
+    the table, not the set); the only consumer (`nfM`) discards them. -/
+
+private unsafe def rigidTableRef : IO.Ref (Std.HashMap USize Val) :=
+  unsafeBaseIO (IO.mkRef ∅)
+
+/-- Runtime: is `v` (this very object) certified rigid? O(1). -/
+private unsafe def rigidContains (v : Val) : Bool :=
+  unsafeBaseIO do pure ((← rigidTableRef.get).contains (ptrAddrUnsafe v))
+
+/-- Runtime: certify `v` rigid (keyed by its address, holding `v` alive so the
+    address stays uniquely its own). Returns `c` through the IO so the call is
+    not dead-code-eliminated. -/
+private unsafe def rigidRemember (v : Val) (c : NormCache) : NormCache :=
+  unsafeBaseIO do
+    rigidTableRef.modify (fun m => m.insert (ptrAddrUnsafe v) v)
+    pure c
+
+mutual
+  private unsafe def nfSU : Nat → Val → NormCache → Val × Bool × Bool × NormCache
+    | 0, v, c => (v, false, false, c)
+    | fuel + 1, v, c =>
+      if rigidContains v then (v, true, false, c) else
+      let (w, cw) := whnfV' (fuel + 1) v
+      match w with
+      | .pi d k =>
+        let (d', bd, chd, c) := nfSU fuel d c
+        let (k', bk, chk, c) := nfSU fuel k c
+        let w' := if chd || chk then Val.pi d' k' else w
+        if bd && bk then (w', true, cw || chd || chk, rigidRemember w' c)
+        else (w', false, cw || chd || chk, c)
+      | .sigmaT d k =>
+        let (d', bd, chd, c) := nfSU fuel d c
+        let (k', bk, chk, c) := nfSU fuel k c
+        let w' := if chd || chk then Val.sigmaT d' k' else w
+        if bd && bk then (w', true, cw || chd || chk, rigidRemember w' c)
+        else (w', false, cw || chd || chk, c)
+      | .lam d b =>
+        let (d', bd, chd, c) := nfSU fuel d c
+        let (b', bb, chb, c) := nfSU fuel b c
+        let w' := if chd || chb then Val.lam d' b' else w
+        if bd && bb then (w', true, cw || chd || chb, rigidRemember w' c)
+        else (w', false, cw || chd || chb, c)
+      | .ctor n args =>
+        let (args', bs, chs, c) := nfSListU fuel args c
+        let w' := if chs then Val.ctor n args' else w
+        if bs then (w', true, cw || chs, rigidRemember w' c)
+        else (w', false, cw || chs, c)
+      | .app f a =>
+        let (f', bf, chf, c) := nfSU fuel f c
+        let (a', ba, cha, c) := nfSU fuel a c
+        let w' := if chf || cha then Val.app f' a' else w
+        if bf && ba && !headRedexApp w' then (w', true, cw || chf || cha, rigidRemember w' c)
+        else (w', false, cw || chf || cha, c)
+      | .idT x y z =>
+        let (x', bx, chx, c) := nfSU fuel x c
+        let (y', by', chy, c) := nfSU fuel y c
+        let (z', bz, chz, c) := nfSU fuel z c
+        let w' := if chx || chy || chz then Val.idT x' y' z' else w
+        if bx && by' && bz then (w', true, cw || chx || chy || chz, rigidRemember w' c)
+        else (w', false, cw || chx || chy || chz, c)
+      | w => (w, true, cw, rigidRemember w c)   -- leaves: rigid by definition (see above)
+  private unsafe def nfSListU : Nat → List Val → NormCache → List Val × Bool × Bool × NormCache
+    | _, [], c => ([], true, false, c)
+    | fuel, vs@(v :: rest), c =>
+      let (v', bv, chv, c) := nfSU fuel v c
+      let (rest', bs, chr, c) := nfSListU fuel rest c
+      if chv || chr then (v' :: rest', bv && bs, true, c)
+      else (vs, bv && bs, false, c)
+end
+attribute [implemented_by nfSU] nfS
+attribute [implemented_by nfSListU] nfSList
+
 
 /-! ## Constructor signature table (§4)
 

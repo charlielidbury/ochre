@@ -359,26 +359,50 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
 /-! Substitute `newV` for every `sym σ` occurrence in `v` — the value-tree
     core of ⇜ (§3.2 refinement substitutes σ *everywhere*). -/
 mutual
-  def substSym (σ : Nat) (newV : Val) : Val → Val
-    | .sym σ' => if σ' == σ then newV else .sym σ'
-    | .borrowM ℓ p => .borrowM ℓ (substSym σ newV p)
-    | .ctor n args => .ctor n (substSymList σ newV args)
-    | .loanM ℓ => .loanM ℓ
-    | .bot => .bot
-    | .pvar k => .pvar k
-    | .type => .type
-    | .const c => .const c
-    | .pi d c => .pi (substSym σ newV d) (substSym σ newV c)
-    | .sigmaT d c => .sigmaT (substSym σ newV d) (substSym σ newV c)
-    | .lam d c => .lam (substSym σ newV d) (substSym σ newV c)
-    | .app d c => .app (substSym σ newV d) (substSym σ newV c)
-    | .idT a b c => .idT (substSym σ newV a) (substSym σ newV b) (substSym σ newV c)
+  def substSym' (σ : Nat) (newV : Val) : Val → Val × Bool
+    | v@(.sym σ') => if σ' == σ then (newV, true) else (v, false)
+    | v@(.borrowM ℓ p) =>
+      let (p', bp) := substSym' σ newV p
+      if bp then (.borrowM ℓ p', true) else (v, false)
+    | v@(.ctor n args) =>
+      let (args', bs) := substSymList' σ newV args
+      if bs then (.ctor n args', true) else (v, false)
+    | v@(.pi d c) =>
+      let (d', bd) := substSym' σ newV d
+      let (c', bc) := substSym' σ newV c
+      if bd || bc then (.pi d' c', true) else (v, false)
+    | v@(.sigmaT d c) =>
+      let (d', bd) := substSym' σ newV d
+      let (c', bc) := substSym' σ newV c
+      if bd || bc then (.sigmaT d' c', true) else (v, false)
+    | v@(.lam d c) =>
+      let (d', bd) := substSym' σ newV d
+      let (c', bc) := substSym' σ newV c
+      if bd || bc then (.lam d' c', true) else (v, false)
+    | v@(.app d c) =>
+      let (d', bd) := substSym' σ newV d
+      let (c', bc) := substSym' σ newV c
+      if bd || bc then (.app d' c', true) else (v, false)
+    | v@(.idT a b c) =>
+      let (a', ba) := substSym' σ newV a
+      let (b', bb) := substSym' σ newV b
+      let (c', bc) := substSym' σ newV c
+      if ba || bb || bc then (.idT a' b' c', true) else (v, false)
+    | v => (v, false)                    -- loanM, ⊥, pvar, type, const: leaves
   termination_by v => sizeOf v
-  def substSymList (σ : Nat) (newV : Val) : List Val → List Val
-    | [] => []
-    | v :: vs => substSym σ newV v :: substSymList σ newV vs
+  def substSymList' (σ : Nat) (newV : Val) : List Val → List Val × Bool
+    | [] => ([], false)
+    | vs@(v :: rest) =>
+      let (v', bv) := substSym' σ newV v
+      let (rest', br) := substSymList' σ newV rest
+      if bv || br then (v' :: rest', true) else (vs, false)
   termination_by vs => sizeOf vs
 end
+
+/-- Substitute `newV` for `sym σ` (sharing-preserving; see `substSym'`). -/
+def substSym (σ : Nat) (newV : Val) (v : Val) : Val := (substSym' σ newV v).1
+/-- List version of `substSym`. -/
+def substSymList (σ : Nat) (newV : Val) (vs : List Val) : List Val := (substSymList' σ newV vs).1
 
 /-! Abstract a whole sub-value `target` into `sym σb` **everywhere** — the
     inverse of `substSym`, keyed on structural identity of the whole subterm
@@ -389,24 +413,52 @@ end
     which the Bool spines it is used on always are; NF it before abstracting so
     the match is up to conversion-stable syntactic identity. -/
 mutual
-  def abstractInto (target : Val) (σb : Nat) (v : Val) : Val :=
-    if v == target then .sym σb
+  def abstractInto' (target : Val) (σb : Nat) (v : Val) : Val × Bool :=
+    if v == target then (.sym σb, true)
     else match v with
-      | .borrowM ℓ p => .borrowM ℓ (abstractInto target σb p)
-      | .ctor n args => .ctor n (abstractIntoList target σb args)
-      | .pi d c => .pi (abstractInto target σb d) (abstractInto target σb c)
-      | .sigmaT d c => .sigmaT (abstractInto target σb d) (abstractInto target σb c)
-      | .lam d c => .lam (abstractInto target σb d) (abstractInto target σb c)
-      | .app d c => .app (abstractInto target σb d) (abstractInto target σb c)
-      | .idT a b c => .idT (abstractInto target σb a) (abstractInto target σb b) (abstractInto target σb c)
-      | v' => v'
+      | .borrowM ℓ p =>
+        let (p', bp) := abstractInto' target σb p
+        if bp then (.borrowM ℓ p', true) else (v, false)
+      | .ctor n args =>
+        let (args', bs) := abstractIntoList' target σb args
+        if bs then (.ctor n args', true) else (v, false)
+      | .pi d c =>
+        let (d', bd) := abstractInto' target σb d
+        let (c', bc) := abstractInto' target σb c
+        if bd || bc then (.pi d' c', true) else (v, false)
+      | .sigmaT d c =>
+        let (d', bd) := abstractInto' target σb d
+        let (c', bc) := abstractInto' target σb c
+        if bd || bc then (.sigmaT d' c', true) else (v, false)
+      | .lam d c =>
+        let (d', bd) := abstractInto' target σb d
+        let (c', bc) := abstractInto' target σb c
+        if bd || bc then (.lam d' c', true) else (v, false)
+      | .app d c =>
+        let (d', bd) := abstractInto' target σb d
+        let (c', bc) := abstractInto' target σb c
+        if bd || bc then (.app d' c', true) else (v, false)
+      | .idT a b c =>
+        let (a', ba) := abstractInto' target σb a
+        let (b', bb) := abstractInto' target σb b
+        let (c', bc) := abstractInto' target σb c
+        if ba || bb || bc then (.idT a' b' c', true) else (v, false)
+      | _ => (v, false)
   termination_by sizeOf v
-  def abstractIntoList (target : Val) (σb : Nat) (vs : List Val) : List Val :=
+  def abstractIntoList' (target : Val) (σb : Nat) (vs : List Val) : List Val × Bool :=
     match vs with
-    | [] => []
-    | v :: rest => abstractInto target σb v :: abstractIntoList target σb rest
+    | [] => ([], false)
+    | v :: rest =>
+      let (v', bv) := abstractInto' target σb v
+      let (rest', br) := abstractIntoList' target σb rest
+      if bv || br then (v' :: rest', true) else (vs, false)
   termination_by sizeOf vs
 end
+
+/-- Abstract `target` into `sym σb` (sharing-preserving; see `abstractInto'`). -/
+def abstractInto (target : Val) (σb : Nat) (v : Val) : Val := (abstractInto' target σb v).1
+/-- List version of `abstractInto`. -/
+def abstractIntoList (target : Val) (σb : Nat) (vs : List Val) : List Val := (abstractIntoList' target σb vs).1
 
 /-! ## The two Ω-primitives
 
@@ -581,7 +633,7 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     normalize once and hit the cache thereafter. -/
 def nfM (fuel : Nat) (v : Val) : M Val :=
   modifyGet (fun st =>
-    let (w, _, c) := Val.nfS fuel v st.normCache
+    let (w, _, _, c) := Val.nfS fuel v st.normCache
     (w, { st with normCache := c }))
 
 /-- `convert` through the rigid-term cache: pointwise equal to `Val.convert`

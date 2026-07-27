@@ -92,7 +92,52 @@ mutual
   termination_by vs => sizeOf vs
 end
 
-instance : BEq Val := ⟨Val.beq⟩
+/-! Pointer-accelerated equality. The LOGICAL definition of `==` on `Val` is
+    exactly `beq` (structural equality) — `beqFast` is `beq` with an
+    `implemented_by` runtime that short-circuits on pointer identity at every
+    recursion level. Sound because `ptrEq a b = true` means a and b are the
+    SAME object, and `beq` is reflexive (every case compares components with
+    `==`, recursively — a term is structurally equal to itself), so returning
+    `true` there is exactly what `beq` would have computed. The unsafe mirror
+    must stay case-for-case identical to `beq`; any change to one must land
+    in both. Payoff: the sharing-preserving substitution/normalization layer
+    keeps structurally-equal terms physically identical wherever they were
+    not independently constructed, so the hot `a == b` short-circuits
+    (`convertM`, `abstractInto`'s per-node target test, hash-set membership
+    probes) become O(1) instead of O(subtree). -/
+mutual
+  private unsafe def beqFastU : Val → Val → Bool
+    | a, b =>
+      if ptrEq a b then true else
+      match a, b with
+      | .ctor n1 a1, .ctor n2 a2 => n1 == n2 && beqFastListU a1 a2
+      | .bot,        .bot        => true
+      | .loanM x,    .loanM y    => x == y
+      | .borrowM x p, .borrowM y q => x == y && beqFastU p q
+      | .sym x,      .sym y       => x == y
+      | .pvar x,     .pvar y      => x == y
+      | .type,       .type        => true
+      | .pi d1 c1,   .pi d2 c2    => beqFastU d1 d2 && beqFastU c1 c2
+      | .sigmaT d1 c1, .sigmaT d2 c2 => beqFastU d1 d2 && beqFastU c1 c2
+      | .lam d1 b1,  .lam d2 b2   => beqFastU d1 d2 && beqFastU b1 b2
+      | .app f1 a1,  .app f2 a2   => beqFastU f1 f2 && beqFastU a1 a2
+      | .const x,    .const y     => x == y
+      | .idT a1 b1 c1, .idT a2 b2 c2 => beqFastU a1 a2 && beqFastU b1 b2 && beqFastU c1 c2
+      | _,           _           => false
+  private unsafe def beqFastListU : List Val → List Val → Bool
+    | as, bs =>
+      if ptrEq as bs then true else
+      match as, bs with
+      | [],      []      => true
+      | x :: xs, y :: ys => beqFastU x y && beqFastListU xs ys
+      | _,       _       => false
+end
+
+/-- Structural equality (`beq`), pointer-accelerated at runtime. -/
+@[implemented_by beqFastU]
+def beqFast (a b : Val) : Bool := beq a b
+
+instance : BEq Val := ⟨Val.beqFast⟩
 
 /-! Structural hash, mutually with the list case (same shape as `beq`, for the
     same reason). The `Hashable` contract holds by construction: `beq` is
