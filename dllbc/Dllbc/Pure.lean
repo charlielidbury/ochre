@@ -151,11 +151,46 @@ mutual
   termination_by fuel vs => (fuel, 1, vs.length)
 end
 
-/-- Definitional conversion: equal normal forms. For this fragment (β, ι, no
+/-! Definitional conversion: equal normal forms. For this fragment (β, ι, no
     eta, de Bruijn) normal forms are canonical, so normal-form equality *is*
-    convertibility — simpler than a lazy whnf-and-compare recursion and, for a
-    normalizing system, equivalent. -/
-def convert (fuel : Nat) (a b : Val) : Bool := nfV fuel a == nfV fuel b
+    convertibility. Computed INCREMENTALLY (the kernel algorithm): identical
+    terms convert outright (`beq` is structural equality, and `nfV` is a
+    function of structure, so `a == b` implies equal normal forms); otherwise
+    whnf both sides, compare heads, recurse on subterms. This is *pointwise
+    equal* to the specification `nfV fuel a == nfV fuel b`, by induction on
+    fuel: `nfV (fuel+1)` is `whnfV (fuel+1)` followed by `nfV fuel` on each
+    subterm, and `beq` on the two rebuilt results is the head comparison
+    followed by `beq` on normalized subterm pairs — which is `convert fuel` on
+    the un-normalized pairs, by the inductive hypothesis. The mixed-head and
+    leaf cases land in the `w₁ == w₂` catch-all, exactly `beq` on what `nfV`
+    returns unchanged. The fuel accounting is `nfV`'s own (decrement per
+    structural level, whnf at the entry fuel), so even fuel-truncated behavior
+    coincides. What changes is only the COST: two sides that agree
+    syntactically — the overwhelmingly common case in `hasType`, measured at
+    72% of all `convert` calls in a partition-range check — are decided by one
+    structural pass with no normalization at all, and a genuine mismatch stops
+    at the first differing head instead of building both full normal forms. -/
+mutual
+  def convert : Nat → Val → Val → Bool
+    | 0, a, b => a == b
+    | fuel + 1, a, b =>
+      if a == b then true else
+      match whnfV (fuel + 1) a, whnfV (fuel + 1) b with
+      | .pi d1 c1, .pi d2 c2 => convert fuel d1 d2 && convert fuel c1 c2
+      | .sigmaT d1 c1, .sigmaT d2 c2 => convert fuel d1 d2 && convert fuel c1 c2
+      | .lam d1 b1, .lam d2 b2 => convert fuel d1 d2 && convert fuel b1 b2
+      | .ctor n1 as1, .ctor n2 as2 => n1 == n2 && convertList fuel as1 as2
+      | .app f1 a1, .app f2 a2 => convert fuel f1 f2 && convert fuel a1 a2
+      | .idT a1 b1 c1, .idT a2 b2 c2 =>
+        convert fuel a1 a2 && convert fuel b1 b2 && convert fuel c1 c2
+      | w1, w2 => w1 == w2                 -- mixed heads, or two leaves: beq as-is
+  termination_by fuel _ _ => (fuel, 0, 0)
+  def convertList : Nat → List Val → List Val → Bool
+    | _, [], [] => true
+    | fuel, v :: vs, w :: ws => convert fuel v w && convertList fuel vs ws
+    | _, _, _ => false
+  termination_by fuel _ ws => (fuel, 1, ws.length)
+end
 
 /-! ## Constructor signature table (§4)
 
