@@ -124,4 +124,29 @@ def nth' : Decl :=
 
 example : (nth' == Dllbc.Tests.S17Spec.nthS) = true := by native_decide
 
+/-! ## The `↝` snapshot-obligation borrow type (§5.1) — the one type-position form
+    no corpus Decl in the round-trip set exercises, checked here against hand-built
+    `Term`s.
+
+    `&mut (s : τ ~> S)` binds the entry snapshot `s` as pure var 0 in `S` (the
+    `borrowT`/`seedTelescope` convention); `&mut (τ ~> S)` is the same with `S`
+    ignoring `s` (`S` weakened, so `substPure 0 σ` at seed time recovers it).
+    checkFn is never run — only the produced telescope type is inspected. -/
+
+def snapBinderDecl : Decl :=
+  decl{ fn f (b : &mut (s : Nat ~> Id Nat s s)) -> Unit { () } }
+
+-- `s` is pure var 0 inside `S = Id Nat s s`; the deref audit will owe `Id Nat σ σ`.
+example : (snapBinderDecl.telescope.head!.2 ==
+    Dllbc.Term.borrowT (.const "Nat") (.idT (.const "Nat") (.pvar 0) (.pvar 0))) = true := by
+  native_decide
+
+def snapIgnoreDecl : Decl :=
+  decl{ fn f (b : &mut (Nat ~> Bool)) -> Unit { () } }
+
+-- `S = Bool` ignores the snapshot; weakened, and `Bool` is closed, so the owed
+-- type produced is just `Bool`.
+example : (snapIgnoreDecl.telescope.head!.2 ==
+    Dllbc.Term.borrowT (.const "Nat") (.const "Bool")) = true := by native_decide
+
 end Dllbc.Tests.SDeclMacro

@@ -27,3 +27,4 @@ import Dllbc.Tests.S17Spec
 import Dllbc.Tests.S18Rewrite
 import Dllbc.Tests.S19Partition
 import Dllbc.Tests.SDeclMacro
+import Dllbc.Tests.SDeclMacroCrown
