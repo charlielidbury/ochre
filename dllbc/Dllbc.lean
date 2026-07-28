@@ -30,3 +30,4 @@ import Dllbc.Tests.S19Partition
 import Dllbc.Tests.SDeclMacro
 import Dllbc.Tests.SDeclMacroCrown
 import Dllbc.Tests.SDeclUnified
+import Dllbc.Tests.SDeclUnifiedS19
