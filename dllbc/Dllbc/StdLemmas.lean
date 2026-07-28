@@ -491,6 +491,61 @@ def count_swapL'_ty : Term := pure{
   Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) j → Le (S j) (len l) → Id Nat (count m (swapL i j l)) (count m l) }
 
+/-! ## The BRIDGE — set/nth exit form ≡ `swapL` (§22, direct proving)
+
+    In direct-proving mode a swap Decl's return type reads the EXIT snapshot, and
+    the exit reading of `swapS`'s body is the set/nth composition its two crossed
+    writes leave behind — `set i (nth j l) (set j (nth i l) l)` — NOT the `swapL`
+    model. This bridges the two so every `swapL`-based lemma (count_swapL',
+    len_swapL, …) transports to the surface form rather than being re-proved per
+    composition (which would be a per-form count-algebra tax forever).
+
+    Carries swapS's telescope bounds `Le (S i) j`, `Le (S j) (len l)` (the `pij`/`p2`
+    a swapS caller holds). Both are load-bearing IN THE PROOF, each killing one
+    impossible leaf: `pij` discharges the `j = Z` slot (where set-form and swapL
+    disagree once `i > 0`), `p2` discharges the `l = Nil` slot (where the inner
+    `set j v Nil` is otherwise STUCK on the free `j` — semantically Nil but not
+    definitionally without casing `j`). Note the SEMANTIC content needs only
+    `Le (S i) j`: verified computationally the two forms agree for all `i < j` even
+    off the end. `p2` is proof-theoretic scaffolding, not semantic necessity — it
+    lets the Nil leaf be a `botElim` rather than a `set_nil` rewrite, giving the
+    exact M18/count_swapL shape. Induction mirrors `swapL`: `i = Z` is definitional
+    (both sides reduce to `Cons (nth j' ys) (set j' y ys)`), the `i = S i'` step is
+    the IH under `Cons y ·`. -/
+def swapL_set : Term := pure{
+  λ (i : Nat).
+    elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Le (S j) (len l) →
+        Id (List Nat) (set iz (nth j l) (set j (nth iz l) l)) (swapL iz j l)) {
+      Z => λ (j : Nat). λ (l : List Nat).
+        elim l return (λ (lz : List Nat). Le (S Z) j → Le (S j) (len lz) →
+            Id (List Nat) (set Z (nth j lz) (set j (nth Z lz) lz)) (swapL Z j lz)) {
+          Nil => λ (pij : Le (S Z) j). λ (p2 : Le (S j) (len Nil)).
+            botElim (Id (List Nat) (set Z (nth j Nil) (set j (nth Z Nil) Nil)) (swapL Z j Nil)) p2,
+          Cons (y) (ys) ihl => λ (pij : Le (S Z) j). λ (p2 : Le (S j) (len (Cons y ys))).
+            elim j return (λ (jz : Nat). Le (S Z) jz → Le (S jz) (len (Cons y ys)) →
+                Id (List Nat) (set Z (nth jz (Cons y ys)) (set jz (nth Z (Cons y ys)) (Cons y ys))) (swapL Z jz (Cons y ys))) {
+              Z => λ (pijz : Le (S Z) Z). λ (p2z : Le (S Z) (len (Cons y ys))).
+                botElim (Id (List Nat) (set Z (nth Z (Cons y ys)) (set Z (nth Z (Cons y ys)) (Cons y ys))) (swapL Z Z (Cons y ys))) pijz,
+              S (j') jih => λ (pijs : Le (S Z) (S j')). λ (p2s : Le (S (S j')) (len (Cons y ys))). Refl
+            } pij p2 },
+      S (i') ih => λ (j : Nat). λ (l : List Nat).
+        elim l return (λ (lz : List Nat). Le (S (S i')) j → Le (S j) (len lz) →
+            Id (List Nat) (set (S i') (nth j lz) (set j (nth (S i') lz) lz)) (swapL (S i') j lz)) {
+          Nil => λ (pij : Le (S (S i')) j). λ (p2 : Le (S j) (len Nil)).
+            botElim (Id (List Nat) (set (S i') (nth j Nil) (set j (nth (S i') Nil) Nil)) (swapL (S i') j Nil)) p2,
+          Cons (y) (ys) ihl => λ (pij : Le (S (S i')) j). λ (p2 : Le (S j) (len (Cons y ys))).
+            elim j return (λ (jz : Nat). Le (S (S i')) jz → Le (S jz) (len (Cons y ys)) →
+                Id (List Nat) (set (S i') (nth jz (Cons y ys)) (set jz (nth (S i') (Cons y ys)) (Cons y ys))) (swapL (S i') jz (Cons y ys))) {
+              Z => λ (pijz : Le (S (S i')) Z). λ (p2z : Le (S Z) (len (Cons y ys))).
+                botElim (Id (List Nat) (set (S i') (nth Z (Cons y ys)) (set Z (nth (S i') (Cons y ys)) (Cons y ys))) (swapL (S i') Z (Cons y ys))) pijz,
+              S (j') jih => λ (pijs : Le (S (S i')) (S j')). λ (p2s : Le (S (S j')) (len (Cons y ys))).
+                id_congr (List Nat) (List Nat) (λ (t : List Nat). Cons y t)
+                  (set i' (nth j' ys) (set j' (nth i' ys) ys)) (swapL i' j' ys) (ih j' ys pijs p2s)
+            } pij p2 } } }
+def swapL_set_ty : Term := pure{
+  Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Le (S i) j → Le (S j) (len l) →
+    Id (List Nat) (set i (nth j l) (set j (nth i l) l)) (swapL i j l) }
+
 /-! ## `partScanL` / `partitionL` — the pure Lomuto model (§19)
 
     The EXACT recursion the imperative body performs, so the conformance check

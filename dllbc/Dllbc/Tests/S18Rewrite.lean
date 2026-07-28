@@ -108,6 +108,9 @@ example : chk StdLemmas.cons2_comm StdLemmas.cons2_comm_ty = true := by native_d
 example : chk StdLemmas.count_cons_congr StdLemmas.count_cons_congr_ty = true := by native_decide
 example : chk StdLemmas.count_headswap StdLemmas.count_headswap_ty = true := by native_decide
 example : chk StdLemmas.count_swapL StdLemmas.count_swapL_ty = true := by native_decide
+-- The §22 bridge: the set/nth exit form ≡ swapL under `Le (S i) j` (see StdLemmas
+-- header). Lets `count_swapL'`/`len_swapL` transport to a swap Decl's exit reading.
+example : chk StdLemmas.swapL_set StdLemmas.swapL_set_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
