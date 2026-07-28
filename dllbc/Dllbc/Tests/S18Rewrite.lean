@@ -128,6 +128,10 @@ example : chk StdLemmas.allLeR_empty StdLemmas.allLeR_empty_ty = true := by nati
 example : chk StdLemmas.allGtR_empty StdLemmas.allGtR_empty_ty = true := by native_decide
 -- segment count (the perm-invariant multiset vehicle): typechecks + computes.
 example : chk StdLemmas.segCount StdLemmas.segCount_ty = true := by native_decide
+-- range sortedness predicate (bounded-Π): head extraction + vacuous width ≤ 1 bases.
+example : chk StdLemmas.sortedR_head StdLemmas.sortedR_head_ty = true := by native_decide
+example : chk StdLemmas.sortedR_zero StdLemmas.sortedR_zero_ty = true := by native_decide
+example : chk StdLemmas.sortedR_one StdLemmas.sortedR_one_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

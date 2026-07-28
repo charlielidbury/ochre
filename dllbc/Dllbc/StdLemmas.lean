@@ -1186,4 +1186,36 @@ def segCount : Term := pure{
     count x (take w (drop lo l)) }
 def segCount_ty : Term := pure{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (l : List Nat) → Nat }
 
+/-! ## Range sortedness (§22, M22-c step 4)
+
+    SortedR w lo l: positions [lo, lo+w) are non-decreasing — for every adjacent pair
+    (k, k+1) both inside the range (S(S k) ≤ w), nth(lo+k) ≤ nth(lo+k+1). Bounded-Π,
+    same encoding as AllLeR/AllGtR (eliminate by application, construct by lambda;
+    `add k lo` / `add (S k) lo` so k=0 reduces to nth lo / nth (S lo)). Width ≤ 1 is
+    vacuously sorted. The glue lemma (SortedR left ∧ AllLeR left≤pivot ∧ AllGtR right>pivot
+    ∧ SortedR right ⟹ SortedR whole) assembles on these; then sorted_sortRangeL. -/
+def SortedR : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (l : List Nat).
+    Π (k : Nat) → Le (S (S k)) w → Le (nth (add k lo) l) (nth (add (S k) lo) l) }
+
+-- Head adjacent-bound from a width-(S (S w)) SortedR (apply at k=Z).
+def sortedR_head : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (l : List Nat). λ (h : SortedR (S (S w)) lo l).
+    h Z unit }
+def sortedR_head_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) →
+    SortedR (S (S w)) lo l → Le (nth lo l) (nth (S lo) l) }
+
+-- Width 0 and width 1 are vacuously sorted (Le (S (S k)) (Z / S Z) = ⊥ ⇒ botElim).
+def sortedR_zero : Term := pure{
+  λ (lo : Nat). λ (l : List Nat).
+    λ (k : Nat). λ (hk : Le (S (S k)) Z). botElim (Le (nth (add k lo) l) (nth (add (S k) lo) l)) hk }
+def sortedR_zero_ty : Term := pure{
+  Π (lo : Nat) → Π (l : List Nat) → SortedR Z lo l }
+def sortedR_one : Term := pure{
+  λ (lo : Nat). λ (l : List Nat).
+    λ (k : Nat). λ (hk : Le (S (S k)) (S Z)). botElim (Le (nth (add k lo) l) (nth (add (S k) lo) l)) hk }
+def sortedR_one_ty : Term := pure{
+  Π (lo : Nat) → Π (l : List Nat) → SortedR (S Z) lo l }
+
 end Dllbc.StdLemmas
