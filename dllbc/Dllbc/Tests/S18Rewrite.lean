@@ -132,6 +132,11 @@ example : chk StdLemmas.segCount StdLemmas.segCount_ty = true := by native_decid
 example : chk StdLemmas.sortedR_head StdLemmas.sortedR_head_ty = true := by native_decide
 example : chk StdLemmas.sortedR_zero StdLemmas.sortedR_zero_ty = true := by native_decide
 example : chk StdLemmas.sortedR_one StdLemmas.sortedR_one_ty = true := by native_decide
+-- leb ↔ Le bridges (the Bool-comparison / order link) + the Bool discriminates.
+example : chk StdLemmas.boolFT StdLemmas.boolFT_ty = true := by native_decide
+example : chk StdLemmas.boolTF StdLemmas.boolTF_ty = true := by native_decide
+example : chk StdLemmas.leb_true_le StdLemmas.leb_true_le_ty = true := by native_decide
+example : chk StdLemmas.leb_false_gt StdLemmas.leb_false_gt_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

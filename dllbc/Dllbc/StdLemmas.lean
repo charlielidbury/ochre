@@ -1218,4 +1218,44 @@ def sortedR_one : Term := pure{
 def sortedR_one_ty : Term := pure{
   Π (lo : Nat) → Π (l : List Nat) → SortedR (S Z) lo l }
 
+/-! ## leb ↔ Le bridges (§22, M22-c) — the Bool-comparison / order-proposition link
+
+    The model functions branch on `leb` (a Bool); the predicates carry `Le` (a
+    proposition). These bridge the two — needed both for the partition INVARIANT
+    (the scan's leb tests become AllLeR/AllGtR facts) and the GLUE (its k-vs-i
+    trichotomy is a leb case-split whose branches yield the Le adjacency facts).
+    `leb` and `Le` share the same double recursion, so each bridge is a double
+    induction with a Bool-DISCRIMINATE at the mismatched base (boolFT/boolTF:
+    False ≠ True, by transporting `unit` along the false equation to `⊥`). -/
+def boolFT : Term := pure{
+  λ (h : Id Bool False True).
+    j Bool False (λ (y' : Bool). λ (hh : Id Bool False y'). elim y' return (λ (z : Bool). Type) { True => Bot, False => Unit })
+      unit True h }
+def boolFT_ty : Term := pure{ Id Bool False True → Bot }
+def boolTF : Term := pure{
+  λ (h : Id Bool True False).
+    j Bool True (λ (y' : Bool). λ (hh : Id Bool True y'). elim y' return (λ (z : Bool). Type) { True => Unit, False => Bot })
+      unit False h }
+def boolTF_ty : Term := pure{ Id Bool True False → Bot }
+
+def leb_true_le : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Π (b : Nat) → Id Bool (leb az b) True → Le az b) {
+      Z => λ (b : Nat). λ (h : Id Bool (leb Z b) True). unit,
+      S (a') ih => λ (b : Nat).
+        elim b return (λ (bz : Nat). Id Bool (leb (S a') bz) True → Le (S a') bz) {
+          Z => λ (h : Id Bool (leb (S a') Z) True). botElim (Le (S a') Z) (boolFT h),
+          S (b') ihb => λ (h : Id Bool (leb (S a') (S b')) True). ih b' h } } }
+def leb_true_le_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Bool (leb a b) True → Le a b }
+
+def leb_false_gt : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Π (b : Nat) → Id Bool (leb az b) False → Le (S b) az) {
+      Z => λ (b : Nat). λ (h : Id Bool (leb Z b) False). botElim (Le (S b) Z) (boolTF h),
+      S (a') ih => λ (b : Nat).
+        elim b return (λ (bz : Nat). Id Bool (leb (S a') bz) False → Le (S bz) (S a')) {
+          Z => λ (h : Id Bool (leb (S a') Z) False). unit,
+          S (b') ihb => λ (h : Id Bool (leb (S a') (S b')) False). ih b' h } } }
+def leb_false_gt_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Bool (leb a b) False → Le (S b) a }
+
 end Dllbc.StdLemmas
