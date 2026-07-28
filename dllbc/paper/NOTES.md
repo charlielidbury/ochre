@@ -106,7 +106,7 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
     read at return in the exit state (unlike value returns' entry-pin) — a
     dependent S over a consumed parameter would misread; auditAction re-reads
     an unpinned T on value paths. All flagged in-figure.
-21. INTEGRATION TODOs: dedupe B-SpecEnd (F5) against G-EndGroupBack (F2) —
-    cite, don't duplicate; promote F5's and F2's figure-local judgment helpers
+21. INTEGRATION TODOs: [B-SpecEnd/G-EndGroupBack dedupe DONE by F5 itself,
+    commit 4987cd4e — division stated in-figure]. Remaining: promote F5's and F2's figure-local judgment helpers
     to style.typ; fix style.typ's angle→chevron deprecations; F3's ⇜-reach box
     already includes selfBack (F5's 5-tuple glosses it) — verify consistency.
