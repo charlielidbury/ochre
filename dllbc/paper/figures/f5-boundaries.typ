@@ -219,29 +219,24 @@ $arrow.r.curve$; a $Sigma$ of borrows issues one loan per position (`nth2`, the
 multi-issued group — this calculus's `split_at_mut`). #smallcaps[B-Call] mints
 one loan group $group(rho, C, I)$ tying the captured loans to the issued
 ones; when the callee declares a backward spec, the group carries it,
-instantiated at the actuals ($hat(b)$). The group's _ending_ discipline is F2's:
-every issued borrow ends first, then the group ends atomically
-(#smallcaps[G-EndGroup]), releasing each captured loan with a fresh existential
-at its owed type — "the promise is collected", and how much the caller learns is
-exactly how much the signature says. A spec-carrying group ends more precisely:
-
-#align(center)[
-// Refines F2's G-EndGroup for a spec-carrying group (endGroup's backSpec
-// branch). The implementation fires this only for a single captured loan —
-// the multi-captured spec end has no computed form yet.
-#irule("B-SpecEnd",
-  reorg($St(Omega, Gamma_sigma, O, (G, group(rho, owed(ell_c, S_c), overline(owed(ell_i, S_i)))^(hat(b))), R)$, $St(Omega', Gamma_sigma, O, G, R)$),
-  $forall i lt.eq k : space borrowm(ell_i, p_i) in Omega, space p_i eq.not vbot, space p_i : S_i$,
-  $Omega' = Omega[borrowm(ell_i, p_i) := vbot]_(i lt.eq k) [loanm(ell_c) := "nf"(hat(b) space p_1 dots.h p_k)]$)
-]
-
-Each issued borrow is audited against _its_ owed type and killed, surrendering
-its payload; the captured loan then releases the _computed_ value — the
-declared backward function applied to the surrendered payloads, in issued
-order — instead of a fresh existential. Sound because the spec was checked
-against the callee's body at its own audit (#smallcaps[B-BackN]); the once-tried
-signature-inferred version of this rule was unsound (`through` and `advance`
-share a signature) and is gone.
+instantiated at the actuals ($hat(b)$). The group's _ending_ discipline belongs
+to F2 (@fig-reorg), cited here rather than restated: each issued borrow
+surrenders first (#smallcaps[G-EndIssued] — located anywhere in $Omega$,
+audited against its owed type, killed), then the group ends atomically.
+#smallcaps[G-EndGroupOpaque] releases each captured loan with a fresh
+existential at its owed type — "the promise is collected", and how much the
+caller learns is exactly how much the signature says; the §5.3 wire is its
+$I = dot$ instance, #smallcaps[G-EndOwed]. #smallcaps[G-EndGroupBack] consumes
+exactly what this figure supplies: the $hat(b)$ minted at #smallcaps[B-Call]
+and audited against the callee's body at #smallcaps[B-BackN]/#smallcaps[B-Back0]
+below, applied to the surrendered payloads in issued order — the captured loan
+releases the _computed_ value, no existential minted. Sound because declared
+and checked; the once-tried signature-_inferred_ version was unsound
+(`through` and `advance` share a signature) and is gone. Two boundary-relevant
+provisos are F2's ledger, not re-derived here: #smallcaps[G-EndGroupBack]
+exists only for a single captured loan (a multi-captured declared back
+silently degrades to the opaque end), and surrender performs _no_ collapse —
+the collapse step lives exclusively in this figure's audit, next.
 
 === The audit at return
 
@@ -509,7 +504,6 @@ of the $arrow.r.long.squiggly^*$ premise.
   ([#smallcaps[B-Inst-Nil/Pure/Borrow]], [`Machine.processArgs`, `readCWith`], [`S6Call`, `S12Inst`]),
   ([#smallcaps[B-Res-Val/Borrow/Pair]], [`Machine.buildResult`], [`S7Group` (`nth2`)]),
   ([#smallcaps[B-Call]], [`Machine.readR` (`.call`, checking mode)], [`S6Call`]),
-  ([#smallcaps[B-SpecEnd]], [`Machine.endGroup` (`backSpec`), `endIssued`], [`S17Spec`]),
   ([#smallcaps[B-Coll-Borrow/Pair/Val]], [`Boundary.collectResultBorrows`], [`S7Group`]),
   ([#smallcaps[B-Reach-Refl/Chain/Group]], [`Boundary.reachesLoan`], [`S14Bounds` (`advance`)]),
   ([#smallcaps[B-Exempt-Result/Call], #smallcaps[B-Oblig-Conv]], [`Boundary.auditObligation`, `collapseArg`], [`S7Group` (`choose`), `S5Bound`]),
