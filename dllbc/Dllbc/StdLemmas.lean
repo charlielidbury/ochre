@@ -1121,4 +1121,56 @@ def count_sortRangeL_ty : Term := pure{
   Π (m : Nat) → Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) (len l) → Id Nat (count m (sortRangeL fuel lo cnt l)) (count m l) }
 
+/-! ## Range-order predicates — the sortedness axis (§22, M22-c)
+
+    AllLeR/AllGtR: the `w` positions [lo, lo+w) of `l` are all ≤ p (resp. > p). The
+    ordering-relation-to-pivot the count models are blind to.
+
+    ENCODING = bounded-Π, NOT a Σ-chain. Comptime Σ types can be CONSTRUCTED (Pair)
+    but NOT ELIMINATED in a pure proof — `match` is runtime-only, and `elim` supports
+    only the Nat/Bool/List recursors, so a conjunction-as-Σ can never be projected in
+    a lemma. `Π (k : Nat) → Le (S k) w → Le (nth (add k lo) l) p` sidesteps that:
+    eliminate by APPLICATION (`h k hk`), construct by LAMBDA. `add k lo` (k first, not
+    `add lo k`) so the k=0 head reduces to `nth lo l` definitionally (add Z lo = lo),
+    avoiding an add_zero transport at every head extraction.
+
+    NB the predicate FAMILY is not directly `chk`-able against `Π … → Type` (the M5
+    limitation: hasType defers λ/neutral typing, so it can't type `Unit`/a neutral
+    under the family's binders). This is not a defect in the predicate — it is only
+    APPLIED forms that appear in lemma statements, and those reduce and check fine
+    (exercised by allLeR_head / allLeR_empty below, both kernel-green). -/
+def AllLeR : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    Π (k : Nat) → Le (S k) w → Le (nth (add k lo) l) p }
+def AllGtR : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    Π (k : Nat) → Le (S k) w → Le (S p) (nth (add k lo) l) }
+
+-- Head extraction: a width-(S w) AllLeR gives the bound at position lo (apply at
+-- k=Z; Le (S Z)(S w) whnf's to ⊤, discharged by `unit`; add Z lo = lo).
+def allLeR_head : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat). λ (h : AllLeR (S w) lo p l).
+    h Z unit }
+def allLeR_head_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    AllLeR (S w) lo p l → Le (nth lo l) p }
+def allGtR_head : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat). λ (h : AllGtR (S w) lo p l).
+    h Z unit }
+def allGtR_head_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    AllGtR (S w) lo p l → Le (S p) (nth lo l) }
+
+-- The empty range is vacuously bounded (Le (S k) Z = ⊥ ⇒ botElim).
+def allLeR_empty : Term := pure{
+  λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (k : Nat). λ (hk : Le (S k) Z). botElim (Le (nth (add k lo) l) p) hk }
+def allLeR_empty_ty : Term := pure{
+  Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → AllLeR Z lo p l }
+def allGtR_empty : Term := pure{
+  λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (k : Nat). λ (hk : Le (S k) Z). botElim (Le (S p) (nth (add k lo) l)) hk }
+def allGtR_empty_ty : Term := pure{
+  Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → AllGtR Z lo p l }
+
 end Dllbc.StdLemmas

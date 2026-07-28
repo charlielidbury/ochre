@@ -120,6 +120,12 @@ example : chk StdLemmas.count_partitionRangeL StdLemmas.count_partitionRangeL_ty
 example : chk StdLemmas.sortRangeBL StdLemmas.sortRangeBL_ty = true := by native_decide
 example : chk StdLemmas.sortRangeBR StdLemmas.sortRangeBR_ty = true := by native_decide
 example : chk StdLemmas.count_sortRangeL StdLemmas.count_sortRangeL_ty = true := by native_decide
+-- §22 M22-c: the range-order predicates (bounded-Π; the family isn't chk-able but its
+-- applied forms are — exercised by head-extraction and the empty-range base).
+example : chk StdLemmas.allLeR_head StdLemmas.allLeR_head_ty = true := by native_decide
+example : chk StdLemmas.allGtR_head StdLemmas.allGtR_head_ty = true := by native_decide
+example : chk StdLemmas.allLeR_empty StdLemmas.allLeR_empty_ty = true := by native_decide
+example : chk StdLemmas.allGtR_empty StdLemmas.allGtR_empty_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
