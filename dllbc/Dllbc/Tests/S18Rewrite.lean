@@ -145,6 +145,14 @@ example : chk StdLemmas.nth_partScanRangeL_lt StdLemmas.nth_partScanRangeL_lt_ty
 example : chk StdLemmas.nth_partScanRangeL_ge StdLemmas.nth_partScanRangeL_ge_ty = true := by native_decide
 example : chk StdLemmas.nth_partitionRangeL_lt StdLemmas.nth_partitionRangeL_lt_ty = true := by native_decide
 example : chk StdLemmas.nth_partitionRangeL_ge StdLemmas.nth_partitionRangeL_ge_ty = true := by native_decide
+-- §22 M22-c locality culmination: the full sort. _lt/_ge over positions outside the
+-- sorted range, plus the position sub-range bounds (partSizeCnt, sortRangeGeBL/BR —
+-- the len-relative sortRangeBL/BR stripped of their len_* layers).
+example : chk StdLemmas.nth_sortRangeL_lt StdLemmas.nth_sortRangeL_lt_ty = true := by native_decide
+example : chk StdLemmas.partSizeCnt StdLemmas.partSizeCnt_ty = true := by native_decide
+example : chk StdLemmas.sortRangeGeBL StdLemmas.sortRangeGeBL_ty = true := by native_decide
+example : chk StdLemmas.sortRangeGeBR StdLemmas.sortRangeGeBR_ty = true := by native_decide
+example : chk StdLemmas.nth_sortRangeL_ge StdLemmas.nth_sortRangeL_ge_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
