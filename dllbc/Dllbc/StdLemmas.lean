@@ -1186,4 +1186,127 @@ def segCount : Term := pure{
     count x (take w (drop lo l)) }
 def segCount_ty : Term := pure{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (l : List Nat) → Nat }
 
+/-! ## `nth`-under-`swapL` locality — the positional stratum (§22, M22-c)
+
+    Where `count_swapL` says the swap preserves the MULTISET, these say WHERE each
+    position lands, which the segCount/locality argument (and the sortedness half)
+    reads directly. `swapL i j` (with the smaller index first) touches ONLY
+    positions `i` and `j`: position `i` receives old `j` (`nth_swapL_lo`), position
+    `j` receives old `i` (`nth_swapL_hi`), and every position `k` OUTSIDE `{i,j}` is
+    unchanged. The "outside" atom is split into the two directions the range scan's
+    locality actually needs — `k < i` (`nth_swapL_lt`, below both indices since
+    `i ≤ j`) and `k > j` (`nth_swapL_gt`, above both) — each stated with a SINGLE
+    honest `Le` bound, so a caller reasoning about a below-range or above-range
+    position cites exactly one of them. The middle band `i < k < j` is also
+    untouched but is not needed downstream, so it is left unstated (it would need
+    the two-sided bound `Le (S i) k → Le (S k) j`).
+
+    BOUNDS (verified computationally, minimal):
+    - `nth_swapL_lt` needs ONLY `Le (S k) i` (the `l = Nil` and `j = Z` leaves are
+      `Refl`, not bound-discharged — off the end both sides degrade to the same
+      stuck `nth k Nil`).
+    - `nth_swapL_gt` needs ONLY `Le (S j) k` (below-`j` positions in the set-branch
+      are handled by `nth_set_gt`).
+    - `nth_swapL_lo` needs ONLY `Le (S i) j` — NO length bound: off the end the swap
+      writes `nth j l = Z` at `i`, so both sides read `Z` consistently. The `Nil`
+      leaves case `j` (so the stuck `nth j Nil` reduces to `Z` on both sides).
+    - `nth_swapL_hi` needs BOTH `Le (S i) j` and `Le (S j) (len l)` — the base case
+      reads `nth j (set j x xs) = x` (`nth_set_same`), which is FALSE off the end, so
+      the length bound is load-bearing (discharges the `Nil` leaf as `botElim` and
+      feeds `nth_set_same`).
+
+    Two `set` helpers underneath: `nth_set_gt` (`nth` past the written index is
+    unchanged, bound `Le (S j) k`) and `nth_set_same` (`nth k (set k v l) = v` in
+    range, bound `Le (S k) (len l)`). -/
+
+-- `nth k (set j v l) = nth k l` for k strictly above the written index j.
+def nth_set_gt : Term := pure{
+  λ (v : Nat). λ (j : Nat).
+    elim j return (λ (jz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (S jz) k → Id Nat (nth k (set jz v l)) (nth k l)) {
+      Z => λ (k : Nat). λ (l : List Nat). λ (h : Le (S Z) k).
+        elim k return (λ (kz : Nat). Le (S Z) kz → Id Nat (nth kz (set Z v l)) (nth kz l)) {
+          Z => λ (h0 : Le (S Z) Z). botElim (Id Nat (nth Z (set Z v l)) (nth Z l)) h0,
+          S (k') kih => λ (h0 : Le (S Z) (S k')).
+            elim l return (λ (lz : List Nat). Id Nat (nth (S k') (set Z v lz)) (nth (S k') lz)) {
+              Nil => Refl,
+              Cons (hh) (tt) ihl => Refl } } h,
+      S (j') ih => λ (k : Nat). λ (l : List Nat). λ (h : Le (S (S j')) k).
+        elim k return (λ (kz : Nat). Le (S (S j')) kz → Id Nat (nth kz (set (S j') v l)) (nth kz l)) {
+          Z => λ (h0 : Le (S (S j')) Z). botElim (Id Nat (nth Z (set (S j') v l)) (nth Z l)) h0,
+          S (k') kih => λ (h0 : Le (S (S j')) (S k')).
+            elim l return (λ (lz : List Nat). Id Nat (nth (S k') (set (S j') v lz)) (nth (S k') lz)) {
+              Nil => Refl,
+              Cons (hh) (tt) ihl => ih k' tt h0 } } h } }
+def nth_set_gt_ty : Term := pure{
+  Π (v : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
+    Le (S j) k → Id Nat (nth k (set j v l)) (nth k l) }
+
+-- `nth k (set k v l) = v` when k is in range (off the end set no-ops, giving Z ≠ v).
+def nth_set_same : Term := pure{
+  λ (v : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (l : List Nat) → Le (S kz) (len l) → Id Nat (nth kz (set kz v l)) v) {
+      Z => λ (l : List Nat).
+        elim l return (λ (lz : List Nat). Le (S Z) (len lz) → Id Nat (nth Z (set Z v lz)) v) {
+          Nil => λ (h : Le (S Z) (len Nil)). botElim (Id Nat (nth Z (set Z v Nil)) v) h,
+          Cons (hh) (tt) ihl => λ (h : Le (S Z) (len (Cons hh tt))). Refl },
+      S (k') ih => λ (l : List Nat).
+        elim l return (λ (lz : List Nat). Le (S (S k')) (len lz) → Id Nat (nth (S k') (set (S k') v lz)) v) {
+          Nil => λ (h : Le (S (S k')) (len Nil)). botElim (Id Nat (nth (S k') (set (S k') v Nil)) v) h,
+          Cons (hh) (tt) ihl => λ (h : Le (S (S k')) (len (Cons hh tt))). ih tt h } } }
+def nth_set_same_ty : Term := pure{
+  Π (v : Nat) → Π (k : Nat) → Π (l : List Nat) →
+    Le (S k) (len l) → Id Nat (nth k (set k v l)) v }
+
+-- Locality below the swap: positions `k < i` are untouched by `swapL i j`. Induct
+-- on i (mirroring swapL); i = Z is vacuous (Le (S k) Z = ⊥); the recursive leaf is
+-- the IH under `Cons x ·`, the j = Z / head leaves are Refl.
+def nth_swapL_lt : Term := pure{
+  λ (i : Nat).
+    elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S k) iz → Id Nat (nth k (swapL iz j l)) (nth k l)) {
+      Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) Z).
+        botElim (Id Nat (nth k (swapL Z j l)) (nth k l)) h,
+      S (i') ih => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) (S i')).
+        elim l return (λ (lz : List Nat). Id Nat (nth k (swapL (S i') j lz)) (nth k lz)) {
+          Nil => Refl,
+          Cons (x) (xs) ihl =>
+            elim j return (λ (jz : Nat). Id Nat (nth k (swapL (S i') jz (Cons x xs))) (nth k (Cons x xs))) {
+              Z => Refl,
+              S (j') jih =>
+                elim k return (λ (kz : Nat). Le (S kz) (S i') → Id Nat (nth kz (Cons x (swapL i' j' xs))) (nth kz (Cons x xs))) {
+                  Z => λ (h0 : Le (S Z) (S i')). Refl,
+                  S (k') kih => λ (h0 : Le (S (S k')) (S i')). ih j' k' xs h0 } h } } } }
+def nth_swapL_lt_ty : Term := pure{
+  Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
+    Le (S k) i → Id Nat (nth k (swapL i j l)) (nth k l) }
+
+-- Locality above the swap: positions `k > j` are untouched by `swapL i j`. Induct
+-- on i; the i = Z / j = S j' leaf floats through the set-branch via `nth_set_gt`,
+-- the i = S i' / j = S j' leaf is the IH, the j = Z / Nil leaves are Refl.
+def nth_swapL_gt : Term := pure{
+  λ (i : Nat).
+    elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S j) k → Id Nat (nth k (swapL iz j l)) (nth k l)) {
+      Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S j) k).
+        elim l return (λ (lz : List Nat). Id Nat (nth k (swapL Z j lz)) (nth k lz)) {
+          Nil => Refl,
+          Cons (x) (xs) ihl =>
+            elim j return (λ (jz : Nat). Le (S jz) k → Id Nat (nth k (swapL Z jz (Cons x xs))) (nth k (Cons x xs))) {
+              Z => λ (h0 : Le (S Z) k). Refl,
+              S (j') jih => λ (h0 : Le (S (S j')) k).
+                elim k return (λ (kz : Nat). Le (S (S j')) kz → Id Nat (nth kz (Cons (nth j' xs) (set j' x xs))) (nth kz (Cons x xs))) {
+                  Z => λ (h1 : Le (S (S j')) Z). botElim (Id Nat (nth Z (Cons (nth j' xs) (set j' x xs))) (nth Z (Cons x xs))) h1,
+                  S (k') kih => λ (h1 : Le (S (S j')) (S k')). nth_set_gt x j' k' xs h1 } h0 } h },
+      S (i') ih => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S j) k).
+        elim l return (λ (lz : List Nat). Id Nat (nth k (swapL (S i') j lz)) (nth k lz)) {
+          Nil => Refl,
+          Cons (x) (xs) ihl =>
+            elim j return (λ (jz : Nat). Le (S jz) k → Id Nat (nth k (swapL (S i') jz (Cons x xs))) (nth k (Cons x xs))) {
+              Z => λ (h0 : Le (S Z) k). Refl,
+              S (j') jih => λ (h0 : Le (S (S j')) k).
+                elim k return (λ (kz : Nat). Le (S (S j')) kz → Id Nat (nth kz (Cons x (swapL i' j' xs))) (nth kz (Cons x xs))) {
+                  Z => λ (h1 : Le (S (S j')) Z). botElim (Id Nat (nth Z (Cons x (swapL i' j' xs))) (nth Z (Cons x xs))) h1,
+                  S (k') kih => λ (h1 : Le (S (S j')) (S k')). ih j' k' xs h1 } h0 } h } } }
+def nth_swapL_gt_ty : Term := pure{
+  Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
+    Le (S j) k → Id Nat (nth k (swapL i j l)) (nth k l) }
+
 end Dllbc.StdLemmas

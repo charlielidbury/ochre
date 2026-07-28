@@ -128,6 +128,13 @@ example : chk StdLemmas.allLeR_empty StdLemmas.allLeR_empty_ty = true := by nati
 example : chk StdLemmas.allGtR_empty StdLemmas.allGtR_empty_ty = true := by native_decide
 -- segment count (the perm-invariant multiset vehicle): typechecks + computes.
 example : chk StdLemmas.segCount StdLemmas.segCount_ty = true := by native_decide
+-- §22 M22-c positional stratum: nth-under-swapL locality. The two `set` helpers,
+-- then the "outside {i,j}" pair (lt/gt) the range scan's locality consumes, then
+-- the two swap endpoints (lo/hi). Minimal honest bounds (see StdLemmas header).
+example : chk StdLemmas.nth_set_gt StdLemmas.nth_set_gt_ty = true := by native_decide
+example : chk StdLemmas.nth_set_same StdLemmas.nth_set_same_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_lt StdLemmas.nth_swapL_lt_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_gt StdLemmas.nth_swapL_gt_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
