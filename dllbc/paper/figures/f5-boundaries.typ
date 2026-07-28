@@ -13,7 +13,7 @@ Where the Aeneas toolchain _synthesizes_ a backward function per borrow — a
 pure function describing what flows back through it — DLLBC moves that
 description into the signature and checks it: the $arrow.r.curve$ obligation is
 the backward function's _type_ (#smallcaps[B-Seed], #smallcaps[B-Audit]), and,
-at the precise end of the §6.2 spectrum, a declared `back` is the backward
+at the precise end of the doc §6.2 spectrum, a declared `back` is the backward
 function _itself_, audited against the body it claims to describe
 (#smallcaps[B-Back0]/#smallcaps[B-BackN]) rather than synthesized from it.
 This figure is the contract layer: how a signature is entered (seeding), how it
@@ -105,7 +105,12 @@ at entry, while the parameters it may mention are still live: a dependent return
 type over a consumed parameter means its _entry_ value (re-reading at return
 would find $bot$). A return type carrying a borrow anywhere is _not_ pinned
 ($R = dot$): it is audited structurally at return (#smallcaps[B-Coll-Borrow])
-rather than reflected.
+rather than reflected. One rule-gap is flagged here rather than hidden: doc §5.4
+records a _decided_ exception — a borrow parameter's payload deref in a return
+type should read the _exit_ snapshot, with `old` $ast.op v$ as the entry-snapshot
+operator — that is not implemented at the pin; #smallcaps[B-Pin] follows the
+implementation and pins entry wholesale (@sec-architectures presents the decided
+semantics as the ongoing line).
 // RULE-GAP: doc §5.4 records a *decided* exception — a borrow parameter's
 // payload deref in the return type should read the EXIT snapshot, with `old *v`
 // as the entry-snapshot operator. Not implemented at this commit: B-Pin pins
@@ -153,7 +158,7 @@ its loan is _captured_, annotated with the owed type instantiated at the
 payload snapshot just passed ($hat(S)[s := w]$ — the caller-side mirror of
 #smallcaps[B-Seed-Borrow]'s $hat(S)[s := sigma]$). The parameter is bound in
 $theta$ to the actual _borrow_, so a later $ast.op x$ in a type peels to the
-payload (§5.2 at the call site); a bare $x$ of borrow type in an index position
+payload (doc §5.2 at the call site); a bare $x$ of borrow type in an index position
 is outside the unrestricted fragment and unspecified. Left-to-right consumption
 has a practical corollary (doc §5.3): a later argument expression may not
 mention a borrow an earlier argument consumed — a bounds proof about
@@ -199,7 +204,7 @@ $ast.op v$ must be `let`-bound _before_ the call that consumes $v$.
 A call is checked against the signature alone — recursion forces this, and all
 calls get it uniformly. #smallcaps[B-Res] builds the fresh result from the
 instantiated return type: a non-borrow leaf is a fresh existential at the
-return type (the §5.3 _wire_); each $amp"mut"$ position mints a fresh _issued_
+return type (the doc §5.3 _wire_); each $amp"mut"$ position mints a fresh _issued_
 reborrow over a fresh snapshot, owed-annotated from the return type's own
 $arrow.r.curve$; a $Sigma$ of borrows issues one loan per position (`nth2`, the
 multi-issued group — this calculus's `split_at_mut`). #smallcaps[B-Call] mints
@@ -211,7 +216,7 @@ surrenders first (#smallcaps[G-EndIssued] — located anywhere in $Omega$,
 audited against its owed type, killed), then the group ends atomically.
 #smallcaps[G-EndGroupOpaque] releases each captured loan with a fresh
 existential at its owed type — "the promise is collected", and how much the
-caller learns is exactly how much the signature says; the §5.3 wire is its
+caller learns is exactly how much the signature says; the doc §5.3 wire is its
 $I = dot$ instance, #smallcaps[G-EndOwed]. #smallcaps[G-EndGroupBack] consumes
 exactly what this figure supplies: the $hat(b)$ minted at #smallcaps[B-Call]
 and audited against the callee's body at #smallcaps[B-BackN]/#smallcaps[B-Back0]
@@ -230,7 +235,7 @@ The callee's side, per explored path: the result value $v$ against the return
 type, every argument-borrow obligation discharged. The audit is itself a
 demand, and it _collapses first_: the #reorgs($cal(S)$, $cal(S)'$) premise in
 the two #smallcaps[B-Audit] rules lets F2's reorganizations End-Mut the
-payloads' field loans at the boundary — §3.3's suspension ending here rather
+payloads' field loans at the boundary — doc §3.3's suspension ending here rather
 than at an owner, an argument borrow having none — before conversion judges the
 collapsed payloads. Rejection is rule-absence: an orphaned marker (its borrow
 missing) can be ended by no G-rule, a hole survives every reorganization and
@@ -355,19 +360,19 @@ checked, and no obligation is audited (this is how a bounds-proof cursor's
   backJ($cS'$, $I$, $d$))
 ]
 
-#smallcaps[B-Audit-Val] is §5.4's audit exactly: obligations, then the result
+#smallcaps[B-Audit-Val] is doc §5.4's audit exactly: obligations, then the result
 against the entry-pinned return type $hat(R)$. #smallcaps[B-Audit-Borrow] is
-its §6.1 reshaping for a borrow-returning path: the issued borrows' payloads
+its doc §6.1 reshaping for a borrow-returning path: the issued borrows' payloads
 are audited against the return type's own owed types, obligations are audited
 with the exemptions in force, and no separate result check remains — being
 issued _is_ the result's typing, its story continuing caller-side through the
 group. The $"back"$ premise is vacuous for a spec-less declaration
-(#smallcaps[B-Back-None] below); for a spec-carrying one it is the §6.2 callee
+(#smallcaps[B-Back-None] below); for a spec-carrying one it is the doc §6.2 callee
 check.
 
 === Declared backward specs: the callee check
 
-The §6.2 callee side. A declared back is checked against the _suspension tree_
+The doc §6.2 callee side. A declared back is checked against the _suspension tree_
 the body actually built: the captured borrow's payload with the issued loans'
 markers read as holes $hole("i")$ (pure de Bruijn, in issued order), resolved
 down reborrow chains and _through sub-calls' declared backs_ — the tree _is_

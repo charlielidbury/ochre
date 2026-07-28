@@ -91,8 +91,8 @@ sugar, an absent rule, an implicit that should have been inferred. The exit-
 snapshot reading and the `old` operator are the first two entries promoted from
 diary to design; the milestone that carries them, together with swap, partition,
 and quicksort re-specced and re-proved in this propositional style, is in flight.
-*[Status: in-flight]* The return-type snapshot machine it needs — $ast.op v$ read
-at exit rather than entry — is decided but not yet mechanized. *[Status: proposed]*
+#status("in flight") The return-type snapshot machine it needs — $ast.op v$ read
+at exit rather than entry — is decided but not yet mechanized. #status("proposed")
 
 Architecture B is a research direction with a mechanized skeleton, not vaporware.
 Two fragments of it are already green. The M16 proof-of-concept `swapS01` — a
@@ -137,8 +137,8 @@ propositional fragments the full case study extends.
   [absent — there is no back to reformulate; the postcondition is proved directly],
 
   [Status],
-  [landed, green (quicksort conforms to `sortRangeL`)],
-  [semantics decided; implementation in flight (fragments green)],
+  [#status("green") landed — quicksort conforms to `sortRangeL`],
+  [#status("in flight") semantics decided; implementation in flight (fragments green)],
 )
 
 The trade is legible in the table. A costs nothing in the body and yields the

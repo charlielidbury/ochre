@@ -8,7 +8,7 @@
 
 The comptime fragment (@fig-comptime) is a small dependent type theory, and this
 figure is its judgment of *inhabitation*: when does a value $v$ inhabit a type
-$tau$, written $#hasT($v$, $tau$)$? The check is the mechanism behind the money test of §4.2 —
+$tau$, written $#hasT($v$, $tau$)$? The check is the mechanism behind the money test of the introduction (doc §4.2) —
 inhabitation is tested against a type that must first *compute* to canonical
 form, and a stuck type (an index that never reduced, say #box[$"Vec" T space
 sigma_l$] with $sigma_l$ unknown) exposes no constructor, so conversion has
@@ -32,7 +32,7 @@ ambient checker state, consulted where a rule names it.
   normalizing both sides to normal form (β and ι, de Bruijn, *no η*) under an
   explicit fuel and comparing syntactically ($#conv($tau$, $tau'$) := "nfV"(tau) =
   "nfV"(tau')$). Because v0 collapses the universe hierarchy to type-in-type
-  (§1.1), strong normalization fails (Girard's paradox lives there), so
+  (doc §1.1), strong normalization fails (Girard's paradox lives there), so
   conversion — and hence typing — is a *fuel-bounded partial decision
   procedure*, correct on the normalizing fragment where all v0 programs live.
   The fuel is the algorithm's, not the relation's; the rules carry none.
@@ -104,8 +104,8 @@ require comparing under an applied/abstracted context, which it does not do.
   irule("T-Former", hasT($F$, $tau$), $F ∈ {Pi (x:A) arrow.r B, space Sigma (x:A). B, space "Id" A space a space b}$, conv($tau$, $"Type"$)),
 )
 
-Type-in-type: $"Type" : "Type"$, and every type former inhabits $"Type"$ (§1.1;
-the hierarchy returns with §9). Both are checking rules — the target $tau$ need
+Type-in-type: $"Type" : "Type"$, and every type former inhabits $"Type"$ (doc §1.1;
+the hierarchy returns with doc §9). Both are checking rules — the target $tau$ need
 only *convert* to $"Type"$, which is where #smallcaps[T-Conv] is folded in.
 
 // T-Sym: hasType's `.sym σ` (non-applied) case — sctx lookup + convert.
@@ -150,7 +150,7 @@ earlier fields (`checkFields` threads `substPure 0 vᵢ`): this is exactly how
 A space a space b$ only when the endpoints convert ($#conv($a$, $b$)$), which is how
 `Id`'s reflexive constructor witnesses definitional equality. The table has no
 `inductive`-declaration machinery behind it — it is a fixed basis (Unit, Bool,
-Nat, List, Σ, Id), the v0 kernel's constructor set (§7.1).
+Nat, List, Σ, Id), the v0 kernel's constructor set (doc §7.1).
 
 // T-Lam: hasType's `.lam` case — domains convert, body under a fresh σ witness.
 ==== Functions against a Π
@@ -166,7 +166,7 @@ then the body is checked under a *fresh symbolic witness* $sigma : A'$ added to
 $Gamma_sigma$ — the binder opened with a hypothesis of the Π's domain type. This
 is what types a Π-typed lemma (`id_sym`, S16Spec) and the recursors' λ-shaped
 step arguments (`s`, `pc`). It is the elaboration of dependent elimination
-(§9/§10), with no arrow of its own.
+(doc §9/doc §10), with no arrow of its own.
 
 // T-ElimSynth: hasType's `.app` neutral case — eliminator-const synthesis + finish/synthSpine.
 ==== Eliminator-neutral synthesis
@@ -200,7 +200,7 @@ One schema, instantiated per eliminator by the table:
 ))
 
 The two `Id`-eliminators, written explicitly (Paulin-Mohring J and Streicher K,
-§10):
+doc §10):
 
 #grid(columns: (1fr, 1fr), gutter: 1em, align: center + horizon,
   irule("T-Elim-J",
@@ -257,7 +257,7 @@ subtyping* — the calculus has conversion only, never a $tau <= tau'$.
 === What no rule does
 
 *No rule types a hole.* There is no $#hasT($bot$, $tau$)$: ⊥ is the absence of a
-value, inhabiting nothing (§2.1). `hasType` never receives a ⊥ that a rule
+value, inhabiting nothing (doc §2.1). `hasType` never receives a ⊥ that a rule
 accepts, and the comptime read that would produce one is rejected upstream
 (`reflectC` on a moved slot). This is the same fact the boundary audit leans on
 — a function cannot return a hole.

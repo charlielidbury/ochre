@@ -19,7 +19,7 @@ proposition unless a status tag says otherwise.
 == The slice, as a borrow and a bound
 
 DLLBC has no heap — no addresses, no aliasing through pointers — which is exactly
-what lets a type mention a value's _snapshot_ and never go stale (§0). A
+what lets a type mention a value's _snapshot_ and never go stale (@calculus). A
 "mutable slice", then, cannot be a pointer-and-length into a backing store;
 it is represented as what a slice fundamentally _is_, a fat pointer written
 honestly: a mutable borrow of the underlying list, paired with a comptime length
@@ -250,12 +250,13 @@ byte, the check replays from `native_decide`'s cache across that surface change;
 the performance story is told in full in Section 8.
 
 #block(inset: 8pt, stroke: 0.5pt + luma(150), radius: 3pt, width: 100%)[
-  *[Status.]* _Conformance_ — that the imperative partition and quicksort
+  #status("green") _Conformance_ — that the imperative partition and quicksort
   implement their pure models `partScanL`/`sortRangeL`, checked by the
-  declared-back audit — is green. _Model correctness_ — that `sortRangeL` in fact
-  sorts and permutes, and the direct propositional restatement `Sorted (*v)`
-  $and$ `Perm (old *v) (*v)` over the exit snapshot — is open (the M22 line;
-  Section 7). Routing verification through a pure model is the comparison
-  baseline, not the mission; Section 6 takes up why, and what a soundness proof
-  of the machinery itself would have to establish.
+  declared-back audit — is green. #status("open") _Model correctness_ — that
+  `sortRangeL` in fact sorts and permutes, and the direct propositional
+  restatement `Sorted (*v)` $and$ `Perm (old *v) (*v)` over the exit snapshot —
+  is open (the M22 line; @sec-architectures). Routing verification through a
+  pure model is the comparison baseline, not the mission; @sec-architectures
+  takes up why, and @sec-empirics states what a soundness proof of the machinery
+  itself would have to establish.
 ]

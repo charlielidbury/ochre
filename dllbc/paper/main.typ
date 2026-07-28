@@ -34,8 +34,11 @@
 The complete rule set, presented *nondeterministically*: reorganization
 (@fig-reorg) may fire wherever its premises hold; the implementation's lazy,
 fuel-bounded strategy (fire a reorganization only when a rule's premise demands
-it) is one deterministic scheduling of these rules, discussed in Section 6.
+it) is one deterministic scheduling of these rules, discussed in @sec-empirics.
 Each figure ends with a rule-to-implementation-to-test correspondence table.
+References of the form "doc §N" point into the calculus's design document
+(`docs/dllbc-arrows.md` at the pin commit), the specification the figures were
+extracted against; `@`-references point within this paper.
 
 #include "figures/f1-runtime.typ"
 #include "figures/f2-reorg.typ"

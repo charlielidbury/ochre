@@ -98,7 +98,7 @@ a recursive-family encoding of vectors, and a "convergence crux discharged
 inside the checker" claim, which was false because the check it relied on did not
 run at the time (its discovery is precisely the second bug above). Second, the
 rule-figure extraction for *this paper* functioned as an audit in its own right.
-Reading the six figures out of the implementation, doc in hand, produced 21
+Reading the six figures out of the implementation, doc in hand, produced 20
 recorded findings, several load-bearing: the vacuous back-audit paths above; a
 `seq`-discard that drops an owning value without running `drop`, a real
 semantics fork rather than the sugar the document claimed; and a comptime

@@ -10,7 +10,7 @@ The runtime fragment has two arrows. #evR($Omega$, $t$, $v$, $Omega'$) is the
 *consume-read* (a move): it evaluates $t$ to a value, threading the environment
 $Omega$ to $Omega'$. #wrR($Omega$, $p$, $v$, $Omega'$) is the *destructive
 write*, and it is *fill-only* — its one premise is that the target holds the
-hole #vbot. One grammar carries all variation (§1.1): the ⇐, take, and `&mut`
+hole #vbot. One grammar carries all variation (doc §1.1): the ⇐, take, and `&mut`
 rules are only *defined* on *places*, and the same construct means different
 things under different arrows.
 
@@ -57,7 +57,7 @@ write-through for free.
     index-kind and moves. Index-kind values are marker-free, so #smallcaps[R-Copy]
     never needs a reorganization.]#h(-0.15em) index-kind value copies it: the
     owner slot is left intact ($Omega$ unchanged), so the value stays
-    re-readable. This is why a comptime index may be used more than once (§2.1).],
+    re-readable. This is why a comptime index may be used more than once (doc §2.1).],
 )
 
 #ruled(
@@ -71,12 +71,12 @@ write-through for free.
     (no rule). #footnote[*Move-ready*: no loan marker sits in $v$'s owned
     position (the constructor spine), and if $v$ is itself a borrow its payload
     hides no suspended reborrow. Both blockers are ended by #smallcaps[R-Reorg]
-    first — an owned-position marker via End-Mut (§2.2), a carried suspended
-    reborrow via §19's flow-back. The implementation checks these inline
-    (`firstLoanMarker`; the carried-borrow case at `readR` var, §19) and retries;
+    first — an owned-position marker via #smallcaps[G-EndMut] (doc §2.2), a carried suspended
+    reborrow via doc §19's flow-back. The implementation checks these inline
+    (`firstLoanMarker`; the carried-borrow case at `readR` var, doc §19) and retries;
     F1 makes them #smallcaps[R-Reorg] preconditions.]#h(-0.15em) Data moves even
     when marker-free — silent aggregate duplication is the cost-opacity Rust's
-    move discipline prevents, and this calculus keeps that line (§2.1).],
+    move discipline prevents, and this calculus keeps that line (doc §2.1).],
 )
 
 #ruled(
@@ -98,7 +98,7 @@ write-through for free.
   [`*p` in read position is a *take*: it moves the located payload out *through*
     the borrow, leaving a hole #vbot at that place. The borrow layers above are
     untouched — `b` itself is not consumed — and the hole's only legal successor
-    is a ⇐-fill through it (§2.4). This is the update-in-place idiom the calculus
+    is a ⇐-fill through it (doc §2.4). This is the update-in-place idiom the calculus
     exists to make routine.],
 )
 
@@ -111,9 +111,9 @@ write-through for free.
   [`&mut` mints a fresh loan $ell$: ownership of the located value moves into the
     borrow #borrowm($ell$, $v$), and the marker #loanm($ell$) parks where it sat,
     rendering the source unusable (not vacant — *owed*). At a bare place $x$ this
-    is a plain borrow (§2.2); at `*b` it is a *reborrow* — the parent `b` is
+    is a plain borrow (doc §2.2); at `*b` it is a *reborrow* — the parent `b` is
     suspended, holding #loanm($ell$) where its payload was, recovering when
-    $ell$ ends (§2.5).],
+    $ell$ ends (doc §2.5).],
 )
 
 #ruled(
@@ -148,7 +148,7 @@ write-through for free.
     evR($Omega_2$, $t'$, $v'$, $Omega_3$)),
   [Assignment evaluates the RHS by ⇒ *first*, then fills the target place by ⇐
     (a live target is vacated by a drop via #smallcaps[R-Reorg]), then reads the
-    continuation. The RHS-first order is §2.5's, and it is exactly what makes the
+    continuation. The RHS-first order is doc §2.5's, and it is exactly what makes the
     self-reborrow `b := c` stuck: the RHS consumes `c`, so the value drop needs
     is in flight.],
 )
@@ -166,12 +166,12 @@ write-through for free.
     evC($Omega$, $t$, $v$),
     $t #h(0.4em) "a comptime-only former"$),
   [On the borrow-free fragment ⇒ coincides with the comptime read ⇝ up to
-    consumption (§1.3): a comptime-only former ($"Type"$, $Pi$, $lambda$, an
+    consumption (doc §1.3): a comptime-only former ($"Type"$, $Pi$, $lambda$, an
     application, $"Id" A space a space b$, a constant) is an *unrestricted* value,
     so ⇒ delegates to ⇝ (impl `readC`) and hands the result back as an ordinary
     runtime datum — storable in a field, passable to a call, returnable. The lift
     is non-destructive (these values are copyable/erasable), so $Omega$ is
-    unchanged, modulo the sanctioned pure-`let` entries a ⇝ may introduce (§1.3).],
+    unchanged, modulo the sanctioned pure-`let` entries a ⇝ may introduce (doc §1.3).],
 )
 
 === The ⇐ arrow (destructive write)
@@ -182,7 +182,7 @@ write-through for free.
     $"loc"(Omega, p) = bot$),
   [⇐ is *fill-only*: its single premise is that the target place holds #vbot, and
     the value drops in. Writing onto a *live* place is not a separate rule — a
-    *drop* reorganization (#smallcaps[R-Reorg], §2.3) vacates it to #vbot first.
+    *drop* reorganization (#smallcaps[R-Reorg], doc §2.3) vacates it to #vbot first.
     The place convention makes `x := v`, `*b := v` (write-through), and `**x := v`
     the same rule at $0$, $1$, $2$ peels. A non-place target (`Pair(1) := v`) has
     no `loc`, so it is stuck — this is how ⇐ rejects writes to arbitrary terms.],
@@ -196,11 +196,11 @@ write-through for free.
     reorgs($Omega$, $Omega'$),
     evR($Omega'$, $t$, $v$, $Omega''$)),
   [Before any ⇒ (or ⇐) step, the environment may reorganize — #reorg($Omega$,
-    $Omega'$), whose rules live in F2 — to unblock the step: End-Mut a loan
-    sitting in a value about to move (§2.2), collapse a match's field-loan chain
-    when its owner is demanded (§3.3), end a carried suspended reborrow before its
-    carrier moves (§19), or *drop* a live value at a fill target, vacating it to
-    #vbot (§2.3). The implementation fires these lazily and deterministically (a
+    $Omega'$), whose rules live in F2 — to unblock the step: end a loan
+    sitting in a value about to move (#smallcaps[G-EndMut], doc §2.2), collapse a match's field-loan chain
+    when its owner is demanded (doc §3.3), end a carried suspended reborrow before its
+    carrier moves (doc §19), or *drop* a live value at a fill target, vacating it to
+    #vbot (doc §2.3). The implementation fires these lazily and deterministically (a
     fuel-bounded retry) exactly when a premise is blocked; F1 states the freedom
     nondeterministically. The identical rule with ⇐ in place of ⇒ supplies the
     drop-before-fill that #smallcaps[W-Fill] and #smallcaps[R-Assign] rely on.],
@@ -212,16 +212,16 @@ All line numbers are `Dllbc/Machine.lean` unless prefixed; tests are in
 `Dllbc/Tests/`. F2's `endLoan`/`drop` implement #smallcaps[R-Reorg]'s premise.
 
 #xref(
-  ([R-Copy],  [`readR` `.var` 988, 1005; `indexKindV` 328], [S2.lean:35 §2.1 copy-on-read]),
-  ([R-Move],  [`readR` `.var` 1015 (and §19 carried-borrow 1010)], [S2.lean:101 take-and-refill (`tail` is data → moved)]),
-  ([R-Ctor],  [`readR` `.ctorApp` 1022; `readArgs` 1120], [S2.lean:88 `Cons(3, Nil)`]),
-  ([R-Take],  [`readR` `.deref` 1016; `navRead` 479], [S2.lean:88 §2.4 `let tail = *b`]),
-  ([R-Mint],  [`readR` `.borrow` 1024], [S2.lean:45 `&mut x`; :117 `&mut *b` reborrow]),
-  ([R-Let],   [`readR` `.letIn` 1033], [S2.lean:26 (every trace)]),
-  ([R-Seq],   [`readR` `.seq` 1062], [S8Diff.lean:65 `e ; ()`; S19Partition.lean:553]),
-  ([R-Assign],[`readR` `.assign` 1037; `writeR` 515], [S2.lean:53 `*b := 7`; :76 `b := 9`]),
-  ([R-Unit],  [`readR` `.unit` 1099], [S2.lean:30 trailing `()`]),
-  ([R-Lift],  [`readR` pure formers 1110–1117; `readC` 662], [S11Lib.lean:72 `botElim` ⇒-lifted; :61 proof into Σ]),
-  ([W-Fill],  [`writeR` 515 (fill 519); `setAtPos` 506; `navWrite` 489; `placeToPos` 473], [S2.lean:101 fill the hole; :150 non-place reject]),
-  ([R-Reorg], [`readR` retries 997, 1013, 1028; `writeR` drop 520; F2 `endLoan` 882 / `drop` 443], [S2.lean:63 End-Mut before read; :76 drop before fill; :129 chain collapse]),
+  ([#smallcaps[R-Copy]],  [`readR` `.var` 988, 1005; `indexKindV` 328], [S2.lean:35 doc §2.1 copy-on-read]),
+  ([#smallcaps[R-Move]],  [`readR` `.var` 1015 (and doc §19 carried-borrow 1010)], [S2.lean:101 take-and-refill (`tail` is data → moved)]),
+  ([#smallcaps[R-Ctor]],  [`readR` `.ctorApp` 1022; `readArgs` 1120], [S2.lean:88 `Cons(3, Nil)`]),
+  ([#smallcaps[R-Take]],  [`readR` `.deref` 1016; `navRead` 479], [S2.lean:88 doc §2.4 `let tail = *b`]),
+  ([#smallcaps[R-Mint]],  [`readR` `.borrow` 1024], [S2.lean:45 `&mut x`; :117 `&mut *b` reborrow]),
+  ([#smallcaps[R-Let]],   [`readR` `.letIn` 1033], [S2.lean:26 (every trace)]),
+  ([#smallcaps[R-Seq]],   [`readR` `.seq` 1062], [S8Diff.lean:65 `e ; ()`; S19Partition.lean:553]),
+  ([#smallcaps[R-Assign]],[`readR` `.assign` 1037; `writeR` 515], [S2.lean:53 `*b := 7`; :76 `b := 9`]),
+  ([#smallcaps[R-Unit]],  [`readR` `.unit` 1099], [S2.lean:30 trailing `()`]),
+  ([#smallcaps[R-Lift]],  [`readR` pure formers 1110–1117; `readC` 662], [S11Lib.lean:72 `botElim` ⇒-lifted; :61 proof into Σ]),
+  ([#smallcaps[W-Fill]],  [`writeR` 515 (fill 519); `setAtPos` 506; `navWrite` 489; `placeToPos` 473], [S2.lean:101 fill the hole; :150 non-place reject]),
+  ([#smallcaps[R-Reorg]], [`readR` retries 997, 1013, 1028; `writeR` drop 520; F2 `endLoan` 882 / `drop` 443], [S2.lean:63 End-Mut before read; :76 drop before fill; :129 chain collapse]),
 )

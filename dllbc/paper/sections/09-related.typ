@@ -45,7 +45,7 @@ program has not yet produced. DLLBC's snapshot discipline deliberately *refuses*
 prophecy. Its ↝ obligation and exit-snapshot postconditions are the
 prophecy-free alternative — a borrow's contract is discharged against the value
 actually present when its loan ends, never against a promised future. The
-calculus doc makes the case for the refusal directly (§4.2): per-loan contracts
+calculus doc makes the case for the refusal directly (doc §4.2): per-loan contracts
 on coupled data would have to state conditions like "a vector whose length
 matches whatever the *sibling* loan ends with" — a promise about another loan's
 future, which is exactly what prophecy formalizes. DLLBC dissolves the coupling

@@ -173,7 +173,7 @@ what it holds. It substitutes globally, subject to a single deep invariant:
   calculus are match-shape refinement (#smallcaps[X-Shape]) and equation
   solutions (#smallcaps[X-Sol]) — *never* a mutation's result. Substituting a
   take, a fill, or an End-Mut plug-back for a σ would make the snapshot track the
-  present, which is the staleness §0 promises snapshots can never have. (Audited
+  present, which is the staleness doc §0 promises snapshots can never have. (Audited
   across the whole mechanization: zero violations.)
 ]
 
@@ -215,7 +215,7 @@ what it holds. It substitutes globally, subject to a single deep invariant:
   ),
 )]
 
-*Gloss.* #smallcaps[X-Shape] is the branch-entry refinement of doc §3.2/§3.3.
+*Gloss.* #smallcaps[X-Shape] is the branch-entry refinement of doc §3.2/doc §3.3.
 Once the scrutinee place $p$ reads to a symbolic $sym("")$ (owned mode: $p = x$;
 borrow mode: $p = *x$, the deref cell of the ⇜ column), the branch for
 constructor $C$ mints fresh field σ's — typed by $C$'s field telescope in
@@ -252,7 +252,7 @@ refines the spine per branch, in values *and* types alike.
   #box(width: 1.2em)[•] *C-Deref proviso.* `reflectC`'s deref case projects a
   `borrowM`'s payload *unconditionally* — it does not test the payload for loan
   markers. The "$v$ proper" side-condition of #smallcaps[C-Deref] is the doc's
-  intent (§5.2: comptime deref is stuck on a suspended payload); today
+  intent (doc §5.2: comptime deref is stuck on a suspended payload); today
   stuckness surfaces one layer downstream instead (`nfV` treats a marker as a
   leaf; a later `hasType` rejects it), rather than at the peel. Reported, not
   resolved.

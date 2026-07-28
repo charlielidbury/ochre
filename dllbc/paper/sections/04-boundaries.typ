@@ -146,7 +146,7 @@ reshaping #smallcaps[B-Audit-Borrow]). One step hides inside "holds a value": th
 audit is itself a demand, and it _collapses first_. The suspension tree a
 borrow-mode match built — field loans parked in the parent, unobservable through
 the whole body because nothing before the boundary can demand them — is ended
-here by End-Mut (@fig-reorg), the boundary being the canonical demander of an
+here by #smallcaps[G-EndMut] (@fig-reorg), the boundary being the canonical demander of an
 argument borrow that has no owner to demand it. Then conversion judges the
 collapsed payload. The audit is _collapse-then-convert_: it assembles the final
 value out of the body's strong updates, reassemblies, and holes, and checks the
@@ -193,8 +193,8 @@ function the body implements. Auditing the declaration is therefore one
 conversion, the declared `back` applied to its holes against the resolved tree
 (#smallcaps[B-BackN]). At the caller, a spec-carrying group ends by _computing_
 each captured release — the declared back applied to the surrendered payloads —
-instead of minting a fresh existential (#smallcaps[B-SpecEnd], and @fig-reorg's
-#smallcaps[G-EndGroupBack]). And composition falls out of the same resolution:
+instead of minting a fresh existential (@fig-reorg's #smallcaps[G-EndGroupBack],
+consuming the spec that @fig-boundaries's #smallcaps[B-Call] instantiated). And composition falls out of the same resolution:
 the tree resolves _through sub-calls' declared backs_, so a captured loan of a
 sub-call resolves to _that_ call's back applied to its issued borrows — exactly
 LLBC's backward-function composition, here as a checked declaration rather than a
@@ -239,7 +239,7 @@ equal, never definitionally so) falls outside conversion's reach and is left to
 the differential harness to validate. Complementary, not redundant. The
 principled close is deferred: admit a reformulated back with a _cited bridging
 equation_ and have the audit rewrite along the proved `Id`, so reformulation
-becomes checked rather than trusted. *[Status: proposed]*
+becomes checked rather than trusted. #status("proposed")
 
 == The precision spectrum, and its open holes
 
