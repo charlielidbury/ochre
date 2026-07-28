@@ -953,5 +953,74 @@ def twoRec : Decl :=
         } } }
 example : checkFnOk twoRec [twoRec] = true := by native_decide
 
+/-! ## M22-b — swapSE: count-preservation as a PROVEN postcondition (direct proving)
+
+    The first ensures-form rung. NO back: the return type
+    `Π n. Id Nat (count n (*v)) (count n (old *v))` is a propositional postcondition
+    (swap preserves the multiset), and the body PROVES it from the exit reading —
+    the demoted baseline would have declared `back = swapL i j *v` and leaned on the
+    conversion check instead. Here the cert is `count_swapL'` (swapL preserves count)
+    read directly at the entry snapshot `old *v`.
+
+    WHY DELEGATION, NOT INLINE (the rung's sharpest finding — see the two probes in
+    the milestone report). The intended route was to INLINE the swap via `nth2`
+    (reborrow `&mut *v`) and ride the §22 bridge, on the expectation that the exit
+    reading would be the set/nth form `set i (nth j s) (set j (nth i s) s)`. It is
+    NOT. Through inline `nth2`, the audit reconstructs `*v`-exit from nth2's back
+    `set i r1 (set j r2 *v)` with r1/r2 the FINAL borrow payloads — and those are
+    released as OPAQUE symbols `set i σ8 (set j σ7 s)`. The audit never learns
+    `σ8 = nth j s`, `σ7 = nth i s`: the imperative `*ei := *ej; *ej := t` moved
+    values through borrows whose provenance the release does not retain. So the
+    bridge (about the nth-form) does not even TYPE against the opaque-form exit —
+    a DEEPER gap than set-vs-swapL. Routing through `swapS` (swapSN) instead makes
+    the exit reading the clean model function `swapL i j (old *v)` (swapSN's back,
+    itself a provable postcondition — cf. exitAccept), and `count_swapL'` matches it
+    directly with no bridge.
+
+    PAIN DIARY. Three entries:
+    • OPAQUE EXIT READINGS. A leaf that mutates via pointer writes (`*ei := *ej`)
+      leaves an exit reading whose written values are opaque existentials, unrelated
+      to the entry list. You cannot prove ANY value-level postcondition (count, sort,
+      perm) about such a reading. The only way to a provable exit is to route the
+      mutation through a callee whose back/postcondition is a CLOSED FUNCTION of the
+      input list (swapL, partScanRangeL). Candidate feature: exit readings that
+      retain the provenance of written values (or richer accessor postconditions —
+      an nth2 that returns `Id (*ei) (nth i (old*v))` alongside the borrow).
+    • PROOF LINEARITY vs COUNT. Length preservation was FRICTION-FREE (lenPreserve:
+      `len_swapL` is unconditional), but count preservation needs the bounds — the
+      cert wants `pij`/`p2` (count_swapL' is bounded) AND the swap CONSUMES them.
+      Proofs are linear (moved by the call), Nat indices are not; so count/perm
+      postconditions force this collision at EVERY mutating leaf. Dodged here by
+      ORDERING alone — the cert is let-bound BEFORE the swapS call, reading pij/p2
+      (non-consuming, ⇝) while live; swapS MOVES them after. Fragile: a postcondition
+      that must cite the proofs AFTER the mutation cannot be ordered around, and that
+      is where proofs-as-copy-on-read (proof-irrelevant, so duplication is sound)
+      stops being convenience and becomes necessary.
+    • CONVERGENT EVIDENCE. The §22 bridge `swapL_set` (set-form ≡ swapL) is proved
+      and kept in StdLemmas: it is the transport the audit WOULD cite once exit
+      readings retain value provenance (the first feature above), and it generalizes
+      to partition's composed set-forms. Not on swapSE's path today, but the specimen
+      the team-lead flagged — the audit doing rewrite-by-Id along a cited bridge. -/
+def swapSE : Decl :=
+  decl{ fn swapSE (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+        -> Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
+        { let cert = (λ (n : Nat). count_swapL' n i j (old *v) pij p2);
+          swapS(&mut *v, i, j, pij, p2);
+          cert } }
+example : checkFnOk swapSE [nthS, nth2S, swapSN, swapSE] = true := by native_decide
+
+-- LYING postcondition: claim swap preserves count of `old *v` at a SHIFTED index
+-- (`count (S n)` on the left) — false in general (e.g. [2,0] ⇝ [0,2]: count 1 exit
+-- = 0 ≠ 1 = count 0 entry), so the honest cert (type `Π n. Id (count n exit)
+-- (count n entry)`) does not have this shifted type and the audit rejects. Guards
+-- that the green check above is not vacuous.
+def swapSELie : Decl :=
+  decl{ fn swapSELie (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+        -> Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v))
+        { let cert = (λ (n : Nat). count_swapL' n i j (old *v) pij p2);
+          swapS(&mut *v, i, j, pij, p2);
+          cert } }
+example : checkFnErr swapSELie "does not have return type" [nthS, nth2S, swapSN, swapSELie] = true := by native_decide
+
 end Dllbc.Tests.S19Partition
 
