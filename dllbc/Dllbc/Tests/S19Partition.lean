@@ -26,7 +26,7 @@ open Dllbc.StdLemmas (swapL count_swapL' set nth partScanL partScanRangeL partId
   partIdxRangeL partGapRangeL partScanSizeL len_partitionRangeL len_sortRangeL sortRangeL
   partitionRangeL partitionL le_up_r le_add le_add_l le_add_succ le_rw_r le_rw_l le_add_mono_l
   add_succ le_trans le_refl id_sym id_trans id_congr hshift_true hshift_false len_swapL add_zero add_assoc
-  count_partitionRangeL)
+  count_partitionRangeL count_sortRangeL)
 
 namespace Dllbc.Tests.S19Partition
 
@@ -1053,6 +1053,38 @@ def partitionRangeELie : Decl :=
           cert } }
 example : checkFnErr partitionRangeELie "does not have return type"
   [nthS, nth2S, swapSN, partScanRange, partitionRange, partitionRangeELie] = true := by native_decide
+
+/-! ## M22-b — quicksortE: quicksort's PERMUTATION postcondition (direct proving)
+
+    THE NORTH STAR, direct-proving form. NO back: retType `Π n. Id Nat (count n *v)
+    (count n (old *v))` says the in-place quicksort PERMUTES its range — a
+    propositional postcondition PROVEN in the body (the demoted baseline `quicksort`
+    Decl instead declares `back = sortRangeL fuel lo cnt *v` and checks conformance
+    by conversion). Same delegation discipline as the swap and partition rungs: the
+    sort is delegated to `quicksort` (back = sortRangeL, a closed function of the
+    input, so the exit reading is provable rather than opaque), and the cert is the
+    pure permutation lemma count_sortRangeL at the entry snapshot. Cert staged before
+    the consuming call (reads hbnd live). This is the Perm half of the full
+    `Sorted *v ∧ Perm (old*v) *v`; sortedness (AllLe/AllGe/sorted-glue) is the
+    remaining axis. -/
+def quicksortE : Decl :=
+  decl{ fn quicksortE (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
+        -> Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
+        { let cert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
+          quicksort(&mut *v, fuel, lo, cnt, hbnd);
+          cert } }
+def quicksortETable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortE]
+example : checkFnOk quicksortE quicksortETable = true := by native_decide
+
+-- LYING postcondition: shifted index — the honest permutation cert does not have it.
+def quicksortELie : Decl :=
+  decl{ fn quicksortELie (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
+        -> Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v))
+        { let cert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
+          quicksort(&mut *v, fuel, lo, cnt, hbnd);
+          cert } }
+example : checkFnErr quicksortELie "does not have return type"
+  [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortELie] = true := by native_decide
 
 end Dllbc.Tests.S19Partition
 
