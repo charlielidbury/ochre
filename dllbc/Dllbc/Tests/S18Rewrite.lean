@@ -187,6 +187,12 @@ example : chk StdLemmas.take_lo_partition StdLemmas.take_lo_partition_ty = true 
 example : chk StdLemmas.drop_suffix_partition StdLemmas.drop_suffix_partition_ty = true := by native_decide
 example : chk StdLemmas.segCount_sortRangeL StdLemmas.segCount_sortRangeL_ty = true := by native_decide
 example : chk StdLemmas.segCount_partitionRangeL StdLemmas.segCount_partitionRangeL_ty = true := by native_decide
+-- §22 M22-c step 2: partition-invariant proofs. Gate: the middle-band swap locality
+-- (nth_set_lt + nth_swapL_mid, Step A's unstated interior) and the pivot-tracking scan
+-- invariant (partScanRangeL_pivot — pivot ends at add finalI lo).
+example : chk StdLemmas.nth_set_lt StdLemmas.nth_set_lt_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_mid StdLemmas.nth_swapL_mid_ty = true := by native_decide
+example : chk StdLemmas.partScanRangeL_pivot StdLemmas.partScanRangeL_pivot_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

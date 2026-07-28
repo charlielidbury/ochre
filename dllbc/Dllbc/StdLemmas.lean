@@ -1468,6 +1468,58 @@ def nth_swapL_hi_ty : Term := pure{
   Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) j → Le (S j) (len l) → Id Nat (nth j (swapL i j l)) (nth i l) }
 
+-- `nth k (set j v l) = nth k l` for k strictly BELOW the written index j (mirror of
+-- nth_set_gt). The below-index companion the partition-invariant base case needs.
+def nth_set_lt : Term := pure{
+  λ (v : Nat). λ (j : Nat).
+    elim j return (λ (jz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (S k) jz → Id Nat (nth k (set jz v l)) (nth k l)) {
+      Z => λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) Z). botElim (Id Nat (nth k (set Z v l)) (nth k l)) h,
+      S (j') ih => λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) (S j')).
+        elim k return (λ (kz : Nat). Le (S kz) (S j') → Id Nat (nth kz (set (S j') v l)) (nth kz l)) {
+          Z => λ (h0 : Le (S Z) (S j')).
+            elim l return (λ (lz : List Nat). Id Nat (nth Z (set (S j') v lz)) (nth Z lz)) {
+              Nil => Refl,
+              Cons (hh) (tt) ihl => Refl },
+          S (k') kih => λ (h0 : Le (S (S k')) (S j')).
+            elim l return (λ (lz : List Nat). Id Nat (nth (S k') (set (S j') v lz)) (nth (S k') lz)) {
+              Nil => Refl,
+              Cons (hh) (tt) ihl => ih k' tt h0 } } h } }
+def nth_set_lt_ty : Term := pure{
+  Π (v : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
+    Le (S k) j → Id Nat (nth k (set j v l)) (nth k l) }
+
+-- The MIDDLE band left unstated in Step A: positions strictly between i and j are
+-- untouched by `swapL i j` (two-sided bound). Induction on i mirroring swapL; the
+-- i=Z base floats through the set-branch via nth_set_lt, the recursive leaf is the IH.
+def nth_swapL_mid : Term := pure{
+  λ (i : Nat).
+    elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S iz) k → Le (S k) j → Id Nat (nth k (swapL iz j l)) (nth k l)) {
+      Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (hik : Le (S Z) k). λ (hkj : Le (S k) j).
+        elim l return (λ (lz : List Nat). Id Nat (nth k (swapL Z j lz)) (nth k lz)) {
+          Nil => Refl,
+          Cons (x) (xs) ihl =>
+            elim j return (λ (jz : Nat). Le (S k) jz → Id Nat (nth k (swapL Z jz (Cons x xs))) (nth k (Cons x xs))) {
+              Z => λ (hkj0 : Le (S k) Z). botElim (Id Nat (nth k (swapL Z Z (Cons x xs))) (nth k (Cons x xs))) hkj0,
+              S (j') jih => λ (hkj0 : Le (S k) (S j')).
+                elim k return (λ (kz : Nat). Le (S Z) kz → Le (S kz) (S j') → Id Nat (nth kz (Cons (nth j' xs) (set j' x xs))) (nth kz (Cons x xs))) {
+                  Z => λ (hik1 : Le (S Z) Z). λ (hkj1 : Le (S Z) (S j')). botElim (Id Nat (nth Z (Cons (nth j' xs) (set j' x xs))) (nth Z (Cons x xs))) hik1,
+                  S (k') kih => λ (hik1 : Le (S Z) (S k')). λ (hkj1 : Le (S (S k')) (S j')).
+                    nth_set_lt x j' k' xs hkj1 } hik hkj0 } hkj },
+      S (i') ih => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (hik : Le (S (S i')) k). λ (hkj : Le (S k) j).
+        elim l return (λ (lz : List Nat). Id Nat (nth k (swapL (S i') j lz)) (nth k lz)) {
+          Nil => Refl,
+          Cons (x) (xs) ihl =>
+            elim j return (λ (jz : Nat). Le (S k) jz → Id Nat (nth k (swapL (S i') jz (Cons x xs))) (nth k (Cons x xs))) {
+              Z => λ (hkj0 : Le (S k) Z). botElim (Id Nat (nth k (swapL (S i') Z (Cons x xs))) (nth k (Cons x xs))) hkj0,
+              S (j') jih => λ (hkj0 : Le (S k) (S j')).
+                elim k return (λ (kz : Nat). Le (S (S i')) kz → Le (S kz) (S j') → Id Nat (nth kz (Cons x (swapL i' j' xs))) (nth kz (Cons x xs))) {
+                  Z => λ (hik1 : Le (S (S i')) Z). λ (hkj1 : Le (S Z) (S j')). botElim (Id Nat (nth Z (Cons x (swapL i' j' xs))) (nth Z (Cons x xs))) hik1,
+                  S (k') kih => λ (hik1 : Le (S (S i')) (S k')). λ (hkj1 : Le (S (S k')) (S j')).
+                    ih j' k' xs hik1 hkj1 } hik hkj0 } hkj } } }
+def nth_swapL_mid_ty : Term := pure{
+  Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
+    Le (S i) k → Le (S k) j → Id Nat (nth k (swapL i j l)) (nth k l) }
+
 /-! ## `nth`-under-scan/partition LOCALITY — positions outside the range unchanged (§22)
 
     The range scan `partScanRangeL pivot lo k i g` only ever swaps positions inside
@@ -2154,6 +2206,102 @@ def partScanRangeL_allGtR_ty : Term := pure{
     Id Nat (nth lo l) pivot →
     AllGtR g (add (S i) lo) pivot l →
     AllGtR (partScanGapRangeL pivot lo k i g l) (add (S (partScanIdxRangeL pivot lo k i g l)) lo) pivot (partScanRangeL pivot lo k i g l) }
+-- The pivot ends at position `add finalI lo`. Induction on k mirroring
+-- count_partScanRangeL's bound threading, PLUS threading the pivot-fact
+-- `Id (nth lo l) pivot` (updated across the step swap via nth_swapL_lt — lo is below
+-- both swap indices). Base (k=Z) places the pivot: i=Z is the pivot-fact directly;
+-- i=S i' swaps lo↔lo+i, so nth_swapL_hi reads old-lo (=pivot) at the boundary, bridged
+-- from index-first `add (S i') lo` to offset-first `add lo (S i')` by add_comm.
+def partScanRangeL_pivot : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+        Le (add lo (S (add kz (add i g)))) (len l) →
+        Id Nat (nth lo l) pivot →
+        Id Nat (nth (add (partScanIdxRangeL pivot lo kz i g l) lo) (partScanRangeL pivot lo kz i g l)) pivot) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        λ (hle : Le (add lo (S (add Z (add i g)))) (len l)). λ (hpv : Id Nat (nth lo l) pivot).
+        elim i return (λ (iz : Nat).
+            Le (add lo (S (add Z (add iz g)))) (len l) →
+            Id Nat (nth (add iz lo) (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => swapL lo (add lo (S i')) l })) pivot) {
+          Z => λ (hle0 : Le (add lo (S (add Z (add Z g)))) (len l)). hpv,
+          S (i') iih => λ (hle0 : Le (add lo (S (add Z (add (S i') g)))) (len l)).
+            id_trans Nat
+              (nth (add (S i') lo) (swapL lo (add lo (S i')) l))
+              (nth (add lo (S i')) (swapL lo (add lo (S i')) l))
+              pivot
+              (id_congr Nat Nat (λ (p : Nat). nth p (swapL lo (add lo (S i')) l)) (add (S i') lo) (add lo (S i')) (add_comm (S i') lo))
+              (id_trans Nat
+                (nth (add lo (S i')) (swapL lo (add lo (S i')) l))
+                (nth lo l)
+                pivot
+                (nth_swapL_hi lo (add lo (S i')) l (le_add_succ lo i')
+                  (le_trans (S (add lo (S i'))) (add lo (S (S (add i' g)))) (len l)
+                    (le_rw_l (add lo (S (S (add i' g)))) (add lo (S (S i'))) (S (add lo (S i')))
+                      (add_succ lo (S i'))
+                      (le_add_mono_l lo (S (S i')) (S (S (add i' g))) (le_add i' g)))
+                    hle0))
+                hpv)
+        } hle,
+      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        λ (hle : Le (add lo (S (add (S k') (add i g)))) (len l)). λ (hpv : Id Nat (nth lo l) pivot).
+        elim (leb (nth (add lo (S (add i g))) l) pivot)
+          return (λ (w : Bool). Id Nat
+            (nth (add (elim w return (λ (ww : Bool). Nat) {
+                True => elim g return (λ (gz : Nat). Nat) {
+                  Z => partScanIdxRangeL pivot lo k' (S i) Z l,
+                  S (g') gih => partScanIdxRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                False => partScanIdxRangeL pivot lo k' i (S g) l }) lo)
+              (elim w return (λ (ww : Bool). List Nat) {
+                True => elim g return (λ (gz : Nat). List Nat) {
+                  Z => partScanRangeL pivot lo k' (S i) Z l,
+                  S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                False => partScanRangeL pivot lo k' i (S g) l }))
+            pivot) {
+          True =>
+            (elim g return (λ (gz : Nat).
+                Le (add lo (S (add (S k') (add i gz)))) (len l) →
+                Id Nat (nth (add (elim gz return (λ (gy : Nat). Nat) {
+                    Z => partScanIdxRangeL pivot lo k' (S i) Z l,
+                    S (g') gih => partScanIdxRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i gz))) l) }) lo)
+                  (elim gz return (λ (gy : Nat). List Nat) {
+                    Z => partScanRangeL pivot lo k' (S i) Z l,
+                    S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i gz))) l) })) pivot) {
+              Z => λ (hleZ : Le (add lo (S (add (S k') (add i Z)))) (len l)).
+                ih (S i) Z l
+                  (le_rw_l (len l)
+                    (add lo (S (add (S k') (add i Z))))
+                    (add lo (S (add k' (add (S i) Z))))
+                    (id_congr Nat Nat (λ (a : Nat). add lo (S a))
+                      (add (S k') (add i Z)) (add k' (add (S i) Z)) (hshift_true k' i Z))
+                    hleZ)
+                  hpv,
+              S (g') gih => λ (hleS : Le (add lo (S (add (S k') (add i (S g'))))) (len l)).
+                ih (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)
+                  (le_rw_r (add lo (S (add k' (add (S i) (S g'))))) (len l)
+                     (len (swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+                     (id_sym Nat (len (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (len l)
+                       (len_swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+                     (le_rw_l (len l)
+                       (add lo (S (add (S k') (add i (S g')))))
+                       (add lo (S (add k' (add (S i) (S g')))))
+                       (id_congr Nat Nat (λ (a : Nat). add lo (S a))
+                         (add (S k') (add i (S g'))) (add k' (add (S i) (S g'))) (hshift_true k' i (S g')))
+                       hleS))
+                  (id_trans Nat (nth lo (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (nth lo l) pivot
+                    (nth_swapL_lt (add lo (S i)) (add lo (S (add i (S g')))) lo l (le_add_succ lo i))
+                    hpv)
+            }) hle,
+          False =>
+            ih i (S g) l
+              (le_rw_l (len l)
+                (add lo (S (add (S k') (add i g))))
+                (add lo (S (add k' (add i (S g)))))
+                (id_congr Nat Nat (λ (a : Nat). add lo (S a))
+                  (add (S k') (add i g)) (add k' (add i (S g))) (hshift_false k' i g))
+                hle)
+              hpv
+        }
+    } }
 def partScanRangeL_pivot_ty : Term := pure{
   Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Le (add lo (S (add k (add i g)))) (len l) →
