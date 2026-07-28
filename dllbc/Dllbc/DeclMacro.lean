@@ -102,6 +102,7 @@ syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow 
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
 syntax:10 uterm:11 "→" uterm:10 : uterm                      -- non-dependent arrow
 syntax:max "match" ident "{" uarm,* "}" : uterm              -- runtime match (§3)
+syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar over a Bool match
 
 syntax "{" ublk "}" : uarmBody                               -- braced block arm body
 syntax uterm : uarmBody                                      -- bare expression arm body
@@ -231,6 +232,14 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     | some id =>
       let (arms', n) ← elabUArms rctx pctx next arms.getElems.toList
       return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote s)⟩ [$arms',*]), n)
+  | `(uterm| if $c:uterm { $t:ublk } else { $f:ublk }) => do  -- §12 sugar → Bool match
+    let (c', n1) ← elabUTerm false rctx pctx next c
+    let scrutId := n1
+    let (t', n2) ← elabUBlk rctx pctx (n1 + 1) t
+    let (f', n3) ← elabUBlk rctx pctx n2 f
+    return (← `(Dllbc.Term.letIn ⟨$(quote scrutId), "__if"⟩ $c'
+      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩
+        [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
   | `(uterm| $_:uterm $_:uterm) => do                 -- application spine (juxtaposition)
     let (head, args) := collectAppU stx
     match head with

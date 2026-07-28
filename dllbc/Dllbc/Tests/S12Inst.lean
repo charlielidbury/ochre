@@ -1,6 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
+import Dllbc.DeclMacro
 
 /-!
 # §12 test suite — dependent call-site instantiation
@@ -26,39 +27,29 @@ sit at telescope positions) and `if`-sugar over the Bool match.
 -/
 
 open Dllbc
-open Dllbc.Std (LeT SortedT le_reflT)
+open Dllbc.Std (le_reflT)
 
 namespace Dllbc.Tests.S12Inst
-
-def natT : Term := .const "Nat"
-def listNatT : Term := .app (.const "List") natT
-def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
-def n0 : Var := ⟨0, "n"⟩
-def a0 : Var := ⟨0, "a"⟩
-def b0 : Var := ⟨0, "b"⟩
 
 /-! ## The dependent return type, instantiated at the actual -/
 
 -- `use_refl (n : Nat) → Le n n = le_refl n`. The body ⇒-lifts the proof term
 -- `le_refl n` (pure lift, §11); the audit checks it against the pinned `Le n n`.
 def useRefl : Decl :=
-  { name := "use_refl", retType := (LeT (.var n0) (.var n0)),
-    telescope := [("n", natT)], body := (.app le_reflT (.var n0)) }
+  decl{ fn use_refl (n : Nat) -> Le n n { le_reflT n } }
 example : checkFnOk useRefl = true := by native_decide
 
 -- A caller returning `Le 5 5` via `use_refl(5)`: the callee's `Le n n` is
 -- instantiated at `n := 5`, so the fresh existential is typed `Le 5 5`.
 def callerRet : Decl :=
-  { name := "callerRet", retType := (LeT (tnat 5) (tnat 5)), telescope := [],
-    body := dllbcWith [] { use_refl(5) } }
+  decl{ fn callerRet () -> Le 5 5 { use_refl(5) } }
 example : checkFnOk callerRet ([useRefl, callerRet]) = true := by native_decide
 
 -- Symbolic actual: `f (n : Nat) → Le n n = use_refl(n)`. Instantiation substitutes
 -- the caller's σ symbolically (`Le σ σ`); the pinned return type is `Le σ σ`, and
 -- the returned existential is accepted at it.
 def symCall : Decl :=
-  { name := "symCall", retType := (LeT (.var n0) (.var n0)),
-    telescope := [("n", natT)], body := dllbcWith [n] { use_refl(n) } }
+  decl{ fn symCall (n : Nat) -> Le n n { use_refl(n) } }
 example : checkFnOk symCall ([useRefl, symCall]) = true := by native_decide
 
 /-! ## A dependent second parameter (the M6 misresolution case, now correct) -/
@@ -66,20 +57,17 @@ example : checkFnOk symCall ([useRefl, symCall]) = true := by native_decide
 -- `needs (a : Nat, p : Le a 2) → Unit`. The second parameter's type must
 -- instantiate to `Le (actual) 2` BEFORE `p` is checked.
 def needs : Decl :=
-  { name := "needs", retType := .const "Unit",
-    telescope := [("a", natT), ("p", (LeT (.var a0) (tnat 2)))], body := .unit }
+  decl{ fn needs (a : Nat, p : Le a 2) -> Unit { () } }
 
 -- `needs(1, ())`: `Le 1 2` whnf's to ⊤, which `()` inhabits — accepted.
 def callNeeds1 : Decl :=
-  { name := "callNeeds1", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] { needs(1, ()) } }
+  decl{ fn callNeeds1 () -> Unit { needs(1, ()) } }
 example : checkFnOk callNeeds1 ([needs, callNeeds1]) = true := by native_decide
 
 -- `needs(3, ())`: instantiation gives `Le 3 2` = ⊥, which `()` cannot inhabit —
 -- REJECTED. Without instantiation the parameter type would never resolve to ⊥.
 def callNeeds3 : Decl :=
-  { name := "callNeeds3", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] { needs(3, ()) } }
+  decl{ fn callNeeds3 () -> Unit { needs(3, ()) } }
 example : checkFnErr callNeeds3 "does not have its parameter type" ([needs, callNeeds3]) = true := by
   native_decide
 
@@ -88,34 +76,30 @@ example : checkFnErr callNeeds3 "does not have its parameter type" ([needs, call
 -- `observe (b : &mut List Nat, p : Sorted (*b)) → Unit`. The second parameter's
 -- type reads the actual borrow's payload snapshot at the call site.
 def observe : Decl :=
-  { name := "observe", retType := .const "Unit",
-    telescope := [("b", .borrowT listNatT listNatT), ("p", (SortedT (.deref (.var b0))))],
-    body := .unit }
+  decl{ fn observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () } }
 
 -- Passing a borrow of `[1,2]`: `Sorted (*b)` instantiates to `Sorted [1,2]`
 -- (a product of ⊤s), which the unit-pair nest inhabits — accepted.
 def observeGood : Decl :=
-  { name := "observeGood", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] {
-      let x = Cons(1, Cons(2, Nil));
-      let bb = &mut x;
-      observe(bb, Pair((), Pair((), ())));
-      let y = x;
-      ()
-    } }
+  decl{ fn observeGood () -> Unit {
+    let x = Cons(1, Cons(2, Nil));
+    let bb = &mut x;
+    observe(bb, Pair((), Pair((), ())));
+    let y = x;
+    ()
+  } }
 example : checkFnOk observeGood ([observe, observeGood]) = true := by native_decide
 
 -- Passing a borrow of `[2,1]`: `Sorted [2,1]` contains ⊥ at the first bound, so
 -- the same proof fails — REJECTED. The dependent parameter caught the unsortedness.
 def observeBad : Decl :=
-  { name := "observeBad", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] {
-      let x = Cons(2, Cons(1, Nil));
-      let bb = &mut x;
-      observe(bb, Pair((), Pair((), ())));
-      let y = x;
-      ()
-    } }
+  decl{ fn observeBad () -> Unit {
+    let x = Cons(2, Cons(1, Nil));
+    let bb = &mut x;
+    observe(bb, Pair((), Pair((), ())));
+    let y = x;
+    ()
+  } }
 example : checkFnErr observeBad "does not have its parameter type" ([observe, observeBad]) = true := by
   native_decide
 
@@ -127,12 +111,10 @@ example : checkFnErr observeBad "does not have its parameter type" ([observe, ob
 -- into `Le 2 2` — which `needsLe22` then requires. Green iff the refinement
 -- propagated to the instantiated call result.
 def needsLe22 : Decl :=
-  { name := "needsLe22", retType := .const "Unit",
-    telescope := [("q", (LeT (tnat 2) (tnat 2)))], body := .unit }
+  decl{ fn needsLe22 (q : Le 2 2) -> Unit { () } }
 def refineTest : Decl :=
-  { name := "refineTest", retType := .const "Unit",
-    telescope := [("n", natT), ("pf", (.idT natT (.var n0) (tnat 2)))],
-    body := dllbcWith [n, pf] { let r = use_refl(n); match pf { Refl => needsLe22(r) } } }
+  decl{ fn refineTest (n : Nat, pf : Id Nat n 2) -> Unit {
+    let r = use_refl(n); match pf { Refl => needsLe22(r) } } }
 example : checkFnOk refineTest ([useRefl, needsLe22, refineTest]) = true := by native_decide
 
 /-! ## `if`-sugar over the Bool match (dream-program gap 5) -/
@@ -140,8 +122,7 @@ example : checkFnOk refineTest ([useRefl, needsLe22, refineTest]) = true := by n
 -- `classify (b : Bool) → Nat = if b { 1 } else { 0 }` desugars to a fresh-var let
 -- and a `match` on it; a symbolic `Bool` splits into two audited paths.
 def classify : Decl :=
-  { name := "classify", retType := natT, telescope := [("b", .const "Bool")],
-    body := dllbcWith [b] { if b { 1 } else { 0 } } }
+  decl{ fn classify (b : Bool) -> Nat { if b { 1 } else { 0 } } }
 example : checkFnOk classify = true := by native_decide
 
 /-! ## §12.7 The dream program, re-annotated
