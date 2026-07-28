@@ -16,7 +16,7 @@ Each section is written incrementally and reviewed before the next. Sections mar
 6. **Entangled calls** — `choose`; loan groups; opaque ending; the precision spectrum. *(written below)*
 7. **Inductive declarations** — the CIC scheme; comptime index arguments; generated recursors and `T.copy`; *unrestricted* as a derivability fact. *(written below)*
 8. ▢ **Recursion and termination** — `[k]`, the snapshot-subterm guard, measures as the future escape hatch.
-9. ▢ **The comptime fragment as a type theory** — conversion (Ω-free over substituted terms), universes, K, elaboration of match to eliminators.
+9. ▢ **The comptime fragment as a type theory** — conversion (Ω-free over substituted terms), universes, K, elaboration of match to eliminators. Plus the kernel decisions accumulated by the mechanization, filed for this section: `nfV`-reduces-`letIn` (would make `let` mode-free, shrinking the bimodal inventory to `&mut` alone); comptime Σ-elimination (`sigmaRec` or comptime match — pure conjunctions currently build but never project, forcing bounded-Π encodings of predicate conjunctions); λ/neutral *family* typing (predicate families check only in applied form); and `Le` as a primitive former (recognition prerequisite for both the proof-copy extension and audit-rewrite-along-cited-bridges).
 10. ▢ **Deferred** — shared borrows; borrow-capturing λ's and the capture rule that returns with them; erasure and quantities; unified `fn`/λ; traits.
 
 Metatheory remains deliberately deferred throughout.
