@@ -1173,4 +1173,17 @@ def allGtR_empty : Term := pure{
 def allGtR_empty_ty : Term := pure{
   Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → AllGtR Z lo p l }
 
+/-! ## Segment count — the multiset vehicle for perm-survival (§22, M22-c step 3)
+
+    `segCount x lo w l` = occurrences of x in positions [lo, lo+w) of l, as the count
+    over the take/drop segment (reuses count/take/drop; preservation cribs count_* +
+    count_append + take_drop_id). This is the perm-invariant twin the positional
+    AllLeR is bridged to: the sort permutes the segment (segCount preserved), so a
+    positional bound over the segment survives the sort. Its preservation-under-the-
+    model-functions and the model-function LOCALITY lemmas are the mechanical stratum. -/
+def segCount : Term := pure{
+  λ (x : Nat). λ (lo : Nat). λ (w : Nat). λ (l : List Nat).
+    count x (take w (drop lo l)) }
+def segCount_ty : Term := pure{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (l : List Nat) → Nat }
+
 end Dllbc.StdLemmas

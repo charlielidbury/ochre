@@ -126,6 +126,8 @@ example : chk StdLemmas.allLeR_head StdLemmas.allLeR_head_ty = true := by native
 example : chk StdLemmas.allGtR_head StdLemmas.allGtR_head_ty = true := by native_decide
 example : chk StdLemmas.allLeR_empty StdLemmas.allLeR_empty_ty = true := by native_decide
 example : chk StdLemmas.allGtR_empty StdLemmas.allGtR_empty_ty = true := by native_decide
+-- segment count (the perm-invariant multiset vehicle): typechecks + computes.
+example : chk StdLemmas.segCount StdLemmas.segCount_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
