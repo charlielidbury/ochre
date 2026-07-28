@@ -1053,10 +1053,30 @@ mutual
         match ← getAtPos pos with
         | .bot => throwErr "&mut: target place holds ⊥ (nothing to borrow)"
         | .loanM ℓ => do endLoan fuel ℓ; readR fuel (.borrow t')   -- suspended: demand-end the group, then reborrow
-        | v => do
-          let ℓ ← freshLoan
-          setAtPos pos (.loanM ℓ)                        -- park the loan marker
-          pure (.borrowM ℓ v)                            -- ownership of v moves into the borrow
+        | v =>
+          -- §9 executing-mode reborrow fidelity. A value peeled from a
+          -- demand-ended suspension can still carry owned FIELD-loan markers
+          -- whose borrows hold freshly-mutated payloads: a callee that swapped
+          -- through `*v` (nth2 → element reborrows) leaves the swapped elements
+          -- in the callee's element-borrows, and demand-ending the single top
+          -- loan (the `.loanM ℓ` case above) recovers a `Cons(loanₘ ℓ₂, loanₘ ℓ₃)`
+          -- whose element loans are still suspended. Reborrowing that as-is hands
+          -- out a value a later comptime `*v` reads stale (`nth Z (*v) = loanₘ ℓ₂`,
+          -- so its `leb` scrutinee is stuck). Checking mode collapses these
+          -- atomically at group-end; executing mode must End-Mut them here —
+          -- innermost-first, exactly as the `.var` move's payload loop does — so
+          -- the reborrowed value is fully re-collapsed before the next read sees
+          -- it (the M22 mode-equivalence obligation: checking and executing reach
+          -- the same state by different routes). Gated on `executing`: a
+          -- checking-mode group release is a fresh existential σ or a marker-free
+          -- spec value (refineSym enforces marker-freedom), so `firstLoanMarker`
+          -- there is always `none` — behaviourally identity for checking mode.
+          match (← get).executing, firstLoanMarker v with
+          | true, some ℓ' => do endLoan fuel ℓ'; readR fuel (.borrow t')
+          | _, _ => do
+            let ℓ ← freshLoan
+            setAtPos pos (.loanM ℓ)                        -- park the loan marker
+            pure (.borrowM ℓ v)                            -- ownership of v moves into the borrow
       | .letIn x rhs rest => do
         let v ← readR fuel rhs
         bindSlot x v

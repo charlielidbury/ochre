@@ -747,19 +747,26 @@ example : checkFnErr quicksortLie "does not match" [nthS, nth2S, swapSN, partSca
 -- as well. Proof-free = swapS bounds are placeholders `()`, which the executing run
 -- does not type-check.
 --
--- PAIN DIARY (M22): the FULL quicksort executing differential is BLOCKED on an
--- executing-mode nested-reborrow gap, NOT a correctness issue. The recursive body
+-- RESOLVED (M22 execfix): the FULL quicksort executing differential is now GREEN
+-- (see `runQSExec` below). The gap was an executing-mode reborrow that only
+-- demand-ended the SINGLE top loan. The recursive body
 -- `partScanRange(&mut *v,…); quicksort(&mut *v,…); quicksort(&mut *v,…)` — three
 -- sequential reborrows of one *v, which CHECKING mode proves green (checkFnOk
--- quicksort, §6.2) — stalls executing: after a reborrow that MUTATES *v (the
--- partition's swap), the next reborrow's comptime deref `*v` reads a non-collapsed
--- borrow and the `leb` scrutinee is stuck (isolated: two reborrowed partScanRange
--- calls where the second reads *v via `leb` reproduce it; the owner `x` is
--- nonetheless correct, so only the reborrow view is stale). → candidate machine
--- feature: executing-mode reborrow collapse should match checking-mode group
--- fidelity, so a mutated *v is fully re-collapsed before the next reborrow reads it.
--- The North Star's correctness rests on checkFnOk quicksort (green) + the pure
--- sortRangeL computation tests above; partition-level executing agreement stands here.
+-- quicksort, §6.2) — stalled executing: after a reborrow that MUTATES *v (the
+-- partition's swap), the swapped elements live in the callee's element-borrows, and
+-- demand-ending the top loan recovered a `Cons(loanₘ, loanₘ)` whose element loans
+-- were still suspended; reborrowing that as-is left the next comptime `*v` reading a
+-- stale `loanₘ` (its `leb` scrutinee stuck). The owner `x` was nonetheless correct —
+-- the `let y = x` .var read cascades every owned loan marker — so only the reborrow
+-- view was stale (isolated: `swapS(&mut *b,…)` then a `leb (nth Z (*b'))` reborrow
+-- probe reproduces it; see `runSwapLebProbe`). FIX (Machine.lean, readR's `&mut`
+-- reborrow): in executing mode, End-Mut every owned FIELD-loan marker of the peeled
+-- value innermost-first before reborrowing, exactly as the `.var` move's payload
+-- loop does — so a mutated *v is fully re-collapsed before the next reborrow reads
+-- it. Checking-mode identity: a group release is a marker-free σ or spec value, so
+-- the cascade is vacuous there (the fix is gated on `executing`, and the full ~18s
+-- suite is unchanged). The M22 mode-equivalence obligation, discharged for the
+-- reborrow path: checking and executing reach the same state by different routes.
 def partScanRangeE : Decl :=
   decl{ fn partScanRangeE (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
         { match k {
@@ -796,6 +803,76 @@ example : runPSR [1,2,3] 0 2 1 = true := by native_decide         -- already par
 example : runPSR [2,2,1] 0 2 2 = true := by native_decide         -- duplicates around the pivot
 example : runPSR [5,3,8,1,9,2] 0 5 5 = true := by native_decide   -- mixed, interior swaps
 example : runPSR [9,3,1,2,7] 1 2 3 = true := by native_decide     -- SUB-RANGE (lo=1): partition [3,1,2]
+
+/-! ## M22 execfix — the executing-mode reborrow-staleness regression + the payoff
+
+    The isolated repro of the pain diary above (`swapS(&mut *b,…)` then a comptime
+    deref through a FRESH reborrow), the sequential-swapS positive control (the
+    sub-call-read path that always worked, guarding it stays green), and the
+    now-unblocked FULL quicksort executing differential. -/
+
+-- The minimal reproducer: after an in-place `swapS(&mut *b,…)` the swapped elements
+-- sit in the callee's element-borrows; a probe fn reborrows `&mut *b` and reads
+-- `leb (nth Z (*v)) pivot` — the exact comptime-deref-through-a-reborrow that read a
+-- stale `loanₘ` (stuck) before the fix. `match c` forces the Bool. Post-fix the
+-- reborrow fully re-collapses *v, so `nth Z (*v)` = 1, `leb 1 5` = True, and the
+-- owner `x` recovers the swapped [1,2,3].
+def lebProbe : Decl :=
+  decl{ fn lebProbe (v : &mut List Nat, pivot : Nat) -> Unit
+        { let c = leb (nth Z (*v)) pivot;
+          match c { True => (), False => () } } }
+
+-- SUBJECT: raw Term caller for the isolated repro (x=[3,2,1]; b=&mut x; swapS through
+-- *b; lebProbe reborrows *b and comptime-reads it; recover y).
+def swapLebCaller (lst : List Nat) : Term :=
+  .letIn ⟨0,"x"⟩ (tlist lst)
+    (.letIn ⟨1,"b"⟩ (.borrow (.var ⟨0,"x"⟩))
+      (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
+        (.seq (.call "lebProbe" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 5])
+          (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
+def runSwapLebProbe (lst : List Nat) (expect : List Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, lebProbe] (swapLebCaller lst) with
+  | .ok env => env.lookup "y" == some (vlist expect)
+  | .error _ => false
+-- Before the fix this errored (leb scrutinee stuck on `loanₘ`); now the reborrow
+-- probe reads the collapsed list and the owner recovers the swap.
+example : runSwapLebProbe [3,2,1] [1,2,3] = true := by native_decide
+
+-- Positive control: two sequential `swapS(&mut *b,…)` of the same positions compose
+-- to the identity ([3,2,1] again). This path always worked (swapS reads *v via its
+-- OWN nth2 sub-call, a var-read that already cascades) — it guards that the fix does
+-- not disturb the sequential-reborrow path.
+def swapTwiceCaller (lst : List Nat) : Term :=
+  .letIn ⟨0,"x"⟩ (tlist lst)
+    (.letIn ⟨1,"b"⟩ (.borrow (.var ⟨0,"x"⟩))
+      (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
+        (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
+          (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
+def runSwapTwice (lst : List Nat) (expect : List Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN] (swapTwiceCaller lst) with
+  | .ok env => env.lookup "y" == some (vlist expect)
+  | .error _ => false
+example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
+
+-- THE PAYOFF: the FULL quicksort Decl — bounds, length lemmas and all — run in
+-- EXECUTING mode on concrete lists, agreeing with the pure model `sortRangeL`. The
+-- body's three sequential `&mut *v` reborrows (partition + two recursive calls) are
+-- exactly the reborrow-collapse case the fix unblocks. Full-range callers (lo=0,
+-- cnt=len) so `hbnd = le_refl (len x) : Le (add 0 cnt) (len x)`.
+def qsExecCaller (lst : List Nat) (fuel lo cnt : Nat) (hbnd : Term) : Term :=
+  .letIn ⟨0,"x"⟩ (tlist lst)
+    (.letIn ⟨1,"b"⟩ (.borrow (.var ⟨0,"x"⟩))
+      (.seq (.call "quicksort" [.var ⟨1,"b"⟩, tnat fuel, tnat lo, tnat cnt, hbnd])
+        (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit)))
+def runQSExec (lst : List Nat) (fuel lo cnt : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, partScanRange, quicksort]
+      (qsExecCaller lst fuel lo cnt (.app StdLemmas.le_refl (tnat (lo + cnt)))) with
+  | .ok env => env.lookup "y" == some (pv (sortRangeLT fuel lo cnt lst))
+  | .error _ => false
+
+example : runQSExec [1,2,3] 3 0 3 = true := by native_decide          -- already sorted (no swaps)
+example : runQSExec [3,2,1] 3 0 3 = true := by native_decide          -- reverse: full recursion + swaps
+example : runQSExec [2,2,1,3,2] 5 0 5 = true := by native_decide      -- duplicates, len 5, multiple levels
 
 -- Checking-mode precise recovery (the simulation baseline's headline): a caller
 -- sorts a concrete list IN PLACE, and the checker recovers x = sortRangeL 3 0 3
