@@ -115,6 +115,11 @@ example : chk StdLemmas.swapL_set StdLemmas.swapL_set_ty = true := by native_dec
 -- of partition's postcondition), threading the range bound to feed count_swapL'.
 example : chk StdLemmas.count_partScanRangeL StdLemmas.count_partScanRangeL_ty = true := by native_decide
 example : chk StdLemmas.count_partitionRangeL StdLemmas.count_partitionRangeL_ty = true := by native_decide
+-- §22 quicksort rung: count preservation of the full sort (the Perm half of
+-- quicksort's postcondition), with the two sub-range bounds sortRangeBL/sortRangeBR.
+example : chk StdLemmas.sortRangeBL StdLemmas.sortRangeBL_ty = true := by native_decide
+example : chk StdLemmas.sortRangeBR StdLemmas.sortRangeBR_ty = true := by native_decide
+example : chk StdLemmas.count_sortRangeL StdLemmas.count_sortRangeL_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

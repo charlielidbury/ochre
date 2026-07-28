@@ -1001,4 +1001,124 @@ def len_sortRangeL : Term := pure{
           } } } }
 def len_sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (sortRangeL fuel lo cnt l)) (len l) }
 
+/-! ## Count preservation of the full sort (§22, the quicksort rung)
+
+    The permutation half of quicksort's postcondition. Fuel-structural induction
+    mirroring sortRangeL (base fuel Z / cnt ≤ 1 are Refl); the step chains the IH
+    over the two recursive sorts onto count_partitionRangeL for the partition
+    underneath — `count m (sort right (sort left (partition l))) = count m (sort
+    left (partition l)) = count m (partition l) = count m l`. Like the len version
+    but count is BOUNDED, so it threads the range bound `Le (add lo cnt) (len l)`
+    and each recursive call gets its sub-range bound from `sortRangeBL`/`sortRangeBR`
+    below (the two range bounds the imperative quicksort's body already derives from
+    partScanSizeL + the len lemmas). NOTE the elim S-arms carry their (unused) IH
+    binders `nih`/`n2ih` — the natRec recursion runs through the fuel `ih`, not the
+    cnt elims, but the binder is syntactically required. -/
+
+-- Left sub-range bound: `Le (add lo i) (len (partition …))`, i = the pivot index.
+-- Lifted verbatim from the quicksort Decl's `bl` (partScanSizeL gives i+g = cnt-1,
+-- len_partitionRangeL moves the entry bound onto the partitioned list).
+def sortRangeBL : Term := pure{
+  λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat). λ (hb : Le (add lo (S (S cnt''))) (len l)).
+    le_rw_r (add lo (partIdxRangeL lo (S (S cnt'')) l)) (len l) (len (partitionRangeL lo (S (S cnt'')) l))
+      (id_sym Nat (len (partitionRangeL lo (S (S cnt'')) l)) (len l)
+        (len_partitionRangeL lo (S (S cnt'')) l))
+      (le_trans (add lo (partIdxRangeL lo (S (S cnt'')) l)) (add lo (S (S cnt''))) (len l)
+        (le_rw_r (add lo (partIdxRangeL lo (S (S cnt'')) l))
+          (add lo (S (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))))
+          (add lo (S (S cnt'')))
+          (id_congr Nat Nat (λ (a : Nat). add lo a)
+            (S (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))) (S (S cnt''))
+            (id_congr Nat Nat (λ (a : Nat). S a)
+              (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'')
+              (id_trans Nat (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))
+                (S (add cnt'' Z)) (S cnt'')
+                (partScanSizeL (nth lo l) lo (S cnt'') Z Z l)
+                (id_congr Nat Nat (λ (a : Nat). S a) (add cnt'' Z) cnt'' (add_zero cnt'')))))
+          (le_add_mono_l lo (partIdxRangeL lo (S (S cnt'')) l)
+            (S (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))
+            (le_up_r (partIdxRangeL lo (S (S cnt'')) l)
+              (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))
+              (le_add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))))
+        hb) }
+def sortRangeBL_ty : Term := pure{
+  Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) → Le (add lo (S (S cnt''))) (len l) →
+    Le (add lo (partIdxRangeL lo (S (S cnt'')) l)) (len (partitionRangeL lo (S (S cnt'')) l)) }
+
+-- Right sub-range bound: `Le (add (S (add lo i)) g) (len (sort left (partition …)))`.
+-- Lifted verbatim from the quicksort Decl's `br` (len_sortRangeL then
+-- len_partitionRangeL move the bound back over both mutations; the arithmetic
+-- `add (S (add lo i)) g = add lo (S (i+g)) = add lo cnt` uses add_assoc/add_succ).
+def sortRangeBR : Term := pure{
+  λ (f' : Nat). λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat). λ (hb : Le (add lo (S (S cnt''))) (len l)).
+    le_rw_r (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)) (len l)
+      (len (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)))
+      (id_sym Nat (len (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l))) (len l)
+        (id_trans Nat (len (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)))
+          (len (partitionRangeL lo (S (S cnt'')) l)) (len l)
+          (len_sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l))
+          (len_partitionRangeL lo (S (S cnt'')) l)))
+      (le_rw_l (len l) (add lo (S (S cnt'')))
+        (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l))
+        (id_sym Nat (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)) (add lo (S (S cnt'')))
+          (id_trans Nat (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l))
+            (S (add lo (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))) (add lo (S (S cnt'')))
+            (id_congr Nat Nat (λ (a : Nat). S a)
+              (add (add lo (partIdxRangeL lo (S (S cnt'')) l)) (partGapRangeL lo (S (S cnt'')) l))
+              (add lo (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))
+              (add_assoc lo (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))
+            (id_trans Nat (S (add lo (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))))
+              (add lo (S (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))) (add lo (S (S cnt'')))
+              (id_sym Nat (add lo (S (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))))
+                (S (add lo (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))))
+                (add_succ lo (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))))
+              (id_congr Nat Nat (λ (a : Nat). add lo a)
+                (S (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))) (S (S cnt''))
+                (id_congr Nat Nat (λ (a : Nat). S a)
+                  (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'')
+                  (id_trans Nat (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))
+                    (S (add cnt'' Z)) (S cnt'')
+                    (partScanSizeL (nth lo l) lo (S cnt'') Z Z l)
+                    (id_congr Nat Nat (λ (a : Nat). S a) (add cnt'' Z) cnt'' (add_zero cnt''))))))))
+        hb) }
+def sortRangeBR_ty : Term := pure{
+  Π (f' : Nat) → Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) → Le (add lo (S (S cnt''))) (len l) →
+    Le (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l))
+       (len (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l))) }
+
+def count_sortRangeL : Term := pure{
+  λ (m : Nat). λ (fuel : Nat).
+    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+        Le (add lo cnt) (len l) → Id Nat (count m (sortRangeL fz lo cnt l)) (count m l)) {
+      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). λ (hb : Le (add lo cnt) (len l)). Refl,
+      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+        elim cnt return (λ (cz : Nat). Le (add lo cz) (len l) →
+            Id Nat (count m (sortRangeL (S f') lo cz l)) (count m l)) {
+          Z => λ (hb : Le (add lo Z) (len l)). Refl,
+          S (cnt') nih => elim cnt' return (λ (cz' : Nat). Le (add lo (S cz')) (len l) →
+              Id Nat (count m (sortRangeL (S f') lo (S cz') l)) (count m l)) {
+            Z => λ (hb : Le (add lo (S Z)) (len l)). Refl,
+            S (cnt'') n2ih => λ (hb : Le (add lo (S (S cnt''))) (len l)).
+              id_trans Nat
+                (count m (sortRangeL f' (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)
+                          (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l))))
+                (count m (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)))
+                (count m l)
+                (ih (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)
+                    (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l))
+                    (sortRangeBR f' lo cnt'' l hb))
+                (id_trans Nat
+                  (count m (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)))
+                  (count m (partitionRangeL lo (S (S cnt'')) l))
+                  (count m l)
+                  (ih lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)
+                      (sortRangeBL lo cnt'' l hb))
+                  (count_partitionRangeL lo m (S (S cnt'')) l hb))
+          }
+        }
+    } }
+def count_sortRangeL_ty : Term := pure{
+  Π (m : Nat) → Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Le (add lo cnt) (len l) → Id Nat (count m (sortRangeL fuel lo cnt l)) (count m l) }
+
 end Dllbc.StdLemmas
