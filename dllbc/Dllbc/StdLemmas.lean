@@ -3291,4 +3291,22 @@ def allGtR_sortRange : Term := pure{
             (segCount_sortRangeL x fuel lo w l bound)
             (allGtR_to_noBelow w lo p l h x hx)) }
 
+/-! ## sorted_sortRangeL — the full sort is sorted (§22, M22-c step 5; proof dispatched)
+
+    The model half of the North Star's sortedness. Fuel-structural induction mirroring
+    count_sortRangeL. FUEL-SUFFICIENCY: sortedness (unlike count/len) is NOT preserved by
+    the out-of-fuel identity, so it carries `Le cnt fuel` (the recursion depth ≤ cnt). The
+    step (cnt ≥ 2) applies the GLUE to the two recursively-sorted sub-ranges, feeding it:
+    the pivot placement (partition_pivot + locality — the sorts don't touch position
+    lo+i), the two sub-range SortedRs (the two IHs + locality), and AllLeR-left/AllGtR-right
+    SURVIVING both sorts (partition_allLeR/allGtR = invariant, then allLeR/allGtR_sortRange
+    = keystone, then locality for the OTHER sort). The glue's width S(add i g) = cnt via
+    partScanSizeL (i+g = cnt-1). Sub-range bounds/fuel from partScanSizeL + the len lemmas.
+    Assembly over now-proven pieces (glue, keystone, invariant, locality all on main) —
+    proof owned by dllbc-seg per skeleton+prove; statement mine. -/
+def sorted_sortRangeL_ty : Term := pure{
+  Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Le cnt fuel → Le (add lo cnt) (len l) →
+    SortedR cnt lo (sortRangeL fuel lo cnt l) }
+
 end Dllbc.StdLemmas
