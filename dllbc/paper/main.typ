@@ -44,4 +44,4 @@ Each figure ends with a rule-to-implementation-to-test correspondence table.
 #include "figures/f5-boundaries.typ"
 #include "figures/f6-typing.typ"
 
-// #bibliography("refs.bib")  // enabled once refs land
+#bibliography("refs.bib")
