@@ -2169,4 +2169,29 @@ def partition_pivot_ty : Term := pure{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
     Id Nat (nth (add (partIdxRangeL lo cnt l) lo) (partitionRangeL lo cnt l)) (nth lo l) }
 
+-- Truncated subtraction + its reindex identity — the glue's both-right case maps a
+-- whole-range index k>i into the right-segment index `sub k (S i)`, then transports
+-- the position `add (sub k (S i)) (add (S i) lo)` back to `add k lo` via add_assoc +
+-- `add (sub k (S i)) (S i) = k` (add_comm of add_sub_cancel). sub recurses on the
+-- minuend so `sub (S a)(S b) = sub a b`; add_sub_cancel is a clean double induction.
+def sub : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Nat → Nat) {
+      Z => λ (b : Nat). Z,
+      S (a') rec => λ (b : Nat). elim b return (λ (bz : Nat). Nat) { Z => S a', S (b') bih => rec b' } } }
+def sub_ty : Term := pure{ Π (a : Nat) → Nat → Nat }
+def add_sub_cancel : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Π (b : Nat) → Le b az → Id Nat (add b (sub az b)) az) {
+      Z => λ (b : Nat).
+        elim b return (λ (bz : Nat). Le bz Z → Id Nat (add bz (sub Z bz)) Z) {
+          Z => λ (h : Le Z Z). Refl,
+          S (b') bih => λ (h : Le (S b') Z). botElim (Id Nat (add (S b') (sub Z (S b'))) Z) h },
+      S (a') ih => λ (b : Nat).
+        elim b return (λ (bz : Nat). Le bz (S a') → Id Nat (add bz (sub (S a') bz)) (S a')) {
+          Z => λ (h : Le Z (S a')). Refl,
+          S (b') bih => λ (h : Le (S b') (S a')).
+            id_congr Nat Nat (λ (n : Nat). S n) (add b' (sub a' b')) a' (ih b' h) } } }
+def add_sub_cancel_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le b a → Id Nat (add b (sub a b)) a }
+
 end Dllbc.StdLemmas

@@ -139,6 +139,7 @@ example : chk StdLemmas.leb_true_le StdLemmas.leb_true_le_ty = true := by native
 example : chk StdLemmas.leb_false_gt StdLemmas.leb_false_gt_ty = true := by native_decide
 example : chk StdLemmas.le_antisym StdLemmas.le_antisym_ty = true := by native_decide
 example : chk StdLemmas.le_add_cancel_l StdLemmas.le_add_cancel_l_ty = true := by native_decide
+example : chk StdLemmas.add_sub_cancel StdLemmas.add_sub_cancel_ty = true := by native_decide
 -- §22 M22-c positional stratum: nth-under-swapL locality. The two `set` helpers,
 -- then the "outside {i,j}" pair (lt/gt) the range scan's locality consumes, then
 -- the two swap endpoints (lo/hi). Minimal honest bounds (see StdLemmas header).
