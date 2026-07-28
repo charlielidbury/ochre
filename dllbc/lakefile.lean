@@ -9,3 +9,6 @@ package «dllbc» where
 @[default_target]
 lean_lib «Dllbc» where
   srcDir := "."
+
+lean_exe «bench» where
+  root := `Dllbc.Bench
