@@ -18,3 +18,21 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
    only along reflection, never inside pure normalization/conversion — one of
    the two bimodal surface forms; kernel-rule vs surface-split is an open
    user decision.
+
+## From F1 (runtime ⇒/⇐)
+5. **seq is NOT the doc's sugar** (the significant one). Doc §1.1: `t ; t′` ≡
+   `let _ = t ; t′` (value parked in a dead slot, loans still locatable). The
+   implementation keeps a distinct `.seq` (readR:~1062) that DISCARDS the value
+   without running `drop` — an ownership-carrying value sequenced away is not
+   returned home; a later end of its dangling loan is stuck. Conservative
+   (rejection, not unsoundness), but a real semantics fork: either seq-discard
+   must run drop / desugar to let, or the doc's sugar claim changes. THEORY-LINE
+   FIX CANDIDATE, not a paper problem.
+6. **`*t` in ⇒-read position is place-restricted** (placeToPos): only `*x`,
+   `**x`, … — the doc's positional-restriction paragraph states this for
+   `:=`/`&mut`/match but not for deref-reads; the implementation enforces it
+   uniformly. Doc-polish item.
+7. **Doc §2.1's opening trace shows a move of a Nat** that its own copy-on-read
+   refinement paragraph supersedes one paragraph later — pedagogical ordering,
+   not a conflict; the paper's R-Copy/R-Move present the refined semantics.
+   Doc-polish item.
