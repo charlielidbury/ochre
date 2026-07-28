@@ -221,6 +221,18 @@ example : chk StdLemmas.partScanRangeL_allLeR StdLemmas.partScanRangeL_allLeR_ty
 -- §22 M22-c step 2 wrappers: partitionRangeL = scan at i=g=0 (vacuous preconditions).
 example : chk StdLemmas.partition_pivot StdLemmas.partition_pivot_ty = true := by native_decide
 example : chk StdLemmas.partition_allLeR StdLemmas.partition_allLeR_ty = true := by native_decide
+-- §22 M22-c step 2 headline #2: the gap (>-region) invariant + its wrapper. Mirror helpers
+-- (allGtR_extend_far/cong, allGtR_base_swap, allGtR_step_false/swap) + offset bridges.
+example : chk StdLemmas.allGtR_extend_far StdLemmas.allGtR_extend_far_ty = true := by native_decide
+example : chk StdLemmas.allGtR_cong StdLemmas.allGtR_cong_ty = true := by native_decide
+example : chk StdLemmas.off_bridge StdLemmas.off_bridge_ty = true := by native_decide
+example : chk StdLemmas.allGtR_base_swap StdLemmas.allGtR_base_swap_ty = true := by native_decide
+example : chk StdLemmas.pos_bridge_scan StdLemmas.pos_bridge_scan_ty = true := by native_decide
+example : chk StdLemmas.allGtR_step_false StdLemmas.allGtR_step_false_ty = true := by native_decide
+example : chk StdLemmas.bnd_gap_upper StdLemmas.bnd_gap_upper_ty = true := by native_decide
+example : chk StdLemmas.allGtR_step_swap StdLemmas.allGtR_step_swap_ty = true := by native_decide
+example : chk StdLemmas.partScanRangeL_allGtR StdLemmas.partScanRangeL_allGtR_ty = true := by native_decide
+example : chk StdLemmas.partition_allGtR StdLemmas.partition_allGtR_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

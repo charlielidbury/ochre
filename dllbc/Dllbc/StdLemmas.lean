@@ -2431,6 +2431,236 @@ def partScanRangeL_allLeR_ty : Term := pure{
     Id Nat (nth lo l) pivot →
     AllLeR i (S lo) pivot l →
     AllLeR (partScanIdxRangeL pivot lo k i g l) lo pivot (partScanRangeL pivot lo k i g l) }
+/-! ## AllGtR (gap-side) region invariant — the mirror of the ≤-region (§22, M22-c step 2)
+
+    The gap's OFFSET shifts each step (`add (S i) lo` → `add (S (S i)) lo`), unlike the
+    ≤-region's fixed `S lo`, and the asymmetry flips: the gap GROWS in the False branch
+    (scan element > pivot, `allGtR_step_false` via leb_false_gt + extend_far), the True/Sg'
+    swap ROTATES the old boundary (first gap element) to the gap's far end
+    (`allGtR_step_swap` via nth_swapL_hi, needing a len bound), and True/g=0 is the empty
+    gap (`allGtR_empty`). `off_bridge` / `pos_bridge_scan` / `bnd_gap_upper` carry the
+    (messier) offset arithmetic. -/
+
+def allGtR_extend_far : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (h : AllGtR w lo p l). λ (hnew : Le (S p) (nth (add w lo) l)).
+    λ (m : Nat).
+      elim (leb (S m) w) return (λ (b : Bool). Id Bool (leb (S m) w) b → Le (S m) (S w) → Le (S p) (nth (add m lo) l)) {
+        True => λ (e : Id Bool (leb (S m) w) True). λ (hm : Le (S m) (S w)). h m (leb_true_le (S m) w e),
+        False => λ (e : Id Bool (leb (S m) w) False). λ (hm : Le (S m) (S w)).
+          le_rw_r (S p) (nth (add w lo) l) (nth (add m lo) l)
+            (id_congr Nat Nat (λ (q : Nat). nth q l) (add w lo) (add m lo)
+              (id_congr Nat Nat (λ (z : Nat). add z lo) w m (id_sym Nat m w (le_antisym m w hm (leb_false_gt (S m) w e)))))
+            hnew
+      } Refl }
+def allGtR_extend_far_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    AllGtR w lo p l → Le (S p) (nth (add w lo) l) → AllGtR (S w) lo p l }
+
+def allGtR_cong : Term := pure{
+  λ (w : Nat). λ (off : Nat). λ (p : Nat). λ (l : List Nat). λ (l' : List Nat).
+    λ (heq : Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)).
+    λ (h : AllGtR w off p l).
+    λ (m : Nat). λ (hm : Le (S m) w).
+      le_rw_r (S p) (nth (add m off) l) (nth (add m off) l')
+        (id_sym Nat (nth (add m off) l') (nth (add m off) l) (heq m hm))
+        (h m hm) }
+def allGtR_cong_ty : Term := pure{
+  Π (w : Nat) → Π (off : Nat) → Π (p : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
+    (Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)) →
+    AllGtR w off p l → AllGtR w off p l' }
+
+def off_bridge : Term := pure{
+  λ (lo : Nat). λ (i' : Nat).
+    id_congr Nat Nat (λ (z : Nat). S z) (S (add i' lo)) (add lo (S i'))
+      (id_trans Nat (S (add i' lo)) (S (add lo i')) (add lo (S i'))
+        (id_congr Nat Nat (λ (z : Nat). S z) (add i' lo) (add lo i') (add_comm i' lo))
+        (id_sym Nat (add lo (S i')) (S (add lo i')) (add_succ lo i'))) }
+def off_bridge_ty : Term := pure{ Π (lo : Nat) → Π (i' : Nat) → Id Nat (add (S (S i')) lo) (S (add lo (S i'))) }
+
+def allGtR_base_swap : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (i' : Nat). λ (g : Nat). λ (l : List Nat).
+    λ (hG : AllGtR g (add (S (S i')) lo) pivot l).
+      allGtR_cong g (add (S (S i')) lo) pivot l (swapL lo (add lo (S i')) l)
+        (λ (m : Nat). λ (hm : Le (S m) g).
+          nth_swapL_gt lo (add lo (S i')) (add m (add (S (S i')) lo)) l
+            (le_rw_l (add m (add (S (S i')) lo)) (add (S (S i')) lo) (S (add lo (S i')))
+              (off_bridge lo i')
+              (le_add_l (add (S (S i')) lo) m)))
+        hG }
+def allGtR_base_swap_ty : Term := pure{
+  Π (pivot : Nat) → Π (lo : Nat) → Π (i' : Nat) → Π (g : Nat) → Π (l : List Nat) →
+    AllGtR g (add (S (S i')) lo) pivot l → AllGtR g (add (S (S i')) lo) pivot (swapL lo (add lo (S i')) l) }
+
+def pos_bridge_scan : Term := pure{
+  λ (lo : Nat). λ (i : Nat). λ (g : Nat).
+    id_trans Nat (add lo (S (add i g))) (S (add lo (add i g))) (add g (add (S i) lo))
+      (add_succ lo (add i g))
+      (id_trans Nat (S (add lo (add i g))) (S (add g (add i lo))) (add g (add (S i) lo))
+        (id_congr Nat Nat (λ (z : Nat). S z) (add lo (add i g)) (add g (add i lo))
+          (id_trans Nat (add lo (add i g)) (add (add lo i) g) (add g (add i lo))
+            (id_sym Nat (add (add lo i) g) (add lo (add i g)) (add_assoc lo i g))
+            (id_trans Nat (add (add lo i) g) (add g (add lo i)) (add g (add i lo))
+              (add_comm (add lo i) g)
+              (id_congr Nat Nat (λ (z : Nat). add g z) (add lo i) (add i lo) (add_comm lo i)))))
+        (id_sym Nat (add g (add (S i) lo)) (S (add g (add i lo))) (add_succ g (add i lo)))) }
+def pos_bridge_scan_ty : Term := pure{ Π (lo : Nat) → Π (i : Nat) → Π (g : Nat) → Id Nat (add lo (S (add i g))) (add g (add (S i) lo)) }
+
+def allGtR_step_false : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+    λ (efalse : Id Bool (leb (nth (add lo (S (add i g))) l) pivot) False). λ (hG : AllGtR g (add (S i) lo) pivot l).
+      allGtR_extend_far g (add (S i) lo) pivot l hG
+        (le_rw_r (S pivot) (nth (add lo (S (add i g))) l) (nth (add g (add (S i) lo)) l)
+          (id_congr Nat Nat (λ (q : Nat). nth q l) (add lo (S (add i g))) (add g (add (S i) lo)) (pos_bridge_scan lo i g))
+          (leb_false_gt (nth (add lo (S (add i g))) l) pivot efalse)) }
+def allGtR_step_false_ty : Term := pure{
+  Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+    Id Bool (leb (nth (add lo (S (add i g))) l) pivot) False → AllGtR g (add (S i) lo) pivot l →
+    AllGtR (S g) (add (S i) lo) pivot l }
+
+def bnd_gap_upper : Term := pure{
+  λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (m : Nat). λ (hm : Le (S m) g').
+    le_rw_r (S (add m (add (S (S i)) lo))) (add lo (S (S (add i g')))) (add lo (S (add i (S g'))))
+      (id_congr Nat Nat (λ (z : Nat). add lo (S z)) (S (add i g')) (add i (S g')) (id_sym Nat (add i (S g')) (S (add i g')) (add_succ i g')))
+      (le_rw_l (add lo (S (S (add i g')))) (add lo (S (S (S (add i m))))) (S (add m (add (S (S i)) lo)))
+        (id_trans Nat (add lo (S (S (S (add i m))))) (S (add lo (S (S (add i m))))) (S (add m (add (S (S i)) lo)))
+          (add_succ lo (S (S (add i m))))
+          (id_congr Nat Nat (λ (z : Nat). S z) (add lo (S (S (add i m)))) (add m (add (S (S i)) lo)) (pos_bridge_scan lo (S i) m)))
+        (le_add_mono_l lo (S (S (S (add i m)))) (S (S (add i g')))
+          (le_rw_l (add i g') (add i (S m)) (S (add i m)) (add_succ i m) (le_add_mono_l i (S m) g' hm)))) }
+def bnd_gap_upper_ty : Term := pure{
+  Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (m : Nat) → Le (S m) g' →
+    Le (S (add m (add (S (S i)) lo))) (add lo (S (add i (S g')))) }
+
+def allGtR_step_swap : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (l : List Nat).
+    λ (hlen : Le (S (add lo (S (add i (S g'))))) (len l)).
+    λ (e : Id Bool (leb (nth (add lo (S (add i (S g')))) l) pivot) True). λ (hG : AllGtR (S g') (add (S i) lo) pivot l).
+      allGtR_extend_far g' (add (S (S i)) lo) pivot (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)
+        (allGtR_cong g' (add (S (S i)) lo) pivot l (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)
+          (λ (m : Nat). λ (hm : Le (S m) g').
+            nth_swapL_mid (add lo (S i)) (add lo (S (add i (S g')))) (add m (add (S (S i)) lo)) l
+              (le_rw_l (add m (add (S (S i)) lo)) (add (S (S i)) lo) (S (add lo (S i)))
+                (off_bridge lo i)
+                (le_add_l (add (S (S i)) lo) m))
+              (bnd_gap_upper lo i g' m hm))
+          (λ (m : Nat). λ (hm : Le (S m) g').
+            le_rw_r (S pivot) (nth (add (S m) (add (S i) lo)) l) (nth (add m (add (S (S i)) lo)) l)
+              (id_congr Nat Nat (λ (q : Nat). nth q l) (add (S m) (add (S i) lo)) (add m (add (S (S i)) lo))
+                (id_sym Nat (add m (add (S (S i)) lo)) (add (S m) (add (S i) lo)) (add_succ m (S (add i lo)))))
+              (hG (S m) hm)))
+        (le_rw_r (S pivot) (nth (add lo (S i)) l) (nth (add g' (add (S (S i)) lo)) (swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+          (id_trans Nat
+            (nth (add lo (S i)) l)
+            (nth (add lo (S (add i (S g')))) (swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+            (nth (add g' (add (S (S i)) lo)) (swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+            (id_sym Nat (nth (add lo (S (add i (S g')))) (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (nth (add lo (S i)) l)
+              (nth_swapL_hi (add lo (S i)) (add lo (S (add i (S g')))) l (bnd_sl lo i g') hlen))
+            (id_congr Nat Nat (λ (q : Nat). nth q (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (add lo (S (add i (S g')))) (add g' (add (S (S i)) lo))
+              (id_trans Nat (add lo (S (add i (S g')))) (add lo (S (S (add i g')))) (add g' (add (S (S i)) lo))
+                (id_congr Nat Nat (λ (z : Nat). add lo (S z)) (add i (S g')) (S (add i g')) (add_succ i g'))
+                (pos_bridge_scan lo (S i) g'))))
+          (le_rw_r (S pivot) (nth (add (S i) lo) l) (nth (add lo (S i)) l)
+            (id_congr Nat Nat (λ (q : Nat). nth q l) (add (S i) lo) (add lo (S i)) (add_comm (S i) lo))
+            (allGtR_head g' (add (S i) lo) pivot l hG))) }
+def allGtR_step_swap_ty : Term := pure{
+  Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (l : List Nat) →
+    Le (S (add lo (S (add i (S g'))))) (len l) →
+    Id Bool (leb (nth (add lo (S (add i (S g')))) l) pivot) True → AllGtR (S g') (add (S i) lo) pivot l →
+    AllGtR (S g') (add (S (S i)) lo) pivot (swapL (add lo (S i)) (add lo (S (add i (S g')))) l) }
+
+-- partScanRangeL_allGtR : the scanned gap [lo+1+finalI, …) is all > pivot. Mirror of allLeR;
+-- the conclusion OFFSET also depends on leb (motive carries three elim b). NOTE the True arm
+-- threads hG through the g-elim (the precondition is indexed by g, refined to S g' in the swap
+-- branch) — unlike allLeR whose precondition was indexed by i.
+def partScanRangeL_allGtR : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+        Le (add lo (S (add kz (add i g)))) (len l) →
+        Id Nat (nth lo l) pivot →
+        AllGtR g (add (S i) lo) pivot l →
+        AllGtR (partScanGapRangeL pivot lo kz i g l) (add (S (partScanIdxRangeL pivot lo kz i g l)) lo) pivot (partScanRangeL pivot lo kz i g l)) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        λ (hle : Le (add lo (S (add Z (add i g)))) (len l)). λ (hpv : Id Nat (nth lo l) pivot). λ (hG : AllGtR g (add (S i) lo) pivot l).
+        elim i return (λ (iz : Nat).
+            Le (add lo (S (add Z (add iz g)))) (len l) → Id Nat (nth lo l) pivot → AllGtR g (add (S iz) lo) pivot l →
+            AllGtR g (add (S iz) lo) pivot (elim iz return (λ (iy : Nat). List Nat) { Z => l, S (i') iih => swapL lo (add lo (S i')) l })) {
+          Z => λ (hle0 : Le (add lo (S (add Z (add Z g)))) (len l)). λ (hpv0 : Id Nat (nth lo l) pivot). λ (hG0 : AllGtR g (add (S Z) lo) pivot l).
+            hG0,
+          S (i') iih => λ (hle0 : Le (add lo (S (add Z (add (S i') g)))) (len l)). λ (hpv0 : Id Nat (nth lo l) pivot). λ (hG0 : AllGtR g (add (S (S i')) lo) pivot l).
+            allGtR_base_swap pivot lo i' g l hG0
+        } hle hpv hG,
+      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        λ (hle : Le (add lo (S (add (S k') (add i g)))) (len l)). λ (hpv : Id Nat (nth lo l) pivot). λ (hG : AllGtR g (add (S i) lo) pivot l).
+        elim (leb (nth (add lo (S (add i g))) l) pivot)
+          return (λ (b : Bool). Id Bool (leb (nth (add lo (S (add i g))) l) pivot) b →
+            AllGtR (elim b return (λ (bw : Bool). Nat) {
+                True => elim g return (λ (gz : Nat). Nat) {
+                  Z => partScanGapRangeL pivot lo k' (S i) Z l,
+                  S (g') gih => partScanGapRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                False => partScanGapRangeL pivot lo k' i (S g) l })
+              (add (S (elim b return (λ (bw : Bool). Nat) {
+                True => elim g return (λ (gz : Nat). Nat) {
+                  Z => partScanIdxRangeL pivot lo k' (S i) Z l,
+                  S (g') gih => partScanIdxRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                False => partScanIdxRangeL pivot lo k' i (S g) l })) lo) pivot
+              (elim b return (λ (bw : Bool). List Nat) {
+                True => elim g return (λ (gz : Nat). List Nat) {
+                  Z => partScanRangeL pivot lo k' (S i) Z l,
+                  S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                False => partScanRangeL pivot lo k' i (S g) l })) {
+          True => λ (e : Id Bool (leb (nth (add lo (S (add i g))) l) pivot) True).
+            (elim g return (λ (gz : Nat).
+                Id Bool (leb (nth (add lo (S (add i gz))) l) pivot) True →
+                Le (add lo (S (add (S k') (add i gz)))) (len l) →
+                AllGtR gz (add (S i) lo) pivot l →
+                AllGtR (elim gz return (λ (gy : Nat). Nat) {
+                    Z => partScanGapRangeL pivot lo k' (S i) Z l,
+                    S (g') gih => partScanGapRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i gz))) l) })
+                  (add (S (elim gz return (λ (gy : Nat). Nat) {
+                    Z => partScanIdxRangeL pivot lo k' (S i) Z l,
+                    S (g') gih => partScanIdxRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i gz))) l) })) lo) pivot
+                  (elim gz return (λ (gy : Nat). List Nat) {
+                    Z => partScanRangeL pivot lo k' (S i) Z l,
+                    S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i gz))) l) })) {
+              Z => λ (e0 : Id Bool (leb (nth (add lo (S (add i Z))) l) pivot) True). λ (hleZ : Le (add lo (S (add (S k') (add i Z)))) (len l)). λ (hG0 : AllGtR Z (add (S i) lo) pivot l).
+                ih (S i) Z l
+                  (le_rw_l (len l) (add lo (S (add (S k') (add i Z)))) (add lo (S (add k' (add (S i) Z))))
+                    (id_congr Nat Nat (λ (a : Nat). add lo (S a)) (add (S k') (add i Z)) (add k' (add (S i) Z)) (hshift_true k' i Z))
+                    hleZ)
+                  hpv
+                  (allGtR_empty (add (S (S i)) lo) pivot l),
+              S (g') gih => λ (e0 : Id Bool (leb (nth (add lo (S (add i (S g')))) l) pivot) True). λ (hleS : Le (add lo (S (add (S k') (add i (S g'))))) (len l)). λ (hG0 : AllGtR (S g') (add (S i) lo) pivot l).
+                ih (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)
+                  (le_rw_r (add lo (S (add k' (add (S i) (S g'))))) (len l)
+                     (len (swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+                     (id_sym Nat (len (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (len l)
+                       (len_swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+                     (le_rw_l (len l) (add lo (S (add (S k') (add i (S g'))))) (add lo (S (add k' (add (S i) (S g')))))
+                       (id_congr Nat Nat (λ (a : Nat). add lo (S a)) (add (S k') (add i (S g'))) (add k' (add (S i) (S g'))) (hshift_true k' i (S g')))
+                       hleS))
+                  (id_trans Nat (nth lo (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (nth lo l) pivot
+                    (nth_swapL_lt (add lo (S i)) (add lo (S (add i (S g')))) lo l (le_add_succ lo i))
+                    hpv)
+                  (allGtR_step_swap pivot lo i g' l
+                    (le_trans (S (add lo (S (add i (S g'))))) (add lo (S (S (add k' (add i (S g')))))) (len l)
+                      (le_rw_l (add lo (S (S (add k' (add i (S g'))))))
+                        (add lo (S (S (add i (S g'))))) (S (add lo (S (add i (S g')))))
+                        (add_succ lo (S (add i (S g'))))
+                        (le_add_mono_l lo (S (S (add i (S g')))) (S (S (add k' (add i (S g')))))
+                          (le_add_l (add i (S g')) k')))
+                      hleS)
+                    e0 hG0)
+            }) e hle hG,
+          False => λ (efalse : Id Bool (leb (nth (add lo (S (add i g))) l) pivot) False).
+            ih i (S g) l
+              (le_rw_l (len l) (add lo (S (add (S k') (add i g)))) (add lo (S (add k' (add i (S g)))))
+                (id_congr Nat Nat (λ (a : Nat). add lo (S a)) (add (S k') (add i g)) (add k' (add i (S g))) (hshift_false k' i g))
+                hle)
+              hpv
+              (allGtR_step_false pivot lo i g l efalse hG)
+        } Refl
+    } }
 def partScanRangeL_allGtR_ty : Term := pure{
   Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Le (add lo (S (add k (add i g)))) (len l) →
@@ -2575,6 +2805,24 @@ def partition_allLeR : Term := pure{
 def partition_allLeR_ty : Term := pure{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
     AllLeR (partIdxRangeL lo cnt l) lo (nth lo l) (partitionRangeL lo cnt l) }
+-- partition_allGtR : wrapper of partScanRangeL_allGtR at i=g=0 (AllGtR Z precondition vacuous).
+def partition_allGtR : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat).
+        Le (add lo cz) (len l) →
+        AllGtR (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => partScanGapRangeL (nth lo l) lo cnt' Z Z l })
+               (add (S (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => partScanIdxRangeL (nth lo l) lo cnt' Z Z l })) lo) (nth lo l)
+               (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l })) {
+      Z => λ (hb : Le (add lo Z) (len l)). allGtR_empty (add (S Z) lo) (nth lo l) l,
+      S (cnt') rec => λ (hb : Le (add lo (S cnt')) (len l)).
+        partScanRangeL_allGtR (nth lo l) lo cnt' Z Z l
+          (le_rw_l (len l) (add lo (S cnt')) (add lo (S (add cnt' Z)))
+            (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt' (add cnt' Z)
+              (id_sym Nat (add cnt' Z) cnt' (add_zero cnt')))
+            hb)
+          Refl
+          (allGtR_empty (add (S Z) lo) (nth lo l) l) } }
+
 def partition_allGtR_ty : Term := pure{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
     AllGtR (partGapRangeL lo cnt l) (add (S (partIdxRangeL lo cnt l)) lo) (nth lo l) (partitionRangeL lo cnt l) }
