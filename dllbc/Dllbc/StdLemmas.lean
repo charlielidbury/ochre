@@ -1309,4 +1309,64 @@ def nth_swapL_gt_ty : Term := pure{
   Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
     Le (S j) k → Id Nat (nth k (swapL i j l)) (nth k l) }
 
+-- The lower endpoint: position i of `swapL i j l` reads old position j. Induct on
+-- i; the recursive leaf is the IH under `Cons x ·`. NO length bound — off the end
+-- the swap writes `nth j l = Z` at i, so both sides read Z consistently; the Nil
+-- leaves case j so the stuck `nth j Nil` reduces to Z on both sides, and the j = Z
+-- leaf (impossible with i ≥ 1) is the sole botElim, discharged by `Le (S i) j`.
+def nth_swapL_lo : Term := pure{
+  λ (i : Nat).
+    elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Id Nat (nth iz (swapL iz j l)) (nth j l)) {
+      Z => λ (j : Nat). λ (l : List Nat). λ (h : Le (S Z) j).
+        elim l return (λ (lz : List Nat). Id Nat (nth Z (swapL Z j lz)) (nth j lz)) {
+          Nil => elim j return (λ (jz : Nat). Id Nat (nth Z (swapL Z jz Nil)) (nth jz Nil)) {
+            Z => Refl, S (j') jih => Refl },
+          Cons (x) (xs) ihl =>
+            elim j return (λ (jz : Nat). Le (S Z) jz → Id Nat (nth Z (swapL Z jz (Cons x xs))) (nth jz (Cons x xs))) {
+              Z => λ (h0 : Le (S Z) Z). botElim (Id Nat (nth Z (swapL Z Z (Cons x xs))) (nth Z (Cons x xs))) h0,
+              S (j') jih => λ (h0 : Le (S Z) (S j')). Refl } h },
+      S (i') ih => λ (j : Nat). λ (l : List Nat). λ (h : Le (S (S i')) j).
+        elim l return (λ (lz : List Nat). Id Nat (nth (S i') (swapL (S i') j lz)) (nth j lz)) {
+          Nil => elim j return (λ (jz : Nat). Id Nat (nth (S i') (swapL (S i') jz Nil)) (nth jz Nil)) {
+            Z => Refl, S (j') jih => Refl },
+          Cons (x) (xs) ihl =>
+            elim j return (λ (jz : Nat). Le (S (S i')) jz → Id Nat (nth (S i') (swapL (S i') jz (Cons x xs))) (nth jz (Cons x xs))) {
+              Z => λ (h0 : Le (S (S i')) Z). botElim (Id Nat (nth (S i') (swapL (S i') Z (Cons x xs))) (nth Z (Cons x xs))) h0,
+              S (j') jih => λ (h0 : Le (S (S i')) (S j')). ih j' xs h0 } h } } }
+def nth_swapL_lo_ty : Term := pure{
+  Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
+    Le (S i) j → Id Nat (nth i (swapL i j l)) (nth j l) }
+
+-- The upper endpoint: position j of `swapL i j l` reads old position i. Induct on
+-- i; the base (i = Z) reads `nth j (set j x xs) = x` via `nth_set_same`, so the
+-- length bound `Le (S j) (len l)` is load-bearing here (botElims the Nil leaf and
+-- feeds nth_set_same) — UNLIKE _lo. The recursive leaf is the IH under `Cons x ·`,
+-- threading both bounds; the j = Z leaf is botElim by `Le (S i) j`.
+def nth_swapL_hi : Term := pure{
+  λ (i : Nat).
+    elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Le (S j) (len l) → Id Nat (nth j (swapL iz j l)) (nth iz l)) {
+      Z => λ (j : Nat). λ (l : List Nat). λ (h1 : Le (S Z) j). λ (h2 : Le (S j) (len l)).
+        elim l return (λ (lz : List Nat). Le (S j) (len lz) → Id Nat (nth j (swapL Z j lz)) (nth Z lz)) {
+          Nil => λ (a2 : Le (S j) (len Nil)).
+            botElim (Id Nat (nth j (swapL Z j Nil)) (nth Z Nil)) a2,
+          Cons (x) (xs) ihl => λ (a2 : Le (S j) (len (Cons x xs))).
+            elim j return (λ (jz : Nat). Le (S Z) jz → Le (S jz) (len (Cons x xs)) → Id Nat (nth jz (swapL Z jz (Cons x xs))) (nth Z (Cons x xs))) {
+              Z => λ (b1 : Le (S Z) Z). λ (b2 : Le (S Z) (len (Cons x xs))).
+                botElim (Id Nat (nth Z (swapL Z Z (Cons x xs))) (nth Z (Cons x xs))) b1,
+              S (j') jih => λ (b1 : Le (S Z) (S j')). λ (b2 : Le (S (S j')) (len (Cons x xs))).
+                nth_set_same x j' xs b2 } h1 a2 } h2,
+      S (i') ih => λ (j : Nat). λ (l : List Nat). λ (h1 : Le (S (S i')) j). λ (h2 : Le (S j) (len l)).
+        elim l return (λ (lz : List Nat). Le (S j) (len lz) → Id Nat (nth j (swapL (S i') j lz)) (nth (S i') lz)) {
+          Nil => λ (a2 : Le (S j) (len Nil)).
+            botElim (Id Nat (nth j (swapL (S i') j Nil)) (nth (S i') Nil)) a2,
+          Cons (x) (xs) ihl => λ (a2 : Le (S j) (len (Cons x xs))).
+            elim j return (λ (jz : Nat). Le (S (S i')) jz → Le (S jz) (len (Cons x xs)) → Id Nat (nth jz (swapL (S i') jz (Cons x xs))) (nth (S i') (Cons x xs))) {
+              Z => λ (b1 : Le (S (S i')) Z). λ (b2 : Le (S Z) (len (Cons x xs))).
+                botElim (Id Nat (nth Z (swapL (S i') Z (Cons x xs))) (nth (S i') (Cons x xs))) b1,
+              S (j') jih => λ (b1 : Le (S (S i')) (S j')). λ (b2 : Le (S (S j')) (len (Cons x xs))).
+                ih j' xs b1 b2 } h1 a2 } h2 } }
+def nth_swapL_hi_ty : Term := pure{
+  Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
+    Le (S i) j → Le (S j) (len l) → Id Nat (nth j (swapL i j l)) (nth i l) }
+
 end Dllbc.StdLemmas

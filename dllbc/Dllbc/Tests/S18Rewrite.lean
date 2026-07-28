@@ -135,6 +135,8 @@ example : chk StdLemmas.nth_set_gt StdLemmas.nth_set_gt_ty = true := by native_d
 example : chk StdLemmas.nth_set_same StdLemmas.nth_set_same_ty = true := by native_decide
 example : chk StdLemmas.nth_swapL_lt StdLemmas.nth_swapL_lt_ty = true := by native_decide
 example : chk StdLemmas.nth_swapL_gt StdLemmas.nth_swapL_gt_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_lo StdLemmas.nth_swapL_lo_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_hi StdLemmas.nth_swapL_hi_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
