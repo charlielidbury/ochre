@@ -2607,4 +2607,178 @@ def add_sub_cancel : Term := pure{
             id_congr Nat Nat (λ (n : Nat). S n) (add b' (sub a' b')) a' (ih b' h) } } }
 def add_sub_cancel_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le b a → Id Nat (add b (sub a b)) a }
 
+/-! ## The GLUE — assemble a sorted range from sorted halves (§22, M22-c step 4)
+
+    `glue`: given the pivot at position `add i lo`, the left range [lo, lo+i) sorted
+    and ≤ pivot, the right range [lo+i+1, …) sorted and > pivot, the WHOLE range
+    [lo, lo+i+1+g) is sorted. A nested `leb`-elim on k vs i (the REMEMBER-SCRUTINEE
+    idiom `elim (leb X) return (λ w. Id Bool (leb X) w → GOAL) {…} Refl` to recover the
+    branch equation) splits the adjacent pair into four cases: both-left (SortedR
+    left), left-pivot (k+1=i via le_antisym; AllLeR + hpiv transport), pivot-right
+    (k=i; AllGtR at the first right, after g≥1 from `gap_pos`), both-right (k>i;
+    reindex the whole-index k into the right segment's `sub k (S i)` via the
+    reindex_* helpers, then SortedR right). Every arithmetic bridge is discharged by
+    the add-order toolkit — the positional-predicate ↔ offset-model tax, paid once
+    per bound. All kernel-green. -/
+def le_pred_l : Term := pure{
+  λ (a : Nat). λ (b : Nat). λ (h : Le (S a) b).
+    le_trans a (S a) b (le_up_r a a (le_refl a)) h }
+def le_pred_l_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Le a b }
+def gap_pos : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (h : Le (S i) (add i g)).
+    le_add_cancel_l i (S Z) g
+      (le_rw_l (add i g) (S i) (add i (S Z))
+        (id_sym Nat (add i (S Z)) (S i)
+          (id_trans Nat (add i (S Z)) (S (add i Z)) (S i)
+            (add_succ i Z)
+            (id_congr Nat Nat (λ (n : Nat). S n) (add i Z) i (add_zero i))))
+        h) }
+def gap_pos_ty : Term := pure{ Π (i : Nat) → Π (g : Nat) → Le (S i) (add i g) → Le (S Z) g }
+def reindex_pos : Term := pure{
+  λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (hik : Le (S i) k).
+    id_trans Nat
+      (add (sub k (S i)) (S (add i lo)))
+      (add (add (sub k (S i)) (S i)) lo)
+      (add k lo)
+      (id_sym Nat (add (add (sub k (S i)) (S i)) lo) (add (sub k (S i)) (S (add i lo)))
+        (add_assoc (sub k (S i)) (S i) lo))
+      (id_congr Nat Nat (λ (x : Nat). add x lo) (add (sub k (S i)) (S i)) k
+        (id_trans Nat (add (sub k (S i)) (S i)) (add (S i) (sub k (S i))) k
+          (add_comm (sub k (S i)) (S i))
+          (add_sub_cancel k (S i) hik))) }
+def reindex_pos_ty : Term := pure{
+  Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Le (S i) k →
+    Id Nat (add (sub k (S i)) (S (add i lo))) (add k lo) }
+def reindex_pos_s : Term := pure{
+  λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (hik : Le (S i) k).
+    id_trans Nat
+      (add (S (sub k (S i))) (S (add i lo)))
+      (add (add (S (sub k (S i))) (S i)) lo)
+      (add (S k) lo)
+      (id_sym Nat (add (add (S (sub k (S i))) (S i)) lo) (add (S (sub k (S i))) (S (add i lo)))
+        (add_assoc (S (sub k (S i))) (S i) lo))
+      (id_congr Nat Nat (λ (x : Nat). add x lo) (add (S (sub k (S i))) (S i)) (S k)
+        (id_congr Nat Nat (λ (n : Nat). S n) (add (sub k (S i)) (S i)) k
+          (id_trans Nat (add (sub k (S i)) (S i)) (add (S i) (sub k (S i))) k
+            (add_comm (sub k (S i)) (S i))
+            (add_sub_cancel k (S i) hik)))) }
+def reindex_pos_s_ty : Term := pure{
+  Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Le (S i) k →
+    Id Nat (add (S (sub k (S i))) (S (add i lo))) (add (S k) lo) }
+def reindex_bnd : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (hik : Le (S i) k). λ (hk : Le (S k) (add i g)).
+    le_add_cancel_l i (S (S (sub k (S i)))) g
+      (le_rw_l (add i g)
+        (S (S (add i (sub k (S i)))))
+        (add i (S (S (sub k (S i)))))
+        (id_sym Nat (add i (S (S (sub k (S i))))) (S (S (add i (sub k (S i)))))
+          (id_trans Nat (add i (S (S (sub k (S i))))) (S (add i (S (sub k (S i))))) (S (S (add i (sub k (S i)))))
+            (add_succ i (S (sub k (S i))))
+            (id_congr Nat Nat (λ (n : Nat). S n) (add i (S (sub k (S i)))) (S (add i (sub k (S i))))
+              (add_succ i (sub k (S i))))))
+        (le_rw_l (add i g) (S k) (S (S (add i (sub k (S i)))))
+          (id_congr Nat Nat (λ (n : Nat). S n) k (S (add i (sub k (S i))))
+            (id_sym Nat (S (add i (sub k (S i)))) k (add_sub_cancel k (S i) hik)))
+          hk)) }
+def reindex_bnd_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Le (S i) k → Le (S k) (add i g) →
+    Le (S (S (sub k (S i)))) g }
+def glue_left_pivot : Term := pure{
+  λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
+    λ (e1 : Id Bool (leb (S k) i) True).
+    λ (e2 : Id Bool (leb (S (S k)) i) False).
+    λ (hpiv : Id Nat pivot (nth (add i lo) R)).
+    λ (al : AllLeR i lo pivot R).
+      le_rw_r (nth (add k lo) R) pivot (nth (add (S k) lo) R)
+        (id_trans Nat pivot (nth (add i lo) R) (nth (add (S k) lo) R)
+          hpiv
+          (id_congr Nat Nat (λ (x : Nat). nth (add x lo) R) i (S k)
+            (le_antisym i (S k) (leb_false_gt (S (S k)) i e2) (leb_true_le (S k) i e1))))
+        (al k (leb_true_le (S k) i e1)) }
+def glue_left_pivot_ty : Term := pure{
+  Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
+    Id Bool (leb (S k) i) True → Id Bool (leb (S (S k)) i) False →
+    Id Nat pivot (nth (add i lo) R) → AllLeR i lo pivot R →
+    Le (nth (add k lo) R) (nth (add (S k) lo) R) }
+def glue_pivot_right : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
+    λ (e1 : Id Bool (leb (S k) i) False).
+    λ (e2 : Id Bool (leb (S i) k) False).
+    λ (hk : Le (S (S k)) (S (add i g))).
+    λ (hpiv : Id Nat pivot (nth (add i lo) R)).
+    λ (ag : AllGtR g (S (add i lo)) pivot R).
+      le_rw_l (nth (add (S k) lo) R) pivot (nth (add k lo) R)
+        (id_sym Nat (nth (add k lo) R) pivot
+          (id_trans Nat (nth (add k lo) R) (nth (add i lo) R) pivot
+            (id_congr Nat Nat (λ (x : Nat). nth (add x lo) R) k i
+              (le_antisym k i (leb_false_gt (S i) k e2) (leb_false_gt (S k) i e1)))
+            (id_sym Nat pivot (nth (add i lo) R) hpiv)))
+        (le_rw_r pivot (nth (S (add i lo)) R) (nth (add (S k) lo) R)
+          (id_congr Nat Nat (λ (x : Nat). nth (S (add x lo)) R) i k
+            (id_sym Nat k i (le_antisym k i (leb_false_gt (S i) k e2) (leb_false_gt (S k) i e1))))
+          (le_pred_l pivot (nth (S (add i lo)) R)
+            (ag Z (gap_pos i g
+              (le_rw_l (add i g) (S k) (S i)
+                (id_congr Nat Nat (λ (n : Nat). S n) k i
+                  (le_antisym k i (leb_false_gt (S i) k e2) (leb_false_gt (S k) i e1)))
+                hk))))) }
+def glue_pivot_right_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
+    Id Bool (leb (S k) i) False → Id Bool (leb (S i) k) False →
+    Le (S (S k)) (S (add i g)) → Id Nat pivot (nth (add i lo) R) →
+    AllGtR g (S (add i lo)) pivot R →
+    Le (nth (add k lo) R) (nth (add (S k) lo) R) }
+def glue_both_right : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
+    λ (e2 : Id Bool (leb (S i) k) True).
+    λ (hk : Le (S (S k)) (S (add i g))).
+    λ (sr : SortedR g (S (add i lo)) R).
+      le_rw_l (nth (add (S k) lo) R)
+        (nth (add (sub k (S i)) (S (add i lo))) R)
+        (nth (add k lo) R)
+        (id_congr Nat Nat (λ (p : Nat). nth p R) (add (sub k (S i)) (S (add i lo))) (add k lo)
+          (reindex_pos i k lo (leb_true_le (S i) k e2)))
+        (le_rw_r (nth (add (sub k (S i)) (S (add i lo))) R)
+          (nth (add (S (sub k (S i))) (S (add i lo))) R)
+          (nth (add (S k) lo) R)
+          (id_congr Nat Nat (λ (p : Nat). nth p R) (add (S (sub k (S i))) (S (add i lo))) (add (S k) lo)
+            (reindex_pos_s i k lo (leb_true_le (S i) k e2)))
+          (sr (sub k (S i)) (reindex_bnd i g k (leb_true_le (S i) k e2) hk))) }
+def glue_both_right_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
+    Id Bool (leb (S i) k) True → Le (S (S k)) (S (add i g)) →
+    SortedR g (S (add i lo)) R →
+    Le (nth (add k lo) R) (nth (add (S k) lo) R) }
+def glue : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
+    λ (hpiv : Id Nat pivot (nth (add i lo) R)).
+    λ (sl : SortedR i lo R).
+    λ (al : AllLeR i lo pivot R).
+    λ (ag : AllGtR g (S (add i lo)) pivot R).
+    λ (sr : SortedR g (S (add i lo)) R).
+    λ (k : Nat). λ (hk : Le (S (S k)) (S (add i g))).
+      (elim (leb (S k) i) return (λ (w : Bool).
+          Id Bool (leb (S k) i) w → Le (nth (add k lo) R) (nth (add (S k) lo) R)) {
+        True => λ (e1 : Id Bool (leb (S k) i) True).
+          (elim (leb (S (S k)) i) return (λ (w2 : Bool).
+              Id Bool (leb (S (S k)) i) w2 → Le (nth (add k lo) R) (nth (add (S k) lo) R)) {
+            True => λ (e2 : Id Bool (leb (S (S k)) i) True). sl k (leb_true_le (S (S k)) i e2),
+            False => λ (e2 : Id Bool (leb (S (S k)) i) False). glue_left_pivot i k lo pivot R e1 e2 hpiv al
+          }) Refl,
+        False => λ (e1 : Id Bool (leb (S k) i) False).
+          (elim (leb (S i) k) return (λ (w2 : Bool).
+              Id Bool (leb (S i) k) w2 → Le (nth (add k lo) R) (nth (add (S k) lo) R)) {
+            True => λ (e2 : Id Bool (leb (S i) k) True). glue_both_right i g k lo pivot R e2 hk sr,
+            False => λ (e2 : Id Bool (leb (S i) k) False). glue_pivot_right i g k lo pivot R e1 e2 hk hpiv ag
+          }) Refl
+      }) Refl }
+def glue_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
+    Id Nat pivot (nth (add i lo) R) →
+    SortedR i lo R →
+    AllLeR i lo pivot R →
+    AllGtR g (S (add i lo)) pivot R →
+    SortedR g (S (add i lo)) R →
+    SortedR (S (add i g)) lo R }
+
 end Dllbc.StdLemmas
