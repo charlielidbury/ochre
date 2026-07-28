@@ -40,7 +40,7 @@ splits cleanly into _conformance_ (mechanical, the back audit) and _model
 correctness_ (ordinary dependent-type reasoning). The full walkthrough is the
 quicksort case study; here we only record what the architecture _is_.
 
-What it is, honestly stated, is Aeneas rebuilt inside one language. Aeneas
+What it is, honestly stated, is Aeneas @aeneas-2022 rebuilt inside one language. Aeneas
 verifies Rust by extracting a pure functional model and reasoning about that; this
 architecture does the same, except the extraction is a declared `back` and the
 conformance is a conversion rather than a translation. The consequence is the
@@ -149,7 +149,7 @@ equality, and the audit must fall back to differential validation. B pays in the
 body — every property must be plumbed through as evidence — but yields the
 property one actually wants, over the value one actually has, with no separate
 model to maintain and so no reformulation problem to inherit. B's discipline is
-the `ensures`-clause of a Floyd–Hoare verifier such as Dafny, recovered here
+the `ensures`-clause of a Floyd–Hoare verifier such as Dafny @leino-2010, recovered here
 without a separate specification language: the postcondition is an ordinary
 dependent type over the exit snapshot, checked by the same interpreter that runs
 the body. That the calculus can express either architecture from the _same_

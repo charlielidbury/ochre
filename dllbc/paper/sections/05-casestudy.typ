@@ -247,7 +247,7 @@ conformance `native_decide` runs in seconds rather than the pre-fix tens of
 minutes, after the delayed-lift `substPure` optimization, and because converting
 the declaration to the surface syntax preserved its underlying value byte for
 byte, the check replays from `native_decide`'s cache across that surface change;
-the performance story is told in full in Section 8.
+the performance story is told in full in @sec-lessons.
 
 #block(inset: 8pt, stroke: 0.5pt + luma(150), radius: 3pt, width: 100%)[
   #status("green") _Conformance_ — that the imperative partition and quicksort

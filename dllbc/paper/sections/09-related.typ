@@ -1,6 +1,6 @@
 #import "../style.typ": *
 
-= Related Work
+= Related Work <sec-related>
 
 DLLBC sits at the intersection of two lines that rarely meet: the verification
 of Rust-style mutable borrowing, and full dependent type theory. We position it
@@ -100,7 +100,8 @@ specification language and the type theory one and the same.
 == Lineage
 
 DLLBC subsumes the earlier Och staging — the core calculus that isolated the
-unification of terms and types, subtyping, and dependent elimination before any
-mutation was in scope — for the mutation question, and is the Ochre programme's
+unification of terms and types, subtyping in the pure-subtype-systems line
+@hutchins-2010, and dependent elimination before any mutation was in scope —
+for the mutation question, and is the Ochre programme's
 @lidburyOchreDependentlyTyped2024 working answer to how full dependent types
 and in-place mutation inhabit a single system.

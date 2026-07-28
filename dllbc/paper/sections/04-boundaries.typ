@@ -37,7 +37,7 @@ tells the caller, from the signature alone, that the vector behind `v` is one
 longer at exit. We write $amp"mut" (tau arrow.r.curve S)$ when $S$ ignores the
 binder $s$, and plain $amp"mut" tau$ when moreover $S = tau$.
 
-This is the paper's first inversion of the Aeneas pipeline, and the cleanest.
+This is the paper's first inversion of the Aeneas pipeline @aeneas-2022, and the cleanest.
 Where Aeneas _synthesizes_ a backward function per borrow — a pure function
 describing what flows back through it — DLLBC moves that description into the
 signature and makes it the programmer's to state: the $arrow.r.curve$ obligation

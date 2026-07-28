@@ -1,6 +1,6 @@
 #import "../style.typ": *
 
-= Lessons
+= Lessons <sec-lessons>
 
 Three methodological lessons carried more weight than any single rule in
 building DLLBC. Each was earned against a wrong first guess, and each left a

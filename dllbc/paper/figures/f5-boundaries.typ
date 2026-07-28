@@ -9,7 +9,7 @@
 // the implementation and the doc disagree, the implementation is followed and
 // the disagreement is flagged in a // RULE-GAP comment.
 
-Where the Aeneas toolchain _synthesizes_ a backward function per borrow — a
+Where the Aeneas toolchain @aeneas-2022 _synthesizes_ a backward function per borrow — a
 pure function describing what flows back through it — DLLBC moves that
 description into the signature and checks it: the $arrow.r.curve$ obligation is
 the backward function's _type_ (#smallcaps[B-Seed], #smallcaps[B-Audit]), and,
