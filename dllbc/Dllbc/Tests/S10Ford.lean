@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.Macro
+import Dllbc.DeclMacro
 
 /-!
 # §10 test suite — the fording kit: `Id`, `J`, `K`, and the minimal indexed match
@@ -78,18 +79,13 @@ example : (Val.nfV 1000 (jV natV sZ (.lam natV (.lam natV natV)) (vnat 42) sZ (.
     The workhorse. Matching a symbolic `p : Id A a b` against `Refl` refines the
     substitutable endpoint everywhere — Ω, `sctx`, *and* the owed obligations. -/
 
-def natT : Term := .const "Nat"
-def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
-
 -- `learn (n : Nat, p : Id Nat n 2) → Nat = match p { Refl => n }`. The match
 -- refines `n := 2`; the body returns `n`, now a concrete `2` typed against Nat.
 -- (An inter-parameter dependency is written with the earlier param's RUNTIME
--- var — `Id Nat n 2` is `.idT natT (.var ⟨0,"n"⟩) (tnat 2)` — resolved by the
--- `readC` snapshot read, not a pure de Bruijn index.)
+-- var — `Id Nat n 2` — resolved by the `readC` snapshot read, not a pure de
+-- Bruijn index.)
 def learn : Decl :=
-  { name := "learn", retType := natT,
-    telescope := [("n", natT), ("p", .idT natT (.var ⟨0, "n"⟩) (tnat 2))],
-    body := dllbcWith [n, p] { match p { Refl => n } } }
+  decl{ fn learn (n : Nat, p : Id Nat n 2) -> Nat { match p { Refl => n } } }
 
 example : checkFnOk learn = true := by native_decide
 
@@ -97,9 +93,7 @@ example : checkFnOk learn = true := by native_decide
 -- copies the *refined* value, so `m ↦ 2` (not a symbolic `n`). Had refinement
 -- not fired, `m` would be a `sym`.
 def learnObs : Decl :=
-  { name := "learnObs", retType := .const "Unit",
-    telescope := [("n", natT), ("p", .idT natT (.var ⟨0, "n"⟩) (tnat 2))],
-    body := dllbcWith [n, p] { match p { Refl => { let m = n; () } } } }
+  decl{ fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } } }
 
 example : expectFnEnv [learnObs] learnObs [("n", vnat 2), ("p", .bot), ("m", vnat 2)] = true := by
   native_decide
@@ -109,10 +103,8 @@ example : expectFnEnv [learnObs] learnObs [("n", vnat 2), ("p", .bot), ("m", vna
 -- obligations — the audit sees `pb` owing `Id Nat 2 2`, which its `Refl` payload
 -- inhabits. This is the case that forced obligations into machine state.
 def learnBorrow : Decl :=
-  { name := "learnBorrow", retType := .const "Unit",
-    telescope := [("n", natT),
-                  ("pb", .borrowT (.idT natT (.var ⟨0, "n"⟩) (tnat 2)) (.idT natT (.var ⟨0, "n"⟩) (tnat 2)))],
-    body := dllbcWith [n, pb] { match pb { Refl => { let m = n; () } } } }
+  decl{ fn learnBorrow (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
+    match pb { Refl => { let m = n; () } } } }
 
 example : checkFnOk learnBorrow = true := by native_decide
 example : expectFnEnv [learnBorrow] learnBorrow
@@ -122,9 +114,7 @@ example : expectFnEnv [learnBorrow] learnBorrow
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The
 -- kernel does NOT auto-discharge the conflict; that is the library's job (below).
 def rigidStuck : Decl :=
-  { name := "rigidStuck", retType := natT,
-    telescope := [("p", .idT natT (tnat 0) (tnat 1))],
-    body := dllbcWith [p] { match p { Refl => 0 } } }
+  decl{ fn rigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } } }
 
 example : checkFnErr rigidStuck "rigid" = true := by native_decide
 example : checkFnErr rigidStuck "j/k" = true := by native_decide
@@ -132,9 +122,7 @@ example : checkFnErr rigidStuck "j/k" = true := by native_decide
 -- Occurs check: `p : Id Nat n (S n)`. Refining `n := S n` would be cyclic —
 -- rejected before it can loop.
 def occursFn : Decl :=
-  { name := "occ", retType := .const "Unit",
-    telescope := [("n", natT), ("p", .idT natT (.var ⟨0, "n"⟩) (.ctorApp "S" [.var ⟨0, "n"⟩]))],
-    body := dllbcWith [n, p] { match p { Refl => () } } }
+  decl{ fn occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } } }
 
 example : checkFnErr occursFn "occurs check" = true := by native_decide
 
@@ -142,23 +130,17 @@ example : checkFnErr occursFn "occurs check" = true := by native_decide
 
 -- An empty match on `p : Id Nat n 2` is non-exhaustive: `Refl` is uncovered.
 example : checkFnErr
-  { name := "f", retType := .const "Unit",
-    telescope := [("n", natT), ("p", .idT natT (.var ⟨0, "n"⟩) (tnat 2))],
-    body := dllbcWith [n, p] { match p { } } } "non-exhaustive" = true := by native_decide
+  (decl{ fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { } } }) "non-exhaustive" = true := by native_decide
 
 -- A stray non-`Refl` constructor is likewise not enough to be exhaustive.
 example : checkFnErr
-  { name := "f", retType := .const "Unit",
-    telescope := [("n", natT), ("p", .idT natT (.var ⟨0, "n"⟩) (tnat 2))],
-    body := dllbcWith [n, p] { match p { Z => () } } } "non-exhaustive" = true := by native_decide
+  (decl{ fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } } }) "non-exhaustive" = true := by native_decide
 
 -- Scope guard: `Id` over a *borrow* type is rejected — reflecting the borrow-type
 -- index throws (borrow types live only at telescope positions), no special
 -- machinery needed. (Id over ordinary indexed types is unrestricted.)
 example : checkFnErr
-  { name := "f", retType := .const "Unit",
-    telescope := [("q", .idT (.borrowT natT natT) (tnat 0) (tnat 0))],
-    body := dllbcWith [q] { () } } "borrow type" = true := by native_decide
+  (decl{ fn f (q : Id (&mut Nat) 0 0) -> Unit { () } }) "borrow type" = true := by native_decide
 
 /-! ## The fording library — no confusion, injectivity, K, all as checked terms
 
