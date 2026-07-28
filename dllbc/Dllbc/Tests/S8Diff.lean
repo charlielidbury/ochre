@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.Macro
+import Dllbc.DeclMacro
 
 /-!
 # Differential suite — the simulation theorem in testable form (§8)
@@ -35,8 +36,7 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S8Diff
 
-def natT : Term := .const "Nat"
-def listNatT : Term := .app (.const "List") natT
+-- CONV-SUBJECT: generator builds raw Terms by design
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 
 /-! ## Body generator for `(v : &mut List Nat) → Unit`
@@ -46,6 +46,7 @@ def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
     through 0/1/2 peels, `&mut`, `let`, `seq`, and match-through (exhaustive
     over `Nil`/`Cons`). checkFn filters the ill-formed. -/
 
+-- CONV-SUBJECT: generator builds raw Terms by design
 def v0 : Term := .var ⟨0, "v"⟩
 
 /-- Small expression pool over v (RHS / place fillers). -/
@@ -81,7 +82,7 @@ def vBodies : List Term := leafBodies ++ matchBodies
 /-! ## The declaration and the concrete pool -/
 
 def vDecl (body : Term) : Decl :=
-  { name := "f", retType := .const "Unit", telescope := [("v", .borrowT listNatT listNatT)], body := body }
+  decl{ fn f (v : &mut List Nat) -> Unit = %body }
 
 /-- Concrete payloads for v: the small list pool. -/
 def vPool : List Val := [ nil, cons (nat 1) nil, cons (nat 1) (cons (nat 2) nil) ]
@@ -138,6 +139,7 @@ example : vDiffOk = true := by native_decide
     over the generator's grammar: a symbolic match missing a constructor is
     rejected, so no accepted body can be concretely stuck on a missing branch. -/
 
+-- CONV-SUBJECT: generator builds raw Terms by design
 def vNonExhaustive : List Term :=
   (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
   ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ [.mk "Nil" [] b])                       -- missing Cons
@@ -148,6 +150,7 @@ example : vAllRejected = true := by native_decide
 
 /-! ## Telescope `(n : Nat) → Nat` (owned symbolic argument, value return) -/
 
+-- CONV-SUBJECT: generator builds raw Terms by design
 def n0 : Term := .var ⟨0, "n"⟩
 def nLeaf : List Term := [tnat 0, tnat 1, n0, .var ⟨1, "m"⟩, .ctorApp "S" [.var ⟨1, "m"⟩]]
 
@@ -161,7 +164,7 @@ def nBodies : List Term :=
          .matchE ⟨0, "n"⟩ [.mk "Z" [] b1, .mk "S" [⟨1, "m"⟩] b2]
 
 def nDecl (body : Term) : Decl :=
-  { name := "f", retType := natT, telescope := [("n", natT)], body := body }
+  decl{ fn f (n : Nat) -> Nat = %body }
 def nPool : List Val := [ nat 0, nat 1, nat 2 ]
 
 def nAccepted : List Term := nBodies.filter (fun b => checkFnOk (nDecl b))
@@ -171,6 +174,7 @@ example : nDiffOk = true := by native_decide
 
 /-! ## Telescope `(b : &mut Nat, c : Bool) → Unit` (a borrow and a bool) -/
 
+-- CONV-SUBJECT: generator builds raw Terms by design
 def bb : Term := .var ⟨0, "b"⟩
 def bcLeaf : List Term :=
   [ .unit, .assign (.deref bb) (tnat 0) .unit, .assign (.deref bb) (tnat 1) .unit ]
@@ -184,8 +188,7 @@ def bcBodies : List Term :=
          .matchE ⟨1, "c"⟩ [.mk "True" [] b1, .mk "False" [] b2]
 
 def bcDecl (body : Term) : Decl :=
-  { name := "f", retType := .const "Unit",
-    telescope := [("b", .borrowT natT natT), ("c", .const "Bool")], body := body }
+  decl{ fn f (b : &mut Nat, c : Bool) -> Unit = %body }
 def bcPool : List (List Val) :=
   [ [nat 0, .ctor "True" []], [nat 0, .ctor "False" []],
     [nat 1, .ctor "True" []], [nat 1, .ctor "False" []] ]
