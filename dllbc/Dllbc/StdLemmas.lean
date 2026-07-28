@@ -3029,4 +3029,39 @@ def glue_ty : Term := pure{
     SortedR g (S (add i lo)) R →
     SortedR (S (add i g)) lo R }
 
+/-! ## The KEYSTONE — range bounds survive sorting (§22, M22-c step 3; bridges dispatched)
+
+    `allLeR_sortRange` / `allGtR_sortRange`: sorting the range [lo, lo+w) preserves the
+    ≤-bound / >-bound over that range. This is what lets sorted_sortRangeL carry the
+    partition invariant's bounds through the two recursive sorts. Positional AllLeR is
+    NOT natively perm-invariant, so it routes through the multiset: `noAbove p =
+    Π x. Le (S p) x → segCount x = Z` (no element > p in the segment) IS perm-invariant
+    (segCount_sortRangeL, on main). Composition (MINE): allLeR_sortRange =
+    noAbove_to_allLeR ∘ (id_trans with segCount_sortRangeL) ∘ allLeR_to_noAbove. The
+    three bridges + the shared membership helper (nth_seg_count_pos) are MECHANICAL
+    count/segment inductions — PROOFS DISPATCHED to dllbc-seg (reusing nth_drop /
+    count_split / count_seg_preserved / count_cons on main). Statements elaboration-
+    verified. AllGtR mirrors with noBelow = Π x. Le x p → segCount x = Z. -/
+def allLeR_to_noAbove_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    AllLeR w lo p l → Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z }
+def noAbove_to_allLeR_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    (Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z) → AllLeR w lo p l }
+def allGtR_to_noBelow_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    AllGtR w lo p l → Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z }
+def noBelow_to_allGtR_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    (Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z) → AllGtR w lo p l }
+def nth_seg_count_pos_ty : Term := pure{
+  Π (m : Nat) → Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) →
+    Le (S m) w → Le (S Z) (segCount (nth (add m lo) l) lo w l) }
+def allLeR_sortRange_ty : Term := pure{
+  Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    Le (add lo w) (len l) → AllLeR w lo p l → AllLeR w lo p (sortRangeL fuel lo w l) }
+def allGtR_sortRange_ty : Term := pure{
+  Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    Le (add lo w) (len l) → AllGtR w lo p l → AllGtR w lo p (sortRangeL fuel lo w l) }
+
 end Dllbc.StdLemmas
