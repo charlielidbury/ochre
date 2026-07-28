@@ -726,6 +726,77 @@ def quicksort : Decl :=
 -- value byte-for-byte, native_decide replays from cache across the surface change.
 example : checkFnOk quicksort [nthS, nth2S, swapSN, partScanRange, quicksort] = true := by native_decide
 
+/-! ## M22-0 — the conformance baseline's validation suite (quicksort)
+
+    Closing the back-specced (simulation) baseline before the direct-proving
+    redirect: the lie is rejected, and the SAME checking-mode Decl run executing on
+    every input class (plus a sub-range) recovers exactly `sortRangeL fuel lo cnt l`
+    — so the body's effect is the pure model on concrete data, the conformance the
+    §6.2 callee check proves symbolically. -/
+
+-- Not vacuous: identity is the right back only on the no-op paths (fuel Z / cnt ≤ 1);
+-- on the sort path the composed suspension tree is sortRangeL, not *v, so it rejects.
+-- SUBJECT: a deliberately-wrong back-spec (raw Term, identity) — the lie is the subject.
+def quicksortLieBack : Term := dv
+def quicksortLie : Decl := { quicksort with name := "quicksortLie", «back» := some quicksortLieBack }
+example : checkFnErr quicksortLie "does not match" [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortLie] = true := by native_decide
+
+-- Executing agreement at the PARTITION level: the proof-free executing twin
+-- partScanRangeE (as partScanE is of partScan) run on each input class recovers
+-- exactly the pure model partScanRangeL pivot lo k 0 0 l, over a sub-range (lo > 0)
+-- as well. Proof-free = swapS bounds are placeholders `()`, which the executing run
+-- does not type-check.
+--
+-- PAIN DIARY (M22): the FULL quicksort executing differential is BLOCKED on an
+-- executing-mode nested-reborrow gap, NOT a correctness issue. The recursive body
+-- `partScanRange(&mut *v,…); quicksort(&mut *v,…); quicksort(&mut *v,…)` — three
+-- sequential reborrows of one *v, which CHECKING mode proves green (checkFnOk
+-- quicksort, §6.2) — stalls executing: after a reborrow that MUTATES *v (the
+-- partition's swap), the next reborrow's comptime deref `*v` reads a non-collapsed
+-- borrow and the `leb` scrutinee is stuck (isolated: two reborrowed partScanRange
+-- calls where the second reads *v via `leb` reproduce it; the owner `x` is
+-- nonetheless correct, so only the reborrow view is stale). → candidate machine
+-- feature: executing-mode reborrow collapse should match checking-mode group
+-- fidelity, so a mutated *v is fully re-collapsed before the next reborrow reads it.
+-- The North Star's correctness rests on checkFnOk quicksort (green) + the pure
+-- sortRangeL computation tests above; partition-level executing agreement stands here.
+def partScanRangeE : Decl :=
+  decl{ fn partScanRangeE (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
+        { match k {
+            Z => match i {
+              Z => (),
+              S(i2) => { swapS(v, lo, add lo (S(i2)), (), ()); () }
+            },
+            S(k2) => {
+              let c = leb (nth (add lo (S (add i g))) (*v)) pivot;
+              match c {
+                True => match g {
+                  Z => partScanRangeE(v, lo, k2, S(i), Z, pivot),
+                  S(g2) => { swapS(&mut *v, add lo (S(i)), add lo (S(add i (S(g2)))), (), ()); partScanRangeE(v, lo, k2, S(i), S(g2), pivot) }
+                },
+                False => partScanRangeE(v, lo, k2, i, S(g), pivot)
+              }
+            }
+        } } }
+def partScanRangeLT (pivot lo k i g l : Term) : Term :=
+  .app (.app (.app (.app (.app (.app StdLemmas.partScanRangeL pivot) lo) k) i) g) l
+-- SUBJECT: the executing-mode differential harness (raw Term caller).
+def psrCaller (lst : List Nat) (lo k pivot : Nat) : Term :=
+  .letIn ⟨0, "x"⟩ (tlist lst)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
+      (.seq (.call "partScanRangeE" [.var ⟨1, "b"⟩, tnat lo, tnat k, tnat 0, tnat 0, tnat pivot])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
+def runPSR (lst : List Nat) (lo k pivot : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, partScanRangeE] (psrCaller lst lo k pivot) with
+  | .ok env => env.lookup "y" == some (pv (partScanRangeLT (tnat pivot) (tnat lo) (tnat k) (.ctorApp "Z" []) (.ctorApp "Z" []) (tlist lst)))
+  | .error _ => false
+
+example : runPSR [3,2,1] 0 2 3 = true := by native_decide         -- reverse: pivot 3 → end (a swap)
+example : runPSR [1,2,3] 0 2 1 = true := by native_decide         -- already partitioned (no swap)
+example : runPSR [2,2,1] 0 2 2 = true := by native_decide         -- duplicates around the pivot
+example : runPSR [5,3,8,1,9,2] 0 5 5 = true := by native_decide   -- mixed, interior swaps
+example : runPSR [9,3,1,2,7] 1 2 3 = true := by native_decide     -- SUB-RANGE (lo=1): partition [3,1,2]
+
 -- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
 -- reborrows *v twice in sequence for two recursive calls. This only checks
 -- because `&mut` on a place holding a parked `loanₘ` now DEMAND-ENDS the prior
