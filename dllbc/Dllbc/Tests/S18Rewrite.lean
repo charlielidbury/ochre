@@ -111,6 +111,10 @@ example : chk StdLemmas.count_swapL StdLemmas.count_swapL_ty = true := by native
 -- The §22 bridge: the set/nth exit form ≡ swapL under `Le (S i) j` (see StdLemmas
 -- header). Lets `count_swapL'`/`len_swapL` transport to a swap Decl's exit reading.
 example : chk StdLemmas.swapL_set StdLemmas.swapL_set_ty = true := by native_decide
+-- §22 partition rung: count preservation of the range scan/partition (the Perm half
+-- of partition's postcondition), threading the range bound to feed count_swapL'.
+example : chk StdLemmas.count_partScanRangeL StdLemmas.count_partScanRangeL_ty = true := by native_decide
+example : chk StdLemmas.count_partitionRangeL StdLemmas.count_partitionRangeL_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

@@ -824,6 +824,125 @@ def len_partitionRangeL : Term := pure{
       S (cnt') rec => len_partScanRangeL (nth lo l) lo cnt' Z Z l } }
 def len_partitionRangeL_ty : Term := pure{ Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (partitionRangeL lo cnt l)) (len l) }
 
+/-! ## Count preservation of the range scan/partition (§22, the partition rung)
+
+    The permutation half of partition's postcondition: the range scan preserves the
+    multiset. Same induction shape as len_partScanRangeL (on k, elim the leb Bool,
+    elim g in True), but where len_swapL is UNCONDITIONAL, count_swapL' is BOUNDED —
+    so unlike the len versions these THREAD the range bound `Le (add lo (S (add k
+    (add i g)))) (len l)` (the honest invariant partScanRange already carries) and
+    reconstruct the two per-swap `count_swapL'` premises from it at each swap leaf,
+    exactly the le_trans/le_rw_l/le_add_mono_l bound algebra partScanRange's body
+    proves. This is the proof-linearity-vs-count asymmetry made concrete: length is
+    friction-free, count pays the bound tax at every swap. -/
+def count_partScanRangeL : Term := pure{
+  λ (pivot : Nat). λ (lo : Nat). λ (m : Nat). λ (k : Nat).
+    elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+        Le (add lo (S (add kz (add i g)))) (len l) →
+        Id Nat (count m (partScanRangeL pivot lo kz i g l)) (count m l)) {
+      Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        elim i return (λ (iz : Nat).
+            Le (add lo (S (add Z (add iz g)))) (len l) →
+            Id Nat (count m (elim iz return (λ (iy : Nat). List Nat) {
+                Z => l, S (i') iih => swapL lo (add lo (S i')) l })) (count m l)) {
+          Z => λ (hle : Le (add lo (S (add Z (add Z g)))) (len l)). Refl,
+          S (i') iih => λ (hle : Le (add lo (S (add Z (add (S i') g)))) (len l)).
+            count_swapL' m lo (add lo (S i')) l (le_add_succ lo i')
+              (le_trans (S (add lo (S i'))) (add lo (S (S (add i' g)))) (len l)
+                (le_rw_l (add lo (S (S (add i' g)))) (add lo (S (S i'))) (S (add lo (S i')))
+                  (add_succ lo (S i'))
+                  (le_add_mono_l lo (S (S i')) (S (S (add i' g))) (le_add i' g)))
+                hle)
+        },
+      S (k') ih => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
+        λ (hle : Le (add lo (S (add (S k') (add i g)))) (len l)).
+        elim (leb (nth (add lo (S (add i g))) l) pivot)
+          return (λ (w : Bool). Id Nat
+            (count m (elim w return (λ (ww : Bool). List Nat) {
+                True => elim g return (λ (gz : Nat). List Nat) {
+                  Z => partScanRangeL pivot lo k' (S i) Z l,
+                  S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
+                False => partScanRangeL pivot lo k' i (S g) l }))
+            (count m l)) {
+          True =>
+            (elim g return (λ (gz : Nat).
+                Le (add lo (S (add (S k') (add i gz)))) (len l) →
+                Id Nat (count m (elim gz return (λ (gy : Nat). List Nat) {
+                    Z => partScanRangeL pivot lo k' (S i) Z l,
+                    S (g') gih => partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i gz))) l) })) (count m l)) {
+              Z => λ (hleZ : Le (add lo (S (add (S k') (add i Z)))) (len l)).
+                ih (S i) Z l
+                  (le_rw_l (len l)
+                    (add lo (S (add (S k') (add i Z))))
+                    (add lo (S (add k' (add (S i) Z))))
+                    (id_congr Nat Nat (λ (a : Nat). add lo (S a))
+                      (add (S k') (add i Z)) (add k' (add (S i) Z)) (hshift_true k' i Z))
+                    hleZ),
+              S (g') gih => λ (hleS : Le (add lo (S (add (S k') (add i (S g'))))) (len l)).
+                id_trans Nat
+                  (count m (partScanRangeL pivot lo k' (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)))
+                  (count m (swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+                  (count m l)
+                  (ih (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)
+                    (le_rw_r (add lo (S (add k' (add (S i) (S g'))))) (len l)
+                       (len (swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+                       (id_sym Nat (len (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (len l)
+                         (len_swapL (add lo (S i)) (add lo (S (add i (S g')))) l))
+                       (le_rw_l (len l)
+                         (add lo (S (add (S k') (add i (S g')))))
+                         (add lo (S (add k' (add (S i) (S g')))))
+                         (id_congr Nat Nat (λ (a : Nat). add lo (S a))
+                           (add (S k') (add i (S g'))) (add k' (add (S i) (S g'))) (hshift_true k' i (S g')))
+                         hleS)))
+                  (count_swapL' m (add lo (S i)) (add lo (S (add i (S g')))) l
+                    (le_rw_l (add lo (S (add i (S g')))) (add lo (S (S i))) (S (add lo (S i)))
+                      (add_succ lo (S i))
+                      (le_add_mono_l lo (S (S i)) (S (add i (S g'))) (le_add_succ i g')))
+                    (le_trans (S (add lo (S (add i (S g'))))) (add lo (S (S (add k' (add i (S g')))))) (len l)
+                      (le_rw_l (add lo (S (S (add k' (add i (S g'))))))
+                        (add lo (S (S (add i (S g'))))) (S (add lo (S (add i (S g')))))
+                        (add_succ lo (S (add i (S g'))))
+                        (le_add_mono_l lo (S (S (add i (S g')))) (S (S (add k' (add i (S g')))))
+                          (le_add_l (add i (S g')) k')))
+                      hleS))
+            }) hle,
+          False =>
+            ih i (S g) l
+              (le_rw_l (len l)
+                (add lo (S (add (S k') (add i g))))
+                (add lo (S (add k' (add i (S g)))))
+                (id_congr Nat Nat (λ (a : Nat). add lo (S a))
+                  (add (S k') (add i g)) (add k' (add i (S g))) (hshift_false k' i g))
+                hle)
+        }
+    } }
+def count_partScanRangeL_ty : Term := pure{
+  Π (pivot : Nat) → Π (lo : Nat) → Π (m : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+    Le (add lo (S (add k (add i g)))) (len l) →
+    Id Nat (count m (partScanRangeL pivot lo k i g l)) (count m l) }
+
+-- Wrapper: partitionRangeL is partScanRangeL after picking the pivot, so count
+-- preservation is the scan's (Z base Refl, S cnt' is the scan at entry offsets).
+-- The top range bound `Le (add lo cnt) (len l)` supplies the scan's bound; at
+-- cnt = S cnt' it needs an add_zero nudge (`add cnt' (add Z Z) = add cnt' Z`, and
+-- `add` recurses on its FIRST arg so `add cnt' Z` is stuck at a free cnt').
+def count_partitionRangeL : Term := pure{
+  λ (lo : Nat). λ (m : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat).
+        Le (add lo cz) (len l) →
+        Id Nat (count m (elim cz return (λ (cy : Nat). List Nat) {
+            Z => l, S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l })) (count m l)) {
+      Z => λ (hb : Le (add lo Z) (len l)). Refl,
+      S (cnt') rec => λ (hb : Le (add lo (S cnt')) (len l)).
+        count_partScanRangeL (nth lo l) lo m cnt' Z Z l
+          (le_rw_l (len l) (add lo (S cnt')) (add lo (S (add cnt' Z)))
+            (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt' (add cnt' Z)
+              (id_sym Nat (add cnt' Z) cnt' (add_zero cnt')))
+            hb) } }
+def count_partitionRangeL_ty : Term := pure{
+  Π (lo : Nat) → Π (m : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Le (add lo cnt) (len l) → Id Nat (count m (partitionRangeL lo cnt l)) (count m l) }
+
 /-- `sortRangeL fuel lo cnt l` — sort the `cnt` elements of `l` at offset `lo` in
     place. Fuel-structural; base = out of fuel or `cnt ≤ 1`; step partitions the
     range, then sorts the left sub-range `[lo, lo+i)` (count `i`) and the right
