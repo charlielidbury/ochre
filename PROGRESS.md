@@ -1,5 +1,62 @@
 # Progress
 
+## 2026-07-28 — dllbc/: North Star landed; 465× perf; suite modernized; direct-proving redirect — Perm half proven end to end
+
+Four arcs since the last entry, compressed:
+
+**M21, the assembly**: `checkFnOk quicksort = true` (f1de5c54) — the
+imperative in-place quicksort verified as an implementation of
+`sortRangeL` (§6.2 conformance), independently re-verified from
+scratch. En route: the Σ-pinned pivot index (§5.3's singleton-Σ
+device), the index-bounded re-model (prefix rides the bound — the
+plan of record reasserting itself), the reflectC ⊥ conformance fix
+(§2.1's own rule), the knowledge/state invariant VERIFIED
+zero-violation and permanently asserted, and &mut demand-ending
+parked groups (sequential recursive reborrows).
+
+**Perf**: delayed-lift substPure (+52/−12 to one function): the
+quicksort check 84s → 0.18s compiled (465×), full suite from scratch
+38m49s → ~13s. Root cause perf(1)-verified: eager per-binder shift
+copies of huge closed proof values were ~93% of cycles. Three
+cache-family fixes were first MEASURED regressive (branches kept as
+documentation of the mapped space).
+
+**Surface**: decl{} + ONE unified term grammar (mode flag = ⇒/⇝
+position); the ENTIRE suite converted (91 decl{} + 95 pure{} blocks,
+quicksort included); raw Terms survive only as bannered SUBJECTS +
+SInternals. Mode inventory (tested, not argued): exactly {&mut, let}
+bimodal; the letIn-nfV kernel gap flagged as a theory decision.
+
+**The REDIRECT (user)**: direct proving replaces the pure-model
+simulation as the mission; conformance demoted to comparison
+baseline ("Aeneas rebuilt in one language"). New ensures-convention
+(doc §5.4): borrow-payload derefs in return types read the EXIT
+snapshot (canonical because loans end at the audit); `old *v` names
+entry (operator, not binder); caller-side one σ shared between loan
+release and evidence subject. Executing-mode transitive-collapse fix
+landed (the M19 mode-equivalence debt).
+
+**M22 so far — the PERMUTATION half proven END TO END, no back in
+any ensures Decl**: swapSE ← count_swapL'; partitionRangeE ("partition
+permutes") ← count_partitionRangeL; quicksortE (the North Star
+permutes) ← count_sortRangeL, fuel induction whose bound algebra
+transferred VERBATIM from the imperative Decl to the pure lemma. THE
+CENTRAL FINDING: issued borrow payloads are minted as opaque σs, so
+inline-mutating leaves admit NO value-level postcondition — hence the
+delegation discipline (mutate through a back-carrying model callee,
+cite a pure lemma about its model). Direct proving eliminates
+conversion-based verification, NOT the model functions — they persist
+as the only provable exit shapes, and both architectures converge on
+the same pure lemmas. Candidate-feature arc recorded: issued-payload
+pinning → the swapL_set bridge (proven, forward-infra) →
+audit-rewrite-along-cited-bridges = inline leaves become provable.
+
+Next: M22-c, the SORTEDNESS half — the partition invariant
+(AllLe/AllGe over the models, the crux), sorted-glue up the
+recursion, with Perm feeding Sorted (bounds survive permutation, via
+counts). Then the full `Sorted (*v) ∧ Perm (old *v) (*v)` North Star
+postcondition closes.
+
 ## 2026-07-24 — dllbc/: DLLBC mechanized through boundaries; both §4 flagships check
 
 New self-contained Lean package `dllbc/` (package root is the tld; lib
