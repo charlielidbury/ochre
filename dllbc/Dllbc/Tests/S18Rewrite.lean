@@ -233,6 +233,17 @@ example : chk StdLemmas.bnd_gap_upper StdLemmas.bnd_gap_upper_ty = true := by na
 example : chk StdLemmas.allGtR_step_swap StdLemmas.allGtR_step_swap_ty = true := by native_decide
 example : chk StdLemmas.partScanRangeL_allGtR StdLemmas.partScanRangeL_allGtR_ty = true := by native_decide
 example : chk StdLemmas.partition_allGtR StdLemmas.partition_allGtR_ty = true := by native_decide
+-- §22 M22-c step 3 keystone bridges: the two "positional → multiset (segCount) survives"
+-- directions that ARE perm-invariant, + their count/segment helpers. (#1/#3/#5 pending a
+-- statement fix — nth_seg_count_pos as committed is false off-end; see the finding.)
+example : chk StdLemmas.eqb_gt_false StdLemmas.eqb_gt_false_ty = true := by native_decide
+example : chk StdLemmas.eqb_lt_false StdLemmas.eqb_lt_false_ty = true := by native_decide
+example : chk StdLemmas.count_cons_miss StdLemmas.count_cons_miss_ty = true := by native_decide
+example : chk StdLemmas.count_zero_ext StdLemmas.count_zero_ext_ty = true := by native_decide
+example : chk StdLemmas.nth_take StdLemmas.nth_take_ty = true := by native_decide
+example : chk StdLemmas.len_take_le StdLemmas.len_take_le_ty = true := by native_decide
+example : chk StdLemmas.allLeR_to_noAbove StdLemmas.allLeR_to_noAbove_ty = true := by native_decide
+example : chk StdLemmas.allGtR_to_noBelow StdLemmas.allGtR_to_noBelow_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

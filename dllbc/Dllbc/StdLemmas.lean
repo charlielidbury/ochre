@@ -3042,6 +3042,119 @@ def glue_ty : Term := pure{
     count/segment inductions — PROOFS DISPATCHED to dllbc-seg (reusing nth_drop /
     count_split / count_seg_preserved / count_cons on main). Statements elaboration-
     verified. AllGtR mirrors with noBelow = Π x. Le x p → segCount x = Z. -/
+-- Keystone bridge helpers: eqb comparison, the count "miss" step, count-zero-by-extension,
+-- and take-vs-nth/len facts. All mechanical count/segment inductions.
+def eqb_gt_false : Term := pure{
+  λ (h : Nat).
+    elim h return (λ (hz : Nat). Π (x : Nat) → Le (S hz) x → Id Bool (eqb x hz) False) {
+      Z => λ (x : Nat).
+        elim x return (λ (xz : Nat). Le (S Z) xz → Id Bool (eqb xz Z) False) {
+          Z => λ (hlt : Le (S Z) Z). botElim (Id Bool (eqb Z Z) False) hlt,
+          S (x') xih => λ (hlt : Le (S Z) (S x')). Refl },
+      S (h') ih => λ (x : Nat).
+        elim x return (λ (xz : Nat). Le (S (S h')) xz → Id Bool (eqb xz (S h')) False) {
+          Z => λ (hlt : Le (S (S h')) Z). botElim (Id Bool (eqb Z (S h')) False) hlt,
+          S (x') xih => λ (hlt : Le (S (S h')) (S x')). ih x' hlt } } }
+def eqb_gt_false_ty : Term := pure{ Π (h : Nat) → Π (x : Nat) → Le (S h) x → Id Bool (eqb x h) False }
+
+def eqb_lt_false : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Π (b : Nat) → Le (S az) b → Id Bool (eqb az b) False) {
+      Z => λ (b : Nat).
+        elim b return (λ (bz : Nat). Le (S Z) bz → Id Bool (eqb Z bz) False) {
+          Z => λ (hlt : Le (S Z) Z). botElim (Id Bool (eqb Z Z) False) hlt,
+          S (b') bih => λ (hlt : Le (S Z) (S b')). Refl },
+      S (a') ih => λ (b : Nat).
+        elim b return (λ (bz : Nat). Le (S (S a')) bz → Id Bool (eqb (S a') bz) False) {
+          Z => λ (hlt : Le (S (S a')) Z). botElim (Id Bool (eqb (S a') Z) False) hlt,
+          S (b') bih => λ (hlt : Le (S (S a')) (S b')). ih b' hlt } } }
+def eqb_lt_false_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Id Bool (eqb a b) False }
+
+def count_cons_miss : Term := pure{
+  λ (m : Nat). λ (h : Nat). λ (t : List Nat). λ (hq : Id Bool (eqb m h) False).
+    j Bool False
+      (λ (z : Bool). λ (hh : Id Bool False z).
+        Id Nat (boolRec (λ (w : Bool). Nat) (S (count m t)) (count m t) z) (count m t))
+      Refl (eqb m h) (id_sym Bool (eqb m h) False hq) }
+def count_cons_miss_ty : Term := pure{
+  Π (m : Nat) → Π (h : Nat) → Π (t : List Nat) → Id Bool (eqb m h) False →
+    Id Nat (count m (Cons h t)) (count m t) }
+
+def count_zero_ext : Term := pure{
+  λ (x : Nat). λ (s : List Nat).
+    elim s return (λ (sz : List Nat). (Π (j : Nat) → Le (S j) (len sz) → Id Bool (eqb x (nth j sz)) False) → Id Nat (count x sz) Z) {
+      Nil => λ (heq : Π (j : Nat) → Le (S j) (len Nil) → Id Bool (eqb x (nth j Nil)) False). Refl,
+      Cons (h) (t) ih => λ (heq : Π (j : Nat) → Le (S j) (len (Cons h t)) → Id Bool (eqb x (nth j (Cons h t))) False).
+        id_trans Nat (count x (Cons h t)) (count x t) Z
+          (count_cons_miss x h t (heq Z unit))
+          (ih (λ (j : Nat). λ (hj : Le (S j) (len t)). heq (S j) hj)) } }
+def count_zero_ext_ty : Term := pure{
+  Π (x : Nat) → Π (s : List Nat) →
+    (Π (j : Nat) → Le (S j) (len s) → Id Bool (eqb x (nth j s)) False) → Id Nat (count x s) Z }
+
+def nth_take : Term := pure{
+  λ (w : Nat).
+    elim w return (λ (wz : Nat). Π (j : Nat) → Π (s : List Nat) → Le (S j) wz → Id Nat (nth j (take wz s)) (nth j s)) {
+      Z => λ (j : Nat). λ (s : List Nat). λ (hlt : Le (S j) Z). botElim (Id Nat (nth j (take Z s)) (nth j s)) hlt,
+      S (w') ih => λ (j : Nat). λ (s : List Nat).
+        elim j return (λ (jz : Nat). Le (S jz) (S w') → Id Nat (nth jz (take (S w') s)) (nth jz s)) {
+          Z => λ (hlt : Le (S Z) (S w')).
+            elim s return (λ (sz : List Nat). Id Nat (nth Z (take (S w') sz)) (nth Z sz)) {
+              Nil => Refl, Cons (h) (t) sih => Refl },
+          S (j') jih => λ (hlt : Le (S (S j')) (S w')).
+            elim s return (λ (sz : List Nat). Id Nat (nth (S j') (take (S w') sz)) (nth (S j') sz)) {
+              Nil => Refl,
+              Cons (h) (t) sih => ih j' t hlt } } } }
+def nth_take_ty : Term := pure{
+  Π (w : Nat) → Π (j : Nat) → Π (s : List Nat) → Le (S j) w → Id Nat (nth j (take w s)) (nth j s) }
+
+def len_take_le : Term := pure{
+  λ (w : Nat).
+    elim w return (λ (wz : Nat). Π (s : List Nat) → Le (len (take wz s)) wz) {
+      Z => λ (s : List Nat). unit,
+      S (w') ih => λ (s : List Nat).
+        elim s return (λ (sz : List Nat). Le (len (take (S w') sz)) (S w')) {
+          Nil => unit,
+          Cons (h) (t) sih => ih t } } }
+def len_take_le_ty : Term := pure{ Π (w : Nat) → Π (s : List Nat) → Le (len (take w s)) w }
+
+-- #2 allLeR_to_noAbove : every segment element ≤ p, so an x>p occurs 0× (count_zero_ext,
+-- with each element bridged nth j (take w (drop lo l)) → nth (add j lo) l via nth_take/nth_drop).
+def allLeR_to_noAbove : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (hAll : AllLeR w lo p l). λ (x : Nat). λ (hpx : Le (S p) x).
+      count_zero_ext x (take w (drop lo l))
+        (λ (j : Nat). λ (hj : Le (S j) (len (take w (drop lo l)))).
+          eqb_gt_false (nth j (take w (drop lo l))) x
+            (le_trans (S (nth j (take w (drop lo l)))) (S p) x
+              (le_rw_l p (nth (add j lo) l) (nth j (take w (drop lo l)))
+                (id_sym Nat (nth j (take w (drop lo l))) (nth (add j lo) l)
+                  (id_trans Nat (nth j (take w (drop lo l))) (nth j (drop lo l)) (nth (add j lo) l)
+                    (nth_take w j (drop lo l) (le_trans (S j) (len (take w (drop lo l))) w hj (len_take_le w (drop lo l))))
+                    (id_trans Nat (nth j (drop lo l)) (nth (add lo j) l) (nth (add j lo) l)
+                      (nth_drop lo j l)
+                      (id_congr Nat Nat (λ (q : Nat). nth q l) (add lo j) (add j lo) (add_comm lo j)))))
+                (hAll j (le_trans (S j) (len (take w (drop lo l))) w hj (len_take_le w (drop lo l)))))
+              hpx)) }
+
+-- #4 allGtR_to_noBelow : every segment element > p, so an x≤p occurs 0× (mirror of #2).
+def allGtR_to_noBelow : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (hAll : AllGtR w lo p l). λ (x : Nat). λ (hxp : Le x p).
+      count_zero_ext x (take w (drop lo l))
+        (λ (j : Nat). λ (hj : Le (S j) (len (take w (drop lo l)))).
+          eqb_lt_false x (nth j (take w (drop lo l)))
+            (le_trans (S x) (S p) (nth j (take w (drop lo l)))
+              hxp
+              (le_rw_r (S p) (nth (add j lo) l) (nth j (take w (drop lo l)))
+                (id_sym Nat (nth j (take w (drop lo l))) (nth (add j lo) l)
+                  (id_trans Nat (nth j (take w (drop lo l))) (nth j (drop lo l)) (nth (add j lo) l)
+                    (nth_take w j (drop lo l) (le_trans (S j) (len (take w (drop lo l))) w hj (len_take_le w (drop lo l))))
+                    (id_trans Nat (nth j (drop lo l)) (nth (add lo j) l) (nth (add j lo) l)
+                      (nth_drop lo j l)
+                      (id_congr Nat Nat (λ (q : Nat). nth q l) (add lo j) (add j lo) (add_comm lo j)))))
+                (hAll j (le_trans (S j) (len (take w (drop lo l))) w hj (len_take_le w (drop lo l))))))) }
+
 def allLeR_to_noAbove_ty : Term := pure{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllLeR w lo p l → Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z }
