@@ -54,40 +54,29 @@ open Lean
 
 namespace Dllbc
 
-/-! ## The `dty` grammar (type / back positions) -/
+/-! ## The unified `uterm` / `ublk` grammar (§ phase-3 point 1 — ONE term grammar)
 
-declare_syntax_cat dty
+A single expression grammar spanning BOTH fragments, elaborated by `elabU` under a
+**mode flag** that is precisely "is this position consumed by ⇒ or ⇝" (the
+arrows-decide-fragments thesis at elaboration level):
 
-syntax:max ident : dty
-syntax:max "(" dty ")" : dty
-syntax:max "Type" : dty
-syntax:max "%" term:max : dty                                 -- splice a Lean `Term`
-syntax:max "*" ident : dty                                    -- comptime deref of a runtime var
-syntax:max "Id" dty:max dty:max dty:max : dty                 -- Id A a b
-syntax:65 dty:65 dty:66 : dty                                 -- application (left-assoc)
-syntax:70 "&mut" dty:65 : dty                                 -- plain borrow  &mut τ
-syntax:70 "&mut" "(" dty "~>" dty ")" : dty                   -- &mut (τ ↝ S)      (S ignores s)
-syntax:70 "&mut" "(" ident ":" dty "~>" dty ")" : dty         -- &mut (s : τ ↝ S)  (s = pvar 0 in S)
-syntax:10 "λ" "(" ident ":" dty ")" "." dty:10 : dty          -- lambda
-syntax:10 "Π" "(" ident ":" dty ")" "→" dty:10 : dty          -- Pi
-syntax:10 "Σ" "(" ident ":" dty ")" "→" dty:10 : dty          -- Sigma (arrow form)
-syntax:10 "Σ" "(" ident ":" dty ")" "." dty:10 : dty          -- Sigma (dot form, as the doc writes it)
-syntax:10 dty:11 "→" dty:10 : dty                             -- non-dependent arrow (right-assoc)
+  * **term mode** (⇒, a runtime position — `decl{}` body, `dllbc{}`): `&mut e` is
+    the borrow *operation* (`.borrow`); `let x = e ; …` mints a fresh runtime id
+    (`.letIn`); assignment/sequencing/match/call are available.
+  * **type mode** (⇝, a comptime position — `decl{}` telescope/retType/back,
+    `pure{}`): `&mut τ` / `&mut (s : τ ~> S)` is the borrow *type* (`.borrowT`, the
+    snapshot `s` bound as pure var 0 in `S`); `let x = e ; …` is a β-redex
+    (de Bruijn). The runtime-only forms are simply not written there.
 
-/-! ## The unified `uterm` / `ublk` grammar (§ point 1 — one term/block surface)
-
-One expression grammar whose forms span BOTH the runtime fragment (call/ctorApp/
-borrow/deref/match/`()`) and the pure fragment (application spines, λ/Π/Σ/→/Id/
-`Type`, lemma & const references). `ublk` is the statement layer (let/assign/seq)
-that wraps it. `decl{}`'s body elaborates through this — so `botElim Unit p` and a
-`let p2b = le_rw_r … ; …` proof-derivation body are writable DIRECTLY, no splice.
+Forms shared by both modes: application spines, λ/Π/Σ/→/Id/`Type`, `*e`, `Id`,
+constructor/const/lemma references. `ublk` is the statement layer (term mode).
 
 **The one disambiguation rule (§ point 2):** `f(a, b)` — an identifier with a
-comma-paren argument list — is a runtime **call** (lowercase head) or **ctorApp**
-(uppercase head). Space-separated **juxtaposition** `f a b` is **pure
-application** (`ctorApp` when the head is a known constructor). So `nth(&mut *tl,
-k, p)` is a call, `botElim Unit p` is an application spine, and `S(*l)` / `S *l`
-both mean `ctorApp "S" [*l]`. -/
+**no-whitespace** paren argument list — is a runtime **call** (lowercase head) or
+**ctorApp** (uppercase). Space-separated **juxtaposition** `f a b` (incl.
+`f (a) b`) is **pure application** (`ctorApp` when the head is a known ctor). So
+`nth(&mut *tl, k, p)` is a call, `botElim Unit p` and `le_rw_r (S x) y` are
+application spines, `S(*l)` / `S *l` both mean `ctorApp "S" [*l]`. -/
 
 declare_syntax_cat uterm
 declare_syntax_cat ublk
@@ -103,7 +92,9 @@ syntax:max "%" term:max : uterm                              -- splice a Lean `T
 syntax:max "*" uterm:max : uterm                            -- deref / peel
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
 syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
-syntax:70 "&mut" uterm:71 : uterm                            -- runtime borrow  &mut e
+syntax:70 "&mut" uterm:65 : uterm                            -- &mut e : borrow (term) / borrowT (type)
+syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ S)
+syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
 syntax:65 uterm:65 uterm:66 : uterm                          -- application (juxtaposition)
 syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
 syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
@@ -164,79 +155,6 @@ def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) :
         | some n => pure ⟨(mkIdent n).raw⟩
         | none => pure ⟨x.raw⟩
 
-/-- Resolve `*x`: `x` must be a runtime (borrow) parameter in scope. -/
-def resolveDeref (rctx : List (String × Nat)) (x : Ident) : MacroM (TSyntax `term) := do
-  let s := x.getId.toString
-  match rctx.lookup s with
-  | some id => `(Dllbc.Term.deref (Dllbc.Term.var ⟨$(quote id), $(quote s)⟩))
-  | none => Macro.throwErrorAt x s!"decl: *{s} — '{s}' is not a borrow parameter in scope"
-
-/-- Unfold a left-nested `dty` application into (head, args-in-order). -/
-partial def collectApp : TSyntax `dty → TSyntax `dty × Array (TSyntax `dty)
-  | `(dty| $f:dty $a:dty) => let (h, as) := collectApp f; (h, as.push a)
-  | t => (t, #[])
-
-/-- Elaborate a `dty` under a runtime-var context (`rctx`, name → positional id)
-    and a pure-binder context (`pctx`, innermost name first). -/
-partial def elabDty (rctx : List (String × Nat)) (pctx : List String) (stx : TSyntax `dty) : MacroM (TSyntax `term) := do
-  match stx with
-  | `(dty| ($e:dty)) => elabDty rctx pctx e
-  | `(dty| Type) => `(Dllbc.Term.type)
-  | `(dty| % $e:term) => `(($e : Dllbc.Term))
-  | `(dty| * $x:ident) => resolveDeref rctx x
-  | `(dty| Id $a:dty $b:dty $c:dty) => do
-    `(Dllbc.Term.idT $(← elabDty rctx pctx a) $(← elabDty rctx pctx b) $(← elabDty rctx pctx c))
-  | `(dty| &mut ( $x:ident : $τ:dty ~> $s:dty )) => do
-    let τT ← elabDty rctx pctx τ
-    let sT ← elabDty rctx (x.getId.toString :: pctx) s
-    `(Dllbc.Term.borrowT $τT $sT)
-  | `(dty| &mut ( $τ:dty ~> $s:dty )) => do
-    let τT ← elabDty rctx pctx τ
-    let sT ← elabDty rctx pctx s
-    `(Dllbc.Term.borrowT $τT (Dllbc.Term.shiftPure 1 0 $sT))
-  | `(dty| &mut $τ:dty) => do
-    let τT ← elabDty rctx pctx τ
-    `(Dllbc.Term.borrowT $τT (Dllbc.Term.shiftPure 1 0 $τT))
-  | `(dty| λ ($x:ident : $τ:dty). $b:dty) => do
-    `(Dllbc.Term.lam $(← elabDty rctx pctx τ) $(← elabDty rctx (x.getId.toString :: pctx) b))
-  | `(dty| Π ($x:ident : $τ:dty) → $b:dty) => do
-    `(Dllbc.Term.pi $(← elabDty rctx pctx τ) $(← elabDty rctx (x.getId.toString :: pctx) b))
-  | `(dty| Σ ($x:ident : $τ:dty) → $b:dty) => do
-    `(Dllbc.Term.sigmaT $(← elabDty rctx pctx τ) $(← elabDty rctx (x.getId.toString :: pctx) b))
-  | `(dty| Σ ($x:ident : $τ:dty). $b:dty) => do
-    `(Dllbc.Term.sigmaT $(← elabDty rctx pctx τ) $(← elabDty rctx (x.getId.toString :: pctx) b))
-  | `(dty| $a:dty → $b:dty) => do
-    `(Dllbc.Term.pi $(← elabDty rctx pctx a) $(← elabDty rctx ("_" :: pctx) b))
-  | `(dty| $_:dty $_:dty) => do                     -- application spine
-    let (head, args) := collectApp stx
-    let argTerms ← args.toList.mapM (elabDty rctx pctx)
-    match head with
-    | `(dty| $h:ident) =>
-      let hs := h.getId.toString
-      if ctorSet.contains hs && (idxOf? pctx hs).isNone && (rctx.lookup hs).isNone then
-        let argArr := argTerms.toArray
-        `(Dllbc.Term.ctorApp $(quote hs) [$argArr,*])
-      else
-        let hterm ← resolveName rctx pctx h
-        argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
-    | _ =>
-      let hterm ← elabDty rctx pctx head
-      argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
-  | `(dty| $x:ident) => resolveName rctx pctx x
-  | _ => Macro.throwErrorAt stx "decl: unexpected type/term syntax"
-
-/-- Build the telescope entry syntaxes, threading the runtime-var context so that
-    parameter `i`'s type sees exactly params `0 .. i-1` (each at its positional
-    id) — the `seedTelescope` convention. -/
-partial def buildTele (rctx : List (String × Nat)) (i : Nat) :
-    List (String × TSyntax `dty) → MacroM (Array (TSyntax `term))
-  | [] => pure #[]
-  | (nm, τ) :: rest => do
-    let τT ← elabDty rctx [] τ
-    let entry ← `((($(quote nm), $τT) : String × Dllbc.Term))
-    let rest' ← buildTele (rctx ++ [(nm, i)]) (i + 1) rest
-    pure (#[entry] ++ rest')
-
 /-! ## Unified `uterm` / `ublk` elaborators (§ points 1–3)
 
 Runtime binders (let, match patterns) mint fresh absolute ids threaded through
@@ -251,47 +169,56 @@ partial def collectAppU : TSyntax `uterm → TSyntax `uterm × Array (TSyntax `u
 
 mutual
 
-partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
+partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
     (stx : TSyntax `uterm) : MacroM (TSyntax `term × Nat) := do
   match stx with
   | `(uterm| ()) => return (← `(Dllbc.Term.unit), next)
-  | `(uterm| ($e:uterm)) => elabUTerm rctx pctx next e
+  | `(uterm| ($e:uterm)) => elabUTerm isTy rctx pctx next e
   | `(uterm| Type) => return (← `(Dllbc.Term.type), next)
   | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)), next)
   | `(uterm| $n:num) => return (← Dllbc.Macro.buildNat n.getNat, next)
   | `(uterm| * $e:uterm) => do
-    let (e', n) ← elabUTerm rctx pctx next e
+    let (e', n) ← elabUTerm isTy rctx pctx next e
     return (← `(Dllbc.Term.deref $e'), n)
-  | `(uterm| &mut $e:uterm) => do
-    let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.borrow $e'), n)
+  | `(uterm| &mut ( $x:ident : $τ:uterm ~> $s:uterm )) => do     -- borrow type, snapshot binder
+    let (τ', n1) ← elabUTerm isTy rctx pctx next τ
+    let (s', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 s
+    return (← `(Dllbc.Term.borrowT $τ' $s'), n2)
+  | `(uterm| &mut ( $τ:uterm ~> $s:uterm )) => do                -- borrow type, S ignores s
+    let (τ', n1) ← elabUTerm isTy rctx pctx next τ
+    let (s', n2) ← elabUTerm isTy rctx pctx n1 s
+    return (← `(Dllbc.Term.borrowT $τ' (Dllbc.Term.shiftPure 1 0 $s')), n2)
+  | `(uterm| &mut $e:uterm) => do                                -- mode-decided: borrowT vs borrow
+    let (e', n) ← elabUTerm isTy rctx pctx next e
+    if isTy then return (← `(Dllbc.Term.borrowT $e' (Dllbc.Term.shiftPure 1 0 $e')), n)
+    else return (← `(Dllbc.Term.borrow $e'), n)
   | `(uterm| Id $a:uterm $b:uterm $c:uterm) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (b', n2) ← elabUTerm rctx pctx n1 b
-    let (c', n3) ← elabUTerm rctx pctx n2 c
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (b', n2) ← elabUTerm isTy rctx pctx n1 b
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
     return (← `(Dllbc.Term.idT $a' $b' $c'), n3)
   | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => do
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let (τ', n1) ← elabUTerm isTy rctx pctx next τ
+    let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.lam $τ' $b'), n2)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let (τ', n1) ← elabUTerm isTy rctx pctx next τ
+    let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.pi $τ' $b'), n2)
   | `(uterm| Σ ($x:ident : $τ:uterm) → $b:uterm) => do
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let (τ', n1) ← elabUTerm isTy rctx pctx next τ
+    let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.sigmaT $τ' $b'), n2)
   | `(uterm| Σ ($x:ident : $τ:uterm). $b:uterm) => do
-    let (τ', n1) ← elabUTerm rctx pctx next τ
-    let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
+    let (τ', n1) ← elabUTerm isTy rctx pctx next τ
+    let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.sigmaT $τ' $b'), n2)
   | `(uterm| $a:uterm → $b:uterm) => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (b', n2) ← elabUTerm rctx ("_" :: pctx) n1 b
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (b', n2) ← elabUTerm isTy rctx ("_" :: pctx) n1 b
     return (← `(Dllbc.Term.pi $a' $b'), n2)
   | `(uterm| $c:ident($args,*)) => do                 -- no-space paren: call / ctorApp
-    let (args', n) ← elabUList rctx pctx next args.getElems.toList
+    let (args', n) ← elabUList isTy rctx pctx next args.getElems.toList
     let name := c.getId.toString
     if Dllbc.Macro.isUpperInit name then
       return (← `(Dllbc.Term.ctorApp $(quote name) [$args',*]), n)
@@ -309,7 +236,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     match head with
     | `(uterm| $h:ident) =>
       let hs := h.getId.toString
-      let (argTerms, n) ← elabUList rctx pctx next args.toList
+      let (argTerms, n) ← elabUList isTy rctx pctx next args.toList
       if ctorSet.contains hs && (idxOf? pctx hs).isNone && (rctx.lookup hs).isNone then
         return (← `(Dllbc.Term.ctorApp $(quote hs) [$argTerms,*]), n)
       else
@@ -317,19 +244,19 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
         let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
         return (out, n)
     | _ => do
-      let (hterm, n0) ← elabUTerm rctx pctx next head
-      let (argTerms, n) ← elabUList rctx pctx n0 args.toList
+      let (hterm, n0) ← elabUTerm isTy rctx pctx next head
+      let (argTerms, n) ← elabUList isTy rctx pctx n0 args.toList
       let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm
       return (out, n)
   | `(uterm| $x:ident) => return (← resolveName rctx pctx x, next)
   | _ => Macro.throwErrorAt stx "decl: unexpected term syntax"
 
-partial def elabUList (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
+partial def elabUList (isTy : Bool) (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
     List (TSyntax `uterm) → MacroM (Array (TSyntax `term) × Nat)
   | [] => pure (#[], next)
   | a :: as => do
-    let (a', n1) ← elabUTerm rctx pctx next a
-    let (rest, n2) ← elabUList rctx pctx n1 as
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (rest, n2) ← elabUList isTy rctx pctx n1 as
     pure (#[a'] ++ rest, n2)
 
 partial def elabUArms (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
@@ -356,30 +283,42 @@ partial def elabUArmBody (rctx : List (String × Nat)) (pctx : List String) (nex
     (body : TSyntax `uarmBody) : MacroM (TSyntax `term × Nat) := do
   match body with
   | `(uarmBody| { $b:ublk }) => elabUBlk rctx pctx next b
-  | `(uarmBody| $e:uterm) => elabUTerm rctx pctx next e
+  | `(uarmBody| $e:uterm) => elabUTerm false rctx pctx next e
   | _ => Macro.throwErrorAt body "decl: unexpected arm body"
 
 partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
     (stx : TSyntax `ublk) : MacroM (TSyntax `term × Nat) := do
   match stx with
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
-    let (e', n1) ← elabUTerm rctx pctx next e
+    let (e', n1) ← elabUTerm false rctx pctx next e
     let name := x.getId.toString
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx (n1 + 1) rest
     return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
-    let (p', n1) ← elabUTerm rctx pctx next p
-    let (e', n2) ← elabUTerm rctx pctx n1 e
+    let (p', n1) ← elabUTerm false rctx pctx next p
+    let (e', n2) ← elabUTerm false rctx pctx n1 e
     let (rest', n3) ← elabUBlk rctx pctx n2 rest
     return (← `(Dllbc.Term.assign $p' $e' $rest'), n3)
   | `(ublk| $e:uterm ; $rest:ublk) => do
-    let (e', n1) ← elabUTerm rctx pctx next e
+    let (e', n1) ← elabUTerm false rctx pctx next e
     let (rest', n2) ← elabUBlk rctx pctx n1 rest
     return (← `(Dllbc.Term.seq $e' $rest'), n2)
-  | `(ublk| $e:uterm) => elabUTerm rctx pctx next e
+  | `(ublk| $e:uterm) => elabUTerm false rctx pctx next e
   | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
 
 end
+
+/-- Build the telescope entry syntaxes, threading the runtime-var context so that
+    parameter `i`'s type sees exactly params `0 .. i-1` (each at its positional
+    id) — the `seedTelescope` convention. Types elaborate in type mode (⇝). -/
+partial def buildTele (rctx : List (String × Nat)) (i : Nat) :
+    List (String × TSyntax `uterm) → MacroM (Array (TSyntax `term))
+  | [] => pure #[]
+  | (nm, τ) :: rest => do
+    let (τT, _) ← elabUTerm true rctx [] 0 τ
+    let entry ← `((($(quote nm), $τT) : String × Dllbc.Term))
+    let rest' ← buildTele (rctx ++ [(nm, i)]) (i + 1) rest
+    pure (#[entry] ++ rest')
 
 end DeclMacro
 
@@ -388,29 +327,29 @@ end DeclMacro
 declare_syntax_cat declParam
 declare_syntax_cat declBody
 
-syntax ident ":" dty : declParam
-syntax "{" ublk "}" : declBody              -- body: the unified `uterm`/`ublk` grammar
+syntax ident ":" uterm : declParam
+syntax "{" ublk "}" : declBody              -- body: the unified grammar in term mode
 syntax "=" "%" term : declBody              -- escape hatch: splice a raw `Term` body
 
-syntax "decl{" "fn" ident "(" declParam,* ")" "->" dty declBody "}" : term
-syntax "decl{" "fn" ident "(" declParam,* ")" "->" dty "back" "=" dty declBody "}" : term
+syntax "decl{" "fn" ident "(" declParam,* ")" "->" uterm declBody "}" : term
+syntax "decl{" "fn" ident "(" declParam,* ")" "->" uterm "back" "=" uterm declBody "}" : term
 
 namespace DeclMacro
 open Lean
 
 /-- Shared assembly: build the `Decl` term from its parsed pieces. -/
-def assemble (name : Ident) (params : Array (TSyntax `declParam)) (ret : TSyntax `dty)
-    (bk : Option (TSyntax `dty)) (body : TSyntax `declBody) : MacroM (TSyntax `term) := do
+def assemble (name : Ident) (params : Array (TSyntax `declParam)) (ret : TSyntax `uterm)
+    (bk : Option (TSyntax `uterm)) (body : TSyntax `declBody) : MacroM (TSyntax `term) := do
   let parsed ← params.toList.mapM fun (p : TSyntax `declParam) => match p with
-    | `(declParam| $x:ident : $τ:dty) => pure (x.getId.toString, τ)
+    | `(declParam| $x:ident : $τ:uterm) => pure (x.getId.toString, τ)
     | _ => Macro.throwErrorAt p "decl: malformed parameter (expected `x : τ`)"
   let names := parsed.map (·.1)
   let n := names.length
   let fullRctx : List (String × Nat) := names.zip (List.range n)
   let teleSyns ← buildTele [] 0 parsed                      -- each entry sees only earlier params
-  let retT ← elabDty fullRctx [] ret                        -- retType sees the whole telescope
+  let (retT, _) ← elabUTerm true fullRctx [] 0 ret          -- retType (type mode) sees the whole telescope
   let backT ← match bk with
-    | some b => do let bt ← elabDty fullRctx [] b; `(some $bt)
+    | some b => do let (bt, _) ← elabUTerm true fullRctx [] 0 b; `(some $bt)
     | none   => `((none : Option Dllbc.Term))
   let bodyT ← match body with                               -- unified `ublk` block, or a `%` splice
     | `(declBody| { $b:ublk }) => do let (t, _) ← elabUBlk fullRctx [] n b; pure t
@@ -425,9 +364,9 @@ end DeclMacro
 
 open DeclMacro in
 macro_rules
-  | `(decl{ fn $name:ident ( $params,* ) -> $ret:dty $body:declBody }) =>
+  | `(decl{ fn $name:ident ( $params,* ) -> $ret:uterm $body:declBody }) =>
     assemble name params.getElems ret none body
-  | `(decl{ fn $name:ident ( $params,* ) -> $ret:dty back = $bk:dty $body:declBody }) =>
+  | `(decl{ fn $name:ident ( $params,* ) -> $ret:uterm back = $bk:uterm $body:declBody }) =>
     assemble name params.getElems ret (some bk) body
 
 end Dllbc
