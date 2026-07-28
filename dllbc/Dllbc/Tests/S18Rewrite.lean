@@ -163,6 +163,18 @@ example : chk StdLemmas.list_ext StdLemmas.list_ext_ty = true := by native_decid
 example : chk StdLemmas.take_ext_bounded StdLemmas.take_ext_bounded_ty = true := by native_decide
 example : chk StdLemmas.len_drop_cong StdLemmas.len_drop_cong_ty = true := by native_decide
 example : chk StdLemmas.count_split StdLemmas.count_split_ty = true := by native_decide
+-- §22 M22-c step 3: segment-count preservation. The cancellation glue
+-- (count_rest/seg_preserved, seg_glue), the prefix/suffix list equalities from Step B
+-- locality, and THE GOALS: segCount survives the range sort and partition.
+example : chk StdLemmas.count_rest_preserved StdLemmas.count_rest_preserved_ty = true := by native_decide
+example : chk StdLemmas.count_seg_preserved StdLemmas.count_seg_preserved_ty = true := by native_decide
+example : chk StdLemmas.seg_glue StdLemmas.seg_glue_ty = true := by native_decide
+example : chk StdLemmas.take_lo_sort StdLemmas.take_lo_sort_ty = true := by native_decide
+example : chk StdLemmas.drop_suffix_sort StdLemmas.drop_suffix_sort_ty = true := by native_decide
+example : chk StdLemmas.take_lo_partition StdLemmas.take_lo_partition_ty = true := by native_decide
+example : chk StdLemmas.drop_suffix_partition StdLemmas.drop_suffix_partition_ty = true := by native_decide
+example : chk StdLemmas.segCount_sortRangeL StdLemmas.segCount_sortRangeL_ty = true := by native_decide
+example : chk StdLemmas.segCount_partitionRangeL StdLemmas.segCount_partitionRangeL_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

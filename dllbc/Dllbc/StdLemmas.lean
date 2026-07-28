@@ -1818,4 +1818,214 @@ def count_split_ty : Term := pure{
   Π (x : Nat) → Π (w : Nat) → Π (l : List Nat) →
     Id Nat (count x l) (add (count x (take w l)) (count x (drop w l))) }
 
+/-! ## Segment-count preservation — the perm-survival vehicle (§22, M22-c step 3)
+
+    The multiset half's payoff: sorting/partitioning a range preserves the multiset
+    OF THAT SEGMENT (segCount), so a positional bound over the segment survives the
+    permutation. The argument is pure cancellation: whole count is preserved
+    (count_sortRangeL / count_partitionRangeL), the prefix `take lo` and suffix
+    `drop cnt (drop lo)` are IDENTICAL lists (Step B locality lifted to list equality
+    via take_ext_bounded / list_ext + nth_drop), and
+
+        count x whole = count x prefix + (segment + suffix)
+
+    so with prefix and suffix counts equal on both sides, add_cancel_l twice (once
+    each side, add_comm to expose the operand) leaves segment counts equal — no
+    subtraction. `count_rest_preserved` / `count_seg_preserved` are the two directions
+    of that cancellation; `seg_glue` composes them; `take_lo_*` / `drop_suffix_*`
+    supply the list equalities from Step B. -/
+
+def count_rest_preserved : Term := pure{
+  λ (x : Nat). λ (w : Nat). λ (s : List Nat). λ (l : List Nat).
+    λ (hcount : Id Nat (count x s) (count x l)).
+    λ (hpre : Id Nat (count x (take w s)) (count x (take w l))).
+      add_cancel_l (count x (take w l)) (count x (drop w s)) (count x (drop w l))
+        (id_trans Nat
+          (add (count x (take w l)) (count x (drop w s)))
+          (count x l)
+          (add (count x (take w l)) (count x (drop w l)))
+          (id_trans Nat
+            (add (count x (take w l)) (count x (drop w s)))
+            (count x s)
+            (count x l)
+            (id_sym Nat (count x s) (add (count x (take w l)) (count x (drop w s)))
+              (id_trans Nat
+                (count x s)
+                (add (count x (take w s)) (count x (drop w s)))
+                (add (count x (take w l)) (count x (drop w s)))
+                (count_split x w s)
+                (id_congr Nat Nat (λ (n : Nat). add n (count x (drop w s)))
+                  (count x (take w s)) (count x (take w l)) hpre)))
+            hcount)
+          (count_split x w l)) }
+def count_rest_preserved_ty : Term := pure{
+  Π (x : Nat) → Π (w : Nat) → Π (s : List Nat) → Π (l : List Nat) →
+    Id Nat (count x s) (count x l) →
+    Id Nat (count x (take w s)) (count x (take w l)) →
+    Id Nat (count x (drop w s)) (count x (drop w l)) }
+
+def count_seg_preserved : Term := pure{
+  λ (x : Nat). λ (w : Nat). λ (s : List Nat). λ (l : List Nat).
+    λ (hcount : Id Nat (count x s) (count x l)).
+    λ (hdrop : Id Nat (count x (drop w s)) (count x (drop w l))).
+      add_cancel_l (count x (drop w l)) (count x (take w s)) (count x (take w l))
+        (id_trans Nat
+          (add (count x (drop w l)) (count x (take w s)))
+          (count x l)
+          (add (count x (drop w l)) (count x (take w l)))
+          (id_trans Nat
+            (add (count x (drop w l)) (count x (take w s)))
+            (count x s)
+            (count x l)
+            (id_sym Nat (count x s) (add (count x (drop w l)) (count x (take w s)))
+              (id_trans Nat
+                (count x s)
+                (add (count x (take w s)) (count x (drop w s)))
+                (add (count x (drop w l)) (count x (take w s)))
+                (count_split x w s)
+                (id_trans Nat
+                  (add (count x (take w s)) (count x (drop w s)))
+                  (add (count x (take w s)) (count x (drop w l)))
+                  (add (count x (drop w l)) (count x (take w s)))
+                  (id_congr Nat Nat (λ (n : Nat). add (count x (take w s)) n)
+                    (count x (drop w s)) (count x (drop w l)) hdrop)
+                  (add_comm (count x (take w s)) (count x (drop w l))))))
+            hcount)
+          (id_trans Nat
+            (count x l)
+            (add (count x (take w l)) (count x (drop w l)))
+            (add (count x (drop w l)) (count x (take w l)))
+            (count_split x w l)
+            (add_comm (count x (take w l)) (count x (drop w l))))) }
+def count_seg_preserved_ty : Term := pure{
+  Π (x : Nat) → Π (w : Nat) → Π (s : List Nat) → Π (l : List Nat) →
+    Id Nat (count x s) (count x l) →
+    Id Nat (count x (drop w s)) (count x (drop w l)) →
+    Id Nat (count x (take w s)) (count x (take w l)) }
+
+def seg_glue : Term := pure{
+  λ (x : Nat). λ (lo : Nat). λ (cnt : Nat). λ (s : List Nat). λ (l : List Nat).
+    λ (hcount : Id Nat (count x s) (count x l)).
+    λ (hpre : Id (List Nat) (take lo s) (take lo l)).
+    λ (hsuf : Id (List Nat) (drop cnt (drop lo s)) (drop cnt (drop lo l))).
+      count_seg_preserved x cnt (drop lo s) (drop lo l)
+        (count_rest_preserved x lo s l hcount
+          (id_congr (List Nat) Nat (λ (ll : List Nat). count x ll) (take lo s) (take lo l) hpre))
+        (id_congr (List Nat) Nat (λ (ll : List Nat). count x ll) (drop cnt (drop lo s)) (drop cnt (drop lo l)) hsuf) }
+def seg_glue_ty : Term := pure{
+  Π (x : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (s : List Nat) → Π (l : List Nat) →
+    Id Nat (count x s) (count x l) →
+    Id (List Nat) (take lo s) (take lo l) →
+    Id (List Nat) (drop cnt (drop lo s)) (drop cnt (drop lo l)) →
+    Id Nat (count x (take cnt (drop lo s))) (count x (take cnt (drop lo l))) }
+
+-- Prefix/suffix of the SORT are identical (Step B locality → list equality).
+def take_lo_sort : Term := pure{
+  λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    take_ext_bounded lo (sortRangeL fuel lo cnt l) l
+      (len_sortRangeL fuel lo cnt l)
+      (λ (k : Nat). λ (hk : Le (S k) lo). nth_sortRangeL_lt fuel k lo cnt l hk) }
+def take_lo_sort_ty : Term := pure{
+  Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Id (List Nat) (take lo (sortRangeL fuel lo cnt l)) (take lo l) }
+
+def drop_suffix_sort : Term := pure{
+  λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    list_ext (drop cnt (drop lo (sortRangeL fuel lo cnt l))) (drop cnt (drop lo l))
+      (len_drop_cong cnt (drop lo (sortRangeL fuel lo cnt l)) (drop lo l)
+        (len_drop_cong lo (sortRangeL fuel lo cnt l) l (len_sortRangeL fuel lo cnt l)))
+      (λ (k : Nat).
+        id_trans Nat
+          (nth k (drop cnt (drop lo (sortRangeL fuel lo cnt l))))
+          (nth (add lo (add cnt k)) (sortRangeL fuel lo cnt l))
+          (nth k (drop cnt (drop lo l)))
+          (id_trans Nat
+            (nth k (drop cnt (drop lo (sortRangeL fuel lo cnt l))))
+            (nth (add cnt k) (drop lo (sortRangeL fuel lo cnt l)))
+            (nth (add lo (add cnt k)) (sortRangeL fuel lo cnt l))
+            (nth_drop cnt k (drop lo (sortRangeL fuel lo cnt l)))
+            (nth_drop lo (add cnt k) (sortRangeL fuel lo cnt l)))
+          (id_trans Nat
+            (nth (add lo (add cnt k)) (sortRangeL fuel lo cnt l))
+            (nth (add lo (add cnt k)) l)
+            (nth k (drop cnt (drop lo l)))
+            (nth_sortRangeL_ge fuel (add lo (add cnt k)) lo cnt l
+              (le_add_mono_l lo cnt (add cnt k) (le_add cnt k)))
+            (id_trans Nat
+              (nth (add lo (add cnt k)) l)
+              (nth (add cnt k) (drop lo l))
+              (nth k (drop cnt (drop lo l)))
+              (id_sym Nat (nth (add cnt k) (drop lo l)) (nth (add lo (add cnt k)) l) (nth_drop lo (add cnt k) l))
+              (id_sym Nat (nth k (drop cnt (drop lo l))) (nth (add cnt k) (drop lo l)) (nth_drop cnt k (drop lo l)))))) }
+def drop_suffix_sort_ty : Term := pure{
+  Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Id (List Nat) (drop cnt (drop lo (sortRangeL fuel lo cnt l))) (drop cnt (drop lo l)) }
+
+-- Prefix/suffix of PARTITION are identical (same shape).
+def take_lo_partition : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    take_ext_bounded lo (partitionRangeL lo cnt l) l
+      (len_partitionRangeL lo cnt l)
+      (λ (k : Nat). λ (hk : Le (S k) lo). nth_partitionRangeL_lt lo k hk cnt l) }
+def take_lo_partition_ty : Term := pure{
+  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Id (List Nat) (take lo (partitionRangeL lo cnt l)) (take lo l) }
+
+def drop_suffix_partition : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    list_ext (drop cnt (drop lo (partitionRangeL lo cnt l))) (drop cnt (drop lo l))
+      (len_drop_cong cnt (drop lo (partitionRangeL lo cnt l)) (drop lo l)
+        (len_drop_cong lo (partitionRangeL lo cnt l) l (len_partitionRangeL lo cnt l)))
+      (λ (k : Nat).
+        id_trans Nat
+          (nth k (drop cnt (drop lo (partitionRangeL lo cnt l))))
+          (nth (add lo (add cnt k)) (partitionRangeL lo cnt l))
+          (nth k (drop cnt (drop lo l)))
+          (id_trans Nat
+            (nth k (drop cnt (drop lo (partitionRangeL lo cnt l))))
+            (nth (add cnt k) (drop lo (partitionRangeL lo cnt l)))
+            (nth (add lo (add cnt k)) (partitionRangeL lo cnt l))
+            (nth_drop cnt k (drop lo (partitionRangeL lo cnt l)))
+            (nth_drop lo (add cnt k) (partitionRangeL lo cnt l)))
+          (id_trans Nat
+            (nth (add lo (add cnt k)) (partitionRangeL lo cnt l))
+            (nth (add lo (add cnt k)) l)
+            (nth k (drop cnt (drop lo l)))
+            (nth_partitionRangeL_ge lo (add lo (add cnt k)) cnt l
+              (le_add_mono_l lo cnt (add cnt k) (le_add cnt k)))
+            (id_trans Nat
+              (nth (add lo (add cnt k)) l)
+              (nth (add cnt k) (drop lo l))
+              (nth k (drop cnt (drop lo l)))
+              (id_sym Nat (nth (add cnt k) (drop lo l)) (nth (add lo (add cnt k)) l) (nth_drop lo (add cnt k) l))
+              (id_sym Nat (nth k (drop cnt (drop lo l))) (nth (add cnt k) (drop lo l)) (nth_drop cnt k (drop lo l)))))) }
+def drop_suffix_partition_ty : Term := pure{
+  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Id (List Nat) (drop cnt (drop lo (partitionRangeL lo cnt l))) (drop cnt (drop lo l)) }
+
+-- THE GOALS: the segment multiset survives the range sort and partition.
+def segCount_sortRangeL : Term := pure{
+  λ (x : Nat). λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    λ (hb : Le (add lo cnt) (len l)).
+      seg_glue x lo cnt (sortRangeL fuel lo cnt l) l
+        (count_sortRangeL x fuel lo cnt l hb)
+        (take_lo_sort fuel lo cnt l)
+        (drop_suffix_sort fuel lo cnt l) }
+def segCount_sortRangeL_ty : Term := pure{
+  Π (x : Nat) → Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Le (add lo cnt) (len l) →
+    Id Nat (segCount x lo cnt (sortRangeL fuel lo cnt l)) (segCount x lo cnt l) }
+
+def segCount_partitionRangeL : Term := pure{
+  λ (x : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    λ (hb : Le (add lo cnt) (len l)).
+      seg_glue x lo cnt (partitionRangeL lo cnt l) l
+        (count_partitionRangeL lo x cnt l hb)
+        (take_lo_partition lo cnt l)
+        (drop_suffix_partition lo cnt l) }
+def segCount_partitionRangeL_ty : Term := pure{
+  Π (x : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+    Le (add lo cnt) (len l) →
+    Id Nat (segCount x lo cnt (partitionRangeL lo cnt l)) (segCount x lo cnt l) }
+
 end Dllbc.StdLemmas
