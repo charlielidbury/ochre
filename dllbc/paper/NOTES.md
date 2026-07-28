@@ -110,3 +110,11 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
     commit 4987cd4e — division stated in-figure]. Remaining: promote F5's and F2's figure-local judgment helpers
     to style.typ; fix style.typ's angle→chevron deprecations; F3's ⇜-reach box
     already includes selfBack (F5's 5-tuple glosses it) — verify consistency.
+
+## Prose-wave integration items (from W1's report)
+22. Wire section @-refs and bibliography cites once refs.bib lands (W1
+    deliberately used prose names for later sections and no @cite — correct
+    for isolated compiles). Unify the *[Status: …]* tag styling.
+23. Model-name check RESOLVED: `sortRangeL` (the index-bounded model) IS the
+    green headline model — W1's usage is correct; PROGRESS's older `sortL`
+    naming refers to the superseded take/drop spec-level model.
