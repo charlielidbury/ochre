@@ -193,6 +193,13 @@ example : chk StdLemmas.segCount_partitionRangeL StdLemmas.segCount_partitionRan
 example : chk StdLemmas.nth_set_lt StdLemmas.nth_set_lt_ty = true := by native_decide
 example : chk StdLemmas.nth_swapL_mid StdLemmas.nth_swapL_mid_ty = true := by native_decide
 example : chk StdLemmas.partScanRangeL_pivot StdLemmas.partScanRangeL_pivot_ty = true := by native_decide
+-- §22 M22-c step 2: region-invariant growth/transport toolkit (consumed by the allLeR/
+-- allGtR proofs): extend at the far end (leb/antisym decision), prepend the pivot,
+-- transport across a pointwise nth-equality, and the index↔offset add-order bridge.
+example : chk StdLemmas.allLeR_extend_far StdLemmas.allLeR_extend_far_ty = true := by native_decide
+example : chk StdLemmas.allLeR_extend_lo StdLemmas.allLeR_extend_lo_ty = true := by native_decide
+example : chk StdLemmas.allLeR_cong StdLemmas.allLeR_cong_ty = true := by native_decide
+example : chk StdLemmas.add_swap_succ StdLemmas.add_swap_succ_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

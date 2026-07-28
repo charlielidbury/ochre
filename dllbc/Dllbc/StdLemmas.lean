@@ -1275,6 +1275,69 @@ def le_antisym : Term := pure{
             id_congr Nat Nat (λ (n : Nat). S n) a' b' (ih b' h1 h2) } } }
 def le_antisym_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → Le b a → Id Nat a b }
 
+/-! ## AllLeR growth/transport helpers — the region-invariant toolkit (§22, M22-c step 2)
+
+    The partition-invariant proofs thread an AllLeR precondition that GROWS each scan
+    step. `allLeR_extend_far` appends the newly-tested ≤-element at the far end — the
+    only place the `m<w` vs `m=w` decision is needed, discharged by leb (remember
+    scrutinee) + leb_true_le/leb_false_gt + le_antisym. `allLeR_extend_lo` prepends the
+    pivot at position lo, absorbing the index-first offset shift `add m (S lo) = add (S
+    m) lo` (add_succ). `allLeR_cong` transports an AllLeR across a pointwise nth-equality
+    (fed by the swap-locality lemmas). `add_swap_succ` bridges index-first `add a (S b)`
+    to `add b (S a)` — the recurring predicate↔model add-order glue. -/
+
+def allLeR_extend_far : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (h : AllLeR w lo p l). λ (hnew : Le (nth (add w lo) l) p).
+    λ (m : Nat).
+      elim (leb (S m) w) return (λ (b : Bool). Id Bool (leb (S m) w) b → Le (S m) (S w) → Le (nth (add m lo) l) p) {
+        True => λ (e : Id Bool (leb (S m) w) True). λ (hm : Le (S m) (S w)). h m (leb_true_le (S m) w e),
+        False => λ (e : Id Bool (leb (S m) w) False). λ (hm : Le (S m) (S w)).
+          le_rw_l p (nth (add w lo) l) (nth (add m lo) l)
+            (id_congr Nat Nat (λ (q : Nat). nth q l) (add w lo) (add m lo)
+              (id_congr Nat Nat (λ (z : Nat). add z lo) w m (id_sym Nat m w (le_antisym m w hm (leb_false_gt (S m) w e)))))
+            hnew
+      } Refl }
+def allLeR_extend_far_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    AllLeR w lo p l → Le (nth (add w lo) l) p → AllLeR (S w) lo p l }
+
+def allLeR_extend_lo : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (h0 : Le (nth lo l) p). λ (h : AllLeR w (S lo) p l).
+    λ (m : Nat).
+      elim m return (λ (mz : Nat). Le (S mz) (S w) → Le (nth (add mz lo) l) p) {
+        Z => λ (hm : Le (S Z) (S w)). h0,
+        S (m') mih => λ (hm : Le (S (S m')) (S w)).
+          le_rw_l p (nth (add m' (S lo)) l) (nth (add (S m') lo) l)
+            (id_congr Nat Nat (λ (q : Nat). nth q l) (add m' (S lo)) (add (S m') lo) (add_succ m' lo))
+            (h m' hm) } }
+def allLeR_extend_lo_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    Le (nth lo l) p → AllLeR w (S lo) p l → AllLeR (S w) lo p l }
+
+def allLeR_cong : Term := pure{
+  λ (w : Nat). λ (off : Nat). λ (p : Nat). λ (l : List Nat). λ (l' : List Nat).
+    λ (heq : Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)).
+    λ (h : AllLeR w off p l).
+    λ (m : Nat). λ (hm : Le (S m) w).
+      le_rw_l p (nth (add m off) l) (nth (add m off) l')
+        (id_sym Nat (nth (add m off) l') (nth (add m off) l) (heq m hm))
+        (h m hm) }
+def allLeR_cong_ty : Term := pure{
+  Π (w : Nat) → Π (off : Nat) → Π (p : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
+    (Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)) →
+    AllLeR w off p l → AllLeR w off p l' }
+
+def add_swap_succ : Term := pure{
+  λ (a : Nat). λ (b : Nat).
+    id_trans Nat (add a (S b)) (S (add a b)) (add b (S a))
+      (add_succ a b)
+      (id_trans Nat (S (add a b)) (S (add b a)) (add b (S a))
+        (id_congr Nat Nat (λ (z : Nat). S z) (add a b) (add b a) (add_comm a b))
+        (id_sym Nat (add b (S a)) (S (add b a)) (add_succ b a))) }
+def add_swap_succ_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a (S b)) (add b (S a)) }
+
 -- Left cancellation (Le (add a b)(add a c) → Le b c) — the glue's pivot-right case
 -- derives g ≥ 1 (Le (S Z) g) from the range bound Le (S i)(add i g) by cancelling i
 -- (after bridging S i = add i (S Z) via add_succ/add_zero). Induction on a.
