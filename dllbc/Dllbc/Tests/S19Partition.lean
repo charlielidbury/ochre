@@ -605,7 +605,7 @@ example : runScan [5,3,8,1,9,2] 5 5 = true := by native_decide   -- mixed, multi
 
 def partitionQ : Decl :=
   decl{ fn partitionQ (v : &mut List Nat, n : Nat, hlenW : Id Nat (len *v) n)
-        -> Σ (q : Nat). Id Nat q (partIdxL n (*v))
+        -> Σ (q : Nat). Id Nat q (partIdxL n (old *v))
         back = partitionL n (*v)
         { match n {
             Z => Pair(Z, Refl),
@@ -632,7 +632,7 @@ def partitionQ : Decl :=
 
 def partitionRange : Decl :=
   decl{ fn partitionRange (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
-        -> Σ (q : Nat). Id Nat q (partIdxRangeL lo cnt (*v))
+        -> Σ (q : Nat). Id Nat q (partIdxRangeL lo cnt (old *v))
         back = partitionRangeL lo cnt (*v)
         { match cnt {
             Z => Pair(Z, Refl),
@@ -814,6 +814,39 @@ def qsSpcCaller : Decl := decl{ fn qsSpc () -> Unit = %qsSpcBody }
 example : (match runFn [nthS, nth2S, swapSN, partScanRange, quicksort, qsSpcCaller] qsSpcCaller with
   | [.ok env] => env.lookup "y" == some (pv (sortRangeLT 3 0 3 [3,1,2]))
   | _ => false) = true := by native_decide
+
+/-! ## M22-a — exit-snapshot return types + `old *v` (§5.4, direct-proving enabler)
+
+    A borrow parameter's bare `*v` in the RETURN TYPE reads the EXIT snapshot (the
+    collapsed final payload, which the audit already computes); `old *v` names the
+    ENTRY snapshot (usable in the type AND the body, a non-consuming reference to
+    the entry value). Consumed params stay entry-pinned (M12). These prove the
+    reading is genuinely the exit value, not the entry. -/
+
+-- ACCEPTED: after the swap, *v (exit) IS swapL i j (old *v). Refl checks only
+-- because bare *v reads the EXIT value; the body's proof cites `old *v` for the entry.
+def exitAccept : Decl :=
+  decl{ fn exitAccept (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+        -> Id (List Nat) (*v) (swapL i j (old *v))
+        { swapS(&mut *v, i, j, pij, p2); Refl } }
+example : checkFnOk exitAccept [nthS, nth2S, swapSN, exitAccept] = true := by native_decide
+
+-- REJECTED: claiming *v (exit) = old *v (entry) is false — the body mutated *v.
+-- (If bare *v still read the ENTRY, this would wrongly pass — the negative guard.)
+def exitReject : Decl :=
+  decl{ fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+        -> Id (List Nat) (*v) (old *v)
+        { swapS(&mut *v, i, j, pij, p2); Refl } }
+example : checkFnErr exitReject "does not have return type" [nthS, nth2S, swapSN, exitReject] = true := by native_decide
+
+-- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = swapL i j (old *v),
+-- so `len *v = len (old *v)` is exactly len_swapL at the entry snapshot — cited
+-- directly with `old *v` in the body (no need to save the list, which would move it).
+def lenPreserve : Decl :=
+  decl{ fn lenPreserve (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+        -> Id Nat (len (*v)) (len (old *v))
+        { swapS(&mut *v, i, j, pij, p2); len_swapL i j (old *v) } }
+example : checkFnOk lenPreserve [nthS, nth2S, swapSN, lenPreserve] = true := by native_decide
 
 -- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
 -- reborrows *v twice in sequence for two recursive calls. This only checks

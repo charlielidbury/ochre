@@ -115,6 +115,18 @@ structure St where
       `none` for a borrow-returning body, whose owed type is read at return
       against the surrendered payload. -/
   retTyVal : Option Val := none
+  /-- §5.4 exit-snapshot: per borrow parameter `v` (by var id), a fresh σ that
+      the transformed return type pins a bare `*v` to. It lives ONLY here and in
+      the pinned `retTyVal` — never in `sctx`/`obligations` — until the audit
+      DEFINES it by substituting the borrow's collapsed final payload (a dedicated
+      audit-local pass, not `refineSym`, so ⇜ stays knowledge-only). `old *v` pins
+      to the entry σ instead and is untouched by that substitution. -/
+  exitSyms : List (Nat × Nat) := []
+  /-- §5.4 `old *v`: per borrow param (by var id), the ENTRY-payload σ minted at
+      seed. `reflectC` resolves `old *v` to it in BOTH the return type and the body
+      — a non-consuming snapshot reference to the entry value, which after the body
+      mutates `v` is no longer `*v`'s live payload. Never substituted by the audit. -/
+  entrySyms : List (Nat × Nat) := []
   /-- §6.2: this function's OWN declared backward spec, reflected at entry (over
       the telescope snapshots). The callee audit checks the body against it — the
       captured borrow's payload-with-issued-holes must convert with the spec
@@ -635,6 +647,21 @@ mutual
     | .pi d c => do pure (.pi (← reflectC d) (← reflectC c))
     | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
     | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
+    -- §5.4 exit-snapshot marker: `markExit` stamps a bare borrow-param `*v` in a
+    -- return type as `@exit(*v)`; here it pins to that borrow's fresh σ_exit (the
+    -- audit later defines it as the collapsed final payload). Unmarked bare `*v`
+    -- and `old *v` both fall to the plain `.deref` read (the entry snapshot).
+    | .app (.const "@exit") (.deref (.var v)) => do
+      match (← get).exitSyms.lookup v.id with
+      | some σ => pure (.sym σ)
+      | none => reflectC (.deref (.var v))
+    -- §5.4 `old *v`: the ENTRY snapshot σ (recorded at seed) — a non-consuming read
+    -- of the entry value, in the return type OR the body (where `*v`'s live payload
+    -- has since been mutated). Falls back to the live deref outside a borrow-param.
+    | .app (.const "old") (.deref (.var v)) => do
+      match (← get).entrySyms.lookup v.id with
+      | some σ => pure (.sym σ)
+      | none => reflectC (.deref (.var v))
     | .app f a => do pure (.app (← reflectC f) (← reflectC a))
     | .idT a b c => do pure (.idT (← reflectC a) (← reflectC b) (← reflectC c))
     | .unit => pure (.ctor "unit" [])

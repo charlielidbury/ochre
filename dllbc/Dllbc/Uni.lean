@@ -90,6 +90,7 @@ syntax:max "(" uterm ")" : uterm                             -- grouping
 syntax:max "Type" : uterm
 syntax:max "%" term:max : uterm                              -- splice a Lean `Term`
 syntax:max "*" uterm:max : uterm                            -- deref / peel
+syntax:max "old" "*" uterm:max : uterm                      -- §5.4 old *v: entry snapshot of a borrow-param deref
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
 syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
 syntax:70 "&mut" uterm:65 : uterm                            -- &mut e : borrow (term) / borrowT (type)
@@ -185,6 +186,12 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   | `(uterm| Type) => return (← `(Dllbc.Term.type), next)
   | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)), next)
   | `(uterm| $n:num) => return (← Dllbc.Macro.buildNat n.getNat, next)
+  | `(uterm| old * $e:uterm) => do
+    -- §5.4 `old *v`: the ENTRY snapshot, sugar over the telescope's existing
+    -- payload snapshot. Elaborates to `@old(*v)`; `markExit` strips the marker to
+    -- a plain `*v` read at seed (entry), so it never reaches the kernel.
+    let (e', n) ← elabUTerm isTy rctx pctx next e
+    return (← `(Dllbc.Term.app (Dllbc.Term.const "old") (Dllbc.Term.deref $e')), n)
   | `(uterm| * $e:uterm) => do
     let (e', n) ← elabUTerm isTy rctx pctx next e
     return (← `(Dllbc.Term.deref $e'), n)

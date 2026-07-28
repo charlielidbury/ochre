@@ -37,7 +37,8 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       let σ ← freshSym
       let ℓ ← freshLoan
       bindSlot x (.borrowM ℓ (.sym σ))
-      modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+      -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
+      modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
       pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
@@ -242,9 +243,22 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         | none => pure ()
     -- The return type was pinned at entry (§5.3 dependent types over consumed
     -- params); fall back to reading it here only if it was never pinned.
-    let retTy ← match (← get).retTyVal with
+    let retTy0 ← match (← get).retTyVal with
       | some v => pure v
       | none => readC fuel retType
+    -- §5.4 exit-snapshot: DEFINE each borrow's σ_exit as its collapsed final
+    -- payload — a bare `*v` in the return type thus reads the EXIT value. This is a
+    -- dedicated audit-local substitution (plain substSym over retTy), NOT refineSym:
+    -- σ_exit is a fresh name being defined here, so no mutation result ever flows
+    -- through ⇜'s knowledge channel and the §3.2 assertion is unconcerned.
+    let exits := (← get).exitSyms
+    let retTy ← obs.foldlM (fun acc ob =>
+      match exits.lookup ob.arg.id with
+      | none => pure acc
+      | some σ => do
+        match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
+        | some payload => pure (Val.nfV fuel (substSym σ payload acc))
+        | none => pure acc) retTy0
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
 
@@ -271,6 +285,37 @@ def hasBorrowT : Term → Bool
   | .idT a b c => hasBorrowT a || hasBorrowT b || hasBorrowT c
   | _ => false
 
+-- §5.4 exit-snapshot transform on a RETURN TYPE. A bare borrow-parameter `*v`
+-- (`v.id ∈ borrowIds`) is stamped `@exit(*v)` — it pins to that borrow's σ_exit,
+-- which the audit defines as the EXIT (collapsed final) payload. `old *v` is
+-- stripped to a plain `*v` read — the ENTRY snapshot (`old` never survives to the
+-- kernel; it is exactly the pre-existing telescope snapshot). Non-borrow derefs
+-- and consumed-param references are untouched (they keep the entry-pinned reading,
+-- the M12 fix). Types only — `letIn`/`match`/etc. fall through unchanged.
+mutual
+  def markExit (borrowIds : List Nat) : Term → Term
+    | .deref (.var v) =>
+      if borrowIds.contains v.id then .app (.const "@exit") (.deref (.var v)) else .deref (.var v)
+    | .deref t => .deref (markExit borrowIds t)
+    | .app (.const "old") (.deref (.var v)) => .app (.const "old") (.deref (.var v))  -- leave `old *v`; reflectC → entry σ
+    | .app f a => .app (markExit borrowIds f) (markExit borrowIds a)
+    | .ctorApp n args => .ctorApp n (markExitList borrowIds args)
+    | .pi d c => .pi (markExit borrowIds d) (markExit borrowIds c)
+    | .sigmaT d c => .sigmaT (markExit borrowIds d) (markExit borrowIds c)
+    | .lam d b => .lam (markExit borrowIds d) (markExit borrowIds b)
+    | .idT a b c => .idT (markExit borrowIds a) (markExit borrowIds b) (markExit borrowIds c)
+    | t => t
+  termination_by t => sizeOf t
+  def markExitList (borrowIds : List Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => markExit borrowIds t :: markExitList borrowIds ts
+  termination_by ts => sizeOf ts
+end
+
+/-- The telescope's borrow-parameter var ids (param `i` gets var id `i`). -/
+def borrowParamIds (telescope : List (String × Term)) : List Nat :=
+  telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ => some i | _ => none)
+
 /-- Check a function declaration end-to-end: seed the telescope, explore the
     body (one path per symbolic branch), audit each path at return. `table` is
     the function context calls resolve against (signature-only, §5.3) — it
@@ -282,9 +327,16 @@ def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
   -- borrow-carrying return is not pinned (it is audited structurally instead).
   let seed : M (List Obligation) := do
     let obs ← seedTelescope defaultFuel 0 decl.telescope
+    -- §5.4 exit-snapshot: mint one σ_exit per borrow param and record it (ONLY in
+    -- exitSyms — never sctx/obligations — until the audit defines it). The return
+    -- type is `markExit`-transformed so a bare `*v` pins to σ_exit and `old *v` to
+    -- the entry σ, before the entry pin.
+    let borrowIds := borrowParamIds decl.telescope
+    let exits ← borrowIds.mapM (fun i => do pure (i, ← freshSym))
+    modify (fun s => { s with exitSyms := exits })
     if hasBorrowT decl.retType then pure ()
     else do
-      let rv ← readC defaultFuel decl.retType
+      let rv ← readC defaultFuel (markExit borrowIds decl.retType)
       modify (fun s => { s with retTyVal := some rv })
     -- §6.2: reflect this fn's own declared backward spec over the seeded
     -- telescope snapshots, so the callee audit can check the body against it.
