@@ -153,6 +153,16 @@ example : chk StdLemmas.partSizeCnt StdLemmas.partSizeCnt_ty = true := by native
 example : chk StdLemmas.sortRangeGeBL StdLemmas.sortRangeGeBL_ty = true := by native_decide
 example : chk StdLemmas.sortRangeGeBR StdLemmas.sortRangeGeBR_ty = true := by native_decide
 example : chk StdLemmas.nth_sortRangeL_ge StdLemmas.nth_sortRangeL_ge_ty = true := by native_decide
+-- §22 Step C bridges: Nat no-confusion (Z≠S via large elim into Type), s_inj,
+-- add_cancel_l, nth_drop, list_ext, take_ext_bounded, len_drop_cong, count_split.
+example : chk StdLemmas.znots StdLemmas.znots_ty = true := by native_decide
+example : chk StdLemmas.s_inj StdLemmas.s_inj_ty = true := by native_decide
+example : chk StdLemmas.add_cancel_l StdLemmas.add_cancel_l_ty = true := by native_decide
+example : chk StdLemmas.nth_drop StdLemmas.nth_drop_ty = true := by native_decide
+example : chk StdLemmas.list_ext StdLemmas.list_ext_ty = true := by native_decide
+example : chk StdLemmas.take_ext_bounded StdLemmas.take_ext_bounded_ty = true := by native_decide
+example : chk StdLemmas.len_drop_cong StdLemmas.len_drop_cong_ty = true := by native_decide
+example : chk StdLemmas.count_split StdLemmas.count_split_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 

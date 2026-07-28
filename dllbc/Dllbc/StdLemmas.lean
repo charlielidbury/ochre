@@ -1687,4 +1687,135 @@ def nth_sortRangeL_ge_ty : Term := pure{
   Π (fuel : Nat) → Π (q : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) q → Id Nat (nth q (sortRangeL fuel lo cnt l)) (nth q l) }
 
+/-! ## Reusable bridges — cancellation, no-confusion, list/take/drop extensionality (§22)
+
+    The general-purpose stratum Step C's segCount preservation stands on. Two are
+    the classical Nat "no confusion + cancellation" primitives; the rest bridge the
+    positional (nth) view to the segment (take/drop) view.
+
+    - `znots` : `Z ≠ S` via a LARGE elimination into `Type` (`elim y {Z => Unit, S =>
+      Bot}`), transported by `j`. This is the discriminator list-extensionality needs
+      to kill Nil-vs-Cons length mismatches — and it type-checks (the M5 λ/neutral
+      deferral does not bite an APPLIED large elim).
+    - `s_inj` : `S` injective, one `id_congr` with `pred`.
+    - `add_cancel_l` : left cancellation, induction on `a` peeling `s_inj`.
+    - `nth_drop` : `nth k (drop b l) = nth (add b k) l` (the positional reading of drop).
+    - `list_ext` : equal length + equal `nth` everywhere ⟹ equal lists (needs znots + s_inj).
+    - `take_ext_bounded` : `take w a = take w b` from equal length + `nth` agreeing
+      BELOW w — the bounded form fed directly by `nth_*_lt` (no case split on k).
+    - `len_drop_cong` : dropping preserves a length equality.
+    - `count_split` : `count x l = count x (take w l) + count x (drop w l)` (count_append ∘ take_drop_id). -/
+
+def znots : Term := pure{
+  λ (x : Nat). λ (h : Id Nat Z (S x)).
+    j Nat Z (λ (y : Nat). λ (hy : Id Nat Z y). elim y return (λ (yy : Nat). Type) { Z => Unit, S (k) ih => Bot })
+      unit (S x) h }
+def znots_ty : Term := pure{ Π (x : Nat) → Id Nat Z (S x) → Bot }
+
+def pred : Term := pure{ λ (n : Nat). elim n return (λ (z : Nat). Nat) { Z => Z, S (k) ih => k } }
+def s_inj : Term := pure{
+  λ (m : Nat). λ (n : Nat). λ (h : Id Nat (S m) (S n)).
+    id_congr Nat Nat pred (S m) (S n) h }
+def s_inj_ty : Term := pure{ Π (m : Nat) → Π (n : Nat) → Id Nat (S m) (S n) → Id Nat m n }
+
+def add_cancel_l : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Π (x : Nat) → Π (y : Nat) → Id Nat (add az x) (add az y) → Id Nat x y) {
+      Z => λ (x : Nat). λ (y : Nat). λ (h : Id Nat (add Z x) (add Z y)). h,
+      S (a') ih => λ (x : Nat). λ (y : Nat). λ (h : Id Nat (add (S a') x) (add (S a') y)).
+        ih x y (s_inj (add a' x) (add a' y) h) } }
+def add_cancel_l_ty : Term := pure{
+  Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat (add a x) (add a y) → Id Nat x y }
+
+def nth_drop : Term := pure{
+  λ (b : Nat).
+    elim b return (λ (bz : Nat). Π (k : Nat) → Π (l : List Nat) → Id Nat (nth k (drop bz l)) (nth (add bz k) l)) {
+      Z => λ (k : Nat). λ (l : List Nat). Refl,
+      S (b') ih => λ (k : Nat). λ (l : List Nat).
+        elim l return (λ (lz : List Nat). Id Nat (nth k (drop (S b') lz)) (nth (add (S b') k) lz)) {
+          Nil => elim k return (λ (kz : Nat). Id Nat (nth kz (drop (S b') Nil)) (nth (add (S b') kz) Nil)) {
+            Z => Refl, S (k') kih => Refl },
+          Cons (h) (t) ihl => ih k t } } }
+def nth_drop_ty : Term := pure{
+  Π (b : Nat) → Π (k : Nat) → Π (l : List Nat) → Id Nat (nth k (drop b l)) (nth (add b k) l) }
+
+def list_ext : Term := pure{
+  λ (a : List Nat).
+    elim a return (λ (az : List Nat). Π (b : List Nat) → Id Nat (len az) (len b) → (Π (k : Nat) → Id Nat (nth k az) (nth k b)) → Id (List Nat) az b) {
+      Nil => λ (b : List Nat).
+        elim b return (λ (bz : List Nat). Id Nat (len Nil) (len bz) → (Π (k : Nat) → Id Nat (nth k Nil) (nth k bz)) → Id (List Nat) Nil bz) {
+          Nil => λ (hlen : Id Nat (len Nil) (len Nil)). λ (hnth : Π (k : Nat) → Id Nat (nth k Nil) (nth k Nil)). Refl,
+          Cons (hb) (tb) ihb => λ (hlen : Id Nat (len Nil) (len (Cons hb tb))). λ (hnth : Π (k : Nat) → Id Nat (nth k Nil) (nth k (Cons hb tb))).
+            botElim (Id (List Nat) Nil (Cons hb tb)) (znots (len tb) hlen) },
+      Cons (ha) (ta) iha => λ (b : List Nat).
+        elim b return (λ (bz : List Nat). Id Nat (len (Cons ha ta)) (len bz) → (Π (k : Nat) → Id Nat (nth k (Cons ha ta)) (nth k bz)) → Id (List Nat) (Cons ha ta) bz) {
+          Nil => λ (hlen : Id Nat (len (Cons ha ta)) (len Nil)). λ (hnth : Π (k : Nat) → Id Nat (nth k (Cons ha ta)) (nth k Nil)).
+            botElim (Id (List Nat) (Cons ha ta) Nil) (znots (len ta) (id_sym Nat (len (Cons ha ta)) (len Nil) hlen)),
+          Cons (hb) (tb) ihb => λ (hlen : Id Nat (len (Cons ha ta)) (len (Cons hb tb))). λ (hnth : Π (k : Nat) → Id Nat (nth k (Cons ha ta)) (nth k (Cons hb tb))).
+            id_trans (List Nat) (Cons ha ta) (Cons hb ta) (Cons hb tb)
+              (id_congr Nat (List Nat) (λ (hh : Nat). Cons hh ta) ha hb (hnth Z))
+              (id_congr (List Nat) (List Nat) (λ (tt : List Nat). Cons hb tt) ta tb
+                (iha tb (s_inj (len ta) (len tb) hlen) (λ (k : Nat). hnth (S k)))) } } }
+def list_ext_ty : Term := pure{
+  Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) →
+    (Π (k : Nat) → Id Nat (nth k a) (nth k b)) → Id (List Nat) a b }
+
+def take_ext_bounded : Term := pure{
+  λ (w : Nat).
+    elim w return (λ (wz : Nat). Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) → (Π (k : Nat) → Le (S k) wz → Id Nat (nth k a) (nth k b)) → Id (List Nat) (take wz a) (take wz b)) {
+      Z => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (len a) (len b)). λ (hnth : Π (k : Nat) → Le (S k) Z → Id Nat (nth k a) (nth k b)). Refl,
+      S (w') ih => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (len a) (len b)). λ (hnth : Π (k : Nat) → Le (S k) (S w') → Id Nat (nth k a) (nth k b)).
+        elim a return (λ (az : List Nat). Id Nat (len az) (len b) → (Π (k : Nat) → Le (S k) (S w') → Id Nat (nth k az) (nth k b)) → Id (List Nat) (take (S w') az) (take (S w') b)) {
+          Nil => λ (hlenA : Id Nat (len Nil) (len b)). λ (hnthA : Π (k : Nat) → Le (S k) (S w') → Id Nat (nth k Nil) (nth k b)).
+            elim b return (λ (bz : List Nat). Id Nat (len Nil) (len bz) → Id (List Nat) (take (S w') Nil) (take (S w') bz)) {
+              Nil => λ (hl : Id Nat (len Nil) (len Nil)). Refl,
+              Cons (hb) (tb) ihb => λ (hl : Id Nat (len Nil) (len (Cons hb tb))).
+                botElim (Id (List Nat) (take (S w') Nil) (take (S w') (Cons hb tb))) (znots (len tb) hl) } hlenA,
+          Cons (ha) (ta) iha => λ (hlenA : Id Nat (len (Cons ha ta)) (len b)). λ (hnthA : Π (k : Nat) → Le (S k) (S w') → Id Nat (nth k (Cons ha ta)) (nth k b)).
+            elim b return (λ (bz : List Nat). Id Nat (len (Cons ha ta)) (len bz) → (Π (k : Nat) → Le (S k) (S w') → Id Nat (nth k (Cons ha ta)) (nth k bz)) → Id (List Nat) (take (S w') (Cons ha ta)) (take (S w') bz)) {
+              Nil => λ (hl : Id Nat (len (Cons ha ta)) (len Nil)). λ (hn : Π (k : Nat) → Le (S k) (S w') → Id Nat (nth k (Cons ha ta)) (nth k Nil)).
+                botElim (Id (List Nat) (take (S w') (Cons ha ta)) (take (S w') Nil)) (znots (len ta) (id_sym Nat (len (Cons ha ta)) (len Nil) hl)),
+              Cons (hb) (tb) ihb => λ (hl : Id Nat (len (Cons ha ta)) (len (Cons hb tb))). λ (hn : Π (k : Nat) → Le (S k) (S w') → Id Nat (nth k (Cons ha ta)) (nth k (Cons hb tb))).
+                id_trans (List Nat) (Cons ha (take w' ta)) (Cons hb (take w' ta)) (Cons hb (take w' tb))
+                  (id_congr Nat (List Nat) (λ (hh : Nat). Cons hh (take w' ta)) ha hb (hn Z unit))
+                  (id_congr (List Nat) (List Nat) (λ (tt : List Nat). Cons hb tt) (take w' ta) (take w' tb)
+                    (ih ta tb (s_inj (len ta) (len tb) hl) (λ (k : Nat). λ (hk : Le (S k) w'). hn (S k) hk)))
+            } hlenA hnthA
+        } hlen hnth
+    } }
+def take_ext_bounded_ty : Term := pure{
+  Π (w : Nat) → Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) →
+    (Π (k : Nat) → Le (S k) w → Id Nat (nth k a) (nth k b)) → Id (List Nat) (take w a) (take w b) }
+
+def len_drop_cong : Term := pure{
+  λ (w : Nat).
+    elim w return (λ (wz : Nat). Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) → Id Nat (len (drop wz a)) (len (drop wz b))) {
+      Z => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (len a) (len b)). hlen,
+      S (w') ih => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (len a) (len b)).
+        elim a return (λ (az : List Nat). Id Nat (len az) (len b) → Id Nat (len (drop (S w') az)) (len (drop (S w') b))) {
+          Nil => λ (hl : Id Nat (len Nil) (len b)).
+            elim b return (λ (bz : List Nat). Id Nat (len Nil) (len bz) → Id Nat (len (drop (S w') Nil)) (len (drop (S w') bz))) {
+              Nil => λ (h : Id Nat (len Nil) (len Nil)). Refl,
+              Cons (hb) (tb) ihb => λ (h : Id Nat (len Nil) (len (Cons hb tb))).
+                botElim (Id Nat (len (drop (S w') Nil)) (len (drop (S w') (Cons hb tb)))) (znots (len tb) h) } hl,
+          Cons (ha) (ta) iha => λ (hl : Id Nat (len (Cons ha ta)) (len b)).
+            elim b return (λ (bz : List Nat). Id Nat (len (Cons ha ta)) (len bz) → Id Nat (len (drop (S w') (Cons ha ta))) (len (drop (S w') bz))) {
+              Nil => λ (h : Id Nat (len (Cons ha ta)) (len Nil)).
+                botElim (Id Nat (len (drop (S w') (Cons ha ta))) (len (drop (S w') Nil))) (znots (len ta) (id_sym Nat (len (Cons ha ta)) (len Nil) h)),
+              Cons (hb) (tb) ihb => λ (h : Id Nat (len (Cons ha ta)) (len (Cons hb tb))).
+                ih ta tb (s_inj (len ta) (len tb) h) } hl } hlen } }
+def len_drop_cong_ty : Term := pure{
+  Π (w : Nat) → Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) →
+    Id Nat (len (drop w a)) (len (drop w b)) }
+
+def count_split : Term := pure{
+  λ (x : Nat). λ (w : Nat). λ (l : List Nat).
+    id_trans Nat (count x l) (count x (append (take w l) (drop w l))) (add (count x (take w l)) (count x (drop w l)))
+      (id_congr (List Nat) Nat (λ (ll : List Nat). count x ll) l (append (take w l) (drop w l))
+        (id_sym (List Nat) (append (take w l) (drop w l)) l (take_drop_id w l)))
+      (count_append x (take w l) (drop w l)) }
+def count_split_ty : Term := pure{
+  Π (x : Nat) → Π (w : Nat) → Π (l : List Nat) →
+    Id Nat (count x l) (add (count x (take w l)) (count x (drop w l))) }
+
 end Dllbc.StdLemmas
