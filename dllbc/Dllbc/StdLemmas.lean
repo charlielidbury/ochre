@@ -2538,6 +2538,40 @@ def partScanRangeL_pivot_ty : Term := pure{
     Le (add lo (S (add k (add i g)))) (len l) →
     Id Nat (nth lo l) pivot →
     Id Nat (nth (add (partScanIdxRangeL pivot lo k i g l) lo) (partScanRangeL pivot lo k i g l)) pivot }
+-- partition_pivot : wrapper of partScanRangeL_pivot at i=g=0 (preconditions vacuous;
+-- pivot-fact is Refl since the pivot is nth lo l; one add_zero nudge on the bound).
+def partition_pivot : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat).
+        Le (add lo cz) (len l) →
+        Id Nat (nth (add (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => partScanIdxRangeL (nth lo l) lo cnt' Z Z l }) lo)
+                    (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l })) (nth lo l)) {
+      Z => λ (hb : Le (add lo Z) (len l)). Refl,
+      S (cnt') rec => λ (hb : Le (add lo (S cnt')) (len l)).
+        partScanRangeL_pivot (nth lo l) lo cnt' Z Z l
+          (le_rw_l (len l) (add lo (S cnt')) (add lo (S (add cnt' Z)))
+            (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt' (add cnt' Z)
+              (id_sym Nat (add cnt' Z) cnt' (add_zero cnt')))
+            hb)
+          Refl } }
+
+-- partition_allLeR : wrapper of partScanRangeL_allLeR at i=g=0 (AllLeR Z precondition vacuous).
+def partition_allLeR : Term := pure{
+  λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+    elim cnt return (λ (cz : Nat).
+        Le (add lo cz) (len l) →
+        AllLeR (elim cz return (λ (cy : Nat). Nat) { Z => Z, S (cnt') rec => partScanIdxRangeL (nth lo l) lo cnt' Z Z l }) lo (nth lo l)
+               (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l })) {
+      Z => λ (hb : Le (add lo Z) (len l)). allLeR_empty lo (nth lo l) l,
+      S (cnt') rec => λ (hb : Le (add lo (S cnt')) (len l)).
+        partScanRangeL_allLeR (nth lo l) lo cnt' Z Z l
+          (le_rw_l (len l) (add lo (S cnt')) (add lo (S (add cnt' Z)))
+            (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt' (add cnt' Z)
+              (id_sym Nat (add cnt' Z) cnt' (add_zero cnt')))
+            hb)
+          Refl
+          (allLeR_empty (S lo) (nth lo l) l) } }
+
 def partition_allLeR_ty : Term := pure{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
     AllLeR (partIdxRangeL lo cnt l) lo (nth lo l) (partitionRangeL lo cnt l) }

@@ -208,6 +208,9 @@ example : chk StdLemmas.allLeR_base_swap StdLemmas.allLeR_base_swap_ty = true :=
 example : chk StdLemmas.allLeR_step_TZ StdLemmas.allLeR_step_TZ_ty = true := by native_decide
 example : chk StdLemmas.allLeR_step_swap StdLemmas.allLeR_step_swap_ty = true := by native_decide
 example : chk StdLemmas.partScanRangeL_allLeR StdLemmas.partScanRangeL_allLeR_ty = true := by native_decide
+-- §22 M22-c step 2 wrappers: partitionRangeL = scan at i=g=0 (vacuous preconditions).
+example : chk StdLemmas.partition_pivot StdLemmas.partition_pivot_ty = true := by native_decide
+example : chk StdLemmas.partition_allLeR StdLemmas.partition_allLeR_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
