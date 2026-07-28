@@ -34,6 +34,8 @@ rule/sugar in the calculus (field-path reborrows, cursor idioms,
 implicits...) — fix the calculus, don't contort the program. Gaps go in
 the milestone ambiguity lists like everything else.
 
+**REDIRECT (2026-07-28, user decision): direct proving replaces the pure-model simulation as the mission.** The conformance-via-`back` architecture (quicksort verified to implement `sortRangeL`) stands as the COMPARISON BASELINE, but routing verification through a pure model is Aeneas rebuilt in one language — it never exercises dependent-types-×-mutation where it is hard. The main line: propositional postconditions over EXIT snapshots (`fn quicksort (v : &mut List Nat) -> Sorted (*v) ∧ Perm (old *v) (*v)` — `*v` in return position = the exit snapshot, canonical because loans end at the audit; `old *v` = the entry snapshot, an operator not a binder), proven DIRECTLY in bodies from callees' postconditions. The friction met there is the research object: keep a PAIN DIARY, every contortion a candidate calculus feature. M22 = the exit-snapshot/old machine features + swapS/partition/quicksort re-specced and proven this way.
+
 **The milestone train** (M10 fording in flight; then, in order): listRec +
 pure let + the Sorted/Le/count pure library; dependent call-site
 instantiation (§5.3's stated rule, unimplemented — every lemma application
