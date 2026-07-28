@@ -1,5 +1,6 @@
 import Lean
 import Dllbc.Syntax
+import Dllbc.Uni
 
 /-!
 # `pure{ … }` — named-binder surface syntax for the pure fragment (§15)
@@ -54,7 +55,10 @@ syntax:max "elim" pterm:max "return" pterm:max "{" pelimArm,* "}" : pterm
 -- abstracting SCRUT out of the (un-abstracted, natural) GOAL, at all occurrences.
 syntax:max "elim" pterm:max "generalizing" pterm:max "{" pelimArm,* "}" : pterm
 
-syntax "pure{" pterm "}" : term
+-- `pure{ … }` now elaborates through the UNIFIED grammar (`uterm` + `elabUTerm`
+-- in type/⇝ mode), so there is one term grammar a reader encounters. The legacy
+-- `pterm` category + `elabP` above are retained only for reference / compat.
+syntax "pure{" ublk "}" : term
 
 namespace PureMacro
 open Lean
@@ -230,6 +234,6 @@ end
 end PureMacro
 
 macro_rules
-  | `(pure{ $e:pterm }) => Dllbc.PureMacro.elabP [] e
+  | `(pure{ $b:ublk }) => do let (t, _) ← Dllbc.DeclMacro.elabUBlk true [] [] 0 b; pure t
 
 end Dllbc

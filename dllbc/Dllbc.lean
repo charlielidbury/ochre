@@ -5,6 +5,7 @@ import Dllbc.Machine
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
+import Dllbc.Uni
 import Dllbc.PureMacro
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
