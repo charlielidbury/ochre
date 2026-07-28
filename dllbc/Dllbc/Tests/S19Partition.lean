@@ -391,21 +391,21 @@ def partition : Decl :=
             (idSy (tS (addTmH (V 3 "n2") (.ctorApp "Z" []))) (tS (V 3 "n2"))
               (idCgS (addTmH (V 3 "n2") (.ctorApp "Z" [])) (V 3 "n2") (addZeroT (V 3 "n2")))))
           (.call "partScan" [.var ⟨0, "v"⟩, V 3 "n2", .ctorApp "Z" [], .ctorApp "Z" [], V 4 "pivot", V 5 "hlen"]))) ],
-    back := some (partitionLT2 (V 1 "n") dv) }
+    «back» := some (partitionLT2 (V 1 "n") dv) }
 def partTable2 : List Decl := [nthS, nth2S, swapSN, partScan, partition]
 example : checkFnOk partition partTable2 = true := by native_decide
 
 -- Not vacuous: a back that swaps unconditionally (≠ identity at n = Z) is rejected
 -- on the untouched-borrow n = Z path, where `partitionL Z *v = *v`.
 def partitionLieBack : Term := swapLT (.ctorApp "Z" []) (tS (.ctorApp "Z" [])) dv
-def partitionLie : Decl := { partition with name := "partitionLie", back := some partitionLieBack }
+def partitionLie : Decl := { partition with name := "partitionLie", «back» := some partitionLieBack }
 example : checkFnErr partitionLie "does not match" [nthS, nth2S, swapSN, partScan, partitionLie] = true := by native_decide
 
 
 -- Not vacuous: a lying spec (i and g swapped in the declared back) is rejected —
 -- the body's composed backward tree does not converge with the wrong partScanL.
 def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 "i") dv
-def partScanLie : Decl := { partScan with name := "partScanLie", back := some partScanLieBack }
+def partScanLie : Decl := { partScan with name := "partScanLie", «back» := some partScanLieBack }
 example : checkFnErr partScanLie "does not match" [nthS, nth2S, swapSN, partScan, partScanLie] = true := by native_decide
 
 /-! ## The lying-back sweep — one lie per CALLEE-CHECKED declared-spec branch
@@ -430,7 +430,7 @@ def setL (k v l : Term) : Term := .app (.app (.app StdLemmas.set k) v) l
 
 -- Borrow-returning multi-issued: nth2 with i and j swapped in the two sets.
 def nth2LieBack : Term := .lam natT (.lam natT (setL (V 2 "j") (.pvar 1) (setL (V 1 "i") (.pvar 0) (.deref (V 0 "v")))))
-def nth2Lie : Decl := { nth2S with name := "nth2Lie", back := some nth2LieBack }
+def nth2Lie : Decl := { nth2S with name := "nth2Lie", «back» := some nth2LieBack }
 example : checkFnErr nth2Lie "does not match" [nthS, nth2Lie] = true := by native_decide
 
 /-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
@@ -656,7 +656,7 @@ def partitionQ : Decl :=
                 (idCgS (addTmH (V 3 "n2") (.ctorApp "Z" [])) (V 3 "n2") (addZeroT (V 3 "n2")))))
             (.seq (.call "partScan" [.var ⟨0, "v"⟩, V 3 "n2", .ctorApp "Z" [], .ctorApp "Z" [], V 5 "pivot", V 6 "hlen"])
               (.ctorApp "Pair" [V 4 "i", .ctorApp "Refl" []]))))) ],
-    back := some (partitionLT2 (V 1 "n") dv) }
+    «back» := some (partitionLT2 (V 1 "n") dv) }
 #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScan, partitionQ] partitionQ with | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 200))
 
 /-! ## M21-3 — partitionRange: the subrange partition wrapper (Σ-pinned relative index)
@@ -688,7 +688,7 @@ def partitionRange : Decl :=
               (V 3 "hbnd"))
             (.seq (.call "partScanRange" [.var ⟨0, "v"⟩, V 1 "lo", V 4 "cnt2", .ctorApp "Z" [], .ctorApp "Z" [], V 6 "pivot", V 7 "hle"])
               (.ctorApp "Pair" [V 5 "i", .ctorApp "Refl" []]))))) ],
-    back := some (partitionRangeLT (V 1 "lo") (V 2 "cnt") dv) }
+    «back» := some (partitionRangeLT (V 1 "lo") (V 2 "cnt") dv) }
 #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScanRange, partitionRange] partitionRange with | .ok _ => "partitionRange OK" | .error e => "ERR: " ++ (e.take 200))
 
 /-! ## M21-3 — quicksort: the imperative in-place quicksort (back = sortRangeL)
@@ -762,7 +762,7 @@ def quicksort : Decl :=
             (.seq (.call "partScanRange" [.borrow dv, V 2 "lo", tS (V 7 "cnt3"), .ctorApp "Z" [], .ctorApp "Z" [], V 8 "pivot", V 13 "hle"])
               (.seq (.call "quicksort" [.borrow dv, V 5 "f2", V 2 "lo", V 9 "i", V 14 "bl"])
                 (.call "quicksort" [.borrow dv, V 5 "f2", tS (addTmH (V 2 "lo") (V 9 "i")), V 10 "g", V 15 "br"]))))))))))) ]) ]) ],
-    back := some (sortRangeLT2 (V 1 "fuel") (V 2 "lo") (V 3 "cnt") dv) }
+    «back» := some (sortRangeLT2 (V 1 "fuel") (V 2 "lo") (V 3 "cnt") dv) }
 -- THE NORTH STAR, GREEN: the imperative in-place quicksort type-checks as an
 -- implementation of its pure model `sortRangeL` (conformance = conversion, §6.2).
 -- Measured from-scratch elaboration: 38m49s wall / 2326s CPU (native_decide,
@@ -788,7 +788,7 @@ def twoRec : Decl :=
       .mk "S" [⟨2, "f2"⟩]
         (.seq (.call "twoRec" [.borrow (.deref (V 0 "v")), V 2 "f2"])
           (.seq (.call "twoRec" [.borrow (.deref (V 0 "v")), V 2 "f2"]) .unit)) ],
-    back := some dv }
+    «back» := some dv }
 example : checkFnOk twoRec [twoRec] = true := by native_decide
 
 end Dllbc.Tests.S19Partition
