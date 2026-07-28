@@ -20,9 +20,9 @@ open Dllbc.Val (nat)
 namespace Dllbc.Tests.S4Pure
 
 -- SUBJECT FILE: the pure fragment (⇝, conversion, value typing) has no runtime surface,
--- so the whole library here is built directly from raw `Term`/`Val` formers — these raw
+-- so the whole library here is built directly from raw Term/Val formers — these raw
 -- constructions ARE the subject under test (reduction, hasType, convert), not a surface
--- form. Every `.ctorApp`/`V i` below is intentional test machinery.
+-- form. Every raw constructor below is intentional test machinery.
 
 /-! ## Pure library (built from the raw formers) — SUBJECT: raw pure Terms under test -/
 
