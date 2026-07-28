@@ -102,7 +102,7 @@ syntax:max "Type" : uterm
 syntax:max "%" term:max : uterm                              -- splice a Lean `Term`
 syntax:max "*" uterm:max : uterm                            -- deref / peel
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
-syntax:max ident "(" uterm,* ")" : uterm                     -- call / ctorApp (comma-paren form)
+syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
 syntax:70 "&mut" uterm:71 : uterm                            -- runtime borrow  &mut e
 syntax:65 uterm:65 uterm:66 : uterm                          -- application (juxtaposition)
 syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
@@ -290,7 +290,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     let (a', n1) ← elabUTerm rctx pctx next a
     let (b', n2) ← elabUTerm rctx ("_" :: pctx) n1 b
     return (← `(Dllbc.Term.pi $a' $b'), n2)
-  | `(uterm| $c:ident ($args,*)) => do
+  | `(uterm| $c:ident($args,*)) => do                 -- no-space paren: call / ctorApp
     let (args', n) ← elabUList rctx pctx next args.getElems.toList
     let name := c.getId.toString
     if Dllbc.Macro.isUpperInit name then
