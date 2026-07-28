@@ -36,3 +36,18 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
    refinement paragraph supersedes one paragraph later — pedagogical ordering,
    not a conflict; the paper's R-Copy/R-Move present the refined semantics.
    Doc-polish item.
+
+## From F4 (match)
+8. **Nested-borrow scrutinee payloads (`borrowM (borrowM …)`) are explicitly
+   rejected** as unsupported — a real limitation of the mechanization that doc
+   §3 does not record as such. Doc-note candidate.
+9. **The set-valued symbolic semantics lives in the `explore` driver ON TOP of
+   the single-path monad** — readR.matchE rejects symbolic scrutinees; a
+   symbolic match in EXPRESSION position is rejected outright (concrete is
+   fine). Architecture fact worth one prose sentence; the paper's set-valued
+   judgment abstracts the driver.
+10. **§3.5's join reads as implemented until its v0 note** — the doc's own
+   note concedes duplication is the baseline, but the join's prominent
+   treatment precedes it. Doc-polish: reorder or reframe §3.5. (Comptime-match
+   defer and Bool-only generalization already ledgered from F3 — F4 confirms
+   both independently.)
