@@ -25,7 +25,8 @@ open Dllbc
 open Dllbc.StdLemmas (swapL count_swapL' set nth partScanL partScanRangeL partIdxL
   partIdxRangeL partGapRangeL partScanSizeL len_partitionRangeL len_sortRangeL sortRangeL
   partitionRangeL partitionL le_up_r le_add le_add_l le_add_succ le_rw_r le_rw_l le_add_mono_l
-  add_succ le_trans le_refl id_sym id_trans id_congr hshift_true hshift_false len_swapL add_zero add_assoc)
+  add_succ le_trans le_refl id_sym id_trans id_congr hshift_true hshift_false len_swapL add_zero add_assoc
+  count_partitionRangeL)
 
 namespace Dllbc.Tests.S19Partition
 
@@ -1021,6 +1022,37 @@ def swapSELie : Decl :=
           swapS(&mut *v, i, j, pij, p2);
           cert } }
 example : checkFnErr swapSELie "does not have return type" [nthS, nth2S, swapSN, swapSELie] = true := by native_decide
+
+/-! ## M22-b — partitionRangeE: partition's PERMUTATION postcondition (direct proving)
+
+    The partition rung. NO back: the return type `Π n. Id Nat (count n *v)(count n
+    (old *v))` says partition permutes the range (preserves the multiset). Same
+    delegation discipline as swapSE — the mutation is delegated to `partitionRange`
+    (whose back `partitionRangeL lo cnt *v` is a CLOSED function of the input, so the
+    exit reading is provable, not opaque), and the cert is the pure permutation
+    lemma `count_partitionRangeL` at the entry snapshot. Cert staged before the
+    consuming call (reads `hbnd` while live — the proof-linearity dodge again). This
+    is the count/Perm half of the eventual `Sorted *v ∧ Perm (old*v) *v` quicksort
+    postcondition; sortedness is the other axis, still ahead. -/
+def partitionRangeE : Decl :=
+  decl{ fn partitionRangeE (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
+        -> Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
+        { let cert = (λ (n : Nat). count_partitionRangeL lo n cnt (old *v) hbnd);
+          let r = partitionRange(&mut *v, lo, cnt, hbnd);
+          cert } }
+def partRangeETable : List Decl := [nthS, nth2S, swapSN, partScanRange, partitionRange, partitionRangeE]
+example : checkFnOk partitionRangeE partRangeETable = true := by native_decide
+
+-- LYING postcondition: shifted index (`count (S n)` on the left) — false in general,
+-- the honest cert has type `Π n. Id (count n exit)(count n entry)`, not the shift.
+def partitionRangeELie : Decl :=
+  decl{ fn partitionRangeELie (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
+        -> Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v))
+        { let cert = (λ (n : Nat). count_partitionRangeL lo n cnt (old *v) hbnd);
+          let r = partitionRange(&mut *v, lo, cnt, hbnd);
+          cert } }
+example : checkFnErr partitionRangeELie "does not have return type"
+  [nthS, nth2S, swapSN, partScanRange, partitionRange, partitionRangeELie] = true := by native_decide
 
 end Dllbc.Tests.S19Partition
 
