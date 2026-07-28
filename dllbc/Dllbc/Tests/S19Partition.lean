@@ -1008,9 +1008,16 @@ example : checkFnOk twoRec [twoRec] = true := by native_decide
       mutation cannot be ordered around. Fix (QUEUED, now RECURRED — the tax was paid
       again at partitionRangeE and quicksortE, the measured-pain threshold): extend
       indexKindTy to erasure-bound stuck types (Le-headed), same §2.1 vacuity
-      rationale — proofs-as-copy-on-read. (Viability nuance: post-readC the Le former
-      has unfolded to an anonymous recursor spine, so the detection is not a one-line
-      head match; see the report.)
+      rationale — proofs-as-copy-on-read. DEFERRED (per team-lead): staging is the
+      law of the ladder until a postcondition genuinely can't be staged before its
+      mutation, OR the audit-rewrite arc is green-lit. Viability rulings on the fix
+      shape: post-readC the Le former has unfolded to an anonymous recursor spine, so
+      there is no head to match — a naive "stuck-recursor-to-Type ⇒ copy" is DEAD, not
+      just fragile: a σ typed by a stuck `VecF Nat n` is exactly stuck-recursor-to-Type
+      yet copying it copies DATA (a vector), the very E0382 class index-kind exists to
+      prevent. The sound form is making `Le` a PRIMITIVE former (like Id's `.idT`),
+      which also gives audit-rewrite a head to recognize — so it belongs WITH that
+      arc, not as a mid-ladder patch.
     • CONVERGENT EVIDENCE. The §22 bridge `swapL_set` (set-form ≡ swapL) is proved
       and kept in StdLemmas as forward infrastructure — the transport the audit-rewrite
       feature cites once pinning lands, generalizing to partition's composed set-forms.
