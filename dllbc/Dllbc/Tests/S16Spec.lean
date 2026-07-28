@@ -74,25 +74,27 @@ example : chk StdLemmas.len_swapL StdLemmas.len_swapL_ty = true := by native_dec
     with `swapL 0 1 s` by computation — so it type-checks against `Id (len l)
     (len s)`. The cursor writes and the pure specification agree, verified. -/
 
-open Dllbc.StdLemmas (len_swapL) in
 def swapS01 : Decl :=
   decl{ fn swapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s)),
-                    p : Le 2 (len *v)) -> Unit {
-    let proof = len_swapL 0 1 (*v);
+                    p : Le 2 (len (*v))) -> Unit {
+    let proof = StdLemmas.len_swapL 0 1 (*v);
     match v {
       Nil => botElim Unit p,
-      Cons(h0, t0) => match t0 {
-        Nil => botElim Unit p,
-        Cons(h1, t1) => {
-          let tmp = *h0;
-          *h0 := *h1;
-          *h1 := tmp;
-          let l = *v;
-          *v := Pair(l, proof);
-          ()
+      Cons(h0, t0) => {
+        match t0 {
+          Nil => botElim Unit p,
+          Cons(h1, t1) => {
+            let tmp = *h0;
+            *h0 := *h1;
+            *h1 := tmp;
+            let l = *v;
+            *v := Pair(l, proof);
+            ()
+          }
         }
       }
-    } } }
+    }
+  } }
 
 example : checkFnOk swapS01 = true := by native_decide
 
@@ -105,7 +107,9 @@ def swapCaller : Decl :=
     let b = &mut x;
     swapS01(b, ());
     let sig = x;
-    match sig { Pair(l, pf) => { let m = l; () } }
+    match sig {
+      Pair(l, pf) => { let m = l; () }
+    }
   } }
 
 example : checkFnOk swapCaller ([swapS01, swapCaller]) = true := by native_decide

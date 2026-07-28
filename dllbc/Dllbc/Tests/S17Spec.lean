@@ -138,7 +138,7 @@ def spcBody : Term := dllbcWith [] {
   swapS(b, 0, 2, (), ());
   let y = x;
   () }
-def spcCaller : Decl := { name := "spc", retType := .const "Unit", telescope := [], body := spcBody }
+def spcCaller : Decl := decl{ fn spc () -> Unit = %spcBody }
 def vlist321 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]],
   .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "Z" []]], .ctor "Cons" [.ctor "S" [.ctor "Z" []], .ctor "Nil" []]]]
 example : (match runFn [nthS, nth2S, swapSN, spcCaller] spcCaller with
