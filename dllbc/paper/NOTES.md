@@ -51,3 +51,17 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
    treatment precedes it. Doc-polish: reorder or reframe §3.5. (Comptime-match
    defer and Bool-only generalization already ledgered from F3 — F4 confirms
    both independently.)
+
+## From F6 (typing/conversion)
+11. **`convert` is FULL normal-form equality** (`nfV a == nfV b`, Pure.lean:198),
+    not whnf-and-compare — the coordinator's brief mis-described it; the figure's
+    equivalence/congruence rules are the declarative content of that one
+    equality. Relevant to the perf-story section: the unmerged incremental-
+    convert experiment measured a wash against exactly this baseline.
+12. **A fixed-fuel island**: Refl endpoint conversion hardcodes fuel 1000
+    (ctorSig) independent of the threaded fuel — a caveat for any "uniform fuel
+    discipline" claim in prose.
+13. Presentational facts confirmed: T-Conv is fused into synthesis leaves in
+    code (declarative separation is the paper's); the universe rule is
+    checking-only under type-in-type; table-miss/arity-mismatch return false —
+    which IS the money-test rejection mechanism (§4.2 framing accurate).
