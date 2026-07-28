@@ -3,6 +3,7 @@ import Dllbc.AlphaEq
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.Tests.S17Spec
+import Dllbc.Tests.SInternals
 
 /-!
 # Unified-grammar round-trips — splice-free bodies (§ points 1–4)
@@ -29,6 +30,9 @@ quicksort — are the stretch; `Decl.alphaEq` is the machinery that reaches them
 
 open Dllbc
 open Dllbc.StdLemmas (set nth le_rw_r id_sym le_add)
+-- The round-trip corpora (partScanEExpected/pivotPlaceHExpected/baseBackDef) live in
+-- SInternals (SUBJECT file); the surface Decls below are compared against them.
+open Dllbc.Tests.SInternals (partScanEExpected pivotPlaceHExpected baseBackDef)
 
 namespace Dllbc.Tests.SDeclUnified
 
@@ -80,16 +84,7 @@ constructors and hand ids), so `alphaEq surface expected` is `alphaEq surface
 S19.partScanE` without the 39-minute S19 import; the literal `== S19.partScanE`
 runs in SDeclUnifiedS19.lean, gated to the final full build. -/
 
-private def V (i : Nat) (n : String) : Term := .var ⟨i, n⟩
-private def listNatT' : Term := .app (.const "List") (.const "Nat")
-private def natT' : Term := .const "Nat"
-private def tS (t : Term) : Term := .ctorApp "S" [t]
-private def zt : Term := .ctorApp "Z" []
-private def dV (i : Nat) (n : String) : Term := .deref (.var ⟨i, n⟩)
-private def addTm (a b : Term) : Term := .app (.app Dllbc.Std.addFnT a) b
-private def lebT (a b : Term) : Term := .app (.app Dllbc.Std.lebFnT a) b
-private def nthT (k l : Term) : Term := .app (.app Dllbc.StdLemmas.nth k) l
-private def u : Term := .unit
+-- (The corpus builders and `partScanEExpected` moved to SInternals — the SUBJECT file.)
 
 -- Surface partScanE, splice-free — pure `leb`/`nth`/`add` spines beside runtime calls.
 def partScanEU : Decl :=
@@ -112,22 +107,7 @@ def partScanEU : Decl :=
             }
         } } }
 
--- Verbatim transcription of S19Partition.lean:556-575 (exact hand ids).
-def partScanEExpected : Decl :=
-  { name := "partScanE", retType := .const "Unit",
-    telescope := [("v", .borrowT listNatT' listNatT'), ("k", natT'), ("i", natT'), ("g", natT'), ("pivot", natT')],
-    body := .matchE ⟨1, "k"⟩ [
-      .mk "Z" [] (.matchE ⟨2, "i"⟩ [
-        .mk "Z" [] u,
-        .mk "S" [⟨6, "i2"⟩] (.seq (.call "swapS" [.var ⟨0, "v"⟩, zt, tS (V 6 "i2"), u, u]) u) ]),
-      .mk "S" [⟨5, "k2"⟩]
-        (.letIn ⟨6, "c"⟩ (lebT (nthT (tS (addTm (V 2 "i") (V 3 "g"))) (dV 0 "v")) (V 4 "pivot"))
-          (.matchE ⟨6, "c"⟩ [
-            .mk "True" [] (.matchE ⟨3, "g"⟩ [
-              .mk "Z" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), zt, V 4 "pivot"]),
-              .mk "S" [⟨7, "g2"⟩] (.seq (.call "swapS" [.borrow (dV 0 "v"), tS (V 2 "i"), tS (addTm (V 2 "i") (tS (V 7 "g2"))), u, u])
-                (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), tS (V 7 "g2"), V 4 "pivot"])) ]),
-            .mk "False" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", V 2 "i", tS (V 3 "g"), V 4 "pivot"]) ])) ] }
+-- `partScanEExpected` (the verbatim S19-free transcription) is in SInternals.
 
 -- Exact BEq is out of reach (linear ids ≠ hand ids), but alphaEq reaches it:
 example : (partScanEU.body == partScanEExpected.body) = false := by native_decide
@@ -142,9 +122,7 @@ telescope carries an `Id`-typed hypothesis and the `back` is `baseBack` (a `natR
 spine, spliced here via `%` — its surface expressibility was covered in the prior
 phase). pivotPlaceH's ids coincide with pre-order, so this round-trips EXACTLY. -/
 
-private def baseBackDef : Term :=
-  .app (.app (.app (.app (.const "natRec") (.lam natT' listNatT')) (dV 0 "v"))
-    (.lam natT' (.lam listNatT' (.app (.app (.app Dllbc.StdLemmas.swapL zt) (tS (.pvar 1))) (dV 0 "v"))))) (V 1 "i")
+-- `baseBackDef` (pivotPlaceH's natRec baseBack spine) is in SInternals; spliced below via `%`.
 
 def pivotPlaceHU : Decl :=
   decl{ fn pivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
@@ -161,26 +139,7 @@ def pivotPlaceHU : Decl :=
             }
         } } }
 
-private def leRwR (a b c d e : Term) : Term := .app (.app (.app (.app (.app Dllbc.StdLemmas.le_rw_r a) b) c) d) e
-private def idSym (t a b h : Term) : Term := .app (.app (.app (.app Dllbc.StdLemmas.id_sym t) a) b) h
-private def leAdd (a b : Term) : Term := .app (.app Dllbc.StdLemmas.le_add a) b
-private def lenT' (l : Term) : Term := Dllbc.Std.lenT l
-
--- Built via `Decl.mk` positionally: the surface keyword `back` reserves the token,
--- so a `{ … back := … }` structure literal cannot name the field here.
-def pivotPlaceHExpected : Decl :=
-  Dllbc.Decl.mk "pivotPlaceH"
-    [("v", .borrowT listNatT' listNatT'), ("i", natT'), ("g", natT'),
-     ("hlen", .idT natT' (lenT' (dV 0 "v")) (tS (addTm (V 1 "i") (V 2 "g"))))]
-    (.const "Unit")
-    (.matchE ⟨1, "i"⟩ [
-      .mk "Z" [] .unit,
-      .mk "S" [⟨4, "i2"⟩] (.letIn ⟨5, "p2"⟩
-        (leRwR (tS (tS (V 4 "i2"))) (tS (tS (addTm (V 4 "i2") (V 2 "g")))) (lenT' (dV 0 "v"))
-          (idSym natT' (lenT' (dV 0 "v")) (tS (tS (addTm (V 4 "i2") (V 2 "g")))) (V 3 "hlen"))
-          (leAdd (V 4 "i2") (V 2 "g")))
-        (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 4 "i2"), .unit, V 5 "p2"]) .unit)) ])
-    (some baseBackDef)
+-- `pivotPlaceHExpected` (the `Decl.mk` corpus) is in SInternals.
 
 -- Proof-carrying body, splice-free, EXACTLY the corpus (ids coincide with pre-order):
 example : (pivotPlaceHU.body == pivotPlaceHExpected.body) = true := by native_decide

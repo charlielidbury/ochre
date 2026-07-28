@@ -1,6 +1,7 @@
 import Dllbc.DeclMacro
 import Dllbc.Std
 import Dllbc.StdLemmas
+import Dllbc.Tests.SInternals
 
 /-!
 # `decl{ … }` — the crown: quicksort's signature, verified S19-free
@@ -31,20 +32,10 @@ already built) — is recorded, ready to run, in the comment block at the end.
 
 open Dllbc
 open Dllbc.StdLemmas (sortRangeL)
+-- The corpus's expected telescope/back (raw Terms) live in SInternals (the SUBJECT file).
+open Dllbc.Tests.SInternals (quicksortExpTele quicksortExpBack)
 
 namespace Dllbc.Tests.SDeclMacroCrown
-
--- The corpus's own helpers (transcribed from S19Partition.lean), so the expected
--- Terms are the corpus's exact constructions.
-def V (i : Nat) (n : String) : Term := .var ⟨i, n⟩
-def natT : Term := .const "Nat"
-def listNatT : Term := .app (.const "List") (.const "Nat")
-def dv : Term := .deref (V 0 "v")
-def LeT (a b : Term) : Term := Std.LeT a b
-def lenT (l : Term) : Term := Std.lenT l
-def addTmH (a b : Term) : Term := .app (.app Std.addFnT a) b
-def sortRangeLT2 (fuel lo cnt l : Term) : Term :=
-  .app (.app (.app (.app StdLemmas.sortRangeL fuel) lo) cnt) l
 
 -- The surface quicksort. Body is a placeholder `()`; the real `= %corpusBody`
 -- splice is round-trip-proven by nthS (SDeclMacro.lean). Everything ELSE — the
@@ -55,16 +46,12 @@ def quicksortSig : Decl :=
         back = sortRangeL fuel lo cnt (*v)
         { () } }
 
--- The corpus's exact telescope and back (S19Partition.lean:710-711, 763).
-def expTele : List (String × Term) :=
-  [("v", .borrowT listNatT listNatT), ("fuel", natT), ("lo", natT), ("cnt", natT),
-   ("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))]
-def expBack : Term := sortRangeLT2 (V 1 "fuel") (V 2 "lo") (V 3 "cnt") dv
+-- The corpus's exact telescope and back are `SInternals.quicksortExpTele` / `…ExpBack`.
 
 -- The crown, proven: the surface produces the corpus's telescope, retType, back.
-example : (quicksortSig.telescope == expTele) = true := by native_decide
+example : (quicksortSig.telescope == quicksortExpTele) = true := by native_decide
 example : (quicksortSig.retType == Term.const "Unit") = true := by native_decide
-example : (quicksortSig.back == some expBack) = true := by native_decide
+example : (quicksortSig.back == some quicksortExpBack) = true := by native_decide
 
 /-
 The full round-trip, ready to run wherever S19's cache is accepted (drop these
