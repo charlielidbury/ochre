@@ -1275,4 +1275,15 @@ def le_antisym : Term := pure{
             id_congr Nat Nat (λ (n : Nat). S n) a' b' (ih b' h1 h2) } } }
 def le_antisym_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → Le b a → Id Nat a b }
 
+-- Left cancellation (Le (add a b)(add a c) → Le b c) — the glue's pivot-right case
+-- derives g ≥ 1 (Le (S Z) g) from the range bound Le (S i)(add i g) by cancelling i
+-- (after bridging S i = add i (S Z) via add_succ/add_zero). Induction on a.
+def le_add_cancel_l : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Π (b : Nat) → Π (c : Nat) → Le (add az b) (add az c) → Le b c) {
+      Z => λ (b : Nat). λ (c : Nat). λ (h : Le (add Z b) (add Z c)). h,
+      S (a') ih => λ (b : Nat). λ (c : Nat). λ (h : Le (add (S a') b) (add (S a') c)). ih b c h } }
+def le_add_cancel_l_ty : Term := pure{
+  Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Le (add a b) (add a c) → Le b c }
+
 end Dllbc.StdLemmas
