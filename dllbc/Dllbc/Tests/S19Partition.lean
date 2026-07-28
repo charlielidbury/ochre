@@ -925,6 +925,18 @@ def lenPreserve : Decl :=
         { swapS(&mut *v, i, j, pij, p2); len_swapL i j (old *v) } }
 example : checkFnOk lenPreserve [nthS, nth2S, swapSN, lenPreserve] = true := by native_decide
 
+-- CALLER-SIDE σ-SHARING (test 3): the caller forwards lenPreserve's evidence as a
+-- fact about its OWN exit `*v`. This checks ONLY because the call mints one σ' shared
+-- between the reborrow's release (the caller's recovered *v) and lenPreserve's
+-- returned evidence subject — so `Id (len *v) (len (old *v))` about the callee's σ'
+-- IS the fact the caller needs about the same recovered σ'. Without sharing the
+-- reborrow would release a fresh, unrelated existential and the forward would fail.
+def shareCaller : Decl :=
+  decl{ fn shareCaller (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+        -> Id Nat (len (*v)) (len (old *v))
+        { lenPreserve(&mut *v, i, j, pij, p2) } }
+example : checkFnOk shareCaller [nthS, nth2S, swapSN, lenPreserve, shareCaller] = true := by native_decide
+
 -- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
 -- reborrows *v twice in sequence for two recursive calls. This only checks
 -- because `&mut` on a place holding a parked `loanₘ` now DEMAND-ENDS the prior

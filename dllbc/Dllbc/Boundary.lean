@@ -285,37 +285,6 @@ def hasBorrowT : Term → Bool
   | .idT a b c => hasBorrowT a || hasBorrowT b || hasBorrowT c
   | _ => false
 
--- §5.4 exit-snapshot transform on a RETURN TYPE. A bare borrow-parameter `*v`
--- (`v.id ∈ borrowIds`) is stamped `@exit(*v)` — it pins to that borrow's σ_exit,
--- which the audit defines as the EXIT (collapsed final) payload. `old *v` is
--- stripped to a plain `*v` read — the ENTRY snapshot (`old` never survives to the
--- kernel; it is exactly the pre-existing telescope snapshot). Non-borrow derefs
--- and consumed-param references are untouched (they keep the entry-pinned reading,
--- the M12 fix). Types only — `letIn`/`match`/etc. fall through unchanged.
-mutual
-  def markExit (borrowIds : List Nat) : Term → Term
-    | .deref (.var v) =>
-      if borrowIds.contains v.id then .app (.const "@exit") (.deref (.var v)) else .deref (.var v)
-    | .deref t => .deref (markExit borrowIds t)
-    | .app (.const "old") (.deref (.var v)) => .app (.const "old") (.deref (.var v))  -- leave `old *v`; reflectC → entry σ
-    | .app f a => .app (markExit borrowIds f) (markExit borrowIds a)
-    | .ctorApp n args => .ctorApp n (markExitList borrowIds args)
-    | .pi d c => .pi (markExit borrowIds d) (markExit borrowIds c)
-    | .sigmaT d c => .sigmaT (markExit borrowIds d) (markExit borrowIds c)
-    | .lam d b => .lam (markExit borrowIds d) (markExit borrowIds b)
-    | .idT a b c => .idT (markExit borrowIds a) (markExit borrowIds b) (markExit borrowIds c)
-    | t => t
-  termination_by t => sizeOf t
-  def markExitList (borrowIds : List Nat) : List Term → List Term
-    | [] => []
-    | t :: ts => markExit borrowIds t :: markExitList borrowIds ts
-  termination_by ts => sizeOf ts
-end
-
-/-- The telescope's borrow-parameter var ids (param `i` gets var id `i`). -/
-def borrowParamIds (telescope : List (String × Term)) : List Nat :=
-  telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ => some i | _ => none)
-
 /-- Check a function declaration end-to-end: seed the telescope, explore the
     body (one path per symbolic branch), audit each path at return. `table` is
     the function context calls resolve against (signature-only, §5.3) — it

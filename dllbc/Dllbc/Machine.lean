@@ -84,6 +84,12 @@ structure Group where
       `endGroup` releases the COMPUTED value; none ⇒ opaque (fresh existential).
       Refined with the caller's σ's like the owed types. -/
   backSpec : Option Val := none
+  /-- §5.4 caller-side exit-snapshot σ-sharing: per captured loan, the σ its release
+      is PINNED to — the same σ the callee's return type reads as the exit `*v`
+      (`buildResult`'s `@exit`). So the caller holds the owner recovering σ′ AND the
+      returned evidence about the same σ′. Overrides the opaque fresh-existential
+      release (`none`/opaque case) for those loans; empty for a plain call. -/
+  exitRelease : List (Nat × Nat) := []
 
 /-- Machine state: the environment Ω plus fresh-supply counters. `nextVar` is
     unused by §2 (all runtime var ids are minted by the macro) but is here for
@@ -701,6 +707,34 @@ def readCWith (fuel : Nat) (extra : Omega) (t : Term) : M Val := do
   modify (fun s => { s with env := saved })
   pure v
 
+-- §5.4 exit-snapshot transform on a RETURN TYPE (moved here from Boundary so the
+-- call rule can reach it too). A bare borrow-parameter `*v` (`v.id ∈ borrowIds`) is
+-- stamped `@exit(*v)` — it pins to that borrow's σ_exit; `old *v` is left intact
+-- (reflectC resolves it to the entry σ). Non-borrow derefs untouched. Types only.
+mutual
+  def markExit (borrowIds : List Nat) : Term → Term
+    | .deref (.var v) =>
+      if borrowIds.contains v.id then .app (.const "@exit") (.deref (.var v)) else .deref (.var v)
+    | .deref t => .deref (markExit borrowIds t)
+    | .app (.const "old") (.deref (.var v)) => .app (.const "old") (.deref (.var v))
+    | .app f a => .app (markExit borrowIds f) (markExit borrowIds a)
+    | .ctorApp n args => .ctorApp n (markExitList borrowIds args)
+    | .pi d c => .pi (markExit borrowIds d) (markExit borrowIds c)
+    | .sigmaT d c => .sigmaT (markExit borrowIds d) (markExit borrowIds c)
+    | .lam d b => .lam (markExit borrowIds d) (markExit borrowIds b)
+    | .idT a b c => .idT (markExit borrowIds a) (markExit borrowIds b) (markExit borrowIds c)
+    | t => t
+  termination_by t => sizeOf t
+  def markExitList (borrowIds : List Nat) : List Term → List Term
+    | [] => []
+    | t :: ts => markExit borrowIds t :: markExitList borrowIds ts
+  termination_by ts => sizeOf ts
+end
+
+/-- The telescope's borrow-parameter var ids (param `i` gets var id `i`). -/
+def borrowParamIds (telescope : List (String × Term)) : List Nat :=
+  telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ => some i | _ => none)
+
 /-- Build a call's fresh result value from the (instantiated) return type, and
     collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ S)` position mints a
     fresh issued reborrow `borrowₘ ℓ σ` with `σ : τ` in `sctx` and owed type
@@ -898,10 +932,13 @@ def endGroup (fuel : Nat) (grp : Group) : M Unit := do
     releaseCaptured ℓc (Val.nfV fuel (Val.rebuildSpine f surrendered))
   | none, true, [(ℓc, _)], [p] => releaseCaptured ℓc p    -- test-only identity wire (harness)
   | _, _, _, _ =>
-    grp.captured.forM (fun (ℓc, owed) => do               -- opaque: fresh existential each
-      let σ ← freshSym
-      modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
-      releaseCaptured ℓc (.sym σ))
+    grp.captured.forM (fun (ℓc, owed) => do
+      match grp.exitRelease.lookup ℓc with
+      | some σ' => releaseCaptured ℓc (.sym σ')            -- §5.4: pinned exit-snapshot release (σ' already in sctx)
+      | none => do                                        -- opaque: fresh existential each
+        let σ ← freshSym
+        modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
+        releaseCaptured ℓc (.sym σ))
 
 /-- **End loan** ℓ (§6.1-aware). If ℓ is a group's captured loan, ending it
     ends the whole group (issued first, then captured). Otherwise it is an
@@ -1130,7 +1167,26 @@ mutual
             -- `constrained` flag stays false in real checking — inferring it is
             -- unsound (`through` vs `advance` share a signature); the test-only
             -- `forceConstrained` flag reintroduces the bug for harness validation.
-            let (resultVal, issued) ← buildResult fuel inst decl.retType
+            -- §5.4 caller-side σ-sharing: mint one σ' per captured borrow (typed at
+            -- its owed type). The retType's bare `*v` (marked `@exit`) reflects to
+            -- σ', and the group PINS that captured loan's release to σ' — so the
+            -- returned evidence and the recovered owner are the same σ'. `old *v`
+            -- clears through to the actual entry payload (entrySyms emptied for the
+            -- reflect, so callee/caller var-id collisions can't shadow it). Empty
+            -- when there are no borrow args (a no-op) and dead under a `back` (which
+            -- releases via the spec instead of the pinned σ').
+            let borrowIds := borrowParamIds decl.telescope
+            let sigmas ← (captured.map (·.2)).mapM (fun owed => do
+              let σ ← freshSym
+              modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
+              pure σ)
+            let exitMap := borrowIds.zip sigmas
+            let exitRel := (captured.map (·.1)).zip sigmas
+            let savedE := (← get).exitSyms
+            let savedO := (← get).entrySyms
+            modify (fun s => { s with exitSyms := exitMap, entrySyms := [] })
+            let (resultVal, issued) ← buildResult fuel inst (markExit borrowIds decl.retType)
+            modify (fun s => { s with exitSyms := savedE, entrySyms := savedO })
             let ρ ← freshGroup
             let fc := (← get).forceConstrained
             let cons := fc && captured.length == 1 && issued.length == 1
@@ -1140,7 +1196,7 @@ mutual
             let backV ← match decl.back with
               | some b => do pure (some (← readCWith fuel inst b))
               | none => pure none
-            let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, backSpec := backV }
+            let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, backSpec := backV, exitRelease := exitRel }
             modify (fun s => { s with groups := grp :: s.groups })
             pure resultVal
       | .unit => pure (.ctor "unit" [])
