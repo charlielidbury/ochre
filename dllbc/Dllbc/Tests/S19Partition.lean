@@ -378,20 +378,19 @@ def addZeroT (n : Term) : Term := .app StdLemmas.add_zero n
 
 -- v=0, n=1, hlenW=2; body binders n'=3, pivot=4, hlen=5.
 def partition : Decl :=
-  { name := "partition", retType := .const "Unit",
-    telescope := [("v", .borrowT listNatT listNatT), ("n", natT),
-      ("hlenW", .idT natT (lenT dv) (V 1 "n"))],
-    body := .matchE ⟨1, "n"⟩ [
-      .mk "Z" [] .unit,
-      .mk "S" [⟨3, "n2"⟩] (.letIn ⟨4, "pivot"⟩ (nthP (.ctorApp "Z" []) dv)
-        (.letIn ⟨5, "hlen"⟩
-          -- hlen : Id (len *v) (S (add n' Z)), from hlenW : Id (len *v) (S n') via add_zero.
-          (idTr (lenT dv) (tS (V 3 "n2")) (tS (addTmH (V 3 "n2") (.ctorApp "Z" [])))
-            (V 2 "hlenW")
-            (idSy (tS (addTmH (V 3 "n2") (.ctorApp "Z" []))) (tS (V 3 "n2"))
-              (idCgS (addTmH (V 3 "n2") (.ctorApp "Z" [])) (V 3 "n2") (addZeroT (V 3 "n2")))))
-          (.call "partScan" [.var ⟨0, "v"⟩, V 3 "n2", .ctorApp "Z" [], .ctorApp "Z" [], V 4 "pivot", V 5 "hlen"]))) ],
-    «back» := some (partitionLT2 (V 1 "n") dv) }
+  decl{ fn partition (v : &mut List Nat, n : Nat, hlenW : Id Nat (len *v) n) -> Unit
+        back = partitionL n (*v)
+        { match n {
+            Z => (),
+            S(n2) => {
+              let pivot = nth Z (*v);
+              -- hlen : Id (len *v) (S (add n' Z)), from hlenW : Id (len *v) (S n') via add_zero.
+              let hlen = id_trans Nat (len *v) (S n2) (S (add n2 Z)) hlenW
+                           (id_sym Nat (S (add n2 Z)) (S n2)
+                             (id_congr Nat Nat (λ (a : Nat). S a) (add n2 Z) n2 (add_zero n2)));
+              partScan(v, n2, Z, Z, pivot, hlen)
+            }
+        } } }
 def partTable2 : List Decl := [nthS, nth2S, swapSN, partScan, partition]
 example : checkFnOk partition partTable2 = true := by native_decide
 
@@ -459,13 +458,11 @@ def Refl : Term := .ctorApp "Refl" []
 
 -- n = 0; the `if` binds a fresh scrutinee (id 1).
 def stuckProbe : Decl :=
-  { name := "stuckProbe",
-    retType := .idT natT
-      (boolRecNat (tS zt) zt (lebSp (V 0 "n")))
-      (boolRecNat (addT zt (tS zt)) (addT zt zt) (lebSp (V 0 "n"))),
-    telescope := [("n", natT)],
-    body := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n"))
-      (.matchE ⟨1, "c"⟩ [.mk "True" [] Refl, .mk "False" [] Refl]) }
+  decl{ fn stuckProbe (n : Nat) -> Id Nat
+        (boolRec (λ (b : Bool). Nat) (S Z) Z (leb n (S (S Z))))
+        (boolRec (λ (b : Bool). Nat) (add Z (S Z)) (add Z Z) (leb n (S (S Z))))
+        { let c = leb n (S (S Z));
+          match c { True => Refl, False => Refl } } }
 example : checkFnOk stuckProbe = true := by native_decide
 
 -- Not vacuous (a): the True side does NOT converge (`S Z` vs `S (S Z)`). The
@@ -556,34 +553,36 @@ def u : Term := .unit
 
 -- v=0, k=1, i=2, g=3, pivot=4; body binders k2=5, c/i2=6, g2=7.
 def partScanE : Decl :=
-  { name := "partScanE", retType := .const "Unit",
-    telescope := [("v", .borrowT listNatT listNatT), ("k", natT), ("i", natT), ("g", natT), ("pivot", natT)],
-    body := .matchE ⟨1, "k"⟩ [
-      .mk "Z" [] (.matchE ⟨2, "i"⟩ [
-        .mk "Z" [] u,
-        .mk "S" [⟨6, "i2"⟩] (.seq (.call "swapS" [.var ⟨0, "v"⟩, tnat 0, tS (V 6 "i2"), u, u]) u) ]),
-      .mk "S" [⟨5, "k2"⟩]
-        (.letIn ⟨6, "c"⟩ (lebPureT (nthPureT (tS (addTm (V 2 "i") (V 3 "g"))) (dV 0 "v")) (V 4 "pivot"))
-          (.matchE ⟨6, "c"⟩ [
-            .mk "True" [] (.matchE ⟨3, "g"⟩ [
-              .mk "Z" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), tnat 0, V 4 "pivot"]),
-              -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
-              -- + the recursion), and §2.1 copy-on-read now makes that natural: a
-              -- `.ctorApp "S"` arg reads its var by copy (marker-free Nat), so the
-              -- indices are the plain `S i`, `S (add i (S g2))`, `S g2` — no
-              -- add-spine workaround, and these convert with the model's forms.
-              .mk "S" [⟨7, "g2"⟩] (.seq (.call "swapS" [.borrow (dV 0 "v"), tS (V 2 "i"), tS (addTm (V 2 "i") (tS (V 7 "g2"))), u, u])
-                (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), tS (V 7 "g2"), V 4 "pivot"])) ]),
-            .mk "False" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", V 2 "i", tS (V 3 "g"), V 4 "pivot"]) ])) ] }
+  decl{ fn partScanE (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
+        { match k {
+            Z => match i {
+              Z => (),
+              S(i2) => { swapS(v, Z, S(i2), (), ()); () }
+            },
+            S(k2) => {
+              let c = leb (nth (S (add i g)) (*v)) pivot;
+              match c {
+                True => match g {
+                  Z => partScanE(v, k2, S(i), Z, pivot),
+                  -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
+                  -- + the recursion), and §2.1 copy-on-read now makes that natural: a
+                  -- `S`-constructor arg reads its var by copy (marker-free Nat), so the
+                  -- indices are the plain `S i`, `S (add i (S g2))`, `S g2` — no
+                  -- add-spine workaround, and these convert with the model's forms.
+                  S(g2) => { swapS(&mut *v, S(i), S(add i (S(g2))), (), ()); partScanE(v, k2, S(i), S(g2), pivot) }
+                },
+                False => partScanE(v, k2, i, S(g), pivot)
+              }
+            }
+        } } }
 
 -- v=0, n=1; body binders n2=5, pivot=6.
 def partitionE : Decl :=
-  { name := "partitionE", retType := .const "Unit",
-    telescope := [("v", .borrowT listNatT listNatT), ("n", natT)],
-    body := .matchE ⟨1, "n"⟩ [
-      .mk "Z" [] u,
-      .mk "S" [⟨5, "n2"⟩] (.letIn ⟨6, "pivot"⟩ (nthPureT (tnat 0) (dV 0 "v"))
-        (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "n2", tnat 0, tnat 0, V 6 "pivot"])) ] }
+  decl{ fn partitionE (v : &mut List Nat, n : Nat) -> Unit
+        { match n {
+            Z => (),
+            S(n2) => { let pivot = nth Z (*v); partScanE(v, n2, Z, Z, pivot) }
+        } } }
 
 def partTable : List Decl := [nthS, nth2S, swapSN, partScanE, partitionE]
 
@@ -642,21 +641,21 @@ example : runScan [5,3,8,1,9,2] 5 5 = true := by native_decide   -- mixed, multi
 
 
 def partitionQ : Decl :=
-  { name := "partitionQ",
-    retType := .sigmaT natT (.idT natT (.pvar 0) (.app (.app StdLemmas.partIdxL (V 1 "n")) dv)),
-    telescope := [("v", .borrowT listNatT listNatT), ("n", natT), ("hlenW", .idT natT (lenT dv) (V 1 "n"))],
-    body := .matchE ⟨1, "n"⟩ [
-      .mk "Z" [] (.ctorApp "Pair" [.ctorApp "Z" [], .ctorApp "Refl" []]),
-      .mk "S" [⟨3, "n2"⟩] (.letIn ⟨4, "i"⟩ (.app (.app StdLemmas.partIdxL (.ctorApp "S" [V 3 "n2"])) dv)
-        (.letIn ⟨5, "pivot"⟩ (nthP (.ctorApp "Z" []) dv)
-          (.letIn ⟨6, "hlen"⟩
-            (idTr (lenT dv) (tS (V 3 "n2")) (tS (addTmH (V 3 "n2") (.ctorApp "Z" [])))
-              (V 2 "hlenW")
-              (idSy (tS (addTmH (V 3 "n2") (.ctorApp "Z" []))) (tS (V 3 "n2"))
-                (idCgS (addTmH (V 3 "n2") (.ctorApp "Z" [])) (V 3 "n2") (addZeroT (V 3 "n2")))))
-            (.seq (.call "partScan" [.var ⟨0, "v"⟩, V 3 "n2", .ctorApp "Z" [], .ctorApp "Z" [], V 5 "pivot", V 6 "hlen"])
-              (.ctorApp "Pair" [V 4 "i", .ctorApp "Refl" []]))))) ],
-    «back» := some (partitionLT2 (V 1 "n") dv) }
+  decl{ fn partitionQ (v : &mut List Nat, n : Nat, hlenW : Id Nat (len *v) n)
+        -> Σ (q : Nat). Id Nat q (partIdxL n (*v))
+        back = partitionL n (*v)
+        { match n {
+            Z => Pair(Z, Refl),
+            S(n2) => {
+              let i = partIdxL (S n2) (*v);
+              let pivot = nth Z (*v);
+              let hlen = id_trans Nat (len *v) (S n2) (S (add n2 Z)) hlenW
+                           (id_sym Nat (S (add n2 Z)) (S n2)
+                             (id_congr Nat Nat (λ (a : Nat). S a) (add n2 Z) n2 (add_zero n2)));
+              partScan(v, n2, Z, Z, pivot, hlen);
+              Pair(i, Refl)
+            }
+        } } }
 #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScan, partitionQ] partitionQ with | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 200))
 
 /-! ## M21-3 — partitionRange: the subrange partition wrapper (Σ-pinned relative index)
@@ -671,24 +670,22 @@ def partIdxRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partId
 def partitionRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partitionRangeL lo) cnt) l
 
 def partitionRange : Decl :=
-  { name := "partitionRange",
-    retType := .sigmaT natT (.idT natT (.pvar 0) (partIdxRangeLT (V 1 "lo") (V 2 "cnt") dv)),
-    telescope := [("v", .borrowT listNatT listNatT), ("lo", natT), ("cnt", natT),
-      ("hbnd", LeT (addTmH (V 1 "lo") (V 2 "cnt")) (lenT dv))],
-    body := .matchE ⟨2, "cnt"⟩ [
-      .mk "Z" [] (.ctorApp "Pair" [.ctorApp "Z" [], .ctorApp "Refl" []]),
-      .mk "S" [⟨4, "cnt2"⟩] (.letIn ⟨5, "i"⟩ (partIdxRangeLT (V 1 "lo") (tS (V 4 "cnt2")) dv)
-        (.letIn ⟨6, "pivot"⟩ (nthP (V 1 "lo") dv)
-          (.letIn ⟨7, "hle"⟩
-            (leRwL (lenT dv)
-              (addTmH (V 1 "lo") (tS (V 4 "cnt2")))
-              (addTmH (V 1 "lo") (tS (addTmH (V 4 "cnt2") (.ctorApp "Z" []))))
-              (idCgLoS (V 1 "lo") (V 4 "cnt2") (addTmH (V 4 "cnt2") (.ctorApp "Z" []))
-                (idSy (addTmH (V 4 "cnt2") (.ctorApp "Z" [])) (V 4 "cnt2") (addZeroT (V 4 "cnt2"))))
-              (V 3 "hbnd"))
-            (.seq (.call "partScanRange" [.var ⟨0, "v"⟩, V 1 "lo", V 4 "cnt2", .ctorApp "Z" [], .ctorApp "Z" [], V 6 "pivot", V 7 "hle"])
-              (.ctorApp "Pair" [V 5 "i", .ctorApp "Refl" []]))))) ],
-    «back» := some (partitionRangeLT (V 1 "lo") (V 2 "cnt") dv) }
+  decl{ fn partitionRange (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
+        -> Σ (q : Nat). Id Nat q (partIdxRangeL lo cnt (*v))
+        back = partitionRangeL lo cnt (*v)
+        { match cnt {
+            Z => Pair(Z, Refl),
+            S(cnt2) => {
+              let i = partIdxRangeL lo (S cnt2) (*v);
+              let pivot = nth lo (*v);
+              let hle = le_rw_l (len *v) (add lo (S cnt2)) (add lo (S (add cnt2 Z)))
+                          (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt2 (add cnt2 Z)
+                            (id_sym Nat (add cnt2 Z) cnt2 (add_zero cnt2)))
+                          hbnd;
+              partScanRange(v, lo, cnt2, Z, Z, pivot, hle);
+              Pair(i, Refl)
+            }
+        } } }
 #eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScanRange, partitionRange] partitionRange with | .ok _ => "partitionRange OK" | .error e => "ERR: " ++ (e.take 200))
 
 /-! ## M21-3 — quicksort: the imperative in-place quicksort (back = sortRangeL)
@@ -708,61 +705,58 @@ def partitionRange : Decl :=
     so the bounds, stated over the live *v, transport back to len entry = hbnd). -/
 
 def quicksort : Decl :=
-  { name := "quicksort", retType := .const "Unit",
-    telescope := [("v", .borrowT listNatT listNatT), ("fuel", natT), ("lo", natT), ("cnt", natT),
-      ("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))],
-    body := .matchE ⟨1, "fuel"⟩ [
-      .mk "Z" [] .unit,
-      .mk "S" [⟨5, "f2"⟩] (.matchE ⟨3, "cnt"⟩ [
-        .mk "Z" [] .unit,
-        .mk "S" [⟨6, "cnt2"⟩] (.matchE ⟨6, "cnt2"⟩ [
-          .mk "Z" [] .unit,
-          .mk "S" [⟨7, "cnt3"⟩]
-            (.letIn ⟨8, "pivot"⟩ (nthP (V 2 "lo") dv)
-            (.letIn ⟨9, "i"⟩ (partIdxRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)
-            (.letIn ⟨10, "g"⟩ (partGapRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)
-            (.letIn ⟨11, "sizeE"⟩ (partScanSizeLT (nthP (V 2 "lo") dv) (V 2 "lo") (tS (V 7 "cnt3")) (.ctorApp "Z" []) (.ctorApp "Z" []) dv)
-            (.letIn ⟨12, "sSize"⟩
-              (idCgS (addTmH (V 9 "i") (V 10 "g")) (tS (V 7 "cnt3"))
-                (idTr (addTmH (V 9 "i") (V 10 "g")) (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" []))) (tS (V 7 "cnt3"))
-                  (V 11 "sizeE")
-                  (idCgS (addTmH (V 7 "cnt3") (.ctorApp "Z" [])) (V 7 "cnt3") (addZeroT (V 7 "cnt3")))))
-            (.letIn ⟨13, "hle"⟩
-              (leRwL (lenT dv)
-                (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
-                (addTmH (V 2 "lo") (tS (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" [])))))
-                (idCgAddLo (V 2 "lo") (tS (tS (V 7 "cnt3"))) (tS (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" []))))
-                  (idCgS (tS (V 7 "cnt3")) (tS (addTmH (V 7 "cnt3") (.ctorApp "Z" [])))
-                    (idCgS (V 7 "cnt3") (addTmH (V 7 "cnt3") (.ctorApp "Z" [])) (idSy (addTmH (V 7 "cnt3") (.ctorApp "Z" [])) (V 7 "cnt3") (addZeroT (V 7 "cnt3"))))))
-                (V 4 "hbnd"))
-            (.letIn ⟨14, "bl"⟩
-              (leRwR (addTmH (V 2 "lo") (V 9 "i")) (lenT dv) (lenT (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))
-                (idSy (lenT (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)) (lenT dv) (lenPartRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))
-                (leTrans (addTmH (V 2 "lo") (V 9 "i")) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3")))) (lenT dv)
-                  (leRwR (addTmH (V 2 "lo") (V 9 "i")) (addTmH (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
-                    (idCgAddLo (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g"))) (tS (tS (V 7 "cnt3"))) (V 12 "sSize"))
-                    (leAddMonoL (V 2 "lo") (V 9 "i") (tS (addTmH (V 9 "i") (V 10 "g"))) (leUpR (V 9 "i") (addTmH (V 9 "i") (V 10 "g")) (leAdd (V 9 "i") (V 10 "g")))))
-                  (V 4 "hbnd")))
-            (.letIn ⟨15, "br"⟩
-              (leRwR (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g")) (lenT dv)
-                (lenT (sortRangeLT2 (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)))
-                (idSy (lenT (sortRangeLT2 (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))) (lenT dv)
-                  (idTr (lenT (sortRangeLT2 (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)))
-                    (lenT (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)) (lenT dv)
-                    (lenSortRangeLT (V 5 "f2") (V 2 "lo") (V 9 "i") (partitionRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv))
-                    (lenPartRangeLT (V 2 "lo") (tS (tS (V 7 "cnt3"))) dv)))
-                (leRwL (lenT dv) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3")))) (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g"))
-                  (idSy (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g")) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
-                    (idTr (addTmH (tS (addTmH (V 2 "lo") (V 9 "i"))) (V 10 "g")) (tS (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
-                      (idCgS (addTmH (addTmH (V 2 "lo") (V 9 "i")) (V 10 "g")) (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g"))) (addAssocT (V 2 "lo") (V 9 "i") (V 10 "g")))
-                      (idTr (tS (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g")))) (addTmH (V 2 "lo") (tS (tS (V 7 "cnt3"))))
-                        (idSy (addTmH (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g")))) (tS (addTmH (V 2 "lo") (addTmH (V 9 "i") (V 10 "g")))) (addSuccT (V 2 "lo") (addTmH (V 9 "i") (V 10 "g"))))
-                        (idCgAddLo (V 2 "lo") (tS (addTmH (V 9 "i") (V 10 "g"))) (tS (tS (V 7 "cnt3"))) (V 12 "sSize")))))
-                  (V 4 "hbnd")))
-            (.seq (.call "partScanRange" [.borrow dv, V 2 "lo", tS (V 7 "cnt3"), .ctorApp "Z" [], .ctorApp "Z" [], V 8 "pivot", V 13 "hle"])
-              (.seq (.call "quicksort" [.borrow dv, V 5 "f2", V 2 "lo", V 9 "i", V 14 "bl"])
-                (.call "quicksort" [.borrow dv, V 5 "f2", tS (addTmH (V 2 "lo") (V 9 "i")), V 10 "g", V 15 "br"]))))))))))) ]) ]) ],
-    «back» := some (sortRangeLT2 (V 1 "fuel") (V 2 "lo") (V 3 "cnt") dv) }
+  decl{ fn quicksort (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v)) -> Unit
+        back = sortRangeL fuel lo cnt (*v)
+        { match fuel {
+            Z => (),
+            S(f2) => match cnt {
+              Z => (),
+              S(cnt2) => match cnt2 {
+                Z => (),
+                S(cnt3) => {
+                  let pivot = nth lo (*v);
+                  let i = partIdxRangeL lo (S (S cnt3)) (*v);
+                  let g = partGapRangeL lo (S (S cnt3)) (*v);
+                  let sizeE = partScanSizeL (nth lo (*v)) lo (S cnt3) Z Z (*v);
+                  let sSize = id_congr Nat Nat (λ (a : Nat). S a) (add i g) (S cnt3)
+                                (id_trans Nat (add i g) (S (add cnt3 Z)) (S cnt3) sizeE
+                                  (id_congr Nat Nat (λ (a : Nat). S a) (add cnt3 Z) cnt3 (add_zero cnt3)));
+                  let hle = le_rw_l (len *v) (add lo (S (S cnt3))) (add lo (S (S (add cnt3 Z))))
+                              (id_congr Nat Nat (λ (a : Nat). add lo a) (S (S cnt3)) (S (S (add cnt3 Z)))
+                                (id_congr Nat Nat (λ (a : Nat). S a) (S cnt3) (S (add cnt3 Z))
+                                  (id_congr Nat Nat (λ (a : Nat). S a) cnt3 (add cnt3 Z)
+                                    (id_sym Nat (add cnt3 Z) cnt3 (add_zero cnt3)))))
+                              hbnd;
+                  let bl = le_rw_r (add lo i) (len *v) (len (partitionRangeL lo (S (S cnt3)) (*v)))
+                             (id_sym Nat (len (partitionRangeL lo (S (S cnt3)) (*v))) (len *v)
+                               (len_partitionRangeL lo (S (S cnt3)) (*v)))
+                             (le_trans (add lo i) (add lo (S (S cnt3))) (len *v)
+                               (le_rw_r (add lo i) (add lo (S (add i g))) (add lo (S (S cnt3)))
+                                 (id_congr Nat Nat (λ (a : Nat). add lo a) (S (add i g)) (S (S cnt3)) sSize)
+                                 (le_add_mono_l lo i (S (add i g)) (le_up_r i (add i g) (le_add i g))))
+                               hbnd);
+                  let br = le_rw_r (add (S (add lo i)) g) (len *v)
+                             (len (sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v))))
+                             (id_sym Nat (len (sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v)))) (len *v)
+                               (id_trans Nat (len (sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v))))
+                                 (len (partitionRangeL lo (S (S cnt3)) (*v))) (len *v)
+                                 (len_sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v)))
+                                 (len_partitionRangeL lo (S (S cnt3)) (*v))))
+                             (le_rw_l (len *v) (add lo (S (S cnt3))) (add (S (add lo i)) g)
+                               (id_sym Nat (add (S (add lo i)) g) (add lo (S (S cnt3)))
+                                 (id_trans Nat (add (S (add lo i)) g) (S (add lo (add i g))) (add lo (S (S cnt3)))
+                                   (id_congr Nat Nat (λ (a : Nat). S a) (add (add lo i) g) (add lo (add i g)) (add_assoc lo i g))
+                                   (id_trans Nat (S (add lo (add i g))) (add lo (S (add i g))) (add lo (S (S cnt3)))
+                                     (id_sym Nat (add lo (S (add i g))) (S (add lo (add i g))) (add_succ lo (add i g)))
+                                     (id_congr Nat Nat (λ (a : Nat). add lo a) (S (add i g)) (S (S cnt3)) sSize))))
+                               hbnd);
+                  partScanRange(&mut *v, lo, S(cnt3), Z, Z, pivot, hle);
+                  quicksort(&mut *v, f2, lo, i, bl);
+                  quicksort(&mut *v, f2, S(add lo i), g, br)
+                }
+              }
+            }
+        } } }
 -- THE NORTH STAR, GREEN: the imperative in-place quicksort type-checks as an
 -- implementation of its pure model `sortRangeL` (conformance = conversion, §6.2).
 -- Measured from-scratch elaboration: 38m49s wall / 2326s CPU (native_decide,
@@ -780,15 +774,12 @@ example : checkFnOk quicksort [nthS, nth2S, swapSN, partScanRange, quicksort] = 
 -- atomic-at-audit over-approximation, which suspended *v for the whole body and
 -- blocked the second reborrow. back = identity (the recursion mutates nothing).
 def twoRec : Decl :=
-  { name := "twoRec",
-    retType := .const "Unit",
-    telescope := [("v", .borrowT listNatT listNatT), ("f", natT)],
-    body := .matchE ⟨1, "f"⟩ [
-      .mk "Z" [] .unit,
-      .mk "S" [⟨2, "f2"⟩]
-        (.seq (.call "twoRec" [.borrow (.deref (V 0 "v")), V 2 "f2"])
-          (.seq (.call "twoRec" [.borrow (.deref (V 0 "v")), V 2 "f2"]) .unit)) ],
-    «back» := some dv }
+  decl{ fn twoRec (v : &mut List Nat, f : Nat) -> Unit
+        back = *v
+        { match f {
+            Z => (),
+            S(f2) => { twoRec(&mut *v, f2); twoRec(&mut *v, f2); () }
+        } } }
 example : checkFnOk twoRec [twoRec] = true := by native_decide
 
 end Dllbc.Tests.S19Partition
