@@ -19,7 +19,12 @@ open Dllbc.Val (nat)
 
 namespace Dllbc.Tests.S4Pure
 
-/-! ## Pure library (built from the raw formers) -/
+-- SUBJECT FILE: the pure fragment (⇝, conversion, value typing) has no runtime surface,
+-- so the whole library here is built directly from raw `Term`/`Val` formers — these raw
+-- constructions ARE the subject under test (reduction, hasType, convert), not a surface
+-- form. Every `.ctorApp`/`V i` below is intentional test machinery.
+
+/-! ## Pure library (built from the raw formers) — SUBJECT: raw pure Terms under test -/
 
 def natT : Term := .const "Nat"
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
@@ -46,7 +51,7 @@ def boolRecNat (t f b : Term) : Term :=
 def sVar : Term := .var ⟨0, "s"⟩
 def seedS : Omega := [(⟨0, "s"⟩, .sym 0)]
 
-/-! ## β / ι reduction (⇝) -/
+/-! ## β / ι reduction (⇝) — SUBJECT: raw pure Terms under reduction test -/
 
 -- add 2 3 ⇝ 5.
 example : expectReadC [] [] (.app (.app addT (tnat 2)) (tnat 3)) (nat 5) = true := by native_decide
@@ -75,7 +80,8 @@ example : expectConv seedS [] (.app (.app addT sVar) (tnat 1)) (.app (.app addT 
 example : expectConv seedS [] (.app (.app addT sVar) (tnat 1)) (.app (.app addT sVar) (tnat 2))
   = false := by native_decide
 
-/-! ## Large elimination (the flagship): computation under a stuck index -/
+/-! ## Large elimination (the flagship): computation under a stuck index
+    SUBJECT: raw pure Terms (VecF etc.) under the conversion test. -/
 
 -- `VecF Nat (S σ)` CONVERTS to `Σ (_:Nat). VecF Nat σ` — natRec proceeding past a
 -- stuck index, the property §4.2's dependent push stands on.

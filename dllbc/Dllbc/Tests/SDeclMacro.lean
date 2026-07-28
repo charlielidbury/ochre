@@ -21,6 +21,10 @@ Decls are IMPORTED (cache-warm); nothing here re-elaborates them, so even the
 
 ## Before / after — the ugliness this macro removes
 
+SUBJECT (illustrative): the code block below quotes the hand-built `.ctorApp`/`V i`/
+`LeT` "old way" purely to CONTRAST it with the surface — it is documentation of what
+the macro removes, not live raw-Term machinery.
+
 `quicksort`'s signature, hand-built (S19Partition.lean):
 
 ```

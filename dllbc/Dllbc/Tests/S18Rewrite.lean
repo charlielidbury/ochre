@@ -19,6 +19,8 @@ open Dllbc
 
 namespace Dllbc.Tests.S18Rewrite
 
+-- SUBJECT: per-file local raw builders (eqbA/tnat/V/listNatT) for the rewrite Decls
+-- and expected-value needles below — raw Terms are the subject here.
 def eqbA (a b : Term) : Term := .app (.app Std.eqbFnT a) b
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 def V (i : Nat) (n : String) : Term := .var ⟨i, n⟩
@@ -132,6 +134,9 @@ example : chk StdLemmas.count_cons_hit StdLemmas.count_cons_hit_ty = true := by 
     machinery — the shape the quicksort caller uses when it applies count lemmas to
     the M17-recovered result. -/
 
+-- SUBJECT: hand-built raw Decl — its `.idT` return obligation and proof-carrying
+-- `.assign` body exercise the rewrite/Id machinery that IS under test; the raw form
+-- (not a surface `decl{}`) is the subject.
 def certConsHit : Decl :=
   { name := "certConsHit",
     retType := .idT (.const "Nat")
@@ -149,6 +154,7 @@ example : checkFnOk certConsHit = true := by native_decide
 -- — a count the rewrite-by-Id proof does NOT prove. The value-returning audit runs
 -- `hasType` on the proof against the (lying) pinned return type and rejects it, so
 -- the tie-in's acceptance above is not vacuous.
+-- SUBJECT: a deliberately-lying return type (raw Term) for the negative control.
 def certConsHitLieRet : Term := .idT (.const "Nat")
   (.app (.app Std.countFnT (V 1 "m")) (.ctorApp "Cons" [V 2 "a", V 3 "l"]))
   (.ctorApp "S" [.ctorApp "S" [.app (.app Std.countFnT (V 1 "m")) (V 3 "l")]])

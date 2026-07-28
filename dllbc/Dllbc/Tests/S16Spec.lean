@@ -47,6 +47,8 @@ example : chk StdLemmas.take_drop_id StdLemmas.take_drop_id_ty = true := by nati
 /-! ## `swapL` computes (the pure swap specification) -/
 
 def rd (t : Term) : Val := match (readC 3000 t).run (seedPure [] []) with | .ok v _ => v | .error _ _ => .const "ERR"
+-- SUBJECT: per-file local Term builders (tnat/tlist) constructing the Value-layer test
+-- inputs — the raw Term is the subject here, not a surface form under test.
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 def tlist : List Nat → Term | [] => .ctorApp "Nil" [] | h :: t => .ctorApp "Cons" [tnat h, tlist t]
 def swapLApp (i j l : Term) : Term := .app (.app (.app StdLemmas.swapL i) j) l

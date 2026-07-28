@@ -33,6 +33,10 @@ namespace Dllbc.Tests.S11Lib
     Term-level fording vocabulary (the bodies below are hand-built `Term`s; the
     surface macro has no syntax for `j`/`app`/`const`). -/
 
+-- SUBJECT: the §11 fording vocabulary and proofs (tZ/tS/natNoConfT/retRefl/jReflProof/
+-- storeProof) are hand-built raw Terms — the surface has no syntax for `j`/`app`/`const`
+-- and the j-spine `.pvar` motives cannot be reproduced by a named binder, so the raw
+-- Terms are the subject (an accepted finding).
 def natT : Term := .const "Nat"
 def tZ : Term := .ctorApp "Z" []
 def tS (t : Term) : Term := .ctorApp "S" [t]
@@ -44,16 +48,17 @@ def sCaseT : Term := .lam natT (.lam (.pi natT .type) (.lam natT (natRecT (.lam 
 def natCodeT : Term := .lam natT (natRecT (.lam natT (.pi natT .type)) zCaseT sCaseT (.pvar 0))
 def natCodeApp (a b : Term) : Term := .app (.app natCodeT a) b
 def nncMotiveT : Term := .lam natT (.lam (.idT natT tZ (.pvar 0)) (natCodeApp tZ (.pvar 1)))
+-- SUBJECT: the no-confusion j-spine (raw Term; `.pvar` motive, no surface).
 def natNoConfT (nE pE : Term) : Term := jT natT tZ nncMotiveT (.ctorApp "unit" []) (tS nE) pE
 
--- Returning a proof: `Refl` at an Id-typed return (a `ctorApp`, lifts trivially).
+-- SUBJECT (raw proof Decl): Returning a proof — `Refl` at an Id-typed return (a `ctorApp`, lifts trivially).
 def retRefl : Decl :=
   { name := "retRefl", retType := .idT natT (.var ⟨0, "a"⟩) (.var ⟨0, "a"⟩),
     telescope := [("a", natT)], body := .ctorApp "Refl" [] }
 example : checkFnOk retRefl = true := by native_decide
 
--- Storing a proof: a J-application (which ⇝-reduces to `Refl`) is ⇒-lifted into
--- a `Pair`'s dependent second field, and the audit checks it against `Id Nat a a`.
+-- SUBJECT (raw proof Decls): Storing a proof — a J-application (which ⇝-reduces to
+-- `Refl`) is ⇒-lifted into a `Pair`'s dependent second field, audited against `Id Nat a a`.
 def jReflProof (aE : Term) : Term :=
   jT natT aE (.lam natT (.lam (.idT natT aE (.pvar 1)) (.idT natT aE (.pvar 1)))) (.ctorApp "Refl" []) aE (.ctorApp "Refl" [])
 def sigDiag : Term := .sigmaT natT (.idT natT (.pvar 0) (.pvar 0))     -- Σ(x:Nat). Id Nat x x

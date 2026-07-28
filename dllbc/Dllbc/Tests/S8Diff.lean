@@ -49,6 +49,7 @@ def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 -- CONV-SUBJECT: generator builds raw Terms by design
 def v0 : Term := .var ⟨0, "v"⟩
 
+-- CONV-SUBJECT: generator builds raw Terms by design
 /-- Small expression pool over v (RHS / place fillers). -/
 def exprs : List Term :=
   [ .unit, nilT, tnat 0, tnat 1, .deref v0,
@@ -57,6 +58,7 @@ def exprs : List Term :=
     .var ⟨2, "x"⟩ ]
 where nilT : Term := .ctorApp "Nil" []
 
+-- CONV-SUBJECT: generator builds raw Terms by design
 /-- Leaf statement bodies (each returns `()`), depth ≈ 1. -/
 def leafBodies : List Term :=
   [ .unit ]

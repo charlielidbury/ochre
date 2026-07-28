@@ -73,6 +73,9 @@ example : checkFnOk useTrans = true := by native_decide
 def LeFn : Term := Std.LeFnT
 def badReflClosed : Term := pure{
   λ (n : Nat). elim n return (λ (m : Nat). LeFn Z m) { Z => unit, S (k) ih => ih } }
+-- SUBJECT: a deliberately-lying Decl — retType claims `Le n n` while the (surface)
+-- body proves `Le Z n`. Hand-built raw so the lie is explicit; converting it to
+-- decl{} would obscure exactly what the negative test demonstrates.
 def badRefl : Decl :=
   { name := "badRefl", retType := Std.LeT (.var ⟨0, "n"⟩) (.var ⟨0, "n"⟩),
     telescope := [("n", natT)], body := (.app badReflClosed (.var ⟨0, "n"⟩)) }
