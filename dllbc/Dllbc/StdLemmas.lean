@@ -2127,4 +2127,46 @@ def segCount_partitionRangeL_ty : Term := pure{
     Le (add lo cnt) (len l) →
     Id Nat (segCount x lo cnt (partitionRangeL lo cnt l)) (segCount x lo cnt l) }
 
+/-! ## The partition invariant — STATEMENTS (§22, M22-c step 2; proofs dispatched)
+
+    partScanRangeL establishes the Lomuto invariant: the ≤-segment is ≤ pivot, the
+    gap is > pivot, the pivot lands at the boundary index. Verified computationally
+    (final forms on 5 inputs incl. a sub-range) and elaboration-checked. The 3-way
+    conjunction CANNOT be Σ-bundled (comptime Σ can't be projected), so it is THREE
+    separate lemmas — and they ARE separable: AllLeR-maintenance needs only the ≤-side
+    precondition + the leb test (the swapped-in element tested ≤ pivot); AllGtR only
+    the gap-side; pivot only that lo is untouched. STRENGTHENED scan-level forms carry
+    the region preconditions (≤-region offset `S lo`, gap offset `add (S i) lo`,
+    index-first to match the predicates); the partitionRangeL WRAPPERS drop out at
+    i=g=0 (vacuous preconditions). ADD-ORDER: predicates index-first (`add k lo`),
+    partScanRangeL offset-first (`add lo X`) — the proofs bridge with add_comm. Proofs
+    owned by dllbc-seg (positional induction mirroring count_partScanRangeL, swaps
+    discharged via nth_swapL_lt/gt). -/
+def partScanRangeL_allLeR_ty : Term := pure{
+  Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+    Le (add lo (S (add k (add i g)))) (len l) →
+    Id Nat (nth lo l) pivot →
+    AllLeR i (S lo) pivot l →
+    AllLeR (partScanIdxRangeL pivot lo k i g l) lo pivot (partScanRangeL pivot lo k i g l) }
+def partScanRangeL_allGtR_ty : Term := pure{
+  Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+    Le (add lo (S (add k (add i g)))) (len l) →
+    Id Nat (nth lo l) pivot →
+    AllGtR g (add (S i) lo) pivot l →
+    AllGtR (partScanGapRangeL pivot lo k i g l) (add (S (partScanIdxRangeL pivot lo k i g l)) lo) pivot (partScanRangeL pivot lo k i g l) }
+def partScanRangeL_pivot_ty : Term := pure{
+  Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+    Le (add lo (S (add k (add i g)))) (len l) →
+    Id Nat (nth lo l) pivot →
+    Id Nat (nth (add (partScanIdxRangeL pivot lo k i g l) lo) (partScanRangeL pivot lo k i g l)) pivot }
+def partition_allLeR_ty : Term := pure{
+  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
+    AllLeR (partIdxRangeL lo cnt l) lo (nth lo l) (partitionRangeL lo cnt l) }
+def partition_allGtR_ty : Term := pure{
+  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
+    AllGtR (partGapRangeL lo cnt l) (add (S (partIdxRangeL lo cnt l)) lo) (nth lo l) (partitionRangeL lo cnt l) }
+def partition_pivot_ty : Term := pure{
+  Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
+    Id Nat (nth (add (partIdxRangeL lo cnt l) lo) (partitionRangeL lo cnt l)) (nth lo l) }
+
 end Dllbc.StdLemmas
