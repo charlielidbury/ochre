@@ -3046,17 +3046,23 @@ def allLeR_to_noAbove_ty : Term := pure{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllLeR w lo p l → Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z }
 def noAbove_to_allLeR_ty : Term := pure{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → Le (add lo w) (len l) →
     (Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z) → AllLeR w lo p l }
 def allGtR_to_noBelow_ty : Term := pure{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllGtR w lo p l → Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z }
 def noBelow_to_allGtR_ty : Term := pure{
-  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
+  Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → Le (add lo w) (len l) →
     (Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z) → AllGtR w lo p l }
+-- #1/#3/#5 carry the range-fits bound `Le (add lo w) (len l)`: without it an off-the-end
+-- position reads Z, which need not occur in the segment, so #1 (present ≥1×) and #5
+-- (AllGtR needs nth>p at every m<w, but off-end nth=Z isn't) are FALSE (dllbc-seg's
+-- gate finding, computationally checked). #2/#4 iterate the ACTUAL segment so need no
+-- bound. The keystone already carries this bound and len is sort-invariant, so the
+-- composition feeds #3/#5 the bound over the sorted list.
 def nth_seg_count_pos_ty : Term := pure{
   Π (m : Nat) → Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) →
-    Le (S m) w → Le (S Z) (segCount (nth (add m lo) l) lo w l) }
+    Le (S m) w → Le (add lo w) (len l) → Le (S Z) (segCount (nth (add m lo) l) lo w l) }
 def allLeR_sortRange_ty : Term := pure{
   Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
     Le (add lo w) (len l) → AllLeR w lo p l → AllLeR w lo p (sortRangeL fuel lo w l) }
