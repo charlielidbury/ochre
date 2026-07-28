@@ -2,6 +2,7 @@ import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.StdLemmas
+import Dllbc.DeclMacro
 
 /-!
 # §16 test suite — the count-preservation proof stack (and, later, swapS)
@@ -73,43 +74,43 @@ example : chk StdLemmas.len_swapL StdLemmas.len_swapL_ty = true := by native_dec
     with `swapL 0 1 s` by computation — so it type-checks against `Id (len l)
     (len s)`. The cursor writes and the pure specification agree, verified. -/
 
-def natT : Term := .const "Nat"
-def listNatT : Term := .app (.const "List") natT
-def lenTr (l : Term) : Term := Std.lenT l
-def LeTr (a b : Term) : Term := Std.LeT a b
-def bE (x : Term) : Term := .app (.app (.const "botElim") (.const "Unit")) x
-def V (i : Nat) (n : String) : Term := .var ⟨i, n⟩
-def Dv (i : Nat) (n : String) : Term := .deref (V i n)
-def owedS : Term := .sigmaT listNatT (.idT natT (lenTr (.pvar 0)) (lenTr (.pvar 1)))
-def proofTerm : Term := .app (.app (.app StdLemmas.len_swapL (tnat 0)) (tnat 1)) (Dv 0 "v")
-def swapS01Tele : List (String × Term) := [("v", .borrowT listNatT owedS), ("p", LeTr (tnat 2) (lenTr (Dv 0 "v")))]
-def innerSwap : Term :=
-  .letIn ⟨7, "tmp"⟩ (Dv 3 "h0")
-    (.assign (Dv 3 "h0") (Dv 5 "h1")
-      (.assign (Dv 5 "h1") (V 7 "tmp")
-        (.letIn ⟨8, "l"⟩ (Dv 0 "v")
-          (.assign (Dv 0 "v") (.ctorApp "Pair" [V 8 "l", V 2 "proof"]) .unit))))
-def swapS01Body : Term :=
-  .letIn ⟨2, "proof"⟩ proofTerm
-  (.matchE ⟨0, "v"⟩ [
-    .mk "Nil" [] (bE (V 1 "p")),
-    .mk "Cons" [⟨3, "h0"⟩, ⟨4, "t0"⟩] (.matchE ⟨4, "t0"⟩ [
-      .mk "Nil" [] (bE (V 1 "p")),
-      .mk "Cons" [⟨5, "h1"⟩, ⟨6, "t1"⟩] innerSwap ]) ])
-def swapS01 : Decl := { name := "swapS01", retType := .const "Unit", telescope := swapS01Tele, body := swapS01Body }
+def swapS01 : Decl :=
+  decl{ fn swapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s)),
+                    p : Le 2 (len (*v))) -> Unit {
+    let proof = StdLemmas.len_swapL 0 1 (*v);
+    match v {
+      Nil => botElim Unit p,
+      Cons(h0, t0) => {
+        match t0 {
+          Nil => botElim Unit p,
+          Cons(h1, t1) => {
+            let tmp = *h0;
+            *h0 := *h1;
+            *h1 := tmp;
+            let l = *v;
+            *v := Pair(l, proof);
+            ()
+          }
+        }
+      }
+    }
+  } }
 
 example : checkFnOk swapS01 = true := by native_decide
 
 -- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
 -- l + the carried proof `pf : Id (len l) (len [1,2,3])`. The evidence survives the
 -- opaque group-end — pf is in scope downstream though l itself is opaque.
-def callerBody : Term :=
-  .letIn ⟨0, "x"⟩ (.ctorApp "Cons" [tnat 1, .ctorApp "Cons" [tnat 2, .ctorApp "Cons" [tnat 3, .ctorApp "Nil" []]]])
-  (.letIn ⟨1, "b"⟩ (.borrow (V 0 "x"))
-  (.seq (.call "swapS01" [V 1 "b", .unit])
-  (.letIn ⟨2, "sig"⟩ (V 0 "x")
-  (.matchE ⟨2, "sig"⟩ [ .mk "Pair" [⟨3, "l"⟩, ⟨4, "pf"⟩] (.letIn ⟨5, "m"⟩ (V 3 "l") .unit) ]))))
-def swapCaller : Decl := { name := "caller", retType := .const "Unit", telescope := [], body := callerBody }
+def swapCaller : Decl :=
+  decl{ fn caller () -> Unit {
+    let x = Cons(1, Cons(2, Cons(3, Nil)));
+    let b = &mut x;
+    swapS01(b, ());
+    let sig = x;
+    match sig {
+      Pair(l, pf) => { let m = l; () }
+    }
+  } }
 
 example : checkFnOk swapCaller ([swapS01, swapCaller]) = true := by native_decide
 -- The proof survives to the final env (pf ↦ a σ : Id (len l) (len [1,2,3])).
