@@ -118,3 +118,11 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
 23. Model-name check RESOLVED: `sortRangeL` (the index-bounded model) IS the
     green headline model — W1's usage is correct; PROGRESS's older `sortL`
     naming refers to the superseded take/drop spec-level model.
+24. AUTHORITATIVE PERF NUMBERS (W3 flagged conflicting sources; this is the
+    canonical set, from the dllbc-simplest final report — same harness before
+    and after, hence authoritative): quicksort checkFn compiled-exe 84,121 ms
+    → 181 ms (465×); full suite from scratch 38m49s wall / 2326s CPU → ~13s
+    wall (12.95s in the fixing worktree; 16–21s in later independent verifies,
+    load-dependent — "≈13–20s" is honest). The "~76s" figure was a different
+    machine/load measurement of the same pre-fix exe; do not mix sets. §8 and
+    the integration pass enforce this everywhere.
