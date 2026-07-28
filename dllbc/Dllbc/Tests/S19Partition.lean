@@ -30,7 +30,6 @@ open Dllbc.StdLemmas (swapL count_swapL' set nth partScanL partScanRangeL partId
 namespace Dllbc.Tests.S19Partition
 
 def V (i : Nat) (n : String) : Term := .var ⟨i, n⟩
-def listNatT : Term := .app (.const "List") (.const "Nat")
 def natT : Term := .const "Nat"
 
 /-- Type-check a closed term against a closed type in the pure seed (as in §18). -/
@@ -62,13 +61,9 @@ example : chk StdLemmas.hshift_false StdLemmas.hshift_false_ty = true := by nati
     proves `count m (swapL i j s) = count m s` in the caller's own environment.
     Imperative mutation + precise recovery (M17) + pure lemma (M18), end to end. -/
 
+-- SUBJECT: raw Term builders (tS/swapLT) feeding the lying specs below — the raw Term is the point.
 def tS (t : Term) : Term := .ctorApp "S" [t]
-def LeT (a b : Term) : Term := Std.LeT a b
-def lenT (l : Term) : Term := Std.lenT l
-def countT (m l : Term) : Term := .app (.app Std.countFnT m) l
 def swapLT (i j l : Term) : Term := .app (.app (.app StdLemmas.swapL i) j) l
-def cslP (m i j l pij p2 : Term) : Term :=
-  .app (.app (.app (.app (.app (.app StdLemmas.count_swapL' m) i) j) l) pij) p2
 
 -- s=0, m=1, i=2, j=3, pij=4, p2=5; body binders cert=6, b=7.
 def certSwapCount : Decl :=
@@ -129,7 +124,6 @@ example : checkFnOk pivotPlace confTable = true := by native_decide
     onto `len *v` via `le_rw_r (id_sym hlen)`. This validates the full
     length-equation → swapS-bound chain the recursive partScan threads. -/
 
-def addTmH (a b : Term) : Term := .app (.app Std.addFnT a) b
 
 -- v=0, i=1, g=2, hlen=3; body binder i2=4.
 def pivotPlaceH : Decl :=
@@ -161,45 +155,12 @@ example : checkFnOk pivotPlaceH confTable = true := by native_decide
     plus a len_swapL bridge in the swap case). resolveTree composes the recursive
     call's back-spec with swapS's, exactly as pivotPlace proved for one swap. -/
 
+-- SUBJECT: raw Term builders. `partScanLT`/`dv` (and `tS`/`zt`/`Refl`/`tlist` below)
+-- construct the lying-spec inputs and the executing-differential expected values — the
+-- raw Term IS the test subject here, not a surface form under test.
 def partScanLT (pivot k i g l : Term) : Term := .app (.app (.app (.app (.app StdLemmas.partScanL pivot) k) i) g) l
-def nthP (k l : Term) : Term := .app (.app StdLemmas.nth k) l
-def lebP (a b : Term) : Term := .app (.app Std.lebFnT a) b
 def dv : Term := .deref (V 0 "v")
-def sLam : Term := .lam natT (tS (.pvar 0))
-def idTr (x y z p q : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_trans natT) x) y) z) p) q
-def idCgS (x y p : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_congr natT) natT) sLam) x) y) p
-def idSy (x y p : Term) : Term := .app (.app (.app (.app StdLemmas.id_sym natT) x) y) p
-def hsF (k i g : Term) : Term := .app (.app (.app StdLemmas.hshift_false k) i) g
-def hsT (k i g : Term) : Term := .app (.app (.app StdLemmas.hshift_true k) i) g
-def leAdd (i g : Term) : Term := .app (.app StdLemmas.le_add i) g
-def leAddL (b a : Term) : Term := .app (.app StdLemmas.le_add_l b) a
-def leAddS (i g : Term) : Term := .app (.app StdLemmas.le_add_succ i) g
-def leRwR (a x y h p : Term) : Term := .app (.app (.app (.app (.app StdLemmas.le_rw_r a) x) y) h) p
-def lenSwapL (i j l : Term) : Term := .app (.app (.app StdLemmas.len_swapL i) j) l
 
--- Le-toolkit for the range partition (§21): the left-transport, left-add
--- monotonicity, add_succ bridge, le_trans, and id_congr through `λx. add lo (S x)`.
-def leRwL (b x y h p : Term) : Term := .app (.app (.app (.app (.app StdLemmas.le_rw_l b) x) y) h) p
-def leAddMonoL (lo a b h : Term) : Term := .app (.app (.app (.app StdLemmas.le_add_mono_l lo) a) b) h
-def addSuccT (a b : Term) : Term := .app (.app StdLemmas.add_succ a) b
-def leTrans (a b c hab hbc : Term) : Term := .app (.app (.app (.app (.app StdLemmas.le_trans a) b) c) hab) hbc
-def loSLam (lo : Term) : Term := .lam natT (addTmH lo (tS (.pvar 0)))
-def idCgLoS (lo x y p : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_congr natT) natT) (loSLam lo)) x) y) p
-
--- Quicksort-Decl toolkit (§21): the gap wrapper, the size/length lemmas, the
--- successor-monotone Le, associativity, and id_congr through `λx. add lo x`.
-def partGapRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partGapRangeL lo) cnt) l
-def partScanSizeLT (pivot lo k i g l : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.partScanSizeL pivot) lo) k) i) g) l
-def lenPartRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.len_partitionRangeL lo) cnt) l
-def lenSortRangeLT (fuel lo cnt l : Term) : Term := .app (.app (.app (.app StdLemmas.len_sortRangeL fuel) lo) cnt) l
-def sortRangeLT2 (fuel lo cnt l : Term) : Term := .app (.app (.app (.app StdLemmas.sortRangeL fuel) lo) cnt) l
-def leUpR (a b h : Term) : Term := .app (.app (.app StdLemmas.le_up_r a) b) h
-def addAssocT (a b c : Term) : Term := .app (.app (.app StdLemmas.add_assoc a) b) c
-def loLam (lo : Term) : Term := .lam natT (addTmH lo (.pvar 0))
-def idCgAddLo (lo x y p : Term) : Term := .app (.app (.app (.app (.app (.app StdLemmas.id_congr natT) natT) (loLam lo)) x) y) p
-
--- Abbreviations for the current-branch index expressions (i2/g2 are the peeled
--- successors; kk is k'). Built with addTmH (defined above).
 -- v=0, k=1, i=2, g=3, pivot=4, hlen=5; binders k'=6, c/i'=7, g'/hlenX=8, pij=9, p2=10, hlenTSg=11.
 def partScan : Decl :=
   decl{ fn partScan (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
@@ -273,8 +234,6 @@ example : checkFnOk partScan scanTable = true := by native_decide
     bound, and each recursion threads `hle` via `le_rw_l` + `id_congr` through
     `λx. add lo (S x)` over the SAME hshift identities partScan uses. -/
 
-def partScanRangeLT (pivot lo k i g l : Term) : Term :=
-  .app (.app (.app (.app (.app (.app StdLemmas.partScanRangeL pivot) lo) k) i) g) l
 
 def partScanRange : Decl :=
   decl{ fn partScanRange (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
@@ -373,8 +332,6 @@ example : checkFnOk partScanRange scanRangeTable = true := by native_decide
     scan call's hlen is hlenW transported by add_zero (the wrapper's `i = g = 0`,
     so partScan's `S (add n' (add 0 0))` is `S (add n' Z)`, bridged to `S n'`). -/
 
-def partitionLT2 (n l : Term) : Term := .app (.app StdLemmas.partitionL n) l
-def addZeroT (n : Term) : Term := .app StdLemmas.add_zero n
 
 -- v=0, n=1, hlenW=2; body binders n'=3, pivot=4, hlen=5.
 def partition : Decl :=
@@ -396,6 +353,7 @@ example : checkFnOk partition partTable2 = true := by native_decide
 
 -- Not vacuous: a back that swaps unconditionally (≠ identity at n = Z) is rejected
 -- on the untouched-borrow n = Z path, where `partitionL Z *v = *v`.
+-- SUBJECT: a deliberately-wrong back-spec (raw Term) — the lie is what the negative test checks.
 def partitionLieBack : Term := swapLT (.ctorApp "Z" []) (tS (.ctorApp "Z" [])) dv
 def partitionLie : Decl := { partition with name := "partitionLie", «back» := some partitionLieBack }
 example : checkFnErr partitionLie "does not match" [nthS, nth2S, swapSN, partScan, partitionLie] = true := by native_decide
@@ -403,6 +361,7 @@ example : checkFnErr partitionLie "does not match" [nthS, nth2S, swapSN, partSca
 
 -- Not vacuous: a lying spec (i and g swapped in the declared back) is rejected —
 -- the body's composed backward tree does not converge with the wrong partScanL.
+-- SUBJECT: a deliberately-wrong back-spec (raw Term, i/g swapped) — the lie is the subject.
 def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 "i") dv
 def partScanLie : Decl := { partScan with name := "partScanLie", «back» := some partScanLieBack }
 example : checkFnErr partScanLie "does not match" [nthS, nth2S, swapSN, partScan, partScanLie] = true := by native_decide
@@ -428,6 +387,7 @@ example : checkFnErr partScanLie "does not match" [nthS, nth2S, swapSN, partScan
 def setL (k v l : Term) : Term := .app (.app (.app StdLemmas.set k) v) l
 
 -- Borrow-returning multi-issued: nth2 with i and j swapped in the two sets.
+-- SUBJECT: a deliberately-wrong back-spec (raw Term, i/j swapped in the two sets) — the lie is the subject.
 def nth2LieBack : Term := .lam natT (.lam natT (setL (V 2 "j") (.pvar 1) (setL (V 1 "i") (.pvar 0) (.deref (V 0 "v")))))
 def nth2Lie : Decl := { nth2S with name := "nth2Lie", «back» := some nth2LieBack }
 example : checkFnErr nth2Lie "does not match" [nthS, nth2Lie] = true := by native_decide
@@ -448,10 +408,11 @@ example : checkFnErr nth2Lie "does not match" [nthS, nth2Lie] = true := by nativ
     spine-in-the-type (the pinned return) must refine together — which is exactly
     what generalizing across ALL σ-bearing state delivers. -/
 
+-- SUBJECT: raw Term/Val builders (zt/tnat/lebSp/boolRecNat/Refl) for the stuckProbe
+-- lying variants and the pure-model checks — raw Terms are the point here.
 def zt : Term := .ctorApp "Z" []
 def tnat : Nat → Term | 0 => zt | k + 1 => tS (tnat k)
 def lebSp (n : Term) : Term := .app (.app Std.lebFnT n) (tnat 2)
-def addT (a b : Term) : Term := .app (.app Std.addFnT a) b
 def boolRecNat (t f sp : Term) : Term :=
   .app (.app (.app (.app (.const "boolRec") (.lam (.const "Bool") natT)) t) f) sp
 def Refl : Term := .ctorApp "Refl" []
@@ -468,6 +429,7 @@ example : checkFnOk stuckProbe = true := by native_decide
 -- Not vacuous (a): the True side does NOT converge (`S Z` vs `S (S Z)`). The
 -- generalized σb refines to True in that path and the `boolRec` reduces to two
 -- distinct values, so `Refl` fails — proving the per-branch refinement is real.
+-- SUBJECT: a deliberately-non-converging return type (raw Term) — the lie is the subject.
 def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
 def stuckProbeLie : Decl := { stuckProbe with name := "stuckProbeLie", retType := stuckProbeLieRet }
@@ -475,6 +437,7 @@ example : checkFnErr stuckProbeLie "does not have return type" = true := by nati
 
 -- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
 -- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
+-- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ [.mk "True" [] Refl])
 def stuckProbeNonExh : Decl := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
 example : checkFnErr stuckProbeNonExh "non-exhaustive" = true := by native_decide
@@ -487,6 +450,8 @@ example : checkFnErr stuckProbeNonExh "non-exhaustive" = true := by native_decid
     no swaps), a reverse-sorted input (all `≤`, boundary walks to the end), and a
     mixed input that exercises the `g = S g'` swap branch. -/
 
+-- SUBJECT: raw Val/Term builders (pv/vnat/vlist/tlist) — construct the pure-model expected
+-- values and the executing-mode inputs; the raw Val/Term IS the subject under test here.
 def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
 def vlist : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnat x, vlist xs]
@@ -545,11 +510,6 @@ example : (pv (sortRangeLT 3 1 3 [9,3,1,2,7]) == vlist [9,1,2,3,7]) = true := by
 
 open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
 
-def nthPureT (k l : Term) : Term := .app (.app StdLemmas.nth k) l
-def lebPureT (a b : Term) : Term := .app (.app Std.lebFnT a) b
-def addTm (a b : Term) : Term := .app (.app Std.addFnT a) b
-def dV (i : Nat) (n : String) : Term := .deref (.var ⟨i, n⟩)
-def u : Term := .unit
 
 -- v=0, k=1, i=2, g=3, pivot=4; body binders k2=5, c/i2=6, g2=7.
 def partScanE : Decl :=
@@ -622,12 +582,15 @@ example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates ar
     actual effect matches the declared back on every input class: since checkFnOk
     accepts `back = partScanL`, executing = partScanL = the recovered value. -/
 
+-- SUBJECT: the executing-mode differential harness (raw Term caller + raw expected-value
+-- needle). Generating the caller Term and the `partScanL`-computed needle IS the test here.
 def partScanCaller (lst : List Nat) (k pivot : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlist lst)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
       (.seq (.call "partScan" [.var ⟨1, "b"⟩, tnat k, tnat 0, tnat 0, tnat pivot, .ctorApp "Refl" []])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
 
+-- SUBJECT: the differential's raw expected-value needle (`partScanL`-computed) — raw Term is the point.
 def runScan (lst : List Nat) (k pivot : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, partScan] (partScanCaller lst k pivot) with
   | .ok env => env.lookup "y" == some (pv (partScanLT (tnat pivot) (tnat k) (.ctorApp "Z" []) (.ctorApp "Z" []) (tlist lst)))
@@ -666,8 +629,6 @@ def partitionQ : Decl :=
     the partScanRange call's entry bound (i = g = 0) is hbnd bridged by add_zero
     (`add cnt2 Z = cnt2`), mirroring partition's (M21-1) hlenW-via-add_zero. -/
 
-def partIdxRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partIdxRangeL lo) cnt) l
-def partitionRangeLT (lo cnt l : Term) : Term := .app (.app (.app StdLemmas.partitionRangeL lo) cnt) l
 
 def partitionRange : Decl :=
   decl{ fn partitionRange (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
@@ -759,11 +720,10 @@ def quicksort : Decl :=
         } } }
 -- THE NORTH STAR, GREEN: the imperative in-place quicksort type-checks as an
 -- implementation of its pure model `sortRangeL` (conformance = conversion, §6.2).
--- Measured from-scratch elaboration: 38m49s wall / 2326s CPU (native_decide,
--- 2026-07-27) — the conformance conversion blows up in unfold depth because
--- normalisation has no term sharing; cached (replayed) thereafter until this
--- file changes. Kept enabled as the milestone result; the checker-perf
--- milestone (incremental convert + memoised whnf) is the standing fix.
+-- With the delayed-lift checker-perf fix on this branch (incremental convert +
+-- memoised whnf) the from-scratch conformance native_decide runs in ~seconds, not
+-- the pre-fix ~38 min; and since converting this Decl to decl{} preserved its
+-- value byte-for-byte, native_decide replays from cache across the surface change.
 example : checkFnOk quicksort [nthS, nth2S, swapSN, partScanRange, quicksort] = true := by native_decide
 
 -- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
