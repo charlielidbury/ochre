@@ -1,6 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
+import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
 
 /-!
@@ -29,23 +30,10 @@ proofs are `()` (the ⊤ inhabitant); at symbolic calls they are parameters.
 -/
 
 open Dllbc
-open Dllbc.Std (LeT lenT)
 
 namespace Dllbc.Tests.S14Bounds
 
-def natT : Term := .const "Nat"
-def listNatT : Term := .app (.const "List") natT
-def mutNat : Term := .borrowT natT natT
-def pairMut : Term := .sigmaT mutNat mutNat
-def tS (t : Term) : Term := .ctorApp "S" [t]
-def bE (x : Term) : Term := .app (.app (.const "botElim") (.const "Unit")) x   -- ex-falso marker
-def rb (x : Var) : Term := .borrow (.deref (.var x))                           -- &mut *x
-
-def vv : Var := ⟨0, "v"⟩
-def ii : Var := ⟨1, "i"⟩
-def jj : Var := ⟨2, "j"⟩
-
--- Expected concrete result Vals.
+-- Expected concrete result Vals (test subjects).
 def vnat : Nat → Val | 0 => .ctor "Z" [] | n + 1 => .ctor "S" [vnat n]
 def vlist : List Nat → Val | [] => .ctor "Nil" [] | h :: t => .ctor "Cons" [vnat h, vlist t]
 
@@ -64,48 +52,47 @@ example : (Val.nfV 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofN
 -- discharged. Cons/S(k): the recursive call takes `p` unchanged — `Le (S(S k))
 -- (S (len *tl)) ≡ Le (S k) (len *tl)` definitionally, no lemma.
 def nth : Decl :=
-  { name := "nth", retType := mutNat,
-    telescope := [("v", .borrowT listNatT listNatT), ("i", natT),
-                  ("p", (LeT (tS (.var ii)) (lenT (.deref (.var vv)))))],
-    body := .matchE vv [
-      .mk "Nil" [] (bE (.var ⟨2, "p"⟩)),
-      .mk "Cons" [⟨3, "hd"⟩, ⟨4, "tl"⟩] (
-        .matchE ii [
-          .mk "Z" [] (rb ⟨3, "hd"⟩),
-          .mk "S" [⟨5, "k"⟩] (.call "nth" [rb ⟨4, "tl"⟩, .var ⟨5, "k"⟩, .var ⟨2, "p"⟩]) ]) ] }
+  decl{ fn nth (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
+    match v {
+      Nil => botElim Unit p,
+      Cons(hd, tl) => match i {
+        Z => &mut *hd,
+        S(k) => nth(&mut *tl, k, p)
+      }
+    } } }
 example : checkFnOk nth = true := by native_decide
 
 /-! ## Bounds-proof `nth2` — the multi-issued group, two bounds proofs -/
 
 def nth2 : Decl :=
-  { name := "nth2", retType := pairMut,
-    telescope := [("v", .borrowT listNatT listNatT), ("i", natT), ("j", natT),
-                  ("pij", (LeT (tS (.var ii)) (.var jj))),
-                  ("p2", (LeT (tS (.var jj)) (lenT (.deref (.var vv)))))],
-    body := .matchE vv [
-      .mk "Nil" [] (bE (.var ⟨4, "p2"⟩)),
-      .mk "Cons" [⟨5, "hd"⟩, ⟨6, "tl"⟩] (
-        .matchE ii [
-          .mk "Z" [] (.matchE jj [
-            .mk "Z" [] (bE (.var ⟨3, "pij"⟩)),
-            .mk "S" [⟨7, "jjv"⟩] (.ctorApp "Pair" [rb ⟨5, "hd"⟩, .call "nth" [rb ⟨6, "tl"⟩, .var ⟨7, "jjv"⟩, .var ⟨4, "p2"⟩]]) ]),
-          .mk "S" [⟨8, "k"⟩] (.matchE jj [
-            .mk "Z" [] (bE (.var ⟨3, "pij"⟩)),
-            .mk "S" [⟨9, "jj2"⟩] (.call "nth2" [rb ⟨6, "tl"⟩, .var ⟨8, "k"⟩, .var ⟨9, "jj2"⟩, .var ⟨3, "pij"⟩, .var ⟨4, "p2"⟩]) ]) ]) ] }
+  decl{ fn nth2 (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat {
+    match v {
+      Nil => botElim Unit p2,
+      Cons(hd, tl) => match i {
+        Z => match j {
+          Z => botElim Unit pij,
+          S(jjv) => Pair(&mut *hd, nth(&mut *tl, jjv, p2))
+        },
+        S(k) => match j {
+          Z => botElim Unit pij,
+          S(jj2) => nth2(&mut *tl, k, jj2, pij, p2)
+        }
+      }
+    } } }
 example : checkFnOk nth2 ([nth, nth2]) = true := by native_decide
 
 /-! ## Bounds-proof `swap` -/
 
 def swap : Decl :=
-  { name := "swap", retType := .const "Unit",
-    telescope := [("v", .borrowT listNatT listNatT), ("i", natT), ("j", natT),
-                  ("pij", (LeT (tS (.var ii)) (.var jj))),
-                  ("p2", (LeT (tS (.var jj)) (lenT (.deref (.var vv)))))],
-    body := .letIn ⟨5, "pr"⟩ (.call "nth2" [.var vv, .var ii, .var jj, .var ⟨3, "pij"⟩, .var ⟨4, "p2"⟩])
-      (.matchE ⟨5, "pr"⟩ [ .mk "Pair" [⟨6, "ei"⟩, ⟨7, "ej"⟩]
-        (.letIn ⟨8, "t"⟩ (.deref (.var ⟨6, "ei"⟩))
-          (.assign (.deref (.var ⟨6, "ei"⟩)) (.deref (.var ⟨7, "ej"⟩))
-            (.assign (.deref (.var ⟨7, "ej"⟩)) (.var ⟨8, "t"⟩) .unit))) ]) }
+  decl{ fn swap (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit {
+    let pr = nth2(v, i, j, pij, p2);
+    match pr { Pair(ei, ej) => {
+      let t = *ei;
+      *ei := *ej;
+      *ej := t;
+      () } } } }
 example : checkFnOk swap ([nth, nth2, swap]) = true := by native_decide
 
 /-! ## Callers — concrete proofs are `()`, OOB is a call-site rejection -/
