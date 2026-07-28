@@ -3265,4 +3265,30 @@ def allGtR_sortRange_ty : Term := pure{
   Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
     Le (add lo w) (len l) → AllGtR w lo p l → AllGtR w lo p (sortRangeL fuel lo w l) }
 
+-- KEYSTONE composition (mine): route the positional bound through the perm-invariant
+-- noAbove/noBelow (segCount preserved by segCount_sortRangeL), feeding the range bound
+-- over the sorted list (len sort-invariant, le_rw_r over len_sortRangeL).
+def allLeR_sortRange : Term := pure{
+  λ (fuel : Nat). λ (lo : Nat). λ (w : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (bound : Le (add lo w) (len l)). λ (h : AllLeR w lo p l).
+      noAbove_to_allLeR w lo p (sortRangeL fuel lo w l)
+        (le_rw_r (add lo w) (len l) (len (sortRangeL fuel lo w l))
+          (id_sym Nat (len (sortRangeL fuel lo w l)) (len l) (len_sortRangeL fuel lo w l))
+          bound)
+        (λ (x : Nat). λ (hx : Le (S p) x).
+          id_trans Nat (segCount x lo w (sortRangeL fuel lo w l)) (segCount x lo w l) Z
+            (segCount_sortRangeL x fuel lo w l bound)
+            (allLeR_to_noAbove w lo p l h x hx)) }
+def allGtR_sortRange : Term := pure{
+  λ (fuel : Nat). λ (lo : Nat). λ (w : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (bound : Le (add lo w) (len l)). λ (h : AllGtR w lo p l).
+      noBelow_to_allGtR w lo p (sortRangeL fuel lo w l)
+        (le_rw_r (add lo w) (len l) (len (sortRangeL fuel lo w l))
+          (id_sym Nat (len (sortRangeL fuel lo w l)) (len l) (len_sortRangeL fuel lo w l))
+          bound)
+        (λ (x : Nat). λ (hx : Le x p).
+          id_trans Nat (segCount x lo w (sortRangeL fuel lo w l)) (segCount x lo w l) Z
+            (segCount_sortRangeL x fuel lo w l bound)
+            (allGtR_to_noBelow w lo p l h x hx)) }
+
 end Dllbc.StdLemmas

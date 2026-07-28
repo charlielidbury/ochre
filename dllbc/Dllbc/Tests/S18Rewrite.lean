@@ -150,6 +150,9 @@ example : chk StdLemmas.glue_left_pivot StdLemmas.glue_left_pivot_ty = true := b
 example : chk StdLemmas.glue_pivot_right StdLemmas.glue_pivot_right_ty = true := by native_decide
 example : chk StdLemmas.glue_both_right StdLemmas.glue_both_right_ty = true := by native_decide
 example : chk StdLemmas.glue StdLemmas.glue_ty = true := by native_decide
+-- §22 M22-c keystone composition: range bounds survive sorting.
+example : chk StdLemmas.allLeR_sortRange StdLemmas.allLeR_sortRange_ty = true := by native_decide
+example : chk StdLemmas.allGtR_sortRange StdLemmas.allGtR_sortRange_ty = true := by native_decide
 -- §22 M22-c positional stratum: nth-under-swapL locality. The two `set` helpers,
 -- then the "outside {i,j}" pair (lt/gt) the range scan's locality consumes, then
 -- the two swap endpoints (lo/hi). Minimal honest bounds (see StdLemmas header).
