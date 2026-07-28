@@ -137,6 +137,14 @@ example : chk StdLemmas.nth_swapL_lt StdLemmas.nth_swapL_lt_ty = true := by nati
 example : chk StdLemmas.nth_swapL_gt StdLemmas.nth_swapL_gt_ty = true := by native_decide
 example : chk StdLemmas.nth_swapL_lo StdLemmas.nth_swapL_lo_ty = true := by native_decide
 example : chk StdLemmas.nth_swapL_hi StdLemmas.nth_swapL_hi_ty = true := by native_decide
+-- §22 M22-c locality: positions outside the operated range are unchanged by the range
+-- scan / partition. `_lt` (below lo) and `_ge` (at/above the top) — the two directions
+-- the quicksort recursion consumes; _ge threads count_partScanRangeL's invariant on a
+-- position (no len_swapL). Wrappers pick the pivot then defer to the scan.
+example : chk StdLemmas.nth_partScanRangeL_lt StdLemmas.nth_partScanRangeL_lt_ty = true := by native_decide
+example : chk StdLemmas.nth_partScanRangeL_ge StdLemmas.nth_partScanRangeL_ge_ty = true := by native_decide
+example : chk StdLemmas.nth_partitionRangeL_lt StdLemmas.nth_partitionRangeL_lt_ty = true := by native_decide
+example : chk StdLemmas.nth_partitionRangeL_ge StdLemmas.nth_partitionRangeL_ge_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
