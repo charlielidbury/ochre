@@ -25,7 +25,7 @@ open Dllbc
 open Dllbc.StdLemmas (swapL count_swapL' set nth partScanL partScanRangeL partIdxL
   partIdxRangeL partGapRangeL partScanSizeL len_partitionRangeL len_sortRangeL sortRangeL
   partitionRangeL partitionL le_up_r le_add le_add_l le_add_succ le_rw_r le_rw_l le_add_mono_l
-  add_succ le_trans id_sym id_trans id_congr hshift_true hshift_false len_swapL add_zero add_assoc)
+  add_succ le_trans le_refl id_sym id_trans id_congr hshift_true hshift_false len_swapL add_zero add_assoc)
 
 namespace Dllbc.Tests.S19Partition
 
@@ -796,6 +796,24 @@ example : runPSR [1,2,3] 0 2 1 = true := by native_decide         -- already par
 example : runPSR [2,2,1] 0 2 2 = true := by native_decide         -- duplicates around the pivot
 example : runPSR [5,3,8,1,9,2] 0 5 5 = true := by native_decide   -- mixed, interior swaps
 example : runPSR [9,3,1,2,7] 1 2 3 = true := by native_decide     -- SUB-RANGE (lo=1): partition [3,1,2]
+
+-- Checking-mode precise recovery (the simulation baseline's headline): a caller
+-- sorts a concrete list IN PLACE, and the checker recovers x = sortRangeL 3 0 3
+-- [3,1,2] = [1,2,3] precisely via quicksort's group-end back — the caller SEES the
+-- sorted list, no unpack lines. (The executing companion of this differential is
+-- blocked on the reborrow-collapse gap in the pain diary above; checking recovery
+-- and the pure-model value carry it.)
+-- SUBJECT: raw Term caller for the checking-mode precise recovery (hbnd = le_refl 3
+-- : Le (add 0 3) (len x), since len [3,1,2] = 3).
+def qsSpcBody : Term :=
+  .letIn ⟨0, "x"⟩ (tlist [3,1,2])
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
+      (.seq (.call "quicksort" [.var ⟨1, "b"⟩, tnat 3, tnat 0, tnat 3, .app StdLemmas.le_refl (tnat 3)])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
+def qsSpcCaller : Decl := decl{ fn qsSpc () -> Unit = %qsSpcBody }
+example : (match runFn [nthS, nth2S, swapSN, partScanRange, quicksort, qsSpcCaller] qsSpcCaller with
+  | [.ok env] => env.lookup "y" == some (pv (sortRangeLT 3 0 3 [3,1,2]))
+  | _ => false) = true := by native_decide
 
 -- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
 -- reborrows *v twice in sequence for two recursive calls. This only checks
