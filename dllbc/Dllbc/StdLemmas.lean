@@ -3155,6 +3155,88 @@ def allGtR_to_noBelow : Term := pure{
                       (id_congr Nat Nat (λ (q : Nat). nth q l) (add lo j) (add j lo) (add_comm lo j)))))
                 (hAll j (le_trans (S j) (len (take w (drop lo l))) w hj (len_take_le w (drop lo l))))))) }
 
+-- Membership side (#1/#3/#5): the range-fits bound makes the element genuinely present.
+def eqb_refl : Term := pure{
+  λ (n : Nat). elim n return (λ (nz : Nat). Id Bool (eqb nz nz) True) {
+    Z => Refl,
+    S (n') ih => ih } }
+def eqb_refl_ty : Term := pure{ Π (n : Nat) → Id Bool (eqb n n) True }
+
+def len_drop_bound : Term := pure{
+  λ (lo : Nat).
+    elim lo return (λ (loz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (add loz k) (len l) → Le k (len (drop loz l))) {
+      Z => λ (k : Nat). λ (l : List Nat). λ (hb : Le (add Z k) (len l)). hb,
+      S (lo') ih => λ (k : Nat). λ (l : List Nat).
+        elim l return (λ (lz : List Nat). Le (add (S lo') k) (len lz) → Le k (len (drop (S lo') lz))) {
+          Nil => λ (hb : Le (add (S lo') k) (len Nil)). botElim (Le k (len (drop (S lo') Nil))) hb,
+          Cons (h) (t) lih => λ (hb : Le (add (S lo') k) (len (Cons h t))). ih k t hb } } }
+def len_drop_bound_ty : Term := pure{
+  Π (lo : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (add lo k) (len l) → Le k (len (drop lo l)) }
+
+def count_take_nth_pos : Term := pure{
+  λ (w : Nat).
+    elim w return (λ (wz : Nat). Π (m : Nat) → Π (s : List Nat) → Le (S m) wz → Le (S m) (len s) → Le (S Z) (count (nth m s) (take wz s))) {
+      Z => λ (m : Nat). λ (s : List Nat). λ (hw : Le (S m) Z). λ (hs : Le (S m) (len s)). botElim (Le (S Z) (count (nth m s) (take Z s))) hw,
+      S (w') ih => λ (m : Nat). λ (s : List Nat). λ (hw : Le (S m) (S w')). λ (hs : Le (S m) (len s)).
+        elim s return (λ (sz : List Nat). Le (S m) (len sz) → Le (S Z) (count (nth m sz) (take (S w') sz))) {
+          Nil => λ (hs0 : Le (S m) (len Nil)). botElim (Le (S Z) (count (nth m Nil) (take (S w') Nil))) hs0,
+          Cons (h) (t) sih => λ (hs0 : Le (S m) (len (Cons h t))).
+            elim m return (λ (mz : Nat). Le (S mz) (S w') → Le (S mz) (len (Cons h t)) → Le (S Z) (count (nth mz (Cons h t)) (take (S w') (Cons h t)))) {
+              Z => λ (hw1 : Le (S Z) (S w')). λ (hs1 : Le (S Z) (len (Cons h t))).
+                le_rw_r (S Z) (S (count h (take w' t))) (count h (Cons h (take w' t)))
+                  (id_sym Nat (count h (Cons h (take w' t))) (S (count h (take w' t)))
+                    (count_cons_hit h h (take w' t) (eqb_refl h)))
+                  unit,
+              S (m') mih => λ (hw1 : Le (S (S m')) (S w')). λ (hs1 : Le (S (S m')) (len (Cons h t))).
+                elim (eqb (nth m' t) h) return (λ (b : Bool). Le (S Z) (boolRec (λ (bw : Bool). Nat) (S (count (nth m' t) (take w' t))) (count (nth m' t) (take w' t)) b)) {
+                  True => unit,
+                  False => ih m' t hw1 hs1 }
+            } hw hs0 } hs } }
+def count_take_nth_pos_ty : Term := pure{
+  Π (w : Nat) → Π (m : Nat) → Π (s : List Nat) → Le (S m) w → Le (S m) (len s) →
+    Le (S Z) (count (nth m s) (take w s)) }
+
+-- #1 nth_seg_count_pos : element at range position lo+m occurs ≥1× in the segment (needs range-fits).
+def nth_seg_count_pos : Term := pure{
+  λ (m : Nat). λ (w : Nat). λ (lo : Nat). λ (l : List Nat).
+    λ (hmw : Le (S m) w). λ (hrange : Le (add lo w) (len l)).
+      le_rw_r (S Z) (count (nth m (drop lo l)) (take w (drop lo l))) (count (nth (add m lo) l) (take w (drop lo l)))
+        (id_congr Nat Nat (λ (q : Nat). count q (take w (drop lo l))) (nth m (drop lo l)) (nth (add m lo) l)
+          (id_trans Nat (nth m (drop lo l)) (nth (add lo m) l) (nth (add m lo) l)
+            (nth_drop lo m l)
+            (id_congr Nat Nat (λ (q : Nat). nth q l) (add lo m) (add m lo) (add_comm lo m))))
+        (count_take_nth_pos w m (drop lo l) hmw
+          (len_drop_bound lo (S m) l
+            (le_trans (add lo (S m)) (add lo w) (len l) (le_add_mono_l lo (S m) w hmw) hrange))) }
+
+-- #3 noAbove_to_allLeR : no element > p in the segment ⟹ range ≤ p (leb + contradiction via #1).
+def noAbove_to_allLeR : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (hrange : Le (add lo w) (len l)). λ (hnoAbove : Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z).
+    λ (m : Nat). λ (hm : Le (S m) w).
+      elim (leb (nth (add m lo) l) p) return (λ (b : Bool). Id Bool (leb (nth (add m lo) l) p) b → Le (nth (add m lo) l) p) {
+        True => λ (e : Id Bool (leb (nth (add m lo) l) p) True). leb_true_le (nth (add m lo) l) p e,
+        False => λ (e : Id Bool (leb (nth (add m lo) l) p) False).
+          botElim (Le (nth (add m lo) l) p)
+            (le_rw_r (S Z) (segCount (nth (add m lo) l) lo w l) Z
+              (hnoAbove (nth (add m lo) l) (leb_false_gt (nth (add m lo) l) p e))
+              (nth_seg_count_pos m w lo l hm hrange))
+      } Refl }
+
+-- #5 noBelow_to_allGtR : mirror of #3.
+def noBelow_to_allGtR : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (hrange : Le (add lo w) (len l)). λ (hnoBelow : Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z).
+    λ (m : Nat). λ (hm : Le (S m) w).
+      elim (leb (nth (add m lo) l) p) return (λ (b : Bool). Id Bool (leb (nth (add m lo) l) p) b → Le (S p) (nth (add m lo) l)) {
+        True => λ (e : Id Bool (leb (nth (add m lo) l) p) True).
+          botElim (Le (S p) (nth (add m lo) l))
+            (le_rw_r (S Z) (segCount (nth (add m lo) l) lo w l) Z
+              (hnoBelow (nth (add m lo) l) (leb_true_le (nth (add m lo) l) p e))
+              (nth_seg_count_pos m w lo l hm hrange)),
+        False => λ (e : Id Bool (leb (nth (add m lo) l) p) False). leb_false_gt (nth (add m lo) l) p e
+      } Refl }
+
 def allLeR_to_noAbove_ty : Term := pure{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllLeR w lo p l → Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z }

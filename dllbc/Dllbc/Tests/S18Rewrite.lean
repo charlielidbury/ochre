@@ -244,6 +244,15 @@ example : chk StdLemmas.nth_take StdLemmas.nth_take_ty = true := by native_decid
 example : chk StdLemmas.len_take_le StdLemmas.len_take_le_ty = true := by native_decide
 example : chk StdLemmas.allLeR_to_noAbove StdLemmas.allLeR_to_noAbove_ty = true := by native_decide
 example : chk StdLemmas.allGtR_to_noBelow StdLemmas.allGtR_to_noBelow_ty = true := by native_decide
+-- #1/#3/#5 against the CORRECTED statements (range-fits bound Le (add lo w) (len l)). The
+-- membership lemma nth_seg_count_pos (element present ≥1×) is the shared core; #3/#5 leb-case
+-- and derive ⊥ from noAbove/noBelow (segCount = Z) vs #1 (segCount ≥ 1).
+example : chk StdLemmas.eqb_refl StdLemmas.eqb_refl_ty = true := by native_decide
+example : chk StdLemmas.len_drop_bound StdLemmas.len_drop_bound_ty = true := by native_decide
+example : chk StdLemmas.count_take_nth_pos StdLemmas.count_take_nth_pos_ty = true := by native_decide
+example : chk StdLemmas.nth_seg_count_pos StdLemmas.nth_seg_count_pos_ty = true := by native_decide
+example : chk StdLemmas.noAbove_to_allLeR StdLemmas.noAbove_to_allLeR_ty = true := by native_decide
+example : chk StdLemmas.noBelow_to_allGtR StdLemmas.noBelow_to_allGtR_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
