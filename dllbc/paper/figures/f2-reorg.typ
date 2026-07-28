@@ -2,12 +2,7 @@
 #import "@preview/curryst:0.5.0": prooftree, rule
 == F2: Reorganization (⟿) <fig-reorg>
 
-// Local judgment/notation helpers (candidates for promotion to style.typ if
-// another figure needs them; F2 is currently the sole user).
-#let dropj(om, v, om2) = $#om tack.r "drop" thin #v tack.l #om2$
-#let surrj(om, l, ty, v, om2) = $Gamma_sigma ; #om tack.r owed(#l, #ty) arrow.b.double #v tack.l #om2$
-#let ownfree(v) = $"own-free"(#v)$
-#let groupb(r, cap, iss, f) = $A(#r){#cap ; #iss ; "back" thin #f}$
+// Judgment helpers dropj/surrj/ownfree/groupb are pinned in style.typ.
 
 Reorganization is the judgment that rewrites the borrow bookkeeping: ending loans, vacating displaced values, collapsing the loan groups calls leave behind. No surface syntax elaborates to it — its rules fire _between_ evaluation steps, and they are presented here *nondeterministically*: a rule may fire at any point where its premises hold, and #reorgs($Omega$, $Omega'$) is the reflexive–transitive closure of single steps. The implementation is lazy — it fires a reorganization only when a ⇒/⇐ premise demands one — and carries a fuel bound; both are scheduling, not semantics (the fuel is a totality device for the mechanization, and the demand sites are catalogued before the correspondence table below).
 

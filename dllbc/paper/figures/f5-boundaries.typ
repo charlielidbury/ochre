@@ -40,22 +40,8 @@ Premises draw freely on the other figures: $arrow.r.double$ (F1),
 reorganization $arrow.r.long.squiggly$ (F2), $arrow.r.squiggly$ (F3), the
 symbolic match fork (F4), and typing $v : tau$ / conversion $equiv$ (F6).
 
-// F5-local auxiliary judgment forms. Layout only — the pinned judgments come
-// from style.typ; these are the boundary layer's own auxiliaries, candidates
-// for promotion into style.typ if another figure grows a use for them.
-// (Letter clash, inherited from the style pin: S is both the checker-state
-// letter and the owed-type binder position in &mut (s : τ ↝ S). We render the
-// state calligraphic (𝒮) and owed types italic; they never collide in a rule.)
-#let cS = $cal(S)$
-#let seedJ(S1, D, S2) = $#S1 tack.r "seed"(#D) tack.l #S2$
-#let argsJ(S1, th, args, D, C, S2, th2) = $#S1 space.thin ; #th tack.r #args : #D arrow.r.double #C tack.l #S2 space.thin ; #th2$
-#let resJ(th, T, v, I, S2) = $#th tack.r #T arrow.r.double_("res") (#v space.thin ; #I) tack.l #S2$
-#let collJ(T, v, B) = $#T ⊳ #v arrow.r.double #B$
-#let reachJ(a, b) = $#a ↠ #b$
-#let obligJ(S, I, ob) = $#S space.thin ; #I tack.r.double #ob$
-#let backJ(S, I, d) = $#S tack.r.double "back"_(#I) (#d)$
-#let resolve(I, v) = $"res"_(#I)(#v)$
-#let hole(i) = $"%r"_(#i)$
+// The auxiliary judgment forms (cS, seedJ, argsJ, resJ, collJ, reachJ, obligJ,
+// backJ, resolve, hole) are pinned in style.typ alongside the core judgments.
 
 The auxiliary judgment forms, top-down: #seedJ($cal(S)$, $Delta$, $cal(S)'$)
 seeds a telescope at function entry; #argsJ($cal(S)$, $theta$, $overline(a)$, $Delta$, $C$, $cal(S)'$, $theta'$)
@@ -202,7 +188,7 @@ $ast.op v$ must be `let`-bound _before_ the call that consumes $v$.
 #v(0.8em)
 #align(center)[
 #irule("B-Call",
-  $cS tack.r f(overline(a)) arrow.r.double v tack.l cS_2[G, group(rho, C, I)^(hat(b))]$,
+  $cS tack.r f(overline(a)) arrow.r.double v tack.l cS_2[G, groupb(rho, C, I, hat(b))]$,
   $Phi(f) = "fn" f(Delta) arrow.r T$,
   argsJ($cS$, $dot$, $overline(a)$, $Delta$, $C$, $cS_1$, $theta$),
   resJ($theta$, $T$, $v$, $I$, $cS_2$),
@@ -390,7 +376,7 @@ compose exactly here. Resolution (first matching clause applies; $hat(f)$ is a
 sub-group's instantiated spec):
 
 $ resolve(I, loanm(ell)) & = hole(i) & "if" ell = I_i \
-  & = "nf"(hat(f) space resolve(I, loanm(ell'_1)) space dots.h space resolve(I, loanm(ell'_m))) space & "if" ell in C "for some" group(rho, C, (ell'_1 dots.h ell'_m))^(hat(f)) in G \
+  & = "nf"(hat(f) space resolve(I, loanm(ell'_1)) space dots.h space resolve(I, loanm(ell'_m))) space & "if" ell in C "for some" groupb(rho, C, (ell'_1 dots.h ell'_m), hat(f)) in G \
   & = resolve(I, p) & "if" borrowm(ell, p) in Omega \
   & = loanm(ell) & "otherwise" \
   resolve(I, borrowm(ell, p)) & = hole(i) & "if" ell = I_i \
