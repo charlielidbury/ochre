@@ -978,30 +978,46 @@ example : checkFnOk twoRec [twoRec] = true := by native_decide
     itself a provable postcondition — cf. exitAccept), and `count_swapL'` matches it
     directly with no bridge.
 
-    PAIN DIARY. Three entries:
-    • OPAQUE EXIT READINGS. A leaf that mutates via pointer writes (`*ei := *ej`)
-      leaves an exit reading whose written values are opaque existentials, unrelated
-      to the entry list. You cannot prove ANY value-level postcondition (count, sort,
-      perm) about such a reading. The only way to a provable exit is to route the
-      mutation through a callee whose back/postcondition is a CLOSED FUNCTION of the
-      input list (swapL, partScanRangeL). Candidate feature: exit readings that
-      retain the provenance of written values (or richer accessor postconditions —
-      an nth2 that returns `Id (*ei) (nth i (old*v))` alongside the borrow).
-    • PROOF LINEARITY vs COUNT. Length preservation was FRICTION-FREE (lenPreserve:
+    PAIN DIARY. Three entries.
+    • OPAQUE EXIT READINGS — and the THREE-FEATURE ARC (the campaign's principal
+      calculus-design finding). A leaf that mutates via pointer writes (`*ei := *ej`)
+      leaves an exit whose written values are opaque existentials, so NO value-level
+      postcondition (count/sort/perm) is provable about it. Root cause (one level
+      deeper, per team-lead): the opacity is NOT intrinsic to inline mutation — it is
+      minted at ONE point, buildResult, which creates an issued borrow's payload as a
+      FRESH OPAQUE σ because signature-only checking has nothing saying what the
+      payload IS at issue time. Everything downstream preserves information (the
+      caller's writes are fully watched; the back spec routes surrendered values
+      correctly) — only the issue point discards it. So the fix has a precise name:
+      ISSUED-PAYLOAD PINNING, the dual of exit-snapshot — a callee declaring what its
+      issued borrow's payload is at issue (`nth` pinning `*r = nth i (old *v)`), as
+      machinery not a returned proof. The arc: PINNING makes an inline leaf's exit the
+      set-form; the §22 BRIDGE (swapL_set) rewrites set-form to the model function;
+      the AUDIT-REWRITE-BY-ID feature cites the bridge at the audit — together they
+      make inline leaves PROVABLE. Third convergence point for audit-rewrite (after
+      M17 callee-side and the exit-reading side).
+    • PROOF LINEARITY vs COUNT. Length preservation is FRICTION-FREE (lenPreserve:
       `len_swapL` is unconditional), but count preservation needs the bounds — the
       cert wants `pij`/`p2` (count_swapL' is bounded) AND the swap CONSUMES them.
-      Proofs are linear (moved by the call), Nat indices are not; so count/perm
-      postconditions force this collision at EVERY mutating leaf. Dodged here by
-      ORDERING alone — the cert is let-bound BEFORE the swapS call, reading pij/p2
-      (non-consuming, ⇝) while live; swapS MOVES them after. Fragile: a postcondition
-      that must cite the proofs AFTER the mutation cannot be ordered around, and that
-      is where proofs-as-copy-on-read (proof-irrelevant, so duplication is sound)
-      stops being convenience and becomes necessary.
+      Mechanism (per team-lead): proofs MOVE because indexKindV's sctx-type test
+      recognizes Nat/Bool/Unit/Id/Π/Type but NOT stuck proposition spines — a σ typed
+      `Le (S i) j` whnf's to a stuck natRec application (none of those heads), so it
+      fails index-kind and moves. Dodged here by ORDERING alone — the cert is
+      let-bound BEFORE the swapS call, reading pij/p2 (non-consuming, ⇝) while live;
+      swapS MOVES them after. Fragile: a postcondition citing the proofs AFTER the
+      mutation cannot be ordered around. Fix (QUEUED, now RECURRED — the tax was paid
+      again at partitionRangeE and quicksortE, the measured-pain threshold): extend
+      indexKindTy to erasure-bound stuck types (Le-headed), same §2.1 vacuity
+      rationale — proofs-as-copy-on-read. (Viability nuance: post-readC the Le former
+      has unfolded to an anonymous recursor spine, so the detection is not a one-line
+      head match; see the report.)
     • CONVERGENT EVIDENCE. The §22 bridge `swapL_set` (set-form ≡ swapL) is proved
-      and kept in StdLemmas: it is the transport the audit WOULD cite once exit
-      readings retain value provenance (the first feature above), and it generalizes
-      to partition's composed set-forms. Not on swapSE's path today, but the specimen
-      the team-lead flagged — the audit doing rewrite-by-Id along a cited bridge. -/
+      and kept in StdLemmas as forward infrastructure — the transport the audit-rewrite
+      feature cites once pinning lands, generalizing to partition's composed set-forms.
+      Separately: count_partitionRangeL / count_sortRangeL are the very pure lemmas the
+      PRE-REDIRECT M22 plan wanted — the conformance and direct-proving architectures
+      have CONVERGED on the same pure-lemma obligations, differing only in where
+      evidence assembly happens. A paper observation. -/
 def swapSE : Decl :=
   decl{ fn swapSE (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
         -> Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
