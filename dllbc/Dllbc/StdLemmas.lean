@@ -1258,4 +1258,21 @@ def leb_false_gt : Term := pure{
           S (b') ihb => λ (h : Id Bool (leb (S a') (S b')) False). ih b' h } } }
 def leb_false_gt_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Bool (leb a b) False → Le (S b) a }
 
+-- Nat antisymmetry (Le a b → Le b a → a = b) — the glue derives its boundary equality
+-- (`S k = i` at the last-left/pivot pair) from the two-sided Le bounds a leb-split
+-- yields. Double induction; mixed-parity bases are ⊥, equal-parity step is id_congr S.
+def le_antisym : Term := pure{
+  λ (a : Nat).
+    elim a return (λ (az : Nat). Π (b : Nat) → Le az b → Le b az → Id Nat az b) {
+      Z => λ (b : Nat).
+        elim b return (λ (bz : Nat). Le Z bz → Le bz Z → Id Nat Z bz) {
+          Z => λ (h1 : Le Z Z). λ (h2 : Le Z Z). Refl,
+          S (b') ihb => λ (h1 : Le Z (S b')). λ (h2 : Le (S b') Z). botElim (Id Nat Z (S b')) h2 },
+      S (a') ih => λ (b : Nat).
+        elim b return (λ (bz : Nat). Le (S a') bz → Le bz (S a') → Id Nat (S a') bz) {
+          Z => λ (h1 : Le (S a') Z). λ (h2 : Le Z (S a')). botElim (Id Nat (S a') Z) h1,
+          S (b') ihb => λ (h1 : Le (S a') (S b')). λ (h2 : Le (S b') (S a')).
+            id_congr Nat Nat (λ (n : Nat). S n) a' b' (ih b' h1 h2) } } }
+def le_antisym_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → Le b a → Id Nat a b }
+
 end Dllbc.StdLemmas

@@ -137,6 +137,7 @@ example : chk StdLemmas.boolFT StdLemmas.boolFT_ty = true := by native_decide
 example : chk StdLemmas.boolTF StdLemmas.boolTF_ty = true := by native_decide
 example : chk StdLemmas.leb_true_le StdLemmas.leb_true_le_ty = true := by native_decide
 example : chk StdLemmas.leb_false_gt StdLemmas.leb_false_gt_ty = true := by native_decide
+example : chk StdLemmas.le_antisym StdLemmas.le_antisym_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
