@@ -200,6 +200,14 @@ example : chk StdLemmas.allLeR_extend_far StdLemmas.allLeR_extend_far_ty = true 
 example : chk StdLemmas.allLeR_extend_lo StdLemmas.allLeR_extend_lo_ty = true := by native_decide
 example : chk StdLemmas.allLeR_cong StdLemmas.allLeR_cong_ty = true := by native_decide
 example : chk StdLemmas.add_swap_succ StdLemmas.add_swap_succ_ty = true := by native_decide
+-- §22 M22-c step 2 headline #1: the ≤-region invariant. Supporting bridges (pos_bridge_ss,
+-- bnd_sl) and the base/step region-growth pieces (allLeR_base_swap, allLeR_step_TZ/swap).
+example : chk StdLemmas.pos_bridge_ss StdLemmas.pos_bridge_ss_ty = true := by native_decide
+example : chk StdLemmas.bnd_sl StdLemmas.bnd_sl_ty = true := by native_decide
+example : chk StdLemmas.allLeR_base_swap StdLemmas.allLeR_base_swap_ty = true := by native_decide
+example : chk StdLemmas.allLeR_step_TZ StdLemmas.allLeR_step_TZ_ty = true := by native_decide
+example : chk StdLemmas.allLeR_step_swap StdLemmas.allLeR_step_swap_ty = true := by native_decide
+example : chk StdLemmas.partScanRangeL_allLeR StdLemmas.partScanRangeL_allLeR_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
