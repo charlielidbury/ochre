@@ -65,3 +65,24 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
     code (declarative separation is the paper's); the universe rule is
     checking-only under type-in-type; table-miss/arity-mismatch return false —
     which IS the money-test rejection mechanism (§4.2 framing accurate).
+
+## From F2 (reorganization)
+14. **Silent spec degradation on multi-captured backs** (the serious one): a
+    declared back on a call capturing ≥2 borrows is silently IGNORED — endGroup
+    matches backSpec only against captured=[(ℓc,_)], degrading to opaque without
+    rejection. A declared promise silently unused is a bug class; THEORY-LINE
+    FIX CANDIDATE (reject or support; never silent).
+15. **Read/write asymmetry on group-captured owners**: reading demand-ends the
+    group; OVERWRITING is rejected ("in flight") because drop calls
+    killBorrowInΩ, never endLoan. Doc §2.3's locatability phrasing doesn't
+    predict the split. Theory-line item.
+16. **Strategy incompleteness vs the nondeterministic rules**: a rules-
+    admissible order (End-Mut a live reborrow before the group end) is rejected
+    by the implemented endLoan→endGroup→endIssued order when an issued payload
+    is suspended. Soundness unaffected; a strategy-completeness question for
+    the metatheory section to state.
+17. Minor: endIssued's docstring claims a collapse that only Boundary.collapseArg
+    performs (comment drift); the "innermost-first" of drop = one own-free
+    premise on G-DropBorrow (load-bearing: without it the self-reborrow derives);
+    owned-position is a property of F1's demanding move, not of the end — F2
+    glosses rather than rules it, deliberately.
