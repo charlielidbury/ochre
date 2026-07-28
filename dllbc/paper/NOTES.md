@@ -86,3 +86,27 @@ recorded it; findings are REPORTED here, resolution belongs to the theory owner.
     premise on G-DropBorrow (load-bearing: without it the self-reborrow derives);
     owned-position is a property of F1's demanding move, not of the end — F2
     glosses rather than rules it, deliberately.
+
+## From F5 (boundaries/calls/audit)
+18. **Vacuous back-audit paths** (the most soundness-relevant finding of the
+    extraction): both back checks (B-BackN/B-Back0) take the FIRST qualifying
+    obligation and pass VACUOUSLY when none qualifies — and B-Back0 also when
+    the argument borrow is consumed whole into a sub-call. A declared back can
+    go entirely unaudited on such paths. THEORY-LINE FIX (audit-strategy holes)
+    required before any soundness statement quantifies over declared specs.
+    Cross-confirms F2's finding 14 (multi-captured spec: no computed release).
+19. **Doc ahead of implementation on exit-snapshot return types**: §5.4 at the
+    pin records the DECIDED exception (borrow-payload derefs in return types
+    read the EXIT snapshot; `old *v` = entry) — not implemented at 122bb424
+    (checkFn entry-pins wholesale). The figure follows the implementation with
+    a RULE-GAP at B-Pin; the prose architectures section presents the decision
+    as the ongoing M22 line.
+20. Unexercised edges, now precisely located: B-Res-Pair builds dependent-Σ
+    results with the binder unsubstituted; the ↝ owed S of a borrow RETURN is
+    read at return in the exit state (unlike value returns' entry-pin) — a
+    dependent S over a consumed parameter would misread; auditAction re-reads
+    an unpinned T on value paths. All flagged in-figure.
+21. INTEGRATION TODOs: dedupe B-SpecEnd (F5) against G-EndGroupBack (F2) —
+    cite, don't duplicate; promote F5's and F2's figure-local judgment helpers
+    to style.typ; fix style.typ's angle→chevron deprecations; F3's ⇜-reach box
+    already includes selfBack (F5's 5-tuple glosses it) — verify consistency.
