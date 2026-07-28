@@ -139,6 +139,53 @@ example : chk StdLemmas.leb_true_le StdLemmas.leb_true_le_ty = true := by native
 example : chk StdLemmas.leb_false_gt StdLemmas.leb_false_gt_ty = true := by native_decide
 example : chk StdLemmas.le_antisym StdLemmas.le_antisym_ty = true := by native_decide
 example : chk StdLemmas.le_add_cancel_l StdLemmas.le_add_cancel_l_ty = true := by native_decide
+-- §22 M22-c positional stratum: nth-under-swapL locality. The two `set` helpers,
+-- then the "outside {i,j}" pair (lt/gt) the range scan's locality consumes, then
+-- the two swap endpoints (lo/hi). Minimal honest bounds (see StdLemmas header).
+example : chk StdLemmas.nth_set_gt StdLemmas.nth_set_gt_ty = true := by native_decide
+example : chk StdLemmas.nth_set_same StdLemmas.nth_set_same_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_lt StdLemmas.nth_swapL_lt_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_gt StdLemmas.nth_swapL_gt_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_lo StdLemmas.nth_swapL_lo_ty = true := by native_decide
+example : chk StdLemmas.nth_swapL_hi StdLemmas.nth_swapL_hi_ty = true := by native_decide
+-- §22 M22-c locality: positions outside the operated range are unchanged by the range
+-- scan / partition. `_lt` (below lo) and `_ge` (at/above the top) — the two directions
+-- the quicksort recursion consumes; _ge threads count_partScanRangeL's invariant on a
+-- position (no len_swapL). Wrappers pick the pivot then defer to the scan.
+example : chk StdLemmas.nth_partScanRangeL_lt StdLemmas.nth_partScanRangeL_lt_ty = true := by native_decide
+example : chk StdLemmas.nth_partScanRangeL_ge StdLemmas.nth_partScanRangeL_ge_ty = true := by native_decide
+example : chk StdLemmas.nth_partitionRangeL_lt StdLemmas.nth_partitionRangeL_lt_ty = true := by native_decide
+example : chk StdLemmas.nth_partitionRangeL_ge StdLemmas.nth_partitionRangeL_ge_ty = true := by native_decide
+-- §22 M22-c locality culmination: the full sort. _lt/_ge over positions outside the
+-- sorted range, plus the position sub-range bounds (partSizeCnt, sortRangeGeBL/BR —
+-- the len-relative sortRangeBL/BR stripped of their len_* layers).
+example : chk StdLemmas.nth_sortRangeL_lt StdLemmas.nth_sortRangeL_lt_ty = true := by native_decide
+example : chk StdLemmas.partSizeCnt StdLemmas.partSizeCnt_ty = true := by native_decide
+example : chk StdLemmas.sortRangeGeBL StdLemmas.sortRangeGeBL_ty = true := by native_decide
+example : chk StdLemmas.sortRangeGeBR StdLemmas.sortRangeGeBR_ty = true := by native_decide
+example : chk StdLemmas.nth_sortRangeL_ge StdLemmas.nth_sortRangeL_ge_ty = true := by native_decide
+-- §22 Step C bridges: Nat no-confusion (Z≠S via large elim into Type), s_inj,
+-- add_cancel_l, nth_drop, list_ext, take_ext_bounded, len_drop_cong, count_split.
+example : chk StdLemmas.znots StdLemmas.znots_ty = true := by native_decide
+example : chk StdLemmas.s_inj StdLemmas.s_inj_ty = true := by native_decide
+example : chk StdLemmas.add_cancel_l StdLemmas.add_cancel_l_ty = true := by native_decide
+example : chk StdLemmas.nth_drop StdLemmas.nth_drop_ty = true := by native_decide
+example : chk StdLemmas.list_ext StdLemmas.list_ext_ty = true := by native_decide
+example : chk StdLemmas.take_ext_bounded StdLemmas.take_ext_bounded_ty = true := by native_decide
+example : chk StdLemmas.len_drop_cong StdLemmas.len_drop_cong_ty = true := by native_decide
+example : chk StdLemmas.count_split StdLemmas.count_split_ty = true := by native_decide
+-- §22 M22-c step 3: segment-count preservation. The cancellation glue
+-- (count_rest/seg_preserved, seg_glue), the prefix/suffix list equalities from Step B
+-- locality, and THE GOALS: segCount survives the range sort and partition.
+example : chk StdLemmas.count_rest_preserved StdLemmas.count_rest_preserved_ty = true := by native_decide
+example : chk StdLemmas.count_seg_preserved StdLemmas.count_seg_preserved_ty = true := by native_decide
+example : chk StdLemmas.seg_glue StdLemmas.seg_glue_ty = true := by native_decide
+example : chk StdLemmas.take_lo_sort StdLemmas.take_lo_sort_ty = true := by native_decide
+example : chk StdLemmas.drop_suffix_sort StdLemmas.drop_suffix_sort_ty = true := by native_decide
+example : chk StdLemmas.take_lo_partition StdLemmas.take_lo_partition_ty = true := by native_decide
+example : chk StdLemmas.drop_suffix_partition StdLemmas.drop_suffix_partition_ty = true := by native_decide
+example : chk StdLemmas.segCount_sortRangeL StdLemmas.segCount_sortRangeL_ty = true := by native_decide
+example : chk StdLemmas.segCount_partitionRangeL StdLemmas.segCount_partitionRangeL_ty = true := by native_decide
 
 /-! ## rewrite-by-Id — the branch-equation / knowledge layer
 
