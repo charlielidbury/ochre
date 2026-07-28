@@ -46,25 +46,65 @@ mutual
   termination_by vs => sizeOf vs
 end
 
-/-! Substitute `s` for pure de Bruijn variable `j` in a value; indices `> j`
-    shift down by one (the binder at `j` is eliminated). `s` is shifted when
-    going under a binder. -/
+/-! Does the value mention any pure de Bruijn variable in a position the pure
+    shift/substitution reaches (`borrowM` payloads are leaves there, so a pvar
+    inside one does not count)? A pvar-free value is a fixed point of
+    `shiftPure d c`, which is what lets `substPure` below never copy it. -/
 mutual
-  def substPure (j : Nat) (s : Val) : Val → Val
-    | .pvar k => if k == j then s else if k > j then .pvar (k - 1) else .pvar k
-    | .lam dom b => .lam (substPure j s dom) (substPure (j + 1) (shiftPure 1 0 s) b)
-    | .pi dom cod => .pi (substPure j s dom) (substPure (j + 1) (shiftPure 1 0 s) cod)
-    | .sigmaT dom cod => .sigmaT (substPure j s dom) (substPure (j + 1) (shiftPure 1 0 s) cod)
-    | .app f a => .app (substPure j s f) (substPure j s a)
-    | .ctor n args => .ctor n (substPureList j s args)
-    | .idT a b b' => .idT (substPure j s a) (substPure j s b) (substPure j s b')
-    | v => v                                   -- leaves (see shiftPure)
+  def pvarFree : Val → Bool
+    | .pvar _ => false
+    | .lam dom b => pvarFree dom && pvarFree b
+    | .pi dom cod => pvarFree dom && pvarFree cod
+    | .sigmaT dom cod => pvarFree dom && pvarFree cod
+    | .app f a => pvarFree f && pvarFree a
+    | .ctor _ args => pvarFreeList args
+    | .idT a b b' => pvarFree a && pvarFree b && pvarFree b'
+    | _ => true                                -- leaves (see shiftPure)
   termination_by v => sizeOf v
-  def substPureList (j : Nat) (s : Val) : List Val → List Val
-    | [] => []
-    | v :: vs => substPure j s v :: substPureList j s vs
+  def pvarFreeList : List Val → Bool
+    | [] => true
+    | v :: vs => pvarFree v && pvarFreeList vs
   termination_by vs => sizeOf vs
 end
+
+/-! Substitute `s` for pure de Bruijn variable `j` in a value; indices `> j`
+    shift down by one (the binder at `j` is eliminated).
+
+    **Delayed lifting** (the checker's measured hot spot — see the perf commit):
+    the textbook recursion re-shifts `s` at *every* binder it goes under
+    (`substPure (j+1) (shiftPure 1 0 s) b`), which structurally copies `s` once
+    per binder crossed — O(binders × |s|). At quicksort scale the substituends
+    are 10⁵-node proof values and this one line was ~93% of all checker CPU
+    (62% `shiftPure` itself + ~30% allocator/refcount churn on the copies).
+    Instead we carry the number of binders crossed, `d`, and lift only at an
+    actual occurrence of the variable — and not even then when `s` is pvar-free
+    (`sc`), since the shift is then the identity. Extensionally identical to the
+    old recursion: `substGo j d sc s v = substPure_old (j+d) (shiftPure d 0 s) v`
+    by induction on `v`, using `shiftPure 1 0 ∘ shiftPure d 0 = shiftPure (d+1) 0`
+    (cutoff 0) at the binder cases and, for the `sc` fast path, that a pvar-free
+    `s` is a fixed point of every shift. -/
+mutual
+  def substGo (j d : Nat) (sc : Bool) (s : Val) : Val → Val
+    | .pvar k =>
+      if k == j + d then (if sc || d == 0 then s else shiftPure d 0 s)
+      else if k > j + d then .pvar (k - 1) else .pvar k
+    | .lam dom b => .lam (substGo j d sc s dom) (substGo j (d + 1) sc s b)
+    | .pi dom cod => .pi (substGo j d sc s dom) (substGo j (d + 1) sc s cod)
+    | .sigmaT dom cod => .sigmaT (substGo j d sc s dom) (substGo j (d + 1) sc s cod)
+    | .app f a => .app (substGo j d sc s f) (substGo j d sc s a)
+    | .ctor n args => .ctor n (substGoList j d sc s args)
+    | .idT a b b' => .idT (substGo j d sc s a) (substGo j d sc s b) (substGo j d sc s b')
+    | v => v                                   -- leaves (see shiftPure)
+  termination_by v => sizeOf v
+  def substGoList (j d : Nat) (sc : Bool) (s : Val) : List Val → List Val
+    | [] => []
+    | v :: vs => substGo j d sc s v :: substGoList j d sc s vs
+  termination_by vs => sizeOf vs
+end
+
+def substPure (j : Nat) (s : Val) (v : Val) : Val := substGo j 0 (pvarFree s) s v
+
+def substPureList (j : Nat) (s : Val) (vs : List Val) : List Val := substGoList j 0 (pvarFree s) s vs
 
 /-! ## Weak-head normalization (β and ι)
 
