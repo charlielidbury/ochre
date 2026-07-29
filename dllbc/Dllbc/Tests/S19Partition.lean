@@ -26,7 +26,7 @@ open Dllbc.StdLemmas (swapL count_swapL' set nth partScanL partScanRangeL partId
   partIdxRangeL partGapRangeL partScanSizeL len_partitionRangeL len_sortRangeL sortRangeL
   partitionRangeL partitionL le_up_r le_add le_add_l le_add_succ le_rw_r le_rw_l le_add_mono_l
   add_succ le_trans le_refl id_sym id_trans id_congr hshift_true hshift_false len_swapL add_zero add_assoc
-  count_partitionRangeL count_sortRangeL)
+  count_partitionRangeL count_sortRangeL SortedR sorted_sortRangeL)
 
 namespace Dllbc.Tests.S19Partition
 
@@ -1108,6 +1108,20 @@ def quicksortELie : Decl :=
           cert } }
 example : checkFnErr quicksortELie "does not have return type"
   [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortELie] = true := by native_decide
+
+-- M22: THE NORTH STAR — full postcondition. The in-place quicksort's exit snapshot
+-- satisfies Σ (SortedR cnt lo (*v)) → (Π n. count n (*v) = count n (old *v)): sortedness
+-- AND permutation, proven directly from pure lemmas about the delegated model function
+-- (sorted_sortRangeL, count_sortRangeL), no back-carrying conversion in the postcondition.
+def quicksortSorted : Decl :=
+  decl{ fn quicksortSorted (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
+        -> Σ (sortedpart : SortedR cnt lo (*v)) → (Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v)))
+        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
+          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
+          quicksort(&mut *v, fuel, lo, cnt, hbnd);
+          Pair(sortedcert, permcert) } }
+def quicksortSortedTable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortSorted]
+example : checkFnOk quicksortSorted quicksortSortedTable = true := by native_decide
 
 end Dllbc.Tests.S19Partition
 
