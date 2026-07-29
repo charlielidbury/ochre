@@ -11,4 +11,7 @@ lean_lib «Dllbc» where
   srcDir := "."
 
 lean_exe «bench» where
-  root := `Dllbc.Bench
+  root := `Dllbc.BenchMain
+
+lean_exe «benchqs» where
+  root := `Dllbc.BenchQS

@@ -491,11 +491,16 @@ partial def exploreIO (fuel : Nat) (t : Term) (st : St) (lbl : String) : IO (Lis
 def benchTrace (name : String) (table : List Decl) (decl : Decl) : IO Unit := do
   IO.println s!"== {name} (trace) =="
   let t0 ← IO.monoMsNow
+  -- Mirror of checkFn's seed (MUST stay in sync with Boundary.checkFn — §5.4
+  -- exitSyms + markExit included).
   let seed : M (List Obligation) := do
     let obs ← seedTelescope defaultFuel 0 decl.telescope
+    let borrowIds := borrowParamIds decl.telescope
+    let exits ← borrowIds.mapM (fun i => do pure (i, ← freshSym))
+    modify (fun s => { s with exitSyms := exits })
     if hasBorrowT decl.retType then pure ()
     else do
-      let rv ← readC defaultFuel decl.retType
+      let rv ← readC defaultFuel (markExit borrowIds decl.retType)
       modify (fun s => { s with retTyVal := some rv })
     match decl.back with
     | some b => do
@@ -511,15 +516,95 @@ def benchTrace (name : String) (table : List Decl) (decl : Decl) : IO Unit := do
     let t2 ← IO.monoMsNow
     IO.println s!"  explore: {t2 - t1} ms, {paths.length} paths (seed {t1 - t0} ms)"
 
+/-- Mirror of `auditAction`'s VALUE-RETURNING arm with per-stage timing
+    (obligations / selfBack skipped-if-none / §5.4 exit-substitution / final
+    hasType). MUST stay in sync with Boundary.auditAction. Only for decls whose
+    result is not a botElim and not borrow-returning. -/
+def benchAudit (retType : Term) (v : Val) (st0 : St) : IO Unit := do
+  let obs := st0.obligations
+  let t0 ← IO.monoMsNow
+  match (obs.forM (auditObligation defaultFuel [])).run st0 with
+  | .error e _ => IO.println s!"      audit/obligations ERR: {(e.take 90)}"
+  | .ok _ st1 => do
+    let t1 ← IO.monoMsNow
+    IO.println s!"      audit/obligations: {t1 - t0} ms"
+    if st1.selfBack.isSome then
+      IO.println "      audit/selfBack: PRESENT — benchAudit skips it (out of sync with auditAction!)"
+    let retTy0 ← match st1.retTyVal with
+      | some rv => pure rv
+      | none => match (readC defaultFuel retType).run st1 with
+        | .ok rv _ => pure rv
+        | .error _ _ => pure .bot
+    let sub : M Val := do
+      let exits := (← get).exitSyms
+      obs.foldlM (fun acc ob =>
+        match exits.lookup ob.arg.id with
+        | none => pure acc
+        | some σ => do
+          match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
+          | some payload => pure (Val.nfV defaultFuel (substSym σ payload acc))
+          | none => pure acc) retTy0
+    match sub.run st1 with
+    | .error e _ => IO.println s!"      audit/exit-subst ERR: {(e.take 90)}"
+    | .ok retTy st2 => do
+      let t2 ← IO.monoMsNow
+      IO.println s!"      audit/exit-subst: {t2 - t1} ms (retTy {vsize retTy0} -> {vsize retTy} nodes, result {vsize v} nodes)"
+      match (hasType defaultFuel v retTy).run st2 with
+      | .error e _ => IO.println s!"      audit/hasType ERR: {(e.take 120)}"
+      | .ok ok st3 => do
+        let t3 ← IO.monoMsNow
+        IO.println s!"      audit/hasType: {t3 - t2} ms -> {ok} (sctx {st2.sctx.size} -> {st3.sctx.size})"
+
+/-- seed → explore → per-path staged audit (via `benchAudit`). -/
+def benchTraceAudit (name : String) (table : List Decl) (decl : Decl) : IO Unit := do
+  IO.println s!"== {name} (audit trace) =="
+  -- Mirror of checkFn's seed (MUST stay in sync with Boundary.checkFn — §5.4
+  -- exitSyms + markExit included).
+  let seed : M (List Obligation) := do
+    let obs ← seedTelescope defaultFuel 0 decl.telescope
+    let borrowIds := borrowParamIds decl.telescope
+    let exits ← borrowIds.mapM (fun i => do pure (i, ← freshSym))
+    modify (fun s => { s with exitSyms := exits })
+    if hasBorrowT decl.retType then pure ()
+    else do
+      let rv ← readC defaultFuel (markExit borrowIds decl.retType)
+      modify (fun s => { s with retTyVal := some rv })
+    match decl.back with
+    | some b => do
+      let bv ← readC defaultFuel b
+      modify (fun s => { s with selfBack := some bv })
+    | none => pure ()
+    pure obs
+  match seed.run { initSt with decls := table } with
+  | .error e _ => IO.println s!"seed ERROR: {e}"
+  | .ok obs st => do
+    let t1 ← IO.monoMsNow
+    let paths := explore defaultFuel (pushContinuations decl.body) { st with obligations := obs }
+    let t2 ← IO.monoMsNow
+    IO.println s!"  explore: {t2 - t1} ms, {paths.length} paths"
+    let mut i := 0
+    for p in paths do
+      match p with
+      | .error e => IO.println s!"  path {i}: explore ERR: {(e.take 90)}"
+      | .ok (v, stp) => do
+        IO.println s!"  path {i}:"
+        benchAudit decl.retType v stp
+      i := i + 1
+
 /-- Replicate `checkFn` with per-phase wall timing and per-path stats. -/
 def benchCheck (name : String) (table : List Decl) (decl : Decl) : IO Unit := do
   IO.println s!"== {name} =="
   let t0 ← IO.monoMsNow
+  -- Mirror of checkFn's seed (MUST stay in sync with Boundary.checkFn — §5.4
+  -- exitSyms + markExit included).
   let seed : M (List Obligation) := do
     let obs ← seedTelescope defaultFuel 0 decl.telescope
+    let borrowIds := borrowParamIds decl.telescope
+    let exits ← borrowIds.mapM (fun i => do pure (i, ← freshSym))
+    modify (fun s => { s with exitSyms := exits })
     if hasBorrowT decl.retType then pure ()
     else do
-      let rv ← readC defaultFuel decl.retType
+      let rv ← readC defaultFuel (markExit borrowIds decl.retType)
       modify (fun s => { s with retTyVal := some rv })
     match decl.back with
     | some b => do
@@ -549,7 +634,7 @@ def benchCheck (name : String) (table : List Decl) (decl : Decl) : IO Unit := do
         let tb ← IO.monoMsNow
         match r with
         | .ok _ _ =>
-          IO.println s!"  path {i}: audit ok  {tb - ta} ms (res {vsize v}, env {stp.env.length}, sctx {stp.sctx.length}, groups {stp.groups.length})"
+          IO.println s!"  path {i}: audit ok  {tb - ta} ms (res {vsize v}, env {stp.env.length}, sctx {stp.sctx.size}, groups {stp.groups.length})"
         | .error e _ => do
           IO.println s!"  path {i}: audit ERR {tb - ta} ms: {(e.take 90)}"
           allOk := false
@@ -597,7 +682,3 @@ def run (which : String) : IO Unit := do
   | other => IO.println s!"unknown benchmark '{other}'"
 
 end Dllbc.Bench
-
-def main (args : List String) : IO Unit := do
-  for a in (if args.isEmpty then ["sizes"] else args) do
-    Dllbc.Bench.run a
