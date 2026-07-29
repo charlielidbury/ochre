@@ -3343,4 +3343,99 @@ def sortedR_off_cong_ty : Term := pure{
   Π (w : Nat) → Π (lo : Nat) → Π (lo' : Nat) → Π (l : List Nat) →
     Id Nat lo lo' → SortedR w lo l → SortedR w lo' l }
 
+/-! ## sorted_sortRangeL's 5 glue inputs (spine takeover) — each survives BOTH sub-sorts.
+    Setup: L = sortRangeL f' lo i p (left sort), result = sortRangeL f' (S(add lo i)) g L
+    (right sort). SL/AL: left region [lo,lo+i) is BELOW the right sort (nth_sortRangeL_lt);
+    AG: gap is ABOVE the left sort (nth_sortRangeL_ge). Keystone (allLeR/allGtR_sortRange)
+    carries bounds across the OWN sort; cong across the fixed region. add_comm bridges the
+    positional-predicate offset (add i lo) ↔ model offset (add lo i). -/
+def pos_lt_bound : Term := pure{
+  λ (q : Nat). λ (i : Nat). λ (lo : Nat). λ (hq : Le (S q) i).
+    le_rw_l (add lo i) (add lo q) (add q lo) (add_comm lo q)
+      (le_add_mono_l lo q i (le_pred_l q i hq)) }
+def pos_lt_bound_ty : Term := pure{
+  Π (q : Nat) → Π (i : Nat) → Π (lo : Nat) → Le (S q) i → Le (S (add q lo)) (S (add lo i)) }
+def allGtR_off_cong : Term := pure{
+  λ (w : Nat). λ (off : Nat). λ (off' : Nat). λ (p : Nat). λ (l : List Nat).
+    λ (e : Id Nat off off'). λ (s : AllGtR w off p l).
+      j Nat off (λ (o2 : Nat). λ (h : Id Nat off o2). AllGtR w o2 p l) s off' e }
+def allGtR_off_cong_ty : Term := pure{
+  Π (w : Nat) → Π (off : Nat) → Π (off' : Nat) → Π (p : Nat) → Π (l : List Nat) →
+    Id Nat off off' → AllGtR w off p l → AllGtR w off' p l }
+def gap_ge_bound : Term := pure{
+  λ (m : Nat). λ (i : Nat). λ (lo : Nat).
+    le_rw_l (add m (S (add i lo))) (add i lo) (add lo i) (add_comm i lo)
+      (le_trans (add i lo) (S (add i lo)) (add m (S (add i lo)))
+        (le_up_r (add i lo) (add i lo) (le_refl (add i lo)))
+        (le_add_l (S (add i lo)) m)) }
+def gap_ge_bound_ty : Term := pure{
+  Π (m : Nat) → Π (i : Nat) → Π (lo : Nat) → Le (add lo i) (add m (S (add i lo))) }
+def sorted_in_SL : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (p : List Nat). λ (f' : Nat).
+    λ (ihL : SortedR i lo (sortRangeL f' lo i p)).
+      SortedR_cong i lo (sortRangeL f' lo i p) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))
+        ihL
+        (λ (q : Nat). λ (hq : Le (S q) i).
+          nth_sortRangeL_lt f' (add q lo) (S (add lo i)) g (sortRangeL f' lo i p) (pos_lt_bound q i lo hq)) }
+def sorted_in_SL_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (p : List Nat) → Π (f' : Nat) →
+    SortedR i lo (sortRangeL f' lo i p) →
+    SortedR i lo (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
+def sorted_in_SR : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (p : List Nat). λ (f' : Nat).
+    λ (ihR : SortedR g (S (add lo i)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))).
+      sortedR_off_cong g (S (add lo i)) (S (add i lo)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))
+        (id_congr Nat Nat (λ (n : Nat). S n) (add lo i) (add i lo) (add_comm lo i))
+        ihR }
+def sorted_in_SR_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (p : List Nat) → Π (f' : Nat) →
+    SortedR g (S (add lo i)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) →
+    SortedR g (S (add i lo)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
+def sorted_in_HPIV : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
+    λ (ppiv : Id Nat (nth (add i lo) p) pivot).
+      id_sym Nat (nth (add i lo) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))) pivot
+        (id_trans Nat
+          (nth (add i lo) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)))
+          (nth (add i lo) (sortRangeL f' lo i p))
+          pivot
+          (nth_sortRangeL_lt f' (add i lo) (S (add lo i)) g (sortRangeL f' lo i p)
+            (le_rw_r (add i lo) (add i lo) (add lo i) (add_comm i lo) (le_refl (add i lo))))
+          (id_trans Nat (nth (add i lo) (sortRangeL f' lo i p)) (nth (add i lo) p) pivot
+            (nth_sortRangeL_ge f' (add i lo) lo i p
+              (le_rw_l (add i lo) (add i lo) (add lo i) (add_comm i lo) (le_refl (add i lo))))
+            ppiv)) }
+def sorted_in_HPIV_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
+    Id Nat (nth (add i lo) p) pivot →
+    Id Nat pivot (nth (add i lo) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))) }
+def sorted_in_AL : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
+    λ (pAL : AllLeR i lo pivot p). λ (bl : Le (add lo i) (len p)).
+      allLeR_cong i lo pivot (sortRangeL f' lo i p) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))
+        (λ (q : Nat). λ (hq : Le (S q) i).
+          nth_sortRangeL_lt f' (add q lo) (S (add lo i)) g (sortRangeL f' lo i p) (pos_lt_bound q i lo hq))
+        (allLeR_sortRange f' lo i pivot p bl pAL) }
+def sorted_in_AL_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
+    AllLeR i lo pivot p → Le (add lo i) (len p) →
+    AllLeR i lo pivot (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
+def sorted_in_AG : Term := pure{
+  λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
+    λ (pAG : AllGtR g (S (add i lo)) pivot p).
+    λ (br : Le (add (S (add lo i)) g) (len (sortRangeL f' lo i p))).
+      allGtR_off_cong g (S (add lo i)) (S (add i lo)) pivot (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))
+        (id_congr Nat Nat (λ (n : Nat). S n) (add lo i) (add i lo) (add_comm lo i))
+        (allGtR_sortRange f' (S (add lo i)) g pivot (sortRangeL f' lo i p) br
+          (allGtR_off_cong g (S (add i lo)) (S (add lo i)) pivot (sortRangeL f' lo i p)
+            (id_congr Nat Nat (λ (n : Nat). S n) (add i lo) (add lo i) (add_comm i lo))
+            (allGtR_cong g (S (add i lo)) pivot p (sortRangeL f' lo i p)
+              (λ (m : Nat). λ (hm : Le (S m) g).
+                nth_sortRangeL_ge f' (add m (S (add i lo))) lo i p (gap_ge_bound m i lo))
+              pAG))) }
+def sorted_in_AG_ty : Term := pure{
+  Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
+    AllGtR g (S (add i lo)) pivot p → Le (add (S (add lo i)) g) (len (sortRangeL f' lo i p)) →
+    AllGtR g (S (add i lo)) pivot (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
+
 end Dllbc.StdLemmas
