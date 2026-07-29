@@ -3438,4 +3438,76 @@ def sorted_in_AG_ty : Term := pure{
     AllGtR g (S (add i lo)) pivot p → Le (add (S (add lo i)) g) (len (sortRangeL f' lo i p)) →
     AllGtR g (S (add i lo)) pivot (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
 
+-- i+g = cnt-1 for the top partition (partScanSizeL + add_zero); reused by the size
+-- transport and both fuel-sufficiency derivations in sorted_sortRangeL.
+def part_size : Term := pure{
+  λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat).
+    id_trans Nat
+      (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))
+      (S (add cnt'' Z)) (S cnt'')
+      (partScanSizeL (nth lo l) lo (S cnt'') Z Z l)
+      (id_congr Nat Nat (λ (n : Nat). S n) (add cnt'' Z) cnt'' (add_zero cnt'')) }
+def part_size_ty : Term := pure{
+  Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) →
+    Id Nat (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'') }
+
+
+def sorted_sortRangeL : Term := pure{
+  λ (fuel : Nat).
+    elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
+        Le cnt fz → Le (add lo cnt) (len l) → SortedR cnt lo (sortRangeL fz lo cnt l)) {
+      Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+        elim cnt return (λ (cz : Nat). Le cz Z → Le (add lo cz) (len l) → SortedR cz lo l) {
+          Z => λ (hf : Le Z Z). λ (hb : Le (add lo Z) (len l)). sortedR_zero lo l,
+          S (c) cih => λ (hf : Le (S c) Z). λ (hb : Le (add lo (S c)) (len l)). botElim (SortedR (S c) lo l) hf },
+      S (f') ih => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
+        elim cnt return (λ (cz : Nat). Le cz (S f') → Le (add lo cz) (len l) → SortedR cz lo (sortRangeL (S f') lo cz l)) {
+          Z => λ (hf : Le Z (S f')). λ (hb : Le (add lo Z) (len l)). sortedR_zero lo l,
+          S (cnt') nih => elim cnt' return (λ (cz' : Nat). Le (S cz') (S f') → Le (add lo (S cz')) (len l) → SortedR (S cz') lo (sortRangeL (S f') lo (S cz') l)) {
+            Z => λ (hf : Le (S Z) (S f')). λ (hb : Le (add lo (S Z)) (len l)). sortedR_one lo l,
+            S (cnt'') n2ih => λ (hf : Le (S (S cnt'')) (S f')). λ (hb : Le (add lo (S (S cnt''))) (len l)).
+              sortedR_width_cong
+                (S (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))
+                (S (S cnt'')) lo
+                (sortRangeL f' (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)
+                  (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)))
+                (id_congr Nat Nat (λ (n : Nat). S n)
+                  (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'')
+                  (part_size lo cnt'' l))
+                (glue (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l) lo (nth lo l)
+                  (sortRangeL f' (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)
+                    (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)))
+                  (sorted_in_HPIV (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l) lo (nth lo l)
+                    (partitionRangeL lo (S (S cnt'')) l) f' (partition_pivot lo (S (S cnt'')) l hb))
+                  (sorted_in_SL (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l) lo
+                    (partitionRangeL lo (S (S cnt'')) l) f'
+                    (ih lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)
+                      (le_trans (partIdxRangeL lo (S (S cnt'')) l) (S cnt'') f'
+                        (le_rw_r (partIdxRangeL lo (S (S cnt'')) l)
+                          (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'')
+                          (part_size lo cnt'' l)
+                          (le_add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))
+                        hf)
+                      (sortRangeBL lo cnt'' l hb)))
+                  (sorted_in_AL (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l) lo (nth lo l)
+                    (partitionRangeL lo (S (S cnt'')) l) f'
+                    (partition_allLeR lo (S (S cnt'')) l hb) (sortRangeBL lo cnt'' l hb))
+                  (sorted_in_AG (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l) lo (nth lo l)
+                    (partitionRangeL lo (S (S cnt'')) l) f'
+                    (partition_allGtR lo (S (S cnt'')) l hb) (sortRangeBR f' lo cnt'' l hb))
+                  (sorted_in_SR (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l) lo
+                    (partitionRangeL lo (S (S cnt'')) l) f'
+                    (ih (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)
+                      (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l))
+                      (le_trans (partGapRangeL lo (S (S cnt'')) l) (S cnt'') f'
+                        (le_rw_r (partGapRangeL lo (S (S cnt'')) l)
+                          (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'')
+                          (part_size lo cnt'' l)
+                          (le_add_l (partGapRangeL lo (S (S cnt'')) l) (partIdxRangeL lo (S (S cnt'')) l)))
+                        hf)
+                      (sortRangeBR f' lo cnt'' l hb))))
+          }
+        }
+    } }
+
 end Dllbc.StdLemmas
