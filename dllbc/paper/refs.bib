@@ -1,0 +1,263 @@
+% DLLBC mock-paper bibliography.
+% Entries shared with the Och paper (lean/Och/paper/refs.bib) are copied verbatim.
+% New entries (LLBC symbolic semantics, RustHorn, Dafny, Idris 2, QTT) were
+% each web-verified against their published venue before inclusion.
+% Discipline: no fabricated citations; every entry is a real work. Fields left
+% out (e.g. page ranges) are those not confidently verified, never invented.
+
+% ---------------- Closest kin: Aeneas / LLBC ----------------
+
+@inproceedings{aeneas-2022,
+  author    = {Son Ho and Jonathan Protzenko},
+  title     = {Aeneas: Rust Verification by Functional Translation},
+  booktitle = {Proceedings of the ACM on Programming Languages (ICFP)},
+  volume    = {6},
+  year      = {2022},
+  doi       = {10.1145/3547647},
+}
+
+@inproceedings{ho-fromherz-protzenko-2024,
+  author    = {Son Ho and Aymeric Fromherz and Jonathan Protzenko},
+  title     = {Sound Borrow-Checking for {Rust} via Symbolic Semantics},
+  booktitle = {Proceedings of the ACM on Programming Languages (ICFP)},
+  volume    = {8},
+  year      = {2024},
+  doi       = {10.1145/3674640},
+}
+
+% ---------------- Prophecy-based specification of mutable borrows ----------------
+
+@inproceedings{matsushita-2020,
+  author    = {Yusuke Matsushita and Takeshi Tsukada and Naoki Kobayashi},
+  title     = {{RustHorn}: {CHC}-Based Verification for {Rust} Programs},
+  booktitle = {Programming Languages and Systems (ESOP)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {12075},
+  publisher = {Springer},
+  year      = {2020},
+  doi       = {10.1007/978-3-030-44914-8_18},
+}
+
+@inproceedings{rusthornbelt-2022,
+  author    = {Yusuke Matsushita and Xavier Denis and Jacques-Henri Jourdan and Derek Dreyer},
+  title     = {{RustHornBelt}: A Semantic Foundation for Functional Verification of {Rust} Programs with Unsafe Code},
+  booktitle = {Proceedings of the 43rd ACM SIGPLAN International Conference on Programming Language Design and Implementation (PLDI)},
+  year      = {2022},
+  doi       = {10.1145/3519939.3523704},
+}
+
+@inproceedings{denis-2022,
+  author    = {Xavier Denis and Jacques-Henri Jourdan and Claude March{\'e}},
+  title     = {{Creusot}: A Foundry for the Deductive Verification of {Rust} Programs},
+  booktitle = {Formal Methods and Software Engineering (ICFEM)},
+  year      = {2022},
+  publisher = {Springer},
+  doi       = {10.1007/978-3-031-17244-1_6},
+}
+
+@inproceedings{lattuada-2023,
+  author    = {Andrea Lattuada and Travis Hance and Chanhee Cho and Matthias Brun and Isitha Subasinghe and Yi Zhou and Jon Howell and Bryan Parno and Chris Hawblitzel},
+  title     = {Verus: Verifying {Rust} Programs using Linear Ghost Types},
+  booktitle = {Proceedings of the ACM on Programming Languages (OOPSLA)},
+  volume    = {7},
+  year      = {2023},
+  doi       = {10.1145/3586037},
+}
+
+% ---------------- Refinement types ----------------
+
+@inproceedings{flux-2023,
+  author    = {Nico Lehmann and Adam T. Geller and Niki Vazou and Ranjit Jhala},
+  title     = {Flux: Liquid Types for {Rust}},
+  booktitle = {Proceedings of the ACM on Programming Languages (PLDI)},
+  volume    = {7},
+  year      = {2023},
+  doi       = {10.1145/3591283},
+}
+
+@inproceedings{liquidhaskell-2014,
+  author    = {Niki Vazou and Eric L. Seidel and Ranjit Jhala and Dimitrios Vytiniotis and Simon Peyton Jones},
+  title     = {Refinement Types for {Haskell}},
+  booktitle = {Proceedings of the 19th ACM SIGPLAN International Conference on Functional Programming (ICFP)},
+  year      = {2014},
+  doi       = {10.1145/2628136.2628161},
+}
+
+% ---------------- Dependent / linear type theories ----------------
+
+@inproceedings{xi-2017,
+  author    = {Hongwei Xi},
+  title     = {Applied Type System: An Approach to Practical Programming with Theorem-Proving},
+  booktitle = {Journal of Functional Programming},
+  year      = {2017},
+  url       = {https://www.cs.bu.edu/~hwxi/academic/papers/JFPats.pdf},
+}
+
+@inproceedings{atkey-2018,
+  author    = {Robert Atkey},
+  title     = {Syntax and Semantics of Quantitative Type Theory},
+  booktitle = {Proceedings of the 33rd Annual ACM/IEEE Symposium on Logic in Computer Science (LICS)},
+  publisher = {ACM},
+  year      = {2018},
+  doi       = {10.1145/3209108.3209189},
+}
+
+@inproceedings{brady-2021,
+  author    = {Edwin Brady},
+  title     = {{Idris 2}: Quantitative Type Theory in Practice},
+  booktitle = {35th European Conference on Object-Oriented Programming (ECOOP)},
+  series    = {Leibniz International Proceedings in Informatics (LIPIcs)},
+  volume    = {194},
+  pages     = {9:1--9:26},
+  publisher = {Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r Informatik},
+  year      = {2021},
+  doi       = {10.4230/LIPIcs.ECOOP.2021.9},
+}
+
+% ---------------- Deductive verification / low-level ----------------
+
+@inproceedings{leino-2010,
+  author    = {K. Rustan M. Leino},
+  title     = {{Dafny}: An Automatic Program Verifier for Functional Correctness},
+  booktitle = {Logic for Programming, Artificial Intelligence, and Reasoning (LPAR-16)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {6355},
+  pages     = {348--370},
+  publisher = {Springer},
+  year      = {2010},
+  doi       = {10.1007/978-3-642-17511-4_20},
+}
+
+@inproceedings{protzenko-2017,
+  author    = {Jonathan Protzenko and Jean-Karim Zinzindohou{\'e} and Aseem Rastogi and Tahina Ramananandro and Peng Wang and Santiago Zanella-B{\'e}guelin and Antoine Delignat-Lavaud and C{\'e}dric Fournet and Karthikeyan Bhargavan and Nikhil Swamy},
+  title     = {Verified Low-Level Programming Embedded in {F*}},
+  booktitle = {Proceedings of the ACM on Programming Languages (ICFP)},
+  volume    = {1},
+  year      = {2017},
+  doi       = {10.1145/3110261},
+}
+
+@inproceedings{astrauskas-2022,
+  author    = {Vytautas Astrauskas and Aurel B{\'i}l{\'y} and Jonás Fiala and Zachary Grannan and Christoph Matheja and Peter M{\"u}ller and Federico Poli and Alexander J. Summers},
+  title     = {The {Prusti} Project: Formal Verification for {Rust}},
+  booktitle = {NASA Formal Methods (NFM)},
+  year      = {2022},
+  publisher = {Springer},
+  doi       = {10.1007/978-3-031-06773-0_5},
+}
+
+@inproceedings{rustbelt-2018,
+  author    = {Ralf Jung and Jacques-Henri Jourdan and Robbert Krebbers and Derek Dreyer},
+  title     = {{RustBelt}: Securing the Foundations of the {Rust} Programming Language},
+  booktitle = {Proceedings of the ACM on Programming Languages (POPL)},
+  volume    = {2},
+  year      = {2018},
+  doi       = {10.1145/3158154},
+}
+
+@inproceedings{gillian-rust-2025,
+  author    = {Sacha-{\'E}lie Ayoun and Xavier Denis and Petar Maksimovi{\'c} and Philippa Gardner},
+  title     = {A Hybrid Approach to Semi-automated {Rust} Verification},
+  booktitle = {Proceedings of the ACM on Programming Languages (PLDI)},
+  volume    = {9},
+  year      = {2025},
+  doi       = {10.1145/3729289},
+}
+
+% ---------------- Verified systems software (context / intro) ----------------
+
+@article{leroy-2009,
+  author    = {Xavier Leroy},
+  title     = {Formal Verification of a Realistic Compiler},
+  journal   = {Communications of the ACM},
+  volume    = {52},
+  number    = {7},
+  pages     = {107--115},
+  year      = {2009},
+  doi       = {10.1145/1538788.1538814},
+}
+
+@inproceedings{klein-2009,
+  author    = {Gerwin Klein and Kevin Elphinstone and Gernot Heiser and June Andronick and David Cock and Philip Derrin and Dhammika Elkaduwe and Kai Engelhardt and Rafal Kolanski and Michael Norrish and Thomas Sewell and Harvey Tuch and Simon Winwood},
+  title     = {{seL4}: Formal Verification of an {OS} Kernel},
+  booktitle = {Proceedings of the 22nd ACM Symposium on Operating Systems Principles (SOSP)},
+  pages     = {207--220},
+  publisher = {ACM},
+  year      = {2009},
+  doi       = {10.1145/1629575.1629596},
+}
+
+@inproceedings{project-everest-2017,
+  author    = {Bhargavan, Karthikeyan and Bond, Barry and Delignat-Lavaud, Antoine and Fournet, C{\'e}dric and Hawblitzel, Chris and Hri{\c{t}}cu, C{\u{a}}t{\u{a}}lin and Lorch, Jay and Parno, Bryan and Protzenko, Jonathan and Ramananandro, Tahina and Swamy, Nikhil and Zanella-B{\'e}guelin, Santiago},
+  title     = {Everest: Towards a Verified, Drop-in Replacement of HTTPS},
+  booktitle = {2nd Summit on Advances in Programming Languages (SNAPL)},
+  year      = {2017},
+  doi       = {10.4230/LIPIcs.SNAPL.2017.1},
+}
+
+@inproceedings{hacl-2017,
+  author    = {Jean-Karim Zinzindohou{\'e} and Karthikeyan Bhargavan and Jonathan Protzenko and Benjamin Beurdouche},
+  title     = {{HACL*}: A Verified Modern Cryptographic Library},
+  booktitle = {Proceedings of the 2017 ACM SIGSAC Conference on Computer and Communications Security (CCS)},
+  pages     = {1789--1806},
+  publisher = {ACM},
+  year      = {2017},
+  doi       = {10.1145/3133956.3134043},
+}
+
+@inproceedings{vale-2019,
+  author    = {Aymeric Fromherz and Nick Giannarakis and Chris Hawblitzel and Bryan Parno and Aseem Rastogi and Nikhil Swamy},
+  title     = {A Verified, Efficient Embedding of a Verifiable Assembly Language},
+  booktitle = {Proceedings of the ACM on Programming Languages (POPL)},
+  volume    = {3},
+  year      = {2019},
+  doi       = {10.1145/3290376},
+}
+
+% ---------------- Foundations / lineage ----------------
+
+@inproceedings{hutchins-2010,
+  author    = {DeLesley S. Hutchins},
+  title     = {Pure Subtype Systems},
+  booktitle = {Proceedings of the 37th ACM SIGPLAN-SIGACT Symposium on Principles of Programming Languages (POPL)},
+  pages     = {287--298},
+  publisher = {ACM},
+  year      = {2010},
+  doi       = {10.1145/1706299.1706334},
+}
+
+@phdthesis{lidburyOchreDependentlyTyped2024,
+  type   = {{{MEng Individual Project}}},
+  title  = {Ochre: {{A Dependently Typed Systems Programming Language}}},
+  author = {Lidbury, Charlie},
+  year   = {2024},
+  school = {Imperial College London},
+  url    = {https://assets.super.so/f890b173-9aa0-4184-8dbd-d0ee94de3ebb/files/00463014-8f18-41dc-81f5-2dccbb91ceae/Ochre_Thesis_Main.pdf},
+}
+
+% ---------------- "Why now" motivation (shared with the intro) ----------------
+
+@online{firefox-vuln-2026,
+  author = {Dirk Knop},
+  title  = {As many {Firefox} vulnerabilities closed in {April} as in the previous two years},
+  year   = {2026},
+  month  = may,
+  url    = {https://www.heise.de/en/news/As-many-Firefox-vulnerabilities-closed-in-April-as-in-the-previous-two-years-11287175.html},
+  note   = {Heise Online},
+}
+
+@online{linux-copyfail-2026,
+  author = {{Microsoft Security Response Center}},
+  title  = {{CVE-2026-31431}: {COPY\_FAIL} vulnerability enables {Linux} root privilege escalation},
+  year   = {2026},
+  month  = may,
+  url    = {https://www.microsoft.com/en-us/security/blog/2026/05/01/cve-2026-31431-copy-fail-vulnerability-enables-linux-root-privilege-escalation/},
+}
+
+@online{bun-rewrite-2026,
+  author = {Jarred Sumner},
+  title  = {Rewrite {Bun} from {Zig} to {Rust}},
+  year   = {2026},
+  url    = {https://github.com/oven-sh/bun/pull/30412},
+  note   = {GitHub pull request \#30412},
+}
