@@ -1,5 +1,55 @@
 # Progress
 
+## 2026-07-29 — dllbc/: M22 CLOSES — in-place quicksort verified Sorted ∧ Perm (the full postcondition)
+
+`quicksortSorted` on main (1baa7ecc): a direct-proving Decl whose exit
+snapshot satisfies
+
+    Σ (sortedpart : SortedR cnt lo (*v)) → (Π n. Id Nat (count n (*v)) (count n (old *v)))
+
+— sortedness AND permutation — proven from pure lemmas about the model
+function the mutation delegates to (`sorted_sortRangeL`, `count_sortRangeL`),
+no back-carrying conversion in the postcondition. checkFnOk green in-suite.
+This closes the M22-c sortedness half on top of the M22-b permutation half;
+M22 is done.
+
+**The sortedness spine** (all on main, StdLemmas): bounded-Π predicates
+`AllLeR/AllGtR/SortedR` (Π k. Le (S k) w → …) — FORCED by the missing comptime
+Σ-eliminator (match is runtime-only; elim only Nat/Bool/List), the milestone's
+one recurring machine gap, which also split the invariant into three separate
+lemmas and the keystone into separate directional bridges. The partition
+invariant as three model-level lemmas (allLeR/allGtR/pivot). The perm-survival
+KEYSTONE: positional AllLeR is NOT permutation-invariant, so bounds are routed
+through the multiset predicates noAbove/noBelow (`Π x. Le (S p) x → segCount = Z`),
+which ARE — off-end positions read Z, so #1/#3/#5 carry the range-fits bound
+`Le (add lo w) (len l)`. The `glue` (SortedR left ∧ AllLeR ≤piv ∧ AllGtR >piv ∧
+SortedR right ⟹ SortedR whole), a nested leb-elim dispatcher, deliberately
+lemma-guarded subtraction for the right-segment reindex. And `sorted_sortRangeL`
+(fuel/cnt induction) carrying `Le cnt fuel` — sortedness, unlike count/len, is
+NOT preserved by the out-of-fuel identity, so it needs the depth bound the Decl's
+caller supplies.
+
+**Both conjuncts are load-bearing.** The two lying-reject twins
+(quicksortSortedLiePerm: 2nd conjunct shifted to count (S n); quicksortSortedLieSorted:
+1st conjunct widened to SortedR (S cnt) lo) are #eval-verified REJECTED — same
+path for both: "audit: result (…) does not have return type (…)" (Boundary.lean:263).
+Their native_decide suite assertions are DEFERRED to a small follow-up (task #62)
+after the dllbc-perf-simplest merge, when each costs ~20s compiled instead of
+~25 min interpreted.
+
+**Perf note (measured baseline).** native_decide runs through the IR interpreter
+(~30× tax) exactly like #eval, so the uncached quicksortSorted subject grinds
+~23 min: full lake build 23:02 wall, the standalone #eval 21m54s; a REJECT costs
+the same as an ACCEPT (both fully normalize the certificate before the return-type
+compare). The compiled path (~54.6s) belongs to the perf lane (dllbc-simplest,
+precompileModules). An earlier CPU-contention explanation for the slowness was
+WRONG (single-core check on a 20-core box can't be starved by idle orphans) and
+is retracted; the cost is intrinsic certificate-term normalization.
+
+**Process.** Spine/worker split validated: the summit lemma type-checked exactly
+to the statement dispatched blind. sorted_sortRangeL was driven to done via a
+no-idle takeover after the mechanical worker stranded.
+
 ## 2026-07-28 — dllbc/: North Star landed; 465× perf; suite modernized; direct-proving redirect — Perm half proven end to end
 
 Four arcs since the last entry, compressed:
