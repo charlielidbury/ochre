@@ -38,7 +38,7 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       let ℓ ← freshLoan
       bindSlot x (.borrowM ℓ (.sym σ))
       -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
-      modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
+      modify (fun s => { s with sctx := s.sctx.insert σ τVal, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
       pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
@@ -46,7 +46,7 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       let τVal ← readC fuel tyTerm
       let σ ← freshSym
       bindSlot x (.sym σ)
-      modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+      modify (fun s => { s with sctx := s.sctx.insert σ τVal })
       seedTelescope fuel (i + 1) rest
 
 /-- Collapse an argument borrow's payload at the boundary: End-Mut every loan

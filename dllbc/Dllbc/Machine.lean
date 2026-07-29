@@ -1,3 +1,4 @@
+import Std.Data.HashMap
 import Dllbc.Syntax
 import Dllbc.Value
 import Dllbc.Pure
@@ -99,8 +100,13 @@ structure St where
   nextLoan : Nat
   nextVar : Nat
   nextSym : Nat
-  /-- The σ-context (§3.2's seam, §4): each symbolic id's type. -/
-  sctx : List (Nat × Val) := []
+  /-- The σ-context (§3.2's seam, §4): each symbolic id's type. A hash map, not
+      an assoc list: `hasType` mints one σ per λ-binder it opens, so a deep
+      certificate check holds 10⁵-scale entries and does a lookup at every `sym`
+      leaf — with a list those scans were 52% of the M22 quicksortSorted check
+      (measured). Keys are unique (`freshSym`), so map insert (last-wins) is
+      exactly the old cons-shadowing semantics. -/
+  sctx : Std.HashMap Nat Val := ∅
   /-- Loan groups (§6.1). A call mints one; ending a captured loan ends the
       whole group. Replaces M6's flat owed map — a wire is the degenerate
       `issued = []` group. -/
@@ -343,7 +349,7 @@ def indexKindTy : Val → Bool
     measured pain, per team-lead): tuple-of-copyables (a `Pair Nat Nat` as Copy,
     Rust-style) — a data ctor all of whose fields are index-kind stays a MOVE for
     now. -/
-def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
+def indexKindV (fuel : Nat) (sctx : Std.HashMap Nat Val) : Val → Bool
   | .ctor "Z" [] => true
   | .ctor "S" [n] => indexKindV fuel sctx n
   | .ctor "True" [] => true
@@ -354,7 +360,7 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   -- whnf the σ's type before classifying: a redex-headed type that reduces to
   -- Nat should copy, not be mistaken for data. Misclassification is otherwise
   -- only ever toward MOVE (conservative), but the whnf hardens the σ side.
-  | .sym σ => match sctx.lookup σ with | some τ => indexKindTy (Val.whnfV fuel τ) | none => false
+  | .sym σ => match sctx.get? σ with | some τ => indexKindTy (Val.whnfV fuel τ) | none => false
   | .type => true
   | .const _ => true
   | .pi _ _ => true
@@ -561,6 +567,11 @@ mutual
     | v :: vs => hasStateMarker v || hasStateMarkerList vs
 end
 
+/-- Map a function over every type in the σ-context (the map-valued analogue of
+    the old assoc-list `map` — keys unchanged). -/
+def mapSctx (f : Val → Val) (m : Std.HashMap Nat Val) : Std.HashMap Nat Val :=
+  m.fold (fun acc k tv => acc.insert k (f tv)) ∅
+
 /-- Refine `σ := v` **everywhere** — in every Ω slot AND every `sctx` type
     (§3.2's "everywhere", now including the type layer: a snapshot type that
     mentions the refined σ, e.g. `Id Nat σ 2`, is substituted like anything
@@ -572,7 +583,7 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, substSym σ v kv.2)),
-    sctx := s.sctx.map (fun p => (p.1, substSym σ v p.2)),
+    sctx := mapSctx (substSym σ v) s.sctx,
     obligations := s.obligations.map (fun ob => { ob with owed := substSym σ v ob.owed }),
     -- A dependent call's captured/issued owed types may mention a caller σ (via
     -- an instantiated actual, §5.3); they live in group state, so a refinement
@@ -600,7 +611,7 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M Nat := do
   let σb ← freshSym
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, abstractInto sp σb kv.2)),
-    sctx := (σb, .const "Bool") :: s.sctx.map (fun p => (p.1, abstractInto sp σb p.2)),
+    sctx := (mapSctx (abstractInto sp σb) s.sctx).insert σb (.const "Bool"),
     obligations := s.obligations.map (fun ob => { ob with owed := abstractInto sp σb ob.owed }),
     groups := s.groups.map (fun g => { g with
       captured := g.captured.map (fun p => (p.1, abstractInto sp σb p.2)),
@@ -750,7 +761,7 @@ def buildResult (fuel : Nat) (inst : Omega) : Term → M (Val × List (Nat × Va
     let ℓr ← freshLoan
     let sVal ← readCWith fuel inst S
     let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) sVal)
-    modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+    modify (fun s => { s with sctx := s.sctx.insert σ τVal })
     pure (.borrowM ℓr (.sym σ), [(ℓr, owedR)])
   | .sigmaT a b => do
     let (vA, issA) ← buildResult fuel inst a
@@ -759,7 +770,7 @@ def buildResult (fuel : Nat) (inst : Omega) : Term → M (Val × List (Nat × Va
   | rt => do
     let retTy ← readCWith fuel inst rt
     let σ ← freshSym
-    modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
+    modify (fun s => { s with sctx := s.sctx.insert σ retTy })
     pure (.sym σ, [])
   termination_by t => sizeOf t
 
@@ -776,7 +787,7 @@ mutual
       let v := Val.whnfV fuel v
       match v with
       | .sym σ =>
-        match (← get).sctx.lookup σ with
+        match (← get).sctx.get? σ with
         | some vty => pure (Val.convert fuel vty ty)
         | none => throwErr s!"hasType: σ{σ} has no type in sctx"
       | .ctor name args =>
@@ -840,7 +851,7 @@ mutual
           -- iterating Π-instantiation from its `sctx` type, checking each argument
           -- against the domain. This is ordinary application typing — what a
           -- surface lemma application (§15) or a proof reused under a binder needs.
-          match (← get).sctx.lookup σ with
+          match (← get).sctx.get? σ with
           | none => throwErr s!"hasType: σ{σ} (applied) has no type in sctx"
           | some hty =>
             match ← synthSpine fuel hty args with
@@ -857,7 +868,7 @@ mutual
         | .pi d' c =>
           if Val.convert fuel d d' then do
             let σ ← freshSym
-            modify (fun st => { st with sctx := (σ, d') :: st.sctx })
+            modify (fun st => { st with sctx := st.sctx.insert σ d' })
             hasType fuel (Val.substPure 0 (.sym σ) b) (Val.substPure 0 (.sym σ) c)
           else pure false
         | _ => pure false
@@ -937,7 +948,7 @@ def endGroup (fuel : Nat) (grp : Group) : M Unit := do
       | some σ' => releaseCaptured ℓc (.sym σ')            -- §5.4: pinned exit-snapshot release (σ' already in sctx)
       | none => do                                        -- opaque: fresh existential each
         let σ ← freshSym
-        modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
+        modify (fun s => { s with sctx := s.sctx.insert σ owed })
         releaseCaptured ℓc (.sym σ))
 
 /-- **End loan** ℓ (§6.1-aware). If ℓ is a group's captured loan, ending it
@@ -1178,7 +1189,7 @@ mutual
             let borrowIds := borrowParamIds decl.telescope
             let sigmas ← (captured.map (·.2)).mapM (fun owed => do
               let σ ← freshSym
-              modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
+              modify (fun s => { s with sctx := s.sctx.insert σ owed })
               pure σ)
             let exitMap := borrowIds.zip sigmas
             let exitRel := (captured.map (·.1)).zip sigmas
@@ -1355,7 +1366,7 @@ def typeFieldSyms : List Var → List Val → M (List Nat)
   | [], [] => pure []
   | _ :: bs, ty :: tys => do
     let σ ← freshSym
-    modify (fun s => { s with sctx := (σ, ty) :: s.sctx })
+    modify (fun s => { s with sctx := s.sctx.insert σ ty })
     let rest ← typeFieldSyms bs (tys.map (Val.substPure 0 (Val.sym σ)))
     pure (σ :: rest)
   | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
@@ -1389,7 +1400,7 @@ def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
     to be a constructor of that type and type each field σ by the instantiated
     field types. When untyped (pre-telescope), fall back to fresh untyped σ's. -/
 def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := do
-  match (← get).sctx.lookup scrutσ with
+  match (← get).sctx.get? scrutσ with
   | none => br.binders.mapM (fun _ => freshSym)     -- untyped scrutinee (M3)
   | some τ =>
     if br.ctor == "Refl" then
@@ -1438,7 +1449,7 @@ def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat) (br : 
     NOT checked here — dynamic selection is stuck-prone only on a genuinely
     missing branch, which stays the runtime error it is. -/
 def checkExhaustive (fuel : Nat) (scrutσ : Nat) (branches : List Branch) : M Unit := do
-  match (← get).sctx.lookup scrutσ with
+  match (← get).sctx.get? scrutσ with
   | none => pure ()                                   -- untyped scrutinee: skip
   | some τ =>
     match Val.typeCtors (Val.whnfV fuel τ) with
@@ -1585,7 +1596,8 @@ def expectMErr (seed : Omega) (m : M Unit) (needle : String) : Bool :=
 /-! ## Pure test helpers -/
 
 /-- Seed a state with an Ω and a σ-context. -/
-def seedPure (env : Omega) (sctx : List (Nat × Val)) : St := { seedSt env with sctx := sctx }
+def seedPure (env : Omega) (sctx : List (Nat × Val)) : St :=
+  { seedSt env with sctx := Std.HashMap.ofList sctx }
 
 /-- Test helper: `readC t` equals `expected` (by structural value equality). -/
 def expectReadC (env : Omega) (sctx : List (Nat × Val)) (t : Term) (expected : Val)

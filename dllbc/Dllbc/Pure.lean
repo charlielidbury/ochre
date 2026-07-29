@@ -195,7 +195,15 @@ end
     eta, de Bruijn) normal forms are canonical, so normal-form equality *is*
     convertibility — simpler than a lazy whnf-and-compare recursion and, for a
     normalizing system, equivalent. -/
-def convert (fuel : Nat) (a b : Val) : Bool := nfV fuel a == nfV fuel b
+def convert (fuel : Nat) (a b : Val) : Bool :=
+  -- Structural-equality fast path: `a == b` implies `nfV a == nfV b` (nfV is a
+  -- function), so this is pointwise-identical to the normalize-and-compare
+  -- below — it only skips the two nfV REBUILDS. On the success path of a large
+  -- audit both sides are usually already-normal and identical (hasType compares
+  -- a source annotation against the instantiated expected type), so this turns
+  -- the dominant convert cost from two full re-normalizations into one beq walk
+  -- with early exit. Measured on the M22 quicksortSorted check (see perf commit).
+  a == b || nfV fuel a == nfV fuel b
 
 /-! ## Constructor signature table (§4)
 
