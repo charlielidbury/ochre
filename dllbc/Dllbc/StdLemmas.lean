@@ -3309,4 +3309,38 @@ def sorted_sortRangeL_ty : Term := pure{
     Le cnt fuel → Le (add lo cnt) (len l) →
     SortedR cnt lo (sortRangeL fuel lo cnt l) }
 
+-- SortedR transport kit for sorted_sortRangeL (spine takeover): move a SortedR across
+-- a fixed region (SortedR_cong, le_rw both endpoints), a width rewrite (sortedR_width_cong,
+-- j on the width — for the glue's S(add i g) → cnt), or an offset rewrite (sortedR_off_cong,
+-- j on the offset — for the add_comm S(add lo i) ↔ S(add i lo) bridge).
+def SortedR_cong : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (l : List Nat). λ (l' : List Nat).
+    λ (s : SortedR w lo l).
+    λ (agree : Π (q : Nat) → Le (S q) w → Id Nat (nth (add q lo) l') (nth (add q lo) l)).
+      λ (k : Nat). λ (hk : Le (S (S k)) w).
+        le_rw_r (nth (add k lo) l') (nth (add (S k) lo) l) (nth (add (S k) lo) l')
+          (id_sym Nat (nth (add (S k) lo) l') (nth (add (S k) lo) l) (agree (S k) hk))
+          (le_rw_l (nth (add (S k) lo) l) (nth (add k lo) l) (nth (add k lo) l')
+            (id_sym Nat (nth (add k lo) l') (nth (add k lo) l) (agree k (le_pred_l (S k) w hk)))
+            (s k hk)) }
+def SortedR_cong_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
+    SortedR w lo l →
+    (Π (q : Nat) → Le (S q) w → Id Nat (nth (add q lo) l') (nth (add q lo) l)) →
+    SortedR w lo l' }
+def sortedR_width_cong : Term := pure{
+  λ (w : Nat). λ (w' : Nat). λ (lo : Nat). λ (l : List Nat).
+    λ (e : Id Nat w w'). λ (s : SortedR w lo l).
+      j Nat w (λ (w2 : Nat). λ (h : Id Nat w w2). SortedR w2 lo l) s w' e }
+def sortedR_width_cong_ty : Term := pure{
+  Π (w : Nat) → Π (w' : Nat) → Π (lo : Nat) → Π (l : List Nat) →
+    Id Nat w w' → SortedR w lo l → SortedR w' lo l }
+def sortedR_off_cong : Term := pure{
+  λ (w : Nat). λ (lo : Nat). λ (lo' : Nat). λ (l : List Nat).
+    λ (e : Id Nat lo lo'). λ (s : SortedR w lo l).
+      j Nat lo (λ (lo2 : Nat). λ (h : Id Nat lo lo2). SortedR w lo2 l) s lo' e }
+def sortedR_off_cong_ty : Term := pure{
+  Π (w : Nat) → Π (lo : Nat) → Π (lo' : Nat) → Π (l : List Nat) →
+    Id Nat lo lo' → SortedR w lo l → SortedR w lo' l }
+
 end Dllbc.StdLemmas
