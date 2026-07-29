@@ -155,6 +155,73 @@ def pretty (v : Val) : String := prettyPrec 0 v
 instance : ToString Val where
   toString v := pretty v
 
+/-! Budget-bounded rendering, for ERROR MESSAGES. An M22-scale audit failure
+    embeds the offending value in its `throwErr` string — but that value can be
+    a 5×10⁷-node certificate, and rendering it fully costs ~5 s compiled (and
+    far worse interpreted, where String append loses the uniqueness in-place
+    optimization) before any caller's `.take` truncates. `prettyB` renders at
+    most ~`budget` nodes and emits `…` past it: below budget the output is
+    IDENTICAL to `pretty` (so every existing error-needle test is unaffected);
+    above it the message is truncated at construction, not after. -/
+mutual
+  partial def prettyPrecN (prec : Nat) : Nat → Val → String × Nat
+    | 0, _ => ("…", 0)
+    | fuel + 1, v =>
+      match v with
+      | .bot => ("⊥", fuel)
+      | .sym σ => (s!"σ{σ}", fuel)
+      | .loanM ℓ => (s!"loanₘ ℓ{ℓ}", fuel)
+      | .borrowM ℓ p =>
+        let (sp, f') := prettyPrecN 1 fuel p
+        let s := "borrowₘ ℓ" ++ toString ℓ ++ " " ++ sp
+        (if prec > 0 then s!"({s})" else s, f')
+      | .ctor name [] => (name, fuel)
+      | .ctor name args =>
+        let (sa, f') := prettyArgsN fuel args
+        let s := name ++ sa
+        (if prec > 0 then s!"({s})" else s, f')
+      | .pvar k => (s!"#{k}", fuel)
+      | .type => ("Type", fuel)
+      | .const c => (c, fuel)
+      | .pi d c =>
+        let (sd, f1) := prettyPrecN 1 fuel d
+        let (sc, f2) := prettyPrecN 0 (Nat.min f1 fuel) c
+        let s := s!"Π{sd}. {sc}"
+        (if prec > 0 then s!"({s})" else s, f2)
+      | .sigmaT d c =>
+        let (sd, f1) := prettyPrecN 1 fuel d
+        let (sc, f2) := prettyPrecN 0 (Nat.min f1 fuel) c
+        let s := s!"Σ{sd}. {sc}"
+        (if prec > 0 then s!"({s})" else s, f2)
+      | .lam d b =>
+        let (sd, f1) := prettyPrecN 1 fuel d
+        let (sb, f2) := prettyPrecN 0 (Nat.min f1 fuel) b
+        let s := s!"λ{sd}. {sb}"
+        (if prec > 0 then s!"({s})" else s, f2)
+      | .app f a =>
+        let (sf, f1) := prettyPrecN 0 fuel f
+        let (sa, f2) := prettyPrecN 1 (Nat.min f1 fuel) a
+        let s := sf ++ " " ++ sa
+        (if prec > 0 then s!"({s})" else s, f2)
+      | .idT _ a b =>
+        let (sa, f1) := prettyPrecN 1 fuel a
+        let (sb, f2) := prettyPrecN 1 (Nat.min f1 fuel) b
+        let s := s!"Id {sa} {sb}"
+        (if prec > 0 then s!"({s})" else s, f2)
+  partial def prettyArgsN : Nat → List Val → String × Nat
+    | 0, _ => (" …", 0)
+    | fuel + 1, [] => ("", fuel + 1)
+    | fuel + 1, a :: as =>
+      let (sa, f1) := prettyPrecN 1 fuel a
+      let (srest, f2) := prettyArgsN (Nat.min f1 fuel) as
+      (" " ++ sa ++ srest, f2)
+end
+
+/-- `pretty`, capped at ~`budget` rendered nodes (identical below the cap). The
+    default is generous next to every value a passing test renders, and tiny
+    next to an M22 certificate. -/
+def prettyB (v : Val) (budget : Nat := 2000) : String := (prettyPrecN 0 budget v).1
+
 /-! ## Loan-id traversal, for canonical renumbering -/
 
 /-! Loan ids occurring in `v`, in pre-order of first appearance

@@ -212,6 +212,29 @@ def quicksortSorted : Decl :=
 
 def qsTable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortSorted]
 
+-- Lying-reject variants (same shape as m1's ScratchRejPerm/ScratchRejSorted):
+-- the perm lie shifts the count index; the sorted lie inflates the SortedR width.
+-- Both must be REJECTED at the audit's return-type check — the profiling interest
+-- is what the reject PATH costs relative to the OK path (error-message rendering).
+def quicksortSortedLiePerm : Decl :=
+  decl{ fn quicksortSorted (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
+        -> Σ (sortedpart : SortedR cnt lo (*v)) → (Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v)))
+        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
+          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
+          quicksort(&mut *v, fuel, lo, cnt, hbnd);
+          Pair(sortedcert, permcert) } }
+
+def quicksortSortedLieSorted : Decl :=
+  decl{ fn quicksortSorted (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
+        -> Σ (sortedpart : SortedR (S cnt) lo (*v)) → (Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v)))
+        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
+          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
+          quicksort(&mut *v, fuel, lo, cnt, hbnd);
+          Pair(sortedcert, permcert) } }
+
+def liePermTable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortSortedLiePerm]
+def lieSortedTable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortSortedLieSorted]
+
 def qsizes : IO Unit := do
   let models : List (String × Term) := [
     ("SortedR", SortedR),
@@ -230,6 +253,8 @@ def run (which : String) : IO Unit := do
   | "trace-qs" => Bench.benchTrace "quicksortSorted" qsTable quicksortSorted
   | "audit-qs" => Bench.benchTraceAudit "quicksortSorted" qsTable quicksortSorted
   | "quicksort19" => Bench.benchCheck "quicksort (current S19 decl)" [nthS, nth2S, swapSN, partScanRange, quicksort] quicksort
+  | "lie-perm" => Bench.benchCheck "quicksortSortedLiePerm" liePermTable quicksortSortedLiePerm
+  | "lie-sorted" => Bench.benchCheck "quicksortSortedLieSorted" lieSortedTable quicksortSortedLieSorted
   | "qsizes" => qsizes
   | other => IO.println s!"unknown benchmark '{other}'"
 

@@ -580,7 +580,7 @@ def mapSctx (f : Val → Val) (m : Std.HashMap Nat Val) : Std.HashMap Nat Val :=
     state into entry-knowledge — the etiology of the M21 `partIdxL n ⊥` bug. -/
 def refineSym (σ : Nat) (v : Val) : M Unit := do
   if hasStateMarker v then
-    throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
+    throwErr s!"refineSym: σ{σ} := {v.prettyB} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, substSym σ v kv.2)),
     sctx := mapSctx (substSym σ v) s.sctx,
@@ -629,7 +629,7 @@ def writeC (place : Term) (refined : Val) : M Unit := do
   let pos ← placeToPos place
   match ← getAtPos pos with
   | .sym σ => refineSym σ refined
-  | v => throwErr s!"writeC (⇜): place holds {v.pretty}, expected a symbolic value (sym σ)"
+  | v => throwErr s!"writeC (⇜): place holds {v.prettyB}, expected a symbolic value (sym σ)"
 
 /-! ## ⇝ (comptime read) and value typing (§4)
 
@@ -857,7 +857,7 @@ mutual
             match ← synthSpine fuel hty args with
             | some resTy => pure (Val.convert fuel ty resTy)
             | none => pure false
-        | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
+        | _, _ => throwErr s!"hasType: cannot type neutral {v.prettyB}"
       | .lam d b =>
         -- λ against Π: check the domains convert, then the body under a fresh σ
         -- witness for the binder (a checking-time hypothesis added to `sctx`).
@@ -872,7 +872,7 @@ mutual
             hasType fuel (Val.substPure 0 (.sym σ) b) (Val.substPure 0 (.sym σ) c)
           else pure false
         | _ => pure false
-      | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
+      | _ => throwErr s!"hasType: cannot type value {v.prettyB} (λ/neutral typing deferred to M5)"
   termination_by fuel _ _ => (fuel, 0, 0)
   /-- Synthesize the result type of applying a value of type `hty` to `args`:
       each argument's domain (a Π) is checked, and the codomain is instantiated at
@@ -922,7 +922,7 @@ def endIssued (fuel : Nat) (ℓ : Nat) (owed : Val) : M Val := do
         setEnv ((← getEnv).map (fun kv => (kv.1, replaceBorrowWithBot ℓ kv.2)))   -- kill
         pure payload
       else
-        throwErr s!"group end: issued borrow ℓ{ℓ}'s payload ({payload.pretty}) does not have its owed type ({owed.pretty})"
+        throwErr s!"group end: issued borrow ℓ{ℓ}'s payload ({payload.prettyB}) does not have its owed type ({owed.prettyB})"
 
 /-- Release one captured loan: plug `v` where its marker sits. -/
 def releaseCaptured (ℓ : Nat) (v : Val) : M Unit := sendPayloadToLoan ℓ v
@@ -1263,14 +1263,14 @@ mutual
             let (rest, inst') ← processArgs fuel (i + 1) ((declVar, .borrowM ℓ payload) :: inst) tRest aRest
             pure ((ℓ, owed) :: rest, inst')
           else
-            throwErr s!"call: borrow argument's payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
-        | v => throwErr s!"call: expected a borrow argument (&mut …), got {v.pretty}"
+            throwErr s!"call: borrow argument's payload ({payload.prettyB}) does not have its parameter type ({τVal.prettyB})"
+        | v => throwErr s!"call: expected a borrow argument (&mut …), got {v.prettyB}"
       | tyTerm => do
         let argVal ← readR fuel arg
         let τVal ← readCWith fuel inst tyTerm
         if ← hasType fuel argVal τVal then
           processArgs fuel (i + 1) ((declVar, argVal) :: inst) tRest aRest
-        else throwErr s!"call: argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
+        else throwErr s!"call: argument ({argVal.prettyB}) does not have its parameter type ({τVal.prettyB})"
     | _, _, _, _, _ => throwErr "call: arity mismatch (arguments vs telescope)"
   termination_by fuel _ _ _ args => (fuel, 1, args.length)
   /-- Executing mode (§9): ⇒-read each actual and bind it to the callee's
@@ -1384,14 +1384,14 @@ def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
   else match a', b' with
     | .sym σa, _ =>
       if b'.symIds.contains σa then
-        throwErr s!"Refl: occurs check — endpoint σ{σa} occurs in the other endpoint ({b'.pretty})"
+        throwErr s!"Refl: occurs check — endpoint σ{σa} occurs in the other endpoint ({b'.prettyB})"
       else refineSym σa b'
     | _, .sym σb =>
       if a'.symIds.contains σb then
-        throwErr s!"Refl: occurs check — endpoint σ{σb} occurs in the other endpoint ({a'.pretty})"
+        throwErr s!"Refl: occurs check — endpoint σ{σb} occurs in the other endpoint ({a'.prettyB})"
       else refineSym σb a'
     | _, _ =>
-      throwErr s!"Refl: both endpoints are rigid ({a'.pretty} vs {b'.pretty}) — no solution by refinement; use j/k to eliminate the identity"
+      throwErr s!"Refl: both endpoints are rigid ({a'.prettyB} vs {b'.prettyB}) — no solution by refinement; use j/k to eliminate the identity"
 
 /-- Mint the field σ's for a symbolic branch. `Refl` is special (§10): it has
     no fields, and it unifies the `Id` endpoints (`reflUnify`) rather than

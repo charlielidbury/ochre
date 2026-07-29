@@ -111,7 +111,7 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
       throwErr s!"audit: argument borrow {ob.arg.name} (ℓ{ob.loan}) holds a hole (⊥) at return — take without refill"
     | some payload =>
       if ← hasType fuel payload ob.owed then pure ()
-      else throwErr s!"audit: {ob.arg.name}'s payload ({payload.pretty}) does not have its owed type ({ob.owed.pretty})"
+      else throwErr s!"audit: {ob.arg.name}'s payload ({payload.prettyB}) does not have its owed type ({ob.owed.prettyB})"
 
 /-- Reconstruct a captured borrow's payload as the §6.2 suspension tree with
     holes: follow each loan marker — an ISSUED loan (reached directly or down its
@@ -151,7 +151,7 @@ def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat ×
     let owed := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
     pure (some [(ℓ, payload, owed)])
   | .borrowT _ _, other =>
-    throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
+    throwErr s!"audit: borrow-returning body did not return a borrow (got {other.prettyB})"
   | .sigmaT a b, .ctor "Pair" [va, vb] => do
     let ra ← collectResultBorrows fuel a va
     let rb ← collectResultBorrows fuel b vb
@@ -177,7 +177,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
   match Val.collectSpine resultVal with
   | (.const "botElim", [_, x]) =>
     if ← hasType fuel x (.const "Bot") then pure ()
-    else throwErr s!"audit: botElim result on a non-⊥ argument ({x.pretty})"
+    else throwErr s!"audit: botElim result on a non-⊥ argument ({x.prettyB})"
   | _ =>
   match ← collectResultBorrows fuel retType resultVal with
   | some checks => do
@@ -186,7 +186,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     checks.forM (fun c =>
       let (_, payload, owed) := c
       do if ← hasType fuel payload owed then pure ()
-         else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owed.pretty})")
+         else throwErr s!"audit: returned borrow's payload ({payload.prettyB}) does not have its owed type ({owed.prettyB})")
     -- §6.2 callee check: if a backward spec is declared, the captured borrow's
     -- payload-with-issued-holes must convert with the spec applied to fresh hole
     -- variables. The suspension tree IS the backward function; we check the
@@ -213,7 +213,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         let holes := (List.range issuedLoans.length).map Val.pvar
         let spec := Val.nfV fuel (Val.rebuildSpine backV holes)
         if Val.convert fuel tree spec then pure ()
-        else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
+        else throwErr s!"audit: declared backward spec ({spec.prettyB}) does not match the body's suspension tree ({tree.prettyB})"
   | none => do
     obs.forM (auditObligation fuel [])
     -- §6.2 for a value/Unit-returning body that mutates an argument borrow IN
@@ -239,7 +239,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         | some payload => do
           let tree ← resolveTree [] payload
           if Val.convert fuel tree spec then pure ()
-          else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
+          else throwErr s!"audit: declared backward spec ({spec.prettyB}) does not match the body's suspension tree ({tree.prettyB})"
         | none => pure ()
     -- The return type was pinned at entry (§5.3 dependent types over consumed
     -- params); fall back to reading it here only if it was never pinned.
@@ -260,7 +260,7 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
         | some payload => pure (Val.nfV fuel (substSym σ payload acc))
         | none => pure acc) retTy0
     if ← hasType fuel resultVal retTy then pure ()
-    else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
+    else throwErr s!"audit: result ({resultVal.prettyB}) does not have return type ({retTy.prettyB})"
 
 /-- Audit every explored path; the whole function checks iff all do. Each path
     carries its own (refinement-updated) obligations in `St`. -/
