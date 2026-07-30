@@ -4,7 +4,12 @@ Every place M24's implementation departs from the design note, with the reason. 
 note gets **one** amendment pass from this ledger at merge review, rather than an
 archaeology dig through commit messages.
 
-Each entry says what the note says, what the implementation does, and why. Entries are
+**Status:** M24 lane closed at "complete tested array library + carve machinery", branch
+`dllbc-arrays-impl`. Eleven commits, full `lake build` green, no regression in any existing
+suite. The quicksort LEAF (partition + assembly) is deliberately not started — see the
+HANDOFF at the end of this file, which is the brief for that lane.
+
+Each entry says what the note says, what the implementation does, and why., what the implementation does, and why. Entries are
 grouped by kind: **CORRECTION** (the note is wrong), **REFINEMENT** (the note is right
 but under-specified, and the implementation had to choose), **GAP** (the note assumes
 something that does not exist), **RESTRICTION** (a real limit the note does not state).
@@ -178,6 +183,50 @@ premise of the differential harness's own correctness. If obligation 4 fails, th
 does not go red; it goes silently green on a mismatch. That inversion is the thing to
 know before trusting the differential over array bodies.
 
+### R10 — the library transfer needed three ι-rules to be MECHANICAL
+
+¶1.3 promises the quicksort library "transfers to arrays by replacing `listRec` with
+`arrRec` and `Cons` with `acons`. Nothing about the migration requires re-deriving that
+mathematics." The mathematics did transfer verbatim — `sorted_append_pivot` and its five
+helpers are their list proofs with the container swapped, and they check. What the note
+does not mention is that the array constants must COMPUTE the way the list constructors
+do, or every step of a transferred proof wants a transport lemma the list proof needs
+none of.
+
+Two rules are the obvious ones: `arrCat` computes on an `acons`-headed left argument
+(`arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`, which is `append (Cons h t) u ⇝ Cons h
+(append t u)`), and `arrRec` fires on the cons view, so a predicate over arrays unfolds on
+an `acons` exactly as its counterpart unfolds on a `Cons`. Without them
+`SortedA (arrCat (acons h t) …)` does not unfold, and `sorted_append_pivot`'s proof turns
+entirely on that unfolding — its own docstring says "Both components are definitional …
+which is why no `list_rw` transport appears anywhere in this proof."
+
+The third was invisible until the glue was written, and is the one worth recording: a
+nonempty RUN on the left with a non-run on the right peels its head into an `acons`.
+`asingle p` COMPUTES to the run `[p]`, so ¶6's own spelling `arrCat (asingle p) r` was
+stuck for symbolic `r` — **the doc's chosen notation could not reach the cons view it is
+notation FOR**. The rule is the same one read through the other view: a literal is a cons
+spine that happens to be written flat.
+
+---
+
+### R11 — ¶1.3's transfer promise is VERIFIED, in full and verbatim
+
+Measured rather than assumed, because it is the claim ¶6's whole cost estimate rests on.
+The complete quicksort library now exists over arrays: the predicates (`countA`, `BoundA`,
+`SortedA`, `UbA`, `LbA`, `asingle`), the glue stack (`sorted_headA`/`tailA`,
+`ub_headA`/`tailA`, `lb_headA`/`tailA`, `lb_boundA`, `bound_arrCat`, `sorted_arrCat`), the
+count layer (`count_arrCat`, `count_acons_hit`/`miss`), and M23's permutation keystone
+(`noAbove_of_ubA`, `ub_of_noAboveA`, `ub_permA`, and the three `Lb` mirrors).
+
+**Every one is its list counterpart with `listRec ↦ arrRec` and `Cons ↦ acons`, and
+nothing else changed.** Twenty-one definitions and proofs; the entire permutation layer and
+`count_arrCat` checked first try, and five of the seven glue lemmas did. ¶1.3's "nothing
+about the migration requires re-deriving that mathematics" is exactly right, and ¶6's "one
+stratum deleted outright (locality), one INHERITED (the pivot glue), none invented" is
+exactly what happened. The only thing the note omits is R10's three ι-rules, which are what
+make the transfer mechanical rather than merely possible.
+
 ---
 
 ## GAPS
@@ -254,6 +303,28 @@ left after the first carve — is a σ the checker minted and no program can nam
 and the body carves `[Z ; i ; S j | le_add i (S j)]`, `[i ; 1 ; j]`, `[S i ; ..]`. The
 first license is `le_add`, which the M22 library already had; the second is ⊤.
 
+### G4 — ¶6's partition is a NEW PROGRAM, not a transfer, and the ledger does not say so
+
+¶6's migration ledger is organized as "what disappears / what survives untouched / what
+gets built", and its three costs are the partition's extra returns, the both-halves-before-
+either-call ordering, and "the pure library gains an array layer … Call it a week of the
+kind of work M16–M18 already showed is mechanical".
+
+The array layer IS mechanical, as measured: the predicates, the five glue helpers,
+`sorted_arrCat` and `count_arrCat` are their list counterparts with the container swapped,
+and they check (R10 records the three ι-rules that make it so). What the ledger does not
+say is that **the partition itself does not transfer at all**. M23's partition is a
+relational take-and-rebuild over a linked list, returning two lists BY VALUE — §4.1's
+idiom, and ¶6's own text endorses it ("The program is §4.1's take-and-rebuild, not
+Lomuto's array scan"). The array quicksort ¶6 sketches needs the opposite: an IN-PLACE
+scan returning a pivot INDEX, because the recursive calls carve at that index. There is no
+list program to port; it is a new one, with its own invariants.
+
+This belongs in ¶6's honest accounting as a fourth cost, and it is the largest of the
+four. Everything the note lists under "what disappears" still disappears — the ledger's
+accounting of the *predicate* strata is accurate and verified. The gap is only that the
+leaf program is counted as surviving when it does not exist yet.
+
 ---
 
 ## RESTRICTIONS
@@ -280,72 +351,6 @@ This is why the three-way split cannot be reached by re-associating the two-way 
 
 ---
 
-### R10 — the library transfer needed three ι-rules to be MECHANICAL
-
-¶1.3 promises the quicksort library "transfers to arrays by replacing `listRec` with
-`arrRec` and `Cons` with `acons`. Nothing about the migration requires re-deriving that
-mathematics." The mathematics did transfer verbatim — `sorted_append_pivot` and its five
-helpers are their list proofs with the container swapped, and they check. What the note
-does not mention is that the array constants must COMPUTE the way the list constructors
-do, or every step of a transferred proof wants a transport lemma the list proof needs
-none of.
-
-Two rules are the obvious ones: `arrCat` computes on an `acons`-headed left argument
-(`arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`, which is `append (Cons h t) u ⇝ Cons h
-(append t u)`), and `arrRec` fires on the cons view, so a predicate over arrays unfolds on
-an `acons` exactly as its counterpart unfolds on a `Cons`. Without them
-`SortedA (arrCat (acons h t) …)` does not unfold, and `sorted_append_pivot`'s proof turns
-entirely on that unfolding — its own docstring says "Both components are definitional …
-which is why no `list_rw` transport appears anywhere in this proof."
-
-The third was invisible until the glue was written, and is the one worth recording: a
-nonempty RUN on the left with a non-run on the right peels its head into an `acons`.
-`asingle p` COMPUTES to the run `[p]`, so ¶6's own spelling `arrCat (asingle p) r` was
-stuck for symbolic `r` — **the doc's chosen notation could not reach the cons view it is
-notation FOR**. The rule is the same one read through the other view: a literal is a cons
-spine that happens to be written flat.
-
----
-
-### R11 — ¶1.3's transfer promise is VERIFIED, in full and verbatim
-
-Measured rather than assumed, because it is the claim ¶6's whole cost estimate rests on.
-The complete quicksort library now exists over arrays: the predicates (`countA`, `BoundA`,
-`SortedA`, `UbA`, `LbA`, `asingle`), the glue stack (`sorted_headA`/`tailA`,
-`ub_headA`/`tailA`, `lb_headA`/`tailA`, `lb_boundA`, `bound_arrCat`, `sorted_arrCat`), the
-count layer (`count_arrCat`, `count_acons_hit`/`miss`), and M23's permutation keystone
-(`noAbove_of_ubA`, `ub_of_noAboveA`, `ub_permA`, and the three `Lb` mirrors).
-
-**Every one is its list counterpart with `listRec ↦ arrRec` and `Cons ↦ acons`, and
-nothing else changed.** Twenty-one definitions and proofs; the entire permutation layer and
-`count_arrCat` checked first try, and five of the seven glue lemmas did. ¶1.3's "nothing
-about the migration requires re-deriving that mathematics" is exactly right, and ¶6's "one
-stratum deleted outright (locality), one INHERITED (the pivot glue), none invented" is
-exactly what happened. The only thing the note omits is R10's three ι-rules, which are what
-make the transfer mechanical rather than merely possible.
-
-### G4 — ¶6's partition is a NEW PROGRAM, not a transfer, and the ledger does not say so
-
-¶6's migration ledger is organized as "what disappears / what survives untouched / what
-gets built", and its three costs are the partition's extra returns, the both-halves-before-
-either-call ordering, and "the pure library gains an array layer … Call it a week of the
-kind of work M16–M18 already showed is mechanical".
-
-The array layer IS mechanical, as measured: the predicates, the five glue helpers,
-`sorted_arrCat` and `count_arrCat` are their list counterparts with the container swapped,
-and they check (R10 records the three ι-rules that make it so). What the ledger does not
-say is that **the partition itself does not transfer at all**. M23's partition is a
-relational take-and-rebuild over a linked list, returning two lists BY VALUE — §4.1's
-idiom, and ¶6's own text endorses it ("The program is §4.1's take-and-rebuild, not
-Lomuto's array scan"). The array quicksort ¶6 sketches needs the opposite: an IN-PLACE
-scan returning a pivot INDEX, because the recursive calls carve at that index. There is no
-list program to port; it is a new one, with its own invariants.
-
-This belongs in ¶6's honest accounting as a fourth cost, and it is the largest of the
-four. Everything the note lists under "what disappears" still disappears — the ledger's
-accounting of the *predicate* strata is accurate and verified. The gap is only that the
-leaf program is counted as surviving when it does not exist yet.
-
 ---
 
 ## Decisions taken (for the merge review)
@@ -370,3 +375,128 @@ green.** The three routes and their fates:
   Kept anyway, since it is ¶4 delivered and independently useful.
 
 **`arrCat`-aware structural decrease** (T1) — filed, not built.
+
+---
+
+# HANDOFF — the quicksort leaf lane
+
+Written for the agent that picks up `dllbc-arrays-impl` and builds the partition and the
+quicksort assembly. The carve machinery and the whole pure library are done and tested;
+what is left is one genuinely new program plus its assembly. Everything below is either a
+pointer to something on the shelf or a constraint the shape has to satisfy.
+
+## 1. Why this is a fresh lane and not a continuation
+
+G4: **¶6's partition does not transfer.** M23's is a relational take-and-rebuild over a
+linked list returning two lists BY VALUE — §4.1's idiom, which ¶6's own text endorses
+("the program is §4.1's take-and-rebuild, not Lomuto's array scan"). The array version
+needs the opposite: an in-place scan returning a pivot INDEX, because the recursive calls
+carve at that index. There is no list program to port. It is M23-phase-B-class work with
+its own invariants, and it wants fresh context rather than hour-N context.
+
+## 2. The partition's required shape
+
+**Signature.** It must return the pivot index AND the right half's length. G3 records why:
+a carve license alone cannot even be STATED about a residue the program cannot name, so
+`i` on its own is not enough. The relation `n = add i (S j)` is what makes the caller's
+three carves writable.
+
+    fn partition (n : Nat, p : Nat, v : &mut (Array n Nat), …)
+      -> Σ (i : Nat) → Σ (j : Nat) → ⟨ensures⟩
+
+**Where the carves happen: in the CALLER, not here.** `partition` mutates `*v` in place
+over the whole array and returns indices; `quicksort` then carves. Keeping the carves out
+of the leaf is what keeps the leaf's ensures statable over one array rather than over
+pieces that do not exist yet.
+
+**What the ensures must carry**, in the shape the assembly consumes:
+
+* the decomposition itself — `Id Nat n (add i (S j))`, or equivalently the exit `*v`
+  convertible with `arrCat i (S j) L (arrCat 1 j (asingle p) R)`;
+* `UbA p i L` — everything left of the pivot is ≤ p;
+* `LbA p j R` — everything right of it is ≥ p;
+* count preservation, `Π x. Id Nat (countA x n (*v)) (countA x n (old *v))`.
+
+A design note worth taking seriously: **state the ensures as a decomposition**, because
+that is exactly the shape `sorted_arrCat` consumes. The caller's carve then produces
+`σ_L : Array i Nat`, `σ_p : Array 1 Nat`, `σ_R : Array j Nat` together with the refinement
+`σ_v := arrCat i (S j) σ_L (arrCat 1 j σ_p σ_R)` — definitionally, from premise (3) — so
+transporting the ensures onto the pieces costs nothing. If it starts costing a transport
+lemma, the ensures are stated in the wrong shape rather than the calculus being awkward.
+
+**The scan.** DLLBC has no loops (§2.5), so the scan is a recursive helper carrying the
+scan position and the less-than boundary, swapping through index places. Each swap is two
+index-place writes; see `sort2` in `Dllbc/Tests/S24Arrays.lean` for the exact idiom,
+including how a symbolic array becomes a run of named elements once its elements are read.
+
+**Branch-equation sites.** The comparison is `if h : leb x p { … } else { … }`, and `h`
+is what turns "the test said yes" into `Le`. This is M23's branch-equation feature and it
+is not optional — a body that recomputes `leb x p` after the split learns nothing
+(§3.2, and M23-iv's wall). `leb_true_le` / `leb_false_gt` / `le_pred_l` are in
+`StdLemmas`.
+
+**Recursion.** Fuel-decreasing, `[fuel]`. See §4 below for why nothing else is available
+and why nothing else is needed.
+
+## 3. What is on the shelf
+
+**The complete array library** (`Dllbc/StdLemmas.lean`, M24 section at the end), every
+member its list counterpart with `listRec ↦ arrRec` and `Cons ↦ acons`:
+
+* predicates — `countA`, `BoundA`, `SortedA`, `UbA`, `LbA`, `asingle`, `anil`;
+* glue — `sorted_headA`, `sorted_tailA`, `ub_headA`, `ub_tailA`, `lb_headA`, `lb_tailA`,
+  `lb_boundA`, `bound_arrCat`, and **`sorted_arrCat`** (the pivot glue, ¶6's textbook
+  statement in textbook shape);
+* counts — `count_arrCat`, `count_acons_hit`, `count_acons_miss`, `count_swap2`;
+* the permutation keystone — `noAbove_of_ubA`, `ub_of_noAboveA`, **`ub_permA`**, and the
+  three `Lb` mirrors. This is the one that cost M22 its hardest result; it transfers
+  unchanged, so the "positional bounds are not permutation-invariant" problem has no
+  analogue here.
+
+**The carve machinery.** Three-way carving in ¶6's verbatim shape, with route (a)'s
+supplied residue:
+
+    let l = &mut (*v)[Z    ; i ; S j | le_add i (S j)];
+    let p = &mut (*v)[i    ; 1 ; j];        -- obligation ⊤, no evidence needed
+    let r = &mut (*v)[S i  ; ..];           -- degenerate
+
+`threeWay` and `threeWayCall` in `Dllbc/Tests/S24Arrays.lean` are that, checked, including
+passing both halves to calls at their program-named lengths. Copy the shape.
+
+**The bounds vocabulary is M13/M14's, unchanged.** `a[i | h]` wants `h : Le (S i) n` —
+character for character the cursor bound the swap sites have threaded since M13 (R7).
+`le_add`, `le_add_succ`, `le_add_l`, `le_refl`, `le_trans`, `le_pred_l`, `le_rw_l/r` are
+all in `StdLemmas` from M22 and apply verbatim.
+
+**The worked miniature.** `sort2` — an in-place two-element sort carrying M23's quicksort
+signature at width two, `Σ (hs : SortedA 2 (*a)) → (Π x. Id Nat (countA x 2 (*a)) (countA
+x 2 (old *a)))`, zero declared backs, with three lying twins rejected. It is the assembly
+in small: read elements, branch on a comparison, mutate through index places, discharge
+both conjuncts against the exit snapshot. Start by reading it.
+
+**The differential.** `Dllbc.Tests.S9Diff`'s harness takes array bodies; `matchVal` has the
+`§segs`-versus-run case (R9). Three array callers are already through it. The List-vs-Array
+quicksort differential the standing brief asks for plugs in here.
+
+## 4. Two filed items this lane must NOT need
+
+Both are real and both are deliberately unbuilt. If the leaf seems to need either, the
+program shape is wrong, not the calculus.
+
+* **T1, the `arrCat`-subterm guard extension.** Recursion cannot decrease through a carved
+  array payload, because the carve refines the payload σ to an `arrCat` spine and §8's
+  guard refuses application spines. **Quicksort recurses on FUEL**, which is M23's shape
+  anyway, and `walk` in the suite is that shape tested green. Do not reach for the guard
+  extension.
+* **G2, Σ-typed slices.** Built and green for length-known slices, and honestly scoped —
+  but not needed here, because route (a) means every length a call site passes is
+  program-named. If a callee seems to want `Σ (c : Nat). &mut (Array c T)`, the residue
+  is unnamed somewhere upstream; supply it at the carve instead.
+
+## 5. Standing constraints from the brief
+
+Fuel-decreasing; whole-value ensures (`Sorted ∧ Π count`-preservation over the exit
+snapshot); **zero declared backs**; lying twins per conjunct; and the List-vs-Array
+differential on shared inputs (two implementations, one spec — disagreement indicts one of
+them). Keep this ledger growing; the design note gets one amendment pass from it at merge
+review.
