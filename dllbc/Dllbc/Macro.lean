@@ -133,12 +133,12 @@ partial def expandE (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dl
   | `(dlle| $a:dlle[$lo:dlle ; ..]) => do
     let (a', n1) ← expandE ctx next a
     let (lo', n2) ← expandE ctx n1 lo
-    return (← `(Dllbc.Term.range $a' $lo' none none), n2)
+    return (← `(Dllbc.Term.range $a' $lo' none none none), n2)
   | `(dlle| $a:dlle[$lo:dlle ; $c:dlle]) => do
     let (a', n1) ← expandE ctx next a
     let (lo', n2) ← expandE ctx n1 lo
     let (c', n3) ← expandE ctx n2 c
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') none), n3)
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none none), n3)
   | `(dlle| $c:ident ($args,*)) => do
     let (args', n) ← expandEList ctx next args.getElems.toList
     let name := c.getId.toString

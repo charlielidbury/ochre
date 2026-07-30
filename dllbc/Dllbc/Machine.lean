@@ -571,13 +571,27 @@ structure Leaf where
   count : Val
   body : Val
 
+/-- The range's exclusive end, `lo + cnt`, spelled the way a program can write it.
+
+    `add` recurses on its FIRST argument, so `add lo cnt` is stuck whenever `lo` is
+    symbolic — including at every `a[i]`, where `cnt` is literally 1 and the obligation
+    would read `Le (add i (S Z)) n`. No program writes that. `S i` denotes the same
+    number and is what M13/M14's cursor bound already is (`p : Le (S i) (len *v)`) —
+    which is ¶3.5's own observation that range places "take the same terms" the swap
+    sites have been threading since M13. So a CONCRETE count is unrolled into
+    successors and a symbolic one keeps `add`, where it computes. -/
+def rangeEnd (fuel : Nat) (lo cnt : Val) : Val :=
+  match Val.natOfVal? (Val.nfV fuel cnt) with
+  | some k => (List.range k).foldl (fun acc _ => .ctor "S" [acc]) lo
+  | none => Val.kAdd lo cnt
+
 def extentMapGo (fuel : Nat) (b : Val) : List Val → M (List Leaf)
   | [] => pure []
   | s :: rest =>
     match Val.asSeg? s with
     | none => throwErr "array: malformed segment node (expected §seg [c, body])"
     | some (c, body) => do
-      let tl ← extentMapGo fuel (Val.nfV fuel (Val.kAdd b c)) rest
+      let tl ← extentMapGo fuel (Val.nfV fuel (rangeEnd fuel b c)) rest
       pure (⟨b, c, body⟩ :: tl)
 
 /-- The sum of a leaf list's extents, RIGHT-NESTED and with no trailing `Z`.
@@ -696,7 +710,7 @@ def placeToPosRaw : Term → M Pos
   | .deref t => do let p ← placeToPosRaw t; pure ⟨p.root, p.path ++ [.peel]⟩
   | .index _ _ _ =>
     throwErr "place (⇜): an array index place is not a refinement target (§3.2)"
-  | .range _ _ _ _ =>
+  | .range _ _ _ _ _ =>
     throwErr "place (⇜): an array range place is not a refinement target (§3.2)"
   | _ => throwErr "place: target is not a place (must be a variable under * peels)"
 
@@ -860,10 +874,10 @@ mutual
     | .index t i _ => do
       let a := Val.mergeArrays (← reflectC t)
       navStep 1000 (.idx (Val.nfV 1000 (← reflectC i)) none) a
-    | .range t lo (some cnt) _ => do
+    | .range t lo (some cnt) _ _ => do
       let a := Val.mergeArrays (← reflectC t)
       navStep 1000 (.rng (Val.nfV 1000 (← reflectC lo)) (Val.nfV 1000 (← reflectC cnt)) none) a
-    | .range _ _ none _ =>
+    | .range _ _ none _ _ =>
       -- `a[lo ; ..]` reads its count off the extent map, which is STATE; ⇝ is the
       -- read-only projection and may not consult it. Write the count in a type.
       throwErr "readC (⇝): `a[lo ; ..]` has no comptime reading — its count is read off the extent map, which is state (§3.2)"
@@ -1301,20 +1315,6 @@ def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
     produced here or anywhere downstream of here, and the audit's rejoin conversion
     is definitional rather than lemma-mediated. -/
 
-/-- The range's exclusive end, `lo + cnt`, spelled the way a program can write it.
-
-    `add` recurses on its FIRST argument, so `add lo cnt` is stuck whenever `lo` is
-    symbolic — including at every `a[i]`, where `cnt` is literally 1 and the obligation
-    would read `Le (add i (S Z)) n`. No program writes that. `S i` denotes the same
-    number and is what M13/M14's cursor bound already is (`p : Le (S i) (len *v)`) —
-    which is ¶3.5's own observation that range places "take the same terms" the swap
-    sites have been threading since M13. So a CONCRETE count is unrolled into
-    successors and a symbolic one keeps `add`, where it computes. -/
-def rangeEnd (fuel : Nat) (lo cnt : Val) : Val :=
-  match Val.natOfVal? (Val.nfV fuel cnt) with
-  | some k => (List.range k).foldl (fun acc _ => .ctor "S" [acc]) lo
-  | none => Val.kAdd lo cnt
-
 /-- Premise (2)'s obligation type for a candidate leaf at `(b, m)`. When the leaf
     starts at the node's base — "the overwhelmingly common case" — it is the single
     `Le (add lo cnt) n` that ¶3.2 says is "character for character, the bound the M22
@@ -1410,15 +1410,37 @@ def elementize (fuel : Nat) (body : Val) : M Val := do
         pure (.ctor "Arr" [.sym e])
   | b => throwErr s!"a[i]: the one-slot segment holds {b.pretty}, which is not a single-element run"
 
-/-- **The carve**, at the array node sitting at `pos`. `isIdx` selects the one-slot
+/-! **The carve**, at the array node sitting at `pos`. `isIdx` selects the one-slot
     variant (`a[i]` is a one-slot carve — ruling 4's uniformity, no dedicated rule).
 
     Everything is re-read from Ω rather than threaded, because premises (2) and (3)
     both REFINE: the residue transition rewrites a length index everywhere and the
     body split rewrites the leaf's σ everywhere, so a detached copy of the node goes
     stale the moment either fires. -/
-partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (ev : Option Val) (isIdx : Bool)
-    : M Unit := do
+partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
+    (ev : Option Val) (isIdx : Bool) : M Unit := do
+  -- ROUTE (a), step one: the program SUPPLIED the residue's extent, so solve premise
+  -- (3)'s equation against it HERE, before premise (2) is even formed. That ordering is
+  -- the whole trick — with the leaf's extent refined to `add cnt rest`, the obligation
+  -- is stated over a DECOMPOSED extent and often computes away entirely: at the pivot
+  -- carve `Le 1 rest` becomes `Le 1 (S j)` ⇝ `Le Z j` ⇝ ⊤, needing no evidence at all.
+  -- ¶3.2 says `Le a b` "is precisely the assertion that `b` decomposes as `a` plus
+  -- something", so supplying the decomposition supplies most of the proof.
+  --
+  -- The leaf is selected by BASE ALIGNMENT here rather than by the evidence's type:
+  -- `a[lo ; cnt ; rest]` says where it starts, so there is nothing to disambiguate.
+  match given with
+  | none => pure ()
+  | some rest => do
+    setAtPos fuel pos (Val.mergeArrays (← getAtPos fuel pos))
+    let leaves ← extentMap fuel (← getAtPos fuel pos)
+    match leaves.find? (fun l => Val.convert fuel l.base lo) with
+    | none =>
+      throwErr s!"carve: no segment starts at {lo.pretty}, so the supplied residue has no leaf to decompose (¶3.2 premise 1)"
+    | some l =>
+      if !(Val.convert fuel l.count (Val.kAdd cnt rest)) then
+        reflUnify fuel l.count (Val.kAdd cnt rest)
+      else pure ()
   -- Merge first: premise (1) wants MAXIMAL owned leaves, so a range spanning two
   -- adjacent owned segments must see them as one. This is also where merge fires
   -- after a mid-body demand-end — the read is the trigger, so nothing else has to be.
@@ -1467,7 +1489,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (ev : Option Val) (i
       -- loans), and so is ¶3.3's. It is also what the whole-place rules already do —
       -- `&mut x` and a move of `x` both End-Mut a marker sitting at `x`. The overlap
       -- rejection is NOT this case: it is the no-leaf-contains-it case above.
-      endLoan fuel ℓ; carveAt fuel pos lo cnt ev isIdx
+      endLoan fuel ℓ; carveAt fuel pos lo cnt given ev isIdx
     | .bot =>
       throwErr s!"carve: range [{lo.pretty} ; {cnt.pretty}) meets a hole (⊥) at [{l.base.pretty} ; {l.count.pretty}) — the run was moved out and not refilled, and a hole is not owned"
     | body =>
@@ -1476,7 +1498,7 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (ev : Option Val) (i
         -- not owned either. Same demand-end, found by the same traversal §2.2 already
         -- uses for a marker in owned position.
         match firstLoanMarker body with
-        | some ℓ => do endLoan fuel ℓ; carveAt fuel pos lo cnt ev isIdx
+        | some ℓ => do endLoan fuel ℓ; carveAt fuel pos lo cnt given ev isIdx
         | none =>
           throwErr s!"carve: leaf body {body.pretty} at [{l.base.pretty} ; {l.count.pretty}) is not owned (it carries a hole)"
       else if degenerate.isSome then do
@@ -1512,11 +1534,15 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (ev : Option Val) (i
         let cntN := Val.natOfVal? (Val.nfV fuel cnt)
         let mN := Val.natOfVal? (Val.nfV fuel l.count)
         let rest ←
-          match lo'N, cntN, mN with
-          | some a, some c, some m =>
+          match given, lo'N, cntN, mN with
+          -- ROUTE (a), step two: premise (3)'s residue is the term the program wrote.
+          -- Its equation was already solved above, so nothing is minted and nothing is
+          -- left nameless.
+          | some r, _, _, _ => pure r
+          | none, some a, some c, some m =>
             if a + c ≤ m then pure (Val.valOfNat (m - a - c))
             else throwErr s!"carve: [{lo.pretty} ; {cnt.pretty}) runs past the leaf at [{l.base.pretty} ; {l.count.pretty})"
-          | _, _, _ => do
+          | none, _, _, _ => do
             let r ← freshSym
             modify (fun st => { st with sctx := (r, .const "Nat") :: st.sctx })
             -- ¶3.2's two outcomes, and they are M10's two. FLEX — the leaf's extent is
@@ -1597,16 +1623,17 @@ def placeToPos (fuel : Nat) : Term → M Pos
     let p ← placeToPos fuel t
     let iv ← readC fuel i
     let evv ← ev.mapM (fun e => readC fuel e)
-    carveAt fuel p iv (Val.nat 1) evv true
+    carveAt fuel p iv (Val.nat 1) none evv true
     pure ⟨p.root, p.path ++ [.idx iv evv]⟩
-  | .range t lo cnt ev => do
+  | .range t lo cnt rest ev => do
     let p ← placeToPos fuel t
     let lov ← readC fuel lo
     let cntv ← match cnt with
       | some c => readC fuel c
       | none => restOfLeaf fuel p lov
+    let restv ← rest.mapM (fun r => readC fuel r)
     let evv ← ev.mapM (fun e => readC fuel e)
-    carveAt fuel p lov cntv evv false
+    carveAt fuel p lov cntv restv evv false
     pure ⟨p.root, p.path ++ [.rng lov cntv evv]⟩
   | _ => throwErr "place: target is not a place (must be a variable under * peels and array steps)"
 
@@ -1795,9 +1822,10 @@ mutual
     -- `Option.map` is opaque to the structural-recursion checker.
     | .index t i ev => .index (shiftVars d t) (shiftVars d i)
         (match ev with | some e => some (shiftVars d e) | none => none)
-    | .range t lo cnt ev =>
+    | .range t lo cnt rest ev =>
       .range (shiftVars d t) (shiftVars d lo)
         (match cnt with | some c => some (shiftVars d c) | none => none)
+        (match rest with | some r => some (shiftVars d r) | none => none)
         (match ev with | some e => some (shiftVars d e) | none => none)
     | .matchE scrut eqn brs =>
       .matchE ⟨scrut.id + d, scrut.name⟩ (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranches d brs)
@@ -2058,7 +2086,7 @@ mutual
       -- a hole of known extent whose one legal successor is the ⇐-refill — §2.4's
       -- take-and-refill generalized from "the payload of a borrow" to "a run of an
       -- array", which is how a rotation or a memmove is written without a copy.
-      | .index _ _ _ | .range _ _ _ _ => do
+      | .index _ _ _ | .range _ _ _ _ _ => do
         let pos ← placeToPos fuel t
         match ← getAtPos fuel pos with
         | .bot => throwErr "readR: array place holds a hole (⊥) — take without refill"

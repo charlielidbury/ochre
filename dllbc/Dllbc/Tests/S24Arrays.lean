@@ -36,7 +36,7 @@ range borrow an ordinary `&mut` rather than a new aliasing judgment.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_refl)
+open Dllbc.StdLemmas (le_refl le_add)
 
 namespace Dllbc.Tests.S24Arrays
 
@@ -983,5 +983,116 @@ example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.ctor "S" [.sym 0])) == .const "Uni
     = true := by native_decide
 example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
     = false := by native_decide
+
+/-! ## (vii) ROUTE (a) — the program supplies the residue, and ¶6's carve unblocks
+
+    `a[lo ; cnt ; rest | h]` supplies premise (3)'s residue extent instead of letting
+    the checker mint a σ no binder can name. Premise (3) is otherwise untouched — the
+    same solution transition, still no `sub` — and omitting the slot restores the
+    minting behaviour exactly.
+
+    This is the third instance of a house pattern: an OPTIONAL surface element that
+    reifies something the checker already knows, declared rather than inferred, costing
+    nothing when absent. §1.2's `[k]` names the decreasing position; §3.2's `match h :`
+    names the branch equation; `a[lo ; cnt ; rest]` names the residue extent. In all
+    three the checker had the fact and the program could not cite it, and in all three
+    the fix is a binder-free naming rather than new semantics.
+
+    **The ordering is the trick.** The supplied equation is solved BEFORE premise (2)
+    is formed, so the obligation is stated over a decomposed extent — and then it often
+    computes away entirely. ¶3.2 says `Le a b` "is precisely the assertion that `b`
+    decomposes as `a` plus something", so supplying the decomposition supplies most of
+    the proof. -/
+
+/-- ¶6's THREE-WAY carve: left half | pivot slot | right half, all three live at once.
+
+    ```rust
+    let l = &mut (*v)[Z    ; i ; S j | le_add i (S j)];
+    let p = &mut (*v)[i    ; 1 ; j];        -- obligation ⊤; no evidence needed
+    let r = &mut (*v)[S i  ; ..];           -- degenerate
+    ```
+
+    Exactly the shape ¶6 writes, and exactly the state it describes: "the pivot element
+    sits between two live borrows as a third segment that neither call can see. (Which
+    is correct: the pivot is in its final position and must not move. The calculus is
+    enforcing that, for free, by the same mechanism that keeps the halves apart.)"
+
+    The two obligations are the two the design predicts. The first is `Le i (add i (S j))`
+    — `le_add`, which the library already had for M22. The second is `Le 1 (S j)`, which
+    reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
+    now needs no evidence whatsoever**. -/
+def threeWay : Decl := decl{
+  fn threeWay (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
+    let p = &mut (*a)[i ; 1 ; j];
+    let r = &mut (*a)[S i ; ..];
+    () } }
+example : checkFnOk threeWay = true := by native_decide
+
+/-- The state, pinned: three segments, three distinct loans, one array. -/
+def threeWaySegLoans : Option (List Nat) :=
+  match fnEnv threeWay with
+  | some e =>
+    match e.lookup "a" with
+    | some (.borrowM _ (.ctor "§segs" segs)) =>
+      some (segs.filterMap (fun s => match Val.asSeg? s with
+        | some (_, .loanM l) => some l
+        | _ => none))
+    | _ => none
+  | none => none
+
+example : threeWaySegLoans = some [1, 2, 3] := by native_decide
+
+-- The pivot carve needs NO cited evidence, which is route (a)'s second payoff and the
+-- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
+-- `rest := S j` the obligation is ⊤. Dropping `le_add` from the FIRST carve, whose
+-- obligation does not compute away, is still rejected.
+def threeWayNoFirstEv : Decl := decl{
+  fn threeWayNoFirstEv (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j];
+    let p = &mut (*a)[i ; 1 ; j];
+    () } }
+example : checkFnErr threeWayNoFirstEv "containment obligation" = true := by native_decide
+
+-- A LYING residue is rejected: the supplied extent must actually decompose the leaf,
+-- and premise (3) is the thing that checks it. Here `j` is claimed where `S j` is
+-- needed, so the solution transition has no solution.
+def threeWayLyingResidue : Decl := decl{
+  fn threeWayLyingResidue (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; j | le_add i j];
+    let p = &mut (*a)[i ; 1 ; j];
+    () } }
+example : checkFnOk threeWayLyingResidue = false := by native_decide
+
+-- …and the residue is genuinely CONSUMED, not decoration: with it supplied the right
+-- half's extent is the program's `j`, so a callee taking `Array j Nat` receives it
+-- with no coercion and no unnameable σ in sight. This is the call that finding (a)
+-- said was unwritable.
+def sliceTake : Decl := decl{ fn sliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
+
+def threeWayCall : Decl := decl{
+  fn threeWayCall (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
+    let p = &mut (*a)[i ; 1 ; j];
+    let r = &mut (*a)[S i ; ..];
+    sliceTake(i, l);
+    sliceTake(j, r);
+    () } }
+example : checkFnOk threeWayCall [threeWayCall, sliceTake] = true := by native_decide
+
+/-! ### The extent map's running base is spelled `S^k b` too
+
+    Same reason as R7's range end, found by the third carve: the segment after a
+    width-1 pivot has base `add i 1`, which is stuck on a symbolic `i` and never
+    converts with the `S i` a program writes. A concrete count advances the base by
+    successors; a symbolic one keeps `add`, where it computes. Without this,
+    `(*a)[S i ; ..]` cannot find the segment it just created. -/
+
+example : checkFnOk (decl{
+  fn baseSpelling (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
+    let p = &mut (*a)[i ; 1 ; j];
+    let r = &mut (*a)[S i ; j];
+    () } }) = true := by native_decide
 
 end Dllbc.Tests.S24Arrays

@@ -74,8 +74,17 @@ inductive Term where
       at `lo`". That is not sugar for a subtraction — it NAMES the residue the carve
       already minted (premise (3)'s `rest`, sitting in the extent map as a given)
       rather than computing `sub n lo`. ¶3.4 and ¶5 both write `rest` as if it were a
-      surface name for that σ, and it is not one; this is how a program says it. -/
-  | range  : Term → Term → Option Term → Option Term → Term
+      surface name for that σ, and it is not one; this is how a program says it.
+
+      The **residue** is optional too: `a[lo ; cnt ; rest | h]` SUPPLIES the extent of
+      what is left over instead of letting premise (3) mint an unnameable σ for it.
+      Same solution transition, same absence of `sub`; the equation is simply solved
+      against a term the program wrote. Omit it and the checker mints, exactly as
+      before. This is the third instance of a house pattern — an optional surface
+      element reifying something the checker already knows, declared rather than
+      inferred, free when absent — after §1.2's `[k]` naming the decreasing position
+      and §3.2's `match h :` naming the branch equation. -/
+  | range  : Term → Term → Option Term → Option Term → Option Term → Term
   /-- `match x { … }` — one-constructor-deep pattern match on a variable
       scrutinee (§3). Owned or borrow mode is chosen at runtime by what the
       scrutinee's slot holds.
@@ -144,8 +153,8 @@ mutual
     | .borrow a, .borrow b => Term.beq a b
     | .deref a, .deref b => Term.beq a b
     | .index a i e, .index b j f => Term.beq a b && Term.beq i j && Term.beqOpt e f
-    | .range a l c e, .range b m d f =>
-      Term.beq a b && Term.beq l m && Term.beqOpt c d && Term.beqOpt e f
+    | .range a l c r e, .range b m d q f =>
+      Term.beq a b && Term.beq l m && Term.beqOpt c d && Term.beqOpt r q && Term.beqOpt e f
     | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs

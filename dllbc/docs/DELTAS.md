@@ -133,8 +133,21 @@ that offsets are leaf-relative; premise (2) now is too.
 and at every `a[i]` the count is literally 1, making the obligation read
 `Le (add i (S Z)) n`, which no program writes and no library lemma produces. A concrete
 count is now unrolled into successors, so `a[i]`'s obligation is `Le (S i) n` — exactly
-M13/M14's cursor bound, which is ¶3.5's own claim that range places "take the same terms"
-the swap sites have threaded since M13.
+M13/M14's cursor bound.
+
+**This is the ledger's best entry.** ¶3.5 claims that `nth2`'s `pij : Le (S i) j` and
+`p2 : Le (S j) (len *v)` are "on the nose, the containment obligation the carve rule
+demands", and that "range places take the same terms and give them their real job". That
+was an argument. It is now literally true: the obligation the carve forms at `a[i]` IS
+`Le (S i) n`, character for character the term the swap sites have been threading since
+M13 — but only once the spelling is fixed. Written the obvious way it was `Le (add i (S Z)) n`
+and the claim would have been false in the one place it was supposed to be exact.
+
+The same spelling is needed for the extent map's RUNNING BASE, found by the three-way
+carve: the segment after a width-1 pivot has base `add i 1`, stuck on a symbolic `i` and
+never converting with the `S i` a program writes, so `(*a)[S i ; ..]` could not find the
+segment it had just created. A concrete count advances the base by successors; a symbolic
+one keeps `add`.
 
 ### R8 — extent sums are RIGHT-NESTED with no trailing `Z`
 
@@ -156,6 +169,15 @@ reconciled the old case reconciles this one") and is right — but the case is n
 silently ASSUMES ¶8.2's obligation 4 (merge is value-preserving), which matters when the
 metatheory is written.
 
+**FOR WHOEVER WRITES THE METATHEORY, flagged loudly.** ¶3.6 says "any simulation relation
+that reconciled the old case reconciles this one". That was rhetorical; it is now an
+ASSUMED OBLIGATION WITH A CONCRETE WITNESS. The relation's array case is *defined* by
+splitting a concrete run along the symbolic extents, which is sound exactly when merge
+preserves values — so obligation 4 is no longer a nice-to-have on ¶8.2's list, it is a
+premise of the differential harness's own correctness. If obligation 4 fails, the harness
+does not go red; it goes silently green on a mismatch. That inversion is the thing to
+know before trusting the differential over array bodies.
+
 ---
 
 ## GAPS
@@ -172,9 +194,27 @@ the residue's extent off the extent map where premise (3) already parked it as a
 it is emphatically not the `sub` ¶2.1 bans: no arithmetic, no new obligation. It makes
 ¶3.4's second borrow and the exhaustive two-way split writable.
 
-**Still open:** `..` names the residue as a PLACE, not its LENGTH. Any *evidence about*
-the residue, and any *call taking* the residue, both need the length as a term. See
-§"Open decisions" below.
+**Closed, by ROUTE (a):** `a[lo ; cnt ; rest | h]` SUPPLIES the residue's extent. Premise
+(3) then solves `m ≡ add lo' (add cnt rest)` against a term the program wrote instead of
+minting a σ no binder can name — the same solution transition, still no `sub`, and
+reducing to the minting behaviour when the slot is omitted.
+
+**Route (a) is the third instance of a house pattern**, which is a better argument for it
+than "smallest": an OPTIONAL surface element that reifies something the checker already
+knows, declared rather than inferred, costing nothing when absent. §1.2's `[k]` names the
+decreasing position; §3.2's `match h :` names the branch equation; `a[lo ; cnt ; rest]`
+names the residue extent. In all three the checker had the fact and the program could not
+cite it, and in all three the fix is a binder-free naming rather than new semantics. It is
+also the shape chosen for `old *v` over a scope-weird binder — which is precisely why not
+route (b), that being the rejected binder pattern.
+
+**The ordering is where the payoff is.** The supplied equation is solved BEFORE premise (2)
+is formed, so the obligation is stated over a decomposed extent and often computes away
+entirely. ¶6's pivot carve asks `Le 1 rest`, unwritable; with `rest := S j` supplied it
+becomes `Le 1 (S j)` ⇝ `Le Z j` ⇝ ⊤, and needs no evidence at all. ¶3.2 says `Le a b` "is
+precisely the assertion that `b` decomposes as `a` plus something" — so supplying the
+decomposition supplies most of the proof, and route (a) does not merely make the obligation
+writable, it deletes it.
 
 ### G2 — ¶4's Σ-typed slice needs no new type but does need new machinery; BUILT, and it does not solve G1
 
@@ -198,6 +238,21 @@ exists to write. A second, independent wall: a RECURSIVE slice-taking callee nee
 bound ABOUT the slice's length, and that length lives inside the Σ where no telescope
 entry can mention it; nesting the proof inside too is a second level the machinery does
 not have.
+
+---
+
+### G3 — ¶6's honest accounting understates what the partition must return
+
+*Note (¶6, cost 1):* "The partition leaf must now produce its pivot index *together with*
+the two carve licenses (`Le i n` and its complement), because the recursive calls carve at
+exactly that index."
+
+*Correction:* it must return the licenses AND the RESIDUE EXTENTS. A license alone cannot
+be stated, because the thing it would have to be a license *about* — the extent of what is
+left after the first carve — is a σ the checker minted and no program can name. With route
+(a) the shape is: partition returns the pivot index `i` and the right half's length `j`,
+and the body carves `[Z ; i ; S j | le_add i (S j)]`, `[i ; 1 ; j]`, `[S i ; ..]`. The
+first license is `le_add`, which the M22 library already had; the second is ⊤.
 
 ---
 
@@ -225,11 +280,12 @@ This is why the three-way split cannot be reached by re-associating the two-way 
 
 ---
 
-## Open decisions (for the merge review)
+## Decisions taken (for the merge review)
 
-**The residue's length needs a name.** Three routes, costed:
+**The residue's length needs a name — DECIDED: route (a), built, ¶6's three-way carve
+green.** The three routes and their fates:
 
-* **(a) Let the program SUPPLY the residue** — `a[lo ; cnt ; rest | h]`, with premise (3)
+* **(a) Let the program SUPPLY the residue — CHOSEN AND BUILT.** `a[lo ; cnt ; rest | h]`, with premise (3)
   solving `m ≡ add lo' (add cnt rest)` against the supplied term instead of a fresh σ.
   Premise (3) is unchanged (still a solution transition, still no `sub`); it reduces to
   current behaviour when omitted; and it is ¶8.4's own escape hatch, "name the equation and
@@ -238,8 +294,9 @@ This is why the three-way split cannot be reached by re-associating the two-way 
   to `Le Z j`, which is ⊤ — so the evidence that could not be written is no longer needed.
   VERIFIED on the arithmetic alone: `Le 1 (S j)` normalizes to `Unit`, `Le 1 rest` with
   `rest` a bare σ does not.
-* **(b) Let the carve BIND its residue in the surface** — a real binder form, the most
-  honest, the largest.
+* **(b) Let the carve BIND its residue in the surface** — DECLINED. A real binder form,
+  strictly larger, and exactly the scope-weird binder pattern already rejected once when
+  `old *v` was chosen over it.
 * **(c) Σ-typed slices** — see G2. **SETTLED NEGATIVE by construction**: the machinery is
   built and green, and the caller must still produce the length to CONSTRUCT the pair.
   Kept anyway, since it is ¶4 delivered and independently useful.
