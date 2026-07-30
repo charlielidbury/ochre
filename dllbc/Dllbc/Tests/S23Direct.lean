@@ -36,7 +36,7 @@ are read off it.
 
 open Dllbc
 open Dllbc.StdLemmas (le_refl le_trans le_up_r append id_congr id_trans id_sym
-  set nth swapL len_set swapL_set le_rw_r)
+  set nth swapL len_set swapL_set le_rw_r insertL Ub Lb take leb_true_le)
 
 namespace Dllbc.Tests.S23Direct
 
@@ -609,5 +609,136 @@ def runSwapAt (l : List Nat) (i j : Nat) : Bool :=
 example : runSwapAt [1,2,3] 0 2 = true := by native_decide      -- ends
 example : runSwapAt [1,2,3,4] 1 2 = true := by native_decide    -- adjacent interior
 example : runSwapAt [4,1,3,2,5] 0 4 = true := by native_decide  -- full span
+
+/-! ## Stage (iv) groundwork: `insert_at`, and where a body's knowledge runs out
+
+    The relational partition needs one more mutator and one machine fact, and the
+    fact is the milestone's sharpest limitation, so it is established here with its
+    own negative control rather than discovered mid-proof.
+
+    `insert_at` is the mutation a LINKED-LIST partition actually performs: relink one
+    cell at index `k`. (Lomuto's swap-based scan is an array algorithm; the north
+    star's naturalness-first rule says the program stays natural, and `swap_at` above
+    remains available for anyone who wants the array shape.) It is `split_off`'s
+    idiom again — take-and-refill through the body's own borrows — and checks the
+    same way. -/
+
+def insertAt : Decl :=
+  decl{ fn insert_at [k] (v : &mut List Nat, k : Nat, x : Nat)
+        -> Id (List Nat) (*v) (insertL k x (old *v))
+        { match k {
+            Z => { let t = *v; *v := Cons(x, t); Refl },
+            S(k2) => match v {
+              -- past the end, `x` lands last: `insertL (S k) x Nil = Cons x Nil`.
+              Nil => { *v := Cons(x, Nil); Refl },
+              Cons(hd, tl) => {
+                let y = insertL k2 x (*tl);
+                let h = insert_at(&mut *tl, k2, x);
+                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+              }
+            }
+        } } }
+example : checkFnOk insertAt = true := by native_decide
+
+-- SUBJECT: deliberately-wrong return types (raw Terms).
+def insLT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.insertL k) x) l
+def insertAtLieIdx : Decl :=
+  { insertAt with retType := .idT listNatT dvT (insLT (sucT (.var ⟨1, "k"⟩)) (.var ⟨2, "x"⟩) oldvT) }
+def insertAtLieNoop : Decl := { insertAt with retType := .idT listNatT dvT oldvT }
+example : checkFnErr insertAtLieIdx "does not have return type" = true := by native_decide
+example : checkFnErr insertAtLieNoop "does not have return type" = true := by native_decide
+
+-- `insertL` computes, including the past-the-end case the `Nil` branch implements.
+def insLC (k x : Nat) (l : List Nat) : Term := insLT (tnatT k) (tnatT x) (tlistT l)
+example : (pv (insLC 0 9 [1,2,3]) == vlistV [9,1,2,3]) = true := by native_decide
+example : (pv (insLC 2 9 [1,2,3]) == vlistV [1,2,9,3]) = true := by native_decide
+example : (pv (insLC 3 9 [1,2,3]) == vlistV [1,2,3,9]) = true := by native_decide
+example : (pv (insLC 5 9 [1,2,3]) == vlistV [1,2,3,9]) = true := by native_decide
+example : (pv (insLC 0 9 []) == vlistV [9]) = true := by native_decide
+
+-- SUBJECT: executing-mode raw Term caller.
+def insCaller (l : List Nat) (k x : Nat) : Term :=
+  .letIn ⟨0, "z"⟩ (tlistT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+      (.seq (.call "insert_at" [.var ⟨1, "b"⟩, tnatT k, tnatT x])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+def runInsertAt (l : List Nat) (k x : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [insertAt] (insCaller l k x) with
+  | .ok env => env.lookup "y" == some (vlistV (l.take k ++ [x] ++ l.drop k))
+  | .error _ => false
+
+example : runInsertAt [1,2,3] 0 9 = true := by native_decide
+example : runInsertAt [1,2,3] 2 9 = true := by native_decide
+example : runInsertAt [1,2,3] 3 9 = true := by native_decide
+
+/-! ### THE LIMITATION: a body learns nothing from branching on a comparison
+
+    M18's two-layer principle says motive abstraction handles OCCURRENCES and branch
+    equations handle KNOWLEDGE. A body-level `match` has only the first layer. When
+    the scrutinee is a stuck spine, `generalizeStuck` abstracts it to a fresh σ_b
+    across all σ-bearing state and the branch refines σ_b := True — so everything
+    that ALREADY mentioned the spine now reads `True`, which is what M19's stuckProbe
+    tests. But a body that writes `leb a b` AFTER the split recomputes the spine, and
+    nothing hands back the equation.
+
+    That is exactly backwards for direct proving, where the body must PRODUCE the
+    evidence rather than merely have its types agree. `Refl : Id Bool (leb a b) True`
+    does not check inside the `True` branch: -/
+
+def needLe : Decl := decl{ fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () } }
+def branchKnowledge : Decl :=
+  decl{ fn branchKnowledge (a : Nat, b : Nat) -> Unit
+        { let c = leb a b;
+          match c {
+            True => { needLe(a, b, leb_true_le a b Refl); () },
+            False => ()
+          } } }
+example : checkFnErr branchKnowledge "does not have its parameter type"
+  [needLe, branchKnowledge] = true := by native_decide
+
+/-! ### The route around it, verified in both halves
+
+    Rather than add a `destruct-eqn:` to the body's match, keep the body BRANCH-FREE
+    and let the pure fragment do the case analysis, where the knowledge is available.
+
+    Half 1 — the body computes its decision as an INDEX with `boolRec` and never
+    matches on it. The stuck spine flows through the call and meets the ensures
+    definitionally. (This is a better program anyway: index arithmetic, not control
+    flow, which is how the mutation was going to be expressed regardless.) -/
+
+def pick : Decl :=
+  decl{ fn pick (v : &mut List Nat, x : Nat, p : Nat)
+        -> Id (List Nat) (*v)
+             (insertL (boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p)) x (old *v))
+        { let K = boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p);
+          insert_at(&mut *v, K, x) } }
+example : checkFnOk pick [insertAt, pick] = true := by native_decide
+
+/-! Half 2 — the pure lemma, over the SAME stuck index, gets its branch knowledge
+    from a CONVOY MOTIVE: the motive carries `Id Bool <spine> b`, so each arm
+    receives the equation as an argument and the whole elim is applied to `Refl`.
+    This is the idiom M22's `allLeR_extend_far` already uses; naming it here because
+    it is the thing that makes the branch-free route work rather than merely move
+    the problem. `ub_pick` is the shape every partition-invariant lemma will take. -/
+
+def ub_pick : Term := pure{
+  λ (x : Nat). λ (p : Nat). λ (l : List Nat). λ (h : Ub p l).
+    elim (leb x p) return (λ (b : Bool).
+        Id Bool (leb x p) b →
+        Ub p (take (boolRec (λ (bb : Bool). Nat) (S Z) Z b)
+                (insertL (boolRec (λ (bb : Bool). Nat) Z (S Z) b) x l))) {
+      True => λ (e : Id Bool (leb x p) True). Pair(leb_true_le x p e, unit),
+      False => λ (e : Id Bool (leb x p) False). unit
+    } Refl }
+def ub_pick_ty : Term := pure{
+  Π (x : Nat) → Π (p : Nat) → Π (l : List Nat) → Ub p l →
+    Ub p (take (boolRec (λ (bb : Bool). Nat) (S Z) Z (leb x p))
+            (insertL (boolRec (λ (bb : Bool). Nat) Z (S Z) (leb x p)) x l)) }
+example : chk ub_pick ub_pick_ty = true := by native_decide
+
+-- `Ub`/`Lb` compute, and are Σ-chained (so `sigmaRec` consumes them).
+example : (pv (pure{ Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
+           pv (pure{ Σ (h : Le (S Z) (S (S Z))) → Σ (h2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
+example : (pv (pure{ Lb Z (Cons (S Z) Nil) }) == pv (pure{ Σ (h : Le Z (S Z)) → Unit })) = true := by native_decide
 
 end Dllbc.Tests.S23Direct

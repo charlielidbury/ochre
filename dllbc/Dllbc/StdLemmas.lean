@@ -3510,4 +3510,41 @@ def sorted_sortRangeL : Term := pure{
         }
     } }
 
+/-! ## M23 (§23) — the whole-list vocabulary
+
+    Direct proving over WHOLE lists (no `lo`/`cnt` range indices) needs three
+    definitions M22's positional encoding had no use for. All three are OBSERVATION
+    functions — they say what a list IS, not what any body DOES — which is the line
+    a back-less ensures has to stay on.
+
+    `Ub p l` / `Lb p l`: every element of `l` is ≤ p (resp. ≥ p). Σ-chained exactly
+    as `Sorted`/`Bound` are (Std), so they are consumed by `sigmaRec` and built by
+    `Pair` — which is why the Σ recursor had to land before any of this.
+
+    `insertL k x l`: `x` spliced in at index `k` (past the end it lands last). This
+    is the shape a linked-list partition actually mutates by: relinking one cell,
+    never sliding a range. Lomuto's swap-based scan is an ARRAY algorithm, and the
+    naturalness-first rule (the north star's) says the program stays natural. -/
+
+def Ub : Term := pure{
+  λ (p : Nat). λ (l : List Nat).
+    elim l return (λ (lz : List Nat). Type) {
+      Nil => Unit,
+      Cons (h) (t) ih => Σ (hh : Le h p) → ih } }
+
+def Lb : Term := pure{
+  λ (p : Nat). λ (l : List Nat).
+    elim l return (λ (lz : List Nat). Type) {
+      Nil => Unit,
+      Cons (h) (t) ih => Σ (hh : Le p h) → ih } }
+
+def insertL : Term := pure{
+  λ (k : Nat).
+    elim k return (λ (kz : Nat). Nat → List Nat → List Nat) {
+      Z => λ (x : Nat). λ (l : List Nat). Cons x l,
+      S (k2) ih => λ (x : Nat). λ (l : List Nat).
+        elim l return (λ (lz : List Nat). List Nat) {
+          Nil => Cons x Nil,
+          Cons (h) (t) iht => Cons h (ih x t) } } }
+
 end Dllbc.StdLemmas
