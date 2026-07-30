@@ -68,18 +68,43 @@ def pool : List Decl := [through, advance, choose, push]
 /-! ## The simulation relation: `instanceOf` -/
 
 /-- Match a symbolic value against a concrete one, threading a σ→value
-    substitution (consistency: the same σ must map to the same value). -/
-def matchVal : Val → Val → List (Nat × Val) → Option (List (Nat × Val))
+    substitution (consistency: the same σ must map to the same value).
+
+    **Arrays are matched up to ¶1.3's fold, not structurally** (S24). A symbolic array
+    can be SEGMENTED where the concrete one is a run: merge concatenates runs but
+    leaves a σ body alone, so a checking-mode group release — a fresh existential at
+    the segment's owed type — blocks exactly the rejoin the executing run performs.
+    The two are the same value, the σ standing for the run's slice, so the relation
+    splits the concrete run by the symbolic extents and matches segment-wise. This is
+    §6.1's already-flagged over-approximation ("a group releases atomically where the
+    concrete machine ends lazily") arriving for arrays; without the case the harness
+    reports a false counterexample on the first array body it is given. -/
+partial def matchVal : Val → Val → List (Nat × Val) → Option (List (Nat × Val))
   | .sym σ, cv, subst =>
     match subst.find? (·.1 == σ) with
     | some (_, v) => if v == cv then some subst else none
     | none => some ((σ, cv) :: subst)
+  | .ctor "§segs" segs, .ctor "Arr" vs, subst => matchSegs segs vs subst
   | .ctor n1 a1, .ctor n2 a2, subst => if n1 == n2 then matchList a1 a2 subst else none
   | .borrowM x p, .borrowM y q, subst => if x == y then matchVal p q subst else none
   | a, b, subst => if a == b then some subst else none   -- ⊥, loanM, pure: exact (canonicalized)
-where matchList : List Val → List Val → List (Nat × Val) → Option (List (Nat × Val))
+where
+  matchList : List Val → List Val → List (Nat × Val) → Option (List (Nat × Val))
   | [], [], s => some s
   | v1 :: vs1, v2 :: vs2, s => match matchVal v1 v2 s with | some s' => matchList vs1 vs2 s' | none => none
+  | _, _, _ => none
+  matchSegs : List Val → List Val → List (Nat × Val) → Option (List (Nat × Val))
+  | [], [], s => some s
+  | seg :: rest, vs, s =>
+    match Val.asSeg? seg with
+    | none => none
+    | some (c, body) =>
+      match Val.natOfVal? (Val.nfV 100 c) with
+      | none => none                                     -- a symbolic extent cannot align a run
+      | some k =>
+        match matchVal body (.ctor "Arr" (vs.take k)) s with
+        | some s' => matchSegs rest (vs.drop k) s'
+        | none => none
   | _, _, _ => none
 
 /-- Match two environments entry-by-entry (same names, same order). -/

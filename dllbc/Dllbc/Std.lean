@@ -55,7 +55,12 @@ def sucArm (falseCase : Val) : Val :=
 
 /-! ## `Le : Nat → Nat → Type`  (Z ≤ _ ↦ ⊤ ; S ≤ Z ↦ ⊥ ; S ≤ S ↦ recurse) -/
 
-def LeFn : Val := .lam natTy (natRecS (.lam natTy (.pi natTy .type)) (.lam natTy unitTy) (sucArm botTy) (.pvar 0))
+-- `Le` now LIVES in the kernel (`Pure.lean`'s `kLeFn`) and is aliased here. The CARVE
+-- rule's premise (2) IS a `Le`, and a kernel rule cannot cite a library it does not
+-- import; two syntactically different `Le`s would never convert, which would break
+-- the one conversion the residue transition exists to make definitional. Single
+-- source of truth, asserted in S24Arrays (i.h).
+def LeFn : Val := kLeFn
 def Le (a b : Val) : Val := .app (.app LeFn a) b
 
 /-! ## `eqb, leb : Nat → Nat → Bool` — runtime-usable decision procedures -/
@@ -119,9 +124,10 @@ def dropFn : Val :=
   .lam natTy (natRecS (.lam natTy (.pi listNatTy listNatTy)) (.lam listNatTy (.pvar 0)) dropArm (.pvar 0))
 def drop (n l : Val) : Val := .app (.app dropFn n) l
 
-/-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
-def addFn : Val :=
-  .lam natTy (.lam natTy (natRecS (.lam natTy natTy) (.pvar 0) (.lam natTy (.lam natTy (suc (.pvar 0)))) (.pvar 1)))
+/-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`).
+    Aliased from the kernel for the same reason as `Le`: premise (3) of CARVE
+    decomposes an extent with `add`, so the kernel needs it. -/
+def addFn : Val := kAddFn
 def add (a b : Val) : Val := .app (.app addFn a) b
 
 /-- `append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (append t b)`). -/

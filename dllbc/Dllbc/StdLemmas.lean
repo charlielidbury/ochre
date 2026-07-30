@@ -3877,4 +3877,782 @@ def lb_perm_ty : Term := pure{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     (Π (n : Nat) → Id Nat (count n a) (count n b)) → Lb p b → Lb p a }
 
+/-! ## M24 — the ARRAY layer (¶6's migration ledger, item 3)
+
+    ¶1.3's promise: "Every lemma in the quicksort library — `count`, `Sorted`, `Bound`,
+    the order stack — transfers to arrays by replacing `listRec` with `arrRec` and
+    `Cons` with `acons`. Nothing about the migration requires re-deriving that
+    mathematics." Here is the transfer, and the promise holds textually: each
+    definition below is its list counterpart with `elim` retargeted at the array
+    recursor, and each proof is its list proof with the same substitution.
+
+    Two ι-rules make it mechanical rather than merely possible (see `Pure.lean`):
+    `arrCat` computes on an `acons`-headed left argument, and `arrRec` fires on the
+    cons view. Without them `SortedA (arrCat (acons h t) …)` would not UNFOLD, and every
+    step of the glue would want a transport lemma where the list proof needs none. -/
+
+/-- The empty array. -/
+def anil : Term := pure{ Arr() }
+
+/-- `countA x a` — the multiset counter, `count`'s transfer. -/
+def countA : Term := pure{
+  λ (x : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Nat).
+        elim (eqb x h) return (λ (bz : Bool). Nat) { True => S ih, False => ih })
+      n a }
+
+/-- `BoundA p a` — the head of `a` is ≥ `p`. `Bound`'s transfer. -/
+def BoundA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type). Le p h) n a }
+
+/-- `SortedA a` — the Σ-chain over the spine. `Sorted`'s transfer. -/
+def SortedA : Term := pure{
+  λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
+        Σ (hb : BoundA h k t) → ih) n a }
+
+/-- `UbA p a` — every element of `a` is ≤ `p`. `Ub`'s transfer. -/
+def UbA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
+        Σ (hh : Le h p) → ih) n a }
+
+/-- `LbA p a` — every element of `a` is ≥ `p`. `Lb`'s transfer. -/
+def LbA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
+        Σ (hh : Le p h) → ih) n a }
+
+/-- `asingle x` — the one-element array, `[x]`. ¶6's glue is stated over
+    `arrCat (asingle p) r`, which is the array spelling of `Cons p b`. -/
+def asingle : Term := pure{ λ (x : Nat). acons Z x Arr() }
+
+/-! ### The glue, and the standing claim it tests
+
+    ¶6: "Set `append ↦ arrCat` and `Cons p b ↦ arrCat (asingle p) r` and it IS the array
+    lemma, hypothesis for hypothesis — not merely the same shape but the same statement
+    modulo the container … So the migration INHERITS that proof rather than opening a
+    stratum."
+
+    Below is `sorted_append_pivot` and its four helpers with exactly that substitution
+    applied and nothing else. The claim is checkable and it checks. Note in particular
+    that `arrCat 1 q (asingle p) b` COMPUTES to `acons q p b` — the array `Cons p b` —
+    so the doc's chosen spelling of the pivot splice needs no lemma to relate it to the
+    cons view. -/
+
+def sorted_headA : Term := pure{
+  λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (s : Σ (hb : BoundA h k t) → SortedA k t).
+      elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). BoundA h k t) {
+        Pair (x) (y) => x } }
+def sorted_headA_ty : Term := pure{
+  Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    SortedA (S k) (acons k h t) → BoundA h k t }
+
+def sorted_tailA : Term := pure{
+  λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (s : Σ (hb : BoundA h k t) → SortedA k t).
+      elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). SortedA k t) {
+        Pair (x) (y) => y } }
+def sorted_tailA_ty : Term := pure{
+  Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    SortedA (S k) (acons k h t) → SortedA k t }
+
+def ub_headA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hu : Le h p) → UbA p k t).
+      elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). Le h p) {
+        Pair (x) (y) => x } }
+def ub_headA_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    UbA p (S k) (acons k h t) → Le h p }
+
+def ub_tailA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hu : Le h p) → UbA p k t).
+      elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). UbA p k t) {
+        Pair (x) (y) => y } }
+def ub_tailA_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    UbA p (S k) (acons k h t) → UbA p k t }
+
+/-- `LbA p a ⟹ BoundA p a`, `lb_bound`'s transfer: a lower bound on every element is in
+    particular a bound on the head, which is all `SortedA (acons p b)` asks of the pivot. -/
+def lb_boundA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). LbA p m b → BoundA p m b)
+      (λ (hn : Unit). hn)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : LbA p k t → BoundA p k t).
+          λ (hl : Σ (hh : Le p h) → LbA p k t).
+            elim hl return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) {
+              Pair (x) (y) => x })
+      n a }
+def lb_boundA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a → BoundA p n a }
+
+/-- `bound_append`'s transfer: the head bound survives the splice. The recursion IS the
+    case analysis — at the empty array the new head is the PIVOT, otherwise the head is
+    unchanged by the concatenation. No IH is consumed, because `BoundA` looks exactly one
+    cell deep. -/
+def bound_arrCat : Term := pure{
+  λ (h : Nat). λ (p : Nat). λ (k : Nat). λ (t : Array k Nat).
+    λ (q : Nat). λ (b : Array q Nat).
+      arrRec Nat (λ (m : Nat). λ (tz : Array m Nat).
+          BoundA h m tz → Le h p →
+            BoundA h (add m (S q)) (arrCat m (S q) tz (arrCat 1 q (asingle p) b)))
+        (λ (hb : Unit). λ (hp : Le h p). hp)
+        (λ (k2 : Nat). λ (h2 : Nat). λ (t2 : Array k2 Nat).
+          λ (ih : BoundA h k2 t2 → Le h p →
+              BoundA h (add k2 (S q)) (arrCat k2 (S q) t2 (arrCat 1 q (asingle p) b))).
+            λ (hb : Le h h2). λ (hp : Le h p). hb)
+        k t }
+def bound_arrCat_ty : Term := pure{
+  Π (h : Nat) → Π (p : Nat) → Π (k : Nat) → Π (t : Array k Nat) →
+    Π (q : Nat) → Π (b : Array q Nat) →
+      BoundA h k t → Le h p →
+        BoundA h (add k (S q)) (arrCat k (S q) t (arrCat 1 q (asingle p) b)) }
+
+/-- **The quicksort glue** — `sorted_append_pivot` with the container swapped, and
+    nothing else changed. This is ¶6's "textbook quicksort correctness statement, in the
+    textbook shape", and the standing check on the whole migration: if this were not the
+    near-verbatim restatement, something would be off. -/
+def sorted_arrCat : Term := pure{
+  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    λ (sa : SortedA m a). λ (ua : UbA p m a). λ (sb : SortedA q b). λ (lb : LbA p q b).
+      arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
+          SortedA mz az → UbA p mz az →
+            SortedA (add mz (S q)) (arrCat mz (S q) az (arrCat 1 q (asingle p) b)))
+        (λ (sn : Unit). λ (un : Unit). Pair(lb_boundA p q b lb, sb))
+        (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+          λ (ih : SortedA k t → UbA p k t →
+              SortedA (add k (S q)) (arrCat k (S q) t (arrCat 1 q (asingle p) b))).
+            λ (sc : Σ (hb : BoundA h k t) → SortedA k t).
+              λ (uc : Σ (hu : Le h p) → UbA p k t).
+                Pair(bound_arrCat h p k t q b (sorted_headA k h t sc) (ub_headA p k h t uc),
+                     ih (sorted_tailA k h t sc) (ub_tailA p k h t uc)))
+        m a sa ua }
+def sorted_arrCat_ty : Term := pure{
+  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    SortedA m a → UbA p m a → SortedA q b → LbA p q b →
+      SortedA (add m (S q)) (arrCat m (S q) a (arrCat 1 q (asingle p) b)) }
+
+/-- `count_append`'s transfer, and ¶6's named survivor: "the one lemma that replaces
+    `count_append`/`take`/`drop` is `count_arrCat : count x (arrCat a b) = add (count x a)
+    (count x b)`, which is the same induction." It is the same induction — the `Cons`
+    arm's dependent Bool-elim on `eqb x h` transfers unchanged, because `countA` unfolds
+    on an `acons` exactly as `count` unfolds on a `Cons`. -/
+def count_arrCat : Term := pure{
+  λ (x : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
+        Id Nat (countA x (add mz q) (arrCat mz q az b))
+               (add (countA x mz az) (countA x q b)))
+      Refl
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : Id Nat (countA x (add k q) (arrCat k q t b))
+                       (add (countA x k t) (countA x q b))).
+          elim (eqb x h) return (λ (bv : Bool).
+            Id Nat (boolRec (λ (w : Bool). Nat)
+                     (S (countA x (add k q) (arrCat k q t b)))
+                     (countA x (add k q) (arrCat k q t b)) bv)
+                   (add (boolRec (λ (w : Bool). Nat)
+                     (S (countA x k t)) (countA x k t) bv) (countA x q b))) {
+            True => id_congr Nat Nat (λ (n : Nat). S n)
+                      (countA x (add k q) (arrCat k q t b))
+                      (add (countA x k t) (countA x q b)) ih,
+            False => ih })
+      m a }
+def count_arrCat_ty : Term := pure{
+  Π (x : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    Id Nat (countA x (add m q) (arrCat m q a b)) (add (countA x m a) (countA x q b)) }
+
+/-! ### The permutation layer, transferred
+
+    M23's keystone: "`Ub` and `Lb` (Σ-chains over the spine) are not natively
+    permutation-invariant. Cross to the multiset, where the property is
+    `Π x. x > p → count x l = Z` and permutation-invariance is a one-line `id_trans`."
+    That crossing transfers with the container like everything else. -/
+
+def count_acons_hit : Term := pure{
+  λ (m : Nat). λ (a : Nat). λ (k : Nat). λ (l : Array k Nat). λ (hq : Id Bool (eqb m a) True).
+    j Bool True
+      (λ (z : Bool). λ (h : Id Bool True z).
+        Id Nat (boolRec (λ (w : Bool). Nat) (S (countA m k l)) (countA m k l) z)
+               (S (countA m k l)))
+      Refl (eqb m a) (id_sym Bool (eqb m a) True hq) }
+def count_acons_hit_ty : Term := pure{
+  Π (m : Nat) → Π (a : Nat) → Π (k : Nat) → Π (l : Array k Nat) → Id Bool (eqb m a) True →
+    Id Nat (countA m (S k) (acons k a l)) (S (countA m k l)) }
+
+def count_acons_miss : Term := pure{
+  λ (m : Nat). λ (h : Nat). λ (k : Nat). λ (t : Array k Nat). λ (hq : Id Bool (eqb m h) False).
+    j Bool False
+      (λ (z : Bool). λ (hh : Id Bool False z).
+        Id Nat (boolRec (λ (w : Bool). Nat) (S (countA m k t)) (countA m k t) z)
+               (countA m k t))
+      Refl (eqb m h) (id_sym Bool (eqb m h) False hq) }
+def count_acons_miss_ty : Term := pure{
+  Π (m : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t : Array k Nat) → Id Bool (eqb m h) False →
+    Id Nat (countA m (S k) (acons k h t)) (countA m k t) }
+
+def lb_headA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hh : Le p h) → LbA p k t).
+      elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) { Pair (x) (y) => x } }
+def lb_tailA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hh : Le p h) → LbA p k t).
+      elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). LbA p k t) { Pair (x) (y) => y } }
+
+def noAbove_of_ubA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        UbA p m az → Π (x : Nat) → Le (S p) x → Id Nat (countA x m az) Z)
+      (λ (u : Unit). λ (x : Nat). λ (hx : Le (S p) x). Refl)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : UbA p k t → Π (x : Nat) → Le (S p) x → Id Nat (countA x k t) Z).
+          λ (u : Σ (hh : Le h p) → UbA p k t). λ (x : Nat). λ (hx : Le (S p) x).
+            id_trans Nat (countA x (S k) (acons k h t)) (countA x k t) Z
+              (count_acons_miss x h k t
+                (eqb_gt_false h x (le_trans (S h) (S p) x (ub_headA p k h t u) hx)))
+              (ih (ub_tailA p k h t u) x hx))
+      n a }
+def noAbove_of_ubA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → UbA p n a →
+    Π (x : Nat) → Le (S p) x → Id Nat (countA x n a) Z }
+
+def ub_of_noAboveA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        (Π (x : Nat) → Le (S p) x → Id Nat (countA x m az) Z) → UbA p m az)
+      (λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (countA x Z Arr()) Z). unit)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : (Π (x : Nat) → Le (S p) x → Id Nat (countA x k t) Z) → UbA p k t).
+          λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (countA x (S k) (acons k h t)) Z).
+            Pair(
+              elim (leb h p) return (λ (bv : Bool). Id Bool (leb h p) bv → Le h p) {
+                True => λ (e : Id Bool (leb h p) True). leb_true_le h p e,
+                False => λ (e : Id Bool (leb h p) False).
+                  botElim (Le h p)
+                    (znots (countA h k t)
+                      (id_trans Nat Z (countA h (S k) (acons k h t)) (S (countA h k t))
+                        (id_sym Nat (countA h (S k) (acons k h t)) Z (hn h (leb_false_gt h p e)))
+                        (count_acons_hit h h k t (eqb_refl h))))
+              } Refl,
+              ih (λ (x : Nat). λ (hx : Le (S p) x).
+                    elim (eqb x h) return (λ (bv : Bool).
+                        Id Bool (eqb x h) bv → Id Nat (countA x k t) Z) {
+                      True => λ (eq : Id Bool (eqb x h) True).
+                        botElim (Id Nat (countA x k t) Z)
+                          (znots (countA x k t)
+                            (id_trans Nat Z (countA x (S k) (acons k h t)) (S (countA x k t))
+                              (id_sym Nat (countA x (S k) (acons k h t)) Z (hn x hx))
+                              (count_acons_hit x h k t eq))),
+                      False => λ (eq : Id Bool (eqb x h) False).
+                        id_trans Nat (countA x k t) (countA x (S k) (acons k h t)) Z
+                          (id_sym Nat (countA x (S k) (acons k h t)) (countA x k t)
+                            (count_acons_miss x h k t eq))
+                          (hn x hx)
+                    } Refl)))
+      n a }
+def ub_of_noAboveA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
+    (Π (x : Nat) → Le (S p) x → Id Nat (countA x n a) Z) → UbA p n a }
+
+/-- THE KEYSTONE, transferred: an upper bound survives any count-preserving
+    rearrangement — which is exactly what a recursive sort hands back about the part it
+    sorted. -/
+def ub_permA : Term := pure{
+  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    λ (hc : Π (x : Nat) → Id Nat (countA x m a) (countA x q b)). λ (hb : UbA p q b).
+      ub_of_noAboveA p m a (λ (x : Nat). λ (hx : Le (S p) x).
+        id_trans Nat (countA x m a) (countA x q b) Z (hc x)
+          (noAbove_of_ubA p q b hb x hx)) }
+def ub_permA_ty : Term := pure{
+  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    (Π (x : Nat) → Id Nat (countA x m a) (countA x q b)) → UbA p q b → UbA p m a }
+
+def noBelow_of_lbA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        LbA p m az → Π (x : Nat) → Le (S x) p → Id Nat (countA x m az) Z)
+      (λ (u : Unit). λ (x : Nat). λ (hx : Le (S x) p). Refl)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : LbA p k t → Π (x : Nat) → Le (S x) p → Id Nat (countA x k t) Z).
+          λ (u : Σ (hh : Le p h) → LbA p k t). λ (x : Nat). λ (hx : Le (S x) p).
+            id_trans Nat (countA x (S k) (acons k h t)) (countA x k t) Z
+              (count_acons_miss x h k t
+                (eqb_lt_false x h (le_trans (S x) p h hx (lb_headA p k h t u))))
+              (ih (lb_tailA p k h t u) x hx))
+      n a }
+def noBelow_of_lbA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a →
+    Π (x : Nat) → Le (S x) p → Id Nat (countA x n a) Z }
+
+def lb_of_noBelowA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        (Π (x : Nat) → Le (S x) p → Id Nat (countA x m az) Z) → LbA p m az)
+      (λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (countA x Z Arr()) Z). unit)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : (Π (x : Nat) → Le (S x) p → Id Nat (countA x k t) Z) → LbA p k t).
+          λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (countA x (S k) (acons k h t)) Z).
+            Pair(
+              elim (leb p h) return (λ (bv : Bool). Id Bool (leb p h) bv → Le p h) {
+                True => λ (e : Id Bool (leb p h) True). leb_true_le p h e,
+                False => λ (e : Id Bool (leb p h) False).
+                  botElim (Le p h)
+                    (znots (countA h k t)
+                      (id_trans Nat Z (countA h (S k) (acons k h t)) (S (countA h k t))
+                        (id_sym Nat (countA h (S k) (acons k h t)) Z (hn h (leb_false_gt p h e)))
+                        (count_acons_hit h h k t (eqb_refl h))))
+              } Refl,
+              ih (λ (x : Nat). λ (hx : Le (S x) p).
+                    elim (eqb x h) return (λ (bv : Bool).
+                        Id Bool (eqb x h) bv → Id Nat (countA x k t) Z) {
+                      True => λ (eq : Id Bool (eqb x h) True).
+                        botElim (Id Nat (countA x k t) Z)
+                          (znots (countA x k t)
+                            (id_trans Nat Z (countA x (S k) (acons k h t)) (S (countA x k t))
+                              (id_sym Nat (countA x (S k) (acons k h t)) Z (hn x hx))
+                              (count_acons_hit x h k t eq))),
+                      False => λ (eq : Id Bool (eqb x h) False).
+                        id_trans Nat (countA x k t) (countA x (S k) (acons k h t)) Z
+                          (id_sym Nat (countA x (S k) (acons k h t)) (countA x k t)
+                            (count_acons_miss x h k t eq))
+                          (hn x hx)
+                    } Refl)))
+      n a }
+def lb_of_noBelowA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
+    (Π (x : Nat) → Le (S x) p → Id Nat (countA x n a) Z) → LbA p n a }
+
+def lb_permA : Term := pure{
+  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    λ (hc : Π (x : Nat) → Id Nat (countA x m a) (countA x q b)). λ (hb : LbA p q b).
+      lb_of_noBelowA p m a (λ (x : Nat). λ (hx : Le (S x) p).
+        id_trans Nat (countA x m a) (countA x q b) Z (hc x)
+          (noBelow_of_lbA p q b hb x hx)) }
+def lb_permA_ty : Term := pure{
+  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    (Π (x : Nat) → Id Nat (countA x m a) (countA x q b)) → LbA p q b → LbA p m a }
+
+/-- Two-element count commutation over arrays — `cons2_comm`'s transfer at the fixed
+    width the miniature sort needs. Double case split on `eqb`, all four arms `Refl`;
+    the `eqb m a = False` arm needs no inner split because both sides already agree. -/
+def count_swap2 : Term := pure{
+  λ (m : Nat). λ (a : Nat). λ (b : Nat).
+    elim (eqb m a) generalizing (Id Nat (countA m 2 Arr(b, a)) (countA m 2 Arr(a, b))) {
+      True => elim (eqb m b) generalizing
+        (Id Nat (boolRec (λ (w : Bool). Nat) (S (S Z)) (S Z) (eqb m b))
+                (S (boolRec (λ (w : Bool). Nat) (S Z) Z (eqb m b)))) {
+        True => Refl, False => Refl },
+      False => Refl } }
+def count_swap2_ty : Term := pure{
+  Π (m : Nat) → Π (a : Nat) → Π (b : Nat) →
+    Id Nat (countA m 2 Arr(b, a)) (countA m 2 Arr(a, b)) }
+
+/-! ## The PARTITION layer — the one stratum the array quicksort has to invent
+
+    ¶6's migration ledger counts the partition as surviving the port; ledger G4 records
+    that it does not (M23's is a take-and-rebuild over a linked list returning two lists
+    BY VALUE; the array one is an in-place scan returning an INDEX). Its *specification*
+    has to be invented too, and this is it.
+
+    **Why positional, when ¶6 deletes the positional stratum.** A split point is a
+    statement about two parts of one array, and the honest way to name them is to CARVE
+    — which is exactly ¶6's claim, and it holds for the SORT, whose sub-slices are its
+    own carves. It does not hold across a FUNCTION BOUNDARY. A callee cannot hand a
+    segment back: the return type is fixed before the carve exists, `Array n` and
+    `Array (add k r)` convert only after the caller's own carve has refined `n`, and a
+    segment cannot be returned by value either, because reading one MOVES it and leaves
+    the borrow holding a hole. So the partition's interface is positional and the sort's
+    internals are not — one predicate, `PartA`, and the bridge back to ¶1.3's transferred
+    library is a single lemma.
+
+    Two predicates, both `arrRec` over the cons view with the skip count threaded as an
+    ordinary `Nat` argument (M22's bounded-Π encoding, which the whole-array predicates
+    got to drop and these do not):
+
+      `SplitA p k a`  the first `k` elements are ≤ p, the rest are ≥ p
+      `PartA pv k a`  the first `k` are ≤ pv, element `k` **is** pv, the rest are ≥ pv
+
+    `PartA` is shaped so its `kz = 0` case yields `LbA` — the LIBRARY predicate, not a
+    third one — which is what makes the bridge to `sorted_arrCat` one lemma instead of a
+    monotonicity stratum. -/
+
+/-- Transport along a `Nat` identity — `list_rw`'s counterpart, needed to move the
+    glue from the pivot VALUE the partition returned to the element sitting in the
+    carved pivot slot. -/
+def nat_rw : Term := pure{
+  λ (P : Nat → Type). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (px : P x).
+    j Nat x (λ (y2 : Nat). λ (hh : Id Nat x y2). P y2) px y h }
+def nat_rw_ty : Term := pure{
+  Π (P : Nat → Type) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → P x → P y }
+
+/-- `Le n Z ⟹ n = Z`. The array quicksort tests emptiness with `leb 1 n` rather than
+    by matching `n`, because matching refines the length to `S m` and T2's rigid-extent
+    restriction then blocks the three-way carve at the returned index. So the False
+    branch holds `Le n Z` and has to turn it into the equation the nil lemmas want. -/
+def le_zero_eq : Term := pure{
+  λ (n : Nat). elim n return (λ (z : Nat). Le z Z → Id Nat z Z) {
+    Z => λ (h : Le Z Z). Refl,
+    S (n2) ih => λ (h : Bot). botElim (Id Nat (S n2) Z) h } }
+def le_zero_eq_ty : Term := pure{ Π (n : Nat) → Le n Z → Id Nat n Z }
+
+/-- `SortedA` of an array whose LENGTH is zero.
+
+    Not `unit`, and that is the point: there is no η at length zero. `SortedA Z σ` is a
+    stuck `arrRec` — the recursor fires on `Arr`, never on the index — so an opaque
+    length-zero payload does not compute to `Unit` and the sort's base case cannot be
+    discharged by the trivial term. The induction is on the ARRAY with the equation
+    carried, and the cons case is dead. -/
+def sortedA_nil : Term := pure{
+  λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Id Nat m Z → SortedA m b)
+      (λ (h : Id Nat Z Z). unit)
+      (λ (k : Nat). λ (hh : Nat). λ (t : Array k Nat).
+        λ (ih : Id Nat k Z → SortedA k t).
+          λ (h : Id Nat (S k) Z).
+            botElim (SortedA (S k) (acons k hh t)) (znots k (id_sym Nat (S k) Z h)))
+      n a }
+def sortedA_nil_ty : Term := pure{
+  Π (n : Nat) → Π (a : Array n Nat) → Id Nat n Z → SortedA n a }
+
+/-- `SplitA p k a` — the first `k` elements are ≤ `p`, the rest are ≥ `p`. -/
+def SplitA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
+      (λ (kz : Nat). Unit)
+      (λ (m : Nat). λ (h : Nat). λ (t : Array m Nat). λ (ih : Π (kz : Nat) → Type).
+        λ (kz : Nat).
+          elim kz return (λ (w : Nat). Type) {
+            Z => Σ (hh : Le p h) → ih Z,
+            S (k2) rec => Σ (hh : Le h p) → ih k2 })
+      n a k }
+
+/-- `PartA pv k a` — the first `k` elements are ≤ `pv`, element `k` IS `pv`, and the
+    rest are ≥ `pv`. The pivot's presence at the split point is what the sort needs and
+    `SplitA` does not give: without it the element in the carved pivot slot is merely
+    ≥ `p`, and `LbA (that element)` of the right half does not follow. -/
+def PartA : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
+      (λ (kz : Nat). Unit)
+      (λ (m : Nat). λ (h : Nat). λ (t : Array m Nat). λ (ih : Π (kz : Nat) → Type).
+        λ (kz : Nat).
+          elim kz return (λ (w : Nat). Type) {
+            Z => Σ (he : Id Nat h pv) → LbA pv m t,
+            S (k2) rec => Σ (hh : Le h pv) → ih k2 })
+      n a k }
+
+/-- `SplitA` of a length-zero array, at any skip count — `sortedA_nil`'s twin, and
+    needed for the same reason. -/
+def splitA_nil : Term := pure{
+  λ (p : Nat). λ (kz : Nat). λ (n : Nat). λ (a : Array n Nat). λ (hz : Id Nat n Z).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat).
+        Π (k2 : Nat) → Id Nat m Z → SplitA p k2 m b)
+      (λ (k2 : Nat). λ (h : Id Nat Z Z). unit)
+      (λ (m : Nat). λ (hh : Nat). λ (t : Array m Nat).
+        λ (ih : Π (k2 : Nat) → Id Nat m Z → SplitA p k2 m t).
+          λ (k2 : Nat). λ (h : Id Nat (S m) Z).
+            botElim (SplitA p k2 (S m) (acons m hh t)) (znots m (id_sym Nat (S m) Z h)))
+      n a kz hz }
+def splitA_nil_ty : Term := pure{
+  Π (p : Nat) → Π (kz : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
+    Id Nat n Z → SplitA p kz n a }
+
+/-! ### Crossing a concatenation
+
+    Every one of these is an induction on the LEFT array and nothing else — the same
+    `arrRec` shape as `bound_arrCat` and `sorted_arrCat`, which is the evidence that
+    this stratum, though new, is not a new KIND of work.
+
+    The spellings are chosen to be the ones the programs actually produce, which is
+    R7's lesson arriving in the pure layer: `add k mm` where the carve decomposes, `S k`
+    where a skip count runs one PAST the left part. Stating `splitA_cat_e1` with the
+    generic `add k t` instead of `S k` would have been more general and unusable, since
+    `S k` and `add k 1` do not convert for symbolic `k` and the program has the former. -/
+
+/-- A zero skip count is a lower bound on the whole array — the crossing from the
+    partition layer back into ¶1.3's transferred library. -/
+def splitA0_lb : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). SplitA p Z m b → LbA p m b)
+      (λ (h : Unit). unit)
+      (λ (k : Nat). λ (hh : Nat). λ (t : Array k Nat).
+        λ (ih : SplitA p Z k t → LbA p k t).
+          λ (s : Σ (h2 : Le p hh) → SplitA p Z k t).
+            elim s return (λ (qz : Σ (h2 : Le p hh) → SplitA p Z k t). LbA p (S k) (acons k hh t)) {
+              Pair (u) (v) => Pair(u, ih v) })
+      n a }
+def splitA0_lb_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → SplitA p Z n a → LbA p n a }
+
+/-- Split a `SplitA` whose skip count runs ONE PAST the left part: the left part is
+    wholly bounded, and what is left is a `SplitA` at skip 1 over the right part. This
+    is the shape the swap branch needs — it reads off both "the left part is all ≤ p"
+    and "the element about to be swapped out is ≤ p" in one step. -/
+def splitA_cat_e1 : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        SplitA p (S kz) (add kz mm) (arrCat kz mm lz w) →
+          Σ (hu : UbA p kz lz) → SplitA p (S Z) mm w)
+      (λ (h : SplitA p (S Z) mm w). Pair(unit, h))
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : SplitA p (S k2) (add k2 mm) (arrCat k2 mm t w) →
+                  Σ (hu : UbA p k2 t) → SplitA p (S Z) mm w).
+          λ (s : Σ (h2 : Le hh p) → SplitA p (S k2) (add k2 mm) (arrCat k2 mm t w)).
+            elim s return (λ (qz : Σ (h2 : Le hh p) →
+                                SplitA p (S k2) (add k2 mm) (arrCat k2 mm t w)).
+                Σ (hu : UbA p (S k2) (acons k2 hh t)) → SplitA p (S Z) mm w) {
+              Pair (u) (v) =>
+                elim (ih v) return (λ (qz2 : Σ (hu : UbA p k2 t) → SplitA p (S Z) mm w).
+                    Σ (hu : UbA p (S k2) (acons k2 hh t)) → SplitA p (S Z) mm w) {
+                  Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
+      k l }
+def splitA_cat_e1_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    SplitA p (S k) (add k mm) (arrCat k mm l w) →
+      Σ (hu : UbA p k l) → SplitA p (S Z) mm w }
+
+/-- The converse at skip exactly `k`: a bounded left part in front of a `SplitA` at
+    skip zero is a `SplitA` at skip `k`. -/
+def splitA_cat_i0 : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        UbA p kz lz → SplitA p Z mm w → SplitA p kz (add kz mm) (arrCat kz mm lz w))
+      (λ (u : Unit). λ (h : SplitA p Z mm w). h)
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : UbA p k2 t → SplitA p Z mm w →
+                  SplitA p k2 (add k2 mm) (arrCat k2 mm t w)).
+          λ (u : Σ (h2 : Le hh p) → UbA p k2 t). λ (h : SplitA p Z mm w).
+            elim u return (λ (qz : Σ (h2 : Le hh p) → UbA p k2 t).
+                SplitA p (S k2) (add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
+              Pair (a1) (b1) => Pair(a1, ih b1 h) })
+      k l }
+def splitA_cat_i0_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    UbA p k l → SplitA p Z mm w → SplitA p k (add k mm) (arrCat k mm l w) }
+
+/-- `PartA`'s introduction, the partition's last step: a bounded left part in front of
+    a `PartA` at skip zero (which is "the head IS the pivot, the tail is ≥ it"). -/
+def partA_cat_i0 : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        UbA pv kz lz → PartA pv Z mm w → PartA pv kz (add kz mm) (arrCat kz mm lz w))
+      (λ (u : Unit). λ (h : PartA pv Z mm w). h)
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : UbA pv k2 t → PartA pv Z mm w →
+                  PartA pv k2 (add k2 mm) (arrCat k2 mm t w)).
+          λ (u : Σ (h2 : Le hh pv) → UbA pv k2 t). λ (h : PartA pv Z mm w).
+            elim u return (λ (qz : Σ (h2 : Le hh pv) → UbA pv k2 t).
+                PartA pv (S k2) (add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
+              Pair (a1) (b1) => Pair(a1, ih b1 h) })
+      k l }
+def partA_cat_i0_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    UbA pv k l → PartA pv Z mm w → PartA pv k (add k mm) (arrCat k mm l w) }
+
+/-- **THE BRIDGE.** `PartA`'s elimination at the sort's own carve: the left segment is
+    bounded above by the pivot, and what remains is `PartA` at skip zero over the pivot
+    slot and the right segment — which unfolds, with no further lemma, to exactly
+    `Id Nat (that element) pv` and `LbA pv (right segment)`. Those three facts are
+    `sorted_arrCat`'s four hypotheses minus the two the recursive calls supply. -/
+def partA_cat_e0 : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        PartA pv kz (add kz mm) (arrCat kz mm lz w) →
+          Σ (hu : UbA pv kz lz) → PartA pv Z mm w)
+      (λ (h : PartA pv Z mm w). Pair(unit, h))
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : PartA pv k2 (add k2 mm) (arrCat k2 mm t w) →
+                  Σ (hu : UbA pv k2 t) → PartA pv Z mm w).
+          λ (s : Σ (h2 : Le hh pv) → PartA pv k2 (add k2 mm) (arrCat k2 mm t w)).
+            elim s return (λ (qz : Σ (h2 : Le hh pv) →
+                                PartA pv k2 (add k2 mm) (arrCat k2 mm t w)).
+                Σ (hu : UbA pv (S k2) (acons k2 hh t)) → PartA pv Z mm w) {
+              Pair (u) (v) =>
+                elim (ih v) return (λ (qz2 : Σ (hu : UbA pv k2 t) → PartA pv Z mm w).
+                    Σ (hu : UbA pv (S k2) (acons k2 hh t)) → PartA pv Z mm w) {
+                  Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
+      k l }
+def partA_cat_e0_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    PartA pv k (add k mm) (arrCat k mm l w) →
+      Σ (hu : UbA pv k l) → PartA pv Z mm w }
+
+/-! ### The same crossings, one conclusion each
+
+    A body cannot conveniently destructure a Σ — a `let`-bound pure value is not
+    type-checked (§23's filed checker gap), so the alternative is an inline `elim` whose
+    `return` motive is the function's whole return type written out again. Splitting each
+    crossing into its two conclusions moves that cost into the pure layer, where writing
+    the types is free, and keeps the programs readable. -/
+
+def splitA_cat_ub : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : SplitA p (S k) (add k mm) (arrCat k mm l w)).
+      elim (splitA_cat_e1 p k mm l w s)
+        return (λ (qz : Σ (hu : UbA p k l) → SplitA p (S Z) mm w). UbA p k l) {
+          Pair (u) (v) => u } }
+def splitA_cat_ub_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    SplitA p (S k) (add k mm) (arrCat k mm l w) → UbA p k l }
+
+def splitA_cat_rest : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : SplitA p (S k) (add k mm) (arrCat k mm l w)).
+      elim (splitA_cat_e1 p k mm l w s)
+        return (λ (qz : Σ (hu : UbA p k l) → SplitA p (S Z) mm w). SplitA p (S Z) mm w) {
+          Pair (u) (v) => v } }
+def splitA_cat_rest_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    SplitA p (S k) (add k mm) (arrCat k mm l w) → SplitA p (S Z) mm w }
+
+/-- A skip-1 `SplitA` over a cons: its head is bounded, and its tail is a skip-0 one.
+    Both are definitional unfoldings; naming them keeps the swap branch flat. -/
+def splitA1_head : Term := pure{
+  λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
+    λ (s : Σ (hh : Le yv p) → SplitA p Z r g).
+      elim s return (λ (qz : Σ (hh : Le yv p) → SplitA p Z r g). Le yv p) {
+        Pair (u) (v) => u } }
+def splitA1_head_ty : Term := pure{
+  Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
+    SplitA p (S Z) (S r) (acons r yv g) → Le yv p }
+
+def splitA1_tail : Term := pure{
+  λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
+    λ (s : Σ (hh : Le yv p) → SplitA p Z r g).
+      elim s return (λ (qz : Σ (hh : Le yv p) → SplitA p Z r g). SplitA p Z r g) {
+        Pair (u) (v) => v } }
+def splitA1_tail_ty : Term := pure{
+  Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
+    SplitA p (S Z) (S r) (acons r yv g) → SplitA p Z r g }
+
+def partA_cat_ub : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : PartA pv k (add k mm) (arrCat k mm l w)).
+      elim (partA_cat_e0 pv k mm l w s)
+        return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). UbA pv k l) {
+          Pair (u) (v) => u } }
+def partA_cat_ub_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    PartA pv k (add k mm) (arrCat k mm l w) → UbA pv k l }
+
+def partA_cat_rest : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : PartA pv k (add k mm) (arrCat k mm l w)).
+      elim (partA_cat_e0 pv k mm l w s)
+        return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). PartA pv Z mm w) {
+          Pair (u) (v) => v } }
+def partA_cat_rest_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    PartA pv k (add k mm) (arrCat k mm l w) → PartA pv Z mm w }
+
+/-- The pivot slot, read off a skip-0 `PartA`: the element there IS the pivot, and
+    everything after it is bounded below by the pivot. These two are `sorted_arrCat`'s
+    remaining hypotheses, and the reason `PartA` records the pivot's identity at all. -/
+def partA0_eq : Term := pure{
+  λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
+    λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
+      elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). Id Nat ev pv) {
+        Pair (u) (v) => u } }
+def partA0_eq_ty : Term := pure{
+  Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
+    PartA pv Z (S jj) (acons jj ev g) → Id Nat ev pv }
+
+def partA0_lb : Term := pure{
+  λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
+    λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
+      elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). LbA pv jj g) {
+        Pair (u) (v) => v } }
+def partA0_lb_ty : Term := pure{
+  Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
+    PartA pv Z (S jj) (acons jj ev g) → LbA pv jj g }
+
+/-! ### The count layer for a swap across a carve
+
+    The partition's one mutating step exchanges the array's head with the element at
+    the split point, and those two sit in DIFFERENT segments — the whole reason the
+    swap is writable at all is that each is at index 0 of its own carve (¶6's "a
+    segment with its own zero"). What the permutation conjunct then owes is that the
+    exchange does not move any count, over a spine four levels deep. -/
+
+/-- `countA`'s own step function, named so a congruence can be stated over it: the
+    count of a cons is a `bump` of the count of its tail. -/
+def bumpN : Term := pure{
+  λ (b : Bool). λ (c : Nat). elim b return (λ (w : Bool). Nat) { True => S c, False => c } }
+
+/-- Congruence for `countA` under a cons — `count_cons_congr`'s array counterpart. -/
+def count_acons_congr : Term := pure{
+  λ (q : Nat). λ (h : Nat). λ (k : Nat). λ (t1 : Array k Nat). λ (t2 : Array k Nat).
+    λ (hc : Id Nat (countA q k t1) (countA q k t2)).
+      id_congr Nat Nat (λ (c : Nat). bumpN (eqb q h) c)
+        (countA q k t1) (countA q k t2) hc }
+def count_acons_congr_ty : Term := pure{
+  Π (q : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t1 : Array k Nat) → Π (t2 : Array k Nat) →
+    Id Nat (countA q k t1) (countA q k t2) →
+      Id Nat (countA q (S k) (acons k h t1)) (countA q (S k) (acons k h t2)) }
+
+/-- The arithmetic core of the swap, over the two `bump`s alone: which of the two
+    exchanged elements is being counted does not matter. Four arms; the two mixed ones
+    are `add_succ` and its symmetry, and the two matching ones are `Refl` — `count_swap2`
+    at width two had all four `Refl` because both counts were concrete. -/
+def bump_comm : Term := pure{
+  λ (b1 : Bool). λ (b2 : Bool). λ (cl : Nat). λ (cg : Nat).
+    elim b1 return (λ (w : Bool).
+        Id Nat (bumpN b2 (add cl (bumpN w cg))) (bumpN w (add cl (bumpN b2 cg)))) {
+      True =>
+        elim b2 return (λ (w2 : Bool).
+            Id Nat (bumpN w2 (add cl (S cg))) (S (add cl (bumpN w2 cg)))) {
+          True => Refl,
+          False => add_succ cl cg },
+      False =>
+        elim b2 return (λ (w2 : Bool).
+            Id Nat (bumpN w2 (add cl cg)) (add cl (bumpN w2 cg))) {
+          True => id_sym Nat (add cl (S cg)) (S (add cl cg)) (add_succ cl cg),
+          False => Refl } } }
+def bump_comm_ty : Term := pure{
+  Π (b1 : Bool) → Π (b2 : Bool) → Π (cl : Nat) → Π (cg : Nat) →
+    Id Nat (bumpN b2 (add cl (bumpN b1 cg))) (bumpN b1 (add cl (bumpN b2 cg))) }
+
+/-- **The swap preserves every count**, stated over exactly the spine the partition
+    produces: head, left segment, the swapped cell, right segment. Two `count_arrCat`
+    rewrites bracket `bump_comm`. -/
+def count_swapA : Term := pure{
+  λ (q : Nat). λ (x : Nat). λ (y : Nat). λ (k : Nat). λ (l : Array k Nat).
+  λ (r : Nat). λ (g : Array r Nat).
+    id_trans Nat
+      (countA q (S (add k (S r))) (acons (add k (S r)) y (arrCat k (S r) l (acons r x g))))
+      (bumpN (eqb q y) (add (countA q k l) (bumpN (eqb q x) (countA q r g))))
+      (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g))))
+      (id_congr Nat Nat (λ (c : Nat). bumpN (eqb q y) c)
+         (countA q (add k (S r)) (arrCat k (S r) l (acons r x g)))
+         (add (countA q k l) (countA q (S r) (acons r x g)))
+         (count_arrCat q k l (S r) (acons r x g)))
+      (id_trans Nat
+        (bumpN (eqb q y) (add (countA q k l) (bumpN (eqb q x) (countA q r g))))
+        (bumpN (eqb q x) (add (countA q k l) (bumpN (eqb q y) (countA q r g))))
+        (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g))))
+        (bump_comm (eqb q x) (eqb q y) (countA q k l) (countA q r g))
+        (id_sym Nat
+          (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g))))
+          (bumpN (eqb q x) (add (countA q k l) (bumpN (eqb q y) (countA q r g))))
+          (id_congr Nat Nat (λ (c : Nat). bumpN (eqb q x) c)
+             (countA q (add k (S r)) (arrCat k (S r) l (acons r y g)))
+             (add (countA q k l) (countA q (S r) (acons r y g)))
+             (count_arrCat q k l (S r) (acons r y g))))) }
+def count_swapA_ty : Term := pure{
+  Π (q : Nat) → Π (x : Nat) → Π (y : Nat) → Π (k : Nat) → Π (l : Array k Nat) →
+  Π (r : Nat) → Π (g : Array r Nat) →
+    Id Nat (countA q (S (add k (S r))) (acons (add k (S r)) y (arrCat k (S r) l (acons r x g))))
+           (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g)))) }
+
 end Dllbc.StdLemmas

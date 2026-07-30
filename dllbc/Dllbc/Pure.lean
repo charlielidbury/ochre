@@ -106,6 +106,66 @@ def substPure (j : Nat) (s : Val) (v : Val) : Val := substGo j 0 (pvarFree s) s 
 
 def substPureList (j : Nat) (s : Val) (vs : List Val) : List Val := substGoList j 0 (pvarFree s) s vs
 
+/-! ## Kernel arithmetic, and the `Array` former's vocabulary
+
+    `add` and `Le` are library terms (`Std`) in every other respect, but the CARVE
+    rule's premises are *stated* against them: premise (2) is a `Le`, and premise
+    (3) decomposes an extent with `add`. A kernel rule cannot cite a library it does
+    not import, and two syntactically different `add`s would never convert — so the
+    single source of truth for both moves here, and `Std` aliases these. (§9 already
+    files "`Le` as a primitive former" as a pending recognition prerequisite; this is
+    that pressure arriving from a second direction.) -/
+
+def kNatTy : Val := .const "Nat"
+def kUnitTy : Val := .const "Unit"
+def kBotTy : Val := .const "Bot"
+def kNatRecS (P z s n : Val) : Val := .app (.app (.app (.app (.const "natRec") P) z) s) n
+
+/-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
+def kAddFn : Val :=
+  .lam kNatTy (.lam kNatTy (kNatRecS (.lam kNatTy kNatTy) (.pvar 0)
+    (.lam kNatTy (.lam kNatTy (.ctor "S" [.pvar 0]))) (.pvar 1)))
+def kAdd (a b : Val) : Val := .app (.app kAddFn a) b
+
+/-- `Le : Nat → Nat → Type` as a computing predicate (`Z ≤ _ ↦ ⊤`, `S ≤ Z ↦ ⊥`,
+    `S ≤ S ↦ recurse`). Premise (2)'s obligation type is built from this. -/
+def kLeFn : Val :=
+  .lam kNatTy (kNatRecS (.lam kNatTy (.pi kNatTy .type)) (.lam kNatTy kUnitTy)
+    (.lam kNatTy (.lam (.pi kNatTy .type) (.lam kNatTy
+      (kNatRecS (.lam kNatTy .type) kBotTy
+        (.lam kNatTy (.lam .type (.app (.pvar 3) (.pvar 1)))) (.pvar 0)))))
+    (.pvar 0))
+def kLe (a b : Val) : Val := .app (.app kLeFn a) b
+
+/-- `Array n T` — the ¶1.1 former, in the FIXED BASIS rather than §7's declaration
+    scheme (the values are flat runs, which no CIC-scheme inductive has). -/
+def arrayTy (n T : Val) : Val := .app (.app (.const "Array") n) T
+
+/-- Recognize `Array n T`, returning `(n, T)`. -/
+def asArrayTy? : Val → Option (Val × Val)
+  | .app (.app (.const "Array") n) t => some (n, t)
+  | _ => none
+
+/-- Read a `Nat` value as a Lean numeral, if it is concrete. -/
+def natOfVal? : Val → Option Nat
+  | .ctor "Z" [] => some 0
+  | .ctor "S" [n] => (natOfVal? n).map (· + 1)
+  | _ => none
+
+/-- The `Nat` value of a Lean numeral. -/
+def valOfNat : Nat → Val
+  | 0 => .ctor "Z" []
+  | k + 1 => .ctor "S" [valOfNat k]
+
+/-! An array's **owned run**: `Arr [v₁ … v_c]`, the flat literal, which is both the
+    value form and the knowledge form (`ctorSig`'s field telescope is `T` repeated
+    `c` times, so it is exactly what §7 would have generated). Element `i` is child
+    `i` — a *subterm*, which is the whole reason ¶1.2 puts the former in the basis
+    rather than deriving it from a right-nested spine. -/
+def arrRun? : Val → Option (List Val)
+  | .ctor "Arr" vs => some vs
+  | _ => none
+
 /-! ## Weak-head normalization (β and ι)
 
     An application spine is `head a₁ … aₙ`. β fires when the head is a `lam`;
@@ -171,6 +231,79 @@ def whnfV : Nat → Val → Val
       match whnfV fuel p with
       | .ctor "Refl" [] => whnfV fuel (rebuildSpine d rest)
       | p' => rebuildSpine (.const "k") (_A :: _a :: _P :: d :: p' :: rest)  -- stuck
+    -- ## The array basis's computing constants (¶1.3)
+    --
+    -- `arrCat T m k a b : Array (add m k) T` — the SPLIT view, and the comptime
+    -- shadow of the segment structure. It computes on run-headed arguments
+    -- (segment-list concatenation) and is a legitimate stuck neutral on σ's, which
+    -- is exactly §3.2's knowledge/state line: the segment list is state, the
+    -- `arrCat` spine is knowledge. Empty runs are absorbed — a zero-extent carve
+    -- piece must vanish definitionally, or every degenerate carve's rejoin
+    -- conversion would need a lemma.
+    --
+    -- DEVIATION from ¶1.3's signature, and the reason: the doc writes `arrCat : Π T
+    -- (m k : Nat) → …`, but nothing needs the `T`. Its result type is checked, never
+    -- synthesized (an `Array` is never applied), while the merge normalization and
+    -- the ⇝ fold would both have to MANUFACTURE a `T` they cannot read off a value
+    -- tree — Ω records extents, not element types. So `T` is dropped here and
+    -- recovered from the expected type at the check. Same for `acons`; `aget` keeps
+    -- its `T`, since its result type genuinely is `T` and must be synthesized.
+    | .const "arrCat", m :: k :: a :: b :: rest =>
+      match whnfV fuel a, whnfV fuel b with
+      | .ctor "Arr" [], b' => whnfV fuel (rebuildSpine b' rest)
+      | a', .ctor "Arr" [] => whnfV fuel (rebuildSpine a' rest)
+      | .ctor "Arr" xs, .ctor "Arr" ys => whnfV fuel (rebuildSpine (.ctor "Arr" (xs ++ ys)) rest)
+      -- CONS-VIEW compatibility: `arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`, the
+      -- array counterpart of `append (Cons h t) u ⇝ Cons h (append t u)`. Without it the
+      -- library transfer ¶1.3 promises is not mechanical: `sorted_append_pivot`'s proof
+      -- turns on `Sorted (append (Cons h t) …)` UNFOLDING definitionally, and the array
+      -- restatement needs the same unfolding or every step wants a transport lemma.
+      | .app (.app (.app (.const "acons") m') x) xs, b' =>
+        whnfV fuel (rebuildSpine
+          (.app (.app (.app (.const "acons") (kAdd m' k)) x)
+            (.app (.app (.app (.app (.const "arrCat") m') k) xs) b')) rest)
+      -- A nonempty RUN on the left with a non-run on the right peels its head into an
+      -- `acons`, which is the same rule read through the other view: a literal is a
+      -- cons spine that happens to be written flat. Without this `arrCat (asingle p) b`
+      -- is stuck for symbolic `b` — and `asingle p` computes to a RUN, so ¶6's own
+      -- spelling of the pivot splice would not reach the cons view it is meant to be.
+      | .ctor "Arr" (x :: xs), b' =>
+        let tlLen := valOfNat xs.length
+        whnfV fuel (rebuildSpine
+          (.app (.app (.app (.const "acons") (kAdd tlLen k)) x)
+            (.app (.app (.app (.app (.const "arrCat") tlLen) k) (.ctor "Arr" xs)) b')) rest)
+      | a', b' => rebuildSpine (.const "arrCat") (m :: k :: a' :: b' :: rest)
+    -- `aget T n i a : T` — positional read of the snapshot (¶2.2's ⇝ column at an
+    -- index place). Fires only at a concrete index into a run.
+    | .const "aget", tt :: n :: i :: a :: rest =>
+      match natOfVal? (whnfV fuel i), whnfV fuel a with
+      | some j, .ctor "Arr" vs =>
+        match vs.get? j with
+        | some v => whnfV fuel (rebuildSpine v rest)
+        | none => rebuildSpine (.const "aget") (tt :: n :: i :: .ctor "Arr" vs :: rest)
+      | _, a' => rebuildSpine (.const "aget") (tt :: n :: i :: a' :: rest)
+    -- `acons T n x xs : Array (S n) T` — the CONS view's constructor, so that the
+    -- pure library over arrays can be written exactly like the one over lists.
+    | .const "acons", n :: x :: xs :: rest =>
+      match whnfV fuel xs with
+      | .ctor "Arr" vs => whnfV fuel (rebuildSpine (.ctor "Arr" (x :: vs)) rest)
+      | xs' => rebuildSpine (.const "acons") (n :: x :: xs' :: rest)
+    -- `arrRec T P pn pc n a : P n a` — the cons-view recursor (¶1.3). ι on a run:
+    -- empty ↦ pn, `Arr (x :: vs)` ↦ pc |vs| x (Arr vs) (rec on Arr vs).
+    | .const "arrRec", tt :: motive :: pn :: pc :: n :: a :: rest =>
+      match whnfV fuel a with
+      | .ctor "Arr" [] => whnfV fuel (rebuildSpine pn rest)
+      | .ctor "Arr" (x :: vs) =>
+        let tl : Val := .ctor "Arr" vs
+        let k : Val := valOfNat vs.length
+        let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, k, tl]
+        whnfV fuel (rebuildSpine (rebuildSpine pc [k, x, tl, recCall]) rest)
+      -- …and ι on the CONS view, so a predicate over arrays unfolds on an `acons`
+      -- exactly as its list counterpart unfolds on a `Cons`.
+      | .app (.app (.app (.const "acons") m') x) xs =>
+        let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, m', xs]
+        whnfV fuel (rebuildSpine (rebuildSpine pc [m', x, xs, recCall]) rest)
+      | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
     -- botElim never fires (⊥ has no constructors); it is always a stuck value.
     | _, _ => rebuildSpine head args
 
@@ -204,6 +337,139 @@ end
     normalizing system, equivalent. -/
 def convert (fuel : Nat) (a b : Val) : Bool := nfV fuel a == nfV fuel b
 
+/-! ## Segments (¶1.1): the carved array's state form
+
+    An array value at `Array n T` is one of
+      * `Arr [v₁ … v_n]`   — an owned flat run (also the knowledge form),
+      * `sym σ`            — opaque,
+      * a stuck neutral    — an `arrCat` spine,
+      * `§segs [seg₁ … seg_k]` (k ≥ 2) — CARVED, each `§seg [c, body]`.
+
+    The last is **state only**: reserved names with no `ctorSig` entry, so no program
+    can write or match one, and every generic `Val` walker (`loanIds`, `symIds`,
+    `renumber`, `loanToPvar`, `hasStateMarker`, `beq`) traverses it unchanged — the
+    load-bearing claim of Appendix A, and the reason the borrow machinery needed no
+    edit. An UNCARVED array carries no wrapper at all: ¶1.1's "a single segment is
+    abbreviated to its body, since the two are the same state". -/
+
+def segNode (c body : Val) : Val := .ctor "§seg" [c, body]
+
+/-- Rebuild a segment list into an array node, restoring the two invariants: drop
+    zero-extent segments (¶1.1's *drop-empty*), and unwrap a single segment. -/
+def segsNode (segs : List Val) : Val :=
+  match segs with
+  | [] => .ctor "Arr" []
+  | [.ctor "§seg" [_, b]] => if hasStateMarker b then .ctor "§segs" segs else b
+  | ss => .ctor "§segs" ss
+
+def asSeg? : Val → Option (Val × Val)
+  | .ctor "§seg" [c, b] => some (c, b)
+  | _ => none
+
+/-- Is a segment body **owned** — one of the three forms a carve is defined on
+    (¶1.1: an owned run, a σ, a neutral) rather than the two ownership markers?
+
+    The test is MARKER-FREEDOM, not "the body is not itself a marker", and the
+    difference is load-bearing. An element cursor (`&mut a[i]`) parks its marker
+    INSIDE the one-slot run — `§seg [1, Arr [loanₘ ℓ]]` — because ¶2.1 puts the
+    element, not an `Array 1 T`, at an index place. A shallow test would call that
+    body owned, let it merge into its neighbour's run, and then hand the MARKER out
+    as an element on the next read: the silent-marker class §3.2 and §5.2 both
+    warn about, reached by a new route. -/
+def segOwned (b : Val) : Bool := !hasStateMarker b
+
+/-- The total extent of a segment list: RIGHT-NESTED, with no trailing `Z`. `add`
+    recurses on its first argument, so `add c Z` is stuck the moment `c` is symbolic,
+    and every conversion the residue transition arranges would fail on the trailing
+    zero alone. -/
+partial def segsExtent? : List Val → Option Val
+  | [] => some (.ctor "Z" [])
+  | [s] => (asSeg? s).map (·.1)
+  | s :: rest => do
+    let (c, _) ← asSeg? s
+    let tot ← segsExtent? rest
+    some (kAdd c tot)
+
+/-- The extent of an array-shaped value read off the value itself, where that is
+    possible: a run knows its length, a segment list sums its extents, an `arrCat`
+    spine carries both halves. A bare `σ` does NOT — its extent lives in its `sctx`
+    type, which only the machine can reach (`arrExtent` there). -/
+partial def arrExtentPure? : Val → Option Val
+  | .ctor "Arr" vs => some (valOfNat vs.length)
+  | .ctor "§segs" segs => segsExtent? segs
+  | .app (.app (.app (.app (.const "arrCat") m) k) _) _ => some (kAdd m k)
+  | _ => none
+
+/-! **Merge** (¶1.1), the normalization that makes the carve history invisible: two
+    adjacent segments with owned bodies collapse into one of the summed extent.
+
+    Only *runs* are concatenated. Two adjacent σ's have `arrCat σ₁ σ₂` as their joint
+    body in the doc, and building it here would be harmless but pointless: the pair of
+    segments already types against `Array (add c₁ c₂) T` by the extent-consistency
+    check, and `⇝` folds them to that very `arrCat` anyway. Leaving them apart keeps
+    merge a pure function of the value tree — no element types, no fuel, no sctx. -/
+partial def mergeSegList : List Val → List Val
+  | s₁ :: s₂ :: rest =>
+    match asSeg? s₁, asSeg? s₂ with
+    | some (c₁, b₁), some (c₂, b₂) =>
+      match b₁, b₂ with
+      | .ctor "Arr" xs, .ctor "Arr" ys =>
+        if segOwned b₁ && segOwned b₂ then
+          mergeSegList (segNode (kAdd c₁ c₂) (.ctor "Arr" (xs ++ ys)) :: rest)
+        else s₁ :: mergeSegList (s₂ :: rest)
+      | _, _ => s₁ :: mergeSegList (s₂ :: rest)
+    | _, _ => s₁ :: mergeSegList (s₂ :: rest)
+  | ss => ss
+
+/-- Merge-normalize an array node wherever one sits in `v`. Applied at every *read*
+    of a place, which is what makes it robust to the §5.2 demand-end sites: a
+    suspension collapsing mid-body turns markers back into values, and the read that
+    follows is what re-merges them. Nothing has to remember to. -/
+partial def mergeArrays : Val → Val
+  | .ctor "§segs" segs =>
+    segsNode (mergeSegList (segs.map (fun s => match asSeg? s with
+      | some (c, b) => segNode c (mergeArrays b)
+      | none => mergeArrays s)))
+  | .ctor n args => .ctor n (args.map mergeArrays)
+  | .borrowM ℓ p => .borrowM ℓ (mergeArrays p)
+  | v => v
+
+/-- `arrCat` applied to its four arguments. -/
+def arrCatS (m k a b : Val) : Val := .app (.app (.app (.app (.const "arrCat") m) k) a) b
+
+/-- **The ⇝ bridge** (¶1.3): fold one segment list into its `arrCat` spine — the
+    knowledge form of what the array *is*, which never mentions a marker or a hole.
+    `none` when some body is one: "a suspended array has no snapshot; only a
+    collapsed one does", §5.2's proper-payload premise arriving at an array node. -/
+partial def arrFoldSegs? : List Val → Option Val
+  | [] => some (.ctor "Arr" [])
+  | [s] => do
+    let (_, b) ← asSeg? s
+    if segOwned b then some b else none
+  | s :: rest => do
+    let (c, b) ← asSeg? s
+    if !segOwned b then none
+    else do
+      let bt ← arrFoldSegs? rest
+      let ct ← segsExtent? rest
+      some (arrCatS c ct b bt)
+
+/-- Fold every *foldable* segment list in `v`, leaving a suspended one in place.
+    Total by design: an unfoldable node stays the state form it is and is rejected
+    at the one place that judges (`hasType`, with a distinctive error), rather than
+    turning every comptime read of a marker-bearing aggregate into a new error. -/
+partial def arrFoldDeep : Val → Val
+  | .ctor "§segs" segs =>
+    let segs' := segs.map (fun s => match asSeg? s with
+      | some (c, b) => segNode c (arrFoldDeep b)
+      | none => arrFoldDeep s)
+    match arrFoldSegs? segs' with
+    | some v => v
+    | none => .ctor "§segs" segs'
+  | .ctor n args => .ctor n (args.map arrFoldDeep)
+  | .borrowM ℓ p => .borrowM ℓ (arrFoldDeep p)
+  | v => v
+
 /-! ## Constructor signature table (§4)
 
     No inductive-declaration machinery: a small fixed table telling `hasType`,
@@ -228,6 +494,16 @@ def ctorSig : String → Option CtorSig
   | "Cons"  => some { fieldTypes := fun ty =>
       match ty with | .app (.const "List") t => some [t, .app (.const "List") t] | _ => none }
   | "Pair"  => some { fieldTypes := fun ty => match ty with | .sigmaT a b => some [a, b] | _ => none }
+  -- `Arr` — the array literal (¶1.4). Its field telescope for a CONCRETE `n` is `T`
+  -- repeated `n` times; at a symbolic `n` there is no constructor signature, and
+  -- correctly so — one cannot write an array literal of unknown length. This is
+  -- hand-written rather than §7-generated, which is the concrete cost basis
+  -- membership carries (¶9c): the fixed basis and the declaration scheme can drift,
+  -- and this entry is where the drift would start.
+  | "Arr"   => some { fieldTypes := fun ty =>
+      match asArrayTy? ty with
+      | some (n, t) => (natOfVal? (Val.whnfV 1000 n)).map (fun k => List.replicate k t)
+      | none => none }
   -- Refl : Id A a a — a nullary constructor whose type demands equal endpoints.
   -- (Fixed fuel for the endpoint convert; construction sites are small.)
   | "Refl"  => some { fieldTypes := fun ty =>
@@ -246,6 +522,12 @@ def typeCtors : Val → Option (List String)
   | .app (.const "List") _ => some ["Nil", "Cons"]
   | .sigmaT _ _   => some ["Pair"]
   | .idT _ _ _    => some ["Refl"]                 -- §10: Id's only constructor
-  | _ => none
+  -- `Array n T` has the single constructor `Arr` at a concrete `n`, and NO known
+  -- constructor set at a symbolic one. ¶1.4: arrays are never matched anyway — an
+  -- array's information is positional, reached by the place grammar, not by a tag —
+  -- so this entry exists for exhaustiveness's benefit and is never consulted.
+  | ty => match asArrayTy? ty with
+    | some (n, _) => if (natOfVal? (Val.whnfV 1000 n)).isSome then some ["Arr"] else none
+    | none => none
 
 end Dllbc.Val

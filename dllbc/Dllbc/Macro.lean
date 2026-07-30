@@ -50,6 +50,13 @@ syntax:max "(" dlle ")" : dlle                -- grouping
 syntax:max ident "(" dlle,* ")" : dlle        -- constructor application C(a, b)
 syntax:70 "&mut" dlle:70 : dlle               -- mutable borrow
 syntax:75 "*" dlle:75 : dlle                  -- dereference / peel
+-- ¶2.1's index and range steps, binding tighter than the peel. No evidence slot
+-- here: `dllbc{ }` is the concrete-trace surface, where every bound COMPUTES and
+-- ¶3.2's supply route 1 ("conversion alone") applies. Cited evidence needs a pure
+-- term, which is the unified `uterm` grammar's business.
+syntax:max dlle:max noWs "[" dlle "]" : dlle              -- a[i]
+syntax:max dlle:max noWs "[" dlle ";" dlle "]" : dlle     -- a[lo ; cnt]
+syntax:max dlle:max noWs "[" dlle ";" ".." "]" : dlle     -- a[lo ; ..]
 syntax:max "match" ident "{" dllArm,* "}" : dlle   -- pattern match (§3)
 syntax:max "match" ident ":" ident "{" dllArm,* "}" : dlle     -- …with a branch equation (M23)
 syntax:max "if" dlle "{" dllb "}" "else" "{" dllb "}" : dlle   -- §12 sugar over a Bool match
@@ -119,6 +126,19 @@ partial def expandE (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dl
   | `(dlle| *$e:dlle) => do
     let (e', n) ← expandE ctx next e
     return (← `(Dllbc.Term.deref $e'), n)
+  | `(dlle| $a:dlle[$i:dlle]) => do
+    let (a', n1) ← expandE ctx next a
+    let (i', n2) ← expandE ctx n1 i
+    return (← `(Dllbc.Term.index $a' $i' none), n2)
+  | `(dlle| $a:dlle[$lo:dlle ; ..]) => do
+    let (a', n1) ← expandE ctx next a
+    let (lo', n2) ← expandE ctx n1 lo
+    return (← `(Dllbc.Term.range $a' $lo' none none none none), n2)
+  | `(dlle| $a:dlle[$lo:dlle ; $c:dlle]) => do
+    let (a', n1) ← expandE ctx next a
+    let (lo', n2) ← expandE ctx n1 lo
+    let (c', n3) ← expandE ctx n2 c
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none none none), n3)
   | `(dlle| $c:ident ($args,*)) => do
     let (args', n) ← expandEList ctx next args.getElems.toList
     let name := c.getId.toString

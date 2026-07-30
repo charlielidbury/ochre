@@ -120,6 +120,12 @@ mutual
     | .borrowM ℓ p =>
       let s := "borrowₘ ℓ" ++ toString ℓ ++ " " ++ prettyPrec 1 p
       if prec > 0 then s!"({s})" else s
+    -- ¶1.1's array forms, rendered the way the design note's traces read (the trace
+    -- suite IS the test suite): an owned run as `[3, 1, 2]`, a carved node as
+    -- `Arr⟨1 ▷ [3], 2 ▷ loanₘ ℓ0⟩`.
+    | .ctor "Arr" vs => "[" ++ prettyCommas vs ++ "]"
+    | .ctor "§segs" segs => "Arr⟨" ++ prettySegs segs ++ "⟩"
+    | .ctor "§seg" [c, b] => prettyPrec 1 c ++ " ▷ " ++ prettyPrec 0 b
     | .ctor name [] => name
     | .ctor name args =>
       let s := name ++ prettyArgs args
@@ -146,6 +152,16 @@ mutual
   def prettyArgs : List Val → String
     | [] => ""
     | a :: as => " " ++ prettyPrec 1 a ++ prettyArgs as
+  termination_by as => sizeOf as
+  def prettyCommas : List Val → String
+    | [] => ""
+    | [a] => prettyPrec 0 a
+    | a :: as => prettyPrec 0 a ++ ", " ++ prettyCommas as
+  termination_by as => sizeOf as
+  def prettySegs : List Val → String
+    | [] => ""
+    | [a] => prettyPrec 0 a
+    | a :: as => prettyPrec 0 a ++ ", " ++ prettySegs as
   termination_by as => sizeOf as
 end
 
@@ -223,6 +239,33 @@ mutual
     | [] => []
     | t :: ts => Term.toValPure t :: Term.toValPureList ts
   termination_by ts => sizeOf ts
+end
+
+/-! Does a value carry a STATE marker — a hole (`⊥`), a loan, or a borrow —
+    anywhere in its tree? §3.2's knowledge/state invariant: a σ names ENTRY
+    knowledge (a constructor shape true at entry, or an equation solution), never
+    the present state of a slot. So a σ-substitution's replacement must be
+    marker-free; a marker is state and belongs in an Ω tree, never substituted for
+    a σ. Asserted at the substitution site (`refineSym`) so a regression that tries
+    to substitute state is caught immediately, not layers downstream.
+
+    It lives here rather than with `refineSym` because ¶1.1's array layer needs the
+    same predicate for a second job: a segment body is **owned** exactly when it is
+    marker-free, so a run with a hole or an element loan in it is not a carve
+    candidate and does not merge with its neighbour. Both jobs are the same
+    question — is this a value, or a record of who currently holds what. -/
+mutual
+  def hasStateMarker : Val → Bool
+    | .bot => true
+    | .loanM _ => true
+    | .borrowM _ _ => true
+    | .ctor _ args => hasStateMarkerList args
+    | .pi d c | .sigmaT d c | .lam d c | .app d c => hasStateMarker d || hasStateMarker c
+    | .idT a b c => hasStateMarker a || hasStateMarker b || hasStateMarker c
+    | _ => false
+  def hasStateMarkerList : List Val → Bool
+    | [] => false
+    | v :: vs => hasStateMarker v || hasStateMarkerList vs
 end
 
 /-! Symbolic ids occurring in `v`, in pre-order of first appearance. -/

@@ -42,6 +42,26 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
       pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
+    -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
+    -- §5's second opacity ("borrows stored under a type constructor") reaching a
+    -- telescope entry for the first time. The slot holds a genuine pair — a length
+    -- and a borrow — so the length is a σ the body can name, and the borrow carries
+    -- an ordinary obligation. PROBE (M24 STEP 1): see `docs/DELTAS.md` G2 for why
+    -- this is not enough on its own.
+    | .sigmaT aTy (.borrowT τ S) => do
+      let aVal ← readC fuel aTy
+      let σc ← freshSym
+      modify (fun s => { s with sctx := (σc, aVal) :: s.sctx })
+      let τVal := Val.substPure 0 (.sym σc) (← readC fuel τ)
+      let σ ← freshSym
+      let ℓ ← freshLoan
+      bindSlot x (.ctor "Pair" [.sym σc, .borrowM ℓ (.sym σ)])
+      modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+      -- `S` binds the payload snapshot at pvar 0; the Σ's own binder sits at pvar 1
+      -- and drops to 0 once the payload is substituted.
+      let SVal ← readC fuel S
+      let owed := Val.nfV fuel (Val.substPure 0 (.sym σc) (Val.substPure 0 (.sym σ) SVal))
+      pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
     | tyTerm => do
       let τVal ← readC fuel tyTerm
       let σ ← freshSym
@@ -251,13 +271,21 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     -- dedicated audit-local substitution (plain substSym over retTy), NOT refineSym:
     -- σ_exit is a fresh name being defined here, so no mutation result ever flows
     -- through ⇜'s knowledge channel and the §3.2 assertion is unconcerned.
+    --
+    -- The payload goes through ¶1.3's ⇝ FOLD first, exactly as `readC` does for
+    -- every other comptime reading. Without it the exit snapshot of a carved array
+    -- is the STATE form — a `§segs` node — on which no predicate computes, so any
+    -- postcondition naming `*v` is stuck. It never showed before because merge
+    -- concatenates adjacent RUNS, so a concrete-extent carve rejoins to a plain run
+    -- and needs no fold; a SYMBOLIC segment cannot merge (only runs do), and that is
+    -- the case every in-place array program is made of.
     let exits := (← get).exitSyms
     let retTy ← obs.foldlM (fun acc ob =>
       match exits.lookup ob.arg.id with
       | none => pure acc
       | some σ => do
         match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-        | some payload => pure (Val.nfV fuel (substSym σ payload acc))
+        | some payload => pure (Val.nfV fuel (substSym σ (Val.arrFoldDeep payload) acc))
         | none => pure acc) retTy0
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"

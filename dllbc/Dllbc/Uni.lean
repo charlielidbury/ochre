@@ -93,6 +93,33 @@ syntax:max "*" uterm:max : uterm                            -- deref / peel
 syntax:max "old" "*" uterm:max : uterm                      -- §5.4 old *v: entry snapshot of a borrow-param deref
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
 syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
+-- ¶2.1's two new place steps. They bind TIGHTER than the peel, so a reborrow of a
+-- range through a borrow is written `&mut (*v)[lo ; cnt]` and `*v[i]` would mean
+-- `*(v[i])` — peel the borrow stored AT slot `i`, which is how an `Array n (&mut T)`
+-- is reached. `| h` cites the containment evidence (¶3.2's supply route 2); without
+-- it the bound must compute (route 1). Offset-and-count, never lower-and-upper.
+syntax:max uterm:max noWs "[" uterm "]" : uterm                         -- a[i]
+syntax:max uterm:max noWs "[" uterm "|" uterm "]" : uterm               -- a[i | h]
+syntax:max uterm:max noWs "[" uterm ";" uterm "]" : uterm               -- a[lo ; cnt]
+syntax:max uterm:max noWs "[" uterm ";" uterm "|" uterm "]" : uterm     -- a[lo ; cnt | h]
+-- `a[lo ; ..]` — to the end of the segment starting at `lo`. NAMES premise (3)'s
+-- residue rather than computing `sub n lo`; without it ¶3.4's second borrow is
+-- unwritable, since the doc spells it `[k ; rest]` and `rest` is a machine-minted σ.
+syntax:max uterm:max noWs "[" uterm ";" ".." "]" : uterm                -- a[lo ; ..]
+-- ROUTE (a): `a[lo ; cnt ; rest | h]` SUPPLIES the residue's extent instead of letting
+-- premise (3) mint a σ no binder can name. Same solution transition, still no `sub`;
+-- omit it and the checker mints, exactly as before. Third instance of the house
+-- pattern after `[k]` and `match h :` — an optional surface element reifying a fact
+-- the checker already has, declared rather than inferred, free when absent.
+syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "]" : uterm            -- a[lo ; cnt ; rest]
+syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "]" : uterm  -- a[lo ; cnt ; rest | h]
+-- …and the DECOMPOSITION CITATION. A supplied residue asserts a decomposition of the
+-- leaf's extent; when that extent is a telescope parameter's σ, the assertion is a
+-- constraint on the function's CALLERS, and premise (3) may not impose it by
+-- unification (M7/M8's inferred constrained wire; M17's lesson that cross-boundary
+-- constraints are DECLARED and checked). The program cites the equation and premise (3)
+-- solves along it. Free when the decomposition already holds by conversion.
+syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "|" uterm "]" : uterm
 syntax:70 "&mut" uterm:65 : uterm                            -- &mut e : borrow (term) / borrowT (type)
 syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ S)
 syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
@@ -135,9 +162,11 @@ def idxOf? (l : List String) (s : String) : Option Nat :=
   go l 0
 
 /-- Kernel constructors → `ctorApp`. -/
-def ctorSet : List String := ["Z", "S", "Nil", "Cons", "Pair", "Refl", "True", "False", "unit"]
+def ctorSet : List String := ["Z", "S", "Nil", "Cons", "Pair", "Refl", "True", "False", "unit", "Arr"]
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
-def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k"]
+def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
+  -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read.
+  "Array", "arrCat", "acons", "arrRec", "aget"]
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`swapL`, `set`,
@@ -197,6 +226,51 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   | `(uterm| * $e:uterm) => do
     let (e', n) ← elabUTerm isTy rctx pctx next e
     return (← `(Dllbc.Term.deref $e'), n)
+  | `(uterm| $a:uterm[$i:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (i', n2) ← elabUTerm isTy rctx pctx n1 i
+    return (← `(Dllbc.Term.index $a' $i' none), n2)
+  | `(uterm| $a:uterm[$i:uterm | $h:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (i', n2) ← elabUTerm isTy rctx pctx n1 i
+    let (h', n3) ← elabUTerm isTy rctx pctx n2 h
+    return (← `(Dllbc.Term.index $a' $i' (some $h')), n3)
+  | `(uterm| $a:uterm[$lo:uterm ; ..]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    return (← `(Dllbc.Term.range $a' $lo' none none none none), n2)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    let (r', n4) ← elabUTerm isTy rctx pctx n3 r
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') none none), n4)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm | $h:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    let (r', n4) ← elabUTerm isTy rctx pctx n3 r
+    let (h', n5) ← elabUTerm isTy rctx pctx n4 h
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') none), n5)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm | $h:uterm | $q:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    let (r', n4) ← elabUTerm isTy rctx pctx n3 r
+    let (h', n5) ← elabUTerm isTy rctx pctx n4 h
+    let (q', n6) ← elabUTerm isTy rctx pctx n5 q
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') (some $q')), n6)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none none none), n3)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm | $h:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    let (h', n4) ← elabUTerm isTy rctx pctx n3 h
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none (some $h') none), n4)
   | `(uterm| &mut ( $x:ident : $τ:uterm ~> $s:uterm )) => do     -- borrow type, snapshot binder
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (s', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 s
