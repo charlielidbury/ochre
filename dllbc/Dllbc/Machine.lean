@@ -1296,6 +1296,22 @@ def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
   | some grp => endGroup fuel grp
   | none => sendPayloadToLoan ℓ (← killBorrowInΩ ℓ)
 
+/-- **Scope-aware release at call return** (EXECUTING mode only, ledger G5 probe). -/
+partial def releaseFrameLoans (fuel : Nat) (offset : Nat) (keep : List Nat) : M Unit := do
+  match fuel with
+  | 0 => pure ()
+  | f + 1 => do
+    let env ← getEnv
+    let held := env.filterMap (fun kv =>
+      if kv.1.id ≥ offset then
+        match kv.2 with
+        | .borrowM ℓ _ => if keep.contains ℓ then none else some ℓ
+        | _ => none
+      else none)
+    match held.head? with
+    | none => pure ()
+    | some ℓ => do endLoan fuel ℓ; releaseFrameLoans f offset keep
+
 /-! ## CARVE (¶3) — the proof-licensed reorganization
 
     The design's one new rule, and the only one of ¶8.1's five additions with
@@ -1438,6 +1454,33 @@ partial def demandNode (fuel : Nat) (pos : Pos) : M Unit := do
 partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
     (ev : Option Val) (eqc : Option Val) (isIdx : Bool) : M Unit := do
   demandNode fuel pos
+  -- G5, THIRD SITE (EXECUTING only). A ZERO-WIDTH request is the empty slice at `lo`:
+  -- it must borrow nothing and disturb nothing. In particular it must not select the
+  -- leaf it ABUTS — `Le (add lo Z) (add b m)` holds at a leaf's far end, so the ordinary
+  -- selection picks the neighbour and demand-ends the live borrow pinned to it, which is
+  -- how `partitionA`'s pivot cell died at `k3 = 0, r2 = 0`. A DEGENERATE carve leaves no
+  -- trailing piece behind either, so there is nothing at that base to find.
+  --
+  -- Unreachable symbolically — a residue σ is never known to be zero — and routine
+  -- concretely, since an empty right half is what a runtime split produces constantly.
+  -- So: give the empty slice its own zero-extent segment, inserted at `lo` without
+  -- touching any existing leaf, and let the ordinary degenerate path borrow it.
+  if (← get).executing && !isIdx && Val.convert fuel cnt Val.zero then do
+    setAtPos fuel pos (Val.mergeArrays (← getAtPos fuel pos))
+    let leaves ← extentMap fuel (← getAtPos fuel pos)
+    if (leaves.any (fun l => Val.convert fuel l.base lo && Val.convert fuel l.count Val.zero))
+    then pure ()
+    else do
+      let segs := leaves.map (fun l => Val.segNode l.count l.body)
+      let rec place (acc : List Val) (bse : Val) : List Val → List Val
+        | [] => acc ++ [Val.segNode Val.zero (.ctor "Arr" [])]
+        | sg :: rest =>
+          if Val.convert fuel bse lo then acc ++ [Val.segNode Val.zero (.ctor "Arr" [])] ++ (sg :: rest)
+          else match Val.asSeg? sg with
+            | some (c, _) => place (acc ++ [sg]) (Val.kAdd bse c) rest
+            | none => acc ++ (sg :: rest)
+      setAtPos fuel pos (.ctor "§segs" (place [] Val.zero segs))
+  else pure ()
   -- ROUTE (a), step one: the program SUPPLIED the residue's extent, so solve premise
   -- (3)'s equation against it HERE, before premise (2) is even formed. That ordering is
   -- the whole trick — with the leaf's extent refined to `add cnt rest`, the obligation
@@ -1619,10 +1662,17 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
         -- Assemble: the leaf's segment becomes up to three, zero-extent ones dropped
         -- (¶1.1's drop-empty), and `segsNode` unwraps a lone survivor. So a carve
         -- whose residue is empty leaves no wrapper behind at all.
+        -- G5 probe: a zero-extent piece is KEPT when the node is or becomes suspended.
+        -- Dropping it (¶1.1's drop-empty) leaves no segment at that base, so a
+        -- later zero-width request there — `a[S k ; 0]`, which is what an empty right
+        -- half is — selects the NEIGHBOURING segment instead and demand-ends the live
+        -- borrow pinned to it. Kept unconditionally here; the extent map sums the same
+        -- (`add Z k ⇝ k`) and the ⇝ fold absorbs an empty run definitionally.
         let isZ : Val → Bool := fun c => Val.convert fuel c Val.zero
-        let pieces := (if isZ lo' then [] else [Val.segNode lo' b₁])
+        let ex := (← get).executing
+        let pieces := (if isZ lo' && !ex then [] else [Val.segNode lo' b₁])
                    ++ [Val.segNode cnt b₂]
-                   ++ (if isZ rest then [] else [Val.segNode rest b₃])
+                   ++ (if isZ rest && !ex then [] else [Val.segNode rest b₃])
         let node' ← getAtPos fuel pos                    -- re-read: (3) may have refined
         match node' with
         | .ctor "§segs" segs => do
@@ -2036,7 +2086,9 @@ mutual
             -- fresh var-id window, so shared borrows propagate naturally.
             let offset ← (do let s ← get; set { s with nextFrame := s.nextFrame + 128 }; pure s.nextFrame)
             bindActuals fuel offset 0 decl.telescope args
-            readR fuel (shiftVars offset decl.body)
+            let res ← readR fuel (shiftVars offset decl.body)
+            releaseFrameLoans fuel offset res.loanIds
+            pure res
           else do
             -- CHECKING (§5.3/§6.1): signature only, mint one loan group. The
             -- instantiation `inst` (decl var → actual, §5.3) instantiates the

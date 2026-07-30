@@ -359,7 +359,7 @@ def segNode (c body : Val) : Val := .ctor "§seg" [c, body]
 def segsNode (segs : List Val) : Val :=
   match segs with
   | [] => .ctor "Arr" []
-  | [.ctor "§seg" [_, b]] => b
+  | [.ctor "§seg" [_, b]] => if hasStateMarker b then .ctor "§segs" segs else b
   | ss => .ctor "§segs" ss
 
 def asSeg? : Val → Option (Val × Val)

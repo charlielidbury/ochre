@@ -704,6 +704,11 @@ def runSplA (l : List Nat) (pvt : Nat) : Option (List Nat) :=
 
 def sortedRef (l : List Nat) : List Nat := l.mergeSort (fun a b => a <= b)
 
+/-- Did it run at all — used by the G7 probes below, where the point is acceptance and
+    execution agreeing rather than the value. -/
+def runsAtAll (tbl : List Decl) (t : Term) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec tbl t with | .ok _ => true | .error _ => false
+
 /-! ### (vi.a) It really sorts, in place, on concrete arrays
 
     The same declarations `checkFnOk` verified symbolically, run on real inputs and
@@ -729,52 +734,36 @@ example : runSplA [] 2 == some [] := by native_decide
 example : runQsA [] == some (sortedRef []) := by native_decide
 example : runQsA [1] == some (sortedRef [1]) := by native_decide
 
-/-! ### (vi.b) The divergence, PINNED — and what it actually is
+/-! ### (vi.b) G5 CLOSED — the executing differential, deep
 
-    Three elements is the smallest input that re-enters a carve after a carving callee
-    returns, and it is where execution stops. **The diagnosis changed once the failure
-    was instrumented, and the new one is why this is not a small fix.**
+    The divergence this section used to pin is gone. It was `drop-empty`, in THREE
+    independent sites, and the ledger's G5 entry records each; the last of them is that a
+    ZERO-WIDTH request must not select the leaf it abuts, because `Le (add lo Z) (add b m)`
+    holds at a leaf's far end and the ordinary selection then demand-ends the live borrow
+    pinned there. All three are unreachable symbolically — a residue σ is never known to be
+    zero — and routine concretely, which is exactly why only an executing differential
+    could find them and why the checking side was right all along.
 
-    The symptom is G5: a callee's segment borrows are never released at return, so the
-    caller's array keeps the callee's segmentation and its next carve reads the wrong
-    leaf. The obvious repair is a scope-aware release at call return. Three were built
-    and all three died the same way — end the callee's loans by id (`≥` a mark taken
-    after the actuals), by FRAME (every slot at or above the callee's id offset), or by
-    collapsing the markers of a just-unsuspended node in the M22-a execfix's own shape.
-    Every one of them made a LIVE borrow vacant, and naming it is the finding:
+    What used to be `runsAtAll … = false` is now the real thing. -/
 
-        place: navigating mid#10025 failed          -- the pivot cell's own borrow
+example : runQsA [2, 1] == some (sortedRef [2, 1]) := by native_decide
+example : runQsA [3, 1, 2] == some (sortedRef [3, 1, 2]) := by native_decide
+example : runQsA [1, 2, 3] == some (sortedRef [1, 2, 3]) := by native_decide
+example : runQsA [3, 2, 1] == some (sortedRef [3, 2, 1]) := by native_decide
+example : runQsA [5, 5, 5] == some (sortedRef [5, 5, 5]) := by native_decide
+example : runQsA [4, 1, 3, 2, 5] == some (sortedRef [4, 1, 3, 2, 5]) := by native_decide
+example : runQsA [3, 1, 4, 1, 5, 9, 2] == some (sortedRef [3, 1, 4, 1, 5, 9, 2]) := by
+  native_decide
+example : runQsA [9, 8, 7, 6, 5, 4, 3, 2, 1] == some (sortedRef [9, 8, 7, 6, 5, 4, 3, 2, 1])
+    := by native_decide
 
-    Because the real obstacle is underneath the release. `Val.segsNode` DROPS a
-    zero-extent segment and UNWRAPS a lone survivor (¶1.1's drop-empty), so a node whose
-    only surviving segment is one live borrow collapses to a bare `loanₘ ℓ` — and the
-    next carve's demand-end, seeing a suspended node, ends exactly that borrow. A
-    runtime-computed split has an empty side constantly, so this is routine concretely
-    and unreachable symbolically, where a residue σ is never known to be zero.
-
-    **So the concrete segment representation is not stable under its own zero-extent
-    normalization, and there is no intermediate state in which "the callee's segments are
-    gone and the caller's are intact" can even be expressed.** Releasing frames cannot
-    fix that; the normalization has to stop losing the structure the borrows are pinned
-    to. That is a representation change, not a call-return change — architectural rather
-    than local, so it stops here and becomes its own lane.
-
-    These assertions record the CURRENT behaviour so the suite goes red the day it is
-    closed, at which point they must be replaced by the real differential —
-    `runQsA l == some (sortedRef l)` across the input set — and by the CROSS-DIFFERENTIAL
-    against M23's List quicksort, which is wired below and green as far as it can run. -/
-
-def runsAtAll (tbl : List Decl) (t : Term) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec tbl t with | .ok _ => true | .error _ => false
-
--- KNOWN DIVERGENCE, both minimal.
-example : runsAtAll [splitA] (splCaller [3, 1, 4] 2) = false := by native_decide
-example : runsAtAll arrTbl (qsCallerA [2, 1]) = false := by native_decide
-
--- The CONTROL that says the diagnosis is about a carve following a call, and not about
--- the recursion, the length, or the program: the same callee at the same depth, whose
--- caller does not carve again, runs fine.
-example : runsAtAll [splitA] (splCaller [1, 3] 2) = true := by native_decide
+-- The leaf on its own, both branches and the pivot-crossing SWAP.
+example : runSplA [3, 1] 2 == some [1, 3] := by native_decide
+example : runSplA [1, 3] 2 == some [1, 3] := by native_decide
+example : runSplA [3, 1, 4] 2 == some [1, 3, 4] := by native_decide
+-- Order WITHIN each part is unspecified; the split point is what is claimed.
+example : runSplA [4, 1, 3, 2] 2 == some [2, 1, 4, 3] := by native_decide
+example : runSplA [] 2 == some [] := by native_decide
 
 /-! ### (vi.c) THE CROSS-DIFFERENTIAL — wired, and green as far as it runs
 
@@ -805,22 +794,19 @@ def cross (l : List Nat) : Bool :=
   | some a, some b => a == b && a == sortedRef l
   | _, _ => false
 
-example : cross [] = true := by native_decide
-example : cross [1] = true := by native_decide
-
--- The LIST side alone, across the full input set — so the harness itself is known good
--- and the array side is the only thing the divergence is holding back.
 example : (([[], [1], [2,1], [3,1,2], [1,2,3], [3,2,1], [5,5,5], [4,1,3,2,5],
-             [3,1,4,1,5,9,2]] : List (List Nat)).all
-            (fun l => runQsL l == some (sortedRef l))) = true := by native_decide
+             [3,1,4,1,5,9,2], [2,2,1,1], [7,3,7,3,7]] : List (List Nat)).all cross)
+    = true := by native_decide
 
 -- `cross` is not vacuously true: a `none` from either side cannot masquerade as
--- agreement, and a wrong answer is `false`.
-example : cross [2, 1] = false := by native_decide
+-- agreement, and a disagreement or a wrong answer is `false`.
+example : cross [2, 1] = true := by native_decide
+example : (match runQsA [2, 1] with | some a => a == [2, 1] | none => false) = false := by
+  native_decide
 
 /-! ### (vi.c) M9's simulation property, over the array bodies that do run -/
 
-def qsCallers : List Term := [qsCallerA [1], qsCallerA []]
+def qsCallers : List Term := [qsCallerA [3, 1, 2], qsCallerA [2, 1], qsCallerA [1]]
 
 example : qsCallers.all (fun b => checkFnOk (Dllbc.Tests.S9Diff.callerDecl b) arrTbl)
     = true := by native_decide

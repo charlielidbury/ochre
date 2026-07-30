@@ -625,77 +625,62 @@ signature it violates, which is the whole point.
 Five of arr1's M24 route-(a) tests moved to the cited form and are green; `threeWayUncited`
 is the new negative control and is the shape they used to have.
 
-### G5 — a callee's segment borrows are never released when it returns
+### C9 (was G5) — the executing machine lost the segment structure borrows are pinned to — CLOSED
 
-**The one M25 did not close, and the reason the executing differential stops at three
-elements.** In executing mode a callee's range borrows stay live in the caller's array
-after the call, so the caller sees the callee's leftover segmentation rather than one
-leaf. `mergeArrays` cannot rejoin it — a loan blocks the merge (R4) — and the caller's
-next carve then asks premise (3) to unify the leftover leaf's extent with the
-decomposition the program supplied.
+**The lane's second soundness-adjacent finding, and the one only an EXECUTING differential
+could produce.** In executing mode a carving callee left the caller's array segmented and
+the caller's next carve then read the wrong leaf; the array quicksort type-checked and
+could not be run. Checking mode never saw it, because §6.2's opacity re-mints the callee's
+payload as a fresh σ at the declared type, so the caller always sees an UNCARVED array.
 
-Minimal reproducer, one call deep: `splitA [3,1,4]` with `p = 2` fails with
-`Refl: both endpoints are rigid (S Z vs S (S Z))`; `splitA [1,3]`, whose caller does not
-carve again, runs correctly. So it is not the recursion, the length or the program.
+**The polarity is the finding.** §6.1 already flags "a group releases atomically where the
+concrete machine ends lazily" as a checking-side over-approximation. This is the first
+member of that family where the CONCRETE side is the wrong one — the re-mint is not an
+approximation of what execution does, it is a REPAIR of it. That inversion is what makes
+the differential worth running rather than merely reassuring: the checker was right and
+the machine was wrong, which no amount of checking could have revealed.
 
-**In CHECKING mode this is invisible, and invisible for a principled reason: §6.2's
-opacity re-mints the callee's payload as a fresh σ at the declared type, so the caller
-always sees an UNCARVED array.** That re-minting is not merely an over-approximation of
-what the concrete machine does — it is a REPAIR of it. §6.1 already flags the family ("a
-group releases atomically where the concrete machine ends lazily"); this is the first
-instance where the CONCRETE side is the one that is wrong, and it is therefore the first
-one that cannot be dismissed as the checker being conservative.
+**The root was `drop-empty`, in FOUR independent sites.** ¶1.1's normalization discards a
+zero-extent segment and unwraps a lone survivor, and the rest of the machine depends on
+the structure it discards. Every site is unreachable SYMBOLICALLY — a residue σ is never
+known to be zero — and routine CONCRETELY, since a runtime-computed split has an empty
+side constantly. That asymmetry is exactly why the symbolic suite was green throughout.
 
-**ATTEMPTED TWICE, AND THE DIAGNOSIS TURNED OVER TWICE. Read the second turn — the
-first conclusion recorded here was WRONG and is corrected below.**
+1. **The leaf-selection collision** (already closed, as C7): a zero-extent segment shares
+   its base with the segment after it, so base alignment does not determine the leaf. C7
+   was written for the citation path and turns out to be load-bearing here — without it,
+   keeping zero-extent segments at all would be unusable.
+2. **The lone-survivor unwrap**: a node whose only surviving segment is one live borrow
+   collapsed to a bare `loanₘ ℓ`, and the next carve's demand-end — doing precisely what
+   §5.2 says — ended that borrow. `segsNode` now keeps a survivor that carries a marker.
+   ONE LINE, UNGATED: the full suite is green with zero test edits, so it is not merely
+   checking-identical but MODE-INDEPENDENT.
+3. **The dropped residue piece**: a carve discarded a zero-extent residue, leaving no
+   segment at that base for a later request to name. Kept, EXECUTING-GATED — keeping it
+   unconditionally breaks checking outright (all three §25 programs stop checking), which
+   is the one place the two modes genuinely want different value trees.
+4. **The abutting zero-width request**: `Le (add lo Z) (add b m)` holds at a leaf's FAR
+   END, so a zero-width request — which is what an empty right half is — selected the leaf
+   it abuts and demand-ended the borrow pinned there. A degenerate carve leaves no
+   trailing piece either, so there was nothing at that base to find. A zero-width request
+   now gets its own zero-extent segment, inserted without touching any leaf.
 
-*First attempt.* Three scope-aware releases at call return, on M22-a's execfix profile:
-by loan ID (every loan created after a mark taken AFTER the actuals bind), by FRAME
-(every slot at or above the callee's `nextFrame` id offset), and by collapsing a
-just-unsuspended node's markers in the execfix's own shape. All three made a LIVE borrow
-vacant. Instrumenting the navigation named it —
+Plus the mechanism the sites were hiding: a **scope-aware release at call return**
+(executing only), ending the loans held by slots at or above the callee's frame offset,
+keeping any the result issues. Measured necessary — removing it after all four sites are
+closed puts the differential back in the red.
 
-    place: navigating mid#10025 failed        -- the pivot cell's own borrow
+**Result: the array quicksort RUNS.** `[3,1,4,1,5,9,2]` sorts to `[1,1,2,3,4,5,9]`; the
+executing differential is deep, and the cross-differential against M23's List quicksort is
+green on eleven shared inputs — two implementations sharing no code, no predicates and no
+container, agreeing with each other and with a trusted sort.
 
-— and traced it to drop-empty: `Val.segsNode` UNWRAPS a lone survivor (¶1.1), so a node
-whose only surviving segment is one live borrow collapses to a bare `loanₘ ℓ`, and the
-next carve's demand-end then ends exactly that borrow while doing precisely what §5.2
-says. Routine concretely, unreachable symbolically, where a residue σ is never known to
-be zero. That much stands.
-
-**The conclusion drawn from it did not.** This entry previously read "architectural, not
-local — no release mechanism can produce a state where the callee's segments are gone and
-the caller's are intact". A bounded viability probe refuted that:
-
-*Second attempt (probe, branch `dllbc-g5-probe`).* Drop-empty has THREE sites, not one,
-and they are independently fixable.
-
-* **The lone-survivor unwrap** — keep a survivor that carries a marker. ONE LINE, and the
-  full 114-target suite is green with ZERO test edits: not merely checking-identical but
-  MODE-INDEPENDENT, needing no gate. No cascade into `matchVal`/R9's segment-wise
-  comparison or the ⇝ fold either — the fold absorbs an empty run definitionally and
-  `segsExtent?` sums `add Z k ⇝ k`, so the extent map is unchanged.
-* **The leaf-selection collision** — already closed, by C7. Once zero-extent segments are
-  kept, several leaves share a base, and C7's "prefer the leaf whose extent IS
-  `add cnt rest`, else a non-empty one" is exactly what resolves it. C7 was written for
-  the citation path and turns out to be load-bearing here; without it, keeping zero-extent
-  segments would be unusable.
-* **The dropped tail piece** — `carveAt` drops a zero-extent residue, so a later
-  zero-width request at that base (`a[S k ; 0]`, which is what an empty right half IS)
-  finds no segment and selects the NEIGHBOUR, demand-ending the borrow pinned to it.
-  Keeping it unconditionally BREAKS checking (all three §25 programs stop checking);
-  EXECUTING-GATED it restores them. This site is open.
-
-**The payoff that settles boundedness:** with the first site fixed, the third gated, and a
-frame-scoped release, `splitA [3,1,4]` at `p = 2` EXECUTES and returns `[1,3,4]` —
-correct, and previously impossible. That is a carve re-entered after a carving callee
-returned, which is G5's own shape, working.
-
-**So: BOUNDED, not architectural.** Two of three sites closed with evidence, the third
-named precisely (`qsCallerA [2,1]` dies at `mid#10150`, `partitionA`'s swap branch at
-`k3 = 0, r2 = 0`). The honest caveat is on the estimate rather than the diagnosis: this
-obstacle has now produced three estimates from this lane and the first two were wrong, so
-the pattern to expect is that each site is small and there is one more than you think.
+**Method note, recorded because it is the transferable part.** Three scope-aware releases
+were built and all three failed before the diagnosis was right, and each failure was read
+as "architectural" until the navigation error was instrumented to NAME the dying borrow
+(`place: navigating mid#10025 failed` — the pivot cell's own). The entry twice recorded a
+conclusion that a later probe refuted. What finally worked was counting SITES rather than
+estimating effort: each site is small, and there is reliably one more than you think.
 
 ### G6 — `a[lo ; ..]` is unusable once a residue can be empty
 
