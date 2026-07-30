@@ -137,6 +137,30 @@ released existential where the concrete one still holds a suspended loan, an
 obligation any simulation relation must reconcile (@fig-reorg records it). The
 trade is deliberate: no annotation burden, the coarsest sound tie.
 
+*Self-calls need a side condition.* Checking a call against the signature alone
+has one consequence that is invisible until a return type carries real content: a
+_self_-call is admitted at the function's own declared return type. Under the
+conformance architecture that is harmless, because the declared `back`'s
+conversion is where the work happens; under a propositional postcondition it is
+Hoare's rule for recursion with its side condition deleted, and every false
+postcondition proves itself (@sec-lessons gives the two-line witness). The side
+condition is a _declared_ decreasing position `[k]`, and the checker being a
+symbolic interpreter is what makes it cheap: a self-call is admitted only when the
+actual at position $k$ is a strict structural subterm of that parameter's
+_current snapshot_, which inside `match n { S(m) => … }` is already
+`S` $space sym("m")$ while the actual is $sym("m")$ — ordinary structural
+comparison, no measure and no termination checker. Three scoping decisions come
+with it. The index is declared rather than inferred, because "some argument
+decreases at each call" is unsound (two branches can each shrink a different
+coordinate while growing the other, forever) and because paths are explored
+independently, so no inferred index could be committed to across them. A _borrow_
+parameter may decrease through its payload snapshot — the guard in its most
+literal form, and the only thing that shrinks in a list cursor, sound because
+snapshots are entry-knowledge that mutation never rewrites. And mutual recursion
+is rejected outright by call-graph reachability: a per-declaration guard would let
+`f` $arrow.r$ `g` $arrow.r$ `f` admit each other's postconditions with nothing
+decreasing anywhere, the same hole through two doors.
+
 == The audit at return
 
 The callee's side is symmetric, and it is the only check in the whole borrow
@@ -159,11 +183,17 @@ this one.
 The return type itself is fixed at _entry_, while the parameters it may mention
 are still live (#smallcaps[B-Pin]): a dependent return type over a consumed
 parameter means that parameter's _entry_ value, since re-reading at return would
-find $bot$. (One deliberate exception — a borrow parameter's payload deref in
-the return type reading the _exit_ snapshot, with `old` as the entry operator —
-is the propositional main line's central move, taken up in @sec-architectures;
-the rules of @fig-boundaries follow the current implementation, which pins entry
-wholesale, and flag the gap.) One admission rule rides along
+find $bot$. One position is deliberately excepted, and it is the propositional
+main line's central move (@sec-architectures): a _borrow_ parameter's payload
+deref reads the *exit* snapshot, with `old` $ast.op v$ as the entry operator. The
+justification is the loan structure itself — with no lifetimes the callee's access
+ends exactly at the audit, which already computes the collapsed final payload, so
+"the value at the end" names one well-defined tree — and caller-side the call
+mints one symbolic value shared between the loan's eventual release and the
+returned evidence's subject, so a returned proof _attaches_ to the recovered
+value. Both readings are implemented at this pin; earlier versions of these rules
+pinned entry wholesale and flagged the difference as a gap. One admission rule
+rides along
 (#smallcaps[B-ExFalso]): a branch whose result is an eliminator applied to a
 verified inhabitant of $bot$ is dead, and the audit admits it at _any_ return
 type — the $bot$-witness is the only thing checked. This is how a bounds-checked

@@ -21,26 +21,41 @@
   dependent type checking are two readings of one execution. The design rests
   on an identification — LLBC's symbolic refinement of a matched scrutinee _is_
   Agda-style dependent pattern matching, one substitution mechanism serving
-  both checkers — and on an inversion of the Aeneas pipeline: where Aeneas
-  synthesizes a backward function per borrow, DLLBC lets the signature declare
-  it (the $arrow.r.curve$ obligation is its type, a declared `back` the
-  function itself) and audits the body against the declaration at return.
-  Checked and green in the mechanization at the pin: the complete rule set of
-  the six figures, each rule tied to its implementing function and exercising
-  test; an in-place, swap-based quicksort that type-checks as an
-  implementation of its pure model `sortRangeL`, conformance reduced to
-  conversion; a differential harness relating the symbolic checker to concrete
-  execution, validated by turning a removed unsound inference back on and
-  watching it go red; a machine-verified invariant that refinement propagates
-  knowledge and never state; and, after a profiler-guided substitution fix, a
-  465× drop in the conformance check (84,121 ms to 181 ms; the full suite from
-  38m49s to roughly 13–20 s). Open, and stated as such: the pure model's own
-  correctness is in flight; the project's ongoing mission is the pivot from
-  model-conformance to proving propositional postconditions directly over exit
-  snapshots; the v0 kernel is type-in-type with no consistency claim and no
-  termination checking; and three identified audit-strategy holes must be
-  closed before any soundness statement can quantify over declared
-  specifications. No soundness theorem is claimed.
+  both checkers — completed by a _branch equation_ rule that reifies the same
+  fact where abstraction has replaced substitution; and, at the boundary, on an
+  inversion of the Aeneas pipeline: where Aeneas synthesizes a backward function
+  per borrow, DLLBC lets the signature declare it (the $arrow.r.curve$
+  obligation is its type, a declared `back` the function itself) and audits the
+  body against the declaration at return. Checked and green in the mechanization
+  at the pin: the complete rule set of the six figures, each rule tied to its
+  implementing function and exercising test; _two_ in-place quicksorts, which
+  between them make the paper's comparison of two verification architectures a
+  measurement rather than a prediction — one type-checking as an implementation
+  of its pure model `sortRangeL`, conformance reduced to conversion, and one
+  carrying no declared backward specification anywhere in its call tree, whose
+  return type _is_ its postcondition (sortedness of the exit snapshot, with
+  count-preservation against the entry) and whose every proof step is built in
+  the body from its callees' postconditions, with no pure model of the partition
+  or the sort in the development at all; a declared decreasing-argument guard
+  that closed a live unsoundness — an unguarded recursive declaration proved any
+  postcondition from itself — and that, with a sufficiency hypothesis
+  discharging the out-of-fuel path, makes the guarded recursion total; a
+  differential harness relating the symbolic checker to concrete execution,
+  validated by turning a removed unsound inference back on and watching it go
+  red; and a machine-verified invariant that refinement propagates knowledge and
+  never state. Two performance results, which measure different things and must
+  not be read as one comparison: a profiler-guided substitution fix dropped the
+  _conformance_ audit 465× (84,121 ms to 181 ms; the full suite from 38m49s to
+  roughly 13–20 s), and, separately, the two direct-proving quicksorts differ by
+  about a thousandfold (21.8 s positional, 21 ms whole-list) with no performance
+  work between them — how the problem is posed, program and statement together,
+  dominating what the checker costs. Open, and stated as such: the pure model's
+  own correctness, which the conformance route rests on and the direct route no
+  longer needs; a body cannot yet name the value a consumed binder held, which
+  costs the direct route four staged proof-builders that do no mathematical
+  work; the v0 kernel is type-in-type with no consistency claim; and three
+  identified audit-strategy holes must be closed before any soundness statement
+  can quantify over declared specifications. No soundness theorem is claimed.
 ]))
 #v(0.8em)
 
@@ -49,16 +64,25 @@
   #text(size: 9pt)[
   *Status of this document.* This is a _mock paper_: a paper-shaped audit of
   the DLLBC mechanization, written by extracting the rule figures from the
-  implementation at pinned commit `122bb424` of the Ochre repository and
+  implementation at pinned commit `4e950ab7` of the Ochre repository and
   holding every claim to what is checked there. It is not peer-reviewed and
   the calculus is work in progress. Claims carry a uniform status convention —
   #status("green") checked in the mechanization at the pin; #status("in flight")
   under construction; #status("proposed") decided but not mechanized;
   #status("open") a known gap — and untagged claims in the rule figures are
-  green. The extraction's findings ledger (`NOTES.md`, alongside this
-  document) is part of the artifact: it records every doc-vs-implementation
-  divergence the figure extraction surfaced, including the ones this paper
-  reports as open holes.
+  green. The findings ledger (`NOTES.md`, alongside this document) is part of
+  the artifact: it records every doc-vs-implementation divergence the figure
+  extraction surfaced, including the ones this paper reports as open holes.
+
+  #text(size: 8.5pt)[The figures were first extracted at an earlier commit
+  (`122bb424`) and have been *re-extracted against this pin* where the rules
+  moved — a match form that binds a branch equation, a decreasing-argument guard
+  on self-calls, a $Sigma$ eliminator, the exit-snapshot reading of a return
+  type, and two demand-sites for collapsing a suspension. The ledger records
+  which of the original extraction's twenty findings this closed and which
+  remain. Re-pinning rather than carrying two eras was a deliberate choice: the
+  artifact acquired a second verification architecture between the two commits,
+  so the paper's subject, and not merely its detail, had changed.]
   ]
 ]))
 #v(1em)

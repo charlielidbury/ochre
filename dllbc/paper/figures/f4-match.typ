@@ -21,12 +21,18 @@ needs), and branch patterns bind constructor fields one level deep;
 `overline(x)` denotes the field-binder vector, `overline("br")` the branch
 list, `Δ_C` the field telescope of constructor `C`, and `"ctors"(T)` the
 constructor set of type `T`. Inside a `match` term a branch is written
-`C(overline(x)) => t`.
+`C(overline(x)) => t`. The form carries one further, *optional* binder — the
+*branch equation* `match h : x { … }`, marked $[h :]^?$ in the conclusions below.
+Present, it is bound in every branch by the shared premise of the third subsection;
+absent, every $"eqn"(dot)$ premise is empty and the rules read exactly as they did
+before it existed. Its purpose and its cost profile are @identification's subject;
+the rules here only say what it binds.
 
 // ---- local match-specific term notation (the pinned ⇒/⇜ arrows and the
 // checker state S = ⟨Ω;Γσ;O;G;R⟩ come from style.typ; only term-level syntax
 // is introduced here, per style's "no local *judgment* syntax" rule). ----
-#let mtch(s) = $"match" #s space { overline("br") }$
+#let mtch(s) = $"match" space [h :]^? space #s space { overline("br") }$
+#let eqnf(h, t, p, c) = $"eqn"(#h, #t, #p, #c)$
 #let arm(c, xs, t) = $#c (#xs) => #t$
 #let susp(l, c, ls) = $#borrowm(l, $#c ( #ls )$)$
 #let setres(v, om) = ${ (#v, #om) }$
@@ -42,7 +48,39 @@ neutral `Bool` like $"leb" thin sigma thin sigma'$, not a bare σ — its
 generalization to a fresh $sigma_b : "Bool"$ across the whole state
 (@fig-comptime, #smallcaps[X-Gen]), after which it dispatches as an owned-symbolic
 scrutinee. The outcome is one of four dispatches: owned or borrow mode, concrete
-or symbolic.
+or symbolic. #smallcaps[X-Gen] yields *two* things — the fresh $sigma_b$ and the
+normalized spine it abstracted — because the abstraction is what makes that spine
+unnameable in the branch, and the shared premise below is the only place it can be
+recovered.
+
+=== The branch equation (a shared premise)
+
+`match h : x { … }` binds `h`, in every branch, to a proof that the scrutinee's
+*pre-split* value equals this branch's constructor. Write $p$ for that pre-split
+value — the value the slot (or, in borrow mode, the payload) held before the split,
+*before* any generalization abstracted it — and define the environment extension
+
+$
+  #eqnf($h$, $tau$, $p$, $C space overline(sigma)$) = cases(
+    emptyset & #h #text[ absent],
+    { h |-> "Refl" } quad & p equiv C space overline(sigma),
+    { h |-> #sym($e$) } quad & #text[otherwise, with ] #sctx($sigma_e$, $"Id" space tau space p space (C space overline(sigma))$) #text[ added to ] Gamma_sigma,
+  )
+$
+
+The three cases are not three behaviours but one, read off what happened to $p$. On
+a *concrete* scrutinee $p$ is the constructor value itself. On a *plain symbolic*
+scrutinee the ⇜ refinement of the same rule has just rewritten $p$ to
+$C space overline(sigma)$ *everywhere*, so the endpoints are identical. Both give
+`Refl`, and nothing is minted. Only where the scrutinee was a *stuck spine* is the
+third case reached, because #smallcaps[X-Gen] *abstracted* $p$ rather than refining
+it — which is precisely what leaves $p$ unnameable afterwards, and so what makes an
+equation about it worth binding. The fresh $sigma_e$ is registered in
+$Gamma_sigma$ *before* the refinement fires, so it is swept by the same ⇜ that
+sweeps every other $sigma$-bearing component (@fig-comptime); it needs no update
+path of its own. `Refl` here is not interchangeable with the third case: `Refl`
+inhabits an identity only when its endpoints convert (@fig-typing,
+#smallcaps[T-Ctor]), and a stuck spine does not convert with a constructor.
 
 === Concrete modes
 
@@ -50,7 +88,7 @@ or symbolic.
   evR($Omega$, mtch($x$), $v$, $Omega'$),
   $Omega(x) = #ctorv($C$, $overline(v)$)$,
   $#arm($C$, $overline(x)$, $t$) in overline("br")$,
-  evR($Omega[x |-> #vbot, thin overline(x) |-> overline(v)]$, $t$, $v$, $Omega'$),
+  evR($Omega[x |-> #vbot, thin overline(x) |-> overline(v)] union #eqnf($h$, $T$, $C space overline(v)$, $C space overline(v)$)$, $t$, $v$, $Omega'$),
 )
 
 Owned destructuring (doc §3.1): the scrutinee is ⇒-consumed (its slot ← ⊥), its
@@ -61,7 +99,7 @@ concrete values this is ι-reduction wearing binder syntax.
   evR($Omega$, mtch($x$), $v$, $Omega''$),
   $Omega(x) = #borrowm($ell$, $#ctorv($C$, $overline(v)$)$)$,
   $#arm($C$, $overline(x)$, $t$) in overline("br") quad overline(ell') "fresh"$,
-  $Omega' = Omega[x |-> #susp($ell$, $C$, $overline(#loanm($ell'$))$), thin overline(x)_i |-> #borrowm($ell'_i$, $v_i$)]$,
+  $Omega' = Omega[x |-> #susp($ell$, $C$, $overline(#loanm($ell'$))$), thin overline(x)_i |-> #borrowm($ell'_i$, $v_i$)] union #eqnf($h$, $T$, $C space overline(v)$, $C space overline(v)$)$,
   evR($Omega'$, $t$, $v$, $Omega''$),
 )
 
@@ -107,7 +145,7 @@ empty match on a `Bot` scrutinee is vacuously exhaustive.
   $Omega(x) = #sym($$) quad #sctx($sigma$, $T$) in Gamma_sigma quad "exhaustive"(sigma, overline(C))$,
   $#text[for each ] #arm($C_i$, $overline(x)_i$, $t_i$) in overline("br") : quad overline(sigma)_i : Delta_(C_i) #text[ fresh]$,
   $S tack.r x arrow.l.squiggly #ctorv($C_i$, $overline(#sym($$))_i$) tack.l S_i quad #text[(X-Shape)]$,
-  evR($Omega_i [x |-> #vbot, thin overline(x)_i |-> overline(#sym($$))_i]$, $t_i$, $v_i$, $Omega'_i$),
+  evR($Omega_i [x |-> #vbot, thin overline(x)_i |-> overline(#sym($$))_i] union #eqnf($h$, $T$, $p$, $C_i space overline(#sym($$))_i$)$, $t_i$, $v_i$, $Omega'_i$),
 )
 
 The symbolic owned split (doc §3.2) — *the founding identification made a rule*.
@@ -124,7 +162,7 @@ $Omega_i$ is the Ω-projection of the refined state $S_i$.
   $Omega(x) = #borrowm($ell$, $#sym($$)$) quad #sctx($sigma$, $T$) in Gamma_sigma quad "exhaustive"(sigma, overline(C))$,
   $#text[for each ] #arm($C_i$, $overline(x)_i$, $t_i$) in overline("br") : quad overline(sigma)_i : Delta_(C_i) #text[ fresh] quad overline(ell')_i #text[ fresh]$,
   $S tack.r ast.op x arrow.l.squiggly #ctorv($C_i$, $overline(#sym($$))_i$) tack.l S_i quad #text[(X-Shape, at the payload)]$,
-  $Omega'_i = Omega_i [x |-> #susp($ell$, $C_i$, $overline(#loanm($ell'$))_i$), thin overline(x)_(i,j) |-> #borrowm($ell'_(i,j)$, $#sym($$)_(i,j)$)]$,
+  $Omega'_i = Omega_i [x |-> #susp($ell$, $C_i$, $overline(#loanm($ell'$))_i$), thin overline(x)_(i,j) |-> #borrowm($ell'_(i,j)$, $#sym($$)_(i,j)$)] union #eqnf($h$, $T$, $#sym($$)$, $C_i space overline(#sym($$))_i$)$,
   evR($Omega'_i$, $t_i$, $v_i$, $Omega''_i$),
 )
 
@@ -206,4 +244,6 @@ depends on it. Comptime match (the ⇝ column, doc §3.1) is likewise deferred.
   ([#smallcaps[M-Exhaust]],   [`checkExhaustive`],                     [`S5Bound`]),
   ([σ-typing],    [`typeFieldSyms`, `mintFieldSyms`],      [`S5Bound`]),
   ([#smallcaps[X-Gen] (cited)], [`generalizeStuck`, `reorgScrut`],     [`S19Partition`]),
+  ([$"eqn"(dot)$, `Refl` cases], [`bindEqnRefl`],                      [`S23Direct`]),
+  ([$"eqn"(dot)$, stuck case],   [`mintStuckEqn`, `symOwnedSetup`],    [`S23Direct`]),
 )

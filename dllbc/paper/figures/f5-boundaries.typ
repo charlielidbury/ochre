@@ -65,7 +65,8 @@ forms #audit($cal(S)$, $v$) and #checkFn($d$) close the figure.
 #irule("B-Pin",
   $St(Omega, Gamma_sigma, O, G, dot) tack.r "pin"(T) tack.l St(Omega, Gamma_sigma, O, G, hat(R))$,
   $"no" amp"mut" "type occurs in" T$,
-  evC($Omega$, $T$, $hat(R)$))
+  $overline(sigma_"exit") "fresh, one per borrow param"$,
+  evC($Omega$, $"markExit"(T)$, $hat(R)$))
 ]
 #v(0.8em)
 #align(center)[
@@ -105,18 +106,21 @@ at entry, while the parameters it may mention are still live: a dependent return
 type over a consumed parameter means its _entry_ value (re-reading at return
 would find $bot$). A return type carrying a borrow anywhere is _not_ pinned
 ($R = dot$): it is audited structurally at return (#smallcaps[B-Coll-Borrow])
-rather than reflected. One rule-gap is flagged here rather than hidden: doc §5.4
-records a _decided_ exception — a borrow parameter's payload deref in a return
-type should read the _exit_ snapshot, with `old` $ast.op v$ as the entry-snapshot
-operator — that is not implemented at the pin; #smallcaps[B-Pin] follows the
-implementation and pins entry wholesale (@sec-architectures presents the decided
-semantics as the ongoing line).
-// RULE-GAP: doc §5.4 records a *decided* exception — a borrow parameter's
-// payload deref in the return type should read the EXIT snapshot, with `old *v`
-// as the entry-snapshot operator. Not implemented at this commit: B-Pin pins
-// entry wholesale (any borrow-free return type, `*v` included, is ⇝-read at
-// entry). The rules follow the implementation; the doc's exception is a design
-// decision awaiting mechanization.
+rather than reflected.
+
+The pin is not uniform, and the exception is the propositional architecture's
+central move (doc §5.4, @sec-architectures). Before reflecting $T$, the rule mints
+one fresh $sigma_"exit"$ per borrow parameter and $"markExit"$ rewrites $T$ so that
+a *bare* $ast.op v$ pins to that parameter's $sigma_"exit"$ — the *exit* snapshot —
+while `old` $ast.op v$ pins to the entry σ. So a value return type is entry-pinned
+in every position except a borrow payload's deref, which reads the end. The exit
+σ's live *only* in the pin and in an `exitSyms` side-table — never in
+$Gamma_sigma$, never in an obligation — until the audit *defines* them by
+substituting each borrow's collapsed final payload, which is why the substitution
+is a dedicated audit-local pass and not a ⇜: it carries a mutation's result, and ⇜
+is knowledge-only (@fig-comptime). Earlier versions of these rules pinned entry
+wholesale and flagged the difference as an unimplemented decision; it is
+implemented at this pin.
 
 === The call: consume and promise
 
@@ -181,15 +185,20 @@ $ast.op v$ must be `let`-bound _before_ the call that consumes $v$.
 ]
 #v(0.8em)
 #align(center)[
-// RULE-GAP: the second Σ component is built independently of the first — a
-// dependent product over the first component's fresh σ is not instantiated
-// (buildResult's own proviso; no test forces it). A dependent Σ return type
-// would read its second component with the binder unsubstituted.
 #irule("B-Res-Pair",
   resJ($theta$, $Sigma(x : A). B$, $"Pair"(v_1, v_2)$, $I_1, I_2$, $cS_2$),
   resJ($theta$, $A$, $v_1$, $I_1$, $cS_1$),
-  resJ($theta$, $B$, $v_2$, $I_2$, $cS_2$))
+  resJ($theta$, $B[x := v_1]$, $v_2$, $I_2$, $cS_2$))
 ]
+
+#smallcaps[B-Res-Pair] is *dependent*: the tail is built at $B[x := v_1]$, the
+head's freshly-minted component substituted in, one binder at a time from the
+outside so that each substitution shifts the remaining binders down as it goes.
+Earlier versions of this rule built the two components independently and carried a
+rule-gap note saying so — harmless while no caller ever *consumed* a pinned
+component, and immediately fatal once a callee's only description is a
+$Sigma$-pinned postcondition, since the tail's type reached the caller with a
+dangling binder.
 #v(0.8em)
 #align(center)[
 #irule("B-Call",
@@ -201,8 +210,43 @@ $ast.op v$ must be `let`-bound _before_ the call that consumes $v$.
   $(#evC($theta, Omega_2$, $b$, $hat(b)$) space "iff" space Phi(f)."back" = b)$)
 ]
 
+#v(0.8em)
+#align(center)[
+#irule("B-Call-Self",
+  $cS tack.r f(overline(a)) arrow.r.double v tack.l cS'$,
+  $cS."selfRec" = (f, (k, c))$,
+  $a_k = "the actual at the declared decreasing position"$,
+  $a_k subset.sq c quad #text[(strict structural subterm)]$,
+  $cS tack.r f(overline(a)) arrow.r.double v tack.l cS' quad #text[(B-Call)]$)
+#h(2em)
+#irule("B-Call-Mutual",
+  $#text[no rule]$,
+  $cS."selfRec" = (g, thin dot) quad g eq.not f$,
+  $#reachJ($f$, $g$) #text[ in the call graph of ] Phi$)
+]
+
 A call is checked against the signature alone — recursion forces this, and all
-calls get it uniformly. #smallcaps[B-Res] builds the fresh result from the
+calls get it uniformly. That uniformity has one consequence a *self*-call must pay
+for. Admitting `f`'s own call at `f`'s declared return type, with nothing else
+required, is Hoare's recursion rule without its side condition, and under a return
+type that carries real content every false postcondition proves itself
+(@sec-lessons). #smallcaps[B-Call-Self] is that side condition. The declaration
+names a decreasing position `[k]` (doc §1.2); the checker holds that parameter's
+*current snapshot* $c$ — seeded at entry and thereafter carried by ⇜ along with
+every other σ-bearing component, so inside `match n { S(m) => … }` it reads
+`S` $sym("m")$ — and the call is admitted only if the actual at $k$ is a strict
+structural subterm of it. Because the checker is a symbolic interpreter, that test
+is ordinary structural comparison; no measure and no termination checker appears
+anywhere. A borrow parameter decreases through its *payload* snapshot, which is the
+only thing that shrinks in a list cursor. #smallcaps[B-Call-Mutual] is the absence
+of a rule: the guard is per-declaration, so `f` $arrow.r$ … $arrow.r$ `f` through
+another declaration would let each admit the other's postcondition with nothing
+decreasing anywhere, and reachability in the call graph rejects it outright rather
+than approximating it. `[k]` is *declared* and not inferred, for two reasons that
+are both fatal to inference: "some argument decreases at each call" is unsound,
+since two branches can each shrink a different coordinate while growing the other
+forever; and paths are explored independently, so no single inferred index could be
+committed to across them. #smallcaps[B-Res] builds the fresh result from the
 instantiated return type: a non-borrow leaf is a fresh existential at the
 return type (the doc §5.3 _wire_); each $amp"mut"$ position mints a fresh _issued_
 reborrow over a fresh snapshot, owed-annotated from the return type's own
@@ -495,6 +539,8 @@ of the $arrow.r.long.squiggly^*$ premise.
   ([#smallcaps[B-Inst-Nil/Pure/Borrow]], [`Machine.processArgs`, `readCWith`], [`S6Call`, `S12Inst`]),
   ([#smallcaps[B-Res-Val/Borrow/Pair]], [`Machine.buildResult`], [`S7Group` (`nth2`)]),
   ([#smallcaps[B-Call]], [`Machine.readR` (`.call`, checking mode)], [`S6Call`]),
+  ([#smallcaps[B-Call-Self]], [`Machine.strictSubterm`, `St.selfRec`], [`S23Direct`]),
+  ([#smallcaps[B-Call-Mutual]], [`Machine.reachesFn`], [`S23Direct`]),
   ([#smallcaps[B-Coll-Borrow/Pair/Val]], [`Boundary.collectResultBorrows`], [`S7Group`]),
   ([#smallcaps[B-Reach-Refl/Chain/Group]], [`Boundary.reachesLoan`], [`S14Bounds` (`advance`)]),
   ([#smallcaps[B-Exempt-Result/Call], #smallcaps[B-Oblig-Conv]], [`Boundary.auditObligation`, `collapseArg`], [`S7Group` (`choose`), `S5Bound`]),

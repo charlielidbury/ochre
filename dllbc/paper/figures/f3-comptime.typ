@@ -74,7 +74,15 @@ the base, `S m` unfolds one step and recurs. *`boolRec` and `listRec` follow the
 identical scheme* (reduce the scrutinee; one rule per constructor —
 `True`/`False` for `boolRec`, `Nil`/`Cons h t` for `listRec`, the `Cons` case
 recurring on the tail exactly as `S m` recurs on the predecessor); they are
-elided here for space. #smallcaps[C-IotaJ] and #smallcaps[C-IotaK] are the
+elided here for space. *`sigmaRec` does not follow that scheme* and is worth its
+own sentence: $Sigma$ is not inductive in its own right, so its eliminator is
+non-recursive — one arm, no `ih`, firing on `Pair` with
+$"sigmaRec" space A space B space P space f space ("Pair" space a space b)
+arrow.r.squiggly f space a space b$, and leaving a legal stuck spine on a neutral
+target like every other recursor. It completes the basis's
+one-recursor-per-former, and it is what lets a caller take a returned $Sigma$
+certificate *apart* rather than merely build one — the prerequisite the direct
+architecture of @sec-architectures rests on. #smallcaps[C-IotaJ] and #smallcaps[C-IotaK] are the
 fording kit's eliminators (doc §10) and get explicit rules: Paulin-Mohring `j`
 and Streicher `k` both fire *only* on `Refl`, collapsing to the `Refl`-case
 witness `d`. `botElim` has no ι-rule at all — ⊥ has no constructors, so a
@@ -245,17 +253,29 @@ occurrence of $e$ to $sym("b")$ across the same all-of-state targets $[sigma :=
 t]$ reaches. The ordinary #smallcaps[X-Shape] on $sym("b")$ (`True`/`False`) then
 refines the spine per branch, in values *and* types alike.
 
+The rule has a second output, and it is load-bearing elsewhere: the *normalized
+spine* $e$ itself. Abstraction is exactly what makes $e$ unnameable in the branch —
+nothing in the refined state mentions it any more, and a body that recomputes it
+writes a term the refinement never saw — so the branch equation of @fig-match can
+only be built from the value this rule hands back. The pairing is not incidental:
+#smallcaps[X-Gen] is the one split where knowledge has to be reified rather than
+substituted, and it is the one split that returns the material for doing so.
+
 #block(inset: (left: 1em))[
   #text(size: 8.5pt)[
   *#smallcaps[Rule-gap] notes (implementation vs. this figure / doc).*
   #linebreak()
   #box(width: 1.2em)[•] *C-Deref proviso.* `reflectC`'s deref case projects a
   `borrowM`'s payload *unconditionally* — it does not test the payload for loan
-  markers. The "$v$ proper" side-condition of #smallcaps[C-Deref] is the doc's
-  intent (doc §5.2: comptime deref is stuck on a suspended payload); today
-  stuckness surfaces one layer downstream instead (`nfV` treats a marker as a
-  leaf; a later `hasType` rejects it), rather than at the peel. Reported, not
-  resolved.
+  markers. What changed at this pin is who arranges that the condition *holds*. A
+  comptime read is a *demand* like any other, so where a body reads live state —
+  the pure lift — a parked loan is *ended first*, and the projection then meets a
+  proper payload (`collapseCDerefs`, which treats a bare variable whose own loan a
+  call still holds as a place too). `readC` proper, which also reads types and
+  specs, stays the read-only projection it is documented as. So the proviso is
+  discharged by the lazy-ending discipline rather than by making the peel stuck,
+  and what remains is presentational: the figure states as a side-condition
+  something a premise elsewhere establishes.
   #linebreak()
   #box(width: 1.2em)[•] *Comptime `match` deferred.* `reflectC` errors on a
   surface `.matchE` ("not implemented in the comptime fragment"). ι-reduction of
@@ -278,6 +298,7 @@ refines the spine per branch, in values *and* types alike.
   ([#smallcaps[C-Beta]],          [`Pure.whnfV` (β case)],                    [`S4Pure`]),
   ([#smallcaps[C-IotaNatZ/S]],    [`Pure.whnfV` (`natRec`)],                  [`S4Pure`]),
   ([#smallcaps[C-IotaBool/List]], [`Pure.whnfV` (`boolRec`/`listRec`)],       [`S4Pure`, `S11Lib`]),
+  ([#smallcaps[C-IotaSigma]],     [`Pure.whnfV` (`sigmaRec`)],                [`S23Direct`]),
   ([#smallcaps[C-IotaJ/K]],       [`Pure.whnfV` (`j`/`k`)],                    [`S10Ford`]),
   ([#smallcaps[C-Snap]],          [`Machine.reflectC` (`.var`)],              [`S4Pure`, `S3Sym`]),
   ([#smallcaps[C-Deref]],         [`Machine.reflectC` (`.deref`)],            [`S5Bound`]),

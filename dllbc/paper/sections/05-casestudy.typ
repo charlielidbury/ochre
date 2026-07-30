@@ -3,15 +3,28 @@
 = Case Study: A Verified In-Place Quicksort <sec-casestudy>
 
 The preceding sections introduced the four arrows one region at a time; this one
-assembles them into a real algorithm. The target is the program a Rust
-programmer would recognise — a swap-based in-place Lomuto partition, quicksort
-recursing on sub-ranges, no allocation and no take-and-rebuild of whole
-sublists — checked not as a bespoke development but as an ordinary
-_implementation of a pure model_: each imperative function carries a declared
-backward specification (@fig-boundaries), and conformance is conversion. We
-build it from the bottom: the slice representation, the borrow-returning
-cursors, the bounds proofs that ride the telescope, the smallest self-contained
-instance of the whole architecture, the partition, and finally the recursion.
+assembles them into a real algorithm — twice. The target is an in-place quicksort
+over a mutable borrow, and the mechanization verifies it under _both_ of the
+architectures @sec-architectures sets side by side, which is what turns that
+comparison into a measurement.
+
+The first pass, through the end of §5.6, is architecture A. The program is the one a Rust
+programmer would recognise — a swap-based Lomuto partition, recursion on
+sub-ranges, no allocation and no rebuilding of sublists — and it is checked not as
+a bespoke development but as an ordinary _implementation of a pure model_: each
+imperative function carries a declared backward specification (@fig-boundaries),
+and conformance is conversion. We build it from the bottom: the slice
+representation, the borrow-returning cursors, the bounds proofs that ride the
+telescope, the smallest self-contained instance of the architecture, the
+partition, and the recursion.
+
+The second pass (@sec-directroute) is architecture B, and it is the project's mission result:
+the same problem with _no declared backward specification anywhere in the call
+tree_, each function described only by a return type that is its postcondition,
+and every proof step built inside the body from its callees' postconditions.
+Reading the two in sequence is the point — the first shows what a pure model buys
+and what it costs, the second what is left when you take it away.
+
 Every listing in this section is quoted from the mechanization at the pin, and
 every acceptance and rejection claim it makes is a green `native_decide`
 proposition unless a status tag says otherwise.
@@ -34,6 +47,19 @@ all of which compute) is `List`-shaped. What the calculus _does_ claim, and
 what the rest of this section checks, is the load-bearing half: $O(1)$-extra-space
 _swap-based mutation through borrows_, with the segment's untouched remainder
 pinned to its entry snapshot by the $arrow.r.curve$ obligation.
+
+The scoping has a cost that both developments in this section pay, and @sec-directroute returns
+to it: because a list segment is not a _place_, a sub-range can never be handed to a
+callee as a borrow, so a contract must describe the whole list including the part
+the callee must not touch. The project has a design note proposing the destination —
+a flat `Array n T` former, an index and a range step in the place grammar, and a
+lazy _carve_ reorganization that fires only when handed a comptime proof of
+`Le (add lo cnt) n`, so that two range borrows of one array coexist because they are
+literally different subterms of one value tree rather than because the checker
+believes an aliasing argument. That would make the frame preserved by construction
+instead of described by a contract. It is designed and argued, not built: nothing of
+it is in the mechanization at this pin, and it is named here only to locate what the
+`List`-shaped scoping is standing in for. #status("proposed")
 
 == Cursors, and the disjointness problem
 
@@ -196,11 +222,14 @@ toolkit; it too checks green.
 
 The crown assembles the pieces. `quicksort(v, fuel, lo, cnt, hbnd)` sorts the
 `cnt` elements at offset `lo` in place, fuel-structural to mirror the pure model
-`sortRangeL`:
+`sortRangeL`. The bracketed `[fuel]` is the declared decreasing position
+(@sec-boundaries): under this architecture it is a formality, since the declared
+`back`'s conversion is what carries the proof, but the same annotation is what makes
+the recursion of @sec-directroute admissible at all.
 
 ```rust
-fn quicksort (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat,
-              hbnd : Le (add lo cnt) (len *v)) -> Unit
+fn quicksort [fuel] (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat,
+                     hbnd : Le (add lo cnt) (len *v)) -> Unit
       back = sortRangeL fuel lo cnt (*v)
       { match fuel {
           Z => (),
@@ -249,14 +278,138 @@ the declaration to the surface syntax preserved its underlying value byte for
 byte, the check replays from `native_decide`'s cache across that surface change;
 the performance story is told in full in @sec-lessons.
 
+== The same problem with no model at all <sec-directroute>
+
+Architecture B removes the `back`s. A callee's _only_ description becomes its
+return type, a postcondition over the exit snapshot; a caller sees an opaque exit
+plus whatever evidence the callee returned. Four things had to change, and each is
+worth naming because each is a place where taking the model away exposed something
+the model had been hiding.
+
+*The data plan changes.* Range indices were an artefact of wanting a model
+function: `sortRangeL fuel lo cnt` is a function of offsets, so the program was
+too. Stated propositionally, the natural unit is the whole list, and what makes
+whole-list recursion possible is take-and-refill (@calculus's idiom) applied to
+_ownership_ rather than to elements. Two mutators establish the vocabulary — the
+second of them is the one the final quicksort actually glues with:
+
+```rust
+fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
+  -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
+       → Id (List Nat) ret (drop i (old *v))
+
+fn append_back [v] (v : &mut List Nat, w : List Nat)
+  -> Id (List Nat) (*v) (append (old *v) w)
+```
+
+`split_off` leaves the first `i` elements behind the borrow and returns the rest
+_by value_ — it cannot come back as a borrow, since its owner is local — with the
+returned list $Sigma$-pinned to `drop i (old *v)`. It is the general
+ownership-splitting primitive, and the reason this development has one at all;
+the quicksort below reaches the same shape through its partition and needs only
+`append_back` to reassemble.
+
+Note what these ensures are stated _in_: `take`, `drop` and `append` are
+_observation_ functions, which say what a list _is_ independently of any
+implementation. That is the line this architecture holds, and it is a real line —
+a declared `back` was a function mirroring the body's own algorithm, and none of
+these is. The line is drawn at the development's own vocabulary rather than at
+"purity": the same file defines `swapL`, which _is_ a model of a swap, and uses it
+in the ensures of a swap leaf. What the quicksort's call tree contains is what the
+claim is about, and it contains `count`, `len`, `append`, `Ub`, `Lb` and `Sorted`
+— nothing that mirrors a partition or a sort.
+
+*The leaf becomes provable, which contradicted a prior finding.* An earlier reading
+held that an in-place leaf mutating through pointer writes has an opaque exit, so no
+value-level postcondition about it is provable and delegation to a model-carrying
+callee is forced. Half of that is wrong, and the half matters: opacity is a property
+of borrows _issued by a call_, not of inline mutation. A leaf doing its own cursor
+work through the body's _own_ match-field borrows (doc §3.3) writes into a suspension
+that the audit itself collapses, so its exit is a constructor tree over known
+snapshots. `set_at`'s base case is literally `{ *hd := x; Refl }` — a strong update
+through a field reborrow, where the exit `Cons x` $sigma_"tl"$ _is_
+`set Z x (Cons` $sigma_"hd") space sigma_"tl")$ definitionally. Three features had
+been filed forward on the strength of the wrong half; two of them evaporated
+(@sec-lessons logs the retraction).
+
+*The partition returns two lists, and needs branch equations to do it.*
+
+```rust
+fn partition [v] (v : &mut List Nat, p : Nat)
+  -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
+       → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
+       → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+```
+
+`*v` keeps the elements $lt.eq p$; the rest returns by value. There is no
+`partitionL` in the mechanization — no pure model of this function exists — and
+every one of the six conjuncts is proved _inductively in the body_ from the
+recursive call's own ensures. The bounds are where @identification's branch
+equations become load-bearing rather than convenient: the body branches on
+`leb x p` and must _produce_ `Le x p` on one side and `Le p x` on the other, and
+the same body with `Refl` in place of the equation binder is a rejected test
+sitting one screen away in the same file. The two length conjuncts exist only to
+feed the recursion below its sufficiency argument.
+
+*Recursion carries its own decrease.* With the model gone, the return type _is_ the
+postcondition, and a self-call admitted at it unconditionally proves anything
+(@sec-lessons). The guard is the declared `[fuel]`:
+
+```rust
+fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
+  -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
+```
+
+The head is the pivot; the tail is partitioned through `v`; the kept part is sorted
+in place through `v` and the returned part through a borrow of the local holding it;
+`append_back` glues. `Sorted` here is the _structural_ $Sigma$-chain down the spine,
+not the positional `SortedR` above — which is why the $Sigma$-eliminator had to
+land before any of this could be written, a caller's whole knowledge of a callee's
+exit being a certificate it must be able to take apart. The sufficiency hypothesis
+`hfuel` is what makes the out-of-fuel path dead: at `fuel = Z` with a non-empty list
+it reduces to $bot$, so the branch is an ex-falso and the guarded recursion is
+_total_. Weakening `hfuel` to `Unit` while keeping the parameter — so that the
+rejection is about typing and not an unbound name — is a negative control, and the
+body is rejected.
+
+One step is more than gluing, and it is the same keystone the positional development
+met. `sorted_append_pivot` needs `Ub p` of the left part _after_ it has been sorted,
+while the partition bounded it _before_; `Ub`/`Lb` are $Sigma$-chains over the spine
+and so are not natively permutation-invariant. The route is to cross to the
+multiset, where the property is `Π x. x > p → count x l = Z` and
+permutation-invariance is a one-line transitivity, with the two crossings as
+ordinary inductions. That the same obstacle appears in both encodings, and yields to
+the same move, is the case study's strongest evidence that it is a property of the
+problem rather than of either formulation.
+
+The headline holds: `checkFnOk quicksort` is green with zero declared backs in its
+call tree, against lying twins for each conjunct — each chosen to survive the `Nil`
+path and fail on the recursive one — and against an executing differential that
+runs the same declaration on concrete lists and compares with a reference sort.
+
+*What the whole-list shape costs, stated plainly.* It is a workaround for a
+structural fact, not a discovery: _a segment of a list is not a place_. A prefix of
+a right-nested `Cons` tree is not a subterm of it and neither is a middle; only a
+suffix is. So a recursion cannot hand a sub-segment to its callee, and the two
+architectures are two ways of paying for that. The positional one hands over the
+whole list plus two indices, and pays in a predicate library where every predicate
+is range-scoped and every lemma carries a range-fits bound. The whole-list one buys
+segment-shaped recursion by _moving ownership_ — relinking cells and gluing with a
+traversal where the positional program swaps elements in place — and pays in the
+program. Neither is the destination; the calculus is missing the thing that would
+make a range a place, which is @sec-lessons's point about posing the problem, met
+from the direction that hurts.
+
 #block(inset: 8pt, stroke: 0.5pt + luma(150), radius: 3pt, width: 100%)[
-  #status("green") _Conformance_ — that the imperative partition and quicksort
-  implement their pure models `partScanL`/`sortRangeL`, checked by the
-  declared-back audit — is green. #status("open") _Model correctness_ — that
-  `sortRangeL` in fact sorts and permutes, and the direct propositional
-  restatement `Sorted (*v)` $and$ `Perm (old *v) (*v)` over the exit snapshot —
-  is open (the M22 line; @sec-architectures). Routing verification through a
-  pure model is the comparison baseline, not the mission; @sec-architectures
-  takes up why, and @sec-empirics states what a soundness proof of the machinery
-  itself would have to establish.
+  #status("green") _Conformance_ (architecture A) — that the imperative partition
+  and quicksort implement their pure models `partScanL`/`sortRangeL`, checked by
+  the declared-back audit — is green. #status("open") _Model correctness_ for that
+  route — that `sortRangeL` in fact sorts and permutes — remains open, and is the
+  cost of routing verification through a model.
+  #status("green") _The direct route_ (architecture B, @sec-directroute) is green and does not
+  incur that debt: `Sorted (*v)` together with count-preservation against
+  `old *v` is proved in the bodies, with no model of the partition or the sort
+  anywhere in the development. @sec-architectures compares the two;
+  @sec-empirics states what a soundness proof of the machinery _itself_ would
+  still have to establish, which neither architecture supplies.
 ]

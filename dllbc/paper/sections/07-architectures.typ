@@ -3,14 +3,17 @@
 = Two architectures for verification <sec-architectures>
 
 The declared-back machinery of @sec-boundaries admits two very different ways of
-verifying an imperative program, and this project has built both. They differ in
-what the signature promises and in where the proof burden lands. The first routes
-all reasoning through a pure model and keeps the imperative body proof-free; it is
-landed and green. The second proves properties _directly_ in the body, over the
-value the borrow holds at exit; its semantics is decided and its implementation is
-in flight. This section measures the two against each other, because the choice
-between them is the live decision of the project, and the choice was made
-deliberately and recently in favour of the second.
+verifying an imperative program, and this project has built both, to completion.
+They differ in what the signature promises and in where the proof burden lands.
+The first routes all reasoning through a pure model and keeps the imperative body
+proof-free. The second proves properties _directly_ in the body, over the value
+the borrow holds at exit. Both are landed and green at the pin, on the same
+_problem_, which is what makes the comparison below a measurement rather than a
+prediction: @sec-casestudy works each of them as a full in-place quicksort. The
+two are not the same _program_ — how the problem is posed differs with the
+architecture, and @sec-directroute says how — which bounds what the comparison can attribute. The
+project chose the second, deliberately, as its mission; the first remains as the
+baseline the choice was made against.
 
 == Architecture A: conformance to a pure model
 
@@ -23,7 +26,7 @@ in-place, swap-based quicksort type-checks as an implementation of its pure mode
 with `back = sortRangeL fuel lo cnt` $ast.op v$:
 
 ```rust
-fn quicksort (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : …) -> Unit
+fn quicksort [fuel] (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : …) -> Unit
   back = sortRangeL fuel lo cnt (*v) = { … }
 ```
 
@@ -55,15 +58,19 @@ _comparison baseline_ rather than the mission.
 
 The mission, set by the project in favour of exactly the interaction A avoids, is
 to prove postconditions _directly in the body_, over the value the borrow holds
-at exit:
+at exit. In the mechanization at the pin the shape is:
 
 ```rust
-fn quicksort (v : &mut List Nat) -> Sorted (*v) ∧ Perm (old *v) (*v)
+fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
+  -> Σ (hs : Sorted (*v)) → Π n. Id Nat (count n (*v)) (count n (old *v))
 ```
 
-The parameter stays a plain `List Nat`; the evidence rides the return type. Two
-snapshot readings make this well-formed, and both are decided (@sec-boundaries
-records the rule-gap where the implementation still pins entry wholesale).
+The parameter stays a plain `List Nat`; the evidence rides the return type, as a
+$Sigma$ of sortedness over the exit snapshot and count-preservation against the
+entry. Permutation is stated by counting rather than by an indexed `Perm` family
+— a multiset equality is what the swap and partition lemmas actually establish,
+and it is closed under the rearrangements a sort performs. Two snapshot readings
+make this well-formed, and both are implemented.
 $ast.op v$ _in return position_ denotes the *exit snapshot* — the value the borrow
 holds at the audit. It is canonical for the same reason the calculus has no
 lifetime annotations: with no lifetimes, the callee's exclusive access ends
@@ -71,8 +78,9 @@ _exactly_ at the audit, and the audit already computes the collapsed final
 payload, so "the value at the end" names one well-defined tree. `old` $ast.op v$
 denotes the *entry snapshot* — `old` is an operator, not a binder, sugar over the
 telescope's existing entry snapshot, so nothing scoped escapes its bracket. A
-postcondition can therefore relate exit to entry (`Perm (old *v) (*v)`: the exit
-list is a permutation of the entry list) without either becoming stale.
+postcondition can therefore relate exit to entry — the count conjunct above says
+that every value occurs as often in the exit list as in the entry list — without
+either reading becoming stale.
 
 The proofs are threaded through the body from callees' postconditions. A call to
 partition returns evidence about the partitioned list; the caller opens that
@@ -87,23 +95,26 @@ This is the architecture that walks into the hard interaction on purpose, and th
 friction it meets there is the research object, not an obstacle to be smoothed
 over before publication. The project keeps a _pain diary_: each contortion the
 programmer is forced into is logged as a candidate calculus feature — a missing
-sugar, an absent rule, an implicit that should have been inferred. The exit-
-snapshot reading and the `old` operator are the first two entries promoted from
-diary to design; the milestone that carries them, together with swap, partition,
-and quicksort re-specced and re-proved in this propositional style, is in flight.
-#status("in flight") The return-type snapshot machine it needs — $ast.op v$ read
-at exit rather than entry — is decided but not yet mechanized. #status("proposed")
+sugar, an absent rule, an implicit that should have been inferred. Three entries
+have been promoted from diary to design, and the order is instructive. The
+exit-snapshot reading and the `old` operator came first, and are what make the
+return type above well-formed. _Branch equations_ (@identification) came third and
+were the one the architecture could not proceed without: a body that must produce
+evidence has to turn "the comparison said yes" into an order fact, and under
+architecture A no body ever needed to.
 
-Architecture B is a research direction with a mechanized skeleton, not vaporware.
-Two fragments of it are already green. The M16 proof-of-concept `swapS01` — a
-spec-carrying in-place swap whose $arrow.r.curve$-obligation is a $Sigma$ pairing
-the swapped list with an `Id`-proof of length preservation — checks, and its
-caller opens the pair to recover _the list and a proof about it_, evidence
-surviving a boundary and attaching to the recovered value. Building on it,
-`certSwapCount` in the S19 partition listing carries a count-preservation
-certificate over a _symbolic_ list, threading a `swapS` call's postcondition into
-a caller's obligation. Both pass by `native_decide`; they are the existing
-propositional fragments the full case study extends.
+One entry remains open, and it is the residual cost of the architecture rather
+than a gap in it. #status("open") A body can name the value a place holds _now_,
+and — for a borrow parameter — the value it held at entry; it cannot name the
+value a _consumed_ binder held, nor an intermediate exit that a later mutation has
+superseded. So a proof spanning two mutations must be built _before_ the second and
+applied after, as a function of values that do not exist yet. The mechanization's
+quicksort carries four such staged builders; none of them does mathematical work,
+and all four would collapse into ordinary lemma applications given an `old` that
+extended to consumed things. Six independent instances of the pattern are logged
+across the last two milestones — enough that the diary now reads as a
+specification for the feature rather than a list of complaints, which is what the
+diary discipline is for.
 
 == The comparison
 
@@ -136,9 +147,21 @@ propositional fragments the full case study extends.
   [present — a back that reformulates its tree is outside conversion's reach (@sec-boundaries); bridging-equation close deferred],
   [absent — there is no back to reformulate; the postcondition is proved directly],
 
+  [Body's branch knowledge],
+  [occurrence rewriting suffices — no body cites a branch fact],
+  [needs _branch equations_: the order fact is produced, not merely assumed (@identification)],
+
+  [Recursion],
+  [structural on the model's own `fuel`; conformance is per-path],
+  [the declared `[k]` guard, with a sufficiency hypothesis discharging the out-of-fuel path],
+
+  [Cost to check],
+  [#status("green") 181 ms for the conformance audit, after the substitution fix (@sec-lessons)],
+  [#status("green") 21 ms — a different program, and the encoding is why (@sec-lessons)],
+
   [Status],
   [#status("green") landed — quicksort conforms to `sortRangeL`],
-  [#status("in flight") semantics decided; implementation in flight (fragments green)],
+  [#status("green") landed — quicksort proves `Sorted` $and$ count-preservation, zero declared backs],
 )
 
 The trade is legible in the table. A costs nothing in the body and yields the
@@ -154,6 +177,19 @@ without a separate specification language: the postcondition is an ordinary
 dependent type over the exit snapshot, checked by the same interpreter that runs
 the body. That the calculus can express either architecture from the _same_
 boundary machinery — a declared `back` for A, a postcondition over $ast.op v$ for
-B — is itself the finding; that the project has chosen B, and treats the friction
-of proving over mutated state as the contribution rather than the cost, is the
-direction the rest of this work pursues.
+B — is itself the finding.
+
+Two results from carrying B to completion sharpen the trade beyond what the table
+shows, and neither was predicted. The first is that B does _not_ merely relocate
+A's pure model: the mechanization's back-less quicksort has no model function of
+the partition anywhere, only _observation_ vocabulary — `count`, `len`, `take`,
+`drop`, `append`, `Ub`, `Lb`, `Sorted` — functions that say what a list _is_ rather
+than what a body _does_. An earlier reading of the evidence held that direct
+proving eliminated conversion-based verification while the model functions survived
+as the only provable exit shapes; carrying the architecture to the end refuted it,
+and the refutation is recorded in @sec-lessons because the diagnosis it replaced was
+a reasonable inference from a partial result. The second is that B is _cheaper to
+check_, by a wide margin, for a reason that has nothing to do with either
+architecture: the spec encoding, not the checker, dominates the cost (@sec-lessons).
+Both findings favour B, and neither is an argument the project made when it chose B
+— which is the most one can ask of a comparison one has prejudged.

@@ -128,15 +128,32 @@ decide between them; the choice is the proof's.
 Second, _audit soundness_ — that a passed $arrow.r.curve$/`back` audit implies
 the caller's recovered value genuinely satisfies the obligation — but only
 _modulo_ the audit-strategy holes the extraction has already named, which any
-quantified statement must close. Two are known. A declared `back` on a call that
-captures two or more borrows is silently ignored: the group end matches a
-backward spec only against a single captured loan and otherwise degrades to
-opaque _without rejection_, so a declared promise can go silently unused. And
-both back checks take the first qualifying obligation and pass _vacuously_ when
-none qualifies, so a declared `back` can go entirely unaudited on such a path.
-These are holes in the audit's strategy, not in the pure models, and until they
-are closed "audited" means less than it appears — a soundness statement that
-quantifies over declared specifications must fix them first.
+quantified statement must close. @sec-boundaries names three; two of them bear on
+audit soundness in this sense, and it is worth separating them, because the third
+is a rejection rather than an unsound acceptance and so threatens completeness
+instead. The two: a declared `back` on a call that captures two or more borrows is
+silently ignored, the group end matching a backward spec only against a single
+captured loan and otherwise degrading to opaque _without rejection_, so a declared
+promise can go silently unused; and both back checks take the first qualifying
+obligation and pass _vacuously_ when none qualifies, so a declared `back` can go
+entirely unaudited on such a path. (The third, the read/write asymmetry on
+group-captured owners, rejects a program the rules admit — a strategy gap of the
+same kind as the ending-order one above.) These are holes in the audit's strategy,
+not in the pure models, and until they are closed "audited" means less than it
+appears — a soundness statement that quantifies over declared specifications must
+fix them first.
+
+Third, and new at this pin, _the recursion guard_. A self-call is admitted at the
+function's own declared return type — signature-only checking forces that — so with
+no side condition the rule is Hoare's recursion rule with its side condition
+deleted, and any false postcondition proves itself. That hole was open and
+demonstrable (@sec-lessons); it is now closed by a structural guard, and what a
+proof owes here is the guard's well-foundedness: that the declared position's
+snapshot strictly decreases along every admitted self-call, that snapshots are
+entry-knowledge no mutation rewrites (which is the _carry_ half of the invariant
+above, doing load-bearing work outside the type layer for the first time), and that
+rejecting mutual recursion outright is what keeps the per-declaration guard from
+being circumvented through a second door.
 
 The honest summary is the one this section opened with: the checker is not
 proved, but its behavior is instrumented, its central invariant is verified and

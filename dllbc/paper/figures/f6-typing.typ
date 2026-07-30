@@ -70,6 +70,7 @@ $
   quad quad "natRec" P space z space s space ("S" space m) equiv s space m space ("natRec" P space z space s space m) \
 "(C≡-IotaBool)" & quad "boolRec" P space t space f space "True" equiv t
   quad quad "boolRec" P space t space f space "False" equiv f \
+"(C≡-IotaSigma)" & quad "sigmaRec" A space B space P space f space ("Pair" space a space b) equiv f space a space b \
 "(C≡-IotaList)" & quad "listRec" A P space p_n space p_c space "Nil" equiv p_n
   quad quad "listRec" A P space p_n space p_c space ("Cons" space h space t) equiv p_c space h space t space ("listRec" A P space p_n space p_c space t) \
 "(C≡-IotaJ)" & quad "j" A space a space P space d space b space "Refl" equiv d
@@ -196,8 +197,20 @@ One schema, instantiated per eliminator by the table:
   [$"listRec" A space P space p_n space p_c space l$],
     [$#hasT($p_n$, $P space "Nil"$)$; #h(0.3em) $#hasT($p_c$, $Pi (h:A) arrow.r Pi (t:"List" A) arrow.r P space t arrow.r P("Cons" h space t)$)$; #h(0.3em) $#hasT($l$, $"List" A$)$],
     [$P space l$],
+  [$"sigmaRec" A space B space P space f space s$],
+    [$#hasT($f$, $Pi (x:A) arrow.r Pi (y:B space x) arrow.r P("Pair" x space y)$)$; #h(0.3em) $#hasT($s$, sigT($x$, $A$, $B space x$))$],
+    [$P space s$],
   [$"botElim" T space x$], [$#hasT($x$, $"Bot"$)$], [$T$],
 ))
+
+$Sigma$'s parameters are a type $A$ and a *family* $B$, so — unlike `List`'s
+uniform parameter — both of `sigmaRec`'s premises cross a binder and $B$ and $P$ are
+shifted to be read under it. The eliminator is non-recursive, hence the single arm
+with no inductive hypothesis. Its absence was the basis's one missing
+recursor-per-former: a $Sigma$ could be *built* and never *projected*, which is
+survivable while conjunctions are only ever assembled and fatal once a caller's
+whole knowledge of a callee is a returned certificate it must take apart
+(@sec-architectures).
 
 The two `Id`-eliminators, written explicitly (Paulin-Mohring J and Streicher K,
 doc §10):

@@ -94,12 +94,18 @@ write-through for free.
   irule("R-Take",
     evR($Omega$, $* p$, $w$, $Omega[* p arrow.r.bar bot]$),
     $"loc"(Omega, * p) = w$,
-    $w != bot$),
+    $w != bot$,
+    $ownfree(w)$),
   [`*p` in read position is a *take*: it moves the located payload out *through*
     the borrow, leaving a hole #vbot at that place. The borrow layers above are
     untouched — `b` itself is not consumed — and the hole's only legal successor
     is a ⇐-fill through it (doc §2.4). This is the update-in-place idiom the calculus
-    exists to make routine.],
+    exists to make routine. The $ownfree(w)$ premise is a *demand*, discharged the
+    way every demand is: a payload still holding a parked loan — a `&mut *v` handed
+    to a call that has returned, or a field reborrow from a borrow-mode match — is a
+    *suspension*, not a value, and #smallcaps[G-EndMut] (@fig-reorg) collapses it
+    innermost-first before the take proceeds. Without the premise the *marker* is
+    taken and travels on as though it were a value.],
 )
 
 #ruled(
@@ -215,7 +221,7 @@ All line numbers are `Dllbc/Machine.lean` unless prefixed; tests are in
   ([#smallcaps[R-Copy]],  [`readR` `.var` 988, 1005; `indexKindV` 328], [S2.lean:35 doc §2.1 copy-on-read]),
   ([#smallcaps[R-Move]],  [`readR` `.var` 1015 (and doc §19 carried-borrow 1010)], [S2.lean:101 take-and-refill (`tail` is data → moved)]),
   ([#smallcaps[R-Ctor]],  [`readR` `.ctorApp` 1022; `readArgs` 1120], [S2.lean:88 `Cons(3, Nil)`]),
-  ([#smallcaps[R-Take]],  [`readR` `.deref` 1016; `navRead` 479], [S2.lean:88 doc §2.4 `let tail = *b`]),
+  ([#smallcaps[R-Take]],  [`readR` `.deref` (`firstLoanMarker` + `endLoan` + retry); `navRead`], [S2 doc §2.4 `let tail = *b`; `S23Direct`]),
   ([#smallcaps[R-Mint]],  [`readR` `.borrow` 1024], [S2.lean:45 `&mut x`; :117 `&mut *b` reborrow]),
   ([#smallcaps[R-Let]],   [`readR` `.letIn` 1033], [S2.lean:26 (every trace)]),
   ([#smallcaps[R-Seq]],   [`readR` `.seq` 1062], [S8Diff.lean:65 `e ; ()`; S19Partition.lean:553]),

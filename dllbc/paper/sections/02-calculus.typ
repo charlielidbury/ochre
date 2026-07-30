@@ -55,7 +55,7 @@ Which arrows are defined on which constructs is the skeleton of the language. @a
     [`T`], [✗], [✗], [✓], [✗], [a comptime value],
     [`T.c`], [✓], [✗], [✓], [✗], [constructor values exist in both worlds; $arrow.r.double$ consumes the fields],
     [`match t {…}`], [✓], [✗], [✓#footnote[The $arrow.r.squiggly$ cell for `match` is aspirational. Comptime $iota$-reduction of `match` on the pure fragment is not implemented in the v0 mechanization; type-level case analysis holds today only through the recursors that `match` would _elaborate_ to (the CIC eliminators of @fig-comptime), pending the substitution discipline for binders. It is the one cell where this table runs ahead of the mechanization.]], [✗],
-    [$arrow.r.double$: two modes by scrutinee type, branch entry refines by $arrow.l.squiggly$; $arrow.r.squiggly$: $iota$-reduction, stuck on symbolic],
+    [$arrow.r.double$: two modes by scrutinee type, branch entry refines by $arrow.l.squiggly$ and may bind the branch's equation (@identification); $arrow.r.squiggly$: $iota$-reduction, stuck on symbolic],
     [$"let" x = t ; t'$], [✓], [✗], [✓], [✗], [sequencing in both fragments],
     [$t := t' ; t''$], [✓], [✗], [✗], [✗], [$arrow.r.double$: RHS by $arrow.r.double$, target by $arrow.l.double$; excluded from the comptime fragment],
     [`&mut t`], [✓], [✗], [✗], [✗], [mints a loan; `&mut *x` is reborrow],
