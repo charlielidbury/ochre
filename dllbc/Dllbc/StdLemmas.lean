@@ -4043,4 +4043,33 @@ def sorted_arrCat_ty : Term := pure{
     SortedA m a → UbA p m a → SortedA q b → LbA p q b →
       SortedA (add m (S q)) (arrCat m (S q) a (arrCat 1 q (asingle p) b)) }
 
+/-- `count_append`'s transfer, and ¶6's named survivor: "the one lemma that replaces
+    `count_append`/`take`/`drop` is `count_arrCat : count x (arrCat a b) = add (count x a)
+    (count x b)`, which is the same induction." It is the same induction — the `Cons`
+    arm's dependent Bool-elim on `eqb x h` transfers unchanged, because `countA` unfolds
+    on an `acons` exactly as `count` unfolds on a `Cons`. -/
+def count_arrCat : Term := pure{
+  λ (x : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
+        Id Nat (countA x (add mz q) (arrCat mz q az b))
+               (add (countA x mz az) (countA x q b)))
+      Refl
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : Id Nat (countA x (add k q) (arrCat k q t b))
+                       (add (countA x k t) (countA x q b))).
+          elim (eqb x h) return (λ (bv : Bool).
+            Id Nat (boolRec (λ (w : Bool). Nat)
+                     (S (countA x (add k q) (arrCat k q t b)))
+                     (countA x (add k q) (arrCat k q t b)) bv)
+                   (add (boolRec (λ (w : Bool). Nat)
+                     (S (countA x k t)) (countA x k t) bv) (countA x q b))) {
+            True => id_congr Nat Nat (λ (n : Nat). S n)
+                      (countA x (add k q) (arrCat k q t b))
+                      (add (countA x k t) (countA x q b)) ih,
+            False => ih })
+      m a }
+def count_arrCat_ty : Term := pure{
+  Π (x : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    Id Nat (countA x (add m q) (arrCat m q a b)) (add (countA x m a) (countA x q b)) }
+
 end Dllbc.StdLemmas

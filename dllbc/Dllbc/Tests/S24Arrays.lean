@@ -1119,7 +1119,8 @@ def chkL (tm ty : Term) : Bool :=
 open Dllbc.StdLemmas (countA SortedA UbA LbA BoundA asingle
   sorted_headA sorted_headA_ty sorted_tailA sorted_tailA_ty
   ub_headA ub_headA_ty ub_tailA ub_tailA_ty lb_boundA lb_boundA_ty
-  bound_arrCat bound_arrCat_ty sorted_arrCat sorted_arrCat_ty)
+  bound_arrCat bound_arrCat_ty sorted_arrCat sorted_arrCat_ty
+  count_arrCat count_arrCat_ty)
 
 -- The predicates COMPUTE, on a run and on the cons view alike.
 example : (pv pure{ countA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
@@ -1148,6 +1149,12 @@ example : chkL bound_arrCat bound_arrCat_ty = true := by native_decide
 /-- **The crux.** `sorted_append_pivot` with `append ↦ arrCat` and `Cons p b ↦
     arrCat (asingle p) r`, hypothesis for hypothesis, and nothing else changed. -/
 example : chkL sorted_arrCat sorted_arrCat_ty = true := by native_decide
+
+/-- ¶6's other named survivor: "the one lemma that replaces `count_append`/`take`/`drop`
+    is `count_arrCat`, which is the same induction". It is the same induction — the
+    dependent Bool-elim on `eqb x h` transfers unchanged, because `countA` unfolds on an
+    `acons` exactly as `count` unfolds on a `Cons`. First try. -/
+example : chkL count_arrCat count_arrCat_ty = true := by native_decide
 
 /-! ### FINDING — the transfer needed two ι-rules to be MECHANICAL rather than merely possible
 

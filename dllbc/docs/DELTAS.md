@@ -307,6 +307,30 @@ spine that happens to be written flat.
 
 ---
 
+### G4 — ¶6's partition is a NEW PROGRAM, not a transfer, and the ledger does not say so
+
+¶6's migration ledger is organized as "what disappears / what survives untouched / what
+gets built", and its three costs are the partition's extra returns, the both-halves-before-
+either-call ordering, and "the pure library gains an array layer … Call it a week of the
+kind of work M16–M18 already showed is mechanical".
+
+The array layer IS mechanical, as measured: the predicates, the five glue helpers,
+`sorted_arrCat` and `count_arrCat` are their list counterparts with the container swapped,
+and they check (R10 records the three ι-rules that make it so). What the ledger does not
+say is that **the partition itself does not transfer at all**. M23's partition is a
+relational take-and-rebuild over a linked list, returning two lists BY VALUE — §4.1's
+idiom, and ¶6's own text endorses it ("The program is §4.1's take-and-rebuild, not
+Lomuto's array scan"). The array quicksort ¶6 sketches needs the opposite: an IN-PLACE
+scan returning a pivot INDEX, because the recursive calls carve at that index. There is no
+list program to port; it is a new one, with its own invariants.
+
+This belongs in ¶6's honest accounting as a fourth cost, and it is the largest of the
+four. Everything the note lists under "what disappears" still disappears — the ledger's
+accounting of the *predicate* strata is accurate and verified. The gap is only that the
+leaf program is counted as surviving when it does not exist yet.
+
+---
+
 ## Decisions taken (for the merge review)
 
 **The residue's length needs a name — DECIDED: route (a), built, ¶6's three-way carve
