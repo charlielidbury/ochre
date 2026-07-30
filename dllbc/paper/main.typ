@@ -63,6 +63,13 @@
 ]))
 #v(1em)
 
+// ---------------- Contents ----------------
+#{
+  show outline.entry.where(level: 1): set text(weight: "semibold")
+  outline(title: [Contents], depth: 2, indent: 1em)
+}
+#pagebreak()
+
 // ---------------- Prose sections ----------------
 #include "sections/01-intro.typ"
 #include "sections/02-calculus.typ"
