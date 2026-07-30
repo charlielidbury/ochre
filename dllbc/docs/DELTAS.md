@@ -280,6 +280,33 @@ This is why the three-way split cannot be reached by re-associating the two-way 
 
 ---
 
+### R10 — the library transfer needed three ι-rules to be MECHANICAL
+
+¶1.3 promises the quicksort library "transfers to arrays by replacing `listRec` with
+`arrRec` and `Cons` with `acons`. Nothing about the migration requires re-deriving that
+mathematics." The mathematics did transfer verbatim — `sorted_append_pivot` and its five
+helpers are their list proofs with the container swapped, and they check. What the note
+does not mention is that the array constants must COMPUTE the way the list constructors
+do, or every step of a transferred proof wants a transport lemma the list proof needs
+none of.
+
+Two rules are the obvious ones: `arrCat` computes on an `acons`-headed left argument
+(`arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`, which is `append (Cons h t) u ⇝ Cons h
+(append t u)`), and `arrRec` fires on the cons view, so a predicate over arrays unfolds on
+an `acons` exactly as its counterpart unfolds on a `Cons`. Without them
+`SortedA (arrCat (acons h t) …)` does not unfold, and `sorted_append_pivot`'s proof turns
+entirely on that unfolding — its own docstring says "Both components are definitional …
+which is why no `list_rw` transport appears anywhere in this proof."
+
+The third was invisible until the glue was written, and is the one worth recording: a
+nonempty RUN on the left with a non-run on the right peels its head into an `acons`.
+`asingle p` COMPUTES to the run `[p]`, so ¶6's own spelling `arrCat (asingle p) r` was
+stuck for symbolic `r` — **the doc's chosen notation could not reach the cons view it is
+notation FOR**. The rule is the same one read through the other view: a literal is a cons
+spine that happens to be written flat.
+
+---
+
 ## Decisions taken (for the merge review)
 
 **The residue's length needs a name — DECIDED: route (a), built, ¶6's three-way carve

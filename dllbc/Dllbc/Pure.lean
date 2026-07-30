@@ -253,6 +253,25 @@ def whnfV : Nat → Val → Val
       | .ctor "Arr" [], b' => whnfV fuel (rebuildSpine b' rest)
       | a', .ctor "Arr" [] => whnfV fuel (rebuildSpine a' rest)
       | .ctor "Arr" xs, .ctor "Arr" ys => whnfV fuel (rebuildSpine (.ctor "Arr" (xs ++ ys)) rest)
+      -- CONS-VIEW compatibility: `arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`, the
+      -- array counterpart of `append (Cons h t) u ⇝ Cons h (append t u)`. Without it the
+      -- library transfer ¶1.3 promises is not mechanical: `sorted_append_pivot`'s proof
+      -- turns on `Sorted (append (Cons h t) …)` UNFOLDING definitionally, and the array
+      -- restatement needs the same unfolding or every step wants a transport lemma.
+      | .app (.app (.app (.const "acons") m') x) xs, b' =>
+        whnfV fuel (rebuildSpine
+          (.app (.app (.app (.const "acons") (kAdd m' k)) x)
+            (.app (.app (.app (.app (.const "arrCat") m') k) xs) b')) rest)
+      -- A nonempty RUN on the left with a non-run on the right peels its head into an
+      -- `acons`, which is the same rule read through the other view: a literal is a
+      -- cons spine that happens to be written flat. Without this `arrCat (asingle p) b`
+      -- is stuck for symbolic `b` — and `asingle p` computes to a RUN, so ¶6's own
+      -- spelling of the pivot splice would not reach the cons view it is meant to be.
+      | .ctor "Arr" (x :: xs), b' =>
+        let tlLen := valOfNat xs.length
+        whnfV fuel (rebuildSpine
+          (.app (.app (.app (.const "acons") (kAdd tlLen k)) x)
+            (.app (.app (.app (.app (.const "arrCat") tlLen) k) (.ctor "Arr" xs)) b')) rest)
       | a', b' => rebuildSpine (.const "arrCat") (m :: k :: a' :: b' :: rest)
     -- `aget T n i a : T` — positional read of the snapshot (¶2.2's ⇝ column at an
     -- index place). Fires only at a concrete index into a run.
@@ -279,6 +298,11 @@ def whnfV : Nat → Val → Val
         let k : Val := valOfNat vs.length
         let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, k, tl]
         whnfV fuel (rebuildSpine (rebuildSpine pc [k, x, tl, recCall]) rest)
+      -- …and ι on the CONS view, so a predicate over arrays unfolds on an `acons`
+      -- exactly as its list counterpart unfolds on a `Cons`.
+      | .app (.app (.app (.const "acons") m') x) xs =>
+        let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, m', xs]
+        whnfV fuel (rebuildSpine (rebuildSpine pc [m', x, xs, recCall]) rest)
       | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
     -- botElim never fires (⊥ has no constructors); it is always a stuck value.
     | _, _ => rebuildSpine head args

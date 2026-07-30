@@ -1095,4 +1095,82 @@ example : checkFnOk (decl{
     let r = &mut (*a)[S i ; j];
     () } }) = true := by native_decide
 
+
+/-! ## (viii) The ARRAY LIBRARY — ¶1.3's promise, and ¶6's crux claim
+
+    ¶1.3: "Every lemma in the quicksort library — `count`, `Sorted`, `Bound`, the order
+    stack — transfers to arrays by replacing `listRec` with `arrRec` and `Cons` with
+    `acons`. Nothing about the migration requires re-deriving that mathematics."
+
+    ¶6, on the glue: "Set `append ↦ arrCat` and `Cons p b ↦ arrCat (asingle p) r` and it
+    IS the array lemma, hypothesis for hypothesis — not merely the same shape but the
+    same statement modulo the container … So the migration INHERITS that proof rather
+    than opening a stratum. Claim exactly that and no wider: **one stratum deleted
+    outright** (locality), **one inherited** (the pivot glue), **none invented**."
+
+    Both claims are checkable and both check. The definitions and proofs in `StdLemmas`
+    are their list counterparts with that substitution applied and nothing else. -/
+
+def chkL (tm ty : Term) : Bool :=
+  match (do let v ← readC 8000 tm; let t ← readC 8000 ty; hasType 8000 v t).run (seedPure [] []) with
+  | .ok r _ => r
+  | .error _ _ => false
+
+open Dllbc.StdLemmas (countA SortedA UbA LbA BoundA asingle
+  sorted_headA sorted_headA_ty sorted_tailA sorted_tailA_ty
+  ub_headA ub_headA_ty ub_tailA ub_tailA_ty lb_boundA lb_boundA_ty
+  bound_arrCat bound_arrCat_ty sorted_arrCat sorted_arrCat_ty)
+
+-- The predicates COMPUTE, on a run and on the cons view alike.
+example : (pv pure{ countA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
+example : (pv pure{ SortedA 3 Arr(1, 2, 3) } == pv pure{ SortedA 3 Arr(1, 2, 3) })
+    = true := by native_decide
+example : chk pure{ Pair(unit, Pair(unit, Pair(unit, unit))) } pure{ SortedA 3 Arr(1, 2, 3) }
+    = true := by native_decide
+-- …and an unsorted array's `SortedA` is uninhabited, so the predicate is not vacuous.
+example : chk pure{ Pair(unit, Pair(unit, Pair(unit, unit))) } pure{ SortedA 3 Arr(3, 2, 1) }
+    = false := by native_decide
+
+-- `arrCat (asingle p) b` IS the array `Cons p b`: the doc's spelling of the pivot
+-- splice reaches the cons view by computation, with no lemma relating them.
+example : (pv pure{ arrCat 1 2 (asingle 9) Arr(1, 2) } == pv pure{ Arr(9, 1, 2) })
+    = true := by native_decide
+
+/-! ### The five helpers and the glue, each its list proof with the container swapped -/
+
+example : chkL sorted_headA sorted_headA_ty = true := by native_decide
+example : chkL sorted_tailA sorted_tailA_ty = true := by native_decide
+example : chkL ub_headA ub_headA_ty = true := by native_decide
+example : chkL ub_tailA ub_tailA_ty = true := by native_decide
+example : chkL lb_boundA lb_boundA_ty = true := by native_decide
+example : chkL bound_arrCat bound_arrCat_ty = true := by native_decide
+
+/-- **The crux.** `sorted_append_pivot` with `append ↦ arrCat` and `Cons p b ↦
+    arrCat (asingle p) r`, hypothesis for hypothesis, and nothing else changed. -/
+example : chkL sorted_arrCat sorted_arrCat_ty = true := by native_decide
+
+/-! ### FINDING — the transfer needed two ι-rules to be MECHANICAL rather than merely possible
+
+    ¶1.3's promise is about the mathematics, and the mathematics did transfer verbatim.
+    What it does not mention is that the array constants have to compute the way the list
+    constructors do, or every step of a transferred proof wants a transport lemma the
+    list proof needs none of.
+
+    Two rules, both in `Pure.lean`. `arrCat` computes on an `acons`-headed left argument
+    (`arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`), which is `append (Cons h t) u ⇝
+    Cons h (append t u)`; and `arrRec` fires on the cons view, so a predicate over arrays
+    unfolds on an `acons` exactly as its counterpart unfolds on a `Cons`. Without them
+    `SortedA (arrCat (acons h t) …)` does not UNFOLD, and `sorted_append_pivot`'s proof
+    turns entirely on that unfolding — its own docstring says "Both components are
+    definitional … which is why no `list_rw` transport appears anywhere in this proof."
+
+    A third rule was needed and is the one worth recording, because it was invisible
+    until the glue was written: a nonempty RUN on the left with a non-run on the right
+    peels its head into an `acons`. `asingle p` COMPUTES to the run `[p]`, so ¶6's own
+    spelling `arrCat (asingle p) r` was stuck for symbolic `r` — the doc's chosen
+    notation could not reach the cons view it is notation FOR. The rule is the same one
+    read through the other view: a literal is a cons spine that happens to be written
+    flat. -/
+
+
 end Dllbc.Tests.S24Arrays

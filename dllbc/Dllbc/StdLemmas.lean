@@ -3877,4 +3877,170 @@ def lb_perm_ty : Term := pure{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     (Π (n : Nat) → Id Nat (count n a) (count n b)) → Lb p b → Lb p a }
 
+/-! ## M24 — the ARRAY layer (¶6's migration ledger, item 3)
+
+    ¶1.3's promise: "Every lemma in the quicksort library — `count`, `Sorted`, `Bound`,
+    the order stack — transfers to arrays by replacing `listRec` with `arrRec` and
+    `Cons` with `acons`. Nothing about the migration requires re-deriving that
+    mathematics." Here is the transfer, and the promise holds textually: each
+    definition below is its list counterpart with `elim` retargeted at the array
+    recursor, and each proof is its list proof with the same substitution.
+
+    Two ι-rules make it mechanical rather than merely possible (see `Pure.lean`):
+    `arrCat` computes on an `acons`-headed left argument, and `arrRec` fires on the
+    cons view. Without them `SortedA (arrCat (acons h t) …)` would not UNFOLD, and every
+    step of the glue would want a transport lemma where the list proof needs none. -/
+
+/-- The empty array. -/
+def anil : Term := pure{ Arr() }
+
+/-- `countA x a` — the multiset counter, `count`'s transfer. -/
+def countA : Term := pure{
+  λ (x : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Nat).
+        elim (eqb x h) return (λ (bz : Bool). Nat) { True => S ih, False => ih })
+      n a }
+
+/-- `BoundA p a` — the head of `a` is ≥ `p`. `Bound`'s transfer. -/
+def BoundA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type). Le p h) n a }
+
+/-- `SortedA a` — the Σ-chain over the spine. `Sorted`'s transfer. -/
+def SortedA : Term := pure{
+  λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
+        Σ (hb : BoundA h k t) → ih) n a }
+
+/-- `UbA p a` — every element of `a` is ≤ `p`. `Ub`'s transfer. -/
+def UbA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
+        Σ (hh : Le h p) → ih) n a }
+
+/-- `LbA p a` — every element of `a` is ≥ `p`. `Lb`'s transfer. -/
+def LbA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
+        Σ (hh : Le p h) → ih) n a }
+
+/-- `asingle x` — the one-element array, `[x]`. ¶6's glue is stated over
+    `arrCat (asingle p) r`, which is the array spelling of `Cons p b`. -/
+def asingle : Term := pure{ λ (x : Nat). acons Z x Arr() }
+
+/-! ### The glue, and the standing claim it tests
+
+    ¶6: "Set `append ↦ arrCat` and `Cons p b ↦ arrCat (asingle p) r` and it IS the array
+    lemma, hypothesis for hypothesis — not merely the same shape but the same statement
+    modulo the container … So the migration INHERITS that proof rather than opening a
+    stratum."
+
+    Below is `sorted_append_pivot` and its four helpers with exactly that substitution
+    applied and nothing else. The claim is checkable and it checks. Note in particular
+    that `arrCat 1 q (asingle p) b` COMPUTES to `acons q p b` — the array `Cons p b` —
+    so the doc's chosen spelling of the pivot splice needs no lemma to relate it to the
+    cons view. -/
+
+def sorted_headA : Term := pure{
+  λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (s : Σ (hb : BoundA h k t) → SortedA k t).
+      elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). BoundA h k t) {
+        Pair (x) (y) => x } }
+def sorted_headA_ty : Term := pure{
+  Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    SortedA (S k) (acons k h t) → BoundA h k t }
+
+def sorted_tailA : Term := pure{
+  λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (s : Σ (hb : BoundA h k t) → SortedA k t).
+      elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). SortedA k t) {
+        Pair (x) (y) => y } }
+def sorted_tailA_ty : Term := pure{
+  Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    SortedA (S k) (acons k h t) → SortedA k t }
+
+def ub_headA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hu : Le h p) → UbA p k t).
+      elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). Le h p) {
+        Pair (x) (y) => x } }
+def ub_headA_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    UbA p (S k) (acons k h t) → Le h p }
+
+def ub_tailA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hu : Le h p) → UbA p k t).
+      elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). UbA p k t) {
+        Pair (x) (y) => y } }
+def ub_tailA_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
+    UbA p (S k) (acons k h t) → UbA p k t }
+
+/-- `LbA p a ⟹ BoundA p a`, `lb_bound`'s transfer: a lower bound on every element is in
+    particular a bound on the head, which is all `SortedA (acons p b)` asks of the pivot. -/
+def lb_boundA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). LbA p m b → BoundA p m b)
+      (λ (hn : Unit). hn)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : LbA p k t → BoundA p k t).
+          λ (hl : Σ (hh : Le p h) → LbA p k t).
+            elim hl return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) {
+              Pair (x) (y) => x })
+      n a }
+def lb_boundA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a → BoundA p n a }
+
+/-- `bound_append`'s transfer: the head bound survives the splice. The recursion IS the
+    case analysis — at the empty array the new head is the PIVOT, otherwise the head is
+    unchanged by the concatenation. No IH is consumed, because `BoundA` looks exactly one
+    cell deep. -/
+def bound_arrCat : Term := pure{
+  λ (h : Nat). λ (p : Nat). λ (k : Nat). λ (t : Array k Nat).
+    λ (q : Nat). λ (b : Array q Nat).
+      arrRec Nat (λ (m : Nat). λ (tz : Array m Nat).
+          BoundA h m tz → Le h p →
+            BoundA h (add m (S q)) (arrCat m (S q) tz (arrCat 1 q (asingle p) b)))
+        (λ (hb : Unit). λ (hp : Le h p). hp)
+        (λ (k2 : Nat). λ (h2 : Nat). λ (t2 : Array k2 Nat).
+          λ (ih : BoundA h k2 t2 → Le h p →
+              BoundA h (add k2 (S q)) (arrCat k2 (S q) t2 (arrCat 1 q (asingle p) b))).
+            λ (hb : Le h h2). λ (hp : Le h p). hb)
+        k t }
+def bound_arrCat_ty : Term := pure{
+  Π (h : Nat) → Π (p : Nat) → Π (k : Nat) → Π (t : Array k Nat) →
+    Π (q : Nat) → Π (b : Array q Nat) →
+      BoundA h k t → Le h p →
+        BoundA h (add k (S q)) (arrCat k (S q) t (arrCat 1 q (asingle p) b)) }
+
+/-- **The quicksort glue** — `sorted_append_pivot` with the container swapped, and
+    nothing else changed. This is ¶6's "textbook quicksort correctness statement, in the
+    textbook shape", and the standing check on the whole migration: if this were not the
+    near-verbatim restatement, something would be off. -/
+def sorted_arrCat : Term := pure{
+  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    λ (sa : SortedA m a). λ (ua : UbA p m a). λ (sb : SortedA q b). λ (lb : LbA p q b).
+      arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
+          SortedA mz az → UbA p mz az →
+            SortedA (add mz (S q)) (arrCat mz (S q) az (arrCat 1 q (asingle p) b)))
+        (λ (sn : Unit). λ (un : Unit). Pair(lb_boundA p q b lb, sb))
+        (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+          λ (ih : SortedA k t → UbA p k t →
+              SortedA (add k (S q)) (arrCat k (S q) t (arrCat 1 q (asingle p) b))).
+            λ (sc : Σ (hb : BoundA h k t) → SortedA k t).
+              λ (uc : Σ (hu : Le h p) → UbA p k t).
+                Pair(bound_arrCat h p k t q b (sorted_headA k h t sc) (ub_headA p k h t uc),
+                     ih (sorted_tailA k h t sc) (ub_tailA p k h t uc)))
+        m a sa ua }
+def sorted_arrCat_ty : Term := pure{
+  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    SortedA m a → UbA p m a → SortedA q b → LbA p q b →
+      SortedA (add m (S q)) (arrCat m (S q) a (arrCat 1 q (asingle p) b)) }
+
 end Dllbc.StdLemmas
