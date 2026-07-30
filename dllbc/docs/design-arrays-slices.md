@@ -246,7 +246,11 @@ Each equation is then discharged by the §10 refl-match **solution transition** 
 * The equation's right-hand side is **flex** — the leaf's extent `m` is a bare σ, which is the case whenever the length came from a telescope parameter, i.e. always in the programs this is for. The solution transition refines `σ_m := add lo′ (add cnt rest)` everywhere, with the occurs check as usual. From that moment the decomposition holds *definitionally*, and every extent in the carved tree is a **given**, never a computed difference. No `sub` is produced anywhere, by this rule or by anything downstream of it.
 * It is **rigid** — a compound neutral like `add σₐ σ_b`, or a concrete numeral. Concrete is fine (both sides compute, and the transition is a no-op). A compound neutral is stuck, and the carve is rejected with an error saying so. The remedy is the one the north star already uses: take the length as a parameter. This is a real restriction on what signatures are carvable and belongs in ¶8.
 
-A note for the mechanizer, since it is where a plausible implementation would go wrong: refining `σ_m` is a refinement of a **length index**, not of a value snapshot, and it must go through `refineSym` like any other — reaching Ω, `sctx`, obligations, group owed types, `retTyVal`, `selfBack`, per the M10 "refinement reaches all σ-bearing state" invariant. It satisfies §3.2's knowledge/state assertion trivially (`add lo′ (add cnt rest)` is marker-free), which is worth *checking* rather than assuming: this is the first refinement in the calculus fired by an **ownership** operation rather than by a match, and the invariant's whole point is that ownership operations must not smuggle state into σ's. They do not here — the substituted term is arithmetic, and it is true of the value timelessly.
+A note for the mechanizer, since it is where a plausible implementation would go wrong: refining `σ_m` is a refinement of a **length index**, not of a value snapshot, and it must go through `refineSym` like any other — reaching Ω, `sctx`, obligations, group owed types, `retTyVal`, `selfBack`, and **`selfRec`**, per the M10 "refinement reaches all σ-bearing state" invariant.
+
+That last member is why this deserves more than a passing mention. `St.selfRec` is the recursion guard's tracked decreasing snapshot (§8), and it joined `refineSym`'s target list only recently. A carve whose index refinement reached every component *except* that one would not fail loudly — it would silently corrupt the termination guard for **any function recursing on an array**, which is to say for the entire class of program this design exists to serve. The guard compares the actual at the declared decreasing position against a snapshot; leave that snapshot un-refined while the length index moves underneath it and the comparison is being made against a value that no longer exists.
+
+What keeps this a single invariant rather than a per-feature audit is §9's swept-state principle: *any checker component that must observe a value across a refinement has to live in the σ-bearing state `refineSym` sweeps.* The carve's index refinement is that principle's fifth independent consumer, after obligations, instantiated call types, `retTyVal`/`selfBack`, and the recursion guard. The practical form is worth stating flatly for whoever implements: **`refineSym`'s target list is the checklist** — not a list to reason about case by case, but the one place to look, and the one place a new `St` field must be added. It satisfies §3.2's knowledge/state assertion trivially (`add lo′ (add cnt rest)` is marker-free), which is worth *checking* rather than assuming: this is the first refinement in the calculus fired by an **ownership** operation rather than by a match, and the invariant's whole point is that ownership operations must not smuggle state into σ's. They do not here — the substituted term is arithmetic, and it is true of the value timelessly.
 
 **The effect.** `L`'s segment is replaced by three, with the extents premise (3) produced: `lo′`, `cnt`, `rest`. The bodies follow the body of `L`:
 
@@ -295,6 +299,8 @@ let x = a[0];
 Every step after the carve is a rule that already exists. End-Mut is End-Mut — a ⇐-fill at the marker plus the kill (§2.2). The forcing is §2.2's owned-position rule verbatim: a marker inside a segment body is in owned position of `a`'s value, so a demand for `a` ends it, innermost first. Drop (§2.3) needs no new case: an array node being displaced is a value with markers in owned position, and drop's total procedure ends them and discards the rest.
 
 **Rejoin is merge.** There is no rejoin rule. When the last marker under an array node is gone, the merge normalization collapses the segments, and the array is a run again — indistinguishable from one that was never carved. That is the property the segment representation was chosen for (¶1.1).
+
+*A mechanization note on when merge fires, which is later than this section's traces suggest.* The traces above force merge at an owner demand or at the audit, and it would be natural to implement it as though those were the only triggers. They are not, and the gap has already been closed twice in the list world: two demand-ending sites now fire on **parked** loans — M22-a's `&mut`-on-parked, and M23-ii's `collapseCDerefs` on a *comptime deref through* one. Both will fire on carved segments the moment a caller reads across the array, and both are correct and necessary: they are what makes a recovered `Arr⟨…⟩` readable at all. The consequence for an implementer is that **merge must be robust to being triggered mid-body by a comptime read**, not only by owner demand or by the boundary. Anything that assumes segments are only ever re-merged at a collapse point will be wrong on the first `Sorted (*v)` written between two carves.
 
 **The split/join shape is Verus's, deliberately.** Verus's `PointsToRaw` — its tracked ghost permission over raw memory — is the closest existing thing to what carve does, and it is worth copying the shape rather than improvising one:
 
@@ -392,6 +398,8 @@ quicksort(&mut (*v)[lo ; i | bl]);
 ```
 
 The §5.4 exit-snapshot convention does the rest: the call mints one σ shared between the loan's release and the returned evidence's subject, so `σ′` arrives already carrying the callee's postcondition. The caller therefore holds, definitionally, `arrCat σₚ (arrCat σ′ σₛ)` together with `Sorted σ′` and `Π n. count n σ′ = count n σ_old` — and gluing those into a statement about the whole is a pure lemma about `arrCat`, with no range indices in sight.
+
+**This needs no new caller-side machinery, which was checked rather than hoped.** The load-bearing step above is that a *segment's* loan can be captured by a call without the parent array riding along — and that is not a new capability, it is exactly what borrow-mode match field loans already do. `processArgs` captures per-argument-borrow loans and nothing in it walks to a parent or a sibling; the property is exercised on every recursive call of `nthS`, `partScan` and `twoRec`, with the executing differential agreeing. The §5.4 pinning half transfers on the same terms: `shareCaller` in the S19 suite already tests, for lists, precisely the property the array version needs — a caller forwarding a callee's evidence about the callee's *own* exit, and checking only because of the σ-sharing. So ¶3.6's claim rests on machinery that exists, is tested, and is agnostic to whether the loan sits at a `Cons` field or at an array segment.
 
 The full group lifecycle, traced, with a two-slice callee (`fn merge_into (l : &mut Array p Nat, r : &mut Array q Nat) → Unit`):
 
@@ -528,16 +536,34 @@ Note what the recursive calls' arguments are: sub-slices, with no offsets and no
 * The count-based permutation story, verbatim. `Perm s l := Π n. Id (count n s) (count n l)` is representation-agnostic; `count` over an array is `count` over its cons view; and the one lemma that replaces `count_append`/`take`/`drop` is `count_arrCat : count x (arrCat a b) = add (count x a) (count x b)`, which is the same induction.
 * The order stack — `Le`, `leb`, `eqb`, `le_trans`, the reflection lemmas, `le_refl` — untouched. It is about `Nat`, not about containers.
 * Fuel-structural recursion and partial correctness. Termination remains §8's business.
-* **The delegation discipline.** M22's central finding stands: an inline pointer-write's exit is opaque, so a direct-proving body delegates its mutation to a callee whose exit is provable. Range places do not repeal that — they change *what must be delegated*. The **leaf** (the swap) still needs a back-carrying callee or the three-feature arc (pin the issued payload, prove the bridging equation, audit-rewrite along cited bridges). The **recursion** does not, because the caller's knowledge of a sorted sub-slice is the callee's own postcondition attached to a σ that never lost its neighbours.
+* **The delegation discipline — but in M23's corrected form, not M22's.** An earlier draft of this document said the leaf "still needs a back-carrying callee or the three-feature arc." That is now wrong, and by a correction this design should be glad of. M23's leaf stage refined the diagnosis M22's finding rested on: opacity is a property of borrows **issued by a call** — `buildResult` mints their payloads as fresh σ because signature-only checking cannot say what they hold — and *not* of inline mutation. A leaf that does its own cursor work through the body's own match-field borrows writes into a suspension the audit itself collapses, so its exit is a constructor tree over known snapshots, fully provable, nothing minted. Provable inline leaves are therefore a **program-level choice** — be the cursor rather than call one — and the bridging equation is an ordinary body-cited lemma. Issued-payload pinning survives only at reduced scope, for bodies that insist on calling a cursor.
+
+  This matters here beyond bookkeeping. A range place is precisely the apparatus for *being* the cursor: `(*v)[i]` reaches an element without calling anything, so the corrected discipline and the carve rule push in the same direction. What survives untouched is the narrower true statement — evidence about a *call's* exit still comes from the callee's postcondition — and that is exactly the part ¶3.6 relies on.
+
+**What does NOT dissolve, stated plainly because ¶0's framing invites the overclaim.** Two problems live here and only one of them goes away.
+
+The **frame** problem dissolves, and completely rather than partially: M22's locality stratum — `nth_swapL_lt`/`_gt`, `nth_partScanRangeL_lt`/`_ge`, `nth_sortRangeL_lt`/`_ge`, the whole "positions outside the range are unchanged" layer — becomes *unnecessary*, not merely easier. Those lemmas exist to prove that something the mutation could have touched was not touched. With range places the σ's naming the untouched segments never moved, so there is nothing to prove: the statement they establish is the shape of the tree.
+
+The **gluing** problem does not dissolve at all. A caller holding `Sorted σ′` still has to reassemble it to `Sorted (arrCat σₚ (arrCat σ′ σₛ))`, and "a pure lemma about `arrCat`" is doing quiet work in that sentence — it is the real mathematical content of quicksort's correctness and no representation choice makes it free. What the migration buys is that the lemma is the *textbook* one rather than an index-simulated one.
+
+And this can now be checked rather than asserted, because M23 landed the List-world counterpart while this document was being written (`sorted_append_pivot`, `StdLemmas.lean:3657`):
+
+```
+    Π (a b : List Nat) (p : Nat) →
+      Sorted a → Ub p a → Sorted b → Lb p b → Sorted (append a (Cons p b))
+```
+
+Set `append ↦ arrCat` and `Cons p b ↦ arrCat (asingle p) r` and it *is* the array lemma, hypothesis for hypothesis — not merely the same shape but the same statement modulo the container, with `Ub`/`Lb` already playing the roles this document called `AllLe`/`AllGt`. So the migration **inherits** that proof rather than opening a stratum. Claim exactly that and no wider: **one stratum deleted outright** (locality), **one inherited** (the pivot glue), **none invented**.
 
 **What gets built.** The glue moves from index arithmetic to concatenation:
 
 ```
-    sorted_arrCat : Sorted l → Sorted r → AllLe p l → AllGt p r
-                  → Sorted (arrCat l (arrCat (asingle p) r))
+    sorted_arrCat : Π (l r : Array _ Nat) (p : Nat) →
+                      Sorted l → Ub p l → Sorted r → Lb p r
+                    → Sorted (arrCat l (arrCat (asingle p) r))
 ```
 
-which is the textbook quicksort correctness lemma, in the textbook shape, for the first time in this project. M22-c's `glue` — a nested `leb`-elim dispatcher over three directional lemmas with a subtraction-guarded reindex — is what that lemma looks like when the concatenation is simulated by indices.
+— deliberately written in `sorted_append_pivot`'s own binder order and vocabulary, since the point is that it is that lemma with the container swapped. This is the textbook quicksort correctness statement, in the textbook shape. M22-c's `glue` — a nested `leb`-elim dispatcher over three directional lemmas with a subtraction-guarded reindex — is what the same content looks like when the concatenation is simulated by indices into a larger list.
 
 **Honest accounting of the migration's own cost.** Three things get harder, not easier:
 
