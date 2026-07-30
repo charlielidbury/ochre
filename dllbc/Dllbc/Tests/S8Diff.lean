@@ -24,9 +24,13 @@ If any accepted body has a concretely-stuck or audit-failing instantiation, the
 `native_decide` below fails: that is a soundness counterexample, to be
 minimized and reported, never hidden.
 
-Counts (ASSERTED at the foot of this file, not merely recorded): 136 bodies
-generated across three telescopes, 75 accepted by `checkFn`, 238 concrete runs —
-all complete and audit. No counterexample.
+Counts (this run — and ASSERTED at the foot of this file, so a drift goes red
+rather than quietly falsifying this comment): 136 bodies generated across three
+telescopes, 75 accepted by `checkFn`, 238 concrete runs — all complete and audit.
+No counterexample. "This run" is the honest reading: these describe the generator
+and the acceptance behaviour as they stand, and a legitimate change to either
+should update the numbers here, the assertions below, and the paper's §6.1
+together.
   * `(v : &mut List Nat) → Unit`   : 91 gen / 47 accepted / 141 runs
   * `(n : Nat) → Nat`               : 32 gen / 15 accepted / 45 runs
   * `(b : &mut Nat, c : Bool) → Unit`: 13 gen / 13 accepted / 52 runs
