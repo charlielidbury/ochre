@@ -1,5 +1,90 @@
 # Progress
 
+## 2026-07-30 — dllbc/: M23 — direct proving with NO declared backs (4 of 6 stages)
+
+Removing `back` from the quicksort train. A callee's ONLY description becomes its
+return type — a postcondition over the exit snapshot — and a caller sees an opaque
+exit plus the returned evidence. The M22 model-based stack stays on main as the
+comparison baseline; M23 lives in `dllbc/Dllbc/Tests/S23Direct.lean` plus additions
+to StdLemmas and the checker.
+
+**CLOSED: stages (i) sigmaRec, (ii) split_off/append_back, (iii) the swap leaf,
+(v) the recursion guard, plus (iv)'s groundwork.** Every commit green on the full
+suite. The headline SHAPE is demonstrated: `split_off` is recursive, back-less, and
+proves its postcondition from its OWN recursive call's postcondition — which no M22
+back-less Decl did (all four were straight-line delegators).
+
+**A LIVE UNSOUNDNESS, found and closed (82290284).** Signature-only checking admits
+a self-call at the function's own declared return type with NO decrease requirement,
+so `fn bad () -> Id Nat Z (S Z) { bad() }` was ACCEPTED on main. M22 never tripped
+it because the hole needs a recursive AND back-less Decl and M22 has both kinds but
+never together. Closed by §1.2's `[k]` made operational as §8's snapshot-subterm
+guard: a self-call is admitted only when the actual at the declared decreasing
+position is a strict structural subterm of that parameter's CURRENT snapshot, which
+the symbolic interpreter already has (inside `match n { S(m) => … }` the parameter
+reads `S σ_m`). The snapshot rides refineSym — the fourth consumer of the M10
+invariant. `[k]` is DECLARED, not inferred: "some argument decreases at each call"
+is unsound, and paths are explored independently so no index can be committed to
+across them. Borrow parameters decrease through their payload snapshot (the only
+thing that shrinks in a cursor). Mutual recursion is rejected. 17 existing recursive
+Decls gained a `[k]` annotation.
+
+**Two more machine gaps, both the same shape** — a feature exercised only in the
+direction M22 happened to need. (a) `buildResult` built a Σ result's tail
+independently of its head, so a pinned return value reached the caller with a
+dangling pvar and was unusable; never noticed because M22's Σ-pinned indices were
+never CONSUMED (d46f8ae5). (b) A comptime deref through a place holding a parked
+loan silently returned the `loanₘ` instead of demanding its end, so a state marker
+rode into any proof about a call the body had just made (17f17993). Direct proving
+inverts the direction of information flow — evidence travels callee→caller instead
+of being checked against a model — and it keeps finding the unexercised half.
+
+**M22's THREE-FEATURE ARC IS RETIRED (73d2fdaf).** M22 filed issued-payload pinning
+→ the swapL_set bridge → audit-rewrite-along-cited-bridges as the route to provable
+inline leaves. The diagnosis was half right: the opacity is a property of borrows
+ISSUED BY A CALL (buildResult mints their payloads as fresh σ), NOT of inline
+mutation. A leaf doing its own cursor work through the body's OWN match-field
+borrows writes into a suspension the audit itself collapses, so its exit is a
+constructor tree over known snapshots — `set_at`'s base case is literally
+`{ *hd := x; Refl }`. The arc collapses to a program-level choice: walk the list
+yourself instead of calling `nth2`. And the bridge becomes an ordinary body lemma
+(`swap_at` ensures `swapL` directly), removing two of audit-rewrite's three
+convergence points.
+
+**THE OPEN WALL — a body learns nothing from branching on a comparison.** M18's
+two-layer principle (motive abstraction handles OCCURRENCES, branch equations handle
+KNOWLEDGE) has only its first layer in the imperative fragment. `generalizeStuck`
+abstracts a stuck scrutinee across all σ-bearing state and the branch refines it to
+True, so everything that ALREADY mentioned the spine reads True (M19's stuckProbe) —
+but a body writing `leb a b` after the split recomputes the spine, and nothing hands
+back the equation. `Refl : Id Bool (leb a b) True` is REJECTED inside the True
+branch (kept as a negative control). This matters now and not before because the
+model architecture only needed the body's types to AGREE; a back-less body must
+PRODUCE evidence, and every comparison-driven algorithm must produce "the test said
+yes, therefore Le".
+
+**Two routes to the relational partition, both costed, neither started.**
+*Route 1 (no new rule)*: keep the body BRANCH-FREE — compute the decision as a
+`boolRec` index, never match — and put the case analysis in pure lemmas, which get
+branch knowledge from a CONVOY MOTIVE carrying `Id Bool <spine> b` (the idiom
+allLeR_extend_far already uses). BOTH halves verified in-suite (`pick`, `ub_pick`).
+Costs ~5 pure lemmas (take/drop/count over `insertL`, needing a `Le k (len l)`
+conjunct) plus assembly. *Route 2 (recommended)*: give the body BRANCH EQUATIONS —
+bind `e : Id Bool <pre-abstraction spine> True` at the split. Partition then takes
+the natural two-list shape and the insertL lemma stack disappears. Cost is a
+`Branch`/`matchE` surface+Term change with ~75 `.mk` sites to migrate (40 in
+Bench.lean's generator); the machine side is small, since the pre-abstraction spine
+is right at the split site.
+
+**Banked for whoever continues**: sigmaRec + `elim`'s Pair arm; the buildResult pin;
+the recursion guard; the ⇝-side demand-end; `split_off`/`append_back`/`set_at`/
+`swap_at`/`insert_at` all back-less with lying twins and executing differentials;
+`Ub`/`Lb`/`insertL`/`list_rw` in StdLemmas. Remaining: the relational partition
+(iv), then quicksort (vi) — which also wants `sorted_append_pivot : Sorted a → Ub p a
+→ Sorted b → Lb p b → Sorted (append a (Cons p b))`. Note the whole-list plan lets
+quicksort use the STRUCTURAL `Sorted` (a Σ-chain) instead of M22's positional
+`SortedR`, which is precisely why sigmaRec had to land first.
+
 ## 2026-07-29 — dllbc/: M22 CLOSES — in-place quicksort verified Sorted ∧ Perm (the full postcondition)
 
 `quicksortSorted` on main (1baa7ecc): a direct-proving Decl whose exit
