@@ -229,11 +229,11 @@ example : (carvedWithLoan.symIds == [0, 1]) = true := by native_decide
 example : (firstLoanMarker carvedWithLoan == some 7) = true := by native_decide
 -- …and it is STATE, so no σ may ever be refined to this tree (§3.2's invariant, the
 -- assertion the carve inherits by going through `refineSym`).
-example : hasStateMarker carvedWithLoan = true := by native_decide
-example : hasStateMarker (segsOf [(1, .sym 0), (2, .sym 1)]) = false := by native_decide
+example : Val.hasStateMarker carvedWithLoan = true := by native_decide
+example : Val.hasStateMarker (segsOf [(1, .sym 0), (2, .sym 1)]) = false := by native_decide
 -- A hole in a segment is state too: `⇒` at a range place leaves one (¶2.2's
 -- take-and-refill generalized from a borrow's payload to a run of an array).
-example : hasStateMarker (segsOf [(1, .sym 0), (2, .bot)]) = true := by native_decide
+example : Val.hasStateMarker (segsOf [(1, .sym 0), (2, .bot)]) = true := by native_decide
 
 -- `Arr`'s fields are ELEMENTS, flat — so element `i` is child `i`, a subterm. This is
 -- ¶1.2's entire argument for the basis over the declaration scheme, and it is the
@@ -257,5 +257,201 @@ example : (Val.kLeFn == Dllbc.Std.LeFn) = true := by native_decide
 example : (Val.nfV 200 (Val.kAdd (Val.nat 2) (Val.nat 3)) == Val.nat 5) = true := by native_decide
 example : (Val.nfV 200 (Val.kLe (Val.nat 2) (Val.nat 3)) == .const "Unit") = true := by native_decide
 example : (Val.nfV 200 (Val.kLe (Val.nat 3) (Val.nat 2)) == .const "Bot") = true := by native_decide
+
+/-! ## (ii) CARVE, at concrete indices
+
+    ¶3's rule, and the design's only new one. At concrete indices "the containment
+    `Le`s compute to ⊤ — free by conversion", so premise (2) needs no annotation and
+    premise (3) is a no-op: ¶3.3's trace says exactly that, "residue transition: n = 3
+    concrete, both sides compute — nothing refined". -/
+
+/-! ### ¶3.3's lifecycle
+
+    ```rust
+    let a = [3, 1, 2];
+    let m = &mut a[1 ; 2];
+    (*m)[0] := 7;
+    ```
+
+    Every step after the carve is a rule that already existed. The carve puts a loan
+    marker in a segment body, which is OWNED POSITION of `a`'s value, so §2.2's rule
+    reaches it unchanged; the write through `m` is an ordinary ⇐-fill at an index
+    place under a peel. -/
+
+def carveMid : Term := dllbc{ let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; () }
+
+example : expectEnv carveMid
+  [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
+                       Val.segNode (Val.nat 2) (.loanM 0)]),
+   ("m", .borrowM 0 (.ctor "Arr" [Val.nat 1, Val.nat 2]))] = true := by native_decide
+
+def carveWritten : Term := dllbc{
+  let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; (*m)[0] := 7; () }
+
+example : expectEnv carveWritten
+  [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
+                       Val.segNode (Val.nat 2) (.loanM 0)]),
+   ("m", .borrowM 0 (.ctor "Arr" [Val.nat 7, Val.nat 2]))] = true := by native_decide
+
+/-- **Rejoin is merge** (¶3.3), and here it is: demand the whole array and the loan
+    ends, the payload plugs into its marker, and the segments collapse. `b` is a plain
+    run — indistinguishable from one that was never carved, which is the property the
+    segment representation was chosen for and what keeps `canonicalize` a decision
+    procedure for Ω-equality. -/
+example : expectEnv dllbc{
+    let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; (*m)[0] := 7; let b = a; () }
+  [("a", .bot), ("m", .bot),
+   ("b", .ctor "Arr" [Val.nat 3, Val.nat 7, Val.nat 2])] = true := by native_decide
+
+/-! ### FINDING — ¶3.3's trace ends the loan one step too eagerly, and it should not
+
+    The design note's own lifecycle finishes `let x = a[0];` with the comment "the read
+    demands a's node; a loan marker is in owned position, so §2.2 forces End-Mut ℓ
+    first: the payload plugs into the marker, m dies". That is written as though the
+    element read demands the WHOLE array. It does not, and §2.2's own wording is the
+    reason: what a ⇒-read ends is "every loan marker in owned position **within the
+    value it is about to move**". Reading `a[0]` moves one element, and that element
+    carries no marker.
+
+    Implementing §2.2 precisely rather than the trace literally gives strictly more:
+    the read succeeds and `m` STAYS LIVE, holding its disjoint half. Which is the
+    design's own headline — an element and a disjoint range of one array, both live,
+    coexisting because they are different subterms — arriving one paragraph before ¶3.4
+    claims it. The looser reading would have thrown that away for the trace's
+    convenience. Nothing else in the note depends on the eager ending; ¶3.3's point is
+    rejoin, which the test above shows on the demand that genuinely wants the array. -/
+
+example : expectEnv dllbc{
+    let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; (*m)[0] := 7; let x = a[0]; () }
+  [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
+                       Val.segNode (Val.nat 2) (.loanM 0)]),
+   ("m", .borrowM 0 (.ctor "Arr" [Val.nat 7, Val.nat 2])),
+   ("x", Val.nat 3)] = true := by native_decide
+
+/-! ### `get` and `set` are not primitives (¶2.3)
+
+    They are the two arrows at the index place. No kernel primitive is added for
+    either, and the M22 `nth`/`nth2`/`set` library — 26 lines of recursive cursor plus
+    a pure `set` model — is what this DELETES rather than ports. -/
+
+-- ⇐ at an index place: write the element (with §2.3's drop of the displaced value
+-- forced first — a Nat, so discard).
+example : expectEnv dllbc{ let a = Arr(3, 1, 2); a[0] := 9; () }
+  [("a", .ctor "Arr" [Val.nat 9, Val.nat 1, Val.nat 2])] = true := by native_decide
+
+-- ⇒ at an index place: read the element. §2.1's copy-on-read applies (Nat is
+-- index-kind), so the array keeps it — the doc's trace comment, mechanized.
+example : expectEnv dllbc{ let a = Arr(3, 1, 2); let x = a[2]; () }
+  [("a", .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2]), ("x", Val.nat 2)]
+    = true := by native_decide
+
+-- `&mut a[i]`: an element cursor, an ordinary borrow. The marker parks INSIDE the
+-- one-slot run, so the segment body stays at `Array 1 T` while the borrow's payload
+-- is the element at `T` — ¶2.1's "`a[i]` is not `a[i ; 1]`", made structural.
+example : expectEnv dllbc{ let a = Arr(3, 1, 2); let e = &mut a[1]; *e := 8; let y = a[1]; () }
+  [("a", .ctor "Arr" [Val.nat 3, Val.nat 8, Val.nat 2]), ("e", .bot), ("y", Val.nat 8)]
+    = true := by native_decide
+
+/-! ### Take-and-refill at a range place (¶2.2)
+
+    §2.4's idiom generalized from "the payload of a borrow" to "a run of an array":
+    between the take and the refill the array holds a hole of known extent, no rule
+    reads it, and the refill is its one legal successor. That is how a rotation or a
+    memmove is written without a copy. -/
+
+example : expectEnv dllbc{ let a = Arr(3, 1, 2);
+                           let run = a[1 ; 2];
+                           a[1 ; 2] := run;
+                           let w = a[0]; () }
+  [("a", .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2]), ("run", .bot), ("w", Val.nat 3)]
+    = true := by native_decide
+
+/-! ### Carve of carve collapses definitionally (¶3.2's fourth Low\* lemma)
+
+    `carve_carve : (a[lo₁ ; cnt₁])[lo₂ ; cnt₂] ≡ a[add lo₁ lo₂ ; cnt₂]` is the one the
+    doc says "a DLLBC implementer will underestimate", because without it every
+    sub-slice of a sub-slice accumulates a chain of offsets no conversion sees through.
+    It holds with no lemma at all, and for the reason the doc predicts: premise (3)
+    hands back LEAF-RELATIVE offsets, so a nested carve is an ordinary carve inside the
+    segment it landed in, and the offsets never compose into a chain. **The doc's own
+    diagnostic is that needing a lemma here would mean premise 3 is implemented wrong**
+    — so this passing is evidence about premise 3, not about nesting. -/
+
+example : expectEnv
+    dllbc{ let a = Arr(3, 1, 2, 7, 5);
+           let m = &mut a[1 ; 3];
+           let inner = &mut (*m)[1 ; 2];
+           (*inner)[0] := 9;
+           let b = a;
+           () }
+  [("a", .bot), ("m", .bot), ("inner", .bot),
+   ("b", .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 9, Val.nat 7, Val.nat 5])]
+    = true := by native_decide
+
+/-! ### The rejections (¶3.5), each falling out of a premise rather than a check -/
+
+-- OVERLAP — premise (1), and the shape it actually takes. After `&mut a[0 ; 3]` the
+-- extent map is `[(0,3,loaned ℓ₁), (3,rest,owned)]`, and [2,5) is contained in NEITHER
+-- leaf: it straddles the boundary. So the rejection needs no owned-versus-loaned test
+-- at all — two segments cannot overlap, so a range crossing a segment boundary has no
+-- leaf, full stop. No arithmetic was performed and no proof could have helped.
+example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
+                           let p = &mut a[0 ; 3];
+                           let q = &mut a[2 ; 3];
+                           () }
+  "no leaf" = true := by native_decide
+
+-- OUT OF RANGE — premise (2) has no inhabitant and none can be supplied, because
+-- `Le (add lo cnt) n` computes to ⊥.
+example : expectErr dllbc{ let a = Arr(3, 1, 2); let m = &mut a[1 ; 3]; () }
+  "containment obligation" = true := by native_decide
+example : expectErr dllbc{ let a = Arr(3, 1, 2); let x = a[3]; () }
+  "containment obligation" = true := by native_decide
+
+-- A HOLE is not owned. `⇒` at a range place takes the run out and leaves one, and
+-- until the ⇐-refill closes it no carve may split across it.
+example : expectErr dllbc{ let a = Arr(3, 1, 2);
+                           let run = a[1 ; 2];
+                           let x = a[1];
+                           () }
+  "meets a hole" = true := by native_decide
+
+/-! ### FINDING — a contained request DEMAND-ENDS rather than rejecting, and that is
+    the calculus's existing character rather than a new decision
+
+    ¶3.5 reads as though any loaned leaf rejects. Two cases hide under that, and they
+    behave differently for a reason that predates arrays. A request that STRADDLES a
+    boundary has no leaf and is rejected (above). A request CONTAINED in a loaned leaf
+    is the situation `&mut x` twice already creates, and the existing whole-place rule
+    resolves it by ending: `let p = &mut x; let q = &mut x;` is accepted today, with
+    `p` killed and any later use of it stuck. Probed directly rather than assumed —
+
+        x ↦ loanₘ ℓ0,  p ↦ ⊥,  q ↦ borrowₘ ℓ0 3
+
+    — so the array rule follows suit, which is also what makes ¶3.6's group trace work
+    (`let z = a[0]` must end the group to read across it) and what §5.2 states as one
+    rule with several sites: every demand collapses first. Two live overlapping mutable
+    borrows remain unrepresentable; what differs from the note is only WHEN the second
+    one is rejected — at the first use of the dead borrow, not at its creation. -/
+
+example : expectEnv dllbc{ let a = Arr(3, 1, 2, 7, 5);
+                           let p = &mut a[0 ; 3];
+                           let q = &mut a[1];
+                           *q := 6;
+                           let b = a;
+                           () }
+  [("a", .bot), ("p", .bot), ("q", .bot),
+   ("b", .ctor "Arr" [Val.nat 3, Val.nat 6, Val.nat 2, Val.nat 7, Val.nat 5])]
+    = true := by native_decide
+
+-- …and the killed borrow is stuck at its next use, which is where the rejection
+-- actually lands.
+example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
+                           let p = &mut a[0 ; 3];
+                           let q = &mut a[1];
+                           (*p)[0] := 4;
+                           () }
+  "⊥" = true := by native_decide
+
 
 end Dllbc.Tests.S24Arrays

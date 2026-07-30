@@ -93,6 +93,15 @@ syntax:max "*" uterm:max : uterm                            -- deref / peel
 syntax:max "old" "*" uterm:max : uterm                      -- §5.4 old *v: entry snapshot of a borrow-param deref
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
 syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
+-- ¶2.1's two new place steps. They bind TIGHTER than the peel, so a reborrow of a
+-- range through a borrow is written `&mut (*v)[lo ; cnt]` and `*v[i]` would mean
+-- `*(v[i])` — peel the borrow stored AT slot `i`, which is how an `Array n (&mut T)`
+-- is reached. `| h` cites the containment evidence (¶3.2's supply route 2); without
+-- it the bound must compute (route 1). Offset-and-count, never lower-and-upper.
+syntax:max uterm:max noWs "[" uterm "]" : uterm                         -- a[i]
+syntax:max uterm:max noWs "[" uterm "|" uterm "]" : uterm               -- a[i | h]
+syntax:max uterm:max noWs "[" uterm ";" uterm "]" : uterm               -- a[lo ; cnt]
+syntax:max uterm:max noWs "[" uterm ";" uterm "|" uterm "]" : uterm     -- a[lo ; cnt | h]
 syntax:70 "&mut" uterm:65 : uterm                            -- &mut e : borrow (term) / borrowT (type)
 syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ S)
 syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
@@ -199,6 +208,26 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   | `(uterm| * $e:uterm) => do
     let (e', n) ← elabUTerm isTy rctx pctx next e
     return (← `(Dllbc.Term.deref $e'), n)
+  | `(uterm| $a:uterm[$i:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (i', n2) ← elabUTerm isTy rctx pctx n1 i
+    return (← `(Dllbc.Term.index $a' $i' none), n2)
+  | `(uterm| $a:uterm[$i:uterm | $h:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (i', n2) ← elabUTerm isTy rctx pctx n1 i
+    let (h', n3) ← elabUTerm isTy rctx pctx n2 h
+    return (← `(Dllbc.Term.index $a' $i' (some $h')), n3)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    return (← `(Dllbc.Term.range $a' $lo' $c' none), n3)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm | $h:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    let (h', n4) ← elabUTerm isTy rctx pctx n3 h
+    return (← `(Dllbc.Term.range $a' $lo' $c' (some $h')), n4)
   | `(uterm| &mut ( $x:ident : $τ:uterm ~> $s:uterm )) => do     -- borrow type, snapshot binder
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (s', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 s

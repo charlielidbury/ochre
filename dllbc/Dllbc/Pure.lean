@@ -342,12 +342,17 @@ def asSeg? : Val → Option (Val × Val)
   | .ctor "§seg" [c, b] => some (c, b)
   | _ => none
 
-/-- Is a segment body **owned** — one of the three forms a carve is defined on (¶1.1)
-    — rather than the two ownership markers? -/
-def segOwned : Val → Bool
-  | .loanM _ => false
-  | .bot => false
-  | _ => true
+/-- Is a segment body **owned** — one of the three forms a carve is defined on
+    (¶1.1: an owned run, a σ, a neutral) rather than the two ownership markers?
+
+    The test is MARKER-FREEDOM, not "the body is not itself a marker", and the
+    difference is load-bearing. An element cursor (`&mut a[i]`) parks its marker
+    INSIDE the one-slot run — `§seg [1, Arr [loanₘ ℓ]]` — because ¶2.1 puts the
+    element, not an `Array 1 T`, at an index place. A shallow test would call that
+    body owned, let it merge into its neighbour's run, and then hand the MARKER out
+    as an element on the next read: the silent-marker class §3.2 and §5.2 both
+    warn about, reached by a new route. -/
+def segOwned (b : Val) : Bool := !hasStateMarker b
 
 /-- The extent of an array-shaped value read off the value itself, where that is
     possible: a run knows its length, a segment list sums its extents, an `arrCat`
@@ -374,8 +379,13 @@ partial def arrExtentPure? : Val → Option Val
 partial def mergeSegList : List Val → List Val
   | s₁ :: s₂ :: rest =>
     match asSeg? s₁, asSeg? s₂ with
-    | some (c₁, .ctor "Arr" xs), some (c₂, .ctor "Arr" ys) =>
-      mergeSegList (segNode (kAdd c₁ c₂) (.ctor "Arr" (xs ++ ys)) :: rest)
+    | some (c₁, b₁), some (c₂, b₂) =>
+      match b₁, b₂ with
+      | .ctor "Arr" xs, .ctor "Arr" ys =>
+        if segOwned b₁ && segOwned b₂ then
+          mergeSegList (segNode (kAdd c₁ c₂) (.ctor "Arr" (xs ++ ys)) :: rest)
+        else s₁ :: mergeSegList (s₂ :: rest)
+      | _, _ => s₁ :: mergeSegList (s₂ :: rest)
     | _, _ => s₁ :: mergeSegList (s₂ :: rest)
   | ss => ss
 

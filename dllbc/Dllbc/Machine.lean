@@ -460,7 +460,12 @@ def killBorrowInΩ (ℓ : Nat) : M Val := do
 def sendPayloadToLoan (ℓ : Nat) (p : Val) : M Unit := do
   let ω ← getEnv
   if ω.any (fun kv => containsLoan ℓ kv.2) then
-    setEnv (ω.map (fun kv => (kv.1, replaceLoanMarker ℓ p kv.2)))
+    -- **Rejoin is merge** (¶3.3), and this is where it belongs: the moment a payload
+    -- plugs back into its marker is the moment the last marker under an array node
+    -- can be gone. Every End-Mut path — owner demand, the §5.4 audit collapse, a §6.1
+    -- group release — funnels through here, so a rejoined array is a run again
+    -- wherever it lives, with no rule having to remember to say so.
+    setEnv (ω.map (fun kv => (kv.1, Val.mergeArrays (replaceLoanMarker ℓ p kv.2))))
   else
     throwErr s!"end: loan ℓ{ℓ} is not an entry of Ω (cannot plug payload back)"
 
@@ -493,91 +498,194 @@ def drop : Nat → Val → M Unit
 
 /-! ## Places and their positions
 
-    A place is a variable under zero or more `*` peels (`x`, `*x`, `**x`, …) —
-    the only shapes ⇐ and `&mut` are *defined* on (doc §1.1). A `Pos` records
-    the root variable and the peel count; navigation descends through borrow
-    payloads. `&mut`, the ⇒-take of `*p`, and ⇐-fill all share this. -/
+    §1.1's positional restriction generalizes (¶2.1). A place is a variable under a
+    **path**, and a path is a sequence of steps:
 
-/-- A resolved place: a root variable and a number of `*` peels. -/
+        step ::=  *              peel a borrow            (§2)
+               |  [t]            index step, t : Nat      (new)
+               |  [t ; t′]       range step               (new)
+
+    The old `derefs : Nat` was exactly this path restricted to `peel`. ⇐, `&mut` and
+    the ⇒-take are all defined only on places, and all share this resolution.
+
+    Navigation below is purely STRUCTURAL: it assumes the tree is already segmented
+    at each index/range boundary. `carveAt` (further down — premise (2) is a
+    `hasType` call, so the carve cannot be defined until `hasType` is) is what
+    arranges that. Keeping the two apart is what lets the borrow machinery's own
+    reads stay free of the carve's premises, which is ¶8.1's claim that nothing in
+    the borrow machinery changed. -/
+
+/-- One step of a place path. -/
+inductive Step where
+  /-- `*` — peel a borrow (§2.2). -/
+  | peel : Step
+  /-- `[i | ev]` — the index step. `ev` is the cited containment evidence, `none`
+      when the bound computes: ¶3.2's supply route 1, "every literal-indexed array
+      access is free". -/
+  | idx : Val → Option Val → Step
+  /-- `[lo ; cnt | ev]` — the range step, in OFFSET-AND-COUNT (¶2.1), so that
+      `a[lo ; cnt] : Array cnt T` is read straight off the syntax with no arithmetic
+      and no rule below ever produces a `sub`. -/
+  | rng : Val → Val → Option Val → Step
+
+/-- A resolved place: a root variable and the path from it. -/
 structure Pos where
   root : Var
-  derefs : Nat
-deriving Repr
+  path : List Step
 
-/-- Resolve a place term to a `Pos`. Errors on any non-place shape, which is
-    exactly how ⇐/`&mut` reject writes/borrows of arbitrary expressions. -/
-def placeToPos : Term → M Pos
-  | .var x => pure ⟨x, 0⟩
-  | .deref t => do let p ← placeToPos t; pure ⟨p.root, p.derefs + 1⟩
-  | _ => throwErr "place: target is not a place (must be a variable under * peels)"
+/-- The all-peels path of length `n` — what a `Pos` used to be, verbatim. -/
+def peels : Nat → List Step
+  | 0 => []
+  | n + 1 => .peel :: peels n
 
-/-- Peel `n` borrow layers off `v`, returning the value at that depth. -/
-def navRead : Nat → Val → M Val
-  | 0, v => pure v
-  | n + 1, .borrowM _ p => navRead n p
-  | _ + 1, .bot => throwErr "*: cannot peel a vacant slot (⊥)"
-  | _ + 1, .loanM ℓ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
-  | _ + 1, .ctor n _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
-  | _ + 1, .sym σ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
-  | _ + 1, _ => throwErr "*: cannot peel a pure value (not a borrow)"
+/-- The extent of an array-shaped value. Read off the value itself wherever that is
+    possible (`arrExtentPure?`: a run knows its length, a segment list sums, an
+    `arrCat` spine carries both halves); a bare σ's extent lives in its `sctx` type,
+    which is the one case only the machine can serve. That partiality is what lets
+    ¶1.1's abbreviation stand — an uncarved array needs no wrapper stamping it with
+    its length. -/
+def arrExtent (fuel : Nat) (v : Val) : M Val := do
+  match Val.arrExtentPure? v with
+  | some c => pure (Val.nfV fuel c)
+  | none =>
+    match v with
+    | .sym σ =>
+      match (← get).sctx.lookup σ with
+      | some τ =>
+        match Val.asArrayTy? (Val.whnfV fuel τ) with
+        | some (n, _) => pure (Val.nfV fuel n)
+        | none => throwErr s!"array: σ{σ} is not of array type (its sctx type is {τ.pretty})"
+      | none => throwErr s!"array: σ{σ} has no type in sctx — cannot read its extent"
+    | _ => throwErr s!"array: {v.pretty} is not an array value (no extent to read)"
 
-/-- Functionally set the value `n` borrow layers deep inside `v` to `newLeaf`. -/
-def navWrite : Nat → Val → Val → M Val
-  | 0, _, newLeaf => pure newLeaf
-  | n + 1, .borrowM ℓ p, newLeaf => do
-    let p' ← navWrite n p newLeaf
-    pure (.borrowM ℓ p')
-  | _ + 1, .bot, _ => throwErr "*: cannot peel a vacant slot (⊥)"
-  | _ + 1, .loanM ℓ, _ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
-  | _ + 1, .ctor n _, _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
-  | _ + 1, .sym σ, _ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
-  | _ + 1, _, _ => throwErr "*: cannot peel a pure value (not a borrow)"
+/-- One entry of ¶3.1's **extent map**: an offset, a count, and the body sitting
+    there. `Arr⟨1 ▷ [3], 2 ▷ loanₘ ℓ⟩` induces `[(0,1,owned), (1,2,loaned ℓ)]`.
+
+    The map IS the aliasing invariant, and it is maintained by construction rather
+    than checked: segments partition the array, so **no two loans of one array can
+    overlap, ever, because two segments cannot overlap**. There is no disjointness
+    *test* anywhere below — only the question of whether a requested range can be
+    MADE into a segment, which is what the carve answers. -/
+structure Leaf where
+  base : Val
+  count : Val
+  body : Val
+
+def extentMapGo (fuel : Nat) (b : Val) : List Val → M (List Leaf)
+  | [] => pure []
+  | s :: rest =>
+    match Val.asSeg? s with
+    | none => throwErr "array: malformed segment node (expected §seg [c, body])"
+    | some (c, body) => do
+      let tl ← extentMapGo fuel (Val.nfV fuel (Val.kAdd b c)) rest
+      pure (⟨b, c, body⟩ :: tl)
+
+/-- The extent map of an array node. An UNCARVED array is a single leaf spanning it. -/
+def extentMap (fuel : Nat) (v : Val) : M (List Leaf) :=
+  match v with
+  | .ctor "§segs" segs => extentMapGo fuel Val.zero segs
+  | _ => do pure [⟨Val.zero, ← arrExtent fuel v, v⟩]
+
+/-- Locate the segment a step designates, by its (base, count) rather than by its
+    position in the list — so navigation survives a sibling's body changing under it
+    (a drop that ends a loan elsewhere in the same node, a merge that ran in between).
+    Returns the segment's index and its leaf. -/
+def findSeg (fuel : Nat) (lo cnt : Val) (v : Val) : M (Nat × Leaf) := do
+  let leaves ← extentMap fuel v
+  match leaves.findIdx? (fun l => Val.convert fuel l.base lo && Val.convert fuel l.count cnt) with
+  | some i =>
+    match leaves.get? i with
+    | some l => pure (i, l)
+    | none => throwErr "array: internal — segment index out of range"
+  | none =>
+    throwErr s!"array: no segment at [{lo.pretty} ; {cnt.pretty}] in {v.pretty} (the place was never carved there)"
+
+/-- Read through one step. -/
+def navStep (fuel : Nat) : Step → Val → M Val
+  | .peel, v =>
+    match v with
+    | .borrowM _ p => pure p
+    | .bot => throwErr "*: cannot peel a vacant slot (⊥)"
+    | .loanM ℓ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
+    | .ctor n _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
+    | .sym σ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
+    | _ => throwErr "*: cannot peel a pure value (not a borrow)"
+  | .rng lo cnt _, v => do pure (← findSeg fuel lo cnt v).2.body
+  | .idx i _, v => do
+    -- ¶2.1: `a[i]` is NOT `a[i ; 1]`. They carve identically, but the range place's
+    -- payload is an `Array 1 T` while the index place's is the ELEMENT itself, of
+    -- type `T` — which is what spares every element access a coercion.
+    let (_, l) ← findSeg fuel i (Val.nat 1) v
+    match l.body with
+    | .ctor "Arr" [e] => pure e
+    | b => throwErr s!"a[i]: the one-slot segment at {i.pretty} holds {b.pretty}, not a single-element run"
+
+/-- Write `inner` back through one step, rebuilding the node around it. -/
+def setStep (fuel : Nat) : Step → Val → Val → M Val
+  | .peel, v, inner =>
+    match v with
+    | .borrowM ℓ _ => pure (.borrowM ℓ inner)
+    | .bot => throwErr "*: cannot peel a vacant slot (⊥)"
+    | .loanM ℓ => throwErr s!"*: cannot peel loanₘ ℓ{ℓ} (suspended borrow)"
+    | .ctor n _ => throwErr s!"*: cannot peel constructor '{n}' (not a borrow)"
+    | .sym σ => throwErr s!"*: cannot peel symbolic value σ{σ} (not a borrow)"
+    | _ => throwErr "*: cannot peel a pure value (not a borrow)"
+  | .rng lo cnt _, v, inner => do
+    let (i, _) ← findSeg fuel lo cnt v
+    match v with
+    | .ctor "§segs" segs =>
+      pure (Val.segsNode (segs.enum.map (fun (j, s) =>
+        if j == i then (match Val.asSeg? s with
+                        | some (c, _) => Val.segNode c inner
+                        | none => s)
+        else s)))
+    | _ => pure inner                              -- degenerate: the node IS the request
+  | .idx i _, v, inner => do
+    let (j, _) ← findSeg fuel i (Val.nat 1) v
+    match v with
+    | .ctor "§segs" segs =>
+      pure (Val.segsNode (segs.enum.map (fun (k, s) =>
+        if k == j then (match Val.asSeg? s with
+                        | some (c, _) => Val.segNode c (.ctor "Arr" [inner])
+                        | none => s)
+        else s)))
+    | _ => pure (.ctor "Arr" [inner])
 
 /-- Read the value at a resolved position (peeks; no side effect). -/
-def getAtPos (pos : Pos) : M Val := do
-  navRead pos.derefs (← lookupSlot pos.root)
+def navRead (fuel : Nat) : List Step → Val → M Val
+  | [], v => pure v
+  | s :: rest, v => do navRead fuel rest (← navStep fuel s v)
+
+/-- Functionally set the value at a path inside `v` to `newLeaf`. -/
+def navWrite (fuel : Nat) : List Step → Val → Val → M Val
+  | [], _, newLeaf => pure newLeaf
+  | s :: rest, v, newLeaf => do
+    let inner ← navStep fuel s v
+    setStep fuel s v (← navWrite fuel rest inner newLeaf)
+
+/-- Read the value at a resolved position (peeks; no side effect). -/
+def getAtPos (fuel : Nat) (pos : Pos) : M Val := do
+  navRead fuel pos.path (← lookupSlot pos.root)
 
 /-- Overwrite the value at a resolved position, threading the update back
-    through the borrow payloads to the root slot. -/
-def setAtPos (pos : Pos) (newLeaf : Val) : M Unit := do
+    through the borrow payloads and segment bodies to the root slot. -/
+def setAtPos (fuel : Nat) (pos : Pos) (newLeaf : Val) : M Unit := do
   let v ← lookupSlot pos.root
-  setSlot pos.root (← navWrite pos.derefs v newLeaf)
+  setSlot pos.root (← navWrite fuel pos.path v newLeaf)
 
-/-- **⇐ (write)** — the fill-only write arrow, defined only on places. Its
-    premise is a vacant (⊥) target; when the target is live a **drop** is
-    forced first (§2.3), vacating it, then the value drops in. We vacate the
-    slot *before* dropping so drop's Ω-scans never see a stale copy of the
-    displaced value. -/
-def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
-  let pos ← placeToPos place
-  let old ← getAtPos pos
-  match old with
-  | .bot => setAtPos pos newval                    -- fill
-  | _ => do
-    setAtPos pos .bot                              -- vacate first (no stale copy in Ω scans)
-    drop fuel old                                  -- drop the displaced value
-    setAtPos pos newval                            -- fill
-
--- Does a value carry a STATE marker — a hole (`⊥`), a loan, or a borrow —
--- anywhere in its tree? §3.2's knowledge/state invariant: a σ names ENTRY
--- knowledge (a constructor shape true at entry, or an equation solution), never
--- the present state of a slot. So a σ-substitution's replacement must be
--- marker-free; a marker is state and belongs in an Ω tree, never substituted for
--- a σ. Asserted at the substitution site (`refineSym`) so a regression that tries
--- to substitute state is caught immediately, not layers downstream.
-mutual
-  def hasStateMarker : Val → Bool
-    | .bot => true
-    | .loanM _ => true
-    | .borrowM _ _ => true
-    | .ctor _ args => hasStateMarkerList args
-    | .pi d c | .sigmaT d c | .lam d c | .app d c => hasStateMarker d || hasStateMarker c
-    | .idT a b c => hasStateMarker a || hasStateMarker b || hasStateMarker c
-    | _ => false
-  def hasStateMarkerList : List Val → Bool
-    | [] => false
-    | v :: vs => hasStateMarker v || hasStateMarkerList vs
-end
+/-- Resolve a PEEL-ONLY place (`x`, `*x`, `**x`, …). This is ⇜'s place shape: a
+    refinement is a substitution and only a variable has a substitutable identity
+    (§3.2), so the array steps are rejected here rather than silently carving inside
+    a comptime write. The full resolver, which evaluates index terms and carves, is
+    `placeToPos` — it cannot be defined until `hasType` is. -/
+def placeToPosRaw : Term → M Pos
+  | .var x => pure ⟨x, []⟩
+  | .deref t => do let p ← placeToPosRaw t; pure ⟨p.root, p.path ++ [.peel]⟩
+  | .index _ _ _ =>
+    throwErr "place (⇜): an array index place is not a refinement target (§3.2)"
+  | .range _ _ _ _ =>
+    throwErr "place (⇜): an array range place is not a refinement target (§3.2)"
+  | _ => throwErr "place: target is not a place (must be a variable under * peels)"
 
 /-- Refine `σ := v` **everywhere** — in every Ω slot AND every `sctx` type
     (§3.2's "everywhere", now including the type layer: a snapshot type that
@@ -586,7 +694,7 @@ end
     (§3.2 knowledge/state): substituting a hole/loan/borrow for a σ would smuggle
     state into entry-knowledge — the etiology of the M21 `partIdxL n ⊥` bug. -/
 def refineSym (σ : Nat) (v : Val) : M Unit := do
-  if hasStateMarker v then
+  if Val.hasStateMarker v then
     throwErr s!"refineSym: σ{σ} := {v.pretty} carries a state marker (⊥/loan/borrow) — knowledge/state violation (§3.2)"
   modify (fun s => { s with
     env := s.env.map (fun kv => (kv.1, substSym σ v kv.2)),
@@ -639,13 +747,35 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
     selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, abstractInto sp σb d.2)))) })
   pure (σb, sp)
 
+/-- **Refl-match — the solution transition** (§10). Matching against `Refl` at
+    scrutinee type `Id A a b` unifies the endpoints: whnf both; if one is a
+    substitutable σ not occurring on the other side, ⇜-refine it to the other,
+    everywhere; if already equal, nothing; if BOTH are rigid, the match is
+    STUCK — no unification beyond solution (no injectivity/conflict/cycle in the
+    kernel; those are the fording library's job via j/k). -/
+def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
+  let a' := Val.whnfV fuel a
+  let b' := Val.whnfV fuel b
+  if Val.convert fuel a' b' then pure ()                         -- endpoints already equal
+  else match a', b' with
+    | .sym σa, _ =>
+      if b'.symIds.contains σa then
+        throwErr s!"Refl: occurs check — endpoint σ{σa} occurs in the other endpoint ({b'.pretty})"
+      else refineSym σa b'
+    | _, .sym σb =>
+      if a'.symIds.contains σb then
+        throwErr s!"Refl: occurs check — endpoint σ{σb} occurs in the other endpoint ({a'.pretty})"
+      else refineSym σb a'
+    | _, _ =>
+      throwErr s!"Refl: both endpoints are rigid ({a'.pretty} vs {b'.pretty}) — no solution by refinement; use j/k to eliminate the identity"
+
 /-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
     `writeR`. Defined on the same place shapes (a variable under peels). The
     place must currently hold a symbolic value `sym σ`; the effect is global
     refinement `σ := refined` (Ω and sctx). Errors distinctively otherwise. -/
 def writeC (place : Term) (refined : Val) : M Unit := do
-  let pos ← placeToPos place
-  match ← getAtPos pos with
+  let pos ← placeToPosRaw place
+  match ← getAtPos 1000 pos with
   | .sym σ => refineSym σ refined
   | v => throwErr s!"writeC (⇜): place holds {v.pretty}, expected a symbolic value (sym σ)"
 
@@ -709,11 +839,17 @@ mutual
       let v ← reflectC rhs
       bindSlot x v
       reflectC rest
-    -- ¶2.2's ⇝ column at the two new steps. STAGE (ii): the index place projects
-    -- `aget i` of the snapshot and the range place projects the segment's own
-    -- snapshot; both land with the place layer.
-    | .index _ _ _ => throwErr "readC (⇝): index place — stage (ii)"
-    | .range _ _ _ _ => throwErr "readC (⇝): range place — stage (ii)"
+    -- ¶2.2's ⇝ column at the two new steps. The snapshot of an array place is the
+    -- snapshot of the SEGMENT sitting there — exact, and needing no new constant.
+    -- Read-only, as ⇝ must be: it merges a local copy to find the segment but never
+    -- carves, so a place the program has not carved is honestly stuck here rather
+    -- than silently reorganized inside a type.
+    | .index t i _ => do
+      let a := Val.mergeArrays (← reflectC t)
+      navStep 1000 (.idx (Val.nfV 1000 (← reflectC i)) none) a
+    | .range t lo cnt _ => do
+      let a := Val.mergeArrays (← reflectC t)
+      navStep 1000 (.rng (Val.nfV 1000 (← reflectC lo)) (Val.nfV 1000 (← reflectC cnt)) none) a
     | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
@@ -725,8 +861,18 @@ mutual
     | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
 end
 
-/-- ⇝: reflect then normalize. Ω is read-only throughout. -/
-def readC (fuel : Nat) (t : Term) : M Val := do pure (Val.nfV fuel (← reflectC t))
+/-- ⇝: reflect, FOLD, then normalize. Ω is read-only throughout.
+
+    The fold is ¶1.3's bridge, and putting it here rather than at the audit is the
+    doc's own preference ("the latter is cleaner, since merge is then part of what
+    *the snapshot of an array* means rather than a step the audit remembers to
+    take"). A collapsed segment list becomes its `arrCat` spine — knowledge, never
+    mentioning a marker — and `arrCat`'s ι then computes it back to a run when the
+    bodies are runs, so a carved-and-rejoined array has the SAME snapshot as one that
+    was never carved. A still-suspended one is left as the state form it is and is
+    rejected at the one place that judges. -/
+def readC (fuel : Nat) (t : Term) : M Val := do
+  pure (Val.nfV fuel (Val.arrFoldDeep (← reflectC t)))
 
 /-- ⇝ against extra bindings prepended to Ω — how a dependent call instantiates a
     callee telescope type (§5.3): the decl's parameter vars are bound to the
@@ -875,6 +1021,25 @@ mutual
         match (← get).sctx.lookup σ with
         | some vty => pure (Val.convert fuel vty ty)
         | none => throwErr s!"hasType: σ{σ} has no type in sctx"
+      -- ¶1.1's carved array node, and ruling 2's **extent-consistency invariant**,
+      -- machine-asserted here: the segments' extents must sum to the array's own
+      -- length index, and each body must hold its own extent's worth. This is the
+      -- guard on the representation's one redundancy (extents are carried in the
+      -- tree AND implied by the type), and it is exactly the conversion that
+      -- premise (3)'s residue transition arranges to be definitional — ¶3.4's "this
+      -- is the single place where the residue-transition decision pays out, and it
+      -- pays out at every array-mutating function in the program".
+      | .ctor "§segs" segs =>
+        match Val.asArrayTy? (Val.whnfV fuel ty) with
+        | none => pure false
+        | some (n, t) => do
+          let leaves ← extentMap fuel v
+          let total := leaves.foldr (fun l acc => Val.kAdd l.count acc) Val.zero
+          if !(Val.convert fuel total n) then pure false
+          else leaves.allM (fun l => do
+            if !Val.segOwned l.body then
+              throwErr s!"hasType: array segment at [{l.base.pretty} ; {l.count.pretty}) holds {l.body.pretty} — a suspended array has no value of its type (§5.2)"
+            else hasType fuel l.body (Val.arrayTy l.count t))
       | .ctor name args =>
         match Val.ctorSig name with
         | none => throwErr s!"hasType: unknown constructor '{name}'"
@@ -944,6 +1109,50 @@ mutual
           let fOk ← hasType fuel f fTy
           let sOk ← hasType fuel s sigTy
           finish (Val.nfV fuel (.app p s)) rest (fOk && sOk)
+        -- ¶1.3's array basis. `arrCat`/`acons` are CHECKED rather than synthesized —
+        -- their element type is recovered from the expected type, which is why
+        -- neither carries a `T` argument (Pure.lean's deviation note). `aget` and
+        -- `arrRec` synthesize, so they keep theirs.
+        | .const "arrCat", [m, k, a, b] =>
+          match Val.asArrayTy? (Val.whnfV fuel ty) with
+          | none => pure false
+          | some (n, t) =>
+            if !(Val.convert fuel n (Val.kAdd m k)) then pure false
+            else do
+              let aOk ← hasType fuel a (Val.arrayTy m t)
+              let bOk ← hasType fuel b (Val.arrayTy k t)
+              pure (aOk && bOk)
+        | .const "acons", [n, x, xs] =>
+          match Val.asArrayTy? (Val.whnfV fuel ty) with
+          | none => pure false
+          | some (n', t) =>
+            if !(Val.convert fuel n' (.ctor "S" [n])) then pure false
+            else do
+              let xOk ← hasType fuel x t
+              let xsOk ← hasType fuel xs (Val.arrayTy n t)
+              pure (xOk && xsOk)
+        | .const "aget", tt :: n :: i :: a :: rest =>       -- aget T n i a : T
+          let iOk ← hasType fuel i (.const "Nat")
+          let aOk ← hasType fuel a (Val.arrayTy n tt)
+          finish tt rest (iOk && aOk)
+        | .const "arrRec", tt :: p :: pn :: pc :: n :: a :: rest =>   -- arrRec T P pn pc n a : P n a
+          -- The cons view's recursor, so the pure library over arrays is written
+          -- exactly like the one over lists (¶1.3). Its step crosses four binders,
+          -- so `T` and `P` are shifted at each use — identity on the pvar-free values
+          -- every call site passes, written out for correctness under an open motive
+          -- (the same care `sigmaRec` takes, and for the same reason).
+          let pnOk ← hasType fuel pn (Val.nfV fuel (.app (.app p Val.zero) (.ctor "Arr" [])))
+          let pcTy : Val :=
+            .pi (.const "Nat")
+              (.pi (Val.shiftPure 1 0 tt)
+                (.pi (Val.arrayTy (.pvar 1) (Val.shiftPure 2 0 tt))
+                  (.pi (.app (.app (Val.shiftPure 3 0 p) (.pvar 2)) (.pvar 0))
+                    (.app (.app (Val.shiftPure 4 0 p) (.ctor "S" [.pvar 3]))
+                      (.app (.app (.app (.const "acons") (.pvar 3)) (.pvar 2)) (.pvar 1))))))
+          let pcOk ← hasType fuel pc pcTy
+          let nOk ← hasType fuel n (.const "Nat")
+          let aOk ← hasType fuel a (Val.arrayTy n tt)
+          finish (Val.nfV fuel (.app (.app p n) a)) rest (pnOk && pcOk && nOk && aOk)
         | .sym σ, args =>
           -- A bound function variable applied (`ih b c hab hbc`): synthesize by
           -- iterating Π-instantiation from its `sctx` type, checking each argument
@@ -1057,6 +1266,325 @@ def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
   | some grp => endGroup fuel grp
   | none => sendPayloadToLoan ℓ (← killBorrowInΩ ℓ)
 
+/-! ## CARVE (¶3) — the proof-licensed reorganization
+
+    The design's one new rule, and the only one of ¶8.1's five additions with
+    semantic content. It sits alongside `drop` and `endLoan` as a **third
+    reorganization**: lazy like both, fired when a rule's premise demands it, and
+    aimed at the environment's own bookkeeping.
+
+                    Ω(p) = an array node of type Array n T
+                    the extent map has an OWNED leaf L at (b, m)                   (1)
+                    e ⊢ Le b lo  ×  Le (add lo cnt) (add b m)                      (2)
+                    the decomposition transitions on lo and on m succeed           (3)
+    ───────────────────────────────────────────────────────────────────────────  CARVE
+       L : Array m T  ↦  ⟨ lo′ ▷ L₁ , cnt ▷ L₂ , rest ▷ L₃ ⟩
+
+    Premise (3) is the aggressive part (¶9a) and the part that pays: the extents are
+    equations the transition SOLVES, never differences it computes, so no `sub` is
+    produced here or anywhere downstream of here, and the audit's rejoin conversion
+    is definitional rather than lemma-mediated. -/
+
+/-- Premise (2)'s obligation type for a candidate leaf at `(b, m)`. When `Le b lo`
+    computes to ⊤ — which it does whenever the leaf starts at the node's base, "the
+    overwhelmingly common case" — the pair collapses to the single `Le (add lo cnt) n`
+    that ¶3.2 says is "character for character, the bound the M22 quicksort already
+    threads through every call as `hbnd`". Otherwise both halves are demanded, as a Σ. -/
+def carveObligation (fuel : Nat) (b m lo cnt : Val) : Val :=
+  let low := Val.kLe b lo
+  let high := Val.kLe (Val.kAdd lo cnt) (Val.kAdd b m)
+  if Val.convert fuel low (.const "Unit") then high
+  else .sigmaT low (Val.shiftPure 1 0 high)
+
+/-- Is the cited evidence good for this leaf? With no evidence cited we try the
+    canonical inhabitant of ⊤ — ¶3.2's supply route 1, "conversion alone", which is
+    what makes every literal-indexed access free. Route 3 is that there is no route
+    3: no inference, no decision procedure, no `omega`. -/
+def carveEvidenceOk (fuel : Nat) (ev : Option Val) (oblig : Val) : M Bool := do
+  match ev with
+  | some e => hasType fuel e oblig
+  | none =>
+    let star : Val := .ctor "unit" []
+    if ← hasType fuel star oblig then pure true
+    else hasType fuel (.ctor "Pair" [star, star]) oblig
+
+/-- Split an owned body into the three pieces the carve's extents name. Only the two
+    forms ¶3.2 defines the split on: a literal run (split positionally, which needs
+    concrete extents — one cannot cut a run at an offset one does not know) and a σ
+    (refined to the `arrCat` spine, which is ordinary ⇜, marker-free, and true of the
+    value timelessly). Returns the three bodies. -/
+def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : Val)
+    : M (Val × Val × Val) := do
+  match body with
+  | .ctor "Arr" vs =>
+    pure (.ctor "Arr" (vs.take loN),
+          .ctor "Arr" ((vs.drop loN).take cntN),
+          .ctor "Arr" (vs.drop (loN + cntN)))
+  | .sym σ =>
+    match (← get).sctx.lookup σ with
+    | none => throwErr s!"carve: σ{σ} has no type in sctx"
+    | some τ =>
+      match Val.asArrayTy? (Val.whnfV fuel τ) with
+      | none => throwErr s!"carve: σ{σ} is not of array type ({τ.pretty})"
+      | some (_, t) => do
+        let mk : Val → M Val := fun c => do
+          let s ← freshSym
+          modify (fun st => { st with sctx := (s, Val.arrayTy c t) :: st.sctx })
+          pure (.sym s)
+        let b₁ ← mk lo'; let b₂ ← mk cnt; let b₃ ← mk rest
+        -- The spine is built over the NONEMPTY pieces only. A zero-extent σ would be
+        -- a name for the empty array that nothing can ever compute away (`arrCat`'s
+        -- ι absorbs an empty RUN, not an empty σ), and it would leave every rejoin
+        -- conversion needing a lemma. `restN`/`loN` are meaningful only in the
+        -- concrete case; the symbolic test is `convert c Z`, below.
+        let isZ : Val → Bool := fun c => Val.convert fuel c Val.zero
+        let spine :=
+          if isZ lo' then (if isZ rest then b₂ else Val.arrCatS cnt rest b₂ b₃)
+          else if isZ rest then Val.arrCatS lo' cnt b₁ b₂
+          else Val.arrCatS lo' (Val.kAdd cnt rest) b₁ (Val.arrCatS cnt rest b₂ b₃)
+        refineSym σ spine
+        pure (b₁, b₂, b₃)
+  | b =>
+    throwErr s!"carve: leaf body {b.pretty} cannot be split (¶3.2 defines the split on an owned run or a σ; a compound neutral is stuck)"
+
+/-- Make a one-slot segment's body an explicit single-element run, so that an INDEX
+    place reaches the element as a subterm. When the body is a σ this fires a
+    refinement `σ := [σₑ]` — knowledge, and marker-free: a length-1 array IS the
+    singleton of its element, timelessly.
+
+    This is ¶9's fourth, smaller uncertainty measured: "whether element access `a[i]`
+    should be a one-slot carve, as designed, or a cheaper dedicated rule … every
+    element read then fires a refinement, and in a loop-free recursive cursor that is
+    a lot of σ churn for what compiles to one load." It costs exactly one σ per
+    symbolic element access, and none at all on a run. -/
+def elementize (fuel : Nat) (body : Val) : M Val := do
+  match body with
+  | .ctor "Arr" [_] => pure body
+  | .sym σ =>
+    match (← get).sctx.lookup σ with
+    | none => throwErr s!"a[i]: σ{σ} has no type in sctx"
+    | some τ =>
+      match Val.asArrayTy? (Val.whnfV fuel τ) with
+      | none => throwErr s!"a[i]: σ{σ} is not of array type ({τ.pretty})"
+      | some (_, t) => do
+        let e ← freshSym
+        modify (fun st => { st with sctx := (e, t) :: st.sctx })
+        refineSym σ (.ctor "Arr" [.sym e])
+        pure (.ctor "Arr" [.sym e])
+  | b => throwErr s!"a[i]: the one-slot segment holds {b.pretty}, which is not a single-element run"
+
+/-- **The carve**, at the array node sitting at `pos`. `isIdx` selects the one-slot
+    variant (`a[i]` is a one-slot carve — ruling 4's uniformity, no dedicated rule).
+
+    Everything is re-read from Ω rather than threaded, because premises (2) and (3)
+    both REFINE: the residue transition rewrites a length index everywhere and the
+    body split rewrites the leaf's σ everywhere, so a detached copy of the node goes
+    stale the moment either fires. -/
+partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (ev : Option Val) (isIdx : Bool)
+    : M Unit := do
+  -- Merge first: premise (1) wants MAXIMAL owned leaves, so a range spanning two
+  -- adjacent owned segments must see them as one. This is also where merge fires
+  -- after a mid-body demand-end — the read is the trigger, so nothing else has to be.
+  setAtPos fuel pos (Val.mergeArrays (← getAtPos fuel pos))
+  let node ← getAtPos fuel pos
+  let leaves ← extentMap fuel node
+  -- Degenerate carve (¶3.2): "when the request coincides with the leaf, no split and
+  -- no refinement happen at all". No obligation either — `Le b b` and `Le x x` are
+  -- `le_refl`, so demanding evidence would be friction with no content. This is the
+  -- asymmetry ¶3.4 says IS the design: an exhaustive split costs ONE proof, not two.
+  let degenerate := leaves.find? (fun l => Val.convert fuel l.base lo && Val.convert fuel l.count cnt)
+  -- Premise (2): form each candidate leaf's obligation and check the evidence against
+  -- it; the first that types SELECTS the leaf — "the evidence's type is the selector".
+  -- Deterministic without a tie-break, because leaves are disjoint. A degenerate
+  -- request needs no evidence at all: its two `Le`s are `le_refl`, so demanding a term
+  -- would be friction with no content. That asymmetry is ¶3.4's, and it is why an
+  -- exhaustive split costs ONE proof rather than two.
+  let sel ← match degenerate with
+    | some l => pure (some l)
+    | none => do
+      let cands ← leaves.filterMapM (fun l => do
+        if ← carveEvidenceOk fuel ev (carveObligation fuel l.base l.count lo cnt)
+        then pure (some l) else pure none)
+      pure cands.head?
+  match sel with
+  | none =>
+    -- ¶3.5's OVERLAP, and the shape it actually takes: after `&mut a[0 ; 3]` the map
+    -- is `[(0,3,loaned ℓ₁), (3,rest,owned)]` and the request [2,5) is contained in
+    -- NEITHER leaf — it straddles the boundary. So the rejection needs no
+    -- owned-versus-loaned test: two segments cannot overlap, so a range that crosses
+    -- a segment boundary has no leaf at all. No arithmetic was performed and no proof
+    -- could have helped.
+    throwErr s!"carve: no leaf of {node.pretty} contains [{lo.pretty} ; {cnt.pretty}] with the evidence given — either the range meets a loan boundary (¶3.5 overlap: the ownership is elsewhere) or the containment obligation `Le (add lo cnt) n` is neither computable nor cited (¶3.2: there is no inference, no decision procedure; cite it as a[lo ; cnt | h])"
+  | some l =>
+    -- A DEGENERATE range request needs nothing at all: no split, no obligation, no
+    -- ownership test. That last is not laxity — it is what makes ¶2.2's take-and-refill
+    -- work at a range place, since between the take and the refill the segment holds a
+    -- hole and the ⇐-fill is its one legal successor. An INDEX request still has to
+    -- reach an element, so it falls through.
+    if degenerate.isSome && !isIdx then pure ()
+    else match l.body with
+    | .loanM ℓ => do
+      -- §5.2's demand-end rule, arriving at an array node as its sixth site: "any rule
+      -- that READS a place ends the suspensions parked there before it looks". ¶3.6's
+      -- trace is exactly this (`let z = a[0]` ends the group, releasing both captured
+      -- loans), and so is ¶3.3's. It is also what the whole-place rules already do —
+      -- `&mut x` and a move of `x` both End-Mut a marker sitting at `x`. The overlap
+      -- rejection is NOT this case: it is the no-leaf-contains-it case above.
+      endLoan fuel ℓ; carveAt fuel pos lo cnt ev isIdx
+    | .bot =>
+      throwErr s!"carve: range [{lo.pretty} ; {cnt.pretty}) meets a hole (⊥) at [{l.base.pretty} ; {l.count.pretty}) — the run was moved out and not refilled, and a hole is not owned"
+    | body =>
+      if !Val.segOwned body then do
+        -- A run with a marker buried in it (an element cursor's `Arr [loanₘ ℓ]`) is
+        -- not owned either. Same demand-end, found by the same traversal §2.2 already
+        -- uses for a marker in owned position.
+        match firstLoanMarker body with
+        | some ℓ => do endLoan fuel ℓ; carveAt fuel pos lo cnt ev isIdx
+        | none =>
+          throwErr s!"carve: leaf body {body.pretty} at [{l.base.pretty} ; {l.count.pretty}) is not owned (it carries a hole)"
+      else if degenerate.isSome then do
+        -- ¶3.2: "Degenerate carves are no-ops: when the request coincides with the
+        -- leaf, no split and no refinement happen at all." An index place still needs
+        -- its one slot made an explicit element.
+        if isIdx then do
+          let b' ← elementize fuel body
+          setAtPos fuel ⟨pos.root, pos.path ++ [.rng lo cnt none]⟩ b'
+        else pure ()
+      else do
+        -- Premise (3), the decomposition transitions. The leaf-relative offset first.
+        -- Two shapes cover every carve the design's programs perform, and each avoids
+        -- minting anything: a leaf at the node's base (`lo' = lo`) and a request at
+        -- the leaf's base (`lo' = Z`). The general case mints a witness and solves
+        -- `lo ≡ add b lo'` by the §10 solution transition — M10's machinery, unchanged.
+        let lo' ←
+          if Val.convert fuel lo l.base then pure Val.zero
+          else if Val.convert fuel l.base Val.zero then pure lo
+          else do
+            let d ← freshSym
+            modify (fun st => { st with sctx := (d, .const "Nat") :: st.sctx })
+            reflUnify fuel lo (Val.kAdd l.base (.sym d))
+            pure (.sym d)
+        -- Then the residue. Concrete extents COMPUTE (¶3.3's trace: "n = 3 concrete,
+        -- both sides compute — nothing refined"), and the arithmetic is meta-level on
+        -- numerals, never a `sub` in the object language. Symbolic extents mint `rest`
+        -- and solve `m ≡ add lo' (add cnt rest)` — the equation ¶3.2 reaches with
+        -- `le_split` twice plus `add_cancel_l`, asserted here in its cancelled form
+        -- because the checker unpacks the witnesses itself and no program term ever
+        -- projects them.
+        let lo'N := Val.natOfVal? (Val.nfV fuel lo')
+        let cntN := Val.natOfVal? (Val.nfV fuel cnt)
+        let mN := Val.natOfVal? (Val.nfV fuel l.count)
+        let rest ←
+          match lo'N, cntN, mN with
+          | some a, some c, some m =>
+            if a + c ≤ m then pure (Val.valOfNat (m - a - c))
+            else throwErr s!"carve: [{lo.pretty} ; {cnt.pretty}) runs past the leaf at [{l.base.pretty} ; {l.count.pretty})"
+          | _, _, _ => do
+            let r ← freshSym
+            modify (fun st => { st with sctx := (r, .const "Nat") :: st.sctx })
+            reflUnify fuel l.count (Val.kAdd lo' (Val.kAdd cnt (.sym r)))
+            pure (.sym r)
+        -- The bodies. Positional on a run (which needs concrete extents — one cannot
+        -- cut a literal at an offset one does not know), ⇜ on a σ.
+        let restN := Val.natOfVal? (Val.nfV fuel rest)
+        let (b₁, b₂, b₃) ←
+          match body, lo'N, cntN, restN with
+          | .ctor "Arr" _, none, _, _ =>
+            throwErr s!"carve: cannot split the literal run {body.pretty} at a symbolic offset"
+          | .ctor "Arr" _, _, none, _ =>
+            throwErr s!"carve: cannot split the literal run {body.pretty} at a symbolic count"
+          | _, a, c, r =>
+            carveBody fuel body (a.getD 0) (c.getD 0) (r.getD 0) lo' cnt rest
+        let b₂ ← if isIdx then elementize fuel b₂ else pure b₂
+        -- Assemble: the leaf's segment becomes up to three, zero-extent ones dropped
+        -- (¶1.1's drop-empty), and `segsNode` unwraps a lone survivor. So a carve
+        -- whose residue is empty leaves no wrapper behind at all.
+        let isZ : Val → Bool := fun c => Val.convert fuel c Val.zero
+        let pieces := (if isZ lo' then [] else [Val.segNode lo' b₁])
+                   ++ [Val.segNode cnt b₂]
+                   ++ (if isZ rest then [] else [Val.segNode rest b₃])
+        let node' ← getAtPos fuel pos                    -- re-read: (3) may have refined
+        match node' with
+        | .ctor "§segs" segs => do
+          let (i, _) ← findSeg fuel l.base l.count node'
+          setAtPos fuel pos (Val.segsNode ((segs.take i) ++ pieces ++ (segs.drop (i + 1))))
+        | _ => setAtPos fuel pos (Val.segsNode pieces)
+
+/-- Walk a place's path from the root, carving at every array step so that the
+    requested range is a segment of its own by the time navigation looks. The prefix
+    is already carved when each step is reached, so `getAtPos` on it is structural. -/
+def carvePathGo (fuel : Nat) (root : Var) (done : List Step) : List Step → M Unit
+  | [] => pure ()
+  | s :: rest => do
+    match s with
+    | .peel => carvePathGo fuel root (done ++ [.peel]) rest
+    | .idx i ev => do
+      carveAt fuel ⟨root, done⟩ i (Val.nat 1) ev true
+      carvePathGo fuel root (done ++ [s]) rest
+    | .rng lo cnt ev => do
+      carveAt fuel ⟨root, done⟩ lo cnt ev false
+      carvePathGo fuel root (done ++ [s]) rest
+
+/-- Resolve a place term to a `Pos`, evaluating each index/count/evidence term by ⇝.
+    Errors on any non-place shape, which is exactly how ⇐/`&mut` reject writes and
+    borrows of arbitrary expressions. -/
+def resolvePlace (fuel : Nat) : Term → M Pos
+  | .var x => pure ⟨x, []⟩
+  | .deref t => do let p ← resolvePlace fuel t; pure ⟨p.root, p.path ++ [.peel]⟩
+  | .index t i ev => do
+    let p ← resolvePlace fuel t
+    let iv ← readC fuel i
+    let evv ← ev.mapM (fun e => readC fuel e)
+    pure ⟨p.root, p.path ++ [.idx iv evv]⟩
+  | .range t lo cnt ev => do
+    let p ← resolvePlace fuel t
+    let lov ← readC fuel lo
+    let cntv ← readC fuel cnt
+    let evv ← ev.mapM (fun e => readC fuel e)
+    pure ⟨p.root, p.path ++ [.rng lov cntv evv]⟩
+  | _ => throwErr "place: target is not a place (must be a variable under * peels and array steps)"
+
+/-- Resolve a place AND carve it into shape. Every place-consuming rule goes through
+    this one door, so no rule can forget to carve. A path with no array step reaches
+    `carvePathGo`'s peel case only, and the whole thing is the identity — which is
+    why §2's traces are unaffected. -/
+def placeToPos (fuel : Nat) (t : Term) : M Pos := do
+  let pos ← resolvePlace fuel t
+  carvePathGo fuel pos.root [] pos.path
+  pure pos
+
+/-- **Rejoin is merge** (¶3.3): restore canonical form once a place operation has
+    finished with a slot. There is no rejoin rule to invoke — when the last marker
+    under an array node is gone the segments simply collapse, and the array is a run
+    again, indistinguishable from one that was never carved.
+
+    Placing it at the END of every place-consuming rule is what makes ¶3.3's
+    mechanization caveat moot rather than handled: merge "must be robust to being
+    triggered mid-body by a comptime read, not only by owner demand or the boundary",
+    and the way to be robust to a trigger list is to not have one. A carve merges
+    before it scans and every operation merges after it finishes, so no site can be
+    forgotten. Cheap and total on non-array values. -/
+def mergeRoot (root : Var) : M Unit := do
+  match (← getEnv).find? (fun kv => kv.1.id == root.id) with
+  | some kv => setSlot root (Val.mergeArrays kv.2)
+  | none => pure ()
+
+/-- **⇐ (write)** — the fill-only write arrow, defined only on places. Its
+    premise is a vacant (⊥) target; when the target is live a **drop** is
+    forced first (§2.3), vacating it, then the value drops in. We vacate the
+    slot *before* dropping so drop's Ω-scans never see a stale copy of the
+    displaced value. -/
+def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
+  let pos ← placeToPos fuel place
+  let old ← getAtPos fuel pos
+  match old with
+  | .bot => do setAtPos fuel pos newval; mergeRoot pos.root          -- fill
+  | _ => do
+    setAtPos fuel pos .bot                         -- vacate first (no stale copy in Ω scans)
+    drop fuel old                                  -- drop the displaced value
+    setAtPos fuel pos newval                       -- fill
+    mergeRoot pos.root                             -- rejoin is merge (¶3.3)
+
 /-! ## Match branch selection (§3)
 
     These set up Ω for a branch and return the body term to evaluate; they do
@@ -1082,10 +1610,13 @@ def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
     §3.2 records, and the fix is the ⇝ counterpart of the `&mut`-on-a-parked-loan
     demand-end M22-a already added for the reborrow path. -/
 
-/-- Resolve a place term without throwing (`placeToPos`'s total sibling). -/
-def placeOf? : Term → Option Pos
-  | .var x => some ⟨x, 0⟩
-  | .deref t => (placeOf? t).map (fun p => ⟨p.root, p.derefs + 1⟩)
+/-- Resolve a PEEL-ONLY place term without throwing (`placeToPosRaw`'s total
+    sibling). An array place is `none`: this pre-pass exists to demand-end what a
+    comptime read is about to project through, and a range place's own collapse is
+    the carve's business, not this walk's. -/
+def placeOf? : Term → Option (Var × Nat)
+  | .var x => some (x, 0)
+  | .deref t => (placeOf? t).map (fun p => (p.1, p.2 + 1))
   | _ => none
 
 /-- Peel `n` borrow layers, or `none` if the value is not a borrow that deep. -/
@@ -1114,11 +1645,11 @@ partial def collapseCDerefs (fuel : Nat) : Term → M Unit
     collapseCDerefs fuel inner
     match placeOf? (.deref inner) with
     | none => pure ()
-    | some pos =>
-      match (← getEnv).find? (fun kv => kv.1.id == pos.root.id) with
+    | some (root, d) =>
+      match (← getEnv).find? (fun kv => kv.1.id == root.id) with
       | none => pure ()
       | some kv =>
-        match peek? pos.derefs kv.2 with
+        match peek? d kv.2 with
         | some (.loanM ℓ) => do endLoan fuel ℓ; collapseCDerefs fuel (.deref inner)
         | _ => pure ()
   | .app f a => do collapseCDerefs fuel f; collapseCDerefs fuel a
@@ -1203,6 +1734,13 @@ mutual
     | .ctorApp n args => .ctorApp n (shiftVarsList d args)
     | .borrow t => .borrow (shiftVars d t)
     | .deref t => .deref (shiftVars d t)
+    -- The `Option` is matched inline rather than `.map`ped: a recursive call under
+    -- `Option.map` is opaque to the structural-recursion checker.
+    | .index t i ev => .index (shiftVars d t) (shiftVars d i)
+        (match ev with | some e => some (shiftVars d e) | none => none)
+    | .range t lo cnt ev =>
+      .range (shiftVars d t) (shiftVars d lo) (shiftVars d cnt)
+        (match ev with | some e => some (shiftVars d e) | none => none)
     | .matchE scrut eqn brs =>
       .matchE ⟨scrut.id + d, scrut.name⟩ (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranches d brs)
     | .seq a b => .seq (shiftVars d a) (shiftVars d b)
@@ -1281,18 +1819,18 @@ mutual
         -- `⊥`-into-a-pure-value bug, and the one that made `let lo = *v` after a
         -- recursive call put `loanₘ ℓ` where the partition's count proof expected
         -- the callee's released list.
-        let pos ← placeToPos (.deref t')
-        match ← getAtPos pos with
+        let pos ← placeToPos fuel (.deref t')
+        match ← getAtPos fuel pos with
         | .bot => throwErr "readR(*): borrow payload is already a hole (⊥) — nothing to take"
         | p =>
           match firstLoanMarker p with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.deref t')
-          | none => do setAtPos pos .bot; pure p
+          | none => do setAtPos fuel pos .bot; pure p
       | .ctorApp name args => do
         pure (.ctor name (← readArgs fuel args))
       | .borrow t' => do
-        let pos ← placeToPos t'
-        match ← getAtPos pos with
+        let pos ← placeToPos fuel t'
+        match ← getAtPos fuel pos with
         | .bot => throwErr "&mut: target place holds ⊥ (nothing to borrow)"
         | .loanM ℓ => do endLoan fuel ℓ; readR fuel (.borrow t')   -- suspended: demand-end the group, then reborrow
         | v =>
@@ -1317,7 +1855,8 @@ mutual
           | true, some ℓ' => do endLoan fuel ℓ'; readR fuel (.borrow t')
           | _, _ => do
             let ℓ ← freshLoan
-            setAtPos pos (.loanM ℓ)                        -- park the loan marker
+            setAtPos fuel pos (.loanM ℓ)                   -- park the loan marker
+            mergeRoot pos.root                             -- the residues re-merge around it
             pure (.borrowM ℓ v)                            -- ownership of v moves into the borrow
       | .letIn x rhs rest => do
         let v ← readR fuel rhs
@@ -1454,10 +1993,23 @@ mutual
       | .lam _ _ => do collapseCDerefs fuel t; readC fuel t
       | .app _ _ => do collapseCDerefs fuel t; readC fuel t
       | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
-      -- ¶2.2's ⇒ column at the two new steps (a read of an element / of a run).
-      -- STAGE (ii): both are ordinary place reads once `Pos` carries a path.
-      | .index _ _ _ => throwErr "readR (⇒): index place — stage (ii)"
-      | .range _ _ _ _ => throwErr "readR (⇒): range place — stage (ii)"
+      -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
+      -- reader to notice: each behaves the way the corresponding column behaves at
+      -- `*`. `t[i]` moves the element out (a hole in the slot) or copies it under
+      -- §2.1's index-kind refinement; `t[lo ; cnt]` moves the whole run out, leaving
+      -- a hole of known extent whose one legal successor is the ⇐-refill — §2.4's
+      -- take-and-refill generalized from "the payload of a borrow" to "a run of an
+      -- array", which is how a rotation or a memmove is written without a copy.
+      | .index _ _ _ | .range _ _ _ _ => do
+        let pos ← placeToPos fuel t
+        match ← getAtPos fuel pos with
+        | .bot => throwErr "readR: array place holds a hole (⊥) — take without refill"
+        | p =>
+          match firstLoanMarker p with
+          | some ℓ => do endLoan fuel ℓ; readR fuel t     -- §5.2: every demand collapses first
+          | none =>
+            if indexKindV fuel (← get).sctx p then do mergeRoot pos.root; pure p  -- §2.1 copy-on-read
+            else do setAtPos fuel pos .bot; mergeRoot pos.root; pure p
       | .borrowT _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
   termination_by fuel _ => (fuel, 0, 0)
   def readArgs : Nat → List Term → M (List Val)
@@ -1605,27 +2157,6 @@ def typeFieldSyms : List Var → List Val → M (List Nat)
     pure (σ :: rest)
   | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
 
-/-- **Refl-match — the solution transition** (§10). Matching against `Refl` at
-    scrutinee type `Id A a b` unifies the endpoints: whnf both; if one is a
-    substitutable σ not occurring on the other side, ⇜-refine it to the other,
-    everywhere; if already equal, nothing; if BOTH are rigid, the match is
-    STUCK — no unification beyond solution (no injectivity/conflict/cycle in the
-    kernel; those are the fording library's job via j/k). -/
-def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
-  let a' := Val.whnfV fuel a
-  let b' := Val.whnfV fuel b
-  if Val.convert fuel a' b' then pure ()                         -- endpoints already equal
-  else match a', b' with
-    | .sym σa, _ =>
-      if b'.symIds.contains σa then
-        throwErr s!"Refl: occurs check — endpoint σ{σa} occurs in the other endpoint ({b'.pretty})"
-      else refineSym σa b'
-    | _, .sym σb =>
-      if a'.symIds.contains σb then
-        throwErr s!"Refl: occurs check — endpoint σ{σb} occurs in the other endpoint ({a'.pretty})"
-      else refineSym σb a'
-    | _, _ =>
-      throwErr s!"Refl: both endpoints are rigid ({a'.pretty} vs {b'.pretty}) — no solution by refinement; use j/k to eliminate the identity"
 
 /-- Mint the field σ's for a symbolic branch. `Refl` is special (§10): it has
     no fields, and it unifies the `Id` endpoints (`reflUnify`) rather than
