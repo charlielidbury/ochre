@@ -24,8 +24,9 @@ If any accepted body has a concretely-stuck or audit-failing instantiation, the
 `native_decide` below fails: that is a soundness counterexample, to be
 minimized and reported, never hidden.
 
-Counts (this run): 136 bodies generated across three telescopes, 75 accepted by
-`checkFn`, 238 concrete runs — all complete and audit. No counterexample.
+Counts (ASSERTED at the foot of this file, not merely recorded): 136 bodies
+generated across three telescopes, 75 accepted by `checkFn`, 238 concrete runs —
+all complete and audit. No counterexample.
   * `(v : &mut List Nat) → Unit`   : 91 gen / 47 accepted / 141 runs
   * `(n : Nat) → Nat`               : 32 gen / 15 accepted / 45 runs
   * `(b : &mut Nat, c : Bool) → Unit`: 13 gen / 13 accepted / 52 runs
@@ -199,5 +200,31 @@ def bcAccepted : List Term := bcBodies.filter (fun b => checkFnOk (bcDecl b))
 def bcDiffOk : Bool := bcAccepted.all (fun b => bcPool.all (fun cv => diffCheck (bcDecl b) cv))
 
 example : bcDiffOk = true := by native_decide
+
+/-! ## The counts, asserted
+
+    The header comment above quotes this harness's size — bodies generated,
+    bodies accepted, concrete runs — and the paper's §6.1 quotes it in turn. A
+    number in a comment is a claim nothing checks, and it duly went unchecked
+    across two milestones that touched both the `match` form the generator emits
+    and the take rule its bodies exercise. (It survived: the M23 currency pass
+    re-measured all three telescopes by hand and found them exact.) Asserting
+    them costs one `native_decide` each and turns the next drift into a red
+    build instead of a stale sentence in a paper.
+
+    These are DESCRIPTIVE, not normative: a legitimate change to the generator
+    or to what the checker accepts should update these numbers and the header
+    comment together. What they forbid is changing either silently. -/
+
+example : (vBodies.length, vAccepted.length) = (91, 47) := by native_decide
+example : (nBodies.length, nAccepted.length) = (32, 15) := by native_decide
+example : (bcBodies.length, bcAccepted.length) = (13, 13) := by native_decide
+
+-- …and the totals the header and the paper actually quote: 136 generated, 75
+-- accepted, 238 concrete runs (each accepted body run against its telescope's pool).
+example : vBodies.length + nBodies.length + bcBodies.length = 136 := by native_decide
+example : vAccepted.length + nAccepted.length + bcAccepted.length = 75 := by native_decide
+example : vAccepted.length * vPool.length + nAccepted.length * nPool.length
+            + bcAccepted.length * bcPool.length = 238 := by native_decide
 
 end Dllbc.Tests.S8Diff

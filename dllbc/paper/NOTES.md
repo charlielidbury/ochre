@@ -299,5 +299,13 @@ Resolved during the integration pass (this branch):
   since M23 touched the match form the generator emits and the take rule the
   bodies exercise. Unchanged, and exact: 91/47/141 for `(v : &mut List Nat)`,
   32/15/45 for `(n : Nat)`, 13/13/52 for `(b : &mut Nat, c : Bool)` — 136
-  generated, 75 accepted, 238 runs. (The per-telescope figures live in a comment
-  at the head of `S8Diff.lean`; the totals are the sums.)
+  generated, 75 accepted, 238 runs.
+- …and then ASSERTED, which is the one mechanization change in this pass. Those
+  counts lived in a doc-comment nothing checked — which is precisely why the pass
+  had to re-measure them by hand. `S8Diff.lean` now carries six `native_decide`
+  assertions at its foot: the three per-telescope pairs, and the three totals the
+  header comment and §6.1 actually quote. Liveness confirmed by flipping one and
+  watching the build go red. They are DESCRIPTIVE, not normative — a legitimate
+  change to the generator or to what the checker accepts should update the
+  numbers, the header comment and §6.1 together; what the assertions forbid is
+  changing any one of them silently.
