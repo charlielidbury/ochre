@@ -42,6 +42,26 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
       pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
+    -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
+    -- §5's second opacity ("borrows stored under a type constructor") reaching a
+    -- telescope entry for the first time. The slot holds a genuine pair — a length
+    -- and a borrow — so the length is a σ the body can name, and the borrow carries
+    -- an ordinary obligation. PROBE (M24 STEP 1): see `docs/DELTAS.md` G2 for why
+    -- this is not enough on its own.
+    | .sigmaT aTy (.borrowT τ S) => do
+      let aVal ← readC fuel aTy
+      let σc ← freshSym
+      modify (fun s => { s with sctx := (σc, aVal) :: s.sctx })
+      let τVal := Val.substPure 0 (.sym σc) (← readC fuel τ)
+      let σ ← freshSym
+      let ℓ ← freshLoan
+      bindSlot x (.ctor "Pair" [.sym σc, .borrowM ℓ (.sym σ)])
+      modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+      -- `S` binds the payload snapshot at pvar 0; the Σ's own binder sits at pvar 1
+      -- and drops to 0 once the payload is substituted.
+      let SVal ← readC fuel S
+      let owed := Val.nfV fuel (Val.substPure 0 (.sym σc) (Val.substPure 0 (.sym σ) SVal))
+      pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
     | tyTerm => do
       let τVal ← readC fuel tyTerm
       let σ ← freshSym

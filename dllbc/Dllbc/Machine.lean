@@ -2104,6 +2104,26 @@ mutual
           else
             throwErr s!"call: borrow argument's payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
         | v => throwErr s!"call: expected a borrow argument (&mut …), got {v.pretty}"
+      -- ¶4's runtime-length slice at a CALL SITE (M24 STEP 1's probe). The actual is a
+      -- genuine pair — a length and a borrow — so the capture is the borrow's loan and
+      -- the length is checked like any other argument. See `docs/DELTAS.md` G2.
+      | .sigmaT aTy (.borrowT τ S) => do
+        match ← readR fuel arg with
+        | .ctor "Pair" [cv, .borrowM ℓ payload] => do
+          let aVal ← readCWith fuel inst aTy
+          if !(← hasType fuel cv aVal) then
+            throwErr s!"call: slice length ({cv.pretty}) does not have its parameter type ({aVal.pretty})"
+          else
+            let τVal := Val.substPure 0 cv (← readCWith fuel inst τ)
+            if ← hasType fuel payload τVal then do
+              let SVal ← readCWith fuel inst S
+              let owed := Val.nfV fuel (Val.substPure 0 cv (Val.substPure 0 payload SVal))
+              let pairV : Val := .ctor "Pair" [cv, .borrowM ℓ payload]
+              let (rest, inst') ← processArgs fuel (i + 1) ((declVar, pairV) :: inst) tRest aRest
+              pure ((ℓ, owed) :: rest, inst')
+            else
+              throwErr s!"call: slice payload ({payload.pretty}) does not have its parameter type ({τVal.pretty})"
+        | v => throwErr s!"call: expected a Σ-typed slice (a Pair of a length and a borrow), got {v.pretty}"
       | tyTerm => do
         let argVal ← readR fuel arg
         let τVal ← readCWith fuel inst tyTerm

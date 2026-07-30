@@ -905,10 +905,83 @@ def pivotCarve : Decl := decl{
     () } }
 example : checkFnErr pivotCarve "containment obligation" = true := by native_decide
 
--- The probe behind route (c): ¶4's Σ-typed slice is a well-formed TYPE and an
--- unimplemented PARAMETER. Kept as the record of what route (c) would cost.
+/-! ## (vi) The Σ-typed slice, PROBED — ¶4's runtime-length slice, built and settled
+
+    ¶4 says `Σ (c : Nat). &mut (Array c T)` is "an ordinary Σ over a borrow, which §5.2
+    already declares well-formed. **No new type.**" That is true of the TYPE. It is not
+    true of the machine: §5's second opacity, "borrows stored under a type constructor",
+    had never reached a telescope entry. Two serious attempts, both landed, so the
+    question is answered by a working implementation rather than by argument.
+
+    ATTEMPT 1, the callee side (`seedTelescope`): the slot holds a genuine pair, so the
+    length is a σ the body can name and the borrow carries an ordinary obligation.
+
+    ATTEMPT 2, the caller side (`processArgs`): the actual is a pair, the capture is the
+    borrow's loan, the length is checked like any other argument.
+
+    Both work. **And it does not solve the residue problem**, which is the point of the
+    probe: a caller must PRODUCE the length to construct the pair, so the Σ-slice serves
+    exactly the slices whose length was already nameable — the case that never needed
+    it. The tests below are the settlement, not a feature demo. -/
+
 def sigSlice : Decl := decl{
   fn sigSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () } }
-example : checkFnErr sigSlice "only valid at a telescope position" = true := by native_decide
+example : checkFnOk sigSlice = true := by native_decide
+
+-- The callee can DESTRUCTURE it: an owned match hands back the length and the borrow,
+-- and inside the body the length is an ordinary nameable term.
+def useSlice : Decl := decl{
+  fn useSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit {
+    match s { Pair(c, sl) => () } } }
+example : checkFnOk useSlice = true := by native_decide
+
+def sliceTouch : Decl := decl{
+  fn sliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () } }
+
+-- A caller passing a slice whose length it can NAME: green, end to end.
+def sigCallerOk : Decl := decl{
+  fn sigCallerOk (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i | h1];
+    let r = &mut (*a)[i ; ..];
+    sliceTouch(Pair(i, l));
+    () } }
+example : checkFnOk sigCallerOk [sigCallerOk, sliceTouch] = true := by native_decide
+
+/-! ### …and the residue still cannot be passed, which settles route (c)
+
+    The only length in scope is `i`, and for the residue it is the wrong one. The
+    checker says so rather than silently accepting — so there is no smuggling the
+    residue through with a length that happens to be nameable. And there is no right
+    term to write, because the residue's length is the σ premise (3) minted. -/
+
+def sigCallerWrong : Decl := decl{
+  fn sigCallerWrong (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i | h1];
+    let r = &mut (*a)[i ; ..];
+    sliceTouch(Pair(i, r));
+    () } }
+example : checkFnErr sigCallerWrong "does not have its parameter type" [sigCallerWrong, sliceTouch]
+    = true := by native_decide
+
+-- A second, independent wall for route (c): a RECURSIVE slice-taking callee needs a
+-- fuel bound ABOUT the slice's length, and that length lives inside the Σ where no
+-- telescope entry can mention it. Nesting the proof inside too is where it goes, and
+-- that is a second level the machinery does not have.
+def recSlice : Decl := decl{
+  fn recSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (h : Le c fuel) → &mut (Array c Nat)) -> Unit {
+    () } }
+example : checkFnErr recSlice "only valid at a telescope position" = true := by native_decide
+
+/-! ### Route (a)'s payoff, verified on the arithmetic alone
+
+    Supplying the residue does not merely NAME it — it makes the obligation that could
+    not be written disappear. After `σ_rest := S j` the pivot carve's leaf-relative
+    obligation `Le 1 σ_rest` reduces to `Le Z j`, which is ⊤ and needs no evidence at
+    all. Stuck while the residue is a bare σ; free the moment it has a shape. -/
+
+example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.ctor "S" [.sym 0])) == .const "Unit")
+    = true := by native_decide
+example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
+    = false := by native_decide
 
 end Dllbc.Tests.S24Arrays
