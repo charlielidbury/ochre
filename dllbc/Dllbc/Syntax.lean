@@ -68,8 +68,14 @@ inductive Term where
   | index  : Term → Term → Option Term → Term
   /-- `t[lo ; cnt | ev]` — the **range step** (¶2.1). Offset-and-count, never
       lower-and-upper: `a[lo ; cnt]` has type `Array cnt T` read straight off the
-      syntax, so no rule below ever produces a `sub`. -/
-  | range  : Term → Term → Term → Option Term → Term
+      syntax, so no rule below ever produces a `sub`.
+
+      The count is OPTIONAL: `a[lo ; ..]` means "to the end of the segment starting
+      at `lo`". That is not sugar for a subtraction — it NAMES the residue the carve
+      already minted (premise (3)'s `rest`, sitting in the extent map as a given)
+      rather than computing `sub n lo`. ¶3.4 and ¶5 both write `rest` as if it were a
+      surface name for that σ, and it is not one; this is how a program says it. -/
+  | range  : Term → Term → Option Term → Option Term → Term
   /-- `match x { … }` — one-constructor-deep pattern match on a variable
       scrutinee (§3). Owned or borrow mode is chosen at runtime by what the
       scrutinee's slot holds.
@@ -139,7 +145,7 @@ mutual
     | .deref a, .deref b => Term.beq a b
     | .index a i e, .index b j f => Term.beq a b && Term.beq i j && Term.beqOpt e f
     | .range a l c e, .range b m d f =>
-      Term.beq a b && Term.beq l m && Term.beq c d && Term.beqOpt e f
+      Term.beq a b && Term.beq l m && Term.beqOpt c d && Term.beqOpt e f
     | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs

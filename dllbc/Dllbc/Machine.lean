@@ -580,6 +580,19 @@ def extentMapGo (fuel : Nat) (b : Val) : List Val → M (List Leaf)
       let tl ← extentMapGo fuel (Val.nfV fuel (Val.kAdd b c)) rest
       pure (⟨b, c, body⟩ :: tl)
 
+/-- The sum of a leaf list's extents, RIGHT-NESTED and with no trailing `Z`.
+
+    The shape matters and is not cosmetic. `add` recurses on its first argument, so a
+    trailing `add c Z` is STUCK the moment `c` is symbolic — and then the audit's
+    `Array (add k (add rest Z))` never converts with the owed `Array (add k rest)`,
+    which is the one conversion premise (3)'s residue transition exists to make
+    definitional. Right-nesting also matches the `arrCat` spine the ⇝ fold builds and
+    the `m ≡ add lo' (add cnt rest)` the transition solves, so all three agree. -/
+def sumExtents : List Leaf → Val
+  | [] => Val.zero
+  | [l] => l.count
+  | l :: rest => Val.kAdd l.count (sumExtents rest)
+
 /-- The extent map of an array node. An UNCARVED array is a single leaf spanning it. -/
 def extentMap (fuel : Nat) (v : Val) : M (List Leaf) :=
   match v with
@@ -847,9 +860,13 @@ mutual
     | .index t i _ => do
       let a := Val.mergeArrays (← reflectC t)
       navStep 1000 (.idx (Val.nfV 1000 (← reflectC i)) none) a
-    | .range t lo cnt _ => do
+    | .range t lo (some cnt) _ => do
       let a := Val.mergeArrays (← reflectC t)
       navStep 1000 (.rng (Val.nfV 1000 (← reflectC lo)) (Val.nfV 1000 (← reflectC cnt)) none) a
+    | .range _ _ none _ =>
+      -- `a[lo ; ..]` reads its count off the extent map, which is STATE; ⇝ is the
+      -- read-only projection and may not consult it. Write the count in a type.
+      throwErr "readC (⇝): `a[lo ; ..]` has no comptime reading — its count is read off the extent map, which is state (§3.2)"
     | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
@@ -1034,8 +1051,7 @@ mutual
         | none => pure false
         | some (n, t) => do
           let leaves ← extentMap fuel v
-          let total := leaves.foldr (fun l acc => Val.kAdd l.count acc) Val.zero
-          if !(Val.convert fuel total n) then pure false
+          if !(Val.convert fuel (sumExtents leaves) n) then pure false
           else leaves.allM (fun l => do
             if !Val.segOwned l.body then
               throwErr s!"hasType: array segment at [{l.base.pretty} ; {l.count.pretty}) holds {l.body.pretty} — a suspended array has no value of its type (§5.2)"
@@ -1482,7 +1498,15 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (ev : Option Val) (i
           | _, _, _ => do
             let r ← freshSym
             modify (fun st => { st with sctx := (r, .const "Nat") :: st.sctx })
-            reflUnify fuel l.count (Val.kAdd lo' (Val.kAdd cnt (.sym r)))
+            -- ¶3.2's two outcomes, and they are M10's two. FLEX — the leaf's extent is
+            -- a bare σ, which is the case whenever the length came from a telescope
+            -- parameter, i.e. always in the programs this is for: the solution
+            -- transition refines it and the decomposition holds DEFINITIONALLY from
+            -- here on. RIGID — a compound neutral like `add p q` — is stuck, and the
+            -- remedy is the one the north star already uses: take the length as a
+            -- parameter. A real restriction on which signatures are carvable (¶8.4).
+            (do reflUnify fuel l.count (Val.kAdd lo' (Val.kAdd cnt (.sym r)))) <|>
+              throwErr s!"carve: premise (3) is stuck — the leaf's extent ({l.count.pretty}) is a compound neutral, not a flexible σ, so `m ≡ add lo' (add cnt rest)` has no solution by refinement. Take the length as a telescope PARAMETER rather than an expression (¶3.2, ¶8.4's rigid-length restriction)"
             pure (.sym r)
         -- The bodies. Positional on a run (which needs concrete extents — one cannot
         -- cut a literal at an offset one does not know), ⇜ on a σ.
@@ -1510,48 +1534,60 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (ev : Option Val) (i
           setAtPos fuel pos (Val.segsNode ((segs.take i) ++ pieces ++ (segs.drop (i + 1))))
         | _ => setAtPos fuel pos (Val.segsNode pieces)
 
-/-- Walk a place's path from the root, carving at every array step so that the
-    requested range is a segment of its own by the time navigation looks. The prefix
-    is already carved when each step is reached, so `getAtPos` on it is structural. -/
-def carvePathGo (fuel : Nat) (root : Var) (done : List Step) : List Step → M Unit
-  | [] => pure ()
-  | s :: rest => do
-    match s with
-    | .peel => carvePathGo fuel root (done ++ [.peel]) rest
-    | .idx i ev => do
-      carveAt fuel ⟨root, done⟩ i (Val.nat 1) ev true
-      carvePathGo fuel root (done ++ [s]) rest
-    | .rng lo cnt ev => do
-      carveAt fuel ⟨root, done⟩ lo cnt ev false
-      carvePathGo fuel root (done ++ [s]) rest
+/-- Resolve `a[lo ; ..]`'s count: the extent of the segment starting at `lo`.
 
-/-- Resolve a place term to a `Pos`, evaluating each index/count/evidence term by ⇝.
-    Errors on any non-place shape, which is exactly how ⇐/`&mut` reject writes and
-    borrows of arbitrary expressions. -/
-def resolvePlace (fuel : Nat) : Term → M Pos
+    This NAMES the residue rather than computing it. Premise (3) already minted
+    `rest` and parked it in the extent map as a *given*, so reading it back costs
+    nothing and produces no `sub` — which is the whole point of ¶2.1's ban on
+    lower-and-upper. Without it a program cannot write ¶3.4's second borrow at all:
+    both ¶3.4 and ¶5 spell it `&mut (*a)[k ; rest]`, and `rest` is a machine-internal
+    σ with no surface name. (A `lo` that does not START a segment is resolvable only
+    when everything is concrete, where the arithmetic is meta-level on numerals; the
+    symbolic case is rejected rather than papered over with a subtraction.) -/
+def restOfLeaf (fuel : Nat) (pos : Pos) (lo : Val) : M Val := do
+  let node := Val.mergeArrays (← getAtPos fuel pos)
+  let leaves ← extentMap fuel node
+  match leaves.find? (fun l => Val.convert fuel l.base lo) with
+  | some l => pure l.count
+  | none =>
+    let loN := Val.natOfVal? (Val.nfV fuel lo)
+    let hit := leaves.findSome? (fun l =>
+      match loN, Val.natOfVal? (Val.nfV fuel l.base), Val.natOfVal? (Val.nfV fuel l.count) with
+      | some i, some b, some m => if b ≤ i && i < b + m then some (Val.valOfNat (b + m - i)) else none
+      | _, _, _ => none)
+    match hit with
+    | some c => pure c
+    | none =>
+      throwErr s!"a[{lo.pretty} ; ..]: no segment of {node.pretty} starts at {lo.pretty}, and the offsets are not concrete enough to read the remainder off the extent map — carve the prefix first"
+
+/-- Resolve a place term to a `Pos`, CARVING as it descends so that each array step's
+    request is a segment of its own by the time the next step looks. Resolution and
+    carving are one pass rather than two, because `a[lo ; ..]` must read its count off
+    the extent map of the *already-carved* prefix.
+
+    Every place-consuming rule goes through this one door, so no rule can forget to
+    carve. A path with no array step never reaches a carve at all, which is why §2's
+    traces are unaffected. Errors on any non-place shape, which is exactly how ⇐ and
+    `&mut` reject writes and borrows of arbitrary expressions. -/
+def placeToPos (fuel : Nat) : Term → M Pos
   | .var x => pure ⟨x, []⟩
-  | .deref t => do let p ← resolvePlace fuel t; pure ⟨p.root, p.path ++ [.peel]⟩
+  | .deref t => do let p ← placeToPos fuel t; pure ⟨p.root, p.path ++ [.peel]⟩
   | .index t i ev => do
-    let p ← resolvePlace fuel t
+    let p ← placeToPos fuel t
     let iv ← readC fuel i
     let evv ← ev.mapM (fun e => readC fuel e)
+    carveAt fuel p iv (Val.nat 1) evv true
     pure ⟨p.root, p.path ++ [.idx iv evv]⟩
   | .range t lo cnt ev => do
-    let p ← resolvePlace fuel t
+    let p ← placeToPos fuel t
     let lov ← readC fuel lo
-    let cntv ← readC fuel cnt
+    let cntv ← match cnt with
+      | some c => readC fuel c
+      | none => restOfLeaf fuel p lov
     let evv ← ev.mapM (fun e => readC fuel e)
+    carveAt fuel p lov cntv evv false
     pure ⟨p.root, p.path ++ [.rng lov cntv evv]⟩
   | _ => throwErr "place: target is not a place (must be a variable under * peels and array steps)"
-
-/-- Resolve a place AND carve it into shape. Every place-consuming rule goes through
-    this one door, so no rule can forget to carve. A path with no array step reaches
-    `carvePathGo`'s peel case only, and the whole thing is the identity — which is
-    why §2's traces are unaffected. -/
-def placeToPos (fuel : Nat) (t : Term) : M Pos := do
-  let pos ← resolvePlace fuel t
-  carvePathGo fuel pos.root [] pos.path
-  pure pos
 
 /-- **Rejoin is merge** (¶3.3): restore canonical form once a place operation has
     finished with a slot. There is no rejoin rule to invoke — when the last marker
@@ -1739,7 +1775,8 @@ mutual
     | .index t i ev => .index (shiftVars d t) (shiftVars d i)
         (match ev with | some e => some (shiftVars d e) | none => none)
     | .range t lo cnt ev =>
-      .range (shiftVars d t) (shiftVars d lo) (shiftVars d cnt)
+      .range (shiftVars d t) (shiftVars d lo)
+        (match cnt with | some c => some (shiftVars d c) | none => none)
         (match ev with | some e => some (shiftVars d e) | none => none)
     | .matchE scrut eqn brs =>
       .matchE ⟨scrut.id + d, scrut.name⟩ (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranches d brs)

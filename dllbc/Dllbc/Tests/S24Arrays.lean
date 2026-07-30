@@ -3,6 +3,7 @@ import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
+import Dllbc.StdLemmas
 
 /-!
 # §24 test suite — arrays, range places, and proof-licensed carving
@@ -34,6 +35,7 @@ range borrow an ordinary `&mut` rather than a new aliasing judgment.
 -/
 
 open Dllbc
+open Dllbc.StdLemmas (le_refl)
 
 namespace Dllbc.Tests.S24Arrays
 
@@ -453,5 +455,205 @@ example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
                            () }
   "⊥" = true := by native_decide
 
+
+/-! ## (iii) The symbolic carve — ¶3.4, the case the whole design exists for
+
+    Two range borrows of one array, live at once, with a symbolic length. They coexist
+    not because the checker believes an aliasing argument but because, after the carve,
+    they are literally different subterms of one value tree — and §3.3's suspension
+    machinery already knows what to do with those. -/
+
+/-- ¶3.4's `halves`, checked end to end.
+
+    ```rust
+    fn halves (a : &mut Array n Nat, k : Nat, h : Le k n) = {
+      let l = &mut (*a)[Z ; k];
+      let r = &mut (*a)[k ; rest];
+    }
+    ```
+
+    Read the two carves against each other, because the contrast IS the design. The
+    FIRST does everything: its obligation is `Le Z Z × Le (add Z k) (add Z n)`, which
+    computes to `⊤ × Le k n` and is discharged by `h`; its residue transition solves
+    `n ≡ add k rest` with `n` flex, refining the LENGTH INDEX everywhere; and its body
+    split refines `σ := arrCat k rest σ_l σ_r`. The SECOND does nothing at all — its
+    request IS the leaf, so no split and no refinement fire, and no evidence is
+    demanded because `Le b b` and `Le x x` are `le_refl`. That asymmetry is the general
+    shape of an exhaustive split, and it is why this costs ONE proof rather than two. -/
+def halves : Decl := decl{
+  fn halves (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k | h];
+    let r = &mut (*a)[k ; ..];
+    () } }
+
+example : checkFnOk halves = true := by native_decide
+
+/-- The final Ω of a single-path body. -/
+def fnEnv (d : Decl) (tbl : List Decl := [d]) : Option Env :=
+  match runFn tbl d with | [.ok e] => some e | _ => none
+
+/-- The claim, stated structurally: `a`'s payload is a two-segment node whose bodies
+    are two DISTINCT loans. Not "the checker accepted a disjointness argument" — there
+    is no disjointness judgment anywhere (¶8.2: "there is no disjointness soundness
+    theorem, because there is no disjointness judgment"). The extent map is the
+    aliasing invariant and it is maintained by construction: segments partition the
+    array, so two loans of one array cannot overlap. -/
+def halvesSegLoans : Option (List Nat) :=
+  match fnEnv halves with
+  | some e =>
+    match e.lookup "a" with
+    | some (.borrowM _ (.ctor "§segs" segs)) =>
+      some (segs.filterMap (fun s => match Val.asSeg? s with
+        | some (_, .loanM l) => some l
+        | _ => none))
+    | _ => none
+  | none => none
+
+example : halvesSegLoans = some [1, 2] := by native_decide
+
+/-! ### Why the audit converts, and what it cost
+
+    ¶3.4: "the obligation type for `a` is `Array n Nat`; the collapsed payload's
+    snapshot is `arrCat σ_l′ σ_r′` at `Array (add σₖ rest) Nat`; and these convert
+    DEFINITIONALLY, because the residue transition refined `σₙ := add σₖ rest` at the
+    carve. Had the carve computed `rest := sub n k` instead, this final conversion
+    would have needed `add k (sub n k) ≡ n`, which is not definitional and would have
+    required a cited lemma at every audit of every array-mutating function in the
+    program. That is the entire argument for premise (3)."
+
+    The `checkFnOk` above IS that conversion succeeding. One implementation detail
+    turned out to be load-bearing and is worth naming, because getting it wrong looks
+    like the design failing: the extent sum must be RIGHT-NESTED with no trailing `Z`.
+    `add` recurses on its first argument, so `add rest Z` is stuck the moment `rest` is
+    symbolic, and `Array (add k (add rest Z))` never converts with `Array (add k rest)`.
+    The first version of the audit had the trailing zero and this exact test failed —
+    not because premise (3) was wrong but because the sum was shaped wrong. -/
+
+/-! ### Negative controls, one per premise -/
+
+-- Premise (2), UNPROVED BOUND — "the *interesting* rejection: the program is not
+-- wrong, it is unjustified". Same body, evidence not cited.
+def noEvidence : Decl := decl{
+  fn noEvidence (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k]; () } }
+example : checkFnErr noEvidence "containment obligation" = true := by native_decide
+
+-- Premise (2), WRONG EVIDENCE. `h : Le n k` is a perfectly good term of a perfectly
+-- good type; it is just not the obligation. The evidence's TYPE is the selector, so a
+-- term of the wrong type selects no leaf.
+def wrongEvidence : Decl := decl{
+  fn wrongEvidence (n : Nat, k : Nat, h : Le n k, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k | h]; () } }
+example : checkFnErr wrongEvidence "containment obligation" = true := by native_decide
+
+-- Premise (3), RIGID LENGTH (¶8.4's named restriction). The leaf's extent is a
+-- compound neutral rather than a flexible σ, so `m ≡ add lo' (add cnt rest)` has no
+-- solution by refinement. Rejected with the remedy in the message, which is the one
+-- the north star already uses: take the length as a parameter.
+def rigidLength : Decl := decl{
+  fn rigidLength (p : Nat, q : Nat, k : Nat, h : Le k (add p q),
+                  a : &mut (Array (add p q) Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k | h]; () } }
+example : checkFnErr rigidLength "premise (3) is stuck" = true := by native_decide
+example : checkFnErr rigidLength "Take the length as a telescope PARAMETER"
+    = true := by native_decide
+
+/-! ### `refineSym`'s target list is the checklist — including `St.selfRec`
+
+    ¶3.2's sharpest warning: the carve's index refinement must reach every σ-bearing
+    component, and "a carve whose index refinement reached every component EXCEPT
+    `St.selfRec` would not fail loudly — it would silently corrupt the termination
+    guard for **any function recursing on an array**, which is to say for the entire
+    class of program this design exists to serve".
+
+    A function that recurses on fuel and carves on the way checks. The guard's snapshot
+    rode the refinement with everything else. -/
+
+def walk : Decl := decl{
+  fn walk [fuel] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+    match fuel {
+      Z => (),
+      S(f2) => { let l = &mut (*a)[Z ; k | h]; walk(f2, k, k, le_refl k, l) }
+    } } }
+example : checkFnOk walk = true := by native_decide
+
+/-! ### The regression test the doc asks for, made SELF-GUARDING
+
+    Declaring the ARRAY as the decreasing argument and recursing on a carved sub-slice
+    is rejected — and the rejection's message names the snapshot the guard compared
+    against. After the carve that snapshot is `arrCat σ σ σ σ`, because the body split
+    refined the payload's σ to its concatenation. If `refineSym` did NOT sweep
+    `selfRec` the message would name the stale bare σ instead, which is exactly the
+    silent corruption ¶3.2 warns about — so asserting on the word `arrCat` is a live
+    check that the sweep happened, not a comment claiming it did.
+
+    Verified by flipping: with `selfRec` removed from `refineSym`'s targets the same
+    declaration reports `… predecessor of the parameter's snapshot (σ4)`, and this
+    test goes red. -/
+
+def walkArr : Decl := decl{
+  fn walkArr [a] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+    match fuel {
+      Z => (),
+      S(f2) => { let l = &mut (*a)[Z ; k | h]; walkArr(f2, k, k, le_refl k, l) }
+    } } }
+example : checkFnErr walkArr "arrCat" = true := by native_decide
+
+/-! ### FINDING — recursion cannot decrease through a CARVED array payload
+
+    The rejection above is not a bug, and it is worth stating as a restriction because
+    ¶6's migration is a recursion over sub-slices. §8's guard compares the actual
+    against the parameter's current snapshot by `strictSubterm`, which counts only
+    CONSTRUCTOR fields as subterms and deliberately refuses application spines ("a
+    `Le`-headed neutral has no well-founded subterm order we could appeal to"). A
+    carve's body split refines the payload σ to an `arrCat` SPINE, so from that moment
+    no sub-slice is a structural predecessor of its parent.
+
+    ¶6's quicksort is unaffected — it decreases on `fuel`, and `walk` above is that
+    shape checking. But "recurse on the sub-slice, no fuel needed" is closed, and the
+    doc nowhere says so. Either the guard learns that `arrCat`'s array arguments are
+    subterms of their concatenation (true, and specific to this former), or array
+    recursion stays fuel-carried. -/
+
+/-! ### ¶3.6 — a segment's loan captured by a call, WITHOUT the parent riding along
+
+    The load-bearing step of ¶3.6's precision claim, which the doc says "was checked
+    rather than hoped": `processArgs` captures per-argument-borrow loans and nothing in
+    it walks to a parent or a sibling. Here that property meets an array segment for
+    the first time. The callee receives the left half; the right half stays borrowed by
+    the caller; the parent `a` is audited normally and its untouched segment never
+    entered the call. The frame is not described — it is simply still there. -/
+
+def touch : Decl := decl{ fn touch (p : Nat, l : &mut (Array p Nat)) -> Unit { () } }
+
+def callSeg : Decl := decl{
+  fn callSeg (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k | h];
+    let r = &mut (*a)[k ; ..];
+    touch(k, l);
+    () } }
+example : checkFnOk callSeg [callSeg, touch] = true := by native_decide
+
+/-! ### FINDING — the residue has no surface name, and ¶3.4/¶5/¶6 all assume it does
+
+    ¶3.4 writes the second borrow as `&mut (*a)[k ; rest]`, ¶5's `split_at_mut` returns
+    `&mut (Array rest T)`, and ¶6's quicksort writes `&mut (*v)[S(i) ; rest]`. In every
+    case `rest` is a σ the CHECKER minted inside premise (3) — machine-internal, with
+    no binder any program can write. The doc notices the tension at ¶5 ("more honestly
+    written after the carve has run") but never resolves it.
+
+    `a[lo ; ..]` is the resolution, and it is not the `sub` ¶2.1 bans: it reads the
+    residue's extent off the extent map, where premise (3) already parked it as a
+    GIVEN. No arithmetic, no new obligation.
+
+    What `..` does NOT solve is a CALL that must pass the residue's length as an
+    argument — ¶3.6's own `merge_into (l : &mut Array p Nat, r : &mut Array q Nat)`
+    needs a `q`, and `q` is that same unnameable σ. `callSeg` above passes only the
+    left half for exactly this reason. Three routes, none free: let a place's extent be
+    a comptime term (`alen (a[k ; ..])` — but the extent map is state, so ⇝ would be
+    reading state); let the carve BIND its residue in the surface (`let (l, rest) = …`,
+    which is a real binder form and the honest one); or have such callees take a Σ-typed
+    slice, `Σ (c : Nat). &mut (Array c T)`, which ¶4 already declares well-formed. The
+    third needs no new machinery and is probably the answer; it is untested here. -/
 
 end Dllbc.Tests.S24Arrays

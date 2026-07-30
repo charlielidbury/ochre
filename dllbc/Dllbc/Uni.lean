@@ -102,6 +102,10 @@ syntax:max uterm:max noWs "[" uterm "]" : uterm                         -- a[i]
 syntax:max uterm:max noWs "[" uterm "|" uterm "]" : uterm               -- a[i | h]
 syntax:max uterm:max noWs "[" uterm ";" uterm "]" : uterm               -- a[lo ; cnt]
 syntax:max uterm:max noWs "[" uterm ";" uterm "|" uterm "]" : uterm     -- a[lo ; cnt | h]
+-- `a[lo ; ..]` — to the end of the segment starting at `lo`. NAMES premise (3)'s
+-- residue rather than computing `sub n lo`; without it ¶3.4's second borrow is
+-- unwritable, since the doc spells it `[k ; rest]` and `rest` is a machine-minted σ.
+syntax:max uterm:max noWs "[" uterm ";" ".." "]" : uterm                -- a[lo ; ..]
 syntax:70 "&mut" uterm:65 : uterm                            -- &mut e : borrow (term) / borrowT (type)
 syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ S)
 syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
@@ -217,17 +221,21 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (i', n2) ← elabUTerm isTy rctx pctx n1 i
     let (h', n3) ← elabUTerm isTy rctx pctx n2 h
     return (← `(Dllbc.Term.index $a' $i' (some $h')), n3)
+  | `(uterm| $a:uterm[$lo:uterm ; ..]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    return (← `(Dllbc.Term.range $a' $lo' none none), n2)
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm]) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
     let (c', n3) ← elabUTerm isTy rctx pctx n2 c
-    return (← `(Dllbc.Term.range $a' $lo' $c' none), n3)
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none), n3)
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm | $h:uterm]) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
     let (c', n3) ← elabUTerm isTy rctx pctx n2 c
     let (h', n4) ← elabUTerm isTy rctx pctx n3 h
-    return (← `(Dllbc.Term.range $a' $lo' $c' (some $h')), n4)
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $h')), n4)
   | `(uterm| &mut ( $x:ident : $τ:uterm ~> $s:uterm )) => do     -- borrow type, snapshot binder
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (s', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 s
