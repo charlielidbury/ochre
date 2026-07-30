@@ -35,7 +35,8 @@ are read off it.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_refl le_trans le_up_r append id_congr)
+open Dllbc.StdLemmas (le_refl le_trans le_up_r append id_congr id_trans id_sym
+  set nth swapL len_set swapL_set le_rw_r)
 
 namespace Dllbc.Tests.S23Direct
 
@@ -467,5 +468,146 @@ def runSplit (l : List Nat) (i : Nat) : Bool :=
 example : runSplit [1,2,3,4] 2 = true := by native_decide   -- split in the middle
 example : runSplit [1,2,3] 0 = true := by native_decide      -- take nothing, hand the whole list back
 example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything, hand back Nil
+
+/-! ## Stage (iii): the swap leaf, relational — and what it says about M22's arc
+
+    M22's central finding was that an in-place leaf mutating through pointer writes
+    has an OPAQUE exit, so no value-level postcondition is provable about it, and
+    the escape was delegation: mutate through a callee carrying a declared `back`
+    and cite a pure lemma about its model. From that, a three-feature arc was filed
+    forward — ISSUED-PAYLOAD PINNING, then the `swapL_set` BRIDGE, then
+    AUDIT-REWRITE-ALONG-CITED-BRIDGES — as the route to provable inline leaves.
+
+    That arc is not needed, and the reason is worth stating precisely, because it
+    sharpens the M22 finding rather than contradicting it. The opacity is a property
+    of borrows ISSUED BY A CALL: `buildResult` mints an issued borrow's payload as a
+    fresh σ, because signature-only checking has nothing to say what the payload IS
+    at issue time. It is NOT a property of inline mutation. A leaf that does its own
+    cursor work through the body's OWN match-field borrows (§3.3) writes into a
+    suspension the audit collapses itself, so its exit is a constructor tree over
+    known snapshots — fully provable, with nothing minted opaquely anywhere.
+
+    So the whole arc collapses to a program-level choice: walk the list yourself
+    instead of calling `nth2`. `set_at` below is the proof of that, and `swap_at`
+    shows the second feature evaporating too — the `swapL_set` bridge M22 proved and
+    parked as forward infrastructure "for the audit to cite once pinning lands" is
+    just an ordinary lemma applied in the body, needing no audit machinery at all.
+    Feature 3 (audit-rewrite) had three convergence points in M22's ledger; this
+    removes two of them, and re-scopes pinning to "only if you insist on calling
+    a cursor rather than being one". -/
+
+-- `set_at(v, i, x)`: write `x` at position `i`, in place, through the body's own
+-- field reborrows. The exit reading is `set i x (old *v)` — provable, no back.
+def setAt : Decl :=
+  decl{ fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v))
+        -> Id (List Nat) (*v) (set i x (old *v))
+        { match i {
+            -- `*hd := x` is a strong update through a match-field reborrow: the
+            -- parent suspends, the audit collapses it, and the exit is `Cons x σ_tl`
+            -- — which IS `set Z x (Cons σ_hd σ_tl)`, so the proof is `Refl`.
+            Z => match v { Nil => botElim Unit hi, Cons(hd, tl) => { *hd := x; Refl } },
+            S(i2) => match v {
+              Nil => botElim Unit hi,
+              Cons(hd, tl) => {
+                let y = set i2 x (*tl);
+                let h = set_at(&mut *tl, i2, x, hi);
+                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+              }
+            }
+        } } }
+example : checkFnOk setAt = true := by native_decide
+
+-- `swap_at(v, i, j)`: two `set_at`s and the M22 bridge, ensuring the model function
+-- `swapL` directly. Not recursive itself — the recursion is `set_at`'s.
+def swapAt : Decl :=
+  decl{ fn swap_at (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
+                    p2 : Le (S j) (len *v), hi : Le (S i) (len *v))
+        -> Id (List Nat) (*v) (swapL i j (old *v))
+        { let a = nth i (*v);
+          let b = nth j (*v);
+          -- The M22 bridge, cited as an ordinary lemma in the body. No audit
+          -- feature, no pinning: `set i b (set j a s)` IS the set-form it relates.
+          let bridge = swapL_set i j (old *v) pij p2;
+          let h1 = set_at(&mut *v, j, a, p2);
+          -- The bound tax (M21's, unchanged): the second write's bound is stated
+          -- over the LIVE `*v`, which the first write replaced with an opaque σ′, so
+          -- it transports back through `len_set` along h1.
+          let hlen = id_trans Nat (len *v) (len (set j a (old *v))) (len (old *v))
+                       (id_congr (List Nat) Nat len (*v) (set j a (old *v)) h1)
+                       (len_set j a (old *v));
+          let hi2 = le_rw_r (S i) (len (old *v)) (len *v)
+                      (id_sym Nat (len *v) (len (old *v)) hlen) hi;
+          -- PAIN DIARY (the recurring idiom, now named). After the second call the
+          -- first call's exit σ′ can no longer be NAMED — `*v` reads the newest
+          -- value, and nothing binds an older one. So the entire remaining
+          -- derivation is staged as a FUNCTION OF THE NEXT EXIT while σ′ is still
+          -- readable, and applied afterwards. This is the third appearance of the
+          -- shape (M22's proof-linearity dodge, append_back's moved data argument,
+          -- and now a superseded intermediate snapshot), and it is the general one:
+          -- a body can only ever talk about the CURRENT exit, so any proof spanning
+          -- two mutations must be built before the second and applied after it.
+          -- The clean fix is a way to bind a snapshot — `let` at comptime, naming an
+          -- exit the way `old` names an entry.
+          let finish = (λ (e : List Nat). λ (hh : Id (List Nat) e (set i b (*v))).
+                          id_trans (List Nat) e (set i b (*v)) (swapL i j (old *v))
+                            hh
+                            (id_trans (List Nat) (set i b (*v)) (set i b (set j a (old *v)))
+                               (swapL i j (old *v))
+                               (id_congr (List Nat) (List Nat) (λ (z : List Nat). set i b z)
+                                 (*v) (set j a (old *v)) h1)
+                               bridge));
+          let h2 = set_at(&mut *v, i, b, hi2);
+          finish (*v) h2 } }
+example : checkFnOk swapAt [setAt, swapAt] = true := by native_decide
+
+/-! ### Not vacuous -/
+
+-- SUBJECT: deliberately-wrong return types (raw Terms) — the lie IS the test.
+def setT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.set k) x) l
+def swapT (a b l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.swapL a) b) l
+def setAtLieIdx : Decl := { setAt with retType := .idT listNatT dvT (setT (sucT iT) (.var ⟨2, "x"⟩) oldvT) }
+def setAtLieNoop : Decl := { setAt with retType := .idT listNatT dvT oldvT }
+example : checkFnErr setAtLieIdx "does not have return type" = true := by native_decide
+example : checkFnErr setAtLieNoop "does not have return type" = true := by native_decide
+
+def swapAtLieIdx : Decl := { swapAt with retType := .idT listNatT dvT (swapT (sucT iT) (.var ⟨2, "j"⟩) oldvT) }
+def swapAtLieNoop : Decl := { swapAt with retType := .idT listNatT dvT oldvT }
+example : checkFnErr swapAtLieIdx "does not have return type" [setAt, swapAtLieIdx] = true := by native_decide
+example : checkFnErr swapAtLieNoop "does not have return type" [setAt, swapAtLieNoop] = true := by native_decide
+
+/-! ### The executing differential — the bodies really write and really swap -/
+
+-- SUBJECT: executing-mode raw Term callers (proof arguments are placeholders `()`,
+-- which the executing run does not type-check).
+def setCaller (l : List Nat) (i x : Nat) : Term :=
+  .letIn ⟨0, "z"⟩ (tlistT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+      (.seq (.call "set_at" [.var ⟨1, "b"⟩, tnatT i, tnatT x, .unit])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+def runSetAt (l : List Nat) (i x : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [setAt] (setCaller l i x) with
+  | .ok env => env.lookup "y" == some (vlistV (l.set i x))
+  | .error _ => false
+
+example : runSetAt [1,2,3] 0 9 = true := by native_decide
+example : runSetAt [1,2,3] 2 9 = true := by native_decide
+example : runSetAt [5,5,5,5] 1 7 = true := by native_decide
+
+def swapCaller (l : List Nat) (i j : Nat) : Term :=
+  .letIn ⟨0, "z"⟩ (tlistT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+      (.seq (.call "swap_at" [.var ⟨1, "b"⟩, tnatT i, tnatT j, .unit, .unit, .unit])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+def runSwapAt (l : List Nat) (i j : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [setAt, swapAt] (swapCaller l i j) with
+  | .ok env =>
+    match l.get? i, l.get? j with
+    | some a, some b => env.lookup "y" == some (vlistV ((l.set i b).set j a))
+    | _, _ => false
+  | .error _ => false
+
+example : runSwapAt [1,2,3] 0 2 = true := by native_decide      -- ends
+example : runSwapAt [1,2,3,4] 1 2 = true := by native_decide    -- adjacent interior
+example : runSwapAt [4,1,3,2,5] 0 4 = true := by native_decide  -- full span
 
 end Dllbc.Tests.S23Direct
