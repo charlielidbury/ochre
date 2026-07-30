@@ -1123,5 +1123,32 @@ def quicksortSorted : Decl :=
 def quicksortSortedTable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortSorted]
 example : checkFnOk quicksortSorted quicksortSortedTable = true := by native_decide
 
+-- LYING postcondition (permutation conjunct): shifted index (`count (S n)` on the
+-- left) — the honest permcert has type `Π n. Id (count n exit)(count n entry)`, not
+-- the shift, so the Pair's second component fails to inhabit the claimed Σ codomain.
+def quicksortSortedLiePerm : Decl :=
+  decl{ fn quicksortSortedLiePerm (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
+        -> Σ (sortedpart : SortedR cnt lo (*v)) → (Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v)))
+        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
+          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
+          quicksort(&mut *v, fuel, lo, cnt, hbnd);
+          Pair(sortedcert, permcert) } }
+example : checkFnErr quicksortSortedLiePerm "does not have return type"
+  quicksortSortedTable = true := by native_decide
+
+-- LYING postcondition (sorted conjunct): widened range (`SortedR (S cnt)`) — claims
+-- one element MORE than the sort touched is in order, which the honest sortedcert
+-- (`SortedR cnt lo`, from sorted_sortRangeL at cnt) does not give. Guards the green
+-- check above against a vacuous sortedness conjunct.
+def quicksortSortedLieSorted : Decl :=
+  decl{ fn quicksortSortedLieSorted (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
+        -> Σ (sortedpart : SortedR (S cnt) lo (*v)) → (Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v)))
+        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
+          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
+          quicksort(&mut *v, fuel, lo, cnt, hbnd);
+          Pair(sortedcert, permcert) } }
+example : checkFnErr quicksortSortedLieSorted "does not have return type"
+  quicksortSortedTable = true := by native_decide
+
 end Dllbc.Tests.S19Partition
 
