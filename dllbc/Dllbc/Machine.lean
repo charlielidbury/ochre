@@ -1447,13 +1447,25 @@ partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
   -- something", so supplying the decomposition supplies most of the proof.
   --
   -- The leaf is selected by BASE ALIGNMENT here rather than by the evidence's type:
-  -- `a[lo ; cnt ; rest]` says where it starts, so there is nothing to disambiguate.
+  -- `a[lo ; cnt ; rest]` says where it starts. Base alignment alone does NOT determine
+  -- the leaf, though, and an earlier draft of this comment claimed it did: a ZERO-EXTENT
+  -- segment shares its base with the segment after it, so a node holding one has two
+  -- leaves at that base. Zero-extent segments are unreachable symbolically — a residue
+  -- σ is never known to be zero — and routine concretely, since every runtime-computed
+  -- split has an empty side eventually. So the supplied DECOMPOSITION disambiguates:
+  -- prefer the leaf whose extent already IS `add cnt rest`, then any leaf that is not
+  -- empty (an empty leaf cannot contain a request of positive width), then give up.
   match given with
   | none => pure ()
   | some rest => do
     setAtPos fuel pos (Val.mergeArrays (← getAtPos fuel pos))
     let leaves ← extentMap fuel (← getAtPos fuel pos)
-    match leaves.find? (fun l => Val.convert fuel l.base lo) with
+    let aligned := leaves.filter (fun l => Val.convert fuel l.base lo)
+    let pick :=
+      (aligned.find? (fun l => Val.convert fuel l.count (Val.kAdd cnt rest)))
+        <|> (aligned.find? (fun l => !(Val.convert fuel l.count Val.zero)))
+        <|> aligned.head?
+    match pick with
     | none =>
       throwErr s!"carve: no segment starts at {lo.pretty}, so the supplied residue has no leaf to decompose (¶3.2 premise 1)"
     | some l =>

@@ -5,6 +5,7 @@ import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.StdLemmas
 import Dllbc.Tests.S9Diff
+import Dllbc.Tests.S23Direct
 
 /-!
 # §25 test suite — the in-place array partition, and the array quicksort
@@ -146,7 +147,7 @@ def splitA : Decl := decl{
               -- has no residue slot and is rejected here for exactly that reason.
               let hd = &mut (*t)[Z ; 1 ; m2];
               let x = (*hd)[0];
-              let tl = &mut (*t)[S Z ; ..];
+              let tl = &mut (*t)[S Z ; m2];
               -- Staged while `*tl` still denotes the ENTRY tail: rewrite the exit into
               -- the pre-swap state (`hsw`), then move that across the recursive call's
               -- own count evidence (`hc`). Both non-swap branches pass `Refl` for the
@@ -183,7 +184,7 @@ def splitA : Decl := decl{
                     S(k3) => {
                       let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
                       let mid = &mut (*tl)[k3 ; 1 ; r2];
-                      let hi = &mut (*tl)[S k3 ; ..];
+                      let hi = &mut (*tl)[S k3 ; r2];
                       let y = (*mid)[0];
                       (*mid)[0] := x;
                       (*hd)[0] := y;
@@ -237,7 +238,7 @@ def partitionA : Decl := decl{
           S(m2) => {
             let hd = &mut (*a)[Z ; 1 ; m2];
             let x = (*hd)[0];
-            let tl = &mut (*a)[S Z ; ..];
+            let tl = &mut (*a)[S Z ; m2];
             let mkC = (λ (t2 : Array m2 Nat).
                 λ (hc : Π (q : Nat) → Id Nat (countA q m2 t2) (countA q m2 (*tl))).
                 λ (a2 : Array (S m2) Nat).
@@ -265,7 +266,7 @@ def partitionA : Decl := decl{
                 S(k3) => {
                   let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
                   let mid = &mut (*tl)[k3 ; 1 ; r2];
-                  let hi = &mut (*tl)[S k3 ; ..];
+                  let hi = &mut (*tl)[S k3 ; r2];
                   let y = (*mid)[0];
                   (*mid)[0] := x;
                   (*hd)[0] := y;
@@ -347,8 +348,8 @@ def quicksortA : Decl := decl{
                 -- (a) reduces to ⊤; the third is degenerate.
                 let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj)];
                 let pcell = &mut (*a)[k ; 1 ; jj];
-                let r = &mut (*a)[S k ; ..];
                 let e = (*pcell)[0];
+                let r = &mut (*a)[S k ; jj];
                 let hub = partA_cat_ub pvv k (S jj) (*l) (acons jj e (*r)) hp;
                 let hrest = partA_cat_rest pvv k (S jj) (*l) (acons jj e (*r)) hp;
                 let heq = partA0_eq pvv jj (*r) e hrest;
@@ -418,5 +419,386 @@ def quicksortA : Decl := decl{
                λ (q : Nat). Refl)
         } } }
 example : checkFnOk quicksortA [quicksortA, partitionA, splitA] = true := by native_decide
+
+def arrTbl : List Decl := [quicksortA, partitionA, splitA]
+
+/-! ## (v) Not vacuous — a lying twin per conjunct
+
+    Each return type is the ONLY description of its function, so each conjunct gets a
+    twin that changes exactly it, built by taking the `retType` off a lying header with
+    the same telescope so the body is shared verbatim and the lie is the only variable.
+    M23's discipline, applied to three declarations. -/
+
+-- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
+def splitALieLen : Decl :=
+  { splitA with retType := (decl{
+      fn splitALieLen (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
+        -> Σ (k : Nat) → Σ (r : Nat)
+             → Σ (hlen : Id Nat m (add k (S r)))
+             → Σ (hsp : SplitA p k m (*t))
+             → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
+        { () } }).retType }
+example : checkFnOk splitALieLen = false := by native_decide
+
+-- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
+def splitALieSp : Decl :=
+  { splitA with retType := (decl{
+      fn splitALieSp (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
+        -> Σ (k : Nat) → Σ (r : Nat)
+             → Σ (hlen : Id Nat m (add k r))
+             → Σ (hsp : SplitA p k m (old *t))
+             → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
+        { () } }).retType }
+example : checkFnOk splitALieSp = false := by native_decide
+
+-- `splitA`, conjunct 3: the counts off by one, which no path can reach.
+def splitALieCount : Decl :=
+  { splitA with retType := (decl{
+      fn splitALieCount (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
+        -> Σ (k : Nat) → Σ (r : Nat)
+             → Σ (hlen : Id Nat m (add k r))
+             → Σ (hsp : SplitA p k m (*t))
+             → Π (q : Nat) → Id Nat (countA q m (*t)) (S (countA q m (old *t)))
+        { () } }).retType }
+example : checkFnOk splitALieCount = false := by native_decide
+
+/-- **The BODY twin, and the one that matters most**: the swap is DELETED — the branch
+    reads the two cells and writes neither, but claims the same postcondition. Every
+    spec twin above can be blamed on some path; this one is wrong only on the swap
+    path and only because the elements did not move. It isolates the single mutation
+    the whole program performs. -/
+def splitANoSwap : Decl :=
+  decl{ fn splitANoSwap [fuel]
+          (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
+      -> Σ (k : Nat) → Σ (r : Nat)
+           → Σ (hlen : Id Nat m (add k r))
+           → Σ (hsp : SplitA p k m (*t))
+           → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
+      { match m {
+          Z => Pair(Z, Pair(Z, Pair(Refl,
+                 Pair(splitA_nil p Z Z (*t) Refl, λ (q : Nat). Refl)))),
+          S(m2) => match fuel {
+            Z => botElim Unit hfuel,
+            S(f2) => {
+              let hd = &mut (*t)[Z ; 1 ; m2];
+              let x = (*hd)[0];
+              let tl = &mut (*t)[S Z ; m2];
+              let mkC = (λ (t2 : Array m2 Nat).
+                  λ (hc : Π (q : Nat) → Id Nat (countA q m2 t2) (countA q m2 (*tl))).
+                  λ (a2 : Array (S m2) Nat).
+                  λ (hsw : Π (q : Nat) →
+                        Id Nat (countA q (S m2) a2) (countA q (S m2) (acons m2 x t2))).
+                    λ (q : Nat).
+                      id_trans Nat (countA q (S m2) a2)
+                                   (countA q (S m2) (acons m2 x t2))
+                                   (countA q (S m2) (acons m2 x (*tl)))
+                        (hsw q) (count_acons_congr q x m2 t2 (*tl) (hc q)));
+              let res = splitANoSwap(f2, m2, hfuel, p, &mut *tl);
+              match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(hlen2, z3) =>
+              match z3 { Pair(hsp2, hcnt2) => {
+                if e : leb x p {
+                  Pair(S k2, Pair(r2,
+                    Pair(id_congr Nat Nat (λ (z : Nat). S z) m2 (add k2 r2) hlen2,
+                    Pair(Pair(leb_true_le x p e, hsp2),
+                         mkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (q : Nat). Refl)))))
+                } else {
+                  match k2 {
+                    Z => Pair(Z, Pair(S r2,
+                           Pair(id_congr Nat Nat (λ (z : Nat). S z) m2 (add Z r2) hlen2,
+                           Pair(Pair(le_pred_l p x (leb_false_gt x p e), hsp2),
+                                mkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (q : Nat). Refl))))),
+                    S(k3) => {
+                      let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                      let mid = &mut (*tl)[k3 ; 1 ; r2];
+                      let hi = &mut (*tl)[S k3 ; r2];
+                      let y = (*mid)[0];
+                      let hrest = splitA_cat_rest p k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
+                      let hy = splitA1_head p r2 (*hi) y hrest;
+                      let hub = splitA_cat_ub p k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
+                      let hg = splitA1_tail p r2 (*hi) y hrest;
+                      let hnew = splitA_cat_i0 p k3 (S r2) (*lo) (acons r2 x (*hi)) hub
+                                   (Pair(le_pred_l p x (leb_false_gt x p e), hg));
+                      let cnt = mkC (arrCat k3 (S r2) (*lo) (acons r2 y (*hi))) hcnt2
+                                    (acons m2 y (arrCat k3 (S r2) (*lo) (acons r2 x (*hi))))
+                                    (λ (q : Nat). count_swapA q x y k3 (*lo) r2 (*hi));
+                      Pair(S k3, Pair(S r2, Pair(Refl, Pair(Pair(hy, hnew), cnt))))
+                    }
+                  }
+                }
+              } } } } }
+            }
+          }
+        } } }
+example : checkFnOk splitANoSwap = false := by native_decide
+
+-- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
+def partALieLen : Decl :=
+  { partitionA with retType := (decl{
+      fn partALieLen (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
+                      a : &mut (Array n Nat))
+        -> Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+             → Σ (hlen : Id Nat n (add k jj))
+             → Σ (hp : PartA pvv k n (*a))
+             → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
+        { () } }).retType }
+example : checkFnErr partALieLen "does not have return type" [partALieLen, splitA]
+    = true := by native_decide
+
+-- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
+def partALiePart : Decl :=
+  { partitionA with retType := (decl{
+      fn partALiePart (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
+                       a : &mut (Array n Nat))
+        -> Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+             → Σ (hlen : Id Nat n (add k (S jj)))
+             → Σ (hp : PartA pvv k n (old *a))
+             → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
+        { () } }).retType }
+example : checkFnErr partALiePart "does not have return type" [partALiePart, splitA]
+    = true := by native_decide
+
+-- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
+-- so the base path still passes and only the recursive one is blamed.
+def qsALieSorted : Decl :=
+  { quicksortA with retType := (decl{
+      fn qsALieSorted (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
+        -> Σ (hs : SortedA n (old *a))
+             → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
+        { () } }).retType }
+example : checkFnErr qsALieSorted "does not have return type" [qsALieSorted, partitionA, splitA]
+    = true := by native_decide
+
+-- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
+-- empty array, and again the body's evidence points the other way once anything moves.
+def qsALieCount : Decl :=
+  { quicksortA with retType := (decl{
+      fn qsALieCount (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
+        -> Σ (hs : SortedA n (*a))
+             → Π (q : Nat) → Id Nat (countA q n (old *a)) (countA q n (*a))
+        { () } }).retType }
+example : checkFnErr qsALieCount "does not have return type" [qsALieCount, partitionA, splitA]
+    = true := by native_decide
+
+/-! ### Honest typing rejections, probed through `checkFn` -/
+
+-- The three-way carve's ONE cited obligation is load-bearing: drop `le_add` and the
+-- carve has nothing to select a leaf with. (The pivot carve needs no evidence at all —
+-- route (a) reduces `Le 1 (S jj)` to ⊤ — so this is the only citation in the body.)
+def carveNoEv : Decl := decl{
+  fn carveNoEv (n : Nat, k : Nat, jj : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k ; S jj];
+    let pcell = &mut (*a)[k ; 1 ; jj];
+    let r = &mut (*a)[S k ; ..];
+    () } }
+example : checkFnErr carveNoEv "containment obligation" = true := by native_decide
+
+-- …and the positive control at the same shape, so the rejection is about the missing
+-- citation and not about the carve. (`quicksortA` itself is the other positive control.)
+def carveWithEv : Decl := decl{
+  fn carveWithEv (n : Nat, k : Nat, jj : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj)];
+    let pcell = &mut (*a)[k ; 1 ; jj];
+    let r = &mut (*a)[S k ; ..];
+    () } }
+example : checkFnOk carveWithEv = true := by native_decide
+
+-- The sufficiency hypothesis is load-bearing, not decoration: keep the parameter (so
+-- the body still elaborates and the rejection is about TYPING) and weaken it to `Unit`.
+-- The out-of-fuel path then has no ⊥ to eliminate and stops being dead.
+def qsANoSuff : Decl :=
+  { quicksortA with telescope := (decl{
+      fn qsANoSuff (fuel : Nat, n : Nat, hfuel : Unit, a : &mut (Array n Nat)) -> Unit
+        { () } }).telescope }
+example : checkFnErr qsANoSuff "botElim" [qsANoSuff, partitionA, splitA]
+    = true := by native_decide
+
+
+/-! ## (vi) The EXECUTING differential — and the divergence it found
+
+    `checkFnOk` proves `Sorted ∧ Perm` symbolically. Running the SAME declarations on
+    concrete arrays is the control that can still indict them, and here it indicts the
+    MACHINE instead: the concrete and symbolic executions of a carving callee diverge,
+    for a reason no symbolic check can produce. Everything below is stated so that the
+    day the gap closes, this section goes red and has to be updated.
+
+    THE GAP, minimally: **a callee's segment borrows are never released when it
+    returns**, so in executing mode the caller's array stays carved with the callee's
+    dead markers. `mergeArrays` cannot rejoin it (a loan blocks the merge, ledger R4),
+    so the caller's next carve sees the callee's leftover segmentation instead of one
+    leaf, and premise (3) tries to unify the wrong extent.
+
+    In CHECKING mode this is invisible, and invisible for a principled reason: §6.2's
+    opacity re-mints the callee's payload as a fresh σ at the declared type, so the
+    caller always sees an UNCARVED array. That re-minting is not merely an
+    approximation of what the concrete machine does — it is a REPAIR of it. This is a
+    new instance of the over-approximation §6.1 already flags ("a group releases
+    atomically where the concrete machine ends lazily"), and it is the first one where
+    the concrete side is the one that is wrong. -/
+
+def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k]
+def tarrT (l : List Nat) : Term := .ctorApp "Arr" (l.map tnatT)
+
+def natOfV : Nat → Val → Option Nat
+  | _, .ctor "Z" [] => some 0
+  | (f + 1), .ctor "S" [v] => (natOfV f v).map (· + 1)
+  | _, _ => none
+
+def listOfV : Nat → Val → Option (List Nat)
+  | _, .ctor "Nil" [] => some []
+  | (f + 1), .ctor "Cons" [h, t] =>
+    match natOfV 2000 h, listOfV f t with
+    | some x, some xs => some (x :: xs)
+    | _, _ => none
+  | _, _ => none
+
+def arrOfV : Val → Option (List Nat)
+  | .ctor "Arr" vs => vs.mapM (natOfV 2000)
+  | _ => none
+
+/-- Build the array, borrow it, sort it in place, read it back. `hfuel` is `Le n n`,
+    which computes to `Unit` at a concrete length. -/
+def qsCallerA (l : List Nat) : Term :=
+  .letIn ⟨0, "z"⟩ (tarrT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+      (.seq (.call "quicksortA" [tnatT l.length, tnatT l.length, .unit, .var ⟨1, "b"⟩])
+        (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+
+/-- `splitA` alone, so the divergence can be exhibited one call deep instead of three. -/
+def splCaller (l : List Nat) (pvt : Nat) : Term :=
+  .letIn ⟨0, "z"⟩ (tarrT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+      (.letIn ⟨2, "r"⟩ (.call "splitA"
+          [tnatT l.length, tnatT l.length, .unit, tnatT pvt, .var ⟨1, "b"⟩])
+        (.letIn ⟨3, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+
+def runQsA (l : List Nat) : Option (List Nat) :=
+  match Dllbc.Tests.S9Diff.runExec arrTbl (qsCallerA l) with
+  | .ok env => (env.lookup "y").bind arrOfV
+  | .error _ => none
+
+def runSplA (l : List Nat) (pvt : Nat) : Option (List Nat) :=
+  match Dllbc.Tests.S9Diff.runExec [splitA] (splCaller l pvt) with
+  | .ok env => (env.lookup "y").bind arrOfV
+  | .error _ => none
+
+def sortedRef (l : List Nat) : List Nat := l.mergeSort (fun a b => a <= b)
+
+/-! ### (vi.a) What DOES run, and it is not nothing
+
+    Every execution that never returns from a carving callee into another carve is
+    correct — the programs really do move elements, in place, to the right places. -/
+
+-- `splitA` on two elements: the pivot-crossing SWAP branch, executing. `[3,1]` with
+-- `p = 2` must come back `[1,3]` — the head crossed the boundary and the boundary
+-- element crossed back, which is the program's one mutation.
+example : runSplA [3, 1] 2 == some [1, 3] := by native_decide
+-- …and the no-write branches, both of them.
+example : runSplA [1, 3] 2 == some [1, 3] := by native_decide
+example : runSplA [1] 2 == some [1] := by native_decide
+example : runSplA [3] 2 == some [3] := by native_decide
+example : runSplA [] 2 == some [] := by native_decide
+
+-- `quicksortA`, executing, at the sizes that do not re-enter a carve after a call.
+example : runQsA [] == some (sortedRef []) := by native_decide
+example : runQsA [1] == some (sortedRef [1]) := by native_decide
+
+/-! ### (vi.b) The divergence, PINNED
+
+    Three elements is the smallest input that returns from a carving callee into
+    another carve, and it is where execution stops. These assertions record the CURRENT
+    behaviour so the suite goes red the moment the release gap is closed — at which
+    point they must be replaced by the real differential, `runSplA l p == …` and
+    `runQsA l == some (sortedRef l)` across the input set, and by the cross-differential
+    against M23's List quicksort that this file was set up to carry. -/
+
+def runsAtAll (tbl : List Decl) (t : Term) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec tbl t with | .ok _ => true | .error _ => false
+
+-- KNOWN DIVERGENCE. `splitA [3,1,4]` re-enters a carve on a tail its own recursive call
+-- left segmented, and premise (3) is asked to unify that leftover leaf's extent (1)
+-- with the decomposition the program supplied (2).
+example : runsAtAll [splitA] (splCaller [3, 1, 4] 2) = false := by native_decide
+example : runsAtAll arrTbl (qsCallerA [2, 1]) = false := by native_decide
+
+-- The CONTROL that says the diagnosis is right rather than assumed: the same callee at
+-- the same depth, but where the caller never carves again, runs fine. So it is not the
+-- recursion, the length, or the program — it is a carve following a call.
+example : runsAtAll [splitA] (splCaller [1, 3] 2) = true := by native_decide
+
+/-! ### (vi.c) M9's simulation property, over the array bodies that do run -/
+
+def qsCallers : List Term := [qsCallerA [1], qsCallerA []]
+
+example : qsCallers.all (fun b => checkFnOk (Dllbc.Tests.S9Diff.callerDecl b) arrTbl)
+    = true := by native_decide
+
+example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrTbl b)
+    = true := by native_decide
+
+/-! ## (vii) The five probes that located C6, kept as its regression
+
+    §5.2's demand-end reaching the carve (ledger C6) was found by bisection, and the
+    bisection is the test: four shapes that always worked, and the one that did not.
+    Each is the smallest program exhibiting its shape. If the node-level collapse is
+    removed from `carveAt`, only `c6CarveAfterCall` goes red — which is what makes this
+    a live check on the rule rather than a comment claiming one. -/
+
+def c6Touch : Decl := decl{ fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
+
+-- (1) Peel a head and hand the tail to a call. Always worked.
+def c6PeelCall : Decl := decl{
+  fn c6PeelCall (n : Nat, a : &mut (Array n Nat)) -> Unit {
+    match n { Z => (),
+      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &mut (*a)[S Z ; m]; c6Touch(m, &mut *tl); () } } } }
+example : checkFnOk c6PeelCall [c6PeelCall, c6Touch] = true := by native_decide
+
+-- (2) Carve inside the tail, with NO call first. Always worked.
+def c6CarveNoCall : Decl := decl{
+  fn c6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+    match n { Z => (),
+      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &mut (*a)[S Z ; m];
+                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                let mid = &mut (*tl)[k3 ; 1 ; r2];
+                let hi = &mut (*tl)[S k3 ; r2]; () } } } }
+example : checkFnOk c6CarveNoCall = true := by native_decide
+
+-- (3) …and the swap's writes on top of it. Always worked.
+def c6Swap : Decl := decl{
+  fn c6Swap (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+    match n { Z => (),
+      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &mut (*a)[S Z ; m];
+                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                let mid = &mut (*tl)[k3 ; 1 ; r2];
+                let hi = &mut (*tl)[S k3 ; r2];
+                let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } } }
+example : checkFnOk c6Swap = true := by native_decide
+
+-- (4) Self-recursion through a reborrowed tail. Always worked.
+def c6Rec : Decl := decl{
+  fn c6Rec [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, a : &mut (Array m Nat)) -> Unit {
+    match m { Z => (),
+      S(m2) => match fuel { Z => botElim Unit hfuel,
+        S(f2) => { let hd = &mut (*a)[Z ; 1 ; m2]; let x = (*hd)[0];
+                   let tl = &mut (*a)[S Z ; m2]; c6Rec(f2, m2, hfuel, &mut *tl); () } } } } }
+example : checkFnOk c6Rec = true := by native_decide
+
+/-- (5) THE RED ONE, before C6: carve inside a borrow AFTER handing it to a call. The
+    reborrow parks a marker at the whole payload, and the carve consulted the extent map
+    without collapsing it first — "`loanₘ ℓ` is not an array value (no extent to read)".
+    Which is to say: a recursive array program carving the argument it just handed to
+    its recursive call, i.e. every one of them. -/
+def c6CarveAfterCall : Decl := decl{
+  fn c6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+    match n { Z => (),
+      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &mut (*a)[S Z ; m];
+                c6Touch(m, &mut *tl);
+                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                let mid = &mut (*tl)[k3 ; 1 ; r2];
+                let hi = &mut (*tl)[S k3 ; r2]; () } } } }
+example : checkFnOk c6CarveAfterCall [c6CarveAfterCall, c6Touch] = true := by native_decide
 
 end Dllbc.Tests.S25ArrSort

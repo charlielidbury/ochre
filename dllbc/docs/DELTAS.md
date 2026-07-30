@@ -500,3 +500,218 @@ snapshot); **zero declared backs**; lying twins per conjunct; and the List-vs-Ar
 differential on shared inputs (two implementations, one spec — disagreement indicts one of
 them). Keep this ledger growing; the design note gets one amendment pass from it at merge
 review.
+
+---
+
+## M25 — the partition, the sort, and what running them found
+
+### C5 — the §5.4 exit snapshot was the STATE form, so no carving function could state a postcondition
+
+*Note (¶1.3, ¶3.3):* an array's snapshot is its `arrCat` spine; "a carved-and-rejoined
+array has the SAME snapshot as one that was never carved".
+
+*Implementation, before M25:* `readC` (⇝) folds every comptime reading through
+`arrFoldDeep`, but `auditAction`'s §5.4 exit-snapshot substitution injected the borrow's
+collapsed payload RAW. So after any carve the exit snapshot of `*v` was
+`Arr⟨1 ▷ [σx], m ▷ σt⟩` — a `§segs` node — and `countA`/`SortedA`/`UbA` are `arrRec`s
+that compute on the cons view and are stuck on one. Every postcondition naming `*v` was
+unstateable, with a rejection that reads like the predicate being wrong.
+
+*Why it hid until a real program existed, which is the part worth recording:* merge
+concatenates adjacent RUNS and deliberately leaves a σ body alone (R4). A carve at
+CONCRETE extents therefore rejoins to a plain run and never needs the fold — that is
+every M24 test, `sort2` included. A SYMBOLIC segment cannot merge, and that is what every
+program with a runtime-computed split point is made of. R9's "arrays are the first values
+whose state form is coarser than their value" had exactly one consumer that had never been
+exercised.
+
+*Fixed:* fold before substituting. An unfoldable (still suspended) payload is left alone
+and rejected at `hasType`, the documented behaviour, so nothing became more permissive.
+
+### C6 — the carve did not demand-end a SUSPENDED NODE, only a suspended leaf
+
+§5.2 is "any rule that READS a place ends the suspensions parked there before it looks",
+and a carve reads the place: it consults the extent map. `carveAt` demand-ended a loaned
+LEAF and a marker buried in a one-slot run, but not the case where the WHOLE payload is
+out on loan. That case has exactly one producer — a reborrow into a call. `f(&mut *v)`
+parks a marker at `*v`, and the group's release plugs the payload back only on demand, so
+`arrExtent` had no array value to read and the message ("`loanₘ ℓ3` is not an array value")
+reads like a representation bug.
+
+`readR` performs the same collapse at its own reborrow and match sites; this is that rule
+reaching the carve. Bisected to five probes: peel+call OK, carve-without-call OK,
+swap-writes-without-call OK, self-recursion OK, carve-AFTER-call the only red. So the
+missing case is precisely "a recursive array program carves the argument it just handed to
+its recursive call", which is every such program and none existed before M25.
+
+### C7 — base alignment does not determine the leaf, and ¶3.2's route-(a) note says it does
+
+*Note (the route-(a) implementation comment):* "The leaf is selected by BASE ALIGNMENT
+here rather than by the evidence's type: `a[lo ; cnt ; rest]` says where it starts, so
+there is nothing to disambiguate."
+
+*Correction:* a ZERO-EXTENT segment shares its base with the segment after it, so a node
+holding one has TWO leaves at that base and the wrong one wins. Zero-extent segments are
+unreachable symbolically — a residue σ is never known to be zero — and routine concretely,
+since every runtime-computed split has an empty side eventually. The supplied
+DECOMPOSITION is what disambiguates, so the selection now prefers the leaf whose extent
+already is `add cnt rest`, then any non-empty leaf (an empty leaf cannot contain a request
+of positive width).
+
+---
+
+### G7 — route (a) refines a UNIVERSAL, and no caller is ever held to it
+
+**The one soundness finding, and it is decision-relevant for the merge review.**
+
+Premise (3) solves the supplied residue by `reflUnify l.count (add cnt rest)`. When the
+leaf's extent is a TELESCOPE PARAMETER's σ — always, in the programs route (a) exists for
+— that is a refinement of a UNIVERSALLY quantified length against terms that may be
+unrelated existentials, and nothing records the induced constraint in the signature. So
+callers are never held to it:
+
+```
+fn resCarve (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
+  let l = &mut (*a)[Z ; i ; S j | le_add i (S j)]; () }
+```
+
+checks — and so does a caller passing `n = 2, i = 5, j = 5` with a two-element array.
+EXECUTING that caller errors: `Refl: both endpoints are rigid (S (S Z) vs S (add 5 (S 5)))`.
+So `checkFn` accepts a program the concrete machine gets stuck on, which is M8/M9's
+differential property failing rather than over-approximating. The concrete-length case is
+safe — `reflUnify` fails honestly there; only the symbolic-parameter case refines.
+
+M25's programs are true and do not rely on the hole, but they cannot PROVE they do not:
+`partitionA` and `splitA` therefore return the decomposition as an ordinary Σ-conjunct
+(`Id Nat n (add k (S jj))`, `Id Nat m (add k r)`) so the fact is established and
+twin-testable, even though the carve does not consume it. In both programs that conjunct
+is `Refl` or one `id_congr`, so the honesty is nearly free.
+
+Two ways out at review: premise (3) refuses to refine a σ that is a telescope parameter
+(and the program cites an equation instead — which these programs already return), or the
+signature records the induced constraint. Filed, not decided.
+
+### G5 — a callee's segment borrows are never released when it returns
+
+**The one M25 did not close, and the reason the executing differential stops at three
+elements.** In executing mode a callee's range borrows stay live in the caller's array
+after the call, so the caller sees the callee's leftover segmentation rather than one
+leaf. `mergeArrays` cannot rejoin it — a loan blocks the merge (R4) — and the caller's
+next carve then asks premise (3) to unify the leftover leaf's extent with the
+decomposition the program supplied.
+
+Minimal reproducer, one call deep: `splitA [3,1,4]` with `p = 2` fails with
+`Refl: both endpoints are rigid (S Z vs S (S Z))`; `splitA [1,3]`, whose caller does not
+carve again, runs correctly. So it is not the recursion, the length or the program.
+
+**In CHECKING mode this is invisible, and invisible for a principled reason: §6.2's
+opacity re-mints the callee's payload as a fresh σ at the declared type, so the caller
+always sees an UNCARVED array.** That re-minting is not merely an over-approximation of
+what the concrete machine does — it is a REPAIR of it. §6.1 already flags the family ("a
+group releases atomically where the concrete machine ends lazily"); this is the first
+instance where the CONCRETE side is the one that is wrong, and it is therefore the first
+one that cannot be dismissed as the checker being conservative.
+
+What it needs is a scope-aware release: when a call returns, the loans its body created
+must end, exactly as the §5.4 audit collapses them on the checking side. That is not a
+carve-rule change and it is filed rather than built.
+
+### G6 — `a[lo ; ..]` is unusable once a residue can be empty
+
+`..` reads the count off the segment STARTING at `lo`, and a zero-extent residue is
+dropped by ¶1.1's drop-empty, so at a concrete length there is no segment there at all.
+Every residue in M25's programs is therefore named explicitly (`a[S Z ; m2]`,
+`a[S k ; jj]`), which routes the request through the carve's obligation machinery instead
+of through `restOfLeaf`. G1 records `..` as the partial closure of the residue-naming
+problem; this is its limit, and route (a) supersedes it wherever the length is nameable.
+
+---
+
+### R12 — the FUNCTION BOUNDARY is load-bearing, for a reason ¶5 does not give
+
+¶5's advice is "carve inline; reach for the function only when you want the abstraction
+boundary". In the array quicksort the boundary is what makes the program possible at all.
+
+A body that peels a head must first match its own length (`match n { S(m2) => … }`),
+because only the supplied-residue form `(*a)[Z ; 1 ; m2]` converts against the resulting
+rigid extent — the index place `a[i]` has NO residue slot and is rejected outright. But
+matching the length is exactly what T2's rigid-extent restriction then punishes: the array
+can no longer be carved at a symbolic offset. So one body cannot both select a pivot and
+carve at the returned index.
+
+§6.2's opacity is the way out. A call re-mints the caller's payload as a fresh σ at the
+declared type, so an array the callee matched, peeled and re-carved comes back UNCARVED
+and with a FLEX length — precisely the state the three-way carve needs. `partitionA` is a
+separate declaration for that reason and not for modularity.
+
+### R13 — two independent SYMBOLIC indices into one array are unreachable, so Lomuto is not writable
+
+`(*a)[i | h]` on a symbolic array works. A second read at an unrelated `j` cannot: after
+the first carve the leaves are `[0,i)`, `[i,i+1)`, `[S i, rest)`, and no evidence a program
+can hold selects a leaf for `j`. So `swap(a[i], a[j])` at two runtime indices — Lomuto's
+inner loop, and the shape ¶6's own G4 correction calls for ("an IN-PLACE scan") — is not
+writable at all.
+
+What is writable is a scan in which every element access is at index 0 of a segment the
+program itself carved. ¶6 says "the right sub-slice is a segment with its own zero; there
+is no reindexing" as a convenience; it is a HARD CONSTRAINT, and it determines the
+algorithm. M25's `splitA` peels the head, splits the tail recursively, and performs at most
+ONE swap per level — with the boundary element, reached by a three-way carve, so that both
+sides of the exchange are at their own segment's zero.
+
+### R14 — there is NO η at length zero, so a sort's base case is a lemma
+
+`SortedA Z σ` is a stuck `arrRec` — the recursor fires on `Arr`, never on the length index
+— so an opaque length-zero payload does not compute to `Unit` and a base case cannot be
+discharged by the trivial term. `sortedA_nil` and `splitA_nil` carry `Id Nat n Z` and kill
+the cons case with `znots`.
+
+This also determines how the sort tests emptiness. `match n` would refine the length to
+`S m2` and block the three-way carve (T2), so `quicksortA` branches on `leb 1 n` and turns
+`Le n Z` into `Id Nat n Z` with `le_zero_eq`. Every list program in the corpus matches its
+scrutinee; the array sort cannot.
+
+### R15 — ¶6's locality stratum is deleted for the SORT and reappears at the PARTITION's interface
+
+¶6: "one stratum deleted outright (locality), one INHERITED (the pivot glue), none
+invented." The first two are verified (R11) and the third is not quite right.
+
+A split point is a statement about two parts of one array, and the honest way to name them
+is to carve — which is ¶6's claim, and it holds for the sort, whose sub-slices are its own
+carves. It does not hold across a function boundary, for three independent reasons, each
+probed: the return type is fixed before the carve that would name the parts exists;
+`Array n` and `Array (add k r)` convert only after the CALLER's carve has refined `n`, so
+the equation cannot even be STATED in the signature; and the parts cannot be returned by
+value either, because reading a segment MOVES it and leaves the borrow holding a hole.
+
+So M25 invents one positional predicate for the scan (`SplitA`) and one for its result
+(`PartA`), plus five crossings. The honest claim is **one stratum deleted, one inherited,
+one invented at the leaf's interface** — and the invented one is small because `PartA`'s
+skip-zero case yields `LbA`, the library predicate, so the bridge to `sorted_arrCat` is a
+single lemma with no monotonicity layer. Every crossing is an induction on the left array
+and nothing else, the same `arrRec` shape as `bound_arrCat`: the stratum is new, the KIND
+of work is not.
+
+### R16 — the staging tax, counted rather than built
+
+Six filings for `old`-on-consumed-things now exist. `quicksortA`'s body carries FOUR staged
+builders and `splitA` one; M23's list quicksort carried four. None does mathematical work.
+
+The strongest single case is `mkTop`: the permutation conjunct's far endpoint is
+`countA q n (old *a)`, `id_trans` takes its three points EXPLICITLY, and no body term can
+write `old *a` — so the endpoint has to be captured in a closure built before the partition
+call, while `*a` still IS the entry value. Two further consumption facts cost a debugging
+cycle each and belong with it: `match fuel { S(f2) => … }` CONSUMES `fuel`, and passing a
+PROOF to a call MOVES it, so `hfuel` must be captured before `partitionA` takes it. M23's
+quicksort hit neither, because it never mentions `fuel` after the match and its partition
+takes no proof.
+
+### R17 — G4's fourth cost, measured
+
+G4 recorded that the partition is a new program rather than a transfer. Measured: the
+partition layer is 21 new pure items (2 predicates, 5 crossings, 8 projections, 4 count
+lemmas, 2 nil lemmas) and three declarations. **Every pure item checked first try.** The
+programs did not: the failures were all machine gaps (C5, C6, C7) or spelling
+(R7's `S k` versus `add k 1`, which is why `splitA_cat_e1` is stated at skip `S k` and
+`splitA_cat_i0` at skip exactly `k` — the general `add k t` form is more general and
+unusable). Nothing in the mathematics was hard; everything in the plumbing was new.
