@@ -741,4 +741,11 @@ example : (pv (pure{ Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
            pv (pure{ Σ (h : Le (S Z) (S (S Z))) → Σ (h2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
 example : (pv (pure{ Lb Z (Cons (S Z) Nil) }) == pv (pure{ Σ (h : Le Z (S Z)) → Unit })) = true := by native_decide
 
+-- Generic J-transport at `List Nat` — `le_rw_r` for arbitrary list predicates. Every
+-- certificate a back-less body returns is stated over an exit it knows only
+-- PROPOSITIONALLY (from the callee's evidence), so transporting a proof along that
+-- evidence is the universal last step; `le_rw_r` already covers the `Le`-over-`Nat`
+-- case and this is the unrestricted one.
+example : chk Dllbc.StdLemmas.list_rw Dllbc.StdLemmas.list_rw_ty = true := by native_decide
+
 end Dllbc.Tests.S23Direct

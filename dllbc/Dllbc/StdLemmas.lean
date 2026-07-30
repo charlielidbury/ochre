@@ -3547,4 +3547,16 @@ def insertL : Term := pure{
           Nil => Cons x Nil,
           Cons (h) (t) iht => Cons h (ih x t) } } }
 
+/-- Generic J-transport at `List Nat`: `x = y ⟹ P x → P y`. `le_rw_r`/`le_rw_l` are
+    this at `Le`-shaped `P` over `Nat`; a back-less body needs the unrestricted form,
+    because every certificate it returns is stated over an exit snapshot it only
+    knows PROPOSITIONALLY (the callee's evidence), never definitionally. -/
+def list_rw : Term := pure{
+  λ (P : List Nat → Type). λ (x : List Nat). λ (y : List Nat).
+    λ (h : Id (List Nat) x y). λ (px : P x).
+      j (List Nat) x (λ (y2 : List Nat). λ (hh : Id (List Nat) x y2). P y2) px y h }
+def list_rw_ty : Term := pure{
+  Π (P : List Nat → Type) → Π (x : List Nat) → Π (y : List Nat) →
+    Id (List Nat) x y → P x → P y }
+
 end Dllbc.StdLemmas
