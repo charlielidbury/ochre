@@ -295,3 +295,9 @@ Resolved during the integration pass (this branch):
 - Verified still true at this pin, not merely carried over: findings 2 (comptime
   match unimplemented), 4 (nfV-letIn), 8 (nested-borrow scrutinee rejected),
   14/15/18 (the three open theory-line holes); full `lake build` green.
+- §6.1's differential counts RE-MEASURED at this pin rather than carried over,
+  since M23 touched the match form the generator emits and the take rule the
+  bodies exercise. Unchanged, and exact: 91/47/141 for `(v : &mut List Nat)`,
+  32/15/45 for `(n : Nat)`, 13/13/52 for `(b : &mut Nat, c : Bool)` — 136
+  generated, 75 accepted, 238 runs. (The per-telescope figures live in a comment
+  at the head of `S8Diff.lean`; the totals are the sums.)
