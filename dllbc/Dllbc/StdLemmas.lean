@@ -3606,56 +3606,66 @@ def ub_tail_ty : Term := pure{
     the HEAD, which is all `Sorted (Cons p b)` asks of the pivot. The two predicates
     agree definitionally at `Nil` (both `⊤`) and differ at `Cons` only by how much
     they say, so this is a `listRec` whose `Cons` arm is a first projection. -/
-def bound_of_Lb : Term := pure{
+def lb_bound : Term := pure{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat). Lb p lz → Bound p lz) {
       Nil => λ (hn : Unit). hn,
       Cons (h) (t) ih => λ (hl : Σ (hh : Le p h) → Lb p t).
         elim hl return (λ (q : Σ (hh : Le p h) → Lb p t). Le p h) {
           Pair (x) (y) => x } } }
-def bound_of_Lb_ty : Term := pure{
+def lb_bound_ty : Term := pure{
   Π (p : Nat) → Π (l : List Nat) → Lb p l → Bound p l }
 
-/-- Head-bound transport across the splice: if `x` bounds the head of `a`, and `x ≤
-    p`, then `x` bounds the head of `a ++ p :: b`. This is the step the sketch
-    expected to need an inner case split for, and the case split is exactly the
-    `listRec` on `a`: at `Nil` the new head IS the pivot (so the bound is `Le x p`,
-    the second hypothesis), at `Cons` the head is unchanged by the append (so the
-    bound is the first hypothesis, verbatim). No IH is consumed — `Bound` looks only
-    one cell deep, so the recursion is a case analysis. -/
-def bound_append_pivot : Term := pure{
-  λ (x : Nat). λ (a : List Nat). λ (p : Nat). λ (b : List Nat).
-    elim a return (λ (az : List Nat).
-        Bound x az → Le x p → Bound x (append az (Cons p b))) {
-      Nil => λ (hb : Unit). λ (hp : Le x p). hp,
-      Cons (h) (t) ih => λ (hb : Le x h). λ (hp : Le x p). hb } }
-def bound_append_pivot_ty : Term := pure{
-  Π (x : Nat) → Π (a : List Nat) → Π (p : Nat) → Π (b : List Nat) →
-    Bound x a → Le x p → Bound x (append a (Cons p b)) }
+/-- Head-bound transport across the splice: if `h` bounds the head of `t`, and `h ≤
+    p`, then `h` bounds the head of `t ++ p :: b`. The `listRec` on `t` IS the case
+    analysis the caller would otherwise have to do inline: at `Nil` the new head is
+    the PIVOT (so the bound is `Le h p`, the second hypothesis), at `Cons` the head is
+    unchanged by the append (so the bound is the first hypothesis, verbatim). No IH is
+    consumed — `Bound` looks exactly one cell deep, so this recursion is a case
+    analysis and nothing more. -/
+def bound_append : Term := pure{
+  λ (h : Nat). λ (p : Nat). λ (t : List Nat). λ (b : List Nat).
+    elim t return (λ (tz : List Nat).
+        Bound h tz → Le h p → Bound h (append tz (Cons p b))) {
+      Nil => λ (hb : Unit). λ (hp : Le h p). hp,
+      Cons (h2) (t2) ih => λ (hb : Le h h2). λ (hp : Le h p). hb } }
+def bound_append_ty : Term := pure{
+  Π (h : Nat) → Π (p : Nat) → Π (t : List Nat) → Π (b : List Nat) →
+    Bound h t → Le h p → Bound h (append t (Cons p b)) }
 
 /-- The pivot glue. `Sorted a → Ub p a → Sorted b → Lb p b → Sorted (a ++ p :: b)`.
 
     Induction on `a`, with `b`/`p` and the two right-hand hypotheses fixed outside
     the elim (they do not vary), and `Sorted a`/`Ub p a` INSIDE the motive because
-    they do. At `Nil` the goal is `Sorted (Cons p b)` = `Bound p b × Sorted b`, built
-    from `bound_of_Lb` and the fixed `sb`. At `Cons h t` the goal is `Bound h (t ++ p
-    :: b) × Sorted (t ++ p :: b)`: the head bound is `bound_append_pivot` fed a's own
-    head bound and `h ≤ p` from `Ub`, and the tail is the IH at the two tails. Both
-    components are definitional — `append (Cons h t) (Cons p b)` whnf's to `Cons h
-    (append t (Cons p b))`, so `Sorted` unfolds straight onto the pair — which is why
-    no `list_rw` transport appears anywhere in this proof. -/
+    they do — the `le_trans` idiom of applying the elim to its own hypotheses at the
+    end (`} sa ua`), which is what lets the stated argument order survive an
+    induction that needs two of them abstracted.
+
+    The motive is OPEN: it mentions `p` and `b`, which are λ-bound outside the elim
+    rather than being parameters of the recursion. That is exactly the shape b86742d4
+    settled — `hasType` σ-instantiates λ binders as it descends, so the motive is
+    pvar-free by the time the recursor is typed. This lemma is a working positive
+    control for it.
+
+    At `Nil` the goal is `Sorted (Cons p b)` = `Bound p b × Sorted b`, built from
+    `lb_bound` and the fixed `sb`. At `Cons h t` the goal is `Bound h (t ++ p :: b) ×
+    Sorted (t ++ p :: b)`: the head bound is `bound_append` fed a's own head bound and
+    `h ≤ p` from `Ub`, and the tail is the IH at the two tails. Both components are
+    definitional — `append (Cons h t) (Cons p b)` whnf's to `Cons h (append t (Cons p
+    b))`, so `Sorted` unfolds straight onto the pair — which is why no `list_rw`
+    transport appears anywhere in this proof. -/
 def sorted_append_pivot : Term := pure{
-  λ (a : List Nat). λ (b : List Nat). λ (p : Nat).
+  λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
     λ (sa : Sorted a). λ (ua : Ub p a). λ (sb : Sorted b). λ (lb : Lb p b).
       elim a return (λ (az : List Nat).
           Sorted az → Ub p az → Sorted (append az (Cons p b))) {
-        Nil => λ (sn : Unit). λ (un : Unit). Pair(bound_of_Lb p b lb, sb),
+        Nil => λ (sn : Unit). λ (un : Unit). Pair(lb_bound p b lb, sb),
         Cons (h) (t) ih => λ (sc : Sorted (Cons h t)). λ (uc : Ub p (Cons h t)).
-          Pair(bound_append_pivot h t p b (sorted_head h t sc) (ub_head p h t uc),
+          Pair(bound_append h p t b (sorted_head h t sc) (ub_head p h t uc),
                ih (sorted_tail h t sc) (ub_tail p h t uc))
       } sa ua }
 def sorted_append_pivot_ty : Term := pure{
-  Π (a : List Nat) → Π (b : List Nat) → Π (p : Nat) →
+  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Sorted a → Ub p a → Sorted b → Lb p b → Sorted (append a (Cons p b)) }
 
 end Dllbc.StdLemmas

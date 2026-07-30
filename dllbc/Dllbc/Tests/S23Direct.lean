@@ -37,8 +37,8 @@ are read off it.
 open Dllbc
 open Dllbc.StdLemmas (le_refl le_trans le_up_r append id_congr id_trans id_sym
   set nth swapL len_set swapL_set le_rw_r insertL Ub Lb take leb_true_le
-  sorted_head sorted_tail ub_head ub_tail bound_of_Lb
-  bound_append_pivot sorted_append_pivot)
+  sorted_head sorted_tail ub_head ub_tail lb_bound
+  bound_append sorted_append_pivot)
 
 namespace Dllbc.Tests.S23Direct
 
@@ -819,15 +819,15 @@ example : chk sorted_head Dllbc.StdLemmas.sorted_head_ty = true := by native_dec
 example : chk sorted_tail Dllbc.StdLemmas.sorted_tail_ty = true := by native_decide
 example : chk ub_head Dllbc.StdLemmas.ub_head_ty = true := by native_decide
 example : chk ub_tail Dllbc.StdLemmas.ub_tail_ty = true := by native_decide
-example : chk bound_of_Lb Dllbc.StdLemmas.bound_of_Lb_ty = true := by native_decide
-example : chk bound_append_pivot Dllbc.StdLemmas.bound_append_pivot_ty = true := by native_decide
+example : chk lb_bound Dllbc.StdLemmas.lb_bound_ty = true := by native_decide
+example : chk bound_append Dllbc.StdLemmas.bound_append_ty = true := by native_decide
 example : chk sorted_append_pivot Dllbc.StdLemmas.sorted_append_pivot_ty = true := by native_decide
 
 -- It COMPUTES, end to end: `[1] ++ 2 :: [3]` is sorted, from the four facts about
 -- the parts. Every hypothesis at these values is a `⊤`-chain, so the witnesses are
 -- `Pair(unit, unit)` — the content is entirely in the lemma.
 def sap_app : Term := pure{
-  sorted_append_pivot (Cons (S Z) Nil) (Cons (S (S (S Z))) Nil) (S (S Z))
+  sorted_append_pivot (S (S Z)) (Cons (S Z) Nil) (Cons (S (S (S Z))) Nil)
     Pair(unit, unit) Pair(unit, unit) Pair(unit, unit) Pair(unit, unit) }
 def sap_app_ty : Term := pure{
   Sorted (Cons (S Z) (Cons (S (S Z)) (Cons (S (S (S Z))) Nil))) }
@@ -840,33 +840,33 @@ example : chk sap_app sap_app_ty = true := by native_decide
 -- where it wants `Σ (Le h p) → Ub p t`. Without a's elements being BELOW the pivot
 -- the splice is not sorted, and the check says so.
 def sap_lie_ub_ty : Term := pure{
-  Π (a : List Nat) → Π (b : List Nat) → Π (p : Nat) →
+  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Sorted a → Lb p a → Sorted b → Lb p b → Sorted (append a (Cons p b)) }
 example : chk sorted_append_pivot sap_lie_ub_ty = false := by native_decide
 
--- (2) `Lb p b` weakened to `Ub p b`: `bound_of_Lb` is fed the wrong direction, so
--- the pivot no longer bounds b's head.
+-- (2) `Lb p b` weakened to `Ub p b`: `lb_bound` is fed the wrong direction, so the
+-- pivot no longer bounds b's head.
 def sap_lie_lb_ty : Term := pure{
-  Π (a : List Nat) → Π (b : List Nat) → Π (p : Nat) →
+  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Sorted a → Ub p a → Sorted b → Ub p b → Sorted (append a (Cons p b)) }
 example : chk sorted_append_pivot sap_lie_lb_ty = false := by native_decide
 
 -- (3) The `Nil` arm of the transport returning the wrong hypothesis: past the end of
--- `a` the new head is the PIVOT, so only `Le x p` inhabits the goal; handing back
--- the (vacuous) `Bound x Nil` does not.
-def bound_append_pivot_lie : Term := pure{
-  λ (x : Nat). λ (a : List Nat). λ (p : Nat). λ (b : List Nat).
-    elim a return (λ (az : List Nat).
-        Bound x az → Le x p → Bound x (append az (Cons p b))) {
-      Nil => λ (hb : Unit). λ (hp : Le x p). hb,
-      Cons (h) (t) ih => λ (hb : Le x h). λ (hp : Le x p). hb } }
-example : chk bound_append_pivot_lie Dllbc.StdLemmas.bound_append_pivot_ty = false := by native_decide
+-- `t` the new head is the PIVOT, so only `Le h p` inhabits the goal; handing back the
+-- (vacuous) `Bound h Nil` does not.
+def bound_append_lie : Term := pure{
+  λ (h : Nat). λ (p : Nat). λ (t : List Nat). λ (b : List Nat).
+    elim t return (λ (tz : List Nat).
+        Bound h tz → Le h p → Bound h (append tz (Cons p b))) {
+      Nil => λ (hb : Unit). λ (hp : Le h p). hb,
+      Cons (h2) (t2) ih => λ (hb : Le h h2). λ (hp : Le h p). hb } }
+example : chk bound_append_lie Dllbc.StdLemmas.bound_append_ty = false := by native_decide
 
 -- (4) Liveness of the `Ub` hypothesis at concrete values: pivot 0 under a left part
 -- containing 1 needs `Le 1 0 = ⊥`, which `Pair(unit, unit)` does not inhabit — so the
 -- positive computation above passed on its hypotheses, not on a rubber stamp.
 def sap_bad_pivot : Term := pure{
-  sorted_append_pivot (Cons (S Z) Nil) Nil Z
+  sorted_append_pivot Z (Cons (S Z) Nil) Nil
     Pair(unit, unit) Pair(unit, unit) unit unit }
 def sap_bad_pivot_ty : Term := pure{
   Sorted (Cons (S Z) (Cons Z Nil)) }
