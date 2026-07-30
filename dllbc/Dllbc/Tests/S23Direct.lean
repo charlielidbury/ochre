@@ -38,7 +38,7 @@ open Dllbc
 open Dllbc.StdLemmas (le_refl le_trans le_up_r append id_congr id_trans id_sym
   set nth swapL len_set swapL_set le_rw_r insertL Ub Lb take leb_true_le leb_false_gt
   sorted_head sorted_tail ub_head ub_tail lb_bound
-  bound_append sorted_append_pivot)
+  bound_append sorted_append_pivot le_pred_l count_cons_l count_cons_r)
 
 namespace Dllbc.Tests.S23Direct
 
@@ -992,5 +992,189 @@ def sap_bad_pivot : Term := pure{
 def sap_bad_pivot_ty : Term := pure{
   Sorted (Cons (S Z) (Cons Z Nil)) }
 example : chk sap_bad_pivot sap_bad_pivot_ty = false := by native_decide
+
+/-! ## Stage (iv): the relational partition — two lists, four invariants, no model
+
+    `partition(v, p)`: `*v` keeps the elements `≤ p`, the rest comes back BY VALUE.
+    `split_off`'s silhouette, and the shape branch equations make writable — the body
+    branches on `leb x p` and has to PRODUCE `Le x p` from the branch it took, which
+    is exactly what M23-iv measured as impossible and phase A closed.
+
+    The ensures is four conjuncts, all in observation vocabulary:
+
+        Σ (hi : List Nat)
+      → Σ (hub : Ub p (*v))                       -- the kept part is ≤ p
+      → Σ (hlb : Lb p hi)                         -- the returned part is ≥ p
+      → Π n. Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+
+    `Ub`/`Lb`/`count`/`add` say what a list IS. Nothing here mirrors the body's own
+    algorithm — there is no `partitionL` anywhere in this milestone, which is the
+    stage's whole point: every invariant is proven INDUCTIVELY IN THE BODY from the
+    recursive call's own ensures.
+
+    The program is §4.1's take-and-rebuild, not Lomuto's array scan (the north star's
+    naturalness rule): take the payload, match it OWNED, put the tail back, recurse
+    through the parameter borrow, then push the head onto whichever side its
+    comparison chose. In-place by this calculus's standards — the only list cell ever
+    allocated is the one `Cons` a `Cons` becomes. -/
+
+def partition : Decl :=
+  decl{ fn partition [v] (v : &mut List Nat, p : Nat)
+        -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
+             → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+        { let l = *v;
+          match l {
+            -- `Ub p Nil` and `Lb p Nil` are both `Unit`, and the count goal is
+            -- `add Z Z = Z` — the empty partition proves itself.
+            Nil => { *v := Nil; Pair(Nil, Pair(unit, Pair(unit, λ (n : Nat). Refl))) },
+            Cons(x, rest) => {
+              -- PAIN DIARY (staging, fourth appearance — and the first where the
+              -- unnameable thing is an ENTRY value, not an exit). Both count steps
+              -- must name `rest`, the tail as it was at entry; but `rest` is DATA and
+              -- `*v := rest` moves it, so after the very next statement no term in
+              -- the body denotes it. Dodged as ever by building the derivation while
+              -- it is still live and applying it later. M23-iii stated the rule for
+              -- exits ("a body can only talk about the CURRENT exit"); this instance
+              -- says the same of any consumed parameter or binder, and it is the
+              -- fourth filing for `old` on consumed things.
+              let mkL = (λ (a : List Nat). λ (b : List Nat).
+                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                            λ (n : Nat). count_cons_l n x a b rest (h n));
+              let mkR = (λ (a : List Nat). λ (b : List Nat).
+                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                            λ (n : Nat). count_cons_r n x a b rest (h n));
+              *v := rest;
+              -- The §8 guard reads the actual's PAYLOAD snapshot against `v`'s
+              -- current one: `σ_rest` against the `Cons σ_x σ_rest` the owned match
+              -- refined it to. A strict subterm, with no counter passed anywhere.
+              let r = partition(&mut *v, p);
+              match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, hcnt) => {
+                -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
+                -- either arm can build its bound: the split abstracted `leb σ_x σ_p`
+                -- away, so `leb_true_le x p Refl` is rejected here (see the wall test)
+                -- and `leb_true_le x p e` is not.
+                if e : leb x p {
+                  -- x ≤ p: the head belongs to the KEPT part. Derive both proofs
+                  -- BEFORE the write, which consumes `lo` and `x` (§5.3's ordering
+                  -- corollary, in its body-local form).
+                  let lo = *v;
+                  let hub2 = Pair(leb_true_le x p e, hub);
+                  let cnt = mkL lo hi hcnt;
+                  *v := Cons(x, lo);
+                  Pair(hi, Pair(hub2, Pair(hlb, cnt)))
+                } else {
+                  -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
+                  -- so `hub` passes straight through.
+                  let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
+                  let cnt = mkR (*v) hi hcnt;
+                  Pair(Cons(x, hi), Pair(hub, Pair(hlb2, cnt)))
+                }
+              } } } }
+            }
+          } } }
+example : checkFnOk partition = true := by native_decide
+
+/-! ### Not vacuous: a lying twin per conjunct, and a body twin for the recursive path
+
+    The return type is the ONLY description of this function, so each conjunct gets a
+    twin that changes exactly it. Built by taking the `retType` off a lying header
+    with the same telescope, so the body is shared verbatim and the lie is the only
+    variable. -/
+
+def partLieUb : Decl :=
+  { partition with retType := (decl{ fn partLieUb (v : &mut List Nat, p : Nat)
+      -> Σ (hi : List Nat) → Σ (hub : Ub p (old *v)) → Σ (hlb : Lb p hi)
+           → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+      { () } }).retType }
+example : checkFnErr partLieUb "does not have return type" [partLieUb] = true := by native_decide
+
+def partLieLb : Decl :=
+  { partition with retType := (decl{ fn partLieLb (v : &mut List Nat, p : Nat)
+      -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p (*v))
+           → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+      { () } }).retType }
+example : checkFnErr partLieLb "does not have return type" [partLieLb] = true := by native_decide
+
+-- The returned part dropped from the count: "everything stayed in `*v`".
+def partLieCountDrop : Decl :=
+  { partition with retType := (decl{ fn partLieCountDrop (v : &mut List Nat, p : Nat)
+      -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
+           → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
+      { () } }).retType }
+example : checkFnErr partLieCountDrop "does not have return type" [partLieCountDrop] = true := by
+  native_decide
+
+-- …and the count off by one, which no `Nil`-path argument can reach.
+def partLieCountShift : Decl :=
+  { partition with retType := (decl{ fn partLieCountShift (v : &mut List Nat, p : Nat)
+      -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
+           → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (S (count n (old *v)))
+      { () } }).retType }
+example : checkFnErr partLieCountShift "does not have return type" [partLieCountShift] = true := by
+  native_decide
+
+/-- The BODY twin: the `≤ p` head is DROPPED instead of pushed back onto the kept
+    part. Every spec twin above is refuted somewhere the `Nil` path can be blamed for;
+    this one is wrong only on the recursive `True` path, and only in the count
+    conjunct — the bounds still hold of a list with one element missing. -/
+def partitionLoses : Decl :=
+  decl{ fn partitionLoses [v] (v : &mut List Nat, p : Nat)
+        -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
+             → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+        { let l = *v;
+          match l {
+            Nil => { *v := Nil; Pair(Nil, Pair(unit, Pair(unit, λ (n : Nat). Refl))) },
+            Cons(x, rest) => {
+              let mkL = (λ (a : List Nat). λ (b : List Nat).
+                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                            λ (n : Nat). count_cons_l n x a b rest (h n));
+              let mkR = (λ (a : List Nat). λ (b : List Nat).
+                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                            λ (n : Nat). count_cons_r n x a b rest (h n));
+              *v := rest;
+              let r = partitionLoses(&mut *v, p);
+              match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, hcnt) => {
+                if e : leb x p {
+                  let lo = *v;
+                  let hub2 = Pair(leb_true_le x p e, hub);
+                  let cnt = mkL lo hi hcnt;
+                  *v := lo;
+                  Pair(hi, Pair(hub2, Pair(hlb, cnt)))
+                } else {
+                  let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
+                  let cnt = mkR (*v) hi hcnt;
+                  Pair(Cons(x, hi), Pair(hub, Pair(hlb2, cnt)))
+                }
+              } } } }
+            }
+          } } }
+example : checkFnErr partitionLoses "does not have return type" = true := by native_decide
+
+/-! ### The executing differential — the body really partitions
+
+    `checkFnOk` proves the four conjuncts symbolically; this runs the SAME Decl on
+    concrete lists and confirms `*v` ends as the `≤ p` sublist and the returned value
+    as the `> p` one, ORDER PRESERVED (which no conjunct above asks for). It also
+    exercises phase A's concrete-scrutinee branch end to end: `if e : leb x p` on a
+    closed Bool takes the `ownedSelect` path, where the equation is bound to `Refl`. -/
+
+def partCaller (l : List Nat) (pv : Nat) : Term :=
+  .letIn ⟨0, "z"⟩ (tlistT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+      (.letIn ⟨2, "r"⟩ (.call "partition" [.var ⟨1, "b"⟩, tnatT pv])
+        (.matchE ⟨2, "r"⟩ none
+          [.mk "Pair" [⟨3, "hi"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "z"⟩) .unit)])))
+def runPart (l : List Nat) (pv : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [partition] (partCaller l pv) with
+  | .ok env =>
+    env.lookup "y" == some (vlistV (l.filter (fun a => decide (a <= pv)))) &&
+    env.lookup "hi" == some (vlistV (l.filter (fun a => decide (pv < a))))
+  | .error _ => false
+
+example : runPart [3,1,4,1,5] 3 = true := by native_decide   -- both parts non-empty
+example : runPart [1,2,3] 5 = true := by native_decide       -- everything stays
+example : runPart [7,8,9] 2 = true := by native_decide       -- everything leaves
+example : runPart [] 3 = true := by native_decide            -- the Nil path, executing
+example : runPart [2,2,2] 2 = true := by native_decide       -- the boundary: x = p stays
 
 end Dllbc.Tests.S23Direct

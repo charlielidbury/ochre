@@ -1252,11 +1252,26 @@ mutual
               | none => do setSlot x .bot; pure v
             | _ => do setSlot x .bot; pure v            -- move out, leave ⊥
       | .deref t' => do
-        -- take: read the payload through the borrow, leaving a hole (⊥) in it
+        -- take: read the payload through the borrow, leaving a hole (⊥) in it.
+        --
+        -- §5.2's "proper payload" premise, on the ⇒ side (M23). A payload holding a
+        -- parked loan is a SUSPENSION, not a value — a `&mut *v` handed to a call
+        -- that has since returned, or a field reborrow from a borrow-mode match. The
+        -- take is a demand like any other, so it collapses first: End the reborrow
+        -- (innermost-first, as the `.var` move's payload loop and the match
+        -- scrutinee's reorganization already do), then retry. Without this the
+        -- MARKER itself is taken and rides on as if it were a value — the same
+        -- silent-marker class as the ⇝-side gap M23-ii closed and §3.2's
+        -- `⊥`-into-a-pure-value bug, and the one that made `let lo = *v` after a
+        -- recursive call put `loanₘ ℓ` where the partition's count proof expected
+        -- the callee's released list.
         let pos ← placeToPos (.deref t')
         match ← getAtPos pos with
         | .bot => throwErr "readR(*): borrow payload is already a hole (⊥) — nothing to take"
-        | p => do setAtPos pos .bot; pure p
+        | p =>
+          match firstLoanMarker p with
+          | some ℓ => do endLoan fuel ℓ; readR fuel (.deref t')
+          | none => do setAtPos pos .bot; pure p
       | .ctorApp name args => do
         pure (.ctor name (← readArgs fuel args))
       | .borrow t' => do

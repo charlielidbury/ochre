@@ -3668,4 +3668,57 @@ def sorted_append_pivot_ty : Term := pure{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Sorted a → Ub p a → Sorted b → Lb p b → Sorted (append a (Cons p b)) }
 
+/-! ## M23 stage (iv) — the two-part vocabulary a relational partition needs
+
+    A partition returns TWO lists whose counts together reconstruct the input's, and
+    it decides each element by a `leb` split. Two facts close the gap between what the
+    split hands back and what the postcondition asks for; both are observation-level
+    (`count`, `add`) and neither mentions partition. The third thing the body wants —
+    `Le (S p) x ⟹ Le p x`, to bend `leb_false_gt` into what `Lb p (Cons x _)` asks —
+    is already `le_pred_l` above, from the M22 stack.
+
+    The two-part count step, in its two directions. A partition's invariant is
+    `count n lo + count n hi = count n l`, and each recursion step puts the head on
+    ONE of the two sides — so the same equation extends by a `Cons` on the left part
+    or on the right part, with the whole list gaining that `Cons` either way. Both are
+    a `boolRec` on the `eqb n x` that `count n (Cons x ·)` unfolds to (the motive
+    abstracts the scrutinee out of all three occurrences at once); the arms differ only
+    in where the successor has to travel through `add`. -/
+
+/-- Head onto the LEFT part. `add (S u) w` is definitionally `S (add u w)` (`add`
+    recurses on its first argument), so the `True` arm is one `id_congr`. -/
+def count_cons_l : Term := pure{
+  λ (n : Nat). λ (x : Nat). λ (a : List Nat). λ (b : List Nat). λ (c : List Nat).
+    λ (h : Id Nat (add (count n a) (count n b)) (count n c)).
+      elim (eqb n x) return (λ (bv : Bool).
+        Id Nat (add (boolRec (λ (w : Bool). Nat) (S (count n a)) (count n a) bv) (count n b))
+               (boolRec (λ (w : Bool). Nat) (S (count n c)) (count n c) bv)) {
+        True => id_congr Nat Nat (λ (r : Nat). S r)
+                  (add (count n a) (count n b)) (count n c) h,
+        False => h } }
+def count_cons_l_ty : Term := pure{
+  Π (n : Nat) → Π (x : Nat) → Π (a : List Nat) → Π (b : List Nat) → Π (c : List Nat) →
+    Id Nat (add (count n a) (count n b)) (count n c) →
+    Id Nat (add (count n (Cons x a)) (count n b)) (count n (Cons x c)) }
+
+/-- Head onto the RIGHT part. Here the successor lands under `add`'s SECOND argument,
+    which is where the asymmetry of a first-argument-recursive `add` shows up: the
+    `True` arm needs `add_succ` before the `id_congr`. -/
+def count_cons_r : Term := pure{
+  λ (n : Nat). λ (x : Nat). λ (a : List Nat). λ (b : List Nat). λ (c : List Nat).
+    λ (h : Id Nat (add (count n a) (count n b)) (count n c)).
+      elim (eqb n x) return (λ (bv : Bool).
+        Id Nat (add (count n a) (boolRec (λ (w : Bool). Nat) (S (count n b)) (count n b) bv))
+               (boolRec (λ (w : Bool). Nat) (S (count n c)) (count n c) bv)) {
+        True => id_trans Nat (add (count n a) (S (count n b)))
+                  (S (add (count n a) (count n b))) (S (count n c))
+                  (add_succ (count n a) (count n b))
+                  (id_congr Nat Nat (λ (r : Nat). S r)
+                    (add (count n a) (count n b)) (count n c) h),
+        False => h } }
+def count_cons_r_ty : Term := pure{
+  Π (n : Nat) → Π (x : Nat) → Π (a : List Nat) → Π (b : List Nat) → Π (c : List Nat) →
+    Id Nat (add (count n a) (count n b)) (count n c) →
+    Id Nat (add (count n a) (count n (Cons x b))) (count n (Cons x c)) }
+
 end Dllbc.StdLemmas
