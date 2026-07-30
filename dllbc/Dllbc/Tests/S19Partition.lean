@@ -439,7 +439,7 @@ example : checkFnErr stuckProbeLie "does not have return type" = true := by nati
 -- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
 -- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
 -- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
-def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ [.mk "True" [] Refl])
+def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
 def stuckProbeNonExh : Decl := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
 example : checkFnErr stuckProbeNonExh "non-exhaustive" = true := by native_decide
 

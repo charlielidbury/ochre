@@ -76,7 +76,7 @@ def leafBodies : List Term :=
 def matchBodies : List Term :=
   (leafBodies.take 8).flatMap fun bNil =>
     (leafBodies.take 8).map fun bCons =>
-      .matchE ⟨0, "v"⟩ [.mk "Nil" [] bNil, .mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] bCons]
+      .matchE ⟨0, "v"⟩ none [.mk "Nil" [] bNil, .mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] bCons]
 
 /-- All generated bodies for the list-borrow telescope. -/
 def vBodies : List Term := leafBodies ++ matchBodies
@@ -143,8 +143,8 @@ example : vDiffOk = true := by native_decide
 
 -- CONV-SUBJECT: generator builds raw Terms by design
 def vNonExhaustive : List Term :=
-  (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
-  ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ [.mk "Nil" [] b])                       -- missing Cons
+  (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
+  ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Nil" [] b])                       -- missing Cons
 
 def vAllRejected : Bool := vNonExhaustive.all (fun b => !checkFnOk (vDecl b))
 
@@ -163,7 +163,7 @@ def nBodies : List Term :=
   -- exhaustive match on n
   ++ (nLeaf.take 5).flatMap fun b1 =>
        (nLeaf.take 5).map fun b2 =>
-         .matchE ⟨0, "n"⟩ [.mk "Z" [] b1, .mk "S" [⟨1, "m"⟩] b2]
+         .matchE ⟨0, "n"⟩ none [.mk "Z" [] b1, .mk "S" [⟨1, "m"⟩] b2]
 
 def nDecl (body : Term) : Decl :=
   decl{ fn f (n : Nat) -> Nat = %body }
@@ -187,7 +187,7 @@ def bcBodies : List Term :=
   -- exhaustive match on c
   ++ (bcLeaf.take 5).flatMap fun b1 =>
        (bcLeaf.take 5).map fun b2 =>
-         .matchE ⟨1, "c"⟩ [.mk "True" [] b1, .mk "False" [] b2]
+         .matchE ⟨1, "c"⟩ none [.mk "True" [] b1, .mk "False" [] b2]
 
 def bcDecl (body : Term) : Decl :=
   decl{ fn f (b : &mut Nat, c : Bool) -> Unit = %body }

@@ -30,10 +30,17 @@ partial def anTerm (env : List (Nat × Nat)) (ctr : Nat) : Term → (Term × Nat
     let newId := c1
     let (body', c2) := anTerm ((id, newId) :: env) (c1 + 1) body
     (.letIn ⟨newId, nm⟩ rhs' body', c2)
-  | .matchE ⟨id, nm⟩ branches =>
+  | .matchE ⟨id, nm⟩ eqn branches =>
     let scrut : Var := ⟨(env.lookup id).getD id, nm⟩
-    let (branches', c') := anBranches env ctr branches
-    (.matchE scrut branches', c')
+    match eqn with
+    | none =>
+      let (branches', c') := anBranches env ctr branches
+      (.matchE scrut none branches', c')
+    | some ⟨eid, enm⟩ =>
+      -- The branch-equation binder is one binder for the whole match, in scope
+      -- in every branch — canonicalized once, before the branches.
+      let (branches', c') := anBranches ((eid, ctr) :: env) (ctr + 1) branches
+      (.matchE scrut (some ⟨ctr, enm⟩) branches', c')
   | .assign p e r =>
     let (p', c1) := anTerm env ctr p
     let (e', c2) := anTerm env c1 e

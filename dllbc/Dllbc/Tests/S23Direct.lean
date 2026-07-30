@@ -36,7 +36,7 @@ are read off it.
 
 open Dllbc
 open Dllbc.StdLemmas (le_refl le_trans le_up_r append id_congr id_trans id_sym
-  set nth swapL len_set swapL_set le_rw_r insertL Ub Lb take leb_true_le
+  set nth swapL len_set swapL_set le_rw_r insertL Ub Lb take leb_true_le leb_false_gt
   sorted_head sorted_tail ub_head ub_tail lb_bound
   bound_append sorted_append_pivot)
 
@@ -673,10 +673,10 @@ example : runInsertAt [1,2,3] 0 9 = true := by native_decide
 example : runInsertAt [1,2,3] 2 9 = true := by native_decide
 example : runInsertAt [1,2,3] 3 9 = true := by native_decide
 
-/-! ### THE LIMITATION: a body learns nothing from branching on a comparison
+/-! ### THE WALL, and the rule that closes it: BRANCH EQUATIONS
 
     M18's two-layer principle says motive abstraction handles OCCURRENCES and branch
-    equations handle KNOWLEDGE. A body-level `match` has only the first layer. When
+    equations handle KNOWLEDGE. A body-level `match` had only the first layer. When
     the scrutinee is a stuck spine, `generalizeStuck` abstracts it to a fresh σ_b
     across all σ-bearing state and the branch refines σ_b := True — so everything
     that ALREADY mentioned the spine now reads `True`, which is what M19's stuckProbe
@@ -685,7 +685,8 @@ example : runInsertAt [1,2,3] 3 9 = true := by native_decide
 
     That is exactly backwards for direct proving, where the body must PRODUCE the
     evidence rather than merely have its types agree. `Refl : Id Bool (leb a b) True`
-    does not check inside the `True` branch: -/
+    does not check inside the `True` branch — kept here as the negative half of the
+    pair: -/
 
 def needLe : Decl := decl{ fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () } }
 def branchKnowledge : Decl :=
@@ -697,6 +698,126 @@ def branchKnowledge : Decl :=
           } } }
 example : checkFnErr branchKnowledge "does not have its parameter type"
   [needLe, branchKnowledge] = true := by native_decide
+
+/-! **THE RULE** (M23 phase A). `match h : c { … }` additionally binds, in every
+    branch, an equation `h : Id τ ⟨the scrutinee's PRE-SPLIT value⟩ ⟨this branch's
+    constructor⟩`. That is the standard dependent-match-with-equations shape — Lean's
+    `match h : x with`, Coq's `destruct … eqn:` — and it stays inside §3.2's
+    knowledge/state invariant, because the equation IS the branch's match-shape
+    knowledge: a fact about the value, true at entry and forever, until now applied
+    only as a substitution and here additionally reified as a citable term.
+
+    The pre-split value is where the two layers come apart. At an ordinary split ⇜
+    rewrites the scrutinee's value to this constructor everywhere, so the equation's
+    two endpoints are already identical and `h` is `Refl` — informative-free, as it
+    should be. At a STUCK split `generalizeStuck` ABSTRACTED the spine before the
+    refinement, so nothing in the state mentions `leb a b` any more and a body that
+    recomputes it is talking about a term the refinement never saw. There the
+    equation is a genuine hypothesis, minted as a fresh σ typed
+    `Id Bool (leb σa σb) True` — the one thing this rule adds.
+
+    The positive twin of `branchKnowledge`: the SAME body, with the equation cited in
+    place of `Refl`. The pair is the whole claim — the rule does exactly one new
+    thing. -/
+
+def branchKnowledgeEq : Decl :=
+  decl{ fn branchKnowledgeEq (a : Nat, b : Nat) -> Unit
+        { let c = leb a b;
+          match e : c {
+            True => { needLe(a, b, leb_true_le a b e); () },
+            False => ()
+          } } }
+example : checkFnOk branchKnowledgeEq [needLe, branchKnowledgeEq] = true := by native_decide
+
+-- Both branches, in the direction each can actually prove: `False` gives
+-- `Id Bool (leb a b) False`, hence `Le (S b) a` — so the equation is per-branch,
+-- not a single fact smuggled in twice.
+def needGt : Decl := decl{ fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () } }
+def branchKnowledgeBoth : Decl :=
+  decl{ fn branchKnowledgeBoth (a : Nat, b : Nat) -> Unit
+        { let c = leb a b;
+          match e : c {
+            True => { needLe(a, b, leb_true_le a b e); () },
+            False => { needGt(a, b, leb_false_gt a b e); () }
+          } } }
+example : checkFnOk branchKnowledgeBoth [needLe, needGt, branchKnowledgeBoth] = true := by
+  native_decide
+
+-- The `if` sugar carries it too (`if h : c { … } else { … }`), which is the form the
+-- partition body wants.
+def branchKnowledgeIf : Decl :=
+  decl{ fn branchKnowledgeIf (a : Nat, b : Nat) -> Unit
+        { if e : leb a b { needLe(a, b, leb_true_le a b e); () }
+          else { needGt(a, b, leb_false_gt a b e); () } } }
+example : checkFnOk branchKnowledgeIf [needLe, needGt, branchKnowledgeIf] = true := by
+  native_decide
+
+/-! #### Negative controls — one per rule branch
+
+    The rule has exactly three branches that can produce an equation: the stuck
+    split (a real hypothesis), the ordinary symbolic split (`Refl`), and the
+    concrete split (`Refl`). Each gets a control, plus the two ways the minted
+    hypothesis could be a rubber stamp. -/
+
+-- (1) The equation is the branch's OWN constructor, not the other one: citing
+-- `leb_false_gt` on the True branch's `e : Id Bool (leb a b) True` is rejected.
+def branchEqSwapped : Decl :=
+  decl{ fn branchEqSwapped (a : Nat, b : Nat) -> Unit
+        { let c = leb a b;
+          match e : c {
+            True => { needGt(a, b, leb_false_gt a b e); () },
+            False => ()
+          } } }
+example : checkFnErr branchEqSwapped "does not have its parameter type"
+  [needLe, needGt, branchEqSwapped] = true := by native_decide
+
+-- (2) The equation is about the SPINE THAT WAS SPLIT ON, not any spine: split on
+-- `leb a b`, then claim the equation is about `leb b a`. Rejected — so the minted
+-- type is read off the abstracted scrutinee, not fabricated per use site.
+def needLeSwap : Decl := decl{ fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () } }
+def branchEqWrongSpine : Decl :=
+  decl{ fn branchEqWrongSpine (a : Nat, b : Nat) -> Unit
+        { let c = leb a b;
+          match e : c {
+            True => { needLeSwap(a, b, leb_true_le b a e); () },
+            False => ()
+          } } }
+example : checkFnErr branchEqWrongSpine "does not have its parameter type"
+  [needLeSwap, branchEqWrongSpine] = true := by native_decide
+
+-- (3) An ORDINARY symbolic split still yields only `Refl`: `n`'s equation in the
+-- `S` branch is `Id Nat (S σm) (S σm)` — ⇜ already rewrote the pre-split value, so
+-- both endpoints are the constructor tree and nothing off-diagonal is derivable.
+def wantEqLie : Decl :=
+  decl{ fn wantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () } }
+def branchEqPlainSym : Decl :=
+  decl{ fn branchEqPlainSym (n : Nat) -> Unit
+        { match e : n { Z => (), S(m) => { wantEqLie(m, e); () } } } }
+example : checkFnErr branchEqPlainSym "does not have its parameter type"
+  [wantEqLie, branchEqPlainSym] = true := by native_decide
+
+-- …and the reflexive reading of that same equation IS available: `Id Nat (S m) (S m)`.
+def wantRefl : Decl :=
+  decl{ fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () } }
+def branchEqPlainSymRefl : Decl :=
+  decl{ fn branchEqPlainSymRefl (n : Nat) -> Unit
+        { match e : n { Z => (), S(m) => { wantRefl(m, e); () } } } }
+example : checkFnOk branchEqPlainSymRefl [wantRefl, branchEqPlainSymRefl] = true := by
+  native_decide
+
+-- (4) The CONCRETE split (the executing side and any concrete scrutinee) binds the
+-- equation too, so a body written with `match h :` runs. The differential below
+-- exercises the same path end to end.
+def concreteEq : Decl :=
+  decl{ fn concreteEq () -> Unit
+        { let n = S(Z);
+          match e : n { Z => (), S(m) => { wantRefl(m, e); () } } } }
+example : checkFnOk concreteEq [wantRefl, concreteEq] = true := by native_decide
+
+-- (5) Not vacuous by scoping accident: WITHOUT the binder the same body is
+-- unelaboratable (`e` is unbound), and WITH it the branch-free `Refl` of the wall
+-- test is still rejected — i.e. binding `e` did not also make `Refl` check. This is
+-- `branchKnowledge` above; the pair (it, `branchKnowledgeEq`) is the control.
 
 /-! ### The route around it, verified in both halves
 

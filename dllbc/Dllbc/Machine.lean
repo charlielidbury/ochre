@@ -615,8 +615,15 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     Every occurrence of the spine in values AND types now reads `σb`, so the
     ordinary owned-sym split (`symOwnedSetup`'s `writeC`/`refineSym`) refines the
     spine to `True`/`False` per branch — including inside a declared spec's
-    instantiation, which is exactly what the per-path back-spec conversion needs. -/
-def generalizeStuck (fuel : Nat) (spine : Val) : M Nat := do
+    instantiation, which is exactly what the per-path back-spec conversion needs.
+
+    Returns the fresh σb **together with the normalized pre-abstraction spine**.
+    Abstraction is precisely what makes the spine unnameable afterwards — nothing
+    in the state mentions `leb σ σp` any more, and a body that recomputes it gets
+    a term the refinement never touched — so the value returned here is the only
+    thing a branch EQUATION can be built from (M23). The caller threads it to the
+    branch setup. -/
+def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
   let sp := Val.nfV fuel spine
   let σb ← freshSym
   modify (fun s => { s with
@@ -630,7 +637,7 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M Nat := do
     retTyVal := s.retTyVal.map (abstractInto sp σb),
     selfBack := s.selfBack.map (abstractInto sp σb),
     selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, abstractInto sp σb d.2)))) })
-  pure σb
+  pure (σb, sp)
 
 /-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
     `writeR`. Defined on the same place shapes (a variable under peels). The
@@ -705,7 +712,7 @@ mutual
     | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
-    | .matchE _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
+    | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
     | .borrowT _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
     | .call _ _ => throwErr "readC (⇝): a call is not in the comptime fragment (its result is a fresh existential)"
   def reflectCList : List Term → M (List Val)
@@ -828,7 +835,7 @@ partial def calleeNames : Term → List String
   | .seq a b => calleeNames a ++ calleeNames b
   | .ctorApp _ args => args.flatMap calleeNames
   | .borrow t | .deref t => calleeNames t
-  | .matchE _ bs => bs.flatMap (fun b => calleeNames b.body)
+  | .matchE _ _ bs => bs.flatMap (fun b => calleeNames b.body)
   | .app f a => calleeNames f ++ calleeNames a
   | .lam d b | .pi d b | .sigmaT d b => calleeNames d ++ calleeNames b
   | .idT a b c => calleeNames a ++ calleeNames b ++ calleeNames c
@@ -1125,23 +1132,36 @@ def bindBorrowFields : List Var → List Nat → List Val → M Unit
   | x :: xs, ℓ :: ℓs, v :: vs => do bindSlot x (.borrowM ℓ v); bindBorrowFields xs ℓs vs
   | _, _, _ => throwErr "match: constructor arity mismatch (borrow mode)"
 
+/-- Bind a **branch equation** whose two endpoints are already identical, i.e.
+    `Refl` inhabits it (M23). That is the case for every split except the stuck
+    one: on a concrete scrutinee the branch IS the value's constructor, and on a
+    plain symbolic σ the ⇜ refinement has just rewritten the pre-split value to
+    this very constructor tree. The equation only carries new information where
+    the pre-split value was ABSTRACTED away rather than refined — the stuck
+    spine, handled in `symOwnedSetup`. -/
+def bindEqnRefl (eqn : Option Var) : M Unit :=
+  match eqn with
+  | none => pure ()
+  | some h => bindSlot h (.ctor "Refl" [])
+
 /-- **Owned mode** (§3.1): ⇒-consume the scrutinee (slot → ⊥), select the
     branch by head constructor, move the fields into fresh binders, and return
     the branch body. -/
-def ownedSelect (scrut : Var) (branches : List Branch) (name : String)
+def ownedSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (name : String)
     (fields : List Val) : M Term := do
   match findBranch branches name with
   | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
   | some br => do
     setSlot scrut .bot                         -- ⇒-consume
     bindFields br.binders fields
+    bindEqnRefl eqn
     pure br.body
 
 /-- **Borrow mode** (§3.3): the binders become reborrows of the fields. Mint a
     fresh loan ℓᵢ per field, park a `loanM ℓᵢ` in the parent's payload (which
     suspends the parent — no rule reads through a loan), bind each binder to
     `borrowM ℓᵢ fieldᵢ`, and return the branch body. -/
-def borrowSelect (scrut : Var) (branches : List Branch) (ℓ : Nat) (name : String)
+def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ : Nat) (name : String)
     (fields : List Val) : M Term := do
   match findBranch branches name with
   | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
@@ -1151,6 +1171,7 @@ def borrowSelect (scrut : Var) (branches : List Branch) (ℓ : Nat) (name : Stri
     let ℓs ← fields.mapM (fun _ => freshLoan)
     setSlot scrut (.borrowM ℓ (.ctor name (ℓs.map Val.loanM)))   -- suspend the parent
     bindBorrowFields br.binders ℓs fields
+    bindEqnRefl eqn
     pure br.body
 
 /-! Shift every runtime `Var` id in a term (and its match binders) up by `d`.
@@ -1166,7 +1187,8 @@ mutual
     | .ctorApp n args => .ctorApp n (shiftVarsList d args)
     | .borrow t => .borrow (shiftVars d t)
     | .deref t => .deref (shiftVars d t)
-    | .matchE scrut brs => .matchE ⟨scrut.id + d, scrut.name⟩ (shiftBranches d brs)
+    | .matchE scrut eqn brs =>
+      .matchE ⟨scrut.id + d, scrut.name⟩ (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranches d brs)
     | .seq a b => .seq (shiftVars d a) (shiftVars d b)
     | .call f args => .call f (shiftVarsList d args)
     -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
@@ -1274,25 +1296,25 @@ mutual
         let v ← readR fuel rhs                           -- RHS by ⇒ first (§2.5 ordering)
         writeR fuel place v                              -- target by ⇐
         readR fuel rest
-      | .matchE scrut branches => do
+      | .matchE scrut eqn branches => do
         -- Mode is chosen by what the scrutinee's slot holds, after the usual
         -- lazy reorganization. Both retries decrease fuel.
         match ← lookupSlot scrut with
         | .bot => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} holds ⊥ (use-after-move)"
         | .borrowM ℓ payload =>
           match payload with
-          | .ctor name fields => do readR fuel (← borrowSelect scrut branches ℓ name fields)
-          | .loanM ℓ' => do endLoan fuel ℓ'; readR fuel (.matchE scrut branches)  -- reborrowed payload: end, retry
+          | .ctor name fields => do readR fuel (← borrowSelect scrut eqn branches ℓ name fields)
+          | .loanM ℓ' => do endLoan fuel ℓ'; readR fuel (.matchE scrut eqn branches)  -- reborrowed payload: end, retry
           | .bot => throwErr s!"match: matching through a hole (⊥) at {scrut.name}#{scrut.id}"
           | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
           | .borrowM _ _ => throwErr s!"match: scrutinee payload is a nested borrow (unsupported in §3)"
           | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} payload is not a constructor"
         | v =>
           match firstLoanMarker v with
-          | some ℓ => do endLoan fuel ℓ; readR fuel (.matchE scrut branches)      -- suspended owner: end, retry
+          | some ℓ => do endLoan fuel ℓ; readR fuel (.matchE scrut eqn branches)  -- suspended owner: end, retry
           | none =>
             match v with
-            | .ctor name fields => do readR fuel (← ownedSelect scrut branches name fields)
+            | .ctor name fields => do readR fuel (← ownedSelect scrut eqn branches name fields)
             | .sym _ => throwErr s!"match: symbolic scrutinee {scrut.name}#{scrut.id} in expression position — only a statement-position match may split (use the explore driver)"
             | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor value"
       | .seq e rest => do
@@ -1499,7 +1521,11 @@ def expectErr (t : Term) (needle : String) : Bool :=
 inductive Dispatch where
   | ownedCtor  : String → List Val → Dispatch        -- owned concrete constructor
   | borrowCtor : Nat → String → List Val → Dispatch  -- borrow mode, loan ℓ + payload ctor
-  | ownedSym   : Nat → Dispatch                      -- owned symbolic value sym σ
+  /-- Owned symbolic value `sym σ`. The `Option Val` is the **pre-abstraction
+      spine** when σ was minted by `generalizeStuck` from a stuck scrutinee —
+      the one split where the branch equation says something the refinement
+      does not (M23); `none` for an ordinary σ, whose equation is `Refl`. -/
+  | ownedSym   : Nat → Option Val → Dispatch
   | borrowSym  : Nat → Nat → Dispatch                -- borrow mode, loan ℓ + payload sym σ
 
 /-- Reorganize a match scrutinee (exactly as `readR`'s match would — End-Mut a
@@ -1524,11 +1550,12 @@ def reorgScrut : Nat → Var → M Dispatch
       | none =>
         match v with
         | .ctor name fields => pure (.ownedCtor name fields)
-        | .sym σ => pure (.ownedSym σ)
+        | .sym σ => pure (.ownedSym σ none)
         -- §19: a stuck spine (`leb σ σp`, a neutral application). Generalize it to
         -- a fresh σb : Bool across all σ-bearing state, then split on σb as an
         -- ordinary owned sym — the True/False refinement rewrites the spine per path.
-        | .app _ _ => do let σb ← generalizeStuck fuel v; pure (.ownedSym σb)
+        -- The spine itself rides along so the branch can bind an equation about it.
+        | .app _ _ => do let (σb, sp) ← generalizeStuck fuel v; pure (.ownedSym σb (some sp))
         | _ => throwErr s!"match: scrutinee {scrut.name}#{scrut.id} is not a constructor or symbolic value"
 
 /-- Mint fresh σ's for the given field types, typing each in `sctx`
@@ -1586,15 +1613,44 @@ def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := d
       | none => throwErr s!"match: constructor '{br.ctor}' does not belong to the scrutinee's type"
       | some ftys => typeFieldSyms br.binders ftys
 
+/-- **The branch equation for a stuck split** (M23) — M18's second layer, on the
+    imperative side. At an ordinary split, ⇜ rewrites every OCCURRENCE of the
+    scrutinee's value to this branch's constructor, and that is all a body can
+    ever need. At a STUCK split it is not: `generalizeStuck` abstracted the spine
+    before refining, so a body that recomputes `leb a b` after the split writes a
+    term the refinement never saw, and learns nothing (the M23-iv wall). This
+    mints the missing hypothesis — a fresh σ typed `Id τ ⟨spine⟩ ⟨C σ₁ … σₙ⟩`,
+    the branch's own match-shape knowledge reified as a citable term rather than
+    applied only as substitution. Sound for the same reason the substitution is:
+    the branch is entered exactly when the scrutinee evaluates to `C`.
+    Registered in `sctx` BEFORE the ⇜ fires, so `refineSym` sweeps its type with
+    the rest of the σ-bearing state (the M10 invariant). -/
+def mintStuckEqn (scrutσ : Nat) (spine : Val) (ctor : String) (σs : List Nat) : M Nat := do
+  let σe ← freshSym
+  match (← get).sctx.lookup scrutσ with
+  | none => pure σe                                      -- untyped scrutinee: untyped equation
+  | some τ =>
+    modify (fun s => { s with
+      sctx := (σe, .idT τ spine (.ctor ctor (σs.map Val.sym))) :: s.sctx })
+    pure σe
+
 /-- Symbolic **owned** branch entry (§3.2): mint (σ-typed) fresh σ's for the
     pattern fields, ⇜-refine the scrutinee to `C (sym σ₁) … (sym σₙ)`
     *everywhere*, then destructure as owned match (scrutinee → ⊥, binders ↦
-    `sym σᵢ`). Returns the branch body. -/
-def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (br : Branch) : M Term := do
+    `sym σᵢ`). Returns the branch body. `stuck` carries the pre-abstraction spine
+    when there was one; the declared equation binder (M23) is bound to its
+    hypothesis, or to `Refl` when refinement has already equated the endpoints. -/
+def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Val)
+    (eqn : Option Var) (br : Branch) : M Term := do
   let σs ← mintFieldSyms fuel scrutσ br
+  let eqv : Option Val ← match eqn, stuck with
+    | none, _ => pure none
+    | some _, none => pure (some (.ctor "Refl" []))
+    | some _, some spine => do pure (some (.sym (← mintStuckEqn scrutσ spine br.ctor σs)))
   writeC (.var scrut) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ everywhere (refinement first)
   setSlot scrut .bot                                     -- owned consume
   bindFields br.binders (σs.map Val.sym)
+  match eqn, eqv with | some h, some v => bindSlot h v | _, _ => pure ()
   pure br.body
 
 /-- Symbolic **borrow** branch entry (§3.3): mint fresh σ's, ⇜-refine the
@@ -1603,12 +1659,16 @@ def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (br : Branch) : M T
     (suspended parent), each binder ↦ `borrowM ℓᵢ (sym σᵢ)`. Order matters:
     ⇜ hits every occurrence of σ across Ω; only the scrutinee payload is then
     rewritten to markers (§3.2 "everywhere"; M5 depends on this). -/
-def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat) (br : Branch) : M Term := do
+def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat)
+    (eqn : Option Var) (br : Branch) : M Term := do
   let σs ← mintFieldSyms fuel scrutσ br
   writeC (.deref (.var scrut)) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ at payload, everywhere
   let ℓs ← br.binders.mapM (fun _ => freshLoan)
   setSlot scrut (.borrowM ℓ (.ctor br.ctor (ℓs.map Val.loanM)))   -- suspend the parent
   bindBorrowFields br.binders ℓs (σs.map Val.sym)
+  -- A borrow payload is a bare σ (a stuck spine has no `&mut`), so the refinement
+  -- has already equated the equation's endpoints.
+  bindEqnRefl eqn
   pure br.body
 
 /-- **Exhaustiveness** (§9): a match on a *symbolic* scrutinee must cover the
@@ -1642,18 +1702,18 @@ mutual
   def pushContinuations : Term → Term
     | .letIn x rhs rest =>
       match pushContinuations rhs with
-      | .matchE s bs =>
+      | .matchE s eqn bs =>
         let k := pushContinuations rest
-        .matchE s (bs.map (fun br => Branch.mk br.ctor br.binders (.letIn x br.body k)))
+        .matchE s eqn (bs.map (fun br => Branch.mk br.ctor br.binders (.letIn x br.body k)))
       | rhs' => .letIn x rhs' (pushContinuations rest)
     | .seq e rest =>
       match pushContinuations e with
-      | .matchE s bs =>
+      | .matchE s eqn bs =>
         let k := pushContinuations rest
-        .matchE s (bs.map (fun br => Branch.mk br.ctor br.binders (.seq br.body k)))
+        .matchE s eqn (bs.map (fun br => Branch.mk br.ctor br.binders (.seq br.body k)))
       | e' => .seq e' (pushContinuations rest)
     | .assign p rhs rest => .assign p rhs (pushContinuations rest)
-    | .matchE s bs => .matchE s (pushBranches bs)
+    | .matchE s eqn bs => .matchE s eqn (pushBranches bs)
     | t => t
   termination_by t => sizeOf t
   def pushBranches : List Branch → List Branch
@@ -1673,7 +1733,7 @@ mutual
     | 0, _, _ => [.error "explore: out of fuel"]
     | fuel + 1, t, st =>
       match t with
-      | .matchE scrut branches => exploreMatch fuel scrut branches st
+      | .matchE scrut eqn branches => exploreMatch fuel scrut eqn branches st
       | .letIn x rhs rest =>
         match (do let v ← readR fuel rhs; bindSlot x v).run st with
         | .error e _ => [.error e]
@@ -1691,40 +1751,43 @@ mutual
         | .error e _ => [.error e]
         | .ok v st' => [.ok (v, st')]
   termination_by fuel _ _ => (fuel, 0, 0)
-  def exploreMatch : Nat → Var → List Branch → St → List (Except String (Val × St))
-    | fuel, scrut, branches, st =>
+  def exploreMatch : Nat → Var → Option Var → List Branch → St → List (Except String (Val × St))
+    | fuel, scrut, eqn, branches, st =>
       match (reorgScrut fuel scrut).run st with
       | .error e _ => [.error e]
       | .ok disp st' =>
         match disp with
         | .ownedCtor name fields =>
-          match (ownedSelect scrut branches name fields).run st' with
+          match (ownedSelect scrut eqn branches name fields).run st' with
           | .error e _ => [.error e]
           | .ok body st'' => explore fuel body st''
         | .borrowCtor ℓ name fields =>
-          match (borrowSelect scrut branches ℓ name fields).run st' with
+          match (borrowSelect scrut eqn branches ℓ name fields).run st' with
           | .error e _ => [.error e]
           | .ok body st'' => explore fuel body st''
-        | .ownedSym σ =>
+        | .ownedSym σ stuck =>
           match (checkExhaustive fuel σ branches).run st' with
           | .error e _ => [.error e]
-          | .ok _ st'' => exploreSymBranches fuel scrut false 0 σ branches st''
+          | .ok _ st'' => exploreSymBranches fuel scrut false 0 σ stuck eqn branches st''
         | .borrowSym ℓ σ =>
           match (checkExhaustive fuel σ branches).run st' with
           | .error e _ => [.error e]
-          | .ok _ st'' => exploreSymBranches fuel scrut true ℓ σ branches st''
-  termination_by fuel _ _ _ => (fuel, 2, 0)
+          | .ok _ st'' => exploreSymBranches fuel scrut true ℓ σ none eqn branches st''
+  termination_by fuel _ _ _ _ => (fuel, 2, 0)
   /-- One symbolic path per branch, in declaration order. `borrow` selects the
       setup; `ℓ` is the parent loan (borrow mode only); `σ` is the scrutinee's
-      symbolic id (used to type the field σ's). -/
-  def exploreSymBranches : Nat → Var → Bool → Nat → Nat → List Branch → St → List (Except String (Val × St))
-    | _, _, _, _, _, [], _ => []
-    | fuel, scrut, borrow, ℓ, σ, br :: rest, st =>
-      (match ((if borrow then symBorrowSetup fuel scrut ℓ σ br else symOwnedSetup fuel scrut σ br)).run st with
+      symbolic id (used to type the field σ's); `stuck` is the pre-abstraction
+      spine, when the σ came from one; `eqn` the declared equation binder. -/
+  def exploreSymBranches : Nat → Var → Bool → Nat → Nat → Option Val → Option Var →
+      List Branch → St → List (Except String (Val × St))
+    | _, _, _, _, _, _, _, [], _ => []
+    | fuel, scrut, borrow, ℓ, σ, stuck, eqn, br :: rest, st =>
+      (match ((if borrow then symBorrowSetup fuel scrut ℓ σ eqn br
+               else symOwnedSetup fuel scrut σ stuck eqn br)).run st with
        | .error e _ => [.error e]
        | .ok body st' => explore fuel body st')
-      ++ exploreSymBranches fuel scrut borrow ℓ σ rest st
-  termination_by fuel _ _ _ _ branches _ => (fuel, 1, branches.length)
+      ++ exploreSymBranches fuel scrut borrow ℓ σ stuck eqn rest st
+  termination_by fuel _ _ _ _ _ _ branches _ => (fuel, 1, branches.length)
 end
 
 /-! ## Running symbolic programs -/

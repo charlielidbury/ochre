@@ -48,14 +48,14 @@ def sortRangeLT2 (fuel lo cnt l : Term) : Term :=
 def partScanEExpected : Decl :=
   { name := "partScanE", retType := .const "Unit",
     telescope := [("v", .borrowT listNatT listNatT), ("k", natT), ("i", natT), ("g", natT), ("pivot", natT)],
-    body := .matchE ⟨1, "k"⟩ [
-      .mk "Z" [] (.matchE ⟨2, "i"⟩ [
+    body := .matchE ⟨1, "k"⟩ none [
+      .mk "Z" [] (.matchE ⟨2, "i"⟩ none [
         .mk "Z" [] u,
         .mk "S" [⟨6, "i2"⟩] (.seq (.call "swapS" [.var ⟨0, "v"⟩, zt, tS (V 6 "i2"), u, u]) u) ]),
       .mk "S" [⟨5, "k2"⟩]
         (.letIn ⟨6, "c"⟩ (lebT (nthT (tS (addTm (V 2 "i") (V 3 "g"))) (dV 0 "v")) (V 4 "pivot"))
-          (.matchE ⟨6, "c"⟩ [
-            .mk "True" [] (.matchE ⟨3, "g"⟩ [
+          (.matchE ⟨6, "c"⟩ none [
+            .mk "True" [] (.matchE ⟨3, "g"⟩ none [
               .mk "Z" [] (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), zt, V 4 "pivot"]),
               .mk "S" [⟨7, "g2"⟩] (.seq (.call "swapS" [.borrow (dV 0 "v"), tS (V 2 "i"), tS (addTm (V 2 "i") (tS (V 7 "g2"))), u, u])
                 (.call "partScanE" [.var ⟨0, "v"⟩, V 5 "k2", tS (V 2 "i"), tS (V 7 "g2"), V 4 "pivot"])) ]),
@@ -73,7 +73,7 @@ def pivotPlaceHExpected : Decl :=
     [("v", .borrowT listNatT listNatT), ("i", natT), ("g", natT),
      ("hlen", .idT natT (lenT (dV 0 "v")) (tS (addTm (V 1 "i") (V 2 "g"))))]
     (.const "Unit")
-    (.matchE ⟨1, "i"⟩ [
+    (.matchE ⟨1, "i"⟩ none [
       .mk "Z" [] .unit,
       .mk "S" [⟨4, "i2"⟩] (.letIn ⟨5, "p2"⟩
         (leRwR (tS (tS (V 4 "i2"))) (tS (tS (addTm (V 4 "i2") (V 2 "g")))) (lenT (dV 0 "v"))

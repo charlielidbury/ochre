@@ -51,7 +51,9 @@ syntax:max ident "(" dlle,* ")" : dlle        -- constructor application C(a, b)
 syntax:70 "&mut" dlle:70 : dlle               -- mutable borrow
 syntax:75 "*" dlle:75 : dlle                  -- dereference / peel
 syntax:max "match" ident "{" dllArm,* "}" : dlle   -- pattern match (§3)
+syntax:max "match" ident ":" ident "{" dllArm,* "}" : dlle     -- …with a branch equation (M23)
 syntax:max "if" dlle "{" dllb "}" "else" "{" dllb "}" : dlle   -- §12 sugar over a Bool match
+syntax:max "if" ident ":" dlle "{" dllb "}" "else" "{" dllb "}" : dlle  -- …with a branch equation
 
 syntax "{" dllb "}" : dllArmBody              -- braced block body
 syntax dlle : dllArmBody                      -- bare expression body
@@ -130,7 +132,16 @@ partial def expandE (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dl
   | `(dlle| match $x:ident { $arms,* }) => do
     let id ← lookupVarId ctx x
     let (arms', n) ← expandArms ctx next arms.getElems.toList
-    return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote x.getId.toString)⟩ [$arms',*]), n)
+    return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote x.getId.toString)⟩ none [$arms',*]), n)
+  -- M23: `match h : x { … }` — ONE equation binder for the whole match, in scope
+  -- in every arm at that arm's own `Id τ ⟨pre-split x⟩ ⟨ctor⟩` (Lean's `match h :
+  -- x with`). The name is DECLARED; without it nothing is bound and nothing minted.
+  | `(dlle| match $h:ident : $x:ident { $arms,* }) => do
+    let id ← lookupVarId ctx x
+    let hName := h.getId.toString
+    let (arms', n) ← expandArms ((hName, next) :: ctx) (next + 1) arms.getElems.toList
+    return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote x.getId.toString)⟩
+      (some ⟨$(quote next), $(quote hName)⟩) [$arms',*]), n)
   | `(dlle| if $c:dlle { $t:dllb } else { $f:dllb }) => do
     -- Sugar (§12): `if e { t } else { f }` = bind e to a fresh Bool scrutinee,
     -- then `match` it. The condition (e.g. `leb(a, b)`) must be Bool-valued.
@@ -139,7 +150,16 @@ partial def expandE (ctx : List (String × Nat)) (next : Nat) (stx : TSyntax `dl
     let (t', n2) ← expandB ctx (n1 + 1) t
     let (f', n3) ← expandB ctx n2 f
     return (← `(Dllbc.Term.letIn ⟨$(quote scrutId), "__if"⟩ $c'
-      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩
+      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩ none
+        [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
+  | `(dlle| if $h:ident : $c:dlle { $t:dllb } else { $f:dllb }) => do
+    let (c', n1) ← expandE ctx next c
+    let hName := h.getId.toString
+    let ctx' := (hName, n1 + 1) :: ctx
+    let (t', n2) ← expandB ctx' (n1 + 2) t
+    let (f', n3) ← expandB ctx' n2 f
+    return (← `(Dllbc.Term.letIn ⟨$(quote n1), "__if"⟩ $c'
+      (Dllbc.Term.matchE ⟨$(quote n1), "__if"⟩ (some ⟨$(quote (n1 + 1)), $(quote hName)⟩)
         [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
   | `(dlle| $x:ident) => do
     let s := x.getId.toString

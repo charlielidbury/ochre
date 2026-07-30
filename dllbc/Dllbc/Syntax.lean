@@ -63,8 +63,15 @@ inductive Term where
   | deref  : Term → Term
   /-- `match x { … }` — one-constructor-deep pattern match on a variable
       scrutinee (§3). Owned or borrow mode is chosen at runtime by what the
-      scrutinee's slot holds. -/
-  | matchE : Var → List Branch → Term
+      scrutinee's slot holds.
+
+      The `Option Var` is the **branch-equation binder** (M23), the surface
+      `match h : x { … }`: when present, every branch additionally binds `h` to
+      a proof of `Id τ ⟨the scrutinee's pre-split value⟩ ⟨this branch's
+      constructor⟩`. One name for the whole match (its *type* is what varies per
+      branch), exactly as in Lean's `match h : x with`. `none` is the plain
+      form — nothing extra is bound and nothing is minted. -/
+  | matchE : Var → Option Var → List Branch → Term
   /-- `e ; rest` — expression statement: ⇒-evaluate `e` for effect, discard
       its value, then run `rest`. Sequences a `match` (or any effectful term)
       used in statement position without binding a throwaway slot. -/
@@ -121,7 +128,7 @@ mutual
     | .ctorApp n as, .ctorApp m bs => n == m && Term.beqList as bs
     | .borrow a, .borrow b => Term.beq a b
     | .deref a, .deref b => Term.beq a b
-    | .matchE x as, .matchE y bs => x == y && Term.beqBranches as bs
+    | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs
     | .unit, .unit => true

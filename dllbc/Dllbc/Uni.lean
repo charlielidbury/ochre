@@ -103,7 +103,9 @@ syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow 
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
 syntax:10 uterm:11 "→" uterm:10 : uterm                      -- non-dependent arrow
 syntax:max "match" ident "{" uarm,* "}" : uterm              -- runtime match (§3)
+syntax:max "match" ident ":" ident "{" uarm,* "}" : uterm    -- …with a branch equation (M23)
 syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar over a Bool match
+syntax:max "if" ident ":" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- …with a branch equation
 
 -- Pure eliminator sugar (§15b) — for `pure{}` / comptime positions. Arm bodies are
 -- `ublk` so a `let x = e ; …` proof-let sequence (StdLemmas) works uniformly.
@@ -245,14 +247,34 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
     | some id =>
       let (arms', n) ← elabUArms rctx pctx next arms.getElems.toList
-      return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote s)⟩ [$arms',*]), n)
+      return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote s)⟩ none [$arms',*]), n)
+  -- M23: `match h : x { … }` — the branch-equation form. One binder for the whole
+  -- match (its TYPE is what varies per arm), as in Lean's `match h : x with`.
+  | `(uterm| match $h:ident : $x:ident { $arms,* }) => do
+    let s := x.getId.toString
+    match rctx.lookup s with
+    | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
+    | some id =>
+      let hName := h.getId.toString
+      let (arms', n) ← elabUArms ((hName, next) :: rctx) pctx (next + 1) arms.getElems.toList
+      return (← `(Dllbc.Term.matchE ⟨$(quote id), $(quote s)⟩
+        (some ⟨$(quote next), $(quote hName)⟩) [$arms',*]), n)
   | `(uterm| if $c:uterm { $t:ublk } else { $f:ublk }) => do  -- §12 sugar → Bool match
     let (c', n1) ← elabUTerm false rctx pctx next c
     let scrutId := n1
     let (t', n2) ← elabUBlk false rctx pctx (n1 + 1) t
     let (f', n3) ← elabUBlk false rctx pctx n2 f
     return (← `(Dllbc.Term.letIn ⟨$(quote scrutId), "__if"⟩ $c'
-      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩
+      (Dllbc.Term.matchE ⟨$(quote scrutId), "__if"⟩ none
+        [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
+  | `(uterm| if $h:ident : $c:uterm { $t:ublk } else { $f:ublk }) => do
+    let (c', n1) ← elabUTerm false rctx pctx next c
+    let hName := h.getId.toString
+    let rctx' := (hName, n1 + 1) :: rctx
+    let (t', n2) ← elabUBlk false rctx' pctx (n1 + 2) t
+    let (f', n3) ← elabUBlk false rctx' pctx n2 f
+    return (← `(Dllbc.Term.letIn ⟨$(quote n1), "__if"⟩ $c'
+      (Dllbc.Term.matchE ⟨$(quote n1), "__if"⟩ (some ⟨$(quote (n1 + 1)), $(quote hName)⟩)
         [Dllbc.Branch.mk "True" [] $t', Dllbc.Branch.mk "False" [] $f'])), n3)
   | `(uterm| elim $scrut:uterm return $motive:uterm { $arms,* }) =>
     elabUElim isTy rctx pctx next scrut motive arms.getElems

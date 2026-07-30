@@ -84,8 +84,8 @@ def addZeroT (n : Term) : Term := .app StdLemmas.add_zero n
 def nthS : Decl :=
   { name := "nth", retType := mutNat,
     telescope := [("v", .borrowT listNatT listNatT), ("i", natT), ("p", LeT (tS (V 1 "i")) (lenT (.deref (V 0 "v"))))],
-    body := .matchE ⟨0, "v"⟩ [ .mk "Nil" [] (bE (V 2 "p")),
-      .mk "Cons" [⟨3, "hd"⟩, ⟨4, "tl"⟩] (.matchE ⟨1, "i"⟩ [ .mk "Z" [] (rb ⟨3, "hd"⟩),
+    body := .matchE ⟨0, "v"⟩ none [ .mk "Nil" [] (bE (V 2 "p")),
+      .mk "Cons" [⟨3, "hd"⟩, ⟨4, "tl"⟩] (.matchE ⟨1, "i"⟩ none [ .mk "Z" [] (rb ⟨3, "hd"⟩),
         .mk "S" [⟨5, "k"⟩] (.call "nth" [rb ⟨4, "tl"⟩, V 5 "k", V 2 "p"]) ]) ],
     back := some (.lam natT (setT (V 1 "i") (.pvar 0) (.deref (V 0 "v")))) }
 
@@ -93,11 +93,11 @@ def nth2S : Decl :=
   { name := "nth2", retType := pairMut,
     telescope := [("v", .borrowT listNatT listNatT), ("i", natT), ("j", natT),
       ("pij", LeT (tS (V 1 "i")) (V 2 "j")), ("p2", LeT (tS (V 2 "j")) (lenT (.deref (V 0 "v"))))],
-    body := .matchE ⟨0, "v"⟩ [ .mk "Nil" [] (bE (V 4 "p2")),
-      .mk "Cons" [⟨5, "hd"⟩, ⟨6, "tl"⟩] (.matchE ⟨1, "i"⟩ [
-        .mk "Z" [] (.matchE ⟨2, "j"⟩ [ .mk "Z" [] (bE (V 3 "pij")),
+    body := .matchE ⟨0, "v"⟩ none [ .mk "Nil" [] (bE (V 4 "p2")),
+      .mk "Cons" [⟨5, "hd"⟩, ⟨6, "tl"⟩] (.matchE ⟨1, "i"⟩ none [
+        .mk "Z" [] (.matchE ⟨2, "j"⟩ none [ .mk "Z" [] (bE (V 3 "pij")),
           .mk "S" [⟨7, "jjv"⟩] (.ctorApp "Pair" [rb ⟨5, "hd"⟩, .call "nth" [rb ⟨6, "tl"⟩, V 7 "jjv", V 4 "p2"]]) ]),
-        .mk "S" [⟨8, "k"⟩] (.matchE ⟨2, "j"⟩ [ .mk "Z" [] (bE (V 3 "pij")),
+        .mk "S" [⟨8, "k"⟩] (.matchE ⟨2, "j"⟩ none [ .mk "Z" [] (bE (V 3 "pij")),
           .mk "S" [⟨9, "jj2"⟩] (.call "nth2" [rb ⟨6, "tl"⟩, V 8 "k", V 9 "jj2", V 3 "pij", V 4 "p2"]) ]) ]) ],
     back := some (.lam natT (.lam natT (setT (V 1 "i") (.pvar 1) (setT (V 2 "j") (.pvar 0) (.deref (V 0 "v")))))) }
 
@@ -106,7 +106,7 @@ def swapSN : Decl :=
     telescope := [("v", .borrowT listNatT listNatT), ("i", natT), ("j", natT),
       ("pij", LeT (tS (V 1 "i")) (V 2 "j")), ("p2", LeT (tS (V 2 "j")) (lenT (.deref (V 0 "v"))))],
     body := .letIn ⟨5, "pr"⟩ (.call "nth2" [V 0 "v", V 1 "i", V 2 "j", V 3 "pij", V 4 "p2"])
-      (.matchE ⟨5, "pr"⟩ [ .mk "Pair" [⟨6, "ei"⟩, ⟨7, "ej"⟩]
+      (.matchE ⟨5, "pr"⟩ none [ .mk "Pair" [⟨6, "ei"⟩, ⟨7, "ej"⟩]
         (.letIn ⟨8, "t"⟩ (.deref (V 6 "ei"))
           (.assign (.deref (V 6 "ei")) (.deref (V 7 "ej"))
             (.assign (.deref (V 7 "ej")) (V 8 "t") .unit))) ]),
@@ -118,8 +118,8 @@ def partScan : Decl :=
   { name := "partScan", retType := .const "Unit",
     telescope := [("v", .borrowT listNatT listNatT), ("k", natT), ("i", natT), ("g", natT), ("pivot", natT),
       ("hlen", .idT natT (lenT dv) (tS (addTmH (V 1 "k") (addTmH (V 2 "i") (V 3 "g")))))],
-    body := .matchE ⟨1, "k"⟩ [
-      .mk "Z" [] (.matchE ⟨2, "i"⟩ [
+    body := .matchE ⟨1, "k"⟩ none [
+      .mk "Z" [] (.matchE ⟨2, "i"⟩ none [
         .mk "Z" [] .unit,
         .mk "S" [⟨7, "i2"⟩] (.letIn ⟨8, "p2b"⟩
           (leRwR (tS (tS (V 7 "i2"))) (tS (tS (addTmH (V 7 "i2") (V 3 "g")))) (lenT dv)
@@ -127,8 +127,8 @@ def partScan : Decl :=
             (leAdd (V 7 "i2") (V 3 "g")))
           (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 7 "i2"), .unit, V 8 "p2b"]) .unit)) ]),
       .mk "S" [⟨6, "k2"⟩] (.letIn ⟨7, "c"⟩ (lebP (nthP (tS (addTmH (V 2 "i") (V 3 "g"))) dv) (V 4 "pivot"))
-        (.matchE ⟨7, "c"⟩ [
-          .mk "True" [] (.matchE ⟨3, "g"⟩ [
+        (.matchE ⟨7, "c"⟩ none [
+          .mk "True" [] (.matchE ⟨3, "g"⟩ none [
             .mk "Z" [] (.letIn ⟨8, "hlZ"⟩
               (idTr (lenT dv) (tS (addTmH (tS (V 6 "k2")) (addTmH (V 2 "i") (.ctorApp "Z" []))))
                 (tS (addTmH (V 6 "k2") (addTmH (tS (V 2 "i")) (.ctorApp "Z" []))))
@@ -170,8 +170,8 @@ def partScanRange : Decl :=
   { name := "partScanRange", retType := .const "Unit",
     telescope := [("v", .borrowT listNatT listNatT), ("lo", natT), ("k", natT), ("i", natT), ("g", natT), ("pivot", natT),
       ("hle", LeT (addTmH (V 1 "lo") (tS (addTmH (V 2 "k") (addTmH (V 3 "i") (V 4 "g"))))) (lenT dv))],
-    body := .matchE ⟨2, "k"⟩ [
-      .mk "Z" [] (.matchE ⟨3, "i"⟩ [
+    body := .matchE ⟨2, "k"⟩ none [
+      .mk "Z" [] (.matchE ⟨3, "i"⟩ none [
         .mk "Z" [] .unit,
         .mk "S" [⟨7, "i2"⟩] (.letIn ⟨8, "pij"⟩ (leAddS (V 1 "lo") (V 7 "i2"))
           (.letIn ⟨9, "p2"⟩
@@ -186,8 +186,8 @@ def partScanRange : Decl :=
               (V 6 "hle"))
             (.seq (.call "swapS" [.var ⟨0, "v"⟩, V 1 "lo", addTmH (V 1 "lo") (tS (V 7 "i2")), V 8 "pij", V 9 "p2"]) .unit))) ]),
       .mk "S" [⟨7, "k2"⟩] (.letIn ⟨8, "c"⟩ (lebP (nthP (addTmH (V 1 "lo") (tS (addTmH (V 3 "i") (V 4 "g")))) dv) (V 5 "pivot"))
-        (.matchE ⟨8, "c"⟩ [
-          .mk "True" [] (.matchE ⟨4, "g"⟩ [
+        (.matchE ⟨8, "c"⟩ none [
+          .mk "True" [] (.matchE ⟨4, "g"⟩ none [
             .mk "Z" [] (.letIn ⟨9, "hlZ"⟩
               (leRwL (lenT dv)
                 (addTmH (V 1 "lo") (tS (addTmH (tS (V 7 "k2")) (addTmH (V 3 "i") (.ctorApp "Z" [])))))
@@ -246,7 +246,7 @@ def partition : Decl :=
   { name := "partition", retType := .const "Unit",
     telescope := [("v", .borrowT listNatT listNatT), ("n", natT),
       ("hlenW", .idT natT (lenT dv) (V 1 "n"))],
-    body := .matchE ⟨1, "n"⟩ [
+    body := .matchE ⟨1, "n"⟩ none [
       .mk "Z" [] .unit,
       .mk "S" [⟨3, "n2"⟩] (.letIn ⟨4, "pivot"⟩ (nthP (.ctorApp "Z" []) dv)
         (.letIn ⟨5, "hlen"⟩
@@ -261,7 +261,7 @@ def partitionQ : Decl :=
   { name := "partitionQ",
     retType := .sigmaT natT (.idT natT (.pvar 0) (.app (.app StdLemmas.partIdxL (V 1 "n")) dv)),
     telescope := [("v", .borrowT listNatT listNatT), ("n", natT), ("hlenW", .idT natT (lenT dv) (V 1 "n"))],
-    body := .matchE ⟨1, "n"⟩ [
+    body := .matchE ⟨1, "n"⟩ none [
       .mk "Z" [] (.ctorApp "Pair" [.ctorApp "Z" [], .ctorApp "Refl" []]),
       .mk "S" [⟨3, "n2"⟩] (.letIn ⟨4, "i"⟩ (.app (.app StdLemmas.partIdxL (.ctorApp "S" [V 3 "n2"])) dv)
         (.letIn ⟨5, "pivot"⟩ (nthP (.ctorApp "Z" []) dv)
@@ -279,7 +279,7 @@ def partitionRange : Decl :=
     retType := .sigmaT natT (.idT natT (.pvar 0) (partIdxRangeLT (V 1 "lo") (V 2 "cnt") dv)),
     telescope := [("v", .borrowT listNatT listNatT), ("lo", natT), ("cnt", natT),
       ("hbnd", LeT (addTmH (V 1 "lo") (V 2 "cnt")) (lenT dv))],
-    body := .matchE ⟨2, "cnt"⟩ [
+    body := .matchE ⟨2, "cnt"⟩ none [
       .mk "Z" [] (.ctorApp "Pair" [.ctorApp "Z" [], .ctorApp "Refl" []]),
       .mk "S" [⟨4, "cnt2"⟩] (.letIn ⟨5, "i"⟩ (partIdxRangeLT (V 1 "lo") (tS (V 4 "cnt2")) dv)
         (.letIn ⟨6, "pivot"⟩ (nthP (V 1 "lo") dv)
@@ -298,11 +298,11 @@ def quicksort : Decl :=
   { name := "quicksort", retType := .const "Unit",
     telescope := [("v", .borrowT listNatT listNatT), ("fuel", natT), ("lo", natT), ("cnt", natT),
       ("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))],
-    body := .matchE ⟨1, "fuel"⟩ [
+    body := .matchE ⟨1, "fuel"⟩ none [
       .mk "Z" [] .unit,
-      .mk "S" [⟨5, "f2"⟩] (.matchE ⟨3, "cnt"⟩ [
+      .mk "S" [⟨5, "f2"⟩] (.matchE ⟨3, "cnt"⟩ none [
         .mk "Z" [] .unit,
-        .mk "S" [⟨6, "cnt2"⟩] (.matchE ⟨6, "cnt2"⟩ [
+        .mk "S" [⟨6, "cnt2"⟩] (.matchE ⟨6, "cnt2"⟩ none [
           .mk "Z" [] .unit,
           .mk "S" [⟨7, "cnt3"⟩]
             (.letIn ⟨8, "pivot"⟩ (nthP (V 2 "lo") dv)
@@ -355,7 +355,7 @@ def twoRec : Decl :=
   { name := "twoRec",
     retType := .const "Unit",
     telescope := [("v", .borrowT listNatT listNatT), ("f", natT)],
-    body := .matchE ⟨1, "f"⟩ [
+    body := .matchE ⟨1, "f"⟩ none [
       .mk "Z" [] .unit,
       .mk "S" [⟨2, "f2"⟩]
         (.seq (.call "twoRec" [.borrow (.deref (V 0 "v")), V 2 "f2"])
@@ -406,7 +406,7 @@ partial def tsize : Term → Nat
   | .borrow a => 1 + tsize a
   | .deref a => 1 + tsize a
   | .borrowT a b => 1 + tsize a + tsize b
-  | .matchE _ brs => 1 + (brs.map (fun b => tsize b.body)).foldl (·+·) 0
+  | .matchE _ _ brs => 1 + (brs.map (fun b => tsize b.body)).foldl (·+·) 0
   | .call _ args => 1 + (args.map tsize).foldl (·+·) 0
   | _ => 1
 
@@ -418,27 +418,27 @@ partial def exploreIO (fuel : Nat) (t : Term) (st : St) (lbl : String) : IO (Lis
   | 0 => pure [.error "explore: out of fuel"]
   | fuel + 1 =>
     match t with
-    | .matchE scrut branches =>
+    | .matchE scrut eqn branches =>
       match (reorgScrut fuel scrut).run st with
       | .error e _ => pure [.error e]
       | .ok disp st' =>
         match disp with
         | .ownedCtor name fields =>
-          match (ownedSelect scrut branches name fields).run st' with
+          match (ownedSelect scrut eqn branches name fields).run st' with
           | .error e _ => pure [.error e]
           | .ok body st'' => exploreIO fuel body st'' lbl
         | .borrowCtor ℓ name fields =>
-          match (borrowSelect scrut branches ℓ name fields).run st' with
+          match (borrowSelect scrut eqn branches ℓ name fields).run st' with
           | .error e _ => pure [.error e]
           | .ok body st'' => exploreIO fuel body st'' lbl
-        | .ownedSym σ =>
+        | .ownedSym σ stuck =>
           match (checkExhaustive fuel σ branches).run st' with
           | .error e _ => pure [.error e]
-          | .ok _ st'' => goBranches fuel scrut false 0 σ branches st'' lbl
+          | .ok _ st'' => goBranches fuel scrut false 0 σ stuck eqn branches st'' lbl
         | .borrowSym ℓ σ =>
           match (checkExhaustive fuel σ branches).run st' with
           | .error e _ => pure [.error e]
-          | .ok _ st'' => goBranches fuel scrut true ℓ σ branches st'' lbl
+          | .ok _ st'' => goBranches fuel scrut true ℓ σ none eqn branches st'' lbl
     | .letIn x rhs rest => do
       let t0 ← IO.monoMsNow
       let r := (do let v ← readR fuel rhs; bindSlot x v; pure v).run st
@@ -477,14 +477,16 @@ partial def exploreIO (fuel : Nat) (t : Term) (st : St) (lbl : String) : IO (Lis
       match r with
       | .error e _ => pure [.error e]
       | .ok v st' => pure [.ok (v, st')]
-  where goBranches (fuel : Nat) (scrut : Var) (borrow : Bool) (ℓ σ : Nat) (branches : List Branch) (st : St) (lbl : String) : IO (List (Except String (Val × St))) := do
+  where goBranches (fuel : Nat) (scrut : Var) (borrow : Bool) (ℓ σ : Nat) (stuck : Option Val)
+      (eqn : Option Var) (branches : List Branch) (st : St) (lbl : String) : IO (List (Except String (Val × St))) := do
     match branches with
     | [] => pure []
     | br :: rest => do
-      let head ← (match ((if borrow then symBorrowSetup 1000 scrut ℓ σ br else symOwnedSetup 1000 scrut σ br)).run st with
+      let head ← (match ((if borrow then symBorrowSetup 1000 scrut ℓ σ eqn br
+                            else symOwnedSetup 1000 scrut σ stuck eqn br)).run st with
         | .error e _ => pure [.error e]
         | .ok body st' => exploreIO 1000 body st' s!"{lbl}.{br.ctor}")
-      let tail ← goBranches fuel scrut borrow ℓ σ rest st lbl
+      let tail ← goBranches fuel scrut borrow ℓ σ stuck eqn rest st lbl
       pure (head ++ tail)
 
 /-- `benchCheck` but with the per-statement instrumented explore. -/

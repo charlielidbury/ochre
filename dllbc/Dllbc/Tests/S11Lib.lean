@@ -73,7 +73,7 @@ example : checkFnOk storeProof = true := by native_decide
 def discharge : Decl :=
   { name := "discharge", retType := natT,
     telescope := [("n", natT), ("p", .idT natT tZ (tS (.var ⟨0, "n"⟩))), ("b", .const "Bool")],
-    body := .matchE ⟨2, "b"⟩ [ .mk "True" [] tZ,
+    body := .matchE ⟨2, "b"⟩ none [ .mk "True" [] tZ,
               .mk "False" [] (botElimT natT (natNoConfT (.var ⟨0, "n"⟩) (.var ⟨1, "p"⟩))) ] }
 example : checkFnOk discharge = true := by native_decide
 

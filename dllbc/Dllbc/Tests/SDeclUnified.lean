@@ -57,10 +57,10 @@ example : Decl.alphaEq nthU Dllbc.Tests.S17Spec.nthS = true := by native_decide
 -- bodies fails, alphaEq holds.
 def permuted : Decl :=
   { Dllbc.Tests.S17Spec.nthS with
-    body := .matchE ⟨0, "v"⟩ [
+    body := .matchE ⟨0, "v"⟩ none [
       .mk "Nil" [] (.app (.app (.const "botElim") (.const "Unit")) (.var ⟨2, "p"⟩)),
       .mk "Cons" [⟨30, "hd"⟩, ⟨40, "tl"⟩] (
-        .matchE ⟨1, "i"⟩ [
+        .matchE ⟨1, "i"⟩ none [
           .mk "Z" [] (.borrow (.deref (.var ⟨30, "hd"⟩))),
           .mk "S" [⟨50, "k"⟩] (.call "nth" [.borrow (.deref (.var ⟨40, "tl"⟩)), .var ⟨50, "k"⟩, .var ⟨2, "p"⟩]) ]) ] }
 example : (permuted.body == Dllbc.Tests.S17Spec.nthS.body) = false := by native_decide
