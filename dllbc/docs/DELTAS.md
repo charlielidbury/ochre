@@ -646,9 +646,43 @@ group releases atomically where the concrete machine ends lazily"); this is the 
 instance where the CONCRETE side is the one that is wrong, and it is therefore the first
 one that cannot be dismissed as the checker being conservative.
 
-What it needs is a scope-aware release: when a call returns, the loans its body created
-must end, exactly as the §5.4 audit collapses them on the checking side. That is not a
-carve-rule change and it is filed rather than built.
+**ATTEMPTED, AND THE DIAGNOSIS CHANGED — this is the entry's real content.** The obvious
+repair is a scope-aware release at call return, on the M22-a execfix's profile
+(executing-mode only, checking byte-identical). Three were built:
+
+* end the callee's loans by ID — every loan created after a mark taken AFTER the actuals
+  are bound, so the argument reborrow stays the caller's;
+* end them by FRAME — every slot at or above the callee's `nextFrame` id offset, which is
+  what "scope" literally means here;
+* collapse the markers of a JUST-UNSUSPENDED node, in the execfix's own shape, gated on
+  `executing` so checking is untouched.
+
+All three made a LIVE borrow vacant, and instrumenting the navigation to name it is what
+turned the diagnosis over:
+
+    place: navigating mid#10025 failed        -- the pivot cell's own borrow
+
+**The real obstacle is underneath the release.** `Val.segsNode` DROPS a zero-extent
+segment and UNWRAPS a lone survivor (¶1.1's drop-empty), so a node whose only surviving
+segment is one live borrow collapses to a bare `loanₘ ℓ` — and the next carve's
+demand-end, seeing a suspended node, ends exactly that borrow. A runtime-computed split
+has an empty side constantly, so this is routine concretely and unreachable symbolically,
+where a residue σ is never known to be zero. It is the same root as C7 (a zero-extent
+segment shares its base with the segment after it) reaching the other half of the
+representation: C7 was about which leaf a request SELECTS, this is about whether the
+segment a borrow is pinned to still EXISTS.
+
+So: the concrete segment representation is not stable under its own zero-extent
+normalization, and there is no intermediate state in which "the callee's segments are gone
+and the caller's are intact" can even be expressed. Releasing frames cannot fix that — the
+normalization has to stop losing the structure borrows are pinned to, which is a
+representation change rather than a call-return one. **Architectural, not local**: filed
+as its own lane, with G5 standing as a known executing-mode restriction.
+
+The natural shape for whoever takes it: keep zero-extent segments when a live borrow is
+pinned to one (or give borrows a segment identity that survives the normalization), and
+re-derive drop-empty as a property of marker-free nodes only. C7's disambiguation is
+already the precedent for treating zero-extent segments as real rather than as noise.
 
 ### G6 — `a[lo ; ..]` is unusable once a residue can be empty
 
