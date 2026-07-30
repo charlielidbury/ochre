@@ -4,6 +4,7 @@ import Dllbc.Std
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.StdLemmas
+import Dllbc.Tests.S9Diff
 
 /-!
 # §24 test suite — arrays, range places, and proof-licensed carving
@@ -655,5 +656,145 @@ example : checkFnOk callSeg [callSeg, touch] = true := by native_decide
     which is a real binder form and the honest one); or have such callees take a Σ-typed
     slice, `Σ (c : Nat). &mut (Array c T)`, which ¶4 already declares well-formed. The
     third needs no new machinery and is probably the answer; it is untested here. -/
+
+/-! ## (iv) Multi-marker collapse, and the differential over array bodies
+
+    ¶8.2's obligation 3, which the doc singles out: "a segment list can hold several
+    markers at once, so a partial collapse is now easy to write by accident. Each
+    executing former must preserve full collapse, and a negative test per rule branch —
+    the M20 lesson — should cover the multi-marker case specifically." -/
+
+/-! ### Three markers in one node, collapsed by one demand
+
+    ¶3.6 already notes that a group's release "touches TWO markers in one owner's
+    tree, which is new only in arity". Owner demand is the same story at arity three:
+    `readR`'s move ends the leftmost marker and retries until none is left, so the
+    collapse is total by construction rather than by a loop someone wrote. Both
+    granularities are exercised, because they park markers in different places — a
+    range marker IS the segment body, an element marker sits INSIDE the one-slot
+    run. -/
+
+example : expectEnv dllbc{
+    let a = Arr(3, 1, 2);
+    let p = &mut a[0 ; 1]; let q = &mut a[1 ; 1]; let r = &mut a[2 ; 1];
+    (*p)[0] := 7; (*q)[0] := 8; (*r)[0] := 9;
+    let b = a; () }
+  [("a", .bot), ("p", .bot), ("q", .bot), ("r", .bot),
+   ("b", .ctor "Arr" [Val.nat 7, Val.nat 8, Val.nat 9])] = true := by native_decide
+
+example : expectEnv dllbc{
+    let a = Arr(3, 1, 2);
+    let p = &mut a[0]; let q = &mut a[1]; let r = &mut a[2];
+    *p := 7; *q := 8; *r := 9;
+    let b = a; () }
+  [("a", .bot), ("p", .bot), ("q", .bot), ("r", .bot),
+   ("b", .ctor "Arr" [Val.nat 7, Val.nat 8, Val.nat 9])] = true := by native_decide
+
+/-! **FINDING — this test found the bug the doc predicted, on its first run.**
+
+    A node still holding a marker must not fold (¶1.3): it has no snapshot, so
+    `hasType` rejects it at the one place that judges. `arrFoldSegs?` was written as a
+    `foldr` over `Option (extent × body)`, and that shape CONFLATES "this body is not
+    owned" with "there is no accumulator yet" — both are `none`. So a marker followed
+    by an owned segment had its `none` silently overwritten by the earlier segment,
+    and the fold returned a SHORTER array as if it were the whole one.
+
+    It survived every earlier test because those put the marker LAST or first. It
+    takes a marker in the MIDDLE of three to see it — which is exactly ¶8.2's
+    obligation 3 ("a segment list can hold several markers at once, so a partial
+    collapse is now easy to write by accident") and exactly the M20 lesson about a
+    negative test per rule branch. Rewritten as a structural recursion where the two
+    `none`s cannot be confused. -/
+
+example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 7]),
+                             Val.segNode (Val.nat 1) (.loanM 0),
+                             Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 9])]).isNone
+    = true := by native_decide
+
+-- …and the three positions a marker can take, so the branch cannot be lost again.
+example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.loanM 0),
+                             Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 9])]).isNone
+    = true := by native_decide
+example : (Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 7]),
+                             Val.segNode (Val.nat 1) (.bot)]).isNone
+    = true := by native_decide
+
+-- The positive control the bug would also have broken: three owned segments fold to
+-- the full three-element run, not a prefix of it.
+example : ((Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 7]),
+                              Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 8]),
+                              Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 9])]).map
+             (Val.nfV 200)
+           == some (.ctor "Arr" [Val.nat 7, Val.nat 8, Val.nat 9])) = true := by native_decide
+
+/-! ### The differential harness, given array bodies
+
+    Appendix A: "The differential harness (M8/M9) should gain array bodies before
+    anything else is believed: the multi-marker collapse of ¶8.2's obligation 3 is
+    precisely the bug class a per-rule-branch negative test exists to catch."
+
+    The property is M9's, unchanged: for a `checkFn`-accepted caller, its CONCRETE
+    final environment (executing mode — calls run the callee's real body) is a
+    σ-instance of some accepted SYMBOLIC path's final environment (checking mode —
+    calls use the §5.3/§6.1 signature rule). -/
+
+def fill1 : Decl := decl{ fn fill1 (l : &mut (Array 1 Nat)) -> Unit { (*l)[0] := 9; () } }
+
+def bump : Decl := decl{
+  fn bump (l : &mut (Array 2 Nat)) -> Unit { (*l)[0] := 7; (*l)[1] := 8; () } }
+
+def arrPool : List Decl := [fill1, bump]
+
+/-- A carved segment handed to a call, then the whole array demanded back. -/
+def arrCaller1 : Term := dllbcWith [] {
+  let a = Arr(3, 1, 2); let s = &mut a[1 ; 1]; fill1(s); let b = a; () }
+
+/-- TWO carved segments, one passed to each of two calls, then rejoined — ¶3.6's
+    "several captured loans in one owner" at the arity the doc calls new. -/
+def arrCaller2 : Term := dllbcWith [] {
+  let a = Arr(3, 1, 2, 7);
+  let s = &mut a[0 ; 2]; let t = &mut a[2 ; 2];
+  bump(s); bump(t);
+  let b = a; () }
+
+/-- Inline carving with no call at all: the residues never leave, so there is nothing
+    for a group to forget. -/
+def arrCaller3 : Term := dllbcWith [] {
+  let a = Arr(3, 1, 2);
+  let p = &mut a[0 ; 1]; let q = &mut a[1 ; 2];
+  (*p)[0] := 5; (*q)[1] := 6;
+  let b = a; () }
+
+def arrCallers : List Term := [arrCaller1, arrCaller2, arrCaller3]
+
+example : arrCallers.all (fun b => checkFnOk (Dllbc.Tests.S9Diff.callerDecl b) arrPool)
+    = true := by native_decide
+
+example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrPool b)
+    = true := by native_decide
+
+/-! ### FINDING — the simulation relation needed an array case, and the harness said so
+
+    The first array body handed to `diffV2` reported a counterexample, and it was a
+    FALSE one. Checking mode ends with
+
+        b ↦ Arr⟨1 ▷ [3], 1 ▷ σ₀, 1 ▷ [2]⟩
+
+    where executing mode ends with `b ↦ [3, 9, 2]`. Both are right. Merge concatenates
+    runs but leaves a σ body alone — it must, since two σ's have no run to concatenate
+    — so a checking-mode group release, which mints a fresh existential at the
+    segment's owed type, blocks exactly the rejoin the concrete run performs. The
+    values agree; the TREES do not.
+
+    So the relation had to learn ¶1.3's fold: an array is compared up to its snapshot,
+    which means splitting the concrete run by the symbolic extents and matching
+    segment-wise (`matchVal`'s `§segs`-vs-run case, S9Diff). This is §6.1's
+    already-flagged over-approximation — "a group releases atomically where the
+    concrete machine ends lazily" — arriving for arrays, and ¶3.6 predicts exactly
+    that: "any simulation relation that reconciled the old case reconciles this one".
+    It does, but not for free: the old relation was structural, and arrays are the
+    first values in the calculus whose state form is coarser than their value. Worth
+    knowing before the metatheory is written, since obligation 4 (merge is
+    value-preserving) is what the new case silently assumes. -/
 
 end Dllbc.Tests.S24Arrays

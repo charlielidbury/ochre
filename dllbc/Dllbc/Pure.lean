@@ -354,17 +354,25 @@ def asSeg? : Val → Option (Val × Val)
     warn about, reached by a new route. -/
 def segOwned (b : Val) : Bool := !hasStateMarker b
 
+/-- The total extent of a segment list: RIGHT-NESTED, with no trailing `Z`. `add`
+    recurses on its first argument, so `add c Z` is stuck the moment `c` is symbolic,
+    and every conversion the residue transition arranges would fail on the trailing
+    zero alone. -/
+partial def segsExtent? : List Val → Option Val
+  | [] => some (.ctor "Z" [])
+  | [s] => (asSeg? s).map (·.1)
+  | s :: rest => do
+    let (c, _) ← asSeg? s
+    let tot ← segsExtent? rest
+    some (kAdd c tot)
+
 /-- The extent of an array-shaped value read off the value itself, where that is
     possible: a run knows its length, a segment list sums its extents, an `arrCat`
-    spine carries both halves'. A bare `σ` does NOT — its extent lives in its
-    `sctx` type, which only the machine can reach (`arrExtent` there). -/
+    spine carries both halves. A bare `σ` does NOT — its extent lives in its `sctx`
+    type, which only the machine can reach (`arrExtent` there). -/
 partial def arrExtentPure? : Val → Option Val
   | .ctor "Arr" vs => some (valOfNat vs.length)
-  | .ctor "§segs" segs =>
-    segs.foldr (fun s acc => match asSeg? s, acc with
-      | some (c, _), some tot => some (kAdd c tot)
-      | some (c, _), none => some c
-      | none, _ => none) none
+  | .ctor "§segs" segs => segsExtent? segs
   | .app (.app (.app (.app (.const "arrCat") m) k) _) _ => some (kAdd m k)
   | _ => none
 
@@ -409,18 +417,18 @@ def arrCatS (m k a b : Val) : Val := .app (.app (.app (.app (.const "arrCat") m)
     knowledge form of what the array *is*, which never mentions a marker or a hole.
     `none` when some body is one: "a suspended array has no snapshot; only a
     collapsed one does", §5.2's proper-payload premise arriving at an array node. -/
-partial def arrFoldSegs? (segs : List Val) : Option Val :=
-  match segs.foldr (fun s acc =>
-      match asSeg? s with
-      | none => none
-      | some (c, b) =>
-        if !segOwned b then none
-        else match acc with
-          | none => some (c, b)
-          | some (ct, bt) => some (kAdd c ct, arrCatS c ct b bt))
-      none with
-  | some (_, b) => some b
-  | none => if segs.isEmpty then some (.ctor "Arr" []) else none
+partial def arrFoldSegs? : List Val → Option Val
+  | [] => some (.ctor "Arr" [])
+  | [s] => do
+    let (_, b) ← asSeg? s
+    if segOwned b then some b else none
+  | s :: rest => do
+    let (c, b) ← asSeg? s
+    if !segOwned b then none
+    else do
+      let bt ← arrFoldSegs? rest
+      let ct ← segsExtent? rest
+      some (arrCatS c ct b bt)
 
 /-- Fold every *foldable* segment list in `v`, leaving a suspended one in place.
     Total by design: an unfoldable node stays the state form it is and is rejected
