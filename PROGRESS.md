@@ -1,5 +1,84 @@
 # Progress
 
+## 2026-07-30 — dllbc/: M23 CLOSES — in-place quicksort, Sorted ∧ Perm, ZERO declared backs
+
+`quicksort` on main (4e950ab7):
+
+    fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
+      -> Σ (hs : Sorted (*v)) → Π n. Id Nat (count n (*v)) (count n (old *v))
+
+Sortedness and permutation over the exit snapshot, with **no `back` anywhere in the
+call tree**. `partition`, `append_back` and the two self-calls are each described only
+by their return type, and every step of the proof is assembled in the body from a
+callee's own postcondition. The `Sorted` is the structural Σ-chain, not M22's
+positional `SortedR` — which is why `sigmaRec` (stage (i)) had to land first. M22's
+model-based stack stays on main untouched as the comparison baseline.
+
+**THE WALL M23-iv MEASURED IS CLOSED: BRANCH EQUATIONS (5194a9cd).** `match h : x { … }`
+binds in every branch an equation `h : Id τ ⟨the scrutinee's PRE-SPLIT value⟩ ⟨this
+branch's constructor⟩` — Lean's `match h : x with`, Coq's `destruct … eqn:`. It stays
+inside §3.2's knowledge/state invariant because the equation IS the branch's match-shape
+knowledge, until now applied only as a substitution and now additionally reified as a
+citable term. The finding that made it cheap: the equation's content depends entirely on
+what happened to the pre-split value. At an ordinary symbolic split ⇜ already rewrote it
+to this constructor everywhere, so both endpoints are identical and `h` is literally
+`Refl` — no σ, no sctx entry, zero cost; same for a concrete scrutinee. Only at a STUCK
+split, where `generalizeStuck` ABSTRACTED the spine before refining, is it a genuine
+hypothesis. The binder went on `matchE` (one name per match, since only its TYPE varies
+per branch), so `Branch` was untouched and the ~75 `.mk` sites — 40 in the differential
+generator — never moved; 58 `.matchE` sites migrated mechanically.
+
+**Stage (iv), the relational partition (e0c217e2).** `*v` keeps the elements ≤ p; the
+rest returns by value. Six conjuncts: `Ub p (*v)`, `Lb p hi`, two `Le` length facts, and
+`Π n. add (count n (*v)) (count n hi) = count n (old *v)`. **No pure model of the
+partition exists in this milestone** — there is no `partitionL`; every conjunct is proven
+inductively in the body from the recursive call's ensures. The program is §4.1's
+take-and-rebuild, not Lomuto's array scan, and the §8 guard is satisfied with no counter
+passed at all. Branch equations paid immediately and are not optional: the same body with
+`Refl` in place of `e` is the rejected wall test one screen up.
+
+**The keystone, in whole-list form.** `sorted_append_pivot` wants `Ub x` of the left part
+AFTER sorting while the partition bounded it BEFORE, and `Ub`/`Lb` (Σ-chains over the
+spine) are not natively permutation-invariant. M22 named the route at the positional
+encoding: cross to the multiset, where the property is `Π x. x > p → count x l = Z` and
+permutation-invariance is a one-line `id_trans`. `ub_perm`/`lb_perm` plus their four
+crossings are that. This is the only place the assembly is more than gluing.
+
+**PERFORMANCE, unasked for: the check takes 21 ms.** M22's quicksort took 38 minutes
+before the build-config work and 21.8 s after it (92089249). A thousandfold against the
+tuned number on the same machine, with no perf work at all. The whole-list structural
+encoding keeps normal forms small where the positional one (`SortedR cnt lo`, `partIdxL`,
+bounded-Π predicates over range indices) made them enormous. Naturalness and cost were
+never in tension: the natural program is also the cheap one. Partition checks in 3 ms.
+
+**Two more machine defects, both the same class, both live on main before this.** The
+demand-end rule — a suspension must collapse before anything reads through it — was
+implemented at some sites and not others, and each unimplemented site was a silent-marker
+bug. `readR`'s take (`let lo = *v` after a call that borrowed `v`) took the parked
+`loanₘ ℓ` ITSELF and it rode into a proof as if it were the callee's released list; and
+`collapseCDerefs` did not treat a bare `.var` as a place, so naming a local whose loan a
+call still held read the marker. With M23-ii's ⇝-deref fix that is four sites of one rule
+closed in this milestone. The rule is now stated once in §5.2 (277644f9) rather than
+per-site.
+
+**PAIN DIARY — staging is now the dominant cost of writing these bodies, and quicksort is
+the measurement.** Four builders (`mkCnt`, `mkUb`, `mkLb`, `fin`), applied in stages as
+their arguments arrive, exist solely because a proof must name values that later
+statements consume — "the value `rest` had", "what `*v` held before that call". None does
+mathematical work; every one would disappear under the filed `old`-for-consumed-things
+feature, which now has **six** independent instances across M22/M23. It was NOT built:
+staging reached every case, so the honest deliverable is the measured cost rather than a
+rule added under deadline. One sharp sub-observation: the length conjuncts needed no
+staging at all, because `len rest` is a Nat and naming the computed value once suffices —
+the counts cannot do that, since `count n rest` is a family over `n` and it is the LIST
+the lemma wants. That is what staging is for, stated precisely.
+
+**Next.** The snapshot-naming feature (`old` for consumed parameters and binders) is the
+one clearly-earned item, with six filings and a measured cost. Beyond it: the executing
+differential covers quicksort on seven inputs but the calculus still has no metatheory;
+and §6.2's conformance machinery now has a fully worked propositional counterpart to be
+compared against.
+
 ## 2026-07-30 — dllbc/: M23 — direct proving with NO declared backs (4 of 6 stages)
 
 Removing `back` from the quicksort train. A callee's ONLY description becomes its
