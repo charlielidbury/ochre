@@ -4258,4 +4258,312 @@ def count_swap2_ty : Term := pure{
   Π (m : Nat) → Π (a : Nat) → Π (b : Nat) →
     Id Nat (countA m 2 Arr(b, a)) (countA m 2 Arr(a, b)) }
 
+/-! ## The PARTITION layer — the one stratum the array quicksort has to invent
+
+    ¶6's migration ledger counts the partition as surviving the port; ledger G4 records
+    that it does not (M23's is a take-and-rebuild over a linked list returning two lists
+    BY VALUE; the array one is an in-place scan returning an INDEX). Its *specification*
+    has to be invented too, and this is it.
+
+    **Why positional, when ¶6 deletes the positional stratum.** A split point is a
+    statement about two parts of one array, and the honest way to name them is to CARVE
+    — which is exactly ¶6's claim, and it holds for the SORT, whose sub-slices are its
+    own carves. It does not hold across a FUNCTION BOUNDARY. A callee cannot hand a
+    segment back: the return type is fixed before the carve exists, `Array n` and
+    `Array (add k r)` convert only after the caller's own carve has refined `n`, and a
+    segment cannot be returned by value either, because reading one MOVES it and leaves
+    the borrow holding a hole. So the partition's interface is positional and the sort's
+    internals are not — one predicate, `PartA`, and the bridge back to ¶1.3's transferred
+    library is a single lemma.
+
+    Two predicates, both `arrRec` over the cons view with the skip count threaded as an
+    ordinary `Nat` argument (M22's bounded-Π encoding, which the whole-array predicates
+    got to drop and these do not):
+
+      `SplitA p k a`  the first `k` elements are ≤ p, the rest are ≥ p
+      `PartA pv k a`  the first `k` are ≤ pv, element `k` **is** pv, the rest are ≥ pv
+
+    `PartA` is shaped so its `kz = 0` case yields `LbA` — the LIBRARY predicate, not a
+    third one — which is what makes the bridge to `sorted_arrCat` one lemma instead of a
+    monotonicity stratum. -/
+
+/-- Transport along a `Nat` identity — `list_rw`'s counterpart, needed to move the
+    glue from the pivot VALUE the partition returned to the element sitting in the
+    carved pivot slot. -/
+def nat_rw : Term := pure{
+  λ (P : Nat → Type). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (px : P x).
+    j Nat x (λ (y2 : Nat). λ (hh : Id Nat x y2). P y2) px y h }
+def nat_rw_ty : Term := pure{
+  Π (P : Nat → Type) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → P x → P y }
+
+/-- `Le n Z ⟹ n = Z`. The array quicksort tests emptiness with `leb 1 n` rather than
+    by matching `n`, because matching refines the length to `S m` and T2's rigid-extent
+    restriction then blocks the three-way carve at the returned index. So the False
+    branch holds `Le n Z` and has to turn it into the equation the nil lemmas want. -/
+def le_zero_eq : Term := pure{
+  λ (n : Nat). elim n return (λ (z : Nat). Le z Z → Id Nat z Z) {
+    Z => λ (h : Le Z Z). Refl,
+    S (n2) ih => λ (h : Bot). botElim (Id Nat (S n2) Z) h } }
+def le_zero_eq_ty : Term := pure{ Π (n : Nat) → Le n Z → Id Nat n Z }
+
+/-- `SortedA` of an array whose LENGTH is zero.
+
+    Not `unit`, and that is the point: there is no η at length zero. `SortedA Z σ` is a
+    stuck `arrRec` — the recursor fires on `Arr`, never on the index — so an opaque
+    length-zero payload does not compute to `Unit` and the sort's base case cannot be
+    discharged by the trivial term. The induction is on the ARRAY with the equation
+    carried, and the cons case is dead. -/
+def sortedA_nil : Term := pure{
+  λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Id Nat m Z → SortedA m b)
+      (λ (h : Id Nat Z Z). unit)
+      (λ (k : Nat). λ (hh : Nat). λ (t : Array k Nat).
+        λ (ih : Id Nat k Z → SortedA k t).
+          λ (h : Id Nat (S k) Z).
+            botElim (SortedA (S k) (acons k hh t)) (znots k (id_sym Nat (S k) Z h)))
+      n a }
+def sortedA_nil_ty : Term := pure{
+  Π (n : Nat) → Π (a : Array n Nat) → Id Nat n Z → SortedA n a }
+
+/-- `SplitA p k a` — the first `k` elements are ≤ `p`, the rest are ≥ `p`. -/
+def SplitA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
+      (λ (kz : Nat). Unit)
+      (λ (m : Nat). λ (h : Nat). λ (t : Array m Nat). λ (ih : Π (kz : Nat) → Type).
+        λ (kz : Nat).
+          elim kz return (λ (w : Nat). Type) {
+            Z => Σ (hh : Le p h) → ih Z,
+            S (k2) rec => Σ (hh : Le h p) → ih k2 })
+      n a k }
+
+/-- `PartA pv k a` — the first `k` elements are ≤ `pv`, element `k` IS `pv`, and the
+    rest are ≥ `pv`. The pivot's presence at the split point is what the sort needs and
+    `SplitA` does not give: without it the element in the carved pivot slot is merely
+    ≥ `p`, and `LbA (that element)` of the right half does not follow. -/
+def PartA : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
+      (λ (kz : Nat). Unit)
+      (λ (m : Nat). λ (h : Nat). λ (t : Array m Nat). λ (ih : Π (kz : Nat) → Type).
+        λ (kz : Nat).
+          elim kz return (λ (w : Nat). Type) {
+            Z => Σ (he : Id Nat h pv) → LbA pv m t,
+            S (k2) rec => Σ (hh : Le h pv) → ih k2 })
+      n a k }
+
+/-- `SplitA` of a length-zero array, at any skip count — `sortedA_nil`'s twin, and
+    needed for the same reason. -/
+def splitA_nil : Term := pure{
+  λ (p : Nat). λ (kz : Nat). λ (n : Nat). λ (a : Array n Nat). λ (hz : Id Nat n Z).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat).
+        Π (k2 : Nat) → Id Nat m Z → SplitA p k2 m b)
+      (λ (k2 : Nat). λ (h : Id Nat Z Z). unit)
+      (λ (m : Nat). λ (hh : Nat). λ (t : Array m Nat).
+        λ (ih : Π (k2 : Nat) → Id Nat m Z → SplitA p k2 m t).
+          λ (k2 : Nat). λ (h : Id Nat (S m) Z).
+            botElim (SplitA p k2 (S m) (acons m hh t)) (znots m (id_sym Nat (S m) Z h)))
+      n a kz hz }
+def splitA_nil_ty : Term := pure{
+  Π (p : Nat) → Π (kz : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
+    Id Nat n Z → SplitA p kz n a }
+
+/-! ### Crossing a concatenation
+
+    Every one of these is an induction on the LEFT array and nothing else — the same
+    `arrRec` shape as `bound_arrCat` and `sorted_arrCat`, which is the evidence that
+    this stratum, though new, is not a new KIND of work.
+
+    The spellings are chosen to be the ones the programs actually produce, which is
+    R7's lesson arriving in the pure layer: `add k mm` where the carve decomposes, `S k`
+    where a skip count runs one PAST the left part. Stating `splitA_cat_e1` with the
+    generic `add k t` instead of `S k` would have been more general and unusable, since
+    `S k` and `add k 1` do not convert for symbolic `k` and the program has the former. -/
+
+/-- A zero skip count is a lower bound on the whole array — the crossing from the
+    partition layer back into ¶1.3's transferred library. -/
+def splitA0_lb : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (b : Array m Nat). SplitA p Z m b → LbA p m b)
+      (λ (h : Unit). unit)
+      (λ (k : Nat). λ (hh : Nat). λ (t : Array k Nat).
+        λ (ih : SplitA p Z k t → LbA p k t).
+          λ (s : Σ (h2 : Le p hh) → SplitA p Z k t).
+            elim s return (λ (qz : Σ (h2 : Le p hh) → SplitA p Z k t). LbA p (S k) (acons k hh t)) {
+              Pair (u) (v) => Pair(u, ih v) })
+      n a }
+def splitA0_lb_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → SplitA p Z n a → LbA p n a }
+
+/-- Split a `SplitA` whose skip count runs ONE PAST the left part: the left part is
+    wholly bounded, and what is left is a `SplitA` at skip 1 over the right part. This
+    is the shape the swap branch needs — it reads off both "the left part is all ≤ p"
+    and "the element about to be swapped out is ≤ p" in one step. -/
+def splitA_cat_e1 : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        SplitA p (S kz) (add kz mm) (arrCat kz mm lz w) →
+          Σ (hu : UbA p kz lz) → SplitA p (S Z) mm w)
+      (λ (h : SplitA p (S Z) mm w). Pair(unit, h))
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : SplitA p (S k2) (add k2 mm) (arrCat k2 mm t w) →
+                  Σ (hu : UbA p k2 t) → SplitA p (S Z) mm w).
+          λ (s : Σ (h2 : Le hh p) → SplitA p (S k2) (add k2 mm) (arrCat k2 mm t w)).
+            elim s return (λ (qz : Σ (h2 : Le hh p) →
+                                SplitA p (S k2) (add k2 mm) (arrCat k2 mm t w)).
+                Σ (hu : UbA p (S k2) (acons k2 hh t)) → SplitA p (S Z) mm w) {
+              Pair (u) (v) =>
+                elim (ih v) return (λ (qz2 : Σ (hu : UbA p k2 t) → SplitA p (S Z) mm w).
+                    Σ (hu : UbA p (S k2) (acons k2 hh t)) → SplitA p (S Z) mm w) {
+                  Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
+      k l }
+def splitA_cat_e1_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    SplitA p (S k) (add k mm) (arrCat k mm l w) →
+      Σ (hu : UbA p k l) → SplitA p (S Z) mm w }
+
+/-- The converse at skip exactly `k`: a bounded left part in front of a `SplitA` at
+    skip zero is a `SplitA` at skip `k`. -/
+def splitA_cat_i0 : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        UbA p kz lz → SplitA p Z mm w → SplitA p kz (add kz mm) (arrCat kz mm lz w))
+      (λ (u : Unit). λ (h : SplitA p Z mm w). h)
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : UbA p k2 t → SplitA p Z mm w →
+                  SplitA p k2 (add k2 mm) (arrCat k2 mm t w)).
+          λ (u : Σ (h2 : Le hh p) → UbA p k2 t). λ (h : SplitA p Z mm w).
+            elim u return (λ (qz : Σ (h2 : Le hh p) → UbA p k2 t).
+                SplitA p (S k2) (add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
+              Pair (a1) (b1) => Pair(a1, ih b1 h) })
+      k l }
+def splitA_cat_i0_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    UbA p k l → SplitA p Z mm w → SplitA p k (add k mm) (arrCat k mm l w) }
+
+/-- `PartA`'s introduction, the partition's last step: a bounded left part in front of
+    a `PartA` at skip zero (which is "the head IS the pivot, the tail is ≥ it"). -/
+def partA_cat_i0 : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        UbA pv kz lz → PartA pv Z mm w → PartA pv kz (add kz mm) (arrCat kz mm lz w))
+      (λ (u : Unit). λ (h : PartA pv Z mm w). h)
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : UbA pv k2 t → PartA pv Z mm w →
+                  PartA pv k2 (add k2 mm) (arrCat k2 mm t w)).
+          λ (u : Σ (h2 : Le hh pv) → UbA pv k2 t). λ (h : PartA pv Z mm w).
+            elim u return (λ (qz : Σ (h2 : Le hh pv) → UbA pv k2 t).
+                PartA pv (S k2) (add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
+              Pair (a1) (b1) => Pair(a1, ih b1 h) })
+      k l }
+def partA_cat_i0_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    UbA pv k l → PartA pv Z mm w → PartA pv k (add k mm) (arrCat k mm l w) }
+
+/-- **THE BRIDGE.** `PartA`'s elimination at the sort's own carve: the left segment is
+    bounded above by the pivot, and what remains is `PartA` at skip zero over the pivot
+    slot and the right segment — which unfolds, with no further lemma, to exactly
+    `Id Nat (that element) pv` and `LbA pv (right segment)`. Those three facts are
+    `sorted_arrCat`'s four hypotheses minus the two the recursive calls supply. -/
+def partA_cat_e0 : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
+        PartA pv kz (add kz mm) (arrCat kz mm lz w) →
+          Σ (hu : UbA pv kz lz) → PartA pv Z mm w)
+      (λ (h : PartA pv Z mm w). Pair(unit, h))
+      (λ (k2 : Nat). λ (hh : Nat). λ (t : Array k2 Nat).
+        λ (ih : PartA pv k2 (add k2 mm) (arrCat k2 mm t w) →
+                  Σ (hu : UbA pv k2 t) → PartA pv Z mm w).
+          λ (s : Σ (h2 : Le hh pv) → PartA pv k2 (add k2 mm) (arrCat k2 mm t w)).
+            elim s return (λ (qz : Σ (h2 : Le hh pv) →
+                                PartA pv k2 (add k2 mm) (arrCat k2 mm t w)).
+                Σ (hu : UbA pv (S k2) (acons k2 hh t)) → PartA pv Z mm w) {
+              Pair (u) (v) =>
+                elim (ih v) return (λ (qz2 : Σ (hu : UbA pv k2 t) → PartA pv Z mm w).
+                    Σ (hu : UbA pv (S k2) (acons k2 hh t)) → PartA pv Z mm w) {
+                  Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
+      k l }
+def partA_cat_e0_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    PartA pv k (add k mm) (arrCat k mm l w) →
+      Σ (hu : UbA pv k l) → PartA pv Z mm w }
+
+/-! ### The count layer for a swap across a carve
+
+    The partition's one mutating step exchanges the array's head with the element at
+    the split point, and those two sit in DIFFERENT segments — the whole reason the
+    swap is writable at all is that each is at index 0 of its own carve (¶6's "a
+    segment with its own zero"). What the permutation conjunct then owes is that the
+    exchange does not move any count, over a spine four levels deep. -/
+
+/-- `countA`'s own step function, named so a congruence can be stated over it: the
+    count of a cons is a `bump` of the count of its tail. -/
+def bumpN : Term := pure{
+  λ (b : Bool). λ (c : Nat). elim b return (λ (w : Bool). Nat) { True => S c, False => c } }
+
+/-- Congruence for `countA` under a cons — `count_cons_congr`'s array counterpart. -/
+def count_acons_congr : Term := pure{
+  λ (q : Nat). λ (h : Nat). λ (k : Nat). λ (t1 : Array k Nat). λ (t2 : Array k Nat).
+    λ (hc : Id Nat (countA q k t1) (countA q k t2)).
+      id_congr Nat Nat (λ (c : Nat). bumpN (eqb q h) c)
+        (countA q k t1) (countA q k t2) hc }
+def count_acons_congr_ty : Term := pure{
+  Π (q : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t1 : Array k Nat) → Π (t2 : Array k Nat) →
+    Id Nat (countA q k t1) (countA q k t2) →
+      Id Nat (countA q (S k) (acons k h t1)) (countA q (S k) (acons k h t2)) }
+
+/-- The arithmetic core of the swap, over the two `bump`s alone: which of the two
+    exchanged elements is being counted does not matter. Four arms; the two mixed ones
+    are `add_succ` and its symmetry, and the two matching ones are `Refl` — `count_swap2`
+    at width two had all four `Refl` because both counts were concrete. -/
+def bump_comm : Term := pure{
+  λ (b1 : Bool). λ (b2 : Bool). λ (cl : Nat). λ (cg : Nat).
+    elim b1 return (λ (w : Bool).
+        Id Nat (bumpN b2 (add cl (bumpN w cg))) (bumpN w (add cl (bumpN b2 cg)))) {
+      True =>
+        elim b2 return (λ (w2 : Bool).
+            Id Nat (bumpN w2 (add cl (S cg))) (S (add cl (bumpN w2 cg)))) {
+          True => Refl,
+          False => add_succ cl cg },
+      False =>
+        elim b2 return (λ (w2 : Bool).
+            Id Nat (bumpN w2 (add cl cg)) (add cl (bumpN w2 cg))) {
+          True => id_sym Nat (add cl (S cg)) (S (add cl cg)) (add_succ cl cg),
+          False => Refl } } }
+def bump_comm_ty : Term := pure{
+  Π (b1 : Bool) → Π (b2 : Bool) → Π (cl : Nat) → Π (cg : Nat) →
+    Id Nat (bumpN b2 (add cl (bumpN b1 cg))) (bumpN b1 (add cl (bumpN b2 cg))) }
+
+/-- **The swap preserves every count**, stated over exactly the spine the partition
+    produces: head, left segment, the swapped cell, right segment. Two `count_arrCat`
+    rewrites bracket `bump_comm`. -/
+def count_swapA : Term := pure{
+  λ (q : Nat). λ (x : Nat). λ (y : Nat). λ (k : Nat). λ (l : Array k Nat).
+  λ (r : Nat). λ (g : Array r Nat).
+    id_trans Nat
+      (countA q (S (add k (S r))) (acons (add k (S r)) y (arrCat k (S r) l (acons r x g))))
+      (bumpN (eqb q y) (add (countA q k l) (bumpN (eqb q x) (countA q r g))))
+      (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g))))
+      (id_congr Nat Nat (λ (c : Nat). bumpN (eqb q y) c)
+         (countA q (add k (S r)) (arrCat k (S r) l (acons r x g)))
+         (add (countA q k l) (countA q (S r) (acons r x g)))
+         (count_arrCat q k l (S r) (acons r x g)))
+      (id_trans Nat
+        (bumpN (eqb q y) (add (countA q k l) (bumpN (eqb q x) (countA q r g))))
+        (bumpN (eqb q x) (add (countA q k l) (bumpN (eqb q y) (countA q r g))))
+        (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g))))
+        (bump_comm (eqb q x) (eqb q y) (countA q k l) (countA q r g))
+        (id_sym Nat
+          (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g))))
+          (bumpN (eqb q x) (add (countA q k l) (bumpN (eqb q y) (countA q r g))))
+          (id_congr Nat Nat (λ (c : Nat). bumpN (eqb q x) c)
+             (countA q (add k (S r)) (arrCat k (S r) l (acons r y g)))
+             (add (countA q k l) (countA q (S r) (acons r y g)))
+             (count_arrCat q k l (S r) (acons r y g))))) }
+def count_swapA_ty : Term := pure{
+  Π (q : Nat) → Π (x : Nat) → Π (y : Nat) → Π (k : Nat) → Π (l : Array k Nat) →
+  Π (r : Nat) → Π (g : Array r Nat) →
+    Id Nat (countA q (S (add k (S r))) (acons (add k (S r)) y (arrCat k (S r) l (acons r x g))))
+           (countA q (S (add k (S r))) (acons (add k (S r)) x (arrCat k (S r) l (acons r y g)))) }
+
 end Dllbc.StdLemmas
