@@ -1089,11 +1089,22 @@ def peek? : Nat → Val → Option Val
   | n + 1, .borrowM _ p => peek? n p
   | _, _ => none
 
-/-- Demand-end the loans parked at the deref places a comptime read is about to
-    project through, innermost place first. Outside a place shape this is a plain
-    structural walk; a place whose slot is unbound or not a borrow that deep is left
-    alone (the read itself will produce the honest error). -/
+/-- Demand-end the loans parked at the places a comptime read is about to project
+    through, innermost place first. Outside a place shape this is a plain structural
+    walk; a place whose slot is unbound or not a borrow that deep is left alone (the
+    read itself will produce the honest error).
+
+    A bare `.var` counts as a place (M23). `let hs = quicksort(f, &mut hi, …)` parks
+    `loanₘ ℓ` in `hi`'s own slot, and a body that then names `hi` in a proof — `count
+    n hi`, the only way to say what the callee left there — must collapse it first,
+    for exactly the reason the deref case must. The `⇒` side has always done this
+    (`readR`'s `.var` move ends a marker before moving); without it here the two
+    arrows disagree about the same slot and the pure read silently yields the marker. -/
 partial def collapseCDerefs (fuel : Nat) : Term → M Unit
+  | .var x => do
+    match (← getEnv).find? (fun kv => kv.1.id == x.id) with
+    | some ⟨_, .loanM ℓ⟩ => do endLoan fuel ℓ; collapseCDerefs fuel (.var x)
+    | _ => pure ()
   | .deref inner => do
     collapseCDerefs fuel inner
     match placeOf? (.deref inner) with

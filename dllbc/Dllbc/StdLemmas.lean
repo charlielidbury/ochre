@@ -3721,4 +3721,160 @@ def count_cons_r_ty : Term := pure{
     Id Nat (add (count n a) (count n b)) (count n c) →
     Id Nat (add (count n a) (count n (Cons x b))) (count n (Cons x c)) }
 
+/-! ## M23 stage (vi) — BOUND SURVIVAL, the whole-list keystone
+
+    A partition-based quicksort's sortedness proof needs `Ub p a` where `a` is the
+    left part AFTER it has been sorted, while the partition only ever bounded it
+    BEFORE. So a bound must survive a permutation, and `Ub`/`Lb` — being Σ-chains over
+    the list's spine — are not natively permutation-invariant.
+
+    M22 hit this at the positional encoding and named the route: go through the
+    multiset. `noAbove p l := Π x. Le (S p) x → count x l = Z` ("nothing above p is
+    present") is *manifestly* permutation-invariant, because it is a statement about
+    counts and nothing else — so `ub_perm` is two conversions with a one-line
+    `id_trans` between them, and all the work sits in the conversions, where it is
+    ordinary induction. The `Lb` side mirrors it through `noBelow`.
+
+    The two predicates are written inline as Π-types rather than named: they exist
+    only to be crossed. -/
+
+/-- The two `Lb` projections, mirroring `ub_head`/`ub_tail`. -/
+def lb_head : Term := pure{
+  λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le p h) → Lb p t).
+    elim u return (λ (q : Σ (hu : Le p h) → Lb p t). Le p h) {
+      Pair (x) (y) => x } }
+def lb_head_ty : Term := pure{
+  Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Lb p (Cons h t) → Le p h }
+
+def lb_tail : Term := pure{
+  λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le p h) → Lb p t).
+    elim u return (λ (q : Σ (hu : Le p h) → Lb p t). Lb p t) {
+      Pair (x) (y) => y } }
+def lb_tail_ty : Term := pure{
+  Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Lb p (Cons h t) → Lb p t }
+
+/-- `Ub p l ⟹ nothing above p occurs in l`. At `Cons h t` the head misses every
+    `x > p`, because `h ≤ p < x` makes `eqb x h` False (`eqb_gt_false`), so the count
+    steps past the head onto the IH. -/
+def noAbove_of_ub : Term := pure{
+  λ (p : Nat). λ (l : List Nat).
+    elim l return (λ (lz : List Nat).
+        Ub p lz → Π (x : Nat) → Le (S p) x → Id Nat (count x lz) Z) {
+      Nil => λ (u : Unit). λ (x : Nat). λ (hx : Le (S p) x). Refl,
+      Cons (h) (t) ih => λ (u : Σ (hh : Le h p) → Ub p t). λ (x : Nat). λ (hx : Le (S p) x).
+        id_trans Nat (count x (Cons h t)) (count x t) Z
+          (count_cons_miss x h t
+            (eqb_gt_false h x (le_trans (S h) (S p) x (ub_head p h t u) hx)))
+          (ih (ub_tail p h t u) x hx) } }
+def noAbove_of_ub_ty : Term := pure{
+  Π (p : Nat) → Π (l : List Nat) → Ub p l →
+    Π (x : Nat) → Le (S p) x → Id Nat (count x l) Z }
+
+/-- …and back. The head bound comes from a `leb h p` split: if it were False then
+    `h > p`, so `count h l = Z` by hypothesis — but `count h (Cons h t)` is `S (count
+    h t)` (`eqb_refl`), and `Z = S _` is `znots`. The tail hypothesis is the same
+    argument run the other way: `count x (Cons h t) = Z` forces `count x t = Z`,
+    trivially when `eqb x h` misses and by the same contradiction when it hits. -/
+def ub_of_noAbove : Term := pure{
+  λ (p : Nat). λ (l : List Nat).
+    elim l return (λ (lz : List Nat).
+        (Π (x : Nat) → Le (S p) x → Id Nat (count x lz) Z) → Ub p lz) {
+      Nil => λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (count x Nil) Z). unit,
+      Cons (h) (t) ih => λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (count x (Cons h t)) Z).
+        Pair(
+          elim (leb h p) return (λ (bv : Bool). Id Bool (leb h p) bv → Le h p) {
+            True => λ (e : Id Bool (leb h p) True). leb_true_le h p e,
+            False => λ (e : Id Bool (leb h p) False).
+              botElim (Le h p)
+                (znots (count h t)
+                  (id_trans Nat Z (count h (Cons h t)) (S (count h t))
+                    (id_sym Nat (count h (Cons h t)) Z (hn h (leb_false_gt h p e)))
+                    (count_cons_hit h h t (eqb_refl h))))
+          } Refl,
+          ih (λ (x : Nat). λ (hx : Le (S p) x).
+                elim (eqb x h) return (λ (bv : Bool). Id Bool (eqb x h) bv → Id Nat (count x t) Z) {
+                  True => λ (eq : Id Bool (eqb x h) True).
+                    botElim (Id Nat (count x t) Z)
+                      (znots (count x t)
+                        (id_trans Nat Z (count x (Cons h t)) (S (count x t))
+                          (id_sym Nat (count x (Cons h t)) Z (hn x hx))
+                          (count_cons_hit x h t eq))),
+                  False => λ (eq : Id Bool (eqb x h) False).
+                    id_trans Nat (count x t) (count x (Cons h t)) Z
+                      (id_sym Nat (count x (Cons h t)) (count x t) (count_cons_miss x h t eq))
+                      (hn x hx)
+                } Refl)) } }
+def ub_of_noAbove_ty : Term := pure{
+  Π (p : Nat) → Π (l : List Nat) →
+    (Π (x : Nat) → Le (S p) x → Id Nat (count x l) Z) → Ub p l }
+
+/-- THE KEYSTONE. An upper bound survives any count-preserving rearrangement — which
+    is exactly what a recursive sort hands back about the part it sorted. -/
+def ub_perm : Term := pure{
+  λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
+    λ (hc : Π (n : Nat) → Id Nat (count n a) (count n b)). λ (hb : Ub p b).
+      ub_of_noAbove p a (λ (x : Nat). λ (hx : Le (S p) x).
+        id_trans Nat (count x a) (count x b) Z (hc x) (noAbove_of_ub p b hb x hx)) }
+def ub_perm_ty : Term := pure{
+  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
+    (Π (n : Nat) → Id Nat (count n a) (count n b)) → Ub p b → Ub p a }
+
+/-- The `Lb` mirror: `Lb p l ⟹ nothing strictly below p occurs`. Here the head misses
+    every `x < p ≤ h` by `eqb_lt_false`. -/
+def noBelow_of_lb : Term := pure{
+  λ (p : Nat). λ (l : List Nat).
+    elim l return (λ (lz : List Nat).
+        Lb p lz → Π (x : Nat) → Le (S x) p → Id Nat (count x lz) Z) {
+      Nil => λ (u : Unit). λ (x : Nat). λ (hx : Le (S x) p). Refl,
+      Cons (h) (t) ih => λ (u : Σ (hh : Le p h) → Lb p t). λ (x : Nat). λ (hx : Le (S x) p).
+        id_trans Nat (count x (Cons h t)) (count x t) Z
+          (count_cons_miss x h t
+            (eqb_lt_false x h (le_trans (S x) p h hx (lb_head p h t u))))
+          (ih (lb_tail p h t u) x hx) } }
+def noBelow_of_lb_ty : Term := pure{
+  Π (p : Nat) → Π (l : List Nat) → Lb p l →
+    Π (x : Nat) → Le (S x) p → Id Nat (count x l) Z }
+
+def lb_of_noBelow : Term := pure{
+  λ (p : Nat). λ (l : List Nat).
+    elim l return (λ (lz : List Nat).
+        (Π (x : Nat) → Le (S x) p → Id Nat (count x lz) Z) → Lb p lz) {
+      Nil => λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (count x Nil) Z). unit,
+      Cons (h) (t) ih => λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (count x (Cons h t)) Z).
+        Pair(
+          elim (leb p h) return (λ (bv : Bool). Id Bool (leb p h) bv → Le p h) {
+            True => λ (e : Id Bool (leb p h) True). leb_true_le p h e,
+            False => λ (e : Id Bool (leb p h) False).
+              botElim (Le p h)
+                (znots (count h t)
+                  (id_trans Nat Z (count h (Cons h t)) (S (count h t))
+                    (id_sym Nat (count h (Cons h t)) Z (hn h (leb_false_gt p h e)))
+                    (count_cons_hit h h t (eqb_refl h))))
+          } Refl,
+          ih (λ (x : Nat). λ (hx : Le (S x) p).
+                elim (eqb x h) return (λ (bv : Bool). Id Bool (eqb x h) bv → Id Nat (count x t) Z) {
+                  True => λ (eq : Id Bool (eqb x h) True).
+                    botElim (Id Nat (count x t) Z)
+                      (znots (count x t)
+                        (id_trans Nat Z (count x (Cons h t)) (S (count x t))
+                          (id_sym Nat (count x (Cons h t)) Z (hn x hx))
+                          (count_cons_hit x h t eq))),
+                  False => λ (eq : Id Bool (eqb x h) False).
+                    id_trans Nat (count x t) (count x (Cons h t)) Z
+                      (id_sym Nat (count x (Cons h t)) (count x t) (count_cons_miss x h t eq))
+                      (hn x hx)
+                } Refl)) } }
+def lb_of_noBelow_ty : Term := pure{
+  Π (p : Nat) → Π (l : List Nat) →
+    (Π (x : Nat) → Le (S x) p → Id Nat (count x l) Z) → Lb p l }
+
+def lb_perm : Term := pure{
+  λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
+    λ (hc : Π (n : Nat) → Id Nat (count n a) (count n b)). λ (hb : Lb p b).
+      lb_of_noBelow p a (λ (x : Nat). λ (hx : Le (S x) p).
+        id_trans Nat (count x a) (count x b) Z (hc x) (noBelow_of_lb p b hb x hx)) }
+def lb_perm_ty : Term := pure{
+  Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
+    (Π (n : Nat) → Id Nat (count n a) (count n b)) → Lb p b → Lb p a }
+
 end Dllbc.StdLemmas
