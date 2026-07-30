@@ -4,7 +4,11 @@
 
 > **STATUS: built, run, and amended from measurement (M24–M25, merged at `00cdbb69`).** This note was written before any of it existed. It has since been implemented in full — the carve machinery, route (a) with the cited-equation rule, the transferred library, and a verified in-place array quicksort that both *checks* and *runs*, cross-differential green on eleven inputs against M23's List implementation, two programs sharing no code, no predicates and no container.
 >
-> The design held. All four rulings survived contact; ¶1.3's transfer promise verified verbatim at twenty-one items; ¶6's three-way carve landed in this document's exact notation. What did not hold is recorded **in place and labelled**, from the implementation's own ledger (`DELTAS.md`, which remains as the historical record). Corrections read *"an earlier draft said X; it is Y, because Z."* Two soundness findings — ¶3.2's cited-equation rule and ¶3.6's polarity inversion — are the reason this pass exists at all, and neither was predictable from the desk.
+> The design held. All four rulings survived contact; ¶1.3's transfer promise verified verbatim at twenty-one items; ¶6's three-way carve landed in this document's exact notation. What did not hold is recorded **in place and labelled**, from the implementation's own ledger (`DELTAS.md`, which remains as the historical record). Corrections read *"an earlier draft said X; it is Y, because Z."*
+>
+> **Two of this note's claims did not merely need refining — they reversed, and are struck through where they stood rather than quietly rewritten.** ¶5 recommended carving inline and reaching for a function boundary only when you want abstraction; the truth is the opposite, and a body following that advice cannot be written at all (¶5.1). ¶6 claimed "one stratum deleted, one inherited, **none invented**"; one *is* invented, at the leaf's interface (¶6.1). Both are the same fact seen from two directions: **carving is a within-body mechanism, and function boundaries are where its guarantees stop and start again.** A reader who takes nothing else from this pass should take that.
+>
+> Two soundness findings — ¶3.2a's cited-equation rule and ¶3.6's polarity inversion — are the reason this pass exists at all, and neither was predictable from the desk.
 >
 > Where this note now says "is", it has been run. Where it says "would", it has not.
 
@@ -632,13 +636,24 @@ with the return type more honestly written after the carve has run, as `Σ (l : 
 
 Here the two borrows are not two borrows of one place. After the carve they are borrows of two *different segments*, which are different subterms of one value tree — `Disj` in the `PathToSubtree` trichotomy sense (¶3.1) — and the ownership machinery cannot represent them overlapping. The `Le` proof was consumed at step 1 to license the reorganization; from step 2 onward disjointness is not a claim being trusted but a shape being read. **The trust Rust localizes in an `unsafe` block is here discharged by one `Le` term at one carve** — and, unlike `get_disjoint_mut`'s runtime pairwise check, it is discharged before the program runs and cannot fail at run time.
 
-**Caveat, stated because ¶3.6 makes it matter.** Calling `split_at_mut` is not the same as carving inline. The call mints a group, and a group is §6.2's opacity: at the group's end the caller learns only what the signature says. An *inline* pair of carves keeps everything transparent — the residues stay pinned, the sub-borrows' work is visible to the enclosing body. So the advice would seem to be the opposite of Rust's: carve inline; reach for the function only when you want the abstraction boundary.
+**Caveat, stated because ¶3.6 makes it matter.** Calling `split_at_mut` is not the same as carving inline. The call mints a group, and a group is §6.2's opacity: at the group's end the caller learns only what the signature says. An *inline* pair of carves keeps everything transparent — the residues stay pinned, the sub-borrows' work is visible to the enclosing body. This document therefore gave the following advice, and gave it as a recommendation rather than an observation:
 
-**That advice is right about the cost and wrong about the conclusion (R12).** In the built array quicksort the function boundary is not an abstraction you pay for — it is *what makes the program possible at all*, for a reason this section did not anticipate.
+> ~~So the advice the calculus should give is the opposite of Rust's: **carve inline; reach for the function only when you want the abstraction boundary**, and pay §6.2's spectrum when you do.~~
 
-A body that peels a head must first match its own length (`match n { S(m2) => … }`), because only the supplied-residue form converts against the resulting rigid extent — the index place `a[i]` has no residue slot and is rejected outright. But matching the length is exactly what T2's rigid-extent restriction then punishes: the array can no longer be carved at a symbolic offset. **So one body cannot both select a pivot and carve at the returned index.**
+### 5.1 CORRECTION: that advice is inverted (R12)
 
-§6.2's opacity is the way out. A call re-mints the caller's payload as a fresh σ at the declared type, so an array the callee matched, peeled and re-carved comes back **uncarved and with a flex length** — precisely the state a three-way carve needs. The partition is a separate declaration for that reason, and not for modularity. Opacity is usually the thing this calculus works around; here it is load-bearing, and it is the second time in this document (after ¶3.6's polarity finding) that the re-mint turns out to be doing something useful rather than merely forgetting.
+**The recommendation above is withdrawn.** Not softened, not qualified — reversed. In the built array quicksort the function boundary is not an abstraction you pay for when you happen to want one; **it is what makes the program possible at all**, and a body that follows the struck-out advice cannot be written.
+
+The reason was not visible from the desk, and it is a two-step trap:
+
+1. A body that peels a head must first match its own length (`match n { S(m2) => … }`), because only the supplied-residue form converts against the resulting rigid extent — the index place `a[i]` has no residue slot and is rejected outright.
+2. But matching the length is exactly what T2's rigid-extent restriction then punishes: from that moment the array can no longer be carved at a symbolic offset.
+
+**So one body cannot both select a pivot and carve at the returned index.** Inlining is not a transparency-versus-abstraction trade here. It is a dead end.
+
+§6.2's opacity is the way out, and it is the *only* way out. A call re-mints the caller's payload as a fresh σ at the declared type, so an array the callee matched, peeled and re-carved comes back **uncarved and with a flex length** — precisely the state a three-way carve needs. The partition is a separate declaration for that reason, and not for modularity.
+
+The corrected advice, then: **reach for the function boundary when a body would otherwise have to both rigidify an extent and carve at a symbolic offset** — which, for any program that computes a split point and then recurses on the pieces, is always. Carve inline within a single rigidity regime; cross a boundary to change regimes. Opacity is normally the thing this calculus works around; twice now it has turned out to be doing real work — here, and in ¶3.6's polarity finding, where the same re-mint repairs the executing machine rather than merely forgetting for the checker.
 
 ---
 
@@ -689,6 +704,8 @@ Note what the recursive calls' arguments are: sub-slices, with no offsets and no
 
 **What survives untouched.**
 
+> **CORRECTION to this heading, before its list (G4).** The three-way framing — *what disappears / what survives untouched / what gets built* — is where this section's largest error lives, and it lives in the framing rather than in any sentence, which is why it took a built program to surface. The list below is accurate about the **predicate strata**. It is silent about the **leaf program**, and silence in a "what survives" list reads as survival. It does not survive: **the partition does not transfer at all.** M23's partition is a relational take-and-rebuild over a linked list returning two lists *by value* — §4.1's idiom, which this document's own text endorses. The array quicksort needs the opposite: an in-place scan returning a pivot *index*, because the recursive calls carve at that index. There is no list program to port. Cost 4 below measures it.
+
 * The count-based permutation story, verbatim. `Perm s l := Π n. Id (count n s) (count n l)` is representation-agnostic; `count` over an array is `count` over its cons view; and the one lemma that replaces `count_append`/`take`/`drop` is `count_arrCat : count x (arrCat a b) = add (count x a) (count x b)`, which is the same induction.
 * The order stack — `Le`, `leb`, `eqb`, `le_trans`, the reflection lemmas, `le_refl` — untouched. It is about `Nat`, not about containers.
 * Fuel-structural recursion and partial correctness. Termination remains §8's business.
@@ -711,15 +728,25 @@ And this can now be checked rather than asserted, because M23 landed the List-wo
 
 Set `append ↦ arrCat` and `Cons p b ↦ arrCat (asingle p) r` and it *is* the array lemma, hypothesis for hypothesis — not merely the same shape but the same statement modulo the container, with `Ub`/`Lb` already playing the roles this document called `AllLe`/`AllGt`. So the migration **inherits** that proof rather than opening a stratum. Verified: it is one of R11's twenty-one, and it transferred by container swap alone.
 
-**The accounting, corrected (R15).** The draft closed here with "one stratum deleted outright (locality), one inherited (the pivot glue), **none invented**." The first two are verified. The third is not right, and the reason is instructive rather than embarrassing.
+### 6.1 CORRECTION: the headline accounting was wrong by one stratum (R15)
+
+This document's most-quoted single claim — the one the previous amendment pass sharpened and called "the crispest form the migration argument has taken" — was:
+
+> ~~Claim exactly that and no wider: **one stratum deleted outright** (locality), **one inherited** (the pivot glue), **none invented**.~~
+
+**The first two are verified. The third is false, and it is withdrawn.** The corrected claim is:
+
+> **One stratum deleted, one inherited, ONE INVENTED — at the leaf's interface.**
+
+The reason is instructive rather than embarrassing, and it sharpens the design's real boundary rather than blunting it.
 
 A split point is a statement about two parts of one array, and the honest way to name the parts is to carve — which is this document's whole claim, and it **holds for the sort**, whose sub-slices are its own carves. It does **not** hold across a *function boundary*, for three independent reasons, each probed: the return type is fixed before the carve that would name the parts exists; `Array n` and `Array (add k r)` convert only after the *caller's* carve has refined `n`, so the equation cannot even be **stated** in the signature; and the parts cannot be returned by value either, because reading a segment **moves** it and leaves the borrow holding a hole.
 
-So the partition's interface needs one positional predicate for the scan and one for its result, plus five crossing lemmas. The honest claim is:
-
-> **one stratum deleted, one inherited, one invented — at the leaf's interface.**
+So the partition's interface needs one positional predicate for the scan and one for its result, plus five crossing lemmas — a stratum, invented, that no amount of carving inside the sort removes.
 
 The invented stratum is small, for a reason worth keeping: the result predicate's skip-zero case yields `LbA`, the *library* predicate, so the bridge to `sorted_arrCat` is a single lemma with no monotonicity layer. Every crossing is an induction on the left array and nothing else, the same `arrRec` shape as `bound_arrCat`. The stratum is new; the **kind** of work is not.
+
+**What the correction sharpens.** "None invented" claimed that carving dissolves positional reasoning outright. It does not — it dissolves it *within a body*, and hands it back at every **function boundary**, because a signature must describe a split that only the caller's carve can name. That is a more precise and more useful statement than the one it replaces: the design's benefit is scoped to a rigidity regime, exactly as ¶5's corrected advice says from the other direction. Both corrections are the same fact seen twice — **carving is a within-body mechanism, and boundaries are where its guarantees stop and start again.**
 
 **What gets built.** The glue moves from index arithmetic to concatenation:
 
