@@ -52,7 +52,7 @@ example : (Val.nfV 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofN
 -- discharged. Cons/S(k): the recursive call takes `p` unchanged — `Le (S(S k))
 -- (S (len *tl)) ≡ Le (S k) (len *tl)` definitionally, no lemma.
 def nth : Decl :=
-  decl{ fn nth (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
+  decl{ fn nth [v] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
     match v {
       Nil => botElim Unit p,
       Cons(hd, tl) => match i {
@@ -65,7 +65,7 @@ example : checkFnOk nth = true := by native_decide
 /-! ## Bounds-proof `nth2` — the multi-issued group, two bounds proofs -/
 
 def nth2 : Decl :=
-  decl{ fn nth2 (v : &mut List Nat, i : Nat, j : Nat,
+  decl{ fn nth2 [v] (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat {
     match v {
       Nil => botElim Unit p2,

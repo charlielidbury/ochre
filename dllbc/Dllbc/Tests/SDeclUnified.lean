@@ -37,7 +37,7 @@ open Dllbc.Tests.SInternals (partScanEExpected pivotPlaceHExpected baseBackDef)
 namespace Dllbc.Tests.SDeclUnified
 
 def nthU : Decl :=
-  decl{ fn nth (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+  decl{ fn nth [v] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
         back = λ (r : Nat). set i r (*v)
         { match v {
             Nil => botElim Unit p,
@@ -88,7 +88,7 @@ runs in SDeclUnifiedS19.lean, gated to the final full build. -/
 
 -- Surface partScanE, splice-free — pure `leb`/`nth`/`add` spines beside runtime calls.
 def partScanEU : Decl :=
-  decl{ fn partScanE (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
+  decl{ fn partScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
         { match k {
             Z => match i {
               Z => (),

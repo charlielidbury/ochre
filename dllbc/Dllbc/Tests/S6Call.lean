@@ -48,7 +48,7 @@ example : expectFnEnv [pushList, wireCaller] wireCaller
 -- audit collapses v, ending ℓ_hd normally and ℓ_tl as an existential, so
 -- v holds `Cons 0 σ : List Nat`. No overwrite, nothing to ghost.
 def zeroAll : Decl :=
-  decl{ fn zero_all (v : &mut List Nat) -> Unit {
+  decl{ fn zero_all [v] (v : &mut List Nat) -> Unit {
     match v {
       Nil => (),
       Cons(hd, tl) => { *hd := 0; zero_all(tl); () }

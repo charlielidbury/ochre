@@ -81,6 +81,7 @@ def pivotPlaceHExpected : Decl :=
           (leAdd (V 4 "i2") (V 2 "g")))
         (.seq (.call "swapS" [.var ⟨0, "v"⟩, .ctorApp "Z" [], tS (V 4 "i2"), .unit, V 5 "p2"]) .unit)) ])
     (some baseBackDef)
+    none                                  -- `dec` (§1.2's [k]): pivotPlaceH does not recurse
 
 /-! ## SDeclMacroCrown corpus — quicksort's telescope and back
     (character-for-character the corpus's expressions, S19Partition.lean's crown). -/

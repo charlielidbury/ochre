@@ -314,6 +314,25 @@ def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
       let bv ← readC defaultFuel b
       modify (fun s => { s with selfBack := some bv })
     | none => pure ()
+    -- §8's snapshot-subterm guard: record who is being checked, and — if `[k]` is
+    -- declared — the decreasing parameter's snapshot AS SEEDED. From here it rides
+    -- `refineSym` with the rest of the σ-bearing state, so at a self-call it reads
+    -- whatever the enclosing matches have refined it to.
+    let dk ← match decl.dec with
+      | none => pure none
+      | some k =>
+        match decl.telescope.get? k with
+        | none => throwErr s!"recursion: '{decl.name}' declares decreasing argument [{k}], which is out of range for its {decl.telescope.length}-parameter telescope"
+        | some (nm, _) => do
+          -- A borrow parameter decreases through its PAYLOAD snapshot — which is
+          -- §8's guard in its most literal form, and the only thing that shrinks in
+          -- a list cursor (`zero_all(tl)` passes no counter at all). Snapshots are
+          -- entry-knowledge and are never rewritten by mutation (§3.2), so the
+          -- payload's structural decomposition is a fixed, well-founded order.
+          match ← lookupSlot ⟨k, nm⟩ with
+          | .borrowM _ payload => pure (some (k, payload))
+          | v => pure (some (k, v))
+    modify (fun s => { s with selfRec := some (decl.name, dk) })
     pure obs
   match seed.run { initSt with decls := table } with
   | .error e _ => .error e

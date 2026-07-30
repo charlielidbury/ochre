@@ -212,4 +212,107 @@ def useUnpinned : Decl :=
   decl{ fn useUnpinned () -> Unit { let a = plainOne(); useIt(a, Refl); () } }
 example : checkFnErr useUnpinned "does not have its parameter type" [plainOne, useIt, useUnpinned] = true := by native_decide
 
+/-! ## Stage (v): recursion = self-ensures under §8's snapshot-subterm guard
+
+    A call is checked against a signature alone (§5.3) — recursion forces that — so
+    a SELF-call is admitted at the function's own declared return type. Through M22
+    that return type was `Unit` for every recursive Decl, and the real content lived
+    in the declared `back`, checked by conversion. Remove the backs and the return
+    type IS the postcondition, at which point admitting a self-call unconditionally
+    is the Hoare rule for recursion with its side condition deleted: every false
+    statement proves itself. It did. On main, before this section:
+
+        fn bad () -> Id Nat Z (S Z) { bad() }            -- ACCEPTED
+        fn bad2 (n : Nat) -> Id Nat Z (S Z) { bad2(n) }  -- ACCEPTED
+
+    The side condition is §1.2's `[k]`, finally operational: a self-call is admitted
+    only when the actual at the declared decreasing position is a STRICT STRUCTURAL
+    SUBTERM of that parameter's current snapshot. The checker being a symbolic
+    interpreter is what makes this cheap — inside `match n { S(m) => … }` the
+    parameter's snapshot has been ⇜-refined to `S σ_m` while the actual is `σ_m`, so
+    the comparison is ordinary structural equality on snapshots. The snapshot rides
+    `refineSym` with the rest of the σ-bearing state (the M10 invariant), which is
+    what makes it readable at the call site at all: owned match has meanwhile
+    emptied the parameter's runtime slot.
+
+    A negative test per RULE BRANCH (the M20 lesson), not per feature. -/
+
+-- The honest shape, and the one the rest of M23 rides: structural decrease on a
+-- declared fuel argument.
+def recGood : Decl :=
+  decl{ fn recGood [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(m) => recGood(m) } } }
+example : checkFnOk recGood = true := by native_decide
+
+-- BRANCH 1 — no `[k]` at all. THE headline control: this exact Decl was accepted
+-- before the guard, and it proves `Z = S Z`.
+def recBad : Decl := decl{ fn recBad () -> Id Nat Z (S Z) { recBad() } }
+example : checkFnErr recBad "declares no decreasing argument" = true := by native_decide
+
+-- BRANCH 2 — `[k]` declared, but the self-call passes the SAME fuel. Equal is not
+-- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
+def recSame : Decl := decl{ fn recSame [n] (n : Nat) -> Id Nat Z (S Z) { recSame(n) } }
+example : checkFnErr recSame "not a strict structural predecessor" = true := by native_decide
+
+-- BRANCH 3 — decrease at the WRONG index. The return type here is TRUE, so the
+-- audit cannot be what rejects it: `[n]` is declared while `m` is what shrinks.
+-- (Without this control the previous two would pass on a guard that merely
+-- required *something* to decrease — which is unsound, since alternating branches
+-- can each decrease a different coordinate forever.)
+def recWrongIdx : Decl :=
+  decl{ fn recWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
+        { match m { Z => Refl, S(m2) => recWrongIdx(n, m2) } } }
+example : checkFnErr recWrongIdx "not a strict structural predecessor" = true := by native_decide
+
+-- …and the same body with the honest index declared is accepted, so branch 3 is
+-- about the index, not about the body.
+def recRightIdx : Decl :=
+  decl{ fn recRightIdx [m] (n : Nat, m : Nat) -> Id Nat Z Z
+        { match m { Z => Refl, S(m2) => recRightIdx(n, m2) } } }
+example : checkFnOk recRightIdx = true := by native_decide
+
+-- BRANCH 4 — an INCREASE reads as "not a subterm", not as a decrease: `S(m2)`
+-- against a snapshot of `S m2` is equality one level up, and equality never passes.
+def recGrow : Decl :=
+  decl{ fn recGrow [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(m2) => recGrow(S(m2)) } } }
+example : checkFnErr recGrow "not a strict structural predecessor" = true := by native_decide
+
+-- BRANCH 5 — MUTUAL recursion. The guard is per-declaration, so `f → g → f` would
+-- let each admit the other's postcondition with nothing decreasing anywhere: the
+-- same hole through two doors. Rejected outright (§8's measures are where a general
+-- story would live).
+def recMutA : Decl := decl{ fn recMutA () -> Id Nat Z (S Z) { recMutB() } }
+def recMutB : Decl := decl{ fn recMutB () -> Id Nat Z (S Z) { recMutA() } }
+example : checkFnErr recMutA "mutual recursion" [recMutA, recMutB] = true := by native_decide
+
+-- The guard is STRUCTURAL, not Nat-specific: a list fuel decreases the same way.
+def recList : Decl :=
+  decl{ fn recList [l] (l : List Nat) -> Id Nat Z Z
+        { match l { Nil => Refl, Cons(h, t) => recList(t) } } }
+example : checkFnOk recList = true := by native_decide
+
+-- Two constructors down is still a strict subterm (the relation is transitive, not
+-- just one-step) — which the quicksort recursion needs, since it peels `cnt` twice
+-- before recursing.
+def recDeep : Decl :=
+  decl{ fn recDeep [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => recDeep(b) } } } }
+example : checkFnOk recDeep = true := by native_decide
+
+-- A BORROW parameter decreases through its payload snapshot — §8's guard in its
+-- most literal form, and the only thing that shrinks in a list cursor: `zero_all`
+-- (S6Call) passes no counter at all, just the tail reborrow. Snapshots are
+-- entry-knowledge and are never rewritten by mutation (§3.2), so the payload's
+-- structural decomposition is a fixed, well-founded order.
+def recCursor : Decl :=
+  decl{ fn recCursor [v] (v : &mut List Nat) -> Unit
+        { match v { Nil => (), Cons(hd, tl) => { *hd := 0; recCursor(tl); () } } } }
+example : checkFnOk recCursor = true := by native_decide
+
+-- A NON-self call to a recursive function is untouched — the guard is about
+-- self-calls, and every other call is the ordinary §5.3 signature rule.
+def recCaller : Decl := decl{ fn recCaller () -> Id Nat Z Z { recGood(S Z) } }
+example : checkFnOk recCaller [recGood, recCaller] = true := by native_decide
+
 end Dllbc.Tests.S23Direct

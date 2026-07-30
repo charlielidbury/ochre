@@ -27,7 +27,7 @@ namespace Dllbc.BenchQS
 /-! ## Decl copies (verbatim from S17Spec / S19Partition / ScratchDecl) -/
 
 def nthS : Decl :=
-  decl{ fn nth (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+  decl{ fn nth [v] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
         back = λ (r : Nat). set i r (*v)
         { match v {
             Nil => botElim Unit p,
@@ -38,7 +38,7 @@ def nthS : Decl :=
         } } }
 
 def nth2S : Decl :=
-  decl{ fn nth2 (v : &mut List Nat, i : Nat, j : Nat,
+  decl{ fn nth2 [v] (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat
         back = λ (r1 : Nat). λ (r2 : Nat). set i r1 (set j r2 (*v))
         { match v {
@@ -67,7 +67,7 @@ def swapSN : Decl :=
             () } } } }
 
 def partScanRange : Decl :=
-  decl{ fn partScanRange (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
+  decl{ fn partScanRange [k] (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
         hle : Le (add lo (S (add k (add i g)))) (len *v)) -> Unit
         back = partScanRangeL pivot lo k i g (*v)
         { match k {
@@ -148,7 +148,7 @@ def partScanRange : Decl :=
         } } }
 
 def quicksort : Decl :=
-  decl{ fn quicksort (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v)) -> Unit
+  decl{ fn quicksort [fuel] (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v)) -> Unit
         back = sortRangeL fuel lo cnt (*v)
         { match fuel {
             Z => (),

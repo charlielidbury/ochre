@@ -50,6 +50,15 @@ structure Decl where
       telescope's snapshots and `%rᵢ` for the surrendered values (via pure de
       Bruijn: `rᵢ` are the leading λ binders). -/
   back : Option Term := none
+  /-- §1.2's `[k]` — the **decreasing-argument index**, made operational by M23.
+      A self-call is admitted at this function's declared return type only if the
+      actual at index `k` is a strict structural predecessor of that parameter's
+      current snapshot (§8's snapshot-subterm guard; the rule lives in the call
+      rule below). `none` means the function does not recurse — a self-call in a
+      body with no `[k]` is REJECTED, because admitting a call at its own declared
+      postcondition with nothing decreasing is the Hoare rule without its side
+      condition, and proves anything: `fn bad () -> Id Nat Z (S Z) { bad() }`. -/
+  dec : Option Nat := none
 
 /-- What an argument borrow owes at the boundary: its slot variable, its loan
     id, and the owed type (§5.1's `S`, instantiated at the entry snapshot).
@@ -138,6 +147,15 @@ structure St where
       captured borrow's payload-with-issued-holes must convert with the spec
       applied to fresh hole variables. Refined per-path like the owed types. -/
   selfBack : Option Val := none
+  /-- §8's snapshot-subterm guard (M23): while a body is checked, the name of the
+      function being checked, and — when it declares `[k]` — that parameter's index
+      together with its CURRENT snapshot. The snapshot rides `refineSym`/
+      `generalizeStuck` like every other σ-bearing piece of state (the M10
+      invariant), which is the whole trick: after `match fuel { S(f2) => … }` the
+      parameter's slot holds ⊥ (owned match consumes it) but this value reads
+      `S σ_f2`, so `f(…, f2, …)` is visibly a strict predecessor. `none` outside
+      `checkFn` (executing mode runs real bodies and needs no guard). -/
+  selfRec : Option (String × Option (Nat × Val)) := none
   /-- Execution mode (§8/§9 differential). `false` = CHECKING (the call rule
       uses the §5.3/§6.1 signature rule — groups, existentials); `true` =
       EXECUTING (a call runs the callee's actual body concretely). checkFn is
@@ -583,7 +601,10 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
       issued := g.issued.map (fun p => (p.1, substSym σ v p.2)),
       backSpec := g.backSpec.map (substSym σ v) }),
     retTyVal := s.retTyVal.map (substSym σ v),
-    selfBack := s.selfBack.map (substSym σ v) })
+    selfBack := s.selfBack.map (substSym σ v),
+    -- The decreasing parameter's snapshot refines with everything else — this is
+    -- how `match fuel { S(f2) => … }` makes the guard's comparison possible.
+    selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, substSym σ v d.2)))) })
 
 /-- **Generalize a stuck Bool spine** (§19) — the inverse of `refineSym`, and the
     two-layer principle at the machine level. When a match/`if` scrutinee reduces
@@ -607,7 +628,8 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M Nat := do
       issued := g.issued.map (fun p => (p.1, abstractInto sp σb p.2)),
       backSpec := g.backSpec.map (abstractInto sp σb) }),
     retTyVal := s.retTyVal.map (abstractInto sp σb),
-    selfBack := s.selfBack.map (abstractInto sp σb) })
+    selfBack := s.selfBack.map (abstractInto sp σb),
+    selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, abstractInto sp σb d.2)))) })
   pure σb
 
 /-- **⇜ (comptime write / refinement)** — the doc's ⇜, signature parallel to
@@ -774,6 +796,56 @@ def buildResult (fuel : Nat) (inst : Omega) (subs : List Val) : Term → M (Val 
     modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
     pure (.sym σ, [])
   termination_by t => sizeOf t
+
+/-! ## §8's snapshot-subterm guard — what makes a self-call admissible
+
+    A call is checked against a signature alone (§5.3), so a self-call is admitted
+    at the function's own declared return type. With declared backs removed that
+    return type IS the postcondition, and admitting it unconditionally is the Hoare
+    rule for recursion without its side condition — every false statement proves
+    itself (`fn bad () -> Id Nat Z (S Z) { bad() }`). The side condition is
+    structural decrease, and the checker being a symbolic interpreter makes it
+    cheap to state: compare the actual against the parameter's *current snapshot*,
+    which the enclosing matches have already refined. -/
+
+/-- Is `act` a STRICT structural subterm of `cur`? Only constructor fields count as
+    subterms — a fuel argument is a `Nat`/`List` snapshot, and the strictness is
+    what forbids the same-fuel self-call. Both sides are snapshots (σ's and
+    constructors), so structural equality is the right comparison: inside
+    `match fuel { S(f2) => … }` the parameter reads `S σ_f2` and the actual `σ_f2`.
+    Deliberately NOT extended to application spines: a `Le`-headed neutral has no
+    well-founded subterm order we could appeal to. -/
+partial def strictSubterm (act cur : Val) : Bool :=
+  match cur with
+  | .ctor _ args => args.any (fun a => a == act || strictSubterm act a)
+  | _ => false
+
+/-- The function names a body calls directly. -/
+partial def calleeNames : Term → List String
+  | .call f args => f :: (args.flatMap calleeNames)
+  | .letIn _ a b => calleeNames a ++ calleeNames b
+  | .assign a b c => calleeNames a ++ calleeNames b ++ calleeNames c
+  | .seq a b => calleeNames a ++ calleeNames b
+  | .ctorApp _ args => args.flatMap calleeNames
+  | .borrow t | .deref t => calleeNames t
+  | .matchE _ bs => bs.flatMap (fun b => calleeNames b.body)
+  | .app f a => calleeNames f ++ calleeNames a
+  | .lam d b | .pi d b | .sigmaT d b => calleeNames d ++ calleeNames b
+  | .idT a b c => calleeNames a ++ calleeNames b ++ calleeNames c
+  | _ => []
+
+/-- Can `f` reach `target` through the table's call graph? Used to reject MUTUAL
+    recursion, which the `[k]` guard does not cover: the guard is per-declaration,
+    so `f → g → f` would let each admit the other's postcondition with nothing
+    decreasing anywhere — the same hole through two doors. Rejected rather than
+    supported; §8's measures are where a general story would live. -/
+partial def reachesFn (table : List Decl) (seen : List String) (f target : String) : Bool :=
+  if seen.contains f then false
+  else match table.find? (fun d => d.name == f) with
+    | none => false
+    | some d =>
+      let cs := calleeNames d.body
+      cs.contains target || cs.any (fun c => reachesFn table (f :: seen) c target)
 
 /-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
     and conversion; a constructor value by the signature table, checking each
@@ -1186,6 +1258,33 @@ mutual
             -- instantiation `inst` (decl var → actual, §5.3) instantiates the
             -- return and owed types at the actuals this call was given.
             let (captured, inst) ← processArgs fuel 0 [] decl.telescope args
+            -- §8's snapshot-subterm guard. Signature-only checking means a self-call
+            -- is admitted at this function's own declared return type — its
+            -- POSTCONDITION, once declared backs are gone — so it needs the side
+            -- condition every recursion rule has: something strictly decreases.
+            -- Checked here, after `processArgs`, because the actual's VALUE is what
+            -- the comparison needs and `inst` is where it lands.
+            match (← get).selfRec with
+            | some (selfName, dk) =>
+              if f == selfName then
+                match dk with
+                | none =>
+                  throwErr s!"recursion: '{f}' calls itself but declares no decreasing argument ([k], §1.2) — a self-call admitted at its own return type with nothing decreasing proves any postcondition"
+                | some (k, cur) =>
+                  match inst.find? (fun kv => kv.1.id == k) with
+                  | none => throwErr s!"recursion: '{f}' declares decreasing argument [{k}] but the call passes no such argument"
+                  | some (_, act) =>
+                    -- Unwrap a borrow on both sides: what decreases is the payload
+                    -- snapshot, not the loan wrapping it.
+                    let peel : Val → Val := fun v => match v with | .borrowM _ p => p | v => v
+                    let a := Val.nfV fuel (peel act)
+                    let c := Val.nfV fuel (peel cur)
+                    if strictSubterm a c then pure ()
+                    else throwErr s!"recursion: self-call's argument [{k}] ({a.pretty}) is not a strict structural predecessor of the parameter's snapshot ({c.pretty})"
+              else if reachesFn (← get).decls [] f selfName then
+                throwErr s!"recursion: mutual recursion ('{selfName}' → '{f}' → … → '{selfName}') is not supported — the [k] guard is per-declaration (§8)"
+              else pure ()
+            | none => pure ()
             -- Build the result and the loans it issues from the return type (a
             -- single borrow, a Pair/Σ of borrows for a multi-issued group, or a
             -- plain existential wire). One group ties captured to issued. The

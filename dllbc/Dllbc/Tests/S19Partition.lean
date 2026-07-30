@@ -164,7 +164,7 @@ def dv : Term := .deref (V 0 "v")
 
 -- v=0, k=1, i=2, g=3, pivot=4, hlen=5; binders k'=6, c/i'=7, g'/hlenX=8, pij=9, p2=10, hlenTSg=11.
 def partScan : Decl :=
-  decl{ fn partScan (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
+  decl{ fn partScan [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
         hlen : Id Nat (len *v) (S (add k (add i g)))) -> Unit
         back = partScanL pivot k i g (*v)
         { match k {
@@ -237,7 +237,7 @@ example : checkFnOk partScan scanTable = true := by native_decide
 
 
 def partScanRange : Decl :=
-  decl{ fn partScanRange (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
+  decl{ fn partScanRange [k] (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
         hle : Le (add lo (S (add k (add i g)))) (len *v)) -> Unit
         back = partScanRangeL pivot lo k i g (*v)
         { match k {
@@ -514,7 +514,7 @@ open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
 
 -- v=0, k=1, i=2, g=3, pivot=4; body binders k2=5, c/i2=6, g2=7.
 def partScanE : Decl :=
-  decl{ fn partScanE (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
+  decl{ fn partScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
         { match k {
             Z => match i {
               Z => (),
@@ -667,7 +667,7 @@ def partitionRange : Decl :=
     so the bounds, stated over the live *v, transport back to len entry = hbnd). -/
 
 def quicksort : Decl :=
-  decl{ fn quicksort (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v)) -> Unit
+  decl{ fn quicksort [fuel] (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v)) -> Unit
         back = sortRangeL fuel lo cnt (*v)
         { match fuel {
             Z => (),
@@ -769,7 +769,7 @@ example : checkFnErr quicksortLie "does not match" [nthS, nth2S, swapSN, partSca
 -- suite is unchanged). The M22 mode-equivalence obligation, discharged for the
 -- reborrow path: checking and executing reach the same state by different routes.
 def partScanRangeE : Decl :=
-  decl{ fn partScanRangeE (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
+  decl{ fn partScanRangeE [k] (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
         { match k {
             Z => match i {
               Z => (),
@@ -946,7 +946,7 @@ example : checkFnOk shareCaller [nthS, nth2S, swapSN, lenPreserve, shareCaller] 
 -- atomic-at-audit over-approximation, which suspended *v for the whole body and
 -- blocked the second reborrow. back = identity (the recursion mutates nothing).
 def twoRec : Decl :=
-  decl{ fn twoRec (v : &mut List Nat, f : Nat) -> Unit
+  decl{ fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         back = *v
         { match f {
             Z => (),
