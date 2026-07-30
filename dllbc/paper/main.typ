@@ -38,8 +38,12 @@
   the body from its callees' postconditions, with no pure model of the partition
   or the sort in the development at all; a declared decreasing-argument guard
   that closed a live unsoundness — an unguarded recursive declaration proved any
-  postcondition from itself — and that, with a sufficiency hypothesis
-  discharging the out-of-fuel path, makes the guarded recursion total; a
+  postcondition from itself. Its scope is exactly: a *single*, *declared*
+  argument position, checked for strict structural decrease against that
+  parameter's current snapshot, on *self*-calls only, with mutual recursion
+  rejected outright rather than supported and no general well-founded measures;
+  with a sufficiency hypothesis discharging the out-of-fuel path, recursion so
+  guarded is total. Also checked at the pin: a
   differential harness relating the symbolic checker to concrete execution,
   validated by turning a removed unsound inference back on and watching it go
   red; and a machine-verified invariant that refinement propagates knowledge and

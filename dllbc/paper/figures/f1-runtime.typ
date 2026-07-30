@@ -214,20 +214,23 @@ write-through for free.
 
 === Rule ↔ implementation ↔ test
 
-All line numbers are `Dllbc/Machine.lean` unless prefixed; tests are in
+Implementations are in `Dllbc/Machine.lean` unless prefixed; tests are in
 `Dllbc/Tests/`. F2's `endLoan`/`drop` implement #smallcaps[R-Reorg]'s premise.
+Cells name the *function and case* rather than a line: an earlier version of this
+table carried line numbers, and every one of them was wrong within a few
+milestones. Test-side anchors are line numbers because those files are stable.
 
 #xref(
-  ([#smallcaps[R-Copy]],  [`readR` `.var` 988, 1005; `indexKindV` 328], [S2.lean:35 doc §2.1 copy-on-read]),
-  ([#smallcaps[R-Move]],  [`readR` `.var` 1015 (and doc §19 carried-borrow 1010)], [S2.lean:101 take-and-refill (`tail` is data → moved)]),
-  ([#smallcaps[R-Ctor]],  [`readR` `.ctorApp` 1022; `readArgs` 1120], [S2.lean:88 `Cons(3, Nil)`]),
+  ([#smallcaps[R-Copy]],  [`readR` `.var` (index-kind arm); `indexKindV`], [S2.lean:35 doc §2.1 copy-on-read]),
+  ([#smallcaps[R-Move]],  [`readR` `.var` (move arm, and its doc §19 carried-borrow retry)], [S2.lean:101 take-and-refill (`tail` is data → moved)]),
+  ([#smallcaps[R-Ctor]],  [`readR` `.ctorApp`; `readArgs`], [S2.lean:88 `Cons(3, Nil)`]),
   ([#smallcaps[R-Take]],  [`readR` `.deref` (`firstLoanMarker` + `endLoan` + retry); `navRead`], [S2 doc §2.4 `let tail = *b`; `S23Direct`]),
-  ([#smallcaps[R-Mint]],  [`readR` `.borrow` 1024], [S2.lean:45 `&mut x`; :117 `&mut *b` reborrow]),
-  ([#smallcaps[R-Let]],   [`readR` `.letIn` 1033], [S2.lean:26 (every trace)]),
-  ([#smallcaps[R-Seq]],   [`readR` `.seq` 1062], [S8Diff.lean:65 `e ; ()`; S19Partition.lean:553]),
-  ([#smallcaps[R-Assign]],[`readR` `.assign` 1037; `writeR` 515], [S2.lean:53 `*b := 7`; :76 `b := 9`]),
-  ([#smallcaps[R-Unit]],  [`readR` `.unit` 1099], [S2.lean:30 trailing `()`]),
-  ([#smallcaps[R-Lift]],  [`readR` pure formers 1110–1117; `readC` 662], [S11Lib.lean:72 `botElim` ⇒-lifted; :61 proof into Σ]),
-  ([#smallcaps[W-Fill]],  [`writeR` 515 (fill 519); `setAtPos` 506; `navWrite` 489; `placeToPos` 473], [S2.lean:101 fill the hole; :150 non-place reject]),
-  ([#smallcaps[R-Reorg]], [`readR` retries 997, 1013, 1028; `writeR` drop 520; F2 `endLoan` 882 / `drop` 443], [S2.lean:63 End-Mut before read; :76 drop before fill; :129 chain collapse]),
+  ([#smallcaps[R-Mint]],  [`readR` `.borrow`], [S2.lean:45 `&mut x`; :117 `&mut *b` reborrow]),
+  ([#smallcaps[R-Let]],   [`readR` `.letIn`], [S2.lean:26 (every trace)]),
+  ([#smallcaps[R-Seq]],   [`readR` `.seq`], [S8Diff.lean:65 `e ; ()`; S19Partition]),
+  ([#smallcaps[R-Assign]],[`readR` `.assign`; `writeR`], [S2.lean:53 `*b := 7`; :76 `b := 9`]),
+  ([#smallcaps[R-Unit]],  [`readR` `.unit`], [S2.lean:30 trailing `()`]),
+  ([#smallcaps[R-Lift]],  [`readR` (pure formers) → `collapseCDerefs`, then `readC`], [S11Lib.lean:72 `botElim` ⇒-lifted; :61 proof into Σ]),
+  ([#smallcaps[W-Fill]],  [`writeR` (fill arm); `setAtPos`; `navWrite`; `placeToPos`], [S2.lean:101 fill the hole; :150 non-place reject]),
+  ([#smallcaps[R-Reorg]], [`readR` (the retry arms); `writeR` (drop-before-fill); F2's `endLoan`/`drop`], [S2.lean:63 End-Mut before read; :76 drop before fill; :129 chain collapse]),
 )

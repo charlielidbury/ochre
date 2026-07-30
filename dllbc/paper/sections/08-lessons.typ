@@ -193,3 +193,17 @@ difference between a ledger and a habit. The numbering is deliberately sealed to
 the first extraction: findings are not renumbered when they close, because a claim
 this paper made about its own audit should stay checkable against the audit it
 made it about.
+
+One artifact of that second pass deserves to be stated plainly, because it is the
+cleanest evidence available that a paper about a moving mechanization decays
+silently. *The quicksort listing in @sec-casestudy would have been rejected by the
+checker it describes.* Between the two pins the recursion guard arrived, every
+recursive declaration in the corpus acquired the `[k]` annotation that admits its
+self-calls — and the paper's transcription of that declaration, correct when it was
+made, quietly became a program the mechanization no longer accepts. Nothing failed.
+No test covered it, because the listing is prose; the extraction's findings ledger
+did not catch it, because the ledger tracks _rules_ against the implementation and
+this was a _quotation_ going stale. It was found by re-reading the source with the
+listing in hand. The lesson is not that transcription is dangerous but that a
+document is only as current as its last _verification_, and the interval at which
+that must happen is set by the artifact, not by the writing.
