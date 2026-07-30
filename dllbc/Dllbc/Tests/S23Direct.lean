@@ -162,4 +162,54 @@ def sfst_bad_target : Term := pure{ sfst (S Z) }
 def sfst_bad_target_ty : Term := pure{ Nat }
 example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 
+/-! ## Stage (ii) prelude: DEPENDENT Σ results at a call site
+
+    Building certificates is half of it; the other half is that a *caller* can
+    receive one. A back-less callee's returned evidence is pinned to its own
+    result — `Σ (r : List Nat) → Id (List Nat) r (drop i (old *v))` is split_off's
+    ensures — and until M23 the call rule built a Σ result's tail INDEPENDENTLY of
+    its head (`buildResult`'s own comment said so: "a dependent product over the
+    first is not supported; no test needs it"). The tail's σ therefore carried a
+    DANGLING `pvar` in its sctx type, and the pin was unusable:
+
+        call: argument (σ1) does not have its parameter type (Id σ0 (S Z))
+
+    The fix threads the already-built components into the tail's type (Machine.lean,
+    `buildResult`'s `subs`). These three tests are the smallest statement of the
+    property: a pinned result is usable, and it is usable *because* of the pin. -/
+
+-- A back-less callee returning a PINNED value, and a consumer whose second
+-- parameter's type mentions its first argument.
+def pinOne : Decl := decl{ fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) } }
+def useIt : Decl := decl{ fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () } }
+example : checkFnOk pinOne = true := by native_decide
+example : checkFnOk useIt = true := by native_decide
+
+-- The caller destructures the returned pair and feeds BOTH halves onward: `h`'s
+-- type is `Id σa (S Z)` for the very σa bound to `a`. This is the caller-side
+-- shape every back-less callee in the rest of M23 depends on.
+def usePin : Decl :=
+  decl{ fn usePin () -> Unit
+        { let p = pinOne();
+          match p { Pair(a, h) => { useIt(a, h); () } } } }
+example : checkFnOk usePin [pinOne, useIt, usePin] = true := by native_decide
+
+-- Not vacuous (a): the pin says `S Z`; a consumer wanting `S (S Z)` is rejected —
+-- so the threaded type is the callee's actual claim, not a rubber stamp.
+def useItLie : Decl := decl{ fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () } }
+def usePinLie : Decl :=
+  decl{ fn usePinLie () -> Unit
+        { let p = pinOne();
+          match p { Pair(a, h) => { useItLie(a, h); () } } } }
+example : checkFnErr usePinLie "does not have its parameter type" [pinOne, useItLie, usePinLie] = true := by native_decide
+
+-- Not vacuous (b): drop the pin (a plain `Nat` result) and the caller learns
+-- NOTHING about the value it got back — `Refl` cannot inhabit `Id σa (S Z)`. The
+-- pin is what carries the knowledge across the boundary, which is the whole
+-- premise of removing declared backs.
+def plainOne : Decl := decl{ fn plainOne () -> Nat { S Z } }
+def useUnpinned : Decl :=
+  decl{ fn useUnpinned () -> Unit { let a = plainOne(); useIt(a, Refl); () } }
+example : checkFnErr useUnpinned "does not have its parameter type" [plainOne, useIt, useUnpinned] = true := by native_decide
+
 end Dllbc.Tests.S23Direct

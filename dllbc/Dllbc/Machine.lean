@@ -740,24 +740,36 @@ def borrowParamIds (telescope : List (String × Term)) : List Nat :=
     fresh issued reborrow `borrowₘ ℓ σ` with `σ : τ` in `sctx` and owed type
     `S[s := σ]`; a `Pair`/`Σ` of results issues one loan PER borrow component
     (the multi-issued group — `nth2`); a non-borrow leaf is a plain fresh
-    existential `σ` with no issued loan (the §5.3 wire). The second Σ component
-    is built independently (a dependent product over the first is not supported;
-    no test needs it). -/
-def buildResult (fuel : Nat) (inst : Omega) : Term → M (Val × List (Nat × Val))
+    existential `σ` with no issued loan (the §5.3 wire).
+
+    **Σ is DEPENDENT here** (M23): the tail's type may mention the components
+    already built — that is the whole point of a pinned result (`Σ (r : List Nat)
+    → Id (List Nat) r (drop i (old *v))`, split_off's ensures), and with declared
+    backs removed it is a caller's only route to knowing anything about a returned
+    value. `subs` carries the built components for the enclosing Σ binders,
+    innermost first; a leaf substitutes them into its type before minting the σ.
+    Substituting one at a time from the head is correct because `substPure 0`
+    shifts the outer binders down as it goes. (Before M23 the tail was built
+    independently, leaving a dangling `pvar` in the σ's sctx type, so the pin was
+    unusable at the call site — `useIt(a, h)` failed with `argument (σ1) does not
+    have its parameter type (Id σ0 (S Z))`.) -/
+def buildResult (fuel : Nat) (inst : Omega) (subs : List Val) : Term → M (Val × List (Nat × Val))
   | .borrowT τ S => do
-    let τVal ← readCWith fuel inst τ
+    let τVal := (subs.foldl (fun t v => Val.substPure 0 v t) (← readCWith fuel inst τ))
     let σ ← freshSym
     let ℓr ← freshLoan
+    -- `S` binds the snapshot at pvar 0, so the enclosing Σ binders sit at 1+.
     let sVal ← readCWith fuel inst S
-    let owedR := Val.nfV fuel (Val.substPure 0 (Val.sym σ) sVal)
+    let sVal := Val.substPure 0 (Val.sym σ) sVal
+    let owedR := Val.nfV fuel (subs.foldl (fun t v => Val.substPure 0 v t) sVal)
     modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
     pure (.borrowM ℓr (.sym σ), [(ℓr, owedR)])
   | .sigmaT a b => do
-    let (vA, issA) ← buildResult fuel inst a
-    let (vB, issB) ← buildResult fuel inst b
+    let (vA, issA) ← buildResult fuel inst subs a
+    let (vB, issB) ← buildResult fuel inst (vA :: subs) b
     pure (.ctor "Pair" [vA, vB], issA ++ issB)
   | rt => do
-    let retTy ← readCWith fuel inst rt
+    let retTy := (subs.foldl (fun t v => Val.substPure 0 v t) (← readCWith fuel inst rt))
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
     pure (.sym σ, [])
@@ -1198,7 +1210,7 @@ mutual
             let savedE := (← get).exitSyms
             let savedO := (← get).entrySyms
             modify (fun s => { s with exitSyms := exitMap, entrySyms := [] })
-            let (resultVal, issued) ← buildResult fuel inst (markExit borrowIds decl.retType)
+            let (resultVal, issued) ← buildResult fuel inst [] (markExit borrowIds decl.retType)
             modify (fun s => { s with exitSyms := savedE, entrySyms := savedO })
             let ρ ← freshGroup
             let fc := (← get).forceConstrained
