@@ -4488,6 +4488,95 @@ def partA_cat_e0_ty : Term := pure{
     PartA pv k (add k mm) (arrCat k mm l w) →
       Σ (hu : UbA pv k l) → PartA pv Z mm w }
 
+/-! ### The same crossings, one conclusion each
+
+    A body cannot conveniently destructure a Σ — a `let`-bound pure value is not
+    type-checked (§23's filed checker gap), so the alternative is an inline `elim` whose
+    `return` motive is the function's whole return type written out again. Splitting each
+    crossing into its two conclusions moves that cost into the pure layer, where writing
+    the types is free, and keeps the programs readable. -/
+
+def splitA_cat_ub : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : SplitA p (S k) (add k mm) (arrCat k mm l w)).
+      elim (splitA_cat_e1 p k mm l w s)
+        return (λ (qz : Σ (hu : UbA p k l) → SplitA p (S Z) mm w). UbA p k l) {
+          Pair (u) (v) => u } }
+def splitA_cat_ub_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    SplitA p (S k) (add k mm) (arrCat k mm l w) → UbA p k l }
+
+def splitA_cat_rest : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : SplitA p (S k) (add k mm) (arrCat k mm l w)).
+      elim (splitA_cat_e1 p k mm l w s)
+        return (λ (qz : Σ (hu : UbA p k l) → SplitA p (S Z) mm w). SplitA p (S Z) mm w) {
+          Pair (u) (v) => v } }
+def splitA_cat_rest_ty : Term := pure{
+  Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    SplitA p (S k) (add k mm) (arrCat k mm l w) → SplitA p (S Z) mm w }
+
+/-- A skip-1 `SplitA` over a cons: its head is bounded, and its tail is a skip-0 one.
+    Both are definitional unfoldings; naming them keeps the swap branch flat. -/
+def splitA1_head : Term := pure{
+  λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
+    λ (s : Σ (hh : Le yv p) → SplitA p Z r g).
+      elim s return (λ (qz : Σ (hh : Le yv p) → SplitA p Z r g). Le yv p) {
+        Pair (u) (v) => u } }
+def splitA1_head_ty : Term := pure{
+  Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
+    SplitA p (S Z) (S r) (acons r yv g) → Le yv p }
+
+def splitA1_tail : Term := pure{
+  λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
+    λ (s : Σ (hh : Le yv p) → SplitA p Z r g).
+      elim s return (λ (qz : Σ (hh : Le yv p) → SplitA p Z r g). SplitA p Z r g) {
+        Pair (u) (v) => v } }
+def splitA1_tail_ty : Term := pure{
+  Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
+    SplitA p (S Z) (S r) (acons r yv g) → SplitA p Z r g }
+
+def partA_cat_ub : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : PartA pv k (add k mm) (arrCat k mm l w)).
+      elim (partA_cat_e0 pv k mm l w s)
+        return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). UbA pv k l) {
+          Pair (u) (v) => u } }
+def partA_cat_ub_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    PartA pv k (add k mm) (arrCat k mm l w) → UbA pv k l }
+
+def partA_cat_rest : Term := pure{
+  λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
+    λ (s : PartA pv k (add k mm) (arrCat k mm l w)).
+      elim (partA_cat_e0 pv k mm l w s)
+        return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). PartA pv Z mm w) {
+          Pair (u) (v) => v } }
+def partA_cat_rest_ty : Term := pure{
+  Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
+    PartA pv k (add k mm) (arrCat k mm l w) → PartA pv Z mm w }
+
+/-- The pivot slot, read off a skip-0 `PartA`: the element there IS the pivot, and
+    everything after it is bounded below by the pivot. These two are `sorted_arrCat`'s
+    remaining hypotheses, and the reason `PartA` records the pivot's identity at all. -/
+def partA0_eq : Term := pure{
+  λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
+    λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
+      elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). Id Nat ev pv) {
+        Pair (u) (v) => u } }
+def partA0_eq_ty : Term := pure{
+  Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
+    PartA pv Z (S jj) (acons jj ev g) → Id Nat ev pv }
+
+def partA0_lb : Term := pure{
+  λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
+    λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
+      elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). LbA pv jj g) {
+        Pair (u) (v) => v } }
+def partA0_lb_ty : Term := pure{
+  Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
+    PartA pv Z (S jj) (acons jj ev g) → LbA pv jj g }
+
 /-! ### The count layer for a swap across a carve
 
     The partition's one mutating step exchanges the array's head with the element at

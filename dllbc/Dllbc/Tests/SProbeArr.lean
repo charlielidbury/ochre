@@ -14,71 +14,91 @@ open Dllbc.StdLemmas (le_refl le_add le_add_l le_add_succ le_trans le_up_r le_pr
 
 namespace Dllbc.Tests.SProbeArr
 
-def fnEnv (d : Decl) (tbl : List Decl := [d]) : Option Env :=
-  match runFn tbl d with | [.ok e] => some e | _ => none
-
 def checkFnMsg (d : Decl) (tbl : List Decl := [d]) : String :=
   match checkFn tbl d with | .ok _ => "OK" | .error e => e
 
-/-! ### T1 — does a two-segment owned node fold, and does `countA` then compute? -/
-
-def node2 : Val :=
-  Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [.sym 7]), Val.segNode (.sym 3) (.sym 6)]
-#eval (Val.arrFoldDeep node2).pretty
-#eval (Val.nfV 2000 (Val.arrFoldDeep node2)).pretty
-
 def touchA : Decl := decl{ fn touchA (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
 
-/-! ### T2 — head carve (supplied residue) + tail consumed by a call -/
+/-! ### U1 — peel + tail + a call taking a REBORROW of the tail -/
 
-def peelCall : Decl := decl{
-  fn peelCall (n : Nat, a : &mut (Array n Nat))
-      -> Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a)) {
+def u1 : Decl := decl{
+  fn u1 (n : Nat, a : &mut (Array n Nat)) -> Unit {
     match n {
-      Z => λ (q : Nat). Refl,
+      Z => (),
       S(m) => {
         let hd = &mut (*a)[Z ; 1 ; m];
         let x = (*hd)[0];
         let tl = &mut (*a)[S Z ; ..];
-        touchA(m, tl);
-        λ (q : Nat). Refl } } } }
-#eval checkFnOk peelCall [peelCall, touchA]
-#eval (checkFnMsg peelCall [peelCall, touchA]).take 400
+        touchA(m, &mut *tl);
+        () } } } }
+#eval (checkFnMsg u1 [u1, touchA]).take 300
 
-/-! ### T3 — carve the head, read it, then WRITE it back (ends nothing, but tests
-    whether a write through the element place leaves the node foldable). -/
+/-! ### U2 — U1 + the three carves inside the tail -/
 
-def peelWrite : Decl := decl{
-  fn peelWrite (n : Nat, a : &mut (Array n Nat))
-      -> Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a)) {
+def u2 : Decl := decl{
+  fn u2 (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
     match n {
-      Z => λ (q : Nat). Refl,
+      Z => (),
       S(m) => {
         let hd = &mut (*a)[Z ; 1 ; m];
         let x = (*hd)[0];
-        (*hd)[0] := x;
-        λ (q : Nat). Refl } } } }
-#eval checkFnOk peelWrite
-#eval (checkFnMsg peelWrite).take 400
+        let tl = &mut (*a)[S Z ; ..];
+        touchA(m, &mut *tl);
+        let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+        let mid = &mut (*tl)[k3 ; 1 ; r2];
+        let hi = &mut (*tl)[S k3 ; ..];
+        () } } } }
+#eval (checkFnMsg u2 [u2, touchA]).take 300
 
-/-! ### T4 — the Z branch alone: is `countA q Z σ ≡ countA q Z σ` (Refl) fine? -/
+/-! ### U3 — U2 without the call (are the nested carves the problem, or the call?) -/
 
-def zOnly : Decl := decl{
-  fn zOnly (n : Nat, a : &mut (Array n Nat))
-      -> Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a)) {
-    λ (q : Nat). Refl } }
-#eval checkFnOk zOnly
-#eval (checkFnMsg zOnly).take 300
+def u3 : Decl := decl{
+  fn u3 (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+    match n {
+      Z => (),
+      S(m) => {
+        let hd = &mut (*a)[Z ; 1 ; m];
+        let x = (*hd)[0];
+        let tl = &mut (*a)[S Z ; ..];
+        let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+        let mid = &mut (*tl)[k3 ; 1 ; r2];
+        let hi = &mut (*tl)[S k3 ; ..];
+        () } } } }
+#eval (checkFnMsg u3).take 300
 
-/-! ### T5 — the carve alone, no reads: does `*a` fold with two live segment borrows? -/
+/-! ### U4 — U3 + the swap writes -/
 
-def carveOnly : Decl := decl{
-  fn carveOnly (n : Nat, m : Nat, a : &mut (Array n Nat))
-      -> Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a)) {
-    let hd = &mut (*a)[Z ; 1 ; m];
-    let tl = &mut (*a)[S Z ; ..];
-    λ (q : Nat). Refl } }
-#eval checkFnOk carveOnly
-#eval (checkFnMsg carveOnly).take 400
+def u4 : Decl := decl{
+  fn u4 (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+    match n {
+      Z => (),
+      S(m) => {
+        let hd = &mut (*a)[Z ; 1 ; m];
+        let x = (*hd)[0];
+        let tl = &mut (*a)[S Z ; ..];
+        let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+        let mid = &mut (*tl)[k3 ; 1 ; r2];
+        let hi = &mut (*tl)[S k3 ; ..];
+        let y = (*mid)[0];
+        (*mid)[0] := x;
+        (*hd)[0] := y;
+        () } } } }
+#eval (checkFnMsg u4).take 300
+
+/-! ### U5 — the recursive shape, with a SELF call, no nested carve -/
+
+def u5 : Decl := decl{
+  fn u5 [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, a : &mut (Array m Nat)) -> Unit {
+    match m {
+      Z => (),
+      S(m2) => match fuel {
+        Z => botElim Unit hfuel,
+        S(f2) => {
+          let hd = &mut (*a)[Z ; 1 ; m2];
+          let x = (*hd)[0];
+          let tl = &mut (*a)[S Z ; ..];
+          u5(f2, m2, hfuel, &mut *tl);
+          () } } } } }
+#eval (checkFnMsg u5).take 300
 
 end Dllbc.Tests.SProbeArr

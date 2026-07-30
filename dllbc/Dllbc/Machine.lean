@@ -1410,6 +1410,24 @@ def elementize (fuel : Nat) (body : Val) : M Val := do
         pure (.ctor "Arr" [.sym e])
   | b => throwErr s!"a[i]: the one-slot segment holds {b.pretty}, which is not a single-element run"
 
+/-- §5.2's demand-end, at the NODE rather than at a leaf.
+
+    "Any rule that READS a place ends the suspensions parked there before it looks",
+    and a carve reads the place — it consults the extent map. `carveAt` already
+    demand-ends a loaned LEAF (a segment out on loan) and a marker buried inside a
+    one-slot run; what it lacked is the case where the WHOLE payload is suspended,
+    which has exactly one producer: a reborrow into a call. `f(&mut *v)` parks a marker
+    at `*v`, and the group's release plugs the payload back only when something demands
+    it — so `*v` is `loanₘ ℓ` until then, and `arrExtent` has no array value to read.
+
+    `readR` performs the same collapse at its own reborrow and match sites; this is that
+    rule reaching the carve, and it is why a recursive array program can carve the
+    argument it just handed to its recursive call. -/
+partial def demandNode (fuel : Nat) (pos : Pos) : M Unit := do
+  match ← getAtPos fuel pos with
+  | .loanM ℓ => do endLoan fuel ℓ; demandNode fuel pos
+  | _ => pure ()
+
 /-! **The carve**, at the array node sitting at `pos`. `isIdx` selects the one-slot
     variant (`a[i]` is a one-slot carve — ruling 4's uniformity, no dedicated rule).
 
@@ -1419,6 +1437,7 @@ def elementize (fuel : Nat) (body : Val) : M Val := do
     stale the moment either fires. -/
 partial def carveAt (fuel : Nat) (pos : Pos) (lo cnt : Val) (given : Option Val)
     (ev : Option Val) (isIdx : Bool) : M Unit := do
+  demandNode fuel pos
   -- ROUTE (a), step one: the program SUPPLIED the residue's extent, so solve premise
   -- (3)'s equation against it HERE, before premise (2) is even formed. That ordering is
   -- the whole trick — with the leaf's extent refined to `add cnt rest`, the obligation
