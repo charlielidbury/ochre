@@ -646,43 +646,56 @@ group releases atomically where the concrete machine ends lazily"); this is the 
 instance where the CONCRETE side is the one that is wrong, and it is therefore the first
 one that cannot be dismissed as the checker being conservative.
 
-**ATTEMPTED, AND THE DIAGNOSIS CHANGED — this is the entry's real content.** The obvious
-repair is a scope-aware release at call return, on the M22-a execfix's profile
-(executing-mode only, checking byte-identical). Three were built:
+**ATTEMPTED TWICE, AND THE DIAGNOSIS TURNED OVER TWICE. Read the second turn — the
+first conclusion recorded here was WRONG and is corrected below.**
 
-* end the callee's loans by ID — every loan created after a mark taken AFTER the actuals
-  are bound, so the argument reborrow stays the caller's;
-* end them by FRAME — every slot at or above the callee's `nextFrame` id offset, which is
-  what "scope" literally means here;
-* collapse the markers of a JUST-UNSUSPENDED node, in the execfix's own shape, gated on
-  `executing` so checking is untouched.
-
-All three made a LIVE borrow vacant, and instrumenting the navigation to name it is what
-turned the diagnosis over:
+*First attempt.* Three scope-aware releases at call return, on M22-a's execfix profile:
+by loan ID (every loan created after a mark taken AFTER the actuals bind), by FRAME
+(every slot at or above the callee's `nextFrame` id offset), and by collapsing a
+just-unsuspended node's markers in the execfix's own shape. All three made a LIVE borrow
+vacant. Instrumenting the navigation named it —
 
     place: navigating mid#10025 failed        -- the pivot cell's own borrow
 
-**The real obstacle is underneath the release.** `Val.segsNode` DROPS a zero-extent
-segment and UNWRAPS a lone survivor (¶1.1's drop-empty), so a node whose only surviving
-segment is one live borrow collapses to a bare `loanₘ ℓ` — and the next carve's
-demand-end, seeing a suspended node, ends exactly that borrow. A runtime-computed split
-has an empty side constantly, so this is routine concretely and unreachable symbolically,
-where a residue σ is never known to be zero. It is the same root as C7 (a zero-extent
-segment shares its base with the segment after it) reaching the other half of the
-representation: C7 was about which leaf a request SELECTS, this is about whether the
-segment a borrow is pinned to still EXISTS.
+— and traced it to drop-empty: `Val.segsNode` UNWRAPS a lone survivor (¶1.1), so a node
+whose only surviving segment is one live borrow collapses to a bare `loanₘ ℓ`, and the
+next carve's demand-end then ends exactly that borrow while doing precisely what §5.2
+says. Routine concretely, unreachable symbolically, where a residue σ is never known to
+be zero. That much stands.
 
-So: the concrete segment representation is not stable under its own zero-extent
-normalization, and there is no intermediate state in which "the callee's segments are gone
-and the caller's are intact" can even be expressed. Releasing frames cannot fix that — the
-normalization has to stop losing the structure borrows are pinned to, which is a
-representation change rather than a call-return one. **Architectural, not local**: filed
-as its own lane, with G5 standing as a known executing-mode restriction.
+**The conclusion drawn from it did not.** This entry previously read "architectural, not
+local — no release mechanism can produce a state where the callee's segments are gone and
+the caller's are intact". A bounded viability probe refuted that:
 
-The natural shape for whoever takes it: keep zero-extent segments when a live borrow is
-pinned to one (or give borrows a segment identity that survives the normalization), and
-re-derive drop-empty as a property of marker-free nodes only. C7's disambiguation is
-already the precedent for treating zero-extent segments as real rather than as noise.
+*Second attempt (probe, branch `dllbc-g5-probe`).* Drop-empty has THREE sites, not one,
+and they are independently fixable.
+
+* **The lone-survivor unwrap** — keep a survivor that carries a marker. ONE LINE, and the
+  full 114-target suite is green with ZERO test edits: not merely checking-identical but
+  MODE-INDEPENDENT, needing no gate. No cascade into `matchVal`/R9's segment-wise
+  comparison or the ⇝ fold either — the fold absorbs an empty run definitionally and
+  `segsExtent?` sums `add Z k ⇝ k`, so the extent map is unchanged.
+* **The leaf-selection collision** — already closed, by C7. Once zero-extent segments are
+  kept, several leaves share a base, and C7's "prefer the leaf whose extent IS
+  `add cnt rest`, else a non-empty one" is exactly what resolves it. C7 was written for
+  the citation path and turns out to be load-bearing here; without it, keeping zero-extent
+  segments would be unusable.
+* **The dropped tail piece** — `carveAt` drops a zero-extent residue, so a later
+  zero-width request at that base (`a[S k ; 0]`, which is what an empty right half IS)
+  finds no segment and selects the NEIGHBOUR, demand-ending the borrow pinned to it.
+  Keeping it unconditionally BREAKS checking (all three §25 programs stop checking);
+  EXECUTING-GATED it restores them. This site is open.
+
+**The payoff that settles boundedness:** with the first site fixed, the third gated, and a
+frame-scoped release, `splitA [3,1,4]` at `p = 2` EXECUTES and returns `[1,3,4]` —
+correct, and previously impossible. That is a carve re-entered after a carving callee
+returned, which is G5's own shape, working.
+
+**So: BOUNDED, not architectural.** Two of three sites closed with evidence, the third
+named precisely (`qsCallerA [2,1]` dies at `mid#10150`, `partitionA`'s swap branch at
+`k3 = 0, r2 = 0`). The honest caveat is on the estimate rather than the diagnosis: this
+obstacle has now produced three estimates from this lane and the first two were wrong, so
+the pattern to expect is that each site is small and there is one more than you think.
 
 ### G6 — `a[lo ; ..]` is unusable once a residue can be empty
 
