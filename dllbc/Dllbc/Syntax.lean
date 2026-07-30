@@ -61,6 +61,15 @@ inductive Term where
   /-- `*t` — the peel. Arrow-generic in the doc; here used under ⇒ (take)
       and ⇐ (write-through / locate). -/
   | deref  : Term → Term
+  /-- `t[i | ev]` — the **index step** (¶2.1), arrow-generic exactly as `*` is. The
+      payload at an index place is the ELEMENT (type `T`), not an `Array 1 T`, which
+      is what spares every element access a coercion. `ev` is the cited containment
+      evidence, `none` when the bound computes (¶3.2's supply route 1). -/
+  | index  : Term → Term → Option Term → Term
+  /-- `t[lo ; cnt | ev]` — the **range step** (¶2.1). Offset-and-count, never
+      lower-and-upper: `a[lo ; cnt]` has type `Array cnt T` read straight off the
+      syntax, so no rule below ever produces a `sub`. -/
+  | range  : Term → Term → Term → Option Term → Term
   /-- `match x { … }` — one-constructor-deep pattern match on a variable
       scrutinee (§3). Owned or borrow mode is chosen at runtime by what the
       scrutinee's slot holds.
@@ -128,6 +137,9 @@ mutual
     | .ctorApp n as, .ctorApp m bs => n == m && Term.beqList as bs
     | .borrow a, .borrow b => Term.beq a b
     | .deref a, .deref b => Term.beq a b
+    | .index a i e, .index b j f => Term.beq a b && Term.beq i j && Term.beqOpt e f
+    | .range a l c e, .range b m d f =>
+      Term.beq a b && Term.beq l m && Term.beq c d && Term.beqOpt e f
     | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs
@@ -146,6 +158,11 @@ mutual
   def Term.beqList : List Term → List Term → Bool
     | [], [] => true
     | a :: as, b :: bs => Term.beq a b && Term.beqList as bs
+    | _, _ => false
+  termination_by ts _ => sizeOf ts
+  def Term.beqOpt : Option Term → Option Term → Bool
+    | none, none => true
+    | some a, some b => Term.beq a b
     | _, _ => false
   termination_by ts _ => sizeOf ts
   def Term.beqBranches : List Branch → List Branch → Bool

@@ -135,9 +135,11 @@ def idxOf? (l : List String) (s : String) : Option Nat :=
   go l 0
 
 /-- Kernel constructors → `ctorApp`. -/
-def ctorSet : List String := ["Z", "S", "Nil", "Cons", "Pair", "Refl", "True", "False", "unit"]
+def ctorSet : List String := ["Z", "S", "Nil", "Cons", "Pair", "Refl", "True", "False", "unit", "Arr"]
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
-def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k"]
+def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
+  -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read.
+  "Array", "arrCat", "acons", "arrRec", "aget"]
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`swapL`, `set`,

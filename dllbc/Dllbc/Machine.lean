@@ -709,6 +709,11 @@ mutual
       let v ← reflectC rhs
       bindSlot x v
       reflectC rest
+    -- ¶2.2's ⇝ column at the two new steps. STAGE (ii): the index place projects
+    -- `aget i` of the snapshot and the range place projects the segment's own
+    -- snapshot; both land with the place layer.
+    | .index _ _ _ => throwErr "readC (⇝): index place — stage (ii)"
+    | .range _ _ _ _ => throwErr "readC (⇝): range place — stage (ii)"
     | .assign _ _ _ => throwErr "readC (⇝): `:=` is excluded from the comptime fragment"
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
@@ -1449,6 +1454,10 @@ mutual
       | .lam _ _ => do collapseCDerefs fuel t; readC fuel t
       | .app _ _ => do collapseCDerefs fuel t; readC fuel t
       | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
+      -- ¶2.2's ⇒ column at the two new steps (a read of an element / of a run).
+      -- STAGE (ii): both are ordinary place reads once `Pos` carries a path.
+      | .index _ _ _ => throwErr "readR (⇒): index place — stage (ii)"
+      | .range _ _ _ _ => throwErr "readR (⇒): range place — stage (ii)"
       | .borrowT _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
   termination_by fuel _ => (fuel, 0, 0)
   def readArgs : Nat → List Term → M (List Val)

@@ -120,6 +120,12 @@ mutual
     | .borrowM ℓ p =>
       let s := "borrowₘ ℓ" ++ toString ℓ ++ " " ++ prettyPrec 1 p
       if prec > 0 then s!"({s})" else s
+    -- ¶1.1's array forms, rendered the way the design note's traces read (the trace
+    -- suite IS the test suite): an owned run as `[3, 1, 2]`, a carved node as
+    -- `Arr⟨1 ▷ [3], 2 ▷ loanₘ ℓ0⟩`.
+    | .ctor "Arr" vs => "[" ++ prettyCommas vs ++ "]"
+    | .ctor "§segs" segs => "Arr⟨" ++ prettySegs segs ++ "⟩"
+    | .ctor "§seg" [c, b] => prettyPrec 1 c ++ " ▷ " ++ prettyPrec 0 b
     | .ctor name [] => name
     | .ctor name args =>
       let s := name ++ prettyArgs args
@@ -146,6 +152,16 @@ mutual
   def prettyArgs : List Val → String
     | [] => ""
     | a :: as => " " ++ prettyPrec 1 a ++ prettyArgs as
+  termination_by as => sizeOf as
+  def prettyCommas : List Val → String
+    | [] => ""
+    | [a] => prettyPrec 0 a
+    | a :: as => prettyPrec 0 a ++ ", " ++ prettyCommas as
+  termination_by as => sizeOf as
+  def prettySegs : List Val → String
+    | [] => ""
+    | [a] => prettyPrec 0 a
+    | a :: as => prettyPrec 0 a ++ ", " ++ prettySegs as
   termination_by as => sizeOf as
 end
 
