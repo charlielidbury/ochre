@@ -1,5 +1,9 @@
 # DOC-DELTAS — where the mechanization corrects or refines `design-arrays-slices.md`
 
+> **CLOSED — fully applied to `design-arrays-slices.md`, 2026-07-31.** Every entry below is now folded into the design note in place and labelled there: corrections read *"an earlier draft said X; it is Y, because Z"*, refinements are absorbed into the rules they refine, gaps are closed with what closed them, and the two restrictions are stated in ¶8.4. The two soundness findings (C8's cited-equation ruling, C9's polarity inversion) anchor ¶3.2a and ¶3.6 respectively; ¶9's three flagged decisions each carry a verdict; and Appendix A is annotated where its forecast was wrong.
+>
+> **This file is kept as the historical record and should not be edited to match the note.** It is the account of what the work was like while it was happening — including the two conclusions it recorded and a later probe refuted, and the `HANDOFF` written when the quicksort leaf was still unbuilt. The design note says what the design *is*; this says what it took to find out. Where the two differ in emphasis, this is the primary source.
+
 Every place M24's implementation departs from the design note, with the reason. The
 note gets **one** amendment pass from this ledger at merge review, rather than an
 archaeology dig through commit messages.
