@@ -797,4 +797,118 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrPool b)
     knowing before the metatheory is written, since obligation 4 (merge is
     value-preserving) is what the new case silently assumes. -/
 
+/-! ## (v) Symbolic element access, the exhaustive split, and where it stops
+
+    ¶3.5's note on what range places replace: M13's `nth2` carries
+    `pij : Le (S i) j` and `p2 : Le (S j) (len *v)`, and "the evidence has been
+    threaded through every swap site since M13 … Range places take the same terms and
+    give them their real job". So the obligation at `a[i]` had better BE that term. -/
+
+/-! ### Premise (2) must be spelled the way a program writes it
+
+    Two adjustments, neither changing what the premise MEANS, both required for it to
+    be dischargeable at all.
+
+    First, the end of the range. `add` recurses on its FIRST argument, so `add lo cnt`
+    is stuck whenever `lo` is symbolic — and at every `a[i]` the count is literally 1,
+    making the obligation read `Le (add i (S Z)) n`. No program writes that, and no
+    lemma in the library produces it. `S i` denotes the same number, is definitionally
+    a constructor tree, and is exactly M14's cursor bound. A concrete count is
+    therefore unrolled into successors; a symbolic one keeps `add`, where it computes.
+
+    Second, the containment is stated LEAF-RELATIVELY when the leaf-relative offset is
+    already known. `Le` computes by double `natRec`, so `Le (add b cnt) (add b m)` is
+    stuck on a symbolic `b` and never converts with the `Le cnt m` a program can
+    supply. Premise (3)'s own logic is that offsets are leaf-relative; premise (2)
+    should be too. -/
+
+def idxCited : Decl := decl{
+  fn idxCited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
+    let e = &mut (*a)[i | h]; () } }
+example : checkFnOk idxCited = true := by native_decide
+
+-- The same bound serves a width-1 RANGE, so the two spellings of "one slot" agree on
+-- what they demand even though they differ on what they hand back (¶2.1).
+def rng1Cited : Decl := decl{
+  fn rng1Cited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
+    let e = &mut (*a)[i ; 1 | h]; () } }
+example : checkFnOk rng1Cited = true := by native_decide
+
+-- Not vacuous: the bound is the one thing being checked, and a weaker one fails.
+def idxWeakBound : Decl := decl{
+  fn idxWeakBound (n : Nat, i : Nat, h : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let e = &mut (*a)[i | h]; () } }
+example : checkFnErr idxWeakBound "containment obligation" = true := by native_decide
+
+/-! ### The exhaustive two-way split, with a call
+
+    ¶5's `split_at_mut` shape: carve the left half against a cited bound, take the rest
+    with `..`, and hand one half to a callee. The residues never leave — `σ_r` is the
+    same σ before and after the call — so the frame is not described, it is simply
+    still there (¶3.6). -/
+
+def threeWayTouch : Decl := decl{ fn threeWayTouch (p : Nat, l : &mut (Array p Nat)) -> Unit { () } }
+
+def splitTwo : Decl := decl{
+  fn splitTwo (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i | h1];
+    let r = &mut (*a)[i ; ..];
+    threeWayTouch(i, l);
+    () } }
+example : checkFnOk splitTwo [splitTwo, threeWayTouch] = true := by native_decide
+
+/-! ### FINDING — the THREE-way split ¶6's quicksort needs does not check, and the
+    reason is the residue's namelessness rather than anything about the carve
+
+    ¶6 writes the migrated quicksort as a three-way carve — left half, pivot slot,
+    right half — and lists its cost honestly as "the partition leaf must now produce
+    its pivot index TOGETHER WITH the two carve licenses". That understates it. Write
+    it out:
+
+    ```
+    let l = &mut (*v)[Z    ; i | h];   -- obligation `Le i n`        — writable
+    let p = &mut (*v)[i];             -- obligation `Le 1 rest`     — NOT writable
+    let r = &mut (*v)[S i ; ..];
+    ```
+
+    The second carve is base-aligned into the residue leaf, so premise (2) asks for
+    `Le 1 rest` — leaf-relative and correct, and the sharpest possible statement of
+    the obligation. But `rest` is the σ premise (3) minted inside the FIRST carve. It
+    has no binder, so no term of that type can be written, and no license the partition
+    returns can mention it either.
+
+    So `..` is not enough. It names the residue as a PLACE, which is what ¶3.4's second
+    borrow needs; it does not name the residue's LENGTH, which is what any evidence
+    about the residue, and any call taking the residue, both need. The same wall stops
+    ¶3.6's `merge_into (r : &mut Array q Nat)` from being callable.
+
+    Three routes. (a) Let the program SUPPLY the residue rather than have the checker
+    mint it — `a[lo ; cnt ; rest | h]`, with premise (3) solving `m ≡ add lo' (add cnt
+    rest)` against the supplied term instead of a fresh σ. This keeps premise (3)
+    exactly as it is (still a solution transition, still no `sub`), reduces to the
+    current behaviour when omitted, and is ¶8.4's own escape hatch: "name the equation
+    and carry it, rather than solving it". (b) Let the carve BIND its residue in the
+    surface. (c) Σ-typed slices, `Σ (c : Nat). &mut (Array c T)`, which ¶4 claims needs
+    "no new type" — true, but PROBED here and it needs new machinery: `seedTelescope`
+    has no case for a borrow under a type constructor, so the parameter is rejected by
+    `readC`, and `collectResultBorrows` has no dependent-Σ case for returning one.
+
+    (a) is the smallest and the one that fits the existing rule. Recorded rather than
+    built: it changes the surface of the design's one new rule, which is the team
+    lead's call, not this milestone's. -/
+
+def pivotCarve : Decl := decl{
+  fn pivotCarve (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i | h1];
+    let p = &mut (*a)[i];
+    let r = &mut (*a)[S i ; ..];
+    () } }
+example : checkFnErr pivotCarve "containment obligation" = true := by native_decide
+
+-- The probe behind route (c): ¶4's Σ-typed slice is a well-formed TYPE and an
+-- unimplemented PARAMETER. Kept as the record of what route (c) would cost.
+def sigSlice : Decl := decl{
+  fn sigSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () } }
+example : checkFnErr sigSlice "only valid at a telescope position" = true := by native_decide
+
 end Dllbc.Tests.S24Arrays

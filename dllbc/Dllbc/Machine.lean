@@ -1301,16 +1301,37 @@ def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
     produced here or anywhere downstream of here, and the audit's rejoin conversion
     is definitional rather than lemma-mediated. -/
 
-/-- Premise (2)'s obligation type for a candidate leaf at `(b, m)`. When `Le b lo`
-    computes to ⊤ — which it does whenever the leaf starts at the node's base, "the
-    overwhelmingly common case" — the pair collapses to the single `Le (add lo cnt) n`
-    that ¶3.2 says is "character for character, the bound the M22 quicksort already
-    threads through every call as `hbnd`". Otherwise both halves are demanded, as a Σ. -/
+/-- The range's exclusive end, `lo + cnt`, spelled the way a program can write it.
+
+    `add` recurses on its FIRST argument, so `add lo cnt` is stuck whenever `lo` is
+    symbolic — including at every `a[i]`, where `cnt` is literally 1 and the obligation
+    would read `Le (add i (S Z)) n`. No program writes that. `S i` denotes the same
+    number and is what M13/M14's cursor bound already is (`p : Le (S i) (len *v)`) —
+    which is ¶3.5's own observation that range places "take the same terms" the swap
+    sites have been threading since M13. So a CONCRETE count is unrolled into
+    successors and a symbolic one keeps `add`, where it computes. -/
+def rangeEnd (fuel : Nat) (lo cnt : Val) : Val :=
+  match Val.natOfVal? (Val.nfV fuel cnt) with
+  | some k => (List.range k).foldl (fun acc _ => .ctor "S" [acc]) lo
+  | none => Val.kAdd lo cnt
+
+/-- Premise (2)'s obligation type for a candidate leaf at `(b, m)`. When the leaf
+    starts at the node's base — "the overwhelmingly common case" — it is the single
+    `Le (add lo cnt) n` that ¶3.2 says is "character for character, the bound the M22
+    quicksort already threads through every call as `hbnd`". -/
 def carveObligation (fuel : Nat) (b m lo cnt : Val) : Val :=
-  let low := Val.kLe b lo
-  let high := Val.kLe (Val.kAdd lo cnt) (Val.kAdd b m)
-  if Val.convert fuel low (.const "Unit") then high
-  else .sigmaT low (Val.shiftPure 1 0 high)
+  -- LEAF-RELATIVE wherever the leaf-relative offset is already known, which is both
+  -- cases the design's programs actually produce. `Le` computes by double `natRec`,
+  -- so `Le (add b cnt) (add b m)` is STUCK on a symbolic `b` and never converts with
+  -- the `Le cnt m` a program can supply — stating the obligation absolutely would
+  -- demand evidence about the leaf's absolute end that nothing can produce. Premise
+  -- (3)'s own logic says the offsets are leaf-relative; premise (2) should be too.
+  if Val.convert fuel lo b then Val.kLe cnt m                       -- base-aligned: lo' = Z
+  else if Val.convert fuel b Val.zero then Val.kLe (rangeEnd fuel lo cnt) m  -- leaf at the node base
+  else
+    let low := Val.kLe b lo
+    let high := Val.kLe (rangeEnd fuel lo cnt) (Val.kAdd b m)
+    .sigmaT low (Val.shiftPure 1 0 high)
 
 /-- Is the cited evidence good for this leaf? With no evidence cited we try the
     canonical inhabitant of ⊤ — ¶3.2's supply route 1, "conversion alone", which is
