@@ -1052,6 +1052,61 @@ def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
     case reorganizes the scrutinee, then calls one of these, then reads the
     returned body. -/
 
+/-! ## The ⇝-side demand-end (M23)
+
+    §5.2 makes `*b` under ⇝ a **projection**, defined only on a proper payload: "a
+    *suspended* borrow, its payload holding loan markers mid-§3.3, has no meaningful
+    snapshot, and comptime deref is stuck on it until the reborrows end." §2's
+    standing convention says who is supposed to arrange that — reorganization is
+    lazy and fires "when some rule's premise demands it" — and "the payload is
+    proper" is exactly such a premise. Nothing was firing it, so the projection
+    silently returned the `loanₘ` itself.
+
+    That matters the moment a body proves something about a call it just made. M23's
+    `append_back` hands `&mut *tl` to its recursive call and must then NAME the
+    released value to apply a congruence — `*tl` is the only way to name it — and a
+    `loanₘ` rode into the proof term, surfacing layers later as an untypeable audit
+    failure. It is the same silent-marker class as the `⊥`-into-a-pure-value bug
+    §3.2 records, and the fix is the ⇝ counterpart of the `&mut`-on-a-parked-loan
+    demand-end M22-a already added for the reborrow path. -/
+
+/-- Resolve a place term without throwing (`placeToPos`'s total sibling). -/
+def placeOf? : Term → Option Pos
+  | .var x => some ⟨x, 0⟩
+  | .deref t => (placeOf? t).map (fun p => ⟨p.root, p.derefs + 1⟩)
+  | _ => none
+
+/-- Peel `n` borrow layers, or `none` if the value is not a borrow that deep. -/
+def peek? : Nat → Val → Option Val
+  | 0, v => some v
+  | n + 1, .borrowM _ p => peek? n p
+  | _, _ => none
+
+/-- Demand-end the loans parked at the deref places a comptime read is about to
+    project through, innermost place first. Outside a place shape this is a plain
+    structural walk; a place whose slot is unbound or not a borrow that deep is left
+    alone (the read itself will produce the honest error). -/
+partial def collapseCDerefs (fuel : Nat) : Term → M Unit
+  | .deref inner => do
+    collapseCDerefs fuel inner
+    match placeOf? (.deref inner) with
+    | none => pure ()
+    | some pos =>
+      match (← getEnv).find? (fun kv => kv.1.id == pos.root.id) with
+      | none => pure ()
+      | some kv =>
+        match peek? pos.derefs kv.2 with
+        | some (.loanM ℓ) => do endLoan fuel ℓ; collapseCDerefs fuel (.deref inner)
+        | _ => pure ()
+  | .app f a => do collapseCDerefs fuel f; collapseCDerefs fuel a
+  | .ctorApp _ args => args.forM (collapseCDerefs fuel)
+  | .idT a b c => do collapseCDerefs fuel a; collapseCDerefs fuel b; collapseCDerefs fuel c
+  | .lam d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
+  | .pi d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
+  | .sigmaT d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
+  | .letIn _ rhs rest => do collapseCDerefs fuel rhs; collapseCDerefs fuel rest
+  | _ => pure ()
+
 /-- Find the branch whose constructor name matches `name`. -/
 def findBranch (branches : List Branch) (name : String) : Option Branch :=
   branches.find? (fun b => b.ctor == name)
@@ -1334,14 +1389,18 @@ mutual
       -- copyable/erasable, so nothing is moved out.) `Refl` needs no lift (it is
       -- an ordinary `ctorApp`, handled above); `borrowT` is a telescope-position
       -- type, never a value.
+      -- Before projecting, demand-end the loans parked at the places this read
+      -- goes through (§5.2's "proper payload" premise; see `collapseCDerefs`).
+      -- Only on the lift, where a body reads live places — `readC` proper is used
+      -- on types/specs too and stays the read-only projection it is documented as.
       | .type => readC fuel t
       | .const _ => readC fuel t
       | .pvar _ => readC fuel t
       | .pi _ _ => readC fuel t
       | .sigmaT _ _ => readC fuel t
-      | .lam _ _ => readC fuel t
-      | .app _ _ => readC fuel t
-      | .idT _ _ _ => readC fuel t
+      | .lam _ _ => do collapseCDerefs fuel t; readC fuel t
+      | .app _ _ => do collapseCDerefs fuel t; readC fuel t
+      | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
       | .borrowT _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
   termination_by fuel _ => (fuel, 0, 0)
   def readArgs : Nat → List Term → M (List Val)

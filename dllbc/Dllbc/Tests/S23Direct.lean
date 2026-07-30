@@ -4,6 +4,7 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
+import Dllbc.Tests.S9Diff
 
 /-!
 # §23 test suite — direct proving with NO declared backward specs
@@ -34,7 +35,7 @@ are read off it.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_refl le_trans le_up_r)
+open Dllbc.StdLemmas (le_refl le_trans le_up_r append id_congr)
 
 namespace Dllbc.Tests.S23Direct
 
@@ -314,5 +315,157 @@ example : checkFnOk recCursor = true := by native_decide
 -- self-calls, and every other call is the ordinary §5.3 signature rule.
 def recCaller : Decl := decl{ fn recCaller () -> Id Nat Z Z { recGood(S Z) } }
 example : checkFnOk recCaller [recGood, recCaller] = true := by native_decide
+
+/-! ## Stage (ii): ownership splitting — `split_off` and `append_back`
+
+    The data plan for a back-less quicksort: recursion over WHOLE lists instead of
+    `lo`/`cnt` range indices. `split_off` takes the tail at depth `i` out of a
+    borrowed list and returns it BY VALUE (it cannot come back as a borrow — its
+    owner is local); `append_back` walks to the end and replaces the `Nil`. Between
+    them the caller owns two independent lists, sorts each, and glues.
+
+    Both are back-less: the ONLY description of either is its return type. And both
+    ensures are stated in OBSERVATION functions — `take`, `drop`, `append`, which
+    define meaning independently of any implementation — not in a pure function
+    mirroring the body's own algorithm, which is what a declared `back` was. That
+    is the line: `Id (*v) (take i (old *v))` IS split_off's spec, not a mirror of it.
+
+    Both check with no declared back anywhere in the call tree, and the two machine
+    gaps they forced are recorded at their use sites below. -/
+
+-- `append_back(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
+-- `append (old *v) w` — the whole postcondition, and the whole description.
+def appendBack : Decl :=
+  decl{ fn append_back [v] (v : &mut List Nat, w : List Nat)
+        -> Id (List Nat) (*v) (append (old *v) w)
+        { match v {
+            Nil => { *v := w; Refl },
+            -- PAIN DIARY (staging, again — the M22 "proof linearity" entry's data
+            -- twin). The congruence needs to NAME its right endpoint,
+            -- `append (old *tl) w`, but the recursive call has by then MOVED `w`
+            -- (it is data, so §2.1 gives no copy-on-read). Dodged by staging the
+            -- endpoint as a runtime `let` while `w` is still live. Same dodge, new
+            -- cause: M22's was a proof consumed by a mutation, this is a data
+            -- argument consumed by the call the proof is about. The general fix is
+            -- the same one M22 queued — `old` for consumed parameters, so a body
+            -- can name any parameter's ENTRY value without owning it, which is what
+            -- M12 already grants the RETURN TYPE and denies the body.
+            Cons(hd, tl) => {
+              let y = append (*tl) w;
+              let h = append_back(&mut *tl, w);
+              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+            }
+        } } }
+example : checkFnOk appendBack = true := by native_decide
+
+-- `split_off(v, i)`: `*v` keeps the first `i`, the rest comes back by value. The
+-- returned tail is Σ-PINNED to `drop i (old *v)` — the caller's only knowledge of a
+-- value it did not compute, which is why stage (ii)'s prelude above had to land
+-- first.
+def splitOff : Decl :=
+  decl{ fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
+        -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
+             → Id (List Nat) ret (drop i (old *v))
+        { match i {
+            -- i = Z: take the whole payload out (§2.4's take-and-refill, the idiom
+            -- Rust rejects with E0507) and leave `Nil`. `take Z l = Nil` and
+            -- `drop Z l = l` both compute, so both conjuncts are `Refl`.
+            Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
+            S(i2) => match v {
+              -- `hi : Le (S i2) (len Nil)` is `Le (S i2) Z`, which IS `Bot`: the
+              -- branch is dead and the audit admits an ex-falso at any type (§5.4).
+              Nil => botElim Unit hi,
+              Cons(hd, tl) => {
+                -- `hi` passes down DEFINITIONALLY: `len (Cons _ t) = S (len t)`, so
+                -- `Le (S i2) (S (len σ_tl))` already IS `Le i2 (len σ_tl)`. The M14
+                -- bounds-cursor property, still holding.
+                let y1 = take i2 (*tl);
+                let p = split_off(&mut *tl, i2, hi);
+                match p { Pair(rr, q) => match q { Pair(h1, h2) => {
+                  -- The prefix conjunct needs a congruence under `Cons (*hd)`, and
+                  -- reading `*tl` here — AFTER handing `&mut *tl` to the call — is
+                  -- the only way to name the callee's exit. That read is what
+                  -- forced the ⇝-side demand-end (Machine.lean, `collapseCDerefs`):
+                  -- before it, the projection returned the parked `loanₘ` itself and
+                  -- a state marker rode silently into this proof term.
+                  -- The suffix conjunct needs nothing: `drop (S i2) (Cons h t)` IS
+                  -- `drop i2 t`, so the callee's `h2` is already the goal.
+                  let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                             (*tl) y1 h1;
+                  Pair(rr, Pair(c1, h2)) } } }
+              }
+            }
+        } } }
+example : checkFnOk splitOff = true := by native_decide
+
+/-! ### Not vacuous: the spec twins, and the body twin
+
+    Three spec lies (shifting either index, and swapping the two conjuncts) and one
+    BODY lie. The spec lies are all caught on the `i = Z` path, so they alone would
+    leave the recursive path untested; the body lie breaks the congruence in the
+    `Cons` branch and is the control for that path. -/
+
+def dvT : Term := .deref (.var ⟨0, "v"⟩)
+def oldvT : Term := .app (.const "old") dvT
+def listNatT : Term := .app (.const "List") (.const "Nat")
+def iT : Term := .var ⟨1, "i"⟩
+def sucT (t : Term) : Term := .ctorApp "S" [t]
+-- SUBJECT: deliberately-wrong return types, built as raw Terms — the lie IS the test.
+def soTwin (a b : Term) : Decl :=
+  { splitOff with retType := .sigmaT listNatT (.sigmaT (.idT listNatT dvT a) (.idT listNatT (.pvar 1) b)) }
+def splitOffLieTake : Decl := { soTwin (Std.takeT (sucT iT) oldvT) (Std.dropT iT oldvT) with name := "split_off" }
+def splitOffLieDrop : Decl := { soTwin (Std.takeT iT oldvT) (Std.dropT (sucT iT) oldvT) with name := "split_off" }
+def splitOffLieSwap : Decl := { soTwin (Std.dropT iT oldvT) (Std.takeT iT oldvT) with name := "split_off" }
+example : checkFnErr splitOffLieTake "does not have return type" = true := by native_decide
+example : checkFnErr splitOffLieDrop "does not have return type" = true := by native_decide
+example : checkFnErr splitOffLieSwap "does not have return type" = true := by native_decide
+
+-- The BODY lie: the congruence forgets to put `*hd` back on the front (identity
+-- instead of `Cons (*hd) ·`), so the prefix conjunct is off by the head element.
+-- Rejected on the RECURSIVE path, which no spec twin above reaches.
+def splitOffLieHead : Decl :=
+  decl{ fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
+        -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
+             → Id (List Nat) ret (drop i (old *v))
+        { match i {
+            Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
+            S(i2) => match v {
+              Nil => botElim Unit hi,
+              Cons(hd, tl) => {
+                let y1 = take i2 (*tl);
+                let p = split_off(&mut *tl, i2, hi);
+                match p { Pair(rr, q) => match q { Pair(h1, h2) => {
+                  let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). a)
+                             (*tl) y1 h1;
+                  Pair(rr, Pair(c1, h2)) } } }
+              }
+            }
+        } } }
+example : checkFnErr splitOffLieHead "does not have return type" = true := by native_decide
+
+/-! ### The executing differential — the body really splits
+
+    checkFnOk proves the postcondition symbolically; this runs the SAME Decl on
+    concrete lists and confirms `*v` keeps `take i l` while the returned value is
+    `drop i l`, at the two boundaries and in the middle. -/
+
+def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k]
+def tlistT : List Nat → Term | [] => .ctorApp "Nil" [] | x :: xs => .ctorApp "Cons" [tnatT x, tlistT xs]
+def vnatV : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnatV k]
+def vlistV : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnatV x, vlistV xs]
+-- SUBJECT: the executing-mode differential's raw Term caller.
+def soCaller (l : List Nat) (i : Nat) : Term :=
+  .letIn ⟨0, "x"⟩ (tlistT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
+      (.letIn ⟨2, "p"⟩ (.call "split_off" [.var ⟨1, "b"⟩, tnatT i, .unit])
+        (.matchE ⟨2, "p"⟩ [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
+def runSplit (l : List Nat) (i : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec [splitOff] (soCaller l i) with
+  | .ok env => env.lookup "y" == some (vlistV (l.take i)) && env.lookup "rr" == some (vlistV (l.drop i))
+  | .error _ => false
+
+example : runSplit [1,2,3,4] 2 = true := by native_decide   -- split in the middle
+example : runSplit [1,2,3] 0 = true := by native_decide      -- take nothing, hand the whole list back
+example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything, hand back Nil
 
 end Dllbc.Tests.S23Direct
