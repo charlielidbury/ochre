@@ -271,13 +271,21 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
     -- dedicated audit-local substitution (plain substSym over retTy), NOT refineSym:
     -- σ_exit is a fresh name being defined here, so no mutation result ever flows
     -- through ⇜'s knowledge channel and the §3.2 assertion is unconcerned.
+    --
+    -- The payload goes through ¶1.3's ⇝ FOLD first, exactly as `readC` does for
+    -- every other comptime reading. Without it the exit snapshot of a carved array
+    -- is the STATE form — a `§segs` node — on which no predicate computes, so any
+    -- postcondition naming `*v` is stuck. It never showed before because merge
+    -- concatenates adjacent RUNS, so a concrete-extent carve rejoins to a plain run
+    -- and needs no fold; a SYMBOLIC segment cannot merge (only runs do), and that is
+    -- the case every in-place array program is made of.
     let exits := (← get).exitSyms
     let retTy ← obs.foldlM (fun acc ob =>
       match exits.lookup ob.arg.id with
       | none => pure acc
       | some σ => do
         match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-        | some payload => pure (Val.nfV fuel (substSym σ payload acc))
+        | some payload => pure (Val.nfV fuel (substSym σ (Val.arrFoldDeep payload) acc))
         | none => pure acc) retTy0
     if ← hasType fuel resultVal retTy then pure ()
     else throwErr s!"audit: result ({resultVal.pretty}) does not have return type ({retTy.pretty})"
