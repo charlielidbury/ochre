@@ -135,7 +135,7 @@ def idxOf? (l : List String) (s : String) : Option Nat :=
 /-- Kernel constructors → `ctorApp`. -/
 def ctorSet : List String := ["Z", "S", "Nil", "Cons", "Pair", "Refl", "True", "False", "unit"]
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
-def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "botElim", "j", "k"]
+def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k"]
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`swapL`, `set`,
@@ -344,8 +344,8 @@ partial def elabUElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   let (scrutT, n1) ← elabUTerm isTy rctx pctx next scrut
   let (motiveT, n2) ← elabUTerm isTy rctx pctx n1 motive
   let motiveBare := match motive with | `(uterm| ($e:uterm)) => e | _ => motive
-  let (mName, mBody) ← match motiveBare with
-    | `(uterm| λ ($x:ident : $_τ:uterm). $b:uterm) => pure (x.getId.toString, b)
+  let (mName, mTy, mBody) ← match motiveBare with
+    | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => pure (x.getId.toString, τ, b)
     | _ => Macro.throwError "elim: motive must be a λ `(x : τ). …`"
   let armFor (c : String) : MacroM (Option (Array Ident × Option Ident × TSyntax `ublk)) := do
     for arm in arms do
@@ -386,8 +386,30 @@ partial def elabUElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let body := (← elabUBlk isTy rctx (ihName :: tName :: hName :: pctx) n2 cbody).1
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") (Dllbc.Term.const "Nat")) $motiveT) $n)
         (Dllbc.Term.lam (Dllbc.Term.const "Nat") (Dllbc.Term.lam (Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat")) (Dllbc.Term.lam $ihDom $body)))) $scrutT), n2)
+  else if names.contains "Pair" then
+    -- Σ elimination (§9). `sigmaRec` takes Σ's two parameters — the domain `A` and
+    -- the FAMILY `λ x. B` — so the motive's binder type must be written as the Σ
+    -- itself, `λ (p : Σ (x : A) → B). goal`. Determined from what is written, never
+    -- inferred: a wrong `A`/`B` fails at the use site like every other elim motive.
+    -- No `ih`: Σ is not recursive, so the single arm binds exactly the two fields.
+    let mTyBare := match mTy with | `(uterm| ($e:uterm)) => e | _ => mTy
+    let (aSyn, bName, bSyn) ← match mTyBare with
+      | `(uterm| Σ ($y:ident : $A:uterm) → $B:uterm) => pure (A, y.getId.toString, B)
+      | `(uterm| Σ ($y:ident : $A:uterm). $B:uterm) => pure (A, y.getId.toString, B)
+      | _ => Macro.throwError "elim: a Pair motive's binder type must be written as `Σ (x : A) → B`"
+    let aT := (← elabUTerm isTy rctx pctx n2 aSyn).1
+    -- `B` under its own binder at position 0 — de Bruijn-correct for BOTH uses (the
+    -- family `λ x. B` and the arm's second binder domain), whatever the arm names it.
+    let bT := (← elabUTerm isTy rctx (bName :: pctx) n2 bSyn).1
+    let (pb, _, pbody) ← getArm "Pair"
+    let xName := (pb.get! 0).getId.toString
+    let yName := (pb.get! 1).getId.toString
+    let body := (← elabUBlk isTy rctx (yName :: xName :: pctx) n2 pbody).1
+    return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "sigmaRec") $aT)
+        (Dllbc.Term.lam $aT $bT)) $motiveT)
+        (Dllbc.Term.lam $aT (Dllbc.Term.lam $bT $body))) $scrutT), n2)
   else
-    Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List)"
+    Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List/Σ)"
 
 /-- `elim scrut generalizing goal { arms }` (§18), ported from PureMacro.elabGenElim. -/
 partial def elabUGenElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : List String) (next : Nat)

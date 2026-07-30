@@ -835,6 +835,19 @@ mutual
           let pcOk ← hasType fuel pc pcTy
           let lOk ← hasType fuel l listA
           finish (Val.nfV fuel (.app p l)) rest (pnOk && pcOk && lOk)
+        | .const "sigmaRec", a :: b :: p :: f :: s :: rest =>  -- sigmaRec A B P f s : P s
+          -- Σ's parameters are a type `A` and a FAMILY `B : A → Type`, so unlike
+          -- List's uniform parameter both premises cross binders and `B`/`P` must be
+          -- shifted to be read there. (`shiftPure` is the identity on the pvar-free
+          -- values every call site actually passes; correctness under an open motive
+          -- is why it is written rather than assumed.)
+          let sigTy : Val := .sigmaT a (.app (Val.shiftPure 1 0 b) (.pvar 0))
+          let fTy : Val :=
+            .pi a (.pi (.app (Val.shiftPure 1 0 b) (.pvar 0))
+              (.app (Val.shiftPure 2 0 p) (.ctor "Pair" [.pvar 1, .pvar 0])))
+          let fOk ← hasType fuel f fTy
+          let sOk ← hasType fuel s sigTy
+          finish (Val.nfV fuel (.app p s)) rest (fOk && sOk)
         | .sym σ, args =>
           -- A bound function variable applied (`ih b c hab hbc`): synthesize by
           -- iterating Π-instantiation from its `sctx` type, checking each argument

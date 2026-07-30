@@ -73,7 +73,7 @@ def idxOf? (l : List String) (s : String) : Option Nat :=
 /-- Kernel constructors → `ctorApp`. -/
 def ctorSet : List String := ["Z", "S", "Nil", "Cons", "Pair", "Refl", "True", "False", "unit"]
 /-- Kernel constants (type formers and recursors) → `const`. -/
-def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "botElim", "j", "k"]
+def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k"]
 
 /-- Resolve a bare identifier: bound → `pvar`, constructor → nullary `ctorApp`,
     kernel constant → `const`, else the Lean identifier (a `Term` in scope). -/

@@ -154,6 +154,13 @@ def whnfV : Nat → Val → Val
         let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
         whnfV fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
       | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)  -- stuck
+    -- sigmaRec A B P f p : P p (§9) — the dependent Σ eliminator, the basis's one
+    -- missing recursor-per-former. ι on `Pair a b ↦ f a b`. Non-recursive (Σ is not
+    -- inductive in its own right), so there is no `ih` argument, unlike natRec/listRec.
+    | .const "sigmaRec", a :: b :: motive :: f :: p :: rest =>
+      match whnfV fuel p with
+      | .ctor "Pair" [x, y] => whnfV fuel (rebuildSpine (.app (.app f x) y) rest)
+      | p' => rebuildSpine (.const "sigmaRec") (a :: b :: motive :: f :: p' :: rest)  -- stuck
     -- Paulin-Mohring J (§10): j A a P d b p ; ι fires on Refl (b = a there), → d.
     | .const "j", _A :: _a :: _P :: d :: _b :: p :: rest =>
       match whnfV fuel p with
