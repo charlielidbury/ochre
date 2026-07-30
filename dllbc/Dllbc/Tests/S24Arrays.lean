@@ -1120,7 +1120,11 @@ open Dllbc.StdLemmas (countA SortedA UbA LbA BoundA asingle
   sorted_headA sorted_headA_ty sorted_tailA sorted_tailA_ty
   ub_headA ub_headA_ty ub_tailA ub_tailA_ty lb_boundA lb_boundA_ty
   bound_arrCat bound_arrCat_ty sorted_arrCat sorted_arrCat_ty
-  count_arrCat count_arrCat_ty)
+  count_arrCat count_arrCat_ty
+  count_acons_hit count_acons_hit_ty count_acons_miss count_acons_miss_ty
+  noAbove_of_ubA noAbove_of_ubA_ty ub_of_noAboveA ub_of_noAboveA_ty
+  ub_permA ub_permA_ty noBelow_of_lbA noBelow_of_lbA_ty
+  lb_of_noBelowA lb_of_noBelowA_ty lb_permA lb_permA_ty)
 
 -- The predicates COMPUTE, on a run and on the cons view alike.
 example : (pv pure{ countA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
@@ -1156,7 +1160,24 @@ example : chkL sorted_arrCat sorted_arrCat_ty = true := by native_decide
     `acons` exactly as `count` unfolds on a `Cons`. First try. -/
 example : chkL count_arrCat count_arrCat_ty = true := by native_decide
 
-/-! ### FINDING — the transfer needed two ι-rules to be MECHANICAL rather than merely possible
+/-! ### The permutation keystone, transferred
+
+    M23's hardest single step: "`Ub`/`Lb` (Σ-chains over the spine) are not natively
+    permutation-invariant. M22 named the route at the positional encoding: cross to the
+    multiset, where the property is `Π x. x > p → count x l = Z` and permutation-
+    invariance is a one-line `id_trans`." The crossing transfers with the container like
+    everything else — all eight lemmas, first try. -/
+
+example : chkL count_acons_hit count_acons_hit_ty = true := by native_decide
+example : chkL count_acons_miss count_acons_miss_ty = true := by native_decide
+example : chkL noAbove_of_ubA noAbove_of_ubA_ty = true := by native_decide
+example : chkL ub_of_noAboveA ub_of_noAboveA_ty = true := by native_decide
+example : chkL ub_permA ub_permA_ty = true := by native_decide
+example : chkL noBelow_of_lbA noBelow_of_lbA_ty = true := by native_decide
+example : chkL lb_of_noBelowA lb_of_noBelowA_ty = true := by native_decide
+example : chkL lb_permA lb_permA_ty = true := by native_decide
+
+/-! ### FINDING — the transfer needed three ι-rules to be MECHANICAL rather than merely possible
 
     ¶1.3's promise is about the mathematics, and the mathematics did transfer verbatim.
     What it does not mention is that the array constants have to compute the way the list

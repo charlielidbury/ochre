@@ -4072,4 +4072,175 @@ def count_arrCat_ty : Term := pure{
   Π (x : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
     Id Nat (countA x (add m q) (arrCat m q a b)) (add (countA x m a) (countA x q b)) }
 
+/-! ### The permutation layer, transferred
+
+    M23's keystone: "`Ub` and `Lb` (Σ-chains over the spine) are not natively
+    permutation-invariant. Cross to the multiset, where the property is
+    `Π x. x > p → count x l = Z` and permutation-invariance is a one-line `id_trans`."
+    That crossing transfers with the container like everything else. -/
+
+def count_acons_hit : Term := pure{
+  λ (m : Nat). λ (a : Nat). λ (k : Nat). λ (l : Array k Nat). λ (hq : Id Bool (eqb m a) True).
+    j Bool True
+      (λ (z : Bool). λ (h : Id Bool True z).
+        Id Nat (boolRec (λ (w : Bool). Nat) (S (countA m k l)) (countA m k l) z)
+               (S (countA m k l)))
+      Refl (eqb m a) (id_sym Bool (eqb m a) True hq) }
+def count_acons_hit_ty : Term := pure{
+  Π (m : Nat) → Π (a : Nat) → Π (k : Nat) → Π (l : Array k Nat) → Id Bool (eqb m a) True →
+    Id Nat (countA m (S k) (acons k a l)) (S (countA m k l)) }
+
+def count_acons_miss : Term := pure{
+  λ (m : Nat). λ (h : Nat). λ (k : Nat). λ (t : Array k Nat). λ (hq : Id Bool (eqb m h) False).
+    j Bool False
+      (λ (z : Bool). λ (hh : Id Bool False z).
+        Id Nat (boolRec (λ (w : Bool). Nat) (S (countA m k t)) (countA m k t) z)
+               (countA m k t))
+      Refl (eqb m h) (id_sym Bool (eqb m h) False hq) }
+def count_acons_miss_ty : Term := pure{
+  Π (m : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t : Array k Nat) → Id Bool (eqb m h) False →
+    Id Nat (countA m (S k) (acons k h t)) (countA m k t) }
+
+def lb_headA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hh : Le p h) → LbA p k t).
+      elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) { Pair (x) (y) => x } }
+def lb_tailA : Term := pure{
+  λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+    λ (u : Σ (hh : Le p h) → LbA p k t).
+      elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). LbA p k t) { Pair (x) (y) => y } }
+
+def noAbove_of_ubA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        UbA p m az → Π (x : Nat) → Le (S p) x → Id Nat (countA x m az) Z)
+      (λ (u : Unit). λ (x : Nat). λ (hx : Le (S p) x). Refl)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : UbA p k t → Π (x : Nat) → Le (S p) x → Id Nat (countA x k t) Z).
+          λ (u : Σ (hh : Le h p) → UbA p k t). λ (x : Nat). λ (hx : Le (S p) x).
+            id_trans Nat (countA x (S k) (acons k h t)) (countA x k t) Z
+              (count_acons_miss x h k t
+                (eqb_gt_false h x (le_trans (S h) (S p) x (ub_headA p k h t u) hx)))
+              (ih (ub_tailA p k h t u) x hx))
+      n a }
+def noAbove_of_ubA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → UbA p n a →
+    Π (x : Nat) → Le (S p) x → Id Nat (countA x n a) Z }
+
+def ub_of_noAboveA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        (Π (x : Nat) → Le (S p) x → Id Nat (countA x m az) Z) → UbA p m az)
+      (λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (countA x Z Arr()) Z). unit)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : (Π (x : Nat) → Le (S p) x → Id Nat (countA x k t) Z) → UbA p k t).
+          λ (hn : Π (x : Nat) → Le (S p) x → Id Nat (countA x (S k) (acons k h t)) Z).
+            Pair(
+              elim (leb h p) return (λ (bv : Bool). Id Bool (leb h p) bv → Le h p) {
+                True => λ (e : Id Bool (leb h p) True). leb_true_le h p e,
+                False => λ (e : Id Bool (leb h p) False).
+                  botElim (Le h p)
+                    (znots (countA h k t)
+                      (id_trans Nat Z (countA h (S k) (acons k h t)) (S (countA h k t))
+                        (id_sym Nat (countA h (S k) (acons k h t)) Z (hn h (leb_false_gt h p e)))
+                        (count_acons_hit h h k t (eqb_refl h))))
+              } Refl,
+              ih (λ (x : Nat). λ (hx : Le (S p) x).
+                    elim (eqb x h) return (λ (bv : Bool).
+                        Id Bool (eqb x h) bv → Id Nat (countA x k t) Z) {
+                      True => λ (eq : Id Bool (eqb x h) True).
+                        botElim (Id Nat (countA x k t) Z)
+                          (znots (countA x k t)
+                            (id_trans Nat Z (countA x (S k) (acons k h t)) (S (countA x k t))
+                              (id_sym Nat (countA x (S k) (acons k h t)) Z (hn x hx))
+                              (count_acons_hit x h k t eq))),
+                      False => λ (eq : Id Bool (eqb x h) False).
+                        id_trans Nat (countA x k t) (countA x (S k) (acons k h t)) Z
+                          (id_sym Nat (countA x (S k) (acons k h t)) (countA x k t)
+                            (count_acons_miss x h k t eq))
+                          (hn x hx)
+                    } Refl)))
+      n a }
+def ub_of_noAboveA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
+    (Π (x : Nat) → Le (S p) x → Id Nat (countA x n a) Z) → UbA p n a }
+
+/-- THE KEYSTONE, transferred: an upper bound survives any count-preserving
+    rearrangement — which is exactly what a recursive sort hands back about the part it
+    sorted. -/
+def ub_permA : Term := pure{
+  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    λ (hc : Π (x : Nat) → Id Nat (countA x m a) (countA x q b)). λ (hb : UbA p q b).
+      ub_of_noAboveA p m a (λ (x : Nat). λ (hx : Le (S p) x).
+        id_trans Nat (countA x m a) (countA x q b) Z (hc x)
+          (noAbove_of_ubA p q b hb x hx)) }
+def ub_permA_ty : Term := pure{
+  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    (Π (x : Nat) → Id Nat (countA x m a) (countA x q b)) → UbA p q b → UbA p m a }
+
+def noBelow_of_lbA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        LbA p m az → Π (x : Nat) → Le (S x) p → Id Nat (countA x m az) Z)
+      (λ (u : Unit). λ (x : Nat). λ (hx : Le (S x) p). Refl)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : LbA p k t → Π (x : Nat) → Le (S x) p → Id Nat (countA x k t) Z).
+          λ (u : Σ (hh : Le p h) → LbA p k t). λ (x : Nat). λ (hx : Le (S x) p).
+            id_trans Nat (countA x (S k) (acons k h t)) (countA x k t) Z
+              (count_acons_miss x h k t
+                (eqb_lt_false x h (le_trans (S x) p h hx (lb_headA p k h t u))))
+              (ih (lb_tailA p k h t u) x hx))
+      n a }
+def noBelow_of_lbA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a →
+    Π (x : Nat) → Le (S x) p → Id Nat (countA x n a) Z }
+
+def lb_of_noBelowA : Term := pure{
+  λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
+    arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
+        (Π (x : Nat) → Le (S x) p → Id Nat (countA x m az) Z) → LbA p m az)
+      (λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (countA x Z Arr()) Z). unit)
+      (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
+        λ (ih : (Π (x : Nat) → Le (S x) p → Id Nat (countA x k t) Z) → LbA p k t).
+          λ (hn : Π (x : Nat) → Le (S x) p → Id Nat (countA x (S k) (acons k h t)) Z).
+            Pair(
+              elim (leb p h) return (λ (bv : Bool). Id Bool (leb p h) bv → Le p h) {
+                True => λ (e : Id Bool (leb p h) True). leb_true_le p h e,
+                False => λ (e : Id Bool (leb p h) False).
+                  botElim (Le p h)
+                    (znots (countA h k t)
+                      (id_trans Nat Z (countA h (S k) (acons k h t)) (S (countA h k t))
+                        (id_sym Nat (countA h (S k) (acons k h t)) Z (hn h (leb_false_gt p h e)))
+                        (count_acons_hit h h k t (eqb_refl h))))
+              } Refl,
+              ih (λ (x : Nat). λ (hx : Le (S x) p).
+                    elim (eqb x h) return (λ (bv : Bool).
+                        Id Bool (eqb x h) bv → Id Nat (countA x k t) Z) {
+                      True => λ (eq : Id Bool (eqb x h) True).
+                        botElim (Id Nat (countA x k t) Z)
+                          (znots (countA x k t)
+                            (id_trans Nat Z (countA x (S k) (acons k h t)) (S (countA x k t))
+                              (id_sym Nat (countA x (S k) (acons k h t)) Z (hn x hx))
+                              (count_acons_hit x h k t eq))),
+                      False => λ (eq : Id Bool (eqb x h) False).
+                        id_trans Nat (countA x k t) (countA x (S k) (acons k h t)) Z
+                          (id_sym Nat (countA x (S k) (acons k h t)) (countA x k t)
+                            (count_acons_miss x h k t eq))
+                          (hn x hx)
+                    } Refl)))
+      n a }
+def lb_of_noBelowA_ty : Term := pure{
+  Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
+    (Π (x : Nat) → Le (S x) p → Id Nat (countA x n a) Z) → LbA p n a }
+
+def lb_permA : Term := pure{
+  λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
+    λ (hc : Π (x : Nat) → Id Nat (countA x m a) (countA x q b)). λ (hb : LbA p q b).
+      lb_of_noBelowA p m a (λ (x : Nat). λ (hx : Le (S x) p).
+        id_trans Nat (countA x m a) (countA x q b) Z (hc x)
+          (noBelow_of_lbA p q b hb x hx)) }
+def lb_permA_ty : Term := pure{
+  Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
+    (Π (x : Nat) → Id Nat (countA x m a) (countA x q b)) → LbA p q b → LbA p m a }
+
 end Dllbc.StdLemmas

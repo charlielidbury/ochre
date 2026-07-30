@@ -307,6 +307,23 @@ spine that happens to be written flat.
 
 ---
 
+### R11 — ¶1.3's transfer promise is VERIFIED, in full and verbatim
+
+Measured rather than assumed, because it is the claim ¶6's whole cost estimate rests on.
+The complete quicksort library now exists over arrays: the predicates (`countA`, `BoundA`,
+`SortedA`, `UbA`, `LbA`, `asingle`), the glue stack (`sorted_headA`/`tailA`,
+`ub_headA`/`tailA`, `lb_headA`/`tailA`, `lb_boundA`, `bound_arrCat`, `sorted_arrCat`), the
+count layer (`count_arrCat`, `count_acons_hit`/`miss`), and M23's permutation keystone
+(`noAbove_of_ubA`, `ub_of_noAboveA`, `ub_permA`, and the three `Lb` mirrors).
+
+**Every one is its list counterpart with `listRec ↦ arrRec` and `Cons ↦ acons`, and
+nothing else changed.** Twenty-one definitions and proofs; the entire permutation layer and
+`count_arrCat` checked first try, and five of the seven glue lemmas did. ¶1.3's "nothing
+about the migration requires re-deriving that mathematics" is exactly right, and ¶6's "one
+stratum deleted outright (locality), one INHERITED (the pivot glue), none invented" is
+exactly what happened. The only thing the note omits is R10's three ι-rules, which are what
+make the transfer mechanical rather than merely possible.
+
 ### G4 — ¶6's partition is a NEW PROGRAM, not a transfer, and the ledger does not say so
 
 ¶6's migration ledger is organized as "what disappears / what survives untouched / what
