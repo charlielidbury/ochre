@@ -459,7 +459,7 @@ def soCaller (l : List Nat) (i : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
       (.letIn ⟨2, "p"⟩ (.call "split_off" [.var ⟨1, "b"⟩, tnatT i, .unit])
-        (.matchE ⟨2, "p"⟩ [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
+        (.matchE ⟨2, "p"⟩ none [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
 def runSplit (l : List Nat) (i : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec [splitOff] (soCaller l i) with
   | .ok env => env.lookup "y" == some (vlistV (l.take i)) && env.lookup "rr" == some (vlistV (l.drop i))
@@ -740,6 +740,63 @@ example : chk ub_pick ub_pick_ty = true := by native_decide
 example : (pv (pure{ Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
            pv (pure{ Σ (h : Le (S Z) (S (S Z))) → Σ (h2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
 example : (pv (pure{ Lb Z (Cons (S Z) Nil) }) == pv (pure{ Σ (h : Le Z (S Z)) → Unit })) = true := by native_decide
+
+/-! ### The unshifted-motive question, settled: LATENT AND UNREACHABLE
+
+    `hasType`'s `natRec`/`listRec` premises use the motive under the step's binders
+    WITHOUT shifting it (`.pi a (.pi listA (.pi (.app p (.pvar 0)) …))`). Read as de
+    Bruijn terms that is a wrong-answer typing rule for an OPEN motive — one
+    mentioning an enclosing λ's variable — which is exactly the shape
+    `sorted_append_pivot` needs (induction on `a`, motive mentioning `p` and `b`).
+    So it looked like a live hazard for the rest of M23 and worth fixing first.
+
+    It is not, and the reason is worth recording because it is not obvious from the
+    premise construction: `hasType` INSTANTIATES every λ binder with a fresh σ as it
+    descends (the `.lam`-against-`.pi` case). By the time a recursor spine is
+    reached, every enclosing binder is a `sym`, so the motive it carries is
+    pvar-free — and `shiftPure` is the identity on pvar-free values. Open motives
+    are a de Bruijn artifact of the elaborated term that the typing descent never
+    presents. A `.pi` codomain is the only place pvars survive, and `hasType` returns
+    `Type` there without checking inside.
+
+    Verified rather than argued: these type-check, and they type-check IDENTICALLY
+    with the shifts inserted (I wrote the fix, measured no difference, and reverted
+    it — three `shiftPure` calls on an unreachable case is complexity without
+    payoff). Kept as positive controls so that if the descent discipline ever
+    changes, something fails here first. -/
+
+def openMotiveL : Term := pure{
+  λ (p : Nat). λ (l : List Nat).
+    elim l return (λ (lz : List Nat). Le p p) { Nil => le_refl p, Cons (h) (t) ih => ih } }
+def openMotiveL_ty : Term := pure{ Π (p : Nat) → Π (l : List Nat) → Le p p }
+example : chk openMotiveL openMotiveL_ty = true := by native_decide
+
+def openMotiveN : Term := pure{
+  λ (p : Nat). λ (n : Nat).
+    elim n return (λ (nz : Nat). Le p p) { Z => le_refl p, S (m) ih => ih } }
+def openMotiveN_ty : Term := pure{ Π (p : Nat) → Π (n : Nat) → Le p p }
+example : chk openMotiveN openMotiveN_ty = true := by native_decide
+
+/-! ### A CHECKER GAP, filed for §9: a `let`-bound value is never type-checked
+
+    `readR`'s `let` reflects its right-hand side and binds it; nothing checks it
+    against anything, because nothing demands a type of it until it is CONSUMED.
+    So an ill-typed dead proof is silently accepted:
+
+        { let q = <any ill-typed proof term>; () }        -- ACCEPTED
+
+    Path-sensitive laziness is a defensible design — an unconsumed value has no
+    obligation — but it means "the body checks" does not imply "everything written in
+    the body is well-typed", and that is a real hazard for anyone probing what the
+    checker knows. It cost me a false negative result: my first probe of the
+    branch-knowledge wall above was `{ let q = leb_true_le a b Refl; () }`, which was
+    ACCEPTED, and I nearly concluded the body DOES get branch equations. The honest
+    probe (kept above) routes the proof into a consumer, and is rejected.
+
+    The paired discipline, since `checkFnOk`/`chk` also collapse "machine error" and
+    "typing false" into one `false`: confirm every negative control is an honest
+    typing rejection, and confirm every positive one is live by flipping it and
+    watching the build go red. Both were done for every test in this file. -/
 
 -- Generic J-transport at `List Nat` — `le_rw_r` for arbitrary list predicates. Every
 -- certificate a back-less body returns is stated over an exit it knows only
