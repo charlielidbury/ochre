@@ -97,6 +97,53 @@ lessons; the arrow-table footnote in §2 is finding 2 verbatim.
     entry-pin) — a dependent S over a consumed parameter would misread;
     auditAction re-reads an unpinned T on value paths. All flagged in-figure.
 
+## Post-pin developments the prose reports and the figures do not
+
+The six rule figures are an extraction at `122bb424` and are not re-extracted
+here. Where a later commit changes a rule the prose describes, it is listed
+below with the commit that carries it, so that a reader who finds prose and
+figure disagreeing knows which is which and why. These are **not** figure-audit
+findings and deliberately do not continue the 1–20 numbering §8.3 counts; they
+are labelled `P` for post-pin.
+
+P1. **Branch equations at the match** (§3.2 of the prose; commit `5194a9cd`).
+    `match h : x { … }` binds in every branch an equation
+    `h : Id τ ⟨the scrutinee's pre-split value⟩ ⟨this branch's constructor⟩`.
+    F4's M-OwnedSym / M-BorrowSym do not carry the binder, and F4's
+    correspondence table does not list it. The rule is opt-in (no binder, no
+    equation, nothing minted), so every program the figures describe is
+    unaffected; what the figures understate is the *set* of accepted programs,
+    not the behaviour of any program in them. Two consequences worth locating:
+    finding 3 above (X-Gen is Bool-specific) now bounds the hypothesis form —
+    at a stuck split the equation is always an `Id Bool` — and X-Gen acquires a
+    second output, the normalized pre-abstraction spine, which is the only
+    thing a branch equation at a stuck split can be built from.
+
+P2. **Exit-snapshot return types are implemented** (finding 19 above, now
+    closed). Finding 19 recorded doc §5.4's decided exception as unimplemented
+    at the pin; it is implemented in the M23 line and is what the prose's
+    postconditions over `*v` / `old *v` rely on. F5's B-Pin rule-gap flag is
+    therefore stale with respect to the current mechanization, though accurate
+    for the pin. Not re-extracted here.
+
+P3. **§7's Architecture-B status tags are stale, and §3.2 now says so
+    implicitly** — an editorial decision left to the section's owner, flagged
+    here rather than resolved. §7 tags direct propositional proving
+    `in flight` / `proposed`, and the abstract calls it "the project's ongoing
+    mission"; at commit `4e950ab7` the architecture is landed — a whole-list
+    quicksort returning `Sorted (*v)` together with count-preservation against
+    `old *v`, with no declared backward specification anywhere in its call
+    tree. §3.2's closing paragraph states that outcome as the payoff of branch
+    equations, so a reader moving from §3 to §7 will find the two sections
+    disagreeing about the same artifact's status. Resolving it means
+    re-statusing §7's comparison table and rewording the abstract's "ongoing
+    mission" clause, both outside the scope of the branch-equation write-up.
+    Related: the perf numbers in §5/§8/the abstract are the *conformance*
+    architecture's (465×, 84,121 ms → 181 ms); the direct architecture's
+    whole-list encoding checks the same algorithm in ~21 ms, which is a
+    different measurement of a different program and must not be merged into
+    the canonical set above.
+
 ## Doc-polish items (prose fixes to the calculus document)
 
 6. **`*t` in ⇒-read position is place-restricted** (F1, placeToPos): only
