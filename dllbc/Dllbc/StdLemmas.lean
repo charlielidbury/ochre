@@ -4243,4 +4243,19 @@ def lb_permA_ty : Term := pure{
   Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
     (Π (x : Nat) → Id Nat (countA x m a) (countA x q b)) → LbA p q b → LbA p m a }
 
+/-- Two-element count commutation over arrays — `cons2_comm`'s transfer at the fixed
+    width the miniature sort needs. Double case split on `eqb`, all four arms `Refl`;
+    the `eqb m a = False` arm needs no inner split because both sides already agree. -/
+def count_swap2 : Term := pure{
+  λ (m : Nat). λ (a : Nat). λ (b : Nat).
+    elim (eqb m a) generalizing (Id Nat (countA m 2 Arr(b, a)) (countA m 2 Arr(a, b))) {
+      True => elim (eqb m b) generalizing
+        (Id Nat (boolRec (λ (w : Bool). Nat) (S (S Z)) (S Z) (eqb m b))
+                (S (boolRec (λ (w : Bool). Nat) (S Z) Z (eqb m b)))) {
+        True => Refl, False => Refl },
+      False => Refl } }
+def count_swap2_ty : Term := pure{
+  Π (m : Nat) → Π (a : Nat) → Π (b : Nat) →
+    Id Nat (countA m 2 Arr(b, a)) (countA m 2 Arr(a, b)) }
+
 end Dllbc.StdLemmas

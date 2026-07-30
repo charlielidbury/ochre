@@ -1124,7 +1124,8 @@ open Dllbc.StdLemmas (countA SortedA UbA LbA BoundA asingle
   count_acons_hit count_acons_hit_ty count_acons_miss count_acons_miss_ty
   noAbove_of_ubA noAbove_of_ubA_ty ub_of_noAboveA ub_of_noAboveA_ty
   ub_permA ub_permA_ty noBelow_of_lbA noBelow_of_lbA_ty
-  lb_of_noBelowA lb_of_noBelowA_ty lb_permA lb_permA_ty)
+  lb_of_noBelowA lb_of_noBelowA_ty lb_permA lb_permA_ty
+  count_swap2 count_swap2_ty leb_true_le leb_false_gt le_pred_l)
 
 -- The predicates COMPUTE, on a run and on the cons view alike.
 example : (pv pure{ countA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
@@ -1199,6 +1200,101 @@ example : chkL lb_permA lb_permA_ty = true := by native_decide
     notation could not reach the cons view it is notation FOR. The rule is the same one
     read through the other view: a literal is a cons spine that happens to be written
     flat. -/
+
+
+
+/-! ## (ix) THE CONVERSION IN MINIATURE — a verified in-place array sort
+
+    Everything above composes here: index places, the carve on a SYMBOLIC array, branch
+    equations, the transferred library, `old *v`, and the §5.4 exit-snapshot audit. The
+    postcondition is M23's quicksort signature at width two —
+
+        Σ (hs : SortedA 2 (*a)) → (Π x. Id Nat (countA x 2 (*a)) (countA x 2 (old *a)))
+
+    — sortedness AND count-preservation over the exit snapshot, with **zero declared
+    backs**. It is not the full quicksort (¶6's partition is a new program, ledger G4),
+    but it is the whole stack end to end on a real in-place mutation, which is what the
+    full one will be made of. -/
+
+-- Writing known values through index places, then proving sortedness of the exit.
+def setSorted : Decl := decl{
+  fn setSorted (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
+    (*a)[0] := 1;
+    (*a)[1] := 2;
+    Pair(unit, Pair(unit, unit)) } }
+example : checkFnOk setSorted = true := by native_decide
+
+-- …and the same body with the writes the wrong way round is rejected: `SortedA` unfolds
+-- to `Σ Bot. …`, so the predicate is not vacuous.
+def setSortedLie : Decl := decl{
+  fn setSortedLie (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
+    (*a)[0] := 2;
+    (*a)[1] := 1;
+    Pair(unit, Pair(unit, unit)) } }
+example : checkFnOk setSortedLie = false := by native_decide
+
+/-- Reading a SYMBOLIC array's elements turns it into a run of named elements. This is
+    the step that makes an in-place algorithm provable at all: `σ_a : Array 2 Nat` is
+    opaque, and after two index reads the payload is `[σ₀, σ₁]` with both elements in
+    scope — carve, then `elementize`, then the ordinary copy-on-read. -/
+def readTwo : Decl := decl{
+  fn readTwo (a : &mut (Array 2 Nat)) -> Unit {
+    let x = (*a)[0];
+    let y = (*a)[1];
+    () } }
+example : checkFnOk readTwo = true := by native_decide
+example : ((fnEnv readTwo).bind (fun e => e.lookup "a"))
+    == some (.borrowM 0 (.ctor "Arr" [.sym 0, .sym 1])) := by native_decide
+
+/-- **The miniature.** An in-place two-element sort over a symbolic borrow, verified
+    `Sorted ∧ Perm` over the exit snapshot, zero backs. Both paths mutate or not through
+    index places, and the audit judges the collapsed payload against a postcondition that
+    names `*a` (exit) and `old *a` (entry). -/
+def sort2 : Decl := decl{
+  fn sort2 (a : &mut (Array 2 Nat))
+      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (countA x 2 (*a)) (countA x 2 (old *a))) {
+    let x = (*a)[0];
+    let y = (*a)[1];
+    if h : leb x y {
+      Pair(Pair(leb_true_le x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+    } else {
+      (*a)[0] := y;
+      (*a)[1] := x;
+      Pair(Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit)),
+           λ (n : Nat). count_swap2 n x y)
+    } } }
+example : checkFnOk sort2 = true := by native_decide
+
+/-! ### Lying twins, one per conjunct — M23's discipline, applied here -/
+
+-- Forget the swap and still claim sortedness. The False branch's goal is `Le x y`,
+-- which is exactly what the branch equation says is FALSE.
+def sort2LieSorted : Decl := decl{
+  fn sort2LieSorted (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
+    let x = (*a)[0];
+    let y = (*a)[1];
+    if h : leb x y {
+      Pair(leb_true_le x y h, Pair(unit, unit))
+    } else {
+      Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit))
+    } } }
+example : checkFnOk sort2LieSorted = false := by native_decide
+
+-- Do the swap, then claim the counts did not move. `count_swap2` is genuinely load-
+-- bearing: `Refl` in its place is rejected.
+def sort2LieCount : Decl := decl{
+  fn sort2LieCount (a : &mut (Array 2 Nat))
+      -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (countA x 2 (*a)) (countA x 2 (old *a))) {
+    let x = (*a)[0];
+    let y = (*a)[1];
+    if h : leb x y {
+      Pair(Pair(leb_true_le x y h, Pair(unit, unit)), λ (n : Nat). Refl)
+    } else {
+      (*a)[0] := y;
+      (*a)[1] := x;
+      Pair(Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit)), λ (n : Nat). Refl)
+    } } }
+example : checkFnOk sort2LieCount = false := by native_decide
 
 
 end Dllbc.Tests.S24Arrays
