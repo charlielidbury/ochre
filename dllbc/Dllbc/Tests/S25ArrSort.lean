@@ -30,7 +30,7 @@ open Dllbc.StdLemmas (le_refl le_add le_add_l le_add_succ le_trans le_up_r le_pr
   splitA_cat_ub splitA_cat_ub_ty splitA_cat_rest splitA_cat_rest_ty
   splitA1_head splitA1_head_ty splitA1_tail splitA1_tail_ty
   partA_cat_ub partA_cat_ub_ty partA_cat_rest partA_cat_rest_ty
-  partA0_eq partA0_eq_ty partA0_lb partA0_lb_ty)
+  partA0_eq partA0_eq_ty partA0_lb partA0_lb_ty s_inj)
 
 namespace Dllbc.Tests.S25ArrSort
 
@@ -182,7 +182,15 @@ def splitA : Decl := decl{
                     -- left part, the boundary cell and the right part in three segments,
                     -- and the exchange is two writes at index 0 of two of them.
                     S(k3) => {
-                      let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                      -- The decomposition is DECLARED: premise (3) may not refine
+                      -- `m2` by unification, so the equation the recursive call
+                      -- returned is cited and solved along. `add_succ` is the whole
+                      -- distance between what the callee proved and what the carve
+                      -- asks for.
+                      let hdec = id_trans Nat m2 (S (add k3 r2)) (add k3 (S r2)) hlen2
+                                   (id_sym Nat (add k3 (S r2)) (S (add k3 r2))
+                                      (add_succ k3 r2));
+                      let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
                       let mid = &mut (*tl)[k3 ; 1 ; r2];
                       let hi = &mut (*tl)[S k3 ; r2];
                       let y = (*mid)[0];
@@ -264,7 +272,10 @@ def partitionA : Decl := decl{
                 -- element. The displaced element is ≤ the pivot, so it may sit at the
                 -- front; the pivot lands at index `S k3`, which is the boundary.
                 S(k3) => {
-                  let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                  let hdec = id_trans Nat m2 (S (add k3 r2)) (add k3 (S r2)) hlen2
+                               (id_sym Nat (add k3 (S r2)) (S (add k3 r2))
+                                  (add_succ k3 r2));
+                  let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
                   let mid = &mut (*tl)[k3 ; 1 ; r2];
                   let hi = &mut (*tl)[S k3 ; r2];
                   let y = (*mid)[0];
@@ -346,7 +357,7 @@ def quicksortA : Decl := decl{
                 -- ¶6's three-way carve, at the index the partition just returned. The
                 -- first obligation is `le_add`; the second is `Le 1 (S jj)`, which route
                 -- (a) reduces to ⊤; the third is degenerate.
-                let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj)];
+                let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj) | hlen];
                 let pcell = &mut (*a)[k ; 1 ; jj];
                 let e = (*pcell)[0];
                 let r = &mut (*a)[S k ; jj];
@@ -508,7 +519,15 @@ def splitANoSwap : Decl :=
                            Pair(Pair(le_pred_l p x (leb_false_gt x p e), hsp2),
                                 mkC (*tl) hcnt2 (acons m2 x (*tl)) (λ (q : Nat). Refl))))),
                     S(k3) => {
-                      let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                      -- The decomposition is DECLARED: premise (3) may not refine
+                      -- `m2` by unification, so the equation the recursive call
+                      -- returned is cited and solved along. `add_succ` is the whole
+                      -- distance between what the callee proved and what the carve
+                      -- asks for.
+                      let hdec = id_trans Nat m2 (S (add k3 r2)) (add k3 (S r2)) hlen2
+                                   (id_sym Nat (add k3 (S r2)) (S (add k3 r2))
+                                      (add_succ k3 r2));
+                      let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
                       let mid = &mut (*tl)[k3 ; 1 ; r2];
                       let hi = &mut (*tl)[S k3 ; r2];
                       let y = (*mid)[0];
@@ -585,18 +604,20 @@ example : checkFnErr qsALieCount "does not have return type" [qsALieCount, parti
 -- carve has nothing to select a leaf with. (The pivot carve needs no evidence at all —
 -- route (a) reduces `Le 1 (S jj)` to ⊤ — so this is the only citation in the body.)
 def carveNoEv : Decl := decl{
-  fn carveNoEv (n : Nat, k : Nat, jj : Nat, a : &mut (Array n Nat)) -> Unit {
+  fn carveNoEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
+                a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k ; S jj];
     let pcell = &mut (*a)[k ; 1 ; jj];
     let r = &mut (*a)[S k ; ..];
     () } }
-example : checkFnErr carveNoEv "containment obligation" = true := by native_decide
+example : checkFnErr carveNoEv "may not impose it by refining" = true := by native_decide
 
 -- …and the positive control at the same shape, so the rejection is about the missing
 -- citation and not about the carve. (`quicksortA` itself is the other positive control.)
 def carveWithEv : Decl := decl{
-  fn carveWithEv (n : Nat, k : Nat, jj : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj)];
+  fn carveWithEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
+                  a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj) | heq];
     let pcell = &mut (*a)[k ; 1 ; jj];
     let r = &mut (*a)[S k ; ..];
     () } }
@@ -755,22 +776,26 @@ example : checkFnOk c6PeelCall [c6PeelCall, c6Touch] = true := by native_decide
 
 -- (2) Carve inside the tail, with NO call first. Always worked.
 def c6CarveNoCall : Decl := decl{
-  fn c6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+  fn c6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
+             a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
                 let tl = &mut (*a)[S Z ; m];
-                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
+                                      | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
                 let hi = &mut (*tl)[S k3 ; r2]; () } } } }
 example : checkFnOk c6CarveNoCall = true := by native_decide
 
 -- (3) …and the swap's writes on top of it. Always worked.
 def c6Swap : Decl := decl{
-  fn c6Swap (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+  fn c6Swap (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
+             a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
                 let tl = &mut (*a)[S Z ; m];
-                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
+                                      | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
                 let hi = &mut (*tl)[S k3 ; r2];
                 let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } } }
@@ -791,14 +816,81 @@ example : checkFnOk c6Rec = true := by native_decide
     Which is to say: a recursive array program carving the argument it just handed to
     its recursive call, i.e. every one of them. -/
 def c6CarveAfterCall : Decl := decl{
-  fn c6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, a : &mut (Array n Nat)) -> Unit {
+  fn c6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
+             a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
                 let tl = &mut (*a)[S Z ; m];
                 c6Touch(m, &mut *tl);
-                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)];
+                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
+                                      | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
                 let hi = &mut (*tl)[S k3 ; r2]; () } } } }
 example : checkFnOk c6CarveAfterCall [c6CarveAfterCall, c6Touch] = true := by native_decide
+
+/-! ### Why the scan is not Lomuto — the rejection, with M13's evidence threaded
+
+    Ledger R13. `(*a)[i | h]` on a symbolic array works; a SECOND index does not, and
+    threading the ordering evidence does not rescue it. After the first carve the leaves
+    are `[0,i)`, `[i,i+1)`, `[S i, rest)`, and the second request lands in the third — so
+    premise (2) is formed LEAF-RELATIVELY against an offset `d` the machine minted while
+    solving `j ≡ add (S i) d`. No program term has type `Le (S d) rest`, because `d` has
+    no surface name. **That is G1's wall arriving at the OFFSET rather than the extent**,
+    and route (a) closes only the extent half.
+
+    So `swap(a[i], a[j])` at two runtime cursors is unwritable, and `splitA`'s shape —
+    every access at index 0 of a segment the program carved — is forced rather than
+    chosen. ¶6's "a segment with its own zero" is a constraint, not a convenience. -/
+
+def twoCursor : Decl := decl{
+  fn twoCursor (n : Nat, i : Nat, j : Nat, pij : Le (S i) j, pjn : Le (S j) n,
+                a : &mut (Array n Nat)) -> Unit {
+    let x = (*a)[i | le_trans (S i) j n pij (le_pred_l j n pjn)];
+    let y = (*a)[j | pjn];
+    () } }
+example : checkFnErr twoCursor "no leaf" = true := by native_decide
+
+-- Route (a) cannot rescue it either: the second request does not START a segment, so
+-- there is no leaf for the supplied residue to decompose.
+def twoCursorRes : Decl := decl{
+  fn twoCursorRes (n : Nat, i : Nat, j : Nat, r1 : Nat, r2 : Nat,
+                   a : &mut (Array n Nat)) -> Unit {
+    let x = &mut (*a)[i ; 1 ; r1 | le_add i (S r1)];
+    let y = &mut (*a)[j ; 1 ; r2 | le_add j (S r2)];
+    () } }
+example : checkFnErr twoCursorRes "no segment starts at" = true := by native_decide
+
+/-! ## (viii) The G7 ruling, probed at the boundary it exists to protect
+
+    Premise (3) may not refine a telescope parameter's σ to match a supplied residue;
+    it may solve along a CITED equation. The three probes the ruling asks for. -/
+
+def citedCarve : Decl := decl{
+  fn citedCarve (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
+                 a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    () } }
+example : checkFnOk citedCarve = true := by native_decide
+
+/-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
+    inhabits `Id Nat 3 (add 1 (S 1))` because both sides compute to 3. -/
+def citedCallerOk : Term := dllbcWith [] {
+  let z = Arr(1, 2, 3); let b = &mut z; citedCarve(3, 1, 1, Refl, b); let y = z; () }
+example : checkFnOk (Dllbc.Tests.S9Diff.callerDecl citedCallerOk) [citedCarve]
+    = true := by native_decide
+
+/-- (2) …and it RUNS, which is the half that was broken. Before the ruling the checker
+    accepted callers the concrete machine got stuck on; now acceptance and execution
+    agree on this shape, which is M8/M9's differential property restored for it. -/
+example : runsAtAll [citedCarve] citedCallerOk = true := by native_decide
+
+/-- (3) The caller that used to be the counterexample. `n = 2` with `i = j = 5` type-
+    checked before the ruling and then got stuck executing; now `Refl` cannot inhabit
+    `Id Nat 2 (add 5 (S 5))` and the CALLER is rejected, at its own boundary, with the
+    constraint recorded in the signature it violated. -/
+def citedCallerBad : Term := dllbcWith [] {
+  let z = Arr(1, 2); let b = &mut z; citedCarve(2, 5, 5, Refl, b); let y = z; () }
+example : checkFnOk (Dllbc.Tests.S9Diff.callerDecl citedCallerBad) [citedCarve]
+    = false := by native_decide
 
 end Dllbc.Tests.S25ArrSort

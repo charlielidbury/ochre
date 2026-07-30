@@ -1022,8 +1022,9 @@ example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
     reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
     now needs no evidence whatsoever**. -/
 def threeWay : Decl := decl{
-  fn threeWay (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
+  fn threeWay (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
+               a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
     let p = &mut (*a)[i ; 1 ; j];
     let r = &mut (*a)[S i ; ..];
     () } }
@@ -1048,18 +1049,44 @@ example : threeWaySegLoans = some [1, 2, 3] := by native_decide
 -- `rest := S j` the obligation is ⊤. Dropping `le_add` from the FIRST carve, whose
 -- obligation does not compute away, is still rejected.
 def threeWayNoFirstEv : Decl := decl{
-  fn threeWayNoFirstEv (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; i ; S j];
+  fn threeWayNoFirstEv (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
+                        a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_refl i | heq];
     let p = &mut (*a)[i ; 1 ; j];
     () } }
 example : checkFnErr threeWayNoFirstEv "containment obligation" = true := by native_decide
+
+/-- **The DECOMPOSITION CITATION's negative control**, and the one the M25 ruling turns
+    on. Supplying a residue asserts that the leaf's extent decomposes as `add cnt rest`.
+    When the extent is a telescope parameter's σ that assertion is a constraint on this
+    function's CALLERS, and premise (3) refuses to impose it by unification — the
+    program must CITE the equation, exactly as M17 requires of every other cross-boundary
+    constraint. Before the ruling this checked, and a caller instantiating `n = 2` with
+    `i = j = 5` checked with it and then got STUCK when executed. -/
+def threeWayUncited : Decl := decl{
+  fn threeWayUncited (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
+    () } }
+example : checkFnErr threeWayUncited "may not impose it by refining" = true := by
+  native_decide
+
+-- …and the citation's TYPE is what licenses: a well-typed equation about the wrong
+-- decomposition selects nothing.
+def threeWayWrongEq : Decl := decl{
+  fn threeWayWrongEq (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S (S j))),
+                      a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    () } }
+example : checkFnErr threeWayWrongEq "cited decomposition does not have type" = true := by
+  native_decide
 
 -- A LYING residue is rejected: the supplied extent must actually decompose the leaf,
 -- and premise (3) is the thing that checks it. Here `j` is claimed where `S j` is
 -- needed, so the solution transition has no solution.
 def threeWayLyingResidue : Decl := decl{
-  fn threeWayLyingResidue (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; i ; j | le_add i j];
+  fn threeWayLyingResidue (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i j),
+                           a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; j | le_add i j | heq];
     let p = &mut (*a)[i ; 1 ; j];
     () } }
 example : checkFnOk threeWayLyingResidue = false := by native_decide
@@ -1071,8 +1098,9 @@ example : checkFnOk threeWayLyingResidue = false := by native_decide
 def sliceTake : Decl := decl{ fn sliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
 
 def threeWayCall : Decl := decl{
-  fn threeWayCall (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
+  fn threeWayCall (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
+                   a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
     let p = &mut (*a)[i ; 1 ; j];
     let r = &mut (*a)[S i ; ..];
     sliceTake(i, l);
@@ -1089,8 +1117,9 @@ example : checkFnOk threeWayCall [threeWayCall, sliceTake] = true := by native_d
     `(*a)[S i ; ..]` cannot find the segment it just created. -/
 
 example : checkFnOk (decl{
-  fn baseSpelling (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
+  fn baseSpelling (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
+                   a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
     let p = &mut (*a)[i ; 1 ; j];
     let r = &mut (*a)[S i ; j];
     () } }) = true := by native_decide

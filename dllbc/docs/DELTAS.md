@@ -560,9 +560,9 @@ of positive width).
 
 ---
 
-### G7 — route (a) refines a UNIVERSAL, and no caller is ever held to it
+### C8 (was G7) — route (a) refined a UNIVERSAL, and no caller was ever held to it — RULED AND CLOSED
 
-**The one soundness finding, and it is decision-relevant for the merge review.**
+**The lane's one soundness finding. Found, ruled on by the team lead, and fixed in the same milestone.**
 
 Premise (3) solves the supplied residue by `reflUnify l.count (add cnt rest)`. When the
 leaf's extent is a TELESCOPE PARAMETER's σ — always, in the programs route (a) exists for
@@ -587,9 +587,43 @@ M25's programs are true and do not rely on the hole, but they cannot PROVE they 
 twin-testable, even though the carve does not consume it. In both programs that conjunct
 is `Refl` or one `id_congr`, so the honesty is nearly free.
 
-Two ways out at review: premise (3) refuses to refine a σ that is a telescope parameter
-(and the program cites an equation instead — which these programs already return), or the
-signature records the induced constraint. Filed, not decided.
+**THE RULING (team lead), and the precedent it rests on.** The calculus has litigated
+this exact sin before: a body imposing an unrecorded constraint on its callers is M7/M8's
+signature-inferred constrained wire, whose lesson (M17) is that cross-boundary constraints
+must be DECLARED and checked, never inferred. So: **premise (3) MUST REFUSE to refine a
+telescope-parameter σ directly; it MAY solve along a CITED equation.** That keeps §3.2's
+own line intact — refinement carries equation SOLUTIONS, and a cited, checked `Id` is
+legitimate ⇜ knowledge with recorded provenance where an unrecorded unification against a
+universal is not.
+
+**BUILT.** `a[lo ; cnt ; rest | h | heq]` — a fourth optional surface slot, the house
+pattern's fourth instance after `[k]`, `match h :` and the residue itself. Premise (3)
+now: if the decomposition already holds by CONVERSION, nothing is asserted and nothing is
+demanded (the common case — a leaf whose extent is a constructor tree, `S m` against
+`add 1 m`, stays free); otherwise the equation must be cited, is checked by `hasType`
+against `Id Nat ⟨leaf extent⟩ (add cnt rest)`, and the SAME refl-match solution transition
+then runs, now licensed. The refusal is a few lines and the citation reuses M10's
+machinery, exactly as the ruling predicted.
+
+**The programs already produced the equations, which is the ruling's own best argument.**
+`partitionA` returns `Id Nat n (add k (S jj))` and `splitA` returns `Id Nat m (add k r)` —
+written as honesty decoration when the hole was merely known. Under the ruling they became
+LOAD-BEARING: `quicksortA` cites `hlen` verbatim at its three-way carve, and `splitA` and
+`partitionA` cite their recursive call's equation at the swap carve, one `add_succ` away
+from the shape the carve asks for. Exactly TWO carves in the whole lane need a citation;
+every other one converts. That is the measurement that says the rule is not a tax: a
+decomposition a program cannot prove is one it had no business asserting.
+
+**Probes, all three the ruling asked for.** `threeWayUncited` REJECTED ("premise (3) may
+not impose it by refining a telescope parameter's σ"); `threeWayWrongEq` rejected on the
+citation's TYPE, so the equation is the license and not a token; the cited caller ACCEPTED
+and EXECUTING, restoring M8/M9's differential property for this shape; and the caller that
+was the counterexample — `n = 2` with `i = j = 5` — now rejected AT ITS OWN BOUNDARY,
+because `Refl` cannot inhabit `Id Nat 2 (add 5 (S 5))`. The constraint is recorded in the
+signature it violates, which is the whole point.
+
+Five of arr1's M24 route-(a) tests moved to the cited form and are green; `threeWayUncited`
+is the new negative control and is the shape they used to have.
 
 ### G5 — a callee's segment borrows are never released when it returns
 
@@ -646,11 +680,24 @@ separate declaration for that reason and not for modularity.
 
 ### R13 — two independent SYMBOLIC indices into one array are unreachable, so Lomuto is not writable
 
-`(*a)[i | h]` on a symbolic array works. A second read at an unrelated `j` cannot: after
-the first carve the leaves are `[0,i)`, `[i,i+1)`, `[S i, rest)`, and no evidence a program
-can hold selects a leaf for `j`. So `swap(a[i], a[j])` at two runtime indices — Lomuto's
-inner loop, and the shape ¶6's own G4 correction calls for ("an IN-PLACE scan") — is not
-writable at all.
+**This refutes the HANDOFF's own §2**, which describes the scan as "a recursive helper
+carrying the scan position and the less-than boundary, swapping through index places" —
+i.e. Lomuto with two cursors. It is not writable, and threading the ordering evidence does
+not rescue it. Probed with M13's `nth2` terms verbatim, `pij : Le (S i) j` and
+`pjn : Le (S j) n`, which is exactly what ¶3.5 promises will "take the same terms and give
+them their real job":
+
+`(*a)[i | h]` works. The second read does not. After the first carve the leaves are
+`[0,i)`, `[i,i+1)`, `[S i, rest)`; the second request lands in the third, so premise (2)
+is formed LEAF-RELATIVELY against an offset `d` the machine minted while solving
+`j ≡ add (S i) d` — and no program term has type `Le (S d) rest`, because `d` has no
+surface name. **That is G1's wall arriving at the OFFSET rather than the extent**, and
+route (a) closes only the extent half. Route (a) cannot rescue it either: the second
+request does not START a segment, so there is no leaf for a supplied residue to decompose
+("no segment starts at σ").
+
+So `swap(a[i], a[j])` at two runtime cursors — Lomuto's inner loop, and the shape ¶6's own
+G4 correction calls for — is not writable at all.
 
 What is writable is a scan in which every element access is at index 0 of a segment the
 program itself carved. ¶6 says "the right sub-slice is a segment with its own zero; there

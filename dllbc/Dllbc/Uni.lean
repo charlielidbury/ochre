@@ -113,6 +113,13 @@ syntax:max uterm:max noWs "[" uterm ";" ".." "]" : uterm                -- a[lo 
 -- the checker already has, declared rather than inferred, free when absent.
 syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "]" : uterm            -- a[lo ; cnt ; rest]
 syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "]" : uterm  -- a[lo ; cnt ; rest | h]
+-- …and the DECOMPOSITION CITATION. A supplied residue asserts a decomposition of the
+-- leaf's extent; when that extent is a telescope parameter's σ, the assertion is a
+-- constraint on the function's CALLERS, and premise (3) may not impose it by
+-- unification (M7/M8's inferred constrained wire; M17's lesson that cross-boundary
+-- constraints are DECLARED and checked). The program cites the equation and premise (3)
+-- solves along it. Free when the decomposition already holds by conversion.
+syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "|" uterm "]" : uterm
 syntax:70 "&mut" uterm:65 : uterm                            -- &mut e : borrow (term) / borrowT (type)
 syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ S)
 syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
@@ -231,31 +238,39 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   | `(uterm| $a:uterm[$lo:uterm ; ..]) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
-    return (← `(Dllbc.Term.range $a' $lo' none none none), n2)
+    return (← `(Dllbc.Term.range $a' $lo' none none none none), n2)
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm]) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
     let (c', n3) ← elabUTerm isTy rctx pctx n2 c
     let (r', n4) ← elabUTerm isTy rctx pctx n3 r
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') none), n4)
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') none none), n4)
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm | $h:uterm]) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
     let (c', n3) ← elabUTerm isTy rctx pctx n2 c
     let (r', n4) ← elabUTerm isTy rctx pctx n3 r
     let (h', n5) ← elabUTerm isTy rctx pctx n4 h
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h')), n5)
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') none), n5)
+  | `(uterm| $a:uterm[$lo:uterm ; $c:uterm ; $r:uterm | $h:uterm | $q:uterm]) => do
+    let (a', n1) ← elabUTerm isTy rctx pctx next a
+    let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
+    let (c', n3) ← elabUTerm isTy rctx pctx n2 c
+    let (r', n4) ← elabUTerm isTy rctx pctx n3 r
+    let (h', n5) ← elabUTerm isTy rctx pctx n4 h
+    let (q', n6) ← elabUTerm isTy rctx pctx n5 q
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') (some $r') (some $h') (some $q')), n6)
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm]) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
     let (c', n3) ← elabUTerm isTy rctx pctx n2 c
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') none none), n3)
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none none none), n3)
   | `(uterm| $a:uterm[$lo:uterm ; $c:uterm | $h:uterm]) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (lo', n2) ← elabUTerm isTy rctx pctx n1 lo
     let (c', n3) ← elabUTerm isTy rctx pctx n2 c
     let (h', n4) ← elabUTerm isTy rctx pctx n3 h
-    return (← `(Dllbc.Term.range $a' $lo' (some $c') none (some $h')), n4)
+    return (← `(Dllbc.Term.range $a' $lo' (some $c') none (some $h') none), n4)
   | `(uterm| &mut ( $x:ident : $τ:uterm ~> $s:uterm )) => do     -- borrow type, snapshot binder
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (s', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 s

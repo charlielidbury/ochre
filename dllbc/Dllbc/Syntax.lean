@@ -83,8 +83,19 @@ inductive Term where
       before. This is the third instance of a house pattern — an optional surface
       element reifying something the checker already knows, declared rather than
       inferred, free when absent — after §1.2's `[k]` naming the decreasing position
-      and §3.2's `match h :` naming the branch equation. -/
-  | range  : Term → Term → Option Term → Option Term → Option Term → Term
+      and §3.2's `match h :` naming the branch equation.
+
+      The last slot is the **decomposition citation**, `a[lo ; cnt ; rest | h | heq]`.
+      A supplied residue asserts a specific decomposition of the leaf's extent, and
+      when that extent is a telescope parameter's σ the assertion is a constraint on
+      the function's CALLERS. Premise (3) may not impose it by unification — that is
+      M7/M8's signature-inferred constrained wire, whose lesson (M17) is that
+      cross-boundary constraints must be DECLARED and checked. So the program cites
+      `heq : Id Nat ⟨leaf extent⟩ (add cnt rest)` and premise (3) solves along it: a
+      checked identity with recorded provenance is legitimate ⇜ knowledge, where an
+      unrecorded unification against a universal is not. Needed only when the
+      decomposition does not already hold by conversion. -/
+  | range  : Term → Term → Option Term → Option Term → Option Term → Option Term → Term
   /-- `match x { … }` — one-constructor-deep pattern match on a variable
       scrutinee (§3). Owned or borrow mode is chosen at runtime by what the
       scrutinee's slot holds.
@@ -153,8 +164,9 @@ mutual
     | .borrow a, .borrow b => Term.beq a b
     | .deref a, .deref b => Term.beq a b
     | .index a i e, .index b j f => Term.beq a b && Term.beq i j && Term.beqOpt e f
-    | .range a l c r e, .range b m d q f =>
-      Term.beq a b && Term.beq l m && Term.beqOpt c d && Term.beqOpt r q && Term.beqOpt e f
+    | .range a l c r e eq1, .range b m d q f eq2 =>
+      Term.beq a b && Term.beq l m && Term.beqOpt c d && Term.beqOpt r q
+        && Term.beqOpt e f && Term.beqOpt eq1 eq2
     | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs
