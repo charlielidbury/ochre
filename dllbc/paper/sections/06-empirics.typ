@@ -51,6 +51,90 @@ provably-wrong fact, exactly the bug class the relation is meant to catch. The
 finder demonstrably catches its target when the target is reintroduced, and only
 then.
 
+== The polarity finding: when the machine is the broken one <sec-polarity>
+
+The differential has always been justified defensively — as insurance that the
+checker does not accept something execution cannot do. That justification is
+incomplete, and the array development is what showed it.
+
+Every previously-known divergence between the two sides has had the checker as the
+_approximating_ one. @sec-boundaries records the canonical instance: a loan group
+releases its captured loans atomically at a fresh existential, where concrete
+execution ends each lazily, per owner, so a symbolic environment can hold a released
+value where the concrete one still holds a suspended loan. The checker is coarser;
+execution is the ground truth the checker is a safe abstraction of. A metatheory
+written from that assumption would say so, and every member of the family had
+confirmed it.
+
+The array quicksort broke that pattern. It type-checked and _could not be run_: in
+executing mode a carving callee left the caller's array segmented, and the caller's
+next carve then read the wrong leaf. Checking mode never saw the fault, because a
+call re-mints the callee's payload as a fresh symbolic value at the declared type
+(@sec-boundaries's opacity), so the checker always sees an _uncarved_ array. The
+temptation is to read that as one more over-approximation. It is the opposite:
+
+#block(inset: 8pt, stroke: 0.5pt + luma(150), radius: 3pt, width: 100%)[
+  The re-mint is not an approximation of what execution does. It is a *repair* of it.
+  The checker was right and the machine was wrong — and no amount of checking could
+  have revealed that.
+]
+
+This matters beyond the bug. A design document can reason about whether the checker
+over-approximates the machine; it cannot discover that the machine is the one that is
+broken, because the machine is what it would be reasoning _from_. Only running both
+and comparing can. That makes the differential harness part of the central claim
+rather than an assurance activity attached to it — and it means the reconciliation a
+future soundness proof owes is not "the checker over-approximates" but a genuine
+two-sided relation, since at least one member of the family runs the other way.
+
+The fault's _root_ carries the transferable lesson. It was a normalization that
+discards a zero-extent segment and unwraps a lone survivor — reasonable, and wrong,
+in four independent places, because the rest of the machine depends on structure it
+was throwing away. Every one of the four is *unreachable symbolically*, since a
+residue is never _known_ to be zero, and *routine concretely*, since a runtime-computed
+split has an empty side constantly. That asymmetry is exactly why the symbolic suite
+stayed green throughout. Generalized: _a normalization justified on symbolic values,
+applied to concrete ones_ — and the reason it took four rounds to finish is that each
+site looked like the last one.
+
+== The cross-differential: two implementations, one specification <sec-crossdiff>
+
+The harnesses above compare the checker with the machine. The array development makes
+a third comparison available, and it is of a different kind: two _implementations_,
+checked against each other.
+
+The `List` and `Array` quicksorts share a specification — sortedness of the exit
+snapshot with count-preservation against the entry — and share nothing else. Not the
+program (take-and-rebuild versus an in-place carved scan), not the partition, not the
+predicates, not the container, not one line of proof. Run on eleven shared inputs,
+they agree with each other _and_ with a reference sort. The conjunction is
+deliberate: a two-way agreement on a wrong answer still goes red, so the test does not
+reward the two implementations for sharing a mistake — and a failure to run on either
+side cannot masquerade as agreement.
+
+What that buys is evidence about the _specification_ rather than about either
+implementation. A single verified program tells you it satisfies the postcondition you
+wrote; it tells you nothing about whether the postcondition says what you meant. Two
+programs sharing only the postcondition, disagreeing, would indict the postcondition
+or one of the proofs. Agreeing, they are weak evidence that the shared statement is
+the one intended — weak because eleven inputs is eleven inputs, but it is a kind of
+evidence the project could not previously produce at all.
+
+#block(inset: (left: 1em))[
+  #text(size: 8.5pt)[
+  *A fence, because this paper now reports three measurement sets and they are not
+  comparable.* (i) The *conformance* audit's 465× speedup (84,121 ms to 181 ms) is a
+  _checker_ change — a substitution fix — measured on architecture A's program.
+  (ii) The *positional-versus-whole-list* gap (21.8 s to 21 ms) is two direct-proving
+  `List` programs differing in both specification encoding and partition program, with
+  no checker work between them; @sec-lessons states why the honest attribution is to
+  the pair rather than to the encoding alone. (iii) The *cross-differential* is not a
+  performance measurement at all — it is an agreement check between two
+  implementations, and its number (eleven inputs) is a count of test cases, not of
+  time. Combining any two of the three into one comparison would be wrong.
+  ]
+]
+
 == Discovered preconditions
 
 The harness does more than pass; it has told the design what the theorem needs.
@@ -124,6 +208,25 @@ concrete one still holds a suspended loan. A proof must reconcile these — eith
 by a fully-collapsed-at-observation hypothesis, or by letting a value still out
 on loan stand as an instance of the existential — and the differential cannot
 decide between them; the choice is the proof's.
+
+The obligation is *two-sided*, and stating it one-sidedly would now be a known error.
+It is tempting to phrase the whole relation as "the checker over-approximates the
+machine", since every member of the divergence family did that until one did not
+(@sec-polarity). A relation built on that assumption cannot express the case where
+the re-mint _repairs_ execution rather than abstracting it, and would have to treat a
+genuine machine defect as a soundness counterexample. Whatever form the relation
+takes, it has to admit that the two sides can disagree in either direction and that
+which one is wrong is not determined by which is coarser.
+
+A second obligation the array era added is easy to miss because it is an obligation on
+the _harness_ rather than on the calculus. Arrays are the first values whose state form
+is coarser than their value — a carved-and-rejoined array holds a segment list where an
+untouched one holds a run — so the simulation relation's array case is _defined_ by
+splitting a concrete run along the symbolic extents. That is sound exactly when the
+merge normalization preserves values. If it does not, the harness does not go red; it
+goes silently _green_ on a mismatch. A nice-to-have on the obligation list has thereby
+become a premise of the counterexample finder's own correctness, which is the thing to
+know before trusting the differential over array bodies.
 
 Second, _audit soundness_ — that a passed $arrow.r.curve$/`back` audit implies
 the caller's recovered value genuinely satisfies the obligation — but only

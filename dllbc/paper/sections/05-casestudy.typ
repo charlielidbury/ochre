@@ -3,10 +3,12 @@
 = Case Study: A Verified In-Place Quicksort <sec-casestudy>
 
 The preceding sections introduced the four arrows one region at a time; this one
-assembles them into a real algorithm — twice. The target is an in-place quicksort
-over a mutable borrow, and the mechanization verifies it under _both_ of the
+assembles them into a real algorithm — three times. The target is an in-place
+quicksort over a mutable borrow. The mechanization verifies it under _both_ of the
 architectures @sec-architectures sets side by side, which is what turns that
-comparison into a measurement.
+comparison into a measurement; and then verifies the second architecture again over a
+different _container_, which is what turns the differential harness into evidence
+about the specification rather than only about the checker.
 
 The first pass, through the end of §5.6, is architecture A. The program is the one a Rust
 programmer would recognise — a swap-based Lomuto partition, recursion on
@@ -24,6 +26,14 @@ tree_, each function described only by a return type that is its postcondition,
 and every proof step built inside the body from its callees' postconditions.
 Reading the two in sequence is the point — the first shows what a pure model buys
 and what it costs, the second what is left when you take it away.
+
+The third pass (@sec-arrays) keeps architecture B and changes the _container_: an
+`Array n T` whose sub-ranges are places, so that a recursive sort hands its callee a
+sub-slice instead of the whole structure plus two indices. It is not a third
+architecture. It is the second one again, over a representation that removes the
+frame problem §5.1 describes — and because the two share a specification and no code,
+running them against each other is a check on the specification that neither could
+perform alone (@sec-empirics).
 
 Every listing in this section is quoted from the mechanization at the pin, and
 every acceptance and rejection claim it makes is a green `native_decide`
@@ -48,18 +58,21 @@ what the rest of this section checks, is the load-bearing half: $O(1)$-extra-spa
 _swap-based mutation through borrows_, with the segment's untouched remainder
 pinned to its entry snapshot by the $arrow.r.curve$ obligation.
 
-The scoping has a cost that both developments in this section pay, and @sec-directroute returns
-to it: because a list segment is not a _place_, a sub-range can never be handed to a
-callee as a borrow, so a contract must describe the whole list including the part
-the callee must not touch. The project has a design note proposing the destination —
-a flat `Array n T` former, an index and a range step in the place grammar, and a
-lazy _carve_ reorganization that fires only when handed a comptime proof of
-`Le (add lo cnt) n`, so that two range borrows of one array coexist because they are
-literally different subterms of one value tree rather than because the checker
-believes an aliasing argument. That would make the frame preserved by construction
-instead of described by a contract. It is designed and argued, not built: nothing of
-it is in the mechanization at this pin, and it is named here only to locate what the
-`List`-shaped scoping is standing in for. #status("proposed")
+The scoping has a cost that the two `List` developments in this section pay, and
+@sec-directroute returns to it: because a list segment is not a _place_, a sub-range
+can never be handed to a callee as a borrow, so a contract must describe the whole
+list including the part the callee must not touch.
+
+That cost is what the third development removes. A flat `Array n T` former, an index
+and a range step in the place grammar, and a lazy _carve_ reorganization that fires
+only when handed a comptime proof of `Le (add lo cnt) n` make a range into a place —
+so two range borrows of one array coexist not because the checker believes an
+aliasing argument but because they are literally different subterms of one value tree,
+and the suspension machinery of @identification already knows what to do with those.
+The frame is then preserved by construction rather than described by a contract.
+#status("green") It is built, and @sec-arrays is the third quicksort: the same
+propositional architecture as §5.7, over a container where a sub-slice is a thing you
+can point at.
 
 == Cursors, and the disjointness problem
 
@@ -399,6 +412,80 @@ traversal where the positional program swaps elements in place — and pays in t
 program. Neither is the destination; the calculus is missing the thing that would
 make a range a place, which is @sec-lessons's point about posing the problem, met
 from the direction that hurts.
+
+== Arrays: when a sub-range is a place <sec-arrays>
+
+Everything above pays, twice over, for one structural fact: a segment of a list is
+not a place. A prefix of a right-nested `Cons` tree is not a subterm of it and
+neither is a middle; only a suffix is. So a recursion cannot hand a sub-segment to
+its callee — it hands the whole structure plus two numbers, and the callee's contract
+must then describe the part it must not touch. That is the frame problem, and the
+positional development pays it in a predicate library indexed by ranges, in
+subtraction-guarded reindexing arithmetic, and in length lemmas whose entire job is to
+transport a bound across a mutation that obviously preserves length.
+
+The third development removes it, with one new former and one new rule.
+
+*The former.* `Array n T` — a length-indexed run of element slots, with an index step
+`a[i]` and a range step `a[lo ; cnt]` added to the place grammar. A range being a
+place is the whole point: a range borrow is then an ordinary `&mut`, and needs no new
+kind of reference.
+
+*The rule.* A *carve* is a lazy reorganization that splits an array node into
+segments, and it is the calculus's first rule that _consumes evidence_
+(@fig-carve). It fires only when handed a comptime proof of `Le (add lo cnt) n` —
+whose content is exactly the existence of the residue the split introduces. After it
+fires, the two sub-borrows are disjoint not because a checker believed an aliasing
+argument but because they are _literally different subterms of one value tree_, and
+the suspension machinery of §3.3 already handles those. There is no disjointness
+judgment anywhere in the implementation. The slogan is worth stating as the design's
+thesis in miniature: *proofs license reorganizations; reorganizations restore
+structural disjointness; the borrow machinery is unchanged.*
+
+The comparison that makes this concrete is Rust's. `get_disjoint_mut` ships exactly
+this capability — take several disjoint mutable subslices at once — and checks the
+disjointness _at run time_, returning a `Result` that can fail. DLLBC is not
+inventing the capability; it is moving that check from run time to compile time and
+deleting the failure mode. The reason Rust must check at run time is that it has no
+comptime fragment to pay a proof from, and having one is this calculus's premise.
+
+*What transferred, measured.* The design predicted that the quicksort library would
+port by replacing `listRec` with `arrRec` and `Cons` with `acons`, with none of the
+mathematics re-derived. That is verified verbatim across the whole library — the
+predicates, the pivot glue, the count layer, and the permutation keystone that cost
+the positional development its hardest result — some two dozen definitions and proofs,
+each its list counterpart with the container swapped and nothing else changed. What the prediction
+omitted is that the array constants must _compute_ the way the list constructors do,
+or every step of a transferred proof wants a transport lemma its list original needs
+none of; three ι-rules are what make the transfer mechanical rather than merely
+possible. One of those is a small lesson in notation: the design note's own spelling
+for a singleton, `arrCat (asingle p) r`, was stuck for symbolic `r` — *the chosen
+notation could not reach the cons view it is notation for*.
+
+*What did not transfer, and this is the sharper finding.* The partition is a new
+program. The list partition is a relational take-and-rebuild returning two lists by
+value; the array version needs an in-place scan returning a pivot _index_, because
+the recursive calls carve at that index. There is no program to port. And the
+algorithm is not a free choice either: two independent _symbolic_ indices into one
+array turn out to be unreachable, because after the first carve a second request lands
+in a leaf whose offset the machine minted while solving the containment equation — a
+value with no surface name — so `swap(a[i], a[j])` at two runtime cursors is not
+writable at all. Lomuto's inner loop is therefore not expressible, and what is
+expressible is a scan in which every element access sits at index zero of a segment
+the program itself carved. The design note offered "the right sub-slice is a segment
+with its own zero; there is no reindexing" as a convenience. It is a hard constraint,
+and it picks the algorithm.
+
+*The result.*
+
+```rust
+fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
+  -> Σ (hs : SortedA n (*a)) → Π x. Id Nat (countA x n (*a)) (countA x n (old *a))
+```
+
+§5.7's signature, re-posed on arrays: sorted and a permutation, over the exit
+snapshot, in place, with zero declared backs anywhere in the call tree. It checks,
+and — the part that took the most work — it _runs_.
 
 #block(inset: 8pt, stroke: 0.5pt + luma(150), radius: 3pt, width: 100%)[
   #status("green") _Conformance_ (architecture A) — that the imperative partition

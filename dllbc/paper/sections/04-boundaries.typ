@@ -251,6 +251,19 @@ soundness fact, and it earns a statement of its own.
   different discipline: backward flow must be _promised_ (a declared `back`) and
   _audited_ (#smallcaps[B-BackN] against the body). A promise the checker
   verifies is sound where an inference the checker guesses is not.
+
+  *The principle has since decided a case it was not written for.* The array era's
+  carve (@fig-carve) must decompose a segment's extent, and where that extent is a
+  telescope parameter's symbolic value, solving the decomposition by refinement
+  silently constrains the function's _callers_ — a body carving `[Z ; i ; S j]` out of
+  `Array n` was accepted, and so was a caller passing $n = 2$ with $i = j = 5$, which
+  execution then got stuck on. Different mechanism, different milestone, same sin:
+  a body imposing a cross-boundary constraint that its signature does not record.
+  The ruling followed from the precedent rather than from fresh analysis — the carve
+  may not refine a parameter's extent, and must instead have the decomposition hold by
+  conversion or _cite_ it as a checked equation. What makes the precedent worth stating
+  as a principle rather than a fix is that it arrived pre-argued for a rule nobody had
+  imagined when it was set.
 ]
 
 The audit has a value-returning dual, and stating it precisely matters because
@@ -270,6 +283,35 @@ the differential harness to validate. Complementary, not redundant. The
 principled close is deferred: admit a reformulated back with a _cited bridging
 equation_ and have the audit rewrite along the proved `Id`, so reformulation
 becomes checked rather than trusted. #status("proposed")
+
+== Opacity, twice discovered to be doing work
+
+Everything above treats opacity as a cost: the thing contracts exist to compensate
+for, and the reason a caller learns only what a signature says. The array era found it
+twice in the opposite role, and both times the finding inverted a claim this project
+had written down.
+
+The first is @sec-polarity's: a call re-mints the callee's payload at the declared
+type, and that re-mint turned out to _repair_ an executing machine that had lost the
+structure its borrows were pinned to. Forgetting was correct and remembering was
+broken.
+
+The second decides a program's shape. A body that peels an element must first match
+its own length, which rigidifies the extent; but a rigid extent cannot then be carved
+at a symbolic offset. So one body cannot both choose a split point and carve at it —
+not as a transparency-versus-abstraction trade, but as a dead end. The way out is a
+function boundary, because the re-mint hands the array back _uncarved and with a flex
+length_, which is exactly the state a carve needs. The array partition is a separate
+declaration for that reason and not for modularity, and the design note's own advice —
+carve inline, reach for a function only when you want abstraction — was withdrawn
+rather than qualified.
+
+The corrected statement generalizes past arrays: *carving is a within-body mechanism,
+and function boundaries are where its guarantees stop and start again.* Cross a
+boundary to change rigidity regimes. That a calculus's opacity mechanism should be
+load-bearing for expressiveness, rather than only for modularity, is not what
+@sec-architectures's framing would predict, and it is worth holding onto as a caution
+against reading opacity purely as loss.
 
 == The precision spectrum, and its open holes
 

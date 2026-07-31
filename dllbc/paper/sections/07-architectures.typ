@@ -179,8 +179,22 @@ the body. That the calculus can express either architecture from the _same_
 boundary machinery — a declared `back` for A, a postcondition over $ast.op v$ for
 B — is itself the finding.
 
-Two results from carrying B to completion sharpen the trade beyond what the table
-shows, and neither was predicted. The first is that B does _not_ merely relocate
+*B has since been carried out twice, over different containers, and the second
+instance sharpens what the architecture costs.* The array quicksort (@sec-arrays) is
+this same architecture — postconditions over the exit snapshot, zero declared backs —
+on a representation where a sub-range is a place. Two things follow that the `List`
+instance could not have shown. The first is the cross-differential
+(@sec-crossdiff): two implementations sharing a specification and nothing else,
+agreeing, which is evidence about the _specification_ that no single verified program
+can supply. The second is a correction to B's cost model. The array design predicted
+that making sub-ranges into places would delete positional reasoning outright; it
+deletes it _within a body_ and hands it back at every _function boundary_, because a
+signature must describe a split that only the caller's carve can name. So B's ledger
+reads: one stratum deleted, one inherited, and one invented at the leaf's interface —
+smaller than the one deleted, but not nothing, and not predicted.
+
+Two further results from carrying B to completion sharpen the trade beyond what the
+table shows, and neither was predicted. The first is that B does _not_ merely relocate
 A's pure model: the mechanization's back-less quicksort has no model function of
 the partition anywhere, only _observation_ vocabulary — `count`, `len`, `take`,
 `drop`, `append`, `Ub`, `Lb`, `Sorted` — functions that say what a list _is_ rather

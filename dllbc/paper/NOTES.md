@@ -8,11 +8,19 @@ here; resolution belongs to the theory owner. Each finding keeps its original
 number (1–20 — the figure-audit findings the paper's §8 counts) and names the
 figure that recorded it.
 
-**Two pins.** The figures were first extracted at `122bb424`; the paper is now
-pinned at `4e950ab7`, and the figures were re-extracted against it where the
-rules moved. The 1–20 numbering is SEALED to the original extraction and is not
-renumbered — §8.3 counts it — so closures are recorded in place (marked CLOSED)
-and the re-pin's own record is the separate section below.
+**Three pins.** The figures were first extracted at `122bb424`; re-extracted at
+`4e950ab7` (the second verification architecture); and re-extracted again at
+`9d92a894`, the current pin, when arrays, range places and the carve landed. The
+1–20 numbering is SEALED to the original extraction and is not renumbered — §8
+counts it — so closures are recorded in place (marked CLOSED), and each re-pin has
+its own separate section below with its own prefix (`P`/`R` for the second, `A` for
+the array era). Nothing is renumbered across eras; a claim the paper made about an
+audit stays checkable against the audit it was made about.
+
+The array era carries its own upstream ledger, `dllbc/docs/DELTAS.md`, which is the
+primary source for what that work was like while it happened — 33 entries, including
+two conclusions it recorded and a later probe refuted. This file records only what
+the *paper* had to change.
 
 The paper's claim discipline leans on this file: §4.5 and §6.5 state findings
 14, 15, and 18 as the audit-strategy holes a soundness statement must close;
@@ -309,3 +317,85 @@ Resolved during the integration pass (this branch):
   change to the generator or to what the checker accepts should update the
   numbers, the header comment and §6.1 together; what the assertions forbid is
   changing any one of them silently.
+
+---
+
+## The array era (`4e950ab7` → `9d92a894`): what the paper gained
+
+Entries prefixed `A`, not continuing any earlier numbering. Each was verified against
+the implementation or the suites before being written into the paper.
+
+A1. **@fig-carve is new, and it is the first new judgment form since the original
+    extraction.** Placed as a seventh figure rather than folded into F2 for a reason
+    the figures themselves make: F2's gloss is that the borrow machinery has no rules
+    of its own beyond bookkeeping, and the carve has content — it consumes a proof.
+    Absorbing it would have contradicted the figure it was absorbed into. The figure
+    states premises (1) containment, (2) the leaf-relative obligation, (3) the residue
+    transition, plus the citation rule, the degenerate cases, and the two restrictions
+    (rigid extents cannot be sub-carved; recursion cannot decrease through a carved
+    payload).
+
+A2. **The polarity finding, in §6 and in the abstract.** The first divergence in which
+    the *concrete* machine was the wrong side — a call's re-mint repairing execution
+    rather than abstracting it. Promoted deliberately from an empirics observation to
+    part of the central claim, because it is the one thing a design argument
+    structurally cannot reach: the machine is what such an argument reasons *from*.
+    §6.5's simulation obligation was rewritten as a consequence — phrasing it as "the
+    checker over-approximates" is now a known error, not a simplification.
+
+A3. **The cross-differential, fenced as a THIRD measurement set.** Two implementations
+    sharing a specification and no code, agreeing on eleven inputs with each other and
+    with a reference sort. Verified in the suite rather than transcribed: the check is
+    a *conjunction* (both agree AND both match the reference), so a two-way agreement
+    on a wrong answer still goes red, and a failure on either side cannot masquerade
+    as agreement. The eleven inputs were counted in the source.
+
+A3b. **A ledger claim I could not reproduce, and did not transcribe.** DELTAS says
+    "exactly TWO carves in the whole lane need a citation". Counted in the source, the
+    three shipped declarations have thirteen carve sites with *three* citations — one
+    each in `splitA`, `partitionA` and `quicksortA` (the suites hold twelve cited
+    carves in total, the rest being probes and lying twins). The ledger may be counting
+    distinct carve *shapes*, or may be one out. The paper states the measured numbers.
+    Worth a note to the era's authors rather than a correction to their ledger, which
+    is a historical record and should not be edited to match.
+
+A3c. **A second count I could not reproduce.** The ledger and the merge message both
+    say the transferred library is "twenty-one definitions and proofs". Enumerating the
+    ledger's *own* list of what transferred (six predicates, nine glue lemmas, three
+    count lemmas, six permutation-keystone items) gives twenty-four, and `StdLemmas`
+    holds twenty-five array-suffixed items once M25's invented `SplitA`/`PartA` are
+    included. The discrepancy does not touch the substantive claim — that the transfer
+    is verbatim — so §5 states the strata and "some two dozen" rather than a precise
+    number I cannot land on. Same recommendation as A3b: raise with the authors.
+
+A4. **The constrained-wire principle gained a third act** (§4). The carve's premise (3)
+    may not refine a telescope parameter's extent, for exactly the reason a backward
+    flow may not be inferred from a signature: it constrains callers without recording
+    it. Worth the paragraph because the precedent decided a rule nobody had imagined
+    when it was set.
+
+A5. **Two claim reversals recorded as reversals** (§8's retraction discipline). The
+    design note's advice to carve inline and reach for a function only for abstraction
+    is *withdrawn* — the boundary is what makes the program possible; and its "one
+    stratum deleted, one inherited, none invented" is corrected to *one invented*, at
+    the partition's interface. §7's cost model for architecture B updated accordingly.
+
+A6. **A fifth lesson** (§8): run the differential at both extent regimes and default to
+    neither. Every late-hiding defect in the era was invisible at one regime and
+    routine at the other.
+
+### Not carried into the paper, and why
+
+* **Aeneas's `split_at_mut` backward function.** The design note's survey reports it as
+  total by fiat — silently returning the original slice when the length guard fails,
+  sound only because generated code satisfies the guard. It is a sharp comparison for
+  the carve, which makes exactly that guard a checked proof. NOT USED: the `aeneas/`
+  subtree in this repository is the mechanized-LLBC Rocq development, not the Lean
+  backend, so the claim cannot be verified here, and it is a criticism of another
+  system. §9 makes only the `get_disjoint_mut` comparison, which is a public API
+  surface. If someone verifies the backward-function claim against the Aeneas sources,
+  it strengthens §9 considerably and should go in.
+* **The full 33-entry DELTAS ledger.** The paper takes the findings that change a claim
+  it makes. The rest — spelling refinements, representation decisions, the transfer
+  measurements — belong to the design note and its ledger, which the paper cites rather
+  than absorbs.

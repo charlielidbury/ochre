@@ -103,6 +103,7 @@
 // F4 match:               M-…   (M-Owned, M-Borrow, M-OwnedSym, M-BorrowSym, M-Refl-Flex, M-Exhaust)
 // F5 boundaries/calls:    B-…   (B-Seed, B-Pin, B-Inst, B-Res, B-Call, B-Coll, B-Reach, B-Exempt, B-Oblig-Conv, B-ExFalso, B-Audit, B-Back…, B-CheckFn)
 // F6 hasType/convert:     T-…   (T-Type, T-Former, T-Sym, T-Ctor, T-Lam, T-ElimSynth, T-Spine, T-Conv)  and  C≡-… for conversion
+// F7 the carve:           K-…   (K-Carve, K-Cite, K-Cite-Eq)
 
 // Cross-reference table helper: rule ↔ implementing function ↔ exercising test
 #let xref(..rows) = table(

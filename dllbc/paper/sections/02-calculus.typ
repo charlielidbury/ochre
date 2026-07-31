@@ -62,6 +62,9 @@ Which arrows are defined on which constructs is the skeleton of the language. @a
     [$borrowT(s, tau, S)$], [✗], [✗], [✓], [✗], [the borrow _type_ is comptime, though borrow _values_ are not],
     [`*t`], [✓], [✓], [✓], [✓],
     [the peel, arrow-generic: takes, locates, projects, or refines the payload],
+    [`a[i]`, `a[lo ; cnt]`], [✓], [✓], [✓], [✗],
+    [index and range _place steps_ (@fig-carve); a range being a place is what makes a
+     sub-slice borrowable. Both fire a *carve* when the place is first navigated],
   ),
   caption: [The construct/arrow table: the map of the language.],
 ) <arrow-map>

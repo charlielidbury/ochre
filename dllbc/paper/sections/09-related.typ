@@ -66,6 +66,37 @@ type-level computation — and its only decision procedure is conversion. The
 boundary money test — a forgotten length update leaving a stuck type that no
 constructor inhabits — is a conversion failure, not a solver query.
 
+== Disjoint mutable subslices
+
+The carve (@fig-carve) lands in a crowded area, and the honest positioning is that the
+crowd already has every component. Three concerns are separable, and every system here
+separates them: an *interval-arithmetic disjointness predicate*, present in Low\*
+@protzenko-2017, in VST, and derivable in Iris; an *exclusivity discipline* that makes
+coexistence a question worth asking, which is Rust's borrow checker, separation logic's
+separating conjunction, or Verus's @lattuada-2023 tracked ghost tokens; and a
+*recombination story*, which is Iris's magic wand, Aeneas's @aeneas-2022 backward
+function, Creusot's @denis-2022 prophecies, or RustBelt's @rustbelt-2018
+inheritance-at-lifetime-death.
+
+What is claimed as new is the *conjunction*, not any component: ownership-transferring,
+exclusivity-enforcing range borrows whose coexistence is licensed by comptime evidence
+_the checker consumes_, over a heapless value-tree semantics. No system in the list
+routes the disjointness predicate through the program's own dependent proofs in order
+to license exclusivity inside the operational semantics. Rust hardwires it, and only
+for constant indices. Separation logic discharges it in the meta-logic, by a proof
+written in a proof mode rather than one the checker consumes. Low\* has the predicate
+and the recombination but no exclusivity at all — its buffers may overlap freely, so
+disjointness is never a permission question, only a framing one.
+
+The concession belongs in the same breath, because a reader will reach for it: *Rust
+already ships this API surface.* `get_disjoint_mut` takes range indices and returns
+several disjoint mutable subslices, checking disjointness at run time and returning a
+result that can fail. DLLBC is therefore not inventing a capability. It is moving an
+existing capability's check from run time to compile time and deleting the failure
+mode — a smaller claim than new expressive power, and the honest one. It is not a
+small claim either, because _why_ Rust must check at run time is that it has no
+comptime fragment to pay a proof from, and having one is this calculus's premise.
+
 == Dependent and linear type theories
 
 ATS @xi-2017 combines dependent and linear types with explicit *views*:

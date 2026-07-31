@@ -2,7 +2,7 @@
 
 = Lessons <sec-lessons>
 
-Four methodological lessons carried more weight than any single rule in
+Five methodological lessons carried more weight than any single rule in
 building DLLBC. Each was earned against a wrong first guess, and each left a
 mark on how the calculus is now developed.
 
@@ -48,6 +48,19 @@ results were *load-bearing*. They are what proved the cost was construction
 rather than lookup, and so what pointed the profiler at the one line that
 mattered. Architecture is the reward for a measurement, not a substitute for it.
 
+The array era supplied the same lesson in a diagnostic register, and the shape is
+worth recording because it transfers. A defect that made a verified program
+unrunnable was attacked three times with three different mechanisms, and all three
+failed; each failure was read as evidence that the problem was _architectural_ — that
+the mechanism was wrong in kind rather than incomplete. The investigation twice wrote
+down a conclusion a later probe refuted. What broke the loop was instrumenting the
+failure to _name the dying borrow_ rather than reasoning further about the design,
+after which the fault turned out to be one normalization firing at four independent
+sites, each of them small. The rule extracted: *count sites rather than estimate
+effort — each is small, and there is reliably one more than you think.*
+"Architectural" is what a multi-site bug looks like from the inside when you are
+estimating instead of counting.
+
 == How the problem is posed is a performance decision
 
 The lesson above is about the checker. Its sequel is about the _statement being
@@ -90,6 +103,33 @@ usually assumed to trade efficiency for fidelity. Here it did the opposite — t
 formulation one would use to explain the algorithm aloud is also the one the checker
 finds cheap. When a verification effort is slow, how the problem has been posed is
 worth suspecting before the engine that checks it.
+
+== Run the differential at both extremes, and default to neither
+
+The array era produced a testing rule sharp enough to state, and it came from noticing
+that every defect which hid until late hid the same way.
+
+`Array` values have two regimes. Extents can be _concrete_ — the lengths a first
+milestone naturally writes tests at, because they let you print the answer — or
+_symbolic_, which is what every program with a runtime-computed split point is made
+of. The two exercise disjoint machinery. A carve at concrete extents rejoins to a plain
+run and never needs the normalization that folds a segment list back to a value; a
+symbolic segment cannot merge and always needs it. Conversely, a residue is never
+_known_ to be zero symbolically, so the entire zero-extent path — four separate
+defects — is unreachable in a symbolic suite and constant in a concrete one.
+
+The consequence is that *every late-hiding defect in the era was invisible at one
+regime and routine at the other*, in one direction or the other. The exit snapshot
+arriving in the wrong form: invisible concretely. The carve failing to collapse a
+suspended node: needs a recursive program, so invisible in a suite of straight-line
+tests. All four zero-extent sites: invisible symbolically. Each suite was green
+throughout while the other regime was broken, and neither suite was negligent.
+
+So: *arrays need the differential run at both, and neither is the default.* The
+generalizable form is worth more than the instance. Whenever a representation admits a
+normalization that is justified on one class of values, the class it is _not_ justified
+on is where the defects will be, and a test suite written in the natural style will
+sit entirely inside the safe class without anyone choosing that.
 
 == One negative test per rule branch, not per feature
 
@@ -173,7 +213,21 @@ the audit itself collapses, so its exit is a constructor tree over known snapsho
 and is fully provable. The retraction mattered: three features had been filed
 forward on the strength of the wrong half, and two of them evaporated with it.
 The inference had been reasonable from the evidence then available, which is the
-usual shape of a retraction worth logging. Second, the
+usual shape of a retraction worth logging.
+
+The array era added two more, and they differ in kind from the three above in a way
+worth naming: they did not need _refining_, they _reversed_, and they are struck
+through in the design note where they stood rather than quietly rewritten. That note
+recommended carving inline and reaching for a function boundary only when abstraction
+was wanted; the truth is the opposite, and a body following the advice cannot be
+written at all. It claimed the migration would delete one stratum of reasoning,
+inherit one, and invent none; one _is_ invented, at the partition's interface, because
+a signature must describe a split that only the caller's carve can name. Both are the
+same fact seen from two sides — carving is a within-body mechanism, and boundaries are
+where its guarantees stop and start again — and neither was visible from the desk. The
+discipline that makes them useful rather than embarrassing is the strike-through: a
+reader can see what was believed, what replaced it, and that the replacement came from
+running the thing. Second, the
 rule-figure extraction for *this paper* functioned as an audit in its own right.
 Reading the six figures out of the implementation, doc in hand, produced 20
 recorded findings, several load-bearing: the vacuous back-audit paths above; a
