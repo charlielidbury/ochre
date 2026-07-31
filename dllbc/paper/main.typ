@@ -82,7 +82,7 @@
   #text(size: 9pt)[
     *Status of this document.* This is a _mock paper_: a paper-shaped audit of
     the DLLBC mechanization, written by extracting the rule figures from the
-    implementation at pinned commit `4e950ab7` of the Ochre repository and
+    implementation at pinned commit `9d92a894` of the Ochre repository and
     holding every claim to what is checked there. It is not peer-reviewed and
     the calculus is work in progress. Claims carry a uniform status convention —
     #status("green") checked in the mechanization at the pin; #status("in flight")
