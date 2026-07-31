@@ -386,15 +386,21 @@ A6. **A fifth lesson** (§8): run the differential at both extent regimes and de
 
 ### Not carried into the paper, and why
 
-* **Aeneas's `split_at_mut` backward function.** The design note's survey reports it as
-  total by fiat — silently returning the original slice when the length guard fails,
-  sound only because generated code satisfies the guard. It is a sharp comparison for
-  the carve, which makes exactly that guard a checked proof. NOT USED: the `aeneas/`
-  subtree in this repository is the mechanized-LLBC Rocq development, not the Lean
-  backend, so the claim cannot be verified here, and it is a criticism of another
-  system. §9 makes only the `get_disjoint_mut` comparison, which is a public API
-  surface. If someone verifies the backward-function claim against the Aeneas sources,
-  it strengthens §9 considerably and should go in.
+* **Aeneas's `split_at_mut` backward function — WAS held out, now VERIFIED and IN.**
+  Initially excluded because the `aeneas/` subtree in this repository is the
+  mechanized-LLBC Rocq development, not the Lean backend, so a claim about the Lean
+  model could not be checked here — and it is a claim about another system, which
+  raises the bar rather than lowering it. Since verified against upstream
+  `AeneasVerif/aeneas` `main` on 2026-07-31
+  (`backends/lean/Aeneas/Std/Slice.lean`): the backward function re-appends the halves
+  under a length guard and returns the original slice unchanged otherwise, with a
+  source comment recording that totality is deliberate and that correctness holds for
+  generator-produced code. §9 now carries it, framed as a *placement* difference
+  rather than a defect — the same condition, at the same point, trusted in a
+  translate-and-prove architecture and discharged as an obligation here. The framing
+  was chosen deliberately: an unfair reading ("Aeneas does not check this") would be
+  both wrong and weaker, since the interesting content is the trade, not a scoreboard.
+  Line numbers in the original survey had moved; the content is verbatim.
 * **The full 33-entry DELTAS ledger.** The paper takes the findings that change a claim
   it makes. The rest — spelling refinements, representation decisions, the transfer
   measurements — belong to the design note and its ledger, which the paper cites rather
