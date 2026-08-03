@@ -26,16 +26,18 @@ the function you wrote.
 ## 1. Declarations
 
 A DLLBC program is a set of function declarations. A declaration gives a name, a
-parameter list (its *telescope*), a return type, and a body:
+parameter list, a return type, and a body:
 
 ```
 fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v)) -> …
    { … }
 ```
 
-Read the telescope left to right; each parameter's type may mention the parameters before
-it — `hi`'s type mentions `i` and `v`. That is the whole dependently-typed telescope
-discipline and it is pervasive. (Ignore the `[i]` for now; it is chapter 9's.)
+Read the parameter list left to right; each parameter's type may mention the parameters
+before it — `hi`'s type mentions `i` and `v`. That one rule is pervasive; most of the
+language's power routes through it. (Error messages and the design documents call the
+parameter list a *telescope* — same thing. And ignore the `[i]` for now; it is
+chapter 9's.)
 
 The basis is small and fixed. Types: `Unit`, `Bool`, `Nat`, `List T`, `Array n T`, `Π`,
 `Σ`, and the equality type `Id A a b`. Values are built from constructors: `unit`, `True`
@@ -215,7 +217,7 @@ if e : leb x p {
 ```
 
 Without the `e :`, the branch knows nothing it can cite — a bare `Refl` for that equation
-is *rejected* inside the branch, correctly, because `leb x p` on symbolic values does not
+is *rejected* inside the branch, correctly, because `leb x p` on unknown values does not
 compute. `leb_true_le` and `leb_false_gt` convert the equation into the order facts
 proofs actually want. The same binder works on `match` (`match e : x { … }`). Omit it
 when the branch needs nothing; it costs nothing either way.
@@ -289,10 +291,10 @@ trailing-open form `a[lo ; ..]` means "to the end of the segment".
 
 Two rules of thumb make array programs go through, and both come from how the checker
 sees lengths. **Access at your own zero**: you cannot hold evidence about two unrelated
-symbolic indices into one array, so structure the program as carves whose segments you
+variable indices into one array, so structure the program as carves whose segments you
 then index at `0` — peel a head, work on the tail, swap only with a segment boundary.
 **Carve at flex lengths**: matching an array's length (`match n { S(m2) => … }`) pins it,
-and a pinned length blocks carving at a symbolic offset. So *select* (match, peel, scan)
+and a pinned length blocks carving at a variable offset. So *select* (match, peel, scan)
 in one function and *carve at a returned index* in its caller — the call boundary resets
 the length to flexible. This is why the array quicksort is three functions (scan,
 partition, sort) and not one.
