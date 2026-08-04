@@ -383,6 +383,10 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   | .sigmaT _ _ => true                                     -- a type
   | .borrowM _ _ => false
   | .loanM _ => false
+  -- A binder-mode marker is not a value and never stands in a slot (§6); it
+  -- reaches here only through a malformed term, and the conservative answer is
+  -- the one every unclassifiable shape gets.
+  | .cmpT _ => false
   | .bot => false
 
 /-! Substitute `newV` for every `sym σ` occurrence in `v` — the value-tree
@@ -391,6 +395,7 @@ mutual
   def substSym (σ : Nat) (newV : Val) : Val → Val
     | .sym σ' => if σ' == σ then newV else .sym σ'
     | .borrowM ℓ p => .borrowM ℓ (substSym σ newV p)
+    | .cmpT τ => .cmpT (substSym σ newV τ)
     | .ctor n args => .ctor n (substSymList σ newV args)
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
@@ -836,6 +841,11 @@ mutual
     | .type => pure .type
     | .const c => pure (.const c)
     | .pvar k => pure (.pvar k)
+    -- The mode marker reflects structurally. ⇝ carries it without ever reading
+    -- it: `beq` is mode-blind, so no comptime judgment can branch on a mode
+    -- (§6, "case is inert under ⇝"). It is here so that ⇒ can read it off a
+    -- value callee's Π — the one arrow that is entitled to ask.
+    | .cmpT τ => do pure (.cmpT (← reflectC τ))
     | .pi d c => do pure (.pi (← reflectC d) (← reflectC c))
     | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
     | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
@@ -1057,6 +1067,11 @@ mutual
   def hasType : Nat → Val → Val → M Bool
     | 0, _, _ => throwErr "hasType: out of fuel"
     | fuel + 1, v, ty => do
+      -- `⇝τ` is a binder MODE, not a type (§6): a value inhabits it exactly when
+      -- it inhabits `τ`. Stripped once here rather than at each of the rules that
+      -- consult a binder's domain, so no path can accidentally ask `Z : ⇝Nat` and
+      -- get `false` for the wrong reason.
+      let ty := Val.stripCmp ty
       -- Whnf the value first: a β-redex or stuck recursor (e.g. `eqb m a`,
       -- a λ-headed spine) must reduce to its weak head before we can type it.
       let v := Val.whnfV fuel v
@@ -1766,12 +1781,38 @@ def mergeRoot (root : Var) : M Unit := do
   | some kv => setSlot root (Val.mergeArrays kv.2)
   | none => pure ()
 
+/-- The syntactic root of a place, without navigating (or carving) it. The fence
+    must fire *before* a place expression reorganizes anything, so it cannot go
+    through `placeToPos`. -/
+def placeRoot? : Term → Option Var
+  | .var x => some x
+  | .deref t => placeRoot? t
+  | .borrow t => placeRoot? t
+  | .index t _ _ => placeRoot? t
+  | .range t _ _ _ _ _ => placeRoot? t
+  | _ => none
+
+/-- **The fence.** Reject a ⇒-use of a comptime binder, naming the use. -/
+def fenceComptime (x : Var) (what : String) : M Unit :=
+  if x.isComptime then
+    throwErr s!"fence: '{x.name}' is a COMPTIME binder (capitalized — §6) and {what}. A comptime binder is erased: it is never moved, never scrutinized, never borrowed or written through, and exists only in ⇝-positions (types, proofs, and the capital argument positions of other calls). If it must exist at runtime, lower-case it."
+  else pure ()
+
+/-- …and the same at a place expression, keyed on the place's root. -/
+def fencePlace (t : Term) (what : String) : M Unit :=
+  match placeRoot? t with
+  | some x => fenceComptime x what
+  | none => pure ()
+
 /-- **⇐ (write)** — the fill-only write arrow, defined only on places. Its
     premise is a vacant (⊥) target; when the target is live a **drop** is
     forced first (§2.3), vacating it, then the value drops in. We vacate the
     slot *before* dropping so drop's Ω-scans never see a stale copy of the
     displaced value. -/
 def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
+  -- §6's fence, before the place is navigated: a write through a comptime binder
+  -- would make an erased thing observable, and `placeToPos` may carve.
+  fencePlace place "cannot be written through (⇐)"
   let pos ← placeToPos fuel place
   let old ← getAtPos fuel pos
   match old with
@@ -1972,6 +2013,52 @@ mutual
   termination_by bs => sizeOf bs
 end
 
+/-! ## Binder modes: the fence, and the comptime-argument read (combining-fns §6, M26-B)
+
+    A capitalized binder is **comptime**: erased, never moved, never observable
+    by ⇒, and usable only in ⇝-positions — types, proofs, and the capital
+    argument positions of other calls. Two mechanisms carry that, and they are
+    the two halves of the same sentence:
+
+      * `readComptimeArg` — the ⇝ side. At a ⇒-call, an argument standing in a
+        capital-bindered position is evaluated by ⇝: a pure, NON-CONSUMING read.
+        This is what retires R16's proof-consumption staging — a proof passed to
+        a call is still there afterwards, because passing it never moved it.
+      * `fenceComptime` — the ⇒ side. Every rule that would make a comptime
+        binder observable at runtime rejects instead.
+
+    **A negative control per DEMAND SITE, not per rule branch** (phase A's
+    finding, now doctrine): `readC` computes without checking, so the fence is
+    only exercised where a rule actually demands the thing. The sites are
+    enumerated below and each has its own test. -/
+
+/-- The ⇝ read at a ⇒-position: what a capital binder's argument gets, and what
+    a `let X = e` evaluates its right-hand side with.
+
+    It is `readC` preceded by the demand-collapse §5.2 states as one rule
+    ("every demand collapses first") — a comptime argument mentioning `*v` while
+    `v`'s payload holds a parked loan must end it before the projection, exactly
+    as the pure lift's own `.app`/`.lam` cases do. Non-consuming is the whole
+    point, so nothing else here writes a slot. -/
+def readComptimeArg (fuel : Nat) (t : Term) : M Val := do
+  collapseCDerefs fuel t
+  readC fuel t
+
+/-- The binder modes of a callee, one per argument the spine supplies (§6).
+
+    Peels λ- or Π-binders left to right, reading `domComptime` off each domain.
+    A callee with fewer binders than arguments pads with runtime and lets the
+    existing over-application rejection fire — this function decides *which
+    arrow reads an argument*, never whether the arity is right. -/
+def binderModes : Nat → Val → Nat → List Bool
+  | _, _, 0 => []
+  | 0, _, n => List.replicate n false
+  | fuel + 1, v, n + 1 =>
+    match Val.whnfV fuel v with
+    | .lam dom body => Val.domComptime dom :: binderModes fuel body n
+    | .pi dom cod => Val.domComptime dom :: binderModes fuel cod n
+    | _ => List.replicate (n + 1) false
+
 /-! ## Value-callee application (combining-fns §7 cost 2, M26-A)
 
     `.callV x [a₁ … aₙ]` applies whatever slot `x` holds. The two rules are §2's
@@ -2004,12 +2091,15 @@ def applyLam : Nat → Val → List Val → M Val
   | 0, _, _ => throwErr "callV: out of fuel (λ application)"
   | fuel + 1, f, [] =>
     match Val.whnfV fuel f with
-    | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too: phase A cannot tell it from an under-application."
+    | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
     | v => pure v
   | fuel + 1, f, a :: rest =>
     match Val.whnfV fuel f with
     | .lam dom body => do
       if (← get).executing then applyLam fuel (Val.substPure 0 a body) rest
+      -- `hasType` strips the mode marker: which arrow READ the argument was
+      -- settled before this call (`binderModes`), and what remains is the
+      -- ordinary domain check.
       else if ← hasType fuel a dom then applyLam fuel (Val.substPure 0 a body) rest
       else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
     | other => throwErr s!"callV: too many arguments — {other.pretty} is not a function"
@@ -2040,6 +2130,12 @@ mutual
     | fuel + 1, t =>
       match t with
       | .var x => do
+        -- §6's fence, first: a ⇒-read of a variable is a MOVE, and a comptime
+        -- binder is erased — there is nothing at runtime to move. This is the
+        -- rejection R16's staging pains were the absence of: with it, the only
+        -- way a capital binder reaches a call is the capital argument position,
+        -- which reads it by ⇝ and leaves it where it was.
+        fenceComptime x "cannot be ⇒-moved"
         match ← lookupSlot x with
         | .bot => throwErr s!"readR: {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
         | v =>
@@ -2091,6 +2187,10 @@ mutual
       | .ctorApp name args => do
         pure (.ctor name (← readArgs fuel args))
       | .borrow t' => do
+        -- §6's fence. `&mut X` is a runtime capability over an erased binder;
+        -- and symmetrically, a borrow-TYPED binder must be lowercase, which
+        -- `seedTelescope`/`processArgs` check at the declaration and the call.
+        fencePlace t' "cannot be borrowed (`&mut`)"
         let pos ← placeToPos fuel t'
         match ← getAtPos fuel pos with
         | .bot => throwErr "&mut: target place holds ⊥ (nothing to borrow)"
@@ -2121,7 +2221,12 @@ mutual
             mergeRoot pos.root                             -- the residues re-merge around it
             pure (.borrowM ℓ v)                            -- ownership of v moves into the borrow
       | .letIn x rhs rest => do
-        let v ← readR fuel rhs
+        -- **`let X = e` is a comptime binding** (§6): `e` is evaluated under ⇝,
+        -- `X` is erased and non-consuming, and the fence confines it to
+        -- ⇝-positions. Local spec abbreviations and locally-derived certificates
+        -- without a new form — and without the capture-before-call staging that
+        -- a runtime `let` of a proof forces. `let x = e` is unchanged.
+        let v ← if x.isComptime then readComptimeArg fuel rhs else readR fuel rhs
         bindSlot x v
         readR fuel rest
       | .assign place rhs rest => do
@@ -2129,6 +2234,11 @@ mutual
         writeR fuel place v                              -- target by ⇐
         readR fuel rest
       | .matchE scrut eqn branches => do
+        -- §6's fence. A runtime match on a comptime binder is the erasure
+        -- violation the fence exists for: it is the rule that would make an
+        -- erased value's CONSTRUCTOR observable to ⇒ (and, in borrow mode, would
+        -- reborrow its fields). Scrutinize it in a type or a proof instead.
+        fenceComptime scrut "cannot be the scrutinee of a runtime match"
         -- Mode is chosen by what the scrutinee's slot holds, after the usual
         -- lazy reorganization. Both retries decrease fuel.
         match ← lookupSlot scrut with
@@ -2279,6 +2389,13 @@ mutual
       -- are index-kind — but stating it as location keeps the rule true of the
       -- borrow-capturing closures §7 defers, which are NOT copyable.)
       | .callV x args => do
+        -- §6.3's distinction, made mechanical. A capital function-typed binder —
+        -- `map_spec (G : Nat → Nat, v)` — is a SPEC parameter: the caller may
+        -- supply an abstract or sealed function with no runtime existence, so the
+        -- body may cite `G a` in a type (⇝ gives the structured neutral) but may
+        -- not CALL it. `map_apply (g : …)` is the lowercase twin, and calling it
+        -- is exactly what the lowercase buys.
+        fenceComptime x "cannot be CALLED under ⇒ (a capital function-typed binder is a SPEC parameter — cite it in a type or a proof, where ⇝ gives its applications as structured neutrals; a caller need not supply anything with a runtime existence)"
         match ← lookupSlot x with
         | .bot => throwErr s!"callV: callee {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
         | callee =>
@@ -2291,7 +2408,21 @@ mutual
           match firstLoanMarker callee with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.callV x args)
           | none => do
-            let argVals ← readArgs fuel args             -- ⇒-consume, left to right
+            -- **The callee is inspected BEFORE any argument is read** (M26-B).
+            -- Which arrow evaluates an argument is a property of the *binder it
+            -- lands on*, so the modes have to be in hand first; phase A could
+            -- read the whole spine up front only because there was one arrow.
+            -- A λ callee carries its modes on its own domains; a σ : Π carries
+            -- them on the Π it was sealed at — which is the version that matters,
+            -- since the seal's ascription is the whole of what a caller sees.
+            let modes ← match callee with
+              | .lam _ _ => pure (binderModes fuel callee args.length)
+              | .sym σ =>
+                match (← get).sctx.lookup σ with
+                | some σty => pure (binderModes fuel σty args.length)
+                | none => pure []
+              | _ => pure []
+            let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
             match callee with
             | .lam _ _ => applyLam fuel callee argVals   -- body known ⟹ β
             | .sym σ =>
@@ -2344,6 +2475,7 @@ mutual
       -- take-and-refill generalized from "the payload of a borrow" to "a run of an
       -- array", which is how a rotation or a memmove is written without a copy.
       | .index _ _ _ | .range _ _ _ _ _ _ => do
+        fencePlace t "cannot be indexed or sliced at runtime"
         let pos ← placeToPos fuel t
         match ← getAtPos fuel pos with
         | .bot => throwErr "readR: array place holds a hole (⊥) — take without refill"
@@ -2354,6 +2486,9 @@ mutual
             if indexKindV fuel (← get).sctx p then do mergeRoot pos.root; pure p  -- §2.1 copy-on-read
             else do setAtPos fuel pos .bot; mergeRoot pos.root; pure p
       | .borrowT _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
+      -- `⇝τ` outside a λ/Π domain is a mode marker that escaped its binder. Same
+      -- standing as `borrowT` on the line above, and the same rejection.
+      | .cmpT _ => throwErr "readR (⇒): `⇝τ` is a binder-mode marker (§6), legal only as a λ/Π domain — not a term and not a movable value"
   termination_by fuel _ => (fuel, 0, 0)
   def readArgs : Nat → List Term → M (List Val)
     | _, [] => pure []
@@ -2361,6 +2496,18 @@ mutual
       let v ← readR fuel a
       pure (v :: (← readArgs fuel as))
   termination_by fuel as => (fuel, 1, as.length)
+  /-- `readArgs` with a per-position mode (combining-fns §6): a `true` position is
+      a capital binder's, and its argument is read by ⇝ — pure and NON-CONSUMING,
+      so the caller still holds whatever it passed. A short mode list defaults to
+      runtime, which is what the arity rejections downstream expect to see. -/
+  def readArgsModed : Nat → List Bool → List Term → M (List Val)
+    | _, _, [] => pure []
+    | fuel, ms, a :: as => do
+      let v ← match ms.head? with
+        | some true => readComptimeArg fuel a
+        | _ => readR fuel a
+      pure (v :: (← readArgsModed fuel (ms.drop 1) as))
+  termination_by fuel _ as => (fuel, 1, as.length)
   /-- Consume a call's arguments left-to-right, checking each against its
       telescope entry, and RETURN the captured loans (§6.1): each argument
       borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
@@ -2373,6 +2520,30 @@ mutual
       -- it as `.var ⟨i, name⟩`). `inst` binds parameters `0 … i-1` to the
       -- actuals already checked, so this type is read at those actuals.
       let declVar : Var := ⟨i, name⟩
+      -- **The comptime-argument rule** (§6). A capital parameter is comptime: the
+      -- argument expression is evaluated under ⇝ — pure, non-consuming — so the
+      -- caller keeps it and may cite it after the call. This is R16's proof
+      -- consumption resolved at its source: the pain was never "proofs are
+      -- linear", it was that ⇒ was the only arrow a call site had.
+      --
+      -- Two consequences worth stating. A capital parameter may not be
+      -- borrow-typed (rejected here and at `seedTelescope`) — a ⇝-read of `&mut`
+      -- is meaningless, §6's "checked, not assumed". And the argument must be a
+      -- COMPTIME term: a call's result is a fresh existential and has no ⇝
+      -- reading, so `f(g())` at a capital position is refused by `readC` and must
+      -- be `let`-bound first. Both are honest rejections rather than silent
+      -- fallbacks to ⇒.
+      if declVar.isComptime then
+        match tyTerm with
+        | .borrowT _ _ | .sigmaT _ (.borrowT _ _) =>
+          throwErr s!"call: parameter '{name}' is capitalized (comptime, §6) but its type is a borrow — a ⇝-read of `&mut` is meaningless, so borrow-typed binders must be lowercase"
+        | _ => do
+          let argVal ← readComptimeArg fuel arg
+          let τVal ← readCWith fuel inst tyTerm.stripCmp
+          if ← hasType fuel argVal τVal then
+            processArgs fuel (i + 1) ((declVar, argVal) :: inst) tRest aRest
+          else throwErr s!"call: comptime argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
+      else
       match tyTerm with
       | .borrowT τ S => do
         match ← readR fuel arg with
@@ -2422,7 +2593,14 @@ mutual
   def bindActuals (fuel offset : Nat) : Nat → List (String × Term) → List Term → M Unit
     | _, [], [] => pure ()
     | i, (name, _) :: tRest, arg :: aRest => do
-      let v ← readR fuel arg
+      -- The executing machine takes §6's comptime-argument rule too, in lockstep
+      -- (constraint 6). A capital parameter's actual is ⇝-read here as well, so
+      -- the two machines agree on what the CALLER still holds afterwards — which
+      -- is the observable the differential compares. Erasure is enforced by the
+      -- fence on the callee's uses, not by declining to bind the slot: a body
+      -- that never observes it is indistinguishable from one that cannot.
+      let x : Var := ⟨i, name⟩
+      let v ← if x.isComptime then readComptimeArg fuel arg else readR fuel arg
       bindSlot ⟨i + offset, name⟩ v
       bindActuals fuel offset (i + 1) tRest aRest
     | _, _, _ => throwErr "executeCall: arity mismatch (actuals vs telescope)"
@@ -2664,7 +2842,15 @@ mutual
       match t with
       | .matchE scrut eqn branches => exploreMatch fuel scrut eqn branches st
       | .letIn x rhs rest =>
-        match (do let v ← readR fuel rhs; bindSlot x v).run st with
+        -- §6's comptime `let`, HERE as well as in `readR`. The explore driver
+        -- does not route statement-spine steps through `readR`'s own `.letIn`
+        -- case, so a rule that lives only there would be dead for every real
+        -- body — which is what `pushContinuations` normalizes a body into. The
+        -- duplication is two lines; a mode that silently stopped applying at the
+        -- top level of a function body would have been a phantom.
+        match (do
+            let v ← if x.isComptime then readComptimeArg fuel rhs else readR fuel rhs
+            bindSlot x v).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'
       | .seq e rest =>
@@ -2682,6 +2868,15 @@ mutual
   termination_by fuel _ _ => (fuel, 0, 0)
   def exploreMatch : Nat → Var → Option Var → List Branch → St → List (Except String (Val × St))
     | fuel, scrut, eqn, branches, st =>
+      -- §6's fence at the OTHER match site. `readR`'s `.matchE` case only ever
+      -- sees an expression-position match; a statement-position one — the only
+      -- kind that may split a symbolic scrutinee, and therefore the only kind a
+      -- real body writes — arrives here instead. Fencing one and not the other
+      -- would have left the headline rejection (`match Fuel`) unreachable, which
+      -- is how this was found: the test failed, not the reasoning.
+      match (fenceComptime scrut "cannot be the scrutinee of a runtime match").run st with
+      | .error e _ => [.error e]
+      | .ok _ st =>
       match (reorgScrut fuel scrut).run st with
       | .error e _ => [.error e]
       | .ok disp st' =>

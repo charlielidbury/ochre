@@ -32,6 +32,7 @@ namespace Dllbc.Val
 mutual
   def shiftPure (d c : Nat) : Val → Val
     | .pvar k => if k < c then .pvar k else .pvar (k + d)
+    | .cmpT τ => .cmpT (shiftPure d c τ)       -- a domain: same binder depth
     | .lam dom b => .lam (shiftPure d c dom) (shiftPure d (c + 1) b)
     | .pi dom cod => .pi (shiftPure d c dom) (shiftPure d (c + 1) cod)
     | .sigmaT dom cod => .sigmaT (shiftPure d c dom) (shiftPure d (c + 1) cod)
@@ -53,6 +54,7 @@ end
 mutual
   def pvarFree : Val → Bool
     | .pvar _ => false
+    | .cmpT τ => pvarFree τ
     | .lam dom b => pvarFree dom && pvarFree b
     | .pi dom cod => pvarFree dom && pvarFree cod
     | .sigmaT dom cod => pvarFree dom && pvarFree cod
@@ -88,6 +90,7 @@ mutual
     | .pvar k =>
       if k == j + d then (if sc || d == 0 then s else shiftPure d 0 s)
       else if k > j + d then .pvar (k - 1) else .pvar k
+    | .cmpT τ => .cmpT (substGo j d sc s τ)    -- a domain: same binder depth
     | .lam dom b => .lam (substGo j d sc s dom) (substGo j (d + 1) sc s b)
     | .pi dom cod => .pi (substGo j d sc s dom) (substGo j (d + 1) sc s cod)
     | .sigmaT dom cod => .sigmaT (substGo j d sc s dom) (substGo j (d + 1) sc s cod)
@@ -319,6 +322,10 @@ mutual
       match whnfV (fuel + 1) v with
       | .pi d c => .pi (nfV fuel d) (nfV fuel c)
       | .sigmaT d c => .sigmaT (nfV fuel d) (nfV fuel c)
+      -- The mode marker SURVIVES normalization — ⇒'s application rules read it
+      -- off a normalized callee — and is invisible to `convert` anyway, because
+      -- `beq` unwraps it (§6, "case is inert under ⇝").
+      | .cmpT τ => .cmpT (nfV fuel τ)
       | .lam d b => .lam (nfV fuel d) (nfV fuel b)
       | .ctor n args => .ctor n (nfVList fuel args)
       | .app f a => .app (nfV fuel f) (nfV fuel a)
@@ -509,6 +516,35 @@ def ctorSig : String → Option CtorSig
   | "Refl"  => some { fieldTypes := fun ty =>
       match ty with | .idT _ a b => if Val.convert 1000 a b then some [] else none | _ => none }
   | _ => none
+
+/-- The names `ctorSig` answers for — **the fixed constructor basis, enumerated**.
+
+    It exists because combining-fns §6 makes capitalisation the binder-mode
+    marker, and the prescription that keeps that unambiguous is "constructor
+    names are special-cased as keywords — the fixed basis makes the set closed
+    and small". A surface binder may not take one of these names, and this list
+    is what the check consults. Must track `ctorSig`; the two sit adjacent so
+    that adding a constructor without reserving its name is a visible omission
+    rather than a silent one. -/
+def ctorNames : List String :=
+  ["unit", "True", "False", "Z", "S", "Nil", "Cons", "Pair", "Arr", "Refl"]
+
+/-! ## Binder modes on a value's domain (combining-fns §6)
+
+    The `Val` mirror of `Term.domComptime`/`Term.stripCmp`. ⇒'s value-callee
+    application rule reads a λ's or Π's binder modes through these; nothing under
+    ⇝ ever asks, which is what "case is inert under ⇝" means operationally. -/
+
+/-- Is this λ/Π domain a COMPTIME binder's? -/
+def domComptime : Val → Bool
+  | .cmpT _ => true
+  | _ => false
+
+/-- The domain proper, mode marker peeled. `⇝τ` is not a type: a value inhabits
+    it exactly when it inhabits `τ`. -/
+def stripCmp : Val → Val
+  | .cmpT τ => τ
+  | v => v
 
 /-- The full constructor set of a whnf'd type (§9 exhaustiveness). `none` for a
     type whose constructors aren't known (nothing to check against). `Bot` has

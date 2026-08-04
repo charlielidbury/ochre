@@ -166,8 +166,11 @@ def idxOf? (l : List String) (s : String) : Option Nat :=
     | x :: xs, i => if x == s then some i else go xs (i + 1)
   go l 0
 
-/-- Kernel constructors → `ctorApp`. -/
-def ctorSet : List String := ["Z", "S", "Nil", "Cons", "Pair", "Refl", "True", "False", "unit", "Arr"]
+/-- Kernel constructors → `ctorApp`. **Sourced from the kernel's own basis**
+    (`Val.ctorNames`, adjacent to `ctorSig`) rather than repeated here, because
+    M26-B gives the list a second job — reserving these names as binder keywords
+    — and two lists that must agree is one list too many. -/
+def ctorSet : List String := Dllbc.Val.ctorNames
 /-- Kernel constants (type formers / recursors / eliminators) → `const`. -/
 def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "boolRec", "listRec", "sigmaRec", "botElim", "j", "k",
   -- ¶1.1/¶1.3's array basis: the former, the split view, the cons view, the read.
@@ -181,6 +184,43 @@ def aliasMap : List (String × Name) :=
    ("leb", `Dllbc.Std.lebFnT), ("count", `Dllbc.Std.countFnT), ("eqb", `Dllbc.Std.eqbFnT),
    ("take", `Dllbc.Std.takeFnT), ("drop", `Dllbc.Std.dropFnT),
    ("Sorted", `Dllbc.Std.SortedFnT), ("Bound", `Dllbc.Std.BoundFnT)]
+
+/-! ## Binder names, and what capitalisation may mean (combining-fns §6)
+
+    §6 makes **capitalisation the binder-mode marker** — a capital binder is
+    comptime, a lowercase one runtime — and pays for it with one prescription:
+    "constructor names are special-cased as keywords, the fixed basis makes the
+    set closed and small". This is that prescription.
+
+    What must be reserved is exactly the **capitalized** names the resolver
+    already answers for: the constructors (`S`, `Z`, `Cons`, `Nil`, `True`,
+    `False`, `Pair`, `Refl`, `Arr`) and the capitalized kernel constants (`Nat`,
+    `Bool`, `List`, `Bot`, `Unit`, `Array`). Those are the ones for which
+    "capital ⟹ comptime binder" would otherwise be ambiguous. The LOWERCASE
+    entries (`unit`, `j`, `k`, `natRec`, `aget`, …) are deliberately NOT
+    reserved: they were always shadowable, shadowing them is ordinary scoping,
+    and reserving `j`/`k` would cost every program its loop indices for no
+    disambiguation at all. Reserve what the marker needs, and nothing else. -/
+
+/-- May this identifier be a binder? -/
+def reservedBinder (s : String) : Bool :=
+  Dllbc.isUpperInit s && (ctorSet.contains s || constSet.contains s)
+
+/-- Reject a reserved name in binder position. Called at every binder the
+    unified grammar has: λ, Π, Σ, `let`, match arms and their equation binder,
+    and `decl{}`'s parameters. -/
+def checkBinder (x : Ident) : MacroM Unit := do
+  let s := x.getId.toString
+  if reservedBinder s then
+    Macro.throwErrorAt x s!"'{s}' is a reserved name (a constructor or a kernel type/constant) and cannot be a binder. §6 makes capitalisation the binder-mode marker — capital = comptime — which is unambiguous only if the capitalized names of the fixed basis are keywords."
+
+/-- The λ/Π domain for a binder named `nm`: `⇝τ` when the name is capitalized
+    (a COMPTIME binder — its argument is ⇝-read at ⇒-calls, and the fence keeps
+    it in ⇝-positions), plain `τ` otherwise. The whole of the surface's part in
+    §6 for pure binders; runtime binders need nothing, because their mode is
+    their `Var`'s name. -/
+def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
+  if Dllbc.isUpperInit nm then `(Dllbc.Term.cmpT $τ) else pure τ
 
 /-- Resolve a bare identifier in a type/back position. Pure binder (innermost) →
     `pvar`; earlier telescope param → `var`; constructor → nullary `ctorApp`;
@@ -294,18 +334,27 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (c', n3) ← elabUTerm isTy rctx pctx n2 c
     return (← `(Dllbc.Term.idT $a' $b' $c'), n3)
   | `(uterm| λ ($x:ident : $τ:uterm). $b:uterm) => do
+    checkBinder x
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.lam $τ' $b'), n2)
+    return (← `(Dllbc.Term.lam $(← binderDom (x.getId.toString) τ') $b'), n2)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
+    checkBinder x
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.pi $τ' $b'), n2)
+    return (← `(Dllbc.Term.pi $(← binderDom (x.getId.toString) τ') $b'), n2)
+  -- Σ binders are name-checked but carry NO mode. §6 gives modes to "λ, Π, and
+  -- `let` alike" — the binders of *parameters* — and a Σ's binder names a
+  -- projection, not a parameter: erasing one component of a pair is QTT
+  -- territory this phase does not enter. A capital Σ binder is therefore legal
+  -- and inert, exactly as a capital binder is inert everywhere under ⇝.
   | `(uterm| Σ ($x:ident : $τ:uterm) → $b:uterm) => do
+    checkBinder x
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.sigmaT $τ' $b'), n2)
   | `(uterm| Σ ($x:ident : $τ:uterm). $b:uterm) => do
+    checkBinder x
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.sigmaT $τ' $b'), n2)
@@ -322,7 +371,16 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   | `(uterm| $c:ident($args,*)) => do                 -- no-space paren: call / ctorApp
     let (args', n) ← elabUList isTy rctx pctx next args.getElems.toList
     let name := c.getId.toString
-    if Dllbc.Macro.isUpperInit name then
+    -- **A known CONSTRUCTOR, not merely a capital head** (M26-B). §6 makes
+    -- capitalisation the binder-mode marker, so `G(n)` — a capital *binder*
+    -- applied — must not silently become `ctorApp "G"`. Keying on `ctorSet`
+    -- instead of on case is precisely what "constructor names are reserved
+    -- keywords, and any other capitalized identifier is unambiguously a comptime
+    -- variable" buys: the basis is closed, so the test is exact. (This changes
+    -- nothing for existing programs — every constructor they write is in the
+    -- basis — and it turns what used to be "unknown constructor 'G'" into the
+    -- call it was always meant to be.)
+    if ctorSet.contains name then
       return (← `(Dllbc.Term.ctorApp $(quote name) [$args',*]), n)
     else
       -- **Scope beats the table** (§8's direction, arriving early because M26-A
@@ -343,6 +401,7 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   -- M23: `match h : x { … }` — the branch-equation form. One binder for the whole
   -- match (its TYPE is what varies per arm), as in Lean's `match h : x with`.
   | `(uterm| match $h:ident : $x:ident { $arms,* }) => do
+    checkBinder h
     let s := x.getId.toString
     match rctx.lookup s with
     | none => Macro.throwErrorAt x s!"decl: match scrutinee '{s}' is not a bound runtime variable"
@@ -415,6 +474,7 @@ partial def elabUArm (rctx : List (String × Nat)) (pctx : List String) (next : 
     let (body', n) ← elabUArmBody rctx pctx next body
     return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [] $body'), n)
   | `(uarm| $c:ident ($binders,*) => $body:uarmBody) => do
+    binders.getElems.forM checkBinder
     let (rctx', next', binderVars) ← Dllbc.Macro.mintBinders rctx next binders.getElems.toList
     let (body', n) ← elabUArmBody rctx' pctx next' body
     return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$binderVars,*] $body'), n)
@@ -431,7 +491,12 @@ partial def elabUBlk (isTy : Bool) (rctx : List (String × Nat)) (pctx : List St
     (stx : TSyntax `ublk) : MacroM (TSyntax `term × Nat) := do
   match stx with
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
+    checkBinder x
     let (e', n1) ← elabUTerm isTy rctx pctx next e
+    -- **`let X = e` is a comptime binding** (§6) and needs no macro support: the
+    -- mode of a runtime binder IS its `Var`'s name, so the kernel reads it off
+    -- the `letIn` this line already emits. Recorded here because the absence of
+    -- code is the point — the convention is load-bearing exactly once.
     let name := x.getId.toString
     if isTy then                                            -- ⇝: β-redex, `x` a pure de Bruijn binder
       let (rest', n2) ← elabUBlk isTy rctx (name :: pctx) n1 rest

@@ -35,6 +35,33 @@ structure Var where
   name : String
 deriving DecidableEq, BEq, Repr, Inhabited
 
+/-- Does this identifier start with an uppercase letter? **The mode marker**
+    (combining-fns §6): a capitalized binder is COMPTIME, a lowercase one is
+    RUNTIME. Lives here rather than in the macro layer because the kernel reads
+    it — see `Var.isComptime`. -/
+def isUpperInit (s : String) : Bool :=
+  match s.data with
+  | c :: _ => c.isUpper
+  | [] => false
+
+/-- **The mode of a runtime binder is its name's case** (combining-fns §6).
+
+    A capitalized binder — a telescope parameter `Hfuel`, a `let X = …`, a match
+    field binder — is **comptime**: its argument is ⇝-read at the call (pure,
+    non-consuming), it is erased, and it is usable only in ⇝-positions. A
+    lowercase binder is runtime, as everything was before.
+
+    Why the name and not a field: this calculus's runtime binders are `(id,
+    name)` pairs with globally-unique ids, so the name is *where the binder
+    records its identity* — and §6's surface convention IS the case, backed by
+    reserving the constructor names (`Val.ctorNames`) so that capitalisation
+    cannot mean anything else. A `mode` field would be a second source of truth
+    that a hand-written `⟨0, "Hfuel"⟩` could silently contradict; derived from
+    the name there is only one, and `shiftVars`/`renumber` preserve it for free.
+    Pure (de Bruijn) binders have no name, so they carry their mode on the
+    domain instead — `Term.cmpT` below. -/
+def Var.isComptime (x : Var) : Bool := isUpperInit x.name
+
 /-! Core term syntax of DLLBC's concrete fragment (§2 forms plus §3 `match`).
 
     Constructor names are `String`s (a placeholder until `inductive`
@@ -170,6 +197,24 @@ inductive Term where
       valid at a telescope position — interpreted by `checkFn`'s seeding, never
       reflected as a value. -/
   | borrowT : Term → Term → Term
+  /-- `⇝τ` — the **comptime binder-mode marker on a domain** (combining-fns §6),
+      and the pure-binder counterpart of `Var.isComptime`.
+
+      `Π (X : τ) → …` elaborates to `.pi (.cmpT τ) …` and `λ (X : τ). …` to
+      `.lam (.cmpT τ) …`. It is legal ONLY as a λ/Π domain — the same standing
+      as `borrowT`, which is likewise a binder-mode marker written in type
+      position and not a type. `&mut τ` says "this binder is a runtime borrow";
+      `⇝τ` says "this binder is comptime"; a bare `τ` says "runtime owned". Three
+      modes, one syntactic place, and the two that are not the default are
+      marked.
+
+      **Case is inert under ⇝** (§6), and that is mechanical here rather than
+      incidental: `Val.beq` unwraps `cmpT` on either side, so conversion — and
+      therefore every comptime judgment built on it — cannot see a mode at all.
+      What CAN see it is ⇒: the application rules read the binder's mode off the
+      callee's λ/Π to decide which arrow evaluates the argument. Same room, two
+      doors (§2.3). -/
+  | cmpT   : Term → Term
 /-- A match branch: a constructor name, one-level-deep field binders (display
     names carrying fresh runtime ids), and a body term. -/
 inductive Branch where
@@ -218,23 +263,31 @@ mutual
     | .const n, .const m => n == m
     | .idT a b c, .idT d e f => Term.beq a d && Term.beq b e && Term.beq c f
     | .borrowT a b, .borrowT c d => Term.beq a c && Term.beq b d
+    -- Mode-blind, exactly as `Val.beq` is (§6's "case is inert under ⇝"): the
+    -- §18 rewriting layer abstracts occurrences by `Term.beq`, and a motive
+    -- would otherwise fail to match a subterm over a capital binder.
+    | .cmpT a, .cmpT b => Term.beq a b
+    | .cmpT a, b => Term.beq a b
+    | a, .cmpT b => Term.beq a b
     | _, _ => false
-  termination_by t _ => sizeOf t
+  -- Measure on BOTH sides: the mode-blind arms above peel a `cmpT` from one side
+  -- while the other stands still, so a one-sided measure cannot see them decrease.
+  termination_by t u => sizeOf t + sizeOf u
   def Term.beqList : List Term → List Term → Bool
     | [], [] => true
     | a :: as, b :: bs => Term.beq a b && Term.beqList as bs
     | _, _ => false
-  termination_by ts _ => sizeOf ts
+  termination_by ts us => sizeOf ts + sizeOf us
   def Term.beqOpt : Option Term → Option Term → Bool
     | none, none => true
     | some a, some b => Term.beq a b
     | _, _ => false
-  termination_by ts _ => sizeOf ts
+  termination_by ts us => sizeOf ts + sizeOf us
   def Term.beqBranches : List Branch → List Branch → Bool
     | [], [] => true
     | .mk c bs a :: r, .mk d es b :: s => c == d && bs == es && Term.beq a b && Term.beqBranches r s
     | _, _ => false
-  termination_by ts _ => sizeOf ts
+  termination_by ts us => sizeOf ts + sizeOf us
 end
 
 instance : BEq Term := ⟨Term.beq⟩
@@ -251,6 +304,7 @@ mutual
     | .app f a => .app (Term.shiftPure d c f) (Term.shiftPure d c a)
     | .ctorApp n args => .ctorApp n (Term.shiftPureList d c args)
     | .idT a b b' => .idT (Term.shiftPure d c a) (Term.shiftPure d c b) (Term.shiftPure d c b')
+    | .cmpT τ => .cmpT (Term.shiftPure d c τ)            -- a domain: same binder depth
     | t => t                                             -- runtime forms / leaves
   termination_by t => sizeOf t
   def Term.shiftPureList (d c : Nat) : List Term → List Term
@@ -282,6 +336,9 @@ mutual
     | .ctorApp n args =>
       if Term.beq (.ctorApp n args) (Term.shiftPure depth 0 e) then .pvar depth
       else .ctorApp n (absOccList e depth args)
+    -- A mode marker is never itself an abstraction target (it is not a term),
+    -- so recurse straight through rather than testing it.
+    | .cmpT τ => .cmpT (absOcc e depth τ)
     | .pvar k =>
       if Term.beq (.pvar k) (Term.shiftPure depth 0 e) then .pvar depth
       else .pvar (if k < depth then k else k + 1)
@@ -312,6 +369,24 @@ def hasBorrowT : Term → Bool
   | .app a b => hasBorrowT a || hasBorrowT b
   | .lam a b => hasBorrowT a || hasBorrowT b
   | .idT a b c => hasBorrowT a || hasBorrowT b || hasBorrowT c
+  | .cmpT τ => hasBorrowT τ
   | _ => false
+
+/-! ## Reading a binder's mode off its domain (combining-fns §6)
+
+    Three modes at one syntactic place: `&mut τ` runtime-borrow, `⇝τ` comptime,
+    bare `τ` runtime-owned. These two are how every ⇒-rule asks which it has. -/
+
+/-- Is this λ/Π domain a COMPTIME binder's — i.e. written with a capital name? -/
+def Term.domComptime : Term → Bool
+  | .cmpT _ => true
+  | _ => false
+
+/-- The domain proper, with the mode marker peeled. `⇝τ` is not a type; a value
+    inhabits it exactly when it inhabits `τ`, so every rule that *types* an
+    argument strips first and every rule that *routes* one asks `domComptime`. -/
+def Term.stripCmp : Term → Term
+  | .cmpT τ => τ
+  | t => t
 
 end Dllbc

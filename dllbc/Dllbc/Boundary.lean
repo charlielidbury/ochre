@@ -31,6 +31,17 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
   | _, [] => pure []
   | i, (name, tyTerm) :: rest => do
     let x : Var := ⟨i, name⟩
+    -- §6, "checked, not assumed": a borrow-typed binder MUST be lowercase. A
+    -- comptime binder is ⇝-read at the call and erased in the body, and neither
+    -- is meaningful of a `&mut` — there is no ⇝ reading of a borrow, and a loan
+    -- that no ⇒-rule may touch can be neither written through nor audited. The
+    -- declaration is where this is caught (the call site checks it again, for a
+    -- table entry that was never checked).
+    if x.isComptime then
+      match tyTerm with
+      | .borrowT _ _ | .sigmaT _ (.borrowT _ _) =>
+        throwErr s!"telescope: parameter '{name}' is capitalized (comptime, §6) but its type is a borrow — a ⇝-read of `&mut` is meaningless, so borrow-typed binders must be lowercase"
+      | _ => pure ()
     match tyTerm with
     | .borrowT τ S => do
       let τVal ← readC fuel τ

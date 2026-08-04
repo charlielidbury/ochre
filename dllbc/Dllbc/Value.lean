@@ -61,6 +61,13 @@ inductive Val where
   -- `Id A a a` determines the endpoints); eliminated by the constants `j`
   -- (Paulin-Mohring J) and `k` (Streicher K).
   | idT     : Val → Val → Val → Val  -- Id (type) (lhs) (rhs); no binders
+  /-- `⇝τ` — the comptime binder-mode marker on a λ/Π domain (combining-fns §6;
+      see `Term.cmpT`). Reflected from the term form so that ⇒'s application
+      rules can read a *value* callee's binder modes; **invisible to `beq`**, and
+      therefore to `convert` and every comptime judgment above it, because §6's
+      "case is inert under ⇝" is a claim this calculus should not be able to
+      violate by accident. -/
+  | cmpT    : Val → Val
 deriving Inhabited
 
 namespace Val
@@ -83,13 +90,30 @@ mutual
     | .app f1 a1,  .app f2 a2   => beq f1 f2 && beq a1 a2
     | .const x,    .const y     => x == y
     | .idT a1 b1 c1, .idT a2 b2 c2 => beq a1 a2 && beq b1 b2 && beq c1 c2
+    -- **Mode-blind, deliberately** (§6, "case is inert under ⇝"). `convert` is
+    -- `nfV a == nfV b`, so unwrapping here is what makes the whole comptime layer
+    -- unable to observe a binder's mode — congruence, `hasType`, the audit, the
+    -- pure lift. Three arms rather than a traversal, so it costs nothing.
+    --
+    -- The alternative — modes part of type identity — was rejected on the
+    -- calculus's own evidence: the machine builds recursor premise types
+    -- (`natRec`'s `Π (k : Nat) → Π (ih : P k) → P (S k)`) in Lean with no modes,
+    -- and `pure{}`'s motive binders are capitalized by long-standing convention
+    -- (`λ (P : …)`, `λ (A : Type)`). Under a mode-sensitive equality every one of
+    -- those would have to agree on a mode that ⇝ has no use for. Modes exist to
+    -- route ⇒'s arguments and to fence its bodies; ⇝ is the room where the
+    -- distinction was never meant to reach.
+    | .cmpT a,     .cmpT b     => beq a b
+    | .cmpT a,     b           => beq a b
+    | a,           .cmpT b     => beq a b
     | _,           _           => false
-  termination_by v => sizeOf v
+  -- Both sides: the mode-blind arms peel a `cmpT` from one side only.
+  termination_by v w => sizeOf v + sizeOf w
   def beqList : List Val → List Val → Bool
     | [],      []      => true
     | x :: xs, y :: ys => beq x y && beqList xs ys
     | _,       _       => false
-  termination_by vs => sizeOf vs
+  termination_by vs ws => sizeOf vs + sizeOf ws
 end
 
 instance : BEq Val := ⟨Val.beq⟩
@@ -133,6 +157,7 @@ mutual
     | .pvar k => s!"#{k}"
     | .type => "Type"
     | .const c => c
+    | .cmpT τ => "⇝" ++ prettyPrec 1 τ
     | .pi d c =>
       let s := s!"Π{prettyPrec 1 d}. {prettyPrec 0 c}"
       if prec > 0 then s!"({s})" else s
@@ -186,6 +211,7 @@ mutual
     | .pvar _ => []
     | .type => []
     | .const _ => []
+    | .cmpT τ => loanIds τ
     | .pi d c => loanIds d ++ loanIds c
     | .sigmaT d c => loanIds d ++ loanIds c
     | .lam d c => loanIds d ++ loanIds c
@@ -226,6 +252,7 @@ mutual
     | .type => .type
     | .const c => .const c
     | .pvar k => .pvar k
+    | .cmpT τ => .cmpT (Term.toValPure τ)
     | .pi d c => .pi (Term.toValPure d) (Term.toValPure c)
     | .sigmaT d c => .sigmaT (Term.toValPure d) (Term.toValPure c)
     | .lam d b => .lam (Term.toValPure d) (Term.toValPure b)
@@ -279,6 +306,7 @@ mutual
     | .pvar _ => []
     | .type => []
     | .const _ => []
+    | .cmpT τ => symIds τ
     | .pi d c => symIds d ++ symIds c
     | .sigmaT d c => symIds d ++ symIds c
     | .lam d c => symIds d ++ symIds c
@@ -303,6 +331,7 @@ mutual
     | .pvar k => .pvar k
     | .type => .type
     | .const c => .const c
+    | .cmpT τ => .cmpT (renumber fℓ fσ τ)
     | .pi d c => .pi (renumber fℓ fσ d) (renumber fℓ fσ c)
     | .sigmaT d c => .sigmaT (renumber fℓ fσ d) (renumber fℓ fσ c)
     | .lam d b => .lam (renumber fℓ fσ d) (renumber fℓ fσ b)

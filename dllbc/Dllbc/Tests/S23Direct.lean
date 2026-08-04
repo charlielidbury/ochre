@@ -834,8 +834,13 @@ def pick : Decl :=
   decl{ fn pick (v : &mut List Nat, x : Nat, p : Nat)
         -> Id (List Nat) (*v)
              (insertL (boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p)) x (old *v))
-        { let K = boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p);
-          insert_at(&mut *v, K, x) } }
+        -- (M26-B) `ki`, not `K`. §6 makes capitalisation the binder-mode marker,
+        -- and this binder is genuinely RUNTIME: `insert_at` matches on the index
+        -- it is passed. The capital was stylistic — this was the only binder in
+        -- the whole corpus whose name contradicted its role, and the fence is
+        -- what found it.
+        { let ki = boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p);
+          insert_at(&mut *v, ki, x) } }
 example : checkFnOk pick [insertAt, pick] = true := by native_decide
 
 /-! Half 2 — the pure lemma, over the SAME stuck index, gets its branch knowledge
