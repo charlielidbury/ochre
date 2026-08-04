@@ -836,5 +836,102 @@ def i2 : Decl := decl{ fn caller () -> Unit {
   () } }
 example : ok i2 = true := by native_decide
 
+/-! ## §J. The sealed `split_off`, RUN — the convergence closed at both arrows
+
+    §G says the two forms check the same. This says the sealed one is a program:
+    the same recursor, called concretely, splitting a real list, with the two
+    machines agreeing. Without it the convergence would be a statement about the
+    checker only, and §12 decision 7's whole point is that the executing machine is
+    where this project's surprises live.
+
+    `hi : Le 1 (len *v)` is supplied as `()`: `Le` computes, the payload is
+    concrete, and `Le 1 2` reduces to `Unit`. That is the ordinary route — the
+    bound holds by computation, not by citation. -/
+
+def j1 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %splitMot
+      (λ(v, hi) { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
+      (λ(i2, ih, v, hi) {
+         match v {
+           Nil => botElim Unit hi,
+           Cons(hd, tl) => {
+             let y1 = take i2 (*tl);
+             let p = ih(&mut *tl, hi);
+             match p { Pair(rr, q) => match q { Pair(h1, h2) => {
+               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                          (*tl) y1 h1;
+               Pair(rr, Pair(c1, h2)) } } } } } }),
+    %splitTy);
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &mut x;
+  let r = f(1, b, ());
+  let y = x;
+  () } }
+example : ok j1 = true := by native_decide
+
+-- It really splits: after `split_off` at index 1 the borrow's payload keeps the
+-- first element and the rest came back by value inside the returned Σ.
+example :
+  (match Dllbc.Tests.S9Diff.runExec [] j1.body with
+   | .ok e => (e.lookup "y").map Val.pretty
+   | .error _ => none) = some "Cons (S Z) Nil" := by native_decide
+
+-- …and the two machines agree on the whole final Ω.
+example : diffC [] j1.body = true := by native_decide
+
+/-! ## §K. Both dispatch surfaces (the phase-B lesson, audited rather than assumed)
+
+    Phase B's fence was DEAD until it was duplicated at the explore driver: a
+    statement-position `match` or `let` never reaches `readR`'s own cases. So every
+    rule this phase adds has to be checked at both surfaces rather than assumed to
+    be reached.
+
+    It is, and by construction rather than by duplication — which is worth stating
+    as the reason and not just the outcome. Phase B's fence lived INSIDE `readR`'s
+    `.matchE` and `.letIn` cases, which are exactly the two the driver bypasses.
+    Every rule here is a different `readR` case (`.seal`, `.lamR`, `.callV`, the
+    recursor spine), and the driver reaches all of them: through `.letIn`'s
+    right-hand side, through `.seq`'s expression, and through the final-expression
+    fall-through. The tests below put a seal and a recursor call at each of those
+    three positions, INSIDE a branch of a symbolic match — which is where
+    `pushContinuations` sends a real body and where phase B's rule went dark. -/
+
+def k1 : Decl := decl{ fn k1 (n : Nat) -> Unit {
+  match n {
+    Z => (),
+    S(m) => {
+      -- a seal as a `let` right-hand side, inside a branch
+      let f = seal(λ(v) { *v := Cons(9, Nil); () }, %unitSeal);
+      let x = Cons(1, Nil);
+      let b = &mut x;
+      -- a sealed call in statement position, inside a branch
+      f(b);
+      let y = x;
+      () } } } }
+example : ok k1 = true := by native_decide
+
+-- The negative twin at the same two positions: a body that lies about its ensures
+-- is caught inside the branch, not skipped along with it.
+def k2 : Decl := decl{ fn k2 (n : Nat) -> Unit {
+  match n {
+    Z => (),
+    S(m) => {
+      let f = seal(λ(v) { *v := Cons(8, Nil); Refl }, %pinSeal);
+      () } } } }
+example : rejects k2 "does not have return type" = true := by native_decide
+
+-- …and a seal in FINAL-EXPRESSION position inside a branch, which is the third
+-- route (`explore`'s fall-through to `readR`). The ascription here is borrow-free
+-- because a DECLARED fn cannot yet return a borrow-moded Π — `checkFn` has no
+-- reading for such a return type, which is a pre-existing limitation of the
+-- declaration form and one §8 dissolves rather than fixes (a program is a term, so
+-- there is no return type to read, only a `let`).
+def natFn : Term := pure{ Π (n : Nat) → Nat }
+def k3 : Decl := decl{ fn k3 (n : Nat) -> %natFn {
+  match n {
+    Z => seal(λ(m) { Z }, %natFn),
+    S(m) => seal(λ(k) { S(k) }, %natFn) } } }
+example : ok k3 = true := by native_decide
+
 end Dllbc.Tests.S26Rec
 

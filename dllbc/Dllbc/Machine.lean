@@ -3577,7 +3577,7 @@ mutual
                 checkArm fuel zbody [] zn (Term.substPure 0 (.ctorApp "Z" []) R)
                 checkArm fuel sbody [(k, scrutDom), (ihv, Term.substPure 0 (.var k) R)] rest
                   (Term.substPure 0 (.ctorApp "S" [.var k]) R)
-                sealMint fuel u
+                sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
             | "listRec", [_, _, pn, pc] => do
               match pn, pc with
@@ -3591,25 +3591,34 @@ mutual
                 checkArm fuel cbody
                   [(h, elemTy), (tl, scrutDom), (ihv, Term.substPure 0 (.var tl) R)] rest
                   (Term.substPure 0 (.ctorApp "Cons" [.var h, .var tl]) R)
-                sealMint fuel u
+                sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
               match tArm, fArm with
               | .lamR tn tbody, .lamR fn fbody => do
                 checkArm fuel tbody [] tn (Term.substPure 0 (.ctorApp "True" []) R)
                 checkArm fuel fbody [] fn (Term.substPure 0 (.ctorApp "False" []) R)
-                sealMint fuel u
+                sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: boolRec's arms must be runtime λs"
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
       | _ => throwErr "seal: a recursor sealed as a function must be ascribed a Π — its first binder is the scrutinee the recursion is on (§7's derived motive)"
   termination_by fuel _ _ _ => (fuel, 11, 0)
   /-- The forgetting half, shared by both sealed-function rules: a fresh σ whose
-      signature is the ascribed Π peeled at POSITIONAL binders, which is the
-      convention `processArgs`/`buildResult` read a telescope by. What a caller
-      sees is a callee indistinguishable from a table entry. -/
-  def sealMint : Nat → Term → M Val
-    | _, u => do
-      match piPeel (piBinderNames u) u with
+      signature is the ascribed Π peeled at the given binders — which must be
+      POSITIONAL, the convention `processArgs`/`buildResult` read a telescope by.
+      What a caller sees is a callee indistinguishable from a table entry.
+
+      **And a `Val` type too, whenever the Π has one.** A sealed function is a
+      value like any other — it can be returned, or passed — and that means
+      `hasType` may be asked about it, which needs `sctx`. A borrow-moded Π has no
+      `Val`, so such a σ lives in `fsig` alone and is callable but not otherwise
+      typeable; a borrow-free one gets both, and the two agree by construction
+      since they are peeled and read from the same term. (Found by a seal in
+      return position: `hasType: σ has no type in sctx`, from a function whose
+      result IS a sealed function.) -/
+  def sealMint : Nat → List Var → Term → M Val
+    | fuel, names, u => do
+      match piPeel names u with
       | .error e => throwErr e
       | .ok (ctel, cret) => do
         let σ ← freshSym
@@ -3619,8 +3628,11 @@ mutual
             retType := cret
             body := .unit }
         modify (fun s => { s with fsig := (σ, sig) :: s.fsig })
+        if !hasBorrowT u then do
+          let uV ← readC fuel u
+          modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
         pure (.sym σ)
-  termination_by fuel _ => (fuel, 12, 0)
+  termination_by fuel _ _ => (fuel, 12, 0)
   /-- Sealing a runtime λ: check it, then forget it.
 
       The two halves are §5's two sentences. The check is `checkRFnBody` against
@@ -3635,17 +3647,10 @@ mutual
       | .error e => throwErr e
       | .ok (tel, ret) => do
         checkRFnBody fuel tel ret body
-        match piPeel (names.enum.map (fun p => Var.mk p.1 p.2.name)) u with
-        | .error e => throwErr e
-        | .ok (ctel, cret) => do
-          let σ ← freshSym
-          let sig : Decl :=
-            { name := "@seal"
-              telescope := ctel.map (fun p => (p.1.name, p.2))
-              retType := cret
-              body := .unit }
-          modify (fun s => { s with fsig := (σ, sig) :: s.fsig })
-          pure (.sym σ)
+        -- The caller-visible signature keeps the λ's own binder NAMES (so a
+        -- rejection at a call site names what the programmer wrote) at POSITIONAL
+        -- ids (so `processArgs` reads it like any telescope).
+        sealMint fuel (names.enum.map (fun p => Var.mk p.1 p.2.name)) u
   termination_by fuel _ _ _ => (fuel, 7, 0)
   /-- **The checking-mode call rule** (§5.3/§6.1), factored out of `.call` (M26-C)
       because a SEALED function is called by exactly the same rule: a σ whose
