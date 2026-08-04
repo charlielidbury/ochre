@@ -31,6 +31,8 @@ does it agree with `checkFn`) rather than proofs.
 
 open Dllbc
 open Dllbc.Tests.S26Seal (ok rejects)
+open Dllbc.StdLemmas (le_up_r leb_true_le leb_false_gt le_pred_l
+  count_cons_l count_cons_r len Ub Lb)
 
 namespace Dllbc.Tests.S26Fn
 
@@ -194,5 +196,136 @@ example : elabRejects Tests.S23Direct.partition "decision 8" = true := by native
 def withBack : Decl :=
   Decl.mk pushD.name pushD.telescope pushD.retType pushD.body (some (.const "Unit")) none
 example : elabRejects withBack "backward spec" = true := by native_decide
+
+/-! ## §E. `partition`, FUEL-THREADED — §12 decision 8 paid on a real function
+
+    The macro refuses `partition [v]` because payload decrease has no recursor
+    form, and refuses it *pointing at decision 8*: fuel-threading is the blessed
+    interim, and fuel is a SOURCE change — the signature grows a parameter and a
+    bound, and every caller supplies them — not something an elaboration invents
+    behind its author. This is that source change, made once so the cost of the
+    accepted regression is a measured thing rather than an estimated one.
+
+    Written here rather than in `S23Direct` so the original `[v]` form stays
+    exactly as it was (J1: both worlds alive), and so the migration is legible as
+    a diff against it: the telescope gains `fuel` and `Hf`, the `Cons` branch
+    gains a `match fuel` whose `Z` arm is dead, and the self-call gains two
+    arguments. The body is otherwise character-for-character the original.
+
+    **The bound needs no lemma, and that is the interesting part.** At the
+    recursive call `Hf : Le (len (Cons x rest)) (S f2)`, which IS
+    `Le (len rest) f2` definitionally — the same bounds-cursor descent M14 found
+    and M26-C's §I used. Fuel-threading costs a parameter and a dead branch; it
+    does not cost a proof.
+
+    **And `Hf` is CAPITAL, which is phase B paying for phase D.** The bound is
+    passed to the recursive call and then still needed by the caller; a lowercase
+    proof parameter would MOVE it (R16), and the original `partition` never had to
+    care because it had no bound to thread. -/
+
+def partitionF : Decl :=
+  decl{ fn partitionF [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
+        -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
+             → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
+             → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
+        { let l = *v;
+          match l {
+            Nil => { *v := Nil;
+                     Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
+            Cons(x, rest) => match fuel {
+              -- Out of fuel with a non-empty list: `Hf : Le (S (len rest)) Z` IS
+              -- `Bot`, so the path is dead — the same ex-falso `quicksort` already
+              -- carried, arriving here as the cost of the guard's removal.
+              Z => botElim Unit Hf,
+              S(f2) => {
+              let mkL = (λ (a : List Nat). λ (b : List Nat).
+                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                            λ (n : Nat). count_cons_l n x a b rest (h n));
+              let mkR = (λ (a : List Nat). λ (b : List Nat).
+                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                            λ (n : Nat). count_cons_r n x a b rest (h n));
+              let lr = len rest;
+              *v := rest;
+              -- The one changed line: fuel and the bound go with the call, and the
+              -- bound is `Hf` UNCHANGED — `Le (len (Cons x rest)) (S f2)` already IS
+              -- `Le (len rest) f2`.
+              let r = partitionF(f2, &mut *v, p, Hf);
+              match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
+              match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
+                if e : leb x p {
+                  let lo = *v;
+                  let hub2 = Pair(leb_true_le x p e, hub);
+                  let hl2b = le_up_r (len hi) lr hl2;
+                  let cnt = mkL lo hi hcnt;
+                  *v := Cons(x, lo);
+                  Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
+                } else {
+                  let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
+                  let hl1b = le_up_r (len *v) lr hl1;
+                  let cnt = mkR (*v) hi hcnt;
+                  Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
+                }
+              } } } } } }
+            } }
+          } } }
+
+-- The declared, fuel-threaded form checks…
+example : checkFnOk partitionF = true := by native_decide
+-- …and so does its elaboration, which is what decision 8 buys: `partition` is now
+-- expressible as a sealed recursor, at the cost of one parameter and one dead
+-- branch.
+example : elabOk partitionF = true := by native_decide
+
+/-! ### E2. …and the flagship's call site, so the cost is MEASURED
+
+    "Every caller supplies them" is the other half of decision 8's price, and a
+    claim about a cost should be paid once rather than estimated. `quicksortF` is
+    `S23Direct.quicksort` with exactly one call site retargeted — the same body
+    otherwise — and it checks.
+
+    Two things it pins that are not obvious from the signature change alone. The
+    bound the caller hands over is `hfuel` UNCHANGED: after `*v := rest` the callee
+    wants `Le (len rest) f2`, and `hfuel : Le (len (Cons x rest)) (S f2)` already IS
+    that, by the same definitional descent the callee's own recursion uses. And
+    `hfuel` survives the call — quicksort needs it twice more, for its own two
+    recursive calls — which works only because `partitionF`'s bound parameter is
+    CAPITAL and therefore ⇝-read. Under phase A that call would have moved it
+    (R16), and the migration would have needed staging. -/
+
+/-- Retarget the one `partition` call — supply the fuel and the bound — and carry
+    the function's own new name onto its self-calls. -/
+partial def toPartitionF (f2 : Var) : Term → Term
+  | .call f as =>
+    let as' := as.map (toPartitionF f2)
+    if f == "partition" then .call "partitionF" (.var f2 :: as' ++ [.var ⟨2, "hfuel"⟩])
+    else if f == "quicksort" then .call "quicksortF" as'
+    else .call f as'
+  | .letIn x r b => .letIn x (toPartitionF f2 r) (toPartitionF f2 b)
+  | .assign a b c => .assign (toPartitionF f2 a) (toPartitionF f2 b) (toPartitionF f2 c)
+  | .seq a b => .seq (toPartitionF f2 a) (toPartitionF f2 b)
+  | .ctorApp n as => .ctorApp n (as.map (toPartitionF f2))
+  | .callV x as => .callV x (as.map (toPartitionF f2))
+  | .borrow t => .borrow (toPartitionF f2 t)
+  | .deref t => .deref (toPartitionF f2 t)
+  | .matchE sc e bs =>
+    .matchE sc e (bs.map (fun b => Branch.mk b.ctor b.binders (toPartitionF f2 b.body)))
+  | t => t
+
+def quicksortF : Decl :=
+  let q := Tests.S23Direct.quicksort
+  let f2 := (FnMacro.succBinder ⟨0, "fuel"⟩ q.body).getD ⟨0, "fuel"⟩
+  { q with name := "quicksortF", body := toPartitionF f2 q.body }
+
+-- THE MIGRATED COHORT, end to end: the flagship, calling the fuel-threaded
+-- partition, with no other change to its body.
+example : checkFnOk quicksortF [partitionF, Tests.S23Direct.appendBack, quicksortF]
+  = true := by native_decide
+-- …and elaborated through the macro, against a table that no longer contains it.
+example : elabOk quicksortF [partitionF, Tests.S23Direct.appendBack] = true := by native_decide
+
+-- The migration really did change the call: the body names `partitionF` and not
+-- `partition`, so the two assertions above are about the new callee.
+example : ((calleeNames quicksortF.body).contains "partitionF"
+        && !((calleeNames quicksortF.body).contains "partition")) = true := by native_decide
 
 end Dllbc.Tests.S26Fn
