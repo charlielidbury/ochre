@@ -1,5 +1,55 @@
 # Progress
 
+## 2026-08-05 — dllbc/: M26-D CLOSES — `fn` IS a macro; the first cohort migrated
+
+Phase D of the `fn`/λ unification. Phase E (programs are terms, `Decl` deleted)
+remains. Commits e4f171a8, 476a61b4.
+
+**`Dllbc/FnMacro.lean` turns a `Decl` into `.seal ⟨natRec P z s⟩ ⟨the Π⟩`**, and
+its `split_off` output is **α-equal to the sealed recursor hand-written in M26-C**
+— an oracle written from the document, before the macro existed, and so not
+tunable against it. Nothing in `Machine`/`Boundary` imports the macro, so
+constraint 7 ("no macro in the TCB") is a fact about the import graph rather than
+a promise: macro output is re-derived at the seal, and a bug here can only produce
+a program that fails to check or checks as a different function.
+
+**The elaboration's one non-obvious step, and quicksort is what settled it.** It
+is *not* "split the body at its `match k`" — `quicksort`'s `match fuel` is nested
+inside `match l`'s `Cons` branch, after a `let`, and its `Nil` branch never
+mentions fuel. What works is **the whole body twice, with every `match k` resolved
+to one branch**: base arm = body with the `Z` branch inlined, step arm = body with
+the `S` branch inlined and its binder taken as the predecessor. That is the ι rule
+read backwards, which is exactly why it does not care where the match sits.
+
+**The guard's evaporation, observed as an absence.** Elaborated `quicksort` checks
+against a table that no longer contains it: there is no self-call left to admit at
+a postcondition, so there is nothing for a decrease check to police.
+
+**Held to the corpus's own twins.** `S23Direct` guards `splitOff` with three spec
+lies and a body lie; running the same four through the macro is what turns "the
+elaborated form checks" into "the elaborated form is the same function" — it
+accepts what the declaration accepts and refuses what it refuses, twin for twin.
+
+**§12 decision 8, paid on a real function — and it costs less than expected.** The
+macro refuses `partition [v]` (payload decrease has no recursor form) pointing at
+decision 8, because fuel is a source change and not something an elaboration may
+invent. Paying it by hand: **the bound needs no lemma.** At the recursive call
+`Hf : Le (len (Cons x rest)) (S f2)` IS `Le (len rest) f2` definitionally — M14's
+bounds-cursor descent again — so the bound passes down unchanged. Fuel-threading
+costs one parameter and one dead `botElim` branch; it does not cost a proof. The
+bound parameter must be CAPITAL, which is phase B paying for phase D: `quicksort`
+hands it over and still needs it twice, and a lowercase one would have moved it
+(R16). `quicksortF` — the flagship with exactly one call site retargeted — checks
+declared and elaborated, so the caller-side half of the price is paid too.
+Written in `S26Fn.lean`, leaving the `[v]` form untouched (J1, both worlds alive).
+
+**For phase E**: `Decl.alphaEq` gained the three M26 formers (`.seal`, `.callV`,
+`.lamR`); without them the criterion silently degraded to structural equality on
+exactly the terms a macro emits. `FnMacro` also refuses declared `back` specs
+(§6.2 has no seal counterpart; M23's corpus declares none) and a `[k]` whose type
+mentions an earlier parameter (it must be statable before them to bind before
+them).
+
 ## 2026-08-05 — dllbc/: M26-C CLOSES — effectful recursors; `split_off` checks and runs BOTH ways
 
 Phase C of the `fn`/λ unification (`dllbc/docs/combining-fns.md` §7). Phases D (the
