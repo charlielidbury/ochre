@@ -49,6 +49,7 @@ This is the mechanism phase C's `ih` stands on, and §C below exercises it in th
 -/
 
 open Dllbc
+open Dllbc.StdLemmas (le_refl le_trans)
 
 namespace Dllbc.Tests.S26Seal
 
@@ -113,6 +114,50 @@ example : strContains (readCOn (.seal (.ctorApp "Z" []) (.const "Nat")))
 -- §2.1's identity question if ⇝ could reduce it.
 example : strContains (readCOn (.app (.const "S") (.seal (.ctorApp "Z" []) (.const "Nat"))))
   "not in the comptime fragment" = true := by native_decide
+
+/-! ### A6. "Legal anywhere ⇒ evaluates" (§5), exercised at the positions that
+    are not a `let` right-hand side
+
+    §5 makes a point of this — "every ⇒-evaluation is an event, so minting is
+    coherent even for a seal passed directly as a call argument" — so the claim is
+    tested rather than inferred from the rule's placement in `readR`. -/
+
+def natIdT : Term := pure{ Π (x : Nat) → Nat }
+
+-- as a call argument, where the mint happens inside `processArgs`
+def takesFn : Decl := decl{ fn takesFn (g : %natIdT) -> Unit { () } }
+def a6a : Decl := decl{ fn caller () -> Unit
+  { takesFn(seal(λ (x : Nat). x, Π (x : Nat) → Nat)); () } }
+example : ok a6a [takesFn, a6a] = true := by native_decide
+
+-- inside a constructor argument
+def a6b : Decl := decl{ fn caller () -> Unit { let l = Cons(seal(3, Nat), Nil); () } }
+example : ok a6b = true := by native_decide
+
+-- in return position: a function whose result IS a sealed function. The audit
+-- reads the σ's type out of `sctx` and converts — O(statement), the §5 point 2
+-- shape at a boundary rather than at a citation.
+def a6c : Decl := decl{ fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Nat) } }
+example : ok a6c = true := by native_decide
+-- …and the same in return position with the wrong ascription is caught at the
+-- node, before the return type is ever consulted.
+def a6d : Decl := decl{ fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Bool) } }
+example : rejects a6d "does not have its ascribed type" = true := by native_decide
+
+/-! ### A7. A limitation, pinned rather than left to be met
+
+    A seal's body is ⇒-evaluated to ONE value, so a body that splits on a symbolic
+    scrutinee has no seal meaning in phase A: `pushContinuations` leaves the node
+    alone (it is not a statement form) and the expression-position match is
+    refused with the machine's standing message. This is not a gap to be patched
+    here — a sealed body that branches is a *function* body, whose audit is §5.4's
+    and whose relocation is phase M26-C. Pinned so the phase-C agent meets a test
+    rather than a surprise. -/
+
+def a7 : Decl :=
+  decl{ fn a7 (n : Nat) -> Unit
+        { let f = seal(match n { Z => Z, S(k) => k }, Nat); () } }
+example : rejects a7 "only a statement-position match may split" = true := by native_decide
 
 /-! ## §B. The intersection smell test (`combining-fns` §12, open question 4)
 
@@ -278,6 +323,63 @@ example : (envOf [apply1] c12 == some [("f", vlam), ("r", .sym 0)]) = true := by
 def apply1bad : Decl :=
   decl{ fn apply1bad (g : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { g(n) } }
 example : rejects apply1bad "partial application" = true := by native_decide
+
+/-! ### C13. Transparent vs sealed, as a TYPING difference
+
+    C1/C2 pin the forgetting in the environment (`y ↦ 3` against `y ↦ σ`). Here it
+    is where it actually bites — the same program twice, differing only in whether
+    the callee is sealed, accepted once and rejected once. `needsEq`'s telescope is
+    dependent, so the second parameter's type is instantiated at what the checker
+    knows about the first; transparent, that is `Id Nat 3 3` and `Refl` inhabits
+    it; sealed, it is `Id Nat σ 3` and `Refl` does not.
+
+    This is §5 point 4 with nothing left to interpret: seal the successor function
+    at `Π (x : Nat) → Nat` and callers know nothing about results — sound, honest,
+    and (here) useless. Keeping knowledge across a seal means ascribing a richer
+    type, which is the whole ensures discipline arriving as a consequence of the
+    syntax rather than as a convention. -/
+
+def needsEq : Decl := decl{ fn needsEq (n : Nat, h : Id Nat n 3) -> Unit { () } }
+def c13t : Decl := decl{ fn caller () -> Unit
+  { let f = λ (x : Nat). S x; let y = f(2); needsEq(y, Refl); () } }
+def c13s : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); needsEq(y, Refl); () } }
+example : ok c13t [needsEq, c13t] = true := by native_decide
+example : rejects c13s "does not have its parameter type" [needsEq, c13s] = true := by native_decide
+
+/-! ### C14. A caller can take apart what an abstract call returned
+
+    The fact phase C stands on, established here rather than assumed there: when a
+    `σ : Π` call mints its result from a Σ-shaped codomain, the caller can
+    `sigmaRec` it and compose the conjuncts with ordinary lemmas. Without this,
+    "the callee's postcondition is the caller's only knowledge" would be a
+    knowledge the caller cannot use — which is exactly the gap M23's stage (i)
+    closed for declared `fn`s, now confirmed to carry over to value callees.
+
+    Phase A mints ONE σ at the whole instantiated codomain rather than
+    componentwise (`buildResult`'s job for borrow-moded Πs). That is enough to be
+    projectable, which is what this pins; phase C will want the componentwise mint
+    for the re-minted borrow payloads, and this test says the coarse version is
+    already usable. -/
+
+def sigLemTy : Term := pure{ Π (x : Nat) → Σ (h : Le x x) → Le x x }
+def sigLem : Term := pure{ λ (x : Nat). Pair (le_refl x) (le_refl x) }
+
+def c14 : Decl := decl{ fn caller () -> Le 2 2 {
+  let f = seal(%sigLem, %sigLemTy);
+  let p = f(2);
+  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => le_trans 2 2 2 a b } } }
+example : ok c14 = true := by native_decide
+
+-- The negative control has to be demanded to be a control: a `let`-bound proof is
+-- never typed until something asks for its type (readC computes, it does not
+-- check), so the wrong projection is only caught when the AUDIT wants it. Stated
+-- because the vacuous version of this test passed, and would have looked fine.
+def c14bad : Decl := decl{ fn caller () -> Le 3 2 {
+  let f = seal(%sigLem, %sigLemTy);
+  let p = f(2);
+  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } } }
+example : rejects c14bad "does not have return type" = true := by native_decide
 
 /-! ## §D. The executing machine, and a NEW simulation-relation case
 
