@@ -110,6 +110,22 @@ structure St where
   nextSym : Nat
   /-- The σ-context (§3.2's seam, §4): each symbolic id's type. -/
   sctx : List (Nat × Val) := []
+  /-- **The moded-Π context** (M26-C): for a σ minted by sealing a function, the
+      signature it was sealed at — as a `Decl`, which is precisely "a telescope
+      and a return type with no body".
+
+      Why this is not `sctx`. A borrow-moded Π has **no `Val`** — `readC` refuses
+      `borrowT`, and rightly, since a borrow type is a telescope-position marker
+      and not a type anything inhabits. So the sealed view of a function that
+      takes a `&mut` cannot be recorded where `sctx` records types, and the
+      honest place is one that keeps it as a `Term` telescope: exactly the shape
+      the call rule already reads. That is what makes `.callV` on such a σ the
+      SAME rule as `.call` on a table entry (`callDeclC`) rather than a second
+      one — §3's "abstract application at a moded Π", with nothing new under it.
+
+      `sctx` still holds the borrow-free case (phase A's `σ : Π`), so the two
+      contexts partition abstract callees by whether their type has a value. -/
+  fsig : List (Nat × Decl) := []
   /-- Loan groups (§6.1). A call mints one; ending a captured loan ends the
       whole group. Replaces M6's flat owed map — a wire is the degenerate
       `issued = []` group. -/
@@ -2248,11 +2264,17 @@ end
     σ, `x ↦ borrowM ℓ (sym σ)`, `sctx[σ : τ]`, and an obligation carrying `S`
     instantiated at `s := σ`. Crucially there is NO owner entry for an argument
     borrow's loan — the caller holds it; nothing in the body can collapse the
-    borrow by owner-demand, only the audit can. -/
-def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Obligation)
-  | _, [] => pure []
-  | i, (name, tyTerm) :: rest => do
-    let x : Var := ⟨i, name⟩
+    borrow by owner-demand, only the audit can.
+
+    **Var-keyed** since M26-C, because the seal seeds one too: a `Decl` names its
+    parameters positionally (argument `i` ↦ var id `i`, which is what the corpus's
+    types reference), while a runtime λ brings its own binder `Var`s and its body
+    reaches them by those ids. Same seeding either way; only who supplies the
+    names differs. -/
+def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
+  | [] => pure []
+  | (x, tyTerm) :: rest => do
+    let name := x.name
     -- §6, "checked, not assumed": a borrow-typed binder MUST be lowercase. A
     -- comptime binder is ⇝-read at the call and erased in the body, and neither
     -- is meaningful of a `&mut` — there is no ⇝ reading of a borrow, and a loan
@@ -2274,7 +2296,7 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
-      pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
+      pure (⟨x, ℓ, owed⟩ :: (← seedTelescopeV fuel rest))
     -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
     -- §5's second opacity ("borrows stored under a type constructor") reaching a
     -- telescope entry for the first time. The slot holds a genuine pair — a length
@@ -2294,13 +2316,18 @@ def seedTelescope (fuel : Nat) : Nat → List (String × Term) → M (List Oblig
       -- and drops to 0 once the payload is substituted.
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (.sym σc) (Val.substPure 0 (.sym σ) SVal))
-      pure (⟨x, ℓ, owed⟩ :: (← seedTelescope fuel (i + 1) rest))
+      pure (⟨x, ℓ, owed⟩ :: (← seedTelescopeV fuel rest))
     | tyTerm => do
       let τVal ← readC fuel tyTerm
       let σ ← freshSym
       bindSlot x (.sym σ)
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
-      seedTelescope fuel (i + 1) rest
+      seedTelescopeV fuel rest
+
+/-- The `Decl` view: parameter `i` gets runtime var id `i` — the §5.2 convention a
+    declaration's own types are written against. -/
+def seedTelescope (fuel : Nat) (i : Nat) (tel : List (String × Term)) : M (List Obligation) :=
+  seedTelescopeV fuel ((tel.enum.map (fun p => (Var.mk (p.1 + i) p.2.1, p.2.2))))
 
 /-- Collapse an argument borrow's payload at the boundary: End-Mut every loan
     marker in the payload whose borrow is an Ω entry (this is how §3.3's field
@@ -2703,12 +2730,78 @@ def instantiatePi : Nat → Val → List Val → M Val
       else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
     | other => throwErr s!"callV: too many arguments — the callee's type is {other.pretty}, not a function type"
 
+/-! ## Peeling a borrow-moded Π into a telescope (M26-C)
+
+    §5's audit relocation needs the sealed type as a **telescope plus a return
+    type**, because that is the shape `seedTelescope` seeds and `auditAction`
+    audits. Deriving one from a Π is ordinary binder-peeling — except that it has
+    to happen on `Term`s, since a borrow-moded Π has no `Val` (see `St.fsig`).
+    `Term.substPure` is what that costs. -/
+
+/-- Peel one Π binder per name, instantiating the rest at that name. Returns the
+    telescope and the residual return type.
+
+    **The mode agreement check lives here**, and it is the one place §6 could be
+    stated twice and disagree: a runtime λ's binders carry their mode in their
+    NAMES, the ascribed Π carries its in its DOMAINS (`⇝τ`), and a lowercase
+    binder under a capital-bindered Π would let the body observe at runtime what
+    the caller was promised is erased. Phase B settled that "the ascription is the
+    contract" for CALLERS (F3); this is the callee-side half of the same
+    sentence, and it is a rejection rather than a coercion because the two claims
+    are about different people. -/
+def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
+  | [], u => .ok ([], u)
+  | x :: xs, u =>
+    match u with
+    | .pi dom cod =>
+      if Term.domComptime dom != x.isComptime then
+        .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
+      else
+        match piPeel xs (Term.substPure 0 (.var x) cod) with
+        | .ok (rest, ret) => .ok ((x, dom.stripCmp) :: rest, ret)
+        | .error e => .error e
+    | _ =>
+      .error s!"seal: the runtime λ binds '{x.name}' but the ascribed type has no Π binder left for it. Runtime application is saturated (§12 decision 4), so a λ and its ascription must have the same arity — either the λ binds too much or the ascription promises too little."
+
+/-- A Var-keyed telescope's borrow parameters, by var id (`borrowParamIds`'
+    counterpart for a telescope that brought its own names). -/
+def borrowVarIds (tel : List (Var × Term)) : List Nat :=
+  tel.filterMap (fun p => match p.2 with | .borrowT _ _ => some p.1.id | _ => none)
+
+/-- Audit every explored path of a sealed body, and return the fresh supplies
+    advanced past everything those paths minted.
+
+    The advance is the whole of what survives frame isolation: a sealed body's Ω,
+    obligations and groups are ITS OWN and are discarded, but its σ, loan, group
+    and frame ids must never be handed out again, or a later mint would collide
+    with one that is still referenced by a type the check produced. -/
+def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St → M St
+  | _, _, [], acc => pure acc
+  | _, _, .error e :: _, _ => throwErr e
+  | fuel, ret, .ok (v, st) :: rest, acc =>
+    match (auditAction fuel ret v).run st with
+    | .error e _ => throwErr e
+    | .ok _ st' =>
+      auditAllPaths fuel ret rest
+        { acc with nextLoan := max acc.nextLoan st'.nextLoan
+                   nextSym := max acc.nextSym st'.nextSym
+                   nextGroup := max acc.nextGroup st'.nextGroup
+                   nextFrame := max acc.nextFrame st'.nextFrame }
+
 /-! ## ⇒ (read): the move arrow
 
     `readR` evaluates a term to a value with move semantics. Fuel decreases on
     every recursive call (including the End-Mut retry and the constructor-args
     loop), so the machine is total; the list helper `readArgs` keeps the
-    constructor case structural. -/
+    constructor case structural.
+
+    **Heartbeats.** M26-C grew this block from five functions to twelve — the
+    explore driver joined it (readR and explore are mutual now, §8's direction),
+    and the seal's audit brought `sealFn`/`checkRFnBody`/`callDeclC` with it — and
+    the default budget is not enough for the well-founded-recursion proof over
+    twelve measures. This is elaboration cost, not checker cost: no program pays
+    it. -/
+set_option maxHeartbeats 1000000 in
 mutual
   def readR : Nat → Term → M Val
     | 0, _ => throwErr "readR: out of fuel"
@@ -2862,76 +2955,7 @@ mutual
             let res ← readR fuel (shiftVars offset decl.body)
             releaseFrameLoans fuel offset res.loanIds
             pure res
-          else do
-            -- CHECKING (§5.3/§6.1): signature only, mint one loan group. The
-            -- instantiation `inst` (decl var → actual, §5.3) instantiates the
-            -- return and owed types at the actuals this call was given.
-            let (captured, inst) ← processArgs fuel 0 [] decl.telescope args
-            -- §8's snapshot-subterm guard. Signature-only checking means a self-call
-            -- is admitted at this function's own declared return type — its
-            -- POSTCONDITION, once declared backs are gone — so it needs the side
-            -- condition every recursion rule has: something strictly decreases.
-            -- Checked here, after `processArgs`, because the actual's VALUE is what
-            -- the comparison needs and `inst` is where it lands.
-            match (← get).selfRec with
-            | some (selfName, dk) =>
-              if f == selfName then
-                match dk with
-                | none =>
-                  throwErr s!"recursion: '{f}' calls itself but declares no decreasing argument ([k], §1.2) — a self-call admitted at its own return type with nothing decreasing proves any postcondition"
-                | some (k, cur) =>
-                  match inst.find? (fun kv => kv.1.id == k) with
-                  | none => throwErr s!"recursion: '{f}' declares decreasing argument [{k}] but the call passes no such argument"
-                  | some (_, act) =>
-                    -- Unwrap a borrow on both sides: what decreases is the payload
-                    -- snapshot, not the loan wrapping it.
-                    let peel : Val → Val := fun v => match v with | .borrowM _ p => p | v => v
-                    let a := Val.nfV fuel (peel act)
-                    let c := Val.nfV fuel (peel cur)
-                    if strictSubterm a c then pure ()
-                    else throwErr s!"recursion: self-call's argument [{k}] ({a.pretty}) is not a strict structural predecessor of the parameter's snapshot ({c.pretty})"
-              else if reachesFn (← get).decls [] f selfName then
-                throwErr s!"recursion: mutual recursion ('{selfName}' → '{f}' → … → '{selfName}') is not supported — the [k] guard is per-declaration (§8)"
-              else pure ()
-            | none => pure ()
-            -- Build the result and the loans it issues from the return type (a
-            -- single borrow, a Pair/Σ of borrows for a multi-issued group, or a
-            -- plain existential wire). One group ties captured to issued. The
-            -- `constrained` flag stays false in real checking — inferring it is
-            -- unsound (`through` vs `advance` share a signature); the test-only
-            -- `forceConstrained` flag reintroduces the bug for harness validation.
-            -- §5.4 caller-side σ-sharing: mint one σ' per captured borrow (typed at
-            -- its owed type). The retType's bare `*v` (marked `@exit`) reflects to
-            -- σ', and the group PINS that captured loan's release to σ' — so the
-            -- returned evidence and the recovered owner are the same σ'. `old *v`
-            -- clears through to the actual entry payload (entrySyms emptied for the
-            -- reflect, so callee/caller var-id collisions can't shadow it). Empty
-            -- when there are no borrow args (a no-op) and dead under a `back` (which
-            -- releases via the spec instead of the pinned σ').
-            let borrowIds := borrowParamIds decl.telescope
-            let sigmas ← (captured.map (·.2)).mapM (fun owed => do
-              let σ ← freshSym
-              modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
-              pure σ)
-            let exitMap := borrowIds.zip sigmas
-            let exitRel := (captured.map (·.1)).zip sigmas
-            let savedE := (← get).exitSyms
-            let savedO := (← get).entrySyms
-            modify (fun s => { s with exitSyms := exitMap, entrySyms := [] })
-            let (resultVal, issued) ← buildResult fuel inst [] (markExit borrowIds decl.retType)
-            modify (fun s => { s with exitSyms := savedE, entrySyms := savedO })
-            let ρ ← freshGroup
-            let fc := (← get).forceConstrained
-            let cons := fc && captured.length == 1 && issued.length == 1
-            -- §6.2: reflect the DECLARED backward spec (if any) at the actuals, so
-            -- the group can compute the captured release from the surrendered
-            -- values instead of a fresh existential.
-            let backV ← match decl.back with
-              | some b => do pure (some (← readCWith fuel inst b))
-              | none => pure none
-            let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, backSpec := backV, exitRelease := exitRel }
-            modify (fun s => { s with groups := grp :: s.groups })
-            pure resultVal
+          else callDeclC fuel decl args
       -- **The seal** (combining-fns §5): opacity as one node. The two readings
       -- are the two machines'.
       | .seal t u => do
@@ -2942,34 +2966,21 @@ mutual
           -- admitted). This is why a sealed value costs nothing at runtime.
           readR fuel t
         else do
-          -- Borrow-moded seals are the full audit relocation (exit snapshots,
-          -- `old *v`, the ensures convention) and belong to phase C. Rejected
-          -- here rather than silently mis-audited: `hasType` on a payload-owing
-          -- Π would be an answer to a question §5.4 does not ask.
-          if hasBorrowT u then
-            throwErr "seal: borrow-moded types are not supported yet — the seal of a Π with `&mut` binders IS §5.4's audit (exit snapshots, `old *v`, obligations), relocated from `checkFn` to the node, and that relocation is phase M26-C. Seal at a pure type or a borrow-free Π."
-          -- The type is read FIRST, while the body's free variables are still
-          -- live: `u` may mention a slot that evaluating `t` then consumes, and a
-          -- type re-read afterwards would find a ⊥. This is §5.3's entry-pinning
-          -- lesson, arriving at the seal for the same reason it arrived at a
-          -- dependent return type.
-          let uV ← readC fuel u
-          let v ← readR fuel t
-          -- THE AUDIT, and the whole of it for a borrow-free `u`. For a λ body
-          -- this is literally the pure fragment's `readC`-then-`hasType` — the
-          -- §12-open-4 smell test, which is a deliberate *identity* here rather
-          -- than a resemblance: the rule adds no premise of its own.
-          if ← hasType fuel v uV then do
-            -- …then FORGET. A fresh σ at the ascribed type is the whole downstream
-            -- view: `.seal` is generalization, so what the caller keeps is exactly
-            -- what the programmer wrote (§5 point 4). The mint is coherent because
-            -- this is an EVENT — ⇒ evaluates it once, in order — which is the
-            -- property ⇝ lacks and the reason the node is a ⇒-form (§2.1).
-            let σ ← freshSym
-            modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
-            pure (.sym σ)
-          else
-            throwErr s!"seal: the sealed term ({v.pretty}) does not have its ascribed type ({uV.pretty})"
+          -- **SEALING A FUNCTION** (M26-C): the shape of the sealed TERM picks the
+          -- rule, not the shape of the type. A runtime λ has no value the pure
+          -- fragment could type — its body is a body — so the check that `t : u`
+          -- is not `hasType` at all, it is §5.4's audit: seed `u`'s telescope,
+          -- explore the body, audit each path. That is `sealFn`, and it is what
+          -- phase A deferred when it rejected borrow-moded `u` by name.
+          --
+          -- Everything else keeps phase A's rule EXACTLY, which is what preserves
+          -- §12-open-4's identity (a borrow-free sealed λ costs precisely
+          -- `hasType`, over the whole 16-pair battery) — the new rule is reached
+          -- by being a `.lamR`, never by the ascription happening to have a
+          -- `&mut` in it.
+          match t with
+          | .lamR names body => sealFn fuel names body u
+          | _ => sealValue fuel t u
       -- **Application of a value callee** (§7 cost 2). The callee is LOCATED, not
       -- consumed: reading a function to call it is a place read, like a match
       -- scrutinee's, so a slot can be called twice. (§2.1's copy-on-read would
@@ -2995,47 +3006,20 @@ mutual
           -- program (§5.2's own account of how that rule was earned).
           match firstLoanMarker callee with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.callV x args)
-          | none => do
-            -- **The callee is inspected BEFORE any argument is read** (M26-B).
-            -- Which arrow evaluates an argument is a property of the *binder it
-            -- lands on*, so the modes have to be in hand first; phase A could
-            -- read the whole spine up front only because there was one arrow.
-            -- A λ callee carries its modes on its own domains; a σ : Π carries
-            -- them on the Π it was sealed at — which is the version that matters,
-            -- since the seal's ascription is the whole of what a caller sees.
-            -- M26-C generalizes the mode read past the types it could be read
-            -- from: a runtime function carries its modes on its binder NAMES
-            -- (§6's rule for every other runtime binder), and a recursor spine
-            -- borrows its from its base arm. A borrow-moded Π has no `Val` form,
-            -- so there was never a type here to read them off.
-            let modes ← valBinderModes fuel callee args.length
-            let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
+          -- **A SEALED FUNCTION is called by the table's own rule** (M26-C).
+          -- Its σ carries a moded signature rather than a `Val` type (see
+          -- `St.fsig`), and `callDeclC` is what reads one: telescope in,
+          -- ensures out, one loan group, borrow payloads re-minted. Dispatched
+          -- HERE, before the arguments are read, because `processArgs` does its
+          -- own §6 mode routing off the telescope — pre-reading them would
+          -- consume a comptime argument the callee promised never to touch.
+          | none =>
             match callee with
-            | .lam _ _ => applyLam fuel callee argVals   -- body known ⟹ β
-            -- A runtime function, or a recursor over runtime arms: ⇒-application
-            -- (bind-and-run, and ι with the arm as a body). `ih` arrives here.
-            | .rfn _ _ => applyR fuel callee argVals
-            | .app _ _ => applyR fuel callee argVals
-            | .const _ => applyR fuel callee argVals
             | .sym σ =>
-              match (← get).sctx.lookup σ with
-              | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
-              | some σty => do
-                let resTy ← instantiatePi fuel σty argVals
-                match Val.whnfV fuel resTy with
-                | .pi d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
-                | resTy => do
-                  -- The runtime column of §2.3: the call FORGETS the application
-                  -- and keeps only what the type promised. Deliberately NOT the
-                  -- structured neutral `σ a` — that is ⇝'s rule, and §12 decision
-                  -- 5 keeps the door to remembered-spine runtime calls closed. The
-                  -- two rules coexist unconfused because they are keyed by ARROW:
-                  -- write the application in a type or proof and ⇝ remembers it;
-                  -- write it as a statement and ⇒ mints.
-                  let σ' ← freshSym
-                  modify (fun s => { s with sctx := (σ', resTy) :: s.sctx })
-                  pure (.sym σ')
-            | v => throwErr s!"callV: {x.name}#{x.id} holds {v.pretty}, which is not a function value (expected a λ or a σ : Π)"
+              match (← get).fsig.lookup σ with
+              | some decl => callDeclC fuel decl args
+              | none => callVValue fuel x callee args
+            | _ => callVValue fuel x callee args
       -- **The runtime λ** (§7 cost 2). Evaluating one is only forming its value:
       -- the body is a suspension until the binders have arguments.
       --
@@ -3360,6 +3344,235 @@ mutual
       bindActuals fuel offset (i + 1) tRest aRest
     | _, _, _ => throwErr "executeCall: arity mismatch (actuals vs telescope)"
   termination_by _ _ args => (fuel, 1, args.length)
+  /-- Application of a value callee that is NOT a sealed function: the phase-A
+      rules (β for a λ, abstract application at a `Val` Π) plus M26-C's
+      ⇒-application (`applyR`) for a runtime λ or a recursor spine. Split out
+      of `.callV` only so the sealed case can be dispatched before the
+      arguments are read; the rules themselves are unchanged. -/
+  def callVValue : Nat → Var → Val → List Term → M Val
+    | fuel, x, callee, args => do
+      -- **The callee is inspected BEFORE any argument is read** (M26-B).
+          -- Which arrow evaluates an argument is a property of the *binder it
+          -- lands on*, so the modes have to be in hand first; phase A could
+          -- read the whole spine up front only because there was one arrow.
+          -- A λ callee carries its modes on its own domains; a σ : Π carries
+          -- them on the Π it was sealed at — which is the version that matters,
+          -- since the seal's ascription is the whole of what a caller sees.
+          -- M26-C generalizes the mode read past the types it could be read
+          -- from: a runtime function carries its modes on its binder NAMES
+          -- (§6's rule for every other runtime binder), and a recursor spine
+          -- borrows its from its base arm. A borrow-moded Π has no `Val` form,
+          -- so there was never a type here to read them off.
+          let modes ← valBinderModes fuel callee args.length
+          let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
+          match callee with
+          | .lam _ _ => applyLam fuel callee argVals   -- body known ⟹ β
+          -- A runtime function, or a recursor over runtime arms: ⇒-application
+          -- (bind-and-run, and ι with the arm as a body). `ih` arrives here.
+          | .rfn _ _ => applyR fuel callee argVals
+          | .app _ _ => applyR fuel callee argVals
+          | .const _ => applyR fuel callee argVals
+          | .sym σ =>
+            match (← get).sctx.lookup σ with
+            | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
+            | some σty => do
+              let resTy ← instantiatePi fuel σty argVals
+              match Val.whnfV fuel resTy with
+              | .pi d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
+              | resTy => do
+                -- The runtime column of §2.3: the call FORGETS the application
+                -- and keeps only what the type promised. Deliberately NOT the
+                -- structured neutral `σ a` — that is ⇝'s rule, and §12 decision
+                -- 5 keeps the door to remembered-spine runtime calls closed. The
+                -- two rules coexist unconfused because they are keyed by ARROW:
+                -- write the application in a type or proof and ⇝ remembers it;
+                -- write it as a statement and ⇒ mints.
+                let σ' ← freshSym
+                modify (fun s => { s with sctx := (σ', resTy) :: s.sctx })
+                pure (.sym σ')
+          | v => throwErr s!"callV: {x.name}#{x.id} holds {v.pretty}, which is not a function value (expected a λ or a σ : Π)"
+  termination_by fuel _ _ _ => (fuel, 8, 0)
+  /-- **§5.4's audit, relocated to the seal** (M26-C, phase A's deferral).
+
+      Checking a runtime λ against a borrow-moded Π *is* `checkFn`'s content, and
+      this is that content reached from the node instead of from a declaration:
+      seed the telescope, pin the return type at entry (§5.3 — a dependent return
+      type may mention a parameter the body consumes), explore the body one path
+      per symbolic branch, and audit each path at return with exit snapshots and
+      obligations. `checkFn` is untouched and still checks every `Decl` in the
+      corpus (J1): what moved is content, and nothing was deleted.
+
+      **FRAME ISOLATION.** The sealed body gets a fresh Ω, fresh obligations,
+      fresh groups and no `selfRec`/`selfBack` — because it is a function being
+      defined, not code running in the caller's world. Phase A evaluated a seal's
+      body IN PLACE ("correct for phase A, and a sealed FUNCTION body will want
+      frame isolation") and this is that debt paid. What crosses the boundary in
+      each direction is exactly one thing: the ascribed type comes IN (already
+      peeled, so it was read while the enclosing slots were live), and the fresh
+      supplies go OUT advanced, so no later mint can collide with a σ the check
+      put into a type. -/
+  def checkRFnBody : Nat → List (Var × Term) → Term → Term → M Unit
+    | fuel, tel, ret, body => do
+      let saved ← get
+      modify (fun s => { s with env := [], obligations := [], groups := [],
+                                exitSyms := [], entrySyms := [], retTyVal := none,
+                                selfBack := none, selfRec := none })
+      let obs ← seedTelescopeV fuel tel
+      -- §5.4 exit snapshots: one σ per borrow parameter, recorded ONLY here until
+      -- the audit defines it as that borrow's collapsed final payload.
+      let borrowIds := borrowVarIds tel
+      let exits ← borrowIds.mapM (fun i => do pure (i, ← freshSym))
+      modify (fun s => { s with exitSyms := exits, obligations := obs })
+      if !hasBorrowT ret then do
+        let rv ← readC fuel (markExit borrowIds ret)
+        modify (fun s => { s with retTyVal := some rv })
+      let st0 ← get
+      let advanced ← auditAllPaths fuel ret (explore fuel (pushContinuations body) st0) st0
+      set { saved with nextLoan := advanced.nextLoan, nextSym := advanced.nextSym
+                       nextGroup := advanced.nextGroup, nextFrame := advanced.nextFrame }
+  termination_by fuel _ _ _ => (fuel, 6, 0)
+  /-- Sealing a VALUE — phase A's rule, verbatim, in its own definition since
+      M26-C so that `readR`'s seal arm is a two-line dispatch.
+
+      This is what preserves §12-open-4's identity: sealing a borrow-free term at
+      `u` still costs precisely `readC`-then-`hasType`, with no premise of its
+      own, over the whole 16-pair battery. The function-checking rule is reached
+      by the sealed TERM being a runtime λ, never by the ascription happening to
+      have a `&mut` in it — so nothing that used to take this path can be
+      diverted onto the other one. -/
+  def sealValue : Nat → Term → Term → M Val
+    | fuel, t, u => do
+      if hasBorrowT u then
+        throwErr "seal: this term cannot be sealed at a borrow-moded type. A Π with `&mut` binders is a FUNCTION signature, and §5.4's audit is what checks a function against one — so the sealed term must be a runtime λ (`λ(v, …){ … }`) whose binders match it. Sealing anything else at such a Π would be asking `hasType` a question §5.4 does not ask."
+      -- The type is read FIRST, while the body's free variables are still live:
+      -- `u` may mention a slot that evaluating `t` then consumes, and a type
+      -- re-read afterwards would find a ⊥. §5.3's entry-pinning lesson, arriving
+      -- at the seal for the same reason it arrived at a dependent return type.
+      let uV ← readC fuel u
+      let v ← readR fuel t
+      if ← hasType fuel v uV then do
+        -- …then FORGET. A fresh σ at the ascribed type is the whole downstream
+        -- view: `.seal` is generalization, so what the caller keeps is exactly
+        -- what the programmer wrote (§5 point 4). The mint is coherent because
+        -- this is an EVENT — ⇒ evaluates it once, in order — which is the
+        -- property ⇝ lacks and the reason the node is a ⇒-form (§2.1).
+        let σ ← freshSym
+        modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
+        pure (.sym σ)
+      else
+        throwErr s!"seal: the sealed term ({v.pretty}) does not have its ascribed type ({uV.pretty})"
+  termination_by fuel _ _ => (fuel, 9, 0)
+  /-- Sealing a runtime λ: check it, then forget it.
+
+      The two halves are §5's two sentences. The check is `checkRFnBody` against
+      the Π peeled at the λ's OWN binders — the ids its body reaches Ω through.
+      The forgetting mints a σ carrying the same Π peeled at POSITIONAL binders,
+      which is the convention `processArgs`/`buildResult` read a telescope by, so
+      what a caller sees is a callee indistinguishable from a table entry. Both
+      peels come from the same `u`, so they cannot disagree. -/
+  def sealFn : Nat → List Var → Term → Term → M Val
+    | fuel, names, body, u => do
+      match piPeel names u with
+      | .error e => throwErr e
+      | .ok (tel, ret) => do
+        checkRFnBody fuel tel ret body
+        match piPeel (names.enum.map (fun p => Var.mk p.1 p.2.name)) u with
+        | .error e => throwErr e
+        | .ok (ctel, cret) => do
+          let σ ← freshSym
+          let sig : Decl :=
+            { name := "@seal"
+              telescope := ctel.map (fun p => (p.1.name, p.2))
+              retType := cret
+              body := .unit }
+          modify (fun s => { s with fsig := (σ, sig) :: s.fsig })
+          pure (.sym σ)
+  termination_by fuel _ _ _ => (fuel, 7, 0)
+  /-- **The checking-mode call rule** (§5.3/§6.1), factored out of `.call` (M26-C)
+      because a SEALED function is called by exactly the same rule: a σ whose
+      signature is a borrow-moded Π is a callee whose telescope and return type
+      are known and whose body is not, which is what a table entry already was.
+      §3 says this in advance — "today's call rule is not a separate concept from
+      application; it is abstract application at a moded Π" — and factoring is
+      what turns that from a remark into a fact about the code.
+
+      The `[k]` guard rides along and is inert for a seal, which is the right
+      answer rather than a lucky one: a sealed signature is not in the table, so
+      `selfRec`/`reachesFn` cannot match it, and §7 says the guard EVAPORATES for
+      recursor-expressed functions anyway — `ih` is a binder, and a binder cannot
+      be a self-call. -/
+  def callDeclC : Nat → Decl → List Term → M Val
+    | fuel, decl, args => do
+          -- CHECKING (§5.3/§6.1): signature only, mint one loan group. The
+          -- instantiation `inst` (decl var → actual, §5.3) instantiates the
+          -- return and owed types at the actuals this call was given.
+          let (captured, inst) ← processArgs fuel 0 [] decl.telescope args
+          -- §8's snapshot-subterm guard. Signature-only checking means a self-call
+          -- is admitted at this function's own declared return type — its
+          -- POSTCONDITION, once declared backs are gone — so it needs the side
+          -- condition every recursion rule has: something strictly decreases.
+          -- Checked here, after `processArgs`, because the actual's VALUE is what
+          -- the comparison needs and `inst` is where it lands.
+          match (← get).selfRec with
+          | some (selfName, dk) =>
+            if decl.name == selfName then
+              match dk with
+              | none =>
+                throwErr s!"recursion: '{decl.name}' calls itself but declares no decreasing argument ([k], §1.2) — a self-call admitted at its own return type with nothing decreasing proves any postcondition"
+              | some (k, cur) =>
+                match inst.find? (fun kv => kv.1.id == k) with
+                | none => throwErr s!"recursion: '{decl.name}' declares decreasing argument [{k}] but the call passes no such argument"
+                | some (_, act) =>
+                  -- Unwrap a borrow on both sides: what decreases is the payload
+                  -- snapshot, not the loan wrapping it.
+                  let peel : Val → Val := fun v => match v with | .borrowM _ p => p | v => v
+                  let a := Val.nfV fuel (peel act)
+                  let c := Val.nfV fuel (peel cur)
+                  if strictSubterm a c then pure ()
+                  else throwErr s!"recursion: self-call's argument [{k}] ({a.pretty}) is not a strict structural predecessor of the parameter's snapshot ({c.pretty})"
+            else if reachesFn (← get).decls [] decl.name selfName then
+              throwErr s!"recursion: mutual recursion ('{selfName}' → '{decl.name}' → … → '{selfName}') is not supported — the [k] guard is per-declaration (§8)"
+            else pure ()
+          | none => pure ()
+          -- Build the result and the loans it issues from the return type (a
+          -- single borrow, a Pair/Σ of borrows for a multi-issued group, or a
+          -- plain existential wire). One group ties captured to issued. The
+          -- `constrained` flag stays false in real checking — inferring it is
+          -- unsound (`through` vs `advance` share a signature); the test-only
+          -- `forceConstrained` flag reintroduces the bug for harness validation.
+          -- §5.4 caller-side σ-sharing: mint one σ' per captured borrow (typed at
+          -- its owed type). The retType's bare `*v` (marked `@exit`) reflects to
+          -- σ', and the group PINS that captured loan's release to σ' — so the
+          -- returned evidence and the recovered owner are the same σ'. `old *v`
+          -- clears through to the actual entry payload (entrySyms emptied for the
+          -- reflect, so callee/caller var-id collisions can't shadow it). Empty
+          -- when there are no borrow args (a no-op) and dead under a `back` (which
+          -- releases via the spec instead of the pinned σ').
+          let borrowIds := borrowParamIds decl.telescope
+          let sigmas ← (captured.map (·.2)).mapM (fun owed => do
+            let σ ← freshSym
+            modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
+            pure σ)
+          let exitMap := borrowIds.zip sigmas
+          let exitRel := (captured.map (·.1)).zip sigmas
+          let savedE := (← get).exitSyms
+          let savedO := (← get).entrySyms
+          modify (fun s => { s with exitSyms := exitMap, entrySyms := [] })
+          let (resultVal, issued) ← buildResult fuel inst [] (markExit borrowIds decl.retType)
+          modify (fun s => { s with exitSyms := savedE, entrySyms := savedO })
+          let ρ ← freshGroup
+          let fc := (← get).forceConstrained
+          let cons := fc && captured.length == 1 && issued.length == 1
+          -- §6.2: reflect the DECLARED backward spec (if any) at the actuals, so
+          -- the group can compute the captured release from the surrendered
+          -- values instead of a fresh existential.
+          let backV ← match decl.back with
+            | some b => do pure (some (← readCWith fuel inst b))
+            | none => pure none
+          let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, backSpec := backV, exitRelease := exitRel }
+          modify (fun s => { s with groups := grp :: s.groups })
+          pure resultVal
+  termination_by fuel _ _ => (fuel, 5, 0)
   -- Walk the (already `pushContinuations`-normalized) statement spine,
   -- returning one result per execution path. Non-match steps delegate to the
   -- single-path `M` machinery; a terminal match forks per branch on a symbolic

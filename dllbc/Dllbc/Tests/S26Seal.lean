@@ -91,11 +91,15 @@ def a3no : Decl := decl{ fn caller () -> Unit { let a = seal(3, Bool); () } }
 example : ok a3ok = true := by native_decide
 example : rejects a3no "does not have its ascribed type" = true := by native_decide
 
--- A4. The phase-C stub. A borrow-moded `u` is the audit relocation, and saying so
--- is the whole content of the rule for now.
+-- A4. Phase A's stub, RETIRED BY M26-C, which is what it named. A borrow-moded
+-- `u` is a function signature, and §5.4's audit is what checks a function against
+-- one — so the sealed term has to be a runtime λ whose binders match it. Sealing a
+-- PURE λ there is still refused, and now for the reason rather than for the phase:
+-- `hasType` has no answer to a payload-owing Π, and pretending otherwise is the
+-- one thing this rule must not do.
 def a4 : Decl := decl{ fn caller () -> Unit
   { let f = seal(λ (x : Nat). x, &mut Nat); () } }
-example : rejects a4 "M26-C" = true := by native_decide
+example : rejects a4 "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### A5. ⇝ never meets the node
 
