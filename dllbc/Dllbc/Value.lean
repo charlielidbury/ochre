@@ -68,6 +68,19 @@ inductive Val where
       "case is inert under ⇝" is a claim this calculus should not be able to
       violate by accident. -/
   | cmpT    : Val → Val
+  /-- **A runtime function value** (combining-fns §7 cost 2, M26-C): the value a
+      `Term.lamR` evaluates to — named binders and a suspended *body*.
+
+      It carries a `Term`, which no other `Val` does, and the reason is the same
+      one that forces `lamR`'s named binders: a body is not a value and cannot be
+      reflected into one. So a transparent runtime function is a *suspension* —
+      a body plus the names it will bind — and applying it is `readR` on that
+      body under a fresh frame, not `substPure` into a `Val`.
+
+      It is CLOSED (checked at formation), which is what lets it be a leaf for
+      every traversal below: no loans, no σ's, no state markers, nothing to
+      renumber. `ih` is exactly this shape (§7 cost 2's "the boring kind"). -/
+  | rfn     : List Var → Term → Val
 deriving Inhabited
 
 namespace Val
@@ -106,6 +119,11 @@ mutual
     | .cmpT a,     .cmpT b     => beq a b
     | .cmpT a,     b           => beq a b
     | a,           .cmpT b     => beq a b
+    -- Syntactic, on binder names AND body: a runtime function value is a
+    -- suspension, so there is no reduction to compare it up to. Two `lamR`s that
+    -- differ only in binder ids are different values here — which is correct,
+    -- because the ids are what their bodies reach Ω through.
+    | .rfn xs a,   .rfn ys b   => xs == ys && a == b
     | _,           _           => false
   -- Both sides: the mode-blind arms peel a `cmpT` from one side only.
   termination_by v w => sizeOf v + sizeOf w
@@ -173,6 +191,10 @@ mutual
     | .idT _ a b =>
       let s := s!"Id {prettyPrec 1 a} {prettyPrec 1 b}"
       if prec > 0 then s!"({s})" else s
+    | .rfn xs _ =>
+      -- The binders, not the body: a rejection naming a function value wants to
+      -- say WHICH function, and the body is a whole program.
+      "λr(" ++ String.intercalate ", " (xs.map (·.name)) ++ "){…}"
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -212,6 +234,7 @@ mutual
     | .type => []
     | .const _ => []
     | .cmpT τ => loanIds τ
+    | .rfn _ _ => []                                    -- closed: no loans to find
     | .pi d c => loanIds d ++ loanIds c
     | .sigmaT d c => loanIds d ++ loanIds c
     | .lam d c => loanIds d ++ loanIds c
@@ -307,6 +330,7 @@ mutual
     | .type => []
     | .const _ => []
     | .cmpT τ => symIds τ
+    | .rfn _ _ => []                                    -- closed: no σ's to find
     | .pi d c => symIds d ++ symIds c
     | .sigmaT d c => symIds d ++ symIds c
     | .lam d c => symIds d ++ symIds c
@@ -332,6 +356,7 @@ mutual
     | .type => .type
     | .const c => .const c
     | .cmpT τ => .cmpT (renumber fℓ fσ τ)
+    | .rfn xs b => .rfn xs b                            -- closed: nothing to renumber
     | .pi d c => .pi (renumber fℓ fσ d) (renumber fℓ fσ c)
     | .sigmaT d c => .sigmaT (renumber fℓ fσ d) (renumber fℓ fσ c)
     | .lam d b => .lam (renumber fℓ fσ d) (renumber fℓ fσ b)

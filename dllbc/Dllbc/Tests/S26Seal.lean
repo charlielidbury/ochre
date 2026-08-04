@@ -405,40 +405,20 @@ example : rejects c14bad "does not have return type" = true := by native_decide
     pass (a σ bound twice to different values fails there), so the first pass needs
     no failure mode at all. This is the same relation S9Diff states — "the concrete
     env is a σ-instance of the symbolic one" — with *instance* read up to the pure
-    fragment's own computation instead of up to structure. -/
+    fragment's own computation instead of up to structure.
 
-open Dllbc.Tests.S9Diff (runExec symEnvs instanceOf)
+    **MERGED into `S9Diff` by M26-C.** This section originally carried its own copy
+    of the two passes, alongside a note that it and `matchVal` were incomparable —
+    one computed and had no array-segment case, the other had segments and did not
+    compute. `S9Diff.instanceOfC` is the single relation with both, and the names
+    below are now `open`ed from there rather than defined here. The section is kept
+    because the counterexample it found (D1) is what motivated the extension, and it
+    still discriminates. -/
 
-/-- Pass 1: every σ that stands at a position of the symbolic value gets the
-    concrete value opposite it. First binding wins; pass 2 catches inconsistency. -/
-partial def collectSyms : Val → Val → List (Nat × Val) → List (Nat × Val)
-  | .sym σ, cv, s => if (s.find? (·.1 == σ)).isSome then s else (σ, cv) :: s
-  | .ctor _ a1, .ctor _ a2, s => go a1 a2 s
-  | .borrowM _ p, .borrowM _ q, s => collectSyms p q s
-  | _, _, s => s
-where
-  go : List Val → List Val → List (Nat × Val) → List (Nat × Val)
-  | v1 :: vs1, v2 :: vs2, s => go vs1 vs2 (collectSyms v1 v2 s)
-  | _, _, s => s
+open Dllbc.Tests.S9Diff (runExec symEnvs instanceOf instanceOfC diffC)
 
-/-- Pass 2: instantiate and compute. Concrete values carry no σ, so one sweep is a
-    fixpoint. -/
-def instantiateSyms (subst : List (Nat × Val)) (v : Val) : Val :=
-  Val.nfV 2000 (subst.foldl (fun acc kv => substSym kv.1 kv.2 acc) v)
-
-/-- The concrete env is a σ-instance of the symbolic one, up to computation. -/
-def instanceOfComputed (symEnv concEnv : Env) : Bool :=
-  let subst := (symEnv.zip concEnv).foldl (fun s p => collectSyms p.1.2 p.2.2 s) []
-  symEnv.length == concEnv.length
-    && (symEnv.zip concEnv).all
-         (fun p => p.1.1 == p.2.1 && instantiateSyms subst p.1.2 == p.2.2)
-
-/-- The differential, under the extended relation. -/
-def diffC (table : List Decl) (body : Term) : Bool :=
-  match runExec table body with
-  | .error _ => false
-  | .ok ce => (symEnvs false table body).any
-      (fun r => match r with | .ok se => instanceOfComputed se ce | .error _ => false)
+/-- The M26-A name, retained so this section reads as written. -/
+abbrev instanceOfComputed := Dllbc.Tests.S9Diff.instanceOfC
 
 /-- The differential, under S9Diff's relation — kept so the gap is exhibited, not
     asserted. -/

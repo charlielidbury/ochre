@@ -125,6 +125,15 @@ syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut
 syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
 syntax:65 uterm:65 uterm:66 : uterm                          -- application (juxtaposition)
 syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
+-- M26-C's runtime λ (combining-fns §7 cost 2). Written `λ(x, y) { … }` — a
+-- comma-separated binder LIST and a braced BODY, against the pure λ's single
+-- typed binder and dotted term. The two are told apart by shape alone, which is
+-- the right marker: what differs is not the arity but the fragment — the pure λ's
+-- body is a term ⇝ reduces by substitution, this one's is a body ⇒ runs by
+-- binding Ω slots. The binders carry NO types: a runtime λ is checked against an
+-- ascription (the seal's Π, or a recursor arm's premise type), and §5 point 4 is
+-- that the ascription is the contract.
+syntax:max "λ" "(" ident,* ")" "{" ublk "}" : uterm          -- .lamR
 syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow form)
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
@@ -338,6 +347,15 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.lam $(← binderDom (x.getId.toString) τ') $b'), n2)
+  | `(uterm| λ ($xs:ident,*) { $b:ublk }) => do
+    -- Runtime binders, so fresh absolute ids threaded through `next` exactly as
+    -- `let` and match patterns mint them — and pushed onto `rctx`, not `pctx`:
+    -- the body reaches them through Ω. The body is a ⇒ position whatever
+    -- surrounds the node, which is the same asymmetry the seal has.
+    xs.getElems.forM checkBinder
+    let (rctx', next', binderVars) ← Dllbc.Macro.mintBinders rctx next xs.getElems.toList
+    let (b', n) ← elabUBlk false rctx' pctx next' b
+    return (← `(Dllbc.Term.lamR [$binderVars,*] $b'), n)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ

@@ -177,6 +177,29 @@ inductive Term where
       callee is a `Var` because that is all §7 needs (`ih` is a bound variable) and
       it keeps the form's shape identical to `.matchE`'s scrutinee. -/
   | callV  : Var → List Term → Term
+  /-- `λ(x, y, …) { body }` — **the runtime λ** (combining-fns §7 cost 2), the
+      form phase A filed and could not build: a λ whose body is a *body* (writes,
+      calls, borrows, matches) rather than a pure term.
+
+      Its binders are **named runtime `Var`s**, not de Bruijn, and that is forced
+      rather than chosen: a body reaches its binders through Ω — `.matchE`
+      scrutinizes a `Var`, `&mut x` roots a place at a `Var`, `.callV` calls a
+      `Var` — and a de Bruijn index names no slot. So the pure λ (`.lam`, domain-
+      annotated, body a `Val`) and this one are the two halves §7 cost 5 predicts:
+      same former in the document, two representations in the machine, because
+      one substitutes and the other binds.
+
+      **Curry-style, deliberately: the binders carry names and no types.** A
+      runtime λ is checked against an *ascription* — the seal's Π (§5), or a
+      recursor arm's premise type derived from the motive — so an annotation here
+      would be a second source of truth for the contract, and §5 point 4 is that
+      the ascription IS the contract. Executing needs no types at all.
+
+      **Saturated** (§12 decision 4) and **closed** (§7 cost 2's "arms reference
+      only their own binders and globals"). Closedness is CHECKED where the value
+      is formed, not assumed: an escaping free variable would otherwise be
+      silently captured by the frame shift. -/
+  | lamR   : List Var → Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
@@ -253,6 +276,7 @@ mutual
     | .call f as, .call g bs => f == g && Term.beqList as bs
     | .seal a b, .seal c d => Term.beq a c && Term.beq b d
     | .callV x as, .callV y bs => x == y && Term.beqList as bs
+    | .lamR xs a, .lamR ys b => xs == ys && Term.beq a b
     | .unit, .unit => true
     | .pvar k, .pvar j => k == j
     | .type, .type => true
@@ -312,6 +336,102 @@ mutual
     | [] => []
     | t :: ts => Term.shiftPure d c t :: Term.shiftPureList d c ts
   termination_by ts => sizeOf ts
+end
+
+/-! ## Pure de Bruijn substitution on `Term` (M26-C)
+
+    The mirror of `Val.substPure`, and it exists for one reason: **a borrow-moded
+    Π has no `Val` form.** `borrowT` is a telescope-position marker that `readC`
+    refuses to reflect, so `Π (v : &mut List Nat) → …` — the type a sealed
+    function is ascribed (§5) and the type a recursor arm is checked at (§7) —
+    can only ever be manipulated as a `Term`. Peeling such a Π into a telescope
+    therefore needs substitution at the `Term` level, which is this.
+
+    Textbook (lift `s` at every binder crossed) rather than `Val.substPure`'s
+    delayed-lifting version: this runs once per seal over a signature, never over
+    a 10⁵-node proof, so the measured hot spot that shaped the `Val` one does not
+    exist here and clarity wins. -/
+mutual
+  def Term.substPure : Nat → Term → Term → Term
+    | j, s, .pvar k => if k == j then s else if k > j then .pvar (k - 1) else .pvar k
+    | j, s, .cmpT τ => .cmpT (Term.substPure j s τ)        -- a domain: same depth
+    | j, s, .lam dom b => .lam (Term.substPure j s dom) (Term.substPure (j+1) (Term.shiftPure 1 0 s) b)
+    | j, s, .pi dom cod => .pi (Term.substPure j s dom) (Term.substPure (j+1) (Term.shiftPure 1 0 s) cod)
+    | j, s, .sigmaT dom cod => .sigmaT (Term.substPure j s dom) (Term.substPure (j+1) (Term.shiftPure 1 0 s) cod)
+    -- `S` binds the entry snapshot at pvar 0 (§5.1), so it is a binder like the rest.
+    | j, s, .borrowT τ S => .borrowT (Term.substPure j s τ) (Term.substPure (j+1) (Term.shiftPure 1 0 s) S)
+    | j, s, .app f a => .app (Term.substPure j s f) (Term.substPure j s a)
+    | j, s, .ctorApp n args => .ctorApp n (Term.substPureList j s args)
+    | j, s, .idT a b c => .idT (Term.substPure j s a) (Term.substPure j s b) (Term.substPure j s c)
+    -- A type may read a live place (`*v`, `a[i]`, `a[lo ; cnt]` — §5.2/¶2.1), and
+    -- those subterms can carry pure variables in their index positions.
+    | j, s, .deref t => .deref (Term.substPure j s t)
+    | j, s, .index t i ev => .index (Term.substPure j s t) (Term.substPure j s i)
+        (match ev with | some e => some (Term.substPure j s e) | none => none)
+    | j, s, .range t lo cnt rest ev eqc =>
+      .range (Term.substPure j s t) (Term.substPure j s lo)
+        (match cnt with | some c => some (Term.substPure j s c) | none => none)
+        (match rest with | some r => some (Term.substPure j s r) | none => none)
+        (match ev with | some e => some (Term.substPure j s e) | none => none)
+        (match eqc with | some e => some (Term.substPure j s e) | none => none)
+    | _, _, t => t                                         -- runtime statement forms / leaves
+  termination_by _ _ t => sizeOf t
+  def Term.substPureList : Nat → Term → List Term → List Term
+    | _, _, [] => []
+    | j, s, t :: ts => Term.substPure j s t :: Term.substPureList j s ts
+  termination_by _ _ ts => sizeOf ts
+end
+
+/-! ## Free runtime variables (M26-C)
+
+    §7 cost 2 says a runtime λ is the *boring* kind of function value: "closed —
+    arms reference only their own binders and globals". This is what makes that
+    **checked rather than assumed**. A body is entered under a fresh id window
+    (`shiftVars`), so a free variable escaping into a `.lamR` would not dangle —
+    it would be silently rebound to whatever the frame shift lands on, which is
+    environment capture arriving by accident in the one phase that defers it
+    (constraint 5). Rejecting at the point the value is formed is the honest
+    alternative. -/
+mutual
+  def Term.freeRVars (bound : List Nat) : Term → List Var
+    | .var x => if bound.contains x.id then [] else [x]
+    | .letIn x rhs rest => Term.freeRVars bound rhs ++ Term.freeRVars (x.id :: bound) rest
+    | .assign p e rest => Term.freeRVars bound p ++ Term.freeRVars bound e ++ Term.freeRVars bound rest
+    | .ctorApp _ args => Term.freeRVarsList bound args
+    | .borrow t | .deref t => Term.freeRVars bound t
+    | .index t i ev =>
+      Term.freeRVars bound t ++ Term.freeRVars bound i
+        ++ (match ev with | some e => Term.freeRVars bound e | none => [])
+    | .range t lo cnt rest ev eqc =>
+      Term.freeRVars bound t ++ Term.freeRVars bound lo
+        ++ (match cnt with | some c => Term.freeRVars bound c | none => [])
+        ++ (match rest with | some r => Term.freeRVars bound r | none => [])
+        ++ (match ev with | some e => Term.freeRVars bound e | none => [])
+        ++ (match eqc with | some e => Term.freeRVars bound e | none => [])
+    | .matchE scrut eqn brs =>
+      (if bound.contains scrut.id then [] else [scrut])
+        ++ Term.freeRVarsBranches (match eqn with | some h => h.id :: bound | none => bound) brs
+    | .seq a b => Term.freeRVars bound a ++ Term.freeRVars bound b
+    | .call _ args => Term.freeRVarsList bound args
+    | .seal t u => Term.freeRVars bound t ++ Term.freeRVars bound u
+    | .callV x args =>
+      (if bound.contains x.id then [] else [x]) ++ Term.freeRVarsList bound args
+    | .lamR xs body => Term.freeRVars (xs.map (·.id) ++ bound) body
+    | .app a b | .pi a b | .lam a b | .sigmaT a b | .borrowT a b =>
+      Term.freeRVars bound a ++ Term.freeRVars bound b
+    | .idT a b c => Term.freeRVars bound a ++ Term.freeRVars bound b ++ Term.freeRVars bound c
+    | .cmpT τ => Term.freeRVars bound τ
+    | _ => []
+  termination_by t => sizeOf t
+  def Term.freeRVarsList (bound : List Nat) : List Term → List Var
+    | [] => []
+    | t :: ts => Term.freeRVars bound t ++ Term.freeRVarsList bound ts
+  termination_by ts => sizeOf ts
+  def Term.freeRVarsBranches (bound : List Nat) : List Branch → List Var
+    | [] => []
+    | (.mk _ bs body) :: rest =>
+      Term.freeRVars (bs.map (·.id) ++ bound) body ++ Term.freeRVarsBranches bound rest
+  termination_by bs => sizeOf bs
 end
 
 /-! Abstract every occurrence of `e` at binder `depth` (mutual with the ctor-arg

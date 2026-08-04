@@ -32,6 +32,7 @@ import Dllbc.Tests.S23Direct
 import Dllbc.Tests.S24Arrays
 import Dllbc.Tests.S26Seal
 import Dllbc.Tests.S26Modes
+import Dllbc.Tests.S26Rec
 import Dllbc.Tests.SInternals
 import Dllbc.Tests.SDeclMacro
 import Dllbc.Tests.SDeclMacroCrown

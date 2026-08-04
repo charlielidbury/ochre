@@ -47,7 +47,10 @@ rejection is about the mode and not about the program.
 
 open Dllbc
 open Dllbc.StdLemmas (le_refl le_trans)
-open Dllbc.Tests.S26Seal (ok rejects caller envOf natT diffC)
+open Dllbc.Tests.S26Seal (ok rejects caller envOf natT)
+-- `diffC` moved to `S9Diff` when M26-C merged the two simulation relations into
+-- one (segments AND computation); same name, same property, one definition.
+open Dllbc.Tests.S9Diff (diffC)
 
 namespace Dllbc.Tests.S26Modes
 

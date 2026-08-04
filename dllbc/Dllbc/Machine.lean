@@ -377,6 +377,12 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   | .const _ => true
   | .pi _ _ => true
   | .lam _ _ => true
+  -- A runtime function value is closed and marker-free, so the ownership
+  -- machinery is doubly vacuous on it exactly as it is on a λ — and `ih` is read
+  -- once per recursive call site, so copy-on-read is what makes a body able to
+  -- recurse twice (`quicksort`'s two halves). §7 cost 2's "never partially
+  -- applied, closed" is what earns this.
+  | .rfn _ _ => true
   | .idT _ _ _ => true
   | .app _ _ => true                                        -- a pure-former spine (proof/type)
   | .pvar _ => true
@@ -394,6 +400,7 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
 mutual
   def substSym (σ : Nat) (newV : Val) : Val → Val
     | .sym σ' => if σ' == σ then newV else .sym σ'
+    | .rfn xs b => .rfn xs b                             -- closed: no σ inside
     | .borrowM ℓ p => .borrowM ℓ (substSym σ newV p)
     | .cmpT τ => .cmpT (substSym σ newV τ)
     | .ctor n args => .ctor n (substSymList σ newV args)
@@ -906,6 +913,11 @@ mutual
     -- and `Val` has no seal former (no comptime RULE for it can be written).
     | .seal _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — the seal is a ⇒-form, because minting a fresh σ needs an event and ⇝ has none (§5)"
     | .callV _ _ => throwErr "readC (⇝): a value-callee call is not in the comptime fragment — comptime application of an abstract function is the structured neutral `f a`, written as an application (§2.1)"
+    -- The runtime λ joins the same list, and for the same structural reason as
+    -- the seal: it is its own constructor, and its body is a BODY. ⇝'s λ is
+    -- `.lam` — domain-annotated, de Bruijn, body a pure term — and a `.lamR`
+    -- would have to be reduced by binding named slots, which is ⇒'s move.
+    | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
   def reflectCList : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
@@ -1035,6 +1047,10 @@ partial def calleeNames : Term → List String
   -- names no DECLARATION (that is the point of it), but its arguments may.
   | .seal t u => calleeNames t ++ calleeNames u
   | .callV _ args => args.flatMap calleeNames
+  -- A runtime λ's body is ordinary runtime code and may call declared functions;
+  -- the reachability check must see through it or a recursion routed through an
+  -- arm would be invisible to it.
+  | .lamR _ body => calleeNames body
   | .letIn _ a b => calleeNames a ++ calleeNames b
   | .assign a b c => calleeNames a ++ calleeNames b ++ calleeNames c
   | .seq a b => calleeNames a ++ calleeNames b
@@ -1992,6 +2008,11 @@ mutual
     | .seal t u => .seal (shiftVars d t) (shiftVars d u)
     -- The callee is a slot, so it shifts exactly as a `.matchE` scrutinee does.
     | .callV x args => .callV ⟨x.id + d, x.name⟩ (shiftVarsList d args)
+    -- A runtime λ's binders shift WITH its body, which is the property that makes
+    -- frames compose: applying a `lamR` shifts the whole node into a fresh
+    -- window, so binder ids and their occurrences stay in step no matter how many
+    -- frames a nested one has already been carried through.
+    | .lamR xs body => .lamR (xs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVars d body)
     -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
     -- — a pure spine over the runtime `v`, `i`, `g`). Their `.var` leaves must
     -- shift with the executing-mode frame too; `.pvar`/`.type`/`.const` (no
@@ -2083,26 +2104,101 @@ def binderModes : Nat → Val → Nat → List Bool
     under-applied one, and phase A has no mode information to tell them apart, so
     both are refused here. -/
 
-/-- β for a literal λ callee: check each argument against its binder's domain,
-    substitute, repeat. Domain-checking is CHECKING-mode only — executing mode
-    runs already-accepted programs and `bindActuals` sets that precedent — so the
-    two machines perform the same reduction and differ only in what they verify. -/
-def applyLam : Nat → Val → List Val → M Val
-  | 0, _, _ => throwErr "callV: out of fuel (λ application)"
-  | fuel + 1, f, [] =>
-    match Val.whnfV fuel f with
-    | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
-    | v => pure v
-  | fuel + 1, f, a :: rest =>
-    match Val.whnfV fuel f with
-    | .lam dom body => do
-      if (← get).executing then applyLam fuel (Val.substPure 0 a body) rest
-      -- `hasType` strips the mode marker: which arrow READ the argument was
-      -- settled before this call (`binderModes`), and what remains is the
-      -- ordinary domain check.
-      else if ← hasType fuel a dom then applyLam fuel (Val.substPure 0 a body) rest
-      else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
-    | other => throwErr s!"callV: too many arguments — {other.pretty} is not a function"
+/-! ## Effectful recursors: the spine layouts, and where the arms sit (M26-C)
+
+    §7 promotes "recursion is eliminators" from soundness argument to semantics,
+    and cost 5 says the executing machine takes the change first: **ι-reduction
+    of a recursor whose arms are BODIES**. The layouts below are the only
+    kernel knowledge that rule needs — everything else is the arms' own. -/
+
+/-- For a recursor constant: how many arguments precede the scrutinee, the index
+    of the **motive**, and the index of the **base arm**.
+
+    The base arm is where a spine's binder MODES are read from — its binders are
+    exactly the trailing, motive-supplied ones (`z : P Z` and `s : Π k → P k →
+    P (S k)` end in the same telescope), and the arms are the only place a
+    runtime recursor has names at all.
+
+    The motive index is here because of the rule below it: **⇒ does not evaluate
+    the motive.** -/
+def recLayout : String → Option (Nat × Nat × Nat)
+  | "natRec"  => some (3, 0, 1)   -- P z s ⟨n⟩          ; motive `P`, base arm `z`
+  | "listRec" => some (4, 1, 2)   -- A P pn pc ⟨l⟩      ; motive `P`, base arm `pn`
+  | "boolRec" => some (3, 0, 1)   -- P t f ⟨b⟩          ; motive `P`, base arm `t`
+  | _ => none
+
+/-- What ⇒ puts in a runtime recursor spine's **motive** slot.
+
+    A runtime recursor's motive is `λ f. Π (v : &mut List Nat) → …` — a
+    borrow-moded Π, and `readC` refuses `borrowT` outright ("only valid at a
+    telescope position"), so the motive has **no ⇝ reading and therefore no
+    value**. That is not an obstacle to work around; it is the fragment line
+    doing its job, and the right response is that ⇒ has no use for the motive
+    either: ι never inspects it (only the scrutinee's constructor selects an
+    arm), and §7 settles where the checking side gets it — "the motive is derived
+    from the signature", i.e. from the seal's ascription, which the checker holds
+    as a TERM.
+
+    So the slot is kept — one grammar, one arity, `recLayout` unchanged between
+    fragments — and filled with this marker, which no rule reads. The motive a
+    program writes is checked where it can be: at the seal, against the one
+    derived from the ascribed Π. -/
+def erasedMotive : Val := .const "@motive"
+
+/-- Collect a `Term` application spine into head and arguments (the mirror of
+    `Val.collectSpine`, needed because ⇒ meets recursors as terms first). -/
+def collectAppT : Term → Term × List Term
+  | .app f a => let (h, as) := collectAppT f; (h, as ++ [a])
+  | t => (t, [])
+
+/-- Is this term a recursor spine with at least one **runtime** arm — i.e. one ⇒
+    must evaluate rather than hand to `readC`? Keyed syntactically on a literal
+    `.lamR` in an argument position, which is exactly what the `fn` elaboration
+    produces and what `readC` would refuse. A recursor over pure arms is
+    untouched and still goes through the pure lift. -/
+def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
+  match collectAppT t with
+  | (.const c, args) =>
+    if (recLayout c).isSome && args.any (fun a => match a with | .lamR _ _ => true | _ => false)
+    then some (c, args) else none
+  | _ => none
+
+/-- Mint a fresh frame window for an inlined body's slots (the executing call
+    rule's device, now shared with runtime-λ application). -/
+def freshFrame : M Nat := do
+  let s ← get
+  set { s with nextFrame := s.nextFrame + 128 }
+  pure s.nextFrame
+
+/-- The binder modes of a callee **value**, generalizing `binderModes` past the
+    types it can read them off (§6, M26-C).
+
+    A `Π`/`λ` carries its modes on its domains, which is what `binderModes`
+    reads. A runtime function carries them where §6 puts them for every other
+    runtime binder — **the binder's own name** — so no type is consulted at all,
+    and none could be: a borrow-moded Π has no `Val` form. A recursor spine
+    borrows its trailing modes from its BASE arm, whose binders are exactly the
+    ones the motive supplies (`z : P Z` and `s : Π k → P k → P (S k)` end in the
+    same telescope); its own scrutinee is runtime, being the thing ι splits on. -/
+def valBinderModes : Nat → Val → Nat → M (List Bool)
+  | _, _, 0 => pure []
+  | 0, _, n => pure (List.replicate n false)
+  | fuel + 1, v, n + 1 => do
+    let (head, args) := Val.collectSpine v
+    match head with
+    | .rfn names _ => pure ((names.map Var.isComptime ++ List.replicate (n + 1) false).take (n + 1))
+    | .const c =>
+      match recLayout c with
+      | none => pure (binderModes fuel v (n + 1))
+      | some (k, _, b) =>
+        if args.length == k then pure (false :: (← valBinderModes fuel (args.getD b .bot) n))
+        else if args.length == k + 1 then valBinderModes fuel (args.getD b .bot) (n + 1)
+        else pure (List.replicate (n + 1) false)
+    | .sym σ =>
+      match (← get).sctx.lookup σ with
+      | some σty => pure (binderModes fuel σty (n + 1))
+      | none => pure (List.replicate (n + 1) false)
+    | _ => pure (binderModes fuel v (n + 1))
 
 /-- Instantiate an abstract callee's Π-type at the arguments, returning the result
     type. This is `synthSpine` with the errors kept apart: a mistyped argument and
@@ -2418,16 +2514,20 @@ mutual
             -- A λ callee carries its modes on its own domains; a σ : Π carries
             -- them on the Π it was sealed at — which is the version that matters,
             -- since the seal's ascription is the whole of what a caller sees.
-            let modes ← match callee with
-              | .lam _ _ => pure (binderModes fuel callee args.length)
-              | .sym σ =>
-                match (← get).sctx.lookup σ with
-                | some σty => pure (binderModes fuel σty args.length)
-                | none => pure []
-              | _ => pure []
+            -- M26-C generalizes the mode read past the types it could be read
+            -- from: a runtime function carries its modes on its binder NAMES
+            -- (§6's rule for every other runtime binder), and a recursor spine
+            -- borrows its from its base arm. A borrow-moded Π has no `Val` form,
+            -- so there was never a type here to read them off.
+            let modes ← valBinderModes fuel callee args.length
             let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
             match callee with
             | .lam _ _ => applyLam fuel callee argVals   -- body known ⟹ β
+            -- A runtime function, or a recursor over runtime arms: ⇒-application
+            -- (bind-and-run, and ι with the arm as a body). `ih` arrives here.
+            | .rfn _ _ => applyR fuel callee argVals
+            | .app _ _ => applyR fuel callee argVals
+            | .const _ => applyR fuel callee argVals
             | .sym σ =>
               match (← get).sctx.lookup σ with
               | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
@@ -2447,6 +2547,30 @@ mutual
                   modify (fun s => { s with sctx := (σ', resTy) :: s.sctx })
                   pure (.sym σ')
             | v => throwErr s!"callV: {x.name}#{x.id} holds {v.pretty}, which is not a function value (expected a λ or a σ : Π)"
+      -- **The runtime λ** (§7 cost 2). Evaluating one is only forming its value:
+      -- the body is a suspension until the binders have arguments.
+      --
+      -- CLOSEDNESS IS CHECKED HERE, at the one point the value is formed. §7's
+      -- "arms reference only their own binders and globals" is a real premise,
+      -- not a description: a body is entered under a fresh id window, so a free
+      -- variable would not dangle — it would be silently rebound to whatever the
+      -- shift lands on, which is environment capture arriving by accident in the
+      -- phase that defers it (constraint 5). Rejecting is the honest option, and
+      -- the rejection names the variable.
+      | .lamR names body => do
+        -- A NULLARY runtime λ is refused, and the reason is a genuine ambiguity
+        -- rather than tidiness: `λ(){ e }` is a thunk, and at ι there is no way
+        -- to tell "the arm applied to no arguments" (force it) from "the arm with
+        -- nothing owed" (it IS the value) — `applyRest` has to answer one way.
+        -- Nothing in §7 wants a thunk: a recursor whose motive is not a function
+        -- type has no trailing binders, so its arms are ordinary terms and the
+        -- pure recursor already computes them.
+        if names.isEmpty then
+          throwErr "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
+        match (Term.freeRVars (names.map (·.id)) body).head? with
+        | some x =>
+          throwErr s!"λr: the runtime λ's body mentions {x.name}#{x.id}, which is none of its {names.length} binder(s). §7 cost 2 admits only the CLOSED kind of function value — its body may name its own binders and globals, nothing else — and environment capture stays deferred (constraint 5). Make what it needs a parameter."
+        | none => pure (.rfn names body)
       | .unit => pure (.ctor "unit" [])
       -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
       -- to variable consumption. A comptime-only former (a proof term — an
@@ -2468,7 +2592,19 @@ mutual
       | .pi _ _ => readC fuel t
       | .sigmaT _ _ => readC fuel t
       | .lam _ _ => do collapseCDerefs fuel t; readC fuel t
-      | .app _ _ => do collapseCDerefs fuel t; readC fuel t
+      -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
+      -- lift below sends every other application spine to `readC`; one whose arms
+      -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
+      -- evaluates the spine itself — arms to runtime function values, the rest by
+      -- the ordinary rules — and hands it to `applyR`. Unsaturated (the sealed
+      -- `natRec P z s`, three arguments and no scrutinee) that is a value; at a
+      -- concrete scrutinee it ι-reduces on the spot.
+      | .app _ _ => do
+        match runtimeRecSpine? t with
+        | some (c, args) => do
+          let vs ← readRecArgs fuel (match recLayout c with | some (_, m, _) => m | none => 0) 0 args
+          applyR fuel (Val.rebuildSpine (.const c) vs) []
+        | none => do collapseCDerefs fuel t; readC fuel t
       | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
       -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
       -- reader to notice: each behaves the way the corresponding column behaves at
@@ -2511,6 +2647,133 @@ mutual
         | _ => readR fuel a
       pure (v :: (← readArgsModed fuel (ms.drop 1) as))
   termination_by fuel _ as => (fuel, 1, as.length)
+  /-- A runtime recursor spine's arguments: everything ⇒-read, except the motive,
+      which is not read at all (`erasedMotive` — a borrow-moded Π has no ⇝
+      reading, and ι has no use for one). -/
+  def readRecArgs : Nat → Nat → Nat → List Term → M (List Val)
+    | _, _, _, [] => pure []
+    | fuel, mi, i, a :: as => do
+      let v ← if i == mi then pure erasedMotive else readR fuel a
+      pure (v :: (← readRecArgs fuel mi (i + 1) as))
+  termination_by fuel _ _ as => (fuel, 1, as.length)
+  /-- β for a literal λ callee: check each argument against its binder's domain,
+      substitute, repeat. Domain-checking is CHECKING-mode only — executing mode
+      runs already-accepted programs and `bindActuals` sets that precedent — so
+      the two machines perform the same reduction and differ only in what they
+      verify. (In the mutual block since M26-C: a residual that is not a `.lam`
+      may be a runtime function, and application composes through `applyR`.) -/
+  def applyLam : Nat → Val → List Val → M Val
+    | 0, _, _ => throwErr "callV: out of fuel (λ application)"
+    | fuel + 1, f, [] =>
+      match Val.whnfV fuel f with
+      | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
+      | v => pure v
+    | fuel + 1, f, a :: rest =>
+      match Val.whnfV fuel f with
+      | .lam dom body => do
+        if (← get).executing then applyLam fuel (Val.substPure 0 a body) rest
+        -- `hasType` strips the mode marker: which arrow READ the argument was
+        -- settled before this call (`valBinderModes`), and what remains is the
+        -- ordinary domain check.
+        else if ← hasType fuel a dom then applyLam fuel (Val.substPure 0 a body) rest
+        else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
+      -- A pure λ whose body turns out to be a runtime function (or a recursor):
+      -- hand the remaining spine to the ⇒-application rule rather than calling it
+      -- an arity error. One application story, two reduction rules.
+      | other => applyR fuel other (a :: rest)
+  termination_by fuel _ args => (fuel, 1, args.length)
+  /-- **⇒-application of a function VALUE to a saturated spine** (§7 costs 2/3/5).
+
+      Three reduction rules, chosen by the head — and the point of collecting the
+      spine first is that they COMPOSE: ι hands its arm the scrutinee's
+      predecessor, the recursor at that predecessor, and everything the caller
+      still owed, all in one saturated application, so no intermediate partial
+      application ever exists to hold a borrow (§12 decision 4's whole reason).
+
+        * a **runtime function** (`rfn`) — bind its names in a fresh frame and
+          ⇒-evaluate its body (`applyRFn`). This is the rule phase A could not
+          write: a body is not a `Val`, so β cannot substitute it.
+        * a **recursor at a constructor scrutinee** — ι, with the arm applied as
+          a body. `natRec P z s (S m) v … ↦ s m ⟨natRec P z s m⟩ v …`, and the
+          middle argument is `ih`: literally the recursor at the predecessor,
+          closed, a value, never partially applied (§7 cost 2's "boring kind").
+        * a **pure λ** — β, delegated to `applyLam` unchanged.
+
+      A recursor **stuck on a symbolic scrutinee is a value**, not an error: that
+      is exactly what an unapplied `ih` is in checking mode. Applying one is
+      arms-as-bodies checking, and is rejected here until that rule lands. -/
+  def applyR : Nat → Val → List Val → M Val
+    | 0, _, _ => throwErr "applyR: out of fuel"
+    | fuel + 1, f, args => do
+      let (head, sargs) := Val.collectSpine f
+      let all := sargs ++ args
+      match head, all with
+      | .rfn names body, _ =>
+        if all.length == names.length then applyRFn fuel names body all
+        else if all.length < names.length then
+          throwErr s!"callV: partial application — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {all.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
+        else
+          throwErr s!"callV: too many arguments — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {all.length}"
+      | .const "natRec", motive :: z :: s :: n :: rest =>
+        match Val.whnfV fuel n with
+        | .ctor "Z" [] => applyRest fuel z rest
+        | .ctor "S" [m] =>
+          applyRest fuel s (m :: Val.rebuildSpine (.const "natRec") [motive, z, s, m] :: rest)
+        | n' => stuckRec fuel (.const "natRec") [motive, z, s, n'] rest
+      | .const "boolRec", motive :: t :: e :: b :: rest =>
+        match Val.whnfV fuel b with
+        | .ctor "True" [] => applyRest fuel t rest
+        | .ctor "False" [] => applyRest fuel e rest
+        | b' => stuckRec fuel (.const "boolRec") [motive, t, e, b'] rest
+      | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
+        match Val.whnfV fuel l with
+        | .ctor "Nil" [] => applyRest fuel pn rest
+        | .ctor "Cons" [h, tl] =>
+          applyRest fuel pc (h :: tl :: Val.rebuildSpine (.const "listRec") [a, motive, pn, pc, tl] :: rest)
+        | l' => stuckRec fuel (.const "listRec") [a, motive, pn, pc, l'] rest
+      | .lam _ _, _ => applyLam fuel head all
+      -- Not a redex. Applied to nothing — the under-applied `natRec P z s` a seal
+      -- ascribes, or a recursor stuck on a σ — it is a VALUE; applied to
+      -- something it cannot consume, it is over-application.
+      | _, _ =>
+        if args.isEmpty then pure (Val.whnfV fuel f)
+        else throwErr s!"callV: too many arguments — {head.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
+  termination_by fuel _ _ => (fuel, 2, 0)
+  /-- ι's continuation: the selected arm, applied to whatever the caller still
+      owed. **With nothing owed the arm IS the value** — `natRec P z s Z` at a
+      motive that computes a function type is that function, not a call of it —
+      and keeping that distinct from `applyR arm []` is what lets a zero-argument
+      value-callee call (`f()`) still be the partial application it is. -/
+  def applyRest : Nat → Val → List Val → M Val
+    | fuel, arm, [] => pure (Val.whnfV fuel arm)
+    | fuel, arm, rest => applyR fuel arm rest
+  termination_by fuel _ _ => (fuel, 3, 0)
+  /-- A recursor that did not ι. With nothing owed it is a VALUE — the abstract
+      self-view `ih` at a symbolic predecessor, which is precisely what §7's
+      convergence argument says a recursive occurrence must be. With arguments
+      owed it is arms-as-bodies checking at a symbolic scrutinee. -/
+  def stuckRec : Nat → Val → List Val → List Val → M Val
+    | _, head, spine, [] => pure (Val.rebuildSpine head spine)
+    | _, head, spine, _ =>
+      throwErr s!"applyR: {head.pretty} is stuck on a symbolic scrutinee ({(spine.getD (spine.length - 1) .bot).pretty}) and cannot ι. Applying a recursor at a symbolic scrutinee is arms-as-bodies CHECKING (§7 cost 1) — reachable through a seal, not through a call."
+  /-- Apply a runtime function: bind its named binders in a **fresh frame** and
+      ⇒-evaluate its body.
+
+      The frame is what makes recursion work at all — the same body is entered
+      once per level, and its binders are the same `Var` ids every time — and
+      `shiftVars` moves the binders WITH the body, so a nested runtime λ that has
+      already been carried through one frame stays consistent in the next. The
+      body's own borrows are released on the way out, exactly as an inlined
+      callee's are (`releaseFrameLoans`), so a frame's loans cannot outlive it. -/
+  def applyRFn : Nat → List Var → Term → List Val → M Val
+    | fuel, names, body, args => do
+      let offset ← freshFrame
+      let shifted := shiftVars offset body
+      (names.zip args).forM (fun p => bindSlot ⟨p.1.id + offset, p.1.name⟩ p.2)
+      let res ← readR fuel shifted
+      releaseFrameLoans fuel offset res.loanIds
+      pure res
+  termination_by fuel _ _ _ => (fuel, 4, 0)
   /-- Consume a call's arguments left-to-right, checking each against its
       telescope entry, and RETURN the captured loans (§6.1): each argument
       borrow's loan ℓ with its owed type `S[s := v]`. A pure argument must
