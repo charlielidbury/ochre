@@ -29,6 +29,8 @@ A DLLBC program is a set of function declarations. A declaration gives a name, a
 parameter list, a return type, and a body:
 
 ```
+-- Sets the `i`th element of `v` to `x`. The caller must supply proof
+-- that `i` is a valid index; that proof is `hi`.
 fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v)) -> …
    { … }
 ```
@@ -54,8 +56,42 @@ f(a, b);          -- call, result discarded
 result            -- the final expression is the return value
 ```
 
-Calls use parentheses with no space — `split_off(&mut *v, i, hi)`. Pure functions from
-the library apply by juxtaposition, Lean-style — `add i (S j)`, `le_trans a b c h1 h2`.
+**There are two kinds of functions, and the call syntax tells them apart.**
+
+*Runtime functions* are the `fn` declarations above — `set_at` is one. They are
+imperative: allowed to borrow, mutate, and call other runtime functions. A call is a
+statement (or a `let`), written with parentheses and no space before them:
+
+```
+let v = Cons(3, Cons(1, Nil));
+set_at(&mut v, 1, 9, h);        -- h is the bounds proof — chapter 4's business
+let rest = split_off(&mut v, 1, h2);
+```
+
+Runtime functions can be called only inside bodies, never in types.
+
+*Pure functions* are mathematical. The standard vocabulary — `add`, `len`, `count`,
+`take`, `leb`, … — is made of them, and you can write your own: a pure function is just
+a λ-term, and `let` binds one like any other value:
+
+```
+let double = λ (n : Nat). add n n;
+…
+```
+
+They apply by juxtaposition, Lean-style — `double i`, `add i (S j)`,
+`le_trans a b c h1 h2` — no parentheses around the argument list. Their restrictions: no
+borrows, no mutation, no calls to runtime functions, and recursion only by structural
+induction (via `elim` — chapter 5, which is also where nontrivial definitions like the
+one above get their real shape). In exchange they are usable *everywhere* — inside
+bodies, and crucially inside **types**, which are made of them.
+
+The pure layer is also the erasable one. A pure value that exists only to satisfy the
+checker — a type, or (from chapter 4 on) a proof — carries nothing a running program
+needs, and is gone by the time runtime happens. A pure result you bind and use *as data*
+(`let y = append a b` and then storing `y`) is ordinary computation and of course
+remains. Today's interpreter evaluates pure terms instead of erasing them, which costs
+time and changes nothing observable; compiled output would drop them.
 
 ## 2. Ownership
 
@@ -108,6 +144,7 @@ Types are expressions in the same language, so a type can mention values — inc
 current payload of a borrow, written `*v`:
 
 ```
+-- Sets the `i`th element of `v` to `x`; `hi` proves `i` is in bounds.
 fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v)) -> …
 ```
 
@@ -129,15 +166,15 @@ expect, because so much of the vocabulary computes.
 
 ## 5. Writing proofs
 
-Proof terms live in `pure{ … }` blocks — the borrow-free fragment. You have `λ`, `Π`,
-`Σ`, application, and one workhorse: `elim`, structural recursion with an explicit
-motive. The standard library's own `le_refl` is the complete idiom:
+Proofs are pure values — λ-terms in the borrow-free fragment. You have `λ`, `Π`, `Σ`,
+application, and one workhorse: `elim`, structural recursion with an explicit motive.
+The standard library's `le_refl` is, in full, the complete idiom:
 
 ```
-def le_refl : Term := pure{
-  λ (n : Nat). elim n return (λ (m : Nat). Le m m) {
-    Z => unit,
-    S (k) ih => ih } }
+-- The library's `le_refl`: proves `n ≤ n`, for any `n`.
+λ (n : Nat). elim n return (λ (m : Nat). Le m m) {
+  Z => unit,
+  S (k) ih => ih }
 ```
 
 Read: by induction on `n`, prove `Le n n`; at `Z` the goal computes to a trivial type
@@ -152,9 +189,8 @@ library lemmas, with computation silently closing the gaps.
 
 **The standard library is `Dllbc/StdLemmas.lean`.** Before proving anything about `Le`,
 `count`, `append`, `Sorted`, or their `Array` counterparts, look there — the lemma you
-want likely exists, and its statement (every `def foo` has a `foo_ty` companion) shows
-you the naming conventions. Library lemmas are cited in bodies by name, applied like any
-function.
+want likely exists, and every lemma's statement is written right next to its proof.
+Library lemmas are cited in bodies by name, applied like any function.
 
 ## 6. Postconditions
 
@@ -163,6 +199,7 @@ return type reads `*v` as the payload **at exit**, and `old *v` as the payload *
 entry**. This is the heart of the language. A complete verified function, from the suite:
 
 ```
+-- Appends `w` to the end of the list behind `v`, in place.
 fn append_back [v] (v : &mut List Nat, w : List Nat)
     -> Id (List Nat) (*v) (append (old *v) w)
     { match v {
@@ -185,6 +222,9 @@ To return a value *and* evidence, use `Σ` — the caller receives a pair and de
 it with an ordinary `match`:
 
 ```
+-- Removes everything after the first `i` elements of `v` and returns it;
+-- `v` keeps the prefix. The caller must supply proof that `v` has at
+-- least `i` elements; that proof is `hi`.
 fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
     -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
          → Id (List Nat) ret (drop i (old *v))
@@ -229,6 +269,7 @@ argument* decreases; at every recursive call, the value passed there must be a s
 structural piece of what the parameter held — typically because you matched it first:
 
 ```
+-- As in chapter 6: `v` keeps its first `i` elements, the rest returns by value.
 fn split_off [i] (v : …, i : Nat, hi : …) -> …
   { match i {
       Z => …,
@@ -246,6 +287,8 @@ thread **fuel**: a `Nat` that ticks down once per level, with a *sufficiency* hy
 making the fuel-exhausted-early case impossible:
 
 ```
+-- Sorts `a` in place. `fuel` bounds the recursion depth; the caller must
+-- supply proof that it is sufficient, in `hfuel`.
 fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat)) -> …
   { … match fuel {
         Z => botElim … ,                  -- unreachable: hfuel makes Le 1 Z, i.e. Bot
@@ -332,8 +375,11 @@ writable; when you can read it, you are done here.
 
 ## 11. Running your code
 
-DLLBC is embedded in Lean. A declaration is a Lean definition using the `decl{ … }`
-macro, and checking is a Lean test:
+Everything in this book so far has been clean DLLBC notation; here is how it is actually
+*implemented*. DLLBC is embedded in Lean: the notation elaborates through Lean macros. A
+function declaration is a Lean definition wrapping its body in `decl{ … }`; a standalone
+pure function or lemma (everything in the standard library) is a Lean definition of type
+`Term` wrapping a `pure{ … }` block. Checking is a Lean test:
 
 ```lean
 def splitA : Decl := decl{ fn splitA [fuel] (…) -> … { … } }
