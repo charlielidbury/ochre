@@ -1,5 +1,131 @@
 # Progress
 
+## 2026-08-05 — dllbc/: M26-C CLOSES — effectful recursors; `split_off` checks and runs BOTH ways
+
+Phase C of the `fn`/λ unification (`dllbc/docs/combining-fns.md` §7). Phases D (the
+`fn` macro) and E (programs are terms) remain, so this is a phase checkpoint, not the
+milestone's. Commits ec7381b0, 9d3d75aa, aca66665, 5a7dcdd0, 9e4ac02f.
+
+**THE HEADLINE.** `split_off` — a real M23 function: recurses, mutates through a
+borrow, hands a reborrow to its own recursive call, returns a Σ-chain of two equations
+relating exit and entry snapshots, and discharges a dead branch by ex falso — now
+checks **both** as the declared `fn` it has always been and as `.seal ⟨natRec …⟩ ⟨Π …⟩`,
+and the sealed form also **runs**: called concretely, splitting a real list, with both
+machines agreeing on the whole final Ω. That is §7's "`fn` is a macro" discharged on a
+real program rather than on a toy. It needs **no fuel** — §12 decision 8's regression is
+for `[v]`-style *payload* decrease, and `split_off` recurses on its index, which is
+already a `Nat`, so the recursor is `natRec` on the very argument `[i]` named. The
+transcription is one change and one deletion: the self-call becomes `ih(&mut *tl, hi)`
+(ι supplies the scrutinee) and `match i` disappears into the two arms. Not vacuous, and
+with the SAME coverage split as the declared version — S23Direct notes its spec lies are
+all caught on the `i = Z` path and only the body lie tests the recursive one; the sealed
+form reproduces that exactly, spec lie on the base arm, body lie on the step arm where
+`ih` lives.
+
+**THE MILESTONE'S THESIS, MATERIALIZED IN THE CODE.** §3 claims "today's call rule is
+not a separate concept from application; it is abstract application at a moded Π".
+Factoring the checking-mode call rule out of `.call` into **`callDeclC`** turns that from
+a sentence in the doc into a fact about the machine: a sealed function, an `ih`, and a
+declaration-table entry are now called by *literally the same function*, because a σ
+whose signature is a borrow-moded Π is exactly a callee whose telescope and return type
+are known and whose body is not — which is what a table entry already was. Nothing new
+sits under it. The `[k]` guard rides along and is inert for a seal, and that is the right
+answer rather than a lucky one: a sealed signature is not in the table, and §7 says the
+guard EVAPORATES for recursor-expressed functions anyway, because `ih` is a binder and a
+binder cannot be a self-call.
+
+**THE ONE FACT THAT SHAPED THE WHOLE PHASE: a borrow-moded Π has no `Val`.** `readC`
+refuses `borrowT` — rightly; a borrow type is a telescope-position marker, not a type
+anything inhabits — so the sealed signature can only ever be manipulated as a `Term`.
+Three consequences, none optional: `piPeel` (Π-as-Term → telescope + return type, needing
+a new `Term.substPure`); `St.fsig`, the moded signature of a sealed σ recorded **as a
+`Decl`**, since "a telescope and a return type with no body" IS a Decl; and the recursor's
+motive, which is not evaluated at all (an inert `@motive` marker) because ι never inspects
+it and §7 settles that the checking side DERIVES it from the ascription. The written
+motive is compared to the derived one syntactically — forced, not lazy: there is no
+conversion to compare up to.
+
+**Two new formers, and why the second could not be a rule.** `Term.lamR`/`Val.rfn` is the
+runtime λ — named binders and a suspended *body* — which phase A filed and could not
+build. It needs its own former because a body reaches its binders **through Ω** (a match
+scrutinizes a `Var`, `&mut x` roots a place at a `Var`) and a de Bruijn index names no
+slot: the pure λ substitutes, this one binds. It is **Curry-style** — binders carry names
+and no types — because a runtime λ is checked against an ascription, and §5 point 4 is
+that the ascription IS the contract. That makes phase B's name-borne modes load-bearing
+rather than convenient: `valBinderModes` reads a runtime function's modes off its binder
+NAMES, since there is no type to read them off.
+
+**§5.4's AUDIT, RELOCATED TO THE NODE**, closing phase A's third pinned limitation.
+Checking a seal at a borrow-moded Π seeds a telescope, explores the body one path per
+symbolic branch, and audits each path — `checkFn`'s content reached from a term instead
+of from a declaration, with frame isolation (fresh Ω, obligations, groups; only the
+peeled type in and the advanced fresh-supplies out), which pays phase A's other debt.
+**What picks the rule is the sealed TERM, not the type**, and that is what protects phase
+A: everything that is not a runtime λ keeps `readC`-then-`hasType` unchanged, so
+§12-open-4's 16-pair identity survives verbatim and no ascription accident can divert a
+value seal onto the function path. The extended smell test is an identity over
+hand-written twins, both polarities, and the two rejections agree on the **message** and
+not merely the verdict — which is what says the check was relocated rather than
+reimplemented.
+
+**WHY §8's GUARD CAN EVAPORATE, shown rather than argued.** The `bad()` recursor is
+rejected at its own audit and the rejection is *located*: the step arm goes through —
+`ih` really does hand it the claim at the predecessor, which is the self-ensures §7 says
+is FORCED — and the BASE arm is what stops it, having no `ih` and needing to inhabit
+`Id Nat Z (S Z)` outright. Pinned with a pair: that step arm sealed alone, with the
+predecessor's claim as an explicit hypothesis, is ACCEPTED. And `ih`-at-the-wrong-level is
+a **type error, not a check**: `ih : P k` while the arm proves `P (S k)`, so a
+fuel-bounded arm holding `Le (len *v) (S n2)` cannot pass it to something binding
+`Le (len *v) n2`; the accepted twin recurses on the tail, where `Le (S (len *tl)) (S n2)`
+IS `Le (len *tl) n2` definitionally — M14's bounds-cursor property doing what the guard
+did by comparing snapshots, except it is the type. An unsealed recursive λ is unwritable,
+and not by a recursion rule: the binding is not in scope in its own right-hand side, so
+the inner name falls through to the table where it is not — §8's "a let-chain cannot
+reference downward", as predicted.
+
+**readR and explore are now mutual** (9d3d75aa, a relocation with no behaviour change,
+committed alone for bisectability), because the seal's audit happens AT THE NODE and
+`explore` already called `readR`. This is where §8 was going anyway: once a program is a
+term, checking one is the symbolic ⇒-walk of it, and the walk and the reader are one
+thing. The queue alternative was rejected — closed-Π-only is a scope cliff, and phase E
+would have had to undo it.
+
+**The differential is ONE relation again.** M26-A had left two incomparable extensions
+side by side (segments without computation, computation without segments).
+`S9Diff.instanceOfC` merges them — collect σ↦concrete through constructors, borrows AND
+carved segments, then instantiate, normalize, compare with the segment-aware matcher —
+added to S9Diff rather than to a phase file, because the simulation relation should be
+one definition. Liveness verified in four directions: S24Arrays' callers still green (the
+carve half), M26-A's seal counterexample still green while the OLD relation still says
+false on it (the computation half), S9Diff's forced-constrained bug still RED, and a
+recursor-specific mutant (fuel-3 symbolic vs fuel-1 concrete) RED.
+
+**Limitations pinned, not patched.** A runtime recursor needs a FUNCTION motive: at a
+data motive `ih` is the recursor-at-the-predecessor as a value, the arm stores it, and the
+pure fragment cannot reduce it afterwards because its own arm is a body — both machines
+produce the same stuck spine (so not a differential failure) and the audit rejects it. A
+nullary runtime λ is refused, because at ι "the arm applied to no arguments" and "the arm
+with nothing owed" are the same spine and nothing in §7 wants a thunk. A DECLARED fn
+cannot return a borrow-moded Π (`checkFn` has no reading for such a return type) — a
+limitation of the declaration form that §8 dissolves rather than fixes.
+
+**For phases D and E.** (i) `#eval` in a SCRATCH file now dies with "incomplete case" on
+ordinary programs: the twelve-function well-founded mutual block cannot be walked by the
+interpreter. Compiled tests are unaffected — probe through a module, not a scratch file.
+(ii) The block carries `set_option maxHeartbeats 1000000`; elaboration cost only
+(Machine.lean ~2 min), no program pays it. (iii) Phase D's macro should derive motives
+from signatures, as §7 says — the kernel already compares the written one against the
+derived.
+
+66 assertions in `dllbc/Dllbc/Tests/S26Rec.lean`, each validated by flipping it and
+confirming the build goes red. Three times a test was wrong before the machine was — a
+sealed body ending in `()` under an ensures promising an `Id` (the seal imposing exactly
+the discipline §5 point 4 promised, first on its author's test); an ensures-threading test
+whose caller returned a trivially-true `Refl` of its own; and — phase A's per-DEMAND-SITE
+finding arriving a third time — a `bad()` control that bound a self-referencing λ and
+never used it, so nothing demanded the body and it PASSED. The vacuous version is kept
+beside the live ones, pinned as the trap it is.
+
 ## 2026-07-30 — dllbc/: M23 CLOSES — in-place quicksort, Sorted ∧ Perm, ZERO declared backs
 
 `quicksort` on main (4e950ab7):
