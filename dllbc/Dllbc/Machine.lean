@@ -2050,6 +2050,60 @@ mutual
   termination_by bs => sizeOf bs
 end
 
+/-! ## Peeling a borrow-moded Π into a telescope (M26-C)
+
+    §5's audit relocation needs the sealed type as a **telescope plus a return
+    type**, because that is the shape `seedTelescope` seeds and `auditAction`
+    audits. Deriving one from a Π is ordinary binder-peeling — except that it has
+    to happen on `Term`s, since a borrow-moded Π has no `Val` (see `St.fsig`).
+    `Term.substPure` is what that costs. -/
+
+/-- Peel one Π binder per name, instantiating the rest at that name. Returns the
+    telescope and the residual return type.
+
+    **The mode agreement check lives here**, and it is the one place §6 could be
+    stated twice and disagree: a runtime λ's binders carry their mode in their
+    NAMES, the ascribed Π carries its in its DOMAINS (`⇝τ`), and a lowercase
+    binder under a capital-bindered Π would let the body observe at runtime what
+    the caller was promised is erased. Phase B settled that "the ascription is the
+    contract" for CALLERS (F3); this is the callee-side half of the same
+    sentence, and it is a rejection rather than a coercion because the two claims
+    are about different people. -/
+def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
+  | [], u => .ok ([], u)
+  | x :: xs, u =>
+    match u with
+    | .pi dom cod =>
+      if Term.domComptime dom != x.isComptime then
+        .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
+      else
+        match piPeel xs (Term.substPure 0 (.var x) cod) with
+        | .ok (rest, ret) => .ok ((x, dom.stripCmp) :: rest, ret)
+        | .error e => .error e
+    | _ =>
+      .error s!"seal: the runtime λ binds '{x.name}' but the ascribed type has no Π binder left for it. Runtime application is saturated (§12 decision 4), so a λ and its ascription must have the same arity — either the λ binds too much or the ascription promises too little."
+
+/-- Synthesized binder names for a Π that has none — the `ih` case (§7 cost 1),
+    where the sealed self-view at the predecessor arrives as a TYPE and a
+    telescope has to be derived from it.
+
+    The case matters and is not cosmetic: §6 makes capitalisation the binder-mode
+    marker, and `piPeel` checks that a name's case agrees with its domain's, so a
+    comptime domain must be given a capitalized name or the derived telescope
+    would contradict the type it was derived from. -/
+def piBinderNames (t : Term) : List Var :=
+  let rec go : Nat → Nat → Term → List Var
+    | 0, _, _ => []
+    | fuel + 1, i, .pi dom cod =>
+      Var.mk i (if Term.domComptime dom then s!"A{i}" else s!"a{i}") :: go fuel (i + 1) cod
+    | _, _, _ => []
+  go 64 0 t
+
+/-- A Var-keyed telescope's borrow parameters, by var id (`borrowParamIds`'
+    counterpart for a telescope that brought its own names). -/
+def borrowVarIds (tel : List (Var × Term)) : List Nat :=
+  tel.filterMap (fun p => match p.2 with | .borrowT _ _ => some p.1.id | _ => none)
+
 /-! ## The symbolic driver and the boundary audit (relocated here, M26-C)
 
     These lived below `readR` (the driver) and in `Boundary.lean` (the audit)
@@ -2317,6 +2371,34 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (.sym σc) (Val.substPure 0 (.sym σ) SVal))
       pure (⟨x, ℓ, owed⟩ :: (← seedTelescopeV fuel rest))
+    -- **`ih` — a parameter whose type is a borrow-moded Π** (M26-C, §7 cost 1).
+    -- It has no `Val` (`readC` refuses `borrowT`), so it cannot be a σ in `sctx`;
+    -- it is a σ whose signature lives in `fsig`, which is what makes calling it
+    -- the ordinary call rule. §7's convergence argument arrives here as one
+    -- branch: "the only available view of the function is the σ-side, so the
+    -- recursive call is abstract application at `u` — self-ensures FORCED rather
+    -- than stipulated". Nothing about this branch knows it is for a recursor.
+    | .pi _ _ => do
+      if hasBorrowT tyTerm then do
+        let σ ← freshSym
+        bindSlot x (.sym σ)
+        let names := piBinderNames tyTerm
+        match piPeel names tyTerm with
+        | .error e => throwErr e
+        | .ok (tel, ret) => do
+          let sig : Decl :=
+            { name := "@ih"
+              telescope := tel.map (fun p => (p.1.name, p.2))
+              retType := ret
+              body := .unit }
+          modify (fun s => { s with fsig := (σ, sig) :: s.fsig })
+          seedTelescopeV fuel rest
+      else do
+        let τVal ← readC fuel tyTerm
+        let σ ← freshSym
+        bindSlot x (.sym σ)
+        modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
+        seedTelescopeV fuel rest
     | tyTerm => do
       let τVal ← readC fuel tyTerm
       let σ ← freshSym
@@ -2730,44 +2812,6 @@ def instantiatePi : Nat → Val → List Val → M Val
       else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
     | other => throwErr s!"callV: too many arguments — the callee's type is {other.pretty}, not a function type"
 
-/-! ## Peeling a borrow-moded Π into a telescope (M26-C)
-
-    §5's audit relocation needs the sealed type as a **telescope plus a return
-    type**, because that is the shape `seedTelescope` seeds and `auditAction`
-    audits. Deriving one from a Π is ordinary binder-peeling — except that it has
-    to happen on `Term`s, since a borrow-moded Π has no `Val` (see `St.fsig`).
-    `Term.substPure` is what that costs. -/
-
-/-- Peel one Π binder per name, instantiating the rest at that name. Returns the
-    telescope and the residual return type.
-
-    **The mode agreement check lives here**, and it is the one place §6 could be
-    stated twice and disagree: a runtime λ's binders carry their mode in their
-    NAMES, the ascribed Π carries its in its DOMAINS (`⇝τ`), and a lowercase
-    binder under a capital-bindered Π would let the body observe at runtime what
-    the caller was promised is erased. Phase B settled that "the ascription is the
-    contract" for CALLERS (F3); this is the callee-side half of the same
-    sentence, and it is a rejection rather than a coercion because the two claims
-    are about different people. -/
-def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
-  | [], u => .ok ([], u)
-  | x :: xs, u =>
-    match u with
-    | .pi dom cod =>
-      if Term.domComptime dom != x.isComptime then
-        .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
-      else
-        match piPeel xs (Term.substPure 0 (.var x) cod) with
-        | .ok (rest, ret) => .ok ((x, dom.stripCmp) :: rest, ret)
-        | .error e => .error e
-    | _ =>
-      .error s!"seal: the runtime λ binds '{x.name}' but the ascribed type has no Π binder left for it. Runtime application is saturated (§12 decision 4), so a λ and its ascription must have the same arity — either the λ binds too much or the ascription promises too little."
-
-/-- A Var-keyed telescope's borrow parameters, by var id (`borrowParamIds`'
-    counterpart for a telescope that brought its own names). -/
-def borrowVarIds (tel : List (Var × Term)) : List Nat :=
-  tel.filterMap (fun p => match p.2 with | .borrowT _ _ => some p.1.id | _ => none)
-
 /-- Audit every explored path of a sealed body, and return the fresh supplies
     advanced past everything those paths minted.
 
@@ -2980,6 +3024,10 @@ mutual
           -- `&mut` in it.
           match t with
           | .lamR names body => sealFn fuel names body u
+          -- A spine MAY be a recursor over runtime arms — §7's `fn` elaboration —
+          -- in which case sealing it is arms-as-bodies checking. Any other spine
+          -- is an ordinary term and takes phase A's rule.
+          | .app _ _ => sealApp fuel t u
           | _ => sealValue fuel t u
       -- **Application of a value callee** (§7 cost 2). The callee is LOCATED, not
       -- consumed: reading a function to call it is a place read, like a match
@@ -3462,6 +3510,117 @@ mutual
       else
         throwErr s!"seal: the sealed term ({v.pretty}) does not have its ascribed type ({uV.pretty})"
   termination_by fuel _ _ => (fuel, 9, 0)
+  /-- A sealed application spine: a recursor over runtime arms takes the
+      arms-as-bodies rule, anything else takes phase A's. -/
+  def sealApp : Nat → Term → Term → M Val
+    | fuel, t, u =>
+      match runtimeRecSpine? t with
+      | some (c, as) => sealRec fuel c as u
+      | none => sealValue fuel t u
+  termination_by fuel _ _ => (fuel, 13, 0)
+  /-- Check ONE recursor arm as a body (§7 cost 1, "the one real kernel
+      addition"): its leading binders take the types the recursor's premise gives
+      them — the predecessor and `ih` — and the rest are peeled from the motive
+      instantiated at this constructor. Then it is an ordinary function body, and
+      `checkRFnBody` is the ordinary audit.
+
+      "The content of that judgment is exactly today's guard-checking (a body with
+      only the sealed self-view available); the plumbing is new" — and that is
+      literally what this is: `pre` carries `ih`'s type, which `seedTelescopeV`
+      turns into a σ with a signature and no body. -/
+  def checkArm : Nat → Term → List (Var × Term) → List Var → Term → M Unit
+    | fuel, body, pre, restNames, ty => do
+      match piPeel restNames ty with
+      | .error e => throwErr e
+      | .ok (tel, ret) => checkRFnBody fuel (pre ++ tel) ret body
+  termination_by fuel _ _ _ _ => (fuel, 10, 0)
+  /-- **Sealing a RECURSOR whose arms are bodies** (§7): the checking side of the
+      rule part 1 gave the executing machine.
+
+      **The motive is derived from the signature**, exactly as §7 says the macro
+      derives it: peel one Π off the ascription and the codomain IS the motive's
+      body, with the scrutinee as its de Bruijn binder. The written motive is then
+      compared against the derived one — syntactically, and that is forced rather
+      than lazy: the motive contains borrow types, which have no `Val` and
+      therefore no conversion to be compared up to. Since phase D's macro derives
+      it, they agree by construction; a hand-written mismatch is told what was
+      expected.
+
+      **Each arm is checked once, at its own constructor.** There is no symbolic
+      scrutinee to split on and there does not need to be: `Z` and `S k` ARE the
+      split, the motive instantiated at each is the goal, and the induction is the
+      arms. That is why this needed no new driver — `exploreMatch` forks paths
+      because a runtime match does not know its scrutinee, while a recursor's arms
+      come labelled.
+
+      **`ih` is the sealed self-view at the predecessor** — typed `P k` where the
+      arm proves `P (S k)` — and §7's convergence argument is what makes that the
+      whole story: a recursive occurrence never sees the body, so self-ensures is
+      FORCED, not stipulated. The `[k]` guard evaporates with it: `ih` is a
+      binder, a binder cannot be a self-call, and there is no rule left to police. -/
+  def sealRec : Nat → String → List Term → Term → M Val
+    | fuel, c, args, u => do
+      match u with
+      | .pi scrutDom R => do
+        let mi := match recLayout c with | some (_, m, _) => m | none => 0
+        let derived : Term := .lam scrutDom R
+        match args.get? mi with
+        | none => throwErr s!"seal: {c} spine has no motive argument"
+        | some written =>
+          if !(Term.beq written derived) then
+            throwErr s!"seal: the recursor's motive is not the one its ascription derives. §7 derives the motive from the signature — the sealed Π with the scrutinee peeled off — so a `{c}` sealed at `Π (n : τ) → R` must be written with the motive `λ (n : τ). R` and this one is not."
+          else
+            match c, args with
+            | "natRec", [_, z, s] => do
+              match z, s with
+              | .lamR zn zbody, .lamR (k :: ihv :: rest) sbody => do
+                checkArm fuel zbody [] zn (Term.substPure 0 (.ctorApp "Z" []) R)
+                checkArm fuel sbody [(k, scrutDom), (ihv, Term.substPure 0 (.var k) R)] rest
+                  (Term.substPure 0 (.ctorApp "S" [.var k]) R)
+                sealMint fuel u
+              | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
+            | "listRec", [_, _, pn, pc] => do
+              match pn, pc with
+              | .lamR nn nbody, .lamR (h :: tl :: ihv :: rest) cbody => do
+                checkArm fuel nbody [] nn (Term.substPure 0 (.ctorApp "Nil" []) R)
+                -- `h`'s type is the element type, read off the scrutinee's own
+                -- `List A`; anything else and the arm is not this recursor's.
+                let elemTy : Term := match scrutDom with
+                  | .app (.const "List") a => a
+                  | _ => .const "Nat"
+                checkArm fuel cbody
+                  [(h, elemTy), (tl, scrutDom), (ihv, Term.substPure 0 (.var tl) R)] rest
+                  (Term.substPure 0 (.ctorApp "Cons" [.var h, .var tl]) R)
+                sealMint fuel u
+              | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
+            | "boolRec", [_, tArm, fArm] => do
+              match tArm, fArm with
+              | .lamR tn tbody, .lamR fn fbody => do
+                checkArm fuel tbody [] tn (Term.substPure 0 (.ctorApp "True" []) R)
+                checkArm fuel fbody [] fn (Term.substPure 0 (.ctorApp "False" []) R)
+                sealMint fuel u
+              | _, _ => throwErr "seal: boolRec's arms must be runtime λs"
+            | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
+      | _ => throwErr "seal: a recursor sealed as a function must be ascribed a Π — its first binder is the scrutinee the recursion is on (§7's derived motive)"
+  termination_by fuel _ _ _ => (fuel, 11, 0)
+  /-- The forgetting half, shared by both sealed-function rules: a fresh σ whose
+      signature is the ascribed Π peeled at POSITIONAL binders, which is the
+      convention `processArgs`/`buildResult` read a telescope by. What a caller
+      sees is a callee indistinguishable from a table entry. -/
+  def sealMint : Nat → Term → M Val
+    | _, u => do
+      match piPeel (piBinderNames u) u with
+      | .error e => throwErr e
+      | .ok (ctel, cret) => do
+        let σ ← freshSym
+        let sig : Decl :=
+          { name := "@seal"
+            telescope := ctel.map (fun p => (p.1.name, p.2))
+            retType := cret
+            body := .unit }
+        modify (fun s => { s with fsig := (σ, sig) :: s.fsig })
+        pure (.sym σ)
+  termination_by fuel _ => (fuel, 12, 0)
   /-- Sealing a runtime λ: check it, then forget it.
 
       The two halves are §5's two sentences. The check is `checkRFnBody` against

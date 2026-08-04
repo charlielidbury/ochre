@@ -7,6 +7,7 @@ import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
 import Dllbc.Tests.S24Arrays
 import Dllbc.Tests.S26Seal
+import Dllbc.Tests.S23Direct
 
 /-!
 # §26 (M26-C) — effectful recursors: the executing machine first
@@ -48,6 +49,7 @@ borrow while it waits. That is not an accident of the encoding — it is the rea
 open Dllbc
 open Dllbc.Tests.S26Seal (ok rejects caller envOf)
 open Dllbc.Tests.S9Diff (runExec symEnvs instanceOfC diffC)
+open Dllbc.StdLemmas (id_congr)
 
 namespace Dllbc.Tests.S26Rec
 
@@ -504,4 +506,335 @@ example : (rejects lieD "does not have return type" && rejects lieS "does not ha
 example : (rejects holeD "holds a hole (⊥) at return" && rejects holeS "holds a hole (⊥) at return")
   = true := by native_decide
 
+/-! ## §F. Arms as bodies — the CHECKING side (§7 cost 1)
+
+    "Runtime-moded recursor motives are the one real kernel addition: arms contain
+    writes, calls and borrows — *bodies* — so the checker must symbolically execute
+    an arm as a body with an abstract `ih : Π` in scope. The content of that
+    judgment is exactly today's guard-checking; the plumbing is new."
+
+    Three things make it work and each is worth naming, because each turned out to
+    be something the earlier phases already had:
+
+      * **The motive is derived from the signature.** Peel one Π off the
+        ascription and the codomain IS the motive's body. §7 promised the macro
+        would need no inference; the checker needs none either.
+      * **Each arm is checked once, at its own constructor** — `Z` and `S k` ARE
+        the split, and the motive instantiated at each is the goal. No driver
+        change: `exploreMatch` forks paths because a runtime match does not know
+        its scrutinee, while a recursor's arms come labelled.
+      * **`ih` is a σ with a signature and no body**, which is the sealed self-view
+        at the predecessor. It is seeded by the same rule that seeds any Π-typed
+        parameter and called by the same rule that calls any sealed function —
+        §7's "self-ensures FORCED rather than stipulated", as plumbing. -/
+
+def zeroSeal : Term := pure{ Π (fuel : Nat) → Π (v : &mut List Nat) → Unit }
+
+
+def f1 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %zeroMot
+                 (λ(v) { () })
+                 (λ(f2, ih, v) { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
+               %zeroSeal);
+  let x = Cons(1, Cons(2, Nil));
+  let b = &mut x;
+  f(3, b);
+  let y = x;
+  () } }
+example : ok f1 = true := by native_decide
+
+-- The seal is what makes it opaque: the caller learns only `Unit`, so the list it
+-- gets back is an EXISTENTIAL — §2.2's forgetting, now reached through a recursor
+-- rather than through a declaration. (Asserted as "a σ" rather than as a σ id: the
+-- id is a counter, and pinning it would make this test fail for reasons that have
+-- nothing to do with what it is about.)
+example : (slotOf [] f1 "y").map (fun s => s.take 1) = some "σ" := by native_decide
+
+-- …and the SAME program executes, with the recursion really running: both
+-- machines, one differential.
+example : diffC [] f1.body = true := by native_decide
+example :
+  (match Dllbc.Tests.S9Diff.runExec [] f1.body with
+   | .ok e => (e.lookup "y").map Val.pretty
+   | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
+
+/-! ### F2. The motive is derived, and a written one that disagrees is refused
+
+    §7 makes the motive redundant — it is the sealed Π with the scrutinee peeled
+    off — so the checker derives it and compares. Syntactically, and that is
+    forced rather than lazy: a motive over a borrow-moded Π has no `Val`, hence no
+    conversion to be compared up to. Phase D's macro will derive it, so the
+    comparison is free there; a hand-written mismatch is told what was expected. -/
+
+def wrongMot : Term := pure{ λ (f : Nat). Π (v : &mut List Nat) → Nat }
+def f2 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %wrongMot
+                 (λ(v) { () })
+                 (λ(f2, ih, v) { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
+               %zeroSeal);
+  () } }
+example : rejects f2 "not the one its ascription derives" = true := by native_decide
+
+/-! ### F3. An arm that does not establish the motive is rejected AT ITS OWN ARM
+
+    The base arm below returns without restoring what it took, so its obligation
+    audit fails — and the step arm is untouched and would pass. That is what says
+    the arms are checked *separately*, each at its own instantiation, rather than
+    the whole recursor being checked as one lump. -/
+
+def f3 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %zeroMot
+                 (λ(v) { let l = *v; () })
+                 (λ(f2, ih, v) { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
+               %zeroSeal);
+  () } }
+example : rejects f3 "holds a hole (⊥) at return" = true := by native_decide
+
+/-! ## §G. THE CONVERGENCE TEST — `split_off`, declared and as a sealed recursor
+
+    §7's claim is not that recursors are expressive enough in principle; it is that
+    `fn` **is a macro** over a sealed recursor binding, so a real M23 function must
+    check the same way both ways. `split_off` is the subject because it is real:
+    it recurses, it mutates through a borrow, it hands a reborrow to its own
+    recursive call, its return type is a Σ-chain of two equations relating the exit
+    and entry snapshots, and it has a dead branch discharged by ex falso.
+
+    It also needs no fuel, and that is worth noticing rather than glossing:
+    §12 decision 8 accepts a naturalness regression for `[v]`-style *payload*
+    decrease, but `split_off` recurses on its INDEX, which is a `Nat` — so the
+    recursor form is `natRec` on the very argument `[i]` already named, and the
+    elaboration is the mechanical one §7 describes with nothing threaded through.
+
+    The two forms below are the same function. `S23Direct.splitOff` is the
+    declared one, checked by `checkFn` with the `[i]` guard policing its self-call;
+    this one is `.seal ⟨natRec …⟩ ⟨Π …⟩`, checked at the node with `ih` as an
+    abstract signature and no guard anywhere. Both are accepted, and the second is
+    what §7 says the first should elaborate to. -/
+
+def splitTy : Term := pure{
+  Π (i : Nat) → Π (v : &mut List Nat) → Π (hi : Le i (len *v))
+    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
+         → Id (List Nat) ret (drop i (old *v)) }
+
+def splitMot : Term := pure{
+  λ (i : Nat). Π (v : &mut List Nat) → Π (hi : Le i (len *v))
+    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
+         → Id (List Nat) ret (drop i (old *v)) }
+
+/-- `split_off` as §7 says a `fn` elaborates. The body is `S23Direct.splitOff`'s,
+    transcribed with one change and one deletion: the self-call
+    `split_off(&mut *tl, i2, hi)` becomes `ih(&mut *tl, hi)` — the scrutinee
+    argument is gone, because ι supplies it — and the `match i` disappears into the
+    two arms. -/
+def splitSealed : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %splitMot
+      (λ(v, hi) { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
+      (λ(i2, ih, v, hi) {
+         match v {
+           Nil => botElim Unit hi,
+           Cons(hd, tl) => {
+             let y1 = take i2 (*tl);
+             let p = ih(&mut *tl, hi);
+             match p { Pair(rr, q) => match q { Pair(h1, h2) => {
+               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                          (*tl) y1 h1;
+               Pair(rr, Pair(c1, h2)) } } } } } }),
+    %splitTy);
+  () } }
+
+-- THE CONVERGENCE: the declared function and the sealed recursor both check.
+example : ok splitSealed = true := by native_decide
+example : checkFnOk Tests.S23Direct.splitOff = true := by native_decide
+
+/-! ### G2. Not vacuous — the sealed form rejects the same lies the declared one does
+
+    `S23Direct` guards `splitOff` with four twins (three spec lies and a body lie)
+    so that its acceptance is not a coincidence. The sealed form has to be guarded
+    the same way, or "both check" would be a much weaker statement than it looks.
+    The body lie is the sharper of the two here: it breaks the congruence in the
+    `Cons` arm, which is the arm `ih` lives in. -/
+
+def splitMotLie : Term := pure{
+  λ (i : Nat). Π (v : &mut List Nat) → Π (hi : Le i (len *v))
+    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (drop i (old *v)))
+         → Id (List Nat) ret (drop i (old *v)) }
+def splitTyLie : Term := pure{
+  Π (i : Nat) → Π (v : &mut List Nat) → Π (hi : Le i (len *v))
+    → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (drop i (old *v)))
+         → Id (List Nat) ret (drop i (old *v)) }
+
+-- A SPEC lie: the prefix conjunct claims `drop` where the body leaves `take`.
+def splitSpecLie : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %splitMotLie
+      (λ(v, hi) { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
+      (λ(i2, ih, v, hi) {
+         match v {
+           Nil => botElim Unit hi,
+           Cons(hd, tl) => {
+             let y1 = take i2 (*tl);
+             let p = ih(&mut *tl, hi);
+             match p { Pair(rr, q) => match q { Pair(h1, h2) => {
+               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                          (*tl) y1 h1;
+               Pair(rr, Pair(c1, h2)) } } } } } }),
+    %splitTyLie);
+  () } }
+-- Caught on the BASE arm (`Pair σ (Pair Refl Refl)` against `Id Nil σ`), exactly
+-- where `S23Direct` says its spec lies are caught.
+example : rejects splitSpecLie "does not have return type" = true := by native_decide
+
+-- A BODY lie: the `Cons` arm forgets to restore the head, so the prefix conjunct
+-- is false on the recursive path — the arm `ih` lives in.
+def splitBodyLie : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %splitMot
+      (λ(v, hi) { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
+      (λ(i2, ih, v, hi) {
+         match v {
+           Nil => botElim Unit hi,
+           Cons(hd, tl) => {
+             let y1 = take i2 (*tl);
+             let p = ih(&mut *tl, hi);
+             match p { Pair(rr, q) => match q { Pair(h1, h2) => {
+               let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                          (*tl) y1 h1;
+               Pair(rr, Pair(h1, h2)) } } } } } }),
+    %splitTy);
+  () } }
+-- Caught on the STEP arm — the one `ih` lives in, and the one the spec lies leave
+-- untested. Same division of labour as the declared function's four twins, which
+-- is what makes "both check" a claim about the same coverage and not just the same
+-- verdict.
+example : rejects splitBodyLie "does not have return type" = true := by native_decide
+
+/-! ## §H. `bad()`, twice — the incoherence, probed rather than assumed
+
+    §8's guard exists because a self-call admitted at its own declared return type
+    with nothing decreasing proves anything: `fn bad () -> Id Nat Z (S Z) { bad() }`.
+    §7 claims the guard EVAPORATES for recursor-expressed functions, so the two
+    ways `bad()` could come back have to be checked directly rather than argued
+    away. Constraint 3 is the standard: "the `bad()` self-proof stays unwritable by
+    construction". -/
+
+/-! ### H1. An unsealed recursive λ is UNWRITABLE, which is the honest form of
+    "it has no checking story"
+
+    §7 derives that an unsealed recursive λ is incoherent at checking (unfolding
+    self never terminates) and constraint 3 requires it to stay unwritable. It
+    does, and the mechanism is not a rule about recursion at all: **the binding is
+    not in scope in its own right-hand side.** `let g = λ(n){ g(n) }` binds `g` for
+    what FOLLOWS, so the `g` inside the λ names nothing lexical and falls through
+    to the declaration table, where it is not. §8 predicts exactly this — "a
+    let-chain cannot reference downward, so no forward references falls out,
+    consistent by construction with mutual recursion being rejected" — and
+    self-reference is the degenerate downward reference.
+
+    **This control had to be made to bite.** Written as a `let` that is never used,
+    the program is ACCEPTED, and looks like a working negative test: the λ's body
+    is never demanded, so nothing ever resolves the name. That is phase A's finding
+    (a negative test must be per DEMAND SITE) arriving a third time, and it is why
+    both forms below make something ask. -/
+
+-- Demanded by APPLYING it: the body runs and the name resolves against nothing.
+def h1 : Decl := decl{ fn caller () -> Unit {
+  let g = λ(n) { g(n) };
+  g(1);
+  () } }
+example : rejects h1 "unknown function 'g'" = true := by native_decide
+
+-- Demanded by SEALING it, which is the form §7 contrasts with: sealing is what
+-- makes a body get checked, and it is also what a recursive function needs — but
+-- the seal does not put the binding in its own scope either. Recursion has to come
+-- from the recursor, which is the point of §7.
+def h1s : Decl := decl{ fn caller () -> Unit {
+  let g = seal(λ(n) { g(n) }, Π (n : Nat) → Nat);
+  () } }
+example : rejects h1s "unknown function 'g'" = true := by native_decide
+
+-- The vacuous version, pinned as the trap it is rather than deleted: the same
+-- program with nothing demanding the λ's body is accepted, and tests nothing.
+def h1vacuous : Decl := decl{ fn caller () -> Unit { let g = λ(n) { g(n) }; () } }
+example : ok h1vacuous = true := by native_decide
+
+/-! ### H2. A sealed recursor whose motive promises a falsehood is rejected at its
+    own audit — AND the rejection comes from the base arm
+
+    The `bad()` shape as a recursor: a motive claiming `Id Nat Z (S Z)` at every
+    level. The step arm goes through, and that is not a bug — `ih` really does hand
+    it the claim at the predecessor, which is exactly the self-ensures §7 says is
+    forced. What stops it is the BASE arm, which has no `ih` and must inhabit the
+    claim outright. That is structural induction doing the job §8's guard was doing
+    by hand, and it is why the guard can evaporate: the side condition is not
+    checked, it is unnecessary.
+
+    The pair below is what says so. `h2` is the whole recursor and is rejected;
+    `h2step` is the same step arm sealed on its own at the type `ih` gave it —
+    `Π (u : Unit) → Id Nat Z (S Z)` assumed, the same returned — and is ACCEPTED,
+    which is the assumption discharged honestly rather than a hole. -/
+
+def badMot : Term := pure{ λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z) }
+def badTy : Term := pure{ Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
+
+def h2 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %badMot
+                 (λ(u) { Refl })
+                 (λ(n2, ih, u) { ih(u) }),
+               %badTy);
+  () } }
+example : rejects h2 "does not have return type" = true := by native_decide
+
+-- The step arm alone, with the predecessor's claim as a HYPOTHESIS: accepted. So
+-- the rejection above is located at the base case and nowhere else — `bad()` dies
+-- because `Id Nat Z (S Z)` has no proof at zero, not because a guard forbade the
+-- recursion.
+def h2step : Decl := decl{ fn caller () -> Unit {
+  let f = seal(λ(ih, u) { ih(u) },
+               Π (ih : Π (u : Unit) → Id Nat Z (S Z)) → Π (u : Unit) → Id Nat Z (S Z));
+  () } }
+example : ok h2step = true := by native_decide
+
+/-! ## §I. `ih` at the wrong level — the guard's content surviving as TYPING
+
+    §8's guard policed "the recursive call's argument is a strict structural
+    predecessor". §7 says that becomes unnecessary, and this is the mechanism: `ih`
+    is typed `P k` while the arm proves `P (S k)`, so an arm that tries to use the
+    recursion at its OWN level has nothing to pass it. The check is not a
+    comparison the checker performs; it is the type `ih` was given.
+
+    The motive below carries a fuel bound, which is what makes the levels visible:
+    `Hn : Le (len *v) n`. In the step arm `Hn : Le (len *v) (S n2)` and `ih` wants
+    `Le (len *v) n2` — one successor apart, and no term bridges them. The accepted
+    twin derives the predecessor's bound properly and passes THAT, so the rejection
+    is about the level and not about the program being unwritable. -/
+
+def bndMot : Term := pure{
+  λ (n : Nat). Π (v : &mut List Nat) → Π (Hn : Le (len *v) n) → Unit }
+def bndTy : Term := pure{
+  Π (n : Nat) → Π (v : &mut List Nat) → Π (Hn : Le (len *v) n) → Unit }
+
+-- The arm hands `ih` its OWN bound, `Le (len *v) (S n2)`, where `ih` binds
+-- `Le (len *v) n2`. Refused, by the argument check at the abstract call.
+def i1 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %bndMot
+                 (λ(v, Hn) { () })
+                 (λ(n2, ih, v, Hn) { ih(&mut *v, Hn); () }),
+               %bndTy);
+  () } }
+example : rejects i1 "does not have its parameter type" = true := by native_decide
+
+-- …and the twin that recurses at the predecessor's level is ACCEPTED — which is
+-- what says the discipline is usable and not merely restrictive. Matching `v`
+-- makes `*v` a `Cons`, so `len *v` is `S (len *tl)` and the arm's own
+-- `Le (S (len *tl)) (S n2)` IS `Le (len *tl) n2` definitionally: the bound the
+-- predecessor wants, obtained by the list getting shorter rather than by a lemma.
+-- That is M14's bounds-cursor property, doing here exactly what §8's guard used to
+-- do by comparing snapshots — except it is the TYPE, so nothing checks it.
+def i2 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %bndMot
+                 (λ(v, Hn) { () })
+                 (λ(n2, ih, v, Hn) { match v { Nil => (), Cons(hd, tl) => { ih(&mut *tl, Hn); () } } }),
+               %bndTy);
+  () } }
+example : ok i2 = true := by native_decide
+
 end Dllbc.Tests.S26Rec
+
