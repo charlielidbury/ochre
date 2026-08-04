@@ -220,4 +220,368 @@ example : DeclMacro.reservedBinder "k" = false := by native_decide
 example : DeclMacro.reservedBinder "unit" = false := by native_decide
 example : DeclMacro.reservedBinder "Hfuel" = false := by native_decide
 
+/-! ## §C. Capital `let` — the comptime binding, and what it actually buys
+
+    `let X = e` evaluates `e` under ⇝, erases `X`, consumes nothing, and confines
+    `X` to ⇝-positions. For a proof *spine* right-hand side this changes nothing
+    observable (a spine already goes through the pure lift, which is `readC`), so
+    the payoff has to be looked for where ⇒ and ⇝ genuinely differ — and there is
+    one such place, which is the one the staging pain lives in.
+
+    **`*v` is a TAKE under ⇒ and a PROJECTION under ⇝.** `let l = *v` moves the
+    payload out and leaves a hole; `let L = *v` reads the snapshot and leaves the
+    borrow intact. That is `S25ArrSort`'s `mkTop` — "capturing `*a` while it
+    still IS the entry value is the dodge" — available as a binding instead of as
+    a λ built before the call. -/
+
+def c1 : Decl := decl{ fn c1 (v : &mut List Nat) -> Id (List Nat) (*v) (old *v)
+  { let L = *v; Refl } }
+def c1bad : Decl := decl{ fn c1bad (v : &mut List Nat) -> Id (List Nat) (*v) (old *v)
+  { let l = *v; Refl } }
+example : ok c1 = true := by native_decide
+-- The runtime take leaves a hole in the borrow, and a hole satisfies no type
+-- (§5.4). Same program, one character — and the rejection names the hole, so
+-- this is the take-vs-projection difference and not some other breakage.
+example : rejects c1bad "holds a hole (⊥) at return" = true := by native_decide
+
+-- C2. The fence applies to a capital `let` exactly as to a capital parameter —
+-- so the snapshot above is a SPECIFICATION binding, not a free copy of the data.
+def c2 : Decl := decl{ fn c2 (v : &mut List Nat) -> Unit { let L = *v; let y = L; () } }
+example : rejects c2 "cannot be ⇒-moved" = true := by native_decide
+
+-- C3. The right-hand side must have a ⇝ reading. A call's result is a fresh
+-- existential and has none, so a capital `let` cannot bind one — honest, and
+-- pointing at the lowercase `let` that can.
+def c3bad : Decl := decl{ fn caller (n : Nat) -> Unit { let P = giveLe(n); () } }
+example : rejects c3bad "not in the comptime fragment" [giveLe, c3bad] = true := by native_decide
+
+-- C4. Locally-derived certificates without staging: a capital `let` builds the
+-- certificate, and citing it at capital argument positions never consumes it.
+def c4 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+  { let Q = le_trans n m m hnm (%le_refl m);
+    useLeC(n, m, Q); useLeC(n, m, Q); hnm } }
+example : ok c4 [useLeC, c4] = true := by native_decide
+
+/-! ## §D. Erased data — the capability kind-derivation cannot express
+
+    A capital `N : Nat` used only in types is QTT's quantity 0. The point is
+    sharp precisely because `Nat` is already index-kind: §2.1's copy-on-read
+    heuristic classifies it as copyable, and copy-on-read is *not* erasure — a
+    copyable binder can still be branched on. The mode is what forbids that, and
+    kind cannot derive it, because the two binders below have the same kind. -/
+
+-- Accepted: `N` appears only in the return TYPE.
+def d1 : Decl := decl{ fn d1 (N : Nat) -> Id Nat N N { Refl } }
+example : ok d1 = true := by native_decide
+
+-- Accepted: an erased length index, with the runtime data typed against it.
+def d2 : Decl := decl{ fn d2 (N : Nat, l : List Nat, h : Id Nat (len l) N) -> Id Nat (len l) N
+  { h } }
+example : ok d2 = true := by native_decide
+
+-- Fenced: the body tries to branch on it. Same type, same kind, same position as
+-- §A5's `fuel` — only the case differs, and only the case can decide this.
+def d3 : Decl := decl{ fn d3 (N : Nat) -> Unit { match N { Z => (), S(k) => () } } }
+example : rejects d3 "cannot be the scrutinee of a runtime match" = true := by native_decide
+
+/-! ## §E. Case is inert under ⇝ — pinned from both sides
+
+    §6's heading, as two assertions that together say the modes are exactly as
+    strong as intended and no stronger: the two Π's are the same type to every
+    comptime judgment, and ⇒ still tells them apart. -/
+
+-- E1. The mode is invisible to conversion…
+example : Val.convert 1000 (.pi (.cmpT (.const "Nat")) (.const "Nat"))
+                           (.pi (.const "Nat") (.const "Nat")) = true := by native_decide
+-- …and NOT erased by normalization, which is what leaves ⇒ something to read.
+-- (`==` is mode-blind, so this has to be asked structurally.)
+example : (match Val.nfV 1000 (Val.pi (.cmpT (.const "Nat")) (.const "Nat")) with
+           | .pi d _ => Val.domComptime d
+           | _ => false) = true := by native_decide
+
+-- E2. `add` stays all-lowercase and is cited in a spec regardless — you never
+-- capitalize a definition to use it in a type. Both cases of the CITING
+-- function's own binders work, because the citation happens under ⇝.
+def e2lo : Decl := decl{ fn e2lo (a : Nat, b : Nat) -> Id Nat (add a b) (add a b) { Refl } }
+def e2hi : Decl := decl{ fn e2hi (A : Nat, B : Nat) -> Id Nat (add A B) (add A B) { Refl } }
+example : ok e2lo = true := by native_decide
+example : ok e2hi = true := by native_decide
+
+-- E3. The structured neutral — §2.1's `id_congr` mechanism — is unchanged by the
+-- Π's binder case. An abstract function applied twice in a type position is ONE
+-- term either way, which is what `Refl` inhabiting the `Id` says.
+def e3lo : Decl := decl{ fn e3lo (f : Π (x : Nat) → Nat, a : Nat) -> Id Nat (f a) (f a) { Refl } }
+def e3hi : Decl := decl{ fn e3hi (f : Π (X : Nat) → Nat, a : Nat) -> Id Nat (f a) (f a) { Refl } }
+example : ok e3lo = true := by native_decide
+example : ok e3hi = true := by native_decide
+
+/-! ### E4. The two equalities are asymmetric, deliberately
+
+    `Val.beq` is mode-blind because `convert` is built on it and §6 says case is
+    inert under ⇝. `Term.beq` is STRUCTURAL, because its clients are not
+    conversions: §18's `absOcc` abstracts occurrences by it (a mode-blind version
+    would match `⇝τ` against `τ` and abstract the marker away with the domain),
+    and `Decl.alphaEq` is the macro-vs-corpus round-trip criterion — a mode-blind
+    version would let phase D's `fn` macro emit a differently-moded `Decl` and
+    still report equivalence. Pinned because "one of these two is mode-blind and
+    the other is not" is exactly the kind of asymmetry a later reader would
+    otherwise assume was an oversight. -/
+
+example : ((Val.cmpT (.const "Nat") : Val) == Val.const "Nat") = true := by native_decide
+example : ((Term.cmpT (.const "Nat") : Term) == Term.const "Nat") = false := by native_decide
+
+/-! ## §F. Modes at a VALUE callee — the shape phase C's `ih` stands on
+
+    §7's recursor elaboration applies `ih` to a borrow and a proof at the
+    predecessor (`ih ⟨left borrow⟩ H₁`), and `ih` is a Π-typed *variable* — "the
+    sealed view at the predecessor". So the modes have to be readable off a Π
+    that is a VALUE, not off a declaration's telescope, and the argument routing
+    has to happen before the spine is consumed. That is what `binderModes` and
+    `readArgsModed` are for, and this is where they are exercised.
+
+    Note what the pair below is *not* testing: `hasType`'s λ-against-Π rule
+    converts the domains, and conversion is mode-blind, so a λ written with
+    lowercase binders inhabits a capital-bindered Π. The mode that governs the
+    call is therefore the one on the type the CALLER sees — the seal's
+    ascription. §5 point 4, arriving at binder modes: what you keep is what you
+    write. F3 is that case on its own. -/
+
+-- F1. A sealed callee with a capital binder: the argument is ⇝-read, so the
+-- caller still holds its proof — twice over, and afterwards.
+def f1 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+  { let g = seal(λ (H : Le n m). Z, Π (H : Le n m) → Nat);
+    let r = g(hnm);
+    let s = g(hnm);
+    hnm } }
+example : ok f1 = true := by native_decide
+
+-- F2. The lowercase twin of the same seal: the call MOVES the proof.
+def f2 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+  { let g = seal(λ (h : Le n m). Z, Π (h : Le n m) → Nat);
+    let r = g(hnm);
+    hnm } }
+example : rejects f2 "holds ⊥" = true := by native_decide
+
+-- F3. THE ASCRIPTION IS THE CONTRACT. The same lowercase-bindered λ, sealed at a
+-- CAPITAL-bindered Π: accepted (conversion is mode-blind), and the call takes
+-- its argument by ⇝, because the caller's view is the Π and nothing else.
+def f3 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+  { let g = seal(λ (h : Le n m). Z, Π (H : Le n m) → Nat);
+    let r = g(hnm);
+    let s = g(hnm);
+    hnm } }
+example : ok f3 = true := by native_decide
+
+-- F4. The transparent case: a literal λ callee carries its modes on its own
+-- domains, so the same routing happens with no seal in sight.
+def f4 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+  { let g = λ (H : Le n m). Z; let r = g(hnm); let s = g(hnm); hnm } }
+example : ok f4 = true := by native_decide
+
+-- F5. …and its lowercase twin moves, which is what says F4 is about the mode.
+def f5 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+  { let g = λ (h : Le n m). Z; let r = g(hnm); let s = g(hnm); hnm } }
+example : rejects f5 "holds ⊥" = true := by native_decide
+
+/-! ## §G. Phase A's note 4, revisited with modes in hand — the rejection STANDS
+
+    Phase A rejected a residual λ/Π after a saturated spine and recorded that
+    this also rejects a function legitimately RETURNING a function, with "phase
+    B's binder modes are what could distinguish them". They are not, and the
+    reason is worth pinning rather than re-derived later.
+
+    `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the SAME
+    term. There is no residual binder whose mode belongs to one reading and not
+    the other — the mode of the residual binder is a fact about how its own
+    argument would be read, which is equally true under both readings. §6.3 is
+    explicit about what the case decides: runtime existence of a BINDER, not the
+    shape of a return type.
+
+    The separating fact is elsewhere, and phase C/D may want it: a residual
+    telescope with no borrow-moded binder could be curried soundly, because §12
+    decision 4's reason for saturation is "a partial application at runtime is a
+    closure holding its arguments — including, in general, borrows". That is a
+    decision against a settled one, not a mode question, and it is left filed. -/
+
+def g1 : Decl := decl{ fn caller () -> Unit
+  { let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () } }
+example : rejects g1 "partial application" = true := by native_decide
+example : rejects g1 "binder modes do NOT separate the two cases" = true := by native_decide
+
+-- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
+-- "the constant function at 1", and is refused.
+def g2 : Decl := decl{ fn caller () -> Unit
+  { let mk = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
+    let k1 = mk(1); () } }
+example : rejects g2 "partial application" = true := by native_decide
+
+-- Modes ARE expressible on such a Π — the elaboration is fine, the marker is
+-- there — and change nothing, which is the point.
+def g3 : Decl := decl{ fn caller () -> Unit
+  { let mk = seal(λ (X : Nat). λ (y : Nat). X, Π (X : Nat) → Π (y : Nat) → Nat);
+    let k1 = mk(1); () } }
+example : rejects g3 "partial application" = true := by native_decide
+
+-- The route that DOES work today, so the limitation is bounded rather than
+-- open-ended: a DECLARED fn may return a function (phase A's A6c). It is only
+-- the value-callee spine that cannot say "stop here and hand me the rest".
+example : ok S26Seal.a6c = true := by native_decide
+
+/-! ## §H. The flagship — `quicksort (fuel, v, Hfuel)` reads right
+
+    §6's own sentence: "`fuel` lowercase (the body branches on it), `v` lowercase
+    (borrow), `Hfuel` capital (cited in certificates, never scrutinized, never
+    consumed)". Built on the existing decl-table path (J1, both worlds alive), so
+    what it demonstrates is the SIGNATURE and the threading, not phase C's
+    recursor.
+
+    `Hfuel` is passed to a call that also takes the borrow, and then CITED — used
+    to derive a certificate that the body goes on to use. Under phase A that
+    sequence was unwritable without staging the proof into a λ before the call. -/
+
+def step : Decl := decl{ fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () } }
+/-- The same callee with a RUNTIME proof parameter — H2's control. -/
+def stepLo : Decl := decl{ fn stepLo (v : &mut List Nat, b : Nat, h : Le (len *v) b) -> Unit { () } }
+
+def qsish : Decl := decl{
+  fn qsish [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : Le (len *v) fuel) -> Unit
+    { match fuel {
+        Z => (),
+        S(f2) => {
+          step(&mut *v, S(f2), Hfuel);                       -- passed to a call…
+          let Q = le_trans (len (old *v)) (S f2) (S f2) Hfuel (le_refl (S f2));
+                                                              -- …and cited AFTERWARDS
+          useLeC(len (old *v), S(f2), Q);                     -- the derived certificate, used
+          () } } } }
+example : ok qsish [step, useLeC, qsish] = true := by native_decide
+
+-- H2. THE CALLEE'S DECLARATION IS WHAT DECIDES. The same body against `stepLo`,
+-- whose proof parameter is lowercase: the call would move an erased binder, and
+-- the fence says so. Which is the right division of labour — a caller cannot
+-- know whether a callee needs its proof at runtime, so the callee declares it.
+def qsishLo : Decl := decl{
+  fn qsishLo [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : Le (len *v) fuel) -> Unit
+    { match fuel {
+        Z => (),
+        S(f2) => {
+          stepLo(&mut *v, S(f2), Hfuel);
+          let Q = le_trans (len (old *v)) (S f2) (S f2) Hfuel (le_refl (S f2));
+          useLeC(len (old *v), S(f2), Q);
+          () } } } }
+example : rejects qsishLo "cannot be ⇒-moved" [stepLo, useLeC, qsishLo] = true := by native_decide
+
+-- H3. …and `Hfuel`'s neighbour cannot be scrutinized, which is the other half of
+-- §6's sentence: an erased index is erased, not merely copyable.
+def qsishBad : Decl := decl{
+  fn qsishBad (v : &mut List Nat, N : Nat, HN : Id Nat (len *v) N) -> Unit
+    { match N { Z => (), S(k) => () } } }
+example : rejects qsishBad "cannot be the scrutinee of a runtime match" = true := by native_decide
+
+-- H4. The exit/`old` machinery, unchanged by the presence of erased binders: an
+-- erased length index, an erased proof about it, a comptime snapshot binding,
+-- and a borrow, under a return type relating exit to entry.
+def qsish2 : Decl := decl{
+  fn qsish2 (v : &mut List Nat, N : Nat, HN : Id Nat (len *v) N)
+    -> Id (List Nat) (*v) (old *v)
+    { let L = *v; Refl } }
+example : ok qsish2 = true := by native_decide
+
+/-! ### H5. What modes do NOT fix, pinned so it is not mistaken for one
+
+    A bound stated about `*v` is invalidated by any call through `v`: the call
+    re-mints the payload, so the second `step(&mut *v, …, Hfuel)` wants
+    `Le (len σ') …` where `Hfuel` says `Le (len σ_entry) …`. That is M23's
+    opacity working exactly as designed (§2.2 — "the forgetting is wanted"), and
+    it is why the real `quicksort` derives a fresh bound per recursive call
+    rather than reusing one.
+
+    The pair below is the evidence that this is NOT a mode problem: capital and
+    lowercase proof binders are refused *identically*, with the same message
+    about the same parameter type. Modes resolve R16 (consumption); they do not
+    touch R12 (staleness), and nothing in §6 claims otherwise. -/
+
+def h5hi : Decl := decl{ fn h5hi (v : &mut List Nat, f : Nat, Hf : Le (len *v) f) -> Unit
+  { step(&mut *v, f, Hf); step(&mut *v, f, Hf); () } }
+def h5lo : Decl := decl{ fn h5lo (v : &mut List Nat, f : Nat, hf : Le (len *v) f) -> Unit
+  { step(&mut *v, f, hf); step(&mut *v, f, hf); () } }
+example : rejects h5hi "does not have its parameter type" [step, h5hi] = true := by native_decide
+example : rejects h5lo "does not have its parameter type" [step, h5lo] = true := by native_decide
+
+/-! ### H6. The fence's boundary: a comptime binder is not RETURNABLE
+
+    A function's result is a ⇒-value, so returning a capital binder is a move and
+    the fence refuses it. Slightly surprising and entirely consistent — "usable
+    only in ⇝-positions" includes the result position — and worth pinning because
+    the natural reading of "citable after any call" stops just short of it.
+
+    The pair also shows which end the R16 fix lives at. `h6lo`'s caller binder is
+    RUNTIME and it works: the callee's capital parameter is what stopped the
+    consumption, so a caller that genuinely owns a proof may pass it and still
+    return it. Capitalizing the caller's own binder is a claim about the CALLER's
+    erasure, and a returned value is not erased. -/
+
+def h6hi : Decl := decl{
+  fn h6hi (v : &mut List Nat, f : Nat, Hf : Le (len *v) f) -> Le (len (old *v)) f
+  { step(&mut *v, f, Hf); Hf } }
+def h6lo : Decl := decl{
+  fn h6lo (v : &mut List Nat, f : Nat, hf : Le (len *v) f) -> Le (len (old *v)) f
+  { step(&mut *v, f, hf); hf } }
+example : rejects h6hi "cannot be ⇒-moved" [step, h6hi] = true := by native_decide
+example : ok h6lo [step, h6lo] = true := by native_decide
+
+/-! ## §I. Both machines, in lockstep (constraint 6)
+
+    The comptime-argument rule is taken by the EXECUTING machine too, so the two
+    agree on the observable the differential compares: what the caller still
+    holds after the call. Exercised at a concrete argument and at a symbolic one
+    (a call's fresh existential), through a decl-table call and through a value
+    callee.
+
+    The subject is a `List`, not a proof, and deliberately: a `Nat` or a proof
+    spine is index-kind and already copies on read, so it could not tell the two
+    modes apart. A `List` MOVES under ⇒ — which surfaces something worth naming:
+    a capital DATA binder is ⇝-read, so the callee gets the value and the caller
+    keeps it. That is silent aggregate duplication, which §2.1 explicitly refuses
+    for lowercase binders ("Rust's line"). It is coherent only because the binder
+    is ERASED — nothing is duplicated at runtime — and the FENCE is what makes
+    that true, since the callee cannot observe it. The coherence rests on the
+    fence, not on the read. -/
+
+def takeL : Decl := decl{ fn takeL (l : List Nat) -> Unit { () } }
+def takeLC : Decl := decl{ fn takeLC (L : List Nat) -> Unit { () } }
+def giveL : Decl := decl{ fn giveL () -> List Nat { Cons(1, Nil) } }
+
+-- I1. Concrete: the capital call does not consume, so the list is still there.
+def i1 : Decl := decl{ fn caller () -> Unit
+  { let a = Cons(1, Nil); takeLC(a); let b = a; () } }
+def i1lo : Decl := decl{ fn caller () -> Unit
+  { let a = Cons(1, Nil); takeL(a); let b = a; () } }
+example : ok i1 [takeLC, i1] = true := by native_decide
+example : rejects i1lo "holds ⊥" [takeL, i1lo] = true := by native_decide
+-- …and the environment says so directly: `a` survived the call and was moved by
+-- the `let b = a` that follows it.
+example : (envOf [takeLC] i1 == some [("a", .bot), ("b", Val.cons (Val.nat 1) Val.nil)]) = true := by
+  native_decide
+
+-- I2. Symbolic: the argument is a call's fresh existential rather than a literal.
+def i2 : Decl := decl{ fn caller () -> Unit
+  { let a = giveL(); takeLC(a); let b = a; () } }
+example : ok i2 [takeLC, giveL, i2] = true := by native_decide
+
+-- I3. Through a VALUE callee, transparent and sealed.
+def i3 : Decl := decl{ fn caller () -> Unit
+  { let a = Cons(1, Nil); let g = λ (L : List Nat). Z; let r = g(a); let b = a; () } }
+def i3s : Decl := decl{ fn caller () -> Unit
+  { let a = Cons(1, Nil); let g = seal(λ (L : List Nat). Z, Π (L : List Nat) → Nat);
+    let r = g(a); let b = a; () } }
+example : ok i3 = true := by native_decide
+example : ok i3s = true := by native_decide
+
+-- The differential: the executing machine reaches the same Ω. `diffC` is phase
+-- A's extended relation (σ-instance up to the pure fragment's own computation),
+-- whose liveness was validated there — it says NO to a genuinely disagreeing run.
+def shapes : List (List Decl × Term) :=
+  [ ([takeLC], i1.body), ([takeLC, giveL], i2.body), ([], i3.body), ([], i3s.body) ]
+example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
+
 end Dllbc.Tests.S26Modes

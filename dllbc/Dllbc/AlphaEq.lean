@@ -57,6 +57,9 @@ partial def anTerm (env : List (Nat × Nat)) (ctr : Nat) : Term → (Term × Nat
   | .lam d c => let (d', c1) := anTerm env ctr d; let (c', c2) := anTerm env c1 c; (.lam d' c', c2)
   | .idT a b c => let (a', c1) := anTerm env ctr a; let (b', c2) := anTerm env c1 b; let (c', c3) := anTerm env c2 c; (.idT a' b' c', c3)
   | .borrowT a b => let (a', c1) := anTerm env ctr a; let (b', c2) := anTerm env c1 b; (.borrowT a' b', c2)
+  -- A comptime domain can mention runtime vars (`λ (H : Le n m). …`), so it
+  -- renumbers like any other type position rather than falling to the leaf case.
+  | .cmpT τ => let (τ', c') := anTerm env ctr τ; (.cmpT τ', c')
   | t => (t, ctr)                                            -- pvar, type, const, unit — no runtime ids
 partial def anList (env : List (Nat × Nat)) (ctr : Nat) : List Term → (List Term × Nat)
   | [] => ([], ctr)

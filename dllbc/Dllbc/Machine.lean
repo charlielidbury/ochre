@@ -2137,7 +2137,10 @@ mutual
         -- which reads it by ⇝ and leaves it where it was.
         fenceComptime x "cannot be ⇒-moved"
         match ← lookupSlot x with
-        | .bot => throwErr s!"readR: {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
+        -- The M26-B pointer, in the one message that R16's pain surfaces at: a
+        -- proof consumed by a call is reported here, one line later, and the fix
+        -- is at the CALLEE's declaration rather than anywhere near the report.
+        | .bot => throwErr s!"readR: {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized). If a CALL moved it and that callee only needs it in types or proofs, capitalizing the callee's parameter makes the argument a ⇝-read, which consumes nothing (§6)."
         | v =>
           -- A value with a loan marker in owned position cannot be moved: end
           -- it first (End-Mut), then retry. This is the lazy chain-collapse —

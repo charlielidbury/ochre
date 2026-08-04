@@ -263,15 +263,16 @@ mutual
     | .const n, .const m => n == m
     | .idT a b c, .idT d e f => Term.beq a d && Term.beq b e && Term.beq c f
     | .borrowT a b, .borrowT c d => Term.beq a c && Term.beq b d
-    -- Mode-blind, exactly as `Val.beq` is (§6's "case is inert under ⇝"): the
-    -- §18 rewriting layer abstracts occurrences by `Term.beq`, and a motive
-    -- would otherwise fail to match a subterm over a capital binder.
+    -- STRUCTURAL, unlike `Val.beq` — the asymmetry is deliberate. `Val.beq` is
+    -- mode-blind because `convert` is built on it and §6 says case is inert
+    -- under ⇝. `Term.beq` is not a conversion: its clients are `absOcc` (§18's
+    -- occurrence abstraction) and `Decl.alphaEq` (the macro-vs-corpus round-trip
+    -- criterion), and BOTH want to see a mode. A mode-blind `alphaEq` would let
+    -- phase D's `fn` macro emit a differently-moded `Decl` and still report
+    -- equivalence; a mode-blind `absOcc` would match `⇝τ` against `τ` and
+    -- abstract away the marker along with the domain.
     | .cmpT a, .cmpT b => Term.beq a b
-    | .cmpT a, b => Term.beq a b
-    | a, .cmpT b => Term.beq a b
     | _, _ => false
-  -- Measure on BOTH sides: the mode-blind arms above peel a `cmpT` from one side
-  -- while the other stands still, so a one-sided measure cannot see them decrease.
   termination_by t u => sizeOf t + sizeOf u
   def Term.beqList : List Term → List Term → Bool
     | [], [] => true
