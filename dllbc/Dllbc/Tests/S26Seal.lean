@@ -1,0 +1,488 @@
+import Dllbc.Boundary
+import Dllbc.Macro
+import Dllbc.Std
+import Dllbc.StdLemmas
+import Dllbc.PureMacro
+import Dllbc.DeclMacro
+import Dllbc.Tests.S9Diff
+
+/-!
+# §26 (M26-A) — the seal node, and application of a value callee
+
+Phase A of the `fn`/λ unification (`docs/combining-fns.md`). Two forms enter the
+kernel, and nothing leaves it: `Decl`, `checkFn` and the declaration table are
+fully alive (J1, build-alongside), and every rule below is additive.
+
+## `.seal t u` — opacity as syntax (§5)
+
+  * EXECUTING (⇒, concrete): evaluate `t`. Execution is always transparent.
+  * CHECKING (⇒, symbolic): verify `t : u` once at the node — this check *is* the
+    audit — then yield a fresh `σ : u`. Downstream sees only the type.
+
+**Scope of this phase (J4).** `u` ranges over pure types and borrow-free Πs.
+Borrow-moded `u` is §5.4's audit relocated to the node — exit snapshots, `old *v`,
+obligations — and is phase M26-C; it is REJECTED here, by a message that names the
+phase, with the rejection pinned by a test rather than left to be discovered.
+
+**Why the node can never be a comptime form.** Not a flag consulted at runtime —
+two structural facts. (i) `.seal` is its own `Term` constructor, not an `.app` of
+a magic `.const` (the route `@exit` and `old` take), so ⇝'s application rule
+cannot see it and no test inside that rule distinguishes it. (ii) `Val` has no
+seal former, so no comptime RULE for the seal exists: `whnfV`, `nfV`, `convert`,
+`substPure` and `hasType` are functions on `Val` and would need a new value
+constructor before one could be written. §2.1's question — what does a seal
+reduced twice under ⇝ mean — is therefore not answered conservatively, it is
+unaskable.
+
+## `x(a, …)` — application of a value callee (§7 cost 2)
+
+The callee is a slot, not a table entry, and the slot's contents pick the rule:
+a literal λ is bound-and-run (β, both machines); a `σ : Π` is applied abstractly,
+minting the result from the instantiated codomain (checking only). Saturated
+(§12 decision 4): under-application is rejected, never curried. Surface: the head
+of `f(…)` is a value callee exactly when it names a bound runtime variable, and
+falls through to the declaration table otherwise — one application form, resolved
+by scope, which is §8's direction arriving where phase A already needs it.
+
+This is the mechanism phase C's `ih` stands on, and §C below exercises it in the
+`ih` shape already: a Π-typed telescope parameter, applied inside a body.
+-/
+
+open Dllbc
+
+namespace Dllbc.Tests.S26Seal
+
+/-! ## Helpers
+
+    Rejections are probed through `checkFn` and asserted on the message, never
+    through a Bool: `hasType` returns `false` for "does not have this type" and
+    the seal turns that into an error, so a helper that collapses error and false
+    would let a *stuckness* pass for a *typing* rejection. -/
+
+/-- The declaration checks. -/
+def ok (d : Decl) (table : List Decl := [d]) : Bool :=
+  match checkFn table d with | .ok _ => true | .error _ => false
+
+/-- The declaration is rejected, with `needle` in the message. -/
+def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
+  match checkFn table d with | .ok _ => false | .error e => strContains e needle
+
+/-- A closed caller: empty telescope, `Unit` return. -/
+def caller (body : Term) : Decl :=
+  { name := "caller", retType := .const "Unit", telescope := [], body := body }
+
+/-! ## §A. The seal under ⇒-checking -/
+
+-- A1. A well-typed sealed λ is accepted, and the binding holds a σ afterwards.
+def a1 : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); () } }
+example : ok a1 = true := by native_decide
+
+-- A2. An ill-typed one is rejected, by an honest TYPING rejection naming both the
+-- term and the ascribed type — not by getting stuck somewhere downstream.
+def a2 : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). x, Π (x : Nat) → Bool); () } }
+example : rejects a2 "does not have its ascribed type" = true := by native_decide
+
+-- A3. Data seals: the same rule with no Π in sight.
+def a3ok : Decl := decl{ fn caller () -> Unit { let a = seal(3, Nat); () } }
+def a3no : Decl := decl{ fn caller () -> Unit { let a = seal(3, Bool); () } }
+example : ok a3ok = true := by native_decide
+example : rejects a3no "does not have its ascribed type" = true := by native_decide
+
+-- A4. The phase-C stub. A borrow-moded `u` is the audit relocation, and saying so
+-- is the whole content of the rule for now.
+def a4 : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). x, &mut Nat); () } }
+example : rejects a4 "M26-C" = true := by native_decide
+
+/-! ### A5. ⇝ never meets the node
+
+    The rejection is a *grammar* fact, not a mode check: `readC` lists `.seal`
+    beside `&mut`, `:=`, `;` and `f(…)`, and that list is this calculus's
+    definition of the comptime sub-grammar (§1.3). -/
+
+def readCOn (t : Term) : String :=
+  match (readC 1000 t).run (seedPure [] []) with
+  | .ok v _ => "ACCEPTED " ++ v.pretty
+  | .error e _ => e
+
+example : strContains (readCOn (.seal (.ctorApp "Z" []) (.const "Nat")))
+  "not in the comptime fragment" = true := by native_decide
+-- …including buried inside a pure former, which is the position that would pose
+-- §2.1's identity question if ⇝ could reduce it.
+example : strContains (readCOn (.app (.const "S") (.seal (.ctorApp "Z" []) (.const "Nat"))))
+  "not in the comptime fragment" = true := by native_decide
+
+/-! ## §B. The intersection smell test (`combining-fns` §12, open question 4)
+
+    §4 predicts that the audit of a borrow-free sealed λ must degenerate to
+    **exactly** `hasType` — same acceptances, same rejections, no premise of its
+    own. That is a claim about the design being real rather than notational, so it
+    is discharged here as an *identity over a battery*, not as a spot check: for
+    every pair below, sealing at `u` accepts precisely when the pure fragment's own
+    `readC`-then-`hasType` accepts.
+
+    The rule earns this by construction — it reads the type with `readC`, the term
+    with `readR` (which on a pure former IS `readC`, via the §1.3 lift), and calls
+    `hasType` on the two — but "by construction" is what the battery checks rather
+    than assumes, and the battery carries both polarities so the identity cannot
+    hold vacuously. -/
+
+/-- The pure fragment's own check (S23Direct's `chk`, verbatim). -/
+def chk (tm ty : Term) : Bool :=
+  match (do let v ← readC 3000 tm; let t ← readC 3000 ty; hasType 3000 v t).run (seedPure [] []) with
+  | .ok r _ => r
+  | .error _ _ => false
+
+/-- Does sealing `tm` at `ty` pass the checker? -/
+def sealChk (tm ty : Term) : Bool :=
+  ok (caller (.letIn ⟨0, "f"⟩ (.seal tm ty) .unit)) []
+
+def natT : Term := .const "Nat"
+def listNatT : Term := .app (.const "List") natT
+def n3 : Term := .ctorApp "S" [.ctorApp "S" [.ctorApp "S" [.ctorApp "Z" []]]]
+def n4 : Term := .ctorApp "S" [n3]
+
+/-- The battery: λ's at Π's (the case §4 is about), data at its type, proofs at
+    their statements, and a wrong-type mate for each shape. -/
+def battery : List (Term × Term) :=
+  [ (pure{ λ (x : Nat). x },            pure{ Π (x : Nat) → Nat })
+  , (pure{ λ (x : Nat). x },            pure{ Π (x : Nat) → Bool })          -- ✗
+  , (pure{ λ (x : Nat). S x },          pure{ Π (x : Nat) → Nat })
+  , (pure{ λ (x : Nat). λ (y : Nat). x }, pure{ Π (x : Nat) → Π (y : Nat) → Nat })
+  , (pure{ λ (x : Nat). λ (y : Nat). x }, pure{ Π (x : Nat) → Nat })         -- ✗
+  , (n3, natT)
+  , (n3, .const "Bool")                                                       -- ✗
+  , (.ctorApp "Nil" [], listNatT)
+  , (.ctorApp "Cons" [n3, .ctorApp "Nil" []], listNatT)
+  , (.ctorApp "Refl" [], .idT natT n3 n3)
+  , (.ctorApp "Refl" [], .idT natT n3 n4)                                     -- ✗
+  , (StdLemmas.le_refl, StdLemmas.le_refl_ty)
+  , (StdLemmas.le_refl, StdLemmas.id_sym_ty)                                  -- ✗
+  , (StdLemmas.id_sym, StdLemmas.id_sym_ty)
+  , (StdLemmas.add_zero, StdLemmas.add_zero_ty)
+  -- The §2.1 flagship: congruence, whose whole content is that an abstract
+  -- function's applications are one term. Sealing it must cost exactly what
+  -- checking it costs.
+  , (StdLemmas.id_congr, StdLemmas.id_congr_ty) ]
+
+/-- THE SMELL TEST: the seal's audit and the pure fragment's `hasType` agree,
+    pair for pair. -/
+example : battery.all (fun p => sealChk p.1 p.2 == chk p.1 p.2) = true := by native_decide
+
+-- …and the battery is not vacuous: both verdicts occur, so the identity above is
+-- pinning agreement rather than a constant function. (Liveness by flipping the
+-- assertion: were the seal to demand anything extra, the ✗-marked rows would
+-- still agree — it is the accepting rows that would break, and they are the
+-- majority here on purpose.)
+example : (battery.any (fun p => chk p.1 p.2)
+        && battery.any (fun p => !chk p.1 p.2)) = true := by native_decide
+-- The harness itself is live: a deliberately wrong pairing disagrees with the
+-- seal only if the seal is doing something other than `hasType` — it does not.
+example : sealChk (StdLemmas.le_refl) (StdLemmas.id_sym_ty) = false := by native_decide
+
+/-! ## §C. Application of a value callee
+
+    §2's two rows, chosen by what the slot holds. A negative control per rule
+    branch, per §6.2's lesson that a rule branch nobody probes is a rule branch
+    nobody checked. -/
+
+/-- The single symbolic path's final Ω (no audit), for reading off what a rule
+    left behind. -/
+def envOf (table : List Decl) (d : Decl) : Option Env :=
+  match runFn table d with | [.ok e] => some e | _ => none
+
+def vlam : Val := .lam (.const "Nat") (.ctor "S" [.pvar 0])
+
+-- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
+-- the result exactly: `y ↦ 3`, not an existential.
+def c1 : Decl := decl{ fn caller () -> Unit { let f = λ (x : Nat). S x; let y = f(2); () } }
+example : ok c1 = true := by native_decide
+example : (envOf [] c1 == some [("f", vlam), ("y", Val.nat 3)]) = true := by native_decide
+
+-- C2. **Body withheld ⟹ the type's promise and nothing more.** Seal the same λ
+-- and the same call yields an opaque σ. This is §5 point 4 made mechanical: what
+-- the caller keeps is exactly what was written in the seal.
+def c2 : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); () } }
+example : ok c2 = true := by native_decide
+example : (envOf [] c2 == some [("f", .sym 0), ("y", .sym 1)]) = true := by native_decide
+
+-- C3. Two calls are two events, and are NOT identified (§2.2's requirement on the
+-- runtime column): σ1 and σ2 are distinct, each with its own type instance.
+def c3 : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(2); () } }
+example : (envOf [] c3 == some [("f", .sym 0), ("y", .sym 1), ("z", .sym 2)]) = true := by native_decide
+
+/-! ### C4–C8. The negative controls, one per rule branch -/
+
+-- Partial application: refused, not curried (§12 decision 4).
+def c4 : Decl := decl{ fn caller () -> Unit
+  { let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () } }
+example : rejects c4 "partial application" = true := by native_decide
+-- …and the same refusal on the abstract side, which is the branch that matters
+-- for phase C (a σ : Π under-applied is a closure holding its arguments).
+def c5 : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
+    let z = f(2); () } }
+example : rejects c5 "partial application" = true := by native_decide
+
+-- Over-application.
+def c6 : Decl := decl{ fn caller () -> Unit { let f = λ (x : Nat). x; let z = f(2, 3); () } }
+example : rejects c6 "too many arguments" = true := by native_decide
+
+-- A mistyped argument, on both branches.
+def c7 : Decl := decl{ fn caller () -> Unit { let f = λ (x : Nat). x; let z = f(Nil); () } }
+example : rejects c7 "does not have its parameter type" = true := by native_decide
+def c8 : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); let z = f(Nil); () } }
+example : rejects c8 "does not have its parameter type" = true := by native_decide
+
+-- A callee that is not a function at all, and one that was moved away.
+def c9 : Decl := decl{ fn caller () -> Unit { let f = 3; let z = f(2); () } }
+example : rejects c9 "is not a function value" = true := by native_decide
+def c10 : Decl := decl{ fn caller () -> Unit
+  { let f = Cons(1, Nil); let g = f; let z = f(2); () } }
+example : rejects c10 "holds ⊥" = true := by native_decide
+
+-- The demand-collapse premise (§5.2, "every demand collapses first") fires at the
+-- callee slot too. `x` holds a loan marker; the call ENDS it and retries, so the
+-- rejection names what the slot really holds — a Nat — rather than the marker.
+-- Listing the site is the point: every unlisted demand site in this calculus has
+-- so far been a bug waiting for its first program.
+def c11 : Decl := decl{ fn caller () -> Unit { let x = 3; let b = &mut x; let z = x(2); () } }
+example : rejects c11 "is not a function value" = true := by native_decide
+
+/-! ### C12. The `ih` shape
+
+    A Π-typed TELESCOPE PARAMETER, applied inside a body. Checking-side this is a
+    `σ : Π` — "the sealed view", which is exactly what phase C's `ih` will be — and
+    the call is abstract application at that Π. Executing-side the parameter holds
+    the caller's actual λ and the same syntax β-reduces. One form, two rules, no
+    branch in the program. -/
+
+def apply1 : Decl := decl{ fn apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) } }
+example : ok apply1 = true := by native_decide
+
+-- The caller supplies a literal λ; checking mode learns only `Nat` about the
+-- result (the call is opaque), which is §5.3's promise, unchanged by the callee
+-- being applied through a variable inside.
+def c12 : Decl := decl{ fn caller () -> Unit
+  { let f = λ (x : Nat). S x; let r = apply1(f, 2); () } }
+example : ok c12 [apply1, c12] = true := by native_decide
+example : (envOf [apply1] c12 == some [("f", vlam), ("r", .sym 0)]) = true := by native_decide
+
+-- The negative control for the parameter branch: a body that under-applies its
+-- Π-typed parameter is rejected at the callee's own check, not at a caller's.
+def apply1bad : Decl :=
+  decl{ fn apply1bad (g : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { g(n) } }
+example : rejects apply1bad "partial application" = true := by native_decide
+
+/-! ## §D. The executing machine, and a NEW simulation-relation case
+
+    Constraint 6 of `combining-fns` §10 names this obligation in advance rather
+    than leaving it to be discovered: because `.seal` is legal anywhere ⇒
+    evaluates, a checking-mode σ can now face a concrete value **mid-expression**,
+    not only at a call boundary or a group release. The prediction was that this is
+    a new case for the simulation relation. It is, and here is the counterexample
+    that shows it — found by running S9Diff's relation, not by reasoning about it.
+
+    **What breaks.** S9Diff's `matchVal` is a first-order structural matcher: it
+    binds a bare `sym σ` to whatever concrete value sits opposite, and compares
+    everything else structurally. That suffices while every σ stands at a whole
+    slot, which is where calls and group-ends put them. A seal puts a σ *inside
+    ordinary arithmetic*: after `let a = seal(3, Nat); let b = add a 1` the
+    symbolic side holds the neutral spine `natRec … σ0` where the concrete side
+    holds `4`. Structurally these differ, and the old relation reports a
+    counterexample that is not one.
+
+    **The extension.** Two passes. Collect σ ↦ concrete bindings from the positions
+    where the symbolic side IS a σ; then instantiate the whole symbolic
+    environment and normalize, and compare. Consistency is enforced by the second
+    pass (a σ bound twice to different values fails there), so the first pass needs
+    no failure mode at all. This is the same relation S9Diff states — "the concrete
+    env is a σ-instance of the symbolic one" — with *instance* read up to the pure
+    fragment's own computation instead of up to structure. -/
+
+open Dllbc.Tests.S9Diff (runExec symEnvs instanceOf)
+
+/-- Pass 1: every σ that stands at a position of the symbolic value gets the
+    concrete value opposite it. First binding wins; pass 2 catches inconsistency. -/
+partial def collectSyms : Val → Val → List (Nat × Val) → List (Nat × Val)
+  | .sym σ, cv, s => if (s.find? (·.1 == σ)).isSome then s else (σ, cv) :: s
+  | .ctor _ a1, .ctor _ a2, s => go a1 a2 s
+  | .borrowM _ p, .borrowM _ q, s => collectSyms p q s
+  | _, _, s => s
+where
+  go : List Val → List Val → List (Nat × Val) → List (Nat × Val)
+  | v1 :: vs1, v2 :: vs2, s => go vs1 vs2 (collectSyms v1 v2 s)
+  | _, _, s => s
+
+/-- Pass 2: instantiate and compute. Concrete values carry no σ, so one sweep is a
+    fixpoint. -/
+def instantiateSyms (subst : List (Nat × Val)) (v : Val) : Val :=
+  Val.nfV 2000 (subst.foldl (fun acc kv => substSym kv.1 kv.2 acc) v)
+
+/-- The concrete env is a σ-instance of the symbolic one, up to computation. -/
+def instanceOfComputed (symEnv concEnv : Env) : Bool :=
+  let subst := (symEnv.zip concEnv).foldl (fun s p => collectSyms p.1.2 p.2.2 s) []
+  symEnv.length == concEnv.length
+    && (symEnv.zip concEnv).all
+         (fun p => p.1.1 == p.2.1 && instantiateSyms subst p.1.2 == p.2.2)
+
+/-- The differential, under the extended relation. -/
+def diffC (table : List Decl) (body : Term) : Bool :=
+  match runExec table body with
+  | .error _ => false
+  | .ok ce => (symEnvs false table body).any
+      (fun r => match r with | .ok se => instanceOfComputed se ce | .error _ => false)
+
+/-- The differential, under S9Diff's relation — kept so the gap is exhibited, not
+    asserted. -/
+def diffOld (table : List Decl) (body : Term) : Bool :=
+  match runExec table body with
+  | .error _ => false
+  | .ok ce => (symEnvs false table body).any
+      (fun r => match r with | .ok se => instanceOf se ce | .error _ => false)
+
+/-! ### D1. The counterexample that names the new case -/
+
+def d1 : Decl := decl{ fn caller () -> Unit { let a = seal(3, Nat); let b = add a 1; () } }
+example : ok d1 = true := by native_decide
+-- The old relation calls this a counterexample. It is not one: the two
+-- environments agree at σ0 := 3.
+example : diffOld [] d1.body = false := by native_decide
+example : diffC   [] d1.body = true  := by native_decide
+
+/-! ### D2. The four shapes constraint 6 asks for, all GREEN -/
+
+/-- A callee whose result the checker knows only as a σ — so the seal below sits
+    at a SYMBOLIC value, not a concrete one. -/
+def giveThree : Decl := decl{ fn giveThree () -> Nat { 3 } }
+
+-- seal at a concrete value
+def d2a : Decl := decl{ fn caller () -> Unit { let a = seal(3, Nat); let b = a; () } }
+-- seal at a symbolic value (the body reads a call's fresh existential)
+def d2b : Decl := decl{ fn caller () -> Unit
+  { let n = giveThree(); let a = seal(add n 1, Nat); let b = add n 1; () } }
+-- a sealed function callee, passed and called
+def d2c : Decl := decl{ fn caller () -> Unit
+  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(5); () } }
+-- a transparent function callee, passed to a declared fn and called inside it
+def d2d : Decl := decl{ fn caller () -> Unit
+  { let f = λ (x : Nat). S x; let r = apply1(f, 2); let s = f(7); () } }
+
+def shapes : List (List Decl × Term) :=
+  [ ([], d2a.body), ([giveThree], d2b.body), ([], d2c.body), ([apply1], d2d.body) ]
+
+example : shapes.all (fun p => ok (caller p.2) p.1) = true := by native_decide
+example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
+
+/-! ### D3. Harness liveness — the relation must be able to say NO
+
+    A counterexample-finder that has never found its counterexample is
+    unvalidated (S9Diff's own standing rule). The extended relation is checked
+    against a concrete run that genuinely disagrees: same symbolic side, a
+    concrete side that adds 2 where the checker's σ-instance adds 1. -/
+
+def d3mutant : Decl := decl{ fn caller () -> Unit { let a = 3; let b = add a 2; () } }
+
+example :
+  (match symEnvs false [] d1.body, runExec [] d3mutant.body with
+   | [.ok se], .ok ce => instanceOfComputed se ce
+   | _, _ => true) = false := by native_decide
+-- …and it says YES to the honest pairing, so the NO above is discrimination, not
+-- a broken relation.
+example :
+  (match symEnvs false [] d1.body, runExec [] d1.body with
+   | [.ok se], .ok ce => instanceOfComputed se ce
+   | _, _ => false) = true := by native_decide
+
+/-! ## §E. `Qed` — the payoff, measured
+
+    §5's second claim: `let cert = seal ⟨enormous proof⟩ ⟨statement⟩` mints one σ
+    at the statement, and every citation afterwards is a σ-reference that `hasType`
+    answers by reading the statement, never descending the proof. The measured
+    certificate costs — "a reject costs the same as an accept", the audit descents
+    — become O(statement).
+
+    The subject is `count_swapA`, the largest proof in `StdLemmas` (9156 term nodes
+    against a 400-node statement). `useIt`'s parameter type IS the statement, so
+    each citation forces `processArgs`' `hasType` on whatever the slot holds: the
+    whole proof value when the certificate is transparent, a σ when it is sealed.
+
+    Measured on this machine, compiled (`lake build` of this module, ms):
+
+        the pure fragment's own check of the proof     6
+        citations k                    1     8    32    128
+        transparent                    6    34   130    515
+        SEALED                         6     6     9     17
+
+    Two readings, and the second is the one that matters. **The seal's audit costs
+    exactly the ordinary check**: its intercept is 6 ms, which is `chk`'s 6 ms —
+    sealing is not a tax, §12-open-4 again in milliseconds rather than in
+    acceptances. **Every citation after it is flat**: 4.01 ms each transparent
+    against 0.087 ms each sealed (least squares over the four points), a factor of
+    46 that grows with the proof, because the sealed cost is a function of the
+    400-node statement while the transparent one is a function of the 9156-node
+    proof. That is §5's "the audit descents become O(statement)", as a slope.
+
+    (The same sweep run through `lake env lean` on a scratch file reads ~34×
+    larger throughout — the interpreter tax this project has measured before. The
+    ratio is unaffected; the numbers above are the compiled ones.) -/
+
+def big : Term := StdLemmas.count_swapA
+def bigTy : Term := StdLemmas.count_swapA_ty
+
+def useIt : Decl := decl{ fn useIt (h : %bigTy) -> Unit { () } }
+
+/-- `let c = rhs ; useIt(c) ; … ; ()` with `k` citations. Built rather than
+    written out so the citation count can be swept: the claim is about the SLOPE,
+    and one hand-written pair would only show a point. -/
+def citeK (k : Nat) (rhs : Term) : Decl :=
+  let c : Var := ⟨0, "c"⟩
+  let rec go : Nat → Term
+    | 0 => .unit
+    | n + 1 => .seq (.call "useIt" [.var c]) (go n)
+  caller (.letIn c rhs (go k))
+
+def unsealedK (k : Nat) : Decl := citeK k big
+def sealedK (k : Nat) : Decl := citeK k (.seal big bigTy)
+
+def unsealed1 : Decl := unsealedK 1
+def sealed1 : Decl := sealedK 1
+def unsealed4 : Decl := unsealedK 4
+def sealed4 : Decl := sealedK 4
+
+-- Both check, and check the same thing: the sealed citation is not cheaper by
+-- being weaker. (`useIt`'s parameter type is the statement either way, so an
+-- unsound σ would be caught here, not saved.)
+example : ok unsealed4 [useIt, unsealed4] = true := by native_decide
+example : ok sealed4 [useIt, sealed4] = true := by native_decide
+
+-- Negative control: sealing does not launder a WRONG proof past the citation. A
+-- certificate sealed at a statement it does not inhabit is rejected at the node.
+def sealedWrong : Decl := decl{ fn caller () -> Unit
+  { let c = seal(%StdLemmas.le_refl, %bigTy); useIt(c); () } }
+example : rejects sealedWrong "does not have its ascribed type" [useIt, sealedWrong] = true := by
+  native_decide
+
+/-- Re-measure on demand (`lake build` prints it): the numbers in the §E header. -/
+def timeIt (label : String) (f : Unit → String) : IO Unit := do
+  let t0 ← IO.monoMsNow
+  let r := f ()
+  let _ ← IO.mkRef r.length                       -- force before reading the clock
+  let t1 ← IO.monoMsNow
+  IO.println s!"{label}: {r} [{t1 - t0} ms]"
+
+def verdict (d : Decl) : String :=
+  match checkFn [useIt, d] d with | .ok _ => "OK" | .error e => "ERR: " ++ e
+
+#eval do
+  timeIt "S26 Qed  pure-fragment check of the proof" (fun _ => toString (chk big bigTy))
+  for k in [1, 8, 32, 128] do
+    timeIt s!"S26 Qed  transparent x{k}" (fun _ => verdict (unsealedK k))
+    timeIt s!"S26 Qed  SEALED      x{k}" (fun _ => verdict (sealedK k))
+
+end Dllbc.Tests.S26Seal

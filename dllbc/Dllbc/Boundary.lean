@@ -301,17 +301,9 @@ def auditPaths (retType : Term) :
     | .error e _ => .error e
     | .ok _ _ => auditPaths retType rest
 
-/-- Does a (return) type contain a borrow anywhere? A borrow-carrying return
-    (a `&mut`, or a `Pair` of them) is audited by `collectResultBorrows`, never
-    reflected, so it must NOT be pinned/`readC`'d (which rejects `borrowT`). -/
-def hasBorrowT : Term → Bool
-  | .borrowT _ _ => true
-  | .sigmaT a b => hasBorrowT a || hasBorrowT b
-  | .pi a b => hasBorrowT a || hasBorrowT b
-  | .app a b => hasBorrowT a || hasBorrowT b
-  | .lam a b => hasBorrowT a || hasBorrowT b
-  | .idT a b c => hasBorrowT a || hasBorrowT b || hasBorrowT c
-  | _ => false
+-- `hasBorrowT` moved to `Syntax.lean` (M26-A): the seal rule lives in `Machine`,
+-- which cannot import `Boundary`. Same name, same namespace — every use site is
+-- unchanged.
 
 /-- Check a function declaration end-to-end: seed the telescope, explore the
     body (one path per symbolic branch), audit each path at return. `table` is

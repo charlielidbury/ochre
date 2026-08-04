@@ -129,6 +129,11 @@ syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow form)
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
 syntax:10 uterm:11 "→" uterm:10 : uterm                      -- non-dependent arrow
+-- M26-A's seal (combining-fns §5). Written `seal(t, u)` — a parenthesized NODE,
+-- not a juxtaposition spine, so it can never be mistaken for (or produced by) an
+-- application: the grammar keeps the seal apart at the surface for the same
+-- reason `Term.seal` is its own constructor rather than a magic `.const`.
+syntax:max "seal" "(" uterm "," uterm ")" : uterm            -- .seal t u
 syntax:max "match" ident "{" uarm,* "}" : uterm              -- runtime match (§3)
 syntax:max "match" ident ":" ident "{" uarm,* "}" : uterm    -- …with a branch equation (M23)
 syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar over a Bool match
@@ -308,13 +313,26 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (b', n2) ← elabUTerm isTy rctx ("_" :: pctx) n1 b
     return (← `(Dllbc.Term.pi $a' $b'), n2)
+  | `(uterm| seal($t:uterm, $u:uterm)) => do
+    -- The body is a ⇒ position (term mode) whatever surrounds the node; the
+    -- ascribed type is a ⇝ position. That asymmetry is the seal itself.
+    let (t', n1) ← elabUTerm false rctx pctx next t
+    let (u', n2) ← elabUTerm true rctx pctx n1 u
+    return (← `(Dllbc.Term.seal $t' $u'), n2)
   | `(uterm| $c:ident($args,*)) => do                 -- no-space paren: call / ctorApp
     let (args', n) ← elabUList isTy rctx pctx next args.getElems.toList
     let name := c.getId.toString
     if Dllbc.Macro.isUpperInit name then
       return (← `(Dllbc.Term.ctorApp $(quote name) [$args',*]), n)
     else
-      return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
+      -- **Scope beats the table** (§8's direction, arriving early because M26-A
+      -- needs it): a head that names a BOUND RUNTIME VARIABLE is a value-callee
+      -- call, and only a head that names nothing in scope falls through to the
+      -- declaration table. No new token and no annotation — the same `f(x)`
+      -- surface means both, which is what "one application form" has to mean.
+      match rctx.lookup name with
+      | some id => return (← `(Dllbc.Term.callV ⟨$(quote id), $(quote name)⟩ [$args',*]), n)
+      | none => return (← `(Dllbc.Term.call $(quote name) [$args',*]), n)
   | `(uterm| match $x:ident { $arms,* }) => do
     let s := x.getId.toString
     match rctx.lookup s with

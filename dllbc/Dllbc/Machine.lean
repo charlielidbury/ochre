@@ -887,6 +887,15 @@ mutual
     | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
     | .borrowT _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
     | .call _ _ => throwErr "readC (⇝): a call is not in the comptime fragment (its result is a fresh existential)"
+    -- The seal is a ⇒-form and only a ⇒-form (combining-fns §5). Minting needs an
+    -- EVENT; ⇝ is a pure judgment with none, so a seal reduced twice under ⇝ would
+    -- disagree with itself. It is listed here with the other five runtime-only
+    -- forms because that list IS this calculus's definition of the pure
+    -- sub-grammar (§1.3) — and, unlike a mode flag, the exclusion is structural
+    -- twice over: `.seal` is its own constructor (⇝'s `.app` rule cannot see it)
+    -- and `Val` has no seal former (no comptime RULE for it can be written).
+    | .seal _ _ => throwErr "readC (⇝): `seal` is not in the comptime fragment — the seal is a ⇒-form, because minting a fresh σ needs an event and ⇝ has none (§5)"
+    | .callV _ _ => throwErr "readC (⇝): a value-callee call is not in the comptime fragment — comptime application of an abstract function is the structured neutral `f a`, written as an application (§2.1)"
   def reflectCList : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
@@ -1012,6 +1021,10 @@ partial def strictSubterm (act cur : Val) : Bool :=
 /-- The function names a body calls directly. -/
 partial def calleeNames : Term → List String
   | .call f args => f :: (args.flatMap calleeNames)
+  -- A seal's body is ordinary runtime code and may call; a value-callee call
+  -- names no DECLARATION (that is the point of it), but its arguments may.
+  | .seal t u => calleeNames t ++ calleeNames u
+  | .callV _ args => args.flatMap calleeNames
   | .letIn _ a b => calleeNames a ++ calleeNames b
   | .assign a b c => calleeNames a ++ calleeNames b ++ calleeNames c
   | .seq a b => calleeNames a ++ calleeNames b
@@ -1932,6 +1945,12 @@ mutual
       .matchE ⟨scrut.id + d, scrut.name⟩ (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranches d brs)
     | .seq a b => .seq (shiftVars d a) (shiftVars d b)
     | .call f args => .call f (shiftVarsList d args)
+    -- A seal's BODY is a runtime term (it may name the frame's slots); its TYPE is
+    -- a type, whose runtime-var occurrences (`*v` in an ensures, §5.2) shift for
+    -- the same reason the pure formers below do.
+    | .seal t u => .seal (shiftVars d t) (shiftVars d u)
+    -- The callee is a slot, so it shifts exactly as a `.matchE` scrutinee does.
+    | .callV x args => .callV ⟨x.id + d, x.name⟩ (shiftVarsList d args)
     -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
     -- — a pure spine over the runtime `v`, `i`, `g`). Their `.var` leaves must
     -- shift with the executing-mode frame too; `.pvar`/`.type`/`.const` (no
@@ -1952,6 +1971,62 @@ mutual
     | (.mk c bs body) :: rest => .mk c (bs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVars d body) :: shiftBranches d rest
   termination_by bs => sizeOf bs
 end
+
+/-! ## Value-callee application (combining-fns §7 cost 2, M26-A)
+
+    `.callV x [a₁ … aₙ]` applies whatever slot `x` holds. The two rules are §2's
+    two rows for "what does applying a function yield", and the slot's contents —
+    not a flag, not a table — pick the row:
+
+      * **body known** ⟹ unfold. A literal λ is bound-and-run: β, with each
+        argument checked against its binder's domain. Both machines take this
+        rule, which is what makes a *transparent* definition mean the same thing
+        in both (`applyLam`).
+      * **body withheld** ⟹ the type's promise and nothing more. A `σ : Π` is an
+        abstract function — a seal's mint, or a Π-typed binder — and applying it
+        yields a fresh σ at the instantiated codomain (`instantiatePi` computes
+        the codomain; the call rule mints). Checking mode only: no concrete run
+        ever has a σ in a slot.
+
+    **Both are saturated** (§12 decision 4). Under-application is rejected rather
+    than curried, because a partial application at runtime is precisely a closure
+    holding its arguments — including, in general, borrows — while it waits, and
+    that is the thing §7 defers. The cost is stated honestly in the rejection: a
+    function that legitimately RETURNS a function is syntactically identical to an
+    under-applied one, and phase A has no mode information to tell them apart, so
+    both are refused here. -/
+
+/-- β for a literal λ callee: check each argument against its binder's domain,
+    substitute, repeat. Domain-checking is CHECKING-mode only — executing mode
+    runs already-accepted programs and `bindActuals` sets that precedent — so the
+    two machines perform the same reduction and differ only in what they verify. -/
+def applyLam : Nat → Val → List Val → M Val
+  | 0, _, _ => throwErr "callV: out of fuel (λ application)"
+  | fuel + 1, f, [] =>
+    match Val.whnfV fuel f with
+    | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too: phase A cannot tell it from an under-application."
+    | v => pure v
+  | fuel + 1, f, a :: rest =>
+    match Val.whnfV fuel f with
+    | .lam dom body => do
+      if (← get).executing then applyLam fuel (Val.substPure 0 a body) rest
+      else if ← hasType fuel a dom then applyLam fuel (Val.substPure 0 a body) rest
+      else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
+    | other => throwErr s!"callV: too many arguments — {other.pretty} is not a function"
+
+/-- Instantiate an abstract callee's Π-type at the arguments, returning the result
+    type. This is `synthSpine` with the errors kept apart: a mistyped argument and
+    an over-applied callee are different rejections, and `synthSpine`'s `none`
+    collapses them. -/
+def instantiatePi : Nat → Val → List Val → M Val
+  | 0, _, _ => throwErr "callV: out of fuel (Π instantiation)"
+  | _, ty, [] => pure ty
+  | fuel + 1, ty, a :: rest =>
+    match Val.whnfV fuel ty with
+    | .pi dom cod => do
+      if ← hasType fuel a dom then instantiatePi fuel (Val.substPure 0 a cod) rest
+      else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
+    | other => throwErr s!"callV: too many arguments — the callee's type is {other.pretty}, not a function type"
 
 /-! ## ⇒ (read): the move arrow
 
@@ -2159,6 +2234,85 @@ mutual
             let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, backSpec := backV, exitRelease := exitRel }
             modify (fun s => { s with groups := grp :: s.groups })
             pure resultVal
+      -- **The seal** (combining-fns §5): opacity as one node. The two readings
+      -- are the two machines'.
+      | .seal t u => do
+        if (← get).executing then
+          -- Concrete evaluation is always transparent: the body exists and runs.
+          -- No check here — execution does not verify, it computes (and the
+          -- checker has already accepted the node, or this program was never
+          -- admitted). This is why a sealed value costs nothing at runtime.
+          readR fuel t
+        else do
+          -- Borrow-moded seals are the full audit relocation (exit snapshots,
+          -- `old *v`, the ensures convention) and belong to phase C. Rejected
+          -- here rather than silently mis-audited: `hasType` on a payload-owing
+          -- Π would be an answer to a question §5.4 does not ask.
+          if hasBorrowT u then
+            throwErr "seal: borrow-moded types are not supported yet — the seal of a Π with `&mut` binders IS §5.4's audit (exit snapshots, `old *v`, obligations), relocated from `checkFn` to the node, and that relocation is phase M26-C. Seal at a pure type or a borrow-free Π."
+          -- The type is read FIRST, while the body's free variables are still
+          -- live: `u` may mention a slot that evaluating `t` then consumes, and a
+          -- type re-read afterwards would find a ⊥. This is §5.3's entry-pinning
+          -- lesson, arriving at the seal for the same reason it arrived at a
+          -- dependent return type.
+          let uV ← readC fuel u
+          let v ← readR fuel t
+          -- THE AUDIT, and the whole of it for a borrow-free `u`. For a λ body
+          -- this is literally the pure fragment's `readC`-then-`hasType` — the
+          -- §12-open-4 smell test, which is a deliberate *identity* here rather
+          -- than a resemblance: the rule adds no premise of its own.
+          if ← hasType fuel v uV then do
+            -- …then FORGET. A fresh σ at the ascribed type is the whole downstream
+            -- view: `.seal` is generalization, so what the caller keeps is exactly
+            -- what the programmer wrote (§5 point 4). The mint is coherent because
+            -- this is an EVENT — ⇒ evaluates it once, in order — which is the
+            -- property ⇝ lacks and the reason the node is a ⇒-form (§2.1).
+            let σ ← freshSym
+            modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
+            pure (.sym σ)
+          else
+            throwErr s!"seal: the sealed term ({v.pretty}) does not have its ascribed type ({uV.pretty})"
+      -- **Application of a value callee** (§7 cost 2). The callee is LOCATED, not
+      -- consumed: reading a function to call it is a place read, like a match
+      -- scrutinee's, so a slot can be called twice. (§2.1's copy-on-read would
+      -- reach the same conclusion for the λ and σ:Π values phase A admits — both
+      -- are index-kind — but stating it as location keeps the rule true of the
+      -- borrow-capturing closures §7 defers, which are NOT copyable.)
+      | .callV x args => do
+        match ← lookupSlot x with
+        | .bot => throwErr s!"callV: callee {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
+        | callee =>
+          -- §5.2's "every demand collapses first": a call is a demand on its
+          -- callee slot, so a parked loan there ends before we look at what the
+          -- slot holds. Vacuous for the closed function values of phase A, and
+          -- listed rather than omitted — every UNLISTED demand site in this
+          -- calculus has so far turned out to be a bug waiting for its first
+          -- program (§5.2's own account of how that rule was earned).
+          match firstLoanMarker callee with
+          | some ℓ => do endLoan fuel ℓ; readR fuel (.callV x args)
+          | none => do
+            let argVals ← readArgs fuel args             -- ⇒-consume, left to right
+            match callee with
+            | .lam _ _ => applyLam fuel callee argVals   -- body known ⟹ β
+            | .sym σ =>
+              match (← get).sctx.lookup σ with
+              | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
+              | some σty => do
+                let resTy ← instantiatePi fuel σty argVals
+                match Val.whnfV fuel resTy with
+                | .pi d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
+                | resTy => do
+                  -- The runtime column of §2.3: the call FORGETS the application
+                  -- and keeps only what the type promised. Deliberately NOT the
+                  -- structured neutral `σ a` — that is ⇝'s rule, and §12 decision
+                  -- 5 keeps the door to remembered-spine runtime calls closed. The
+                  -- two rules coexist unconfused because they are keyed by ARROW:
+                  -- write the application in a type or proof and ⇝ remembers it;
+                  -- write it as a statement and ⇒ mints.
+                  let σ' ← freshSym
+                  modify (fun s => { s with sctx := (σ', resTy) :: s.sctx })
+                  pure (.sym σ')
+            | v => throwErr s!"callV: {x.name}#{x.id} holds {v.pretty}, which is not a function value (expected a λ or a σ : Π)"
       | .unit => pure (.ctor "unit" [])
       -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
       -- to variable consumption. A comptime-only former (a proof term — an

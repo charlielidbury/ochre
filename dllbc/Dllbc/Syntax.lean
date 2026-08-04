@@ -114,6 +114,42 @@ inductive Term where
   /-- `f(a, …)` — a call to a declared function (§5.3), checked against the
       signature alone. Unifying `fn` with λ is deferred (§10). -/
   | call   : String → List Term → Term
+  /-- `.seal t u` — **opacity as syntax** (combining-fns §5). Programmer-invoked
+      generalization: "forget everything about this value except its type".
+
+        * EXECUTING (⇒, concrete): evaluate `t`. Execution is always transparent.
+        * CHECKING (⇒, symbolic): verify `t : u` ONCE, at the node — this check
+          *is* the audit — then yield a fresh `σ : u`. Everything downstream sees
+          only the type.
+
+      **Absent from the comptime fragment by construction, in the two places that
+      carry the risk.** (i) It is its OWN constructor, not an `.app` of a magic
+      `.const` (the route `@exit`/`old` take): ⇝'s application rule can therefore
+      never meet it, and no check inside that rule distinguishes it. (ii) There is
+      no `Val.seal` — every comptime rule (`whnfV`, `nfV`, `convert`, `substPure`,
+      `hasType`) is a function on `Val`, so *no comptime rule for the seal exists
+      or can be written* without adding a value former. That is what makes §2.1's
+      question unaskable: minting needs an event, ⇝ has none, and ⇝ has no seal to
+      mint at. `reflectC` rejects the node in the one uniform way it already
+      rejects `&mut`, `:=`, `;` and `f(…)` — "not in the comptime fragment" — which
+      is this calculus's standing definition of the pure sub-grammar (§1.3), not a
+      mode flag consulted at runtime. -/
+  | seal   : Term → Term → Term
+  /-- `x(a, …)` — **application of a value callee** (combining-fns §7 cost 2):
+      the callee is resolved from a runtime SLOT, not the declaration table. The
+      slot's contents decide the rule (`readR`):
+
+        * a literal λ — bind and run (β), both modes: body known ⟹ unfold;
+        * a `σ : Π` — checking only: abstract application at the Π, minting the
+          result from the instantiated return type (§2.3's runtime column, §12
+          decision 5 — runtime calls do not opt into remembered-spine semantics).
+
+      Application is **saturated** (§12 decision 4): a spine, consumed whole like
+      a telescope, so no partial application ever holds a borrow while awaiting an
+      argument. Under-application is rejected distinctively, not curried. The
+      callee is a `Var` because that is all §7 needs (`ih` is a bound variable) and
+      it keeps the form's shape identical to `.matchE`'s scrutinee. -/
+  | callV  : Var → List Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
@@ -170,6 +206,8 @@ mutual
     | .matchE x e as, .matchE y f bs => x == y && e == f && Term.beqBranches as bs
     | .seq a b, .seq c d => Term.beq a c && Term.beq b d
     | .call f as, .call g bs => f == g && Term.beqList as bs
+    | .seal a b, .seal c d => Term.beq a c && Term.beq b d
+    | .callV x as, .callV y bs => x == y && Term.beqList as bs
     | .unit, .unit => true
     | .pvar k, .pvar j => k == j
     | .type, .type => true
@@ -260,5 +298,20 @@ end
     The §18 motive-generalization mechanism: no matching by eye, no missed
     occurrence. -/
 def abstractOccurrences (e t : Term) : Term := absOcc e 0 t
+
+/-- Does a type contain a borrow anywhere? A borrow-carrying return type (a
+    `&mut`, or a `Pair` of them) is audited structurally by
+    `collectResultBorrows`, never reflected, so it must NOT be pinned/`readC`'d
+    (which rejects `borrowT`). The seal rule (M26-A) asks the same question of its
+    ascribed type, which is why this sits in the syntax layer rather than in
+    `Boundary` where it was born — `Machine` cannot import `Boundary`. -/
+def hasBorrowT : Term → Bool
+  | .borrowT _ _ => true
+  | .sigmaT a b => hasBorrowT a || hasBorrowT b
+  | .pi a b => hasBorrowT a || hasBorrowT b
+  | .app a b => hasBorrowT a || hasBorrowT b
+  | .lam a b => hasBorrowT a || hasBorrowT b
+  | .idT a b c => hasBorrowT a || hasBorrowT b || hasBorrowT c
+  | _ => false
 
 end Dllbc
