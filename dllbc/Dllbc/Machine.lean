@@ -1995,60 +1995,79 @@ def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ 
     Used to inline a callee body under a fresh id window in executing mode
     (§9 differential), so its frame cannot collide with the caller's ids. Pure
     formers hold no runtime vars (the pool's types are closed), so they are
-    left as-is. -/
+    left as-is.
+
+    **`keep` is §8's globals** (M26-E). Once a program is a term, a function's
+    body names its callees as ordinary variables bound lexically above it — and
+    those bindings are the program's, not the frame's. Shifting them would send a
+    reference to `quicksort#901` looking for `#11029`, which is the same
+    silent-rebinding hazard the `.lamR` closedness check exists to prevent, so the
+    ids that a body has free are carried through the shift UNCHANGED. The set is
+    computed at the shift site by `Term.freeRVars` — no state, no capture list:
+    what is free is exactly what is not this frame's. -/
 mutual
-  def shiftVars (d : Nat) : Term → Term
-    | .var x => .var ⟨x.id + d, x.name⟩
-    | .letIn x rhs rest => .letIn ⟨x.id + d, x.name⟩ (shiftVars d rhs) (shiftVars d rest)
-    | .assign p e rest => .assign (shiftVars d p) (shiftVars d e) (shiftVars d rest)
-    | .ctorApp n args => .ctorApp n (shiftVarsList d args)
-    | .borrow t => .borrow (shiftVars d t)
-    | .deref t => .deref (shiftVars d t)
+  def shiftVarsK (keep : List Nat) (d : Nat) : Term → Term
+    | .var x => .var ⟨(if keep.contains x.id then x.id else x.id + d), x.name⟩
+    | .letIn x rhs rest => .letIn ⟨x.id + d, x.name⟩ (shiftVarsK keep d rhs) (shiftVarsK keep d rest)
+    | .assign p e rest => .assign (shiftVarsK keep d p) (shiftVarsK keep d e) (shiftVarsK keep d rest)
+    | .ctorApp n args => .ctorApp n (shiftVarsListK keep d args)
+    | .borrow t => .borrow (shiftVarsK keep d t)
+    | .deref t => .deref (shiftVarsK keep d t)
     -- The `Option` is matched inline rather than `.map`ped: a recursive call under
     -- `Option.map` is opaque to the structural-recursion checker.
-    | .index t i ev => .index (shiftVars d t) (shiftVars d i)
-        (match ev with | some e => some (shiftVars d e) | none => none)
+    | .index t i ev => .index (shiftVarsK keep d t) (shiftVarsK keep d i)
+        (match ev with | some e => some (shiftVarsK keep d e) | none => none)
     | .range t lo cnt rest ev eqc =>
-      .range (shiftVars d t) (shiftVars d lo)
-        (match cnt with | some c => some (shiftVars d c) | none => none)
-        (match rest with | some r => some (shiftVars d r) | none => none)
-        (match ev with | some e => some (shiftVars d e) | none => none)
-        (match eqc with | some e => some (shiftVars d e) | none => none)
+      .range (shiftVarsK keep d t) (shiftVarsK keep d lo)
+        (match cnt with | some c => some (shiftVarsK keep d c) | none => none)
+        (match rest with | some r => some (shiftVarsK keep d r) | none => none)
+        (match ev with | some e => some (shiftVarsK keep d e) | none => none)
+        (match eqc with | some e => some (shiftVarsK keep d e) | none => none)
     | .matchE scrut eqn brs =>
-      .matchE ⟨scrut.id + d, scrut.name⟩ (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranches d brs)
-    | .seq a b => .seq (shiftVars d a) (shiftVars d b)
-    | .call f args => .call f (shiftVarsList d args)
+      .matchE ⟨(if keep.contains scrut.id then scrut.id else scrut.id + d), scrut.name⟩
+        (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranchesK keep d brs)
+    | .seq a b => .seq (shiftVarsK keep d a) (shiftVarsK keep d b)
+    | .call f args => .call f (shiftVarsListK keep d args)
     -- A seal's BODY is a runtime term (it may name the frame's slots); its TYPE is
     -- a type, whose runtime-var occurrences (`*v` in an ensures, §5.2) shift for
     -- the same reason the pure formers below do.
-    | .seal t u => .seal (shiftVars d t) (shiftVars d u)
-    -- The callee is a slot, so it shifts exactly as a `.matchE` scrutinee does.
-    | .callV x args => .callV ⟨x.id + d, x.name⟩ (shiftVarsList d args)
+    | .seal t u => .seal (shiftVarsK keep d t) (shiftVarsK keep d u)
+    -- The callee is a slot, so it shifts exactly as a `.matchE` scrutinee does —
+    -- and a callee that is a PROGRAM-level binding (§8: scope is the call table)
+    -- is precisely the `keep` case, which is why it is the same test.
+    | .callV x args =>
+      .callV ⟨(if keep.contains x.id then x.id else x.id + d), x.name⟩ (shiftVarsListK keep d args)
     -- A runtime λ's binders shift WITH its body, which is the property that makes
     -- frames compose: applying a `lamR` shifts the whole node into a fresh
     -- window, so binder ids and their occurrences stay in step no matter how many
     -- frames a nested one has already been carried through.
-    | .lamR xs body => .lamR (xs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVars d body)
+    | .lamR xs body => .lamR (xs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVarsK keep d body)
     -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
     -- — a pure spine over the runtime `v`, `i`, `g`). Their `.var` leaves must
     -- shift with the executing-mode frame too; `.pvar`/`.type`/`.const` (no
     -- runtime vars) stay in the catch-all.
-    | .app f a => .app (shiftVars d f) (shiftVars d a)
-    | .idT a b c => .idT (shiftVars d a) (shiftVars d b) (shiftVars d c)
-    | .pi a b => .pi (shiftVars d a) (shiftVars d b)
-    | .lam a b => .lam (shiftVars d a) (shiftVars d b)
-    | .sigmaT a b => .sigmaT (shiftVars d a) (shiftVars d b)
+    | .app f a => .app (shiftVarsK keep d f) (shiftVarsK keep d a)
+    | .idT a b c => .idT (shiftVarsK keep d a) (shiftVarsK keep d b) (shiftVarsK keep d c)
+    | .pi a b => .pi (shiftVarsK keep d a) (shiftVarsK keep d b)
+    | .lam a b => .lam (shiftVarsK keep d a) (shiftVarsK keep d b)
+    | .sigmaT a b => .sigmaT (shiftVarsK keep d a) (shiftVarsK keep d b)
     | t => t                                            -- unit / pure formers: no runtime vars
   termination_by t => sizeOf t
-  def shiftVarsList (d : Nat) : List Term → List Term
+  def shiftVarsListK (keep : List Nat) (d : Nat) : List Term → List Term
     | [] => []
-    | t :: ts => shiftVars d t :: shiftVarsList d ts
+    | t :: ts => shiftVarsK keep d t :: shiftVarsListK keep d ts
   termination_by ts => sizeOf ts
-  def shiftBranches (d : Nat) : List Branch → List Branch
+  def shiftBranchesK (keep : List Nat) (d : Nat) : List Branch → List Branch
     | [] => []
-    | (.mk c bs body) :: rest => .mk c (bs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVars d body) :: shiftBranches d rest
+    | (.mk c bs body) :: rest =>
+      .mk c (bs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVarsK keep d body) :: shiftBranchesK keep d rest
   termination_by bs => sizeOf bs
 end
+
+/-- Shift with nothing kept — the pre-M26-E behaviour, and still the right rule
+    for a DECLARED callee inlined in executing mode (a `Decl` body's only free
+    variables are its telescope's, which the frame is exactly what renames). -/
+def shiftVars (d : Nat) (t : Term) : Term := shiftVarsK [] d t
 
 /-! ## Peeling a borrow-moded Π into a telescope (M26-C)
 
@@ -2832,6 +2851,59 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
                    nextGroup := max acc.nextGroup st'.nextGroup
                    nextFrame := max acc.nextFrame st'.nextFrame }
 
+/-! ## §8's globals: what a function body may name besides its own binders
+
+    §7 cost 2 admits "closed" function values — "arms reference only their own
+    binders **and globals**" — and until M26-E there were no globals, because the
+    callees lived in the declaration table and were reached by name. §8 deletes
+    the table and puts them in scope instead ("a caller sees exactly the bindings
+    lexically above it"), so the phrase acquires a referent: a body's free
+    variables are its **callees**, resolved against the enclosing Ω.
+
+    The line between a global and a capture is drawn at what the body can DO with
+    it: a function is called (a place read — `.callV` locates its callee, it never
+    moves it), while data is moved, borrowed or written. So `globalKind` admits
+    exactly the function values, and everything else keeps M26-C's rejection —
+    constraint 5's deferral of environment capture is untouched, and the test that
+    pins it (a captured `Nat`) still fails for the same reason with the same
+    words. -/
+
+/-- Is this slot's value a **function** — the one thing a body may name without
+    capturing it? A runtime λ, a pure λ, or a σ that is a sealed function (its
+    signature in `fsig` when the Π is borrow-moded and so has no `Val`, in `sctx`
+    when it has one). -/
+def globalKind (st : St) : Val → Bool
+  | .rfn _ _ => true
+  | .lam _ _ => true
+  | .sym σ =>
+    (st.fsig.lookup σ).isSome ||
+      (match st.sctx.lookup σ with
+       | some τ => (match Val.whnfV 100 τ with | .pi _ _ => true | _ => false)
+       | none => false)
+  | _ => false
+
+/-- Resolve a function body's free variables against the enclosing scope, and
+    return the bindings — the globals it is entitled to name. Rejects a free
+    variable that names nothing, and one that names a binding which is not a
+    function (that is capture, and it stays deferred).
+
+    Returned as an `Omega` because both callers need the bindings themselves and
+    not merely permission: the checking side seeds them into the sealed body's
+    own fresh Ω (frame isolation keeps the locals out and lets the globals
+    through), and the executing side leaves them where they are — its `keep` set
+    is these same ids. -/
+def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega := do
+  let st ← get
+  free.foldlM (fun acc x => do
+    if acc.any (fun kv => kv.1.id == x.id) then pure acc
+    else match st.env.find? (fun kv => kv.1.id == x.id) with
+      | none =>
+        throwErr s!"{what}: the body mentions {x.name}#{x.id}, which is none of its {nbinders} binder(s) and is not bound anywhere above it. §8 makes SCOPE the call table — a body may call the functions bound lexically above it, and a let-chain cannot reference downward, so a forward reference is unwritable rather than merely rejected."
+      | some kv =>
+        if globalKind st kv.2 then pure (acc ++ [kv])
+        else
+          throwErr s!"{what}: the body mentions {x.name}#{x.id}, which is none of its {nbinders} binder(s). It names a binding in scope, but that binding is not a function ({kv.2.pretty}) — §7 cost 2 admits only the CLOSED kind of function value, whose body may name its own binders and the FUNCTIONS above it, and environment capture stays deferred (constraint 5). Make what it needs a parameter.") []
+
 /-! ## ⇒ (read): the move arrow
 
     `readR` evaluates a term to a value with move semantics. Fuel decreases on
@@ -3088,10 +3160,15 @@ mutual
         -- pure recursor already computes them.
         if names.isEmpty then
           throwErr "λr: a runtime λ must bind at least one argument. `λ(){ … }` is a thunk, and a thunk makes ι ambiguous — an arm applied to no arguments and an arm with nothing owed become the same spine. A recursor arm at a non-functional motive is an ordinary term; write it as one."
-        match (Term.freeRVars (names.map (·.id)) body).head? with
-        | some x =>
-          throwErr s!"λr: the runtime λ's body mentions {x.name}#{x.id}, which is none of its {names.length} binder(s). §7 cost 2 admits only the CLOSED kind of function value — its body may name its own binders and globals, nothing else — and environment capture stays deferred (constraint 5). Make what it needs a parameter."
-        | none => pure (.rfn names body)
+        -- The free variables are checked against the enclosing scope, not merely
+        -- counted: §8's globals are what a body may name, and `admitGlobals` is
+        -- the one place that decides it (the checking side reaches the same
+        -- function from `checkRFnBody`). Nothing is stored in the value — the
+        -- bindings stay where they are, and `applyRFn` keeps their ids out of the
+        -- frame shift, which is what makes "the program's, not the frame's" true
+        -- of the executing machine too.
+        let _ ← admitGlobals "λr" names.length (Term.freeRVars (names.map (·.id)) body)
+        pure (.rfn names body)
       | .unit => pure (.ctor "unit" [])
       -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
       -- to variable consumption. A comptime-only former (a proof term — an
@@ -3289,7 +3366,15 @@ mutual
   def applyRFn : Nat → List Var → Term → List Val → M Val
     | fuel, names, body, args => do
       let offset ← freshFrame
-      let shifted := shiftVars offset body
+      -- §8's globals are the program's bindings, not this frame's, so they are
+      -- carried through the shift UNCHANGED — a body calling `quicksort#901` must
+      -- still find `#901` after entering its own window. What is free is exactly
+      -- what is not this frame's, which is why the keep set is computed here from
+      -- the body itself rather than carried on the value: no capture list, no
+      -- state. (`readR`'s `.lamR` case has already refused any free variable that
+      -- is not a function in scope.)
+      let keep := (Term.freeRVars (names.map (·.id)) body).map (·.id)
+      let shifted := shiftVarsK keep offset body
       (names.zip args).forM (fun p => bindSlot ⟨p.1.id + offset, p.1.name⟩ p.2)
       let res ← readR fuel shifted
       releaseFrameLoans fuel offset res.loanIds
@@ -3462,7 +3547,15 @@ mutual
   def checkRFnBody : Nat → List (Var × Term) → Term → Term → M Unit
     | fuel, tel, ret, body => do
       let saved ← get
-      modify (fun s => { s with env := [], obligations := [], groups := [],
+      -- §8's globals cross frame isolation, and nothing else does. The body's free
+      -- variables are its callees — bindings lexically above it — and the fresh Ω
+      -- is seeded with exactly those, resolved (and admitted) against the
+      -- enclosing scope BEFORE the wipe. This is also where a sealed function's
+      -- capture check happens at all: `.seal (.lamR …) u` goes straight to
+      -- `sealFn` without ever forming the `.rfn` value, so `readR`'s own check
+      -- never runs on it.
+      let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.id)) body)
+      modify (fun s => { s with env := gl, obligations := [], groups := [],
                                 exitSyms := [], entrySyms := [], retTyVal := none,
                                 selfBack := none, selfRec := none })
       let obs ← seedTelescopeV fuel tel
