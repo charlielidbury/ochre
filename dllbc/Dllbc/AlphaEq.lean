@@ -57,6 +57,20 @@ partial def anTerm (env : List (Nat × Nat)) (ctr : Nat) : Term → (Term × Nat
   | .lam d c => let (d', c1) := anTerm env ctr d; let (c', c2) := anTerm env c1 c; (.lam d' c', c2)
   | .idT a b c => let (a', c1) := anTerm env ctr a; let (b', c2) := anTerm env c1 b; let (c', c3) := anTerm env c2 c; (.idT a' b' c', c3)
   | .borrowT a b => let (a', c1) := anTerm env ctr a; let (b', c2) := anTerm env c1 b; (.borrowT a' b', c2)
+  -- M26's three formers. Without these the criterion silently degrades to
+  -- structural equality on any term containing one — which is what a `fn` macro's
+  -- output is made of, and exactly the comparison phase D needs it for.
+  | .seal t u => let (t', c1) := anTerm env ctr t; let (u', c2) := anTerm env c1 u; (.seal t' u', c2)
+  | .callV ⟨id, nm⟩ args =>
+    let callee : Var := ⟨(env.lookup id).getD id, nm⟩
+    let (args', c') := anList env ctr args
+    (.callV callee args', c')
+  -- A runtime λ BINDS its binders, so they renumber like a branch's fields and are
+  -- scoped to the body — the same treatment `anBinders` gives a match arm.
+  | .lamR xs body =>
+    let (xs', ext, c1) := anBinders xs ctr
+    let (body', c2) := anTerm (ext ++ env) c1 body
+    (.lamR xs' body', c2)
   -- A comptime domain can mention runtime vars (`λ (H : Le n m). …`), so it
   -- renumbers like any other type position rather than falling to the leaf case.
   | .cmpT τ => let (τ', c') := anTerm env ctr τ; (.cmpT τ', c')
