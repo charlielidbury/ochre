@@ -108,7 +108,7 @@ def seedConcrete (fuel : Nat) : Nat → List (String × Term) → List Val → M
       let ℓ ← freshLoan
       bindSlot x (.borrowM ℓ cval)
       let owed := Val.nfV fuel (Val.substPure 0 cval (← readC fuel S))
-      pure (⟨x, ℓ, owed⟩ :: (← seedConcrete fuel (i + 1) tRest cRest))
+      pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedConcrete fuel (i + 1) tRest cRest))
     | _ => do
       bindSlot x cval
       seedConcrete fuel (i + 1) tRest cRest

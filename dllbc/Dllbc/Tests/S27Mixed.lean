@@ -4,6 +4,8 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
 import Dllbc.ProgMacro
+import Dllbc.Tests.S6Call
+import Dllbc.Tests.S16Spec
 
 /-!
 # §27 (M27) — the mixed-return-type containment
@@ -146,5 +148,54 @@ example : progRejects sealProg "may not also carry VALUE components" = true := b
 def borrowSeal : Term := pure{ Π (v : &mut List Nat) → &mut List Nat }
 def sealOk : Term := prog{ let f = seal(λ(v) { v }, %borrowSeal); () }
 example : progOk sealOk = true := by native_decide
+
+/-! ## §E. THE SECOND CONTAINMENT — a lie in a PARAMETER'S OWED TYPE
+
+    b1 found a second closed `Bot`, and it is inside the first containment's
+    blessing: the return type here is ALL borrow, so §A's refusal has nothing to
+    say about it. The lie hides one level down, in what the parameter owes back.
+
+    §6.1 exempts a borrow CONSUMED INTO THE RESULT from the payload audit — "being
+    issued is its exemption" — and that is correct about the payload: a borrow that
+    left in the result has no payload here to check. But the exemption takes the
+    OWED TYPE with it, and the caller's group end then MINTS the captured loan's
+    release AT that type. So the callee is excused from proving the claim and the
+    caller receives it as fact. Neither end looks.
+
+    **Refused rather than repaired**, on the same reasoning as §A: option (i) —
+    "check the release against the owed type" — is vacuous as stated, since a
+    freshly minted σ trivially has the type it was minted at. Making the unjudged
+    position unwritable is the honest move. A parameter passed onward into the
+    result owes back the type it was lent. -/
+
+def e1lie : Decl :=
+  decl{ fn through_lie (v : &mut (s : List Nat ~> Id Nat Z (S Z))) -> &mut List Nat
+        { v } }
+example : rejects e1lie "would be checked by nobody" = true := by native_decide
+
+/-- The isolating control: the SAME body and the SAME consumed-into-result shape
+    with a TRIVIAL owed type is accepted. So the refusal is about the claim, not
+    about handing a borrow onward — which is `through`'s whole job. -/
+def e2trivial : Decl :=
+  decl{ fn through_ok (v : &mut List Nat) -> &mut List Nat { v } }
+example : ok e2trivial = true := by native_decide
+
+/-! ### E3. Measured before it shipped: the corpus's two non-trivial owed types
+
+    The containment was run against the corpus before being committed, because a
+    refusal that caught a load-bearing owed type would be a design conversation
+    rather than a containment. Of **142 borrow parameters** in the corpus, exactly
+    **two** carry a non-trivial owed type — and both are Unit-returning, so neither
+    is ever consumed into a result and the exemption cannot fire on them. Their
+    owed types are checked today and still are.
+
+    That is the whole reason this ships as a containment: the position it closes is
+    one the corpus never used, and the two places that DO state a rich owed type
+    state it where the audit runs. -/
+
+-- `to_nat (v : &mut (Bool ~> Nat))` — the type-changing ↝, S6Call's own subject.
+example : ok Tests.S6Call.toNat = true := by native_decide
+-- `swapS01`, whose owed type is a Σ carrying a length-preservation proof.
+example : ok Tests.S16Spec.swapS01 = true := by native_decide
 
 end Dllbc.Tests.S27Mixed

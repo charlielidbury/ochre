@@ -71,6 +71,12 @@ structure Obligation where
   arg : Var
   loan : Nat
   owed : Val
+  /-- Was this parameter's owed type TRIVIAL (`&mut τ`, owing back the type it was
+      lent) as written? Recorded at seeding, where the `Term` is still in hand, and
+      read by the M27 containment in `auditObligation`: §6.1 exempts a borrow
+      consumed into the result from the payload audit, so a NON-trivial owed type
+      there is a claim neither end checks. -/
+  trivialOwed : Bool
 
 /-- A **loan group** (§6.1): the node a call mints, tying the loans it
     **captured** (the argument borrows' loans, with their owed types) to the
@@ -2377,7 +2383,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
-      pure (⟨x, ℓ, owed⟩ :: (← seedTelescopeV fuel rest))
+      pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
     -- §5's second opacity ("borrows stored under a type constructor") reaching a
     -- telescope entry for the first time. The slot holds a genuine pair — a length
@@ -2397,7 +2403,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       -- and drops to 0 once the payload is substituted.
       let SVal ← readC fuel S
       let owed := Val.nfV fuel (Val.substPure 0 (.sym σc) (Val.substPure 0 (.sym σ) SVal))
-      pure (⟨x, ℓ, owed⟩ :: (← seedTelescopeV fuel rest))
+      pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- **`ih` — a parameter whose type is a borrow-moded Π** (M26-C, §7 cost 1).
     -- It has no `Val` (`readC` refuses `borrowT`), so it cannot be a σ in `sctx`;
     -- it is a σ whose signature lives in `fsig`, which is what makes calling it
@@ -2502,7 +2508,23 @@ partial def reachesLoan (ℓ target : Nat) : M Bool := do
     been moved into a local value) — and its (collapsed) payload is typed
     against the owed type. Neither locatable nor continued rejects distinctively. -/
 def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M Unit := do
-  if resultLoans.contains ob.loan then pure ()                            -- consumed into a result borrow
+  -- M27 SOUNDNESS CONTAINMENT (b1's second closed `Bot`). The two exemptions
+  -- below are §6.1's "consumed into the result is exempt — being issued is its
+  -- exemption", and they are correct about the PAYLOAD: a borrow that left in the
+  -- result has no payload here to audit. But the exemption skips the OWED TYPE
+  -- with it, and the caller's group end then MINTS the release at that type — so
+  -- a non-trivial owed type on a consumed parameter is a claim the callee is
+  -- exempted from and the caller receives as fact. Neither end checks it.
+  --
+  -- Refused rather than repaired, for the same reason as the mixed-return
+  -- containment: checking a freshly minted σ against the type it was minted at
+  -- proves nothing, so the honest move is to make the unjudged position
+  -- unwritable. A cursor that hands its borrow onward owes back what it was lent.
+  if !ob.trivialOwed
+     && (resultLoans.contains ob.loan
+         || (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl))) then
+    throwErr s!"boundary: '{ob.arg.name}' is consumed into the result, and §6.1 exempts such a borrow from the payload audit — so its non-trivial owed type ({ob.owed.pretty}) would be checked by nobody, while the caller's group end mints the release AT it. A parameter passed onward into the result owes back the type it was lent; state a richer claim on a parameter the body keeps, where the audit runs."
+  else if resultLoans.contains ob.loan then pure ()                       -- consumed into a result borrow
   else if (← resultLoans.anyM (fun rl => reachesLoan ob.loan rl)) then pure ()  -- captured owner of a field reborrow
   else if (← get).groups.any (fun g => g.captured.any (·.1 == ob.loan)) then pure ()  -- into another call
   else

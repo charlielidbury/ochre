@@ -530,6 +530,23 @@ def retMixesBorrow (t : Term) : Bool :=
   let cs := retComponents t
   cs.any hasBorrowT && cs.any (fun c => !hasBorrowT c)
 
+/-- Is a borrow parameter's OWED type trivial — i.e. does the boundary owe nothing
+    beyond the payload type it was lent?
+
+    `&mut τ` elaborates to `.borrowT τ (shiftPure 1 0 τ)` (Uni.lean), so triviality
+    is exactly that shape: the owed type is the payload type, weakened over the
+    entry-snapshot binder. `&mut (s : Bool ~> Nat)` and
+    `&mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s))` are the two
+    non-trivial owed types in the corpus, and both are load-bearing claims the
+    audit checks.
+
+    Used by the M27 containment below: a non-trivial owed type is a claim, and a
+    claim on a parameter CONSUMED INTO THE RESULT is checked by nobody. -/
+def trivialOwedT : Term → Bool
+  | .borrowT τ s => Term.beq s (Term.shiftPure 1 0 τ)
+  | .sigmaT _ (.borrowT τ s) => Term.beq s (Term.shiftPure 1 0 τ)
+  | _ => true
+
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 
     Three modes at one syntactic place: `&mut τ` runtime-borrow, `⇝τ` comptime,
