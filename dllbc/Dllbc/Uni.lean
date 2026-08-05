@@ -467,6 +467,15 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
       let (argTerms, n) ← elabUList isTy rctx pctx next args.toList
       if ctorSet.contains hs && (idxOf? pctx hs).isNone && (rctx.lookup hs).isNone then
         return (← `(Dllbc.Term.ctorApp $(quote hs) [$argTerms,*]), n)
+      -- **JUXTAPOSITION IS ALREADY ONE FORM, and β leaves the surface alone**
+      -- (M27). `f a b` elaborates to a `.app` spine over the head's resolution,
+      -- and when that head is a runtime slot the spine is exactly what a call is
+      -- written as. Which ARROW applies it is not something the surface can know
+      -- — `let finish = (λ (e : List Nat). …)` and `let f = seal(…)` are both
+      -- lowercase slots holding functions, and the first must be substituted by ⇝
+      -- while the second binds Ω slots under ⇒ — so the decision is the kernel's,
+      -- at `readR`'s `.app` case, where `runtimeRecSpine?` already makes the same
+      -- kind of choice. See `appSpineVar?` in `Machine.lean`.
       else
         let hterm ← resolveName rctx pctx h
         let out ← argTerms.foldlM (fun acc a => `(Dllbc.Term.app $acc $a)) hterm

@@ -2779,6 +2779,24 @@ def runtimeRecSpine? (t : Term) : Option (String × List Term) :=
     then some (c, args) else none
   | _ => none
 
+/-- A juxtaposition spine `x a b …` whose head is a runtime variable (M27 β).
+
+    `Nil` when the head is anything else — a constant, a pure former, a peel — in
+    which case the spine is an ordinary term and ⇒'s pure lift reads it. -/
+def appSpineVar? : Term → Option (Var × List Term)
+  | .app f a =>
+    match appSpineVar? f with
+    | some (x, as) => some (x, as ++ [a])
+    | none => none
+  | .var x => some (x, [])
+  | _ => none
+
+/-- The head constant of a `Val` application spine, if it has one. -/
+partial def valSpineHead : Val → Option String
+  | .const c => some c
+  | .app f _ => valSpineHead f
+  | _ => none
+
 /-- Mint a fresh frame window for an inlined body's slots (the executing call
     rule's device, now shared with runtime-λ application). -/
 def freshFrame : M Nat := do
@@ -3249,7 +3267,45 @@ mutual
         | some (c, args) => do
           let vs ← readRecArgs fuel (match recLayout c with | some (_, m, _) => m | none => 0) 0 args
           applyR fuel (Val.rebuildSpine (.const c) vs) []
-        | none => do collapseCDerefs fuel t; readC fuel t
+        | none => do
+          -- **JUXTAPOSITION APPLICATION** (M27 β). The document's grammar has one
+          -- application form, `t t′`; the n-ary `f(a, …)` is the declaration era's
+          -- telescope leaking into the term language, and it dies at δ. So `f a b`
+          -- has to mean a call when `f` names a runtime function — and WHICH ARROW
+          -- applies a spine is decided here rather than at the surface, because the
+          -- surface cannot know: `let finish = (λ (e : List Nat). …)` and
+          -- `let f = seal(…)` are both lowercase slots holding functions.
+          --
+          -- **The router is §7 cost 5's own distinction, not a new test.** The two
+          -- λs are "the same former in the document, two representations in the
+          -- machine, because one substitutes and the other binds". A `Val.lam`
+          -- substitutes — that is ⇝'s rule, and the staged proof-builders across
+          -- the corpus are exactly this, applied to snapshots and proofs that a ⇒
+          -- read would MOVE. A `Val.rfn`, a σ with a signature, or a recursor spine
+          -- binds Ω slots — that is ⇒'s. Same room, two doors (§2.3).
+          --
+          -- A capital head is excluded before anything is looked up: §6.3 makes a
+          -- capital function-typed binder a SPEC parameter, citable in a type or a
+          -- proof and never callable, so routing one here could only ever produce
+          -- `fenceComptime`'s rejection — including for a body's `let X = …` proof.
+          match appSpineVar? t with
+          | some (x, args) =>
+            if x.isComptime then do collapseCDerefs fuel t; readC fuel t
+            else
+              match (← get).env.find? (fun kv => kv.1.id == x.id) with
+              | some kv => do
+                let st ← get
+                let isFn : Bool :=
+                  match kv.2 with
+                  | .rfn _ _ => true
+                  | .sym σ => (st.fsig.lookup σ).isSome
+                  | v => match valSpineHead v with
+                         | some c => (recLayout c).isSome
+                         | none => false
+                if isFn then readR fuel (.callV x args)
+                else do collapseCDerefs fuel t; readC fuel t
+              | none => do collapseCDerefs fuel t; readC fuel t
+          | none => do collapseCDerefs fuel t; readC fuel t
       | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
       -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
       -- reader to notice: each behaves the way the corresponding column behaves at

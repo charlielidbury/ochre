@@ -6,6 +6,7 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
 import Dllbc.ProgMacro
+import Dllbc.Tests.S26Prog
 
 /-!
 # S27 — the annotated runtime λ (M27 α.1a)
@@ -317,5 +318,154 @@ def annBad : Term := prog{
   () }
 example : progRejects annBad "a domain the ascription does not bind it at" = true := by
   native_decide
+
+/-! ## §G. JUXTAPOSITION APPLICATION (M27 β)
+
+    The document's grammar has one application form, `t t′`; the n-ary `f(a, …)`
+    is the declaration era's telescope leaking into the term language, and it dies
+    at δ. So `f a b` has to mean a call when `f` names a runtime function.
+
+    **The surface does not decide this, and cannot.** `let finish = (λ (e : …). …)`
+    and `let f = seal(…)` are both lowercase slots holding functions, and the first
+    must be applied by ⇝ — its arguments are snapshots and proofs that a ⇒ read
+    would MOVE — while the second binds Ω slots under ⇒. Nothing about the two
+    spines differs syntactically. So β is a KERNEL rule, at `readR`'s `.app` case,
+    beside the `runtimeRecSpine?` choice that was already being made there.
+
+    **And the router is §7 cost 5's own distinction rather than a new test**: the
+    two λs are "the same former in the document, two representations in the
+    machine, because one substitutes and the other binds". A `Val.lam` substitutes;
+    a `Val.rfn`, a σ with a signature, or a recursor spine binds. §G5 is the pair
+    that makes that observable — the same source line, two λ representations, two
+    arrows, two verdicts. -/
+
+def juxSealTy : Term := pure{ Π (v : &mut List Nat) → Unit }
+
+-- G1. A sealed function called by juxtaposition, in statement position.
+def juxSeal : Term := prog{
+  let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %juxSealTy);
+  let x = Cons(1, Nil);
+  let b = &mut x;
+  f b;
+  let y = x;
+  () }
+example : progOk juxSeal = true := by native_decide
+-- **ACCEPTANCE IS NOT THE CLAIM**, and the flip-validation of this section is
+-- what said so. With the router disabled, `f b;` in statement position is a
+-- discarded ⇝ neutral: nothing is called, and the program still CHECKS. The
+-- differential does not catch it either — the router is one rule in `readR`, so
+-- BOTH machines stop calling and go on agreeing. It is recorded rather than
+-- quietly fixed, because it is phase A's per-demand-site finding arriving in a
+-- new disguise: a statement-position call is a demand site that discards its
+-- value, so nothing downstream is asked.
+--
+-- What discriminates is what the call LEAVES: the seal forgets the payload, so
+-- after a real call the caller's `y` is an EXISTENTIAL, where an uncalled program
+-- still holds the concrete list.
+example : ((programEnvs juxSeal).filterMap (fun r => match r with
+             | .ok e => (e.lookup "y").map (fun v => v.pretty.take 1)
+             | .error _ => none)) = ["σ"] := by native_decide
+-- …and both machines still correspond on it, which is the ordinary obligation.
+example : Tests.S26Prog.progDiff juxSeal = true := by native_decide
+
+-- …and the comma twin is the same program: same verdict, and both machines agree
+-- on it, which is what says β changed how a call is WRITTEN and not what it does.
+def juxSealComma : Term := prog{
+  let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %juxSealTy);
+  let x = Cons(1, Nil);
+  let b = &mut x;
+  f(b);
+  let y = x;
+  () }
+example : progOk juxSealComma = true := by native_decide
+example : (match runProgram juxSeal, runProgram juxSealComma with
+           | .ok a, .ok b => a == b
+           | _, _ => false) = true := by native_decide
+
+-- G2. A recursor's `ih`, and the sealed recursor itself, both by juxtaposition —
+-- `ih tl` inside the arm and `f 3 b` at the call. `ih` is the case with no comma
+-- form to fall back on after δ, so it is the one that had to work.
+def juxRecMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
+def juxRecTy : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
+def juxRec : Term := prog{
+  let f = seal(natRec %juxRecMot
+                 (λ(v : &mut List Nat) { () })
+                 (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih tl; () } } }),
+               %juxRecTy);
+  let x = Cons(1, Cons(2, Nil));
+  let b = &mut x;
+  f 3 b;
+  let y = x;
+  () }
+example : progOk juxRec = true := by native_decide
+-- The same discriminator: `ih tl` and `f 3 b` really call, so the checking-mode
+-- `y` is the seal's existential rather than the list the program wrote.
+example : ((programEnvs juxRec).filterMap (fun r => match r with
+             | .ok e => (e.lookup "y").map (fun v => v.pretty.take 1)
+             | .error _ => none)) = ["σ"] := by native_decide
+example : Tests.S26Prog.progDiff juxRec = true := by native_decide
+-- It really recursed: the executing machine zeroes both elements.
+example : (match runProgram juxRec with
+           | .ok env => (env.lookup "y").map Val.pretty
+           | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
+
+-- G3. A transparent runtime λ, called by juxtaposition.
+def juxLam : Term := prog{ let g = λ(a : Nat) { S(a) }; let r = g 1; r }
+example : progOk juxLam (.const "Nat") = true := by native_decide
+
+/-! ### G5. THE ROUTER, made observable
+
+    The same source line — `let y = mk (*v);` — under the two λ representations.
+    A PURE λ is applied by ⇝, which reads the payload as a snapshot and leaves the
+    borrow intact. A RUNTIME λ is applied by ⇒, which MOVES the payload out and
+    leaves a hole, so the obligation audit refuses at return.
+
+    This is the pair the whole rule rests on. Without it "juxtaposition is a call"
+    would be a claim about the cases someone happened to write; with it, the two
+    arrows are visible at one syntax. -/
+
+def juxPure : Decl := decl{ fn caller (v : &mut List Nat) -> Unit
+  { let mk = (λ (l : List Nat). l);
+    let y = mk (*v);
+    () } }
+example : ok juxPure = true := by native_decide
+
+def juxRuntime : Decl := decl{ fn caller (v : &mut List Nat) -> Unit
+  { let mk = λ(l : List Nat) { l };
+    let y = mk (*v);
+    () } }
+example : rejects juxRuntime "holds a hole (⊥) at return" = true := by native_decide
+
+-- G6. Saturation, at the juxtaposition form (§12 decision 4 — the call event is
+-- atomic, so a spine that stops short is an error and not a partial application).
+def juxPartial : Term := prog{
+  let f = seal(λ(a : Nat, b : Nat) { a }, Π (a : Nat) → Π (b : Nat) → Nat);
+  let r = f 1;
+  () }
+-- The message is the call rule's own, not a parse failure: the spine reached the
+-- callee and the callee's telescope is what refused it.
+example : progRejects juxPartial "arity mismatch" = true := by native_decide
+
+-- …and the saturated twin is accepted, so G6 is about the missing argument.
+def juxSaturated : Term := prog{
+  let f = seal(λ(a : Nat, b : Nat) { a }, Π (a : Nat) → Π (b : Nat) → Nat);
+  let r = f 1 2;
+  r }
+example : progOk juxSaturated (.const "Nat") = true := by native_decide
+
+-- G7. A RESERVED head stays a constructor, which is what keeps `S n` and a call
+-- distinguishable without a token: the basis is closed, so the test is exact.
+example : (match (prog{ let x = S 3; () } : Term) with
+           | .letIn _ (.ctorApp "S" [_]) _ => true
+           | _ => false) = true := by native_decide
+
+-- G8. A CAPITAL head is never routed, in either position. §6.3 makes a capital
+-- function-typed binder a SPEC parameter — cited, never called — so the spine
+-- stays ⇝'s structured neutral. (`S26Modes` §B7 pins the type position; this is
+-- the kernel-side guard that a body cannot reach the call rule through it.)
+def juxCapital : Decl := decl{ fn juxCapital (G : Π (x : Nat) → Nat, n : Nat)
+  -> Id Nat (G n) (G n) { Refl } }
+example : ok juxCapital = true := by native_decide
 
 end Dllbc.Tests.S27Lam
