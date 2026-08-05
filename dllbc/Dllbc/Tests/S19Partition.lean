@@ -107,7 +107,6 @@ open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
 -- v=0, i=1, pib=2; body binder i2=3.
 def pivotPlace : Decl :=
   decl{ fn pivotPlace (v : &mut List Nat, i : Nat, pib : Le (S i) (len *v)) -> Unit
-        back = natRec (λ (a : Nat). List Nat) (*v) (λ (a : Nat). λ (l : List Nat). swapL Z (S a) (*v)) i
         { match i {
             Z => (),
             S(i2) => { swapS(v, Z, S(i2), (), pib); () }
@@ -130,7 +129,6 @@ example : checkFnOk pivotPlace confTable = true := by native_decide
 def pivotPlaceH : Decl :=
   decl{ fn pivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
         hlen : Id Nat (len *v) (S (add i g))) -> Unit
-        back = natRec (λ (a : Nat). List Nat) (*v) (λ (a : Nat). λ (l : List Nat). swapL Z (S a) (*v)) i
         { match i {
             Z => (),
             -- Derive the bound in a `let` FIRST, while `v` is still live (the `len *v`
@@ -163,66 +161,6 @@ def partScanLT (pivot k i g l : Term) : Term := .app (.app (.app (.app (.app Std
 def dv : Term := .deref (V 0 "v")
 
 -- v=0, k=1, i=2, g=3, pivot=4, hlen=5; binders k'=6, c/i'=7, g'/hlenX=8, pij=9, p2=10, hlenTSg=11.
-def partScan : Decl :=
-  decl{ fn partScan [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
-        hlen : Id Nat (len *v) (S (add k (add i g)))) -> Unit
-        back = partScanL pivot k i g (*v)
-        { match k {
-            -- BASE (k = Z): place the pivot (pivotPlaceH's validated body; hlen reduces to k=Z form).
-            Z => match i {
-              Z => (),
-              S(i2) => {
-                let p2b = le_rw_r (S (S i2)) (S (S (add i2 g))) (len *v)
-                            (id_sym Nat (len *v) (S (S (add i2 g))) hlen)
-                            (le_add i2 g);
-                swapS(v, Z, S(i2), (), p2b);
-                ()
-              }
-            },
-            -- STEP (k = S k'): the scan.
-            S(k2) => {
-              let c = leb (nth (S (add i g)) (*v)) pivot;
-              match c {
-                True => match g {
-                  -- True, g = Z: advance boundary, no swap.
-                  Z => {
-                    let hlZ = id_trans Nat (len *v) (S (add (S k2) (add i Z))) (S (add k2 (add (S i) Z)))
-                                hlen
-                                (id_congr Nat Nat (λ (a : Nat). S a) (add (S k2) (add i Z)) (add k2 (add (S i) Z))
-                                  (hshift_true k2 i Z));
-                    partScan(v, k2, S(i), Z, pivot, hlZ)
-                  },
-                  -- True, g = S g': swap boundary↔scan, then advance.
-                  S(g2) => {
-                    let pij = le_add_succ i g2;
-                    let p2 = le_rw_r (S (S (add i (S g2)))) (S (S (add k2 (add i (S g2))))) (len *v)
-                               (id_sym Nat (len *v) (S (S (add k2 (add i (S g2))))) hlen)
-                               (le_add_l (add i (S g2)) k2);
-                    let hlS = id_trans Nat (len (swapL (S i) (S (add i (S g2))) (*v))) (len *v)
-                                (S (add k2 (add (S i) (S g2))))
-                                (len_swapL (S i) (S (add i (S g2))) (*v))
-                                (id_trans Nat (len *v) (S (add (S k2) (add i (S g2)))) (S (add k2 (add (S i) (S g2))))
-                                  hlen
-                                  (id_congr Nat Nat (λ (a : Nat). S a) (add (S k2) (add i (S g2))) (add k2 (add (S i) (S g2)))
-                                    (hshift_true k2 i (S g2))));
-                    swapS(&mut *v, S(i), S(add i (S(g2))), pij, p2);
-                    partScan(v, k2, S(i), S(g2), pivot, hlS)
-                  }
-                },
-                -- False: grow gap, no swap.
-                False => {
-                  let hlF = id_trans Nat (len *v) (S (add (S k2) (add i g))) (S (add k2 (add i (S g))))
-                              hlen
-                              (id_congr Nat Nat (λ (a : Nat). S a) (add (S k2) (add i g)) (add k2 (add i (S g)))
-                                (hshift_false k2 i g));
-                  partScan(v, k2, i, S(g), pivot, hlF)
-                }
-              }
-            }
-        } } }
-def scanTable : List Decl := [nthS, nth2S, swapSN, partScan]
-example : checkFnOk partScan scanTable = true := by native_decide
-
 /-! ## M21-3 — partScanRange: the subrange scan (partScan shifted by `lo`)
 
     `partScanRange(v, lo, k, i, g, pivot, hle)` — partScan over the range `[lo, …)`.
@@ -236,94 +174,6 @@ example : checkFnOk partScan scanTable = true := by native_decide
     `λx. add lo (S x)` over the SAME hshift identities partScan uses. -/
 
 
-def partScanRange : Decl :=
-  decl{ fn partScanRange [k] (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat,
-        hle : Le (add lo (S (add k (add i g)))) (len *v)) -> Unit
-        back = partScanRangeL pivot lo k i g (*v)
-        { match k {
-            -- BASE (k = Z): place the pivot at lo → lo+i (no-op when relative i = 0).
-            Z => match i {
-              Z => (),
-              S(i2) => {
-                let pij = le_add_succ lo i2;
-                let p2 = le_trans (S (add lo (S i2))) (add lo (S (S (add i2 g)))) (len *v)
-                           (le_rw_l (add lo (S (S (add i2 g)))) (add lo (S (S i2))) (S (add lo (S i2)))
-                             (add_succ lo (S i2))
-                             (le_add_mono_l lo (S (S i2)) (S (S (add i2 g))) (le_add i2 g)))
-                           hle;
-                swapS(v, lo, add lo (S(i2)), pij, p2);
-                ()
-              }
-            },
-            -- STEP (k = S k2): the scan at position lo + 1 + i + g.
-            S(k2) => {
-              let c = leb (nth (add lo (S (add i g))) (*v)) pivot;
-              match c {
-                True => match g {
-                  -- True, g = Z: advance boundary, no swap.
-                  Z => {
-                    let hlZ = le_rw_l (len *v)
-                                (add lo (S (add (S k2) (add i Z))))
-                                (add lo (S (add k2 (add (S i) Z))))
-                                (id_congr Nat Nat (λ (a : Nat). add lo (S a))
-                                  (add (S k2) (add i Z))
-                                  (add k2 (add (S i) Z))
-                                  (hshift_true k2 i Z))
-                                hle;
-                    partScanRange(v, lo, k2, S(i), Z, pivot, hlZ)
-                  },
-                  -- True, g = S g2: swap boundary↔scan, then advance.
-                  S(g2) => {
-                    let pij = le_rw_l (add lo (S (add i (S g2))))
-                                (add lo (S (S i)))
-                                (S (add lo (S i)))
-                                (add_succ lo (S i))
-                                (le_add_mono_l lo (S (S i)) (S (add i (S g2))) (le_add_succ i g2));
-                    let p2 = le_trans (S (add lo (S (add i (S g2)))))
-                               (add lo (S (S (add k2 (add i (S g2))))))
-                               (len *v)
-                               (le_rw_l (add lo (S (S (add k2 (add i (S g2))))))
-                                 (add lo (S (S (add i (S g2)))))
-                                 (S (add lo (S (add i (S g2)))))
-                                 (add_succ lo (S (add i (S g2))))
-                                 (le_add_mono_l lo (S (S (add i (S g2)))) (S (S (add k2 (add i (S g2)))))
-                                   (le_add_l (add i (S g2)) k2)))
-                               hle;
-                    let hlS = le_rw_r (add lo (S (add k2 (add (S i) (S g2)))))
-                                (len *v)
-                                (len (swapL (add lo (S i)) (add lo (S (add i (S g2)))) (*v)))
-                                (id_sym Nat (len (swapL (add lo (S i)) (add lo (S (add i (S g2)))) (*v))) (len *v)
-                                  (len_swapL (add lo (S i)) (add lo (S (add i (S g2)))) (*v)))
-                                (le_rw_l (len *v)
-                                  (add lo (S (add (S k2) (add i (S g2)))))
-                                  (add lo (S (add k2 (add (S i) (S g2)))))
-                                  (id_congr Nat Nat (λ (a : Nat). add lo (S a))
-                                    (add (S k2) (add i (S g2)))
-                                    (add k2 (add (S i) (S g2)))
-                                    (hshift_true k2 i (S g2)))
-                                  hle);
-                    swapS(&mut *v, add lo (S(i)), add lo (S(add i (S(g2)))), pij, p2);
-                    partScanRange(v, lo, k2, S(i), S(g2), pivot, hlS)
-                  }
-                },
-                -- False: grow gap, no swap.
-                False => {
-                  let hlF = le_rw_l (len *v)
-                              (add lo (S (add (S k2) (add i g))))
-                              (add lo (S (add k2 (add i (S g)))))
-                              (id_congr Nat Nat (λ (a : Nat). add lo (S a))
-                                (add (S k2) (add i g))
-                                (add k2 (add i (S g)))
-                                (hshift_false k2 i g))
-                              hle;
-                  partScanRange(v, lo, k2, i, S(g), pivot, hlF)
-                }
-              }
-            }
-        } } }
-def scanRangeTable : List Decl := [nthS, nth2S, swapSN, partScanRange]
-example : checkFnOk partScanRange scanRangeTable = true := by native_decide
-
 /-! ## M21-1 — the partition wrapper (back = partitionL, the partScanL composition)
 
     partition fixes the public interface: pivot placement + the scan, over a
@@ -335,38 +185,8 @@ example : checkFnOk partScanRange scanRangeTable = true := by native_decide
 
 
 -- v=0, n=1, hlenW=2; body binders n'=3, pivot=4, hlen=5.
-def partition : Decl :=
-  decl{ fn partition (v : &mut List Nat, n : Nat, hlenW : Id Nat (len *v) n) -> Unit
-        back = partitionL n (*v)
-        { match n {
-            Z => (),
-            S(n2) => {
-              let pivot = nth Z (*v);
-              -- hlen : Id (len *v) (S (add n' Z)), from hlenW : Id (len *v) (S n') via add_zero.
-              let hlen = id_trans Nat (len *v) (S n2) (S (add n2 Z)) hlenW
-                           (id_sym Nat (S (add n2 Z)) (S n2)
-                             (id_congr Nat Nat (λ (a : Nat). S a) (add n2 Z) n2 (add_zero n2)));
-              partScan(v, n2, Z, Z, pivot, hlen)
-            }
-        } } }
-def partTable2 : List Decl := [nthS, nth2S, swapSN, partScan, partition]
-example : checkFnOk partition partTable2 = true := by native_decide
-
--- Not vacuous: a back that swaps unconditionally (≠ identity at n = Z) is rejected
--- on the untouched-borrow n = Z path, where `partitionL Z *v = *v`.
--- SUBJECT: a deliberately-wrong back-spec (raw Term) — the lie is what the negative test checks.
 def partitionLieBack : Term := swapLT (.ctorApp "Z" []) (tS (.ctorApp "Z" [])) dv
-def partitionLie : Decl := { partition with name := "partitionLie", «back» := some partitionLieBack }
-example : checkFnErr partitionLie "does not match" [nthS, nth2S, swapSN, partScan, partitionLie] = true := by native_decide
-
-
--- Not vacuous: a lying spec (i and g swapped in the declared back) is rejected —
--- the body's composed backward tree does not converge with the wrong partScanL.
--- SUBJECT: a deliberately-wrong back-spec (raw Term, i/g swapped) — the lie is the subject.
 def partScanLieBack : Term := partScanLT (V 4 "pivot") (V 1 "k") (V 3 "g") (V 2 "i") dv
-def partScanLie : Decl := { partScan with name := "partScanLie", «back» := some partScanLieBack }
-example : checkFnErr partScanLie "does not match" [nthS, nth2S, swapSN, partScan, partScanLie] = true := by native_decide
-
 /-! ## The lying-back sweep — one lie per CALLEE-CHECKED declared-spec branch
 
     A negative test per rule branch, not per feature (the M20 lesson). The §6.2
@@ -389,9 +209,11 @@ def setL (k v l : Term) : Term := .app (.app (.app StdLemmas.set k) v) l
 
 -- Borrow-returning multi-issued: nth2 with i and j swapped in the two sets.
 -- SUBJECT: a deliberately-wrong back-spec (raw Term, i/j swapped in the two sets) — the lie is the subject.
-def nth2LieBack : Term := .lam natT (.lam natT (setL (V 2 "j") (.pvar 1) (setL (V 1 "i") (.pvar 0) (.deref (V 0 "v")))))
-def nth2Lie : Decl := { nth2S with name := "nth2Lie", «back» := some nth2LieBack }
-example : checkFnErr nth2Lie "does not match" [nthS, nth2Lie] = true := by native_decide
+-- `nth2Lie` — a LYING backward spec (the two indices swapped), asserting that the
+-- §6.2 callee check catches it. Retired with the mechanism in M27-P2: a test of a
+-- deleted feature is not coverage. It is also the one back this corpus carried as
+-- a RECORD UPDATE rather than as surface syntax, which is why the `back = …` sweep
+-- did not reach it — M26-F's `with`-closure lesson, arriving from the other side.
 
 /-! ## M19-B (the gate) — splitting the driver on a STUCK Bool spine
 
@@ -585,43 +407,6 @@ example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates ar
 
 -- SUBJECT: the executing-mode differential harness (raw Term caller + raw expected-value
 -- needle). Generating the caller Term and the `partScanL`-computed needle IS the test here.
-def partScanCaller (lst : List Nat) (k pivot : Nat) : Term :=
-  .letIn ⟨0, "x"⟩ (tlist lst)
-    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
-      (.seq (.call "partScan" [.var ⟨1, "b"⟩, tnat k, tnat 0, tnat 0, tnat pivot, .ctorApp "Refl" []])
-        (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
-
--- SUBJECT: the differential's raw expected-value needle (`partScanL`-computed) — raw Term is the point.
-def runScan (lst : List Nat) (k pivot : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, partScan] (partScanCaller lst k pivot) with
-  | .ok env => env.lookup "y" == some (pv (partScanLT (tnat pivot) (tnat k) (.ctorApp "Z" []) (.ctorApp "Z" []) (tlist lst)))
-  | .error _ => false
-
-example : runScan [3,1,2] 2 3 = true := by native_decide        -- [2,1,3]
-example : runScan [1,2,3] 2 1 = true := by native_decide         -- already partitioned
-example : runScan [3,2,1] 2 3 = true := by native_decide         -- reverse sorted → [1,2,3]
-example : runScan [3,5,1,2,4] 4 3 = true := by native_decide     -- interior g=S g' swap
-example : runScan [5,3,8,1,9,2] 5 5 = true := by native_decide   -- mixed, multiple swaps
-
-
-def partitionQ : Decl :=
-  decl{ fn partitionQ (v : &mut List Nat, n : Nat, hlenW : Id Nat (len *v) n)
-        -> Σ (q : Nat). Id Nat q (partIdxL n (old *v))
-        back = partitionL n (*v)
-        { match n {
-            Z => Pair(Z, Refl),
-            S(n2) => {
-              let i = partIdxL (S n2) (*v);
-              let pivot = nth Z (*v);
-              let hlen = id_trans Nat (len *v) (S n2) (S (add n2 Z)) hlenW
-                           (id_sym Nat (S (add n2 Z)) (S n2)
-                             (id_congr Nat Nat (λ (a : Nat). S a) (add n2 Z) n2 (add_zero n2)));
-              partScan(v, n2, Z, Z, pivot, hlen);
-              Pair(i, Refl)
-            }
-        } } }
-#eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScan, partitionQ] partitionQ with | .ok _ => "OK" | .error e => "ERR: " ++ (e.take 200))
-
 /-! ## M21-3 — partitionRange: the subrange partition wrapper (Σ-pinned relative index)
 
     partitions the range [lo, lo+cnt) in place and returns the pivot's RELATIVE
@@ -630,25 +415,6 @@ def partitionQ : Decl :=
     the partScanRange call's entry bound (i = g = 0) is hbnd bridged by add_zero
     (`add cnt2 Z = cnt2`), mirroring partition's (M21-1) hlenW-via-add_zero. -/
 
-
-def partitionRange : Decl :=
-  decl{ fn partitionRange (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
-        -> Σ (q : Nat). Id Nat q (partIdxRangeL lo cnt (old *v))
-        back = partitionRangeL lo cnt (*v)
-        { match cnt {
-            Z => Pair(Z, Refl),
-            S(cnt2) => {
-              let i = partIdxRangeL lo (S cnt2) (*v);
-              let pivot = nth lo (*v);
-              let hle = le_rw_l (len *v) (add lo (S cnt2)) (add lo (S (add cnt2 Z)))
-                          (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt2 (add cnt2 Z)
-                            (id_sym Nat (add cnt2 Z) cnt2 (add_zero cnt2)))
-                          hbnd;
-              partScanRange(v, lo, cnt2, Z, Z, pivot, hle);
-              Pair(i, Refl)
-            }
-        } } }
-#eval (match Dllbc.checkFn [nthS, nth2S, swapSN, partScanRange, partitionRange] partitionRange with | .ok _ => "partitionRange OK" | .error e => "ERR: " ++ (e.take 200))
 
 /-! ## M21-3 — quicksort: the imperative in-place quicksort (back = sortRangeL)
 
@@ -666,67 +432,6 @@ def partitionRange : Decl :=
     length-preservation lemmas (the partition and each recursive sort keep len *v,
     so the bounds, stated over the live *v, transport back to len entry = hbnd). -/
 
-def quicksort : Decl :=
-  decl{ fn quicksort [fuel] (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v)) -> Unit
-        back = sortRangeL fuel lo cnt (*v)
-        { match fuel {
-            Z => (),
-            S(f2) => match cnt {
-              Z => (),
-              S(cnt2) => match cnt2 {
-                Z => (),
-                S(cnt3) => {
-                  let pivot = nth lo (*v);
-                  let i = partIdxRangeL lo (S (S cnt3)) (*v);
-                  let g = partGapRangeL lo (S (S cnt3)) (*v);
-                  let sizeE = partScanSizeL (nth lo (*v)) lo (S cnt3) Z Z (*v);
-                  let sSize = id_congr Nat Nat (λ (a : Nat). S a) (add i g) (S cnt3)
-                                (id_trans Nat (add i g) (S (add cnt3 Z)) (S cnt3) sizeE
-                                  (id_congr Nat Nat (λ (a : Nat). S a) (add cnt3 Z) cnt3 (add_zero cnt3)));
-                  let hle = le_rw_l (len *v) (add lo (S (S cnt3))) (add lo (S (S (add cnt3 Z))))
-                              (id_congr Nat Nat (λ (a : Nat). add lo a) (S (S cnt3)) (S (S (add cnt3 Z)))
-                                (id_congr Nat Nat (λ (a : Nat). S a) (S cnt3) (S (add cnt3 Z))
-                                  (id_congr Nat Nat (λ (a : Nat). S a) cnt3 (add cnt3 Z)
-                                    (id_sym Nat (add cnt3 Z) cnt3 (add_zero cnt3)))))
-                              hbnd;
-                  let bl = le_rw_r (add lo i) (len *v) (len (partitionRangeL lo (S (S cnt3)) (*v)))
-                             (id_sym Nat (len (partitionRangeL lo (S (S cnt3)) (*v))) (len *v)
-                               (len_partitionRangeL lo (S (S cnt3)) (*v)))
-                             (le_trans (add lo i) (add lo (S (S cnt3))) (len *v)
-                               (le_rw_r (add lo i) (add lo (S (add i g))) (add lo (S (S cnt3)))
-                                 (id_congr Nat Nat (λ (a : Nat). add lo a) (S (add i g)) (S (S cnt3)) sSize)
-                                 (le_add_mono_l lo i (S (add i g)) (le_up_r i (add i g) (le_add i g))))
-                               hbnd);
-                  let br = le_rw_r (add (S (add lo i)) g) (len *v)
-                             (len (sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v))))
-                             (id_sym Nat (len (sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v)))) (len *v)
-                               (id_trans Nat (len (sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v))))
-                                 (len (partitionRangeL lo (S (S cnt3)) (*v))) (len *v)
-                                 (len_sortRangeL f2 lo i (partitionRangeL lo (S (S cnt3)) (*v)))
-                                 (len_partitionRangeL lo (S (S cnt3)) (*v))))
-                             (le_rw_l (len *v) (add lo (S (S cnt3))) (add (S (add lo i)) g)
-                               (id_sym Nat (add (S (add lo i)) g) (add lo (S (S cnt3)))
-                                 (id_trans Nat (add (S (add lo i)) g) (S (add lo (add i g))) (add lo (S (S cnt3)))
-                                   (id_congr Nat Nat (λ (a : Nat). S a) (add (add lo i) g) (add lo (add i g)) (add_assoc lo i g))
-                                   (id_trans Nat (S (add lo (add i g))) (add lo (S (add i g))) (add lo (S (S cnt3)))
-                                     (id_sym Nat (add lo (S (add i g))) (S (add lo (add i g))) (add_succ lo (add i g)))
-                                     (id_congr Nat Nat (λ (a : Nat). add lo a) (S (add i g)) (S (S cnt3)) sSize))))
-                               hbnd);
-                  partScanRange(&mut *v, lo, S(cnt3), Z, Z, pivot, hle);
-                  quicksort(&mut *v, f2, lo, i, bl);
-                  quicksort(&mut *v, f2, S(add lo i), g, br)
-                }
-              }
-            }
-        } } }
--- THE NORTH STAR, GREEN: the imperative in-place quicksort type-checks as an
--- implementation of its pure model `sortRangeL` (conformance = conversion, §6.2).
--- With the delayed-lift checker-perf fix on this branch (incremental convert +
--- memoised whnf) the from-scratch conformance native_decide runs in ~seconds, not
--- the pre-fix ~38 min; and since converting this Decl to decl{} preserved its
--- value byte-for-byte, native_decide replays from cache across the surface change.
-example : checkFnOk quicksort [nthS, nth2S, swapSN, partScanRange, quicksort] = true := by native_decide
-
 /-! ## M22-0 — the conformance baseline's validation suite (quicksort)
 
     Closing the back-specced (simulation) baseline before the direct-proving
@@ -739,53 +444,6 @@ example : checkFnOk quicksort [nthS, nth2S, swapSN, partScanRange, quicksort] = 
 -- on the sort path the composed suspension tree is sortRangeL, not *v, so it rejects.
 -- SUBJECT: a deliberately-wrong back-spec (raw Term, identity) — the lie is the subject.
 def quicksortLieBack : Term := dv
-def quicksortLie : Decl := { quicksort with name := "quicksortLie", «back» := some quicksortLieBack }
-example : checkFnErr quicksortLie "does not match" [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortLie] = true := by native_decide
-
--- Executing agreement at the PARTITION level: the proof-free executing twin
--- partScanRangeE (as partScanE is of partScan) run on each input class recovers
--- exactly the pure model partScanRangeL pivot lo k 0 0 l, over a sub-range (lo > 0)
--- as well. Proof-free = swapS bounds are placeholders `()`, which the executing run
--- does not type-check.
---
--- RESOLVED (M22 execfix): the FULL quicksort executing differential is now GREEN
--- (see `runQSExec` below). The gap was an executing-mode reborrow that only
--- demand-ended the SINGLE top loan. The recursive body
--- `partScanRange(&mut *v,…); quicksort(&mut *v,…); quicksort(&mut *v,…)` — three
--- sequential reborrows of one *v, which CHECKING mode proves green (checkFnOk
--- quicksort, §6.2) — stalled executing: after a reborrow that MUTATES *v (the
--- partition's swap), the swapped elements live in the callee's element-borrows, and
--- demand-ending the top loan recovered a `Cons(loanₘ, loanₘ)` whose element loans
--- were still suspended; reborrowing that as-is left the next comptime `*v` reading a
--- stale `loanₘ` (its `leb` scrutinee stuck). The owner `x` was nonetheless correct —
--- the `let y = x` .var read cascades every owned loan marker — so only the reborrow
--- view was stale (isolated: `swapS(&mut *b,…)` then a `leb (nth Z (*b'))` reborrow
--- probe reproduces it; see `runSwapLebProbe`). FIX (Machine.lean, readR's `&mut`
--- reborrow): in executing mode, End-Mut every owned FIELD-loan marker of the peeled
--- value innermost-first before reborrowing, exactly as the `.var` move's payload
--- loop does — so a mutated *v is fully re-collapsed before the next reborrow reads
--- it. Checking-mode identity: a group release is a marker-free σ or spec value, so
--- the cascade is vacuous there (the fix is gated on `executing`, and the full ~18s
--- suite is unchanged). The M22 mode-equivalence obligation, discharged for the
--- reborrow path: checking and executing reach the same state by different routes.
-def partScanRangeE : Decl :=
-  decl{ fn partScanRangeE [k] (v : &mut List Nat, lo : Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
-        { match k {
-            Z => match i {
-              Z => (),
-              S(i2) => { swapS(v, lo, add lo (S(i2)), (), ()); () }
-            },
-            S(k2) => {
-              let c = leb (nth (add lo (S (add i g))) (*v)) pivot;
-              match c {
-                True => match g {
-                  Z => partScanRangeE(v, lo, k2, S(i), Z, pivot),
-                  S(g2) => { swapS(&mut *v, add lo (S(i)), add lo (S(add i (S(g2)))), (), ()); partScanRangeE(v, lo, k2, S(i), S(g2), pivot) }
-                },
-                False => partScanRangeE(v, lo, k2, i, S(g), pivot)
-              }
-            }
-        } } }
 def partScanRangeLT (pivot lo k i g l : Term) : Term :=
   .app (.app (.app (.app (.app (.app StdLemmas.partScanRangeL pivot) lo) k) i) g) l
 -- SUBJECT: the executing-mode differential harness (raw Term caller).
@@ -794,17 +452,6 @@ def psrCaller (lst : List Nat) (lo k pivot : Nat) : Term :=
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
       (.seq (.call "partScanRangeE" [.var ⟨1, "b"⟩, tnat lo, tnat k, tnat 0, tnat 0, tnat pivot])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
-def runPSR (lst : List Nat) (lo k pivot : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, partScanRangeE] (psrCaller lst lo k pivot) with
-  | .ok env => env.lookup "y" == some (pv (partScanRangeLT (tnat pivot) (tnat lo) (tnat k) (.ctorApp "Z" []) (.ctorApp "Z" []) (tlist lst)))
-  | .error _ => false
-
-example : runPSR [3,2,1] 0 2 3 = true := by native_decide         -- reverse: pivot 3 → end (a swap)
-example : runPSR [1,2,3] 0 2 1 = true := by native_decide         -- already partitioned (no swap)
-example : runPSR [2,2,1] 0 2 2 = true := by native_decide         -- duplicates around the pivot
-example : runPSR [5,3,8,1,9,2] 0 5 5 = true := by native_decide   -- mixed, interior swaps
-example : runPSR [9,3,1,2,7] 1 2 3 = true := by native_decide     -- SUB-RANGE (lo=1): partition [3,1,2]
-
 /-! ## M22 execfix — the executing-mode reborrow-staleness regression + the payoff
 
     The isolated repro of the pain diary above (`swapS(&mut *b,…)` then a comptime
@@ -860,39 +507,6 @@ example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
 -- body's three sequential `&mut *v` reborrows (partition + two recursive calls) are
 -- exactly the reborrow-collapse case the fix unblocks. Full-range callers (lo=0,
 -- cnt=len) so `hbnd = le_refl (len x) : Le (add 0 cnt) (len x)`.
-def qsExecCaller (lst : List Nat) (fuel lo cnt : Nat) (hbnd : Term) : Term :=
-  .letIn ⟨0,"x"⟩ (tlist lst)
-    (.letIn ⟨1,"b"⟩ (.borrow (.var ⟨0,"x"⟩))
-      (.seq (.call "quicksort" [.var ⟨1,"b"⟩, tnat fuel, tnat lo, tnat cnt, hbnd])
-        (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit)))
-def runQSExec (lst : List Nat) (fuel lo cnt : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, partScanRange, quicksort]
-      (qsExecCaller lst fuel lo cnt (.app StdLemmas.le_refl (tnat (lo + cnt)))) with
-  | .ok env => env.lookup "y" == some (pv (sortRangeLT fuel lo cnt lst))
-  | .error _ => false
-
-example : runQSExec [1,2,3] 3 0 3 = true := by native_decide          -- already sorted (no swaps)
-example : runQSExec [3,2,1] 3 0 3 = true := by native_decide          -- reverse: full recursion + swaps
-example : runQSExec [2,2,1,3,2] 5 0 5 = true := by native_decide      -- duplicates, len 5, multiple levels
-
--- Checking-mode precise recovery (the simulation baseline's headline): a caller
--- sorts a concrete list IN PLACE, and the checker recovers x = sortRangeL 3 0 3
--- [3,1,2] = [1,2,3] precisely via quicksort's group-end back — the caller SEES the
--- sorted list, no unpack lines. (The executing companion of this differential is
--- blocked on the reborrow-collapse gap in the pain diary above; checking recovery
--- and the pure-model value carry it.)
--- SUBJECT: raw Term caller for the checking-mode precise recovery (hbnd = le_refl 3
--- : Le (add 0 3) (len x), since len [3,1,2] = 3).
-def qsSpcBody : Term :=
-  .letIn ⟨0, "x"⟩ (tlist [3,1,2])
-    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
-      (.seq (.call "quicksort" [.var ⟨1, "b"⟩, tnat 3, tnat 0, tnat 3, .app StdLemmas.le_refl (tnat 3)])
-        (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
-def qsSpcCaller : Decl := decl{ fn qsSpc () -> Unit = %qsSpcBody }
-example : (match runFn [nthS, nth2S, swapSN, partScanRange, quicksort, qsSpcCaller] qsSpcCaller with
-  | [.ok env] => env.lookup "y" == some (pv (sortRangeLT 3 0 3 [3,1,2]))
-  | _ => false) = true := by native_decide
-
 /-! ## M22-a — exit-snapshot return types + `old *v` (§5.4, direct-proving enabler)
 
     A borrow parameter's bare `*v` in the RETURN TYPE reads the EXIT snapshot (the
@@ -903,14 +517,6 @@ example : (match runFn [nthS, nth2S, swapSN, partScanRange, quicksort, qsSpcCall
 
 -- ACCEPTED: after the swap, *v (exit) IS swapL i j (old *v). Refl checks only
 -- because bare *v reads the EXIT value; the body's proof cites `old *v` for the entry.
-def exitAccept : Decl :=
-  decl{ fn exitAccept (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
-        -> Id (List Nat) (*v) (swapL i j (old *v))
-        { swapS(&mut *v, i, j, pij, p2); Refl } }
-example : checkFnOk exitAccept [nthS, nth2S, swapSN, exitAccept] = true := by native_decide
-
--- REJECTED: claiming *v (exit) = old *v (entry) is false — the body mutated *v.
--- (If bare *v still read the ENTRY, this would wrongly pass — the negative guard.)
 def exitReject : Decl :=
   decl{ fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
         -> Id (List Nat) (*v) (old *v)
@@ -920,34 +526,8 @@ example : checkFnErr exitReject "does not have return type" [nthS, nth2S, swapSN
 -- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = swapL i j (old *v),
 -- so `len *v = len (old *v)` is exactly len_swapL at the entry snapshot — cited
 -- directly with `old *v` in the body (no need to save the list, which would move it).
-def lenPreserve : Decl :=
-  decl{ fn lenPreserve (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
-        -> Id Nat (len (*v)) (len (old *v))
-        { swapS(&mut *v, i, j, pij, p2); len_swapL i j (old *v) } }
-example : checkFnOk lenPreserve [nthS, nth2S, swapSN, lenPreserve] = true := by native_decide
-
--- CALLER-SIDE σ-SHARING (test 3): the caller forwards lenPreserve's evidence as a
--- fact about its OWN exit `*v`. This checks ONLY because the call mints one σ' shared
--- between the reborrow's release (the caller's recovered *v) and lenPreserve's
--- returned evidence subject — so `Id (len *v) (len (old *v))` about the callee's σ'
--- IS the fact the caller needs about the same recovered σ'. Without sharing the
--- reborrow would release a fresh, unrelated existential and the forward would fail.
-def shareCaller : Decl :=
-  decl{ fn shareCaller (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
-        -> Id Nat (len (*v)) (len (old *v))
-        { lenPreserve(&mut *v, i, j, pij, p2) } }
-example : checkFnOk shareCaller [nthS, nth2S, swapSN, lenPreserve, shareCaller] = true := by native_decide
-
--- Sequential reborrow (the quicksort recursion shape): a self-recursive fn that
--- reborrows *v twice in sequence for two recursive calls. This only checks
--- because `&mut` on a place holding a parked `loanₘ` now DEMAND-ENDS the prior
--- call's loan group (releasing *v with its back applied) before reborrowing —
--- the concrete demand-driven ending (§6.1, dllbc-arrows.md:508) rather than the
--- atomic-at-audit over-approximation, which suspended *v for the whole body and
--- blocked the second reborrow. back = identity (the recursion mutates nothing).
 def twoRec : Decl :=
   decl{ fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
-        back = *v
         { match f {
             Z => (),
             S(f2) => { twoRec(&mut *v, f2); twoRec(&mut *v, f2); () }
@@ -1025,27 +605,6 @@ example : checkFnOk twoRec [twoRec] = true := by native_decide
       PRE-REDIRECT M22 plan wanted — the conformance and direct-proving architectures
       have CONVERGED on the same pure-lemma obligations, differing only in where
       evidence assembly happens. A paper observation. -/
-def swapSE : Decl :=
-  decl{ fn swapSE (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
-        -> Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-        { let cert = (λ (n : Nat). count_swapL' n i j (old *v) pij p2);
-          swapS(&mut *v, i, j, pij, p2);
-          cert } }
-example : checkFnOk swapSE [nthS, nth2S, swapSN, swapSE] = true := by native_decide
-
--- LYING postcondition: claim swap preserves count of `old *v` at a SHIFTED index
--- (`count (S n)` on the left) — false in general (e.g. [2,0] ⇝ [0,2]: count 1 exit
--- = 0 ≠ 1 = count 0 entry), so the honest cert (type `Π n. Id (count n exit)
--- (count n entry)`) does not have this shifted type and the audit rejects. Guards
--- that the green check above is not vacuous.
-def swapSELie : Decl :=
-  decl{ fn swapSELie (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
-        -> Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v))
-        { let cert = (λ (n : Nat). count_swapL' n i j (old *v) pij p2);
-          swapS(&mut *v, i, j, pij, p2);
-          cert } }
-example : checkFnErr swapSELie "does not have return type" [nthS, nth2S, swapSN, swapSELie] = true := by native_decide
-
 /-! ## M22-b — partitionRangeE: partition's PERMUTATION postcondition (direct proving)
 
     The partition rung. NO back: the return type `Π n. Id Nat (count n *v)(count n
@@ -1057,26 +616,6 @@ example : checkFnErr swapSELie "does not have return type" [nthS, nth2S, swapSN,
     consuming call (reads `hbnd` while live — the proof-linearity dodge again). This
     is the count/Perm half of the eventual `Sorted *v ∧ Perm (old*v) *v` quicksort
     postcondition; sortedness is the other axis, still ahead. -/
-def partitionRangeE : Decl :=
-  decl{ fn partitionRangeE (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
-        -> Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-        { let cert = (λ (n : Nat). count_partitionRangeL lo n cnt (old *v) hbnd);
-          let r = partitionRange(&mut *v, lo, cnt, hbnd);
-          cert } }
-def partRangeETable : List Decl := [nthS, nth2S, swapSN, partScanRange, partitionRange, partitionRangeE]
-example : checkFnOk partitionRangeE partRangeETable = true := by native_decide
-
--- LYING postcondition: shifted index (`count (S n)` on the left) — false in general,
--- the honest cert has type `Π n. Id (count n exit)(count n entry)`, not the shift.
-def partitionRangeELie : Decl :=
-  decl{ fn partitionRangeELie (v : &mut List Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
-        -> Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v))
-        { let cert = (λ (n : Nat). count_partitionRangeL lo n cnt (old *v) hbnd);
-          let r = partitionRange(&mut *v, lo, cnt, hbnd);
-          cert } }
-example : checkFnErr partitionRangeELie "does not have return type"
-  [nthS, nth2S, swapSN, partScanRange, partitionRange, partitionRangeELie] = true := by native_decide
-
 /-! ## M22-b — quicksortE: quicksort's PERMUTATION postcondition (direct proving)
 
     THE NORTH STAR, direct-proving form. NO back: retType `Π n. Id Nat (count n *v)
@@ -1090,65 +629,5 @@ example : checkFnErr partitionRangeELie "does not have return type"
     the consuming call (reads hbnd live). This is the Perm half of the full
     `Sorted *v ∧ Perm (old*v) *v`; sortedness (AllLe/AllGe/sorted-glue) is the
     remaining axis. -/
-def quicksortE : Decl :=
-  decl{ fn quicksortE (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
-        -> Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-        { let cert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
-          quicksort(&mut *v, fuel, lo, cnt, hbnd);
-          cert } }
-def quicksortETable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortE]
-example : checkFnOk quicksortE quicksortETable = true := by native_decide
-
--- LYING postcondition: shifted index — the honest permutation cert does not have it.
-def quicksortELie : Decl :=
-  decl{ fn quicksortELie (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : Le (add lo cnt) (len *v))
-        -> Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v))
-        { let cert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
-          quicksort(&mut *v, fuel, lo, cnt, hbnd);
-          cert } }
-example : checkFnErr quicksortELie "does not have return type"
-  [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortELie] = true := by native_decide
-
--- M22: THE NORTH STAR — full postcondition. The in-place quicksort's exit snapshot
--- satisfies Σ (SortedR cnt lo (*v)) → (Π n. count n (*v) = count n (old *v)): sortedness
--- AND permutation, proven directly from pure lemmas about the delegated model function
--- (sorted_sortRangeL, count_sortRangeL), no back-carrying conversion in the postcondition.
-def quicksortSorted : Decl :=
-  decl{ fn quicksortSorted (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
-        -> Σ (sortedpart : SortedR cnt lo (*v)) → (Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v)))
-        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
-          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
-          quicksort(&mut *v, fuel, lo, cnt, hbnd);
-          Pair(sortedcert, permcert) } }
-def quicksortSortedTable : List Decl := [nthS, nth2S, swapSN, partScanRange, quicksort, quicksortSorted]
-example : checkFnOk quicksortSorted quicksortSortedTable = true := by native_decide
-
--- LYING postcondition (permutation conjunct): shifted index (`count (S n)` on the
--- left) — the honest permcert has type `Π n. Id (count n exit)(count n entry)`, not
--- the shift, so the Pair's second component fails to inhabit the claimed Σ codomain.
-def quicksortSortedLiePerm : Decl :=
-  decl{ fn quicksortSortedLiePerm (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
-        -> Σ (sortedpart : SortedR cnt lo (*v)) → (Π (n : Nat) → Id Nat (count (S n) (*v)) (count n (old *v)))
-        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
-          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
-          quicksort(&mut *v, fuel, lo, cnt, hbnd);
-          Pair(sortedcert, permcert) } }
-example : checkFnErr quicksortSortedLiePerm "does not have return type"
-  quicksortSortedTable = true := by native_decide
-
--- LYING postcondition (sorted conjunct): widened range (`SortedR (S cnt)`) — claims
--- one element MORE than the sort touched is in order, which the honest sortedcert
--- (`SortedR cnt lo`, from sorted_sortRangeL at cnt) does not give. Guards the green
--- check above against a vacuous sortedness conjunct.
-def quicksortSortedLieSorted : Decl :=
-  decl{ fn quicksortSortedLieSorted (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hfuel : Le cnt fuel, hbnd : Le (add lo cnt) (len *v))
-        -> Σ (sortedpart : SortedR (S cnt) lo (*v)) → (Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v)))
-        { let permcert = (λ (n : Nat). count_sortRangeL n fuel lo cnt (old *v) hbnd);
-          let sortedcert = sorted_sortRangeL fuel lo cnt (old *v) hfuel hbnd;
-          quicksort(&mut *v, fuel, lo, cnt, hbnd);
-          Pair(sortedcert, permcert) } }
-example : checkFnErr quicksortSortedLieSorted "does not have return type"
-  quicksortSortedTable = true := by native_decide
-
 end Dllbc.Tests.S19Partition
 

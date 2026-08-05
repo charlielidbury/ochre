@@ -65,29 +65,34 @@ open Dllbc.StdLemmas (Ub Lb len)
     (e4222291) produced a "stripped" pool identical to the original, and read at
     face value it said the exact opposite of the truth. -/
 
-/-- The stripped pool really has no backs left, and really had some to begin with. -/
-example : (S26Migrate.pools.any (fun p => p.any (·.back.isSome))
-        && S26Migrate.pools.all (fun p => (S26Migrate.stripBacks p).all (·.back.isNone)))
-  = true := by native_decide
+/-- **EXECUTED (M27-P2).** The corpus declares no backward spec at all. This is
+    the assertion the whole ledger was built to license, and it is stated as an
+    emptiness rather than as a count so that one reappearing turns the file red. -/
+example : (S26Migrate.pools.all (fun p => p.all (·.back.isNone))) = true := by native_decide
 
-/-- Declarations that declare a `back`, as pool entries. This is the deletion's
-    source-change scope, and it is independent of what currently blocks anything. -/
+/-- Declarations that declare a `back`, as pool entries. Kept as a definition
+    rather than inlined, because it is the thing §C's disposition table is about
+    and a reader should be able to run it. -/
 def backDeclarers (p : List Decl) : List String :=
   (p.filter (·.back.isSome)).map (·.name)
 
-example : (S26Migrate.pools.foldl (fun a p => a + (backDeclarers p).length) 0 == 21)
+example : (S26Migrate.pools.foldl (fun a p => a + (backDeclarers p).length) 0 == 0)
   = true := by native_decide
 
-/-- The corpus as it stands, and with the backs off. The difference is the
-    closure: 49 declarations migrate when the one mechanism comes off. -/
-example : (S26Migrate.pools.foldl (fun a p => a + (report p).declined) 0 == 61)
-  = true := by native_decide
-example : (S26Migrate.pools.foldl (fun a p => a + (report (S26Migrate.stripBacks p)).declined) 0
-  == 19) = true := by native_decide
+/-- The corpus after the retirement: 110 accept, 58 reject, 19 decline — and the
+    19 are exactly §B's residue, the true `[v]` payload-decrease class. Before
+    M27-P2 it was 61 declines against 28 back-declaring entries. -/
+example : (S26Migrate.pools.foldl (fun (a, r, d) p =>
+    let q := report p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
+  == (110, 58, 19)) = true := by native_decide
 
-/-- …and the two paths still agree everywhere with the backs gone, which is what
-    says the 49 are migrations rather than accidents. -/
-example : (S26Migrate.pools.all (fun p => (report (S26Migrate.stripBacks p)).disagree.isEmpty))
+/-- …and the two paths still agree everywhere, which is the property the whole
+    comparison exists for. **Read it narrowly**: agreement is not coverage. This
+    says the declaration path and the program path reach the same verdict, and it
+    says nothing about a DECLINING declaration, whose declaration-path verdict
+    `report` never compares to anything. That gap is what hid the fourteen S19
+    regressions until a deletion exposed them (§C). -/
+example : (S26Migrate.pools.all (fun p => (report p).disagree.isEmpty))
   = true := by native_decide
 
 /-! ## §B. The residue: 19 declarations, and a disposition for each
@@ -393,14 +398,8 @@ def backNames (p : List Decl) : List String := (p.filter (·.back.isSome)).map (
 /-- Where the backs are, pool by pool. After M27-P2 retired the surface-test
     files, only S17 and S19 declare one — which is itself a disposition: S5, S6,
     S7, S9–S16, S18, S23, S24 and S25 need no `back` work at all. -/
-example : (S26Migrate.pools.map backNames ==
-  [[], [], [], [], [], [], [], [], [], [],
-   ["through", "through", "nth", "nth2", "swapS"],
-   [],
-   ["nth", "nth2", "swapS", "pivotPlace", "pivotPlaceH", "partScan", "partScanRange",
-    "partition", "partitionLie", "partScanLie", "nth2Lie", "partitionQ", "partitionRange",
-    "quicksort", "quicksortLie", "twoRec"],
-   [], [], []])
+example : (S26Migrate.pools.map backNames
+  == [[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []])
   = true := by native_decide
 
 /-! ### C1. SEVEN SURFACE TESTS — RETIRED in M27-P2, with the syntax they tested
@@ -465,8 +464,8 @@ example : ensuresLies.all (fun d => neitherWay d [S23Direct.setAt]) = true := by
 -- two differently-shaped terms and pass for the wrong reason. What IS asserted is
 -- the instrument: the corpus still carries the back this section proposes to
 -- delete, so C2 is not describing something already gone.
-example : (S17Spec.swapSN.back.isSome && S17Spec.nthS.back.isSome
-        && S17Spec.nth2S.back.isSome) = true := by native_decide
+example : (S17Spec.swapSN.back.isNone && S17Spec.nthS.back.isNone
+        && S17Spec.nth2S.back.isNone) = true := by native_decide
 
 /-! ### C3. S19's Architecture A stratum — twelve entries that keep their bodies
 
@@ -499,8 +498,10 @@ def twoRecNoBack : Decl :=
   Decl.mk S19Partition.twoRec.name S19Partition.twoRec.telescope S19Partition.twoRec.retType
     S19Partition.twoRec.body none S19Partition.twoRec.dec
 
--- The strip really happened (e4222291's gotcha, guarded at every use site).
-example : (S19Partition.twoRec.back.isSome && twoRecNoBack.back.isNone) = true := by native_decide
+-- EXECUTED: the field is gone at the SOURCE, so `twoRecNoBack` and the corpus
+-- declaration are now the same function — which is what a completed port looks
+-- like from the ledger's side.
+example : (S19Partition.twoRec.back.isNone && twoRecNoBack.back.isNone) = true := by native_decide
 -- …and the function still checks, and now MIGRATES — which the `[f]`-hinted,
 -- back-carrying original could not.
 example : S26Fuel.bothWays twoRecNoBack = true := by native_decide
@@ -540,5 +541,39 @@ example : S26Fuel.bothWays twoRecNoBack = true := by native_decide
     every pool, so there is no set-equality this ledger could state about them
     without restating their contents and creating the third copy the whole
     arrangement exists to avoid. The census in the deletion commit is the record. -/
+
+/-! ## §E. THE CLAIM-CARRIER AUDIT — where each retired S19 claim went
+
+    The bar for retiring S19's back-dependent stratum was not "the tests go" but
+    "each claim names its live carrier, or is recorded superseded-without-
+    replacement with the reason". Here it is, and the headline is that **exactly
+    one claim has no carrier, and it dies by design rather than by accident.**
+
+    | retired | its claim | live carrier |
+    |---|---|---|
+    | `partScan`, `partScanRange` | an in-place swap scan CONFORMS to `partScanL` | the conformance claim IS the retired architecture; the PROGRAM is carried by `S23Direct.partition` (relational `Ub`/`Lb`/count) and `S25ArrSort.partitionA` |
+    | `partition`, `partitionQ`, `partitionRange` | conforms to `partitionL`; returned index = `partIdxL` | `S23Direct.partition`; `S25ArrSort.partitionA`, which returns an index under its own ensures |
+    | `quicksort`, `quicksortLie` | conforms to `sortRangeL` | `S23Direct.quicksort` — `Σ (Sorted (*v)) → Π n. count`-preservation, zero declared backs. Strictly stronger, and 21 ms against 21.8 s |
+    | `exitAccept` | `Id (*v) (swapL i j (old *v))` | `S23Direct.swapAt` — literally the same statement, asserted in §C2 |
+    | `lenPreserve` | `Id (len *v) (len (old *v))` across a swap | derivable from `swapAt`'s equation by `len_swapL` + `id_congr`; the equation implies the length fact |
+    | `shareCaller` | caller-side σ-sharing: a callee's fact about its own exit forwarded as the caller's | the same mechanism at scale in `S23Direct.quicksort`, which forwards `partition`'s count equation into its own postcondition |
+    | `swapSE`, `partitionRangeE`, `quicksortE` | count preservation for swap / partition / sort | the count conjunct of `S23Direct.partition` and `S23Direct.quicksort` |
+    | `quicksortSorted` | `Σ (SortedR cnt lo (*v)) → Π n. count`-preservation | `S23Direct.quicksort` — whole-list structural `Sorted` in place of positional `SortedR cnt lo`, same count conjunct |
+    | `qsSpc` | a caller recovers the exact sorted list in CHECKING mode | **no carrier — deleted by design.** §5 point 4: what you keep across a boundary is what you ascribe, and an opaque call ascribes nothing about the payload. The BEHAVIOUR is carried by S23Direct's executing differential against Lean's `mergeSort` and by the list-vs-array cross-differential |
+    | `nth2Lie`, `partScanLie`, `partitionLie` | a LYING backward spec is caught at the callee check | tests of the deleted mechanism; retire with it |
+
+    **THE TWO-LINE JUSTIFICATION**, which is the sentence the whole S19 question
+    reduces to: porting this stratum to ensures-style is not a signature change but
+    a PROGRAM rewrite — measured, since `swapS` given the ensures with its cursor
+    body is rejected, its exit being a fresh σ minted by `nth2`'s group. **M23
+    already performed that rewrite, and its output is already in the corpus and
+    already green.**
+
+    **AND THE SOUNDNESS REASON, which arrived after the decision and confirms it.**
+    b1's probe found that the `~>`-hatch cursor contract — the form a "successful"
+    port would have used — is accepted UNEARNED today: the containments in
+    `S27Mixed.lean` are what close it. So a port that had looked like it worked
+    would have been green on a promise nothing checked. The naive conversion was
+    never sound, which is a stronger reason to retire than the economics alone. -/
 
 end Dllbc.Tests.S27Dispose

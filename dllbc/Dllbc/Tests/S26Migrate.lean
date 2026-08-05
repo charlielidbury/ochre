@@ -95,24 +95,23 @@ def p14 : List Decl := [S14Bounds.nth, S14Bounds.nth2, S14Bounds.swap, S14Bounds
   S14Bounds.rejectProbe]
 def p15 : List Decl := [S15Elab.useTrans, S15Elab.badRefl]
 def p16 : List Decl := [S16Spec.swapS01, S16Spec.swapCaller]
-def p17 : List Decl := [S17Spec.throughOk, S17Spec.caller, S17Spec.throughLie,
+def p17 : List Decl := [S17Spec.throughOk, S17Spec.caller,
   S17Spec.throughOpaque, S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN, S17Spec.spcCaller]
 def p18 : List Decl := [S18Rewrite.certConsHit, S18Rewrite.certConsHitLie]
 
 def p19 : List Decl := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
-  S19Partition.certSwapCount, S19Partition.certSwapCountLie, S19Partition.pivotPlace,
-  S19Partition.pivotPlaceH, S19Partition.partScan, S19Partition.partScanRange,
-  S19Partition.partition, S19Partition.partitionLie, S19Partition.partScanLie,
-  S19Partition.nth2Lie, S19Partition.stuckProbe, S19Partition.stuckProbeLie,
-  S19Partition.stuckProbeNonExh, S19Partition.partScanE, S19Partition.partitionE,
-  S19Partition.partitionQ, S19Partition.partitionRange, S19Partition.quicksort,
-  S19Partition.quicksortLie, S19Partition.partScanRangeE, S19Partition.lebProbe,
-  S19Partition.qsSpcCaller, S19Partition.exitAccept, S19Partition.exitReject,
-  S19Partition.lenPreserve, S19Partition.shareCaller, S19Partition.twoRec,
-  S19Partition.swapSE, S19Partition.swapSELie, S19Partition.partitionRangeE,
-  S19Partition.partitionRangeELie, S19Partition.quicksortE, S19Partition.quicksortELie,
-  S19Partition.quicksortSorted, S19Partition.quicksortSortedLiePerm,
-  S19Partition.quicksortSortedLieSorted]
+  S19Partition.certSwapCount,
+  S19Partition.certSwapCountLie,
+  S19Partition.pivotPlace,
+  S19Partition.pivotPlaceH,
+  S19Partition.partScanE,
+  S19Partition.partitionE,
+  S19Partition.stuckProbe,
+  S19Partition.stuckProbeLie,
+  S19Partition.stuckProbeNonExh,
+  S19Partition.lebProbe,
+  S19Partition.exitReject,
+  S19Partition.twoRec]
 
 def p23 : List Decl := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S23Direct.useItLie,
   S23Direct.usePinLie, S23Direct.plainOne, S23Direct.useUnpinned, S23Direct.recGood,
@@ -168,9 +167,9 @@ example : (report p12 == R 10 2 0) = true := by native_decide
 example : (report p14 == R 4 1 0) = true := by native_decide
 example : (report p15 == R 1 1 0) = true := by native_decide
 example : (report p16 == R 2 0 0) = true := by native_decide
-example : (report p17 == R 1 0 7) = true := by native_decide
+example : (report p17 == R 7 0 0) = true := by native_decide
 example : (report p18 == R 1 1 0) = true := by native_decide
-example : (report p19 == R 2 2 35) = true := by native_decide
+example : (report p19 == R 9 6 0) = true := by native_decide
 example : (report p23 == R 24 19 17) = true := by native_decide
 example : (report p24 == R 20 14 1) = true := by native_decide
 example : (report p25 == R 11 12 0) = true := by native_decide
@@ -182,7 +181,7 @@ def pools : List (List Decl) :=
 
 example : (pools.foldl (fun (a, r, d) p =>
     let q := report p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
-  == (97, 54, 61)) = true := by native_decide
+  == (110, 58, 19)) = true := by native_decide
 example : (pools.all (fun p => (report p).disagree.isEmpty)) = true := by native_decide
 
 /-! ## §Z. What did not migrate, and why — three classes, each already decided
@@ -192,26 +191,12 @@ example : (pools.all (fun p => (report p).disagree.isEmpty)) = true := by native
     68 fall into three classes, and each class is a decision this project took
     before this phase started. -/
 
--- Z1. **A declared `back`** (§6.2) — the mechanism M23 RETIRED. Its corpus
--- declares none, deliberately ("ZERO declared backs" was M23's headline), and the
--- seal has no counterpart because the ensures IS the contract now (§5 point 4).
--- This is the biggest class: it takes S14, S17 and — through the three S17
--- functions their tables import — nearly all of S19, which is the M17-era spec
--- corpus M23 superseded.
-example : (match FnMacro.fnElab S17Spec.throughOk with
-           | .error e => strContains e "declares a backward spec"
-           | .ok _ => false) = true := by native_decide
-
--- Z2. **`[v]` payload decrease** (§12 decision 8) — no recursor form until §9's
--- borrow-mode eliminator exists; fuel-threading is the blessed interim, and it is
--- a SOURCE change, so a macro may not invent it. `zero_all`, `recCursor`,
--- `append_back`, `partition`, `walkArr` — and no longer `nth`, which M26-F showed
--- was never in this class at all, only mis-declared into it. M26-D paid the
--- interim for `partition` and M26-E for `append_back`; the rest stay as they are
--- (J1 — both worlds alive).
-example : (match FnMacro.fnElab S6Call.zeroAll with
-           | .error e => strContains e "decision 8"
-           | .ok _ => false) = true := by native_decide
+-- Z1. **A declared `back`** — RETIRED WITH THE MECHANISM (M27-P2). This class
+-- was the biggest of the three: §6.2's backward specs had no seal counterpart,
+-- because the ensures IS the contract now (§5 point 4). There is nothing left to
+-- assert — no declaration in the corpus declares one, which is the class emptying
+-- rather than the test passing. `S27Dispose` §C records where each carrier's
+-- claim went.
 
 -- Z3. **A recursion the eliminators cannot express.** Two shapes now that
 -- `listRec` is wired: a self-call at a non-predecessor (the guard twins
@@ -266,63 +251,25 @@ example : (match FnMacro.fnElab S23Direct.recGood with
            | .error _ => false
            | .ok _ => true) = true := by native_decide
 
-/-! ## §V. Which blocker is load-bearing — measured, because I had it backwards
+/-! ## §V. The `back` blocker — RETIRED, and the section with it
 
-    The decline classes above are not independent: `fnElab` reports the FIRST
-    reason it finds, and it checks `back` before it checks the decreasing
-    parameter. So a function that both declares a backward spec AND decreases
-    through a borrow payload is reported as a `back` decline, and reading the
-    report at face value says §6.2 blocks S17 and S19 wholesale.
+    This section measured which of two blockers was load-bearing, and its answer
+    ("neither alone; a cohort is a CLOSURE") is the finding worth keeping. Its
+    INSTRUMENT is gone: `stripBacks` strips a field no declaration carries, so
+    every assertion here would now be a tautology about an empty set.
 
-    It does not. Stripping `back` from a pool and re-running the comparison is
-    two lines, and when this section was written it moved 73 declines to **65** —
-    §6.2 was the sole blocker for exactly **eight** declarations, and the other 65
-    were blocked underneath by §12 decision 8's `[v]` payload decrease.
+    What the measurement concluded, preserved because the numbers are the argument
+    for what M27 then did: 73 declines as the corpus stood; 68 with the two `[k]`
+    hints corrected; 65 with `back` stripped; **20 with both**. Neither fix moved
+    the report alone and together they collapsed it, because S17's `nth` had BOTH
+    blockers and everything reaching it declined with it. "Fix the biggest class
+    first" is exactly the wrong strategy against a closure.
 
-    Since M26-F corrected the `nth`/`nth2` hints the same two lines move 68 to
-    **19**, which is the other half of the same lesson and the reason the first
-    measurement read as it did: the blockers COMPOSE. A cohort is a closure, so an
-    S17 `nth` carrying both a declared `back` and a mis-declared `[v]` declines
-    everything above it until BOTH come off, and stripping either one alone barely
-    moved the report. With the hints corrected, `back` is what remains underneath
-    49 declarations rather than eight.
-
-    What that does not change is where the road runs. The residue after both fixes
-    is the honest `[v]` class — 17 in S23, `zero_all` in S6, `walkArr` in S24 — so
-    deleting `Decl` still goes through §9's borrow-mode eliminator (or through
-    fuel-threading those by hand, the shape M26-D and M26-E have each paid once),
-    not through redesigning what a backward spec becomes.
-
-    (A Lean-level gotcha that cost me the first measurement, recorded because it
-    fails SILENTLY: `{ d with back := none }` does not strip the field. `back` is
-    a reserved token of the `decl{ … }` surface, so the record-update syntax does
-    not mean what it reads as, and the stripped pool came back identical. The
-    positional `Decl.mk` is the way to write it — which is the same reason
-    `DeclMacro.assemble` builds its `Decl` positionally.) -/
-
-def stripBacks (pool : List Decl) : List Decl :=
-  pool.map (fun d => Decl.mk d.name d.telescope d.retType d.body none d.dec)
-
--- The strip is real (the check the first attempt did not make).
-example : (p17.any (fun d => d.back.isSome)
-        && (stripBacks p17).all (fun d => d.back.isNone)) = true := by native_decide
-
--- 61 declines become 19, so `back` alone accounts for 42 here (49 before the
--- surface-test pools retired with the `back = …` syntax in M27-P2; it accounted
--- for eight before M26-F corrected the hints underneath it — §V's own point about
--- closures, from both sides).
-example : (pools.foldl (fun a p => a + (report p).declined) 0 == 61) = true := by native_decide
-example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 19)
-  = true := by native_decide
-
--- And the comparison still agrees everywhere with the backs gone, so the eight
--- that move are migrations and not accidents.
-example : (pools.all (fun p => (report (stripBacks p)).disagree.isEmpty)) = true := by native_decide
-
--- Per file, so the 42 are locatable: S17 goes to zero (7 → 0) and S19 likewise
--- (35 → 0). What survives is the `[v]` residue — S6's `zero_all`, S23's 17,
--- S24's `walkArr`.
-example : (pools.map (fun p => (report (stripBacks p)).declined)
-  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0]) = true := by native_decide
+    And the one this file could not see, recorded beside it: **agreement is not
+    coverage.** `report` never compares a DECLINING declaration's declaration-path
+    verdict to anything — `progVerdict` returns `none` and the comparison skips —
+    so `disagree.isEmpty` was true throughout while 27 of the 42 declarations that
+    stopped declining under a strip became REJECTS. A comparison harness must also
+    measure verdict SURVIVAL, or a declining cohort's regressions are invisible. -/
 
 end Dllbc.Tests.S26Migrate

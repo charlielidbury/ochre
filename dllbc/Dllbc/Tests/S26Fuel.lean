@@ -247,19 +247,22 @@ example : bothWays zeroAllF = true := by native_decide
 
 def fixHints (pool : List Decl) : List Decl :=
   pool.map (fun d => if d.name == "nth" || d.name == "nth2" then { d with dec := some 1 } else d)
-def fixAll (pool : List Decl) : List Decl := fixHints (Tests.S26Migrate.stripBacks pool)
+-- M27-P2: `stripBacks` retired with the mechanism, so `fixAll` is `fixHints`,
+-- which is itself a no-op since M26-F adopted the hints at the source. BOTH of
+-- §E's fixes are now the corpus, which is what the assertions below assert.
+def fixAll (pool : List Decl) : List Decl := fixHints pool
 
 -- The adoption is at the SOURCE, so `fixHints` is now a no-op on every pool —
 -- which is the assertion that the corpus, and not this harness, carries the fix.
 example : (Tests.S26Migrate.pools.all (fun p => fixHints p == p)) = true := by native_decide
 
-example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixHints p)).declined) 0 == 61)
+example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixHints p)).declined) 0 == 19)
         && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixAll p)).declined) 0 == 19))
   = true := by native_decide
 
 example : (Tests.S26Migrate.pools.foldl (fun (a, r) p =>
     let q := Migrate.report (fixAll p); (a + q.accepts, r + q.rejects)) (0, 0)
-  == (112, 81)) = true := by native_decide
+  == (110, 58)) = true := by native_decide
 
 -- Still agreeing everywhere under both fixes, so the 53 that move are migrations
 -- and not accidents.
