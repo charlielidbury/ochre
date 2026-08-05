@@ -3,6 +3,7 @@ import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
+import Dllbc.Migrate
 
 /-!
 # §14 test suite — bounds-proof cursors
@@ -60,7 +61,7 @@ def nth : Decl :=
         S(k) => nth(&mut *tl, k, p)
       }
     } } }
-example : checkFnOk nth = true := by native_decide
+example : Migrate.progOkOf nth = true := by native_decide
 
 /-! ## Bounds-proof `nth2` — the multi-issued group, two bounds proofs -/
 
@@ -80,7 +81,7 @@ def nth2 : Decl :=
         }
       }
     } } }
-example : checkFnOk nth2 ([nth, nth2]) = true := by native_decide
+example : Migrate.progOkOf nth2 ([nth, nth2]) = true := by native_decide
 
 /-! ## Bounds-proof `swap` -/
 
@@ -93,7 +94,7 @@ def swap : Decl :=
       *ei := *ej;
       *ej := t;
       () } } } }
-example : checkFnOk swap ([nth, nth2, swap]) = true := by native_decide
+example : Migrate.progOkOf swap ([nth, nth2, swap]) = true := by native_decide
 
 /-! ## Callers — concrete proofs are `()`, OOB is a call-site rejection -/
 
@@ -104,7 +105,7 @@ def swapBody : Term := dllbcWith [] {
   swap(bb, 0, 2, (), ());
   let y = x;
   () }
-example : checkFnOk { name := "sc", retType := .const "Unit", telescope := [], body := swapBody }
+example : Migrate.progOkOf { name := "sc", retType := .const "Unit", telescope := [], body := swapBody }
   ([nth, nth2, swap, { name := "sc", retType := .const "Unit", telescope := [], body := swapBody }]) = true := by
   native_decide
 
@@ -122,7 +123,7 @@ def oobBody : Term := dllbcWith [] {
   swap(bb, 0, 4, (), ());
   let y = x;
   () }
-example : checkFnErr { name := "oob", retType := .const "Unit", telescope := [], body := oobBody }
+example : Migrate.progRejectsOf { name := "oob", retType := .const "Unit", telescope := [], body := oobBody }
   "does not have its parameter type"
   ([nth, nth2, swap, { name := "oob", retType := .const "Unit", telescope := [], body := oobBody }]) = true := by
   native_decide
@@ -138,7 +139,7 @@ def cascade : Decl :=
       let bb = &mut x;
       let pp = nth2(bb, 0, 2, (), ());
       match pp { Pair(ei, ej) => { *ei := 9; *ej := 8; let y = x; () } } } }
-example : checkFnOk cascade ([nth, nth2, cascade]) = true := by native_decide
+example : Migrate.progOkOf cascade ([nth, nth2, cascade]) = true := by native_decide
 
 -- Take a cursor's payload (hole) then demand the owner: the group cannot end.
 def rejectProbe : Decl :=
@@ -148,7 +149,7 @@ def rejectProbe : Decl :=
       let bb = &mut x;
       let pp = nth2(bb, 0, 2, (), ());
       match pp { Pair(ei, ej) => { let taken = *ei; let y = x; () } } } }
-example : checkFnErr rejectProbe "nothing surrendered" ([nth, nth2, rejectProbe]) = true := by native_decide
+example : Migrate.progRejectsOf rejectProbe "nothing surrendered" ([nth, nth2, rejectProbe]) = true := by native_decide
 
 /-! ## Differential coverage — bounds-proof pool, concrete proofs by computation -/
 

@@ -112,4 +112,37 @@ def report (pool : List Decl) : Report :=
 def declinedWith (pool : List Decl) : List (String × String) :=
   pool.filterMap (fun d => (refusal pool d).map (fun e => (d.name, e)))
 
+/-! ## The program path's `checkFnOk`/`checkFnErr` (M27-γ)
+
+    The endgame moves the corpus off the declaration path, and the corpus states
+    itself in two helpers: `checkFnOk d table` and `checkFnErr d needle table`.
+    These are their counterparts, with the SAME shape — subject first, table
+    defaulting to the subject alone — so a call site converts by renaming rather
+    than by re-derivation.
+
+    What they do is what every flagship already does: assemble the subject's
+    callee closure within `table` into a let-chain (`cohort`, `progOf`) and check
+    it as ONE program against no table at all. §8's direction, applied to the
+    tests instead of to the flagships.
+
+    **A declaration that does not MIGRATE fails these**, and that is deliberate
+    rather than a gap: `progOf` returning an error is `false` here, not a third
+    verdict, because a twin that DECLINES teaches nothing — it has to migrate and
+    then be refused. `Migrate.refusal` is where a decline is inspected on purpose;
+    a test asserting `progRejectsOf` must not be able to pass by not moving. -/
+
+/-- The program-path counterpart of `checkFnOk`. -/
+def progOkOf (d : Decl) (table : List Decl := [d]) : Bool :=
+  match FnMacro.progOf (cohort table d) .unit with
+  | .error _ => false
+  | .ok t => progOk t
+
+/-- The program-path counterpart of `checkFnErr`: the assembled program is
+    rejected with `needle` in the message. A declaration that fails to assemble is
+    `false`, so this cannot be satisfied by declining to migrate. -/
+def progRejectsOf (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
+  match FnMacro.progOf (cohort table d) .unit with
+  | .error _ => false
+  | .ok t => progRejects t needle
+
 end Dllbc.Migrate
