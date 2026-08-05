@@ -1039,7 +1039,14 @@ def m1 : Decl := decl{ fn caller () -> Unit {
 -- direction: a program that binds `ih` and never calls it is ACCEPTED by both
 -- machines with final Ωs that do not correspond. The read is the event; the call
 -- was only where the old rule happened to notice.
-example : rejects m1 "sealed borrow-taking function" = true := by native_decide
+--
+-- **And the REASON has since moved too** (M27 α.2): the refusal is no longer a
+-- containment keyed on a borrow-moded Π's missing `Val`, it is the model —
+-- functions are reached by NAME, and `let g = ih` reads one into a second slot.
+-- Nothing about this program's verdict changed; what changed is what the message
+-- says, and §7 wanted none of this anyway (cost 2 is explicit that `ih` is "never
+-- partially applied").
+example : rejects m1 "reached by NAME" = true := by native_decide
 
 -- EXECUTING: the same program runs to completion and really zeroes the list,
 -- because there `ih` is a `Val.rfn` and the `.rfn` case copies it.

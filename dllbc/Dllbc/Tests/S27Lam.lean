@@ -286,6 +286,22 @@ example : (match bndDec with
              | none => false
            | none => false) = true := by native_decide
 
+-- F3b. **THE UNINSTANTIATED ANNOTATION** — the transcription itself, rather than
+-- an off-by-one near it: the arm annotated with the DECLARATION's own domain,
+-- `Le (len *v) n`, where the motive at this constructor gives `Le (len *v) (S n')`.
+-- This is the control that would have caught the handoff's "`rest` is already a
+-- telescope, so those come for free", and it is in the battery for that reason.
+--
+-- **It is refused at the CONVERSION**, and where it fires is part of the claim.
+-- The declaration's domain mentions the scrutinee `n`, which does not exist
+-- inside an arm — so a closedness rejection was the other plausible outcome, and
+-- would have been the conversion passing for the wrong reason. `piAgree` runs
+-- before `checkRFnBody`, so the domains are compared before any body is entered,
+-- and the message below is the comparison's own.
+example : (match stepArmWith 3 (bndD.telescope.get! 2).2 with
+           | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
+           | none => false) = true := by native_decide
+
 -- F4. …and an ordinary trailing binder, mistyped outright.
 example : (match stepArmWith 2
              (.borrowT (.app (.const "List") (.const "Bool"))

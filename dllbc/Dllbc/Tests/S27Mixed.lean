@@ -220,10 +220,20 @@ example : ok Tests.S16Spec.swapS01 = true := by native_decide
 
     So the position is made unwritable, checking-side only — the executing machine
     holds a real function value and copies it correctly, and refusing there would
-    break running programs to protect a checker. The real fix is to teach
-    `indexKindV` about `fsig`; that changes the read rule for every σ and is filed
-    for the function-model round, where the comptime-functions proposal may delete
-    the class outright. -/
+    break running programs to protect a checker.
+
+    **AND THE CONTAINMENT HAS SINCE GRADUATED INTO THE MODEL** (M27 α.2). The two
+    paragraphs above are the record of what was believed and why, and both are
+    still true of the mechanism — but the rule no longer keys on the mechanism.
+    The ratified model is that **functions are reached by NAME**: the binding a
+    declaration creates IS the name (§8), calling where bound and passing as an
+    argument are name-uses, and the one move the model forbids is reading a
+    function out of its slot into a SECOND binding, which is what turns it from a
+    name into a value. So the key is now being a function at all, and the
+    borrow-free case flips with it — c1 measured that one as SOUND on both
+    machines (§G3a), and it is refused anyway, because soundness was never what
+    made it wrong. What is left of "teach `indexKindV` about `fsig`" is §12 open
+    8, which the model may simply not need. -/
 
 def fSeal : Term := pure{ Π (v : &mut List Nat) → Unit }
 
@@ -233,22 +243,39 @@ def f1read : Term := prog{
   let f = seal(λ(v : &mut List Nat) { () }, %fSeal);
   let g = f;
   () }
-example : progRejects f1read "sealed borrow-taking function" = true := by native_decide
+-- The needle moved with the rule: what is refused is no longer "a sealed
+-- borrow-taking function" but a function, full stop.
+example : progRejects f1read "reached by NAME" = true := by native_decide
 
--- F2. The isolating control, and it is the one that names the trigger: a
--- BORROW-FREE sealed function bound to a second slot is ACCEPTED. A borrow-free Π
--- has a `Val`, so its σ lands in `sctx` too and `indexKindV` can see it. The
--- refusal is about the missing value form, not about functions.
+-- F2. **THE ONE THAT FLIPPED, and it is the clearest statement of what changed.**
+-- ~~The isolating control: a BORROW-FREE sealed function bound to a second slot is
+-- ACCEPTED, because a borrow-free Π has a `Val`, its σ lands in `sctx` too, and
+-- `indexKindV` can see it — so the refusal is about the missing value form, not
+-- about functions.~~ **OVERTAKEN by α.2.** Every word of that is still true of the
+-- MECHANISM, and c1 measured this program as copying correctly on both machines.
+-- It is refused now anyway, and the reason is the model rather than a defect:
+-- functions are names, and this reads one into a second slot. The refusal it gets
+-- is the same one F1 gets, which is the point — there is no longer a class here to
+-- be isolated from.
 def gSeal : Term := pure{ Π (x : Nat) → Nat }
 def f2read : Term := prog{
   let f = seal(λ(x : Nat) { x }, %gSeal);
   let g = f;
   () }
-example : progOk f2read = true := by native_decide
+example : progRejects f2read "reached by NAME" = true := by native_decide
 
--- F3. And the containment does not touch CALLING. `.callV` locates its callee
--- rather than moving it (M26-E), which is the whole reason the position was
--- reachable only by a read in the first place.
+-- F2b. The ISOLATING CONTROL that survives, and it has to be a different one now:
+-- an ordinary value in a second slot is still an ordinary read. So F1/F2 are about
+-- functions and not about second bindings.
+def f2data : Term := prog{
+  let f = 3;
+  let g = f;
+  () }
+example : progOk f2data = true := by native_decide
+
+-- F3. And it does not touch CALLING, which under the model is the headline rather
+-- than a caveat: calling where bound is a NAME-use. `.callV` locates its callee
+-- rather than moving it (M26-E), so it never reaches the read rule at all.
 def f3call : Term := prog{
   let f = seal(λ(v : &mut List Nat) { () }, %fSeal);
   let x = Cons(1, Nil);

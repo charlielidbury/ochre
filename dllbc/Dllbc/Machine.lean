@@ -2970,33 +2970,49 @@ mutual
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
           | none => do
-            -- M27 SOUNDNESS CONTAINMENT (c1's curry probe §G3b, generalizing
-            -- M27-P3's §M). A σ whose Π is BORROW-MODED has no `Val` — M26-C's
-            -- founding fact — so it lives in `fsig` ALONE, and `indexKindV`'s
-            -- `.sym` case consults `sctx`. Finding nothing, it takes the move
-            -- default: the checking machine empties the slot while the executing
-            -- machine, holding a real `.rfn`, copies it. Reading one is therefore
-            -- a SIMULATION BREAK — and not only in the safe direction, since a
-            -- program that binds without calling is ACCEPTED by both machines
-            -- with final Ωs that do not correspond.
+            -- **FUNCTIONS ARE REACHED BY NAME** (M27 α.2, the ratified model),
+            -- and this is the one rule that says so.
             --
-            -- Refused here until the read rule is designed. Teaching `indexKindV`
-            -- about `fsig` is the real fix and it changes the read rule for every
-            -- σ, which is the function-model round's business, not a containment's.
-            -- CHECKING-SIDE ONLY: the executing machine holds the function value
-            -- and copies it correctly, so refusing there would break running
-            -- programs to protect a checker.
-            if !(← get).executing then
-              match v with
-              | .sym σ =>
-                -- "in `fsig` ALONE" is the trigger, and the ALONE is load-bearing:
-                -- `sealMint` records EVERY sealed function's signature in `fsig`,
-                -- and additionally reflects a borrow-FREE Π into `sctx`, where
-                -- `indexKindV` can see it and copy correctly. So presence in
-                -- `fsig` is not the condition — absence from `sctx` is.
-                if ((← get).fsig.lookup σ).isSome && ((← get).sctx.lookup σ).isNone then
-                  throwErr s!"read: '{x.name}' holds a sealed borrow-taking function, and reading one into another binding is not yet expressible. Its signature is a borrow-moded Π, which has no value form, so the checker cannot tell a copy from a move here and would empty this slot while the running program keeps the function. CALL it where it is bound, or pass it as an argument."
-              | _ => pure ()
+            -- The binding a declaration creates IS the name (§8: a declaration is
+            -- a `let`), so `let f = seal(λ…, Π…)` stays writable — it is the
+            -- declaration idiom, §12 decision 6. CALLING where bound is a
+            -- name-use, and `.callV` LOCATES its callee rather than reading it
+            -- (M26-E), so it never arrives here. PASSING as an argument is a
+            -- name-use too. What the model forbids is the one move that turns a
+            -- function from a name into a VALUE: reading it out of its slot into a
+            -- second binding.
+            --
+            -- **THE CONTAINMENT GRADUATED INTO THE MODEL.** M27's third
+            -- containment (c1's curry probe §G3b, generalizing M27-P3 §M) refused
+            -- exactly this for one case, keyed on a mechanism: a σ whose Π is
+            -- BORROW-MODED has no `Val` — M26-C's founding fact — so it lives in
+            -- `fsig` alone, `indexKindV` consults `sctx`, finds nothing, and takes
+            -- the move default while the executing machine copies. That was a
+            -- simulation break and the key was "absent from `sctx`". The key is now
+            -- **being a function at all**, which is a claim about the language
+            -- rather than about a table, and the borrow-free case flips with it —
+            -- c1 measured it as sound (§G3a), and it is refused anyway, because
+            -- soundness was never what made it wrong.
+            --
+            -- The test is `fsig` membership because that is the kernel's own record
+            -- of "this σ is a function": `sealMint` writes every sealed function
+            -- there, and `seedTelescopeV` writes a Π-typed parameter there. A pure
+            -- `.lam` is deliberately NOT included — it is a comptime object,
+            -- index-kind, living in the ⇝ fragment, and the model's sentence is
+            -- about ⇒'s function values.
+            --
+            -- CHECKING-SIDE ONLY, unchanged: the executing machine holds a real
+            -- function value and copies it correctly, so refusing there would
+            -- break running programs to protect a checker.
+            if !(← get).executing then do
+              let st ← get
+              let isFnVal : Bool :=
+                match v with
+                | .rfn _ _ => true
+                | .sym σ => (st.fsig.lookup σ).isSome
+                | _ => false
+              if isFnVal then
+                throwErr s!"read: '{x.name}' holds a function, and a function is reached by NAME rather than read as a value (§8 — a declaration is a `let`, and the binding IS the name). CALL it where it is bound, or pass it as an argument."
             -- §2.1 copy-on-read: an INDEX-KIND value (a Nat/Bool/Unit tree, a
             -- proof, a type, a λ, or a σ typed as one of these) is read by COPY,
             -- leaving the owner intact — the ownership machinery is doubly vacuous
@@ -3155,12 +3171,28 @@ mutual
           -- is an ordinary term and takes phase A's rule.
           | .app _ _ => sealApp fuel t u
           | _ => sealValue fuel t u
-      -- **Application of a value callee** (§7 cost 2). The callee is LOCATED, not
-      -- consumed: reading a function to call it is a place read, like a match
-      -- scrutinee's, so a slot can be called twice. (§2.1's copy-on-read would
-      -- reach the same conclusion for the λ and σ:Π values phase A admits — both
-      -- are index-kind — but stating it as location keeps the rule true of the
-      -- borrow-capturing closures §7 defers, which are NOT copyable.)
+      -- **Application of a NAMED callee** (§7 cost 2). The callee is LOCATED, not
+      -- consumed: calling a function is a place read, like a match scrutinee's,
+      -- so a slot can be called twice — which `ih` needs, since `quicksort`
+      -- recurses twice from one arm.
+      --
+      -- **The old parenthesis here argued this backwards, and c1 caught it.** It
+      -- said that stating the rule as LOCATION rather than as §2.1's copy-on-read
+      -- "keeps the rule true of the borrow-capturing closures §7 defers, which are
+      -- NOT copyable". That is exactly inverted: for a non-copyable closure,
+      -- located-not-consumed is the rule that would let it be called twice, and
+      -- copy-on-read's index-kind restriction is precisely what would EXCLUDE it.
+      -- Location is not the more conservative statement; it is the more permissive
+      -- one, and it happened to be safe only because the values phase A admits are
+      -- all index-kind anyway.
+      --
+      -- What actually licenses it is M27's model: **functions are reached by
+      -- NAME** (§8 — a declaration is a `let`, and the binding IS the name), and
+      -- calling where bound is a name-use rather than a read. `readR`'s `.var`
+      -- case refuses reading a function into a second binding for the same reason,
+      -- so the two rules are one sentence seen from both ends. A capturing closure,
+      -- if §7's deferral ever ends, is a value and will need its own rule; it will
+      -- not inherit this one.
       | .callV x args => do
         -- §6.3's distinction, made mechanical. A capital function-typed binder —
         -- `map_spec (G : Nat → Nat, v)` — is a SPEC parameter: the caller may
