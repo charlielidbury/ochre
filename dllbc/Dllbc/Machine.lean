@@ -3603,6 +3603,11 @@ mutual
       let borrowIds := borrowVarIds tel
       let exits ← borrowIds.mapM (fun i => do pure (i, ← freshSym))
       modify (fun s => { s with exitSyms := exits, obligations := obs })
+      -- M27 SOUNDNESS CONTAINMENT, the seal's half of it. The gate below is the
+      -- hole `retMixesBorrow` documents, and a seal has the same one: skipping the
+      -- value check for the WHOLE type leaves a non-borrow component unjudged.
+      if retMixesBorrow ret then
+        throwErr s!"seal: a borrow-carrying return type may not also carry VALUE components. A borrow-returning function is audited structurally — each issued borrow against its owed type — and the value check is skipped for the whole type, so a non-borrow component here would be judged by nothing and the caller would still receive it as a proof. A cursor's sayable contract is its issued borrows' owed types; state value claims on a value-returning function, where they are checked."
       if !hasBorrowT ret then do
         let rv ← readC fuel (markExit borrowIds ret)
         modify (fun s => { s with retTyVal := some rv })

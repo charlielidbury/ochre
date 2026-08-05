@@ -41,3 +41,4 @@ import Dllbc.Tests.S26Prog
 import Dllbc.Tests.S26Migrate
 import Dllbc.Tests.S26Fuel
 import Dllbc.Tests.S27Dispose
+import Dllbc.Tests.S27Mixed

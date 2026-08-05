@@ -493,6 +493,43 @@ def hasBorrowT : Term → Bool
   | .cmpT τ => hasBorrowT τ
   | _ => false
 
+/-- The components of a return type, flattened along its Σ spine. `Σ a → Σ b → c`
+    is `[a, b, c]`; anything else is a single component. This is the same walk
+    `collectResultBorrows` makes when it issues one loan per borrow position. -/
+partial def retComponents : Term → List Term
+  | .sigmaT d b => d :: retComponents b
+  | t => [t]
+
+/-- Does a return type MIX borrow and non-borrow components?
+
+    **A soundness containment** (M27, found by `dllbc-b1`'s back-probe). A
+    borrow-carrying return type is audited STRUCTURALLY — `collectResultBorrows`
+    walks it and checks each issued borrow's owed type — and is deliberately never
+    pinned or `readC`'d, because `readC` rejects `borrowT`. Both audit sites gate
+    the value check on `hasBorrowT` being false (`checkFn`, and `checkRFnBody` for
+    a seal), so a NON-BORROW component of a borrow-carrying return type is judged
+    by nothing at all.
+
+    That is not vacuous, it is unsound: the caller's `buildResult` mints a σ at the
+    stated leaf type regardless, so the caller RECEIVES the unearned claim as a
+    proof and may return it at its own value return type, where the pin-and-check
+    path does run and passes — the σ genuinely carries that `sctx` type. b1's
+    witness closes it: `fn closedBot () -> Bot`, no hypotheses, checking.
+
+    Nothing was ever bitten because no corpus declaration is both borrow-returning
+    AND ensures-carrying — cursor content rode in `back`, and backs ARE checked —
+    but M27 removes backs and points the whole language at ensures, which walks
+    straight into it.
+
+    The containment refuses the mixture rather than teaching the audit to judge
+    value components in a borrow-carrying position. A cursor's sayable contract is
+    its issued borrows' owed types; a value claim belongs on a value-returning
+    function, where §5 point 4's "what you keep is what you ascribe" is already
+    enforced by a check that looks. -/
+def retMixesBorrow (t : Term) : Bool :=
+  let cs := retComponents t
+  cs.any hasBorrowT && cs.any (fun c => !hasBorrowT c)
+
 /-! ## Reading a binder's mode off its domain (combining-fns §6)
 
     Three modes at one syntactic place: `&mut τ` runtime-borrow, `⇝τ` comptime,

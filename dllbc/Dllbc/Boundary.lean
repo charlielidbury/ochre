@@ -47,6 +47,12 @@ def auditPaths (retType : Term) :
     the function context calls resolve against (signature-only, §5.3) — it
     includes `decl` itself for recursion. -/
 def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
+  -- M27 SOUNDNESS CONTAINMENT, before anything else runs: refuse a return type
+  -- that mixes borrow and non-borrow components. See `retMixesBorrow` for why the
+  -- mixture is unsound rather than merely unchecked.
+  if retMixesBorrow decl.retType then
+    .error s!"return type: '{decl.name}' a borrow-carrying return type may not also carry VALUE components. A borrow-returning function is audited structurally — each issued borrow against its owed type — and the value check is skipped for the whole type, so a non-borrow component here would be judged by nothing and the caller would still receive it as a proof. A cursor's sayable contract is its issued borrows' owed types; state value claims on a value-returning function, where they are checked."
+  else
   -- Seed the telescope, then pin the (value) return type while the params are
   -- still live (§5.3): a dependent return type may mention a param the body
   -- consumes, so it must be evaluated at entry, not re-read at return. A
