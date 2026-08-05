@@ -358,7 +358,10 @@ def deepMotT : Term := pure{ λ (n : Nat). Id Nat Z Z }
     make on the author's behalf. -/
 def deepBaseArm : Term := .lamR [] (.ctorApp "Refl" [])
 def deepStepArm : Term :=
-  .lamR [⟨0, "a"⟩, ⟨1, "ih"⟩]
+  -- `ih`'s domain is the motive at the predecessor, and `deepMotT` is CONSTANT —
+  -- which is the whole content of the correction this section records: `ih : P a`
+  -- already IS `P b` for every `b` when `P` ignores its index.
+  .lamR [(⟨0, "a"⟩, .const "Nat"), (⟨1, "ih"⟩, pure{ Id Nat Z Z })]
     (.matchE ⟨0, "a"⟩ none
       [ .mk "Z" [] (.ctorApp "Refl" [])
       , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])

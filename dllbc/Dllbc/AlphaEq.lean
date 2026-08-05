@@ -66,9 +66,14 @@ partial def anTerm (env : List (Nat × Nat)) (ctr : Nat) : Term → (Term × Nat
     let (args', c') := anList env ctr args
     (.callV callee args', c')
   -- A runtime λ BINDS its binders, so they renumber like a branch's fields and are
-  -- scoped to the body — the same treatment `anBinders` gives a match arm.
+  -- scoped to the body. Since M27 they also carry DOMAINS, which are types and so
+  -- renumber through the same traversal every other type position does — under
+  -- telescope scoping, because `ih`'s domain mentions the predecessor bound to its
+  -- left. Leaving them un-normalized would make two α-equivalent arms compare
+  -- unequal on their annotations alone, which is the criterion silently degrading
+  -- to structural equality on exactly the terms it exists to compare.
   | .lamR xs body =>
-    let (xs', ext, c1) := anBinders xs ctr
+    let (xs', ext, c1) := anLamBinders env xs ctr
     let (body', c2) := anTerm (ext ++ env) c1 body
     (.lamR xs' body', c2)
   -- A comptime domain can mention runtime vars (`λ (H : Le n m). …`), so it
@@ -91,6 +96,17 @@ partial def anBinders : List Var → Nat → (List Var × List (Nat × Nat) × N
     let newId := ctr
     let (bs', ext, c') := anBinders bs (ctr + 1)
     (⟨newId, nm⟩ :: bs', (id, newId) :: ext, c')
+/-- A runtime λ's ANNOTATED binders (M27). Each domain is normalized under the
+    binders to its left and none of its own, which is what makes it a telescope
+    rather than a list. -/
+partial def anLamBinders (env : List (Nat × Nat)) :
+    List (Var × Term) → Nat → (List (Var × Term) × List (Nat × Nat) × Nat)
+  | [], ctr => ([], [], ctr)
+  | (⟨id, nm⟩, τ) :: bs, ctr =>
+    let (τ', c1) := anTerm env ctr τ
+    let newId := c1
+    let (bs', ext, c2) := anLamBinders ((id, newId) :: env) bs (c1 + 1)
+    ((⟨newId, nm⟩, τ') :: bs', (id, newId) :: ext, c2)
 end
 
 /-- Canonicalize a `Decl`'s runtime var ids. Telescope params keep their positional

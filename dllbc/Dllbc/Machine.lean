@@ -926,7 +926,7 @@ mutual
     -- the seal: it is its own constructor, and its body is a BODY. ⇝'s λ is
     -- `.lam` — domain-annotated, de Bruijn, body a pure term — and a `.lamR`
     -- would have to be reduced by binding named slots, which is ⇒'s move.
-    | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
+    | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x : τ, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
   def reflectCList : List Term → M (List Val)
     | [] => pure []
     | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
@@ -2032,7 +2032,12 @@ mutual
     -- frames compose: applying a `lamR` shifts the whole node into a fresh
     -- window, so binder ids and their occurrences stay in step no matter how many
     -- frames a nested one has already been carried through.
-    | .lamR xs body => .lamR (xs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVarsK keep d body)
+    -- The DOMAINS shift with them (M27). A binder type is a type that may name
+    -- runtime slots — `Le (len *v) fuel` names two of this λ's own binders — so
+    -- leaving it unshifted would point the annotation at the PREVIOUS frame's
+    -- ids while the binder it annotates moved, which is the same silent
+    -- rebinding this whole function exists to avoid.
+    | .lamR xs body => .lamR (shiftBindersK keep d xs) (shiftVarsK keep d body)
     -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
     -- — a pure spine over the runtime `v`, `i`, `g`). Their `.var` leaves must
     -- shift with the executing-mode frame too; `.pvar`/`.type`/`.const` (no
@@ -2053,6 +2058,13 @@ mutual
     | (.mk c bs body) :: rest =>
       .mk c (bs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVarsK keep d body) :: shiftBranchesK keep d rest
   termination_by bs => sizeOf bs
+  /-- An annotated runtime λ's binders: the names shift as binders, the domains as
+      terms. Separate from the `.map` it replaces because a recursive call under
+      `Option.map`/`List.map` is opaque to the structural-recursion checker. -/
+  def shiftBindersK (keep : List Nat) (d : Nat) : List (Var × Term) → List (Var × Term)
+    | [] => []
+    | (x, τ) :: rest => (⟨x.id + d, x.name⟩, shiftVarsK keep d τ) :: shiftBindersK keep d rest
+  termination_by xs => sizeOf xs
 end
 
 /-- Shift with nothing kept — the pre-M26-E behaviour, and still the right rule
@@ -3151,8 +3163,19 @@ mutual
         -- bindings stay where they are, and `applyRFn` keeps their ids out of the
         -- frame shift, which is what makes "the program's, not the frame's" true
         -- of the executing machine too.
-        let _ ← admitGlobals "λr" names.length (Term.freeRVars (names.map (·.id)) body)
-        pure (.rfn names body)
+        -- The whole NODE's free variables, domains included (M27): a binder type
+        -- may name a slot, so it is subject to the same admission as the body.
+        -- `Term.freeRVars` scopes the domains as a telescope, which is why the
+        -- node is passed rather than the body.
+        let _ ← admitGlobals "λr" names.length (Term.freeRVars [] (.lamR names body))
+        -- **AND THE TYPES ARE DROPPED HERE** (M27, ratified). `Val.rfn` binds
+        -- names only. The executing machine binds and runs; it never converts, so
+        -- there is nothing downstream of this point for a domain to be used BY.
+        -- The seal is the one consumer, it happens at formation, and it has the
+        -- annotated term in hand. Carrying the types into the value would be a
+        -- second representation of a contract nothing reads — §5 point 4 with the
+        -- erasure principle applied to the value side.
+        pure (.rfn (names.map (·.1)) body)
       | .unit => pure (.ctor "unit" [])
       -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
       -- to variable consumption. A comptime-only former (a proof term — an
@@ -3573,7 +3596,7 @@ mutual
   def sealValue : Nat → Term → Term → M Val
     | fuel, t, u => do
       if hasBorrowT u then
-        throwErr "seal: this term cannot be sealed at a borrow-moded type. A Π with `&mut` binders is a FUNCTION signature, and §5.4's audit is what checks a function against one — so the sealed term must be a runtime λ (`λ(v, …){ … }`) whose binders match it. Sealing anything else at such a Π would be asking `hasType` a question §5.4 does not ask."
+        throwErr "seal: this term cannot be sealed at a borrow-moded type. A Π with `&mut` binders is a FUNCTION signature, and §5.4's audit is what checks a function against one — so the sealed term must be a runtime λ (`λ(v : τ, …){ … }`) whose binders match it. Sealing anything else at such a Π would be asking `hasType` a question §5.4 does not ask."
       -- The type is read FIRST, while the body's free variables are still live:
       -- `u` may mention a slot that evaluating `t` then consumes, and a type
       -- re-read afterwards would find a ⊥. §5.3's entry-pinning lesson, arriving
@@ -3656,30 +3679,32 @@ mutual
             | "natRec", [_, z, s] => do
               match z, s with
               | .lamR zn zbody, .lamR (k :: ihv :: rest) sbody => do
-                checkArm fuel zbody [] zn (Term.substPure 0 (.ctorApp "Z" []) R)
-                checkArm fuel sbody [(k, scrutDom), (ihv, Term.substPure 0 (.var k) R)] rest
-                  (Term.substPure 0 (.ctorApp "S" [.var k]) R)
+                checkArm fuel zbody [] (zn.map (·.1)) (Term.substPure 0 (.ctorApp "Z" []) R)
+                checkArm fuel sbody [(k.1, scrutDom), (ihv.1, Term.substPure 0 (.var k.1) R)]
+                  (rest.map (·.1))
+                  (Term.substPure 0 (.ctorApp "S" [.var k.1]) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
             | "listRec", [_, _, pn, pc] => do
               match pn, pc with
               | .lamR nn nbody, .lamR (h :: tl :: ihv :: rest) cbody => do
-                checkArm fuel nbody [] nn (Term.substPure 0 (.ctorApp "Nil" []) R)
+                checkArm fuel nbody [] (nn.map (·.1)) (Term.substPure 0 (.ctorApp "Nil" []) R)
                 -- `h`'s type is the element type, read off the scrutinee's own
                 -- `List A`; anything else and the arm is not this recursor's.
                 let elemTy : Term := match scrutDom with
                   | .app (.const "List") a => a
                   | _ => .const "Nat"
                 checkArm fuel cbody
-                  [(h, elemTy), (tl, scrutDom), (ihv, Term.substPure 0 (.var tl) R)] rest
-                  (Term.substPure 0 (.ctorApp "Cons" [.var h, .var tl]) R)
+                  [(h.1, elemTy), (tl.1, scrutDom), (ihv.1, Term.substPure 0 (.var tl.1) R)]
+                  (rest.map (·.1))
+                  (Term.substPure 0 (.ctorApp "Cons" [.var h.1, .var tl.1]) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
               match tArm, fArm with
               | .lamR tn tbody, .lamR fn fbody => do
-                checkArm fuel tbody [] tn (Term.substPure 0 (.ctorApp "True" []) R)
-                checkArm fuel fbody [] fn (Term.substPure 0 (.ctorApp "False" []) R)
+                checkArm fuel tbody [] (tn.map (·.1)) (Term.substPure 0 (.ctorApp "True" []) R)
+                checkArm fuel fbody [] (fn.map (·.1)) (Term.substPure 0 (.ctorApp "False" []) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: boolRec's arms must be runtime λs"
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
@@ -3723,8 +3748,15 @@ mutual
       which is the convention `processArgs`/`buildResult` read a telescope by, so
       what a caller sees is a callee indistinguishable from a table entry. Both
       peels come from the same `u`, so they cannot disagree. -/
-  def sealFn : Nat → List Var → Term → Term → M Val
-    | fuel, names, body, u => do
+  def sealFn : Nat → List (Var × Term) → Term → Term → M Val
+    | fuel, binders, body, u => do
+      -- α.1a: the annotations are carried but not yet CONSULTED — the telescope
+      -- still comes from the ascription, exactly as it did before the binders had
+      -- domains. α.1b is what makes the λ's own Π the synthesized side and this
+      -- peel the thing it is converted against; keeping the two commits apart is
+      -- what keeps a red build unambiguous between a mistyped binder and a wrong
+      -- conversion rule.
+      let names := binders.map (·.1)
       match piPeel names u with
       | .error e => throwErr e
       | .ok (tel, ret) => do

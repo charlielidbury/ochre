@@ -125,15 +125,22 @@ syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut
 syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
 syntax:65 uterm:65 uterm:66 : uterm                          -- application (juxtaposition)
 syntax:10 "λ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- lambda
--- M26-C's runtime λ (combining-fns §7 cost 2). Written `λ(x, y) { … }` — a
--- comma-separated binder LIST and a braced BODY, against the pure λ's single
--- typed binder and dotted term. The two are told apart by shape alone, which is
+-- M26-C's runtime λ (combining-fns §7 cost 2). Written `λ(x : τ, y : υ) { … }` —
+-- a comma-separated binder TELESCOPE and a braced BODY, against the pure λ's
+-- single binder and dotted term. The two are told apart by shape alone, which is
 -- the right marker: what differs is not the arity but the fragment — the pure λ's
 -- body is a term ⇝ reduces by substitution, this one's is a body ⇒ runs by
--- binding Ω slots. The binders carry NO types: a runtime λ is checked against an
--- ascription (the seal's Π, or a recursor arm's premise type), and §5 point 4 is
--- that the ascription is the contract.
-syntax:max "λ" "(" ident,* ")" "{" ublk "}" : uterm          -- .lamR
+-- binding Ω slots.
+--
+-- **The binders carry types** (M27). M26-C wrote them bare on the argument that
+-- the ascription is the contract (§5 point 4) and an annotation would be a second
+-- source of truth; that is right about the contract and wrong about the check,
+-- which without domains has to descend the ascription bidirectionally and with
+-- them is one conversion. The document's grammar wrote `λ (x : τ). t` from the
+-- start — this is the surface returning to it, not a new decision.
+declare_syntax_cat ulamb
+syntax ident ":" uterm : ulamb
+syntax:max "λ" "(" ulamb,* ")" "{" ublk "}" : uterm          -- .lamR
 syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow form)
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
@@ -347,15 +354,18 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (b', n2) ← elabUTerm isTy rctx (x.getId.toString :: pctx) n1 b
     return (← `(Dllbc.Term.lam $(← binderDom (x.getId.toString) τ') $b'), n2)
-  | `(uterm| λ ($xs:ident,*) { $b:ublk }) => do
+  | `(uterm| λ ($bs:ulamb,*) { $b:ublk }) => do
     -- Runtime binders, so fresh absolute ids threaded through `next` exactly as
     -- `let` and match patterns mint them — and pushed onto `rctx`, not `pctx`:
     -- the body reaches them through Ω. The body is a ⇒ position whatever
     -- surrounds the node, which is the same asymmetry the seal has.
-    xs.getElems.forM checkBinder
-    let (rctx', next', binderVars) ← Dllbc.Macro.mintBinders rctx next xs.getElems.toList
+    let parsed ← bs.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
+      | `(ulamb| $x:ident : $τ:uterm) => pure (x, τ)
+      | _ => Macro.throwErrorAt p "λ: malformed binder (expected `x : τ`)"
+    parsed.forM (fun p => checkBinder p.1)
+    let (rctx', next', binderSyns) ← elabLamBinders rctx pctx next parsed
     let (b', n) ← elabUBlk false rctx' pctx next' b
-    return (← `(Dllbc.Term.lamR [$binderVars,*] $b'), n)
+    return (← `(Dllbc.Term.lamR [$binderSyns,*] $b'), n)
   | `(uterm| Π ($x:ident : $τ:uterm) → $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
@@ -476,6 +486,25 @@ partial def elabUList (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (rest, n2) ← elabUList isTy rctx pctx n1 as
     pure (#[a'] ++ rest, n2)
+
+/-- A runtime λ's annotated binders (M27), elaborated as a TELESCOPE: each domain
+    is read under the binders to its left and not its own, which is what lets
+    `λ(v : &mut List Nat, hfuel : Le (len *v) fuel){ … }` mention `v` in the type
+    after it. The domain is a TYPE position (`isTy := true`), so `&mut τ` there is
+    the borrow TYPE rather than a borrow expression — the same reading a
+    declaration's telescope entry gets from `buildTele`. `binderDom` puts §6's
+    comptime marker on a capitalized binder's domain, which is what makes the
+    annotation agree with the ascription `piPeel` checks it against. -/
+partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
+    List (Ident × TSyntax `uterm) → MacroM (List (String × Nat) × Nat × Array (TSyntax `term))
+  | [] => pure (rctx, next, #[])
+  | (x, τ) :: rest => do
+    let name := x.getId.toString
+    let (τT, n1) ← elabUTerm true rctx pctx (next + 1) τ
+    let τD ← binderDom name τT
+    let entry ← `(((⟨$(quote next), $(quote name)⟩ : Dllbc.Var), $τD))
+    let (rctx', n2, more) ← elabLamBinders ((name, next) :: rctx) pctx n1 rest
+    pure (rctx', n2, #[entry] ++ more)
 
 partial def elabUArms (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
     List (TSyntax `uarm) → MacroM (Array (TSyntax `term) × Nat)

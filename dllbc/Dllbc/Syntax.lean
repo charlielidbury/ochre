@@ -177,7 +177,7 @@ inductive Term where
       callee is a `Var` because that is all §7 needs (`ih` is a bound variable) and
       it keeps the form's shape identical to `.matchE`'s scrutinee. -/
   | callV  : Var → List Term → Term
-  /-- `λ(x, y, …) { body }` — **the runtime λ** (combining-fns §7 cost 2), the
+  /-- `λ(x : τ, y : υ, …) { body }` — **the runtime λ** (combining-fns §7 cost 2), the
       form phase A filed and could not build: a λ whose body is a *body* (writes,
       calls, borrows, matches) rather than a pure term.
 
@@ -189,17 +189,28 @@ inductive Term where
       same former in the document, two representations in the machine, because
       one substitutes and the other binds.
 
-      **Curry-style, deliberately: the binders carry names and no types.** A
-      runtime λ is checked against an *ascription* — the seal's Π (§5), or a
-      recursor arm's premise type derived from the motive — so an annotation here
-      would be a second source of truth for the contract, and §5 point 4 is that
-      the ascription IS the contract. Executing needs no types at all.
+      **Church-style: every binder carries its domain** (M27, the ratified
+      function model), which is what the document's grammar said all along —
+      `λ (x : τ). t`. M26-C built the Curry form on the argument that an
+      annotation would be a second source of truth for the contract, since a
+      runtime λ is checked against an *ascription* (the seal's Π, §5) and §5
+      point 4 makes the ascription the contract. That argument is sound about the
+      CONTRACT and wrong about the CHECK: without domains the seal has to descend
+      the ascription bidirectionally, handing each binder the type the Π supplies,
+      and with them the seal is ONE conversion — synthesize the λ's Π, compare it
+      against what was written. The ascription stays the contract; what changes is
+      that the λ can now be read on its own.
+
+      The `Val` side does NOT follow (`Val.rfn`, `Value.lean`), and the asymmetry
+      is the erasure principle rather than an oversight: `readR` drops the domains
+      when it forms the value, because the executing machine binds and runs and
+      never converts. Types are for the seal, which happens once, at formation.
 
       **Saturated** (§12 decision 4) and **closed** (§7 cost 2's "arms reference
       only their own binders and globals"). Closedness is CHECKED where the value
       is formed, not assumed: an escaping free variable would otherwise be
       silently captured by the frame shift. -/
-  | lamR   : List Var → Term → Term
+  | lamR   : List (Var × Term) → Term → Term
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
@@ -276,7 +287,12 @@ mutual
     | .call f as, .call g bs => f == g && Term.beqList as bs
     | .seal a b, .seal c d => Term.beq a c && Term.beq b d
     | .callV x as, .callV y bs => x == y && Term.beqList as bs
-    | .lamR xs a, .lamR ys b => xs == ys && Term.beq a b
+    -- The binder DOMAINS are compared by `Term.beq`, not by `==`: the `BEq Term`
+    -- instance is declared below this mutual block, so `==` on a
+    -- `List (Var × Term)` would not resolve to this function even if it resolved
+    -- at all. Recursing explicitly also keeps the mode marker visible, which is
+    -- the property the `.cmpT` note at the foot of this function is about.
+    | .lamR xs a, .lamR ys b => Term.beqBinders xs ys && Term.beq a b
     | .unit, .unit => true
     | .pvar k, .pvar j => k == j
     | .type, .type => true
@@ -311,6 +327,12 @@ mutual
   def Term.beqBranches : List Branch → List Branch → Bool
     | [], [] => true
     | .mk c bs a :: r, .mk d es b :: s => c == d && bs == es && Term.beq a b && Term.beqBranches r s
+    | _, _ => false
+  termination_by ts us => sizeOf ts + sizeOf us
+  /-- An annotated runtime λ's binders: names by `==`, domains structurally. -/
+  def Term.beqBinders : List (Var × Term) → List (Var × Term) → Bool
+    | [], [] => true
+    | (x, τ) :: as, (y, υ) :: bs => x == y && Term.beq τ υ && Term.beqBinders as bs
     | _, _ => false
   termination_by ts us => sizeOf ts + sizeOf us
 end
@@ -416,7 +438,15 @@ mutual
     | .seal t u => Term.freeRVars bound t ++ Term.freeRVars bound u
     | .callV x args =>
       (if bound.contains x.id then [] else [x]) ++ Term.freeRVarsList bound args
-    | .lamR xs body => Term.freeRVars (xs.map (·.id) ++ bound) body
+    -- The DOMAINS are traversed too (M27), and as a TELESCOPE: a runtime λ's
+    -- binder types are dependent — `ih`'s mentions the predecessor bound to its
+    -- left, `hfuel : Le (len *v) fuel` mentions the borrow bound to its left — so
+    -- each domain is read under the binders before it and nothing else. Treating
+    -- them as closed would let a genuinely free variable into a type and past the
+    -- closedness check the whole traversal exists to feed.
+    | .lamR xs body =>
+      Term.freeRVarsBinders bound xs
+        ++ Term.freeRVars (xs.map (·.1.id) ++ bound) body
     | .app a b | .pi a b | .lam a b | .sigmaT a b | .borrowT a b =>
       Term.freeRVars bound a ++ Term.freeRVars bound b
     | .idT a b c => Term.freeRVars bound a ++ Term.freeRVars bound b ++ Term.freeRVars bound c
@@ -432,6 +462,12 @@ mutual
     | (.mk _ bs body) :: rest =>
       Term.freeRVars (bs.map (·.id) ++ bound) body ++ Term.freeRVarsBranches bound rest
   termination_by bs => sizeOf bs
+  /-- A runtime λ's annotated binders, scoped as a telescope: each domain sees the
+      binders to its left. -/
+  def Term.freeRVarsBinders (bound : List Nat) : List (Var × Term) → List Var
+    | [] => []
+    | (x, τ) :: rest => Term.freeRVars bound τ ++ Term.freeRVarsBinders (x.id :: bound) rest
+  termination_by xs => sizeOf xs
 end
 
 /-! Abstract every occurrence of `e` at binder `depth` (mutual with the ctor-arg

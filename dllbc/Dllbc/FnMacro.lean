@@ -122,7 +122,7 @@ partial def maxVarId : Term → Nat
     max (maxVarId a) (maxVarId b)
   | .seal a b => max (maxVarId a) (maxVarId b)
   | .idT a b c => max (maxVarId a) (max (maxVarId b) (maxVarId c))
-  | .lamR xs body => xs.foldl (fun a v => max a v.id) (maxVarId body)
+  | .lamR xs body => xs.foldl (fun a p => max a (max p.1.id (maxVarId p.2))) (maxVarId body)
   | _ => 0
 
 /-- Rename one runtime variable throughout (binding occurrences included). -/
@@ -311,7 +311,12 @@ def fnElab (d : Decl) : Except String Term := do
   -- reason `bad()` is unwritable — "not by a recursion rule; the binding is not in
   -- scope in its own right-hand side" — and a macro refusal here would paper over
   -- the demonstration.
-  | none => .ok (.seal (.lamR (tel.map (·.1)) d.body) (telePi tel d.retType))
+  -- The telescope IS the annotated binder list (M27) — `markDom` puts each
+  -- binder's mode on its domain, which is what `telePi` does to build the Π the
+  -- seal converts against, so the λ and its ascription are built from one source.
+  | none =>
+    .ok (.seal (.lamR (tel.map (fun p => (p.1, markDom p.1 p.2))) d.body)
+               (telePi tel d.retType))
   | some k => do
     let (kv, kτ) ← match tel.get? k with
       | some e => pure e
@@ -338,7 +343,14 @@ def fnElab (d : Decl) : Except String Term := do
     -- THE MOTIVE, derived from the signature: the sealed Π with the scrutinee
     -- peeled off (§7 — "so the macro needs no inference").
     let piT := telePi hoisted d.retType
-    let motive : Term := .lam (markDom kv kτ) (absVar kv 0 (telePi rest d.retType))
+    let scrutDom := markDom kv kτ
+    -- The motive's BODY: the residual telescope-and-return with the scrutinee
+    -- abstracted. Named because every arm annotation below is an instance of it,
+    -- and because the kernel calls the same thing `R` (`sealRec` peels it off the
+    -- ascription instead of building it, and the two agree by `telePi`/`piPeel`
+    -- being inverse).
+    let R : Term := absVar kv 0 (telePi rest d.retType)
+    let motive : Term := .lam scrutDom R
     -- Fresh binders for the step arm, above every id the body already uses.
     let base := max (maxVarId d.body) (tel.foldl (fun a p => max a p.1.id) 0) + 1
     -- The step arm's binders keep the names AND the ids the body's own `match k`
@@ -387,22 +399,49 @@ def fnElab (d : Decl) : Except String Term := do
     | some _ =>
       .error s!"fn: the base arm still mentions '{kv.name}' after `match {kv.name}` was resolved to its `{baseCtor}` branch. The scrutinee does not exist inside an arm — it is the recursor's argument — so a body may only reach it through a match on it."
     | none => pure ()
+    -- **THE ARM ANNOTATIONS** (M27), and the one place in this elaboration that is
+    -- design judgement rather than transcription.
+    --
+    -- An arm is checked at the MOTIVE INSTANTIATED AT ITS CONSTRUCTOR, so its
+    -- trailing binders' domains are `rest`'s with the scrutinee substituted — not
+    -- `rest`'s. `absVar kv 0` abstracted the scrutinee over the whole nested Π,
+    -- domains included, so a later parameter whose type mentions it moves with it:
+    -- `quicksort [fuel] (fuel, v, hfuel : Le (len *v) fuel)` wants
+    -- `Le (len *v) Z` in the base arm and `Le (len *v) (S fuel')` in the step. And
+    -- `ih`'s domain is the motive at the PREDECESSOR, which is a term nothing in
+    -- the source wrote.
+    --
+    -- All three are recovered by peeling with the kernel's own `piPeel`, rather
+    -- than transcribed — the same argument §7 makes for deriving the motive: two
+    -- derivations by one function cannot disagree. `piPeel` strips the mode
+    -- marker it just checked, and `markDom` puts back exactly what it took, so an
+    -- annotation is the domain as a source λ would have written it.
+    let armTel (names : List Var) (ty : Term) : Except String (List (Var × Term)) := do
+      let (tel, _) ← piPeel names ty
+      .ok (tel.map (fun p => (p.1, markDom p.1 p.2)))
+    let ihTy : Term := Term.substPure 0 (.var dec) R
     -- The recursor, UNAPPLIED: the scrutinee is the sealed Π's own first binder,
     -- so the recursor is exactly a function of it (§7's derived motive read the
     -- other way round). `listRec` takes its element type first, which is the only
     -- difference in the spine.
     match elemTy? with
     | none =>
+      let zTel ← armTel restIds (Term.substPure 0 (.ctorApp "Z" []) R)
+      let sTel ← armTel restIds (Term.substPure 0 (.ctorApp "S" [.var dec]) R)
       .ok (.seal
         (.app (.app (.app (.const "natRec") motive)
-          (.lamR restIds zBody))
-          (.lamR (dec :: ih :: restIds) sBody))
+          (.lamR zTel zBody))
+          (.lamR ((dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
         piT)
     | some a =>
+      let hd : Var := stepBs.head!
+      let zTel ← armTel restIds (Term.substPure 0 (.ctorApp "Nil" []) R)
+      let sTel ← armTel restIds
+        (Term.substPure 0 (.ctorApp "Cons" [.var hd, .var dec]) R)
       .ok (.seal
         (.app (.app (.app (.app (.const "listRec") a) motive)
-          (.lamR restIds zBody))
-          (.lamR (stepBs ++ (ih :: restIds)) sBody))
+          (.lamR zTel zBody))
+          (.lamR ((hd, a) :: (dec, scrutDom) :: (ih, ihTy) :: sTel) sBody))
         piT)
 
 /-! ## §8: assembling a program from declarations

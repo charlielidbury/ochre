@@ -137,7 +137,7 @@ example : ok twoBorrows = true := by native_decide
 def mixedSeal : Term := pure{ Π (v : &mut List Nat) → Σ (x : &mut Nat) → Id Nat Z (S Z) }
 
 def sealProg : Term := prog{
-  let f = seal(λ(v) { match v { Nil => (), Cons(hd, tl) => Pair(&mut *hd, Refl) } },
+  let f = seal(λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&mut *hd, Refl) } },
                %mixedSeal);
   () }
 
@@ -146,7 +146,7 @@ example : progRejects sealProg "may not also carry VALUE components" = true := b
 -- Not vacuous: an all-borrow ascription in the same position is accepted, so the
 -- refusal is about the MIXTURE and not about sealing a cursor at all.
 def borrowSeal : Term := pure{ Π (v : &mut List Nat) → &mut List Nat }
-def sealOk : Term := prog{ let f = seal(λ(v) { v }, %borrowSeal); () }
+def sealOk : Term := prog{ let f = seal(λ(v : &mut List Nat) { v }, %borrowSeal); () }
 example : progOk sealOk = true := by native_decide
 
 /-! ## §E. THE SECOND CONTAINMENT — a lie in a PARAMETER'S OWED TYPE
@@ -230,7 +230,7 @@ def fSeal : Term := pure{ Π (v : &mut List Nat) → Unit }
 -- F1. A sealed borrow-taking function, NO recursor anywhere, bound to a second
 -- slot. This is the shape c1's §G3b has both machines accepting with different Ωs.
 def f1read : Term := prog{
-  let f = seal(λ(v) { () }, %fSeal);
+  let f = seal(λ(v : &mut List Nat) { () }, %fSeal);
   let g = f;
   () }
 example : progRejects f1read "sealed borrow-taking function" = true := by native_decide
@@ -241,7 +241,7 @@ example : progRejects f1read "sealed borrow-taking function" = true := by native
 -- refusal is about the missing value form, not about functions.
 def gSeal : Term := pure{ Π (x : Nat) → Nat }
 def f2read : Term := prog{
-  let f = seal(λ(x) { x }, %gSeal);
+  let f = seal(λ(x : Nat) { x }, %gSeal);
   let g = f;
   () }
 example : progOk f2read = true := by native_decide
@@ -250,7 +250,7 @@ example : progOk f2read = true := by native_decide
 -- rather than moving it (M26-E), which is the whole reason the position was
 -- reachable only by a read in the first place.
 def f3call : Term := prog{
-  let f = seal(λ(v) { () }, %fSeal);
+  let f = seal(λ(v : &mut List Nat) { () }, %fSeal);
   let x = Cons(1, Nil);
   let b = &mut x;
   f(b);

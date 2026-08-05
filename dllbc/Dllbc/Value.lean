@@ -79,7 +79,16 @@ inductive Val where
 
       It is CLOSED (checked at formation), which is what lets it be a leaf for
       every traversal below: no loans, no σ's, no state markers, nothing to
-      renumber. `ih` is exactly this shape (§7 cost 2's "the boring kind"). -/
+      renumber. `ih` is exactly this shape (§7 cost 2's "the boring kind").
+
+      **AND ITS BINDERS STAY UNTYPED, where `Term.lamR`'s became annotated (M27).**
+      The asymmetry is ratified and is the erasure principle rather than an
+      oversight: `readR` drops the domains at the moment it forms this value.
+      Types exist here for one consumer, the seal, and a seal happens at FORMATION
+      with the annotated term in hand — after that the executing machine binds and
+      runs, and never converts. A value that carried its domains would be a second
+      copy of a contract nothing downstream reads. The symmetric change would look
+      tidier and would be wrong. -/
   | rfn     : List Var → Term → Val
 deriving Inhabited
 
