@@ -1,5 +1,137 @@
 # Progress
 
+## 2026-08-05 — dllbc/: M26-E CLOSES — a program is a term; the corpus down both paths
+
+Phase E of the `fn`/λ unification, and the last one M26 planned. Commits 52520fed,
+c1ce77c6, 8dfa3a9d, f11c462b. **Deletion (the phase's fourth goal) is BLOCKED, and
+the blocker is a design question rather than effort — see the map at the end.**
+
+**A PROGRAM IS A TERM, ON BOTH MACHINES.** A let-chain — transparent lets, sealed
+lets, a tail — is checked by one symbolic ⇒-walk against NO declaration table and
+run by the concrete one, with the differential green on every program in the file.
+`checkProgram` is `explore` plus the audit of each path's result and nothing else:
+what `checkFn` adds on top of the walk (seeding a telescope, pinning a dependent
+return type, exit snapshots) a program has no need of, because it takes no
+arguments. `Decl`, `checkFn` and the table stay fully alive (J1).
+
+**THE ONE KERNEL RULE IT NEEDED IS §7's OWN SENTENCE.** §7 cost 2 admits "closed"
+function values — "arms reference only their own binders **and globals**" — and
+the second half had been empty since it was written, because callees lived in the
+table and were reached by name. §8 makes them variables, so a body's free
+variables ARE its callees, and both machines rejected the first program written:
+`lookupSlot: f#0 is not an entry of Ω` (frame isolation wipes Ω) and `λr: the body
+mentions f#0, which is none of its 1 binder(s)`. `admitGlobals` draws the line at
+what a body can DO with a binding — a function is CALLED (`.callV` LOCATES its
+callee, it never moves it) while data is moved, borrowed or written — so functions
+are admitted and everything else keeps M26-C's rejection verbatim, with constraint
+5's deferral untouched and its test still failing on the same needle. The checking
+side seeds the admitted bindings through frame isolation; the executing side keeps
+their ids out of the frame shift (`shiftVarsK`, whose keep set is computed at the
+shift site from the body itself — no capture list on the value, no new state).
+This is also the only place a SEALED function's capture is checked at all:
+`.seal (.lamR …) u` goes straight to `sealFn` and never forms the `.rfn`, so
+`readR`'s own check never ran on it.
+
+**THE END OF A PROGRAM IS A DEMAND ON EVERYTHING IT STILL HOLDS**, found by the
+differential rather than by reasoning. A program that lends a local to a call and
+never looks at it again leaves the loan PARKED — checking releases a group when
+something demands it and nothing does, while executing releases a frame's loans on
+the way out — so the two machines end in visibly different Ωs on an ordinary
+program. `endScope` is `collapseArg` and `releaseFrameLoans` arriving where a
+program ends. It can legitimately fail, so it belongs to `checkProgram` and not to
+the harness.
+
+**NO FORWARD REFERENCES, shown as an absence.** `let g = seal(λ(y){ h(y) }, …);
+let h = …` fails at G'S OWN SEAL with "unknown function 'h'" — the name resolves to
+nothing and falls through to the empty table — and the same two bindings SWAPPED
+are accepted. Nothing implements the rule; it is what scope IS.
+
+**THE DELIBERATELY-WRONG TABLE BECOMES A DIFFERENT LET-PREFIX**, and the new form
+is sharper than the old: one caller suffix under two prefixes, identical honest
+body, sealed at a type that keeps the equation versus one that forgets it. The
+lying prefix is a program that CHECKS — the lie is not in the callee, it is in what
+the callee promises (§5 point 4).
+
+**BOTH FLAGSHIPS ARE PROGRAM TERMS.** M23's list quicksort is three sealed lets and
+a tail: checked against no table in under a second, run to a sorted list,
+differentially green, refusing all three of its lie twins. `quicksortA` — the array
+in-place scan — is the same, refusing all seven of S25's, plus the LIST-vs-ARRAY
+cross-differential re-run over eleven inputs with both sides as programs.
+
+The array cohort needed **no source change at all**, which is the finding: it was
+already fuel-threaded, so §12 decision 8 costs that lane nothing. R12's carve
+machinery — the part of the corpus that leans hardest on the call boundary's
+re-mint — transfers to a sealed binding without one adjustment, which is the
+strongest evidence the corpus can produce that §5's opacity and §6.1's call rule
+are the same mechanism reached two ways.
+
+The list cohort needed `append_back` fuel-threaded, and its CALLER half is the
+first place decision 8 cost more than a parameter: quicksort calls it AFTER sorting
+both halves, and a sort returns a count equation, not a length bound, so every
+length σ it holds has been re-minted by then and deriving one needs a
+count-to-length lemma the corpus lacks. The fuel that works is `len *v` itself with
+`le_refl` as its bound, STAGED in a `let` before the call — the borrow is taken in
+between, and a comptime argument mentioning `*v` would demand-collapse the loan it
+was just lent.
+
+**THE CORPUS, DOWN BOTH PATHS: 94 accept, 56 reject, 74 do not migrate, NOTHING
+disagrees.** Nothing was rewritten — a bulk migration's failure mode is a
+quietly-wrong rewrite that still builds, so `Migrate.lean` derives each
+declaration's callee closure (`calleeNames` computes what its table always was,
+`topo` orders callees above callers), `progOf` assembles it, and the verdicts are
+compared. The report carries counts beside the disagreement list so that a
+migration which quietly stopped covering half the corpus changes the numbers even
+while `disagree` stays empty.
+
+**THREE THINGS THE COMPARISON FOUND, all invisible to every existing test:**
+
+1. **`progOf` did not permute a call's arguments to match its callee's hoist.**
+   `[k]` is a scrutinee-selection hint and `fnElab` moves that parameter to the
+   FRONT, so a sealed callee's telescope is not its declaration's telescope. The
+   bug is invisible whenever `[k]` is already parameter 0 — which every flagship
+   here happens to satisfy, so both flagship commits were green and would have
+   stayed green — and passes a borrow where a `Nat` is expected otherwise.
+2. **The macro silently repaired a non-terminating program.** `recGrow` recurses
+   on itself, the declaration path rejects it by the guard, and the macro dropped
+   the scrutinee argument unexamined and produced a recursor on the PREDECESSOR
+   that legitimately checks. `ih` is the sealed self-view AT the predecessor, so
+   `fnElab` now refuses a self-call at anything else. Constraint 7 held either way
+   — the kernel accepted a well-founded program — but "checks as a different
+   function" is the macro bug that constraint tolerates and a reader should not.
+3. **The comparison itself was asking two different questions.** `checkFn`
+   consults a callee's SIGNATURE and never enters its body, so a broken callee is
+   invisible to its caller's test; a let-chain audits every sealed binding in it.
+   The declaration side now asks whether EVERY member of the cohort checks.
+
+**DELETION IS BLOCKED — the remaining-work map.** J1 is absolute and 74 corpus
+declarations have no program form, in three classes:
+
+  * **§6.2's declared `back` (the largest by far)**: S14 wholesale, S17 wholesale,
+    and — through the three S17 functions their tables import — 35 of S19's 39.
+    This is the M17-era spec corpus that **M23 superseded by design** (its own
+    corpus declares ZERO backs), and the seal has no counterpart because the
+    ensures IS the contract. Giving `back` a seal form is a design question about
+    what replaces a backward spec, not a migration task — it is the one thing
+    standing between here and deleting `Decl`.
+  * **§12 decision 8's `[v]` payload decrease**: `zero_all`, `nth`, `recCursor`,
+    `append_back`, `partition`, `walkArr`. Each is one hand migration of the shape
+    M26-D and this phase already paid twice; §9's borrow eliminator retires the
+    class.
+  * **Recursions `natRec` cannot express**: a non-`Nat` scrutinee (`recList` —
+    `listRec` is wired in the kernel's `sealRec` but not in the macro, so this one
+    is small), and `recDeep`, which recurses TWO constructors down. The guard
+    permits that and a single `natRec` cannot express it, because an arm gets `ih`
+    at the immediate predecessor and nothing below it. Filed as a genuine
+    expressiveness limit of §7's elaboration.
+
+Also filed, from writing the tests: a sealed PROOF is not a global (§5's `Qed`
+binding is a value; a body that wants one should take it as a capital parameter),
+and `let X = seal(…)` is refused because a comptime `let` reads its right-hand side
+under ⇝ while the seal is a ⇒-form — §6's own parenthesis arriving as a rejection.
+
+104 assertions across `Tests/S26Prog.lean` and `Tests/S26Migrate.lean`, every one
+validated by flipping it and confirming the build goes red; none vacuous.
+
 ## 2026-08-05 — dllbc/: M26-D CLOSES — `fn` IS a macro; the first cohort migrated
 
 Phase D of the `fn`/λ unification. Phase E (programs are terms, `Decl` deleted)
