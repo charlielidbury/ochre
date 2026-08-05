@@ -1,5 +1,125 @@
 # Progress
 
+## 2026-08-05 — dllbc/: **M27 CLOSES — the ratified function model, and there is no type called `Decl`**
+
+Phases α through ε, eleven commits, `070f1f1a` through `bd68bbec`, full suite
+green throughout. The declaration form is gone from the calculus and the word is
+gone from the codebase; λ binders carry their domains; the seal is one
+conversion; application is juxtaposition; the corpus states itself on one path.
+
+    corpus     one path       (110 accept / 58 reject / 19 decline)
+    checkFn    deleted        with the `[k]` guard, in one commit
+    Decl       no such type   `FnDef`, a surface record on the way to a `let`
+    fsig       a Π `Term`     peeled on demand; no signature record anywhere
+
+**α — the runtime λ carries its domains, and the seal becomes ONE conversion.**
+`Term.lamR : List (Var × Term)`, surface `λ(x : τ, y : υ){ … }`, 95 test λs
+migrated with every existing assertion unchanged. `Val.rfn` stays UNTYPED, and
+the asymmetry is the erasure principle rather than an oversight: `readR` drops
+the domains at formation, because the executing machine binds and runs and never
+converts, so the seal is the one consumer and it happens at formation with the
+annotated term in hand. `piAgree` replaces `piPeel` at the seal — the λ states
+its telescope, the ascription supplies the return type, each binder is a
+comparison — and it is `piPeel`'s existing MODE check widened to the whole
+domain, which is a ruling the kernel had already written into that function's own
+docstring before anyone asked it.
+
+**THE HANDOFF'S BOXED WARNING UNDERSTATED ITS OWN DANGER, and the correction is
+the phase's most useful output.** It said an arm's trailing binders "come for
+free, because `rest` is already a telescope". They do not. `absVar kv 0` abstracts
+the scrutinee over the whole nested Π *including the domains inside it*, so an
+arm's trailing domains are `rest`'s with the scrutinee SUBSTITUTED — and the
+shape that bites is the one §12 decision 8 blessed, a later parameter carrying a
+fuel bound over the decreasing one. `Le (len *v) n` must be annotated
+`Le (len *v) Z` in the base arm and `Le (len *v) (S n')` in the step. `hoist`
+guards only the opposite direction, so nothing would have caught a transcription.
+Three synthesized things per arm, not one. All three are now derived with the
+kernel's own `piPeel` on the instantiated motive — §7's argument for the motive,
+extended to the annotations: two derivations by one function cannot disagree.
+
+**α.2 — functions are reached by NAME, and the third containment GRADUATES.**
+M27's `sctx`-keyed containment refused reading a borrow-moded sealed function into
+a second slot, because a σ with no `Val` diverges between the machines. The rule
+now keys on **being a function**, and the borrow-free case flips with it — c1
+measured that one as sound on both machines, and it is refused anyway, because
+**soundness was never what made it wrong**. The model's content is that a binding
+IS the name, calling-where-bound and passing-as-argument are name-uses, and the
+one forbidden move is reading a function out of its slot into a second binding.
+Measured before shipping: exactly three corpus sites trip, all predicted.
+
+**β — juxtaposition application, and the router is the KERNEL's not the surface's.**
+Written where the handoff points it — at the elaborator, routing a lowercase
+runtime head to `.callV` — it broke 25 assertions immediately, all on one idiom:
+the STAGED PROOF-BUILDERS (`finish`, `mkL`, `mkR`, `mkCnt`, `mkUb`, `mkLb`, `fin`,
+`mkC`, `mkTop`, `mkS`, `mkAD`) across four files. Every one is a lowercase slot
+holding a PURE λ applied by juxtaposition in a body, and its arguments are
+snapshots and proofs that a ⇒ read would MOVE. So the decision belongs to
+`readR`'s `.app` case, and **the router is §7 cost 5's own distinction rather than
+a new test**: the two λs are "the same former in the document, two representations
+in the machine, because one substitutes and the other binds". A `Val.lam`
+substitutes — ⇝'s rule. A `Val.rfn`, a σ with a signature, or a recursor spine
+binds — ⇒'s.
+
+**γ — the fleet dissolved into a rename.** The handoff prices the conversion as
+~285 hand-translations across 23 files via a four-line table. Written instead as
+helpers carrying the CORPUS's own argument shape — `Migrate.progOkOf d table`,
+`progRejectsOf d needle table` — it is a rename plus one import. 175 assertions
+converted, `S25ArrSort`'s 27 sites with no reds at all. The rule worth carrying:
+before briefing N workers to hand-translate a call, check whether the target can
+be given the source's signature.
+
+**δ — `checkFn` and the `[k]` guard die in one commit, and the ledger is
+type-level.** `St.selfRec` was set by exactly one place, `checkFn`'s seeding, so
+the guard was dead code the moment `checkFn` went — and removing it first would
+have left the declaration path admitting `fn recBad () -> Id Nat Z (S Z)
+{ recBad() }` and proving `Z = S Z`. What replaced the guard is asserted from both
+sides: `recBad` and `recMutA` MIGRATE and are refused as "unknown function" (§8's
+let-chain cannot reference downward), and `recSame`/`recWrongIdx`/`recGrow` are
+refused one layer earlier by `fnElab`. `St.fsig` holds the ascribed Π itself —
+**a signature IS a Π and the AST already has one** — and `callDeclC` takes a
+telescope and a return type. Then a pure rename: `Decl` → `FnDef`, 580
+occurrences, green first build, and `alphaEq` gains `dec`, which became correct at
+exactly the moment the guard died.
+
+**WHAT DOCTRINE THIS ROUND YIELDED, and it is mostly about controls.**
+
+  * **Flip-validate the CONTROLS, not just the code.** β's first battery had two
+    assertions that stayed GREEN with the router disabled: a statement-position
+    call is a demand site that DISCARDS its value, so nothing downstream is ever
+    asked. The first repair — assert the differential — was vacuous for a sharper
+    reason: the router is one rule in `readR`, so both machines stop calling and
+    go on agreeing. What discriminates is what a call LEAVES.
+  * **Where a control fires is part of its claim.** The uninstantiated-annotation
+    control had two plausible outcomes — the conversion, or a closedness rejection,
+    since the declaration's domain names a scrutinee that does not exist inside an
+    arm. Verifying it fires at the CONVERSION is what makes it a control rather
+    than a coincidence.
+  * **A global is itself a σ.** `canonicalize` renumbers σs in first-appearance
+    order, a sealed function IS a σ, so filtering the program's function bindings
+    AFTER canonicalization shifts every later index and makes an unchanged body's
+    `y ↦ σ0` read back as `σ3` — a migration bug that is not one.
+  * **The strongest ledger is still the one that fails to compile.** Every δ
+    disposition was found by the build, one file at a time, rather than by a sweep.
+
+**THE ONE GENUINE COVERAGE LOSS, recorded as one.** Inspecting what a body with a
+TELESCOPE leaves in Ω has no program-path form: seeding a telescope was
+`checkFn`'s job, and on the program path such a body is entered only inside
+`checkRFnBody`'s ISOLATED frame, whose Ω is discarded by design — M26-C's own debt,
+paid deliberately. Five assertions went (`S10Ford`'s `learnObs`/`learnBorrow`,
+`S24Arrays`' three segment-loan observations). What `learnObs` pinned — a `Refl`
+match REFINES `n := 2`, so `m` reads a concrete 2 — is still exercised by every
+ensures in the corpus that survives a match; what is no longer asserted is the
+Ω-level observation of it. Deleted with the reason written where they stood,
+rather than weakened into something that would still be green.
+
+**STILL OPEN.** The comma-call form (`f(a, b)`, `Term.call`, `St.decls`) survives
+δ deliberately: it is what carries the "unknown function" diagnosis that the
+guard's replacement is now asserted through, so deleting it is a design step about
+where that message comes from rather than a sweep. `S26Modes` §B9's needle lost
+the programmer's parameter name, because a Π has no binder names and
+`piBinderNames` synthesizes them — the mode survives the round trip, the display
+name does not.
+
 ## 2026-08-05 — dllbc/: M27 phases P1–P3 — `back` leaves the language, and three soundness holes close
 
 The endgame's first three phases and the containments they turned up. Twelve

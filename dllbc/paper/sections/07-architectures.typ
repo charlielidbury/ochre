@@ -54,6 +54,16 @@ hard reasoning has been exported to a pure model that could have been written in
 any prover. Architecture A is real, it is green, and it is deliberately the
 _comparison baseline_ rather than the mission.
 
+*Reproducibility of A.* "It is green" was true continuously up to commit
+`113f1634` and is a historical claim after it. A's programs are still in the
+corpus as source, but they are no longer machine-checked, and the reason is
+structural rather than incidental: A's cursors recurse through a borrow's payload,
+which has no recursor form, so they do not elaborate to the sealed-`let` form that
+became the calculus's only checking path when the declaration form was deleted.
+The paper's account of A is therefore reproducible at `113f1634`, the last commit
+at which a checker exists that admits it. B is unaffected, and the comparison
+below is between what A _was_ measured to be and what B _is_.
+
 == Architecture B: direct propositional proving
 
 The mission, set by the project in favour of exactly the interaction A avoids, is
