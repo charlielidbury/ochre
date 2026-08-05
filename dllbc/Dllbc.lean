@@ -46,3 +46,4 @@ import Dllbc.Tests.SDeclMacro
 import Dllbc.Tests.SDeclMacroCrown
 import Dllbc.Tests.SDeclUnified
 import Dllbc.Tests.SDeclUnifiedS19
+import Dllbc.Tests.S27SigProbe
