@@ -16,14 +16,14 @@ syntax "=" "%" term : declBody              -- escape hatch: splice a raw `Term`
 -- §1.2's `[k]`, the decreasing-argument index. Written as the PARAMETER'S NAME
 -- (`fn quicksort [fuel] (…)`) and resolved to its positional index here — the
 -- kernel wants an index, but a name is what a reader can check. Required of any
--- function that calls itself; see `Decl.dec` and the call rule's guard.
+-- function that calls itself; see `FnDef.dec` and the call rule's guard.
 syntax "decl{" "fn" ident ("[" ident "]")? "(" declParam,* ")" "->" uterm declBody "}" : term
 syntax "decl{" "fn" ident ("[" ident "]")? "(" declParam,* ")" "->" uterm "back" "=" uterm declBody "}" : term
 
 namespace DeclMacro
 open Lean
 
-/-- Shared assembly: build the `Decl` term from its parsed pieces. -/
+/-- Shared assembly: build the `FnDef` term from its parsed pieces. -/
 def assemble (name : Ident) (dec : Option Ident) (params : Array (TSyntax `declParam)) (ret : TSyntax `uterm)
     (bk : Option (TSyntax `uterm)) (body : TSyntax `declBody) : MacroM (TSyntax `term) := do
   let parsed ← params.toList.mapM fun (p : TSyntax `declParam) => match p with
@@ -44,11 +44,11 @@ def assemble (name : Ident) (dec : Option Ident) (params : Array (TSyntax `declP
       match idxOf? names.reverse d.getId.toString with     -- reverse: idxOf? is innermost-first
       | some i => `(some $(quote (n - 1 - i)))
       | none => Macro.throwErrorAt d s!"decl: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
-  -- `Decl.mk` positionally (name, telescope, retType, body, dec). It was positional
+  -- `FnDef.mk` positionally (name, telescope, retType, body, dec). It was positional
   -- because the surface once reserved a `back` keyword that collided with the field
   -- name; the keyword and the field retired together in M27-P2, and the positional
   -- form is kept because that is what `progOf`'s round-trips are written against.
-  `(Dllbc.Decl.mk $(quote name.getId.toString) [$teleSyns,*] $retT $bodyT $decT)
+  `(Dllbc.FnDef.mk $(quote name.getId.toString) [$teleSyns,*] $retT $bodyT $decT)
 
 end DeclMacro
 

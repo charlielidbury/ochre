@@ -33,7 +33,7 @@ def listNatT : Term := .app (.const "List") natT
 -- choose (c : Bool, x : &mut Nat, y : &mut Nat) → &mut Nat = match c { … }.
 -- The callee checks under the borrow-returning audit: each branch consumes one
 -- argument borrow into the result (exempt) and audits the other.
-def choose : Decl :=
+def choose : FnDef :=
   { name := "choose", retType := .borrowT natT natT,
     telescope := [("c", boolT), ("x", .borrowT natT natT), ("y", .borrowT natT natT)],
     body := dllbcWith [c, x, y] { match c { True => x, False => y } } }
@@ -46,7 +46,7 @@ example : Migrate.progOkOf choose = true := by native_decide
 -- ends ATOMICALLY (b's fresh existential arrives too, though only a was
 -- demanded). a and b hold DISTINCT fresh σ's; z holds a's. The imprecision is
 -- the point: z = 7 is not provable (§6.2's cost).
-def chooseCaller : Decl :=
+def chooseCaller : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [],
     body := dllbcWith [] {
       let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
@@ -71,14 +71,14 @@ example : Migrate.progEnvOfT [choose, chooseCaller] chooseCaller
 -- a fresh existential: the caller below recovers a FRESH σ : List Nat, NOT the
 -- written `Cons 9 Nil`. Precision is deliberately lost; §6.2's transparent/spec
 -- group ends are the recovery route.
-def through : Decl :=
+def through : FnDef :=
   { name := "through", retType := .borrowT listNatT listNatT,
     telescope := [("b", .borrowT listNatT listNatT)],
     body := dllbcWith [b] { b } }
 
 example : Migrate.progOkOf through = true := by native_decide
 
-def throughCaller : Decl :=
+def throughCaller : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [],
     body := dllbcWith [] {
       let x = Cons(1, Nil); let b = &mut x;

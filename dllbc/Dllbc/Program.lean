@@ -25,7 +25,7 @@ snapshots — a program has no need of: it takes no arguments. So `checkProgram`
 (`.callV` on a slot, resolved by the surface from scope alone), so the `table`
 parameter below defaults to EMPTY — the flagship programs are checked against no
 table at all. It survives only as J1's bridge for half-migrated programs, whose
-un-migrated callees are still `Decl`s.
+un-migrated callees are still `FnDef`s.
 
 **No forward references, by construction.** A let-chain cannot reference
 downward: a name used before its binding is not in scope, so it does not resolve
@@ -44,7 +44,7 @@ namespace Dllbc
     ordinary program, and the differential would report a counterexample that is
     only a difference in *when*.
 
-    Ending the scope is what a `Decl`'s audit did for its arguments
+    Ending the scope is what a `FnDef`'s audit did for its arguments
     (`collapseArg`) and what `releaseFrameLoans` does for a frame; at the top
     level there is no caller to hand anything back to, so every parked loan is
     simply demanded. It can legitimately FAIL — a group whose release is not
@@ -59,7 +59,7 @@ partial def endScope (fuel : Nat) : M Unit := do
     `retType`. `table` is J1's bridge and defaults to empty — scope is the call
     table. -/
 def checkProgram (t : Term) (retType : Term := .const "Unit")
-    (table : List Decl := []) : Except String Unit :=
+    (table : List FnDef := []) : Except String Unit :=
   auditPaths retType
     ((explore defaultFuel (pushContinuations t) { initSt with decls := table }).map
       (fun r => r.bind (fun p =>
@@ -69,7 +69,7 @@ def checkProgram (t : Term) (retType : Term := .const "Unit")
 
 /-- **Run a program** (§8): ⇒-evaluate it, concretely (executing mode — a call
     runs the callee's actual body), and return the final canonicalized Ω. -/
-def runProgram (t : Term) (table : List Decl := []) : Except String Env :=
+def runProgram (t : Term) (table : List FnDef := []) : Except String Env :=
   match (do let _ ← readR defaultFuel (pushContinuations t); endScope defaultFuel).run
       { initSt with decls := table, executing := true } with
   | .ok _ st => .ok (canonicalize (st.env.filter (·.1.id < 10000)))
@@ -77,7 +77,7 @@ def runProgram (t : Term) (table : List Decl := []) : Except String Env :=
 
 /-- The symbolic paths' final environments — for inspecting *what* a program
     leaves in Ω, and for the differential's checking side. -/
-def programEnvs (t : Term) (table : List Decl := []) : List (Except String Env) :=
+def programEnvs (t : Term) (table : List FnDef := []) : List (Except String Env) :=
   (explore defaultFuel (pushContinuations t) { initSt with decls := table }).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
@@ -87,7 +87,7 @@ def programEnvs (t : Term) (table : List Decl := []) : List (Except String Env) 
 /-! ## Test helpers -/
 
 /-- The program checks. -/
-def progOk (t : Term) (retType : Term := .const "Unit") (table : List Decl := []) : Bool :=
+def progOk (t : Term) (retType : Term := .const "Unit") (table : List FnDef := []) : Bool :=
   match checkProgram t retType table with | .ok _ => true | .error _ => false
 
 /-- The program is rejected, with `needle` in the message.
@@ -97,17 +97,17 @@ def progOk (t : Term) (retType : Term := .const "Unit") (table : List Decl := []
     that into an error, so a helper that collapsed error and false would let a
     *stuckness* pass for a *typing* rejection. -/
 def progRejects (t : Term) (needle : String) (retType : Term := .const "Unit")
-    (table : List Decl := []) : Bool :=
+    (table : List FnDef := []) : Bool :=
   match checkProgram t retType table with
   | .ok _ => false
   | .error e => strContains e needle
 
 /-- The program runs to the given final Ω. -/
-def progRunsTo (t : Term) (expected : Env) (table : List Decl := []) : Bool :=
+def progRunsTo (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
   match runProgram t table with | .ok env => env == expected | .error _ => false
 
 /-- The program's execution is rejected, with `needle` in the message. -/
-def progRunErr (t : Term) (needle : String) (table : List Decl := []) : Bool :=
+def progRunErr (t : Term) (needle : String) (table : List FnDef := []) : Bool :=
   match runProgram t table with
   | .ok _ => false
   | .error e => strContains e needle

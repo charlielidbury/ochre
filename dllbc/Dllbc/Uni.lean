@@ -3,12 +3,12 @@ import Dllbc.Machine
 import Dllbc.Macro
 
 /-!
-# `decl{ … }` — a surface macro for whole `Decl`s (§5 boundaries)
+# `decl{ … }` — a surface macro for whole `FnDef`s (§5 boundaries)
 
 Where `dllbc{ }` (Macro.lean) gives runtime-body surface and `pure{ }`
 (PureMacro.lean) gives pure-term surface, `decl{ }` assembles a whole function
 **declaration**: the header `fn NAME (x : τ, …) -> τret`, an optional `back = …`
-backward spec, and the body — producing the same `Decl` value the corpus builds
+backward spec, and the body — producing the same `FnDef` value the corpus builds
 by hand. Its reason to exist is removing the ugliness of hand-writing
 telescopes like `("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))`.
 

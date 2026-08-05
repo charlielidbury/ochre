@@ -85,7 +85,7 @@ example : (Val.nfV 1000 (jV natV sZ (.lam natV (.lam natV natV)) (vnat 42) sZ (.
 -- (An inter-parameter dependency is written with the earlier param's RUNTIME
 -- var — `Id Nat n 2` — resolved by the `readC` snapshot read, not a pure de
 -- Bruijn index.)
-def learn : Decl :=
+def learn : FnDef :=
   decl{ fn learn (n : Nat, p : Id Nat n 2) -> Nat { match p { Refl => n } } }
 
 example : Migrate.progOkOf learn = true := by native_decide
@@ -93,7 +93,7 @@ example : Migrate.progOkOf learn = true := by native_decide
 -- The refinement is OBSERVABLE in the final Ω: after the match, `let m = n`
 -- copies the *refined* value, so `m ↦ 2` (not a symbolic `n`). Had refinement
 -- not fired, `m` would be a `sym`.
-def learnObs : Decl :=
+def learnObs : FnDef :=
   decl{ fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } } }
 
 -- **THE ONE CAPABILITY THE PROGRAM PATH DOES NOT HAVE, and its assertion is now
@@ -112,7 +112,7 @@ def learnObs : Decl :=
 -- borrow, refines `n := 2`, and — because refinement now reaches the owed
 -- obligations — the audit sees `pb` owing `Id Nat 2 2`, which its `Refl` payload
 -- inhabits. This is the case that forced obligations into machine state.
-def learnBorrow : Decl :=
+def learnBorrow : FnDef :=
   decl{ fn learnBorrow (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
     match pb { Refl => { let m = n; () } } } }
 
@@ -122,7 +122,7 @@ example : Migrate.progOkOf learnBorrow = true := by native_decide
 -- Rigid-rigid: `p : Id Nat Z (S Z)`. Neither endpoint is a σ, so there is no
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The
 -- kernel does NOT auto-discharge the conflict; that is the library's job (below).
-def rigidStuck : Decl :=
+def rigidStuck : FnDef :=
   decl{ fn rigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } } }
 
 example : Migrate.progRejectsOf rigidStuck "rigid" = true := by native_decide
@@ -130,7 +130,7 @@ example : Migrate.progRejectsOf rigidStuck "j/k" = true := by native_decide
 
 -- Occurs check: `p : Id Nat n (S n)`. Refining `n := S n` would be cyclic —
 -- rejected before it can loop.
-def occursFn : Decl :=
+def occursFn : FnDef :=
   decl{ fn occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } } }
 
 example : Migrate.progRejectsOf occursFn "occurs check" = true := by native_decide

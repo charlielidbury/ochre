@@ -68,30 +68,30 @@ namespace Dllbc.Tests.S26Modes
     not `Nat`/`Bool`/`Id`/`Type`/`Π` — so `indexKindV` says MOVE, and that is
     exactly the class R16 is about. -/
 
-def useLe : Decl := decl{ fn useLe (a : Nat, b : Nat, h : Le a b) -> Unit { () } }
+def useLe : FnDef := decl{ fn useLe (a : Nat, b : Nat, h : Le a b) -> Unit { () } }
 /-- The same function, one character different: the proof parameter is capital. -/
-def useLeC : Decl := decl{ fn useLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () } }
+def useLeC : FnDef := decl{ fn useLeC (a : Nat, b : Nat, H : Le a b) -> Unit { () } }
 
 -- A1. THE PAIN. The proof is passed, and citing it afterwards is a use-after-move.
-def a1 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def a1 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { useLe(n, m, hnm); hnm } }
 example : rejects a1 "holds ⊥" [useLe, a1] = true := by native_decide
 
 -- A2. THE FIX. The same program against the capital twin: accepted, because the
 -- argument was ⇝-read and never left the caller's slot.
-def a2 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def a2 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { useLeC(n, m, hnm); hnm } }
 example : ok a2 [useLeC, a2] = true := by native_decide
 
 -- A3. …and it is not a one-shot: passed twice, cited after both.
-def a3 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def a3 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { useLeC(n, m, hnm); useLeC(n, m, hnm); hnm } }
 example : ok a3 [useLeC, a3] = true := by native_decide
 
 -- A4. The staging that R16 forced, and what it becomes. `mkHf`'s shape — capture
 -- a proof into a λ *before* the call that consumes it — still works, and is now
 -- unnecessary: A3 is the same program without it.
-def a4 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def a4 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let mk = λ (u : Unit). hnm; useLe(n, m, hnm); mk unit } }
 example : ok a4 [useLe, a4] = true := by native_decide
 
@@ -101,8 +101,8 @@ example : ok a4 [useLe, a4] = true := by native_decide
     the capital twin — same type, same position — cannot be. This is the pair
     that says the modes are doing work rather than decorating. -/
 
-def a5lo : Decl := decl{ fn a5lo (fuel : Nat) -> Unit { match fuel { Z => (), S(f2) => () } } }
-def a5hi : Decl := decl{ fn a5hi (Fuel : Nat) -> Unit { match Fuel { Z => (), S(f2) => () } } }
+def a5lo : FnDef := decl{ fn a5lo (fuel : Nat) -> Unit { match fuel { Z => (), S(f2) => () } } }
+def a5hi : FnDef := decl{ fn a5hi (Fuel : Nat) -> Unit { match Fuel { Z => (), S(f2) => () } } }
 example : ok a5lo = true := by native_decide
 example : rejects a5hi "cannot be the scrutinee of a runtime match" = true := by native_decide
 
@@ -110,9 +110,9 @@ example : rejects a5hi "cannot be the scrutinee of a runtime match" = true := by
 -- existential with no ⇝ reading, so it cannot be spliced into a capital position
 -- directly — it must be `let`-bound first. An honest rejection rather than a
 -- silent fall-back to ⇒, and the `let`-bound form immediately above works.
-def giveLe : Decl := decl{ fn giveLe (a : Nat) -> Le a a { %le_refl a } }
-def a6bad : Decl := decl{ fn caller (n : Nat) -> Unit { useLeC(n, n, giveLe(n)); () } }
-def a6ok : Decl := decl{ fn caller (n : Nat) -> Unit
+def giveLe : FnDef := decl{ fn giveLe (a : Nat) -> Le a a { %le_refl a } }
+def a6bad : FnDef := decl{ fn caller (n : Nat) -> Unit { useLeC(n, n, giveLe(n)); () } }
+def a6ok : FnDef := decl{ fn caller (n : Nat) -> Unit
   { let p = giveLe(n); useLeC(n, n, p); useLeC(n, n, p); () } }
 example : rejects a6bad "not in the comptime fragment" [useLeC, giveLe, a6bad] = true := by
   native_decide
@@ -128,22 +128,22 @@ example : ok a6ok [useLeC, giveLe, a6ok] = true := by native_decide
     the program being ill-formed some other way. -/
 
 -- B1. The ⇒-move.
-def b1hi : Decl := decl{ fn b1 (N : Nat) -> Unit { let y = N; () } }
-def b1lo : Decl := decl{ fn b1 (n : Nat) -> Unit { let y = n; () } }
+def b1hi : FnDef := decl{ fn b1 (N : Nat) -> Unit { let y = N; () } }
+def b1lo : FnDef := decl{ fn b1 (n : Nat) -> Unit { let y = n; () } }
 example : rejects b1hi "cannot be ⇒-moved" = true := by native_decide
 example : ok b1lo = true := by native_decide
 
 -- B2. The runtime match — §A5 above, which is where it earns its keep.
 
 -- B3. The borrow.
-def b3hi : Decl := decl{ fn b3 (N : List Nat) -> Unit { let b = &mut N; () } }
-def b3lo : Decl := decl{ fn b3 (n : List Nat) -> Unit { let b = &mut n; () } }
+def b3hi : FnDef := decl{ fn b3 (N : List Nat) -> Unit { let b = &mut N; () } }
+def b3lo : FnDef := decl{ fn b3 (n : List Nat) -> Unit { let b = &mut n; () } }
 example : rejects b3hi "cannot be borrowed" = true := by native_decide
 example : ok b3lo = true := by native_decide
 
 -- B4. The write-through (⇐).
-def b4hi : Decl := decl{ fn b4 (N : Nat) -> Unit { N := 3; () } }
-def b4lo : Decl := decl{ fn b4 (n : Nat) -> Unit { n := 3; () } }
+def b4hi : FnDef := decl{ fn b4 (N : Nat) -> Unit { N := 3; () } }
+def b4lo : FnDef := decl{ fn b4 (n : Nat) -> Unit { n := 3; () } }
 example : rejects b4hi "cannot be written through" = true := by native_decide
 example : ok b4lo = true := by native_decide
 
@@ -151,7 +151,7 @@ example : ok b4lo = true := by native_decide
 -- fence fires on the place's *syntactic root* before `placeToPos` navigates
 -- anything, which is the property being pinned (a place expression may carve,
 -- and a fence that ran after that would have already reorganized Ω).
-def b5hi : Decl :=
+def b5hi : FnDef :=
   { name := "b5", telescope := [("N", natT)], retType := .const "Unit",
     body := .letIn ⟨1, "e"⟩ (.index (.var ⟨0, "N"⟩) (.ctorApp "Z" []) none) .unit }
 example : rejects b5hi "cannot be indexed or sliced" = true := by native_decide
@@ -161,7 +161,7 @@ example : rejects b5hi "cannot be indexed or sliced" = true := by native_decide
 -- argument with ⇒, so the fence fires there. This is the direction that makes
 -- the fence coherent: a comptime binder cannot launder itself into runtime by
 -- being passed to something that wants a runtime value.
-def b6 : Decl := decl{ fn caller (n : Nat, m : Nat, Hnm : Le n m) -> Unit
+def b6 : FnDef := decl{ fn caller (n : Nat, m : Nat, Hnm : Le n m) -> Unit
   { useLe(n, m, Hnm); () } }
 example : rejects b6 "cannot be ⇒-moved" [useLe, b6] = true := by native_decide
 
@@ -173,14 +173,14 @@ example : rejects b6 "cannot be ⇒-moved" [useLe, b6] = true := by native_decid
     where ⇝ gives the structured neutral, but may not CALL it. The lowercase twin
     is `S26Seal`'s `apply1`, and calling it is exactly what the lowercase buys. -/
 
-def b7spec : Decl := decl{ fn b7spec (G : Π (x : Nat) → Nat, n : Nat) -> Unit
+def b7spec : FnDef := decl{ fn b7spec (G : Π (x : Nat) → Nat, n : Nat) -> Unit
   { let r = G(n); () } }
 example : rejects b7spec "cannot be CALLED under ⇒" = true := by native_decide
 example : ok S26Seal.apply1 = true := by native_decide
 
 -- …and the citation that IS allowed: `G a` in a type position, where the whole
 -- content is §2.1's structured neutral. `G` is never supplied at runtime.
-def b7cite : Decl := decl{ fn b7cite (G : Π (x : Nat) → Nat, n : Nat) -> Id Nat (G n) (G n)
+def b7cite : FnDef := decl{ fn b7cite (G : Π (x : Nat) → Nat, n : Nat) -> Id Nat (G n) (G n)
   { Refl } }
 example : ok b7cite = true := by native_decide
 
@@ -192,10 +192,10 @@ example : ok b7cite = true := by native_decide
     signature is wrong); the call site is caught by `processArgs`, which matters
     for a table entry that was never itself checked. -/
 
-def b8 : Decl := decl{ fn b8 (V : &mut List Nat) -> Unit { () } }
+def b8 : FnDef := decl{ fn b8 (V : &mut List Nat) -> Unit { () } }
 example : rejects b8 "telescope: parameter 'V' is capitalized" = true := by native_decide
 
-def b9 : Decl := decl{ fn caller () -> Unit { let x = Cons(1, Nil); b8(&mut x); () } }
+def b9 : FnDef := decl{ fn caller () -> Unit { let x = Cons(1, Nil); b8(&mut x); () } }
 -- The needle is NAME-FREE since M27-δ, and the reason belongs beside it: `fsig`
 -- stores the ascribed Π itself now, and a Π has no binder names — `piBinderNames`
 -- synthesizes `A0`/`a0` at the call, encoding the MODE (which is what the rule
@@ -204,8 +204,8 @@ def b9 : Decl := decl{ fn caller () -> Unit { let x = Cons(1, Nil); b8(&mut x); 
 example : rejects b9 "is capitalized" [b8, b9] = true := by native_decide
 
 -- The lowercase twin of both, for liveness.
-def b8lo : Decl := decl{ fn b8lo (v : &mut List Nat) -> Unit { () } }
-def b9lo : Decl := decl{ fn caller () -> Unit { let x = Cons(1, Nil); b8lo(&mut x); () } }
+def b8lo : FnDef := decl{ fn b8lo (v : &mut List Nat) -> Unit { () } }
+def b9lo : FnDef := decl{ fn caller () -> Unit { let x = Cons(1, Nil); b8lo(&mut x); () } }
 example : ok b8lo = true := by native_decide
 example : ok b9lo [b8lo, b9lo] = true := by native_decide
 
@@ -213,7 +213,7 @@ example : ok b9lo [b8lo, b9lo] = true := by native_decide
 
     §6 pays for "capital is the mode marker" with one rule: the constructor names
     are keywords. Checked at elaboration — these are `Macro` errors, so they are
-    exhibited rather than asserted (a rejected macro does not produce a `Decl` to
+    exhibited rather than asserted (a rejected macro does not produce a `FnDef` to
     test). What CAN be asserted is the other half: the surface no longer decides
     `F(x)` by CASE. `f(…)` is a constructor application exactly when `f` is in
     the fixed basis, which is what makes `G(n)` above a call rather than a
@@ -242,9 +242,9 @@ example : DeclMacro.reservedBinder "Hfuel" = false := by native_decide
     still IS the entry value is the dodge" — available as a binding instead of as
     a λ built before the call. -/
 
-def c1 : Decl := decl{ fn c1 (v : &mut List Nat) -> Id (List Nat) (*v) (old *v)
+def c1 : FnDef := decl{ fn c1 (v : &mut List Nat) -> Id (List Nat) (*v) (old *v)
   { let L = *v; Refl } }
-def c1bad : Decl := decl{ fn c1bad (v : &mut List Nat) -> Id (List Nat) (*v) (old *v)
+def c1bad : FnDef := decl{ fn c1bad (v : &mut List Nat) -> Id (List Nat) (*v) (old *v)
   { let l = *v; Refl } }
 example : ok c1 = true := by native_decide
 -- The runtime take leaves a hole in the borrow, and a hole satisfies no type
@@ -254,18 +254,18 @@ example : rejects c1bad "holds a hole (⊥) at return" = true := by native_decid
 
 -- C2. The fence applies to a capital `let` exactly as to a capital parameter —
 -- so the snapshot above is a SPECIFICATION binding, not a free copy of the data.
-def c2 : Decl := decl{ fn c2 (v : &mut List Nat) -> Unit { let L = *v; let y = L; () } }
+def c2 : FnDef := decl{ fn c2 (v : &mut List Nat) -> Unit { let L = *v; let y = L; () } }
 example : rejects c2 "cannot be ⇒-moved" = true := by native_decide
 
 -- C3. The right-hand side must have a ⇝ reading. A call's result is a fresh
 -- existential and has none, so a capital `let` cannot bind one — honest, and
 -- pointing at the lowercase `let` that can.
-def c3bad : Decl := decl{ fn caller (n : Nat) -> Unit { let P = giveLe(n); () } }
+def c3bad : FnDef := decl{ fn caller (n : Nat) -> Unit { let P = giveLe(n); () } }
 example : rejects c3bad "not in the comptime fragment" [giveLe, c3bad] = true := by native_decide
 
 -- C4. Locally-derived certificates without staging: a capital `let` builds the
 -- certificate, and citing it at capital argument positions never consumes it.
-def c4 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def c4 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let Q = le_trans n m m hnm (%le_refl m);
     useLeC(n, m, Q); useLeC(n, m, Q); hnm } }
 example : ok c4 [useLeC, c4] = true := by native_decide
@@ -279,17 +279,17 @@ example : ok c4 [useLeC, c4] = true := by native_decide
     kind cannot derive it, because the two binders below have the same kind. -/
 
 -- Accepted: `N` appears only in the return TYPE.
-def d1 : Decl := decl{ fn d1 (N : Nat) -> Id Nat N N { Refl } }
+def d1 : FnDef := decl{ fn d1 (N : Nat) -> Id Nat N N { Refl } }
 example : ok d1 = true := by native_decide
 
 -- Accepted: an erased length index, with the runtime data typed against it.
-def d2 : Decl := decl{ fn d2 (N : Nat, l : List Nat, h : Id Nat (len l) N) -> Id Nat (len l) N
+def d2 : FnDef := decl{ fn d2 (N : Nat, l : List Nat, h : Id Nat (len l) N) -> Id Nat (len l) N
   { h } }
 example : ok d2 = true := by native_decide
 
 -- Fenced: the body tries to branch on it. Same type, same kind, same position as
 -- §A5's `fuel` — only the case differs, and only the case can decide this.
-def d3 : Decl := decl{ fn d3 (N : Nat) -> Unit { match N { Z => (), S(k) => () } } }
+def d3 : FnDef := decl{ fn d3 (N : Nat) -> Unit { match N { Z => (), S(k) => () } } }
 example : rejects d3 "cannot be the scrutinee of a runtime match" = true := by native_decide
 
 /-! ## §E. Case is inert under ⇝ — pinned from both sides
@@ -310,16 +310,16 @@ example : (match Val.nfV 1000 (Val.pi (.cmpT (.const "Nat")) (.const "Nat")) wit
 -- E2. `add` stays all-lowercase and is cited in a spec regardless — you never
 -- capitalize a definition to use it in a type. Both cases of the CITING
 -- function's own binders work, because the citation happens under ⇝.
-def e2lo : Decl := decl{ fn e2lo (a : Nat, b : Nat) -> Id Nat (add a b) (add a b) { Refl } }
-def e2hi : Decl := decl{ fn e2hi (A : Nat, B : Nat) -> Id Nat (add A B) (add A B) { Refl } }
+def e2lo : FnDef := decl{ fn e2lo (a : Nat, b : Nat) -> Id Nat (add a b) (add a b) { Refl } }
+def e2hi : FnDef := decl{ fn e2hi (A : Nat, B : Nat) -> Id Nat (add A B) (add A B) { Refl } }
 example : ok e2lo = true := by native_decide
 example : ok e2hi = true := by native_decide
 
 -- E3. The structured neutral — §2.1's `id_congr` mechanism — is unchanged by the
 -- Π's binder case. An abstract function applied twice in a type position is ONE
 -- term either way, which is what `Refl` inhabiting the `Id` says.
-def e3lo : Decl := decl{ fn e3lo (f : Π (x : Nat) → Nat, a : Nat) -> Id Nat (f a) (f a) { Refl } }
-def e3hi : Decl := decl{ fn e3hi (f : Π (X : Nat) → Nat, a : Nat) -> Id Nat (f a) (f a) { Refl } }
+def e3lo : FnDef := decl{ fn e3lo (f : Π (x : Nat) → Nat, a : Nat) -> Id Nat (f a) (f a) { Refl } }
+def e3hi : FnDef := decl{ fn e3hi (f : Π (X : Nat) → Nat, a : Nat) -> Id Nat (f a) (f a) { Refl } }
 example : ok e3lo = true := by native_decide
 example : ok e3hi = true := by native_decide
 
@@ -329,8 +329,8 @@ example : ok e3hi = true := by native_decide
     inert under ⇝. `Term.beq` is STRUCTURAL, because its clients are not
     conversions: §18's `absOcc` abstracts occurrences by it (a mode-blind version
     would match `⇝τ` against `τ` and abstract the marker away with the domain),
-    and `Decl.alphaEq` is the macro-vs-corpus round-trip criterion — a mode-blind
-    version would let phase D's `fn` macro emit a differently-moded `Decl` and
+    and `FnDef.alphaEq` is the macro-vs-corpus round-trip criterion — a mode-blind
+    version would let phase D's `fn` macro emit a differently-moded `FnDef` and
     still report equivalence. Pinned because "one of these two is mode-blind and
     the other is not" is exactly the kind of asymmetry a later reader would
     otherwise assume was an oversight. -/
@@ -356,7 +356,7 @@ example : ((Term.cmpT (.const "Nat") : Term) == Term.const "Nat") = false := by 
 
 -- F1. A sealed callee with a capital binder: the argument is ⇝-read, so the
 -- caller still holds its proof — twice over, and afterwards.
-def f1 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def f1 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let g = seal(λ (H : Le n m). Z, Π (H : Le n m) → Nat);
     let r = g(hnm);
     let s = g(hnm);
@@ -364,7 +364,7 @@ def f1 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
 example : ok f1 = true := by native_decide
 
 -- F2. The lowercase twin of the same seal: the call MOVES the proof.
-def f2 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def f2 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let g = seal(λ (h : Le n m). Z, Π (h : Le n m) → Nat);
     let r = g(hnm);
     hnm } }
@@ -373,7 +373,7 @@ example : rejects f2 "holds ⊥" = true := by native_decide
 -- F3. THE ASCRIPTION IS THE CONTRACT. The same lowercase-bindered λ, sealed at a
 -- CAPITAL-bindered Π: accepted (conversion is mode-blind), and the call takes
 -- its argument by ⇝, because the caller's view is the Π and nothing else.
-def f3 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def f3 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let g = seal(λ (h : Le n m). Z, Π (H : Le n m) → Nat);
     let r = g(hnm);
     let s = g(hnm);
@@ -382,12 +382,12 @@ example : ok f3 = true := by native_decide
 
 -- F4. The transparent case: a literal λ callee carries its modes on its own
 -- domains, so the same routing happens with no seal in sight.
-def f4 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def f4 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let g = λ (H : Le n m). Z; let r = g(hnm); let s = g(hnm); hnm } }
 example : ok f4 = true := by native_decide
 
 -- F5. …and its lowercase twin moves, which is what says F4 is about the mode.
-def f5 : Decl := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
+def f5 : FnDef := decl{ fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
   { let g = λ (h : Le n m). Z; let r = g(hnm); let s = g(hnm); hnm } }
 example : rejects f5 "holds ⊥" = true := by native_decide
 
@@ -411,21 +411,21 @@ example : rejects f5 "holds ⊥" = true := by native_decide
     closure holding its arguments — including, in general, borrows". That is a
     decision against a settled one, not a mode question, and it is left filed. -/
 
-def g1 : Decl := decl{ fn caller () -> Unit
+def g1 : FnDef := decl{ fn caller () -> Unit
   { let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () } }
 example : rejects g1 "partial application" = true := by native_decide
 example : rejects g1 "binder modes do NOT separate the two cases" = true := by native_decide
 
 -- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
 -- "the constant function at 1", and is refused.
-def g2 : Decl := decl{ fn caller () -> Unit
+def g2 : FnDef := decl{ fn caller () -> Unit
   { let mk = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
     let k1 = mk(1); () } }
 example : rejects g2 "partial application" = true := by native_decide
 
 -- Modes ARE expressible on such a Π — the elaboration is fine, the marker is
 -- there — and change nothing, which is the point.
-def g3 : Decl := decl{ fn caller () -> Unit
+def g3 : FnDef := decl{ fn caller () -> Unit
   { let mk = seal(λ (X : Nat). λ (y : Nat). X, Π (X : Nat) → Π (y : Nat) → Nat);
     let k1 = mk(1); () } }
 example : rejects g3 "partial application" = true := by native_decide
@@ -447,11 +447,11 @@ example : ok S26Seal.a6c = true := by native_decide
     to derive a certificate that the body goes on to use. Under phase A that
     sequence was unwritable without staging the proof into a λ before the call. -/
 
-def step : Decl := decl{ fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () } }
+def step : FnDef := decl{ fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () } }
 /-- The same callee with a RUNTIME proof parameter — H2's control. -/
-def stepLo : Decl := decl{ fn stepLo (v : &mut List Nat, b : Nat, h : Le (len *v) b) -> Unit { () } }
+def stepLo : FnDef := decl{ fn stepLo (v : &mut List Nat, b : Nat, h : Le (len *v) b) -> Unit { () } }
 
-def qsish : Decl := decl{
+def qsish : FnDef := decl{
   fn qsish [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : Le (len *v) fuel) -> Unit
     { match fuel {
         Z => (),
@@ -467,7 +467,7 @@ example : ok qsish [step, useLeC, qsish] = true := by native_decide
 -- whose proof parameter is lowercase: the call would move an erased binder, and
 -- the fence says so. Which is the right division of labour — a caller cannot
 -- know whether a callee needs its proof at runtime, so the callee declares it.
-def qsishLo : Decl := decl{
+def qsishLo : FnDef := decl{
   fn qsishLo [fuel] (fuel : Nat, v : &mut List Nat, Hfuel : Le (len *v) fuel) -> Unit
     { match fuel {
         Z => (),
@@ -480,7 +480,7 @@ example : rejects qsishLo "cannot be ⇒-moved" [stepLo, useLeC, qsishLo] = true
 
 -- H3. …and `Hfuel`'s neighbour cannot be scrutinized, which is the other half of
 -- §6's sentence: an erased index is erased, not merely copyable.
-def qsishBad : Decl := decl{
+def qsishBad : FnDef := decl{
   fn qsishBad (v : &mut List Nat, N : Nat, HN : Id Nat (len *v) N) -> Unit
     { match N { Z => (), S(k) => () } } }
 example : rejects qsishBad "cannot be the scrutinee of a runtime match" = true := by native_decide
@@ -488,7 +488,7 @@ example : rejects qsishBad "cannot be the scrutinee of a runtime match" = true :
 -- H4. The exit/`old` machinery, unchanged by the presence of erased binders: an
 -- erased length index, an erased proof about it, a comptime snapshot binding,
 -- and a borrow, under a return type relating exit to entry.
-def qsish2 : Decl := decl{
+def qsish2 : FnDef := decl{
   fn qsish2 (v : &mut List Nat, N : Nat, HN : Id Nat (len *v) N)
     -> Id (List Nat) (*v) (old *v)
     { let L = *v; Refl } }
@@ -508,9 +508,9 @@ example : ok qsish2 = true := by native_decide
     about the same parameter type. Modes resolve R16 (consumption); they do not
     touch R12 (staleness), and nothing in §6 claims otherwise. -/
 
-def h5hi : Decl := decl{ fn h5hi (v : &mut List Nat, f : Nat, Hf : Le (len *v) f) -> Unit
+def h5hi : FnDef := decl{ fn h5hi (v : &mut List Nat, f : Nat, Hf : Le (len *v) f) -> Unit
   { step(&mut *v, f, Hf); step(&mut *v, f, Hf); () } }
-def h5lo : Decl := decl{ fn h5lo (v : &mut List Nat, f : Nat, hf : Le (len *v) f) -> Unit
+def h5lo : FnDef := decl{ fn h5lo (v : &mut List Nat, f : Nat, hf : Le (len *v) f) -> Unit
   { step(&mut *v, f, hf); step(&mut *v, f, hf); () } }
 example : rejects h5hi "does not have its parameter type" [step, h5hi] = true := by native_decide
 example : rejects h5lo "does not have its parameter type" [step, h5lo] = true := by native_decide
@@ -528,10 +528,10 @@ example : rejects h5lo "does not have its parameter type" [step, h5lo] = true :=
     return it. Capitalizing the caller's own binder is a claim about the CALLER's
     erasure, and a returned value is not erased. -/
 
-def h6hi : Decl := decl{
+def h6hi : FnDef := decl{
   fn h6hi (v : &mut List Nat, f : Nat, Hf : Le (len *v) f) -> Le (len (old *v)) f
   { step(&mut *v, f, Hf); Hf } }
-def h6lo : Decl := decl{
+def h6lo : FnDef := decl{
   fn h6lo (v : &mut List Nat, f : Nat, hf : Le (len *v) f) -> Le (len (old *v)) f
   { step(&mut *v, f, hf); hf } }
 example : rejects h6hi "cannot be ⇒-moved" [step, h6hi] = true := by native_decide
@@ -555,14 +555,14 @@ example : ok h6lo [step, h6lo] = true := by native_decide
     that true, since the callee cannot observe it. The coherence rests on the
     fence, not on the read. -/
 
-def takeL : Decl := decl{ fn takeL (l : List Nat) -> Unit { () } }
-def takeLC : Decl := decl{ fn takeLC (L : List Nat) -> Unit { () } }
-def giveL : Decl := decl{ fn giveL () -> List Nat { Cons(1, Nil) } }
+def takeL : FnDef := decl{ fn takeL (l : List Nat) -> Unit { () } }
+def takeLC : FnDef := decl{ fn takeLC (L : List Nat) -> Unit { () } }
+def giveL : FnDef := decl{ fn giveL () -> List Nat { Cons(1, Nil) } }
 
 -- I1. Concrete: the capital call does not consume, so the list is still there.
-def i1 : Decl := decl{ fn caller () -> Unit
+def i1 : FnDef := decl{ fn caller () -> Unit
   { let a = Cons(1, Nil); takeLC(a); let b = a; () } }
-def i1lo : Decl := decl{ fn caller () -> Unit
+def i1lo : FnDef := decl{ fn caller () -> Unit
   { let a = Cons(1, Nil); takeL(a); let b = a; () } }
 example : ok i1 [takeLC, i1] = true := by native_decide
 example : rejects i1lo "holds ⊥" [takeL, i1lo] = true := by native_decide
@@ -572,14 +572,14 @@ example : (envOf [takeLC] i1 == some [("a", .bot), ("b", Val.cons (Val.nat 1) Va
   native_decide
 
 -- I2. Symbolic: the argument is a call's fresh existential rather than a literal.
-def i2 : Decl := decl{ fn caller () -> Unit
+def i2 : FnDef := decl{ fn caller () -> Unit
   { let a = giveL(); takeLC(a); let b = a; () } }
 example : ok i2 [takeLC, giveL, i2] = true := by native_decide
 
 -- I3. Through a VALUE callee, transparent and sealed.
-def i3 : Decl := decl{ fn caller () -> Unit
+def i3 : FnDef := decl{ fn caller () -> Unit
   { let a = Cons(1, Nil); let g = λ (L : List Nat). Z; let r = g(a); let b = a; () } }
-def i3s : Decl := decl{ fn caller () -> Unit
+def i3s : FnDef := decl{ fn caller () -> Unit
   { let a = Cons(1, Nil); let g = seal(λ (L : List Nat). Z, Π (L : List Nat) → Nat);
     let r = g(a); let b = a; () } }
 example : ok i3 = true := by native_decide
@@ -588,7 +588,7 @@ example : ok i3s = true := by native_decide
 -- The differential: the executing machine reaches the same Ω. `diffC` is phase
 -- A's extended relation (σ-instance up to the pure fragment's own computation),
 -- whose liveness was validated there — it says NO to a genuinely disagreeing run.
-def shapes : List (List Decl × Term) :=
+def shapes : List (List FnDef × Term) :=
   [ ([takeLC], i1.body), ([takeLC, giveL], i2.body), ([], i3.body), ([], i3s.body) ]
 example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
 

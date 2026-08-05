@@ -32,23 +32,37 @@ is kernel-transparent for the later proof phase. Later milestones add
 
 namespace Dllbc
 
-/-- A function declaration (§1.2). Lives here so the checking context (`St`)
-    can carry a table of them — a call is checked against a *signature only*,
-    never another body (recursion forces this, §5.3). Full construction/audit
-    is in `Boundary.lean`. -/
-structure Decl where
+/-- **A function definition on its way to a `let`** (M27-δ, renamed from `Decl`).
+
+    ~~A function declaration (§1.2). Lives here so the checking context (`St`) can
+    carry a table of them — a call is checked against a signature only, never
+    another body.~~ Both halves of that are gone: §8 makes a program a term and a
+    declaration a `let` of a sealed λ, so there is no declaration FORM in the
+    calculus and no table in `St` for one to live in. What is left is a surface
+    record — what `decl{ … }` builds and `FnMacro.fnElab` consumes — carrying the
+    four things a `let` of a seal needs: a name to bind, a telescope and a return
+    type to make the Π, and a body.
+
+    It is deliberately NOT in the kernel's vocabulary any more. `St.fsig` holds
+    the ascribed Π itself and `callDeclC` takes a telescope and a return type, so
+    nothing below the macro layer knows this type exists. -/
+structure FnDef where
   name : String
   telescope : List (String × Term)
   retType : Term
   body : Term
-  /-- §1.2's `[k]` — the **decreasing-argument index**, made operational by M23.
-      A self-call is admitted at this function's declared return type only if the
-      actual at index `k` is a strict structural predecessor of that parameter's
-      current snapshot (§8's snapshot-subterm guard; the rule lives in the call
-      rule below). `none` means the function does not recurse — a self-call in a
-      body with no `[k]` is REJECTED, because admitting a call at its own declared
-      postcondition with nothing decreasing is the Hoare rule without its side
-      condition, and proves anything: `fn bad () -> Id Nat Z (S Z) { bad() }`. -/
+  /-- §1.2's `[k]` — now purely the **scrutinee-selection hint**: which parameter
+      the elaboration recurses on, hoisted to the front so the motive is the
+      sealed Π with that binder peeled off (§7).
+
+      ~~The decreasing-argument index. A self-call is admitted at this function's
+      declared return type only if the actual at index `k` is a strict structural
+      predecessor of that parameter's current snapshot.~~ **The guard it named is
+      gone** (M27-δ), and §7's word for what happened is the right one: it
+      EVAPORATED rather than being deleted. A recursive occurrence is the `ih`
+      binder and a binder cannot be a self-call, so there is no rule left for a
+      side condition to attach to. `none` now means only "does not recurse", with
+      no rejection riding on it. -/
   dec : Option Nat := none
 
 /-- What an argument borrow owes at the boundary: its slot variable, its loan
@@ -103,7 +117,7 @@ structure St where
   /-- The σ-context (§3.2's seam, §4): each symbolic id's type. -/
   sctx : List (Nat × Val) := []
   /-- **The moded-Π context** (M26-C): for a σ minted by sealing a function, the
-      signature it was sealed at — as a `Decl`, which is precisely "a telescope
+      signature it was sealed at — as a `FnDef`, which is precisely "a telescope
       and a return type with no body".
 
       Why this is not `sctx`. A borrow-moded Π has **no `Val`** — `readC` refuses
@@ -125,7 +139,7 @@ structure St where
   /-- Fresh-supply for group ρ ids. -/
   nextGroup : Nat := 0
   /-- The function table, for the call rule. -/
-  decls : List Decl := []
+  decls : List FnDef := []
   /-- The argument-borrow obligations (§5.1), seeded from the telescope and
       audited at return. Held in state (not just returned by `seedTelescope`)
       so a §10 Refl refinement propagates into the owed types — see
@@ -2034,7 +2048,7 @@ mutual
 end
 
 /-- Shift with nothing kept — the pre-M26-E behaviour, and still the right rule
-    for a DECLARED callee inlined in executing mode (a `Decl` body's only free
+    for a DECLARED callee inlined in executing mode (a `FnDef` body's only free
     variables are its telescope's, which the frame is exactly what renames). -/
 def shiftVars (d : Nat) (t : Term) : Term := shiftVarsK [] d t
 
@@ -2348,7 +2362,7 @@ end
     borrow's loan — the caller holds it; nothing in the body can collapse the
     borrow by owner-demand, only the audit can.
 
-    **Var-keyed** since M26-C, because the seal seeds one too: a `Decl` names its
+    **Var-keyed** since M26-C, because the seal seeds one too: a `FnDef` names its
     parameters positionally (argument `i` ↦ var id `i`, which is what the corpus's
     types reference), while a runtime λ brings its own binder `Var`s and its body
     reaches them by those ids. Same seeding either way; only who supplies the
@@ -2428,7 +2442,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
       seedTelescopeV fuel rest
 
-/-- The `Decl` view: parameter `i` gets runtime var id `i` — the §5.2 convention a
+/-- The `FnDef` view: parameter `i` gets runtime var id `i` — the §5.2 convention a
     declaration's own types are written against. -/
 def seedTelescope (fuel : Nat) (i : Nat) (tel : List (String × Term)) : M (List Obligation) :=
   seedTelescopeV fuel ((tel.enum.map (fun p => (Var.mk (p.1 + i) p.2.1, p.2.2))))
@@ -3633,7 +3647,7 @@ mutual
       seed the telescope, pin the return type at entry (§5.3 — a dependent return
       type may mention a parameter the body consumes), explore the body one path
       per symbolic branch, and audit each path at return with exit snapshots and
-      obligations. When this was written `checkFn` still checked every `Decl` in
+      obligations. When this was written `checkFn` still checked every `FnDef` in
       the corpus and nothing had been deleted; M27-δ deleted it, and this is now
       the ONLY audit site there is.
 

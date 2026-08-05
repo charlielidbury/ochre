@@ -42,29 +42,29 @@ def listNatT : Term := .app (.const "List") natT
 
 /-! ## The fixed callee pool -/
 
-def through : Decl :=
+def through : FnDef :=
   { name := "through", retType := .borrowT listNatT listNatT,
     telescope := [("b", .borrowT listNatT listNatT)],
     body := dllbcWith [b] { b } }
 
 /-- `advance`: returns the tail's field reborrow on `Cons`, the argument on
     `Nil`. Same signature as `through`, different body. -/
-def advance : Decl :=
+def advance : FnDef :=
   { name := "advance", retType := .borrowT listNatT listNatT,
     telescope := [("b", .borrowT listNatT listNatT)],
     body := dllbcWith [b] { match b { Nil => b, Cons(hd, tl) => tl } } }
 
-def choose : Decl :=
+def choose : FnDef :=
   { name := "choose", retType := .borrowT natT natT,
     telescope := [("c", boolT), ("x", .borrowT natT natT), ("y", .borrowT natT natT)],
     body := dllbcWith [c, x, y] { match c { True => x, False => y } } }
 
-def push : Decl :=
+def push : FnDef :=
   { name := "push", retType := .const "Unit",
     telescope := [("e", natT), ("v", .borrowT listNatT listNatT)],
     body := dllbcWith [e, v] { let tail = *v; *v := Cons(e, tail); () } }
 
-def pool : List Decl := [through, advance, choose, push]
+def pool : List FnDef := [through, advance, choose, push]
 
 /-! ## The simulation relation: `instanceOf` -/
 
@@ -189,7 +189,7 @@ def instanceOfC (symEnv concEnv : Env) : Bool :=
 
 /-- Executing mode: run a body concretely (calls run callee bodies), returning
     the caller's own final Ω (frame vars id ≥ 10000 filtered out). -/
-def runExec (table : List Decl) (body : Term) : Except String Env :=
+def runExec (table : List FnDef) (body : Term) : Except String Env :=
   match (readR defaultFuel body).run { initSt with decls := table, executing := true } with
   | .ok _ st => .ok (canonicalize (st.env.filter (·.1.id < 10000)))
   | .error e _ => .error e
@@ -197,13 +197,13 @@ def runExec (table : List Decl) (body : Term) : Except String Env :=
 /-- Checking mode: the accepted symbolic paths' final environments. `fc`
     forces the (removed) constrained wire on — used only by the harness
     validation, `false` for the real property. -/
-def symEnvs (fc : Bool) (table : List Decl) (body : Term) : List (Except String Env) :=
+def symEnvs (fc : Bool) (table : List FnDef) (body : Term) : List (Except String Env) :=
   (explore defaultFuel (pushContinuations body) { initSt with decls := table, forceConstrained := fc }).map
     (fun r => r.map (fun p => canonicalize (p.2.env.filter (·.1.id < 10000))))
 
 /-- The differential: the concrete final env is an instance of some symbolic
     path's final env. -/
-def diffV2 (fc : Bool) (table : List Decl) (body : Term) : Bool :=
+def diffV2 (fc : Bool) (table : List FnDef) (body : Term) : Bool :=
   match runExec table body with
   | .error _ => false
   | .ok concEnv => (symEnvs fc table body).any (fun r => match r with
@@ -213,7 +213,7 @@ def diffV2 (fc : Bool) (table : List Decl) (body : Term) : Bool :=
 /-- The differential under the MERGED relation (M26-C). Same property, a relation
     that no longer reports a false counterexample on a program that carves *and*
     computes. -/
-def diffC (table : List Decl) (body : Term) : Bool :=
+def diffC (table : List FnDef) (body : Term) : Bool :=
   match runExec table body with
   | .error _ => false
   | .ok concEnv => (symEnvs false table body).any (fun r => match r with
@@ -221,7 +221,7 @@ def diffC (table : List Decl) (body : Term) : Bool :=
       | .error _ => false)
 
 /-- checkFn on a caller (empty telescope). -/
-def callerDecl (body : Term) : Decl :=
+def callerDecl (body : Term) : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [], body := body }
 
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/

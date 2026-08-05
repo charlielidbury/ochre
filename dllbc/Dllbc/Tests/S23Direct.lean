@@ -186,15 +186,15 @@ example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 
 -- A back-less callee returning a PINNED value, and a consumer whose second
 -- parameter's type mentions its first argument.
-def pinOne : Decl := decl{ fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) } }
-def useIt : Decl := decl{ fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () } }
+def pinOne : FnDef := decl{ fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) } }
+def useIt : FnDef := decl{ fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () } }
 example : Migrate.progOkOf pinOne = true := by native_decide
 example : Migrate.progOkOf useIt = true := by native_decide
 
 -- The caller destructures the returned pair and feeds BOTH halves onward: `h`'s
 -- type is `Id σa (S Z)` for the very σa bound to `a`. This is the caller-side
 -- shape every back-less callee in the rest of M23 depends on.
-def usePin : Decl :=
+def usePin : FnDef :=
   decl{ fn usePin () -> Unit
         { let p = pinOne();
           match p { Pair(a, h) => { useIt(a, h); () } } } }
@@ -202,8 +202,8 @@ example : Migrate.progOkOf usePin [pinOne, useIt, usePin] = true := by native_de
 
 -- Not vacuous (a): the pin says `S Z`; a consumer wanting `S (S Z)` is rejected —
 -- so the threaded type is the callee's actual claim, not a rubber stamp.
-def useItLie : Decl := decl{ fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () } }
-def usePinLie : Decl :=
+def useItLie : FnDef := decl{ fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () } }
+def usePinLie : FnDef :=
   decl{ fn usePinLie () -> Unit
         { let p = pinOne();
           match p { Pair(a, h) => { useItLie(a, h); () } } } }
@@ -213,8 +213,8 @@ example : Migrate.progRejectsOf usePinLie "does not have its parameter type" [pi
 -- NOTHING about the value it got back — `Refl` cannot inhabit `Id σa (S Z)`. The
 -- pin is what carries the knowledge across the boundary, which is the whole
 -- premise of removing declared backs.
-def plainOne : Decl := decl{ fn plainOne () -> Nat { S Z } }
-def useUnpinned : Decl :=
+def plainOne : FnDef := decl{ fn plainOne () -> Nat { S Z } }
+def useUnpinned : FnDef :=
   decl{ fn useUnpinned () -> Unit { let a = plainOne(); useIt(a, Refl); () } }
 example : Migrate.progRejectsOf useUnpinned "does not have its parameter type" [plainOne, useIt, useUnpinned] = true := by native_decide
 
@@ -222,7 +222,7 @@ example : Migrate.progRejectsOf useUnpinned "does not have its parameter type" [
 
     A call is checked against a signature alone (§5.3) — recursion forces that — so
     a SELF-call is admitted at the function's own declared return type. Through M22
-    that return type was `Unit` for every recursive Decl, and the real content lived
+    that return type was `Unit` for every recursive FnDef, and the real content lived
     in the declared `back`, checked by conversion. Remove the backs and the return
     type IS the postcondition, at which point admitting a self-call unconditionally
     is the Hoare rule for recursion with its side condition deleted: every false
@@ -245,14 +245,14 @@ example : Migrate.progRejectsOf useUnpinned "does not have its parameter type" [
 
 -- The honest shape, and the one the rest of M23 rides: structural decrease on a
 -- declared fuel argument.
-def recGood : Decl :=
+def recGood : FnDef :=
   decl{ fn recGood [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(m) => recGood(m) } } }
 example : Migrate.progOkOf recGood = true := by native_decide
 
--- BRANCH 1 — no `[k]` at all. THE headline control: this exact Decl was accepted
+-- BRANCH 1 — no `[k]` at all. THE headline control: this exact FnDef was accepted
 -- before the guard, and it proves `Z = S Z`.
-def recBad : Decl := decl{ fn recBad () -> Id Nat Z (S Z) { recBad() } }
+def recBad : FnDef := decl{ fn recBad () -> Id Nat Z (S Z) { recBad() } }
 -- MIGRATES, AND IS STILL REFUSED — with a different sentence, which is the whole
 -- of what the guard's deletion costs. §7 makes a recursive occurrence the `ih`
 -- BINDER, and §8 makes scope the let-chain: a self-call resolves to nothing,
@@ -262,7 +262,7 @@ example : Migrate.progRejectsOf recBad "unknown function" = true := by native_de
 
 -- BRANCH 2 — `[k]` declared, but the self-call passes the SAME fuel. Equal is not
 -- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
-def recSame : Decl := decl{ fn recSame [n] (n : Nat) -> Id Nat Z (S Z) { recSame(n) } }
+def recSame : FnDef := decl{ fn recSame [n] (n : Nat) -> Id Nat Z (S Z) { recSame(n) } }
 -- REFUSED AT THE ELABORATION, which is where this branch's content now lives:
 -- §7 makes `ih` the sealed self-view AT THE PREDECESSOR, so a self-call at any
 -- other argument has nothing to become, and `fnElab` says so rather than emitting
@@ -276,7 +276,7 @@ example : (Migrate.refusal [recSame] recSame).any
 -- (Without this control the previous two would pass on a guard that merely
 -- required *something* to decrease — which is unsound, since alternating branches
 -- can each decrease a different coordinate forever.)
-def recWrongIdx : Decl :=
+def recWrongIdx : FnDef :=
   decl{ fn recWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
         { match m { Z => Refl, S(m2) => recWrongIdx(n, m2) } } }
 example : (Migrate.refusal [recWrongIdx] recWrongIdx).any
@@ -284,14 +284,14 @@ example : (Migrate.refusal [recWrongIdx] recWrongIdx).any
 
 -- …and the same body with the honest index declared is accepted, so branch 3 is
 -- about the index, not about the body.
-def recRightIdx : Decl :=
+def recRightIdx : FnDef :=
   decl{ fn recRightIdx [m] (n : Nat, m : Nat) -> Id Nat Z Z
         { match m { Z => Refl, S(m2) => recRightIdx(n, m2) } } }
 example : Migrate.progOkOf recRightIdx = true := by native_decide
 
 -- BRANCH 4 — an INCREASE reads as "not a subterm", not as a decrease: `S(m2)`
 -- against a snapshot of `S m2` is equality one level up, and equality never passes.
-def recGrow : Decl :=
+def recGrow : FnDef :=
   decl{ fn recGrow [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(m2) => recGrow(S(m2)) } } }
 example : (Migrate.refusal [recGrow] recGrow).any
@@ -301,8 +301,8 @@ example : (Migrate.refusal [recGrow] recGrow).any
 -- let each admit the other's postcondition with nothing decreasing anywhere: the
 -- same hole through two doors. Rejected outright (§8's measures are where a general
 -- story would live).
-def recMutA : Decl := decl{ fn recMutA () -> Id Nat Z (S Z) { recMutB() } }
-def recMutB : Decl := decl{ fn recMutB () -> Id Nat Z (S Z) { recMutA() } }
+def recMutA : FnDef := decl{ fn recMutA () -> Id Nat Z (S Z) { recMutB() } }
+def recMutB : FnDef := decl{ fn recMutB () -> Id Nat Z (S Z) { recMutA() } }
 -- Same replacement, and §8 predicted exactly this: mutual recursion "becomes
 -- unwritable" rather than staying rejected, because `recMutB` is not in scope
 -- above `recMutA`. The rejection names the forward reference.
@@ -310,7 +310,7 @@ example : Migrate.progRejectsOf recMutA "unknown function" [recMutA, recMutB] = 
   native_decide
 
 -- The guard is STRUCTURAL, not Nat-specific: a list fuel decreases the same way.
-def recList : Decl :=
+def recList : FnDef :=
   decl{ fn recList [l] (l : List Nat) -> Id Nat Z Z
         { match l { Nil => Refl, Cons(h, t) => recList(t) } } }
 example : Migrate.progOkOf recList = true := by native_decide
@@ -318,7 +318,7 @@ example : Migrate.progOkOf recList = true := by native_decide
 -- Two constructors down is still a strict subterm (the relation is transitive, not
 -- just one-step) — which the quicksort recursion needs, since it peels `cnt` twice
 -- before recursing.
-def recDeep : Decl :=
+def recDeep : FnDef :=
   decl{ fn recDeep [n] (n : Nat) -> Id Nat Z Z
         { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => recDeep(b) } } } }
 -- **A MACRO LIMIT, NOT A CALCULUS ONE** (§12 open 3, corrected in M27-P1). The
@@ -335,7 +335,7 @@ example : (Migrate.refusal [recDeep] recDeep).any
 -- (S6Call) passes no counter at all, just the tail reborrow. Snapshots are
 -- entry-knowledge and are never rewritten by mutation (§3.2), so the payload's
 -- structural decomposition is a fixed, well-founded order.
-def recCursor : Decl :=
+def recCursor : FnDef :=
   decl{ fn recCursor [v] (v : &mut List Nat) -> Unit
         { match v { Nil => (), Cons(hd, tl) => { *hd := 0; recCursor(tl); () } } } }
 -- **STAYS ON THE DECLARATION PATH, and dies with it.** `[v]` payload decrease has
@@ -348,7 +348,7 @@ def recCursor : Decl :=
 
 -- A NON-self call to a recursive function is untouched — the guard is about
 -- self-calls, and every other call is the ordinary §5.3 signature rule.
-def recCaller : Decl := decl{ fn recCaller () -> Id Nat Z Z { recGood(S Z) } }
+def recCaller : FnDef := decl{ fn recCaller () -> Id Nat Z Z { recGood(S Z) } }
 example : Migrate.progOkOf recCaller [recGood, recCaller] = true := by native_decide
 
 /-! ## Stage (ii): ownership splitting — `split_off` and `append_back`
@@ -370,7 +370,7 @@ example : Migrate.progOkOf recCaller [recGood, recCaller] = true := by native_de
 
 -- `append_back(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
 -- `append (old *v) w` — the whole postcondition, and the whole description.
-def appendBack : Decl :=
+def appendBack : FnDef :=
   decl{ fn append_back [v] (v : &mut List Nat, w : List Nat)
         -> Id (List Nat) (*v) (append (old *v) w)
         { match v {
@@ -398,7 +398,7 @@ def appendBack : Decl :=
 -- returned tail is Σ-PINNED to `drop i (old *v)` — the caller's only knowledge of a
 -- value it did not compute, which is why stage (ii)'s prelude above had to land
 -- first.
-def splitOff : Decl :=
+def splitOff : FnDef :=
   decl{ fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
         -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
              → Id (List Nat) ret (drop i (old *v))
@@ -447,11 +447,11 @@ def listNatT : Term := .app (.const "List") (.const "Nat")
 def iT : Term := .var ⟨1, "i"⟩
 def sucT (t : Term) : Term := .ctorApp "S" [t]
 -- SUBJECT: deliberately-wrong return types, built as raw Terms — the lie IS the test.
-def soTwin (a b : Term) : Decl :=
+def soTwin (a b : Term) : FnDef :=
   { splitOff with retType := .sigmaT listNatT (.sigmaT (.idT listNatT dvT a) (.idT listNatT (.pvar 1) b)) }
-def splitOffLieTake : Decl := { soTwin (Std.takeT (sucT iT) oldvT) (Std.dropT iT oldvT) with name := "split_off" }
-def splitOffLieDrop : Decl := { soTwin (Std.takeT iT oldvT) (Std.dropT (sucT iT) oldvT) with name := "split_off" }
-def splitOffLieSwap : Decl := { soTwin (Std.dropT iT oldvT) (Std.takeT iT oldvT) with name := "split_off" }
+def splitOffLieTake : FnDef := { soTwin (Std.takeT (sucT iT) oldvT) (Std.dropT iT oldvT) with name := "split_off" }
+def splitOffLieDrop : FnDef := { soTwin (Std.takeT iT oldvT) (Std.dropT (sucT iT) oldvT) with name := "split_off" }
+def splitOffLieSwap : FnDef := { soTwin (Std.dropT iT oldvT) (Std.takeT iT oldvT) with name := "split_off" }
 example : Migrate.progRejectsOf splitOffLieTake "does not have return type" = true := by native_decide
 example : Migrate.progRejectsOf splitOffLieDrop "does not have return type" = true := by native_decide
 example : Migrate.progRejectsOf splitOffLieSwap "does not have return type" = true := by native_decide
@@ -459,7 +459,7 @@ example : Migrate.progRejectsOf splitOffLieSwap "does not have return type" = tr
 -- The BODY lie: the congruence forgets to put `*hd` back on the front (identity
 -- instead of `Cons (*hd) ·`), so the prefix conjunct is off by the head element.
 -- Rejected on the RECURSIVE path, which no spec twin above reaches.
-def splitOffLieHead : Decl :=
+def splitOffLieHead : FnDef :=
   decl{ fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
         -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
              → Id (List Nat) ret (drop i (old *v))
@@ -481,7 +481,7 @@ example : Migrate.progRejectsOf splitOffLieHead "does not have return type" = tr
 
 /-! ### The executing differential — the body really splits
 
-    Migrate.progOkOf proves the postcondition symbolically; this runs the SAME Decl on
+    Migrate.progOkOf proves the postcondition symbolically; this runs the SAME FnDef on
     concrete lists and confirms `*v` keeps `take i l` while the returned value is
     `drop i l`, at the two boundaries and in the middle. -/
 
@@ -533,7 +533,7 @@ example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything,
 
 -- `set_at(v, i, x)`: write `x` at position `i`, in place, through the body's own
 -- field reborrows. The exit reading is `set i x (old *v)` — provable, no back.
-def setAt : Decl :=
+def setAt : FnDef :=
   decl{ fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v))
         -> Id (List Nat) (*v) (set i x (old *v))
         { match i {
@@ -554,7 +554,7 @@ example : Migrate.progOkOf setAt = true := by native_decide
 
 -- `swap_at(v, i, j)`: two `set_at`s and the M22 bridge, ensuring the model function
 -- `swapL` directly. Not recursive itself — the recursion is `set_at`'s.
-def swapAt : Decl :=
+def swapAt : FnDef :=
   decl{ fn swap_at (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
                     p2 : Le (S j) (len *v), hi : Le (S i) (len *v))
         -> Id (List Nat) (*v) (swapL i j (old *v))
@@ -600,13 +600,13 @@ example : Migrate.progOkOf swapAt [setAt, swapAt] = true := by native_decide
 -- SUBJECT: deliberately-wrong return types (raw Terms) — the lie IS the test.
 def setT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.set k) x) l
 def swapT (a b l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.swapL a) b) l
-def setAtLieIdx : Decl := { setAt with retType := .idT listNatT dvT (setT (sucT iT) (.var ⟨2, "x"⟩) oldvT) }
-def setAtLieNoop : Decl := { setAt with retType := .idT listNatT dvT oldvT }
+def setAtLieIdx : FnDef := { setAt with retType := .idT listNatT dvT (setT (sucT iT) (.var ⟨2, "x"⟩) oldvT) }
+def setAtLieNoop : FnDef := { setAt with retType := .idT listNatT dvT oldvT }
 example : Migrate.progRejectsOf setAtLieIdx "does not have return type" = true := by native_decide
 example : Migrate.progRejectsOf setAtLieNoop "does not have return type" = true := by native_decide
 
-def swapAtLieIdx : Decl := { swapAt with retType := .idT listNatT dvT (swapT (sucT iT) (.var ⟨2, "j"⟩) oldvT) }
-def swapAtLieNoop : Decl := { swapAt with retType := .idT listNatT dvT oldvT }
+def swapAtLieIdx : FnDef := { swapAt with retType := .idT listNatT dvT (swapT (sucT iT) (.var ⟨2, "j"⟩) oldvT) }
+def swapAtLieNoop : FnDef := { swapAt with retType := .idT listNatT dvT oldvT }
 example : Migrate.progRejectsOf swapAtLieIdx "does not have return type" [setAt, swapAtLieIdx] = true := by native_decide
 example : Migrate.progRejectsOf swapAtLieNoop "does not have return type" [setAt, swapAtLieNoop] = true := by native_decide
 
@@ -658,7 +658,7 @@ example : runSwapAt [4,1,3,2,5] 0 4 = true := by native_decide  -- full span
     idiom again — take-and-refill through the body's own borrows — and checks the
     same way. -/
 
-def insertAt : Decl :=
+def insertAt : FnDef :=
   decl{ fn insert_at [k] (v : &mut List Nat, k : Nat, x : Nat)
         -> Id (List Nat) (*v) (insertL k x (old *v))
         { match k {
@@ -677,9 +677,9 @@ example : Migrate.progOkOf insertAt = true := by native_decide
 
 -- SUBJECT: deliberately-wrong return types (raw Terms).
 def insLT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.insertL k) x) l
-def insertAtLieIdx : Decl :=
+def insertAtLieIdx : FnDef :=
   { insertAt with retType := .idT listNatT dvT (insLT (sucT (.var ⟨1, "k"⟩)) (.var ⟨2, "x"⟩) oldvT) }
-def insertAtLieNoop : Decl := { insertAt with retType := .idT listNatT dvT oldvT }
+def insertAtLieNoop : FnDef := { insertAt with retType := .idT listNatT dvT oldvT }
 example : Migrate.progRejectsOf insertAtLieIdx "does not have return type" = true := by native_decide
 example : Migrate.progRejectsOf insertAtLieNoop "does not have return type" = true := by native_decide
 
@@ -721,8 +721,8 @@ example : runInsertAt [1,2,3] 3 9 = true := by native_decide
     does not check inside the `True` branch — kept here as the negative half of the
     pair: -/
 
-def needLe : Decl := decl{ fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () } }
-def branchKnowledge : Decl :=
+def needLe : FnDef := decl{ fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () } }
+def branchKnowledge : FnDef :=
   decl{ fn branchKnowledge (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match c {
@@ -753,7 +753,7 @@ example : Migrate.progRejectsOf branchKnowledge "does not have its parameter typ
     place of `Refl`. The pair is the whole claim — the rule does exactly one new
     thing. -/
 
-def branchKnowledgeEq : Decl :=
+def branchKnowledgeEq : FnDef :=
   decl{ fn branchKnowledgeEq (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
@@ -765,8 +765,8 @@ example : Migrate.progOkOf branchKnowledgeEq [needLe, branchKnowledgeEq] = true 
 -- Both branches, in the direction each can actually prove: `False` gives
 -- `Id Bool (leb a b) False`, hence `Le (S b) a` — so the equation is per-branch,
 -- not a single fact smuggled in twice.
-def needGt : Decl := decl{ fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () } }
-def branchKnowledgeBoth : Decl :=
+def needGt : FnDef := decl{ fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () } }
+def branchKnowledgeBoth : FnDef :=
   decl{ fn branchKnowledgeBoth (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
@@ -778,7 +778,7 @@ example : Migrate.progOkOf branchKnowledgeBoth [needLe, needGt, branchKnowledgeB
 
 -- The `if` sugar carries it too (`if h : c { … } else { … }`), which is the form the
 -- partition body wants.
-def branchKnowledgeIf : Decl :=
+def branchKnowledgeIf : FnDef :=
   decl{ fn branchKnowledgeIf (a : Nat, b : Nat) -> Unit
         { if e : leb a b { needLe(a, b, leb_true_le a b e); () }
           else { needGt(a, b, leb_false_gt a b e); () } } }
@@ -794,7 +794,7 @@ example : Migrate.progOkOf branchKnowledgeIf [needLe, needGt, branchKnowledgeIf]
 
 -- (1) The equation is the branch's OWN constructor, not the other one: citing
 -- `leb_false_gt` on the True branch's `e : Id Bool (leb a b) True` is rejected.
-def branchEqSwapped : Decl :=
+def branchEqSwapped : FnDef :=
   decl{ fn branchEqSwapped (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
@@ -807,8 +807,8 @@ example : Migrate.progRejectsOf branchEqSwapped "does not have its parameter typ
 -- (2) The equation is about the SPINE THAT WAS SPLIT ON, not any spine: split on
 -- `leb a b`, then claim the equation is about `leb b a`. Rejected — so the minted
 -- type is read off the abstracted scrutinee, not fabricated per use site.
-def needLeSwap : Decl := decl{ fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () } }
-def branchEqWrongSpine : Decl :=
+def needLeSwap : FnDef := decl{ fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () } }
+def branchEqWrongSpine : FnDef :=
   decl{ fn branchEqWrongSpine (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
@@ -821,18 +821,18 @@ example : Migrate.progRejectsOf branchEqWrongSpine "does not have its parameter 
 -- (3) An ORDINARY symbolic split still yields only `Refl`: `n`'s equation in the
 -- `S` branch is `Id Nat (S σm) (S σm)` — ⇜ already rewrote the pre-split value, so
 -- both endpoints are the constructor tree and nothing off-diagonal is derivable.
-def wantEqLie : Decl :=
+def wantEqLie : FnDef :=
   decl{ fn wantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () } }
-def branchEqPlainSym : Decl :=
+def branchEqPlainSym : FnDef :=
   decl{ fn branchEqPlainSym (n : Nat) -> Unit
         { match e : n { Z => (), S(m) => { wantEqLie(m, e); () } } } }
 example : Migrate.progRejectsOf branchEqPlainSym "does not have its parameter type"
   [wantEqLie, branchEqPlainSym] = true := by native_decide
 
 -- …and the reflexive reading of that same equation IS available: `Id Nat (S m) (S m)`.
-def wantRefl : Decl :=
+def wantRefl : FnDef :=
   decl{ fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () } }
-def branchEqPlainSymRefl : Decl :=
+def branchEqPlainSymRefl : FnDef :=
   decl{ fn branchEqPlainSymRefl (n : Nat) -> Unit
         { match e : n { Z => (), S(m) => { wantRefl(m, e); () } } } }
 example : Migrate.progOkOf branchEqPlainSymRefl [wantRefl, branchEqPlainSymRefl] = true := by
@@ -841,7 +841,7 @@ example : Migrate.progOkOf branchEqPlainSymRefl [wantRefl, branchEqPlainSymRefl]
 -- (4) The CONCRETE split (the executing side and any concrete scrutinee) binds the
 -- equation too, so a body written with `match h :` runs. The differential below
 -- exercises the same path end to end.
-def concreteEq : Decl :=
+def concreteEq : FnDef :=
   decl{ fn concreteEq () -> Unit
         { let n = S(Z);
           match e : n { Z => (), S(m) => { wantRefl(m, e); () } } } }
@@ -862,7 +862,7 @@ example : Migrate.progOkOf concreteEq [wantRefl, concreteEq] = true := by native
     definitionally. (This is a better program anyway: index arithmetic, not control
     flow, which is how the mutation was going to be expressed regardless.) -/
 
-def pick : Decl :=
+def pick : FnDef :=
   decl{ fn pick (v : &mut List Nat, x : Nat, p : Nat)
         -> Id (List Nat) (*v)
              (insertL (boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p)) x (old *v))
@@ -1056,7 +1056,7 @@ example : chk sap_bad_pivot sap_bad_pivot_ty = false := by native_decide
     comparison chose. In-place by this calculus's standards — the only list cell ever
     allocated is the one `Cons` a `Cons` becomes. -/
 
-def partition : Decl :=
+def partition : FnDef :=
   decl{ fn partition [v] (v : &mut List Nat, p : Nat)
         -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
              → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -1139,7 +1139,7 @@ def partition : Decl :=
     with the same telescope, so the body is shared verbatim and the lie is the only
     variable. -/
 
-def partLieUb : Decl :=
+def partLieUb : FnDef :=
   { partition with retType := (decl{ fn partLieUb (v : &mut List Nat, p : Nat)
       -> Σ (hi : List Nat) → Σ (hub : Ub p (old *v)) → Σ (hlb : Lb p hi)
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -1147,7 +1147,7 @@ def partLieUb : Decl :=
       { () } }).retType }
 -- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
-def partLieLb : Decl :=
+def partLieLb : FnDef :=
   { partition with retType := (decl{ fn partLieLb (v : &mut List Nat, p : Nat)
       -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p (*v))
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -1156,7 +1156,7 @@ def partLieLb : Decl :=
 -- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- The returned part dropped from the count: "everything stayed in `*v`".
-def partLieCountDrop : Decl :=
+def partLieCountDrop : FnDef :=
   { partition with retType := (decl{ fn partLieCountDrop (v : &mut List Nat, p : Nat)
       -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -1165,7 +1165,7 @@ def partLieCountDrop : Decl :=
 -- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- …and the count off by one, which no `Nil`-path argument can reach.
-def partLieCountShift : Decl :=
+def partLieCountShift : FnDef :=
   { partition with retType := (decl{ fn partLieCountShift (v : &mut List Nat, p : Nat)
       -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -1177,7 +1177,7 @@ def partLieCountShift : Decl :=
     part. Every spec twin above is refuted somewhere the `Nil` path can be blamed for;
     this one is wrong only on the recursive `True` path, and only in the count
     conjunct — the bounds still hold of a list with one element missing. -/
-def partitionLoses : Decl :=
+def partitionLoses : FnDef :=
   decl{ fn partitionLoses [v] (v : &mut List Nat, p : Nat)
         -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
              → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -1222,7 +1222,7 @@ def partitionLoses : Decl :=
 
 /-! ### The executing differential — the body really partitions
 
-    `Migrate.progOkOf` proves the four conjuncts symbolically; this runs the SAME Decl on
+    `Migrate.progOkOf` proves the four conjuncts symbolically; this runs the SAME FnDef on
     concrete lists and confirms `*v` ends as the `≤ p` sublist and the returned value
     as the `> p` one, ORDER PRESERVED (which no conjunct above asks for). It also
     exercises phase A's concrete-scrutinee branch end to end: `if e : leb x p` on a
@@ -1295,7 +1295,7 @@ example : chk Dllbc.StdLemmas.lb_perm Dllbc.StdLemmas.lb_perm_ty = true := by na
     as its arguments become available. Every one of them would disappear under the
     filed `old`-for-consumed-things feature; none of them is doing mathematical work. -/
 
-def quicksort : Decl :=
+def quicksort : FnDef :=
   decl{ fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
         -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
         { let l = *v;
@@ -1400,7 +1400,7 @@ def quicksort : Decl :=
 -- (1) SORTEDNESS lied onto the wrong subject: the ENTRY is claimed sorted. True at
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
-def qsLieSorted : Decl :=
+def qsLieSorted : FnDef :=
   { quicksort with retType := (decl{ fn qsLieSorted (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
       -> Σ (hs : Sorted (old *v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
       { () } }).retType }
@@ -1408,7 +1408,7 @@ def qsLieSorted : Decl :=
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
-def qsLieCount : Decl :=
+def qsLieCount : FnDef :=
   { quicksort with retType := (decl{ fn qsLieCount (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
       -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (old *v)) (count n (*v))
       { () } }).retType }
@@ -1419,7 +1419,7 @@ def qsLieCount : Decl :=
     recursive sorts, instead of `ub_perm`/`lb_perm`'s transports of them. Everything
     else is `quicksort` verbatim — this twin is generated from its source with two
     identifiers changed — so what the rejection isolates is exactly bound survival. -/
-def qsStaleBound : Decl :=
+def qsStaleBound : FnDef :=
   decl{ fn qsStaleBound [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
         -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
         { let l = *v;
@@ -1515,14 +1515,14 @@ def qsStaleBound : Decl :=
 -- name) and weaken it to `Unit`: the `Z` branch's `botElim` then has no ⊥ to
 -- eliminate, and the out-of-fuel path stops being dead. This is what makes the
 -- guard-plus-hypothesis pair TOTAL correctness rather than partial.
-def qsNoSuff : Decl :=
+def qsNoSuff : FnDef :=
   { quicksort with telescope := (decl{ fn qsNoSuff (fuel : Nat, v : &mut List Nat, hfuel : Unit)
       -> Unit { () } }).telescope }
 -- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-! ### The executing differential — it really sorts
 
-    `Migrate.progOkOf` proves `Sorted ∧ Perm` symbolically; this runs the SAME Decl on
+    `Migrate.progOkOf` proves `Sorted ∧ Perm` symbolically; this runs the SAME FnDef on
     concrete lists and compares against Lean's own sort. Duplicates and an
     already-sorted input included, since the pivot path and the empty-part paths are
     where a partition-based sort actually breaks. -/

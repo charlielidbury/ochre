@@ -52,7 +52,7 @@ example : (Val.nfV 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofN
 -- `nth (v, i, p : Le (S i) (len *v)) → &mut Nat`. Nil: `p : Le (S i) 0 = ⊥`,
 -- discharged. Cons/S(k): the recursive call takes `p` unchanged — `Le (S(S k))
 -- (S (len *tl)) ≡ Le (S k) (len *tl)` definitionally, no lemma.
-def nth : Decl :=
+def nth : FnDef :=
   decl{ fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
     match v {
       Nil => botElim Unit p,
@@ -65,7 +65,7 @@ example : Migrate.progOkOf nth = true := by native_decide
 
 /-! ## Bounds-proof `nth2` — the multi-issued group, two bounds proofs -/
 
-def nth2 : Decl :=
+def nth2 : FnDef :=
   decl{ fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat {
     match v {
@@ -85,7 +85,7 @@ example : Migrate.progOkOf nth2 ([nth, nth2]) = true := by native_decide
 
 /-! ## Bounds-proof `swap` -/
 
-def swap : Decl :=
+def swap : FnDef :=
   decl{ fn swap (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit {
     let pr = nth2(v, i, j, pij, p2);
@@ -132,7 +132,7 @@ example : Migrate.progRejectsOf { name := "oob", retType := .const "Unit", teles
 
 -- Both cursors live, then the owner is demanded: `endGroup` ends both issued
 -- borrows in list order, then releases `v`.
-def cascade : Decl :=
+def cascade : FnDef :=
   { name := "cascade", retType := .const "Unit", telescope := [],
     body := dllbcWith [] {
       let x = Cons(1, Cons(2, Cons(3, Nil)));
@@ -142,7 +142,7 @@ def cascade : Decl :=
 example : Migrate.progOkOf cascade ([nth, nth2, cascade]) = true := by native_decide
 
 -- Take a cursor's payload (hole) then demand the owner: the group cannot end.
-def rejectProbe : Decl :=
+def rejectProbe : FnDef :=
   { name := "reject", retType := .const "Unit", telescope := [],
     body := dllbcWith [] {
       let x = Cons(1, Cons(2, Cons(3, Nil)));

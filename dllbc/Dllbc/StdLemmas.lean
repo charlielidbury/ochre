@@ -493,7 +493,7 @@ def count_swapL'_ty : Term := pure{
 
 /-! ## The BRIDGE — set/nth exit form ≡ `swapL` (§22, direct proving)
 
-    In direct-proving mode a swap Decl's return type reads the EXIT snapshot, and
+    In direct-proving mode a swap FnDef's return type reads the EXIT snapshot, and
     the exit reading of `swapS`'s body is the set/nth composition its two crossed
     writes leave behind — `set i (nth j l) (set j (nth i l) l)` — NOT the `swapL`
     model. This bridges the two so every `swapL`-based lemma (count_swapL',
@@ -1016,7 +1016,7 @@ def len_sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (
     cnt elims, but the binder is syntactically required. -/
 
 -- Left sub-range bound: `Le (add lo i) (len (partition …))`, i = the pivot index.
--- Lifted verbatim from the quicksort Decl's `bl` (partScanSizeL gives i+g = cnt-1,
+-- Lifted verbatim from the quicksort FnDef's `bl` (partScanSizeL gives i+g = cnt-1,
 -- len_partitionRangeL moves the entry bound onto the partitioned list).
 def sortRangeBL : Term := pure{
   λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat). λ (hb : Le (add lo (S (S cnt''))) (len l)).
@@ -1046,7 +1046,7 @@ def sortRangeBL_ty : Term := pure{
     Le (add lo (partIdxRangeL lo (S (S cnt'')) l)) (len (partitionRangeL lo (S (S cnt'')) l)) }
 
 -- Right sub-range bound: `Le (add (S (add lo i)) g) (len (sort left (partition …)))`.
--- Lifted verbatim from the quicksort Decl's `br` (len_sortRangeL then
+-- Lifted verbatim from the quicksort FnDef's `br` (len_sortRangeL then
 -- len_partitionRangeL move the bound back over both mutations; the arithmetic
 -- `add (S (add lo i)) g = add lo (S (i+g)) = add lo cnt` uses add_assoc/add_succ).
 def sortRangeBR : Term := pure{

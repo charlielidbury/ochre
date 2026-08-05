@@ -57,7 +57,7 @@ def cv : Var := ⟨2, "c"⟩
 def useTransBody : Term :=
   .app (.app (.app (.app (.app Dllbc.StdLemmas.le_trans (.var av)) (.var bv)) (.var cv))
     (.var ⟨3, "p"⟩)) (.var ⟨4, "q"⟩)
-def useTrans : Decl :=
+def useTrans : FnDef :=
   { name := "useTrans", retType := leT (.var av) (.var cv),
     telescope := [("a", natT), ("b", natT), ("c", natT),
                   ("p", leT (.var av) (.var bv)), ("q", leT (.var bv) (.var cv))],
@@ -74,10 +74,10 @@ example : Migrate.progOkOf useTrans = true := by native_decide
 def LeFn : Term := Std.LeFnT
 def badReflClosed : Term := pure{
   λ (n : Nat). elim n return (λ (m : Nat). LeFn Z m) { Z => unit, S (k) ih => ih } }
--- SUBJECT: a deliberately-lying Decl — retType claims `Le n n` while the (surface)
+-- SUBJECT: a deliberately-lying FnDef — retType claims `Le n n` while the (surface)
 -- body proves `Le Z n`. Hand-built raw so the lie is explicit; converting it to
 -- decl{} would obscure exactly what the negative test demonstrates.
-def badRefl : Decl :=
+def badRefl : FnDef :=
   { name := "badRefl", retType := Std.LeT (.var ⟨0, "n"⟩) (.var ⟨0, "n"⟩),
     telescope := [("n", natT)], body := (.app badReflClosed (.var ⟨0, "n"⟩)) }
 example : Migrate.progRejectsOf badRefl "does not have return type" = true := by native_decide

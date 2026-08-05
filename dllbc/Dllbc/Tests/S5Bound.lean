@@ -38,7 +38,7 @@ def sigVecF : Term := .sigmaT natT (.app (.app vecFT natT) (.pvar 0))
 -- `push (e : Nat, v : &mut List Nat) { let tail = *v; *v := Cons(e, tail); () }`
 -- — five lines Rust rejects (E0507), accepted here: the audit sees `Cons σₑ σ`
 -- convert against `List Nat`.
-def pushList : Decl :=
+def pushList : FnDef :=
   decl{ fn push (e : Nat, v : &mut List Nat) -> Unit {
     let tail = *v;
     *v := Cons(e, tail);
@@ -65,7 +65,7 @@ example : Migrate.progRejectsOf
 --    *xs := Pair(e, *xs); *l := S(*l); () } } }` — both coupled fields updated
 -- in place; the audit computes `VecF Nat (S σₗ)` under the (now concrete)
 -- index and closes the pair.
-def vecPush : Decl :=
+def vecPush : FnDef :=
   decl{ fn push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
     match v { Pair(l, xs) => { *xs := Pair(e, *xs); *l := S(*l); () } }
   } }

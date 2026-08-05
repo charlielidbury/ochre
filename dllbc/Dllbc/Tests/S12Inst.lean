@@ -36,20 +36,20 @@ namespace Dllbc.Tests.S12Inst
 
 -- `use_refl (n : Nat) → Le n n = le_refl n`. The body ⇒-lifts the proof term
 -- `le_refl n` (pure lift, §11); the audit checks it against the pinned `Le n n`.
-def useRefl : Decl :=
+def useRefl : FnDef :=
   decl{ fn use_refl (n : Nat) -> Le n n { le_reflT n } }
 example : Migrate.progOkOf useRefl = true := by native_decide
 
 -- A caller returning `Le 5 5` via `use_refl(5)`: the callee's `Le n n` is
 -- instantiated at `n := 5`, so the fresh existential is typed `Le 5 5`.
-def callerRet : Decl :=
+def callerRet : FnDef :=
   decl{ fn callerRet () -> Le 5 5 { use_refl(5) } }
 example : Migrate.progOkOf callerRet ([useRefl, callerRet]) = true := by native_decide
 
 -- Symbolic actual: `f (n : Nat) → Le n n = use_refl(n)`. Instantiation substitutes
 -- the caller's σ symbolically (`Le σ σ`); the pinned return type is `Le σ σ`, and
 -- the returned existential is accepted at it.
-def symCall : Decl :=
+def symCall : FnDef :=
   decl{ fn symCall (n : Nat) -> Le n n { use_refl(n) } }
 example : Migrate.progOkOf symCall ([useRefl, symCall]) = true := by native_decide
 
@@ -57,17 +57,17 @@ example : Migrate.progOkOf symCall ([useRefl, symCall]) = true := by native_deci
 
 -- `needs (a : Nat, p : Le a 2) → Unit`. The second parameter's type must
 -- instantiate to `Le (actual) 2` BEFORE `p` is checked.
-def needs : Decl :=
+def needs : FnDef :=
   decl{ fn needs (a : Nat, p : Le a 2) -> Unit { () } }
 
 -- `needs(1, ())`: `Le 1 2` whnf's to ⊤, which `()` inhabits — accepted.
-def callNeeds1 : Decl :=
+def callNeeds1 : FnDef :=
   decl{ fn callNeeds1 () -> Unit { needs(1, ()) } }
 example : Migrate.progOkOf callNeeds1 ([needs, callNeeds1]) = true := by native_decide
 
 -- `needs(3, ())`: instantiation gives `Le 3 2` = ⊥, which `()` cannot inhabit —
 -- REJECTED. Without instantiation the parameter type would never resolve to ⊥.
-def callNeeds3 : Decl :=
+def callNeeds3 : FnDef :=
   decl{ fn callNeeds3 () -> Unit { needs(3, ()) } }
 example : Migrate.progRejectsOf callNeeds3 "does not have its parameter type" ([needs, callNeeds3]) = true := by
   native_decide
@@ -76,12 +76,12 @@ example : Migrate.progRejectsOf callNeeds3 "does not have its parameter type" ([
 
 -- `observe (b : &mut List Nat, p : Sorted (*b)) → Unit`. The second parameter's
 -- type reads the actual borrow's payload snapshot at the call site.
-def observe : Decl :=
+def observe : FnDef :=
   decl{ fn observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () } }
 
 -- Passing a borrow of `[1,2]`: `Sorted (*b)` instantiates to `Sorted [1,2]`
 -- (a product of ⊤s), which the unit-pair nest inhabits — accepted.
-def observeGood : Decl :=
+def observeGood : FnDef :=
   decl{ fn observeGood () -> Unit {
     let x = Cons(1, Cons(2, Nil));
     let bb = &mut x;
@@ -93,7 +93,7 @@ example : Migrate.progOkOf observeGood ([observe, observeGood]) = true := by nat
 
 -- Passing a borrow of `[2,1]`: `Sorted [2,1]` contains ⊥ at the first bound, so
 -- the same proof fails — REJECTED. The dependent parameter caught the unsortedness.
-def observeBad : Decl :=
+def observeBad : FnDef :=
   decl{ fn observeBad () -> Unit {
     let x = Cons(2, Cons(1, Nil));
     let bb = &mut x;
@@ -111,9 +111,9 @@ example : Migrate.progRejectsOf observeBad "does not have its parameter type" ([
 -- `n := 2`; that refinement must reach `r`'s (call-result) sctx type, turning it
 -- into `Le 2 2` — which `needsLe22` then requires. Green iff the refinement
 -- propagated to the instantiated call result.
-def needsLe22 : Decl :=
+def needsLe22 : FnDef :=
   decl{ fn needsLe22 (q : Le 2 2) -> Unit { () } }
-def refineTest : Decl :=
+def refineTest : FnDef :=
   decl{ fn refineTest (n : Nat, pf : Id Nat n 2) -> Unit {
     let r = use_refl(n); match pf { Refl => needsLe22(r) } } }
 example : Migrate.progOkOf refineTest ([useRefl, needsLe22, refineTest]) = true := by native_decide
@@ -122,7 +122,7 @@ example : Migrate.progOkOf refineTest ([useRefl, needsLe22, refineTest]) = true 
 
 -- `classify (b : Bool) → Nat = if b { 1 } else { 0 }` desugars to a fresh-var let
 -- and a `match` on it; a symbolic `Bool` splits into two audited paths.
-def classify : Decl :=
+def classify : FnDef :=
   decl{ fn classify (b : Bool) -> Nat { if b { 1 } else { 0 } } }
 example : Migrate.progOkOf classify = true := by native_decide
 

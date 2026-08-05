@@ -75,31 +75,31 @@ open Dllbc.Tests
 
 /-! ## The pools
 
-    One per corpus file: every `Decl` it defines, plus the imported ones its own
+    One per corpus file: every `FnDef` it defines, plus the imported ones its own
     tables use (S19 checks against S17's `nth`/`nth2`/`swapS`). A pool that is
     missing a callee makes both paths reject for the same wrong reason, so
     completeness matters — and the counts are what expose it. -/
 
-def p5 : List Decl := [S5Bound.pushList, S5Bound.vecPush]
-def p6 : List Decl := [S6Call.pushList, S6Call.wireCaller, S6Call.zeroAll, S6Call.toNat,
+def p5 : List FnDef := [S5Bound.pushList, S5Bound.vecPush]
+def p6 : List FnDef := [S6Call.pushList, S6Call.wireCaller, S6Call.zeroAll, S6Call.toNat,
   S6Call.toNatCaller, S6Call.rbCaller]
-def p7 : List Decl := [S7Group.choose, S7Group.chooseCaller, S7Group.through, S7Group.throughCaller]
-def p9 : List Decl := [S9Diff.through, S9Diff.advance, S9Diff.choose, S9Diff.push]
-def p10 : List Decl := [S10Ford.learn, S10Ford.learnObs, S10Ford.learnBorrow,
+def p7 : List FnDef := [S7Group.choose, S7Group.chooseCaller, S7Group.through, S7Group.throughCaller]
+def p9 : List FnDef := [S9Diff.through, S9Diff.advance, S9Diff.choose, S9Diff.push]
+def p10 : List FnDef := [S10Ford.learn, S10Ford.learnObs, S10Ford.learnBorrow,
   S10Ford.rigidStuck, S10Ford.occursFn]
-def p11 : List Decl := [S11Lib.retRefl, S11Lib.storeProof, S11Lib.discharge]
-def p12 : List Decl := [S12Inst.useRefl, S12Inst.callerRet, S12Inst.symCall, S12Inst.needs,
+def p11 : List FnDef := [S11Lib.retRefl, S11Lib.storeProof, S11Lib.discharge]
+def p12 : List FnDef := [S12Inst.useRefl, S12Inst.callerRet, S12Inst.symCall, S12Inst.needs,
   S12Inst.callNeeds1, S12Inst.callNeeds3, S12Inst.observe, S12Inst.observeGood,
   S12Inst.observeBad, S12Inst.needsLe22, S12Inst.refineTest, S12Inst.classify]
-def p14 : List Decl := [S14Bounds.nth, S14Bounds.nth2, S14Bounds.swap, S14Bounds.cascade,
+def p14 : List FnDef := [S14Bounds.nth, S14Bounds.nth2, S14Bounds.swap, S14Bounds.cascade,
   S14Bounds.rejectProbe]
-def p15 : List Decl := [S15Elab.useTrans, S15Elab.badRefl]
-def p16 : List Decl := [S16Spec.swapS01, S16Spec.swapCaller]
-def p17 : List Decl := [S17Spec.throughOk, S17Spec.caller,
+def p15 : List FnDef := [S15Elab.useTrans, S15Elab.badRefl]
+def p16 : List FnDef := [S16Spec.swapS01, S16Spec.swapCaller]
+def p17 : List FnDef := [S17Spec.throughOk, S17Spec.caller,
   S17Spec.throughOpaque, S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN, S17Spec.spcCaller]
-def p18 : List Decl := [S18Rewrite.certConsHit, S18Rewrite.certConsHitLie]
+def p18 : List FnDef := [S18Rewrite.certConsHit, S18Rewrite.certConsHitLie]
 
-def p19 : List Decl := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
+def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
   S19Partition.certSwapCount,
   S19Partition.certSwapCountLie,
   S19Partition.pivotPlace,
@@ -113,7 +113,7 @@ def p19 : List Decl := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
   S19Partition.exitReject,
   S19Partition.twoRec]
 
-def p23 : List Decl := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S23Direct.useItLie,
+def p23 : List FnDef := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S23Direct.useItLie,
   S23Direct.usePinLie, S23Direct.plainOne, S23Direct.useUnpinned, S23Direct.recGood,
   S23Direct.recBad, S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recRightIdx,
   S23Direct.recGrow, S23Direct.recMutA, S23Direct.recMutB, S23Direct.recList, S23Direct.recDeep,
@@ -131,7 +131,7 @@ def p23 : List Decl := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S23
   S23Direct.partitionLoses, S23Direct.quicksort, S23Direct.qsLieSorted, S23Direct.qsLieCount,
   S23Direct.qsStaleBound, S23Direct.qsNoSuff]
 
-def p24 : List Decl := [S24Arrays.halves, S24Arrays.noEvidence, S24Arrays.wrongEvidence,
+def p24 : List FnDef := [S24Arrays.halves, S24Arrays.noEvidence, S24Arrays.wrongEvidence,
   S24Arrays.rigidLength, S24Arrays.walk, S24Arrays.walkArr, S24Arrays.touch, S24Arrays.callSeg,
   S24Arrays.fill1, S24Arrays.bump, S24Arrays.idxCited, S24Arrays.rng1Cited,
   S24Arrays.idxWeakBound, S24Arrays.threeWayTouch, S24Arrays.splitTwo, S24Arrays.pivotCarve,
@@ -141,7 +141,7 @@ def p24 : List Decl := [S24Arrays.halves, S24Arrays.noEvidence, S24Arrays.wrongE
   S24Arrays.sliceTake, S24Arrays.threeWayCall, S24Arrays.setSorted, S24Arrays.setSortedLie,
   S24Arrays.readTwo, S24Arrays.sort2, S24Arrays.sort2LieSorted, S24Arrays.sort2LieCount]
 
-def p25 : List Decl := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.quicksortA,
+def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.quicksortA,
   S25ArrSort.splitALieLen, S25ArrSort.splitALieSp, S25ArrSort.splitALieCount,
   S25ArrSort.splitANoSwap, S25ArrSort.partALieLen, S25ArrSort.partALiePart,
   S25ArrSort.qsALieSorted, S25ArrSort.qsALieCount, S25ArrSort.carveNoEv, S25ArrSort.carveWithEv,
@@ -168,7 +168,7 @@ def p25 : List Decl := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qui
 
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
-def pools : List (List Decl) :=
+def pools : List (List FnDef) :=
   [p5, p6, p7, p9, p10, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the

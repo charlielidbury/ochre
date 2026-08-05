@@ -306,9 +306,9 @@ mutual
     -- STRUCTURAL, unlike `Val.beq` — the asymmetry is deliberate. `Val.beq` is
     -- mode-blind because `convert` is built on it and §6 says case is inert
     -- under ⇝. `Term.beq` is not a conversion: its clients are `absOcc` (§18's
-    -- occurrence abstraction) and `Decl.alphaEq` (the macro-vs-corpus round-trip
+    -- occurrence abstraction) and `FnDef.alphaEq` (the macro-vs-corpus round-trip
     -- criterion), and BOTH want to see a mode. A mode-blind `alphaEq` would let
-    -- phase D's `fn` macro emit a differently-moded `Decl` and still report
+    -- phase D's `fn` macro emit a differently-moded `FnDef` and still report
     -- equivalence; a mode-blind `absOcc` would match `⇝τ` against `τ` and
     -- abstract away the marker along with the domain.
     | .cmpT a, .cmpT b => Term.beq a b

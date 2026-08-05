@@ -68,7 +68,7 @@ def tS (t : Term) : Term := .ctorApp "S" [t]
 def swapLT (i j l : Term) : Term := .app (.app (.app StdLemmas.swapL i) j) l
 
 -- s=0, m=1, i=2, j=3, pij=4, p2=5; body binders cert=6, b=7.
-def certSwapCount : Decl :=
+def certSwapCount : FnDef :=
   decl{ fn certSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
         pij : Le (S i) j, p2 : Le (S j) (len s)) -> Id Nat (count m (swapL i j s)) (count m s)
         { let cert = count_swapL' m i j s pij p2;
@@ -76,13 +76,13 @@ def certSwapCount : Decl :=
           swapS(b, i, j, pij, p2);
           cert } }
 
-def openerTable : List Decl := [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCount]
+def openerTable : List FnDef := [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCount]
 example : Migrate.progOkOf certSwapCount openerTable = true := by native_decide
 
 -- Negative control: claim the count GREW by one across the swap. The certificate
 -- proves equality, so the value-returning audit rejects the lying return type —
 -- the opener's acceptance is a real check of a real certificate.
-def certSwapCountLie : Decl :=
+def certSwapCountLie : FnDef :=
   decl{ fn certSwapCountLie (s : List Nat, m : Nat, i : Nat, j : Nat,
         pij : Le (S i) j, p2 : Le (S j) (len s)) -> Id Nat (count m (swapL i j s)) (S (count m s))
         = %certSwapCount.body }
@@ -106,13 +106,13 @@ open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
 -- `*v` (not `swapL Z Z *v`, which is stuck on a symbolic list). Mirrors partScanL's
 -- base. v=0, i=1. Used by the pivotPlace scaffolding fns' declared backs.
 -- v=0, i=1, pib=2; body binder i2=3.
-def pivotPlace : Decl :=
+def pivotPlace : FnDef :=
   decl{ fn pivotPlace (v : &mut List Nat, i : Nat, pib : Le (S i) (len *v)) -> Unit
         { match i {
             Z => (),
             S(i2) => { swapS(v, Z, S(i2), (), pib); () }
         } } }
-def confTable : List Decl := [nthS, nth2S, swapSN, pivotPlace]
+def confTable : List FnDef := [nthS, nth2S, swapSN, pivotPlace]
 example : Migrate.progOkOf pivotPlace confTable = true := by native_decide
 
 /-! ## M20-2 (bound derivation) — the base swap's `p2` derived from the length eqn
@@ -127,7 +127,7 @@ example : Migrate.progOkOf pivotPlace confTable = true := by native_decide
 
 
 -- v=0, i=1, g=2, hlen=3; body binder i2=4.
-def pivotPlaceH : Decl :=
+def pivotPlaceH : FnDef :=
   decl{ fn pivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
         hlen : Id Nat (len *v) (S (add i g))) -> Unit
         { match i {
@@ -242,7 +242,7 @@ def boolRecNat (t f sp : Term) : Term :=
 def Refl : Term := .ctorApp "Refl" []
 
 -- n = 0; the `if` binds a fresh scrutinee (id 1).
-def stuckProbe : Decl :=
+def stuckProbe : FnDef :=
   decl{ fn stuckProbe (n : Nat) -> Id Nat
         (boolRec (λ (b : Bool). Nat) (S Z) Z (leb n (S (S Z))))
         (boolRec (λ (b : Bool). Nat) (add Z (S Z)) (add Z Z) (leb n (S (S Z))))
@@ -256,14 +256,14 @@ example : Migrate.progOkOf stuckProbe = true := by native_decide
 -- SUBJECT: a deliberately-non-converging return type (raw Term) — the lie is the subject.
 def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
-def stuckProbeLie : Decl := { stuckProbe with name := "stuckProbeLie", retType := stuckProbeLieRet }
+def stuckProbeLie : FnDef := { stuckProbe with name := "stuckProbeLie", retType := stuckProbeLieRet }
 example : Migrate.progRejectsOf stuckProbeLie "does not have return type" = true := by native_decide
 
 -- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
 -- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
 -- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
-def stuckProbeNonExh : Decl := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
+def stuckProbeNonExh : FnDef := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
 example : Migrate.progRejectsOf stuckProbeNonExh "non-exhaustive" = true := by native_decide
 
 /-! ## M19-C (model) — `partitionL` computes the Lomuto partition
@@ -336,7 +336,7 @@ open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
 
 
 -- v=0, k=1, i=2, g=3, pivot=4; body binders k2=5, c/i2=6, g2=7.
-def partScanE : Decl :=
+def partScanE : FnDef :=
   decl{ fn partScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
         { match k {
             Z => match i {
@@ -361,14 +361,14 @@ def partScanE : Decl :=
         } } }
 
 -- v=0, n=1; body binders n2=5, pivot=6.
-def partitionE : Decl :=
+def partitionE : FnDef :=
   decl{ fn partitionE (v : &mut List Nat, n : Nat) -> Unit
         { match n {
             Z => (),
             S(n2) => { let pivot = nth Z (*v); partScanE(v, n2, Z, Z, pivot) }
         } } }
 
-def partTable : List Decl := [nthS, nth2S, swapSN, partScanE, partitionE]
+def partTable : List FnDef := [nthS, nth2S, swapSN, partScanE, partitionE]
 
 -- Executing-mode caller: create a concrete list, borrow, partition in place, recover.
 def partCaller (lst : List Nat) (n : Nat) : Term :=
@@ -396,11 +396,11 @@ example : runPart [3,5,1,2,4] 5 = true := by native_decide      -- interior g=S 
 example : runPart [5,3,8,1,9,2] 6 = true := by native_decide    -- mixed, multiple interior swaps
 example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates around the pivot
 
-/-! ## M20-3 differential — the CHECKING partScan Decl, run EXECUTING, = partScanL
+/-! ## M20-3 differential — the CHECKING partScan FnDef, run EXECUTING, = partScanL
 
     The load-bearing conformance validator (the callee convert-check reaches the
     back only where it's authored as the tree; the swapS leaf's reformulated back
-    is the differential's job). We run the SAME partScan Decl that Migrate.progOkOf
+    is the differential's job). We run the SAME partScan FnDef that Migrate.progOkOf
     accepts — bounds, hlen proofs and all — in EXECUTING mode on concrete lists,
     and confirm its recovered list equals `partScanL pivot k 0 0 l`. So the body's
     actual effect matches the declared back on every input class: since Migrate.progOkOf
@@ -436,7 +436,7 @@ example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates ar
 /-! ## M22-0 — the conformance baseline's validation suite (quicksort)
 
     Closing the back-specced (simulation) baseline before the direct-proving
-    redirect: the lie is rejected, and the SAME checking-mode Decl run executing on
+    redirect: the lie is rejected, and the SAME checking-mode FnDef run executing on
     every input class (plus a sub-range) recovers exactly `sortRangeL fuel lo cnt l`
     — so the body's effect is the pure model on concrete data, the conformance the
     §6.2 callee check proves symbolically. -/
@@ -466,7 +466,7 @@ def psrCaller (lst : List Nat) (lo k pivot : Nat) : Term :=
 -- stale `loanₘ` (stuck) before the fix. `match c` forces the Bool. Post-fix the
 -- reborrow fully re-collapses *v, so `nth Z (*v)` = 1, `leb 1 5` = True, and the
 -- owner `x` recovers the swapped [1,2,3].
-def lebProbe : Decl :=
+def lebProbe : FnDef :=
   decl{ fn lebProbe (v : &mut List Nat, pivot : Nat) -> Unit
         { let c = leb (nth Z (*v)) pivot;
           match c { True => (), False => () } } }
@@ -503,7 +503,7 @@ def runSwapTwice (lst : List Nat) (expect : List Nat) : Bool :=
   | .error _ => false
 example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
 
--- THE PAYOFF: the FULL quicksort Decl — bounds, length lemmas and all — run in
+-- THE PAYOFF: the FULL quicksort FnDef — bounds, length lemmas and all — run in
 -- EXECUTING mode on concrete lists, agreeing with the pure model `sortRangeL`. The
 -- body's three sequential `&mut *v` reborrows (partition + two recursive calls) are
 -- exactly the reborrow-collapse case the fix unblocks. Full-range callers (lo=0,
@@ -518,7 +518,7 @@ example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
 
 -- ACCEPTED: after the swap, *v (exit) IS swapL i j (old *v). Refl checks only
 -- because bare *v reads the EXIT value; the body's proof cites `old *v` for the entry.
-def exitReject : Decl :=
+def exitReject : FnDef :=
   decl{ fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
         -> Id (List Nat) (*v) (old *v)
         { swapS(&mut *v, i, j, pij, p2); Refl } }
@@ -527,7 +527,7 @@ example : Migrate.progRejectsOf exitReject "does not have return type" [nthS, nt
 -- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = swapL i j (old *v),
 -- so `len *v = len (old *v)` is exactly len_swapL at the entry snapshot — cited
 -- directly with `old *v` in the body (no need to save the list, which would move it).
-def twoRec : Decl :=
+def twoRec : FnDef :=
   decl{ fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         { match f {
             Z => (),
@@ -622,7 +622,7 @@ example : Migrate.progOkOf twoRec [twoRec] = true := by native_decide
     THE NORTH STAR, direct-proving form. NO back: retType `Π n. Id Nat (count n *v)
     (count n (old *v))` says the in-place quicksort PERMUTES its range — a
     propositional postcondition PROVEN in the body (the demoted baseline `quicksort`
-    Decl instead declares `back = sortRangeL fuel lo cnt *v` and checks conformance
+    FnDef instead declares `back = sortRangeL fuel lo cnt *v` and checks conformance
     by conversion). Same delegation discipline as the swap and partition rungs: the
     sort is delegated to `quicksort` (back = sortRangeL, a closed function of the
     input, so the exit reading is provable rather than opaque), and the cert is the

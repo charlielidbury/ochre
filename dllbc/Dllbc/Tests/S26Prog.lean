@@ -16,7 +16,7 @@ import Dllbc.Tests.S25ArrSort
 
 `combining-fns.md` §8: **a program is an arbitrary term, and running it is
 ⇒-evaluating it.** A module is a let-chain — transparent lets, sealed lets, a
-tail — and checking it is the symbolic ⇒-walk of the same term. `Decl` is what
+tail — and checking it is the symbolic ⇒-walk of the same term. `FnDef` is what
 this deletes.
 
 Three claims are tested here, and the third is the one that needed a kernel rule:
@@ -51,12 +51,12 @@ namespace Dllbc.Tests.S26Prog
 /-! ## Helpers
 
     `progOk`/`progRejects`/`runProgram` are `Program.lean`'s. The differential is
-    S9Diff's merged relation, applied to a program instead of to a `Decl` body —
+    S9Diff's merged relation, applied to a program instead of to a `FnDef` body —
     which is the same thing now, and the reason `diffC` needed no new definition:
     it already took a TERM. -/
 
 /-- The concrete final Ω is a σ-instance of some accepted symbolic path's. -/
-def progDiff (t : Term) (table : List Decl := []) : Bool :=
+def progDiff (t : Term) (table : List FnDef := []) : Bool :=
   match runProgram t table with
   | .error _ => false
   | .ok concEnv => (programEnvs t table).any (fun r => match r with
@@ -71,7 +71,7 @@ def rawEnvs (t : Term) : List (Except String Env) :=
 
 /-! ## §A. A program is a term
 
-    The smallest complete statement of §8: no `Decl`, no telescope, no return
+    The smallest complete statement of §8: no `FnDef`, no telescope, no return
     type to declare — a let-chain and a tail, checked by one walk and run by the
     other. -/
 
@@ -355,7 +355,7 @@ example : (programEnvs push).any (fun r => match r with
 -- passes down unchanged. `Hf` is CAPITAL — it is handed to the recursive call and
 -- a lowercase one would have moved it (R16). Checked declared AND elaborated on
 -- its first run; the cost really is a parameter and a dead branch.
-def appendBackF : Decl :=
+def appendBackF : FnDef :=
   decl{ fn append_backF [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (len *v) fuel)
         -> Id (List Nat) (*v) (append (old *v) w)
         { match v {
@@ -413,10 +413,10 @@ partial def toP (f2 : Var) : Term → Term
   | t => t
 
 /-- Migrate a quicksort-shaped declaration onto the fuel-threaded cohort. -/
-def migrate (d : Decl) : Decl :=
+def migrate (d : FnDef) : FnDef :=
   { d with body := toP ((FnMacro.succBinder ⟨0, "fuel"⟩ d.body).getD ⟨0, "fuel"⟩) d.body }
 
-def quicksortP : Decl := migrate Tests.S23Direct.quicksort
+def quicksortP : FnDef := migrate Tests.S23Direct.quicksort
 
 -- ~~The migrated cohort as DECLARATIONS first, so the program below is compared
 -- against something already known to check (J1: both worlds alive).~~ Retired
@@ -430,13 +430,13 @@ example : ((calleeNames quicksortP.body).contains "partitionF"
 
 /-! ### F2. …and as ONE PROGRAM TERM
 
-    `FnMacro.progOf` assembles the cohort: each `Decl` becomes a sealed `let`
+    `FnMacro.progOf` assembles the cohort: each `FnDef` becomes a sealed `let`
     (§8 — "declarations are `let`s"), each body's table calls become `.callV` on
     the binding above it, and the tail runs in the accumulated scope. Like
     `fnElab` it is outside the kernel's import graph, so what follows is the
     kernel re-deriving the whole thing from the term. -/
 
-def flagshipOf (qs : Decl) (tail : Term) : Except String Term :=
+def flagshipOf (qs : FnDef) (tail : Term) : Except String Term :=
   FnMacro.progOf [Tests.S26Fn.partitionF, appendBackF, qs] tail
 
 def flagship (tail : Term) : Except String Term := flagshipOf quicksortP tail
@@ -464,7 +464,7 @@ example : (match flagship flagshipTail with
            | .error _ => false) = true := by native_decide
 
 /-- …and the two machines agree on the whole final Ω, which is the differential
-    running on a program rather than on a `Decl` body. -/
+    running on a program rather than on a `FnDef` body. -/
 example : (match flagship flagshipTail with
            | .ok t => progDiff t
            | .error _ => false) = true := by native_decide
@@ -479,7 +479,7 @@ example : (match flagship flagshipTail with
     three go through the migration and the assembly unchanged, and all three are
     refused as programs. -/
 
-def twins : List Decl :=
+def twins : List FnDef :=
   [Tests.S23Direct.qsLieSorted, Tests.S23Direct.qsLieCount, Tests.S23Direct.qsStaleBound]
 
 -- ~~The declared path refuses all three (migrated onto the fuel-threaded
@@ -509,7 +509,7 @@ example : (match flagship .unit with | .ok t => progOk t | .error _ => false)
     is the strongest available evidence that §5's opacity and §6.1's call rule
     really are the same mechanism reached two ways. -/
 
-def arrCohort : List Decl :=
+def arrCohort : List FnDef :=
   [Tests.S25ArrSort.splitA, Tests.S25ArrSort.partitionA, Tests.S25ArrSort.quicksortA]
 
 def arrProg (tail : Term) : Except String Term := FnMacro.progOf arrCohort tail
@@ -542,10 +542,10 @@ example : runQsAP [9, 8, 7, 6, 5, 4, 3, 2, 1] == some [1, 2, 3, 4, 5, 6, 7, 8, 9
     is refused. -/
 
 /-- Replace the cohort member with the twin's name. -/
-def sub (twin : Decl) : List Decl :=
+def sub (twin : FnDef) : List FnDef :=
   arrCohort.map (fun d => if d.name == twin.name then twin else d)
 
-def arrTwins : List Decl :=
+def arrTwins : List FnDef :=
   [Tests.S25ArrSort.splitALieLen, Tests.S25ArrSort.splitALieSp,
    Tests.S25ArrSort.splitALieCount, Tests.S25ArrSort.partALieLen,
    Tests.S25ArrSort.partALiePart, Tests.S25ArrSort.qsALieSorted,

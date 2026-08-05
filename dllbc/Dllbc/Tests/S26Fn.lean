@@ -38,7 +38,7 @@ open Dllbc.StdLemmas (le_up_r leb_true_le leb_false_gt le_pred_l
 namespace Dllbc.Tests.S26Fn
 
 /-- Elaborate and bind, which is the `let` §8 says a declaration is. -/
-def elabIn (d : Decl) : Except String Decl :=
+def elabIn (d : FnDef) : Except String FnDef :=
   (FnMacro.fnElab d).map (fun t =>
     { name := "caller", telescope := [], retType := .const "Unit",
       body := .letIn ⟨900, "f"⟩ t .unit })
@@ -52,11 +52,11 @@ def elabIn (d : Decl) : Except String Decl :=
     "`fn` IS a macro" is precisely the statement that they are one. The assertions
     below keep their own names because what they are ABOUT still differs — one
     reads as a property of the elaboration, the other of the corpus. -/
-def elabOk (d : Decl) (table : List Decl := []) : Bool :=
+def elabOk (d : FnDef) (table : List FnDef := []) : Bool :=
   Migrate.progOkOf d (table ++ [d])
 
 /-- The macro refuses, with `needle` in the message. -/
-def elabRejects (d : Decl) (needle : String) : Bool :=
+def elabRejects (d : FnDef) (needle : String) : Bool :=
   match FnMacro.fnElab d with
   | .error e => strContains e needle
   | .ok _ => false
@@ -68,7 +68,7 @@ def elabRejects (d : Decl) (needle : String) : Bool :=
     because it exercises `telePi` alone: if the Π were built wrongly, everything
     downstream would fail for a reason that had nothing to do with recursors. -/
 
-def pushD : Decl := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
+def pushD : FnDef := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
   { let tail = *v; *v := Cons(e, tail); () } }
 -- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
 -- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
@@ -79,7 +79,7 @@ example : elabOk pushD = true := by native_decide
     whole elaboration rests on: the macro writes a Π, the kernel takes it apart
     again, and the telescope that comes back is the one that went in. Asserted
     directly rather than inferred from the checks passing. -/
-def roundTrips (d : Decl) : Bool :=
+def roundTrips (d : FnDef) : Bool :=
   let tel := FnMacro.teleVars d.telescope
   match piPeel (tel.map (·.1)) (FnMacro.telePi tel d.retType) with
   | .error _ => false
@@ -102,7 +102,7 @@ example :
     Compared up to α, not on the nose: the macro threads binder ids linearly while
     the hand version got them from the surface elaborator, so the two agree on
     binding structure and differ on numbering — which is exactly what
-    `Decl.alphaEq` was built for (its own docstring says so). -/
+    `FnDef.alphaEq` was built for (its own docstring says so). -/
 
 def splitElab : Except String Term := FnMacro.fnElab Tests.S23Direct.splitOff
 
@@ -112,13 +112,13 @@ def splitHand : Term :=
   | .letIn _ t _ => t
   | t => t
 
-/-- Wrap a term as a `Decl` so `alphaEq` (which is `Decl`-shaped) can compare two. -/
-def asDecl (t : Term) : Decl :=
+/-- Wrap a term as a `FnDef` so `alphaEq` (which is `FnDef`-shaped) can compare two. -/
+def asDecl (t : Term) : FnDef :=
   { name := "x", telescope := [], retType := .const "Unit", body := t }
 
 example :
   (match splitElab with
-   | .ok t => Decl.alphaEq (asDecl t) (asDecl splitHand)
+   | .ok t => FnDef.alphaEq (asDecl t) (asDecl splitHand)
    | .error _ => false) = true := by native_decide
 
 -- …and the macro's output checks, which is the claim that matters: agreeing with
@@ -134,7 +134,7 @@ example : elabOk Tests.S23Direct.splitOff = true := by native_decide
 -- function's BASE arm, which is a real term of the same file and shape family.
 example :
   (match splitElab with
-   | .ok t => Decl.alphaEq (asDecl t) (asDecl (Tests.S26Rec.splitSealed.body))
+   | .ok t => FnDef.alphaEq (asDecl t) (asDecl (Tests.S26Rec.splitSealed.body))
    | .error _ => false) = false := by native_decide
 
 /-! ### B2. The macro path rejects exactly what the declared path rejects
@@ -147,7 +147,7 @@ example :
     accepts what the declaration accepts and refuses what it refuses, twin for
     twin. -/
 
-def splitTwins : List Decl :=
+def splitTwins : List FnDef :=
   [ Tests.S23Direct.splitOffLieTake, Tests.S23Direct.splitOffLieDrop,
     Tests.S23Direct.splitOffLieSwap, Tests.S23Direct.splitOffLieHead ]
 
@@ -173,7 +173,7 @@ example : splitTwins.all (fun d => !(elabOk d)) = true := by native_decide
     `Cons` case becomes `botElim Unit hfuel` — the dead path, discharged because
     `hfuel : Le (S (len rest)) Z` IS `Bot`. Nothing about that is special-cased. -/
 
-def qsTable : List Decl := [Tests.S23Direct.partition, Tests.S23Direct.appendBack]
+def qsTable : List FnDef := [Tests.S23Direct.partition, Tests.S23Direct.appendBack]
 
 -- **RETIRED with the J1 bridge** (M27-δ). This elaborated `quicksort` alone and
 -- checked it against a TABLE of un-elaborated callees — the half-migrated form
@@ -202,7 +202,7 @@ example : (match elabIn Tests.S23Direct.quicksort with
 -- invented it would be changing the function's interface behind its author.
 example : elabRejects Tests.S23Direct.partition "decision 8" = true := by native_decide
 
--- §6.2's declared backs are a `Decl` mechanism with no seal counterpart. M23's
+-- §6.2's declared backs are a `FnDef` mechanism with no seal counterpart. M23's
 -- corpus declares none, which is why the cohort is unaffected.
 -- RETIRED in M27-P2 with the mechanism: there is no `back` field to decline, so
 -- the refusal has no subject. `S27Dispose` §C records where §6.2's claims went.
@@ -233,7 +233,7 @@ example : elabRejects Tests.S23Direct.partition "decision 8" = true := by native
     proof parameter would MOVE it (R16), and the original `partition` never had to
     care because it had no bound to thread. -/
 
-def partitionF : Decl :=
+def partitionF : FnDef :=
   decl{ fn partitionF [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
         -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
              → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -322,7 +322,7 @@ partial def toPartitionF (f2 : Var) : Term → Term
     .matchE sc e (bs.map (fun b => Branch.mk b.ctor b.binders (toPartitionF f2 b.body)))
   | t => t
 
-def quicksortF : Decl :=
+def quicksortF : FnDef :=
   let q := Tests.S23Direct.quicksort
   let f2 := (FnMacro.succBinder ⟨0, "fuel"⟩ q.body).getD ⟨0, "fuel"⟩
   { q with name := "quicksortF", body := toPartitionF f2 q.body }

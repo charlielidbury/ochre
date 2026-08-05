@@ -43,7 +43,7 @@ def chkL (tm ty : Term) : Bool :=
 
 def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
 
-def progMsg (d : Decl) (tbl : List Decl := [d]) : String :=
+def progMsg (d : FnDef) (tbl : List FnDef := [d]) : String :=
   match FnMacro.progOf (Migrate.cohort tbl d) .unit with
   | .error e => "ELAB: " ++ e
   | .ok t => match checkProgram t with | .ok _ => "OK" | .error e => e
@@ -129,7 +129,7 @@ example : (Val.nfV 2000 (Val.Term.toValPure pure{ SortedA Z Arr() }) == .const "
     builders. It would disappear under the filed `old`-for-consumed-things feature and
     does no mathematical work. -/
 
-def splitA : Decl := decl{
+def splitA : FnDef := decl{
   fn splitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> Σ (k : Nat) → Σ (r : Nat)
            → Σ (hlen : Id Nat m (add k r))
@@ -236,7 +236,7 @@ example : Migrate.progOkOf splitA = true := by native_decide
     reach for the function only when you want the abstraction boundary". Here the
     boundary is what makes the program possible at all. -/
 
-def partitionA : Decl := decl{
+def partitionA : FnDef := decl{
   fn partitionA (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
                  a : &mut (Array n Nat))
       -> Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
@@ -331,7 +331,7 @@ example : Migrate.progOkOf partitionA [partitionA, splitA] = true := by native_d
     replace those values. M23's list quicksort needed four builders for the same reason.
     Sixth filing for `old`-on-consumed-things; none of the three does mathematical work. -/
 
-def quicksortA : Decl := decl{
+def quicksortA : FnDef := decl{
   fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
       -> Σ (hs : SortedA n (*a))
            → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
@@ -434,7 +434,7 @@ def quicksortA : Decl := decl{
         } } }
 example : Migrate.progOkOf quicksortA [quicksortA, partitionA, splitA] = true := by native_decide
 
-def arrTbl : List Decl := [quicksortA, partitionA, splitA]
+def arrTbl : List FnDef := [quicksortA, partitionA, splitA]
 
 /-! ## (v) Not vacuous — a lying twin per conjunct
 
@@ -444,7 +444,7 @@ def arrTbl : List Decl := [quicksortA, partitionA, splitA]
     M23's discipline, applied to three declarations. -/
 
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
-def splitALieLen : Decl :=
+def splitALieLen : FnDef :=
   { splitA with retType := (decl{
       fn splitALieLen (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
         -> Σ (k : Nat) → Σ (r : Nat)
@@ -455,7 +455,7 @@ def splitALieLen : Decl :=
 example : Migrate.progOkOf splitALieLen = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
-def splitALieSp : Decl :=
+def splitALieSp : FnDef :=
   { splitA with retType := (decl{
       fn splitALieSp (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
         -> Σ (k : Nat) → Σ (r : Nat)
@@ -466,7 +466,7 @@ def splitALieSp : Decl :=
 example : Migrate.progOkOf splitALieSp = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
-def splitALieCount : Decl :=
+def splitALieCount : FnDef :=
   { splitA with retType := (decl{
       fn splitALieCount (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
         -> Σ (k : Nat) → Σ (r : Nat)
@@ -481,7 +481,7 @@ example : Migrate.progOkOf splitALieCount = false := by native_decide
     spec twin above can be blamed on some path; this one is wrong only on the swap
     path and only because the elements did not move. It isolates the single mutation
     the whole program performs. -/
-def splitANoSwap : Decl :=
+def splitANoSwap : FnDef :=
   decl{ fn splitANoSwap [fuel]
           (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
       -> Σ (k : Nat) → Σ (r : Nat)
@@ -554,7 +554,7 @@ def splitANoSwap : Decl :=
 example : Migrate.progOkOf splitANoSwap = false := by native_decide
 
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
-def partALieLen : Decl :=
+def partALieLen : FnDef :=
   { partitionA with retType := (decl{
       fn partALieLen (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
                       a : &mut (Array n Nat))
@@ -567,7 +567,7 @@ example : Migrate.progRejectsOf partALieLen "does not have return type" [partALi
     = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
-def partALiePart : Decl :=
+def partALiePart : FnDef :=
   { partitionA with retType := (decl{
       fn partALiePart (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
                        a : &mut (Array n Nat))
@@ -581,7 +581,7 @@ example : Migrate.progRejectsOf partALiePart "does not have return type" [partAL
 
 -- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
 -- so the base path still passes and only the recursive one is blamed.
-def qsALieSorted : Decl :=
+def qsALieSorted : FnDef :=
   { quicksortA with retType := (decl{
       fn qsALieSorted (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
         -> Σ (hs : SortedA n (old *a))
@@ -592,7 +592,7 @@ example : Migrate.progRejectsOf qsALieSorted "does not have return type" [qsALie
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
-def qsALieCount : Decl :=
+def qsALieCount : FnDef :=
   { quicksortA with retType := (decl{
       fn qsALieCount (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
         -> Σ (hs : SortedA n (*a))
@@ -606,7 +606,7 @@ example : Migrate.progRejectsOf qsALieCount "does not have return type" [qsALieC
 -- The three-way carve's ONE cited obligation is load-bearing: drop `le_add` and the
 -- carve has nothing to select a leaf with. (The pivot carve needs no evidence at all —
 -- route (a) reduces `Le 1 (S jj)` to ⊤ — so this is the only citation in the body.)
-def carveNoEv : Decl := decl{
+def carveNoEv : FnDef := decl{
   fn carveNoEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
                 a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k ; S jj];
@@ -617,7 +617,7 @@ example : Migrate.progRejectsOf carveNoEv "may not impose it by refining" = true
 
 -- …and the positive control at the same shape, so the rejection is about the missing
 -- citation and not about the carve. (`quicksortA` itself is the other positive control.)
-def carveWithEv : Decl := decl{
+def carveWithEv : FnDef := decl{
   fn carveWithEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
                   a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj) | heq];
@@ -629,7 +629,7 @@ example : Migrate.progOkOf carveWithEv = true := by native_decide
 -- The sufficiency hypothesis is load-bearing, not decoration: keep the parameter (so
 -- the body still elaborates and the rejection is about TYPING) and weaken it to `Unit`.
 -- The out-of-fuel path then has no ⊥ to eliminate and stops being dead.
-def qsANoSuff : Decl :=
+def qsANoSuff : FnDef :=
   { quicksortA with telescope := (decl{
       fn qsANoSuff (fuel : Nat, n : Nat, hfuel : Unit, a : &mut (Array n Nat)) -> Unit
         { () } }).telescope }
@@ -709,7 +709,7 @@ def sortedRef (l : List Nat) : List Nat := l.mergeSort (fun a b => a <= b)
 
 /-- Did it run at all — used by the G7 probes below, where the point is acceptance and
     execution agreeing rather than the value. -/
-def runsAtAll (tbl : List Decl) (t : Term) : Bool :=
+def runsAtAll (tbl : List FnDef) (t : Term) : Bool :=
   match Dllbc.Tests.S9Diff.runExec tbl t with | .ok _ => true | .error _ => false
 
 /-! ### (vi.a) It really sorts, in place, on concrete arrays
@@ -781,7 +781,7 @@ example : runSplA [] 2 == some [] := by native_decide
     remaining inputs are one bug away, and the moment the pinned tests above flip this
     becomes the lane's real acceptance. -/
 
-def listTbl : List Decl :=
+def listTbl : List FnDef :=
   [Dllbc.Tests.S23Direct.partition, Dllbc.Tests.S23Direct.appendBack,
    Dllbc.Tests.S23Direct.quicksort]
 
@@ -825,10 +825,10 @@ example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrTbl b)
     removed from `carveAt`, only `c6CarveAfterCall` goes red — which is what makes this
     a live check on the rule rather than a comment claiming one. -/
 
-def c6Touch : Decl := decl{ fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
+def c6Touch : FnDef := decl{ fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
 
 -- (1) Peel a head and hand the tail to a call. Always worked.
-def c6PeelCall : Decl := decl{
+def c6PeelCall : FnDef := decl{
   fn c6PeelCall (n : Nat, a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
@@ -836,7 +836,7 @@ def c6PeelCall : Decl := decl{
 example : Migrate.progOkOf c6PeelCall [c6PeelCall, c6Touch] = true := by native_decide
 
 -- (2) Carve inside the tail, with NO call first. Always worked.
-def c6CarveNoCall : Decl := decl{
+def c6CarveNoCall : FnDef := decl{
   fn c6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
@@ -849,7 +849,7 @@ def c6CarveNoCall : Decl := decl{
 example : Migrate.progOkOf c6CarveNoCall = true := by native_decide
 
 -- (3) …and the swap's writes on top of it. Always worked.
-def c6Swap : Decl := decl{
+def c6Swap : FnDef := decl{
   fn c6Swap (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
@@ -863,7 +863,7 @@ def c6Swap : Decl := decl{
 example : Migrate.progOkOf c6Swap = true := by native_decide
 
 -- (4) Self-recursion through a reborrowed tail. Always worked.
-def c6Rec : Decl := decl{
+def c6Rec : FnDef := decl{
   fn c6Rec [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, a : &mut (Array m Nat)) -> Unit {
     match m { Z => (),
       S(m2) => match fuel { Z => botElim Unit hfuel,
@@ -876,7 +876,7 @@ example : Migrate.progOkOf c6Rec = true := by native_decide
     without collapsing it first — "`loanₘ ℓ` is not an array value (no extent to read)".
     Which is to say: a recursive array program carving the argument it just handed to
     its recursive call, i.e. every one of them. -/
-def c6CarveAfterCall : Decl := decl{
+def c6CarveAfterCall : FnDef := decl{
   fn c6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
@@ -903,7 +903,7 @@ example : Migrate.progOkOf c6CarveAfterCall [c6CarveAfterCall, c6Touch] = true :
     every access at index 0 of a segment the program carved — is forced rather than
     chosen. ¶6's "a segment with its own zero" is a constraint, not a convenience. -/
 
-def twoCursor : Decl := decl{
+def twoCursor : FnDef := decl{
   fn twoCursor (n : Nat, i : Nat, j : Nat, pij : Le (S i) j, pjn : Le (S j) n,
                 a : &mut (Array n Nat)) -> Unit {
     let x = (*a)[i | le_trans (S i) j n pij (le_pred_l j n pjn)];
@@ -913,7 +913,7 @@ example : Migrate.progRejectsOf twoCursor "no leaf" = true := by native_decide
 
 -- Route (a) cannot rescue it either: the second request does not START a segment, so
 -- there is no leaf for the supplied residue to decompose.
-def twoCursorRes : Decl := decl{
+def twoCursorRes : FnDef := decl{
   fn twoCursorRes (n : Nat, i : Nat, j : Nat, r1 : Nat, r2 : Nat,
                    a : &mut (Array n Nat)) -> Unit {
     let x = &mut (*a)[i ; 1 ; r1 | le_add i (S r1)];
@@ -926,7 +926,7 @@ example : Migrate.progRejectsOf twoCursorRes "no segment starts at" = true := by
     Premise (3) may not refine a telescope parameter's σ to match a supplied residue;
     it may solve along a CITED equation. The three probes the ruling asks for. -/
 
-def citedCarve : Decl := decl{
+def citedCarve : FnDef := decl{
   fn citedCarve (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
                  a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];

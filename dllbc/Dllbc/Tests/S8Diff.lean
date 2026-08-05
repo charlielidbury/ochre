@@ -89,7 +89,7 @@ def vBodies : List Term := leafBodies ++ matchBodies
 
 /-! ## The declaration and the concrete pool -/
 
-def vDecl (body : Term) : Decl :=
+def vDecl (body : Term) : FnDef :=
   decl{ fn f (v : &mut List Nat) -> Unit = %body }
 
 /-- Concrete payloads for v: the small list pool. -/
@@ -117,7 +117,7 @@ def seedConcrete (fuel : Nat) : Nat → List (String × Term) → List Val → M
 
 /-- Run a declaration's body CONCRETELY from the given argument values, then run
     the concrete audit. `true` iff every path completes (not stuck) and audits. -/
-def diffCheck (decl : Decl) (concreteArgs : List Val) : Bool :=
+def diffCheck (decl : FnDef) (concreteArgs : List Val) : Bool :=
   match (seedConcrete defaultFuel 0 decl.telescope concreteArgs).run initSt with
   | .error _ _ => false
   | .ok obs st =>
@@ -171,7 +171,7 @@ def nBodies : List Term :=
        (nLeaf.take 5).map fun b2 =>
          .matchE ⟨0, "n"⟩ none [.mk "Z" [] b1, .mk "S" [⟨1, "m"⟩] b2]
 
-def nDecl (body : Term) : Decl :=
+def nDecl (body : Term) : FnDef :=
   decl{ fn f (n : Nat) -> Nat = %body }
 def nPool : List Val := [ nat 0, nat 1, nat 2 ]
 
@@ -195,7 +195,7 @@ def bcBodies : List Term :=
        (bcLeaf.take 5).map fun b2 =>
          .matchE ⟨1, "c"⟩ none [.mk "True" [] b1, .mk "False" [] b2]
 
-def bcDecl (body : Term) : Decl :=
+def bcDecl (body : Term) : FnDef :=
   decl{ fn f (b : &mut Nat, c : Bool) -> Unit = %body }
 def bcPool : List (List Val) :=
   [ [nat 0, .ctor "True" []], [nat 0, .ctor "False" []],

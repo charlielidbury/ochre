@@ -22,7 +22,7 @@ macro_rules
 
 /-- `progWith [a, b] { … }` — a program elaborated with the given names already
     bound at the ids `900, 901, …`. The migration bridge: a program assembled
-    from elaborated `Decl`s binds its callees at those ids (`FnMacro.progOf`),
+    from elaborated `FnDef`s binds its callees at those ids (`FnMacro.progOf`),
     and a hand-written caller for one has to agree with it. -/
 syntax "progWith" "[" ident,* "]" "{" ublk "}" : term
 

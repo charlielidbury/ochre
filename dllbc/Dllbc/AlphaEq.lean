@@ -1,7 +1,7 @@
 import Dllbc.Machine
 
 /-!
-# Alpha-equivalence of `Decl`s up to runtime-var id renaming (§ point 4)
+# Alpha-equivalence of `FnDef`s up to runtime-var id renaming (§ point 4)
 
 The corpus hand-numbers runtime binder ids ad-hoc and **reuses ids across
 mutually-exclusive sibling branches** (partScan: `k2`=6 in one arm, `i2`=7 in the
@@ -9,10 +9,10 @@ other, id 7 reused for `c`). Any deterministic macro threads ids linearly, so it
 bodies are only *alpha*-equivalent — same binding structure, different ids — to
 those corpus Decls, and exact `BEq` cannot reach them.
 
-`Decl.alphaNorm` renumbers every runtime binding occurrence (telescope param,
+`FnDef.alphaNorm` renumbers every runtime binding occurrence (telescope param,
 `letIn`, `matchE` branch binder) to a fresh canonical id in pre-order traversal
 order, with a **scoped** environment so sibling branches that reuse an id are
-kept distinct. `Decl.alphaEq a b := a.alphaNorm == b.alphaNorm` is then the
+kept distinct. `FnDef.alphaEq a b := a.alphaNorm == b.alphaNorm` is then the
 round-trip criterion for the multi-branch corpus bodies. Pure de Bruijn vars
 (`pvar`) are untouched (they are not runtime ids); runtime vars embedded in types
 (a `*v` under a `len`) renumber through the same traversal.
@@ -109,11 +109,11 @@ partial def anLamBinders (env : List (Nat × Nat)) :
     ((⟨newId, nm⟩, τ') :: bs', (id, newId) :: ext, c2)
 end
 
-/-- Canonicalize a `Decl`'s runtime var ids. Telescope params keep their positional
+/-- Canonicalize a `FnDef`'s runtime var ids. Telescope params keep their positional
     ids `0 .. n-1` (identity-mapped — they are the same in any faithful surface);
     body binders are renumbered from `n` in pre-order. Types/back carry only param
     *uses*, so they are fixed points. -/
-def Decl.alphaNorm (d : Decl) : Decl :=
+def FnDef.alphaNorm (d : FnDef) : FnDef :=
   let n := d.telescope.length
   let baseEnv := (List.range n).map (fun i => (i, i))
   { d with
@@ -121,25 +121,35 @@ def Decl.alphaNorm (d : Decl) : Decl :=
     retType := (anTerm baseEnv n d.retType).1,
     body := (anTerm baseEnv n d.body).1 }
 
--- Structural equality on `Decl`. Relocated here in M27-P2 from
+-- Structural equality on `FnDef`. Relocated here in M27-P2 from
 -- `Tests/SDeclMacro.lean`, which retired with the `decl{ … back = … }` surface it
 -- round-tripped: the instance is not a property of that surface — it is what every
 -- exact-equality assertion about a declaration needs — and it outlived its old home
--- by one phase. It dies with `Decl` itself at P5.
-deriving instance BEq for Dllbc.Decl
+-- by one phase, and it survives the kernel's own retirement of the name (M27-δ):
+-- `FnDef` is a surface record now, and exact equality is still what every
+-- assertion about one needs.
+deriving instance BEq for Dllbc.FnDef
 
-/-- Two `Decl`s are equal up to runtime-var id renaming. Compared field-wise via
-    the component `BEq`s (`Term`/`String`/`List`/`Option`) so no `BEq Decl`
+/-- Two `FnDef`s are equal up to runtime-var id renaming. Compared field-wise via
+    the component `BEq`s (`Term`/`String`/`List`/`Option`) so no `BEq FnDef`
     instance is required here.
 
-    It compares neither `back` (gone with the mechanism in M27-P2) nor `dec` — and
-    the `dec` blindness is a KNOWN LIMITATION rather than a decision: once the
-    guard is deleted, `[k]` is purely a scrutinee-selection hint, and two
-    declarations differing only in it elaborate to different recursors. Widening it
-    is P5's, with the guard. -/
-def Decl.alphaEq (a b : Decl) : Bool :=
+    ~~It compares neither `back` (gone with the mechanism in M27-P2) nor `dec`, and
+    the `dec` blindness is a KNOWN LIMITATION: once the guard is deleted, `[k]` is
+    purely a scrutinee-selection hint, and two definitions differing only in it
+    elaborate to different recursors. Widening it is P5's, with the guard.~~
+
+    **`dec` IS COMPARED NOW** (M27-δ), and the timing is the whole content: it
+    became correct at exactly the moment the guard died. While `[k]` was a guard
+    INPUT, two definitions differing only in it could still be the same function —
+    the hint said which parameter to police, not what to build. Now it is purely
+    the scrutinee-selection hint, so it decides which recursor `fnElab` emits, and
+    two definitions differing in it are two different terms. A round-trip criterion
+    blind to it would report equivalence for a pair that elaborates apart. -/
+def FnDef.alphaEq (a b : FnDef) : Bool :=
   let a' := a.alphaNorm; let b' := b.alphaNorm
   a'.name == b'.name && a'.telescope == b'.telescope && a'.retType == b'.retType
+    && a'.dec == b'.dec
     && a'.body == b'.body
 
 end Dllbc

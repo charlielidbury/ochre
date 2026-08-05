@@ -27,7 +27,7 @@ open Dllbc.Val (nat)
 namespace Dllbc.Tests.S6Call
 
 /-- `push (e : Nat, v : &mut List Nat)` from §4.1/M5. -/
-def pushList : Decl :=
+def pushList : FnDef :=
   decl{ fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () } }
 
 /-! ## §5.3 the wire: consume and promise -/
@@ -35,7 +35,7 @@ def pushList : Decl :=
 -- `push(7, b)` consumes b and annotates its loan owed `List Nat`; the later
 -- `let y = x` ends the owed loan by minting a fresh σ. y is that σ, typed a
 -- list — not the concrete `Cons 7 (Cons 1 Nil)`. "The spec is the type."
-def wireCaller : Decl :=
+def wireCaller : FnDef :=
   decl{ fn caller () -> Unit { let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () } }
 
 example : Migrate.progEnvOfT [pushList, wireCaller] wireCaller
@@ -48,7 +48,7 @@ example : Migrate.progEnvOfT [pushList, wireCaller] wireCaller
 -- consumes the reborrow `tl` and annotates ℓ_tl owed `List Nat`; at return the
 -- audit collapses v, ending ℓ_hd normally and ℓ_tl as an existential, so
 -- v holds `Cons 0 σ : List Nat`. No overwrite, nothing to ghost.
-def zeroAll : Decl :=
+def zeroAll : FnDef :=
   decl{ fn zero_all [v] (v : &mut List Nat) -> Unit {
     match v {
       Nil => (),
@@ -67,14 +67,14 @@ def zeroAll : Decl :=
 
 -- `to_nat (v : &mut (s : Bool ↝ Nat))` — callee takes the Bool through v and
 -- fills a Nat; the audit passes against the OWED type Nat, not the entry Bool.
-def toNat : Decl :=
+def toNat : FnDef :=
   decl{ fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () } }
 
 example : Migrate.progOkOf toNat = true := by native_decide
 
 -- Caller side: borrow a `True`, call, read the owner back — it ends as a fresh
 -- σ : Nat. A strong update across a boundary, both sides.
-def toNatCaller : Decl :=
+def toNatCaller : FnDef :=
   decl{ fn caller () -> Nat { let x = True; let b = &mut x; to_nat(b); let y = x; y } }
 
 example : Migrate.progOkOf toNatCaller [toNat, toNatCaller] = true := by native_decide
@@ -83,7 +83,7 @@ example : Migrate.progOkOf toNatCaller [toNat, toNatCaller] = true := by native_
 
 -- `push(7, &mut *b)` — the reborrow Rust inserts silently; the child loan gets
 -- the owed annotation and the parent recovers when it ends.
-def rbCaller : Decl :=
+def rbCaller : FnDef :=
   decl{ fn caller () -> List Nat { let x = Cons(1, Nil); let b = &mut x; push(7, &mut *b); let y = x; y } }
 
 example : Migrate.progOkOf rbCaller [pushList, rbCaller] = true := by native_decide

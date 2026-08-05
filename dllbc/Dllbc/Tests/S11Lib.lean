@@ -52,8 +52,8 @@ def nncMotiveT : Term := .lam natT (.lam (.idT natT tZ (.pvar 0)) (natCodeApp tZ
 -- SUBJECT: the no-confusion j-spine (raw Term; `.pvar` motive, no surface).
 def natNoConfT (nE pE : Term) : Term := jT natT tZ nncMotiveT (.ctorApp "unit" []) (tS nE) pE
 
--- SUBJECT (raw proof Decl): Returning a proof — `Refl` at an Id-typed return (a `ctorApp`, lifts trivially).
-def retRefl : Decl :=
+-- SUBJECT (raw proof FnDef): Returning a proof — `Refl` at an Id-typed return (a `ctorApp`, lifts trivially).
+def retRefl : FnDef :=
   { name := "retRefl", retType := .idT natT (.var ⟨0, "a"⟩) (.var ⟨0, "a"⟩),
     telescope := [("a", natT)], body := .ctorApp "Refl" [] }
 example : Migrate.progOkOf retRefl = true := by native_decide
@@ -63,7 +63,7 @@ example : Migrate.progOkOf retRefl = true := by native_decide
 def jReflProof (aE : Term) : Term :=
   jT natT aE (.lam natT (.lam (.idT natT aE (.pvar 1)) (.idT natT aE (.pvar 1)))) (.ctorApp "Refl" []) aE (.ctorApp "Refl" [])
 def sigDiag : Term := .sigmaT natT (.idT natT (.pvar 0) (.pvar 0))     -- Σ(x:Nat). Id Nat x x
-def storeProof : Decl :=
+def storeProof : FnDef :=
   { name := "storeProof", retType := sigDiag, telescope := [("a", natT)],
     body := .ctorApp "Pair" [.var ⟨0, "a"⟩, jReflProof (.var ⟨0, "a"⟩)] }
 example : Migrate.progOkOf storeProof = true := by native_decide
@@ -71,7 +71,7 @@ example : Migrate.progOkOf storeProof = true := by native_decide
 -- The M10 conflict discharge, now as a dead branch in a checked fn (the shape
 -- the fording spec originally wanted). The `False` arm holds `p : Id Nat Z (S n)`,
 -- derives ⊥ via `natNoConf`, and ⇒-lifts `botElim Nat (…)` to close the branch.
-def discharge : Decl :=
+def discharge : FnDef :=
   { name := "discharge", retType := natT,
     telescope := [("n", natT), ("p", .idT natT tZ (tS (.var ⟨0, "n"⟩))), ("b", .const "Bool")],
     body := .matchE ⟨2, "b"⟩ none [ .mk "True" [] tZ,

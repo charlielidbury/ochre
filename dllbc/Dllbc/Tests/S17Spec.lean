@@ -11,7 +11,7 @@ import Dllbc.Migrate
 
 **What this file used to be, and what happened to it (M27-P2).** §17 was the
 declared-backward-spec suite: the sound reincarnation of M8's `constrained` wire,
-where a borrow-returning function carried a `Decl.back` — a pure function from the
+where a borrow-returning function carried a `FnDef.back` — a pure function from the
 issued borrows' surrendered values to the captured loan's release — checked
 against its body at the callee and used at the caller to compute the release
 instead of minting an existential. M23 retired the architecture (its quicksort
@@ -51,7 +51,7 @@ namespace Dllbc.Tests.S17Spec
 -- `through (b) = b`. It once carried `back = λ (r). r` (the release IS the
 -- surrendered value, M8's arc closed); with the mechanism gone this is simply a
 -- borrow-returning function, and what a caller learns is its type.
-def throughOk : Decl :=
+def throughOk : FnDef :=
   decl{ fn through (b : &mut List Nat) -> &mut List Nat
         { b } }
 example : Migrate.progOkOf throughOk = true := by native_decide
@@ -61,7 +61,7 @@ example : Migrate.progOkOf throughOk = true := by native_decide
 -- it the group end mints a fresh existential, which is §6.2's precision loss and
 -- is now the only behaviour. The assertion below is the OPACITY one — the same
 -- shape S7Group's spec-less `through` always had.
-def caller : Decl :=
+def caller : FnDef :=
   decl{ fn caller () -> Unit {
     let x = Cons(1, Nil); let b = &mut x;
     let r = through(b);
@@ -84,7 +84,7 @@ example : (match Dllbc.Tests.S9Diff.runExec [throughOk] caller.body with
 
 -- Same body, no `back`: the caller's recovery is a fresh existential (a `sym`),
 -- exactly as in M9 — the spec-carrying end is opt-in.
-def throughOpaque : Decl :=
+def throughOpaque : FnDef :=
   decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
 example : (match Migrate.progEnvsOfT [throughOpaque, { caller with name := "c2" }] { caller with name := "c2" } with
   | [.ok env] => match env.lookup "y" with | some (.sym _) => true | _ => false
@@ -107,7 +107,7 @@ example : (match Migrate.progEnvsOfT [throughOpaque, { caller with name := "c2" 
 
 open Dllbc.StdLemmas (set swapL)
 
-def nthS : Decl :=
+def nthS : FnDef :=
   decl{ fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
         { match v {
             Nil => botElim Unit p,
@@ -117,7 +117,7 @@ def nthS : Decl :=
             }
         } } }
 
-def nth2S : Decl :=
+def nth2S : FnDef :=
   decl{ fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat
         { match v {
@@ -134,7 +134,7 @@ def nth2S : Decl :=
             }
         } } }
 
-def swapSN : Decl :=
+def swapSN : FnDef :=
   decl{ fn swapS (v : &mut List Nat, i : Nat, j : Nat,
                   pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit
         { let pr = nth2(v, i, j, pij, p2);
@@ -158,7 +158,7 @@ def spcBody : Term := dllbcWith [] {
   swapS(b, 0, 2, (), ());
   let y = x;
   () }
-def spcCaller : Decl := decl{ fn spc () -> Unit = %spcBody }
+def spcCaller : FnDef := decl{ fn spc () -> Unit = %spcBody }
 def vlist321 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]],
   .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "Z" []]], .ctor "Cons" [.ctor "S" [.ctor "Z" []], .ctor "Nil" []]]]
 example : (match Migrate.progEnvsOfT [nthS, nth2S, swapSN, spcCaller] spcCaller with

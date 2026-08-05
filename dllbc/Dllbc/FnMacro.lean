@@ -5,7 +5,7 @@ import Dllbc.Machine
 
 `combining-fns.md` §7 promotes "guarded `fn`-recursion is sugar for recursors"
 from soundness argument to semantics: **`fn f (…) -> R { body }` is a binding of
-`.seal ⟨recursor term⟩ ⟨the Π⟩`**, and `Decl` is not a primitive. This module is
+`.seal ⟨recursor term⟩ ⟨the Π⟩`**, and `FnDef` is not a primitive. This module is
 that elaboration.
 
 ## Not in the TCB (constraint 7)
@@ -45,7 +45,7 @@ Self-calls then become `ih` applications with the scrutinee argument dropped, an
     8 blesses fuel-threading as the interim, and fuel is something the programmer
     threads, not something a macro invents: the signature changes, and so does
     every caller. Refused, pointing at the decision.
-  * **A declared `back`** — §6.2's backward specs are a `Decl` mechanism with no
+  * **A declared `back`** — §6.2's backward specs are a `FnDef` mechanism with no
     seal counterpart. M23's corpus has none.
   * **A residual reference to the scrutinee** after the arms are resolved, and a
     self-call left in the base arm — both mean the body was not of the shape the
@@ -295,12 +295,12 @@ def hoist (k : Nat) (tel : List (Var × Term)) : Except String (List (Var × Ter
       .error s!"fn: the decreasing parameter '{kv.name}' cannot be hoisted to the front of the telescope — its type mentions '{y.name}', which is declared before it. §7 makes [k] a scrutinee-selection hint and the motive is the sealed Π with that binder peeled off the FRONT, so the scrutinee's own type must be statable first."
     | none => .ok ((kv, kτ) :: (tel.take k ++ tel.drop (k + 1)))
 
-/-- `fn` as a macro: a `Decl` becomes the term §7 says it is — `.seal ⟨recursor⟩
+/-- `fn` as a macro: a `FnDef` becomes the term §7 says it is — `.seal ⟨recursor⟩
     ⟨Π⟩` when it recurses, `.seal ⟨runtime λ⟩ ⟨Π⟩` when it does not.
 
     Returns the sealed TERM. Binding it is the caller's business, which is §8's
     direction: a declaration is a `let`, and this is its right-hand side. -/
-def fnElab (d : Decl) : Except String Term := do
+def fnElab (d : FnDef) : Except String Term := do
   let tel := teleVars d.telescope
   match d.dec with
   -- NON-RECURSIVE: the whole function is one runtime λ, sealed at its signature.
@@ -446,7 +446,7 @@ def fnElab (d : Decl) : Except String Term := do
 
 /-! ## §8: assembling a program from declarations
 
-    A `Decl` becomes a `let` (§8: "every piece of structure a declaration form
+    A `FnDef` becomes a `let` (§8: "every piece of structure a declaration form
     ever carried already lives on the binding"), and the only thing that changes
     inside the bodies is how a callee is named: `f(…)` was a TABLE lookup and is
     now a variable — the same rewrite the surface has done since M26-A, applied to
@@ -516,12 +516,12 @@ def progBase : Nat := 900
     it, and `tail` runs in the accumulated scope. No table, no forward reference —
     a callee not yet bound stays a `.call` and is reported by the kernel as the
     unknown function it is. -/
-def progOf (ds : List Decl) (tail : Term) : Except String Term := do
+def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
   let binds : List (String × Var × Option Nat) :=
     ds.enum.map (fun p => (p.2.name, ⟨progBase + p.1, p.2.name⟩, p.2.dec))
-  let rec go (i : Nat) : List Decl → Except String Term
+  let rec go (i : Nat) : List FnDef → Except String Term
     -- The tail is in the accumulated scope, so its calls are retargeted too — which
-    -- is what lets an existing `Decl`-era caller term be handed over unchanged and
+    -- is what lets an existing `FnDef`-era caller term be handed over unchanged and
     -- become the program's `main`.
     | [] => .ok (retarget binds tail)
     | d :: rest => do

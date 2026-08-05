@@ -6,7 +6,7 @@ import Dllbc.Tests.S26Prog
 /-!
 # §27 (M27-P1) — a disposition for every declaration the program path declines
 
-The endgame deletes `Decl`, the `back` machinery and the `[k]` guard. Before any
+The endgame deletes `FnDef`, the `back` machinery and the `[k]` guard. Before any
 of that comes off, every declaration that does not have a program form needs a
 **written disposition** — ported, paid, or retired with a reason. A decliner that
 is merely dropped is a coverage loss disguised as a migration, and the whole point
@@ -68,7 +68,7 @@ open Dllbc.StdLemmas (Ub Lb len)
 /-! **EXECUTED (M27-P2), and the assertion cannot be written any more.**
 
     This section used to count `back`-declaring declarations and assert the count.
-    `Decl.back` no longer exists, so `(·.back.isSome)` does not typecheck — the
+    `FnDef.back` no longer exists, so `(·.back.isSome)` does not typecheck — the
     claim "no declaration declares a backward spec" is now a fact about the TYPE
     rather than a property of the corpus, which is the strongest form it can take
     and the form that needs no test. A reappearance would not turn this file red;
@@ -100,10 +100,10 @@ example : (S26Migrate.pools.foldl (fun (a, r, d) p =>
     assertion below pins it name-for-name — a decliner appearing or vanishing goes
     red here before it can go unnoticed anywhere else. -/
 
-def residue (p : List Decl) : List String :=
+def residue (p : List FnDef) : List String :=
   (declinedWith (S26Fuel.fixAll p)).map (·.1)
 
-/-- The residue, name for name. Several share a `Decl.name` (a lie twin is the
+/-- The residue, name for name. Several share a `FnDef.name` (a lie twin is the
     same function under the same name with a different body), so the multiset —
     not a set — is the claim. -/
 example : (S26Migrate.pools.flatMap residue ==
@@ -162,7 +162,7 @@ example : S26Fuel.bothWays S24Arrays.walk = true := by native_decide
 -- unchanged and is the reason this helper exists rather than a `!progOkOf`: a
 -- DECLINE is not a rejection, so the elaboration has to EXIST for the refusal to
 -- be about the lie.
-def neitherWay (d : Decl) (deps : List Decl := []) : Bool :=
+def neitherWay (d : FnDef) (deps : List FnDef := []) : Bool :=
   (match FnMacro.progOf (deps ++ [d]) .unit with
       -- A DECLINE is not a rejection: the elaboration has to exist for the
       -- program path's refusal to be about the lie.
@@ -176,11 +176,11 @@ def neitherWay (d : Decl) (deps : List Decl := []) : Bool :=
     twin cannot drift from the function it guards. The telescope is `partitionF`'s,
     which is the whole of the migration: a spec lie says nothing about fuel. -/
 
-def partFLie (r : Term) : Decl := { S26Fn.partitionF with retType := r }
+def partFLie (r : Term) : FnDef := { S26Fn.partitionF with retType := r }
 
 -- (1) UPPER BOUND on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
 -- the entry is not what the caller gets back.
-def partFLieUb : Decl := partFLie (decl{
+def partFLieUb : FnDef := partFLie (decl{
   fn partFLieUb [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
     -> Σ (hi : List Nat) → Σ (hub : Ub p (old *v)) → Σ (hlb : Lb p hi)
          → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -188,7 +188,7 @@ def partFLieUb : Decl := partFLie (decl{
     { () } }).retType
 
 -- (2) LOWER BOUND on the kept part instead of the returned one.
-def partFLieLb : Decl := partFLie (decl{
+def partFLieLb : FnDef := partFLie (decl{
   fn partFLieLb [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
     -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p (*v))
          → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -196,7 +196,7 @@ def partFLieLb : Decl := partFLie (decl{
     { () } }).retType
 
 -- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
-def partFLieCountDrop : Decl := partFLie (decl{
+def partFLieCountDrop : FnDef := partFLie (decl{
   fn partFLieCountDrop [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
     -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
          → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
@@ -204,14 +204,14 @@ def partFLieCountDrop : Decl := partFLie (decl{
     { () } }).retType
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
-def partFLieCountShift : Decl := partFLie (decl{
+def partFLieCountShift : FnDef := partFLie (decl{
   fn partFLieCountShift [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
     -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
          → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
          → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (S (count n (old *v)))
     { () } }).retType
 
-def partFLies : List Decl := [partFLieUb, partFLieLb, partFLieCountDrop, partFLieCountShift]
+def partFLies : List FnDef := [partFLieUb, partFLieLb, partFLieCountDrop, partFLieCountShift]
 
 /-- Each lie really is a lie ABOUT THIS FUNCTION: same name, same telescope, same
     body, one different return type. Without this the four could have been four
@@ -265,7 +265,7 @@ example : (FnMacro.renameSelf "partition" "partitionLoses"
 example : (FnMacro.renameSelf "partition" "partitionLoses"
     S23Direct.partition.body == S23Direct.partitionLoses.body) = false := by native_decide
 
-def partitionLosesF : Decl :=
+def partitionLosesF : FnDef :=
   { S26Fn.partitionF with body := dropHead S26Fn.partitionF.body }
 
 -- The transform really fired on the fuel-threaded body too (it is the same body
@@ -285,7 +285,7 @@ example : neitherWay partitionLosesF = true := by native_decide
     telescope alone, which is exactly what its own docstring promised would let it
     carry the lie twins. -/
 
-def qsNoSuffP : Decl := S26Prog.migrate S23Direct.qsNoSuff
+def qsNoSuffP : FnDef := S26Prog.migrate S23Direct.qsNoSuff
 
 -- The weakened hypothesis survived the migration, and it is the only difference
 -- from the honest flagship's telescope.
@@ -307,7 +307,7 @@ example : neitherWay qsNoSuffP [S26Fn.partitionF, S26Prog.appendBackF] = true :=
     the un-elaborated form resolves to no function at all. Two mechanisms, neither
     of them a decrease check, and both survive the deletion. -/
 
-def guardTwins : List Decl := [S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recGrow]
+def guardTwins : List FnDef := [S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recGrow]
 
 -- ~~Today: the declaration path rejects each at the guard…~~ The guard is gone
 -- (M27-δ), and so is the path that fed it. What is left is the reason that
@@ -404,7 +404,7 @@ example : (match FnMacro.fnElab S23Direct.recDeep with
     `SDeclMacro`'s `through'`/`swapS'`/`nth'`, `SDeclMacroCrown`'s `quicksortSig`,
     and `SDeclUnified`'s `nthU`/`permuted`/`pivotPlaceHU` are round-trip tests of
     the `decl{ … }` SURFACE: each asserts that a written `back = …` parses to an
-    expected `Decl` field. When the field goes, the subject goes with it — there is
+    expected `FnDef` field. When the field goes, the subject goes with it — there is
     no claim underneath to re-express, because the claim WAS the parse. These
     retire, and the rationale is that a test of a deleted syntax is not coverage.
 
@@ -443,7 +443,7 @@ example : (match FnMacro.fnElab S23Direct.recDeep with
     happened to compute. Asserted below on both paths, with the lie twins that make
     the acceptance non-vacuous. -/
 
-def ensuresReplacements : List Decl := [S23Direct.setAt, S23Direct.swapAt]
+def ensuresReplacements : List FnDef := [S23Direct.setAt, S23Direct.swapAt]
 
 -- The ensures-style pair checks as declarations AND as programs.
 example : S26Fuel.bothWays S23Direct.setAt = true := by native_decide
@@ -451,7 +451,7 @@ example : S26Fuel.bothWays S23Direct.swapAt [S23Direct.setAt] = true := by nativ
 
 -- …and refuses the four lies about exactly the facts the backs used to carry:
 -- the index moved, and the update claimed to be a no-op.
-def ensuresLies : List Decl :=
+def ensuresLies : List FnDef :=
   [S23Direct.setAtLieIdx, S23Direct.setAtLieNoop, S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop]
 example : ensuresLies.all (fun d => neitherWay d [S23Direct.setAt]) = true := by native_decide
 

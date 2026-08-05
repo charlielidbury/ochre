@@ -77,7 +77,7 @@ example : chk StdLemmas.len_swapL StdLemmas.len_swapL_ty = true := by native_dec
     with `swapL 0 1 s` by computation — so it type-checks against `Id (len l)
     (len s)`. The cursor writes and the pure specification agree, verified. -/
 
-def swapS01 : Decl :=
+def swapS01 : FnDef :=
   decl{ fn swapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s)),
                     p : Le 2 (len (*v))) -> Unit {
     let proof = StdLemmas.len_swapL 0 1 (*v);
@@ -104,7 +104,7 @@ example : Migrate.progOkOf swapS01 = true := by native_decide
 -- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
 -- l + the carried proof `pf : Id (len l) (len [1,2,3])`. The evidence survives the
 -- opaque group-end — pf is in scope downstream though l itself is opaque.
-def swapCaller : Decl :=
+def swapCaller : FnDef :=
   decl{ fn caller () -> Unit {
     let x = Cons(1, Cons(2, Cons(3, Nil)));
     let b = &mut x;

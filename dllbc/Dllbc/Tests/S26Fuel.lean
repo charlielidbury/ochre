@@ -53,7 +53,7 @@ namespace Dllbc.Tests.S26Fuel
 -- so what is left is that the fuel-threaded form checks — which was always the
 -- half in doubt, since decision 8's question was whether the interim is
 -- available at all, not whether two checkers agree about it.
-def bothWays (d : Decl) (deps : List Decl := []) : Bool :=
+def bothWays (d : FnDef) (deps : List FnDef := []) : Bool :=
   match FnMacro.progOf (deps ++ [d]) .unit with
   | .error _ => false
   | .ok t => progOk t
@@ -65,7 +65,7 @@ def bothWays (d : Decl) (deps : List Decl := []) : Bool :=
     having "no easy recursor form" — no counter at all — and the one S6Call and
     S23Direct both carry. -/
 
-def zeroAllF : Decl :=
+def zeroAllF : FnDef :=
   decl{ fn zero_allF [fuel] (fuel : Nat, v : &mut List Nat, Hf : Le (len *v) fuel) -> Unit {
     match v {
       Nil => (),
@@ -131,7 +131,7 @@ example : (match FnMacro.fnElab Tests.S24Arrays.walkArr with
 
     **Correcting the hint is free.** No fuel, no signature change, no caller
     change, no dead branch — the same body, the same telescope, the same return
-    type, one field of the `Decl` different. The bound descends definitionally
+    type, one field of the `FnDef` different. The bound descends definitionally
     exactly as it did (`p : Le (S (S k)) (S (len *tl))` IS `Le (S k) (len *tl)` —
     M14's own bounds-cursor property), which is why nothing else moves.
 
@@ -155,12 +155,12 @@ example : (match FnMacro.fnElab Tests.S24Arrays.walkArr with
     accepts index decrease either way, so nothing in S14 or S17 needed re-proving).
 
     The two round-trip mirrors of `nthS` moved with it (`SDeclMacro.nth'`,
-    `SDeclUnified.nthU`), and only one of them noticed: `Decl.alphaEq` compares
+    `SDeclUnified.nthU`), and only one of them noticed: `FnDef.alphaEq` compares
     name/telescope/retType/body/back and NOT `dec`, so the `alphaEq` mirror stayed
     green against a stale hint while the exact-`BEq` mirror went red. -/
 
-def nthI : Decl := { Tests.S14Bounds.nth with dec := some 1 }
-def nth2I : Decl := { Tests.S14Bounds.nth2 with dec := some 1 }
+def nthI : FnDef := { Tests.S14Bounds.nth with dec := some 1 }
+def nth2I : FnDef := { Tests.S14Bounds.nth2 with dec := some 1 }
 
 /-- Nothing changed but the hint — and since M26-F adopted it, nothing changed at
     all: the correction IS the corpus declaration now. -/
@@ -173,7 +173,7 @@ example : bothWays nth2I [nthI] = true := by native_decide
 
 /-- The whole family, hints corrected: 4 accept on both paths, 1 rejects on both
     (`rejectProbe` is S14's own negative control), NOTHING declines. -/
-def p14fixed : List Decl :=
+def p14fixed : List FnDef :=
   [nthI, nth2I, Tests.S14Bounds.swap, Tests.S14Bounds.cascade, Tests.S14Bounds.rejectProbe]
 example : (Migrate.tally p14fixed
   == { accepts := 4, rejects := 1, declined := 0 }) = true := by native_decide
@@ -249,12 +249,12 @@ example : bothWays zeroAllF = true := by native_decide
     The measurement separates them so the question can be asked about eight
     declarations rather than about the corpus. -/
 
-def fixHints (pool : List Decl) : List Decl :=
+def fixHints (pool : List FnDef) : List FnDef :=
   pool.map (fun d => if d.name == "nth" || d.name == "nth2" then { d with dec := some 1 } else d)
 -- M27-P2: `stripBacks` retired with the mechanism, so `fixAll` is `fixHints`,
 -- which is itself a no-op since M26-F adopted the hints at the source. BOTH of
 -- §E's fixes are now the corpus, which is what the assertions below assert.
-def fixAll (pool : List Decl) : List Decl := fixHints pool
+def fixAll (pool : List FnDef) : List FnDef := fixHints pool
 
 -- The adoption is at the SOURCE, so `fixHints` is now a no-op on every pool —
 -- which is the assertion that the corpus, and not this harness, carries the fix.

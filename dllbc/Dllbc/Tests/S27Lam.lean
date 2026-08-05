@@ -35,9 +35,9 @@ open Dllbc
 
 /-- The declaration checks, ON THE PROGRAM PATH — `decl{ … }` is a harness here,
     not the subject, so these route through `Migrate.progOkOf` and survive δ. -/
-def ok (d : Decl) (table : List Decl := [d]) : Bool := Migrate.progOkOf d table
+def ok (d : FnDef) (table : List FnDef := [d]) : Bool := Migrate.progOkOf d table
 /-- The declaration is rejected with an error containing `needle`. -/
-def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
+def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
   Migrate.progRejectsOf d needle table
 
 /-! ## §A. The surface carries the domain -/
@@ -85,13 +85,13 @@ example : (match runProgram annotated with
 
 -- C1. The domain captures a data binding: refused, by the same rule and the same
 -- message a captured body reference gets.
-def capInType : Decl := decl{ fn caller () -> Unit
+def capInType : FnDef := decl{ fn caller () -> Unit
   { let n = 3; let g = λ(a : Le n n) { () }; () } }
 example : rejects capInType "not a function" = true := by native_decide
 
 -- C2. THE ISOLATING CONTROL. The same λ with a closed domain is accepted, so C1 is
 -- about the reference and not about annotating a binder at all.
-def closedType : Decl := decl{ fn caller () -> Unit
+def closedType : FnDef := decl{ fn caller () -> Unit
   { let n = 3; let g = λ(a : Le 3 3) { () }; () } }
 example : ok closedType = true := by native_decide
 
@@ -99,7 +99,7 @@ example : ok closedType = true := by native_decide
 -- is bound, not free. This is the shape every recursor arm has (`ih`'s domain
 -- mentions the predecessor to its left), so getting it wrong would reject the
 -- whole recursor story rather than a corner of it.
-def telType : Decl := decl{ fn caller () -> Unit
+def telType : FnDef := decl{ fn caller () -> Unit
   { let g = λ(m : Nat, a : Le m m) { () }; () } }
 example : ok telType = true := by native_decide
 
@@ -147,7 +147,7 @@ example : Term.beq (anOf telA) (anOf telC) = false := by native_decide
     hand-written terms rather than against a second call of the derivation, so
     they would fail if the macro transcribed instead of substituting. -/
 
-def bndD : Decl := decl{ fn bnd [n] (n : Nat, v : &mut List Nat, Hn : Le (len *v) n) -> Unit {
+def bndD : FnDef := decl{ fn bnd [n] (n : Nat, v : &mut List Nat, Hn : Le (len *v) n) -> Unit {
   match n {
     Z => (),
     S(n2) => match v {
@@ -443,13 +443,13 @@ example : progOk juxLam (.const "Nat") = true := by native_decide
     would be a claim about the cases someone happened to write; with it, the two
     arrows are visible at one syntax. -/
 
-def juxPure : Decl := decl{ fn caller (v : &mut List Nat) -> Unit
+def juxPure : FnDef := decl{ fn caller (v : &mut List Nat) -> Unit
   { let mk = (λ (l : List Nat). l);
     let y = mk (*v);
     () } }
 example : ok juxPure = true := by native_decide
 
-def juxRuntime : Decl := decl{ fn caller (v : &mut List Nat) -> Unit
+def juxRuntime : FnDef := decl{ fn caller (v : &mut List Nat) -> Unit
   { let mk = λ(l : List Nat) { l };
     let y = mk (*v);
     () } }
@@ -482,8 +482,39 @@ example : (match (prog{ let x = S 3; () } : Term) with
 -- function-typed binder a SPEC parameter — cited, never called — so the spine
 -- stays ⇝'s structured neutral. (`S26Modes` §B7 pins the type position; this is
 -- the kernel-side guard that a body cannot reach the call rule through it.)
-def juxCapital : Decl := decl{ fn juxCapital (G : Π (x : Nat) → Nat, n : Nat)
+def juxCapital : FnDef := decl{ fn juxCapital (G : Π (x : Nat) → Nat, n : Nat)
   -> Id Nat (G n) (G n) { Refl } }
 example : ok juxCapital = true := by native_decide
+
+/-! ## §H. `alphaEq` compares `[k]` (M27-δ)
+
+    The widening became CORRECT at exactly the moment the guard died. While `[k]`
+    was a guard input, two definitions differing only in it could still be the same
+    function — the hint said which parameter to police, not what to build. Now it
+    is purely the scrutinee-selection hint, so it decides which recursor `fnElab`
+    emits, and two definitions differing in it are two different terms.
+
+    Asserted rather than assumed, because a widening that no pair exercises is
+    indistinguishable from no widening at all. -/
+
+def hintA : FnDef := decl{ fn h [n] (n : Nat, m : Nat) -> Id Nat Z Z
+  { match m { Z => Refl, S(m2) => h(n, m2) } } }
+/-- The same name, telescope, return type and body — differing in `[k]` alone. -/
+def hintB : FnDef := { hintA with dec := some 1 }
+
+example : (hintA.name == hintB.name && hintA.body == hintB.body
+        && hintA.telescope == hintB.telescope && hintA.retType == hintB.retType)
+  = true := by native_decide
+example : FnDef.alphaEq hintA hintB = false := by native_decide
+-- …and the criterion still says YES to a genuine α-variant, so §H is about `[k]`
+-- and not about the comparison having become trivially false.
+example : FnDef.alphaEq hintA hintA = true := by native_decide
+
+-- The hint really does decide which recursor is emitted, which is why the
+-- criterion has to see it: one of these elaborates and the other does not,
+-- because only `m` is matched on.
+example : ((match FnMacro.fnElab hintA with | .ok _ => true | .error _ => false)
+        != (match FnMacro.fnElab hintB with | .ok _ => true | .error _ => false))
+  = true := by native_decide
 
 end Dllbc.Tests.S27Lam

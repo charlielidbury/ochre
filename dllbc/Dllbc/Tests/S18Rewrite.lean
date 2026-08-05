@@ -110,7 +110,7 @@ example : chk StdLemmas.count_cons_congr StdLemmas.count_cons_congr_ty = true :=
 example : chk StdLemmas.count_headswap StdLemmas.count_headswap_ty = true := by native_decide
 example : chk StdLemmas.count_swapL StdLemmas.count_swapL_ty = true := by native_decide
 -- The §22 bridge: the set/nth exit form ≡ swapL under `Le (S i) j` (see StdLemmas
--- header). Lets `count_swapL'`/`len_swapL` transport to a swap Decl's exit reading.
+-- header). Lets `count_swapL'`/`len_swapL` transport to a swap FnDef's exit reading.
 example : chk StdLemmas.swapL_set StdLemmas.swapL_set_ty = true := by native_decide
 -- §22 partition rung: count preservation of the range scan/partition (the Perm half
 -- of partition's postcondition), threading the range bound to feed count_swapL'.
@@ -287,10 +287,10 @@ example : chk StdLemmas.count_cons_hit StdLemmas.count_cons_hit_ty = true := by 
     machinery — the shape the quicksort caller uses when it applies count lemmas to
     the M17-recovered result. -/
 
--- SUBJECT: hand-built raw Decl — its `.idT` return obligation and proof-carrying
+-- SUBJECT: hand-built raw FnDef — its `.idT` return obligation and proof-carrying
 -- `.assign` body exercise the rewrite/Id machinery that IS under test; the raw form
 -- (not a surface `decl{}`) is the subject.
-def certConsHit : Decl :=
+def certConsHit : FnDef :=
   { name := "certConsHit",
     retType := .idT (.const "Nat")
       (.app (.app Std.countFnT (V 1 "m")) (.ctorApp "Cons" [V 2 "a", V 3 "l"]))
@@ -311,7 +311,7 @@ example : Migrate.progOkOf certConsHit = true := by native_decide
 def certConsHitLieRet : Term := .idT (.const "Nat")
   (.app (.app Std.countFnT (V 1 "m")) (.ctorApp "Cons" [V 2 "a", V 3 "l"]))
   (.ctorApp "S" [.ctorApp "S" [.app (.app Std.countFnT (V 1 "m")) (V 3 "l")]])
-def certConsHitLie : Decl := { certConsHit with name := "certConsHitLie", retType := certConsHitLieRet }
+def certConsHitLie : FnDef := { certConsHit with name := "certConsHitLie", retType := certConsHitLieRet }
 example : Migrate.progRejectsOf certConsHitLie "does not have return type" = true := by native_decide
 
 end Dllbc.Tests.S18Rewrite

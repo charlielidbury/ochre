@@ -33,15 +33,15 @@ namespace Dllbc.Migrate
     someone else's) is ready; self-calls do not count, since `fnElab` turns them
     into `ih`. If nothing is ready the remainder is emitted as-is and the program
     path reports the forward reference itself. -/
-partial def topo (pool : List Decl) (emitted : List String) (todo : List Decl) : List Decl :=
+partial def topo (pool : List FnDef) (emitted : List String) (todo : List FnDef) : List FnDef :=
   match todo.find? (fun d => (calleeNames d.body).all (fun n =>
       n == d.name || emitted.contains n || !(pool.any (·.name == n)))) with
   | none => todo
   | some d => d :: topo pool (d.name :: emitted) (todo.filter (·.name != d.name))
 
 /-- The callee closure of `d` within `pool`, in dependency order, `d` last. -/
-partial def cohort (pool : List Decl) (d : Decl) : List Decl :=
-  let rec expand (fuel : Nat) (acc : List Decl) : List Decl :=
+partial def cohort (pool : List FnDef) (d : FnDef) : List FnDef :=
+  let rec expand (fuel : Nat) (acc : List FnDef) : List FnDef :=
     match fuel with
     | 0 => acc
     | fuel + 1 =>
@@ -70,21 +70,21 @@ partial def cohort (pool : List Decl) (d : Decl) : List Decl :=
 
 /-- The PROGRAM path's verdict: the cohort assembled into a let-chain and checked
     by one ⇒-walk against no table. `none` = the macro declined to migrate it. -/
-def progVerdict (pool : List Decl) (d : Decl) : Option Bool :=
+def progVerdict (pool : List FnDef) (d : FnDef) : Option Bool :=
   match FnMacro.progOf (cohort pool d) .unit with
   | .error _ => none
   | .ok t => some (match checkProgram t with | .ok _ => true | .error _ => false)
 
 /-- Why a declaration did not migrate — `fnElab`'s own message, so the reason is
     the kernel-adjacent one and not a guess. -/
-def refusal (pool : List Decl) (d : Decl) : Option String :=
+def refusal (pool : List FnDef) (d : FnDef) : Option String :=
   match FnMacro.progOf (cohort pool d) .unit with
   | .error e => some e
   | .ok _ => none
 
 /-- The names a pool declined to migrate, with `fnElab`'s reason — for the record
     a partial migration owes (see each file's own section). -/
-def declinedWith (pool : List Decl) : List (String × String) :=
+def declinedWith (pool : List FnDef) : List (String × String) :=
   pool.filterMap (fun d => (refusal pool d).map (fun e => (d.name, e)))
 
 /-- **What survives of `report`** (M27-δ): the three counts, without the
@@ -99,7 +99,7 @@ structure Tally where
   declined : Nat
 deriving BEq, Repr
 
-def tally (pool : List Decl) : Tally :=
+def tally (pool : List FnDef) : Tally :=
   pool.foldl (fun t d =>
     match progVerdict pool d with
     | none => { t with declined := t.declined + 1 }
@@ -127,7 +127,7 @@ def tally (pool : List Decl) : Tally :=
     a test asserting `progRejectsOf` must not be able to pass by not moving. -/
 
 /-- The program-path counterpart of `checkFnOk`. -/
-def progOkOf (d : Decl) (table : List Decl := [d]) : Bool :=
+def progOkOf (d : FnDef) (table : List FnDef := [d]) : Bool :=
   match FnMacro.progOf (cohort table d) .unit with
   | .error _ => false
   | .ok t => progOk t
@@ -135,7 +135,7 @@ def progOkOf (d : Decl) (table : List Decl := [d]) : Bool :=
 /-- The program-path counterpart of `checkFnErr`: the assembled program is
     rejected with `needle` in the message. A declaration that fails to assemble is
     `false`, so this cannot be satisfied by declining to migrate. -/
-def progRejectsOf (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
+def progRejectsOf (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
   match FnMacro.progOf (cohort table d) .unit with
   | .error _ => false
   | .ok t => progRejects t needle
@@ -154,7 +154,7 @@ def progRejectsOf (d : Decl) (needle : String) (table : List Decl := [d]) : Bool
     the migration having changed what the body leaves. So this walks `explore`
     itself rather than reusing `programEnvs`, and filters on the VAR ID against
     `progBase`, which is what a global is. -/
-def progEnvsOfT (table : List Decl) (d : Decl) : List (Except String Env) :=
+def progEnvsOfT (table : List FnDef) (d : FnDef) : List (Except String Env) :=
   -- **The subject's BODY is the program's TAIL**, not another `let`. `progOf ds
   -- .unit` binds every declaration and runs nothing, so a subject bound that way
   -- has its body checked inside the seal's isolated frame and its Ω never
@@ -173,7 +173,7 @@ def progEnvsOfT (table : List Decl) (d : Decl) : List (Except String Env) :=
 /-- The program-path counterpart of `expectFnEnv`: one path, and it leaves exactly
     this Ω. Table-first, like the two it replaces, so a call site converts by
     renaming. -/
-def progEnvOfT (table : List Decl) (d : Decl) (expected : Env) : Bool :=
+def progEnvOfT (table : List FnDef) (d : FnDef) (expected : Env) : Bool :=
   match progEnvsOfT table d with
   | [.ok env] => env == expected
   | _ => false

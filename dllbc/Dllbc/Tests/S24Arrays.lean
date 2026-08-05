@@ -482,7 +482,7 @@ example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
     request IS the leaf, so no split and no refinement fire, and no evidence is
     demanded because `Le b b` and `Le x x` are `le_refl`. That asymmetry is the general
     shape of an exhaustive split, and it is why this costs ONE proof rather than two. -/
-def halves : Decl := decl{
+def halves : FnDef := decl{
   fn halves (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k | h];
     let r = &mut (*a)[k ; ..];
@@ -496,7 +496,7 @@ example : Migrate.progOkOf halves = true := by native_decide
     entered only inside the seal's isolated frame, whose Ω is discarded by design.
     A genuine coverage loss rather than a relocation; `S10Ford` states the same
     disposition at length. Every assertion that used it is deleted below. -/
-def fnEnv (_d : Decl) (_tbl : List Decl := []) : Option Env := none
+def fnEnv (_d : FnDef) (_tbl : List FnDef := []) : Option Env := none
 
 /-- The claim, stated structurally: `a`'s payload is a two-segment node whose bodies
     are two DISTINCT loans. Not "the checker accepted a disjointness argument" — there
@@ -542,7 +542,7 @@ def halvesSegLoans : Option (List Nat) :=
 
 -- Premise (2), UNPROVED BOUND — "the *interesting* rejection: the program is not
 -- wrong, it is unjustified". Same body, evidence not cited.
-def noEvidence : Decl := decl{
+def noEvidence : FnDef := decl{
   fn noEvidence (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k]; () } }
 example : Migrate.progRejectsOf noEvidence "containment obligation" = true := by native_decide
@@ -550,7 +550,7 @@ example : Migrate.progRejectsOf noEvidence "containment obligation" = true := by
 -- Premise (2), WRONG EVIDENCE. `h : Le n k` is a perfectly good term of a perfectly
 -- good type; it is just not the obligation. The evidence's TYPE is the selector, so a
 -- term of the wrong type selects no leaf.
-def wrongEvidence : Decl := decl{
+def wrongEvidence : FnDef := decl{
   fn wrongEvidence (n : Nat, k : Nat, h : Le n k, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k | h]; () } }
 example : Migrate.progRejectsOf wrongEvidence "containment obligation" = true := by native_decide
@@ -559,7 +559,7 @@ example : Migrate.progRejectsOf wrongEvidence "containment obligation" = true :=
 -- compound neutral rather than a flexible σ, so `m ≡ add lo' (add cnt rest)` has no
 -- solution by refinement. Rejected with the remedy in the message, which is the one
 -- the north star already uses: take the length as a parameter.
-def rigidLength : Decl := decl{
+def rigidLength : FnDef := decl{
   fn rigidLength (p : Nat, q : Nat, k : Nat, h : Le k (add p q),
                   a : &mut (Array (add p q) Nat)) -> Unit {
     let l = &mut (*a)[Z ; k | h]; () } }
@@ -579,7 +579,7 @@ example : Migrate.progRejectsOf rigidLength "Take the length as a telescope PARA
 
     A function that recurses on fuel and carves on the way checks. -/
 
-def walk : Decl := decl{
+def walk : FnDef := decl{
   fn walk [fuel] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
@@ -599,7 +599,7 @@ example : Migrate.progOkOf walk = true := by native_decide
     asserts. The sweep itself is still exercised by every carve in this file that
     checks; what is gone is this particular witness to it. -/
 
-def walkArr : Decl := decl{
+def walkArr : FnDef := decl{
   fn walkArr [a] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
@@ -638,9 +638,9 @@ def walkArr : Decl := decl{
     the caller; the parent `a` is audited normally and its untouched segment never
     entered the call. The frame is not described — it is simply still there. -/
 
-def touch : Decl := decl{ fn touch (p : Nat, l : &mut (Array p Nat)) -> Unit { () } }
+def touch : FnDef := decl{ fn touch (p : Nat, l : &mut (Array p Nat)) -> Unit { () } }
 
-def callSeg : Decl := decl{
+def callSeg : FnDef := decl{
   fn callSeg (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k | h];
     let r = &mut (*a)[k ; ..];
@@ -751,12 +751,12 @@ example : ((Val.arrFoldSegs? [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 7]),
     σ-instance of some accepted SYMBOLIC path's final environment (checking mode —
     calls use the §5.3/§6.1 signature rule). -/
 
-def fill1 : Decl := decl{ fn fill1 (l : &mut (Array 1 Nat)) -> Unit { (*l)[0] := 9; () } }
+def fill1 : FnDef := decl{ fn fill1 (l : &mut (Array 1 Nat)) -> Unit { (*l)[0] := 9; () } }
 
-def bump : Decl := decl{
+def bump : FnDef := decl{
   fn bump (l : &mut (Array 2 Nat)) -> Unit { (*l)[0] := 7; (*l)[1] := 8; () } }
 
-def arrPool : List Decl := [fill1, bump]
+def arrPool : List FnDef := [fill1, bump]
 
 /-- A carved segment handed to a call, then the whole array demanded back. -/
 def arrCaller1 : Term := dllbcWith [] {
@@ -835,20 +835,20 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrPool b)
     supply. Premise (3)'s own logic is that offsets are leaf-relative; premise (2)
     should be too. -/
 
-def idxCited : Decl := decl{
+def idxCited : FnDef := decl{
   fn idxCited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
     let e = &mut (*a)[i | h]; () } }
 example : Migrate.progOkOf idxCited = true := by native_decide
 
 -- The same bound serves a width-1 RANGE, so the two spellings of "one slot" agree on
 -- what they demand even though they differ on what they hand back (¶2.1).
-def rng1Cited : Decl := decl{
+def rng1Cited : FnDef := decl{
   fn rng1Cited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
     let e = &mut (*a)[i ; 1 | h]; () } }
 example : Migrate.progOkOf rng1Cited = true := by native_decide
 
 -- Not vacuous: the bound is the one thing being checked, and a weaker one fails.
-def idxWeakBound : Decl := decl{
+def idxWeakBound : FnDef := decl{
   fn idxWeakBound (n : Nat, i : Nat, h : Le i n, a : &mut (Array n Nat)) -> Unit {
     let e = &mut (*a)[i | h]; () } }
 example : Migrate.progRejectsOf idxWeakBound "containment obligation" = true := by native_decide
@@ -860,9 +860,9 @@ example : Migrate.progRejectsOf idxWeakBound "containment obligation" = true := 
     same σ before and after the call — so the frame is not described, it is simply
     still there (¶3.6). -/
 
-def threeWayTouch : Decl := decl{ fn threeWayTouch (p : Nat, l : &mut (Array p Nat)) -> Unit { () } }
+def threeWayTouch : FnDef := decl{ fn threeWayTouch (p : Nat, l : &mut (Array p Nat)) -> Unit { () } }
 
-def splitTwo : Decl := decl{
+def splitTwo : FnDef := decl{
   fn splitTwo (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i | h1];
     let r = &mut (*a)[i ; ..];
@@ -910,7 +910,7 @@ example : Migrate.progOkOf splitTwo [splitTwo, threeWayTouch] = true := by nativ
     built: it changes the surface of the design's one new rule, which is the team
     lead's call, not this milestone's. -/
 
-def pivotCarve : Decl := decl{
+def pivotCarve : FnDef := decl{
   fn pivotCarve (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i | h1];
     let p = &mut (*a)[i];
@@ -937,22 +937,22 @@ example : Migrate.progRejectsOf pivotCarve "containment obligation" = true := by
     exactly the slices whose length was already nameable — the case that never needed
     it. The tests below are the settlement, not a feature demo. -/
 
-def sigSlice : Decl := decl{
+def sigSlice : FnDef := decl{
   fn sigSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () } }
 example : Migrate.progOkOf sigSlice = true := by native_decide
 
 -- The callee can DESTRUCTURE it: an owned match hands back the length and the borrow,
 -- and inside the body the length is an ordinary nameable term.
-def useSlice : Decl := decl{
+def useSlice : FnDef := decl{
   fn useSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit {
     match s { Pair(c, sl) => () } } }
 example : Migrate.progOkOf useSlice = true := by native_decide
 
-def sliceTouch : Decl := decl{
+def sliceTouch : FnDef := decl{
   fn sliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () } }
 
 -- A caller passing a slice whose length it can NAME: green, end to end.
-def sigCallerOk : Decl := decl{
+def sigCallerOk : FnDef := decl{
   fn sigCallerOk (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i | h1];
     let r = &mut (*a)[i ; ..];
@@ -967,7 +967,7 @@ example : Migrate.progOkOf sigCallerOk [sigCallerOk, sliceTouch] = true := by na
     residue through with a length that happens to be nameable. And there is no right
     term to write, because the residue's length is the σ premise (3) minted. -/
 
-def sigCallerWrong : Decl := decl{
+def sigCallerWrong : FnDef := decl{
   fn sigCallerWrong (n : Nat, i : Nat, h1 : Le i n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i | h1];
     let r = &mut (*a)[i ; ..];
@@ -980,7 +980,7 @@ example : Migrate.progRejectsOf sigCallerWrong "does not have its parameter type
 -- fuel bound ABOUT the slice's length, and that length lives inside the Σ where no
 -- telescope entry can mention it. Nesting the proof inside too is where it goes, and
 -- that is a second level the machinery does not have.
-def recSlice : Decl := decl{
+def recSlice : FnDef := decl{
   fn recSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (h : Le c fuel) → &mut (Array c Nat)) -> Unit {
     () } }
 example : Migrate.progRejectsOf recSlice "only valid at a telescope position" = true := by native_decide
@@ -1034,7 +1034,7 @@ example : (Val.nfV 300 (Val.kLe (Val.nat 1) (.sym 0)) == .const "Unit")
     — `le_add`, which the library already had for M22. The second is `Le 1 (S j)`, which
     reduces to `Le Z j` and then to ⊤, so **the carve that could not be written at all
     now needs no evidence whatsoever**. -/
-def threeWay : Decl := decl{
+def threeWay : FnDef := decl{
   fn threeWay (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
                a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
@@ -1064,7 +1064,7 @@ def threeWaySegLoans : Option (List Nat) :=
 -- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
 -- `rest := S j` the obligation is ⊤. Dropping `le_add` from the FIRST carve, whose
 -- obligation does not compute away, is still rejected.
-def threeWayNoFirstEv : Decl := decl{
+def threeWayNoFirstEv : FnDef := decl{
   fn threeWayNoFirstEv (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
                         a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_refl i | heq];
@@ -1079,7 +1079,7 @@ example : Migrate.progRejectsOf threeWayNoFirstEv "containment obligation" = tru
     program must CITE the equation, exactly as M17 requires of every other cross-boundary
     constraint. Before the ruling this checked, and a caller instantiating `n = 2` with
     `i = j = 5` checked with it and then got STUCK when executed. -/
-def threeWayUncited : Decl := decl{
+def threeWayUncited : FnDef := decl{
   fn threeWayUncited (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
     () } }
@@ -1088,7 +1088,7 @@ example : Migrate.progRejectsOf threeWayUncited "may not impose it by refining" 
 
 -- …and the citation's TYPE is what licenses: a well-typed equation about the wrong
 -- decomposition selects nothing.
-def threeWayWrongEq : Decl := decl{
+def threeWayWrongEq : FnDef := decl{
   fn threeWayWrongEq (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S (S j))),
                       a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
@@ -1099,7 +1099,7 @@ example : Migrate.progRejectsOf threeWayWrongEq "cited decomposition does not ha
 -- A LYING residue is rejected: the supplied extent must actually decompose the leaf,
 -- and premise (3) is the thing that checks it. Here `j` is claimed where `S j` is
 -- needed, so the solution transition has no solution.
-def threeWayLyingResidue : Decl := decl{
+def threeWayLyingResidue : FnDef := decl{
   fn threeWayLyingResidue (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i j),
                            a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; j | le_add i j | heq];
@@ -1111,9 +1111,9 @@ example : Migrate.progOkOf threeWayLyingResidue = false := by native_decide
 -- half's extent is the program's `j`, so a callee taking `Array j Nat` receives it
 -- with no coercion and no unnameable σ in sight. This is the call that finding (a)
 -- said was unwritable.
-def sliceTake : Decl := decl{ fn sliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
+def sliceTake : FnDef := decl{ fn sliceTake (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
 
-def threeWayCall : Decl := decl{
+def threeWayCall : FnDef := decl{
   fn threeWayCall (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
@@ -1262,7 +1262,7 @@ example : chkL lb_permA lb_permA_ty = true := by native_decide
     full one will be made of. -/
 
 -- Writing known values through index places, then proving sortedness of the exit.
-def setSorted : Decl := decl{
+def setSorted : FnDef := decl{
   fn setSorted (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
     (*a)[0] := 1;
     (*a)[1] := 2;
@@ -1271,7 +1271,7 @@ example : Migrate.progOkOf setSorted = true := by native_decide
 
 -- …and the same body with the writes the wrong way round is rejected: `SortedA` unfolds
 -- to `Σ Bot. …`, so the predicate is not vacuous.
-def setSortedLie : Decl := decl{
+def setSortedLie : FnDef := decl{
   fn setSortedLie (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
     (*a)[0] := 2;
     (*a)[1] := 1;
@@ -1282,7 +1282,7 @@ example : Migrate.progOkOf setSortedLie = false := by native_decide
     the step that makes an in-place algorithm provable at all: `σ_a : Array 2 Nat` is
     opaque, and after two index reads the payload is `[σ₀, σ₁]` with both elements in
     scope — carve, then `elementize`, then the ordinary copy-on-read. -/
-def readTwo : Decl := decl{
+def readTwo : FnDef := decl{
   fn readTwo (a : &mut (Array 2 Nat)) -> Unit {
     let x = (*a)[0];
     let y = (*a)[1];
@@ -1294,7 +1294,7 @@ def readTwo : Decl := decl{
     `Sorted ∧ Perm` over the exit snapshot, zero backs. Both paths mutate or not through
     index places, and the audit judges the collapsed payload against a postcondition that
     names `*a` (exit) and `old *a` (entry). -/
-def sort2 : Decl := decl{
+def sort2 : FnDef := decl{
   fn sort2 (a : &mut (Array 2 Nat))
       -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (countA x 2 (*a)) (countA x 2 (old *a))) {
     let x = (*a)[0];
@@ -1313,7 +1313,7 @@ example : Migrate.progOkOf sort2 = true := by native_decide
 
 -- Forget the swap and still claim sortedness. The False branch's goal is `Le x y`,
 -- which is exactly what the branch equation says is FALSE.
-def sort2LieSorted : Decl := decl{
+def sort2LieSorted : FnDef := decl{
   fn sort2LieSorted (a : &mut (Array 2 Nat)) -> SortedA 2 (*a) {
     let x = (*a)[0];
     let y = (*a)[1];
@@ -1326,7 +1326,7 @@ example : Migrate.progOkOf sort2LieSorted = false := by native_decide
 
 -- Do the swap, then claim the counts did not move. `count_swap2` is genuinely load-
 -- bearing: `Refl` in its place is rejected.
-def sort2LieCount : Decl := decl{
+def sort2LieCount : FnDef := decl{
   fn sort2LieCount (a : &mut (Array 2 Nat))
       -> Σ (hs : SortedA 2 (*a)) → (Π (x : Nat) → Id Nat (countA x 2 (*a)) (countA x 2 (old *a))) {
     let x = (*a)[0];

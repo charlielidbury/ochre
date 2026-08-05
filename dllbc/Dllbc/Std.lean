@@ -152,7 +152,7 @@ def le_refl_ty : Val := .pi natTy (Le (.pvar 0) (.pvar 0))
     A program's telescope, return, and owed types are `Term`s; the library above
     is `Val`s. `toTerm` reifies the (pure) library `Val`s back to `Term`s once —
     single source of truth — so `LeT`/`SortedT`/`countT`/`BoundT`/`le_reflT` can
-    sit in a `Decl`. Runtime `Val` forms (`sym`/`loanM`/`borrowM`/`bot`) never
+    sit in a `FnDef`. Runtime `Val` forms (`sym`/`loanM`/`borrowM`/`bot`) never
     occur in the pure library, so `toTerm`'s fallback is unreachable here. -/
 
 mutual

@@ -50,13 +50,13 @@ namespace Dllbc.Tests.S27Mixed
 
 /-- The subject checks, ON THE PROGRAM PATH (M27-δ): `decl{ … }` is the harness
     here, not the subject, so these route through the one path there is. -/
-def ok (d : Decl) (table : List Decl := [d]) : Bool := Migrate.progOkOf d table
+def ok (d : FnDef) (table : List FnDef := [d]) : Bool := Migrate.progOkOf d table
 
 /-- The subject is rejected, with `needle` in the message. Asserted on the message
     rather than on a Bool: `hasType` returns `false` for "does not have this type"
     and the audit turns that into an error, so a helper collapsing error and false
     would let a STUCKNESS pass for a typing rejection. -/
-def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
+def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
   Migrate.progRejectsOf d needle table
 
 /-! ## §A. The break, contained — b1's witnesses, now refused
@@ -65,7 +65,7 @@ def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
     (`Id Nat Z (S Z)`) discharged by a `Refl` that cannot inhabit it. It CHECKED
     before this commit. -/
 
-def a1lie : Decl :=
+def a1lie : FnDef :=
   decl{ fn head_lie (v : &mut List Nat, hi : Le (S Z) (len *v))
         -> Σ (x : &mut Nat) → Id Nat Z (S Z)
         { match v {
@@ -84,7 +84,7 @@ example : rejects a1lie "may not also carry VALUE components" = true := by nativ
     explicit refusal; accepting the true one would mean the checker had started
     judging value components in a borrow-carrying position, which is the fix the
     containment declines to make. -/
-def a5honest : Decl :=
+def a5honest : FnDef :=
   decl{ fn head_true (v : &mut List Nat, hi : Le (S Z) (len *v))
         -> Σ (x : &mut Nat) → Id Nat Z Z
         { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&mut *hd, Refl) } } }
@@ -99,14 +99,14 @@ example : rejects a5honest "may not also carry VALUE components" = true := by na
 
 -- A2: the SAME false claim with no borrow in the return type. The pin-and-check
 -- path runs, and always did.
-def a2lie : Decl :=
+def a2lie : FnDef :=
   decl{ fn val_lie (v : &mut List Nat, hi : Le (S Z) (len *v))
         -> Σ (x : Nat) → Id Nat Z (S Z)
         { Pair(Z, Refl) } }
 example : rejects a2lie "does not have return type" = true := by native_decide
 
 -- A5a: the direct route to the same absurdity, refused as it always was.
-def a5direct : Decl := decl{ fn direct () -> Bot { znots Z Refl } }
+def a5direct : FnDef := decl{ fn direct () -> Bot { znots Z Refl } }
 example : rejects a5direct "does not have return type" = true := by native_decide
 
 /-! ## §C. Not over-broad: the shapes the corpus actually uses still check
@@ -115,12 +115,12 @@ example : rejects a5direct "does not have return type" = true := by native_decid
     clothes. The two live shapes are a bare borrow and a Σ of borrows — `nth`'s and
     `nth2`'s — and both are all-borrow, so neither mixes. -/
 
-def bare : Decl :=
+def bare : FnDef :=
   decl{ fn bare (v : &mut List Nat, hi : Le (S Z) (len *v)) -> &mut Nat
         { match v { Nil => botElim Unit hi, Cons(hd, tl) => &mut *hd } } }
 example : ok bare = true := by native_decide
 
-def twoBorrows : Decl :=
+def twoBorrows : FnDef :=
   decl{ fn two (v : &mut List Nat, hi : Le (S Z) (len *v))
         -> Σ (x : &mut Nat) → &mut List Nat
         { match v {
@@ -174,7 +174,7 @@ example : progOk sealOk = true := by native_decide
     position unwritable is the honest move. A parameter passed onward into the
     result owes back the type it was lent. -/
 
-def e1lie : Decl :=
+def e1lie : FnDef :=
   decl{ fn through_lie (v : &mut (s : List Nat ~> Id Nat Z (S Z))) -> &mut List Nat
         { v } }
 example : rejects e1lie "would be checked by nobody" = true := by native_decide
@@ -182,7 +182,7 @@ example : rejects e1lie "would be checked by nobody" = true := by native_decide
 /-- The isolating control: the SAME body and the SAME consumed-into-result shape
     with a TRIVIAL owed type is accepted. So the refusal is about the claim, not
     about handing a borrow onward — which is `through`'s whole job. -/
-def e2trivial : Decl :=
+def e2trivial : FnDef :=
   decl{ fn through_ok (v : &mut List Nat) -> &mut List Nat { v } }
 example : ok e2trivial = true := by native_decide
 
