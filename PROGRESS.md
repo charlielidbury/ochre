@@ -103,34 +103,64 @@ while `disagree` stays empty.
    invisible to its caller's test; a let-chain audits every sealed binding in it.
    The declaration side now asks whether EVERY member of the cohort checks.
 
-**DELETION IS DEFERRED BY DESIGN — the remaining-work map.** J1 is absolute and 73
-corpus declarations have no program form. `fnElab` reports the FIRST reason it finds and
-checks `back` before it checks the decreasing parameter, so the raw report says
-§6.2 blocks S14/S17/S19 wholesale. **It does not, and measuring it reversed my
-conclusion**: stripping `back` and re-running the whole comparison moves 73
-declines to 65, with everything still agreeing. So §6.2 is the sole blocker for
-exactly EIGHT declarations, and the road to deleting `Decl` runs through the
-`[v]` class rather than through redesigning what a backward spec becomes.
+**DELETION IS DEFERRED BY DESIGN — the remaining-work map, measured three times
+and smaller each time.** J1 is absolute and 73 corpus declarations have no program
+form as the corpus stands. But `fnElab` reports the FIRST reason it declines, and
+a cohort is a CLOSURE — one un-migratable leaf declines everything above it — so
+the raw report attributes badly and moving one blocker barely moves the number:
 
-  * **§12 decision 8's `[v]` payload decrease — the real blocker, 65 of the 73.**
-    `nth`, `nth2`, `swapS`, `zero_all`, `recCursor`, `append_back`, `partition`,
-    `walkArr`, and everything whose cohort closure reaches one of them (which is
-    most of S14, S17 and S19 — the M17-era spec corpus). Each is ONE hand
-    migration of the shape M26-D paid for `partition` and this phase paid for
-    `append_back`: a `fuel` parameter, a `Le … fuel` bound, a dead branch, and
-    every caller supplying them. §9's borrow-mode eliminator retires the class
-    outright, and this is now the strongest argument for building it.
-  * **§6.2's declared `back` — eight declarations**, and the mechanism M23 RETIRED
-    (its own corpus declares none, deliberately). The seal has no counterpart
-    because the ensures IS the contract (§5 point 4). A real design question, but
-    a much smaller one than the raw report suggested.
-  * **Recursions the eliminators cannot express — now one shape, not two.**
-    `listRec` is WIRED into the macro (it was already in the kernel's `sealRec`),
-    so `recList` migrates and is the only corpus program exercising that kernel
-    path through the macro rather than by hand. What remains is `recDeep`, which
-    recurses TWO constructors down: the guard permits it and no single recursor
-    can express it, because an arm gets `ih` at the immediate predecessor and
-    nothing below it. Filed as a genuine expressiveness limit of §7's elaboration.
+    73  as the corpus stands
+    68  with two `[k]` hints corrected            (−5)
+    65  with `back` stripped                      (−8)
+    20  WITH BOTH                                 (−53)
+
+**Neither fix alone does much and together they collapse the map**, because S17's
+`nth` has BOTH a declared `back` and a `[v]` hint: fixing either leaves it
+declining, and everything in S17 and S19 that reaches it declines with it. "Fix
+the biggest class first" is exactly the wrong strategy against a closure. Under
+both fixes the corpus is 118 accept / 86 reject / 20 decline, still with nothing
+disagreeing.
+
+The two fixes are NOT the same kind of thing, which is the point of separating
+them:
+
+  * **Correcting a `[k]` hint is FREE** — and this is the finding. §7 demotes `[k]`
+    to a scrutinee-selection HINT, and the declaration-era guard was happy with
+    `[v]` whenever the payload decreases, so nobody had a reason to name anything
+    else. But `nth`/`nth2` also decrease on their INDEX, which is a `Nat` the macro
+    serves directly. Same body, same telescope, same return type, no fuel, no dead
+    branch, no caller change — one field of the `Decl`. The whole S14 family goes
+    from five declines to none. This is M26-C's `split_off` observation ("it needs
+    NO fuel — it recurses on its index, which is already a `Nat`") arriving as a
+    general fact about the class.
+  * **Stripping `back` is NOT free**: it removes a mechanism callers rely on, and
+    that is the design question for the user — now asked about EIGHT declarations
+    rather than about the corpus.
+
+**The residue is 20, and it is honest.** 17 in S23 (the true `[v]` cursors —
+`partition`, `append_back`, `recCursor`, `partitionLoses` — everything whose
+closure reaches one of them, the guard twins, and `recDeep`), `zero_all` in S6,
+`nth2Lie` in S19, and `walkArr` in S24. Of these:
+
+  * `zero_all`/`recCursor` (the same function, twice in the corpus) is the ONLY
+    genuine decision-8 shape left in the list world: a cursor with no decreasing
+    argument but the payload. **Paid, in `Tests/S26Fuel.lean` §A** — a parameter, a
+    bound, a dead branch, checking both ways on the first run, for the third time.
+  * **The ARRAY shape was already paid, in M24, before decision 8 existed**: `walk`
+    IS `walkArr` with `[fuel]` in place of `[a]` and the same body modulo its own
+    self-call's name, and it migrates. `walkArr` is its negative control — the
+    declaration path REJECTS it at the guard and the macro DECLINES it at
+    `[a]`-on-a-borrow, the same fact from two sides.
+  * `recDeep` recurses TWO constructors down, which the guard permits and no single
+    recursor can express (an arm gets `ih` at the immediate predecessor and nothing
+    below it). Filed as §7's genuine expressiveness limit.
+  * `listRec` is now WIRED into the macro (it was already in the kernel's
+    `sealRec`), so `recList` migrates and is the only corpus program exercising
+    that kernel path through an elaboration rather than a hand-written term.
+
+So §9's borrow-mode eliminator is worth building for `zero_all`'s shape and for
+naturalness, but it is NOT what stands between here and deleting `Decl`. What
+stands there is eight `back`s and a handful of hints.
 
 A Lean-level gotcha that cost the first measurement and fails SILENTLY:
 `{ d with back := none }` does NOT strip the field — `back` is a reserved token of
@@ -144,7 +174,8 @@ binding is a value; a body that wants one should take it as a capital parameter)
 and `let X = seal(…)` is refused because a comptime `let` reads its right-hand side
 under ⇝ while the seal is a ⇒-form — §6's own parenthesis arriving as a rejection.
 
-123 assertions across `Tests/S26Prog.lean` and `Tests/S26Migrate.lean`, every one
+142 assertions across `Tests/S26Prog.lean`, `Tests/S26Migrate.lean` and
+`Tests/S26Fuel.lean`, every one
 validated by flipping it and confirming the build goes red; none vacuous.
 
 ## 2026-08-05 — dllbc/: M26-D CLOSES — `fn` IS a macro; the first cohort migrated

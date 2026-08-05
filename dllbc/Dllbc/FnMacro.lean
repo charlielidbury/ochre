@@ -232,6 +232,25 @@ partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
   | .matchE _ _ brs => brs.flatMap (fun b => selfScrutArgs name k b.body)
   | _ => []
 
+/-- Rename every call of `from_` to `to`. For comparing two declarations that are
+    the same function under two names — which is what a hint-only migration
+    produces, since a declaration's self-call names it. -/
+partial def renameSelf (from_ to : String) : Term → Term
+  | .call f args =>
+    .call (if f == from_ then to else f) (args.map (renameSelf from_ to))
+  | .callV x args => .callV x (args.map (renameSelf from_ to))
+  | .ctorApp n args => .ctorApp n (args.map (renameSelf from_ to))
+  | .letIn x rhs rest => .letIn x (renameSelf from_ to rhs) (renameSelf from_ to rest)
+  | .assign p e rest =>
+    .assign (renameSelf from_ to p) (renameSelf from_ to e) (renameSelf from_ to rest)
+  | .seq a b => .seq (renameSelf from_ to a) (renameSelf from_ to b)
+  | .borrow t => .borrow (renameSelf from_ to t)
+  | .deref t => .deref (renameSelf from_ to t)
+  | .matchE s eqn brs =>
+    .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (renameSelf from_ to b.body)))
+  | .lamR xs body => .lamR xs (renameSelf from_ to body)
+  | t => t
+
 /-- A self-call becomes an `ih` application with the scrutinee argument dropped:
     `f(a₀ … a_k … aₙ)` ↦ `ih(a₀ … â_k … aₙ)`. The remaining arguments keep their
     order, which is the order the motive binds them in — hoisting `k` to the front
@@ -287,6 +306,13 @@ def fnElab (d : Decl) : Except String Term := do
   let tel := teleVars d.telescope
   match d.dec with
   -- NON-RECURSIVE: the whole function is one runtime λ, sealed at its signature.
+  -- A self-call here is deliberately NOT refused, and that is §8's own mechanism
+  -- rather than an omission: the elaborated `let` is not in scope in its own
+  -- right-hand side, so the self-call resolves to nothing and the program is
+  -- rejected as the forward reference it is. M26-C pinned exactly that as the
+  -- reason `bad()` is unwritable — "not by a recursion rule; the binding is not in
+  -- scope in its own right-hand side" — and a macro refusal here would paper over
+  -- the demonstration.
   | none => .ok (.seal (.lamR (tel.map (·.1)) d.body) (telePi tel d.retType))
   | some k => do
     let (kv, kτ) ← match tel.get? k with

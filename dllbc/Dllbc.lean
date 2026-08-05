@@ -39,6 +39,7 @@ import Dllbc.Tests.S26Rec
 import Dllbc.Tests.S26Fn
 import Dllbc.Tests.S26Prog
 import Dllbc.Tests.S26Migrate
+import Dllbc.Tests.S26Fuel
 import Dllbc.Tests.SInternals
 import Dllbc.Tests.SDeclMacro
 import Dllbc.Tests.SDeclMacroCrown
