@@ -671,6 +671,156 @@ def i4 : Decl := decl{ fn i4 (v : &mut List Nat) -> Unit
   { match v { Nil => (), Cons(hd, tl) => { let X = *v; *tl := Nil; () } } } }
 example : checkFnOk i4 = true := by native_decide
 
+/-! ## §K. The classification — where `*old v` reaches, and where it does not
+
+    ADDENDUM, on a sharpened framing: `old` is properly part of the DEREFERENCE —
+    `*old v`, the payload of a borrow as of that borrow's construction — rather
+    than a general value-at-binding-site operator, and it is ⇝-ONLY (no efficient
+    runtime implementation exists, so the executing machine must never meet it).
+    Under that framing the six cases split, and the split is not where the filings
+    suggest.
+
+    The machine's own recording is `entrySyms : List (Nat × Nat)`, populated in
+    `seedTelescopeV`'s `.borrowT` case — **borrow PARAMETERS only** — and consumed
+    in `reflectC` at `.app (.const "old") (.deref (.var v))`, which resolves to
+    `.sym σ` and otherwise **falls back to the live deref**. Three consequences
+    follow, and each is a test below. -/
+
+-- K1. `old *v` ALREADY reads in a body ⇝-position, so the "extension from return
+-- types to body positions" is largely already there for parameters.
+def k1 : Decl := decl{ fn k1 (v : &mut List Nat) -> Unit { let X = old *v; () } }
+example : checkFnOk k1 = true := by native_decide
+
+-- K2. …and it reads in a ⇒-position too, which the ruling forbids. `old` is
+-- `.app (.const "old") (.deref …)` — an ordinary application of a magic const, not
+-- its own `Term` constructor — so `readR`'s pure lift sends it to `readC` and it
+-- resolves. The slot then holds a runtime COPY of the entry payload while the
+-- borrow is untouched: silent aggregate duplication, which §I of `S26Modes` says
+-- is coherent only for ERASED binders. The ⇒-absence is NOT by construction
+-- today; the seal's pattern (own constructor, no `Val` former, no ⇒ rule
+-- writable) is what would make it so.
+def k2 : Decl := decl{ fn k2 (v : &mut List Nat) -> Unit { let x = old *v; () } }
+example : checkFnOk k2 = true := by native_decide
+
+-- K3. The honest positive: after a mutation `old *v` names the entry, and a
+-- capital `let` taken at entry converts with it — two routes to one σ, agreeing.
+def k3 : Decl := decl{ fn k3 (v : &mut List Nat) -> Unit
+  { let L = *v; *v := Nil; idOf(L, old *v, Refl); () } }
+example : checkFnOk k3 [idOf, k3] = true := by native_decide
+
+/-! ### K4. THE DEFECT: the recorded σ does not survive refinement
+
+    The mirror of §G1, and it comes out the other way. `entrySyms` stores the σ's
+    INDEX; `refineSym` rewrites OCCURRENCES. So after a match refines the entry
+    payload, `reflectC` mints a fresh occurrence of an index nothing else mentions
+    any more — the citation is a stale name that has lost the branch's knowledge,
+    and the rejection prints exactly that. §G1's capital-let binding in the same
+    position is swept and checks. Any work extending the entry-deref to body
+    positions has to fix this first, and it is machinery, not syntax. -/
+def k4 : Decl := decl{ fn k4 (v : &mut List Nat) -> Unit
+  { match v { Nil => (), Cons(hd, tl) => { idOf(old *v, Cons (*hd) (*tl), Refl); () } } } }
+example : checkFnErr k4 "(Id σ0 (Cons σ2 σ3))" [idOf, k4] = true := by native_decide
+
+-- K5. The same cause at the projection route: `drop (S Z) (old *v)` is how a
+-- whole-payload entry-deref would reach case 6's `rest`, and it sticks as an
+-- unreduced `listRec` over the stale σ instead of computing to the tail.
+def k5 : Decl := decl{ fn k5 (v : &mut List Nat) -> Unit
+  { match v { Nil => (), Cons(hd, tl) => { idOf(drop (S Z) (old *v), *tl, Refl); () } } } }
+example : checkFnErr k5 "listRec" [idOf, k5] = true := by native_decide
+
+/-! ### K6. THE REACH: mid-body reborrows are not recorded, and the fallback lies
+
+    `entrySyms` covers telescope borrow parameters. A reborrow created inside the
+    body — `&mut *v` handed to a call, `&mut hi` on a local, a match field — has no
+    entry recorded, so `old *b` takes `reflectC`'s fallback and silently means
+    NOW: after a write through `b`, `old *b` IS the written value. Accepted,
+    wrong, no diagnostic. That matters because the mid-body reborrow is where most
+    of the borrow class lives — case 2's σ′, case 3's `mkUb`/`mkLb`/`fin`, case
+    1's `*tl`. -/
+def k6 : Decl := decl{ fn k6 (v : &mut List Nat) -> Unit
+  { let b = &mut *v; *b := Nil; idOf(old *b, Nil, Refl); () } }
+example : checkFnOk k6 [idOf, k6] = true := by native_decide
+
+-- K7. The parameter's own `old *v` in the same program is correct (σ_entry, not
+-- `Nil`) — which is what says K6 is the fallback and not a general breakage.
+def k7 : Decl := decl{ fn k7 (v : &mut List Nat) -> Unit
+  { let b = &mut *v; *b := Nil; idOf(old *v, Nil, Refl); () } }
+example : checkFnErr k7 "(Id σ0 Nil)" [idOf, k7] = true := by native_decide
+
+/-! ### K8. Case 2 is borrow-shaped and OUT OF `*old v`'s REACH
+
+    `swap_at`'s doomed value is σ′ — the payload of the reborrow the SECOND
+    `set_at` receives, at that reborrow's construction. `*old v` names the
+    parameter's entry, σ_entry, which is a different list. So the case that NAMED
+    the feature ("a way to bind a snapshot — `let` at comptime, naming an exit the
+    way `old` names an entry") is not served by the entry-deref; §B1's
+    `let M = *v` is what serves it. -/
+def k8 : Decl :=
+  decl{ fn swap_at (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
+                    p2 : Le (S j) (len *v), hi : Le (S i) (len *v))
+        -> Id (List Nat) (*v) (swapL i j (old *v))
+        { let a = nth i (*v);
+          let b = nth j (*v);
+          let Bridge = swapL_set i j (old *v) pij p2;
+          let h1 = set_at(&mut *v, j, a, p2);
+          let hlen = id_trans Nat (len *v) (len (set j a (old *v))) (len (old *v))
+                       (id_congr (List Nat) Nat len (*v) (set j a (old *v)) h1)
+                       (len_set j a (old *v));
+          let hi2 = le_rw_r (S i) (len (old *v)) (len *v)
+                      (id_sym Nat (len *v) (len (old *v)) hlen) hi;
+          let h2 = set_at(&mut *v, i, b, hi2);
+          id_trans (List Nat) (*v) (set i b (old *v)) (swapL i j (old *v))
+            h2
+            (id_trans (List Nat) (set i b (old *v)) (set i b (set j a (old *v)))
+               (swapL i j (old *v))
+               (id_congr (List Nat) (List Nat) (λ (z : List Nat). set i b z)
+                 (old *v) (set j a (old *v)) h1)
+               Bridge) } }
+example : checkFnOk k8 [setAt, k8] = false := by native_decide
+
+/-! ### K9. The classification, and the two answers
+
+    | case | the doomed value | class | reached by `*old v`? |
+    |---|---|---|---|
+    | 1 | `w`, a consumed data PARAMETER | NON-BORROW | out of scope by the ruling; `let W = w` serves it (§A2) |
+    | 1 | `*tl`, a match-field reborrow's entry | BORROW, mid-body | NO — not recorded; `old *tl` means "now" (K6) |
+    | 2 | σ′, the payload before the 2nd call | BORROW, mid-body, ANONYMOUS | NO (K8) |
+    | 3 `mkCnt` endpoint | the parameter's entry payload | BORROW, PARAMETER | in principle — but stale under refinement (K4) |
+    | 3 `mkCnt`'s `rest` | a subterm of that payload | BORROW-derived | NO — projection sticks (K5) |
+    | 3 `mkUb`/`mkLb`/`fin` | pre/post-sort `*v` and `hi` | BORROW mid-body + moved data | NO |
+    | 4 | `hfuel`, a consumed proof PARAMETER | NON-BORROW | n/a — modes remove the pain entirely (§E3) |
+    | 5 | the staged `len *v` | NON-BORROW, and RUNTIME | n/a — not this feature (§F2) |
+    | 6 | `rest`, a subterm of the entry payload | BORROW-derived | NO (K5) |
+
+    **(a) Do modes + capital `let` fully cover the NON-BORROW class today? YES.**
+    Consumed proofs are covered twice over — by the callee's capital parameter,
+    which removes the pain rather than naming around it (§E3), and by
+    `let HF = hfuel` where the callee is not yours (§E2). Consumed data binders
+    are covered at both granularities the corpus uses: a parameter (§A2's `W`) and
+    a match binder (§C1's `R`). Nothing in the non-borrow class waits on new
+    machinery.
+
+    **(b) Is the borrow-class residual "the entry-deref citation extended from
+    return-type positions to body positions"? NO** — three independent reasons.
+
+    1. *The extension is already there* for the case it covers (K1, K3).
+    2. *It is broken in exactly the situation bodies are in.* The recorded σ is an
+       INDEX and `refineSym` rewrites OCCURRENCES, so a body citation after any
+       match on the payload is stale (K4) — while the capital-let binding in the
+       same position is swept and works (§G1). This is the load-bearing gap.
+    3. *It does not reach where the pain is.* `entrySyms` records parameters only;
+       most of the borrow class is mid-body reborrows, usually anonymous call
+       arguments, and `old` on such a borrow silently returns the LIVE payload
+       (K6). Capital `let` reaches all of them, because it names a VALUE at a
+       chosen moment rather than a borrow at its construction.
+
+    **On ⇝-only by construction: not today** (K2). Making it so the way the seal is
+    comptime-free means giving `old` its OWN `Term` constructor with no `Val`
+    former and no ⇒ rule — at which point the question is unaskable rather than
+    refused. A second reason to want that constructor: `collapseCDerefs` descends
+    into the inner deref and demand-ends loans, so even the comptime read has a
+    state side effect today (K7 leaves the reborrow at `⊥`). -/
+
 /-! ## §J. The verdict
 
     **The hypothesis holds.** Capital `let` already IS anticipatory snapshot
