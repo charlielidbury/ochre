@@ -191,17 +191,20 @@ partial def resolveScrut (k : Var) (ctor : String) (rebind : List Var) : Term �
     rejection inside the arm should say so, and reusing the binder makes the arm's
     rebinding the identity — the body is not rewritten at all in the common case
     of a single `match` on the scrutinee. -/
-partial def succBinder (k : Var) : Term → Option Var
+partial def branchBinders (k : Var) (ctor : String) : Term → Option (List Var)
   | .matchE s _ brs =>
     if s.id == k.id then
-      match brs.find? (fun b => b.ctor == "S") with
-      | some b => b.binders.head?
+      match brs.find? (fun b => b.ctor == ctor) with
+      | some b => some b.binders
       | none => none
-    else brs.findSome? (fun b => succBinder k b.body)
-  | .letIn _ rhs rest => (succBinder k rhs).orElse (fun _ => succBinder k rest)
-  | .assign _ e rest => (succBinder k e).orElse (fun _ => succBinder k rest)
-  | .seq a b => (succBinder k a).orElse (fun _ => succBinder k b)
+    else brs.findSome? (fun b => branchBinders k ctor b.body)
+  | .letIn _ rhs rest => (branchBinders k ctor rhs).orElse (fun _ => branchBinders k ctor rest)
+  | .assign _ e rest => (branchBinders k ctor e).orElse (fun _ => branchBinders k ctor rest)
+  | .seq a b => (branchBinders k ctor a).orElse (fun _ => branchBinders k ctor b)
   | _ => none
+
+/-- The `S` branch's binder, which is the `Nat` case of `branchBinders`. -/
+def succBinder (k : Var) (t : Term) : Option Var := (branchBinders k "S" t).bind (·.head?)
 
 /-- The scrutinee argument of every self-call, in order. `ih` is the sealed view
     **at the predecessor**, so translating a self-call into one is honest only when
@@ -296,8 +299,16 @@ def fnElab (d : Decl) : Except String Term := do
     | .borrowT _ _ =>
       .error s!"fn: '{d.name}' decreases through the PAYLOAD of the borrow '{kv.name}' ([{k}]), which has no recursor form — §9's borrow-mode eliminator is filed, not built. §12 decision 8 blesses fuel-threading as the interim: add a `fuel : Nat` parameter and a `Le (len *{kv.name}) fuel` bound, recurse on the fuel, and every caller supplies one. That is a source change, not an elaboration."
     | _ => pure ()
-    if !(Term.beq kτ (.const "Nat")) then
-      .error s!"fn: '{d.name}' recurses on '{kv.name}', whose type is not `Nat`. This phase elaborates `natRec` recursions only; a structural recursion over `List` is the same shape with `listRec` and is not yet wired."
+    -- WHICH RECURSOR, decided by the scrutinee's type and nothing else. The two
+    -- differ only in what the step arm binds and what the constructors are called;
+    -- everything below — the motive, the arms-are-the-whole-body-twice
+    -- elaboration, the self-call rewrite, the stray check — is shared, which is
+    -- what says `listRec` is the same elaboration and not a second one.
+    let elemTy? : Option Term := match kτ with
+      | .app (.const "List") a => some a
+      | _ => none
+    if !(Term.beq kτ (.const "Nat")) && elemTy?.isNone then
+      .error s!"fn: '{d.name}' recurses on '{kv.name}', whose type is neither `Nat` nor `List A`. Those are the two eliminators this macro emits; the kernel's `sealRec` also checks `boolRec`, which no recursion decreases on."
     let hoisted ← hoist k tel
     let rest := hoisted.drop 1
     -- THE MOTIVE, derived from the signature: the sealed Π with the scrutinee
@@ -306,25 +317,40 @@ def fnElab (d : Decl) : Except String Term := do
     let motive : Term := .lam (markDom kv kτ) (absVar kv 0 (telePi rest d.retType))
     -- Fresh binders for the step arm, above every id the body already uses.
     let base := max (maxVarId d.body) (tel.foldl (fun a p => max a p.1.id) 0) + 1
-    -- The predecessor keeps the name AND the id the body's own `match k` gave it,
-    -- so the rebinding below is the identity whenever there is one such match.
-    let pred : Var := (succBinder kv d.body).getD ⟨base, kv.name ++ "'"⟩
+    -- The step arm's binders keep the names AND the ids the body's own `match k`
+    -- gave them, so the rebinding below is the identity whenever there is one such
+    -- match. For a list that is the head and the tail; for a `Nat`, the
+    -- predecessor. `dec` is the one a self-call must recurse on.
+    let (baseCtor, stepCtor) := if elemTy?.isSome then ("Nil", "Cons") else ("Z", "S")
+    let stepBs : List Var := match branchBinders kv stepCtor d.body with
+      | some bs =>
+        if elemTy?.isSome then
+          match bs with
+          | [h, t] => [h, t]
+          | _ => [⟨base, "hd"⟩, ⟨base + 2, kv.name ++ "'"⟩]
+        else match bs with
+          | [p] => [p]
+          | _ => [⟨base, kv.name ++ "'"⟩]
+      | none =>
+        if elemTy?.isSome then [⟨base, "hd"⟩, ⟨base + 2, kv.name ++ "'"⟩]
+        else [⟨base, kv.name ++ "'"⟩]
+    let dec : Var := stepBs.getLast!
     let ih : Var := ⟨base + 1, "ih"⟩
     -- THE ARMS: the WHOLE body twice, with `match k` resolved to one branch each.
-    let zBody := resolveScrut kv "Z" [] d.body
-    let sResolved := resolveScrut kv "S" [pred] d.body
+    let zBody := resolveScrut kv baseCtor [] d.body
+    let sResolved := resolveScrut kv stepCtor stepBs d.body
     -- `ih` is the sealed view AT THE PREDECESSOR, so a self-call may only be
     -- rewritten into one when that is what it recurses on. Checked here rather
     -- than left to the kernel, which would accept the (well-founded) elaboration
     -- of a source that is not.
     match (selfScrutArgs d.name k sResolved).find? (fun a =>
-        match a with | .var y => y.id != pred.id | _ => true) with
-    | some a =>
-      .error s!"fn: '{d.name}' calls itself with a non-predecessor as its decreasing argument [{k}], which is not the predecessor '{pred.name}'. §7 makes a recursive occurrence `ih` — the sealed self-view AT THE PREDECESSOR — so there is nothing for a self-call at any other argument to become. (This is the check that keeps the macro from silently turning a non-terminating source into a terminating recursor: the elaborated term would be well-founded and would check, but it would be a different function.)"
+        match a with | .var y => y.id != dec.id | _ => true) with
+    | some _ =>
+      .error s!"fn: '{d.name}' calls itself with a decreasing argument [{k}] that is not the predecessor '{dec.name}' its `{stepCtor}` branch binds. §7 makes a recursive occurrence `ih` — the sealed self-view AT THE PREDECESSOR — so there is nothing for a self-call at any other argument to become. (This is the check that keeps the macro from silently turning a non-terminating source into a terminating recursor: the elaborated term would be well-founded and would check, but it would be a different function.)"
     | none => pure ()
     match (selfScrutArgs d.name k zBody).head? with
     | some _ =>
-      .error s!"fn: '{d.name}' calls itself in the branch its `match {kv.name}` selects at `Z`. The base arm has no `ih` — that is what a base case IS — so a self-call there has nothing to become."
+      .error s!"fn: '{d.name}' calls itself in the branch its `match {kv.name}` selects at `{baseCtor}`. The base arm has no `ih` — that is what a base case IS — so a self-call there has nothing to become."
     | none => pure ()
     let sBody := selfToIh d.name k ih sResolved
     -- The scrutinee is gone from both arms; a residual reference to it means the
@@ -335,16 +361,25 @@ def fnElab (d : Decl) : Except String Term := do
     let stray := (Term.freeRVars ((restIds.map (·.id))) zBody).find? (fun y => y.id == kv.id)
     match stray with
     | some _ =>
-      .error s!"fn: the base arm still mentions '{kv.name}' after `match {kv.name}` was resolved to its `Z` branch. The scrutinee does not exist inside an arm — it is the recursor's argument — so a body may only reach it through a match on it."
+      .error s!"fn: the base arm still mentions '{kv.name}' after `match {kv.name}` was resolved to its `{baseCtor}` branch. The scrutinee does not exist inside an arm — it is the recursor's argument — so a body may only reach it through a match on it."
     | none => pure ()
-    -- `natRec P z s`, UNAPPLIED: the scrutinee is the sealed Π's own first binder,
+    -- The recursor, UNAPPLIED: the scrutinee is the sealed Π's own first binder,
     -- so the recursor is exactly a function of it (§7's derived motive read the
-    -- other way round).
-    .ok (.seal
-      (.app (.app (.app (.const "natRec") motive)
-        (.lamR restIds zBody))
-        (.lamR (pred :: ih :: restIds) sBody))
-      piT)
+    -- other way round). `listRec` takes its element type first, which is the only
+    -- difference in the spine.
+    match elemTy? with
+    | none =>
+      .ok (.seal
+        (.app (.app (.app (.const "natRec") motive)
+          (.lamR restIds zBody))
+          (.lamR (dec :: ih :: restIds) sBody))
+        piT)
+    | some a =>
+      .ok (.seal
+        (.app (.app (.app (.app (.const "listRec") a) motive)
+          (.lamR restIds zBody))
+          (.lamR (stepBs ++ (ih :: restIds)) sBody))
+        piT)
 
 /-! ## §8: assembling a program from declarations
 

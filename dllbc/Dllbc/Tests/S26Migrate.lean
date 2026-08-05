@@ -35,8 +35,8 @@ a computation. `Migrate.report` returns counts alongside the disagreement list
 precisely so that a migration which quietly stopped covering half the corpus
 changes the numbers even while `disagree` stays empty.
 
-**The result: 94 accept on both paths, 56 reject on both, 74 do not migrate, and
-NOTHING disagrees.** The 74 are three named classes (§Z below), each a decision
+**The result: 95 accept on both paths, 56 reject on both, 73 do not migrate, and
+NOTHING disagrees.** The 73 are three named classes (§Z below), each a decision
 this project has already taken.
 
 ## What the comparison found — two real bugs, both mine
@@ -173,7 +173,7 @@ example : (report p16 == R 2 0 0) = true := by native_decide
 example : (report p17 == R 1 0 7) = true := by native_decide
 example : (report p18 == R 1 1 0) = true := by native_decide
 example : (report p19 == R 2 2 35) = true := by native_decide
-example : (report p23 == R 23 19 18) = true := by native_decide
+example : (report p23 == R 24 19 17) = true := by native_decide
 example : (report p24 == R 20 14 1) = true := by native_decide
 example : (report p25 == R 11 12 0) = true := by native_decide
 example : (report pdm == R 2 2 3) = true := by native_decide
@@ -187,7 +187,7 @@ def pools : List (List Decl) :=
 
 example : (pools.foldl (fun (a, r, d) p =>
     let q := report p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
-  == (94, 56, 74)) = true := by native_decide
+  == (95, 56, 73)) = true := by native_decide
 example : (pools.all (fun p => (report p).disagree.isEmpty)) = true := by native_decide
 
 /-! ## §Z. What did not migrate, and why — three classes, each already decided
@@ -216,18 +216,28 @@ example : (match FnMacro.fnElab S6Call.zeroAll with
            | .error e => strContains e "decision 8"
            | .ok _ => false) = true := by native_decide
 
--- Z3. **A recursion `natRec` cannot express.** Three shapes: a non-`Nat`
--- scrutinee (`recList` — `listRec` is wired in the KERNEL's `sealRec` but not yet
--- in the macro), a self-call at a non-predecessor (the guard twins `recSame`,
--- `recWrongIdx`, `recGrow`), and — the one that is a genuine expressiveness
--- limit rather than a twin — `recDeep`, which recurses TWO constructors down.
--- `natRec` hands an arm `ih` at the immediate predecessor and nothing below it,
--- so a legal-by-the-guard two-step recursion has no single-`natRec` form.
+-- Z3. **A recursion the eliminators cannot express.** Two shapes now that
+-- `listRec` is wired: a self-call at a non-predecessor (the guard twins
+-- `recSame`, `recWrongIdx`, `recGrow`), and — the one that is a genuine
+-- expressiveness limit rather than a twin — `recDeep`, which recurses TWO
+-- constructors down. An arm gets `ih` at the immediate predecessor and nothing
+-- below it, so a legal-by-the-guard two-step recursion has no single-recursor
+-- form.
 example : (match FnMacro.fnElab S23Direct.recDeep with
            | .error e => strContains e "not the predecessor"
            | .ok _ => false) = true := by native_decide
+
+-- …and a `List` recursion is no longer one of them: `recList` MIGRATES, which is
+-- the only corpus program that exercises the kernel's `listRec` sealing path
+-- through the macro rather than by hand.
 example : (match FnMacro.fnElab S23Direct.recList with
-           | .error e => strContains e "is not `Nat`"
+           | .error _ => false
+           | .ok t => progOk (.letIn ⟨900, "recList"⟩ t .unit)) = true := by native_decide
+-- The scrutinee-type refusal survives for what neither eliminator serves.
+example : (match FnMacro.fnElab { S23Direct.recList with
+             telescope := [("l", .const "Bool")], retType := .idT (.const "Nat") (.ctorApp "Z" []) (.ctorApp "Z" []),
+             body := .ctorApp "Refl" [] } with
+           | .error e => strContains e "neither `Nat` nor `List A`"
            | .ok _ => false) = true := by native_decide
 
 /-! ## §W. The two bugs the report found, pinned as regressions
@@ -268,8 +278,8 @@ example : (match FnMacro.fnElab S23Direct.recGood with
     report at face value says §6.2 blocks S17 and S19 wholesale.
 
     It does not. Stripping `back` from a pool and re-running the comparison is
-    two lines, and it moves 74 declines to **66**: §6.2 is the sole blocker for
-    exactly **eight** declarations, and the other 66 are blocked underneath by
+    two lines, and it moves 73 declines to **65**: §6.2 is the sole blocker for
+    exactly **eight** declarations, and the other 65 are blocked underneath by
     §12 decision 8's `[v]` payload decrease. That reverses the conclusion about
     what stands between here and deleting `Decl` — the road runs through §9's
     borrow-mode eliminator (or fuel-threading six functions by hand, the shape
@@ -290,9 +300,9 @@ def stripBacks (pool : List Decl) : List Decl :=
 example : (p17.any (fun d => d.back.isSome)
         && (stripBacks p17).all (fun d => d.back.isNone)) = true := by native_decide
 
--- 74 declines become 66, so `back` alone accounts for eight.
-example : (pools.foldl (fun a p => a + (report p).declined) 0 == 74) = true := by native_decide
-example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 66)
+-- 73 declines become 65, so `back` alone accounts for eight.
+example : (pools.foldl (fun a p => a + (report p).declined) 0 == 73) = true := by native_decide
+example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 65)
   = true := by native_decide
 
 -- And the comparison still agrees everywhere with the backs gone, so the eight
@@ -302,6 +312,6 @@ example : (pools.all (fun p => (report (stripBacks p)).disagree.isEmpty)) = true
 -- Per file, so the eight are locatable: S17 loses three (7 → 4), S19 one (35 →
 -- 34), and the two `SDecl` pools two more (3 → 1, 1 → 0, 3 → 2).
 example : (pools.map (fun p => (report (stripBacks p)).declined)
-  == [0, 1, 0, 0, 0, 0, 0, 5, 0, 0, 4, 0, 34, 18, 1, 0, 1, 0, 2]) = true := by native_decide
+  == [0, 1, 0, 0, 0, 0, 0, 5, 0, 0, 4, 0, 34, 17, 1, 0, 1, 0, 2]) = true := by native_decide
 
 end Dllbc.Tests.S26Migrate

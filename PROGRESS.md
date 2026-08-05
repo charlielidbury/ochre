@@ -74,7 +74,7 @@ count-to-length lemma the corpus lacks. The fuel that works is `len *v` itself w
 between, and a comptime argument mentioning `*v` would demand-collapse the loan it
 was just lent.
 
-**THE CORPUS, DOWN BOTH PATHS: 94 accept, 56 reject, 74 do not migrate, NOTHING
+**THE CORPUS, DOWN BOTH PATHS: 95 accept, 56 reject, 73 do not migrate, NOTHING
 disagrees.** Nothing was rewritten — a bulk migration's failure mode is a
 quietly-wrong rewrite that still builds, so `Migrate.lean` derives each
 declaration's callee closure (`calleeNames` computes what its table always was,
@@ -103,16 +103,16 @@ while `disagree` stays empty.
    invisible to its caller's test; a let-chain audits every sealed binding in it.
    The declaration side now asks whether EVERY member of the cohort checks.
 
-**DELETION IS BLOCKED — the remaining-work map.** J1 is absolute and 74 corpus
-declarations have no program form. `fnElab` reports the FIRST reason it finds and
+**DELETION IS DEFERRED BY DESIGN — the remaining-work map.** J1 is absolute and 73
+corpus declarations have no program form. `fnElab` reports the FIRST reason it finds and
 checks `back` before it checks the decreasing parameter, so the raw report says
 §6.2 blocks S14/S17/S19 wholesale. **It does not, and measuring it reversed my
-conclusion**: stripping `back` and re-running the whole comparison moves 74
-declines to 66, with everything still agreeing. So §6.2 is the sole blocker for
+conclusion**: stripping `back` and re-running the whole comparison moves 73
+declines to 65, with everything still agreeing. So §6.2 is the sole blocker for
 exactly EIGHT declarations, and the road to deleting `Decl` runs through the
 `[v]` class rather than through redesigning what a backward spec becomes.
 
-  * **§12 decision 8's `[v]` payload decrease — the real blocker, 66 of the 74.**
+  * **§12 decision 8's `[v]` payload decrease — the real blocker, 65 of the 73.**
     `nth`, `nth2`, `swapS`, `zero_all`, `recCursor`, `append_back`, `partition`,
     `walkArr`, and everything whose cohort closure reaches one of them (which is
     most of S14, S17 and S19 — the M17-era spec corpus). Each is ONE hand
@@ -124,12 +124,13 @@ exactly EIGHT declarations, and the road to deleting `Decl` runs through the
     (its own corpus declares none, deliberately). The seal has no counterpart
     because the ensures IS the contract (§5 point 4). A real design question, but
     a much smaller one than the raw report suggested.
-  * **Recursions `natRec` cannot express.** A non-`Nat` scrutinee (`recList` —
-    `listRec` is wired in the kernel's `sealRec` but not in the macro, so this one
-    is small), and `recDeep`, which recurses TWO constructors down. The guard
-    permits that and a single `natRec` cannot express it, because an arm gets `ih`
-    at the immediate predecessor and nothing below it. Filed as a genuine
-    expressiveness limit of §7's elaboration.
+  * **Recursions the eliminators cannot express — now one shape, not two.**
+    `listRec` is WIRED into the macro (it was already in the kernel's `sealRec`),
+    so `recList` migrates and is the only corpus program exercising that kernel
+    path through the macro rather than by hand. What remains is `recDeep`, which
+    recurses TWO constructors down: the guard permits it and no single recursor
+    can express it, because an arm gets `ih` at the immediate predecessor and
+    nothing below it. Filed as a genuine expressiveness limit of §7's elaboration.
 
 A Lean-level gotcha that cost the first measurement and fails SILENTLY:
 `{ d with back := none }` does NOT strip the field — `back` is a reserved token of
@@ -143,7 +144,7 @@ binding is a value; a body that wants one should take it as a capital parameter)
 and `let X = seal(…)` is refused because a comptime `let` reads its right-hand side
 under ⇝ while the seal is a ⇒-form — §6's own parenthesis arriving as a rejection.
 
-119 assertions across `Tests/S26Prog.lean` and `Tests/S26Migrate.lean`, every one
+123 assertions across `Tests/S26Prog.lean` and `Tests/S26Migrate.lean`, every one
 validated by flipping it and confirming the build goes red; none vacuous.
 
 ## 2026-08-05 — dllbc/: M26-D CLOSES — `fn` IS a macro; the first cohort migrated
