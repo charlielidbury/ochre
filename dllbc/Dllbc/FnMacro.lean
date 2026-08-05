@@ -367,7 +367,10 @@ def progOf (ds : List Decl) (tail : Term) : Except String Term := do
   let binds : List (String × Var) :=
     ds.enum.map (fun p => (p.2.name, ⟨progBase + p.1, p.2.name⟩))
   let rec go (i : Nat) : List Decl → Except String Term
-    | [] => .ok tail
+    -- The tail is in the accumulated scope, so its calls are retargeted too — which
+    -- is what lets an existing `Decl`-era caller term be handed over unchanged and
+    -- become the program's `main`.
+    | [] => .ok (retarget binds tail)
     | d :: rest => do
       let t ← fnElab d
       if maxVarId t ≥ progBase then
