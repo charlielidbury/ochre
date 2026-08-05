@@ -42,13 +42,38 @@ back anywhere, and §D3 flip-validates the channel. So the ensures channel for a
 borrow-returning function is real; it is the value-level statement that is out of
 reach.
 
-## The finding that outranks the verdict
+§F closes the last route. With mixed return types refused, a cursor's contract
+could only live in the OWED TYPES, and neither side of the borrow will hold it:
 
-§A: a borrow-carrying return type's non-borrow components are **never judged**, so
-`fn closedBot () -> Bot` checks on main. That had to be established first, because
-without it every green check in this file would be worthless — and it is the hazard
-the M27 line walks into, since moving every contract into the return type is
-exactly what makes a declaration both borrow-returning and ensures-carrying.
+* an **issued** borrow's owed type is checked at BOTH ends against the same `S`
+  (issue-time in `collectResultBorrows`, end-time in `endIssued`), so it is an
+  invariant of the payload and cannot express a transition (§F1) — and it reaches
+  the caller as an OBLIGATION, never as knowledge;
+* the **captured** borrow's owed type IS knowledge for the caller (the release σ
+  is minted at it), and it still fails: the owed type binds only the ENTRY
+  payload, so the caller's future writes must be existentially quantified, which
+  loses the identification the swap needs (§F2c).
+
+Same wall both times, which is the point: `back`'s binder for the values that do
+not exist yet has no counterpart in a return type OR an owed type.
+
+## The findings that outrank the verdict
+
+Two closed `Bot`s, by two independent rules, both found while establishing that a
+green check in this territory means anything at all.
+
+* **§A** — a borrow-carrying return type's non-borrow components are never judged.
+  `fn closedBot () -> Bot`. This is the hazard the M27 line walks into, since
+  moving every contract into the return type is what makes a declaration both
+  borrow-returning and ensures-carrying.
+* **§F2d** — a parameter's owed type is never judged when the body consumes that
+  parameter into its result, which for a cursor is always. `fn closedBot2 () ->
+  Bot`. §6.1's exemption is sound for the PAYLOAD (there is none to audit — it is
+  out on loan) but extends silently to the owed TYPE, which the caller's group end
+  then treats as established. **Refusing mixed borrow/non-borrow return types does
+  not close this one**: `nth01B` returns `Σ (x : &mut Nat) → &mut Nat`, all
+  borrows. F2e is the control — the same lie on a parameter NOT consumed into the
+  result is rejected.
 -/
 
 open Dllbc
@@ -477,5 +502,172 @@ example : ok c5nth2NoBack [nthS, c5nth2NoBack] = true := by native_decide
 -- nothing — the loss is at `nth2`'s own group end.
 example : rejects c3swap "does not have return type" [nthS, c5nth2NoBack, c3swap] = true := by native_decide
 example : rejects c3swap "does not have return type" [c5nthNoBack, c5nth2NoBack, c3swap] = true := by native_decide
+
+/-! ## §F. The owed-type route, under the containment
+
+    With mixed borrow/non-borrow return types refused, a cursor's contract can
+    only live where the audit already checks: the OWED TYPES. §F asks whether it
+    can, on both borrows a cursor touches — the ISSUED ones it hands out (F1) and
+    the CAPTURED one it was given (F2). -/
+
+/-! ### F1. An ISSUED borrow's owed type is checked at BOTH ends against the same
+    `S`, so it cannot express a transition
+
+    `collectResultBorrows` (callee) substitutes the ISSUE-time payload into `S`
+    and checks the issue-time payload against the result; `endIssued` (caller,
+    Machine.lean:1326) checks the FINAL payload against the same `S`. One type,
+    two moments. So an issued borrow's owed type is an INVARIANT of its payload —
+    it cannot say "changed from", and it cannot say "points at position i", which
+    is a property of the aliasing rather than of the payload at all. -/
+
+-- F1a. The trivial owed type is all a `Nat` cursor can carry.
+def f1triv : Decl :=
+  decl{ fn nth0T (v : &mut List Nat, hi : Le (S Z) (len *v)) -> &mut (t : Nat ~> Nat)
+        { match v { Nil => botElim Unit hi, Cons(hd, tl) => &mut *hd } } }
+
+-- F1b. A refinement that is TRUE AT END for a caller that writes `Z` is still
+-- refused, and refused at the CALLEE — because the same `S` is demanded at issue,
+-- where the payload is whatever the caller's list happened to hold.
+def f1refine : Decl :=
+  decl{ fn nth0R (v : &mut List Nat, hi : Le (S Z) (len *v))
+        -> &mut (t : Nat ~> Σ (r : Nat) → Id Nat r Z)
+        { match v { Nil => botElim Unit hi, Cons(hd, tl) => &mut *hd } } }
+
+-- F1c. …and the caller learns nothing from it either way: `buildResult` puts the
+-- issued σ in `sctx` at the payload TYPE (Machine.lean:1024), never at the owed
+-- type. On an issued borrow the owed type is an OBLIGATION ON the caller, not
+-- knowledge FOR it — the wrong direction for a contract.
+def f1use : Decl :=
+  decl{ fn useT (v : &mut List Nat, hi : Le (S Z) (len *v)) -> Id Nat Z Z
+        { let r = nth0T(&mut *v, hi);
+          *r := Z;
+          Refl } }
+
+
+/-! ### F2. The CAPTURED borrow's owed type — the one direction that is knowledge
+
+    Unlike an issued borrow's, the captured borrow's owed type reaches the caller
+    as a FACT: the call rule mints one σ' per captured borrow AND TYPES IT AT THE
+    OWED TYPE (Machine.lean:3827-3830), then the group end releases that very σ'
+    (Machine.lean:1352). So `&mut (s : List Nat ~> S)` on `nth2`'s parameter is a
+    real channel for a release contract. This is the only route left. -/
+
+-- F2a. A fixed-position cursor (i = 0, j = 1) so the probe is about the MECHANISM
+-- and not about threading an owed type through a recursion. Its parameter's owed
+-- type states the release relationally, entry-relatively, in `s`.
+def f2cursor : Decl :=
+  decl{ fn nth01H (v : &mut (s : List Nat ~> Σ (l : List Nat) → Σ (r1 : Nat) →
+                               Σ (r2 : Nat) → Id (List Nat) l (set Z r1 (set (S Z) r2 s))),
+                   p : Le (S (S Z)) (len *v))
+        -> Σ (x : &mut Nat) → &mut Nat
+        { match v {
+            Nil => botElim Unit p,
+            Cons(hd, tl) => match tl {
+              Nil => botElim Unit p,
+              Cons(hd2, tl2) => Pair(&mut *hd, &mut *hd2)
+            }
+        } } }
+
+-- F2b. THE SOUNDNESS TEST FOR THE ROUTE. The same cursor claiming the release is
+-- the ENTRY value unchanged — false for any caller that writes. `v` is consumed
+-- into the result, so §6.1's audit EXEMPTS it ("being issued is its exemption"),
+-- and nothing else looks. If this is accepted, the captured owed type is an
+-- unearned claim exactly as §A's return-type components were.
+def f2lie : Decl :=
+  decl{ fn nth01L (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id (List Nat) l s),
+                   p : Le (S (S Z)) (len *v))
+        -> Σ (x : &mut Nat) → &mut Nat
+        { match v {
+            Nil => botElim Unit p,
+            Cons(hd, tl) => match tl {
+              Nil => botElim Unit p,
+              Cons(hd2, tl2) => Pair(&mut *hd, &mut *hd2)
+            }
+        } } }
+
+-- F2c. The caller, in M16's unpack style: after the group ends, `*v` holds the
+-- PAIR the owed type promised, so the body takes it out, puts the list back, and
+-- keeps the evidence. The question is whether that evidence discharges the swap.
+def f2use : Decl :=
+  decl{ fn swap01H (v : &mut List Nat, p : Le (S (S Z)) (len *v))
+        -> Id (List Nat) (*v) (swapL Z (S Z) (old *v))
+        { let a = nth Z (*v);
+          let b = nth (S Z) (*v);
+          let q = nth01H(&mut *v, p);
+          match q { Pair(ei, ej) => {
+            *ei := b;
+            *ej := a;
+            let pk = *v;
+            match pk { Pair(l, w1) => {
+              *v := l;
+              match w1 { Pair(r1, w2) => match w2 { Pair(r2, h) => h } }
+            } }
+          } } } }
+
+
+-- F2d. THE SECOND BREAK. F2b's lie is accepted, so the captured borrow's owed
+-- type on a cursor is unchecked — and it is unchecked for ANY proposition, not
+-- just a plausible one. Here it is a flat falsehood, and the caller collects it.
+-- NOTE FOR THE CONTAINMENT: this one is NOT closed by refusing mixed
+-- borrow/non-borrow RETURN types. `nth01B` returns `Σ (x : &mut Nat) → &mut Nat`
+-- — all borrows, perfectly within the containment. The lie is in a PARAMETER's
+-- owed type, and it is unchecked because §6.1 exempts an argument borrow consumed
+-- into the result ("being issued is its exemption, its story continuing
+-- caller-side through the group") — while the caller, for its part, mints the
+-- release AT that owed type without ever checking it.
+def f2botCursor : Decl :=
+  decl{ fn nth01B (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat Z (S Z)),
+                   p : Le (S (S Z)) (len *v))
+        -> Σ (x : &mut Nat) → &mut Nat
+        { match v {
+            Nil => botElim Unit p,
+            Cons(hd, tl) => match tl {
+              Nil => botElim Unit p,
+              Cons(hd2, tl2) => Pair(&mut *hd, &mut *hd2)
+            }
+        } } }
+
+def f2bot : Decl :=
+  decl{ fn closedBot2 () -> Bot
+        { let x = Cons(1, Cons(2, Nil));
+          let b = &mut x;
+          let q = nth01B(b, ());
+          match q { Pair(ei, ej) => {
+            *ei := Z;
+            *ej := Z;
+            let pk = x;
+            match pk { Pair(l, h) => znots Z h }
+          } } } }
+
+-- F2e. THE CONTROL that isolates the cause. The same lying owed type on a
+-- parameter the body does NOT consume into its result is REJECTED — the audit
+-- checks it wherever the borrow is still locatable. So the hole is exactly §6.1's
+-- exemption, and nothing else.
+def f2ctl : Decl :=
+  decl{ fn keepsIt (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat Z (S Z)),
+                    p : Le (S (S Z)) (len *v)) -> Unit { () } }
+
+-- F2a — the relational owed type seeds and the cursor checks.
+example : ok f2cursor = true := by native_decide
+-- F2b — and so does the LIE. Nothing checks it.
+example : ok f2lie = true := by native_decide
+-- F2d — `fn closedBot2 () -> Bot`. The second break, closed.
+example : ok f2botCursor = true := by native_decide
+example : ok f2bot [f2botCursor, f2bot] = true := by native_decide
+-- F2e — the control: not consumed into the result, and it IS checked.
+example : rejects f2ctl "does not have its owed type" = true := by native_decide
+-- F2c — and even granting the claim, the composition fails. The owed type binds
+-- only `s` (the ENTRY payload), so the values the caller will write are
+-- unnameable in it and have to be EXISTENTIALLY quantified — which loses exactly
+-- the identification the swap needs. This is the same wall as §C5, reached
+-- through the owed type instead of the return type.
+example : rejects f2use "does not have return type" [f2cursor, f2use] = true := by native_decide
+-- F1a — the trivial owed type is accepted.
+example : ok f1triv = true := by native_decide
+-- F1b — a refinement is refused AT THE CALLEE, at the ISSUE-time check, even
+-- though a caller writing `Z` would satisfy it at end. One `S`, two moments.
+example : rejects f1refine "does not have its owed type" = true := by native_decide
+-- F1c — and the caller learns nothing from it either way.
+example : ok f1use [f1triv, f1use] = true := by native_decide
 
 end Dllbc.Tests.S27BackProbe
