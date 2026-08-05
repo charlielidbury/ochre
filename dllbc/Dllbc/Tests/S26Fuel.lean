@@ -48,11 +48,15 @@ namespace Dllbc.Tests.S26Fuel
 /-- The declaration checks, and its elaboration checks as a program. The pair is
     the claim: fuel-threading buys a form the macro accepts, and the two forms
     agree. -/
+-- ~~The declaration checks, AND its elaboration checks as a program. The pair is
+-- the claim.~~ **Half of it retired with `checkFn`** (M27-δ): there is one path,
+-- so what is left is that the fuel-threaded form checks — which was always the
+-- half in doubt, since decision 8's question was whether the interim is
+-- available at all, not whether two checkers agree about it.
 def bothWays (d : Decl) (deps : List Decl := []) : Bool :=
-  (match checkFn (deps ++ [d]) d with | .ok _ => true | .error _ => false)
-  && (match FnMacro.progOf (deps ++ [d]) .unit with
-      | .error _ => false
-      | .ok t => progOk t)
+  match FnMacro.progOf (deps ++ [d]) .unit with
+  | .error _ => false
+  | .ok t => progOk t
 
 /-! ## §A. The LIST cursor: `zero_all`
 
@@ -73,10 +77,9 @@ def zeroAllF : Decl :=
       }
     } } }
 
-example : checkFnOk zeroAllF = true := by native_decide
 example : bothWays zeroAllF = true := by native_decide
--- The `[v]` original is untouched and still checks (J1), and still declines.
-example : checkFnOk Tests.S6Call.zeroAll = true := by native_decide
+-- The `[v]` original is untouched and still DECLINES (J1); its own check went
+-- with `checkFn`.
 example : (match FnMacro.fnElab Tests.S6Call.zeroAll with
            | .error e => strContains e "decision 8"
            | .ok _ => false) = true := by native_decide
@@ -111,11 +114,12 @@ example : (Tests.S24Arrays.walk.telescope == Tests.S24Arrays.walkArr.telescope
 example : (Tests.S24Arrays.walk.dec == some 0 && Tests.S24Arrays.walkArr.dec == some 4)
   = true := by native_decide
 example : bothWays Tests.S24Arrays.walk = true := by native_decide
--- The `[a]` twin: rejected by one path, declined by the other, for the same fact.
-example : (checkFnOk Tests.S24Arrays.walkArr == false
-        && (match FnMacro.fnElab Tests.S24Arrays.walkArr with
-            | .error e => strContains e "decision 8"
-            | .ok _ => false)) = true := by native_decide
+-- The `[a]` twin: ~~rejected by one path, declined by the other, for the same
+-- fact~~ — the rejecting path is gone (M27-δ), so what is left is the decline,
+-- which was always the more informative half: the macro says WHY.
+example : (match FnMacro.fnElab Tests.S24Arrays.walkArr with
+           | .error e => strContains e "decision 8"
+           | .ok _ => false) = true := by native_decide
 
 /-! ## §C. THE FINDING: most of the `[v]` class needs no fuel at all
 
@@ -171,12 +175,12 @@ example : bothWays nth2I [nthI] = true := by native_decide
     (`rejectProbe` is S14's own negative control), NOTHING declines. -/
 def p14fixed : List Decl :=
   [nthI, nth2I, Tests.S14Bounds.swap, Tests.S14Bounds.cascade, Tests.S14Bounds.rejectProbe]
-example : (Migrate.report p14fixed
-  == { accepts := 4, rejects := 1, declined := 0, disagree := [] }) = true := by native_decide
+example : (Migrate.tally p14fixed
+  == { accepts := 4, rejects := 1, declined := 0 }) = true := by native_decide
 -- …and since M26-F this is what the CORPUS pool reports too, not just this
 -- section's copy of it. Before the adoption the same five functions declined five
 -- times (`report p14 == R 0 0 5`, S26Migrate §Y as it then read).
-example : (Migrate.report Tests.S26Migrate.p14 == Migrate.report p14fixed)
+example : (Migrate.tally Tests.S26Migrate.p14 == Migrate.tally p14fixed)
   = true := by native_decide
 
 /-! ## §D. What is left needing fuel, and one macro gap this section found
@@ -256,21 +260,20 @@ def fixAll (pool : List Decl) : List Decl := fixHints pool
 -- which is the assertion that the corpus, and not this harness, carries the fix.
 example : (Tests.S26Migrate.pools.all (fun p => fixHints p == p)) = true := by native_decide
 
-example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixHints p)).declined) 0 == 19)
-        && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixAll p)).declined) 0 == 19))
+example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.tally (fixHints p)).declined) 0 == 19)
+        && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.tally (fixAll p)).declined) 0 == 19))
   = true := by native_decide
 
 example : (Tests.S26Migrate.pools.foldl (fun (a, r) p =>
-    let q := Migrate.report (fixAll p); (a + q.accepts, r + q.rejects)) (0, 0)
+    let q := Migrate.tally (fixAll p); (a + q.accepts, r + q.rejects)) (0, 0)
   == (110, 58)) = true := by native_decide
 
--- Still agreeing everywhere under both fixes, so the 53 that move are migrations
--- and not accidents.
-example : (Tests.S26Migrate.pools.all (fun p => (Migrate.report (fixAll p)).disagree.isEmpty))
-  = true := by native_decide
+-- (the "still agreeing everywhere" assertion went with the second path; what it
+-- guarded — that the 53 which move are migrations and not accidents — is now the
+-- accept/reject tally below, which moves if any of them stops migrating)
 
 -- And the residue is where §D says it is.
-example : (Tests.S26Migrate.pools.map (fun p => (Migrate.report (fixAll p)).declined)
+example : (Tests.S26Migrate.pools.map (fun p => (Migrate.tally (fixAll p)).declined)
   == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0]) = true := by native_decide
 
 end Dllbc.Tests.S26Fuel

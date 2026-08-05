@@ -55,15 +55,13 @@ def zeroAll : Decl :=
       Cons(hd, tl) => { *hd := 0; zero_all(tl); () }
     } } }
 
--- **STAYS ON THE DECLARATION PATH, and dies with it** (M27-γ). `zero_all` is the
--- `[v]` payload-decrease shape — §7 cost 4's own example, a cursor with no
--- decreasing argument but the payload — so `fnElab` declines it and there is no
--- program form to convert this to. §12 decision 8 accepted that regression and
--- blessed fuel-threading; the claim's carrier is `S26Fuel.zeroAllF`, asserted
--- `bothWays` there and again in `S27Dispose` §B. This assertion is therefore a
--- δ casualty rather than a coverage loss: it goes when `checkFn` does, and what
--- it was checking is already checked on both paths elsewhere.
-example : checkFnOk zeroAll = true := by native_decide
+-- **ITS ASSERTION DIED WITH `checkFn`** (M27-δ), as γ said it would. `zero_all`
+-- is the `[v]` payload-decrease shape — §7 cost 4's own example, a cursor with no
+-- decreasing argument but the payload — so `fnElab` declines it and there was
+-- never a program form to move this to. §12 decision 8 accepted that regression
+-- and blessed fuel-threading; the claim's carrier is `S26Fuel.zeroAllF`, which is
+-- literally this function with a fuel parameter and is asserted on both paths
+-- there. The DECLARATION stays, because `S26Fuel` §A compares against it.
 
 /-! ## Type-changing ↝, exercised at last -/
 

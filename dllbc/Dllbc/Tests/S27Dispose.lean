@@ -80,17 +80,18 @@ open Dllbc.StdLemmas (Ub Lb len)
     19 are exactly §B's residue, the true `[v]` payload-decrease class. Before
     M27-P2 it was 61 declines against 28 back-declaring entries. -/
 example : (S26Migrate.pools.foldl (fun (a, r, d) p =>
-    let q := report p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
+    let q := Migrate.tally p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
   == (110, 58, 19)) = true := by native_decide
 
-/-- …and the two paths still agree everywhere, which is the property the whole
-    comparison exists for. **Read it narrowly**: agreement is not coverage. This
-    says the declaration path and the program path reach the same verdict, and it
-    says nothing about a DECLINING declaration, whose declaration-path verdict
-    `report` never compares to anything. That gap is what hid the fourteen S19
-    regressions until a deletion exposed them (§C). -/
-example : (S26Migrate.pools.all (fun p => (report p).disagree.isEmpty))
-  = true := by native_decide
+/-! ~~…and the two paths still agree everywhere, which is the property the whole
+    comparison exists for.~~ **The second path is gone** (M27-δ), so there is no
+    agreement left to assert — and the narrow reading it always needed is the
+    thing to carry: **agreement is not coverage.** It said the two paths reached
+    the same verdict and said NOTHING about a declining declaration, whose
+    declaration-path verdict `report` never compared to anything. That gap hid
+    fourteen S19 regressions until a deletion exposed them (§C). What replaces it
+    is the tally above, which cannot skip a decline: a declaration that starts or
+    stops migrating moves a number. -/
 
 /-! ## §B. The residue: 19 declarations, and a disposition for each
 
@@ -157,9 +158,12 @@ example : S26Fuel.bothWays S24Arrays.walk = true := by native_decide
     must MIGRATE and then be refused, on both paths, which is what `neitherWay`
     asserts and what a decline-tolerant helper would have quietly let through. -/
 
+-- ~~on both paths~~ — on the one path there is (M27-δ). The bar it enforces is
+-- unchanged and is the reason this helper exists rather than a `!progOkOf`: a
+-- DECLINE is not a rejection, so the elaboration has to EXIST for the refusal to
+-- be about the lie.
 def neitherWay (d : Decl) (deps : List Decl := []) : Bool :=
-  (match checkFn (deps ++ [d]) d with | .ok _ => false | .error _ => true)
-  && (match FnMacro.progOf (deps ++ [d]) .unit with
+  (match FnMacro.progOf (deps ++ [d]) .unit with
       -- A DECLINE is not a rejection: the elaboration has to exist for the
       -- program path's refusal to be about the lie.
       | .error _ => false
@@ -305,9 +309,9 @@ example : neitherWay qsNoSuffP [S26Fn.partitionF, S26Prog.appendBackF] = true :=
 
 def guardTwins : List Decl := [S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recGrow]
 
--- Today: the declaration path rejects each at the guard…
-example : guardTwins.all (fun d => !checkFnOk d [d]) = true := by native_decide
--- …and the macro refuses each for the reason that OUTLIVES the guard.
+-- ~~Today: the declaration path rejects each at the guard…~~ The guard is gone
+-- (M27-δ), and so is the path that fed it. What is left is the reason that
+-- OUTLIVED it, which is what this section was always about:
 example : guardTwins.all (fun d =>
     match FnMacro.fnElab d with
     | .error e => strContains e "not the predecessor"

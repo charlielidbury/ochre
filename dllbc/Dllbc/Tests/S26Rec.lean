@@ -657,9 +657,14 @@ def splitSealed : Decl := decl{ fn caller () -> Unit {
     %splitTy);
   () } }
 
--- THE CONVERGENCE: the declared function and the sealed recursor both check.
+-- THE CONVERGENCE. ~~The declared function and the sealed recursor both check.~~
+-- Half of that claim retired with `checkFn` (M27-δ): there is no declared path to
+-- converge WITH, and §7's "fn is a macro" is no longer a comparison between two
+-- checkers but the only elaboration there is. What survives is the half that was
+-- always the interesting one — this hand-written sealed recursor and
+-- `S23Direct.splitOff` are the same function, and `S26Fn` §"the macro's output is
+-- α-equal to the hand-written recursor" is where that identity is now asserted.
 example : ok splitSealed = true := by native_decide
-example : checkFnOk Tests.S23Direct.splitOff = true := by native_decide
 
 /-! ### G2. Not vacuous — the sealed form rejects the same lies the declared one does
 

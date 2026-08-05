@@ -117,7 +117,7 @@ structure St where
 
       `sctx` still holds the borrow-free case (phase A's `σ : Π`), so the two
       contexts partition abstract callees by whether their type has a value. -/
-  fsig : List (Nat × Decl) := []
+  fsig : List (Nat × Term) := []
   /-- Loan groups (§6.1). A call mints one; ending a captured loan ends the
       whole group. Replaces M6's flat owed map — a wire is the degenerate
       `issued = []` group. -/
@@ -150,15 +150,6 @@ structure St where
       — a non-consuming snapshot reference to the entry value, which after the body
       mutates `v` is no longer `*v`'s live payload. Never substituted by the audit. -/
   entrySyms : List (Nat × Nat) := []
-  /-- §8's snapshot-subterm guard (M23): while a body is checked, the name of the
-      function being checked, and — when it declares `[k]` — that parameter's index
-      together with its CURRENT snapshot. The snapshot rides `refineSym`/
-      `generalizeStuck` like every other σ-bearing piece of state (the M10
-      invariant), which is the whole trick: after `match fuel { S(f2) => … }` the
-      parameter's slot holds ⊥ (owned match consumes it) but this value reads
-      `S σ_f2`, so `f(…, f2, …)` is visibly a strict predecessor. `none` outside
-      `checkFn` (executing mode runs real bodies and needs no guard). -/
-  selfRec : Option (String × Option (Nat × Val)) := none
   /-- Execution mode (§8/§9 differential). `false` = CHECKING (the call rule
       uses the §5.3/§6.1 signature rule — groups, existentials); `true` =
       EXECUTING (a call runs the callee's actual body concretely). checkFn is
@@ -761,7 +752,7 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     retTyVal := s.retTyVal.map (substSym σ v),
     -- The decreasing parameter's snapshot refines with everything else — this is
     -- how `match fuel { S(f2) => … }` makes the guard's comparison possible.
-    selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, substSym σ v d.2)))) })
+    })
 
 /-- **Generalize a stuck Bool spine** (§19) — the inverse of `refineSym`, and the
     two-layer principle at the machine level. When a match/`if` scrutinee reduces
@@ -792,7 +783,7 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
       issued := g.issued.map (fun p => (p.1, abstractInto sp σb p.2)),
       }),
     retTyVal := s.retTyVal.map (abstractInto sp σb),
-    selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, abstractInto sp σb d.2)))) })
+    })
   pure (σb, sp)
 
 /-- **Refl-match — the solution transition** (§10). Matching against `Refl` at
@@ -1037,18 +1028,6 @@ def buildResult (fuel : Nat) (inst : Omega) (subs : List Val) : Term → M (Val 
     cheap to state: compare the actual against the parameter's *current snapshot*,
     which the enclosing matches have already refined. -/
 
-/-- Is `act` a STRICT structural subterm of `cur`? Only constructor fields count as
-    subterms — a fuel argument is a `Nat`/`List` snapshot, and the strictness is
-    what forbids the same-fuel self-call. Both sides are snapshots (σ's and
-    constructors), so structural equality is the right comparison: inside
-    `match fuel { S(f2) => … }` the parameter reads `S σ_f2` and the actual `σ_f2`.
-    Deliberately NOT extended to application spines: a `Le`-headed neutral has no
-    well-founded subterm order we could appeal to. -/
-partial def strictSubterm (act cur : Val) : Bool :=
-  match cur with
-  | .ctor _ args => args.any (fun a => a == act || strictSubterm act a)
-  | _ => false
-
 /-- The function names a body calls directly. -/
 partial def calleeNames : Term → List String
   | .call f args => f :: (args.flatMap calleeNames)
@@ -1070,19 +1049,6 @@ partial def calleeNames : Term → List String
   | .lam d b | .pi d b | .sigmaT d b => calleeNames d ++ calleeNames b
   | .idT a b c => calleeNames a ++ calleeNames b ++ calleeNames c
   | _ => []
-
-/-- Can `f` reach `target` through the table's call graph? Used to reject MUTUAL
-    recursion, which the `[k]` guard does not cover: the guard is per-declaration,
-    so `f → g → f` would let each admit the other's postcondition with nothing
-    decreasing anywhere — the same hole through two doors. Rejected rather than
-    supported; §8's measures are where a general story would live. -/
-partial def reachesFn (table : List Decl) (seen : List String) (f target : String) : Bool :=
-  if seen.contains f then false
-  else match table.find? (fun d => d.name == f) with
-    | none => false
-    | some d =>
-      let cs := calleeNames d.body
-      cs.contains target || cs.any (fun c => reachesFn table (f :: seen) c target)
 
 /-! Value typing (§4), the future audit's engine. `sym σ` is typed by `sctx`
     and conversion; a constructor value by the signature table, checking each
@@ -2444,17 +2410,11 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       if hasBorrowT tyTerm then do
         let σ ← freshSym
         bindSlot x (.sym σ)
-        let names := piBinderNames tyTerm
-        match piPeel names tyTerm with
-        | .error e => throwErr e
-        | .ok (tel, ret) => do
-          let sig : Decl :=
-            { name := "@ih"
-              telescope := tel.map (fun p => (p.1.name, p.2))
-              retType := ret
-              body := .unit }
-          modify (fun s => { s with fsig := (σ, sig) :: s.fsig })
-          seedTelescopeV fuel rest
+        -- **`fsig` stores the Π ITSELF** (M27-δ), peeled on demand at the call.
+        -- A signature IS a Π and the AST already has one; a record beside it was
+        -- a second representation of the same thing, kept in step by hand.
+        modify (fun s => { s with fsig := (σ, tyTerm) :: s.fsig })
+        seedTelescopeV fuel rest
       else do
         let τVal ← readC fuel tyTerm
         let σ ← freshSym
@@ -3141,7 +3101,7 @@ mutual
             let res ← readR fuel (shiftVars offset decl.body)
             releaseFrameLoans fuel offset res.loanIds
             pure res
-          else callDeclC fuel decl args
+          else callDeclC fuel decl.telescope decl.retType args
       -- **The seal** (combining-fns §5): opacity as one node. The two readings
       -- are the two machines'.
       | .seal t u => do
@@ -3223,7 +3183,13 @@ mutual
             match callee with
             | .sym σ =>
               match (← get).fsig.lookup σ with
-              | some decl => callDeclC fuel decl args
+              | some piT =>
+                -- Peel the stored Π at POSITIONAL binders, which is the convention
+                -- `processArgs`/`buildResult` read a telescope by, and which
+                -- `piBinderNames` reproduces mode and all.
+                match piPeel (piBinderNames piT) piT with
+                | .error e => throwErr e
+                | .ok (tel, ret) => callDeclC fuel (tel.map (fun p => (p.1.name, p.2))) ret args
               | none => callVValue fuel x callee args
             | _ => callVValue fuel x callee args
       -- **The runtime λ** (§7 cost 2). Evaluating one is only forming its value:
@@ -3667,12 +3633,13 @@ mutual
       seed the telescope, pin the return type at entry (§5.3 — a dependent return
       type may mention a parameter the body consumes), explore the body one path
       per symbolic branch, and audit each path at return with exit snapshots and
-      obligations. `checkFn` is untouched and still checks every `Decl` in the
-      corpus (J1): what moved is content, and nothing was deleted.
+      obligations. When this was written `checkFn` still checked every `Decl` in
+      the corpus and nothing had been deleted; M27-δ deleted it, and this is now
+      the ONLY audit site there is.
 
-      **FRAME ISOLATION.** The sealed body gets a fresh Ω, fresh obligations,
-      fresh groups and no `selfRec` — because it is a function being
-      defined, not code running in the caller's world. Phase A evaluated a seal's
+      **FRAME ISOLATION.** The sealed body gets a fresh Ω, fresh obligations and
+      fresh groups — because it is a function being defined, not code running in
+      the caller's world. Phase A evaluated a seal's
       body IN PLACE ("correct for phase A, and a sealed FUNCTION body will want
       frame isolation") and this is that debt paid. What crosses the boundary in
       each direction is exactly one thing: the ascribed type comes IN (already
@@ -3691,8 +3658,7 @@ mutual
       -- never runs on it.
       let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.id)) body)
       modify (fun s => { s with env := gl, obligations := [], groups := [],
-                                exitSyms := [], entrySyms := [], retTyVal := none,
-                                selfRec := none })
+                                exitSyms := [], entrySyms := [], retTyVal := none })
       let obs ← seedTelescopeV fuel tel
       -- §5.4 exit snapshots: one σ per borrow parameter, recorded ONLY here until
       -- the audit defines it as that borrow's collapsed final payload.
@@ -3871,17 +3837,18 @@ mutual
       return position: `hasType: σ has no type in sctx`, from a function whose
       result IS a sealed function.) -/
   def sealMint : Nat → List Var → Term → M Val
-    | fuel, names, u => do
-      match piPeel names u with
-      | .error e => throwErr e
-      | .ok (ctel, cret) => do
+    | fuel, _names, u => do
+        -- **The Π itself goes into `fsig`** (M27-δ). It used to be peeled here
+        -- into a record at POSITIONAL binders, which is the convention
+        -- `processArgs`/`buildResult` read a telescope by — but the peel is
+        -- `piPeel` at `piBinderNames`, which the call site can do for itself, and
+        -- doing it there means there is one representation of a signature rather
+        -- than two kept in step by hand. The binder MODES survive the round trip,
+        -- since `piBinderNames` encodes each one in the name it synthesizes; what
+        -- does not survive is the λ's own display names, which cost a call-site
+        -- message its programmer-written parameter name and nothing else.
         let σ ← freshSym
-        let sig : Decl :=
-          { name := "@seal"
-            telescope := ctel.map (fun p => (p.1.name, p.2))
-            retType := cret
-            body := .unit }
-        modify (fun s => { s with fsig := (σ, sig) :: s.fsig })
+        modify (fun s => { s with fsig := (σ, u) :: s.fsig })
         if !hasBorrowT u then do
           let uV ← readC fuel u
           modify (fun s => { s with sctx := (σ, uV) :: s.sctx })
@@ -3922,44 +3889,33 @@ mutual
       application; it is abstract application at a moded Π" — and factoring is
       what turns that from a remark into a fact about the code.
 
-      The `[k]` guard rides along and is inert for a seal, which is the right
-      answer rather than a lucky one: a sealed signature is not in the table, so
-      `selfRec`/`reachesFn` cannot match it, and §7 says the guard EVAPORATES for
-      recursor-expressed functions anyway — `ih` is a binder, and a binder cannot
-      be a self-call. -/
-  def callDeclC : Nat → Decl → List Term → M Val
-    | fuel, decl, args => do
+      The `[k]` guard used to ride along here and be inert for a seal. It is gone
+      (M27-δ) — §7's `ih` is a binder and a binder cannot be a self-call, and §8's
+      let-chain cannot reference downward, so there is no premise left for a side
+      condition to guard. -/
+  def callDeclC : Nat → List (String × Term) → Term → List Term → M Val
+    | fuel, telescope, retType, args => do
           -- CHECKING (§5.3/§6.1): signature only, mint one loan group. The
           -- instantiation `inst` (decl var → actual, §5.3) instantiates the
           -- return and owed types at the actuals this call was given.
-          let (captured, inst) ← processArgs fuel 0 [] decl.telescope args
-          -- §8's snapshot-subterm guard. Signature-only checking means a self-call
-          -- is admitted at this function's own declared return type — its
-          -- POSTCONDITION, once declared backs are gone — so it needs the side
-          -- condition every recursion rule has: something strictly decreases.
-          -- Checked here, after `processArgs`, because the actual's VALUE is what
-          -- the comparison needs and `inst` is where it lands.
-          match (← get).selfRec with
-          | some (selfName, dk) =>
-            if decl.name == selfName then
-              match dk with
-              | none =>
-                throwErr s!"recursion: '{decl.name}' calls itself but declares no decreasing argument ([k], §1.2) — a self-call admitted at its own return type with nothing decreasing proves any postcondition"
-              | some (k, cur) =>
-                match inst.find? (fun kv => kv.1.id == k) with
-                | none => throwErr s!"recursion: '{decl.name}' declares decreasing argument [{k}] but the call passes no such argument"
-                | some (_, act) =>
-                  -- Unwrap a borrow on both sides: what decreases is the payload
-                  -- snapshot, not the loan wrapping it.
-                  let peel : Val → Val := fun v => match v with | .borrowM _ p => p | v => v
-                  let a := Val.nfV fuel (peel act)
-                  let c := Val.nfV fuel (peel cur)
-                  if strictSubterm a c then pure ()
-                  else throwErr s!"recursion: self-call's argument [{k}] ({a.pretty}) is not a strict structural predecessor of the parameter's snapshot ({c.pretty})"
-            else if reachesFn (← get).decls [] decl.name selfName then
-              throwErr s!"recursion: mutual recursion ('{selfName}' → '{decl.name}' → … → '{selfName}') is not supported — the [k] guard is per-declaration (§8)"
-            else pure ()
-          | none => pure ()
+          let (captured, inst) ← processArgs fuel 0 [] telescope args
+          -- **§8's [k] GUARD IS GONE** (M27-δ), and it left with the path that
+          -- fed it. The guard was a side condition on signature-only checking: a
+          -- self-call is admitted at the function's own declared return type, so
+          -- something had to be required to decrease. §7 replaced the premise
+          -- rather than the check — a recursive occurrence is the `ih` BINDER, and
+          -- a binder cannot be a self-call — and §8 replaced what is left: scope
+          -- is the let-chain, and a let-chain cannot reference downward, so a
+          -- self-call resolves to nothing at all.
+          --
+          -- It had to die in `checkFn`'s own commit and not before. `selfRec` was
+          -- set by exactly one place, `checkFn`'s seeding, so removing the guard
+          -- alone would have left the declaration path admitting `recBad` —
+          -- `fn recBad () -> Id Nat Z (S Z) { recBad() }` — and proving `Z = S Z`.
+          -- `S23Direct`'s battery now asserts the replacement from both sides:
+          -- `recBad` and `recMutA` MIGRATE and are refused as "unknown function",
+          -- and `recSame`/`recWrongIdx`/`recGrow` are refused one layer earlier by
+          -- `fnElab`, which will not elaborate a self-call at a non-predecessor.
           -- Build the result and the loans it issues from the return type (a
           -- single borrow, a Pair/Σ of borrows for a multi-issued group, or a
           -- plain existential wire). One group ties captured to issued. The
@@ -3974,7 +3930,7 @@ mutual
           -- reflect, so callee/caller var-id collisions can't shadow it). Empty
           -- when there are no borrow args (a no-op) and dead under a `back` (which
           -- releases via the spec instead of the pinned σ').
-          let borrowIds := borrowParamIds decl.telescope
+          let borrowIds := borrowParamIds telescope
           let sigmas ← (captured.map (·.2)).mapM (fun owed => do
             let σ ← freshSym
             modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
@@ -3984,7 +3940,7 @@ mutual
           let savedE := (← get).exitSyms
           let savedO := (← get).entrySyms
           modify (fun s => { s with exitSyms := exitMap, entrySyms := [] })
-          let (resultVal, issued) ← buildResult fuel inst [] (markExit borrowIds decl.retType)
+          let (resultVal, issued) ← buildResult fuel inst [] (markExit borrowIds retType)
           modify (fun s => { s with exitSyms := savedE, entrySyms := savedO })
           let ρ ← freshGroup
           let fc := (← get).forceConstrained

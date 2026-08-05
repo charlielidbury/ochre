@@ -150,39 +150,30 @@ def p25 : List Decl := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qui
   S25ArrSort.twoCursorRes, S25ArrSort.citedCarve]
 
 
-/-! ## §Y. The reports
+/-! ## §Y. The reports are gone (M27-δ)
 
-    One assertion per file, on the whole tuple. `disagree = []` is the property;
-    the three counts are what keep the property from holding vacuously. -/
+    One assertion per file compared the two paths' verdicts, with three counts
+    keeping `disagree = []` from holding vacuously. There is one path now, so
+    there is nothing to compare and the harness died with `checkFn`.
 
-def R (a r d : Nat) : Report := { accepts := a, rejects := r, declined := d, disagree := [] }
+    **Its finding is what to keep, and it is recorded in `Migrate.lean` beside
+    what replaced it: agreement is not coverage.** `report` never compared a
+    DECLINING declaration's declaration-path verdict, so `disagree.isEmpty` was
+    true throughout while 27 of the 42 declarations that stopped declining under a
+    strip became REJECTS. That is what hid fourteen S19 regressions until a
+    deletion exposed them.
 
-example : (report p5  == R 2 0 0) = true := by native_decide
-example : (report p6  == R 5 0 1) = true := by native_decide
-example : (report p7  == R 4 0 0) = true := by native_decide
-example : (report p9  == R 4 0 0) = true := by native_decide
-example : (report p10 == R 3 2 0) = true := by native_decide
-example : (report p11 == R 3 0 0) = true := by native_decide
-example : (report p12 == R 10 2 0) = true := by native_decide
-example : (report p14 == R 4 1 0) = true := by native_decide
-example : (report p15 == R 1 1 0) = true := by native_decide
-example : (report p16 == R 2 0 0) = true := by native_decide
-example : (report p17 == R 7 0 0) = true := by native_decide
-example : (report p18 == R 1 1 0) = true := by native_decide
-example : (report p19 == R 9 6 0) = true := by native_decide
-example : (report p23 == R 24 19 17) = true := by native_decide
-example : (report p24 == R 20 14 1) = true := by native_decide
-example : (report p25 == R 11 12 0) = true := by native_decide
+    The POOLS below survive: they are the corpus's own inventory, and `S27Dispose`
+    reads them. -/
 
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List Decl) :=
   [p5, p6, p7, p9, p10, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
 
-example : (pools.foldl (fun (a, r, d) p =>
-    let q := report p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
-  == (110, 58, 19)) = true := by native_decide
-example : (pools.all (fun p => (report p).disagree.isEmpty)) = true := by native_decide
+-- (the corpus-total assertion went with `report`; the pools themselves are the
+-- inventory, and every declaration in them is asserted in its own file)
+
 
 /-! ## §Z. What did not migrate, and why — three classes, each already decided
 

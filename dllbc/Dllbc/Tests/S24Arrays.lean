@@ -490,13 +490,13 @@ def halves : Decl := decl{
 
 example : Migrate.progOkOf halves = true := by native_decide
 
-/-- The final Ω of a single-path body. **Declaration path, and it dies with it**
-    (M27-δ): inspecting what a body with a TELESCOPE leaves requires seeding that
-    telescope, which is `checkFn`'s job — on the program path such a body is
+/-- The final Ω of a single-path body. **GONE with `checkFn`** (M27-δ):
+    inspecting what a body with a TELESCOPE leaves requires seeding that
+    telescope, which was `checkFn`'s job — on the program path such a body is
     entered only inside the seal's isolated frame, whose Ω is discarded by design.
-    See `S10Ford` for the same disposition stated at length. -/
-def fnEnv (d : Decl) (tbl : List Decl := [d]) : Option Env :=
-  match runFn tbl d with | [.ok e] => some e | _ => none
+    A genuine coverage loss rather than a relocation; `S10Ford` states the same
+    disposition at length. Every assertion that used it is deleted below. -/
+def fnEnv (_d : Decl) (_tbl : List Decl := []) : Option Env := none
 
 /-- The claim, stated structurally: `a`'s payload is a two-segment node whose bodies
     are two DISTINCT loans. Not "the checker accepted a disjointness argument" — there
@@ -515,7 +515,10 @@ def halvesSegLoans : Option (List Nat) :=
     | _ => none
   | none => none
 
-example : halvesSegLoans = some [1, 2] := by native_decide
+-- (Ω-inspection assertion deleted with `checkFn`, M27-δ. `halvesSegLoans` computed
+-- it from `fnEnv`, which needed a seeded telescope; see `fnEnv` above. The
+-- disjointness invariant it observed is maintained by construction — segments
+-- partition the array — and is not otherwise asserted.)
 
 /-! ### Why the audit converts, and what it cost
 
@@ -564,16 +567,17 @@ example : Migrate.progRejectsOf rigidLength "premise (3) is stuck" = true := by 
 example : Migrate.progRejectsOf rigidLength "Take the length as a telescope PARAMETER"
     = true := by native_decide
 
-/-! ### `refineSym`'s target list is the checklist — including `St.selfRec`
+/-! ### `refineSym`'s target list is the checklist
 
     ¶3.2's sharpest warning: the carve's index refinement must reach every σ-bearing
-    component, and "a carve whose index refinement reached every component EXCEPT
-    `St.selfRec` would not fail loudly — it would silently corrupt the termination
-    guard for **any function recursing on an array**, which is to say for the entire
-    class of program this design exists to serve".
+    component. Its named example was `St.selfRec` — "a carve whose index refinement
+    reached every component EXCEPT `St.selfRec` would not fail loudly; it would
+    silently corrupt the termination guard for **any function recursing on an
+    array**". **That component is gone with the guard** (M27-δ), so the example is
+    history; the WARNING is not, and it applies unchanged to every σ-bearing field
+    `refineSym` still sweeps.
 
-    A function that recurses on fuel and carves on the way checks. The guard's snapshot
-    rode the refinement with everything else. -/
+    A function that recurses on fuel and carves on the way checks. -/
 
 def walk : Decl := decl{
   fn walk [fuel] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
@@ -583,19 +587,17 @@ def walk : Decl := decl{
     } } }
 example : Migrate.progOkOf walk = true := by native_decide
 
-/-! ### The regression test the doc asks for, made SELF-GUARDING
+/-! ### The regression test the doc asks for
 
-    Declaring the ARRAY as the decreasing argument and recursing on a carved sub-slice
-    is rejected — and the rejection's message names the snapshot the guard compared
-    against. After the carve that snapshot is `arrCat σ σ σ σ`, because the body split
-    refined the payload's σ to its concatenation. If `refineSym` did NOT sweep
-    `selfRec` the message would name the stale bare σ instead, which is exactly the
-    silent corruption ¶3.2 warns about — so asserting on the word `arrCat` is a live
-    check that the sweep happened, not a comment claiming it did.
-
-    Verified by flipping: with `selfRec` removed from `refineSym`'s targets the same
-    declaration reports `… predecessor of the parameter's snapshot (σ4)`, and this
-    test goes red. -/
+    ~~Declaring the ARRAY as the decreasing argument and recursing on a carved
+    sub-slice is rejected, and the rejection's message names the snapshot the guard
+    compared against — `arrCat σ σ σ σ` after the carve, so asserting on the word
+    `arrCat` is a live check that `refineSym` swept `selfRec`.~~ **OVERTAKEN by
+    M27-δ**: there is no guard, no `selfRec`, and no message naming a snapshot. What
+    is left is the macro's own refusal, which declines `[a]`-on-a-borrow at §12
+    decision 8 — the same fact from the other side, and the one `S26Fuel` §B
+    asserts. The sweep itself is still exercised by every carve in this file that
+    checks; what is gone is this particular witness to it. -/
 
 def walkArr : Decl := decl{
   fn walkArr [a] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
@@ -609,7 +611,7 @@ def walkArr : Decl := decl{
 -- which `S26Fuel` §B asserts as a pair. Its honest twin `walk` differs in the
 -- hint alone and was paid in M24, before decision 8 existed; `bothWays walk` is
 -- the carrier. A δ casualty, not a coverage loss.
-example : checkFnErr walkArr "arrCat" = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-! ### FINDING — recursion cannot decrease through a CARVED array payload
 
@@ -1053,7 +1055,10 @@ def threeWaySegLoans : Option (List Nat) :=
     | _ => none
   | none => none
 
-example : threeWaySegLoans = some [1, 2, 3] := by native_decide
+-- (Ω-inspection assertion deleted with `checkFn`, M27-δ. `threeWaySegLoans` computed
+-- it from `fnEnv`, which needed a seeded telescope; see `fnEnv` above. The
+-- disjointness invariant it observed is maintained by construction — segments
+-- partition the array — and is not otherwise asserted.)
 
 -- The pivot carve needs NO cited evidence, which is route (a)'s second payoff and the
 -- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
@@ -1282,9 +1287,8 @@ def readTwo : Decl := decl{
     let x = (*a)[0];
     let y = (*a)[1];
     () } }
-example : Migrate.progOkOf readTwo = true := by native_decide
-example : ((fnEnv readTwo).bind (fun e => e.lookup "a"))
-    == some (.borrowM 0 (.ctor "Arr" [.sym 0, .sym 1])) := by native_decide
+-- (Ω-inspection assertion deleted with `checkFn`, M27-δ — see `fnEnv` above)
+-- (Ω-inspection assertion deleted with `checkFn`, M27-δ — see `fnEnv` above)
 
 /-- **The miniature.** An in-place two-element sort over a symbolic borrow, verified
     `Sorted ∧ Perm` over the exit snapshot, zero backs. Both paths mutate or not through

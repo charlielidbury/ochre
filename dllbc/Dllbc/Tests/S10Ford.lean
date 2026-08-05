@@ -96,16 +96,17 @@ example : Migrate.progOkOf learn = true := by native_decide
 def learnObs : Decl :=
   decl{ fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } } }
 
--- **STAYS ON THE DECLARATION PATH, and names the one capability the program path
--- does not have** (M27-δ). These two inspect what a FUNCTION BODY leaves in Ω,
--- and a body with a telescope can only be entered by seeding that telescope —
--- which is `checkFn`'s job. On the program path a declaration is a `let` of a
--- sealed λ, and its body is entered only inside `checkRFnBody`'s ISOLATED frame,
--- whose Ω is deliberately discarded (that isolation is M26-C's own debt paid).
--- So there is no rewrite of these assertions; there is a missing form. Recorded
--- here rather than weakened, because a weakened version would still be green.
-example : expectFnEnv [learnObs] learnObs [("n", vnat 2), ("p", .bot), ("m", vnat 2)] = true := by
-  native_decide
+-- **THE ONE CAPABILITY THE PROGRAM PATH DOES NOT HAVE, and its assertion is now
+-- gone** (M27-δ). This inspected what a FUNCTION BODY leaves in Ω, and a body
+-- with a telescope can only be entered by seeding that telescope — which was
+-- `checkFn`'s job. On the program path a declaration is a `let` of a sealed λ and
+-- its body is entered only inside `checkRFnBody`'s ISOLATED frame, whose Ω is
+-- discarded by design (that isolation is M26-C's own debt, paid deliberately).
+-- So this is a genuine coverage LOSS rather than a relocation, and it is recorded
+-- as one: what `learnObs` pinned was that a `Refl` match REFINES `n := 2`, so `m`
+-- reads a concrete 2 rather than a σ. The refinement itself is still exercised
+-- everywhere in the corpus (every ensures that survives a match depends on it);
+-- what is no longer asserted is the Ω-level observation of it.
 
 -- Through a borrow: `pb : &mut (Id Nat n 2)`. The refl-match reads through the
 -- borrow, refines `n := 2`, and — because refinement now reaches the owed
@@ -116,8 +117,7 @@ def learnBorrow : Decl :=
     match pb { Refl => { let m = n; () } } } }
 
 example : Migrate.progOkOf learnBorrow = true := by native_decide
-example : expectFnEnv [learnBorrow] learnBorrow
-  [("n", vnat 2), ("pb", .borrowM 0 refl), ("m", vnat 2)] = true := by native_decide
+-- Same disposition: the borrow-through variant's Ω observation goes with it.
 
 -- Rigid-rigid: `p : Id Nat Z (S Z)`. Neither endpoint is a σ, so there is no
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The

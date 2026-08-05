@@ -43,8 +43,10 @@ def chkL (tm ty : Term) : Bool :=
 
 def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
 
-def checkFnMsg (d : Decl) (tbl : List Decl := [d]) : String :=
-  match checkFn tbl d with | .ok _ => "OK" | .error e => e
+def progMsg (d : Decl) (tbl : List Decl := [d]) : String :=
+  match FnMacro.progOf (Migrate.cohort tbl d) .unit with
+  | .error e => "ELAB: " ++ e
+  | .ok t => match checkProgram t with | .ok _ => "OK" | .error e => e
 
 /-! ## (i) The partition layer's predicates and their nil lemmas -/
 

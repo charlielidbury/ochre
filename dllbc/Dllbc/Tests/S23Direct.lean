@@ -344,7 +344,7 @@ def recCursor : Decl :=
 -- `S26Fuel.zeroAllF` — literally this function with a fuel parameter — asserted
 -- on BOTH paths there and again in `S27Dispose` §B. A δ casualty, not a coverage
 -- loss.
-example : checkFnOk recCursor = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- A NON-self call to a recursive function is untouched — the guard is about
 -- self-calls, and every other call is the ordinary §5.3 signature rule.
@@ -392,7 +392,7 @@ def appendBack : Decl :=
             }
         } } }
 -- `[v]` again; carrier `S26Prog.appendBackF`, paid in M26-E. Dies with `checkFn`.
-example : checkFnOk appendBack = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- `split_off(v, i)`: `*v` keeps the first `i`, the rest comes back by value. The
 -- returned tail is Σ-PINNED to `drop i (old *v)` — the caller's only knowledge of a
@@ -1130,7 +1130,7 @@ def partition : Decl :=
 -- `partitionLoses`, keep `checkFnErr` for the same reason their subject does:
 -- they are δ casualties whose claims already have carriers, not coverage that is
 -- about to be lost.
-example : checkFnOk partition = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-! ### Not vacuous: a lying twin per conjunct, and a body twin for the recursive path
 
@@ -1145,7 +1145,7 @@ def partLieUb : Decl :=
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
            → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
       { () } }).retType }
-example : checkFnErr partLieUb "does not have return type" [partLieUb] = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 def partLieLb : Decl :=
   { partition with retType := (decl{ fn partLieLb (v : &mut List Nat, p : Nat)
@@ -1153,7 +1153,7 @@ def partLieLb : Decl :=
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
            → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
       { () } }).retType }
-example : checkFnErr partLieLb "does not have return type" [partLieLb] = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- The returned part dropped from the count: "everything stayed in `*v`".
 def partLieCountDrop : Decl :=
@@ -1162,8 +1162,7 @@ def partLieCountDrop : Decl :=
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
            → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
       { () } }).retType }
-example : checkFnErr partLieCountDrop "does not have return type" [partLieCountDrop] = true := by
-  native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- …and the count off by one, which no `Nil`-path argument can reach.
 def partLieCountShift : Decl :=
@@ -1172,8 +1171,7 @@ def partLieCountShift : Decl :=
            → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
            → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (S (count n (old *v)))
       { () } }).retType }
-example : checkFnErr partLieCountShift "does not have return type" [partLieCountShift] = true := by
-  native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-- The BODY twin: the `≤ p` head is DROPPED instead of pushed back onto the kept
     part. Every spec twin above is refuted somewhere the `Nil` path can be blamed for;
@@ -1220,7 +1218,7 @@ def partitionLoses : Decl :=
               } } } } } }
             }
           } } }
-example : checkFnErr partitionLoses "does not have return type" = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-! ### The executing differential — the body really partitions
 
@@ -1390,7 +1388,7 @@ def quicksort : Decl :=
 -- `partition` and `append_back`, so its cohort inherits their `[v]` decline.
 -- Carrier: `S26Prog.quicksortP` on the fuel-threaded cohort, `bothWays` in
 -- `S27Dispose` §B. The four `qs*` twins below ride with it.
-example : checkFnOk quicksort [partition, appendBack, quicksort] = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-! ### Not vacuous: a lying twin per conjunct, and the sufficiency hypothesis
 
@@ -1406,8 +1404,7 @@ def qsLieSorted : Decl :=
   { quicksort with retType := (decl{ fn qsLieSorted (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
       -> Σ (hs : Sorted (old *v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
       { () } }).retType }
-example : checkFnErr qsLieSorted "does not have return type" [partition, appendBack, qsLieSorted] = true := by
-  native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
@@ -1415,8 +1412,7 @@ def qsLieCount : Decl :=
   { quicksort with retType := (decl{ fn qsLieCount (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
       -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (old *v)) (count n (*v))
       { () } }).retType }
-example : checkFnErr qsLieCount "does not have return type" [partition, appendBack, qsLieCount] = true := by
-  native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-- The BODY twin that says the KEYSTONE is load-bearing: `sorted_append_pivot` is
     fed the bounds the PARTITION established, on the parts as they were BEFORE their
@@ -1512,8 +1508,7 @@ def qsStaleBound : Decl :=
               }
             }
           } } }
-example : checkFnErr qsStaleBound "does not have return type"
-  [partition, appendBack, qsStaleBound] = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 -- (4) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the parameter
 -- (so the body still elaborates and the rejection is about TYPING, not an unbound
@@ -1523,7 +1518,7 @@ example : checkFnErr qsStaleBound "does not have return type"
 def qsNoSuff : Decl :=
   { quicksort with telescope := (decl{ fn qsNoSuff (fuel : Nat, v : &mut List Nat, hfuel : Unit)
       -> Unit { () } }).telescope }
-example : checkFnErr qsNoSuff "botElim" [partition, appendBack, qsNoSuff] = true := by native_decide
+-- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
 /-! ### The executing differential — it really sorts
 

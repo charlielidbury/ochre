@@ -196,7 +196,12 @@ def b8 : Decl := decl{ fn b8 (V : &mut List Nat) -> Unit { () } }
 example : rejects b8 "telescope: parameter 'V' is capitalized" = true := by native_decide
 
 def b9 : Decl := decl{ fn caller () -> Unit { let x = Cons(1, Nil); b8(&mut x); () } }
-example : rejects b9 "call: parameter 'V' is capitalized" [b8, b9] = true := by native_decide
+-- The needle is NAME-FREE since M27-δ, and the reason belongs beside it: `fsig`
+-- stores the ascribed Π itself now, and a Π has no binder names — `piBinderNames`
+-- synthesizes `A0`/`a0` at the call, encoding the MODE (which is what the rule
+-- needs) and losing the display name (which is what the message had). A
+-- synthesized name is as unstable as a σ id, so pinning one would rot.
+example : rejects b9 "is capitalized" [b8, b9] = true := by native_decide
 
 -- The lowercase twin of both, for liveness.
 def b8lo : Decl := decl{ fn b8lo (v : &mut List Nat) -> Unit { () } }

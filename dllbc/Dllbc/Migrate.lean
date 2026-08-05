@@ -51,22 +51,22 @@ partial def cohort (pool : List Decl) (d : Decl) : List Decl :=
       if add.isEmpty then acc else expand fuel (acc ++ add)
   topo pool [] (expand pool.length [d])
 
-/-- The DECLARATION path's verdict: **every member** of the cohort checks against
-    the cohort as a table.
+/-! ## The comparison harness is gone (M27-δ)
 
-    Checking only the subject would not be the same question, and the difference
-    is a real one rather than a technicality: `checkFn` consults a callee's
-    SIGNATURE and never enters its body, so a broken callee is invisible to its
-    caller's test, whereas a let-chain audits every sealed binding in it. The
-    corpus covers that by testing each declaration separately; this makes the
-    comparison apples-to-apples by asking the declaration path the question the
-    program path answers. (Found by the disagreement list: two S19 cohorts
-    reported decl=accept/prog=reject, and both were a callee whose own table entry
-    was missing from the pool I had built — the harness catching my error, which
-    is the reason it reports names and not a Bool.) -/
-def declVerdict (pool : List Decl) (d : Decl) : Bool :=
-  let tbl := cohort pool d
-  tbl.all (fun c => match checkFn (tbl ++ [c]) c with | .ok _ => true | .error _ => false)
+    `declVerdict`, `Report` and `report` compared the two paths declaration by
+    declaration. There is one path now, so there is nothing to compare: the
+    harness dies with `checkFn`, which is what it existed to measure against.
+
+    Its lesson outlives it and is recorded where it will be read — **agreement is
+    not coverage**. `report` never compared a DECLINING declaration's
+    declaration-path verdict (`progVerdict` returns `none` and the comparison
+    skips), so `disagree.isEmpty` was true throughout while 27 of the 42
+    declarations that stopped declining under a strip became REJECTS. A comparison
+    harness must also measure verdict SURVIVAL.
+
+    What survives here is what the corpus asserts THROUGH: `cohort`/`topo`, the
+    two verdict helpers, and `refusal`, which is how a decline is inspected on
+    purpose rather than tolerated. -/
 
 /-- The PROGRAM path's verdict: the cohort assembled into a let-chain and checked
     by one ⇒-walk against no table. `none` = the macro declined to migrate it. -/
@@ -82,35 +82,30 @@ def refusal (pool : List Decl) (d : Decl) : Option String :=
   | .error e => some e
   | .ok _ => none
 
-/-- **The report for a pool**: how many declarations both paths ACCEPT, how many
-    both REJECT, how many did not migrate, and — the field that must be empty —
-    the names on which the two paths DISAGREE.
-
-    Reported as a tuple rather than as a single Bool so that a test asserting it
-    cannot pass vacuously: a migration that quietly stopped covering half the
-    corpus changes the counts even when the disagreement list stays empty. -/
-structure Report where
-  accepts : Nat
-  rejects : Nat
-  declined : Nat
-  disagree : List String
-deriving BEq, Repr
-
-def report (pool : List Decl) : Report :=
-  pool.foldl (fun r d =>
-    match progVerdict pool d with
-    | none => { r with declined := r.declined + 1 }
-    | some p =>
-      let dv := declVerdict pool d
-      if p != dv then { r with disagree := r.disagree ++ [d.name] }
-      else if dv then { r with accepts := r.accepts + 1 }
-      else { r with rejects := r.rejects + 1 })
-    { accepts := 0, rejects := 0, declined := 0, disagree := [] }
-
 /-- The names a pool declined to migrate, with `fnElab`'s reason — for the record
     a partial migration owes (see each file's own section). -/
 def declinedWith (pool : List Decl) : List (String × String) :=
   pool.filterMap (fun d => (refusal pool d).map (fun e => (d.name, e)))
+
+/-- **What survives of `report`** (M27-δ): the three counts, without the
+    comparison. `Report`'s fourth field was `disagree`, and there is no second path
+    to disagree with — but the counts were never the comparison. They were what
+    kept it from holding vacuously, and they are exactly as useful now: a file
+    quietly dropping out of the survey, or a declaration silently starting to
+    decline, still moves a number. -/
+structure Tally where
+  accepts : Nat
+  rejects : Nat
+  declined : Nat
+deriving BEq, Repr
+
+def tally (pool : List Decl) : Tally :=
+  pool.foldl (fun t d =>
+    match progVerdict pool d with
+    | none => { t with declined := t.declined + 1 }
+    | some true => { t with accepts := t.accepts + 1 }
+    | some false => { t with rejects := t.rejects + 1 })
+    { accepts := 0, rejects := 0, declined := 0 }
 
 /-! ## The program path's `checkFnOk`/`checkFnErr` (M27-γ)
 

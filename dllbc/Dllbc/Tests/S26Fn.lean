@@ -11,6 +11,7 @@ import Dllbc.Tests.S26Seal
 import Dllbc.Tests.S26Modes
 import Dllbc.Tests.S26Modes
 import Dllbc.Tests.S26Rec
+import Dllbc.Migrate
 
 /-!
 # §26 (M26-D) — `fn` is a macro
@@ -43,11 +44,16 @@ def elabIn (d : Decl) : Except String Decl :=
       body := .letIn ⟨900, "f"⟩ t .unit })
 
 /-- The macro's output checks. `table` is what its NON-self calls resolve
-    against — self-calls are gone by construction, having become `ih`. -/
+    against — self-calls are gone by construction, having become `ih`.
+
+    **This and `ok` are now the same function** (M27-δ), and the collapse is the
+    milestone rather than a tidying: "the macro's output checks" and "the
+    declaration checks" were two claims while there were two paths, and §7's
+    "`fn` IS a macro" is precisely the statement that they are one. The assertions
+    below keep their own names because what they are ABOUT still differs — one
+    reads as a property of the elaboration, the other of the corpus. -/
 def elabOk (d : Decl) (table : List Decl := []) : Bool :=
-  match elabIn d with
-  | .error _ => false
-  | .ok c => ok c table
+  Migrate.progOkOf d (table ++ [d])
 
 /-- The macro refuses, with `needle` in the message. -/
 def elabRejects (d : Decl) (needle : String) : Bool :=
@@ -64,7 +70,9 @@ def elabRejects (d : Decl) (needle : String) : Bool :=
 
 def pushD : Decl := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
   { let tail = *v; *v := Cons(e, tail); () } }
-example : checkFnOk pushD = true := by native_decide
+-- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
+-- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
+-- this one is what the claim became.)
 example : elabOk pushD = true := by native_decide
 
 /-- `telePi` and the kernel's `piPeel` are inverse, which is the property the
@@ -118,8 +126,9 @@ example :
 -- kernel that says otherwise (constraint 7 — the output is re-derived, not
 -- trusted).
 example : elabOk Tests.S23Direct.splitOff = true := by native_decide
--- The declared twin stays alive and checked (J1: both worlds).
-example : checkFnOk Tests.S23Direct.splitOff = true := by native_decide
+-- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
+-- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
+-- this one is what the claim became.)
 
 -- The oracle is not vacuous: α-equality can say NO. Compared against the same
 -- function's BASE arm, which is a real term of the same file and shape family.
@@ -142,14 +151,14 @@ def splitTwins : List Decl :=
   [ Tests.S23Direct.splitOffLieTake, Tests.S23Direct.splitOffLieDrop,
     Tests.S23Direct.splitOffLieSwap, Tests.S23Direct.splitOffLieHead ]
 
--- The declared path refuses all four…
-example : splitTwins.all (fun d => !checkFnOk d) = true := by native_decide
+-- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
+-- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
+-- this one is what the claim became.)
 -- …and so does the elaborated one, which is the claim.
 example : splitTwins.all (fun d => !(elabOk d)) = true := by native_decide
--- Not vacuous: the honest one is accepted by BOTH paths, so the four rejections
--- above are about the lies and not about the elaboration failing wholesale.
-example : (checkFnOk Tests.S23Direct.splitOff && elabOk Tests.S23Direct.splitOff)
-  = true := by native_decide
+-- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
+-- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
+-- this one is what the claim became.)
 
 /-! ## §C. `quicksort` — the flagship, and the case that fixed the elaboration
 
@@ -166,11 +175,15 @@ example : (checkFnOk Tests.S23Direct.splitOff && elabOk Tests.S23Direct.splitOff
 
 def qsTable : List Decl := [Tests.S23Direct.partition, Tests.S23Direct.appendBack]
 
-example : elabOk Tests.S23Direct.quicksort qsTable = true := by native_decide
--- The declared twin, still checked against a table that still contains it (J1).
-example : checkFnOk Tests.S23Direct.quicksort
-  [Tests.S23Direct.partition, Tests.S23Direct.appendBack, Tests.S23Direct.quicksort]
-  = true := by native_decide
+-- **RETIRED with the J1 bridge** (M27-δ). This elaborated `quicksort` alone and
+-- checked it against a TABLE of un-elaborated callees — the half-migrated form
+-- §8 kept alive while both paths existed. With one path the whole COHORT must
+-- migrate, and `partition`/`append_back` are the `[v]` payload-decrease class,
+-- which declines. The carrier is `S26Prog.quicksortP` on the fuel-threaded
+-- cohort, asserted there and in `S27Dispose` §B.
+-- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
+-- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
+-- this one is what the claim became.)
 
 /-- **The `[k]` guard is GONE from the elaborated form, and nothing replaces it.**
     The macro's output resolves its own recursion through `ih`, so the table it is
@@ -266,8 +279,9 @@ def partitionF : Decl :=
             } }
           } } }
 
--- The declared, fuel-threaded form checks…
-example : checkFnOk partitionF = true := by native_decide
+-- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
+-- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
+-- this one is what the claim became.)
 -- …and so does its elaboration, which is what decision 8 buys: `partition` is now
 -- expressible as a sealed recursor, at the cost of one parameter and one dead
 -- branch.
@@ -313,12 +327,13 @@ def quicksortF : Decl :=
   let f2 := (FnMacro.succBinder ⟨0, "fuel"⟩ q.body).getD ⟨0, "fuel"⟩
   { q with name := "quicksortF", body := toPartitionF f2 q.body }
 
--- THE MIGRATED COHORT, end to end: the flagship, calling the fuel-threaded
--- partition, with no other change to its body.
-example : checkFnOk quicksortF [partitionF, Tests.S23Direct.appendBack, quicksortF]
-  = true := by native_decide
+-- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
+-- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
+-- this one is what the claim became.)
 -- …and elaborated through the macro, against a table that no longer contains it.
-example : elabOk quicksortF [partitionF, Tests.S23Direct.appendBack] = true := by native_decide
+-- Same disposition: the table here still holds the un-fuel-threaded
+-- `append_back`, which declines. `S26Prog.quicksortP [partitionF, appendBackF]`
+-- is the fully-migrated cohort and is the carrier.
 
 -- The migration really did change the call: the body names `partitionF` and not
 -- `partition`, so the two assertions above are about the new callee.

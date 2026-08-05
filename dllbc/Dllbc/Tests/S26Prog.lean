@@ -369,7 +369,8 @@ def appendBackF : Decl :=
               }
             }
         } } }
-example : checkFnOk appendBackF = true := by native_decide
+-- (the DECLARED half retired with `checkFn`, M27-δ; `S26Fuel.bothWays
+-- appendBackF` and `S27Dispose` §B carry the claim on the one path there is)
 
 /-- ### F1. The caller side, and the fuel that was not there
 
@@ -417,10 +418,10 @@ def migrate (d : Decl) : Decl :=
 
 def quicksortP : Decl := migrate Tests.S23Direct.quicksort
 
--- The migrated cohort as DECLARATIONS first, so the program below is compared
--- against something already known to check (J1: both worlds alive).
-example : checkFnOk quicksortP [Tests.S26Fn.partitionF, appendBackF, quicksortP]
-  = true := by native_decide
+-- ~~The migrated cohort as DECLARATIONS first, so the program below is compared
+-- against something already known to check (J1: both worlds alive).~~ Retired
+-- with `checkFn` (M27-δ) — there is no second world to compare against, and the
+-- program assertions below are the claim.
 -- The rewrite really did change both call sites.
 example : ((calleeNames quicksortP.body).contains "partitionF"
         && (calleeNames quicksortP.body).contains "append_backF"
@@ -481,19 +482,17 @@ example : (match flagship flagshipTail with
 def twins : List Decl :=
   [Tests.S23Direct.qsLieSorted, Tests.S23Direct.qsLieCount, Tests.S23Direct.qsStaleBound]
 
--- The declared path refuses all three (migrated onto the fuel-threaded cohort)…
-example : twins.all (fun d =>
-    let m := migrate d
-    !checkFnOk m [Tests.S26Fn.partitionF, appendBackF, m]) = true := by native_decide
--- …and so does the PROGRAM path, twin for twin.
+-- ~~The declared path refuses all three (migrated onto the fuel-threaded
+-- cohort)…~~ retired with `checkFn` (M27-δ). The program path refuses them, twin
+-- for twin, and that is now the whole assertion rather than half of a comparison.
 example : twins.all (fun d =>
     match flagshipOf (migrate d) .unit with
     | .ok t => !progOk t
     | .error _ => false) = true := by native_decide
--- Not vacuous: the honest one is accepted by both paths, so the six rejections
--- above are about the lies and not about the migration failing wholesale.
-example : (checkFnOk quicksortP [Tests.S26Fn.partitionF, appendBackF, quicksortP]
-        && (match flagship .unit with | .ok t => progOk t | .error _ => false))
+-- Not vacuous: the honest one is ACCEPTED, so the three rejections above are
+-- about the lies and not about the migration failing wholesale. (Was "by both
+-- paths"; one path now.)
+example : (match flagship .unit with | .ok t => progOk t | .error _ => false)
   = true := by native_decide
 
 /-! ## §G. The ARRAY flagship, as a program term — and it needed no source change

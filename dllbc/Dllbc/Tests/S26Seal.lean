@@ -61,13 +61,16 @@ namespace Dllbc.Tests.S26Seal
     the seal turns that into an error, so a helper that collapses error and false
     would let a *stuckness* pass for a *typing* rejection. -/
 
-/-- The declaration checks. -/
-def ok (d : Decl) (table : List Decl := [d]) : Bool :=
-  match checkFn table d with | .ok _ => true | .error _ => false
+/-- The subject checks, ON THE PROGRAM PATH (M27-δ): `decl{ … }` is the harness
+    here, not the subject, so these route through the one path there is. -/
+def ok (d : Decl) (table : List Decl := [d]) : Bool := Migrate.progOkOf d table
 
-/-- The declaration is rejected, with `needle` in the message. -/
+/-- The subject is rejected, with `needle` in the message. Asserted on the message
+    rather than on a Bool: `hasType` returns `false` for "does not have this type"
+    and the audit turns that into an error, so a helper collapsing error and false
+    would let a STUCKNESS pass for a typing rejection. -/
 def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
-  match checkFn table d with | .ok _ => false | .error e => strContains e needle
+  Migrate.progRejectsOf d needle table
 
 /-- A closed caller: empty telescope, `Unit` return. -/
 def caller (body : Term) : Decl :=
@@ -564,7 +567,9 @@ def timeIt (label : String) (f : Unit → String) : IO Unit := do
   IO.println s!"{label}: {r} [{t1 - t0} ms]"
 
 def verdict (d : Decl) : String :=
-  match checkFn [useIt, d] d with | .ok _ => "OK" | .error e => "ERR: " ++ e
+  match FnMacro.progOf (Migrate.cohort [useIt, d] d) .unit with
+  | .error e => "ELAB: " ++ e
+  | .ok t => match checkProgram t with | .ok _ => "OK" | .error e => "ERR: " ++ e
 
 #eval do
   timeIt "S26 Qed  pure-fragment check of the proof" (fun _ => toString (chk big bigTy))

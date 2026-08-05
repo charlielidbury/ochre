@@ -6,6 +6,7 @@ import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.Tests.S6Call
 import Dllbc.Tests.S16Spec
+import Dllbc.Migrate
 
 /-!
 # §27 (M27) — the mixed-return-type containment
@@ -47,11 +48,16 @@ open Dllbc.StdLemmas (len Le znots)
 
 namespace Dllbc.Tests.S27Mixed
 
-def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
-  match checkFn table d with | .ok _ => false | .error e => strContains e needle
+/-- The subject checks, ON THE PROGRAM PATH (M27-δ): `decl{ … }` is the harness
+    here, not the subject, so these route through the one path there is. -/
+def ok (d : Decl) (table : List Decl := [d]) : Bool := Migrate.progOkOf d table
 
-def ok (d : Decl) (table : List Decl := [d]) : Bool :=
-  match checkFn table d with | .ok _ => true | .error _ => false
+/-- The subject is rejected, with `needle` in the message. Asserted on the message
+    rather than on a Bool: `hasType` returns `false` for "does not have this type"
+    and the audit turns that into an error, so a helper collapsing error and false
+    would let a STUCKNESS pass for a typing rejection. -/
+def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
+  Migrate.progRejectsOf d needle table
 
 /-! ## §A. The break, contained — b1's witnesses, now refused
 
