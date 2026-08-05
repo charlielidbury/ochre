@@ -5,6 +5,7 @@ import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.StdLemmas
 import Dllbc.Tests.S9Diff
+import Dllbc.Migrate
 
 /-!
 # §24 test suite — arrays, range places, and proof-licensed carving
@@ -487,7 +488,7 @@ def halves : Decl := decl{
     let r = &mut (*a)[k ; ..];
     () } }
 
-example : checkFnOk halves = true := by native_decide
+example : Migrate.progOkOf halves = true := by native_decide
 
 /-- The final Ω of a single-path body. -/
 def fnEnv (d : Decl) (tbl : List Decl := [d]) : Option Env :=
@@ -522,7 +523,7 @@ example : halvesSegLoans = some [1, 2] := by native_decide
     required a cited lemma at every audit of every array-mutating function in the
     program. That is the entire argument for premise (3)."
 
-    The `checkFnOk` above IS that conversion succeeding. One implementation detail
+    The `Migrate.progOkOf` above IS that conversion succeeding. One implementation detail
     turned out to be load-bearing and is worth naming, because getting it wrong looks
     like the design failing: the extent sum must be RIGHT-NESTED with no trailing `Z`.
     `add` recurses on its first argument, so `add rest Z` is stuck the moment `rest` is
@@ -537,7 +538,7 @@ example : halvesSegLoans = some [1, 2] := by native_decide
 def noEvidence : Decl := decl{
   fn noEvidence (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k]; () } }
-example : checkFnErr noEvidence "containment obligation" = true := by native_decide
+example : Migrate.progRejectsOf noEvidence "containment obligation" = true := by native_decide
 
 -- Premise (2), WRONG EVIDENCE. `h : Le n k` is a perfectly good term of a perfectly
 -- good type; it is just not the obligation. The evidence's TYPE is the selector, so a
@@ -545,7 +546,7 @@ example : checkFnErr noEvidence "containment obligation" = true := by native_dec
 def wrongEvidence : Decl := decl{
   fn wrongEvidence (n : Nat, k : Nat, h : Le n k, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k | h]; () } }
-example : checkFnErr wrongEvidence "containment obligation" = true := by native_decide
+example : Migrate.progRejectsOf wrongEvidence "containment obligation" = true := by native_decide
 
 -- Premise (3), RIGID LENGTH (¶8.4's named restriction). The leaf's extent is a
 -- compound neutral rather than a flexible σ, so `m ≡ add lo' (add cnt rest)` has no
@@ -555,8 +556,8 @@ def rigidLength : Decl := decl{
   fn rigidLength (p : Nat, q : Nat, k : Nat, h : Le k (add p q),
                   a : &mut (Array (add p q) Nat)) -> Unit {
     let l = &mut (*a)[Z ; k | h]; () } }
-example : checkFnErr rigidLength "premise (3) is stuck" = true := by native_decide
-example : checkFnErr rigidLength "Take the length as a telescope PARAMETER"
+example : Migrate.progRejectsOf rigidLength "premise (3) is stuck" = true := by native_decide
+example : Migrate.progRejectsOf rigidLength "Take the length as a telescope PARAMETER"
     = true := by native_decide
 
 /-! ### `refineSym`'s target list is the checklist — including `St.selfRec`
@@ -576,7 +577,7 @@ def walk : Decl := decl{
       Z => (),
       S(f2) => { let l = &mut (*a)[Z ; k | h]; walk(f2, k, k, le_refl k, l) }
     } } }
-example : checkFnOk walk = true := by native_decide
+example : Migrate.progOkOf walk = true := by native_decide
 
 /-! ### The regression test the doc asks for, made SELF-GUARDING
 
@@ -598,6 +599,12 @@ def walkArr : Decl := decl{
       Z => (),
       S(f2) => { let l = &mut (*a)[Z ; k | h]; walkArr(f2, k, k, le_refl k, l) }
     } } }
+-- **STAYS ON THE DECLARATION PATH, and dies with it** (M27-γ). `walkArr` declares
+-- `[a]` on a BORROW, so `fnElab` declines it at §12 decision 8 and there is no
+-- program to reject — the two paths refuse it for the same fact from two sides,
+-- which `S26Fuel` §B asserts as a pair. Its honest twin `walk` differs in the
+-- hint alone and was paid in M24, before decision 8 existed; `bothWays walk` is
+-- the carrier. A δ casualty, not a coverage loss.
 example : checkFnErr walkArr "arrCat" = true := by native_decide
 
 /-! ### FINDING — recursion cannot decrease through a CARVED array payload
@@ -633,7 +640,7 @@ def callSeg : Decl := decl{
     let r = &mut (*a)[k ; ..];
     touch(k, l);
     () } }
-example : checkFnOk callSeg [callSeg, touch] = true := by native_decide
+example : Migrate.progOkOf callSeg [callSeg, touch] = true := by native_decide
 
 /-! ### FINDING — the residue has no surface name, and ¶3.4/¶5/¶6 all assume it does
 
@@ -767,7 +774,7 @@ def arrCaller3 : Term := dllbcWith [] {
 
 def arrCallers : List Term := [arrCaller1, arrCaller2, arrCaller3]
 
-example : arrCallers.all (fun b => checkFnOk (Dllbc.Tests.S9Diff.callerDecl b) arrPool)
+example : arrCallers.all (fun b => Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl b) arrPool)
     = true := by native_decide
 
 example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrPool b)
@@ -825,20 +832,20 @@ example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrPool b)
 def idxCited : Decl := decl{
   fn idxCited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
     let e = &mut (*a)[i | h]; () } }
-example : checkFnOk idxCited = true := by native_decide
+example : Migrate.progOkOf idxCited = true := by native_decide
 
 -- The same bound serves a width-1 RANGE, so the two spellings of "one slot" agree on
 -- what they demand even though they differ on what they hand back (¶2.1).
 def rng1Cited : Decl := decl{
   fn rng1Cited (n : Nat, i : Nat, h : Le (S i) n, a : &mut (Array n Nat)) -> Unit {
     let e = &mut (*a)[i ; 1 | h]; () } }
-example : checkFnOk rng1Cited = true := by native_decide
+example : Migrate.progOkOf rng1Cited = true := by native_decide
 
 -- Not vacuous: the bound is the one thing being checked, and a weaker one fails.
 def idxWeakBound : Decl := decl{
   fn idxWeakBound (n : Nat, i : Nat, h : Le i n, a : &mut (Array n Nat)) -> Unit {
     let e = &mut (*a)[i | h]; () } }
-example : checkFnErr idxWeakBound "containment obligation" = true := by native_decide
+example : Migrate.progRejectsOf idxWeakBound "containment obligation" = true := by native_decide
 
 /-! ### The exhaustive two-way split, with a call
 
@@ -855,7 +862,7 @@ def splitTwo : Decl := decl{
     let r = &mut (*a)[i ; ..];
     threeWayTouch(i, l);
     () } }
-example : checkFnOk splitTwo [splitTwo, threeWayTouch] = true := by native_decide
+example : Migrate.progOkOf splitTwo [splitTwo, threeWayTouch] = true := by native_decide
 
 /-! ### FINDING — the THREE-way split ¶6's quicksort needs does not check, and the
     reason is the residue's namelessness rather than anything about the carve
@@ -903,7 +910,7 @@ def pivotCarve : Decl := decl{
     let p = &mut (*a)[i];
     let r = &mut (*a)[S i ; ..];
     () } }
-example : checkFnErr pivotCarve "containment obligation" = true := by native_decide
+example : Migrate.progRejectsOf pivotCarve "containment obligation" = true := by native_decide
 
 /-! ## (vi) The Σ-typed slice, PROBED — ¶4's runtime-length slice, built and settled
 
@@ -926,14 +933,14 @@ example : checkFnErr pivotCarve "containment obligation" = true := by native_dec
 
 def sigSlice : Decl := decl{
   fn sigSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () } }
-example : checkFnOk sigSlice = true := by native_decide
+example : Migrate.progOkOf sigSlice = true := by native_decide
 
 -- The callee can DESTRUCTURE it: an owned match hands back the length and the borrow,
 -- and inside the body the length is an ordinary nameable term.
 def useSlice : Decl := decl{
   fn useSlice (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit {
     match s { Pair(c, sl) => () } } }
-example : checkFnOk useSlice = true := by native_decide
+example : Migrate.progOkOf useSlice = true := by native_decide
 
 def sliceTouch : Decl := decl{
   fn sliceTouch (s : Σ (c : Nat) → &mut (Array c Nat)) -> Unit { () } }
@@ -945,7 +952,7 @@ def sigCallerOk : Decl := decl{
     let r = &mut (*a)[i ; ..];
     sliceTouch(Pair(i, l));
     () } }
-example : checkFnOk sigCallerOk [sigCallerOk, sliceTouch] = true := by native_decide
+example : Migrate.progOkOf sigCallerOk [sigCallerOk, sliceTouch] = true := by native_decide
 
 /-! ### …and the residue still cannot be passed, which settles route (c)
 
@@ -960,7 +967,7 @@ def sigCallerWrong : Decl := decl{
     let r = &mut (*a)[i ; ..];
     sliceTouch(Pair(i, r));
     () } }
-example : checkFnErr sigCallerWrong "does not have its parameter type" [sigCallerWrong, sliceTouch]
+example : Migrate.progRejectsOf sigCallerWrong "does not have its parameter type" [sigCallerWrong, sliceTouch]
     = true := by native_decide
 
 -- A second, independent wall for route (c): a RECURSIVE slice-taking callee needs a
@@ -970,7 +977,7 @@ example : checkFnErr sigCallerWrong "does not have its parameter type" [sigCalle
 def recSlice : Decl := decl{
   fn recSlice [fuel] (fuel : Nat, s : Σ (c : Nat) → Σ (h : Le c fuel) → &mut (Array c Nat)) -> Unit {
     () } }
-example : checkFnErr recSlice "only valid at a telescope position" = true := by native_decide
+example : Migrate.progRejectsOf recSlice "only valid at a telescope position" = true := by native_decide
 
 /-! ### Route (a)'s payoff, verified on the arithmetic alone
 
@@ -1028,7 +1035,7 @@ def threeWay : Decl := decl{
     let p = &mut (*a)[i ; 1 ; j];
     let r = &mut (*a)[S i ; ..];
     () } }
-example : checkFnOk threeWay = true := by native_decide
+example : Migrate.progOkOf threeWay = true := by native_decide
 
 /-- The state, pinned: three segments, three distinct loans, one array. -/
 def threeWaySegLoans : Option (List Nat) :=
@@ -1054,7 +1061,7 @@ def threeWayNoFirstEv : Decl := decl{
     let l = &mut (*a)[Z ; i ; S j | le_refl i | heq];
     let p = &mut (*a)[i ; 1 ; j];
     () } }
-example : checkFnErr threeWayNoFirstEv "containment obligation" = true := by native_decide
+example : Migrate.progRejectsOf threeWayNoFirstEv "containment obligation" = true := by native_decide
 
 /-- **The DECOMPOSITION CITATION's negative control**, and the one the M25 ruling turns
     on. Supplying a residue asserts that the leaf's extent decomposes as `add cnt rest`.
@@ -1067,7 +1074,7 @@ def threeWayUncited : Decl := decl{
   fn threeWayUncited (n : Nat, i : Nat, j : Nat, a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j)];
     () } }
-example : checkFnErr threeWayUncited "may not impose it by refining" = true := by
+example : Migrate.progRejectsOf threeWayUncited "may not impose it by refining" = true := by
   native_decide
 
 -- …and the citation's TYPE is what licenses: a well-typed equation about the wrong
@@ -1077,7 +1084,7 @@ def threeWayWrongEq : Decl := decl{
                       a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
     () } }
-example : checkFnErr threeWayWrongEq "cited decomposition does not have type" = true := by
+example : Migrate.progRejectsOf threeWayWrongEq "cited decomposition does not have type" = true := by
   native_decide
 
 -- A LYING residue is rejected: the supplied extent must actually decompose the leaf,
@@ -1089,7 +1096,7 @@ def threeWayLyingResidue : Decl := decl{
     let l = &mut (*a)[Z ; i ; j | le_add i j | heq];
     let p = &mut (*a)[i ; 1 ; j];
     () } }
-example : checkFnOk threeWayLyingResidue = false := by native_decide
+example : Migrate.progOkOf threeWayLyingResidue = false := by native_decide
 
 -- …and the residue is genuinely CONSUMED, not decoration: with it supplied the right
 -- half's extent is the program's `j`, so a callee taking `Array j Nat` receives it
@@ -1106,7 +1113,7 @@ def threeWayCall : Decl := decl{
     sliceTake(i, l);
     sliceTake(j, r);
     () } }
-example : checkFnOk threeWayCall [threeWayCall, sliceTake] = true := by native_decide
+example : Migrate.progOkOf threeWayCall [threeWayCall, sliceTake] = true := by native_decide
 
 /-! ### The extent map's running base is spelled `S^k b` too
 
@@ -1116,7 +1123,7 @@ example : checkFnOk threeWayCall [threeWayCall, sliceTake] = true := by native_d
     successors; a symbolic one keeps `add`, where it computes. Without this,
     `(*a)[S i ; ..]` cannot find the segment it just created. -/
 
-example : checkFnOk (decl{
+example : Migrate.progOkOf (decl{
   fn baseSpelling (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
                    a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
@@ -1251,7 +1258,7 @@ def setSorted : Decl := decl{
     (*a)[0] := 1;
     (*a)[1] := 2;
     Pair(unit, Pair(unit, unit)) } }
-example : checkFnOk setSorted = true := by native_decide
+example : Migrate.progOkOf setSorted = true := by native_decide
 
 -- …and the same body with the writes the wrong way round is rejected: `SortedA` unfolds
 -- to `Σ Bot. …`, so the predicate is not vacuous.
@@ -1260,7 +1267,7 @@ def setSortedLie : Decl := decl{
     (*a)[0] := 2;
     (*a)[1] := 1;
     Pair(unit, Pair(unit, unit)) } }
-example : checkFnOk setSortedLie = false := by native_decide
+example : Migrate.progOkOf setSortedLie = false := by native_decide
 
 /-- Reading a SYMBOLIC array's elements turns it into a run of named elements. This is
     the step that makes an in-place algorithm provable at all: `σ_a : Array 2 Nat` is
@@ -1271,7 +1278,7 @@ def readTwo : Decl := decl{
     let x = (*a)[0];
     let y = (*a)[1];
     () } }
-example : checkFnOk readTwo = true := by native_decide
+example : Migrate.progOkOf readTwo = true := by native_decide
 example : ((fnEnv readTwo).bind (fun e => e.lookup "a"))
     == some (.borrowM 0 (.ctor "Arr" [.sym 0, .sym 1])) := by native_decide
 
@@ -1292,7 +1299,7 @@ def sort2 : Decl := decl{
       Pair(Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit)),
            λ (n : Nat). count_swap2 n x y)
     } } }
-example : checkFnOk sort2 = true := by native_decide
+example : Migrate.progOkOf sort2 = true := by native_decide
 
 /-! ### Lying twins, one per conjunct — M23's discipline, applied here -/
 
@@ -1307,7 +1314,7 @@ def sort2LieSorted : Decl := decl{
     } else {
       Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit))
     } } }
-example : checkFnOk sort2LieSorted = false := by native_decide
+example : Migrate.progOkOf sort2LieSorted = false := by native_decide
 
 -- Do the swap, then claim the counts did not move. `count_swap2` is genuinely load-
 -- bearing: `Refl` in its place is rejected.
@@ -1323,7 +1330,7 @@ def sort2LieCount : Decl := decl{
       (*a)[1] := x;
       Pair(Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit)), λ (n : Nat). Refl)
     } } }
-example : checkFnOk sort2LieCount = false := by native_decide
+example : Migrate.progOkOf sort2LieCount = false := by native_decide
 
 
 end Dllbc.Tests.S24Arrays

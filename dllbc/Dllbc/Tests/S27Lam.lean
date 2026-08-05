@@ -7,6 +7,7 @@ import Dllbc.StdLemmas
 import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.Tests.S26Prog
+import Dllbc.Migrate
 
 /-!
 # S27 — the annotated runtime λ (M27 α.1a)
@@ -32,11 +33,12 @@ file pins is exactly the mechanical half:
 namespace Dllbc.Tests.S27Lam
 open Dllbc
 
-/-- The declaration checks. -/
-def ok (d : Decl) (table : List Decl := [d]) : Bool := checkFnOk d table
+/-- The declaration checks, ON THE PROGRAM PATH — `decl{ … }` is a harness here,
+    not the subject, so these route through `Migrate.progOkOf` and survive δ. -/
+def ok (d : Decl) (table : List Decl := [d]) : Bool := Migrate.progOkOf d table
 /-- The declaration is rejected with an error containing `needle`. -/
 def rejects (d : Decl) (needle : String) (table : List Decl := [d]) : Bool :=
-  checkFnErr d needle table
+  Migrate.progRejectsOf d needle table
 
 /-! ## §A. The surface carries the domain -/
 

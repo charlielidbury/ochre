@@ -6,6 +6,7 @@ import Dllbc.DeclMacro
 import Dllbc.StdLemmas
 import Dllbc.Tests.S9Diff
 import Dllbc.Tests.S23Direct
+import Dllbc.Migrate
 
 /-!
 # §25 test suite — the in-place array partition, and the array quicksort
@@ -213,7 +214,7 @@ def splitA : Decl := decl{
             }
           }
         } } }
-example : checkFnOk splitA = true := by native_decide
+example : Migrate.progOkOf splitA = true := by native_decide
 
 /-! ## (iii) `partitionA` — the leaf ¶6's ledger counts as surviving, and G4 says is new
 
@@ -296,7 +297,7 @@ def partitionA : Decl := decl{
             } } } } }
           }
         } } }
-example : checkFnOk partitionA [partitionA, splitA] = true := by native_decide
+example : Migrate.progOkOf partitionA [partitionA, splitA] = true := by native_decide
 
 /-! ## (iv) `quicksortA` — the headline
 
@@ -429,7 +430,7 @@ def quicksortA : Decl := decl{
           Pair(sortedA_nil n (*a) (le_zero_eq n (leb_false_gt (S Z) n he)),
                λ (q : Nat). Refl)
         } } }
-example : checkFnOk quicksortA [quicksortA, partitionA, splitA] = true := by native_decide
+example : Migrate.progOkOf quicksortA [quicksortA, partitionA, splitA] = true := by native_decide
 
 def arrTbl : List Decl := [quicksortA, partitionA, splitA]
 
@@ -449,7 +450,7 @@ def splitALieLen : Decl :=
              → Σ (hsp : SplitA p k m (*t))
              → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
         { () } }).retType }
-example : checkFnOk splitALieLen = false := by native_decide
+example : Migrate.progOkOf splitALieLen = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
 def splitALieSp : Decl :=
@@ -460,7 +461,7 @@ def splitALieSp : Decl :=
              → Σ (hsp : SplitA p k m (old *t))
              → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
         { () } }).retType }
-example : checkFnOk splitALieSp = false := by native_decide
+example : Migrate.progOkOf splitALieSp = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
 def splitALieCount : Decl :=
@@ -471,7 +472,7 @@ def splitALieCount : Decl :=
              → Σ (hsp : SplitA p k m (*t))
              → Π (q : Nat) → Id Nat (countA q m (*t)) (S (countA q m (old *t)))
         { () } }).retType }
-example : checkFnOk splitALieCount = false := by native_decide
+example : Migrate.progOkOf splitALieCount = false := by native_decide
 
 /-- **The BODY twin, and the one that matters most**: the swap is DELETED — the branch
     reads the two cells and writes neither, but claims the same postcondition. Every
@@ -548,7 +549,7 @@ def splitANoSwap : Decl :=
             }
           }
         } } }
-example : checkFnOk splitANoSwap = false := by native_decide
+example : Migrate.progOkOf splitANoSwap = false := by native_decide
 
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
 def partALieLen : Decl :=
@@ -560,7 +561,7 @@ def partALieLen : Decl :=
              → Σ (hp : PartA pvv k n (*a))
              → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
         { () } }).retType }
-example : checkFnErr partALieLen "does not have return type" [partALieLen, splitA]
+example : Migrate.progRejectsOf partALieLen "does not have return type" [partALieLen, splitA]
     = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
@@ -573,7 +574,7 @@ def partALiePart : Decl :=
              → Σ (hp : PartA pvv k n (old *a))
              → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
         { () } }).retType }
-example : checkFnErr partALiePart "does not have return type" [partALiePart, splitA]
+example : Migrate.progRejectsOf partALiePart "does not have return type" [partALiePart, splitA]
     = true := by native_decide
 
 -- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
@@ -584,7 +585,7 @@ def qsALieSorted : Decl :=
         -> Σ (hs : SortedA n (old *a))
              → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
         { () } }).retType }
-example : checkFnErr qsALieSorted "does not have return type" [qsALieSorted, partitionA, splitA]
+example : Migrate.progRejectsOf qsALieSorted "does not have return type" [qsALieSorted, partitionA, splitA]
     = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
@@ -595,7 +596,7 @@ def qsALieCount : Decl :=
         -> Σ (hs : SortedA n (*a))
              → Π (q : Nat) → Id Nat (countA q n (old *a)) (countA q n (*a))
         { () } }).retType }
-example : checkFnErr qsALieCount "does not have return type" [qsALieCount, partitionA, splitA]
+example : Migrate.progRejectsOf qsALieCount "does not have return type" [qsALieCount, partitionA, splitA]
     = true := by native_decide
 
 /-! ### Honest typing rejections, probed through `checkFn` -/
@@ -610,7 +611,7 @@ def carveNoEv : Decl := decl{
     let pcell = &mut (*a)[k ; 1 ; jj];
     let r = &mut (*a)[S k ; ..];
     () } }
-example : checkFnErr carveNoEv "may not impose it by refining" = true := by native_decide
+example : Migrate.progRejectsOf carveNoEv "may not impose it by refining" = true := by native_decide
 
 -- …and the positive control at the same shape, so the rejection is about the missing
 -- citation and not about the carve. (`quicksortA` itself is the other positive control.)
@@ -621,7 +622,7 @@ def carveWithEv : Decl := decl{
     let pcell = &mut (*a)[k ; 1 ; jj];
     let r = &mut (*a)[S k ; ..];
     () } }
-example : checkFnOk carveWithEv = true := by native_decide
+example : Migrate.progOkOf carveWithEv = true := by native_decide
 
 -- The sufficiency hypothesis is load-bearing, not decoration: keep the parameter (so
 -- the body still elaborates and the rejection is about TYPING) and weaken it to `Unit`.
@@ -630,13 +631,13 @@ def qsANoSuff : Decl :=
   { quicksortA with telescope := (decl{
       fn qsANoSuff (fuel : Nat, n : Nat, hfuel : Unit, a : &mut (Array n Nat)) -> Unit
         { () } }).telescope }
-example : checkFnErr qsANoSuff "botElim" [qsANoSuff, partitionA, splitA]
+example : Migrate.progRejectsOf qsANoSuff "botElim" [qsANoSuff, partitionA, splitA]
     = true := by native_decide
 
 
 /-! ## (vi) The EXECUTING differential — and the divergence it found
 
-    `checkFnOk` proves `Sorted ∧ Perm` symbolically. Running the SAME declarations on
+    `Migrate.progOkOf` proves `Sorted ∧ Perm` symbolically. Running the SAME declarations on
     concrete arrays is the control that can still indict them, and here it indicts the
     MACHINE instead: the concrete and symbolic executions of a carving callee diverge,
     for a reason no symbolic check can produce. Everything below is stated so that the
@@ -711,7 +712,7 @@ def runsAtAll (tbl : List Decl) (t : Term) : Bool :=
 
 /-! ### (vi.a) It really sorts, in place, on concrete arrays
 
-    The same declarations `checkFnOk` verified symbolically, run on real inputs and
+    The same declarations `Migrate.progOkOf` verified symbolically, run on real inputs and
     compared against a trusted sort. Duplicates, already-sorted and reverse-sorted
     included, since the empty-part paths are where a partition-based sort breaks. -/
 
@@ -808,7 +809,7 @@ example : (match runQsA [2, 1] with | some a => a == [2, 1] | none => false) = f
 
 def qsCallers : List Term := [qsCallerA [3, 1, 2], qsCallerA [2, 1], qsCallerA [1]]
 
-example : qsCallers.all (fun b => checkFnOk (Dllbc.Tests.S9Diff.callerDecl b) arrTbl)
+example : qsCallers.all (fun b => Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl b) arrTbl)
     = true := by native_decide
 
 example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrTbl b)
@@ -830,7 +831,7 @@ def c6PeelCall : Decl := decl{
     match n { Z => (),
       S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
                 let tl = &mut (*a)[S Z ; m]; c6Touch(m, &mut *tl); () } } } }
-example : checkFnOk c6PeelCall [c6PeelCall, c6Touch] = true := by native_decide
+example : Migrate.progOkOf c6PeelCall [c6PeelCall, c6Touch] = true := by native_decide
 
 -- (2) Carve inside the tail, with NO call first. Always worked.
 def c6CarveNoCall : Decl := decl{
@@ -843,7 +844,7 @@ def c6CarveNoCall : Decl := decl{
                                       | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
                 let hi = &mut (*tl)[S k3 ; r2]; () } } } }
-example : checkFnOk c6CarveNoCall = true := by native_decide
+example : Migrate.progOkOf c6CarveNoCall = true := by native_decide
 
 -- (3) …and the swap's writes on top of it. Always worked.
 def c6Swap : Decl := decl{
@@ -857,7 +858,7 @@ def c6Swap : Decl := decl{
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
                 let hi = &mut (*tl)[S k3 ; r2];
                 let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } } }
-example : checkFnOk c6Swap = true := by native_decide
+example : Migrate.progOkOf c6Swap = true := by native_decide
 
 -- (4) Self-recursion through a reborrowed tail. Always worked.
 def c6Rec : Decl := decl{
@@ -866,7 +867,7 @@ def c6Rec : Decl := decl{
       S(m2) => match fuel { Z => botElim Unit hfuel,
         S(f2) => { let hd = &mut (*a)[Z ; 1 ; m2]; let x = (*hd)[0];
                    let tl = &mut (*a)[S Z ; m2]; c6Rec(f2, m2, hfuel, &mut *tl); () } } } } }
-example : checkFnOk c6Rec = true := by native_decide
+example : Migrate.progOkOf c6Rec = true := by native_decide
 
 /-- (5) THE RED ONE, before C6: carve inside a borrow AFTER handing it to a call. The
     reborrow parks a marker at the whole payload, and the carve consulted the extent map
@@ -884,7 +885,7 @@ def c6CarveAfterCall : Decl := decl{
                                       | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
                 let hi = &mut (*tl)[S k3 ; r2]; () } } } }
-example : checkFnOk c6CarveAfterCall [c6CarveAfterCall, c6Touch] = true := by native_decide
+example : Migrate.progOkOf c6CarveAfterCall [c6CarveAfterCall, c6Touch] = true := by native_decide
 
 /-! ### Why the scan is not Lomuto — the rejection, with M13's evidence threaded
 
@@ -906,7 +907,7 @@ def twoCursor : Decl := decl{
     let x = (*a)[i | le_trans (S i) j n pij (le_pred_l j n pjn)];
     let y = (*a)[j | pjn];
     () } }
-example : checkFnErr twoCursor "no leaf" = true := by native_decide
+example : Migrate.progRejectsOf twoCursor "no leaf" = true := by native_decide
 
 -- Route (a) cannot rescue it either: the second request does not START a segment, so
 -- there is no leaf for the supplied residue to decompose.
@@ -916,7 +917,7 @@ def twoCursorRes : Decl := decl{
     let x = &mut (*a)[i ; 1 ; r1 | le_add i (S r1)];
     let y = &mut (*a)[j ; 1 ; r2 | le_add j (S r2)];
     () } }
-example : checkFnErr twoCursorRes "no segment starts at" = true := by native_decide
+example : Migrate.progRejectsOf twoCursorRes "no segment starts at" = true := by native_decide
 
 /-! ## (viii) The G7 ruling, probed at the boundary it exists to protect
 
@@ -928,13 +929,13 @@ def citedCarve : Decl := decl{
                  a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
     () } }
-example : checkFnOk citedCarve = true := by native_decide
+example : Migrate.progOkOf citedCarve = true := by native_decide
 
 /-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
     inhabits `Id Nat 3 (add 1 (S 1))` because both sides compute to 3. -/
 def citedCallerOk : Term := dllbcWith [] {
   let z = Arr(1, 2, 3); let b = &mut z; citedCarve(3, 1, 1, Refl, b); let y = z; () }
-example : checkFnOk (Dllbc.Tests.S9Diff.callerDecl citedCallerOk) [citedCarve]
+example : Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl citedCallerOk) [citedCarve]
     = true := by native_decide
 
 /-- (2) …and it RUNS, which is the half that was broken. Before the ruling the checker
@@ -948,7 +949,7 @@ example : runsAtAll [citedCarve] citedCallerOk = true := by native_decide
     constraint recorded in the signature it violated. -/
 def citedCallerBad : Term := dllbcWith [] {
   let z = Arr(1, 2); let b = &mut z; citedCarve(2, 5, 5, Refl, b); let y = z; () }
-example : checkFnOk (Dllbc.Tests.S9Diff.callerDecl citedCallerBad) [citedCarve]
+example : Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl citedCallerBad) [citedCarve]
     = false := by native_decide
 
 end Dllbc.Tests.S25ArrSort
