@@ -96,17 +96,35 @@ example : Migrate.progOkOf learn = true := by native_decide
 def learnObs : FnDef :=
   decl{ fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } } }
 
--- **THE ONE CAPABILITY THE PROGRAM PATH DOES NOT HAVE, and its assertion is now
--- gone** (M27-δ). This inspected what a FUNCTION BODY leaves in Ω, and a body
--- with a telescope can only be entered by seeding that telescope — which was
--- `checkFn`'s job. On the program path a declaration is a `let` of a sealed λ and
--- its body is entered only inside `checkRFnBody`'s ISOLATED frame, whose Ω is
--- discarded by design (that isolation is M26-C's own debt, paid deliberately).
--- So this is a genuine coverage LOSS rather than a relocation, and it is recorded
--- as one: what `learnObs` pinned was that a `Refl` match REFINES `n := 2`, so `m`
--- reads a concrete 2 rather than a σ. The refinement itself is still exercised
--- everywhere in the corpus (every ensures that survives a match depends on it);
--- what is no longer asserted is the Ω-level observation of it.
+/-! ### The refinement, CONVERTED from an Ω observation to a DEMAND (M27-δ)
+
+    `learnObs` asserted the refinement by looking at the final Ω: after the match,
+    `let m = n` copies the REFINED value, so `m ↦ 2` and not a σ. That assertion
+    could not survive `checkFn` — a body with a telescope is entered only inside
+    the seal's isolated frame, whose Ω is discarded by design.
+
+    So it is restated as what a body can PROVE under the refinement rather than
+    what the machine happens to hold: `seal(Refl, Id Nat m 2)` is a certificate
+    that typechecks **only if** `m`'s snapshot is concretely `2`. Unrefined, `m` is
+    a σ and `Refl` does not inhabit `Id Nat σ 2`.
+
+    That is the per-demand-site doctrine applied to the kernel's own tests, and it
+    is a strictly better assertion than the one it replaces: it says the
+    refinement is USABLE, where the Ω observation only said it was recorded. -/
+
+def learnDemand : FnDef :=
+  decl{ fn learnDemand (n : Nat, p : Id Nat n 2) -> Unit {
+    match p { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } } }
+example : Migrate.progOkOf learnDemand = true := by native_decide
+
+-- THE TWIN, and it is what makes the certificate a demand rather than a
+-- decoration: the same `let m = n` and the same seal with the match REMOVED. `m`
+-- is unrefined, so `Refl` has nothing to inhabit.
+def learnDemandNo : FnDef :=
+  decl{ fn learnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
+    let m = n; let c = seal(Refl, Id Nat m 2); () } }
+example : Migrate.progRejectsOf learnDemandNo "does not have its ascribed type"
+  = true := by native_decide
 
 -- Through a borrow: `pb : &mut (Id Nat n 2)`. The refl-match reads through the
 -- borrow, refines `n := 2`, and — because refinement now reaches the owed
@@ -117,7 +135,13 @@ def learnBorrow : FnDef :=
     match pb { Refl => { let m = n; () } } } }
 
 example : Migrate.progOkOf learnBorrow = true := by native_decide
--- Same disposition: the borrow-through variant's Ω observation goes with it.
+
+-- …and the same conversion through the borrow, so the demand form covers both
+-- routes the refinement takes rather than only the owned one.
+def learnBorrowDemand : FnDef :=
+  decl{ fn learnBorrowDemand (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
+    match pb { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } } }
+example : Migrate.progOkOf learnBorrowDemand = true := by native_decide
 
 -- Rigid-rigid: `p : Id Nat Z (S Z)`. Neither endpoint is a σ, so there is no
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The

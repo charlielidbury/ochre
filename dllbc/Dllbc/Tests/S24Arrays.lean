@@ -490,35 +490,57 @@ def halves : FnDef := decl{
 
 example : Migrate.progOkOf halves = true := by native_decide
 
-/-- The final Ω of a single-path body. **GONE with `checkFn`** (M27-δ):
-    inspecting what a body with a TELESCOPE leaves requires seeding that
-    telescope, which was `checkFn`'s job — on the program path such a body is
-    entered only inside the seal's isolated frame, whose Ω is discarded by design.
-    A genuine coverage loss rather than a relocation; `S10Ford` states the same
-    disposition at length. Every assertion that used it is deleted below. -/
-def fnEnv (_d : FnDef) (_tbl : List FnDef := []) : Option Env := none
+-- PROBE (M27-δ): is disjointness DEMANDABLE rather than only observable?
+/-! ### DISJOINTNESS, converted from an Ω observation to a DEMAND (M27-δ)
 
-/-- The claim, stated structurally: `a`'s payload is a two-segment node whose bodies
-    are two DISTINCT loans. Not "the checker accepted a disjointness argument" — there
-    is no disjointness judgment anywhere (¶8.2: "there is no disjointness soundness
-    theorem, because there is no disjointness judgment"). The extent map is the
-    aliasing invariant and it is maintained by construction: segments partition the
-    array, so two loans of one array cannot overlap. -/
-def halvesSegLoans : Option (List Nat) :=
-  match fnEnv halves with
-  | some e =>
-    match e.lookup "a" with
-    | some (.borrowM _ (.ctor "§segs" segs)) =>
-      some (segs.filterMap (fun s => match Val.asSeg? s with
-        | some (_, .loanM l) => some l
-        | _ => none))
-    | _ => none
-  | none => none
+    `halvesSegLoans` asserted the aliasing invariant by reading the loan ids out
+    of the final Ω — `[1, 2]`, two distinct loans over one array. That assertion
+    could not survive `checkFn`, so it is restated as what a body can DO under the
+    invariant rather than what the machine happens to hold.
 
--- (Ω-inspection assertion deleted with `checkFn`, M27-δ. `halvesSegLoans` computed
--- it from `fnEnv`, which needed a seeded telescope; see `fnEnv` above. The
--- disjointness invariant it observed is maintained by construction — segments
--- partition the array — and is not otherwise asserted.)
+    The observable consequence of disjointness is that both sub-borrows stay LIVE.
+    A second borrow of an overlapping place demand-ends the first (§5.2), so using
+    `l` after `r` has been taken is possible exactly when the two do not overlap.
+    The pair below is that, and it is a better assertion than the one it replaces:
+    it says the segments are SIMULTANEOUSLY USABLE, where the loan-id reading only
+    said they were separately recorded. -/
+
+def halvesBoth : FnDef := decl{
+  fn halvesBoth (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k | h];
+    let r = &mut (*a)[k ; ..];
+    let y = *r;
+    *r := y;
+    let x = *l;
+    *l := x;
+    () } }
+example : Migrate.progOkOf halvesBoth = true := by native_decide
+
+-- THE TWIN, one character of range apart: carve the SAME segment twice. The
+-- second demand-ends the first, so the later use of `l` peels a vacant slot —
+-- which is the invariant biting, and what says the acceptance above is about the
+-- ranges being disjoint and not about carving twice being allowed.
+def halvesSame : FnDef := decl{
+  fn halvesSame (n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; k | h];
+    let r = &mut (*a)[Z ; k | h];
+    let y = *r;
+    *r := y;
+    let x = *l;
+    *l := x;
+    () } }
+example : Migrate.progRejectsOf halvesSame "cannot peel a vacant slot" = true := by
+  native_decide
+
+-- `fnEnv` (the final Ω of a single-path body) went with `checkFn` (M27-δ):
+-- entering a body with a TELESCOPE requires seeding it, and on the program path
+-- such a body is entered only inside the seal's isolated frame, whose Ω is
+-- discarded by design. Its three assertions were CONVERTED rather than dropped
+-- where a demand form exists (`halvesBoth`/`halvesSame`, `threeWayAll`) and
+-- recorded lost with the reason where none does (`readSame`).
+
+
+-- (the loan-id reading it replaced is above, CONVERTED to the demand pair.)
 
 /-! ### Why the audit converts, and what it cost
 
@@ -1043,22 +1065,26 @@ def threeWay : FnDef := decl{
     () } }
 example : Migrate.progOkOf threeWay = true := by native_decide
 
-/-- The state, pinned: three segments, three distinct loans, one array. -/
-def threeWaySegLoans : Option (List Nat) :=
-  match fnEnv threeWay with
-  | some e =>
-    match e.lookup "a" with
-    | some (.borrowM _ (.ctor "§segs" segs)) =>
-      some (segs.filterMap (fun s => match Val.asSeg? s with
-        | some (_, .loanM l) => some l
-        | _ => none))
-    | _ => none
-  | none => none
+-- …and the same conversion at THREE segments, which is where the invariant is
+-- doing real work: `[Z ; i ; S j]`, `[i ; 1 ; j]` and `[S i ; ..]` are pairwise
+-- disjoint by the decomposition the carves cite, and all three stay usable.
+def threeWayAll : FnDef := decl{
+  fn threeWayAll (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
+                  a : &mut (Array n Nat)) -> Unit {
+    let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    let p = &mut (*a)[i ; 1 ; j];
+    let r = &mut (*a)[S i ; ..];
+    let z = *r;
+    *r := z;
+    let w = *p;
+    *p := w;
+    let x = *l;
+    *l := x;
+    () } }
+example : Migrate.progOkOf threeWayAll = true := by native_decide
 
--- (Ω-inspection assertion deleted with `checkFn`, M27-δ. `threeWaySegLoans` computed
--- it from `fnEnv`, which needed a seeded telescope; see `fnEnv` above. The
--- disjointness invariant it observed is maintained by construction — segments
--- partition the array — and is not otherwise asserted.)
+
+-- (the loan-id reading it replaced is above, CONVERTED to `threeWayAll`.)
 
 -- The pivot carve needs NO cited evidence, which is route (a)'s second payoff and the
 -- reason it beats merely naming the residue: `Le 1 rest` was unwritable, and after
@@ -1287,8 +1313,34 @@ def readTwo : FnDef := decl{
     let x = (*a)[0];
     let y = (*a)[1];
     () } }
--- (Ω-inspection assertion deleted with `checkFn`, M27-δ — see `fnEnv` above)
--- (Ω-inspection assertion deleted with `checkFn`, M27-δ — see `fnEnv` above)
+
+/-! ### …and at INDEX places the conversion FAILS, for a reason worth having
+
+    The deleted Ω assertion read `a`'s payload back as a two-segment node with the
+    takes at distinct positions. The conversion attempted here — take both, refill
+    both, and let the obligation audit demand that the takes were disjoint — does
+    not work, and the twin below is what says so rather than a hunch.
+
+    **Taking index 0 TWICE is ACCEPTED.** §2.1's copy-on-read is why: a concrete
+    `Nat` element is INDEX-KIND, so a take COPIES and leaves no hole, and there is
+    no linearity at a copyable element type for a body to observe. The segment
+    structure the Ω assertion read is therefore an implementation detail at this
+    element type — unobservable through the language, with the behaviour covered by
+    the executing differential — and the assertion is recorded LOST on exactly that
+    rationale rather than replaced by something weaker that would still be green.
+
+    The disjointness invariant itself is not lost: `halvesBoth`/`halvesSame` and
+    `threeWayAll` above demand it at SEGMENT places, where the payload is an array
+    rather than an element and the linearity is real. -/
+
+def readSame : FnDef := decl{
+  fn readSame (a : &mut (Array 2 Nat)) -> Unit {
+    let x = (*a)[0];
+    let y = (*a)[0];
+    (*a)[0] := y;
+    () } }
+-- The record of why the conversion fails, asserted rather than described.
+example : Migrate.progOkOf readSame = true := by native_decide
 
 /-- **The miniature.** An in-place two-element sort over a symbolic borrow, verified
     `Sorted ∧ Perm` over the exit snapshot, zero backs. Both paths mutate or not through

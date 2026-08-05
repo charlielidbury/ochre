@@ -101,16 +101,36 @@ exactly the moment the guard died.
   * **The strongest ledger is still the one that fails to compile.** Every δ
     disposition was found by the build, one file at a time, rather than by a sweep.
 
-**THE ONE GENUINE COVERAGE LOSS, recorded as one.** Inspecting what a body with a
-TELESCOPE leaves in Ω has no program-path form: seeding a telescope was
-`checkFn`'s job, and on the program path such a body is entered only inside
-`checkRFnBody`'s ISOLATED frame, whose Ω is discarded by design — M26-C's own debt,
-paid deliberately. Five assertions went (`S10Ford`'s `learnObs`/`learnBorrow`,
-`S24Arrays`' three segment-loan observations). What `learnObs` pinned — a `Refl`
-match REFINES `n := 2`, so `m` reads a concrete 2 — is still exercised by every
-ensures in the corpus that survives a match; what is no longer asserted is the
-Ω-level observation of it. Deleted with the reason written where they stood,
-rather than weakened into something that would still be green.
+**THE Ω-INSPECTION ASSERTIONS: FOUR OF FIVE CONVERTED, ONE LOST WITH ITS REASON.**
+Inspecting what a body with a TELESCOPE leaves in Ω has no program-path form —
+seeding a telescope was `checkFn`'s job, and on the program path such a body is
+entered only inside `checkRFnBody`'s ISOLATED frame, whose Ω is discarded by
+design (M26-C's debt, paid deliberately). The right response was not to record
+five losses but to attempt, for each, the conversion from an INTERNAL-STATE
+assertion to a DEMAND — what a body can PROVE under the property, rather than
+what the machine happens to hold. That is the per-demand-site doctrine applied to
+the kernel's own tests, and it converted four:
+
+  * `learnObs`/`learnBorrow` (a `Refl` match refines `n := 2`) become
+    `seal(Refl, Id Nat m 2)` — a certificate that typechecks ONLY IF `m`'s
+    snapshot is concretely 2 — with a twin that removes the match and is refused.
+  * `halvesSegLoans`/`threeWaySegLoans` (two/three carves of one array carry
+    distinct loans) become **both sub-borrows staying LIVE**: a second borrow of an
+    overlapping place demand-ends the first, so using `l` after `r` is possible
+    exactly when they do not overlap. The twin carves the SAME segment twice and is
+    refused with "cannot peel a vacant slot".
+
+Each replacement is a BETTER assertion than the one it replaces, and in the same
+way: the old one said the property was recorded, the new one says it is USABLE.
+
+**The fifth is lost, and the failure is informative.** `readTwo`'s index-place
+version does not convert: taking index 0 TWICE is ACCEPTED, because §2.1's
+copy-on-read makes a concrete `Nat` element index-kind, so a take copies and
+leaves no hole. There is no linearity at a copyable element type for a body to
+observe, so the segment structure is an implementation detail there — unobservable
+through the language, behaviour covered by the executing differential. Recorded on
+exactly that rationale, with the accepting probe kept as the evidence for it,
+rather than replaced by something weaker that would still be green.
 
 **STILL OPEN.** The comma-call form (`f(a, b)`, `Term.call`, `St.decls`) survives
 δ deliberately: it is what carries the "unknown function" diagnosis that the
