@@ -93,33 +93,76 @@ test being wrong before the machine was:
 
 **DECLARATIONS DEFERRED, NOT DELETED** — a design decision, and the map is
 measured rather than estimated. `Decl` survives as the explicitly-labelled home of
-the M17-era baseline corpus; programs-as-terms is the primary architecture. 73
-declarations have no program form as the corpus stands, and the blockers COMPOSE
-through the cohort closure (73 → 68 with two `[k]` hints corrected, → 65 with
-`back` stripped, → **20 with both**), which is why two rounds of measurement made
-the map look immovable and the third made it small. Of the two fixes, correcting a
-hint is FREE (§7 demoted `[k]` to a scrutinee-selection hint, and `nth`/`nth2` also
-decrease on their index) and stripping `back` is NOT — that is the user's question,
-now scoped to **eight declarations** rather than to the corpus.
+the M17-era baseline corpus; programs-as-terms is the primary architecture.
+
+**THE ANALYSIS LESSON, which transfers past this milestone: "fix the biggest class
+first" is exactly the wrong strategy against a CLOSURE.** 73 declarations have no
+program form as the corpus stands. Two blockers explain nearly all of them, and
+each one alone barely moves the number:
+
+    73  as the corpus stands
+    68  with two `[k]` hints corrected            (−5)
+    65  with `back` stripped                      (−8)
+    20  WITH BOTH                                 (−53)
+
+A cohort is a closure — one un-migratable leaf declines everything above it — and
+S17's `nth` has BOTH a declared `back` and a `[v]` hint. Fixing either leaves it
+declining, and all of S17 and S19 that reaches it declines with it. Two rounds of
+measurement therefore made the map look immovable and the third made it small,
+which is a fact about *closures* and not about this corpus: the marginal return on
+removing one blocker is near zero until the last one on a path comes off, so the
+ordering intuition that serves a partition ("start with the biggest pile") inverts.
+Measure the product, not the piles.
+
+**THE FREE-HINT FINDING, and decision 8's honest final scope.** A mis-declared
+`[k]` was never a decision-8 cost. §7 demotes `[k]` to a scrutinee-selection HINT,
+and the declaration-era guard was sound and happy with `[v]` whenever the payload
+decreases — a list cursor passes no counter, so nothing ever pressed an author to
+name a decreasing *index* that was also sitting in the telescope. But `nth`/`nth2`
+have one, it is a `Nat`, and the macro serves it directly. Correcting the hint is
+**one field of the `Decl`**: same body, same telescope, same return type, no fuel,
+no bound, no dead branch, no caller change. The S14 family goes from five declines
+to zero. So decision 8's real scope is:
+
+  * **one genuine list shape** — `zero_all`/`recCursor`, a cursor with no
+    decreasing argument but the payload, which is §7 cost 4's own example. Paid; a
+    parameter, a bound, a dead branch, checking both ways on the first run.
+  * **the array shape, already paid in M24, before the decision existed** — `walk`
+    IS `walkArr` with `[fuel]` in place of `[a]`, asserted as a computation (the
+    bodies are equal modulo each declaration's own self-call name), and it
+    migrates.
+  * everything else that *looked* like the class was a hint, or was `back`
+    underneath.
+
+Of the two fixes, correcting a hint is FREE and stripping `back` is NOT — that is
+the user's question, and it is now scoped to **eight declarations**.
 
 **STILL OPEN, in the order they matter:**
 
-1. **`back` under a seal, for eight declarations.** §6.2's declared backward specs
-   are the mechanism M23 retired; the seal has no counterpart because the ensures
-   IS the contract. What replaces it for the baseline corpus is a user call — it
-   touches what the repo keeps as its historical comparison baseline.
-2. **§9's borrow-mode eliminator.** Worth building for `zero_all`'s shape (a
-   cursor with no decreasing argument but the payload — the only genuine
-   decision-8 shape left in the list world) and for naturalness. It is NOT what
-   stands between here and deleting `Decl`; the corrected map says that is eight
-   `back`s and a handful of hints.
-3. **`recDeep` — §7's genuine expressiveness limit.** A recursion two constructors
+1. **`back` under a seal — and it is what `Decl`'s deletion waits on.** The
+   morning question, stated as a question: **what replaces `back` for these eight
+   declarations, given that M23 retired the mechanism?** §6.2's declared backward
+   specs have no seal counterpart because the ensures IS the contract (§5 point 4),
+   and M23's own corpus declares none, deliberately. This is a user call rather
+   than a migration task, because it touches what the repo keeps as its historical
+   comparison baseline.
+2. **§9's borrow-mode eliminator** — worth building for `zero_all`'s shape and for
+   naturalness, and it is **NOT** what stands between here and deleting `Decl`.
+   Eight `back`s and a handful of hints are. (An earlier reading of the same
+   evidence said the opposite; the difference was `fnElab` reporting the FIRST
+   reason it declines, and `back` being checked before the decreasing parameter.)
+3. **Adopting `[i]` over `[v]` in `S14Bounds`/`S17Spec`** — deferred to the user
+   with team-lead's recommendation to adopt: the hint is a claim about *why* the
+   recursion terminates, the precise claim is now load-bearing, and era-documentation
+   lives in git history. Not done tonight because those are shared files and the
+   corrected twins live in `Tests/S26Fuel.lean`.
+4. **`recDeep` — §7's genuine expressiveness limit.** A recursion two constructors
    down: the guard permits it, and no single recursor can express it, because an
    arm gets `ih` at the immediate predecessor and nothing below it.
-4. **Closures and capture** stay deferred wholesale (constraint 5). §8's globals
+5. **Closures and capture** stay deferred wholesale (constraint 5). §8's globals
    admit FUNCTIONS bound above; data, borrows and sealed proofs are refused, and a
    body that wants a proof takes it as a capital parameter.
-5. **Stored and returned Σ-of-borrows** — still exercised in one direction only.
+6. **Stored and returned Σ-of-borrows** — still exercised in one direction only.
 
 ## 2026-08-05 — dllbc/: M26-E CLOSES — a program is a term; the corpus down both paths
 
