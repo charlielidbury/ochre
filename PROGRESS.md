@@ -104,32 +104,46 @@ while `disagree` stays empty.
    The declaration side now asks whether EVERY member of the cohort checks.
 
 **DELETION IS BLOCKED — the remaining-work map.** J1 is absolute and 74 corpus
-declarations have no program form, in three classes:
+declarations have no program form. `fnElab` reports the FIRST reason it finds and
+checks `back` before it checks the decreasing parameter, so the raw report says
+§6.2 blocks S14/S17/S19 wholesale. **It does not, and measuring it reversed my
+conclusion**: stripping `back` and re-running the whole comparison moves 74
+declines to 66, with everything still agreeing. So §6.2 is the sole blocker for
+exactly EIGHT declarations, and the road to deleting `Decl` runs through the
+`[v]` class rather than through redesigning what a backward spec becomes.
 
-  * **§6.2's declared `back` (the largest by far)**: S14 wholesale, S17 wholesale,
-    and — through the three S17 functions their tables import — 35 of S19's 39.
-    This is the M17-era spec corpus that **M23 superseded by design** (its own
-    corpus declares ZERO backs), and the seal has no counterpart because the
-    ensures IS the contract. Giving `back` a seal form is a design question about
-    what replaces a backward spec, not a migration task — it is the one thing
-    standing between here and deleting `Decl`.
-  * **§12 decision 8's `[v]` payload decrease**: `zero_all`, `nth`, `recCursor`,
-    `append_back`, `partition`, `walkArr`. Each is one hand migration of the shape
-    M26-D and this phase already paid twice; §9's borrow eliminator retires the
-    class.
-  * **Recursions `natRec` cannot express**: a non-`Nat` scrutinee (`recList` —
+  * **§12 decision 8's `[v]` payload decrease — the real blocker, 66 of the 74.**
+    `nth`, `nth2`, `swapS`, `zero_all`, `recCursor`, `append_back`, `partition`,
+    `walkArr`, and everything whose cohort closure reaches one of them (which is
+    most of S14, S17 and S19 — the M17-era spec corpus). Each is ONE hand
+    migration of the shape M26-D paid for `partition` and this phase paid for
+    `append_back`: a `fuel` parameter, a `Le … fuel` bound, a dead branch, and
+    every caller supplying them. §9's borrow-mode eliminator retires the class
+    outright, and this is now the strongest argument for building it.
+  * **§6.2's declared `back` — eight declarations**, and the mechanism M23 RETIRED
+    (its own corpus declares none, deliberately). The seal has no counterpart
+    because the ensures IS the contract (§5 point 4). A real design question, but
+    a much smaller one than the raw report suggested.
+  * **Recursions `natRec` cannot express.** A non-`Nat` scrutinee (`recList` —
     `listRec` is wired in the kernel's `sealRec` but not in the macro, so this one
     is small), and `recDeep`, which recurses TWO constructors down. The guard
     permits that and a single `natRec` cannot express it, because an arm gets `ih`
     at the immediate predecessor and nothing below it. Filed as a genuine
     expressiveness limit of §7's elaboration.
 
+A Lean-level gotcha that cost the first measurement and fails SILENTLY:
+`{ d with back := none }` does NOT strip the field — `back` is a reserved token of
+the `decl{ … }` surface, so the record-update syntax does not mean what it reads
+as, and the "stripped" pool came back identical with the same declines. The
+positional `Decl.mk` is the way to write it, which is the same reason
+`DeclMacro.assemble` builds its `Decl` positionally.
+
 Also filed, from writing the tests: a sealed PROOF is not a global (§5's `Qed`
 binding is a value; a body that wants one should take it as a capital parameter),
 and `let X = seal(…)` is refused because a comptime `let` reads its right-hand side
 under ⇝ while the seal is a ⇒-form — §6's own parenthesis arriving as a rejection.
 
-104 assertions across `Tests/S26Prog.lean` and `Tests/S26Migrate.lean`, every one
+119 assertions across `Tests/S26Prog.lean` and `Tests/S26Migrate.lean`, every one
 validated by flipping it and confirming the build goes red; none vacuous.
 
 ## 2026-08-05 — dllbc/: M26-D CLOSES — `fn` IS a macro; the first cohort migrated

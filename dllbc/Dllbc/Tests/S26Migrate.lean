@@ -259,4 +259,49 @@ example : (match FnMacro.fnElab S23Direct.recGood with
            | .error _ => false
            | .ok _ => true) = true := by native_decide
 
+/-! ## §V. Which blocker is load-bearing — measured, because I had it backwards
+
+    The decline classes above are not independent: `fnElab` reports the FIRST
+    reason it finds, and it checks `back` before it checks the decreasing
+    parameter. So a function that both declares a backward spec AND decreases
+    through a borrow payload is reported as a `back` decline, and reading the
+    report at face value says §6.2 blocks S17 and S19 wholesale.
+
+    It does not. Stripping `back` from a pool and re-running the comparison is
+    two lines, and it moves 74 declines to **66**: §6.2 is the sole blocker for
+    exactly **eight** declarations, and the other 66 are blocked underneath by
+    §12 decision 8's `[v]` payload decrease. That reverses the conclusion about
+    what stands between here and deleting `Decl` — the road runs through §9's
+    borrow-mode eliminator (or fuel-threading six functions by hand, the shape
+    M26-D and M26-E have each paid once), not through redesigning what a backward
+    spec becomes.
+
+    (A Lean-level gotcha that cost me the first measurement, recorded because it
+    fails SILENTLY: `{ d with back := none }` does not strip the field. `back` is
+    a reserved token of the `decl{ … }` surface, so the record-update syntax does
+    not mean what it reads as, and the stripped pool came back identical. The
+    positional `Decl.mk` is the way to write it — which is the same reason
+    `DeclMacro.assemble` builds its `Decl` positionally.) -/
+
+def stripBacks (pool : List Decl) : List Decl :=
+  pool.map (fun d => Decl.mk d.name d.telescope d.retType d.body none d.dec)
+
+-- The strip is real (the check the first attempt did not make).
+example : (p17.any (fun d => d.back.isSome)
+        && (stripBacks p17).all (fun d => d.back.isNone)) = true := by native_decide
+
+-- 74 declines become 66, so `back` alone accounts for eight.
+example : (pools.foldl (fun a p => a + (report p).declined) 0 == 74) = true := by native_decide
+example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 66)
+  = true := by native_decide
+
+-- And the comparison still agrees everywhere with the backs gone, so the eight
+-- that move are migrations and not accidents.
+example : (pools.all (fun p => (report (stripBacks p)).disagree.isEmpty)) = true := by native_decide
+
+-- Per file, so the eight are locatable: S17 loses three (7 → 4), S19 one (35 →
+-- 34), and the two `SDecl` pools two more (3 → 1, 1 → 0, 3 → 2).
+example : (pools.map (fun p => (report (stripBacks p)).declined)
+  == [0, 1, 0, 0, 0, 0, 0, 5, 0, 0, 4, 0, 34, 18, 1, 0, 1, 0, 2]) = true := by native_decide
+
 end Dllbc.Tests.S26Migrate
