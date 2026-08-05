@@ -65,7 +65,9 @@ green check in this territory means anything at all.
 * **§A** — a borrow-carrying return type's non-borrow components are never judged.
   `fn closedBot () -> Bot`. This is the hazard the M27 line walks into, since
   moving every contract into the return type is what makes a declaration both
-  borrow-returning and ensures-carrying.
+  borrow-returning and ensures-carrying. **CLOSED** on main by the mixed-return
+  containment (eb510a0f); §A's witnesses now assert the refusal, and §G records
+  what else the containment took with it.
 * **§F2d** — a parameter's owed type is never judged when the body consumes that
   parameter into its result, which for a cursor is always. `fn closedBot2 () ->
   Bot`. §6.1's exemption is sound for the PAYLOAD (there is none to audit — it is
@@ -73,7 +75,8 @@ green check in this territory means anything at all.
   then treats as established. **Refusing mixed borrow/non-borrow return types does
   not close this one**: `nth01B` returns `Σ (x : &mut Nat) → &mut Nat`, all
   borrows. F2e is the control — the same lie on a parameter NOT consumed into the
-  result is rejected.
+  result is rejected. **OPEN** — the mixed-return containment does not reach it
+  (measured in §G, not assumed).
 -/
 
 open Dllbc
@@ -155,19 +158,28 @@ def a5honest : Decl :=
         { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&mut *hd, Refl) } } }
 
 -- ACCEPTED — the claim is never judged.
-example : ok a1lie = true := by native_decide
+-- POST-CONTAINMENT (main eb510a0f): REFUSED at its own definition site.
+example : rejects a1lie "may not also carry VALUE components" = true := by native_decide
 -- REJECTED — the same claim, in a return type with no borrow in it.
 example : rejects a2lie "does not have return type" = true := by native_decide
 -- ACCEPTED — so the hole is not vacuous: the caller RECEIVES the false proof and
 -- returns it at its own (value) return type, where the pin-and-check path DOES
 -- run and passes, because the σ genuinely carries that sctx type.
+-- a3use and a4bot still check, and that is the containment's SHAPE rather than a
+-- residual hole: the gate is at the DEFINITION site, while these hand `a1lie` to
+-- the checker inside a TABLE, which `checkFn` consumes without re-checking its
+-- entries. In a real program — M26's let-chain, where a callee is a binding
+-- lexically above its caller and is checked in place — no such callee exists.
+-- Kept green as the pin for exactly that reading.
 example : ok a3use [a1lie, a3use] = true := by native_decide
 -- ACCEPTED — `fn closedBot () -> Bot`, no hypotheses. The break, closed.
 example : ok a4bot [a1lie, a4bot] = true := by native_decide
 -- The controls: the direct route to the same absurdity is refused, and the
 -- honest claim in the same position is accepted too.
 example : rejects a5direct "does not have return type" = true := by native_decide
-example : ok a5honest = true := by native_decide
+-- The HONEST claim in the same position is refused too. The containment is
+-- shape-based by design, and this is the measurement of what that costs.
+example : rejects a5honest "may not also carry VALUE components" = true := by native_decide
 
 
 /-! ## §B. The three candidate forms for a cursor's contract
@@ -198,7 +210,8 @@ def b1use : Decl :=
           match p { Pair(x, h) => { *x := Z; () } } } }
 
 -- The callee is accepted, and §A says that is no evidence.
-example : ok b1pin = true := by native_decide
+-- POST-CONTAINMENT: refused one step earlier, at the shape.
+example : rejects b1pin "may not also carry VALUE components" = true := by native_decide
 -- The CALLER is the refusal, and it is §D5's refusal arriving on the return side:
 -- `buildResult` readC's each leaf BEFORE substituting the components already
 -- built (Machine.lean:1038), and `Val` has no deref former for a `*x` to survive
@@ -488,7 +501,10 @@ example : rejects d1hatch "does not have its owed type" = true := by native_deci
 -- D2 — the frame-class ensures WORKS, end to end, with no back anywhere: the
 -- caller writes through both cursors and still proves its own length
 -- preservation, entirely from the callee's claim.
-example : ok d2nth2len [nthS, d2nth2len] = true := by native_decide
+-- POST-CONTAINMENT: the frame-class ensures is refused at the definition site
+-- too — see §G. The two assertions below still measure the CHANNEL, through a
+-- table entry, which is what they were for.
+example : rejects d2nth2len "may not also carry VALUE components" [nthS, d2nth2len] = true := by native_decide
 example : ok d2use [nthS, d2nth2len, d2use] = true := by native_decide
 -- D3 — and the caller's proof really IS the callee's claim: a callee claiming a
 -- SHIFTED length cannot discharge the honest goal. (The callee side of D2 is
@@ -653,6 +669,9 @@ example : ok f2cursor = true := by native_decide
 example : ok f2lie = true := by native_decide
 -- F2d — `fn closedBot2 () -> Bot`. The second break, closed.
 example : ok f2botCursor = true := by native_decide
+-- POST-CONTAINMENT: STILL ACCEPTED. `nth01B` returns `Σ (x : &mut Nat) → &mut
+-- Nat` — all borrows — so the mixed-return gate never sees it. The second break
+-- is untouched by the first fix, measured rather than predicted.
 example : ok f2bot [f2botCursor, f2bot] = true := by native_decide
 -- F2e — the control: not consumed into the result, and it IS checked.
 example : rejects f2ctl "does not have its owed type" = true := by native_decide
@@ -669,5 +688,39 @@ example : ok f1triv = true := by native_decide
 example : rejects f1refine "does not have its owed type" = true := by native_decide
 -- F1c — and the caller learns nothing from it either way.
 example : ok f1use [f1triv, f1use] = true := by native_decide
+
+/-! ## §G. Status against the containment (main eb510a0f)
+
+    The mixed-return-type containment landed while this probe was running, so
+    every section above was re-run against it. Four assertions flipped, one did
+    not, and the pattern is worth recording because it is the containment's exact
+    reach.
+
+    REFUSED NOW, as intended: `a1lie` (§A's witness), `b1pin` (§B1's pinning
+    form), and — the one worth flagging — `d2nth2len`, §D2's FRAME-CLASS ensures.
+
+    **The containment closes the frame class too.** §D2 was the one honest thing a
+    cursor could say: `len` never reads an element, so length preservation holds
+    under every filling of the suspension tree's holes, and §D2/§D3 checked it end
+    to end with a live lie twin. The containment is shape-based, so it refuses that
+    along with the value claims. `a5honest` is the same point in miniature — a TRUE
+    claim in that position is refused.
+
+    That is coherent with RETIRE and is not an argument against the containment:
+    §F1 shows the alternative home the containment names for a cursor's contract —
+    its issued borrows' owed types — can only hold payload INVARIANTS, so after
+    the containment a cursor says nothing at all. What is recorded here is that
+    this is a decision with a price, and §D2/§D3 are the measurement of the price
+    rather than an objection to paying it.
+
+    UNTOUCHED: §F2's second break (`f2bot`). `nth01B`'s return type is all borrows,
+    so the gate never sees it; the lie is in a parameter's owed type. Confirmed by
+    running it, not by reasoning about it.
+
+    STILL GREEN through table entries: `a3use`, `a4bot`, `b1use`, `d2use`, `d3`.
+    These pass an unchecked declaration to `checkFn` in its `table`, which is not
+    re-checked — the gate being at the definition site. In M26's let-chain, where a
+    callee is a binding checked in place, no such callee can exist, so these are
+    the pins for that reading rather than evidence of a residual hole. -/
 
 end Dllbc.Tests.S27BackProbe
