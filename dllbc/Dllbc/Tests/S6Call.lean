@@ -1,6 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.DeclMacro
+import Dllbc.Migrate
 
 /-!
 # §5.3 test suite — calls as wires
@@ -54,6 +55,14 @@ def zeroAll : Decl :=
       Cons(hd, tl) => { *hd := 0; zero_all(tl); () }
     } } }
 
+-- **STAYS ON THE DECLARATION PATH, and dies with it** (M27-γ). `zero_all` is the
+-- `[v]` payload-decrease shape — §7 cost 4's own example, a cursor with no
+-- decreasing argument but the payload — so `fnElab` declines it and there is no
+-- program form to convert this to. §12 decision 8 accepted that regression and
+-- blessed fuel-threading; the claim's carrier is `S26Fuel.zeroAllF`, asserted
+-- `bothWays` there and again in `S27Dispose` §B. This assertion is therefore a
+-- δ casualty rather than a coverage loss: it goes when `checkFn` does, and what
+-- it was checking is already checked on both paths elsewhere.
 example : checkFnOk zeroAll = true := by native_decide
 
 /-! ## Type-changing ↝, exercised at last -/
@@ -63,14 +72,14 @@ example : checkFnOk zeroAll = true := by native_decide
 def toNat : Decl :=
   decl{ fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () } }
 
-example : checkFnOk toNat = true := by native_decide
+example : Migrate.progOkOf toNat = true := by native_decide
 
 -- Caller side: borrow a `True`, call, read the owner back — it ends as a fresh
 -- σ : Nat. A strong update across a boundary, both sides.
 def toNatCaller : Decl :=
   decl{ fn caller () -> Nat { let x = True; let b = &mut x; to_nat(b); let y = x; y } }
 
-example : checkFnOk toNatCaller [toNat, toNatCaller] = true := by native_decide
+example : Migrate.progOkOf toNatCaller [toNat, toNatCaller] = true := by native_decide
 
 /-! ## Reborrow at a call site -/
 
@@ -79,27 +88,27 @@ example : checkFnOk toNatCaller [toNat, toNatCaller] = true := by native_decide
 def rbCaller : Decl :=
   decl{ fn caller () -> List Nat { let x = Cons(1, Nil); let b = &mut x; push(7, &mut *b); let y = x; y } }
 
-example : checkFnOk rbCaller [pushList, rbCaller] = true := by native_decide
+example : Migrate.progOkOf rbCaller [pushList, rbCaller] = true := by native_decide
 
 /-! ## Rejections -/
 
 -- Argument type mismatch: push a `True` where a `Nat` is owed.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn c () -> Unit { let x = Cons(1, Nil); let b = &mut x; push(True, b); () } })
   "parameter type" [pushList] = true := by native_decide
 
 -- A non-borrow where a borrow argument is expected.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn c () -> Unit { let x = Cons(1, Nil); push(7, x); () } })
   "expected a borrow argument" [pushList] = true := by native_decide
 
 -- Calling an unknown function.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn c () -> Unit { nope(); () } })
   "unknown function" [] = true := by native_decide
 
 -- Using the consumed borrow variable after the call (it is ⊥).
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn c () -> Unit { let x = Cons(1, Nil); let b = &mut x; push(7, b); let z = b; () } })
   "use-after-move" [pushList] = true := by native_decide
 

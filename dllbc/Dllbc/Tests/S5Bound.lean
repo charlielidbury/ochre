@@ -1,6 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.DeclMacro
+import Dllbc.Migrate
 
 /-!
 # §5 test suite — boundaries, and the two flagships
@@ -44,16 +45,16 @@ def pushList : Decl :=
     ()
   } }
 
-example : checkFnOk pushList = true := by native_decide
+example : Migrate.progOkOf pushList = true := by native_decide
 
 -- Take without refill: the borrow holds a hole (⊥) at return — a function
 -- cannot return one (§5.4).
-example : checkFnErr (decl{ fn push (e : Nat, v : &mut List Nat) -> Unit {
+example : Migrate.progRejectsOf (decl{ fn push (e : Nat, v : &mut List Nat) -> Unit {
     let tail = *v; () } })
   "take without refill" = true := by native_decide
 
 -- Pushing a `True` onto a `List Nat`: the rebuilt payload fails its owed type.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn push (e : Nat, v : &mut List Nat) -> Unit {
     let tail = *v; *v := Cons(True, tail); () } })
   "owed type" = true := by native_decide
@@ -69,14 +70,14 @@ def vecPush : Decl :=
     match v { Pair(l, xs) => { *xs := Pair(e, *xs); *l := S(*l); () } }
   } }
 
-example : checkFnOk vecPush = true := by native_decide
+example : Migrate.progOkOf vecPush = true := by native_decide
 
 -- THE MONEY TEST — forget `*l := S(*l)`: the length stays σₗ while the vector
 -- became one longer, so the second field is checked against the STUCK type
 -- `VecF Nat σₗ` and the concrete `Pair` cannot inhabit it. REJECTED. This is
 -- dependent correctness catching the forgotten length update — the ownership
 -- machinery makes the mutation safe, the dependent types make it correct.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
       match v { Pair(l, xs) => { *xs := Pair(e, *xs); () } } } })
   "owed type" = true := by native_decide
@@ -84,7 +85,7 @@ example : checkFnErr
 -- Both write orders check: under the Σ/VecF encoding the constructor takes no
 -- index argument, so — per §4.2's mechanization note — the order is NOT forced
 -- and both are honest (unlike the native `VCons` presentation).
-example : checkFnOk
+example : Migrate.progOkOf
   (decl{ fn push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
       match v { Pair(l, xs) => { *l := S(*l); *xs := Pair(e, *xs); () } } } }) = true := by
   native_decide
@@ -95,24 +96,24 @@ example : checkFnOk
 -- the scrutinee's type (§3.2's seam). The `Z`/`S` branches make the match
 -- exhaustive over Nat, so it is the σ-typing check (not exhaustiveness, §9)
 -- that catches the stray `Cons` branch.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn f (b : &mut Nat) -> Unit { match b { Z => (), S(m) => (), Cons(h, t) => () } } })
   "does not belong" = true := by native_decide
 
 -- Exhaustiveness (§9): a symbolic match must cover the scrutinee type's full
 -- constructor set. is_zero missing its `S` branch is rejected.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn is_zero (n : Nat) -> Bool { match n { Z => True } } })
   "non-exhaustive" = true := by native_decide
 
 -- A borrow-mode match on `&mut List Nat` missing its `Nil` branch is rejected.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn f (v : &mut List Nat) -> Unit { match v { Cons(hd, tl) => { *hd := 0; () } } } })
   "non-exhaustive" = true := by native_decide
 
 -- `is_zero (n : Nat) → Bool`: an owned symbolic argument, both branches audited
 -- against the return type.
-example : checkFnOk
+example : Migrate.progOkOf
   (decl{ fn is_zero (n : Nat) -> Bool { match n { Z => True, S(m) => False } } }) = true := by
   native_decide
 

@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.Macro
+import Dllbc.Migrate
 
 /-!
 # §6.1 test suite — entangled calls and loan groups
@@ -37,7 +38,7 @@ def choose : Decl :=
     telescope := [("c", boolT), ("x", .borrowT natT natT), ("y", .borrowT natT natT)],
     body := dllbcWith [c, x, y] { match c { True => x, False => y } } }
 
-example : checkFnOk choose = true := by native_decide
+example : Migrate.progOkOf choose = true := by native_decide
 
 -- The §6.1 trace verbatim. After `*r := 7`, demanding `a` (via `let z = a`)
 -- forces the cascade: End ℓᵣ first (its 7 surrendered and DISCARDED — the
@@ -75,7 +76,7 @@ def through : Decl :=
     telescope := [("b", .borrowT listNatT listNatT)],
     body := dllbcWith [b] { b } }
 
-example : checkFnOk through = true := by native_decide
+example : Migrate.progOkOf through = true := by native_decide
 
 def throughCaller : Decl :=
   { name := "caller", retType := .const "Unit", telescope := [],
@@ -95,7 +96,7 @@ example : expectFnEnv [through, throughCaller] throughCaller
 
 -- The group cannot end because an issued borrow cannot surrender: `*r` was
 -- taken, leaving its payload a hole (⊥), and then a captured owner is demanded.
-example : checkFnErr
+example : Migrate.progRejectsOf
   { name := "caller", retType := .const "Unit", telescope := [],
     body := dllbcWith [] {
       let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
@@ -107,7 +108,7 @@ example : checkFnErr
 
 -- A borrow-returning body whose returned payload fails its owed type:
 -- `bad (b : &mut Nat) → &mut Bool = b` returns a Nat borrow as a Bool borrow.
-example : checkFnErr
+example : Migrate.progRejectsOf
   { name := "bad", retType := .borrowT boolT boolT,
     telescope := [("b", .borrowT natT natT)],
     body := dllbcWith [b] { b } }

@@ -3,6 +3,7 @@ import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
+import Dllbc.Migrate
 
 /-!
 # §16 test suite — the count-preservation proof stack (and, later, swapS)
@@ -98,7 +99,7 @@ def swapS01 : Decl :=
     }
   } }
 
-example : checkFnOk swapS01 = true := by native_decide
+example : Migrate.progOkOf swapS01 = true := by native_decide
 
 -- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
 -- l + the carried proof `pf : Id (len l) (len [1,2,3])`. The evidence survives the
@@ -114,7 +115,7 @@ def swapCaller : Decl :=
     }
   } }
 
-example : checkFnOk swapCaller ([swapS01, swapCaller]) = true := by native_decide
+example : Migrate.progOkOf swapCaller ([swapS01, swapCaller]) = true := by native_decide
 -- The proof survives to the final env (pf ↦ a σ : Id (len l) (len [1,2,3])).
 example : (match runFn [swapS01, swapCaller] swapCaller with
   | [.ok env] => (env.lookup "pf").isSome

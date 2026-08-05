@@ -2,6 +2,7 @@ import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.StdLemmas
+import Dllbc.Migrate
 
 /-!
 # §15 test suite — the pure surface authoring layer, and `le_trans`
@@ -61,7 +62,7 @@ def useTrans : Decl :=
     telescope := [("a", natT), ("b", natT), ("c", natT),
                   ("p", leT (.var av) (.var bv)), ("q", leT (.var bv) (.var cv))],
     body := useTransBody }
-example : checkFnOk useTrans = true := by native_decide
+example : Migrate.progOkOf useTrans = true := by native_decide
 
 /-! ## Negative tests -/
 
@@ -79,7 +80,7 @@ def badReflClosed : Term := pure{
 def badRefl : Decl :=
   { name := "badRefl", retType := Std.LeT (.var ⟨0, "n"⟩) (.var ⟨0, "n"⟩),
     telescope := [("n", natT)], body := (.app badReflClosed (.var ⟨0, "n"⟩)) }
-example : checkFnErr badRefl "does not have return type" = true := by native_decide
+example : Migrate.progRejectsOf badRefl "does not have return type" = true := by native_decide
 
 -- Unresolved name: `pure{ Le nope nope }` where `nope` is unbound is a Lean
 -- elaboration error at macro time (the resolve-or-error discipline), not a

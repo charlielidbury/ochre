@@ -1,6 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.DeclMacro
+import Dllbc.Migrate
 
 /-!
 # §10 test suite — the fording kit: `Id`, `J`, `K`, and the minimal indexed match
@@ -87,7 +88,7 @@ example : (Val.nfV 1000 (jV natV sZ (.lam natV (.lam natV natV)) (vnat 42) sZ (.
 def learn : Decl :=
   decl{ fn learn (n : Nat, p : Id Nat n 2) -> Nat { match p { Refl => n } } }
 
-example : checkFnOk learn = true := by native_decide
+example : Migrate.progOkOf learn = true := by native_decide
 
 -- The refinement is OBSERVABLE in the final Ω: after the match, `let m = n`
 -- copies the *refined* value, so `m ↦ 2` (not a symbolic `n`). Had refinement
@@ -106,7 +107,7 @@ def learnBorrow : Decl :=
   decl{ fn learnBorrow (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
     match pb { Refl => { let m = n; () } } } }
 
-example : checkFnOk learnBorrow = true := by native_decide
+example : Migrate.progOkOf learnBorrow = true := by native_decide
 example : expectFnEnv [learnBorrow] learnBorrow
   [("n", vnat 2), ("pb", .borrowM 0 refl), ("m", vnat 2)] = true := by native_decide
 
@@ -116,30 +117,30 @@ example : expectFnEnv [learnBorrow] learnBorrow
 def rigidStuck : Decl :=
   decl{ fn rigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } } }
 
-example : checkFnErr rigidStuck "rigid" = true := by native_decide
-example : checkFnErr rigidStuck "j/k" = true := by native_decide
+example : Migrate.progRejectsOf rigidStuck "rigid" = true := by native_decide
+example : Migrate.progRejectsOf rigidStuck "j/k" = true := by native_decide
 
 -- Occurs check: `p : Id Nat n (S n)`. Refining `n := S n` would be cyclic —
 -- rejected before it can loop.
 def occursFn : Decl :=
   decl{ fn occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } } }
 
-example : checkFnErr occursFn "occurs check" = true := by native_decide
+example : Migrate.progRejectsOf occursFn "occurs check" = true := by native_decide
 
 /-! ## Exhaustiveness and scope (Id's constructor set is `{Refl}`) -/
 
 -- An empty match on `p : Id Nat n 2` is non-exhaustive: `Refl` is uncovered.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { } } }) "non-exhaustive" = true := by native_decide
 
 -- A stray non-`Refl` constructor is likewise not enough to be exhaustive.
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } } }) "non-exhaustive" = true := by native_decide
 
 -- Scope guard: `Id` over a *borrow* type is rejected — reflecting the borrow-type
 -- index throws (borrow types live only at telescope positions), no special
 -- machinery needed. (Id over ordinary indexed types is unrestricted.)
-example : checkFnErr
+example : Migrate.progRejectsOf
   (decl{ fn f (q : Id (&mut Nat) 0 0) -> Unit { () } }) "borrow type" = true := by native_decide
 
 /-! ## The fording library — no confusion, injectivity, K, all as checked terms

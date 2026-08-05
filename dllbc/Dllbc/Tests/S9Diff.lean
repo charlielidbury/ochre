@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.Macro
+import Dllbc.Migrate
 
 /-!
 # Differential v2 — whole-program simulation (§9)
@@ -245,7 +246,7 @@ def callers : List Term :=
     chooseCaller,
     pushCaller ]
 
-def accepted : List Term := callers.filter (fun b => checkFnOk (callerDecl b) pool)
+def accepted : List Term := callers.filter (fun b => Migrate.progOkOf (callerDecl b) pool)
 
 -- Every accepted caller's concrete run is a σ-instance of an accepted symbolic
 -- path — the whole-program simulation theorem, over the caller set.

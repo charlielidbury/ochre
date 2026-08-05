@@ -2,6 +2,7 @@ import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.DeclMacro
+import Dllbc.Migrate
 
 /-!
 # §12 test suite — dependent call-site instantiation
@@ -37,20 +38,20 @@ namespace Dllbc.Tests.S12Inst
 -- `le_refl n` (pure lift, §11); the audit checks it against the pinned `Le n n`.
 def useRefl : Decl :=
   decl{ fn use_refl (n : Nat) -> Le n n { le_reflT n } }
-example : checkFnOk useRefl = true := by native_decide
+example : Migrate.progOkOf useRefl = true := by native_decide
 
 -- A caller returning `Le 5 5` via `use_refl(5)`: the callee's `Le n n` is
 -- instantiated at `n := 5`, so the fresh existential is typed `Le 5 5`.
 def callerRet : Decl :=
   decl{ fn callerRet () -> Le 5 5 { use_refl(5) } }
-example : checkFnOk callerRet ([useRefl, callerRet]) = true := by native_decide
+example : Migrate.progOkOf callerRet ([useRefl, callerRet]) = true := by native_decide
 
 -- Symbolic actual: `f (n : Nat) → Le n n = use_refl(n)`. Instantiation substitutes
 -- the caller's σ symbolically (`Le σ σ`); the pinned return type is `Le σ σ`, and
 -- the returned existential is accepted at it.
 def symCall : Decl :=
   decl{ fn symCall (n : Nat) -> Le n n { use_refl(n) } }
-example : checkFnOk symCall ([useRefl, symCall]) = true := by native_decide
+example : Migrate.progOkOf symCall ([useRefl, symCall]) = true := by native_decide
 
 /-! ## A dependent second parameter (the M6 misresolution case, now correct) -/
 
@@ -62,13 +63,13 @@ def needs : Decl :=
 -- `needs(1, ())`: `Le 1 2` whnf's to ⊤, which `()` inhabits — accepted.
 def callNeeds1 : Decl :=
   decl{ fn callNeeds1 () -> Unit { needs(1, ()) } }
-example : checkFnOk callNeeds1 ([needs, callNeeds1]) = true := by native_decide
+example : Migrate.progOkOf callNeeds1 ([needs, callNeeds1]) = true := by native_decide
 
 -- `needs(3, ())`: instantiation gives `Le 3 2` = ⊥, which `()` cannot inhabit —
 -- REJECTED. Without instantiation the parameter type would never resolve to ⊥.
 def callNeeds3 : Decl :=
   decl{ fn callNeeds3 () -> Unit { needs(3, ()) } }
-example : checkFnErr callNeeds3 "does not have its parameter type" ([needs, callNeeds3]) = true := by
+example : Migrate.progRejectsOf callNeeds3 "does not have its parameter type" ([needs, callNeeds3]) = true := by
   native_decide
 
 /-! ## A borrow-snapshot dependency (`*b`-in-types, exercised at a CALL) -/
@@ -88,7 +89,7 @@ def observeGood : Decl :=
     let y = x;
     ()
   } }
-example : checkFnOk observeGood ([observe, observeGood]) = true := by native_decide
+example : Migrate.progOkOf observeGood ([observe, observeGood]) = true := by native_decide
 
 -- Passing a borrow of `[2,1]`: `Sorted [2,1]` contains ⊥ at the first bound, so
 -- the same proof fails — REJECTED. The dependent parameter caught the unsortedness.
@@ -100,7 +101,7 @@ def observeBad : Decl :=
     let y = x;
     ()
   } }
-example : checkFnErr observeBad "does not have its parameter type" ([observe, observeBad]) = true := by
+example : Migrate.progRejectsOf observeBad "does not have its parameter type" ([observe, observeBad]) = true := by
   native_decide
 
 /-! ## The σ-refinement interaction -/
@@ -115,7 +116,7 @@ def needsLe22 : Decl :=
 def refineTest : Decl :=
   decl{ fn refineTest (n : Nat, pf : Id Nat n 2) -> Unit {
     let r = use_refl(n); match pf { Refl => needsLe22(r) } } }
-example : checkFnOk refineTest ([useRefl, needsLe22, refineTest]) = true := by native_decide
+example : Migrate.progOkOf refineTest ([useRefl, needsLe22, refineTest]) = true := by native_decide
 
 /-! ## `if`-sugar over the Bool match (dream-program gap 5) -/
 
@@ -123,7 +124,7 @@ example : checkFnOk refineTest ([useRefl, needsLe22, refineTest]) = true := by n
 -- and a `match` on it; a symbolic `Bool` splits into two audited paths.
 def classify : Decl :=
   decl{ fn classify (b : Bool) -> Nat { if b { 1 } else { 0 } } }
-example : checkFnOk classify = true := by native_decide
+example : Migrate.progOkOf classify = true := by native_decide
 
 /-! ## §12.7 The dream program, re-annotated
 

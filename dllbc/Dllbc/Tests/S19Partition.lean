@@ -6,6 +6,7 @@ import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
 import Dllbc.Tests.S17Spec
+import Dllbc.Migrate
 
 /-!
 # §19 test suite — partition (model + imperative), built on the M18 stack
@@ -76,7 +77,7 @@ def certSwapCount : Decl :=
           cert } }
 
 def openerTable : List Decl := [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCount]
-example : checkFnOk certSwapCount openerTable = true := by native_decide
+example : Migrate.progOkOf certSwapCount openerTable = true := by native_decide
 
 -- Negative control: claim the count GREW by one across the swap. The certificate
 -- proves equality, so the value-returning audit rejects the lying return type —
@@ -85,7 +86,7 @@ def certSwapCountLie : Decl :=
   decl{ fn certSwapCountLie (s : List Nat, m : Nat, i : Nat, j : Nat,
         pij : Le (S i) j, p2 : Le (S j) (len s)) -> Id Nat (count m (swapL i j s)) (S (count m s))
         = %certSwapCount.body }
-example : checkFnErr certSwapCountLie "does not have return type" [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCountLie] = true := by native_decide
+example : Migrate.progRejectsOf certSwapCountLie "does not have return type" [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCountLie] = true := by native_decide
 
 /-! ## M20-2 (conformance, base case) — the pivot placement, checked against its spec
 
@@ -112,7 +113,7 @@ def pivotPlace : Decl :=
             S(i2) => { swapS(v, Z, S(i2), (), pib); () }
         } } }
 def confTable : List Decl := [nthS, nth2S, swapSN, pivotPlace]
-example : checkFnOk pivotPlace confTable = true := by native_decide
+example : Migrate.progOkOf pivotPlace confTable = true := by native_decide
 
 /-! ## M20-2 (bound derivation) — the base swap's `p2` derived from the length eqn
 
@@ -142,7 +143,7 @@ def pivotPlaceH : Decl :=
               ()
             }
         } } }
-example : checkFnOk pivotPlaceH confTable = true := by native_decide
+example : Migrate.progOkOf pivotPlaceH confTable = true := by native_decide
 
 /-! ## M20-2 (the recursive partScan) — partition's scan loop, checked against partScanL
 
@@ -247,7 +248,7 @@ def stuckProbe : Decl :=
         (boolRec (λ (b : Bool). Nat) (add Z (S Z)) (add Z Z) (leb n (S (S Z))))
         { let c = leb n (S (S Z));
           match c { True => Refl, False => Refl } } }
-example : checkFnOk stuckProbe = true := by native_decide
+example : Migrate.progOkOf stuckProbe = true := by native_decide
 
 -- Not vacuous (a): the True side does NOT converge (`S Z` vs `S (S Z)`). The
 -- generalized σb refines to True in that path and the `boolRec` reduces to two
@@ -256,14 +257,14 @@ example : checkFnOk stuckProbe = true := by native_decide
 def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
 def stuckProbeLie : Decl := { stuckProbe with name := "stuckProbeLie", retType := stuckProbeLieRet }
-example : checkFnErr stuckProbeLie "does not have return type" = true := by native_decide
+example : Migrate.progRejectsOf stuckProbeLie "does not have return type" = true := by native_decide
 
 -- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
 -- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
 -- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
 def stuckProbeNonExh : Decl := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
-example : checkFnErr stuckProbeNonExh "non-exhaustive" = true := by native_decide
+example : Migrate.progRejectsOf stuckProbeNonExh "non-exhaustive" = true := by native_decide
 
 /-! ## M19-C (model) — `partitionL` computes the Lomuto partition
 
@@ -399,10 +400,10 @@ example : runPart [2,2,1,3,2] 5 = true := by native_decide      -- duplicates ar
 
     The load-bearing conformance validator (the callee convert-check reaches the
     back only where it's authored as the tree; the swapS leaf's reformulated back
-    is the differential's job). We run the SAME partScan Decl that checkFnOk
+    is the differential's job). We run the SAME partScan Decl that Migrate.progOkOf
     accepts — bounds, hlen proofs and all — in EXECUTING mode on concrete lists,
     and confirm its recovered list equals `partScanL pivot k 0 0 l`. So the body's
-    actual effect matches the declared back on every input class: since checkFnOk
+    actual effect matches the declared back on every input class: since Migrate.progOkOf
     accepts `back = partScanL`, executing = partScanL = the recovered value. -/
 
 -- SUBJECT: the executing-mode differential harness (raw Term caller + raw expected-value
@@ -521,7 +522,7 @@ def exitReject : Decl :=
   decl{ fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
         -> Id (List Nat) (*v) (old *v)
         { swapS(&mut *v, i, j, pij, p2); Refl } }
-example : checkFnErr exitReject "does not have return type" [nthS, nth2S, swapSN, exitReject] = true := by native_decide
+example : Migrate.progRejectsOf exitReject "does not have return type" [nthS, nth2S, swapSN, exitReject] = true := by native_decide
 
 -- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = swapL i j (old *v),
 -- so `len *v = len (old *v)` is exactly len_swapL at the entry snapshot — cited
@@ -532,7 +533,7 @@ def twoRec : Decl :=
             Z => (),
             S(f2) => { twoRec(&mut *v, f2); twoRec(&mut *v, f2); () }
         } } }
-example : checkFnOk twoRec [twoRec] = true := by native_decide
+example : Migrate.progOkOf twoRec [twoRec] = true := by native_decide
 
 /-! ## M22-b — swapSE: count-preservation as a PROVEN postcondition (direct proving)
 

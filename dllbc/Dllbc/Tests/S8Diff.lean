@@ -1,6 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.DeclMacro
+import Dllbc.Migrate
 
 /-!
 # Differential suite — the simulation theorem in testable form (§8)
@@ -134,7 +135,7 @@ def diffCheck (decl : Decl) (concreteArgs : List Val) : Bool :=
     Every body the checker ACCEPTS runs to completion and audits on every
     concrete instantiation. -/
 
-def vAccepted : List Term := vBodies.filter (fun b => checkFnOk (vDecl b))
+def vAccepted : List Term := vBodies.filter (fun b => Migrate.progOkOf (vDecl b))
 
 def vDiffOk : Bool := vAccepted.all (fun b => vPool.all (fun cv => diffCheck (vDecl b) [cv]))
 
@@ -151,7 +152,7 @@ def vNonExhaustive : List Term :=
   (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
   ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Nil" [] b])                       -- missing Cons
 
-def vAllRejected : Bool := vNonExhaustive.all (fun b => !checkFnOk (vDecl b))
+def vAllRejected : Bool := vNonExhaustive.all (fun b => !Migrate.progOkOf (vDecl b))
 
 example : vAllRejected = true := by native_decide
 
@@ -174,7 +175,7 @@ def nDecl (body : Term) : Decl :=
   decl{ fn f (n : Nat) -> Nat = %body }
 def nPool : List Val := [ nat 0, nat 1, nat 2 ]
 
-def nAccepted : List Term := nBodies.filter (fun b => checkFnOk (nDecl b))
+def nAccepted : List Term := nBodies.filter (fun b => Migrate.progOkOf (nDecl b))
 def nDiffOk : Bool := nAccepted.all (fun b => nPool.all (fun cv => diffCheck (nDecl b) [cv]))
 
 example : nDiffOk = true := by native_decide
@@ -200,7 +201,7 @@ def bcPool : List (List Val) :=
   [ [nat 0, .ctor "True" []], [nat 0, .ctor "False" []],
     [nat 1, .ctor "True" []], [nat 1, .ctor "False" []] ]
 
-def bcAccepted : List Term := bcBodies.filter (fun b => checkFnOk (bcDecl b))
+def bcAccepted : List Term := bcBodies.filter (fun b => Migrate.progOkOf (bcDecl b))
 def bcDiffOk : Bool := bcAccepted.all (fun b => bcPool.all (fun cv => diffCheck (bcDecl b) cv))
 
 example : bcDiffOk = true := by native_decide

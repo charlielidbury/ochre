@@ -2,6 +2,7 @@ import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
+import Dllbc.Migrate
 
 /-!
 # §18 test suite — the rewriting layer
@@ -300,7 +301,7 @@ def certConsHit : Decl :=
       ("hq", .idT (.const "Bool") (eqbA (V 1 "m") (V 2 "a")) (.ctorApp "True" []))],
     body := .assign (.deref (V 0 "v")) (.ctorApp "Nil" [])
       (.app (.app (.app (.app StdLemmas.count_cons_hit (V 1 "m")) (V 2 "a")) (V 3 "l")) (V 4 "hq")) }
-example : checkFnOk certConsHit = true := by native_decide
+example : Migrate.progOkOf certConsHit = true := by native_decide
 
 -- Negative control: the same body, but the return type claims `S (S (count m l))`
 -- — a count the rewrite-by-Id proof does NOT prove. The value-returning audit runs
@@ -311,6 +312,6 @@ def certConsHitLieRet : Term := .idT (.const "Nat")
   (.app (.app Std.countFnT (V 1 "m")) (.ctorApp "Cons" [V 2 "a", V 3 "l"]))
   (.ctorApp "S" [.ctorApp "S" [.app (.app Std.countFnT (V 1 "m")) (V 3 "l")]])
 def certConsHitLie : Decl := { certConsHit with name := "certConsHitLie", retType := certConsHitLieRet }
-example : checkFnErr certConsHitLie "does not have return type" = true := by native_decide
+example : Migrate.progRejectsOf certConsHitLie "does not have return type" = true := by native_decide
 
 end Dllbc.Tests.S18Rewrite

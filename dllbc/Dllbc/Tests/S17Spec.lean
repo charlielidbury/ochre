@@ -4,6 +4,7 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
+import Dllbc.Migrate
 
 /-!
 # §17 test suite — the cursor family, after the backward specs retired
@@ -53,7 +54,7 @@ namespace Dllbc.Tests.S17Spec
 def throughOk : Decl :=
   decl{ fn through (b : &mut List Nat) -> &mut List Nat
         { b } }
-example : checkFnOk throughOk = true := by native_decide
+example : Migrate.progOkOf throughOk = true := by native_decide
 
 -- The caller writes through the returned borrow and then demands the owner. With
 -- the backward spec this recovered the WRITTEN value (`y = Cons(9, Nil)`); without
@@ -143,9 +144,9 @@ def swapSN : Decl :=
             *ej := t;
             () } } } }
 
-example : checkFnOk nthS = true := by native_decide
-example : checkFnOk nth2S ([nthS, nth2S]) = true := by native_decide
-example : checkFnOk swapSN ([nthS, nth2S, swapSN]) = true := by native_decide
+example : Migrate.progOkOf nthS = true := by native_decide
+example : Migrate.progOkOf nth2S ([nthS, nth2S]) = true := by native_decide
+example : Migrate.progOkOf swapSN ([nthS, nth2S, swapSN]) = true := by native_decide
 
 -- The caller's CHECKING-mode view is now opaque — `swapS` promises only `Unit`,
 -- so `y` is a fresh existential. This is the deletion's whole visible cost, and

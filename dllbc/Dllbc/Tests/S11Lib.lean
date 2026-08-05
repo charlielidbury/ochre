@@ -1,6 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.Macro
 import Dllbc.Std
+import Dllbc.Migrate
 
 /-!
 # §11 test suite — the pure lift, `listRec`, and the quicksort pure library
@@ -55,7 +56,7 @@ def natNoConfT (nE pE : Term) : Term := jT natT tZ nncMotiveT (.ctorApp "unit" [
 def retRefl : Decl :=
   { name := "retRefl", retType := .idT natT (.var ⟨0, "a"⟩) (.var ⟨0, "a"⟩),
     telescope := [("a", natT)], body := .ctorApp "Refl" [] }
-example : checkFnOk retRefl = true := by native_decide
+example : Migrate.progOkOf retRefl = true := by native_decide
 
 -- SUBJECT (raw proof Decls): Storing a proof — a J-application (which ⇝-reduces to
 -- `Refl`) is ⇒-lifted into a `Pair`'s dependent second field, audited against `Id Nat a a`.
@@ -65,7 +66,7 @@ def sigDiag : Term := .sigmaT natT (.idT natT (.pvar 0) (.pvar 0))     -- Σ(x:N
 def storeProof : Decl :=
   { name := "storeProof", retType := sigDiag, telescope := [("a", natT)],
     body := .ctorApp "Pair" [.var ⟨0, "a"⟩, jReflProof (.var ⟨0, "a"⟩)] }
-example : checkFnOk storeProof = true := by native_decide
+example : Migrate.progOkOf storeProof = true := by native_decide
 
 -- The M10 conflict discharge, now as a dead branch in a checked fn (the shape
 -- the fording spec originally wanted). The `False` arm holds `p : Id Nat Z (S n)`,
@@ -75,7 +76,7 @@ def discharge : Decl :=
     telescope := [("n", natT), ("p", .idT natT tZ (tS (.var ⟨0, "n"⟩))), ("b", .const "Bool")],
     body := .matchE ⟨2, "b"⟩ none [ .mk "True" [] tZ,
               .mk "False" [] (botElimT natT (natNoConfT (.var ⟨0, "n"⟩) (.var ⟨1, "p"⟩))) ] }
-example : checkFnOk discharge = true := by native_decide
+example : Migrate.progOkOf discharge = true := by native_decide
 
 /-! ## §11.2 The library computes (`listRec`/`natRec`/`boolRec` ι-rules) -/
 
