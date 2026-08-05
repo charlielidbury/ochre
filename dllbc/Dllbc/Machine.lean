@@ -2880,7 +2880,17 @@ def globalKind (st : St) : Val → Bool
       (match st.sctx.lookup σ with
        | some τ => (match Val.whnfV 100 τ with | .pi _ _ => true | _ => false)
        | none => false)
-  | _ => false
+  -- A RECURSOR SPINE is a function too, and this case is the executing machine's
+  -- half of the same binding: sealing `natRec P z s` mints a σ when checking (so
+  -- the `.sym` case above admits it) but EVALUATES to the spine itself when
+  -- running, since execution is always transparent (§5). The two machines see the
+  -- same `let` as two different values, and both are the program's callee. Found
+  -- by running the flagship, not by reading the rule — the checking side had been
+  -- green for an hour.
+  | v =>
+    match Val.collectSpine v with
+    | (.const c, _) => (recLayout c).isSome
+    | _ => false
 
 /-- Resolve a function body's free variables against the enclosing scope, and
     return the bindings — the globals it is entitled to name. Rejects a free

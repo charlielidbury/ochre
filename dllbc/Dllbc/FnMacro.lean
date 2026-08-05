@@ -306,4 +306,78 @@ def fnElab (d : Decl) : Except String Term := do
         (.lamR (pred :: ih :: restIds) sBody))
       piT)
 
+/-! ## §8: assembling a program from declarations
+
+    A `Decl` becomes a `let` (§8: "every piece of structure a declaration form
+    ever carried already lives on the binding"), and the only thing that changes
+    inside the bodies is how a callee is named: `f(…)` was a TABLE lookup and is
+    now a variable — the same rewrite the surface has done since M26-A, applied to
+    terms that were elaborated before their callees had ids.
+
+    Like `fnElab`, this is not in the TCB: the kernel re-derives everything at the
+    seal, and a bug here yields a program that fails to check or checks as a
+    different program. That is what licenses the migration tests to be
+    COMPARISONS — does the assembled program accept what the declared cohort
+    accepted, and refuse what it refused — rather than proofs. -/
+
+/-- Retarget table calls to the bindings that now hold those functions. A name
+    with no binding is left as a `.call`, so a half-migrated program still
+    reaches the J1 table for whatever has not moved yet. -/
+partial def retarget (binds : List (String × Var)) : Term → Term
+  | .call f args =>
+    let args' := args.map (retarget binds)
+    match binds.lookup f with
+    | some v => .callV v args'
+    | none => .call f args'
+  | .callV x args => .callV x (args.map (retarget binds))
+  | .ctorApp n args => .ctorApp n (args.map (retarget binds))
+  | .letIn x rhs rest => .letIn x (retarget binds rhs) (retarget binds rest)
+  | .assign p e rest => .assign (retarget binds p) (retarget binds e) (retarget binds rest)
+  | .seq a b => .seq (retarget binds a) (retarget binds b)
+  | .borrow t => .borrow (retarget binds t)
+  | .deref t => .deref (retarget binds t)
+  | .matchE s eqn brs =>
+    .matchE s eqn (brs.map (fun b => Branch.mk b.ctor b.binders (retarget binds b.body)))
+  | .lamR xs body => .lamR xs (retarget binds body)
+  | .seal t u => .seal (retarget binds t) (retarget binds u)
+  | .app a b => .app (retarget binds a) (retarget binds b)
+  | .idT a b c => .idT (retarget binds a) (retarget binds b) (retarget binds c)
+  | .pi a b => .pi (retarget binds a) (retarget binds b)
+  | .lam a b => .lam (retarget binds a) (retarget binds b)
+  | .sigmaT a b => .sigmaT (retarget binds a) (retarget binds b)
+  | .index t i ev => .index (retarget binds t) (retarget binds i) (ev.map (retarget binds))
+  | .range t lo cnt rest ev eq =>
+    .range (retarget binds t) (retarget binds lo) (cnt.map (retarget binds))
+      (rest.map (retarget binds)) (ev.map (retarget binds)) (eq.map (retarget binds))
+  | t => t
+
+/-- The program-level binding ids. Chosen above every id a body mints (the
+    elaborated terms are checked against this below) and below the executing
+    machine's frame base, so a global is neither shadowed by a local nor mistaken
+    for a frame slot. `progWith [..] { … }` binds the same ids, which is how a
+    hand-written tail agrees with an assembled prefix. -/
+def progBase : Nat := 900
+
+/-- **A program from a cohort of declarations** (§8), in dependency order: each
+    becomes a sealed `let`, each body's calls are retargeted to the bindings above
+    it, and `tail` runs in the accumulated scope. No table, no forward reference —
+    a callee not yet bound stays a `.call` and is reported by the kernel as the
+    unknown function it is. -/
+def progOf (ds : List Decl) (tail : Term) : Except String Term := do
+  let binds : List (String × Var) :=
+    ds.enum.map (fun p => (p.2.name, ⟨progBase + p.1, p.2.name⟩))
+  let rec go (i : Nat) : List Decl → Except String Term
+    | [] => .ok tail
+    | d :: rest => do
+      let t ← fnElab d
+      if maxVarId t ≥ progBase then
+        .error s!"prog: '{d.name}' elaborates to a term using variable id {maxVarId t}, at or above the program-binding base {progBase} — a global would collide with one of its own locals."
+      -- Only the bindings STRICTLY ABOVE this one are in scope for it — a binding
+      -- is not in scope in its own right-hand side — which is what makes both a
+      -- forward reference and a residual self-call show up as the unknown
+      -- function they are, rather than as a dangling variable.
+      let above := binds.take i
+      pure (.letIn ⟨progBase + i, d.name⟩ (retarget above t) (← go (i + 1) rest))
+  go 0 ds
+
 end Dllbc.FnMacro

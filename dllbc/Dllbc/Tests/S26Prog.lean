@@ -7,6 +7,8 @@ import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.FnMacro
 import Dllbc.Tests.S9Diff
+import Dllbc.Tests.S23Direct
+import Dllbc.Tests.S26Fn
 
 /-!
 # §26 (M26-E) — programs are terms
@@ -41,7 +43,7 @@ run is exactly what the polarity doctrine forbids.
 -/
 
 open Dllbc
-open Dllbc.StdLemmas (le_trans le_refl)
+open Dllbc.StdLemmas (le_trans le_refl id_congr append len Le)
 
 namespace Dllbc.Tests.S26Prog
 
@@ -330,5 +332,166 @@ example : (rawEnvs push).any (fun r => match r with
 example : (programEnvs push).any (fun r => match r with
     | .ok env => (env.lookup "l").any (fun v => match v with | .sym _ => true | _ => false)
     | .error _ => false) = true := by native_decide
+
+/-! ## §F. The flagship, as one program term
+
+    M23's in-place quicksort — `Sorted` and the permutation count equation over the
+    exit snapshot, no declared `back` anywhere in the call tree — assembled as
+    THREE SEALED LETS and a tail, checked against no table and run to a sorted
+    list. This is what §8 is for, and it is the whole milestone's acceptance test:
+    every mechanism M26 built has to hold at once, on a program nobody wrote for
+    the occasion.
+
+    **The cohort had to be finished first.** M26-D fuel-threaded `partition`
+    (decision 8's interim, since payload decrease has no recursor form) and
+    retargeted quicksort's one call site. `append_back` is the third `[v]`
+    function and needed the same treatment — the macro refuses it for the same
+    reason — so it is done here, and the caller side with it. -/
+
+-- `append_back`, fuel-threaded. The bound needs no lemma, for the third time:
+-- `Hf : Le (len (Cons *hd *tl)) (S f2)` IS `Le (len *tl) f2` definitionally, so it
+-- passes down unchanged. `Hf` is CAPITAL — it is handed to the recursive call and
+-- a lowercase one would have moved it (R16). Checked declared AND elaborated on
+-- its first run; the cost really is a parameter and a dead branch.
+def appendBackF : Decl :=
+  decl{ fn append_backF [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (len *v) fuel)
+        -> Id (List Nat) (*v) (append (old *v) w)
+        { match v {
+            Nil => { *v := w; Refl },
+            Cons(hd, tl) => match fuel {
+              Z => botElim Unit Hf,
+              S(f2) => {
+                let y = append (*tl) w;
+                let h = append_backF(f2, &mut *tl, w, Hf);
+                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+              }
+            }
+        } } }
+example : checkFnOk appendBackF = true := by native_decide
+
+/-- ### F1. The caller side, and the fuel that was not there
+
+    `partitionF`'s caller could hand over a bound it already held. `append_backF`'s
+    cannot: quicksort calls it AFTER sorting both halves, and a sort returns a
+    count equation, not a length bound — `hl1`/`hl2` are about the pre-sort lists
+    and every σ they mention has been re-minted by then. Deriving a length bound
+    from the count equation needs a count-to-length lemma the corpus does not have.
+
+    What works instead is the fuel that is exactly enough: `len *v` itself, with
+    `le_refl` as its bound. That needs the length STAGED in a `let` first — the
+    borrow is taken between, and a comptime argument mentioning `*v` would
+    demand-collapse the loan it was just lent — so the rewrite inserts one line and
+    changes one, which is what the sixth staging filing looks like from inside. -/
+def lvVar : Var := ⟨200, "lv"⟩
+
+/-- Retarget quicksort's two callees onto their fuel-threaded forms. Programmatic
+    rather than a copied body, so the flagship stays ONE definition in the corpus
+    and this is legible as a diff against it (M26-D's precedent, extended by the
+    `append_back` case). The function's NAME is untouched, so its self-calls still
+    name it — which is what lets the same rewrite migrate its lie twins. -/
+partial def toP (f2 : Var) : Term → Term
+  | .letIn x (.call "append_back" [b, w]) rest =>
+    let place := match b with | .borrow p => p | t => t
+    .letIn lvVar (.app len place)
+      (.letIn x (.call "append_backF" [.var lvVar, b, toP f2 w, .app le_refl (.var lvVar)])
+        (toP f2 rest))
+  | .call f as =>
+    let as' := as.map (toP f2)
+    if f == "partition" then .call "partitionF" (.var f2 :: as' ++ [.var ⟨2, "hfuel"⟩])
+    else .call f as'
+  | .letIn x r b => .letIn x (toP f2 r) (toP f2 b)
+  | .assign a b c => .assign (toP f2 a) (toP f2 b) (toP f2 c)
+  | .seq a b => .seq (toP f2 a) (toP f2 b)
+  | .ctorApp n as => .ctorApp n (as.map (toP f2))
+  | .callV x as => .callV x (as.map (toP f2))
+  | .borrow t => .borrow (toP f2 t)
+  | .deref t => .deref (toP f2 t)
+  | .matchE sc e bs => .matchE sc e (bs.map (fun b => Branch.mk b.ctor b.binders (toP f2 b.body)))
+  | t => t
+
+/-- Migrate a quicksort-shaped declaration onto the fuel-threaded cohort. -/
+def migrate (d : Decl) : Decl :=
+  { d with body := toP ((FnMacro.succBinder ⟨0, "fuel"⟩ d.body).getD ⟨0, "fuel"⟩) d.body }
+
+def quicksortP : Decl := migrate Tests.S23Direct.quicksort
+
+-- The migrated cohort as DECLARATIONS first, so the program below is compared
+-- against something already known to check (J1: both worlds alive).
+example : checkFnOk quicksortP [Tests.S26Fn.partitionF, appendBackF, quicksortP]
+  = true := by native_decide
+-- The rewrite really did change both call sites.
+example : ((calleeNames quicksortP.body).contains "partitionF"
+        && (calleeNames quicksortP.body).contains "append_backF"
+        && !((calleeNames quicksortP.body).contains "partition")
+        && !((calleeNames quicksortP.body).contains "append_back")) = true := by native_decide
+
+/-! ### F2. …and as ONE PROGRAM TERM
+
+    `FnMacro.progOf` assembles the cohort: each `Decl` becomes a sealed `let`
+    (§8 — "declarations are `let`s"), each body's table calls become `.callV` on
+    the binding above it, and the tail runs in the accumulated scope. Like
+    `fnElab` it is outside the kernel's import graph, so what follows is the
+    kernel re-deriving the whole thing from the term. -/
+
+def flagshipOf (qs : Decl) (tail : Term) : Except String Term :=
+  FnMacro.progOf [Tests.S26Fn.partitionF, appendBackF, qs] tail
+
+def flagship (tail : Term) : Except String Term := flagshipOf quicksortP tail
+
+/-- The tail: own a list, lend it to `quicksort`, and let the scope end.
+    `hfuel : Le 3 3` is supplied as `()` — the bound holds by COMPUTATION here,
+    which is the ordinary route for a concrete payload. -/
+def flagshipTail : Term := progWith [partitionF, append_backF, quicksort] {
+  let l = Cons(3, Cons(1, Cons(2, Nil)));
+  let r = quicksort(3, &mut l, ());
+  () }
+
+/-- THE HEADLINE: the M23 flagship checks as a program, against NO table. -/
+example : (match flagship .unit with
+           | .ok t => progOk t
+           | .error _ => false) = true := by native_decide
+
+/-- …and RUNS, sorting a real list, which is the half §12 decision 7 exists to
+    insist on. -/
+example : (match flagship flagshipTail with
+           | .ok t => (match runProgram t with
+                       | .ok env => env.lookup "l" == some (Val.cons (Val.nat 1)
+                           (Val.cons (Val.nat 2) (Val.cons (Val.nat 3) Val.nil)))
+                       | .error _ => false)
+           | .error _ => false) = true := by native_decide
+
+/-- …and the two machines agree on the whole final Ω, which is the differential
+    running on a program rather than on a `Decl` body. -/
+example : (match flagship flagshipTail with
+           | .ok t => progDiff t
+           | .error _ => false) = true := by native_decide
+
+/-! ### F3. Coverage preserved: the corpus's own twins, through the new path
+
+    "The elaborated form checks" is worth little on its own; what makes it the
+    SAME function is that it refuses what the declaration refuses. M23 guards
+    `quicksort` with three twins chosen to survive the `Nil` path and die on the
+    recursive one — two spec lies (sortedness moved onto the entry, the count
+    equation reversed) and a body lie (the keystone fed the PRE-sort bounds). All
+    three go through the migration and the assembly unchanged, and all three are
+    refused as programs. -/
+
+def twins : List Decl :=
+  [Tests.S23Direct.qsLieSorted, Tests.S23Direct.qsLieCount, Tests.S23Direct.qsStaleBound]
+
+-- The declared path refuses all three (migrated onto the fuel-threaded cohort)…
+example : twins.all (fun d =>
+    let m := migrate d
+    !checkFnOk m [Tests.S26Fn.partitionF, appendBackF, m]) = true := by native_decide
+-- …and so does the PROGRAM path, twin for twin.
+example : twins.all (fun d =>
+    match flagshipOf (migrate d) .unit with
+    | .ok t => !progOk t
+    | .error _ => false) = true := by native_decide
+-- Not vacuous: the honest one is accepted by both paths, so the six rejections
+-- above are about the lies and not about the migration failing wholesale.
+example : (checkFnOk quicksortP [Tests.S26Fn.partitionF, appendBackF, quicksortP]
+        && (match flagship .unit with | .ok t => progOk t | .error _ => false))
+  = true := by native_decide
 
 end Dllbc.Tests.S26Prog
