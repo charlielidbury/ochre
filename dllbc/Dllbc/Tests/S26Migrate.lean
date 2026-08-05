@@ -15,9 +15,6 @@ import Dllbc.Tests.S19Partition
 import Dllbc.Tests.S23Direct
 import Dllbc.Tests.S24Arrays
 import Dllbc.Tests.S25ArrSort
-import Dllbc.Tests.SDeclMacro
-import Dllbc.Tests.SDeclMacroCrown
-import Dllbc.Tests.SDeclUnified
 
 /-!
 # §26 (M26-E) — the corpus, down both paths
@@ -153,11 +150,6 @@ def p25 : List Decl := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qui
   S25ArrSort.c6Swap, S25ArrSort.c6Rec, S25ArrSort.c6CarveAfterCall, S25ArrSort.twoCursor,
   S25ArrSort.twoCursorRes, S25ArrSort.citedCarve]
 
-def pdm : List Decl := [SDeclMacro.throughOk', SDeclMacro.swapS', SDeclMacro.vecPush',
-  SDeclMacro.pushList', SDeclMacro.nth', SDeclMacro.snapBinderDecl, SDeclMacro.snapIgnoreDecl]
-def pdc : List Decl := [SDeclMacroCrown.quicksortSig]
-def pdu : List Decl := [SDeclUnified.nthU, SDeclUnified.permuted, SDeclUnified.partScanEU,
-  SDeclUnified.pivotPlaceHU]
 
 /-! ## §Y. The reports
 
@@ -182,18 +174,15 @@ example : (report p19 == R 2 2 35) = true := by native_decide
 example : (report p23 == R 24 19 17) = true := by native_decide
 example : (report p24 == R 20 14 1) = true := by native_decide
 example : (report p25 == R 11 12 0) = true := by native_decide
-example : (report pdm == R 2 2 3) = true := by native_decide
-example : (report pdc == R 0 0 1) = true := by native_decide
-example : (report pdu == R 0 1 3) = true := by native_decide
 
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List Decl) :=
-  [p5, p6, p7, p9, p10, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25, pdm, pdc, pdu]
+  [p5, p6, p7, p9, p10, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
 
 example : (pools.foldl (fun (a, r, d) p =>
     let q := report p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
-  == (99, 57, 68)) = true := by native_decide
+  == (97, 54, 61)) = true := by native_decide
 example : (pools.all (fun p => (report p).disagree.isEmpty)) = true := by native_decide
 
 /-! ## §Z. What did not migrate, and why — three classes, each already decided
@@ -318,9 +307,11 @@ def stripBacks (pool : List Decl) : List Decl :=
 example : (p17.any (fun d => d.back.isSome)
         && (stripBacks p17).all (fun d => d.back.isNone)) = true := by native_decide
 
--- 68 declines become 19, so `back` alone accounts for 49 (it accounted for eight
--- before M26-F corrected the hints underneath it — §V's own point about closures).
-example : (pools.foldl (fun a p => a + (report p).declined) 0 == 68) = true := by native_decide
+-- 61 declines become 19, so `back` alone accounts for 42 here (49 before the
+-- surface-test pools retired with the `back = …` syntax in M27-P2; it accounted
+-- for eight before M26-F corrected the hints underneath it — §V's own point about
+-- closures, from both sides).
+example : (pools.foldl (fun a p => a + (report p).declined) 0 == 61) = true := by native_decide
 example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 19)
   = true := by native_decide
 
@@ -328,10 +319,10 @@ example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 19
 -- that move are migrations and not accidents.
 example : (pools.all (fun p => (report (stripBacks p)).disagree.isEmpty)) = true := by native_decide
 
--- Per file, so the 49 are locatable: S17 goes to zero (7 → 0), S19 likewise
--- (35 → 0), and the three `SDecl` pools clear too (3 → 0, 1 → 0, 3 → 0). What
--- survives is the `[v]` residue — S6's `zero_all`, S23's 17, S24's `walkArr`.
+-- Per file, so the 42 are locatable: S17 goes to zero (7 → 0) and S19 likewise
+-- (35 → 0). What survives is the `[v]` residue — S6's `zero_all`, S23's 17,
+-- S24's `walkArr`.
 example : (pools.map (fun p => (report (stripBacks p)).declined)
-  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0, 0, 0, 0]) = true := by native_decide
+  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0]) = true := by native_decide
 
 end Dllbc.Tests.S26Migrate

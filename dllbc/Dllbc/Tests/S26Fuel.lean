@@ -7,6 +7,7 @@ import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.FnMacro
+import Dllbc.AlphaEq
 import Dllbc.Tests.S6Call
 import Dllbc.Tests.S24Arrays
 import Dllbc.Tests.S14Bounds
@@ -252,13 +253,13 @@ def fixAll (pool : List Decl) : List Decl := fixHints (Tests.S26Migrate.stripBac
 -- which is the assertion that the corpus, and not this harness, carries the fix.
 example : (Tests.S26Migrate.pools.all (fun p => fixHints p == p)) = true := by native_decide
 
-example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixHints p)).declined) 0 == 68)
+example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixHints p)).declined) 0 == 61)
         && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixAll p)).declined) 0 == 19))
   = true := by native_decide
 
 example : (Tests.S26Migrate.pools.foldl (fun (a, r) p =>
     let q := Migrate.report (fixAll p); (a + q.accepts, r + q.rejects)) (0, 0)
-  == (119, 86)) = true := by native_decide
+  == (112, 81)) = true := by native_decide
 
 -- Still agreeing everywhere under both fixes, so the 53 that move are migrations
 -- and not accidents.
@@ -267,6 +268,6 @@ example : (Tests.S26Migrate.pools.all (fun p => (Migrate.report (fixAll p)).disa
 
 -- And the residue is where §D says it is.
 example : (Tests.S26Migrate.pools.map (fun p => (Migrate.report (fixAll p)).declined)
-  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0, 0, 0, 0]) = true := by native_decide
+  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0]) = true := by native_decide
 
 end Dllbc.Tests.S26Fuel

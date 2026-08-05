@@ -32,11 +32,13 @@ load-bearing" was never a property of either one — it was a property of which 
 came off last. What the endgame has to dispose of is therefore three different
 sizes, and keeping them apart is most of the clarity:
 
-  * **49** — declarations that MIGRATE when `back` is stripped. The closure. They
-    need no disposition at all: they are ordinary programs the moment their
-    cohort's leaf stops declining.
-  * **28 pool entries / 25 distinct** — declarations that actually DECLARE a
-    `back`. The only set whose SOURCE has to change (§C).
+  * **the closure** — declarations that MIGRATE when `back` is stripped, needing
+    no disposition at all: they are ordinary programs the moment their cohort's
+    leaf stops declining. 49 when this ledger was written; 42 once M27-P2 retired
+    the surface-test pools, which is the same fact at a smaller corpus.
+  * **21 pool entries** — declarations that actually DECLARE a `back`. The only
+    set whose SOURCE has to change (§C). It was 28 before the four surface-test
+    files retired with the `back = …` syntax they existed to round-trip.
   * **19** — the residue that survives the deletion, which is the true `[v]`
     payload-decrease class plus the guard twins (§B).
 
@@ -73,12 +75,12 @@ example : (S26Migrate.pools.any (fun p => p.any (·.back.isSome))
 def backDeclarers (p : List Decl) : List String :=
   (p.filter (·.back.isSome)).map (·.name)
 
-example : (S26Migrate.pools.foldl (fun a p => a + (backDeclarers p).length) 0 == 28)
+example : (S26Migrate.pools.foldl (fun a p => a + (backDeclarers p).length) 0 == 21)
   = true := by native_decide
 
 /-- The corpus as it stands, and with the backs off. The difference is the
     closure: 49 declarations migrate when the one mechanism comes off. -/
-example : (S26Migrate.pools.foldl (fun a p => a + (report p).declined) 0 == 68)
+example : (S26Migrate.pools.foldl (fun a p => a + (report p).declined) 0 == 61)
   = true := by native_decide
 example : (S26Migrate.pools.foldl (fun a p => a + (report (S26Migrate.stripBacks p)).declined) 0
   == 19) = true := by native_decide
@@ -388,9 +390,9 @@ example : (match FnMacro.fnElab S23Direct.recDeep with
 
 def backNames (p : List Decl) : List String := (p.filter (·.back.isSome)).map (·.name)
 
-/-- Where the backs are, pool by pool. Nothing outside these five files declares
-    one, which is itself the first disposition: S5, S6, S7, S9–S16, S18, S23, S24
-    and S25 need no `back` work at all. -/
+/-- Where the backs are, pool by pool. After M27-P2 retired the surface-test
+    files, only S17 and S19 declare one — which is itself a disposition: S5, S6,
+    S7, S9–S16, S18, S23, S24 and S25 need no `back` work at all. -/
 example : (S26Migrate.pools.map backNames ==
   [[], [], [], [], [], [], [], [], [], [],
    ["through", "through", "nth", "nth2", "swapS"],
@@ -398,11 +400,10 @@ example : (S26Migrate.pools.map backNames ==
    ["nth", "nth2", "swapS", "pivotPlace", "pivotPlaceH", "partScan", "partScanRange",
     "partition", "partitionLie", "partScanLie", "nth2Lie", "partitionQ", "partitionRange",
     "quicksort", "quicksortLie", "twoRec"],
-   [], [], [],
-   ["through", "swapS", "nth"], ["quicksort"], ["nth", "nth", "pivotPlaceH"]])
+   [], [], []])
   = true := by native_decide
 
-/-! ### C1. SEVEN SURFACE TESTS — retire with the syntax, no coverage to preserve
+/-! ### C1. SEVEN SURFACE TESTS — RETIRED in M27-P2, with the syntax they tested
 
     `SDeclMacro`'s `through'`/`swapS'`/`nth'`, `SDeclMacroCrown`'s `quicksortSig`,
     and `SDeclUnified`'s `nthU`/`permuted`/`pivotPlaceHU` are round-trip tests of

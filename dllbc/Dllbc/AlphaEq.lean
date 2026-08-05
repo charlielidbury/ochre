@@ -106,6 +106,13 @@ def Decl.alphaNorm (d : Decl) : Decl :=
     body := (anTerm baseEnv n d.body).1,
     back := d.back.map (fun b => (anTerm baseEnv n b).1) }
 
+-- Structural equality on `Decl`. Relocated here in M27-P2 from
+-- `Tests/SDeclMacro.lean`, which retired with the `decl{ … back = … }` surface it
+-- round-tripped: the instance is not a property of that surface — it is what every
+-- exact-equality assertion about a declaration needs — and it outlived its old home
+-- by one phase. It dies with `Decl` itself at P5.
+deriving instance BEq for Dllbc.Decl
+
 /-- Two `Decl`s are equal up to runtime-var id renaming. Compared field-wise via
     the component `BEq`s (`Term`/`String`/`List`/`Option`) so no `BEq Decl`
     instance is required here. -/
