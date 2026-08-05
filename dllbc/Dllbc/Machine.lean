@@ -394,10 +394,18 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   | .pi _ _ => true
   | .lam _ _ => true
   -- A runtime function value is closed and marker-free, so the ownership
-  -- machinery is doubly vacuous on it exactly as it is on a λ — and `ih` is read
-  -- once per recursive call site, so copy-on-read is what makes a body able to
-  -- recurse twice (`quicksort`'s two halves). §7 cost 2's "never partially
-  -- applied, closed" is what earns this.
+  -- machinery is doubly vacuous on it exactly as it is on a λ; §7 cost 2's "never
+  -- partially applied, closed" is what earns this. A CONSERVATIVE DEFAULT, and
+  -- corrected here (M27-P3) because the justification that used to stand in its
+  -- place was wrong twice: it said copy-on-read is "what makes a body able to
+  -- recurse twice (`quicksort`'s two halves)", but `ih` is CALLED and `.callV`
+  -- LOCATES its callee rather than moving it (M26-E), so a recursive call never
+  -- reaches here at all. Flipping this case to `false` leaves the whole suite
+  -- green. It is also unreachable from the CHECKING machine, where `ih` is a σ
+  -- whose signature lives in `fsig` and not `sctx`, so the `.sym` case below takes
+  -- the move default — the two machines therefore disagree about reading `ih` into
+  -- a slot, in the safe direction (the checker refuses what the machine runs).
+  -- Both sides are pinned in `Tests/S26Rec.lean` §M.
   | .rfn _ _ => true
   | .idT _ _ _ => true
   | .app _ _ => true                                        -- a pure-former spine (proof/type)

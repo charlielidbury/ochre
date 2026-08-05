@@ -933,5 +933,80 @@ def k3 : Decl := decl{ fn k3 (n : Nat) -> %natFn {
     S(m) => seal(λ(k) { S(k) }, %natFn) } } }
 example : ok k3 = true := by native_decide
 
-end Dllbc.Tests.S26Rec
+/-! ## §M (M27-P3). `ih` READ AS A VALUE — and the two machines disagree
 
+    `indexKindV` classifies a runtime function value (`Val.rfn`) as index-kind, so
+    reading one COPIES and leaves the owner intact. Its comment justified that with
+    "copy-on-read is what makes a body able to recurse twice (`quicksort`'s two
+    halves)". M27-P3 measured the claim by flipping the case to `false` and running
+    the whole suite: **it stayed green**, so nothing exercised it. Writing the test
+    that would exercise it found something better than an unexercised case.
+
+    **The two machines answer differently, and the checking side is the one that
+    cannot reach `.rfn` at all.** Binding `ih` to a local is REJECTED when checking
+    and RUNS when executing:
+
+      * Checking: `ih` is a **σ** whose signature lives in `St.fsig` — a borrow-moded
+        Π has no `Val`, which is M26-C's founding fact — and `indexKindV`'s `.sym`
+        case consults `sctx`, not `fsig`. No entry, so it takes the conservative
+        default and MOVES. The next call then finds ⊥.
+      * Executing: `ih` really is a `Val.rfn` in a slot, the `.rfn` case fires, and
+        the read copies.
+
+    So the comment was wrong twice over: copy-on-read is not what serves quicksort's
+    two recursive calls (`.callV` LOCATES its callee and never moves it — M26-E),
+    and the case it justifies is unreachable from the machine the comment is written
+    beside. It is a correct conservative default on a value form only the executing
+    machine ever holds.
+
+    Pinned as the asymmetry it is rather than "fixed": nothing in §7 wants `ih` in a
+    slot (cost 2 is explicit that `ih` is "never partially applied", taking its
+    borrows as arguments), the divergence is in the safe direction — the checker
+    refuses a program the machine would run — and closing it means teaching
+    `indexKindV` about `fsig`, which is a change to the read rule for every σ and
+    not something to slip into a deletion phase. Filed here with both sides
+    asserted, so whoever opens it starts from a behavioural record. -/
+
+def mSeal : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
+def mMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
+
+/-- The arm binds `ih` to a local and then still calls it. -/
+def m1 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %mMot
+                 (λ(v) { () })
+                 (λ(n2, ih, v) {
+                    let g = ih;
+                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
+               %mSeal);
+  let x = Cons(1, Cons(2, Nil));
+  let b = &mut x;
+  f(3, b);
+  () } }
+
+-- CHECKING: refused, and the message locates it — the σ was moved by the `let`.
+example : rejects m1 "callee ih#2 holds ⊥" = true := by native_decide
+
+-- EXECUTING: the same program runs to completion and really zeroes the list,
+-- because there `ih` is a `Val.rfn` and the `.rfn` case copies it.
+example : (match Dllbc.Tests.S9Diff.runExec [] m1.body with
+   | .ok e => (e.lookup "x").map Val.pretty
+   | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
+
+-- Not vacuous: the SAME body without the `let g = ih` line checks, so the
+-- rejection above is about reading `ih` as a value and not about the shape.
+def m0 : Decl := decl{ fn caller () -> Unit {
+  let f = seal(natRec %mMot
+                 (λ(v) { () })
+                 (λ(n2, ih, v) {
+                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
+               %mSeal);
+  let x = Cons(1, Cons(2, Nil));
+  let b = &mut x;
+  f(3, b);
+  () } }
+example : ok m0 = true := by native_decide
+example : (match Dllbc.Tests.S9Diff.runExec [] m0.body with
+   | .ok e => (e.lookup "x").map Val.pretty
+   | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
+
+end Dllbc.Tests.S26Rec
