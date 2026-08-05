@@ -65,19 +65,16 @@ open Dllbc.StdLemmas (Ub Lb len)
     (e4222291) produced a "stripped" pool identical to the original, and read at
     face value it said the exact opposite of the truth. -/
 
-/-- **EXECUTED (M27-P2).** The corpus declares no backward spec at all. This is
-    the assertion the whole ledger was built to license, and it is stated as an
-    emptiness rather than as a count so that one reappearing turns the file red. -/
-example : (S26Migrate.pools.all (fun p => p.all (·.back.isNone))) = true := by native_decide
+/-! **EXECUTED (M27-P2), and the assertion cannot be written any more.**
 
-/-- Declarations that declare a `back`, as pool entries. Kept as a definition
-    rather than inlined, because it is the thing §C's disposition table is about
-    and a reader should be able to run it. -/
-def backDeclarers (p : List Decl) : List String :=
-  (p.filter (·.back.isSome)).map (·.name)
+    This section used to count `back`-declaring declarations and assert the count.
+    `Decl.back` no longer exists, so `(·.back.isSome)` does not typecheck — the
+    claim "no declaration declares a backward spec" is now a fact about the TYPE
+    rather than a property of the corpus, which is the strongest form it can take
+    and the form that needs no test. A reappearance would not turn this file red;
+    it would fail to compile, everywhere at once.
 
-example : (S26Migrate.pools.foldl (fun a p => a + (backDeclarers p).length) 0 == 0)
-  = true := by native_decide
+    What remains assertable is the shape of the corpus after the retirement. -/
 
 /-- The corpus after the retirement: 110 accept, 58 reject, 19 decline — and the
     19 are exactly §B's residue, the true `[v]` payload-decrease class. Before
@@ -393,14 +390,7 @@ example : (match FnMacro.fnElab S23Direct.recDeep with
     and the classification is asserted rather than described, so that a
     declaration quietly gaining or losing a `back` moves this file. -/
 
-def backNames (p : List Decl) : List String := (p.filter (·.back.isSome)).map (·.name)
-
-/-- Where the backs are, pool by pool. After M27-P2 retired the surface-test
-    files, only S17 and S19 declare one — which is itself a disposition: S5, S6,
-    S7, S9–S16, S18, S23, S24 and S25 need no `back` work at all. -/
-example : (S26Migrate.pools.map backNames
-  == [[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], []])
-  = true := by native_decide
+-- `backNames` retired with the field it read.
 
 /-! ### C1. SEVEN SURFACE TESTS — RETIRED in M27-P2, with the syntax they tested
 
@@ -464,8 +454,6 @@ example : ensuresLies.all (fun d => neitherWay d [S23Direct.setAt]) = true := by
 -- two differently-shaped terms and pass for the wrong reason. What IS asserted is
 -- the instrument: the corpus still carries the back this section proposes to
 -- delete, so C2 is not describing something already gone.
-example : (S17Spec.swapSN.back.isNone && S17Spec.nthS.back.isNone
-        && S17Spec.nth2S.back.isNone) = true := by native_decide
 
 /-! ### C3. S19's Architecture A stratum — twelve entries that keep their bodies
 
@@ -494,17 +482,10 @@ example : (S17Spec.swapSN.back.isNone && S17Spec.nthS.back.isNone
     since "incidental" is exactly the kind of claim that should not be taken on
     trust. -/
 
-def twoRecNoBack : Decl :=
-  Decl.mk S19Partition.twoRec.name S19Partition.twoRec.telescope S19Partition.twoRec.retType
-    S19Partition.twoRec.body none S19Partition.twoRec.dec
 
--- EXECUTED: the field is gone at the SOURCE, so `twoRecNoBack` and the corpus
--- declaration are now the same function — which is what a completed port looks
--- like from the ledger's side.
-example : (S19Partition.twoRec.back.isNone && twoRecNoBack.back.isNone) = true := by native_decide
 -- …and the function still checks, and now MIGRATES — which the `[f]`-hinted,
 -- back-carrying original could not.
-example : S26Fuel.bothWays twoRecNoBack = true := by native_decide
+example : S26Fuel.bothWays S19Partition.twoRec = true := by native_decide
 
 /-! ## §D. INSTRUMENT RETIREMENT — a third disposition class, and the one no
     measurement in this campaign could see

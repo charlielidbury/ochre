@@ -34,9 +34,6 @@ def assemble (name : Ident) (dec : Option Ident) (params : Array (TSyntax `declP
   let fullRctx : List (String × Nat) := names.zip (List.range n)
   let teleSyns ← buildTele [] 0 parsed                      -- each entry sees only earlier params
   let (retT, _) ← elabUTerm true fullRctx [] 0 ret          -- retType (type mode) sees the whole telescope
-  let backT ← match bk with
-    | some b => do let (bt, _) ← elabUTerm true fullRctx [] 0 b; `(some $bt)
-    | none   => `((none : Option Dllbc.Term))
   let bodyT ← match body with                               -- unified `ublk` block, or a `%` splice
     | `(declBody| { $b:ublk }) => do let (t, _) ← elabUBlk false fullRctx [] n b; pure t
     | `(declBody| = % $t:term) => pure ⟨t.raw⟩
@@ -47,10 +44,11 @@ def assemble (name : Ident) (dec : Option Ident) (params : Array (TSyntax `declP
       match idxOf? names.reverse d.getId.toString with     -- reverse: idxOf? is innermost-first
       | some i => `(some $(quote (n - 1 - i)))
       | none => Macro.throwErrorAt d s!"decl: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
-  -- `Decl.mk` positionally (name, telescope, retType, body, back, dec): a structure
-  -- literal `{ … back := … }` cannot be written here, since declaring the surface
-  -- keyword `back` reserves the token, colliding with the field name.
-  `(Dllbc.Decl.mk $(quote name.getId.toString) [$teleSyns,*] $retT $bodyT $backT $decT)
+  -- `Decl.mk` positionally (name, telescope, retType, body, dec). It was positional
+  -- because the surface once reserved a `back` keyword that collided with the field
+  -- name; the keyword and the field retired together in M27-P2, and the positional
+  -- form is kept because that is what `progOf`'s round-trips are written against.
+  `(Dllbc.Decl.mk $(quote name.getId.toString) [$teleSyns,*] $retT $bodyT $decT)
 
 end DeclMacro
 
@@ -58,7 +56,5 @@ open DeclMacro in
 macro_rules
   | `(decl{ fn $name:ident $[[$dec:ident]]? ( $params,* ) -> $ret:uterm $body:declBody }) =>
     assemble name dec params.getElems ret none body
-  | `(decl{ fn $name:ident $[[$dec:ident]]? ( $params,* ) -> $ret:uterm back = $bk:uterm $body:declBody }) =>
-    assemble name dec params.getElems ret (some bk) body
 
 end Dllbc

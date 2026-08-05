@@ -41,15 +41,6 @@ structure Decl where
   telescope : List (String × Term)
   retType : Term
   body : Term
-  /-- §6.2 declared backward spec: a pure function from the issued borrows'
-      surrendered values (in issued order) to the captured borrow's release
-      value. `none` = opaque parameter-end (a fresh existential on release, the
-      default, §6.1). DECLARED here and CHECKED against the body (the sound
-      reincarnation of M8's removed inferred `constrained` wire): a caller of a
-      spec'd fn recovers the COMPUTED release, not a fresh σ. Written over the
-      telescope's snapshots and `%rᵢ` for the surrendered values (via pure de
-      Bruijn: `rᵢ` are the leading λ binders). -/
-  back : Option Term := none
   /-- §1.2's `[k]` — the **decreasing-argument index**, made operational by M23.
       A self-call is admitted at this function's declared return type only if the
       actual at index `k` is a strict structural predecessor of that parameter's
@@ -94,11 +85,6 @@ structure Group where
       the test-only `forceConstrained` flag flips it to validate the differential
       harness goes RED under the removed inference. -/
   constrained : Bool
-  /-- §6.2 declared backward spec, reflected and instantiated at the call
-      (`Decl.back`): a function `surrendered values → captured release`. Some ⇒
-      `endGroup` releases the COMPUTED value; none ⇒ opaque (fresh existential).
-      Refined with the caller's σ's like the owed types. -/
-  backSpec : Option Val := none
   /-- §5.4 caller-side exit-snapshot σ-sharing: per captured loan, the σ its release
       is PINNED to — the same σ the callee's return type reads as the exit `*v`
       (`buildResult`'s `@exit`). So the caller holds the owner recovering σ′ AND the
@@ -164,11 +150,6 @@ structure St where
       — a non-consuming snapshot reference to the entry value, which after the body
       mutates `v` is no longer `*v`'s live payload. Never substituted by the audit. -/
   entrySyms : List (Nat × Nat) := []
-  /-- §6.2: this function's OWN declared backward spec, reflected at entry (over
-      the telescope snapshots). The callee audit checks the body against it — the
-      captured borrow's payload-with-issued-holes must convert with the spec
-      applied to fresh hole variables. Refined per-path like the owed types. -/
-  selfBack : Option Val := none
   /-- §8's snapshot-subterm guard (M23): while a body is checked, the name of the
       function being checked, and — when it declares `[k]` — that parameter's index
       together with its CURRENT snapshot. The snapshot rides `refineSym`/
@@ -776,9 +757,8 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     groups := s.groups.map (fun g => { g with
       captured := g.captured.map (fun p => (p.1, substSym σ v p.2)),
       issued := g.issued.map (fun p => (p.1, substSym σ v p.2)),
-      backSpec := g.backSpec.map (substSym σ v) }),
+      }),
     retTyVal := s.retTyVal.map (substSym σ v),
-    selfBack := s.selfBack.map (substSym σ v),
     -- The decreasing parameter's snapshot refines with everything else — this is
     -- how `match fuel { S(f2) => … }` makes the guard's comparison possible.
     selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, substSym σ v d.2)))) })
@@ -788,7 +768,7 @@ def refineSym (σ : Nat) (v : Val) : M Unit := do
     to a stuck spine `leb σ σp` (a neutral, not a bare σ), the ⇜ split cannot fire
     (it needs a substitutable σ). So NF the spine, mint a fresh `σb : Bool`, and
     `abstractInto` it across ALL σ-bearing state — the SAME targets `refineSym`
-    reaches (Ω, sctx, obligations, groups, retTyVal, selfBack: the M10 invariant).
+    reaches (Ω, sctx, obligations, groups, retTyVal: the M10 invariant).
     Every occurrence of the spine in values AND types now reads `σb`, so the
     ordinary owned-sym split (`symOwnedSetup`'s `writeC`/`refineSym`) refines the
     spine to `True`/`False` per branch — including inside a declared spec's
@@ -810,9 +790,8 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
     groups := s.groups.map (fun g => { g with
       captured := g.captured.map (fun p => (p.1, abstractInto sp σb p.2)),
       issued := g.issued.map (fun p => (p.1, abstractInto sp σb p.2)),
-      backSpec := g.backSpec.map (abstractInto sp σb) }),
+      }),
     retTyVal := s.retTyVal.map (abstractInto sp σb),
-    selfBack := s.selfBack.map (abstractInto sp σb),
     selfRec := s.selfRec.map (fun sr => (sr.1, sr.2.map (fun d => (d.1, abstractInto sp σb d.2)))) })
   pure (σb, sp)
 
@@ -1345,15 +1324,13 @@ def endGroup (fuel : Nat) (grp : Group) : M Unit := do
   -- 2. remove the group from the table (by its ρ id)
   modify (fun s => { s with groups := s.groups.filter (fun g => g.id != grp.id) })
   -- 3. release captured loans atomically
-  match grp.backSpec, grp.constrained, grp.captured, surrendered with
-  | some f, _, [(ℓc, _)], _ =>
-    -- §6.2 spec end: the captured release is the declared backward function
-    -- applied to the surrendered values (in issued order) — the COMPUTED value,
-    -- not a fresh existential. Precision recovered soundly (the spec was checked
-    -- against the body at the callee's return).
-    releaseCaptured ℓc (Val.nfV fuel (Val.rebuildSpine f surrendered))
-  | none, true, [(ℓc, _)], [p] => releaseCaptured ℓc p    -- test-only identity wire (harness)
-  | _, _, _, _ =>
+  -- §6.2's SPEC end used to sit first here: with a declared backward spec the
+  -- captured release was that function applied to the surrendered values — the
+  -- computed value rather than a fresh existential. M27 retired the mechanism, so
+  -- every release is now the opaque one, and this match has one real arm.
+  match grp.constrained, grp.captured, surrendered with
+  | true, [(ℓc, _)], [p] => releaseCaptured ℓc p          -- test-only identity wire (harness)
+  | _, _, _ =>
     grp.captured.forM (fun (ℓc, owed) => do
       match grp.exitRelease.lookup ℓc with
       | some σ' => releaseCaptured ℓc (.sym σ')            -- §5.4: pinned exit-snapshot release (σ' already in sctx)
@@ -2545,35 +2522,6 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
       if ← hasType fuel payload ob.owed then pure ()
       else throwErr s!"audit: {ob.arg.name}'s payload ({payload.pretty}) does not have its owed type ({ob.owed.pretty})"
 
-/-- Reconstruct a captured borrow's payload as the §6.2 suspension tree with
-    holes: follow each loan marker — an ISSUED loan (reached directly or down its
-    reborrow chain) becomes the fresh de Bruijn hole `pvar i`; a non-issued field
-    loan collapses to its current payload (the field the body left in place). The
-    result is the backward function the body implements, to convert against the
-    declared spec. -/
-partial def resolveTree (issued : List Nat) : Val → M Val
-  | .loanM ℓ => do
-    match issued.findIdx? (· == ℓ) with
-    | some i => pure (.pvar i)
-    | none =>
-      -- captured by a sub-call's group? its release is the sub-spec applied to
-      -- (the resolved) issued borrows — LLBC's backward function composing.
-      match (← get).groups.find? (fun g => g.captured.any (·.1 == ℓ)) with
-      | some g =>
-        match g.backSpec with
-        | some f => do
-          let ievs ← g.issued.mapM (fun p => resolveTree issued (.loanM p.1))
-          pure (Val.nfV 1000 (Val.rebuildSpine f ievs))
-        | none => pure (.loanM ℓ)                        -- opaque sub-group — unresolvable
-      | none => match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
-        | some p => resolveTree issued p                 -- follow the reborrow chain / collapse
-        | none => pure (.loanM ℓ)
-  | .borrowM ℓ p =>
-    match issued.findIdx? (· == ℓ) with
-    | some i => pure (.pvar i)
-    | none => do pure (.borrowM ℓ (← resolveTree issued p))
-  | .ctor n args => do pure (.ctor n (← args.mapM (resolveTree issued)))
-  | v => pure v
 
 /-- Walk a return type against the result value, collecting each borrow position
     as `(issued loan, payload, owed type)`. `none` = value-returning (no borrow);
@@ -2619,60 +2567,8 @@ def auditAction (fuel : Nat) (retType : Term) (resultVal : Val) : M Unit := do
       let (_, payload, owed) := c
       do if ← hasType fuel payload owed then pure ()
          else throwErr s!"audit: returned borrow's payload ({payload.pretty}) does not have its owed type ({owed.pretty})")
-    -- §6.2 callee check: if a backward spec is declared, the captured borrow's
-    -- payload-with-issued-holes must convert with the spec applied to fresh hole
-    -- variables. The suspension tree IS the backward function; we check the
-    -- DECLARED one against it (sound where M8's inferred wire was not).
-    match (← get).selfBack with
-    | none => pure ()
-    | some backV => do
-      -- the captured borrow: the (single) obligation consumed into a result,
-      -- directly (`through` — its loan IS a result loan) or as a field reborrow's
-      -- owner (`advance`/`nth2` — it reaches a result loan).
-      let caps ← obs.filterMapM (fun ob => do
-        let direct := issuedLoans.contains ob.loan
-        let viaField ← issuedLoans.anyM (fun rl => reachesLoan ob.loan rl)
-        pure (if direct || viaField then some ob else none))
-      match caps.head? with
-      | none => pure ()                                  -- no captured borrow to check
-      | some ob =>
-        -- the tree with holes: the captured borrow's payload (or, if it WAS the
-        -- returned borrow, the hole itself), resolved down the reborrow chains.
-        let raw : Val ← match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-          | some payload => pure payload
-          | none => pure (.loanM ob.loan)                  -- returned directly
-        let tree ← resolveTree issuedLoans raw
-        let holes := (List.range issuedLoans.length).map Val.pvar
-        let spec := Val.nfV fuel (Val.rebuildSpine backV holes)
-        if Val.convert fuel tree spec then pure ()
-        else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
   | none => do
     obs.forM (auditObligation fuel [])
-    -- §6.2 for a value/Unit-returning body that mutates an argument borrow IN
-    -- PLACE (swapS, partScan): the back spec describes what the argument borrow's
-    -- payload becomes, and there are no issued result borrows — so the spec is
-    -- applied to NO holes and checked against the borrow's suspension tree
-    -- directly. (Without this, an in-place fn's back was unchecked at the callee
-    -- and only validated by the differential — the M20 finding.)
-    match (← get).selfBack with
-    | none => pure ()
-    | some backV => do
-      let spec := Val.nfV fuel (Val.rebuildSpine backV [])
-      -- Check the back against the argument borrow's suspension tree WHERE it is
-      -- directly locatable (untouched, or composed from Unit-returning sub-groups
-      -- whose declared backs the spec is authored from — partScan). NOT resolved
-      -- through a sub-call that ISSUES borrows with a REFORMULATED back (swapS's
-      -- `swapL` vs nth2's set-based tree): those backs are higher-level than the
-      -- raw tree, so they never convert and stay differential-validated (M17).
-      match obs.head? with
-      | none => pure ()
-      | some ob =>
-        match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
-        | some payload => do
-          let tree ← resolveTree [] payload
-          if Val.convert fuel tree spec then pure ()
-          else throwErr s!"audit: declared backward spec ({spec.pretty}) does not match the body's suspension tree ({tree.pretty})"
-        | none => pure ()
     -- The return type was pinned at entry (§5.3 dependent types over consumed
     -- params); fall back to reading it here only if it was never pinned.
     let retTy0 ← match (← get).retTyVal with
@@ -3597,7 +3493,7 @@ mutual
       corpus (J1): what moved is content, and nothing was deleted.
 
       **FRAME ISOLATION.** The sealed body gets a fresh Ω, fresh obligations,
-      fresh groups and no `selfRec`/`selfBack` — because it is a function being
+      fresh groups and no `selfRec` — because it is a function being
       defined, not code running in the caller's world. Phase A evaluated a seal's
       body IN PLACE ("correct for phase A, and a sealed FUNCTION body will want
       frame isolation") and this is that debt paid. What crosses the boundary in
@@ -3618,7 +3514,7 @@ mutual
       let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.id)) body)
       modify (fun s => { s with env := gl, obligations := [], groups := [],
                                 exitSyms := [], entrySyms := [], retTyVal := none,
-                                selfBack := none, selfRec := none })
+                                selfRec := none })
       let obs ← seedTelescopeV fuel tel
       -- §5.4 exit snapshots: one σ per borrow parameter, recorded ONLY here until
       -- the audit defines it as that borrow's collapsed final payload.
@@ -3886,13 +3782,11 @@ mutual
           let ρ ← freshGroup
           let fc := (← get).forceConstrained
           let cons := fc && captured.length == 1 && issued.length == 1
-          -- §6.2: reflect the DECLARED backward spec (if any) at the actuals, so
-          -- the group can compute the captured release from the surrendered
-          -- values instead of a fresh existential.
-          let backV ← match decl.back with
-            | some b => do pure (some (← readCWith fuel inst b))
-            | none => pure none
-          let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, backSpec := backV, exitRelease := exitRel }
+          -- §6.2's declared backward spec used to be reflected here, so the group
+          -- could compute each captured release from the surrendered values instead
+          -- of minting an existential. M27 retired the mechanism — the ensures IS
+          -- the contract (§5 point 4) — so every group end is now the opaque one.
+          let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, exitRelease := exitRel }
           modify (fun s => { s with groups := grp :: s.groups })
           pure resultVal
   termination_by fuel _ _ => (fuel, 5, 0)

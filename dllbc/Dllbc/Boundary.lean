@@ -70,13 +70,6 @@ def checkFn (table : List Decl) (decl : Decl) : Except String Unit :=
     else do
       let rv ← readC defaultFuel (markExit borrowIds decl.retType)
       modify (fun s => { s with retTyVal := some rv })
-    -- §6.2: reflect this fn's own declared backward spec over the seeded
-    -- telescope snapshots, so the callee audit can check the body against it.
-    match decl.back with
-    | some b => do
-      let bv ← readC defaultFuel b
-      modify (fun s => { s with selfBack := some bv })
-    | none => pure ()
     -- §8's snapshot-subterm guard: record who is being checked, and — if `[k]` is
     -- declared — the decreasing parameter's snapshot AS SEEDED. From here it rides
     -- `refineSym` with the rest of the σ-bearing state, so at a self-call it reads

@@ -301,8 +301,6 @@ def hoist (k : Nat) (tel : List (Var × Term)) : Except String (List (Var × Ter
     Returns the sealed TERM. Binding it is the caller's business, which is §8's
     direction: a declaration is a `let`, and this is its right-hand side. -/
 def fnElab (d : Decl) : Except String Term := do
-  if d.back.isSome then
-    .error s!"fn: '{d.name}' declares a backward spec, and §6.2's `back` is a `Decl` mechanism with no seal counterpart — the ensures IS the contract now (§5 point 4). M23's corpus declares none."
   let tel := teleVars d.telescope
   match d.dec with
   -- NON-RECURSIVE: the whole function is one runtime λ, sealed at its signature.

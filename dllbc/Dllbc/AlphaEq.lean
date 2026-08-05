@@ -103,8 +103,7 @@ def Decl.alphaNorm (d : Decl) : Decl :=
   { d with
     telescope := d.telescope.map (fun (nm, ty) => (nm, (anTerm baseEnv n ty).1)),
     retType := (anTerm baseEnv n d.retType).1,
-    body := (anTerm baseEnv n d.body).1,
-    back := d.back.map (fun b => (anTerm baseEnv n b).1) }
+    body := (anTerm baseEnv n d.body).1 }
 
 -- Structural equality on `Decl`. Relocated here in M27-P2 from
 -- `Tests/SDeclMacro.lean`, which retired with the `decl{ … back = … }` surface it
@@ -115,10 +114,16 @@ deriving instance BEq for Dllbc.Decl
 
 /-- Two `Decl`s are equal up to runtime-var id renaming. Compared field-wise via
     the component `BEq`s (`Term`/`String`/`List`/`Option`) so no `BEq Decl`
-    instance is required here. -/
+    instance is required here.
+
+    It compares neither `back` (gone with the mechanism in M27-P2) nor `dec` — and
+    the `dec` blindness is a KNOWN LIMITATION rather than a decision: once the
+    guard is deleted, `[k]` is purely a scrutinee-selection hint, and two
+    declarations differing only in it elaborate to different recursors. Widening it
+    is P5's, with the guard. -/
 def Decl.alphaEq (a b : Decl) : Bool :=
   let a' := a.alphaNorm; let b' := b.alphaNorm
   a'.name == b'.name && a'.telescope == b'.telescope && a'.retType == b'.retType
-    && a'.body == b'.body && a'.back == b'.back
+    && a'.body == b'.body
 
 end Dllbc

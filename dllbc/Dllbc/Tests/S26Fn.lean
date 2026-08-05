@@ -191,11 +191,8 @@ example : elabRejects Tests.S23Direct.partition "decision 8" = true := by native
 
 -- §6.2's declared backs are a `Decl` mechanism with no seal counterpart. M23's
 -- corpus declares none, which is why the cohort is unaffected.
--- Built with `Decl.mk` positionally: `back` is a `decl{}` surface token, so it
--- cannot be written as a field name here.
-def withBack : Decl :=
-  Decl.mk pushD.name pushD.telescope pushD.retType pushD.body (some (.const "Unit")) none
-example : elabRejects withBack "backward spec" = true := by native_decide
+-- RETIRED in M27-P2 with the mechanism: there is no `back` field to decline, so
+-- the refusal has no subject. `S27Dispose` §C records where §6.2's claims went.
 
 /-! ## §E. `partition`, FUEL-THREADED — §12 decision 8 paid on a real function
 
