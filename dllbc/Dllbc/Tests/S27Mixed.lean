@@ -198,4 +198,63 @@ example : ok Tests.S6Call.toNat = true := by native_decide
 -- `swapS01`, whose owed type is a Σ carrying a length-preservation proof.
 example : ok Tests.S16Spec.swapS01 = true := by native_decide
 
+/-! ## §F. THE THIRD CONTAINMENT — reading a sealed borrow-taking function
+
+    From c1's curry probe (branch `curryprobe`, `S27CurryProbe.lean` §G3, addendum
+    `9b374c7f`), whose witnesses these controls are drawn from and credited to. It
+    generalizes `S26Rec` §M in two ways that change the pricing:
+
+    **1. No recursor is required.** §M found it on `ih` and read the trigger as
+    something about induction hypotheses. It is not: the trigger is a σ whose Π is
+    **borrow-moded**, which therefore has no `Val` (M26-C's founding fact) and lives
+    in `fsig` alone, where `indexKindV`'s `.sym` case — which consults `sctx` — finds
+    nothing and takes the move default. Any ordinary sealed borrow-taking function
+    bound to a slot reproduces it.
+
+    **2. It is not confined to the safe direction.** §M's case was reject-vs-run,
+    which costs expressiveness and nothing else. c1 exhibits a program **both
+    machines ACCEPT** whose final Ωs do not correspond — `f = ⊥` on the checking
+    side, the λ-spine on the executing one. That is a simulation break on an
+    accepted program: precisely what `S9Diff`'s whole-program assertions exist to
+    catch, arriving where they cannot see it.
+
+    So the position is made unwritable, checking-side only — the executing machine
+    holds a real function value and copies it correctly, and refusing there would
+    break running programs to protect a checker. The real fix is to teach
+    `indexKindV` about `fsig`; that changes the read rule for every σ and is filed
+    for the function-model round, where the comptime-functions proposal may delete
+    the class outright. -/
+
+def fSeal : Term := pure{ Π (v : &mut List Nat) → Unit }
+
+-- F1. A sealed borrow-taking function, NO recursor anywhere, bound to a second
+-- slot. This is the shape c1's §G3b has both machines accepting with different Ωs.
+def f1read : Term := prog{
+  let f = seal(λ(v) { () }, %fSeal);
+  let g = f;
+  () }
+example : progRejects f1read "sealed borrow-taking function" = true := by native_decide
+
+-- F2. The isolating control, and it is the one that names the trigger: a
+-- BORROW-FREE sealed function bound to a second slot is ACCEPTED. A borrow-free Π
+-- has a `Val`, so its σ lands in `sctx` too and `indexKindV` can see it. The
+-- refusal is about the missing value form, not about functions.
+def gSeal : Term := pure{ Π (x : Nat) → Nat }
+def f2read : Term := prog{
+  let f = seal(λ(x) { x }, %gSeal);
+  let g = f;
+  () }
+example : progOk f2read = true := by native_decide
+
+-- F3. And the containment does not touch CALLING. `.callV` locates its callee
+-- rather than moving it (M26-E), which is the whole reason the position was
+-- reachable only by a read in the first place.
+def f3call : Term := prog{
+  let f = seal(λ(v) { () }, %fSeal);
+  let x = Cons(1, Nil);
+  let b = &mut x;
+  f(b);
+  () }
+example : progOk f3call = true := by native_decide
+
 end Dllbc.Tests.S27Mixed

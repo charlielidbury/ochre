@@ -949,7 +949,9 @@ example : ok k3 = true := by native_decide
       * Checking: `ih` is a **σ** whose signature lives in `St.fsig` — a borrow-moded
         Π has no `Val`, which is M26-C's founding fact — and `indexKindV`'s `.sym`
         case consults `sctx`, not `fsig`. No entry, so it takes the conservative
-        default and MOVES. The next call then finds ⊥.
+        default and MOVES. **This is now REFUSED at the read** (M27's third
+        containment), rather than left to be noticed by whatever demanded the
+        emptied slot afterwards.
       * Executing: `ih` really is a `Val.rfn` in a slot, the `.rfn` case fires, and
         the read copies.
 
@@ -959,13 +961,23 @@ example : ok k3 = true := by native_decide
     beside. It is a correct conservative default on a value form only the executing
     machine ever holds.
 
-    Pinned as the asymmetry it is rather than "fixed": nothing in §7 wants `ih` in a
-    slot (cost 2 is explicit that `ih` is "never partially applied", taking its
-    borrows as arguments), the divergence is in the safe direction — the checker
-    refuses a program the machine would run — and closing it means teaching
-    `indexKindV` about `fsig`, which is a change to the read rule for every σ and
-    not something to slip into a deletion phase. Filed here with both sides
-    asserted, so whoever opens it starts from a behavioural record. -/
+    **The safe-direction reading was wrong, and c1's curry probe corrected it.**
+    This file priced the divergence as reject-vs-run — the checker refusing a
+    program the machine would run, which costs expressiveness and nothing else.
+    §G3b of the curry probe exhibits a program BOTH machines ACCEPT whose final Ωs
+    do not correspond (`f = ⊥` checking, the λ-spine executing), which is a
+    simulation break on an accepted program: the class S9Diff's whole-program
+    assertions exist to catch, arriving where they cannot see it. It also needs no
+    recursor — any sealed borrow-taking function bound to a slot has it, because
+    the trigger is the borrow-moded Π's lack of a `Val` and not anything about
+    `ih`.
+
+    So the position is now UNWRITABLE rather than merely awkward, and the
+    assertions below are the containment's controls. The real fix — teaching
+    `indexKindV` about `fsig` — changes the read rule for every σ and is filed for
+    the function-model round, where the comptime-functions proposal may delete the
+    whole class. Nothing in §7 wants `ih` in a slot anyway (cost 2 is explicit that
+    it is "never partially applied"). -/
 
 def mSeal : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
 def mMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
@@ -983,8 +995,13 @@ def m1 : Decl := decl{ fn caller () -> Unit {
   f(3, b);
   () } }
 
--- CHECKING: refused, and the message locates it — the σ was moved by the `let`.
-example : rejects m1 "callee ih#2 holds ⊥" = true := by native_decide
+-- CHECKING: refused. M27's third containment moved WHERE it is refused — the
+-- refusal now fires at the BINDING rather than at the later call that found ⊥ —
+-- because c1's curry probe showed the divergence is not confined to the safe
+-- direction: a program that binds `ih` and never calls it is ACCEPTED by both
+-- machines with final Ωs that do not correspond. The read is the event; the call
+-- was only where the old rule happened to notice.
+example : rejects m1 "sealed borrow-taking function" = true := by native_decide
 
 -- EXECUTING: the same program runs to completion and really zeroes the list,
 -- because there `ih` is a `Val.rfn` and the `.rfn` case copies it.

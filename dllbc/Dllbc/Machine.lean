@@ -2899,7 +2899,34 @@ mutual
           -- borrow-mode match (§3.3) are the same case.
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
-          | none =>
+          | none => do
+            -- M27 SOUNDNESS CONTAINMENT (c1's curry probe §G3b, generalizing
+            -- M27-P3's §M). A σ whose Π is BORROW-MODED has no `Val` — M26-C's
+            -- founding fact — so it lives in `fsig` ALONE, and `indexKindV`'s
+            -- `.sym` case consults `sctx`. Finding nothing, it takes the move
+            -- default: the checking machine empties the slot while the executing
+            -- machine, holding a real `.rfn`, copies it. Reading one is therefore
+            -- a SIMULATION BREAK — and not only in the safe direction, since a
+            -- program that binds without calling is ACCEPTED by both machines
+            -- with final Ωs that do not correspond.
+            --
+            -- Refused here until the read rule is designed. Teaching `indexKindV`
+            -- about `fsig` is the real fix and it changes the read rule for every
+            -- σ, which is the function-model round's business, not a containment's.
+            -- CHECKING-SIDE ONLY: the executing machine holds the function value
+            -- and copies it correctly, so refusing there would break running
+            -- programs to protect a checker.
+            if !(← get).executing then
+              match v with
+              | .sym σ =>
+                -- "in `fsig` ALONE" is the trigger, and the ALONE is load-bearing:
+                -- `sealMint` records EVERY sealed function's signature in `fsig`,
+                -- and additionally reflects a borrow-FREE Π into `sctx`, where
+                -- `indexKindV` can see it and copy correctly. So presence in
+                -- `fsig` is not the condition — absence from `sctx` is.
+                if ((← get).fsig.lookup σ).isSome && ((← get).sctx.lookup σ).isNone then
+                  throwErr s!"read: '{x.name}' holds a sealed borrow-taking function, and reading one into another binding is not yet expressible. Its signature is a borrow-moded Π, which has no value form, so the checker cannot tell a copy from a move here and would empty this slot while the running program keeps the function. CALL it where it is bound, or pass it as an argument."
+              | _ => pure ()
             -- §2.1 copy-on-read: an INDEX-KIND value (a Nat/Bool/Unit tree, a
             -- proof, a type, a λ, or a σ typed as one of these) is read by COPY,
             -- leaving the owner intact — the ownership machinery is doubly vacuous
