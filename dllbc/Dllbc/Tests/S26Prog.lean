@@ -585,4 +585,97 @@ example : (([[], [1], [2,1], [3,1,2], [1,2,3], [3,2,1], [5,5,5], [4,1,3,2,5],
              [3,1,4,1,5,9,2], [2,2,1,1], [7,3,7,3,7]] : List (List Nat)).all crossP)
     = true := by native_decide
 
+/-! ## §H. Both dispatch surfaces, for the rules this phase added
+
+    The standing warning (M26-C §K, earned when phase B's fence was DEAD until
+    duplicated at the driver): `explore` is a second dispatch surface, and a
+    statement-position `match` or `let` never reaches `readR`'s own cases. Every
+    rule here has to be exercised where `pushContinuations` sends a real body —
+    INSIDE a branch of a symbolic match — and not only at the top level.
+
+    The rules this phase added are `admitGlobals` (at `.lamR` and at the seal) and
+    `endScope`. They are reached by construction rather than by duplication, and
+    the reason is worth stating because "no duplication needed" is exactly what a
+    phantom rule looks like from the inside: a runtime λ and a seal are always
+    EXPRESSIONS — a let's right-hand side, an argument, a tail — and the driver
+    reaches every expression through `.letIn`'s right-hand side, `.seq`'s
+    expression, and the final-expression fall-through. `endScope` runs per path
+    after the walk, so a forked path gets its own.
+
+    Each is placed inside a branch with a NEGATIVE TWIN at the same position, so
+    the branch is not merely skipped. -/
+
+/-- A symbolic scrutinee at the top level of a program: an abstract call's result
+    is a σ, and matching on one is what forks the driver's paths. -/
+def hSplit (inZ inS : Term) : Term :=
+  .letIn ⟨0, "f"⟩ (prog{ seal(λ (x : Nat). x, Π (x : Nat) → Nat) })
+    (.letIn ⟨1, "n"⟩ (.callV ⟨0, "f"⟩ [pure{ 3 }])
+      (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
+
+-- H0. The split is real: two paths, not one.
+example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
+
+-- H1. A GLOBAL-REFERENCING runtime λ, formed and called inside a branch. `f` is
+-- the program-level binding two `let`s above; the branch is a body, so this is
+-- `admitGlobals` reached through the driver.
+def hGlobal (bad : Bool) : Term :=
+  hSplit .unit
+    (.letIn ⟨3, "g"⟩ (.lamR [⟨4, "y"⟩] (.callV ⟨0, "f"⟩ [.var ⟨4, "y"⟩]))
+      (.letIn ⟨5, "r"⟩ (.callV ⟨3, "g"⟩ [.var ⟨2, "k"⟩])
+        (if bad then pure{ True } else .unit)))
+example : progOk (hGlobal false) = true := by native_decide
+-- The negative twin at the SAME position: the branch is entered and its result
+-- audited, so the accept above is not the branch being skipped.
+example : progRejects (hGlobal true) "does not have return type" = true := by native_decide
+
+-- H2. A CAPTURE inside a branch is refused there too — the fence is not weaker on
+-- a path than at the top level. (`k` is the branch's own binder, a `Nat`, so this
+-- is data capture: the same rejection §D2a pins, reached the other way.)
+def hCapture : Term :=
+  hSplit .unit
+    (.letIn ⟨3, "g"⟩ (.lamR [⟨4, "y"⟩] (.letIn ⟨6, "z"⟩ (.var ⟨2, "k"⟩) (.var ⟨4, "y"⟩)))
+      .unit)
+example : progRejects hCapture "not a function" = true := by native_decide
+
+-- H3. A SEAL inside a branch fires its audit there, in that branch's Ω.
+def hSeal (bad : Bool) : Term :=
+  hSplit .unit
+    (.letIn ⟨3, "s"⟩
+      (.seal (.lamR [⟨4, "y"⟩] (.var ⟨4, "y"⟩))
+        (if bad then pure{ Π (y : Nat) → Bool } else pure{ Π (y : Nat) → Nat }))
+      .unit)
+example : progOk (hSeal false) = true := by native_decide
+example : progRejects (hSeal true) "does not have return type (Bool)" = true := by native_decide
+
+-- H4. `endScope` runs PER PATH. The borrow is lent inside ONE branch only, so the
+-- path that lends must demand it back at its own end while the path that does not
+-- has nothing to demand — and the differential is what says both are right, since
+-- the concrete run takes exactly one of them.
+def hLend : Term :=
+  .letIn ⟨0, "push"⟩
+    (prog{ seal(λ(e, v){ let tail = *v; *v := Cons(e, tail); () },
+                Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) })
+    (.letIn ⟨1, "l"⟩ (pure{ Cons(1, Nil) })
+      (.letIn ⟨2, "id"⟩ (prog{ seal(λ (x : Nat). x, Π (x : Nat) → Nat) })
+        (.letIn ⟨3, "n"⟩ (.callV ⟨2, "id"⟩ [pure{ 3 }])
+          (.matchE ⟨3, "n"⟩ none
+            [Branch.mk "Z" [] .unit,
+             Branch.mk "S" [⟨4, "k"⟩]
+               (.letIn ⟨5, "r"⟩ (.callV ⟨0, "push"⟩ [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
+                 .unit)]))))
+example : progOk hLend = true := by native_decide
+example : progDiff hLend = true := by native_decide
+-- It really is two paths, and the lending one really does end its loan: no path
+-- leaves `l` holding a parked loan.
+example : ((programEnvs hLend).length == 2
+        && (programEnvs hLend).all (fun r => match r with
+             | .ok env => !((env.lookup "l").any (fun v => match v with
+                 | .loanM _ => true | _ => false))
+             | .error _ => false)) = true := by native_decide
+-- …and the raw walk (no end-of-scope demand) leaves one, so the assertion above is
+-- about `endScope` and not about the program never lending.
+example : (rawEnvs hLend).any (fun r => match r with
+    | .ok env => (env.lookup "l").any (fun v => match v with | .loanM _ => true | _ => false)
+    | .error _ => false) = true := by native_decide
+
 end Dllbc.Tests.S26Prog
