@@ -117,7 +117,7 @@ def swapCaller : Decl :=
 
 example : Migrate.progOkOf swapCaller ([swapS01, swapCaller]) = true := by native_decide
 -- The proof survives to the final env (pf ↦ a σ : Id (len l) (len [1,2,3])).
-example : (match runFn [swapS01, swapCaller] swapCaller with
+example : (match Migrate.progEnvsOfT [swapS01, swapCaller] swapCaller with
   | [.ok env] => (env.lookup "pf").isSome
   | _ => false) = true := by native_decide
 

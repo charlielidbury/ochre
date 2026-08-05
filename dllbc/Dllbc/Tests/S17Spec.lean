@@ -69,7 +69,7 @@ def caller : Decl :=
     let y = x;
     () } }
 def vlist9 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]]]]]]]], .ctor "Nil" []]
-example : (match runFn [throughOk, caller] caller with
+example : (match Migrate.progEnvsOfT [throughOk, caller] caller with
   | [.ok env] => match env.lookup "y" with | some (.sym _) => true | _ => false
   | _ => false) = true := by native_decide
 -- Not vacuous, and this is the pair that keeps the deletion honest: the EXECUTING
@@ -86,7 +86,7 @@ example : (match Dllbc.Tests.S9Diff.runExec [throughOk] caller.body with
 -- exactly as in M9 — the spec-carrying end is opt-in.
 def throughOpaque : Decl :=
   decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
-example : (match runFn [throughOpaque, { caller with name := "c2" }] { caller with name := "c2" } with
+example : (match Migrate.progEnvsOfT [throughOpaque, { caller with name := "c2" }] { caller with name := "c2" } with
   | [.ok env] => match env.lookup "y" with | some (.sym _) => true | _ => false
   | _ => false) = true := by native_decide
 
@@ -161,7 +161,7 @@ def spcBody : Term := dllbcWith [] {
 def spcCaller : Decl := decl{ fn spc () -> Unit = %spcBody }
 def vlist321 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]],
   .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "Z" []]], .ctor "Cons" [.ctor "S" [.ctor "Z" []], .ctor "Nil" []]]]
-example : (match runFn [nthS, nth2S, swapSN, spcCaller] spcCaller with
+example : (match Migrate.progEnvsOfT [nthS, nth2S, swapSN, spcCaller] spcCaller with
   | [.ok env] => match env.lookup "y" with | some (.sym _) => true | _ => false
   | _ => false) = true := by native_decide
 -- …and the program really does swap: [1,2,3] ends [3,2,1] when RUN. The checker

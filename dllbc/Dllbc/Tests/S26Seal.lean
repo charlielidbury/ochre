@@ -5,6 +5,7 @@ import Dllbc.StdLemmas
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
+import Dllbc.Migrate
 
 /-!
 # §26 (M26-A) — the seal node, and application of a value callee
@@ -240,7 +241,7 @@ example : sealChk (StdLemmas.le_refl) (StdLemmas.id_sym_ty) = false := by native
 /-- The single symbolic path's final Ω (no audit), for reading off what a rule
     left behind. -/
 def envOf (table : List Decl) (d : Decl) : Option Env :=
-  match runFn table d with | [.ok e] => some e | _ => none
+  match Migrate.progEnvsOfT table d with | [.ok e] => some e | _ => none
 
 def vlam : Val := .lam (.const "Nat") (.ctor "S" [.pvar 0])
 

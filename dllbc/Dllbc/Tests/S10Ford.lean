@@ -96,6 +96,14 @@ example : Migrate.progOkOf learn = true := by native_decide
 def learnObs : Decl :=
   decl{ fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } } }
 
+-- **STAYS ON THE DECLARATION PATH, and names the one capability the program path
+-- does not have** (M27-δ). These two inspect what a FUNCTION BODY leaves in Ω,
+-- and a body with a telescope can only be entered by seeding that telescope —
+-- which is `checkFn`'s job. On the program path a declaration is a `let` of a
+-- sealed λ, and its body is entered only inside `checkRFnBody`'s ISOLATED frame,
+-- whose Ω is deliberately discarded (that isolation is M26-C's own debt paid).
+-- So there is no rewrite of these assertions; there is a missing form. Recorded
+-- here rather than weakened, because a weakened version would still be green.
 example : expectFnEnv [learnObs] learnObs [("n", vnat 2), ("p", .bot), ("m", vnat 2)] = true := by
   native_decide
 

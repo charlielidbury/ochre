@@ -58,7 +58,7 @@ def chooseCaller : Decl :=
 -- `let z = a` ends the group (fresh existentials for a and b) and then COPIES
 -- a's existential (§2.1), so a and z share it; canonicalization numbers a's σ
 -- first (it now appears in a's own slot), b's second.
-example : expectFnEnv [choose, chooseCaller] chooseCaller
+example : Migrate.progEnvOfT [choose, chooseCaller] chooseCaller
   [("a", .sym 0), ("b", .sym 1), ("pa", .bot), ("pb", .bot), ("r", .bot), ("z", .sym 0)]
   = true := by native_decide
 
@@ -89,7 +89,7 @@ def throughCaller : Decl :=
 
 -- y is a fresh σ (the write is forgotten — deliberate, per the soundness fix).
 -- `x`'s recovered σ is typed `List Nat` (DATA), so reading it MOVES it (§2.1).
-example : expectFnEnv [through, throughCaller] throughCaller
+example : Migrate.progEnvOfT [through, throughCaller] throughCaller
   [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## Rejections -/

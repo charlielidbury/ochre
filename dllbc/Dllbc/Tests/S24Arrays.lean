@@ -490,7 +490,11 @@ def halves : Decl := decl{
 
 example : Migrate.progOkOf halves = true := by native_decide
 
-/-- The final Ω of a single-path body. -/
+/-- The final Ω of a single-path body. **Declaration path, and it dies with it**
+    (M27-δ): inspecting what a body with a TELESCOPE leaves requires seeding that
+    telescope, which is `checkFn`'s job — on the program path such a body is
+    entered only inside the seal's isolated frame, whose Ω is discarded by design.
+    See `S10Ford` for the same disposition stated at length. -/
 def fnEnv (d : Decl) (tbl : List Decl := [d]) : Option Env :=
   match runFn tbl d with | [.ok e] => some e | _ => none
 
