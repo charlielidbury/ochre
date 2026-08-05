@@ -11,6 +11,7 @@ import Dllbc.StdLemmas
 import Dllbc.DeclMacro
 import Dllbc.AlphaEq
 import Dllbc.Program
+import Dllbc.Migrate
 import Dllbc.ProgMacro
 import Dllbc.Tests.S2
 import Dllbc.Tests.S3
@@ -37,6 +38,7 @@ import Dllbc.Tests.S26Modes
 import Dllbc.Tests.S26Rec
 import Dllbc.Tests.S26Fn
 import Dllbc.Tests.S26Prog
+import Dllbc.Tests.S26Migrate
 import Dllbc.Tests.SInternals
 import Dllbc.Tests.SDeclMacro
 import Dllbc.Tests.SDeclMacroCrown

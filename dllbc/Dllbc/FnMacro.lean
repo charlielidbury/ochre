@@ -203,6 +203,32 @@ partial def succBinder (k : Var) : Term → Option Var
   | .seq a b => (succBinder k a).orElse (fun _ => succBinder k b)
   | _ => none
 
+/-- The scrutinee argument of every self-call, in order. `ih` is the sealed view
+    **at the predecessor**, so translating a self-call into one is honest only when
+    that argument IS the predecessor; `fnElab` checks these before rewriting.
+
+    Without the check the macro silently repairs a non-terminating program: the
+    corpus's `recGrow` — `fn recGrow [n] (n) { match n { Z => Refl, S(m2) =>
+    recGrow(S(m2)) } }` — recurses on ITSELF, is rejected by the declaration
+    path's snapshot-subterm guard, and elaborates to a recursor that recurses on
+    `m2` and checks. §7 says the guard evaporates because `ih` is a binder and a
+    binder cannot be a self-call; that is true of the ELABORATED term, and this is
+    what makes it true of the source it came from. Constraint 7 held either way —
+    the kernel accepted a well-founded program — but "checks as a different
+    function" is precisely the macro bug that constraint is willing to tolerate
+    and a reader is not. -/
+partial def selfScrutArgs (name : String) (k : Nat) : Term → List Term
+  | .call f args =>
+    (if f == name then (args.get? k).toList else []) ++ args.flatMap (selfScrutArgs name k)
+  | .letIn _ rhs rest => selfScrutArgs name k rhs ++ selfScrutArgs name k rest
+  | .assign p e rest =>
+    selfScrutArgs name k p ++ selfScrutArgs name k e ++ selfScrutArgs name k rest
+  | .seq a b => selfScrutArgs name k a ++ selfScrutArgs name k b
+  | .ctorApp _ args | .callV _ args => args.flatMap (selfScrutArgs name k)
+  | .borrow t | .deref t => selfScrutArgs name k t
+  | .matchE _ _ brs => brs.flatMap (fun b => selfScrutArgs name k b.body)
+  | _ => []
+
 /-- A self-call becomes an `ih` application with the scrutinee argument dropped:
     `f(a₀ … a_k … aₙ)` ↦ `ih(a₀ … â_k … aₙ)`. The remaining arguments keep their
     order, which is the order the motive binds them in — hoisting `k` to the front
@@ -286,7 +312,21 @@ def fnElab (d : Decl) : Except String Term := do
     let ih : Var := ⟨base + 1, "ih"⟩
     -- THE ARMS: the WHOLE body twice, with `match k` resolved to one branch each.
     let zBody := resolveScrut kv "Z" [] d.body
-    let sBody := selfToIh d.name k ih (resolveScrut kv "S" [pred] d.body)
+    let sResolved := resolveScrut kv "S" [pred] d.body
+    -- `ih` is the sealed view AT THE PREDECESSOR, so a self-call may only be
+    -- rewritten into one when that is what it recurses on. Checked here rather
+    -- than left to the kernel, which would accept the (well-founded) elaboration
+    -- of a source that is not.
+    match (selfScrutArgs d.name k sResolved).find? (fun a =>
+        match a with | .var y => y.id != pred.id | _ => true) with
+    | some a =>
+      .error s!"fn: '{d.name}' calls itself with a non-predecessor as its decreasing argument [{k}], which is not the predecessor '{pred.name}'. §7 makes a recursive occurrence `ih` — the sealed self-view AT THE PREDECESSOR — so there is nothing for a self-call at any other argument to become. (This is the check that keeps the macro from silently turning a non-terminating source into a terminating recursor: the elaborated term would be well-founded and would check, but it would be a different function.)"
+    | none => pure ()
+    match (selfScrutArgs d.name k zBody).head? with
+    | some _ =>
+      .error s!"fn: '{d.name}' calls itself in the branch its `match {kv.name}` selects at `Z`. The base arm has no `ih` — that is what a base case IS — so a self-call there has nothing to become."
+    | none => pure ()
+    let sBody := selfToIh d.name k ih sResolved
     -- The scrutinee is gone from both arms; a residual reference to it means the
     -- body used `k` as a value somewhere no `match` resolved, and the arm would be
     -- non-closed. Said here rather than left to the kernel's closedness rejection,
@@ -322,12 +362,27 @@ def fnElab (d : Decl) : Except String Term := do
 
 /-- Retarget table calls to the bindings that now hold those functions. A name
     with no binding is left as a `.call`, so a half-migrated program still
-    reaches the J1 table for whatever has not moved yet. -/
-partial def retarget (binds : List (String × Var)) : Term → Term
+    reaches the J1 table for whatever has not moved yet.
+
+    **And the arguments are permuted to match the callee's hoist.** `[k]` is a
+    scrutinee-selection hint, and `fnElab` hoists that parameter to the FRONT
+    because the motive is the sealed Π with the scrutinee peeled off the front —
+    so a sealed callee's telescope is not its declaration's telescope, and a call
+    written against the declaration has to be reordered the same way. Omitting
+    this is invisible whenever `[k]` is already parameter 0 (which every flagship
+    in this corpus happens to satisfy) and silently passes a borrow where a `Nat`
+    is expected otherwise. It was found by the migration report's disagreement
+    list, on `swap_at` and `pick` — two callers of `[i]`/`[k]` functions whose
+    decreasing parameter is not first. -/
+partial def retarget (binds : List (String × Var × Option Nat)) : Term → Term
   | .call f args =>
     let args' := args.map (retarget binds)
     match binds.lookup f with
-    | some v => .callV v args'
+    | some (v, some k) =>
+      match args'.get? k with
+      | some a => .callV v (a :: args'.eraseIdx k)
+      | none => .callV v args'                  -- arity mismatch: the kernel reports it
+    | some (v, none) => .callV v args'
     | none => .call f args'
   | .callV x args => .callV x (args.map (retarget binds))
   | .ctorApp n args => .ctorApp n (args.map (retarget binds))
@@ -364,8 +419,8 @@ def progBase : Nat := 900
     a callee not yet bound stays a `.call` and is reported by the kernel as the
     unknown function it is. -/
 def progOf (ds : List Decl) (tail : Term) : Except String Term := do
-  let binds : List (String × Var) :=
-    ds.enum.map (fun p => (p.2.name, ⟨progBase + p.1, p.2.name⟩))
+  let binds : List (String × Var × Option Nat) :=
+    ds.enum.map (fun p => (p.2.name, ⟨progBase + p.1, p.2.name⟩, p.2.dec))
   let rec go (i : Nat) : List Decl → Except String Term
     -- The tail is in the accumulated scope, so its calls are retargeted too — which
     -- is what lets an existing `Decl`-era caller term be handed over unchanged and

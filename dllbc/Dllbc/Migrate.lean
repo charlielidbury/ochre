@@ -1,0 +1,115 @@
+import Dllbc.Program
+import Dllbc.FnMacro
+
+/-!
+# Migrating the corpus: the declaration path and the program path, compared
+
+M26-E's bar is **coverage preservation**: every declaration the old path accepted
+must be accepted as a program, and every lie twin it refused must be refused as a
+program. The corpus holds a few hundred of both, and the failure mode a bulk
+migration has is not a wall — it is a quietly-wrong rewrite that still builds.
+
+So nothing here rewrites a test. Each cohort is run down BOTH paths and the two
+verdicts are compared, which turns "the migration is faithful" from a claim about
+my care into a computation. Three things make that mechanical rather than
+laborious:
+
+  * **The cohort is derived, not declared.** A test's declaration table was always
+    the callee closure of its subject; `calleeNames` computes it, and `topo`
+    orders it so that every callee is bound above its caller — which is what §8
+    requires of a let-chain and what the table never had to care about.
+  * **`progOf` does the assembly**, exactly as it does for the flagships.
+  * **Refusals are third verdict, not a failure.** `fnElab` legitimately declines
+    a declaration that has no seal counterpart — a `[v]` payload decrease (§12
+    decision 8) or a declared `back` (§6.2) — and those are *recorded*, per file,
+    rather than silently counted as agreement. A migration report that could not
+    say "this one did not move" would be the quietly-wrong thing.
+-/
+
+namespace Dllbc.Migrate
+
+/-- Order a pool so that every callee comes before its caller. A declaration
+    whose callees are all emitted (or are not in the pool at all, i.e. are
+    someone else's) is ready; self-calls do not count, since `fnElab` turns them
+    into `ih`. If nothing is ready the remainder is emitted as-is and the program
+    path reports the forward reference itself. -/
+partial def topo (pool : List Decl) (emitted : List String) (todo : List Decl) : List Decl :=
+  match todo.find? (fun d => (calleeNames d.body).all (fun n =>
+      n == d.name || emitted.contains n || !(pool.any (·.name == n)))) with
+  | none => todo
+  | some d => d :: topo pool (d.name :: emitted) (todo.filter (·.name != d.name))
+
+/-- The callee closure of `d` within `pool`, in dependency order, `d` last. -/
+partial def cohort (pool : List Decl) (d : Decl) : List Decl :=
+  let rec expand (fuel : Nat) (acc : List Decl) : List Decl :=
+    match fuel with
+    | 0 => acc
+    | fuel + 1 =>
+      let wanted := (acc.flatMap (fun c => calleeNames c.body)).eraseDups
+      let add := wanted.filterMap (fun n =>
+        if acc.any (·.name == n) then none else pool.find? (·.name == n))
+      if add.isEmpty then acc else expand fuel (acc ++ add)
+  topo pool [] (expand pool.length [d])
+
+/-- The DECLARATION path's verdict: **every member** of the cohort checks against
+    the cohort as a table.
+
+    Checking only the subject would not be the same question, and the difference
+    is a real one rather than a technicality: `checkFn` consults a callee's
+    SIGNATURE and never enters its body, so a broken callee is invisible to its
+    caller's test, whereas a let-chain audits every sealed binding in it. The
+    corpus covers that by testing each declaration separately; this makes the
+    comparison apples-to-apples by asking the declaration path the question the
+    program path answers. (Found by the disagreement list: two S19 cohorts
+    reported decl=accept/prog=reject, and both were a callee whose own table entry
+    was missing from the pool I had built — the harness catching my error, which
+    is the reason it reports names and not a Bool.) -/
+def declVerdict (pool : List Decl) (d : Decl) : Bool :=
+  let tbl := cohort pool d
+  tbl.all (fun c => match checkFn (tbl ++ [c]) c with | .ok _ => true | .error _ => false)
+
+/-- The PROGRAM path's verdict: the cohort assembled into a let-chain and checked
+    by one ⇒-walk against no table. `none` = the macro declined to migrate it. -/
+def progVerdict (pool : List Decl) (d : Decl) : Option Bool :=
+  match FnMacro.progOf (cohort pool d) .unit with
+  | .error _ => none
+  | .ok t => some (match checkProgram t with | .ok _ => true | .error _ => false)
+
+/-- Why a declaration did not migrate — `fnElab`'s own message, so the reason is
+    the kernel-adjacent one and not a guess. -/
+def refusal (pool : List Decl) (d : Decl) : Option String :=
+  match FnMacro.progOf (cohort pool d) .unit with
+  | .error e => some e
+  | .ok _ => none
+
+/-- **The report for a pool**: how many declarations both paths ACCEPT, how many
+    both REJECT, how many did not migrate, and — the field that must be empty —
+    the names on which the two paths DISAGREE.
+
+    Reported as a tuple rather than as a single Bool so that a test asserting it
+    cannot pass vacuously: a migration that quietly stopped covering half the
+    corpus changes the counts even when the disagreement list stays empty. -/
+structure Report where
+  accepts : Nat
+  rejects : Nat
+  declined : Nat
+  disagree : List String
+deriving BEq, Repr
+
+def report (pool : List Decl) : Report :=
+  pool.foldl (fun r d =>
+    match progVerdict pool d with
+    | none => { r with declined := r.declined + 1 }
+    | some p =>
+      let dv := declVerdict pool d
+      if p != dv then { r with disagree := r.disagree ++ [d.name] }
+      else if dv then { r with accepts := r.accepts + 1 }
+      else { r with rejects := r.rejects + 1 })
+    { accepts := 0, rejects := 0, declined := 0, disagree := [] }
+
+/-- The names a pool declined to migrate, with `fnElab`'s reason — for the record
+    a partial migration owes (see each file's own section). -/
+def declinedWith (pool : List Decl) : List (String × String) :=
+  pool.filterMap (fun d => (refusal pool d).map (fun e => (d.name, e)))
+
+end Dllbc.Migrate
