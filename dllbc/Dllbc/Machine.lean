@@ -2452,6 +2452,24 @@ def collapseArg : Nat → Var → M Unit
       | none => pure ()
     | _ => pure ()
 
+/-- The same End-Mut loop as `collapseArg`, but locating the borrow **by loan**
+    anywhere in Ω rather than expecting it to BE the slot's value.
+
+    A Σ-packaged borrow (`Σ (n : Nat) → &mut …`, §5's second opacity) sits inside
+    a `Pair` in its slot, so `collapseArg`'s slot-shaped match falls through and
+    the suspended field loans ride into `hasType`, which has no rule for a
+    `loanₘ`. M24's G2 probe never reached this: an array payload is not matched
+    into fields, so no field loan was ever suspended under a package. -/
+def collapseLoanIn : Nat → Nat → M Unit
+  | 0, _ => throwErr "audit: out of fuel (collapse)"
+  | fuel + 1, ℓ => do
+    match (← getEnv).findSome? (fun kv => findBorrowPayload ℓ kv.2) with
+    | some payload =>
+      match firstLoanMarker payload with
+      | some ℓ' => do endLoan fuel ℓ'; collapseLoanIn fuel ℓ
+      | none => pure ()
+    | none => pure ()
+
 /-- Does borrow `ℓ` transitively reborrow into `target`? An `advance`-style body
     returns a reborrow of a FIELD of an argument borrow (`&mut *hd` after
     matching `v`); that argument is then the CAPTURED OWNER of the issued result
@@ -2491,7 +2509,10 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
     -- Still at its own slot? collapse its field loans first, in place.
     match ← lookupSlot ob.arg with
     | .borrowM _ _ => collapseArg fuel ob.arg
-    | _ => pure ()
+    -- Σ-packaged: the borrow was never AT this slot (it is inside a `Pair`, and
+    -- an immediate match has since moved it to a binder of its own), so locate
+    -- it by loan instead.
+    | _ => collapseLoanIn fuel ob.loan
     -- Locate the borrow anywhere in Ω and audit its payload.
     match (← getEnv).findSome? (fun kv => findBorrowPayload ob.loan kv.2) with
     | none =>
