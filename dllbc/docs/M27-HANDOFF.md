@@ -56,16 +56,44 @@ the model's erasure principle applied to the value side.
 **`FnMacro:314` is free**: `.lamR (tel.map (·.1)) d.body` becomes
 `.lamR tel d.body`, because the telescope already carries the types.
 
-> **THE ONE DESIGN DANGER IN α, and the reason this handoff exists at this
-> boundary.** `FnMacro:398–405` builds the recursor arms, and `restIds`, `dec`,
-> `ih` and `stepBs` all need types. `rest` is already a telescope, so those come
-> for free — but **`ih`'s type is the motive applied to the predecessor**, a term
-> the macro must *synthesize*, and `dec`'s is the scrutinee's domain, which
-> differs between `natRec` and `listRec`. That is design judgement, not
-> transcription. It is the one place in α where a wrong answer compiles, passes,
-> and is subtly the wrong type. Give it a control that would fail if `ih` were
-> typed at the wrong level — M26-C already established that `ih`-at-the-wrong-level
-> is a *type error rather than a check*, so the control exists to be written.
+> **THE ONE DESIGN DANGER IN α — corrected by dllbc-p2 before the α.1a commit, and
+> the correction makes it worse rather than smaller.** `FnMacro:398–405` builds the
+> recursor arms, and `restIds`, `dec`, `ih` and `stepBs` all need types.
+>
+> My original note said `rest` "comes for free, being already a telescope". **That
+> is wrong.** The motive is
+> `.lam (markDom kv kτ) (absVar kv 0 (telePi rest d.retType))` (`FnMacro:341`), and
+> `absVar kv 0` abstracts the scrutinee over the WHOLE nested Π — including inside
+> `rest`'s own domains. The kernel confirms it from the other side: `checkArm`
+> (`Machine.lean:3613`) does `piPeel restNames ty` where `ty` is the motive
+> **instantiated at the constructor**, so the rest domains arrive with
+> `kv := Z` / `kv := S k` substituted, not as written.
+>
+> The corpus case that bites is the flagship:
+> `quicksort [fuel] (fuel, v : &mut List Nat, hfuel : Le (len *v) fuel)`. `hfuel`'s
+> domain mentions the scrutinee, so the base arm wants `Le (len *v) Z` and the step
+> arm `Le (len *v) (S fuel')`. And nothing guards against it: `hoist`
+> (`FnMacro:288`) checks that the scrutinee's own type does not mention EARLIER
+> parameters and says nothing about later ones mentioning the scrutinee — which is
+> exactly the fuel-bound shape §12 decision 8 blessed.
+>
+> **So the synthesis burden is three things per arm, not one**: `dec` (the
+> scrutinee's domain, differing between `natRec` and `listRec`), `ih` (the motive
+> applied to the predecessor), and the **rest domains re-instantiated at the
+> constructor**. All three are places where a wrong answer compiles, passes, and is
+> subtly the wrong type.
+>
+> **The implementation that removes the danger** (p2's, and it is better than
+> transcribing): derive every arm annotation with the kernel's OWN `piPeel` applied
+> to the motive instantiated at the constructor — literally recompute what
+> `checkArm` computes. `FnMacro` already imports `Machine`, and constraint 7's TCB
+> direction is the other one (nothing in `Machine`/`Boundary` imports the macro), so
+> this costs no hygiene. Macro and kernel then cannot disagree by construction,
+> which is the same argument §7 already makes for the motive itself.
+>
+> Give it a control that would fail if `ih` were typed at the wrong level — M26-C
+> established that `ih`-at-the-wrong-level is a TYPE ERROR rather than a check, so
+> the control exists to be written rather than invented.
 
 **Surface**: `Uni.lean:136`'s rule `λ "(" ident,* ")" "{" ublk "}"` gains `: uterm`
 per binder. **95 runtime λs migrate**: `S26Rec` 69, `S26Prog` 19, `S27Mixed` 5,
@@ -80,6 +108,25 @@ ascription); arm-checking becomes **motive-agreement**.
 Split from α.1a deliberately: *a red build should never be ambiguous between a
 mistyped binder and a wrong conversion rule.* 95 mechanical edits and two rule
 changes in one commit makes every failure a two-suspect investigation.
+
+**What "ONE conversion" can mean, and the precedent that settles it.** A body has
+no synthesizable type — that is the whole reason the ascription is the contract
+(§5 point 4) — so the λ synthesizes its DOMAINS only, and the single conversion is
+arity-plus-domains: the λ's annotation at each position against the ascription's
+peeled domain, after which `checkRFnBody` audits the body against the residual
+return type as today.
+
+**`piPeel` already does exactly this for the binder MODE** (`Machine.lean:2082–2088)`.
+It rejects a lowercase binder under a capital-bindered Π, and its docstring
+already contains the ruling: *"the ascription is the contract for CALLERS; this is
+the callee-side half of the same sentence, and it is a rejection rather than a
+coercion because the two claims are about different people."* So α.1b is that
+check **widened from the mode to the whole domain**, not a new rule — and the
+authority question answers itself the same way: **the ascription is authoritative
+for what `seedTelescopeV` seeds.** The λ's annotation is a claim that must not
+contradict the contract; the contract is what the caller was promised. Convertible
+-but-unequal resolves toward the peel, for the same reason and with the same
+polarity: rejection, never coercion.
 
 ### α.2: the enforcement rider
 
