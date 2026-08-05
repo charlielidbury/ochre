@@ -1,5 +1,134 @@
 # Progress
 
+## 2026-08-05 — dllbc/: M27 phases P1–P3 — `back` leaves the language, and three soundness holes close
+
+The endgame's first three phases and the containments they turned up. Twelve
+commits, `30298000` through `67cf6053`. **No declaration in the corpus declares a
+backward spec, and `Decl.back` no longer exists**, so the claim is a fact about
+the type rather than a property a test asserts. Phases α–ε (the ratified function
+model, the fleet, `Decl`'s own deletion) remain.
+
+    corpus   (95, 56, 73)  →  (110, 58, 19)      accept / reject / decline
+    backs    28 entries    →  0
+    S19      1154 lines    →  633
+
+**P1 — a disposition for every decliner** (`30298000`). `Tests/S27Dispose.lean`,
+built as a computation rather than a list: the dispositions are keyed to the
+harness's own `refusal`, so a declaration that starts or stops declining turns the
+file red. What it found is the part worth keeping — **the five paid fuel twins
+were all HONEST functions**, and the corpus guards each with lie twins that were
+never migrated with them. The paid path was checking that the honest program is
+accepted without checking that it still refuses anything, which is the half of a
+differential that passes vacuously, and no decline count could ever have surfaced
+it. Six twins closed, with a sharper bar that is now standing doctrine: **a twin
+that DECLINES teaches nothing; it must MIGRATE and then be REFUSED, on both
+paths.** `partitionLoses` is derived by a transform held to the corpus's own
+hand-written twin as an oracle, rather than transcribed.
+
+**§12 open 3 is too strong, and the attempt is what showed it.** `recDeep` — filed
+as "§7's genuine expressiveness limit, no single-recursor form" — IS expressible
+as a sealed recursor, and it checks. An arm gets `ih` at the predecessor *of the
+motive it was given*, and the motive is a choice: `recDeep`'s own is constant, so
+`ih : P a` already is `P b` for every `b`. Pinned with a negative control and with
+the macro's continuing refusal, which is the whole content: **the limit is a macro
+limit, not a calculus one** — §7 has `fnElab` derive the motive mechanically from
+the signature, and this is not that motive. The general two-down shape has a
+described route (a course-of-values motive `Q m := P m × P (S m)`) left explicitly
+unmechanized. Worth its filing point: this is §9's own survey warning — "the
+eliminator must accept a motive stronger than the signature" — arriving
+independently from the other end of the language, before §9 is built.
+
+**P2 — `back` retires** (`2f94aa6d`, `2b12d7fe`, `9feed8fa`, `297460a3`,
+`668f3987`, `c9c2bb4d`). The corpus stopped declaring backward specs, then the
+mechanism they declared came out of the kernel: `Decl.back`, the `back = …`
+surface, `Group.backSpec`, `St.selfBack`, `resolveTree`, both §6.2 callee checks,
+`endGroup`'s spec branch, `FnMacro`'s decline, `AlphaEq`'s comparison. The one
+place the deletion shows as BEHAVIOUR rather than absence is `endGroup`: its
+release used to dispatch on the spec and hand back the COMPUTED value; the match
+now has one real arm and every group end is opaque. §5 point 4 is the replacement
+in a sentence — what a caller keeps is what the callee ascribed.
+
+**S19's stratum is superseded, not portable, and that was measured rather than
+argued.** `swapS` given the ensures its callers need, with its cursor body
+unchanged, is REJECTED — its exit is a fresh σ minted by `nth2`'s loan group,
+which is §6.2's own sentence arriving as an error message. So porting is not a
+signature change but a PROGRAM rewrite, and M23 already performed it:
+`S23Direct.swapAt` proves the identical statement via an ensures-carrying
+`set_at`, already in the corpus and already green. The claim-carrier audit
+(`S27Dispose` §E) maps all fourteen retired declarations, and **exactly one claim
+has no carrier** — `qsSpc`'s checking-mode recovery of the sorted list — dying by
+§5 point 4's design rather than by accident.
+
+**THREE SOUNDNESS HOLES, all found by probes, all measured before the fix
+shipped.** `fn closedBot () -> Bot` checked on main, by two independent routes:
+
+1. **Mixed return types** (`eb510a0f`). A borrow-carrying return type is audited
+   structurally and never pinned, and both audit sites gate the value check on the
+   WHOLE type being borrow-free — so a non-borrow component was judged by nothing,
+   while the caller's `buildResult` minted it as a proof anyway. Refused rather
+   than repaired. **The ruling named one dispatch site; there were two**, and the
+   unnamed one (`checkRFnBody`, the seal) is the path the endgame keeps.
+2. **Owed types on consumed parameters** (`be679f35`). §6.1 exempts a borrow
+   consumed into the result from the payload audit — correct about the payload,
+   and it takes the OWED TYPE with it while the caller's group end mints the
+   release AT that type. Neither end looks. Measured first: of **142 borrow
+   parameters, exactly two carry a non-trivial owed type, and both are
+   Unit-returning**, so neither is ever consumed and nothing load-bearing tripped.
+3. **Reading a sealed borrow-taking function** (`67cf6053`). A borrow-moded Π has
+   no `Val`, so its σ lives in `fsig` alone and `indexKindV` — which consults
+   `sctx` — takes the move default: the checker empties the slot while the
+   executing machine copies. c1's probe upgraded this from M27-P3's
+   safe-direction reading to **a program both machines ACCEPT with
+   non-corresponding final Ωs**, a simulation break in the one place S9Diff's
+   whole-program assertions cannot see it.
+
+**P3 — copy-on-read is a KEEP** (`a41980f2`), and the reason is the differential
+rather than precision. `indexKindV` classifies by value shape and concrete `Nat`s
+copy unconditionally, so removing the symbolic half makes the two machines diverge
+on ordinary programs — ~80 assertions across 13 files, S9Diff's simulation
+assertions first. Modes cannot substitute, and the structural reason is that
+`readR` runs the comptime fence BEFORE the slot lookup: capitalisation REJECTS a
+runtime read rather than turning it into a copy. combining-fns §6 mechanism 1 is
+rewritten claim-history style — the proof-consumption half retired by modes, the
+body-slot half kept.
+
+**WHAT THE DOCTRINE YIELDED, and these transfer past this milestone.**
+
+  * **Agreement is not coverage.** The comparison harness never compares a
+    DECLINING declaration's declaration-path verdict — `progVerdict` returns
+    `none` and the comparison skips — so `disagree.isEmpty` was true throughout
+    while **27 of the 42 declarations that stopped declining under a strip became
+    REJECTS**. That is what hid fourteen S19 regressions until a deletion exposed
+    them. A comparison harness must also measure verdict SURVIVAL.
+  * **Measure outside the pools.** Every number this campaign produced came from
+    `S26Migrate.pools`, the TEST corpus. `Bench.lean`/`BenchQS.lean` were
+    `checkFn`'s other consumer, declared fifteen backs, and were invisible to all
+    of it — because being excluded from the corpus is precisely what they were
+    FOR. A harness whose defining property is that it is not in the corpus cannot
+    be found by a corpus-derived map.
+  * **Both dispatch surfaces, applied to a ruling.** The containment ruling said
+    "site", singular, and patching only `checkFn` would have fixed the path P5
+    deletes while leaving the identical hole in the path the endgame keeps.
+  * **Validate one perturbation per file.** Importers cascade: perturbing three
+    files at once reported only the first, and would have passed for validation of
+    ten while validating four.
+  * **A deletion that removes MORE than intended looks exactly like a correct
+    deletion plus a compile error.** A regex written to swallow "docstring plus
+    field" ate half the `St` structure and reported as missing fields. Exact-string
+    anchors, one construct at a time, build between each.
+  * **The strongest ledger is the one that fails to compile.** `S27Dispose` §A's
+    assertions are gone rather than updated, because `(·.back.isSome)` no longer
+    typechecks.
+  * **`with`-closures reach where syntax sweeps do not.** `nth2Lie` carried its
+    back as a record update, so stripping the `back = …` surface left it behind —
+    M26-F's lesson arriving from the other side.
+
+**FOR THE FUNCTION-MODEL ROUND**: teaching `indexKindV` about `fsig` is a
+PREREQUISITE of c1's bounded curried design, not an optional cleanup — that design
+accumulates arguments for a sealed callee, and its residual is exactly the object
+that must be bound to a slot and read back.
+
+
 ## 2026-08-05 — dllbc/: **M26 CLOSES — `fn` and λ are one former; a program is a term**
 
 The milestone entry; the phases have their own above (A/B are in their commits,
