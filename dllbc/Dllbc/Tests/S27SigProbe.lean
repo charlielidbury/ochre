@@ -376,6 +376,32 @@ def d4spec : Decl := decl{ fn part (s : Σ (p : Nat) → &mut List Nat)
   match s { Pair(p, v) => { *v := Nil; Pair(Nil, Refl) } } } }
 example : rejects d4spec "dereferenced value is not a borrow" = true := by native_decide
 
+/-! ### D5. THE ONE ESCAPE HATCH, measured — the `~>` owed type still works
+
+    The return type is not the only place an exit spec can live: `&mut (t : τ ~>
+    S)` states one ENTRY-RELATIVELY, and `seedTelescopeV`'s Σ case threads the
+    entry snapshot into it correctly. So a relational contract IS statable through
+    a package — in M16's `swapS01` style, where the payload literally becomes a
+    pair carrying its own proof.
+
+    Measured rather than asserted, because it is the only route §D leaves open,
+    and its price is exactly the one M23 paid to get away from it: the OWED TYPE
+    is a property of the payload's own type, so the data representation changes to
+    carry the evidence, and every reader of the borrow destructures a pair. M23's
+    return-type ensures exists because that was worse. -/
+
+def d5 : Decl := decl{
+  fn takes (s : Σ (n : Nat) → &mut (t : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len t)))
+  -> Unit { match s { Pair(n, v) => { let l = *v; *v := Pair(l, Refl); () } } } }
+example : ok d5 = true := by native_decide
+
+-- Not vacuous: the same package with a body that files the WRONG evidence — a
+-- list of a different length beside a `Refl` that cannot bridge it.
+def d5lie : Decl := decl{
+  fn takes (s : Σ (n : Nat) → &mut (t : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len t)))
+  -> Unit { match s { Pair(n, v) => { let l = *v; *v := Pair(Cons(Z, l), Refl); () } } } }
+example : rejects d5lie "does not have its owed type" = true := by native_decide
+
 /-! ## §E. THE MODED-COMPONENTS QUESTION
 
     §6 gives modes to "λ, Π and `let` alike" — the binders of PARAMETERS — and
