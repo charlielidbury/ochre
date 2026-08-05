@@ -35,9 +35,15 @@ a computation. `Migrate.report` returns counts alongside the disagreement list
 precisely so that a migration which quietly stopped covering half the corpus
 changes the numbers even while `disagree` stays empty.
 
-**The result: 95 accept on both paths, 56 reject on both, 73 do not migrate, and
-NOTHING disagrees.** The 73 are three named classes (§Z below), each a decision
+**The result: 99 accept on both paths, 57 reject on both, 68 do not migrate, and
+NOTHING disagrees.** The 68 are three named classes (§Z below), each a decision
 this project has already taken.
+
+(M26-F moved five of these: the corpus's `nth`/`nth2` in S14 and S17 declared
+`[v]`, and S26Fuel §C measured that they decrease on their INDEX just as well, so
+correcting the hint is one field with no other change. The whole S14 family
+migrated — 0/0/5 became 4/1/0 — and the S17/S19 copies still decline, on their
+declared `back` rather than on their hint.)
 
 ## What the comparison found — two real bugs, both mine
 
@@ -167,7 +173,7 @@ example : (report p9  == R 4 0 0) = true := by native_decide
 example : (report p10 == R 3 2 0) = true := by native_decide
 example : (report p11 == R 3 0 0) = true := by native_decide
 example : (report p12 == R 10 2 0) = true := by native_decide
-example : (report p14 == R 0 0 5) = true := by native_decide
+example : (report p14 == R 4 1 0) = true := by native_decide
 example : (report p15 == R 1 1 0) = true := by native_decide
 example : (report p16 == R 2 0 0) = true := by native_decide
 example : (report p17 == R 1 0 7) = true := by native_decide
@@ -187,14 +193,14 @@ def pools : List (List Decl) :=
 
 example : (pools.foldl (fun (a, r, d) p =>
     let q := report p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
-  == (95, 56, 73)) = true := by native_decide
+  == (99, 57, 68)) = true := by native_decide
 example : (pools.all (fun p => (report p).disagree.isEmpty)) = true := by native_decide
 
 /-! ## §Z. What did not migrate, and why — three classes, each already decided
 
     A migration report that could not say "this one did not move" would be the
     quietly-wrong thing, so the declines are classified rather than counted. All
-    74 fall into three classes, and each class is a decision this project took
+    68 fall into three classes, and each class is a decision this project took
     before this phase started. -/
 
 -- Z1. **A declared `back`** (§6.2) — the mechanism M23 RETIRED. Its corpus
@@ -209,9 +215,11 @@ example : (match FnMacro.fnElab S17Spec.throughOk with
 
 -- Z2. **`[v]` payload decrease** (§12 decision 8) — no recursor form until §9's
 -- borrow-mode eliminator exists; fuel-threading is the blessed interim, and it is
--- a SOURCE change, so a macro may not invent it. `zero_all`, `nth`, `recCursor`,
--- `append_back`, `partition`, `walkArr`. M26-D paid it for `partition` and M26-E
--- for `append_back`; the rest stay as they are (J1 — both worlds alive).
+-- a SOURCE change, so a macro may not invent it. `zero_all`, `recCursor`,
+-- `append_back`, `partition`, `walkArr` — and no longer `nth`, which M26-F showed
+-- was never in this class at all, only mis-declared into it. M26-D paid the
+-- interim for `partition` and M26-E for `append_back`; the rest stay as they are
+-- (J1 — both worlds alive).
 example : (match FnMacro.fnElab S6Call.zeroAll with
            | .error e => strContains e "decision 8"
            | .ok _ => false) = true := by native_decide
@@ -278,13 +286,23 @@ example : (match FnMacro.fnElab S23Direct.recGood with
     report at face value says §6.2 blocks S17 and S19 wholesale.
 
     It does not. Stripping `back` from a pool and re-running the comparison is
-    two lines, and it moves 73 declines to **65**: §6.2 is the sole blocker for
-    exactly **eight** declarations, and the other 65 are blocked underneath by
-    §12 decision 8's `[v]` payload decrease. That reverses the conclusion about
-    what stands between here and deleting `Decl` — the road runs through §9's
-    borrow-mode eliminator (or fuel-threading six functions by hand, the shape
-    M26-D and M26-E have each paid once), not through redesigning what a backward
-    spec becomes.
+    two lines, and when this section was written it moved 73 declines to **65** —
+    §6.2 was the sole blocker for exactly **eight** declarations, and the other 65
+    were blocked underneath by §12 decision 8's `[v]` payload decrease.
+
+    Since M26-F corrected the `nth`/`nth2` hints the same two lines move 68 to
+    **19**, which is the other half of the same lesson and the reason the first
+    measurement read as it did: the blockers COMPOSE. A cohort is a closure, so an
+    S17 `nth` carrying both a declared `back` and a mis-declared `[v]` declines
+    everything above it until BOTH come off, and stripping either one alone barely
+    moved the report. With the hints corrected, `back` is what remains underneath
+    49 declarations rather than eight.
+
+    What that does not change is where the road runs. The residue after both fixes
+    is the honest `[v]` class — 17 in S23, `zero_all` in S6, `walkArr` in S24 — so
+    deleting `Decl` still goes through §9's borrow-mode eliminator (or through
+    fuel-threading those by hand, the shape M26-D and M26-E have each paid once),
+    not through redesigning what a backward spec becomes.
 
     (A Lean-level gotcha that cost me the first measurement, recorded because it
     fails SILENTLY: `{ d with back := none }` does not strip the field. `back` is
@@ -300,18 +318,20 @@ def stripBacks (pool : List Decl) : List Decl :=
 example : (p17.any (fun d => d.back.isSome)
         && (stripBacks p17).all (fun d => d.back.isNone)) = true := by native_decide
 
--- 73 declines become 65, so `back` alone accounts for eight.
-example : (pools.foldl (fun a p => a + (report p).declined) 0 == 73) = true := by native_decide
-example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 65)
+-- 68 declines become 19, so `back` alone accounts for 49 (it accounted for eight
+-- before M26-F corrected the hints underneath it — §V's own point about closures).
+example : (pools.foldl (fun a p => a + (report p).declined) 0 == 68) = true := by native_decide
+example : (pools.foldl (fun a p => a + (report (stripBacks p)).declined) 0 == 19)
   = true := by native_decide
 
 -- And the comparison still agrees everywhere with the backs gone, so the eight
 -- that move are migrations and not accidents.
 example : (pools.all (fun p => (report (stripBacks p)).disagree.isEmpty)) = true := by native_decide
 
--- Per file, so the eight are locatable: S17 loses three (7 → 4), S19 one (35 →
--- 34), and the two `SDecl` pools two more (3 → 1, 1 → 0, 3 → 2).
+-- Per file, so the 49 are locatable: S17 goes to zero (7 → 0), S19 likewise
+-- (35 → 0), and the three `SDecl` pools clear too (3 → 0, 1 → 0, 3 → 0). What
+-- survives is the `[v]` residue — S6's `zero_all`, S23's 17, S24's `walkArr`.
 example : (pools.map (fun p => (report (stripBacks p)).declined)
-  == [0, 1, 0, 0, 0, 0, 0, 5, 0, 0, 4, 0, 34, 17, 1, 0, 1, 0, 2]) = true := by native_decide
+  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0, 0, 0, 0]) = true := by native_decide
 
 end Dllbc.Tests.S26Migrate

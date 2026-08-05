@@ -37,7 +37,7 @@ open Dllbc.Tests.SInternals (partScanEExpected pivotPlaceHExpected baseBackDef)
 namespace Dllbc.Tests.SDeclUnified
 
 def nthU : Decl :=
-  decl{ fn nth [v] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+  decl{ fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
         back = λ (r : Nat). set i r (*v)
         { match v {
             Nil => botElim Unit p,
@@ -51,6 +51,13 @@ def nthU : Decl :=
 example : (nthU.body == Dllbc.Tests.S17Spec.nthS.body) = true := by native_decide
 -- ...and the whole Decl is alphaEq (here: exactly equal) to the corpus nthS:
 example : Decl.alphaEq nthU Dllbc.Tests.S17Spec.nthS = true := by native_decide
+-- `Decl.alphaEq` compares name/telescope/retType/body/back and NOT `dec`, so it
+-- cannot see the `[k]` hint drifting. M26-F walked straight through that: the
+-- corpus `nth` moved to `[i]` and this mirror stayed green against a stale `[v]`
+-- while SDeclMacro's exact-BEq mirror of the same declaration went red. The hint
+-- is part of what the surface round-trips, so it is asserted separately.
+example : (nthU.dec == Dllbc.Tests.S17Spec.nthS.dec && nthU.dec == some 1)
+  = true := by native_decide
 
 -- alphaEq sanity: reflexive, and it sees through a body-id permutation. `permuted`
 -- is nthS with two branch-binder ids renamed to fresh values — exact BEq of the

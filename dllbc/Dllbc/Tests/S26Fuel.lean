@@ -16,11 +16,16 @@ import Dllbc.Tests.S26Migrate
 /-!
 # §26 (M26-E) — paying §12 decision 8, shape by shape
 
-The migration report's largest decline class is `[v]` payload decrease: a
+The migration report's largest decline class was `[v]` payload decrease: a
 recursion that shrinks a borrow's payload has no recursor form until §9's
 borrow-mode eliminator exists, and §12 decision 8 blesses fuel-threading as the
 interim. M26-D paid it for `partition` and M26-E for `append_back` — both the
 LIST-cursor shape.
+
+(§C found that most of that class was never in it, and M26-F adopted the
+correction, which leaves the `[v]` class at 19 and a declared `back` as the
+largest one. The sections below are as they were measured, each annotated where
+the adoption changed what it says.)
 
 This file pays it for the shapes that had not been paid, one per section, so that
 "the interim is available" is a measured claim per shape rather than an
@@ -134,16 +139,29 @@ example : (checkFnOk Tests.S24Arrays.walkArr == false
     general fact about the class rather than as a property of one function. What
     genuinely needs fuel is narrower than the report suggested: a cursor with NO
     decreasing argument of its own (§A's `zero_all`, and `recCursor`, which is the
-    same function under another name). -/
+    same function under another name).
+
+    **M26-F ADOPTED this**, so the section reads differently than it did when it was
+    written. `nth`/`nth2` in S14Bounds and S17Spec now declare `[i]` at the source,
+    and the twins below are no longer twins — each is equal to the corpus
+    declaration it was a correction of. The measurements stay because what they
+    pin is still a claim: that the hint is the ONLY thing that moved, and that the
+    declaration path is as happy with `[i]` as it was with `[v]` (M14's descent
+    accepts index decrease either way, so nothing in S14 or S17 needed re-proving).
+
+    The two round-trip mirrors of `nthS` moved with it (`SDeclMacro.nth'`,
+    `SDeclUnified.nthU`), and only one of them noticed: `Decl.alphaEq` compares
+    name/telescope/retType/body/back and NOT `dec`, so the `alphaEq` mirror stayed
+    green against a stale hint while the exact-`BEq` mirror went red. -/
 
 def nthI : Decl := { Tests.S14Bounds.nth with dec := some 1 }
 def nth2I : Decl := { Tests.S14Bounds.nth2 with dec := some 1 }
 
-/-- Nothing changed but the hint. -/
-example : (nthI.body == Tests.S14Bounds.nth.body
-        && nthI.telescope == Tests.S14Bounds.nth.telescope
-        && nthI.retType == Tests.S14Bounds.nth.retType
-        && Tests.S14Bounds.nth.dec == some 0) = true := by native_decide
+/-- Nothing changed but the hint — and since M26-F adopted it, nothing changed at
+    all: the correction IS the corpus declaration now. -/
+example : (nthI == Tests.S14Bounds.nth && nth2I == Tests.S14Bounds.nth2
+        && Tests.S14Bounds.nth.dec == some 1
+        && Tests.S14Bounds.nth2.dec == some 1) = true := by native_decide
 
 example : bothWays nthI = true := by native_decide
 example : bothWays nth2I [nthI] = true := by native_decide
@@ -154,17 +172,20 @@ def p14fixed : List Decl :=
   [nthI, nth2I, Tests.S14Bounds.swap, Tests.S14Bounds.cascade, Tests.S14Bounds.rejectProbe]
 example : (Migrate.report p14fixed
   == { accepts := 4, rejects := 1, declined := 0, disagree := [] }) = true := by native_decide
--- …against five declines for the same five functions as the corpus declares them.
-example : (Migrate.report Tests.S26Migrate.p14
-  == { accepts := 0, rejects := 0, declined := 5, disagree := [] }) = true := by native_decide
+-- …and since M26-F this is what the CORPUS pool reports too, not just this
+-- section's copy of it. Before the adoption the same five functions declined five
+-- times (`report p14 == R 0 0 5`, S26Migrate §Y as it then read).
+example : (Migrate.report Tests.S26Migrate.p14 == Migrate.report p14fixed)
+  = true := by native_decide
 
 /-! ## §D. What is left needing fuel, and one macro gap this section found
 
     After §B and §C the `[v]` class is: `zero_all` and `recCursor` (the same
     function, twice in the corpus) — a cursor with no decreasing argument but the
-    payload — plus S17/S19's `nth`/`nth2`/`swapS`, which have the SAME free fix
-    available and are blocked by their declared `back` rather than by their hint.
-    §A pays the first; the second waits on the `back` question.
+    payload — plus S17/S19's `nth`/`nth2`/`swapS`, which since M26-F carry the
+    corrected hint (or, for `swapS`, never had one) and are blocked by their
+    declared `back` alone. §A pays the first; the second waits on the `back`
+    question, which is now the only thing standing under 49 declarations.
 
     And one thing that LOOKS like a macro gap and is not, recorded because I added
     a refusal for it before thinking it through and then took it out again:
@@ -189,12 +210,19 @@ example : bothWays zeroAllF = true := by native_decide
 /-! ## §E. The map, re-measured — and the two blockers COMPOSE
 
     §C's finding is worth a number over the whole corpus rather than over one
-    family, and the number is not what either fix predicts on its own.
+    family, and the number is not what either fix predicts on its own. As measured
+    before M26-F adopted the hints:
 
-        73 declines as the corpus stands
+        73 declines as the corpus stood
         68 with the two hints corrected          (−5)
         65 with `back` stripped                  (−8)
         20 WITH BOTH                             (−53)
+
+    The corpus now stands at the second line, so what the assertions below measure
+    is 68 and 19 — one better than the 20 predicted, because `S19Partition.nth2Lie`
+    is written `{ nth2S with … }` and inherited the corrected hint, which the
+    name-matching `fixHints` never reached. That is the one place where adopting a
+    fix at the source does more than simulating it in the harness.
 
     Neither fix alone does much and together they collapse the map, because a
     cohort is a CLOSURE: one un-migratable leaf declines everything above it. S17's
@@ -205,11 +233,11 @@ example : bothWays zeroAllF = true := by native_decide
     two rounds of measurement made the map look stubborn and the third made it
     small.
 
-    What survives both fixes is 20, and it is the honest residue: 17 in S23 (the
+    What survives both fixes is 19, and it is the honest residue: 17 in S23 (the
     true `[v]` cursors — `partition`, `append_back`, `recCursor`, `partitionLoses`
     — everything whose closure reaches one of them, the guard twins, and
-    `recDeep`), `zero_all` in S6 (paid in §A), `nth2Lie` in S19 (its own `[v]`),
-    and `walkArr` in S24 (a negative control, §B).
+    `recDeep`), `zero_all` in S6 (paid in §A), and `walkArr` in S24 (a negative
+    control, §B). S19's `nth2Lie` was the twentieth and left with the adoption.
 
     **Stripping `back` is NOT free** — it removes a mechanism a caller relies on,
     which is the design question that goes to the user. Correcting a hint IS free.
@@ -220,13 +248,17 @@ def fixHints (pool : List Decl) : List Decl :=
   pool.map (fun d => if d.name == "nth" || d.name == "nth2" then { d with dec := some 1 } else d)
 def fixAll (pool : List Decl) : List Decl := fixHints (Tests.S26Migrate.stripBacks pool)
 
+-- The adoption is at the SOURCE, so `fixHints` is now a no-op on every pool —
+-- which is the assertion that the corpus, and not this harness, carries the fix.
+example : (Tests.S26Migrate.pools.all (fun p => fixHints p == p)) = true := by native_decide
+
 example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixHints p)).declined) 0 == 68)
-        && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixAll p)).declined) 0 == 20))
+        && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.report (fixAll p)).declined) 0 == 19))
   = true := by native_decide
 
 example : (Tests.S26Migrate.pools.foldl (fun (a, r) p =>
     let q := Migrate.report (fixAll p); (a + q.accepts, r + q.rejects)) (0, 0)
-  == (118, 86)) = true := by native_decide
+  == (119, 86)) = true := by native_decide
 
 -- Still agreeing everywhere under both fixes, so the 53 that move are migrations
 -- and not accidents.
@@ -235,6 +267,6 @@ example : (Tests.S26Migrate.pools.all (fun p => (Migrate.report (fixAll p)).disa
 
 -- And the residue is where §D says it is.
 example : (Tests.S26Migrate.pools.map (fun p => (Migrate.report (fixAll p)).declined)
-  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 17, 1, 0, 0, 0, 0]) = true := by native_decide
+  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0, 0, 0, 0]) = true := by native_decide
 
 end Dllbc.Tests.S26Fuel

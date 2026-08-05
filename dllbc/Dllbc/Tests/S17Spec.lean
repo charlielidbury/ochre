@@ -88,7 +88,7 @@ example : (match runFn [throughOpaque, { caller with name := "c2" }] { caller wi
 open Dllbc.StdLemmas (set swapL)
 
 def nthS : Decl :=
-  decl{ fn nth [v] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+  decl{ fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
         back = λ (r : Nat). set i r (*v)
         { match v {
             Nil => botElim Unit p,
@@ -99,7 +99,7 @@ def nthS : Decl :=
         } } }
 
 def nth2S : Decl :=
-  decl{ fn nth2 [v] (v : &mut List Nat, i : Nat, j : Nat,
+  decl{ fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat
         back = λ (r1 : Nat). λ (r2 : Nat). set i r1 (set j r2 (*v))
         { match v {

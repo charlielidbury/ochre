@@ -122,7 +122,7 @@ example : (pushList' == Dllbc.Tests.S5Bound.pushList) = true := by native_decide
     de Bruijn-shifted (it stays `.var ⟨1,"i"⟩` while the surrendered `r` is pvar 0). -/
 
 def nth' : Decl :=
-  decl{ fn nth [v] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+  decl{ fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
         back = λ (r : Nat). set i r (*v)
         = %(Dllbc.Tests.S17Spec.nthS.body) }
 
