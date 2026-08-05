@@ -504,4 +504,40 @@ example : (S19Partition.twoRec.back.isSome && twoRecNoBack.back.isNone) = true :
 -- back-carrying original could not.
 example : S26Fuel.bothWays twoRecNoBack = true := by native_decide
 
+/-! ## §D. INSTRUMENT RETIREMENT — a third disposition class, and the one no
+    measurement in this campaign could see
+
+    §B disposed of declarations that survive the deletion and §C of the ones that
+    cause it. Both were derived from `S26Migrate.pools`, and **the pools are the
+    TEST corpus**. `Dllbc/Bench.lean` and `Dllbc/BenchQS.lean` are not in any pool,
+    declare fifteen more backs between them, and are `checkFn`'s other consumer.
+
+    They are not tests. They are the `lean_exe bench` / `lean_exe benchqs` compiled
+    timing harnesses, and their own headers say why they are invisible: they hold
+    "verbatim copies of the test-file definitions", kept deliberately out of the
+    test imports so the expensive checks run compiled instead of under
+    `native_decide`. A harness that exists BY BEING EXCLUDED from the corpus is
+    exactly the thing a corpus-derived map cannot report, and no amount of
+    re-running the comparison would have found it — the blind spot was in what the
+    instrument was pointed at, not in how it was read.
+
+    **Disposition: they retire WITH `checkFn`**, as their own class rather than as
+    tests, because the rationale is different. A test that retires loses a claim
+    somebody has to decide is expendable; a timing harness for a deleted code path
+    has nothing left to time. The `lean_exe` targets in `lakefile.lean` retire with
+    them — they are consumers a grep of `Dllbc/*.lean` does not show.
+
+    **What retires with them is a published number**, and that is why the paper's
+    SHA pin is a PRECONDITION of the deletion rather than a close-out chore.
+    `paper/sections/06-empirics.typ` reports the conformance audit's 465× speedup
+    (84,121 ms to 181 ms) "measured on architecture A's program", fenced there as
+    one of three non-comparable measurement sets. It is reproducible today by
+    running `lake exe bench`; after the deletion it is reproducible only at a SHA,
+    so the paper must name that SHA while the instrument still exists.
+
+    Nothing is asserted here, and that is deliberate: these two files are outside
+    every pool, so there is no set-equality this ledger could state about them
+    without restating their contents and creating the third copy the whole
+    arrangement exists to avoid. The census in the deletion commit is the record. -/
+
 end Dllbc.Tests.S27Dispose
