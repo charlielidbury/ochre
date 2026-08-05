@@ -95,10 +95,14 @@ example : ok a3ok = true := by native_decide
 def a4 : Decl := decl{ fn caller () -> Unit { let g = λ() { () }; () } }
 example : rejects a4 "must bind at least one argument" = true := by native_decide
 
--- A5/A6. Saturation, both directions (§12 decision 4).
+-- A5/A6. Saturation, both directions (§12 decision 4). **CURRY PROBE DELTA**
+-- (branch `curryprobe`): under-application is now the residual value it names,
+-- and only OVER-application stays an arity error — there is no value for it to
+-- be. The asymmetry is the point: one direction was a missing constructor, the
+-- other is a genuine mistake.
 def a5 : Decl := decl{ fn caller () -> Unit { let g = λ(a, b) { () }; g(1); () } }
 def a6 : Decl := decl{ fn caller () -> Unit { let g = λ(a) { () }; g(1, 2); () } }
-example : rejects a5 "partial application" = true := by native_decide
+example : ok a5 = true := by native_decide
 example : rejects a6 "too many arguments" = true := by native_decide
 
 /-! ### A7. ⇝ never meets the runtime λ

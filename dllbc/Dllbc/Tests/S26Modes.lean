@@ -408,22 +408,27 @@ example : rejects f5 "holds ⊥" = true := by native_decide
 
 def g1 : Decl := decl{ fn caller () -> Unit
   { let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () } }
-example : rejects g1 "partial application" = true := by native_decide
-example : rejects g1 "binder modes do NOT separate the two cases" = true := by native_decide
+-- **CURRY PROBE DELTA** (branch `curryprobe`): the paragraph above files "a
+-- residual telescope with no borrow-moded binder could be curried soundly" as a
+-- decision left open. The probe takes it, so these become acceptances. See
+-- `Tests/S27CurryProbe.lean` — and note §B measures the borrow case too, which
+-- this paragraph assumed was the hard part and which turns out not to be.
+example : ok g1 = true := by native_decide
 
--- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
--- "the constant function at 1", and is refused.
+-- The legitimate-return case, pinned as the LIMITATION it was: `mk` means to be
+-- "the constant function at 1". Under the probe it simply IS that function —
+-- which is the clearest single statement of what saturation cost.
 def g2 : Decl := decl{ fn caller () -> Unit
   { let mk = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
     let k1 = mk(1); () } }
-example : rejects g2 "partial application" = true := by native_decide
+example : ok g2 = true := by native_decide
 
 -- Modes ARE expressible on such a Π — the elaboration is fine, the marker is
 -- there — and change nothing, which is the point.
 def g3 : Decl := decl{ fn caller () -> Unit
   { let mk = seal(λ (X : Nat). λ (y : Nat). X, Π (X : Nat) → Π (y : Nat) → Nat);
     let k1 = mk(1); () } }
-example : rejects g3 "partial application" = true := by native_decide
+example : ok g3 = true := by native_decide
 
 -- The route that DOES work today, so the limitation is bounded rather than
 -- open-ended: a DECLARED fn may return a function (phase A's A6c). It is only

@@ -266,16 +266,20 @@ example : (envOf [] c3 == some [("f", .sym 0), ("y", .sym 1), ("z", .sym 2)]) = 
 
 /-! ### C4–C8. The negative controls, one per rule branch -/
 
--- Partial application: refused, not curried (§12 decision 4).
+-- Partial application: **CURRY PROBE DELTA** (branch `curryprobe`). These two
+-- asserted §12 decision 4's refusal; the probe deletes saturation, so they now
+-- assert the acceptance instead. Nothing else in the corpus changed — see
+-- `Tests/S27CurryProbe.lean` §E for the flip-validation, and §D for the one
+-- thing the deletion does NOT reach (a sealed function's call event).
 def c4 : Decl := decl{ fn caller () -> Unit
   { let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () } }
-example : rejects c4 "partial application" = true := by native_decide
--- …and the same refusal on the abstract side, which is the branch that matters
--- for phase C (a σ : Π under-applied is a closure holding its arguments).
+example : ok c4 = true := by native_decide
+-- …and on the abstract side, which is the branch that mattered for phase C (a
+-- σ : Π under-applied). Its residual is what `instantiatePi` already computed.
 def c5 : Decl := decl{ fn caller () -> Unit
   { let f = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
     let z = f(2); () } }
-example : rejects c5 "partial application" = true := by native_decide
+example : ok c5 = true := by native_decide
 
 -- Over-application.
 def c6 : Decl := decl{ fn caller () -> Unit { let f = λ (x : Nat). x; let z = f(2, 3); () } }
@@ -326,7 +330,11 @@ example : (envOf [apply1] c12 == some [("f", vlam), ("r", .sym 0)]) = true := by
 -- Π-typed parameter is rejected at the callee's own check, not at a caller's.
 def apply1bad : Decl :=
   decl{ fn apply1bad (g : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { g(n) } }
-example : rejects apply1bad "partial application" = true := by native_decide
+-- **CURRY PROBE DELTA**: still rejected, one rule over. Under-applying is no
+-- longer an arity class — the residual has a function type and the audit reads
+-- it against the promised `Nat`. This is the deletion's dividend: the genuine
+-- mistake keeps being caught, by the typing that was always underneath.
+example : rejects apply1bad "does not have return type" = true := by native_decide
 
 /-! ### C13. Transparent vs sealed, as a TYPING difference
 

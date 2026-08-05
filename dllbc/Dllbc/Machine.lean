@@ -278,6 +278,10 @@ mutual
   def findBorrowPayload (ℓ : Nat) : Val → Option Val
     | .borrowM ℓ' p => if ℓ' == ℓ then some p else findBorrowPayload ℓ p
     | .ctor _ args => findBorrowPayloadList ℓ args
+    -- CURRY PROBE: a partial application is an application SPINE of actuals, so
+    -- a borrow passed to it sits under `.app` rather than under `.ctor`. Same
+    -- blind spot the sigprobe found for Σ-packaged borrows, one former over.
+    | .app f a => (findBorrowPayload ℓ f).orElse (fun _ => findBorrowPayload ℓ a)
     | _ => none
   termination_by v => sizeOf v
   def findBorrowPayloadList (ℓ : Nat) : List Val → Option Val
@@ -295,6 +299,7 @@ mutual
     | .loanM ℓ' => if ℓ' == ℓ then newV else .loanM ℓ'
     | .borrowM ℓ' p => .borrowM ℓ' (replaceLoanMarker ℓ newV p)
     | .ctor n args => .ctor n (replaceLoanMarkerList ℓ newV args)
+    | .app f a => .app (replaceLoanMarker ℓ newV f) (replaceLoanMarker ℓ newV a)  -- CURRY PROBE
     | v => v                       -- ⊥, sym, pure values: no loan markers
   termination_by v => sizeOf v
   def replaceLoanMarkerList (ℓ : Nat) (newV : Val) : List Val → List Val
@@ -309,6 +314,7 @@ mutual
     | .borrowM ℓ' p => if ℓ' == ℓ then .bot else .borrowM ℓ' (replaceBorrowWithBot ℓ p)
     | .loanM ℓ' => .loanM ℓ'
     | .ctor n args => .ctor n (replaceBorrowWithBotList ℓ args)
+    | .app f a => .app (replaceBorrowWithBot ℓ f) (replaceBorrowWithBot ℓ a)  -- CURRY PROBE
     | v => v                       -- ⊥, sym, pure values: no borrow to kill
   termination_by v => sizeOf v
   def replaceBorrowWithBotList (ℓ : Nat) : List Val → List Val
@@ -323,6 +329,7 @@ mutual
     | .loanM ℓ' => ℓ' == ℓ
     | .borrowM _ p => containsLoan ℓ p
     | .ctor _ args => containsLoanList ℓ args
+    | .app f a => containsLoan ℓ f || containsLoan ℓ a  -- CURRY PROBE
     | _ => false                   -- ⊥, sym, pure values: no loan markers
   termination_by v => sizeOf v
   def containsLoanList (ℓ : Nat) : List Val → Bool
@@ -343,6 +350,7 @@ mutual
     | .loanM ℓ => some ℓ
     | .borrowM _ _ => none
     | .ctor _ args => firstLoanMarkerList args
+    | .app f a => (firstLoanMarker f).orElse (fun _ => firstLoanMarker a)  -- CURRY PROBE
     | _ => none                    -- ⊥, sym, pure values: no owned loan marker
   termination_by v => sizeOf v
   def firstLoanMarkerList : List Val → Option Nat
@@ -2832,7 +2840,15 @@ def valBinderModes : Nat → Val → Nat → M (List Bool)
   | fuel + 1, v, n + 1 => do
     let (head, args) := Val.collectSpine v
     match head with
-    | .rfn names _ => pure ((names.map Var.isComptime ++ List.replicate (n + 1) false).take (n + 1))
+    -- CURRY PROBE: the modes owed are those of the binders NOT YET SUPPLIED, so
+    -- the already-applied spine arguments are dropped first. Saturation made
+    -- `args` always empty here, which is why the line below computed it and then
+    -- ignored it; curried, argument k+1 was routed by binder 1's mode, and a
+    -- capital binder past the first silently CONSUMED its argument (R16 back at
+    -- full strength, as a wrong answer rather than a rejection).
+    | .rfn names _ =>
+      pure (((names.map Var.isComptime).drop args.length
+             ++ List.replicate (n + 1) false).take (n + 1))
     | .const c =>
       match recLayout c with
       | none => pure (binderModes fuel v (n + 1))
@@ -3172,7 +3188,26 @@ mutual
           -- HERE, before the arguments are read, because `processArgs` does its
           -- own §6 mode routing off the telescope — pre-reading them would
           -- consume a comptime argument the callee promised never to touch.
-          | none =>
+          | none => do
+            -- CURRY PROBE — **the callee-linearity rule currying forces.**
+            -- `.callV` LOCATES its callee ("a slot can be called twice") and
+            -- under saturation that is unconditionally right: every callee is a
+            -- closed function value with no owned content. A partial
+            -- application is not one — its spine holds the actuals already
+            -- supplied, which may be borrows or owned data — so completing it
+            -- must MOVE it out of the slot, or the actual is duplicated and
+            -- there are two `borrowM ℓ` nodes for one loan. Discriminated on
+            -- the value, not on a flag: an `.app` spine that carries a loan is
+            -- linear; `ih` (a `.const`-headed recursor spine, closed) is not,
+            -- and stays locatable.
+            let linear := match callee with
+                          | .app _ _ => !(Val.loanIds callee).isEmpty
+                          | _ => false
+            -- `setSlot`, not `bindSlot`: the slot is VACATED in place, which is
+            -- the invariant line 1861 states for the same reason ("no stale copy
+            -- in Ω scans") — a shadowing append leaves the old spine in Ω, and
+            -- `killBorrowInΩ`'s `findSome?` reaches it first.
+            if linear then setSlot x .bot
             match callee with
             | .sym σ =>
               match (← get).fsig.lookup σ with
@@ -3302,9 +3337,11 @@ mutual
   def applyLam : Nat → Val → List Val → M Val
     | 0, _, _ => throwErr "callV: out of fuel (λ application)"
     | fuel + 1, f, [] =>
-      match Val.whnfV fuel f with
-      | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
-      | v => pure v
+      -- CURRY PROBE: a residual `.lam` is returned as the value it is. This is
+      -- the site M26-B's comment says the separating fact is NOT at ("a residual
+      -- telescope with no borrow-moded binder could be curried soundly … a phase
+      -- C/D decision against §12 decision 4, not a mode question").
+      pure (Val.whnfV fuel f)
     | fuel + 1, f, a :: rest =>
       match Val.whnfV fuel f with
       | .lam dom body => do
@@ -3348,7 +3385,13 @@ mutual
       | .rfn names body, _ =>
         if all.length == names.length then applyRFn fuel names body all
         else if all.length < names.length then
-          throwErr s!"callV: partial application — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {all.length}. Runtime application is saturated (§12 decision 4): a partial application at runtime is a closure holding its arguments — including, in general, borrows — while it waits."
+          -- CURRY PROBE (branch `curryprobe`, §12 decision 4 under test): the
+          -- partial application IS the spine value of the actuals so far. Note
+          -- that the two lines above this match already CONSUME such a value
+          -- correctly — `collectSpine` + `sargs ++ args` is the unary step rule
+          -- — so what saturation withholds is only the constructor, never the
+          -- eliminator.
+          pure (Val.rebuildSpine head all)
         else
           throwErr s!"callV: too many arguments — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {all.length}"
       | .const "natRec", motive :: z :: s :: n :: rest =>
@@ -3549,8 +3592,13 @@ mutual
             | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
             | some σty => do
               let resTy ← instantiatePi fuel σty argVals
-              match Val.whnfV fuel resTy with
-              | .pi d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
+              -- CURRY PROBE: the saturation check here was a `match` on the
+              -- residual that threw for `.pi`. Deleting it is a NO-OP in every
+              -- other respect: `instantiatePi` already computes the residual
+              -- type, and minting a σ at it is the same rule the saturated case
+              -- takes — §2.2's "forget the application, keep what the type
+              -- promised", where the type promised is itself a function.
+              match resTy with
               | resTy => do
                 -- The runtime column of §2.3: the call FORGETS the application
                 -- and keeps only what the type promised. Deliberately NOT the
