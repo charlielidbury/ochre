@@ -416,7 +416,13 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   -- Both sides are pinned in `Tests/S26Rec.lean` §M.
   | .rfn _ _ => true
   | .idT _ _ _ => true
-  | .app _ _ => true                                        -- a pure-former spine (proof/type)
+  -- CURRY PROBE: a pure-former spine (proof/type) is index-kind, and used to be
+  -- unconditionally so. Currying puts a second inhabitant in this case — a
+  -- PARTIAL APPLICATION, whose spine holds the actuals supplied so far — and one
+  -- carrying a loan is linear, so copying it is wrong. Same discriminator as the
+  -- callee-linearity rule at `.callV` (§B4): ONE notion, "a value carrying a loan
+  -- is linear", applied at the two sites that read such a value.
+  | .app f a => (Val.loanIds (.app f a)).isEmpty
   | .pvar _ => true
   | .sigmaT _ _ => true                                     -- a type
   | .borrowM _ _ => false

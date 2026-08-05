@@ -27,8 +27,9 @@ carrying a suspended loan — so saturation can be deleted.
 It is probed by **actually deleting it** (branch `curryprobe`, `Machine.lean`),
 because every question past the first is otherwise answered by the same arity
 check. Three rejection sites went; five loan-graph walkers gained an `.app`
-case; one new rule was forced (§B4). Net: 48 added lines in `Machine.lean`, of
-which the semantics is §B4's five.
+case; **one new notion** was forced — *a value carrying a loan is linear* — at
+the two sites that read such a value, the call (§B4) and the slot read (§G1).
+Everything else was plumbing or free.
 
 ## The verdict, up front
 
@@ -38,7 +39,7 @@ which the semantics is §B4's five.
 | 2. partial holding a borrow | **GO, and the §7 objection is empirically false.** The loan suspends in the spine, every demand site collapses it, the completion writes through, both machines agree, negative controls fire (§B). One new rule is forced: a linear callee must be MOVED, not located (§B.4). |
 | 3. returned partial | **GO**, and the §10 capture wall is genuinely a different object, refused independently by the rule that already exists (§C). |
 | 4. ensures / exit snapshots | **FAILS, with diagnosis, and it is a machine DIVERGENCE** — the checker refuses what the executing machine happily runs (§D). The premise needs correcting first: the audit does not fire at the call at all (§D0). |
-| 5. the deletion sketch | **NO-GO as stated; GO for a bounded version** that curries application and keeps the call event atomic (§E). |
+| 5. the deletion sketch | **NO-GO as stated; GO for a bounded version** that curries application and keeps the call event atomic (§E) — and its cost line now includes teaching `indexKindV` about `fsig`, which is a PREREQUISITE and not an optional fix (§G3). |
 
 ## The finding that dominates
 
@@ -67,7 +68,12 @@ and anonymous functions, and not for declared ones** — which is a coherent
 language, but not the "one application form everywhere" the deletion was for.
 
 Three defects were found, two of them silent wrong answers rather than
-rejections; the ledger is §F3.
+rejections; the ledger is §F3. §G then folds M27-P3's read-rule finding
+(`a41980f2`, `S26Rec` §M) and generalizes it: the divergence is not about `ih`
+but about **any σ whose Π is borrow-moded**, since such a σ has no `Val` and so
+lives in `fsig` alone — no recursor required — and on one such program both
+machines ACCEPT while the simulation relation fails, which is a worse class than
+§M's conservative refusal. That is the prerequisite the bounded design must buy.
 -/
 
 open Dllbc
@@ -644,5 +650,165 @@ example : slotOf f2second "z" = slotOf f2sat "z" := by native_decide
 
     Defect 2 is the only one that is semantics rather than plumbing, and it is
     the single rule the deletion actually adds. -/
+
+/-! ## §G. THE READ RULE — folded from M27-P3, and it is a PREREQUISITE
+
+    M27-P3 (`a41980f2`, `S26Rec` §M) pinned that `let g = ih` inside an arm is
+    REJECTED when checking and RUNS when executing, because checking-side `ih` is
+    a σ whose signature lives in `St.fsig` while `indexKindV`'s `.sym` case
+    consults `sctx` only, so it takes the move default. Its four assertions are
+    the evidence and are not re-derived here. §G adds three things currying
+    forced, and re-prices question 5 accordingly.
+
+    ### G1. Currying needs the read rule changed at a DIFFERENT case — and that
+    part is free
+
+    A partial application is an `.app` spine, and `indexKindV` classified `.app`
+    unconditionally as index-kind ("a pure-former spine (proof/type)"). That was
+    right while the only inhabitant was a proof or a type. Currying adds a
+    second, and a partial carrying a loan is linear — copying it is wrong for
+    exactly the reason §B4 gives at the callee position.
+
+    So the rule is ONE notion at two sites: **a value carrying a loan is
+    linear**, checked at the call (§B4) and at the read (here). The read half is
+    free — the whole corpus stays green — and with it a partial can be moved
+    between slots, stored in a constructor, and completed from wherever it ended
+    up (§G2). -/
+
+-- G1a. Moved to another slot and completed FROM THERE: the borrow travels with
+-- the value, which is what "a borrow the value carries is relocated as-is on a
+-- move" means once partials exist.
+def g1move : Term := prog{
+  let f = λ(v, n){ *v := Cons(n, Nil); () };
+  let x = Nil;
+  let g = f(&mut x);
+  let h = g;
+  let r = h(S(Z));
+  let y = x;
+  () }
+example : progOk g1move = true := by native_decide
+example : progDiff g1move = true := by native_decide
+example : slotOf g1move "y" = "Cons (S Z) Nil" := by native_decide
+
+-- G1b. …and the source slot really was moved out of, so it is a move and not a
+-- copy. Without the read-rule change BOTH slots stayed live and the loan was
+-- reachable twice.
+def g1both : Term := prog{
+  let f = λ(v, n){ *v := Cons(n, Nil); () };
+  let x = Nil;
+  let g = f(&mut x);
+  let h = g;
+  let r = g(S(Z));
+  () }
+example : progRejects g1both "use-after-move" = true := by native_decide
+example : progRunErr g1both "use-after-move" = true := by native_decide
+
+-- G1c. The DATA-only partial is still copied, which is what says the rule keys
+-- on the loan and not on the shape: no loan, two live copies, both complete.
+def g1data : Term := prog{
+  let f = λ(a, b){ Cons(a, Cons(b, Nil)) };
+  let g = f(S(Z));
+  let h = g;
+  let r = g(S(S(Z)));
+  let s = h(S(S(S(Z))));
+  () }
+example : progOk g1data = true := by native_decide
+example : progDiff g1data = true := by native_decide
+
+/-! ### G2. Stored in a constructor and completed after a match
+
+    The sigprobe's stored direction, one level up: a `Pair` holding a partial
+    that holds a borrow. Matched out and completed, and the write lands. -/
+
+def g2stored : Term := prog{
+  let f = λ(v, n){ *v := Cons(n, Nil); () };
+  let x = Nil;
+  let g = f(&mut x);
+  let p = Pair(Z, g);
+  match p { Pair(k, q) => { let r = q(S(Z)); () } };
+  let y = x;
+  () }
+example : progOk g2stored = true := by native_decide
+example : progDiff g2stored = true := by native_decide
+example : slotOf g2stored "y" = "Cons (S Z) Nil" := by native_decide
+
+/-! ### G3. THE fsig HALF IS NOT FREE, and it is worse than §M priced it
+
+    §M's cause generalizes past `ih`, and the generalization is what makes it a
+    prerequisite rather than a curiosity. The trigger is not "a function-typed σ
+    in a slot" — H1 below is one and copies fine, because a borrow-FREE Π has a
+    `Val` and lands in `sctx` too. The trigger is a σ whose **Π is borrow-moded**:
+    it has no `Val` (M26-C's founding fact), so it exists in `fsig` ALONE, and
+    `indexKindV` finds nothing.
+
+    Two consequences beyond §M:
+
+      1. **No recursor is needed.** An ordinary sealed borrow-taking function
+         bound to a slot has the divergence (`i1`/`i3`). §M reached it through
+         `ih`; it is a property of sealed borrow-moded functions as such.
+      2. **It is NOT only in the safe direction.** §M's case was reject-vs-run.
+         `i1` is a program BOTH machines accept whose final Ωs do not correspond
+         — `f = ⊥` checking, `f = λr(…)` executing — so `progDiff` is FALSE. That
+         is a simulation break on an accepted program, which is a different and
+         worse class than a conservative refusal.
+
+    **The pricing.** For the deletion as probed, this is not hit: an unsealed
+    runtime λ's partial is an `.app`/`.rfn` spine and takes §G1's case. But §E's
+    recommended bounded design accumulates arguments for a SEALED callee, so its
+    residual is exactly the object that must be bound to a slot and read back —
+    and every sealed borrow-moded function is behind this blindness today. So
+    teaching `indexKindV` about `fsig` **is a prerequisite of the bounded
+    design**, and §M is right that it changes the read rule for every σ and does
+    not belong in a deletion phase. Question 5's cost line gains it. -/
+
+-- G3a. Borrow-FREE sealed function: copies on both sides, no divergence. This
+-- is the control that locates the boundary.
+def g3free : Term := prog{
+  let f = seal(λ(a, b){ Cons(a, Cons(b, Nil)) },
+               Π (a : Nat) → Π (b : Nat) → List Nat);
+  let h = f;
+  let r = h(S(Z), S(S(Z)));
+  () }
+example : progOk g3free = true := by native_decide
+example : progDiff g3free = true := by native_decide
+
+-- G3b. BORROW-MODED sealed function: both machines accept, and the simulation
+-- relation FAILS. No recursor involved.
+def g3moded : Term := prog{
+  let f = seal(λ(v, n){ *v := Cons(n, Nil); () },
+               Π (v : &mut List Nat) → Π (n : Nat) → Unit);
+  let h = f;
+  let x = Nil;
+  let r = h(&mut x, S(Z));
+  let y = x;
+  () }
+example : progOk g3moded = true := by native_decide
+example : progDiff g3moded = false := by native_decide
+
+-- G3c. The sharp form: use the source slot again and the checker refuses what
+-- the executing machine runs — §M's shape, reached without a recursor.
+def g3sharp : Term := prog{
+  let f = seal(λ(v, n){ *v := Cons(n, Nil); () },
+               Π (v : &mut List Nat) → Π (n : Nat) → Unit);
+  let h = f;
+  let x = Nil;
+  let y = Nil;
+  let r = h(&mut x, S(Z));
+  let s = f(&mut y, S(Z));
+  () }
+example : progRejects g3sharp "use-after-move" = true := by native_decide
+example : slotOf g3sharp "x" = "Cons (S Z) Nil" := by native_decide
+example : slotOf g3sharp "y" = "Cons (S Z) Nil" := by native_decide
+
+-- G3d. The no-`let` twin, so G3b/G3c are about the READ and not the shape.
+def g3nolet : Term := prog{
+  let f = seal(λ(v, n){ *v := Cons(n, Nil); () },
+               Π (v : &mut List Nat) → Π (n : Nat) → Unit);
+  let x = Nil;
+  let r = f(&mut x, S(Z));
+  let y = x;
+  () }
+example : progOk g3nolet = true := by native_decide
+example : progDiff g3nolet = true := by native_decide
 
 end Dllbc.Tests.S27CurryProbe
