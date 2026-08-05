@@ -145,7 +145,11 @@ example : Term.beq (anOf telA) (anOf telC) = false := by native_decide
     they would fail if the macro transcribed instead of substituting. -/
 
 def bndD : Decl := decl{ fn bnd [n] (n : Nat, v : &mut List Nat, Hn : Le (len *v) n) -> Unit {
-  match n { Z => (), S(n2) => { bnd(n2, &mut *v, Hn); () } } } }
+  match n {
+    Z => (),
+    S(n2) => match v {
+      Nil => (),
+      Cons(hd, tl) => { bnd(n2, &mut *tl, Hn); () } } } } }
 
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
@@ -196,5 +200,122 @@ example : (match bndArms with
 example : (match bndArms with
            | some (_, s) => Term.beq (s.get! 0).2 (.const "Nat")
            | none => false) = true := by native_decide
+
+/-! ## §F. THE ONE CONVERSION (M27 α.1b)
+
+    `sealFn` no longer descends the ascription to supply each binder a type. It
+    compares the Π the λ STATES against the Π that was written (`piAgree`), and a
+    recursor arm's leading binders — the predecessor and `ih` — are compared
+    against what the recursor's premise gives them (`checkArm`).
+
+    The second half is the one that matters. Once an arm ANNOTATES `ih`, an
+    annotation taken on trust would let a body state the recursion at its own
+    level and be handed it — `bad()` arriving through the door §8's guard used to
+    hold, and the reason §7 could delete that guard at all is that `ih`'s type is
+    derived rather than chosen.
+
+    Every assertion below perturbs exactly ONE annotation of a program that
+    checks, so each is a per-demand-site control rather than a rejection that
+    might have had some other cause. -/
+
+/-- The elaborated declaration, as a program: a `let` of the sealed recursor. -/
+def bndProg (t : Term) : Term := .letIn ⟨900, "f"⟩ t .unit
+
+/-- `fnElab bndD` with the step arm's `i`-th annotation replaced, and nothing else
+    touched. `none` when the elaboration is not the shape this section reads. -/
+def stepArmWith (i : Nat) (τ : Term) : Option Term :=
+  match FnMacro.fnElab bndD with
+  | .ok (.seal (.app (.app (.app (.const "natRec") mot) zArm) (.lamR s sb)) piT) =>
+    some (.seal (.app (.app (.app (.const "natRec") mot) zArm)
+                  (.lamR (s.set i ((s.get! i).1, τ)) sb)) piT)
+  | _ => none
+
+/-- The motive's body, read off the ascription the macro emitted: the seal's type
+    is `Π (n : Nat) → R`, and every arm's type is an instance of that `R`. -/
+def bndR : Option Term :=
+  match FnMacro.fnElab bndD with
+  | .ok (.seal _ (.pi _ R)) => some R
+  | _ => none
+
+/-- The step arm's predecessor binder. -/
+def bndDec : Option Var := bndArms.map (fun p => (p.2.get! 0).1)
+
+-- F0. THE BASELINE. Unperturbed, the elaborated declaration checks — so every
+-- rejection below is the perturbation and not the program.
+example : (match FnMacro.fnElab bndD with
+           | .ok t => progOk (bndProg t)
+           | .error _ => false) = true := by native_decide
+
+-- …and the instrument, before the conclusion: `R` really is the motive body,
+-- because `ih`'s derived annotation is exactly `R` at the predecessor. That
+-- re-derives §E3 from the ASCRIPTION instead of from the arm, which is the
+-- independent route to the same fact.
+example : (match bndR, bndArms, bndDec with
+           | some R, some (_, s), some dec =>
+             Term.beq (s.get! 1).2 (Term.substPure 0 (.var dec) R)
+           | _, _, _ => false) = true := by native_decide
+
+-- F1. **`ih` AT THE ARM'S OWN LEVEL** — `R` at `S dec` where the premise gives
+-- `R` at `dec`. This is precisely what §8's guard used to forbid by comparing
+-- snapshots, arriving as an annotation instead of as a call, and it is refused by
+-- the arm-binder rule rather than by anything downstream.
+example : (match bndR, bndDec with
+           | some R, some dec =>
+             match stepArmWith 1 (Term.substPure 0 (.ctorApp "S" [.var dec]) R) with
+             | some t => progRejects (bndProg t) "the recursor's premise does not give it"
+             | none => false
+           | _, _ => false) = true := by native_decide
+
+-- F2. …and the predecessor binder is checked by the same rule.
+example : (match stepArmWith 0 (.const "Bool") with
+           | some t => progRejects (bndProg t) "the recursor's premise does not give it"
+           | none => false) = true := by native_decide
+
+-- F3. **THE TRANSCRIPTION BUG, now caught by the build.** Annotate the fuel bound
+-- at the PREDECESSOR's level rather than the arm's own — the plausible off-by-one,
+-- and the shape a "`rest` comes for free" transcription would have produced a
+-- whole family of. It is refused through `piAgree`, which is the other branch of
+-- the new check.
+example : (match bndDec with
+           | some dec =>
+             match stepArmWith 3 (.cmpT (leLen (.var dec))) with
+             | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
+             | none => false
+           | none => false) = true := by native_decide
+
+-- F4. …and an ordinary trailing binder, mistyped outright.
+example : (match stepArmWith 2
+             (.borrowT (.app (.const "List") (.const "Bool"))
+                       (.app (.const "List") (.const "Bool"))) with
+           | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
+           | none => false) = true := by native_decide
+
+-- F5. THE ISOLATING CONTROL for the whole section: re-annotating a binder with the
+-- type it already had leaves the program ACCEPTED. So F1–F4 are about the
+-- disagreement, and not about the perturbation machinery having touched the term.
+example : (match bndArms with
+           | some (_, s) =>
+             match stepArmWith 3 (s.get! 3).2 with
+             | some t => progOk (bndProg t)
+             | none => false
+           | none => false) = true := by native_decide
+
+/-! ### F6. A plain sealed λ, not a recursor — the `sealFn` half on its own -/
+
+def fnTy : Term := pure{ Π (v : &mut List Nat) → Unit }
+
+def annOk : Term := prog{
+  let f = seal(λ(v : &mut List Nat) { *v := Nil; () }, %fnTy);
+  () }
+example : progOk annOk = true := by native_decide
+
+-- The same λ, the same ascription, one annotation changed: refused. Before α.1b
+-- this was ACCEPTED, because the binder's type came from the ascription and the
+-- annotation was carried and never read.
+def annBad : Term := prog{
+  let f = seal(λ(v : &mut List Bool) { *v := Nil; () }, %fnTy);
+  () }
+example : progRejects annBad "a domain the ascription does not bind it at" = true := by
+  native_decide
 
 end Dllbc.Tests.S27Lam

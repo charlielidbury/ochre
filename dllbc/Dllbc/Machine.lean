@@ -2105,6 +2105,46 @@ def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
     | _ =>
       .error s!"seal: the runtime λ binds '{x.name}' but the ascribed type has no Π binder left for it. Runtime application is saturated (§12 decision 4), so a λ and its ascription must have the same arity — either the λ binds too much or the ascription promises too little."
 
+/-- **The seal's one conversion** (M27 α.1b): an annotated runtime λ's binders
+    against the ascribed Π.
+
+    This is what `piPeel` becomes once the λ carries its own domains. `piPeel`
+    SUPPLIED each binder a type — a bidirectional descent, the ascription pushing
+    inward — and this AGREES with the type the λ already states. The λ synthesizes
+    its telescope; the ascription supplies the one thing a body cannot synthesize,
+    its return type; and what happens at each binder is a comparison.
+
+    **Syntactic, on the same reasoning `sealRec` gives for the motive**: "the
+    motive contains borrow types, which have no `Val` and therefore no conversion
+    to be compared up to". A binder domain is where the borrow types actually LIVE
+    (`&mut (s : τ ↝ S)` is a telescope-position form and nothing else), so a
+    conversion up to computation is not merely unimplemented here — for the
+    domains that matter it is unaskable. One rule, applied everywhere, rather than
+    conversion where a `Val` happens to exist and syntax where it does not.
+
+    The mode is compared before the domain because its diagnosis is different in
+    kind: a mode disagreement is a claim about what callers were promised, not a
+    mistyped binder, and it earns its own sentence.
+
+    Returns the telescope with the mode marker stripped — the shape
+    `seedTelescopeV` seeds and `auditAction` audits, and the same shape `piPeel`
+    returned, so what changed at the call sites is the CHECK and not the data. -/
+def piAgree : List (Var × Term) → Term → Except String (List (Var × Term) × Term)
+  | [], u => .ok ([], u)
+  | (x, τ) :: xs, u =>
+    match u with
+    | .pi dom cod =>
+      if Term.domComptime dom != x.isComptime then
+        .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
+      else if !(Term.beq dom.stripCmp τ.stripCmp) then
+        .error s!"seal: binder '{x.name}' is annotated with a domain the ascription does not bind it at. A λ states its own binder types and the seal converts that Π against what was written (§5 point 4: the ascription is the contract), so the two cannot differ — either the annotation is wrong or the ascription is."
+      else
+        match piAgree xs (Term.substPure 0 (.var x) cod) with
+        | .ok (rest, ret) => .ok ((x, τ.stripCmp) :: rest, ret)
+        | .error e => .error e
+    | _ =>
+      .error s!"seal: the runtime λ binds '{x.name}' but the ascribed type has no Π binder left for it. Runtime application is saturated (§12 decision 4), so a λ and its ascription must have the same arity — either the λ binds too much or the ascription promises too little."
+
 /-- Synthesized binder names for a Π that has none — the `ih` case (§7 cost 1),
     where the sealed self-view at the predecessor arrives as a TYPE and a
     telescope has to be derived from it.
@@ -3624,20 +3664,39 @@ mutual
       | none => sealValue fuel t u
   termination_by fuel _ _ => (fuel, 13, 0)
   /-- Check ONE recursor arm as a body (§7 cost 1, "the one real kernel
-      addition"): its leading binders take the types the recursor's premise gives
-      them — the predecessor and `ih` — and the rest are peeled from the motive
-      instantiated at this constructor. Then it is an ordinary function body, and
-      `checkRFnBody` is the ordinary audit.
+      addition"): its leading binders are the ones the recursor's premise gives —
+      the predecessor and `ih` — and the rest are the motive instantiated at this
+      constructor. Then it is an ordinary function body, and `checkRFnBody` is the
+      ordinary audit.
+
+      Since M27 the arm ANNOTATES all of them, so both halves are agreements
+      rather than supplies: the leading binders against `pre`, the rest against
+      `ty` through `piAgree`.
 
       "The content of that judgment is exactly today's guard-checking (a body with
       only the sealed self-view available); the plumbing is new" — and that is
       literally what this is: `pre` carries `ih`'s type, which `seedTelescopeV`
       turns into a σ with a signature and no body. -/
-  def checkArm : Nat → Term → List (Var × Term) → List Var → Term → M Unit
-    | fuel, body, pre, restNames, ty => do
-      match piPeel restNames ty with
-      | .error e => throwErr e
-      | .ok (tel, ret) => checkRFnBody fuel (pre ++ tel) ret body
+  def checkArm : Nat → Term → List (Var × Term) → List (Var × Term) → Term → M Unit
+    | fuel, body, pre, binders, ty => do
+      -- **The premise binders are CHECKED, not supplied** (M27 α.1b), and this is
+      -- the one place in α where getting it wrong would be unsound rather than
+      -- merely wrong. `ih`'s type is the motive at the PREDECESSOR — the whole
+      -- content of §7's "the guard evaporates" (M26-C: wrong-level `ih` is a type
+      -- error rather than a check). Now that the arm ANNOTATES `ih`, an annotation
+      -- taken on trust would let a body state the recursion at its own level and
+      -- get it, which is `bad()` arriving through the door the guard used to hold.
+      -- So `pre` is what the recursor's premise gives, and the arm must agree.
+      if binders.length < pre.length then
+        throwErr s!"seal: this recursor arm binds {binders.length} argument(s) but its premise gives it {pre.length} before the motive's own — the predecessor and `ih` are the arm's leading binders, not optional."
+      match (List.zip (binders.take pre.length) pre).find?
+              (fun p => !(Term.beq p.1.2.stripCmp p.2.2.stripCmp)) with
+      | some (b, _) =>
+        throwErr s!"seal: recursor arm binder '{b.1.name}' is annotated with a domain the recursor's premise does not give it. The leading binders of an arm are the predecessor and `ih` — the sealed self-view AT THE PREDECESSOR (§7) — and their types are derived from the motive, not chosen: an `ih` annotated at the arm's own level would be the recursion available where §8's guard used to forbid it."
+      | none =>
+        match piAgree (binders.drop pre.length) ty with
+        | .error e => throwErr e
+        | .ok (tel, ret) => checkRFnBody fuel (pre ++ tel) ret body
   termination_by fuel _ _ _ _ => (fuel, 10, 0)
   /-- **Sealing a RECURSOR whose arms are bodies** (§7): the checking side of the
       rule part 1 gave the executing machine.
@@ -3679,16 +3738,16 @@ mutual
             | "natRec", [_, z, s] => do
               match z, s with
               | .lamR zn zbody, .lamR (k :: ihv :: rest) sbody => do
-                checkArm fuel zbody [] (zn.map (·.1)) (Term.substPure 0 (.ctorApp "Z" []) R)
+                checkArm fuel zbody [] zn (Term.substPure 0 (.ctorApp "Z" []) R)
                 checkArm fuel sbody [(k.1, scrutDom), (ihv.1, Term.substPure 0 (.var k.1) R)]
-                  (rest.map (·.1))
+                  (k :: ihv :: rest)
                   (Term.substPure 0 (.ctorApp "S" [.var k.1]) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
             | "listRec", [_, _, pn, pc] => do
               match pn, pc with
               | .lamR nn nbody, .lamR (h :: tl :: ihv :: rest) cbody => do
-                checkArm fuel nbody [] (nn.map (·.1)) (Term.substPure 0 (.ctorApp "Nil" []) R)
+                checkArm fuel nbody [] nn (Term.substPure 0 (.ctorApp "Nil" []) R)
                 -- `h`'s type is the element type, read off the scrutinee's own
                 -- `List A`; anything else and the arm is not this recursor's.
                 let elemTy : Term := match scrutDom with
@@ -3696,15 +3755,15 @@ mutual
                   | _ => .const "Nat"
                 checkArm fuel cbody
                   [(h.1, elemTy), (tl.1, scrutDom), (ihv.1, Term.substPure 0 (.var tl.1) R)]
-                  (rest.map (·.1))
+                  (h :: tl :: ihv :: rest)
                   (Term.substPure 0 (.ctorApp "Cons" [.var h.1, .var tl.1]) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
               match tArm, fArm with
               | .lamR tn tbody, .lamR fn fbody => do
-                checkArm fuel tbody [] (tn.map (·.1)) (Term.substPure 0 (.ctorApp "True" []) R)
-                checkArm fuel fbody [] (fn.map (·.1)) (Term.substPure 0 (.ctorApp "False" []) R)
+                checkArm fuel tbody [] tn (Term.substPure 0 (.ctorApp "True" []) R)
+                checkArm fuel fbody [] fn (Term.substPure 0 (.ctorApp "False" []) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: boolRec's arms must be runtime λs"
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"
@@ -3742,29 +3801,30 @@ mutual
   termination_by fuel _ _ => (fuel, 12, 0)
   /-- Sealing a runtime λ: check it, then forget it.
 
-      The two halves are §5's two sentences. The check is `checkRFnBody` against
-      the Π peeled at the λ's OWN binders — the ids its body reaches Ω through.
+      The two halves are §5's two sentences. The check is ONE conversion (M27
+      α.1b) — the Π the λ states against the Π that was ascribed, `piAgree` —
+      followed by `checkRFnBody` on the telescope that agreement yields, at the λ's
+      OWN binder ids, which are the ids its body reaches Ω through.
       The forgetting mints a σ carrying the same Π peeled at POSITIONAL binders,
       which is the convention `processArgs`/`buildResult` read a telescope by, so
       what a caller sees is a callee indistinguishable from a table entry. Both
       peels come from the same `u`, so they cannot disagree. -/
   def sealFn : Nat → List (Var × Term) → Term → Term → M Val
     | fuel, binders, body, u => do
-      -- α.1a: the annotations are carried but not yet CONSULTED — the telescope
-      -- still comes from the ascription, exactly as it did before the binders had
-      -- domains. α.1b is what makes the λ's own Π the synthesized side and this
-      -- peel the thing it is converted against; keeping the two commits apart is
-      -- what keeps a red build unambiguous between a mistyped binder and a wrong
-      -- conversion rule.
-      let names := binders.map (·.1)
-      match piPeel names u with
+      -- **ONE CONVERSION** (M27 α.1b). The λ states its own telescope, so the seal
+      -- compares that against the ascription rather than descending the ascription
+      -- to supply it. The return type still comes from `u`, and that is not an
+      -- exception to synthesis — it is the one thing a BODY cannot synthesize
+      -- (§5 point 4: the ascription is the contract, and a contract is about what
+      -- comes back).
+      match piAgree binders u with
       | .error e => throwErr e
       | .ok (tel, ret) => do
         checkRFnBody fuel tel ret body
         -- The caller-visible signature keeps the λ's own binder NAMES (so a
         -- rejection at a call site names what the programmer wrote) at POSITIONAL
         -- ids (so `processArgs` reads it like any telescope).
-        sealMint fuel (names.enum.map (fun p => Var.mk p.1 p.2.name)) u
+        sealMint fuel (binders.enum.map (fun p => Var.mk p.1 p.2.1.name)) u
   termination_by fuel _ _ _ => (fuel, 7, 0)
   /-- **The checking-mode call rule** (§5.3/§6.1), factored out of `.call` (M26-C)
       because a SEALED function is called by exactly the same rule: a σ whose
