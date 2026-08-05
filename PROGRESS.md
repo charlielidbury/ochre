@@ -1,5 +1,126 @@
 # Progress
 
+## 2026-08-05 — dllbc/: **M26 CLOSES — `fn` and λ are one former; a program is a term**
+
+The milestone entry; the phases have their own above (A/B are in their commits,
+C/D/E have entries). Plan of record `dllbc/docs/combining-fns.md` (803e167b),
+twenty-two commits, 316 assertions across seven test files, every one validated by
+flipping it and confirming the build goes red.
+
+**THE FIVE DIFFERENCES, AND WHAT DISSOLVED EACH.** §1 of the plan diagnosed the
+two function notions as differing in five real ways. None of them survived as a
+mechanism:
+
+1. **Binder modes** — an `fn` telescope binds owned values, borrows and proofs; a
+   λ binds unrestricted comptime terms. Dissolved into **per-binder modes marked
+   by case** (phase B): capital is comptime, ⇝-read at a call, erased, fenced into
+   ⇝-positions. The corpus needed ONE rename to adopt it.
+2. **Transparency** — applying a λ β-reduces; calling an `fn` is opaque.
+   Dissolved into **one AST node**, `.seal t u` (phase A): legal anywhere ⇒
+   evaluates, absent from the pure grammar by construction (its own constructor,
+   and `Val` has no seal former, so no comptime rule for it can be *written*).
+3. **Recursion** — `fn` recurses under the `[k]` guard; the pure fragment has
+   none. Dissolved into **recursors whose arms are bodies** (phase C). The guard
+   did not have to be removed: it EVAPORATED, because `ih` is a binder and a
+   binder cannot be a self-call.
+4. **The boundary audit** — an `fn` body is checked against its signature with
+   exit snapshots and the ensures convention. Dissolved into **the checking of the
+   seal** (phase C): `checkFn`'s content, relocated to the node, with frame
+   isolation. The two rejections agree on the MESSAGE and not merely the verdict,
+   which is what says it was relocated rather than reimplemented.
+5. **First-classness** — λs are values, `fn`s are top-level declarations.
+   Dissolved by **programs are terms** (phase E): a declaration is a `let`, and
+   there is nothing left for a declaration former to do.
+
+`fn` is a macro over the four (phase D), and it is **not in the TCB** — a fact
+about the import graph rather than a promise, since nothing in `Machine`/`Boundary`
+imports it and every claim it makes is re-derived at the seal.
+
+**THE HEADLINE ARTIFACTS, in the order they are worth anything.**
+
+  * **The α-oracle.** `FnMacro`'s `split_off` output is α-EQUAL to the sealed
+    recursor hand-written in phase C from the document, before the macro existed
+    and so not tunable against it. The oracle is shown able to say NO.
+  * **The flagship as three sealed lets and a tail.** M23's in-place quicksort —
+    `Sorted` and the permutation count equation over the exit snapshot, no declared
+    `back` anywhere in its call tree — checked against NO declaration table in
+    under a second, RUN to a sorted list, differentially green, and refusing all
+    three of its own lie twins twin for twin with the honest one accepted by both
+    paths. `quicksortA`, which shares no code with it, the same, refusing all seven
+    of S25's — and the LIST-vs-ARRAY cross-differential re-run over eleven inputs
+    with both sides as programs.
+  * **The corpus, down both paths.** 224 declarations, each cohort derived rather
+    than restated, run down the declaration path and the program path and
+    compared: **95 accept on both, 56 reject on both, 73 do not migrate, and
+    NOTHING disagrees.** Nothing was rewritten — the corpus stays as its own
+    regression suite, and the bar became a computation.
+
+**THE TWO NUMBERS.** The seal's audit costs EXACTLY the ordinary check (6 ms
+intercept, which is the pure fragment's own 6 ms — sealing is not a tax), and every
+citation after it is flat: **4.01 ms transparent against 0.087 ms sealed, a factor
+of 46 that grows with the proof**, because the sealed cost is a function of the
+400-node statement and the transparent one of the 9156-node proof. §5's "the audit
+descents become O(statement)", as a slope. And the whole mode convention — one
+character per binder, deleting the index-kind copy-on-read heuristic and shrinking
+the proof-consumption staging — cost the corpus **one rename**.
+
+**WHAT THE PROJECT'S OWN DOCTRINE YIELDED, five times.** Every one of these was a
+test being wrong before the machine was:
+
+  * **A negative control per DEMAND SITE, not per rule branch** (phase A's
+    finding, now doctrine) fired three times: two vacuous controls that bound an
+    ill-typed proof and never used it and so PASSED; a `bad()` control that bound a
+    self-referencing λ and never called it; and phase E's `let g = λ(x){ True }`,
+    accepted until something demands it. The vacuous versions are kept beside the
+    live ones, pinned as the trap.
+  * **Both dispatch surfaces.** Phase B's fence was DEAD until duplicated at the
+    explore driver. Every phase since audits both, and phase E's rules are
+    exercised INSIDE a branch of a symbolic match with negative twins at the same
+    positions.
+  * **The polarity doctrine, twice, and cleanly.** Phase C found a kernel gap
+    (`hasType: σ has no type in sctx`) because a test asked, not because anyone
+    reasoned. Phase E found `globalKind` admitting the σ-form and refusing the
+    SPINE-form of the same binding — green for an hour on the checking side, caught
+    by RUNNING the flagship, because a seal evaluates to its own term when
+    executing and mints a σ when checking. Neither was reachable from the checking
+    side, which is the argument for building the executing machine first.
+  * **Assert your instrument before your conclusion.** `{ d with back := none }`
+    does NOT strip the field — `back` is a reserved token of the `decl{ … }`
+    surface, so the record-update syntax silently means something else. The
+    "stripped" pool came back identical, and the natural reading of that evidence
+    ("dropping `back` changes nothing, so it is not the blocker") is the exact
+    opposite of the truth. The test now asserts the strip happened first.
+
+**DECLARATIONS DEFERRED, NOT DELETED** — a design decision, and the map is
+measured rather than estimated. `Decl` survives as the explicitly-labelled home of
+the M17-era baseline corpus; programs-as-terms is the primary architecture. 73
+declarations have no program form as the corpus stands, and the blockers COMPOSE
+through the cohort closure (73 → 68 with two `[k]` hints corrected, → 65 with
+`back` stripped, → **20 with both**), which is why two rounds of measurement made
+the map look immovable and the third made it small. Of the two fixes, correcting a
+hint is FREE (§7 demoted `[k]` to a scrutinee-selection hint, and `nth`/`nth2` also
+decrease on their index) and stripping `back` is NOT — that is the user's question,
+now scoped to **eight declarations** rather than to the corpus.
+
+**STILL OPEN, in the order they matter:**
+
+1. **`back` under a seal, for eight declarations.** §6.2's declared backward specs
+   are the mechanism M23 retired; the seal has no counterpart because the ensures
+   IS the contract. What replaces it for the baseline corpus is a user call — it
+   touches what the repo keeps as its historical comparison baseline.
+2. **§9's borrow-mode eliminator.** Worth building for `zero_all`'s shape (a
+   cursor with no decreasing argument but the payload — the only genuine
+   decision-8 shape left in the list world) and for naturalness. It is NOT what
+   stands between here and deleting `Decl`; the corrected map says that is eight
+   `back`s and a handful of hints.
+3. **`recDeep` — §7's genuine expressiveness limit.** A recursion two constructors
+   down: the guard permits it, and no single recursor can express it, because an
+   arm gets `ih` at the immediate predecessor and nothing below it.
+4. **Closures and capture** stay deferred wholesale (constraint 5). §8's globals
+   admit FUNCTIONS bound above; data, borrows and sealed proofs are refused, and a
+   body that wants a proof takes it as a capital parameter.
+5. **Stored and returned Σ-of-borrows** — still exercised in one direction only.
+
 ## 2026-08-05 — dllbc/: M26-E CLOSES — a program is a term; the corpus down both paths
 
 Phase E of the `fn`/λ unification, and the last one M26 planned. Commits 52520fed,
