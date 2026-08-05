@@ -132,6 +132,14 @@ evidence the project could not previously produce at all.
   performance measurement at all — it is an agreement check between two
   implementations, and its number (eleven inputs) is a count of test cases, not of
   time. Combining any two of the three into one comparison would be wrong.
+
+  *Reproducibility of (i).* The conformance number is measured by a compiled timing
+  harness over architecture A's back-carrying declarations (`lake exe bench`), and
+  that architecture was retired to history when the declaration form was deleted;
+  the harness went with it, having nothing left to time. (i) is therefore
+  reproducible at commit `2f94aa6d`, the last at which the harness exists. (ii) and
+  (iii) are unaffected — both are measured on the direct-proving programs, which
+  are the current ones.
   ]
 ]
 
