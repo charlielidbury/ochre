@@ -113,10 +113,16 @@ def residue (p : List FnDef) : List String :=
 /-- The residue, name for name. Several share a `FnDef.name` (a lie twin is the
     same function under the same name with a different body), so the multiset —
     not a set — is the claim. -/
+-- Five `partition`s became one in M28 υ: four were `{ partition with retType := … }`
+-- spec twins that had lost their assertions with `checkFn` and were deleted as
+-- definitions nothing asserted anything about. They shared `partition`'s NAME and
+-- its `[v]` decline, which is why they were five entries here rather than one.
+-- Nothing else moved — a decliner leaving because it was deleted, not because a
+-- verdict changed.
 example : (S26Migrate.pools.flatMap residue ==
   ["zero_all",
    "recSame", "recWrongIdx", "recGrow", "recDeep", "recCursor", "append_back",
-   "partition", "partition", "partition", "partition", "partition",
+   "partition",
    "partitionLoses",
    "quicksort", "quicksort", "quicksort", "qsStaleBound", "quicksort",
    "walkArr"]) = true := by native_decide

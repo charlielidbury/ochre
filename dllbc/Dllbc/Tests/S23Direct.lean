@@ -1210,39 +1210,21 @@ def partition : FnDef :=
     with the same telescope, so the body is shared verbatim and the lie is the only
     variable. -/
 
-def partLieUb : FnDef :=
-  { partition with retType := (decl{ fn partLieUb (v : &mut List Nat, p : Nat)
-      -> Σ (hi : List Nat) → Σ (hub : Ub p (old *v)) → Σ (hlb : Lb p hi)
-           → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-           → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
-      { () } }).retType }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+/-! **The four spec twins are DELETED (M28 υ).** `partLieUb`, `partLieLb`,
+    `partLieCountDrop` and `partLieCountShift` changed one conjunct each of
+    `partition`'s return type, and each lost its assertion with `checkFn` (M27-δ) —
+    leaving four `def`s that nothing asserted anything about, read only by the
+    declaration survey. **A definition with no assertion is not a test**, which is
+    the suite's rule stated the other way round, so they go rather than being
+    converted into programs that assert nothing.
 
-def partLieLb : FnDef :=
-  { partition with retType := (decl{ fn partLieLb (v : &mut List Nat, p : Nat)
-      -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p (*v))
-           → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-           → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
-      { () } }).retType }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
-
--- The returned part dropped from the count: "everything stayed in `*v`".
-def partLieCountDrop : FnDef :=
-  { partition with retType := (decl{ fn partLieCountDrop (v : &mut List Nat, p : Nat)
-      -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
-           → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-           → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-      { () } }).retType }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
-
--- …and the count off by one, which no `Nil`-path argument can reach.
-def partLieCountShift : FnDef :=
-  { partition with retType := (decl{ fn partLieCountShift (v : &mut List Nat, p : Nat)
-      -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
-           → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-           → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (S (count n (old *v)))
-      { () } }).retType }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+    What they guarded is not lost, and that is why this is a deletion and not a
+    regression: `partition`'s return type is exercised by the BODY twin below,
+    which is refuted in the count conjunct on the recursive path — the place a
+    spec twin refuted on the `Nil` path never reached. The per-conjunct
+    discipline itself survives where it still has assertions: `split_off`'s four,
+    `set_at`'s and `swap_at`'s two each, `insert_at`'s two, and the quicksort
+    twins `S26Prog` §F carries. -/
 
 /-- The BODY twin: the `≤ p` head is DROPPED instead of pushed back onto the kept
     part. Every spec twin above is refuted somewhere the `Nil` path can be blamed for;

@@ -141,8 +141,7 @@ def p23 : List FnDef := [S23Direct.recGood, S23Direct.recSame, S23Direct.recWron
   S23Direct.setAt, S23Direct.swapAt, S23Direct.setAtLieIdx, S23Direct.setAtLieNoop,
   S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop, S23Direct.insertAt,
   S23Direct.insertAtLieIdx, S23Direct.insertAtLieNoop, S23Direct.pick, S23Direct.partition,
-  S23Direct.partLieUb, S23Direct.partLieLb, S23Direct.partLieCountDrop,
-  S23Direct.partLieCountShift, S23Direct.partitionLoses, S23Direct.quicksort,
+  S23Direct.partitionLoses, S23Direct.quicksort,
   S23Direct.qsLieSorted, S23Direct.qsLieCount, S23Direct.qsStaleBound, S23Direct.qsNoSuff]
 
 -- S24Arrays is written as PROGRAMS now (M28 ν) and declares exactly two `FnDef`s:
