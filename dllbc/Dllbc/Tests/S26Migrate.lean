@@ -93,7 +93,11 @@ def p6 : List FnDef := [S6Call.zeroAll]
 -- S7Group is written as PROGRAMS now (M28 ν) — its two callers were already
 -- hand-built `FnDef`s wrapping a `prog{ }` body, so migrating them was deleting
 -- the wrapper. `p7` goes with `p5`/`p10`/`p12`; none of its four was a decliner.
-def p9 : List FnDef := [S9Diff.through, S9Diff.advance, S9Diff.choose, S9Diff.push]
+-- S9Diff's callee pool is a `fn` PREFIX now (M28 σ), not four declarations, so it
+-- contributes nothing to a survey of declarations. None of the four declined, so
+-- §B's residue is unaffected — which is the check that this is a subject leaving
+-- and not a verdict changing.
+def p9 : List FnDef := []
 -- S10Ford's declaration half is written as PROGRAMS now (M28 ν) — its library
 -- half never had a pool entry, being `hasType` derivations over `Val`s — so `p10`
 -- is gone with `p5`. None of its five contributed a decliner either.

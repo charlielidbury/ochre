@@ -36,31 +36,21 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S9Diff
 
-/-! ## The fixed callee pool
+/-! ## The fixed callee pool, as a PREFIX (M28 σ)
 
-    Written in the declaration surface. These were hand-built `FnDef` records:
-    the telescope spelled as a `List (String × Term)`, and the body elaborated
-    against names pre-bound at the positional ids `seedTelescope` uses. `decl{ }`
-    writes both from one header, and produces the same `FnDef` values field for
-    field (checked, before the rewrite). -/
+    The four callees were `FnDef`s passed as `runExec`/`symEnvs`'s TABLE. They are
+    `fn` statements now, and a caller gets them by being written after them — which
+    is what "scope is the call table" means, and removes the last thing in this
+    file that was a declaration rather than a program. Both machines still do what
+    they did: the symbolic side checks a call against the callee's SIGNATURE (it is
+    sealed), the concrete side runs its body. -/
 
-def through : FnDef := decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
-
-/-- `advance`: returns the tail's field reborrow on `Cons`, the argument on
-    `Nil`. Same signature as `through`, different body. -/
-def advance : FnDef :=
-  decl{ fn advance (b : &mut List Nat) -> &mut List Nat
-        { match b { Nil => b, Cons(hd, tl) => tl } } }
-
-def choose : FnDef :=
-  decl{ fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
-        { match c { True => x, False => y } } }
-
-def push : FnDef :=
-  decl{ fn push (e : Nat, v : &mut List Nat) -> Unit
-        { let tail = *v; *v := Cons(e, tail); () } }
-
-def pool : List FnDef := [through, advance, choose, push]
+def withPool (rest : Term) : Term := prog{
+  fn through (b : &mut List Nat) -> &mut List Nat { b };
+  fn advance (b : &mut List Nat) -> &mut List Nat { match b { Nil => b, Cons(hd, tl) => tl } };
+  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat { match c { True => x, False => y } };
+  fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
+  %rest }
 
 /-! ## The simulation relation: `instanceOf` -/
 
@@ -185,21 +175,23 @@ def instanceOfC (symEnv concEnv : Env) : Bool :=
 
 /-- Executing mode: run a body concretely (calls run callee bodies), returning
     the caller's own final Ω (frame vars id ≥ 10000 filtered out). -/
-def runExec (table : List FnDef) (body : Term) : Except String Env :=
+def runExec (table : List FnDef := []) (body : Term) : Except String Env :=
   match (readR defaultFuel body).run { initSt with decls := table, executing := true } with
-  | .ok _ st => .ok (canonicalize (st.env.filter (·.1.id < 10000)))
+  | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
+      kv.1.id < FnMacro.progBase && kv.1.id < 10000)))
   | .error e _ => .error e
 
 /-- Checking mode: the accepted symbolic paths' final environments. `fc`
     forces the (removed) constrained wire on — used only by the harness
     validation, `false` for the real property. -/
-def symEnvs (fc : Bool) (table : List FnDef) (body : Term) : List (Except String Env) :=
+def symEnvs (fc : Bool) (table : List FnDef := []) (body : Term) : List (Except String Env) :=
   (explore defaultFuel (pushContinuations body) { initSt with decls := table, forceConstrained := fc }).map
-    (fun r => r.map (fun p => canonicalize (p.2.env.filter (·.1.id < 10000))))
+    (fun r => r.map (fun p => canonicalize (p.2.env.filter (fun kv =>
+      kv.1.id < FnMacro.progBase && kv.1.id < 10000))))
 
 /-- The differential: the concrete final env is an instance of some symbolic
     path's final env. -/
-def diffV2 (fc : Bool) (table : List FnDef) (body : Term) : Bool :=
+def diffV2 (fc : Bool) (table : List FnDef := []) (body : Term) : Bool :=
   match runExec table body with
   | .error _ => false
   | .ok concEnv => (symEnvs fc table body).any (fun r => match r with
@@ -209,7 +201,7 @@ def diffV2 (fc : Bool) (table : List FnDef) (body : Term) : Bool :=
 /-- The differential under the MERGED relation (M26-C). Same property, a relation
     that no longer reports a false counterexample on a program that carves *and*
     computes. -/
-def diffC (table : List FnDef) (body : Term) : Bool :=
+def diffC (table : List FnDef := []) (body : Term) : Bool :=
   match runExec table body with
   | .error _ => false
   | .ok concEnv => (symEnvs false table body).any (fun r => match r with
@@ -219,50 +211,84 @@ def diffC (table : List FnDef) (body : Term) : Bool :=
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/
 
 /-- The choose caller from §6.1, demanding BOTH owners. -/
-def chooseCaller : Term := prog{
+def chooseCaller : Term := withPool (prog{
   let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
   let r = choose(True, pa, pb);
   *r := 7;
   let za = a; let zb = b;
-  () }
+  () })
 
 /-- A push caller. -/
-def pushCaller : Term := prog{
-  let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () }
+def pushCaller : Term := withPool (prog{
+  let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () })
 
 /-! ## The property, over the caller set -/
 
 def callers : List Term :=
-  [ prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = through(b); *r := Cons(9, Nil); let y = x; () },
-    prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () },
+  [ withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = through(b); *r := Cons(9, Nil); let y = x; () }),
+    withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }),
     chooseCaller,
     pushCaller ]
 
--- A caller IS a program (M28 ν), so the `callerDecl` wrapper that used to give it
--- an empty telescope and a `Unit` return is gone; `progOk` takes the body and the
--- callee table directly. The four callees stay `FnDef`s because they are this
--- harness's TABLE — `diffV2`/`diffC` are typed `List FnDef × Term` by design, the
--- symbolic side checking a call against its SIGNATURE while the concrete side runs
--- the body.
-def accepted : List Term := callers.filter (fun b => progOk b (.const "Unit") pool)
+-- A caller IS a program, callees and all (M28 σ): no wrapper, no table.
+def accepted : List Term := callers.filter (fun b => progOk b)
 
 -- Every accepted caller's concrete run is a σ-instance of an accepted symbolic
 -- path — the whole-program simulation theorem, over the caller set.
-example : accepted.all (fun b => diffV2 false pool b) = true := by native_decide
+example : accepted.all (fun b => diffV2 false [] b) = true := by native_decide
 
 /-! ## Harness validation: the bug goes RED, the fix GREEN -/
 
 def advCallerBody : Term :=
-  prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }
+  withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () })
 
 -- With the (removed, unsound) constrained wire FORCED on, the advance-caller's
 -- symbolic run refines the owner to the surrendered tail (Cons 9 Nil), while it
 -- concretely holds Cons 1 (Cons 9 Nil) — NOT an instance. The harness catches
 -- it: RED.
-example : diffV2 true pool advCallerBody = false := by native_decide
+example : diffV2 true [] advCallerBody = false := by native_decide
 
 -- With it OFF (the real behavior), the opaque σ matches the concrete value: GREEN.
-example : diffV2 false pool advCallerBody = true := by native_decide
+example : diffV2 false [] advCallerBody = true := by native_decide
+
+/-! ### The same validation, at the COMPARATOR (M28 σ)
+
+    The two assertions above validate the harness by reintroducing the bug —
+    `forceConstrained` flips the kernel back to the unsound M7 inference and the
+    differential is asserted to catch it. That is the strongest form the claim can
+    take, and it is about to become unavailable: the flag and the `Group.constrained`
+    field it drives are kernel surface carried for this test alone, and the suite's
+    rule is that a test asserts a program's verdict, not a kernel flag's effect.
+
+    So the same content is stated one level down, where it needs nothing from the
+    kernel. The wire's lie was specific and is writable directly: it refined the
+    owner to the SURRENDERED TAIL. Here is that environment, and the honest one
+    beside it, put to the relation.
+
+    **What this keeps and what it gives up.** It keeps the exact discrimination the
+    old control demonstrated — this relation says NO to that wrong refinement and
+    YES to the opaque σ. It gives up the demonstration that the FINDER, driven by a
+    kernel that really is buggy, arrives at that comparison at all. That is a real
+    reduction in strength and is recorded as one, not glossed. -/
+
+/-- What the removed `constrained` wire claimed: the owner recovers the tail the
+    issued borrow surrendered. -/
+def constrainedLie : Env := [("x", .bot), ("b", .bot), ("r", .bot), ("y", cons (nat 9) nil)]
+
+/-- What is true: the owner recovers an opaque existential. -/
+def honestSym : Env := [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)]
+
+-- The concrete run holds `Cons 1 (Cons 9 Nil)` — the write landed in the TAIL, and
+-- the head is still there. The lie is not an instance of it, under either relation.
+example : (match runExec [] advCallerBody with
+           | .ok ce => instanceOf constrainedLie ce || instanceOfC constrainedLie ce
+           | .error _ => true) = false := by native_decide
+
+-- …and the honest σ is, under both — so the refusal above is discrimination and
+-- not a relation that says NO to everything.
+example : (match runExec [] advCallerBody with
+           | .ok ce => instanceOf honestSym ce && instanceOfC honestSym ce
+           | .error _ => false) = true := by native_decide
 
 /-! ### The merged relation, on this same set (M26-C)
 
@@ -271,15 +297,15 @@ example : diffV2 false pool advCallerBody = true := by native_decide
     where the array programs live (`S26Rec`, over `S24Arrays`' callers); here is
     the σ-at-a-slot half, plus the harness validation that decides it. -/
 
-example : accepted.all (fun b => diffC pool b) = true := by native_decide
+example : accepted.all (fun b => diffC [] b) = true := by native_decide
 -- The bug still goes RED under the merged relation: computation does not launder
 -- a wrong refinement, because pass 2 compares the INSTANTIATED value and the
 -- forced constrained wire makes the symbolic side say `Cons 9 Nil` where the
 -- concrete side holds `Cons 1 (Cons 9 Nil)`.
 example :
-  (match runExec pool advCallerBody, symEnvs true pool advCallerBody with
+  (match runExec [] advCallerBody, symEnvs true [] advCallerBody with
    | .ok ce, ses => ses.any (fun r => match r with | .ok se => instanceOfC se ce | .error _ => false)
    | _, _ => true) = false := by native_decide
-example : diffC pool advCallerBody = true := by native_decide
+example : diffC [] advCallerBody = true := by native_decide
 
 end Dllbc.Tests.S9Diff
