@@ -2,7 +2,7 @@
 
 ## 2026-08-06 — dllbc/: **M29 phase A — the elaboration mode is GONE; there is one macro**
 
-Three commits, `77b568c7` through `c8fb574d`, full suite green at each. The
+Five commits, `574c1ae4` through `af883194`, full suite green at each. The
 surface is `prog{ }` — one macro, one grammar, no mode flag — and every exclusion
 the flag used to make is now the kernel's, stated by the arrow that makes it.
 
@@ -65,6 +65,22 @@ seeded σ at the VALUE level yields a `Val.lam` that applies correctly. The prob
 also found a gap the plan does not cover: **a both-capable function has two
 signatures** — ⇝'s is ⇒'s with each `&mut τ` binder replaced by `τ` — so a call
 site consults a signature, not a bit. That needs the user's decision.
+
+**δ — ⇐ demands a loan group exactly as ⇒ does** (the coda; paper finding 15
+closes). `readR` ended a parked loan through the group-aware `endLoan`, while ⇐
+let the marker reach `drop`, which ends it with `killBorrowInΩ` and no group
+check — so `let y = a` after `keep(&m a)` was accepted and `a := 5` was refused
+with "its other end is in flight". The demand now happens in `writeR`, BEFORE the
+vacate, as end-and-retry — the shape every other demand in this machine uses.
+Not in `drop`, for two reasons established before editing: `drop` sits above
+`hasType` and so cannot reach `endLoan` at all, and by the time `drop` runs the
+marker's slot is already vacated, so `endLoan` would fail plugging the payload
+back. A completeness fix — it admits programs and refuses none — and the golden
+traces are unchanged, which is the check that says the ordinary-loan route is
+behaviourally identical. Three tests in `Boundaries` beside the read-driven twin;
+the one remaining "in flight" refusal is §2.5's self-reborrow, where the borrow
+genuinely has no other end. Two stale docstrings fixed with it (`St.fsig`'s
+"as a `FnDef`", `Diff`'s four `checkFn` mentions).
 
 Next: A3 with the two-signature question settled; the paper and
 `dllbc/docs/language.md` still describe two macros and the old `&mut` op spelling.
