@@ -227,7 +227,7 @@ def callerDecl (body : Term) : FnDef :=
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/
 
 /-- The choose caller from §6.1, demanding BOTH owners. -/
-def chooseCaller : Term := dllbc{
+def chooseCaller : Term := dllbc defer_check {
   let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
   let r = choose(True, pa, pb);
   *r := 7;
@@ -235,14 +235,14 @@ def chooseCaller : Term := dllbc{
   () }
 
 /-- A push caller. -/
-def pushCaller : Term := dllbc{
+def pushCaller : Term := dllbc defer_check {
   let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () }
 
 /-! ## The property, over the caller set -/
 
 def callers : List Term :=
-  [ dllbc{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = through(b); *r := Cons(9, Nil); let y = x; () },
-    dllbc{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () },
+  [ dllbc defer_check { let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = through(b); *r := Cons(9, Nil); let y = x; () },
+    dllbc defer_check { let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () },
     chooseCaller,
     pushCaller ]
 
@@ -255,7 +255,7 @@ example : accepted.all (fun b => diffV2 false pool b) = true := by native_decide
 /-! ## Harness validation: the bug goes RED, the fix GREEN -/
 
 def advCallerBody : Term :=
-  dllbc{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }
+  dllbc defer_check { let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }
 
 -- With the (removed, unsound) constrained wire FORCED on, the advance-caller's
 -- symbolic run refines the owner to the surrendered tail (Cons 9 Nil), while it

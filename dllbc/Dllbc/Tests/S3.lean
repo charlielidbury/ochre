@@ -137,7 +137,7 @@ example : expectEnv dllbc{
 
 -- Match on a moved variable: `p = Nil` is DATA (a List), so `let q = p` MOVES it
 -- (§2.1 keeps Rust's line for aggregates), and the later match finds the slot ⊥.
-example : expectErr dllbc{
+example : expectErr dllbc defer_check {
   let p = Nil;
   let q = p;
   match p { Nil => () }
@@ -145,14 +145,14 @@ example : expectErr dllbc{
 
 -- No branch matches the head constructor (no exhaustiveness checking — there
 -- are no inductive declarations yet — so an unmatched head is a runtime stuck).
-example : expectErr dllbc{
+example : expectErr dllbc defer_check {
   let p = Nil;
   match p { Cons(h, t) => () }
 } "no branch" = true := by native_decide
 
 -- Matching through a hole: `*b` is taken first, leaving the borrow payload ⊥,
 -- and no rule reads through ⊥.
-example : expectErr dllbc{
+example : expectErr dllbc defer_check {
   let x = Cons(3, Nil);
   let b = &mut x;
   let tail = *b;

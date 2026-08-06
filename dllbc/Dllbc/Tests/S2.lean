@@ -147,7 +147,7 @@ example : expectEnv dllbc{
 } [("x", nat 3), ("y", nat 3), ("z", nat 3)] = true := by native_decide
 
 -- Fill through a non-place term: ⇐ is only defined on places.
-example : expectErr dllbc{
+example : expectErr dllbc defer_check {
   Pair(1) := 7;
   ()
 } "not a place" = true := by native_decide
@@ -156,7 +156,7 @@ example : expectErr dllbc{
 -- ⇒-consumes c, so borrowₘ ℓ1 3 is in flight; drop must vacate b, which
 -- requires ending ℓ1, whose borrow is exactly that in-flight value — no entry,
 -- no rule, rejected.
-example : expectErr dllbc{
+example : expectErr dllbc defer_check {
   let x = 3;
   let b = &mut x;
   let c = &mut *b;

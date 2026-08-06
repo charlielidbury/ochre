@@ -29,14 +29,21 @@ namespace Dllbc
 
 /-- Audit every explored path; the whole function checks iff all do. Each path
     carries its own (refinement-updated) obligations in `St`. -/
-def auditPaths (retType : Term) :
-    List (Except String (Val × St)) → Except String Unit
+def auditPathsD (retType : Term) :
+    List (Except Diag (Val × St)) → Except Diag Unit
   | [] => .ok ()
   | .error e :: _ => .error e
   | .ok (v, st) :: rest =>
     match (auditAction defaultFuel retType v).run st with
-    | .error e _ => .error e
-    | .ok _ _ => auditPaths retType rest
+    -- `atReturn`: the audit's subject is the declared result type, not whichever
+    -- statement ran last, so the surface squiggles the return type.
+    | .error e s => .error { Diag.of e s with atReturn := true }
+    | .ok _ _ => auditPathsD retType rest
+
+/-- As `auditPathsD`, breadcrumb dropped. -/
+def auditPaths (retType : Term) (ps : List (Except String (Val × St))) : Except String Unit :=
+  Except.mapError Diag.msg
+    (auditPathsD retType (ps.map (Except.mapError (fun e => ({ msg := e } : Diag)))))
 
 -- `hasBorrowT` moved to `Syntax.lean` (M26-A): the seal rule lives in `Machine`,
 -- which cannot import `Boundary`. Same name, same namespace — every use site is

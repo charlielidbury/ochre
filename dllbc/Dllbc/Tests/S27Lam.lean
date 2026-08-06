@@ -331,7 +331,7 @@ example : progOk annOk = true := by native_decide
 -- The same λ, the same ascription, one annotation changed: refused. Before α.1b
 -- this was ACCEPTED, because the binder's type came from the ascription and the
 -- annotation was carried and never read.
-def annBad : Term := dllbc{
+def annBad : Term := dllbc defer_check {
   let f = seal(λ(v : &mut List Bool) { *v := Nil; () }, %fnTy);
   () }
 example : progRejects annBad "a domain the ascription does not bind it at" = true := by
@@ -457,7 +457,7 @@ example : rejects juxRuntime "holds a hole (⊥) at return" = true := by native_
 
 -- G6. Saturation, at the juxtaposition form (§12 decision 4 — the call event is
 -- atomic, so a spine that stops short is an error and not a partial application).
-def juxPartial : Term := dllbc{
+def juxPartial : Term := dllbc defer_check {
   let f = seal(λ(a : Nat, b : Nat) { a }, Π (a : Nat) → Π (b : Nat) → Nat);
   let r = f 1;
   () }

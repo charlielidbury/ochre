@@ -235,6 +235,6 @@ end
 end PureMacro
 
 macro_rules
-  | `(pure{ $b:ublk }) => do let (t, _) ← Dllbc.DeclMacro.elabUBlk true [] [] 0 b; pure t
+  | `(pure{ $b:ublk }) => do let (t, _) ← (Dllbc.DeclMacro.elabUBlk true [] [] 0 b).run' {}; pure t
 
 end Dllbc

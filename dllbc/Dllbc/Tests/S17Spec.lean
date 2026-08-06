@@ -152,7 +152,7 @@ example : Migrate.progOkOf swapSN ([nthS, nth2S, swapSN]) = true := by native_de
 -- so `y` is a fresh existential. This is the deletion's whole visible cost, and
 -- the executing differential below is what says the cost is in knowledge and not
 -- in behaviour.
-def spcBody : Term := dllbc{
+def spcBody : Term := dllbc defer_check {
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &mut x;
   swapS(b, 0, 2, (), ());

@@ -399,7 +399,7 @@ example : expectEnv
 -- leaf: it straddles the boundary. So the rejection needs no owned-versus-loaned test
 -- at all — two segments cannot overlap, so a range crossing a segment boundary has no
 -- leaf, full stop. No arithmetic was performed and no proof could have helped.
-example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
+example : expectErr dllbc defer_check { let a = Arr(3, 1, 2, 7, 5);
                            let p = &mut a[0 ; 3];
                            let q = &mut a[2 ; 3];
                            () }
@@ -407,14 +407,14 @@ example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
 
 -- OUT OF RANGE — premise (2) has no inhabitant and none can be supplied, because
 -- `Le (add lo cnt) n` computes to ⊥.
-example : expectErr dllbc{ let a = Arr(3, 1, 2); let m = &mut a[1 ; 3]; () }
+example : expectErr dllbc defer_check { let a = Arr(3, 1, 2); let m = &mut a[1 ; 3]; () }
   "containment obligation" = true := by native_decide
-example : expectErr dllbc{ let a = Arr(3, 1, 2); let x = a[3]; () }
+example : expectErr dllbc defer_check { let a = Arr(3, 1, 2); let x = a[3]; () }
   "containment obligation" = true := by native_decide
 
 -- A HOLE is not owned. `⇒` at a range place takes the run out and leaves one, and
 -- until the ⇐-refill closes it no carve may split across it.
-example : expectErr dllbc{ let a = Arr(3, 1, 2);
+example : expectErr dllbc defer_check { let a = Arr(3, 1, 2);
                            let run = a[1 ; 2];
                            let x = a[1];
                            () }
@@ -450,7 +450,7 @@ example : expectEnv dllbc{ let a = Arr(3, 1, 2, 7, 5);
 
 -- …and the killed borrow is stuck at its next use, which is where the rejection
 -- actually lands.
-example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
+example : expectErr dllbc defer_check { let a = Arr(3, 1, 2, 7, 5);
                            let p = &mut a[0 ; 3];
                            let q = &mut a[1];
                            (*p)[0] := 4;
@@ -781,12 +781,12 @@ def bump : FnDef := decl{
 def arrPool : List FnDef := [fill1, bump]
 
 /-- A carved segment handed to a call, then the whole array demanded back. -/
-def arrCaller1 : Term := dllbc{
+def arrCaller1 : Term := dllbc defer_check {
   let a = Arr(3, 1, 2); let s = &mut a[1 ; 1]; fill1(s); let b = a; () }
 
 /-- TWO carved segments, one passed to each of two calls, then rejoined — ¶3.6's
     "several captured loans in one owner" at the arity the doc calls new. -/
-def arrCaller2 : Term := dllbc{
+def arrCaller2 : Term := dllbc defer_check {
   let a = Arr(3, 1, 2, 7);
   let s = &mut a[0 ; 2]; let t = &mut a[2 ; 2];
   bump(s); bump(t);

@@ -48,7 +48,7 @@ example : Migrate.progOkOf choose = true := by native_decide
 -- the point: z = 7 is not provable (§6.2's cost).
 def chooseCaller : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [],
-    body := dllbc{
+    body := dllbc defer_check {
       let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
       let r = choose(True, pa, pb);
       *r := 7;
@@ -80,7 +80,7 @@ example : Migrate.progOkOf through = true := by native_decide
 
 def throughCaller : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [],
-    body := dllbc{
+    body := dllbc defer_check {
       let x = Cons(1, Nil); let b = &mut x;
       let r = through(b);
       *r := Cons(9, Nil);
@@ -98,7 +98,7 @@ example : Migrate.progEnvOfT [through, throughCaller] throughCaller
 -- taken, leaving its payload a hole (⊥), and then a captured owner is demanded.
 example : Migrate.progRejectsOf
   { name := "caller", retType := .const "Unit", telescope := [],
-    body := dllbc{
+    body := dllbc defer_check {
       let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
       let r = choose(True, pa, pb);
       let tk = *r;

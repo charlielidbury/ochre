@@ -142,7 +142,7 @@ example : ok twoBorrows = true := by native_decide
 
 def mixedSeal : Term := pure{ Π (v : &mut List Nat) → Σ (x : &mut Nat) → Id Nat Z (S Z) }
 
-def sealProg : Term := dllbc{
+def sealProg : Term := dllbc defer_check {
   let f = seal(λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&mut *hd, Refl) } },
                %mixedSeal);
   () }
@@ -245,7 +245,7 @@ def fSeal : Term := pure{ Π (v : &mut List Nat) → Unit }
 
 -- F1. A sealed borrow-taking function, NO recursor anywhere, bound to a second
 -- slot. This is the shape c1's §G3b has both machines accepting with different Ωs.
-def f1read : Term := dllbc{
+def f1read : Term := dllbc defer_check {
   let f = seal(λ(v : &mut List Nat) { () }, %fSeal);
   let g = f;
   () }
@@ -264,7 +264,7 @@ example : progRejects f1read "reached by NAME" = true := by native_decide
 -- is the same one F1 gets, which is the point — there is no longer a class here to
 -- be isolated from.
 def gSeal : Term := pure{ Π (x : Nat) → Nat }
-def f2read : Term := dllbc{
+def f2read : Term := dllbc defer_check {
   let f = seal(λ(x : Nat) { x }, %gSeal);
   let g = f;
   () }

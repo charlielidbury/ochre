@@ -32,10 +32,10 @@ def assemble (name : Ident) (dec : Option Ident) (params : Array (TSyntax `declP
   let names := parsed.map (·.1)
   let n := names.length
   let fullRctx : List (String × Nat) := names.zip (List.range n)
-  let teleSyns ← buildTele [] 0 parsed                      -- each entry sees only earlier params
-  let (retT, _) ← elabUTerm true fullRctx [] 0 ret          -- retType (type mode) sees the whole telescope
+  let teleSyns ← (buildTele [] 0 parsed).run' {}             -- each entry sees only earlier params
+  let (retT, _) ← (elabUTerm true fullRctx [] 0 ret).run' {} -- retType (type mode) sees the whole telescope
   let bodyT ← match body with                               -- unified `ublk` block, or a `%` splice
-    | `(declBody| { $b:ublk }) => do let (t, _) ← elabUBlk false fullRctx [] n b; pure t
+    | `(declBody| { $b:ublk }) => do let (t, _) ← (elabUBlk false fullRctx [] n b).run' {}; pure t
     | `(declBody| = % $t:term) => pure ⟨t.raw⟩
     | _ => Macro.throwErrorAt body "decl: malformed body"
   let decT ← match dec with

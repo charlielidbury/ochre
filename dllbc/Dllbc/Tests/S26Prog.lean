@@ -97,7 +97,7 @@ example : progOk a2 (.const "Nat") = true := by native_decide
 example : progDiff a2 = true := by native_decide
 -- The claim that it was really the seal that made `f` callable: the same program
 -- with `f` bound to a NON-function is refused, and the refusal names the capture.
-def a2cap : Term := dllbc{
+def a2cap : Term := dllbc defer_check {
   let f = 3;
   let g = seal(λ(y : Nat){ let z = f; y }, Π (y : Nat) → Nat);
   () }
@@ -130,7 +130,7 @@ example : progDiff push = true := by native_decide
 -- B1. A sealed function that does not inhabit its ascription is refused AT ITS
 -- OWN `let`, with nothing downstream of it — the binding is the demand site,
 -- which is what "the audit is the checking of the seal" means (§5).
-def b1 : Term := dllbc{ let f = seal(λ(x : Nat){ x }, Π (x : Nat) → Bool); () }
+def b1 : Term := dllbc defer_check { let f = seal(λ(x : Nat){ x }, Π (x : Nat) → Bool); () }
 example : progRejects b1 "does not have return type (Bool)" = true := by native_decide
 
 /-- ### B2. The vacuous twin, kept beside it
@@ -149,7 +149,7 @@ example : progRejects b2live "does not have return type (Nat)" (.const "Nat") = 
 -- B3. **Program order**, pinned the only way it can be: two lies, and the one
 -- that is reported is the FIRST. (Both messages have the same shape, so the
 -- needles are the types, which differ.)
-def b3 : Term := dllbc{
+def b3 : Term := dllbc defer_check {
   let f = seal(λ(x : Nat){ x }, Π (x : Nat) → Bool);
   let g = seal(λ(x : Nat){ True }, Π (x : Nat) → Unit);
   () }
@@ -171,7 +171,7 @@ example : progRejects b3 "does not have return type (Unit)" = false := by native
     why §8 can say mutual recursion "becomes unwritable" rather than "stays
     rejected". Note WHERE it is caught: at `g`'s own seal, because the audit is at
     the binding, so the diagnosis does not wait for a call. -/
-def c1 : Term := dllbc{
+def c1 : Term := dllbc defer_check {
   let g = seal(λ(y : Nat){ h(y) }, Π (y : Nat) → Nat);
   let h = seal(λ (x : Nat). x, Π (x : Nat) → Nat);
   () }
@@ -268,7 +268,7 @@ example : progDiff d1 = true := by native_decide
 -- D2a. DATA. (M26-C's a3bad, now with the message that says which of the two
 -- things went wrong — it names a binding in scope, and that binding is not a
 -- function.)
-def d2data : Term := dllbc{
+def d2data : Term := dllbc defer_check {
   let n = 3;
   let g = seal(λ(a : Nat){ let z = n; a }, Π (a : Nat) → Nat);
   () }
@@ -282,7 +282,7 @@ example : progOk d2dataOk (.const "Nat") = true := by native_decide
 
 -- D2b. A BORROW — the case constraint 5 is really about, since a captured borrow
 -- is a suspended loan with no scope to end it in.
-def d2borrow : Term := dllbc{
+def d2borrow : Term := dllbc defer_check {
   let l = Cons(1, Nil);
   let b = &mut l;
   let g = seal(λ(a : Nat){ *b := Nil; a }, Π (a : Nat) → Nat);
@@ -302,7 +302,7 @@ example : progRejects d2free "not bound anywhere above it" = true := by native_d
 -- an oversight: §5's `Qed` binding is a value, and a body that wants it should
 -- take it as a capital parameter (which is exactly what §6 built). Recorded as a
 -- limitation with its route beside it, not as a defect.
-def d3 : Term := dllbc{
+def d3 : Term := dllbc defer_check {
   let cert = seal(le_refl 3, Le 3 3);
   let g = seal(λ(a : Nat){ let z = cert; a }, Π (a : Nat) → Nat);
   () }
@@ -313,7 +313,7 @@ example : progRejects d3 "not a function" = true := by native_decide
 -- e` reads `e` under ⇝, and the seal is a ⇒-form because minting needs an event.
 -- So "sealed" and "comptime-bound" are mutually exclusive, and a reader who
 -- expects `let Cert = seal(…)` to be the `Qed` form is told which half to drop.
-def d3cap : Term := dllbc{ let C = seal(le_refl 3, Le 3 3); () }
+def d3cap : Term := dllbc defer_check { let C = seal(le_refl 3, Le 3 3); () }
 example : progRejects d3cap "not in the comptime fragment" = true := by native_decide
 
 /-! ## §E. The end of a program is a demand on everything it still holds
