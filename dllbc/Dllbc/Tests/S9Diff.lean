@@ -39,11 +39,11 @@ namespace Dllbc.Tests.S9Diff
 
 /-! ## The fixed callee pool
 
-    Written in the declaration surface. These were hand-built `FnDef` records with
-    a `progSeed`-style body — the telescope spelled as a `List (String × Term)`
-    and the body elaborated against names pre-bound at the positional ids
-    `seedTelescope` uses. `decl{ }` writes both from one header, and produces the
-    same `FnDef` values field for field (checked, before the rewrite). -/
+    Written in the declaration surface. These were hand-built `FnDef` records:
+    the telescope spelled as a `List (String × Term)`, and the body elaborated
+    against names pre-bound at the positional ids `seedTelescope` uses. `decl{ }`
+    writes both from one header, and produces the same `FnDef` values field for
+    field (checked, before the rewrite). -/
 
 def through : FnDef := decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
 

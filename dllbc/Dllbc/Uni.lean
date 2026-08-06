@@ -10,9 +10,8 @@ This file holds the ONE term grammar (`uterm`/`ublk`, below) and, on top of it,
 — producing the same `FnDef` value the corpus builds by hand. Its reason to exist
 is removing the ugliness of hand-writing telescopes like
 `("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))`. The other surfaces —
-`pure{ }` (PureMacro.lean), `prog{ }`/`progWith`/`progSeed` (ProgMacro.lean) —
-are this same grammar entered at a different mode or with a different starting
-context, which is what makes them one-liners.
+`pure{ }` (PureMacro.lean) and `prog{ }` (ProgMacro.lean) — are this same
+grammar entered at a different mode, which is what makes them one-liners.
 
 ## Type positions
 
@@ -46,9 +45,8 @@ the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
 ## Body
 
 `ublk` in TERM mode with the telescope names pre-bound in order at ids `0 .. n-1`
-and fresh binders minted from `n` — the `seedTelescope` convention, which
-`progSeed [xs] { … }` (ProgMacro.lean) exposes on its own for hand-written
-`FnDef` bodies and for tests that seed Ω directly. Bodies laden with pure proof
+and fresh binders minted from `n` — the `seedTelescope` convention, and the only
+place in the surface where a name arrives pre-bound. Bodies laden with pure proof
 terms (a `botElim` ex-falso branch, a `le_rw_r` bound derivation) are awkward to
 write as statements; for those the escape hatch `= %term` splices a raw `Term`.
 -/

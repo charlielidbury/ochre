@@ -189,27 +189,28 @@ example : progDiff c1ok = true := by native_decide
 
     The old suite guarded caller-side reasoning by checking a caller against a
     table entry whose signature was a lie. There is no table to lie in now, so the
-    same test becomes **one caller suffix under two prefixes**: the callee's body
-    is identical and honest in both, and what differs is the type it is SEALED at.
-    That is §5 point 4 with nothing left to interpret — what the caller keeps is
-    what the programmer wrote — and it is a sharper test than the old one, because
-    the lying prefix is a program that itself checks. -/
+    same test becomes **one program under two signatures**: the callee's body and
+    the caller that uses it are identical and honest in both, and what differs is
+    the type the body is SEALED at. That is §5 point 4 with nothing left to
+    interpret — what the caller keeps is what the programmer wrote — and it is a
+    sharper test than the old one, because the lying version is a program that
+    itself checks. -/
 
-/-- The shared suffix: call it at 3 and hand back what came out. -/
-def c2suffix : Term := progWith [f] { let r = f(3); r }
-/-- The retType the suffix is demanded at: the equation the caller wants. -/
+/-- The whole program, parameterised by the ONE thing the pair differs in. Body
+    and caller are shared by construction rather than by two copies agreeing, so
+    the difference the test measures is the only difference there is. -/
+def c2under (sig : Term) : Term := prog{
+  let f = seal(λ(n : Nat){ Pair(n, Refl) }, %sig);
+  let r = f(3);
+  r }
+/-- The retType the program is demanded at: the equation the caller wants. -/
 def c2demand : Term := pure{ Σ (m : Nat) → Id Nat m 3 }
 
-/-- Prefix A — the signature CARRIES the equation. -/
-def c2keeps : Term :=
-  .letIn ⟨900, "f"⟩
-    (prog{ seal(λ(n : Nat){ Pair(n, Refl) }, Π (n : Nat) → Σ (m : Nat) → Id Nat m n) }) c2suffix
-/-- Prefix B — the same body, sealed at a type that FORGETS it (true, and
-    useless). It checks: the lie is not in the callee, it is in what the callee
-    promises. -/
-def c2forgets : Term :=
-  .letIn ⟨900, "f"⟩
-    (prog{ seal(λ(n : Nat){ Pair(n, Refl) }, Π (n : Nat) → Σ (m : Nat) → Id Nat m m) }) c2suffix
+/-- A — the signature CARRIES the equation. -/
+def c2keeps : Term := c2under (pure{ Π (n : Nat) → Σ (m : Nat) → Id Nat m n })
+/-- B — the same body, sealed at a type that FORGETS it (true, and useless). It
+    checks: the lie is not in the callee, it is in what the callee promises. -/
+def c2forgets : Term := c2under (pure{ Π (n : Nat) → Σ (m : Nat) → Id Nat m m })
 
 example : progOk c2keeps c2demand = true := by native_decide
 example : progRejects c2forgets "does not have return type" c2demand = true := by native_decide
@@ -442,8 +443,15 @@ def flagship (tail : Term) : Except String Term := flagshipOf quicksortP tail
 
 /-- The tail: own a list, lend it to `quicksort`, and let the scope end.
     `hfuel : Le 3 3` is supplied as `()` — the bound holds by COMPUTATION here,
-    which is the ordinary route for a concrete payload. -/
-def flagshipTail : Term := progWith [partitionF, append_backF, quicksort] {
+    which is the ordinary route for a concrete payload.
+
+    `quicksort` is not in scope in this block, so it elaborates to a plain
+    `.call "quicksort"` — and that is all it needs to be, because `progOf`
+    RETARGETS the tail's calls to the bindings it assembled ("the tail is in the
+    accumulated scope"). Writing the callee slots out to fix the binding ids was
+    never necessary, and doing it by hand meant a list of placeholder names whose
+    only load-bearing property was its LENGTH. -/
+def flagshipTail : Term := prog{
   let l = Cons(3, Cons(1, Cons(2, Nil)));
   let r = quicksort(3, &mut l, ());
   () }
