@@ -146,13 +146,17 @@ def p23 : List FnDef := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S2
 -- only contribution to §B's declining residue.
 def p24 : List FnDef := [S24Arrays.walk, S24Arrays.walkArr]
 
+-- S25ArrSort is migrated in PART (M28 ν): its self-contained probes are programs,
+-- and the array flagship is not. `splitA`/`partitionA`/`quicksortA` are consumed as
+-- VALUES — `S26Prog` §(vi) assembles them with `FnMacro.progOf` to run the sort on
+-- real inputs, and every lie twin is a record update on one of them
+-- (`{ splitA with retType := … }`), which is a `FnDef` operation and not a program
+-- one. `citedCarve` stays as the table its two callers and `runsAtAll` share.
 def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.quicksortA,
   S25ArrSort.splitALieLen, S25ArrSort.splitALieSp, S25ArrSort.splitALieCount,
   S25ArrSort.splitANoSwap, S25ArrSort.partALieLen, S25ArrSort.partALiePart,
-  S25ArrSort.qsALieSorted, S25ArrSort.qsALieCount, S25ArrSort.carveNoEv, S25ArrSort.carveWithEv,
-  S25ArrSort.qsANoSuff, S25ArrSort.c6Touch, S25ArrSort.c6PeelCall, S25ArrSort.c6CarveNoCall,
-  S25ArrSort.c6Swap, S25ArrSort.c6Rec, S25ArrSort.c6CarveAfterCall, S25ArrSort.twoCursor,
-  S25ArrSort.twoCursorRes, S25ArrSort.citedCarve]
+  S25ArrSort.qsALieSorted, S25ArrSort.qsALieCount,
+  S25ArrSort.qsANoSuff, S25ArrSort.citedCarve]
 
 
 /-! ## §Y. The reports are gone (M27-δ)

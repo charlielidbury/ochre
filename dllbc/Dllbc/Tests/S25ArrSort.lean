@@ -606,25 +606,27 @@ example : Migrate.progRejectsOf qsALieCount "does not have return type" [qsALieC
 -- The three-way carve's ONE cited obligation is load-bearing: drop `le_add` and the
 -- carve has nothing to select a leaf with. (The pivot carve needs no evidence at all —
 -- route (a) reduces `Le 1 (S jj)` to ⊤ — so this is the only citation in the body.)
-def carveNoEv : FnDef := decl{
+def carveNoEv : Term := prog{
   fn carveNoEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
                 a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k ; S jj];
     let pcell = &mut (*a)[k ; 1 ; jj];
     let r = &mut (*a)[S k ; ..];
-    () } }
-example : Migrate.progRejectsOf carveNoEv "may not impose it by refining" = true := by native_decide
+    () };
+  () }
+example : progRejects carveNoEv "may not impose it by refining" = true := by native_decide
 
 -- …and the positive control at the same shape, so the rejection is about the missing
 -- citation and not about the carve. (`quicksortA` itself is the other positive control.)
-def carveWithEv : FnDef := decl{
+def carveWithEv : Term := prog{
   fn carveWithEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
                   a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj) | heq];
     let pcell = &mut (*a)[k ; 1 ; jj];
     let r = &mut (*a)[S k ; ..];
-    () } }
-example : Migrate.progOkOf carveWithEv = true := by native_decide
+    () };
+  () }
+example : progOk carveWithEv = true := by native_decide
 
 -- The sufficiency hypothesis is load-bearing, not decoration: keep the parameter (so
 -- the body still elaborates and the rejection is about TYPING) and weaken it to `Unit`.
@@ -811,7 +813,7 @@ example : (match runQsA [2, 1] with | some a => a == [2, 1] | none => false) = f
 
 def qsCallers : List Term := [qsCallerA [3, 1, 2], qsCallerA [2, 1], qsCallerA [1]]
 
-example : qsCallers.all (fun b => Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl b) arrTbl)
+example : qsCallers.all (fun b => progOk b (.const "Unit") arrTbl)
     = true := by native_decide
 
 example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrTbl b)
@@ -825,18 +827,25 @@ example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrTbl b)
     removed from `carveAt`, only `c6CarveAfterCall` goes red — which is what makes this
     a live check on the rule rather than a comment claiming one. -/
 
-def c6Touch : FnDef := decl{ fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () } }
+def c6Touch : Term := prog{
+  fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
+  () }
+-- A callee, declared in each chain that calls it; the standalone form
+-- keeps the verdict `S26Migrate.p25` was computing for it.
+example : progOk c6Touch = true := by native_decide
 
 -- (1) Peel a head and hand the tail to a call. Always worked.
-def c6PeelCall : FnDef := decl{
+def c6PeelCall : Term := prog{
+  fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
   fn c6PeelCall (n : Nat, a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
       S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &mut (*a)[S Z ; m]; c6Touch(m, &mut *tl); () } } } }
-example : Migrate.progOkOf c6PeelCall [c6PeelCall, c6Touch] = true := by native_decide
+                let tl = &mut (*a)[S Z ; m]; c6Touch(m, &mut *tl); () } } };
+  () }
+example : progOk c6PeelCall = true := by native_decide
 
 -- (2) Carve inside the tail, with NO call first. Always worked.
-def c6CarveNoCall : FnDef := decl{
+def c6CarveNoCall : Term := prog{
   fn c6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
@@ -845,11 +854,12 @@ def c6CarveNoCall : FnDef := decl{
                 let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
                                       | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
-                let hi = &mut (*tl)[S k3 ; r2]; () } } } }
-example : Migrate.progOkOf c6CarveNoCall = true := by native_decide
+                let hi = &mut (*tl)[S k3 ; r2]; () } } };
+  () }
+example : progOk c6CarveNoCall = true := by native_decide
 
 -- (3) …and the swap's writes on top of it. Always worked.
-def c6Swap : FnDef := decl{
+def c6Swap : Term := prog{
   fn c6Swap (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
@@ -859,24 +869,27 @@ def c6Swap : FnDef := decl{
                                       | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
                 let hi = &mut (*tl)[S k3 ; r2];
-                let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } } }
-example : Migrate.progOkOf c6Swap = true := by native_decide
+                let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } };
+  () }
+example : progOk c6Swap = true := by native_decide
 
 -- (4) Self-recursion through a reborrowed tail. Always worked.
-def c6Rec : FnDef := decl{
+def c6Rec : Term := prog{
   fn c6Rec [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, a : &mut (Array m Nat)) -> Unit {
     match m { Z => (),
       S(m2) => match fuel { Z => botElim Unit hfuel,
         S(f2) => { let hd = &mut (*a)[Z ; 1 ; m2]; let x = (*hd)[0];
-                   let tl = &mut (*a)[S Z ; m2]; c6Rec(f2, m2, hfuel, &mut *tl); () } } } } }
-example : Migrate.progOkOf c6Rec = true := by native_decide
+                   let tl = &mut (*a)[S Z ; m2]; c6Rec(f2, m2, hfuel, &mut *tl); () } } } };
+  () }
+example : progOk c6Rec = true := by native_decide
 
 /-- (5) THE RED ONE, before C6: carve inside a borrow AFTER handing it to a call. The
     reborrow parks a marker at the whole payload, and the carve consulted the extent map
     without collapsing it first — "`loanₘ ℓ` is not an array value (no extent to read)".
     Which is to say: a recursive array program carving the argument it just handed to
     its recursive call, i.e. every one of them. -/
-def c6CarveAfterCall : FnDef := decl{
+def c6CarveAfterCall : Term := prog{
+  fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
   fn c6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
@@ -886,8 +899,9 @@ def c6CarveAfterCall : FnDef := decl{
                 let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
                                       | s_inj m (add k3 (S r2)) hq];
                 let mid = &mut (*tl)[k3 ; 1 ; r2];
-                let hi = &mut (*tl)[S k3 ; r2]; () } } } }
-example : Migrate.progOkOf c6CarveAfterCall [c6CarveAfterCall, c6Touch] = true := by native_decide
+                let hi = &mut (*tl)[S k3 ; r2]; () } } };
+  () }
+example : progOk c6CarveAfterCall = true := by native_decide
 
 /-! ### Why the scan is not Lomuto — the rejection, with M13's evidence threaded
 
@@ -903,23 +917,25 @@ example : Migrate.progOkOf c6CarveAfterCall [c6CarveAfterCall, c6Touch] = true :
     every access at index 0 of a segment the program carved — is forced rather than
     chosen. ¶6's "a segment with its own zero" is a constraint, not a convenience. -/
 
-def twoCursor : FnDef := decl{
+def twoCursor : Term := prog{
   fn twoCursor (n : Nat, i : Nat, j : Nat, pij : Le (S i) j, pjn : Le (S j) n,
                 a : &mut (Array n Nat)) -> Unit {
     let x = (*a)[i | le_trans (S i) j n pij (le_pred_l j n pjn)];
     let y = (*a)[j | pjn];
-    () } }
-example : Migrate.progRejectsOf twoCursor "no leaf" = true := by native_decide
+    () };
+  () }
+example : progRejects twoCursor "no leaf" = true := by native_decide
 
 -- Route (a) cannot rescue it either: the second request does not START a segment, so
 -- there is no leaf for the supplied residue to decompose.
-def twoCursorRes : FnDef := decl{
+def twoCursorRes : Term := prog{
   fn twoCursorRes (n : Nat, i : Nat, j : Nat, r1 : Nat, r2 : Nat,
                    a : &mut (Array n Nat)) -> Unit {
     let x = &mut (*a)[i ; 1 ; r1 | le_add i (S r1)];
     let y = &mut (*a)[j ; 1 ; r2 | le_add j (S r2)];
-    () } }
-example : Migrate.progRejectsOf twoCursorRes "no segment starts at" = true := by native_decide
+    () };
+  () }
+example : progRejects twoCursorRes "no segment starts at" = true := by native_decide
 
 /-! ## (viii) The G7 ruling, probed at the boundary it exists to protect
 
@@ -937,8 +953,7 @@ example : Migrate.progOkOf citedCarve = true := by native_decide
     inhabits `Id Nat 3 (add 1 (S 1))` because both sides compute to 3. -/
 def citedCallerOk : Term := prog{
   let z = Arr(1, 2, 3); let b = &mut z; citedCarve(3, 1, 1, Refl, b); let y = z; () }
-example : Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl citedCallerOk) [citedCarve]
-    = true := by native_decide
+example : progOk citedCallerOk (.const "Unit") [citedCarve] = true := by native_decide
 
 /-- (2) …and it RUNS, which is the half that was broken. Before the ruling the checker
     accepted callers the concrete machine got stuck on; now acceptance and execution
@@ -951,7 +966,6 @@ example : runsAtAll [citedCarve] citedCallerOk = true := by native_decide
     constraint recorded in the signature it violated. -/
 def citedCallerBad : Term := prog{
   let z = Arr(1, 2); let b = &mut z; citedCarve(2, 5, 5, Refl, b); let y = z; () }
-example : Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl citedCallerBad) [citedCarve]
-    = false := by native_decide
+example : progOk citedCallerBad (.const "Unit") [citedCarve] = false := by native_decide
 
 end Dllbc.Tests.S25ArrSort
