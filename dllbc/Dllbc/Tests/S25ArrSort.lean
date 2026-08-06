@@ -816,7 +816,7 @@ def qsCallers : List Term := [qsCallerA [3, 1, 2], qsCallerA [2, 1], qsCallerA [
 example : qsCallers.all (fun b => progOk b (.const "Unit") arrTbl)
     = true := by native_decide
 
-example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false arrTbl b)
+example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 arrTbl b)
     = true := by native_decide
 
 /-! ## (vii) The five probes that located C6, kept as its regression

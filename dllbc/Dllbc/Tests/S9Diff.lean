@@ -181,20 +181,18 @@ def runExec (table : List FnDef := []) (body : Term) : Except String Env :=
       kv.1.id < FnMacro.progBase && kv.1.id < 10000)))
   | .error e _ => .error e
 
-/-- Checking mode: the accepted symbolic paths' final environments. `fc`
-    forces the (removed) constrained wire on — used only by the harness
-    validation, `false` for the real property. -/
-def symEnvs (fc : Bool) (table : List FnDef := []) (body : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations body) { initSt with decls := table, forceConstrained := fc }).map
+/-- Checking mode: the accepted symbolic paths' final environments. -/
+def symEnvs (table : List FnDef := []) (body : Term) : List (Except String Env) :=
+  (explore defaultFuel (pushContinuations body) { initSt with decls := table }).map
     (fun r => r.map (fun p => canonicalize (p.2.env.filter (fun kv =>
       kv.1.id < FnMacro.progBase && kv.1.id < 10000))))
 
 /-- The differential: the concrete final env is an instance of some symbolic
     path's final env. -/
-def diffV2 (fc : Bool) (table : List FnDef := []) (body : Term) : Bool :=
+def diffV2 (table : List FnDef := []) (body : Term) : Bool :=
   match runExec table body with
   | .error _ => false
-  | .ok concEnv => (symEnvs fc table body).any (fun r => match r with
+  | .ok concEnv => (symEnvs table body).any (fun r => match r with
       | .ok se => instanceOf se concEnv
       | .error _ => false)
 
@@ -204,7 +202,7 @@ def diffV2 (fc : Bool) (table : List FnDef := []) (body : Term) : Bool :=
 def diffC (table : List FnDef := []) (body : Term) : Bool :=
   match runExec table body with
   | .error _ => false
-  | .ok concEnv => (symEnvs false table body).any (fun r => match r with
+  | .ok concEnv => (symEnvs table body).any (fun r => match r with
       | .ok se => instanceOfC se concEnv
       | .error _ => false)
 
@@ -235,30 +233,24 @@ def accepted : List Term := callers.filter (fun b => progOk b)
 
 -- Every accepted caller's concrete run is a σ-instance of an accepted symbolic
 -- path — the whole-program simulation theorem, over the caller set.
-example : accepted.all (fun b => diffV2 false [] b) = true := by native_decide
+example : accepted.all (fun b => diffV2 [] b) = true := by native_decide
 
-/-! ## Harness validation: the bug goes RED, the fix GREEN -/
+/-! ## The advance caller, which the validation below is about -/
 
 def advCallerBody : Term :=
   withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () })
 
--- With the (removed, unsound) constrained wire FORCED on, the advance-caller's
--- symbolic run refines the owner to the surrendered tail (Cons 9 Nil), while it
--- concretely holds Cons 1 (Cons 9 Nil) — NOT an instance. The harness catches
--- it: RED.
-example : diffV2 true [] advCallerBody = false := by native_decide
-
--- With it OFF (the real behavior), the opaque σ matches the concrete value: GREEN.
-example : diffV2 false [] advCallerBody = true := by native_decide
+-- The real behaviour: the opaque σ matches the concrete value. GREEN.
+example : diffV2 [] advCallerBody = true := by native_decide
 
 /-! ### The same validation, at the COMPARATOR (M28 σ)
 
-    The two assertions above validate the harness by reintroducing the bug —
-    `forceConstrained` flips the kernel back to the unsound M7 inference and the
-    differential is asserted to catch it. That is the strongest form the claim can
-    take, and it is about to become unavailable: the flag and the `Group.constrained`
-    field it drives are kernel surface carried for this test alone, and the suite's
-    rule is that a test asserts a program's verdict, not a kernel flag's effect.
+    This validation used to reintroduce the bug to catch it: a `forceConstrained`
+    flag flipped the kernel back to the unsound M7 inference and the differential
+    was asserted to go RED. That was the strongest form the claim can take, and it
+    cost kernel surface carried for one test — the flag and the `Group.constrained`
+    field it drove — which the suite's rule no longer pays for: a test asserts a
+    program's verdict, not a kernel flag's effect. Both are deleted (M28 τ).
 
     So the same content is stated one level down, where it needs nothing from the
     kernel. The wire's lie was specific and is writable directly: it refined the
@@ -298,14 +290,10 @@ example : (match runExec [] advCallerBody with
     the σ-at-a-slot half, plus the harness validation that decides it. -/
 
 example : accepted.all (fun b => diffC [] b) = true := by native_decide
--- The bug still goes RED under the merged relation: computation does not launder
--- a wrong refinement, because pass 2 compares the INSTANTIATED value and the
--- forced constrained wire makes the symbolic side say `Cons 9 Nil` where the
--- concrete side holds `Cons 1 (Cons 9 Nil)`.
-example :
-  (match runExec [] advCallerBody, symEnvs true [] advCallerBody with
-   | .ok ce, ses => ses.any (fun r => match r with | .ok se => instanceOfC se ce | .error _ => false)
-   | _, _ => true) = false := by native_decide
+-- The merged relation can still say NO, and about the same wrong refinement:
+-- computation does not launder it, because pass 2 compares the INSTANTIATED value.
+-- Asserted above, at the comparator, over `constrainedLie` — `instanceOfC` is one
+-- of the two relations that refuses it.
 example : diffC [] advCallerBody = true := by native_decide
 
 end Dllbc.Tests.S9Diff

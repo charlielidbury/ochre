@@ -102,32 +102,18 @@ example : progRejects (prog{
 example : progRejects (prog{ fn bad (b : &mut Nat) -> &mut Bool { b }; () })
   "owed type" = true := by native_decide
 
-/-! ## The constrained branch, exercised directly (dead under opaque calls) -/
+/-! ## The constrained branch, retired with its rule (M28 τ)
 
-def listNatV : Val := .app (.const "List") (.const "Nat")
+    A hand-built `constrained` group used to be handed to `endGroup` directly, to
+    drive the one branch no call could reach: the identity wire, where a captured
+    owner recovers the issued borrow's SURRENDERED payload instead of a fresh
+    existential. It was kept so the branch was not dead-untested.
 
-/-- A hand-built `constrained` group: owner `o ↦ loanₘ 100`, issued borrow
-    `i ↦ borrowₘ 200 (Cons 9 Nil)`, tied by ρ0. -/
-def constrainedGroup : Group :=
-  { id := 0, captured := [(100, listNatV)], issued := [(200, listNatV)], constrained := true }
-
-def constrainedSt : St :=
-  { initSt with
-    env := [(⟨0, "o"⟩, .loanM 100), (⟨1, "i"⟩, .borrowM 200 (cons (nat 9) nil))],
-    groups := [constrainedGroup] }
-
-/-- Ending the constrained group directly: the owner recovers the surrendered
-    payload. -/
-def constrainedResult : Bool :=
-  match (endGroup 1000 constrainedGroup).run constrainedSt with
-  | .ok _ st' => canonicalize st'.env == [("o", cons (nat 9) nil), ("i", .bot)]
-  | .error _ _ => false
-
--- No call mints a `constrained` group (that inference is unsound, removed), so
--- `endGroup`'s constrained branch is unreachable through the checker. It stays
--- for §6.2's transparent/spec ends; this drives it directly so the branch is
--- not dead-untested: the captured owner recovers the issued borrow's
--- SURRENDERED payload (`Cons 9 Nil`), not a fresh σ.
-example : constrainedResult = true := by native_decide
+    The branch is gone, so there is nothing to test. Inferring that wire from a
+    signature is unsound — `through` and `advance` share one and differ in exactly
+    what it would claim, which is this file's own §6.1 headline — and the flag that
+    forced it on existed only to validate the differential. That validation is now
+    stated at the comparator (`S9Diff`), so the kernel no longer carries a case for
+    a rule it does not have. -/
 
 end Dllbc.Tests.S7Group

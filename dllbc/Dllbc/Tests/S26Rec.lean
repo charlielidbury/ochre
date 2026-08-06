@@ -315,13 +315,13 @@ def b1short : Term := prog{
 example : slotOf b1short "y" = some "Cons Z (Cons (S (S Z)) Nil)" := by native_decide
 
 example :
-  (match symEnvs false [] b1, runExec [] b1short with
+  (match symEnvs [] b1, runExec [] b1short with
    | [.ok se], .ok ce => instanceOfC se ce
    | _, _ => true) = false := by native_decide
 -- …and YES to the honest pairing, so the NO above is discrimination rather than a
 -- relation that cannot see recursor programs at all.
 example :
-  (match symEnvs false [] b1, runExec [] b1 with
+  (match symEnvs [] b1, runExec [] b1 with
    | [.ok se], .ok ce => instanceOfC se ce
    | _, _ => false) = true := by native_decide
 

@@ -88,17 +88,19 @@ structure Obligation where
     borrows it **issued** (loans of any borrows in the result, owed-typed from
     the return type). The ending discipline is the group's whole content —
     every issued borrow ends first, then the group ends atomically, releasing
-    each captured loan. A §5.3 wire is the degenerate `issued = []` group; an
-    identity wire (`constrained`) releases its one captured loan with the
-    issued borrow's surrendered payload rather than a fresh existential. -/
+    each captured loan. A §5.3 wire is the degenerate `issued = []` group.
+
+    There was a `constrained` field here — an identity wire releasing its captured
+    loan with the issued borrow's surrendered payload. Inferring it is UNSOUND
+    (`through` and `advance` share a signature and differ in exactly what it would
+    claim), so it was dead in real checking and survived only because a test flipped
+    it on to prove the differential could catch the bug. That validation moved to
+    the comparator (S9Diff, M28 σ) and the field went with it: the kernel does not
+    carry a case for a rule it does not have. -/
 structure Group where
   id : Nat                      -- the group node's ρ, its identity in the table
   captured : List (Nat × Val)   -- (ℓ, owed type)
   issued : List (Nat × Val)     -- (ℓ, owed type)
-  /-- Identity-wire flag (§6.2). DEAD in real checking (inferring it is unsound);
-      the test-only `forceConstrained` flag flips it to validate the differential
-      harness goes RED under the removed inference. -/
-  constrained : Bool
   /-- §5.4 caller-side exit-snapshot σ-sharing: per captured loan, the σ its release
       is PINNED to — the same σ the callee's return type reads as the exit `*v`
       (`buildResult`'s `@exit`). So the caller holds the owner recovering σ′ AND the
@@ -172,10 +174,6 @@ structure St where
   /-- Base var id for inlined-callee frames in executing mode; caller-own vars
       stay below it, so a body's own environment is `env.filter (·.1.id < this)`. -/
   nextFrame : Nat := 10000
-  /-- TEST-ONLY: force the (unsound, removed) constrained wire on, to validate
-      the differential harness actually goes RED under the bug. Never set by the
-      call rule; only a validation test flips it. -/
-  forceConstrained : Bool := false
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -1273,10 +1271,8 @@ end
     A call mints a `Group`. Ending a captured loan does not end it alone — it
     triggers the whole group's end: **every issued borrow ends first** (locate
     it, audit its payload against its owed type, surrender it), **then the
-    group ends atomically**, releasing each captured loan. A constrained
-    (identity-wire) group releases its one captured loan with the single
-    surrendered payload; otherwise each captured loan gets a fresh, unconstrained
-    existential at its owed type. The ordering *is* the soundness argument
+    group ends atomically**, releasing each captured loan — each getting a fresh,
+    unconstrained existential at its owed type. The ordering *is* the soundness argument
     (§6.1): a captured owner cannot recover while an issued borrow lives. -/
 
 /-- End one issued borrow: locate it in Ω, audit its (collapsed) payload against
@@ -1304,20 +1300,18 @@ def endGroup (fuel : Nat) (grp : Group) : M Unit := do
   -- 2. remove the group from the table (by its ρ id)
   modify (fun s => { s with groups := s.groups.filter (fun g => g.id != grp.id) })
   -- 3. release captured loans atomically
-  -- §6.2's SPEC end used to sit first here: with a declared backward spec the
-  -- captured release was that function applied to the surrendered values — the
-  -- computed value rather than a fresh existential. M27 retired the mechanism, so
-  -- every release is now the opaque one, and this match has one real arm.
-  match grp.constrained, grp.captured, surrendered with
-  | true, [(ℓc, _)], [p] => releaseCaptured ℓc p          -- test-only identity wire (harness)
-  | _, _, _ =>
-    grp.captured.forM (fun (ℓc, owed) => do
-      match grp.exitRelease.lookup ℓc with
-      | some σ' => releaseCaptured ℓc (.sym σ')            -- §5.4: pinned exit-snapshot release (σ' already in sctx)
-      | none => do                                        -- opaque: fresh existential each
-        let σ ← freshSym
-        modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
-        releaseCaptured ℓc (.sym σ))
+  -- §6.2's SPEC end used to sit first here, and M28 σ's identity wire after it.
+  -- Both are gone — the backward-spec mechanism with M27, the identity wire with
+  -- its test — so every release is the opaque one and there is no case left to
+  -- take. What decides a release now is only whether §5.4 pinned an exit snapshot
+  -- for that captured loan.
+  grp.captured.forM (fun (ℓc, owed) => do
+    match grp.exitRelease.lookup ℓc with
+    | some σ' => releaseCaptured ℓc (.sym σ')            -- §5.4: pinned exit-snapshot release (σ' already in sctx)
+    | none => do                                        -- opaque: fresh existential each
+      let σ ← freshSym
+      modify (fun s => { s with sctx := (σ, owed) :: s.sctx })
+      releaseCaptured ℓc (.sym σ))
 
 /-- **End loan** ℓ (§6.1-aware). If ℓ is a group's captured loan, ending it
     ends the whole group (issued first, then captured). Otherwise it is an
@@ -3932,10 +3926,7 @@ mutual
           -- `fnElab`, which will not elaborate a self-call at a non-predecessor.
           -- Build the result and the loans it issues from the return type (a
           -- single borrow, a Pair/Σ of borrows for a multi-issued group, or a
-          -- plain existential wire). One group ties captured to issued. The
-          -- `constrained` flag stays false in real checking — inferring it is
-          -- unsound (`through` vs `advance` share a signature); the test-only
-          -- `forceConstrained` flag reintroduces the bug for harness validation.
+          -- plain existential wire). One group ties captured to issued.
           -- §5.4 caller-side σ-sharing: mint one σ' per captured borrow (typed at
           -- its owed type). The retType's bare `*v` (marked `@exit`) reflects to
           -- σ', and the group PINS that captured loan's release to σ' — so the
@@ -3957,13 +3948,11 @@ mutual
           let (resultVal, issued) ← buildResult fuel inst [] (markExit borrowIds retType)
           modify (fun s => { s with exitSyms := savedE, entrySyms := savedO })
           let ρ ← freshGroup
-          let fc := (← get).forceConstrained
-          let cons := fc && captured.length == 1 && issued.length == 1
           -- §6.2's declared backward spec used to be reflected here, so the group
           -- could compute each captured release from the surrendered values instead
           -- of minting an existential. M27 retired the mechanism — the ensures IS
           -- the contract (§5 point 4) — so every group end is now the opaque one.
-          let grp : Group := { id := ρ, captured := captured, issued := issued, constrained := cons, exitRelease := exitRel }
+          let grp : Group := { id := ρ, captured := captured, issued := issued, exitRelease := exitRel }
           modify (fun s => { s with groups := grp :: s.groups })
           pure resultVal
   termination_by fuel _ _ => (fuel, 5, 0)

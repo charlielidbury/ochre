@@ -159,6 +159,6 @@ example : Migrate.progRejectsOf rejectProbe "nothing surrendered" ([nth, nth2, r
 
 /-! ## Differential coverage — bounds-proof pool, concrete proofs by computation -/
 
-example : Dllbc.Tests.S9Diff.diffV2 false [nth, nth2, swap] swapBody = true := by native_decide
+example : Dllbc.Tests.S9Diff.diffV2 [nth, nth2, swap] swapBody = true := by native_decide
 
 end Dllbc.Tests.S14Bounds

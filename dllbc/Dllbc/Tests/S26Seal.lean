@@ -429,7 +429,7 @@ abbrev instanceOfComputed := Dllbc.Tests.S9Diff.instanceOfC
 def diffOld (table : List FnDef) (body : Term) : Bool :=
   match runExec table body with
   | .error _ => false
-  | .ok ce => (symEnvs false table body).any
+  | .ok ce => (symEnvs table body).any
       (fun r => match r with | .ok se => instanceOf se ce | .error _ => false)
 
 /-! ### D1. The counterexample that names the new case -/
@@ -485,13 +485,13 @@ example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
 def d3mutant : Term := prog{ let a = 3; let b = add a 2; () }
 
 example :
-  (match symEnvs false [] d1, runExec [] d3mutant with
+  (match symEnvs [] d1, runExec [] d3mutant with
    | [.ok se], .ok ce => instanceOfComputed se ce
    | _, _ => true) = false := by native_decide
 -- …and it says YES to the honest pairing, so the NO above is discrimination, not
 -- a broken relation.
 example :
-  (match symEnvs false [] d1, runExec [] d1 with
+  (match symEnvs [] d1, runExec [] d1 with
    | [.ok se], .ok ce => instanceOfComputed se ce
    | _, _ => false) = true := by native_decide
 

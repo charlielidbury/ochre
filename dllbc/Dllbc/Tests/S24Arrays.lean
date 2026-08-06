@@ -823,7 +823,7 @@ def arrCallers : List Term := [arrCaller1, arrCaller2, arrCaller3]
 
 example : arrCallers.all (fun b => progOk b) = true := by native_decide
 
-example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 false [] b)
+example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 [] b)
     = true := by native_decide
 
 /-! ### FINDING — the simulation relation needed an array case, and the harness said so
