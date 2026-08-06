@@ -33,9 +33,9 @@ open Dllbc
 
 /-! The `ok`/`rejects` helpers retired with the `FnDef` subjects they took (M28
     ν). Every subject they served is a program now, and `progOk`/`progRejects` from
-    `Dllbc/Program.lean` take one directly. The two declarations this file still
-    keeps (`bndD`, `hintA`) are fed to `FnMacro.fnElab`, not to a checker, so they
-    never wanted these. -/
+    `Dllbc/Program.lean` take one directly. The one declaration this file still
+    keeps (`bndD`) is fed to `FnMacro.fnElab` for its arm annotations, not to a
+    checker, so it never wanted these. -/
 
 /-! ## §A. The surface carries the domain -/
 
@@ -493,22 +493,32 @@ example : progOk juxCapital = true := by native_decide
     criterion is gone (M28 cluster C, with `AlphaEq.lean`; its one consumer was
     S26Fn's oracle). What the pair still witnesses is the FACT the widening was
     tracking, which never belonged to the criterion: the hint is load-bearing on
-    the output, so `hintA` and `hintB` are not two spellings of one function. -/
+    the output, so these are not two spellings of one function — one checks and
+    the other is refused. -/
 
-def hintA : FnDef := decl{ fn h [n] (n : Nat, m : Nat) -> Id Nat Z Z
-  { match m { Z => Refl, S(m2) => h(n, m2) } } }
-/-- The same name, telescope, return type and body — differing in `[k]` alone. -/
-def hintB : FnDef := { hintA with dec := some 1 }
+/-- The `[m]` spelling: the hint names the parameter the body actually matches on,
+    so `fnElab` has a scrutinee to build the recursor from and the self-call becomes
+    `ih` at the predecessor. -/
+def hintM : Term := prog{ fn h [m] (n : Nat, m : Nat) -> Id Nat Z Z
+  { match m { Z => Refl, S(m2) => h(n, m2) } }; () }
 
-example : (hintA.name == hintB.name && hintA.body == hintB.body
-        && hintA.telescope == hintB.telescope && hintA.retType == hintB.retType)
-  = true := by native_decide
--- …and yet one of them elaborates and the other does not, because only `m` is
--- matched on. That asymmetry is the whole content: it is why a criterion blind to
--- `dec` would have reported equivalence for a pair that elaborates apart, and it
--- outlives the criterion.
-example : ((match FnMacro.fnElab hintA with | .ok _ => true | .error _ => false)
-        != (match FnMacro.fnElab hintB with | .ok _ => true | .error _ => false))
-  = true := by native_decide
+/-- The `[n]` spelling: **character for character the same function** — same name,
+    same telescope, same return type, same body — differing in the hint alone. -/
+def hintN : Term := prog{ fn h [n] (n : Nat, m : Nat) -> Id Nat Z Z
+  { match m { Z => Refl, S(m2) => h(n, m2) } }; () }
+
+example : progOk hintM = true := by native_decide
+-- …and the twin is REFUSED, by the needle no other error produces.
+example : progRejects hintN FnMacro.fnRefusedNeedle = true := by native_decide
+-- …with the diagnosis intact, which is what makes this about `[k]` and not about
+-- the body: the self-call's decreasing argument is not the predecessor the `S`
+-- branch binds, because the branch that binds one is `m`'s and the hint named `n`.
+example : progRejects hintN "is not the predecessor" = true := by native_decide
+
+-- Written as PROGRAMS (M28 cluster C). These were two `FnDef`s and an
+-- `fnElab`-returns-`.ok` differential; the pair is the same claim as a pair of
+-- verdicts, and one of the two is now a rejection with a message rather than a
+-- `false`. It also takes the last `decl{ }` but one out of this file — `bndD`
+-- stays, being genuinely fed to `fnElab` for its arm annotations in §E/§F.
 
 end Dllbc.Tests.S27Lam

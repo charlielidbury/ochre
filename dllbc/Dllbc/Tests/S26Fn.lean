@@ -39,12 +39,6 @@ open Dllbc.StdLemmas (le_up_r leb_true_le leb_false_gt le_pred_l
 
 namespace Dllbc.Tests.S26Fn
 
-/-- Elaborate and bind, which is the `let` §8 says a declaration is. -/
-def elabIn (d : FnDef) : Except String FnDef :=
-  (FnMacro.fnElab d).map (fun t =>
-    { name := "caller", telescope := [], retType := .const "Unit",
-      body := .letIn ⟨900, "f"⟩ t .unit })
-
 /-- The macro's output checks. `table` is what its NON-self calls resolve
     against — self-calls are gone by construction, having become `ih`.
 
@@ -63,12 +57,22 @@ def elabRejects (d : FnDef) (needle : String) : Bool :=
   | .error e => strContains e needle
   | .ok _ => false
 
-/-! ## §A. The non-recursive case, and the round trip that says the Π is right
+/-! ## §A. The non-recursive case
 
     A `fn` with no `[k]` is one runtime λ sealed at its signature — the degenerate
     case §4 calls the smell test, now reached from a declaration. It lands first
     because it exercises `telePi` alone: if the Π were built wrongly, everything
-    downstream would fail for a reason that had nothing to do with recursors. -/
+    downstream would fail for a reason that had nothing to do with recursors.
+
+    **`roundTrips` went in M28 cluster C.** It asserted `telePi` and `piPeel`
+    inverse — build the Π from a telescope, take it apart again, get the telescope
+    back — over `pushD`/`splitOff`/`quicksort` and then a five-function battery,
+    "asserted directly rather than inferred from the checks passing". Inferring it
+    from the checks passing is exactly what the e2e rule asks for, and the
+    inference is sound in the direction that matters: `piPeel` is what the KERNEL
+    does to a seal, so a `telePi` that were not its inverse would make every
+    `elabOk` below fail at the signature. A property whose failure mode is
+    "everything reddens" does not need its own assertion. -/
 
 def pushD : FnDef := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
   { let tail = *v; *v := Cons(e, tail); () } }
@@ -76,24 +80,6 @@ def pushD : FnDef := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
 -- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
 -- this one is what the claim became.)
 example : elabOk pushD = true := by native_decide
-
-/-- `telePi` and the kernel's `piPeel` are inverse, which is the property the
-    whole elaboration rests on: the macro writes a Π, the kernel takes it apart
-    again, and the telescope that comes back is the one that went in. Asserted
-    directly rather than inferred from the checks passing. -/
-def roundTrips (d : FnDef) : Bool :=
-  let tel := FnMacro.teleVars d.telescope
-  match piPeel (tel.map (·.1)) (FnMacro.telePi tel d.retType) with
-  | .error _ => false
-  | .ok (tel', ret') => tel' == tel && ret' == d.retType
-
-example : roundTrips pushD = true := by native_decide
-example : roundTrips Tests.S23Direct.splitOff = true := by native_decide
-example : roundTrips Tests.S23Direct.quicksort = true := by native_decide
--- …and over a battery, so the round trip is a property and not three points.
-example :
-  [pushD, Tests.S23Direct.splitOff, Tests.S23Direct.quicksort,
-   Tests.S23Direct.partition, Tests.S26Modes.step].all roundTrips = true := by native_decide
 
 /-! ## §B. `split_off` — the macro's output checks
 
@@ -168,14 +154,20 @@ example : splitTwins.all (fun d => !(elabOk d)) = true := by native_decide
 -- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
 -- this one is what the claim became.)
 
-/-- **The `[k]` guard is GONE from the elaborated form, and nothing replaces it.**
-    The macro's output resolves its own recursion through `ih`, so the table it is
-    checked against need not contain it — there is no self-call left to admit at a
-    postcondition, and therefore nothing for a decrease check to police. §7's
-    "the guard evaporates", as the absence of an entry. -/
-example : (match elabIn Tests.S23Direct.quicksort with
-           | .ok c => (calleeNames c.body).contains "quicksort"
-           | .error _ => true) = false := by native_decide
+-- **The `[k]` guard is GONE from the elaborated form, and nothing replaces it.**
+-- The macro's output resolves its own recursion through `ih`, so the table it is
+-- checked against need not contain it — there is no self-call left to admit at a
+-- postcondition, and therefore nothing for a decrease check to police. §7's "the
+-- guard evaporates", as the absence of an entry.
+--
+-- Asserted by `calleeNames` on the elaborated body until M28 cluster C, and now
+-- carried by the verdicts instead — which say it more strongly. `elabOk` checks a
+-- declaration against `[d]` alone, and every recursive subject in this file passes
+-- it: if a self-call survived elaboration it would be an unresolved name in a
+-- table that does not contain the function, and §8 rejects a forward reference
+-- (`S26Fuel` §D pins exactly that rejection, on a program). The absence of the
+-- entry is therefore what makes the presence of the check possible. `elabIn`, the
+-- caller-wrapper this probe needed to have a body to inspect, went with it.
 
 /-! ## §D. What the macro refuses, and why each refusal is the honest one -/
 
@@ -272,57 +264,32 @@ def partitionF : FnDef :=
 -- branch.
 example : elabOk partitionF = true := by native_decide
 
-/-! ### E2. …and the flagship's call site, so the cost is MEASURED
+/-! ### E2. …and the flagship's call site — RETIRED HERE (M28 cluster C)
 
-    "Every caller supplies them" is the other half of decision 8's price, and a
-    claim about a cost should be paid once rather than estimated. `quicksortF` is
-    `S23Direct.quicksort` with exactly one call site retargeted — the same body
-    otherwise — and it checks.
+    "Every caller supplies them" is the other half of decision 8's price, and this
+    section paid it: `quicksortF` was `S23Direct.quicksort` with its one `partition`
+    call retargeted, built by `toPartitionF`, a term-rewriting pass over the body.
+    Its own check had already retired in M27-δ (the table it was checked against
+    still held the un-fuel-threaded `append_back`, which declines), leaving one
+    `calleeNames` assertion — that the rewritten body names `partitionF` and not
+    `partition` — which is a structural probe of a term-rewriter's output, not a
+    verdict. It goes, and `quicksortF`/`toPartitionF` go with it, having no other
+    reader in the tree.
 
-    Two things it pins that are not obvious from the signature change alone. The
-    bound the caller hands over is `hfuel` UNCHANGED: after `*v := rest` the callee
-    wants `Le (len rest) f2`, and `hfuel : Le (len (Cons x rest)) (S f2)` already IS
-    that, by the same definitional descent the callee's own recursion uses. And
-    `hfuel` survives the call — quicksort needs it twice more, for its own two
-    recursive calls — which works only because `partitionF`'s bound parameter is
-    CAPITAL and therefore ⇝-read. Under phase A that call would have moved it
-    (R16), and the migration would have needed staging. -/
+    **The claim survives with a better carrier**, and it is the one the retired
+    assertion already pointed at: `S26Prog.quicksortP` on the fully-migrated cohort
+    `[partitionF, appendBackF]`, asserted there and in `S27Dispose` §B. That is a
+    call site that supplies the fuel and the bound and CHECKS, which is what "the
+    cost is measured" meant — where this section had a caller that was rewritten
+    and then inspected rather than run.
 
-/-- Retarget the one `partition` call — supply the fuel and the bound — and carry
-    the function's own new name onto its self-calls. -/
-partial def toPartitionF (f2 : Var) : Term → Term
-  | .call f as =>
-    let as' := as.map (toPartitionF f2)
-    if f == "partition" then .call "partitionF" (.var f2 :: as' ++ [.var ⟨2, "hfuel"⟩])
-    else if f == "quicksort" then .call "quicksortF" as'
-    else .call f as'
-  | .letIn x r b => .letIn x (toPartitionF f2 r) (toPartitionF f2 b)
-  | .assign a b c => .assign (toPartitionF f2 a) (toPartitionF f2 b) (toPartitionF f2 c)
-  | .seq a b => .seq (toPartitionF f2 a) (toPartitionF f2 b)
-  | .ctorApp n as => .ctorApp n (as.map (toPartitionF f2))
-  | .callV x as => .callV x (as.map (toPartitionF f2))
-  | .borrow t => .borrow (toPartitionF f2 t)
-  | .deref t => .deref (toPartitionF f2 t)
-  | .matchE sc e bs =>
-    .matchE sc e (bs.map (fun b => Branch.mk b.ctor b.binders (toPartitionF f2 b.body)))
-  | t => t
-
-def quicksortF : FnDef :=
-  let q := Tests.S23Direct.quicksort
-  let f2 := (FnMacro.succBinder ⟨0, "fuel"⟩ q.body).getD ⟨0, "fuel"⟩
-  { q with name := "quicksortF", body := toPartitionF f2 q.body }
-
--- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
--- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
--- this one is what the claim became.)
--- …and elaborated through the macro, against a table that no longer contains it.
--- Same disposition: the table here still holds the un-fuel-threaded
--- `append_back`, which declines. `S26Prog.quicksortP [partitionF, appendBackF]`
--- is the fully-migrated cohort and is the carrier.
-
--- The migration really did change the call: the body names `partitionF` and not
--- `partition`, so the two assertions above are about the new callee.
-example : ((calleeNames quicksortF.body).contains "partitionF"
-        && !((calleeNames quicksortF.body).contains "partition")) = true := by native_decide
+    The two facts §E2's prose pinned are unaffected and are properties of that
+    cohort: the bound handed over is `hfuel` UNCHANGED (after `*v := rest` the
+    callee wants `Le (len rest) f2`, and `hfuel : Le (len (Cons x rest)) (S f2)`
+    already IS that, by the same definitional descent the callee's own recursion
+    uses), and `hfuel` SURVIVES the call — quicksort needs it twice more — which
+    works only because `partitionF`'s bound parameter is CAPITAL and therefore
+    ⇝-read. Under phase A that call would have moved it (R16), and the migration
+    would have needed staging. -/
 
 end Dllbc.Tests.S26Fn

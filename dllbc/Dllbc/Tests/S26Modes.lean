@@ -505,13 +505,31 @@ example : progOk S26Seal.a6c = true := by native_decide
 -- the same callee with a RUNTIME proof parameter. Each appears in the chain of
 -- every cohort that calls it.
 
-/-- KEPT AS A DECLARATION, and consumed as a VALUE rather than run: `S26Fn` §A's
-    `roundTrips` battery holds it against `telePi`/`piPeel`, and it is the battery's
-    only member with a CAPITAL binder — so it is the one that says the round trip
-    preserves the mode marker and not merely the binder count. A `FnDef` a property
-    is proved ABOUT is not a program, so this stays while the cohorts below declare
-    their own `step` in their chains. -/
-def step : FnDef := decl{ fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () } }
+-- **The `step` DECLARATION went in M28 cluster C**, and it is the last thing in
+-- this file that was a `FnDef` rather than a program. It was kept as a value for
+-- one reader — `S26Fn` §A's `roundTrips` battery, which held it against
+-- `telePi`/`piPeel` — and it was that battery's only member with a CAPITAL binder,
+-- so it was the member that said the round trip preserves the MODE MARKER and not
+-- merely the binder count. The battery retired with the rest of §A's structural
+-- probes, leaving this declaration with no reader at all.
+--
+-- **The mode claim did not retire with it**, and is carried by something better
+-- than a round-trip property: the H1/H2 pair immediately below is a DIFFERENTIAL
+-- over exactly this distinction. `qsish` declares `step` with a CAPITAL `H` and is
+-- ACCEPTED — `Hfuel` is passed to the call and then cited afterwards, which is
+-- only legal because a capital parameter is ⇝-read and so the call does not move
+-- it. `qsishLo` is the same body against `stepLo`, whose proof parameter is
+-- lowercase, and is REJECTED with "cannot be ⇒-moved". So if `telePi` dropped the
+-- `⇝` marker on the way into the Π, `step`'s binder would be runtime, `qsish`
+-- would become `qsishLo`, and the accepting half would go red. A round trip that
+-- preserved binder count but not the marker is precisely what that pair catches.
+--
+-- (Note it is H1/H2 that does this, not H5: H5's two halves are BOTH rejected, on
+-- purpose — it is the evidence that staleness is not a mode problem.)
+--
+-- The cohorts below declare their own `step` in their chains, which is where a
+-- callee belongs now — including `qsish`'s, so the deleted declaration was a
+-- duplicate of a callee already written three lines further down.
 
 def qsish : Term := prog{
   fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () };
