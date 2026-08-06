@@ -1,6 +1,10 @@
 #import "../style.typ": *
 
 == F7: The carve <fig-carve>
+// Correspondence re-verified at `dc90adce` (this figure's own pin): every cited
+// implementing function still exists and none moved; anchors retabled to the M28
+// buckets. The rules are unchanged; the recursion restriction below was restated,
+// since the guard it originally cited (@fig-boundaries's [k]) no longer exists.
 
 // The array era's one new judgment form. It is a REORGANIZATION in F2's sense —
 // lazy, demand-driven, rewriting Ω — but it is the only one that CONSUMES A PROOF,
@@ -141,23 +145,32 @@ the four sites of the polarity finding @sec-empirics reports.
   declared length: it applies to *every* segment's extent, and it is why a three-way
   split cannot be reached by re-associating a two-way one.
   #linebreak()
-  *Recursion cannot decrease through a carved payload.* @fig-boundaries's guard counts
-  constructor fields as subterms and refuses application spines; a carve refines the
-  payload to a concatenation *spine*, so no sub-slice is a structural predecessor of
-  its parent. "Recurse on the sub-slice, no fuel needed" is therefore closed, and the
-  array sort recurses on fuel like its list counterpart. Teaching the guard that a
-  concatenation's arguments are subterms of it would open it, and is filed rather than
-  built. #status("proposed")
+  *Recursion cannot decrease through a carved payload.* Recursion is a recursor
+  (@fig-boundaries), and the eliminators a definition may lower to are `Nat`'s and
+  a list's; a carve refines the payload to a concatenation *spine*, which is the
+  scrutinee of neither. "Recurse on the sub-slice, no fuel needed" is therefore
+  closed, and the array sort recurses on fuel like its list counterpart. This
+  restriction survived the removal of the structural-subterm guard that was its
+  original statement — the guard counted constructor fields as subterms and
+  refused application spines, and when it went (M27) the restriction stayed,
+  because what forbids it now is the *absence of an eliminator* rather than a side
+  condition that could be relaxed. An array eliminator would open it, and is filed
+  rather than built. #status("proposed")
   ]
 ]
 
 === Correspondence
 
+Test anchors name the bucket file and the section namespace within it (the M28
+consolidation put 27 era-numbered files into 10 subject buckets, keeping every
+namespace). Every implementing function below was re-verified to exist at
+`dc90adce`; none moved, and the rules are unchanged from the previous pin.
+
 #xref(
-  ([#smallcaps[K-Carve]], [`carveAt` (premises in order); `extentMap`], [`S24Arrays`]),
-  ([premise (1), merge], [`Val.mergeArrays`, `segsNode`], [`S24Arrays`]),
-  ([premise (2)], [`carveAt` obligation formation; `hasType`], [`S24Arrays`]),
-  ([#smallcaps[K-Cite] / #smallcaps[K-Cite-Eq]], [`carveAt` (cited-equation arm)], [`S24Arrays` (`threeWayUncited`, `threeWayWrongEq`)]),
-  ([rejoin], [`sendPayloadToLoan` → merge], [`S24Arrays`]),
-  ([the array library], [`StdLemmas` (M24 section)], [`S24Arrays`, `S25ArrSort`]),
+  ([#smallcaps[K-Carve]], [`carveAt` (premises in order); `extentMap`], [`Arrays` (`S24Arrays`)]),
+  ([premise (1), merge], [`Val.mergeArrays`, `segsNode`], [`Arrays` (`S24Arrays`)]),
+  ([premise (2)], [`carveAt` obligation formation; `hasType`], [`Arrays` (`S24Arrays`)]),
+  ([#smallcaps[K-Cite] / #smallcaps[K-Cite-Eq]], [`carveAt` (cited-equation arm)], [`Arrays` (`S24Arrays`: `threeWayUncited`, `threeWayWrongEq`)]),
+  ([rejoin], [`sendPayloadToLoan` → merge], [`Arrays` (`S24Arrays`)]),
+  ([the array library], [`StdLemmas` (M24 section)], [`Arrays` (`S24Arrays`), `ArraySort` (`S25ArrSort`)]),
 )
