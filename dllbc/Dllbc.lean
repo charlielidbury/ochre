@@ -32,7 +32,6 @@ import Dllbc.Tests.S26Seal
 import Dllbc.Tests.S26Modes
 import Dllbc.Tests.S26Rec
 import Dllbc.Tests.S26Prog
-import Dllbc.Tests.S26Migrate
 import Dllbc.Tests.S26Fuel
 import Dllbc.Tests.S27Dispose
 import Dllbc.Tests.S27Mixed

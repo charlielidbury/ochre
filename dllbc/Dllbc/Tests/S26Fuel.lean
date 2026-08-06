@@ -10,7 +10,6 @@ import Dllbc.Tests.S6Call
 import Dllbc.Tests.S24Arrays
 import Dllbc.Tests.S14Bounds
 import Dllbc.Tests.S23Direct
-import Dllbc.Tests.S26Migrate
 
 /-!
 # §26 (M26-E) — paying §12 decision 8, shape by shape

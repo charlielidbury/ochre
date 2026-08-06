@@ -129,12 +129,102 @@ example : (Val.nfV 2000 (Val.Term.toValPure pure{ SortedA Z Arr() }) == .const "
     builders. It would disappear under the filed `old`-for-consumed-things feature and
     does no mathematical work. -/
 
-def splitA : FnDef := decl{
+/-! ### The three telescopes' positional vocabulary and their return types
+
+    A return type written outside its own header names parameters as `.var ⟨i, name⟩`
+    (§5.2). Written out per twin rather than through a skeleton, which is M28 ψ's
+    rule: for a SPEC lie the type IS the readable content, and each of these is one
+    conjunct of a five-conjunct chain away from the honest form. -/
+
+-- splitA:     fuel=0, m=1, hfuel=2, p=3, t=4
+def mS : Term := .var ⟨1, "m"⟩
+def pS : Term := .var ⟨3, "p"⟩
+def tS : Term := .var ⟨4, "t"⟩
+-- partitionA: fuel=0, n=1, hfuel=2, hne=3, a=4
+def nP : Term := .var ⟨1, "n"⟩
+def aP : Term := .var ⟨4, "a"⟩
+-- quicksortA: fuel=0, n=1, hfuel=2, a=3
+def nQ : Term := .var ⟨1, "n"⟩
+def aQ : Term := .var ⟨3, "a"⟩
+def fuelQ : Term := .var ⟨0, "fuel"⟩
+
+def sHonest : Term := pure{
+  Σ (k : Nat) → Σ (r : Nat)
+    → Σ (hlen : Id Nat %mS (add k r))
+    → Σ (hsp : SplitA %pS k %mS (*%tS))
+    → Π (q : Nat) → Id Nat (countA q %mS (*%tS)) (countA q %mS (old *%tS)) }
+
+def pHonest : Term := pure{
+  Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+    → Σ (hlen : Id Nat %nP (add k (S jj)))
+    → Σ (hp : PartA pvv k %nP (*%aP))
+    → Π (q : Nat) → Id Nat (countA q %nP (*%aP)) (countA q %nP (old *%aP)) }
+
+def qHonest : Term := pure{
+  Σ (hs : SortedA %nQ (*%aQ))
+    → Π (q : Nat) → Id Nat (countA q %nQ (*%aQ)) (countA q %nQ (old *%aQ)) }
+
+def qSuffHonest : Term := pure{ Le %nQ %fuelQ }
+
+/-! ## (iii) `partitionA` — the leaf ¶6's ledger counts as surviving, and G4 says is new
+
+    `partitionA(a)` picks `a[0]` as the pivot, splits the tail around it, and swaps the
+    pivot into its final position — returning that position, the right part's length,
+    and `PartA`.
+
+    IT IS NOT RECURSIVE, and it exists as a separate declaration for a reason that is
+    the lane's sharpest structural finding: **the function boundary is load-bearing.**
+    A body that has matched its own length `n` to `S m2` — which the head peel requires,
+    since only `(*a)[Z ; 1 ; m2]` converts against the rigid extent — can no longer
+    carve at a symbolic offset, because T2's rigid-length restriction now applies to
+    the whole array. So the sort cannot both select a pivot and carve at the returned
+    index. §6.2's opacity is the way out: a call re-mints the caller's payload as a
+    FRESH σ at the declared type, so the array comes back UNCARVED and with a FLEX
+    length — exactly the state the three-way carve needs. ¶5 advises "carve inline;
+    reach for the function only when you want the abstraction boundary". Here the
+    boundary is what makes the program possible at all. -/
+/-! ## (iv) `quicksortA` — the headline
+
+        fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
+          -> Σ (hs : SortedA n (*a)) → Π x. Id Nat (countA x n (*a)) (countA x n (old *a))
+
+    M23's quicksort signature, re-posed on arrays: sorted AND a permutation, over the
+    exit snapshot, IN PLACE, with zero declared backs in the call tree. `partitionA`,
+    `splitA` and the two recursive calls are each described only by their return type.
+
+    EMPTINESS IS TESTED WITH `leb 1 n`, NOT BY MATCHING `n`, and that is forced twice
+    over. Matching would refine the length to `S m2`, and T2's rigid-extent restriction
+    then blocks the three-way carve outright ("premise (3) is stuck"). And the `Z` branch
+    could not be discharged anyway: there is no η at length zero, so `SortedA Z σ` is a
+    stuck `arrRec` rather than `Unit`. The False branch instead turns `Le n Z` into
+    `Id Nat n Z` (`le_zero_eq`) and feeds `sortedA_nil`.
+
+    THE ONE STRUCTURAL FACT beyond composition is M23's, unchanged: BOUND SURVIVAL.
+    `sorted_arrCat` wants `UbA pv` of the SORTED left part, and the partition bounded it
+    before the sort. `ub_permA`/`lb_permA` carry both bounds across their sorts' own
+    count evidence. That is the keystone, transferred with the container in M24-ix, and
+    it is the only place this proof is more than gluing.
+
+    PAIN DIARY — three staged builders, and the reason is M23's exactly. `mkTop` is built
+    BEFORE the partition call, because the count conjunct's far endpoint is `old *a` and a
+    body cannot write that; capturing `*a` while it still IS the entry value is the dodge.
+    `mkAD` and `mkS` are built after the carve and before the sorts, because both name the
+    sub-slices AS THEY WERE when the partition bounded them, and the recursive calls
+    replace those values. M23's list quicksort needed four builders for the same reason.
+    Sixth filing for `old`-on-consumed-things; none of the three does mathematical work. -/
+
+/-! ### THE CHAIN
+
+    Three sealed `let`s and a tail (§8): `partitionA` calls `splitA`, `quicksortA`
+    calls both, and each is in scope by being written above its caller. Four things
+    vary — the three return types and `quicksortA`'s sufficiency hypothesis — which
+    is every twin in this file except the BODY twin below, and that one cannot be
+    shared at all (M28 D1's rule: a difference inside a body, at a subterm naming a
+    binder the `fn` lowering mints an id for, has no splice that can reach it). -/
+
+def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
   fn splitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
-      -> Σ (k : Nat) → Σ (r : Nat)
-           → Σ (hlen : Id Nat m (add k r))
-           → Σ (hsp : SplitA p k m (*t))
-           → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
+      -> %sret
       { match m {
           -- Empty. NOT `unit`: there is no η at length zero, so `SplitA p Z Z σ` is a
           -- stuck `arrRec` and needs the nil lemma.
@@ -215,34 +305,10 @@ def splitA : FnDef := decl{
               } } } } }
             }
           }
-        } } }
-example : Migrate.progOkOf splitA = true := by native_decide
-
-/-! ## (iii) `partitionA` — the leaf ¶6's ledger counts as surviving, and G4 says is new
-
-    `partitionA(a)` picks `a[0]` as the pivot, splits the tail around it, and swaps the
-    pivot into its final position — returning that position, the right part's length,
-    and `PartA`.
-
-    IT IS NOT RECURSIVE, and it exists as a separate declaration for a reason that is
-    the lane's sharpest structural finding: **the function boundary is load-bearing.**
-    A body that has matched its own length `n` to `S m2` — which the head peel requires,
-    since only `(*a)[Z ; 1 ; m2]` converts against the rigid extent — can no longer
-    carve at a symbolic offset, because T2's rigid-length restriction now applies to
-    the whole array. So the sort cannot both select a pivot and carve at the returned
-    index. §6.2's opacity is the way out: a call re-mints the caller's payload as a
-    FRESH σ at the declared type, so the array comes back UNCARVED and with a FLEX
-    length — exactly the state the three-way carve needs. ¶5 advises "carve inline;
-    reach for the function only when you want the abstraction boundary". Here the
-    boundary is what makes the program possible at all. -/
-
-def partitionA : FnDef := decl{
+        } };
   fn partitionA (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
                  a : &mut (Array n Nat))
-      -> Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-           → Σ (hlen : Id Nat n (add k (S jj)))
-           → Σ (hp : PartA pvv k n (*a))
-           → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
+      -> %pret
       { match n {
           -- An empty array has no pivot, so the caller owes `Le 1 n`; here it IS `Bot`.
           Z => botElim Unit hne,
@@ -298,43 +364,9 @@ def partitionA : FnDef := decl{
               }
             } } } } }
           }
-        } } }
-example : Migrate.progOkOf partitionA [partitionA, splitA] = true := by native_decide
-
-/-! ## (iv) `quicksortA` — the headline
-
-        fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
-          -> Σ (hs : SortedA n (*a)) → Π x. Id Nat (countA x n (*a)) (countA x n (old *a))
-
-    M23's quicksort signature, re-posed on arrays: sorted AND a permutation, over the
-    exit snapshot, IN PLACE, with zero declared backs in the call tree. `partitionA`,
-    `splitA` and the two recursive calls are each described only by their return type.
-
-    EMPTINESS IS TESTED WITH `leb 1 n`, NOT BY MATCHING `n`, and that is forced twice
-    over. Matching would refine the length to `S m2`, and T2's rigid-extent restriction
-    then blocks the three-way carve outright ("premise (3) is stuck"). And the `Z` branch
-    could not be discharged anyway: there is no η at length zero, so `SortedA Z σ` is a
-    stuck `arrRec` rather than `Unit`. The False branch instead turns `Le n Z` into
-    `Id Nat n Z` (`le_zero_eq`) and feeds `sortedA_nil`.
-
-    THE ONE STRUCTURAL FACT beyond composition is M23's, unchanged: BOUND SURVIVAL.
-    `sorted_arrCat` wants `UbA pv` of the SORTED left part, and the partition bounded it
-    before the sort. `ub_permA`/`lb_permA` carry both bounds across their sorts' own
-    count evidence. That is the keystone, transferred with the container in M24-ix, and
-    it is the only place this proof is more than gluing.
-
-    PAIN DIARY — three staged builders, and the reason is M23's exactly. `mkTop` is built
-    BEFORE the partition call, because the count conjunct's far endpoint is `old *a` and a
-    body cannot write that; capturing `*a` while it still IS the entry value is the dodge.
-    `mkAD` and `mkS` are built after the carve and before the sorts, because both name the
-    sub-slices AS THEY WERE when the partition bounded them, and the recursive calls
-    replace those values. M23's list quicksort needed four builders for the same reason.
-    Sixth filing for `old`-on-consumed-things; none of the three does mathematical work. -/
-
-def quicksortA : FnDef := decl{
-  fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
-      -> Σ (hs : SortedA n (*a))
-           → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
+        } };
+  fn quicksortA [fuel] (fuel : Nat, n : Nat, hfuel : %qsuff, a : &mut (Array n Nat))
+      -> %qret
       { if he : leb 1 n {
           match fuel {
             -- `Le 1 n` and `Le n Z` compose to `Le 1 Z`, which IS `Bot`.
@@ -431,10 +463,17 @@ def quicksortA : FnDef := decl{
           -- payload, so the count is `Refl` and the sortedness is the nil lemma.
           Pair(sortedA_nil n (*a) (le_zero_eq n (leb_false_gt (S Z) n he)),
                λ (q : Nat). Refl)
-        } } }
-example : Migrate.progOkOf quicksortA [quicksortA, partitionA, splitA] = true := by native_decide
+        } };
+  %tail }
 
-def arrTbl : List FnDef := [quicksortA, partitionA, splitA]
+/-- THE HEADLINE: the array flagship checks as ONE program, against no table.
+    `quicksortA` is the array era's in-place scan — it carves, swaps through element
+    borrows, and returns an index. It shares no code with `S23Direct`'s list
+    quicksort: not the program, not the predicates, not the partition, not the
+    container. -/
+def arrChain : Term := arrUnder sHonest pHonest qHonest qSuffHonest .unit
+example : progOk arrChain = true := by native_decide
+
 
 /-! ## (v) Not vacuous — a lying twin per conjunct
 
@@ -444,50 +483,42 @@ def arrTbl : List FnDef := [quicksortA, partitionA, splitA]
     M23's discipline, applied to three declarations. -/
 
 -- `splitA`, conjunct 1: the length accounting says the two parts overlap by one.
-def splitALieLen : FnDef :=
-  { splitA with retType := (decl{
-      fn splitALieLen (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
-        -> Σ (k : Nat) → Σ (r : Nat)
-             → Σ (hlen : Id Nat m (add k (S r)))
-             → Σ (hsp : SplitA p k m (*t))
-             → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
-        { () } }).retType }
-example : Migrate.progOkOf splitALieLen = false := by native_decide
+example : progOk (arrUnder (pure{
+    Σ (k : Nat) → Σ (r : Nat)
+      → Σ (hlen : Id Nat %mS (add k (S r)))
+      → Σ (hsp : SplitA %pS k %mS (*%tS))
+      → Π (q : Nat) → Id Nat (countA q %mS (*%tS)) (countA q %mS (old *%tS)) })
+    pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 2: the ordering claimed of the ENTRY array rather than the exit.
-def splitALieSp : FnDef :=
-  { splitA with retType := (decl{
-      fn splitALieSp (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
-        -> Σ (k : Nat) → Σ (r : Nat)
-             → Σ (hlen : Id Nat m (add k r))
-             → Σ (hsp : SplitA p k m (old *t))
-             → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
-        { () } }).retType }
-example : Migrate.progOkOf splitALieSp = false := by native_decide
+example : progOk (arrUnder (pure{
+    Σ (k : Nat) → Σ (r : Nat)
+      → Σ (hlen : Id Nat %mS (add k r))
+      → Σ (hsp : SplitA %pS k %mS (old *%tS))
+      → Π (q : Nat) → Id Nat (countA q %mS (*%tS)) (countA q %mS (old *%tS)) })
+    pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 -- `splitA`, conjunct 3: the counts off by one, which no path can reach.
-def splitALieCount : FnDef :=
-  { splitA with retType := (decl{
-      fn splitALieCount (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
-        -> Σ (k : Nat) → Σ (r : Nat)
-             → Σ (hlen : Id Nat m (add k r))
-             → Σ (hsp : SplitA p k m (*t))
-             → Π (q : Nat) → Id Nat (countA q m (*t)) (S (countA q m (old *t)))
-        { () } }).retType }
-example : Migrate.progOkOf splitALieCount = false := by native_decide
+example : progOk (arrUnder (pure{
+    Σ (k : Nat) → Σ (r : Nat)
+      → Σ (hlen : Id Nat %mS (add k r))
+      → Σ (hsp : SplitA %pS k %mS (*%tS))
+      → Π (q : Nat) → Id Nat (countA q %mS (*%tS)) (S (countA q %mS (old *%tS))) })
+    pHonest qHonest qSuffHonest .unit) = false := by native_decide
 
 /-- **The BODY twin, and the one that matters most**: the swap is DELETED — the branch
     reads the two cells and writes neither, but claims the same postcondition. Every
     spec twin above can be blamed on some path; this one is wrong only on the swap
     path and only because the elements did not move. It isolates the single mutation
-    the whole program performs. -/
-def splitANoSwap : FnDef :=
-  decl{ fn splitANoSwap [fuel]
-          (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
-      -> Σ (k : Nat) → Σ (r : Nat)
-           → Σ (hlen : Id Nat m (add k r))
-           → Σ (hsp : SplitA p k m (*t))
-           → Π (q : Nat) → Id Nat (countA q m (*t)) (countA q m (old *t))
+    the whole program performs.
+
+    Transcribed rather than shared through the chain, and that is M28 D1's rule
+    rather than a choice: what varies is inside the body, at a statement naming
+    binders the `fn` lowering mints ids for. It carries only `splitA`, since nothing
+    else is needed to refuse it. -/
+def splitANoSwap : Term := prog{
+  fn splitA [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, p : Nat, t : &mut (Array m Nat))
+      -> %sHonest
       { match m {
           Z => Pair(Z, Pair(Z, Pair(Refl,
                  Pair(splitA_nil p Z Z (*t) Refl, λ (q : Nat). Refl)))),
@@ -550,56 +581,39 @@ def splitANoSwap : FnDef :=
               } } } } }
             }
           }
-        } } }
-example : Migrate.progOkOf splitANoSwap = false := by native_decide
+        } };
+  () }
+example : progOk splitANoSwap = false := by native_decide
 
 -- `partitionA`, conjunct 1: the length accounting forgets the pivot cell.
-def partALieLen : FnDef :=
-  { partitionA with retType := (decl{
-      fn partALieLen (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
-                      a : &mut (Array n Nat))
-        -> Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-             → Σ (hlen : Id Nat n (add k jj))
-             → Σ (hp : PartA pvv k n (*a))
-             → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
-        { () } }).retType }
-example : Migrate.progRejectsOf partALieLen "does not have return type" [partALieLen, splitA]
-    = true := by native_decide
+example : progRejects (arrUnder sHonest (pure{
+    Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+      → Σ (hlen : Id Nat %nP (add k jj))
+      → Σ (hp : PartA pvv k %nP (*%aP))
+      → Π (q : Nat) → Id Nat (countA q %nP (*%aP)) (countA q %nP (old *%aP)) })
+    qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `partitionA`, conjunct 2: the partition claimed of the ENTRY array.
-def partALiePart : FnDef :=
-  { partitionA with retType := (decl{
-      fn partALiePart (fuel : Nat, n : Nat, hfuel : Le n fuel, hne : Le (S Z) n,
-                       a : &mut (Array n Nat))
-        -> Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
-             → Σ (hlen : Id Nat n (add k (S jj)))
-             → Σ (hp : PartA pvv k n (old *a))
-             → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
-        { () } }).retType }
-example : Migrate.progRejectsOf partALiePart "does not have return type" [partALiePart, splitA]
-    = true := by native_decide
+example : progRejects (arrUnder sHonest (pure{
+    Σ (pvv : Nat) → Σ (k : Nat) → Σ (jj : Nat)
+      → Σ (hlen : Id Nat %nP (add k (S jj)))
+      → Σ (hp : PartA pvv k %nP (old *%aP))
+      → Π (q : Nat) → Id Nat (countA q %nP (*%aP)) (countA q %nP (old *%aP)) })
+    qHonest qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 1: sortedness lied onto the ENTRY. True at the empty array,
 -- so the base path still passes and only the recursive one is blamed.
-def qsALieSorted : FnDef :=
-  { quicksortA with retType := (decl{
-      fn qsALieSorted (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
-        -> Σ (hs : SortedA n (old *a))
-             → Π (q : Nat) → Id Nat (countA q n (*a)) (countA q n (old *a))
-        { () } }).retType }
-example : Migrate.progRejectsOf qsALieSorted "does not have return type" [qsALieSorted, partitionA, splitA]
-    = true := by native_decide
+example : progRejects (arrUnder sHonest pHonest (pure{
+    Σ (hs : SortedA %nQ (old *%aQ))
+      → Π (q : Nat) → Id Nat (countA q %nQ (*%aQ)) (countA q %nQ (old *%aQ)) })
+    qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 -- `quicksortA`, conjunct 2: the permutation lied by DIRECTION. Again `Refl` at the
 -- empty array, and again the body's evidence points the other way once anything moves.
-def qsALieCount : FnDef :=
-  { quicksortA with retType := (decl{
-      fn qsALieCount (fuel : Nat, n : Nat, hfuel : Le n fuel, a : &mut (Array n Nat))
-        -> Σ (hs : SortedA n (*a))
-             → Π (q : Nat) → Id Nat (countA q n (old *a)) (countA q n (*a))
-        { () } }).retType }
-example : Migrate.progRejectsOf qsALieCount "does not have return type" [qsALieCount, partitionA, splitA]
-    = true := by native_decide
+example : progRejects (arrUnder sHonest pHonest (pure{
+    Σ (hs : SortedA %nQ (*%aQ))
+      → Π (q : Nat) → Id Nat (countA q %nQ (old *%aQ)) (countA q %nQ (*%aQ)) })
+    qSuffHonest .unit) "does not have return type" = true := by native_decide
 
 /-! ### Honest typing rejections, probed through `checkFn` -/
 
@@ -631,12 +645,8 @@ example : progOk carveWithEv = true := by native_decide
 -- The sufficiency hypothesis is load-bearing, not decoration: keep the parameter (so
 -- the body still elaborates and the rejection is about TYPING) and weaken it to `Unit`.
 -- The out-of-fuel path then has no ⊥ to eliminate and stops being dead.
-def qsANoSuff : FnDef :=
-  { quicksortA with telescope := (decl{
-      fn qsANoSuff (fuel : Nat, n : Nat, hfuel : Unit, a : &mut (Array n Nat)) -> Unit
-        { () } }).telescope }
-example : Migrate.progRejectsOf qsANoSuff "botElim" [qsANoSuff, partitionA, splitA]
-    = true := by native_decide
+example : progRejects (arrUnder sHonest pHonest qHonest (pure{ Unit }) .unit)
+  "botElim" = true := by native_decide
 
 
 /-! ## (vi) The EXECUTING differential — and the divergence it found
@@ -698,12 +708,12 @@ def splCaller (l : List Nat) (pvt : Nat) : Term :=
         (.letIn ⟨3, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 
 def runQsA (l : List Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec arrTbl (qsCallerA l) with
+  match Dllbc.Tests.S9Diff.runExec [] (arrUnder sHonest pHonest qHonest qSuffHonest (qsCallerA l)) with
   | .ok env => (env.lookup "y").bind arrOfV
   | .error _ => none
 
 def runSplA (l : List Nat) (pvt : Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec [splitA] (splCaller l pvt) with
+  match Dllbc.Tests.S9Diff.runExec [] (arrUnder sHonest pHonest qHonest qSuffHonest (splCaller l pvt)) with
   | .ok env => (env.lookup "y").bind arrOfV
   | .error _ => none
 
@@ -812,10 +822,10 @@ example : (match runQsA [2, 1] with | some a => a == [2, 1] | none => false) = f
 
 def qsCallers : List Term := [qsCallerA [3, 1, 2], qsCallerA [2, 1], qsCallerA [1]]
 
-example : qsCallers.all (fun b => progOk b (.const "Unit") arrTbl)
+example : qsCallers.all (fun b => progOk (arrUnder sHonest pHonest qHonest qSuffHonest b))
     = true := by native_decide
 
-example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 arrTbl b)
+example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 [] (arrUnder sHonest pHonest qHonest qSuffHonest b))
     = true := by native_decide
 
 /-! ## (vii) The five probes that located C6, kept as its regression
@@ -829,8 +839,8 @@ example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 arrTbl b)
 def c6Touch : Term := prog{
   fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
   () }
--- A callee, declared in each chain that calls it; the standalone form
--- keeps the verdict `S26Migrate.p25` was computing for it.
+-- A callee, declared in each chain that calls it; the standalone form is its own
+-- verdict.
 example : progOk c6Touch = true := by native_decide
 
 -- (1) Peel a head and hand the tail to a call. Always worked.
@@ -941,30 +951,33 @@ example : progRejects twoCursorRes "no segment starts at" = true := by native_de
     Premise (3) may not refine a telescope parameter's σ to match a supplied residue;
     it may solve along a CITED equation. The three probes the ruling asks for. -/
 
-def citedCarve : FnDef := decl{
+/-- The subject, as a prefix: its three callers below ride the same chain, so the
+    callee is in scope by being declared above the code that calls it. -/
+def withCitedCarve (rest : Term) : Term := prog{
   fn citedCarve (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
                  a : &mut (Array n Nat)) -> Unit {
     let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
-    () } }
-example : Migrate.progOkOf citedCarve = true := by native_decide
+    () };
+  %rest }
+example : progOk (withCitedCarve prog{ () }) = true := by native_decide
 
 /-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
     inhabits `Id Nat 3 (add 1 (S 1))` because both sides compute to 3. -/
-def citedCallerOk : Term := prog{
+def citedCallerOk : Term := withCitedCarve prog{
   let z = Arr(1, 2, 3); let b = &mut z; citedCarve(3, 1, 1, Refl, b); let y = z; () }
-example : progOk citedCallerOk (.const "Unit") [citedCarve] = true := by native_decide
+example : progOk citedCallerOk = true := by native_decide
 
 /-- (2) …and it RUNS, which is the half that was broken. Before the ruling the checker
     accepted callers the concrete machine got stuck on; now acceptance and execution
     agree on this shape, which is M8/M9's differential property restored for it. -/
-example : runsAtAll [citedCarve] citedCallerOk = true := by native_decide
+example : runsAtAll [] citedCallerOk = true := by native_decide
 
 /-- (3) The caller that used to be the counterexample. `n = 2` with `i = j = 5` type-
     checked before the ruling and then got stuck executing; now `Refl` cannot inhabit
     `Id Nat 2 (add 5 (S 5))` and the CALLER is rejected, at its own boundary, with the
     constraint recorded in the signature it violated. -/
-def citedCallerBad : Term := prog{
+def citedCallerBad : Term := withCitedCarve prog{
   let z = Arr(1, 2); let b = &mut z; citedCarve(2, 5, 5, Refl, b); let y = z; () }
-example : progOk citedCallerBad (.const "Unit") [citedCarve] = false := by native_decide
+example : progOk citedCallerBad = false := by native_decide
 
 end Dllbc.Tests.S25ArrSort

@@ -370,93 +370,30 @@ example : (programEnvs push).any (fun r => match r with
     the corpus has. -/
 example : progDiff (Tests.S23Direct.qsRun [3, 1, 2]) = true := by native_decide
 
-/-! ## §G. The ARRAY flagship, as a program term — and it needed no source change
+/-! ## §G. The ARRAY flagship — RETIRED HERE (M28 D8), for the same reason as §F
 
     `quicksortA` is the array era's in-place scan: it carves, swaps through element
-    borrows, and returns an index. It shares no code with §F's list quicksort —
-    not the program, not the predicates, not the partition, not the container.
+    borrows, and returns an index. It shares no code with §F's list quicksort — not
+    the program, not the predicates, not the partition, not the container. This
+    section assembled it from `S25ArrSort`'s three declarations with `progOf`,
+    checked it against no table, ran it in place on real arrays, substituted each of
+    seven lie twins into the cohort, and re-ran the cross-differential between the
+    two sorts in program-term form.
 
-    It goes through unchanged, and that is the finding: the array cohort was
-    ALREADY fuel-threaded (`splitA [fuel]`, `quicksortA [fuel]`, `partitionA` not
-    recursive at all), so §12 decision 8 costs this lane nothing. R12's carve
-    machinery — the one part of the corpus that leans hardest on the call
-    boundary's re-mint — transfers to the seal without a single adjustment, which
-    is the strongest available evidence that §5's opacity and §6.1's call rule
-    really are the same mechanism reached two ways. -/
+    Every one of those is now asserted in `S25ArrSort` itself, on the same program:
+    the flagship is one `fn` chain there (`arrUnder`), with the three return types
+    and `quicksortA`'s sufficiency hypothesis as PARAMETERS — so the twin
+    substitution this section implemented as `sub` (replace the cohort member whose
+    name matches) is a varied argument, and the cross-differential's two sides are
+    two programs rather than two tables.
 
-def arrCohort : List FnDef :=
-  [Tests.S25ArrSort.splitA, Tests.S25ArrSort.partitionA, Tests.S25ArrSort.quicksortA]
-
-def arrProg (tail : Term) : Except String Term := FnMacro.progOf arrCohort tail
-
-/-- The array flagship checks as a program, against no table. -/
-example : (match arrProg .unit with
-           | .ok t => progOk t
-           | .error _ => false) = true := by native_decide
-
-/-- …and runs, in place, on a real array. `qsCallerA` is S25's own caller term,
-    handed over unchanged — `progOf` retargets its `.call`s, because the tail is in
-    the accumulated scope like everything else. -/
-def runQsAP (l : List Nat) : Option (List Nat) :=
-  match arrProg (Tests.S25ArrSort.qsCallerA l) with
-  | .error _ => none
-  | .ok t => match runProgram t with
-             | .ok env => (env.lookup "y").bind Tests.S25ArrSort.arrOfV
-             | .error _ => none
-
-example : runQsAP [3, 1, 2] == some [1, 2, 3] := by native_decide
-example : runQsAP [9, 8, 7, 6, 5, 4, 3, 2, 1] == some [1, 2, 3, 4, 5, 6, 7, 8, 9] := by
-  native_decide
-
-/-! ### G2. Coverage preserved on the array side too
-
-    S25 guards its three functions with seven twins — two length lies, two
-    invariant lies, a count lie, and the two quicksort conjuncts. Each is dropped
-    into the cohort in place of the function it lies about (the twins keep their
-    subjects' names, so this is a substitution and not a rewrite) and the program
-    is refused. -/
-
-/-- Replace the cohort member with the twin's name. -/
-def sub (twin : FnDef) : List FnDef :=
-  arrCohort.map (fun d => if d.name == twin.name then twin else d)
-
-def arrTwins : List FnDef :=
-  [Tests.S25ArrSort.splitALieLen, Tests.S25ArrSort.splitALieSp,
-   Tests.S25ArrSort.splitALieCount, Tests.S25ArrSort.partALieLen,
-   Tests.S25ArrSort.partALiePart, Tests.S25ArrSort.qsALieSorted,
-   Tests.S25ArrSort.qsALieCount]
-
-example : arrTwins.all (fun tw =>
-    match FnMacro.progOf (sub tw) .unit with
-    | .ok t => !progOk t
-    | .error _ => false) = true := by native_decide
--- Not vacuous: the substitution mechanism itself accepts the honest cohort.
-example : (match FnMacro.progOf (sub Tests.S25ArrSort.splitA) .unit with
-           | .ok t => progOk t
-           | .error _ => false) = true := by native_decide
-
-/-! ### G3. THE CROSS-DIFFERENTIAL, re-run in program-term form
-
-    S25's (vi.c): two implementations written against the same postcondition,
-    sharing no code, compared elementwise against a trusted sort — the control that
-    catches a wrong SHARED reading of the spec, which neither type checker would
-    see. Both sides are now programs rather than declaration tables, and the
-    conjunction is one expression, so a two-way agreement on a wrong answer still
-    goes red. -/
-
-def runQsLP (l : List Nat) : Option (List Nat) :=
-  match runProgram (Tests.S23Direct.qsRun l) with
-  | .ok env => (env.lookup "y").bind (Tests.S25ArrSort.listOfV 2000)
-  | .error _ => none
-
-def crossP (l : List Nat) : Bool :=
-  match runQsLP l, runQsAP l with
-  | some a, some b => a == b && a == l.mergeSort (fun a b => a <= b)
-  | _, _ => false
-
-example : (([[], [1], [2,1], [3,1,2], [1,2,3], [3,2,1], [5,5,5], [4,1,3,2,5],
-             [3,1,4,1,5,9,2], [2,2,1,1], [7,3,7,3,7]] : List (List Nat)).all crossP)
-    = true := by native_decide
+    **The finding this section recorded is the one to carry, and it is unchanged**:
+    the array cohort was ALREADY fuel-threaded (`splitA [fuel]`, `quicksortA
+    [fuel]`, `partitionA` not recursive at all), so §12 decision 8 costs this lane
+    nothing. R12's carve machinery — the part of the corpus that leans hardest on
+    the call boundary's re-mint — transferred to the seal without a single
+    adjustment, which is the strongest available evidence that §5's opacity and
+    §6.1's call rule really are the same mechanism reached two ways. -/
 
 /-! ## §H. Both dispatch surfaces, for the rules this phase added
 

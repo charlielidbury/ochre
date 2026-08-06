@@ -1,4 +1,5 @@
-import Dllbc.Tests.S26Migrate
+import Dllbc.Tests.S19Partition
+import Dllbc.Tests.S25ArrSort
 import Dllbc.Tests.S26Fuel
 import Dllbc.Tests.S26Prog
 
@@ -58,11 +59,12 @@ open Dllbc.StdLemmas (Ub Lb len)
 
 /-! ## §A. The instrument, asserted before any conclusion
 
-    §B's residue is computed over `S26Migrate.pools` with the harness's own
-    `refusal`, so the ledger and the comparison cannot drift apart. The
-    strip is asserted to have HAPPENED first — the `{ d with back := none }` gotcha
-    (e4222291) produced a "stripped" pool identical to the original, and read at
-    face value it said the exact opposite of the truth. -/
+    §B's residue was computed over the corpus's own declaration pools with the
+    harness's `refusal`, so that the ledger and the comparison could not drift
+    apart. The strip was asserted to have HAPPENED first — the
+    `{ d with back := none }` gotcha (e4222291) produced a "stripped" pool identical
+    to the original, and read at face value it said the exact opposite of the
+    truth. -/
 
 /-! **EXECUTED (M27-P2), and the assertion cannot be written any more.**
 
@@ -95,62 +97,41 @@ open Dllbc.StdLemmas (Ub Lb len)
     between M27-δ and M28 μ and did the same job by arithmetic; the residue does it
     with identity attached, which is why it is the one that survived.) -/
 
-/-! ## §B. The residue: what still has no program form, and a disposition for each
+/-! ## §B. The residue: CLOSED
 
-    These survive the `back` deletion, so each is a decision about `[k]`, not about
-    §6.2. `residue` is derived from the harness rather than written out, and the
-    assertion below pins it name-for-name — a decliner appearing or vanishing goes
-    red here before it can go unnoticed anywhere else.
+    This section was the endgame's instrument. Every declaration the program path
+    DECLINES needed a written disposition — ported, paid, or retired with a reason —
+    because a decliner that is merely dropped is a coverage loss disguised as a
+    migration, and M26-E's whole point was that such a loss is invisible to a build.
+    So the dispositions were keyed to the harness's own `refusal`, computed over
+    `S26Migrate.pools` by `declinedWith`, and asserted NAME FOR NAME: a decliner
+    appearing or vanishing turned this file red before it could go unnoticed
+    anywhere else.
 
-    **It is down to two, and it got there by the corpus being REWRITTEN rather than
-    by anything being tolerated.** The residue was nineteen when this ledger was
-    written. Every departure since is recorded below in the form that matters —
-    which declaration left, and whether its verdict left with it — because "the
-    ledger got shorter" is exactly the sentence a coverage loss would also produce. -/
+    It counted down 19 → 11 → 2 → 0, and then the instrument itself dissolved. The
+    residue is derived from the POOLS, the pools are the corpus's declarations, and
+    the corpus has none: `S26Migrate` is deleted (M28 D8) because every `FnDef` it
+    inventoried is a `fn` statement in the file that owns it.
 
--- Computed from the pool ITSELF since M28 μ. It used to route through
--- `S26Fuel.fixAll`, the `[k]`-hint correction M26-F adopted at the source; that
--- this list is unchanged without it is what the retired "fixHints is a no-op"
--- assertion was saying.
-def residue (p : List FnDef) : List String :=
-  (declinedWith p).map (·.1)
+    **An empty ledger and a deleted instrument is exactly what a coverage loss also
+    produces, so what replaced each entry is worth stating rather than asserting**,
+    since there is nothing left to assert it against:
 
-/-- The residue, name for name. Several share a `FnDef.name` (a lie twin is the
-    same function under the same name with a different body), so the multiset —
-    not a set — is the claim. -/
--- Five `partition`s became one in M28 υ: four were `{ partition with retType := … }`
--- spec twins that had lost their assertions with `checkFn` and were deleted as
--- definitions nothing asserted anything about.
--- `recSame`/`recWrongIdx`/`recGrow`/`recDeep` left in M28 φ: they are programs
--- now, and their refusals are asserted directly as `progRejects … "not the
--- predecessor"` in `S23Direct` (and again in §B3/§B4 below, at program level).
--- **`recCursor`, `append_back`, `partition`, `partitionLoses`, `quicksort` and the
--- three `quicksort` twins left in M28 D3, and that is the whole `[v]` class going
--- at once.** They were the declarations the eliminators cannot express, carried on
--- the declaration path so that the class had a SUBJECT. It has a better one now:
--- `S23Direct.borrowDecrease` is the refusal as a four-line program, with the
--- decision in the message, and the price is paid in the same file — stage (vi)'s
--- cohort is `partition`/`append_back`/`quicksort` fuel-threaded, checked, run, and
--- guarded by six twins.
---
--- **`zero_all` and `walkArr` left in M28 D6, and the list is EMPTY.** Those two
--- were the last declarations held anywhere solely so that a decline could be
--- COUNTED with a name attached; both are programs in their own files now, each
--- refused on `fnRefusedNeedle`, on "§12 decision 8" by name, and with
--- `progOk = false` to say the sentinel fires at the binding rather than at a call.
--- That is strictly more than a name in a computed list — it is the decline said in
--- the language, with its reason, where the function is written.
---
--- **An empty residue is this ledger's terminal state, and it is worth being
--- suspicious of.** "No declaration declines" would be trivially true of an empty
--- corpus, so the reading that matters is the one the pools give: `S26Migrate.pools`
--- still holds S15/S17/S19/S25's declarations, and none of them declines. What
--- emptied the list is the `[v]` class being REWRITTEN — fuel-threaded at the
--- source, with its refusals asserted as programs — not the class being dropped.
-example : (S26Migrate.pools.flatMap residue == ([] : List String)) = true := by native_decide
--- …and not vacuously: the pools are not empty, so "nothing declines" is a fact
--- about declarations that exist.
-example : ((S26Migrate.pools.flatMap id).length != 0) = true := by native_decide
+      * **The `back` class** retired with the mechanism in M27-P2 — no declaration
+        can declare one, which is a fact about the TYPE and needs no test.
+      * **The guard twins** (`recSame`, `recWrongIdx`, `recGrow`, `recDeep`) became
+        programs in M28 φ and are `progRejects … "not the predecessor"` in
+        `S23Direct`, which is §B3/§B4 below.
+      * **The `[v]` payload-decrease class** — `zero_all`, `recCursor`,
+        `append_back`, `partition`, `partitionLoses`, `quicksort` and its twins,
+        `walkArr` — was REWRITTEN. Each survivor is a program refused on
+        `FnMacro.fnRefusedNeedle`, with "§12 decision 8" in the message and
+        `progOk = false` to say the sentinel fires at the BINDING rather than at a
+        call; and each has a fuel-threaded twin that CHECKS, in the same file, a few
+        lines away. That is strictly more than a name in a computed list.
+
+    A decline is louder written out than counted, and that is why the ledger could
+    close rather than merely empty. -/
 
 /-! ### B1. PAID — every one, and where
 
@@ -170,6 +151,9 @@ example : progOk S24Arrays.walk = true := by native_decide
 -- form the "paid" claim can take — there is no un-migrated original left for it to
 -- be paid against.
 example : progOk S23Direct.flagship = true := by native_decide
+-- …and the array lane needed no payment at all: it was already fuel-threaded, so
+-- decision 8 costs it nothing. Same claim, other container.
+example : progOk S25ArrSort.arrChain = true := by native_decide
 
 /-! ### B2. THE GAP THIS LEDGER FOUND — the twins, and where they went
 
@@ -408,7 +392,7 @@ example : progOk S19Partition.twoRec = true := by native_decide
     measurement in this campaign could see
 
     §B disposed of declarations that survive the deletion and §C of the ones that
-    cause it. Both were derived from `S26Migrate.pools`, and **the pools are the
+    cause it. Both were derived from the corpus's declaration POOLS, and **the pools were the
     TEST corpus**. `Dllbc/Bench.lean` and `Dllbc/BenchQS.lean` are not in any pool,
     declare fifteen more backs between them, and are `checkFn`'s other consumer.
 
