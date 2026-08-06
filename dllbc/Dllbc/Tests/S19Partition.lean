@@ -248,13 +248,20 @@ def boolRecNat (t f sp : Term) : Term :=
 def Refl : Term := .ctorApp "Refl" []
 
 -- n = 0; the `if` binds a fresh scrutinee (id 1).
-def stuckProbe : FnDef :=
-  decl{ fn stuckProbe (n : Nat) -> Id Nat
+-- **Written out per twin rather than shared through a skeleton** (M28 ψ). The
+-- retSkel form pays when a body is long enough that duplicating it hurts; this body
+-- is two lines, so writing each twin in full keeps the honest return type in SURFACE
+-- syntax — which for a convergence probe is the whole readable content — at the cost
+-- of one repeated `let`. Sharing would have bought nothing and made the honest spec
+-- a hand-built `Term`.
+def stuckProbe : Term := prog{
+  fn stuckProbe (n : Nat) -> Id Nat
         (boolRec (λ (b : Bool). Nat) (S Z) Z (leb n (S (S Z))))
         (boolRec (λ (b : Bool). Nat) (add Z (S Z)) (add Z Z) (leb n (S (S Z))))
         { let c = leb n (S (S Z));
-          match c { True => Refl, False => Refl } } }
-example : Migrate.progOkOf stuckProbe = true := by native_decide
+          match c { True => Refl, False => Refl } };
+  () }
+example : progOk stuckProbe = true := by native_decide
 
 -- Not vacuous (a): the True side does NOT converge (`S Z` vs `S (S Z)`). The
 -- generalized σb refines to True in that path and the `boolRec` reduces to two
@@ -262,15 +269,24 @@ example : Migrate.progOkOf stuckProbe = true := by native_decide
 -- SUBJECT: a deliberately-non-converging return type (raw Term) — the lie is the subject.
 def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
-def stuckProbeLie : FnDef := { stuckProbe with name := "stuckProbeLie", retType := stuckProbeLieRet }
-example : Migrate.progRejectsOf stuckProbeLie "does not have return type" = true := by native_decide
+def stuckProbeLie : Term := prog{
+  fn stuckProbeLie (n : Nat) -> %stuckProbeLieRet
+        { let c = leb n (S (S Z));
+          match c { True => Refl, False => Refl } };
+  () }
+example : progRejects stuckProbeLie "does not have return type" = true := by native_decide
 
 -- Not vacuous (b): a one-armed match is rejected as non-exhaustive — the
 -- generalized σb is genuinely Bool-typed, so exhaustiveness demands True AND False.
 -- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
-def stuckProbeNonExh : FnDef := { stuckProbe with name := "stuckProbeNonExh", body := stuckProbeNonExhBody }
-example : Migrate.progRejectsOf stuckProbeNonExh "non-exhaustive" = true := by native_decide
+def stuckProbeNonExh : Term := prog{
+  fn stuckProbeNonExh (n : Nat) -> Id Nat
+        (boolRec (λ (b : Bool). Nat) (S Z) Z (leb n (S (S Z))))
+        (boolRec (λ (b : Bool). Nat) (add Z (S Z)) (add Z Z) (leb n (S (S Z))))
+        { %stuckProbeNonExhBody };
+  () }
+example : progRejects stuckProbeNonExh "non-exhaustive" = true := by native_decide
 
 /-! ## M19-C (model) — `partitionL` computes the Lomuto partition
 
@@ -539,13 +555,14 @@ example : progRejects exitReject "does not have return type" (.const "Unit") con
     to `FnMacro.progOf` itself. That assertion is the disposition record for this
     function's retired `back = *v`, so the subject has to stay the thing the record
     is about. -/
-def twoRec : FnDef :=
-  decl{ fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
+def twoRec : Term := prog{
+  fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         { match f {
             Z => (),
             S(f2) => { twoRec(&mut *v, f2); twoRec(&mut *v, f2); () }
-        } } }
-example : Migrate.progOkOf twoRec [twoRec] = true := by native_decide
+        } };
+  () }
+example : progOk twoRec = true := by native_decide
 
 /-! ## M22-b — swapSE: count-preservation as a PROVEN postcondition (direct proving)
 

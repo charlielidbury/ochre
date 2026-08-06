@@ -503,9 +503,12 @@ example : ensuresLies.all (fun d => neitherWay d [S23Direct.setAt]) = true := by
     trust. -/
 
 
--- …and the function still checks, and now MIGRATES — which the `[f]`-hinted,
--- back-carrying original could not.
-example : S26Fuel.bothWays S19Partition.twoRec = true := by native_decide
+-- …and the function still checks. The "and now MIGRATES" half went with the
+-- declaration path (M28 ψ): `twoRec` is a `prog{ fn … }` now, so there is no
+-- migration to succeed — being writable at all is the stronger form of the same
+-- claim. What this line still pins is §C's: dropping the `back` field left the
+-- subject intact.
+example : progOk S19Partition.twoRec = true := by native_decide
 
 /-! ## §D. INSTRUMENT RETIREMENT — a third disposition class, and the one no
     measurement in this campaign could see

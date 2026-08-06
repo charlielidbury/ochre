@@ -123,11 +123,9 @@ def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
   S19Partition.certSwapCountLie,
   S19Partition.partScanE,
   S19Partition.partitionE,
-  S19Partition.stuckProbe,
-  S19Partition.stuckProbeLie,
-  S19Partition.stuckProbeNonExh,
-  S19Partition.lebProbe,
-  S19Partition.twoRec]
+  S19Partition.lebProbe]
+-- (`stuckProbe` and its two twins, and `twoRec`, are programs since M28 ψ and
+-- assert themselves in their own file.)
 
 -- S23Direct is migrated in PART (M28 ν): the 26 declarations that nothing outside
 -- the file consumed are programs now and have left the pool. What remains is what
