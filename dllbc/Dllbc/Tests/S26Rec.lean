@@ -477,47 +477,50 @@ example : slotOf e4 "y" = some "Cons (S Z) Nil" := by native_decide
     telescope, the same return type and the same body, written once as a `FnDef`
     and once as `(λ(… : …){ … } : Π …)`. -/
 
-def pushD : FnDef := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
-  { let tail = *v; *v := Cons(e, tail); () } }
+def pushD : Term := prog{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
+  { let tail = *v; *v := Cons(e, tail); () }; () }
 def pushS : Term := prog{ let f = (λ(e : Nat, v : &mut List Nat) { let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut List Nat) → Unit); () }
 
 /-- The `old *v` shape: an ensures relating the EXIT payload to the ENTRY one,
     which is the convention M23's whole corpus is written in and the reason the
     seal has to seed `entrySyms` as well as `exitSyms`. -/
-def consD : FnDef := decl{ fn consD (v : &mut List Nat)
+def consD : Term := prog{ fn consD (v : &mut List Nat)
   -> Id (List Nat) (*v) (Cons 9 (old *v))
-  { let t = *v; *v := Cons(9, t); Refl } }
+  { let t = *v; *v := Cons(9, t); Refl }; () }
 def consS : Term := prog{ let f = (λ(v : &mut List Nat) { let t = *v; *v := Cons(9, t); Refl } : Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
 
 /-- The spec lie: the body conses `8` where the ensures says `9`. -/
-def lieD : FnDef := decl{ fn lieD (v : &mut List Nat)
+def lieD : Term := prog{ fn lieD (v : &mut List Nat)
   -> Id (List Nat) (*v) (Cons 9 (old *v))
-  { let t = *v; *v := Cons(8, t); Refl } }
+  { let t = *v; *v := Cons(8, t); Refl }; () }
 def lieS : Term := prog{ let f = (λ(v : &mut List Nat) { let t = *v; *v := Cons(8, t); Refl } : Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
 
 /-- The obligation lie: the payload is taken and never refilled. -/
-def holeD : FnDef := decl{ fn holeD (v : &mut List Nat) -> Unit { let l = *v; () } }
+def holeD : Term := prog{ fn holeD (v : &mut List Nat) -> Unit { let l = *v; () }; () }
 def holeS : Term := prog{ let f = (λ(v : &mut List Nat) { let l = *v; () } : Π (v : &mut List Nat) → Unit); () }
 
-/-- Each pair: the declared form and the sealed form of the same function. The
-    sealed side is a PROGRAM now (M28 ι), which is what the pair was always
-    comparing — a declaration against the let-binding §8 says it is. -/
-def twins : List (FnDef × Term) :=
+/-- Each pair: the `fn` STATEMENT and the hand-written sealed λ of the same
+    function. Both sides are programs (M28 ι for the seal, M28 D5 for the `fn`),
+    which is what the pair was always comparing — §7 says `fn` is a macro over the
+    seal, and this is that sentence as two verdicts. -/
+def twins : List (Term × Term) :=
   [ (pushD, pushS), (consD, consS), (lieD, lieS), (holeD, holeS) ]
 
--- THE SMELL TEST: the seal's audit and `checkFn`'s agree, pair for pair.
-example : twins.all (fun p => ok p.1 == progOk p.2) = true := by native_decide
+-- THE SMELL TEST: the `fn` lowering's audit and the hand-written seal's agree,
+-- pair for pair. (It used to compare against `checkFn`; that path died in M27-δ
+-- and the surviving comparison is the one §7 is actually about.)
+example : twins.all (fun p => progOk p.1 == progOk p.2) = true := by native_decide
 -- …and it is not vacuous: both verdicts occur, so the identity above is pinning
 -- agreement rather than a constant function.
-example : (twins.any (fun p => ok p.1) && twins.any (fun p => !ok p.1)) = true := by
+example : (twins.any (fun p => progOk p.1) && twins.any (fun p => !progOk p.1)) = true := by
   native_decide
 -- …and the rejections agree on WHY, not merely that. A sealed body that lies
--- about its ensures and a declared one that lies about the same ensures are
--- refused by the same audit with the same message — which is what says the check
--- was relocated rather than reimplemented.
-example : (rejects lieD "does not have return type" && progRejects lieS "does not have return type")
+-- about its ensures and a `fn` that lies about the same ensures are refused by the
+-- same audit with the same message — which is what says the check was relocated
+-- rather than reimplemented.
+example : (progRejects lieD "does not have return type" && progRejects lieS "does not have return type")
   = true := by native_decide
-example : (rejects holeD "holds a hole (⊥) at return" && progRejects holeS "holds a hole (⊥) at return")
+example : (progRejects holeD "holds a hole (⊥) at return" && progRejects holeS "holds a hole (⊥) at return")
   = true := by native_decide
 
 /-! ## §F. Arms as bodies — the CHECKING side (§7 cost 1)

@@ -32,10 +32,16 @@ namespace Dllbc.Tests.S27Lam
 open Dllbc
 
 /-! The `ok`/`rejects` helpers retired with the `FnDef` subjects they took (M28
-    ν). Every subject they served is a program now, and `progOk`/`progRejects` from
-    `Dllbc/Program.lean` take one directly. The one declaration this file still
-    keeps (`bndD`) is fed to `FnMacro.fnElab` for its arm annotations, not to a
-    checker, so it never wanted these. -/
+    ν). EVERY subject in this file is a program now (M28 D5 took the last one), and
+    `progOk`/`progRejects` from `Dllbc/Program.lean` take one directly.
+
+    §E and §F still read a `Term` STRUCTURALLY, and that is not a leftover: they
+    perturb the elaborated recursor's arm ANNOTATIONS, which no source can write —
+    the whole point is that the annotations are derived rather than chosen. What
+    changed is where the term comes from. A `fn` statement lowers through `fnElab`
+    (Uni.lean's `ublk` rule calls `fnElabOrFail`), so the sealed recursor is read
+    back out of the binding the statement made, and every assertion is still a
+    verdict on a program. -/
 
 /-! ## §A. The surface carries the domain -/
 
@@ -135,17 +141,34 @@ example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
     hand-written terms rather than against a second call of the derivation, so
     they would fail if the macro transcribed instead of substituting. -/
 
-def bndD : FnDef := decl{ fn bnd [n] (n : Nat, v : &mut List Nat, Hn : Le (len *v) n) -> Unit {
-  match n {
-    Z => (),
-    S(n2) => match v {
-      Nil => (),
-      Cons(hd, tl) => { bnd(n2, &mut *tl, Hn); () } } } } }
+/-- The subject, as the PROGRAM it is (M28 D5). It used to be a `decl{ }` fed to
+    `FnMacro.fnElab`; the `fn` statement lowers through exactly that function
+    (Uni.lean's `ublk` rule calls `fnElabOrFail`), so the sealed term this section
+    reads is the same term, and it is read back out of the binding the statement
+    made rather than out of a second former holding the same declaration. -/
+def bndProgram : Term := prog{
+  fn bnd [n] (n : Nat, v : &mut List Nat, Hn : Le (len *v) n) -> Unit {
+    match n {
+      Z => (),
+      S(n2) => match v {
+        Nil => (),
+        Cons(hd, tl) => { bnd(n2, &mut *tl, Hn); () } } } };
+  () }
+
+/-- The sealed recursor the `fn` statement bound. -/
+def bndSeal : Option Term :=
+  match bndProgram with | .letIn _ t _ => some t | _ => none
+
+/-- The declaration's own domain for `Hn`, as the header writes it: `Le (len *v) n`
+    with §6's marker, since `Hn` is capitalized. Written out because it is what a
+    TRANSCRIPTION would have produced, and E2/F3b are the controls that say the
+    elaboration produces something else. -/
+def bndDeclHn : Term := .cmpT (Std.LeT (Std.lenT (.deref (.var ⟨1, "v"⟩))) (.var ⟨0, "n"⟩))
 
 /-- The two arms of the emitted `natRec`, as annotated binder lists. -/
 def bndArms : Option (List (Var × Term) × List (Var × Term)) :=
-  match FnMacro.fnElab bndD with
-  | .ok (.seal (.app (.app (.app (.const "natRec") _) (.lamR z _)) (.lamR s _)) _) => some (z, s)
+  match bndSeal with
+  | some (.seal (.app (.app (.app (.const "natRec") _) (.lamR z _)) (.lamR s _)) _) => some (z, s)
   | _ => none
 
 -- The shape first — assert the instrument before the conclusion.
@@ -170,8 +193,7 @@ example : (match bndArms with
 -- telescope, so those come for free" would have failed.
 example : (match bndArms with
            | some (z, s) =>
-             let declHn := (bndD.telescope.get! 2).2
-             !(Term.beq (z.get! 1).2 declHn) && !(Term.beq (s.get! 3).2 declHn)
+             !(Term.beq (z.get! 1).2 bndDeclHn) && !(Term.beq (s.get! 3).2 bndDeclHn)
            | none => false) = true := by native_decide
 
 -- E3. `ih` is the motive at the predecessor: peel it at the residual telescope's
@@ -212,20 +234,20 @@ example : (match bndArms with
 /-- The elaborated declaration, as a program: a `let` of the sealed recursor. -/
 def bndProg (t : Term) : Term := .letIn ⟨900, "f"⟩ t .unit
 
-/-- `fnElab bndD` with the step arm's `i`-th annotation replaced, and nothing else
+/-- `bndProgram`'s sealed recursor with the step arm's `i`-th annotation replaced, and nothing else
     touched. `none` when the elaboration is not the shape this section reads. -/
 def stepArmWith (i : Nat) (τ : Term) : Option Term :=
-  match FnMacro.fnElab bndD with
-  | .ok (.seal (.app (.app (.app (.const "natRec") mot) zArm) (.lamR s sb)) piT) =>
+  match bndSeal with
+  | some (.seal (.app (.app (.app (.const "natRec") mot) zArm) (.lamR s sb)) piT) =>
     some (.seal (.app (.app (.app (.const "natRec") mot) zArm)
                   (.lamR (s.set i ((s.get! i).1, τ)) sb)) piT)
   | _ => none
 
-/-- The motive's body, read off the ascription the macro emitted: the seal's type
+/-- The motive's body, read off the ascription the statement emitted: the seal's type
     is `Π (n : Nat) → R`, and every arm's type is an instance of that `R`. -/
 def bndR : Option Term :=
-  match FnMacro.fnElab bndD with
-  | .ok (.seal _ (.pi _ R)) => some R
+  match bndSeal with
+  | some (.seal _ (.pi _ R)) => some R
   | _ => none
 
 /-- The step arm's predecessor binder. -/
@@ -233,9 +255,7 @@ def bndDec : Option Var := bndArms.map (fun p => (p.2.get! 0).1)
 
 -- F0. THE BASELINE. Unperturbed, the elaborated declaration checks — so every
 -- rejection below is the perturbation and not the program.
-example : (match FnMacro.fnElab bndD with
-           | .ok t => progOk (bndProg t)
-           | .error _ => false) = true := by native_decide
+example : progOk bndProgram = true := by native_decide
 
 -- …and the instrument, before the conclusion: `R` really is the motive body,
 -- because `ih`'s derived annotation is exactly `R` at the predecessor. That
@@ -286,7 +306,7 @@ example : (match bndDec with
 -- would have been the conversion passing for the wrong reason. `piAgree` runs
 -- before `checkRFnBody`, so the domains are compared before any body is entered,
 -- and the message below is the comparison's own.
-example : (match stepArmWith 3 (bndD.telescope.get! 2).2 with
+example : (match stepArmWith 3 bndDeclHn with
            | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
            | none => false) = true := by native_decide
 
@@ -518,7 +538,7 @@ example : progRejects hintN "is not the predecessor" = true := by native_decide
 -- Written as PROGRAMS (M28 cluster C). These were two `FnDef`s and an
 -- `fnElab`-returns-`.ok` differential; the pair is the same claim as a pair of
 -- verdicts, and one of the two is now a rejection with a message rather than a
--- `false`. It also takes the last `decl{ }` but one out of this file — `bndD`
--- stays, being genuinely fed to `fnElab` for its arm annotations in §E/§F.
+-- `false`. `bndD`, the last `decl{ }` in this file, followed in M28 D5 — §E/§F
+-- read their sealed recursor out of `bndProgram`'s own binding instead.
 
 end Dllbc.Tests.S27Lam

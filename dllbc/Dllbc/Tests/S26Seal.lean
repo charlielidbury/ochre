@@ -446,21 +446,29 @@ example : diffC   [] d1 = true  := by native_decide
 /-- A callee whose result the checker knows only as a σ — so the seal below sits
     at a SYMBOLIC value, not a concrete one.
 
-    **KEPT AS A DECLARATION, and the EXECUTING machine is why** (M28 ν). This
-    section runs each shape concretely, and a nullary `fn` lowers to a runtime λ
-    binding nothing — which `λr` refuses, because a thunk makes ι ambiguous. So a
-    program that DECLARES a nullary function checks (the seal mints a σ without
-    ever entering the λ) and cannot be RUN, and D2b's concrete side would fail
-    before the relation was consulted. It rides in the table instead, which is what
-    `Program.lean` documents that parameter as being for. `apply1` below has arity
-    two and needs no such treatment — its shape IS self-contained now, which is how
-    the difference was located. -/
-def giveThree : FnDef := decl{ fn giveThree () -> Nat { 3 } }
+    **IT TAKES AN ARGUMENT IT DOES NOT USE, and the EXECUTING machine is why.**
+    This section runs each shape concretely, and a NULLARY `fn` lowers to a runtime
+    λ binding nothing — which `λr` refuses, because a thunk makes ι ambiguous. So a
+    program that declares a nullary function checks (the seal mints a σ without ever
+    entering the λ) and cannot be RUN, and D2b's concrete side would fail before the
+    relation was consulted. It rode in the `table` parameter as a `FnDef` for exactly
+    that reason until M28 D5, when `decl{ }` retired and there was no `FnDef` to put
+    there. Giving it a parameter is the smaller change and costs the section
+    nothing: what D2b needs is a callee whose result the checker knows ONLY as a σ,
+    and a call's result is minted fresh at any arity.
+
+    The nullary wall itself is unchanged and is recorded here rather than asserted,
+    because it fails at RUN time by design and a test of it would be a test of `λr`
+    refusing a thunk. `apply1` below has arity two and never needed the treatment,
+    which is how the difference was located. -/
+def giveThree : Term := prog{ fn giveThree (u : Nat) -> Nat { 3 }; () }
 
 -- seal at a concrete value
 def d2a : Term := prog{ let a = (3 : Nat); let b = a; () }
 -- seal at a symbolic value (the body reads a call's fresh existential)
-def d2b : Term := prog{ let n = giveThree(); let a = (add n 1 : Nat); let b = add n 1; () }
+def d2b : Term := prog{
+  fn giveThree (u : Nat) -> Nat { 3 };
+  let n = giveThree(0); let a = (add n 1 : Nat); let b = add n 1; () }
 -- a sealed function callee, passed and called
 def d2c : Term := prog{
   let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); let z = f(5); () }
@@ -470,7 +478,7 @@ def d2d : Term := prog{
   let f = λ (x : Nat). S x; let r = apply1(f, 2); let s = f(7); () }
 
 def shapes : List (List FnDef × Term) :=
-  [ ([], d2a), ([giveThree], d2b), ([], d2c), ([], d2d) ]
+  [ ([], d2a), ([], d2b), ([], d2c), ([], d2d) ]
 
 example : shapes.all (fun p => progOk p.2 (.const "Unit") p.1) = true := by native_decide
 example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide

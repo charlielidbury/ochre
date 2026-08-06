@@ -653,16 +653,20 @@ example : progOk h6lo = true := by native_decide
     that true, since the callee cannot observe it. The coherence rests on the
     fence, not on the read. -/
 
-/-- `giveL` is the ONE declaration in this file that stays a `FnDef`, and the
-    reason is the EXECUTING machine rather than the checker. §I's differential runs
-    each shape concretely, and a nullary `fn` lowers to a runtime λ binding nothing
-    — which `λr` refuses ("a thunk makes ι ambiguous"). So a program that DECLARES
-    a nullary function checks (the seal mints a σ) but cannot be run, and I2's
-    concrete side would fail before the relation was consulted. Kept as a table
-    entry, which is what `progOk`/`diffC`'s `table` parameter is for: J1's bridge,
-    documented in `Program.lean` as exactly this. The arity-1 callees below need no
-    such treatment and are declared in their programs. -/
-def giveL : FnDef := decl{ fn giveL () -> List Nat { Cons(1, Nil) } }
+/-! `giveL` was the ONE declaration in this file that stayed a `FnDef`, and the
+    reason was the EXECUTING machine rather than the checker: §I's differential
+    runs each shape concretely, and a NULLARY `fn` lowers to a runtime λ binding
+    nothing — which `λr` refuses ("a thunk makes ι ambiguous"). So a program that
+    declares a nullary function checks (the seal mints a σ) but cannot be run, and
+    I2's concrete side would fail before the relation was consulted.
+
+    It rode in the `table` parameter until M28 D5 retired `decl{ }` and left no
+    `FnDef` to put there. **It now takes an argument it does not use**, which is
+    the smaller change and costs I2 nothing: what I2 needs is an argument that is a
+    CALL'S FRESH EXISTENTIAL rather than a literal, and a call's result is minted
+    fresh at any arity. The nullary wall is unchanged and recorded here rather than
+    asserted — it fails at run time by design, so a test of it would be a test of
+    `λr` refusing a thunk. -/
 
 -- I1. Concrete: the capital call does not consume, so the list is still there.
 def i1 : Term := prog{
@@ -681,9 +685,10 @@ example : tailEnv i1 [("a", .bot), ("b", Val.cons (Val.nat 1) Val.nil)] = true :
 
 -- I2. Symbolic: the argument is a call's fresh existential rather than a literal.
 def i2 : Term := prog{
+  fn giveL (u : Nat) -> List Nat { Cons(1, Nil) };
   fn takeLC (L : List Nat) -> Unit { () };
-  let a = giveL(); takeLC(a); let b = a; () }
-example : progOk i2 (.const "Unit") [giveL] = true := by native_decide
+  let a = giveL(0); takeLC(a); let b = a; () }
+example : progOk i2 = true := by native_decide
 
 -- I3. Through a VALUE callee, transparent and sealed.
 def i3 : Term := prog{
@@ -704,7 +709,7 @@ example : progOk i3s = true := by native_decide
 -- and the relation binds the one to the other, which is the same σ-instance
 -- reading it applies everywhere else.
 def shapes : List (List FnDef × Term) :=
-  [ ([], i1), ([giveL], i2), ([], i3), ([], i3s) ]
+  [ ([], i1), ([], i2), ([], i3), ([], i3s) ]
 example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
 
 end Dllbc.Tests.S26Modes
