@@ -228,8 +228,8 @@ inductive Term where
   /-- The borrow type `&mut (s : τ ↝ S)` (§5.1): exclusive access to a `τ`,
       owing an `S` at the boundary. `S` is under one pure de Bruijn binder for
       the entry snapshot `s`. Plain `&mut τ` is `borrowT τ (weaken τ)`. Only
-      valid at a telescope position — interpreted by `checkFn`'s seeding, never
-      reflected as a value. -/
+      valid at a telescope position — interpreted by the seeding that
+      `checkRFnBody` runs (`seedTelescopeV`), never reflected as a value. -/
   | borrowT : Term → Term → Term
   /-- `⇝τ` — the **comptime binder-mode marker on a domain** (combining-fns §6),
       and the pure-binder counterpart of `Var.isComptime`.
@@ -542,9 +542,9 @@ partial def retComponents : Term → List Term
     borrow-carrying return type is audited STRUCTURALLY — `collectResultBorrows`
     walks it and checks each issued borrow's owed type — and is deliberately never
     pinned or `readC`'d, because `readC` rejects `borrowT`. Both audit sites gate
-    the value check on `hasBorrowT` being false (`checkFn`, and `checkRFnBody` for
-    a seal), so a NON-BORROW component of a borrow-carrying return type is judged
-    by nothing at all.
+    the value check on `hasBorrowT` being false (`checkRFnBody`, for a seal — the
+    declaration path was the other one and is gone), so a NON-BORROW component of a
+    borrow-carrying return type is judged by nothing at all.
 
     That is not vacuous, it is unsound: the caller's `buildResult` mints a σ at the
     stated leaf type regardless, so the caller RECEIVES the unearned claim as a

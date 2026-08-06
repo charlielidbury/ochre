@@ -8,9 +8,31 @@ large-elimination flagship (`VecF` — a `Vec`-shaped type family computed by
 `natRec`, converting under a stuck index), and value typing (`hasType`) against
 the fixed constructor basis. Prior suites are untouched and green.
 
-Pure terms have no surface syntax, so the library (`add`, `VecF`, recursor
-applications) is built directly from the pure `Term`/`Val` formers; σ's are
-seeded via a variable slot (`readC` reads the snapshot).
+**This file is deliberately EXEMPT from the end-to-end test rule** (every
+assertion a program accepted, rejected, or run to a value). It is the one place
+that asserts about the kernel directly, and the exemption is load-bearing:
+
+* **It is the kernel floor.** Reduction, conversion and value typing are probed
+  through the checker's own API — `readC`, `convert`, `hasType` — with no macro
+  anywhere in the loop. A macro regression therefore cannot move a single subject
+  in this file, which is what makes a red line here mean the kernel changed.
+* **It is the control group.** When a kernel change turns the corpus red, this
+  file says whether the rules moved or only their surface did; a test suite whose
+  every subject is elaborated cannot answer that question about itself.
+* **It is the hand-built anchor.** The surface layers are pinned by round-trips
+  against terms built by hand (S15Elab checks `StdLemmas.le_refl`, authored in
+  `pure{ }`, convertible with the hand-built `Std.le_reflT`). Those anchors are
+  only worth something if the hand-built side is independently exercised, which is
+  this file's `add`/`VecF`/recursor library.
+
+**The OLD reason is superseded, and is recorded here so a future simplification
+pass does not refute it and delete an exempted file.** The header used to say
+"pure terms have no surface syntax, so the library is built directly from the
+pure `Term`/`Val` formers". That was true at §4 and false since §15: `pure{ … }`
+authors pure terms, and `StdLemmas` is written in it. The rawness here is a
+CHOICE about what is under test, not a gap in the grammar.
+
+σ's are seeded via a variable slot (`readC` reads the snapshot).
 -/
 
 open Dllbc
@@ -18,10 +40,11 @@ open Dllbc.Val (nat)
 
 namespace Dllbc.Tests.S4Pure
 
--- SUBJECT FILE: the pure fragment (⇝, conversion, value typing) has no runtime surface,
--- so the whole library here is built directly from raw Term/Val formers — these raw
--- constructions ARE the subject under test (reduction, hasType, convert), not a surface
--- form. Every raw constructor below is intentional test machinery.
+-- SUBJECT FILE: the whole library here is built directly from raw Term/Val formers,
+-- and the rawness is the POINT rather than a missing grammar (`pure{ }` would author
+-- every one of these since §15) — these raw constructions ARE the subject under test
+-- (reduction, hasType, convert), reached with no macro in the loop. Every raw
+-- constructor below is intentional test machinery. See the exemption in the header.
 
 /-! ## Pure library (built from the raw formers) — SUBJECT: raw pure Terms under test -/
 

@@ -173,8 +173,13 @@ example : progOk classify = true := by native_decide
       the specs above will consume. As raw eliminator terms they are impractical
       (the M11 le_trans wall); this is the dependent-match-elaboration milestone,
       which instantiation (this milestone) is the precondition for.
-    * GAP[bounded recursion / decreasing [k]] — partial correctness is fine with
-      signature-only recursion; the totality index (§8) is deferred.
+    * ~~GAP[bounded recursion / decreasing [k]] — partial correctness is fine with
+      signature-only recursion; the totality index (§8) is deferred.~~ **CLOSED
+      (M26).** Signature-only recursion is gone: a `fn` elaborates to a sealed
+      recursor, so a self-call is `ih` at a structurally smaller scrutinee and
+      totality is a property of the form rather than a deferred side condition.
+      `[k]` survives only as the hint for which argument that scrutinee is, and
+      the elaboration is `fnElab` (M27).
 -/
 
 end Dllbc.Tests.S12Inst

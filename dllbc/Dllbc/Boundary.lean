@@ -1,7 +1,7 @@
 import Dllbc.Machine
 
 /-!
-# Boundaries: telescopes, `checkFn`, and the audit at return (§5)
+# Boundaries: telescopes, and the audit at return (§5)
 
 The milestone the calculus has been aiming at. A function is checked once
 against its signature: seed the telescope (each argument a fresh symbolic
