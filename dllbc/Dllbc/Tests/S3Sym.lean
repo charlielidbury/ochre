@@ -1,7 +1,5 @@
-import Dllbc.Machine
+import Dllbc.Program
 import Dllbc.ProgMacro
-import Dllbc.DeclMacro
-import Dllbc.Migrate
 
 /-!
 # §3.2 test suite — the symbolic layer (σ and ⇜)
@@ -37,42 +35,39 @@ namespace Dllbc.Tests.S3Sym
     body — it applies the §5.3/§6.1 signature rule — so what a caller learns from
     `anyNat()` is exactly "a Nat, and nothing else", which is what a σ is. The
     bodies are irrelevant to every test in this file and are the simplest that
-    typecheck. -/
-def anyNat : FnDef := decl{ fn anyNat () -> Nat { 0 } }
-def anyList : FnDef := decl{ fn anyList () -> List Nat { Nil } }
+    typecheck.
 
-/-- The tests are callers: an empty telescope, so the whole of what they leave in
-    Ω is what the program did. -/
-def caller (body : Term) : FnDef :=
-  { name := "caller", retType := .const "Unit", telescope := [], body := body }
+    Both are written as a PREFIX: every test below is `withAny prog{ … }` and gets
+    them in scope. Legal as a prefix helper — and the only shape that is — because
+    the tails are plain statements: a `%`-spliced tail may not itself declare
+    functions, since both chains number their slots from `progBase` and the inner
+    would shadow the outer. -/
+def withAny (rest : Term) : Term := prog{
+  fn anyNat () -> Nat { 0 };
+  fn anyList () -> List Nat { Nil };
+  %rest }
 
-/-- The program-path counterpart of `expectPaths`: the symbolic walk forks into
-    exactly these paths, in branch-declaration order, each leaving exactly this Ω.
-    File-local, because this file is the only thing that wants it —
-    `Migrate.progEnvsOfT`, which it is three lines on top of, has users elsewhere.
-
-    The COUNT is half the assertion and not a formality — §3.2's whole claim is
-    that matching a symbolic scrutinee splits the run, so a rewrite that checked
-    only the environments would still pass if the fork stopped happening. That is
-    also why these assertions still exist at all: deleting them was weighed when
-    the file moved off its hand-seeded Ω, and they were kept for the path-count
-    canary and for the doc traces they carry verbatim. -/
-def progPathsOfT (table : List FnDef) (d : FnDef) (expected : List Env) : Bool :=
-  let rs := Migrate.progEnvsOfT table d
-  rs.length == expected.length &&
-    (rs.zip expected).all (fun pr => match pr.1 with | .ok env => env == pr.2 | .error _ => false)
+/-! The file-local `progPathsOfT` retired with the `FnDef` subjects it took (M28
+    ν): `tailPaths` in `Dllbc/Program.lean` is the same three lines over a
+    program, and carries the same reason for existing. The COUNT is half the
+    assertion and not a formality — §3.2's whole claim is that matching a symbolic
+    scrutinee splits the run, so a rewrite that checked only the environments would
+    still pass if the fork stopped happening. That is also why these assertions
+    exist at all: deleting them was weighed when the file moved off its hand-seeded
+    Ω, and they were kept for the path-count canary and for the doc traces they
+    carry verbatim. -/
 
 /-! ## §3.2 Symbolic scrutinee: refinement as ⇜ (owned mode) -/
 
 -- is_zero's shape: n ↦ (σ : Nat); a two-branch owned match splits into two
 -- paths. Z branch: ⇜ σ := Z, then n consumed to ⊥. S branch: ⇜ σ := S σ′,
 -- then n ↦ ⊥ and the field binder m ↦ (σ′ : Nat).
-def isZero : FnDef := caller prog{
+def isZero : Term := withAny prog{
   let n = anyNat();
   match n { Z => (), S(m) => () }
 }
 
-example : progPathsOfT [anyNat, isZero] isZero
+example : tailPaths isZero
   [ [("n", .bot)],
     [("n", .bot), ("m", .sym 0)] ] = true := by native_decide
 
@@ -82,7 +77,7 @@ example : progPathsOfT [anyNat, isZero] isZero
 -- fields, `*hd := 0` strong-updates the head, and demanding the owner collapses
 -- the chain to `Cons 0 σ₂` (the doc's trace verbatim). The Nil branch refines
 -- the payload to Nil. Two paths.
-def zeroHead : FnDef := caller prog{
+def zeroHead : Term := withAny prog{
   let x = anyList();
   let b = &mut x;
   match b {
@@ -96,7 +91,7 @@ def zeroHead : FnDef := caller prog{
   ()
 }
 
-example : progPathsOfT [anyList, zeroHead] zeroHead
+example : tailPaths zeroHead
   [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (nat 0) (.sym 0))],
     [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
@@ -104,7 +99,7 @@ example : progPathsOfT [anyList, zeroHead] zeroHead
 
 -- `*b := Nil` in the Cons branch drops the reborrowed fields (their loans are Ω
 -- entries) and installs Nil; both paths leave the owner holding Nil.
-def variantChange : FnDef := caller prog{
+def variantChange : Term := withAny prog{
   let x = anyList();
   let b = &mut x;
   match b { Cons(hd, tl) => { *b := Nil; () }, Nil => () };
@@ -112,7 +107,7 @@ def variantChange : FnDef := caller prog{
   ()
 }
 
-example : progPathsOfT [anyList, variantChange] variantChange
+example : tailPaths variantChange
   [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)],
     [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
@@ -121,7 +116,7 @@ example : progPathsOfT [anyList, variantChange] variantChange
 -- Match `b` through, then match the field binder `tl` through — the refinements
 -- compose. Three paths (outer Cons × {inner Cons, inner Nil}, plus outer Nil):
 --   Cons σ₀ (Cons 0 σ₁),  Cons σ₀ Nil,  Nil.
-def twoLevel : FnDef := caller prog{
+def twoLevel : Term := withAny prog{
   let x = anyList();
   let b = &mut x;
   match b {
@@ -133,7 +128,7 @@ def twoLevel : FnDef := caller prog{
   }
 }
 
-example : progPathsOfT [anyList, twoLevel] twoLevel
+example : tailPaths twoLevel
   [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("h2", .bot), ("t2", .bot),
      ("y", cons (.sym 0) (cons (nat 0) (.sym 1)))],
     [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (.sym 0) nil)],
@@ -149,13 +144,13 @@ example : expectMErr [(⟨0,"x"⟩, cons (nat 3) nil)]
 
 -- A symbolic match in expression position (a constructor argument) cannot split
 -- and is rejected clearly by the pre-pass / readR.
-def exprPosition : FnDef := caller prog{
+def exprPosition : Term := withAny prog{
   let z = anyList();
   let y = Cons(match z { Nil => Nil, Cons(a, r) => Nil }, Nil);
   ()
 }
 
-example : Migrate.progRejectsOf exprPosition "expression position" [anyList, exprPosition]
+example : progRejects exprPosition "expression position"
   = true := by native_decide
 
 end Dllbc.Tests.S3Sym
