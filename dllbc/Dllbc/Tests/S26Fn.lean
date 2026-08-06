@@ -30,7 +30,8 @@ does it agree with `checkFn`) rather than proofs.
 -/
 
 open Dllbc
-open Dllbc.Tests.S26Seal (ok rejects)
+-- (the `S26Seal.ok`/`rejects` open went with those helpers in M28 ν; nothing here
+-- used them — every `.ok` below is a pattern match on an `Except`.)
 open Dllbc.StdLemmas (le_up_r leb_true_le leb_false_gt le_pred_l
   count_cons_l count_cons_r len Ub Lb)
 

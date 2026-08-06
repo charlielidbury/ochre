@@ -46,11 +46,23 @@ borrow while it waits. That is not an accident of the encoding — it is the rea
 -/
 
 open Dllbc
-open Dllbc.Tests.S26Seal (ok rejects caller envOf)
 open Dllbc.Tests.S9Diff (runExec symEnvs instanceOfC diffC)
 open Dllbc.StdLemmas (id_congr)
 
 namespace Dllbc.Tests.S26Rec
+
+/-! ## The declared side's two verdicts
+
+    §E compares a DECLARED function against its sealed twin, so it needs the
+    verdict of a `FnDef` — the one thing in this file that is not a program, and
+    deliberately so (a declaration is what the pair is comparing against). These
+    used to be borrowed from `S26Seal`, which had them because everything there
+    was a declaration; that file is programs now (M28 ν) and has none, so the file
+    that still needs them owns them. -/
+
+def ok (d : FnDef) (table : List FnDef := [d]) : Bool := Migrate.progOkOf d table
+def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
+  Migrate.progRejectsOf d needle table
 
 /-! ## §A. The runtime λ — the form, and the four things it is not -/
 
@@ -273,8 +285,10 @@ example : Tests.S24Arrays.arrCallers.all
 -- C3. THE COMPUTATION HALF, kept: phase A's counterexample, where a seal puts a σ
 -- inside ordinary arithmetic and the structural matcher reports a counterexample
 -- that is not one.
-example : diffC [] Tests.S26Seal.d1.body = true := by native_decide
-example : Tests.S26Seal.diffOld [] Tests.S26Seal.d1.body = false := by native_decide
+-- (`d1` is a PROGRAM since M28 ν, so the body is the thing itself — the `.body`
+-- projection went with the declaration that used to wrap it.)
+example : diffC [] Tests.S26Seal.d1 = true := by native_decide
+example : Tests.S26Seal.diffOld [] Tests.S26Seal.d1 = false := by native_decide
 
 /-! ### C4. Harness liveness — the relation must be able to say NO about a RECURSOR
 

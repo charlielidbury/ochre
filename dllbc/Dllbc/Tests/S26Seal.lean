@@ -1,10 +1,10 @@
-import Dllbc.Boundary
+import Dllbc.Program
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
+import Dllbc.ProgMacro
 import Dllbc.Tests.S9Diff
-import Dllbc.Migrate
 
 /-!
 # §26 (M26-A) — the seal node, and application of a value callee
@@ -53,46 +53,38 @@ open Dllbc.StdLemmas (le_refl le_trans)
 
 namespace Dllbc.Tests.S26Seal
 
-/-! ## Helpers
+/-! ## Helpers — there are none left, and that is the point (M28 ν)
 
-    Rejections are probed through `checkFn` and asserted on the message, never
-    through a Bool: `hasType` returns `false` for "does not have this type" and
-    the seal turns that into an error, so a helper that collapses error and false
-    would let a *stuckness* pass for a *typing* rejection. -/
+    This section used to define `ok`, `rejects` and `caller`: a subject was a
+    `FnDef`, so a body had to be wrapped in a nullary declaration before anything
+    could be asked of it, and the two verdicts needed a harness to route the
+    wrapper through the program path. `fn` is a statement now, so a body IS a
+    program — `progOk`/`progRejects` from `Dllbc/Program.lean` take it directly,
+    and the wrapper has nothing left to do.
 
-/-- The subject checks, ON THE PROGRAM PATH (M27-δ): `decl{ … }` is the harness
-    here, not the subject, so these route through the one path there is. -/
-def ok (d : FnDef) (table : List FnDef := [d]) : Bool := Migrate.progOkOf d table
-
-/-- The subject is rejected, with `needle` in the message. Asserted on the message
-    rather than on a Bool: `hasType` returns `false` for "does not have this type"
-    and the audit turns that into an error, so a helper collapsing error and false
-    would let a STUCKNESS pass for a typing rejection. -/
-def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
-  Migrate.progRejectsOf d needle table
-
-/-- A closed caller: empty telescope, `Unit` return. -/
-def caller (body : Term) : FnDef :=
-  { name := "caller", retType := .const "Unit", telescope := [], body := body }
+    What survives from the old helpers' docstrings, because it is a fact about the
+    kernel and not about the harness: a rejection is asserted on the MESSAGE and
+    never on a Bool. `hasType` returns `false` for "does not have this type" and
+    the seal turns that into an error, so a helper collapsing error and false would
+    let a *stuckness* pass for a *typing* rejection. `progRejects` is written that
+    way for that reason. -/
 
 /-! ## §A. The seal under ⇒-checking -/
 
 -- A1. A well-typed sealed λ is accepted, and the binding holds a σ afterwards.
-def a1 : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); () } }
-example : ok a1 = true := by native_decide
+def a1 : Term := prog{ let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); () }
+example : progOk a1 = true := by native_decide
 
 -- A2. An ill-typed one is rejected, by an honest TYPING rejection naming both the
 -- term and the ascribed type — not by getting stuck somewhere downstream.
-def a2 : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). x, Π (x : Nat) → Bool); () } }
-example : rejects a2 "does not have its ascribed type" = true := by native_decide
+def a2 : Term := prog{ let f = seal(λ (x : Nat). x, Π (x : Nat) → Bool); () }
+example : progRejects a2 "does not have its ascribed type" = true := by native_decide
 
 -- A3. Data seals: the same rule with no Π in sight.
-def a3ok : FnDef := decl{ fn caller () -> Unit { let a = seal(3, Nat); () } }
-def a3no : FnDef := decl{ fn caller () -> Unit { let a = seal(3, Bool); () } }
-example : ok a3ok = true := by native_decide
-example : rejects a3no "does not have its ascribed type" = true := by native_decide
+def a3ok : Term := prog{ let a = seal(3, Nat); () }
+def a3no : Term := prog{ let a = seal(3, Bool); () }
+example : progOk a3ok = true := by native_decide
+example : progRejects a3no "does not have its ascribed type" = true := by native_decide
 
 -- A4. Phase A's stub, RETIRED BY M26-C, which is what it named. A borrow-moded
 -- `u` is a function signature, and §5.4's audit is what checks a function against
@@ -100,9 +92,8 @@ example : rejects a3no "does not have its ascribed type" = true := by native_dec
 -- PURE λ there is still refused, and now for the reason rather than for the phase:
 -- `hasType` has no answer to a payload-owing Π, and pretending otherwise is the
 -- one thing this rule must not do.
-def a4 : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). x, &mut Nat); () } }
-example : rejects a4 "the sealed term must be a runtime λ" = true := by native_decide
+def a4 : Term := prog{ let f = seal(λ (x : Nat). x, &mut Nat); () }
+example : progRejects a4 "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### A5. ⇝ never meets the node
 
@@ -132,24 +123,28 @@ example : strContains (readCOn (.app (.const "S") (.seal (.ctorApp "Z" []) (.con
 def natIdT : Term := pure{ Π (x : Nat) → Nat }
 
 -- as a call argument, where the mint happens inside `processArgs`
-def takesFn : FnDef := decl{ fn takesFn (g : %natIdT) -> Unit { () } }
-def a6a : FnDef := decl{ fn caller () -> Unit
-  { takesFn(seal(λ (x : Nat). x, Π (x : Nat) → Nat)); () } }
-example : ok a6a [takesFn, a6a] = true := by native_decide
+def a6a : Term := prog{
+  fn takesFn (g : %natIdT) -> Unit { () };
+  takesFn(seal(λ (x : Nat). x, Π (x : Nat) → Nat)); () }
+example : progOk a6a = true := by native_decide
 
 -- inside a constructor argument
-def a6b : FnDef := decl{ fn caller () -> Unit { let l = Cons(seal(3, Nat), Nil); () } }
-example : ok a6b = true := by native_decide
+def a6b : Term := prog{ let l = Cons(seal(3, Nat), Nil); () }
+example : progOk a6b = true := by native_decide
 
 -- in return position: a function whose result IS a sealed function. The audit
 -- reads the σ's type out of `sctx` and converts — O(statement), the §5 point 2
 -- shape at a boundary rather than at a citation.
-def a6c : FnDef := decl{ fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Nat) } }
-example : ok a6c = true := by native_decide
+def a6c : Term := prog{
+  fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Nat) };
+  () }
+example : progOk a6c = true := by native_decide
 -- …and the same in return position with the wrong ascription is caught at the
 -- node, before the return type is ever consulted.
-def a6d : FnDef := decl{ fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Bool) } }
-example : rejects a6d "does not have its ascribed type" = true := by native_decide
+def a6d : Term := prog{
+  fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Bool) };
+  () }
+example : progRejects a6d "does not have its ascribed type" = true := by native_decide
 
 /-! ### A7. A limitation, pinned rather than left to be met
 
@@ -161,10 +156,10 @@ example : rejects a6d "does not have its ascribed type" = true := by native_deci
     and whose relocation is phase M26-C. Pinned so the phase-C agent meets a test
     rather than a surprise. -/
 
-def a7 : FnDef :=
-  decl{ fn a7 (n : Nat) -> Unit
-        { let f = seal(match n { Z => Z, S(k) => k }, Nat); () } }
-example : rejects a7 "only a statement-position match may split" = true := by native_decide
+def a7 : Term := prog{
+  fn a7 (n : Nat) -> Unit { let f = seal(match n { Z => Z, S(k) => k }, Nat); () };
+  () }
+example : progRejects a7 "only a statement-position match may split" = true := by native_decide
 
 /-! ## §B. The intersection smell test (`combining-fns` §12, open question 4)
 
@@ -187,9 +182,10 @@ def chk (tm ty : Term) : Bool :=
   | .ok r _ => r
   | .error _ _ => false
 
-/-- Does sealing `tm` at `ty` pass the checker? -/
+/-- Does sealing `tm` at `ty` pass the checker? The subject is a one-`let`
+    PROGRAM now; it used to be that `let` wrapped in a nullary declaration. -/
 def sealChk (tm ty : Term) : Bool :=
-  ok (caller (.letIn ⟨0, "f"⟩ (.seal tm ty) .unit)) []
+  progOk (.letIn ⟨0, "f"⟩ (.seal tm ty) .unit)
 
 def natT : Term := .const "Nat"
 def listNatT : Term := .app (.const "List") natT
@@ -240,71 +236,62 @@ example : sealChk (StdLemmas.le_refl) (StdLemmas.id_sym_ty) = false := by native
     branch, per §6.2's lesson that a rule branch nobody probes is a rule branch
     nobody checked. -/
 
-/-- The single symbolic path's final Ω (no audit), for reading off what a rule
-    left behind. -/
-def envOf (table : List FnDef) (d : FnDef) : Option Env :=
-  match Migrate.progEnvsOfT table d with | [.ok e] => some e | _ => none
-
 def vlam : Val := .lam (.const "Nat") (.ctor "S" [.pvar 0])
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.
-def c1 : FnDef := decl{ fn caller () -> Unit { let f = λ (x : Nat). S x; let y = f(2); () } }
-example : ok c1 = true := by native_decide
-example : (envOf [] c1 == some [("f", vlam), ("y", Val.nat 3)]) = true := by native_decide
+def c1 : Term := prog{ let f = λ (x : Nat). S x; let y = f(2); () }
+example : progOk c1 = true := by native_decide
+example : tailEnv c1 [("f", vlam), ("y", Val.nat 3)] = true := by native_decide
 
 -- C2. **Body withheld ⟹ the type's promise and nothing more.** Seal the same λ
 -- and the same call yields an opaque σ. This is §5 point 4 made mechanical: what
 -- the caller keeps is exactly what was written in the seal.
-def c2 : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); () } }
-example : ok c2 = true := by native_decide
-example : (envOf [] c2 == some [("f", .sym 0), ("y", .sym 1)]) = true := by native_decide
+def c2 : Term := prog{ let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); () }
+example : progOk c2 = true := by native_decide
+example : tailEnv c2 [("f", .sym 0), ("y", .sym 1)] = true := by native_decide
 
 -- C3. Two calls are two events, and are NOT identified (§2.2's requirement on the
 -- runtime column): σ1 and σ2 are distinct, each with its own type instance.
-def c3 : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(2); () } }
-example : (envOf [] c3 == some [("f", .sym 0), ("y", .sym 1), ("z", .sym 2)]) = true := by native_decide
+def c3 : Term := prog{
+  let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(2); () }
+example : tailEnv c3 [("f", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by native_decide
 
 /-! ### C4–C8. The negative controls, one per rule branch -/
 
 -- Partial application: refused, not curried (§12 decision 4).
-def c4 : FnDef := decl{ fn caller () -> Unit
-  { let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () } }
-example : rejects c4 "partial application" = true := by native_decide
+def c4 : Term := prog{ let f = λ (x : Nat). λ (y : Nat). x; let z = f(2); () }
+example : progRejects c4 "partial application" = true := by native_decide
 -- …and the same refusal on the abstract side, which is the branch that matters
 -- for phase C (a σ : Π under-applied is a closure holding its arguments).
-def c5 : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
-    let z = f(2); () } }
-example : rejects c5 "partial application" = true := by native_decide
+def c5 : Term := prog{
+  let f = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
+  let z = f(2); () }
+example : progRejects c5 "partial application" = true := by native_decide
 
 -- Over-application.
-def c6 : FnDef := decl{ fn caller () -> Unit { let f = λ (x : Nat). x; let z = f(2, 3); () } }
-example : rejects c6 "too many arguments" = true := by native_decide
+def c6 : Term := prog{ let f = λ (x : Nat). x; let z = f(2, 3); () }
+example : progRejects c6 "too many arguments" = true := by native_decide
 
 -- A mistyped argument, on both branches.
-def c7 : FnDef := decl{ fn caller () -> Unit { let f = λ (x : Nat). x; let z = f(Nil); () } }
-example : rejects c7 "does not have its parameter type" = true := by native_decide
-def c8 : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); let z = f(Nil); () } }
-example : rejects c8 "does not have its parameter type" = true := by native_decide
+def c7 : Term := prog{ let f = λ (x : Nat). x; let z = f(Nil); () }
+example : progRejects c7 "does not have its parameter type" = true := by native_decide
+def c8 : Term := prog{ let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); let z = f(Nil); () }
+example : progRejects c8 "does not have its parameter type" = true := by native_decide
 
 -- A callee that is not a function at all, and one that was moved away.
-def c9 : FnDef := decl{ fn caller () -> Unit { let f = 3; let z = f(2); () } }
-example : rejects c9 "is not a function value" = true := by native_decide
-def c10 : FnDef := decl{ fn caller () -> Unit
-  { let f = Cons(1, Nil); let g = f; let z = f(2); () } }
-example : rejects c10 "holds ⊥" = true := by native_decide
+def c9 : Term := prog{ let f = 3; let z = f(2); () }
+example : progRejects c9 "is not a function value" = true := by native_decide
+def c10 : Term := prog{ let f = Cons(1, Nil); let g = f; let z = f(2); () }
+example : progRejects c10 "holds ⊥" = true := by native_decide
 
 -- The demand-collapse premise (§5.2, "every demand collapses first") fires at the
 -- callee slot too. `x` holds a loan marker; the call ENDS it and retries, so the
 -- rejection names what the slot really holds — a Nat — rather than the marker.
 -- Listing the site is the point: every unlisted demand site in this calculus has
 -- so far been a bug waiting for its first program.
-def c11 : FnDef := decl{ fn caller () -> Unit { let x = 3; let b = &mut x; let z = x(2); () } }
-example : rejects c11 "is not a function value" = true := by native_decide
+def c11 : Term := prog{ let x = 3; let b = &mut x; let z = x(2); () }
+example : progRejects c11 "is not a function value" = true := by native_decide
 
 /-! ### C12. The `ih` shape
 
@@ -314,22 +301,28 @@ example : rejects c11 "is not a function value" = true := by native_decide
     the caller's actual λ and the same syntax β-reduces. One form, two rules, no
     branch in the program. -/
 
-def apply1 : FnDef := decl{ fn apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) } }
-example : ok apply1 = true := by native_decide
+def apply1 : Term := prog{
+  fn apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
+  () }
+example : progOk apply1 = true := by native_decide
 
 -- The caller supplies a literal λ; checking mode learns only `Nat` about the
 -- result (the call is opaque), which is §5.3's promise, unchanged by the callee
 -- being applied through a variable inside.
-def c12 : FnDef := decl{ fn caller () -> Unit
-  { let f = λ (x : Nat). S x; let r = apply1(f, 2); () } }
-example : ok c12 [apply1, c12] = true := by native_decide
-example : (envOf [apply1] c12 == some [("f", vlam), ("r", .sym 0)]) = true := by native_decide
+def c12 : Term := prog{
+  fn apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
+  let f = λ (x : Nat). S x; let r = apply1(f, 2); () }
+example : progOk c12 = true := by native_decide
+-- `tailEnv` drops the program's own function binding, so the expected Ω is the
+-- one this assertion always had — `r ↦ σ0` and not `σ1`.
+example : tailEnv c12 [("f", vlam), ("r", .sym 0)] = true := by native_decide
 
 -- The negative control for the parameter branch: a body that under-applies its
 -- Π-typed parameter is rejected at the callee's own check, not at a caller's.
-def apply1bad : FnDef :=
-  decl{ fn apply1bad (g : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { g(n) } }
-example : rejects apply1bad "partial application" = true := by native_decide
+def apply1bad : Term := prog{
+  fn apply1bad (g : Π (x : Nat) → Π (y : Nat) → Nat, n : Nat) -> Nat { g(n) };
+  () }
+example : progRejects apply1bad "partial application" = true := by native_decide
 
 /-! ### C13. Transparent vs sealed, as a TYPING difference
 
@@ -346,13 +339,14 @@ example : rejects apply1bad "partial application" = true := by native_decide
     type, which is the whole ensures discipline arriving as a consequence of the
     syntax rather than as a convention. -/
 
-def needsEq : FnDef := decl{ fn needsEq (n : Nat, h : Id Nat n 3) -> Unit { () } }
-def c13t : FnDef := decl{ fn caller () -> Unit
-  { let f = λ (x : Nat). S x; let y = f(2); needsEq(y, Refl); () } }
-def c13s : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); needsEq(y, Refl); () } }
-example : ok c13t [needsEq, c13t] = true := by native_decide
-example : rejects c13s "does not have its parameter type" [needsEq, c13s] = true := by native_decide
+def c13t : Term := prog{
+  fn needsEq (n : Nat, h : Id Nat n 3) -> Unit { () };
+  let f = λ (x : Nat). S x; let y = f(2); needsEq(y, Refl); () }
+def c13s : Term := prog{
+  fn needsEq (n : Nat, h : Id Nat n 3) -> Unit { () };
+  let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); needsEq(y, Refl); () }
+example : progOk c13t = true := by native_decide
+example : progRejects c13s "does not have its parameter type" = true := by native_decide
 
 /-! ### C14. A caller can take apart what an abstract call returned
 
@@ -372,21 +366,24 @@ example : rejects c13s "does not have its parameter type" [needsEq, c13s] = true
 def sigLemTy : Term := pure{ Π (x : Nat) → Σ (h : Le x x) → Le x x }
 def sigLem : Term := pure{ λ (x : Nat). Pair (le_refl x) (le_refl x) }
 
-def c14 : FnDef := decl{ fn caller () -> Le 2 2 {
+def c14 : Term := prog{
   let f = seal(%sigLem, %sigLemTy);
   let p = f(2);
-  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => le_trans 2 2 2 a b } } }
-example : ok c14 = true := by native_decide
+  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => le_trans 2 2 2 a b } }
+-- The program's RESULT is the projection, so its return type is what the audit
+-- checks it at — stated as `progOk`'s second argument, where the old form stated
+-- it as the wrapper declaration's `-> Le 2 2`.
+example : progOk c14 (pure{ Le 2 2 }) = true := by native_decide
 
 -- The negative control has to be demanded to be a control: a `let`-bound proof is
 -- never typed until something asks for its type (readC computes, it does not
 -- check), so the wrong projection is only caught when the AUDIT wants it. Stated
 -- because the vacuous version of this test passed, and would have looked fine.
-def c14bad : FnDef := decl{ fn caller () -> Le 3 2 {
+def c14bad : Term := prog{
   let f = seal(%sigLem, %sigLemTy);
   let p = f(2);
-  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } } }
-example : rejects c14bad "does not have return type" = true := by native_decide
+  elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } }
+example : progRejects c14bad "does not have return type" (pure{ Le 3 2 }) = true := by native_decide
 
 /-! ## §D. The executing machine, and a NEW simulation-relation case
 
@@ -437,35 +434,45 @@ def diffOld (table : List FnDef) (body : Term) : Bool :=
 
 /-! ### D1. The counterexample that names the new case -/
 
-def d1 : FnDef := decl{ fn caller () -> Unit { let a = seal(3, Nat); let b = add a 1; () } }
-example : ok d1 = true := by native_decide
+def d1 : Term := prog{ let a = seal(3, Nat); let b = add a 1; () }
+example : progOk d1 = true := by native_decide
 -- The old relation calls this a counterexample. It is not one: the two
 -- environments agree at σ0 := 3.
-example : diffOld [] d1.body = false := by native_decide
-example : diffC   [] d1.body = true  := by native_decide
+example : diffOld [] d1 = false := by native_decide
+example : diffC   [] d1 = true  := by native_decide
 
 /-! ### D2. The four shapes constraint 6 asks for, all GREEN -/
 
 /-- A callee whose result the checker knows only as a σ — so the seal below sits
-    at a SYMBOLIC value, not a concrete one. -/
+    at a SYMBOLIC value, not a concrete one.
+
+    **KEPT AS A DECLARATION, and the EXECUTING machine is why** (M28 ν). This
+    section runs each shape concretely, and a nullary `fn` lowers to a runtime λ
+    binding nothing — which `λr` refuses, because a thunk makes ι ambiguous. So a
+    program that DECLARES a nullary function checks (the seal mints a σ without
+    ever entering the λ) and cannot be RUN, and D2b's concrete side would fail
+    before the relation was consulted. It rides in the table instead, which is what
+    `Program.lean` documents that parameter as being for. `apply1` below has arity
+    two and needs no such treatment — its shape IS self-contained now, which is how
+    the difference was located. -/
 def giveThree : FnDef := decl{ fn giveThree () -> Nat { 3 } }
 
 -- seal at a concrete value
-def d2a : FnDef := decl{ fn caller () -> Unit { let a = seal(3, Nat); let b = a; () } }
+def d2a : Term := prog{ let a = seal(3, Nat); let b = a; () }
 -- seal at a symbolic value (the body reads a call's fresh existential)
-def d2b : FnDef := decl{ fn caller () -> Unit
-  { let n = giveThree(); let a = seal(add n 1, Nat); let b = add n 1; () } }
+def d2b : Term := prog{ let n = giveThree(); let a = seal(add n 1, Nat); let b = add n 1; () }
 -- a sealed function callee, passed and called
-def d2c : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(5); () } }
+def d2c : Term := prog{
+  let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(5); () }
 -- a transparent function callee, passed to a declared fn and called inside it
-def d2d : FnDef := decl{ fn caller () -> Unit
-  { let f = λ (x : Nat). S x; let r = apply1(f, 2); let s = f(7); () } }
+def d2d : Term := prog{
+  fn apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
+  let f = λ (x : Nat). S x; let r = apply1(f, 2); let s = f(7); () }
 
 def shapes : List (List FnDef × Term) :=
-  [ ([], d2a.body), ([giveThree], d2b.body), ([], d2c.body), ([apply1], d2d.body) ]
+  [ ([], d2a), ([giveThree], d2b), ([], d2c), ([], d2d) ]
 
-example : shapes.all (fun p => ok (caller p.2) p.1) = true := by native_decide
+example : shapes.all (fun p => progOk p.2 (.const "Unit") p.1) = true := by native_decide
 example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
 
 /-! ### D3. Harness liveness — the relation must be able to say NO
@@ -475,16 +482,16 @@ example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
     against a concrete run that genuinely disagrees: same symbolic side, a
     concrete side that adds 2 where the checker's σ-instance adds 1. -/
 
-def d3mutant : FnDef := decl{ fn caller () -> Unit { let a = 3; let b = add a 2; () } }
+def d3mutant : Term := prog{ let a = 3; let b = add a 2; () }
 
 example :
-  (match symEnvs false [] d1.body, runExec [] d3mutant.body with
+  (match symEnvs false [] d1, runExec [] d3mutant with
    | [.ok se], .ok ce => instanceOfComputed se ce
    | _, _ => true) = false := by native_decide
 -- …and it says YES to the honest pairing, so the NO above is discrimination, not
 -- a broken relation.
 example :
-  (match symEnvs false [] d1.body, runExec [] d1.body with
+  (match symEnvs false [] d1, runExec [] d1 with
    | [.ok se], .ok ce => instanceOfComputed se ce
    | _, _ => false) = true := by native_decide
 
@@ -524,37 +531,44 @@ example :
 def big : Term := StdLemmas.count_swapA
 def bigTy : Term := StdLemmas.count_swapA_ty
 
-def useIt : FnDef := decl{ fn useIt (h : %bigTy) -> Unit { () } }
-
 /-- `let c = rhs ; useIt(c) ; … ; ()` with `k` citations. Built rather than
     written out so the citation count can be swept: the claim is about the SLOPE,
     and one hand-written pair would only show a point. -/
-def citeK (k : Nat) (rhs : Term) : FnDef :=
+def citeK (k : Nat) (rhs : Term) : Term :=
   let c : Var := ⟨0, "c"⟩
   let rec go : Nat → Term
     | 0 => .unit
     | n + 1 => .seq (.call "useIt" [.var c]) (go n)
-  caller (.letIn c rhs (go k))
+  .letIn c rhs (go k)
 
-def unsealedK (k : Nat) : FnDef := citeK k big
-def sealedK (k : Nat) : FnDef := citeK k (.seal big bigTy)
+/-- The citations, with their callee declared above them. The built tail is
+    spliced with `%`, and the `.call "useIt"` nodes inside it are retargeted onto
+    the slot by `bindFn` — which is the same mechanism a hand-written call goes
+    through, so a swept program and a written one mean the same thing. -/
+def citeProg (k : Nat) (rhs : Term) : Term := prog{
+  fn useIt (h : %bigTy) -> Unit { () };
+  %(citeK k rhs) }
 
-def unsealed1 : FnDef := unsealedK 1
-def sealed1 : FnDef := sealedK 1
-def unsealed4 : FnDef := unsealedK 4
-def sealed4 : FnDef := sealedK 4
+def unsealedK (k : Nat) : Term := citeProg k big
+def sealedK (k : Nat) : Term := citeProg k (.seal big bigTy)
+
+def unsealed1 : Term := unsealedK 1
+def sealed1 : Term := sealedK 1
+def unsealed4 : Term := unsealedK 4
+def sealed4 : Term := sealedK 4
 
 -- Both check, and check the same thing: the sealed citation is not cheaper by
 -- being weaker. (`useIt`'s parameter type is the statement either way, so an
 -- unsound σ would be caught here, not saved.)
-example : ok unsealed4 [useIt, unsealed4] = true := by native_decide
-example : ok sealed4 [useIt, sealed4] = true := by native_decide
+example : progOk unsealed4 = true := by native_decide
+example : progOk sealed4 = true := by native_decide
 
 -- Negative control: sealing does not launder a WRONG proof past the citation. A
 -- certificate sealed at a statement it does not inhabit is rejected at the node.
-def sealedWrong : FnDef := decl{ fn caller () -> Unit
-  { let c = seal(%StdLemmas.le_refl, %bigTy); useIt(c); () } }
-example : rejects sealedWrong "does not have its ascribed type" [useIt, sealedWrong] = true := by
+def sealedWrong : Term := prog{
+  fn useIt (h : %bigTy) -> Unit { () };
+  let c = seal(%StdLemmas.le_refl, %bigTy); useIt(c); () }
+example : progRejects sealedWrong "does not have its ascribed type" = true := by
   native_decide
 
 /-- Re-measure on demand (`lake build` prints it): the numbers in the §E header. -/
@@ -565,10 +579,8 @@ def timeIt (label : String) (f : Unit → String) : IO Unit := do
   let t1 ← IO.monoMsNow
   IO.println s!"{label}: {r} [{t1 - t0} ms]"
 
-def verdict (d : FnDef) : String :=
-  match FnMacro.progOf (Migrate.cohort [useIt, d] d) .unit with
-  | .error e => "ELAB: " ++ e
-  | .ok t => match checkProgram t with | .ok _ => "OK" | .error e => "ERR: " ++ e
+def verdict (t : Term) : String :=
+  match checkProgram t with | .ok _ => "OK" | .error e => "ERR: " ++ e
 
 #eval do
   timeIt "S26 Qed  pure-fragment check of the proof" (fun _ => toString (chk big bigTy))

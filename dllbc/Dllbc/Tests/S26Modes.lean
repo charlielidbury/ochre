@@ -202,9 +202,7 @@ def b7spec : Term := prog{
   fn b7spec (G : Π (x : Nat) → Nat, n : Nat) -> Unit { let r = G(n); () };
   () }
 example : progRejects b7spec "cannot be CALLED under ⇒" = true := by native_decide
--- Still on the `FnDef` bridge: `S26Seal` has not migrated yet, so `apply1` is a
--- declaration rather than a program. Converts to `progOk` when it does.
-example : Migrate.progOkOf S26Seal.apply1 = true := by native_decide
+example : progOk S26Seal.apply1 = true := by native_decide
 
 -- …and the citation that IS allowed: `G a` in a type position, where the whole
 -- content is §2.1's structured neutral. `G` is never supplied at runtime.
@@ -486,8 +484,7 @@ example : progRejects g3 "partial application" = true := by native_decide
 -- The route that DOES work today, so the limitation is bounded rather than
 -- open-ended: a DECLARED fn may return a function (phase A's A6c). It is only
 -- the value-callee spine that cannot say "stop here and hand me the rest".
--- …on the `FnDef` bridge, like B7's `apply1`, until `S26Seal` migrates.
-example : Migrate.progOkOf S26Seal.a6c = true := by native_decide
+example : progOk S26Seal.a6c = true := by native_decide
 
 /-! ## §H. The flagship — `quicksort (fuel, v, Hfuel)` reads right
 
