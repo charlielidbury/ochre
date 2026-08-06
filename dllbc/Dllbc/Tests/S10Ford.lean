@@ -1,6 +1,5 @@
-import Dllbc.Boundary
-import Dllbc.DeclMacro
-import Dllbc.Migrate
+import Dllbc.Program
+import Dllbc.ProgMacro
 
 /-!
 # §10 test suite — the fording kit: `Id`, `J`, `K`, and the minimal indexed match
@@ -23,6 +22,11 @@ whole no-confusion toolkit *inside* the calculus — `NatCode` by double `natRec
 The eliminator neutrals are typed by `hasType`'s §10 synthesis (`j A a P d b p :
 P b p`, `k A a P d p : P p`, `botElim T x : T`); that is what lets the library
 derivations type-check as ordinary terms.
+
+**The declaration half is written as programs** (M28 ν): `fn` is a statement, so
+each fording test is a program that declares one function and returns `()`. The
+library half below is untouched — it is `hasType` derivations over `Val`s, which
+never went through a declaration form at all.
 -/
 
 open Dllbc
@@ -84,16 +88,26 @@ example : (Val.nfV 1000 (jV natV sZ (.lam natV (.lam natV natV)) (vnat 42) sZ (.
 -- (An inter-parameter dependency is written with the earlier param's RUNTIME
 -- var — `Id Nat n 2` — resolved by the `readC` snapshot read, not a pure de
 -- Bruijn index.)
-def learn : FnDef :=
-  decl{ fn learn (n : Nat, p : Id Nat n 2) -> Nat { match p { Refl => n } } }
+def learn : Term := prog{
+  fn learn (n : Nat, p : Id Nat n 2) -> Nat { match p { Refl => n } };
+  () }
 
-example : Migrate.progOkOf learn = true := by native_decide
+example : progOk learn = true := by native_decide
 
 -- The refinement is OBSERVABLE in the final Ω: after the match, `let m = n`
 -- copies the *refined* value, so `m ↦ 2` (not a symbolic `n`). Had refinement
 -- not fired, `m` would be a `sym`.
-def learnObs : FnDef :=
-  decl{ fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } } }
+def learnObs : Term := prog{
+  fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } };
+  () }
+
+-- Its Ω assertion died with `checkFn` (below), and until this file migrated the
+-- only thing still reading it was `S26Migrate.p10` — a pool, i.e. inventory. So
+-- it gets the assertion the pool's `progVerdict` was computing for it anyway:
+-- the declaration checks. That is weaker than what it was written for and
+-- stronger than nothing, and `learnDemand` below is where the claim actually
+-- went.
+example : progOk learnObs = true := by native_decide
 
 /-! ### The refinement, CONVERTED from an Ω observation to a DEMAND (M27-δ)
 
@@ -111,68 +125,74 @@ def learnObs : FnDef :=
     is a strictly better assertion than the one it replaces: it says the
     refinement is USABLE, where the Ω observation only said it was recorded. -/
 
-def learnDemand : FnDef :=
-  decl{ fn learnDemand (n : Nat, p : Id Nat n 2) -> Unit {
-    match p { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } } }
-example : Migrate.progOkOf learnDemand = true := by native_decide
+def learnDemand : Term := prog{
+  fn learnDemand (n : Nat, p : Id Nat n 2) -> Unit {
+    match p { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } };
+  () }
+example : progOk learnDemand = true := by native_decide
 
 -- THE TWIN, and it is what makes the certificate a demand rather than a
 -- decoration: the same `let m = n` and the same seal with the match REMOVED. `m`
 -- is unrefined, so `Refl` has nothing to inhabit.
-def learnDemandNo : FnDef :=
-  decl{ fn learnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
-    let m = n; let c = seal(Refl, Id Nat m 2); () } }
-example : Migrate.progRejectsOf learnDemandNo "does not have its ascribed type"
+def learnDemandNo : Term := prog{
+  fn learnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
+    let m = n; let c = seal(Refl, Id Nat m 2); () };
+  () }
+example : progRejects learnDemandNo "does not have its ascribed type"
   = true := by native_decide
 
 -- Through a borrow: `pb : &mut (Id Nat n 2)`. The refl-match reads through the
 -- borrow, refines `n := 2`, and — because refinement now reaches the owed
 -- obligations — the audit sees `pb` owing `Id Nat 2 2`, which its `Refl` payload
 -- inhabits. This is the case that forced obligations into machine state.
-def learnBorrow : FnDef :=
-  decl{ fn learnBorrow (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
-    match pb { Refl => { let m = n; () } } } }
+def learnBorrow : Term := prog{
+  fn learnBorrow (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
+    match pb { Refl => { let m = n; () } } };
+  () }
 
-example : Migrate.progOkOf learnBorrow = true := by native_decide
+example : progOk learnBorrow = true := by native_decide
 
 -- …and the same conversion through the borrow, so the demand form covers both
 -- routes the refinement takes rather than only the owned one.
-def learnBorrowDemand : FnDef :=
-  decl{ fn learnBorrowDemand (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
-    match pb { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } } }
-example : Migrate.progOkOf learnBorrowDemand = true := by native_decide
+def learnBorrowDemand : Term := prog{
+  fn learnBorrowDemand (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
+    match pb { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } };
+  () }
+example : progOk learnBorrowDemand = true := by native_decide
 
 -- Rigid-rigid: `p : Id Nat Z (S Z)`. Neither endpoint is a σ, so there is no
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The
 -- kernel does NOT auto-discharge the conflict; that is the library's job (below).
-def rigidStuck : FnDef :=
-  decl{ fn rigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } } }
+def rigidStuck : Term := prog{
+  fn rigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } };
+  () }
 
-example : Migrate.progRejectsOf rigidStuck "rigid" = true := by native_decide
-example : Migrate.progRejectsOf rigidStuck "j/k" = true := by native_decide
+example : progRejects rigidStuck "rigid" = true := by native_decide
+example : progRejects rigidStuck "j/k" = true := by native_decide
 
 -- Occurs check: `p : Id Nat n (S n)`. Refining `n := S n` would be cyclic —
 -- rejected before it can loop.
-def occursFn : FnDef :=
-  decl{ fn occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } } }
+def occursFn : Term := prog{
+  fn occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } };
+  () }
 
-example : Migrate.progRejectsOf occursFn "occurs check" = true := by native_decide
+example : progRejects occursFn "occurs check" = true := by native_decide
 
 /-! ## Exhaustiveness and scope (Id's constructor set is `{Refl}`) -/
 
 -- An empty match on `p : Id Nat n 2` is non-exhaustive: `Refl` is uncovered.
-example : Migrate.progRejectsOf
-  (decl{ fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { } } }) "non-exhaustive" = true := by native_decide
+example : progRejects (prog{
+  fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { } }; () }) "non-exhaustive" = true := by native_decide
 
 -- A stray non-`Refl` constructor is likewise not enough to be exhaustive.
-example : Migrate.progRejectsOf
-  (decl{ fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } } }) "non-exhaustive" = true := by native_decide
+example : progRejects (prog{
+  fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } }; () }) "non-exhaustive" = true := by native_decide
 
 -- Scope guard: `Id` over a *borrow* type is rejected — reflecting the borrow-type
 -- index throws (borrow types live only at telescope positions), no special
 -- machinery needed. (Id over ordinary indexed types is unrestricted.)
-example : Migrate.progRejectsOf
-  (decl{ fn f (q : Id (&mut Nat) 0 0) -> Unit { () } }) "borrow type" = true := by native_decide
+example : progRejects (prog{
+  fn f (q : Id (&mut Nat) 0 0) -> Unit { () }; () }) "borrow type" = true := by native_decide
 
 /-! ## The fording library — no confusion, injectivity, K, all as checked terms
 

@@ -92,8 +92,9 @@ open Dllbc.Tests
 def p6 : List FnDef := [S6Call.zeroAll]
 def p7 : List FnDef := [S7Group.choose, S7Group.chooseCaller, S7Group.through, S7Group.throughCaller]
 def p9 : List FnDef := [S9Diff.through, S9Diff.advance, S9Diff.choose, S9Diff.push]
-def p10 : List FnDef := [S10Ford.learn, S10Ford.learnObs, S10Ford.learnBorrow,
-  S10Ford.rigidStuck, S10Ford.occursFn]
+-- S10Ford's declaration half is written as PROGRAMS now (M28 ν) — its library
+-- half never had a pool entry, being `hasType` derivations over `Val`s — so `p10`
+-- is gone with `p5`. None of its five contributed a decliner either.
 def p11 : List FnDef := [S11Lib.retRefl, S11Lib.storeProof, S11Lib.discharge]
 def p12 : List FnDef := [S12Inst.useRefl, S12Inst.callerRet, S12Inst.symCall, S12Inst.needs,
   S12Inst.callNeeds1, S12Inst.callNeeds3, S12Inst.observe, S12Inst.observeGood,
@@ -176,7 +177,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p7, p9, p10, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
+  [p6, p7, p9, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
