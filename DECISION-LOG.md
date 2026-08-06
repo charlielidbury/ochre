@@ -3,6 +3,115 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-06: M29 phase C (δ-constants) — the cost is REAL, CONFIRMED, and NOT DEMANDED. Parked.
+
+**Decision: do not build the transparent/sealed constant tier. Park it, with the
+profile recorded so the successor does not re-derive it.** The measurement is
+`dllbc/Measure.lean`, a compiled `lean_exe phasec`, kept in the tree — parking a
+design because nothing demands it is only honest if re-checking the demand is
+cheap.
+
+Phase C's premise is that `Dllbc.Std` reifies its library by **inlining**:
+`LeFnT := toTerm LeFn` is the whole definition body as a `Term`, so every `Le a b`
+in a spec carries a full copy of `Le`. The proposal was a constant tier — `.const`
+plus a δ-rule — so a citation costs one node instead of forty-one.
+
+### The static cost is as large as the premise claims
+
+| | list flagship | array flagship |
+|---|---|---|
+| whole program term | 58 065 nodes | 135 998 nodes |
+| non-overlapping library copies | 46 225 (**79%**) | 70 684 (**51%**) |
+
+The list flagship carries **418 copies of `Le`, 256 of `eqb`, 199 of `count`**.
+Four fifths of the flagship is duplicated library.
+
+(The per-constant counts OVERLAP and must not be summed — `count`'s body contains
+`eqb`, `Sorted`'s contains `Le` — which is how the overlap announced itself: the
+first run reported "103% of the term". The table's percentages are from a single
+traversal that stops at the first constant it meets, so they are real fractions.)
+
+### The profile confirms the mechanism, not just the premise
+
+`perf record` on the compiled binary, 1K samples, one event (the machine is
+hybrid — recording without `-e cpu_core/cycles/u` splits the samples across
+P-core and E-core PMUs and the E-core report is 4 samples of noise; the first
+reading of this profile was that noise):
+
+    24.1%  Val.substGo        6.3%  Val.collectSpine     2.9%  reflectC
+    15.3%  Val.whnfV          5.9%  Val.nfV              2.9%  Val.rebuildSpine
+    10.5%  lean_dec_ref_cold  5.3%  lean_free_small      1.9%  Val.shiftPure
+    10.3%  lean_alloc_small   4.3%  List.reverseAux
+
+**~57% is pure-fragment normalization** (`substGo`/`whnfV`/`collectSpine`/`nfV`/
+`rebuildSpine`/`shiftPure`/`beq`) and **~26% is allocator traffic** — confirmed by
+call graph, not assumed, to be reached through `sealApp`/`sealFn`, i.e. the
+checker's own traversals allocating and freeing the nodes they rebuild. So ~83%
+of the profile sits in exactly the code a constant tier would shrink. The
+mechanism is real.
+
+Incidentally: **M22's 93%-`shiftPure` hotspot is gone** — `shiftPure` is 1.9%
+here. That hotspot was fixed and this profile is the confirmation.
+
+### …and none of it is demanded, because the budget is 75 ms
+
+The two heaviest checks in the suite:
+
+    list flagship  (quicksort, Sorted ∧ Perm)   23 ms
+    array flagship (quicksortA chain)           52 ms
+
+**The ceiling is measured rather than guessed.** Check time is linear in term
+size across the two subjects — 58 065 nodes / 23 ms and 135 998 nodes / 52 ms is
+**0.396 vs 0.382 µs per node**, two points but with a profile that shows no
+superlinear structure to hide. At that rate, deleting the duplication caps the
+saving at **~18 ms on the list flagship and ~27 ms on the array one: ~45 ms across
+the heaviest pair in the suite.**
+
+That is not a workload. Per the checker zero-debt bias — merge tax-removal perf,
+park checker-code perf until something demands it — a new kernel tier, a new
+`Term` constructor and a δ-rule threaded through conversion is a large, permanent
+complexity purchase against a 45 ms prize. It is also debt with a *correctness*
+surface: a constant tier changes what `Val.beq` and `convert` see, and every
+assertion in the suite is downstream of those.
+
+### What would change the answer, and what the successor already has
+
+The cost is **linear in citations and the terms are already 79% library**, so this
+grows with the corpus rather than with any one proof. Re-run `phasec`; the answer
+changes when the heaviest check is seconds rather than tens of milliseconds.
+
+**The fix's shape is already demonstrated and already measured**, which is the
+other reason not to build it speculatively: the `let`-seal is the same idea one
+tier up, and `Tests/Functions.lean` §E prices it — `transparent x128` at 541 ms
+against `SEALED x128` at 20 ms, a factor of 27, because the sealed cost is a
+function of the statement and the transparent one of the proof. A sealed constant
+is that, at the constant. When a workload demands it, the precedent, the profile
+and the harness are all in the tree.
+
+### Alternatives considered
+
+* **Build it anyway, it is obviously right.** Refused on the house rule that cost
+  this project four architected cache layers in M22 that measured wash-to-
+  regression: profile first, architect second. The profile here says the mechanism
+  is real *and* the prize is 45 ms.
+* **Memoize normalization of closed library subterms instead.** Strictly worse:
+  the same correctness surface, and it pays at every citation rather than removing
+  the citation's cost. Also a cache, and so squarely the thing the house rule
+  refuses to build unprofiled.
+* **Shrink the library by hand** (fewer nested `eqb`s in `count`). Attacks the
+  symptom, costs readability of the one part of the system meant to be read as
+  ordinary definitions.
+
+### Interaction with A3, which is why this was worth measuring now
+
+The task noted that a constant tier interacts with the capability bits from
+M29's λ work. It does, and the measurement makes the sequencing clear: **A3
+first.** A3 is still open and, per the phase-A entry, has an unsettled design
+question (a both-capable function has two signatures). A constant tier laid down
+first would have to be re-threaded through whatever A3 settles. There is no
+schedule pressure to take them in the other order, because there is no 45 ms
+emergency.
+
 ## 2026-08-06: M29 phase A — modes removed; the λ merge (A3) STOPS at a verified-viable boundary
 
 Phase A was four steps: A1 `let` unification, A3 the λ merge with try-both
