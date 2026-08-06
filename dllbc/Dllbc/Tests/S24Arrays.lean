@@ -781,12 +781,12 @@ def bump : FnDef := decl{
 def arrPool : List FnDef := [fill1, bump]
 
 /-- A carved segment handed to a call, then the whole array demanded back. -/
-def arrCaller1 : Term := dllbcWith [] {
+def arrCaller1 : Term := prog{
   let a = Arr(3, 1, 2); let s = &mut a[1 ; 1]; fill1(s); let b = a; () }
 
 /-- TWO carved segments, one passed to each of two calls, then rejoined — ¶3.6's
     "several captured loans in one owner" at the arity the doc calls new. -/
-def arrCaller2 : Term := dllbcWith [] {
+def arrCaller2 : Term := prog{
   let a = Arr(3, 1, 2, 7);
   let s = &mut a[0 ; 2]; let t = &mut a[2 ; 2];
   bump(s); bump(t);
@@ -794,7 +794,7 @@ def arrCaller2 : Term := dllbcWith [] {
 
 /-- Inline carving with no call at all: the residues never leave, so there is nothing
     for a group to forget. -/
-def arrCaller3 : Term := dllbcWith [] {
+def arrCaller3 : Term := prog{
   let a = Arr(3, 1, 2);
   let p = &mut a[0 ; 1]; let q = &mut a[1 ; 2];
   (*p)[0] := 5; (*q)[1] := 6;

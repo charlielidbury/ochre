@@ -1,5 +1,5 @@
 import Dllbc.Boundary
-import Dllbc.Macro
+import Dllbc.ProgMacro
 import Dllbc.Migrate
 
 /-!
@@ -36,7 +36,7 @@ def listNatT : Term := .app (.const "List") natT
 def choose : FnDef :=
   { name := "choose", retType := .borrowT natT natT,
     telescope := [("c", boolT), ("x", .borrowT natT natT), ("y", .borrowT natT natT)],
-    body := dllbcWith [c, x, y] { match c { True => x, False => y } } }
+    body := progSeed [c, x, y] { match c { True => x, False => y } } }
 
 example : Migrate.progOkOf choose = true := by native_decide
 
@@ -48,7 +48,7 @@ example : Migrate.progOkOf choose = true := by native_decide
 -- the point: z = 7 is not provable (§6.2's cost).
 def chooseCaller : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] {
+    body := prog{
       let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
       let r = choose(True, pa, pb);
       *r := 7;
@@ -74,13 +74,13 @@ example : Migrate.progEnvOfT [choose, chooseCaller] chooseCaller
 def through : FnDef :=
   { name := "through", retType := .borrowT listNatT listNatT,
     telescope := [("b", .borrowT listNatT listNatT)],
-    body := dllbcWith [b] { b } }
+    body := progSeed [b] { b } }
 
 example : Migrate.progOkOf through = true := by native_decide
 
 def throughCaller : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] {
+    body := prog{
       let x = Cons(1, Nil); let b = &mut x;
       let r = through(b);
       *r := Cons(9, Nil);
@@ -98,7 +98,7 @@ example : Migrate.progEnvOfT [through, throughCaller] throughCaller
 -- taken, leaving its payload a hole (⊥), and then a captured owner is demanded.
 example : Migrate.progRejectsOf
   { name := "caller", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] {
+    body := prog{
       let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
       let r = choose(True, pa, pb);
       let tk = *r;
@@ -111,7 +111,7 @@ example : Migrate.progRejectsOf
 example : Migrate.progRejectsOf
   { name := "bad", retType := .borrowT boolT boolT,
     telescope := [("b", .borrowT natT natT)],
-    body := dllbcWith [b] { b } }
+    body := progSeed [b] { b } }
   "owed type" = true := by native_decide
 
 /-! ## The constrained branch, exercised directly (dead under opaque calls) -/

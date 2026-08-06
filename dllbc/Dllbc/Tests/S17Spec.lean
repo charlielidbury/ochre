@@ -1,5 +1,5 @@
 import Dllbc.Boundary
-import Dllbc.Macro
+import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
@@ -152,7 +152,7 @@ example : Migrate.progOkOf swapSN ([nthS, nth2S, swapSN]) = true := by native_de
 -- so `y` is a fresh existential. This is the deletion's whole visible cost, and
 -- the executing differential below is what says the cost is in knowledge and not
 -- in behaviour.
-def spcBody : Term := dllbcWith [] {
+def spcBody : Term := prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &mut x;
   swapS(b, 0, 2, (), ());

@@ -1,5 +1,5 @@
 import Dllbc.Boundary
-import Dllbc.Macro
+import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
@@ -99,7 +99,7 @@ example : Migrate.progOkOf swap ([nth, nth2, swap]) = true := by native_decide
 /-! ## Callers — concrete proofs are `()`, OOB is a call-site rejection -/
 
 -- `swap(bb, 0, 2, (), ())`: `Le 1 2` and `Le 3 3` both whnf to ⊤, inhabited by `()`.
-def swapBody : Term := dllbcWith [] {
+def swapBody : Term := prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &mut x;
   swap(bb, 0, 2, (), ());
@@ -117,7 +117,7 @@ example :
 
 -- OUT OF BOUNDS is rejected at the CALL SITE: `swap(bb, 0, 4, (), ())` needs
 -- `p2 : Le (S 4) (len [1,2,3]) = Le 5 3 = ⊥`, and `()` cannot inhabit ⊥.
-def oobBody : Term := dllbcWith [] {
+def oobBody : Term := prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &mut x;
   swap(bb, 0, 4, (), ());
@@ -134,7 +134,7 @@ example : Migrate.progRejectsOf { name := "oob", retType := .const "Unit", teles
 -- borrows in list order, then releases `v`.
 def cascade : FnDef :=
   { name := "cascade", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] {
+    body := prog{
       let x = Cons(1, Cons(2, Cons(3, Nil)));
       let bb = &mut x;
       let pp = nth2(bb, 0, 2, (), ());
@@ -144,7 +144,7 @@ example : Migrate.progOkOf cascade ([nth, nth2, cascade]) = true := by native_de
 -- Take a cursor's payload (hole) then demand the owner: the group cannot end.
 def rejectProbe : FnDef :=
   { name := "reject", retType := .const "Unit", telescope := [],
-    body := dllbcWith [] {
+    body := prog{
       let x = Cons(1, Cons(2, Cons(3, Nil)));
       let bb = &mut x;
       let pp = nth2(bb, 0, 2, (), ());

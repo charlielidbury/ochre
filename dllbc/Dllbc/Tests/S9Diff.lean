@@ -1,5 +1,5 @@
 import Dllbc.Boundary
-import Dllbc.Macro
+import Dllbc.ProgMacro
 import Dllbc.Migrate
 
 /-!
@@ -45,24 +45,24 @@ def listNatT : Term := .app (.const "List") natT
 def through : FnDef :=
   { name := "through", retType := .borrowT listNatT listNatT,
     telescope := [("b", .borrowT listNatT listNatT)],
-    body := dllbcWith [b] { b } }
+    body := progSeed [b] { b } }
 
 /-- `advance`: returns the tail's field reborrow on `Cons`, the argument on
     `Nil`. Same signature as `through`, different body. -/
 def advance : FnDef :=
   { name := "advance", retType := .borrowT listNatT listNatT,
     telescope := [("b", .borrowT listNatT listNatT)],
-    body := dllbcWith [b] { match b { Nil => b, Cons(hd, tl) => tl } } }
+    body := progSeed [b] { match b { Nil => b, Cons(hd, tl) => tl } } }
 
 def choose : FnDef :=
   { name := "choose", retType := .borrowT natT natT,
     telescope := [("c", boolT), ("x", .borrowT natT natT), ("y", .borrowT natT natT)],
-    body := dllbcWith [c, x, y] { match c { True => x, False => y } } }
+    body := progSeed [c, x, y] { match c { True => x, False => y } } }
 
 def push : FnDef :=
   { name := "push", retType := .const "Unit",
     telescope := [("e", natT), ("v", .borrowT listNatT listNatT)],
-    body := dllbcWith [e, v] { let tail = *v; *v := Cons(e, tail); () } }
+    body := progSeed [e, v] { let tail = *v; *v := Cons(e, tail); () } }
 
 def pool : List FnDef := [through, advance, choose, push]
 
@@ -227,7 +227,7 @@ def callerDecl (body : Term) : FnDef :=
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/
 
 /-- The choose caller from §6.1, demanding BOTH owners. -/
-def chooseCaller : Term := dllbcWith [] {
+def chooseCaller : Term := prog{
   let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
   let r = choose(True, pa, pb);
   *r := 7;
@@ -235,14 +235,14 @@ def chooseCaller : Term := dllbcWith [] {
   () }
 
 /-- A push caller. -/
-def pushCaller : Term := dllbcWith [] {
+def pushCaller : Term := prog{
   let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () }
 
 /-! ## The property, over the caller set -/
 
 def callers : List Term :=
-  [ dllbcWith [] { let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = through(b); *r := Cons(9, Nil); let y = x; () },
-    dllbcWith [] { let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () },
+  [ prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = through(b); *r := Cons(9, Nil); let y = x; () },
+    prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () },
     chooseCaller,
     pushCaller ]
 
@@ -255,7 +255,7 @@ example : accepted.all (fun b => diffV2 false pool b) = true := by native_decide
 /-! ## Harness validation: the bug goes RED, the fix GREEN -/
 
 def advCallerBody : Term :=
-  dllbcWith [] { let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }
+  prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }
 
 -- With the (removed, unsound) constrained wire FORCED on, the advance-caller's
 -- symbolic run refines the owner to the surrendered tail (Cons 9 Nil), while it

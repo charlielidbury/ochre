@@ -1,5 +1,5 @@
 import Dllbc.Machine
-import Dllbc.Macro
+import Dllbc.ProgMacro
 
 /-!
 # §3.2 test suite — the symbolic layer (σ and ⇜)
@@ -12,7 +12,7 @@ suites still pass).
 
 Symbolic entries have no surface syntax, so each test seeds Ω directly (a
 stand-in for a telescope entry until §5) and writes the program with
-`dllbcWith [names]{…}`, which pre-binds the seeded variables to ids `0,1,…`.
+`progSeed [names]{…}`, which pre-binds the seeded variables to ids `0,1,…`.
 Golden-Ω style: `expectPaths` compares the per-path canonicalized environments
 (ℓ- and σ-ids renumbered to first-appearance order) in branch-declaration
 order.
@@ -29,7 +29,7 @@ namespace Dllbc.Tests.S3Sym
 -- paths. Z branch: ⇜ σ := Z, then n consumed to ⊥. S branch: ⇜ σ := S σ′,
 -- then n ↦ ⊥ and the field binder m ↦ (σ′ : Nat).
 example : expectPaths [(⟨0,"n"⟩, .sym 0)]
-  dllbcWith [n] { match n { Z => (), S(m) => () } }
+  progSeed [n] { match n { Z => (), S(m) => () } }
   [ [("n", .bot)],
     [("n", .bot), ("m", .sym 0)] ] = true := by native_decide
 
@@ -40,7 +40,7 @@ example : expectPaths [(⟨0,"n"⟩, .sym 0)]
 -- the chain to `Cons 0 σ₂` (the doc's trace verbatim). The Nil branch refines
 -- the payload to Nil. Two paths.
 example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0))]
-  dllbcWith [x, b] {
+  progSeed [x, b] {
     match b { Cons(hd, tl) => { *hd := 0; () }, Nil => () };
     let y = x;
     ()
@@ -53,7 +53,7 @@ example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0
 -- `*b := Nil` in the Cons branch drops the reborrowed fields (their loans are Ω
 -- entries) and installs Nil; both paths leave the owner holding Nil.
 example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0))]
-  dllbcWith [x, b] {
+  progSeed [x, b] {
     match b { Cons(hd, tl) => { *b := Nil; () }, Nil => () };
     let y = x;
     ()
@@ -67,7 +67,7 @@ example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0
 -- compose. Three paths (outer Cons × {inner Cons, inner Nil}, plus outer Nil):
 --   Cons σ₀ (Cons 0 σ₁),  Cons σ₀ Nil,  Nil.
 example : expectPaths [(⟨0,"x"⟩, .loanM 0), (⟨1,"b"⟩, .borrowM 0 (.sym 0))]
-  dllbcWith [x, b] {
+  progSeed [x, b] {
     match b {
       Cons(hd, tl) => match tl {
         Cons(h2, t2) => { *h2 := 0; let y = x; () },
@@ -90,7 +90,7 @@ example : expectMErr [(⟨0,"x"⟩, cons (nat 3) nil)]
 -- A symbolic match in expression position (a constructor argument) cannot split
 -- and is rejected clearly by the pre-pass / readR.
 example : expectSomePathErr [(⟨0,"z"⟩, .sym 0)]
-  dllbcWith [z] {
+  progSeed [z] {
     let y = Cons(match z { Nil => Nil, Cons(a, r) => Nil }, Nil);
     ()
   } "expression position" = true := by native_decide
