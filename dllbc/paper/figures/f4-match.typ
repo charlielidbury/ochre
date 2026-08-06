@@ -1,4 +1,7 @@
 #import "../style.typ": *
+// Correspondence re-verified at `dc90adce` (this figure's own pin): every cited
+// implementing function still exists and none moved; anchors retabled to the M28
+// buckets. The rules are unchanged.
 
 == F4: Match <fig-match>
 
@@ -235,15 +238,21 @@ depends on it. Comptime match (the ⇝ column, doc §3.1) is likewise deferred.
 
 === Correspondence
 
+Test anchors name the bucket file and the section namespace within it (the M28
+consolidation put 27 era-numbered files into 10 subject buckets, keeping every
+namespace). Every implementing function below was re-verified to exist at
+`dc90adce`; none moved, and the rules are unchanged from the previous pin.
+
 #xref(
-  ([#smallcaps[M-Owned]],     [`ownedSelect`, `readR`/`exploreMatch`], [`S3` doc §3.1]),
-  ([#smallcaps[M-Borrow]],    [`borrowSelect`],                        [`S3` doc §3.3–3.4]),
-  ([#smallcaps[M-OwnedSym]],  [`symOwnedSetup`, `exploreSymBranches`], [`S3Sym`, `S5Bound`]),
-  ([#smallcaps[M-BorrowSym]], [`symBorrowSetup`],                      [`S3Sym`, `S5Bound`]),
-  ([#smallcaps[M-Refl-Flex]], [`reflUnify` (via `mintFieldSyms`)],     [`S10Ford`]),
-  ([#smallcaps[M-Exhaust]],   [`checkExhaustive`],                     [`S5Bound`]),
-  ([σ-typing],    [`typeFieldSyms`, `mintFieldSyms`],      [`S5Bound`]),
-  ([#smallcaps[X-Gen] (cited)], [`generalizeStuck`, `reorgScrut`],     [`S19Partition`]),
-  ([$"eqn"(dot)$, `Refl` cases], [`bindEqnRefl`],                      [`S23Direct`]),
-  ([$"eqn"(dot)$, stuck case],   [`mintStuckEqn`, `symOwnedSetup`],    [`S23Direct`]),
+  ([#smallcaps[M-Owned]],     [`ownedSelect`, `readR`/`exploreMatch`], [`Traces` (`S3`, doc §3.1)]),
+  ([#smallcaps[M-Borrow]],    [`borrowSelect`],                        [`Traces` (`S3`, doc §3.3–3.4)]),
+  ([#smallcaps[M-OwnedSym]],  [`symOwnedSetup`, `exploreSymBranches`], [`Traces` (`S3Sym`), `Boundaries` (`S5Bound`)]),
+  ([#smallcaps[M-BorrowSym]], [`symBorrowSetup`],                      [`Traces` (`S3Sym`), `Boundaries` (`S5Bound`)]),
+  ([#smallcaps[M-Refl-Flex]], [`reflUnify` (via `mintFieldSyms`)],     [`KernelFloor` (`S10Ford`)]),
+  ([#smallcaps[M-Exhaust]],   [`checkExhaustive`],                     [`Boundaries` (`S5Bound`)]),
+  ([σ-typing],    [`typeFieldSyms`, `mintFieldSyms`],      [`Boundaries` (`S5Bound`)]),
+  ([#smallcaps[X-Gen] (cited)], [`generalizeStuck`, `reorgScrut`],     [`Direct` (`S19Partition`)]),
+  ([$"eqn"(dot)$, `Refl` cases], [`bindEqnRefl`],                      [`Direct` (`S23Direct`)]),
+  ([$"eqn"(dot)$, stuck case],   [`mintStuckEqn`, `symOwnedSetup`],    [`Direct` (`S23Direct`)]),
+  ([the continuation pre-pass], [`pushContinuations`, `explore`],      [`Programs` (`S26Prog`), `Direct` (`S23Direct`)]),
 )

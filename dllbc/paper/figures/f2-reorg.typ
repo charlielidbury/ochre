@@ -3,6 +3,15 @@
 == F2: Reorganization (⟿) <fig-reorg>
 
 // Judgment helpers dropj/surrj/ownfree/groupb are pinned in style.typ.
+//
+// RE-EXTRACTED AT `dc90adce` (this figure's own pin; main.typ's pin declaration
+// is a later pass's). Source: Dllbc/Machine.lean — endMut/endLoan/killBorrowInΩ/
+// sendPayloadToLoan, drop/firstOwnNode, endIssued/endGroup/releaseCaptured, and
+// the Group record. G-EndGroupBack DELETED: `Group.backSpec`, `Decl.back` and
+// `resolveTree` no longer exist (M27), so every group end is now the single arm
+// below. The `constrained` test-only wire was deleted with its rule-gap in M28.
+// `groupb` (the back-carrying group node) survives in style.typ unused; its
+// removal belongs to the pass that owns that file.
 
 Reorganization is the judgment that rewrites the borrow bookkeeping: ending loans, vacating displaced values, collapsing the loan groups calls leave behind. No surface syntax elaborates to it — its rules fire _between_ evaluation steps, and they are presented here *nondeterministically*: a rule may fire at any point where its premises hold, and #reorgs($Omega$, $Omega'$) is the reflexive–transitive closure of single steps. The implementation is lazy — it fires a reorganization only when a ⇒/⇐ premise demands one — and carries a fuel bound; both are scheduling, not semantics (the fuel is a totality device for the mechanization, and the demand sites are catalogued before the correspondence table below).
 
@@ -61,6 +70,11 @@ The #ownfree($p$) premise on G-DropBorrow is doc §2.3's "innermost first" made 
 // of the same owner demand-ends the group (readR → endLoan → endGroup). The
 // read/write asymmetry is the implementation's (drop calls killBorrowInΩ, not
 // endLoan); reported to the coordinator, not resolved here.
+// STILL OPEN AT `dc90adce`, and re-verified rather than carried over: `drop`
+// (Machine.lean) reaches `killBorrowInΩ` on a loan marker, and `readR`'s .var
+// case reaches `endLoan`. This is now the ONLY survivor of the three
+// audit-strategy holes the paper's §4.5/§6.5 listed — the other two were holes
+// in the declared-back machinery and closed when it was deleted.
 
 === Ending a group
 
@@ -82,32 +96,23 @@ A hole cannot surrender: $vbot$ inhabits no type, so the typing premise already 
   name: smallcaps("G-EndGroupOpaque"),
   reorg(St($Omega_0$, $Gamma_sigma$, $O$, $G$, $R$), St($hat(Omega)[sigma_1, dots, sigma_m]$, $Gamma'_sigma$, $O$, $G without A(rho)$, $R$)),
   stack(spacing: 0.55em,
-    align(center, $group(rho, macron(C), macron(I)) in G quad "(no declared back)" quad macron(C) = owed(ell_1, tau_1), dots, owed(ell_m, tau_m) quad macron(I) = owed(ell'_1, S_1), dots, owed(ell'_n, S_n)$),
+    align(center, $group(rho, macron(C), macron(I)) in G quad macron(C) = owed(ell_1, tau_1), dots, owed(ell_m, tau_m) quad macron(I) = owed(ell'_1, S_1), dots, owed(ell'_n, S_n)$),
     align(center, $surrj(Omega_(i-1), ell'_i, S_i, v_i, Omega_i) quad (i = 1, dots, n"," "in issued order")$),
-    align(center, $Omega_n = hat(Omega)[loanm(ell_1), dots, loanm(ell_m)] quad sigma_1, dots, sigma_m "fresh" quad Gamma'_sigma = Gamma_sigma, thin sigma_1 : tau_1, dots, sigma_m : tau_m$)))))
-#v(0.9em)
-#align(center, prooftree(rule(
-  name: smallcaps("G-EndGroupBack"),
-  reorg(St($Omega_0$, $Gamma_sigma$, $O$, $G$, $R$), St($hat(Omega)[w]$, $Gamma_sigma$, $O$, $G without A(rho)$, $R$)),
-  stack(spacing: 0.55em,
-    align(center, $groupb(rho, owed(ell_c, tau_c), macron(I), f) in G quad macron(I) = owed(ell'_1, S_1), dots, owed(ell'_n, S_n)$),
-    align(center, $surrj(Omega_(i-1), ell'_i, S_i, v_i, Omega_i) quad (i = 1, dots, n"," "in issued order")$),
-    align(center, $Omega_n = hat(Omega)[loanm(ell_c)] quad w = "nf"(f thin v_1 thin dots thin v_n)$)))))
+    align(center, $sigma_j = cases(sigma'_j & "if" (ell_j |-> sigma'_j) in rho."pin", "fresh at" tau_j & "else") quad Gamma'_sigma = Gamma_sigma, thin overline(sigma_j : tau_j) space #text[(new entries only)]$),
+    align(center, $Omega_n = hat(Omega)[loanm(ell_1), dots, loanm(ell_m)]$)))))
 #v(0.5em)
 
-Every issued borrow surrenders first; then the group ends _atomically_, every captured loan releasing in the same step. The ordering is the soundness argument made structural (doc §6.1): a captured owner cannot recover while an issued borrow lives, because the release conclusion is unreachable until every surrender premise is derivable — and no other rule can touch a captured loan (G-EndMut's side condition). The opaque end _discards_ the surrendered payloads and releases each captured loan with a fresh existential at its owed type, extending $Gamma_sigma$ — the caller learns exactly what the signature says, and the forgetting is doc §6.2's deliberate precision cost. The computed end instead applies the declared backward spec $f$ — reflected and instantiated at the call, and checked against the callee's body at its audit (@fig-boundaries) — to the surrendered values, in issued order, and releases the computed value; no existential is minted. Its $n = 0$ instance is the value-returning mutator (doc §6.2's dual): no issued borrows, and the release is $"nf"(f)$, a pure function of the entry snapshots. The atomic captured release over-approximates the concrete demand-driven ending — doc §6.1 records the simulation obligation — and one concrete demand suffices to fire the whole cascade.
+Every issued borrow surrenders first; then the group ends _atomically_, every captured loan releasing in the same step. The ordering is the soundness argument made structural (doc §6.1): a captured owner cannot recover while an issued borrow lives, because the release conclusion is unreachable until every surrender premise is derivable — and no other rule can touch a captured loan (G-EndMut's side condition). The end _discards_ the surrendered payloads and releases each captured loan at its owed type — the caller learns exactly what the signature says, and the forgetting is the deliberate precision cost. The atomic captured release over-approximates the concrete demand-driven ending — doc §6.1 records the simulation obligation — and one concrete demand suffices to fire the whole cascade.
 
-// RULE-GAP: G-EndGroupBack is stated (and implemented) only for a SINGLE
-// captured loan — endGroup's pattern is `some f, _, [(ℓc, _)], _`. A declared
-// back on a call that captures TWO OR MORE borrows falls through to the opaque
-// arm: the spec is silently ignored, not rejected. No rule form for the
-// multi-captured spec end exists; reported, not resolved.
+*One arm, and which σ it releases.* This is now the _only_ group end. A second arm once applied a declared backward spec to the surrendered values and released the computed result; the whole declared-`back` tier left the language at this pin (@fig-boundaries records what it was), and a third, test-only arm — an identity wire the checker never minted — left with the differential validation that was its only user. What survives of the precision the spec bought is the $rho."pin"$ premise above: @fig-boundaries's #smallcaps[B-Call] mints one σ′ per captured loan _at the call_, typed at its owed type, and pins the release to it, so that the same σ′ is what the callee's return type reads as the exit $ast.op v$. The caller therefore recovers an owner that its returned evidence is _about_. Where a group carries no pin — a hand-built one, or a capture the call did not mint a σ′ for — the release is an ordinary fresh existential and the caller learns only the type, which is the shape doc §5.3's traces show and the reason the rule still reads as the opaque end.
 
-// RULE-GAP: the test-only `constrained` identity wire (Group.constrained,
-// endGroup's middle arm) has no rule: no call mints it (signature-inferring it
-// is unsound — `through` vs `advance` share a signature; removed in the
-// soundness pass), and it survives only so the differential harness can
-// validate that the bug goes RED (S7Group's hand-built group).
+// RULE-GAP: the pinned release makes a caller's recovered owner and its returned
+// evidence the same σ′, but nothing in the rules records that σ′ is the CALLEE's
+// exit snapshot — that identification is made by the callee's audit substituting
+// its own σ_exit (@fig-boundaries, B-Audit-Val) and by the call reflecting the
+// return type against the same σ′. The two ends agree by construction in the
+// implementation (callDeclC builds both from one list); a rules-level statement
+// of the agreement is a metatheory obligation, not a premise. Reported.
 
 The wire (doc §5.3) is the degenerate group, displayed for the shape doc §5.3's traces use — it is an instance, not a separate mechanism:
 
@@ -115,9 +120,8 @@ The wire (doc §5.3) is the degenerate group, displayed for the shape doc §5.3'
 #align(center, irule([G-EndOwed #h(0.4em) (= G-EndGroupOpaque with $macron(I) = emptyset$)],
   reorg(St($Omega$, $Gamma_sigma$, $O$, $G$, $R$), St($hat(Omega)[sigma]$, $(Gamma_sigma, sigma : tau)$, $O$, $G without A(rho)$, $R$)),
   $group(rho, owed(ell, tau), emptyset) in G$,
-  $"(no declared back)"$,
   $Omega = hat(Omega)[loanm(ell)]$,
-  $sigma "fresh"$))
+  $sigma "fresh, or" rho."pin"(ell)$))
 #v(0.5em)
 
 Ending a call-annotated loan is where the caller learns what the callee did: a fresh value arrives at the owed type — an existential, opened at loan end. Under `&mut List T` the caller learns only that a list came back; under a type-changing ↝ obligation, its precise new index.
@@ -126,7 +130,7 @@ Ending a call-annotated loan is where the caller learns what the callee did: a f
   *Global side condition: knowledge vs. state (doc §3.2).* Every conclusion in this figure rewrites $Omega$'s value trees _locally_ — a plug-back, a kill, a release lands at a loan's position and nowhere else. No reorganization ever records its effect by substituting for a $sigma$: the $sigma$'s name _knowledge_ (constructor shapes, equation solutions — facts about a value true at entry and forever), while a hole, a marker, or a mutation's result is _state_, a fact about a slot at a moment. The one $Gamma_sigma$-effect a reorganization has runs the other way — group ends *extend* $Gamma_sigma$ with fresh existentials at the owed types; no existing entry is rewritten. Dually, refinement (⇜, @fig-comptime, @fig-match) substitutes into every $sigma$-bearing component of the state — including the owed types stored in $O$ and in the group nodes of $G$, which is why groups live in $S$ — and its replacement must be marker-free. The implementation asserts both directions at the single substitution site (`refineSym`); instrumenting the whole mechanization found zero violations (doc §3.2).
 ]
 
-*Where the implementation fires these.* The rules above carry no laziness; the checker's demand-driven scheduling (doc §2's standing convention) is one strategy over them, discussed in @sec-empirics. The governing statement is one line — *every demand collapses first* — and the sites are its instances rather than separate rules. A reorganization fires exactly when a ⇒/⇐/⇝ premise needs one: a ⇒-read of an owner whose value carries an owned-position marker ends it (`readR`, variable case); a move of a borrow whose payload is suspended ends the parked reborrow first (`readR`, same case); a ⇒-*take* through a borrow whose payload is a suspension ends it before taking (`readR`, deref case — #smallcaps[R-Take]'s own-free premise, @fig-runtime); `&mut` of a place holding a parked marker demand-ends its loan — a prior call's whole group, in the sequential-reborrow shape (`readR`, borrow case); a match reorganizes its scrutinee the same way (`reorgScrut`); a *comptime* read on the pure lift collapses the places it is about to project through, a bare variable whose own loan a call still holds included (`collapseCDerefs`); a ⇐ onto a live value vacates it by drop (`writeR`); and the return audit collapses argument-borrow payloads with the same ends (`collapseArg`), the boundary being the canonical demander (doc §3.3).
+*Where the implementation fires these.* The rules above carry no laziness; the checker's demand-driven scheduling (doc §2's standing convention) is one strategy over them, discussed in @sec-empirics. The governing statement is one line — *every demand collapses first* — and the sites are its instances rather than separate rules. A reorganization fires exactly when a ⇒/⇐/⇝ premise needs one: a ⇒-read of an owner whose value carries an owned-position marker ends it (`readR`, variable case); a move of a borrow whose payload is suspended ends the parked reborrow first (`readR`, same case); a ⇒-*take* through a borrow whose payload is a suspension ends it before taking (`readR`, deref case — #smallcaps[R-Take]'s own-free premise, @fig-runtime); `&mut` of a place holding a parked marker demand-ends its loan — a prior call's whole group, in the sequential-reborrow shape (`readR`, borrow case); a match reorganizes its scrutinee the same way (`reorgScrut`); a *comptime* read on the pure lift collapses the places it is about to project through, a bare variable whose own loan a call still holds included (`collapseCDerefs`); a ⇐ onto a live value vacates it by drop (`writeR`); and the return audit collapses argument-borrow payloads with the same ends (`collapseArg`, and `collapseLoanIn` when the borrow is Σ-packaged and so is not the slot's own value), the boundary being the canonical demander (doc §3.3). One site joined the list at this pin without a new rule: the *end of a program* (`endScope`) demands every loan still parked in $Omega$, because a program that lends a local to a call and never looks at it again has no later demand to fire the group, while the concrete machine releases a frame's loans on the way out of it — so without it the two machines would end in visibly different environments over a difference in *when*.
 
 That the list is *closed* is not decoration. Each of the last three entries was
 added after a body reached a state the earlier entries did not cover, and in every
@@ -145,12 +149,16 @@ silent-marker bug.
 // w.r.t. these rules is a metatheory question; reported, not resolved.
 
 #v(0.5em)
+
+Test anchors name the bucket file and the section namespace within it (the M28 consolidation put 27 era-numbered files into 10 subject buckets, keeping every namespace).
+
 #xref(
-  ([#smallcaps[G-EndMut]], [`endLoan` (ungrouped arm): `killBorrowInΩ` then `sendPayloadToLoan`], [S2 (forced End-Mut before a move; doc §2.5 chain collapse), S3 (field-loan collapse on owner read)]),
-  ([#smallcaps[G-DropFree] / #smallcaps[G-DropLoan] / #smallcaps[G-DropBorrow]], [`drop`, node selection via `firstOwnNode`], [S2 (overwrite forces drop, doc §2.3), S3 (variant change ends the field loans, doc §3.4)]),
-  ([self-reborrow non-derivation], [`killBorrowInΩ`'s in-flight error], [S2 (`b := c` rejected, "in flight")]),
-  ([#smallcaps[G-EndIssued]], [`endIssued`], [S7Group (holed issued payload: "nothing surrendered")]),
-  ([#smallcaps[G-EndGroupOpaque]], [`endGroup` (default arm)], [S7Group (`choose` cascade: fresh $sigma$'s for both owners; `through`: precision deliberately lost)]),
-  ([#smallcaps[G-EndGroupBack]], [`endGroup` (back-spec arm), `Val.rebuildSpine`], [S17Spec (`spcCaller` recovers the computed release), S19Partition (`twoRec` sequential reborrow; quicksort conformance)]),
-  ([#smallcaps[G-EndOwed]], [`endGroup` with `issued = []`], [S6Call (the doc §5.3 wire: "the promise is collected")]),
+  ([#smallcaps[G-EndMut]], [`endLoan` (ungrouped arm): `killBorrowInΩ` then `sendPayloadToLoan`], [`Traces` (`S2` forced End-Mut before a move, doc §2.5 chain collapse; `S3` field-loan collapse on owner read)]),
+  ([#smallcaps[G-DropFree] / #smallcaps[G-DropLoan] / #smallcaps[G-DropBorrow]], [`drop`, node selection via `firstOwnNode`], [`Traces` (`S2` overwrite forces drop, doc §2.3; `S3` variant change ends the field loans, doc §3.4)]),
+  ([self-reborrow non-derivation], [`killBorrowInΩ`'s in-flight error], [`Traces` (`S2`, `b := c` rejected, "in flight")]),
+  ([#smallcaps[G-EndIssued]], [`endIssued`], [`Boundaries` (`S7Group`, holed issued payload: "nothing surrendered")]),
+  ([#smallcaps[G-EndGroupOpaque]], [`endGroup` (now its only arm), `releaseCaptured`], [`Boundaries` (`S7Group`: `choose` cascade, fresh $sigma$'s for both owners; `through`, precision deliberately lost)]),
+  ([the $rho."pin"$ release], [`Group.exitRelease`, minted in `callDeclC`], [`Programs` (`S27Mixed`: `swapCaller` recovers an owner its returned proof is about)]),
+  ([#smallcaps[G-EndOwed]], [`endGroup` with `issued = []`], [`Boundaries` (`S6Call`, the doc §5.3 wire: "the promise is collected")]),
+  ([the demand sites], [`readR` (`.var`/`.deref`/`.borrow`), `reorgScrut`, `collapseCDerefs`, `writeR`, `collapseArg`/`collapseLoanIn`, `Program.endScope`], [`Traces` (`S2`, `S3`), `Boundaries` (`S5Bound`), `Programs` (`S26Prog`)]),
 )

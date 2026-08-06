@@ -167,8 +167,15 @@ the lying twin is two lines long:
 fn bad () -> Id Nat Z (S Z) { bad() }        // was ACCEPTED
 ```
 
-Any false postcondition proved itself. The fix is the declared `[k]` guard of
-@fig-boundaries. What is instructive is *why the hole survived so long in a corpus
+Any false postcondition proved itself. The fix, at the time, was a declared
+decreasing position `[k]` guarding the self-call. It has since been superseded by
+something that is not a check at all — a definition is a `let`, a `let` is not in
+scope in its own right-hand side, and `bad` therefore does not resolve
+(@sec-boundaries) — and the supersession is worth a sentence here rather than only
+there, because it is the clearest case the project has of a *hole closed twice, the
+second time by making the program unwritable*. A guard is a rule that has to be
+right; unwritability is a consequence of the scoping the language already had.
+What is instructive is *why the hole survived so long in a corpus
 with per-branch negative tests*: reaching it needs a declaration that is
 recursive *and* back-less, and the corpus had many of each but never one that was
 both — every recursive declaration carried a `back` whose conversion did the real
@@ -184,8 +191,12 @@ Extracting the boundary rules from the implementation for @fig-boundaries surfac
 that both back-checks take the *first* qualifying obligation and pass *vacuously*
 when none qualifies — so on such a path a declared `back` can go entirely
 unaudited. The rule extraction was, in effect, another kind of negative test, one
-that reads every branch of a rule by construction; it remains an open theory-line
-fix.
+that reads every branch of a rule by construction. It was never fixed: the
+machinery it was a hole in has since been deleted, and the finding is recorded as
+closed-by-deletion rather than closed. That distinction is the point of keeping it
+here — a hole that stops existing because its feature stopped existing teaches
+nothing about how to audit the feature, and a ledger that scored it as a fix would
+be reporting progress the project did not make.
 
 == The document is the single source of truth
 
@@ -238,12 +249,17 @@ to. Writing the paper found gaps the mechanization's own green test suite had
 not — which is the strongest argument we have for keeping specification and
 implementation close enough that either can audit the other.
 
-The discipline has since been exercised a second time, and the second run is the
-better evidence. Re-extracting the figures against a later pin — the paper had to
-be brought current after a second verification architecture landed — closed two of
-those twenty and left the rest standing, and re-reading each _remaining_ one
+The discipline has since been exercised three more times, and the later runs are
+the better evidence. Re-extracting the figures against a later pin — the paper had
+to be brought current after a second verification architecture landed — closed two
+of those twenty and left the rest standing; the array era added a seventh figure
+and its own findings; and the most recent re-extraction, after the calculus
+collapsed its declaration form into an ordinary sealed binding, closed two more
+_by deleting the machinery they were holes in_ and left exactly one of the
+original three audit-strategy holes standing. Re-reading each _remaining_ finding
 against the implementation rather than carrying it forward is what made the
-difference between a ledger and a habit. The numbering is deliberately sealed to
+difference between a ledger and a habit: the surviving hole was re-verified in the
+source at the current pin, not assumed. The numbering is deliberately sealed to
 the first extraction: findings are not renumbered when they close, because a claim
 this paper made about its own audit should stay checkable against the audit it
 made it about.
@@ -254,7 +270,12 @@ silently. *The quicksort listing in @sec-casestudy would have been rejected by t
 checker it describes.* Between the two pins the recursion guard arrived, every
 recursive declaration in the corpus acquired the `[k]` annotation that admits its
 self-calls — and the paper's transcription of that declaration, correct when it was
-made, quietly became a program the mechanization no longer accepts. Nothing failed.
+made, quietly became a program the mechanization no longer accepts. It happened
+again, in the same place, at the next pin but one: two declarations that had
+recursed through a borrow's payload were rewritten to thread fuel when the guard
+that admitted such a decrease was replaced by an eliminator that has no form for
+it, and the paper's transcriptions of both went stale in the same silent way.
+Nothing failed.
 No test covered it, because the listing is prose; the extraction's findings ledger
 did not catch it, because the ledger tracks _rules_ against the implementation and
 this was a _quotation_ going stale. It was found by re-reading the source with the
