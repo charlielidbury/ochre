@@ -358,21 +358,41 @@ def recDeep : Term := prog{
 -- refusal, and the carrier of the claim lives there.
 example : progRejects recDeep "not the predecessor" = true := by native_decide
 
--- A BORROW parameter decreases through its payload snapshot — §8's guard in its
--- most literal form, and the only thing that shrinks in a list cursor: `zero_all`
--- (S6Call) passes no counter at all, just the tail reborrow. Snapshots are
--- entry-knowledge and are never rewritten by mutation (§3.2), so the payload's
--- structural decomposition is a fixed, well-founded order.
-def recCursor : FnDef :=
-  decl{ fn recCursor [v] (v : &mut List Nat) -> Unit
-        { match v { Nil => (), Cons(hd, tl) => { *hd := 0; recCursor(tl); () } } } }
--- **STAYS ON THE DECLARATION PATH, and dies with it.** `[v]` payload decrease has
--- no recursor form until §9's borrow-mode eliminator exists; §12 decision 8
--- accepted that and blessed fuel-threading. The claim's carrier is
--- `S26Fuel.zeroAllF` — literally this function with a fuel parameter — asserted
--- on BOTH paths there and again in `S27Dispose` §B. A δ casualty, not a coverage
--- loss.
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+/-! ### The one shape the eliminators cannot express: `[v]`, and what it costs
+
+    A BORROW parameter decreases through its PAYLOAD snapshot — §8's guard in its
+    most literal form, and the only thing that shrinks in a list cursor with no
+    counter. Snapshots are entry-knowledge and are never rewritten by mutation
+    (§3.2), so the payload's structural decomposition is a fixed, well-founded
+    order, and the declaration path admitted it.
+
+    It has no recursor form. §7 elaborates `[k]` to `natRec`/`listRec` over the
+    parameter itself, and a borrow is neither; §9's borrow-mode eliminator is FILED,
+    not built. §12 decision 8 accepted the regression and blessed fuel-threading as
+    the interim — a source change, since the signature grows a parameter and a bound
+    and every caller supplies them, and never something an elaboration invents
+    behind its author.
+
+    So this is the whole of the `[v]` class, at program level: the `fn` lowering
+    refuses it, and it refuses POINTING AT THE DECISION rather than at a shape.
+    Three functions in this file used to be written this way — the list cursor
+    below, `append_back` and `partition` — and all three are fuel-threaded in
+    stage (vi)'s chain, where the price is one parameter and one dead branch. -/
+
+def borrowDecrease : Term := prog{
+  fn zero_all [v] (v : &mut List Nat) -> Unit
+        { match v { Nil => (), Cons(hd, tl) => { *hd := 0; zero_all(tl); () } } };
+  () }
+-- Refused by the needle no other error can produce…
+example : progRejects borrowDecrease FnMacro.fnRefusedNeedle = true := by native_decide
+-- …and the refusal's own diagnosis survives into the message, which is what makes
+-- it a decision rather than a wall: the programmer is told to thread fuel.
+example : progRejects borrowDecrease "§12 decision 8" = true := by native_decide
+-- It can never pass green: the sentinel is reached at the BINDING, not at a call,
+-- so a refused function that nothing calls still fails.
+example : progOk borrowDecrease = false := by native_decide
+-- The paid twin — literally this function with a fuel parameter and a bound — is
+-- `S26Fuel.zeroAllF`, which checks. The cost is measured, not estimated.
 
 -- A NON-self call to a recursive function is untouched — the guard is about
 -- self-calls, and every other call is the ordinary §5.3 signature rule.
@@ -401,30 +421,9 @@ example : progOk recCaller = true := by native_decide
     gaps they forced are recorded at their use sites below. -/
 
 -- `append_back(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
--- `append (old *v) w` — the whole postcondition, and the whole description.
-def appendBack : FnDef :=
-  decl{ fn append_back [v] (v : &mut List Nat, w : List Nat)
-        -> Id (List Nat) (*v) (append (old *v) w)
-        { match v {
-            Nil => { *v := w; Refl },
-            -- PAIN DIARY (staging, again — the M22 "proof linearity" entry's data
-            -- twin). The congruence needs to NAME its right endpoint,
-            -- `append (old *tl) w`, but the recursive call has by then MOVED `w`
-            -- (it is data, so §2.1 gives no copy-on-read). Dodged by staging the
-            -- endpoint as a runtime `let` while `w` is still live. Same dodge, new
-            -- cause: M22's was a proof consumed by a mutation, this is a data
-            -- argument consumed by the call the proof is about. The general fix is
-            -- the same one M22 queued — `old` for consumed parameters, so a body
-            -- can name any parameter's ENTRY value without owning it, which is what
-            -- M12 already grants the RETURN TYPE and denies the body.
-            Cons(hd, tl) => {
-              let y = append (*tl) w;
-              let h = append_back(&mut *tl, w);
-              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
-            }
-        } } }
--- `[v]` again; carrier `S26Prog.appendBackF`, paid in M26-E. Dies with `checkFn`.
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+-- `append (old *v) w` — the whole postcondition, and the whole description. It is
+-- the third `[v]` function, so it is written FUEL-THREADED, in stage (vi)'s chain
+-- where its one caller lives.
 
 /-! ### The telescope's own vocabulary
 
@@ -1180,7 +1179,33 @@ def sap_bad_pivot_ty : Term := pure{
   Sorted (Cons (S Z) (Cons Z Nil)) }
 example : chk sap_bad_pivot sap_bad_pivot_ty = false := by native_decide
 
-/-! ## Stage (iv): the relational partition — two lists, four invariants, no model
+/-! ## Stage (vi) prelude: the bound-survival keystone, checked
+
+    A partition-based quicksort needs `Ub p a` for the left part AFTER sorting, while
+    the partition bounded it BEFORE — so a bound has to survive a permutation, and
+    `Ub`/`Lb` (Σ-chains over the spine) are not natively permutation-invariant. M22
+    named the route at the positional encoding: cross to the multiset, where the
+    property is `Π x. x > p → count x l = Z` and permutation-invariance is a
+    one-line `id_trans`. These are the whole-list instances. -/
+
+example : chk Dllbc.StdLemmas.lb_head Dllbc.StdLemmas.lb_head_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.lb_tail Dllbc.StdLemmas.lb_tail_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.noAbove_of_ub Dllbc.StdLemmas.noAbove_of_ub_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.ub_of_noAbove Dllbc.StdLemmas.ub_of_noAbove_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.ub_perm Dllbc.StdLemmas.ub_perm_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.noBelow_of_lb Dllbc.StdLemmas.noBelow_of_lb_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.lb_of_noBelow Dllbc.StdLemmas.lb_of_noBelow_ty = true := by native_decide
+example : chk Dllbc.StdLemmas.lb_perm Dllbc.StdLemmas.lb_perm_ty = true := by native_decide
+
+
+/-! # Stages (iv) and (vi): THE FLAGSHIP COHORT, as one program
+
+    `partition`, `append_back` and `quicksort` are three sealed `let`s and a tail
+    (§8), and they are written here as ONE chain because that is what they are: the
+    caller reaches each callee by being written below it, and nothing is passed
+    beside anything.
+
+    ## Stage (iv) — the relational partition
 
     `partition(v, p)`: `*v` keeps the elements `≤ p`, the rest comes back BY VALUE.
     `split_off`'s silhouette, and the shape branch equations make writable — the body
@@ -1203,200 +1228,9 @@ example : chk sap_bad_pivot sap_bad_pivot_ty = false := by native_decide
     naturalness rule): take the payload, match it OWNED, put the tail back, recurse
     through the parameter borrow, then push the head onto whichever side its
     comparison chose. In-place by this calculus's standards — the only list cell ever
-    allocated is the one `Cons` a `Cons` becomes. -/
+    allocated is the one `Cons` a `Cons` becomes.
 
-def partition : FnDef :=
-  decl{ fn partition [v] (v : &mut List Nat, p : Nat)
-        -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
-             → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-             → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
-        { let l = *v;
-          match l {
-            -- `Ub p Nil` and `Lb p Nil` are both `Unit`, and the count goal is
-            -- `add Z Z = Z` — the empty partition proves itself.
-            Nil => { *v := Nil;
-                     Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
-            Cons(x, rest) => {
-              -- PAIN DIARY (staging, fourth appearance — and the first where the
-              -- unnameable thing is an ENTRY value, not an exit). Both count steps
-              -- must name `rest`, the tail as it was at entry; but `rest` is DATA and
-              -- `*v := rest` moves it, so after the very next statement no term in
-              -- the body denotes it. Dodged as ever by building the derivation while
-              -- it is still live and applying it later. M23-iii stated the rule for
-              -- exits ("a body can only talk about the CURRENT exit"); this instance
-              -- says the same of any consumed parameter or binder, and it is the
-              -- fourth filing for `old` on consumed things.
-              let mkL = (λ (a : List Nat). λ (b : List Nat).
-                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
-                            λ (n : Nat). count_cons_l n x a b rest (h n));
-              let mkR = (λ (a : List Nat). λ (b : List Nat).
-                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
-                            λ (n : Nat). count_cons_r n x a b rest (h n));
-              -- The lengths need no staged lambda: `len rest` is a NAT, so naming the
-              -- computed value once, while `rest` is live, is enough. (The counts
-              -- cannot do this — `count n rest` is a family over `n`, and it is the
-              -- LIST the lemma needs, not any one of its counts.)
-              let lr = len rest;
-              *v := rest;
-              -- The §8 guard reads the actual's PAYLOAD snapshot against `v`'s
-              -- current one: `σ_rest` against the `Cons σ_x σ_rest` the owned match
-              -- refined it to. A strict subterm, with no counter passed anywhere.
-              let r = partition(&mut *v, p);
-              match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
-              match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
-                -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
-                -- either arm can build its bound: the split abstracted `leb σ_x σ_p`
-                -- away, so `leb_true_le x p Refl` is rejected here (see the wall test)
-                -- and `leb_true_le x p e` is not.
-                if e : leb x p {
-                  -- x ≤ p: the head belongs to the KEPT part. Derive both proofs
-                  -- BEFORE the write, which consumes `lo` and `x` (§5.3's ordering
-                  -- corollary, in its body-local form).
-                  let lo = *v;
-                  let hub2 = Pair(leb_true_le x p e, hub);
-                  let hl2b = le_up_r (len hi) lr hl2;
-                  let cnt = mkL lo hi hcnt;
-                  *v := Cons(x, lo);
-                  Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
-                } else {
-                  -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
-                  -- so `hub` passes straight through.
-                  let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
-                  let hl1b = le_up_r (len *v) lr hl1;
-                  let cnt = mkR (*v) hi hcnt;
-                  Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
-                }
-              } } } } } }
-            }
-          } } }
--- **THIS COHORT STAYS ON THE DECLARATION PATH AND DIES WITH IT** (M27-γ), and it
--- is one class rather than six accidents: `partition` recurses through its
--- BORROW'S PAYLOAD, which has no recursor form until §9's borrow-mode eliminator
--- exists. §12 decision 8 accepted that regression and blessed fuel-threading as
--- the interim, and the interim was paid — `S26Fn.partitionF` is this function
--- with a fuel parameter, checked on BOTH paths there and again in `S27Dispose`
--- §B, with its own lie twins. So the four `partLie*` assertions below, and
--- `partitionLoses`, keep `checkFnErr` for the same reason their subject does:
--- they are δ casualties whose claims already have carriers, not coverage that is
--- about to be lost.
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
-
-/-! ### Not vacuous: a lying twin per conjunct, and a body twin for the recursive path
-
-    The return type is the ONLY description of this function, so each conjunct gets a
-    twin that changes exactly it. Built by taking the `retType` off a lying header
-    with the same telescope, so the body is shared verbatim and the lie is the only
-    variable. -/
-
-/-! **The four spec twins are DELETED (M28 υ).** `partLieUb`, `partLieLb`,
-    `partLieCountDrop` and `partLieCountShift` changed one conjunct each of
-    `partition`'s return type, and each lost its assertion with `checkFn` (M27-δ) —
-    leaving four `def`s that nothing asserted anything about, read only by the
-    declaration survey. **A definition with no assertion is not a test**, which is
-    the suite's rule stated the other way round, so they go rather than being
-    converted into programs that assert nothing.
-
-    What they guarded is not lost, and that is why this is a deletion and not a
-    regression: `partition`'s return type is exercised by the BODY twin below,
-    which is refuted in the count conjunct on the recursive path — the place a
-    spec twin refuted on the `Nil` path never reached. The per-conjunct
-    discipline itself survives where it still has assertions: `split_off`'s four,
-    `set_at`'s and `swap_at`'s two each, `insert_at`'s two, and the quicksort
-    twins `S26Prog` §F carries. -/
-
-/-- The BODY twin: the `≤ p` head is DROPPED instead of pushed back onto the kept
-    part. Every spec twin above is refuted somewhere the `Nil` path can be blamed for;
-    this one is wrong only on the recursive `True` path, and only in the count
-    conjunct — the bounds still hold of a list with one element missing. -/
-def partitionLoses : FnDef :=
-  decl{ fn partitionLoses [v] (v : &mut List Nat, p : Nat)
-        -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
-             → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-             → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
-        { let l = *v;
-          match l {
-            Nil => { *v := Nil;
-                     Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
-            Cons(x, rest) => {
-              let mkL = (λ (a : List Nat). λ (b : List Nat).
-                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
-                            λ (n : Nat). count_cons_l n x a b rest (h n));
-              let mkR = (λ (a : List Nat). λ (b : List Nat).
-                          λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
-                            λ (n : Nat). count_cons_r n x a b rest (h n));
-              -- The lengths need no staged lambda: `len rest` is a NAT, so naming the
-              -- computed value once, while `rest` is live, is enough. (The counts
-              -- cannot do this — `count n rest` is a family over `n`, and it is the
-              -- LIST the lemma needs, not any one of its counts.)
-              let lr = len rest;
-              *v := rest;
-              let r = partitionLoses(&mut *v, p);
-              match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
-              match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
-                if e : leb x p {
-                  let lo = *v;
-                  let hub2 = Pair(leb_true_le x p e, hub);
-                  let hl2b = le_up_r (len hi) lr hl2;
-                  let cnt = mkL lo hi hcnt;
-                  *v := lo;
-                  Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
-                } else {
-                  let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
-                  let hl1b = le_up_r (len *v) lr hl1;
-                  let cnt = mkR (*v) hi hcnt;
-                  Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
-                }
-              } } } } } }
-            }
-          } } }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
-
-/-! ### The executing differential — the body really partitions
-
-    `Migrate.progOkOf` proves the four conjuncts symbolically; this runs the SAME FnDef on
-    concrete lists and confirms `*v` ends as the `≤ p` sublist and the returned value
-    as the `> p` one, ORDER PRESERVED (which no conjunct above asks for). It also
-    exercises phase A's concrete-scrutinee branch end to end: `if e : leb x p` on a
-    closed Bool takes the `ownedSelect` path, where the equation is bound to `Refl`. -/
-
-def partCaller (l : List Nat) (pv : Nat) : Term :=
-  .letIn ⟨0, "z"⟩ (tlistT l)
-    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
-      (.letIn ⟨2, "r"⟩ (.call "partition" [.var ⟨1, "b"⟩, tnatT pv])
-        (.matchE ⟨2, "r"⟩ none
-          [.mk "Pair" [⟨3, "hi"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "z"⟩) .unit)])))
-def runPart (l : List Nat) (pv : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [partition] (partCaller l pv) with
-  | .ok env =>
-    env.lookup "y" == some (vlistV (l.filter (fun a => decide (a <= pv)))) &&
-    env.lookup "hi" == some (vlistV (l.filter (fun a => decide (pv < a))))
-  | .error _ => false
-
-example : runPart [3,1,4,1,5] 3 = true := by native_decide   -- both parts non-empty
-example : runPart [1,2,3] 5 = true := by native_decide       -- everything stays
-example : runPart [7,8,9] 2 = true := by native_decide       -- everything leaves
-example : runPart [] 3 = true := by native_decide            -- the Nil path, executing
-example : runPart [2,2,2] 2 = true := by native_decide       -- the boundary: x = p stays
-
-/-! ## Stage (vi) prelude: the bound-survival keystone, checked
-
-    A partition-based quicksort needs `Ub p a` for the left part AFTER sorting, while
-    the partition bounded it BEFORE — so a bound has to survive a permutation, and
-    `Ub`/`Lb` (Σ-chains over the spine) are not natively permutation-invariant. M22
-    named the route at the positional encoding: cross to the multiset, where the
-    property is `Π x. x > p → count x l = Z` and permutation-invariance is a
-    one-line `id_trans`. These are the whole-list instances. -/
-
-example : chk Dllbc.StdLemmas.lb_head Dllbc.StdLemmas.lb_head_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.lb_tail Dllbc.StdLemmas.lb_tail_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.noAbove_of_ub Dllbc.StdLemmas.noAbove_of_ub_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.ub_of_noAbove Dllbc.StdLemmas.ub_of_noAbove_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.ub_perm Dllbc.StdLemmas.ub_perm_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.noBelow_of_lb Dllbc.StdLemmas.noBelow_of_lb_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.lb_of_noBelow Dllbc.StdLemmas.lb_of_noBelow_ty = true := by native_decide
-example : chk Dllbc.StdLemmas.lb_perm Dllbc.StdLemmas.lb_perm_ty = true := by native_decide
-
-/-! ## Stage (vi): QUICKSORT — the headline, with zero declared backs anywhere
+    ## Stage (vi) — quicksort
 
         fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
           -> Σ (hs : Sorted (*v)) → Π n. Id Nat (count n (*v)) (count n (old *v))
@@ -1408,10 +1242,10 @@ example : chk Dllbc.StdLemmas.lb_perm Dllbc.StdLemmas.lb_perm_ty = true := by na
 
     THE PROGRAM. Take the payload; the head is the pivot; partition the tail through
     `v`; sort the kept part in place through `v` and the returned part through a
-    borrow of the local; glue with `append_back`. §8's guard licenses the recursion
-    on the declared `[fuel]`, and the sufficiency hypothesis makes the out-of-fuel
-    path ⊥-dischargeable — with the two `Le` conjuncts partition returns supplying
-    exactly the two `le_trans`es that feed the recursive calls their own sufficiency.
+    borrow of the local; glue with `append_back`. The sufficiency hypothesis makes
+    the out-of-fuel path ⊥-dischargeable — with the two `Le` conjuncts partition
+    returns supplying exactly the two `le_trans`es that feed the recursive calls
+    their own sufficiency.
 
     THE ONE STRUCTURAL FACT the assembly needs beyond composition is BOUND SURVIVAL:
     `sorted_append_pivot` wants `Ub x` of the SORTED left part, and the partition
@@ -1424,104 +1258,300 @@ example : chk Dllbc.StdLemmas.lb_perm Dllbc.StdLemmas.lb_perm_ty = true := by na
     name values that later statements consume, and the body has no way to say "the
     value `rest` had" or "what `*v` held before that call". Each is applied in stages
     as its arguments become available. Every one of them would disappear under the
-    filed `old`-for-consumed-things feature; none of them is doing mathematical work. -/
+    filed `old`-for-consumed-things feature; none of them is doing mathematical work.
 
-def quicksort : FnDef :=
-  decl{ fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
-        -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-        { let l = *v;
-          match l {
-            Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
-            Cons(x, rest) => match fuel {
-              -- Out of fuel with a non-empty list: `hfuel : Le (S (len rest)) Z` IS
-              -- `Bot`, so the path is dead and the audit admits an ex-falso at any
-              -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
-              Z => botElim Unit hfuel,
-              S(f2) => {
-                let lr = len rest;
-                -- THE COUNT CHAIN, staged whole while `rest` is still nameable. Its
-                -- later arguments are the two parts before sorting (a, b) with the
-                -- partition's own count evidence, then the same two after sorting
-                -- (a2, b2) with each sort's evidence, then the glued exit and
-                -- `append_back`'s evidence. Read it as: rewrite the exit into an
-                -- append, split the append's count, move both parts back across
-                -- their sorts, and land on the partition's equation.
-                let mkCnt = (λ (a : List Nat). λ (b : List Nat).
-                    λ (hp : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
-                    λ (a2 : List Nat). λ (b2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n a)).
-                    λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n b)).
-                    λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
-                      λ (n : Nat).
-                        id_trans Nat (count n e) (add (count n a2) (count n (Cons x b2)))
-                                     (count n (Cons x rest))
-                          (id_trans Nat (count n e) (count n (append a2 (Cons x b2)))
-                                        (add (count n a2) (count n (Cons x b2)))
-                             (id_congr (List Nat) Nat (λ (z : List Nat). count n z)
-                                e (append a2 (Cons x b2)) hap)
-                             (count_append n a2 (Cons x b2)))
-                          (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                        (add (count n a) (count n (Cons x b)))
-                                        (count n (Cons x rest))
-                             (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                           (add (count n a) (count n (Cons x b2)))
-                                           (add (count n a) (count n (Cons x b)))
-                                (id_congr Nat Nat (λ (r : Nat). add r (count n (Cons x b2)))
-                                   (count n a2) (count n a) (h1 n))
-                                (id_congr Nat Nat (λ (r : Nat). add (count n a) r)
-                                   (count n (Cons x b2)) (count n (Cons x b))
-                                   (count_cons_congr n x b2 b (h2 n))))
-                             (count_cons_r n x a b rest (hp n))));
-                *v := rest;
-                let pr = partition(&mut *v, x);
-                match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
-                match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
-                  -- Both bounds are about to be invalidated as VALUES (the sorts
-                  -- replace both lists), so their transports are staged now, while the
-                  -- pre-sort lists are still nameable.
-                  let mkUb = (λ (a2 : List Nat).
-                      λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n (*v))).
-                        ub_perm x a2 (*v) h1 hub);
-                  let mkLb = (λ (b2 : List Nat).
-                      λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n hi)).
-                        lb_perm x b2 hi h2 hlb);
-                  let cnt1 = mkCnt (*v) hi hpc;
-                  -- Sort the kept part in place. Its sufficiency is the partition's
-                  -- length conjunct composed with this frame's.
-                  let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
-                  let s1 = quicksort(f2, &mut *v, hf1);
-                  match s1 { Pair(hs1, hc1) => {
-                    -- …and the returned part, through a borrow of the local that
-                    -- holds it. Nothing about it is in `*v`; it is an ordinary value.
-                    let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
-                    let s2 = quicksort(f2, &mut hi, hf2);
-                    match s2 { Pair(hs2, hc2) => {
-                      let hub2 = mkUb (*v) hc1;
-                      let hlb2 = mkLb hi hc2;
-                      let cnt2 = cnt1 (*v) hi hc1 hc2;
-                      -- The last staged builder: the glue's evidence arrives only
-                      -- from `append_back`, by which time both parts are consumed.
-                      let fin = (λ (e : List Nat).
-                          λ (hap : Id (List Nat) e (append (*v) (Cons x hi))).
-                            list_rw (λ (z : List Nat). Sorted z) (append (*v) (Cons x hi)) e
-                              (id_sym (List Nat) e (append (*v) (Cons x hi)) hap)
-                              (sorted_append_pivot x (*v) hi hs1 hub2 hs2 hlb2));
-                      let w = Cons(x, hi);
-                      let happ = append_back(&mut *v, w);
-                      Pair(fin (*v) happ, cnt2 (*v) happ)
-                    } }
-                  } }
-                } } } } } }
+    ## ALL THREE ARE FUEL-THREADED, and that is decision 8's price, paid
+
+    M23 wrote `partition` and `append_back` with `[v]` — decreasing through the
+    borrow's payload — and `quicksort` with `[fuel]`. The `[v]` shape has no
+    recursor form (see `borrowDecrease` in stage (v)), so §12 decision 8 blessed
+    fuel-threading as the interim, and this is that source change: each of the two
+    grows a `fuel : Nat` parameter and a `Le (len *v) fuel` bound, each grows a dead
+    `Z` branch discharged by `botElim`, and every caller supplies both.
+
+    **The bound needs no lemma, and that is the interesting part.** At each recursive
+    call the bound passes down UNCHANGED: `Le (len (Cons x rest)) (S f2)` IS
+    `Le (len rest) f2` definitionally — the same bounds-cursor descent M14 found. And
+    `Hf` is CAPITAL in both callees, which is §6's mode discipline paying for the
+    migration: quicksort hands its `hfuel` to `partition` and still needs it twice
+    more, and a lowercase proof parameter would have MOVED it (R16).
+
+    `append_back`'s caller side is the one place fuel had to be INVENTED rather than
+    forwarded: quicksort calls it AFTER sorting both halves, and a sort returns a
+    count equation, not a length bound. What works is the fuel that is exactly
+    enough — `len *v` itself, with `le_refl` as its bound — staged in a `let` first,
+    because a comptime argument mentioning `*v` would demand-collapse the loan it
+    was just lent. -/
+
+/-! ### The cohort's telescope vocabulary
+
+    Both fuel-threaded callees put the borrow SECOND (the fuel is `[k]` and `[k]`
+    hoists to the front), so a return type written outside a header names it
+    `.var ⟨1, "v"⟩`. -/
+
+def vfT : Term := .var ⟨1, "v"⟩
+def dvfT : Term := .deref vfT
+def oldvfT : Term := .app (.const "old") dvfT
+def pT : Term := .var ⟨2, "p"⟩
+def fuelT : Term := .var ⟨0, "fuel"⟩
+
+/-! ### The return types
+
+    Written out per twin rather than through a skeleton, which is M28 ψ's rule: for
+    a SPEC lie the type IS the readable content, and each of these is one line of a
+    six-conjunct chain away from the honest form. Only the two telescope parameters
+    a return type cannot name from outside its header are spliced. -/
+
+def partHonest : Term := pure{
+  Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
+    → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
+    → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) }
+
+def qsHonest : Term := pure{
+  Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) }
+
+/-- The sufficiency hypothesis's type — a telescope entry, so it is a parameter of
+    the chain too. Its twin is the one that weakens it to `Unit`. -/
+def suffHonest : Term := pure{ Le (len *%vfT) %fuelT }
+
+/-! ### The chain, once
+
+    Three parameters vary — `partition`'s return type, `quicksort`'s, and
+    `quicksort`'s sufficiency hypothesis — which is every twin in this cohort except
+    the two BODY twins, and those cannot be shared at all (M28 D1's rule: a
+    difference inside a body, at a subterm naming a binder the `fn` lowering mints
+    an id for, has no splice that can reach it). Both are transcribed below. -/
+
+def qsUnder (pret qret suff tail : Term) : Term := prog{
+  fn partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel) -> %pret
+      { let l = *v;
+        match l {
+          -- `Ub p Nil` and `Lb p Nil` are both `Unit`, and the count goal is
+          -- `add Z Z = Z` — the empty partition proves itself.
+          Nil => { *v := Nil;
+                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
+          Cons(x, rest) => match fuel {
+            -- Out of fuel with a non-empty list: `Hf : Le (S (len rest)) Z` IS
+            -- `Bot`, so the path is dead and the audit admits an ex-falso at any
+            -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
+            Z => botElim Unit Hf,
+            S(f2) => {
+            -- PAIN DIARY (staging, and the first where the unnameable thing is an
+            -- ENTRY value, not an exit). Both count steps must name `rest`, the tail
+            -- as it was at entry; but `rest` is DATA and `*v := rest` moves it, so
+            -- after the very next statement no term in the body denotes it. Dodged
+            -- as ever by building the derivation while it is still live and applying
+            -- it later. M23-iii stated the rule for exits ("a body can only talk
+            -- about the CURRENT exit"); this instance says the same of any consumed
+            -- parameter or binder, and it is a filing for `old` on consumed things.
+            let mkL = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                          λ (n : Nat). count_cons_l n x a b rest (h n));
+            let mkR = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                          λ (n : Nat). count_cons_r n x a b rest (h n));
+            -- The lengths need no staged lambda: `len rest` is a NAT, so naming the
+            -- computed value once, while `rest` is live, is enough. (The counts
+            -- cannot do this — `count n rest` is a family over `n`, and it is the
+            -- LIST the lemma needs, not any one of its counts.)
+            let lr = len rest;
+            *v := rest;
+            -- The bound goes with the call, UNCHANGED: `Le (len (Cons x rest)) (S f2)`
+            -- already IS `Le (len rest) f2`.
+            let r = partition(f2, &mut *v, p, Hf);
+            match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
+            match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
+              -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
+              -- either arm can build its bound: the split abstracted `leb σ_x σ_p`
+              -- away, so `leb_true_le x p Refl` is rejected here (see the wall test)
+              -- and `leb_true_le x p e` is not.
+              if e : leb x p {
+                -- x ≤ p: the head belongs to the KEPT part. Derive both proofs
+                -- BEFORE the write, which consumes `lo` and `x` (§5.3's ordering
+                -- corollary, in its body-local form).
+                let lo = *v;
+                let hub2 = Pair(leb_true_le x p e, hub);
+                let hl2b = le_up_r (len hi) lr hl2;
+                let cnt = mkL lo hi hcnt;
+                *v := Cons(x, lo);
+                Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
+              } else {
+                -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
+                -- so `hub` passes straight through.
+                let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
+                let hl1b = le_up_r (len *v) lr hl1;
+                let cnt = mkR (*v) hi hcnt;
+                Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
               }
+            } } } } } }
+          } }
+        } };
+  -- `append_back(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
+  -- `append (old *v) w` — the whole postcondition, and the whole description. Its
+  -- return type is written INLINE, because nothing lies about it: no twin needs it
+  -- spliced, and inside the header `v` and `w` are the names the programmer wrote.
+  fn append_back [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (len *v) fuel)
+      -> Id (List Nat) (*v) (append (old *v) w)
+      { match v {
+          Nil => { *v := w; Refl },
+          -- PAIN DIARY (staging, the M22 "proof linearity" entry's data twin). The
+          -- congruence needs to NAME its right endpoint, `append (old *tl) w`, but
+          -- the recursive call has by then MOVED `w` (it is data, so §2.1 gives no
+          -- copy-on-read). Dodged by staging the endpoint as a runtime `let` while
+          -- `w` is still live. Same dodge, new cause: M22's was a proof consumed by
+          -- a mutation, this is a data argument consumed by the call the proof is
+          -- about. The general fix is the same one M22 queued — `old` for consumed
+          -- parameters, so a body can name any parameter's ENTRY value without
+          -- owning it, which is what M12 already grants the RETURN TYPE and denies
+          -- the body.
+          Cons(hd, tl) => match fuel {
+            Z => botElim Unit Hf,
+            S(f2) => {
+              let y = append (*tl) w;
+              let h = append_back(f2, &mut *tl, w, Hf);
+              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
             }
-          } } }
--- The flagship, and the same disposition for the same reason — it calls
--- `partition` and `append_back`, so its cohort inherits their `[v]` decline.
--- Carrier: `S26Prog.quicksortP` on the fuel-threaded cohort, `bothWays` in
--- `S27Dispose` §B. The four `qs*` twins below ride with it.
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+          }
+      } };
+  fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suff) -> %qret
+      { let l = *v;
+        match l {
+          Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
+          Cons(x, rest) => match fuel {
+            -- Out of fuel with a non-empty list: `hfuel : Le (S (len rest)) Z` IS
+            -- `Bot`, so the path is dead and the audit admits an ex-falso at any
+            -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
+            Z => botElim Unit hfuel,
+            S(f2) => {
+              let lr = len rest;
+              -- THE COUNT CHAIN, staged whole while `rest` is still nameable. Its
+              -- later arguments are the two parts before sorting (a, b) with the
+              -- partition's own count evidence, then the same two after sorting
+              -- (a2, b2) with each sort's evidence, then the glued exit and
+              -- `append_back`'s evidence. Read it as: rewrite the exit into an
+              -- append, split the append's count, move both parts back across
+              -- their sorts, and land on the partition's equation.
+              let mkCnt = (λ (a : List Nat). λ (b : List Nat).
+                  λ (hp : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                  λ (a2 : List Nat). λ (b2 : List Nat).
+                  λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n a)).
+                  λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n b)).
+                  λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
+                    λ (n : Nat).
+                      id_trans Nat (count n e) (add (count n a2) (count n (Cons x b2)))
+                                   (count n (Cons x rest))
+                        (id_trans Nat (count n e) (count n (append a2 (Cons x b2)))
+                                      (add (count n a2) (count n (Cons x b2)))
+                           (id_congr (List Nat) Nat (λ (z : List Nat). count n z)
+                              e (append a2 (Cons x b2)) hap)
+                           (count_append n a2 (Cons x b2)))
+                        (id_trans Nat (add (count n a2) (count n (Cons x b2)))
+                                      (add (count n a) (count n (Cons x b)))
+                                      (count n (Cons x rest))
+                           (id_trans Nat (add (count n a2) (count n (Cons x b2)))
+                                         (add (count n a) (count n (Cons x b2)))
+                                         (add (count n a) (count n (Cons x b)))
+                              (id_congr Nat Nat (λ (r : Nat). add r (count n (Cons x b2)))
+                                 (count n a2) (count n a) (h1 n))
+                              (id_congr Nat Nat (λ (r : Nat). add (count n a) r)
+                                 (count n (Cons x b2)) (count n (Cons x b))
+                                 (count_cons_congr n x b2 b (h2 n))))
+                           (count_cons_r n x a b rest (hp n))));
+              *v := rest;
+              -- Decision 8's price at a CALL SITE: the fuel and the bound go with
+              -- the call, and the bound is `hfuel` UNCHANGED — after `*v := rest`
+              -- the callee wants `Le (len rest) f2`, which is what it already is.
+              -- It SURVIVES the call because `partition`'s `Hf` is capital.
+              let pr = partition(f2, &mut *v, x, hfuel);
+              match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
+              match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
+                -- Both bounds are about to be invalidated as VALUES (the sorts
+                -- replace both lists), so their transports are staged now, while the
+                -- pre-sort lists are still nameable.
+                let mkUb = (λ (a2 : List Nat).
+                    λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n (*v))).
+                      ub_perm x a2 (*v) h1 hub);
+                let mkLb = (λ (b2 : List Nat).
+                    λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n hi)).
+                      lb_perm x b2 hi h2 hlb);
+                let cnt1 = mkCnt (*v) hi hpc;
+                -- Sort the kept part in place. Its sufficiency is the partition's
+                -- length conjunct composed with this frame's.
+                let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
+                let s1 = quicksort(f2, &mut *v, hf1);
+                match s1 { Pair(hs1, hc1) => {
+                  -- …and the returned part, through a borrow of the local that
+                  -- holds it. Nothing about it is in `*v`; it is an ordinary value.
+                  let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
+                  let s2 = quicksort(f2, &mut hi, hf2);
+                  match s2 { Pair(hs2, hc2) => {
+                    let hub2 = mkUb (*v) hc1;
+                    let hlb2 = mkLb hi hc2;
+                    let cnt2 = cnt1 (*v) hi hc1 hc2;
+                    -- The last staged builder: the glue's evidence arrives only
+                    -- from `append_back`, by which time both parts are consumed.
+                    let fin = (λ (e : List Nat).
+                        λ (hap : Id (List Nat) e (append (*v) (Cons x hi))).
+                          list_rw (λ (z : List Nat). Sorted z) (append (*v) (Cons x hi)) e
+                            (id_sym (List Nat) e (append (*v) (Cons x hi)) hap)
+                            (sorted_append_pivot x (*v) hi hs1 hub2 hs2 hlb2));
+                    let w = Cons(x, hi);
+                    -- The fuel that is exactly enough, staged BEFORE the borrow is
+                    -- taken: a comptime argument mentioning `*v` would demand-
+                    -- collapse the loan it was just lent.
+                    let lv = len *v;
+                    let happ = append_back(lv, &mut *v, w, le_refl lv);
+                    Pair(fin (*v) happ, cnt2 (*v) happ)
+                  } }
+                } }
+              } } } } } }
+            }
+          }
+        } };
+  %tail }
 
-/-! ### Not vacuous: a lying twin per conjunct, and the sufficiency hypothesis
+/-- THE HEADLINE: M23's in-place quicksort — `Sorted` and the permutation count
+    equation over the exit snapshot, no declared `back` anywhere in the call tree —
+    checks as ONE program, against no table at all. -/
+def flagship : Term := qsUnder partHonest qsHonest suffHonest .unit
+example : progOk flagship = true := by native_decide
+
+/-! ### Not vacuous: `partition`'s four spec lies
+
+    The return type is the ONLY description of this function, so each conjunct gets
+    a twin that changes exactly it. The body and the telescope are the chain's, so
+    the lie is the only variable. -/
+
+-- (1) UPPER BOUND on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
+-- the entry is not what the caller gets back.
+example : progRejects (qsUnder (pure{
+    Σ (hi : List Nat) → Σ (hub : Ub %pT (old *%vfT)) → Σ (hlb : Lb %pT hi)
+      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) })
+    qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
+
+-- (2) LOWER BOUND on the kept part instead of the returned one.
+example : progRejects (qsUnder (pure{
+    Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT (*%vfT))
+      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) })
+    qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
+
+-- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
+example : progRejects (qsUnder (pure{
+    Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
+      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) })
+    qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
+
+-- (4) …and the count off by one, which no `Nil`-path argument can reach.
+example : progRejects (qsUnder (pure{
+    Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
+      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (S (count n (old *%vfT))) })
+    qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
+
+/-! ### Not vacuous: `quicksort`'s two spec lies, and the sufficiency hypothesis
 
     Every twin here is chosen to survive the `Nil` path and die on the RECURSIVE one
     — the first drafts of (1) and (2) were refuted at `Nil` (verified by reading the
@@ -1531,140 +1561,250 @@ def quicksort : FnDef :=
 -- (1) SORTEDNESS lied onto the wrong subject: the ENTRY is claimed sorted. True at
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
-def qsLieSorted : FnDef :=
-  { quicksort with retType := (decl{ fn qsLieSorted (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
-      -> Σ (hs : Sorted (old *v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-      { () } }).retType }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+example : progRejects (qsUnder partHonest (pure{
+    Σ (hs : Sorted (old *%vfT)) → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) })
+    suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
-def qsLieCount : FnDef :=
-  { quicksort with retType := (decl{ fn qsLieCount (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
-      -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (old *v)) (count n (*v))
-      { () } }).retType }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+example : progRejects (qsUnder partHonest (pure{
+    Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (count n (old *%vfT)) (count n (*%vfT)) })
+    suffHonest .unit) "does not have return type" = true := by native_decide
 
-/-- The BODY twin that says the KEYSTONE is load-bearing: `sorted_append_pivot` is
-    fed the bounds the PARTITION established, on the parts as they were BEFORE their
-    recursive sorts, instead of `ub_perm`/`lb_perm`'s transports of them. Everything
-    else is `quicksort` verbatim — this twin is generated from its source with two
-    identifiers changed — so what the rejection isolates is exactly bound survival. -/
-def qsStaleBound : FnDef :=
-  decl{ fn qsStaleBound [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
-        -> Σ (hs : Sorted (*v)) → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-        { let l = *v;
-          match l {
-            Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
-            Cons(x, rest) => match fuel {
-              -- Out of fuel with a non-empty list: `hfuel : Le (S (len rest)) Z` IS
-              -- `Bot`, so the path is dead and the audit admits an ex-falso at any
-              -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
-              Z => botElim Unit hfuel,
-              S(f2) => {
-                let lr = len rest;
-                -- THE COUNT CHAIN, staged whole while `rest` is still nameable. Its
-                -- later arguments are the two parts before sorting (a, b) with the
-                -- partition's own count evidence, then the same two after sorting
-                -- (a2, b2) with each sort's evidence, then the glued exit and
-                -- `append_back`'s evidence. Read it as: rewrite the exit into an
-                -- append, split the append's count, move both parts back across
-                -- their sorts, and land on the partition's equation.
-                let mkCnt = (λ (a : List Nat). λ (b : List Nat).
-                    λ (hp : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
-                    λ (a2 : List Nat). λ (b2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n a)).
-                    λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n b)).
-                    λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
-                      λ (n : Nat).
-                        id_trans Nat (count n e) (add (count n a2) (count n (Cons x b2)))
-                                     (count n (Cons x rest))
-                          (id_trans Nat (count n e) (count n (append a2 (Cons x b2)))
-                                        (add (count n a2) (count n (Cons x b2)))
-                             (id_congr (List Nat) Nat (λ (z : List Nat). count n z)
-                                e (append a2 (Cons x b2)) hap)
-                             (count_append n a2 (Cons x b2)))
-                          (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                        (add (count n a) (count n (Cons x b)))
-                                        (count n (Cons x rest))
-                             (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                           (add (count n a) (count n (Cons x b2)))
-                                           (add (count n a) (count n (Cons x b)))
-                                (id_congr Nat Nat (λ (r : Nat). add r (count n (Cons x b2)))
-                                   (count n a2) (count n a) (h1 n))
-                                (id_congr Nat Nat (λ (r : Nat). add (count n a) r)
-                                   (count n (Cons x b2)) (count n (Cons x b))
-                                   (count_cons_congr n x b2 b (h2 n))))
-                             (count_cons_r n x a b rest (hp n))));
-                *v := rest;
-                let pr = partition(&mut *v, x);
-                match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
-                match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
-                  -- Both bounds are about to be invalidated as VALUES (the sorts
-                  -- replace both lists), so their transports are staged now, while the
-                  -- pre-sort lists are still nameable.
-                  let mkUb = (λ (a2 : List Nat).
-                      λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n (*v))).
-                        ub_perm x a2 (*v) h1 hub);
-                  let mkLb = (λ (b2 : List Nat).
-                      λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n hi)).
-                        lb_perm x b2 hi h2 hlb);
-                  let cnt1 = mkCnt (*v) hi hpc;
-                  -- Sort the kept part in place. Its sufficiency is the partition's
-                  -- length conjunct composed with this frame's.
-                  let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
-                  let s1 = qsStaleBound(f2, &mut *v, hf1);
-                  match s1 { Pair(hs1, hc1) => {
-                    -- …and the returned part, through a borrow of the local that
-                    -- holds it. Nothing about it is in `*v`; it is an ordinary value.
-                    let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
-                    let s2 = qsStaleBound(f2, &mut hi, hf2);
-                    match s2 { Pair(hs2, hc2) => {
-                      let hub2 = mkUb (*v) hc1;
-                      let hlb2 = mkLb hi hc2;
-                      let cnt2 = cnt1 (*v) hi hc1 hc2;
-                      -- The last staged builder: the glue's evidence arrives only
-                      -- from `append_back`, by which time both parts are consumed.
-                      let fin = (λ (e : List Nat).
-                          λ (hap : Id (List Nat) e (append (*v) (Cons x hi))).
-                            list_rw (λ (z : List Nat). Sorted z) (append (*v) (Cons x hi)) e
-                              (id_sym (List Nat) e (append (*v) (Cons x hi)) hap)
-                              (sorted_append_pivot x (*v) hi hs1 hub hs2 hlb));
-                      let w = Cons(x, hi);
-                      let happ = append_back(&mut *v, w);
-                      Pair(fin (*v) happ, cnt2 (*v) happ)
-                    } }
-                  } }
-                } } } } } }
-              }
-            }
-          } } }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
-
--- (4) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the parameter
--- (so the body still elaborates and the rejection is about TYPING, not an unbound
--- name) and weaken it to `Unit`: the `Z` branch's `botElim` then has no ⊥ to
--- eliminate, and the out-of-fuel path stops being dead. This is what makes the
+-- (3) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the
+-- parameter (so the body still elaborates and the rejection is about TYPING, not an
+-- unbound name) and weaken it to `Unit`: the `Z` branch's `botElim` then has no ⊥
+-- to eliminate, and the out-of-fuel path stops being dead. This is what makes the
 -- guard-plus-hypothesis pair TOTAL correctness rather than partial.
-def qsNoSuff : FnDef :=
-  { quicksort with telescope := (decl{ fn qsNoSuff (fuel : Nat, v : &mut List Nat, hfuel : Unit)
-      -> Unit { () } }).telescope }
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+-- The needle is the MECHANISM, not the generic one: with the hypothesis weakened,
+-- the out-of-fuel branch's `botElim` has nothing to eliminate, and the audit says
+-- exactly that. The record-update twin this replaces could only assert `!progOk`.
+example : progRejects (qsUnder partHonest qsHonest (pure{ Unit }) .unit)
+  "botElim result on a non-⊥ argument" = true := by native_decide
 
-/-! ### The executing differential — it really sorts
+/-! ### The two BODY twins, transcribed
 
-    `Migrate.progOkOf` proves `Sorted ∧ Perm` symbolically; this runs the SAME FnDef on
-    concrete lists and compares against Lean's own sort. Duplicates and an
-    already-sorted input included, since the pivot path and the empty-part paths are
-    where a partition-based sort actually breaks. -/
+    A spec lie is refutable somewhere the `Nil` path can be blamed for; these two are
+    wrong only on the RECURSIVE path, which is what makes them the twins that test
+    the recursion. Both are written out in full rather than shared through the chain,
+    and that is M28 D1's rule rather than a choice: what varies is a subterm INSIDE a
+    body naming a binder the `fn` lowering mints an id for, and a `%` splice is a
+    Lean `Term` written outside the macro — it has no way to say "the `hub` this
+    match will bind". Each carries only what it needs: the count lie needs no
+    quicksort at all, and the bound lie needs the whole cohort. -/
 
-def qsCaller (l : List Nat) : Term :=
+/-- `partitionLoses`: the `≤ p` head is DROPPED instead of being pushed back onto the
+    kept part — one write changed, `*v := lo` for `*v := Cons(x, lo)`. Wrong only on
+    the recursive `True` path and only in the count conjunct; the bounds still hold
+    of a list with one element missing. -/
+def partitionLoses : Term := prog{
+  fn partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel) -> %partHonest
+      { let l = *v;
+        match l {
+          Nil => { *v := Nil;
+                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
+          Cons(x, rest) => match fuel {
+            Z => botElim Unit Hf,
+            S(f2) => {
+            let mkL = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                          λ (n : Nat). count_cons_l n x a b rest (h n));
+            let mkR = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                          λ (n : Nat). count_cons_r n x a b rest (h n));
+            let lr = len rest;
+            *v := rest;
+            let r = partition(f2, &mut *v, p, Hf);
+            match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
+            match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
+              if e : leb x p {
+                let lo = *v;
+                let hub2 = Pair(leb_true_le x p e, hub);
+                let hl2b = le_up_r (len hi) lr hl2;
+                let cnt = mkL lo hi hcnt;
+                -- THE LIE, and the only line that differs: the head is dropped.
+                *v := lo;
+                Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
+              } else {
+                let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
+                let hl1b = le_up_r (len *v) lr hl1;
+                let cnt = mkR (*v) hi hcnt;
+                Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
+              }
+            } } } } } }
+          } }
+        } };
+  () }
+example : progRejects partitionLoses "does not have return type" = true := by native_decide
+
+/-- `qsStaleBound`: the KEYSTONE is fed the bounds the PARTITION established, on the
+    parts as they were BEFORE their recursive sorts, instead of `ub_perm`/`lb_perm`'s
+    transports of them — `sorted_append_pivot x (*v) hi hs1 hub hs2 hlb` for
+    `… hub2 … hlb2`. Everything else is the chain's `quicksort` verbatim, so what the
+    rejection isolates is exactly bound survival. -/
+def qsStaleBound : Term := prog{
+  fn partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel) -> %partHonest
+      { let l = *v;
+        match l {
+          Nil => { *v := Nil;
+                   Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
+          Cons(x, rest) => match fuel {
+            Z => botElim Unit Hf,
+            S(f2) => {
+            let mkL = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                          λ (n : Nat). count_cons_l n x a b rest (h n));
+            let mkR = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                          λ (n : Nat). count_cons_r n x a b rest (h n));
+            let lr = len rest;
+            *v := rest;
+            let r = partition(f2, &mut *v, p, Hf);
+            match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
+            match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
+              if e : leb x p {
+                let lo = *v;
+                let hub2 = Pair(leb_true_le x p e, hub);
+                let hl2b = le_up_r (len hi) lr hl2;
+                let cnt = mkL lo hi hcnt;
+                *v := Cons(x, lo);
+                Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
+              } else {
+                let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
+                let hl1b = le_up_r (len *v) lr hl1;
+                let cnt = mkR (*v) hi hcnt;
+                Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
+              }
+            } } } } } }
+          } }
+        } };
+  fn append_back [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (len *v) fuel)
+      -> Id (List Nat) (*v) (append (old *v) w)
+      { match v {
+          Nil => { *v := w; Refl },
+          Cons(hd, tl) => match fuel {
+            Z => botElim Unit Hf,
+            S(f2) => {
+              let y = append (*tl) w;
+              let h = append_back(f2, &mut *tl, w, Hf);
+              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+            }
+          }
+      } };
+  fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suffHonest) -> %qsHonest
+      { let l = *v;
+        match l {
+          Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
+          Cons(x, rest) => match fuel {
+            Z => botElim Unit hfuel,
+            S(f2) => {
+              let lr = len rest;
+              let mkCnt = (λ (a : List Nat). λ (b : List Nat).
+                  λ (hp : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                  λ (a2 : List Nat). λ (b2 : List Nat).
+                  λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n a)).
+                  λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n b)).
+                  λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
+                    λ (n : Nat).
+                      id_trans Nat (count n e) (add (count n a2) (count n (Cons x b2)))
+                                   (count n (Cons x rest))
+                        (id_trans Nat (count n e) (count n (append a2 (Cons x b2)))
+                                      (add (count n a2) (count n (Cons x b2)))
+                           (id_congr (List Nat) Nat (λ (z : List Nat). count n z)
+                              e (append a2 (Cons x b2)) hap)
+                           (count_append n a2 (Cons x b2)))
+                        (id_trans Nat (add (count n a2) (count n (Cons x b2)))
+                                      (add (count n a) (count n (Cons x b)))
+                                      (count n (Cons x rest))
+                           (id_trans Nat (add (count n a2) (count n (Cons x b2)))
+                                         (add (count n a) (count n (Cons x b2)))
+                                         (add (count n a) (count n (Cons x b)))
+                              (id_congr Nat Nat (λ (r : Nat). add r (count n (Cons x b2)))
+                                 (count n a2) (count n a) (h1 n))
+                              (id_congr Nat Nat (λ (r : Nat). add (count n a) r)
+                                 (count n (Cons x b2)) (count n (Cons x b))
+                                 (count_cons_congr n x b2 b (h2 n))))
+                           (count_cons_r n x a b rest (hp n))));
+              *v := rest;
+              let pr = partition(f2, &mut *v, x, hfuel);
+              match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
+              match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
+                let mkUb = (λ (a2 : List Nat).
+                    λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n (*v))).
+                      ub_perm x a2 (*v) h1 hub);
+                let mkLb = (λ (b2 : List Nat).
+                    λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n hi)).
+                      lb_perm x b2 hi h2 hlb);
+                let cnt1 = mkCnt (*v) hi hpc;
+                let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
+                let s1 = quicksort(f2, &mut *v, hf1);
+                match s1 { Pair(hs1, hc1) => {
+                  let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
+                  let s2 = quicksort(f2, &mut hi, hf2);
+                  match s2 { Pair(hs2, hc2) => {
+                    let hub2 = mkUb (*v) hc1;
+                    let hlb2 = mkLb hi hc2;
+                    let cnt2 = cnt1 (*v) hi hc1 hc2;
+                    let fin = (λ (e : List Nat).
+                        λ (hap : Id (List Nat) e (append (*v) (Cons x hi))).
+                          list_rw (λ (z : List Nat). Sorted z) (append (*v) (Cons x hi)) e
+                            (id_sym (List Nat) e (append (*v) (Cons x hi)) hap)
+                            -- THE LIE, and the only line that differs: the PRE-sort
+                            -- bounds, not their transports across the sorts.
+                            (sorted_append_pivot x (*v) hi hs1 hub hs2 hlb));
+                    let w = Cons(x, hi);
+                    let lv = len *v;
+                    let happ = append_back(lv, &mut *v, w, le_refl lv);
+                    Pair(fin (*v) happ, cnt2 (*v) happ)
+                  } }
+                } }
+              } } } } } }
+            }
+          }
+        } };
+  () }
+example : progRejects qsStaleBound "does not have return type" = true := by native_decide
+
+/-! ### The executing differentials — the bodies really partition, and really sort
+
+    `progOk` proves the conjuncts symbolically; these run the SAME program on
+    concrete inputs. Each rides the honest chain as its tail, so what runs is what
+    was checked. `runPart` also exercises phase A's concrete-scrutinee branch end to
+    end: `if e : leb x p` on a closed Bool takes the `ownedSelect` path, where the
+    equation is bound to `Refl`. -/
+
+def partCallerTail (l : List Nat) (pvv : Nat) : Term :=
+  .letIn ⟨0, "z"⟩ (tlistT l)
+    (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
+      (.letIn ⟨2, "r"⟩ (.call "partition"
+          [tnatT l.length, .var ⟨1, "b"⟩, tnatT pvv, .unit])
+        (.matchE ⟨2, "r"⟩ none
+          [.mk "Pair" [⟨3, "hi"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "z"⟩) .unit)])))
+def runPart (l : List Nat) (pvv : Nat) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec []
+      (qsUnder partHonest qsHonest suffHonest (partCallerTail l pvv)) with
+  | .ok env =>
+    env.lookup "y" == some (vlistV (l.filter (fun a => decide (a <= pvv)))) &&
+    env.lookup "hi" == some (vlistV (l.filter (fun a => decide (pvv < a))))
+  | .error _ => false
+
+example : runPart [3,1,4,1,5] 3 = true := by native_decide   -- both parts non-empty
+example : runPart [1,2,3] 5 = true := by native_decide       -- everything stays
+example : runPart [7,8,9] 2 = true := by native_decide       -- everything leaves
+example : runPart [] 3 = true := by native_decide            -- the Nil path, executing
+example : runPart [2,2,2] 2 = true := by native_decide       -- the boundary: x = p stays
+
+/-- The caller the sort's differentials share: own a list, lend it, sort, read it
+    back. `hfuel : Le (len l) (len l)` is supplied as `()` — the bound holds by
+    COMPUTATION here, which is the ordinary route for a concrete payload. -/
+def qsCallerTail (l : List Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
       (.seq (.call "quicksort" [tnatT l.length, .var ⟨1, "b"⟩, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
+def qsRun (l : List Nat) : Term := qsUnder partHonest qsHonest suffHonest (qsCallerTail l)
 def runQs (l : List Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [partition, appendBack, quicksort] (qsCaller l) with
+  match Dllbc.Tests.S9Diff.runExec [] (qsRun l) with
   | .ok env => env.lookup "y" == some (vlistV (l.mergeSort (fun a b => a <= b)))
   | .error _ => false
 

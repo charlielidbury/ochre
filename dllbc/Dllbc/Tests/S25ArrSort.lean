@@ -783,12 +783,11 @@ example : runSplA [] 2 == some [] := by native_decide
     remaining inputs are one bug away, and the moment the pinned tests above flip this
     becomes the lane's real acceptance. -/
 
-def listTbl : List FnDef :=
-  [Dllbc.Tests.S23Direct.partition, Dllbc.Tests.S23Direct.appendBack,
-   Dllbc.Tests.S23Direct.quicksort]
-
+-- The list side is `S23Direct.qsRun` — the flagship cohort's own chain with a
+-- caller as its tail (M28 D3), so the sort that runs here is the one checked
+-- there, rather than three `FnDef`s handed over as a table.
 def runQsL (l : List Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec listTbl (Dllbc.Tests.S23Direct.qsCaller l) with
+  match Dllbc.Tests.S9Diff.runExec [] (Dllbc.Tests.S23Direct.qsRun l) with
   | .ok env => (env.lookup "y").bind (listOfV 2000)
   | .error _ => none
 

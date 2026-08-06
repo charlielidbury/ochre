@@ -1,6 +1,5 @@
 import Dllbc.Tests.S26Migrate
 import Dllbc.Tests.S26Fuel
-import Dllbc.Tests.S26Fn
 import Dllbc.Tests.S26Prog
 
 /-!
@@ -96,12 +95,18 @@ open Dllbc.StdLemmas (Ub Lb len)
     between M27-δ and M28 μ and did the same job by arithmetic; the residue does it
     with identity attached, which is why it is the one that survived.) -/
 
-/-! ## §B. The residue: 19 declarations, and a disposition for each
+/-! ## §B. The residue: what still has no program form, and a disposition for each
 
     These survive the `back` deletion, so each is a decision about `[k]`, not about
     §6.2. `residue` is derived from the harness rather than written out, and the
     assertion below pins it name-for-name — a decliner appearing or vanishing goes
-    red here before it can go unnoticed anywhere else. -/
+    red here before it can go unnoticed anywhere else.
+
+    **It is down to two, and it got there by the corpus being REWRITTEN rather than
+    by anything being tolerated.** The residue was nineteen when this ledger was
+    written. Every departure since is recorded below in the form that matters —
+    which declaration left, and whether its verdict left with it — because "the
+    ledger got shorter" is exactly the sentence a coverage loss would also produce. -/
 
 -- Computed from the pool ITSELF since M28 μ. It used to route through
 -- `S26Fuel.fixAll`, the `[k]`-hint correction M26-F adopted at the source; that
@@ -115,202 +120,74 @@ def residue (p : List FnDef) : List String :=
     not a set — is the claim. -/
 -- Five `partition`s became one in M28 υ: four were `{ partition with retType := … }`
 -- spec twins that had lost their assertions with `checkFn` and were deleted as
--- definitions nothing asserted anything about. They shared `partition`'s NAME and
--- its `[v]` decline, which is why they were five entries here rather than one.
--- Nothing else moved — a decliner leaving because it was deleted, not because a
--- verdict changed.
+-- definitions nothing asserted anything about.
 -- `recSame`/`recWrongIdx`/`recGrow`/`recDeep` left in M28 φ: they are programs
 -- now, and their refusals are asserted directly as `progRejects … "not the
--- predecessor"` in `S23Direct` (and again in §B3/§B4 above, at program level).
--- A decliner leaving because it stopped being a declaration, not because a
--- verdict changed — `recCursor` stays, being the one the eliminators still
--- cannot express.
-example : (S26Migrate.pools.flatMap residue ==
-  ["zero_all",
-   "recCursor", "append_back",
-   "partition",
-   "partitionLoses",
-   "quicksort", "quicksort", "quicksort", "qsStaleBound", "quicksort",
-   "walkArr"]) = true := by native_decide
+-- predecessor"` in `S23Direct` (and again in §B3/§B4 below, at program level).
+-- **`recCursor`, `append_back`, `partition`, `partitionLoses`, `quicksort` and the
+-- three `quicksort` twins left in M28 D3, and that is the whole `[v]` class going
+-- at once.** They were the declarations the eliminators cannot express, carried on
+-- the declaration path so that the class had a SUBJECT. It has a better one now:
+-- `S23Direct.borrowDecrease` is the refusal as a four-line program, with the
+-- decision in the message, and the price is paid in the same file — stage (vi)'s
+-- cohort is `partition`/`append_back`/`quicksort` fuel-threaded, checked, run, and
+-- guarded by six twins. A decliner leaving because the corpus stopped writing it
+-- that way, not because a verdict changed.
+example : (S26Migrate.pools.flatMap residue == ["zero_all", "walkArr"]) = true := by native_decide
 
-/-! ### B1. PAID — the fuel twins that already existed
+/-! ### B1. PAID — every one, and where
 
-    Five of the nineteen were paid before this phase, one per milestone that met
-    them. Asserted here rather than cited, so that "the disposition exists" is a
-    build fact and not a cross-reference a later deletion could falsify. -/
+    The disposition is asserted rather than cited, so that "the disposition exists"
+    is a build fact and not a cross-reference a later deletion could falsify. -/
 
--- Both paths accept: the declaration checks AND its elaboration checks as a
--- program. `S26Fuel.bothWays` is where the claim was first made; reused verbatim
--- so the two files cannot drift on what "paid" means.
-
--- `zero_all` (S6) and `recCursor` (S23) are the same function twice — §7 cost 4's
--- own example, a cursor with no decreasing argument but the payload.
+-- `zero_all` (S6) is §7 cost 4's own example: a cursor with no decreasing argument
+-- but the payload. Its fuel-threaded twin checks on both paths.
 example : S26Fuel.bothWays S26Fuel.zeroAllF = true := by native_decide
--- `append_back` (S23), paid in M26-E, whose CALLER half was decision 8's first
--- real price rise.
-example : S26Fuel.bothWays S26Prog.appendBackF = true := by native_decide
--- `partition` (S23), paid in M26-D.
-example : S26Fuel.bothWays S26Fn.partitionF = true := by native_decide
--- `quicksort` (S23), the flagship, on the fuel-threaded cohort.
-example : S26Fuel.bothWays S26Prog.quicksortP [S26Fn.partitionF, S26Prog.appendBackF]
-  = true := by native_decide
 -- `walkArr` (S24) is a NEGATIVE control, and its honest twin `walk` was paid in
 -- M24 — before decision 8 existed. Nothing to port: the declaration path rejects
 -- `walkArr` at the guard and the macro declines it at `[a]`-on-a-borrow, which is
 -- one fact from two sides.
 example : S26Fuel.bothWays S24Arrays.walk = true := by native_decide
+-- `append_back`, `partition` and `quicksort` are paid IN THE SOURCE now: the
+-- flagship cohort is one fuel-threaded chain and it CHECKS, which is the strongest
+-- form the "paid" claim can take — there is no un-migrated original left for it to
+-- be paid against.
+example : progOk S23Direct.flagship = true := by native_decide
 
-/-! ### B2. THE GAP THIS LEDGER FOUND — six twins with no paid counterpart
+/-! ### B2. THE GAP THIS LEDGER FOUND — the twins, and where they went
 
-    B1's five are the HONEST functions. Every one of them is guarded in the corpus
-    by lie twins, and **the twins were not migrated with them**: `partitionF` was
-    written with no lies at all, and `S26Prog`'s twin battery covers three of
-    `quicksort`'s four. So the paid path was, until this file, checking that the
-    honest program is accepted without checking that it still refuses anything —
-    which is the half of a differential that can pass vacuously.
+    B1's entries are the HONEST functions. Every one of them is guarded in the
+    corpus by lie twins, and **the twins were not migrated with them**: the
+    fuel-threaded `partition` was written with no lies at all, and `S26Prog`'s
+    battery covered three of `quicksort`'s four. So the paid path was, until this
+    file, checking that the honest program is accepted without checking that it
+    still refuses anything — which is the half of a differential that can pass
+    vacuously. That is a coverage gap rather than a decliner, which is why counting
+    declines never surfaced it.
 
-    That is a coverage gap rather than a decliner, which is why counting declines
-    never surfaced it. Closed below, twin for twin.
+    This section closed it twin for twin, on `FnDef` record updates
+    (`{ partitionF with retType := … }`) held to a transform oracle. **All six now
+    live beside the functions they guard** (M28 D3): `S23Direct`'s chain takes
+    `partition`'s return type, `quicksort`'s, and `quicksort`'s sufficiency
+    hypothesis as parameters, so four partition spec lies, two quicksort spec lies
+    and the weakened hypothesis are each one varied argument on a shared body, and
+    the two BODY twins — `partitionLoses` and `qsStaleBound` — are transcribed
+    there for the reason M28 D1 named.
 
-    **The bar is sharper than "rejected".** A lie twin that DECLINES teaches
-    nothing — the migration simply failed to produce a program. Each twin below
-    must MIGRATE and then be refused, on both paths, which is what `neitherWay`
-    asserts and what a decline-tolerant helper would have quietly let through. -/
+    **The bar this section set survives the move, and it is worth restating because
+    it is subtle**: a lie twin that DECLINES teaches nothing — the migration simply
+    failed to produce a program — so each twin had to MIGRATE and then be refused,
+    which is what `neitherWay` asserted and what a decline-tolerant helper would
+    have quietly let through. A `progRejects` on a chain is that bar by
+    construction: the chain lowers or the needle is `fnRefusedNeedle`, and the six
+    twins are caught on "does not have return type" instead.
 
--- ~~on both paths~~ — on the one path there is (M27-δ). The bar it enforces is
--- unchanged and is the reason this helper exists rather than a `!progOkOf`: a
--- DECLINE is not a rejection, so the elaboration has to EXIST for the refusal to
--- be about the lie.
-def neitherWay (d : FnDef) (deps : List FnDef := []) : Bool :=
-  (match FnMacro.progOf (deps ++ [d]) .unit with
-      -- A DECLINE is not a rejection: the elaboration has to exist for the
-      -- program path's refusal to be about the lie.
-      | .error _ => false
-      | .ok t => !progOk t)
-
-/-! #### B2a. `partition`'s four SPEC lies, on the fuel-threaded telescope
-
-    Each is one conjunct of the honest ensures made false, and each is written
-    exactly as `S23Direct` writes it — a `retType` swap on the honest body, so the
-    twin cannot drift from the function it guards. The telescope is `partitionF`'s,
-    which is the whole of the migration: a spec lie says nothing about fuel. -/
-
-def partFLie (r : Term) : FnDef := { S26Fn.partitionF with retType := r }
-
--- (1) UPPER BOUND on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
--- the entry is not what the caller gets back.
-def partFLieUb : FnDef := partFLie (decl{
-  fn partFLieUb [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
-    -> Σ (hi : List Nat) → Σ (hub : Ub p (old *v)) → Σ (hlb : Lb p hi)
-         → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-         → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
-    { () } }).retType
-
--- (2) LOWER BOUND on the kept part instead of the returned one.
-def partFLieLb : FnDef := partFLie (decl{
-  fn partFLieLb [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
-    -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p (*v))
-         → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-         → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
-    { () } }).retType
-
--- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
-def partFLieCountDrop : FnDef := partFLie (decl{
-  fn partFLieCountDrop [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
-    -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
-         → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-         → Π (n : Nat) → Id Nat (count n (*v)) (count n (old *v))
-    { () } }).retType
-
--- (4) …and the count off by one, which no `Nil`-path argument can reach.
-def partFLieCountShift : FnDef := partFLie (decl{
-  fn partFLieCountShift [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
-    -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
-         → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
-         → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (S (count n (old *v)))
-    { () } }).retType
-
-def partFLies : List FnDef := [partFLieUb, partFLieLb, partFLieCountDrop, partFLieCountShift]
-
-/-- Each lie really is a lie ABOUT THIS FUNCTION: same name, same telescope, same
-    body, one different return type. Without this the four could have been four
-    unrelated declarations that happen to be rejected. -/
-example : partFLies.all (fun d =>
-    d.body == S26Fn.partitionF.body
-    && d.telescope == S26Fn.partitionF.telescope
-    && d.retType != S26Fn.partitionF.retType) = true := by native_decide
-
-example : partFLies.all (fun d => neitherWay d) = true := by native_decide
-
-/-! #### B2b. `partitionLoses` — the BODY twin, derived rather than transcribed
-
-    The four above are spec lies, refutable somewhere the `Nil` path can be blamed
-    for. `partitionLoses` is the body twin: the `≤ p` head is DROPPED instead of
-    being pushed back onto the kept part, so it is wrong only on the recursive
-    `True` path and only in the count conjunct — the bounds still hold of a list
-    with one element missing. It is the twin that tests the recursion.
-
-    Transcribing `partitionF` again to change one line would put a 40-line proof
-    body in the corpus twice, where the second copy can rot. So the lie is a
-    **transform**, and the transform is held to the corpus's own hand-written twin:
-    applying it to `partition` must reproduce `partitionLoses` exactly. That makes
-    "this is the same lie" a computation instead of a claim about my care — the
-    α-oracle pattern M26-D used for the macro, at one function's scale. -/
-
-/-- Drop the head from the one `Cons`-valued write-back. `*v := Nil` and
-    `*v := rest` are not `Cons` applications, so the rewrite has exactly one site;
-    the oracle below is what proves that rather than the reasoning. -/
-partial def dropHead : Term → Term
-  | .assign pl (.ctorApp "Cons" [_, tl]) k => .assign pl tl (dropHead k)
-  | .letIn x r b => .letIn x (dropHead r) (dropHead b)
-  | .assign a b c => .assign (dropHead a) (dropHead b) (dropHead c)
-  | .seq a b => .seq (dropHead a) (dropHead b)
-  | .ctorApp n as => .ctorApp n (as.map dropHead)
-  | .call f as => .call f (as.map dropHead)
-  | .callV x as => .callV x (as.map dropHead)
-  | .borrow t => .borrow (dropHead t)
-  | .deref t => .deref (dropHead t)
-  | .matchE sc e bs => .matchE sc e (bs.map (fun b => Branch.mk b.ctor b.binders (dropHead b.body)))
-  | t => t
-
-/-- **THE ORACLE.** The corpus wrote `partitionLoses` by hand, before this file
-    existed and so not tunable against it. The transform applied to the honest
-    `partition` reproduces it — same body, modulo the self-call name each
-    declaration owes itself. -/
-example : (FnMacro.renameSelf "partition" "partitionLoses"
-    (dropHead S23Direct.partition.body) == S23Direct.partitionLoses.body)
-  = true := by native_decide
-/-- …and the oracle can say NO: without the drop, the two bodies differ. -/
-example : (FnMacro.renameSelf "partition" "partitionLoses"
-    S23Direct.partition.body == S23Direct.partitionLoses.body) = false := by native_decide
-
-def partitionLosesF : FnDef :=
-  { S26Fn.partitionF with body := dropHead S26Fn.partitionF.body }
-
--- The transform really fired on the fuel-threaded body too (it is the same body
--- plus a `match fuel`, but that is a claim worth checking rather than assuming).
-example : (partitionLosesF.body != S26Fn.partitionF.body) = true := by native_decide
-example : neitherWay partitionLosesF = true := by native_decide
-
-/-! #### B2c. `qsNoSuff` — the sufficiency hypothesis, on the migrated flagship
-
-    The fourth quicksort twin, and the only one `S26Prog`'s battery does not carry.
-    It keeps the parameter and weakens it to `Unit`, so the body still elaborates
-    and the rejection is about TYPING rather than an unbound name: the `Z` branch's
-    `botElim` then has no ⊥ to eliminate and the out-of-fuel path stops being dead.
-    This is what makes guard-plus-hypothesis TOTAL correctness rather than partial.
-
-    It needs no new transform: `S26Prog.migrate` retargets callees and leaves the
-    telescope alone, which is exactly what its own docstring promised would let it
-    carry the lie twins. -/
-
-def qsNoSuffP : FnDef := S26Prog.migrate S23Direct.qsNoSuff
-
--- The weakened hypothesis survived the migration, and it is the only difference
--- from the honest flagship's telescope.
-example : (qsNoSuffP.telescope != S26Prog.quicksortP.telescope
-        && qsNoSuffP.body == S26Prog.quicksortP.body) = true := by native_decide
-example : neitherWay qsNoSuffP [S26Fn.partitionF, S26Prog.appendBackF] = true := by native_decide
+    The one thing that does NOT survive the move is the `dropHead` ORACLE — the
+    proof that `partitionLoses` really is `partition` with one write changed,
+    computed rather than claimed. It was a term-rewriting comparison between two
+    `FnDef` bodies, and there are no `FnDef` bodies to compare. What replaces it is
+    weaker and honest about being weaker: the differing line carries a comment
+    saying it is the lie, and the two bodies are adjacent in one file. -/
 
 /-! ### B3. RETIRE WITH THE GUARD — `recSame`, `recWrongIdx`, `recGrow`
 

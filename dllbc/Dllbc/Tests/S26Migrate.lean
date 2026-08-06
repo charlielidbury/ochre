@@ -131,25 +131,14 @@ def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
 -- (`stuckProbe` and its two twins, and `twoRec`, are programs since M28 ψ and
 -- assert themselves in their own file.)
 
--- S23Direct is migrated in PART (M28 ν): the 26 declarations that nothing outside
--- the file consumed are programs now and have left the pool. What remains is what
--- other files hold as VALUES — the quicksort/partition/splitOff/setAt/swapAt/
--- insertAt families, their record-update lie twins, and the recursion-guard twins
--- `S27Dispose` §B pins by name.
--- The recursion-guard family left the survey in M28 φ: they are `prog{ fn … }`
--- programs now, asserted directly as accepted or rejected in `S23Direct`, so
--- there is no declaration here to survey.
--- (`split_off` and its four twins are programs since M28 D1 — one `soUnder`
--- skeleton, one accept and four rejects, asserted in their own file. None of the
--- five was a decliner, so §B's residue is unchanged by their leaving, which is the
--- check that the pool carried inventory and not a verdict.)
--- (`set_at`/`swap_at` and their four twins are ONE program since M28 D2 — the
--- `setSwapUnder` chain — and left with the same argument. None was a decliner.)
-def p23 : List FnDef := [S23Direct.recCursor,
-  S23Direct.appendBack,
-  S23Direct.partition,
-  S23Direct.partitionLoses, S23Direct.quicksort,
-  S23Direct.qsLieSorted, S23Direct.qsLieCount, S23Direct.qsStaleBound, S23Direct.qsNoSuff]
+-- S23Direct is written as PROGRAMS now, in four steps, and `p23` is gone with the
+-- last of them. M28 ν moved the 26 declarations nothing outside the file consumed;
+-- M28 φ moved the recursion-guard family; M28 D1 and D2 moved `split_off` and
+-- `set_at`/`swap_at` with their twins, none of which was a decliner; **M28 D3 moved
+-- the `[v]` class** — `recCursor`, `append_back`, `partition`, `partitionLoses`,
+-- `quicksort` and its three twins — by fuel-threading the flagship cohort at the
+-- SOURCE. Those eight were the pool's whole contribution to `S27Dispose` §B's
+-- residue, and §B records what became of each; the rest carried inventory only.
 
 -- S24Arrays is written as PROGRAMS now (M28 ν) and declares exactly two `FnDef`s:
 -- `walk` and `walkArr`, the same function with the decreasing argument moved,
@@ -190,7 +179,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p9, p14, p15, p17, p18, p19, p23, p24, p25]
+  [p6, p9, p14, p15, p17, p18, p19, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
