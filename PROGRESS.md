@@ -1,5 +1,74 @@
 # Progress
 
+## 2026-08-06 — dllbc/: **M29 phase A — the elaboration mode is GONE; there is one macro**
+
+Three commits, `77b568c7` through `c8fb574d`, full suite green at each. The
+surface is `prog{ }` — one macro, one grammar, no mode flag — and every exclusion
+the flag used to make is now the kernel's, stated by the arrow that makes it.
+
+    macros              2 → 1        `pure{ }` deleted; 673 sites renamed
+    mode flag           93 → 0       `isTy` gone from every elaborator
+    `let` spellings     2 → 1        one `.letIn`, read by BOTH arrows
+    `&mut` meanings     2 → 1        op is `&m`, type is `&mut`; 260 sites moved
+    surface refusals    1 → 0        `fn`-in-a-⇝-position was the kernel's, said early
+    build time          51.7s → 51.2s
+
+**α — `let` is one form, and ⇝ reads it by β.** `let` emitted a `.letIn` under ⇒
+and a de Bruijn β-redex under ⇝; it now emits `.letIn` and the kernel reads that
+under both arrows, which is F3's own footnote cashed ("a single kernel `nfV`
+let/β rule would make it mode-free"). ⇝'s reading carries the substitution in a
+`Val.LetCtx` rather than applying it as a rewrite, because the rewrite takes
+`reflectC` off its structural recursion — the abstracted body is not a subterm of
+anything. Shared with `Term.toValPure`, which moved from `Value.lean` to
+`Pure.lean` to reach `shiftPure`; it had been mapping `.letIn` to `⊥` through its
+runtime-forms catch-all, and five `Tests/Direct.lean` assertions found it.
+
+**Two silent kernel defects, measured before the design and fixed by it.** The old
+⇝ reading bound the let's value into Ω, and (i) `bindSlot` appends where
+`lookupSlot` takes the first match, so a colliding absolute id bound a shadow
+nothing read — `readC` of `let h = S Z ; h` against an Ω holding `#0 ↦ Z` returned
+`Z`; (ii) the value came back unshifted, so `λ. let y = #0 ; λ. y` read as
+`λ. λ. #0` where β gives `λ. λ. #1`. Neither had ever been hit, because the ⇝
+`let` was a β-redex and emitted no `letIn` at all — merging them is exactly what
+would have hit both. A third capture, in the SURFACE, came with the merge: a `let`
+pushes `rctx` where the ⇝ form pushed `pctx`, and `resolveName` reads `pctx`
+first, so `let k = 7 ; k` under an `elim` arm binder named `k` resolved to the
+arm's. Masked; verified by counterfactual (7 with the mask, `Z` without). All four
+are standing tests in `KernelFloor`.
+
+**β — the borrow operation is `&m`, the type is `&mut`** (user decision). They are
+two operations, not one seen from two sides; Rust can spell both `&mut` because in
+Rust a type and a term never occupy the same position, and here they do. A future
+⇝-construction of a mutable reference would have been unwritable under the old
+rule. 260 operation sites moved mechanically, 301 types left; three
+misclassifications, all caught by the build and each a case the heuristic could
+not see — `&mut (Σ …)` ×3 (uppercase but non-ASCII head) and `let b = &mut N` ×1
+(a borrow of a CAPITAL binder, where "capital = comptime binder" and "capital =
+type former" meet). Both directions of error are loud, which is what made the
+mechanical pass safe.
+
+**γ — one macro, and it is `prog{ }`.** Measured before choosing: 675 `pure{ }`
+sites against 447 `prog{ }`, so the survivor is the more expensive rename.
+`pure{ }` is the wrong name for a block that may now contain a `fn`, an
+assignment, a borrow and a runtime match — a claim about contents the grammar no
+longer makes — while `prog{ }` is §8's own sentence, "a program is an arbitrary
+term". **A term's fragment is not a property of where it was written**; it is a
+property of which arrow consumes it, and the same term can be consumed by both.
+
+**A3 (the λ merge) did NOT ship, and stopped at a verified-viable boundary** —
+see DECISION-LOG. Its specified first item, merging `Term.lam` and `Term.lamR`,
+needs named↔de Bruijn conversion inside a structurally-recursive reflection, which
+is the operation that already defeated α. The probe shows the capability semantics
+do not need it: seeding a `.lamR`'s telescope and `readC`-ing the body gives
+`λ(v : &mut List Nat){ len *v }` a real ⇝ reading (`len σ0`), and abstracting the
+seeded σ at the VALUE level yields a `Val.lam` that applies correctly. The probe
+also found a gap the plan does not cover: **a both-capable function has two
+signatures** — ⇝'s is ⇒'s with each `&mut τ` binder replaced by `τ` — so a call
+site consults a signature, not a bit. That needs the user's decision.
+
+Next: A3 with the two-signature question settled; the paper and
+`dllbc/docs/language.md` still describe two macros and the old `&mut` op spelling.
+
 ## 2026-08-06 — dllbc/: **M28 CLOSES — two macros, ten files, and no type called `FnDef` in the kernel**
 
 One day, four agents, ~70 commits, `c5f1966a` through `ccb6404c`, full suite

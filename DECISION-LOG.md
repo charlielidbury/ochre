@@ -3,6 +3,110 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-06: M29 phase A — modes removed; the λ merge (A3) STOPS at a verified-viable boundary
+
+Phase A was four steps: A1 `let` unification, A3 the λ merge with try-both
+capability dispatch, A2 the `&m`/`&mut` spelling split, A4 one macro. **A1, A2
+and A4 shipped** (`77b568c7`, `d8c6ddc7`, `c8fb574d`) and between them remove the
+elaboration mode entirely — that is the phase's headline and it is complete.
+**A3 did not ship**, and this entry records why, what was measured, and the design
+gap the measurement exposed.
+
+### Order: A2 and A4 were taken before A3, deliberately
+
+The plan ordered A1 → A3 → A2 → A4. A3 is not a prerequisite for either of the
+others — the mode flag's two readers were `let` and `&mut`, and A3 touches
+neither — so the stated order put the phase's deepest and riskiest step in front
+of its two cheapest and most certain ones. Taking A2 and A4 first means a wall in
+A3 still leaves the headline delivered, which is what happened.
+
+### A3's specified first item is wrong in kind, and is NOT what makes A3 valuable
+
+A3 asks for "one Term node for λ", merging `Term.lam` (de Bruijn, domain + body,
+used by every type, motive and `StdLemmas` term) with `Term.lamR` (named binder
+telescope, body a BODY). Whichever representation survives, the other's
+occurrences need converting, and the conversion is named↔de Bruijn abstraction
+performed inside a structurally-recursive kernel reflection. **That is the exact
+operation that defeated structural recursion in A1** — `reflectC` could not call
+itself on an abstracted body — and there it was solved by carrying the
+substitution in a context rather than applying it. Doing the same for λ means
+rebuilding `substPure`, `shiftPure`, `piPeel`, `piAgree`, `telePi`, `absOcc` and
+`reflectC` around a new invariant, unreviewed, overnight. Not attempted.
+
+### …because the capability check does not need it. MEASURED.
+
+The viability probe (throwaway, deleted) drove the ⇝-side check by hand on four
+subjects, and it works with machinery that already exists:
+
+  * **`λ(v : &mut List Nat){ len *v }` HAS a ⇝ reading.** Seed the binder
+    telescope with `seedTelescopeV` — which is already the ⇒ path's own seeding,
+    and which puts `borrowₘ ℓ0 σ0` in the slot — then `readC` the body. Result:
+    `len σ0`, a legitimate stuck neutral.
+  * **The readback is a Val-level operation, not a Term-level one.** Abstracting
+    the seeded σ into `pvar 0` (a 12-line `Val` walk, the shape `loanToPvar`
+    already has) yields a real `Val.lam`; applied to `Cons(1, Nil)` it normalizes
+    to `S Z`. So the ⇝ reading of a runtime λ is a genuine pure function value,
+    obtained without touching a single `Term` binder — **none of the merge, and
+    none of A1's termination problem.**
+  * **The ⇒ side is untouched.** `fn lenOf (v : &mut List Nat) -> Nat { len *v }`
+    still checks by `sealFn`.
+
+### THE GAP: a both-capable function has TWO SIGNATURES, and the plan records one
+
+The ⇝ reading of `λ(v : &mut List Nat){ len *v }` is a function of the borrow's
+**entry snapshot**, so its type is `Π (l : List Nat) → Nat` — while its ⇒ type is
+`Π (v : &mut List Nat) → Nat`. The relation is exact and statable: **the
+⇝-signature is the ⇒-signature with each `&mut τ` binder replaced by `τ`.** For a
+borrow-free function the two coincide, which is why "record the capability set
+{⇝-ok, ⇒-ok} on the checked value" looked complete — it is complete exactly on
+the case where the question is uninteresting. A borrow-taking both-capable
+function needs its ⇝-signature recorded (or derived on demand by that rule), and
+what a call site consults is therefore a signature, not a bit. **This is a
+decision for the user, not one to improvise.**
+
+### A second thing the probe settles: what may clear a capability bit
+
+The brief requires that only refusal-by-rule-absence clear a bit, never fuel. The
+probe shows the sharper rule is available and should be the one implemented:
+**capability is decided by REFLECTION ALONE.** A body outside the fragment is
+refused by `reflectC` with a message naming the form — measured, "`:=` is
+excluded from the comptime fragment" for a take-and-refill body, "a call is not
+in the comptime fragment" for a calling one — and these are `throwErr`s,
+structurally distinct from exhaustion. A TYPING failure downstream (`hasType`,
+conversion) must then be an ordinary ill-typedness error and must NOT clear the
+bit, because `Val.nfV` does not error on exhaustion — it stops and returns a
+partial value, which conversion then rejects. Routing conversion failure into
+"not ⇝-capable" would make a program's meaning depend on the fuel knob by exactly
+the route the requirement forbids, and it would do it silently.
+
+### The R-Lift trade-off, recorded but NOT yet taken
+
+A3 would let a {⇝}-only function be applied in ⇒ statement position via the
+existing R-Lift delegation, with data arguments ⇝-read rather than consumed. That
+admits **silent mathematical duplication of data**: `λ (l : List Nat). append l l`
+applied to a runtime list yields a result containing two copies of a value the
+program owned once. It trades Rust's cost-opacity line — where every copy of an
+owned aggregate is written by the programmer — for fragment uniformity. The
+user's guiding principle for this phase is to close the runtime/comptime gap, and
+this is one of the places the gap is closed by giving something up. Recorded here
+so the trade is visible when A3 resumes; nothing in the shipped code takes it.
+
+### Alternatives considered for A3-as-specified
+
+  * **Merge onto named binders.** Every pure λ in every type becomes named, and
+    `reflectC` must abstract to reach `Val.lam` — on the hot path.
+  * **Merge onto de Bruijn.** Runtime λ bodies lose the named Ω slots they reach
+    Ω through, which is what `Val.rfn` exists to carry.
+  * **Don't merge; give `.lamR` a ⇝ reading** (what the probe validates). Cheapest
+    by a wide margin and delivers the capability semantics. Its own cost is that
+    the reading MINTS σ's and a loan, i.e. needs an EVENT — the very property §5
+    cites for why the seal is a ⇒-form. The counter-argument is NbE's: the minted
+    σ's are abstracted away by the readback, so the RESULT does not depend on
+    which ids were minted, and the reading is deterministic. That argument is
+    sound as far as the probe goes and deserves the user's eye before it becomes
+    a kernel rule.
+
+
 ## 2026-04-22: Task 1 (eval_vapp_preserves_fullyQuotable strengthening) — confirmed blocked on closure circularity
 
 Attempted the strengthening approach documented in
