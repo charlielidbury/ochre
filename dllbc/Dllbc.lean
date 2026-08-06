@@ -43,3 +43,6 @@ import Dllbc.Tests.S26Fuel
 import Dllbc.Tests.S27Dispose
 import Dllbc.Tests.S27Mixed
 import Dllbc.Tests.S27Lam
+-- TEMPORARY, dies in the same series: the legacy-vs-unified `rfl` differential
+-- that guards the macro-surface migration. See its header.
+import Dllbc.Tests.MacroDiff
