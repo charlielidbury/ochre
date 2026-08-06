@@ -99,9 +99,14 @@ disarmed here.** `773ef3b7`'s message says "nfV re-walking terms is 0.02%", and
 that sentence is quoted as evidence that re-normalization is negligible. It is not
 evidence of that, because **the denominator was 465× larger**: 0.02% of an 84 121 ms
 check is ~17 ms, and the post-fix check is 181 ms — so the same absolute cost is
-~9% of the fixed check, and rises further as everything around it gets cheaper.
-That is consistent with this profile, not contradicted by it. A share measured
-before a 465× fix cannot be carried across it.
+~9% of the fixed check. That is consistent with this profile, not contradicted by
+it. A share measured before a 465× fix cannot be carried across it.
+
+(9% is an UPPER bound, not the figure: holding the absolute 17 ms fixed across the
+fix is itself an assumption, since `nfV` calls `substPure` and the fix made every
+substitution cheaper, so the true post-fix absolute is probably lower. The fresh
+profile above is the real evidence either way; the old share should simply not be
+cited again.)
 
 Related, and worth stating because two of us were pointed at it: the OTHER perf
 lane's numbers (`36b94083` — 69% substitution traffic, "the floor is
@@ -150,18 +155,37 @@ still elaborate, checks do not run) on the same base, cross-validated two ways:
 **So ~240 s of the 281 s build is Lean elaborating and C-compiling the checker
 itself.** The calculus's own share of a from-scratch build is ~10%.
 
-And within that 29.6 s, **95% is one module and 82% is one assertion — which is
-not a check.** `Tests/ArraySort.lean:786` runs the array quicksort CONCRETELY on
-`[9,8,7,6,5,4,3,2,1]`, the worst case for a Lomuto scan, and costs ~28 s. Every
-assertion over 100 ms in the entire suite is in `ArraySort`, and the top four are
-all concrete execution. **The heaviest genuine type-check anywhere in the suite is
-181 ms** (`ArraySort.lean:839`, `progOk` over three array-quicksort callers) —
-consistent with the 23 ms and 52 ms measured here.
+Per module (real − sorry, ms): ArraySort **32 710**; Direct 788; Functions 313;
+Arrays 191; KernelFloor 95; Ledger 87; Boundaries 80; Programs 77; Diff 25;
+Traces −3. The serial sum is 34.4 s against the parallel 29.6 s, so treat total
+DLLBC work as **~30 s ± 5 s** rather than a point.
 
-**The checker's whole share of the build is therefore ~3.7 s of 281.6 s, about
-1.3%**, and library re-normalization is a fraction of that. The δ-constant tier is
-an optimization bounded above by ~45 ms inside a component that is 1.3% of the
-build. **PARK, and not provisionally.**
+And within that, **95% is one module and 86% is one assertion — which is not a
+check.** `Tests/ArraySort.lean:786` runs the array quicksort CONCRETELY on
+`[9,8,7,6,5,4,3,2,1]`, the worst case for a Lomuto scan. Confirmed by disabling
+that line alone rather than by profiler attribution: ArraySort goes 34 380 ms →
+8 792 ms, a **25.6 s drop from one assertion**. It is `S9Diff.runExec`, the
+EXECUTING machine; no DLLBC type-checking happens in it at all. (Lean's profiler
+files it under "type checking" only because `native_decide` evaluates during
+kernel checking — a label that will mislead the next reader of that profile.)
+
+Every assertion over 100 ms in the entire suite is in `ArraySort`, and the top
+four are all concrete execution. **The heaviest genuine type-check anywhere in the
+suite is 181 ms** (`ArraySort.lean:839`, `progOk` over three array-quicksort
+callers); the list flagship's `progOk` does not clear 100 ms, consistent with the
+23 ms measured here.
+
+**So the checker's whole share of the build is ~3.7 s of 281.6 s — about 1.3%, and
+≤3% on the loosest reading of the residual.** The δ-constant tier is an
+optimization bounded above by ~45 ms inside that. **PARK, and not provisionally.**
+
+**And the cheap half does not escape on aggregate either**, which is the last door
+this entry had left open. Priced with the two halves composed: sealable proof mass
+is 34% (list) / 16% (array) of flagship nodes, checking is linear at ~0.39 µs/node,
+so sealed proof lets save at most ~34% of checking time — **on the order of 1
+second in a 281.6 s build, under 0.5%.** The zero-kernel-work option is still the
+right *shape*, and it is still free of the correctness surface the definition tier
+carries, but nothing in this corpus asks for it.
 
 Independently confirmed in the compiled harness (section 5) rather than taken on
 report, because the whole verdict now leans on that one assertion: `runQsA` on the
@@ -201,15 +225,29 @@ Worth disarming, because they were the reason to doubt the per-check verdict.
 Since `773ef3b7` (12.95 s wall / 20.45 s user) the corpus went 8 096 → 24 914
 lines and 237 → 835 assertions, so **assertions grew 3.5× and build time grew
 13.8×** — which reads as checking getting superlinearly worse. It is not: ~240 s
-of the 281 s is compiling the checker, which grew with the source, and 82% of the
+of the 281 s is compiling the checker, which grew with the source, and 86% of the
 remaining DLLBC time is one execution assertion that did not exist then. Neither
 term is type-checking.
 
 ### What would change the answer, and what the successor already has
 
 The cost is **linear in citations and the terms are already 79% library**, so this
-grows with the corpus rather than with any one proof. Re-run `phasec`; the answer
-changes when the heaviest check is seconds rather than tens of milliseconds.
+grows with the corpus rather than with any one proof. Re-run `phasec`. Stated as
+thresholds against what was measured, so the next reader does not have to
+re-derive the judgement:
+
+  * **The heaviest single type-check goes from 181 ms to seconds.** Today the
+    per-check prize is ~45 ms; at seconds it is worth the expensive tier.
+  * **Type-checking passes ~10% of build time.** Today it is 1.3% (≤3% loosest),
+    against ~240 s of compiling the checker and ~26 s of one execution test.
+  * **A proof-heavy corpus arrives.** The cheap half scales with *proof* mass —
+    34% of the list flagship, 16% of the array one, worth ~1 s today. A corpus
+    whose flagships are mostly cited lemmas rather than cited definitions moves
+    that number without any of the definition tier's risk, and it is the half to
+    take first when it moves.
+
+None of these is close. The honest summary is that this calculus's cost is not in
+re-normalizing its library, and was not in the two places the archive said it was.
 
 **The fix's shape is already demonstrated and already measured**, which is the
 other reason not to build it speculatively: the `let`-seal is the same idea one
