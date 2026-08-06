@@ -45,17 +45,7 @@ namespace Dllbc
 
     It is deliberately NOT in the kernel's vocabulary any more. `St.fsig` holds
     the ascribed Π itself and `callDeclC` takes a telescope and a return type, so
-    nothing below the macro layer knows this type exists.
-
-    **And it is not the surface's vocabulary either, since M28.** `fn` is a
-    statement of the program grammar, so what a reader writes is
-    `prog{ fn f (…) -> R { … }; … }` and no `FnDef` is formed. This record survives
-    as a TEST-HARNESS type, deliberately and with a bounded set of consumers —
-    properties quantified over a telescope, record-update lie twins, the lowering's
-    own round-trip subject, and cross-file pinned subjects. `DeclMacro.lean`'s
-    header names the four classes and the file that pins each. It stays public and
-    is not internalized; a test that needs a function's telescope as DATA needs a
-    record, and a program does not have one. -/
+    nothing below the macro layer knows this type exists. -/
 structure FnDef where
   name : String
   telescope : List (String × Term)
