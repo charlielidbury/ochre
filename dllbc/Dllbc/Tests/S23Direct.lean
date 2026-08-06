@@ -267,10 +267,11 @@ example : progRejects useUnpinned "does not have its parameter type" = true := b
 
 -- The honest shape, and the one the rest of M23 rides: structural decrease on a
 -- declared fuel argument.
-def recGood : FnDef :=
-  decl{ fn recGood [n] (n : Nat) -> Id Nat Z Z
-        { match n { Z => Refl, S(m) => recGood(m) } } }
-example : Migrate.progOkOf recGood = true := by native_decide
+def recGood : Term := prog{
+  fn recGood [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(m) => recGood(m) } };
+  () }
+example : progOk recGood = true := by native_decide
 
 -- BRANCH 1 — no `[k]` at all. THE headline control: this exact FnDef was accepted
 -- before the guard, and it proves `Z = S Z`.
@@ -286,25 +287,24 @@ example : progRejects recBad "unknown function" = true := by native_decide
 
 -- BRANCH 2 — `[k]` declared, but the self-call passes the SAME fuel. Equal is not
 -- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
-def recSame : FnDef := decl{ fn recSame [n] (n : Nat) -> Id Nat Z (S Z) { recSame(n) } }
+def recSame : Term := prog{ fn recSame [n] (n : Nat) -> Id Nat Z (S Z) { recSame(n) }; () }
 -- REFUSED AT THE ELABORATION, which is where this branch's content now lives:
 -- §7 makes `ih` the sealed self-view AT THE PREDECESSOR, so a self-call at any
 -- other argument has nothing to become, and `fnElab` says so rather than emitting
 -- a recursor that would be a different function. Asserted on the refusal itself —
 -- a twin that merely DECLINED would teach nothing.
-example : (Migrate.refusal [recSame] recSame).any
-  (fun e => strContains e "not the predecessor") = true := by native_decide
+example : progRejects recSame "not the predecessor" = true := by native_decide
 
 -- BRANCH 3 — decrease at the WRONG index. The return type here is TRUE, so the
 -- audit cannot be what rejects it: `[n]` is declared while `m` is what shrinks.
 -- (Without this control the previous two would pass on a guard that merely
 -- required *something* to decrease — which is unsound, since alternating branches
 -- can each decrease a different coordinate forever.)
-def recWrongIdx : FnDef :=
-  decl{ fn recWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
-        { match m { Z => Refl, S(m2) => recWrongIdx(n, m2) } } }
-example : (Migrate.refusal [recWrongIdx] recWrongIdx).any
-  (fun e => strContains e "not the predecessor") = true := by native_decide
+def recWrongIdx : Term := prog{
+  fn recWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
+        { match m { Z => Refl, S(m2) => recWrongIdx(n, m2) } };
+  () }
+example : progRejects recWrongIdx "not the predecessor" = true := by native_decide
 
 -- …and the same body with the honest index declared is accepted, so branch 3 is
 -- about the index, not about the body.
@@ -316,11 +316,11 @@ example : progOk recRightIdx = true := by native_decide
 
 -- BRANCH 4 — an INCREASE reads as "not a subterm", not as a decrease: `S(m2)`
 -- against a snapshot of `S m2` is equality one level up, and equality never passes.
-def recGrow : FnDef :=
-  decl{ fn recGrow [n] (n : Nat) -> Id Nat Z Z
-        { match n { Z => Refl, S(m2) => recGrow(S(m2)) } } }
-example : (Migrate.refusal [recGrow] recGrow).any
-  (fun e => strContains e "not the predecessor") = true := by native_decide
+def recGrow : Term := prog{
+  fn recGrow [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(m2) => recGrow(S(m2)) } };
+  () }
+example : progRejects recGrow "not the predecessor" = true := by native_decide
 
 -- BRANCH 5 — MUTUAL recursion. The guard is per-declaration, so `f → g → f` would
 -- let each admit the other's postcondition with nothing decreasing anywhere: the
@@ -337,25 +337,26 @@ example : progRejects recMutA "unknown function" = true := by
   native_decide
 
 -- The guard is STRUCTURAL, not Nat-specific: a list fuel decreases the same way.
-def recList : FnDef :=
-  decl{ fn recList [l] (l : List Nat) -> Id Nat Z Z
-        { match l { Nil => Refl, Cons(h, t) => recList(t) } } }
-example : Migrate.progOkOf recList = true := by native_decide
+def recList : Term := prog{
+  fn recList [l] (l : List Nat) -> Id Nat Z Z
+        { match l { Nil => Refl, Cons(h, t) => recList(t) } };
+  () }
+example : progOk recList = true := by native_decide
 
 -- Two constructors down is still a strict subterm (the relation is transitive, not
 -- just one-step) — which the quicksort recursion needs, since it peels `cnt` twice
 -- before recursing.
-def recDeep : FnDef :=
-  decl{ fn recDeep [n] (n : Nat) -> Id Nat Z Z
-        { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => recDeep(b) } } } }
+def recDeep : Term := prog{
+  fn recDeep [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => recDeep(b) } } };
+  () }
 -- **A MACRO LIMIT, NOT A CALCULUS ONE** (§12 open 3, corrected in M27-P1). The
 -- macro declines two-constructors-down because §7 has it derive the motive
 -- mechanically from the signature and this shape needs a different one. The FORM
 -- exists and checks: `S27Dispose` §D writes `recDeep` as a sealed recursor and
 -- accepts it, with a lie twin beside it. So what is asserted here is the macro's
 -- refusal, and the carrier of the claim lives there.
-example : (Migrate.refusal [recDeep] recDeep).any
-  (fun e => strContains e "not the predecessor") = true := by native_decide
+example : progRejects recDeep "not the predecessor" = true := by native_decide
 
 -- A BORROW parameter decreases through its payload snapshot — §8's guard in its
 -- most literal form, and the only thing that shrinks in a list cursor: `zero_all`
@@ -376,11 +377,11 @@ def recCursor : FnDef :=
 -- A NON-self call to a recursive function is untouched — the guard is about
 -- self-calls, and every other call is the ordinary §5.3 signature rule.
 def recCaller : Term := prog{
+  fn recGood [n] (n : Nat) -> Id Nat Z Z { match n { Z => Refl, S(m) => recGood(m) } };
   fn recCaller () -> Id Nat Z Z { recGood(S Z) };
   () }
--- `recGood` stays a declaration (`S26Migrate` §W2 and `S27Dispose` §C both
--- `fnElab` it), so it rides in the table while the caller is the program.
-example : progOk recCaller (.const "Unit") [recGood] = true := by native_decide
+-- The callee is in scope by being written above it — no table (M28 φ).
+example : progOk recCaller = true := by native_decide
 
 /-! ## Stage (ii): ownership splitting — `split_off` and `append_back`
 

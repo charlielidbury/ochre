@@ -119,9 +119,15 @@ def residue (p : List FnDef) : List String :=
 -- its `[v]` decline, which is why they were five entries here rather than one.
 -- Nothing else moved — a decliner leaving because it was deleted, not because a
 -- verdict changed.
+-- `recSame`/`recWrongIdx`/`recGrow`/`recDeep` left in M28 φ: they are programs
+-- now, and their refusals are asserted directly as `progRejects … "not the
+-- predecessor"` in `S23Direct` (and again in §B3/§B4 above, at program level).
+-- A decliner leaving because it stopped being a declaration, not because a
+-- verdict changed — `recCursor` stays, being the one the eliminators still
+-- cannot express.
 example : (S26Migrate.pools.flatMap residue ==
   ["zero_all",
-   "recSame", "recWrongIdx", "recGrow", "recDeep", "recCursor", "append_back",
+   "recCursor", "append_back",
    "partition",
    "partitionLoses",
    "quicksort", "quicksort", "quicksort", "qsStaleBound", "quicksort",
@@ -320,19 +326,15 @@ example : neitherWay qsNoSuffP [S26Fn.partitionF, S26Prog.appendBackF] = true :=
     the un-elaborated form resolves to no function at all. Two mechanisms, neither
     of them a decrease check, and both survive the deletion. -/
 
-def guardTwins : List FnDef := [S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recGrow]
+def guardTwins : List Term := [S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recGrow]
 
 -- ~~Today: the declaration path rejects each at the guard…~~ The guard is gone
 -- (M27-δ), and so is the path that fed it. What is left is the reason that
 -- OUTLIVED it, which is what this section was always about:
-example : guardTwins.all (fun d =>
-    match FnMacro.fnElab d with
-    | .error e => strContains e "not the predecessor"
-    | .ok _ => false) = true := by native_decide
+example : guardTwins.all (fun t => progRejects t "not the predecessor") = true := by native_decide
 -- Not vacuous: the honest sibling elaborates, so the three refusals are about the
 -- argument and not about the shape.
-example : (match FnMacro.fnElab S23Direct.recGood with
-           | .error _ => false | .ok _ => true) = true := by native_decide
+example : progOk S23Direct.recGood = true := by native_decide
 
 /-! ### B4. `recDeep` — the limit is a MOTIVE the macro does not derive, not a
     recursion the eliminators cannot express
@@ -399,9 +401,7 @@ example : progOk recDeepLie = false := by native_decide
 
 /-- …and the MACRO still declines the declaration, which is the whole content of
     the correction: the form exists, `fnElab` does not reach it. -/
-example : (match FnMacro.fnElab S23Direct.recDeep with
-           | .error e => strContains e "not the predecessor"
-           | .ok _ => false) = true := by native_decide
+example : progRejects S23Direct.recDeep "not the predecessor" = true := by native_decide
 
 /-! ## §C. The 28 back-declaring entries, and what each one's deletion costs
 

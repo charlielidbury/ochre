@@ -134,8 +134,10 @@ def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
 -- other files hold as VALUES — the quicksort/partition/splitOff/setAt/swapAt/
 -- insertAt families, their record-update lie twins, and the recursion-guard twins
 -- `S27Dispose` §B pins by name.
-def p23 : List FnDef := [S23Direct.recGood, S23Direct.recSame, S23Direct.recWrongIdx,
-  S23Direct.recGrow, S23Direct.recList, S23Direct.recDeep, S23Direct.recCursor,
+-- The recursion-guard family left the survey in M28 φ: they are `prog{ fn … }`
+-- programs now, asserted directly as accepted or rejected in `S23Direct`, so
+-- there is no declaration here to survey.
+def p23 : List FnDef := [S23Direct.recCursor,
   S23Direct.appendBack, S23Direct.splitOff, S23Direct.splitOffLieTake,
   S23Direct.splitOffLieDrop, S23Direct.splitOffLieSwap, S23Direct.splitOffLieHead,
   S23Direct.setAt, S23Direct.swapAt, S23Direct.setAtLieIdx, S23Direct.setAtLieNoop,
@@ -210,22 +212,16 @@ def pools : List (List FnDef) :=
 -- constructors down. An arm gets `ih` at the immediate predecessor and nothing
 -- below it, so a legal-by-the-guard two-step recursion has no single-recursor
 -- form.
-example : (match FnMacro.fnElab S23Direct.recDeep with
-           | .error e => strContains e "not the predecessor"
-           | .ok _ => false) = true := by native_decide
+example : progRejects S23Direct.recDeep "not the predecessor" = true := by native_decide
 
 -- …and a `List` recursion is no longer one of them: `recList` MIGRATES, which is
 -- the only corpus program that exercises the kernel's `listRec` sealing path
 -- through the macro rather than by hand.
-example : (match FnMacro.fnElab S23Direct.recList with
-           | .error _ => false
-           | .ok t => progOk (.letIn ⟨900, "recList"⟩ t .unit)) = true := by native_decide
--- The scrutinee-type refusal survives for what neither eliminator serves.
-example : (match FnMacro.fnElab { S23Direct.recList with
-             telescope := [("l", .const "Bool")], retType := .idT (.const "Nat") (.ctorApp "Z" []) (.ctorApp "Z" []),
-             body := .ctorApp "Refl" [] } with
-           | .error e => strContains e "neither `Nat` nor `List A`"
-           | .ok _ => false) = true := by native_decide
+example : progOk S23Direct.recList = true := by native_decide
+-- The scrutinee-type refusal survives for what neither eliminator serves. Written
+-- as the program it describes rather than as a record with three fields replaced.
+example : progRejects (prog{ fn recBool [l] (l : Bool) -> Id Nat Z Z { Refl }; () })
+  "neither `Nat` nor `List A`" = true := by native_decide
 
 /-! ## §W. The two bugs the report found, pinned as regressions
 
@@ -249,12 +245,8 @@ example : (match FnMacro.progOf [S23Direct.insertAt, S23Direct.pick] .unit with
 -- `ih` — a recursor on the PREDECESSOR, which is a different function and checks.
 -- Now refused. Kept beside its honest sibling, so the refusal is about the
 -- argument and not about the shape.
-example : (match FnMacro.fnElab S23Direct.recGrow with
-           | .error e => strContains e "not the predecessor"
-           | .ok _ => false) = true := by native_decide
-example : (match FnMacro.fnElab S23Direct.recGood with
-           | .error _ => false
-           | .ok _ => true) = true := by native_decide
+example : progRejects S23Direct.recGrow "not the predecessor" = true := by native_decide
+example : progOk S23Direct.recGood = true := by native_decide
 
 /-! ## §V. The `back` blocker — RETIRED, and the section with it
 
