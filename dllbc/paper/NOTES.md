@@ -554,6 +554,19 @@ N12. **What the paper can no longer claim about model correctness.** §5's statu
     never will be. Recorded as a cost of the retirement rather than left as an open
     item that quietly stopped being worked on.
 
+N13. **§1 was not on this pass's list and was edited anyway, deliberately.** The
+    coordination brief scoped this pass to §§4–9; §1's contribution list is where the
+    paper states its headline claims, and three of them were about exactly this
+    half — "declared-and-checked backward specifications", "a declared
+    decreasing-argument guard", and both quicksort architectures being landed. Left
+    alone they would have contradicted the §4/§7 they summarize, which is a worse
+    outcome than either editing outside the scope or leaving the whole paper stale.
+    The edits are confined to claims about the boundary layer and recursion; nothing
+    about λ, `let`, modes or the arrow table was touched, so the concurrent pass's
+    territory is intact. The ABSTRACT, which makes the same claims, is in `main.typ`
+    and was left alone as instructed — so §1 and the abstract currently disagree, and
+    reconciling them is the first thing the next pass should do.
+
 ### Deferred to the pass that owns the files this one does not
 
 * **`main.typ`'s pin declaration.** The "Status of this document" box still declares
