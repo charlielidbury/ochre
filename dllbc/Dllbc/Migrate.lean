@@ -159,7 +159,7 @@ def progEnvsOfT (table : List FnDef) (d : FnDef) : List (Except String Env) :=
   -- .unit` binds every declaration and runs nothing, so a subject bound that way
   -- has its body checked inside the seal's isolated frame and its Ω never
   -- surfaces. What these assertions inspect is what a body LEAVES, so the body
-  -- has to be the thing that runs — which is `progWith`'s own shape, a hand-written
+  -- has to be the thing that runs — which is `dllbc [f] from 900 { … }`'s own shape, a hand-written
   -- tail over an assembled prefix.
   let deps := (cohort table d).filter (·.name != d.name)
   match FnMacro.progOf deps d.body with
