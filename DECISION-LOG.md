@@ -132,25 +132,78 @@ complexity purchase against a 45 ms prize. It is also debt with a *correctness*
 surface: a constant tier changes what `Val.beq` and `convert` see, and every
 assertion in the suite is downstream of those.
 
-### THE ONE THING THIS MEASUREMENT DOES NOT SETTLE: the aggregate
+### THE AGGREGATE — settled, and it makes PARK much stronger
 
-**Per-check is not the whole workload, and the gap is worth naming rather than
-glossing.** These are the two heaviest INDIVIDUAL checks. The suite runs ~835
-`native_decide` assertions and a from-scratch `lake build` of `dllbc` at
-`cbe10165` is 281.60 s user / 4:36 wall. Over the span since `773ef3b7` (12.95 s
-wall / 20.45 s user) the corpus went 8 096 → 24 914 lines and 237 → 835
-assertions: **assertions grew 3.5× and build time grew 13.8×.** If a large share
-of those 281 s is DLLBC checking rather than Lean elaborating a tripled corpus,
-then the aggregate is a workload even though no single check is, and the cheap
-half of the split (sealing proofs, zero kernel work) would pay for itself.
+The per-check evidence bounds the prize at ~45 ms; the open question was whether
+the *aggregate* over ~835 assertions is a workload even though no single check is.
+It is not, and the decomposition is worth keeping because it is surprising.
 
-That is being measured separately by a `native_decide` → `sorry` differential —
-statements still elaborate, checks do not run — which splits the 281 s exactly.
-**Until that number lands, the verdict here is PARK ON THE PER-CHECK EVIDENCE and
-provisional on the aggregate.** What it can change: if checking is most of the
-281 s, the *cheap* option (sealed proof lets, no kernel change) becomes worth
-taking on its own. It does not rescue the expensive option, whose prize is
-bounded by the same per-node rate.
+Measured by `c-measure` with a `native_decide` → `sorry` differential (statements
+still elaborate, checks do not run) on the same base, cross-validated two ways:
+
+    from-scratch `lake build`            281.60 s user / 4:36.35 wall
+    Tests-only rebuild, core cached       41.18 s user
+    …same, every `native_decide` → sorry  11.61 s user
+    ⇒ ALL DLLBC work, 835 assertions      29.6 s      (full-build differential
+                                                       agrees: 30.69 s, within 4%)
+
+**So ~240 s of the 281 s build is Lean elaborating and C-compiling the checker
+itself.** The calculus's own share of a from-scratch build is ~10%.
+
+And within that 29.6 s, **95% is one module and 82% is one assertion — which is
+not a check.** `Tests/ArraySort.lean:786` runs the array quicksort CONCRETELY on
+`[9,8,7,6,5,4,3,2,1]`, the worst case for a Lomuto scan, and costs ~28 s. Every
+assertion over 100 ms in the entire suite is in `ArraySort`, and the top four are
+all concrete execution. **The heaviest genuine type-check anywhere in the suite is
+181 ms** (`ArraySort.lean:839`, `progOk` over three array-quicksort callers) —
+consistent with the 23 ms and 52 ms measured here.
+
+**The checker's whole share of the build is therefore ~3.7 s of 281.6 s, about
+1.3%**, and library re-normalization is a fraction of that. The δ-constant tier is
+an optimization bounded above by ~45 ms inside a component that is 1.3% of the
+build. **PARK, and not provisionally.**
+
+Independently confirmed in the compiled harness (section 5) rather than taken on
+report, because the whole verdict now leans on that one assertion: `runQsA` on the
+nine-element input costs **22.3 s per call**, and on a seven-element input 324 ms.
+Same order as the 28 s elaboration figure, so the cost is the executing machine's
+and not `native_decide` overhead around it.
+
+**That confirmation nearly went out as a refutation, and the trap is worth the
+line.** Timed naively — `n` iterations of a pure call on a *constant literal* —
+`runQsA` reported 0 ms at x1 and 0 ms at x1000, and the obvious reading was that
+the 28 s must be Lean's machinery rather than this calculus. It is loop-invariant
+code motion: the call is pure and the argument constant, so it is computed once
+and hoisted, exactly the class of mistake that makes an `IO.Ref` counter shim
+vanish. Threading the iteration index into the input (`timeNi`) makes each call a
+distinct computation and the 22.3 s appears. **A microbenchmark of a pure function
+on a fixed input measures nothing.**
+
+Two levers fall out, neither of them δ-constants, recorded so a future perf lane
+does not start by profiling `substGo` again:
+
+  * **If the dllbc build should be faster, the lever is `ArraySort.lean:786`** —
+    shortening that one input takes the suite's DLLBC time from ~30 s to ~2 s. NOT
+    proposed: it is the worst-case execution differential and is presumably there
+    on purpose. Note also the scaling — 7 elements 324 ms, 9 elements 22.3 s, a
+    69× jump for two more elements — so the executing machine's behaviour on
+    reverse-sorted input is itself worth a look before anyone trims the test.
+  * **Not `sctx`.** It is still `List (Nat × Val)` with `List.lookup` at eight
+    sites, and the unmerged `36b94083` measured 2.26× from a HashMap swap. That
+    number does not survive the crossing either: **no `List.lookup`, assoc or
+    `sctx` symbol appears anywhere in this profile** (25 symbols above 0.3%). It
+    was measured on the lane that never got `773ef3b7`, same as the 69%
+    substitution figure.
+
+### Why the growth figures do NOT mean what they look like
+
+Worth disarming, because they were the reason to doubt the per-check verdict.
+Since `773ef3b7` (12.95 s wall / 20.45 s user) the corpus went 8 096 → 24 914
+lines and 237 → 835 assertions, so **assertions grew 3.5× and build time grew
+13.8×** — which reads as checking getting superlinearly worse. It is not: ~240 s
+of the 281 s is compiling the checker, which grew with the source, and 82% of the
+remaining DLLBC time is one execution assertion that did not exist then. Neither
+term is type-checking.
 
 ### What would change the answer, and what the successor already has
 
@@ -186,10 +239,12 @@ That commit reported a corrupt `libDllbc-Uni-1.so` (15 KB / 4 dynamic symbols
 where it should be 1 MB / 267) breaking three modules with `undefined symbol:
 l_Dllbc_Surface_elabUBlk`, and diagnosed it as an object step that "had not
 completed while a `.so` was produced anyway". **The diagnosis was wrong and the
-real cause is more useful:** two agents were working in the same worktree, and the
-other one ran `rm -rf .lake/build` at ~20:14 as part of its own clean-rebuild
-measurement, while my build was running. The artifact was not corrupt-on-write; it
-was half-deleted underneath a live build.
+real cause is more useful:** two agents were working in the same worktree. The
+other one ran `rm -rf .lake/build` at ~20:14 for its own clean-rebuild
+measurement, not knowing anyone else was there, then killed its `lake build`
+mid-flight on discovering it. A compile interrupted after the `.so` was emitted
+but before the object step finished is exactly that artifact. Not corrupt-on-
+write, and not a `lake` bug either.
 
 Worth keeping because the *symptom* is so misleading. A missing
 `l_Dllbc_Surface_elabUBlk` points straight at M29 γ's `Dllbc.Surface` rename, and

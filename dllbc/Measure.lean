@@ -218,6 +218,18 @@ def lemmaEntries : List (String × Term) :=
     ("leb_false_gt", StdLemmas.leb_false_gt), ("le_pred_l",    StdLemmas.le_pred_l),
     ("count_cons_l", StdLemmas.count_cons_l), ("count_cons_r", StdLemmas.count_cons_r) ]
 
+/-- `timeN`, but the subject depends on the iteration index, so a pure call
+    cannot be hoisted out of the loop as a loop invariant. -/
+def timeNi (label : String) (n : Nat) (f : Nat → String) : IO Unit := do
+  let t0 ← IO.monoMsNow
+  let mut last := ""
+  for i in [0:n] do
+    last := f i
+    let _ ← IO.mkRef last.length
+  let t1 ← IO.monoMsNow
+  let tot := t1 - t0
+  IO.println s!"  {label}: {last} — {tot} ms total, {tot * 1000 / n} µs mean (x{n})"
+
 def libEntries : List (String × Term) :=
   [ ("Le",      Std.LeFnT),    ("count",  Std.countFnT),
     ("Bound",   Std.BoundFnT), ("Sorted", Std.SortedFnT),
@@ -292,6 +304,32 @@ def main : IO Unit := do
   IO.println "=== 4. DYNAMIC: the same check, many times (for perf sampling) ==="
   for (nm, t) in subjects do
     timeN s!"{nm} [perf load]" 50 (fun _ => verdict t)
+  IO.println ""
+
+  -- The suite's DLLBC time is dominated by ONE assertion, and it is not a check:
+  -- `ArraySort.lean:786` RUNS the array quicksort concretely on the worst case for
+  -- a Lomuto scan. Timed here independently of the `native_decide` → `sorry`
+  -- differential that found it, because the whole verdict now leans on it.
+  IO.println "=== 5. THE SUITE'S ACTUAL HOTSPOT — concrete EXECUTION, not checking ==="
+  timeN "runQsA [1,2,3]           (Tests/ArraySort.lean:781)" 1
+    (fun _ => toString (Tests.S25ArrSort.runQsA [1, 2, 3]))
+  timeN "runQsA [3,1,4,1,5,9,2]   (Tests/ArraySort.lean:784)" 1
+    (fun _ => toString (Tests.S25ArrSort.runQsA [3, 1, 4, 1, 5, 9, 2]))
+  timeN "runQsA [9,8,7,6,5,4,3,2,1] (Tests/ArraySort.lean:786)" 1
+    (fun _ => toString (Tests.S25ArrSort.runQsA [9, 8, 7, 6, 5, 4, 3, 2, 1]))
+  -- x1000, because a single run rounds to 0 ms and the point needs a real number:
+  -- the `native_decide` at that line costs 28.1 s of ELABORATION, so if the
+  -- execution is microseconds then 28.1 s is Lean's machinery, not this calculus's.
+  --
+  -- **The input VARIES with the iteration.** A loop that calls a pure function on
+  -- a constant literal is loop-invariant and Lean hoists it, so the naive x1000
+  -- reports 0 ms whatever the function costs — which is the same class of mistake
+  -- as an `IO.Ref` counter shim being compiled away. Threading `i` through the
+  -- last element makes every call a distinct computation.
+  timeNi "runQsA [9,8,7,6,5,4,3,2,i]  x3 (input varies — no hoisting)" 3
+    (fun i => toString (Tests.S25ArrSort.runQsA [9, 8, 7, 6, 5, 4, 3, 2, i % 16]))
+  timeNi "runQsA [3,1,4,1,5,9,2+i]     x3 (7 elements, for the slope)" 3
+    (fun i => toString (Tests.S25ArrSort.runQsA [3, 1, 4, 1, 5, 9, 2 + i % 4]))
 
 end Measure
 
