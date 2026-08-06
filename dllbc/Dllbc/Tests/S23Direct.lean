@@ -690,9 +690,17 @@ example : runSwapAt [4,1,3,2,5] 0 4 = true := by native_decide  -- full span
     idiom again — take-and-refill through the body's own borrows — and checks the
     same way. -/
 
-def insertAt : FnDef :=
-  decl{ fn insert_at [k] (v : &mut List Nat, k : Nat, x : Nat)
-        -> Id (List Nat) (*v) (insertL k x (old *v))
+-- The return type is the ONLY description of this function, so it is written as a
+-- SKELETON with the inserted list as its parameter — honest and lies then differ in
+-- exactly that argument, provably, rather than by a reader comparing two spellings.
+def insLT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.insertL k) x) l
+def insRet (rhs : Term) : Term := .idT listNatT dvT rhs
+def kT : Term := .var ⟨1, "k"⟩
+def xT : Term := .var ⟨2, "x"⟩
+
+/-- The function, once, with its return type and what follows it as parameters. -/
+def insUnder (ret tail : Term) : Term := prog{
+  fn insert_at [k] (v : &mut List Nat, k : Nat, x : Nat) -> %ret
         { match k {
             Z => { let t = *v; *v := Cons(x, t); Refl },
             S(k2) => match v {
@@ -704,16 +712,18 @@ def insertAt : FnDef :=
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
-        } } }
-example : Migrate.progOkOf insertAt = true := by native_decide
+        } };
+  %tail }
 
--- SUBJECT: deliberately-wrong return types (raw Terms).
-def insLT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.insertL k) x) l
-def insertAtLieIdx : FnDef :=
-  { insertAt with retType := .idT listNatT dvT (insLT (sucT (.var ⟨1, "k"⟩)) (.var ⟨2, "x"⟩) oldvT) }
-def insertAtLieNoop : FnDef := { insertAt with retType := .idT listNatT dvT oldvT }
-example : Migrate.progRejectsOf insertAtLieIdx "does not have return type" = true := by native_decide
-example : Migrate.progRejectsOf insertAtLieNoop "does not have return type" = true := by native_decide
+def insHonest : Term := insRet (insLT kT xT oldvT)
+def insertAt : Term := insUnder insHonest .unit
+example : progOk insertAt = true := by native_decide
+
+-- The index off by one, and the no-op. Each varies the skeleton's one argument.
+example : progRejects (insUnder (insRet (insLT (sucT kT) xT oldvT)) .unit)
+  "does not have return type" = true := by native_decide
+example : progRejects (insUnder (insRet oldvT) .unit)
+  "does not have return type" = true := by native_decide
 
 -- `insertL` computes, including the past-the-end case the `Nil` branch implements.
 def insLC (k x : Nat) (l : List Nat) : Term := insLT (tnatT k) (tnatT x) (tlistT l)
@@ -724,13 +734,13 @@ example : (pv (insLC 5 9 [1,2,3]) == vlistV [1,2,3,9]) = true := by native_decid
 example : (pv (insLC 0 9 []) == vlistV [9]) = true := by native_decide
 
 -- SUBJECT: executing-mode raw Term caller.
-def insCaller (l : List Nat) (k x : Nat) : Term :=
+def insCallerTail (l : List Nat) (k x : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
       (.seq (.call "insert_at" [.var ⟨1, "b"⟩, tnatT k, tnatT x])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runInsertAt (l : List Nat) (k x : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [insertAt] (insCaller l k x) with
+  match Dllbc.Tests.S9Diff.runExec [] (insUnder insHonest (insCallerTail l k x)) with
   | .ok env => env.lookup "y" == some (vlistV (l.take k ++ [x] ++ l.drop k))
   | .error _ => false
 
@@ -934,8 +944,24 @@ example : progOk concreteEq = true := by native_decide
     definitionally. (This is a better program anyway: index arithmetic, not control
     flow, which is how the mutation was going to be expressed regardless.) -/
 
-def pick : FnDef :=
-  decl{ fn pick (v : &mut List Nat, x : Nat, p : Nat)
+-- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail may
+-- not declare functions (both chains number their function slots from `progBase`, so
+-- the inner would shadow the outer — `bindFn` refuses it). One chain, both functions.
+def pick : Term := prog{
+  fn insert_at [k] (v : &mut List Nat, k : Nat, x : Nat) -> %insHonest
+        { match k {
+            Z => { let t = *v; *v := Cons(x, t); Refl },
+            S(k2) => match v {
+              -- past the end, `x` lands last: `insertL (S k) x Nil = Cons x Nil`.
+              Nil => { *v := Cons(x, Nil); Refl },
+              Cons(hd, tl) => {
+                let y = insertL k2 x (*tl);
+                let h = insert_at(&mut *tl, k2, x);
+                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+              }
+            }
+        } };
+  fn pick (v : &mut List Nat, x : Nat, p : Nat)
         -> Id (List Nat) (*v)
              (insertL (boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p)) x (old *v))
         -- (M26-B) `ki`, not `K`. §6 makes capitalisation the binder-mode marker,
@@ -944,8 +970,9 @@ def pick : FnDef :=
         -- the whole corpus whose name contradicted its role, and the fence is
         -- what found it.
         { let ki = boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p);
-          insert_at(&mut *v, ki, x) } }
-example : Migrate.progOkOf pick [insertAt, pick] = true := by native_decide
+          insert_at(&mut *v, ki, x) };
+  () }
+example : progOk pick = true := by native_decide
 
 /-! Half 2 — the pure lemma, over the SAME stuck index, gets its branch knowledge
     from a CONVOY MOTIVE: the motive carries `Id Bool <spine> b`, so each arm

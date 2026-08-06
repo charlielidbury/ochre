@@ -141,8 +141,7 @@ def p23 : List FnDef := [S23Direct.recCursor,
   S23Direct.appendBack, S23Direct.splitOff, S23Direct.splitOffLieTake,
   S23Direct.splitOffLieDrop, S23Direct.splitOffLieSwap, S23Direct.splitOffLieHead,
   S23Direct.setAt, S23Direct.swapAt, S23Direct.setAtLieIdx, S23Direct.setAtLieNoop,
-  S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop, S23Direct.insertAt,
-  S23Direct.insertAtLieIdx, S23Direct.insertAtLieNoop, S23Direct.pick, S23Direct.partition,
+  S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop, S23Direct.partition,
   S23Direct.partitionLoses, S23Direct.quicksort,
   S23Direct.qsLieSorted, S23Direct.qsLieCount, S23Direct.qsStaleBound, S23Direct.qsNoSuff]
 
@@ -236,9 +235,11 @@ example : progRejects (prog{ fn recBool [l] (l : Bool) -> Id Nat Z Z { Refl }; (
 example : (match FnMacro.progOf [S23Direct.setAt, S23Direct.swapAt] .unit with
            | .ok t => progOk t
            | .error _ => false) = true := by native_decide
-example : (match FnMacro.progOf [S23Direct.insertAt, S23Direct.pick] .unit with
-           | .ok t => progOk t
-           | .error _ => false) = true := by native_decide
+-- `insert_at`/`pick` is now one `fn` chain in `S23Direct` and asserts the same
+-- thing there: `pick` writes `insert_at(&mut *v, ki, x)` in DECLARATION order and
+-- the chain retargets it into the `[k]`-hoisted telescope. Same bug, same pin,
+-- stated as the program it is about.
+example : progOk S23Direct.pick = true := by native_decide
 
 -- W2. THE SILENT REPAIR. `recGrow` recurses on itself and the declaration path
 -- rejects it; the macro used to drop the scrutinee argument unexamined and emit an
