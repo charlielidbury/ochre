@@ -2948,7 +2948,7 @@ mutual
             -- and this is the one rule that says so.
             --
             -- The binding a declaration creates IS the name (§8: a declaration is
-            -- a `let`), so `let f = seal(λ…, Π…)` stays writable — it is the
+            -- a `let`), so `let f = (λ… : Π…)` stays writable — it is the
             -- declaration idiom, §12 decision 6. CALLING where bound is a
             -- name-use, and `.callV` LOCATES its callee rather than reading it
             -- (M26-E), so it never arrives here. PASSING as an argument is a
@@ -3286,7 +3286,7 @@ mutual
           -- has to mean a call when `f` names a runtime function — and WHICH ARROW
           -- applies a spine is decided here rather than at the surface, because the
           -- surface cannot know: `let finish = (λ (e : List Nat). …)` and
-          -- `let f = seal(…)` are both lowercase slots holding functions.
+          -- `let f = (… : …)` are both lowercase slots holding functions.
           --
           -- **The router is §7 cost 5's own distinction, not a new test.** The two
           -- λs are "the same former in the document, two representations in the

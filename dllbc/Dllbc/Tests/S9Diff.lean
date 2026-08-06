@@ -125,7 +125,7 @@ def instanceOf (symEnv concEnv : Env) : Bool := (matchEnv symEnv concEnv []).isS
 
     Why a σ can now sit inside arithmetic at all: `.seal` is legal anywhere ⇒
     evaluates (§5), so a checking-mode σ faces a concrete value MID-EXPRESSION
-    and not only at a call boundary or a group release — `let a = seal(3, Nat);
+    and not only at a call boundary or a group release — `let a = (3 : Nat);
     let b = add a 1` leaves the symbolic side holding the neutral spine
     `natRec … σ₀` where the concrete side holds `4`. Constraint 6 named this as a
     new simulation-relation case in advance; it is one.

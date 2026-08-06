@@ -178,6 +178,43 @@ example : progOk (prog{
   let r = a(1); let s = b(2); () }) = true := by native_decide
 example : progOk (withA (prog{ let r = a(1); () })) = true := by native_decide
 
+/-! ## H. The seal is ASCRIPTION, and its one confusable neighbour (M28 ξ)
+
+    `seal(t, T)` is spelled `(t : T)`. The parenthesised-node property that made
+    the old row unmistakable for an application is unchanged — an ascription closes
+    at its own paren, so `(f : T) x` is the ascribed `f` APPLIED to `x`, not an
+    ascription at a function type. What the spelling adds is that §5's definition of
+    a declaration — a λ with its signature ascribed — is now the grammar rather
+    than a comment beside it.
+
+    The neighbour is `&mut`. `&mut (s : τ ~> S)` is the borrow type with a snapshot
+    binder; drop the `~> S` and the ascription row would take it, making
+    `&mut (v : List Nat)` a borrow of a SEAL. Measured before deciding: it parsed,
+    silently, and failed downstream as an unrelated unbound-identifier error. It is
+    refused at elaboration instead, which is not assertable as a test (it fails the
+    build by design) and so is recorded here with its message:
+
+        &mut (v : τ) is not a borrow type — the snapshot-binder spelling is
+        `&mut (v : τ ~> S)`, where `S` is what the borrow OWES back … If you meant
+        a plain borrow of the type, write `&mut τ`.
+-/
+
+-- The two spellings the refusal is between, both still working.
+example : progOk (prog{
+  fn f (v : &mut (s : List Nat ~> List Nat)) -> Unit { *v := Nil; () };
+  () }) = true := by native_decide
+example : progOk (prog{
+  fn f (v : &mut List Nat) -> Unit { *v := Nil; () };
+  () }) = true := by native_decide
+
+-- An ascription CLOSES at its own paren, so a following term is an application
+-- argument rather than part of the ascribed type. Stated by splicing the
+-- ascription in as an opaque head: if the paren did not close, the two would
+-- differ.
+def ascribed : Term := prog{ (λ (x : Nat). x : Π (x : Nat) → Nat) }
+example : ((prog{ let r = (λ (x : Nat). x : Π (x : Nat) → Nat) 3; () })
+        == (prog{ let r = %ascribed 3; () })) = true := by native_decide
+
 /-! ## F. `[k]` naming a non-parameter stays a LEAN error
 
     The one refusal that is cheap syntactically is the one `decl{ }` already made

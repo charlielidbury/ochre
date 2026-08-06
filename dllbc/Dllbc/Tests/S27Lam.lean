@@ -319,7 +319,7 @@ example : (match bndArms with
 def fnTy : Term := pure{ Π (v : &mut List Nat) → Unit }
 
 def annOk : Term := prog{
-  let f = seal(λ(v : &mut List Nat) { *v := Nil; () }, %fnTy);
+  let f = (λ(v : &mut List Nat) { *v := Nil; () } : %fnTy);
   () }
 example : progOk annOk = true := by native_decide
 
@@ -327,7 +327,7 @@ example : progOk annOk = true := by native_decide
 -- this was ACCEPTED, because the binder's type came from the ascription and the
 -- annotation was carried and never read.
 def annBad : Term := prog{
-  let f = seal(λ(v : &mut List Bool) { *v := Nil; () }, %fnTy);
+  let f = (λ(v : &mut List Bool) { *v := Nil; () } : %fnTy);
   () }
 example : progRejects annBad "a domain the ascription does not bind it at" = true := by
   native_decide
@@ -339,7 +339,7 @@ example : progRejects annBad "a domain the ascription does not bind it at" = tru
     at δ. So `f a b` has to mean a call when `f` names a runtime function.
 
     **The surface does not decide this, and cannot.** `let finish = (λ (e : …). …)`
-    and `let f = seal(…)` are both lowercase slots holding functions, and the first
+    and `let f = (… : …)` are both lowercase slots holding functions, and the first
     must be applied by ⇝ — its arguments are snapshots and proofs that a ⇒ read
     would MOVE — while the second binds Ω slots under ⇒. Nothing about the two
     spines differs syntactically. So β is a KERNEL rule, at `readR`'s `.app` case,
@@ -356,7 +356,7 @@ def juxSealTy : Term := pure{ Π (v : &mut List Nat) → Unit }
 
 -- G1. A sealed function called by juxtaposition, in statement position.
 def juxSeal : Term := prog{
-  let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %juxSealTy);
+  let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %juxSealTy);
   let x = Cons(1, Nil);
   let b = &mut x;
   f b;
@@ -384,7 +384,7 @@ example : Tests.S26Prog.progDiff juxSeal = true := by native_decide
 -- …and the comma twin is the same program: same verdict, and both machines agree
 -- on it, which is what says β changed how a call is WRITTEN and not what it does.
 def juxSealComma : Term := prog{
-  let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %juxSealTy);
+  let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %juxSealTy);
   let x = Cons(1, Nil);
   let b = &mut x;
   f(b);
@@ -401,11 +401,10 @@ example : (match runProgram juxSeal, runProgram juxSealComma with
 def juxRecMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
 def juxRecTy : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
 def juxRec : Term := prog{
-  let f = seal(natRec %juxRecMot
+  let f = (natRec %juxRecMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih tl; () } } }),
-               %juxRecTy);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih tl; () } } }) : %juxRecTy);
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   f 3 b;
@@ -457,7 +456,7 @@ example : progRejects juxRuntime "holds a hole (⊥) at return" = true := by nat
 -- G6. Saturation, at the juxtaposition form (§12 decision 4 — the call event is
 -- atomic, so a spine that stops short is an error and not a partial application).
 def juxPartial : Term := prog{
-  let f = seal(λ(a : Nat, b : Nat) { a }, Π (a : Nat) → Π (b : Nat) → Nat);
+  let f = (λ(a : Nat, b : Nat) { a } : Π (a : Nat) → Π (b : Nat) → Nat);
   let r = f 1;
   () }
 -- The message is the call rule's own, not a parse failure: the spine reached the
@@ -466,7 +465,7 @@ example : progRejects juxPartial "arity mismatch" = true := by native_decide
 
 -- …and the saturated twin is accepted, so G6 is about the missing argument.
 def juxSaturated : Term := prog{
-  let f = seal(λ(a : Nat, b : Nat) { a }, Π (a : Nat) → Π (b : Nat) → Nat);
+  let f = (λ(a : Nat, b : Nat) { a } : Π (a : Nat) → Π (b : Nat) → Nat);
   let r = f 1 2;
   r }
 example : progOk juxSaturated (.const "Nat") = true := by native_decide

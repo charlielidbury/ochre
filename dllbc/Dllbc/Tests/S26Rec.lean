@@ -371,7 +371,7 @@ def pinSeal : Term := pure{ Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 
 -- E1. The rule, end to end: a sealed function taking a borrow is checked at the
 -- node, called through its σ by the table's own call rule, and executes.
 def e1 : Term := prog{
-  let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %unitSeal);
+  let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
   let x = Cons(1, Nil);
   let b = &mut x;
   f(b);
@@ -394,7 +394,7 @@ example : diffC [] e1 = true := by native_decide
     "what you keep is what you write". -/
 
 def e2 : Term := prog{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
-  let f = seal(λ(w : &mut List Nat) { *w := Cons(9, Nil); Refl }, %pinSeal);
+  let f = (λ(w : &mut List Nat) { *w := Cons(9, Nil); Refl } : %pinSeal);
   f(&mut *v) }; () }
 example : progOk e2 = true := by native_decide
 
@@ -402,7 +402,7 @@ example : progOk e2 = true := by native_decide
 -- and cannot state its own postcondition. Sound, honest, useless — one ascription
 -- apart, which is §5 point 4 with nothing left to interpret.
 def e2none : Term := prog{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
-  let f = seal(λ(w : &mut List Nat) { *w := Cons(9, Nil); () }, %unitSeal);
+  let f = (λ(w : &mut List Nat) { *w := Cons(9, Nil); () } : %unitSeal);
   f(&mut *v) }; () }
 example : progRejects e2none "does not have return type" = true := by native_decide
 
@@ -412,14 +412,14 @@ example : progRejects e2none "does not have return type" = true := by native_dec
 -- the message is the audit's own — `Refl` does not inhabit the equation the
 -- ascription promised.
 def e3a : Term := prog{
-  let f = seal(λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl }, %pinSeal); () }
+  let f = (λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl } : %pinSeal); () }
 example : progRejects e3a "does not have return type" = true := by native_decide
 
 -- The body leaves a hole in its argument borrow: the OBLIGATION audit, which is
 -- the half of §5.4 the ensures check does not cover, and which only exists
 -- because the seal now seeds a telescope.
 def e3b : Term := prog{
-  let f = seal(λ(v : &mut List Nat) { let l = *v; () }, %unitSeal); () }
+  let f = (λ(v : &mut List Nat) { let l = *v; () } : %unitSeal); () }
 example : progRejects e3b "holds a hole (⊥) at return" = true := by native_decide
 
 -- Mode disagreement: the λ's binder is lowercase where the ascription binds
@@ -428,22 +428,22 @@ example : progRejects e3b "holds a hole (⊥) at return" = true := by native_dec
 -- (F3 settled the caller side).
 def cmpSeal : Term := pure{ Π (N : Nat) → Nat }
 def e3c : Term := prog{
-  let f = seal(λ(n : Nat) { S(n) }, %cmpSeal); () }
+  let f = (λ(n : Nat) { S(n) } : %cmpSeal); () }
 example : progRejects e3c "the ascribed type binds it as comptime" = true := by native_decide
 -- …and its twin, one character apart, is accepted.
 def e3cok : Term := prog{
-  let f = seal(λ(N : Nat) { Z }, %cmpSeal); () }
+  let f = (λ(N : Nat) { Z } : %cmpSeal); () }
 example : progOk e3cok = true := by native_decide
 
 -- Arity disagreement (§12 decision 4, at the ascription rather than at a call).
 def e3d : Term := prog{
-  let f = seal(λ(v : &mut List Nat, w : Nat) { () }, %unitSeal); () }
+  let f = (λ(v : &mut List Nat, w : Nat) { () } : %unitSeal); () }
 example : progRejects e3d "no Π binder left for it" = true := by native_decide
 
 -- Sealing something that is NOT a runtime λ at a function signature — phase A's
 -- A4, now refused for the reason instead of for the phase.
 def e3e : Term := prog{
-  let f = seal(λ (x : Nat). x, %unitSeal); () }
+  let f = (λ (x : Nat). x : %unitSeal); () }
 example : progRejects e3e "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### E4. FRAME ISOLATION — the sealed body's effects stay inside the check
@@ -457,7 +457,7 @@ example : progRejects e3e "the sealed term must be a runtime λ" = true := by na
 
 def e4 : Term := prog{
   let x = Cons(1, Nil);
-  let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %unitSeal);
+  let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
   let y = x;
   () }
 example : progOk e4 = true := by native_decide
@@ -475,12 +475,11 @@ example : slotOf e4 "y" = some "Cons (S Z) Nil" := by native_decide
     Discharged as an identity over hand-written twins rather than a spot check,
     with both polarities so it cannot hold vacuously. Each pair is the same
     telescope, the same return type and the same body, written once as a `FnDef`
-    and once as `seal(λ(… : …){ … }, Π …)`. -/
+    and once as `(λ(… : …){ … } : Π …)`. -/
 
 def pushD : FnDef := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
   { let tail = *v; *v := Cons(e, tail); () } }
-def pushS : Term := prog{ let f = seal(λ(e : Nat, v : &mut List Nat) { let tail = *v; *v := Cons(e, tail); () },
-                 Π (e : Nat) → Π (v : &mut List Nat) → Unit); () }
+def pushS : Term := prog{ let f = (λ(e : Nat, v : &mut List Nat) { let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut List Nat) → Unit); () }
 
 /-- The `old *v` shape: an ensures relating the EXIT payload to the ENTRY one,
     which is the convention M23's whole corpus is written in and the reason the
@@ -488,19 +487,17 @@ def pushS : Term := prog{ let f = seal(λ(e : Nat, v : &mut List Nat) { let tail
 def consD : FnDef := decl{ fn consD (v : &mut List Nat)
   -> Id (List Nat) (*v) (Cons 9 (old *v))
   { let t = *v; *v := Cons(9, t); Refl } }
-def consS : Term := prog{ let f = seal(λ(v : &mut List Nat) { let t = *v; *v := Cons(9, t); Refl },
-                 Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
+def consS : Term := prog{ let f = (λ(v : &mut List Nat) { let t = *v; *v := Cons(9, t); Refl } : Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
 
 /-- The spec lie: the body conses `8` where the ensures says `9`. -/
 def lieD : FnDef := decl{ fn lieD (v : &mut List Nat)
   -> Id (List Nat) (*v) (Cons 9 (old *v))
   { let t = *v; *v := Cons(8, t); Refl } }
-def lieS : Term := prog{ let f = seal(λ(v : &mut List Nat) { let t = *v; *v := Cons(8, t); Refl },
-                 Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
+def lieS : Term := prog{ let f = (λ(v : &mut List Nat) { let t = *v; *v := Cons(8, t); Refl } : Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
 
 /-- The obligation lie: the payload is taken and never refilled. -/
 def holeD : FnDef := decl{ fn holeD (v : &mut List Nat) -> Unit { let l = *v; () } }
-def holeS : Term := prog{ let f = seal(λ(v : &mut List Nat) { let l = *v; () }, Π (v : &mut List Nat) → Unit); () }
+def holeS : Term := prog{ let f = (λ(v : &mut List Nat) { let l = *v; () } : Π (v : &mut List Nat) → Unit); () }
 
 /-- Each pair: the declared form and the sealed form of the same function. The
     sealed side is a PROGRAM now (M28 ι), which is what the pair was always
@@ -549,11 +546,10 @@ def zeroSeal : Term := pure{ Π (fuel : Nat) → Π (v : &mut List Nat) → Unit
 
 
 def f1 : Term := prog{
-  let f = seal(natRec %zeroMot
+  let f = (natRec %zeroMot
                  (λ(v : &mut List Nat) { () })
                  (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
-               %zeroSeal);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %zeroSeal);
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   f(3, b);
@@ -586,11 +582,10 @@ example :
 
 def wrongMot : Term := pure{ λ (f : Nat). Π (v : &mut List Nat) → Nat }
 def f2 : Term := prog{
-  let f = seal(natRec %wrongMot
+  let f = (natRec %wrongMot
                  (λ(v : &mut List Nat) { () })
                  (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Nat, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
-               %zeroSeal);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %zeroSeal);
   () }
 example : progRejects f2 "not the one its ascription derives" = true := by native_decide
 
@@ -602,11 +597,10 @@ example : progRejects f2 "not the one its ascription derives" = true := by nativ
     the whole recursor being checked as one lump. -/
 
 def f3 : Term := prog{
-  let f = seal(natRec %zeroMot
+  let f = (natRec %zeroMot
                  (λ(v : &mut List Nat) { let l = *v; () })
                  (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
-                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
-               %zeroSeal);
+                    { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %zeroSeal);
   () }
 example : progRejects f3 "holds a hole (⊥) at return" = true := by native_decide
 
@@ -647,7 +641,7 @@ def splitMot : Term := pure{
     argument is gone, because ι supplies it — and the `match i` disappears into the
     two arms. -/
 def splitSealed : Term := prog{
-  let f = seal(natRec %splitMot
+  let f = (natRec %splitMot
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -664,8 +658,7 @@ def splitSealed : Term := prog{
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
-               Pair(rr, Pair(c1, h2)) } } } } } }),
-    %splitTy);
+               Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTy);
   () }
 
 -- THE CONVERGENCE. ~~The declared function and the sealed recursor both check.~~
@@ -696,7 +689,7 @@ def splitTyLie : Term := pure{
 
 -- A SPEC lie: the prefix conjunct claims `drop` where the body leaves `take`.
 def splitSpecLie : Term := prog{
-  let f = seal(natRec %splitMotLie
+  let f = (natRec %splitMotLie
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -713,8 +706,7 @@ def splitSpecLie : Term := prog{
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
-               Pair(rr, Pair(c1, h2)) } } } } } }),
-    %splitTyLie);
+               Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTyLie);
   () }
 -- Caught on the BASE arm (`Pair σ (Pair Refl Refl)` against `Id Nil σ`), exactly
 -- where `S23Direct` says its spec lies are caught.
@@ -723,7 +715,7 @@ example : progRejects splitSpecLie "does not have return type" = true := by nati
 -- A BODY lie: the `Cons` arm forgets to restore the head, so the prefix conjunct
 -- is false on the recursive path — the arm `ih` lives in.
 def splitBodyLie : Term := prog{
-  let f = seal(natRec %splitMot
+  let f = (natRec %splitMot
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -740,8 +732,7 @@ def splitBodyLie : Term := prog{
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
-               Pair(rr, Pair(h1, h2)) } } } } } }),
-    %splitTy);
+               Pair(rr, Pair(h1, h2)) } } } } } }) : %splitTy);
   () }
 -- Caught on the STEP arm — the one `ih` lives in, and the one the spec lies leave
 -- untested. Same division of labour as the declared function's four twins, which
@@ -789,7 +780,7 @@ example : progRejects h1 "unknown function 'g'" = true := by native_decide
 -- the seal does not put the binding in its own scope either. Recursion has to come
 -- from the recursor, which is the point of §7.
 def h1s : Term := prog{
-  let g = seal(λ(n : Nat) { g(n) }, Π (n : Nat) → Nat);
+  let g = (λ(n : Nat) { g(n) } : Π (n : Nat) → Nat);
   () }
 example : progRejects h1s "unknown function 'g'" = true := by native_decide
 
@@ -818,10 +809,9 @@ def badMot : Term := pure{ λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z) }
 def badTy : Term := pure{ Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
 
 def h2 : Term := prog{
-  let f = seal(natRec %badMot
+  let f = (natRec %badMot
                  (λ(u : Unit) { Refl })
-                 (λ(n2 : Nat, ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { ih(u) }),
-               %badTy);
+                 (λ(n2 : Nat, ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { ih(u) }) : %badTy);
   () }
 example : progRejects h2 "does not have return type" = true := by native_decide
 
@@ -830,8 +820,7 @@ example : progRejects h2 "does not have return type" = true := by native_decide
 -- because `Id Nat Z (S Z)` has no proof at zero, not because a guard forbade the
 -- recursion.
 def h2step : Term := prog{
-  let f = seal(λ(ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { ih(u) },
-               Π (ih : Π (u : Unit) → Id Nat Z (S Z)) → Π (u : Unit) → Id Nat Z (S Z));
+  let f = (λ(ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { ih(u) } : Π (ih : Π (u : Unit) → Id Nat Z (S Z)) → Π (u : Unit) → Id Nat Z (S Z));
   () }
 example : progOk h2step = true := by native_decide
 
@@ -857,12 +846,11 @@ def bndTy : Term := pure{
 -- The arm hands `ih` its OWN bound, `Le (len *v) (S n2)`, where `ih` binds
 -- `Le (len *v) n2`. Refused, by the argument check at the abstract call.
 def i1 : Term := prog{
-  let f = seal(natRec %bndMot
+  let f = (natRec %bndMot
                  (λ(v : &mut List Nat, Hn : Le (len *v) Z) { () })
                  (λ(n2 : Nat,
                     ih : Π (v : &mut List Nat) → Π (Hn : Le (len *v) n2) → Unit,
-                    v : &mut List Nat, Hn : Le (len *v) (S n2)) { ih(&mut *v, Hn); () }),
-               %bndTy);
+                    v : &mut List Nat, Hn : Le (len *v) (S n2)) { ih(&mut *v, Hn); () }) : %bndTy);
   () }
 example : progRejects i1 "does not have its parameter type" = true := by native_decide
 
@@ -874,13 +862,12 @@ example : progRejects i1 "does not have its parameter type" = true := by native_
 -- That is M14's bounds-cursor property, doing here exactly what §8's guard used to
 -- do by comparing snapshots — except it is the TYPE, so nothing checks it.
 def i2 : Term := prog{
-  let f = seal(natRec %bndMot
+  let f = (natRec %bndMot
                  (λ(v : &mut List Nat, Hn : Le (len *v) Z) { () })
                  (λ(n2 : Nat,
                     ih : Π (v : &mut List Nat) → Π (Hn : Le (len *v) n2) → Unit,
                     v : &mut List Nat, Hn : Le (len *v) (S n2))
-                    { match v { Nil => (), Cons(hd, tl) => { ih(&mut *tl, Hn); () } } }),
-               %bndTy);
+                    { match v { Nil => (), Cons(hd, tl) => { ih(&mut *tl, Hn); () } } }) : %bndTy);
   () }
 example : progOk i2 = true := by native_decide
 
@@ -897,7 +884,7 @@ example : progOk i2 = true := by native_decide
     bound holds by computation, not by citation. -/
 
 def j1 : Term := prog{
-  let f = seal(natRec %splitMot
+  let f = (natRec %splitMot
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
       (λ(i2 : Nat,
@@ -914,8 +901,7 @@ def j1 : Term := prog{
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
-               Pair(rr, Pair(c1, h2)) } } } } } }),
-    %splitTy);
+               Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTy);
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let b = &mut x;
   let r = f(1, b, ());
@@ -955,7 +941,7 @@ def k1 : Term := prog{ fn k1 (n : Nat) -> Unit {
     Z => (),
     S(m) => {
       -- a seal as a `let` right-hand side, inside a branch
-      let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %unitSeal);
+      let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
       let x = Cons(1, Nil);
       let b = &mut x;
       -- a sealed call in statement position, inside a branch
@@ -970,7 +956,7 @@ def k2 : Term := prog{ fn k2 (n : Nat) -> Unit {
   match n {
     Z => (),
     S(m) => {
-      let f = seal(λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl }, %pinSeal);
+      let f = (λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl } : %pinSeal);
       () } } }; () }
 example : progRejects k2 "does not have return type" = true := by native_decide
 
@@ -983,8 +969,8 @@ example : progRejects k2 "does not have return type" = true := by native_decide
 def natFn : Term := pure{ Π (n : Nat) → Nat }
 def k3 : Term := prog{ fn k3 (n : Nat) -> %natFn {
   match n {
-    Z => seal(λ(m : Nat) { Z }, %natFn),
-    S(m) => seal(λ(k : Nat) { S(k) }, %natFn) } }; () }
+    Z => (λ(m : Nat) { Z } : %natFn),
+    S(m) => (λ(k : Nat) { S(k) } : %natFn) } }; () }
 example : progOk k3 = true := by native_decide
 
 /-! ## §M (M27-P3). `ih` READ AS A VALUE — and the two machines disagree
@@ -1038,12 +1024,11 @@ def mMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
 
 /-- The arm binds `ih` to a local and then still calls it. -/
 def m1 : Term := prog{
-  let f = seal(natRec %mMot
+  let f = (natRec %mMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
                     let g = ih;
-                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
-               %mSeal);
+                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %mSeal);
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   f(3, b);
@@ -1073,11 +1058,10 @@ example : (match Dllbc.Tests.S9Diff.runExec [] m1 with
 -- Not vacuous: the SAME body without the `let g = ih` line checks, so the
 -- rejection above is about reading `ih` as a value and not about the shape.
 def m0 : Term := prog{
-  let f = seal(natRec %mMot
+  let f = (natRec %mMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
-                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
-               %mSeal);
+                    match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %mSeal);
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   f(3, b);

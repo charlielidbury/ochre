@@ -147,11 +147,22 @@ syntax:10 "Π" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Pi
 syntax:10 "Σ" "(" ident ":" uterm ")" "→" uterm:10 : uterm   -- Sigma (arrow form)
 syntax:10 "Σ" "(" ident ":" uterm ")" "." uterm:10 : uterm   -- Sigma (dot form)
 syntax:10 uterm:11 "→" uterm:10 : uterm                      -- non-dependent arrow
--- M26-A's seal (combining-fns §5). Written `seal(t, u)` — a parenthesized NODE,
--- not a juxtaposition spine, so it can never be mistaken for (or produced by) an
--- application: the grammar keeps the seal apart at the surface for the same
--- reason `Term.seal` is its own constructor rather than a magic `.const`.
-syntax:max "seal" "(" uterm "," uterm ")" : uterm            -- .seal t u
+-- M26-A's seal (combining-fns §5), written as ASCRIPTION (M28 ξ). Still a
+-- parenthesized NODE, not a juxtaposition spine, so it can never be mistaken for
+-- (or produced by) an application: the grammar keeps the seal apart at the surface
+-- for the same reason `Term.seal` is its own constructor rather than a magic
+-- `.const`. What the new spelling adds is that **ascription IS this language's
+-- seal** — §5's definition of a declaration is "a λ with its signature ascribed",
+-- and this row is that sentence as grammar rather than as a comment beside a
+-- two-argument former named after the implementation.
+syntax:max "(" uterm ":" uterm ")" : uterm                   -- .seal t u — `(t : T)`
+-- The one confusable neighbour, refused ON PURPOSE. `&mut (s : τ ~> S)` is the
+-- borrow type with a snapshot binder; drop the `~> S` and the ascription row above
+-- would take it, making `&mut (v : List Nat)` a BORROW OF A SEAL — which is never
+-- meaningful (a seal is not a place) and is certainly not what someone writing that
+-- meant. Measured before deciding: without this row it parses, silently, and fails
+-- downstream as an unrelated unbound-identifier error.
+syntax:70 "&mut" "(" ident ":" uterm ")" : uterm             -- always an error
 syntax:max "match" ident "{" uarm,* "}" : uterm              -- runtime match (§3)
 syntax:max "match" ident ":" ident "{" uarm,* "}" : uterm    -- …with a branch equation (M23)
 syntax:max "if" uterm "{" ublk "}" "else" "{" ublk "}" : uterm  -- §12 sugar over a Bool match
@@ -423,7 +434,9 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (b', n2) ← elabUTerm isTy rctx ("_" :: pctx) n1 b
     return (← `(Dllbc.Term.pi $a' $b'), n2)
-  | `(uterm| seal($t:uterm, $u:uterm)) => do
+  | `(uterm| &mut ( $x:ident : $τ:uterm )) =>
+    Macro.throwErrorAt x s!"&mut ({x.getId} : τ) is not a borrow type — the snapshot-binder spelling is `&mut ({x.getId} : τ ~> S)`, where `S` is what the borrow OWES back and `{x.getId}` is its entry snapshot, bound as pure var 0 in `S`. Without the `~> S` this would read as `&mut` applied to the ascription `({x.getId} : τ)`, which is a borrow of a SEAL — never meaningful, since a seal is not a place. If you meant a plain borrow of the type, write `&mut τ`."
+  | `(uterm| ($t:uterm : $u:uterm)) => do
     -- The body is a ⇒ position (term mode) whatever surrounds the node; the
     -- ascribed type is a ⇝ position. That asymmetry is the seal itself.
     let (t', n1) ← elabUTerm false rctx pctx next t
@@ -504,7 +517,7 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
       -- (M27). `f a b` elaborates to a `.app` spine over the head's resolution,
       -- and when that head is a runtime slot the spine is exactly what a call is
       -- written as. Which ARROW applies it is not something the surface can know
-      -- — `let finish = (λ (e : List Nat). …)` and `let f = seal(…)` are both
+      -- — `let finish = (λ (e : List Nat). …)` and `let f = (… : …)` are both
       -- lowercase slots holding functions, and the first must be substituted by ⇝
       -- while the second binds Ω slots under ⇒ — so the decision is the kernel's,
       -- at `readR`'s `.app` case, where `runtimeRecSpine?` already makes the same

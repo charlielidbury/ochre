@@ -117,7 +117,7 @@ example : progOk learnObs = true := by native_decide
     the seal's isolated frame, whose Ω is discarded by design.
 
     So it is restated as what a body can PROVE under the refinement rather than
-    what the machine happens to hold: `seal(Refl, Id Nat m 2)` is a certificate
+    what the machine happens to hold: `(Refl : Id Nat m 2)` is a certificate
     that typechecks **only if** `m`'s snapshot is concretely `2`. Unrefined, `m` is
     a σ and `Refl` does not inhabit `Id Nat σ 2`.
 
@@ -127,7 +127,7 @@ example : progOk learnObs = true := by native_decide
 
 def learnDemand : Term := prog{
   fn learnDemand (n : Nat, p : Id Nat n 2) -> Unit {
-    match p { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } };
+    match p { Refl => { let m = n; let c = (Refl : Id Nat m 2); () } } };
   () }
 example : progOk learnDemand = true := by native_decide
 
@@ -136,7 +136,7 @@ example : progOk learnDemand = true := by native_decide
 -- is unrefined, so `Refl` has nothing to inhabit.
 def learnDemandNo : Term := prog{
   fn learnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
-    let m = n; let c = seal(Refl, Id Nat m 2); () };
+    let m = n; let c = (Refl : Id Nat m 2); () };
   () }
 example : progRejects learnDemandNo "does not have its ascribed type"
   = true := by native_decide
@@ -156,7 +156,7 @@ example : progOk learnBorrow = true := by native_decide
 -- routes the refinement takes rather than only the owned one.
 def learnBorrowDemand : Term := prog{
   fn learnBorrowDemand (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
-    match pb { Refl => { let m = n; let c = seal(Refl, Id Nat m 2); () } } };
+    match pb { Refl => { let m = n; let c = (Refl : Id Nat m 2); () } } };
   () }
 example : progOk learnBorrowDemand = true := by native_decide
 

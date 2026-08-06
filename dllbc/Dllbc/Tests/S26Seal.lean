@@ -72,17 +72,17 @@ namespace Dllbc.Tests.S26Seal
 /-! ## §A. The seal under ⇒-checking -/
 
 -- A1. A well-typed sealed λ is accepted, and the binding holds a σ afterwards.
-def a1 : Term := prog{ let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); () }
+def a1 : Term := prog{ let f = (λ (x : Nat). x : Π (x : Nat) → Nat); () }
 example : progOk a1 = true := by native_decide
 
 -- A2. An ill-typed one is rejected, by an honest TYPING rejection naming both the
 -- term and the ascribed type — not by getting stuck somewhere downstream.
-def a2 : Term := prog{ let f = seal(λ (x : Nat). x, Π (x : Nat) → Bool); () }
+def a2 : Term := prog{ let f = (λ (x : Nat). x : Π (x : Nat) → Bool); () }
 example : progRejects a2 "does not have its ascribed type" = true := by native_decide
 
 -- A3. Data seals: the same rule with no Π in sight.
-def a3ok : Term := prog{ let a = seal(3, Nat); () }
-def a3no : Term := prog{ let a = seal(3, Bool); () }
+def a3ok : Term := prog{ let a = (3 : Nat); () }
+def a3no : Term := prog{ let a = (3 : Bool); () }
 example : progOk a3ok = true := by native_decide
 example : progRejects a3no "does not have its ascribed type" = true := by native_decide
 
@@ -92,7 +92,7 @@ example : progRejects a3no "does not have its ascribed type" = true := by native
 -- PURE λ there is still refused, and now for the reason rather than for the phase:
 -- `hasType` has no answer to a payload-owing Π, and pretending otherwise is the
 -- one thing this rule must not do.
-def a4 : Term := prog{ let f = seal(λ (x : Nat). x, &mut Nat); () }
+def a4 : Term := prog{ let f = (λ (x : Nat). x : &mut Nat); () }
 example : progRejects a4 "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### A5. ⇝ never meets the node
@@ -125,24 +125,24 @@ def natIdT : Term := pure{ Π (x : Nat) → Nat }
 -- as a call argument, where the mint happens inside `processArgs`
 def a6a : Term := prog{
   fn takesFn (g : %natIdT) -> Unit { () };
-  takesFn(seal(λ (x : Nat). x, Π (x : Nat) → Nat)); () }
+  takesFn((λ (x : Nat). x : Π (x : Nat) → Nat)); () }
 example : progOk a6a = true := by native_decide
 
 -- inside a constructor argument
-def a6b : Term := prog{ let l = Cons(seal(3, Nat), Nil); () }
+def a6b : Term := prog{ let l = Cons((3 : Nat), Nil); () }
 example : progOk a6b = true := by native_decide
 
 -- in return position: a function whose result IS a sealed function. The audit
 -- reads the σ's type out of `sctx` and converts — O(statement), the §5 point 2
 -- shape at a boundary rather than at a citation.
 def a6c : Term := prog{
-  fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Nat) };
+  fn mkId () -> %natIdT { (λ (x : Nat). x : Π (x : Nat) → Nat) };
   () }
 example : progOk a6c = true := by native_decide
 -- …and the same in return position with the wrong ascription is caught at the
 -- node, before the return type is ever consulted.
 def a6d : Term := prog{
-  fn mkId () -> %natIdT { seal(λ (x : Nat). x, Π (x : Nat) → Bool) };
+  fn mkId () -> %natIdT { (λ (x : Nat). x : Π (x : Nat) → Bool) };
   () }
 example : progRejects a6d "does not have its ascribed type" = true := by native_decide
 
@@ -157,7 +157,7 @@ example : progRejects a6d "does not have its ascribed type" = true := by native_
     rather than a surprise. -/
 
 def a7 : Term := prog{
-  fn a7 (n : Nat) -> Unit { let f = seal(match n { Z => Z, S(k) => k }, Nat); () };
+  fn a7 (n : Nat) -> Unit { let f = (match n { Z => Z, S(k) => k } : Nat); () };
   () }
 example : progRejects a7 "only a statement-position match may split" = true := by native_decide
 
@@ -247,14 +247,14 @@ example : tailEnv c1 [("f", vlam), ("y", Val.nat 3)] = true := by native_decide
 -- C2. **Body withheld ⟹ the type's promise and nothing more.** Seal the same λ
 -- and the same call yields an opaque σ. This is §5 point 4 made mechanical: what
 -- the caller keeps is exactly what was written in the seal.
-def c2 : Term := prog{ let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); () }
+def c2 : Term := prog{ let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); () }
 example : progOk c2 = true := by native_decide
 example : tailEnv c2 [("f", .sym 0), ("y", .sym 1)] = true := by native_decide
 
 -- C3. Two calls are two events, and are NOT identified (§2.2's requirement on the
 -- runtime column): σ1 and σ2 are distinct, each with its own type instance.
 def c3 : Term := prog{
-  let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(2); () }
+  let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); let z = f(2); () }
 example : tailEnv c3 [("f", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by native_decide
 
 /-! ### C4–C8. The negative controls, one per rule branch -/
@@ -265,7 +265,7 @@ example : progRejects c4 "partial application" = true := by native_decide
 -- …and the same refusal on the abstract side, which is the branch that matters
 -- for phase C (a σ : Π under-applied is a closure holding its arguments).
 def c5 : Term := prog{
-  let f = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
+  let f = (λ (x : Nat). λ (y : Nat). x : Π (x : Nat) → Π (y : Nat) → Nat);
   let z = f(2); () }
 example : progRejects c5 "partial application" = true := by native_decide
 
@@ -276,7 +276,7 @@ example : progRejects c6 "too many arguments" = true := by native_decide
 -- A mistyped argument, on both branches.
 def c7 : Term := prog{ let f = λ (x : Nat). x; let z = f(Nil); () }
 example : progRejects c7 "does not have its parameter type" = true := by native_decide
-def c8 : Term := prog{ let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat); let z = f(Nil); () }
+def c8 : Term := prog{ let f = (λ (x : Nat). x : Π (x : Nat) → Nat); let z = f(Nil); () }
 example : progRejects c8 "does not have its parameter type" = true := by native_decide
 
 -- A callee that is not a function at all, and one that was moved away.
@@ -344,7 +344,7 @@ def c13t : Term := prog{
   let f = λ (x : Nat). S x; let y = f(2); needsEq(y, Refl); () }
 def c13s : Term := prog{
   fn needsEq (n : Nat, h : Id Nat n 3) -> Unit { () };
-  let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); needsEq(y, Refl); () }
+  let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); needsEq(y, Refl); () }
 example : progOk c13t = true := by native_decide
 example : progRejects c13s "does not have its parameter type" = true := by native_decide
 
@@ -367,7 +367,7 @@ def sigLemTy : Term := pure{ Π (x : Nat) → Σ (h : Le x x) → Le x x }
 def sigLem : Term := pure{ λ (x : Nat). Pair (le_refl x) (le_refl x) }
 
 def c14 : Term := prog{
-  let f = seal(%sigLem, %sigLemTy);
+  let f = (%sigLem : %sigLemTy);
   let p = f(2);
   elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 2 2) { Pair (a) (b) => le_trans 2 2 2 a b } }
 -- The program's RESULT is the projection, so its return type is what the audit
@@ -380,7 +380,7 @@ example : progOk c14 (pure{ Le 2 2 }) = true := by native_decide
 -- check), so the wrong projection is only caught when the AUDIT wants it. Stated
 -- because the vacuous version of this test passed, and would have looked fine.
 def c14bad : Term := prog{
-  let f = seal(%sigLem, %sigLemTy);
+  let f = (%sigLem : %sigLemTy);
   let p = f(2);
   elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } }
 example : progRejects c14bad "does not have return type" (pure{ Le 3 2 }) = true := by native_decide
@@ -398,7 +398,7 @@ example : progRejects c14bad "does not have return type" (pure{ Le 3 2 }) = true
     binds a bare `sym σ` to whatever concrete value sits opposite, and compares
     everything else structurally. That suffices while every σ stands at a whole
     slot, which is where calls and group-ends put them. A seal puts a σ *inside
-    ordinary arithmetic*: after `let a = seal(3, Nat); let b = add a 1` the
+    ordinary arithmetic*: after `let a = (3 : Nat); let b = add a 1` the
     symbolic side holds the neutral spine `natRec … σ0` where the concrete side
     holds `4`. Structurally these differ, and the old relation reports a
     counterexample that is not one.
@@ -434,7 +434,7 @@ def diffOld (table : List FnDef) (body : Term) : Bool :=
 
 /-! ### D1. The counterexample that names the new case -/
 
-def d1 : Term := prog{ let a = seal(3, Nat); let b = add a 1; () }
+def d1 : Term := prog{ let a = (3 : Nat); let b = add a 1; () }
 example : progOk d1 = true := by native_decide
 -- The old relation calls this a counterexample. It is not one: the two
 -- environments agree at σ0 := 3.
@@ -458,12 +458,12 @@ example : diffC   [] d1 = true  := by native_decide
 def giveThree : FnDef := decl{ fn giveThree () -> Nat { 3 } }
 
 -- seal at a concrete value
-def d2a : Term := prog{ let a = seal(3, Nat); let b = a; () }
+def d2a : Term := prog{ let a = (3 : Nat); let b = a; () }
 -- seal at a symbolic value (the body reads a call's fresh existential)
-def d2b : Term := prog{ let n = giveThree(); let a = seal(add n 1, Nat); let b = add n 1; () }
+def d2b : Term := prog{ let n = giveThree(); let a = (add n 1 : Nat); let b = add n 1; () }
 -- a sealed function callee, passed and called
 def d2c : Term := prog{
-  let f = seal(λ (x : Nat). S x, Π (x : Nat) → Nat); let y = f(2); let z = f(5); () }
+  let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); let z = f(5); () }
 -- a transparent function callee, passed to a declared fn and called inside it
 def d2d : Term := prog{
   fn apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
@@ -567,7 +567,7 @@ example : progOk sealed4 = true := by native_decide
 -- certificate sealed at a statement it does not inhabit is rejected at the node.
 def sealedWrong : Term := prog{
   fn useIt (h : %bigTy) -> Unit { () };
-  let c = seal(%StdLemmas.le_refl, %bigTy); useIt(c); () }
+  let c = (%StdLemmas.le_refl : %bigTy); useIt(c); () }
 example : progRejects sealedWrong "does not have its ascribed type" = true := by
   native_decide
 

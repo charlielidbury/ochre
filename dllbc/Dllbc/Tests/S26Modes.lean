@@ -400,7 +400,7 @@ example : ((Term.cmpT (.const "Nat") : Term) == Term.const "Nat") = false := by 
 -- caller still holds its proof — twice over, and afterwards.
 def f1 : Term := prog{
   fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
-  { let g = seal(λ (H : Le n m). Z, Π (H : Le n m) → Nat);
+  { let g = (λ (H : Le n m). Z : Π (H : Le n m) → Nat);
     let r = g(hnm);
     let s = g(hnm);
     hnm };
@@ -410,7 +410,7 @@ example : progOk f1 = true := by native_decide
 -- F2. The lowercase twin of the same seal: the call MOVES the proof.
 def f2 : Term := prog{
   fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
-  { let g = seal(λ (h : Le n m). Z, Π (h : Le n m) → Nat);
+  { let g = (λ (h : Le n m). Z : Π (h : Le n m) → Nat);
     let r = g(hnm);
     hnm };
   () }
@@ -421,7 +421,7 @@ example : progRejects f2 "holds ⊥" = true := by native_decide
 -- its argument by ⇝, because the caller's view is the Π and nothing else.
 def f3 : Term := prog{
   fn caller (n : Nat, m : Nat, hnm : Le n m) -> Le n m
-  { let g = seal(λ (h : Le n m). Z, Π (H : Le n m) → Nat);
+  { let g = (λ (h : Le n m). Z : Π (H : Le n m) → Nat);
     let r = g(hnm);
     let s = g(hnm);
     hnm };
@@ -470,14 +470,14 @@ example : progRejects g1 "binder modes do NOT separate the two cases" = true := 
 -- The legitimate-return case, pinned as the LIMITATION it is: `mk` means to be
 -- "the constant function at 1", and is refused.
 def g2 : Term := prog{
-  let mk = seal(λ (x : Nat). λ (y : Nat). x, Π (x : Nat) → Π (y : Nat) → Nat);
+  let mk = (λ (x : Nat). λ (y : Nat). x : Π (x : Nat) → Π (y : Nat) → Nat);
   let k1 = mk(1); () }
 example : progRejects g2 "partial application" = true := by native_decide
 
 -- Modes ARE expressible on such a Π — the elaboration is fine, the marker is
 -- there — and change nothing, which is the point.
 def g3 : Term := prog{
-  let mk = seal(λ (X : Nat). λ (y : Nat). X, Π (X : Nat) → Π (y : Nat) → Nat);
+  let mk = (λ (X : Nat). λ (y : Nat). X : Π (X : Nat) → Π (y : Nat) → Nat);
   let k1 = mk(1); () }
 example : progRejects g3 "partial application" = true := by native_decide
 
@@ -668,7 +668,7 @@ example : progOk i2 (.const "Unit") [giveL] = true := by native_decide
 def i3 : Term := prog{
   let a = Cons(1, Nil); let g = λ (L : List Nat). Z; let r = g(a); let b = a; () }
 def i3s : Term := prog{
-  let a = Cons(1, Nil); let g = seal(λ (L : List Nat). Z, Π (L : List Nat) → Nat);
+  let a = Cons(1, Nil); let g = (λ (L : List Nat). Z : Π (L : List Nat) → Nat);
   let r = g(a); let b = a; () }
 example : progOk i3 = true := by native_decide
 example : progOk i3s = true := by native_decide
