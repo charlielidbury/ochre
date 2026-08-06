@@ -194,6 +194,30 @@ def timeN (label : String) (n : Nat) (f : Unit → String) : IO Unit := do
   let tot := t1 - t0
   IO.println s!"  {label}: {last} — {tot} ms total, {tot / n} ms mean (x{n})"
 
+/-! ## The split that decides what a tier could even address
+
+    `sealValue` (Machine.lean) checks `hasType v uV` once and then **forgets** —
+    "a fresh σ at the ascribed type is the whole downstream view". So a seal
+    destroys computational content, and that sorts the library in two:
+
+      * **DEFINITIONS** (`Le`, `count`, `eqb`, `len`, `add`, …) must stay
+        TRANSPARENT. The corpus converts by ι-reducing them: `Le (S a) (S b)` IS
+        `Le a b` (M14's bounds-cursor descent, which is what lets quicksort hand
+        `hfuel` to its callee unchanged), and an ex-falso branch is exactly
+        `Le (S n) Z` computing to `Bot`. Seal `Le` and both stop holding.
+      * **PROOFS** (`le_trans`, `count_cons_l`, …) may be sealed, because nothing
+        reduces them — they are cited at a type and never computed with.
+
+    So the two censuses below are not two views of one number. The first is mass
+    a seal-based tier CANNOT touch; the second is the mass it could. -/
+
+def lemmaEntries : List (String × Term) :=
+  [ ("le_refl",      StdLemmas.le_refl),      ("le_trans",     StdLemmas.le_trans),
+    ("le_up_r",      StdLemmas.le_up_r),      ("id_trans",     StdLemmas.id_trans),
+    ("id_congr",     StdLemmas.id_congr),     ("leb_true_le",  StdLemmas.leb_true_le),
+    ("leb_false_gt", StdLemmas.leb_false_gt), ("le_pred_l",    StdLemmas.le_pred_l),
+    ("count_cons_l", StdLemmas.count_cons_l), ("count_cons_r", StdLemmas.count_cons_r) ]
+
 def libEntries : List (String × Term) :=
   [ ("Le",      Std.LeFnT),    ("count",  Std.countFnT),
     ("Bound",   Std.BoundFnT), ("Sorted", Std.SortedFnT),
@@ -234,8 +258,30 @@ def main : IO Unit := do
         IO.println s!"      {lnm}: {c} copies x {tsize lt} = {c * tsize lt} nodes \
 (overlapping — do not sum)"
     let cvg := cov libEntries t
-    IO.println s!"    NON-OVERLAPPING library coverage: {cvg} of {total} nodes \
-({if total == 0 then 0 else cvg * 100 / total}% of the term)"
+    IO.println s!"    DEFINITION mass (must stay transparent): {cvg} of {total} nodes \
+({if total == 0 then 0 else cvg * 100 / total}%)"
+    for (lnm, lt) in lemmaEntries do
+      let c := occ lt t
+      if c > 0 then
+        IO.println s!"      [proof] {lnm}: {c} copies x {tsize lt} = {c * tsize lt} nodes"
+    let pcvg := cov lemmaEntries t
+    IO.println s!"    PROOF mass (sealable): {pcvg} of {total} nodes \
+({if total == 0 then 0 else pcvg * 100 / total}%)"
+    -- The two censuses above OVERLAP each other, and the trap is one level up
+    -- from the first one: a PROOF body contains DEFINITIONS (`le_trans` is 1373
+    -- nodes of mostly `Le`), so the definition scan descends through lemmas and
+    -- counts what the lemma scan already claimed whole. Summing them gave 113%.
+    -- The partition below is one traversal over both lists with PROOFS taking
+    -- priority, so each node is claimed once and the parts add up.
+    let both := cov (lemmaEntries ++ libEntries) t
+    let defsOutside := both - pcvg
+    IO.println s!"    ── partition (each node claimed once) ──"
+    IO.println s!"      sealable proof mass:            {pcvg} \
+({if total == 0 then 0 else pcvg * 100 / total}%)"
+    IO.println s!"      definitions OUTSIDE any proof:  {defsOutside} \
+({if total == 0 then 0 else defsOutside * 100 / total}%)"
+    IO.println s!"      neither (the program itself):   {total - both} \
+({if total == 0 then 0 else (total - both) * 100 / total}%)"
   IO.println ""
 
   IO.println "=== 3. DYNAMIC: wall time of the heaviest checks ==="

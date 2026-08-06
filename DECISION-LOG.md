@@ -31,6 +31,46 @@ Four fifths of the flagship is duplicated library.
 first run reported "103% of the term". The table's percentages are from a single
 traversal that stops at the first constant it meets, so they are real fractions.)
 
+### …but "library mass" is the wrong unit, because half of it CANNOT be sealed
+
+`sealValue` (Machine.lean) checks `hasType v uV` once and then, in its own
+comment, **FORGETS**: "a fresh σ at the ascribed type is the whole downstream
+view". A seal destroys computational content. That sorts the library in two, and
+the split is the design content of this phase:
+
+  * **DEFINITIONS** — `Le`, `count`, `eqb`, `len`, `add`, `leb` — **must stay
+    transparent.** The corpus converts by ι-reducing them: `Le (S a) (S b)` IS
+    `Le a b`, which is M14's bounds-cursor descent and the reason `quicksort` can
+    hand `hfuel` to its callee unchanged; and an ex-falso branch is exactly
+    `Le (S n) Z` computing to `Bot`. Seal `Le` and both stop holding.
+  * **PROOFS** — `le_trans`, `count_cons_l`, … — **may be sealed**, because
+    nothing reduces them; they are cited at a type and never computed with.
+
+Partitioned properly (one traversal, proofs taking priority, so every node is
+claimed once — the first attempt scanned the two independently and got 113%,
+which is the same overlap trap one level up, a PROOF body being mostly
+DEFINITIONS):
+
+| | list flagship | array flagship |
+|---|---|---|
+| sealable **proof** mass | 20 235 (**34%**) | 22 303 (**16%**) |
+| **definitions** outside any proof | 30 458 (**52%**) | 54 653 (**40%**) |
+| neither — the program itself | 7 372 (12%) | 59 042 (43%) |
+
+So there are two different projects wearing one name, with different prices:
+
+  * **Sealing proofs needs NO KERNEL WORK AT ALL.** `Term.seal t u` is written at
+    the surface as ascription `(t : T)`, so `let le_trans = (le_trans : le_trans_ty); …`
+    at the head of a program already gives one check per program instead of one
+    unfold per citation. That is the cheap option and it addresses 34% / 16%.
+  * **Making definitions constants needs the real tier** — a `.const` head, a
+    definition table, and δ-unfolding *on demand* so ι-reduction still fires. That
+    is the expensive option, it carries the correctness surface, and it is the one
+    that addresses the larger share (52% / 40%).
+
+The two are independent and should be decided separately. Nothing above changes
+the verdict, because the verdict turns on the budget, not on the share.
+
 ### The profile confirms the mechanism, not just the premise
 
 `perf record` on the compiled binary, 1K samples, one event (the machine is
@@ -50,8 +90,26 @@ checker's own traversals allocating and freeing the nodes they rebuild. So ~83%
 of the profile sits in exactly the code a constant tier would shrink. The
 mechanism is real.
 
-Incidentally: **M22's 93%-`shiftPure` hotspot is gone** — `shiftPure` is 1.9%
-here. That hotspot was fixed and this profile is the confirmation.
+Incidentally: **the 93%-`shiftPure` hotspot is gone** — `shiftPure` is 1.9% here.
+It was fixed on main by `773ef3b7` (delayed-lift `substPure`, quicksort check
+84 s → 0.18 s) and this profile is the confirmation.
+
+**A percentage from that commit is going to mislead the next reader, so it is
+disarmed here.** `773ef3b7`'s message says "nfV re-walking terms is 0.02%", and
+that sentence is quoted as evidence that re-normalization is negligible. It is not
+evidence of that, because **the denominator was 465× larger**: 0.02% of an 84 121 ms
+check is ~17 ms, and the post-fix check is 181 ms — so the same absolute cost is
+~9% of the fixed check, and rises further as everything around it gets cheaper.
+That is consistent with this profile, not contradicted by it. A share measured
+before a 465× fix cannot be carried across it.
+
+Related, and worth stating because two of us were pointed at it: the OTHER perf
+lane's numbers (`36b94083` — 69% substitution traffic, "the floor is
+O(|normal form|)", closing with a recommendation to build exactly this tier) are
+**not on main** (`git merge-base --is-ancestor 36b94083 origin/main` fails). They
+were measured on a branch that never got `773ef3b7`'s fix, and the recommendation
+was written before anyone knew a 465× was available. Nothing in this entry rests
+on them.
 
 ### …and none of it is demanded, because the budget is 75 ms
 
@@ -73,6 +131,26 @@ park checker-code perf until something demands it — a new kernel tier, a new
 complexity purchase against a 45 ms prize. It is also debt with a *correctness*
 surface: a constant tier changes what `Val.beq` and `convert` see, and every
 assertion in the suite is downstream of those.
+
+### THE ONE THING THIS MEASUREMENT DOES NOT SETTLE: the aggregate
+
+**Per-check is not the whole workload, and the gap is worth naming rather than
+glossing.** These are the two heaviest INDIVIDUAL checks. The suite runs ~835
+`native_decide` assertions and a from-scratch `lake build` of `dllbc` at
+`cbe10165` is 281.60 s user / 4:36 wall. Over the span since `773ef3b7` (12.95 s
+wall / 20.45 s user) the corpus went 8 096 → 24 914 lines and 237 → 835
+assertions: **assertions grew 3.5× and build time grew 13.8×.** If a large share
+of those 281 s is DLLBC checking rather than Lean elaborating a tripled corpus,
+then the aggregate is a workload even though no single check is, and the cheap
+half of the split (sealing proofs, zero kernel work) would pay for itself.
+
+That is being measured separately by a `native_decide` → `sorry` differential —
+statements still elaborate, checks do not run — which splits the 281 s exactly.
+**Until that number lands, the verdict here is PARK ON THE PER-CHECK EVIDENCE and
+provisional on the aggregate.** What it can change: if checking is most of the
+281 s, the *cheap* option (sealed proof lets, no kernel change) becomes worth
+taking on its own. It does not rescue the expensive option, whose prize is
+bounded by the same per-node rate.
 
 ### What would change the answer, and what the successor already has
 
@@ -101,6 +179,29 @@ and the harness are all in the tree.
 * **Shrink the library by hand** (fewer nested `eqb`s in `count`). Attacks the
   symptom, costs readability of the one part of the system meant to be read as
   ordinary definitions.
+
+### CORRECTION to the first commit's environment note (`a0c6539f`)
+
+That commit reported a corrupt `libDllbc-Uni-1.so` (15 KB / 4 dynamic symbols
+where it should be 1 MB / 267) breaking three modules with `undefined symbol:
+l_Dllbc_Surface_elabUBlk`, and diagnosed it as an object step that "had not
+completed while a `.so` was produced anyway". **The diagnosis was wrong and the
+real cause is more useful:** two agents were working in the same worktree, and the
+other one ran `rm -rf .lake/build` at ~20:14 as part of its own clean-rebuild
+measurement, while my build was running. The artifact was not corrupt-on-write; it
+was half-deleted underneath a live build.
+
+Worth keeping because the *symptom* is so misleading. A missing
+`l_Dllbc_Surface_elabUBlk` points straight at M29 γ's `Dllbc.Surface` rename, and
+the next person to see it will go looking there. It is a shared-worktree
+collision. Two agents in one build directory also invalidate each other's timings,
+which is the reason the collision was noticed at all.
+
+The timings in this entry are unaffected: they were taken after the relink, and
+re-taken later under a different load (26 competing `lean` processes vs an idle
+box) with identical results — 23 ms and 52 ms both times. A single-threaded
+harness on a 20-core machine does not notice one competing build, which is also
+why `perf`'s user-time attribution is safe here.
 
 ### Interaction with A3, which is why this was worth measuring now
 
