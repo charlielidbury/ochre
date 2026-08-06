@@ -2,35 +2,44 @@
 
 = Two architectures for verification <sec-architectures>
 
-The declared-back machinery of @sec-boundaries admits two very different ways of
+The boundary machinery of @sec-boundaries has admitted two very different ways of
 verifying an imperative program, and this project has built both, to completion.
 They differ in what the signature promises and in where the proof burden lands.
 The first routes all reasoning through a pure model and keeps the imperative body
 proof-free. The second proves properties _directly_ in the body, over the value
-the borrow holds at exit. Both are landed and green at the pin, on the same
-_problem_, which is what makes the comparison below a measurement rather than a
-prediction: @sec-casestudy works each of them as a full in-place quicksort. The
-two are not the same _program_ — how the problem is posed differs with the
-architecture, and @sec-directroute says how — which bounds what the comparison can attribute. The
-project chose the second, deliberately, as its mission; the first remains as the
-baseline the choice was made against.
+the borrow holds at exit. Both were landed and green, on the same _problem_, which
+is what makes the comparison below a measurement rather than a prediction:
+@sec-casestudy works each of them as a full in-place quicksort. The two are not
+the same _program_ — how the problem is posed differs with the architecture, and
+@sec-directroute says how — which bounds what the comparison can attribute.
+
+*The project chose the second, and then removed the machinery the first needed.*
+That ordering matters for how this section should be read. The choice was made on
+the evidence below, while both were checkable; the removal came afterwards, and
+was not made to win the comparison — it was made because a declared backward
+specification is a second description of a body, and the ratified model is that
+the ensures is the contract. So what follows compares what A _was measured to be_
+against what B _is_. Everything said about A is reproducible at `113f1634`; nothing
+said about A is re-run at the current pin, and the fence below says exactly what
+that costs.
 
 == Architecture A: conformance to a pure model
 
 A declared back can be the whole story. Give an in-place mutator a `back` that
-_is_ a pure function computing the same result, and the audit (@sec-boundaries,
-#smallcaps[B-Back0]/#smallcaps[B-BackN]) checks the imperative body against that
-pure model by a single conversion — the body's suspension tree is definitionally
-the model's unfold. The flagship instance is in the mechanization and green: the
-in-place, swap-based quicksort type-checks as an implementation of its pure model,
-with `back = sortRangeL fuel lo cnt` $ast.op v$:
+_is_ a pure function computing the same result, and the audit checks the
+imperative body against that pure model by a single conversion — the body's
+suspension tree is definitionally the model's unfold. The flagship instance was in
+the mechanization and green: the in-place, swap-based quicksort type-checked as an
+implementation of its pure model, with `back = sortRangeL fuel lo cnt` $ast.op v$:
 
 ```rust
+// architecture A, at `113f1634`. `back = …` is no longer surface syntax, and
+// the two rules that audited it are no longer in @fig-boundaries.
 fn quicksort [fuel] (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat, hbnd : …) -> Unit
   back = sortRangeL fuel lo cnt (*v) = { … }
 ```
 
-Three properties define this architecture, and all three are checked. The body
+Three properties define this architecture, and all three were checked. The body
 carries _zero_ proof obligations: partition and the two recursive calls compose
 their declared backs, and that composition converts against `sortRangeL`'s own
 unfold — conformance _is_ conversion, nothing more. The caller recovers an
@@ -55,14 +64,18 @@ any prover. Architecture A is real, it is green, and it is deliberately the
 _comparison baseline_ rather than the mission.
 
 *Reproducibility of A.* "It is green" was true continuously up to commit
-`113f1634` and is a historical claim after it. A's programs are still in the
-corpus as source, but they are no longer machine-checked, and the reason is
-structural rather than incidental: A's cursors recurse through a borrow's payload,
-which has no recursor form, so they do not elaborate to the sealed-`let` form that
-became the calculus's only checking path when the declaration form was deleted.
-The paper's account of A is therefore reproducible at `113f1634`, the last commit
-at which a checker exists that admits it. B is unaffected, and the comparison
-below is between what A _was_ measured to be and what B _is_.
+`113f1634` and is a historical claim after it. Two independent things now stand
+between A and the checker, and it is worth separating them because only one is
+about A. First, the audit that checked a declared back does not exist: the rules,
+the group's spec-carrying end, the resolution function and the surface `back = …`
+were all deleted, so A's central claim has no judgment to be made by. Second — and
+this would bite even if the first were reversed — A's cursors recurse through a
+borrow's _payload_, which has no recursor form, so they do not elaborate to the
+sealed-`let` form that became the calculus's only checking path. A's programs are
+still in the corpus as source. The paper's account of A is reproducible at
+`113f1634`, the last commit at which a checker exists that admits it; B is
+unaffected, and the comparison below is between what A _was_ measured to be and
+what B _is_.
 
 == Architecture B: direct propositional proving
 
@@ -163,14 +176,14 @@ diary discipline is for.
 
   [Recursion],
   [structural on the model's own `fuel`; conformance is per-path],
-  [the declared `[k]` guard, with a sufficiency hypothesis discharging the out-of-fuel path],
+  [`[k]` names the position recursed on; the recursor's `ih` carries the decrease, and a sufficiency hypothesis discharges the out-of-fuel path],
 
   [Cost to check],
   [#status("green") 181 ms for the conformance audit, after the substitution fix (@sec-lessons)],
   [#status("green") 21 ms — a different program, and the encoding is why (@sec-lessons)],
 
   [Status],
-  [#status("green") landed — quicksort conforms to `sortRangeL`],
+  [landed and green through `113f1634`; *historical* at the current pin — the audit it rests on was removed],
   [#status("green") landed — quicksort proves `Sorted` $and$ count-preservation, zero declared backs],
 )
 
@@ -181,13 +194,22 @@ stated in any form other than the raw suspension tree, conversion may not see th
 equality, and the audit must fall back to differential validation. B pays in the
 body — every property must be plumbed through as evidence — but yields the
 property one actually wants, over the value one actually has, with no separate
-model to maintain and so no reformulation problem to inherit. B's discipline is
+model to maintain and so no reformulation problem to inherit. B has one cost the
+table cannot show, because it arrived with the removal rather than with the
+architecture: a definition that decreased through a borrow's payload must now
+thread fuel explicitly (@sec-directroute), which A never had to do because its
+guard compared snapshots rather than lowering to an eliminator. B's discipline is
 the `ensures`-clause of a Floyd–Hoare verifier such as Dafny @leino-2010, recovered here
 without a separate specification language: the postcondition is an ordinary
 dependent type over the exit snapshot, checked by the same interpreter that runs
-the body. That the calculus can express either architecture from the _same_
-boundary machinery — a declared `back` for A, a postcondition over $ast.op v$ for
-B — is itself the finding.
+the body. That the calculus _could_ express either architecture from the _same_ boundary
+machinery — a declared `back` for A, a postcondition over $ast.op v$ for B — is
+itself the finding, and it is stated in the past tense deliberately: the finding is
+about what the machinery admitted, and it is not undone by the project having
+since chosen one and dropped the other. What _would_ undo it is a demonstration
+that the two were never really the same machinery, and the removal is not that —
+what was deleted is the spec tier, not the $arrow.r.curve$ obligation both
+architectures are built on.
 
 *B has since been carried out twice, over different containers, and the second
 instance sharpens what the architecture costs.* The array quicksort (@sec-arrays) is
