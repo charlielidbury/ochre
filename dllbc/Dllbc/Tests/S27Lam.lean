@@ -32,12 +32,11 @@ file pins is exactly the mechanical half:
 namespace Dllbc.Tests.S27Lam
 open Dllbc
 
-/-- The declaration checks, ON THE PROGRAM PATH — `decl{ … }` is a harness here,
-    not the subject, so these route through `Migrate.progOkOf` and survive δ. -/
-def ok (d : FnDef) (table : List FnDef := [d]) : Bool := Migrate.progOkOf d table
-/-- The declaration is rejected with an error containing `needle`. -/
-def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
-  Migrate.progRejectsOf d needle table
+/-! The `ok`/`rejects` helpers retired with the `FnDef` subjects they took (M28
+    ν). Every subject they served is a program now, and `progOk`/`progRejects` from
+    `Dllbc/Program.lean` take one directly. The two declarations this file still
+    keeps (`bndD`, `hintA`) are fed to `FnMacro.fnElab` and `FnDef.alphaEq`, not to
+    a checker, so they never wanted these. -/
 
 /-! ## §A. The surface carries the domain -/
 
@@ -84,23 +83,20 @@ example : (match runProgram annotated with
 
 -- C1. The domain captures a data binding: refused, by the same rule and the same
 -- message a captured body reference gets.
-def capInType : FnDef := decl{ fn caller () -> Unit
-  { let n = 3; let g = λ(a : Le n n) { () }; () } }
-example : rejects capInType "not a function" = true := by native_decide
+def capInType : Term := prog{ let n = 3; let g = λ(a : Le n n) { () }; () }
+example : progRejects capInType "not a function" = true := by native_decide
 
 -- C2. THE ISOLATING CONTROL. The same λ with a closed domain is accepted, so C1 is
 -- about the reference and not about annotating a binder at all.
-def closedType : FnDef := decl{ fn caller () -> Unit
-  { let n = 3; let g = λ(a : Le 3 3) { () }; () } }
-example : ok closedType = true := by native_decide
+def closedType : Term := prog{ let n = 3; let g = λ(a : Le 3 3) { () }; () }
+example : progOk closedType = true := by native_decide
 
 -- C3. And the scoping is a TELESCOPE: a domain naming the λ's OWN earlier binder
 -- is bound, not free. This is the shape every recursor arm has (`ih`'s domain
 -- mentions the predecessor to its left), so getting it wrong would reject the
 -- whole recursor story rather than a corner of it.
-def telType : FnDef := decl{ fn caller () -> Unit
-  { let g = λ(m : Nat, a : Le m m) { () }; () } }
-example : ok telType = true := by native_decide
+def telType : Term := prog{ let g = λ(m : Nat, a : Le m m) { () }; () }
+example : progOk telType = true := by native_decide
 
 /-! ## §D. Equality and α-normalization see the domains -/
 
@@ -442,17 +438,21 @@ example : progOk juxLam (.const "Nat") = true := by native_decide
     would be a claim about the cases someone happened to write; with it, the two
     arrows are visible at one syntax. -/
 
-def juxPure : FnDef := decl{ fn caller (v : &mut List Nat) -> Unit
+def juxPure : Term := prog{
+  fn caller (v : &mut List Nat) -> Unit
   { let mk = (λ (l : List Nat). l);
     let y = mk (*v);
-    () } }
-example : ok juxPure = true := by native_decide
+    () };
+  () }
+example : progOk juxPure = true := by native_decide
 
-def juxRuntime : FnDef := decl{ fn caller (v : &mut List Nat) -> Unit
+def juxRuntime : Term := prog{
+  fn caller (v : &mut List Nat) -> Unit
   { let mk = λ(l : List Nat) { l };
     let y = mk (*v);
-    () } }
-example : rejects juxRuntime "holds a hole (⊥) at return" = true := by native_decide
+    () };
+  () }
+example : progRejects juxRuntime "holds a hole (⊥) at return" = true := by native_decide
 
 -- G6. Saturation, at the juxtaposition form (§12 decision 4 — the call event is
 -- atomic, so a spine that stops short is an error and not a partial application).
@@ -481,9 +481,10 @@ example : (match (prog{ let x = S 3; () } : Term) with
 -- function-typed binder a SPEC parameter — cited, never called — so the spine
 -- stays ⇝'s structured neutral. (`S26Modes` §B7 pins the type position; this is
 -- the kernel-side guard that a body cannot reach the call rule through it.)
-def juxCapital : FnDef := decl{ fn juxCapital (G : Π (x : Nat) → Nat, n : Nat)
-  -> Id Nat (G n) (G n) { Refl } }
-example : ok juxCapital = true := by native_decide
+def juxCapital : Term := prog{
+  fn juxCapital (G : Π (x : Nat) → Nat, n : Nat) -> Id Nat (G n) (G n) { Refl };
+  () }
+example : progOk juxCapital = true := by native_decide
 
 /-! ## §H. `alphaEq` compares `[k]` (M27-δ)
 
