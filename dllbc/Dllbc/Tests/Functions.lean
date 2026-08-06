@@ -1,7 +1,6 @@
 import Dllbc.Program
 import Dllbc.Std
 import Dllbc.StdLemmas
-import Dllbc.PureMacro
 import Dllbc.ProgMacro
 import Dllbc.Tests.Diff
 import Dllbc.Boundary
@@ -144,7 +143,7 @@ example : strContains (readCOn (.app (.const "S") (.seal (.ctorApp "Z" []) (.con
     coherent even for a seal passed directly as a call argument" — so the claim is
     tested rather than inferred from the rule's placement in `readR`. -/
 
-def natIdT : Term := pure{ Π (x : Nat) → Nat }
+def natIdT : Term := prog{ Π (x : Nat) → Nat }
 
 -- as a call argument, where the mint happens inside `processArgs`
 def a6a : Term := prog{
@@ -219,11 +218,11 @@ def n4 : Term := .ctorApp "S" [n3]
 /-- The battery: λ's at Π's (the case §4 is about), data at its type, proofs at
     their statements, and a wrong-type mate for each shape. -/
 def battery : List (Term × Term) :=
-  [ (pure{ λ (x : Nat). x },            pure{ Π (x : Nat) → Nat })
-  , (pure{ λ (x : Nat). x },            pure{ Π (x : Nat) → Bool })          -- ✗
-  , (pure{ λ (x : Nat). S x },          pure{ Π (x : Nat) → Nat })
-  , (pure{ λ (x : Nat). λ (y : Nat). x }, pure{ Π (x : Nat) → Π (y : Nat) → Nat })
-  , (pure{ λ (x : Nat). λ (y : Nat). x }, pure{ Π (x : Nat) → Nat })         -- ✗
+  [ (prog{ λ (x : Nat). x },            prog{ Π (x : Nat) → Nat })
+  , (prog{ λ (x : Nat). x },            prog{ Π (x : Nat) → Bool })          -- ✗
+  , (prog{ λ (x : Nat). S x },          prog{ Π (x : Nat) → Nat })
+  , (prog{ λ (x : Nat). λ (y : Nat). x }, prog{ Π (x : Nat) → Π (y : Nat) → Nat })
+  , (prog{ λ (x : Nat). λ (y : Nat). x }, prog{ Π (x : Nat) → Nat })         -- ✗
   , (n3, natT)
   , (n3, .const "Bool")                                                       -- ✗
   , (.ctorApp "Nil" [], listNatT)
@@ -387,8 +386,8 @@ example : progRejects c13s "does not have its parameter type" = true := by nativ
     for the re-minted borrow payloads, and this test says the coarse version is
     already usable. -/
 
-def sigLemTy : Term := pure{ Π (x : Nat) → Σ (h : Le x x) → Le x x }
-def sigLem : Term := pure{ λ (x : Nat). Pair (le_refl x) (le_refl x) }
+def sigLemTy : Term := prog{ Π (x : Nat) → Σ (h : Le x x) → Le x x }
+def sigLem : Term := prog{ λ (x : Nat). Pair (le_refl x) (le_refl x) }
 
 def c14 : Term := prog{
   let f = (%sigLem : %sigLemTy);
@@ -397,7 +396,7 @@ def c14 : Term := prog{
 -- The program's RESULT is the projection, so its return type is what the audit
 -- checks it at — stated as `progOk`'s second argument, where the old form stated
 -- it as the wrapper declaration's `-> Le 2 2`.
-example : progOk c14 (pure{ Le 2 2 }) = true := by native_decide
+example : progOk c14 (prog{ Le 2 2 }) = true := by native_decide
 
 -- The negative control has to be demanded to be a control: a `let`-bound proof is
 -- never typed until something asks for its type (readC computes, it does not
@@ -407,7 +406,7 @@ def c14bad : Term := prog{
   let f = (%sigLem : %sigLemTy);
   let p = f(2);
   elim p return (λ (w : Σ (h : Le 2 2) → Le 2 2). Le 3 2) { Pair (a) (b) => a } }
-example : progRejects c14bad "does not have return type" (pure{ Le 3 2 }) = true := by native_decide
+example : progRejects c14bad "does not have return type" (prog{ Le 3 2 }) = true := by native_decide
 
 /-! ## §D. The executing machine, and a NEW simulation-relation case
 
@@ -761,9 +760,9 @@ example : strContains (readCOn (.app (.const "S") (.lamR [(⟨0, "x"⟩, .const 
 
 /-- The motive, and the one place a runtime recursor's type is written by hand
     until phase D's macro derives it: `λ f. Π (v : &mut List Nat) → Unit`. It must
-    be built in a ⇝ position (`pure{}`) — in a body, `&mut` is the borrow
+    be built in a ⇝ position (`prog{}`) — in a body, `&mut` is the borrow
     *operation*, not the borrow type. -/
-def zeroMot : Term := pure{ λ (f : Nat). Π (v : &mut List Nat) → Unit }
+def zeroMot : Term := prog{ λ (f : Nat). Π (v : &mut List Nat) → Unit }
 
 /-- `zeroAll`, as a recursor term: walk the list through a mutable borrow and
     write `0` into every element, recursing on fuel.
@@ -821,7 +820,7 @@ example : slotOf b2 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
 -- B3. `listRec`, and a motive that is a function type — which is the shape §7
 -- always has, since the trailing binders are what carry the borrows. The
 -- structural recursion needs no fuel: the scrutinee is the list itself.
-def bumpMot : Term := pure{ λ (l : List Nat). Π (v : &mut Nat) → Unit }
+def bumpMot : Term := prog{ λ (l : List Nat). Π (v : &mut Nat) → Unit }
 def b3 : Term := prog{
   let l = Cons(7, Cons(8, Nil));
   let acc = 0;
@@ -960,7 +959,7 @@ example :
     motive is not a function type has ordinary terms for arms, and the PURE
     recursor already computes those. -/
 
-def lenMot : Term := pure{ λ (l : List Nat). Nat }
+def lenMot : Term := prog{ λ (l : List Nat). Nat }
 def d1 : Term := prog{ fn caller () -> Nat {
   let l = Cons(7, Cons(8, Nil));
   let f = listRec Nat %lenMot Z (λ(h : Nat, t : List Nat, ih : Nat) { S(ih) });
@@ -984,8 +983,8 @@ example : progRejects d1 "cannot type neutral" = true := by native_decide
     still passes, pair for pair). `checkFn` is untouched and still checks every
     `FnDef` in the corpus: content moved, nothing was deleted (J1). -/
 
-def unitSeal : Term := pure{ Π (v : &mut List Nat) → Unit }
-def pinSeal : Term := pure{ Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 Nil) }
+def unitSeal : Term := prog{ Π (v : &mut List Nat) → Unit }
+def pinSeal : Term := prog{ Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 Nil) }
 
 -- E1. The rule, end to end: a sealed function taking a borrow is checked at the
 -- node, called through its σ by the table's own call rule, and executes.
@@ -1045,7 +1044,7 @@ example : progRejects e3b "holds a hole (⊥) at return" = true := by native_dec
 -- comptime. §6 could be stated twice here and disagree, so it is checked — and
 -- this is the callee-side half of phase B's "the ascription is the contract"
 -- (F3 settled the caller side).
-def cmpSeal : Term := pure{ Π (N : Nat) → Nat }
+def cmpSeal : Term := prog{ Π (N : Nat) → Nat }
 def e3c : Term := prog{
   let f = (λ(n : Nat) { S(n) } : %cmpSeal); () }
 example : progRejects e3c "the ascribed type binds it as comptime" = true := by native_decide
@@ -1164,7 +1163,7 @@ example : (progRejects holeD "holds a hole (⊥) at return" && progRejects holeS
         parameter and called by the same rule that calls any sealed function —
         §7's "self-ensures FORCED rather than stipulated", as plumbing. -/
 
-def zeroSeal : Term := pure{ Π (fuel : Nat) → Π (v : &mut List Nat) → Unit }
+def zeroSeal : Term := prog{ Π (fuel : Nat) → Π (v : &mut List Nat) → Unit }
 
 
 def f1 : Term := prog{
@@ -1202,7 +1201,7 @@ example :
     conversion to be compared up to. Phase D's macro will derive it, so the
     comparison is free there; a hand-written mismatch is told what was expected. -/
 
-def wrongMot : Term := pure{ λ (f : Nat). Π (v : &mut List Nat) → Nat }
+def wrongMot : Term := prog{ λ (f : Nat). Π (v : &mut List Nat) → Nat }
 def f2 : Term := prog{
   let f = (natRec %wrongMot
                  (λ(v : &mut List Nat) { () })
@@ -1247,12 +1246,12 @@ example : progRejects f3 "holds a hole (⊥) at return" = true := by native_deci
     abstract signature and no guard anywhere. Both are accepted, and the second is
     what §7 says the first should elaborate to. -/
 
-def splitTy : Term := pure{
+def splitTy : Term := prog{
   Π (i : Nat) → Π (v : &mut List Nat) → Π (hi : Le i (len *v))
     → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
          → Id (List Nat) ret (drop i (old *v)) }
 
-def splitMot : Term := pure{
+def splitMot : Term := prog{
   λ (i : Nat). Π (v : &mut List Nat) → Π (hi : Le i (len *v))
     → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
          → Id (List Nat) ret (drop i (old *v)) }
@@ -1300,11 +1299,11 @@ example : progOk splitSealed = true := by native_decide
     The body lie is the sharper of the two here: it breaks the congruence in the
     `Cons` arm, which is the arm `ih` lives in. -/
 
-def splitMotLie : Term := pure{
+def splitMotLie : Term := prog{
   λ (i : Nat). Π (v : &mut List Nat) → Π (hi : Le i (len *v))
     → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (drop i (old *v)))
          → Id (List Nat) ret (drop i (old *v)) }
-def splitTyLie : Term := pure{
+def splitTyLie : Term := prog{
   Π (i : Nat) → Π (v : &mut List Nat) → Π (hi : Le i (len *v))
     → Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (drop i (old *v)))
          → Id (List Nat) ret (drop i (old *v)) }
@@ -1427,8 +1426,8 @@ example : progOk h1vacuous = true := by native_decide
     `Π (u : Unit) → Id Nat Z (S Z)` assumed, the same returned — and is ACCEPTED,
     which is the assumption discharged honestly rather than a hole. -/
 
-def badMot : Term := pure{ λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z) }
-def badTy : Term := pure{ Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
+def badMot : Term := prog{ λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z) }
+def badTy : Term := prog{ Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
 
 def h2 : Term := prog{
   let f = (natRec %badMot
@@ -1460,9 +1459,9 @@ example : progOk h2step = true := by native_decide
     twin derives the predecessor's bound properly and passes THAT, so the rejection
     is about the level and not about the program being unwritable. -/
 
-def bndMot : Term := pure{
+def bndMot : Term := prog{
   λ (n : Nat). Π (v : &mut List Nat) → Π (Hn : Le (len *v) n) → Unit }
-def bndTy : Term := pure{
+def bndTy : Term := prog{
   Π (n : Nat) → Π (v : &mut List Nat) → Π (Hn : Le (len *v) n) → Unit }
 
 -- The arm hands `ih` its OWN bound, `Le (len *v) (S n2)`, where `ih` binds
@@ -1588,7 +1587,7 @@ example : progRejects k2 "does not have return type" = true := by native_decide
 -- reading for such a return type, which is a pre-existing limitation of the
 -- declaration form and one §8 dissolves rather than fixes (a program is a term, so
 -- there is no return type to read, only a `let`).
-def natFn : Term := pure{ Π (n : Nat) → Nat }
+def natFn : Term := prog{ Π (n : Nat) → Nat }
 def k3 : Term := prog{ fn k3 (n : Nat) -> %natFn {
   match n {
     Z => (λ(m : Nat) { Z } : %natFn),
@@ -1641,8 +1640,8 @@ example : progOk k3 = true := by native_decide
     whole class. Nothing in §7 wants `ih` in a slot anyway (cost 2 is explicit that
     it is "never partially applied"). -/
 
-def mSeal : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
-def mMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
+def mSeal : Term := prog{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
+def mMot : Term := prog{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
 
 /-- The arm binds `ih` to a local and then still calls it. -/
 def m1 : Term := prog{
@@ -2021,7 +2020,7 @@ example : (match bndArms with
 
 /-! ### F6. A plain sealed λ, not a recursor — the `sealFn` half on its own -/
 
-def fnTy : Term := pure{ Π (v : &mut List Nat) → Unit }
+def fnTy : Term := prog{ Π (v : &mut List Nat) → Unit }
 
 def annOk : Term := prog{
   let f = (λ(v : &mut List Nat) { *v := Nil; () } : %fnTy);
@@ -2057,7 +2056,7 @@ example : progRejects annBad "a domain the ascription does not bind it at" = tru
     that makes that observable — the same source line, two λ representations, two
     arrows, two verdicts. -/
 
-def juxSealTy : Term := pure{ Π (v : &mut List Nat) → Unit }
+def juxSealTy : Term := prog{ Π (v : &mut List Nat) → Unit }
 
 -- G1. A sealed function called by juxtaposition, in statement position.
 def juxSeal : Term := prog{
@@ -2103,8 +2102,8 @@ example : (match runProgram juxSeal, runProgram juxSealComma with
 -- G2. A recursor's `ih`, and the sealed recursor itself, both by juxtaposition —
 -- `ih tl` inside the arm and `f 3 b` at the call. `ih` is the case with no comma
 -- form to fall back on after δ, so it is the one that had to work.
-def juxRecMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
-def juxRecTy : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
+def juxRecMot : Term := prog{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
+def juxRecTy : Term := prog{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
 def juxRec : Term := prog{
   let f = (natRec %juxRecMot
                  (λ(v : &mut List Nat) { () })

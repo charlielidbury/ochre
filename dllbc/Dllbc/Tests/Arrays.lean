@@ -1,7 +1,6 @@
 import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.Std
-import Dllbc.PureMacro
 import Dllbc.StdLemmas
 import Dllbc.Tests.Diff
 
@@ -75,22 +74,22 @@ def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
     length" (¶1.4). Hand-written rather than §7-generated, which is the concrete cost
     of basis membership (¶9c) and the place a drift would start. -/
 
-def arr3 : Term := pure{ Arr(3, 1, 2) }
-example : chk arr3 pure{ Array 3 Nat } = true := by native_decide
-example : chk pure{ Arr() } pure{ Array 0 Nat } = true := by native_decide
+def arr3 : Term := prog{ Arr(3, 1, 2) }
+example : chk arr3 prog{ Array 3 Nat } = true := by native_decide
+example : chk prog{ Arr() } prog{ Array 0 Nat } = true := by native_decide
 
 -- Arity is the length index: `Arr(3,1,2)` does not inhabit `Array 2 Nat`. This is
 -- `checkFields`'s arity branch, reached through the replicated telescope.
-example : chk arr3 pure{ Array 2 Nat } = false := by native_decide
-example : chk arr3 pure{ Array 4 Nat } = false := by native_decide
+example : chk arr3 prog{ Array 2 Nat } = false := by native_decide
+example : chk arr3 prog{ Array 4 Nat } = false := by native_decide
 
 -- The ELEMENT type is checked per field, so a `Bool` in a `Nat` array is rejected.
-example : chk pure{ Arr(3, True) } pure{ Array 2 Nat } = false := by native_decide
+example : chk prog{ Arr(3, True) } prog{ Array 2 Nat } = false := by native_decide
 
 -- A symbolic length has no constructor signature at all — the honest `none`, not a
 -- guess. (`n` here is a Π-bound σ, so `natOfVal?` fails on it.)
-def arrSymLen : Term := pure{ λ (n : Nat). Arr(3) }
-example : chk arrSymLen pure{ Π (n : Nat) → Array n Nat } = false := by native_decide
+def arrSymLen : Term := prog{ λ (n : Nat). Arr(3) }
+example : chk arrSymLen prog{ Π (n : Nat) → Array n Nat } = false := by native_decide
 
 /-! ## (i.b) `arrCat` — the split view, and §3.2's knowledge/state line
 
@@ -99,14 +98,14 @@ example : chk arrSymLen pure{ Π (n : Nat) → Array n Nat } = false := by nativ
     a hole." So `arrCat` computes on run-headed arguments and is a legitimate stuck
     neutral on σ's — the two halves of that sentence, mechanized. -/
 
-example : (pv pure{ arrCat 2 1 Arr(3, 1) Arr(2) } == pv arr3) = true := by native_decide
-example : (pv pure{ arrCat 0 3 Arr() Arr(3, 1, 2) } == pv arr3) = true := by native_decide
-example : (pv pure{ arrCat 3 0 Arr(3, 1, 2) Arr() } == pv arr3) = true := by native_decide
+example : (pv prog{ arrCat 2 1 Arr(3, 1) Arr(2) } == pv arr3) = true := by native_decide
+example : (pv prog{ arrCat 0 3 Arr() Arr(3, 1, 2) } == pv arr3) = true := by native_decide
+example : (pv prog{ arrCat 3 0 Arr(3, 1, 2) Arr() } == pv arr3) = true := by native_decide
 
 -- Associativity is NOT definitional; the carve therefore always produces
 -- right-nested spines, and nothing downstream may assume otherwise.
-example : (pv pure{ arrCat 2 1 (arrCat 1 1 Arr(3) Arr(1)) Arr(2) } ==
-           pv pure{ arrCat 1 2 Arr(3) (arrCat 1 1 Arr(1) Arr(2)) }) = true := by native_decide
+example : (pv prog{ arrCat 2 1 (arrCat 1 1 Arr(3) Arr(1)) Arr(2) } ==
+           pv prog{ arrCat 1 2 Arr(3) (arrCat 1 1 Arr(1) Arr(2)) }) = true := by native_decide
 
 -- The stuck case: two σ's have no name for their concatenation, but they do have a
 -- term for it (¶1.1), which is all merge and the ⇝ fold need.
@@ -120,12 +119,12 @@ example : (Val.nfV 200 (Val.arrCatS (Val.nat 0) (Val.nat 2) (.ctor "Arr" []) (.s
 
 /-! ## (i.c) `aget` — the ⇝ column at an index place -/
 
-example : (pv pure{ aget Nat 3 0 Arr(3, 1, 2) } == Val.nat 3) = true := by native_decide
-example : (pv pure{ aget Nat 3 2 Arr(3, 1, 2) } == Val.nat 2) = true := by native_decide
+example : (pv prog{ aget Nat 3 0 Arr(3, 1, 2) } == Val.nat 3) = true := by native_decide
+example : (pv prog{ aget Nat 3 2 Arr(3, 1, 2) } == Val.nat 2) = true := by native_decide
 
 -- Stuck on a symbolic index and on a symbolic array — a legal neutral either way, so
 -- a type may mention `aget i (*v)` while `i` is unknown.
-def agetSymIdx : Val := Val.nfV 200 (pv pure{ λ (i : Nat). aget Nat 3 i Arr(3, 1, 2) })
+def agetSymIdx : Val := Val.nfV 200 (pv prog{ λ (i : Nat). aget Nat 3 i Arr(3, 1, 2) })
 example : (agetSymIdx == Val.nfV 200 agetSymIdx) = true := by native_decide
 
 /-! ## (i.d) The cons view: `acons` and `arrRec`
@@ -135,28 +134,28 @@ example : (agetSymIdx == Val.nfV 200 agetSymIdx) = true := by native_decide
     `listRec` with `arrRec` and `Cons` with `acons`." The library transfer itself is
     ¶6's migration; what is checked here is that the recursor computes. -/
 
-example : (pv pure{ acons 2 3 Arr(1, 2) } == pv arr3) = true := by native_decide
+example : (pv prog{ acons 2 3 Arr(1, 2) } == pv arr3) = true := by native_decide
 
 -- `alen` by `arrRec` — deliberately, since ¶1.1 says an array's length is read off
 -- its TYPE and never computed from its contents. This exists only to exercise ι.
-def alen : Term := pure{
+def alen : Term := prog{
   λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
       (λ (k : Nat). λ (x : Nat). λ (xs : Array k Nat). λ (ih : Nat). S ih) n a }
-example : (pv pure{ alen 3 Arr(3, 1, 2) } == Val.nat 3) = true := by native_decide
-example : (pv pure{ alen 0 Arr() } == Val.nat 0) = true := by native_decide
+example : (pv prog{ alen 3 Arr(3, 1, 2) } == Val.nat 3) = true := by native_decide
+example : (pv prog{ alen 0 Arr() } == Val.nat 0) = true := by native_decide
 
 -- A sum, so the recursive arm's element binder is exercised too.
-def asum : Term := pure{
+def asum : Term := prog{
   λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
       (λ (k : Nat). λ (x : Nat). λ (xs : Array k Nat). λ (ih : Nat). add x ih) n a }
-example : (pv pure{ asum 3 Arr(3, 1, 2) } == Val.nat 6) = true := by native_decide
+example : (pv prog{ asum 3 Arr(3, 1, 2) } == Val.nat 6) = true := by native_decide
 
 -- Stuck on a symbolic target: no `Arr` to fire on, so the spine is a legal value
 -- rather than an error — which is what lets a predicate family over arrays be stated
 -- about a σ at all.
-def arrRecStuck : Val := Val.nfV 500 (pv pure{ λ (n : Nat). λ (a : Array n Nat). alen n a })
+def arrRecStuck : Val := Val.nfV 500 (pv prog{ λ (n : Nat). λ (a : Array n Nat). alen n a })
 example : (arrRecStuck == Val.nfV 500 arrRecStuck) = true := by native_decide
 
 /-! ## (i.e) Segments: merge, drop-empty, and the ⇝ fold
@@ -1267,18 +1266,18 @@ open Dllbc.StdLemmas (countA SortedA UbA LbA BoundA asingle
   count_swap2 count_swap2_ty leb_true_le leb_false_gt le_pred_l)
 
 -- The predicates COMPUTE, on a run and on the cons view alike.
-example : (pv pure{ countA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
-example : (pv pure{ SortedA 3 Arr(1, 2, 3) } == pv pure{ SortedA 3 Arr(1, 2, 3) })
+example : (pv prog{ countA 2 4 Arr(1, 2, 2, 3) } == Val.nat 2) = true := by native_decide
+example : (pv prog{ SortedA 3 Arr(1, 2, 3) } == pv prog{ SortedA 3 Arr(1, 2, 3) })
     = true := by native_decide
-example : chk pure{ Pair(unit, Pair(unit, Pair(unit, unit))) } pure{ SortedA 3 Arr(1, 2, 3) }
+example : chk prog{ Pair(unit, Pair(unit, Pair(unit, unit))) } prog{ SortedA 3 Arr(1, 2, 3) }
     = true := by native_decide
 -- …and an unsorted array's `SortedA` is uninhabited, so the predicate is not vacuous.
-example : chk pure{ Pair(unit, Pair(unit, Pair(unit, unit))) } pure{ SortedA 3 Arr(3, 2, 1) }
+example : chk prog{ Pair(unit, Pair(unit, Pair(unit, unit))) } prog{ SortedA 3 Arr(3, 2, 1) }
     = false := by native_decide
 
 -- `arrCat (asingle p) b` IS the array `Cons p b`: the doc's spelling of the pivot
 -- splice reaches the cons view by computation, with no lemma relating them.
-example : (pv pure{ arrCat 1 2 (asingle 9) Arr(1, 2) } == pv pure{ Arr(9, 1, 2) })
+example : (pv prog{ arrCat 1 2 (asingle 9) Arr(1, 2) } == pv prog{ Arr(9, 1, 2) })
     = true := by native_decide
 
 /-! ### The five helpers and the glue, each its list proof with the container swapped -/

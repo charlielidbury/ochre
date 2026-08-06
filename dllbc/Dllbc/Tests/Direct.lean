@@ -1,8 +1,8 @@
 import Dllbc.Program
+import Dllbc.ProgMacro
 import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.StdLemmas
-import Dllbc.PureMacro
 import Dllbc.Tests.Diff
 
 /-!
@@ -76,21 +76,21 @@ def chk (tm ty : Term) : Bool :=
     (`Σ (sortedpart : SortedR …) → (Π n. Id …)`), which until now could only be
     assembled, never taken apart. -/
 
-def and_left : Term := pure{
+def and_left : Term := prog{
   λ (a : Nat). λ (b : Nat). λ (c : Nat).
     λ (p : Σ (h : Le a b) → Le b c).
       elim p return (λ (q : Σ (h : Le a b) → Le b c). Le a b) {
         Pair (x) (y) => x } }
-def and_left_ty : Term := pure{
+def and_left_ty : Term := prog{
   Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → (Σ (h : Le a b) → Le b c) → Le a b }
 example : chk and_left and_left_ty = true := by native_decide
 
-def and_right : Term := pure{
+def and_right : Term := prog{
   λ (a : Nat). λ (b : Nat). λ (c : Nat).
     λ (p : Σ (h : Le a b) → Le b c).
       elim p return (λ (q : Σ (h : Le a b) → Le b c). Le b c) {
         Pair (x) (y) => y } }
-def and_right_ty : Term := pure{
+def and_right_ty : Term := prog{
   Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → (Σ (h : Le a b) → Le b c) → Le b c }
 example : chk and_right and_right_ty = true := by native_decide
 
@@ -98,12 +98,12 @@ example : chk and_right and_right_ty = true := by native_decide
 -- feed both halves to `le_trans`. This is exactly what a caller does with a
 -- returned certificate — the reason the recursor is a prerequisite for the rest of
 -- M23 rather than a nicety.
-def and_trans : Term := pure{
+def and_trans : Term := prog{
   λ (a : Nat). λ (b : Nat). λ (c : Nat).
     λ (p : Σ (h : Le a b) → Le b c).
       elim p return (λ (q : Σ (h : Le a b) → Le b c). Le a c) {
         Pair (x) (y) => le_trans a b c x y } }
-def and_trans_ty : Term := pure{
+def and_trans_ty : Term := prog{
   Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → (Σ (h : Le a b) → Le b c) → Le a c }
 example : chk and_trans and_trans_ty = true := by native_decide
 
@@ -114,18 +114,18 @@ example : chk and_trans and_trans_ty = true := by native_decide
     *inside the type*: `sfst (Pair x y)` reduces to `x`. This is dependent Σ
     elimination proper, not a pair of independent projections. -/
 
-def sfst : Term := pure{
+def sfst : Term := prog{
   λ (p : Σ (n : Nat) → Le (S Z) n).
     elim p return (λ (q : Σ (n : Nat) → Le (S Z) n). Nat) {
       Pair (x) (y) => x } }
-def sfst_ty : Term := pure{ (Σ (n : Nat) → Le (S Z) n) → Nat }
+def sfst_ty : Term := prog{ (Σ (n : Nat) → Le (S Z) n) → Nat }
 example : chk sfst sfst_ty = true := by native_decide
 
-def ssnd : Term := pure{
+def ssnd : Term := prog{
   λ (p : Σ (n : Nat) → Le (S Z) n).
     elim p return (λ (q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (sfst q)) {
       Pair (x) (y) => y } }
-def ssnd_ty : Term := pure{ Π (p : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (sfst p) }
+def ssnd_ty : Term := prog{ Π (p : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (sfst p) }
 example : chk ssnd ssnd_ty = true := by native_decide
 
 /-! ## (i.c) The ι-rule computes -/
@@ -133,14 +133,14 @@ example : chk ssnd ssnd_ty = true := by native_decide
 -- `sfst (Pair 2 (le_refl 2)) ⇝ 2`, by ι on a concrete Pair.
 def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
 def vnat : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnat k]
-def sfstApp : Term := pure{ sfst (Pair (S (S Z)) (le_refl (S (S Z)))) }
+def sfstApp : Term := prog{ sfst (Pair (S (S Z)) (le_refl (S (S Z)))) }
 example : (pv sfstApp == vnat 2) = true := by native_decide
 
 -- ι fires under binders on a Pair whose COMPONENTS are neutral — the case that
 -- matters, since a caller destructures a certificate about symbolic values, never
 -- a closed one: `λ n. λ h. sfst (Pair n h)` normalizes to `λ n. λ h. n`.
-example : (pv (pure{ λ (n : Nat). λ (h : Le (S Z) n). sfst (Pair n h) }) ==
-           pv (pure{ λ (n : Nat). λ (h : Le (S Z) n). n })) = true := by native_decide
+example : (pv (prog{ λ (n : Nat). λ (h : Le (S Z) n). sfst (Pair n h) }) ==
+           pv (prog{ λ (n : Nat). λ (h : Le (S Z) n). n })) = true := by native_decide
 
 -- The dual: a neutral TARGET has no `Pair` to fire on, so the spine is a legal
 -- stuck value rather than an error — which is what lets `ssnd`'s motive above
@@ -154,7 +154,7 @@ example : (pv (pure{ λ (n : Nat). λ (h : Le (S Z) n). sfst (Pair n h) }) ==
 
 -- (1) Wrong arm component: `Pair(x)(y) => y` at the FIRST projection's type. The
 -- arm must inhabit `P (Pair x y)`, which is `Le a b` — `y : Le b c` does not.
-def and_left_lie : Term := pure{
+def and_left_lie : Term := prog{
   λ (a : Nat). λ (b : Nat). λ (c : Nat).
     λ (p : Σ (h : Le a b) → Le b c).
       elim p return (λ (q : Σ (h : Le a b) → Le b c). Le a b) {
@@ -164,25 +164,25 @@ example : chk and_left_lie and_left_ty = false := by native_decide
 -- (2) Wrong RESULT type: `sfst` returns `Nat`, and the claim is that it returns a
 -- proof. `finish` converts the motive-at-target against the ascribed type; this is
 -- the branch that catches it.
-def sfst_lie_ty : Term := pure{ (Σ (n : Nat) → Le (S Z) n) → Le Z Z }
+def sfst_lie_ty : Term := prog{ (Σ (n : Nat) → Le (S Z) n) → Le Z Z }
 example : chk sfst sfst_lie_ty = false := by native_decide
 
 -- (3) Wrong DEPENDENT motive: the second projection claimed one bigger than the
 -- first component. `y : Le (S Z) x`, but `P (Pair x y)` is now `Le (S Z) (S x)` —
 -- off by one, and nothing bridges it. This is the branch that would silently pass
 -- if the motive were inferred from the arm rather than read off what is written.
-def ssnd_lie : Term := pure{
+def ssnd_lie : Term := prog{
   λ (p : Σ (n : Nat) → Le (S Z) n).
     elim p return (λ (q : Σ (n : Nat) → Le (S Z) n). Le (S Z) (S (sfst q))) {
       Pair (x) (y) => y } }
-def ssnd_lie_ty : Term := pure{ Π (p : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (S (sfst p)) }
+def ssnd_lie_ty : Term := prog{ Π (p : Σ (n : Nat) → Le (S Z) n) → Le (S Z) (S (sfst p)) }
 example : chk ssnd_lie ssnd_lie_ty = false := by native_decide
 
 -- (4) Wrong TARGET: `sigmaRec` applied to something that is not of the Σ type it
 -- declares. Here the target is a bare `Nat`, so the `s : Σ (x : A) → B x` premise
 -- fails even though the arm is fine.
-def sfst_bad_target : Term := pure{ sfst (S Z) }
-def sfst_bad_target_ty : Term := pure{ Nat }
+def sfst_bad_target : Term := prog{ sfst (S Z) }
+def sfst_bad_target_ty : Term := prog{ Nat }
 example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 
 /-! ## Stage (ii) prelude: DEPENDENT Σ results at a call site
@@ -507,10 +507,10 @@ def soUnder (ret tail : Term) : Term := prog{
     SURFACE syntax — only the two subterms the twins vary are spliced — so what a
     reader compares is `take i (old *v)` against `take (S i) (old *v)`, one
     argument apart, and not two hand-built Σ-chains. -/
-def soRet (pre suf : Term) : Term := pure{
+def soRet (pre suf : Term) : Term := prog{
   Σ (ret : List Nat) → Σ (h1 : Id (List Nat) %dvT %pre) → Id (List Nat) ret %suf }
 
-def soHonest : Term := soRet (pure{ take %iT %oldvT }) (pure{ drop %iT %oldvT })
+def soHonest : Term := soRet (prog{ take %iT %oldvT }) (prog{ drop %iT %oldvT })
 def splitOff : Term := soUnder soHonest .unit
 example : progOk splitOff = true := by native_decide
 
@@ -521,9 +521,9 @@ example : progOk splitOff = true := by native_decide
     leave the recursive path untested; the body lie breaks the congruence in the
     `Cons` branch and is the control for that path. -/
 
-def splitOffLieTake : Term := soUnder (soRet (pure{ take (S %iT) %oldvT }) (pure{ drop %iT %oldvT })) .unit
-def splitOffLieDrop : Term := soUnder (soRet (pure{ take %iT %oldvT }) (pure{ drop (S %iT) %oldvT })) .unit
-def splitOffLieSwap : Term := soUnder (soRet (pure{ drop %iT %oldvT }) (pure{ take %iT %oldvT })) .unit
+def splitOffLieTake : Term := soUnder (soRet (prog{ take (S %iT) %oldvT }) (prog{ drop %iT %oldvT })) .unit
+def splitOffLieDrop : Term := soUnder (soRet (prog{ take %iT %oldvT }) (prog{ drop (S %iT) %oldvT })) .unit
+def splitOffLieSwap : Term := soUnder (soRet (prog{ drop %iT %oldvT }) (prog{ take %iT %oldvT })) .unit
 example : progRejects splitOffLieTake "does not have return type" = true := by native_decide
 example : progRejects splitOffLieDrop "does not have return type" = true := by native_decide
 example : progRejects splitOffLieSwap "does not have return type" = true := by native_decide
@@ -686,10 +686,10 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
 
 /-- Each return type as a skeleton over the model function it cites — still surface
     syntax, one spliced subterm, so the twins below read as the lie they are. -/
-def exitIs (rhs : Term) : Term := pure{ Id (List Nat) %dvT %rhs }
+def exitIs (rhs : Term) : Term := prog{ Id (List Nat) %dvT %rhs }
 
-def setHonest : Term := exitIs (pure{ set %iT %xT %oldvT })
-def swapHonest : Term := exitIs (pure{ swapL %iT %jT %oldvT })
+def setHonest : Term := exitIs (prog{ set %iT %xT %oldvT })
+def swapHonest : Term := exitIs (prog{ swapL %iT %jT %oldvT })
 
 /-- The pair, both honest. Also the regression pin M28's survey held separately:
     `swap_at` calls `set_at [i]`, whose decreasing parameter is SECOND, so the sealed
@@ -702,11 +702,11 @@ example : progOk setSwap = true := by native_decide
 /-! ### Not vacuous -/
 
 -- The index off by one, and the no-op, once per function.
-example : progRejects (setSwapUnder (exitIs (pure{ set (S %iT) %xT %oldvT })) swapHonest .unit)
+example : progRejects (setSwapUnder (exitIs (prog{ set (S %iT) %xT %oldvT })) swapHonest .unit)
   "does not have return type" = true := by native_decide
 example : progRejects (setSwapUnder (exitIs oldvT) swapHonest .unit)
   "does not have return type" = true := by native_decide
-example : progRejects (setSwapUnder setHonest (exitIs (pure{ swapL (S %iT) %jT %oldvT })) .unit)
+example : progRejects (setSwapUnder setHonest (exitIs (prog{ swapL (S %iT) %jT %oldvT })) .unit)
   "does not have return type" = true := by native_decide
 example : progRejects (setSwapUnder setHonest (exitIs oldvT) .unit)
   "does not have return type" = true := by native_decide
@@ -1048,7 +1048,7 @@ example : progOk pick = true := by native_decide
     it is the thing that makes the branch-free route work rather than merely move
     the problem. `ub_pick` is the shape every partition-invariant lemma will take. -/
 
-def ub_pick : Term := pure{
+def ub_pick : Term := prog{
   λ (x : Nat). λ (p : Nat). λ (l : List Nat). λ (h : Ub p l).
     elim (leb x p) return (λ (b : Bool).
         Id Bool (leb x p) b →
@@ -1057,16 +1057,16 @@ def ub_pick : Term := pure{
       True => λ (e : Id Bool (leb x p) True). Pair(leb_true_le x p e, unit),
       False => λ (e : Id Bool (leb x p) False). unit
     } Refl }
-def ub_pick_ty : Term := pure{
+def ub_pick_ty : Term := prog{
   Π (x : Nat) → Π (p : Nat) → Π (l : List Nat) → Ub p l →
     Ub p (take (boolRec (λ (bb : Bool). Nat) (S Z) Z (leb x p))
             (insertL (boolRec (λ (bb : Bool). Nat) Z (S Z) (leb x p)) x l)) }
 example : chk ub_pick ub_pick_ty = true := by native_decide
 
 -- `Ub`/`Lb` compute, and are Σ-chained (so `sigmaRec` consumes them).
-example : (pv (pure{ Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
-           pv (pure{ Σ (h : Le (S Z) (S (S Z))) → Σ (h2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
-example : (pv (pure{ Lb Z (Cons (S Z) Nil) }) == pv (pure{ Σ (h : Le Z (S Z)) → Unit })) = true := by native_decide
+example : (pv (prog{ Ub (S (S Z)) (Cons (S Z) (Cons (S (S Z)) Nil)) }) ==
+           pv (prog{ Σ (h : Le (S Z) (S (S Z))) → Σ (h2 : Le (S (S Z)) (S (S Z))) → Unit })) = true := by native_decide
+example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (h : Le Z (S Z)) → Unit })) = true := by native_decide
 
 /-! ### The unshifted-motive question, settled: LATENT AND UNREACHABLE
 
@@ -1092,16 +1092,16 @@ example : (pv (pure{ Lb Z (Cons (S Z) Nil) }) == pv (pure{ Σ (h : Le Z (S Z)) �
     payoff). Kept as positive controls so that if the descent discipline ever
     changes, something fails here first. -/
 
-def openMotiveL : Term := pure{
+def openMotiveL : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat). Le p p) { Nil => le_refl p, Cons (h) (t) ih => ih } }
-def openMotiveL_ty : Term := pure{ Π (p : Nat) → Π (l : List Nat) → Le p p }
+def openMotiveL_ty : Term := prog{ Π (p : Nat) → Π (l : List Nat) → Le p p }
 example : chk openMotiveL openMotiveL_ty = true := by native_decide
 
-def openMotiveN : Term := pure{
+def openMotiveN : Term := prog{
   λ (p : Nat). λ (n : Nat).
     elim n return (λ (nz : Nat). Le p p) { Z => le_refl p, S (m) ih => ih } }
-def openMotiveN_ty : Term := pure{ Π (p : Nat) → Π (n : Nat) → Le p p }
+def openMotiveN_ty : Term := prog{ Π (p : Nat) → Π (n : Nat) → Le p p }
 example : chk openMotiveN openMotiveN_ty = true := by native_decide
 
 /-! ### A CHECKER GAP, filed for §9: a `let`-bound value is never type-checked
@@ -1151,10 +1151,10 @@ example : chk sorted_append_pivot Dllbc.StdLemmas.sorted_append_pivot_ty = true 
 -- It COMPUTES, end to end: `[1] ++ 2 :: [3]` is sorted, from the four facts about
 -- the parts. Every hypothesis at these values is a `⊤`-chain, so the witnesses are
 -- `Pair(unit, unit)` — the content is entirely in the lemma.
-def sap_app : Term := pure{
+def sap_app : Term := prog{
   sorted_append_pivot (S (S Z)) (Cons (S Z) Nil) (Cons (S (S (S Z))) Nil)
     Pair(unit, unit) Pair(unit, unit) Pair(unit, unit) Pair(unit, unit) }
-def sap_app_ty : Term := pure{
+def sap_app_ty : Term := prog{
   Sorted (Cons (S Z) (Cons (S (S Z)) (Cons (S (S (S Z))) Nil))) }
 example : chk sap_app sap_app_ty = true := by native_decide
 
@@ -1164,14 +1164,14 @@ example : chk sap_app sap_app_ty = true := by native_decide
 -- (1) `Ub p a` weakened to `Lb p a`: `ub_head` now receives `Σ (Le p h) → Lb p t`
 -- where it wants `Σ (Le h p) → Ub p t`. Without a's elements being BELOW the pivot
 -- the splice is not sorted, and the check says so.
-def sap_lie_ub_ty : Term := pure{
+def sap_lie_ub_ty : Term := prog{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Sorted a → Lb p a → Sorted b → Lb p b → Sorted (append a (Cons p b)) }
 example : chk sorted_append_pivot sap_lie_ub_ty = false := by native_decide
 
 -- (2) `Lb p b` weakened to `Ub p b`: `lb_bound` is fed the wrong direction, so the
 -- pivot no longer bounds b's head.
-def sap_lie_lb_ty : Term := pure{
+def sap_lie_lb_ty : Term := prog{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Sorted a → Ub p a → Sorted b → Ub p b → Sorted (append a (Cons p b)) }
 example : chk sorted_append_pivot sap_lie_lb_ty = false := by native_decide
@@ -1179,7 +1179,7 @@ example : chk sorted_append_pivot sap_lie_lb_ty = false := by native_decide
 -- (3) The `Nil` arm of the transport returning the wrong hypothesis: past the end of
 -- `t` the new head is the PIVOT, so only `Le h p` inhabits the goal; handing back the
 -- (vacuous) `Bound h Nil` does not.
-def bound_append_lie : Term := pure{
+def bound_append_lie : Term := prog{
   λ (h : Nat). λ (p : Nat). λ (t : List Nat). λ (b : List Nat).
     elim t return (λ (tz : List Nat).
         Bound h tz → Le h p → Bound h (append tz (Cons p b))) {
@@ -1190,10 +1190,10 @@ example : chk bound_append_lie Dllbc.StdLemmas.bound_append_ty = false := by nat
 -- (4) Liveness of the `Ub` hypothesis at concrete values: pivot 0 under a left part
 -- containing 1 needs `Le 1 0 = ⊥`, which `Pair(unit, unit)` does not inhabit — so the
 -- positive computation above passed on its hypotheses, not on a rubber stamp.
-def sap_bad_pivot : Term := pure{
+def sap_bad_pivot : Term := prog{
   sorted_append_pivot Z (Cons (S Z) Nil) Nil
     Pair(unit, unit) Pair(unit, unit) unit unit }
-def sap_bad_pivot_ty : Term := pure{
+def sap_bad_pivot_ty : Term := prog{
   Sorted (Cons (S Z) (Cons Z Nil)) }
 example : chk sap_bad_pivot sap_bad_pivot_ty = false := by native_decide
 
@@ -1320,17 +1320,17 @@ def fuelT : Term := .var ⟨0, "fuel"⟩
     six-conjunct chain away from the honest form. Only the two telescope parameters
     a return type cannot name from outside its header are spliced. -/
 
-def partHonest : Term := pure{
+def partHonest : Term := prog{
   Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
     → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
     → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) }
 
-def qsHonest : Term := pure{
+def qsHonest : Term := prog{
   Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) }
 
 /-- The sufficiency hypothesis's type — a telescope entry, so it is a parameter of
     the chain too. Its twin is the one that weakens it to `Unit`. -/
-def suffHonest : Term := pure{ Le (len *%vfT) %fuelT }
+def suffHonest : Term := prog{ Le (len *%vfT) %fuelT }
 
 /-! ### The chain, once
 
@@ -1542,28 +1542,28 @@ example : progOk flagship = true := by native_decide
 
 -- (1) UPPER BOUND on the wrong snapshot: `Ub p (old *v)` — true of the entry, and
 -- the entry is not what the caller gets back.
-example : progRejects (qsUnder (pure{
+example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (old *%vfT)) → Σ (hlb : Lb %pT hi)
       → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
       → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) LOWER BOUND on the kept part instead of the returned one.
-example : progRejects (qsUnder (pure{
+example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT (*%vfT))
       → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
       → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
-example : progRejects (qsUnder (pure{
+example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
       → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
       → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
-example : progRejects (qsUnder (pure{
+example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
       → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
       → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (S (count n (old *%vfT))) })
@@ -1579,13 +1579,13 @@ example : progRejects (qsUnder (pure{
 -- (1) SORTEDNESS lied onto the wrong subject: the ENTRY is claimed sorted. True at
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
-example : progRejects (qsUnder partHonest (pure{
+example : progRejects (qsUnder partHonest (prog{
     Σ (hs : Sorted (old *%vfT)) → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
-example : progRejects (qsUnder partHonest (pure{
+example : progRejects (qsUnder partHonest (prog{
     Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (count n (old *%vfT)) (count n (*%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
@@ -1597,7 +1597,7 @@ example : progRejects (qsUnder partHonest (pure{
 -- The needle is the MECHANISM, not the generic one: with the hypothesis weakened,
 -- the out-of-fuel branch's `botElim` has nothing to eliminate, and the audit says
 -- exactly that. The record-update twin this replaces could only assert `!progOk`.
-example : progRejects (qsUnder partHonest qsHonest (pure{ Unit }) .unit)
+example : progRejects (qsUnder partHonest qsHonest (prog{ Unit }) .unit)
   "botElim result on a non-⊥ argument" = true := by native_decide
 
 /-! ### The two BODY twins, transcribed
@@ -1969,10 +1969,10 @@ def ejT : Term := .var ⟨2, "j"⟩
     the comptime-deref-through-a-reborrow that read a stale `loanₘ` before the fix.
 -/
 
-def certHonest : Term := pure{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (count %mT %sT) }
-def certLie : Term := pure{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (S (count %mT %sT)) }
-def exitHonest : Term := pure{ Id (List Nat) (*%evT) (*%evT) }
-def exitStale : Term := pure{ Id (List Nat) (*%evT) (old *%evT) }
+def certHonest : Term := prog{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (count %mT %sT) }
+def certLie : Term := prog{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (S (count %mT %sT)) }
+def exitHonest : Term := prog{ Id (List Nat) (*%evT) (*%evT) }
+def exitStale : Term := prog{ Id (List Nat) (*%evT) (old *%evT) }
 
 def withCursors (cret eret tail : Term) : Term := prog{
   fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat

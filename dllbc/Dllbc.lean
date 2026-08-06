@@ -5,10 +5,9 @@ import Dllbc.Machine
 import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.Uni
-import Dllbc.PureMacro
+import Dllbc.ProgMacro
 import Dllbc.StdLemmas
 import Dllbc.Program
-import Dllbc.ProgMacro
 import Dllbc.Tests.KernelFloor
 import Dllbc.Tests.Traces
 import Dllbc.Tests.Diff

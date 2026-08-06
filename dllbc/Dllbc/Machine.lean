@@ -837,7 +837,7 @@ def writeC (place : Term) (refined : Val) : M Unit := do
         first match — so a `let` whose id was already a slot bound a shadow that
         nothing ever read: `readC` of `let h = S Z ; h` against an Ω holding
         `#0 ↦ Z` returned `Z`. Absolute ids make that reachable rather than
-        hypothetical, since a `pure{ }` block numbers its binders from 0 and so
+        hypothetical, since a `prog{ }` block numbers its binders from 0 and so
         does every telescope.
 
     Neither had ever been hit, because the surface's ⇝ `let` was a β-redex and

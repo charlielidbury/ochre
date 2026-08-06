@@ -1,7 +1,6 @@
 import Dllbc.Machine
 import Dllbc.Program
 import Dllbc.ProgMacro
-import Dllbc.PureMacro
 import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.StdLemmas
@@ -48,14 +47,14 @@ that asserts about the kernel directly, and the exemption is load-bearing:
   every subject is elaborated cannot answer that question about itself.
 * **It is the hand-built anchor.** The surface layers are pinned by round-trips
   against terms built by hand (S15Elab checks `StdLemmas.le_refl`, authored in
-  `pure{ }`, convertible with the hand-built `Std.le_reflT`). Those anchors are
+  `prog{ }`, convertible with the hand-built `Std.le_reflT`). Those anchors are
   only worth something if the hand-built side is independently exercised, which is
   this file's `add`/`VecF`/recursor library.
 
 **The OLD reason is superseded, and is recorded here so a future simplification
 pass does not refute it and delete an exempted file.** The header used to say
 "pure terms have no surface syntax, so the library is built directly from the
-pure `Term`/`Val` formers". That was true at §4 and false since §15: `pure{ … }`
+pure `Term`/`Val` formers". That was true at §4 and false since §15: `prog{ … }`
 authors pure terms, and `StdLemmas` is written in it. The rawness here is a
 CHOICE about what is under test, not a gap in the grammar.
 
@@ -68,7 +67,7 @@ open Dllbc.Val (nat)
 namespace Dllbc.Tests.S4Pure
 
 -- SUBJECT FILE: the whole library here is built directly from raw Term/Val formers,
--- and the rawness is the POINT rather than a missing grammar (`pure{ }` would author
+-- and the rawness is the POINT rather than a missing grammar (`prog{ }` would author
 -- every one of these since §15) — these raw constructions ARE the subject under test
 -- (reduction, hasType, convert), reached with no macro in the loop. Every raw
 -- constructor below is intentional test machinery. See the exemption in the header.
@@ -489,7 +488,7 @@ open Dllbc
 
 namespace Dllbc.Tests.S11Lib
 
-/-! ## The fording vocabulary, authored in `pure{ }`
+/-! ## The fording vocabulary, authored in `prog{ }`
 
     `NatCode : Nat → Nat → Type` by double `natRec` — `(Z,Z) ↦ ⊤`, `(S,S) ↦` the
     code of the predecessors, mixed `↦ ⊥` — and the motive that turns a
@@ -500,7 +499,7 @@ namespace Dllbc.Tests.S11Lib
     **These were raw `Term`s until M28, on a rationale that expired.** The file
     used to say "the surface macro has no syntax for `j`/`app`/`const`, and the
     j-spine's `.pvar` motives cannot be reproduced by a named binder". Both halves
-    are false since §15's `pure{ }` and M27's juxtaposition application:
+    are false since §15's `prog{ }` and M27's juxtaposition application:
     `natRec`/`j`/`botElim` are resolvable kernel constants (`constSet`), a spine
     is juxtaposition, and a named λ binder elaborates to exactly the de Bruijn
     index the hand-built motive spelled out.
@@ -514,23 +513,23 @@ namespace Dllbc.Tests.S11Lib
     below, whose motive is `λ (x : Nat). λ (q : Id Nat a x). Id Nat a x`. -/
 
 /-- `NatCode`'s `Z` row: `Z ↦ ⊤`, `S _ ↦ ⊥`. -/
-def zCase : Term := pure{
+def zCase : Term := prog{
   λ (m : Nat). natRec (λ (x : Nat). Type) Unit (λ (x : Nat). λ (r : Type). Bot) m }
 
 /-- `NatCode`'s `S` row: `Z ↦ ⊥`, `S m2 ↦ code of the predecessors` (the
     outer recursor's `ih`, applied). -/
-def sCase : Term := pure{
+def sCase : Term := prog{
   λ (n : Nat). λ (f : Π (x : Nat) → Type). λ (m : Nat).
     natRec (λ (x : Nat). Type) Bot (λ (m2 : Nat). λ (r : Type). f m2) m }
 
 /-- `NatCode : Nat → Nat → Type`, by `natRec` at a Π-valued motive. -/
-def natCode : Term := pure{
+def natCode : Term := prog{
   λ (a : Nat). natRec (λ (x : Nat). Π (y : Nat) → Type) zCase sCase a }
 
 /-- The no-confusion motive at `Z`: `λ m. λ (q : Id Nat Z m). NatCode Z m`. With
     `j`'s `d := unit : NatCode Z Z`, `j Nat Z nncMotive unit (S n) p` has type
     `NatCode Z (S n)`, which computes to `Bot`. -/
-def nncMotive : Term := pure{ λ (m : Nat). λ (q : Id Nat Z m). natCode Z m }
+def nncMotive : Term := prog{ λ (m : Nat). λ (q : Id Nat Z m). natCode Z m }
 
 /-! ## §11.1 The pure lift — ⇒ produces proof terms -/
 
@@ -581,7 +580,7 @@ section
 
 The M11 wall was mis-indexed de Bruijn failing silently. This milestone's claim:
 names + explicit motives collapse it without a unifier. The evidence is here —
-`le_trans`, the lemma I abandoned as a raw term, authored in `pure{ }` and
+`le_trans`, the lemma I abandoned as a raw term, authored in `prog{ }` and
 checked; plus the J warm-ups and the round-trip that a hand-built term and its
 surface elaboration are convertible.
 
@@ -618,10 +617,10 @@ example : expectConv [] [] Dllbc.StdLemmas.le_refl Std.le_reflT = true := by nat
     counterfactual), not a hypothesis. -/
 
 -- (1) The merged `let` means what the β-redex it replaced meant.
-example : expectConv [] [] pure{ let a = 2 ; add a a } pure{ (λ (a : Nat). add a a) 2 } = true := by
+example : expectConv [] [] prog{ let a = 2 ; add a a } prog{ (λ (a : Nat). add a a) 2 } = true := by
   native_decide
 -- (2) …and a `let` chain still means its nesting.
-example : expectConv [] [] pure{ let a = 2 ; let b = S a ; add a b } pure{ 5 } = true := by
+example : expectConv [] [] prog{ let a = 2 ; let b = S a ; add a b } prog{ 5 } = true := by
   native_decide
 
 -- (3) A `let` may SHADOW a pure binder, and the innermost one wins. A pure λ's
@@ -630,20 +629,20 @@ example : expectConv [] [] pure{ let a = 2 ; let b = S a ; add a b } pure{ 5 } =
 -- reachable route. `resolveName` consults that context FIRST, so without the
 -- surface's mask this reads the ARM's `k` — measured as `Z`, not `7`.
 example : expectConv [] []
-    pure{ elim 1 return (λ (x : Nat). Nat) { Z => 0, S(k) ih => let k = 7 ; k } }
-    pure{ 7 } = true := by native_decide
+    prog{ elim 1 return (λ (x : Nat). Nat) { Z => 0, S(k) ih => let k = 7 ; k } }
+    prog{ 7 } = true := by native_decide
 
 -- (4) A let-bound value MENTIONING a pure binder, read two binders deeper. ⇝
 -- reads `let` by β and lifts the value from the depth it was bound at to the
 -- depth it is used at; the Ω-binding reading this replaced did not, and returned
 -- a value pointing at the inner arm's binders instead. `s = S k = 1`.
 example : expectConv [] []
-    pure{ elim 1 return (λ (x : Nat). Nat) {
+    prog{ elim 1 return (λ (x : Nat). Nat) {
             Z => 0,
             S(k) ih =>
               let s = S k ;
               elim 1 return (λ (y : Nat). Nat) { Z => 0, S(j) ih2 => s } } }
-    pure{ 1 } = true := by native_decide
+    prog{ 1 } = true := by native_decide
 
 /-! ## The lemmas check at their stated types -/
 
@@ -674,7 +673,7 @@ example : progOk useTrans = true := by native_decide
 -- clause and thus visible, so the failure is comprehensible. The surfaced error
 -- is: "audit: result (…) does not have return type (…)".
 def LeFn : Term := Std.LeFnT
-def badReflClosed : Term := pure{
+def badReflClosed : Term := prog{
   λ (n : Nat). elim n return (λ (m : Nat). LeFn Z m) { Z => unit, S (k) ih => ih } }
 -- SUBJECT: a deliberately-lying function — the return type claims `Le n n` while
 -- the body proves `Le Z n`. It was a hand-built `FnDef` record on the argument that
@@ -687,11 +686,11 @@ def badRefl : Term := prog{
   () }
 example : progRejects badRefl "does not have return type" = true := by native_decide
 
--- Unresolved name: `pure{ Le nope nope }` where `nope` is unbound is a Lean
+-- Unresolved name: `prog{ Le nope nope }` where `nope` is unbound is a Lean
 -- elaboration error at macro time (the resolve-or-error discipline), not a
 -- silent `pvar`. Demonstrated by `#guard_msgs` would require the exact message;
 -- here we simply note it cannot be written — an unbound lowercase name in a
--- `pure{ }` block fails to compile, exactly as in `prog{ }`.
+-- `prog{ }` block fails to compile, exactly as in `prog{ }`.
 
 /-! ## The measure (§15's report card)
 

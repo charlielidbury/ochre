@@ -120,7 +120,7 @@ mutual
     -- The alternative — modes part of type identity — was rejected on the
     -- calculus's own evidence: the machine builds recursor premise types
     -- (`natRec`'s `Π (k : Nat) → Π (ih : P k) → P (S k)`) in Lean with no modes,
-    -- and `pure{}`'s motive binders are capitalized by long-standing convention
+    -- and `prog{}`'s motive binders are capitalized by long-standing convention
     -- (`λ (P : …)`, `λ (A : Type)`). Under a mode-sensitive equality every one of
     -- those would have to agree on a mode that ⇝ has no use for. Modes exist to
     -- route ⇒'s arguments and to fence its bodies; ⇝ is the room where the

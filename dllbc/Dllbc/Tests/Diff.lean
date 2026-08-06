@@ -1,7 +1,6 @@
 import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.ProgMacro
-import Dllbc.PureMacro
 
 /-!
 # The differential — the two machines, and the relation that compares them
@@ -140,7 +139,7 @@ def vRun (body arg : Term) : Term := prog{
   let x = %arg; let p = &m x; f(p); () }
 
 /-- Concrete payloads for v: the small list pool, as the terms a caller writes. -/
-def vArgs : List Term := [pure{ Nil }, pure{ Cons(1, Nil) }, pure{ Cons(1, Cons(2, Nil)) }]
+def vArgs : List Term := [prog{ Nil }, prog{ Cons(1, Nil) }, prog{ Cons(1, Cons(2, Nil)) }]
 
 /-! ## The property, for the list-borrow telescope
 
@@ -184,7 +183,7 @@ def nCheck (body : Term) : Term := prog{ fn f (n : Nat) -> Nat { %body }; () }
 def nRun (body arg : Term) : Term := prog{
   fn f (n : Nat) -> Nat { %body };
   let r = f(%arg); () }
-def nArgs : List Term := [pure{ 0 }, pure{ 1 }, pure{ 2 }]
+def nArgs : List Term := [prog{ 0 }, prog{ 1 }, prog{ 2 }]
 
 def nAccepted : List Term := nBodies.filter (fun b => progOk (nCheck b))
 
@@ -213,8 +212,8 @@ def bcRun (body a0 a1 : Term) : Term := prog{
   fn f (b : &mut Nat, c : Bool) -> Unit { %body };
   let x = %a0; let p = &m x; f(p, %a1); () }
 def bcArgs : List (Term × Term) :=
-  [ (pure{ 0 }, pure{ True }), (pure{ 0 }, pure{ False }),
-    (pure{ 1 }, pure{ True }), (pure{ 1 }, pure{ False }) ]
+  [ (prog{ 0 }, prog{ True }), (prog{ 0 }, prog{ False }),
+    (prog{ 1 }, prog{ True }), (prog{ 1 }, prog{ False }) ]
 
 def bcAccepted : List Term := bcBodies.filter (fun b => progOk (bcCheck b))
 

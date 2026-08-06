@@ -1,18 +1,18 @@
 import Dllbc.Std
-import Dllbc.PureMacro
+import Dllbc.ProgMacro
 
 /-!
 # `Dllbc.StdLemmas` — the pure lemmas, authored in the §15 surface syntax
 
 The M11 wall — `le_trans` as a raw de Bruijn term across ~15 binder contexts,
 each mis-index failing silently — collapsed by names and explicit motives. Every
-lemma here is written in `pure{ … }`: binders are named, motives are written once
+lemma here is written in `prog{ … }`: binders are named, motives are written once
 and visible, and elaboration resolves names or errors (no silent fallback). The
 kernel terms they elaborate to are the same de Bruijn `Term`s hasType already
 checks; the surface is authoring sugar only.
 
 `Le`/`count` are the surface names for the library functions (Term-valued, so a
-`pure{ }` application `Le a b` is an ordinary app spine).
+`prog{ }` application `Le a b` is an ordinary app spine).
 -/
 
 namespace Dllbc.StdLemmas
@@ -31,17 +31,17 @@ abbrev leb : Term := Std.lebFnT
 
 /-! ## `le_refl`, `le_trans` — the acceptance test -/
 
-def le_refl : Term := pure{
+def le_refl : Term := prog{
   λ (n : Nat). elim n return (λ (m : Nat). Le m m) {
     Z => unit,
     S (k) ih => ih } }
-def le_refl_ty : Term := pure{ Π (n : Nat) → Le n n }
+def le_refl_ty : Term := prog{ Π (n : Nat) → Le n n }
 
 -- The wall. Single outer elim on `a`; the `S` case elims on `b`, whose `S` case
 -- elims on `c`, with the IH applied at the peeled proofs — every step
 -- definitional through the `Le` equations. Nested, but every binder is NAMED and
 -- every motive is written once and visible.
-def le_trans : Term := pure{
+def le_trans : Term := prog{
   λ (a : Nat).
     elim a return (λ (a0 : Nat). Π (b : Nat) → Π (c : Nat) → Le a0 b → Le b c → Le a0 c) {
       Z => λ (b : Nat). λ (c : Nat). λ (hab : Le Z b). λ (hbc : Le b c). unit,
@@ -55,7 +55,7 @@ def le_trans : Term := pure{
             } hbc0
         } hab hbc
     } }
-def le_trans_ty : Term := pure{
+def le_trans_ty : Term := prog{
   Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Le a b → Le b c → Le a c }
 
 -- Right-successor monotonicity: `a ≤ b ⟹ a ≤ S b`. Double induction (on `a`,
@@ -63,7 +63,7 @@ def le_trans_ty : Term := pure{
 -- (`Le (S a') Z = ⊥`, else `Le a' b'` and the IH lifts it to `Le a' (S b')`).
 -- The glue `count_swapL'` needs to bend swapS's `Le (S i) j` into count_swapL's
 -- `Le (S i) (len l)` via one `le_trans`.
-def le_up_r : Term := pure{
+def le_up_r : Term := prog{
   λ (a : Nat). elim a return (λ (az : Nat). Π (b : Nat) → Le az b → Le az (S b)) {
     Z => λ (b : Nat). λ (h : Le Z b). unit,
     S (a') ih => λ (b : Nat). λ (h : Le (S a') b).
@@ -71,46 +71,46 @@ def le_up_r : Term := pure{
         Z => λ (h0 : Le (S a') Z). botElim (Le (S a') (S Z)) h0,
         S (b') ihb => λ (h0 : Le (S a') (S b')). ih b' h0
       } h } }
-def le_up_r_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → Le a (S b) }
+def le_up_r_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le a b → Le a (S b) }
 
 -- `i ≤ i + g`: the boundary never passes the scan position it feeds. A clean
 -- induction on `i` (`add (S i') g = S (add i' g)`, so `Le (S i') (add (S i') g)`
 -- reduces to the IH). The partition swaps consume this as their `pij`.
-def le_add : Term := pure{
+def le_add : Term := prog{
   λ (i : Nat). elim i return (λ (iz : Nat). Π (g : Nat) → Le iz (add iz g)) {
     Z => λ (g : Nat). unit,
     S (i') ih => λ (g : Nat). ih g } }
-def le_add_ty : Term := pure{ Π (i : Nat) → Π (g : Nat) → Le i (add i g) }
+def le_add_ty : Term := prog{ Π (i : Nat) → Π (g : Nat) → Le i (add i g) }
 
 -- `b ≤ a + b` — the companion where the summand is on the LEFT (`le_add` has it on
 -- the right). Induction on `a`: base is `le_refl` (`add Z b = b`), step lifts the
 -- IH with `le_up_r` (`add (S a') b = S (add a' b)`). The scan-position bound uses
 -- this because the length equation carries the remaining count `k` on the left.
-def le_add_l : Term := pure{
+def le_add_l : Term := prog{
   λ (b : Nat). λ (a : Nat).
     elim a return (λ (az : Nat). Le b (add az b)) {
       Z => le_refl b,
       S (a') ih => le_up_r b (add a' b) ih } }
-def le_add_l_ty : Term := pure{ Π (b : Nat) → Π (a : Nat) → Le b (add a b) }
+def le_add_l_ty : Term := prog{ Π (b : Nat) → Π (a : Nat) → Le b (add a b) }
 
 -- `S i ≤ i + (S g)` — the swap's `pij`: the boundary `S i` is below the scan
 -- position `S (add i (S g))` whenever the gap is non-empty. Induction on `i`
 -- avoids an add_succ transport (`add (S i') x = S (add i' x)` is definitional),
 -- so no rewrite is needed here.
-def le_add_succ : Term := pure{
+def le_add_succ : Term := prog{
   λ (i : Nat). elim i return (λ (iz : Nat). Π (g : Nat) → Le (S iz) (add iz (S g))) {
     Z => λ (g : Nat). unit,
     S (i') ih => λ (g : Nat). ih g } }
-def le_add_succ_ty : Term := pure{ Π (i : Nat) → Π (g : Nat) → Le (S i) (add i (S g)) }
+def le_add_succ_ty : Term := prog{ Π (i : Nat) → Π (g : Nat) → Le (S i) (add i (S g)) }
 
 -- Transport a `Le` along an `Id` on its SECOND argument: `x = y ⟹ Le a x → Le a
 -- y`. The bounds derived over the arithmetic normal form are moved onto `len *v`
 -- (and back through `len_swapL`) with this J-transport — the "le_trans/le_step
 -- glue where descent is not definitional".
-def le_rw_r : Term := pure{
+def le_rw_r : Term := prog{
   λ (a : Nat). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (p : Le a x).
     j Nat x (λ (y' : Nat). λ (hh : Id Nat x y'). Le a y') p y h }
-def le_rw_r_ty : Term := pure{ Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le a x → Le a y }
+def le_rw_r_ty : Term := prog{ Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le a x → Le a y }
 
 -- Transport a `Le` along an `Id` on its FIRST (smaller) argument: `x = y ⟹ Le x
 -- b → Le y b`. The range partition's bound `Le (add lo (S (add k (add i g))))
@@ -118,72 +118,72 @@ def le_rw_r_ty : Term := pure{ Π (a : Nat) → Π (x : Nat) → Π (y : Nat) �
 -- its SYNTACTIC form shifts as k descends and i/g grow; this moves the bound
 -- between forms via the hshift identities — the Le mirror of le_rw_r, and the one
 -- lemma the M20 Id-toolkit lacked for the subrange generalization (§21).
-def le_rw_l : Term := pure{
+def le_rw_l : Term := prog{
   λ (b : Nat). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (p : Le x b).
     j Nat x (λ (y' : Nat). λ (hh : Id Nat x y'). Le y' b) p y h }
-def le_rw_l_ty : Term := pure{ Π (b : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le x b → Le y b }
+def le_rw_l_ty : Term := prog{ Π (b : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → Le x b → Le y b }
 
 -- Left-add monotonicity: `a ≤ b ⟹ lo + a ≤ lo + b`. Induction on `lo`: base is
 -- the hypothesis (`add Z x = x`), step is the IH verbatim (`add (S lo') x =
 -- S (add lo' x)` and `Le (S _) (S _) = Le _ _` are both definitional). The range
 -- partition's swap bounds shift the entry bound `Le (S i) (S (add i g))` through
 -- `add lo` to reach `Le (add lo (S i)) (add lo (S (add i g)))` (§21).
-def le_add_mono_l : Term := pure{
+def le_add_mono_l : Term := prog{
   λ (lo : Nat). λ (a : Nat). λ (b : Nat). λ (h : Le a b).
     elim lo return (λ (loz : Nat). Le (add loz a) (add loz b)) {
       Z => h,
       S (lo') ih => ih } }
-def le_add_mono_l_ty : Term := pure{ Π (lo : Nat) → Π (a : Nat) → Π (b : Nat) → Le a b → Le (add lo a) (add lo b) }
+def le_add_mono_l_ty : Term := prog{ Π (lo : Nat) → Π (a : Nat) → Π (b : Nat) → Le a b → Le (add lo a) (add lo b) }
 
 /-! ## `id_trans`, `id_congr` — the J warm-ups partition's count-chaining consumes -/
 
-def id_trans : Term := pure{
+def id_trans : Term := prog{
   λ (A : Type). λ (x : A). λ (y : A). λ (z : A). λ (p : Id A x y). λ (q : Id A y z).
     j A x (λ (y' : A). λ (h : Id A x y'). Id A y' z → Id A x z) (λ (h : Id A x z). h) y p q }
-def id_trans_ty : Term := pure{
+def id_trans_ty : Term := prog{
   Π (A : Type) → Π (x : A) → Π (y : A) → Π (z : A) → Id A x y → Id A y z → Id A x z }
 
-def id_congr : Term := pure{
+def id_congr : Term := prog{
   λ (A : Type). λ (B : Type). λ (f : A → B). λ (x : A). λ (y : A). λ (p : Id A x y).
     j A x (λ (y' : A). λ (h : Id A x y'). Id B (f x) (f y')) Refl y p }
-def id_congr_ty : Term := pure{
+def id_congr_ty : Term := prog{
   Π (A : Type) → Π (B : Type) → Π (f : A → B) → Π (x : A) → Π (y : A) → Id A x y → Id B (f x) (f y) }
 
-def id_sym : Term := pure{
+def id_sym : Term := prog{
   λ (A : Type). λ (x : A). λ (y : A). λ (p : Id A x y).
     j A x (λ (y' : A). λ (h : Id A x y'). Id A y' x) Refl y p }
-def id_sym_ty : Term := pure{ Π (A : Type) → Π (x : A) → Π (y : A) → Id A x y → Id A y x }
+def id_sym_ty : Term := prog{ Π (A : Type) → Π (x : A) → Π (y : A) → Id A x y → Id A y x }
 
 /-! ## Arithmetic — the first double-inductions after the wall (§16 calibration) -/
 
-def add_zero : Term := pure{
+def add_zero : Term := prog{
   λ (a : Nat). elim a return (λ (x : Nat). Id Nat (add x Z) x) {
     Z => Refl,
     S (a') ih => id_congr Nat Nat (λ (n : Nat). S n) (add a' Z) a' ih } }
-def add_zero_ty : Term := pure{ Π (a : Nat) → Id Nat (add a Z) a }
+def add_zero_ty : Term := prog{ Π (a : Nat) → Id Nat (add a Z) a }
 
-def add_succ : Term := pure{
+def add_succ : Term := prog{
   λ (a : Nat). λ (b : Nat). elim a return (λ (x : Nat). Id Nat (add x (S b)) (S (add x b))) {
     Z => Refl,
     S (a') ih => id_congr Nat Nat (λ (n : Nat). S n) (add a' (S b)) (S (add a' b)) ih } }
-def add_succ_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a (S b)) (S (add a b)) }
+def add_succ_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a (S b)) (S (add a b)) }
 
 -- Commutativity: the classic proof, authored in the surface and checked first try.
-def add_comm : Term := pure{
+def add_comm : Term := prog{
   λ (a : Nat). elim a return (λ (x : Nat). Π (b : Nat) → Id Nat (add x b) (add b x)) {
     Z => λ (b : Nat). id_sym Nat (add b Z) b (add_zero b),
     S (a') ih => λ (b : Nat).
       id_trans Nat (S (add a' b)) (S (add b a')) (add b (S a'))
         (id_congr Nat Nat (λ (n : Nat). S n) (add a' b) (add b a') (ih b))
         (id_sym Nat (add b (S a')) (S (add b a')) (add_succ b a')) } }
-def add_comm_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a b) (add b a) }
+def add_comm_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a b) (add b a) }
 
-def add_assoc : Term := pure{
+def add_assoc : Term := prog{
   λ (a : Nat). elim a return (λ (x : Nat). Π (b : Nat) → Π (c : Nat) → Id Nat (add (add x b) c) (add x (add b c))) {
     Z => λ (b : Nat). λ (c : Nat). Refl,
     S (a') ih => λ (b : Nat). λ (c : Nat).
       id_congr Nat Nat (λ (n : Nat). S n) (add (add a' b) c) (add a' (add b c)) (ih b c) } }
-def add_assoc_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Id Nat (add (add a b) c) (add a (add b c)) }
+def add_assoc_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Id Nat (add (add a b) c) (add a (add b c)) }
 
 /-! ## The length-equation shift lemmas — `hlen` updates for the recursive partScan
 
@@ -197,27 +197,27 @@ def add_assoc_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Π (c : Nat) 
 -- Boundary advance: `add (S k) (add i g) = add k (add (S i) g)` (move a successor
 -- from k to i). `add (S i) g = S (add i g)` is definitional, so only the `add k
 -- (S ·)` step needs add_succ.
-def hshift_true : Term := pure{
+def hshift_true : Term := prog{
   λ (k : Nat). λ (i : Nat). λ (g : Nat).
     id_sym Nat (add k (S (add i g))) (S (add k (add i g))) (add_succ k (add i g)) }
-def hshift_true_ty : Term := pure{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
+def hshift_true_ty : Term := prog{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
   Id Nat (add (S k) (add i g)) (add k (add (S i) g)) }
 
 -- Gap growth: `add (S k) (add i g) = add k (add i (S g))` (move a successor from k
 -- to g). `add i (S g)` is stuck (add recurses on i), so this needs add_succ TWICE
 -- — once under `add k` to grow the gap, once to pull the successor out front.
-def hshift_false : Term := pure{
+def hshift_false : Term := prog{
   λ (k : Nat). λ (i : Nat). λ (g : Nat).
     id_sym Nat (add k (add i (S g))) (S (add k (add i g)))
       (id_trans Nat (add k (add i (S g))) (add k (S (add i g))) (S (add k (add i g)))
         (id_congr Nat Nat (λ (x : Nat). add k x) (add i (S g)) (S (add i g)) (add_succ i g))
         (add_succ k (add i g))) }
-def hshift_false_ty : Term := pure{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
+def hshift_false_ty : Term := prog{ Π (k : Nat) → Π (i : Nat) → Π (g : Nat) →
   Id Nat (add (S k) (add i g)) (add k (add i (S g))) }
 
 -- `count`'s Cons-unfolding equation as an Id — definitional, a `Refl` after whnf.
-def count_cons : Term := pure{ λ (m : Nat). λ (h : Nat). λ (t : List Nat). Refl }
-def count_cons_ty : Term := pure{
+def count_cons : Term := prog{ λ (m : Nat). λ (h : Nat). λ (t : List Nat). Refl }
+def count_cons_ty : Term := prog{
   Π (m : Nat) → Π (h : Nat) → Π (t : List Nat) →
     Id Nat (count m (Cons h t)) (boolRec (λ (b : Bool). Nat) (S (count m t)) (count m t) (eqb m h)) }
 
@@ -228,7 +228,7 @@ def count_cons_ty : Term := pure{
     `count (Cons …)` unfolds to). `take_drop_id` reassembles a list from its
     prefix and suffix. Both are the building blocks the swap-count lemma consumes. -/
 
-def count_append : Term := pure{
+def count_append : Term := prog{
   λ (m : Nat). λ (a : List Nat). λ (b : List Nat).
     elim a return (λ (x : List Nat). Id Nat (count m (append x b)) (add (count m x) (count m b))) {
       Nil => Refl,
@@ -240,11 +240,11 @@ def count_append : Term := pure{
           False => ih
         }
     } }
-def count_append_ty : Term := pure{
+def count_append_ty : Term := prog{
   Π (m : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Id Nat (count m (append a b)) (add (count m a) (count m b)) }
 
-def take_drop_id : Term := pure{
+def take_drop_id : Term := prog{
   λ (i : Nat). elim i return (λ (k : Nat). Π (l : List Nat) → Id (List Nat) (append (take k l) (drop k l)) l) {
     Z => λ (l : List Nat). Refl,
     S (i') ih => λ (l : List Nat).
@@ -254,7 +254,7 @@ def take_drop_id : Term := pure{
           id_congr (List Nat) (List Nat) (λ (r : List Nat). Cons h r)
             (append (take i' t) (drop i' t)) t (ih t)
       } } }
-def take_drop_id_ty : Term := pure{
+def take_drop_id_ty : Term := prog{
   Π (i : Nat) → Π (l : List Nat) → Id (List Nat) (append (take i l) (drop i l)) l }
 
 /-! ## `nth`, `set`, `swapL` — the pure specification of swap (§16-2)
@@ -267,17 +267,17 @@ def take_drop_id_ty : Term := pure{
     milestone report: it requires a BOUND (`swapL` off the end defaults `nth` to
     `Z`, breaking count preservation), so it decomposes into a bounded stack. -/
 
-def nth : Term := pure{
+def nth : Term := prog{
   λ (k : Nat). elim k return (λ (z : Nat). List Nat → Nat) {
     Z => λ (l : List Nat). elim l return (λ (z : List Nat). Nat) { Nil => Z, Cons (h) (t) ihl => h },
     S (k') rec => λ (l : List Nat). elim l return (λ (z : List Nat). Nat) { Nil => Z, Cons (h) (t) ihl => rec t } } }
 
-def set : Term := pure{
+def set : Term := prog{
   λ (k : Nat). λ (v : Nat). elim k return (λ (z : Nat). List Nat → List Nat) {
     Z => λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) { Nil => Nil, Cons (h) (t) ihl => Cons v t },
     S (k') rec => λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) { Nil => Nil, Cons (h) (t) ihl => Cons h (rec t) } } }
 
-def swapL : Term := pure{
+def swapL : Term := prog{
   λ (i : Nat). elim i return (λ (z : Nat). Nat → List Nat → List Nat) {
     Z => λ (j : Nat). λ (l : List Nat). elim l return (λ (z : List Nat). List Nat) {
       Nil => Nil,
@@ -299,7 +299,7 @@ def swapL : Term := pure{
 
 abbrev len : Term := Std.lenFnT
 
-def len_set : Term := pure{
+def len_set : Term := prog{
   λ (k : Nat). λ (v : Nat).
     elim k return (λ (z : Nat). Π (l : List Nat) → Id Nat (len (set z v l)) (len l)) {
       Z => λ (l : List Nat). elim l return (λ (x : List Nat). Id Nat (len (set Z v x)) (len x)) {
@@ -307,9 +307,9 @@ def len_set : Term := pure{
       S (k') ih => λ (l : List Nat). elim l return (λ (x : List Nat). Id Nat (len (set (S k') v x)) (len x)) {
         Nil => Refl,
         Cons (h) (t) ihl => id_congr Nat Nat (λ (n : Nat). S n) (len (set k' v t)) (len t) (ih t) } } }
-def len_set_ty : Term := pure{ Π (k : Nat) → Π (v : Nat) → Π (l : List Nat) → Id Nat (len (set k v l)) (len l) }
+def len_set_ty : Term := prog{ Π (k : Nat) → Π (v : Nat) → Π (l : List Nat) → Id Nat (len (set k v l)) (len l) }
 
-def len_swapL : Term := pure{
+def len_swapL : Term := prog{
   λ (i : Nat).
     elim i return (λ (z : Nat). Π (j : Nat) → Π (l : List Nat) → Id Nat (len (swapL z j l)) (len l)) {
       Z => λ (j : Nat). λ (l : List Nat).
@@ -324,7 +324,7 @@ def len_swapL : Term := pure{
           Cons (y) (ys) ihl => elim j return (λ (w : Nat). Id Nat (len (swapL (S i') w (Cons y ys))) (len (Cons y ys))) {
             Z => Refl,
             S (j') jih => id_congr Nat Nat (λ (n : Nat). S n) (len (swapL i' j' ys)) (len ys) (ih j' ys) } } } }
-def len_swapL_ty : Term := pure{ Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Id Nat (len (swapL i j l)) (len l) }
+def len_swapL_ty : Term := prog{ Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Id Nat (len (swapL i j l)) (len l) }
 
 /-! ## The bounded `count_swapL` stack (§18)
 
@@ -356,7 +356,7 @@ def len_swapL_ty : Term := pure{ Π (i : Nat) → Π (j : Nat) → Π (l : List 
     for a subterm STUCK behind an abstract scrutinee, which this stack avoids by
     construction. -/
 
-def cons2_comm : Term := pure{
+def cons2_comm : Term := prog{
   λ (m : Nat). λ (a : Nat). λ (b : Nat). λ (l : List Nat).
     elim (eqb m a) generalizing (Id Nat (count m (Cons a (Cons b l))) (count m (Cons b (Cons a l)))) {
       True => elim (eqb m b) generalizing
@@ -364,17 +364,17 @@ def cons2_comm : Term := pure{
                 (boolRec (λ (w : Bool). Nat) (S (S (count m l))) (S (count m l)) (eqb m b))) {
         True => Refl, False => Refl },
       False => Refl } }
-def cons2_comm_ty : Term := pure{
+def cons2_comm_ty : Term := prog{
   Π (m : Nat) → Π (a : Nat) → Π (b : Nat) → Π (l : List Nat) →
     Id Nat (count m (Cons a (Cons b l))) (count m (Cons b (Cons a l))) }
 
 -- Congruence of `count` under `Cons`: the `f` abstracts `count m ·` out of BOTH
 -- occurrences in the `boolRec` that `count m (Cons h ·)` whnf's to, so a single
 -- `id_congr` transports the tail equation through the head.
-def count_cons_congr : Term := pure{
+def count_cons_congr : Term := prog{
   λ (m : Nat). λ (h : Nat). λ (l1 : List Nat). λ (l2 : List Nat). λ (p : Id Nat (count m l1) (count m l2)).
     id_congr Nat Nat (λ (r : Nat). boolRec (λ (w : Bool). Nat) (S r) r (eqb m h)) (count m l1) (count m l2) p }
-def count_cons_congr_ty : Term := pure{
+def count_cons_congr_ty : Term := prog{
   Π (m : Nat) → Π (h : Nat) → Π (l1 : List Nat) → Π (l2 : List Nat) →
     Id Nat (count m l1) (count m l2) → Id Nat (count m (Cons h l1)) (count m (Cons h l2)) }
 
@@ -384,13 +384,13 @@ def count_cons_congr_ty : Term := pure{
 -- that `count (Cons …)` unfolds to. Abstraction alone cannot do this (the subterm
 -- hides behind the scrutinee's own reduction); this is the knowledge half. The
 -- imperative tie-in returns THIS applied to its params.
-def count_cons_hit : Term := pure{
+def count_cons_hit : Term := prog{
   λ (m : Nat). λ (a : Nat). λ (l : List Nat). λ (hq : Id Bool (eqb m a) True).
     j Bool True
       (λ (z : Bool). λ (h : Id Bool True z).
         Id Nat (boolRec (λ (w : Bool). Nat) (S (count m l)) (count m l) z) (S (count m l)))
       Refl (eqb m a) (id_sym Bool (eqb m a) True hq) }
-def count_cons_hit_ty : Term := pure{
+def count_cons_hit_ty : Term := prog{
   Π (m : Nat) → Π (a : Nat) → Π (l : List Nat) → Id Bool (eqb m a) True →
     Id Nat (count m (Cons a l)) (S (count m l)) }
 
@@ -401,7 +401,7 @@ def count_cons_hit_ty : Term := pure{
 -- `cons2_comm`. Step (`j = S j'`): a three-link `id_trans` chain — float the
 -- swapped-in element past the head with `cons2_comm`, apply the IH under the head
 -- via `count_cons_congr`, then `cons2_comm` back.
-def count_headswap : Term := pure{
+def count_headswap : Term := prog{
   λ (m : Nat). λ (x : Nat). λ (j : Nat).
     elim j return (λ (jz : Nat).
         Π (xs : List Nat) → Le (S jz) (len xs) →
@@ -432,7 +432,7 @@ def count_headswap : Term := pure{
                 (count m (Cons x (Cons y ys)))
                 (count_cons_congr m y (Cons (nth j' ys) (set j' x ys)) (Cons x ys) (ih ys bnd0))
                 (cons2_comm m y x ys)) } } }
-def count_headswap_ty : Term := pure{
+def count_headswap_ty : Term := prog{
   Π (m : Nat) → Π (x : Nat) → Π (j : Nat) → Π (xs : List Nat) → Le (S j) (len xs) →
     Id Nat (count m (Cons (nth j xs) (set j x xs))) (count m (Cons x xs)) }
 
@@ -442,7 +442,7 @@ def count_headswap_ty : Term := pure{
 -- the recursive case (`i = S i'`, `j = S j'`) rebuilds `Cons y (swapL i' j' ys)`,
 -- discharged by `count_cons_congr` on the IH; the degenerate `j = Z` / `i > j`
 -- cases are the identity swap (`Refl`); `Nil` is ⊥-discharged by `Le (S i) …`.
-def count_swapL : Term := pure{
+def count_swapL : Term := prog{
   λ (m : Nat). λ (i : Nat).
     elim i return (λ (iz : Nat).
         Π (j : Nat) → Π (l : List Nat) → Le (S iz) (len l) → Le (S j) (len l) →
@@ -473,7 +473,7 @@ def count_swapL : Term := pure{
               S (j') jih => λ (bj1 : Le (S (S j')) (len (Cons y ys))).
                 count_cons_congr m y (swapL i' j' ys) ys (ih j' ys bi0 bj1)
             } bj0 } } }
-def count_swapL_ty : Term := pure{
+def count_swapL_ty : Term := prog{
   Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) (len l) → Le (S j) (len l) → Id Nat (count m (swapL i j l)) (count m l) }
 
@@ -483,11 +483,11 @@ def count_swapL_ty : Term := pure{
 -- (independent bounds, no `i ≤ j` needed); this derives the caller's hand-off from
 -- it. `Le (S i) (len l)` comes by `le_trans (S i) (S j) (len l)`: `le_up_r` lifts
 -- `pij : Le (S i) j` to `Le (S i) (S j)`, then chain with `p2`.
-def count_swapL' : Term := pure{
+def count_swapL' : Term := prog{
   λ (m : Nat). λ (i : Nat). λ (j : Nat). λ (l : List Nat).
     λ (pij : Le (S i) j). λ (p2 : Le (S j) (len l)).
       count_swapL m i j l (le_trans (S i) (S j) (len l) (le_up_r (S i) j pij) p2) p2 }
-def count_swapL'_ty : Term := pure{
+def count_swapL'_ty : Term := prog{
   Π (m : Nat) → Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) j → Le (S j) (len l) → Id Nat (count m (swapL i j l)) (count m l) }
 
@@ -512,7 +512,7 @@ def count_swapL'_ty : Term := pure{
     exact M18/count_swapL shape. Induction mirrors `swapL`: `i = Z` is definitional
     (both sides reduce to `Cons (nth j' ys) (set j' y ys)`), the `i = S i'` step is
     the IH under `Cons y ·`. -/
-def swapL_set : Term := pure{
+def swapL_set : Term := prog{
   λ (i : Nat).
     elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Le (S j) (len l) →
         Id (List Nat) (set iz (nth j l) (set j (nth iz l) l)) (swapL iz j l)) {
@@ -542,7 +542,7 @@ def swapL_set : Term := pure{
                 id_congr (List Nat) (List Nat) (λ (t : List Nat). Cons y t)
                   (set i' (nth j' ys) (set j' (nth i' ys) ys)) (swapL i' j' ys) (ih j' ys pijs p2s)
             } pij p2 } } }
-def swapL_set_ty : Term := pure{
+def swapL_set_ty : Term := prog{
   Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) → Le (S i) j → Le (S j) (len l) →
     Id (List Nat) (set i (nth j l) (set j (nth i l) l)) (swapL i j l) }
 
@@ -567,7 +567,7 @@ def swapL_set_ty : Term := pure{
     pivot's final position — the split point the caller recurses on (`[0, i)` and
     `(i, len)`). partition exposes it as its return value; sortL rides it. -/
 
-def partScanL : Term := pure{
+def partScanL : Term := prog{
   λ (pivot : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → List Nat) {
       Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
@@ -581,12 +581,12 @@ def partScanL : Term := pure{
             S (g') gih => rec (S i) (S g') (swapL (S i) (S (add i g)) l) },
           False => rec i (S g) l } } }
 
-def partitionL : Term := pure{
+def partitionL : Term := prog{
   λ (n : Nat). λ (l : List Nat).
     elim n return (λ (nz : Nat). List Nat) {
       Z => l,
       S (n') rec => partScanL (nth Z l) n' Z Z l } }
-def partitionL_ty : Term := pure{ Π (n : Nat) → List Nat → List Nat }
+def partitionL_ty : Term := prog{ Π (n : Nat) → List Nat → List Nat }
 
 /-! ## `partScanIdxL` / `partIdxL` — the boundary INDEX the scan produces (§21)
 
@@ -596,7 +596,7 @@ def partitionL_ty : Term := pure{ Π (n : Nat) → List Nat → List Nat }
     the split point sortL's two recursive calls ride. Same casings/arithmetic as
     partScanL, so the two stay in lockstep. -/
 
-def partScanIdxL : Term := pure{
+def partScanIdxL : Term := prog{
   λ (pivot : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
       Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). i,
@@ -607,12 +607,12 @@ def partScanIdxL : Term := pure{
             S (g') gih => rec (S i) (S g') (swapL (S i) (S (add i g)) l) },
           False => rec i (S g) l } } }
 
-def partIdxL : Term := pure{
+def partIdxL : Term := prog{
   λ (n : Nat). λ (l : List Nat).
     elim n return (λ (nz : Nat). Nat) {
       Z => Z,
       S (n') rec => partScanIdxL (nth Z l) n' Z Z l } }
-def partIdxL_ty : Term := pure{ Π (n : Nat) → List Nat → Nat }
+def partIdxL_ty : Term := prog{ Π (n : Nat) → List Nat → Nat }
 
 /-! ## `sortL` — the pure quicksort model (§21)
 
@@ -625,7 +625,7 @@ def partIdxL_ty : Term := pure{ Π (n : Nat) → List Nat → Nat }
     The imperative quicksort mirrors this exactly (partition returns the transparent
     `i`, both recursions ride it), so the conformance is conversion. -/
 
-def sortL : Term := pure{
+def sortL : Term := prog{
   λ (fuel : Nat).
     elim fuel return (λ (fz : Nat). Π (n : Nat) → List Nat → List Nat) {
       Z => λ (n : Nat). λ (l : List Nat). l,
@@ -639,7 +639,7 @@ def sortL : Term := pure{
               let i = partIdxL n l;
               append (rec i (take i p)) (Cons (nth i p) (rec (len (drop (S i) p)) (drop (S i) p)))
           } } } }
-def sortL_ty : Term := pure{ Π (fuel : Nat) → Π (n : Nat) → List Nat → List Nat }
+def sortL_ty : Term := prog{ Π (fuel : Nat) → Π (n : Nat) → List Nat → List Nat }
 
 /-! ## Range-aware models — the index-bounded quicksort spec (§21, plan of record)
 
@@ -654,7 +654,7 @@ def sortL_ty : Term := pure{ Π (fuel : Nat) → Π (n : Nat) → List Nat → L
     and the gap `g` at `k = Z` IS the right sub-count (elements > pivot) — the scan
     maintains `i + g = k`, so no `hi - lo` ever appears. -/
 
-def partScanRangeL : Term := pure{
+def partScanRangeL : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → List Nat) {
       Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
@@ -668,13 +668,13 @@ def partScanRangeL : Term := pure{
             S (g') gih => rec (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
           False => rec i (S g) l } } }
 
-def partitionRangeL : Term := pure{
+def partitionRangeL : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat). List Nat) {
       Z => l,
       S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l } }
 
-def partScanIdxRangeL : Term := pure{
+def partScanIdxRangeL : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
       Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). i,
@@ -685,13 +685,13 @@ def partScanIdxRangeL : Term := pure{
             S (g') gih => rec (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
           False => rec i (S g) l } } }
 
-def partIdxRangeL : Term := pure{
+def partIdxRangeL : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat). Nat) {
       Z => Z,
       S (cnt') rec => partScanIdxRangeL (nth lo l) lo cnt' Z Z l } }
 
-def partScanGapRangeL : Term := pure{
+def partScanGapRangeL : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → List Nat → Nat) {
       Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat). g,
@@ -702,7 +702,7 @@ def partScanGapRangeL : Term := pure{
             S (g') gih => rec (S i) (S g') (swapL (add lo (S i)) (add lo (S (add i g))) l) },
           False => rec i (S g) l } } }
 
-def partGapRangeL : Term := pure{
+def partGapRangeL : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat). Nat) {
       Z => Z,
@@ -716,7 +716,7 @@ def partGapRangeL : Term := pure{
 -- step cases on the SAME `leb` scrutinee that both `partScanIdxRangeL` and
 -- `partScanGapRangeL` branch on, abstracting that `Bool` uniformly across the idx
 -- and gap elims; each leaf is one `hshift` transport (`id_sym`/`id_trans`).
-def partScanSizeL : Term := pure{
+def partScanSizeL : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
         Id Nat (add (partScanIdxRangeL pivot lo kz i g l) (partScanGapRangeL pivot lo kz i g l)) (add kz (add i g))) {
@@ -764,7 +764,7 @@ def partScanSizeL : Term := pure{
                      (id_sym Nat (add (S k') (add i g)) (add k' (add i (S g))) (hshift_false k' i g))
         }
     } }
-def partScanSizeL_ty : Term := pure{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+def partScanSizeL_ty : Term := prog{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
   Id Nat (add (partScanIdxRangeL pivot lo k i g l) (partScanGapRangeL pivot lo k i g l)) (add k (add i g)) }
 
 -- The range scan preserves length — it only ever rebuilds the same spine (swapL,
@@ -774,7 +774,7 @@ def partScanSizeL_ty : Term := pure{ Π (pivot : Nat) → Π (lo : Nat) → Π (
 -- placement, True/S-g swap) bridge through len_swapL. The quicksort recursion
 -- needs this because partitionRange MUTATES *v, and the two recursive-call range
 -- bounds refer to len (*v-after-partition) — this moves them back onto len (entry).
-def len_partScanRangeL : Term := pure{
+def len_partScanRangeL : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
         Id Nat (len (partScanRangeL pivot lo kz i g l)) (len l)) {
@@ -809,20 +809,20 @@ def len_partScanRangeL : Term := pure{
           False => ih i (S g) l
         }
     } }
-def len_partScanRangeL_ty : Term := pure{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
+def len_partScanRangeL_ty : Term := prog{ Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
   Id Nat (len (partScanRangeL pivot lo k i g l)) (len l) }
 
 -- The wrapper form the quicksort recursion consumes: partitionRangeL is
 -- partScanRangeL after picking the pivot, so its length preservation is the scan's
 -- (Z base is Refl, S cnt' is len_partScanRangeL at the entry offsets).
-def len_partitionRangeL : Term := pure{
+def len_partitionRangeL : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat). Id Nat
         (len (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l }))
         (len l)) {
       Z => Refl,
       S (cnt') rec => len_partScanRangeL (nth lo l) lo cnt' Z Z l } }
-def len_partitionRangeL_ty : Term := pure{ Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (partitionRangeL lo cnt l)) (len l) }
+def len_partitionRangeL_ty : Term := prog{ Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (partitionRangeL lo cnt l)) (len l) }
 
 /-! ## Count preservation of the range scan/partition (§22, the partition rung)
 
@@ -835,7 +835,7 @@ def len_partitionRangeL_ty : Term := pure{ Π (lo : Nat) → Π (cnt : Nat) → 
     exactly the le_trans/le_rw_l/le_add_mono_l bound algebra partScanRange's body
     proves. This is the proof-linearity-vs-count asymmetry made concrete: length is
     friction-free, count pays the bound tax at every swap. -/
-def count_partScanRangeL : Term := pure{
+def count_partScanRangeL : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (m : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
         Le (add lo (S (add kz (add i g)))) (len l) →
@@ -916,7 +916,7 @@ def count_partScanRangeL : Term := pure{
                 hle)
         }
     } }
-def count_partScanRangeL_ty : Term := pure{
+def count_partScanRangeL_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (m : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Le (add lo (S (add k (add i g)))) (len l) →
     Id Nat (count m (partScanRangeL pivot lo k i g l)) (count m l) }
@@ -926,7 +926,7 @@ def count_partScanRangeL_ty : Term := pure{
 -- The top range bound `Le (add lo cnt) (len l)` supplies the scan's bound; at
 -- cnt = S cnt' it needs an add_zero nudge (`add cnt' (add Z Z) = add cnt' Z`, and
 -- `add` recurses on its FIRST arg so `add cnt' Z` is stuck at a free cnt').
-def count_partitionRangeL : Term := pure{
+def count_partitionRangeL : Term := prog{
   λ (lo : Nat). λ (m : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat).
         Le (add lo cz) (len l) →
@@ -939,7 +939,7 @@ def count_partitionRangeL : Term := pure{
             (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt' (add cnt' Z)
               (id_sym Nat (add cnt' Z) cnt' (add_zero cnt')))
             hb) } }
-def count_partitionRangeL_ty : Term := pure{
+def count_partitionRangeL_ty : Term := prog{
   Π (lo : Nat) → Π (m : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) (len l) → Id Nat (count m (partitionRangeL lo cnt l)) (count m l) }
 
@@ -948,7 +948,7 @@ def count_partitionRangeL_ty : Term := pure{
     range, then sorts the left sub-range `[lo, lo+i)` (count `i`) and the right
     `[lo+i+1, …)` (count `g`), the right on the result of the left — the raw
     composition the imperative body implements. `partitionQ` is the `lo = 0` slice. -/
-def sortRangeL : Term := pure{
+def sortRangeL : Term := prog{
   λ (fuel : Nat).
     elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat) {
       Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). l,
@@ -963,7 +963,7 @@ def sortRangeL : Term := pure{
               let g = partGapRangeL lo cnt l;
               rec (S (add lo i)) g (rec lo i p)
           } } } }
-def sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat }
+def sortRangeL_ty : Term := prog{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → List Nat → List Nat }
 
 -- sortRangeL is a permutation, so it preserves length. Fuel-structural induction
 -- mirroring sortRangeL's own shape (base fuel Z / cnt ≤ 1 are Refl); the step is
@@ -971,7 +971,7 @@ def sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt 
 -- len_partitionRangeL for the partition underneath. The quicksort recursion needs
 -- this for its SECOND range bound: the second recursive call runs after the first
 -- has permuted *v, so the bound (over len *v-after-first) moves back through this.
-def len_sortRangeL : Term := pure{
+def len_sortRangeL : Term := prog{
   λ (fuel : Nat).
     elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (sortRangeL fz lo cnt l)) (len l)) {
       Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). Refl,
@@ -999,7 +999,7 @@ def len_sortRangeL : Term := pure{
                   (ih lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l))
                   (len_partitionRangeL lo cnt l))
           } } } }
-def len_sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (sortRangeL fuel lo cnt l)) (len l) }
+def len_sortRangeL_ty : Term := prog{ Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Id Nat (len (sortRangeL fuel lo cnt l)) (len l) }
 
 /-! ## Count preservation of the full sort (§22, the quicksort rung)
 
@@ -1018,7 +1018,7 @@ def len_sortRangeL_ty : Term := pure{ Π (fuel : Nat) → Π (lo : Nat) → Π (
 -- Left sub-range bound: `Le (add lo i) (len (partition …))`, i = the pivot index.
 -- Lifted verbatim from the quicksort FnDef's `bl` (partScanSizeL gives i+g = cnt-1,
 -- len_partitionRangeL moves the entry bound onto the partitioned list).
-def sortRangeBL : Term := pure{
+def sortRangeBL : Term := prog{
   λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat). λ (hb : Le (add lo (S (S cnt''))) (len l)).
     le_rw_r (add lo (partIdxRangeL lo (S (S cnt'')) l)) (len l) (len (partitionRangeL lo (S (S cnt'')) l))
       (id_sym Nat (len (partitionRangeL lo (S (S cnt'')) l)) (len l)
@@ -1041,7 +1041,7 @@ def sortRangeBL : Term := pure{
               (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))
               (le_add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))))
         hb) }
-def sortRangeBL_ty : Term := pure{
+def sortRangeBL_ty : Term := prog{
   Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) → Le (add lo (S (S cnt''))) (len l) →
     Le (add lo (partIdxRangeL lo (S (S cnt'')) l)) (len (partitionRangeL lo (S (S cnt'')) l)) }
 
@@ -1049,7 +1049,7 @@ def sortRangeBL_ty : Term := pure{
 -- Lifted verbatim from the quicksort FnDef's `br` (len_sortRangeL then
 -- len_partitionRangeL move the bound back over both mutations; the arithmetic
 -- `add (S (add lo i)) g = add lo (S (i+g)) = add lo cnt` uses add_assoc/add_succ).
-def sortRangeBR : Term := pure{
+def sortRangeBR : Term := prog{
   λ (f' : Nat). λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat). λ (hb : Le (add lo (S (S cnt''))) (len l)).
     le_rw_r (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)) (len l)
       (len (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l)))
@@ -1081,12 +1081,12 @@ def sortRangeBR : Term := pure{
                     (partScanSizeL (nth lo l) lo (S cnt'') Z Z l)
                     (id_congr Nat Nat (λ (a : Nat). S a) (add cnt'' Z) cnt'' (add_zero cnt''))))))))
         hb) }
-def sortRangeBR_ty : Term := pure{
+def sortRangeBR_ty : Term := prog{
   Π (f' : Nat) → Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) → Le (add lo (S (S cnt''))) (len l) →
     Le (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l))
        (len (sortRangeL f' lo (partIdxRangeL lo (S (S cnt'')) l) (partitionRangeL lo (S (S cnt'')) l))) }
 
-def count_sortRangeL : Term := pure{
+def count_sortRangeL : Term := prog{
   λ (m : Nat). λ (fuel : Nat).
     elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
         Le (add lo cnt) (len l) → Id Nat (count m (sortRangeL fz lo cnt l)) (count m l)) {
@@ -1117,7 +1117,7 @@ def count_sortRangeL : Term := pure{
           }
         }
     } }
-def count_sortRangeL_ty : Term := pure{
+def count_sortRangeL_ty : Term := prog{
   Π (m : Nat) → Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) (len l) → Id Nat (count m (sortRangeL fuel lo cnt l)) (count m l) }
 
@@ -1139,38 +1139,38 @@ def count_sortRangeL_ty : Term := pure{
     under the family's binders). This is not a defect in the predicate — it is only
     APPLIED forms that appear in lemma statements, and those reduce and check fine
     (exercised by allLeR_head / allLeR_empty below, both kernel-green). -/
-def AllLeR : Term := pure{
+def AllLeR : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     Π (k : Nat) → Le (S k) w → Le (nth (add k lo) l) p }
-def AllGtR : Term := pure{
+def AllGtR : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     Π (k : Nat) → Le (S k) w → Le (S p) (nth (add k lo) l) }
 
 -- Head extraction: a width-(S w) AllLeR gives the bound at position lo (apply at
 -- k=Z; Le (S Z)(S w) whnf's to ⊤, discharged by `unit`; add Z lo = lo).
-def allLeR_head : Term := pure{
+def allLeR_head : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat). λ (h : AllLeR (S w) lo p l).
     h Z unit }
-def allLeR_head_ty : Term := pure{
+def allLeR_head_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllLeR (S w) lo p l → Le (nth lo l) p }
-def allGtR_head : Term := pure{
+def allGtR_head : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat). λ (h : AllGtR (S w) lo p l).
     h Z unit }
-def allGtR_head_ty : Term := pure{
+def allGtR_head_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllGtR (S w) lo p l → Le (S p) (nth lo l) }
 
 -- The empty range is vacuously bounded (Le (S k) Z = ⊥ ⇒ botElim).
-def allLeR_empty : Term := pure{
+def allLeR_empty : Term := prog{
   λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (k : Nat). λ (hk : Le (S k) Z). botElim (Le (nth (add k lo) l) p) hk }
-def allLeR_empty_ty : Term := pure{
+def allLeR_empty_ty : Term := prog{
   Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → AllLeR Z lo p l }
-def allGtR_empty : Term := pure{
+def allGtR_empty : Term := prog{
   λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (k : Nat). λ (hk : Le (S k) Z). botElim (Le (S p) (nth (add k lo) l)) hk }
-def allGtR_empty_ty : Term := pure{
+def allGtR_empty_ty : Term := prog{
   Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → AllGtR Z lo p l }
 
 /-! ## Segment count — the multiset vehicle for perm-survival (§22, M22-c step 3)
@@ -1181,10 +1181,10 @@ def allGtR_empty_ty : Term := pure{
     AllLeR is bridged to: the sort permutes the segment (segCount preserved), so a
     positional bound over the segment survives the sort. Its preservation-under-the-
     model-functions and the model-function LOCALITY lemmas are the mechanical stratum. -/
-def segCount : Term := pure{
+def segCount : Term := prog{
   λ (x : Nat). λ (lo : Nat). λ (w : Nat). λ (l : List Nat).
     count x (take w (drop lo l)) }
-def segCount_ty : Term := pure{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (l : List Nat) → Nat }
+def segCount_ty : Term := prog{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (l : List Nat) → Nat }
 
 /-! ## Range sortedness (§22, M22-c step 4)
 
@@ -1194,28 +1194,28 @@ def segCount_ty : Term := pure{ Π (x : Nat) → Π (lo : Nat) → Π (w : Nat) 
     `add k lo` / `add (S k) lo` so k=0 reduces to nth lo / nth (S lo)). Width ≤ 1 is
     vacuously sorted. The glue lemma (SortedR left ∧ AllLeR left≤pivot ∧ AllGtR right>pivot
     ∧ SortedR right ⟹ SortedR whole) assembles on these; then sorted_sortRangeL. -/
-def SortedR : Term := pure{
+def SortedR : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (l : List Nat).
     Π (k : Nat) → Le (S (S k)) w → Le (nth (add k lo) l) (nth (add (S k) lo) l) }
 
 -- Head adjacent-bound from a width-(S (S w)) SortedR (apply at k=Z).
-def sortedR_head : Term := pure{
+def sortedR_head : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (l : List Nat). λ (h : SortedR (S (S w)) lo l).
     h Z unit }
-def sortedR_head_ty : Term := pure{
+def sortedR_head_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) →
     SortedR (S (S w)) lo l → Le (nth lo l) (nth (S lo) l) }
 
 -- Width 0 and width 1 are vacuously sorted (Le (S (S k)) (Z / S Z) = ⊥ ⇒ botElim).
-def sortedR_zero : Term := pure{
+def sortedR_zero : Term := prog{
   λ (lo : Nat). λ (l : List Nat).
     λ (k : Nat). λ (hk : Le (S (S k)) Z). botElim (Le (nth (add k lo) l) (nth (add (S k) lo) l)) hk }
-def sortedR_zero_ty : Term := pure{
+def sortedR_zero_ty : Term := prog{
   Π (lo : Nat) → Π (l : List Nat) → SortedR Z lo l }
-def sortedR_one : Term := pure{
+def sortedR_one : Term := prog{
   λ (lo : Nat). λ (l : List Nat).
     λ (k : Nat). λ (hk : Le (S (S k)) (S Z)). botElim (Le (nth (add k lo) l) (nth (add (S k) lo) l)) hk }
-def sortedR_one_ty : Term := pure{
+def sortedR_one_ty : Term := prog{
   Π (lo : Nat) → Π (l : List Nat) → SortedR (S Z) lo l }
 
 /-! ## leb ↔ Le bridges (§22, M22-c) — the Bool-comparison / order-proposition link
@@ -1227,18 +1227,18 @@ def sortedR_one_ty : Term := pure{
     `leb` and `Le` share the same double recursion, so each bridge is a double
     induction with a Bool-DISCRIMINATE at the mismatched base (boolFT/boolTF:
     False ≠ True, by transporting `unit` along the false equation to `⊥`). -/
-def boolFT : Term := pure{
+def boolFT : Term := prog{
   λ (h : Id Bool False True).
     j Bool False (λ (y' : Bool). λ (hh : Id Bool False y'). elim y' return (λ (z : Bool). Type) { True => Bot, False => Unit })
       unit True h }
-def boolFT_ty : Term := pure{ Id Bool False True → Bot }
-def boolTF : Term := pure{
+def boolFT_ty : Term := prog{ Id Bool False True → Bot }
+def boolTF : Term := prog{
   λ (h : Id Bool True False).
     j Bool True (λ (y' : Bool). λ (hh : Id Bool True y'). elim y' return (λ (z : Bool). Type) { True => Unit, False => Bot })
       unit False h }
-def boolTF_ty : Term := pure{ Id Bool True False → Bot }
+def boolTF_ty : Term := prog{ Id Bool True False → Bot }
 
-def leb_true_le : Term := pure{
+def leb_true_le : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Π (b : Nat) → Id Bool (leb az b) True → Le az b) {
       Z => λ (b : Nat). λ (h : Id Bool (leb Z b) True). unit,
@@ -1246,9 +1246,9 @@ def leb_true_le : Term := pure{
         elim b return (λ (bz : Nat). Id Bool (leb (S a') bz) True → Le (S a') bz) {
           Z => λ (h : Id Bool (leb (S a') Z) True). botElim (Le (S a') Z) (boolFT h),
           S (b') ihb => λ (h : Id Bool (leb (S a') (S b')) True). ih b' h } } }
-def leb_true_le_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Bool (leb a b) True → Le a b }
+def leb_true_le_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Bool (leb a b) True → Le a b }
 
-def leb_false_gt : Term := pure{
+def leb_false_gt : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Π (b : Nat) → Id Bool (leb az b) False → Le (S b) az) {
       Z => λ (b : Nat). λ (h : Id Bool (leb Z b) False). botElim (Le (S b) Z) (boolTF h),
@@ -1256,12 +1256,12 @@ def leb_false_gt : Term := pure{
         elim b return (λ (bz : Nat). Id Bool (leb (S a') bz) False → Le (S bz) (S a')) {
           Z => λ (h : Id Bool (leb (S a') Z) False). unit,
           S (b') ihb => λ (h : Id Bool (leb (S a') (S b')) False). ih b' h } } }
-def leb_false_gt_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Bool (leb a b) False → Le (S b) a }
+def leb_false_gt_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Bool (leb a b) False → Le (S b) a }
 
 -- Nat antisymmetry (Le a b → Le b a → a = b) — the glue derives its boundary equality
 -- (`S k = i` at the last-left/pivot pair) from the two-sided Le bounds a leb-split
 -- yields. Double induction; mixed-parity bases are ⊥, equal-parity step is id_congr S.
-def le_antisym : Term := pure{
+def le_antisym : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Π (b : Nat) → Le az b → Le b az → Id Nat az b) {
       Z => λ (b : Nat).
@@ -1273,7 +1273,7 @@ def le_antisym : Term := pure{
           Z => λ (h1 : Le (S a') Z). λ (h2 : Le Z (S a')). botElim (Id Nat (S a') Z) h1,
           S (b') ihb => λ (h1 : Le (S a') (S b')). λ (h2 : Le (S b') (S a')).
             id_congr Nat Nat (λ (n : Nat). S n) a' b' (ih b' h1 h2) } } }
-def le_antisym_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → Le b a → Id Nat a b }
+def le_antisym_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le a b → Le b a → Id Nat a b }
 
 /-! ## AllLeR growth/transport helpers — the region-invariant toolkit (§22, M22-c step 2)
 
@@ -1286,7 +1286,7 @@ def le_antisym_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le a b → L
     (fed by the swap-locality lemmas). `add_swap_succ` bridges index-first `add a (S b)`
     to `add b (S a)` — the recurring predicate↔model add-order glue. -/
 
-def allLeR_extend_far : Term := pure{
+def allLeR_extend_far : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (h : AllLeR w lo p l). λ (hnew : Le (nth (add w lo) l) p).
     λ (m : Nat).
@@ -1298,11 +1298,11 @@ def allLeR_extend_far : Term := pure{
               (id_congr Nat Nat (λ (z : Nat). add z lo) w m (id_sym Nat m w (le_antisym m w hm (leb_false_gt (S m) w e)))))
             hnew
       } Refl }
-def allLeR_extend_far_ty : Term := pure{
+def allLeR_extend_far_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllLeR w lo p l → Le (nth (add w lo) l) p → AllLeR (S w) lo p l }
 
-def allLeR_extend_lo : Term := pure{
+def allLeR_extend_lo : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (h0 : Le (nth lo l) p). λ (h : AllLeR w (S lo) p l).
     λ (m : Nat).
@@ -1312,11 +1312,11 @@ def allLeR_extend_lo : Term := pure{
           le_rw_l p (nth (add m' (S lo)) l) (nth (add (S m') lo) l)
             (id_congr Nat Nat (λ (q : Nat). nth q l) (add m' (S lo)) (add (S m') lo) (add_succ m' lo))
             (h m' hm) } }
-def allLeR_extend_lo_ty : Term := pure{
+def allLeR_extend_lo_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     Le (nth lo l) p → AllLeR w (S lo) p l → AllLeR (S w) lo p l }
 
-def allLeR_cong : Term := pure{
+def allLeR_cong : Term := prog{
   λ (w : Nat). λ (off : Nat). λ (p : Nat). λ (l : List Nat). λ (l' : List Nat).
     λ (heq : Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)).
     λ (h : AllLeR w off p l).
@@ -1324,29 +1324,29 @@ def allLeR_cong : Term := pure{
       le_rw_l p (nth (add m off) l) (nth (add m off) l')
         (id_sym Nat (nth (add m off) l') (nth (add m off) l) (heq m hm))
         (h m hm) }
-def allLeR_cong_ty : Term := pure{
+def allLeR_cong_ty : Term := prog{
   Π (w : Nat) → Π (off : Nat) → Π (p : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
     (Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)) →
     AllLeR w off p l → AllLeR w off p l' }
 
-def add_swap_succ : Term := pure{
+def add_swap_succ : Term := prog{
   λ (a : Nat). λ (b : Nat).
     id_trans Nat (add a (S b)) (S (add a b)) (add b (S a))
       (add_succ a b)
       (id_trans Nat (S (add a b)) (S (add b a)) (add b (S a))
         (id_congr Nat Nat (λ (z : Nat). S z) (add a b) (add b a) (add_comm a b))
         (id_sym Nat (add b (S a)) (S (add b a)) (add_succ b a))) }
-def add_swap_succ_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a (S b)) (add b (S a)) }
+def add_swap_succ_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Id Nat (add a (S b)) (add b (S a)) }
 
 -- Left cancellation (Le (add a b)(add a c) → Le b c) — the glue's pivot-right case
 -- derives g ≥ 1 (Le (S Z) g) from the range bound Le (S i)(add i g) by cancelling i
 -- (after bridging S i = add i (S Z) via add_succ/add_zero). Induction on a.
-def le_add_cancel_l : Term := pure{
+def le_add_cancel_l : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Π (b : Nat) → Π (c : Nat) → Le (add az b) (add az c) → Le b c) {
       Z => λ (b : Nat). λ (c : Nat). λ (h : Le (add Z b) (add Z c)). h,
       S (a') ih => λ (b : Nat). λ (c : Nat). λ (h : Le (add (S a') b) (add (S a') c)). ih b c h } }
-def le_add_cancel_l_ty : Term := pure{
+def le_add_cancel_l_ty : Term := prog{
   Π (a : Nat) → Π (b : Nat) → Π (c : Nat) → Le (add a b) (add a c) → Le b c }
 /-! ## `nth`-under-`swapL` locality — the positional stratum (§22, M22-c)
 
@@ -1382,7 +1382,7 @@ def le_add_cancel_l_ty : Term := pure{
     range, bound `Le (S k) (len l)`). -/
 
 -- `nth k (set j v l) = nth k l` for k strictly above the written index j.
-def nth_set_gt : Term := pure{
+def nth_set_gt : Term := prog{
   λ (v : Nat). λ (j : Nat).
     elim j return (λ (jz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (S jz) k → Id Nat (nth k (set jz v l)) (nth k l)) {
       Z => λ (k : Nat). λ (l : List Nat). λ (h : Le (S Z) k).
@@ -1399,12 +1399,12 @@ def nth_set_gt : Term := pure{
             elim l return (λ (lz : List Nat). Id Nat (nth (S k') (set (S j') v lz)) (nth (S k') lz)) {
               Nil => Refl,
               Cons (hh) (tt) ihl => ih k' tt h0 } } h } }
-def nth_set_gt_ty : Term := pure{
+def nth_set_gt_ty : Term := prog{
   Π (v : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
     Le (S j) k → Id Nat (nth k (set j v l)) (nth k l) }
 
 -- `nth k (set k v l) = v` when k is in range (off the end set no-ops, giving Z ≠ v).
-def nth_set_same : Term := pure{
+def nth_set_same : Term := prog{
   λ (v : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (l : List Nat) → Le (S kz) (len l) → Id Nat (nth kz (set kz v l)) v) {
       Z => λ (l : List Nat).
@@ -1415,14 +1415,14 @@ def nth_set_same : Term := pure{
         elim l return (λ (lz : List Nat). Le (S (S k')) (len lz) → Id Nat (nth (S k') (set (S k') v lz)) v) {
           Nil => λ (h : Le (S (S k')) (len Nil)). botElim (Id Nat (nth (S k') (set (S k') v Nil)) v) h,
           Cons (hh) (tt) ihl => λ (h : Le (S (S k')) (len (Cons hh tt))). ih tt h } } }
-def nth_set_same_ty : Term := pure{
+def nth_set_same_ty : Term := prog{
   Π (v : Nat) → Π (k : Nat) → Π (l : List Nat) →
     Le (S k) (len l) → Id Nat (nth k (set k v l)) v }
 
 -- Locality below the swap: positions `k < i` are untouched by `swapL i j`. Induct
 -- on i (mirroring swapL); i = Z is vacuous (Le (S k) Z = ⊥); the recursive leaf is
 -- the IH under `Cons x ·`, the j = Z / head leaves are Refl.
-def nth_swapL_lt : Term := pure{
+def nth_swapL_lt : Term := prog{
   λ (i : Nat).
     elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S k) iz → Id Nat (nth k (swapL iz j l)) (nth k l)) {
       Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) Z).
@@ -1437,14 +1437,14 @@ def nth_swapL_lt : Term := pure{
                 elim k return (λ (kz : Nat). Le (S kz) (S i') → Id Nat (nth kz (Cons x (swapL i' j' xs))) (nth kz (Cons x xs))) {
                   Z => λ (h0 : Le (S Z) (S i')). Refl,
                   S (k') kih => λ (h0 : Le (S (S k')) (S i')). ih j' k' xs h0 } h } } } }
-def nth_swapL_lt_ty : Term := pure{
+def nth_swapL_lt_ty : Term := prog{
   Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
     Le (S k) i → Id Nat (nth k (swapL i j l)) (nth k l) }
 
 -- Locality above the swap: positions `k > j` are untouched by `swapL i j`. Induct
 -- on i; the i = Z / j = S j' leaf floats through the set-branch via `nth_set_gt`,
 -- the i = S i' / j = S j' leaf is the IH, the j = Z / Nil leaves are Refl.
-def nth_swapL_gt : Term := pure{
+def nth_swapL_gt : Term := prog{
   λ (i : Nat).
     elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S j) k → Id Nat (nth k (swapL iz j l)) (nth k l)) {
       Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (h : Le (S j) k).
@@ -1467,7 +1467,7 @@ def nth_swapL_gt : Term := pure{
                 elim k return (λ (kz : Nat). Le (S (S j')) kz → Id Nat (nth kz (Cons x (swapL i' j' xs))) (nth kz (Cons x xs))) {
                   Z => λ (h1 : Le (S (S j')) Z). botElim (Id Nat (nth Z (Cons x (swapL i' j' xs))) (nth Z (Cons x xs))) h1,
                   S (k') kih => λ (h1 : Le (S (S j')) (S k')). ih j' k' xs h1 } h0 } h } } }
-def nth_swapL_gt_ty : Term := pure{
+def nth_swapL_gt_ty : Term := prog{
   Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
     Le (S j) k → Id Nat (nth k (swapL i j l)) (nth k l) }
 
@@ -1476,7 +1476,7 @@ def nth_swapL_gt_ty : Term := pure{
 -- the swap writes `nth j l = Z` at i, so both sides read Z consistently; the Nil
 -- leaves case j so the stuck `nth j Nil` reduces to Z on both sides, and the j = Z
 -- leaf (impossible with i ≥ 1) is the sole botElim, discharged by `Le (S i) j`.
-def nth_swapL_lo : Term := pure{
+def nth_swapL_lo : Term := prog{
   λ (i : Nat).
     elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Id Nat (nth iz (swapL iz j l)) (nth j l)) {
       Z => λ (j : Nat). λ (l : List Nat). λ (h : Le (S Z) j).
@@ -1495,7 +1495,7 @@ def nth_swapL_lo : Term := pure{
             elim j return (λ (jz : Nat). Le (S (S i')) jz → Id Nat (nth (S i') (swapL (S i') jz (Cons x xs))) (nth jz (Cons x xs))) {
               Z => λ (h0 : Le (S (S i')) Z). botElim (Id Nat (nth (S i') (swapL (S i') Z (Cons x xs))) (nth Z (Cons x xs))) h0,
               S (j') jih => λ (h0 : Le (S (S i')) (S j')). ih j' xs h0 } h } } }
-def nth_swapL_lo_ty : Term := pure{
+def nth_swapL_lo_ty : Term := prog{
   Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) j → Id Nat (nth i (swapL i j l)) (nth j l) }
 
@@ -1504,7 +1504,7 @@ def nth_swapL_lo_ty : Term := pure{
 -- length bound `Le (S j) (len l)` is load-bearing here (botElims the Nil leaf and
 -- feeds nth_set_same) — UNLIKE _lo. The recursive leaf is the IH under `Cons x ·`,
 -- threading both bounds; the j = Z leaf is botElim by `Le (S i) j`.
-def nth_swapL_hi : Term := pure{
+def nth_swapL_hi : Term := prog{
   λ (i : Nat).
     elim i return (λ (iz : Nat). Π (j : Nat) → Π (l : List Nat) → Le (S iz) j → Le (S j) (len l) → Id Nat (nth j (swapL iz j l)) (nth iz l)) {
       Z => λ (j : Nat). λ (l : List Nat). λ (h1 : Le (S Z) j). λ (h2 : Le (S j) (len l)).
@@ -1527,13 +1527,13 @@ def nth_swapL_hi : Term := pure{
                 botElim (Id Nat (nth Z (swapL (S i') Z (Cons x xs))) (nth (S i') (Cons x xs))) b1,
               S (j') jih => λ (b1 : Le (S (S i')) (S j')). λ (b2 : Le (S (S j')) (len (Cons x xs))).
                 ih j' xs b1 b2 } h1 a2 } h2 } }
-def nth_swapL_hi_ty : Term := pure{
+def nth_swapL_hi_ty : Term := prog{
   Π (i : Nat) → Π (j : Nat) → Π (l : List Nat) →
     Le (S i) j → Le (S j) (len l) → Id Nat (nth j (swapL i j l)) (nth i l) }
 
 -- `nth k (set j v l) = nth k l` for k strictly BELOW the written index j (mirror of
 -- nth_set_gt). The below-index companion the partition-invariant base case needs.
-def nth_set_lt : Term := pure{
+def nth_set_lt : Term := prog{
   λ (v : Nat). λ (j : Nat).
     elim j return (λ (jz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (S k) jz → Id Nat (nth k (set jz v l)) (nth k l)) {
       Z => λ (k : Nat). λ (l : List Nat). λ (h : Le (S k) Z). botElim (Id Nat (nth k (set Z v l)) (nth k l)) h,
@@ -1547,14 +1547,14 @@ def nth_set_lt : Term := pure{
             elim l return (λ (lz : List Nat). Id Nat (nth (S k') (set (S j') v lz)) (nth (S k') lz)) {
               Nil => Refl,
               Cons (hh) (tt) ihl => ih k' tt h0 } } h } }
-def nth_set_lt_ty : Term := pure{
+def nth_set_lt_ty : Term := prog{
   Π (v : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
     Le (S k) j → Id Nat (nth k (set j v l)) (nth k l) }
 
 -- The MIDDLE band left unstated in Step A: positions strictly between i and j are
 -- untouched by `swapL i j` (two-sided bound). Induction on i mirroring swapL; the
 -- i=Z base floats through the set-branch via nth_set_lt, the recursive leaf is the IH.
-def nth_swapL_mid : Term := pure{
+def nth_swapL_mid : Term := prog{
   λ (i : Nat).
     elim i return (λ (iz : Nat). Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (S iz) k → Le (S k) j → Id Nat (nth k (swapL iz j l)) (nth k l)) {
       Z => λ (j : Nat). λ (k : Nat). λ (l : List Nat). λ (hik : Le (S Z) k). λ (hkj : Le (S k) j).
@@ -1579,7 +1579,7 @@ def nth_swapL_mid : Term := pure{
                   Z => λ (hik1 : Le (S (S i')) Z). λ (hkj1 : Le (S Z) (S j')). botElim (Id Nat (nth Z (Cons x (swapL i' j' xs))) (nth Z (Cons x xs))) hik1,
                   S (k') kih => λ (hik1 : Le (S (S i')) (S k')). λ (hkj1 : Le (S (S k')) (S j')).
                     ih j' k' xs hik1 hkj1 } hik hkj0 } hkj } } }
-def nth_swapL_mid_ty : Term := pure{
+def nth_swapL_mid_ty : Term := prog{
   Π (i : Nat) → Π (j : Nat) → Π (k : Nat) → Π (l : List Nat) →
     Le (S i) k → Le (S k) j → Id Nat (nth k (swapL i j l)) (nth k l) }
 
@@ -1607,7 +1607,7 @@ def nth_swapL_mid_ty : Term := pure{
 
 -- Below-lo locality of the range scan. Bound `Le (S j) lo` is invariant (bound
 -- outside the k-elim); each swap discharged by nth_swapL_lt (j < lo ≤ swap index).
-def nth_partScanRangeL_lt : Term := pure{
+def nth_partScanRangeL_lt : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (j : Nat). λ (hlt : Le (S j) lo). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) → Id Nat (nth j (partScanRangeL pivot lo kz i g l)) (nth j l)) {
       Z => λ (i : Nat). λ (g : Nat). λ (l : List Nat).
@@ -1636,14 +1636,14 @@ def nth_partScanRangeL_lt : Term := pure{
           False => ih i (S g) l
         }
     } }
-def nth_partScanRangeL_lt_ty : Term := pure{
+def nth_partScanRangeL_lt_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (j : Nat) → Le (S j) lo → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Id Nat (nth j (partScanRangeL pivot lo k i g l)) (nth j l) }
 
 -- At/above-top locality of the range scan. Same threaded invariant as
 -- count_partScanRangeL but on position q, so hshift transports apply and NO
 -- len_swapL is needed; each swap discharged by nth_swapL_gt.
-def nth_partScanRangeL_ge : Term := pure{
+def nth_partScanRangeL_ge : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (q : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
         Le (add lo (S (add kz (add i g)))) q →
@@ -1717,26 +1717,26 @@ def nth_partScanRangeL_ge : Term := pure{
                 hle)
         }
     } }
-def nth_partScanRangeL_ge_ty : Term := pure{
+def nth_partScanRangeL_ge_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (q : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Le (add lo (S (add k (add i g)))) q →
     Id Nat (nth q (partScanRangeL pivot lo k i g l)) (nth q l) }
 
 -- Below-lo locality wrapper (partition = scan after pivot pick), mirroring len_partitionRangeL.
-def nth_partitionRangeL_lt : Term := pure{
+def nth_partitionRangeL_lt : Term := prog{
   λ (lo : Nat). λ (j : Nat). λ (hlt : Le (S j) lo). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat). Id Nat
         (nth j (elim cz return (λ (cy : Nat). List Nat) { Z => l, S (cnt') rec => partScanRangeL (nth lo l) lo cnt' Z Z l }))
         (nth j l)) {
       Z => Refl,
       S (cnt') rec => nth_partScanRangeL_lt (nth lo l) lo j hlt cnt' Z Z l } }
-def nth_partitionRangeL_lt_ty : Term := pure{
+def nth_partitionRangeL_lt_ty : Term := prog{
   Π (lo : Nat) → Π (j : Nat) → Le (S j) lo → Π (cnt : Nat) → Π (l : List Nat) →
     Id Nat (nth j (partitionRangeL lo cnt l)) (nth j l) }
 
 -- At/above-(lo+cnt) locality wrapper. The top bound Le (add lo cnt) q supplies the
 -- scan's Le (add lo (S (add cnt' Z))) q via one add_zero nudge (cf count_partitionRangeL).
-def nth_partitionRangeL_ge : Term := pure{
+def nth_partitionRangeL_ge : Term := prog{
   λ (lo : Nat). λ (q : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat).
         Le (add lo cz) q →
@@ -1748,7 +1748,7 @@ def nth_partitionRangeL_ge : Term := pure{
             (id_congr Nat Nat (λ (a : Nat). add lo (S a)) cnt' (add cnt' Z)
               (id_sym Nat (add cnt' Z) cnt' (add_zero cnt')))
             hb) } }
-def nth_partitionRangeL_ge_ty : Term := pure{
+def nth_partitionRangeL_ge_ty : Term := prog{
   Π (lo : Nat) → Π (q : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) q → Id Nat (nth q (partitionRangeL lo cnt l)) (nth q l) }
 
@@ -1768,7 +1768,7 @@ def nth_partitionRangeL_ge_ty : Term := pure{
 
 -- Below-lo locality of the full sort. Fuel induction (mirror len_sortRangeL);
 -- step composes right-sort, left-sort, partition localities via nth_partitionRangeL_lt.
-def nth_sortRangeL_lt : Term := pure{
+def nth_sortRangeL_lt : Term := prog{
   λ (fuel : Nat). λ (j : Nat).
     elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (S j) lo → Id Nat (nth j (sortRangeL fz lo cnt l)) (nth j l)) {
       Z => λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat). λ (hlt : Le (S j) lo). Refl,
@@ -1798,13 +1798,13 @@ def nth_sortRangeL_lt : Term := pure{
                   (ih lo (partIdxRangeL lo cnt l) (partitionRangeL lo cnt l) hlt)
                   (nth_partitionRangeL_lt lo j hlt cnt l))
           } } } }
-def nth_sortRangeL_lt_ty : Term := pure{
+def nth_sortRangeL_lt_ty : Term := prog{
   Π (fuel : Nat) → Π (j : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (S j) lo → Id Nat (nth j (sortRangeL fuel lo cnt l)) (nth j l) }
 
 -- The pivot index plus the gap equals cnt-1 (= S cnt'' for cnt = S(S cnt'')).
 -- Lifted from sortRangeBL's inner id_trans (partScanSizeL then add_zero).
-def partSizeCnt : Term := pure{
+def partSizeCnt : Term := prog{
   λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat).
     id_trans Nat
       (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))
@@ -1812,12 +1812,12 @@ def partSizeCnt : Term := pure{
       (S cnt'')
       (partScanSizeL (nth lo l) lo (S cnt'') Z Z l)
       (id_congr Nat Nat (λ (a : Nat). S a) (add cnt'' Z) cnt'' (add_zero cnt'')) }
-def partSizeCnt_ty : Term := pure{
+def partSizeCnt_ty : Term := prog{
   Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) →
     Id Nat (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'') }
 
 -- Left sub-range position bound: Le (add lo i) q from Le (add lo cnt) q (i ≤ cnt-1 < cnt).
-def sortRangeGeBL : Term := pure{
+def sortRangeGeBL : Term := prog{
   λ (lo : Nat). λ (cnt'' : Nat). λ (q : Nat). λ (l : List Nat). λ (hb : Le (add lo (S (S cnt''))) q).
     le_trans (add lo (partIdxRangeL lo (S (S cnt'')) l)) (add lo (S (S cnt''))) q
       (le_add_mono_l lo (partIdxRangeL lo (S (S cnt'')) l) (S (S cnt''))
@@ -1828,13 +1828,13 @@ def sortRangeGeBL : Term := pure{
             (partSizeCnt lo cnt'' l)
             (le_add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)))))
       hb }
-def sortRangeGeBL_ty : Term := pure{
+def sortRangeGeBL_ty : Term := prog{
   Π (lo : Nat) → Π (cnt'' : Nat) → Π (q : Nat) → Π (l : List Nat) → Le (add lo (S (S cnt''))) q →
     Le (add lo (partIdxRangeL lo (S (S cnt'')) l)) q }
 
 -- Right sub-range position bound: Le (add (S (add lo i)) g) q from Le (add lo cnt) q,
 -- using add (S (add lo i)) g = add lo (S (add i g)) = add lo cnt (partSizeCnt).
-def sortRangeGeBR : Term := pure{
+def sortRangeGeBR : Term := prog{
   λ (lo : Nat). λ (cnt'' : Nat). λ (q : Nat). λ (l : List Nat). λ (hb : Le (add lo (S (S cnt''))) q).
     le_rw_l q (add lo (S (S cnt''))) (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l))
       (id_sym Nat
@@ -1860,13 +1860,13 @@ def sortRangeGeBR : Term := pure{
             (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'')
             (partSizeCnt lo cnt'' l))))
       hb }
-def sortRangeGeBR_ty : Term := pure{
+def sortRangeGeBR_ty : Term := prog{
   Π (lo : Nat) → Π (cnt'' : Nat) → Π (q : Nat) → Π (l : List Nat) → Le (add lo (S (S cnt''))) q →
     Le (add (S (add lo (partIdxRangeL lo (S (S cnt'')) l))) (partGapRangeL lo (S (S cnt'')) l)) q }
 
 -- At/above-(lo+cnt) locality of the full sort. count_sortRangeL structure with
 -- position bounds sortRangeGeBL/BR feeding the two recursive-sort IHs.
-def nth_sortRangeL_ge : Term := pure{
+def nth_sortRangeL_ge : Term := prog{
   λ (fuel : Nat). λ (q : Nat).
     elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
         Le (add lo cnt) q → Id Nat (nth q (sortRangeL fz lo cnt l)) (nth q l)) {
@@ -1897,7 +1897,7 @@ def nth_sortRangeL_ge : Term := pure{
           }
         }
     } }
-def nth_sortRangeL_ge_ty : Term := pure{
+def nth_sortRangeL_ge_ty : Term := prog{
   Π (fuel : Nat) → Π (q : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) q → Id Nat (nth q (sortRangeL fuel lo cnt l)) (nth q l) }
 
@@ -1920,28 +1920,28 @@ def nth_sortRangeL_ge_ty : Term := pure{
     - `len_drop_cong` : dropping preserves a length equality.
     - `count_split` : `count x l = count x (take w l) + count x (drop w l)` (count_append ∘ take_drop_id). -/
 
-def znots : Term := pure{
+def znots : Term := prog{
   λ (x : Nat). λ (h : Id Nat Z (S x)).
     j Nat Z (λ (y : Nat). λ (hy : Id Nat Z y). elim y return (λ (yy : Nat). Type) { Z => Unit, S (k) ih => Bot })
       unit (S x) h }
-def znots_ty : Term := pure{ Π (x : Nat) → Id Nat Z (S x) → Bot }
+def znots_ty : Term := prog{ Π (x : Nat) → Id Nat Z (S x) → Bot }
 
-def pred : Term := pure{ λ (n : Nat). elim n return (λ (z : Nat). Nat) { Z => Z, S (k) ih => k } }
-def s_inj : Term := pure{
+def pred : Term := prog{ λ (n : Nat). elim n return (λ (z : Nat). Nat) { Z => Z, S (k) ih => k } }
+def s_inj : Term := prog{
   λ (m : Nat). λ (n : Nat). λ (h : Id Nat (S m) (S n)).
     id_congr Nat Nat pred (S m) (S n) h }
-def s_inj_ty : Term := pure{ Π (m : Nat) → Π (n : Nat) → Id Nat (S m) (S n) → Id Nat m n }
+def s_inj_ty : Term := prog{ Π (m : Nat) → Π (n : Nat) → Id Nat (S m) (S n) → Id Nat m n }
 
-def add_cancel_l : Term := pure{
+def add_cancel_l : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Π (x : Nat) → Π (y : Nat) → Id Nat (add az x) (add az y) → Id Nat x y) {
       Z => λ (x : Nat). λ (y : Nat). λ (h : Id Nat (add Z x) (add Z y)). h,
       S (a') ih => λ (x : Nat). λ (y : Nat). λ (h : Id Nat (add (S a') x) (add (S a') y)).
         ih x y (s_inj (add a' x) (add a' y) h) } }
-def add_cancel_l_ty : Term := pure{
+def add_cancel_l_ty : Term := prog{
   Π (a : Nat) → Π (x : Nat) → Π (y : Nat) → Id Nat (add a x) (add a y) → Id Nat x y }
 
-def nth_drop : Term := pure{
+def nth_drop : Term := prog{
   λ (b : Nat).
     elim b return (λ (bz : Nat). Π (k : Nat) → Π (l : List Nat) → Id Nat (nth k (drop bz l)) (nth (add bz k) l)) {
       Z => λ (k : Nat). λ (l : List Nat). Refl,
@@ -1950,10 +1950,10 @@ def nth_drop : Term := pure{
           Nil => elim k return (λ (kz : Nat). Id Nat (nth kz (drop (S b') Nil)) (nth (add (S b') kz) Nil)) {
             Z => Refl, S (k') kih => Refl },
           Cons (h) (t) ihl => ih k t } } }
-def nth_drop_ty : Term := pure{
+def nth_drop_ty : Term := prog{
   Π (b : Nat) → Π (k : Nat) → Π (l : List Nat) → Id Nat (nth k (drop b l)) (nth (add b k) l) }
 
-def list_ext : Term := pure{
+def list_ext : Term := prog{
   λ (a : List Nat).
     elim a return (λ (az : List Nat). Π (b : List Nat) → Id Nat (len az) (len b) → (Π (k : Nat) → Id Nat (nth k az) (nth k b)) → Id (List Nat) az b) {
       Nil => λ (b : List Nat).
@@ -1970,11 +1970,11 @@ def list_ext : Term := pure{
               (id_congr Nat (List Nat) (λ (hh : Nat). Cons hh ta) ha hb (hnth Z))
               (id_congr (List Nat) (List Nat) (λ (tt : List Nat). Cons hb tt) ta tb
                 (iha tb (s_inj (len ta) (len tb) hlen) (λ (k : Nat). hnth (S k)))) } } }
-def list_ext_ty : Term := pure{
+def list_ext_ty : Term := prog{
   Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) →
     (Π (k : Nat) → Id Nat (nth k a) (nth k b)) → Id (List Nat) a b }
 
-def take_ext_bounded : Term := pure{
+def take_ext_bounded : Term := prog{
   λ (w : Nat).
     elim w return (λ (wz : Nat). Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) → (Π (k : Nat) → Le (S k) wz → Id Nat (nth k a) (nth k b)) → Id (List Nat) (take wz a) (take wz b)) {
       Z => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (len a) (len b)). λ (hnth : Π (k : Nat) → Le (S k) Z → Id Nat (nth k a) (nth k b)). Refl,
@@ -1997,11 +1997,11 @@ def take_ext_bounded : Term := pure{
             } hlenA hnthA
         } hlen hnth
     } }
-def take_ext_bounded_ty : Term := pure{
+def take_ext_bounded_ty : Term := prog{
   Π (w : Nat) → Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) →
     (Π (k : Nat) → Le (S k) w → Id Nat (nth k a) (nth k b)) → Id (List Nat) (take w a) (take w b) }
 
-def len_drop_cong : Term := pure{
+def len_drop_cong : Term := prog{
   λ (w : Nat).
     elim w return (λ (wz : Nat). Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) → Id Nat (len (drop wz a)) (len (drop wz b))) {
       Z => λ (a : List Nat). λ (b : List Nat). λ (hlen : Id Nat (len a) (len b)). hlen,
@@ -2018,17 +2018,17 @@ def len_drop_cong : Term := pure{
                 botElim (Id Nat (len (drop (S w') (Cons ha ta))) (len (drop (S w') Nil))) (znots (len ta) (id_sym Nat (len (Cons ha ta)) (len Nil) h)),
               Cons (hb) (tb) ihb => λ (h : Id Nat (len (Cons ha ta)) (len (Cons hb tb))).
                 ih ta tb (s_inj (len ta) (len tb) h) } hl } hlen } }
-def len_drop_cong_ty : Term := pure{
+def len_drop_cong_ty : Term := prog{
   Π (w : Nat) → Π (a : List Nat) → Π (b : List Nat) → Id Nat (len a) (len b) →
     Id Nat (len (drop w a)) (len (drop w b)) }
 
-def count_split : Term := pure{
+def count_split : Term := prog{
   λ (x : Nat). λ (w : Nat). λ (l : List Nat).
     id_trans Nat (count x l) (count x (append (take w l) (drop w l))) (add (count x (take w l)) (count x (drop w l)))
       (id_congr (List Nat) Nat (λ (ll : List Nat). count x ll) l (append (take w l) (drop w l))
         (id_sym (List Nat) (append (take w l) (drop w l)) l (take_drop_id w l)))
       (count_append x (take w l) (drop w l)) }
-def count_split_ty : Term := pure{
+def count_split_ty : Term := prog{
   Π (x : Nat) → Π (w : Nat) → Π (l : List Nat) →
     Id Nat (count x l) (add (count x (take w l)) (count x (drop w l))) }
 
@@ -2049,7 +2049,7 @@ def count_split_ty : Term := pure{
     of that cancellation; `seg_glue` composes them; `take_lo_*` / `drop_suffix_*`
     supply the list equalities from Step B. -/
 
-def count_rest_preserved : Term := pure{
+def count_rest_preserved : Term := prog{
   λ (x : Nat). λ (w : Nat). λ (s : List Nat). λ (l : List Nat).
     λ (hcount : Id Nat (count x s) (count x l)).
     λ (hpre : Id Nat (count x (take w s)) (count x (take w l))).
@@ -2072,13 +2072,13 @@ def count_rest_preserved : Term := pure{
                   (count x (take w s)) (count x (take w l)) hpre)))
             hcount)
           (count_split x w l)) }
-def count_rest_preserved_ty : Term := pure{
+def count_rest_preserved_ty : Term := prog{
   Π (x : Nat) → Π (w : Nat) → Π (s : List Nat) → Π (l : List Nat) →
     Id Nat (count x s) (count x l) →
     Id Nat (count x (take w s)) (count x (take w l)) →
     Id Nat (count x (drop w s)) (count x (drop w l)) }
 
-def count_seg_preserved : Term := pure{
+def count_seg_preserved : Term := prog{
   λ (x : Nat). λ (w : Nat). λ (s : List Nat). λ (l : List Nat).
     λ (hcount : Id Nat (count x s) (count x l)).
     λ (hdrop : Id Nat (count x (drop w s)) (count x (drop w l))).
@@ -2111,13 +2111,13 @@ def count_seg_preserved : Term := pure{
             (add (count x (drop w l)) (count x (take w l)))
             (count_split x w l)
             (add_comm (count x (take w l)) (count x (drop w l))))) }
-def count_seg_preserved_ty : Term := pure{
+def count_seg_preserved_ty : Term := prog{
   Π (x : Nat) → Π (w : Nat) → Π (s : List Nat) → Π (l : List Nat) →
     Id Nat (count x s) (count x l) →
     Id Nat (count x (drop w s)) (count x (drop w l)) →
     Id Nat (count x (take w s)) (count x (take w l)) }
 
-def seg_glue : Term := pure{
+def seg_glue : Term := prog{
   λ (x : Nat). λ (lo : Nat). λ (cnt : Nat). λ (s : List Nat). λ (l : List Nat).
     λ (hcount : Id Nat (count x s) (count x l)).
     λ (hpre : Id (List Nat) (take lo s) (take lo l)).
@@ -2126,7 +2126,7 @@ def seg_glue : Term := pure{
         (count_rest_preserved x lo s l hcount
           (id_congr (List Nat) Nat (λ (ll : List Nat). count x ll) (take lo s) (take lo l) hpre))
         (id_congr (List Nat) Nat (λ (ll : List Nat). count x ll) (drop cnt (drop lo s)) (drop cnt (drop lo l)) hsuf) }
-def seg_glue_ty : Term := pure{
+def seg_glue_ty : Term := prog{
   Π (x : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (s : List Nat) → Π (l : List Nat) →
     Id Nat (count x s) (count x l) →
     Id (List Nat) (take lo s) (take lo l) →
@@ -2134,16 +2134,16 @@ def seg_glue_ty : Term := pure{
     Id Nat (count x (take cnt (drop lo s))) (count x (take cnt (drop lo l))) }
 
 -- Prefix/suffix of the SORT are identical (Step B locality → list equality).
-def take_lo_sort : Term := pure{
+def take_lo_sort : Term := prog{
   λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     take_ext_bounded lo (sortRangeL fuel lo cnt l) l
       (len_sortRangeL fuel lo cnt l)
       (λ (k : Nat). λ (hk : Le (S k) lo). nth_sortRangeL_lt fuel k lo cnt l hk) }
-def take_lo_sort_ty : Term := pure{
+def take_lo_sort_ty : Term := prog{
   Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Id (List Nat) (take lo (sortRangeL fuel lo cnt l)) (take lo l) }
 
-def drop_suffix_sort : Term := pure{
+def drop_suffix_sort : Term := prog{
   λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     list_ext (drop cnt (drop lo (sortRangeL fuel lo cnt l))) (drop cnt (drop lo l))
       (len_drop_cong cnt (drop lo (sortRangeL fuel lo cnt l)) (drop lo l)
@@ -2171,21 +2171,21 @@ def drop_suffix_sort : Term := pure{
               (nth k (drop cnt (drop lo l)))
               (id_sym Nat (nth (add cnt k) (drop lo l)) (nth (add lo (add cnt k)) l) (nth_drop lo (add cnt k) l))
               (id_sym Nat (nth k (drop cnt (drop lo l))) (nth (add cnt k) (drop lo l)) (nth_drop cnt k (drop lo l)))))) }
-def drop_suffix_sort_ty : Term := pure{
+def drop_suffix_sort_ty : Term := prog{
   Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Id (List Nat) (drop cnt (drop lo (sortRangeL fuel lo cnt l))) (drop cnt (drop lo l)) }
 
 -- Prefix/suffix of PARTITION are identical (same shape).
-def take_lo_partition : Term := pure{
+def take_lo_partition : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     take_ext_bounded lo (partitionRangeL lo cnt l) l
       (len_partitionRangeL lo cnt l)
       (λ (k : Nat). λ (hk : Le (S k) lo). nth_partitionRangeL_lt lo k hk cnt l) }
-def take_lo_partition_ty : Term := pure{
+def take_lo_partition_ty : Term := prog{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Id (List Nat) (take lo (partitionRangeL lo cnt l)) (take lo l) }
 
-def drop_suffix_partition : Term := pure{
+def drop_suffix_partition : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     list_ext (drop cnt (drop lo (partitionRangeL lo cnt l))) (drop cnt (drop lo l))
       (len_drop_cong cnt (drop lo (partitionRangeL lo cnt l)) (drop lo l)
@@ -2213,31 +2213,31 @@ def drop_suffix_partition : Term := pure{
               (nth k (drop cnt (drop lo l)))
               (id_sym Nat (nth (add cnt k) (drop lo l)) (nth (add lo (add cnt k)) l) (nth_drop lo (add cnt k) l))
               (id_sym Nat (nth k (drop cnt (drop lo l))) (nth (add cnt k) (drop lo l)) (nth_drop cnt k (drop lo l)))))) }
-def drop_suffix_partition_ty : Term := pure{
+def drop_suffix_partition_ty : Term := prog{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Id (List Nat) (drop cnt (drop lo (partitionRangeL lo cnt l))) (drop cnt (drop lo l)) }
 
 -- THE GOALS: the segment multiset survives the range sort and partition.
-def segCount_sortRangeL : Term := pure{
+def segCount_sortRangeL : Term := prog{
   λ (x : Nat). λ (fuel : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     λ (hb : Le (add lo cnt) (len l)).
       seg_glue x lo cnt (sortRangeL fuel lo cnt l) l
         (count_sortRangeL x fuel lo cnt l hb)
         (take_lo_sort fuel lo cnt l)
         (drop_suffix_sort fuel lo cnt l) }
-def segCount_sortRangeL_ty : Term := pure{
+def segCount_sortRangeL_ty : Term := prog{
   Π (x : Nat) → Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) (len l) →
     Id Nat (segCount x lo cnt (sortRangeL fuel lo cnt l)) (segCount x lo cnt l) }
 
-def segCount_partitionRangeL : Term := pure{
+def segCount_partitionRangeL : Term := prog{
   λ (x : Nat). λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     λ (hb : Le (add lo cnt) (len l)).
       seg_glue x lo cnt (partitionRangeL lo cnt l) l
         (count_partitionRangeL lo x cnt l hb)
         (take_lo_partition lo cnt l)
         (drop_suffix_partition lo cnt l) }
-def segCount_partitionRangeL_ty : Term := pure{
+def segCount_partitionRangeL_ty : Term := prog{
   Π (x : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le (add lo cnt) (len l) →
     Id Nat (segCount x lo cnt (partitionRangeL lo cnt l)) (segCount x lo cnt l) }
@@ -2258,7 +2258,7 @@ def segCount_partitionRangeL_ty : Term := pure{
     owned by dllbc-seg (positional induction mirroring count_partScanRangeL, swaps
     discharged via nth_swapL_lt/gt). -/
 -- pos_bridge_ss : add lo (S (S m)) = S (add m (S lo))  (both lo+m+2) — the mid upper bound.
-def pos_bridge_ss : Term := pure{
+def pos_bridge_ss : Term := prog{
   λ (lo : Nat). λ (m : Nat).
     id_trans Nat (add lo (S (S m))) (S (S (add lo m))) (S (add m (S lo)))
       (id_trans Nat (add lo (S (S m))) (S (add lo (S m))) (S (S (add lo m)))
@@ -2269,10 +2269,10 @@ def pos_bridge_ss : Term := pure{
           (id_congr Nat Nat (λ (z : Nat). S z) (add m (S lo)) (S (add m lo)) (add_succ m lo))
           (id_congr Nat Nat (λ (z : Nat). S z) (S (add m lo)) (S (add lo m))
             (id_congr Nat Nat (λ (z : Nat). S z) (add m lo) (add lo m) (add_comm m lo))))) }
-def pos_bridge_ss_ty : Term := pure{ Π (lo : Nat) → Π (m : Nat) → Id Nat (add lo (S (S m))) (S (add m (S lo))) }
+def pos_bridge_ss_ty : Term := prog{ Π (lo : Nat) → Π (m : Nat) → Id Nat (add lo (S (S m))) (S (add m (S lo))) }
 
 -- bnd_sl : the scan swap's smaller index < larger index (S(lo+1+i) ≤ lo+1+i+(S g')).
-def bnd_sl : Term := pure{
+def bnd_sl : Term := prog{
   λ (lo : Nat). λ (i : Nat). λ (g' : Nat).
     le_rw_l (add lo (S (add i (S g')))) (add lo (S (S i))) (S (add lo (S i)))
       (add_succ lo (S i))
@@ -2280,12 +2280,12 @@ def bnd_sl : Term := pure{
         (le_rw_r (S i) (S (add i g')) (add i (S g'))
           (id_sym Nat (add i (S g')) (S (add i g')) (add_succ i g'))
           (le_add i g'))) }
-def bnd_sl_ty : Term := pure{ Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Le (S (add lo (S i))) (add lo (S (add i (S g')))) }
+def bnd_sl_ty : Term := prog{ Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Le (S (add lo (S i))) (add lo (S (add i (S g')))) }
 
 -- allLeR_base_swap : the pivot-placement swap at the base (i = S i') keeps [lo, lo+S i')
 -- all ≤ pivot. Position lo gets the far ≤-element (nth_swapL_lo + hL at i'), the interior
 -- is unchanged (allLeR_cong via nth_swapL_mid), assembled by allLeR_extend_lo.
-def allLeR_base_swap : Term := pure{
+def allLeR_base_swap : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (i' : Nat). λ (l : List Nat).
     λ (hL : AllLeR (S i') (S lo) pivot l).
       allLeR_extend_lo i' lo pivot (swapL lo (add lo (S i')) l)
@@ -2303,12 +2303,12 @@ def allLeR_base_swap : Term := pure{
                 (pos_bridge_ss lo m)
                 (le_add_mono_l lo (S (S m)) (S i') hm)))
           (λ (m : Nat). λ (hm : Le (S m) i'). hL m (le_up_r (S m) i' hm))) }
-def allLeR_base_swap_ty : Term := pure{
+def allLeR_base_swap_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (i' : Nat) → Π (l : List Nat) →
     AllLeR (S i') (S lo) pivot l → AllLeR (S i') lo pivot (swapL lo (add lo (S i')) l) }
 
 -- allLeR_step_TZ : True/g=0 step — the scan element (tested ≤ pivot) extends the ≤-region.
-def allLeR_step_TZ : Term := pure{
+def allLeR_step_TZ : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (l : List Nat).
     λ (e : Id Bool (leb (nth (add lo (S (add i Z))) l) pivot) True). λ (hL : AllLeR i (S lo) pivot l).
       allLeR_extend_far i (S lo) pivot l hL
@@ -2318,13 +2318,13 @@ def allLeR_step_TZ : Term := pure{
               (id_congr Nat Nat (λ (z : Nat). add lo (S z)) (add i Z) i (add_zero i))
               (id_sym Nat (add i (S lo)) (add lo (S i)) (add_swap_succ i lo))))
           (leb_true_le (nth (add lo (S (add i Z))) l) pivot e)) }
-def allLeR_step_TZ_ty : Term := pure{
+def allLeR_step_TZ_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (l : List Nat) →
     Id Bool (leb (nth (add lo (S (add i Z))) l) pivot) True → AllLeR i (S lo) pivot l → AllLeR (S i) (S lo) pivot l }
 
 -- allLeR_step_swap : True/g=S g' step — the scan swap moves the tested ≤-element to the
 -- new boundary; interior unchanged (nth_swapL_lt), new far element = old scan (nth_swapL_lo).
-def allLeR_step_swap : Term := pure{
+def allLeR_step_swap : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (l : List Nat).
     λ (e : Id Bool (leb (nth (add lo (S (add i (S g')))) l) pivot) True). λ (hL : AllLeR i (S lo) pivot l).
       allLeR_extend_far i (S lo) pivot (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)
@@ -2345,7 +2345,7 @@ def allLeR_step_swap : Term := pure{
             (id_congr Nat Nat (λ (q : Nat). nth q (swapL (add lo (S i)) (add lo (S (add i (S g')))) l)) (add lo (S i)) (add i (S lo))
               (id_sym Nat (add i (S lo)) (add lo (S i)) (add_swap_succ i lo))))
           (leb_true_le (nth (add lo (S (add i (S g')))) l) pivot e)) }
-def allLeR_step_swap_ty : Term := pure{
+def allLeR_step_swap_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (l : List Nat) →
     Id Bool (leb (nth (add lo (S (add i (S g')))) l) pivot) True → AllLeR i (S lo) pivot l →
     AllLeR (S i) (S lo) pivot (swapL (add lo (S i)) (add lo (S (add i (S g')))) l) }
@@ -2354,7 +2354,7 @@ def allLeR_step_swap_ty : Term := pure{
 -- on k mirroring count_partScanRangeL's bound threading; the AllLeR precondition grows via
 -- the step helpers (leb fact from remember-scrutinee, threaded through the g-elim); the base
 -- converts to offset lo via allLeR_base_swap / allLeR_empty.
-def partScanRangeL_allLeR : Term := pure{
+def partScanRangeL_allLeR : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
         Le (add lo (S (add kz (add i g)))) (len l) →
@@ -2425,7 +2425,7 @@ def partScanRangeL_allLeR : Term := pure{
               hL
         } Refl
     } }
-def partScanRangeL_allLeR_ty : Term := pure{
+def partScanRangeL_allLeR_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Le (add lo (S (add k (add i g)))) (len l) →
     Id Nat (nth lo l) pivot →
@@ -2441,7 +2441,7 @@ def partScanRangeL_allLeR_ty : Term := pure{
     gap (`allGtR_empty`). `off_bridge` / `pos_bridge_scan` / `bnd_gap_upper` carry the
     (messier) offset arithmetic. -/
 
-def allGtR_extend_far : Term := pure{
+def allGtR_extend_far : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (h : AllGtR w lo p l). λ (hnew : Le (S p) (nth (add w lo) l)).
     λ (m : Nat).
@@ -2453,11 +2453,11 @@ def allGtR_extend_far : Term := pure{
               (id_congr Nat Nat (λ (z : Nat). add z lo) w m (id_sym Nat m w (le_antisym m w hm (leb_false_gt (S m) w e)))))
             hnew
       } Refl }
-def allGtR_extend_far_ty : Term := pure{
+def allGtR_extend_far_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllGtR w lo p l → Le (S p) (nth (add w lo) l) → AllGtR (S w) lo p l }
 
-def allGtR_cong : Term := pure{
+def allGtR_cong : Term := prog{
   λ (w : Nat). λ (off : Nat). λ (p : Nat). λ (l : List Nat). λ (l' : List Nat).
     λ (heq : Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)).
     λ (h : AllGtR w off p l).
@@ -2465,20 +2465,20 @@ def allGtR_cong : Term := pure{
       le_rw_r (S p) (nth (add m off) l) (nth (add m off) l')
         (id_sym Nat (nth (add m off) l') (nth (add m off) l) (heq m hm))
         (h m hm) }
-def allGtR_cong_ty : Term := pure{
+def allGtR_cong_ty : Term := prog{
   Π (w : Nat) → Π (off : Nat) → Π (p : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
     (Π (m : Nat) → Le (S m) w → Id Nat (nth (add m off) l') (nth (add m off) l)) →
     AllGtR w off p l → AllGtR w off p l' }
 
-def off_bridge : Term := pure{
+def off_bridge : Term := prog{
   λ (lo : Nat). λ (i' : Nat).
     id_congr Nat Nat (λ (z : Nat). S z) (S (add i' lo)) (add lo (S i'))
       (id_trans Nat (S (add i' lo)) (S (add lo i')) (add lo (S i'))
         (id_congr Nat Nat (λ (z : Nat). S z) (add i' lo) (add lo i') (add_comm i' lo))
         (id_sym Nat (add lo (S i')) (S (add lo i')) (add_succ lo i'))) }
-def off_bridge_ty : Term := pure{ Π (lo : Nat) → Π (i' : Nat) → Id Nat (add (S (S i')) lo) (S (add lo (S i'))) }
+def off_bridge_ty : Term := prog{ Π (lo : Nat) → Π (i' : Nat) → Id Nat (add (S (S i')) lo) (S (add lo (S i'))) }
 
-def allGtR_base_swap : Term := pure{
+def allGtR_base_swap : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (i' : Nat). λ (g : Nat). λ (l : List Nat).
     λ (hG : AllGtR g (add (S (S i')) lo) pivot l).
       allGtR_cong g (add (S (S i')) lo) pivot l (swapL lo (add lo (S i')) l)
@@ -2488,11 +2488,11 @@ def allGtR_base_swap : Term := pure{
               (off_bridge lo i')
               (le_add_l (add (S (S i')) lo) m)))
         hG }
-def allGtR_base_swap_ty : Term := pure{
+def allGtR_base_swap_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (i' : Nat) → Π (g : Nat) → Π (l : List Nat) →
     AllGtR g (add (S (S i')) lo) pivot l → AllGtR g (add (S (S i')) lo) pivot (swapL lo (add lo (S i')) l) }
 
-def pos_bridge_scan : Term := pure{
+def pos_bridge_scan : Term := prog{
   λ (lo : Nat). λ (i : Nat). λ (g : Nat).
     id_trans Nat (add lo (S (add i g))) (S (add lo (add i g))) (add g (add (S i) lo))
       (add_succ lo (add i g))
@@ -2504,21 +2504,21 @@ def pos_bridge_scan : Term := pure{
               (add_comm (add lo i) g)
               (id_congr Nat Nat (λ (z : Nat). add g z) (add lo i) (add i lo) (add_comm lo i)))))
         (id_sym Nat (add g (add (S i) lo)) (S (add g (add i lo))) (add_succ g (add i lo)))) }
-def pos_bridge_scan_ty : Term := pure{ Π (lo : Nat) → Π (i : Nat) → Π (g : Nat) → Id Nat (add lo (S (add i g))) (add g (add (S i) lo)) }
+def pos_bridge_scan_ty : Term := prog{ Π (lo : Nat) → Π (i : Nat) → Π (g : Nat) → Id Nat (add lo (S (add i g))) (add g (add (S i) lo)) }
 
-def allGtR_step_false : Term := pure{
+def allGtR_step_false : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g : Nat). λ (l : List Nat).
     λ (efalse : Id Bool (leb (nth (add lo (S (add i g))) l) pivot) False). λ (hG : AllGtR g (add (S i) lo) pivot l).
       allGtR_extend_far g (add (S i) lo) pivot l hG
         (le_rw_r (S pivot) (nth (add lo (S (add i g))) l) (nth (add g (add (S i) lo)) l)
           (id_congr Nat Nat (λ (q : Nat). nth q l) (add lo (S (add i g))) (add g (add (S i) lo)) (pos_bridge_scan lo i g))
           (leb_false_gt (nth (add lo (S (add i g))) l) pivot efalse)) }
-def allGtR_step_false_ty : Term := pure{
+def allGtR_step_false_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Id Bool (leb (nth (add lo (S (add i g))) l) pivot) False → AllGtR g (add (S i) lo) pivot l →
     AllGtR (S g) (add (S i) lo) pivot l }
 
-def bnd_gap_upper : Term := pure{
+def bnd_gap_upper : Term := prog{
   λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (m : Nat). λ (hm : Le (S m) g').
     le_rw_r (S (add m (add (S (S i)) lo))) (add lo (S (S (add i g')))) (add lo (S (add i (S g'))))
       (id_congr Nat Nat (λ (z : Nat). add lo (S z)) (S (add i g')) (add i (S g')) (id_sym Nat (add i (S g')) (S (add i g')) (add_succ i g')))
@@ -2528,11 +2528,11 @@ def bnd_gap_upper : Term := pure{
           (id_congr Nat Nat (λ (z : Nat). S z) (add lo (S (S (add i m)))) (add m (add (S (S i)) lo)) (pos_bridge_scan lo (S i) m)))
         (le_add_mono_l lo (S (S (S (add i m)))) (S (S (add i g')))
           (le_rw_l (add i g') (add i (S m)) (S (add i m)) (add_succ i m) (le_add_mono_l i (S m) g' hm)))) }
-def bnd_gap_upper_ty : Term := pure{
+def bnd_gap_upper_ty : Term := prog{
   Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (m : Nat) → Le (S m) g' →
     Le (S (add m (add (S (S i)) lo))) (add lo (S (add i (S g')))) }
 
-def allGtR_step_swap : Term := pure{
+def allGtR_step_swap : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (i : Nat). λ (g' : Nat). λ (l : List Nat).
     λ (hlen : Le (S (add lo (S (add i (S g'))))) (len l)).
     λ (e : Id Bool (leb (nth (add lo (S (add i (S g')))) l) pivot) True). λ (hG : AllGtR (S g') (add (S i) lo) pivot l).
@@ -2563,7 +2563,7 @@ def allGtR_step_swap : Term := pure{
           (le_rw_r (S pivot) (nth (add (S i) lo) l) (nth (add lo (S i)) l)
             (id_congr Nat Nat (λ (q : Nat). nth q l) (add (S i) lo) (add lo (S i)) (add_comm (S i) lo))
             (allGtR_head g' (add (S i) lo) pivot l hG))) }
-def allGtR_step_swap_ty : Term := pure{
+def allGtR_step_swap_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (i : Nat) → Π (g' : Nat) → Π (l : List Nat) →
     Le (S (add lo (S (add i (S g'))))) (len l) →
     Id Bool (leb (nth (add lo (S (add i (S g')))) l) pivot) True → AllGtR (S g') (add (S i) lo) pivot l →
@@ -2573,7 +2573,7 @@ def allGtR_step_swap_ty : Term := pure{
 -- the conclusion OFFSET also depends on leb (motive carries three elim b). NOTE the True arm
 -- threads hG through the g-elim (the precondition is indexed by g, refined to S g' in the swap
 -- branch) — unlike allLeR whose precondition was indexed by i.
-def partScanRangeL_allGtR : Term := pure{
+def partScanRangeL_allGtR : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
         Le (add lo (S (add kz (add i g)))) (len l) →
@@ -2661,7 +2661,7 @@ def partScanRangeL_allGtR : Term := pure{
               (allGtR_step_false pivot lo i g l efalse hG)
         } Refl
     } }
-def partScanRangeL_allGtR_ty : Term := pure{
+def partScanRangeL_allGtR_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Le (add lo (S (add k (add i g)))) (len l) →
     Id Nat (nth lo l) pivot →
@@ -2673,7 +2673,7 @@ def partScanRangeL_allGtR_ty : Term := pure{
 -- both swap indices). Base (k=Z) places the pivot: i=Z is the pivot-fact directly;
 -- i=S i' swaps lo↔lo+i, so nth_swapL_hi reads old-lo (=pivot) at the boundary, bridged
 -- from index-first `add (S i') lo` to offset-first `add lo (S i')` by add_comm.
-def partScanRangeL_pivot : Term := pure{
+def partScanRangeL_pivot : Term := prog{
   λ (pivot : Nat). λ (lo : Nat). λ (k : Nat).
     elim k return (λ (kz : Nat). Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
         Le (add lo (S (add kz (add i g)))) (len l) →
@@ -2763,14 +2763,14 @@ def partScanRangeL_pivot : Term := pure{
               hpv
         }
     } }
-def partScanRangeL_pivot_ty : Term := pure{
+def partScanRangeL_pivot_ty : Term := prog{
   Π (pivot : Nat) → Π (lo : Nat) → Π (k : Nat) → Π (i : Nat) → Π (g : Nat) → Π (l : List Nat) →
     Le (add lo (S (add k (add i g)))) (len l) →
     Id Nat (nth lo l) pivot →
     Id Nat (nth (add (partScanIdxRangeL pivot lo k i g l) lo) (partScanRangeL pivot lo k i g l)) pivot }
 -- partition_pivot : wrapper of partScanRangeL_pivot at i=g=0 (preconditions vacuous;
 -- pivot-fact is Refl since the pivot is nth lo l; one add_zero nudge on the bound).
-def partition_pivot : Term := pure{
+def partition_pivot : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat).
         Le (add lo cz) (len l) →
@@ -2786,7 +2786,7 @@ def partition_pivot : Term := pure{
           Refl } }
 
 -- partition_allLeR : wrapper of partScanRangeL_allLeR at i=g=0 (AllLeR Z precondition vacuous).
-def partition_allLeR : Term := pure{
+def partition_allLeR : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat).
         Le (add lo cz) (len l) →
@@ -2802,11 +2802,11 @@ def partition_allLeR : Term := pure{
           Refl
           (allLeR_empty (S lo) (nth lo l) l) } }
 
-def partition_allLeR_ty : Term := pure{
+def partition_allLeR_ty : Term := prog{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
     AllLeR (partIdxRangeL lo cnt l) lo (nth lo l) (partitionRangeL lo cnt l) }
 -- partition_allGtR : wrapper of partScanRangeL_allGtR at i=g=0 (AllGtR Z precondition vacuous).
-def partition_allGtR : Term := pure{
+def partition_allGtR : Term := prog{
   λ (lo : Nat). λ (cnt : Nat). λ (l : List Nat).
     elim cnt return (λ (cz : Nat).
         Le (add lo cz) (len l) →
@@ -2823,10 +2823,10 @@ def partition_allGtR : Term := pure{
           Refl
           (allGtR_empty (add (S Z) lo) (nth lo l) l) } }
 
-def partition_allGtR_ty : Term := pure{
+def partition_allGtR_ty : Term := prog{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
     AllGtR (partGapRangeL lo cnt l) (add (S (partIdxRangeL lo cnt l)) lo) (nth lo l) (partitionRangeL lo cnt l) }
-def partition_pivot_ty : Term := pure{
+def partition_pivot_ty : Term := prog{
   Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) → Le (add lo cnt) (len l) →
     Id Nat (nth (add (partIdxRangeL lo cnt l) lo) (partitionRangeL lo cnt l)) (nth lo l) }
 
@@ -2835,13 +2835,13 @@ def partition_pivot_ty : Term := pure{
 -- the position `add (sub k (S i)) (add (S i) lo)` back to `add k lo` via add_assoc +
 -- `add (sub k (S i)) (S i) = k` (add_comm of add_sub_cancel). sub recurses on the
 -- minuend so `sub (S a)(S b) = sub a b`; add_sub_cancel is a clean double induction.
-def sub : Term := pure{
+def sub : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Nat → Nat) {
       Z => λ (b : Nat). Z,
       S (a') rec => λ (b : Nat). elim b return (λ (bz : Nat). Nat) { Z => S a', S (b') bih => rec b' } } }
-def sub_ty : Term := pure{ Π (a : Nat) → Nat → Nat }
-def add_sub_cancel : Term := pure{
+def sub_ty : Term := prog{ Π (a : Nat) → Nat → Nat }
+def add_sub_cancel : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Π (b : Nat) → Le b az → Id Nat (add b (sub az b)) az) {
       Z => λ (b : Nat).
@@ -2853,7 +2853,7 @@ def add_sub_cancel : Term := pure{
           Z => λ (h : Le Z (S a')). Refl,
           S (b') bih => λ (h : Le (S b') (S a')).
             id_congr Nat Nat (λ (n : Nat). S n) (add b' (sub a' b')) a' (ih b' h) } } }
-def add_sub_cancel_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le b a → Id Nat (add b (sub a b)) a }
+def add_sub_cancel_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le b a → Id Nat (add b (sub a b)) a }
 
 /-! ## The GLUE — assemble a sorted range from sorted halves (§22, M22-c step 4)
 
@@ -2868,11 +2868,11 @@ def add_sub_cancel_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le b a �
     reindex_* helpers, then SortedR right). Every arithmetic bridge is discharged by
     the add-order toolkit — the positional-predicate ↔ offset-model tax, paid once
     per bound. All kernel-green. -/
-def le_pred_l : Term := pure{
+def le_pred_l : Term := prog{
   λ (a : Nat). λ (b : Nat). λ (h : Le (S a) b).
     le_trans a (S a) b (le_up_r a a (le_refl a)) h }
-def le_pred_l_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Le a b }
-def gap_pos : Term := pure{
+def le_pred_l_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Le a b }
+def gap_pos : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (h : Le (S i) (add i g)).
     le_add_cancel_l i (S Z) g
       (le_rw_l (add i g) (S i) (add i (S Z))
@@ -2881,8 +2881,8 @@ def gap_pos : Term := pure{
             (add_succ i Z)
             (id_congr Nat Nat (λ (n : Nat). S n) (add i Z) i (add_zero i))))
         h) }
-def gap_pos_ty : Term := pure{ Π (i : Nat) → Π (g : Nat) → Le (S i) (add i g) → Le (S Z) g }
-def reindex_pos : Term := pure{
+def gap_pos_ty : Term := prog{ Π (i : Nat) → Π (g : Nat) → Le (S i) (add i g) → Le (S Z) g }
+def reindex_pos : Term := prog{
   λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (hik : Le (S i) k).
     id_trans Nat
       (add (sub k (S i)) (S (add i lo)))
@@ -2894,10 +2894,10 @@ def reindex_pos : Term := pure{
         (id_trans Nat (add (sub k (S i)) (S i)) (add (S i) (sub k (S i))) k
           (add_comm (sub k (S i)) (S i))
           (add_sub_cancel k (S i) hik))) }
-def reindex_pos_ty : Term := pure{
+def reindex_pos_ty : Term := prog{
   Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Le (S i) k →
     Id Nat (add (sub k (S i)) (S (add i lo))) (add k lo) }
-def reindex_pos_s : Term := pure{
+def reindex_pos_s : Term := prog{
   λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (hik : Le (S i) k).
     id_trans Nat
       (add (S (sub k (S i))) (S (add i lo)))
@@ -2910,10 +2910,10 @@ def reindex_pos_s : Term := pure{
           (id_trans Nat (add (sub k (S i)) (S i)) (add (S i) (sub k (S i))) k
             (add_comm (sub k (S i)) (S i))
             (add_sub_cancel k (S i) hik)))) }
-def reindex_pos_s_ty : Term := pure{
+def reindex_pos_s_ty : Term := prog{
   Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Le (S i) k →
     Id Nat (add (S (sub k (S i))) (S (add i lo))) (add (S k) lo) }
-def reindex_bnd : Term := pure{
+def reindex_bnd : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (hik : Le (S i) k). λ (hk : Le (S k) (add i g)).
     le_add_cancel_l i (S (S (sub k (S i)))) g
       (le_rw_l (add i g)
@@ -2928,10 +2928,10 @@ def reindex_bnd : Term := pure{
           (id_congr Nat Nat (λ (n : Nat). S n) k (S (add i (sub k (S i))))
             (id_sym Nat (S (add i (sub k (S i)))) k (add_sub_cancel k (S i) hik)))
           hk)) }
-def reindex_bnd_ty : Term := pure{
+def reindex_bnd_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Le (S i) k → Le (S k) (add i g) →
     Le (S (S (sub k (S i)))) g }
-def glue_left_pivot : Term := pure{
+def glue_left_pivot : Term := prog{
   λ (i : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
     λ (e1 : Id Bool (leb (S k) i) True).
     λ (e2 : Id Bool (leb (S (S k)) i) False).
@@ -2943,12 +2943,12 @@ def glue_left_pivot : Term := pure{
           (id_congr Nat Nat (λ (x : Nat). nth (add x lo) R) i (S k)
             (le_antisym i (S k) (leb_false_gt (S (S k)) i e2) (leb_true_le (S k) i e1))))
         (al k (leb_true_le (S k) i e1)) }
-def glue_left_pivot_ty : Term := pure{
+def glue_left_pivot_ty : Term := prog{
   Π (i : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
     Id Bool (leb (S k) i) True → Id Bool (leb (S (S k)) i) False →
     Id Nat pivot (nth (add i lo) R) → AllLeR i lo pivot R →
     Le (nth (add k lo) R) (nth (add (S k) lo) R) }
-def glue_pivot_right : Term := pure{
+def glue_pivot_right : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
     λ (e1 : Id Bool (leb (S k) i) False).
     λ (e2 : Id Bool (leb (S i) k) False).
@@ -2970,13 +2970,13 @@ def glue_pivot_right : Term := pure{
                 (id_congr Nat Nat (λ (n : Nat). S n) k i
                   (le_antisym k i (leb_false_gt (S i) k e2) (leb_false_gt (S k) i e1)))
                 hk))))) }
-def glue_pivot_right_ty : Term := pure{
+def glue_pivot_right_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
     Id Bool (leb (S k) i) False → Id Bool (leb (S i) k) False →
     Le (S (S k)) (S (add i g)) → Id Nat pivot (nth (add i lo) R) →
     AllGtR g (S (add i lo)) pivot R →
     Le (nth (add k lo) R) (nth (add (S k) lo) R) }
-def glue_both_right : Term := pure{
+def glue_both_right : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (k : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
     λ (e2 : Id Bool (leb (S i) k) True).
     λ (hk : Le (S (S k)) (S (add i g))).
@@ -2992,12 +2992,12 @@ def glue_both_right : Term := pure{
           (id_congr Nat Nat (λ (p : Nat). nth p R) (add (S (sub k (S i))) (S (add i lo))) (add (S k) lo)
             (reindex_pos_s i k lo (leb_true_le (S i) k e2)))
           (sr (sub k (S i)) (reindex_bnd i g k (leb_true_le (S i) k e2) hk))) }
-def glue_both_right_ty : Term := pure{
+def glue_both_right_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (k : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
     Id Bool (leb (S i) k) True → Le (S (S k)) (S (add i g)) →
     SortedR g (S (add i lo)) R →
     Le (nth (add k lo) R) (nth (add (S k) lo) R) }
-def glue : Term := pure{
+def glue : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (R : List Nat).
     λ (hpiv : Id Nat pivot (nth (add i lo) R)).
     λ (sl : SortedR i lo R).
@@ -3020,7 +3020,7 @@ def glue : Term := pure{
             False => λ (e2 : Id Bool (leb (S i) k) False). glue_pivot_right i g k lo pivot R e1 e2 hk hpiv ag
           }) Refl
       }) Refl }
-def glue_ty : Term := pure{
+def glue_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (R : List Nat) →
     Id Nat pivot (nth (add i lo) R) →
     SortedR i lo R →
@@ -3044,7 +3044,7 @@ def glue_ty : Term := pure{
     verified. AllGtR mirrors with noBelow = Π x. Le x p → segCount x = Z. -/
 -- Keystone bridge helpers: eqb comparison, the count "miss" step, count-zero-by-extension,
 -- and take-vs-nth/len facts. All mechanical count/segment inductions.
-def eqb_gt_false : Term := pure{
+def eqb_gt_false : Term := prog{
   λ (h : Nat).
     elim h return (λ (hz : Nat). Π (x : Nat) → Le (S hz) x → Id Bool (eqb x hz) False) {
       Z => λ (x : Nat).
@@ -3055,9 +3055,9 @@ def eqb_gt_false : Term := pure{
         elim x return (λ (xz : Nat). Le (S (S h')) xz → Id Bool (eqb xz (S h')) False) {
           Z => λ (hlt : Le (S (S h')) Z). botElim (Id Bool (eqb Z (S h')) False) hlt,
           S (x') xih => λ (hlt : Le (S (S h')) (S x')). ih x' hlt } } }
-def eqb_gt_false_ty : Term := pure{ Π (h : Nat) → Π (x : Nat) → Le (S h) x → Id Bool (eqb x h) False }
+def eqb_gt_false_ty : Term := prog{ Π (h : Nat) → Π (x : Nat) → Le (S h) x → Id Bool (eqb x h) False }
 
-def eqb_lt_false : Term := pure{
+def eqb_lt_false : Term := prog{
   λ (a : Nat).
     elim a return (λ (az : Nat). Π (b : Nat) → Le (S az) b → Id Bool (eqb az b) False) {
       Z => λ (b : Nat).
@@ -3068,19 +3068,19 @@ def eqb_lt_false : Term := pure{
         elim b return (λ (bz : Nat). Le (S (S a')) bz → Id Bool (eqb (S a') bz) False) {
           Z => λ (hlt : Le (S (S a')) Z). botElim (Id Bool (eqb (S a') Z) False) hlt,
           S (b') bih => λ (hlt : Le (S (S a')) (S b')). ih b' hlt } } }
-def eqb_lt_false_ty : Term := pure{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Id Bool (eqb a b) False }
+def eqb_lt_false_ty : Term := prog{ Π (a : Nat) → Π (b : Nat) → Le (S a) b → Id Bool (eqb a b) False }
 
-def count_cons_miss : Term := pure{
+def count_cons_miss : Term := prog{
   λ (m : Nat). λ (h : Nat). λ (t : List Nat). λ (hq : Id Bool (eqb m h) False).
     j Bool False
       (λ (z : Bool). λ (hh : Id Bool False z).
         Id Nat (boolRec (λ (w : Bool). Nat) (S (count m t)) (count m t) z) (count m t))
       Refl (eqb m h) (id_sym Bool (eqb m h) False hq) }
-def count_cons_miss_ty : Term := pure{
+def count_cons_miss_ty : Term := prog{
   Π (m : Nat) → Π (h : Nat) → Π (t : List Nat) → Id Bool (eqb m h) False →
     Id Nat (count m (Cons h t)) (count m t) }
 
-def count_zero_ext : Term := pure{
+def count_zero_ext : Term := prog{
   λ (x : Nat). λ (s : List Nat).
     elim s return (λ (sz : List Nat). (Π (j : Nat) → Le (S j) (len sz) → Id Bool (eqb x (nth j sz)) False) → Id Nat (count x sz) Z) {
       Nil => λ (heq : Π (j : Nat) → Le (S j) (len Nil) → Id Bool (eqb x (nth j Nil)) False). Refl,
@@ -3088,11 +3088,11 @@ def count_zero_ext : Term := pure{
         id_trans Nat (count x (Cons h t)) (count x t) Z
           (count_cons_miss x h t (heq Z unit))
           (ih (λ (j : Nat). λ (hj : Le (S j) (len t)). heq (S j) hj)) } }
-def count_zero_ext_ty : Term := pure{
+def count_zero_ext_ty : Term := prog{
   Π (x : Nat) → Π (s : List Nat) →
     (Π (j : Nat) → Le (S j) (len s) → Id Bool (eqb x (nth j s)) False) → Id Nat (count x s) Z }
 
-def nth_take : Term := pure{
+def nth_take : Term := prog{
   λ (w : Nat).
     elim w return (λ (wz : Nat). Π (j : Nat) → Π (s : List Nat) → Le (S j) wz → Id Nat (nth j (take wz s)) (nth j s)) {
       Z => λ (j : Nat). λ (s : List Nat). λ (hlt : Le (S j) Z). botElim (Id Nat (nth j (take Z s)) (nth j s)) hlt,
@@ -3105,10 +3105,10 @@ def nth_take : Term := pure{
             elim s return (λ (sz : List Nat). Id Nat (nth (S j') (take (S w') sz)) (nth (S j') sz)) {
               Nil => Refl,
               Cons (h) (t) sih => ih j' t hlt } } } }
-def nth_take_ty : Term := pure{
+def nth_take_ty : Term := prog{
   Π (w : Nat) → Π (j : Nat) → Π (s : List Nat) → Le (S j) w → Id Nat (nth j (take w s)) (nth j s) }
 
-def len_take_le : Term := pure{
+def len_take_le : Term := prog{
   λ (w : Nat).
     elim w return (λ (wz : Nat). Π (s : List Nat) → Le (len (take wz s)) wz) {
       Z => λ (s : List Nat). unit,
@@ -3116,11 +3116,11 @@ def len_take_le : Term := pure{
         elim s return (λ (sz : List Nat). Le (len (take (S w') sz)) (S w')) {
           Nil => unit,
           Cons (h) (t) sih => ih t } } }
-def len_take_le_ty : Term := pure{ Π (w : Nat) → Π (s : List Nat) → Le (len (take w s)) w }
+def len_take_le_ty : Term := prog{ Π (w : Nat) → Π (s : List Nat) → Le (len (take w s)) w }
 
 -- #2 allLeR_to_noAbove : every segment element ≤ p, so an x>p occurs 0× (count_zero_ext,
 -- with each element bridged nth j (take w (drop lo l)) → nth (add j lo) l via nth_take/nth_drop).
-def allLeR_to_noAbove : Term := pure{
+def allLeR_to_noAbove : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (hAll : AllLeR w lo p l). λ (x : Nat). λ (hpx : Le (S p) x).
       count_zero_ext x (take w (drop lo l))
@@ -3138,7 +3138,7 @@ def allLeR_to_noAbove : Term := pure{
               hpx)) }
 
 -- #4 allGtR_to_noBelow : every segment element > p, so an x≤p occurs 0× (mirror of #2).
-def allGtR_to_noBelow : Term := pure{
+def allGtR_to_noBelow : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (hAll : AllGtR w lo p l). λ (x : Nat). λ (hxp : Le x p).
       count_zero_ext x (take w (drop lo l))
@@ -3156,13 +3156,13 @@ def allGtR_to_noBelow : Term := pure{
                 (hAll j (le_trans (S j) (len (take w (drop lo l))) w hj (len_take_le w (drop lo l))))))) }
 
 -- Membership side (#1/#3/#5): the range-fits bound makes the element genuinely present.
-def eqb_refl : Term := pure{
+def eqb_refl : Term := prog{
   λ (n : Nat). elim n return (λ (nz : Nat). Id Bool (eqb nz nz) True) {
     Z => Refl,
     S (n') ih => ih } }
-def eqb_refl_ty : Term := pure{ Π (n : Nat) → Id Bool (eqb n n) True }
+def eqb_refl_ty : Term := prog{ Π (n : Nat) → Id Bool (eqb n n) True }
 
-def len_drop_bound : Term := pure{
+def len_drop_bound : Term := prog{
   λ (lo : Nat).
     elim lo return (λ (loz : Nat). Π (k : Nat) → Π (l : List Nat) → Le (add loz k) (len l) → Le k (len (drop loz l))) {
       Z => λ (k : Nat). λ (l : List Nat). λ (hb : Le (add Z k) (len l)). hb,
@@ -3170,10 +3170,10 @@ def len_drop_bound : Term := pure{
         elim l return (λ (lz : List Nat). Le (add (S lo') k) (len lz) → Le k (len (drop (S lo') lz))) {
           Nil => λ (hb : Le (add (S lo') k) (len Nil)). botElim (Le k (len (drop (S lo') Nil))) hb,
           Cons (h) (t) lih => λ (hb : Le (add (S lo') k) (len (Cons h t))). ih k t hb } } }
-def len_drop_bound_ty : Term := pure{
+def len_drop_bound_ty : Term := prog{
   Π (lo : Nat) → Π (k : Nat) → Π (l : List Nat) → Le (add lo k) (len l) → Le k (len (drop lo l)) }
 
-def count_take_nth_pos : Term := pure{
+def count_take_nth_pos : Term := prog{
   λ (w : Nat).
     elim w return (λ (wz : Nat). Π (m : Nat) → Π (s : List Nat) → Le (S m) wz → Le (S m) (len s) → Le (S Z) (count (nth m s) (take wz s))) {
       Z => λ (m : Nat). λ (s : List Nat). λ (hw : Le (S m) Z). λ (hs : Le (S m) (len s)). botElim (Le (S Z) (count (nth m s) (take Z s))) hw,
@@ -3192,12 +3192,12 @@ def count_take_nth_pos : Term := pure{
                   True => unit,
                   False => ih m' t hw1 hs1 }
             } hw hs0 } hs } }
-def count_take_nth_pos_ty : Term := pure{
+def count_take_nth_pos_ty : Term := prog{
   Π (w : Nat) → Π (m : Nat) → Π (s : List Nat) → Le (S m) w → Le (S m) (len s) →
     Le (S Z) (count (nth m s) (take w s)) }
 
 -- #1 nth_seg_count_pos : element at range position lo+m occurs ≥1× in the segment (needs range-fits).
-def nth_seg_count_pos : Term := pure{
+def nth_seg_count_pos : Term := prog{
   λ (m : Nat). λ (w : Nat). λ (lo : Nat). λ (l : List Nat).
     λ (hmw : Le (S m) w). λ (hrange : Le (add lo w) (len l)).
       le_rw_r (S Z) (count (nth m (drop lo l)) (take w (drop lo l))) (count (nth (add m lo) l) (take w (drop lo l)))
@@ -3210,7 +3210,7 @@ def nth_seg_count_pos : Term := pure{
             (le_trans (add lo (S m)) (add lo w) (len l) (le_add_mono_l lo (S m) w hmw) hrange))) }
 
 -- #3 noAbove_to_allLeR : no element > p in the segment ⟹ range ≤ p (leb + contradiction via #1).
-def noAbove_to_allLeR : Term := pure{
+def noAbove_to_allLeR : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (hrange : Le (add lo w) (len l)). λ (hnoAbove : Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z).
     λ (m : Nat). λ (hm : Le (S m) w).
@@ -3224,7 +3224,7 @@ def noAbove_to_allLeR : Term := pure{
       } Refl }
 
 -- #5 noBelow_to_allGtR : mirror of #3.
-def noBelow_to_allGtR : Term := pure{
+def noBelow_to_allGtR : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (p : Nat). λ (l : List Nat).
     λ (hrange : Le (add lo w) (len l)). λ (hnoBelow : Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z).
     λ (m : Nat). λ (hm : Le (S m) w).
@@ -3237,16 +3237,16 @@ def noBelow_to_allGtR : Term := pure{
         False => λ (e : Id Bool (leb (nth (add m lo) l) p) False). leb_false_gt (nth (add m lo) l) p e
       } Refl }
 
-def allLeR_to_noAbove_ty : Term := pure{
+def allLeR_to_noAbove_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllLeR w lo p l → Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z }
-def noAbove_to_allLeR_ty : Term := pure{
+def noAbove_to_allLeR_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → Le (add lo w) (len l) →
     (Π (x : Nat) → Le (S p) x → Id Nat (segCount x lo w l) Z) → AllLeR w lo p l }
-def allGtR_to_noBelow_ty : Term := pure{
+def allGtR_to_noBelow_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) →
     AllGtR w lo p l → Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z }
-def noBelow_to_allGtR_ty : Term := pure{
+def noBelow_to_allGtR_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (p : Nat) → Π (l : List Nat) → Le (add lo w) (len l) →
     (Π (x : Nat) → Le x p → Id Nat (segCount x lo w l) Z) → AllGtR w lo p l }
 -- #1/#3/#5 carry the range-fits bound `Le (add lo w) (len l)`: without it an off-the-end
@@ -3255,20 +3255,20 @@ def noBelow_to_allGtR_ty : Term := pure{
 -- gate finding, computationally checked). #2/#4 iterate the ACTUAL segment so need no
 -- bound. The keystone already carries this bound and len is sort-invariant, so the
 -- composition feeds #3/#5 the bound over the sorted list.
-def nth_seg_count_pos_ty : Term := pure{
+def nth_seg_count_pos_ty : Term := prog{
   Π (m : Nat) → Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) →
     Le (S m) w → Le (add lo w) (len l) → Le (S Z) (segCount (nth (add m lo) l) lo w l) }
-def allLeR_sortRange_ty : Term := pure{
+def allLeR_sortRange_ty : Term := prog{
   Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
     Le (add lo w) (len l) → AllLeR w lo p l → AllLeR w lo p (sortRangeL fuel lo w l) }
-def allGtR_sortRange_ty : Term := pure{
+def allGtR_sortRange_ty : Term := prog{
   Π (fuel : Nat) → Π (lo : Nat) → Π (w : Nat) → Π (p : Nat) → Π (l : List Nat) →
     Le (add lo w) (len l) → AllGtR w lo p l → AllGtR w lo p (sortRangeL fuel lo w l) }
 
 -- KEYSTONE composition (mine): route the positional bound through the perm-invariant
 -- noAbove/noBelow (segCount preserved by segCount_sortRangeL), feeding the range bound
 -- over the sorted list (len sort-invariant, le_rw_r over len_sortRangeL).
-def allLeR_sortRange : Term := pure{
+def allLeR_sortRange : Term := prog{
   λ (fuel : Nat). λ (lo : Nat). λ (w : Nat). λ (p : Nat). λ (l : List Nat).
     λ (bound : Le (add lo w) (len l)). λ (h : AllLeR w lo p l).
       noAbove_to_allLeR w lo p (sortRangeL fuel lo w l)
@@ -3279,7 +3279,7 @@ def allLeR_sortRange : Term := pure{
           id_trans Nat (segCount x lo w (sortRangeL fuel lo w l)) (segCount x lo w l) Z
             (segCount_sortRangeL x fuel lo w l bound)
             (allLeR_to_noAbove w lo p l h x hx)) }
-def allGtR_sortRange : Term := pure{
+def allGtR_sortRange : Term := prog{
   λ (fuel : Nat). λ (lo : Nat). λ (w : Nat). λ (p : Nat). λ (l : List Nat).
     λ (bound : Le (add lo w) (len l)). λ (h : AllGtR w lo p l).
       noBelow_to_allGtR w lo p (sortRangeL fuel lo w l)
@@ -3304,7 +3304,7 @@ def allGtR_sortRange : Term := pure{
     partScanSizeL (i+g = cnt-1). Sub-range bounds/fuel from partScanSizeL + the len lemmas.
     Assembly over now-proven pieces (glue, keystone, invariant, locality all on main) —
     proof owned by dllbc-seg per skeleton+prove; statement mine. -/
-def sorted_sortRangeL_ty : Term := pure{
+def sorted_sortRangeL_ty : Term := prog{
   Π (fuel : Nat) → Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
     Le cnt fuel → Le (add lo cnt) (len l) →
     SortedR cnt lo (sortRangeL fuel lo cnt l) }
@@ -3313,7 +3313,7 @@ def sorted_sortRangeL_ty : Term := pure{
 -- a fixed region (SortedR_cong, le_rw both endpoints), a width rewrite (sortedR_width_cong,
 -- j on the width — for the glue's S(add i g) → cnt), or an offset rewrite (sortedR_off_cong,
 -- j on the offset — for the add_comm S(add lo i) ↔ S(add i lo) bridge).
-def SortedR_cong : Term := pure{
+def SortedR_cong : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (l : List Nat). λ (l' : List Nat).
     λ (s : SortedR w lo l).
     λ (agree : Π (q : Nat) → Le (S q) w → Id Nat (nth (add q lo) l') (nth (add q lo) l)).
@@ -3323,23 +3323,23 @@ def SortedR_cong : Term := pure{
           (le_rw_l (nth (add (S k) lo) l) (nth (add k lo) l) (nth (add k lo) l')
             (id_sym Nat (nth (add k lo) l') (nth (add k lo) l) (agree k (le_pred_l (S k) w hk)))
             (s k hk)) }
-def SortedR_cong_ty : Term := pure{
+def SortedR_cong_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (l : List Nat) → Π (l' : List Nat) →
     SortedR w lo l →
     (Π (q : Nat) → Le (S q) w → Id Nat (nth (add q lo) l') (nth (add q lo) l)) →
     SortedR w lo l' }
-def sortedR_width_cong : Term := pure{
+def sortedR_width_cong : Term := prog{
   λ (w : Nat). λ (w' : Nat). λ (lo : Nat). λ (l : List Nat).
     λ (e : Id Nat w w'). λ (s : SortedR w lo l).
       j Nat w (λ (w2 : Nat). λ (h : Id Nat w w2). SortedR w2 lo l) s w' e }
-def sortedR_width_cong_ty : Term := pure{
+def sortedR_width_cong_ty : Term := prog{
   Π (w : Nat) → Π (w' : Nat) → Π (lo : Nat) → Π (l : List Nat) →
     Id Nat w w' → SortedR w lo l → SortedR w' lo l }
-def sortedR_off_cong : Term := pure{
+def sortedR_off_cong : Term := prog{
   λ (w : Nat). λ (lo : Nat). λ (lo' : Nat). λ (l : List Nat).
     λ (e : Id Nat lo lo'). λ (s : SortedR w lo l).
       j Nat lo (λ (lo2 : Nat). λ (h : Id Nat lo lo2). SortedR w lo2 l) s lo' e }
-def sortedR_off_cong_ty : Term := pure{
+def sortedR_off_cong_ty : Term := prog{
   Π (w : Nat) → Π (lo : Nat) → Π (lo' : Nat) → Π (l : List Nat) →
     Id Nat lo lo' → SortedR w lo l → SortedR w lo' l }
 
@@ -3349,49 +3349,49 @@ def sortedR_off_cong_ty : Term := pure{
     AG: gap is ABOVE the left sort (nth_sortRangeL_ge). Keystone (allLeR/allGtR_sortRange)
     carries bounds across the OWN sort; cong across the fixed region. add_comm bridges the
     positional-predicate offset (add i lo) ↔ model offset (add lo i). -/
-def pos_lt_bound : Term := pure{
+def pos_lt_bound : Term := prog{
   λ (q : Nat). λ (i : Nat). λ (lo : Nat). λ (hq : Le (S q) i).
     le_rw_l (add lo i) (add lo q) (add q lo) (add_comm lo q)
       (le_add_mono_l lo q i (le_pred_l q i hq)) }
-def pos_lt_bound_ty : Term := pure{
+def pos_lt_bound_ty : Term := prog{
   Π (q : Nat) → Π (i : Nat) → Π (lo : Nat) → Le (S q) i → Le (S (add q lo)) (S (add lo i)) }
-def allGtR_off_cong : Term := pure{
+def allGtR_off_cong : Term := prog{
   λ (w : Nat). λ (off : Nat). λ (off' : Nat). λ (p : Nat). λ (l : List Nat).
     λ (e : Id Nat off off'). λ (s : AllGtR w off p l).
       j Nat off (λ (o2 : Nat). λ (h : Id Nat off o2). AllGtR w o2 p l) s off' e }
-def allGtR_off_cong_ty : Term := pure{
+def allGtR_off_cong_ty : Term := prog{
   Π (w : Nat) → Π (off : Nat) → Π (off' : Nat) → Π (p : Nat) → Π (l : List Nat) →
     Id Nat off off' → AllGtR w off p l → AllGtR w off' p l }
-def gap_ge_bound : Term := pure{
+def gap_ge_bound : Term := prog{
   λ (m : Nat). λ (i : Nat). λ (lo : Nat).
     le_rw_l (add m (S (add i lo))) (add i lo) (add lo i) (add_comm i lo)
       (le_trans (add i lo) (S (add i lo)) (add m (S (add i lo)))
         (le_up_r (add i lo) (add i lo) (le_refl (add i lo)))
         (le_add_l (S (add i lo)) m)) }
-def gap_ge_bound_ty : Term := pure{
+def gap_ge_bound_ty : Term := prog{
   Π (m : Nat) → Π (i : Nat) → Π (lo : Nat) → Le (add lo i) (add m (S (add i lo))) }
-def sorted_in_SL : Term := pure{
+def sorted_in_SL : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (p : List Nat). λ (f' : Nat).
     λ (ihL : SortedR i lo (sortRangeL f' lo i p)).
       SortedR_cong i lo (sortRangeL f' lo i p) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))
         ihL
         (λ (q : Nat). λ (hq : Le (S q) i).
           nth_sortRangeL_lt f' (add q lo) (S (add lo i)) g (sortRangeL f' lo i p) (pos_lt_bound q i lo hq)) }
-def sorted_in_SL_ty : Term := pure{
+def sorted_in_SL_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (p : List Nat) → Π (f' : Nat) →
     SortedR i lo (sortRangeL f' lo i p) →
     SortedR i lo (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
-def sorted_in_SR : Term := pure{
+def sorted_in_SR : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (p : List Nat). λ (f' : Nat).
     λ (ihR : SortedR g (S (add lo i)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))).
       sortedR_off_cong g (S (add lo i)) (S (add i lo)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))
         (id_congr Nat Nat (λ (n : Nat). S n) (add lo i) (add i lo) (add_comm lo i))
         ihR }
-def sorted_in_SR_ty : Term := pure{
+def sorted_in_SR_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (p : List Nat) → Π (f' : Nat) →
     SortedR g (S (add lo i)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) →
     SortedR g (S (add i lo)) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
-def sorted_in_HPIV : Term := pure{
+def sorted_in_HPIV : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
     λ (ppiv : Id Nat (nth (add i lo) p) pivot).
       id_sym Nat (nth (add i lo) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))) pivot
@@ -3405,22 +3405,22 @@ def sorted_in_HPIV : Term := pure{
             (nth_sortRangeL_ge f' (add i lo) lo i p
               (le_rw_l (add i lo) (add i lo) (add lo i) (add_comm i lo) (le_refl (add i lo))))
             ppiv)) }
-def sorted_in_HPIV_ty : Term := pure{
+def sorted_in_HPIV_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
     Id Nat (nth (add i lo) p) pivot →
     Id Nat pivot (nth (add i lo) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))) }
-def sorted_in_AL : Term := pure{
+def sorted_in_AL : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
     λ (pAL : AllLeR i lo pivot p). λ (bl : Le (add lo i) (len p)).
       allLeR_cong i lo pivot (sortRangeL f' lo i p) (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p))
         (λ (q : Nat). λ (hq : Le (S q) i).
           nth_sortRangeL_lt f' (add q lo) (S (add lo i)) g (sortRangeL f' lo i p) (pos_lt_bound q i lo hq))
         (allLeR_sortRange f' lo i pivot p bl pAL) }
-def sorted_in_AL_ty : Term := pure{
+def sorted_in_AL_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
     AllLeR i lo pivot p → Le (add lo i) (len p) →
     AllLeR i lo pivot (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
-def sorted_in_AG : Term := pure{
+def sorted_in_AG : Term := prog{
   λ (i : Nat). λ (g : Nat). λ (lo : Nat). λ (pivot : Nat). λ (p : List Nat). λ (f' : Nat).
     λ (pAG : AllGtR g (S (add i lo)) pivot p).
     λ (br : Le (add (S (add lo i)) g) (len (sortRangeL f' lo i p))).
@@ -3433,26 +3433,26 @@ def sorted_in_AG : Term := pure{
               (λ (m : Nat). λ (hm : Le (S m) g).
                 nth_sortRangeL_ge f' (add m (S (add i lo))) lo i p (gap_ge_bound m i lo))
               pAG))) }
-def sorted_in_AG_ty : Term := pure{
+def sorted_in_AG_ty : Term := prog{
   Π (i : Nat) → Π (g : Nat) → Π (lo : Nat) → Π (pivot : Nat) → Π (p : List Nat) → Π (f' : Nat) →
     AllGtR g (S (add i lo)) pivot p → Le (add (S (add lo i)) g) (len (sortRangeL f' lo i p)) →
     AllGtR g (S (add i lo)) pivot (sortRangeL f' (S (add lo i)) g (sortRangeL f' lo i p)) }
 
 -- i+g = cnt-1 for the top partition (partScanSizeL + add_zero); reused by the size
 -- transport and both fuel-sufficiency derivations in sorted_sortRangeL.
-def part_size : Term := pure{
+def part_size : Term := prog{
   λ (lo : Nat). λ (cnt'' : Nat). λ (l : List Nat).
     id_trans Nat
       (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l))
       (S (add cnt'' Z)) (S cnt'')
       (partScanSizeL (nth lo l) lo (S cnt'') Z Z l)
       (id_congr Nat Nat (λ (n : Nat). S n) (add cnt'' Z) cnt'' (add_zero cnt'')) }
-def part_size_ty : Term := pure{
+def part_size_ty : Term := prog{
   Π (lo : Nat) → Π (cnt'' : Nat) → Π (l : List Nat) →
     Id Nat (add (partIdxRangeL lo (S (S cnt'')) l) (partGapRangeL lo (S (S cnt'')) l)) (S cnt'') }
 
 
-def sorted_sortRangeL : Term := pure{
+def sorted_sortRangeL : Term := prog{
   λ (fuel : Nat).
     elim fuel return (λ (fz : Nat). Π (lo : Nat) → Π (cnt : Nat) → Π (l : List Nat) →
         Le cnt fz → Le (add lo cnt) (len l) → SortedR cnt lo (sortRangeL fz lo cnt l)) {
@@ -3526,19 +3526,19 @@ def sorted_sortRangeL : Term := pure{
     never sliding a range. Lomuto's swap-based scan is an ARRAY algorithm, and the
     naturalness-first rule (the north star's) says the program stays natural. -/
 
-def Ub : Term := pure{
+def Ub : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat). Type) {
       Nil => Unit,
       Cons (h) (t) ih => Σ (hh : Le h p) → ih } }
 
-def Lb : Term := pure{
+def Lb : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat). Type) {
       Nil => Unit,
       Cons (h) (t) ih => Σ (hh : Le p h) → ih } }
 
-def insertL : Term := pure{
+def insertL : Term := prog{
   λ (k : Nat).
     elim k return (λ (kz : Nat). Nat → List Nat → List Nat) {
       Z => λ (x : Nat). λ (l : List Nat). Cons x l,
@@ -3551,11 +3551,11 @@ def insertL : Term := pure{
     this at `Le`-shaped `P` over `Nat`; a back-less body needs the unrestricted form,
     because every certificate it returns is stated over an exit snapshot it only
     knows PROPOSITIONALLY (the callee's evidence), never definitionally. -/
-def list_rw : Term := pure{
+def list_rw : Term := prog{
   λ (P : List Nat → Type). λ (x : List Nat). λ (y : List Nat).
     λ (h : Id (List Nat) x y). λ (px : P x).
       j (List Nat) x (λ (y2 : List Nat). λ (hh : Id (List Nat) x y2). P y2) px y h }
-def list_rw_ty : Term := pure{
+def list_rw_ty : Term := prog{
   Π (P : List Nat → Type) → Π (x : List Nat) → Π (y : List Nat) →
     Id (List Nat) x y → P x → P y }
 
@@ -3574,46 +3574,46 @@ def list_rw_ty : Term := pure{
     (Cons h t)` but the λ domain is written as the UNFOLDED Σ, because the Σ-elim
     sugar reads `A` and `λx. B` off the motive's binder type syntactically. -/
 
-def sorted_head : Term := pure{
+def sorted_head : Term := prog{
   λ (h : Nat). λ (t : List Nat). λ (s : Σ (hb : Bound h t) → Sorted t).
     elim s return (λ (q : Σ (hb : Bound h t) → Sorted t). Bound h t) {
       Pair (x) (y) => x } }
-def sorted_head_ty : Term := pure{
+def sorted_head_ty : Term := prog{
   Π (h : Nat) → Π (t : List Nat) → Sorted (Cons h t) → Bound h t }
 
-def sorted_tail : Term := pure{
+def sorted_tail : Term := prog{
   λ (h : Nat). λ (t : List Nat). λ (s : Σ (hb : Bound h t) → Sorted t).
     elim s return (λ (q : Σ (hb : Bound h t) → Sorted t). Sorted t) {
       Pair (x) (y) => y } }
-def sorted_tail_ty : Term := pure{
+def sorted_tail_ty : Term := prog{
   Π (h : Nat) → Π (t : List Nat) → Sorted (Cons h t) → Sorted t }
 
-def ub_head : Term := pure{
+def ub_head : Term := prog{
   λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le h p) → Ub p t).
     elim u return (λ (q : Σ (hu : Le h p) → Ub p t). Le h p) {
       Pair (x) (y) => x } }
-def ub_head_ty : Term := pure{
+def ub_head_ty : Term := prog{
   Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Ub p (Cons h t) → Le h p }
 
-def ub_tail : Term := pure{
+def ub_tail : Term := prog{
   λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le h p) → Ub p t).
     elim u return (λ (q : Σ (hu : Le h p) → Ub p t). Ub p t) {
       Pair (x) (y) => y } }
-def ub_tail_ty : Term := pure{
+def ub_tail_ty : Term := prog{
   Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Ub p (Cons h t) → Ub p t }
 
 /-- `Lb p l ⟹ Bound p l`: a lower bound on EVERY element is in particular a bound on
     the HEAD, which is all `Sorted (Cons p b)` asks of the pivot. The two predicates
     agree definitionally at `Nil` (both `⊤`) and differ at `Cons` only by how much
     they say, so this is a `listRec` whose `Cons` arm is a first projection. -/
-def lb_bound : Term := pure{
+def lb_bound : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat). Lb p lz → Bound p lz) {
       Nil => λ (hn : Unit). hn,
       Cons (h) (t) ih => λ (hl : Σ (hh : Le p h) → Lb p t).
         elim hl return (λ (q : Σ (hh : Le p h) → Lb p t). Le p h) {
           Pair (x) (y) => x } } }
-def lb_bound_ty : Term := pure{
+def lb_bound_ty : Term := prog{
   Π (p : Nat) → Π (l : List Nat) → Lb p l → Bound p l }
 
 /-- Head-bound transport across the splice: if `h` bounds the head of `t`, and `h ≤
@@ -3623,13 +3623,13 @@ def lb_bound_ty : Term := pure{
     unchanged by the append (so the bound is the first hypothesis, verbatim). No IH is
     consumed — `Bound` looks exactly one cell deep, so this recursion is a case
     analysis and nothing more. -/
-def bound_append : Term := pure{
+def bound_append : Term := prog{
   λ (h : Nat). λ (p : Nat). λ (t : List Nat). λ (b : List Nat).
     elim t return (λ (tz : List Nat).
         Bound h tz → Le h p → Bound h (append tz (Cons p b))) {
       Nil => λ (hb : Unit). λ (hp : Le h p). hp,
       Cons (h2) (t2) ih => λ (hb : Le h h2). λ (hp : Le h p). hb } }
-def bound_append_ty : Term := pure{
+def bound_append_ty : Term := prog{
   Π (h : Nat) → Π (p : Nat) → Π (t : List Nat) → Π (b : List Nat) →
     Bound h t → Le h p → Bound h (append t (Cons p b)) }
 
@@ -3654,7 +3654,7 @@ def bound_append_ty : Term := pure{
     definitional — `append (Cons h t) (Cons p b)` whnf's to `Cons h (append t (Cons p
     b))`, so `Sorted` unfolds straight onto the pair — which is why no `list_rw`
     transport appears anywhere in this proof. -/
-def sorted_append_pivot : Term := pure{
+def sorted_append_pivot : Term := prog{
   λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
     λ (sa : Sorted a). λ (ua : Ub p a). λ (sb : Sorted b). λ (lb : Lb p b).
       elim a return (λ (az : List Nat).
@@ -3664,7 +3664,7 @@ def sorted_append_pivot : Term := pure{
           Pair(bound_append h p t b (sorted_head h t sc) (ub_head p h t uc),
                ih (sorted_tail h t sc) (ub_tail p h t uc))
       } sa ua }
-def sorted_append_pivot_ty : Term := pure{
+def sorted_append_pivot_ty : Term := prog{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     Sorted a → Ub p a → Sorted b → Lb p b → Sorted (append a (Cons p b)) }
 
@@ -3687,7 +3687,7 @@ def sorted_append_pivot_ty : Term := pure{
 
 /-- Head onto the LEFT part. `add (S u) w` is definitionally `S (add u w)` (`add`
     recurses on its first argument), so the `True` arm is one `id_congr`. -/
-def count_cons_l : Term := pure{
+def count_cons_l : Term := prog{
   λ (n : Nat). λ (x : Nat). λ (a : List Nat). λ (b : List Nat). λ (c : List Nat).
     λ (h : Id Nat (add (count n a) (count n b)) (count n c)).
       elim (eqb n x) return (λ (bv : Bool).
@@ -3696,7 +3696,7 @@ def count_cons_l : Term := pure{
         True => id_congr Nat Nat (λ (r : Nat). S r)
                   (add (count n a) (count n b)) (count n c) h,
         False => h } }
-def count_cons_l_ty : Term := pure{
+def count_cons_l_ty : Term := prog{
   Π (n : Nat) → Π (x : Nat) → Π (a : List Nat) → Π (b : List Nat) → Π (c : List Nat) →
     Id Nat (add (count n a) (count n b)) (count n c) →
     Id Nat (add (count n (Cons x a)) (count n b)) (count n (Cons x c)) }
@@ -3704,7 +3704,7 @@ def count_cons_l_ty : Term := pure{
 /-- Head onto the RIGHT part. Here the successor lands under `add`'s SECOND argument,
     which is where the asymmetry of a first-argument-recursive `add` shows up: the
     `True` arm needs `add_succ` before the `id_congr`. -/
-def count_cons_r : Term := pure{
+def count_cons_r : Term := prog{
   λ (n : Nat). λ (x : Nat). λ (a : List Nat). λ (b : List Nat). λ (c : List Nat).
     λ (h : Id Nat (add (count n a) (count n b)) (count n c)).
       elim (eqb n x) return (λ (bv : Bool).
@@ -3716,7 +3716,7 @@ def count_cons_r : Term := pure{
                   (id_congr Nat Nat (λ (r : Nat). S r)
                     (add (count n a) (count n b)) (count n c) h),
         False => h } }
-def count_cons_r_ty : Term := pure{
+def count_cons_r_ty : Term := prog{
   Π (n : Nat) → Π (x : Nat) → Π (a : List Nat) → Π (b : List Nat) → Π (c : List Nat) →
     Id Nat (add (count n a) (count n b)) (count n c) →
     Id Nat (add (count n a) (count n (Cons x b))) (count n (Cons x c)) }
@@ -3739,24 +3739,24 @@ def count_cons_r_ty : Term := pure{
     only to be crossed. -/
 
 /-- The two `Lb` projections, mirroring `ub_head`/`ub_tail`. -/
-def lb_head : Term := pure{
+def lb_head : Term := prog{
   λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le p h) → Lb p t).
     elim u return (λ (q : Σ (hu : Le p h) → Lb p t). Le p h) {
       Pair (x) (y) => x } }
-def lb_head_ty : Term := pure{
+def lb_head_ty : Term := prog{
   Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Lb p (Cons h t) → Le p h }
 
-def lb_tail : Term := pure{
+def lb_tail : Term := prog{
   λ (p : Nat). λ (h : Nat). λ (t : List Nat). λ (u : Σ (hu : Le p h) → Lb p t).
     elim u return (λ (q : Σ (hu : Le p h) → Lb p t). Lb p t) {
       Pair (x) (y) => y } }
-def lb_tail_ty : Term := pure{
+def lb_tail_ty : Term := prog{
   Π (p : Nat) → Π (h : Nat) → Π (t : List Nat) → Lb p (Cons h t) → Lb p t }
 
 /-- `Ub p l ⟹ nothing above p occurs in l`. At `Cons h t` the head misses every
     `x > p`, because `h ≤ p < x` makes `eqb x h` False (`eqb_gt_false`), so the count
     steps past the head onto the IH. -/
-def noAbove_of_ub : Term := pure{
+def noAbove_of_ub : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat).
         Ub p lz → Π (x : Nat) → Le (S p) x → Id Nat (count x lz) Z) {
@@ -3766,7 +3766,7 @@ def noAbove_of_ub : Term := pure{
           (count_cons_miss x h t
             (eqb_gt_false h x (le_trans (S h) (S p) x (ub_head p h t u) hx)))
           (ih (ub_tail p h t u) x hx) } }
-def noAbove_of_ub_ty : Term := pure{
+def noAbove_of_ub_ty : Term := prog{
   Π (p : Nat) → Π (l : List Nat) → Ub p l →
     Π (x : Nat) → Le (S p) x → Id Nat (count x l) Z }
 
@@ -3775,7 +3775,7 @@ def noAbove_of_ub_ty : Term := pure{
     h t)` (`eqb_refl`), and `Z = S _` is `znots`. The tail hypothesis is the same
     argument run the other way: `count x (Cons h t) = Z` forces `count x t = Z`,
     trivially when `eqb x h` misses and by the same contradiction when it hits. -/
-def ub_of_noAbove : Term := pure{
+def ub_of_noAbove : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat).
         (Π (x : Nat) → Le (S p) x → Id Nat (count x lz) Z) → Ub p lz) {
@@ -3804,24 +3804,24 @@ def ub_of_noAbove : Term := pure{
                       (id_sym Nat (count x (Cons h t)) (count x t) (count_cons_miss x h t eq))
                       (hn x hx)
                 } Refl)) } }
-def ub_of_noAbove_ty : Term := pure{
+def ub_of_noAbove_ty : Term := prog{
   Π (p : Nat) → Π (l : List Nat) →
     (Π (x : Nat) → Le (S p) x → Id Nat (count x l) Z) → Ub p l }
 
 /-- THE KEYSTONE. An upper bound survives any count-preserving rearrangement — which
     is exactly what a recursive sort hands back about the part it sorted. -/
-def ub_perm : Term := pure{
+def ub_perm : Term := prog{
   λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
     λ (hc : Π (n : Nat) → Id Nat (count n a) (count n b)). λ (hb : Ub p b).
       ub_of_noAbove p a (λ (x : Nat). λ (hx : Le (S p) x).
         id_trans Nat (count x a) (count x b) Z (hc x) (noAbove_of_ub p b hb x hx)) }
-def ub_perm_ty : Term := pure{
+def ub_perm_ty : Term := prog{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     (Π (n : Nat) → Id Nat (count n a) (count n b)) → Ub p b → Ub p a }
 
 /-- The `Lb` mirror: `Lb p l ⟹ nothing strictly below p occurs`. Here the head misses
     every `x < p ≤ h` by `eqb_lt_false`. -/
-def noBelow_of_lb : Term := pure{
+def noBelow_of_lb : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat).
         Lb p lz → Π (x : Nat) → Le (S x) p → Id Nat (count x lz) Z) {
@@ -3831,11 +3831,11 @@ def noBelow_of_lb : Term := pure{
           (count_cons_miss x h t
             (eqb_lt_false x h (le_trans (S x) p h hx (lb_head p h t u))))
           (ih (lb_tail p h t u) x hx) } }
-def noBelow_of_lb_ty : Term := pure{
+def noBelow_of_lb_ty : Term := prog{
   Π (p : Nat) → Π (l : List Nat) → Lb p l →
     Π (x : Nat) → Le (S x) p → Id Nat (count x l) Z }
 
-def lb_of_noBelow : Term := pure{
+def lb_of_noBelow : Term := prog{
   λ (p : Nat). λ (l : List Nat).
     elim l return (λ (lz : List Nat).
         (Π (x : Nat) → Le (S x) p → Id Nat (count x lz) Z) → Lb p lz) {
@@ -3864,16 +3864,16 @@ def lb_of_noBelow : Term := pure{
                       (id_sym Nat (count x (Cons h t)) (count x t) (count_cons_miss x h t eq))
                       (hn x hx)
                 } Refl)) } }
-def lb_of_noBelow_ty : Term := pure{
+def lb_of_noBelow_ty : Term := prog{
   Π (p : Nat) → Π (l : List Nat) →
     (Π (x : Nat) → Le (S x) p → Id Nat (count x l) Z) → Lb p l }
 
-def lb_perm : Term := pure{
+def lb_perm : Term := prog{
   λ (p : Nat). λ (a : List Nat). λ (b : List Nat).
     λ (hc : Π (n : Nat) → Id Nat (count n a) (count n b)). λ (hb : Lb p b).
       lb_of_noBelow p a (λ (x : Nat). λ (hx : Le (S x) p).
         id_trans Nat (count x a) (count x b) Z (hc x) (noBelow_of_lb p b hb x hx)) }
-def lb_perm_ty : Term := pure{
+def lb_perm_ty : Term := prog{
   Π (p : Nat) → Π (a : List Nat) → Π (b : List Nat) →
     (Π (n : Nat) → Id Nat (count n a) (count n b)) → Lb p b → Lb p a }
 
@@ -3892,10 +3892,10 @@ def lb_perm_ty : Term := pure{
     step of the glue would want a transport lemma where the list proof needs none. -/
 
 /-- The empty array. -/
-def anil : Term := pure{ Arr() }
+def anil : Term := prog{ Arr() }
 
 /-- `countA x a` — the multiset counter, `count`'s transfer. -/
-def countA : Term := pure{
+def countA : Term := prog{
   λ (x : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Nat) Z
       (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Nat).
@@ -3903,27 +3903,27 @@ def countA : Term := pure{
       n a }
 
 /-- `BoundA p a` — the head of `a` is ≥ `p`. `Bound`'s transfer. -/
-def BoundA : Term := pure{
+def BoundA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
       (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type). Le p h) n a }
 
 /-- `SortedA a` — the Σ-chain over the spine. `Sorted`'s transfer. -/
-def SortedA : Term := pure{
+def SortedA : Term := prog{
   λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
       (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
         Σ (hb : BoundA h k t) → ih) n a }
 
 /-- `UbA p a` — every element of `a` is ≤ `p`. `Ub`'s transfer. -/
-def UbA : Term := pure{
+def UbA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
       (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
         Σ (hh : Le h p) → ih) n a }
 
 /-- `LbA p a` — every element of `a` is ≥ `p`. `Lb`'s transfer. -/
-def LbA : Term := pure{
+def LbA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Type) Unit
       (λ (k : Nat). λ (h : Nat). λ (t : Array k Nat). λ (ih : Type).
@@ -3931,7 +3931,7 @@ def LbA : Term := pure{
 
 /-- `asingle x` — the one-element array, `[x]`. ¶6's glue is stated over
     `arrCat (asingle p) r`, which is the array spelling of `Cons p b`. -/
-def asingle : Term := pure{ λ (x : Nat). acons Z x Arr() }
+def asingle : Term := prog{ λ (x : Nat). acons Z x Arr() }
 
 /-! ### The glue, and the standing claim it tests
 
@@ -3946,45 +3946,45 @@ def asingle : Term := pure{ λ (x : Nat). acons Z x Arr() }
     so the doc's chosen spelling of the pivot splice needs no lemma to relate it to the
     cons view. -/
 
-def sorted_headA : Term := pure{
+def sorted_headA : Term := prog{
   λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
     λ (s : Σ (hb : BoundA h k t) → SortedA k t).
       elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). BoundA h k t) {
         Pair (x) (y) => x } }
-def sorted_headA_ty : Term := pure{
+def sorted_headA_ty : Term := prog{
   Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
     SortedA (S k) (acons k h t) → BoundA h k t }
 
-def sorted_tailA : Term := pure{
+def sorted_tailA : Term := prog{
   λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
     λ (s : Σ (hb : BoundA h k t) → SortedA k t).
       elim s return (λ (q : Σ (hb : BoundA h k t) → SortedA k t). SortedA k t) {
         Pair (x) (y) => y } }
-def sorted_tailA_ty : Term := pure{
+def sorted_tailA_ty : Term := prog{
   Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
     SortedA (S k) (acons k h t) → SortedA k t }
 
-def ub_headA : Term := pure{
+def ub_headA : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
     λ (u : Σ (hu : Le h p) → UbA p k t).
       elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). Le h p) {
         Pair (x) (y) => x } }
-def ub_headA_ty : Term := pure{
+def ub_headA_ty : Term := prog{
   Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
     UbA p (S k) (acons k h t) → Le h p }
 
-def ub_tailA : Term := pure{
+def ub_tailA : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
     λ (u : Σ (hu : Le h p) → UbA p k t).
       elim u return (λ (q : Σ (hu : Le h p) → UbA p k t). UbA p k t) {
         Pair (x) (y) => y } }
-def ub_tailA_ty : Term := pure{
+def ub_tailA_ty : Term := prog{
   Π (p : Nat) → Π (k : Nat) → Π (h : Nat) → Π (t : Array k Nat) →
     UbA p (S k) (acons k h t) → UbA p k t }
 
 /-- `LbA p a ⟹ BoundA p a`, `lb_bound`'s transfer: a lower bound on every element is in
     particular a bound on the head, which is all `SortedA (acons p b)` asks of the pivot. -/
-def lb_boundA : Term := pure{
+def lb_boundA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). LbA p m b → BoundA p m b)
       (λ (hn : Unit). hn)
@@ -3994,14 +3994,14 @@ def lb_boundA : Term := pure{
             elim hl return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) {
               Pair (x) (y) => x })
       n a }
-def lb_boundA_ty : Term := pure{
+def lb_boundA_ty : Term := prog{
   Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a → BoundA p n a }
 
 /-- `bound_append`'s transfer: the head bound survives the splice. The recursion IS the
     case analysis — at the empty array the new head is the PIVOT, otherwise the head is
     unchanged by the concatenation. No IH is consumed, because `BoundA` looks exactly one
     cell deep. -/
-def bound_arrCat : Term := pure{
+def bound_arrCat : Term := prog{
   λ (h : Nat). λ (p : Nat). λ (k : Nat). λ (t : Array k Nat).
     λ (q : Nat). λ (b : Array q Nat).
       arrRec Nat (λ (m : Nat). λ (tz : Array m Nat).
@@ -4013,7 +4013,7 @@ def bound_arrCat : Term := pure{
               BoundA h (add k2 (S q)) (arrCat k2 (S q) t2 (arrCat 1 q (asingle p) b))).
             λ (hb : Le h h2). λ (hp : Le h p). hb)
         k t }
-def bound_arrCat_ty : Term := pure{
+def bound_arrCat_ty : Term := prog{
   Π (h : Nat) → Π (p : Nat) → Π (k : Nat) → Π (t : Array k Nat) →
     Π (q : Nat) → Π (b : Array q Nat) →
       BoundA h k t → Le h p →
@@ -4023,7 +4023,7 @@ def bound_arrCat_ty : Term := pure{
     nothing else changed. This is ¶6's "textbook quicksort correctness statement, in the
     textbook shape", and the standing check on the whole migration: if this were not the
     near-verbatim restatement, something would be off. -/
-def sorted_arrCat : Term := pure{
+def sorted_arrCat : Term := prog{
   λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
     λ (sa : SortedA m a). λ (ua : UbA p m a). λ (sb : SortedA q b). λ (lb : LbA p q b).
       arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
@@ -4038,7 +4038,7 @@ def sorted_arrCat : Term := pure{
                 Pair(bound_arrCat h p k t q b (sorted_headA k h t sc) (ub_headA p k h t uc),
                      ih (sorted_tailA k h t sc) (ub_tailA p k h t uc)))
         m a sa ua }
-def sorted_arrCat_ty : Term := pure{
+def sorted_arrCat_ty : Term := prog{
   Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
     SortedA m a → UbA p m a → SortedA q b → LbA p q b →
       SortedA (add m (S q)) (arrCat m (S q) a (arrCat 1 q (asingle p) b)) }
@@ -4048,7 +4048,7 @@ def sorted_arrCat_ty : Term := pure{
     (count x b)`, which is the same induction." It is the same induction — the `Cons`
     arm's dependent Bool-elim on `eqb x h` transfers unchanged, because `countA` unfolds
     on an `acons` exactly as `count` unfolds on a `Cons`. -/
-def count_arrCat : Term := pure{
+def count_arrCat : Term := prog{
   λ (x : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
     arrRec Nat (λ (mz : Nat). λ (az : Array mz Nat).
         Id Nat (countA x (add mz q) (arrCat mz q az b))
@@ -4068,7 +4068,7 @@ def count_arrCat : Term := pure{
                       (add (countA x k t) (countA x q b)) ih,
             False => ih })
       m a }
-def count_arrCat_ty : Term := pure{
+def count_arrCat_ty : Term := prog{
   Π (x : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
     Id Nat (countA x (add m q) (arrCat m q a b)) (add (countA x m a) (countA x q b)) }
 
@@ -4079,38 +4079,38 @@ def count_arrCat_ty : Term := pure{
     `Π x. x > p → count x l = Z` and permutation-invariance is a one-line `id_trans`."
     That crossing transfers with the container like everything else. -/
 
-def count_acons_hit : Term := pure{
+def count_acons_hit : Term := prog{
   λ (m : Nat). λ (a : Nat). λ (k : Nat). λ (l : Array k Nat). λ (hq : Id Bool (eqb m a) True).
     j Bool True
       (λ (z : Bool). λ (h : Id Bool True z).
         Id Nat (boolRec (λ (w : Bool). Nat) (S (countA m k l)) (countA m k l) z)
                (S (countA m k l)))
       Refl (eqb m a) (id_sym Bool (eqb m a) True hq) }
-def count_acons_hit_ty : Term := pure{
+def count_acons_hit_ty : Term := prog{
   Π (m : Nat) → Π (a : Nat) → Π (k : Nat) → Π (l : Array k Nat) → Id Bool (eqb m a) True →
     Id Nat (countA m (S k) (acons k a l)) (S (countA m k l)) }
 
-def count_acons_miss : Term := pure{
+def count_acons_miss : Term := prog{
   λ (m : Nat). λ (h : Nat). λ (k : Nat). λ (t : Array k Nat). λ (hq : Id Bool (eqb m h) False).
     j Bool False
       (λ (z : Bool). λ (hh : Id Bool False z).
         Id Nat (boolRec (λ (w : Bool). Nat) (S (countA m k t)) (countA m k t) z)
                (countA m k t))
       Refl (eqb m h) (id_sym Bool (eqb m h) False hq) }
-def count_acons_miss_ty : Term := pure{
+def count_acons_miss_ty : Term := prog{
   Π (m : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t : Array k Nat) → Id Bool (eqb m h) False →
     Id Nat (countA m (S k) (acons k h t)) (countA m k t) }
 
-def lb_headA : Term := pure{
+def lb_headA : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
     λ (u : Σ (hh : Le p h) → LbA p k t).
       elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). Le p h) { Pair (x) (y) => x } }
-def lb_tailA : Term := pure{
+def lb_tailA : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (h : Nat). λ (t : Array k Nat).
     λ (u : Σ (hh : Le p h) → LbA p k t).
       elim u return (λ (q : Σ (hh : Le p h) → LbA p k t). LbA p k t) { Pair (x) (y) => y } }
 
-def noAbove_of_ubA : Term := pure{
+def noAbove_of_ubA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
         UbA p m az → Π (x : Nat) → Le (S p) x → Id Nat (countA x m az) Z)
@@ -4123,11 +4123,11 @@ def noAbove_of_ubA : Term := pure{
                 (eqb_gt_false h x (le_trans (S h) (S p) x (ub_headA p k h t u) hx)))
               (ih (ub_tailA p k h t u) x hx))
       n a }
-def noAbove_of_ubA_ty : Term := pure{
+def noAbove_of_ubA_ty : Term := prog{
   Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → UbA p n a →
     Π (x : Nat) → Le (S p) x → Id Nat (countA x n a) Z }
 
-def ub_of_noAboveA : Term := pure{
+def ub_of_noAboveA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
         (Π (x : Nat) → Le (S p) x → Id Nat (countA x m az) Z) → UbA p m az)
@@ -4161,24 +4161,24 @@ def ub_of_noAboveA : Term := pure{
                           (hn x hx)
                     } Refl)))
       n a }
-def ub_of_noAboveA_ty : Term := pure{
+def ub_of_noAboveA_ty : Term := prog{
   Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
     (Π (x : Nat) → Le (S p) x → Id Nat (countA x n a) Z) → UbA p n a }
 
 /-- THE KEYSTONE, transferred: an upper bound survives any count-preserving
     rearrangement — which is exactly what a recursive sort hands back about the part it
     sorted. -/
-def ub_permA : Term := pure{
+def ub_permA : Term := prog{
   λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
     λ (hc : Π (x : Nat) → Id Nat (countA x m a) (countA x q b)). λ (hb : UbA p q b).
       ub_of_noAboveA p m a (λ (x : Nat). λ (hx : Le (S p) x).
         id_trans Nat (countA x m a) (countA x q b) Z (hc x)
           (noAbove_of_ubA p q b hb x hx)) }
-def ub_permA_ty : Term := pure{
+def ub_permA_ty : Term := prog{
   Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
     (Π (x : Nat) → Id Nat (countA x m a) (countA x q b)) → UbA p q b → UbA p m a }
 
-def noBelow_of_lbA : Term := pure{
+def noBelow_of_lbA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
         LbA p m az → Π (x : Nat) → Le (S x) p → Id Nat (countA x m az) Z)
@@ -4191,11 +4191,11 @@ def noBelow_of_lbA : Term := pure{
                 (eqb_lt_false x h (le_trans (S x) p h hx (lb_headA p k h t u))))
               (ih (lb_tailA p k h t u) x hx))
       n a }
-def noBelow_of_lbA_ty : Term := pure{
+def noBelow_of_lbA_ty : Term := prog{
   Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → LbA p n a →
     Π (x : Nat) → Le (S x) p → Id Nat (countA x n a) Z }
 
-def lb_of_noBelowA : Term := pure{
+def lb_of_noBelowA : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (az : Array m Nat).
         (Π (x : Nat) → Le (S x) p → Id Nat (countA x m az) Z) → LbA p m az)
@@ -4229,24 +4229,24 @@ def lb_of_noBelowA : Term := pure{
                           (hn x hx)
                     } Refl)))
       n a }
-def lb_of_noBelowA_ty : Term := pure{
+def lb_of_noBelowA_ty : Term := prog{
   Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
     (Π (x : Nat) → Le (S x) p → Id Nat (countA x n a) Z) → LbA p n a }
 
-def lb_permA : Term := pure{
+def lb_permA : Term := prog{
   λ (p : Nat). λ (m : Nat). λ (a : Array m Nat). λ (q : Nat). λ (b : Array q Nat).
     λ (hc : Π (x : Nat) → Id Nat (countA x m a) (countA x q b)). λ (hb : LbA p q b).
       lb_of_noBelowA p m a (λ (x : Nat). λ (hx : Le (S x) p).
         id_trans Nat (countA x m a) (countA x q b) Z (hc x)
           (noBelow_of_lbA p q b hb x hx)) }
-def lb_permA_ty : Term := pure{
+def lb_permA_ty : Term := prog{
   Π (p : Nat) → Π (m : Nat) → Π (a : Array m Nat) → Π (q : Nat) → Π (b : Array q Nat) →
     (Π (x : Nat) → Id Nat (countA x m a) (countA x q b)) → LbA p q b → LbA p m a }
 
 /-- Two-element count commutation over arrays — `cons2_comm`'s transfer at the fixed
     width the miniature sort needs. Double case split on `eqb`, all four arms `Refl`;
     the `eqb m a = False` arm needs no inner split because both sides already agree. -/
-def count_swap2 : Term := pure{
+def count_swap2 : Term := prog{
   λ (m : Nat). λ (a : Nat). λ (b : Nat).
     elim (eqb m a) generalizing (Id Nat (countA m 2 Arr(b, a)) (countA m 2 Arr(a, b))) {
       True => elim (eqb m b) generalizing
@@ -4254,7 +4254,7 @@ def count_swap2 : Term := pure{
                 (S (boolRec (λ (w : Bool). Nat) (S Z) Z (eqb m b)))) {
         True => Refl, False => Refl },
       False => Refl } }
-def count_swap2_ty : Term := pure{
+def count_swap2_ty : Term := prog{
   Π (m : Nat) → Π (a : Nat) → Π (b : Nat) →
     Id Nat (countA m 2 Arr(b, a)) (countA m 2 Arr(a, b)) }
 
@@ -4290,21 +4290,21 @@ def count_swap2_ty : Term := pure{
 /-- Transport along a `Nat` identity — `list_rw`'s counterpart, needed to move the
     glue from the pivot VALUE the partition returned to the element sitting in the
     carved pivot slot. -/
-def nat_rw : Term := pure{
+def nat_rw : Term := prog{
   λ (P : Nat → Type). λ (x : Nat). λ (y : Nat). λ (h : Id Nat x y). λ (px : P x).
     j Nat x (λ (y2 : Nat). λ (hh : Id Nat x y2). P y2) px y h }
-def nat_rw_ty : Term := pure{
+def nat_rw_ty : Term := prog{
   Π (P : Nat → Type) → Π (x : Nat) → Π (y : Nat) → Id Nat x y → P x → P y }
 
 /-- `Le n Z ⟹ n = Z`. The array quicksort tests emptiness with `leb 1 n` rather than
     by matching `n`, because matching refines the length to `S m` and T2's rigid-extent
     restriction then blocks the three-way carve at the returned index. So the False
     branch holds `Le n Z` and has to turn it into the equation the nil lemmas want. -/
-def le_zero_eq : Term := pure{
+def le_zero_eq : Term := prog{
   λ (n : Nat). elim n return (λ (z : Nat). Le z Z → Id Nat z Z) {
     Z => λ (h : Le Z Z). Refl,
     S (n2) ih => λ (h : Bot). botElim (Id Nat (S n2) Z) h } }
-def le_zero_eq_ty : Term := pure{ Π (n : Nat) → Le n Z → Id Nat n Z }
+def le_zero_eq_ty : Term := prog{ Π (n : Nat) → Le n Z → Id Nat n Z }
 
 /-- `SortedA` of an array whose LENGTH is zero.
 
@@ -4313,7 +4313,7 @@ def le_zero_eq_ty : Term := pure{ Π (n : Nat) → Le n Z → Id Nat n Z }
     length-zero payload does not compute to `Unit` and the sort's base case cannot be
     discharged by the trivial term. The induction is on the ARRAY with the equation
     carried, and the cons case is dead. -/
-def sortedA_nil : Term := pure{
+def sortedA_nil : Term := prog{
   λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Id Nat m Z → SortedA m b)
       (λ (h : Id Nat Z Z). unit)
@@ -4322,11 +4322,11 @@ def sortedA_nil : Term := pure{
           λ (h : Id Nat (S k) Z).
             botElim (SortedA (S k) (acons k hh t)) (znots k (id_sym Nat (S k) Z h)))
       n a }
-def sortedA_nil_ty : Term := pure{
+def sortedA_nil_ty : Term := prog{
   Π (n : Nat) → Π (a : Array n Nat) → Id Nat n Z → SortedA n a }
 
 /-- `SplitA p k a` — the first `k` elements are ≤ `p`, the rest are ≥ `p`. -/
-def SplitA : Term := pure{
+def SplitA : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
       (λ (kz : Nat). Unit)
@@ -4341,7 +4341,7 @@ def SplitA : Term := pure{
     rest are ≥ `pv`. The pivot's presence at the split point is what the sort needs and
     `SplitA` does not give: without it the element in the carved pivot slot is merely
     ≥ `p`, and `LbA (that element)` of the right half does not follow. -/
-def PartA : Term := pure{
+def PartA : Term := prog{
   λ (pv : Nat). λ (k : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). Π (kz : Nat) → Type)
       (λ (kz : Nat). Unit)
@@ -4354,7 +4354,7 @@ def PartA : Term := pure{
 
 /-- `SplitA` of a length-zero array, at any skip count — `sortedA_nil`'s twin, and
     needed for the same reason. -/
-def splitA_nil : Term := pure{
+def splitA_nil : Term := prog{
   λ (p : Nat). λ (kz : Nat). λ (n : Nat). λ (a : Array n Nat). λ (hz : Id Nat n Z).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat).
         Π (k2 : Nat) → Id Nat m Z → SplitA p k2 m b)
@@ -4364,7 +4364,7 @@ def splitA_nil : Term := pure{
           λ (k2 : Nat). λ (h : Id Nat (S m) Z).
             botElim (SplitA p k2 (S m) (acons m hh t)) (znots m (id_sym Nat (S m) Z h)))
       n a kz hz }
-def splitA_nil_ty : Term := pure{
+def splitA_nil_ty : Term := prog{
   Π (p : Nat) → Π (kz : Nat) → Π (n : Nat) → Π (a : Array n Nat) →
     Id Nat n Z → SplitA p kz n a }
 
@@ -4382,7 +4382,7 @@ def splitA_nil_ty : Term := pure{
 
 /-- A zero skip count is a lower bound on the whole array — the crossing from the
     partition layer back into ¶1.3's transferred library. -/
-def splitA0_lb : Term := pure{
+def splitA0_lb : Term := prog{
   λ (p : Nat). λ (n : Nat). λ (a : Array n Nat).
     arrRec Nat (λ (m : Nat). λ (b : Array m Nat). SplitA p Z m b → LbA p m b)
       (λ (h : Unit). unit)
@@ -4392,14 +4392,14 @@ def splitA0_lb : Term := pure{
             elim s return (λ (qz : Σ (h2 : Le p hh) → SplitA p Z k t). LbA p (S k) (acons k hh t)) {
               Pair (u) (v) => Pair(u, ih v) })
       n a }
-def splitA0_lb_ty : Term := pure{
+def splitA0_lb_ty : Term := prog{
   Π (p : Nat) → Π (n : Nat) → Π (a : Array n Nat) → SplitA p Z n a → LbA p n a }
 
 /-- Split a `SplitA` whose skip count runs ONE PAST the left part: the left part is
     wholly bounded, and what is left is a `SplitA` at skip 1 over the right part. This
     is the shape the swap branch needs — it reads off both "the left part is all ≤ p"
     and "the element about to be swapped out is ≤ p" in one step. -/
-def splitA_cat_e1 : Term := pure{
+def splitA_cat_e1 : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
         SplitA p (S kz) (add kz mm) (arrCat kz mm lz w) →
@@ -4417,14 +4417,14 @@ def splitA_cat_e1 : Term := pure{
                     Σ (hu : UbA p (S k2) (acons k2 hh t)) → SplitA p (S Z) mm w) {
                   Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
       k l }
-def splitA_cat_e1_ty : Term := pure{
+def splitA_cat_e1_ty : Term := prog{
   Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     SplitA p (S k) (add k mm) (arrCat k mm l w) →
       Σ (hu : UbA p k l) → SplitA p (S Z) mm w }
 
 /-- The converse at skip exactly `k`: a bounded left part in front of a `SplitA` at
     skip zero is a `SplitA` at skip `k`. -/
-def splitA_cat_i0 : Term := pure{
+def splitA_cat_i0 : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
         UbA p kz lz → SplitA p Z mm w → SplitA p kz (add kz mm) (arrCat kz mm lz w))
@@ -4437,13 +4437,13 @@ def splitA_cat_i0 : Term := pure{
                 SplitA p (S k2) (add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
               Pair (a1) (b1) => Pair(a1, ih b1 h) })
       k l }
-def splitA_cat_i0_ty : Term := pure{
+def splitA_cat_i0_ty : Term := prog{
   Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     UbA p k l → SplitA p Z mm w → SplitA p k (add k mm) (arrCat k mm l w) }
 
 /-- `PartA`'s introduction, the partition's last step: a bounded left part in front of
     a `PartA` at skip zero (which is "the head IS the pivot, the tail is ≥ it"). -/
-def partA_cat_i0 : Term := pure{
+def partA_cat_i0 : Term := prog{
   λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
         UbA pv kz lz → PartA pv Z mm w → PartA pv kz (add kz mm) (arrCat kz mm lz w))
@@ -4456,7 +4456,7 @@ def partA_cat_i0 : Term := pure{
                 PartA pv (S k2) (add (S k2) mm) (arrCat (S k2) mm (acons k2 hh t) w)) {
               Pair (a1) (b1) => Pair(a1, ih b1 h) })
       k l }
-def partA_cat_i0_ty : Term := pure{
+def partA_cat_i0_ty : Term := prog{
   Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     UbA pv k l → PartA pv Z mm w → PartA pv k (add k mm) (arrCat k mm l w) }
 
@@ -4465,7 +4465,7 @@ def partA_cat_i0_ty : Term := pure{
     slot and the right segment — which unfolds, with no further lemma, to exactly
     `Id Nat (that element) pv` and `LbA pv (right segment)`. Those three facts are
     `sorted_arrCat`'s four hypotheses minus the two the recursive calls supply. -/
-def partA_cat_e0 : Term := pure{
+def partA_cat_e0 : Term := prog{
   λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     arrRec Nat (λ (kz : Nat). λ (lz : Array kz Nat).
         PartA pv kz (add kz mm) (arrCat kz mm lz w) →
@@ -4483,7 +4483,7 @@ def partA_cat_e0 : Term := pure{
                     Σ (hu : UbA pv (S k2) (acons k2 hh t)) → PartA pv Z mm w) {
                   Pair (a1) (b1) => Pair(Pair(u, a1), b1) } })
       k l }
-def partA_cat_e0_ty : Term := pure{
+def partA_cat_e0_ty : Term := prog{
   Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     PartA pv k (add k mm) (arrCat k mm l w) →
       Σ (hu : UbA pv k l) → PartA pv Z mm w }
@@ -4496,84 +4496,84 @@ def partA_cat_e0_ty : Term := pure{
     crossing into its two conclusions moves that cost into the pure layer, where writing
     the types is free, and keeps the programs readable. -/
 
-def splitA_cat_ub : Term := pure{
+def splitA_cat_ub : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     λ (s : SplitA p (S k) (add k mm) (arrCat k mm l w)).
       elim (splitA_cat_e1 p k mm l w s)
         return (λ (qz : Σ (hu : UbA p k l) → SplitA p (S Z) mm w). UbA p k l) {
           Pair (u) (v) => u } }
-def splitA_cat_ub_ty : Term := pure{
+def splitA_cat_ub_ty : Term := prog{
   Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     SplitA p (S k) (add k mm) (arrCat k mm l w) → UbA p k l }
 
-def splitA_cat_rest : Term := pure{
+def splitA_cat_rest : Term := prog{
   λ (p : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     λ (s : SplitA p (S k) (add k mm) (arrCat k mm l w)).
       elim (splitA_cat_e1 p k mm l w s)
         return (λ (qz : Σ (hu : UbA p k l) → SplitA p (S Z) mm w). SplitA p (S Z) mm w) {
           Pair (u) (v) => v } }
-def splitA_cat_rest_ty : Term := pure{
+def splitA_cat_rest_ty : Term := prog{
   Π (p : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     SplitA p (S k) (add k mm) (arrCat k mm l w) → SplitA p (S Z) mm w }
 
 /-- A skip-1 `SplitA` over a cons: its head is bounded, and its tail is a skip-0 one.
     Both are definitional unfoldings; naming them keeps the swap branch flat. -/
-def splitA1_head : Term := pure{
+def splitA1_head : Term := prog{
   λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
     λ (s : Σ (hh : Le yv p) → SplitA p Z r g).
       elim s return (λ (qz : Σ (hh : Le yv p) → SplitA p Z r g). Le yv p) {
         Pair (u) (v) => u } }
-def splitA1_head_ty : Term := pure{
+def splitA1_head_ty : Term := prog{
   Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
     SplitA p (S Z) (S r) (acons r yv g) → Le yv p }
 
-def splitA1_tail : Term := pure{
+def splitA1_tail : Term := prog{
   λ (p : Nat). λ (r : Nat). λ (g : Array r Nat). λ (yv : Nat).
     λ (s : Σ (hh : Le yv p) → SplitA p Z r g).
       elim s return (λ (qz : Σ (hh : Le yv p) → SplitA p Z r g). SplitA p Z r g) {
         Pair (u) (v) => v } }
-def splitA1_tail_ty : Term := pure{
+def splitA1_tail_ty : Term := prog{
   Π (p : Nat) → Π (r : Nat) → Π (g : Array r Nat) → Π (yv : Nat) →
     SplitA p (S Z) (S r) (acons r yv g) → SplitA p Z r g }
 
-def partA_cat_ub : Term := pure{
+def partA_cat_ub : Term := prog{
   λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     λ (s : PartA pv k (add k mm) (arrCat k mm l w)).
       elim (partA_cat_e0 pv k mm l w s)
         return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). UbA pv k l) {
           Pair (u) (v) => u } }
-def partA_cat_ub_ty : Term := pure{
+def partA_cat_ub_ty : Term := prog{
   Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     PartA pv k (add k mm) (arrCat k mm l w) → UbA pv k l }
 
-def partA_cat_rest : Term := pure{
+def partA_cat_rest : Term := prog{
   λ (pv : Nat). λ (k : Nat). λ (mm : Nat). λ (l : Array k Nat). λ (w : Array mm Nat).
     λ (s : PartA pv k (add k mm) (arrCat k mm l w)).
       elim (partA_cat_e0 pv k mm l w s)
         return (λ (qz : Σ (hu : UbA pv k l) → PartA pv Z mm w). PartA pv Z mm w) {
           Pair (u) (v) => v } }
-def partA_cat_rest_ty : Term := pure{
+def partA_cat_rest_ty : Term := prog{
   Π (pv : Nat) → Π (k : Nat) → Π (mm : Nat) → Π (l : Array k Nat) → Π (w : Array mm Nat) →
     PartA pv k (add k mm) (arrCat k mm l w) → PartA pv Z mm w }
 
 /-- The pivot slot, read off a skip-0 `PartA`: the element there IS the pivot, and
     everything after it is bounded below by the pivot. These two are `sorted_arrCat`'s
     remaining hypotheses, and the reason `PartA` records the pivot's identity at all. -/
-def partA0_eq : Term := pure{
+def partA0_eq : Term := prog{
   λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
     λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
       elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). Id Nat ev pv) {
         Pair (u) (v) => u } }
-def partA0_eq_ty : Term := pure{
+def partA0_eq_ty : Term := prog{
   Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
     PartA pv Z (S jj) (acons jj ev g) → Id Nat ev pv }
 
-def partA0_lb : Term := pure{
+def partA0_lb : Term := prog{
   λ (pv : Nat). λ (jj : Nat). λ (g : Array jj Nat). λ (ev : Nat).
     λ (s : Σ (he : Id Nat ev pv) → LbA pv jj g).
       elim s return (λ (qz : Σ (he : Id Nat ev pv) → LbA pv jj g). LbA pv jj g) {
         Pair (u) (v) => v } }
-def partA0_lb_ty : Term := pure{
+def partA0_lb_ty : Term := prog{
   Π (pv : Nat) → Π (jj : Nat) → Π (g : Array jj Nat) → Π (ev : Nat) →
     PartA pv Z (S jj) (acons jj ev g) → LbA pv jj g }
 
@@ -4587,16 +4587,16 @@ def partA0_lb_ty : Term := pure{
 
 /-- `countA`'s own step function, named so a congruence can be stated over it: the
     count of a cons is a `bump` of the count of its tail. -/
-def bumpN : Term := pure{
+def bumpN : Term := prog{
   λ (b : Bool). λ (c : Nat). elim b return (λ (w : Bool). Nat) { True => S c, False => c } }
 
 /-- Congruence for `countA` under a cons — `count_cons_congr`'s array counterpart. -/
-def count_acons_congr : Term := pure{
+def count_acons_congr : Term := prog{
   λ (q : Nat). λ (h : Nat). λ (k : Nat). λ (t1 : Array k Nat). λ (t2 : Array k Nat).
     λ (hc : Id Nat (countA q k t1) (countA q k t2)).
       id_congr Nat Nat (λ (c : Nat). bumpN (eqb q h) c)
         (countA q k t1) (countA q k t2) hc }
-def count_acons_congr_ty : Term := pure{
+def count_acons_congr_ty : Term := prog{
   Π (q : Nat) → Π (h : Nat) → Π (k : Nat) → Π (t1 : Array k Nat) → Π (t2 : Array k Nat) →
     Id Nat (countA q k t1) (countA q k t2) →
       Id Nat (countA q (S k) (acons k h t1)) (countA q (S k) (acons k h t2)) }
@@ -4605,7 +4605,7 @@ def count_acons_congr_ty : Term := pure{
     exchanged elements is being counted does not matter. Four arms; the two mixed ones
     are `add_succ` and its symmetry, and the two matching ones are `Refl` — `count_swap2`
     at width two had all four `Refl` because both counts were concrete. -/
-def bump_comm : Term := pure{
+def bump_comm : Term := prog{
   λ (b1 : Bool). λ (b2 : Bool). λ (cl : Nat). λ (cg : Nat).
     elim b1 return (λ (w : Bool).
         Id Nat (bumpN b2 (add cl (bumpN w cg))) (bumpN w (add cl (bumpN b2 cg)))) {
@@ -4619,14 +4619,14 @@ def bump_comm : Term := pure{
             Id Nat (bumpN w2 (add cl cg)) (add cl (bumpN w2 cg))) {
           True => id_sym Nat (add cl (S cg)) (S (add cl cg)) (add_succ cl cg),
           False => Refl } } }
-def bump_comm_ty : Term := pure{
+def bump_comm_ty : Term := prog{
   Π (b1 : Bool) → Π (b2 : Bool) → Π (cl : Nat) → Π (cg : Nat) →
     Id Nat (bumpN b2 (add cl (bumpN b1 cg))) (bumpN b1 (add cl (bumpN b2 cg))) }
 
 /-- **The swap preserves every count**, stated over exactly the spine the partition
     produces: head, left segment, the swapped cell, right segment. Two `count_arrCat`
     rewrites bracket `bump_comm`. -/
-def count_swapA : Term := pure{
+def count_swapA : Term := prog{
   λ (q : Nat). λ (x : Nat). λ (y : Nat). λ (k : Nat). λ (l : Array k Nat).
   λ (r : Nat). λ (g : Array r Nat).
     id_trans Nat
@@ -4649,7 +4649,7 @@ def count_swapA : Term := pure{
              (countA q (add k (S r)) (arrCat k (S r) l (acons r y g)))
              (add (countA q k l) (countA q (S r) (acons r y g)))
              (count_arrCat q k l (S r) (acons r y g))))) }
-def count_swapA_ty : Term := pure{
+def count_swapA_ty : Term := prog{
   Π (q : Nat) → Π (x : Nat) → Π (y : Nat) → Π (k : Nat) → Π (l : Array k Nat) →
   Π (r : Nat) → Π (g : Array r Nat) →
     Id Nat (countA q (S (add k (S r))) (acons (add k (S r)) y (arrCat k (S r) l (acons r x g))))
