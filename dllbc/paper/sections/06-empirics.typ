@@ -18,38 +18,57 @@ statement of it must first close.
 == The differential harness
 
 The core instrument is a differential between the symbolic checker and concrete
-execution, in two generations. The first (`S8Diff`) tests the callee side. Its
-property: _if `checkFn` accepts a declaration, then every small concrete run of
-its body completes — is not stuck — and passes the concrete audit._ This is the
-simulation theorem — the symbolic checker over-approximates concrete execution —
-in the form of a bounded, exhaustively-checked `native_decide` proposition over a
-generated enumeration of bodies. Across three telescopes it generates 136
-bodies, of which `checkFn` accepts 75, exercised by 238 concrete runs; all
-complete and audit, with no counterexample. Any accepted body with a stuck or
-audit-failing instantiation would fail the `native_decide` and stand as a
-soundness counterexample to be minimized and reported.
+execution, in two generations. Both are _program_-shaped at this pin: a subject is
+a `prog{ … }` let-chain with its callees declared inside it, accepted or rejected
+by `progOk`, with no declaration wrapper and no call table — which is a change in
+the harness's plumbing rather than in what it measures, since a declaration was
+always the thing being checked and is now a binding.
 
-The second generation (`S9Diff`) upgrades to whole-program simulation, so that it
-catches wrong-_value_ refinements and not merely stuckness. Its property: for
-every `checkFn`-accepted caller, the caller's _concrete_ final environment (run
-in executing mode, where calls run the callee's actual body) is a
-$sigma$-_instance_ of some accepted _symbolic_ path's final environment (run in
-checking mode, where calls use the signature rule). The instance relation is
-first-order matching — a symbolic $sigma$ matches any concrete value
-_consistently_ (the same $sigma$ maps to one value throughout), constructors
-match structurally, loans and borrows up to canonical renumbering — which is the
-simulation relation proper.
+The first generation tests the callee side. Its property: _if the checker accepts
+a body, then every small concrete run of it completes — is not stuck — and passes
+the concrete audit._ This is the simulation theorem — the symbolic checker
+over-approximates concrete execution — in the form of a bounded,
+exhaustively-checked `native_decide` proposition over a generated enumeration of
+bodies. Across three telescopes it generates 136 bodies, of which the checker
+accepts 75, exercised by 238 concrete runs; all complete and audit, with no
+counterexample. The per-telescope figures are 91/47/141 for
+`(v : &mut List Nat)`, 32/15/45 for `(n : Nat)`, and 13/13/52 for
+`(b : &mut Nat, c : Bool)`. All six numbers are `native_decide` assertions in the
+suite rather than a comment, so a drift goes red instead of quietly falsifying
+this paragraph; they are unchanged across both campaigns, which is itself the
+claim that the surface collapse did not move what the generator generates or what
+the checker accepts.
+
+The second generation upgrades to whole-program simulation, so that it catches
+wrong-_value_ refinements and not merely stuckness. Its property: for every
+accepted caller, the caller's _concrete_ final environment (run in executing mode,
+where calls run the callee's actual body) is a $sigma$-_instance_ of some accepted
+_symbolic_ path's final environment (run in checking mode, where calls use the
+signature rule). The instance relation is first-order matching — a symbolic
+$sigma$ matches any concrete value _consistently_ (the same $sigma$ maps to one
+value throughout), constructors match structurally, loans and borrows up to
+canonical renumbering — which is the simulation relation proper. The caller set is
+four programs, shaped on `through`, `advance`, `choose` and `push`; all four are
+accepted and all four hold.
 
 The essential part is not that these pass but that they have been _validated_: a
 counterexample finder that has never found its counterexample is worthless as
-evidence. The harness carries its own positive control. With the removed,
-unsound `constrained`-wire inference forced back on, the `advance`-caller
-differential goes _red_; with it off, _green_. The `advance` cursor shares the
-signature of the identity-shaped `through` but writes only the tail, so the
-constrained refinement — releasing the owner as the surrendered tail — is a
-provably-wrong fact, exactly the bug class the relation is meant to catch. The
-finder demonstrably catches its target when the target is reintroduced, and only
-then.
+evidence. *And the validation was downgraded at this pin, which the paper's own
+standard requires stating before anything else about it.* It used to reintroduce
+the bug in order to catch it: a flag flipped the kernel back to the unsound
+signature-inferred `constrained` wire, and the `advance`-caller differential was
+asserted to go _red_ with the flag on and _green_ with it off. That is the
+strongest form the claim can take. It cost kernel surface carried for one test —
+the flag and the group field it drove — and both were deleted, so the same content
+is now stated one level down, at the *comparator*: the wrong refinement's
+environment is written directly (the owner recovering the surrendered tail) and
+asserted _not_ to be an instance of the real concrete run, with the honest opaque
+$sigma$ asserted to be one, under both relations. What that keeps is the exact
+discrimination — the relation says no to the wrong refinement and yes to the right
+one, so it is not a relation that says no to everything. What it gives up is the
+demonstration that the _finder_, driven by a kernel that really is buggy, arrives
+at that comparison at all. That is a real reduction in the instrument's strength,
+and it is the price of not carrying a kernel field for a test.
 
 == The polarity finding: when the machine is the broken one <sec-polarity>
 
@@ -165,10 +184,16 @@ equation solutions, facts true of a value timelessly — and never _state_ — a
 hole, a loan marker, or a mutation's result, which are facts about a slot at a
 moment. The _reach_ half: a single $arrow.l.squiggly$ substitutes into every
 $sigma$-bearing component of the whole checker state — the environment, the
-$sigma$-context, the boundary obligations, the loan groups, the pinned return
-type, and the reflected backward specs (@fig-boundaries) — because any component
-that snapshots a $sigma$-typed thing at seed time and consults it later goes
-stale otherwise. The _carry_ half: no substitution for a $sigma$ may contain a
+$sigma$-context, the boundary obligations, the loan groups, and the pinned return
+type (@fig-boundaries) — because any component that snapshots a $sigma$-typed
+thing at seed time and consults it later goes stale otherwise. One component is
+deliberately _outside_ the reach, and the exception proves the rule: the
+exit-snapshot table, which the audit defines by substituting each borrow's
+collapsed final payload, is written by a dedicated audit-local pass and not by
+$arrow.l.squiggly$ — precisely because what it carries is a mutation's result,
+which is the one thing the _carry_ half forbids a refinement to move. (A fifth
+component the reach used to name, the reflected backward specs, went with the
+machinery.) The _carry_ half: no substitution for a $sigma$ may contain a
 hole, a marker, or a mutation result — recording a take, a fill, or a swap's
 arrangement by rewriting a $sigma$ would make a snapshot track the present, so
 that a pinned `partIdxL n *v` would come to mean the index of the
@@ -206,8 +231,8 @@ soundness proof of the machinery — as distinct from correctness of the pure
 models, which is ordinary type theory — would have to discharge.
 
 First, the _simulation relation_ of the differential must be proved, not merely
-tested: that every `checkFn`-accepted program's concrete runs are instances of
-its accepted symbolic paths. Exhaustiveness is a precondition (now syntactic),
+tested: that every accepted program's concrete runs are instances of its accepted
+symbolic paths. Exhaustiveness is a precondition (now syntactic),
 and one modelling choice is forced by the group-end over-approximation the
 differential surfaced. The symbolic group-end releases each captured loan
 atomically with a fresh existential, whereas concrete ending is lazy and
@@ -236,35 +261,42 @@ goes silently _green_ on a mismatch. A nice-to-have on the obligation list has t
 become a premise of the counterexample finder's own correctness, which is the thing to
 know before trusting the differential over array bodies.
 
-Second, _audit soundness_ — that a passed $arrow.r.curve$/`back` audit implies
-the caller's recovered value genuinely satisfies the obligation — but only
-_modulo_ the audit-strategy holes the extraction has already named, which any
-quantified statement must close. @sec-boundaries names three; two of them bear on
-audit soundness in this sense, and it is worth separating them, because the third
-is a rejection rather than an unsound acceptance and so threatens completeness
-instead. The two: a declared `back` on a call that captures two or more borrows is
-silently ignored, the group end matching a backward spec only against a single
-captured loan and otherwise degrading to opaque _without rejection_, so a declared
-promise can go silently unused; and both back checks take the first qualifying
-obligation and pass _vacuously_ when none qualifies, so a declared `back` can go
-entirely unaudited on such a path. (The third, the read/write asymmetry on
-group-captured owners, rejects a program the rules admit — a strategy gap of the
-same kind as the ending-order one above.) These are holes in the audit's strategy,
-not in the pure models, and until they are closed "audited" means less than it
-appears — a soundness statement that quantifies over declared specifications must
-fix them first.
+Second, _audit soundness_ — that a passed $arrow.r.curve$ audit implies the
+caller's recovered value genuinely satisfies the obligation. The previous pin
+qualified this obligation _modulo_ three named audit-strategy holes; two of them
+were holes in the declared-`back` audit and are closed by that machinery's
+deletion, and the paper declines to bank them as progress. Nothing was learned
+about how to audit a declared specification correctly; the question stopped being
+asked, and a soundness statement over this calculus simply no longer quantifies
+over declared specifications because there are none. The third survives, and it
+was re-verified in the source at this pin rather than carried over: the read/write
+asymmetry on group-captured owners rejects a program the rules admit — a strategy
+gap of the same kind as the ending-order one above, threatening completeness
+rather than soundness.
 
-Third, and new at this pin, _the recursion guard_. A self-call is admitted at the
-function's own declared return type — signature-only checking forces that — so with
-no side condition the rule is Hoare's recursion rule with its side condition
-deleted, and any false postcondition proves itself. That hole was open and
-demonstrable (@sec-lessons); it is now closed by a structural guard, and what a
-proof owes here is the guard's well-foundedness: that the declared position's
-snapshot strictly decreases along every admitted self-call, that snapshots are
-entry-knowledge no mutation rewrites (which is the _carry_ half of the invariant
-above, doing load-bearing work outside the type layer for the first time), and that
-rejecting mutual recursion outright is what keeps the per-declaration guard from
-being circumvented through a second door.
+What has replaced them on the frontier is narrower and sharper. Three positions
+were found in which a stated claim would be judged by nobody, and each was closed
+by making the position unwritable (@sec-boundaries). A proof owes an argument that
+the three refusals are _sufficient_ — that no fourth position combines a skipped
+check with a caller-side mint — and the paper has no such argument, only the
+observation that adversarial probing found three in one campaign and stopped
+because the campaign did.
+
+Third, _recursion_. A self-call is admitted at the function's own declared return
+type — signature-only checking forces that — so with no side condition the rule is
+Hoare's recursion rule with its side condition deleted, and any false
+postcondition proves itself. The previous pin closed that with a structural guard
+in the kernel and listed the guard's well-foundedness as the proof obligation. The
+guard is gone, and the obligation has moved rather than vanished. Two things now
+carry it. Inside the kernel: that a recursive occurrence really is a _binder_ — the
+recursor's induction hypothesis at the predecessor — so that there is no self-call
+to guard, which is a statement about the eliminators and is as well-founded as
+they are. Outside it: that the elaboration is _faithful_, that the recursor it
+builds computes the function the source wrote. The kernel re-derives the term, so
+this is not a soundness obligation on the checker; it is a correctness obligation
+on a translation, of exactly the kind the case study's own architecture A was
+built to avoid, arriving at the level below. The three refusals the macro makes
+are the argument that it is faithful, and they are tests rather than a proof.
 
 The honest summary is the one this section opened with: the checker is not
 proved, but its behavior is instrumented, its central invariant is verified and
