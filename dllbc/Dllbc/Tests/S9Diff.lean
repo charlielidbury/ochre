@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.ProgMacro
+import Dllbc.DeclMacro
 import Dllbc.Migrate
 
 /-!
@@ -36,33 +37,29 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S9Diff
 
-def natT : Term := .const "Nat"
-def boolT : Term := .const "Bool"
-def listNatT : Term := .app (.const "List") natT
+/-! ## The fixed callee pool
 
-/-! ## The fixed callee pool -/
+    Written in the declaration surface. These were hand-built `FnDef` records with
+    a `progSeed`-style body — the telescope spelled as a `List (String × Term)`
+    and the body elaborated against names pre-bound at the positional ids
+    `seedTelescope` uses. `decl{ }` writes both from one header, and produces the
+    same `FnDef` values field for field (checked, before the rewrite). -/
 
-def through : FnDef :=
-  { name := "through", retType := .borrowT listNatT listNatT,
-    telescope := [("b", .borrowT listNatT listNatT)],
-    body := progSeed [b] { b } }
+def through : FnDef := decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
 
 /-- `advance`: returns the tail's field reborrow on `Cons`, the argument on
     `Nil`. Same signature as `through`, different body. -/
 def advance : FnDef :=
-  { name := "advance", retType := .borrowT listNatT listNatT,
-    telescope := [("b", .borrowT listNatT listNatT)],
-    body := progSeed [b] { match b { Nil => b, Cons(hd, tl) => tl } } }
+  decl{ fn advance (b : &mut List Nat) -> &mut List Nat
+        { match b { Nil => b, Cons(hd, tl) => tl } } }
 
 def choose : FnDef :=
-  { name := "choose", retType := .borrowT natT natT,
-    telescope := [("c", boolT), ("x", .borrowT natT natT), ("y", .borrowT natT natT)],
-    body := progSeed [c, x, y] { match c { True => x, False => y } } }
+  decl{ fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+        { match c { True => x, False => y } } }
 
 def push : FnDef :=
-  { name := "push", retType := .const "Unit",
-    telescope := [("e", natT), ("v", .borrowT listNatT listNatT)],
-    body := progSeed [e, v] { let tail = *v; *v := Cons(e, tail); () } }
+  decl{ fn push (e : Nat, v : &mut List Nat) -> Unit
+        { let tail = *v; *v := Cons(e, tail); () } }
 
 def pool : List FnDef := [through, advance, choose, push]
 

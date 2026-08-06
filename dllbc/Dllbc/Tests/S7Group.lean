@@ -1,5 +1,6 @@
 import Dllbc.Boundary
 import Dllbc.ProgMacro
+import Dllbc.DeclMacro
 import Dllbc.Migrate
 
 /-!
@@ -24,19 +25,14 @@ open Dllbc.Val (nat nil cons)
 
 namespace Dllbc.Tests.S7Group
 
-def natT : Term := .const "Nat"
-def boolT : Term := .const "Bool"
-def listNatT : Term := .app (.const "List") natT
-
 /-! ## `choose`: the entangled call -/
 
 -- choose (c : Bool, x : &mut Nat, y : &mut Nat) → &mut Nat = match c { … }.
 -- The callee checks under the borrow-returning audit: each branch consumes one
 -- argument borrow into the result (exempt) and audits the other.
 def choose : FnDef :=
-  { name := "choose", retType := .borrowT natT natT,
-    telescope := [("c", boolT), ("x", .borrowT natT natT), ("y", .borrowT natT natT)],
-    body := progSeed [c, x, y] { match c { True => x, False => y } } }
+  decl{ fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+        { match c { True => x, False => y } } }
 
 example : Migrate.progOkOf choose = true := by native_decide
 
@@ -71,10 +67,7 @@ example : Migrate.progEnvOfT [choose, chooseCaller] chooseCaller
 -- a fresh existential: the caller below recovers a FRESH σ : List Nat, NOT the
 -- written `Cons 9 Nil`. Precision is deliberately lost; §6.2's transparent/spec
 -- group ends are the recovery route.
-def through : FnDef :=
-  { name := "through", retType := .borrowT listNatT listNatT,
-    telescope := [("b", .borrowT listNatT listNatT)],
-    body := progSeed [b] { b } }
+def through : FnDef := decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
 
 example : Migrate.progOkOf through = true := by native_decide
 
@@ -109,9 +102,7 @@ example : Migrate.progRejectsOf
 -- A borrow-returning body whose returned payload fails its owed type:
 -- `bad (b : &mut Nat) → &mut Bool = b` returns a Nat borrow as a Bool borrow.
 example : Migrate.progRejectsOf
-  { name := "bad", retType := .borrowT boolT boolT,
-    telescope := [("b", .borrowT natT natT)],
-    body := progSeed [b] { b } }
+  decl{ fn bad (b : &mut Nat) -> &mut Bool { b } }
   "owed type" = true := by native_decide
 
 /-! ## The constrained branch, exercised directly (dead under opaque calls) -/
