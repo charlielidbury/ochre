@@ -30,7 +30,7 @@ in $S$ — which is checked at _exit_, when the entry payload is otherwise long
 gone. The obligation is type-changing: $S$ need not be $tau$. A push signature
 
 ```rust
-fn push (n : Nat, e : T, v : &mut (Vec T n ↝ Vec T (S n))) = …
+fn push (n : Nat, e : T, v : &mut (Vec T n ↝ Vec T (S n))) -> Unit { … }
 ```
 
 tells the caller, from the signature alone, that the vector behind `v` is one
@@ -105,7 +105,7 @@ strengthening it.
 Some functions break the one-borrow-one-loan correspondence:
 
 ```rust
-fn choose (c : Bool, x : &mut T, y : &mut T) -> &mut T = match c { True => x, False => y }
+fn choose (c : Bool, x : &mut T, y : &mut T) -> &mut T { match c { True => x, False => y } }
 ```
 
 The returned borrow points into `x` or `y` depending on `c`, and no per-borrow
@@ -116,9 +116,10 @@ recorded is the *grouping* and an ending *order*. A call whose borrows entangle
 mints a *loan group* (#smallcaps[B-Call]): a node tying the loans it captured to
 the borrows it issued. Its whole content is its ending discipline (@fig-reorg,
 #smallcaps[G-EndGroupOpaque]): every issued borrow ends first, then the group
-ends atomically, releasing each captured loan with a fresh existential. The order
-_is_ the soundness argument made structural — `x` cannot recover while the result
-lives, because the group holds `x`'s loan and cannot end until the result's does.
+ends atomically, releasing each captured loan at its owed type and nothing more.
+The order _is_ the soundness argument made structural — `x` cannot recover while
+the result lives, because the group holds `x`'s loan and cannot end until the
+result's does.
 A wire is simply the degenerate group, one captured and one issued, so the two
 sections are one mechanism at two precisions.
 
@@ -137,29 +138,45 @@ released existential where the concrete one still holds a suspended loan, an
 obligation any simulation relation must reconcile (@fig-reorg records it). The
 trade is deliberate: no annotation burden, the coarsest sound tie.
 
-*Self-calls need a side condition.* Checking a call against the signature alone
-has one consequence that is invisible until a return type carries real content: a
-_self_-call is admitted at the function's own declared return type. Under the
-conformance architecture that is harmless, because the declared `back`'s
-conversion is where the work happens; under a propositional postcondition it is
-Hoare's rule for recursion with its side condition deleted, and every false
-postcondition proves itself (@sec-lessons gives the two-line witness). The side
-condition is a _declared_ decreasing position `[k]`, and the checker being a
-symbolic interpreter is what makes it cheap: a self-call is admitted only when the
-actual at position $k$ is a strict structural subterm of that parameter's
-_current snapshot_, which inside `match n { S(m) => … }` is already
-`S` $space sym("m")$ while the actual is $sym("m")$ — ordinary structural
-comparison, no measure and no termination checker. Three scoping decisions come
-with it. The index is declared rather than inferred, because "some argument
-decreases at each call" is unsound (two branches can each shrink a different
-coordinate while growing the other, forever) and because paths are explored
-independently, so no inferred index could be committed to across them. A _borrow_
-parameter may decrease through its payload snapshot — the guard in its most
-literal form, and the only thing that shrinks in a list cursor, sound because
-snapshots are entry-knowledge that mutation never rewrites. And mutual recursion
-is rejected outright by call-graph reachability: a per-declaration guard would let
-`f` $arrow.r$ `g` $arrow.r$ `f` admit each other's postconditions with nothing
-decreasing anywhere, the same hole through two doors.
+*Self-calls need a side condition — and then they stopped needing one.* Checking
+a call against the signature alone has one consequence that is invisible until a
+return type carries real content: a _self_-call is admitted at the function's own
+declared return type. That is Hoare's rule for recursion with its side condition
+deleted, and under a propositional postcondition every false postcondition proves
+itself (@sec-lessons gives the two-line witness). For most of this calculus's
+life the side condition was a _declared_ decreasing position `[k]`, checked
+structurally against the parameter's current snapshot — cheap, because a symbolic
+interpreter already holds that snapshot, and inside `match n { S(m) => … }` it is
+already `S` $space sym("m")$ while the actual is $sym("m")$.
+
+At this pin there is no such rule, and the reason is worth more than the rule
+was. A definition is no longer a table entry but a `let` binding a sealed λ
+(@fig-boundaries), and *a `let` is not in scope in its own right-hand side*. So
+`fn bad () -> Id Nat Z (S Z) { bad() }` — the witness that made the guard
+necessary — is not rejected by a side condition; it fails to resolve, exactly as
+any other forward reference does. Mutual recursion falls out identically: `f`
+$arrow.r$ `g` $arrow.r$ `f` needs `f` to name a binding below it, and there is
+none, so the call-graph reachability check that used to catch it has nothing left
+to catch. Genuine recursion, meanwhile, is not a call at all: `fn` elaborates a
+recursing definition to a *recursor* whose arms are the body, with each self-call
+rewritten to an application of `ih`, the sealed self-view at the predecessor.
+A binder cannot be a self-call, so there is no premise for a side condition to
+guard, and the decrease is the eliminator's.
+
+What this trades is stated plainly, because it is a real trade and not a free
+win. The obligation moved _out_ of the kernel and into the elaboration: `ih` is
+the self-view at the *predecessor*, so rewriting a self-call into one is honest
+only when the call recurses on the predecessor, and the macro must refuse
+otherwise. It does — a self-call at any other argument, a self-call in the base
+branch, and a decrease through a borrow's *payload* (which has no recursor form
+at all) are all refused, each with a distinctive sentinel the checking path then
+surfaces. The kernel re-derives everything about the elaborated term, so the
+macro is not in the trusted base for _soundness_; what it is trusted for is
+_faithfulness_ — that the function checked is the function written. A macro that
+silently rewrote a non-terminating source into a terminating recursor would
+produce a term that checks and a claim about a different function, and the
+corpus's rejected witnesses (`recSame`, `recWrongIdx`, `recGrow`) exist to pin
+that it does not.
 
 == The audit at return
 
@@ -200,7 +217,7 @@ type — the $bot$-witness is the only thing checked. This is how a bounds-check
 cursor's `Nil` branch "returns" a borrow it cannot have: it does not, and need
 not.
 
-== Declared backward specs
+== The spectrum, and the tier that was removed from it
 
 Opacity is real: after a write through the result of `choose`, the caller cannot
 prove which input received it — that is exactly what the group forgot. The
@@ -209,36 +226,43 @@ what the group does at its end, and the trichotomy is the familiar one from proo
 assistants. It may be a *parameter* — the opaque group above, an abstraction
 boundary where the caller learns only types; a *definition* — transparent, the
 flow being definitionally the callee's body, full precision, no annotation; or a
-*spec* — a stated obligation, checked against the body and hiding the rest. This
-document's core is the parameter case; the other two are sharpenings of the
-group-end rule.
+*spec* — a stated obligation, checked against the body and hiding the rest.
 
-The spec case completes the Aeneas inversion. If $arrow.r.curve$ is the backward
-function's _type_, a declared `back` is the backward function _itself_, moved
-into the signature and audited against the body that claims to implement it,
-rather than synthesized from it. The check is almost free, and for a structural
-reason: the suspension tree the body actually built — the captured borrow's final
-payload, with the issued loans' markers read as holes — _is_ the backward
-function the body implements. Auditing the declaration is therefore one
-conversion, the declared `back` applied to its holes against the resolved tree
-(#smallcaps[B-BackN]). At the caller, a spec-carrying group ends by _computing_
-each captured release — the declared back applied to the surrendered payloads —
-instead of minting a fresh existential (@fig-reorg's #smallcaps[G-EndGroupBack],
-consuming the spec that @fig-boundaries's #smallcaps[B-Call] instantiated). And composition falls out of the same resolution:
-the tree resolves _through sub-calls' declared backs_, so a captured loan of a
-sub-call resolves to _that_ call's back applied to its issued borrows — exactly
-LLBC's backward-function composition, here as a checked declaration rather than a
-synthesized term. Composition is all-or-nothing: a spec-carrying function's whole
-call tree must be spec'd, since an opaque sub-group leaves an unresolvable marker
-no spec converts against (recursion is fine — a recursive call resolves through
-the function's own declaration).
+For two of this calculus's three eras the spec case was implemented, and it
+completed the Aeneas inversion the cleanest way available: if $arrow.r.curve$ is
+the backward function's _type_, a declared `back` is the backward function
+_itself_, moved into the signature and audited against the body that claims to
+implement it. The check was almost free, for a structural reason worth recording
+even now — the suspension tree the body actually built (the captured borrow's
+final payload, with the issued loans' markers read as holes) _is_ the backward
+function the body implements, so auditing a declaration was one conversion. LLBC's
+backward-function composition fell out of the same resolution, a captured loan of
+a sub-call resolving to that call's own declared back.
 
-That declared backs must be _audited_ and cannot be _inferred_ is the load-bearing
-soundness fact, and it earns a statement of its own.
+*The spec tier has been removed from the language.* Not deprecated within it: the
+surface `back = …`, the declaration field, the group's spec-carrying end, the
+resolution function and both callee-side checks were deleted. The ratified
+position is that the *ensures is the contract* — what a caller keeps is what the
+callee ascribed, and nothing else — so the precision a declared back bought is
+either bought by the $arrow.r.curve$ obligation and a $Sigma$-pinned return type,
+or not bought at all. Two things make that affordable, and neither existed when
+the spec tier was designed. A call's return type may now be a dependent $Sigma$
+whose tail mentions the components already built (#smallcaps[B-Res-Pair]), which
+is how a callee states a postcondition about the value it returns. And the group
+end now releases a captured owner to *the same symbolic value the returned
+evidence is about* — one σ′ minted at the call, read by the return type's exit
+$ast.op v$ and pinned as that loan's release (@fig-reorg) — which is what makes a
+returned proof attach to the recovered owner rather than float beside it.
+
+The removal is a genuine loss of expressiveness in one direction and a gain in
+another, and @sec-architectures is where the two are measured against each other
+rather than asserted. What survives intact is the *principle* the spec tier was
+the first application of, and it earns a statement of its own because it has
+since decided a case it was not written for.
 
 #block(stroke: 0.5pt, inset: 9pt, radius: 4pt, width: 100%)[
   *Backward flow is not a function of the signature.* Consider
-  `through (b :` $amp"mut"$ `List T)` $arrow.r$ $amp"mut"$ `List T = b`, which
+  `fn through (b :` $amp"mut"$ `List T) ->` $amp"mut"$ `List T { b }`, which
   returns its whole argument borrow, and an `advance` of the _same_ signature
   that returns a field reborrow of the tail. At the caller, the two demand
   different releases: ending `through`'s group should restore the owner to the
@@ -248,9 +272,12 @@ soundness fact, and it earns a statement of its own.
   signature is therefore unsound — and an early version of this calculus did
   exactly that, inferring the constrained wire from the signature, and was
   refuted by this pair. The correction is not a cleverer inference but a
-  different discipline: backward flow must be _promised_ (a declared `back`) and
-  _audited_ (#smallcaps[B-BackN] against the body). A promise the checker
-  verifies is sound where an inference the checker guesses is not.
+  different discipline: backward flow must be _promised_ and _audited_, never
+  guessed. A promise the checker verifies is sound where an inference the checker
+  makes is not. (The promise this argument produced — the declared `back` — has
+  since been removed for unrelated reasons, above. The argument is unaffected: it
+  rules out _inference_, and says nothing about which of the surviving promises a
+  signature is made of.)
 
   *The principle has since decided a case it was not written for.* The array era's
   carve (@fig-carve) must decompose a segment's extent, and where that extent is a
@@ -266,23 +293,43 @@ soundness fact, and it earns a statement of its own.
   imagined when it was set.
 ]
 
-The audit has a value-returning dual, and stating it precisely matters because
-its reach is limited. An in-place mutator that returns a plain value issues no
-borrows, so its declared back is the _zero-hole_ case — the spec applied to no
-holes, converted directly against the argument borrow's resolved suspension tree
-(#smallcaps[B-Back0]). Until this dual was implemented, a value-returning body's
-back went unchecked at its own audit; a lying variant of a partition scan passed
-because only the borrow-returning branch ever looked. The lesson generalized to a
-testing discipline — a negative test per rule _branch_, not per feature. The
-dual's reach is precise: it checks a back authored _as the raw tree_ — a scan
-that is literally the composition of its sub-calls' declared backs converts —
-while a back that _reformulates_ the tree (a swap declared as $"swapL" i j
-ast.op v$ against the set-based composition it actually implements: semantically
-equal, never definitionally so) falls outside conversion's reach and is left to
-the differential harness to validate. Complementary, not redundant. The
-principled close is deferred: admit a reformulated back with a _cited bridging
-equation_ and have the audit rewrite along the proved `Id`, so reformulation
-becomes checked rather than trusted. #status("proposed")
+== Three positions made unwritable
+
+The spec tier's removal pointed the whole language at ensures-carrying signatures,
+and doing that walked into three positions where a claim would be _stated_ and
+_judged by nobody_. All three were found by adversarial probing rather than by a
+failing corpus program, and all three are closed by *refusal* rather than by a
+new check — which is the honest move where the thing a check would examine is a
+value the checker itself just minted.
+
+First, a return type may not mix borrow and value components. A borrow-carrying
+return type is audited structurally — each issued borrow against its owed type —
+and the value check is skipped for the whole type, so a non-borrow component of
+such a type is judged by nothing. That is unsound, not merely imprecise: the
+caller mints a symbolic value at the stated leaf type regardless, receives the
+unearned claim as a proof, and may return it at its own value return type, where
+the checking path does run and passes. The witness is a nullary function returning
+$bot$. Second, a borrow consumed into the result must owe back what it was lent.
+The audit exempts such a borrow — correctly, since it has no payload here to
+audit — and the exemption takes the owed _type_ with it while the caller's group
+end mints the release _at_ that type, so a non-trivial $arrow.r.curve$ on a
+consumed parameter is checked at neither end. A cursor that hands its borrow
+onward owes back the type it was lent; a richer claim belongs on a parameter the
+body keeps. Third, a function may not be read out of its slot into a second
+binding. This one is a statement about the model rather than a patch: functions
+are reached by *name*, so calling where bound and passing as an argument are
+name-uses, while reading one into a second binding is the move that turns a name
+into a value. It was found as a mechanism defect — a borrow-taking function's
+symbol has no value form, so the checker moved it where the concrete machine
+copied it, a simulation break on a program *both machines accept* — and then
+deliberately generalized past its mechanism, refusing the borrow-free case too,
+which had been measured as sound. Soundness was never what made it wrong.
+
+Two of the three are worth noticing as a pattern rather than as three fixes: a
+mechanism that _skips_ a check for a good local reason (the borrow audit does not
+run `hasType`; the exemption does not audit a payload) will silently skip
+everything else that rode on it, and the caller-side mint is what turns the
+silence into a proof.
 
 == Opacity, twice discovered to be doing work
 
@@ -313,34 +360,33 @@ load-bearing for expressiveness, rather than only for modularity, is not what
 @sec-architectures's framing would predict, and it is worth holding onto as a caution
 against reading opacity purely as loss.
 
-== The precision spectrum, and its open holes
+== The open hole, and the two that closed by deletion
 
-The spectrum — opaque parameter, checked spec, transparent definition — is the
-organizing picture, and the checked parts of it are green in the mechanization:
-the wire and opaque group ends, the $arrow.r.curve$ audit, and the declared-back
-audit in both its borrow-returning and value-returning forms all discharge on the
-test corpus. What a full soundness statement would additionally need is _not_ yet
-green, and the extraction recorded three audit-strategy holes precisely so that
-no soundness claim quantifies over declared specs before they are closed. Stating
-them is a feature of this paper, not an embarrassment.
+The spectrum — opaque parameter, checked spec, transparent definition — was the
+organizing picture, and the paper's previous pin recorded *three* audit-strategy
+holes in it, precisely so that no soundness claim would quantify over declared
+specs before they were closed. Two of the three were holes in the declared-spec
+machinery, and they are closed at this pin *by its removal*. That is a weaker
+result than a fix and the paper says so: a declared back on a call capturing two
+or more borrows can no longer be silently ignored, and a declared back can no
+longer go vacuously unaudited, because there is no declared back. Nothing was
+learned about how to audit one correctly; the question stopped being asked.
 
-These three are current behaviors of the green mechanization, stated as the
-limitations they are. First, a declared back on a call that captures _two or
-more_ borrows is silently _ignored_: the group-end matches its spec branch only
-against a single captured loan and otherwise falls through to the opaque arm,
-degrading to an existential without rejecting. A declared promise silently unused
-is a bug class — the fix is to reject or to support, never to drop. Second, there
-is a read/write asymmetry on group-captured owners: _reading_ such an owner
-demand-ends its group, but _overwriting_ it is rejected as in-flight, because
-drop kills the captured borrow without routing through the group's ending. The
-locatability phrasing that governs ordinary ends does not predict the split.
-Third, and most soundness-relevant: both declared-back checks take the first
-qualifying obligation and pass _vacuously_ when none qualifies — and the
-value-returning check also passes when the argument borrow was consumed whole
-into a sub-call, so a declared back can go entirely _unaudited_ on such a path.
-None of the three is exercised by a current test; each is an identified hole in
-the audit strategy that any
-soundness statement over declared specs must close first. The conformance
-architecture that @sec-architectures measures rests on exactly this declared-back
-machinery, which is one reason the paper treats it as a baseline to be
-scrutinized rather than a settled result.
+The third is not in that class, and it survives untouched. There is a read/write
+asymmetry on group-captured owners: _reading_ such an owner demand-ends its
+group, but _overwriting_ it is rejected as in-flight, because drop kills the
+captured borrow directly instead of routing through the group's ending. The
+locatability phrasing that governs ordinary ends does not predict the split. It
+is a rejection rather than an unsoundness — a completeness gap — and it is
+re-verified rather than carried over at this pin: the two paths still reach
+different functions.
+
+What has replaced the closed holes as the live soundness frontier is the
+containment discipline of the preceding subsection. Three positions were found
+where a stated claim would be judged by nobody, and each was made unwritable; the
+honest reading of that is not that the boundary layer is now airtight but that
+adversarial probing found three in one campaign, and the mechanism they shared —
+a skipped check plus a caller-side mint — has no argument yet that it has no
+fourth instance. @sec-empirics states what the differential does and does not
+cover here, and @sec-architectures no longer rests on the declared-back machinery
+at all, which changes what it is measuring.
