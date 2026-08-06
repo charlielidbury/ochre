@@ -137,7 +137,7 @@ def vCheck (body : Term) : Term := prog{
 
 def vRun (body arg : Term) : Term := prog{
   fn f (v : &mut List Nat) -> Unit { %body };
-  let x = %arg; let p = &mut x; f(p); () }
+  let x = %arg; let p = &m x; f(p); () }
 
 /-- Concrete payloads for v: the small list pool, as the terms a caller writes. -/
 def vArgs : List Term := [pure{ Nil }, pure{ Cons(1, Nil) }, pure{ Cons(1, Cons(2, Nil)) }]
@@ -211,7 +211,7 @@ def bcCheck (body : Term) : Term := prog{
   () }
 def bcRun (body a0 a1 : Term) : Term := prog{
   fn f (b : &mut Nat, c : Bool) -> Unit { %body };
-  let x = %a0; let p = &mut x; f(p, %a1); () }
+  let x = %a0; let p = &m x; f(p, %a1); () }
 def bcArgs : List (Term × Term) :=
   [ (pure{ 0 }, pure{ True }), (pure{ 0 }, pure{ False }),
     (pure{ 1 }, pure{ True }), (pure{ 1 }, pure{ False }) ]
@@ -476,7 +476,7 @@ def progDiff (t : Term) : Bool :=
 
 /-- The choose caller from §6.1, demanding BOTH owners. -/
 def chooseCaller : Term := withPool (prog{
-  let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
+  let a = 0; let b = 0; let pa = &m a; let pb = &m b;
   let r = choose(True, pa, pb);
   *r := 7;
   let za = a; let zb = b;
@@ -484,13 +484,13 @@ def chooseCaller : Term := withPool (prog{
 
 /-- A push caller. -/
 def pushCaller : Term := withPool (prog{
-  let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () })
+  let x = Cons(1, Nil); let b = &m x; push(7, b); let y = x; () })
 
 /-! ## The property, over the caller set -/
 
 def callers : List Term :=
-  [ withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = through(b); *r := Cons(9, Nil); let y = x; () }),
-    withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }),
+  [ withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = through(b); *r := Cons(9, Nil); let y = x; () }),
+    withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = advance(b); *r := Cons(9, Nil); let y = x; () }),
     chooseCaller,
     pushCaller ]
 
@@ -504,7 +504,7 @@ example : accepted.all (fun b => diffV2 b) = true := by native_decide
 /-! ## The advance caller, which the validation below is about -/
 
 def advCallerBody : Term :=
-  withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () })
+  withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &m x; let r = advance(b); *r := Cons(9, Nil); let y = x; () })
 
 -- The real behaviour: the opaque σ matches the concrete value. GREEN.
 example : diffV2 advCallerBody = true := by native_decide

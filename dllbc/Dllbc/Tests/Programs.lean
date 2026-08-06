@@ -182,8 +182,8 @@ example : progOk b1lo = true := by native_decide
 -- B2. The runtime match — §A5 above, which is where it earns its keep.
 
 -- B3. The borrow.
-def b3hi : Term := prog{ fn b3 (N : List Nat) -> Unit { let b = &mut N; () }; () }
-def b3lo : Term := prog{ fn b3 (n : List Nat) -> Unit { let b = &mut n; () }; () }
+def b3hi : Term := prog{ fn b3 (N : List Nat) -> Unit { let b = &m N; () }; () }
+def b3lo : Term := prog{ fn b3 (n : List Nat) -> Unit { let b = &m n; () }; () }
 example : progRejects b3hi "cannot be borrowed" = true := by native_decide
 example : progOk b3lo = true := by native_decide
 
@@ -251,7 +251,7 @@ example : progRejects b8 "telescope: parameter 'V' is capitalized" = true := by 
 
 def b9 : Term := prog{
   fn b8 (V : &mut List Nat) -> Unit { () };
-  fn caller () -> Unit { let x = Cons(1, Nil); b8(&mut x); () };
+  fn caller () -> Unit { let x = Cons(1, Nil); b8(&m x); () };
   () }
 -- The needle is NAME-FREE since M27-δ, and the reason belongs beside it: `fsig`
 -- stores the ascribed Π itself now, and a Π has no binder names — `piBinderNames`
@@ -264,7 +264,7 @@ example : progRejects b9 "is capitalized" = true := by native_decide
 def b8lo : Term := prog{ fn b8lo (v : &mut List Nat) -> Unit { () }; () }
 def b9lo : Term := prog{
   fn b8lo (v : &mut List Nat) -> Unit { () };
-  fn caller () -> Unit { let x = Cons(1, Nil); b8lo(&mut x); () };
+  fn caller () -> Unit { let x = Cons(1, Nil); b8lo(&m x); () };
   () }
 example : progOk b8lo = true := by native_decide
 example : progOk b9lo = true := by native_decide
@@ -565,7 +565,7 @@ def qsish : Term := prog{
     { match fuel {
         Z => (),
         S(f2) => {
-          step(&mut *v, S(f2), Hfuel);                       -- passed to a call…
+          step(&m *v, S(f2), Hfuel);                       -- passed to a call…
           let Q = le_trans (len (old *v)) (S f2) (S f2) Hfuel (le_refl (S f2));
                                                               -- …and cited AFTERWARDS
           useLeC(len (old *v), S(f2), Q);                     -- the derived certificate, used
@@ -584,7 +584,7 @@ def qsishLo : Term := prog{
     { match fuel {
         Z => (),
         S(f2) => {
-          stepLo(&mut *v, S(f2), Hfuel);
+          stepLo(&m *v, S(f2), Hfuel);
           let Q = le_trans (len (old *v)) (S f2) (S f2) Hfuel (le_refl (S f2));
           useLeC(len (old *v), S(f2), Q);
           () } } };
@@ -626,12 +626,12 @@ example : progOk qsish2 = true := by native_decide
 def h5hi : Term := prog{
   fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () };
   fn h5hi (v : &mut List Nat, f : Nat, Hf : Le (len *v) f) -> Unit
-  { step(&mut *v, f, Hf); step(&mut *v, f, Hf); () };
+  { step(&m *v, f, Hf); step(&m *v, f, Hf); () };
   () }
 def h5lo : Term := prog{
   fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () };
   fn h5lo (v : &mut List Nat, f : Nat, hf : Le (len *v) f) -> Unit
-  { step(&mut *v, f, hf); step(&mut *v, f, hf); () };
+  { step(&m *v, f, hf); step(&m *v, f, hf); () };
   () }
 example : progRejects h5hi "does not have its parameter type" = true := by native_decide
 example : progRejects h5lo "does not have its parameter type" = true := by native_decide
@@ -652,12 +652,12 @@ example : progRejects h5lo "does not have its parameter type" = true := by nativ
 def h6hi : Term := prog{
   fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () };
   fn h6hi (v : &mut List Nat, f : Nat, Hf : Le (len *v) f) -> Le (len (old *v)) f
-  { step(&mut *v, f, Hf); Hf };
+  { step(&m *v, f, Hf); Hf };
   () }
 def h6lo : Term := prog{
   fn step (v : &mut List Nat, b : Nat, H : Le (len *v) b) -> Unit { () };
   fn h6lo (v : &mut List Nat, f : Nat, hf : Le (len *v) f) -> Le (len (old *v)) f
-  { step(&mut *v, f, hf); hf };
+  { step(&m *v, f, hf); hf };
   () }
 example : progRejects h6hi "cannot be ⇒-moved" = true := by native_decide
 example : progOk h6lo = true := by native_decide
@@ -801,7 +801,7 @@ def a1lie : Term := prog{
         -> Σ (x : &mut Nat) → Id Nat Z (S Z)
         { match v {
             Nil => botElim Unit hi,
-            Cons(hd, tl) => Pair(&mut *hd, Refl)
+            Cons(hd, tl) => Pair(&m *hd, Refl)
         } };
   () }
 
@@ -819,7 +819,7 @@ example : progRejects a1lie "may not also carry VALUE components" = true := by n
 def a5honest : Term := prog{
   fn head_true (v : &mut List Nat, hi : Le (S Z) (len *v))
         -> Σ (x : &mut Nat) → Id Nat Z Z
-        { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&mut *hd, Refl) } };
+        { match v { Nil => botElim Unit hi, Cons(hd, tl) => Pair(&m *hd, Refl) } };
   () }
 
 example : progRejects a5honest "may not also carry VALUE components" = true := by native_decide
@@ -853,7 +853,7 @@ example : progRejects a5direct "does not have return type" = true := by native_d
 
 def bare : Term := prog{
   fn bare (v : &mut List Nat, hi : Le (S Z) (len *v)) -> &mut Nat
-        { match v { Nil => botElim Unit hi, Cons(hd, tl) => &mut *hd } };
+        { match v { Nil => botElim Unit hi, Cons(hd, tl) => &m *hd } };
   () }
 example : progOk bare = true := by native_decide
 
@@ -862,7 +862,7 @@ def twoBorrows : Term := prog{
         -> Σ (x : &mut Nat) → &mut List Nat
         { match v {
             Nil => botElim Unit hi,
-            Cons(hd, tl) => Pair(&mut *hd, &mut *tl)
+            Cons(hd, tl) => Pair(&m *hd, &m *tl)
         } };
   () }
 example : progOk twoBorrows = true := by native_decide
@@ -881,7 +881,7 @@ example : progOk twoBorrows = true := by native_decide
 def mixedSeal : Term := pure{ Π (v : &mut List Nat) → Σ (x : &mut Nat) → Id Nat Z (S Z) }
 
 def sealProg : Term := prog{
-  let f = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&mut *hd, Refl) } } : %mixedSeal);
+  let f = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : %mixedSeal);
   () }
 
 example : progRejects sealProg "may not also carry VALUE components" = true := by native_decide
@@ -996,7 +996,7 @@ example : progOk swapS01 = true := by native_decide
 -- opaque group-end — pf is in scope downstream though l itself is opaque.
 def swapCaller : Term := withSwapS01 prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
-  let b = &mut x;
+  let b = &m x;
   swapS01(b, ());
   let sig = x;
   match sig {
@@ -1090,7 +1090,7 @@ example : progOk f2data = true := by native_decide
 def f3call : Term := prog{
   let f = (λ(v : &mut List Nat) { () } : %fSeal);
   let x = Cons(1, Nil);
-  let b = &mut x;
+  let b = &m x;
   f(b);
   () }
 example : progOk f3call = true := by native_decide
@@ -1463,7 +1463,7 @@ def push : Term := prog{
   let push = (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
                     let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit);
   let l = Cons(1, Nil);
-  let r = push(7, &mut l);
+  let r = push(7, &m l);
   () }
 example : progOk push = true := by native_decide
 -- The list really was mutated through the borrow, and the borrow really did come
@@ -1637,7 +1637,7 @@ example : progOk d2dataOk (.const "Nat") = true := by native_decide
 -- is a suspended loan with no scope to end it in.
 def d2borrow : Term := prog{
   let l = Cons(1, Nil);
-  let b = &mut l;
+  let b = &m l;
   let g = (λ(a : Nat){ *b := Nil; a } : Π (a : Nat) → Nat);
   () }
 example : progRejects d2borrow "not a function" = true := by native_decide

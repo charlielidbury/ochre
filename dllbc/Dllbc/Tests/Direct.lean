@@ -485,7 +485,7 @@ def soUnder (ret tail : Term) : Term := prog{
                 -- `Le (S i2) (S (len σ_tl))` already IS `Le i2 (len σ_tl)`. The M14
                 -- bounds-cursor property, still holding.
                 let y1 = take i2 (*tl);
-                let p = split_off(&mut *tl, i2, hi);
+                let p = split_off(&m *tl, i2, hi);
                 match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                   -- The prefix conjunct needs a congruence under `Cons (*hd)`, and
                   -- reading `*tl` here — AFTER handing `&mut *tl` to the call — is
@@ -545,7 +545,7 @@ def splitOffLieHead : Term := prog{
               Nil => botElim Unit hi,
               Cons(hd, tl) => {
                 let y1 = take i2 (*tl);
-                let p = split_off(&mut *tl, i2, hi);
+                let p = split_off(&m *tl, i2, hi);
                 match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                   let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). a)
                              (*tl) y1 h1;
@@ -638,7 +638,7 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
               Nil => botElim Unit hi,
               Cons(hd, tl) => {
                 let y = set i2 x (*tl);
-                let h = set_at(&mut *tl, i2, x, hi);
+                let h = set_at(&m *tl, i2, x, hi);
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
@@ -652,7 +652,7 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
           -- The M22 bridge, cited as an ordinary lemma in the body. No audit
           -- feature, no pinning: `set i b (set j a s)` IS the set-form it relates.
           let bridge = swapL_set i j (old *v) pij p2;
-          let h1 = set_at(&mut *v, j, a, p2);
+          let h1 = set_at(&m *v, j, a, p2);
           -- The bound tax (M21's, unchanged): the second write's bound is stated
           -- over the LIVE `*v`, which the first write replaced with an opaque σ′, so
           -- it transports back through `len_set` along h1.
@@ -680,7 +680,7 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
                                (id_congr (List Nat) (List Nat) (λ (z : List Nat). set i b z)
                                  (*v) (set j a (old *v)) h1)
                                bridge));
-          let h2 = set_at(&mut *v, i, b, hi2);
+          let h2 = set_at(&m *v, i, b, hi2);
           finish (*v) h2 };
   %tail }
 
@@ -775,7 +775,7 @@ def insUnder (ret tail : Term) : Term := prog{
               Nil => { *v := Cons(x, Nil); Refl },
               Cons(hd, tl) => {
                 let y = insertL k2 x (*tl);
-                let h = insert_at(&mut *tl, k2, x);
+                let h = insert_at(&m *tl, k2, x);
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
@@ -1023,7 +1023,7 @@ def pick : Term := prog{
               Nil => { *v := Cons(x, Nil); Refl },
               Cons(hd, tl) => {
                 let y = insertL k2 x (*tl);
-                let h = insert_at(&mut *tl, k2, x);
+                let h = insert_at(&m *tl, k2, x);
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
@@ -1037,7 +1037,7 @@ def pick : Term := prog{
         -- the whole corpus whose name contradicted its role, and the fence is
         -- what found it.
         { let ki = boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p);
-          insert_at(&mut *v, ki, x) };
+          insert_at(&m *v, ki, x) };
   () }
 example : progOk pick = true := by native_decide
 
@@ -1376,7 +1376,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             *v := rest;
             -- The bound goes with the call, UNCHANGED: `Le (len (Cons x rest)) (S f2)`
             -- already IS `Le (len rest) f2`.
-            let r = partition(f2, &mut *v, p, Hf);
+            let r = partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
             match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
               -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
@@ -1426,7 +1426,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             Z => botElim Unit Hf,
             S(f2) => {
               let y = append (*tl) w;
-              let h = append_back(f2, &mut *tl, w, Hf);
+              let h = append_back(f2, &m *tl, w, Hf);
               id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
             }
           }
@@ -1480,7 +1480,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               -- the call, and the bound is `hfuel` UNCHANGED — after `*v := rest`
               -- the callee wants `Le (len rest) f2`, which is what it already is.
               -- It SURVIVES the call because `partition`'s `Hf` is capital.
-              let pr = partition(f2, &mut *v, x, hfuel);
+              let pr = partition(f2, &m *v, x, hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
               match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
                 -- Both bounds are about to be invalidated as VALUES (the sorts
@@ -1496,12 +1496,12 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 -- Sort the kept part in place. Its sufficiency is the partition's
                 -- length conjunct composed with this frame's.
                 let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
-                let s1 = quicksort(f2, &mut *v, hf1);
+                let s1 = quicksort(f2, &m *v, hf1);
                 match s1 { Pair(hs1, hc1) => {
                   -- …and the returned part, through a borrow of the local that
                   -- holds it. Nothing about it is in `*v`; it is an ordinary value.
                   let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
-                  let s2 = quicksort(f2, &mut hi, hf2);
+                  let s2 = quicksort(f2, &m hi, hf2);
                   match s2 { Pair(hs2, hc2) => {
                     let hub2 = mkUb (*v) hc1;
                     let hlb2 = mkLb hi hc2;
@@ -1518,7 +1518,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                     -- taken: a comptime argument mentioning `*v` would demand-
                     -- collapse the loan it was just lent.
                     let lv = len *v;
-                    let happ = append_back(lv, &mut *v, w, le_refl lv);
+                    let happ = append_back(lv, &m *v, w, le_refl lv);
                     Pair(fin (*v) happ, cnt2 (*v) happ)
                   } }
                 } }
@@ -1632,7 +1632,7 @@ def partitionLoses : Term := prog{
                           λ (n : Nat). count_cons_r n x a b rest (h n));
             let lr = len rest;
             *v := rest;
-            let r = partition(f2, &mut *v, p, Hf);
+            let r = partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
             match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
               if e : leb x p {
@@ -1677,7 +1677,7 @@ def qsStaleBound : Term := prog{
                           λ (n : Nat). count_cons_r n x a b rest (h n));
             let lr = len rest;
             *v := rest;
-            let r = partition(f2, &mut *v, p, Hf);
+            let r = partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
             match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
               if e : leb x p {
@@ -1704,7 +1704,7 @@ def qsStaleBound : Term := prog{
             Z => botElim Unit Hf,
             S(f2) => {
               let y = append (*tl) w;
-              let h = append_back(f2, &mut *tl, w, Hf);
+              let h = append_back(f2, &m *tl, w, Hf);
               id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
             }
           }
@@ -1744,7 +1744,7 @@ def qsStaleBound : Term := prog{
                                  (count_cons_congr n x b2 b (h2 n))))
                            (count_cons_r n x a b rest (hp n))));
               *v := rest;
-              let pr = partition(f2, &mut *v, x, hfuel);
+              let pr = partition(f2, &m *v, x, hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
               match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
                 let mkUb = (λ (a2 : List Nat).
@@ -1755,10 +1755,10 @@ def qsStaleBound : Term := prog{
                       lb_perm x b2 hi h2 hlb);
                 let cnt1 = mkCnt (*v) hi hpc;
                 let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
-                let s1 = quicksort(f2, &mut *v, hf1);
+                let s1 = quicksort(f2, &m *v, hf1);
                 match s1 { Pair(hs1, hc1) => {
                   let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
-                  let s2 = quicksort(f2, &mut hi, hf2);
+                  let s2 = quicksort(f2, &m hi, hf2);
                   match s2 { Pair(hs2, hc2) => {
                     let hub2 = mkUb (*v) hc1;
                     let hlb2 = mkLb hi hc2;
@@ -1772,7 +1772,7 @@ def qsStaleBound : Term := prog{
                             (sorted_append_pivot x (*v) hi hs1 hub hs2 hlb));
                     let w = Cons(x, hi);
                     let lv = len *v;
-                    let happ = append_back(lv, &mut *v, w, le_refl lv);
+                    let happ = append_back(lv, &m *v, w, le_refl lv);
                     Pair(fin (*v) happ, cnt2 (*v) happ)
                   } }
                 } }
@@ -1979,8 +1979,8 @@ def withCursors (cret eret tail : Term) : Term := prog{
         { match v {
             Nil => botElim Unit p,
             Cons(hd, tl) => match i {
-              Z => &mut *hd,
-              S(k) => nth(&mut *tl, k, p)
+              Z => &m *hd,
+              S(k) => nth(&m *tl, k, p)
             }
         } };
   fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
@@ -1990,11 +1990,11 @@ def withCursors (cret eret tail : Term) : Term := prog{
             Cons(hd, tl) => match i {
               Z => match j {
                 Z => botElim Unit pij,
-                S(jjv) => Pair(&mut *hd, nth(&mut *tl, jjv, p2))
+                S(jjv) => Pair(&m *hd, nth(&m *tl, jjv, p2))
               },
               S(k) => match j {
                 Z => botElim Unit pij,
-                S(jj2) => nth2(&mut *tl, k, jj2, pij, p2)
+                S(jj2) => nth2(&m *tl, k, jj2, pij, p2)
               }
             }
         } };
@@ -2010,7 +2010,7 @@ def withCursors (cret eret tail : Term) : Term := prog{
   fn certSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
         pij : Le (S i) j, p2 : Le (S j) (len s)) -> %cret
         { let cert = count_swapL' m i j s pij p2;
-          let b = &mut s;
+          let b = &m s;
           swapS(b, i, j, pij, p2);
           cert };
   -- v=0, i=1, pib=2.
@@ -2037,7 +2037,7 @@ def withCursors (cret eret tail : Term) : Term := prog{
   -- v=0, i=1, j=2, pij=3, p2=4.
   fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
         -> %eret
-        { swapS(&mut *v, i, j, pij, p2); Refl };
+        { swapS(&m *v, i, j, pij, p2); Refl };
   -- v=0, pivot=1.
   fn lebProbe (v : &mut List Nat, pivot : Nat) -> Unit
         { let c = leb (nth Z (*v)) pivot;
@@ -2083,8 +2083,8 @@ def withScan (tail : Term) : Term := prog{
         { match v {
             Nil => botElim Unit p,
             Cons(hd, tl) => match i {
-              Z => &mut *hd,
-              S(k) => nth(&mut *tl, k, p)
+              Z => &m *hd,
+              S(k) => nth(&m *tl, k, p)
             }
         } };
   fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
@@ -2094,11 +2094,11 @@ def withScan (tail : Term) : Term := prog{
             Cons(hd, tl) => match i {
               Z => match j {
                 Z => botElim Unit pij,
-                S(jjv) => Pair(&mut *hd, nth(&mut *tl, jjv, p2))
+                S(jjv) => Pair(&m *hd, nth(&m *tl, jjv, p2))
               },
               S(k) => match j {
                 Z => botElim Unit pij,
-                S(jj2) => nth2(&mut *tl, k, jj2, pij, p2)
+                S(jj2) => nth2(&m *tl, k, jj2, pij, p2)
               }
             }
         } };
@@ -2126,7 +2126,7 @@ def withScan (tail : Term) : Term := prog{
                   -- + the recursion), and §2.1 copy-on-read makes that natural: a
                   -- `S`-constructor arg reads its var by copy (marker-free Nat), so the
                   -- indices are the plain `S i`, `S (add i (S g2))`, `S g2`.
-                  S(g2) => { swapS(&mut *v, S(i), S(add i (S(g2))), (), ()); partScanE(v, k2, S(i), S(g2), pivot) }
+                  S(g2) => { swapS(&m *v, S(i), S(add i (S(g2))), (), ()); partScanE(v, k2, S(i), S(g2), pivot) }
                 },
                 False => partScanE(v, k2, i, S(g), pivot)
               }
@@ -2506,7 +2506,7 @@ def twoRec : Term := prog{
   fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         { match f {
             Z => (),
-            S(f2) => { twoRec(&mut *v, f2); twoRec(&mut *v, f2); () }
+            S(f2) => { twoRec(&m *v, f2); twoRec(&m *v, f2); () }
         } };
   () }
 example : progOk twoRec = true := by native_decide

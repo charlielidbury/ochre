@@ -32,7 +32,8 @@ Id/application/`Type` — extended with two things the boundary needs:
   * `*x` in type position → `.deref (.var ⟨i, name⟩)` — the comptime deref the
     corpus writes as `dv`/`lenT (.deref (.var vv))`.
 
-`&mut τ` is `borrowT τ (weaken τ)` (the corpus's plain-borrow encoding; for the
+`&mut τ` (the borrow TYPE — the OPERATION is `&m e`, M29 β) is
+`borrowT τ (weaken τ)` (the corpus's plain-borrow encoding; for the
 closed telescope types in the corpus `weaken τ` computes to `τ`, so the produced
 value is identical). `&mut (τ ~> S)` gives an S that ignores the snapshot;
 `&mut (s : τ ~> S)` binds `s` as pure var 0 in `S` — the `borrowT`/`seedTelescope`
@@ -63,32 +64,32 @@ namespace Dllbc
 
 /-! ## The unified `uterm` / `ublk` grammar (§ phase-3 point 1 — ONE term grammar)
 
-A single expression grammar spanning BOTH fragments, elaborated by `elabU` under a
-**mode flag** that is precisely "is this position consumed by ⇒ or ⇝" (the
-arrows-decide-fragments thesis at elaboration level):
+A single expression grammar spanning BOTH fragments. It used to be elaborated
+under a **mode flag** — "is this position consumed by ⇒ or ⇝" — and that flag had
+exactly two readers. Both are gone:
 
-  * **term mode** (⇒, a runtime position — a `fn` body, a `prog{}` block): `&mut e` is
-    the borrow *operation* (`.borrow`).
-  * **type mode** (⇝, a comptime position — a `fn`'s telescope and return type,
-    `pure{}`): `&mut τ` / `&mut (s : τ ~> S)` is the borrow *type* (`.borrowT`, the
-    snapshot `s` bound as pure var 0 in `S`). The runtime-only forms are simply
-    not written there.
+  * **`let`** (M29 α) emitted a `.letIn` in one mode and a de Bruijn β-redex in
+    the other. One row emits `.letIn` and the kernel reads it under both arrows;
+    ⇝'s reading of it IS that β, performed where the binder depth is known.
+  * **`&mut`** (M29 β) was the borrow OPERATION in one mode and the borrow TYPE in
+    the other. They are spelled `&m` and `&mut` now, so each row emits its own
+    node whatever surrounds it.
 
-**`let` is no longer one of the differences** (M29 α). It emitted a `.letIn` in
-one mode and a de Bruijn β-redex in the other; the kernel now reads `.letIn`
-under both arrows — ⇝'s reading of it IS that β, performed where the binder depth
-is known (`reflectC`) — so one row emits one form and the flag has one reader
-left. The gap between the fragments closed in the kernel, which is where it was
-always a fact about the arrows rather than about the elaborator.
+What is left of the difference between the fragments is in the KERNEL, which is
+where it was always a fact about the arrows rather than about the elaborator: a
+form with no comptime reading is refused by `reflectC` (whose refusal list IS this
+calculus's definition of the pure sub-grammar), and a form with no runtime reading
+is refused by `readR`. The surface makes neither exclusion on their behalf.
 
-Forms shared by both modes: application spines, λ/Π/Σ/→/Id/`Type`, `*e`, `Id`,
-`let`, constructor/const/lemma references. `ublk` is the statement layer.
+Every form is therefore shared: application spines, λ/Π/Σ/→/Id/`Type`, `*e`, `Id`,
+`let`, `&m`, `&mut`, constructor/const/lemma references. `ublk` is the statement
+layer.
 
 **The one disambiguation rule (§ point 2):** `f(a, b)` — an identifier with a
 **no-whitespace** paren argument list — is a runtime **call** (lowercase head) or
 **ctorApp** (uppercase). Space-separated **juxtaposition** `f a b` (incl.
 `f (a) b`) is **pure application** (`ctorApp` when the head is a known ctor). So
-`nth(&mut *tl, k, p)` is a call, `botElim Unit p` and `le_rw_r (S x) y` are
+`nth(&m *tl, k, p)` is a call, `botElim Unit p` and `le_rw_r (S x) y` are
 application spines, `S(*l)` / `S *l` both mean `ctorApp "S" [*l]`. -/
 
 declare_syntax_cat uterm
@@ -107,7 +108,7 @@ syntax:max "old" "*" uterm:max : uterm                      -- §5.4 old *v: ent
 syntax:max "Id" uterm:max uterm:max uterm:max : uterm        -- Id A a b
 syntax:max ident noWs "(" uterm,* ")" : uterm                -- call / ctorApp (NO space before `(`)
 -- ¶2.1's two new place steps. They bind TIGHTER than the peel, so a reborrow of a
--- range through a borrow is written `&mut (*v)[lo ; cnt]` and `*v[i]` would mean
+-- range through a borrow is written `&m (*v)[lo ; cnt]` and `*v[i]` would mean
 -- `*(v[i])` — peel the borrow stored AT slot `i`, which is how an `Array n (&mut T)`
 -- is reached. `| h` cites the containment evidence (¶3.2's supply route 2); without
 -- it the bound must compute (route 1). Offset-and-count, never lower-and-upper.
@@ -133,7 +134,21 @@ syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "]" : uterm  -
 -- constraints are DECLARED and checked). The program cites the equation and premise (3)
 -- solves along it. Free when the decomposition already holds by conversion.
 syntax:max uterm:max noWs "[" uterm ";" uterm ";" uterm "|" uterm "|" uterm "]" : uterm
-syntax:70 "&mut" uterm:65 : uterm                            -- &mut e : borrow (term) / borrowT (type)
+-- **THE OPERATION AND THE TYPE ARE SPELLED DIFFERENTLY** (M29 β). `&m e` mints a
+-- loan on the place `e`; `&mut τ` is the type of a borrow of a `τ`. They used to
+-- share the spelling `&mut` and be told apart by the elaboration mode, which was
+-- the second and last of the two things that flag decided.
+--
+-- Conflating them was an ARROW dispatch on what are genuinely two operations, and
+-- the borrowed spelling is what made it look otherwise: Rust writes `&mut` for
+-- both because in Rust a type and a term can never occupy the same position, and
+-- in a dependently-typed language they can. A future ⇝-construction of a mutable
+-- reference — building a borrow type's inhabitant in the comptime fragment — is
+-- conceivable, and under the old rule it would have been unwritable, because the
+-- only spelling for the operation was the one the arrow had already claimed for
+-- the type. The attachment to Rust's spelling for the OP was aesthetic.
+syntax:70 "&m" uterm:65 : uterm                              -- &m e : the borrow OPERATION
+syntax:70 "&mut" uterm:65 : uterm                            -- &mut τ : the borrow TYPE
 syntax:70 "&mut" "(" uterm "~>" uterm ")" : uterm            -- borrow type &mut (τ ↝ S)
 syntax:70 "&mut" "(" ident ":" uterm "~>" uterm ")" : uterm  -- borrow type &mut (s : τ ↝ S)
 syntax:65 uterm:65 uterm:66 : uterm                          -- application (juxtaposition)
@@ -401,10 +416,20 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
     let (τ', n1) ← elabUTerm isTy rctx pctx next τ
     let (s', n2) ← elabUTerm isTy rctx pctx n1 s
     return (← `(Dllbc.Term.borrowT $τ' (Dllbc.Term.shiftPure 1 0 $s')), n2)
-  | `(uterm| &mut $e:uterm) => do                                -- mode-decided: borrowT vs borrow
+  | `(uterm| &mut $e:uterm) => do                                -- the borrow TYPE, in any position
     let (e', n) ← elabUTerm isTy rctx pctx next e
-    if isTy then return (← `(Dllbc.Term.borrowT $e' (Dllbc.Term.shiftPure 1 0 $e')), n)
-    else return (← `(Dllbc.Term.borrow $e'), n)
+    return (← `(Dllbc.Term.borrowT $e' (Dllbc.Term.shiftPure 1 0 $e')), n)
+  | `(uterm| &m $e:uterm) => do                                  -- the borrow OPERATION, in any position
+    -- M29 β. This row and the one above are the two spellings, and neither asks
+    -- which arrow it is under: `&m` in a ⇝ position is a `.borrow`, which
+    -- `reflectC` refuses by name ("`&mut` is not in the comptime fragment"), and
+    -- `&mut` in a ⇒ position is a `.borrowT`, which `readR` refuses by name
+    -- ("a telescope-position form, not a movable value"). Both refusals already
+    -- existed and neither was reachable while the surface was deciding; the
+    -- exclusions are the KERNEL's, and this is what it takes for the surface to
+    -- stop making them on its behalf.
+    let (e', n) ← elabUTerm isTy rctx pctx next e
+    return (← `(Dllbc.Term.borrow $e'), n)
   | `(uterm| Id $a:uterm $b:uterm $c:uterm) => do
     let (a', n1) ← elabUTerm isTy rctx pctx next a
     let (b', n2) ← elabUTerm isTy rctx pctx n1 b

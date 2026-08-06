@@ -314,7 +314,7 @@ example : progRejects c10 "holds ⊥" = true := by native_decide
 -- rejection names what the slot really holds — a Nat — rather than the marker.
 -- Listing the site is the point: every unlisted demand site in this calculus has
 -- so far been a bug waiting for its first program.
-def c11 : Term := prog{ let x = 3; let b = &mut x; let z = x(2); () }
+def c11 : Term := prog{ let x = 3; let b = &m x; let z = x(2); () }
 example : progRejects c11 "is not a function value" = true := by native_decide
 
 /-! ### C12. The `ih` shape
@@ -777,7 +777,7 @@ def zeroMot : Term := pure{ λ (f : Nat). Π (v : &mut List Nat) → Unit }
 
 def b1 : Term := prog{
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   let f = natRec %zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
@@ -808,7 +808,7 @@ example : slotOf b1 "f" = some "natRec @motive λr(v){…} λr(f2, ih, v){…}" 
 -- B2. Surplus fuel is harmless: the list runs out first and the `Nil` arm returns.
 def b2 : Term := prog{
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   let f = natRec %zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
@@ -825,7 +825,7 @@ def bumpMot : Term := pure{ λ (l : List Nat). Π (v : &mut Nat) → Unit }
 def b3 : Term := prog{
   let l = Cons(7, Cons(8, Nil));
   let acc = 0;
-  let a = &mut acc;
+  let a = &m acc;
   let f = listRec Nat %bumpMot
             (λ(w : &mut Nat) { () })
             (λ(h : Nat, t : List Nat, ih : Π (v : &mut Nat) → Unit, v : &mut Nat)
@@ -851,7 +851,7 @@ example : slotOf b3 "r" = some "S (S Z)" := by native_decide
 
 def b4 : Term := prog{ fn b4 (fuel : Nat) -> Unit {
   let x = Cons(1, Nil);
-  let b = &mut x;
+  let b = &m x;
   let f = natRec %zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
@@ -922,7 +922,7 @@ example : Tests.S26Seal.diffOld Tests.S26Seal.d1 = false := by native_decide
 
 def b1short : Term := prog{
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   let f = natRec %zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
@@ -992,7 +992,7 @@ def pinSeal : Term := pure{ Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 
 def e1 : Term := prog{
   let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
   let x = Cons(1, Nil);
-  let b = &mut x;
+  let b = &m x;
   f(b);
   let y = x;
   () }
@@ -1014,7 +1014,7 @@ example : diffC e1 = true := by native_decide
 
 def e2 : Term := prog{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
   let f = (λ(w : &mut List Nat) { *w := Cons(9, Nil); Refl } : %pinSeal);
-  f(&mut *v) }; () }
+  f(&m *v) }; () }
 example : progOk e2 = true := by native_decide
 
 -- The same program, the same body, sealed at `Unit`: the caller gets nothing back
@@ -1022,7 +1022,7 @@ example : progOk e2 = true := by native_decide
 -- apart, which is §5 point 4 with nothing left to interpret.
 def e2none : Term := prog{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
   let f = (λ(w : &mut List Nat) { *w := Cons(9, Nil); () } : %unitSeal);
-  f(&mut *v) }; () }
+  f(&m *v) }; () }
 example : progRejects e2none "does not have return type" = true := by native_decide
 
 /-! ### E3. The negative controls, one per branch of the new rule -/
@@ -1173,7 +1173,7 @@ def f1 : Term := prog{
                  (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                     { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %zeroSeal);
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   f(3, b);
   let y = x;
   () }
@@ -1276,7 +1276,7 @@ def splitSealed : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = take i2 (*tl);
-             let p = ih(&mut *tl, hi);
+             let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
@@ -1324,7 +1324,7 @@ def splitSpecLie : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = take i2 (*tl);
-             let p = ih(&mut *tl, hi);
+             let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
@@ -1350,7 +1350,7 @@ def splitBodyLie : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = take i2 (*tl);
-             let p = ih(&mut *tl, hi);
+             let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
@@ -1472,7 +1472,7 @@ def i1 : Term := prog{
                  (λ(v : &mut List Nat, Hn : Le (len *v) Z) { () })
                  (λ(n2 : Nat,
                     ih : Π (v : &mut List Nat) → Π (Hn : Le (len *v) n2) → Unit,
-                    v : &mut List Nat, Hn : Le (len *v) (S n2)) { ih(&mut *v, Hn); () }) : %bndTy);
+                    v : &mut List Nat, Hn : Le (len *v) (S n2)) { ih(&m *v, Hn); () }) : %bndTy);
   () }
 example : progRejects i1 "does not have its parameter type" = true := by native_decide
 
@@ -1489,7 +1489,7 @@ def i2 : Term := prog{
                  (λ(n2 : Nat,
                     ih : Π (v : &mut List Nat) → Π (Hn : Le (len *v) n2) → Unit,
                     v : &mut List Nat, Hn : Le (len *v) (S n2))
-                    { match v { Nil => (), Cons(hd, tl) => { ih(&mut *tl, Hn); () } } }) : %bndTy);
+                    { match v { Nil => (), Cons(hd, tl) => { ih(&m *tl, Hn); () } } }) : %bndTy);
   () }
 example : progOk i2 = true := by native_decide
 
@@ -1519,13 +1519,13 @@ def j1 : Term := prog{
            Nil => botElim Unit hi,
            Cons(hd, tl) => {
              let y1 = take i2 (*tl);
-             let p = ih(&mut *tl, hi);
+             let p = ih(&m *tl, hi);
              match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                           (*tl) y1 h1;
                Pair(rr, Pair(c1, h2)) } } } } } }) : %splitTy);
   let x = Cons(1, Cons(2, Cons(3, Nil)));
-  let b = &mut x;
+  let b = &m x;
   let r = f(1, b, ());
   let y = x;
   () }
@@ -1565,7 +1565,7 @@ def k1 : Term := prog{ fn k1 (n : Nat) -> Unit {
       -- a seal as a `let` right-hand side, inside a branch
       let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %unitSeal);
       let x = Cons(1, Nil);
-      let b = &mut x;
+      let b = &m x;
       -- a sealed call in statement position, inside a branch
       f(b);
       let y = x;
@@ -1652,7 +1652,7 @@ def m1 : Term := prog{
                     let g = ih;
                     match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %mSeal);
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   f(3, b);
   () }
 
@@ -1685,7 +1685,7 @@ def m0 : Term := prog{
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
                     match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }) : %mSeal);
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   f(3, b);
   () }
 example : progOk m0 = true := by native_decide
@@ -1844,7 +1844,7 @@ def bndProgram : Term := prog{
       Z => (),
       S(n2) => match v {
         Nil => (),
-        Cons(hd, tl) => { bnd(n2, &mut *tl, Hn); () } } } };
+        Cons(hd, tl) => { bnd(n2, &m *tl, Hn); () } } } };
   () }
 
 /-- The sealed recursor the `fn` statement bound. -/
@@ -2063,7 +2063,7 @@ def juxSealTy : Term := pure{ Π (v : &mut List Nat) → Unit }
 def juxSeal : Term := prog{
   let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %juxSealTy);
   let x = Cons(1, Nil);
-  let b = &mut x;
+  let b = &m x;
   f b;
   let y = x;
   () }
@@ -2091,7 +2091,7 @@ example : Tests.S9Diff.progDiff juxSeal = true := by native_decide
 def juxSealComma : Term := prog{
   let f = (λ(v : &mut List Nat) { *v := Cons(9, Nil); () } : %juxSealTy);
   let x = Cons(1, Nil);
-  let b = &mut x;
+  let b = &m x;
   f(b);
   let y = x;
   () }
@@ -2111,7 +2111,7 @@ def juxRec : Term := prog{
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                     { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih tl; () } } }) : %juxRecTy);
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   f 3 b;
   let y = x;
   () }

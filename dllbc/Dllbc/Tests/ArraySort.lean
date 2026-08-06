@@ -253,9 +253,9 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
               -- after `match m` the leaf's extent is the rigid `S m2`, and only the
               -- supplied form converts (`add 1 m2 ⇝ S m2`). The index place `t[Z]`
               -- has no residue slot and is rejected here for exactly that reason.
-              let hd = &mut (*t)[Z ; 1 ; m2];
+              let hd = &m (*t)[Z ; 1 ; m2];
               let x = (*hd)[0];
-              let tl = &mut (*t)[S Z ; m2];
+              let tl = &m (*t)[S Z ; m2];
               -- Staged while `*tl` still denotes the ENTRY tail: rewrite the exit into
               -- the pre-swap state (`hsw`), then move that across the recursive call's
               -- own count evidence (`hc`). Both non-swap branches pass `Refl` for the
@@ -270,7 +270,7 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                                    (countA q (S m2) (acons m2 x t2))
                                    (countA q (S m2) (acons m2 x (*tl)))
                         (hsw q) (count_acons_congr q x m2 t2 (*tl) (hc q)));
-              let res = splitA(f2, m2, hfuel, p, &mut *tl);
+              let res = splitA(f2, m2, hfuel, p, &m *tl);
               match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(hlen2, z3) =>
               match z3 { Pair(hsp2, hcnt2) => {
                 if e : leb x p {
@@ -298,9 +298,9 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                       let hdec = id_trans Nat m2 (S (add k3 r2)) (add k3 (S r2)) hlen2
                                    (id_sym Nat (add k3 (S r2)) (S (add k3 r2))
                                       (add_succ k3 r2));
-                      let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
-                      let mid = &mut (*tl)[k3 ; 1 ; r2];
-                      let hi = &mut (*tl)[S k3 ; r2];
+                      let lo = &m (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
+                      let mid = &m (*tl)[k3 ; 1 ; r2];
+                      let hi = &m (*tl)[S k3 ; r2];
                       let y = (*mid)[0];
                       (*mid)[0] := x;
                       (*hd)[0] := y;
@@ -328,9 +328,9 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
           -- An empty array has no pivot, so the caller owes `Le 1 n`; here it IS `Bot`.
           Z => botElim Unit hne,
           S(m2) => {
-            let hd = &mut (*a)[Z ; 1 ; m2];
+            let hd = &m (*a)[Z ; 1 ; m2];
             let x = (*hd)[0];
-            let tl = &mut (*a)[S Z ; m2];
+            let tl = &m (*a)[S Z ; m2];
             let mkC = (λ (t2 : Array m2 Nat).
                 λ (hc : Π (q : Nat) → Id Nat (countA q m2 t2) (countA q m2 (*tl))).
                 λ (a2 : Array (S m2) Nat).
@@ -341,7 +341,7 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                                  (countA q (S m2) (acons m2 x t2))
                                  (countA q (S m2) (acons m2 x (*tl)))
                       (hsw q) (count_acons_congr q x m2 t2 (*tl) (hc q)));
-            let res = splitA(fuel, m2, le_pred_l m2 fuel hfuel, x, &mut *tl);
+            let res = splitA(fuel, m2, le_pred_l m2 fuel hfuel, x, &m *tl);
             match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(hlen2, z3) =>
             match z3 { Pair(hsp2, hcnt2) => {
               match k2 {
@@ -359,9 +359,9 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                   let hdec = id_trans Nat m2 (S (add k3 r2)) (add k3 (S r2)) hlen2
                                (id_sym Nat (add k3 (S r2)) (S (add k3 r2))
                                   (add_succ k3 r2));
-                  let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
-                  let mid = &mut (*tl)[k3 ; 1 ; r2];
-                  let hi = &mut (*tl)[S k3 ; r2];
+                  let lo = &m (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
+                  let mid = &m (*tl)[k3 ; 1 ; r2];
+                  let hi = &m (*tl)[S k3 ; r2];
                   let y = (*mid)[0];
                   (*mid)[0] := x;
                   (*hd)[0] := y;
@@ -401,16 +401,16 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
               -- capture-before-consume dodge M23 uses for a consumed `rest`.
               let mkHf = (λ (kv : Nat). λ (h : Le (S kv) n).
                             le_trans (S kv) n (S f2) h hfuel);
-              let pr = partitionA(S(f2), n, hfuel, leb_true_le 1 n he, &mut *a);
+              let pr = partitionA(S(f2), n, hfuel, leb_true_le 1 n he, &m *a);
               match pr { Pair(pvv, w1) => match w1 { Pair(k, w2) => match w2 { Pair(jj, w3) =>
               match w3 { Pair(hlen, w4) => match w4 { Pair(hp, hcnt) => {
                 -- ¶6's three-way carve, at the index the partition just returned. The
                 -- first obligation is `le_add`; the second is `Le 1 (S jj)`, which route
                 -- (a) reduces to ⊤; the third is degenerate.
-                let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj) | hlen];
-                let pcell = &mut (*a)[k ; 1 ; jj];
+                let l = &m (*a)[Z ; k ; S jj | le_add k (S jj) | hlen];
+                let pcell = &m (*a)[k ; 1 ; jj];
                 let e = (*pcell)[0];
-                let r = &mut (*a)[S k ; jj];
+                let r = &m (*a)[S k ; jj];
                 let hub = partA_cat_ub pvv k (S jj) (*l) (acons jj e (*r)) hp;
                 let hrest = partA_cat_rest pvv k (S jj) (*l) (acons jj e (*r)) hp;
                 let heq = partA0_eq pvv jj (*r) e hrest;
@@ -461,10 +461,10 @@ def arrUnder (sret pret qret qsuff tail : Term) : Term := prog{
                 -- strictly shorter. `le_add_succ` and `le_add_l` are the two sides of
                 -- that, and each composes with this frame's own bound.
                 let hf1 = mkHf k (le_add_succ k jj);
-                let s1 = quicksortA(f2, k, hf1, &mut *l);
+                let s1 = quicksortA(f2, k, hf1, &m *l);
                 match s1 { Pair(hs1, hc1) => {
                   let hf2 = mkHf jj (le_add_l (S jj) k);
-                  let s2 = quicksortA(f2, jj, hf2, &mut *r);
+                  let s2 = quicksortA(f2, jj, hf2, &m *r);
                   match s2 { Pair(hs2, hc2) => {
                     Pair(mkS (*l) (*r) hc1 hc2 hs1 hs2,
                          top1 (arrCat k (S jj) (*l) (acons jj e (*r))) (mkAD (*l) (*r) hc1 hc2))
@@ -540,9 +540,9 @@ def splitANoSwap : Term := prog{
           S(m2) => match fuel {
             Z => botElim Unit hfuel,
             S(f2) => {
-              let hd = &mut (*t)[Z ; 1 ; m2];
+              let hd = &m (*t)[Z ; 1 ; m2];
               let x = (*hd)[0];
-              let tl = &mut (*t)[S Z ; m2];
+              let tl = &m (*t)[S Z ; m2];
               let mkC = (λ (t2 : Array m2 Nat).
                   λ (hc : Π (q : Nat) → Id Nat (countA q m2 t2) (countA q m2 (*tl))).
                   λ (a2 : Array (S m2) Nat).
@@ -553,7 +553,7 @@ def splitANoSwap : Term := prog{
                                    (countA q (S m2) (acons m2 x t2))
                                    (countA q (S m2) (acons m2 x (*tl)))
                         (hsw q) (count_acons_congr q x m2 t2 (*tl) (hc q)));
-              let res = splitANoSwap(f2, m2, hfuel, p, &mut *tl);
+              let res = splitANoSwap(f2, m2, hfuel, p, &m *tl);
               match res { Pair(k2, z1) => match z1 { Pair(r2, z2) => match z2 { Pair(hlen2, z3) =>
               match z3 { Pair(hsp2, hcnt2) => {
                 if e : leb x p {
@@ -576,9 +576,9 @@ def splitANoSwap : Term := prog{
                       let hdec = id_trans Nat m2 (S (add k3 r2)) (add k3 (S r2)) hlen2
                                    (id_sym Nat (add k3 (S r2)) (S (add k3 r2))
                                       (add_succ k3 r2));
-                      let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
-                      let mid = &mut (*tl)[k3 ; 1 ; r2];
-                      let hi = &mut (*tl)[S k3 ; r2];
+                      let lo = &m (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2) | hdec];
+                      let mid = &m (*tl)[k3 ; 1 ; r2];
+                      let hi = &m (*tl)[S k3 ; r2];
                       let y = (*mid)[0];
                       let hrest = splitA_cat_rest p k3 (S r2) (*lo) (acons r2 y (*hi)) hsp2;
                       let hy = splitA1_head p r2 (*hi) y hrest;
@@ -638,9 +638,9 @@ example : progRejects (arrUnder sHonest pHonest (pure{
 def carveNoEv : Term := prog{
   fn carveNoEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
                 a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; k ; S jj];
-    let pcell = &mut (*a)[k ; 1 ; jj];
-    let r = &mut (*a)[S k ; ..];
+    let l = &m (*a)[Z ; k ; S jj];
+    let pcell = &m (*a)[k ; 1 ; jj];
+    let r = &m (*a)[S k ; ..];
     () };
   () }
 example : progRejects carveNoEv "may not impose it by refining" = true := by native_decide
@@ -650,9 +650,9 @@ example : progRejects carveNoEv "may not impose it by refining" = true := by nat
 def carveWithEv : Term := prog{
   fn carveWithEv (n : Nat, k : Nat, jj : Nat, heq : Id Nat n (add k (S jj)),
                   a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; k ; S jj | le_add k (S jj) | heq];
-    let pcell = &mut (*a)[k ; 1 ; jj];
-    let r = &mut (*a)[S k ; ..];
+    let l = &m (*a)[Z ; k ; S jj | le_add k (S jj) | heq];
+    let pcell = &m (*a)[k ; 1 ; jj];
+    let r = &m (*a)[S k ; ..];
     () };
   () }
 example : progOk carveWithEv = true := by native_decide
@@ -863,8 +863,8 @@ def c6PeelCall : Term := prog{
   fn c6Touch (q : Nat, s : &mut (Array q Nat)) -> Unit { () };
   fn c6PeelCall (n : Nat, a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
-      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &mut (*a)[S Z ; m]; c6Touch(m, &mut *tl); () } } };
+      S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &m (*a)[S Z ; m]; c6Touch(m, &m *tl); () } } };
   () }
 example : progOk c6PeelCall = true := by native_decide
 
@@ -873,12 +873,12 @@ def c6CarveNoCall : Term := prog{
   fn c6CarveNoCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
-      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &mut (*a)[S Z ; m];
-                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
+      S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &m (*a)[S Z ; m];
+                let lo = &m (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
                                       | s_inj m (add k3 (S r2)) hq];
-                let mid = &mut (*tl)[k3 ; 1 ; r2];
-                let hi = &mut (*tl)[S k3 ; r2]; () } } };
+                let mid = &m (*tl)[k3 ; 1 ; r2];
+                let hi = &m (*tl)[S k3 ; r2]; () } } };
   () }
 example : progOk c6CarveNoCall = true := by native_decide
 
@@ -887,12 +887,12 @@ def c6Swap : Term := prog{
   fn c6Swap (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
-      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &mut (*a)[S Z ; m];
-                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
+      S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &m (*a)[S Z ; m];
+                let lo = &m (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
                                       | s_inj m (add k3 (S r2)) hq];
-                let mid = &mut (*tl)[k3 ; 1 ; r2];
-                let hi = &mut (*tl)[S k3 ; r2];
+                let mid = &m (*tl)[k3 ; 1 ; r2];
+                let hi = &m (*tl)[S k3 ; r2];
                 let y = (*mid)[0]; (*mid)[0] := x; (*hd)[0] := y; () } } };
   () }
 example : progOk c6Swap = true := by native_decide
@@ -902,8 +902,8 @@ def c6Rec : Term := prog{
   fn c6Rec [fuel] (fuel : Nat, m : Nat, hfuel : Le m fuel, a : &mut (Array m Nat)) -> Unit {
     match m { Z => (),
       S(m2) => match fuel { Z => botElim Unit hfuel,
-        S(f2) => { let hd = &mut (*a)[Z ; 1 ; m2]; let x = (*hd)[0];
-                   let tl = &mut (*a)[S Z ; m2]; c6Rec(f2, m2, hfuel, &mut *tl); () } } } };
+        S(f2) => { let hd = &m (*a)[Z ; 1 ; m2]; let x = (*hd)[0];
+                   let tl = &m (*a)[S Z ; m2]; c6Rec(f2, m2, hfuel, &m *tl); () } } } };
   () }
 example : progOk c6Rec = true := by native_decide
 
@@ -917,13 +917,13 @@ def c6CarveAfterCall : Term := prog{
   fn c6CarveAfterCall (n : Nat, k3 : Nat, r2 : Nat, hq : Id Nat n (S (add k3 (S r2))),
              a : &mut (Array n Nat)) -> Unit {
     match n { Z => (),
-      S(m) => { let hd = &mut (*a)[Z ; 1 ; m]; let x = (*hd)[0];
-                let tl = &mut (*a)[S Z ; m];
-                c6Touch(m, &mut *tl);
-                let lo = &mut (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
+      S(m) => { let hd = &m (*a)[Z ; 1 ; m]; let x = (*hd)[0];
+                let tl = &m (*a)[S Z ; m];
+                c6Touch(m, &m *tl);
+                let lo = &m (*tl)[Z ; k3 ; S r2 | le_add k3 (S r2)
                                       | s_inj m (add k3 (S r2)) hq];
-                let mid = &mut (*tl)[k3 ; 1 ; r2];
-                let hi = &mut (*tl)[S k3 ; r2]; () } } };
+                let mid = &m (*tl)[k3 ; 1 ; r2];
+                let hi = &m (*tl)[S k3 ; r2]; () } } };
   () }
 example : progOk c6CarveAfterCall = true := by native_decide
 
@@ -955,8 +955,8 @@ example : progRejects twoCursor "no leaf" = true := by native_decide
 def twoCursorRes : Term := prog{
   fn twoCursorRes (n : Nat, i : Nat, j : Nat, r1 : Nat, r2 : Nat,
                    a : &mut (Array n Nat)) -> Unit {
-    let x = &mut (*a)[i ; 1 ; r1 | le_add i (S r1)];
-    let y = &mut (*a)[j ; 1 ; r2 | le_add j (S r2)];
+    let x = &m (*a)[i ; 1 ; r1 | le_add i (S r1)];
+    let y = &m (*a)[j ; 1 ; r2 | le_add j (S r2)];
     () };
   () }
 example : progRejects twoCursorRes "no segment starts at" = true := by native_decide
@@ -971,7 +971,7 @@ example : progRejects twoCursorRes "no segment starts at" = true := by native_de
 def withCitedCarve (rest : Term) : Term := prog{
   fn citedCarve (n : Nat, i : Nat, j : Nat, heq : Id Nat n (add i (S j)),
                  a : &mut (Array n Nat)) -> Unit {
-    let l = &mut (*a)[Z ; i ; S j | le_add i (S j) | heq];
+    let l = &m (*a)[Z ; i ; S j | le_add i (S j) | heq];
     () };
   %rest }
 example : progOk (withCitedCarve prog{ () }) = true := by native_decide
@@ -979,7 +979,7 @@ example : progOk (withCitedCarve prog{ () }) = true := by native_decide
 /-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
     inhabits `Id Nat 3 (add 1 (S 1))` because both sides compute to 3. -/
 def citedCallerOk : Term := withCitedCarve prog{
-  let z = Arr(1, 2, 3); let b = &mut z; citedCarve(3, 1, 1, Refl, b); let y = z; () }
+  let z = Arr(1, 2, 3); let b = &m z; citedCarve(3, 1, 1, Refl, b); let y = z; () }
 example : progOk citedCallerOk = true := by native_decide
 
 /-- (2) …and it RUNS, which is the half that was broken. Before the ruling the checker
@@ -992,7 +992,7 @@ example : runsAtAll citedCallerOk = true := by native_decide
     `Id Nat 2 (add 5 (S 5))` and the CALLER is rejected, at its own boundary, with the
     constraint recorded in the signature it violated. -/
 def citedCallerBad : Term := withCitedCarve prog{
-  let z = Arr(1, 2); let b = &mut z; citedCarve(2, 5, 5, Refl, b); let y = z; () }
+  let z = Arr(1, 2); let b = &m z; citedCarve(2, 5, 5, Refl, b); let y = z; () }
 example : progOk citedCallerBad = false := by native_decide
 
 end Dllbc.Tests.S25ArrSort

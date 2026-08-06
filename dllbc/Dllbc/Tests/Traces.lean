@@ -65,7 +65,7 @@ example : expectEnv prog{
 -- let x = 3; let b = &mut x  ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 3
 example : expectEnv prog{
   let x = 3;
-  let b = &mut x;
+  let b = &m x;
   ()
 } [("x", .loanM 0), ("b", .borrowM 0 (nat 3))] = true := by native_decide
 
@@ -73,7 +73,7 @@ example : expectEnv prog{
 -- … *b := 7  ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 7
 example : expectEnv prog{
   let x = 3;
-  let b = &mut x;
+  let b = &m x;
   *b := 7;
   ()
 } [("x", .loanM 0), ("b", .borrowM 0 (nat 7))] = true := by native_decide
@@ -83,7 +83,7 @@ example : expectEnv prog{
 -- … let y = x  ⟹  x ↦ 7 (copied), b ↦ ⊥, y ↦ 7
 example : expectEnv prog{
   let x = 3;
-  let b = &mut x;
+  let b = &m x;
   *b := 7;
   let y = x;
   ()
@@ -96,7 +96,7 @@ example : expectEnv prog{
 -- let x = 3; let b = &mut x; b := 9  ⟹  x ↦ 3, b ↦ 9
 example : expectEnv prog{
   let x = 3;
-  let b = &mut x;
+  let b = &m x;
   b := 9;
   ()
 } [("x", nat 3), ("b", nat 9)] = true := by native_decide
@@ -108,7 +108,7 @@ example : expectEnv prog{
 --   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 ⊥, tail ↦ Cons 3 Nil
 example : expectEnv prog{
   let x = Cons(3, Nil);
-  let b = &mut x;
+  let b = &m x;
   let tail = *b;
   ()
 } [("x", .loanM 0), ("b", .borrowM 0 .bot), ("tail", cons (nat 3) nil)] = true := by
@@ -121,7 +121,7 @@ example : expectEnv prog{
 --   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (Cons 7 (Cons 3 Nil)), tail ↦ ⊥
 example : expectEnv prog{
   let x = Cons(3, Nil);
-  let b = &mut x;
+  let b = &m x;
   let tail = *b;
   *b := Cons(7, tail);
   ()
@@ -137,8 +137,8 @@ example : expectEnv prog{
 --   ⟹  x ↦ loanₘ ℓ0, b ↦ borrowₘ ℓ0 (loanₘ ℓ1), c ↦ borrowₘ ℓ1 3
 example : expectEnv prog{
   let x = 3;
-  let b = &mut x;
-  let c = &mut *b;
+  let b = &m x;
+  let c = &m *b;
   ()
 } [("x", .loanM 0), ("b", .borrowM 0 (.loanM 1)), ("c", .borrowM 1 (nat 3))] = true := by
   native_decide
@@ -149,8 +149,8 @@ example : expectEnv prog{
 --   ⟹  x ↦ 3 (copied), b ↦ ⊥, c ↦ ⊥, z ↦ 3
 example : expectEnv prog{
   let x = 3;
-  let b = &mut x;
-  let c = &mut *b;
+  let b = &m x;
+  let c = &m *b;
   let z = x;
   ()
 } [("x", nat 3), ("b", .bot), ("c", .bot), ("z", nat 3)] = true := by native_decide
@@ -179,8 +179,8 @@ example : expectErr prog{
 -- no rule, rejected.
 example : expectErr prog{
   let x = 3;
-  let b = &mut x;
-  let c = &mut *b;
+  let b = &m x;
+  let c = &m *b;
   b := c;
   ()
 } "in flight" = true := by native_decide
@@ -244,7 +244,7 @@ example : expectEnv prog{
 -- of loan markers (unreadable), and `*hd := 0` was a strong update.
 example : expectEnv prog{
   let x = Cons(3, Nil);
-  let b = &mut x;
+  let b = &m x;
   match b {
     Cons(hd, tl) => { *hd := 0; () },
     Nil => ()
@@ -261,7 +261,7 @@ example : expectEnv prog{
 -- MOVES it (§2.1). y ↦ Cons 0 Nil.
 example : expectEnv prog{
   let x = Cons(3, Nil);
-  let b = &mut x;
+  let b = &m x;
   match b {
     Cons(hd, tl) => { *hd := 0; () },
     Nil => ()
@@ -274,7 +274,7 @@ example : expectEnv prog{
 -- The nullary branch binds nothing and issues no loans (degenerate case).
 example : expectEnv prog{
   let x = Nil;
-  let b = &mut x;
+  let b = &m x;
   match b {
     Cons(hd, tl) => { *hd := 0; () },
     Nil => ()
@@ -291,7 +291,7 @@ example : expectEnv prog{
 -- then Nil fills. Reading the owner back yields y ↦ Nil.
 example : expectEnv prog{
   let x = Cons(3, Nil);
-  let b = &mut x;
+  let b = &m x;
   match b {
     Cons(hd, tl) => { *b := Nil; () },
     Nil => ()
@@ -309,7 +309,7 @@ example : expectEnv prog{
 -- y ↦ Cons 1 (Cons 0 Nil).
 example : expectEnv prog{
   let x = Cons(1, Cons(2, Nil));
-  let b = &mut x;
+  let b = &m x;
   match b {
     Cons(hd, tl) => match tl {
       Cons(h2, t2) => { *h2 := 0; () },
@@ -344,7 +344,7 @@ example : expectErr prog{
 -- and no rule reads through ⊥.
 example : expectErr prog{
   let x = Cons(3, Nil);
-  let b = &mut x;
+  let b = &m x;
   let tail = *b;
   match b { Cons(hd, tl) => (), Nil => () }
 } "hole" = true := by native_decide
@@ -433,7 +433,7 @@ example : tailPaths isZero
 -- the payload to Nil. Two paths.
 def zeroHead : Term := withAny prog{
   let x = anyList();
-  let b = &mut x;
+  let b = &m x;
   match b {
     Cons(hd, tl) => {
       *hd := 0;
@@ -455,7 +455,7 @@ example : tailPaths zeroHead
 -- entries) and installs Nil; both paths leave the owner holding Nil.
 def variantChange : Term := withAny prog{
   let x = anyList();
-  let b = &mut x;
+  let b = &m x;
   match b { Cons(hd, tl) => { *b := Nil; () }, Nil => () };
   let y = x;
   ()
@@ -472,7 +472,7 @@ example : tailPaths variantChange
 --   Cons σ₀ (Cons 0 σ₁),  Cons σ₀ Nil,  Nil.
 def twoLevel : Term := withAny prog{
   let x = anyList();
-  let b = &mut x;
+  let b = &m x;
   match b {
     Cons(hd, tl) => match tl {
       Cons(h2, t2) => { *h2 := 0; let y = x; () },

@@ -200,7 +200,7 @@ def withPush (rest : Term) : Term := prog{
 -- `let y = x` ends the owed loan by minting a fresh σ. y is that σ, typed a
 -- list — not the concrete `Cons 7 (Cons 1 Nil)`. "The spec is the type."
 example : tailEnv (withPush (prog{
-    let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () }))
+    let x = Cons(1, Nil); let b = &m x; push(7, b); let y = x; () }))
   [("x", .bot), ("b", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## The recursive cursor (§2.5's promised counterpart) -/
@@ -250,7 +250,7 @@ example : progOk toNatProg = true := by native_decide
 -- too, so what is checked is the declaration and not one run of it.
 example : progOk (prog{
   fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
-  fn caller () -> Nat { let x = True; let b = &mut x; to_nat(b); let y = x; y };
+  fn caller () -> Nat { let x = True; let b = &m x; to_nat(b); let y = x; y };
   () }) = true := by native_decide
 
 /-! ## Reborrow at a call site -/
@@ -264,14 +264,14 @@ example : progOk (prog{
 -- this line was found, having been written the wrong way first and passed green.
 example : progOk (prog{
   fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
-  fn caller () -> List Nat { let x = Cons(1, Nil); let b = &mut x; push(7, &mut *b); let y = x; y };
+  fn caller () -> List Nat { let x = Cons(1, Nil); let b = &m x; push(7, &m *b); let y = x; y };
   () }) = true := by native_decide
 
 /-! ## Rejections -/
 
 -- Argument type mismatch: push a `True` where a `Nat` is owed.
 example : progRejects (withPush (prog{
-    let x = Cons(1, Nil); let b = &mut x; push(True, b); () }))
+    let x = Cons(1, Nil); let b = &m x; push(True, b); () }))
   "parameter type" = true := by native_decide
 
 -- A non-borrow where a borrow argument is expected.
@@ -283,7 +283,7 @@ example : progRejects (prog{ nope(); () }) "unknown function" = true := by nativ
 
 -- Using the consumed borrow variable after the call (it is ⊥).
 example : progRejects (withPush (prog{
-    let x = Cons(1, Nil); let b = &mut x; push(7, b); let z = b; () }))
+    let x = Cons(1, Nil); let b = &m x; push(7, b); let z = b; () }))
   "use-after-move" = true := by native_decide
 
 end Dllbc.Tests.S6Call
@@ -335,7 +335,7 @@ example : progOk choose = true := by native_decide
 def chooseCaller : Term := prog{
   fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
     { match c { True => x, False => y } };
-  let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
+  let a = 0; let b = 0; let pa = &m a; let pb = &m b;
   let r = choose(True, pa, pb);
   *r := 7;
   let z = a;
@@ -363,7 +363,7 @@ example : progOk through = true := by native_decide
 
 def throughCaller : Term := prog{
   fn through (b : &mut List Nat) -> &mut List Nat { b };
-  let x = Cons(1, Nil); let b = &mut x;
+  let x = Cons(1, Nil); let b = &m x;
   let r = through(b);
   *r := Cons(9, Nil);
   let y = x;
@@ -397,7 +397,7 @@ example : (match runProgram throughCaller with
 example : progRejects (prog{
   fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
     { match c { True => x, False => y } };
-  let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
+  let a = 0; let b = 0; let pa = &m a; let pb = &m b;
   let r = choose(True, pa, pb);
   let tk = *r;
   let z = a;
@@ -527,7 +527,7 @@ def observeGood : Term := prog{
   fn observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () };
   fn observeGood () -> Unit {
     let x = Cons(1, Cons(2, Nil));
-    let bb = &mut x;
+    let bb = &m x;
     observe(bb, Pair((), Pair((), ())));
     let y = x;
     ()
@@ -541,7 +541,7 @@ def observeBad : Term := prog{
   fn observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () };
   fn observeBad () -> Unit {
     let x = Cons(2, Cons(1, Nil));
-    let bb = &mut x;
+    let bb = &m x;
     observe(bb, Pair((), Pair((), ())));
     let y = x;
     ()
@@ -675,8 +675,8 @@ def withCursors (rest : Term) : Term := prog{
     match v {
       Nil => botElim Unit p,
       Cons(hd, tl) => match i {
-        Z => &mut *hd,
-        S(k) => nth(&mut *tl, k, p)
+        Z => &m *hd,
+        S(k) => nth(&m *tl, k, p)
       }
     } };
   fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
@@ -686,11 +686,11 @@ def withCursors (rest : Term) : Term := prog{
       Cons(hd, tl) => match i {
         Z => match j {
           Z => botElim Unit pij,
-          S(jjv) => Pair(&mut *hd, nth(&mut *tl, jjv, p2))
+          S(jjv) => Pair(&m *hd, nth(&m *tl, jjv, p2))
         },
         S(k) => match j {
           Z => botElim Unit pij,
-          S(jj2) => nth2(&mut *tl, k, jj2, pij, p2)
+          S(jj2) => nth2(&m *tl, k, jj2, pij, p2)
         }
       }
     } };
@@ -716,7 +716,7 @@ example : progOk cursors = true := by native_decide
 -- `swap(bb, 0, 2, (), ())`: `Le 1 2` and `Le 3 3` both whnf to ⊤, inhabited by `()`.
 def swapBody : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
-  let bb = &mut x;
+  let bb = &m x;
   swap(bb, 0, 2, (), ());
   let y = x;
   () }
@@ -732,7 +732,7 @@ example :
 -- `p2 : Le (S 4) (len [1,2,3]) = Le 5 3 = ⊥`, and `()` cannot inhabit ⊥.
 def oobBody : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
-  let bb = &mut x;
+  let bb = &m x;
   swap(bb, 0, 4, (), ());
   let y = x;
   () }
@@ -745,7 +745,7 @@ example : progRejects oobBody "does not have its parameter type" = true := by
 -- borrows in list order, then releases `v`.
 def cascade : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
-  let bb = &mut x;
+  let bb = &m x;
   let pp = nth2(bb, 0, 2, (), ());
   match pp { Pair(ei, ej) => { *ei := 9; *ej := 8; let y = x; () } } }
 example : progOk cascade = true := by native_decide
@@ -753,7 +753,7 @@ example : progOk cascade = true := by native_decide
 -- Take a cursor's payload (hole) then demand the owner: the group cannot end.
 def rejectProbe : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
-  let bb = &mut x;
+  let bb = &m x;
   let pp = nth2(bb, 0, 2, (), ());
   match pp { Pair(ei, ej) => { let taken = *ei; let y = x; () } } }
 example : progRejects rejectProbe "nothing surrendered" = true := by native_decide
