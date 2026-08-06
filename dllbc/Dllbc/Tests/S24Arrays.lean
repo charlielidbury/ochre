@@ -1,4 +1,6 @@
 import Dllbc.Program
+-- for the `walk`/`walkArr` keep-cases' bridge assertion (see §(iv))
+import Dllbc.Migrate
 import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.PureMacro

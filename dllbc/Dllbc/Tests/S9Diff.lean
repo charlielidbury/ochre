@@ -1,7 +1,6 @@
-import Dllbc.Boundary
+import Dllbc.Program
 import Dllbc.ProgMacro
 import Dllbc.DeclMacro
-import Dllbc.Migrate
 
 /-!
 # Differential v2 — whole-program simulation (§9)
@@ -217,10 +216,6 @@ def diffC (table : List FnDef) (body : Term) : Bool :=
       | .ok se => instanceOfC se concEnv
       | .error _ => false)
 
-/-- checkFn on a caller (empty telescope). -/
-def callerDecl (body : Term) : FnDef :=
-  { name := "caller", retType := .const "Unit", telescope := [], body := body }
-
 /-! ## Callers (each demands ALL its owners, so both runs fully collapse) -/
 
 /-- The choose caller from §6.1, demanding BOTH owners. -/
@@ -243,7 +238,13 @@ def callers : List Term :=
     chooseCaller,
     pushCaller ]
 
-def accepted : List Term := callers.filter (fun b => Migrate.progOkOf (callerDecl b) pool)
+-- A caller IS a program (M28 ν), so the `callerDecl` wrapper that used to give it
+-- an empty telescope and a `Unit` return is gone; `progOk` takes the body and the
+-- callee table directly. The four callees stay `FnDef`s because they are this
+-- harness's TABLE — `diffV2`/`diffC` are typed `List FnDef × Term` by design, the
+-- symbolic side checking a call against its SIGNATURE while the concrete side runs
+-- the body.
+def accepted : List Term := callers.filter (fun b => progOk b (.const "Unit") pool)
 
 -- Every accepted caller's concrete run is a σ-instance of an accepted symbolic
 -- path — the whole-program simulation theorem, over the caller set.
