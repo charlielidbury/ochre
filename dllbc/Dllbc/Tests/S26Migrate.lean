@@ -80,7 +80,11 @@ open Dllbc.Tests
     missing a callee makes both paths reject for the same wrong reason, so
     completeness matters — and the counts are what expose it. -/
 
-def p5 : List FnDef := [S5Bound.pushList, S5Bound.vecPush]
+-- S5Bound is written as PROGRAMS now (M28 ν) and declares no `FnDef` at all, so
+-- its pool is gone rather than empty. Neither of its two (`push` by take-and-
+-- rebuild, `push` on the Σ-paired vector) was a decliner, so §B's residue is
+-- unchanged by the removal — which is the check that the pool carried nothing
+-- but inventory.
 -- S6Call is written as PROGRAMS now (M28 ι), so it declares one `FnDef`: the
 -- `[v]` payload-decrease shape, which is kept as a declaration precisely because
 -- `S26Fuel` §A compares it against its fuel-threaded twin. The survey shrinks with
@@ -172,7 +176,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p5, p6, p7, p9, p10, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
+  [p6, p7, p9, p10, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
