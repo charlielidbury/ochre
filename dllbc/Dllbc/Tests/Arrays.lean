@@ -1,10 +1,29 @@
 import Dllbc.Program
--- for the `walk`/`walkArr` keep-cases' bridge assertion (see §(iv))
 import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.PureMacro
 import Dllbc.StdLemmas
-import Dllbc.Tests.S9Diff
+import Dllbc.Tests.Diff
+
+/-!
+# Arrays — the carve, the elementization, and the transferred library
+
+**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
+made a test's home a fact about WHEN it was written rather than about what it is
+about. These files were merged here, in the order below, with their content moved
+VERBATIM — every namespace kept, so every cross-file reference in the tree still
+resolves, and each former file is fenced by a comment naming it so the git-log
+archaeology survives:
+
+  * `S24Arrays.lean`
+
+Each former file's `open`s are scoped by a `section`, so nothing leaks across the
+seams.
+-/
+
+-- ┌── was `Dllbc/Tests/S24Arrays.lean` ──────────────────────────────────────────────
+section
+-- for the `walk`/`walkArr` keep-cases' bridge assertion (see §(iv))
 
 /-!
 # §24 test suite — arrays, range places, and proof-licensed carving
@@ -1454,3 +1473,5 @@ example : progOk sort2LieCount = false := by native_decide
 
 
 end Dllbc.Tests.S24Arrays
+end
+-- └── end of what was `S24Arrays.lean` ───────────────────────────────────────────────

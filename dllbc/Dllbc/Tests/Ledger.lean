@@ -1,9 +1,26 @@
 import Dllbc.Program
-import Dllbc.Tests.S19Partition
-import Dllbc.Tests.S25ArrSort
-import Dllbc.Tests.S26Fuel
-import Dllbc.Tests.S26Prog
+import Dllbc.Tests.Direct
+import Dllbc.Tests.ArraySort
+import Dllbc.Tests.Programs
 
+/-!
+# The disposition ledger — what every retired mechanism's claims became
+
+**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
+made a test's home a fact about WHEN it was written rather than about what it is
+about. These files were merged here, in the order below, with their content moved
+VERBATIM — every namespace kept, so every cross-file reference in the tree still
+resolves, and each former file is fenced by a comment naming it so the git-log
+archaeology survives:
+
+  * `S27Dispose.lean`
+
+Each former file's `open`s are scoped by a `section`, so nothing leaks across the
+seams.
+-/
+
+-- ┌── was `Dllbc/Tests/S27Dispose.lean` ──────────────────────────────────────────────
+section
 /-!
 # §27 (M27-P1) — a disposition for every declaration the program path declines
 
@@ -460,3 +477,5 @@ example : progOk S19Partition.twoRec = true := by native_decide
     never sound, which is a stronger reason to retire than the economics alone. -/
 
 end Dllbc.Tests.S27Dispose
+end
+-- └── end of what was `S27Dispose.lean` ───────────────────────────────────────────────

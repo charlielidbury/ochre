@@ -4,9 +4,27 @@ import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.PureMacro
 import Dllbc.StdLemmas
-import Dllbc.Tests.S9Diff
-import Dllbc.Tests.S23Direct
+import Dllbc.Tests.Diff
+import Dllbc.Tests.Direct
 
+/-!
+# The array flagship — an in-place quicksort over `Array n Nat`
+
+**A consolidation bucket** (M28 D10). The suite grew one file per milestone, which
+made a test's home a fact about WHEN it was written rather than about what it is
+about. These files were merged here, in the order below, with their content moved
+VERBATIM — every namespace kept, so every cross-file reference in the tree still
+resolves, and each former file is fenced by a comment naming it so the git-log
+archaeology survives:
+
+  * `S25ArrSort.lean`
+
+Each former file's `open`s are scoped by a `section`, so nothing leaks across the
+seams.
+-/
+
+-- ┌── was `Dllbc/Tests/S25ArrSort.lean` ──────────────────────────────────────────────
+section
 /-!
 # §25 test suite — the in-place array partition, and the array quicksort
 
@@ -978,3 +996,5 @@ def citedCallerBad : Term := withCitedCarve prog{
 example : progOk citedCallerBad = false := by native_decide
 
 end Dllbc.Tests.S25ArrSort
+end
+-- └── end of what was `S25ArrSort.lean` ───────────────────────────────────────────────
