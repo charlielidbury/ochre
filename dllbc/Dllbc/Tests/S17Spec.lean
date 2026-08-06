@@ -61,22 +61,25 @@ example : Migrate.progOkOf throughOk = true := by native_decide
 -- it the group end mints a fresh existential, which is §6.2's precision loss and
 -- is now the only behaviour. The assertion below is the OPACITY one — the same
 -- shape S7Group's spec-less `through` always had.
-def caller : FnDef :=
-  decl{ fn caller () -> Unit {
-    let x = Cons(1, Nil); let b = &mut x;
-    let r = through(b);
-    *r := Cons(9, Nil);
-    let y = x;
-    () } }
+/-- The caller's body, as the program it is. Used against BOTH callees below —
+    which is why `through` stays a table entry rather than being written into the
+    chain: the point of the pair is one caller and two declarations under one
+    name. -/
+def caller : Term := prog{
+  let x = Cons(1, Nil); let b = &mut x;
+  let r = through(b);
+  *r := Cons(9, Nil);
+  let y = x;
+  () }
 def vlist9 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]]]]]]]], .ctor "Nil" []]
-example : (match Migrate.progEnvsOfT [throughOk, caller] caller with
+example : (match tailEnvs caller [throughOk] with
   | [.ok env] => match env.lookup "y" with | some (.sym _) => true | _ => false
   | _ => false) = true := by native_decide
 -- Not vacuous, and this is the pair that keeps the deletion honest: the EXECUTING
 -- machine still writes the value and still hands back `Cons(9, Nil)`. What the
 -- deletion removed is the CHECKER's ability to know it, which is exactly §5 point
 -- 4 — opacity is a fact about what was ascribed, never about what happens.
-example : (match Dllbc.Tests.S9Diff.runExec [throughOk] caller.body with
+example : (match Dllbc.Tests.S9Diff.runExec [throughOk] caller with
   | .ok env => env.lookup "y" == some vlist9
   | .error _ => false) = true := by native_decide
 
@@ -86,7 +89,11 @@ example : (match Dllbc.Tests.S9Diff.runExec [throughOk] caller.body with
 -- exactly as in M9 — the spec-carrying end is opt-in.
 def throughOpaque : FnDef :=
   decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
-example : (match Migrate.progEnvsOfT [throughOpaque, { caller with name := "c2" }] { caller with name := "c2" } with
+-- The SAME caller against the spec-less callee. It used to need a renamed copy
+-- (`{ caller with name := "c2" }`) so the two cohorts did not collide on a
+-- declaration name; a program has no name to collide, so the body is simply
+-- reused.
+example : (match tailEnvs caller [throughOpaque] with
   | [.ok env] => match env.lookup "y" with | some (.sym _) => true | _ => false
   | _ => false) = true := by native_decide
 
@@ -158,10 +165,9 @@ def spcBody : Term := prog{
   swapS(b, 0, 2, (), ());
   let y = x;
   () }
-def spcCaller : FnDef := decl{ fn spc () -> Unit = %spcBody }
 def vlist321 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]],
   .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "Z" []]], .ctor "Cons" [.ctor "S" [.ctor "Z" []], .ctor "Nil" []]]]
-example : (match Migrate.progEnvsOfT [nthS, nth2S, swapSN, spcCaller] spcCaller with
+example : (match tailEnvs spcBody [nthS, nth2S, swapSN] with
   | [.ok env] => match env.lookup "y" with | some (.sym _) => true | _ => false
   | _ => false) = true := by native_decide
 -- …and the program really does swap: [1,2,3] ends [3,2,1] when RUN. The checker

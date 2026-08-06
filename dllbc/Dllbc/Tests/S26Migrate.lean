@@ -107,8 +107,11 @@ def p15 : List FnDef := [S15Elab.useTrans, S15Elab.badRefl]
 -- S16Spec is written as PROGRAMS now (M28 ν): `swapS01` is a prefix helper and its
 -- caller a spliced tail, so neither is a `FnDef`. `p16` joins p5/p7/p10/p12; neither
 -- was a decliner.
-def p17 : List FnDef := [S17Spec.throughOk, S17Spec.caller,
-  S17Spec.throughOpaque, S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN, S17Spec.spcCaller]
+-- S17Spec's two nullary CALLER wrappers are programs now (M28 ν) and have left
+-- the pool; the five that remain are the callee tables its `tailEnvs`/`runExec`
+-- assertions pair one caller body against, and `p19` below reads three of them.
+def p17 : List FnDef := [S17Spec.throughOk,
+  S17Spec.throughOpaque, S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN]
 def p18 : List FnDef := [S18Rewrite.certConsHit, S18Rewrite.certConsHitLie]
 
 def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
