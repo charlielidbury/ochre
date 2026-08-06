@@ -598,8 +598,12 @@ partial def elabUBlk (isTy : Bool) (rctx : List (String × Nat)) (pctx : List St
   | `(ublk| $e:uterm) => elabUTerm isTy rctx pctx next e
   | _ => Macro.throwErrorAt stx "decl: unexpected block syntax"
 
-/-- `elim scrut return motive { arms }` → the matching recursor (§15b), ported from
-    PureMacro.elabElim over `uterm`. Pure — the arm binders (k/ih/h/t) push `pctx`. -/
+/-- `elim scrut return motive { arms }` → the matching recursor (§15b). Pure — the
+    arm binders (k/ih/h/t) push `pctx`, never `next`. The arm binder DOMAINS are
+    DERIVED from the recursor scheme and the motive rather than inferred: a natRec
+    `S` step is `λ (k : Nat). λ (ih : P k). …`, and `P k` is built by re-elaborating
+    the motive BODY with the motive's own binder at position 0 — de Bruijn-correct
+    whatever the arm names its binders. -/
 partial def elabUElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
     (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : MacroM (TSyntax `term × Nat) := do
   let (scrutT, n1) ← elabUTerm isTy rctx pctx next scrut
@@ -672,7 +676,10 @@ partial def elabUElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   else
     Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List/Σ)"
 
-/-- `elim scrut generalizing goal { arms }` (§18), ported from PureMacro.elabGenElim. -/
+/-- `elim scrut generalizing goal { arms }` (§18): the motive is
+    `λ x. abstractOccurrences scrut goal` — the natural goal with the computed
+    subterm abstracted at all its occurrences, mechanically. Bool motives only (the
+    count algebra's case-on-`eqb`); Nat/List use the `return` form. -/
 partial def elabUGenElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
     (scrut goal : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : MacroM (TSyntax `term × Nat) := do
   let (scrutT, n1) ← elabUTerm isTy rctx pctx next scrut

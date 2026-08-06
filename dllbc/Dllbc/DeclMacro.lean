@@ -18,7 +18,6 @@ syntax "=" "%" term : declBody              -- escape hatch: splice a raw `Term`
 -- kernel wants an index, but a name is what a reader can check. Required of any
 -- function that calls itself; see `FnDef.dec` and the call rule's guard.
 syntax "decl{" "fn" ident ("[" ident "]")? "(" declParam,* ")" "->" uterm declBody "}" : term
-syntax "decl{" "fn" ident ("[" ident "]")? "(" declParam,* ")" "->" uterm "back" "=" uterm declBody "}" : term
 
 namespace DeclMacro
 open Lean
