@@ -44,7 +44,7 @@ the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
 ## Body
 
 Reuses the existing `dllbc` block category with the telescope names pre-bound in
-order — literally `Dllbc.Macro.expandB` seeded like `dllbcWith`. Bodies laden
+order — seeded the way `dllbc [x, y] { … }` seeds. Bodies laden
 with pure proof terms (a `botElim` ex-falso branch, a `le_rw_r` bound derivation)
 are outside the runtime `dllb` grammar; for those the escape hatch `= %term`
 splices a raw `Term`. See SDeclMacro.lean's header for the coverage map.
@@ -259,7 +259,7 @@ def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) :
 /-! ## Unified `uterm` / `ublk` elaborators (§ points 1–3)
 
 Runtime binders (let, match patterns) mint fresh absolute ids threaded through
-`next` EXACTLY as `Dllbc.Macro.expandB` does — so the runtime subset produces
+`next` EXACTLY as the retired `dllb` elaborator did — so the runtime subset produces
 byte-identical `Term`s to the `dllbc` block, and existing decl bodies keep their
 ids. Pure binders (λ/Π/Σ/→) push the de Bruijn `pctx` and never touch `next`; a
 runtime var referenced from inside a pure spine stays `.var` (absolute, unshifted). -/

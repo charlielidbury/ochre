@@ -935,7 +935,7 @@ example : Migrate.progOkOf citedCarve = true := by native_decide
 
 /-- (1) A caller whose numbers are CONSISTENT: `n = 3, i = 1, j = 1`, and `Refl`
     inhabits `Id Nat 3 (add 1 (S 1))` because both sides compute to 3. -/
-def citedCallerOk : Term := dllbcWith [] {
+def citedCallerOk : Term := dllbc{
   let z = Arr(1, 2, 3); let b = &mut z; citedCarve(3, 1, 1, Refl, b); let y = z; () }
 example : Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl citedCallerOk) [citedCarve]
     = true := by native_decide
@@ -949,7 +949,7 @@ example : runsAtAll [citedCarve] citedCallerOk = true := by native_decide
     checked before the ruling and then got stuck executing; now `Refl` cannot inhabit
     `Id Nat 2 (add 5 (S 5))` and the CALLER is rejected, at its own boundary, with the
     constraint recorded in the signature it violated. -/
-def citedCallerBad : Term := dllbcWith [] {
+def citedCallerBad : Term := dllbc{
   let z = Arr(1, 2); let b = &mut z; citedCarve(2, 5, 5, Refl, b); let y = z; () }
 example : Migrate.progOkOf (Dllbc.Tests.S9Diff.callerDecl citedCallerBad) [citedCarve]
     = false := by native_decide

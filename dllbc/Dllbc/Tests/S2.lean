@@ -1,5 +1,5 @@
 import Dllbc.Machine
-import Dllbc.Macro
+import Dllbc.ProgMacro
 
 /-!
 # §2 test suite — "First Programs"

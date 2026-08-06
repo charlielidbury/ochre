@@ -1,5 +1,5 @@
 import Dllbc.Machine
-import Dllbc.Macro
+import Dllbc.ProgMacro
 
 /-!
 # §3 test suite — "Match" (concrete machine)

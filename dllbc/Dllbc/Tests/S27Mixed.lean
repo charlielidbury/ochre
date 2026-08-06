@@ -142,7 +142,7 @@ example : ok twoBorrows = true := by native_decide
 
 def mixedSeal : Term := pure{ Π (v : &mut List Nat) → Σ (x : &mut Nat) → Id Nat Z (S Z) }
 
-def sealProg : Term := prog{
+def sealProg : Term := dllbc{
   let f = seal(λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&mut *hd, Refl) } },
                %mixedSeal);
   () }
@@ -152,7 +152,7 @@ example : progRejects sealProg "may not also carry VALUE components" = true := b
 -- Not vacuous: an all-borrow ascription in the same position is accepted, so the
 -- refusal is about the MIXTURE and not about sealing a cursor at all.
 def borrowSeal : Term := pure{ Π (v : &mut List Nat) → &mut List Nat }
-def sealOk : Term := prog{ let f = seal(λ(v : &mut List Nat) { v }, %borrowSeal); () }
+def sealOk : Term := dllbc{ let f = seal(λ(v : &mut List Nat) { v }, %borrowSeal); () }
 example : progOk sealOk = true := by native_decide
 
 /-! ## §E. THE SECOND CONTAINMENT — a lie in a PARAMETER'S OWED TYPE
@@ -245,7 +245,7 @@ def fSeal : Term := pure{ Π (v : &mut List Nat) → Unit }
 
 -- F1. A sealed borrow-taking function, NO recursor anywhere, bound to a second
 -- slot. This is the shape c1's §G3b has both machines accepting with different Ωs.
-def f1read : Term := prog{
+def f1read : Term := dllbc{
   let f = seal(λ(v : &mut List Nat) { () }, %fSeal);
   let g = f;
   () }
@@ -264,7 +264,7 @@ example : progRejects f1read "reached by NAME" = true := by native_decide
 -- is the same one F1 gets, which is the point — there is no longer a class here to
 -- be isolated from.
 def gSeal : Term := pure{ Π (x : Nat) → Nat }
-def f2read : Term := prog{
+def f2read : Term := dllbc{
   let f = seal(λ(x : Nat) { x }, %gSeal);
   let g = f;
   () }
@@ -273,7 +273,7 @@ example : progRejects f2read "reached by NAME" = true := by native_decide
 -- F2b. The ISOLATING CONTROL that survives, and it has to be a different one now:
 -- an ordinary value in a second slot is still an ordinary read. So F1/F2 are about
 -- functions and not about second bindings.
-def f2data : Term := prog{
+def f2data : Term := dllbc{
   let f = 3;
   let g = f;
   () }
@@ -282,7 +282,7 @@ example : progOk f2data = true := by native_decide
 -- F3. And it does not touch CALLING, which under the model is the headline rather
 -- than a caveat: calling where bound is a NAME-use. `.callV` locates its callee
 -- rather than moving it (M26-E), so it never reaches the read rule at all.
-def f3call : Term := prog{
+def f3call : Term := dllbc{
   let f = seal(λ(v : &mut List Nat) { () }, %fSeal);
   let x = Cons(1, Nil);
   let b = &mut x;

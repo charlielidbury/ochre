@@ -77,7 +77,7 @@ def rawEnvs (t : Term) : List (Except String Env) :=
 
 -- A1. Transparent lets and a tail. The tail is checked in the ACCUMULATED Ω,
 -- which is what makes `retType` a real demand site rather than decoration.
-def a1 : Term := prog{ let x = 3; let y = S(x); y }
+def a1 : Term := dllbc{ let x = 3; let y = S(x); y }
 example : progOk a1 (.const "Nat") = true := by native_decide
 example : progRejects a1 "does not have return type" (.const "Bool") = true := by native_decide
 -- `x` survives its own use: a `Nat` is index-kind, so §2.1's copy-on-read leaves
@@ -88,7 +88,7 @@ example : progDiff a1 = true := by native_decide
 -- A2. A sealed `let` is a definition, and the next binding calls it. Two things
 -- at once: the seal's audit fires at its own node, and the call resolves to a
 -- BINDING rather than to a table entry.
-def a2 : Term := prog{
+def a2 : Term := dllbc{
   let f = seal(λ (x : Nat). x, Π (x : Nat) → Nat);
   let g = seal(λ(y : Nat){ f(y) }, Π (y : Nat) → Nat);
   let r = g(3);
@@ -97,7 +97,7 @@ example : progOk a2 (.const "Nat") = true := by native_decide
 example : progDiff a2 = true := by native_decide
 -- The claim that it was really the seal that made `f` callable: the same program
 -- with `f` bound to a NON-function is refused, and the refusal names the capture.
-def a2cap : Term := prog{
+def a2cap : Term := dllbc{
   let f = 3;
   let g = seal(λ(y : Nat){ let z = f; y }, Π (y : Nat) → Nat);
   () }
@@ -106,7 +106,7 @@ example : progRejects a2cap "not a function" = true := by native_decide
 -- A3. A sealed function that MUTATES through a borrow, applied to a local. The
 -- program owns the list, lends it, and gets it back — the whole borrow story with
 -- no declaration anywhere in it.
-def push : Term := prog{
+def push : Term := dllbc{
   let push = seal(λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
                     let tail = *v; *v := Cons(e, tail); () },
                   Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit);
@@ -130,7 +130,7 @@ example : progDiff push = true := by native_decide
 -- B1. A sealed function that does not inhabit its ascription is refused AT ITS
 -- OWN `let`, with nothing downstream of it — the binding is the demand site,
 -- which is what "the audit is the checking of the seal" means (§5).
-def b1 : Term := prog{ let f = seal(λ(x : Nat){ x }, Π (x : Nat) → Bool); () }
+def b1 : Term := dllbc{ let f = seal(λ(x : Nat){ x }, Π (x : Nat) → Bool); () }
 example : progRejects b1 "does not have return type (Bool)" = true := by native_decide
 
 /-- ### B2. The vacuous twin, kept beside it
@@ -141,15 +141,15 @@ example : progRejects b1 "does not have return type (Bool)" = true := by native_
     fall into — "binding a bad function is caught" is true only of a SEALED
     binding. The live twin below is what makes it a real difference: call it, and
     the demand arrives. -/
-def b2vac : Term := prog{ let g = λ(x : Nat){ True }; () }
-def b2live : Term := prog{ let g = λ(x : Nat){ True }; let r = g(1); r }
+def b2vac : Term := dllbc{ let g = λ(x : Nat){ True }; () }
+def b2live : Term := dllbc{ let g = λ(x : Nat){ True }; let r = g(1); r }
 example : progOk b2vac = true := by native_decide
 example : progRejects b2live "does not have return type (Nat)" (.const "Nat") = true := by native_decide
 
 -- B3. **Program order**, pinned the only way it can be: two lies, and the one
 -- that is reported is the FIRST. (Both messages have the same shape, so the
 -- needles are the types, which differ.)
-def b3 : Term := prog{
+def b3 : Term := dllbc{
   let f = seal(λ(x : Nat){ x }, Π (x : Nat) → Bool);
   let g = seal(λ(x : Nat){ True }, Π (x : Nat) → Unit);
   () }
@@ -171,14 +171,14 @@ example : progRejects b3 "does not have return type (Unit)" = false := by native
     why §8 can say mutual recursion "becomes unwritable" rather than "stays
     rejected". Note WHERE it is caught: at `g`'s own seal, because the audit is at
     the binding, so the diagnosis does not wait for a call. -/
-def c1 : Term := prog{
+def c1 : Term := dllbc{
   let g = seal(λ(y : Nat){ h(y) }, Π (y : Nat) → Nat);
   let h = seal(λ (x : Nat). x, Π (x : Nat) → Nat);
   () }
 example : progRejects c1 "unknown function 'h'" = true := by native_decide
 -- …and the same program with the two bindings SWAPPED is accepted, so the
 -- rejection is about the order and not about the pair.
-def c1ok : Term := prog{
+def c1ok : Term := dllbc{
   let h = seal(λ (x : Nat). x, Π (x : Nat) → Nat);
   let g = seal(λ(y : Nat){ h(y) }, Π (y : Nat) → Nat);
   let r = g(3);
@@ -197,20 +197,20 @@ example : progDiff c1ok = true := by native_decide
     the lying prefix is a program that itself checks. -/
 
 /-- The shared suffix: call it at 3 and hand back what came out. -/
-def c2suffix : Term := progWith [f] { let r = f(3); r }
+def c2suffix : Term := dllbc [f] from 900 { let r = f(3); r }
 /-- The retType the suffix is demanded at: the equation the caller wants. -/
 def c2demand : Term := pure{ Σ (m : Nat) → Id Nat m 3 }
 
 /-- Prefix A — the signature CARRIES the equation. -/
 def c2keeps : Term :=
   .letIn ⟨900, "f"⟩
-    (prog{ seal(λ(n : Nat){ Pair(n, Refl) }, Π (n : Nat) → Σ (m : Nat) → Id Nat m n) }) c2suffix
+    (dllbc{ seal(λ(n : Nat){ Pair(n, Refl) }, Π (n : Nat) → Σ (m : Nat) → Id Nat m n) }) c2suffix
 /-- Prefix B — the same body, sealed at a type that FORGETS it (true, and
     useless). It checks: the lie is not in the callee, it is in what the callee
     promises. -/
 def c2forgets : Term :=
   .letIn ⟨900, "f"⟩
-    (prog{ seal(λ(n : Nat){ Pair(n, Refl) }, Π (n : Nat) → Σ (m : Nat) → Id Nat m m) }) c2suffix
+    (dllbc{ seal(λ(n : Nat){ Pair(n, Refl) }, Π (n : Nat) → Σ (m : Nat) → Id Nat m m) }) c2suffix
 
 example : progOk c2keeps c2demand = true := by native_decide
 example : progRejects c2forgets "does not have return type" c2demand = true := by native_decide
@@ -245,7 +245,7 @@ example : progOk c2keeps (pure{ Σ (m : Nat) → Id Nat m m }) = false := by nat
 -- D1. Two frames deep: `h` calls `g` calls `f`, each a binding above it. This is
 -- what says the keep set survives NESTING — the innermost body is entered through
 -- two frame shifts, and both globals are still where the program put them.
-def d1 : Term := prog{
+def d1 : Term := dllbc{
   let f = seal(λ (x : Nat). S(x), Π (x : Nat) → Nat);
   let g = seal(λ(y : Nat){ f(f(y)) }, Π (y : Nat) → Nat);
   let h = seal(λ(z : Nat){ g(g(z)) }, Π (z : Nat) → Nat);
@@ -268,11 +268,11 @@ example : progDiff d1 = true := by native_decide
 -- D2a. DATA. (M26-C's a3bad, now with the message that says which of the two
 -- things went wrong — it names a binding in scope, and that binding is not a
 -- function.)
-def d2data : Term := prog{
+def d2data : Term := dllbc{
   let n = 3;
   let g = seal(λ(a : Nat){ let z = n; a }, Π (a : Nat) → Nat);
   () }
-def d2dataOk : Term := prog{
+def d2dataOk : Term := dllbc{
   let n = 3;
   let g = seal(λ(a : Nat, m : Nat){ let z = m; a }, Π (a : Nat) → Π (m : Nat) → Nat);
   let r = g(1, n);
@@ -282,7 +282,7 @@ example : progOk d2dataOk (.const "Nat") = true := by native_decide
 
 -- D2b. A BORROW — the case constraint 5 is really about, since a captured borrow
 -- is a suspended loan with no scope to end it in.
-def d2borrow : Term := prog{
+def d2borrow : Term := dllbc{
   let l = Cons(1, Nil);
   let b = &mut l;
   let g = seal(λ(a : Nat){ *b := Nil; a }, Π (a : Nat) → Nat);
@@ -302,7 +302,7 @@ example : progRejects d2free "not bound anywhere above it" = true := by native_d
 -- an oversight: §5's `Qed` binding is a value, and a body that wants it should
 -- take it as a capital parameter (which is exactly what §6 built). Recorded as a
 -- limitation with its route beside it, not as a defect.
-def d3 : Term := prog{
+def d3 : Term := dllbc{
   let cert = seal(le_refl 3, Le 3 3);
   let g = seal(λ(a : Nat){ let z = cert; a }, Π (a : Nat) → Nat);
   () }
@@ -313,7 +313,7 @@ example : progRejects d3 "not a function" = true := by native_decide
 -- e` reads `e` under ⇝, and the seal is a ⇒-form because minting needs an event.
 -- So "sealed" and "comptime-bound" are mutually exclusive, and a reader who
 -- expects `let Cert = seal(…)` to be the `Qed` form is told which half to drop.
-def d3cap : Term := prog{ let C = seal(le_refl 3, Le 3 3); () }
+def d3cap : Term := dllbc{ let C = seal(le_refl 3, Le 3 3); () }
 example : progRejects d3cap "not in the comptime fragment" = true := by native_decide
 
 /-! ## §E. The end of a program is a demand on everything it still holds
@@ -444,7 +444,7 @@ def flagship (tail : Term) : Except String Term := flagshipOf quicksortP tail
 /-- The tail: own a list, lend it to `quicksort`, and let the scope end.
     `hfuel : Le 3 3` is supplied as `()` — the bound holds by COMPUTATION here,
     which is the ordinary route for a concrete payload. -/
-def flagshipTail : Term := progWith [partitionF, append_backF, quicksort] {
+def flagshipTail : Term := dllbc [partitionF, append_backF, quicksort] from 900 {
   let l = Cons(3, Cons(1, Cons(2, Nil)));
   let r = quicksort(3, &mut l, ());
   () }
@@ -608,7 +608,7 @@ example : (([[], [1], [2,1], [3,1,2], [1,2,3], [3,2,1], [5,5,5], [4,1,3,2,5],
 /-- A symbolic scrutinee at the top level of a program: an abstract call's result
     is a σ, and matching on one is what forks the driver's paths. -/
 def hSplit (inZ inS : Term) : Term :=
-  .letIn ⟨0, "f"⟩ (prog{ seal(λ (x : Nat). x, Π (x : Nat) → Nat) })
+  .letIn ⟨0, "f"⟩ (dllbc{ seal(λ (x : Nat). x, Π (x : Nat) → Nat) })
     (.letIn ⟨1, "n"⟩ (.callV ⟨0, "f"⟩ [pure{ 3 }])
       (.matchE ⟨1, "n"⟩ none [Branch.mk "Z" [] inZ, Branch.mk "S" [⟨2, "k"⟩] inS]))
 
@@ -653,11 +653,11 @@ example : progRejects (hSeal true) "does not have return type (Bool)" = true := 
 -- the concrete run takes exactly one of them.
 def hLend : Term :=
   .letIn ⟨0, "push"⟩
-    (prog{ seal(λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
+    (dllbc{ seal(λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
                   let tail = *v; *v := Cons(e, tail); () },
                 Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) })
     (.letIn ⟨1, "l"⟩ (pure{ Cons(1, Nil) })
-      (.letIn ⟨2, "id"⟩ (prog{ seal(λ (x : Nat). x, Π (x : Nat) → Nat) })
+      (.letIn ⟨2, "id"⟩ (dllbc{ seal(λ (x : Nat). x, Π (x : Nat) → Nat) })
         (.letIn ⟨3, "n"⟩ (.callV ⟨2, "id"⟩ [pure{ 3 }])
           (.matchE ⟨3, "n"⟩ none
             [Branch.mk "Z" [] .unit,

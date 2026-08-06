@@ -42,7 +42,7 @@ def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
 
 /-! ## §A. The surface carries the domain -/
 
-def annotated : Term := prog{ let g = λ(a : Nat) { a }; () }
+def annotated : Term := dllbc{ let g = λ(a : Nat) { a }; () }
 
 example : (match annotated with
            | .letIn _ (.lamR [(_, τ)] _) _ => Term.beq τ (.const "Nat")
@@ -50,7 +50,7 @@ example : (match annotated with
 
 -- A capitalized binder's domain carries §6's comptime marker, which is what makes
 -- the annotation agree with the ascription `piPeel` checks a mode against.
-def annotatedCmp : Term := prog{ let g = λ(A : Nat) { A }; () }
+def annotatedCmp : Term := dllbc{ let g = λ(A : Nat) { A }; () }
 example : (match annotatedCmp with
            | .letIn _ (.lamR [(_, τ)] _) _ => Term.beq τ (.cmpT (.const "Nat"))
            | _ => false) = true := by native_decide
@@ -323,7 +323,7 @@ example : (match bndArms with
 
 def fnTy : Term := pure{ Π (v : &mut List Nat) → Unit }
 
-def annOk : Term := prog{
+def annOk : Term := dllbc{
   let f = seal(λ(v : &mut List Nat) { *v := Nil; () }, %fnTy);
   () }
 example : progOk annOk = true := by native_decide
@@ -331,7 +331,7 @@ example : progOk annOk = true := by native_decide
 -- The same λ, the same ascription, one annotation changed: refused. Before α.1b
 -- this was ACCEPTED, because the binder's type came from the ascription and the
 -- annotation was carried and never read.
-def annBad : Term := prog{
+def annBad : Term := dllbc{
   let f = seal(λ(v : &mut List Bool) { *v := Nil; () }, %fnTy);
   () }
 example : progRejects annBad "a domain the ascription does not bind it at" = true := by
@@ -360,7 +360,7 @@ example : progRejects annBad "a domain the ascription does not bind it at" = tru
 def juxSealTy : Term := pure{ Π (v : &mut List Nat) → Unit }
 
 -- G1. A sealed function called by juxtaposition, in statement position.
-def juxSeal : Term := prog{
+def juxSeal : Term := dllbc{
   let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %juxSealTy);
   let x = Cons(1, Nil);
   let b = &mut x;
@@ -388,7 +388,7 @@ example : Tests.S26Prog.progDiff juxSeal = true := by native_decide
 
 -- …and the comma twin is the same program: same verdict, and both machines agree
 -- on it, which is what says β changed how a call is WRITTEN and not what it does.
-def juxSealComma : Term := prog{
+def juxSealComma : Term := dllbc{
   let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %juxSealTy);
   let x = Cons(1, Nil);
   let b = &mut x;
@@ -405,7 +405,7 @@ example : (match runProgram juxSeal, runProgram juxSealComma with
 -- form to fall back on after δ, so it is the one that had to work.
 def juxRecMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
 def juxRecTy : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
-def juxRec : Term := prog{
+def juxRec : Term := dllbc{
   let f = seal(natRec %juxRecMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
@@ -429,7 +429,7 @@ example : (match runProgram juxRec with
            | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
 
 -- G3. A transparent runtime λ, called by juxtaposition.
-def juxLam : Term := prog{ let g = λ(a : Nat) { S(a) }; let r = g 1; r }
+def juxLam : Term := dllbc{ let g = λ(a : Nat) { S(a) }; let r = g 1; r }
 example : progOk juxLam (.const "Nat") = true := by native_decide
 
 /-! ### G5. THE ROUTER, made observable
@@ -457,7 +457,7 @@ example : rejects juxRuntime "holds a hole (⊥) at return" = true := by native_
 
 -- G6. Saturation, at the juxtaposition form (§12 decision 4 — the call event is
 -- atomic, so a spine that stops short is an error and not a partial application).
-def juxPartial : Term := prog{
+def juxPartial : Term := dllbc{
   let f = seal(λ(a : Nat, b : Nat) { a }, Π (a : Nat) → Π (b : Nat) → Nat);
   let r = f 1;
   () }
@@ -466,7 +466,7 @@ def juxPartial : Term := prog{
 example : progRejects juxPartial "arity mismatch" = true := by native_decide
 
 -- …and the saturated twin is accepted, so G6 is about the missing argument.
-def juxSaturated : Term := prog{
+def juxSaturated : Term := dllbc{
   let f = seal(λ(a : Nat, b : Nat) { a }, Π (a : Nat) → Π (b : Nat) → Nat);
   let r = f 1 2;
   r }
@@ -474,7 +474,7 @@ example : progOk juxSaturated (.const "Nat") = true := by native_decide
 
 -- G7. A RESERVED head stays a constructor, which is what keeps `S n` and a call
 -- distinguishable without a token: the basis is closed, so the test is exact.
-example : (match (prog{ let x = S 3; () } : Term) with
+example : (match (dllbc{ let x = S 3; () } : Term) with
            | .letIn _ (.ctorApp "S" [_]) _ => true
            | _ => false) = true := by native_decide
 

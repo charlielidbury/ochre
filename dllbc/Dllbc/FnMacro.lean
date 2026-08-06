@@ -507,7 +507,7 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
 /-- The program-level binding ids. Chosen above every id a body mints (the
     elaborated terms are checked against this below) and below the executing
     machine's frame base, so a global is neither shadowed by a local nor mistaken
-    for a frame slot. `progWith [..] { … }` binds the same ids, which is how a
+    for a frame slot. `dllbc [..] from 900 { … }` binds the same ids, which is how a
     hand-written tail agrees with an assembled prefix. -/
 def progBase : Nat := 900
 
