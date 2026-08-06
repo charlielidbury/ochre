@@ -81,53 +81,24 @@ def pushD : FnDef := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
 -- this one is what the claim became.)
 example : elabOk pushD = true := by native_decide
 
-/-! ## §B. `split_off` — the macro's output checks
+/-! ## §B. `split_off` — RETIRED HERE (M28 D1), because its subject is a program
 
-    M26-C hand-wrote `split_off` as a sealed recursor and checked it, before the
-    macro existed, by reading §7 rather than by reading the code. This section held
-    the macro to that term as an ORACLE: elaborate `splitOff`, wrap both terms as
-    `FnDef`s, compare with `FnDef.alphaEq` — up to α, because the macro threads
-    binder ids linearly while the hand version got them from the surface
-    elaborator — plus a not-vacuous control comparing against the same function's
-    base arm, which `alphaEq` said NO to.
+    This section held the macro to M26-C's hand-written sealed recursor as an
+    ORACLE (deleted in cluster C, constraint 7's argument), and then to two
+    verdicts: `elabOk splitOff`, and `splitTwins.all (!elabOk ·)` over `S23Direct`'s
+    three spec lies and its body lie.
 
-    **The oracle comparisons are deleted (M28, cluster C.)** What remains is the
-    verdict, which the section's own commentary already named as the claim that
-    matters: agreeing with a hand term is worth little if the hand term is wrong,
-    and it is the KERNEL that says otherwise. Constraint 7 is the reason —
-    nothing in the kernel imports `FnMacro`, so the output is re-checked from
-    scratch at the seal, and an elaboration that agreed with my term and failed
-    to check would be a bug in both. The hand term has not left the tree:
-    `S26Rec` still holds `splitSealed` and still checks it. Only the comparison
-    is gone, with `splitElab`/`splitHand`/`asDecl`, which existed for it alone. -/
+    Both were `Migrate.progOkOf`/`progRejectsOf` on a `FnDef` — "assemble this
+    declaration's cohort into a program and check it". `S23Direct.splitOff` IS that
+    program now (M28 D1, the `soUnder` skeleton), and its four twins are
+    `progRejects` beside it. Two spellings of one verdict is one spelling too many,
+    and the one that survives is the one written in the language.
 
-example : elabOk Tests.S23Direct.splitOff = true := by native_decide
--- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
--- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
--- this one is what the claim became.)
-
-/-! ### B2. The macro path rejects exactly what the declared path rejects
-
-    `S23Direct` guards `splitOff` with four twins — three spec lies and a body lie
-    — precisely so its acceptance is not a coincidence, and notes the division of
-    labour: the spec lies are caught on the `i = Z` path, the body lie on the
-    recursive one. Running the SAME four through the macro is what turns "the
-    elaborated form checks" into "the elaborated form is the same function": it
-    accepts what the declaration accepts and refuses what it refuses, twin for
-    twin. -/
-
-def splitTwins : List FnDef :=
-  [ Tests.S23Direct.splitOffLieTake, Tests.S23Direct.splitOffLieDrop,
-    Tests.S23Direct.splitOffLieSwap, Tests.S23Direct.splitOffLieHead ]
-
--- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
--- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
--- this one is what the claim became.)
--- …and so does the elaborated one, which is the claim.
-example : splitTwins.all (fun d => !(elabOk d)) = true := by native_decide
--- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
--- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
--- this one is what the claim became.)
+    What the section CLAIMED — that the elaborated form is the same function,
+    accepting what the declaration accepted and refusing what it refused — is not
+    weakened by the move: it was always the four twins doing that work, and they
+    are still four twins on one shared body, differing in one named argument each.
+    They are simply asserted where the function is written. -/
 
 /-! ## §C. `quicksort` — the flagship, and the case that fixed the elaboration
 

@@ -139,9 +139,12 @@ def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
 -- The recursion-guard family left the survey in M28 φ: they are `prog{ fn … }`
 -- programs now, asserted directly as accepted or rejected in `S23Direct`, so
 -- there is no declaration here to survey.
+-- (`split_off` and its four twins are programs since M28 D1 — one `soUnder`
+-- skeleton, one accept and four rejects, asserted in their own file. None of the
+-- five was a decliner, so §B's residue is unchanged by their leaving, which is the
+-- check that the pool carried inventory and not a verdict.)
 def p23 : List FnDef := [S23Direct.recCursor,
-  S23Direct.appendBack, S23Direct.splitOff, S23Direct.splitOffLieTake,
-  S23Direct.splitOffLieDrop, S23Direct.splitOffLieSwap, S23Direct.splitOffLieHead,
+  S23Direct.appendBack,
   S23Direct.setAt, S23Direct.swapAt, S23Direct.setAtLieIdx, S23Direct.setAtLieNoop,
   S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop, S23Direct.partition,
   S23Direct.partitionLoses, S23Direct.quicksort,

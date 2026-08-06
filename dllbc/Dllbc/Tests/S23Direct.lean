@@ -426,14 +426,31 @@ def appendBack : FnDef :=
 -- `[v]` again; carrier `S26Prog.appendBackF`, paid in M26-E. Dies with `checkFn`.
 -- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
 
+/-! ### The telescope's own vocabulary
+
+    A `fn`'s parameters are `.var ⟨i, name⟩` at their positional index (§5.2), and a
+    return type written outside the header — a skeleton, below — has to name them
+    that way. These are those names, once, so that every skeleton in this file
+    splices them rather than re-deriving an index. -/
+
+def listNatT : Term := .app (.const "List") (.const "Nat")
+def vT : Term := .var ⟨0, "v"⟩
+def dvT : Term := .deref vT
+def oldvT : Term := .app (.const "old") dvT
+def iT : Term := .var ⟨1, "i"⟩
+def sucT (t : Term) : Term := .ctorApp "S" [t]
+
 -- `split_off(v, i)`: `*v` keeps the first `i`, the rest comes back by value. The
 -- returned tail is Σ-PINNED to `drop i (old *v)` — the caller's only knowledge of a
 -- value it did not compute, which is why stage (ii)'s prelude above had to land
 -- first.
-def splitOff : FnDef :=
-  decl{ fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
-        -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
-             → Id (List Nat) ret (drop i (old *v))
+--
+-- Written as a SKELETON over its return type and its tail (the M28 χ standard):
+-- the body is thirty lines and the three spec twins below differ from the honest
+-- form in exactly one named argument each, so the body is written ONCE and the
+-- difference is by construction rather than by a reader comparing two spellings.
+def soUnder (ret tail : Term) : Term := prog{
+  fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v)) -> %ret
         { match i {
             -- i = Z: take the whole payload out (§2.4's take-and-refill, the idiom
             -- Rust rejects with E0507) and leave `Nil`. `take Z l = Nil` and
@@ -463,8 +480,19 @@ def splitOff : FnDef :=
                   Pair(rr, Pair(c1, h2)) } } }
               }
             }
-        } } }
-example : Migrate.progOkOf splitOff = true := by native_decide
+        } };
+  %tail }
+
+/-- The return type, as a skeleton over its two conjuncts' right-hand sides. Still
+    SURFACE syntax — only the two subterms the twins vary are spliced — so what a
+    reader compares is `take i (old *v)` against `take (S i) (old *v)`, one
+    argument apart, and not two hand-built Σ-chains. -/
+def soRet (pre suf : Term) : Term := pure{
+  Σ (ret : List Nat) → Σ (h1 : Id (List Nat) %dvT %pre) → Id (List Nat) ret %suf }
+
+def soHonest : Term := soRet (pure{ take %iT %oldvT }) (pure{ drop %iT %oldvT })
+def splitOff : Term := soUnder soHonest .unit
+example : progOk splitOff = true := by native_decide
 
 /-! ### Not vacuous: the spec twins, and the body twin
 
@@ -473,28 +501,24 @@ example : Migrate.progOkOf splitOff = true := by native_decide
     leave the recursive path untested; the body lie breaks the congruence in the
     `Cons` branch and is the control for that path. -/
 
-def dvT : Term := .deref (.var ⟨0, "v"⟩)
-def oldvT : Term := .app (.const "old") dvT
-def listNatT : Term := .app (.const "List") (.const "Nat")
-def iT : Term := .var ⟨1, "i"⟩
-def sucT (t : Term) : Term := .ctorApp "S" [t]
--- SUBJECT: deliberately-wrong return types, built as raw Terms — the lie IS the test.
-def soTwin (a b : Term) : FnDef :=
-  { splitOff with retType := .sigmaT listNatT (.sigmaT (.idT listNatT dvT a) (.idT listNatT (.pvar 1) b)) }
-def splitOffLieTake : FnDef := { soTwin (Std.takeT (sucT iT) oldvT) (Std.dropT iT oldvT) with name := "split_off" }
-def splitOffLieDrop : FnDef := { soTwin (Std.takeT iT oldvT) (Std.dropT (sucT iT) oldvT) with name := "split_off" }
-def splitOffLieSwap : FnDef := { soTwin (Std.dropT iT oldvT) (Std.takeT iT oldvT) with name := "split_off" }
-example : Migrate.progRejectsOf splitOffLieTake "does not have return type" = true := by native_decide
-example : Migrate.progRejectsOf splitOffLieDrop "does not have return type" = true := by native_decide
-example : Migrate.progRejectsOf splitOffLieSwap "does not have return type" = true := by native_decide
+def splitOffLieTake : Term := soUnder (soRet (pure{ take (S %iT) %oldvT }) (pure{ drop %iT %oldvT })) .unit
+def splitOffLieDrop : Term := soUnder (soRet (pure{ take %iT %oldvT }) (pure{ drop (S %iT) %oldvT })) .unit
+def splitOffLieSwap : Term := soUnder (soRet (pure{ drop %iT %oldvT }) (pure{ take %iT %oldvT })) .unit
+example : progRejects splitOffLieTake "does not have return type" = true := by native_decide
+example : progRejects splitOffLieDrop "does not have return type" = true := by native_decide
+example : progRejects splitOffLieSwap "does not have return type" = true := by native_decide
 
 -- The BODY lie: the congruence forgets to put `*hd` back on the front (identity
 -- instead of `Cons (*hd) ·`), so the prefix conjunct is off by the head element.
 -- Rejected on the RECURSIVE path, which no spec twin above reaches.
-def splitOffLieHead : FnDef :=
-  decl{ fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
-        -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
-             → Id (List Nat) ret (drop i (old *v))
+--
+-- **Transcribed rather than sharing `soUnder`'s body, and that is forced.** What
+-- varies is a subterm INSIDE the body that names `hd` — a binder the `fn` lowering
+-- mints an id for — and a `%` splice is a Lean `Term` written outside the macro,
+-- which has no way to say "the `hd` this match will bind". The χ/ψ rules are about
+-- when sharing is worth its cost; this is the case where it is not available.
+def splitOffLieHead : Term := prog{
+  fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v)) -> %soHonest
         { match i {
             Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
             S(i2) => match v {
@@ -508,27 +532,29 @@ def splitOffLieHead : FnDef :=
                   Pair(rr, Pair(c1, h2)) } } }
               }
             }
-        } } }
-example : Migrate.progRejectsOf splitOffLieHead "does not have return type" = true := by native_decide
+        } };
+  () }
+example : progRejects splitOffLieHead "does not have return type" = true := by native_decide
 
 /-! ### The executing differential — the body really splits
 
-    Migrate.progOkOf proves the postcondition symbolically; this runs the SAME FnDef on
+    `progOk` proves the postcondition symbolically; this runs the SAME program on
     concrete lists and confirms `*v` keeps `take i l` while the returned value is
-    `drop i l`, at the two boundaries and in the middle. -/
+    `drop i l`, at the two boundaries and in the middle. The caller rides `soUnder`'s
+    own chain as its tail, so what runs is the function declared above it. -/
 
 def tnatT : Nat → Term | 0 => .ctorApp "Z" [] | k + 1 => .ctorApp "S" [tnatT k]
 def tlistT : List Nat → Term | [] => .ctorApp "Nil" [] | x :: xs => .ctorApp "Cons" [tnatT x, tlistT xs]
 def vnatV : Nat → Val | 0 => .ctor "Z" [] | k + 1 => .ctor "S" [vnatV k]
 def vlistV : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [vnatV x, vlistV xs]
 -- SUBJECT: the executing-mode differential's raw Term caller.
-def soCaller (l : List Nat) (i : Nat) : Term :=
+def soCallerTail (l : List Nat) (i : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
       (.letIn ⟨2, "p"⟩ (.call "split_off" [.var ⟨1, "b"⟩, tnatT i, .unit])
         (.matchE ⟨2, "p"⟩ none [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
 def runSplit (l : List Nat) (i : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [splitOff] (soCaller l i) with
+  match Dllbc.Tests.S9Diff.runExec [] (soUnder soHonest (soCallerTail l i)) with
   | .ok env => env.lookup "y" == some (vlistV (l.take i)) && env.lookup "rr" == some (vlistV (l.drop i))
   | .error _ => false
 
