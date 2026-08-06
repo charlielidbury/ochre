@@ -86,7 +86,15 @@ def matchBodies : List Term :=
 /-- All generated bodies for the list-borrow telescope. -/
 def vBodies : List Term := leafBodies ++ matchBodies
 
-/-! ## The declaration and the concrete pool -/
+/-! ## The declaration and the concrete pool
+
+    **KEEP-FILE (M28 ν audit).** `vDecl`/`nDecl`/`bcDecl` build a `FnDef` from a
+    generated body, and `diffCheck` seeds that declaration's TELESCOPE with
+    concrete argument values before exploring the body. A program has no
+    telescope to seed, so the subject of this file's theorem — "accepted ⟹
+    concrete-safe, at every instantiation of the arguments" — is intrinsically a
+    declaration. The `decl{ fn f (…) = %body }` escape hatch exists for exactly
+    this. -/
 
 def vDecl (body : Term) : FnDef :=
   decl{ fn f (v : &mut List Nat) -> Unit = %body }

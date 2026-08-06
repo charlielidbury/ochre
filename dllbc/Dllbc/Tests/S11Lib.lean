@@ -51,6 +51,11 @@ def nncMotiveT : Term := .lam natT (.lam (.idT natT tZ (.pvar 0)) (natCodeApp tZ
 -- SUBJECT: the no-confusion j-spine (raw Term; `.pvar` motive, no surface).
 def natNoConfT (nE pE : Term) : Term := jT natT tZ nncMotiveT (.ctorApp "unit" []) (tS nE) pE
 
+-- **KEEP-FILE (M28 ν audit).** The three subjects here are raw `FnDef` records
+-- built field by field, and the rawness IS the subject: `.pvar` motives and
+-- `j`-spines with no surface spelling, which is what makes them a test of the
+-- library rather than of the macro. Migrating them would mean splicing the same
+-- raw Terms back through `%`, buying nothing.
 -- SUBJECT (raw proof FnDef): Returning a proof — `Refl` at an Id-typed return (a `ctorApp`, lifts trivially).
 def retRefl : FnDef :=
   { name := "retRefl", retType := .idT natT (.var ⟨0, "a"⟩) (.var ⟨0, "a"⟩),
