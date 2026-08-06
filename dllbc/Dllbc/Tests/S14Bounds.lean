@@ -47,26 +47,29 @@ example : (Val.nfV 1000 (Dllbc.Std.take (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofN
 example : (Val.nfV 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofNat 1, Std.ofNat 2, Std.ofNat 3]))
     == vlist [3]) = true := by native_decide
 
-/-! ## Bounds-proof `nth` — Nil discharged, recursive proof passed down -/
+/-! ## The cursor family, as a PREFIX
 
--- `nth (v, i, p : Le (S i) (len *v)) → &mut Nat`. Nil: `p : Le (S i) 0 = ⊥`,
--- discharged. Cons/S(k): the recursive call takes `p` unchanged — `Le (S(S k))
--- (S (len *tl)) ≡ Le (S k) (len *tl)` definitionally, no lemma.
-def nth : FnDef :=
-  decl{ fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
+    `nth`, `nth2` and `swap` are one chain: `nth2` calls `nth`, `swap` calls `nth2`,
+    and a callee is in scope by being written above its caller (§8). Every caller
+    below rides the same chain as its tail, so what is checked and what is run is
+    the function declared above the code that calls it — no table anywhere.
+
+    `nth (v, i, p : Le (S i) (len *v)) → &mut Nat`. Nil: `p : Le (S i) 0 = ⊥`,
+    discharged. Cons/S(k): the recursive call takes `p` unchanged — `Le (S(S k))
+    (S (len *tl)) ≡ Le (S k) (len *tl)` definitionally, no lemma. `nth2` is the
+    multi-issued group with two bounds proofs; `swap` is the pair, taken and
+    written through. -/
+
+def withCursors (rest : Term) : Term := prog{
+  fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
     match v {
       Nil => botElim Unit p,
       Cons(hd, tl) => match i {
         Z => &mut *hd,
         S(k) => nth(&mut *tl, k, p)
       }
-    } } }
-example : Migrate.progOkOf nth = true := by native_decide
-
-/-! ## Bounds-proof `nth2` — the multi-issued group, two bounds proofs -/
-
-def nth2 : FnDef :=
-  decl{ fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
+    } };
+  fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat {
     match v {
       Nil => botElim Unit p2,
@@ -80,85 +83,73 @@ def nth2 : FnDef :=
           S(jj2) => nth2(&mut *tl, k, jj2, pij, p2)
         }
       }
-    } } }
-example : Migrate.progOkOf nth2 ([nth, nth2]) = true := by native_decide
-
-/-! ## Bounds-proof `swap` -/
-
-def swap : FnDef :=
-  decl{ fn swap (v : &mut List Nat, i : Nat, j : Nat,
+    } };
+  fn swap (v : &mut List Nat, i : Nat, j : Nat,
                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit {
     let pr = nth2(v, i, j, pij, p2);
     match pr { Pair(ei, ej) => {
       let t = *ei;
       *ei := *ej;
       *ej := t;
-      () } } } }
-example : Migrate.progOkOf swap ([nth, nth2, swap]) = true := by native_decide
+      () } } };
+  %rest }
+
+/-- All three check, as the one program they are. `nth2`'s call to `nth` and
+    `swap`'s to `nth2` are retargeted into the chain, which for `nth`/`nth2` also
+    exercises the `[i]` HOIST: the decreasing parameter is second, so a caller
+    writing declaration order is permuted into the sealed telescope. -/
+def cursors : Term := withCursors prog{ () }
+example : progOk cursors = true := by native_decide
 
 /-! ## Callers — concrete proofs are `()`, OOB is a call-site rejection -/
 
-/-- The cursor family, which stays a `FnDef` table: `S26Fuel` §C asserts
-    `S26Migrate.p14`'s verdict VECTOR positionally against its own hint-corrected
-    copy, so all five are consumed as values by another file. The callers below are
-    programs checked against them. -/
-def cursors : List FnDef := [nth, nth2, swap]
-
 -- `swap(bb, 0, 2, (), ())`: `Le 1 2` and `Le 3 3` both whnf to ⊤, inhabited by `()`.
-def swapBody : Term := prog{
+def swapBody : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &mut x;
   swap(bb, 0, 2, (), ());
   let y = x;
   () }
--- The caller IS a program (M28 ν): the `{ name := "sc", telescope := [], … }`
--- wrapper the assertion used to spell out TWICE — once as the subject and once
--- inside its own table — was only there so a body could be handed to a
--- `FnDef`-typed verdict.
-example : progOk swapBody (.const "Unit") cursors = true := by native_decide
+example : progOk swapBody = true := by native_decide
 
 -- CONCRETELY: `swap(v, 0, 2)` on `[1,2,3]` yields `[3,2,1]`.
 example :
-    (match Dllbc.Tests.S9Diff.runExec [nth, nth2, swap] swapBody with
+    (match Dllbc.Tests.S9Diff.runExec [] swapBody with
      | .ok env => env.lookup "y" == some (vlist [3, 2, 1])
      | .error _ => false) = true := by native_decide
 
 -- OUT OF BOUNDS is rejected at the CALL SITE: `swap(bb, 0, 4, (), ())` needs
 -- `p2 : Le (S 4) (len [1,2,3]) = Le 5 3 = ⊥`, and `()` cannot inhabit ⊥.
-def oobBody : Term := prog{
+def oobBody : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &mut x;
   swap(bb, 0, 4, (), ());
   let y = x;
   () }
-example : progRejects oobBody "does not have its parameter type" (.const "Unit") cursors = true := by
+example : progRejects oobBody "does not have its parameter type" = true := by
   native_decide
 
 /-! ## The multi-issued `endGroup` cascade, and a rejection (re-shaped from §13) -/
 
 -- Both cursors live, then the owner is demanded: `endGroup` ends both issued
 -- borrows in list order, then releases `v`.
-def cascade : FnDef :=
-  { name := "cascade", retType := .const "Unit", telescope := [],
-    body := prog{
-      let x = Cons(1, Cons(2, Cons(3, Nil)));
-      let bb = &mut x;
-      let pp = nth2(bb, 0, 2, (), ());
-      match pp { Pair(ei, ej) => { *ei := 9; *ej := 8; let y = x; () } } } }
-example : Migrate.progOkOf cascade ([nth, nth2, cascade]) = true := by native_decide
+def cascade : Term := withCursors prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let bb = &mut x;
+  let pp = nth2(bb, 0, 2, (), ());
+  match pp { Pair(ei, ej) => { *ei := 9; *ej := 8; let y = x; () } } }
+example : progOk cascade = true := by native_decide
 
 -- Take a cursor's payload (hole) then demand the owner: the group cannot end.
-def rejectProbe : FnDef :=
-  { name := "reject", retType := .const "Unit", telescope := [],
-    body := prog{
-      let x = Cons(1, Cons(2, Cons(3, Nil)));
-      let bb = &mut x;
-      let pp = nth2(bb, 0, 2, (), ());
-      match pp { Pair(ei, ej) => { let taken = *ei; let y = x; () } } } }
-example : Migrate.progRejectsOf rejectProbe "nothing surrendered" ([nth, nth2, rejectProbe]) = true := by native_decide
+def rejectProbe : Term := withCursors prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let bb = &mut x;
+  let pp = nth2(bb, 0, 2, (), ());
+  match pp { Pair(ei, ej) => { let taken = *ei; let y = x; () } } }
+example : progRejects rejectProbe "nothing surrendered" = true := by native_decide
 
 /-! ## Differential coverage — bounds-proof pool, concrete proofs by computation -/
 
-example : Dllbc.Tests.S9Diff.diffV2 [nth, nth2, swap] swapBody = true := by native_decide
+example : Dllbc.Tests.S9Diff.diffV2 [] swapBody = true := by native_decide
 
 end Dllbc.Tests.S14Bounds

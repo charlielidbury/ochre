@@ -83,11 +83,10 @@ open Dllbc.Tests
 -- rebuild, `push` on the Σ-paired vector) was a decliner, so §B's residue is
 -- unchanged by the removal — which is the check that the pool carried nothing
 -- but inventory.
--- S6Call is written as PROGRAMS now (M28 ι), so it declares one `FnDef`: the
--- `[v]` payload-decrease shape, which is kept as a declaration precisely because
--- `S26Fuel` §A compares it against its fuel-threaded twin. The survey shrinks with
--- the file rather than pretending the declarations are still there.
-def p6 : List FnDef := [S6Call.zeroAll]
+-- S6Call is written as PROGRAMS now — the last one in M28 D6. `zero_all [v]` was
+-- held here so that `S27Dispose` §B's residue could read its NAME off a computed
+-- decline; as a program it says the decline itself, on the refusal needle and on
+-- "§12 decision 8", in the file where the function is written.
 -- S7Group is written as PROGRAMS now (M28 ν) — its two callers were already
 -- hand-built `FnDef`s wrapping a `prog{ }` body, so migrating them was deleting
 -- the wrapper. `p7` goes with `p5`/`p10`/`p12`; none of its four was a decliner.
@@ -107,8 +106,10 @@ def p9 : List FnDef := []
 -- S12Inst is written as PROGRAMS now (M28 ν): each of its call cohorts is a `fn`
 -- chain, which is the pool this entry used to name, said in the grammar. `p12` is
 -- gone with `p5` and `p10`, and none of its twelve was a decliner.
-def p14 : List FnDef := [S14Bounds.nth, S14Bounds.nth2, S14Bounds.swap, S14Bounds.cascade,
-  S14Bounds.rejectProbe]
+-- S14Bounds is written as PROGRAMS now (M28 D6): the cursor family is one `fn`
+-- chain (`withCursors`) and every caller rides it as a tail. `p14`'s verdict VECTOR
+-- — four accepts and one reject, read positionally by `S26Fuel` §C — is those five
+-- assertions with a name attached to each instead of a position.
 def p15 : List FnDef := [S15Elab.useTrans, S15Elab.badRefl]
 -- S16Spec is DELETED (M28 D4). Its `chk` half checked library lemmas every one of
 -- which has a consuming program elsewhere, and its one live subject — `swapS01`,
@@ -144,12 +145,11 @@ def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
 -- SOURCE. Those eight were the pool's whole contribution to `S27Dispose` §B's
 -- residue, and §B records what became of each; the rest carried inventory only.
 
--- S24Arrays is written as PROGRAMS now (M28 ν) and declares exactly two `FnDef`s:
--- `walk` and `walkArr`, the same function with the decreasing argument moved,
--- which `S26Fuel` §B compares FIELD BY FIELD and so consumes as values. The pool
--- shrinks to them, and `walkArr` is the entry that matters — it is this file's
--- only contribution to §B's declining residue.
-def p24 : List FnDef := [S24Arrays.walk, S24Arrays.walkArr]
+-- S24Arrays is written as PROGRAMS now — its last two in M28 D6. `walk` and
+-- `walkArr` are the same function with the decreasing argument moved, and they are
+-- now adjacent programs: one accepted, one refused at `[a]`-on-a-borrow with the
+-- decision in the message. `walkArr` was this file's only contribution to §B's
+-- declining residue, and the decline is louder written out than counted.
 
 -- S25ArrSort is migrated in PART (M28 ν): its self-contained probes are programs,
 -- and the array flagship is not. `splitA`/`partitionA`/`quicksortA` are consumed as
@@ -183,7 +183,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p9, p14, p15, p17, p19, p24, p25]
+  [p9, p15, p17, p19, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)

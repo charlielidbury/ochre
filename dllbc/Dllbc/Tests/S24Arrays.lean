@@ -608,21 +608,14 @@ example : progRejects rigidLength "Take the length as a telescope PARAMETER"
 
     A function that recurses on fuel and carves on the way checks. -/
 
-def walk : FnDef := decl{
+def walk : Term := prog{
   fn walk [fuel] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
       S(f2) => { let l = &mut (*a)[Z ; k | h]; walk(f2, k, k, le_refl k, l) }
-    } } }
--- `walk` and `walkArr` below are the file's two G4 keep-cases, and both are held
--- as VALUES by other files: they are `S26Migrate.p24`, from which `S27Dispose` §B
--- reads "walkArr" into its residue list, and `S26Fuel` §B and `S27Dispose` both
--- run `bothWays walk`. (Until M28 cluster C the cited reason was `S26Fuel` §B's
--- FIELD-BY-FIELD comparison of the two records; that went with the granular
--- meta-assertions, and the pool membership is the reason that was underneath it.)
--- A `FnDef` another file holds is not a program, so both stay declarations and
--- this assertion stays on the bridge.
-example : Migrate.progOkOf walk = true := by native_decide
+    } };
+  () }
+example : progOk walk = true := by native_decide
 
 /-! ### The regression test the doc asks for
 
@@ -636,19 +629,26 @@ example : Migrate.progOkOf walk = true := by native_decide
     asserts. The sweep itself is still exercised by every carve in this file that
     checks; what is gone is this particular witness to it. -/
 
-def walkArr : FnDef := decl{
+def walkArr : Term := prog{
   fn walkArr [a] (fuel : Nat, n : Nat, k : Nat, h : Le k n, a : &mut (Array n Nat)) -> Unit {
     match fuel {
       Z => (),
       S(f2) => { let l = &mut (*a)[Z ; k | h]; walkArr(f2, k, k, le_refl k, l) }
-    } } }
--- **STAYS ON THE DECLARATION PATH, and dies with it** (M27-γ). `walkArr` declares
--- `[a]` on a BORROW, so `fnElab` declines it at §12 decision 8 and there is no
--- program to reject — the two paths refuse it for the same fact from two sides,
--- which `S26Fuel` §B asserts as a pair. Its honest twin `walk` differs in the
--- hint alone and was paid in M24, before decision 8 existed; `bothWays walk` is
--- the carrier. A δ casualty, not a coverage loss.
--- (assertion deleted with `checkFn`, M27-δ — see the disposition above)
+    } };
+  () }
+-- The twin differs from `walk` in the HINT ALONE — `[a]` where `walk` says
+-- `[fuel]`, same telescope, same body, character for character — so what these two
+-- verdicts isolate is the hint and nothing else. `[a]` names a BORROW, which has no
+-- recursor form, and the lowering declines it at §12 decision 8.
+--
+-- It used to be a `FnDef` kept for `S26Migrate.p24`, from which `S27Dispose` §B read
+-- the name "walkArr" into its declining residue. Written as a program the decline is
+-- said directly, with the decision in the message (M28 D6).
+example : progRejects walkArr FnMacro.fnRefusedNeedle = true := by native_decide
+example : progRejects walkArr "§12 decision 8" = true := by native_decide
+-- …and it can never pass green: the sentinel fires at the BINDING, so a refused
+-- function that nothing calls still fails.
+example : progOk walkArr = false := by native_decide
 
 /-! ### FINDING — recursion cannot decrease through a CARVED array payload
 

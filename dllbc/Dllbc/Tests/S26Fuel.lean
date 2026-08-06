@@ -43,18 +43,12 @@ open Dllbc.StdLemmas (le_refl len Le)
 
 namespace Dllbc.Tests.S26Fuel
 
-/-- The declaration checks, and its elaboration checks as a program. The pair is
-    the claim: fuel-threading buys a form the macro accepts, and the two forms
-    agree. -/
--- ~~The declaration checks, AND its elaboration checks as a program. The pair is
--- the claim.~~ **Half of it retired with `checkFn`** (M27-δ): there is one path,
--- so what is left is that the fuel-threaded form checks — which was always the
--- half in doubt, since decision 8's question was whether the interim is
--- available at all, not whether two checkers agree about it.
-def bothWays (d : FnDef) (deps : List FnDef := []) : Bool :=
-  match FnMacro.progOf (deps ++ [d]) .unit with
-  | .error _ => false
-  | .ok t => progOk t
+/-! **`bothWays` is gone** (M28 D6). It read "assemble this declaration's cohort
+    into a program and check it" — the surviving half of a pair whose other half
+    (`checkFn` on the declaration) died in M27-δ, leaving the half that was always
+    the one in doubt: decision 8's question was whether the fuel-threaded interim is
+    AVAILABLE at all, not whether two checkers agree about it. Every subject it took
+    is a `fn` chain now, and `progOk` says the same thing about one directly. -/
 
 /-! ## §A. The LIST cursor: `zero_all`
 
@@ -63,8 +57,8 @@ def bothWays (d : FnDef) (deps : List FnDef := []) : Bool :=
     having "no easy recursor form" — no counter at all — and the one S6Call and
     S23Direct both carry. -/
 
-def zeroAllF : FnDef :=
-  decl{ fn zero_allF [fuel] (fuel : Nat, v : &mut List Nat, Hf : Le (len *v) fuel) -> Unit {
+def zeroAllF : Term := prog{
+  fn zero_allF [fuel] (fuel : Nat, v : &mut List Nat, Hf : Le (len *v) fuel) -> Unit {
     match v {
       Nil => (),
       -- The dead branch, the same ex-falso the other two migrations carry:
@@ -73,15 +67,14 @@ def zeroAllF : FnDef :=
         Z => botElim Unit Hf,
         S(f2) => { *hd := 0; zero_allF(f2, tl, Hf); () }
       }
-    } } }
+    } };
+  () }
 
-example : bothWays zeroAllF = true := by native_decide
--- The `[v]` original is untouched and still DECLINES (J1), and the decline is
--- asserted where it is a PROGRAM fact rather than a `fnElab` return value: the
--- same function written as a `fn` statement is `FnStmt.refusedStmt`, rejected on
--- `fnRefusedNeedle` and on "§12 decision 8" by name. `S6Call.zeroAll`'s decline
--- is also what puts "zero_all" in `S27Dispose` §B's residue list, so a decline
--- that stopped happening still reddens the build, with the name attached.
+example : progOk zeroAllF = true := by native_decide
+-- The `[v]` original is untouched and still DECLINES, and the decline is asserted
+-- where the function lives: `S6Call.zeroAll` is a program now (M28 D6), rejected
+-- on `fnRefusedNeedle`, on "§12 decision 8" by name, and with `progOk = false` to
+-- say the sentinel fires at the binding rather than at a call.
 -- (The `fnElab`-return-value assertion that used to sit here went in M28 cluster
 -- C, as one of the granular meta-assertions the e2e rule retires.)
 
@@ -110,13 +103,11 @@ example : bothWays zeroAllF = true := by native_decide
 -- meta-assertion, and the e2e rule retires those; what it was EVIDENCE for is the
 -- sentence above, which the two verdicts below carry between them — one form
 -- checks, the other declines, and the source shows they are the same function.
-example : bothWays Tests.S24Arrays.walk = true := by native_decide
--- The `[a]` twin: ~~rejected by one path, declined by the other, for the same
--- fact~~ — the rejecting path is gone (M27-δ), and the decline is now asserted
--- where it is a name rather than an `Except` case: "walkArr" is in `S27Dispose`
--- §B's residue list, which is computed by `declinedWith` over the pools, so it
--- says exactly "the macro declines this one" with the identity attached and goes
--- red if it ever stops.
+-- ~~`bothWays walk`~~ — both halves are asserted where the two functions are
+-- written (M28 D6). `S24Arrays.walk` is `progOk`, `S24Arrays.walkArr` is
+-- `progRejects` on the refusal needle and on "§12 decision 8", and the two sit
+-- adjacent in that file differing in the HINT alone, which is what makes the pair
+-- about `[a]`-on-a-borrow rather than about the body.
 
 /-! ## §C. THE FINDING: most of the `[v]` class needs no fuel at all
 
@@ -166,20 +157,22 @@ example : bothWays Tests.S24Arrays.walk = true := by native_decide
 -- pool copy was `==` to `S26Migrate.p14`, and both assertions had become
 -- structural comparisons of a record with itself. The subjects below are the
 -- corpus declarations directly, which is what the aliases had turned into.
-example : bothWays Tests.S14Bounds.nth = true := by native_decide
-example : bothWays Tests.S14Bounds.nth2 [Tests.S14Bounds.nth] = true := by native_decide
+-- **And those two went the same way in M28 D6**: `S14Bounds`'s cursor family is
+-- one `fn` chain now, `progOk` on itself, so restating its verdict here would be
+-- the third copy of one fact. What this section asserts is the FINDING, and the
+-- finding is legible in the source it describes — `nth`/`nth2` say `[i]`.
 
-/-- The whole family, hints corrected: 4 accept on both paths, 1 rejects on both
-    (`rejectProbe` is S14's own negative control), NOTHING declines. Read off the
-    CORPUS pool, not a local copy of it.
+/-! The whole family, hints corrected: 4 accept, 1 rejects (`rejectProbe` is S14's
+    own negative control), NOTHING declines. It was a verdict VECTOR read off
+    `S26Migrate.p14` — positional, so it said WHICH one rejects where a tally only
+    said that one does, and a `none` would have been a decline.
 
-    Stated per declaration rather than as three counts (M28 μ, when the corpus-wide
-    census retired): a verdict VECTOR says which one rejects, where a tally only says
-    that one does — and `none` would be a decline, so "nothing declines" is still
-    carried, positionally. Before M26-F's adoption the same five functions declined
-    five times (`report p14 == R 0 0 5`, S26Migrate §Y as it then read). -/
-example : (Tests.S26Migrate.p14.map (Migrate.progVerdict Tests.S26Migrate.p14)
-  == [some true, some true, some true, some true, some false]) = true := by native_decide
+    **The vector retires with the pool** (M28 D6): S14's five are five programs in
+    that file now, four `progOk` and one `progRejects`, which is the same claim with
+    the identity attached to each verdict instead of to a position. A decline cannot
+    hide there either — a `fn` the lowering refuses is rejected on
+    `fnRefusedNeedle`, not accepted. Before M26-F's adoption the same five functions
+    declined five times (`report p14 == R 0 0 5`, S26Migrate §Y as it then read). -/
 
 /-! ## §D. What is left needing fuel, and one macro gap this section found
 
@@ -213,7 +206,7 @@ example : progRejects noHintStmt "unknown function" = true := by native_decide
 -- Not vacuous: the same body WITH a hint (and the fuel §A threads) is a program
 -- that CHECKS, so the rejection above is about the missing recursor and not about
 -- the body.
-example : bothWays zeroAllF = true := by native_decide
+example : progOk zeroAllF = true := by native_decide
 
 /-! ## §E. The map, re-measured — and the two blockers COMPOSE
 

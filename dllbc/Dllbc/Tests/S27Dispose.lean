@@ -131,9 +131,26 @@ def residue (p : List FnDef) : List String :=
 -- `S23Direct.borrowDecrease` is the refusal as a four-line program, with the
 -- decision in the message, and the price is paid in the same file — stage (vi)'s
 -- cohort is `partition`/`append_back`/`quicksort` fuel-threaded, checked, run, and
--- guarded by six twins. A decliner leaving because the corpus stopped writing it
--- that way, not because a verdict changed.
-example : (S26Migrate.pools.flatMap residue == ["zero_all", "walkArr"]) = true := by native_decide
+-- guarded by six twins.
+--
+-- **`zero_all` and `walkArr` left in M28 D6, and the list is EMPTY.** Those two
+-- were the last declarations held anywhere solely so that a decline could be
+-- COUNTED with a name attached; both are programs in their own files now, each
+-- refused on `fnRefusedNeedle`, on "§12 decision 8" by name, and with
+-- `progOk = false` to say the sentinel fires at the binding rather than at a call.
+-- That is strictly more than a name in a computed list — it is the decline said in
+-- the language, with its reason, where the function is written.
+--
+-- **An empty residue is this ledger's terminal state, and it is worth being
+-- suspicious of.** "No declaration declines" would be trivially true of an empty
+-- corpus, so the reading that matters is the one the pools give: `S26Migrate.pools`
+-- still holds S15/S17/S19/S25's declarations, and none of them declines. What
+-- emptied the list is the `[v]` class being REWRITTEN — fuel-threaded at the
+-- source, with its refusals asserted as programs — not the class being dropped.
+example : (S26Migrate.pools.flatMap residue == ([] : List String)) = true := by native_decide
+-- …and not vacuously: the pools are not empty, so "nothing declines" is a fact
+-- about declarations that exist.
+example : ((S26Migrate.pools.flatMap id).length != 0) = true := by native_decide
 
 /-! ### B1. PAID — every one, and where
 
@@ -141,13 +158,13 @@ example : (S26Migrate.pools.flatMap residue == ["zero_all", "walkArr"]) = true :
     is a build fact and not a cross-reference a later deletion could falsify. -/
 
 -- `zero_all` (S6) is §7 cost 4's own example: a cursor with no decreasing argument
--- but the payload. Its fuel-threaded twin checks on both paths.
-example : S26Fuel.bothWays S26Fuel.zeroAllF = true := by native_decide
+-- but the payload. Its fuel-threaded twin checks.
+example : progOk S26Fuel.zeroAllF = true := by native_decide
 -- `walkArr` (S24) is a NEGATIVE control, and its honest twin `walk` was paid in
--- M24 — before decision 8 existed. Nothing to port: the declaration path rejects
--- `walkArr` at the guard and the macro declines it at `[a]`-on-a-borrow, which is
--- one fact from two sides.
-example : S26Fuel.bothWays S24Arrays.walk = true := by native_decide
+-- M24 — before decision 8 existed. Nothing to port: the two differ in the HINT
+-- alone, and `S24Arrays` asserts both halves adjacently — `walk` accepted,
+-- `walkArr` refused at `[a]`-on-a-borrow with the decision in the message.
+example : progOk S24Arrays.walk = true := by native_decide
 -- `append_back`, `partition` and `quicksort` are paid IN THE SOURCE now: the
 -- flagship cohort is one fuel-threaded chain and it CHECKS, which is the strongest
 -- form the "paid" claim can take — there is no un-migrated original left for it to

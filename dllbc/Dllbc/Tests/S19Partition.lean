@@ -550,11 +550,10 @@ example : progRejects exitReject "does not have return type" (.const "Unit") con
 -- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = swapL i j (old *v),
 -- so `len *v = len (old *v)` is exactly len_swapL at the entry snapshot — cited
 -- directly with `old *v` in the body (no need to save the list, which would move it).
-/-- KEPT AS A DECLARATION: `S27Dispose` §C asserts `S26Fuel.bothWays
-    S19Partition.twoRec`, and `bothWays` takes a `FnDef` — it hands the declaration
-    to `FnMacro.progOf` itself. That assertion is the disposition record for this
-    function's retired `back = *v`, so the subject has to stay the thing the record
-    is about. -/
+/-- Two self-calls in one arm, with `[f]` the SECOND parameter — so the hoist
+    permutation runs on a self-call (`progOf`'s `retarget`), which a surface-minted
+    `.callV` would have skipped. `S27Dispose` §C reads its verdict as the
+    disposition record for this function's retired `back = *v`. -/
 def twoRec : Term := prog{
   fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         { match f {

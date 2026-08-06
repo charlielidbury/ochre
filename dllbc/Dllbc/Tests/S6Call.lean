@@ -52,25 +52,30 @@ example : tailEnv (withPush (prog{
 --    *hd := 0; zero_all(tl); () } }` — the `[v]` payload-decrease shape, §7 cost
 -- 4's own example: a cursor with no decreasing argument but the payload.
 --
--- **ITS ASSERTION DIED WITH `checkFn`** (M27-δ). `fnElab` declines this shape and
--- there was never a program form to move the assertion to; §12 decision 8 accepted
--- the regression and blessed fuel-threading. The claim's carrier is
--- `S26Fuel.zeroAllF`, which is literally this function with a fuel parameter.
+-- **IT HAS NO RECURSOR FORM, and the refusal is what this file asserts about it.**
+-- §7 elaborates `[k]` to `natRec`/`listRec` over the parameter itself, and a borrow
+-- is neither; §9's borrow-mode eliminator is FILED, not built. §12 decision 8
+-- accepted the regression and blessed fuel-threading — a source change, since the
+-- signature grows a parameter and a bound and every caller supplies them. The paid
+-- twin is `S26Fuel.zeroAllF`, literally this function with a fuel parameter, and it
+-- checks.
 --
--- It stays a `decl{ }` **and that is load-bearing**: it is `S26Migrate.p6`, the
--- whole of this file's pool, and `S27Dispose` §B's residue list reads "zero_all"
--- off it — so this is a declaration consumed as a VALUE by another file, not a
--- program. (Until M28 cluster C the cited reason was `S26Fuel` §A's comparison
--- against the fuel-threaded twin; that assertion retired with the granular
--- meta-assertions, and the pool is the reason that was underneath it.) What the
--- statement form does to it is pinned in `Tests.FnStmt` §E — refused at the check,
--- by name, with §12 decision 8's own words in the message.
-def zeroAll : FnDef :=
-  decl{ fn zero_all [v] (v : &mut List Nat) -> Unit {
+-- It was a `decl{ }` until M28 D6, because it was `S26Migrate.p6` — the whole of
+-- this file's pool — and `S27Dispose` §B's residue list read the name "zero_all"
+-- off it. Written as a program the decline is said directly, which is strictly more
+-- than a name in a computed list: a needle no other error produces, the decision's
+-- own words, and the fact that the sentinel fires at the BINDING rather than at a
+-- call, so a refused function nothing calls still fails.
+def zeroAll : Term := prog{
+  fn zero_all [v] (v : &mut List Nat) -> Unit {
     match v {
       Nil => (),
       Cons(hd, tl) => { *hd := 0; zero_all(tl); () }
-    } } }
+    } };
+  () }
+example : progRejects zeroAll FnMacro.fnRefusedNeedle = true := by native_decide
+example : progRejects zeroAll "§12 decision 8" = true := by native_decide
+example : progOk zeroAll = false := by native_decide
 
 /-! ## Type-changing ↝, exercised at last -/
 
