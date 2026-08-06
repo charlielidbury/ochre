@@ -25,9 +25,7 @@ import Dllbc.Tests.S11Lib
 import Dllbc.Tests.S12Inst
 import Dllbc.Tests.S14Bounds
 import Dllbc.Tests.S15Elab
-import Dllbc.Tests.S16Spec
 import Dllbc.Tests.S17Spec
-import Dllbc.Tests.S18Rewrite
 import Dllbc.Tests.S19Partition
 import Dllbc.Tests.S23Direct
 import Dllbc.Tests.S24Arrays

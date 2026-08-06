@@ -3,7 +3,6 @@ import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.ProgMacro
 import Dllbc.Tests.S6Call
-import Dllbc.Tests.S16Spec
 
 /-!
 # §27 (M27) — the mixed-return-type containment
@@ -48,7 +47,7 @@ namespace Dllbc.Tests.S27Mixed
 /-! The `ok`/`rejects` helpers retired with the `FnDef` subjects they took (M28
     ν). Every subject in this file is a program now, and `progOk`/`progRejects`
     take one directly — which is also why the two imported subjects below
-    (`S6Call.toNatProg`, `S16Spec.swapS01`) read the same as the local ones. -/
+    (`S6Call.toNatProg`) reads the same as the local ones. -/
 
 
 /-! ## §A. The break, contained — b1's witnesses, now refused
@@ -201,8 +200,74 @@ example : progOk e2trivial = true := by native_decide
 
 -- `to_nat (v : &mut (Bool ~> Nat))` — the type-changing ↝, S6Call's own subject.
 example : progOk Tests.S6Call.toNatProg = true := by native_decide
--- `swapS01`, whose owed type is a Σ carrying a length-preservation proof.
-example : progOk Tests.S16Spec.swapS01 = true := by native_decide
+
+/-! ### `swapS01` — the other rich owed type, moved here when `S16Spec` retired
+
+    A spec-carrying in-place swap of positions 0,1, its `↝`-obligation the Σ
+    `Σ (l : List Nat). Id Nat (len l) (len s)`. The cursor work stays inside ONE
+    body (the contract-free interior, where collapse is transparent): the entry
+    proof `len_swapL 0 1 (*v)` is captured non-destructively; the two element
+    cursors (h0 from v, h1 from its tail — disjoint by the suspension tree) swap by
+    take-and-fill; `let l = *v` collapses the field loans TRANSPARENTLY to the
+    swapped list; `*v := Pair(l, proof)` fills the Σ. The proof's type refines with
+    the match (σ-bearing-state invariant), and the cursor output converges with
+    `swapL 0 1 s` by computation — so it type-checks against `Id (len l) (len s)`.
+    The cursor writes and the pure specification agree, verified.
+
+    It lives here because this section is the one that reads it: §E's containment
+    is about owed types that are richer than a payload, and there are exactly two
+    in the corpus. `S16Spec`'s remaining half was `chk` on library lemmas, every one
+    of which has a consuming program elsewhere. -/
+
+/-- `swapS01` as a PREFIX: it is the callee of everything below, and the caller is
+    a plain statement block, so the S6Call idiom applies — a Lean function taking
+    the rest and splicing it with `%`. (A cohort whose caller is itself a `fn`
+    could not do this: two `%`-spliced chains both number their slots from
+    `progBase` and the inner would shadow the outer.) -/
+def withSwapS01 (rest : Term) : Term := prog{
+  fn swapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s)),
+                    p : Le 2 (len (*v))) -> Unit {
+    let proof = StdLemmas.len_swapL 0 1 (*v);
+    match v {
+      Nil => botElim Unit p,
+      Cons(h0, t0) => {
+        match t0 {
+          Nil => botElim Unit p,
+          Cons(h1, t1) => {
+            let tmp = *h0;
+            *h0 := *h1;
+            *h1 := tmp;
+            let l = *v;
+            *v := Pair(l, proof);
+            ()
+          }
+        }
+      }
+    }
+  };
+  %rest }
+
+/-- The declaration alone, checked at its seal. -/
+def swapS01 : Term := withSwapS01 prog{ () }
+example : progOk swapS01 = true := by native_decide
+
+-- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
+-- l + the carried proof `pf : Id (len l) (len [1,2,3])`. The evidence survives the
+-- opaque group-end — pf is in scope downstream though l itself is opaque.
+def swapCaller : Term := withSwapS01 prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &mut x;
+  swapS01(b, ());
+  let sig = x;
+  match sig {
+    Pair(l, pf) => { let m = l; () }
+  } }
+
+example : progOk swapCaller = true := by native_decide
+-- The proof survives to the final env (pf ↦ a σ : Id (len l) (len [1,2,3])).
+example : (match tailEnvs swapCaller with
+  | [.ok env] => (env.lookup "pf").isSome
+  | _ => false) = true := by native_decide
 
 /-! ## §F. THE THIRD CONTAINMENT — reading a sealed borrow-taking function
 

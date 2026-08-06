@@ -8,9 +8,7 @@ import Dllbc.Tests.S11Lib
 import Dllbc.Tests.S12Inst
 import Dllbc.Tests.S14Bounds
 import Dllbc.Tests.S15Elab
-import Dllbc.Tests.S16Spec
 import Dllbc.Tests.S17Spec
-import Dllbc.Tests.S18Rewrite
 import Dllbc.Tests.S19Partition
 import Dllbc.Tests.S23Direct
 import Dllbc.Tests.S24Arrays
@@ -112,15 +110,21 @@ def p9 : List FnDef := []
 def p14 : List FnDef := [S14Bounds.nth, S14Bounds.nth2, S14Bounds.swap, S14Bounds.cascade,
   S14Bounds.rejectProbe]
 def p15 : List FnDef := [S15Elab.useTrans, S15Elab.badRefl]
--- S16Spec is written as PROGRAMS now (M28 ν): `swapS01` is a prefix helper and its
--- caller a spliced tail, so neither is a `FnDef`. `p16` joins p5/p7/p10/p12; neither
--- was a decliner.
+-- S16Spec is DELETED (M28 D4). Its `chk` half checked library lemmas every one of
+-- which has a consuming program elsewhere, and its one live subject — `swapS01`,
+-- whose owed type is a Σ carrying a length proof — moved to `S27Mixed` §E, the
+-- section that reads it. `p16` joined p5/p7/p10/p12 in M28 ν; neither was a decliner.
 -- S17Spec's two nullary CALLER wrappers are programs now (M28 ν) and have left
 -- the pool; the five that remain are the callee tables its `tailEnvs`/`runExec`
 -- assertions pair one caller body against, and `p19` below reads three of them.
 def p17 : List FnDef := [S17Spec.throughOk,
   S17Spec.throughOpaque, S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN]
-def p18 : List FnDef := [S18Rewrite.certConsHit, S18Rewrite.certConsHitLie]
+-- S18Rewrite is DELETED (M28 D4). It unit-tested `abstractOccurrences` — a
+-- round-trip property of a Term-level rewriter, which is a meta-assertion by the
+-- suite's rule — and the mechanism has a consumer that cannot pass without it: the
+-- `elim … generalizing …` surface form builds every motive in `StdLemmas` through
+-- it, and `count_swapL` is what M16 walled on without it. `p18` goes with the file;
+-- neither of its two entries was a decliner.
 
 def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
   S19Partition.certSwapCount,
@@ -179,7 +183,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p9, p14, p15, p17, p18, p19, p24, p25]
+  [p6, p9, p14, p15, p17, p19, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
