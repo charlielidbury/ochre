@@ -279,8 +279,10 @@ example : recShapes.all (fun t => diffC [] t) = true := by native_decide
 -- release leaves `Arr⟨1 ▷ [3], 1 ▷ σ₀, 1 ▷ [2]⟩` where the concrete run is
 -- `[3, 9, 2]`. They stay green under the merged relation, so computation was added
 -- without costing the fold.
+-- (the pool went with M28 ν: each caller declares its own callee, so the table is
+-- empty and the shape is one self-contained program.)
 example : Tests.S24Arrays.arrCallers.all
-    (fun b => diffC Tests.S24Arrays.arrPool b) = true := by native_decide
+    (fun b => diffC [] b) = true := by native_decide
 
 -- C3. THE COMPUTATION HALF, kept: phase A's counterexample, where a seal puts a σ
 -- inside ordinary arithmetic and the structural matcher reports a counterexample

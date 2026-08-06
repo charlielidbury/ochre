@@ -139,15 +139,12 @@ def p23 : List FnDef := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S2
   S23Direct.partitionLoses, S23Direct.quicksort, S23Direct.qsLieSorted, S23Direct.qsLieCount,
   S23Direct.qsStaleBound, S23Direct.qsNoSuff]
 
-def p24 : List FnDef := [S24Arrays.halves, S24Arrays.noEvidence, S24Arrays.wrongEvidence,
-  S24Arrays.rigidLength, S24Arrays.walk, S24Arrays.walkArr, S24Arrays.touch, S24Arrays.callSeg,
-  S24Arrays.fill1, S24Arrays.bump, S24Arrays.idxCited, S24Arrays.rng1Cited,
-  S24Arrays.idxWeakBound, S24Arrays.threeWayTouch, S24Arrays.splitTwo, S24Arrays.pivotCarve,
-  S24Arrays.sigSlice, S24Arrays.useSlice, S24Arrays.sliceTouch, S24Arrays.sigCallerOk,
-  S24Arrays.sigCallerWrong, S24Arrays.recSlice, S24Arrays.threeWay, S24Arrays.threeWayNoFirstEv,
-  S24Arrays.threeWayUncited, S24Arrays.threeWayWrongEq, S24Arrays.threeWayLyingResidue,
-  S24Arrays.sliceTake, S24Arrays.threeWayCall, S24Arrays.setSorted, S24Arrays.setSortedLie,
-  S24Arrays.readTwo, S24Arrays.sort2, S24Arrays.sort2LieSorted, S24Arrays.sort2LieCount]
+-- S24Arrays is written as PROGRAMS now (M28 ν) and declares exactly two `FnDef`s:
+-- `walk` and `walkArr`, the same function with the decreasing argument moved,
+-- which `S26Fuel` §B compares FIELD BY FIELD and so consumes as values. The pool
+-- shrinks to them, and `walkArr` is the entry that matters — it is this file's
+-- only contribution to §B's declining residue.
+def p24 : List FnDef := [S24Arrays.walk, S24Arrays.walkArr]
 
 def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.quicksortA,
   S25ArrSort.splitALieLen, S25ArrSort.splitALieSp, S25ArrSort.splitALieCount,
