@@ -504,6 +504,15 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
       (rest.map (retarget binds)) (ev.map (retarget binds)) (eq.map (retarget binds))
   | t => t
 
+/-- The program-level binding ids. Chosen above every id a body mints (the
+    elaborated terms are checked against this below) and below the executing
+    machine's frame base, so a global is neither shadowed by a local nor mistaken
+    for a frame slot. Nothing in the surface names these ids: a tail written as
+    an ordinary program calls its callees by name, and `retarget` below binds
+    those calls into the slots — which is why there is no `…With` form to keep in
+    step with this number. -/
+def progBase : Nat := 900
+
 /-! ## The statement form's lowering (M28 θ)
 
     `fn` is a STATEMENT of the one grammar (Uni.lean), and a statement elaborates
@@ -538,14 +547,42 @@ def fnElabOrFail (d : FnDef) : Term :=
   | .ok t => t
   | .error e => .call s!"{fnRefusedNeedle}: {e}" []
 
-/-- The program-level binding ids. Chosen above every id a body mints (the
-    elaborated terms are checked against this below) and below the executing
-    machine's frame base, so a global is neither shadowed by a local nor mistaken
-    for a frame slot. Nothing in the surface names these ids: a tail written as
-    an ordinary program calls its callees by name, and `retarget` below binds
-    those calls into the slots — which is why there is no `…With` form to keep in
-    step with this number. -/
-def progBase : Nat := 900
+/-- Every FUNCTION slot a term binds — the ids at or above `progBase`, which only
+    a `fn` statement mints. Mirrors `maxVarId`'s walk because it has to see the
+    same places: a `%` splice can land anywhere an expression can. -/
+partial def fnSlots : Term → List Nat
+  | .letIn x rhs rest =>
+    (if x.id ≥ progBase then [x.id] else []) ++ fnSlots rhs ++ fnSlots rest
+  | .assign p e rest => fnSlots p ++ fnSlots e ++ fnSlots rest
+  | .ctorApp _ args | .call _ args | .callV _ args => args.flatMap fnSlots
+  | .borrow t | .deref t | .cmpT t => fnSlots t
+  | .index t i ev => fnSlots t ++ fnSlots i ++ (ev.map fnSlots).getD []
+  | .range t lo cnt rest ev eq =>
+    fnSlots t ++ fnSlots lo ++ (cnt.map fnSlots).getD [] ++ (rest.map fnSlots).getD []
+      ++ (ev.map fnSlots).getD [] ++ (eq.map fnSlots).getD []
+  | .matchE _ _ brs => brs.flatMap (fun b => fnSlots b.body)
+  | .seq a b | .app a b | .pi a b | .lam a b | .sigmaT a b | .borrowT a b | .seal a b =>
+    fnSlots a ++ fnSlots b
+  | .idT a b c => fnSlots a ++ fnSlots b ++ fnSlots c
+  | .lamR _ body => fnSlots body
+  | _ => []
+
+/-- **Bind a `fn` statement's slot over the rest of the block.** `retarget`, with
+    the one thing the surface cannot check for itself in front of it.
+
+    Each `fn` chain numbers its slots from `progBase`, so two chains composed
+    through a `%` splice — `withA (withB (prog{ … }))`, the obvious way to share a
+    prefix — both start at `progBase` and the inner chain SHADOWS the outer one.
+    Left alone that is not an error but a wrong program that checks: measured, the
+    nested pair above accepts, with both `a` and `b` resolving to whichever
+    function landed second. A bulk migration's failure mode is exactly "a quietly
+    wrong rewrite that still builds" (Migrate.lean's header), so the collision is
+    detected and refused by the same sentinel a refused lowering uses. -/
+def bindFn (v : Var) (dec : Option Nat) (rest : Term) : Term :=
+  if (fnSlots rest).contains v.id then
+    .call s!"{fnRefusedNeedle}: '{v.name}' would bind function slot {v.id}, which a function BELOW it already binds. Two `fn` chains have been composed (a `%` splice of one program into another), and each numbers its slots from progBase, so the inner chain shadows this one and both names resolve to the same function. Declare them in ONE chain — `prog\{ fn a …; fn b …; tail }` — or splice only a tail that declares no functions." []
+  else retarget [(v.name, v, dec)] rest
+
 
 /-- **A program from a cohort of declarations** (§8), in dependency order: each
     becomes a sealed `let`, each body's calls are retargeted to the bindings above

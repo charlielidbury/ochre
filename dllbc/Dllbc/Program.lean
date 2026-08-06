@@ -1,4 +1,5 @@
 import Dllbc.Boundary
+import Dllbc.FnMacro
 
 /-!
 # Programs are terms (`docs/combining-fns.md` §8)
@@ -111,5 +112,44 @@ def progRunErr (t : Term) (needle : String) (table : List FnDef := []) : Bool :=
   match runProgram t table with
   | .ok _ => false
   | .error e => strContains e needle
+
+/-! ## Inspecting what a program's TAIL leaves (M28 θ)
+
+    A program declares its functions and then runs something, so its Ω carries one
+    entry per declaration on top of what the running part left. These are
+    `programEnvs` with those entries dropped, which is what makes "what this code
+    leaves in Ω" mean the same thing whether the callees are declared beside it or
+    somewhere else.
+
+    **They must be dropped BEFORE canonicalization, and that is not a detail.** A
+    sealed function IS a σ, so a declaration participates in `canonicalize`'s
+    first-appearance σ ordering and shifts the index of every σ after it — filter
+    afterwards and an unchanged tail's `y ↦ σ0` reads `σ2`, which would look like a
+    rewrite having changed what the code leaves. So the walk is done here and the
+    filter is on the VAR ID against `FnMacro.progBase`, which is what a declaration
+    is. (`Migrate.progEnvsOfT` says the same thing about the same hazard, for the
+    `FnDef` path this replaces.) -/
+def tailEnvs (t : Term) (table : List FnDef := []) : List (Except String Env) :=
+  (explore defaultFuel (pushContinuations t) { initSt with decls := table }).map
+    (fun r => r.bind (fun p =>
+      match (endScope defaultFuel).run p.2 with
+      | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
+          kv.1.id < FnMacro.progBase && kv.1.id < 10000)))
+      | .error e _ => .error e))
+
+/-- One path, and the tail leaves exactly this Ω. -/
+def tailEnv (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
+  match tailEnvs t table with
+  | [.ok env] => env == expected
+  | _ => false
+
+/-- The symbolic walk forks into exactly these paths, in branch-declaration order,
+    each leaving exactly this Ω. The COUNT is half the assertion: a symbolic match
+    SPLITS the run, and a check of the environments alone would still pass if the
+    forking stopped. -/
+def tailPaths (t : Term) (expected : List Env) (table : List FnDef := []) : Bool :=
+  let rs := tailEnvs t table
+  rs.length == expected.length &&
+    (rs.zip expected).all (fun pr => match pr.1 with | .ok env => env == pr.2 | .error _ => false)
 
 end Dllbc

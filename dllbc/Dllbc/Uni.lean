@@ -597,12 +597,15 @@ partial def elabUBlk (isTy : Bool) (rctx : List (String × Nat)) (pctx : List St
   --
   --   * the right-hand side is `fnElabOrFail`, i.e. `fnElab` — the §7 lowering,
   --     with a refusal turned into a term the checker refuses distinctively;
-  --   * the REST is passed through `retarget`, which is how a call written in the
-  --     tail finds the binding. That is not an optimisation over putting the name
-  --     in `rctx`: `retarget` also PERMUTES a call's arguments to match a
-  --     `[k]`-hoisted callee's telescope, and a `.callV` minted at the surface
-  --     would skip the permutation. Eight functions in this corpus have a `[k]`
-  --     that is not parameter 0, so the difference is real and silent.
+  --   * the REST is passed through `bindFn`, i.e. `retarget` — which is how a call
+  --     written in the tail finds the binding. That is not an optimisation over
+  --     putting the name in `rctx`: `retarget` also PERMUTES a call's arguments to
+  --     match a `[k]`-hoisted callee's telescope, and a `.callV` minted at the
+  --     surface would skip the permutation. Eight functions in this corpus have a
+  --     `[k]` that is not parameter 0, so the difference is real and silent.
+  --     `bindFn` adds the one check the surface cannot make for itself — that the
+  --     rest does not already bind this slot, which is what two `%`-spliced chains
+  --     would do.
   --
   -- Passing `rest` through `retarget` rather than binding the name in `rctx` also
   -- reproduces §8's scoping exactly: the name is not in scope in its own
@@ -642,7 +645,7 @@ partial def elabUBlk (isTy : Bool) (rctx : List (String × Nat)) (pctx : List St
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
                     (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))
-                  (Dllbc.FnMacro.retarget [($(quote nm), $slot, $decT)] $rest')), n2)
+                  (Dllbc.FnMacro.bindFn $slot $decT $rest')), n2)
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
     checkBinder x
     let (e', n1) ← elabUTerm isTy rctx pctx next e

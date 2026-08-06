@@ -152,6 +152,32 @@ example : progRejects refusedStmt "§12 decision 8" = true := by native_decide
 -- so a refused function that nothing calls still fails.
 example : progOk refusedStmt = false := by native_decide
 
+/-! ## G. Two `fn` chains composed through a `%` splice
+
+    Sharing a prefix is ordinary let-chain composition — a Lean function taking the
+    rest of the block and splicing it — and S6Call uses it. But each chain numbers
+    its slots from `progBase`, so NESTING two of them makes the inner chain shadow
+    the outer, and left alone that is not an error: measured before the check
+    existed, `withA (withB …)` ACCEPTED with both names resolving to whichever
+    function landed second. `bindFn` refuses it instead. -/
+
+def withA (rest : Term) : Term := prog{ fn a (n : Nat) -> Nat { n }; %rest }
+def withB (rest : Term) : Term := prog{ fn b (n : Nat) -> Nat { n }; %rest }
+
+-- Nested: refused, by the same needle, naming the slot and the fix.
+example : progRejects (withA (withB (prog{ let r = a(1); let s = b(2); () })))
+  FnMacro.fnRefusedNeedle = true := by native_decide
+example : progOk (withA (withB (prog{ let r = a(1); let s = b(2); () }))) = false := by
+  native_decide
+
+-- The two shapes that are FINE, so the check above is not simply banning
+-- composition: one chain declaring both, and a prefix whose tail declares nothing.
+example : progOk (prog{
+  fn a (n : Nat) -> Nat { n };
+  fn b (n : Nat) -> Nat { n };
+  let r = a(1); let s = b(2); () }) = true := by native_decide
+example : progOk (withA (prog{ let r = a(1); () })) = true := by native_decide
+
 /-! ## F. `[k]` naming a non-parameter stays a LEAN error
 
     The one refusal that is cheap syntactically is the one `decl{ }` already made

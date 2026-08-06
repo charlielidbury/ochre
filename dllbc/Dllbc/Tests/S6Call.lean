@@ -1,4 +1,5 @@
 import Dllbc.Boundary
+import Dllbc.ProgMacro
 import Dllbc.DeclMacro
 import Dllbc.Migrate
 
@@ -18,6 +19,11 @@ collapse mints the existential, so no overwrite and nothing to ghost. And the
 **§5.3 wire**: after `push(7, b)`, reading the owner back gives a fresh σ typed
 `List Nat`, NOT `Cons 7 (Cons 1 Nil)` — the imprecision is the point, the spec
 is the type.
+
+**Written as programs** (M28 θ). `fn` is a statement, so a test is a program that
+declares what it needs and then runs something. The shared callee is factored the
+way any shared prefix is — a Lean function taking the rest of the block and
+splicing it with `%`, which is let-chain composition and needs no mechanism.
 -/
 
 open Dllbc
@@ -25,28 +31,37 @@ open Dllbc.Val (nat)
 
 namespace Dllbc.Tests.S6Call
 
-/-- `push (e : Nat, v : &mut List Nat)` from §4.1/M5. -/
-def pushList : FnDef :=
-  decl{ fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () } }
+/-- `push (e : Nat, v : &mut List Nat)` from §4.1/M5, as a PREFIX: everything
+    below is written as `withPush (prog{ … })` and gets `push` in scope. -/
+def withPush (rest : Term) : Term := prog{
+  fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
+  %rest }
 
 /-! ## §5.3 the wire: consume and promise -/
 
 -- `push(7, b)` consumes b and annotates its loan owed `List Nat`; the later
 -- `let y = x` ends the owed loan by minting a fresh σ. y is that σ, typed a
 -- list — not the concrete `Cons 7 (Cons 1 Nil)`. "The spec is the type."
-def wireCaller : FnDef :=
-  decl{ fn caller () -> Unit { let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () } }
-
-example : Migrate.progEnvOfT [pushList, wireCaller] wireCaller
+example : tailEnv (withPush (prog{
+    let x = Cons(1, Nil); let b = &mut x; push(7, b); let y = x; () }))
   [("x", .bot), ("b", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## The recursive cursor (§2.5's promised counterpart) -/
 
 -- `zero_all (v : &mut List Nat) = match v { Nil => (), Cons(hd, tl) => {
---    *hd := 0; zero_all(tl); () } }` — checks end-to-end. The recursive call
--- consumes the reborrow `tl` and annotates ℓ_tl owed `List Nat`; at return the
--- audit collapses v, ending ℓ_hd normally and ℓ_tl as an existential, so
--- v holds `Cons 0 σ : List Nat`. No overwrite, nothing to ghost.
+--    *hd := 0; zero_all(tl); () } }` — the `[v]` payload-decrease shape, §7 cost
+-- 4's own example: a cursor with no decreasing argument but the payload.
+--
+-- **ITS ASSERTION DIED WITH `checkFn`** (M27-δ). `fnElab` declines this shape and
+-- there was never a program form to move the assertion to; §12 decision 8 accepted
+-- the regression and blessed fuel-threading. The claim's carrier is
+-- `S26Fuel.zeroAllF`, which is literally this function with a fuel parameter.
+--
+-- It stays a `decl{ }` **and that is load-bearing**: `S26Fuel` §A compares its
+-- `FnDef` against the fuel-threaded one, so this is a declaration consumed as a
+-- VALUE by another file, not a program. What the statement form does to it is
+-- pinned in `Tests.FnStmt` §E — refused at the check, by name, with §12 decision
+-- 8's own words in the message.
 def zeroAll : FnDef :=
   decl{ fn zero_all [v] (v : &mut List Nat) -> Unit {
     match v {
@@ -54,59 +69,53 @@ def zeroAll : FnDef :=
       Cons(hd, tl) => { *hd := 0; zero_all(tl); () }
     } } }
 
--- **ITS ASSERTION DIED WITH `checkFn`** (M27-δ), as γ said it would. `zero_all`
--- is the `[v]` payload-decrease shape — §7 cost 4's own example, a cursor with no
--- decreasing argument but the payload — so `fnElab` declines it and there was
--- never a program form to move this to. §12 decision 8 accepted that regression
--- and blessed fuel-threading; the claim's carrier is `S26Fuel.zeroAllF`, which is
--- literally this function with a fuel parameter and is asserted on both paths
--- there. The DECLARATION stays, because `S26Fuel` §A compares against it.
-
 /-! ## Type-changing ↝, exercised at last -/
 
 -- `to_nat (v : &mut (s : Bool ↝ Nat))` — callee takes the Bool through v and
 -- fills a Nat; the audit passes against the OWED type Nat, not the entry Bool.
-def toNat : FnDef :=
-  decl{ fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () } }
-
-example : Migrate.progOkOf toNat = true := by native_decide
+example : progOk (prog{
+  fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
+  () }) = true := by native_decide
 
 -- Caller side: borrow a `True`, call, read the owner back — it ends as a fresh
--- σ : Nat. A strong update across a boundary, both sides.
-def toNatCaller : FnDef :=
-  decl{ fn caller () -> Nat { let x = True; let b = &mut x; to_nat(b); let y = x; y } }
-
-example : Migrate.progOkOf toNatCaller [toNat, toNatCaller] = true := by native_decide
+-- σ : Nat. A strong update across a boundary, both sides. The caller is a `fn`
+-- too, so what is checked is the declaration and not one run of it.
+example : progOk (prog{
+  fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
+  fn caller () -> Nat { let x = True; let b = &mut x; to_nat(b); let y = x; y };
+  () }) = true := by native_decide
 
 /-! ## Reborrow at a call site -/
 
 -- `push(7, &mut *b)` — the reborrow Rust inserts silently; the child loan gets
 -- the owed annotation and the parent recovers when it ends.
-def rbCaller : FnDef :=
-  decl{ fn caller () -> List Nat { let x = Cons(1, Nil); let b = &mut x; push(7, &mut *b); let y = x; y } }
-
-example : Migrate.progOkOf rbCaller [pushList, rbCaller] = true := by native_decide
+--
+-- Written as ONE chain rather than `withPush (prog{ fn caller … })`: a spliced
+-- tail may not declare functions, because both chains number their slots from
+-- `progBase` and the inner would shadow `push`. `bindFn` refuses it — which is how
+-- this line was found, having been written the wrong way first and passed green.
+example : progOk (prog{
+  fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
+  fn caller () -> List Nat { let x = Cons(1, Nil); let b = &mut x; push(7, &mut *b); let y = x; y };
+  () }) = true := by native_decide
 
 /-! ## Rejections -/
 
 -- Argument type mismatch: push a `True` where a `Nat` is owed.
-example : Migrate.progRejectsOf
-  (decl{ fn c () -> Unit { let x = Cons(1, Nil); let b = &mut x; push(True, b); () } })
-  "parameter type" [pushList] = true := by native_decide
+example : progRejects (withPush (prog{
+    let x = Cons(1, Nil); let b = &mut x; push(True, b); () }))
+  "parameter type" = true := by native_decide
 
 -- A non-borrow where a borrow argument is expected.
-example : Migrate.progRejectsOf
-  (decl{ fn c () -> Unit { let x = Cons(1, Nil); push(7, x); () } })
-  "expected a borrow argument" [pushList] = true := by native_decide
+example : progRejects (withPush (prog{ let x = Cons(1, Nil); push(7, x); () }))
+  "expected a borrow argument" = true := by native_decide
 
 -- Calling an unknown function.
-example : Migrate.progRejectsOf
-  (decl{ fn c () -> Unit { nope(); () } })
-  "unknown function" [] = true := by native_decide
+example : progRejects (prog{ nope(); () }) "unknown function" = true := by native_decide
 
 -- Using the consumed borrow variable after the call (it is ⊥).
-example : Migrate.progRejectsOf
-  (decl{ fn c () -> Unit { let x = Cons(1, Nil); let b = &mut x; push(7, b); let z = b; () } })
-  "use-after-move" [pushList] = true := by native_decide
+example : progRejects (withPush (prog{
+    let x = Cons(1, Nil); let b = &mut x; push(7, b); let z = b; () }))
+  "use-after-move" = true := by native_decide
 
 end Dllbc.Tests.S6Call
