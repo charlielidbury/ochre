@@ -24,8 +24,8 @@ section
 /-!
 # Differential suite — the simulation theorem in testable form (§8)
 
-**The property**: if `checkFn` accepts a declaration, then every small concrete
-run of its body completes (is not stuck) and passes the concrete audit. This is
+**The property**: if the checker accepts a program (`progOk`), then every small
+concrete run of its body completes (is not stuck) and passes the concrete audit. This is
 the simulation theorem — the symbolic checker over-approximates concrete
 execution — as an exhaustively-checked `native_decide` proposition over a
 bounded enumeration of bodies. It is the automated counterexample-finder that a
@@ -45,7 +45,7 @@ minimized and reported, never hidden.
 
 Counts (this run — and ASSERTED at the foot of this file, so a drift goes red
 rather than quietly falsifying this comment): 136 bodies generated across three
-telescopes, 75 accepted by `checkFn`, 238 concrete runs — all complete and audit.
+telescopes, 75 accepted by `progOk`, 238 concrete runs — all complete and audit.
 No counterexample. "This run" is the honest reading: these describe the generator
 and the acceptance behaviour as they stand, and a legitimate change to either
 should update the numbers here, the assertions below, and the paper's §6.1
@@ -68,7 +68,7 @@ def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
     v is runtime var 0; match binders use fixed ids 2 (hd/x/tail), 3 (tl). A
     two-level, capped enumeration over the grammar constructs: `*`-take, `:=`
     through 0/1/2 peels, `&mut`, `let`, `seq`, and match-through (exhaustive
-    over `Nil`/`Cons`). checkFn filters the ill-formed. -/
+    over `Nil`/`Cons`). `progOk` filters the ill-formed. -/
 
 -- CONV-SUBJECT: generator builds raw Terms by design
 def v0 : Term := .var ⟨0, "v"⟩
@@ -259,7 +259,7 @@ Closes M8's finding B: the differential now runs CALLER+CALLEE with the real
 simulation relation, so it catches wrong-value refinements — the class the M7
 `constrained` bug belonged to — not merely stuckness.
 
-The property, upgraded: for every checkFn-accepted caller, its CONCRETE final
+The property, upgraded: for every `progOk`-accepted caller, its CONCRETE final
 environment (run in *executing* mode — calls run the callee's actual body) is a
 σ-**instance** of some accepted SYMBOLIC path's final environment (run in
 *checking* mode — calls use the §5.3/§6.1 signature rule). `instanceOf` is

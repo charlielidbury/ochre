@@ -99,8 +99,11 @@ structure St where
   /-- The σ-context (§3.2's seam, §4): each symbolic id's type. -/
   sctx : List (Nat × Val) := []
   /-- **The moded-Π context** (M26-C): for a σ minted by sealing a function, the
-      signature it was sealed at — as a `FnDef`, which is precisely "a telescope
-      and a return type with no body".
+      signature it was sealed at — **the Π itself**, peeled on demand at the call
+      (M27-δ). It used to be an `FnDef`, "a telescope and a return type with no
+      body", which is what a Π already is; a record beside it was a second
+      representation of one thing, kept in step by hand. There is no type called
+      `FnDef` in the kernel at all since M28 D9.
 
       Why this is not `sctx`. A borrow-moded Π has **no `Val`** — `readC` refuses
       `borrowT`, and rightly, since a borrow type is a telescope-position marker
@@ -1816,20 +1819,60 @@ def fencePlace (t : Term) (what : String) : M Unit :=
     premise is a vacant (⊥) target; when the target is live a **drop** is
     forced first (§2.3), vacating it, then the value drops in. We vacate the
     slot *before* dropping so drop's Ω-scans never see a stale copy of the
-    displaced value. -/
-def writeR (fuel : Nat) (place : Term) (newval : Val) : M Unit := do
-  -- §6's fence, before the place is navigated: a write through a comptime binder
-  -- would make an erased thing observable, and `placeToPos` may carve.
-  fencePlace place "cannot be written through (⇐)"
-  let pos ← placeToPos fuel place
-  let old ← getAtPos fuel pos
-  match old with
-  | .bot => do setAtPos fuel pos newval; mergeRoot pos.root          -- fill
-  | _ => do
-    setAtPos fuel pos .bot                         -- vacate first (no stale copy in Ω scans)
-    drop fuel old                                  -- drop the displaced value
-    setAtPos fuel pos newval                       -- fill
-    mergeRoot pos.root                             -- rejoin is merge (¶3.3)
+    displaced value.
+
+    **A parked loan is demanded first, and ⇐ says so itself** (M29 δ, paper
+    finding 15). §5.2's standing rule is that every demand collapses first, and
+    overwriting a place is a demand on it exactly as reading one is — but the two
+    arrows used to disagree about that. `readR`'s `.var` case ends a parked loan
+    through `endLoan`, which is GROUP-AWARE: if ℓ is a call's captured loan, the
+    whole §6.1 cascade runs (issued borrows audited and ended, then the captured
+    released). ⇐ had no such step, so the marker reached `drop`, whose
+    `.loanMarker` case ends it with `killBorrowInΩ` directly — no group check —
+    and a captured loan's borrow is by definition NOT an Ω entry, since the callee
+    holds it. The result was a read/write asymmetry on a group-captured owner:
+    `let y = a` after `keep(&m a)` was ACCEPTED, `a := 5` was rejected with "its
+    other end is in flight — cannot end". Measured both ways before the fix.
+
+    **The demand belongs here and not in `drop`, for two independent reasons.**
+    `drop` is defined above `hasType`, and `endLoan` must live below it (a group
+    end audits each issued borrow's payload against its owed type) — so `drop`
+    cannot reach `endLoan` where it sits. And even if it could, it is called on a
+    value this function has ALREADY vacated from Ω, while `endLoan` plugs the
+    payload back into the marker's Ω entry: it would fail at
+    `sendPayloadToLoan` with "loan is not an entry of Ω" instead. Ending BEFORE
+    the vacate is what makes the marker's slot still be there to plug into.
+
+    **End, then retry** — the same shape `readR`'s `.var`, `.deref`, `.borrow` and
+    match-scrutinee cases all use, and the reason this is an extension rather than
+    a change: for an ORDINARY (non-group) loan the two routes reach the same Ω.
+    Ending sends the payload home to this very place and the retry then drops an
+    ownership-free value, where before the vacate-then-drop put the payload into
+    the displaced value and discarded it. Same final Ω, verified — no golden trace
+    moves. What is new is only that a GROUP-captured marker now takes the cascade
+    it always took under ⇒. A completeness fix: it admits programs, and refuses
+    none that were admitted. -/
+def writeR : Nat → Term → Val → M Unit
+  | 0, _, _ => throwErr "writeR: out of fuel"
+  | fuel + 1, place, newval => do
+    -- §6's fence, before the place is navigated: a write through a comptime binder
+    -- would make an erased thing observable, and `placeToPos` may carve.
+    fencePlace place "cannot be written through (⇐)"
+    let pos ← placeToPos (fuel + 1) place
+    let old ← getAtPos (fuel + 1) pos
+    match old with
+    | .bot => do setAtPos (fuel + 1) pos newval; mergeRoot pos.root    -- fill
+    | _ =>
+      -- §5.2: every demand collapses first. A `borrowM` in the displaced value is
+      -- NOT one of these — `firstLoanMarker` is `none` on it — so the
+      -- send-the-payload-home half of `drop` is reached exactly as before.
+      match firstLoanMarker old with
+      | some ℓ => do endLoan fuel ℓ; writeR fuel place newval
+      | none => do
+        setAtPos (fuel + 1) pos .bot                 -- vacate first (no stale copy in Ω scans)
+        drop (fuel + 1) old                          -- drop the displaced value
+        setAtPos (fuel + 1) pos newval               -- fill
+        mergeRoot pos.root                           -- rejoin is merge (¶3.3)
 
 /-! ## Match branch selection (§3)
 

@@ -390,6 +390,53 @@ example : (match runProgram throughCaller with
   | .ok env => env.lookup "y" == some vlist9
   | .error _ => false) = true := by native_decide
 
+/-! ## ⇐ demands the group exactly as ⇒ does (M29 δ, paper finding 15)
+
+    §5.2's rule is that every demand collapses first, and OVERWRITING a place is a
+    demand on it exactly as reading one is. The two arrows used to disagree:
+    `readR`'s `.var` ended a parked loan through the group-aware `endLoan`, while
+    ⇐ let the marker reach `drop`, which ends it with `killBorrowInΩ` — no group
+    check — and a captured loan's borrow is by definition not an Ω entry, since
+    the callee holds it. So `let y = a` after `keep(&m a)` was accepted and
+    `a := 5` was refused, with "its other end is in flight".
+
+    All three subjects below were measured under BOTH kernels. The first two moved
+    from that refusal to accepting; the third moved from it to the group end's own
+    audit, which is the point — the write now runs the §6.1 cascade, so it reaches
+    the check that has something real to say. -/
+
+-- ACCEPT: overwrite an owner whose loan a call captured. The write demands the
+-- group, the group ends, the owner is released, and the write lands.
+example : progOk (prog{
+  fn keepL (v : &mut List Nat) -> Unit { () };
+  let a = Cons(1, Nil);
+  keepL(&m a);
+  a := Cons(2, Nil);
+  let y = a;
+  () }) = true := by native_decide
+
+-- ACCEPT: the same with an ISSUED borrow outstanding as well — the cascade ends
+-- the issued borrow first and surrenders its payload, then releases the captured
+-- owner, which is §6.1's ordering reached from ⇐ for the first time.
+example : progOk (prog{
+  fn lend (v : &mut List Nat) -> &mut List Nat { &m *v };
+  let a = Cons(1, Nil);
+  let b = lend(&m a);
+  a := Nil;
+  () }) = true := by native_decide
+
+-- REJECT, and the exact twin of the read-driven "nothing surrendered" below:
+-- `*b` was taken, so the issued borrow holds a hole and cannot surrender. The
+-- demand is a WRITE here and a read there; the refusal is the same one.
+example : progRejects (prog{
+  fn lend (v : &mut List Nat) -> &mut List Nat { &m *v };
+  let a = Cons(1, Nil);
+  let b = lend(&m a);
+  let t = *b;
+  a := Nil;
+  () })
+  "nothing surrendered" = true := by native_decide
+
 /-! ## Rejections -/
 
 -- The group cannot end because an issued borrow cannot surrender: `*r` was
