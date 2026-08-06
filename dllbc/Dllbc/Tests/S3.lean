@@ -1,5 +1,5 @@
 import Dllbc.Machine
-import Dllbc.Macro
+import Dllbc.ProgMacro
 
 /-!
 # §3 test suite — "Match" (concrete machine)
@@ -8,7 +8,7 @@ The runtime content of §3: owned destructuring (§3.1) and borrow-mode match �
 field reborrows, suspension, variant change through the parent (§3.3–3.4). The
 symbolic layer (§3.2 σ, ⇜ refinement) is out of scope (milestone 3).
 
-Same golden-Ω style as S2: run the `dllbc{…}` program, compare the final
+Same golden-Ω style as S2: run the `prog{…}` program, compare the final
 canonicalized environment (loan ids in first-appearance order) against the
 expected Ω, or assert a distinctive error substring. Since there are no
 functions yet, §3's traces are adapted — branch bodies rebuild a constructor
@@ -29,7 +29,7 @@ def pair (a b : Val) : Val := .ctor "Pair" [a, b]
 -- The scrutinee is ⇒-consumed, its fields move into the binders; the branch
 -- rebuilds the pair, reading `a`/`b` by copy (§2.1, marker-free), so they stay.
 -- p ↦ ⊥, a ↦ 3, b ↦ 7, q ↦ Pair 3 7.
-example : expectEnv dllbc{
+example : expectEnv prog{
   let p = Pair(3, 7);
   let q = match p { Pair(a, b) => Pair(a, b) };
   ()
@@ -38,7 +38,7 @@ example : expectEnv dllbc{
 
 -- A nested owned match: destructure the pair, then destructure its second
 -- field. The unused tail binder `t` keeps its (unconsumed) value.
-example : expectEnv dllbc{
+example : expectEnv prog{
   let p = Pair(1, Cons(2, Nil));
   let r = match p {
     Pair(a, rest) => match rest { Cons(h, t) => Pair(a, h), Nil => Pair(a, a) }
@@ -52,7 +52,7 @@ example : expectEnv dllbc{
 -- The suspended state, observed by ending the program right after the match:
 -- each field binder is a whole-value reborrow, the parent's payload is a Cons
 -- of loan markers (unreadable), and `*hd := 0` was a strong update.
-example : expectEnv dllbc{
+example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &mut x;
   match b {
@@ -69,7 +69,7 @@ example : expectEnv dllbc{
 -- the owned-position field loans ℓ1, ℓ2 are ended in turn as the value is moved,
 -- so `x`'s value arrives fully updated. `x` is a Cons-tree (DATA), so the read
 -- MOVES it (§2.1). y ↦ Cons 0 Nil.
-example : expectEnv dllbc{
+example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &mut x;
   match b {
@@ -82,7 +82,7 @@ example : expectEnv dllbc{
    ("y", cons (nat 0) nil)] = true := by native_decide
 
 -- The nullary branch binds nothing and issues no loans (degenerate case).
-example : expectEnv dllbc{
+example : expectEnv prog{
   let x = Nil;
   let b = &mut x;
   match b {
@@ -99,7 +99,7 @@ example : expectEnv dllbc{
 -- `*b := Nil` forces a drop of the old payload (a Cons of field-loan markers
 -- whose borrows are the Ω entries hd, tl) — End-Mut each, hd/tl die to ⊥ —
 -- then Nil fills. Reading the owner back yields y ↦ Nil.
-example : expectEnv dllbc{
+example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &mut x;
   match b {
@@ -117,7 +117,7 @@ example : expectEnv dllbc{
 -- through — a two-level suspension. Writing `*h2 := 0` updates the inner
 -- element; reading the owner collapses the whole nested chain.
 -- y ↦ Cons 1 (Cons 0 Nil).
-example : expectEnv dllbc{
+example : expectEnv prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   match b {
@@ -137,7 +137,7 @@ example : expectEnv dllbc{
 
 -- Match on a moved variable: `p = Nil` is DATA (a List), so `let q = p` MOVES it
 -- (§2.1 keeps Rust's line for aggregates), and the later match finds the slot ⊥.
-example : expectErr dllbc{
+example : expectErr prog{
   let p = Nil;
   let q = p;
   match p { Nil => () }
@@ -145,14 +145,14 @@ example : expectErr dllbc{
 
 -- No branch matches the head constructor (no exhaustiveness checking — there
 -- are no inductive declarations yet — so an unmatched head is a runtime stuck).
-example : expectErr dllbc{
+example : expectErr prog{
   let p = Nil;
   match p { Cons(h, t) => () }
 } "no branch" = true := by native_decide
 
 -- Matching through a hole: `*b` is taken first, leaving the borrow payload ⊥,
 -- and no rule reads through ⊥.
-example : expectErr dllbc{
+example : expectErr prog{
   let x = Cons(3, Nil);
   let b = &mut x;
   let tail = *b;

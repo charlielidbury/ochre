@@ -1,5 +1,5 @@
 import Dllbc.Boundary
-import Dllbc.Macro
+import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
@@ -282,14 +282,14 @@ example : (Val.nfV 200 (Val.kLe (Val.nat 3) (Val.nat 2)) == .const "Bot") = true
     reaches it unchanged; the write through `m` is an ordinary ⇐-fill at an index
     place under a peel. -/
 
-def carveMid : Term := dllbc{ let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; () }
+def carveMid : Term := prog{ let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; () }
 
 example : expectEnv carveMid
   [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
                        Val.segNode (Val.nat 2) (.loanM 0)]),
    ("m", .borrowM 0 (.ctor "Arr" [Val.nat 1, Val.nat 2]))] = true := by native_decide
 
-def carveWritten : Term := dllbc{
+def carveWritten : Term := prog{
   let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; (*m)[0] := 7; () }
 
 example : expectEnv carveWritten
@@ -302,7 +302,7 @@ example : expectEnv carveWritten
     run — indistinguishable from one that was never carved, which is the property the
     segment representation was chosen for and what keeps `canonicalize` a decision
     procedure for Ω-equality. -/
-example : expectEnv dllbc{
+example : expectEnv prog{
     let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; (*m)[0] := 7; let b = a; () }
   [("a", .bot), ("m", .bot),
    ("b", .ctor "Arr" [Val.nat 3, Val.nat 7, Val.nat 2])] = true := by native_decide
@@ -325,7 +325,7 @@ example : expectEnv dllbc{
     convenience. Nothing else in the note depends on the eager ending; ¶3.3's point is
     rejoin, which the test above shows on the demand that genuinely wants the array. -/
 
-example : expectEnv dllbc{
+example : expectEnv prog{
     let a = Arr(3, 1, 2); let m = &mut a[1 ; 2]; (*m)[0] := 7; let x = a[0]; () }
   [("a", Val.segsNode [Val.segNode (Val.nat 1) (.ctor "Arr" [Val.nat 3]),
                        Val.segNode (Val.nat 2) (.loanM 0)]),
@@ -340,19 +340,19 @@ example : expectEnv dllbc{
 
 -- ⇐ at an index place: write the element (with §2.3's drop of the displaced value
 -- forced first — a Nat, so discard).
-example : expectEnv dllbc{ let a = Arr(3, 1, 2); a[0] := 9; () }
+example : expectEnv prog{ let a = Arr(3, 1, 2); a[0] := 9; () }
   [("a", .ctor "Arr" [Val.nat 9, Val.nat 1, Val.nat 2])] = true := by native_decide
 
 -- ⇒ at an index place: read the element. §2.1's copy-on-read applies (Nat is
 -- index-kind), so the array keeps it — the doc's trace comment, mechanized.
-example : expectEnv dllbc{ let a = Arr(3, 1, 2); let x = a[2]; () }
+example : expectEnv prog{ let a = Arr(3, 1, 2); let x = a[2]; () }
   [("a", .ctor "Arr" [Val.nat 3, Val.nat 1, Val.nat 2]), ("x", Val.nat 2)]
     = true := by native_decide
 
 -- `&mut a[i]`: an element cursor, an ordinary borrow. The marker parks INSIDE the
 -- one-slot run, so the segment body stays at `Array 1 T` while the borrow's payload
 -- is the element at `T` — ¶2.1's "`a[i]` is not `a[i ; 1]`", made structural.
-example : expectEnv dllbc{ let a = Arr(3, 1, 2); let e = &mut a[1]; *e := 8; let y = a[1]; () }
+example : expectEnv prog{ let a = Arr(3, 1, 2); let e = &mut a[1]; *e := 8; let y = a[1]; () }
   [("a", .ctor "Arr" [Val.nat 3, Val.nat 8, Val.nat 2]), ("e", .bot), ("y", Val.nat 8)]
     = true := by native_decide
 
@@ -363,7 +363,7 @@ example : expectEnv dllbc{ let a = Arr(3, 1, 2); let e = &mut a[1]; *e := 8; let
     reads it, and the refill is its one legal successor. That is how a rotation or a
     memmove is written without a copy. -/
 
-example : expectEnv dllbc{ let a = Arr(3, 1, 2);
+example : expectEnv prog{ let a = Arr(3, 1, 2);
                            let run = a[1 ; 2];
                            a[1 ; 2] := run;
                            let w = a[0]; () }
@@ -382,7 +382,7 @@ example : expectEnv dllbc{ let a = Arr(3, 1, 2);
     — so this passing is evidence about premise 3, not about nesting. -/
 
 example : expectEnv
-    dllbc{ let a = Arr(3, 1, 2, 7, 5);
+    prog{ let a = Arr(3, 1, 2, 7, 5);
            let m = &mut a[1 ; 3];
            let inner = &mut (*m)[1 ; 2];
            (*inner)[0] := 9;
@@ -399,7 +399,7 @@ example : expectEnv
 -- leaf: it straddles the boundary. So the rejection needs no owned-versus-loaned test
 -- at all — two segments cannot overlap, so a range crossing a segment boundary has no
 -- leaf, full stop. No arithmetic was performed and no proof could have helped.
-example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
+example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
                            let p = &mut a[0 ; 3];
                            let q = &mut a[2 ; 3];
                            () }
@@ -407,14 +407,14 @@ example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
 
 -- OUT OF RANGE — premise (2) has no inhabitant and none can be supplied, because
 -- `Le (add lo cnt) n` computes to ⊥.
-example : expectErr dllbc{ let a = Arr(3, 1, 2); let m = &mut a[1 ; 3]; () }
+example : expectErr prog{ let a = Arr(3, 1, 2); let m = &mut a[1 ; 3]; () }
   "containment obligation" = true := by native_decide
-example : expectErr dllbc{ let a = Arr(3, 1, 2); let x = a[3]; () }
+example : expectErr prog{ let a = Arr(3, 1, 2); let x = a[3]; () }
   "containment obligation" = true := by native_decide
 
 -- A HOLE is not owned. `⇒` at a range place takes the run out and leaves one, and
 -- until the ⇐-refill closes it no carve may split across it.
-example : expectErr dllbc{ let a = Arr(3, 1, 2);
+example : expectErr prog{ let a = Arr(3, 1, 2);
                            let run = a[1 ; 2];
                            let x = a[1];
                            () }
@@ -438,7 +438,7 @@ example : expectErr dllbc{ let a = Arr(3, 1, 2);
     borrows remain unrepresentable; what differs from the note is only WHEN the second
     one is rejected — at the first use of the dead borrow, not at its creation. -/
 
-example : expectEnv dllbc{ let a = Arr(3, 1, 2, 7, 5);
+example : expectEnv prog{ let a = Arr(3, 1, 2, 7, 5);
                            let p = &mut a[0 ; 3];
                            let q = &mut a[1];
                            *q := 6;
@@ -450,7 +450,7 @@ example : expectEnv dllbc{ let a = Arr(3, 1, 2, 7, 5);
 
 -- …and the killed borrow is stuck at its next use, which is where the rejection
 -- actually lands.
-example : expectErr dllbc{ let a = Arr(3, 1, 2, 7, 5);
+example : expectErr prog{ let a = Arr(3, 1, 2, 7, 5);
                            let p = &mut a[0 ; 3];
                            let q = &mut a[1];
                            (*p)[0] := 4;
@@ -709,7 +709,7 @@ example : Migrate.progOkOf callSeg [callSeg, touch] = true := by native_decide
     range marker IS the segment body, an element marker sits INSIDE the one-slot
     run. -/
 
-example : expectEnv dllbc{
+example : expectEnv prog{
     let a = Arr(3, 1, 2);
     let p = &mut a[0 ; 1]; let q = &mut a[1 ; 1]; let r = &mut a[2 ; 1];
     (*p)[0] := 7; (*q)[0] := 8; (*r)[0] := 9;
@@ -717,7 +717,7 @@ example : expectEnv dllbc{
   [("a", .bot), ("p", .bot), ("q", .bot), ("r", .bot),
    ("b", .ctor "Arr" [Val.nat 7, Val.nat 8, Val.nat 9])] = true := by native_decide
 
-example : expectEnv dllbc{
+example : expectEnv prog{
     let a = Arr(3, 1, 2);
     let p = &mut a[0]; let q = &mut a[1]; let r = &mut a[2];
     *p := 7; *q := 8; *r := 9;
