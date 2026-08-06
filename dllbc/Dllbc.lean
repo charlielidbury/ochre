@@ -8,7 +8,6 @@ import Dllbc.Uni
 import Dllbc.PureMacro
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
-import Dllbc.AlphaEq
 import Dllbc.Program
 import Dllbc.Migrate
 import Dllbc.ProgMacro

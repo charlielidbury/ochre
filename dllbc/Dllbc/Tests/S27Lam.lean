@@ -1,6 +1,5 @@
 import Dllbc.Program
 import Dllbc.FnMacro
-import Dllbc.AlphaEq
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro
@@ -23,7 +22,7 @@ file pins is exactly the mechanical half:
 
   * the surface really carries a domain, and the VALUE really drops it (§A/§B);
   * the traversals that gained a case really traverse it (§C free variables, §D
-    equality and α-normalization);
+    equality — the α-normalization half went with `AlphaEq.lean` in M28 cluster C);
   * and `fnElab`'s arm annotations are the ones the kernel's own `checkArm`
     derives — §E, the one place in α.1a where a wrong answer would compile,
     pass, and be silently the wrong type.
@@ -35,8 +34,8 @@ open Dllbc
 /-! The `ok`/`rejects` helpers retired with the `FnDef` subjects they took (M28
     ν). Every subject they served is a program now, and `progOk`/`progRejects` from
     `Dllbc/Program.lean` take one directly. The two declarations this file still
-    keeps (`bndD`, `hintA`) are fed to `FnMacro.fnElab` and `FnDef.alphaEq`, not to
-    a checker, so they never wanted these. -/
+    keeps (`bndD`, `hintA`) are fed to `FnMacro.fnElab`, not to a checker, so they
+    never wanted these. -/
 
 /-! ## §A. The surface carries the domain -/
 
@@ -98,7 +97,7 @@ example : progOk closedType = true := by native_decide
 def telType : Term := prog{ let g = λ(m : Nat, a : Le m m) { () }; () }
 example : progOk telType = true := by native_decide
 
-/-! ## §D. Equality and α-normalization see the domains -/
+/-! ## §D. Equality sees the domains -/
 
 -- `Term.beq` compares them structurally (via `Term.beq`, not `==`: the `BEq Term`
 -- instance is declared below the mutual block this case lives in).
@@ -107,22 +106,16 @@ example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
 example : Term.beq (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit)
                    (.lamR [(⟨0, "a"⟩, .const "Nat")] .unit) = true := by native_decide
 
-def anOf (t : Term) : Term := (anTerm [] 0 t).1
-/-- `Le x x`, written raw so the variable is exactly the one under test. -/
-def leSelf (x : Var) : Term := Std.LeT (.var x) (.var x)
-
--- α-normalization renumbers a domain's variable references with the binder they
--- name: two arms differing only in ids are α-equal, THROUGH their annotations.
-def telA : Term := .lamR [(⟨7, "m"⟩, .const "Nat"), (⟨8, "a"⟩, leSelf ⟨7, "m"⟩)] .unit
-def telB : Term := .lamR [(⟨3, "m"⟩, .const "Nat"), (⟨5, "a"⟩, leSelf ⟨3, "m"⟩)] .unit
-example : Term.beq (anOf telA) (anOf telB) = true := by native_decide
-
--- Not vacuous: point the second domain at a FREE variable instead and they part.
--- Without the annotation traversal both of these would have compared EQUAL, since
--- the bodies are `()` — which is what "silently degrades to structural equality on
--- the terms it exists to compare" would have looked like here.
-def telC : Term := .lamR [(⟨3, "m"⟩, .const "Nat"), (⟨5, "a"⟩, leSelf ⟨9, "other"⟩)] .unit
-example : Term.beq (anOf telA) (anOf telC) = false := by native_decide
+-- **The α-normalization half of §D went with `AlphaEq.lean`** (M28 cluster C).
+-- Three assertions built `.lamR`s whose second binder's DOMAIN cited the first
+-- (`telA`/`telB`, α-variants; `telC`, pointing at a free variable) and compared
+-- them through `anTerm`, to pin that `anLamBinders` traverses the annotations
+-- rather than letting the criterion degrade to structural equality on exactly the
+-- terms it existed to compare. `FnDef.alphaEq` had one consumer — S26Fn's
+-- macro-vs-hand-elaboration oracle — that consumer retired earlier in this
+-- cluster, and a normalization nothing normalizes for is dead code whose tests
+-- are tests of dead code. The domain traversal it exercised is still exercised,
+-- by `Term.beq` above and by `telType`'s check in §C.
 
 /-! ## §E. `fnElab`'s arm annotations — the boxed danger
 
@@ -485,16 +478,22 @@ def juxCapital : Term := prog{
   () }
 example : progOk juxCapital = true := by native_decide
 
-/-! ## §H. `alphaEq` compares `[k]` (M27-δ)
+/-! ## §H. `[k]` decides which recursor is emitted (M27-δ)
 
-    The widening became CORRECT at exactly the moment the guard died. While `[k]`
-    was a guard input, two definitions differing only in it could still be the same
-    function — the hint said which parameter to police, not what to build. Now it
-    is purely the scrutinee-selection hint, so it decides which recursor `fnElab`
-    emits, and two definitions differing in it are two different terms.
+    While `[k]` was a guard input, two definitions differing only in it could still
+    be the same function — the hint said which parameter to police, not what to
+    build. Since the guard died it is purely the scrutinee-selection hint, so it
+    decides which recursor `fnElab` emits, and two definitions differing in it are
+    two different terms.
 
-    Asserted rather than assumed, because a widening that no pair exercises is
-    indistinguishable from no widening at all. -/
+    **This section used to be about `FnDef.alphaEq`** — that the round-trip
+    criterion had been WIDENED to compare `dec`, and that the widening became
+    correct at exactly the moment the guard died, asserted on this pair because a
+    widening no pair exercises is indistinguishable from no widening at all. The
+    criterion is gone (M28 cluster C, with `AlphaEq.lean`; its one consumer was
+    S26Fn's oracle). What the pair still witnesses is the FACT the widening was
+    tracking, which never belonged to the criterion: the hint is load-bearing on
+    the output, so `hintA` and `hintB` are not two spellings of one function. -/
 
 def hintA : FnDef := decl{ fn h [n] (n : Nat, m : Nat) -> Id Nat Z Z
   { match m { Z => Refl, S(m2) => h(n, m2) } } }
@@ -504,14 +503,10 @@ def hintB : FnDef := { hintA with dec := some 1 }
 example : (hintA.name == hintB.name && hintA.body == hintB.body
         && hintA.telescope == hintB.telescope && hintA.retType == hintB.retType)
   = true := by native_decide
-example : FnDef.alphaEq hintA hintB = false := by native_decide
--- …and the criterion still says YES to a genuine α-variant, so §H is about `[k]`
--- and not about the comparison having become trivially false.
-example : FnDef.alphaEq hintA hintA = true := by native_decide
-
--- The hint really does decide which recursor is emitted, which is why the
--- criterion has to see it: one of these elaborates and the other does not,
--- because only `m` is matched on.
+-- …and yet one of them elaborates and the other does not, because only `m` is
+-- matched on. That asymmetry is the whole content: it is why a criterion blind to
+-- `dec` would have reported equivalence for a pair that elaborates apart, and it
+-- outlives the criterion.
 example : ((match FnMacro.fnElab hintA with | .ok _ => true | .error _ => false)
         != (match FnMacro.fnElab hintB with | .ok _ => true | .error _ => false))
   = true := by native_decide

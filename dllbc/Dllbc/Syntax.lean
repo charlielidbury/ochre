@@ -305,12 +305,13 @@ mutual
     | .borrowT a b, .borrowT c d => Term.beq a c && Term.beq b d
     -- STRUCTURAL, unlike `Val.beq` — the asymmetry is deliberate. `Val.beq` is
     -- mode-blind because `convert` is built on it and §6 says case is inert
-    -- under ⇝. `Term.beq` is not a conversion: its clients are `absOcc` (§18's
-    -- occurrence abstraction) and `FnDef.alphaEq` (the macro-vs-corpus round-trip
-    -- criterion), and BOTH want to see a mode. A mode-blind `alphaEq` would let
-    -- phase D's `fn` macro emit a differently-moded `FnDef` and still report
-    -- equivalence; a mode-blind `absOcc` would match `⇝τ` against `τ` and
-    -- abstract away the marker along with the domain.
+    -- under ⇝. `Term.beq` is not a conversion: its client is `absOcc` (§18's
+    -- occurrence abstraction), which wants to see a mode — a mode-blind version
+    -- would match `⇝τ` against `τ` and abstract away the marker along with the
+    -- domain. (`FnDef.alphaEq`, the macro-vs-corpus round-trip criterion, was the
+    -- second client and wanted the same thing for the same reason; it retired in
+    -- M28 cluster C with its one consumer. The argument is unchanged, it just has
+    -- one witness now instead of two.)
     | .cmpT a, .cmpT b => Term.beq a b
     | _, _ => false
   termination_by t u => sizeOf t + sizeOf u

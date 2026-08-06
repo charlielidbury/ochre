@@ -369,11 +369,14 @@ example : progOk e3hi = true := by native_decide
 
     `Val.beq` is mode-blind because `convert` is built on it and §6 says case is
     inert under ⇝. `Term.beq` is STRUCTURAL, because its clients are not
-    conversions: §18's `absOcc` abstracts occurrences by it (a mode-blind version
-    would match `⇝τ` against `τ` and abstract the marker away with the domain),
-    and `FnDef.alphaEq` is the macro-vs-corpus round-trip criterion — a mode-blind
+    conversions: §18's `absOcc` abstracts occurrences by it, and a mode-blind
+    version would match `⇝τ` against `τ` and abstract the marker away with the
+    domain. (`FnDef.alphaEq`, the macro-vs-corpus round-trip criterion, was the
+    second client and wanted the same thing for the same reason — a mode-blind
     version would let phase D's `fn` macro emit a differently-moded `FnDef` and
-    still report equivalence. Pinned because "one of these two is mode-blind and
+    still report equivalence. It retired in M28 cluster C with its one consumer;
+    the asymmetry has one witness now instead of two.) Pinned because "one of
+    these two is mode-blind and
     the other is not" is exactly the kind of asymmetry a later reader would
     otherwise assume was an oversight. -/
 

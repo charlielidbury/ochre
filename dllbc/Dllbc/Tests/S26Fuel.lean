@@ -6,7 +6,6 @@ import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.FnMacro
-import Dllbc.AlphaEq
 import Dllbc.Tests.S6Call
 import Dllbc.Tests.S24Arrays
 import Dllbc.Tests.S14Bounds
@@ -153,9 +152,11 @@ example : bothWays Tests.S24Arrays.walk = true := by native_decide
     accepts index decrease either way, so nothing in S14 or S17 needed re-proving).
 
     The two round-trip mirrors of `nthS` moved with it (`SDeclMacro.nth'`,
-    `SDeclUnified.nthU`), and only one of them noticed: `FnDef.alphaEq` compares
-    name/telescope/retType/body/back and NOT `dec`, so the `alphaEq` mirror stayed
-    green against a stale hint while the exact-`BEq` mirror went red. -/
+    `SDeclUnified.nthU`), and only one of them noticed: `FnDef.alphaEq` as it then
+    stood compared name/telescope/retType/body/back and NOT `dec`, so the `alphaEq`
+    mirror stayed green against a stale hint while the exact-`BEq` mirror went red.
+    (M27-δ widened the criterion to see `dec`; both mirrors and the criterion itself
+    have since retired — the criterion in M28 cluster C, with its one consumer.) -/
 
 -- **`nthI`/`nth2I`/`p14fixed` and their equality assertion went in M28 cluster C.**
 -- They were `{ S14Bounds.nth with dec := some 1 }` and a copy of `p14` built from
