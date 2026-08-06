@@ -3,21 +3,23 @@ import Dllbc.Machine
 import Dllbc.FnMacro
 
 /-!
-# `decl{ … }` — a surface macro for whole `FnDef`s (§5 boundaries)
+# `uterm` / `ublk` — THE term grammar
 
-This file holds the ONE term grammar (`uterm`/`ublk`, below) and, on top of it,
-`decl{ }`, which assembles a whole function **declaration**: the header
-`fn NAME (x : τ, …) -> τret`, an optional `back = …` backward spec, and the body
-— producing the same `FnDef` value the corpus builds by hand. Its reason to exist
-is removing the ugliness of hand-writing telescopes like
-`("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))`. The other surfaces —
-`pure{ }` (PureMacro.lean) and `prog{ }` (ProgMacro.lean) — are this same
-grammar entered at a different mode, which is what makes them one-liners.
+One grammar, and everything else is it entered somewhere. `prog{ }`
+(ProgMacro.lean) is `ublk` in ⇒ mode, `pure{ }` (PureMacro.lean) is the same call
+in ⇝ mode, and the two differ by exactly the `isTy` flag — this calculus's
+"one grammar, four arrows" showing up at elaboration time. `fn` is a STATEMENT of
+`ublk` (M28 θ), so a declaration is written where a `let` is written and there is
+no separate declaration surface to learn.
+
+`decl{ }` (DeclMacro.lean) is also built on this grammar, but it is no longer the
+language's surface: it produces an `FnDef` **value** and survives for the tests
+that need one — see its header for the four consumer classes.
 
 ## Type positions
 
-Telescope entry types, the return type, the `↝` right-hand side, and `back`
-terms all elaborate through `uterm` in TYPE mode (`isTy := true`) — Σ/Π/λ/→/
+Telescope entry types, the return type, and the `↝` right-hand side all elaborate
+through `uterm` in TYPE mode (`isTy := true`) — Σ/Π/λ/→/
 Id/application/`Type` — extended with two things the boundary needs:
 
   * a **runtime-var context**: the names of EARLIER telescope parameters resolve
@@ -45,11 +47,13 @@ the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
 
 ## Body
 
-`ublk` in TERM mode with the telescope names pre-bound in order at ids `0 .. n-1`
-and fresh binders minted from `n` — the `seedTelescope` convention, and the only
-place in the surface where a name arrives pre-bound. Bodies laden with pure proof
-terms (a `botElim` ex-falso branch, a `le_rw_r` bound derivation) are awkward to
-write as statements; for those the escape hatch `= %term` splices a raw `Term`.
+A function's body — whether reached through the `fn` statement or through
+`decl{ }` — is `ublk` in TERM mode with the telescope names pre-bound in order at
+ids `0 .. n-1` and fresh binders minted from `n`, the `seedTelescope` convention.
+That is the only place in the surface where a name arrives pre-bound. Bodies laden
+with pure proof terms (a `botElim` ex-falso branch, a `le_rw_r` bound derivation)
+are awkward to write as statements; for those `decl{ }` has the escape hatch
+`= %term`, which splices a raw `Term`.
 -/
 
 open Lean
@@ -62,10 +66,10 @@ A single expression grammar spanning BOTH fragments, elaborated by `elabU` under
 **mode flag** that is precisely "is this position consumed by ⇒ or ⇝" (the
 arrows-decide-fragments thesis at elaboration level):
 
-  * **term mode** (⇒, a runtime position — `decl{}` body, `prog{}`): `&mut e` is
+  * **term mode** (⇒, a runtime position — a `fn` body, a `prog{}` block): `&mut e` is
     the borrow *operation* (`.borrow`); `let x = e ; …` mints a fresh runtime id
     (`.letIn`); assignment/sequencing/match/call are available.
-  * **type mode** (⇝, a comptime position — `decl{}` telescope/retType/back,
+  * **type mode** (⇝, a comptime position — a `fn`'s telescope and return type,
     `pure{}`): `&mut τ` / `&mut (s : τ ~> S)` is the borrow *type* (`.borrowT`, the
     snapshot `s` bound as pure var 0 in `S`); `let x = e ; …` is a β-redex
     (de Bruijn). The runtime-only forms are simply not written there.
@@ -264,7 +268,7 @@ def reservedBinder (s : String) : Bool :=
 
 /-- Reject a reserved name in binder position. Called at every binder the
     unified grammar has: λ, Π, Σ, `let`, match arms and their equation binder,
-    and `decl{}`'s parameters. -/
+    and a `fn`'s parameters. -/
 def checkBinder (x : Ident) : MacroM Unit := do
   let s := x.getId.toString
   if reservedBinder s then

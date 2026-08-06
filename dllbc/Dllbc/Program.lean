@@ -107,11 +107,11 @@ def progRejects (t : Term) (needle : String) (retType : Term := .const "Unit")
 def progRunsTo (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
   match runProgram t table with | .ok env => env == expected | .error _ => false
 
-/-- The program's execution is rejected, with `needle` in the message. -/
-def progRunErr (t : Term) (needle : String) (table : List FnDef := []) : Bool :=
-  match runProgram t table with
-  | .ok _ => false
-  | .error e => strContains e needle
+-- (`progRunErr` — the execution counterpart of `progRejects` — retired in M28 ο
+-- with zero users. Nothing in the corpus asserts that a program's RUN gets stuck:
+-- a rejection is a checking claim, and the differential is what compares the two
+-- machines. It is two lines to restore from history if a run-stuckness test is
+-- ever wanted.)
 
 /-! ## Inspecting what a program's TAIL leaves (M28 θ)
 
@@ -127,8 +127,9 @@ def progRunErr (t : Term) (needle : String) (table : List FnDef := []) : Bool :=
     afterwards and an unchanged tail's `y ↦ σ0` reads `σ2`, which would look like a
     rewrite having changed what the code leaves. So the walk is done here and the
     filter is on the VAR ID against `FnMacro.progBase`, which is what a declaration
-    is. (`Migrate.progEnvsOfT` says the same thing about the same hazard, for the
-    `FnDef` path this replaces.) -/
+    is. (`Migrate.progEnvsOfT` said the same thing about the same hazard for the
+    `FnDef` path; it retired with its users in M28 ο, so this is now the only
+    statement of it.) -/
 def tailEnvs (t : Term) (table : List FnDef := []) : List (Except String Env) :=
   (explore defaultFuel (pushContinuations t) { initSt with decls := table }).map
     (fun r => r.bind (fun p =>

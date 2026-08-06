@@ -8,8 +8,10 @@ namespace Dllbc
 
     A program is a term, so its surface is the term surface: `ublk` in RUNTIME
     mode, elaborated in the empty context. There is no declaration form to write
-    and nothing for this macro to assemble — which is the point. Compare
-    `decl{ fn … }`, whose whole body is telescope-and-return-type bookkeeping.
+    and nothing for this macro to assemble — which is the point, and which is why
+    it is three lines. A declaration is a STATEMENT of the block (`fn`, M28 θ),
+    since §8 says a declaration is a `let` and §7 says what its right-hand side is;
+    so this is the whole of the language's surface, with `pure{ }` beside it.
 
     `pure{ … }` is the same grammar in ⇝ mode (a `let` there is a β-redex, not a
     slot); the two differ by exactly the `isTy` flag, which is this calculus's
@@ -24,9 +26,8 @@ namespace Dllbc
       * a **seeded symbolic slot** is what an opaque call returns (§6.1 hands the
         caller a fresh existential at the callee's return type), so
         `let n = anyNat()` needs no seeding;
-      * a **seeded telescope parameter** is what `decl{ fn f (x : τ) … }` declares,
-        and `seedTelescope` puts it at exactly the id the `…With` list was
-        reproducing;
+      * a **seeded telescope parameter** is what `fn f (x : τ) …` declares, and
+        `seedTelescope` puts it at exactly the id the `…With` list was reproducing;
       * a **seeded callee slot** is what `FnMacro.progOf` binds, and it RETARGETS
         the tail's `.call`s into those bindings — so a tail naming its callees as
         ordinary out-of-scope calls assembles to the same term.

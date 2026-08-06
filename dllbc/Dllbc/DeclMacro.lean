@@ -4,7 +4,46 @@ open Lean
 
 namespace Dllbc
 
-/-! ## The `decl{ … }` declaration surface -/
+/-!
+# `decl{ … }` — the TEST-HARNESS surface, and why it survives (M28 ο)
+
+**This is not the language's surface any more, and it is not migration debt
+either.** `fn` is a statement of the program grammar (Uni.lean, M28 θ) and the
+corpus was rewritten onto it (M28 ν); what a reader should write is
+`prog{ fn f (…) -> R { … }; … }`. `decl{ }` builds an `FnDef` **value**, and it
+stays because a `FnDef` is the only thing some tests can be about.
+
+This header exists so that a future simplification pass does not re-derive the
+question from scratch and reach the wrong answer. The keep-core is four classes,
+and none of them is a program:
+
+  * **A property QUANTIFIED OVER A TELESCOPE.** `S8Diff`'s differential asserts
+    "accepted ⟹ concrete-safe at every instantiation of the arguments", over 136
+    generated bodies against three telescopes. It seeds `decl.telescope` with
+    concrete argument values; a program takes no arguments, so it has nothing to
+    instantiate. `decl{ fn f (…) = %body }` — the `%`-splice body — exists for
+    exactly this generator.
+  * **RECORD-UPDATE twins.** `S27Dispose` and `S26Migrate` build lie twins with
+    `{ d with dec := … }` / `{ d with … }` — the same function, one field
+    changed. That is a record operation, and a program has no fields.
+  * **THE MACRO'S OWN SUBJECT.** `S26Fn` round-trips `fnElab`: it elaborates a
+    declaration and compares the result against a hand-written term, by `alphaEq`.
+    The input to a lowering cannot be its own output.
+  * **CROSS-FILE PINNED SUBJECTS.** `S23Direct`'s declarations are read by seven
+    other files (57 references — `S27Dispose`'s disposition ledger, `S26Migrate`'s
+    survey, `S26Fn`'s round-trips). A subject named from elsewhere is a value, not
+    a block of code somewhere.
+
+Plus one class that is about `decl{ }` failing: the §B decliner residue
+(`S27Dispose`), nineteen declarations the recursor lowering REFUSES, pinned by
+name. They cannot be `fn` statements — being refused is the point.
+
+`FnDef` therefore stays public API and is not internalized. What retired instead
+was the bookkeeping *around* it: the corpus census (M28 μ) and the
+`progEnvsOfT`/`progEnvOfT` inspectors (M28 ο), which had program counterparts.
+
+## The surface itself
+-/
 
 declare_syntax_cat declParam
 declare_syntax_cat declBody

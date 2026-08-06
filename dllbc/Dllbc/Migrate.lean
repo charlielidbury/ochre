@@ -138,43 +138,17 @@ def progRejectsOf (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bo
   | .error _ => false
   | .ok t => progRejects t needle
 
-/-- The program-path counterpart of `runFn`: the assembled program's symbolic
-    final Ωs, **with the cohort's own function bindings dropped**.
+/-! ## `progEnvsOfT`/`progEnvOfT` are gone (M28 ο)
 
-    A program binds each function to a slot (§8: a declaration is a `let`), so its
-    Ω carries entries a declaration's never did, and dropping them is what makes
-    an inspection of "what the body left" mean the same thing on both paths.
+    They inspected what a declaration's BODY left in Ω, by assembling the callee
+    closure and running the body as the program's tail. The sweep (M28 ν) rewrote
+    every call site — a body that is a program's tail needs no declaration wrapped
+    around it to be one — and they finished with zero users.
 
-    **They must be dropped BEFORE canonicalization, and that is not a detail.** A
-    sealed function IS a σ, so a global participates in `canonicalize`'s
-    first-appearance σ ordering and shifts the index of every σ after it — filter
-    afterwards and an unchanged body's `y ↦ σ0` reads `σ3`, which would look like
-    the migration having changed what the body leaves. So this walks `explore`
-    itself rather than reusing `programEnvs`, and filters on the VAR ID against
-    `progBase`, which is what a global is. -/
-def progEnvsOfT (table : List FnDef) (d : FnDef) : List (Except String Env) :=
-  -- **The subject's BODY is the program's TAIL**, not another `let`. `progOf ds
-  -- .unit` binds every declaration and runs nothing, so a subject bound that way
-  -- has its body checked inside the seal's isolated frame and its Ω never
-  -- surfaces. What these assertions inspect is what a body LEAVES, so the body
-  -- has to be the thing that runs. So the cohort MINUS the subject is assembled,
-  -- and the subject's body is handed to `progOf` as the tail — where `retarget`
-  -- binds its calls into the assembled slots.
-  let deps := (cohort table d).filter (·.name != d.name)
-  match FnMacro.progOf deps d.body with
-  | .error e => [.error e]
-  | .ok t =>
-    (explore defaultFuel (pushContinuations t) initSt).map (fun r => r.bind (fun p =>
-      match (endScope defaultFuel).run p.2 with
-      | .ok _ st => .ok (canonicalize (st.env.filter (fun kv => kv.1.id < FnMacro.progBase)))
-      | .error e _ => .error e))
-
-/-- The program-path counterpart of `expectFnEnv`: one path, and it leaves exactly
-    this Ω. Table-first, like the two it replaces, so a call site converts by
-    renaming. -/
-def progEnvOfT (table : List FnDef) (d : FnDef) (expected : Env) : Bool :=
-  match progEnvsOfT table d with
-  | [.ok env] => env == expected
-  | _ => false
+    **The reasoning in their docstring did not go with them.** Their one subtle
+    point was that a program's own function bindings must be dropped BEFORE
+    canonicalization, because a sealed function is itself a σ and would shift the
+    index of every σ after it. That now lives on `Program.tailEnvs`, which is the
+    only implementation of it left. -/
 
 end Dllbc.Migrate
