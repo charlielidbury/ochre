@@ -438,6 +438,9 @@ def vT : Term := .var ⟨0, "v"⟩
 def dvT : Term := .deref vT
 def oldvT : Term := .app (.const "old") dvT
 def iT : Term := .var ⟨1, "i"⟩
+def kT : Term := .var ⟨1, "k"⟩
+def xT : Term := .var ⟨2, "x"⟩
+def jT : Term := .var ⟨2, "j"⟩
 def sucT (t : Term) : Term := .ctorApp "S" [t]
 
 -- `split_off(v, i)`: `*v` keeps the first `i`, the rest comes back by value. The
@@ -589,11 +592,26 @@ example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything,
     removes two of them, and re-scopes pinning to "only if you insist on calling
     a cursor rather than being one". -/
 
--- `set_at(v, i, x)`: write `x` at position `i`, in place, through the body's own
--- field reborrows. The exit reading is `set i x (old *v)` — provable, no back.
-def setAt : FnDef :=
-  decl{ fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v))
-        -> Id (List Nat) (*v) (set i x (old *v))
+/-! `set_at(v, i, x)` writes `x` at position `i`, in place, through the body's own
+    field reborrows; `swap_at(v, i, j)` is two `set_at`s and the M22 bridge. They are
+    ONE chain because the second calls the first — the caller is in scope by being
+    written below it — and the chain takes BOTH return types as parameters, so each
+    of the four twins varies exactly one of them while the two bodies are written
+    once.
+
+    **One chain serves both twin families, and that is a refinement of M28 χ's
+    forced-duplication note.** χ wrote `insert_at`'s header a second time inside
+    `pick`'s program because two `%`-spliced chains collide at `progBase`, and read
+    it as the price of the guard. The price is only paid when the two functions need
+    to be varied through DIFFERENT prefixes. Here they do not: a lying `set_at` is
+    refused at its own seal, and a sealed `let` fires its audit at its own node in
+    PROGRAM ORDER (§8, and `S26Prog` §B asserts it), so the message a `set_at` twin
+    is caught by is `set_at`'s — `swap_at`, which also breaks under it, is never
+    reached. Varying the second return type leaves the first honest and the
+    attribution is `swap_at`'s for the same reason. -/
+
+def setSwapUnder (sret wret tail : Term) : Term := prog{
+  fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v)) -> %sret
         { match i {
             -- `*hd := x` is a strong update through a match-field reborrow: the
             -- parent suspends, the audit collapses it, and the exit is `Cons x σ_tl`
@@ -607,15 +625,11 @@ def setAt : FnDef :=
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
-        } } }
-example : Migrate.progOkOf setAt = true := by native_decide
-
--- `swap_at(v, i, j)`: two `set_at`s and the M22 bridge, ensuring the model function
--- `swapL` directly. Not recursive itself — the recursion is `set_at`'s.
-def swapAt : FnDef :=
-  decl{ fn swap_at (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
-                    p2 : Le (S j) (len *v), hi : Le (S i) (len *v))
-        -> Id (List Nat) (*v) (swapL i j (old *v))
+        } };
+  -- `swap_at(v, i, j)`: two `set_at`s and the M22 bridge, ensuring the model
+  -- function `swapL` directly. Not recursive itself — the recursion is `set_at`'s.
+  fn swap_at (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
+                    p2 : Le (S j) (len *v), hi : Le (S i) (len *v)) -> %wret
         { let a = nth i (*v);
           let b = nth j (*v);
           -- The M22 bridge, cited as an ordinary lemma in the body. No audit
@@ -650,35 +664,48 @@ def swapAt : FnDef :=
                                  (*v) (set j a (old *v)) h1)
                                bridge));
           let h2 = set_at(&mut *v, i, b, hi2);
-          finish (*v) h2 } }
-example : Migrate.progOkOf swapAt [setAt, swapAt] = true := by native_decide
+          finish (*v) h2 };
+  %tail }
+
+/-- Each return type as a skeleton over the model function it cites — still surface
+    syntax, one spliced subterm, so the twins below read as the lie they are. -/
+def exitIs (rhs : Term) : Term := pure{ Id (List Nat) %dvT %rhs }
+
+def setHonest : Term := exitIs (pure{ set %iT %xT %oldvT })
+def swapHonest : Term := exitIs (pure{ swapL %iT %jT %oldvT })
+
+/-- The pair, both honest. Also the regression pin M28's survey held separately:
+    `swap_at` calls `set_at [i]`, whose decreasing parameter is SECOND, so the sealed
+    callee's telescope is `(i, v, x, hi)` while the call is written in DECLARATION
+    order — the chain has to permute it (`retarget`), and before it did the borrow
+    was checked against `i : Nat`. -/
+def setSwap : Term := setSwapUnder setHonest swapHonest .unit
+example : progOk setSwap = true := by native_decide
 
 /-! ### Not vacuous -/
 
--- SUBJECT: deliberately-wrong return types (raw Terms) — the lie IS the test.
-def setT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.set k) x) l
-def swapT (a b l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.swapL a) b) l
-def setAtLieIdx : FnDef := { setAt with retType := .idT listNatT dvT (setT (sucT iT) (.var ⟨2, "x"⟩) oldvT) }
-def setAtLieNoop : FnDef := { setAt with retType := .idT listNatT dvT oldvT }
-example : Migrate.progRejectsOf setAtLieIdx "does not have return type" = true := by native_decide
-example : Migrate.progRejectsOf setAtLieNoop "does not have return type" = true := by native_decide
-
-def swapAtLieIdx : FnDef := { swapAt with retType := .idT listNatT dvT (swapT (sucT iT) (.var ⟨2, "j"⟩) oldvT) }
-def swapAtLieNoop : FnDef := { swapAt with retType := .idT listNatT dvT oldvT }
-example : Migrate.progRejectsOf swapAtLieIdx "does not have return type" [setAt, swapAtLieIdx] = true := by native_decide
-example : Migrate.progRejectsOf swapAtLieNoop "does not have return type" [setAt, swapAtLieNoop] = true := by native_decide
+-- The index off by one, and the no-op, once per function.
+example : progRejects (setSwapUnder (exitIs (pure{ set (S %iT) %xT %oldvT })) swapHonest .unit)
+  "does not have return type" = true := by native_decide
+example : progRejects (setSwapUnder (exitIs oldvT) swapHonest .unit)
+  "does not have return type" = true := by native_decide
+example : progRejects (setSwapUnder setHonest (exitIs (pure{ swapL (S %iT) %jT %oldvT })) .unit)
+  "does not have return type" = true := by native_decide
+example : progRejects (setSwapUnder setHonest (exitIs oldvT) .unit)
+  "does not have return type" = true := by native_decide
 
 /-! ### The executing differential — the bodies really write and really swap -/
 
 -- SUBJECT: executing-mode raw Term callers (proof arguments are placeholders `()`,
--- which the executing run does not type-check).
-def setCaller (l : List Nat) (i x : Nat) : Term :=
+-- which the executing run does not type-check). Each rides the honest chain as its
+-- tail, so what runs is the function declared above it.
+def setCallerTail (l : List Nat) (i x : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
       (.seq (.call "set_at" [.var ⟨1, "b"⟩, tnatT i, tnatT x, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runSetAt (l : List Nat) (i x : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [setAt] (setCaller l i x) with
+  match Dllbc.Tests.S9Diff.runExec [] (setSwapUnder setHonest swapHonest (setCallerTail l i x)) with
   | .ok env => env.lookup "y" == some (vlistV (l.set i x))
   | .error _ => false
 
@@ -686,13 +713,13 @@ example : runSetAt [1,2,3] 0 9 = true := by native_decide
 example : runSetAt [1,2,3] 2 9 = true := by native_decide
 example : runSetAt [5,5,5,5] 1 7 = true := by native_decide
 
-def swapCaller (l : List Nat) (i j : Nat) : Term :=
+def swapCallerTail (l : List Nat) (i j : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
       (.seq (.call "swap_at" [.var ⟨1, "b"⟩, tnatT i, tnatT j, .unit, .unit, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runSwapAt (l : List Nat) (i j : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [setAt, swapAt] (swapCaller l i j) with
+  match Dllbc.Tests.S9Diff.runExec [] (setSwapUnder setHonest swapHonest (swapCallerTail l i j)) with
   | .ok env =>
     match l.get? i, l.get? j with
     | some a, some b => env.lookup "y" == some (vlistV ((l.set i b).set j a))
@@ -716,13 +743,10 @@ example : runSwapAt [4,1,3,2,5] 0 4 = true := by native_decide  -- full span
     idiom again — take-and-refill through the body's own borrows — and checks the
     same way. -/
 
--- The return type is the ONLY description of this function, so it is written as a
--- SKELETON with the inserted list as its parameter — honest and lies then differ in
--- exactly that argument, provably, rather than by a reader comparing two spellings.
+-- The return type is the ONLY description of this function, so it is written with
+-- `exitIs`, the shared mutator skeleton — honest and lies differ in exactly its one
+-- argument, provably, rather than by a reader comparing two spellings.
 def insLT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.insertL k) x) l
-def insRet (rhs : Term) : Term := .idT listNatT dvT rhs
-def kT : Term := .var ⟨1, "k"⟩
-def xT : Term := .var ⟨2, "x"⟩
 
 /-- The function, once, with its return type and what follows it as parameters. -/
 def insUnder (ret tail : Term) : Term := prog{
@@ -741,14 +765,14 @@ def insUnder (ret tail : Term) : Term := prog{
         } };
   %tail }
 
-def insHonest : Term := insRet (insLT kT xT oldvT)
+def insHonest : Term := exitIs (insLT kT xT oldvT)
 def insertAt : Term := insUnder insHonest .unit
 example : progOk insertAt = true := by native_decide
 
 -- The index off by one, and the no-op. Each varies the skeleton's one argument.
-example : progRejects (insUnder (insRet (insLT (sucT kT) xT oldvT)) .unit)
+example : progRejects (insUnder (exitIs (insLT (sucT kT) xT oldvT)) .unit)
   "does not have return type" = true := by native_decide
-example : progRejects (insUnder (insRet oldvT) .unit)
+example : progRejects (insUnder (exitIs oldvT) .unit)
   "does not have return type" = true := by native_decide
 
 -- `insertL` computes, including the past-the-end case the `Nil` branch implements.

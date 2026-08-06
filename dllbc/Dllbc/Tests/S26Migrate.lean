@@ -143,10 +143,11 @@ def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
 -- skeleton, one accept and four rejects, asserted in their own file. None of the
 -- five was a decliner, so §B's residue is unchanged by their leaving, which is the
 -- check that the pool carried inventory and not a verdict.)
+-- (`set_at`/`swap_at` and their four twins are ONE program since M28 D2 — the
+-- `setSwapUnder` chain — and left with the same argument. None was a decliner.)
 def p23 : List FnDef := [S23Direct.recCursor,
   S23Direct.appendBack,
-  S23Direct.setAt, S23Direct.swapAt, S23Direct.setAtLieIdx, S23Direct.setAtLieNoop,
-  S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop, S23Direct.partition,
+  S23Direct.partition,
   S23Direct.partitionLoses, S23Direct.quicksort,
   S23Direct.qsLieSorted, S23Direct.qsLieCount, S23Direct.qsStaleBound, S23Direct.qsNoSuff]
 
@@ -235,15 +236,14 @@ example : progRejects (prog{ fn recBool [l] (l : Bool) -> Id Nat Z Z { Refl }; (
 -- W1. THE HOIST PERMUTATION. `swap_at` calls `set_at [i]`, whose decreasing
 -- parameter is SECOND, so the sealed callee's telescope is `(i, v, x, hi)` while
 -- the call is written `(&mut *v, j, a, p2)`. Before the fix the borrow was checked
--- against `i : Nat` — "hasType: cannot type value borrowₘ". Pinned as the pair it
--- is: the cohort accepts, and its `[k]`-first sibling always did.
-example : (match FnMacro.progOf [S23Direct.setAt, S23Direct.swapAt] .unit with
-           | .ok t => progOk t
-           | .error _ => false) = true := by native_decide
--- `insert_at`/`pick` is now one `fn` chain in `S23Direct` and asserts the same
--- thing there: `pick` writes `insert_at(&mut *v, ki, x)` in DECLARATION order and
--- the chain retargets it into the `[k]`-hoisted telescope. Same bug, same pin,
--- stated as the program it is about.
+-- against `i : Nat` — "hasType: cannot type value borrowₘ".
+--
+-- BOTH pins are now `fn` chains in `S23Direct` and assert the same thing there:
+-- `swap_at` writes its call in DECLARATION order inside `setSwapUnder` (M28 D2)
+-- and `pick` does the same inside `insUnder`'s (M28 χ), and each chain retargets
+-- the call into its callee's `[k]`-hoisted telescope. Same bug, same pin, stated
+-- as the programs it is about.
+example : progOk S23Direct.setSwap = true := by native_decide
 example : progOk S23Direct.pick = true := by native_decide
 
 -- W2. THE SILENT REPAIR. `recGrow` recurses on itself and the declaration path

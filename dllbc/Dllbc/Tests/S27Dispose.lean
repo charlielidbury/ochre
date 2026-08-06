@@ -456,17 +456,17 @@ example : progRejects S23Direct.recDeep "not the predecessor" = true := by nativ
     happened to compute. Asserted below on both paths, with the lie twins that make
     the acceptance non-vacuous. -/
 
-def ensuresReplacements : List FnDef := [S23Direct.setAt, S23Direct.swapAt]
+-- The ensures-style pair checks, as ONE program declaring both — which is also the
+-- shape the claim wants, since the point is that a CALLER learns the equation.
+example : progOk S23Direct.setSwap = true := by native_decide
 
--- The ensures-style pair checks as declarations AND as programs.
-example : S26Fuel.bothWays S23Direct.setAt = true := by native_decide
-example : S26Fuel.bothWays S23Direct.swapAt [S23Direct.setAt] = true := by native_decide
-
--- …and refuses the four lies about exactly the facts the backs used to carry:
--- the index moved, and the update claimed to be a no-op.
-def ensuresLies : List FnDef :=
-  [S23Direct.setAtLieIdx, S23Direct.setAtLieNoop, S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop]
-example : ensuresLies.all (fun d => neitherWay d [S23Direct.setAt]) = true := by native_decide
+-- …and refuses the four lies about exactly the facts the backs used to carry: the
+-- index moved, and the update claimed to be a no-op. Asserted where the pair is
+-- written (M28 D2, the `setSwapUnder` skeleton): each twin varies one of the
+-- chain's two return-type parameters and the other stays honest, so the four
+-- rejections are attributable, one per function per lie. This line used to restate
+-- them through `neitherWay` on `FnDef` record updates; the restatement is what
+-- retires, not the coverage.
 
 -- That the two name the SAME model function (`swapL` in `swapSN`'s declared back,
 -- `swapL` in `swapAt`'s return type) is a reading of two source lines and is left
