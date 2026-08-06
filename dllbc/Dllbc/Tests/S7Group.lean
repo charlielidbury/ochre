@@ -1,7 +1,5 @@
-import Dllbc.Boundary
+import Dllbc.Program
 import Dllbc.ProgMacro
-import Dllbc.DeclMacro
-import Dllbc.Migrate
 
 /-!
 # §6.1 test suite — entangled calls and loan groups
@@ -30,11 +28,12 @@ namespace Dllbc.Tests.S7Group
 -- choose (c : Bool, x : &mut Nat, y : &mut Nat) → &mut Nat = match c { … }.
 -- The callee checks under the borrow-returning audit: each branch consumes one
 -- argument borrow into the result (exempt) and audits the other.
-def choose : FnDef :=
-  decl{ fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
-        { match c { True => x, False => y } } }
+def choose : Term := prog{
+  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+    { match c { True => x, False => y } };
+  () }
 
-example : Migrate.progOkOf choose = true := by native_decide
+example : progOk choose = true := by native_decide
 
 -- The §6.1 trace verbatim. After `*r := 7`, demanding `a` (via `let z = a`)
 -- forces the cascade: End ℓᵣ first (its 7 surrendered and DISCARDED — the
@@ -42,19 +41,19 @@ example : Migrate.progOkOf choose = true := by native_decide
 -- ends ATOMICALLY (b's fresh existential arrives too, though only a was
 -- demanded). a and b hold DISTINCT fresh σ's; z holds a's. The imprecision is
 -- the point: z = 7 is not provable (§6.2's cost).
-def chooseCaller : FnDef :=
-  { name := "caller", retType := .const "Unit", telescope := [],
-    body := prog{
-      let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
-      let r = choose(True, pa, pb);
-      *r := 7;
-      let z = a;
-      () } }
+def chooseCaller : Term := prog{
+  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+    { match c { True => x, False => y } };
+  let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
+  let r = choose(True, pa, pb);
+  *r := 7;
+  let z = a;
+  () }
 
 -- `let z = a` ends the group (fresh existentials for a and b) and then COPIES
 -- a's existential (§2.1), so a and z share it; canonicalization numbers a's σ
 -- first (it now appears in a's own slot), b's second.
-example : Migrate.progEnvOfT [choose, chooseCaller] chooseCaller
+example : tailEnv chooseCaller
   [("a", .sym 0), ("b", .sym 1), ("pa", .bot), ("pb", .bot), ("r", .bot), ("z", .sym 0)]
   = true := by native_decide
 
@@ -67,42 +66,40 @@ example : Migrate.progEnvOfT [choose, chooseCaller] chooseCaller
 -- a fresh existential: the caller below recovers a FRESH σ : List Nat, NOT the
 -- written `Cons 9 Nil`. Precision is deliberately lost; §6.2's transparent/spec
 -- group ends are the recovery route.
-def through : FnDef := decl{ fn through (b : &mut List Nat) -> &mut List Nat { b } }
+def through : Term := prog{ fn through (b : &mut List Nat) -> &mut List Nat { b }; () }
 
-example : Migrate.progOkOf through = true := by native_decide
+example : progOk through = true := by native_decide
 
-def throughCaller : FnDef :=
-  { name := "caller", retType := .const "Unit", telescope := [],
-    body := prog{
-      let x = Cons(1, Nil); let b = &mut x;
-      let r = through(b);
-      *r := Cons(9, Nil);
-      let y = x;
-      () } }
+def throughCaller : Term := prog{
+  fn through (b : &mut List Nat) -> &mut List Nat { b };
+  let x = Cons(1, Nil); let b = &mut x;
+  let r = through(b);
+  *r := Cons(9, Nil);
+  let y = x;
+  () }
 
 -- y is a fresh σ (the write is forgotten — deliberate, per the soundness fix).
 -- `x`'s recovered σ is typed `List Nat` (DATA), so reading it MOVES it (§2.1).
-example : Migrate.progEnvOfT [through, throughCaller] throughCaller
+example : tailEnv throughCaller
   [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## Rejections -/
 
 -- The group cannot end because an issued borrow cannot surrender: `*r` was
 -- taken, leaving its payload a hole (⊥), and then a captured owner is demanded.
-example : Migrate.progRejectsOf
-  { name := "caller", retType := .const "Unit", telescope := [],
-    body := prog{
-      let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
-      let r = choose(True, pa, pb);
-      let tk = *r;
-      let z = a;
-      () } }
-  "nothing surrendered" [choose] = true := by native_decide
+example : progRejects (prog{
+  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+    { match c { True => x, False => y } };
+  let a = 0; let b = 0; let pa = &mut a; let pb = &mut b;
+  let r = choose(True, pa, pb);
+  let tk = *r;
+  let z = a;
+  () })
+  "nothing surrendered" = true := by native_decide
 
 -- A borrow-returning body whose returned payload fails its owed type:
 -- `bad (b : &mut Nat) → &mut Bool = b` returns a Nat borrow as a Bool borrow.
-example : Migrate.progRejectsOf
-  decl{ fn bad (b : &mut Nat) -> &mut Bool { b } }
+example : progRejects (prog{ fn bad (b : &mut Nat) -> &mut Bool { b }; () })
   "owed type" = true := by native_decide
 
 /-! ## The constrained branch, exercised directly (dead under opaque calls) -/

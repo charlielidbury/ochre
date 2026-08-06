@@ -90,7 +90,9 @@ open Dllbc.Tests
 -- `S26Fuel` §A compares it against its fuel-threaded twin. The survey shrinks with
 -- the file rather than pretending the declarations are still there.
 def p6 : List FnDef := [S6Call.zeroAll]
-def p7 : List FnDef := [S7Group.choose, S7Group.chooseCaller, S7Group.through, S7Group.throughCaller]
+-- S7Group is written as PROGRAMS now (M28 ν) — its two callers were already
+-- hand-built `FnDef`s wrapping a `prog{ }` body, so migrating them was deleting
+-- the wrapper. `p7` goes with `p5`/`p10`/`p12`; none of its four was a decliner.
 def p9 : List FnDef := [S9Diff.through, S9Diff.advance, S9Diff.choose, S9Diff.push]
 -- S10Ford's declaration half is written as PROGRAMS now (M28 ν) — its library
 -- half never had a pool entry, being `hasType` derivations over `Val`s — so `p10`
@@ -178,7 +180,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p7, p9, p11, p14, p15, p16, p17, p18, p19, p23, p24, p25]
+  [p6, p9, p11, p14, p15, p16, p17, p18, p19, p23, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
