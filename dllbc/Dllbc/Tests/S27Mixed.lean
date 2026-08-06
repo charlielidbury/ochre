@@ -201,7 +201,7 @@ example : ok e2trivial = true := by native_decide
 -- `to_nat (v : &mut (Bool ~> Nat))` — the type-changing ↝, S6Call's own subject.
 example : progOk Tests.S6Call.toNatProg = true := by native_decide
 -- `swapS01`, whose owed type is a Σ carrying a length-preservation proof.
-example : ok Tests.S16Spec.swapS01 = true := by native_decide
+example : progOk Tests.S16Spec.swapS01 = true := by native_decide
 
 /-! ## §F. THE THIRD CONTAINMENT — reading a sealed borrow-taking function
 

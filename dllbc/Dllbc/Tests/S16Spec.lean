@@ -1,8 +1,7 @@
-import Dllbc.Boundary
+import Dllbc.Program
 import Dllbc.Std
 import Dllbc.StdLemmas
-import Dllbc.DeclMacro
-import Dllbc.Migrate
+import Dllbc.ProgMacro
 
 /-!
 # §16 test suite — the count-preservation proof stack (and, later, swapS)
@@ -76,8 +75,13 @@ example : chk StdLemmas.len_swapL StdLemmas.len_swapL_ty = true := by native_dec
     with `swapL 0 1 s` by computation — so it type-checks against `Id (len l)
     (len s)`. The cursor writes and the pure specification agree, verified. -/
 
-def swapS01 : FnDef :=
-  decl{ fn swapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s)),
+/-- `swapS01` as a PREFIX: it is the callee of everything below, and the caller is
+    a plain statement block, so the S6Call idiom applies — a Lean function taking
+    the rest and splicing it with `%`. (A cohort whose caller is itself a `fn`
+    could not do this: two `%`-spliced chains both number their slots from
+    `progBase` and the inner would shadow the outer.) -/
+def withSwapS01 (rest : Term) : Term := prog{
+  fn swapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s)),
                     p : Le 2 (len (*v))) -> Unit {
     let proof = StdLemmas.len_swapL 0 1 (*v);
     match v {
@@ -96,27 +100,28 @@ def swapS01 : FnDef :=
         }
       }
     }
-  } }
+  };
+  %rest }
 
-example : Migrate.progOkOf swapS01 = true := by native_decide
+/-- The declaration alone, checked at its seal — which is what `progOkOf` meant. -/
+def swapS01 : Term := withSwapS01 prog{ () }
+example : progOk swapS01 = true := by native_decide
 
 -- Caller: borrow, call swapS01, demand the owner (recovering the Σ), open it to
 -- l + the carried proof `pf : Id (len l) (len [1,2,3])`. The evidence survives the
 -- opaque group-end — pf is in scope downstream though l itself is opaque.
-def swapCaller : FnDef :=
-  decl{ fn caller () -> Unit {
-    let x = Cons(1, Cons(2, Cons(3, Nil)));
-    let b = &mut x;
-    swapS01(b, ());
-    let sig = x;
-    match sig {
-      Pair(l, pf) => { let m = l; () }
-    }
+def swapCaller : Term := withSwapS01 prog{
+  let x = Cons(1, Cons(2, Cons(3, Nil)));
+  let b = &mut x;
+  swapS01(b, ());
+  let sig = x;
+  match sig {
+    Pair(l, pf) => { let m = l; () }
   } }
 
-example : Migrate.progOkOf swapCaller ([swapS01, swapCaller]) = true := by native_decide
+example : progOk swapCaller = true := by native_decide
 -- The proof survives to the final env (pf ↦ a σ : Id (len l) (len [1,2,3])).
-example : (match Migrate.progEnvsOfT [swapS01, swapCaller] swapCaller with
+example : (match tailEnvs swapCaller with
   | [.ok env] => (env.lookup "pf").isSome
   | _ => false) = true := by native_decide
 

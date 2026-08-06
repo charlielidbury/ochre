@@ -104,7 +104,9 @@ def p11 : List FnDef := [S11Lib.retRefl, S11Lib.storeProof, S11Lib.discharge]
 def p14 : List FnDef := [S14Bounds.nth, S14Bounds.nth2, S14Bounds.swap, S14Bounds.cascade,
   S14Bounds.rejectProbe]
 def p15 : List FnDef := [S15Elab.useTrans, S15Elab.badRefl]
-def p16 : List FnDef := [S16Spec.swapS01, S16Spec.swapCaller]
+-- S16Spec is written as PROGRAMS now (M28 ν): `swapS01` is a prefix helper and its
+-- caller a spliced tail, so neither is a `FnDef`. `p16` joins p5/p7/p10/p12; neither
+-- was a decliner.
 def p17 : List FnDef := [S17Spec.throughOk, S17Spec.caller,
   S17Spec.throughOpaque, S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN, S17Spec.spcCaller]
 def p18 : List FnDef := [S18Rewrite.certConsHit, S18Rewrite.certConsHitLie]
@@ -180,7 +182,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p9, p11, p14, p15, p16, p17, p18, p19, p23, p24, p25]
+  [p6, p9, p11, p14, p15, p17, p18, p19, p23, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
