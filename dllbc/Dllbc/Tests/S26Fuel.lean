@@ -174,13 +174,17 @@ example : bothWays nth2I [nthI] = true := by native_decide
     (`rejectProbe` is S14's own negative control), NOTHING declines. -/
 def p14fixed : List FnDef :=
   [nthI, nth2I, Tests.S14Bounds.swap, Tests.S14Bounds.cascade, Tests.S14Bounds.rejectProbe]
-example : (Migrate.tally p14fixed
-  == { accepts := 4, rejects := 1, declined := 0 }) = true := by native_decide
+-- Stated per declaration rather than as three counts (M28 μ, when the corpus-wide
+-- census retired): a verdict VECTOR says which one rejects, where a tally only says
+-- that one does — and `none` would be a decline, so "nothing declines" is still
+-- carried, positionally.
+example : (p14fixed.map (Migrate.progVerdict p14fixed)
+  == [some true, some true, some true, some true, some false]) = true := by native_decide
 -- …and since M26-F this is what the CORPUS pool reports too, not just this
 -- section's copy of it. Before the adoption the same five functions declined five
 -- times (`report p14 == R 0 0 5`, S26Migrate §Y as it then read).
-example : (Migrate.tally Tests.S26Migrate.p14 == Migrate.tally p14fixed)
-  = true := by native_decide
+example : (Tests.S26Migrate.p14.map (Migrate.progVerdict Tests.S26Migrate.p14)
+  == p14fixed.map (Migrate.progVerdict p14fixed)) = true := by native_decide
 
 /-! ## §D. What is left needing fuel, and one macro gap this section found
 
@@ -248,37 +252,32 @@ example : bothWays zeroAllF = true := by native_decide
     The measurement separates them so the question can be asked about eight
     declarations rather than about the corpus. -/
 
-def fixHints (pool : List FnDef) : List FnDef :=
-  pool.map (fun d => if d.name == "nth" || d.name == "nth2" then { d with dec := some 1 } else d)
--- M27-P2: `stripBacks` retired with the mechanism, so `fixAll` is `fixHints`,
--- which is itself a no-op since M26-F adopted the hints at the source. BOTH of
--- §E's fixes are now the corpus, which is what the assertions below assert.
-def fixAll (pool : List FnDef) : List FnDef := fixHints pool
+/-! ### The corpus-wide CENSUS retired here (M28 μ)
 
--- The adoption is at the SOURCE, so `fixHints` is now a no-op on every pool —
--- which is the assertion that the corpus, and not this harness, carries the fix.
-example : (Tests.S26Migrate.pools.all (fun p => fixHints p == p)) = true := by native_decide
+    Four assertions counted `S26Migrate.pools` — total declines, total
+    accepts/rejects, the per-pool decline vector, and that `fixHints` was a no-op on
+    every pool — together with the `fixHints`/`fixAll` harness they were computed
+    through. They are gone, and the reason is not that they were failing.
 
-example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.tally (fixHints p)).declined) 0 == 19)
-        && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.tally (fixAll p)).declined) 0 == 19))
-  = true := by native_decide
+    **A census of `FnDef` pools has no subject once the record form is gone.** `fn`
+    is a statement of the program grammar now (M28 θ), the corpus is being rewritten
+    onto it, and a declaration that becomes a program leaves the pools — so every
+    migrated file moved these numbers for a reason that had nothing to do with any
+    verdict changing. Kept through the sweep they would have been ~24 manual
+    recomputes and a standing invitation to "fix" a red build by editing a constant.
 
--- 110 → 105 accepts (M28 ι): S6Call is written as PROGRAMS now, so the five
--- declarations it used to contribute to the census are no longer declarations.
--- `rejects` and `declined` are untouched, and that is the check on the rewrite —
--- a migration that changed a VERDICT rather than removing a subject would have
--- moved one of them. This census moves once per migrated file until it retires
--- with the rest of the `FnDef` bookkeeping.
-example : (Tests.S26Migrate.pools.foldl (fun (a, r) p =>
-    let q := Migrate.tally (fixAll p); (a + q.accepts, r + q.rejects)) (0, 0)
-  == (105, 58)) = true := by native_decide
+    What they were FOR survives in two stronger forms, neither of which counts:
 
--- (the "still agreeing everywhere" assertion went with the second path; what it
--- guarded — that the 53 which move are migrations and not accidents — is now the
--- accept/reject tally below, which moves if any of them stops migrating)
+      * **The residue by NAME** (`S27Dispose` §B) — the same nineteen declarations
+        the decline count summarised, pinned name for name, so one appearing or
+        vanishing goes red with its identity attached.
+      * **Per-declaration verdicts** — §C above, positional, which is what the
+        p14 tally became.
 
--- And the residue is where §D says it is.
-example : (Tests.S26Migrate.pools.map (fun p => (Migrate.tally (fixAll p)).declined)
-  == [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 1, 0]) = true := by native_decide
+    `fixHints` went with them: it corrected `nth`/`nth2`'s `[k]` hint, M26-F adopted
+    the correction at the source, and the assertion that it had become a no-op was
+    one of the four. That claim is now structural — there is no `fixHints` to be a
+    no-op — and it is checked where it still bites, by `S27Dispose`'s residue list
+    (computed without it) not moving. -/
 
 end Dllbc.Tests.S26Fuel

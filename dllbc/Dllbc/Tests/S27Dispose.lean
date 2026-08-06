@@ -59,8 +59,8 @@ open Dllbc.StdLemmas (Ub Lb len)
 
 /-! ## §A. The instrument, asserted before any conclusion
 
-    Every number below is computed over `S26Migrate.pools` with the harness's own
-    `report`/`refusal`, so the ledger and the comparison cannot drift apart. The
+    §B's residue is computed over `S26Migrate.pools` with the harness's own
+    `refusal`, so the ledger and the comparison cannot drift apart. The
     strip is asserted to have HAPPENED first — the `{ d with back := none }` gotcha
     (e4222291) produced a "stripped" pool identical to the original, and read at
     face value it said the exact opposite of the truth. -/
@@ -76,17 +76,13 @@ open Dllbc.StdLemmas (Ub Lb len)
 
     What remains assertable is the shape of the corpus after the retirement. -/
 
-/-- The corpus after the retirement: 105 accept, 58 reject, 19 decline — and the
-    19 are exactly §B's residue, the true `[v]` payload-decrease class. Before
-    M27-P2 it was 61 declines against 28 back-declaring entries.
-
-    Accepts were 110 until M28 ι, when S6Call was rewritten as programs and stopped
-    declaring five of them. Only that number moved: a file leaving the survey
-    removes SUBJECTS, so a rewrite that also moved `rejects` or `declined` would
-    have changed a verdict, which is what this census is for. -/
-example : (S26Migrate.pools.foldl (fun (a, r, d) p =>
-    let q := Migrate.tally p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
-  == (105, 58, 19)) = true := by native_decide
+/-! **AND THE CENSUS RETIRED WITH IT** (M28 μ). This section also carried the
+    corpus totals — 105 accept, 58 reject, 19 decline. `fn` is a statement of the
+    program grammar now, so a declaration that becomes a program leaves the pools,
+    and the totals moved once per migrated file for a reason that was never a
+    verdict changing. A count whose subject is dissolving is bookkeeping, not a
+    claim. §B's residue is the part that was load-bearing, and it is below, by
+    name. -/
 
 /-! ~~…and the two paths still agree everywhere, which is the property the whole
     comparison exists for.~~ **The second path is gone** (M27-δ), so there is no
@@ -95,8 +91,10 @@ example : (S26Migrate.pools.foldl (fun (a, r, d) p =>
     the same verdict and said NOTHING about a declining declaration, whose
     declaration-path verdict `report` never compared to anything. That gap hid
     fourteen S19 regressions until a deletion exposed them (§C). What replaces it
-    is the tally above, which cannot skip a decline: a declaration that starts or
-    stops migrating moves a number. -/
+    is §B's residue, which cannot skip a decline: a declaration that starts or
+    stops declining appears or vanishes there BY NAME. (The corpus tally stood here
+    between M27-δ and M28 μ and did the same job by arithmetic; the residue does it
+    with identity attached, which is why it is the one that survived.) -/
 
 /-! ## §B. The residue: 19 declarations, and a disposition for each
 
@@ -105,8 +103,12 @@ example : (S26Migrate.pools.foldl (fun (a, r, d) p =>
     assertion below pins it name-for-name — a decliner appearing or vanishing goes
     red here before it can go unnoticed anywhere else. -/
 
+-- Computed from the pool ITSELF since M28 μ. It used to route through
+-- `S26Fuel.fixAll`, the `[k]`-hint correction M26-F adopted at the source; that
+-- this list is unchanged without it is what the retired "fixHints is a no-op"
+-- assertion was saying.
 def residue (p : List FnDef) : List String :=
-  (declinedWith (S26Fuel.fixAll p)).map (·.1)
+  (declinedWith p).map (·.1)
 
 /-- The residue, name for name. Several share a `FnDef.name` (a lie twin is the
     same function under the same name with a different body), so the multiset —

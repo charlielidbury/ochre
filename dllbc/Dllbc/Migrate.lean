@@ -87,25 +87,23 @@ def refusal (pool : List FnDef) (d : FnDef) : Option String :=
 def declinedWith (pool : List FnDef) : List (String × String) :=
   pool.filterMap (fun d => (refusal pool d).map (fun e => (d.name, e)))
 
-/-- **What survives of `report`** (M27-δ): the three counts, without the
-    comparison. `Report`'s fourth field was `disagree`, and there is no second path
-    to disagree with — but the counts were never the comparison. They were what
-    kept it from holding vacuously, and they are exactly as useful now: a file
-    quietly dropping out of the survey, or a declaration silently starting to
-    decline, still moves a number. -/
-structure Tally where
-  accepts : Nat
-  rejects : Nat
-  declined : Nat
-deriving BEq, Repr
+/-! ## `Tally` and `tally` are gone (M28 μ)
 
-def tally (pool : List FnDef) : Tally :=
-  pool.foldl (fun t d =>
-    match progVerdict pool d with
-    | none => { t with declined := t.declined + 1 }
-    | some true => { t with accepts := t.accepts + 1 }
-    | some false => { t with rejects := t.rejects + 1 })
-    { accepts := 0, rejects := 0, declined := 0 }
+    They counted a pool's accepts, rejects and declines, and every corpus-wide
+    census over `pools` was computed through them. **The thing they counted is
+    dissolving**: `fn` is a statement of the program grammar (M28 θ), so a
+    declaration that becomes a program stops being a `FnDef` and leaves the pool.
+    The counts therefore moved on every migrated file without any verdict having
+    changed, which is the opposite of what a regression signal should do.
+
+    What they were kept for after `report` died — "a file quietly dropping out of
+    the survey, or a declaration silently starting to decline, still moves a
+    number" — is served better by what remains, because both replacements carry
+    IDENTITY where a count carries only arithmetic: `S27Dispose` §B pins the
+    declining residue name for name, and `progVerdict` states a pool's verdicts
+    positionally. Neither can be quieted by editing a constant.
+
+    `progVerdict` below is what `tally` folded, and it outlives it. -/
 
 /-! ## The program path's `checkFnOk`/`checkFnErr` (M27-γ)
 
