@@ -73,9 +73,12 @@ def zeroAll : FnDef :=
 
 -- `to_nat (v : &mut (s : Bool ↝ Nat))` — callee takes the Bool through v and
 -- fills a Nat; the audit passes against the OWED type Nat, not the entry Bool.
-example : progOk (prog{
+-- Named because `S27Mixed` §E asserts it too, as one of the two subjects in the
+-- corpus that state a rich owed type.
+def toNatProg : Term := prog{
   fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
-  () }) = true := by native_decide
+  () }
+example : progOk toNatProg = true := by native_decide
 
 -- Caller side: borrow a `True`, call, read the owner back — it ends as a fresh
 -- σ : Nat. A strong update across a boundary, both sides. The caller is a `fn`

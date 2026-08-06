@@ -107,7 +107,7 @@ def splitElab : Except String Term := FnMacro.fnElab Tests.S23Direct.splitOff
 
 /-- The hand elaboration from M26-C, extracted from its caller. -/
 def splitHand : Term :=
-  match Tests.S26Rec.splitSealed.body with
+  match Tests.S26Rec.splitSealed with
   | .letIn _ t _ => t
   | t => t
 
@@ -133,7 +133,7 @@ example : elabOk Tests.S23Direct.splitOff = true := by native_decide
 -- function's BASE arm, which is a real term of the same file and shape family.
 example :
   (match splitElab with
-   | .ok t => FnDef.alphaEq (asDecl t) (asDecl (Tests.S26Rec.splitSealed.body))
+   | .ok t => FnDef.alphaEq (asDecl t) (asDecl (Tests.S26Rec.splitSealed))
    | .error _ => false) = false := by native_decide
 
 /-! ### B2. The macro path rejects exactly what the declared path rejects

@@ -76,12 +76,17 @@ open Dllbc.StdLemmas (Ub Lb len)
 
     What remains assertable is the shape of the corpus after the retirement. -/
 
-/-- The corpus after the retirement: 110 accept, 58 reject, 19 decline — and the
+/-- The corpus after the retirement: 105 accept, 58 reject, 19 decline — and the
     19 are exactly §B's residue, the true `[v]` payload-decrease class. Before
-    M27-P2 it was 61 declines against 28 back-declaring entries. -/
+    M27-P2 it was 61 declines against 28 back-declaring entries.
+
+    Accepts were 110 until M28 ι, when S6Call was rewritten as programs and stopped
+    declaring five of them. Only that number moved: a file leaving the survey
+    removes SUBJECTS, so a rewrite that also moved `rejects` or `declined` would
+    have changed a verdict, which is what this census is for. -/
 example : (S26Migrate.pools.foldl (fun (a, r, d) p =>
     let q := Migrate.tally p; (a + q.accepts, r + q.rejects, d + q.declined)) (0, 0, 0)
-  == (110, 58, 19)) = true := by native_decide
+  == (105, 58, 19)) = true := by native_decide
 
 /-! ~~…and the two paths still agree everywhere, which is the property the whole
     comparison exists for.~~ **The second path is gone** (M27-δ), so there is no

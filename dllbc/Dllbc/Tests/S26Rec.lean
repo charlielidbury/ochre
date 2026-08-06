@@ -57,18 +57,16 @@ namespace Dllbc.Tests.S26Rec
 -- A1. Bind and run. The body is a body (a `let`, a constructor), and both
 -- machines take the same rule: transparent application is β in the pure fragment
 -- and inlining here, and neither machine verifies anything the other does not.
-def a1 : FnDef := decl{ fn caller () -> Unit
-  { let g = λ(a : Nat) { let b = S(a); S(b) }; let r = g(1); () } }
-example : ok a1 = true := by native_decide
-example : diffC [] a1.body = true := by native_decide
+def a1 : Term := prog{ let g = λ(a : Nat) { let b = S(a); S(b) }; let r = g(1); () }
+example : progOk a1 = true := by native_decide
+example : diffC [] a1 = true := by native_decide
 
 -- A2. A runtime function value is INDEX-KIND, so calling it is a place read and
 -- the slot survives. `ih` depends on this: `quicksort` recurses twice from one
 -- arm, and a callee that moved out of its slot could be called once.
-def a2 : FnDef := decl{ fn caller () -> Unit
-  { let g = λ(a : Nat) { S(a) }; let r = g(1); let s = g(4); () } }
-example : ok a2 = true := by native_decide
-example : diffC [] a2.body = true := by native_decide
+def a2 : Term := prog{ let g = λ(a : Nat) { S(a) }; let r = g(1); let s = g(4); () }
+example : progOk a2 = true := by native_decide
+example : diffC [] a2 = true := by native_decide
 
 /-! ### A3. CLOSED — checked, not assumed
 
@@ -80,25 +78,23 @@ example : diffC [] a2.body = true := by native_decide
     variable, and its twin (the same program with the value passed in) is
     accepted, so the refusal is about the CAPTURE and not about the program. -/
 
-def a3bad : FnDef := decl{ fn caller () -> Unit
-  { let n = 3; let g = λ(a : Nat) { let z = n; () }; () } }
-def a3ok : FnDef := decl{ fn caller () -> Unit
-  { let n = 3; let g = λ(a : Nat, m : Nat) { let z = m; () }; g(1, n); () } }
-example : rejects a3bad "is none of its 1 binder(s)" = true := by native_decide
-example : ok a3ok = true := by native_decide
+def a3bad : Term := prog{ let n = 3; let g = λ(a : Nat) { let z = n; () }; () }
+def a3ok : Term := prog{ let n = 3; let g = λ(a : Nat, m : Nat) { let z = m; () }; g(1, n); () }
+example : progRejects a3bad "is none of its 1 binder(s)" = true := by native_decide
+example : progOk a3ok = true := by native_decide
 
 -- A4. A NULLARY runtime λ is refused, and for a real ambiguity rather than
 -- tidiness: `λ(){ e }` is a thunk, and at ι there is no way to tell "the arm
 -- applied to no arguments" from "the arm with nothing owed" — `applyRest` has to
 -- answer one way. Nothing in §7 wants a thunk.
-def a4 : FnDef := decl{ fn caller () -> Unit { let g = λ() { () }; () } }
-example : rejects a4 "must bind at least one argument" = true := by native_decide
+def a4 : Term := prog{ let g = λ() { () }; () }
+example : progRejects a4 "must bind at least one argument" = true := by native_decide
 
 -- A5/A6. Saturation, both directions (§12 decision 4).
-def a5 : FnDef := decl{ fn caller () -> Unit { let g = λ(a : Nat, b : Nat) { () }; g(1); () } }
-def a6 : FnDef := decl{ fn caller () -> Unit { let g = λ(a : Nat) { () }; g(1, 2); () } }
-example : rejects a5 "partial application" = true := by native_decide
-example : rejects a6 "too many arguments" = true := by native_decide
+def a5 : Term := prog{ let g = λ(a : Nat, b : Nat) { () }; g(1); () }
+def a6 : Term := prog{ let g = λ(a : Nat) { () }; g(1, 2); () }
+example : progRejects a5 "partial application" = true := by native_decide
+example : progRejects a6 "too many arguments" = true := by native_decide
 
 /-! ### A7. ⇝ never meets the runtime λ
 
@@ -148,7 +144,7 @@ def zeroMot : Term := pure{ λ (f : Nat). Π (v : &mut List Nat) → Unit }
     no partial application ever holds `tl` while waiting. And there is no `[k]`
     guard anywhere: termination is by construction. -/
 
-def b1 : FnDef := decl{ fn caller () -> Unit {
+def b1 : Term := prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   let f = natRec %zeroMot
@@ -157,27 +153,29 @@ def b1 : FnDef := decl{ fn caller () -> Unit {
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } });
   f(3, b);
   let y = x;
-  () } }
-example : ok b1 = true := by native_decide
+  () }
+example : progOk b1 = true := by native_decide
 
 /-- Read a slot back as the trace line it prints. -/
-def slotOf (table : List FnDef) (d : FnDef) (name : String) : Option String :=
-  (envOf table d).bind (fun e => (e.lookup name).map Val.pretty)
+def slotOf (t : Term) (name : String) : Option String :=
+  match tailEnvs t with
+  | [.ok e] => (e.lookup name).map Val.pretty
+  | _ => none
 
 -- The list really is zeroed, in place, through the borrow — and the recursion
 -- really did happen, since a body that never recursed would leave the tail alone.
-example : slotOf [] b1 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
+example : slotOf b1 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
 
 -- …and the recursor itself sits in an ordinary runtime slot as a VALUE: a closed
 -- function value, which is what §7 cost 2 says the whole closure story has to be
 -- for this phase. `@motive` is the erased motive slot (a borrow-moded Π has no ⇝
 -- reading, and ι has no use for one — the checking side derives it from the
 -- ascription instead, §7).
-example : slotOf [] b1 "f" = some "natRec @motive λr(v){…} λr(f2, ih, v){…}" := by
+example : slotOf b1 "f" = some "natRec @motive λr(v){…} λr(f2, ih, v){…}" := by
   native_decide
 
 -- B2. Surplus fuel is harmless: the list runs out first and the `Nil` arm returns.
-def b2 : FnDef := decl{ fn caller () -> Unit {
+def b2 : Term := prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   let f = natRec %zeroMot
@@ -186,14 +184,14 @@ def b2 : FnDef := decl{ fn caller () -> Unit {
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } });
   f(9, b);
   let y = x;
-  () } }
-example : slotOf [] b2 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
+  () }
+example : slotOf b2 "y" = some "Cons Z (Cons Z Nil)" := by native_decide
 
 -- B3. `listRec`, and a motive that is a function type — which is the shape §7
 -- always has, since the trailing binders are what carry the borrows. The
 -- structural recursion needs no fuel: the scrutinee is the list itself.
 def bumpMot : Term := pure{ λ (l : List Nat). Π (v : &mut Nat) → Unit }
-def b3 : FnDef := decl{ fn caller () -> Unit {
+def b3 : Term := prog{
   let l = Cons(7, Cons(8, Nil));
   let acc = 0;
   let a = &mut acc;
@@ -203,11 +201,11 @@ def b3 : FnDef := decl{ fn caller () -> Unit {
                { *v := S(*v); ih(v); () });
   f(l, a);
   let r = acc;
-  () } }
-example : ok b3 = true := by native_decide
+  () }
+example : progOk b3 = true := by native_decide
 -- One increment per element: the arm ran twice, through the same borrow, handed
 -- down the recursion and handed back.
-example : slotOf [] b3 "r" = some "S (S Z)" := by native_decide
+example : slotOf b3 "r" = some "S (S Z)" := by native_decide
 
 /-! ### B4. A recursor stuck on a symbolic scrutinee is a VALUE — and applying one
     is not this phase's rule
@@ -220,7 +218,7 @@ example : slotOf [] b3 "r" = some "S (S Z)" := by native_decide
     reachable through a seal and not through a call; refused here by name rather
     than by getting stuck somewhere downstream. -/
 
-def b4 : FnDef := decl{ fn b4 (fuel : Nat) -> Unit {
+def b4 : Term := prog{ fn b4 (fuel : Nat) -> Unit {
   let x = Cons(1, Nil);
   let b = &mut x;
   let f = natRec %zeroMot
@@ -229,19 +227,19 @@ def b4 : FnDef := decl{ fn b4 (fuel : Nat) -> Unit {
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } });
   f(fuel, b);
   let y = x;
-  () } }
-example : rejects b4 "stuck on a symbolic scrutinee" = true := by native_decide
+  () }; () }
+example : progRejects b4 "stuck on a symbolic scrutinee" = true := by native_decide
 
 -- …and the same program without the application checks, because forming the
 -- recursor is forming a value. This is the pair that says the rejection above is
 -- about APPLYING a stuck recursor, not about writing one.
-def b4v : FnDef := decl{ fn b4v (fuel : Nat) -> Unit {
+def b4v : Term := prog{
   let f = natRec %zeroMot
             (λ(v : &mut List Nat) { () })
             (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } });
-  () } }
-example : ok b4v = true := by native_decide
+  () }
+example : progOk b4v = true := by native_decide
 
 /-! ## §C. The differential, under ONE relation (constraint 6, and inherited fact 4)
 
@@ -260,7 +258,7 @@ example : ok b4v = true := by native_decide
     both halves and can still say NO. -/
 
 -- C1. The recursor programs: every one of them, both machines, same Ω.
-def recShapes : List Term := [a1.body, a2.body, b1.body, b2.body, b3.body, b4v.body]
+def recShapes : List Term := [a1, a2, b1, b2, b3, b4v]
 example : recShapes.all (fun t => diffC [] t) = true := by native_decide
 
 -- C2. THE CARVE HALF, kept. `S24Arrays`' callers are the programs that forced the
@@ -287,7 +285,7 @@ example : Tests.S26Seal.diffOld [] Tests.S26Seal.d1.body = false := by native_de
     zeroes the head and leaves the tail at 2. Same slots, same shapes, one
     genuinely different value. -/
 
-def b1short : FnDef := decl{ fn caller () -> Unit {
+def b1short : Term := prog{
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   let f = natRec %zeroMot
@@ -296,18 +294,18 @@ def b1short : FnDef := decl{ fn caller () -> Unit {
                { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } });
   f(1, b);
   let y = x;
-  () } }
+  () }
 -- The mutant is a real program and a different one: it stops after the head.
-example : slotOf [] b1short "y" = some "Cons Z (Cons (S (S Z)) Nil)" := by native_decide
+example : slotOf b1short "y" = some "Cons Z (Cons (S (S Z)) Nil)" := by native_decide
 
 example :
-  (match symEnvs false [] b1.body, runExec [] b1short.body with
+  (match symEnvs false [] b1, runExec [] b1short with
    | [.ok se], .ok ce => instanceOfC se ce
    | _, _ => true) = false := by native_decide
 -- …and YES to the honest pairing, so the NO above is discrimination rather than a
 -- relation that cannot see recursor programs at all.
 example :
-  (match symEnvs false [] b1.body, runExec [] b1.body with
+  (match symEnvs false [] b1, runExec [] b1 with
    | [.ok se], .ok ce => instanceOfC se ce
    | _, _ => false) = true := by native_decide
 
@@ -328,11 +326,11 @@ example :
     recursor already computes those. -/
 
 def lenMot : Term := pure{ λ (l : List Nat). Nat }
-def d1 : FnDef := decl{ fn caller () -> Nat {
+def d1 : Term := prog{ fn caller () -> Nat {
   let l = Cons(7, Cons(8, Nil));
   let f = listRec Nat %lenMot Z (λ(h : Nat, t : List Nat, ih : Nat) { S(ih) });
-  f(l) } }
-example : rejects d1 "cannot type neutral" = true := by native_decide
+  f(l) }; () }
+example : progRejects d1 "cannot type neutral" = true := by native_decide
 
 /-! ## §E. The audit relocation — checking a seal IS `checkFn`'s content (§5.4)
 
@@ -356,15 +354,15 @@ def pinSeal : Term := pure{ Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 
 
 -- E1. The rule, end to end: a sealed function taking a borrow is checked at the
 -- node, called through its σ by the table's own call rule, and executes.
-def e1 : FnDef := decl{ fn caller () -> Unit {
+def e1 : Term := prog{
   let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %unitSeal);
   let x = Cons(1, Nil);
   let b = &mut x;
   f(b);
   let y = x;
-  () } }
-example : ok e1 = true := by native_decide
-example : diffC [] e1.body = true := by native_decide
+  () }
+example : progOk e1 = true := by native_decide
+example : diffC [] e1 = true := by native_decide
 
 /-! ### E2. The ensures, threaded through the seal (§5 point 4)
 
@@ -379,58 +377,58 @@ example : diffC [] e1.body = true := by native_decide
     body does not have to do. That is what makes the pair below the real test of
     "what you keep is what you write". -/
 
-def e2 : FnDef := decl{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
+def e2 : Term := prog{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
   let f = seal(λ(w : &mut List Nat) { *w := Cons(9, Nil); Refl }, %pinSeal);
-  f(&mut *v) } }
-example : ok e2 = true := by native_decide
+  f(&mut *v) }; () }
+example : progOk e2 = true := by native_decide
 
 -- The same program, the same body, sealed at `Unit`: the caller gets nothing back
 -- and cannot state its own postcondition. Sound, honest, useless — one ascription
 -- apart, which is §5 point 4 with nothing left to interpret.
-def e2none : FnDef := decl{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
+def e2none : Term := prog{ fn caller (v : &mut List Nat) -> Id (List Nat) (*v) (Cons 9 Nil) {
   let f = seal(λ(w : &mut List Nat) { *w := Cons(9, Nil); () }, %unitSeal);
-  f(&mut *v) } }
-example : rejects e2none "does not have return type" = true := by native_decide
+  f(&mut *v) }; () }
+example : progRejects e2none "does not have return type" = true := by native_decide
 
 /-! ### E3. The negative controls, one per branch of the new rule -/
 
 -- The body does not establish the ensures: rejected AT THE SEAL by the audit, and
 -- the message is the audit's own — `Refl` does not inhabit the equation the
 -- ascription promised.
-def e3a : FnDef := decl{ fn caller () -> Unit {
-  let f = seal(λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl }, %pinSeal); () } }
-example : rejects e3a "does not have return type" = true := by native_decide
+def e3a : Term := prog{
+  let f = seal(λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl }, %pinSeal); () }
+example : progRejects e3a "does not have return type" = true := by native_decide
 
 -- The body leaves a hole in its argument borrow: the OBLIGATION audit, which is
 -- the half of §5.4 the ensures check does not cover, and which only exists
 -- because the seal now seeds a telescope.
-def e3b : FnDef := decl{ fn caller () -> Unit {
-  let f = seal(λ(v : &mut List Nat) { let l = *v; () }, %unitSeal); () } }
-example : rejects e3b "holds a hole (⊥) at return" = true := by native_decide
+def e3b : Term := prog{
+  let f = seal(λ(v : &mut List Nat) { let l = *v; () }, %unitSeal); () }
+example : progRejects e3b "holds a hole (⊥) at return" = true := by native_decide
 
 -- Mode disagreement: the λ's binder is lowercase where the ascription binds
 -- comptime. §6 could be stated twice here and disagree, so it is checked — and
 -- this is the callee-side half of phase B's "the ascription is the contract"
 -- (F3 settled the caller side).
 def cmpSeal : Term := pure{ Π (N : Nat) → Nat }
-def e3c : FnDef := decl{ fn caller () -> Unit {
-  let f = seal(λ(n : Nat) { S(n) }, %cmpSeal); () } }
-example : rejects e3c "the ascribed type binds it as comptime" = true := by native_decide
+def e3c : Term := prog{
+  let f = seal(λ(n : Nat) { S(n) }, %cmpSeal); () }
+example : progRejects e3c "the ascribed type binds it as comptime" = true := by native_decide
 -- …and its twin, one character apart, is accepted.
-def e3cok : FnDef := decl{ fn caller () -> Unit {
-  let f = seal(λ(N : Nat) { Z }, %cmpSeal); () } }
-example : ok e3cok = true := by native_decide
+def e3cok : Term := prog{
+  let f = seal(λ(N : Nat) { Z }, %cmpSeal); () }
+example : progOk e3cok = true := by native_decide
 
 -- Arity disagreement (§12 decision 4, at the ascription rather than at a call).
-def e3d : FnDef := decl{ fn caller () -> Unit {
-  let f = seal(λ(v : &mut List Nat, w : Nat) { () }, %unitSeal); () } }
-example : rejects e3d "no Π binder left for it" = true := by native_decide
+def e3d : Term := prog{
+  let f = seal(λ(v : &mut List Nat, w : Nat) { () }, %unitSeal); () }
+example : progRejects e3d "no Π binder left for it" = true := by native_decide
 
 -- Sealing something that is NOT a runtime λ at a function signature — phase A's
 -- A4, now refused for the reason instead of for the phase.
-def e3e : FnDef := decl{ fn caller () -> Unit {
-  let f = seal(λ (x : Nat). x, %unitSeal); () } }
-example : rejects e3e "the sealed term must be a runtime λ" = true := by native_decide
+def e3e : Term := prog{
+  let f = seal(λ (x : Nat). x, %unitSeal); () }
+example : progRejects e3e "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### E4. FRAME ISOLATION — the sealed body's effects stay inside the check
 
@@ -441,13 +439,13 @@ example : rejects e3e "the sealed term must be a runtime λ" = true := by native
     — still owned, still `Cons 1 Nil`, movable afterwards. A body checked in place
     would have consumed something of the caller's. -/
 
-def e4 : FnDef := decl{ fn caller () -> Unit {
+def e4 : Term := prog{
   let x = Cons(1, Nil);
   let f = seal(λ(v : &mut List Nat) { *v := Cons(9, Nil); () }, %unitSeal);
   let y = x;
-  () } }
-example : ok e4 = true := by native_decide
-example : slotOf [] e4 "y" = some "Cons (S Z) Nil" := by native_decide
+  () }
+example : progOk e4 = true := by native_decide
+example : slotOf e4 "y" = some "Cons (S Z) Nil" := by native_decide
 
 /-! ### E5. THE SMELL TEST, extended to borrow-moded seals
 
@@ -465,9 +463,8 @@ example : slotOf [] e4 "y" = some "Cons (S Z) Nil" := by native_decide
 
 def pushD : FnDef := decl{ fn pushD (e : Nat, v : &mut List Nat) -> Unit
   { let tail = *v; *v := Cons(e, tail); () } }
-def pushS : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ(e : Nat, v : &mut List Nat) { let tail = *v; *v := Cons(e, tail); () },
-                 Π (e : Nat) → Π (v : &mut List Nat) → Unit); () } }
+def pushS : Term := prog{ let f = seal(λ(e : Nat, v : &mut List Nat) { let tail = *v; *v := Cons(e, tail); () },
+                 Π (e : Nat) → Π (v : &mut List Nat) → Unit); () }
 
 /-- The `old *v` shape: an ensures relating the EXIT payload to the ENTRY one,
     which is the convention M23's whole corpus is written in and the reason the
@@ -475,29 +472,28 @@ def pushS : FnDef := decl{ fn caller () -> Unit
 def consD : FnDef := decl{ fn consD (v : &mut List Nat)
   -> Id (List Nat) (*v) (Cons 9 (old *v))
   { let t = *v; *v := Cons(9, t); Refl } }
-def consS : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ(v : &mut List Nat) { let t = *v; *v := Cons(9, t); Refl },
-                 Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () } }
+def consS : Term := prog{ let f = seal(λ(v : &mut List Nat) { let t = *v; *v := Cons(9, t); Refl },
+                 Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
 
 /-- The spec lie: the body conses `8` where the ensures says `9`. -/
 def lieD : FnDef := decl{ fn lieD (v : &mut List Nat)
   -> Id (List Nat) (*v) (Cons 9 (old *v))
   { let t = *v; *v := Cons(8, t); Refl } }
-def lieS : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ(v : &mut List Nat) { let t = *v; *v := Cons(8, t); Refl },
-                 Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () } }
+def lieS : Term := prog{ let f = seal(λ(v : &mut List Nat) { let t = *v; *v := Cons(8, t); Refl },
+                 Π (v : &mut List Nat) → Id (List Nat) (*v) (Cons 9 (old *v))); () }
 
 /-- The obligation lie: the payload is taken and never refilled. -/
 def holeD : FnDef := decl{ fn holeD (v : &mut List Nat) -> Unit { let l = *v; () } }
-def holeS : FnDef := decl{ fn caller () -> Unit
-  { let f = seal(λ(v : &mut List Nat) { let l = *v; () }, Π (v : &mut List Nat) → Unit); () } }
+def holeS : Term := prog{ let f = seal(λ(v : &mut List Nat) { let l = *v; () }, Π (v : &mut List Nat) → Unit); () }
 
-/-- Each pair: the declared form and the sealed form of the same function. -/
-def twins : List (FnDef × FnDef) :=
+/-- Each pair: the declared form and the sealed form of the same function. The
+    sealed side is a PROGRAM now (M28 ι), which is what the pair was always
+    comparing — a declaration against the let-binding §8 says it is. -/
+def twins : List (FnDef × Term) :=
   [ (pushD, pushS), (consD, consS), (lieD, lieS), (holeD, holeS) ]
 
 -- THE SMELL TEST: the seal's audit and `checkFn`'s agree, pair for pair.
-example : twins.all (fun p => ok p.1 == ok p.2) = true := by native_decide
+example : twins.all (fun p => ok p.1 == progOk p.2) = true := by native_decide
 -- …and it is not vacuous: both verdicts occur, so the identity above is pinning
 -- agreement rather than a constant function.
 example : (twins.any (fun p => ok p.1) && twins.any (fun p => !ok p.1)) = true := by
@@ -506,9 +502,9 @@ example : (twins.any (fun p => ok p.1) && twins.any (fun p => !ok p.1)) = true :
 -- about its ensures and a declared one that lies about the same ensures are
 -- refused by the same audit with the same message — which is what says the check
 -- was relocated rather than reimplemented.
-example : (rejects lieD "does not have return type" && rejects lieS "does not have return type")
+example : (rejects lieD "does not have return type" && progRejects lieS "does not have return type")
   = true := by native_decide
-example : (rejects holeD "holds a hole (⊥) at return" && rejects holeS "holds a hole (⊥) at return")
+example : (rejects holeD "holds a hole (⊥) at return" && progRejects holeS "holds a hole (⊥) at return")
   = true := by native_decide
 
 /-! ## §F. Arms as bodies — the CHECKING side (§7 cost 1)
@@ -536,7 +532,7 @@ example : (rejects holeD "holds a hole (⊥) at return" && rejects holeS "holds 
 def zeroSeal : Term := pure{ Π (fuel : Nat) → Π (v : &mut List Nat) → Unit }
 
 
-def f1 : FnDef := decl{ fn caller () -> Unit {
+def f1 : Term := prog{
   let f = seal(natRec %zeroMot
                  (λ(v : &mut List Nat) { () })
                  (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
@@ -546,21 +542,21 @@ def f1 : FnDef := decl{ fn caller () -> Unit {
   let b = &mut x;
   f(3, b);
   let y = x;
-  () } }
-example : ok f1 = true := by native_decide
+  () }
+example : progOk f1 = true := by native_decide
 
 -- The seal is what makes it opaque: the caller learns only `Unit`, so the list it
 -- gets back is an EXISTENTIAL — §2.2's forgetting, now reached through a recursor
 -- rather than through a declaration. (Asserted as "a σ" rather than as a σ id: the
 -- id is a counter, and pinning it would make this test fail for reasons that have
 -- nothing to do with what it is about.)
-example : (slotOf [] f1 "y").map (fun s => s.take 1) = some "σ" := by native_decide
+example : (slotOf f1 "y").map (fun s => s.take 1) = some "σ" := by native_decide
 
 -- …and the SAME program executes, with the recursion really running: both
 -- machines, one differential.
-example : diffC [] f1.body = true := by native_decide
+example : diffC [] f1 = true := by native_decide
 example :
-  (match Dllbc.Tests.S9Diff.runExec [] f1.body with
+  (match Dllbc.Tests.S9Diff.runExec [] f1 with
    | .ok e => (e.lookup "y").map Val.pretty
    | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
 
@@ -573,14 +569,14 @@ example :
     comparison is free there; a hand-written mismatch is told what was expected. -/
 
 def wrongMot : Term := pure{ λ (f : Nat). Π (v : &mut List Nat) → Nat }
-def f2 : FnDef := decl{ fn caller () -> Unit {
+def f2 : Term := prog{
   let f = seal(natRec %wrongMot
                  (λ(v : &mut List Nat) { () })
                  (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Nat, v : &mut List Nat)
                     { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
                %zeroSeal);
-  () } }
-example : rejects f2 "not the one its ascription derives" = true := by native_decide
+  () }
+example : progRejects f2 "not the one its ascription derives" = true := by native_decide
 
 /-! ### F3. An arm that does not establish the motive is rejected AT ITS OWN ARM
 
@@ -589,14 +585,14 @@ example : rejects f2 "not the one its ascription derives" = true := by native_de
     the arms are checked *separately*, each at its own instantiation, rather than
     the whole recursor being checked as one lump. -/
 
-def f3 : FnDef := decl{ fn caller () -> Unit {
+def f3 : Term := prog{
   let f = seal(natRec %zeroMot
                  (λ(v : &mut List Nat) { let l = *v; () })
                  (λ(f2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat)
                     { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ih(tl); () } } }),
                %zeroSeal);
-  () } }
-example : rejects f3 "holds a hole (⊥) at return" = true := by native_decide
+  () }
+example : progRejects f3 "holds a hole (⊥) at return" = true := by native_decide
 
 /-! ## §G. THE CONVERGENCE TEST — `split_off`, declared and as a sealed recursor
 
@@ -634,7 +630,7 @@ def splitMot : Term := pure{
     `split_off(&mut *tl, i2, hi)` becomes `ih(&mut *tl, hi)` — the scrutinee
     argument is gone, because ι supplies it — and the `match i` disappears into the
     two arms. -/
-def splitSealed : FnDef := decl{ fn caller () -> Unit {
+def splitSealed : Term := prog{
   let f = seal(natRec %splitMot
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
@@ -654,7 +650,7 @@ def splitSealed : FnDef := decl{ fn caller () -> Unit {
                           (*tl) y1 h1;
                Pair(rr, Pair(c1, h2)) } } } } } }),
     %splitTy);
-  () } }
+  () }
 
 -- THE CONVERGENCE. ~~The declared function and the sealed recursor both check.~~
 -- Half of that claim retired with `checkFn` (M27-δ): there is no declared path to
@@ -663,7 +659,7 @@ def splitSealed : FnDef := decl{ fn caller () -> Unit {
 -- always the interesting one — this hand-written sealed recursor and
 -- `S23Direct.splitOff` are the same function, and `S26Fn` §"the macro's output is
 -- α-equal to the hand-written recursor" is where that identity is now asserted.
-example : ok splitSealed = true := by native_decide
+example : progOk splitSealed = true := by native_decide
 
 /-! ### G2. Not vacuous — the sealed form rejects the same lies the declared one does
 
@@ -683,7 +679,7 @@ def splitTyLie : Term := pure{
          → Id (List Nat) ret (drop i (old *v)) }
 
 -- A SPEC lie: the prefix conjunct claims `drop` where the body leaves `take`.
-def splitSpecLie : FnDef := decl{ fn caller () -> Unit {
+def splitSpecLie : Term := prog{
   let f = seal(natRec %splitMotLie
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
@@ -703,14 +699,14 @@ def splitSpecLie : FnDef := decl{ fn caller () -> Unit {
                           (*tl) y1 h1;
                Pair(rr, Pair(c1, h2)) } } } } } }),
     %splitTyLie);
-  () } }
+  () }
 -- Caught on the BASE arm (`Pair σ (Pair Refl Refl)` against `Id Nil σ`), exactly
 -- where `S23Direct` says its spec lies are caught.
-example : rejects splitSpecLie "does not have return type" = true := by native_decide
+example : progRejects splitSpecLie "does not have return type" = true := by native_decide
 
 -- A BODY lie: the `Cons` arm forgets to restore the head, so the prefix conjunct
 -- is false on the recursive path — the arm `ih` lives in.
-def splitBodyLie : FnDef := decl{ fn caller () -> Unit {
+def splitBodyLie : Term := prog{
   let f = seal(natRec %splitMot
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
@@ -730,12 +726,12 @@ def splitBodyLie : FnDef := decl{ fn caller () -> Unit {
                           (*tl) y1 h1;
                Pair(rr, Pair(h1, h2)) } } } } } }),
     %splitTy);
-  () } }
+  () }
 -- Caught on the STEP arm — the one `ih` lives in, and the one the spec lies leave
 -- untested. Same division of labour as the declared function's four twins, which
 -- is what makes "both check" a claim about the same coverage and not just the same
 -- verdict.
-example : rejects splitBodyLie "does not have return type" = true := by native_decide
+example : progRejects splitBodyLie "does not have return type" = true := by native_decide
 
 /-! ## §H. `bad()`, twice — the incoherence, probed rather than assumed
 
@@ -766,25 +762,25 @@ example : rejects splitBodyLie "does not have return type" = true := by native_d
     both forms below make something ask. -/
 
 -- Demanded by APPLYING it: the body runs and the name resolves against nothing.
-def h1 : FnDef := decl{ fn caller () -> Unit {
+def h1 : Term := prog{
   let g = λ(n : Nat) { g(n) };
   g(1);
-  () } }
-example : rejects h1 "unknown function 'g'" = true := by native_decide
+  () }
+example : progRejects h1 "unknown function 'g'" = true := by native_decide
 
 -- Demanded by SEALING it, which is the form §7 contrasts with: sealing is what
 -- makes a body get checked, and it is also what a recursive function needs — but
 -- the seal does not put the binding in its own scope either. Recursion has to come
 -- from the recursor, which is the point of §7.
-def h1s : FnDef := decl{ fn caller () -> Unit {
+def h1s : Term := prog{
   let g = seal(λ(n : Nat) { g(n) }, Π (n : Nat) → Nat);
-  () } }
-example : rejects h1s "unknown function 'g'" = true := by native_decide
+  () }
+example : progRejects h1s "unknown function 'g'" = true := by native_decide
 
 -- The vacuous version, pinned as the trap it is rather than deleted: the same
 -- program with nothing demanding the λ's body is accepted, and tests nothing.
-def h1vacuous : FnDef := decl{ fn caller () -> Unit { let g = λ(n : Nat) { g(n) }; () } }
-example : ok h1vacuous = true := by native_decide
+def h1vacuous : Term := prog{ let g = λ(n : Nat) { g(n) }; () }
+example : progOk h1vacuous = true := by native_decide
 
 /-! ### H2. A sealed recursor whose motive promises a falsehood is rejected at its
     own audit — AND the rejection comes from the base arm
@@ -805,23 +801,23 @@ example : ok h1vacuous = true := by native_decide
 def badMot : Term := pure{ λ (n : Nat). Π (u : Unit) → Id Nat Z (S Z) }
 def badTy : Term := pure{ Π (n : Nat) → Π (u : Unit) → Id Nat Z (S Z) }
 
-def h2 : FnDef := decl{ fn caller () -> Unit {
+def h2 : Term := prog{
   let f = seal(natRec %badMot
                  (λ(u : Unit) { Refl })
                  (λ(n2 : Nat, ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { ih(u) }),
                %badTy);
-  () } }
-example : rejects h2 "does not have return type" = true := by native_decide
+  () }
+example : progRejects h2 "does not have return type" = true := by native_decide
 
 -- The step arm alone, with the predecessor's claim as a HYPOTHESIS: accepted. So
 -- the rejection above is located at the base case and nowhere else — `bad()` dies
 -- because `Id Nat Z (S Z)` has no proof at zero, not because a guard forbade the
 -- recursion.
-def h2step : FnDef := decl{ fn caller () -> Unit {
+def h2step : Term := prog{
   let f = seal(λ(ih : Π (u : Unit) → Id Nat Z (S Z), u : Unit) { ih(u) },
                Π (ih : Π (u : Unit) → Id Nat Z (S Z)) → Π (u : Unit) → Id Nat Z (S Z));
-  () } }
-example : ok h2step = true := by native_decide
+  () }
+example : progOk h2step = true := by native_decide
 
 /-! ## §I. `ih` at the wrong level — the guard's content surviving as TYPING
 
@@ -844,15 +840,15 @@ def bndTy : Term := pure{
 
 -- The arm hands `ih` its OWN bound, `Le (len *v) (S n2)`, where `ih` binds
 -- `Le (len *v) n2`. Refused, by the argument check at the abstract call.
-def i1 : FnDef := decl{ fn caller () -> Unit {
+def i1 : Term := prog{
   let f = seal(natRec %bndMot
                  (λ(v : &mut List Nat, Hn : Le (len *v) Z) { () })
                  (λ(n2 : Nat,
                     ih : Π (v : &mut List Nat) → Π (Hn : Le (len *v) n2) → Unit,
                     v : &mut List Nat, Hn : Le (len *v) (S n2)) { ih(&mut *v, Hn); () }),
                %bndTy);
-  () } }
-example : rejects i1 "does not have its parameter type" = true := by native_decide
+  () }
+example : progRejects i1 "does not have its parameter type" = true := by native_decide
 
 -- …and the twin that recurses at the predecessor's level is ACCEPTED — which is
 -- what says the discipline is usable and not merely restrictive. Matching `v`
@@ -861,7 +857,7 @@ example : rejects i1 "does not have its parameter type" = true := by native_deci
 -- predecessor wants, obtained by the list getting shorter rather than by a lemma.
 -- That is M14's bounds-cursor property, doing here exactly what §8's guard used to
 -- do by comparing snapshots — except it is the TYPE, so nothing checks it.
-def i2 : FnDef := decl{ fn caller () -> Unit {
+def i2 : Term := prog{
   let f = seal(natRec %bndMot
                  (λ(v : &mut List Nat, Hn : Le (len *v) Z) { () })
                  (λ(n2 : Nat,
@@ -869,8 +865,8 @@ def i2 : FnDef := decl{ fn caller () -> Unit {
                     v : &mut List Nat, Hn : Le (len *v) (S n2))
                     { match v { Nil => (), Cons(hd, tl) => { ih(&mut *tl, Hn); () } } }),
                %bndTy);
-  () } }
-example : ok i2 = true := by native_decide
+  () }
+example : progOk i2 = true := by native_decide
 
 /-! ## §J. The sealed `split_off`, RUN — the convergence closed at both arrows
 
@@ -884,7 +880,7 @@ example : ok i2 = true := by native_decide
     concrete, and `Le 1 2` reduces to `Unit`. That is the ordinary route — the
     bound holds by computation, not by citation. -/
 
-def j1 : FnDef := decl{ fn caller () -> Unit {
+def j1 : Term := prog{
   let f = seal(natRec %splitMot
       (λ(v : &mut List Nat, hi : Le Z (len *v))
          { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) })
@@ -908,18 +904,18 @@ def j1 : FnDef := decl{ fn caller () -> Unit {
   let b = &mut x;
   let r = f(1, b, ());
   let y = x;
-  () } }
-example : ok j1 = true := by native_decide
+  () }
+example : progOk j1 = true := by native_decide
 
 -- It really splits: after `split_off` at index 1 the borrow's payload keeps the
 -- first element and the rest came back by value inside the returned Σ.
 example :
-  (match Dllbc.Tests.S9Diff.runExec [] j1.body with
+  (match Dllbc.Tests.S9Diff.runExec [] j1 with
    | .ok e => (e.lookup "y").map Val.pretty
    | .error _ => none) = some "Cons (S Z) Nil" := by native_decide
 
 -- …and the two machines agree on the whole final Ω.
-example : diffC [] j1.body = true := by native_decide
+example : diffC [] j1 = true := by native_decide
 
 /-! ## §K. Both dispatch surfaces (the phase-B lesson, audited rather than assumed)
 
@@ -938,7 +934,7 @@ example : diffC [] j1.body = true := by native_decide
     three positions, INSIDE a branch of a symbolic match — which is where
     `pushContinuations` sends a real body and where phase B's rule went dark. -/
 
-def k1 : FnDef := decl{ fn k1 (n : Nat) -> Unit {
+def k1 : Term := prog{ fn k1 (n : Nat) -> Unit {
   match n {
     Z => (),
     S(m) => {
@@ -949,18 +945,18 @@ def k1 : FnDef := decl{ fn k1 (n : Nat) -> Unit {
       -- a sealed call in statement position, inside a branch
       f(b);
       let y = x;
-      () } } } }
-example : ok k1 = true := by native_decide
+      () } } }; () }
+example : progOk k1 = true := by native_decide
 
 -- The negative twin at the same two positions: a body that lies about its ensures
 -- is caught inside the branch, not skipped along with it.
-def k2 : FnDef := decl{ fn k2 (n : Nat) -> Unit {
+def k2 : Term := prog{ fn k2 (n : Nat) -> Unit {
   match n {
     Z => (),
     S(m) => {
       let f = seal(λ(v : &mut List Nat) { *v := Cons(8, Nil); Refl }, %pinSeal);
-      () } } } }
-example : rejects k2 "does not have return type" = true := by native_decide
+      () } } }; () }
+example : progRejects k2 "does not have return type" = true := by native_decide
 
 -- …and a seal in FINAL-EXPRESSION position inside a branch, which is the third
 -- route (`explore`'s fall-through to `readR`). The ascription here is borrow-free
@@ -969,11 +965,11 @@ example : rejects k2 "does not have return type" = true := by native_decide
 -- declaration form and one §8 dissolves rather than fixes (a program is a term, so
 -- there is no return type to read, only a `let`).
 def natFn : Term := pure{ Π (n : Nat) → Nat }
-def k3 : FnDef := decl{ fn k3 (n : Nat) -> %natFn {
+def k3 : Term := prog{ fn k3 (n : Nat) -> %natFn {
   match n {
     Z => seal(λ(m : Nat) { Z }, %natFn),
-    S(m) => seal(λ(k : Nat) { S(k) }, %natFn) } } }
-example : ok k3 = true := by native_decide
+    S(m) => seal(λ(k : Nat) { S(k) }, %natFn) } }; () }
+example : progOk k3 = true := by native_decide
 
 /-! ## §M (M27-P3). `ih` READ AS A VALUE — and the two machines disagree
 
@@ -1025,7 +1021,7 @@ def mSeal : Term := pure{ Π (n : Nat) → Π (v : &mut List Nat) → Unit }
 def mMot : Term := pure{ λ (n : Nat). Π (v : &mut List Nat) → Unit }
 
 /-- The arm binds `ih` to a local and then still calls it. -/
-def m1 : FnDef := decl{ fn caller () -> Unit {
+def m1 : Term := prog{
   let f = seal(natRec %mMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
@@ -1035,7 +1031,7 @@ def m1 : FnDef := decl{ fn caller () -> Unit {
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   f(3, b);
-  () } }
+  () }
 
 -- CHECKING: refused. M27's third containment moved WHERE it is refused — the
 -- refusal now fires at the BINDING rather than at the later call that found ⊥ —
@@ -1050,17 +1046,17 @@ def m1 : FnDef := decl{ fn caller () -> Unit {
 -- Nothing about this program's verdict changed; what changed is what the message
 -- says, and §7 wanted none of this anyway (cost 2 is explicit that `ih` is "never
 -- partially applied").
-example : rejects m1 "reached by NAME" = true := by native_decide
+example : progRejects m1 "reached by NAME" = true := by native_decide
 
 -- EXECUTING: the same program runs to completion and really zeroes the list,
 -- because there `ih` is a `Val.rfn` and the `.rfn` case copies it.
-example : (match Dllbc.Tests.S9Diff.runExec [] m1.body with
+example : (match Dllbc.Tests.S9Diff.runExec [] m1 with
    | .ok e => (e.lookup "x").map Val.pretty
    | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
 
 -- Not vacuous: the SAME body without the `let g = ih` line checks, so the
 -- rejection above is about reading `ih` as a value and not about the shape.
-def m0 : FnDef := decl{ fn caller () -> Unit {
+def m0 : Term := prog{
   let f = seal(natRec %mMot
                  (λ(v : &mut List Nat) { () })
                  (λ(n2 : Nat, ih : Π (v : &mut List Nat) → Unit, v : &mut List Nat) {
@@ -1069,9 +1065,9 @@ def m0 : FnDef := decl{ fn caller () -> Unit {
   let x = Cons(1, Cons(2, Nil));
   let b = &mut x;
   f(3, b);
-  () } }
-example : ok m0 = true := by native_decide
-example : (match Dllbc.Tests.S9Diff.runExec [] m0.body with
+  () }
+example : progOk m0 = true := by native_decide
+example : (match Dllbc.Tests.S9Diff.runExec [] m0 with
    | .ok e => (e.lookup "x").map Val.pretty
    | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
 

@@ -263,9 +263,15 @@ example : ((Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.tally (fixHint
         && (Tests.S26Migrate.pools.foldl (fun a p => a + (Migrate.tally (fixAll p)).declined) 0 == 19))
   = true := by native_decide
 
+-- 110 → 105 accepts (M28 ι): S6Call is written as PROGRAMS now, so the five
+-- declarations it used to contribute to the census are no longer declarations.
+-- `rejects` and `declined` are untouched, and that is the check on the rewrite —
+-- a migration that changed a VERDICT rather than removing a subject would have
+-- moved one of them. This census moves once per migrated file until it retires
+-- with the rest of the `FnDef` bookkeeping.
 example : (Tests.S26Migrate.pools.foldl (fun (a, r) p =>
     let q := Migrate.tally (fixAll p); (a + q.accepts, r + q.rejects)) (0, 0)
-  == (110, 58)) = true := by native_decide
+  == (105, 58)) = true := by native_decide
 
 -- (the "still agreeing everywhere" assertion went with the second path; what it
 -- guarded — that the 53 which move are migrations and not accidents — is now the

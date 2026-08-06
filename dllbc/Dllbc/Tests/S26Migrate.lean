@@ -81,8 +81,11 @@ open Dllbc.Tests
     completeness matters — and the counts are what expose it. -/
 
 def p5 : List FnDef := [S5Bound.pushList, S5Bound.vecPush]
-def p6 : List FnDef := [S6Call.pushList, S6Call.wireCaller, S6Call.zeroAll, S6Call.toNat,
-  S6Call.toNatCaller, S6Call.rbCaller]
+-- S6Call is written as PROGRAMS now (M28 ι), so it declares one `FnDef`: the
+-- `[v]` payload-decrease shape, which is kept as a declaration precisely because
+-- `S26Fuel` §A compares it against its fuel-threaded twin. The survey shrinks with
+-- the file rather than pretending the declarations are still there.
+def p6 : List FnDef := [S6Call.zeroAll]
 def p7 : List FnDef := [S7Group.choose, S7Group.chooseCaller, S7Group.through, S7Group.throughCaller]
 def p9 : List FnDef := [S9Diff.through, S9Diff.advance, S9Diff.choose, S9Diff.push]
 def p10 : List FnDef := [S10Ford.learn, S10Ford.learnObs, S10Ford.learnBorrow,

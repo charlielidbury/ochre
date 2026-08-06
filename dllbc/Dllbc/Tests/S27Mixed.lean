@@ -199,7 +199,7 @@ example : ok e2trivial = true := by native_decide
     state it where the audit runs. -/
 
 -- `to_nat (v : &mut (Bool ~> Nat))` — the type-changing ↝, S6Call's own subject.
-example : ok Tests.S6Call.toNat = true := by native_decide
+example : progOk Tests.S6Call.toNatProg = true := by native_decide
 -- `swapS01`, whose owed type is a Σ carrying a length-preservation proof.
 example : ok Tests.S16Spec.swapS01 = true := by native_decide
 
