@@ -24,13 +24,24 @@ for each mutable borrow from the loan structure, as one stage of a translation
 pipeline (Rust → LLBC → a pure functional model → a proof assistant), and the
 program's correctness is then proved about the extracted model in Lean, Coq, or
 F\*. DLLBC turns the synthesized artifact into a *declared and checked* signature
-component: a function writes `back = f` in its type, and the checker verifies it
-by converting the borrow's suspension tree against the declaration at the return
-audit (@fig-boundaries). Because the declaration is checked rather than derived,
-backward specifications *compose* along call chains — a caller resolves a
-sub-call's group-end through the callee's declared spec — which reconstructs
-LLBC's backward-function composition as a checking discipline internal to one
-language. That single-language stance is the second difference: the imperative
+component. It did this at two strengths, and the history is the interesting part
+of the comparison rather than a caveat on it. At full strength a function wrote
+`back = f` in its type and the checker verified it by converting the borrow's
+suspension tree against the declaration at the return audit — and because the
+declaration was checked rather than derived, backward specifications *composed*
+along call chains, a caller resolving a sub-call's group-end through the callee's
+declared spec, which reconstructed LLBC's backward-function composition as a
+checking discipline internal to one language. That tier has since been removed
+from the calculus (@sec-boundaries), leaving the weaker and more basic form: the
+$arrow.r.curve$ obligation, which declares the backward function's *type* rather
+than the function, and a postcondition over the exit snapshot. So the current
+system inverts Aeneas's pipeline without reconstructing its composition: what a
+caller learns is what the callee's signature says, and the reasoning that Aeneas
+does about a synthesized model is done here in the body, against the value the
+borrow holds at exit. Which of the two is the better answer to Aeneas is a
+question this paper poses rather than settles; @sec-architectures has the
+measurements that were taken while both existed. The single-language stance is
+unaffected, and is the second difference: the imperative
 program, its dependent types, and its pure model are all terms of the same
 calculus under one conversion relation, with no translation boundary between the
 code and the logic it is verified against.
