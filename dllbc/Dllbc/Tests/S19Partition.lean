@@ -105,14 +105,20 @@ open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
 -- `*v` (not `swapL Z Z *v`, which is stuck on a symbolic list). Mirrors partScanL's
 -- base. v=0, i=1. Used by the pivotPlace scaffolding fns' declared backs.
 -- v=0, i=1, pib=2; body binder i2=3.
-def pivotPlace : FnDef :=
-  decl{ fn pivotPlace (v : &mut List Nat, i : Nat, pib : Le (S i) (len *v)) -> Unit
+def pivotPlace : Term := prog{
+  fn pivotPlace (v : &mut List Nat, i : Nat, pib : Le (S i) (len *v)) -> Unit
         { match i {
             Z => (),
             S(i2) => { swapS(v, Z, S(i2), (), pib); () }
-        } } }
-def confTable : List FnDef := [nthS, nth2S, swapSN, pivotPlace]
-example : Migrate.progOkOf pivotPlace confTable = true := by native_decide
+        } };
+  () }
+/-- S17's cursor family, which stays a `FnDef` table there (one caller body against
+    two callee variants) and so rides in the table here — a program declares the
+    SUBJECT and its imported callees are supplied, which is what `progOk`'s `table`
+    parameter is for. It used to carry the subject too; neither subject below calls
+    the other, so it never needed to. -/
+def confTable : List FnDef := [nthS, nth2S, swapSN]
+example : progOk pivotPlace (.const "Unit") confTable = true := by native_decide
 
 /-! ## M20-2 (bound derivation) — the base swap's `p2` derived from the length eqn
 
@@ -126,8 +132,8 @@ example : Migrate.progOkOf pivotPlace confTable = true := by native_decide
 
 
 -- v=0, i=1, g=2, hlen=3; body binder i2=4.
-def pivotPlaceH : FnDef :=
-  decl{ fn pivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
+def pivotPlaceH : Term := prog{
+  fn pivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
         hlen : Id Nat (len *v) (S (add i g))) -> Unit
         { match i {
             Z => (),
@@ -141,8 +147,9 @@ def pivotPlaceH : FnDef :=
               swapS(v, Z, S(i2), (), p2);
               ()
             }
-        } } }
-example : Migrate.progOkOf pivotPlaceH confTable = true := by native_decide
+        } };
+  () }
+example : progOk pivotPlaceH (.const "Unit") confTable = true := by native_decide
 
 /-! ## M20-2 (the recursive partScan) — partition's scan loop, checked against partScanL
 
@@ -517,15 +524,21 @@ example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
 
 -- ACCEPTED: after the swap, *v (exit) IS swapL i j (old *v). Refl checks only
 -- because bare *v reads the EXIT value; the body's proof cites `old *v` for the entry.
-def exitReject : FnDef :=
-  decl{ fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+def exitReject : Term := prog{
+  fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
         -> Id (List Nat) (*v) (old *v)
-        { swapS(&mut *v, i, j, pij, p2); Refl } }
-example : Migrate.progRejectsOf exitReject "does not have return type" [nthS, nth2S, swapSN, exitReject] = true := by native_decide
+        { swapS(&mut *v, i, j, pij, p2); Refl };
+  () }
+example : progRejects exitReject "does not have return type" (.const "Unit") confTable = true := by native_decide
 
 -- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = swapL i j (old *v),
 -- so `len *v = len (old *v)` is exactly len_swapL at the entry snapshot — cited
 -- directly with `old *v` in the body (no need to save the list, which would move it).
+/-- KEPT AS A DECLARATION: `S27Dispose` §C asserts `S26Fuel.bothWays
+    S19Partition.twoRec`, and `bothWays` takes a `FnDef` — it hands the declaration
+    to `FnMacro.progOf` itself. That assertion is the disposition record for this
+    function's retired `back = *v`, so the subject has to stay the thing the record
+    is about. -/
 def twoRec : FnDef :=
   decl{ fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         { match f {

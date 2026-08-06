@@ -117,15 +117,12 @@ def p18 : List FnDef := [S18Rewrite.certConsHit, S18Rewrite.certConsHitLie]
 def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
   S19Partition.certSwapCount,
   S19Partition.certSwapCountLie,
-  S19Partition.pivotPlace,
-  S19Partition.pivotPlaceH,
   S19Partition.partScanE,
   S19Partition.partitionE,
   S19Partition.stuckProbe,
   S19Partition.stuckProbeLie,
   S19Partition.stuckProbeNonExh,
   S19Partition.lebProbe,
-  S19Partition.exitReject,
   S19Partition.twoRec]
 
 def p23 : List FnDef := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S23Direct.useItLie,
