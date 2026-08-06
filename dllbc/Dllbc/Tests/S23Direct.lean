@@ -185,37 +185,60 @@ example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 
 -- A back-less callee returning a PINNED value, and a consumer whose second
 -- parameter's type mentions its first argument.
-def pinOne : FnDef := decl{ fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) } }
-def useIt : FnDef := decl{ fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () } }
-example : Migrate.progOkOf pinOne = true := by native_decide
-example : Migrate.progOkOf useIt = true := by native_decide
+def pinOne : Term := prog{
+  fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  () }
+def useIt : Term := prog{
+  fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
+  () }
+example : progOk pinOne = true := by native_decide
+example : progOk useIt = true := by native_decide
 
 -- The caller destructures the returned pair and feeds BOTH halves onward: `h`'s
 -- type is `Id σa (S Z)` for the very σa bound to `a`. This is the caller-side
 -- shape every back-less callee in the rest of M23 depends on.
-def usePin : FnDef :=
-  decl{ fn usePin () -> Unit
+def usePin : Term := prog{
+  fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
+  fn usePin () -> Unit
         { let p = pinOne();
-          match p { Pair(a, h) => { useIt(a, h); () } } } }
-example : Migrate.progOkOf usePin [pinOne, useIt, usePin] = true := by native_decide
+          match p { Pair(a, h) => { useIt(a, h); () } } };
+  () }
+example : progOk usePin = true := by native_decide
 
 -- Not vacuous (a): the pin says `S Z`; a consumer wanting `S (S Z)` is rejected —
 -- so the threaded type is the callee's actual claim, not a rubber stamp.
-def useItLie : FnDef := decl{ fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () } }
-def usePinLie : FnDef :=
-  decl{ fn usePinLie () -> Unit
+def useItLie : Term := prog{
+  fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
+  () }
+-- A callee, written into each chain that calls it; the standalone form keeps
+-- the verdict `S26Migrate.p23` was computing for it.
+example : progOk useItLie = true := by native_decide
+def usePinLie : Term := prog{
+  fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
+  fn usePinLie () -> Unit
         { let p = pinOne();
-          match p { Pair(a, h) => { useItLie(a, h); () } } } }
-example : Migrate.progRejectsOf usePinLie "does not have its parameter type" [pinOne, useItLie, usePinLie] = true := by native_decide
+          match p { Pair(a, h) => { useItLie(a, h); () } } };
+  () }
+example : progRejects usePinLie "does not have its parameter type" = true := by native_decide
 
 -- Not vacuous (b): drop the pin (a plain `Nat` result) and the caller learns
 -- NOTHING about the value it got back — `Refl` cannot inhabit `Id σa (S Z)`. The
 -- pin is what carries the knowledge across the boundary, which is the whole
 -- premise of removing declared backs.
-def plainOne : FnDef := decl{ fn plainOne () -> Nat { S Z } }
-def useUnpinned : FnDef :=
-  decl{ fn useUnpinned () -> Unit { let a = plainOne(); useIt(a, Refl); () } }
-example : Migrate.progRejectsOf useUnpinned "does not have its parameter type" [plainOne, useIt, useUnpinned] = true := by native_decide
+def plainOne : Term := prog{
+  fn plainOne () -> Nat { S Z };
+  () }
+-- A callee, written into each chain that calls it; the standalone form keeps
+-- the verdict `S26Migrate.p23` was computing for it.
+example : progOk plainOne = true := by native_decide
+def useUnpinned : Term := prog{
+  fn plainOne () -> Nat { S Z };
+  fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
+  fn useUnpinned () -> Unit { let a = plainOne(); useIt(a, Refl); () };
+  () }
+example : progRejects useUnpinned "does not have its parameter type" = true := by native_decide
 
 /-! ## Stage (v): recursion = self-ensures under §8's snapshot-subterm guard
 
@@ -251,13 +274,15 @@ example : Migrate.progOkOf recGood = true := by native_decide
 
 -- BRANCH 1 — no `[k]` at all. THE headline control: this exact FnDef was accepted
 -- before the guard, and it proves `Z = S Z`.
-def recBad : FnDef := decl{ fn recBad () -> Id Nat Z (S Z) { recBad() } }
+def recBad : Term := prog{
+  fn recBad () -> Id Nat Z (S Z) { recBad() };
+  () }
 -- MIGRATES, AND IS STILL REFUSED — with a different sentence, which is the whole
 -- of what the guard's deletion costs. §7 makes a recursive occurrence the `ih`
 -- BINDER, and §8 makes scope the let-chain: a self-call resolves to nothing,
 -- because a let-chain cannot reference downward. So `Z = S Z` stays unprovable
 -- not by a side condition but by the name not existing.
-example : Migrate.progRejectsOf recBad "unknown function" = true := by native_decide
+example : progRejects recBad "unknown function" = true := by native_decide
 
 -- BRANCH 2 — `[k]` declared, but the self-call passes the SAME fuel. Equal is not
 -- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
@@ -283,10 +308,11 @@ example : (Migrate.refusal [recWrongIdx] recWrongIdx).any
 
 -- …and the same body with the honest index declared is accepted, so branch 3 is
 -- about the index, not about the body.
-def recRightIdx : FnDef :=
-  decl{ fn recRightIdx [m] (n : Nat, m : Nat) -> Id Nat Z Z
-        { match m { Z => Refl, S(m2) => recRightIdx(n, m2) } } }
-example : Migrate.progOkOf recRightIdx = true := by native_decide
+def recRightIdx : Term := prog{
+  fn recRightIdx [m] (n : Nat, m : Nat) -> Id Nat Z Z
+        { match m { Z => Refl, S(m2) => recRightIdx(n, m2) } };
+  () }
+example : progOk recRightIdx = true := by native_decide
 
 -- BRANCH 4 — an INCREASE reads as "not a subterm", not as a decrease: `S(m2)`
 -- against a snapshot of `S m2` is equality one level up, and equality never passes.
@@ -300,12 +326,14 @@ example : (Migrate.refusal [recGrow] recGrow).any
 -- let each admit the other's postcondition with nothing decreasing anywhere: the
 -- same hole through two doors. Rejected outright (§8's measures are where a general
 -- story would live).
-def recMutA : FnDef := decl{ fn recMutA () -> Id Nat Z (S Z) { recMutB() } }
-def recMutB : FnDef := decl{ fn recMutB () -> Id Nat Z (S Z) { recMutA() } }
+def recMutA : Term := prog{
+  fn recMutA () -> Id Nat Z (S Z) { recMutB() };
+  fn recMutB () -> Id Nat Z (S Z) { recMutA() };
+  () }
 -- Same replacement, and §8 predicted exactly this: mutual recursion "becomes
 -- unwritable" rather than staying rejected, because `recMutB` is not in scope
 -- above `recMutA`. The rejection names the forward reference.
-example : Migrate.progRejectsOf recMutA "unknown function" [recMutA, recMutB] = true := by
+example : progRejects recMutA "unknown function" = true := by
   native_decide
 
 -- The guard is STRUCTURAL, not Nat-specific: a list fuel decreases the same way.
@@ -347,8 +375,12 @@ def recCursor : FnDef :=
 
 -- A NON-self call to a recursive function is untouched — the guard is about
 -- self-calls, and every other call is the ordinary §5.3 signature rule.
-def recCaller : FnDef := decl{ fn recCaller () -> Id Nat Z Z { recGood(S Z) } }
-example : Migrate.progOkOf recCaller [recGood, recCaller] = true := by native_decide
+def recCaller : Term := prog{
+  fn recCaller () -> Id Nat Z Z { recGood(S Z) };
+  () }
+-- `recGood` stays a declaration (`S26Migrate` §W2 and `S27Dispose` §C both
+-- `fnElab` it), so it rides in the table while the caller is the program.
+example : progOk recCaller (.const "Unit") [recGood] = true := by native_decide
 
 /-! ## Stage (ii): ownership splitting — `split_off` and `append_back`
 
@@ -720,16 +752,22 @@ example : runInsertAt [1,2,3] 3 9 = true := by native_decide
     does not check inside the `True` branch — kept here as the negative half of the
     pair: -/
 
-def needLe : FnDef := decl{ fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () } }
-def branchKnowledge : FnDef :=
-  decl{ fn branchKnowledge (a : Nat, b : Nat) -> Unit
+def needLe : Term := prog{
+  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  () }
+-- A callee, written into each chain that calls it; the standalone form keeps
+-- the verdict `S26Migrate.p23` was computing for it.
+example : progOk needLe = true := by native_decide
+def branchKnowledge : Term := prog{
+  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn branchKnowledge (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match c {
             True => { needLe(a, b, leb_true_le a b Refl); () },
             False => ()
-          } } }
-example : Migrate.progRejectsOf branchKnowledge "does not have its parameter type"
-  [needLe, branchKnowledge] = true := by native_decide
+          } };
+  () }
+example : progRejects branchKnowledge "does not have its parameter type" = true := by native_decide
 
 /-! **THE RULE** (M23 phase A). `match h : c { … }` additionally binds, in every
     branch, an equation `h : Id τ ⟨the scrutinee's PRE-SPLIT value⟩ ⟨this branch's
@@ -752,36 +790,49 @@ example : Migrate.progRejectsOf branchKnowledge "does not have its parameter typ
     place of `Refl`. The pair is the whole claim — the rule does exactly one new
     thing. -/
 
-def branchKnowledgeEq : FnDef :=
-  decl{ fn branchKnowledgeEq (a : Nat, b : Nat) -> Unit
+def branchKnowledgeEq : Term := prog{
+  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn branchKnowledgeEq (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
             True => { needLe(a, b, leb_true_le a b e); () },
             False => ()
-          } } }
-example : Migrate.progOkOf branchKnowledgeEq [needLe, branchKnowledgeEq] = true := by native_decide
+          } };
+  () }
+example : progOk branchKnowledgeEq = true := by native_decide
 
 -- Both branches, in the direction each can actually prove: `False` gives
 -- `Id Bool (leb a b) False`, hence `Le (S b) a` — so the equation is per-branch,
 -- not a single fact smuggled in twice.
-def needGt : FnDef := decl{ fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () } }
-def branchKnowledgeBoth : FnDef :=
-  decl{ fn branchKnowledgeBoth (a : Nat, b : Nat) -> Unit
+def needGt : Term := prog{
+  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  () }
+-- A callee, written into each chain that calls it; the standalone form keeps
+-- the verdict `S26Migrate.p23` was computing for it.
+example : progOk needGt = true := by native_decide
+def branchKnowledgeBoth : Term := prog{
+  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  fn branchKnowledgeBoth (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
             True => { needLe(a, b, leb_true_le a b e); () },
             False => { needGt(a, b, leb_false_gt a b e); () }
-          } } }
-example : Migrate.progOkOf branchKnowledgeBoth [needLe, needGt, branchKnowledgeBoth] = true := by
+          } };
+  () }
+example : progOk branchKnowledgeBoth = true := by
   native_decide
 
 -- The `if` sugar carries it too (`if h : c { … } else { … }`), which is the form the
 -- partition body wants.
-def branchKnowledgeIf : FnDef :=
-  decl{ fn branchKnowledgeIf (a : Nat, b : Nat) -> Unit
+def branchKnowledgeIf : Term := prog{
+  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  fn branchKnowledgeIf (a : Nat, b : Nat) -> Unit
         { if e : leb a b { needLe(a, b, leb_true_le a b e); () }
-          else { needGt(a, b, leb_false_gt a b e); () } } }
-example : Migrate.progOkOf branchKnowledgeIf [needLe, needGt, branchKnowledgeIf] = true := by
+          else { needGt(a, b, leb_false_gt a b e); () } };
+  () }
+example : progOk branchKnowledgeIf = true := by
   native_decide
 
 /-! #### Negative controls — one per rule branch
@@ -793,58 +844,79 @@ example : Migrate.progOkOf branchKnowledgeIf [needLe, needGt, branchKnowledgeIf]
 
 -- (1) The equation is the branch's OWN constructor, not the other one: citing
 -- `leb_false_gt` on the True branch's `e : Id Bool (leb a b) True` is rejected.
-def branchEqSwapped : FnDef :=
-  decl{ fn branchEqSwapped (a : Nat, b : Nat) -> Unit
+def branchEqSwapped : Term := prog{
+  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  fn branchEqSwapped (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
             True => { needGt(a, b, leb_false_gt a b e); () },
             False => ()
-          } } }
-example : Migrate.progRejectsOf branchEqSwapped "does not have its parameter type"
-  [needLe, needGt, branchEqSwapped] = true := by native_decide
+          } };
+  () }
+example : progRejects branchEqSwapped "does not have its parameter type" = true := by native_decide
 
 -- (2) The equation is about the SPINE THAT WAS SPLIT ON, not any spine: split on
 -- `leb a b`, then claim the equation is about `leb b a`. Rejected — so the minted
 -- type is read off the abstracted scrutinee, not fabricated per use site.
-def needLeSwap : FnDef := decl{ fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () } }
-def branchEqWrongSpine : FnDef :=
-  decl{ fn branchEqWrongSpine (a : Nat, b : Nat) -> Unit
+def needLeSwap : Term := prog{
+  fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
+  () }
+-- A callee, written into each chain that calls it; the standalone form keeps
+-- the verdict `S26Migrate.p23` was computing for it.
+example : progOk needLeSwap = true := by native_decide
+def branchEqWrongSpine : Term := prog{
+  fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
+  fn branchEqWrongSpine (a : Nat, b : Nat) -> Unit
         { let c = leb a b;
           match e : c {
             True => { needLeSwap(a, b, leb_true_le b a e); () },
             False => ()
-          } } }
-example : Migrate.progRejectsOf branchEqWrongSpine "does not have its parameter type"
-  [needLeSwap, branchEqWrongSpine] = true := by native_decide
+          } };
+  () }
+example : progRejects branchEqWrongSpine "does not have its parameter type" = true := by native_decide
 
 -- (3) An ORDINARY symbolic split still yields only `Refl`: `n`'s equation in the
 -- `S` branch is `Id Nat (S σm) (S σm)` — ⇜ already rewrote the pre-split value, so
 -- both endpoints are the constructor tree and nothing off-diagonal is derivable.
-def wantEqLie : FnDef :=
-  decl{ fn wantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () } }
-def branchEqPlainSym : FnDef :=
-  decl{ fn branchEqPlainSym (n : Nat) -> Unit
-        { match e : n { Z => (), S(m) => { wantEqLie(m, e); () } } } }
-example : Migrate.progRejectsOf branchEqPlainSym "does not have its parameter type"
-  [wantEqLie, branchEqPlainSym] = true := by native_decide
+def wantEqLie : Term := prog{
+  fn wantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
+  () }
+-- A callee, written into each chain that calls it; the standalone form keeps
+-- the verdict `S26Migrate.p23` was computing for it.
+example : progOk wantEqLie = true := by native_decide
+def branchEqPlainSym : Term := prog{
+  fn wantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
+  fn branchEqPlainSym (n : Nat) -> Unit
+        { match e : n { Z => (), S(m) => { wantEqLie(m, e); () } } };
+  () }
+example : progRejects branchEqPlainSym "does not have its parameter type" = true := by native_decide
 
 -- …and the reflexive reading of that same equation IS available: `Id Nat (S m) (S m)`.
-def wantRefl : FnDef :=
-  decl{ fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () } }
-def branchEqPlainSymRefl : FnDef :=
-  decl{ fn branchEqPlainSymRefl (n : Nat) -> Unit
-        { match e : n { Z => (), S(m) => { wantRefl(m, e); () } } } }
-example : Migrate.progOkOf branchEqPlainSymRefl [wantRefl, branchEqPlainSymRefl] = true := by
+def wantRefl : Term := prog{
+  fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
+  () }
+-- A callee, written into each chain that calls it; the standalone form keeps
+-- the verdict `S26Migrate.p23` was computing for it.
+example : progOk wantRefl = true := by native_decide
+def branchEqPlainSymRefl : Term := prog{
+  fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
+  fn branchEqPlainSymRefl (n : Nat) -> Unit
+        { match e : n { Z => (), S(m) => { wantRefl(m, e); () } } };
+  () }
+example : progOk branchEqPlainSymRefl = true := by
   native_decide
 
 -- (4) The CONCRETE split (the executing side and any concrete scrutinee) binds the
 -- equation too, so a body written with `match h :` runs. The differential below
 -- exercises the same path end to end.
-def concreteEq : FnDef :=
-  decl{ fn concreteEq () -> Unit
+def concreteEq : Term := prog{
+  fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
+  fn concreteEq () -> Unit
         { let n = S(Z);
-          match e : n { Z => (), S(m) => { wantRefl(m, e); () } } } }
-example : Migrate.progOkOf concreteEq [wantRefl, concreteEq] = true := by native_decide
+          match e : n { Z => (), S(m) => { wantRefl(m, e); () } } };
+  () }
+example : progOk concreteEq = true := by native_decide
 
 -- (5) Not vacuous by scoping accident: WITHOUT the binder the same body is
 -- unelaboratable (`e` is unbound), and WITH it the branch-free `Refl` of the wall

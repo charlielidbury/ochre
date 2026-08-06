@@ -125,23 +125,21 @@ def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
   S19Partition.lebProbe,
   S19Partition.twoRec]
 
-def p23 : List FnDef := [S23Direct.pinOne, S23Direct.useIt, S23Direct.usePin, S23Direct.useItLie,
-  S23Direct.usePinLie, S23Direct.plainOne, S23Direct.useUnpinned, S23Direct.recGood,
-  S23Direct.recBad, S23Direct.recSame, S23Direct.recWrongIdx, S23Direct.recRightIdx,
-  S23Direct.recGrow, S23Direct.recMutA, S23Direct.recMutB, S23Direct.recList, S23Direct.recDeep,
-  S23Direct.recCursor, S23Direct.recCaller, S23Direct.appendBack, S23Direct.splitOff,
-  S23Direct.splitOffLieTake, S23Direct.splitOffLieDrop, S23Direct.splitOffLieSwap,
-  S23Direct.splitOffLieHead, S23Direct.setAt, S23Direct.swapAt, S23Direct.setAtLieIdx,
-  S23Direct.setAtLieNoop, S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop, S23Direct.insertAt,
-  S23Direct.insertAtLieIdx, S23Direct.insertAtLieNoop, S23Direct.needLe,
-  S23Direct.branchKnowledge, S23Direct.branchKnowledgeEq, S23Direct.needGt,
-  S23Direct.branchKnowledgeBoth, S23Direct.branchKnowledgeIf, S23Direct.branchEqSwapped,
-  S23Direct.needLeSwap, S23Direct.branchEqWrongSpine, S23Direct.wantEqLie,
-  S23Direct.branchEqPlainSym, S23Direct.wantRefl, S23Direct.branchEqPlainSymRefl,
-  S23Direct.concreteEq, S23Direct.pick, S23Direct.partition, S23Direct.partLieUb,
-  S23Direct.partLieLb, S23Direct.partLieCountDrop, S23Direct.partLieCountShift,
-  S23Direct.partitionLoses, S23Direct.quicksort, S23Direct.qsLieSorted, S23Direct.qsLieCount,
-  S23Direct.qsStaleBound, S23Direct.qsNoSuff]
+-- S23Direct is migrated in PART (M28 ν): the 26 declarations that nothing outside
+-- the file consumed are programs now and have left the pool. What remains is what
+-- other files hold as VALUES — the quicksort/partition/splitOff/setAt/swapAt/
+-- insertAt families, their record-update lie twins, and the recursion-guard twins
+-- `S27Dispose` §B pins by name.
+def p23 : List FnDef := [S23Direct.recGood, S23Direct.recSame, S23Direct.recWrongIdx,
+  S23Direct.recGrow, S23Direct.recList, S23Direct.recDeep, S23Direct.recCursor,
+  S23Direct.appendBack, S23Direct.splitOff, S23Direct.splitOffLieTake,
+  S23Direct.splitOffLieDrop, S23Direct.splitOffLieSwap, S23Direct.splitOffLieHead,
+  S23Direct.setAt, S23Direct.swapAt, S23Direct.setAtLieIdx, S23Direct.setAtLieNoop,
+  S23Direct.swapAtLieIdx, S23Direct.swapAtLieNoop, S23Direct.insertAt,
+  S23Direct.insertAtLieIdx, S23Direct.insertAtLieNoop, S23Direct.pick, S23Direct.partition,
+  S23Direct.partLieUb, S23Direct.partLieLb, S23Direct.partLieCountDrop,
+  S23Direct.partLieCountShift, S23Direct.partitionLoses, S23Direct.quicksort,
+  S23Direct.qsLieSorted, S23Direct.qsLieCount, S23Direct.qsStaleBound, S23Direct.qsNoSuff]
 
 -- S24Arrays is written as PROGRAMS now (M28 ν) and declares exactly two `FnDef`s:
 -- `walk` and `walkArr`, the same function with the decreasing argument moved,
