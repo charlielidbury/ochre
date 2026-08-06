@@ -21,7 +21,7 @@ program the surface can write, and the ones that observed a mid-borrow state
 (`x ↦ loanₘ ℓ, b ↦ borrowₘ ℓ σ`) reach it the way a program does — own the value,
 then borrow it.
 
-Golden-Ω style, unchanged: `Migrate.progPathsOfT` compares the per-path
+Golden-Ω style, unchanged: `progPathsOfT` compares the per-path
 canonicalized environments (ℓ- and σ-ids renumbered to first-appearance order) in
 branch-declaration order, and the path COUNT with them. It drops the cohort's own
 function bindings, so what is compared is exactly what the hand-seeded harness
@@ -46,6 +46,22 @@ def anyList : FnDef := decl{ fn anyList () -> List Nat { Nil } }
 def caller (body : Term) : FnDef :=
   { name := "caller", retType := .const "Unit", telescope := [], body := body }
 
+/-- The program-path counterpart of `expectPaths`: the symbolic walk forks into
+    exactly these paths, in branch-declaration order, each leaving exactly this Ω.
+    File-local, because this file is the only thing that wants it —
+    `Migrate.progEnvsOfT`, which it is three lines on top of, has users elsewhere.
+
+    The COUNT is half the assertion and not a formality — §3.2's whole claim is
+    that matching a symbolic scrutinee splits the run, so a rewrite that checked
+    only the environments would still pass if the fork stopped happening. That is
+    also why these assertions still exist at all: deleting them was weighed when
+    the file moved off its hand-seeded Ω, and they were kept for the path-count
+    canary and for the doc traces they carry verbatim. -/
+def progPathsOfT (table : List FnDef) (d : FnDef) (expected : List Env) : Bool :=
+  let rs := Migrate.progEnvsOfT table d
+  rs.length == expected.length &&
+    (rs.zip expected).all (fun pr => match pr.1 with | .ok env => env == pr.2 | .error _ => false)
+
 /-! ## §3.2 Symbolic scrutinee: refinement as ⇜ (owned mode) -/
 
 -- is_zero's shape: n ↦ (σ : Nat); a two-branch owned match splits into two
@@ -56,7 +72,7 @@ def isZero : FnDef := caller prog{
   match n { Z => (), S(m) => () }
 }
 
-example : Migrate.progPathsOfT [anyNat, isZero] isZero
+example : progPathsOfT [anyNat, isZero] isZero
   [ [("n", .bot)],
     [("n", .bot), ("m", .sym 0)] ] = true := by native_decide
 
@@ -80,7 +96,7 @@ def zeroHead : FnDef := caller prog{
   ()
 }
 
-example : Migrate.progPathsOfT [anyList, zeroHead] zeroHead
+example : progPathsOfT [anyList, zeroHead] zeroHead
   [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (nat 0) (.sym 0))],
     [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
@@ -96,7 +112,7 @@ def variantChange : FnDef := caller prog{
   ()
 }
 
-example : Migrate.progPathsOfT [anyList, variantChange] variantChange
+example : progPathsOfT [anyList, variantChange] variantChange
   [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)],
     [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
@@ -117,7 +133,7 @@ def twoLevel : FnDef := caller prog{
   }
 }
 
-example : Migrate.progPathsOfT [anyList, twoLevel] twoLevel
+example : progPathsOfT [anyList, twoLevel] twoLevel
   [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("h2", .bot), ("t2", .bot),
      ("y", cons (.sym 0) (cons (nat 0) (.sym 1)))],
     [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (.sym 0) nil)],

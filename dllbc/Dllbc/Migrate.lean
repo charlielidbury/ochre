@@ -179,15 +179,4 @@ def progEnvOfT (table : List FnDef) (d : FnDef) (expected : Env) : Bool :=
   | [.ok env] => env == expected
   | _ => false
 
-/-- The program-path counterpart of `expectPaths`: the symbolic walk forks into
-    exactly these paths, in branch-declaration order, each leaving exactly this Ω.
-
-    The COUNT is half the assertion and not a formality — §3.2's whole claim is
-    that matching a symbolic scrutinee splits the run, so a rewrite that checked
-    only the environments would still pass if the fork stopped happening. -/
-def progPathsOfT (table : List FnDef) (d : FnDef) (expected : List Env) : Bool :=
-  let rs := progEnvsOfT table d
-  rs.length == expected.length &&
-    (rs.zip expected).all (fun pr => match pr.1 with | .ok env => env == pr.2 | .error _ => false)
-
 end Dllbc.Migrate
