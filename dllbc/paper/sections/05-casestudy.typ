@@ -14,11 +14,22 @@ The first pass, through the end of §5.6, is architecture A. The program is the 
 programmer would recognise — a swap-based Lomuto partition, recursion on
 sub-ranges, no allocation and no rebuilding of sublists — and it is checked not as
 a bespoke development but as an ordinary _implementation of a pure model_: each
-imperative function carries a declared backward specification (@fig-boundaries),
-and conformance is conversion. We build it from the bottom: the slice
-representation, the borrow-returning cursors, the bounds proofs that ride the
-telescope, the smallest self-contained instance of the architecture, the
-partition, and the recursion.
+imperative function carries a declared backward specification, and conformance is
+conversion. We build it from the bottom: the slice representation, the
+borrow-returning cursors, the bounds proofs that ride the telescope, the smallest
+self-contained instance of the architecture, the partition, and the recursion.
+
+*Architecture A is written in the past tense, and this is where that starts.* The
+declared-back machinery it is built on has since been removed from the calculus
+(@sec-boundaries), and A's cursors recurse through a borrow's payload, which has
+no recursor form — so A's programs are in the corpus as source but are no longer
+machine-checked. Every claim §5.2–§5.6 makes was green continuously up to commit
+`113f1634`, the last commit at which a checker exists that admits them, and is a
+historical claim after it. @sec-architectures states the fence once and in full;
+this section keeps the walkthrough because what A _was_ measured to be is half of
+the comparison the paper is making, and because several of its findings (the
+disjointness problem, the gap-counter form, the stuck-spine split) are about the
+calculus rather than about the architecture and survive it untouched.
 
 The second pass (@sec-directroute) is architecture B, and it is the project's mission result:
 the same problem with _no declared backward specification anywhere in the call
@@ -35,9 +46,13 @@ frame problem §5.1 describes — and because the two share a specification and 
 running them against each other is a check on the specification that neither could
 perform alone (@sec-empirics).
 
-Every listing in this section is quoted from the mechanization at the pin, and
-every acceptance and rejection claim it makes is a green `native_decide`
-proposition unless a status tag says otherwise.
+Every listing in this section is quoted from the mechanization, and every
+acceptance and rejection claim it makes is a green `native_decide` proposition
+unless a status tag says otherwise. Two pins are in play and the section keeps
+them apart: §5.7 and §5.8's listings are quoted at the current pin, §5.2–§5.6's
+at `113f1634`. Where a shared function's surface has moved between the two — the
+cursors gained an explicit scrutinee hint, `partition` and `append_back` now
+thread fuel — the listing shows the current form and the text says so.
 
 == The slice, as a borrow and a bound
 
@@ -80,7 +95,7 @@ Element access is a borrow-returning recursion. The bounds-checked `nth` walks
 the list behind a borrow and hands back a mutable borrow of the requested cell:
 
 ```rust
-fn nth (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
+fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
   match v {
     Nil => botElim Unit p,
     Cons(hd, tl) => match i {
@@ -100,8 +115,8 @@ resolution is the same shape: a single call that issues _two_ borrows from _one_
 captured loan.
 
 ```rust
-fn nth2 (v : &mut List Nat, i : Nat, j : Nat,
-         pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat {
+fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
+             pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat {
   match v {
     Nil => botElim Unit p2,
     Cons(hd, tl) => match i {
@@ -171,7 +186,7 @@ fn certSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
       { let cert = count_swapL' m i j s pij p2;
         let b = &mut s;
         swapS(b, i, j, pij, p2);
-        cert } }
+        cert }
 ```
 
 Everything the case study is about is present here at minimum size. The body
@@ -235,12 +250,17 @@ toolkit; it too checks green.
 
 The crown assembles the pieces. `quicksort(v, fuel, lo, cnt, hbnd)` sorts the
 `cnt` elements at offset `lo` in place, fuel-structural to mirror the pure model
-`sortRangeL`. The bracketed `[fuel]` is the declared decreasing position
-(@sec-boundaries): under this architecture it is a formality, since the declared
-`back`'s conversion is what carries the proof, but the same annotation is what makes
-the recursion of @sec-directroute admissible at all.
+`sortRangeL`. The bracketed `[fuel]` was, at A's pin, the declared _decreasing
+position_ that guarded the self-call; under this architecture it is a formality,
+since the declared `back`'s conversion is what carries the proof. The same
+annotation is what makes the recursion of @sec-directroute admissible, and it has
+outlived the guard: at the current pin `[k]` is a _scrutinee-selection hint_ read
+by the elaboration rather than a side condition checked by the kernel
+(@sec-boundaries).
 
 ```rust
+// architecture A, quoted at `113f1634`; the `back = …` clause is no longer
+// surface syntax, and this declaration no longer elaborates.
 fn quicksort [fuel] (v : &mut List Nat, fuel : Nat, lo : Nat, cnt : Nat,
                      hbnd : Le (add lo cnt) (len *v)) -> Unit
       back = sortRangeL fuel lo cnt (*v)
@@ -282,7 +302,7 @@ recursive sort keep `len *v`, so bounds stated over the live `*v` transport back
 to the entry length `hbnd`) — but it is ordinary dependent bookkeeping, and it
 elaborates.
 
-The headline holds: `checkFnOk quicksort` is green — the imperative in-place
+The headline held: `quicksort` checked — the imperative in-place
 quicksort type-checks as an implementation of its pure model `sortRangeL`, with
 conformance reduced to conversion (@fig-boundaries). The from-scratch
 conformance `native_decide` runs in seconds rather than the pre-fix tens of
@@ -311,7 +331,7 @@ fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v))
   -> Σ (ret : List Nat) → Σ (h1 : Id (List Nat) (*v) (take i (old *v)))
        → Id (List Nat) ret (drop i (old *v))
 
-fn append_back [v] (v : &mut List Nat, w : List Nat)
+fn append_back [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (len *v) fuel)
   -> Id (List Nat) (*v) (append (old *v) w)
 ```
 
@@ -321,6 +341,21 @@ returned list $Sigma$-pinned to `drop i (old *v)`. It is the general
 ownership-splitting primitive, and the reason this development has one at all;
 the quicksort below reaches the same shape through its partition and needs only
 `append_back` to reassemble.
+
+*Both of these used to recurse through the borrow's payload, and no longer can.*
+`append_back` walks to the end of `*v` and `partition` walks the list behind `v`,
+so the natural decreasing position for each was the payload snapshot — a real
+decrease, and the one thing that shrinks in a list cursor. The `[k]` guard
+admitted it, because it compared snapshots structurally and a snapshot is just a
+value. The elaboration cannot: a payload decrease has no recursor form, so there
+is nothing for a self-call to become. Both functions therefore thread an explicit
+`fuel : Nat` with a sufficiency hypothesis `Le (len *v) fuel`, exactly as the
+quicksort below does, and the out-of-fuel branch is closed by ex-falso rather than
+being unreachable by construction. This is the sharpest instance of the cost
+@sec-boundaries records for moving recursion into the eliminators, and it is a
+source change rather than an elaboration one — the signature moved, and so did
+every caller. A borrow-mode eliminator would return the original form; it is
+filed. #status("proposed")
 
 Note what these ensures are stated _in_: `take`, `drop` and `append` are
 _observation_ functions, which say what a list _is_ independently of any
@@ -348,7 +383,7 @@ been filed forward on the strength of the wrong half; two of them evaporated
 *The partition returns two lists, and needs branch equations to do it.*
 
 ```rust
-fn partition [v] (v : &mut List Nat, p : Nat)
+fn partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
   -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)
        → Σ (hl1 : Le (len *v) (len (old *v))) → Σ (hl2 : Le (len hi) (len (old *v)))
        → Π (n : Nat) → Id Nat (add (count n (*v)) (count n hi)) (count n (old *v))
@@ -366,7 +401,9 @@ feed the recursion below its sufficiency argument.
 
 *Recursion carries its own decrease.* With the model gone, the return type _is_ the
 postcondition, and a self-call admitted at it unconditionally proves anything
-(@sec-lessons). The guard is the declared `[fuel]`:
+(@sec-lessons). The decrease is on the declared `[fuel]` — at the time a guarded
+side condition on the self-call, and since M27 the position the elaboration
+recurses on, `fuel` being the scrutinee of the `natRec` the definition lowers to:
 
 ```rust
 fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : Le (len *v) fuel)
@@ -395,7 +432,7 @@ ordinary inductions. That the same obstacle appears in both encodings, and yield
 the same move, is the case study's strongest evidence that it is a property of the
 problem rather than of either formulation.
 
-The headline holds: `checkFnOk quicksort` is green with zero declared backs in its
+The headline holds: `progOk quicksort` is green with zero declared backs in its
 call tree, against lying twins for each conjunct — each chosen to survive the `Nil`
 path and fail on the recursive one — and against an executing differential that
 runs the same declaration on concrete lists and compares with a reference sort.
@@ -488,11 +525,15 @@ snapshot, in place, with zero declared backs anywhere in the call tree. It check
 and — the part that took the most work — it _runs_.
 
 #block(inset: 8pt, stroke: 0.5pt + luma(150), radius: 3pt, width: 100%)[
-  #status("green") _Conformance_ (architecture A) — that the imperative partition
-  and quicksort implement their pure models `partScanL`/`sortRangeL`, checked by
-  the declared-back audit — is green. #status("open") _Model correctness_ for that
+  _Conformance_ (architecture A) — that the imperative partition and quicksort
+  implement their pure models `partScanL`/`sortRangeL`, checked by the
+  declared-back audit — was green continuously up to `113f1634` and is a
+  *historical* claim after it: the audit that checked it no longer exists, and A's
+  cursors do not elaborate under the current checking path. Reproducible at that
+  commit; not re-run at this pin. #status("open") _Model correctness_ for that
   route — that `sortRangeL` in fact sorts and permutes — remains open, and is the
-  cost of routing verification through a model.
+  cost of routing verification through a model. It was never discharged, and the
+  route's retirement means it now never will be.
   #status("green") _The direct route_ (architecture B, @sec-directroute) is green and does not
   incur that debt: `Sorted (*v)` together with count-preservation against
   `old *v` is proved in the bodies, with no model of the partition or the sort
