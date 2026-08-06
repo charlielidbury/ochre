@@ -57,11 +57,14 @@ example : tailEnv (withPush (prog{
 -- the regression and blessed fuel-threading. The claim's carrier is
 -- `S26Fuel.zeroAllF`, which is literally this function with a fuel parameter.
 --
--- It stays a `decl{ }` **and that is load-bearing**: `S26Fuel` §A compares its
--- `FnDef` against the fuel-threaded one, so this is a declaration consumed as a
--- VALUE by another file, not a program. What the statement form does to it is
--- pinned in `Tests.FnStmt` §E — refused at the check, by name, with §12 decision
--- 8's own words in the message.
+-- It stays a `decl{ }` **and that is load-bearing**: it is `S26Migrate.p6`, the
+-- whole of this file's pool, and `S27Dispose` §B's residue list reads "zero_all"
+-- off it — so this is a declaration consumed as a VALUE by another file, not a
+-- program. (Until M28 cluster C the cited reason was `S26Fuel` §A's comparison
+-- against the fuel-threaded twin; that assertion retired with the granular
+-- meta-assertions, and the pool is the reason that was underneath it.) What the
+-- statement form does to it is pinned in `Tests.FnStmt` §E — refused at the check,
+-- by name, with §12 decision 8's own words in the message.
 def zeroAll : FnDef :=
   decl{ fn zero_all [v] (v : &mut List Nat) -> Unit {
     match v {

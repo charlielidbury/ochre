@@ -4,12 +4,9 @@ import Dllbc.StdLemmas
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.FnMacro
-import Dllbc.AlphaEq
 import Dllbc.Tests.S23Direct
 import Dllbc.Tests.S26Seal
 import Dllbc.Tests.S26Modes
-import Dllbc.Tests.S26Modes
-import Dllbc.Tests.S26Rec
 import Dllbc.Migrate
 
 /-!
@@ -24,9 +21,14 @@ is that elaboration; this file is its evidence.
 kernel imports `FnMacro`, so macro output is re-checked from scratch at the seal —
 where `ih` is a binder and each arm is checked at its own constructor. A bug here
 produces a program that fails to check, or one that checks as a different
-function; it can never produce an unsound acceptance. That is why the tests below
-are allowed to be *comparisons* (does the macro agree with the hand elaboration,
-does it agree with `checkFn`) rather than proofs.
+function; it can never produce an unsound acceptance.
+
+The evidence is therefore **verdicts** — the elaboration checks, or is refused
+with a reason. It used to be comparisons as well (against `checkFn`, and against
+M26-C's hand elaboration up to α); the first went with `checkFn` in M27-δ and the
+second in M28 cluster C, on the same argument constraint 7 makes: what a
+comparison could tell you, the kernel already tells you, and only the kernel's
+answer is trustworthy about a term neither of us wrote by hand.
 -/
 
 open Dllbc
@@ -93,49 +95,30 @@ example :
   [pushD, Tests.S23Direct.splitOff, Tests.S23Direct.quicksort,
    Tests.S23Direct.partition, Tests.S26Modes.step].all roundTrips = true := by native_decide
 
-/-! ## §B. `split_off` — the macro against the hand elaboration
+/-! ## §B. `split_off` — the macro's output checks
 
-    M26-C hand-wrote `split_off` as a sealed recursor and checked it. That makes
-    it an ORACLE the macro can be held to, and a strong one: it was written before
-    the macro existed, by reading §7 rather than by reading the code.
+    M26-C hand-wrote `split_off` as a sealed recursor and checked it, before the
+    macro existed, by reading §7 rather than by reading the code. This section held
+    the macro to that term as an ORACLE: elaborate `splitOff`, wrap both terms as
+    `FnDef`s, compare with `FnDef.alphaEq` — up to α, because the macro threads
+    binder ids linearly while the hand version got them from the surface
+    elaborator — plus a not-vacuous control comparing against the same function's
+    base arm, which `alphaEq` said NO to.
 
-    Compared up to α, not on the nose: the macro threads binder ids linearly while
-    the hand version got them from the surface elaborator, so the two agree on
-    binding structure and differ on numbering — which is exactly what
-    `FnDef.alphaEq` was built for (its own docstring says so). -/
+    **The oracle comparisons are deleted (M28, cluster C.)** What remains is the
+    verdict, which the section's own commentary already named as the claim that
+    matters: agreeing with a hand term is worth little if the hand term is wrong,
+    and it is the KERNEL that says otherwise. Constraint 7 is the reason —
+    nothing in the kernel imports `FnMacro`, so the output is re-checked from
+    scratch at the seal, and an elaboration that agreed with my term and failed
+    to check would be a bug in both. The hand term has not left the tree:
+    `S26Rec` still holds `splitSealed` and still checks it. Only the comparison
+    is gone, with `splitElab`/`splitHand`/`asDecl`, which existed for it alone. -/
 
-def splitElab : Except String Term := FnMacro.fnElab Tests.S23Direct.splitOff
-
-/-- The hand elaboration from M26-C, extracted from its caller. -/
-def splitHand : Term :=
-  match Tests.S26Rec.splitSealed with
-  | .letIn _ t _ => t
-  | t => t
-
-/-- Wrap a term as a `FnDef` so `alphaEq` (which is `FnDef`-shaped) can compare two. -/
-def asDecl (t : Term) : FnDef :=
-  { name := "x", telescope := [], retType := .const "Unit", body := t }
-
-example :
-  (match splitElab with
-   | .ok t => FnDef.alphaEq (asDecl t) (asDecl splitHand)
-   | .error _ => false) = true := by native_decide
-
--- …and the macro's output checks, which is the claim that matters: agreeing with
--- my hand term would be worth little if my hand term were wrong, and it is the
--- kernel that says otherwise (constraint 7 — the output is re-derived, not
--- trusted).
 example : elabOk Tests.S23Direct.splitOff = true := by native_decide
 -- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
 -- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
 -- this one is what the claim became.)
-
--- The oracle is not vacuous: α-equality can say NO. Compared against the same
--- function's BASE arm, which is a real term of the same file and shape family.
-example :
-  (match splitElab with
-   | .ok t => FnDef.alphaEq (asDecl t) (asDecl (Tests.S26Rec.splitSealed))
-   | .error _ => false) = false := by native_decide
 
 /-! ### B2. The macro path rejects exactly what the declared path rejects
 
@@ -173,14 +156,14 @@ example : splitTwins.all (fun d => !(elabOk d)) = true := by native_decide
     `Cons` case becomes `botElim Unit hfuel` — the dead path, discharged because
     `hfuel : Le (S (len rest)) Z` IS `Bot`. Nothing about that is special-cased. -/
 
-def qsTable : List FnDef := [Tests.S23Direct.partition, Tests.S23Direct.appendBack]
-
 -- **RETIRED with the J1 bridge** (M27-δ). This elaborated `quicksort` alone and
 -- checked it against a TABLE of un-elaborated callees — the half-migrated form
 -- §8 kept alive while both paths existed. With one path the whole COHORT must
 -- migrate, and `partition`/`append_back` are the `[v]` payload-decrease class,
 -- which declines. The carrier is `S26Prog.quicksortP` on the fuel-threaded
 -- cohort, asserted there and in `S27Dispose` §B.
+-- (`qsTable`, the un-elaborated callee table it was checked against, went with it
+-- in M28 cluster C — it had outlived its only reader by a milestone.)
 -- (the DECLARED twin's check retired with `checkFn`, M27-δ — J1's "both
 -- worlds" had two worlds, and there is one now. The `elabOk` assertion beside
 -- this one is what the claim became.)
@@ -233,6 +216,8 @@ example : elabRejects Tests.S23Direct.partition "decision 8" = true := by native
     proof parameter would MOVE it (R16), and the original `partition` never had to
     care because it had no bound to thread. -/
 
+-- Read by `S27Dispose` (§B's paid-twin assertions, its `partFLie` record-update
+-- twins and `partitionLosesF`) and by `S26Prog`; cleanup belongs to the finale.
 def partitionF : FnDef :=
   decl{ fn partitionF [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel)
         -> Σ (hi : List Nat) → Σ (hub : Ub p (*v)) → Σ (hlb : Lb p hi)

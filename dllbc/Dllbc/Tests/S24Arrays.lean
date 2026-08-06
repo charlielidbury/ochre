@@ -614,11 +614,14 @@ def walk : FnDef := decl{
       Z => (),
       S(f2) => { let l = &mut (*a)[Z ; k | h]; walk(f2, k, k, le_refl k, l) }
     } } }
--- `walk` and `walkArr` below are the file's two G4 keep-cases: `S26Fuel` §B
--- compares their `telescope`/`retType`/`body`/`dec` FIELD BY FIELD (they are the
--- same function with the decreasing argument moved), and `S27Dispose` runs
--- `bothWays walk`. A `FnDef` a property is proved ABOUT is not a program, so both
--- stay declarations and this assertion stays on the bridge.
+-- `walk` and `walkArr` below are the file's two G4 keep-cases, and both are held
+-- as VALUES by other files: they are `S26Migrate.p24`, from which `S27Dispose` §B
+-- reads "walkArr" into its residue list, and `S26Fuel` §B and `S27Dispose` both
+-- run `bothWays walk`. (Until M28 cluster C the cited reason was `S26Fuel` §B's
+-- FIELD-BY-FIELD comparison of the two records; that went with the granular
+-- meta-assertions, and the pool membership is the reason that was underneath it.)
+-- A `FnDef` another file holds is not a program, so both stay declarations and
+-- this assertion stays on the bridge.
 example : Migrate.progOkOf walk = true := by native_decide
 
 /-! ### The regression test the doc asks for

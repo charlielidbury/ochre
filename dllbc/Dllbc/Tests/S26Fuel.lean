@@ -77,11 +77,14 @@ def zeroAllF : FnDef :=
     } } }
 
 example : bothWays zeroAllF = true := by native_decide
--- The `[v]` original is untouched and still DECLINES (J1); its own check went
--- with `checkFn`.
-example : (match FnMacro.fnElab Tests.S6Call.zeroAll with
-           | .error e => strContains e "decision 8"
-           | .ok _ => false) = true := by native_decide
+-- The `[v]` original is untouched and still DECLINES (J1), and the decline is
+-- asserted where it is a PROGRAM fact rather than a `fnElab` return value: the
+-- same function written as a `fn` statement is `FnStmt.refusedStmt`, rejected on
+-- `fnRefusedNeedle` and on "§12 decision 8" by name. `S6Call.zeroAll`'s decline
+-- is also what puts "zero_all" in `S27Dispose` §B's residue list, so a decline
+-- that stopped happening still reddens the build, with the name attached.
+-- (The `fnElab`-return-value assertion that used to sit here went in M28 cluster
+-- C, as one of the granular meta-assertions the e2e rule retires.)
 
 /-! ## §B. The ARRAY cursor was already paid, and the corpus says so
 
@@ -102,23 +105,19 @@ example : (match FnMacro.fnElab Tests.S6Call.zeroAll with
     the guard, the macro DECLINES it at `[a]`-on-a-borrow, and the reasons are the
     same fact seen from two sides. -/
 
-example : (Tests.S24Arrays.walk.telescope == Tests.S24Arrays.walkArr.telescope
-        && Tests.S24Arrays.walk.retType == Tests.S24Arrays.walkArr.retType
-        -- The bodies differ in one thing, which each declaration owes: the name
-        -- its own self-call uses.
-        && Tests.S24Arrays.walk.body
-             == FnMacro.renameSelf "walkArr" "walk" Tests.S24Arrays.walkArr.body) = true := by
-  native_decide
--- …differing in the hint alone, which is the whole of the migration.
-example : (Tests.S24Arrays.walk.dec == some 0 && Tests.S24Arrays.walkArr.dec == some 4)
-  = true := by native_decide
+-- **The field-by-field comparison went in M28 cluster C**, with the `.dec`
+-- comparison beside it. Two `FnDef` records agreeing on `telescope`/`retType`/
+-- `body` (up to `renameSelf`) and differing on `dec` is a structural
+-- meta-assertion, and the e2e rule retires those; what it was EVIDENCE for is the
+-- sentence above, which the two verdicts below carry between them — one form
+-- checks, the other declines, and the source shows they are the same function.
 example : bothWays Tests.S24Arrays.walk = true := by native_decide
 -- The `[a]` twin: ~~rejected by one path, declined by the other, for the same
--- fact~~ — the rejecting path is gone (M27-δ), so what is left is the decline,
--- which was always the more informative half: the macro says WHY.
-example : (match FnMacro.fnElab Tests.S24Arrays.walkArr with
-           | .error e => strContains e "decision 8"
-           | .ok _ => false) = true := by native_decide
+-- fact~~ — the rejecting path is gone (M27-δ), and the decline is now asserted
+-- where it is a name rather than an `Except` case: "walkArr" is in `S27Dispose`
+-- §B's residue list, which is computed by `declinedWith` over the pools, so it
+-- says exactly "the macro declines this one" with the identity attached and goes
+-- red if it ever stops.
 
 /-! ## §C. THE FINDING: most of the `[v]` class needs no fuel at all
 
@@ -158,33 +157,28 @@ example : (match FnMacro.fnElab Tests.S24Arrays.walkArr with
     name/telescope/retType/body/back and NOT `dec`, so the `alphaEq` mirror stayed
     green against a stale hint while the exact-`BEq` mirror went red. -/
 
-def nthI : FnDef := { Tests.S14Bounds.nth with dec := some 1 }
-def nth2I : FnDef := { Tests.S14Bounds.nth2 with dec := some 1 }
-
-/-- Nothing changed but the hint — and since M26-F adopted it, nothing changed at
-    all: the correction IS the corpus declaration now. -/
-example : (nthI == Tests.S14Bounds.nth && nth2I == Tests.S14Bounds.nth2
-        && Tests.S14Bounds.nth.dec == some 1
-        && Tests.S14Bounds.nth2.dec == some 1) = true := by native_decide
-
-example : bothWays nthI = true := by native_decide
-example : bothWays nth2I [nthI] = true := by native_decide
+-- **`nthI`/`nth2I`/`p14fixed` and their equality assertion went in M28 cluster C.**
+-- They were `{ S14Bounds.nth with dec := some 1 }` and a copy of `p14` built from
+-- them — the corrected hint SIMULATED in the harness — and the assertion beside
+-- them said "nothing changed but the hint". M26-F adopted the correction at the
+-- source, at which point each alias was `==` to the declaration it aliased, the
+-- pool copy was `==` to `S26Migrate.p14`, and both assertions had become
+-- structural comparisons of a record with itself. The subjects below are the
+-- corpus declarations directly, which is what the aliases had turned into.
+example : bothWays Tests.S14Bounds.nth = true := by native_decide
+example : bothWays Tests.S14Bounds.nth2 [Tests.S14Bounds.nth] = true := by native_decide
 
 /-- The whole family, hints corrected: 4 accept on both paths, 1 rejects on both
-    (`rejectProbe` is S14's own negative control), NOTHING declines. -/
-def p14fixed : List FnDef :=
-  [nthI, nth2I, Tests.S14Bounds.swap, Tests.S14Bounds.cascade, Tests.S14Bounds.rejectProbe]
--- Stated per declaration rather than as three counts (M28 μ, when the corpus-wide
--- census retired): a verdict VECTOR says which one rejects, where a tally only says
--- that one does — and `none` would be a decline, so "nothing declines" is still
--- carried, positionally.
-example : (p14fixed.map (Migrate.progVerdict p14fixed)
-  == [some true, some true, some true, some true, some false]) = true := by native_decide
--- …and since M26-F this is what the CORPUS pool reports too, not just this
--- section's copy of it. Before the adoption the same five functions declined five
--- times (`report p14 == R 0 0 5`, S26Migrate §Y as it then read).
+    (`rejectProbe` is S14's own negative control), NOTHING declines. Read off the
+    CORPUS pool, not a local copy of it.
+
+    Stated per declaration rather than as three counts (M28 μ, when the corpus-wide
+    census retired): a verdict VECTOR says which one rejects, where a tally only says
+    that one does — and `none` would be a decline, so "nothing declines" is still
+    carried, positionally. Before M26-F's adoption the same five functions declined
+    five times (`report p14 == R 0 0 5`, S26Migrate §Y as it then read). -/
 example : (Tests.S26Migrate.p14.map (Migrate.progVerdict Tests.S26Migrate.p14)
-  == p14fixed.map (Migrate.progVerdict p14fixed)) = true := by native_decide
+  == [some true, some true, some true, some true, some false]) = true := by native_decide
 
 /-! ## §D. What is left needing fuel, and one macro gap this section found
 
@@ -206,10 +200,15 @@ example : (Tests.S26Migrate.p14.map (Migrate.progVerdict Tests.S26Migrate.p14)
     rule; the binding is not in scope in its own right-hand side"), and a macro
     refusal would paper over the demonstration. -/
 
-example : (match FnMacro.fnElab { Tests.S6Call.zeroAll with dec := none } with
-           | .error _ => false
-           | .ok t => progRejects (.letIn ⟨900, "zero_all"⟩ t .unit) "unknown function")
-  = true := by native_decide
+-- `zero_all` with its hint simply REMOVED, written as a program (M28 cluster C —
+-- it used to be `fnElab` on a record update, wrapped in a hand-built `letIn`).
+-- `FnStmt` §E is the same function WITH the hint, refused at decision 8; the two
+-- sit either side of the distinction this paragraph is about.
+def noHintStmt : Term := prog{
+  fn zero_all (v : &mut List Nat) -> Unit {
+    match v { Nil => (), Cons(hd, tl) => { *hd := 0; zero_all(tl); () } } };
+  () }
+example : progRejects noHintStmt "unknown function" = true := by native_decide
 -- Not vacuous: the same body WITH a hint (and the fuel §A threads) is a program
 -- that CHECKS, so the rejection above is about the missing recursor and not about
 -- the body.
