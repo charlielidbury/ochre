@@ -69,7 +69,13 @@ example : Migrate.progPathsOfT [anyNat, isZero] isZero
 def zeroHead : FnDef := caller prog{
   let x = anyList();
   let b = &mut x;
-  match b { Cons(hd, tl) => { *hd := 0; () }, Nil => () };
+  match b {
+    Cons(hd, tl) => {
+      *hd := 0;
+      ()
+    },
+    Nil => ()
+  };
   let y = x;
   ()
 }

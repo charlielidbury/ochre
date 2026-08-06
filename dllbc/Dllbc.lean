@@ -42,3 +42,4 @@ import Dllbc.Tests.S26Fuel
 import Dllbc.Tests.S27Dispose
 import Dllbc.Tests.S27Mixed
 import Dllbc.Tests.S27Lam
+import Dllbc.Tests.FnStmt

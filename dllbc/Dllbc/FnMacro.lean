@@ -504,6 +504,40 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
       (rest.map (retarget binds)) (ev.map (retarget binds)) (eq.map (retarget binds))
   | t => t
 
+/-! ## The statement form's lowering (M28 θ)
+
+    `fn` is a STATEMENT of the one grammar (Uni.lean), and a statement elaborates
+    to a `Term`. There is no `Except` for the macro to pattern-match on, because
+    the macro runs on SYNTAX while `fnElab` runs on the elaborated `Term`s — so
+    the two refusal timings are genuinely different and the difference has to be
+    handled rather than wished away.
+
+    Cheap syntactic refusals stay at Lean elaboration, where `decl{ }` already put
+    them: `[k]` naming a non-parameter is a name-to-index resolution the macro
+    performs anyway, so it throws there. Everything `fnElab` refuses is SEMANTIC —
+    it needs the elaborated telescope type to see that `[v]` decreases through a
+    borrow's payload, or that a scrutinee is neither `Nat` nor `List A` — and those
+    are deliberately NOT duplicated as syntactic checks. Two implementations of one
+    rule is one implementation too many, and the copy would be the one that drifts.
+
+    So a refusal becomes a term the checker refuses DISTINCTIVELY: an unknown
+    function whose NAME carries `fnElab`'s own message. Three things make that the
+    right sentinel rather than a hack — it can never check (an unbound `.call` is
+    unconditionally rejected, and this one's name is unwritable), it is reached
+    unconditionally (the `let`'s right-hand side is evaluated at the binding, so it
+    does not wait for a call site), and the diagnosis survives to the message,
+    prefixed by a needle no other error can produce. -/
+
+/-- The needle a refused `fn` statement is recognised by. -/
+def fnRefusedNeedle : String := "§fn-lowering-refused"
+
+/-- `fnElab`, made total for the statement form: a refusal becomes a term whose
+    rejection carries the refusal. -/
+def fnElabOrFail (d : FnDef) : Term :=
+  match fnElab d with
+  | .ok t => t
+  | .error e => .call s!"{fnRefusedNeedle}: {e}" []
+
 /-- The program-level binding ids. Chosen above every id a body mints (the
     elaborated terms are checked against this below) and below the executing
     machine's frame base, so a global is neither shadowed by a local nor mistaken

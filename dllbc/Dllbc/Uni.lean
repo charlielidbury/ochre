@@ -1,5 +1,6 @@
 import Lean
 import Dllbc.Machine
+import Dllbc.FnMacro
 
 /-!
 # `decl{ … }` — a surface macro for whole `FnDef`s (§5 boundaries)
@@ -168,6 +169,14 @@ syntax uterm : uarmBody                                      -- bare expression 
 syntax ident "=>" uarmBody : uarm                            -- nullary pattern
 syntax ident "(" ident,* ")" "=>" uarmBody : uarm            -- applied pattern C(x, y)
 
+-- **`fn` is a STATEMENT** (M28 θ). §8 says a declaration is a `let`, and §7 says
+-- what its right-hand side is — a seal over a recursor or a runtime λ. Put those
+-- together and there is nothing for a separate top-level declaration macro to do:
+-- `fn f (…) -> R { … } ; rest` is that `let`, written where a `let` is written.
+-- The binder telescope reuses `ulamb`, the runtime λ's binder category, because it
+-- is the same thing — a list of `x : τ` — and a second category for it would be a
+-- second thing to keep in step.
+syntax "fn" ident ("[" ident "]")? "(" ulamb,* ")" "->" uterm "{" ublk "}" ";" ublk : ublk
 syntax "let" ident "=" uterm ";" ublk : ublk                 -- runtime let (→ letIn)
 syntax uterm ":=" uterm ";" ublk : ublk                      -- assignment
 syntax uterm ";" ublk : ublk                                 -- expression statement (seq)
@@ -539,6 +548,18 @@ partial def elabLamBinders (rctx : List (String × Nat)) (pctx : List String) (n
     let (rctx', n2, more) ← elabLamBinders ((name, next) :: rctx) pctx n1 rest
     pure (rctx', n2, #[entry] ++ more)
 
+/-- Build the telescope entry syntaxes, threading the runtime-var context so that
+    parameter `i`'s type sees exactly params `0 .. i-1` (each at its positional
+    id) — the `seedTelescope` convention. Types elaborate in type mode (⇝). -/
+partial def buildTele (rctx : List (String × Nat)) (i : Nat) :
+    List (String × TSyntax `uterm) → MacroM (Array (TSyntax `term))
+  | [] => pure #[]
+  | (nm, τ) :: rest => do
+    let (τT, _) ← elabUTerm true rctx [] 0 τ
+    let entry ← `((($(quote nm), $τT) : String × Dllbc.Term))
+    let rest' ← buildTele (rctx ++ [(nm, i)]) (i + 1) rest
+    pure (#[entry] ++ rest')
+
 partial def elabUArms (rctx : List (String × Nat)) (pctx : List String) (next : Nat) :
     List (TSyntax `uarm) → MacroM (Array (TSyntax `term) × Nat)
   | [] => pure (#[], next)
@@ -570,6 +591,58 @@ partial def elabUArmBody (rctx : List (String × Nat)) (pctx : List String) (nex
 partial def elabUBlk (isTy : Bool) (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
     (stx : TSyntax `ublk) : MacroM (TSyntax `term × Nat) := do
   match stx with
+  -- **`fn` — the declaration statement** (M28 θ). This is `FnMacro.progOf` unrolled
+  -- one binding at a time, and reusing its two moving parts rather than
+  -- reimplementing them is what makes the two paths agree by construction:
+  --
+  --   * the right-hand side is `fnElabOrFail`, i.e. `fnElab` — the §7 lowering,
+  --     with a refusal turned into a term the checker refuses distinctively;
+  --   * the REST is passed through `retarget`, which is how a call written in the
+  --     tail finds the binding. That is not an optimisation over putting the name
+  --     in `rctx`: `retarget` also PERMUTES a call's arguments to match a
+  --     `[k]`-hoisted callee's telescope, and a `.callV` minted at the surface
+  --     would skip the permutation. Eight functions in this corpus have a `[k]`
+  --     that is not parameter 0, so the difference is real and silent.
+  --
+  -- Passing `rest` through `retarget` rather than binding the name in `rctx` also
+  -- reproduces §8's scoping exactly: the name is not in scope in its own
+  -- right-hand side (a self-call becomes `ih` or is refused), and it cannot be
+  -- referenced upward, because `retarget` only ever sees what comes after.
+  | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) -> $ret:uterm { $body:ublk } ; $rest:ublk) => do
+    if isTy then
+      Macro.throwErrorAt name "fn: a declaration is a runtime binding (§8: a declaration is a `let`) and cannot appear in a ⇝ position — `pure{ }`, a telescope entry, a return type. Bind it in the program and pass what the ⇝ position needs."
+    checkBinder name
+    let parsed ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
+      | `(ulamb| $x:ident : $τ:uterm) => pure (x.getId.toString, τ)
+      | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"
+    let names := parsed.map (·.1)
+    let n := names.length
+    -- The telescope's own §5.2 positional context, and the body's: parameter `i`
+    -- at runtime id `i`, fresh binders from `n`. Identical to what `decl{ }` builds
+    -- — deliberately, since the `FnDef` this produces has to BE the one it builds.
+    let fullRctx : List (String × Nat) := names.zip (List.range n)
+    let teleSyns ← buildTele [] 0 parsed
+    let (retT, _) ← elabUTerm true fullRctx [] 0 ret
+    let (bodyT, _) ← elabUBlk false fullRctx [] n body
+    let decT ← match dec with
+      | none => `((none : Option Nat))
+      | some d =>
+        match idxOf? names.reverse d.getId.toString with     -- reverse: idxOf? is innermost-first
+        | some i => `(some $(quote (n - 1 - i)))
+        | none => Macro.throwErrorAt d s!"fn: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
+    let nm := name.getId.toString
+    -- The slot. `progBase + next` rather than `next` itself, because a function's
+    -- OWN body numbers its parameters from 0 and a binding that collided with one
+    -- of its callees' parameters would be read as that parameter. `next` is
+    -- consumed here so two `fn`s in a block cannot land on one slot; the arithmetic
+    -- is emitted rather than computed, so `progBase` stays the single definition of
+    -- where globals live.
+    let slot ← `((⟨Dllbc.FnMacro.progBase + $(quote next), $(quote nm)⟩ : Dllbc.Var))
+    let (rest', n2) ← elabUBlk isTy rctx pctx (next + 1) rest
+    return (← `(Dllbc.Term.letIn $slot
+                  (Dllbc.FnMacro.fnElabOrFail
+                    (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))
+                  (Dllbc.FnMacro.retarget [($(quote nm), $slot, $decT)] $rest')), n2)
   | `(ublk| let $x:ident = $e:uterm ; $rest:ublk) => do
     checkBinder x
     let (e', n1) ← elabUTerm isTy rctx pctx next e
@@ -703,18 +776,6 @@ partial def elabUGenElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : Lis
     Macro.throwError "elim generalizing: only Bool motives supported (§18); Nat/List use the `return` form"
 
 end
-
-/-- Build the telescope entry syntaxes, threading the runtime-var context so that
-    parameter `i`'s type sees exactly params `0 .. i-1` (each at its positional
-    id) — the `seedTelescope` convention. Types elaborate in type mode (⇝). -/
-partial def buildTele (rctx : List (String × Nat)) (i : Nat) :
-    List (String × TSyntax `uterm) → MacroM (Array (TSyntax `term))
-  | [] => pure #[]
-  | (nm, τ) :: rest => do
-    let (τT, _) ← elabUTerm true rctx [] 0 τ
-    let entry ← `((($(quote nm), $τT) : String × Dllbc.Term))
-    let rest' ← buildTele (rctx ++ [(nm, i)]) (i + 1) rest
-    pure (#[entry] ++ rest')
 
 end DeclMacro
 
