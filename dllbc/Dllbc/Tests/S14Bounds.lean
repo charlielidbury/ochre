@@ -1,9 +1,8 @@
+import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.ProgMacro
 import Dllbc.Std
-import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
-import Dllbc.Migrate
 
 /-!
 # §14 test suite — bounds-proof cursors
@@ -114,7 +113,7 @@ example : progOk swapBody = true := by native_decide
 
 -- CONCRETELY: `swap(v, 0, 2)` on `[1,2,3]` yields `[3,2,1]`.
 example :
-    (match Dllbc.Tests.S9Diff.runExec [] swapBody with
+    (match Dllbc.Tests.S9Diff.runExec swapBody with
      | .ok env => env.lookup "y" == some (vlist [3, 2, 1])
      | .error _ => false) = true := by native_decide
 
@@ -150,6 +149,6 @@ example : progRejects rejectProbe "nothing surrendered" = true := by native_deci
 
 /-! ## Differential coverage — bounds-proof pool, concrete proofs by computation -/
 
-example : Dllbc.Tests.S9Diff.diffV2 [] swapBody = true := by native_decide
+example : Dllbc.Tests.S9Diff.diffV2 swapBody = true := by native_decide
 
 end Dllbc.Tests.S14Bounds

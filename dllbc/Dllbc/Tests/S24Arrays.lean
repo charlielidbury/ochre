@@ -1,10 +1,8 @@
 import Dllbc.Program
 -- for the `walk`/`walkArr` keep-cases' bridge assertion (see §(iv))
-import Dllbc.Migrate
 import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.StdLemmas
 import Dllbc.Tests.S9Diff
 
@@ -826,7 +824,7 @@ def arrCallers : List Term := [arrCaller1, arrCaller2, arrCaller3]
 
 example : arrCallers.all (fun b => progOk b) = true := by native_decide
 
-example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 [] b)
+example : arrCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 b)
     = true := by native_decide
 
 /-! ### FINDING — the simulation relation needed an array case, and the harness said so

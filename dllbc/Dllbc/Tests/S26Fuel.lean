@@ -1,9 +1,7 @@
 import Dllbc.Program
-import Dllbc.Migrate
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.FnMacro
 import Dllbc.Tests.S6Call

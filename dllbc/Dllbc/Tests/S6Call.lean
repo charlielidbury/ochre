@@ -1,7 +1,6 @@
+import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.ProgMacro
-import Dllbc.DeclMacro
-import Dllbc.Migrate
 
 /-!
 # §5.3 test suite — calls as wires

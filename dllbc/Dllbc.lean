@@ -7,9 +7,7 @@ import Dllbc.Std
 import Dllbc.Uni
 import Dllbc.PureMacro
 import Dllbc.StdLemmas
-import Dllbc.DeclMacro
 import Dllbc.Program
-import Dllbc.Migrate
 import Dllbc.ProgMacro
 import Dllbc.Tests.S2
 import Dllbc.Tests.S3

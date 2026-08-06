@@ -1,3 +1,4 @@
+import Dllbc.Program
 import Dllbc.Tests.S19Partition
 import Dllbc.Tests.S25ArrSort
 import Dllbc.Tests.S26Fuel
@@ -54,7 +55,7 @@ open Dllbc
 
 namespace Dllbc.Tests.S27Dispose
 
-open Dllbc.Migrate Dllbc.Tests
+open Dllbc.Tests
 open Dllbc.StdLemmas (Ub Lb len)
 
 /-! ## §A. The instrument, asserted before any conclusion

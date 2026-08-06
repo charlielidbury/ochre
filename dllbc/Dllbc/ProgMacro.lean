@@ -38,6 +38,6 @@ namespace Dllbc
 syntax "prog{" ublk "}" : term
 
 macro_rules
-  | `(prog{ $b:ublk }) => do let (t, _) ← Dllbc.DeclMacro.elabUBlk false [] [] 0 b; pure t
+  | `(prog{ $b:ublk }) => do let (t, _) ← Dllbc.Surface.elabUBlk false [] [] 0 b; pure t
 
 end Dllbc

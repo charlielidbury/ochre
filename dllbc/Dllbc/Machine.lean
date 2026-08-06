@@ -32,38 +32,18 @@ is kernel-transparent for the later proof phase. Later milestones add
 
 namespace Dllbc
 
-/-- **A function definition on its way to a `let`** (M27-δ, renamed from `Decl`).
+/-! **`FnDef` has left this file** (M28 D9). It was the declaration record — a
+    name, a telescope, a return type, a body and `[k]` — and §8 made a declaration
+    a `let` of a sealed λ, so there is no declaration FORM in the calculus and no
+    table in `St` for one to live in.
 
-    ~~A function declaration (§1.2). Lives here so the checking context (`St`) can
-    carry a table of them — a call is checked against a signature only, never
-    another body.~~ Both halves of that are gone: §8 makes a program a term and a
-    declaration a `let` of a sealed λ, so there is no declaration FORM in the
-    calculus and no table in `St` for one to live in. What is left is a surface
-    record — what `decl{ … }` builds and `FnMacro.fnElab` consumes — carrying the
-    four things a `let` of a seal needs: a name to bind, a telescope and a return
-    type to make the Π, and a body.
+    Its docstring has said "it is deliberately NOT in the kernel's vocabulary any
+    more" since M27-δ, and that was true of the RULES and false of the file: `St`
+    still carried a `decls` table, `.call` still looked a name up in it, and the
+    type was still declared here. All three are gone. `FnDef` is `FnMacro`'s own
+    record now — what a `fn` statement builds and `fnElab` consumes — and nothing
+    below the macro layer knows the type exists. -/
 
-    It is deliberately NOT in the kernel's vocabulary any more. `St.fsig` holds
-    the ascribed Π itself and `callDeclC` takes a telescope and a return type, so
-    nothing below the macro layer knows this type exists. -/
-structure FnDef where
-  name : String
-  telescope : List (String × Term)
-  retType : Term
-  body : Term
-  /-- §1.2's `[k]` — now purely the **scrutinee-selection hint**: which parameter
-      the elaboration recurses on, hoisted to the front so the motive is the
-      sealed Π with that binder peeled off (§7).
-
-      ~~The decreasing-argument index. A self-call is admitted at this function's
-      declared return type only if the actual at index `k` is a strict structural
-      predecessor of that parameter's current snapshot.~~ **The guard it named is
-      gone** (M27-δ), and §7's word for what happened is the right one: it
-      EVAPORATED rather than being deleted. A recursive occurrence is the `ih`
-      binder and a binder cannot be a self-call, so there is no rule left for a
-      side condition to attach to. `none` now means only "does not recurse", with
-      no rejection riding on it. -/
-  dec : Option Nat := none
 
 /-- What an argument borrow owes at the boundary: its slot variable, its loan
     id, and the owed type (§5.1's `S`, instantiated at the entry snapshot).
@@ -140,8 +120,9 @@ structure St where
   groups : List Group := []
   /-- Fresh-supply for group ρ ids. -/
   nextGroup : Nat := 0
-  /-- The function table, for the call rule. -/
-  decls : List FnDef := []
+  -- (`decls`, the function table the `.call` rule looked names up in, retired in
+  -- M28 D9 with `FnDef`. Scope is the call table: a callee is a binding lexically
+  -- above the call, resolved by the surface into a `.callV` on that slot.)
   /-- The argument-borrow obligations (§5.1), seeded from the telescope and
       audited at return. Held in state (not just returned by `seedTelescope`)
       so a §10 Refl refinement propagates into the owed types — see
@@ -3097,19 +3078,13 @@ mutual
       | .seq e rest => do
         let _ ← readR fuel e                             -- evaluate for effect, discard
         readR fuel rest
-      | .call f args => do
-        match (← get).decls.find? (fun d => d.name == f) with
-        | none => throwErr s!"call: unknown function '{f}'"
-        | some decl =>
-          if (← get).executing then do
-            -- EXECUTING (§9 differential): run the callee's ACTUAL body under a
-            -- fresh var-id window, so shared borrows propagate naturally.
-            let offset ← (do let s ← get; set { s with nextFrame := s.nextFrame + 128 }; pure s.nextFrame)
-            bindActuals fuel offset 0 decl.telescope args
-            let res ← readR fuel (shiftVars offset decl.body)
-            releaseFrameLoans fuel offset res.loanIds
-            pure res
-          else callDeclC fuel decl.telescope decl.retType args
+      -- **A `.call` never resolves** (M28 D9). §8's scope IS the call table: the
+      -- surface turns `f(…)` into a `.callV` on the binding lexically above it, so
+      -- a `.call` that survives to here names nothing — a forward reference, a
+      -- typo, or a function that was never declared. It used to consult `St.decls`,
+      -- the J1 bridge for half-migrated programs, and the corpus has no half-
+      -- migrated programs left.
+      | .call f _ => throwErr s!"call: unknown function '{f}'"
       -- **The seal** (combining-fns §5): opacity as one node. The two readings
       -- are the two machines'.
       | .seal t u => do
@@ -3569,23 +3544,11 @@ mutual
         else throwErr s!"call: argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
     | _, _, _, _, _ => throwErr "call: arity mismatch (arguments vs telescope)"
   termination_by fuel _ _ _ args => (fuel, 1, args.length)
-  /-- Executing mode (§9): ⇒-read each actual and bind it to the callee's
-      argument var, shifted into the fresh frame window at `offset`. -/
-  def bindActuals (fuel offset : Nat) : Nat → List (String × Term) → List Term → M Unit
-    | _, [], [] => pure ()
-    | i, (name, _) :: tRest, arg :: aRest => do
-      -- The executing machine takes §6's comptime-argument rule too, in lockstep
-      -- (constraint 6). A capital parameter's actual is ⇝-read here as well, so
-      -- the two machines agree on what the CALLER still holds afterwards — which
-      -- is the observable the differential compares. Erasure is enforced by the
-      -- fence on the callee's uses, not by declining to bind the slot: a body
-      -- that never observes it is indistinguishable from one that cannot.
-      let x : Var := ⟨i, name⟩
-      let v ← if x.isComptime then readComptimeArg fuel arg else readR fuel arg
-      bindSlot ⟨i + offset, name⟩ v
-      bindActuals fuel offset (i + 1) tRest aRest
-    | _, _, _ => throwErr "executeCall: arity mismatch (actuals vs telescope)"
-  termination_by _ _ args => (fuel, 1, args.length)
+  -- (`bindActuals` — executing mode's telescope binder for a TABLE callee —
+  -- retired in M28 D9 with the table. Its rule survives where it is still needed:
+  -- `applyR`'s runtime-λ application takes §6's comptime-argument rule in lockstep
+  -- for the same reason, so the two machines still agree on what a caller holds
+  -- after a capital argument.)
   /-- Application of a value callee that is NOT a sealed function: the phase-A
       rules (β for a λ, abstract application at a `Val` Π) plus M26-C's
       ⇒-application (`applyR`) for a runtime λ or a recursor spine. Split out

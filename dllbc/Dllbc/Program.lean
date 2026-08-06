@@ -23,10 +23,11 @@ snapshots — a program has no need of: it takes no arguments. So `checkProgram`
 `explore` plus the audit of each path's result, and nothing else.
 
 **Scope is the call table.** A callee is a binding lexically above the call
-(`.callV` on a slot, resolved by the surface from scope alone), so the `table`
-parameter below defaults to EMPTY — the flagship programs are checked against no
-table at all. It survives only as J1's bridge for half-migrated programs, whose
-un-migrated callees are still `FnDef`s.
+(`.callV` on a slot, resolved by the surface from scope alone), so there is no
+table at all — not an empty one. The `table` parameter these entry points carried
+was J1's bridge for half-migrated programs, whose un-migrated callees were still
+`FnDef`s; the corpus has none, and the bridge retired with `FnDef`'s departure
+from the kernel (M28 D9).
 
 **No forward references, by construction.** A let-chain cannot reference
 downward: a name used before its binding is not in scope, so it does not resolve
@@ -57,12 +58,10 @@ partial def endScope (fuel : Nat) : M Unit := do
   | none => pure ()
 
 /-- **Check a program** (§8): one symbolic ⇒-walk, auditing each path's result at
-    `retType`. `table` is J1's bridge and defaults to empty — scope is the call
-    table. -/
-def checkProgram (t : Term) (retType : Term := .const "Unit")
-    (table : List FnDef := []) : Except String Unit :=
+    `retType`. No table: scope is the call table (§8). -/
+def checkProgram (t : Term) (retType : Term := .const "Unit") : Except String Unit :=
   auditPaths retType
-    ((explore defaultFuel (pushContinuations t) { initSt with decls := table }).map
+    ((explore defaultFuel (pushContinuations t) initSt).map
       (fun r => r.bind (fun p =>
         match (endScope defaultFuel).run p.2 with
         | .ok _ st => .ok (p.1, st)
@@ -70,16 +69,16 @@ def checkProgram (t : Term) (retType : Term := .const "Unit")
 
 /-- **Run a program** (§8): ⇒-evaluate it, concretely (executing mode — a call
     runs the callee's actual body), and return the final canonicalized Ω. -/
-def runProgram (t : Term) (table : List FnDef := []) : Except String Env :=
+def runProgram (t : Term) : Except String Env :=
   match (do let _ ← readR defaultFuel (pushContinuations t); endScope defaultFuel).run
-      { initSt with decls := table, executing := true } with
+      { initSt with executing := true } with
   | .ok _ st => .ok (canonicalize (st.env.filter (·.1.id < 10000)))
   | .error e _ => .error e
 
 /-- The symbolic paths' final environments — for inspecting *what* a program
     leaves in Ω, and for the differential's checking side. -/
-def programEnvs (t : Term) (table : List FnDef := []) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) { initSt with decls := table }).map
+def programEnvs (t : Term) : List (Except String Env) :=
+  (explore defaultFuel (pushContinuations t) initSt).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize (st.env.filter (·.1.id < 10000)))
@@ -88,8 +87,8 @@ def programEnvs (t : Term) (table : List FnDef := []) : List (Except String Env)
 /-! ## Test helpers -/
 
 /-- The program checks. -/
-def progOk (t : Term) (retType : Term := .const "Unit") (table : List FnDef := []) : Bool :=
-  match checkProgram t retType table with | .ok _ => true | .error _ => false
+def progOk (t : Term) (retType : Term := .const "Unit") : Bool :=
+  match checkProgram t retType with | .ok _ => true | .error _ => false
 
 /-- The program is rejected, with `needle` in the message.
 
@@ -97,9 +96,8 @@ def progOk (t : Term) (retType : Term := .const "Unit") (table : List FnDef := [
     `hasType` returns `false` for "does not have this type" and the audit turns
     that into an error, so a helper that collapsed error and false would let a
     *stuckness* pass for a *typing* rejection. -/
-def progRejects (t : Term) (needle : String) (retType : Term := .const "Unit")
-    (table : List FnDef := []) : Bool :=
-  match checkProgram t retType table with
+def progRejects (t : Term) (needle : String) (retType : Term := .const "Unit") : Bool :=
+  match checkProgram t retType with
   | .ok _ => false
   | .error e => strContains e needle
 
@@ -107,12 +105,12 @@ def progRejects (t : Term) (needle : String) (retType : Term := .const "Unit")
     stuck. The weaker half of `progRunsTo`, for the case where the final Ω is not
     predictable — a generated body's, say — and the claim is exactly "this is not
     stuck". -/
-def progRuns (t : Term) (table : List FnDef := []) : Bool :=
-  match runProgram t table with | .ok _ => true | .error _ => false
+def progRuns (t : Term) : Bool :=
+  match runProgram t with | .ok _ => true | .error _ => false
 
 /-- The program runs to the given final Ω. -/
-def progRunsTo (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
-  match runProgram t table with | .ok env => env == expected | .error _ => false
+def progRunsTo (t : Term) (expected : Env) : Bool :=
+  match runProgram t with | .ok env => env == expected | .error _ => false
 
 -- (`progRunErr` — the execution counterpart of `progRejects` — retired in M28 ο
 -- with zero users. Nothing in the corpus asserts that a program's RUN gets stuck:
@@ -137,8 +135,8 @@ def progRunsTo (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
     is. (`Migrate.progEnvsOfT` said the same thing about the same hazard for the
     `FnDef` path; it retired with its users in M28 ο, so this is now the only
     statement of it.) -/
-def tailEnvs (t : Term) (table : List FnDef := []) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations t) { initSt with decls := table }).map
+def tailEnvs (t : Term) : List (Except String Env) :=
+  (explore defaultFuel (pushContinuations t) initSt).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
@@ -146,8 +144,8 @@ def tailEnvs (t : Term) (table : List FnDef := []) : List (Except String Env) :=
       | .error e _ => .error e))
 
 /-- One path, and the tail leaves exactly this Ω. -/
-def tailEnv (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
-  match tailEnvs t table with
+def tailEnv (t : Term) (expected : Env) : Bool :=
+  match tailEnvs t with
   | [.ok env] => env == expected
   | _ => false
 
@@ -155,8 +153,8 @@ def tailEnv (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
     each leaving exactly this Ω. The COUNT is half the assertion: a symbolic match
     SPLITS the run, and a check of the environments alone would still pass if the
     forking stopped. -/
-def tailPaths (t : Term) (expected : List Env) (table : List FnDef := []) : Bool :=
-  let rs := tailEnvs t table
+def tailPaths (t : Term) (expected : List Env) : Bool :=
+  let rs := tailEnvs t
   rs.length == expected.length &&
     (rs.zip expected).all (fun pr => match pr.1 with | .ok env => env == pr.2 | .error _ => false)
 

@@ -1,6 +1,5 @@
 import Dllbc.Program
 import Dllbc.ProgMacro
-import Dllbc.DeclMacro
 
 /-!
 # Differential v2 — whole-program simulation (§9)
@@ -175,34 +174,34 @@ def instanceOfC (symEnv concEnv : Env) : Bool :=
 
 /-- Executing mode: run a body concretely (calls run callee bodies), returning
     the caller's own final Ω (frame vars id ≥ 10000 filtered out). -/
-def runExec (table : List FnDef := []) (body : Term) : Except String Env :=
-  match (readR defaultFuel body).run { initSt with decls := table, executing := true } with
+def runExec (body : Term) : Except String Env :=
+  match (readR defaultFuel body).run { initSt with executing := true } with
   | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
       kv.1.id < FnMacro.progBase && kv.1.id < 10000)))
   | .error e _ => .error e
 
 /-- Checking mode: the accepted symbolic paths' final environments. -/
-def symEnvs (table : List FnDef := []) (body : Term) : List (Except String Env) :=
-  (explore defaultFuel (pushContinuations body) { initSt with decls := table }).map
+def symEnvs (body : Term) : List (Except String Env) :=
+  (explore defaultFuel (pushContinuations body) initSt).map
     (fun r => r.map (fun p => canonicalize (p.2.env.filter (fun kv =>
       kv.1.id < FnMacro.progBase && kv.1.id < 10000))))
 
 /-- The differential: the concrete final env is an instance of some symbolic
     path's final env. -/
-def diffV2 (table : List FnDef := []) (body : Term) : Bool :=
-  match runExec table body with
+def diffV2 (body : Term) : Bool :=
+  match runExec body with
   | .error _ => false
-  | .ok concEnv => (symEnvs table body).any (fun r => match r with
+  | .ok concEnv => (symEnvs body).any (fun r => match r with
       | .ok se => instanceOf se concEnv
       | .error _ => false)
 
 /-- The differential under the MERGED relation (M26-C). Same property, a relation
     that no longer reports a false counterexample on a program that carves *and*
     computes. -/
-def diffC (table : List FnDef := []) (body : Term) : Bool :=
-  match runExec table body with
+def diffC (body : Term) : Bool :=
+  match runExec body with
   | .error _ => false
-  | .ok concEnv => (symEnvs table body).any (fun r => match r with
+  | .ok concEnv => (symEnvs body).any (fun r => match r with
       | .ok se => instanceOfC se concEnv
       | .error _ => false)
 
@@ -233,7 +232,7 @@ def accepted : List Term := callers.filter (fun b => progOk b)
 
 -- Every accepted caller's concrete run is a σ-instance of an accepted symbolic
 -- path — the whole-program simulation theorem, over the caller set.
-example : accepted.all (fun b => diffV2 [] b) = true := by native_decide
+example : accepted.all (fun b => diffV2 b) = true := by native_decide
 
 /-! ## The advance caller, which the validation below is about -/
 
@@ -241,7 +240,7 @@ def advCallerBody : Term :=
   withPool (prog{ let x = Cons(1, Cons(2, Nil)); let b = &mut x; let r = advance(b); *r := Cons(9, Nil); let y = x; () })
 
 -- The real behaviour: the opaque σ matches the concrete value. GREEN.
-example : diffV2 [] advCallerBody = true := by native_decide
+example : diffV2 advCallerBody = true := by native_decide
 
 /-! ### The same validation, at the COMPARATOR (M28 σ)
 
@@ -272,13 +271,13 @@ def honestSym : Env := [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)]
 
 -- The concrete run holds `Cons 1 (Cons 9 Nil)` — the write landed in the TAIL, and
 -- the head is still there. The lie is not an instance of it, under either relation.
-example : (match runExec [] advCallerBody with
+example : (match runExec advCallerBody with
            | .ok ce => instanceOf constrainedLie ce || instanceOfC constrainedLie ce
            | .error _ => true) = false := by native_decide
 
 -- …and the honest σ is, under both — so the refusal above is discrimination and
 -- not a relation that says NO to everything.
-example : (match runExec [] advCallerBody with
+example : (match runExec advCallerBody with
            | .ok ce => instanceOf honestSym ce && instanceOfC honestSym ce
            | .error _ => false) = true := by native_decide
 
@@ -289,11 +288,11 @@ example : (match runExec [] advCallerBody with
     where the array programs live (`S26Rec`, over `S24Arrays`' callers); here is
     the σ-at-a-slot half, plus the harness validation that decides it. -/
 
-example : accepted.all (fun b => diffC [] b) = true := by native_decide
+example : accepted.all (fun b => diffC b) = true := by native_decide
 -- The merged relation can still say NO, and about the same wrong refinement:
 -- computation does not launder it, because pass 2 compares the INSTANTIATED value.
 -- Asserted above, at the comparator, over `constrainedLie` — `instanceOfC` is one
 -- of the two relations that refuses it.
-example : diffC [] advCallerBody = true := by native_decide
+example : diffC advCallerBody = true := by native_decide
 
 end Dllbc.Tests.S9Diff

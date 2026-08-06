@@ -19,7 +19,7 @@ time. What used to live here — a parallel `pterm` category with its own `elabP
 `elabElim` and `elabGenElim` — was superseded when the unified grammar absorbed
 them and was carried dead afterwards; it is gone (M28 ε).
 
-Name resolution for a bare identifier `x` (`DeclMacro.resolveName`):
+Name resolution for a bare identifier `x` (`Surface.resolveName`):
   * a **bound** name → its de Bruijn `pvar` (index = binders since it was bound);
   * an earlier telescope parameter → its absolute runtime `var`;
   * a known **constructor** (`Z`, `S`, `Cons`, `Refl`, `unit`, …) → `ctorApp`;
@@ -41,6 +41,6 @@ namespace Dllbc
 syntax "pure{" ublk "}" : term
 
 macro_rules
-  | `(pure{ $b:ublk }) => do let (t, _) ← Dllbc.DeclMacro.elabUBlk true [] [] 0 b; pure t
+  | `(pure{ $b:ublk }) => do let (t, _) ← Dllbc.Surface.elabUBlk true [] [] 0 b; pure t
 
 end Dllbc

@@ -52,7 +52,36 @@ Self-calls then become `ih` applications with the scrutinee argument dropped, an
     elaboration assumes, and both are better said than silently mis-elaborated.
 -/
 
-namespace Dllbc.FnMacro
+namespace Dllbc
+
+/-- **The declaration record** — what a `fn` statement builds and `fnElab`
+    consumes. It carries the four things a `let` of a seal needs: a name to bind, a
+    telescope and a return type to make the Π, and a body.
+
+    It lives HERE, above the macro and below nothing (M28 D9). §8 made a
+    declaration a `let` of a sealed λ, so there is no declaration form in the
+    calculus and nothing in `Machine`/`Boundary` has a use for this type: `St.fsig`
+    holds the ascribed Π itself and `callDeclC` takes a telescope and a return
+    type. It was declared in `Machine.lean` for four milestones after that stopped
+    being true, which is the ordinary way a claim in a docstring outlives the code
+    that made it so. -/
+structure FnDef where
+  name : String
+  telescope : List (String × Term)
+  retType : Term
+  body : Term
+  /-- §1.2's `[k]` — purely the **scrutinee-selection hint**: which parameter the
+      elaboration recurses on, hoisted to the front so the motive is the sealed Π
+      with that binder peeled off (§7).
+
+      The guard it once named is gone (M27-δ), and §7's word for what happened is
+      the right one: it EVAPORATED rather than being deleted. A recursive
+      occurrence is the `ih` binder and a binder cannot be a self-call, so there is
+      no rule left for a side condition to attach to. `none` now means only "does
+      not recurse", with no rejection riding on it. -/
+  dec : Option Nat := none
+
+namespace FnMacro
 
 /-! ## Abstraction: a runtime parameter into a pure binder
 
@@ -609,4 +638,6 @@ def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
       pure (.letIn ⟨progBase + i, d.name⟩ (retarget above t) (← go (i + 1) rest))
   go 0 ds
 
-end Dllbc.FnMacro
+end FnMacro
+
+end Dllbc

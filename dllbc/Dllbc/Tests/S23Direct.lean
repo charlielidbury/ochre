@@ -1,10 +1,9 @@
+import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
-import Dllbc.Migrate
 
 /-!
 # §23 test suite — direct proving with NO declared backward specs
@@ -556,7 +555,7 @@ def soCallerTail (l : List Nat) (i : Nat) : Term :=
       (.letIn ⟨2, "p"⟩ (.call "split_off" [.var ⟨1, "b"⟩, tnatT i, .unit])
         (.matchE ⟨2, "p"⟩ none [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
 def runSplit (l : List Nat) (i : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (soUnder soHonest (soCallerTail l i)) with
+  match Dllbc.Tests.S9Diff.runExec (soUnder soHonest (soCallerTail l i)) with
   | .ok env => env.lookup "y" == some (vlistV (l.take i)) && env.lookup "rr" == some (vlistV (l.drop i))
   | .error _ => false
 
@@ -704,7 +703,7 @@ def setCallerTail (l : List Nat) (i x : Nat) : Term :=
       (.seq (.call "set_at" [.var ⟨1, "b"⟩, tnatT i, tnatT x, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runSetAt (l : List Nat) (i x : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (setSwapUnder setHonest swapHonest (setCallerTail l i x)) with
+  match Dllbc.Tests.S9Diff.runExec (setSwapUnder setHonest swapHonest (setCallerTail l i x)) with
   | .ok env => env.lookup "y" == some (vlistV (l.set i x))
   | .error _ => false
 
@@ -718,7 +717,7 @@ def swapCallerTail (l : List Nat) (i j : Nat) : Term :=
       (.seq (.call "swap_at" [.var ⟨1, "b"⟩, tnatT i, tnatT j, .unit, .unit, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runSwapAt (l : List Nat) (i j : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (setSwapUnder setHonest swapHonest (swapCallerTail l i j)) with
+  match Dllbc.Tests.S9Diff.runExec (setSwapUnder setHonest swapHonest (swapCallerTail l i j)) with
   | .ok env =>
     match l.get? i, l.get? j with
     | some a, some b => env.lookup "y" == some (vlistV ((l.set i b).set j a))
@@ -789,7 +788,7 @@ def insCallerTail (l : List Nat) (k x : Nat) : Term :=
       (.seq (.call "insert_at" [.var ⟨1, "b"⟩, tnatT k, tnatT x])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runInsertAt (l : List Nat) (k x : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (insUnder insHonest (insCallerTail l k x)) with
+  match Dllbc.Tests.S9Diff.runExec (insUnder insHonest (insCallerTail l k x)) with
   | .ok env => env.lookup "y" == some (vlistV (l.take k ++ [x] ++ l.drop k))
   | .error _ => false
 
@@ -1781,8 +1780,7 @@ def partCallerTail (l : List Nat) (pvv : Nat) : Term :=
         (.matchE ⟨2, "r"⟩ none
           [.mk "Pair" [⟨3, "hi"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "z"⟩) .unit)])))
 def runPart (l : List Nat) (pvv : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec []
-      (qsUnder partHonest qsHonest suffHonest (partCallerTail l pvv)) with
+  match Dllbc.Tests.S9Diff.runExec (qsUnder partHonest qsHonest suffHonest (partCallerTail l pvv)) with
   | .ok env =>
     env.lookup "y" == some (vlistV (l.filter (fun a => decide (a <= pvv)))) &&
     env.lookup "hi" == some (vlistV (l.filter (fun a => decide (pvv < a))))
@@ -1804,7 +1802,7 @@ def qsCallerTail (l : List Nat) : Term :=
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def qsRun (l : List Nat) : Term := qsUnder partHonest qsHonest suffHonest (qsCallerTail l)
 def runQs (l : List Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (qsRun l) with
+  match Dllbc.Tests.S9Diff.runExec (qsRun l) with
   | .ok env => env.lookup "y" == some (vlistV (l.mergeSort (fun a b => a <= b)))
   | .error _ => false
 

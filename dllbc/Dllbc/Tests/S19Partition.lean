@@ -1,10 +1,9 @@
+import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
-import Dllbc.Migrate
 
 /-!
 # §19 test suite — partition (model + imperative), built on the M18 stack
@@ -521,7 +520,7 @@ def partCaller (lst : List Nat) (n : Nat) : Term :=
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
 
 def runPart (lst : List Nat) (n : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (withScan (partCaller lst n)) with
+  match Dllbc.Tests.S9Diff.runExec (withScan (partCaller lst n)) with
   | .ok env => env.lookup "y" == some (pv (partLT n lst))
   | .error _ => false
 
@@ -620,7 +619,7 @@ def swapLebCaller (lst : List Nat) : Term :=
         (.seq (.call "lebProbe" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 5])
           (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
 def runSwapLebProbe (lst : List Nat) (expect : List Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (withCursors certHonest exitHonest (swapLebCaller lst)) with
+  match Dllbc.Tests.S9Diff.runExec (withCursors certHonest exitHonest (swapLebCaller lst)) with
   | .ok env => env.lookup "y" == some (vlist expect)
   | .error _ => false
 -- Before the fix this errored (leb scrutinee stuck on `loanₘ`); now the reborrow
@@ -638,7 +637,7 @@ def swapTwiceCaller (lst : List Nat) : Term :=
         (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
           (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
 def runSwapTwice (lst : List Nat) (expect : List Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [] (withCursors certHonest exitHonest (swapTwiceCaller lst)) with
+  match Dllbc.Tests.S9Diff.runExec (withCursors certHonest exitHonest (swapTwiceCaller lst)) with
   | .ok env => env.lookup "y" == some (vlist expect)
   | .error _ => false
 example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide

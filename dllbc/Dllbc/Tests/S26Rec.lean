@@ -1,8 +1,8 @@
+import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
 import Dllbc.Tests.S24Arrays
 import Dllbc.Tests.S26Seal
@@ -60,9 +60,9 @@ namespace Dllbc.Tests.S26Rec
     was a declaration; that file is programs now (M28 ν) and has none, so the file
     that still needs them owns them. -/
 
-def ok (d : FnDef) (table : List FnDef := [d]) : Bool := Migrate.progOkOf d table
-def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
-  Migrate.progRejectsOf d needle table
+-- (`ok`/`rejects` — the `FnDef`-taking verdict helpers — retired in M28 D9 with
+-- their last subject. Every subject in this file is a program, and
+-- `progOk`/`progRejects` take one directly.)
 
 /-! ## §A. The runtime λ — the form, and the four things it is not -/
 
@@ -71,14 +71,14 @@ def rejects (d : FnDef) (needle : String) (table : List FnDef := [d]) : Bool :=
 -- and inlining here, and neither machine verifies anything the other does not.
 def a1 : Term := prog{ let g = λ(a : Nat) { let b = S(a); S(b) }; let r = g(1); () }
 example : progOk a1 = true := by native_decide
-example : diffC [] a1 = true := by native_decide
+example : diffC a1 = true := by native_decide
 
 -- A2. A runtime function value is INDEX-KIND, so calling it is a place read and
 -- the slot survives. `ih` depends on this: `quicksort` recurses twice from one
 -- arm, and a callee that moved out of its slot could be called once.
 def a2 : Term := prog{ let g = λ(a : Nat) { S(a) }; let r = g(1); let s = g(4); () }
 example : progOk a2 = true := by native_decide
-example : diffC [] a2 = true := by native_decide
+example : diffC a2 = true := by native_decide
 
 /-! ### A3. CLOSED — checked, not assumed
 
@@ -271,7 +271,7 @@ example : progOk b4v = true := by native_decide
 
 -- C1. The recursor programs: every one of them, both machines, same Ω.
 def recShapes : List Term := [a1, a2, b1, b2, b3, b4v]
-example : recShapes.all (fun t => diffC [] t) = true := by native_decide
+example : recShapes.all (fun t => diffC t) = true := by native_decide
 
 -- C2. THE CARVE HALF, kept. `S24Arrays`' callers are the programs that forced the
 -- segment case into the relation in the first place ("the first array body handed
@@ -282,15 +282,15 @@ example : recShapes.all (fun t => diffC [] t) = true := by native_decide
 -- (the pool went with M28 ν: each caller declares its own callee, so the table is
 -- empty and the shape is one self-contained program.)
 example : Tests.S24Arrays.arrCallers.all
-    (fun b => diffC [] b) = true := by native_decide
+    (fun b => diffC b) = true := by native_decide
 
 -- C3. THE COMPUTATION HALF, kept: phase A's counterexample, where a seal puts a σ
 -- inside ordinary arithmetic and the structural matcher reports a counterexample
 -- that is not one.
 -- (`d1` is a PROGRAM since M28 ν, so the body is the thing itself — the `.body`
 -- projection went with the declaration that used to wrap it.)
-example : diffC [] Tests.S26Seal.d1 = true := by native_decide
-example : Tests.S26Seal.diffOld [] Tests.S26Seal.d1 = false := by native_decide
+example : diffC Tests.S26Seal.d1 = true := by native_decide
+example : Tests.S26Seal.diffOld Tests.S26Seal.d1 = false := by native_decide
 
 /-! ### C4. Harness liveness — the relation must be able to say NO about a RECURSOR
 
@@ -315,13 +315,13 @@ def b1short : Term := prog{
 example : slotOf b1short "y" = some "Cons Z (Cons (S (S Z)) Nil)" := by native_decide
 
 example :
-  (match symEnvs [] b1, runExec [] b1short with
+  (match symEnvs b1, runExec b1short with
    | [.ok se], .ok ce => instanceOfC se ce
    | _, _ => true) = false := by native_decide
 -- …and YES to the honest pairing, so the NO above is discrimination rather than a
 -- relation that cannot see recursor programs at all.
 example :
-  (match symEnvs [] b1, runExec [] b1 with
+  (match symEnvs b1, runExec b1 with
    | [.ok se], .ok ce => instanceOfC se ce
    | _, _ => false) = true := by native_decide
 
@@ -378,7 +378,7 @@ def e1 : Term := prog{
   let y = x;
   () }
 example : progOk e1 = true := by native_decide
-example : diffC [] e1 = true := by native_decide
+example : diffC e1 = true := by native_decide
 
 /-! ### E2. The ensures, threaded through the seal (§5 point 4)
 
@@ -569,9 +569,9 @@ example : (slotOf f1 "y").map (fun s => s.take 1) = some "σ" := by native_decid
 
 -- …and the SAME program executes, with the recursion really running: both
 -- machines, one differential.
-example : diffC [] f1 = true := by native_decide
+example : diffC f1 = true := by native_decide
 example :
-  (match Dllbc.Tests.S9Diff.runExec [] f1 with
+  (match Dllbc.Tests.S9Diff.runExec f1 with
    | .ok e => (e.lookup "y").map Val.pretty
    | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
 
@@ -915,12 +915,12 @@ example : progOk j1 = true := by native_decide
 -- It really splits: after `split_off` at index 1 the borrow's payload keeps the
 -- first element and the rest came back by value inside the returned Σ.
 example :
-  (match Dllbc.Tests.S9Diff.runExec [] j1 with
+  (match Dllbc.Tests.S9Diff.runExec j1 with
    | .ok e => (e.lookup "y").map Val.pretty
    | .error _ => none) = some "Cons (S Z) Nil" := by native_decide
 
 -- …and the two machines agree on the whole final Ω.
-example : diffC [] j1 = true := by native_decide
+example : diffC j1 = true := by native_decide
 
 /-! ## §K. Both dispatch surfaces (the phase-B lesson, audited rather than assumed)
 
@@ -1054,7 +1054,7 @@ example : progRejects m1 "reached by NAME" = true := by native_decide
 
 -- EXECUTING: the same program runs to completion and really zeroes the list,
 -- because there `ih` is a `Val.rfn` and the `.rfn` case copies it.
-example : (match Dllbc.Tests.S9Diff.runExec [] m1 with
+example : (match Dllbc.Tests.S9Diff.runExec m1 with
    | .ok e => (e.lookup "x").map Val.pretty
    | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
 
@@ -1070,7 +1070,7 @@ def m0 : Term := prog{
   f(3, b);
   () }
 example : progOk m0 = true := by native_decide
-example : (match Dllbc.Tests.S9Diff.runExec [] m0 with
+example : (match Dllbc.Tests.S9Diff.runExec m0 with
    | .ok e => (e.lookup "x").map Val.pretty
    | .error _ => none) = some "Cons Z (Cons Z Nil)" := by native_decide
 

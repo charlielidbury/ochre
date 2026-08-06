@@ -2,7 +2,6 @@ import Dllbc.Program
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.Tests.S9Diff
 
@@ -426,10 +425,10 @@ abbrev instanceOfComputed := Dllbc.Tests.S9Diff.instanceOfC
 
 /-- The differential, under S9Diff's relation — kept so the gap is exhibited, not
     asserted. -/
-def diffOld (table : List FnDef) (body : Term) : Bool :=
-  match runExec table body with
+def diffOld (body : Term) : Bool :=
+  match runExec body with
   | .error _ => false
-  | .ok ce => (symEnvs table body).any
+  | .ok ce => (symEnvs body).any
       (fun r => match r with | .ok se => instanceOf se ce | .error _ => false)
 
 /-! ### D1. The counterexample that names the new case -/
@@ -438,8 +437,8 @@ def d1 : Term := prog{ let a = (3 : Nat); let b = add a 1; () }
 example : progOk d1 = true := by native_decide
 -- The old relation calls this a counterexample. It is not one: the two
 -- environments agree at σ0 := 3.
-example : diffOld [] d1 = false := by native_decide
-example : diffC   [] d1 = true  := by native_decide
+example : diffOld d1 = false := by native_decide
+example : diffC   d1 = true  := by native_decide
 
 /-! ### D2. The four shapes constraint 6 asks for, all GREEN -/
 
@@ -453,7 +452,7 @@ example : diffC   [] d1 = true  := by native_decide
     entering the λ) and cannot be RUN, and D2b's concrete side would fail before the
     relation was consulted. It rode in the `table` parameter as a `FnDef` for exactly
     that reason until M28 D5, when `decl{ }` retired and there was no `FnDef` to put
-    there. Giving it a parameter is the smaller change and costs the section
+    there — and the parameter itself went in D9. Giving it a parameter is the smaller change and costs the section
     nothing: what D2b needs is a callee whose result the checker knows ONLY as a σ,
     and a call's result is minted fresh at any arity.
 
@@ -477,11 +476,12 @@ def d2d : Term := prog{
   fn apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
   let f = λ (x : Nat). S x; let r = apply1(f, 2); let s = f(7); () }
 
-def shapes : List (List FnDef × Term) :=
-  [ ([], d2a), ([], d2b), ([], d2c), ([], d2d) ]
+-- A shape is the whole program now — no table beside it, because there is no
+-- table (M28 D9).
+def shapes : List Term := [d2a, d2b, d2c, d2d]
 
-example : shapes.all (fun p => progOk p.2 (.const "Unit") p.1) = true := by native_decide
-example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
+example : shapes.all (fun t => progOk t (.const "Unit")) = true := by native_decide
+example : shapes.all diffC = true := by native_decide
 
 /-! ### D3. Harness liveness — the relation must be able to say NO
 
@@ -493,13 +493,13 @@ example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
 def d3mutant : Term := prog{ let a = 3; let b = add a 2; () }
 
 example :
-  (match symEnvs [] d1, runExec [] d3mutant with
+  (match symEnvs d1, runExec d3mutant with
    | [.ok se], .ok ce => instanceOfComputed se ce
    | _, _ => true) = false := by native_decide
 -- …and it says YES to the honest pairing, so the NO above is discrimination, not
 -- a broken relation.
 example :
-  (match symEnvs [] d1, runExec [] d1 with
+  (match symEnvs d1, runExec d1 with
    | [.ok se], .ok ce => instanceOfComputed se ce
    | _, _ => false) = true := by native_decide
 

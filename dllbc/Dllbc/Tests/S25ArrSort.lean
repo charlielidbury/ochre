@@ -1,12 +1,11 @@
+import Dllbc.Program
 import Dllbc.Boundary
 import Dllbc.ProgMacro
 import Dllbc.Std
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.StdLemmas
 import Dllbc.Tests.S9Diff
 import Dllbc.Tests.S23Direct
-import Dllbc.Migrate
 
 /-!
 # §25 test suite — the in-place array partition, and the array quicksort
@@ -43,10 +42,8 @@ def chkL (tm ty : Term) : Bool :=
 
 def pv (t : Term) : Val := Val.nfV 4000 (Val.Term.toValPure t)
 
-def progMsg (d : FnDef) (tbl : List FnDef := [d]) : String :=
-  match FnMacro.progOf (Migrate.cohort tbl d) .unit with
-  | .error e => "ELAB: " ++ e
-  | .ok t => match checkProgram t with | .ok _ => "OK" | .error e => e
+-- (`progMsg`, the debugging helper that printed a declaration's check message,
+-- retired in M28 D9 with `Migrate.cohort`.)
 
 /-! ## (i) The partition layer's predicates and their nil lemmas -/
 
@@ -708,12 +705,12 @@ def splCaller (l : List Nat) (pvt : Nat) : Term :=
         (.letIn ⟨3, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 
 def runQsA (l : List Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec [] (arrUnder sHonest pHonest qHonest qSuffHonest (qsCallerA l)) with
+  match Dllbc.Tests.S9Diff.runExec (arrUnder sHonest pHonest qHonest qSuffHonest (qsCallerA l)) with
   | .ok env => (env.lookup "y").bind arrOfV
   | .error _ => none
 
 def runSplA (l : List Nat) (pvt : Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec [] (arrUnder sHonest pHonest qHonest qSuffHonest (splCaller l pvt)) with
+  match Dllbc.Tests.S9Diff.runExec (arrUnder sHonest pHonest qHonest qSuffHonest (splCaller l pvt)) with
   | .ok env => (env.lookup "y").bind arrOfV
   | .error _ => none
 
@@ -721,8 +718,8 @@ def sortedRef (l : List Nat) : List Nat := l.mergeSort (fun a b => a <= b)
 
 /-- Did it run at all — used by the G7 probes below, where the point is acceptance and
     execution agreeing rather than the value. -/
-def runsAtAll (tbl : List FnDef) (t : Term) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec tbl t with | .ok _ => true | .error _ => false
+def runsAtAll (t : Term) : Bool :=
+  match Dllbc.Tests.S9Diff.runExec t with | .ok _ => true | .error _ => false
 
 /-! ### (vi.a) It really sorts, in place, on concrete arrays
 
@@ -797,7 +794,7 @@ example : runSplA [] 2 == some [] := by native_decide
 -- caller as its tail (M28 D3), so the sort that runs here is the one checked
 -- there, rather than three `FnDef`s handed over as a table.
 def runQsL (l : List Nat) : Option (List Nat) :=
-  match Dllbc.Tests.S9Diff.runExec [] (Dllbc.Tests.S23Direct.qsRun l) with
+  match Dllbc.Tests.S9Diff.runExec (Dllbc.Tests.S23Direct.qsRun l) with
   | .ok env => (env.lookup "y").bind (listOfV 2000)
   | .error _ => none
 
@@ -825,7 +822,7 @@ def qsCallers : List Term := [qsCallerA [3, 1, 2], qsCallerA [2, 1], qsCallerA [
 example : qsCallers.all (fun b => progOk (arrUnder sHonest pHonest qHonest qSuffHonest b))
     = true := by native_decide
 
-example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 [] (arrUnder sHonest pHonest qHonest qSuffHonest b))
+example : qsCallers.all (fun b => Dllbc.Tests.S9Diff.diffV2 (arrUnder sHonest pHonest qHonest qSuffHonest b))
     = true := by native_decide
 
 /-! ## (vii) The five probes that located C6, kept as its regression
@@ -970,7 +967,7 @@ example : progOk citedCallerOk = true := by native_decide
 /-- (2) …and it RUNS, which is the half that was broken. Before the ruling the checker
     accepted callers the concrete machine got stuck on; now acceptance and execution
     agree on this shape, which is M8/M9's differential property restored for it. -/
-example : runsAtAll [] citedCallerOk = true := by native_decide
+example : runsAtAll citedCallerOk = true := by native_decide
 
 /-- (3) The caller that used to be the counterexample. `n = 2` with `i = j = 5` type-
     checked before the ruling and then got stuck executing; now `Refl` cannot inhabit

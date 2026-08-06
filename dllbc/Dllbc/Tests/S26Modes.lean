@@ -252,14 +252,14 @@ example : progOk b9lo = true := by native_decide
     the fixed basis, which is what makes `G(n)` above a call rather than a
     silently-mistyped `ctorApp "G"`. B7 is that assertion. -/
 
-example : DeclMacro.reservedBinder "Cons" = true := by native_decide
-example : DeclMacro.reservedBinder "Nat" = true := by native_decide
+example : Surface.reservedBinder "Cons" = true := by native_decide
+example : Surface.reservedBinder "Nat" = true := by native_decide
 -- Lowercase names are NOT reserved: they were always shadowable, shadowing them
 -- is ordinary scoping, and reserving `j`/`k` would cost every program its loop
 -- indices for no disambiguation at all (`insert_at`'s own `k` parameter).
-example : DeclMacro.reservedBinder "k" = false := by native_decide
-example : DeclMacro.reservedBinder "unit" = false := by native_decide
-example : DeclMacro.reservedBinder "Hfuel" = false := by native_decide
+example : Surface.reservedBinder "k" = false := by native_decide
+example : Surface.reservedBinder "unit" = false := by native_decide
+example : Surface.reservedBinder "Hfuel" = false := by native_decide
 
 /-! ## §C. Capital `let` — the comptime binding, and what it actually buys
 
@@ -708,8 +708,7 @@ example : progOk i3s = true := by native_decide
 -- Ωs — sealed (a σ) on the checking side, the actual λ on the executing side —
 -- and the relation binds the one to the other, which is the same σ-instance
 -- reading it applies everywhere else.
-def shapes : List (List FnDef × Term) :=
-  [ ([], i1), ([], i2), ([], i3), ([], i3s) ]
-example : shapes.all (fun p => diffC p.1 p.2) = true := by native_decide
+def shapes : List Term := [i1, i2, i3, i3s]
+example : shapes.all diffC = true := by native_decide
 
 end Dllbc.Tests.S26Modes

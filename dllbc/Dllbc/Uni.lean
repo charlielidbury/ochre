@@ -12,9 +12,10 @@ in ⇝ mode, and the two differ by exactly the `isTy` flag — this calculus's
 `ublk` (M28 θ), so a declaration is written where a `let` is written and there is
 no separate declaration surface to learn.
 
-`decl{ }` (DeclMacro.lean) is also built on this grammar, but it is no longer the
-language's surface: it produces an `FnDef` **value** and survives for the tests
-that need one — see its header for the four consumer classes.
+**There are exactly two macros**, and they are the two above (M28 D9). `decl{ }`,
+the legacy declaration former that produced an `FnDef` *value*, is deleted: `fn`
+is a statement, so the value it produced has no consumer that is not the statement
+itself. The elaborator's namespace is `Surface`, which is what it always was.
 
 ## Type positions
 
@@ -47,13 +48,13 @@ the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
 
 ## Body
 
-A function's body — whether reached through the `fn` statement or through
-`decl{ }` — is `ublk` in TERM mode with the telescope names pre-bound in order at
-ids `0 .. n-1` and fresh binders minted from `n`, the `seedTelescope` convention.
-That is the only place in the surface where a name arrives pre-bound. Bodies laden
-with pure proof terms (a `botElim` ex-falso branch, a `le_rw_r` bound derivation)
-are awkward to write as statements; for those `decl{ }` has the escape hatch
-`= %term`, which splices a raw `Term`.
+A function's body is `ublk` in TERM mode with the telescope names pre-bound in
+order at ids `0 .. n-1` and fresh binders minted from `n`, the `seedTelescope`
+convention. That is the only place in the surface where a name arrives pre-bound.
+Bodies laden with pure proof terms (a `botElim` ex-falso branch, a `le_rw_r` bound
+derivation) can be spliced whole with `%term`, which is a `uterm` and therefore a
+block's final expression — the escape hatch `decl{ … = %t }` used to provide,
+available uniformly wherever an expression is.
 -/
 
 open Lean
@@ -197,7 +198,7 @@ syntax uterm ":=" uterm ";" ublk : ublk                      -- assignment
 syntax uterm ";" ublk : ublk                                 -- expression statement (seq)
 syntax uterm : ublk                                          -- final expression
 
-namespace DeclMacro
+namespace Surface
 open Lean
 
 /-- Innermost-first de Bruijn index of `s` in `l`. -/
@@ -797,6 +798,6 @@ partial def elabUGenElim (isTy : Bool) (rctx : List (String × Nat)) (pctx : Lis
 
 end
 
-end DeclMacro
+end Surface
 
 end Dllbc

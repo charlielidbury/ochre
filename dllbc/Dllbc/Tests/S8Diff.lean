@@ -1,8 +1,7 @@
+import Dllbc.Program
 import Dllbc.Boundary
-import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.PureMacro
-import Dllbc.Migrate
 
 /-!
 # Differential suite — the simulation theorem in testable form (§8)

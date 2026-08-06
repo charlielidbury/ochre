@@ -2,10 +2,8 @@ import Dllbc.Program
 import Dllbc.FnMacro
 import Dllbc.Std
 import Dllbc.StdLemmas
-import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.Tests.S26Prog
-import Dllbc.Migrate
 
 /-!
 # S27 — the annotated runtime λ (M27 α.1a)

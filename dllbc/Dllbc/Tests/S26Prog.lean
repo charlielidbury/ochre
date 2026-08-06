@@ -2,7 +2,6 @@ import Dllbc.Program
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro
-import Dllbc.DeclMacro
 import Dllbc.ProgMacro
 import Dllbc.FnMacro
 import Dllbc.Tests.S9Diff
@@ -54,10 +53,10 @@ namespace Dllbc.Tests.S26Prog
     it already took a TERM. -/
 
 /-- The concrete final Ω is a σ-instance of some accepted symbolic path's. -/
-def progDiff (t : Term) (table : List FnDef := []) : Bool :=
-  match runProgram t table with
+def progDiff (t : Term) : Bool :=
+  match runProgram t with
   | .error _ => false
-  | .ok concEnv => (programEnvs t table).any (fun r => match r with
+  | .ok concEnv => (programEnvs t).any (fun r => match r with
       | .ok se => Tests.S9Diff.instanceOfC se concEnv
       | .error _ => false)
 
