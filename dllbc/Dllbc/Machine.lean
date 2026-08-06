@@ -821,23 +821,52 @@ def writeC (place : Term) (refined : Val) : M Unit := do
     are then normalized by `nfV`. -/
 
 /-! Reflect a comptime term into a value, resolving Ω snapshot reads. Pure
-    formers map to their `Val` counterparts; runtime-only constructs error. -/
+    formers map to their `Val` counterparts; runtime-only constructs error.
+
+    **`let` is read by β** (M29 α), through the `Val.LetCtx` declared in
+    `Pure.lean` — shared with `Term.toValPure`, the monad-free reflection, so that
+    the rule is stated once. The reading it replaces bound the reflected value
+    into Ω, and that was wrong twice over. Both were measured before this was
+    written (M29 step-0 probe 2), because both are the silent kind:
+
+      * **Binder depth was ignored.** The value went into Ω and came back
+        unshifted, so `λ. let y = #0 ; λ. y` reflected to `λ. λ. #0` where β gives
+        `λ. λ. #1`.
+      * **Ids collided, and the OLDER binding won.** The Ω entry was minted at the
+        `letIn`'s ABSOLUTE id, and `bindSlot` appends where `lookupSlot` takes the
+        first match — so a `let` whose id was already a slot bound a shadow that
+        nothing ever read: `readC` of `let h = S Z ; h` against an Ω holding
+        `#0 ↦ Z` returned `Z`. Absolute ids make that reachable rather than
+        hypothetical, since a `pure{ }` block numbers its binders from 0 and so
+        does every telescope.
+
+    Neither had ever been hit, because the surface's ⇝ `let` was a β-redex and
+    emitted no `letIn` at all; pointing it at one — which is what merges the two
+    fragments' `let` — is exactly what would have hit both. A scope that is local
+    to the reflection, innermost-first, and discarded when it returns has neither,
+    and it also retires §1.3's "the comptime read's one sanctioned footprint on Ω"
+    caveat: ⇝ now writes nothing whatsoever. -/
 mutual
-  def reflectC : Term → M Val
+  def reflectC (lc : Val.LetCtx) : Term → M Val
     | .var x => do
-      -- snapshot read (non-destructive) — but §2.1: every read-shaped rule
-      -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
-      -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
-      -- pure value and surfacing layers later as an opaque untypeable ⊥ (the
-      -- M21 `partIdxL n ⊥` etiology: reading the owned-consumed scrutinee).
-      match ← lookupSlot x with
-      | .bot => throwErr s!"readC (⇝): {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized in a comptime read)"
-      | v => pure v
+      -- A ⇝ `let` binding first: it is the innermost scope there is, and it is
+      -- the one Ω knows nothing about.
+      match lc.find? x.id with
+      | some v => pure v
+      | none =>
+        -- snapshot read (non-destructive) — but §2.1: every read-shaped rule
+        -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
+        -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
+        -- pure value and surfacing layers later as an opaque untypeable ⊥ (the
+        -- M21 `partIdxL n ⊥` etiology: reading the owned-consumed scrutinee).
+        match ← lookupSlot x with
+        | .bot => throwErr s!"readC (⇝): {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized in a comptime read)"
+        | v => pure v
     | .deref t => do
-      match ← reflectC t with
+      match ← reflectC lc t with
       | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
       | _ => throwErr "readC (⇝ *): dereferenced value is not a borrow"
-    | .ctorApp n args => do pure (.ctor n (← reflectCList args))
+    | .ctorApp n args => do pure (.ctor n (← reflectCList lc args))
     | .type => pure .type
     | .const c => pure (.const c)
     | .pvar k => pure (.pvar k)
@@ -845,10 +874,13 @@ mutual
     -- it: `beq` is mode-blind, so no comptime judgment can branch on a mode
     -- (§6, "case is inert under ⇝"). It is here so that ⇒ can read it off a
     -- value callee's Π — the one arrow that is entitled to ask.
-    | .cmpT τ => do pure (.cmpT (← reflectC τ))
-    | .pi d c => do pure (.pi (← reflectC d) (← reflectC c))
-    | .sigmaT d c => do pure (.sigmaT (← reflectC d) (← reflectC c))
-    | .lam d b => do pure (.lam (← reflectC d) (← reflectC b))
+    | .cmpT τ => do pure (.cmpT (← reflectC lc τ))
+    -- The three pure BINDERS, and the one thing that is new below them: the
+    -- codomain/body is reflected one level deeper, so a `let` binding made
+    -- outside is lifted when it is read inside (`LetCtx.find?`).
+    | .pi d c => do pure (.pi (← reflectC lc d) (← reflectC lc.under c))
+    | .sigmaT d c => do pure (.sigmaT (← reflectC lc d) (← reflectC lc.under c))
+    | .lam d b => do pure (.lam (← reflectC lc d) (← reflectC lc.under b))
     -- §5.4 exit-snapshot marker: `markExit` stamps a bare borrow-param `*v` in a
     -- return type as `@exit(*v)`; here it pins to that borrow's fresh σ_exit (the
     -- audit later defines it as the collapsed final payload). Unmarked bare `*v`
@@ -856,37 +888,35 @@ mutual
     | .app (.const "@exit") (.deref (.var v)) => do
       match (← get).exitSyms.lookup v.id with
       | some σ => pure (.sym σ)
-      | none => reflectC (.deref (.var v))
+      | none => reflectC lc (.deref (.var v))
     -- §5.4 `old *v`: the ENTRY snapshot σ (recorded at seed) — a non-consuming read
     -- of the entry value, in the return type OR the body (where `*v`'s live payload
     -- has since been mutated). Falls back to the live deref outside a borrow-param.
     | .app (.const "old") (.deref (.var v)) => do
       match (← get).entrySyms.lookup v.id with
       | some σ => pure (.sym σ)
-      | none => reflectC (.deref (.var v))
-    | .app f a => do pure (.app (← reflectC f) (← reflectC a))
-    | .idT a b c => do pure (.idT (← reflectC a) (← reflectC b) (← reflectC c))
+      | none => reflectC lc (.deref (.var v))
+    | .app f a => do pure (.app (← reflectC lc f) (← reflectC lc a))
+    | .idT a b c => do pure (.idT (← reflectC lc a) (← reflectC lc b) (← reflectC lc c))
     | .unit => pure (.ctor "unit" [])
     | .letIn x rhs rest => do
-      -- Pure `let` (§1.3): reflect the rhs and bind it as a fresh Ω entry, then
-      -- reflect the body. The fresh pure entry is the comptime read's *only*
-      -- sanctioned footprint on Ω (the doc's §1.3 "no side effects at the type
-      -- level" is stated modulo exactly these let entries). Proof terms name
-      -- intermediates constantly, so this is un-deferred here.
-      let v ← reflectC rhs
-      bindSlot x v
-      reflectC rest
+      -- **⇝'s `let` is β** (M29 α; see the header for what this replaces). The rhs
+      -- reflects at the current depth, the binding is recorded at that depth, and
+      -- the body reads it back lifted to wherever it is used. Nothing is written
+      -- to Ω, so a comptime read has no footprint and two reads cannot disagree.
+      let v ← reflectC lc rhs
+      reflectC (lc.bind x.id v) rest
     -- ¶2.2's ⇝ column at the two new steps. The snapshot of an array place is the
     -- snapshot of the SEGMENT sitting there — exact, and needing no new constant.
     -- Read-only, as ⇝ must be: it merges a local copy to find the segment but never
     -- carves, so a place the program has not carved is honestly stuck here rather
     -- than silently reorganized inside a type.
     | .index t i _ => do
-      let a := Val.mergeArrays (← reflectC t)
-      navStep 1000 (.idx (Val.nfV 1000 (← reflectC i)) none) a
+      let a := Val.mergeArrays (← reflectC lc t)
+      navStep 1000 (.idx (Val.nfV 1000 (← reflectC lc i)) none) a
     | .range t lo (some cnt) _ _ _ => do
-      let a := Val.mergeArrays (← reflectC t)
-      navStep 1000 (.rng (Val.nfV 1000 (← reflectC lo)) (Val.nfV 1000 (← reflectC cnt)) none) a
+      let a := Val.mergeArrays (← reflectC lc t)
+      navStep 1000 (.rng (Val.nfV 1000 (← reflectC lc lo)) (Val.nfV 1000 (← reflectC lc cnt)) none) a
     | .range _ _ none _ _ _ =>
       -- `a[lo ; ..]` reads its count off the extent map, which is STATE; ⇝ is the
       -- read-only projection and may not consult it. Write the count in a type.
@@ -911,9 +941,9 @@ mutual
     -- `.lam` — domain-annotated, de Bruijn, body a pure term — and a `.lamR`
     -- would have to be reduced by binding named slots, which is ⇒'s move.
     | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x : τ, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
-  def reflectCList : List Term → M (List Val)
+  def reflectCList (lc : Val.LetCtx) : List Term → M (List Val)
     | [] => pure []
-    | t :: ts => do pure ((← reflectC t) :: (← reflectCList ts))
+    | t :: ts => do pure ((← reflectC lc t) :: (← reflectCList lc ts))
 end
 
 /-- ⇝: reflect, FOLD, then normalize. Ω is read-only throughout.
@@ -927,7 +957,7 @@ end
     was never carved. A still-suspended one is left as the state form it is and is
     rejected at the one place that judges. -/
 def readC (fuel : Nat) (t : Term) : M Val := do
-  pure (Val.nfV fuel (Val.arrFoldDeep (← reflectC t)))
+  pure (Val.nfV fuel (Val.arrFoldDeep (← reflectC {} t)))
 
 /-- ⇝ against extra bindings prepended to Ω — how a dependent call instantiates a
     callee telescope type (§5.3): the decl's parameter vars are bound to the

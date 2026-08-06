@@ -13,9 +13,11 @@ namespace Dllbc
     since §8 says a declaration is a `let` and §7 says what its right-hand side is;
     so this is the whole of the language's surface, with `pure{ }` beside it.
 
-    `pure{ … }` is the same grammar in ⇝ mode (a `let` there is a β-redex, not a
-    slot); the two differ by exactly the `isTy` flag, which is this calculus's
-    "one grammar, four arrows" showing up at the surface.
+    `pure{ … }` is the same grammar in ⇝ mode; the two differ by exactly the
+    `isTy` flag, which is this calculus's "one grammar, four arrows" showing up at
+    the surface. As of M29 α the flag no longer separates `let` — one row emits
+    `.letIn` and the kernel reads it under both arrows — so what is left of the
+    flag is `&mut`, and the `fn` statement's refusal to appear in a ⇝ position.
 
     **The empty context is not a limitation, and the three `…With`-style forms
     that thought it was are gone** (M28 η). Each pre-bound a list of names to ids

@@ -109,6 +109,88 @@ def substPure (j : Nat) (s : Val) (v : Val) : Val := substGo j 0 (pvarFree s) s 
 
 def substPureList (j : Nat) (s : Val) (vs : List Val) : List Val := substGoList j 0 (pvarFree s) s vs
 
+/-! ## `let`, and how the comptime fragment reads one (M29 α)
+
+    **`let` is a form BOTH arrows read.** ⇒ binds an Ω slot; ⇝'s reading is β —
+    `let x = e ; rest` is `rest` with `x`'s occurrences replaced by `e`'s value.
+    The two reflections that implement ⇝ (`Term.toValPure` below, monad-free, and
+    `reflectC` in `Machine.lean`, which additionally resolves Ω snapshots) share
+    this context so that there is one statement of the rule rather than two.
+
+    Doing β as a REWRITE — abstract `x` out of `rest`, then apply — would take
+    both reflections off their structural recursion, since the abstracted body is
+    not a subterm of anything. So the substitution is carried rather than applied:
+    a binding is recorded here and consulted at the `.var` that needs it, which is
+    the same reduction with the copies delayed.
+
+    **The DEPTH is why this is a context and not a list.** A let-bound value may
+    mention pure de Bruijn variables — `λ (n : Nat). let s = f n ; …` binds `s` to
+    a value containing `#0` — and an occurrence of `s` under one more binder sits
+    at a different level than the binding did. Each entry therefore records the
+    depth it was made at, and a lookup lifts by the difference: exactly the
+    `shiftPure` a β-rewrite performs on the way in. -/
+structure LetCtx where
+  /-- Pure binders crossed so far. -/
+  dep : Nat := 0
+  /-- `id ↦ (depth at binding, value)`, innermost first. -/
+  lets : List (Nat × Nat × Val) := []
+deriving Inhabited
+
+/-- One pure binder deeper. -/
+def LetCtx.under (c : LetCtx) : LetCtx := { c with dep := c.dep + 1 }
+
+/-- Record a `let` binding at the current depth. PREPENDED, so an inner `let` on
+    the same id shadows an outer one. -/
+def LetCtx.bind (c : LetCtx) (id : Nat) (v : Val) : LetCtx :=
+  { c with lets := (id, c.dep, v) :: c.lets }
+
+/-- The value bound to a variable id, lifted from the depth it was bound at to
+    the depth this occurrence sits at. The identity at equal depths — every
+    occurrence not under a further pure binder, which is the common case — so the
+    lift is guarded rather than unconditional. -/
+def LetCtx.find? (c : LetCtx) (id : Nat) : Option Val :=
+  match c.lets.find? (fun e => e.1 == id) with
+  | some (_, bd, v) => some (if c.dep == bd then v else shiftPure (c.dep - bd) 0 v)
+  | none => none
+
+/-! Reflect a PURE `Term` into a `Val` (no monad, no Ω): the borrow-free fragment
+    only — `var`/`deref`/runtime forms map to `⊥` (they never occur in a pure
+    goal). Used by `Std.nfTerm` to normalize a §18 generalize goal so a computed
+    subterm (an `eqb`-spine hidden in a `count`-unfolding) is exposed before
+    `abstractOccurrences`.
+
+    A `let` is read by β, through the context above. A `.var` that is NOT
+    let-bound still maps to `⊥`: with no Ω there is nothing else it could be, and
+    the distinction is exactly the one this reflection is for — a `let` is part of
+    the pure term, an Ω snapshot is not. Moved here from `Value.lean` in M29 α,
+    which is when it acquired the `let` case and with it a use for `shiftPure`. -/
+mutual
+  def Term.toValPureGo (c : LetCtx) : Term → Val
+    | .type => .type
+    | .const k => .const k
+    | .pvar k => .pvar k
+    | .var x => (c.find? x.id).getD .bot
+    | .letIn x rhs rest => Term.toValPureGo (c.bind x.id (Term.toValPureGo c rhs)) rest
+    | .cmpT τ => .cmpT (Term.toValPureGo c τ)
+    | .pi d cod => .pi (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
+    | .sigmaT d cod => .sigmaT (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
+    | .lam d b => .lam (Term.toValPureGo c d) (Term.toValPureGo c.under b)
+    | .app f a => .app (Term.toValPureGo c f) (Term.toValPureGo c a)
+    | .idT a b b' => .idT (Term.toValPureGo c a) (Term.toValPureGo c b) (Term.toValPureGo c b')
+    | .ctorApp n args => .ctor n (Term.toValPureListGo c args)
+    | .unit => .ctor "unit" []
+    | _ => .bot                                          -- runtime forms: absent in pure goals
+  termination_by t => sizeOf t
+  def Term.toValPureListGo (c : LetCtx) : List Term → List Val
+    | [] => []
+    | t :: ts => Term.toValPureGo c t :: Term.toValPureListGo c ts
+  termination_by ts => sizeOf ts
+end
+
+def Term.toValPure (t : Term) : Val := Term.toValPureGo {} t
+
+def Term.toValPureList (ts : List Term) : List Val := Term.toValPureListGo {} ts
+
 /-! ## Kernel arithmetic, and the `Array` former's vocabulary
 
     `add` and `Le` are library terms (`Std`) in every other respect, but the CARVE

@@ -607,6 +607,44 @@ def chk (tm ty : Term) : Bool :=
 -- M11 hand-built `Std.le_reflT`.
 example : expectConv [] [] Dllbc.StdLemmas.le_refl Std.le_reflT = true := by native_decide
 
+/-! ## `let` is ONE form, and the two ways it can capture (M29 α)
+
+    `let` used to elaborate two ways — a `letIn` under ⇒, a de Bruijn β-redex
+    under ⇝ — and merging them onto `letIn` moved a `let` into positions its
+    de Bruijn spelling had made impossible. These four pin the merge: the first
+    two that it means the same thing, the last two that neither capture the
+    spelling would have permitted actually happens. Each of the last two was a
+    MEASURED wrong answer before the fix (M29 step-0 probe 2 and its
+    counterfactual), not a hypothesis. -/
+
+-- (1) The merged `let` means what the β-redex it replaced meant.
+example : expectConv [] [] pure{ let a = 2 ; add a a } pure{ (λ (a : Nat). add a a) 2 } = true := by
+  native_decide
+-- (2) …and a `let` chain still means its nesting.
+example : expectConv [] [] pure{ let a = 2 ; let b = S a ; add a b } pure{ 5 } = true := by
+  native_decide
+
+-- (3) A `let` may SHADOW a pure binder, and the innermost one wins. A pure λ's
+-- body is a `uterm`, so a `let` cannot sit directly under one; an `elim` arm's
+-- body is a `ublk` and its binders push the de Bruijn context, so that is the
+-- reachable route. `resolveName` consults that context FIRST, so without the
+-- surface's mask this reads the ARM's `k` — measured as `Z`, not `7`.
+example : expectConv [] []
+    pure{ elim 1 return (λ (x : Nat). Nat) { Z => 0, S(k) ih => let k = 7 ; k } }
+    pure{ 7 } = true := by native_decide
+
+-- (4) A let-bound value MENTIONING a pure binder, read two binders deeper. ⇝
+-- reads `let` by β and lifts the value from the depth it was bound at to the
+-- depth it is used at; the Ω-binding reading this replaced did not, and returned
+-- a value pointing at the inner arm's binders instead. `s = S k = 1`.
+example : expectConv [] []
+    pure{ elim 1 return (λ (x : Nat). Nat) {
+            Z => 0,
+            S(k) ih =>
+              let s = S k ;
+              elim 1 return (λ (y : Nat). Nat) { Z => 0, S(j) ih2 => s } } }
+    pure{ 1 } = true := by native_decide
+
 /-! ## The lemmas check at their stated types -/
 
 example : chk Dllbc.StdLemmas.le_refl Dllbc.StdLemmas.le_refl_ty = true := by native_decide

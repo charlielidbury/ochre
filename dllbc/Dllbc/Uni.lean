@@ -68,15 +68,21 @@ A single expression grammar spanning BOTH fragments, elaborated by `elabU` under
 arrows-decide-fragments thesis at elaboration level):
 
   * **term mode** (⇒, a runtime position — a `fn` body, a `prog{}` block): `&mut e` is
-    the borrow *operation* (`.borrow`); `let x = e ; …` mints a fresh runtime id
-    (`.letIn`); assignment/sequencing/match/call are available.
+    the borrow *operation* (`.borrow`).
   * **type mode** (⇝, a comptime position — a `fn`'s telescope and return type,
     `pure{}`): `&mut τ` / `&mut (s : τ ~> S)` is the borrow *type* (`.borrowT`, the
-    snapshot `s` bound as pure var 0 in `S`); `let x = e ; …` is a β-redex
-    (de Bruijn). The runtime-only forms are simply not written there.
+    snapshot `s` bound as pure var 0 in `S`). The runtime-only forms are simply
+    not written there.
+
+**`let` is no longer one of the differences** (M29 α). It emitted a `.letIn` in
+one mode and a de Bruijn β-redex in the other; the kernel now reads `.letIn`
+under both arrows — ⇝'s reading of it IS that β, performed where the binder depth
+is known (`reflectC`) — so one row emits one form and the flag has one reader
+left. The gap between the fragments closed in the kernel, which is where it was
+always a fact about the arrows rather than about the elaborator.
 
 Forms shared by both modes: application spines, λ/Π/Σ/→/Id/`Type`, `*e`, `Id`,
-constructor/const/lemma references. `ublk` is the statement layer (term mode).
+`let`, constructor/const/lemma references. `ublk` is the statement layer.
 
 **The one disambiguation rule (§ point 2):** `f(a, b)` — an identifier with a
 **no-whitespace** paren argument list — is a runtime **call** (lowercase head) or
@@ -200,6 +206,12 @@ syntax uterm : ublk                                          -- final expression
 
 namespace Surface
 open Lean
+
+/-- The name a `pctx` entry is masked to when a `let` shadows a pure binder
+    (M29 α). It occupies the entry so that every de Bruijn INDEX below it keeps
+    its level, while being unwritable as source — so the masked binder is exactly
+    unreachable by name, which is what shadowing is. -/
+def shadowedName : String := "§shadowed"
 
 /-- Innermost-first de Bruijn index of `s` in `l`. -/
 def idxOf? (l : List String) (s : String) : Option Nat :=
@@ -672,12 +684,28 @@ partial def elabUBlk (isTy : Bool) (rctx : List (String × Nat)) (pctx : List St
     -- the `letIn` this line already emits. Recorded here because the absence of
     -- code is the point — the convention is load-bearing exactly once.
     let name := x.getId.toString
-    if isTy then                                            -- ⇝: β-redex, `x` a pure de Bruijn binder
-      let (rest', n2) ← elabUBlk isTy rctx (name :: pctx) n1 rest
-      return (← `(Dllbc.Term.app (Dllbc.Term.lam Dllbc.Term.type $rest') $e'), n2)
-    else                                                    -- ⇒: letIn, `x` a fresh runtime slot
-      let (rest', n2) ← elabUBlk isTy ((name, n1) :: rctx) pctx (n1 + 1) rest
-      return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
+    -- **ONE `let`, both fragments** (M29 α). This row used to branch on the mode:
+    -- ⇒ minted a runtime slot and emitted `.letIn`, ⇝ emitted the β-redex
+    -- `(λ. rest) e` over a de Bruijn binder. The kernel now reads `.letIn` under
+    -- BOTH arrows — ⇝'s reading is that same β, performed at reflection where the
+    -- binder depth is known (`reflectC`) — so the surface has nothing left to
+    -- decide and the first of the two `isTy` branches is gone.
+    --
+    -- The de Bruijn spelling was not merely a second encoding, it was a second
+    -- SCOPE: a `let` used to push `pctx` in one fragment and `rctx` in the other,
+    -- so the same source bound a name in two different places depending on which
+    -- macro it sat in. One `rctx` push is now the whole rule.
+    --
+    -- **And a `let` may shadow a pure binder**, which the merged form has to say
+    -- out loud because `resolveName` consults `pctx` FIRST. Left alone,
+    -- `λ (x : τ). let x = e ; x` would resolve the tail's `x` to the λ's binder —
+    -- the outer one — which is capture by the sort of silent margin this project
+    -- keeps finding. Masking the name in `pctx` (the INDEX stays, so every other
+    -- de Bruijn reference keeps its level) makes the innermost binder win, which
+    -- is what shadowing means. ⇒ bodies had the same hole and are fixed with it.
+    let pctx' := pctx.map (fun s => if s == name then shadowedName else s)
+    let (rest', n2) ← elabUBlk isTy ((name, n1) :: rctx) pctx' (n1 + 1) rest
+    return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
     let (p', n1) ← elabUTerm isTy rctx pctx next p
     let (e', n2) ← elabUTerm isTy rctx pctx n1 e
