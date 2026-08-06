@@ -1,5 +1,40 @@
 # Progress
 
+## 2026-08-06 — dllbc/: **M28 CLOSES — two macros, ten files, and no type called `FnDef` in the kernel**
+
+One day, four agents, ~70 commits, `c5f1966a` through `ccb6404c`, full suite
+green throughout and a from-scratch build verified at the close. The surface is
+`prog{ }` and `pure{ }` — one grammar between them — with `fn` a statement of
+the block and `(t : T)` the ascription/seal. Everything that pre-bound names to
+harness-chosen ids is gone; everything that consumed a declaration as a record
+is a program.
+
+    macros        6 → 2          dllbc{}/dllbcWith/decl{}/progWith retired
+    grammars      3 → 1          uterm/ublk, mode-flagged (flag dies in M29)
+    decl{ uses    345 → 0        13 prose mentions remain, all history
+    test files    ~31 → 10       subject buckets, era numbering gone
+    kernel        smaller        constrained wire, St.decls, .call table rule,
+                                 AlphaEq, expectPaths, Migrate.lean all deleted
+
+The test suite now follows the user's rule — every assertion "this program is
+accepted/rejected" or "this program runs to X" — with two documented exemptions
+(KernelFloor's raw core; four path-count canaries in Traces). Twins are STRONGER
+than the record-update forms they replaced: surface-syntax skeletons with the
+lying conjunct as the one spliced argument. The dissolution of S11Lib exposed a
+dangling de Bruijn index that had sat in a hand-built motive since M11 — the
+named-binder surface has no index to get wrong, which is the argument for it.
+
+Three consciously-accepted weakenings are in the DECISION record: twin adjacency
+is a convention rather than a construction (then reversed — the skeleton form
+restored it stronger); differential validation stepped from bug-class to
+comparator level with the constrained wire's deletion; the lowering lost its
+α-equality oracle. The e2e rule, its exemptions, and these trades are recorded
+as standing policy.
+
+M29 (mode removal) is queued: unify `let` at the kernel (letIn/β), make `&mut`
+arrow-decided rather than mode-elaborated, merge `lam`/`lamR` with a
+try-both capability check, and collapse the two macros into one.
+
 ## 2026-08-05 — dllbc/: **M27 CLOSES — the ratified function model, and there is no type called `Decl`**
 
 Phases α through ε, eleven commits, `070f1f1a` through `bd68bbec`, full suite
