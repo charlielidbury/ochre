@@ -18,8 +18,8 @@ milestones (§3 match, §5 boundaries, §7 inductives).
 
 ## Runtime variables carry globally-unique ids
 
-A runtime variable is a `Nat` id (globally unique, minted by the `dllbc{…}`
-macro at elaboration time) paired with a display `String`. There is **no**
+A runtime variable is a `Nat` id (globally unique, minted by the surface macros
+at elaboration time) paired with a display `String`. There is **no**
 de Bruijn indexing in the machine layer and **no** shifting anywhere — the
 macro resolves names to ids while elaborating, and an unresolved name is an
 elaboration-time error (mirroring `Och/Macro.lean`'s discipline that killed

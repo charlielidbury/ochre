@@ -1,7 +1,6 @@
 import Dllbc.Program
 import Dllbc.FnMacro
 import Dllbc.AlphaEq
-import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.DeclMacro

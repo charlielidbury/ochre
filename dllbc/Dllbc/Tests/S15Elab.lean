@@ -1,5 +1,4 @@
 import Dllbc.Boundary
-import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.Migrate
@@ -86,7 +85,7 @@ example : Migrate.progRejectsOf badRefl "does not have return type" = true := by
 -- elaboration error at macro time (the resolve-or-error discipline), not a
 -- silent `pvar`. Demonstrated by `#guard_msgs` would require the exact message;
 -- here we simply note it cannot be written — an unbound lowercase name in a
--- `pure{ }` block fails to compile, exactly as in `dllbc{ }`.
+-- `pure{ }` block fails to compile, exactly as in `prog{ }`.
 
 /-! ## The measure (§15's report card)
 

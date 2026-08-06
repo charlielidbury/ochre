@@ -1,5 +1,4 @@
 import Dllbc.Program
-import Dllbc.Macro
 import Dllbc.Std
 import Dllbc.StdLemmas
 import Dllbc.PureMacro

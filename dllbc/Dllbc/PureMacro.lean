@@ -8,8 +8,10 @@ import Dllbc.Uni
 The M11 wall was mis-indexed de Bruijn failing silently across ~15 binder
 contexts. The fix is not a unifier or case trees — it is *names and explicit
 structure*, elaborated to the existing de Bruijn kernel `Term` by the macro
-layer, in exactly the resolve-or-error discipline `dllbc{ }` already uses for
-runtime code. This is authoring sugar, nothing more: every binder is named,
+layer, in exactly the resolve-or-error discipline the runtime surface uses. (The
+two are now literally one elaborator: `pure{ }` is `elabUBlk` with `isTy := true`
+and `prog{ }` is the same call with `false`.) This is authoring sugar, nothing
+more: every binder is named,
 every motive is written once and explicitly, and a wrong motive fails at the use
 site with the existing conversion diagnostics.
 

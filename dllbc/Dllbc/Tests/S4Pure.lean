@@ -1,5 +1,4 @@
 import Dllbc.Machine
-import Dllbc.Macro
 
 /-!
 # §4 test suite — the pure fragment (⇝, conversion, value typing)

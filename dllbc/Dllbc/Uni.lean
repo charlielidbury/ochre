@@ -1,22 +1,24 @@
 import Lean
 import Dllbc.Machine
-import Dllbc.Macro
 
 /-!
 # `decl{ … }` — a surface macro for whole `FnDef`s (§5 boundaries)
 
-Where `dllbc{ }` (Macro.lean) gives runtime-body surface and `pure{ }`
-(PureMacro.lean) gives pure-term surface, `decl{ }` assembles a whole function
-**declaration**: the header `fn NAME (x : τ, …) -> τret`, an optional `back = …`
-backward spec, and the body — producing the same `FnDef` value the corpus builds
-by hand. Its reason to exist is removing the ugliness of hand-writing
-telescopes like `("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))`.
+This file holds the ONE term grammar (`uterm`/`ublk`, below) and, on top of it,
+`decl{ }`, which assembles a whole function **declaration**: the header
+`fn NAME (x : τ, …) -> τret`, an optional `back = …` backward spec, and the body
+— producing the same `FnDef` value the corpus builds by hand. Its reason to exist
+is removing the ugliness of hand-writing telescopes like
+`("hbnd", LeT (addTmH (V 2 "lo") (V 3 "cnt")) (lenT dv))`. The other surfaces —
+`pure{ }` (PureMacro.lean), `prog{ }`/`progWith`/`progSeed` (ProgMacro.lean) —
+are this same grammar entered at a different mode or with a different starting
+context, which is what makes them one-liners.
 
-## Type positions (`dty`)
+## Type positions
 
 Telescope entry types, the return type, the `↝` right-hand side, and `back`
-terms all elaborate through one grammar, `dty` — a pterm-like grammar (Σ/Π/λ/→/
-Id/application/`Type`) extended with two things the boundary needs:
+terms all elaborate through `uterm` in TYPE mode (`isTy := true`) — Σ/Π/λ/→/
+Id/application/`Type` — extended with two things the boundary needs:
 
   * a **runtime-var context**: the names of EARLIER telescope parameters resolve
     to `.var ⟨i, name⟩` with positional 0-based ids — the exact convention
@@ -43,11 +45,12 @@ the **Lean identifier** of that name, which must denote a `Dllbc.Term` in scope
 
 ## Body
 
-Reuses the existing `dllbc` block category with the telescope names pre-bound in
-order — literally `Dllbc.Macro.expandB` seeded like `dllbcWith`. Bodies laden
-with pure proof terms (a `botElim` ex-falso branch, a `le_rw_r` bound derivation)
-are outside the runtime `dllb` grammar; for those the escape hatch `= %term`
-splices a raw `Term`. See SDeclMacro.lean's header for the coverage map.
+`ublk` in TERM mode with the telescope names pre-bound in order at ids `0 .. n-1`
+and fresh binders minted from `n` — the `seedTelescope` convention, which
+`progSeed [xs] { … }` (ProgMacro.lean) exposes on its own for hand-written
+`FnDef` bodies and for tests that seed Ω directly. Bodies laden with pure proof
+terms (a `botElim` ex-falso branch, a `le_rw_r` bound derivation) are awkward to
+write as statements; for those the escape hatch `= %term` splices a raw `Term`.
 -/
 
 open Lean
@@ -60,7 +63,7 @@ A single expression grammar spanning BOTH fragments, elaborated by `elabU` under
 **mode flag** that is precisely "is this position consumed by ⇒ or ⇝" (the
 arrows-decide-fragments thesis at elaboration level):
 
-  * **term mode** (⇒, a runtime position — `decl{}` body, `dllbc{}`): `&mut e` is
+  * **term mode** (⇒, a runtime position — `decl{}` body, `prog{}`): `&mut e` is
     the borrow *operation* (`.borrow`); `let x = e ; …` mints a fresh runtime id
     (`.letIn`); assignment/sequencing/match/call are available.
   * **type mode** (⇝, a comptime position — `decl{}` telescope/retType/back,
@@ -182,6 +185,25 @@ def idxOf? (l : List String) (s : String) : Option Nat :=
     | x :: xs, i => if x == s then some i else go xs (i + 1)
   go l 0
 
+/-- Build the `Term` syntax for the numeral `k` as `S (S (… Z))`. -/
+partial def buildNat : Nat → MacroM (TSyntax `term)
+  | 0 => `(Dllbc.Term.ctorApp "Z" [])
+  | k + 1 => do let inner ← buildNat k; `(Dllbc.Term.ctorApp "S" [$inner])
+
+/-- Mint fresh runtime ids for a list of pattern binders, extending `rctx` and
+    returning the extended context, the next free id, and the binder `Var`
+    syntaxes (in order). Binder ids are ABSOLUTE and globally unique — minted
+    from one counter threaded through every elaborator — which is why they stay
+    distinct across the arms of a single match. -/
+partial def mintBinders (rctx : List (String × Nat)) (next : Nat) :
+    List Ident → MacroM (List (String × Nat) × Nat × Array (TSyntax `term))
+  | [] => pure (rctx, next, #[])
+  | b :: bs => do
+    let name := b.getId.toString
+    let vSyntax ← `((⟨$(quote next), $(quote name)⟩ : Dllbc.Var))
+    let (rctx', next', rest) ← mintBinders ((name, next) :: rctx) (next + 1) bs
+    pure (rctx', next', #[vSyntax] ++ rest)
+
 /-- Kernel constructors → `ctorApp`. **Sourced from the kernel's own basis**
     (`Val.ctorNames`, adjacent to `ctorSig`) rather than repeated here, because
     M26-B gives the list a second job — reserving these names as binder keywords
@@ -259,9 +281,13 @@ def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) :
 /-! ## Unified `uterm` / `ublk` elaborators (§ points 1–3)
 
 Runtime binders (let, match patterns) mint fresh absolute ids threaded through
-`next` EXACTLY as `Dllbc.Macro.expandB` does — so the runtime subset produces
-byte-identical `Term`s to the `dllbc` block, and existing decl bodies keep their
-ids. Pure binders (λ/Π/Σ/→) push the de Bruijn `pctx` and never touch `next`; a
+`next`: a `let` binds at the post-RHS counter value and continues at `+1`, and a
+match's arm binders are minted from one counter across ALL arms, so no two
+binders in a body ever share an id. This is the id discipline of the retired
+runtime-body grammar, reproduced here exactly — every one of its 70 sites in the
+suite was checked byte-for-byte against this elaborator before it was deleted
+(M28 α–δ).
+Pure binders (λ/Π/Σ/→) push the de Bruijn `pctx` and never touch `next`; a
 runtime var referenced from inside a pure spine stays `.var` (absolute, unshifted). -/
 
 partial def collectAppU : TSyntax `uterm → TSyntax `uterm × Array (TSyntax `uterm)
@@ -277,7 +303,7 @@ partial def elabUTerm (isTy : Bool) (rctx : List (String × Nat)) (pctx : List S
   | `(uterm| ($e:uterm)) => elabUTerm isTy rctx pctx next e
   | `(uterm| Type) => return (← `(Dllbc.Term.type), next)
   | `(uterm| % $e:term) => return (← `(($e : Dllbc.Term)), next)
-  | `(uterm| $n:num) => return (← Dllbc.Macro.buildNat n.getNat, next)
+  | `(uterm| $n:num) => return (← buildNat n.getNat, next)
   | `(uterm| old * $e:uterm) => do
     -- §5.4 `old *v`: the ENTRY snapshot, sugar over the telescope's existing
     -- payload snapshot. Elaborates to `@old(*v)`; `markExit` strips the marker to
@@ -531,7 +557,7 @@ partial def elabUArm (rctx : List (String × Nat)) (pctx : List String) (next : 
     return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [] $body'), n)
   | `(uarm| $c:ident ($binders,*) => $body:uarmBody) => do
     binders.getElems.forM checkBinder
-    let (rctx', next', binderVars) ← Dllbc.Macro.mintBinders rctx next binders.getElems.toList
+    let (rctx', next', binderVars) ← mintBinders rctx next binders.getElems.toList
     let (body', n) ← elabUArmBody rctx' pctx next' body
     return (← `(Dllbc.Branch.mk $(quote c.getId.toString) [$binderVars,*] $body'), n)
   | _ => Macro.throwErrorAt arm "decl: unexpected match arm"
