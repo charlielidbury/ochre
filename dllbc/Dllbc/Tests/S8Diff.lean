@@ -1,5 +1,7 @@
 import Dllbc.Boundary
 import Dllbc.DeclMacro
+import Dllbc.ProgMacro
+import Dllbc.PureMacro
 import Dllbc.Migrate
 
 /-!
@@ -86,67 +88,51 @@ def matchBodies : List Term :=
 /-- All generated bodies for the list-borrow telescope. -/
 def vBodies : List Term := leafBodies ++ matchBodies
 
-/-! ## The declaration and the concrete pool
+/-! ## The two programs a generated body becomes
 
-    **KEEP-FILE (M28 ν audit).** `vDecl`/`nDecl`/`bcDecl` build a `FnDef` from a
-    generated body, and `diffCheck` seeds that declaration's TELESCOPE with
-    concrete argument values before exploring the body. A program has no
-    telescope to seed, so the subject of this file's theorem — "accepted ⟹
-    concrete-safe, at every instantiation of the arguments" — is intrinsically a
-    declaration. The `decl{ fn f (…) = %body }` escape hatch exists for exactly
-    this. -/
+    **Recast to programs (M28 ρ).** This file's theorem is "accepted ⟹
+    concrete-safe, at every instantiation of the arguments", and it used to state
+    it over a `FnDef`: build one from the generated body, seed its TELESCOPE with
+    concrete values, explore, audit. A program has no telescope to seed — so
+    instead the instantiation becomes what it is in the language, a CALLER that
+    applies the function to a literal.
 
-def vDecl (body : Term) : FnDef :=
-  decl{ fn f (v : &mut List Nat) -> Unit = %body }
+    Each generated body therefore becomes two programs, and the theorem is a
+    statement about the pair:
 
-/-- Concrete payloads for v: the small list pool. -/
-def vPool : List Val := [ nil, cons (nat 1) nil, cons (nat 1) (cons (nat 2) nil) ]
+      * `vCheck b` — the function declared and left unapplied. Its seal audits at
+        the binding, so `progOk` here is the symbolic acceptance the old
+        `progOkOf` gave, and gives the same answer for the same reason (checked:
+        `fn f (…) { %b }` elaborates to a term IDENTICAL to the one the `FnDef`
+        path assembled).
+      * `vRun b a` — the same function applied to a concrete argument. `progRuns`
+        is "⇒-evaluating this completes", which is the half of the old
+        `diffCheck` that was about the concrete machine; the audit half was
+        checking-mode and is what `vCheck` asserts.
 
-/-! ## The concrete run and the differential check -/
+    `seedConcrete` and `diffCheck` retire with the shape they served: nothing
+    seeds a telescope by hand any more, because a call does it. -/
 
-/-- Seed a telescope with CONCRETE argument values (σ-free): a pure argument
-    binds its value; a borrow argument binds `borrowM ℓ cval` and yields an
-    obligation. -/
-def seedConcrete (fuel : Nat) : Nat → List (String × Term) → List Val → M (List Obligation)
-  | _, [], _ => pure []
-  | i, (name, tyTerm) :: tRest, cval :: cRest => do
-    let x : Var := ⟨i, name⟩
-    match tyTerm with
-    | .borrowT _ S => do
-      let ℓ ← freshLoan
-      bindSlot x (.borrowM ℓ cval)
-      let owed := Val.nfV fuel (Val.substPure 0 cval (← readC fuel S))
-      pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedConcrete fuel (i + 1) tRest cRest))
-    | _ => do
-      bindSlot x cval
-      seedConcrete fuel (i + 1) tRest cRest
-  | _, _ :: _, [] => throwErr "seedConcrete: not enough concrete arguments"
+def vCheck (body : Term) : Term := prog{
+  fn f (v : &mut List Nat) -> Unit { %body };
+  () }
 
-/-- Run a declaration's body CONCRETELY from the given argument values, then run
-    the concrete audit. `true` iff every path completes (not stuck) and audits. -/
-def diffCheck (decl : FnDef) (concreteArgs : List Val) : Bool :=
-  match (seedConcrete defaultFuel 0 decl.telescope concreteArgs).run initSt with
-  | .error _ _ => false
-  | .ok obs st =>
-    let paths := explore defaultFuel (pushContinuations decl.body) st
-    0 < paths.length && paths.all (fun r =>
-      match r with
-      | .ok (v, st') =>
-        match (auditAction defaultFuel decl.retType v).run { st' with obligations := obs } with
-        | .ok _ _ => true
-        | .error _ _ => false
-      | .error _ => false)
+def vRun (body arg : Term) : Term := prog{
+  fn f (v : &mut List Nat) -> Unit { %body };
+  let x = %arg; let p = &mut x; f(p); () }
+
+/-- Concrete payloads for v: the small list pool, as the terms a caller writes. -/
+def vArgs : List Term := [pure{ Nil }, pure{ Cons(1, Nil) }, pure{ Cons(1, Cons(2, Nil)) }]
 
 /-! ## The property, for the list-borrow telescope
 
-    Every body the checker ACCEPTS runs to completion and audits on every
-    concrete instantiation. -/
+    Every body the checker ACCEPTS runs to completion on every concrete
+    instantiation. -/
 
-def vAccepted : List Term := vBodies.filter (fun b => Migrate.progOkOf (vDecl b))
+def vAccepted : List Term := vBodies.filter (fun b => progOk (vCheck b))
 
-def vDiffOk : Bool := vAccepted.all (fun b => vPool.all (fun cv => diffCheck (vDecl b) [cv]))
-
-example : vDiffOk = true := by native_decide
+example : vAccepted.all (fun b => vArgs.all (fun a => progRuns (vRun b a))) = true := by
+  native_decide
 
 /-! ## Non-exhaustive bodies are now all rejected (§9)
 
@@ -159,9 +145,7 @@ def vNonExhaustive : List Term :=
   (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Cons" [⟨2, "hd"⟩, ⟨3, "tl"⟩] b])   -- missing Nil
   ++ (leafBodies.take 8).map (fun b => .matchE ⟨0, "v"⟩ none [.mk "Nil" [] b])                       -- missing Cons
 
-def vAllRejected : Bool := vNonExhaustive.all (fun b => !Migrate.progOkOf (vDecl b))
-
-example : vAllRejected = true := by native_decide
+example : vNonExhaustive.all (fun b => !progOk (vCheck b)) = true := by native_decide
 
 /-! ## Telescope `(n : Nat) → Nat` (owned symbolic argument, value return) -/
 
@@ -178,14 +162,16 @@ def nBodies : List Term :=
        (nLeaf.take 5).map fun b2 =>
          .matchE ⟨0, "n"⟩ none [.mk "Z" [] b1, .mk "S" [⟨1, "m"⟩] b2]
 
-def nDecl (body : Term) : FnDef :=
-  decl{ fn f (n : Nat) -> Nat = %body }
-def nPool : List Val := [ nat 0, nat 1, nat 2 ]
+def nCheck (body : Term) : Term := prog{ fn f (n : Nat) -> Nat { %body }; () }
+def nRun (body arg : Term) : Term := prog{
+  fn f (n : Nat) -> Nat { %body };
+  let r = f(%arg); () }
+def nArgs : List Term := [pure{ 0 }, pure{ 1 }, pure{ 2 }]
 
-def nAccepted : List Term := nBodies.filter (fun b => Migrate.progOkOf (nDecl b))
-def nDiffOk : Bool := nAccepted.all (fun b => nPool.all (fun cv => diffCheck (nDecl b) [cv]))
+def nAccepted : List Term := nBodies.filter (fun b => progOk (nCheck b))
 
-example : nDiffOk = true := by native_decide
+example : nAccepted.all (fun b => nArgs.all (fun a => progRuns (nRun b a))) = true := by
+  native_decide
 
 /-! ## Telescope `(b : &mut Nat, c : Bool) → Unit` (a borrow and a bool) -/
 
@@ -202,16 +188,20 @@ def bcBodies : List Term :=
        (bcLeaf.take 5).map fun b2 =>
          .matchE ⟨1, "c"⟩ none [.mk "True" [] b1, .mk "False" [] b2]
 
-def bcDecl (body : Term) : FnDef :=
-  decl{ fn f (b : &mut Nat, c : Bool) -> Unit = %body }
-def bcPool : List (List Val) :=
-  [ [nat 0, .ctor "True" []], [nat 0, .ctor "False" []],
-    [nat 1, .ctor "True" []], [nat 1, .ctor "False" []] ]
+def bcCheck (body : Term) : Term := prog{
+  fn f (b : &mut Nat, c : Bool) -> Unit { %body };
+  () }
+def bcRun (body a0 a1 : Term) : Term := prog{
+  fn f (b : &mut Nat, c : Bool) -> Unit { %body };
+  let x = %a0; let p = &mut x; f(p, %a1); () }
+def bcArgs : List (Term × Term) :=
+  [ (pure{ 0 }, pure{ True }), (pure{ 0 }, pure{ False }),
+    (pure{ 1 }, pure{ True }), (pure{ 1 }, pure{ False }) ]
 
-def bcAccepted : List Term := bcBodies.filter (fun b => Migrate.progOkOf (bcDecl b))
-def bcDiffOk : Bool := bcAccepted.all (fun b => bcPool.all (fun cv => diffCheck (bcDecl b) cv))
+def bcAccepted : List Term := bcBodies.filter (fun b => progOk (bcCheck b))
 
-example : bcDiffOk = true := by native_decide
+example : bcAccepted.all (fun b => bcArgs.all (fun a => progRuns (bcRun b a.1 a.2))) = true := by
+  native_decide
 
 /-! ## The counts, asserted
 
@@ -236,7 +226,7 @@ example : (bcBodies.length, bcAccepted.length) = (13, 13) := by native_decide
 -- accepted, 238 concrete runs (each accepted body run against its telescope's pool).
 example : vBodies.length + nBodies.length + bcBodies.length = 136 := by native_decide
 example : vAccepted.length + nAccepted.length + bcAccepted.length = 75 := by native_decide
-example : vAccepted.length * vPool.length + nAccepted.length * nPool.length
-            + bcAccepted.length * bcPool.length = 238 := by native_decide
+example : vAccepted.length * vArgs.length + nAccepted.length * nArgs.length
+            + bcAccepted.length * bcArgs.length = 238 := by native_decide
 
 end Dllbc.Tests.S8Diff

@@ -103,6 +103,13 @@ def progRejects (t : Term) (needle : String) (retType : Term := .const "Unit")
   | .ok _ => false
   | .error e => strContains e needle
 
+/-- **The program RUNS**: ⇒-evaluating it concretely completes, without getting
+    stuck. The weaker half of `progRunsTo`, for the case where the final Ω is not
+    predictable — a generated body's, say — and the claim is exactly "this is not
+    stuck". -/
+def progRuns (t : Term) (table : List FnDef := []) : Bool :=
+  match runProgram t table with | .ok _ => true | .error _ => false
+
 /-- The program runs to the given final Ω. -/
 def progRunsTo (t : Term) (expected : Env) (table : List FnDef := []) : Bool :=
   match runProgram t table with | .ok env => env == expected | .error _ => false
