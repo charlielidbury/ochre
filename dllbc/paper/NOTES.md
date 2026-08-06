@@ -8,22 +8,33 @@ here; resolution belongs to the theory owner. Each finding keeps its original
 number (1–20 — the figure-audit findings the paper's §8 counts) and names the
 figure that recorded it.
 
-**Three pins.** The figures were first extracted at `122bb424`; re-extracted at
-`4e950ab7` (the second verification architecture); and re-extracted again at
-`9d92a894`, the current pin, when arrays, range places and the carve landed. The
-1–20 numbering is SEALED to the original extraction and is not renumbered — §8
-counts it — so closures are recorded in place (marked CLOSED), and each re-pin has
-its own separate section below with its own prefix (`P`/`R` for the second, `A` for
-the array era). Nothing is renumbered across eras; a claim the paper made about an
-audit stays checkable against the audit it was made about.
+**Four pins.** The figures were first extracted at `122bb424`; re-extracted at
+`4e950ab7` (the second verification architecture); re-extracted again at
+`9d92a894` when arrays, range places and the carve landed; and re-extracted at
+`dc90adce`, the current pin, after the function model was ratified and the surface
+collapsed. The 1–20 numbering is SEALED to the original extraction and is not
+renumbered — §8 counts it — so closures are recorded in place (marked CLOSED), and
+each re-pin has its own separate section below with its own prefix (`P`/`R` for the
+second, `A` for the array era, `N` for the function-model era). Nothing is
+renumbered across eras; a claim the paper made about an audit stays checkable
+against the audit it was made about.
+
+**The fourth pass is partial by design.** F1, F3, F6 and §2/§3 were left untouched
+because a concurrent pass owns the λ/let/mode machinery they describe, and
+`main.typ` — which declares the pin — had uncommitted edits elsewhere. Each figure
+this pass re-extracted therefore carries its own pin in a header comment, and the
+document's declared pin lags them. The last section of this file lists what was
+deferred and to whom.
 
 The array era carries its own upstream ledger, `dllbc/docs/DELTAS.md`, which is the
 primary source for what that work was like while it happened — 33 entries, including
 two conclusions it recorded and a later probe refuted. This file records only what
 the *paper* had to change.
 
-The paper's claim discipline leans on this file: §4.5 and §6.5 state findings
-14, 15, and 18 as the audit-strategy holes a soundness statement must close;
+The paper's claim discipline leans on this file: §4.5 and §6.5 stated findings
+14, 15, and 18 as the audit-strategy holes a soundness statement must close — at
+the fourth pin, 14 and 18 are closed BY DELETION and 15 alone survives, and both
+sections say so in those terms;
 §8.2/§8.3 tell findings 5, 18, and the comptime-match deferral (2) as the
 lessons; the arrow-table footnote in §2 is finding 2 verbatim.
 
@@ -38,17 +49,24 @@ lessons; the arrow-table footnote in §2 is finding 2 verbatim.
    fork: either seq-discard must run drop / desugar to let, or the doc's
    sugar claim changes.
 
-14. **Silent spec degradation on multi-captured backs** (F2; the serious
-    one). A declared back on a call capturing ≥2 borrows is silently
-    IGNORED — endGroup matches backSpec only against captured=[(ℓc,_)],
-    degrading to opaque without rejection. A declared promise silently
-    unused is a bug class; reject or support, never silent. Cross-confirmed
-    by finding 18.
+14. **CLOSED BY DELETION at the `dc90adce` era. Silent spec degradation on
+    multi-captured backs** (F2; the serious one). A declared back on a call
+    capturing ≥2 borrows is silently IGNORED — endGroup matches backSpec only
+    against captured=[(ℓc,_)], degrading to opaque without rejection. A declared
+    promise silently unused is a bug class; reject or support, never silent.
+    Cross-confirmed by finding 18. CLOSURE: `Group.backSpec`, `Decl.back` and
+    endGroup's spec arm no longer exist (M27), so there is no promise to degrade.
+    Recorded as closed-by-deletion and NOT as a fix — nothing was learned about
+    how to end a multi-captured spec group correctly. See N2.
 
-15. **Read/write asymmetry on group-captured owners** (F2): reading
-    demand-ends the group; OVERWRITING is rejected ("in flight") because
-    drop calls killBorrowInΩ, never endLoan. Doc §2.3's locatability
-    phrasing doesn't predict the split.
+15. **STILL OPEN at `dc90adce`, RE-VERIFIED not carried. Read/write asymmetry on
+    group-captured owners** (F2): reading demand-ends the group; OVERWRITING is
+    rejected ("in flight") because drop calls killBorrowInΩ, never endLoan. Doc
+    §2.3's locatability phrasing doesn't predict the split. RE-CHECK: `drop`
+    (Machine.lean) still reaches `killBorrowInΩ` on a loan marker and `readR`'s
+    `.var` case still reaches `endLoan`. This is now the SOLE survivor of the
+    three audit-strategy holes §4.5/§6.5 listed — a completeness gap, not an
+    unsoundness. See N2.
 
 16. **Strategy incompleteness vs the nondeterministic rules** (F2): a
     rules-admissible order (End-Mut a live reborrow before the group end) is
@@ -56,12 +74,15 @@ lessons; the arrow-table footnote in §2 is finding 2 verbatim.
     issued payload is suspended. Soundness unaffected; a
     strategy-completeness question the metatheory section states (§6.4).
 
-18. **Vacuous back-audit paths** (F5; the most soundness-relevant finding of
-    the extraction): both back checks (B-BackN/B-Back0) take the FIRST
-    qualifying obligation and pass VACUOUSLY when none qualifies — and
-    B-Back0 also when the argument borrow is consumed whole into a sub-call.
-    A declared back can go entirely unaudited on such paths. THEORY-LINE FIX
-    required before any soundness statement quantifies over declared specs.
+18. **CLOSED BY DELETION at the `dc90adce` era. Vacuous back-audit paths**
+    (F5; the most soundness-relevant finding of the extraction): both back checks
+    (B-BackN/B-Back0) take the FIRST qualifying obligation and pass VACUOUSLY when
+    none qualifies — and B-Back0 also when the argument borrow is consumed whole
+    into a sub-call. A declared back can go entirely unaudited on such paths.
+    THEORY-LINE FIX required before any soundness statement quantifies over
+    declared specs. CLOSURE: there are no declared specs. Both checks, the rules
+    that stated them and `resolveTree` are deleted (M27), so the quantifier is
+    empty. Same caveat as 14: closed-by-deletion, not fixed. See N2.
 
 ## Mechanization limitations, recorded in-figure
 
@@ -405,3 +426,148 @@ A6. **A fifth lesson** (§8): run the differential at both extent regimes and de
   it makes. The rest — spelling refinements, representation decisions, the transfer
   measurements — belong to the design note and its ledger, which the paper cites rather
   than absorbs.
+
+---
+
+## The function-model era (`9d92a894` → `dc90adce`): what the paper had to change
+
+Entries prefixed `N`, not continuing any earlier numbering. The letter is arbitrary
+and deliberately not `M`, which would read as a milestone number in a section that
+says "M27" and "M28" on every other line. Two campaigns are covered: **M27**, which
+ratified the function model (a definition is a `let` of a sealed λ; `checkFn`,
+`Decl.back` and the `[k]` guard deleted; three soundness containments landed), and
+**M28**, which collapsed the surface (`decl{ }` and `FnDef` out of the kernel, 27
+test files into 10 subject buckets, an end-to-end suite). Each entry was verified
+against the implementation before being written into the paper.
+
+This was the first re-extraction in which the dominant change was **deletion**, and
+that shaped the whole pass. The house rule that emerged, applied in F2, F5, §4, §6
+and §8 and worth stating once: *a finding that stops existing because its feature
+stopped existing is recorded as CLOSED BY DELETION and never as a fix.* The
+temptation to bank the closures is real — the paper's headline hole count drops from
+three to one — and it would be reporting progress the project did not make.
+
+N1. **F5 is a re-extraction, not a revision, and six rules left it.** B-CheckFn (no
+    declaration form to quantify over), B-Call-Self and B-Call-Mutual (no `selfRec`,
+    no `strictSubterm`, no `reachesFn`), and B-Back-None/B-Back0/B-BackN with the
+    `res` suspension-tree resolution (no `back` at all). What arrived in their place
+    is not a smaller figure: B-Seal-Fn/B-Body (the check is an EVENT at the `.seal`
+    node, with frame isolation), B-Seed-Fn (a Π-typed parameter is a σ in `fsig` —
+    this is `ih`, and it is why recursion costs the kernel nothing), B-Inst-Cmp (the
+    comptime argument column, which the old figure omitted entirely), and
+    B-Call-Unbound (not a rejected recursion — an unbound variable). The deleted
+    subsection is replaced by a short historical note pointing at pin `9d92a894`,
+    per the convention that history stays recoverable.
+
+N2. **Two of the three audit-strategy holes closed by deletion; one survives and was
+    re-verified.** Findings 14 and 18 are marked CLOSED BY DELETION in place. Finding
+    15 — the read/write asymmetry on group-captured owners — is STILL OPEN, and this
+    was checked in the source rather than carried forward: `drop` reaches
+    `killBorrowInΩ`, `readR`'s `.var` case reaches `endLoan`, and the two have not
+    converged. **The coordination brief for this pass said all three had closed.**
+    They had not; the implementation is the source of truth and the brief was
+    followed on the other two and overridden here.
+
+N3. **The `back` tier's precision was replaced by something the old figures never
+    showed.** `callDeclC` mints one σ′ per captured loan AT THE CALL, types it at
+    that loan's owed type, `markExit`-reflects the return type against it, and PINS
+    the captured loan's release to it (`Group.exitRelease`). So the owner a caller
+    recovers and the evidence the call returned are the same symbolic value. This
+    existed at the previous pin as prose in §4 and §7 ("a single symbolic value is
+    shared…") and appeared in NO rule; it is now a premise of B-Call and a case of
+    G-EndGroupOpaque. Worth flagging as a class: the previous extraction found the
+    gaps by reading rules against code, and this one was found by reading the code
+    for a mechanism the prose asserted and the rules did not state.
+
+N4. **A rules-level agreement that is not a premise.** The pinned release and the
+    callee's exit snapshot are the same σ′ only because `callDeclC` builds both from
+    one list. Nothing in the rules records the identification — the callee's audit
+    defines its own σ_exit, and the caller reflects against its own σ′. Recorded as a
+    metatheory obligation in F2's rule-gap rather than forced into a premise, since
+    the honest statement is about two derivations agreeing, not about one rule.
+
+N5. **The corpus's list `partition` and `append_back` changed SIGNATURE, and §5's
+    listings were stale in the way §8's anecdote predicts.** Both used to decrease
+    through the borrow's payload (`[v]`); a payload decrease has no recursor form, so
+    `fnElab` refuses it, and both now thread `fuel : Nat` with a sufficiency
+    hypothesis `Le (len *v) fuel`. This is the second instance of §8's "a paper about
+    a moving mechanization decays silently" — same section, same kind of staleness,
+    two pins later. §8's anecdote gained it; the listings were corrected against
+    `Direct.lean`.
+
+N6. **The differential's harness validation was DOWNGRADED, and §6 leads with it.**
+    The `forceConstrained` flag and `Group.constrained` are deleted (M28 τ), so the
+    control no longer reintroduces the bug in a real kernel and watches the finder
+    catch it; the same discrimination is asserted at the COMPARATOR, over a
+    hand-written wrong-refinement environment. What is kept: the relation says NO to
+    the wrong refinement and YES to the honest σ, so it is not a relation that
+    refuses everything. What is given up: the demonstration that the finder, driven
+    by a genuinely buggy kernel, reaches that comparison at all. The suite's own
+    docstring records this as "a real reduction in strength"; the paper does too,
+    because §6's whole argument is that an unvalidated counterexample finder is
+    worthless as evidence.
+
+N7. **The v1 differential's counts are UNCHANGED and remain asserted.** 136 generated
+    / 75 accepted / 238 runs; per telescope 91/47/141, 32/15/45, 13/13/52. Re-checked
+    at this pin rather than carried over, because the harness became program-shaped
+    (`progOk` over a `prog{ }` let-chain, no wrapper and no table) and a change in
+    plumbing that moved a count would have been a change in behaviour. It did not.
+    §6 now quotes the per-telescope triples, and states "unchanged" as itself a claim.
+
+N8. **Two STALE DOCSTRINGS in the implementation, reported not fixed.** (a)
+    `St.fsig`'s docstring says the signature is stored "as a `FnDef`, which is
+    precisely a telescope and a return type with no body"; M27-δ changed it to store
+    the Π ITSELF, which the field's own inline comment two screens down explains. (b)
+    The differential suite's header still states its property as "if `checkFn`
+    accepts a declaration", and `checkFn` has not existed since M27-δ; the assertions
+    below it use `progOk`. Neither affects a rule or a count. Reported here rather
+    than edited, since this pass owns the paper and not the mechanization.
+
+N9. **F4 and F7's rules survived both campaigns untouched, which is a result.** All
+    seventeen implementation functions their correspondence tables cite still exist
+    under the same names and none moved. What broke was the ANCHORS: the M28
+    consolidation put 27 era-numbered files into 10 subject buckets, so every table
+    in the paper cited files that no longer exist. The namespaces survived the move
+    verbatim, so all four tables (F2, F4, F5, F7) now cite bucket file + namespace,
+    which is the form that stays true under another consolidation.
+
+N10. **One F7 prose claim cited deleted machinery while remaining true.** "Recursion
+    cannot decrease through a carved payload" was justified by the `[k]` guard
+    counting constructor fields as subterms and refusing application spines. The
+    guard is gone; the restriction stands, for a better reason — the eliminators a
+    definition may lower to are `Nat`'s and a list's, and a concatenation spine is
+    the scrutinee of neither. Restated on that footing, which also makes its
+    `#status("proposed")` opening move honest: what would open it is an array
+    eliminator, not a relaxed side condition.
+
+N11. **Architecture A is doubly unreachable, and §7's fence named only one reason.**
+    §7 already fenced A at `113f1634` on the grounds that its cursors recurse through
+    a borrow's payload. True, and not the first obstacle: the audit that checked a
+    declared back does not exist either. The two are independent — reversing one
+    would not restore A — and the fence now says both. §5's status box and its
+    "quoted from the mechanization at the pin" preamble were NOT fenced and are now:
+    the section runs at two pins and says which listings belong to which.
+
+N12. **What the paper can no longer claim about model correctness.** §5's status box
+    listed "model correctness for architecture A — that `sortRangeL` in fact sorts
+    and permutes" as OPEN. It was never discharged, and with the route retired it now
+    never will be. Recorded as a cost of the retirement rather than left as an open
+    item that quietly stopped being worked on.
+
+### Deferred to the pass that owns the files this one does not
+
+* **`main.typ`'s pin declaration.** The "Status of this document" box still declares
+  `9d92a894`. Every figure this pass re-extracted carries its own pin in a header
+  comment (`dc90adce`); the declaration itself, and the abstract, are a later pass's,
+  since `main.typ` had uncommitted local edits elsewhere during this one.
+* **F1, F3, F6 and §2, §3.** A concurrent pass is changing the λ/let/mode machinery
+  those describe. Two consequences visible from here: §2's arrow table has no row for
+  the `.seal` node, which is a ⇒-form with real content (F5's B-Seal-Fn), and F6 owns
+  no seal rule although the seal's VALUE case is exactly `readC`-then-`hasType`.
+  Neither was touched.
+* **`style.typ`.** Its rule-prefix pin table still lists `B-Back…`, `B-CheckFn` and
+  `G-EndGroupBack`, and the helpers `backJ`, `resolve`, `hole`, `checkFn` and
+  `groupb` are now unused. F5's one new judgment form (`bodyJ`) is defined LOCALLY in
+  the figure rather than promoted, to keep this pass out of a file a concurrent one
+  may be editing. Promotion and pruning belong together, in whichever pass owns
+  `style.typ` next.
