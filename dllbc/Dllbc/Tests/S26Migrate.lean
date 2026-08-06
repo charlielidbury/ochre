@@ -101,7 +101,11 @@ def p9 : List FnDef := []
 -- S10Ford's declaration half is written as PROGRAMS now (M28 ν) — its library
 -- half never had a pool entry, being `hasType` derivations over `Val`s — so `p10`
 -- is gone with `p5`. None of its five contributed a decliner either.
-def p11 : List FnDef := [S11Lib.retRefl, S11Lib.storeProof, S11Lib.discharge]
+-- S11Lib is written as PROGRAMS now (M28, cluster C) — its three pure-lift
+-- subjects were raw `FnDef` records on a keep-rationale that expired with `pure{ }`
+-- and juxtaposition application, so `p11` goes with `p5`/`p10`/`p12`. None of the
+-- three was a decliner, so §B's residue is unchanged by the removal, which is the
+-- check that the pool carried nothing but inventory.
 -- S12Inst is written as PROGRAMS now (M28 ν): each of its call cohorts is a `fn`
 -- chain, which is the pool this entry used to name, said in the grammar. `p12` is
 -- gone with `p5` and `p10`, and none of its twelve was a decliner.
@@ -182,7 +186,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p9, p11, p14, p15, p17, p18, p19, p23, p24, p25]
+  [p6, p9, p14, p15, p17, p18, p19, p23, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
