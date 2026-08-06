@@ -98,6 +98,12 @@ example : Migrate.progOkOf swap ([nth, nth2, swap]) = true := by native_decide
 
 /-! ## Callers — concrete proofs are `()`, OOB is a call-site rejection -/
 
+/-- The cursor family, which stays a `FnDef` table: `S26Fuel` §C asserts
+    `S26Migrate.p14`'s verdict VECTOR positionally against its own hint-corrected
+    copy, so all five are consumed as values by another file. The callers below are
+    programs checked against them. -/
+def cursors : List FnDef := [nth, nth2, swap]
+
 -- `swap(bb, 0, 2, (), ())`: `Le 1 2` and `Le 3 3` both whnf to ⊤, inhabited by `()`.
 def swapBody : Term := prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
@@ -105,9 +111,11 @@ def swapBody : Term := prog{
   swap(bb, 0, 2, (), ());
   let y = x;
   () }
-example : Migrate.progOkOf { name := "sc", retType := .const "Unit", telescope := [], body := swapBody }
-  ([nth, nth2, swap, { name := "sc", retType := .const "Unit", telescope := [], body := swapBody }]) = true := by
-  native_decide
+-- The caller IS a program (M28 ν): the `{ name := "sc", telescope := [], … }`
+-- wrapper the assertion used to spell out TWICE — once as the subject and once
+-- inside its own table — was only there so a body could be handed to a
+-- `FnDef`-typed verdict.
+example : progOk swapBody (.const "Unit") cursors = true := by native_decide
 
 -- CONCRETELY: `swap(v, 0, 2)` on `[1,2,3]` yields `[3,2,1]`.
 example :
@@ -123,9 +131,7 @@ def oobBody : Term := prog{
   swap(bb, 0, 4, (), ());
   let y = x;
   () }
-example : Migrate.progRejectsOf { name := "oob", retType := .const "Unit", telescope := [], body := oobBody }
-  "does not have its parameter type"
-  ([nth, nth2, swap, { name := "oob", retType := .const "Unit", telescope := [], body := oobBody }]) = true := by
+example : progRejects oobBody "does not have its parameter type" (.const "Unit") cursors = true := by
   native_decide
 
 /-! ## The multi-issued `endGroup` cascade, and a rejection (re-shaped from §13) -/
