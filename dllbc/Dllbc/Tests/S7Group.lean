@@ -83,6 +83,22 @@ def throughCaller : Term := prog{
 example : tailEnv throughCaller
   [("x", .bot), ("b", .bot), ("r", .bot), ("y", .sym 0)] = true := by native_decide
 
+/-- …and the pair that keeps the loss honest: the EXECUTING machine still writes
+    the value and still hands `Cons(9, Nil)` back to the owner. What opacity removes
+    is the CHECKER's ability to know it — §5 point 4, a fact about what was ascribed
+    and never about what happens.
+
+    Moved here from `S17Spec` when that file retired (M28 D7). §17 was the
+    declared-backward-spec suite, where a `through` carrying `back = λ r. r` let the
+    caller recover the written value in CHECKING mode; M27 deleted the mechanism, and
+    what was left of that section was this file's own opacity claim plus this
+    executing counterpart, which this file did not have. -/
+def vlist9 : Val := .ctor "Cons" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S"
+  [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "S" [.ctor "Z" []]]]]]]]]], .ctor "Nil" []]
+example : (match runProgram throughCaller with
+  | .ok env => env.lookup "y" == some vlist9
+  | .error _ => false) = true := by native_decide
+
 /-! ## Rejections -/
 
 -- The group cannot end because an issued borrow cannot surrender: `*r` was

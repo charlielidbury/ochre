@@ -8,7 +8,6 @@ import Dllbc.Tests.S11Lib
 import Dllbc.Tests.S12Inst
 import Dllbc.Tests.S14Bounds
 import Dllbc.Tests.S15Elab
-import Dllbc.Tests.S17Spec
 import Dllbc.Tests.S19Partition
 import Dllbc.Tests.S23Direct
 import Dllbc.Tests.S24Arrays
@@ -110,16 +109,19 @@ def p9 : List FnDef := []
 -- chain (`withCursors`) and every caller rides it as a tail. `p14`'s verdict VECTOR
 -- — four accepts and one reject, read positionally by `S26Fuel` §C — is those five
 -- assertions with a name attached to each instead of a position.
-def p15 : List FnDef := [S15Elab.useTrans, S15Elab.badRefl]
+-- S15Elab is written as PROGRAMS now (M28 D7): `useTrans` and `badRefl` were
+-- hand-built `FnDef` RECORDS (never `decl{ }`), the second on the argument that a
+-- surface form would obscure its lie. It does not — a `fn` puts the false return
+-- type one line above the body that fails it.
 -- S16Spec is DELETED (M28 D4). Its `chk` half checked library lemmas every one of
 -- which has a consuming program elsewhere, and its one live subject — `swapS01`,
 -- whose owed type is a Σ carrying a length proof — moved to `S27Mixed` §E, the
 -- section that reads it. `p16` joined p5/p7/p10/p12 in M28 ν; neither was a decliner.
--- S17Spec's two nullary CALLER wrappers are programs now (M28 ν) and have left
--- the pool; the five that remain are the callee tables its `tailEnvs`/`runExec`
--- assertions pair one caller body against, and `p19` below reads three of them.
-def p17 : List FnDef := [S17Spec.throughOk,
-  S17Spec.throughOpaque, S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN]
+-- S17Spec is DELETED (M28 D7). It was the declared-backward-spec suite; M27 deleted
+-- the mechanism, leaving `through` (whose opacity claim `S7Group` already made, and
+-- whose EXECUTING counterpart moved there) and the `nth`/`nth2`/`swapS` cursor
+-- family, whose only remaining caller was S19Partition — where they are now the
+-- head of that file's one chain.
 -- S18Rewrite is DELETED (M28 D4). It unit-tested `abstractOccurrences` — a
 -- round-trip property of a Term-level rewriter, which is a meta-assertion by the
 -- suite's rule — and the mechanism has a consumer that cannot pass without it: the
@@ -127,14 +129,10 @@ def p17 : List FnDef := [S17Spec.throughOk,
 -- it, and `count_swapL` is what M16 walled on without it. `p18` goes with the file;
 -- neither of its two entries was a decliner.
 
-def p19 : List FnDef := [S17Spec.nthS, S17Spec.nth2S, S17Spec.swapSN,
-  S19Partition.certSwapCount,
-  S19Partition.certSwapCountLie,
-  S19Partition.partScanE,
-  S19Partition.partitionE,
-  S19Partition.lebProbe]
--- (`stuckProbe` and its two twins, and `twoRec`, are programs since M28 ψ and
--- assert themselves in their own file.)
+-- S19Partition is written as PROGRAMS now (M28 D7): the cursor family it inherited
+-- from S17Spec plus its own six subjects are ONE `fn` chain, with the two return
+-- types that have lying twins as parameters. (`stuckProbe` and its two twins, and
+-- `twoRec`, went in M28 ψ.)
 
 -- S23Direct is written as PROGRAMS now, in four steps, and `p23` is gone with the
 -- last of them. M28 ν moved the 26 declarations nothing outside the file consumed;
@@ -183,7 +181,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p9, p15, p17, p19, p25]
+  [p9, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)

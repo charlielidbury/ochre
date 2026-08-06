@@ -1,7 +1,8 @@
 import Dllbc.Boundary
 import Dllbc.Std
 import Dllbc.StdLemmas
-import Dllbc.Migrate
+import Dllbc.ProgMacro
+import Dllbc.Program
 
 /-!
 # §15 test suite — the pure surface authoring layer, and `le_trans`
@@ -47,21 +48,13 @@ example : chk Dllbc.StdLemmas.id_congr Dllbc.StdLemmas.id_congr_ty = true := by 
     A body that ⇒-lifts `le_trans Nat a b c p q` (the pure lift, §11) and returns
     it at the dependent type `Le a c` (instantiated at the actuals, §12). -/
 
-def natT : Term := .const "Nat"
-def leT (a b : Term) : Term := Std.LeT a b
-def av : Var := ⟨0, "a"⟩
-def bv : Var := ⟨1, "b"⟩
-def cv : Var := ⟨2, "c"⟩
--- body: `le_trans a b c p q` (Le is monomorphic at Nat — no type argument)
-def useTransBody : Term :=
-  .app (.app (.app (.app (.app Dllbc.StdLemmas.le_trans (.var av)) (.var bv)) (.var cv))
-    (.var ⟨3, "p"⟩)) (.var ⟨4, "q"⟩)
-def useTrans : FnDef :=
-  { name := "useTrans", retType := leT (.var av) (.var cv),
-    telescope := [("a", natT), ("b", natT), ("c", natT),
-                  ("p", leT (.var av) (.var bv)), ("q", leT (.var bv) (.var cv))],
-    body := useTransBody }
-example : Migrate.progOkOf useTrans = true := by native_decide
+-- `le_trans a b c p q` (Le is monomorphic at Nat — no type argument), cited by
+-- name through the surface's identifier fallback.
+def useTrans : Term := prog{
+  fn useTrans (a : Nat, b : Nat, c : Nat, p : Le a b, q : Le b c) -> Le a c
+        { StdLemmas.le_trans a b c p q };
+  () }
+example : progOk useTrans = true := by native_decide
 
 /-! ## Negative tests -/
 
@@ -73,13 +66,16 @@ example : Migrate.progOkOf useTrans = true := by native_decide
 def LeFn : Term := Std.LeFnT
 def badReflClosed : Term := pure{
   λ (n : Nat). elim n return (λ (m : Nat). LeFn Z m) { Z => unit, S (k) ih => ih } }
--- SUBJECT: a deliberately-lying FnDef — retType claims `Le n n` while the (surface)
--- body proves `Le Z n`. Hand-built raw so the lie is explicit; converting it to
--- decl{} would obscure exactly what the negative test demonstrates.
-def badRefl : FnDef :=
-  { name := "badRefl", retType := Std.LeT (.var ⟨0, "n"⟩) (.var ⟨0, "n"⟩),
-    telescope := [("n", natT)], body := (.app badReflClosed (.var ⟨0, "n"⟩)) }
-example : Migrate.progRejectsOf badRefl "does not have return type" = true := by native_decide
+-- SUBJECT: a deliberately-lying function — the return type claims `Le n n` while
+-- the body proves `Le Z n`. It was a hand-built `FnDef` record on the argument that
+-- a surface form would obscure the lie; written as a `fn` the lie is the two lines
+-- side by side, which is more explicit rather than less. The body is the pure term
+-- above, spliced and applied — the mis-motive is what is under test, so it stays
+-- exactly as written.
+def badRefl : Term := prog{
+  fn badRefl (n : Nat) -> Le n n { %badReflClosed n };
+  () }
+example : progRejects badRefl "does not have return type" = true := by native_decide
 
 -- Unresolved name: `pure{ Le nope nope }` where `nope` is unbound is a Lean
 -- elaboration error at macro time (the resolve-or-error discipline), not a

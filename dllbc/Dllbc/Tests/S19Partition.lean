@@ -4,7 +4,6 @@ import Dllbc.StdLemmas
 import Dllbc.PureMacro
 import Dllbc.DeclMacro
 import Dllbc.Tests.S9Diff
-import Dllbc.Tests.S17Spec
 import Dllbc.Migrate
 
 /-!
@@ -52,87 +51,142 @@ example : chk StdLemmas.le_rw_r StdLemmas.le_rw_r_ty = true := by native_decide
 example : chk StdLemmas.hshift_true StdLemmas.hshift_true_ty = true := by native_decide
 example : chk StdLemmas.hshift_false StdLemmas.hshift_false_ty = true := by native_decide
 
-/-! ## M19-A opener — the architecture's smallest complete instance
+/-! ### The two telescopes' positional vocabulary
 
-    A `swapS` caller over a SYMBOLIC list: it borrows `s`, swaps positions `i`/`j`
-    in place (imperative mutation), and its result is the count-preservation
-    CERTIFICATE `count_swapL' m i j s pij p2`. After the swap the M17 spec-end
-    recovers `s = swapL i j σ` precisely; the certificate — computed over the entry
-    snapshot, whose subject `swapL i j s` is definitionally that recovered value —
-    proves `count m (swapL i j s) = count m s` in the caller's own environment.
-    Imperative mutation + precise recovery (M17) + pure lemma (M18), end to end. -/
+    A return type written outside its own header names parameters as `.var ⟨i, name⟩`
+    (§5.2). These are the two that vary. -/
 
--- SUBJECT: raw Term builders (tS/swapLT) feeding the lying specs below — the raw Term is the point.
+-- SUBJECT: raw Term builders (tS/swapLT) feeding the lying specs below.
 def tS (t : Term) : Term := .ctorApp "S" [t]
 def swapLT (i j l : Term) : Term := .app (.app (.app StdLemmas.swapL i) j) l
 
--- s=0, m=1, i=2, j=3, pij=4, p2=5; body binders cert=6, b=7.
-def certSwapCount : FnDef :=
-  decl{ fn certSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
-        pij : Le (S i) j, p2 : Le (S j) (len s)) -> Id Nat (count m (swapL i j s)) (count m s)
+def sT : Term := .var ⟨0, "s"⟩
+def mT : Term := .var ⟨1, "m"⟩
+def ciT : Term := .var ⟨2, "i"⟩
+def cjT : Term := .var ⟨3, "j"⟩
+def evT : Term := .var ⟨0, "v"⟩
+def eiT : Term := .var ⟨1, "i"⟩
+def ejT : Term := .var ⟨2, "j"⟩
+
+/-! ## THE CHAIN — the cursor family and everything in this file that swaps
+
+    `nth`, `nth2` and `swapS` are §17's cursor family, and they came here when
+    `S17Spec` retired (M28 D7): that file's other half was `through`, whose two
+    claims moved to `S7Group`, and this is the only place left that CALLS a cursor.
+    They are written once, at the head of one chain, with every subject that needs
+    them declared below them — because a callee is in scope by being written above
+    its caller (§8), and a `%`-spliced second chain cannot declare functions (both
+    number their slots from `progBase`, and `bindFn` refuses the shadowing).
+
+    Two return types are PARAMETERS, because two subjects have lying twins:
+    `certSwapCount`'s (the count-preservation certificate) and `exitReject`'s (the
+    exit-vs-entry reading). Everything else is written once. A lie is caught at its
+    own function's seal — sealed `let`s fire their audits in program order — so the
+    rejections below are attributable even though the chain is shared.
+
+    ### `nth`, `nth2`, `swapS`
+
+    §17 carried these with COMPOSING backward specs — `set i r s`, then
+    `set i r₁ (set j r₂ s)` composing it, then `swapL i j s` composing that. The
+    mechanism is gone (M27); what they check now is that the cursor bodies are
+    well-typed — the `Le`-bounded descent, the field reborrows, the `botElim` on the
+    impossible `Nil` path. The composing-spec claim's ensures-style successor is
+    `S23Direct.swapAt`, which states the whole swap as ONE equation over the exit
+    snapshot instead of as three specs that compose.
+
+    ### `certSwapCount` — M19-A's opener, the architecture's smallest instance
+
+    A `swapS` caller over a SYMBOLIC list: it borrows `s`, swaps positions `i`/`j`
+    in place (imperative mutation), and its result is the count-preservation
+    CERTIFICATE `count_swapL' m i j s pij p2`, computed over the entry snapshot.
+    Imperative mutation + pure lemma, end to end.
+
+    ### `pivotPlace` / `pivotPlaceH` — M20-2's conformance base
+
+    The base of partition's recursion, isolated: place the pivot at the boundary `i`
+    with a final swap. Cased on `i` because swapS cannot self-swap. `pivotPlace`
+    takes its bound directly; `pivotPlaceH` DERIVES it from the length equation the
+    recursion carries (`hlen : len *v = S (add i g)`), which validates the full
+    length-equation → swapS-bound chain the recursive partScan threads.
+
+    ### `partScanE` / `partitionE` — the executing partition
+
+    The full recursive scan and its entry point. The three step cases each derive
+    their swapS bound (let-FIRST, per the §5.3 finding) and recurse.
+
+    ### `exitReject` — M22-a, the exit snapshot is not the entry
+
+    A borrow parameter's bare `*v` in the RETURN TYPE reads the EXIT snapshot (the
+    collapsed final payload, which the audit already computes); `old *v` names the
+    ENTRY one, usable in the type AND the body as a non-consuming reference. After a
+    swap they are different, so claiming the exit equals the entry is FALSE.
+
+    The positive half is `Id (*v) (*v)`: both reads see the SAME exit snapshot,
+    which is what makes the negative half about the entry rather than about `*v`
+    being freshly minted on each occurrence. What it is NOT is
+    `Id (*v) (swapL i j (old *v))` — that is TRUE of this function and `Refl` cannot
+    prove it, because `swapS` ensures nothing and the group end hands back an opaque
+    σ. Saying it needs the derivation `S23Direct.swapAt` carries, which is where
+    §C2's ledger already points.
+
+    ### `lebProbe` — the reborrow-collapse repro
+
+    After an in-place `swapS(&mut *b,…)` the swapped elements sit in the callee's
+    element-borrows; this reborrows `&mut *b` and reads `leb (nth Z (*v)) pivot` —
+    the comptime-deref-through-a-reborrow that read a stale `loanₘ` before the fix.
+-/
+
+def certHonest : Term := pure{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (count %mT %sT) }
+def certLie : Term := pure{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (S (count %mT %sT)) }
+def exitHonest : Term := pure{ Id (List Nat) (*%evT) (*%evT) }
+def exitStale : Term := pure{ Id (List Nat) (*%evT) (old *%evT) }
+
+def withCursors (cret eret tail : Term) : Term := prog{
+  fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+        { match v {
+            Nil => botElim Unit p,
+            Cons(hd, tl) => match i {
+              Z => &mut *hd,
+              S(k) => nth(&mut *tl, k, p)
+            }
+        } };
+  fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat
+        { match v {
+            Nil => botElim Unit p2,
+            Cons(hd, tl) => match i {
+              Z => match j {
+                Z => botElim Unit pij,
+                S(jjv) => Pair(&mut *hd, nth(&mut *tl, jjv, p2))
+              },
+              S(k) => match j {
+                Z => botElim Unit pij,
+                S(jj2) => nth2(&mut *tl, k, jj2, pij, p2)
+              }
+            }
+        } };
+  fn swapS (v : &mut List Nat, i : Nat, j : Nat,
+                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit
+        { let pr = nth2(v, i, j, pij, p2);
+          match pr { Pair(ei, ej) => {
+            let t = *ei;
+            *ei := *ej;
+            *ej := t;
+            () } } };
+  -- s=0, m=1, i=2, j=3, pij=4, p2=5.
+  fn certSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
+        pij : Le (S i) j, p2 : Le (S j) (len s)) -> %cret
         { let cert = count_swapL' m i j s pij p2;
           let b = &mut s;
           swapS(b, i, j, pij, p2);
-          cert } }
-
-def openerTable : List FnDef := [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCount]
-example : Migrate.progOkOf certSwapCount openerTable = true := by native_decide
-
--- Negative control: claim the count GREW by one across the swap. The certificate
--- proves equality, so the value-returning audit rejects the lying return type —
--- the opener's acceptance is a real check of a real certificate.
-def certSwapCountLie : FnDef :=
-  decl{ fn certSwapCountLie (s : List Nat, m : Nat, i : Nat, j : Nat,
-        pij : Le (S i) j, p2 : Le (S j) (len s)) -> Id Nat (count m (swapL i j s)) (S (count m s))
-        = %certSwapCount.body }
-example : Migrate.progRejectsOf certSwapCountLie "does not have return type" [Dllbc.Tests.S17Spec.nthS, Dllbc.Tests.S17Spec.nth2S, Dllbc.Tests.S17Spec.swapSN, certSwapCountLie] = true := by native_decide
-
-/-! ## M20-2 (conformance, base case) — the pivot placement, checked against its spec
-
-    The base of partition's recursion, isolated: place the pivot at the boundary
-    `i` with a final swap, declared `back = baseBack` (partScanL's base — cased on
-    `i` so the `i = Z` no-op is literally `*v`, not the stuck `swapL Z Z *v`). Cased
-    on `i` because swapS cannot self-swap. The bound `pib : Le (S i) (len *v)`
-    discharges swapS's `p2` after `i` refines to `S i'` (its `pij` is `Le Z i' = ⊤`,
-    `unit`). Per path the declared spec refines with the scrutinee (`*v` on the
-    no-op path, `swapL Z (S i') (*v)` on the swap path) and converts with swapS's
-    composed backward tree — the §6.2 callee check now firing for a Unit-returning
-    in-place body (the M20 auditAction extension). The mechanism partScan builds on. -/
-
-open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
-
--- The pivot-placement back-spec, CASED on i so the no-op path (i = Z) is literally
--- `*v` (not `swapL Z Z *v`, which is stuck on a symbolic list). Mirrors partScanL's
--- base. v=0, i=1. Used by the pivotPlace scaffolding fns' declared backs.
--- v=0, i=1, pib=2; body binder i2=3.
-def pivotPlace : Term := prog{
+          cert };
+  -- v=0, i=1, pib=2.
   fn pivotPlace (v : &mut List Nat, i : Nat, pib : Le (S i) (len *v)) -> Unit
         { match i {
             Z => (),
             S(i2) => { swapS(v, Z, S(i2), (), pib); () }
         } };
-  () }
-/-- S17's cursor family, which stays a `FnDef` table there (one caller body against
-    two callee variants) and so rides in the table here — a program declares the
-    SUBJECT and its imported callees are supplied, which is what `progOk`'s `table`
-    parameter is for. It used to carry the subject too; neither subject below calls
-    the other, so it never needed to. -/
-def confTable : List FnDef := [nthS, nth2S, swapSN]
-example : progOk pivotPlace (.const "Unit") confTable = true := by native_decide
-
-/-! ## M20-2 (bound derivation) — the base swap's `p2` derived from the length eqn
-
-    Same pivot placement, but the bound is DERIVED from the length equation the
-    recursion carries (`hlen : len *v = S (add i g)`, the k=Z instance) rather than
-    handed in directly. In the `S i'` branch the equation reduces definitionally to
-    `len *v = S (S (add i' g))` (add on a constructor head), so `le_add i' g`
-    (whose type is `Le (S (S i')) (S (S (add i' g)))` up to Le reduction) transports
-    onto `len *v` via `le_rw_r (id_sym hlen)`. This validates the full
-    length-equation → swapS-bound chain the recursive partScan threads. -/
-
-
--- v=0, i=1, g=2, hlen=3; body binder i2=4.
-def pivotPlaceH : Term := prog{
+  -- v=0, i=1, g=2, hlen=3.
   fn pivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
         hlen : Id Nat (len *v) (S (add i g))) -> Unit
         { match i {
@@ -140,7 +194,6 @@ def pivotPlaceH : Term := prog{
             -- Derive the bound in a `let` FIRST, while `v` is still live (the `len *v`
             -- read is comptime/non-consuming); THEN call swapS (which consumes `v`).
             S(i2) => {
-              -- p2 = le_rw_r (S(S i')) (S(S(add i' g))) (len *v) (id_sym hlen) (le_add i' g)
               let p2 = le_rw_r (S (S i2)) (S (S (add i2 g))) (len *v)
                          (id_sym Nat (len *v) (S (S (add i2 g))) hlen)
                          (le_add i2 g);
@@ -148,8 +201,111 @@ def pivotPlaceH : Term := prog{
               ()
             }
         } };
-  () }
-example : progOk pivotPlaceH (.const "Unit") confTable = true := by native_decide
+  -- v=0, i=1, j=2, pij=3, p2=4.
+  fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+        -> %eret
+        { swapS(&mut *v, i, j, pij, p2); Refl };
+  -- v=0, pivot=1.
+  fn lebProbe (v : &mut List Nat, pivot : Nat) -> Unit
+        { let c = leb (nth Z (*v)) pivot;
+          match c { True => (), False => () } };
+  %tail }
+
+/-- The honest chain: nine functions, one program, no table. -/
+def chain : Term := withCursors certHonest exitHonest .unit
+example : progOk chain = true := by native_decide
+
+-- Negative control for the opener: claim the count GREW by one across the swap. The
+-- certificate proves equality, so the value-returning audit rejects the lying return
+-- type — the opener's acceptance is a real check of a real certificate.
+example : progRejects (withCursors certLie exitHonest .unit)
+  "does not have return type" = true := by native_decide
+
+-- Negative control for M22-a: claim the EXIT reading equals the ENTRY one.
+example : progRejects (withCursors certHonest exitStale .unit)
+  "does not have return type" = true := by native_decide
+
+/-! ### The executing scan — a second chain, and the reason it is second
+
+    `partScanE`/`partitionE` are the in-place Lomuto partition, mirroring
+    `partitionL` exactly: `partScanE` recurses on the scan counter `k`, reads the
+    scan element with the PURE `nth` on `*v` (a comptime read, the `leb` condition),
+    and branches — the `g = S g'` case swaps in place then recurses, the base places
+    the pivot with a final swap (guarded on `i = S i'`, since swapS cannot
+    self-swap).
+
+    **Their swapS bounds are placeholders `()`, so they do not type-check**, and
+    that is why they cannot ride the chain above: the point of that chain is
+    `progOk`. They are RUN, in executing mode, which does not type-check arguments —
+    the claim is conformance with the pure model on concrete inputs, which is what
+    the checking mode later proved on `S23Direct.partition` with real bounds.
+
+    So the cursor family is written a second time here. That is the honest cost of
+    one chain per verdict class, and it is the smaller cost: the alternative is a
+    chain the corpus cannot assert `progOk` on, which would make every accepting
+    subject in it unasserted. -/
+
+def withScan (tail : Term) : Term := prog{
+  fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+        { match v {
+            Nil => botElim Unit p,
+            Cons(hd, tl) => match i {
+              Z => &mut *hd,
+              S(k) => nth(&mut *tl, k, p)
+            }
+        } };
+  fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat
+        { match v {
+            Nil => botElim Unit p2,
+            Cons(hd, tl) => match i {
+              Z => match j {
+                Z => botElim Unit pij,
+                S(jjv) => Pair(&mut *hd, nth(&mut *tl, jjv, p2))
+              },
+              S(k) => match j {
+                Z => botElim Unit pij,
+                S(jj2) => nth2(&mut *tl, k, jj2, pij, p2)
+              }
+            }
+        } };
+  fn swapS (v : &mut List Nat, i : Nat, j : Nat,
+                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit
+        { let pr = nth2(v, i, j, pij, p2);
+          match pr { Pair(ei, ej) => {
+            let t = *ei;
+            *ei := *ej;
+            *ej := t;
+            () } } };
+  -- v=0, k=1, i=2, g=3, pivot=4.
+  fn partScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
+        { match k {
+            Z => match i {
+              Z => (),
+              S(i2) => { swapS(v, Z, S(i2), (), ()); () }
+            },
+            S(k2) => {
+              let c = leb (nth (S (add i g)) (*v)) pivot;
+              match c {
+                True => match g {
+                  Z => partScanE(v, k2, S(i), Z, pivot),
+                  -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
+                  -- + the recursion), and §2.1 copy-on-read makes that natural: a
+                  -- `S`-constructor arg reads its var by copy (marker-free Nat), so the
+                  -- indices are the plain `S i`, `S (add i (S g2))`, `S g2`.
+                  S(g2) => { swapS(&mut *v, S(i), S(add i (S(g2))), (), ()); partScanE(v, k2, S(i), S(g2), pivot) }
+                },
+                False => partScanE(v, k2, i, S(g), pivot)
+              }
+            }
+        } };
+  -- v=0, n=1.
+  fn partitionE (v : &mut List Nat, n : Nat) -> Unit
+        { match n {
+            Z => (),
+            S(n2) => { let pivot = nth Z (*v); partScanE(v, n2, Z, Z, pivot) }
+        } };
+  %tail }
 
 /-! ## M20-2 (the recursive partScan) — partition's scan loop, checked against partScanL
 
@@ -354,43 +510,8 @@ example : (pv (sortRangeLT 3 1 3 [9,3,1,2,7]) == vlist [9,1,2,3,7]) = true := by
     the run does not type-check) to confirm the imperative algorithm agrees with the
     pure model on concrete inputs — the conformance the checking mode will prove. -/
 
-open Dllbc.Tests.S17Spec (nthS nth2S swapSN)
-
-
--- v=0, k=1, i=2, g=3, pivot=4; body binders k2=5, c/i2=6, g2=7.
-def partScanE : FnDef :=
-  decl{ fn partScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
-        { match k {
-            Z => match i {
-              Z => (),
-              S(i2) => { swapS(v, Z, S(i2), (), ()); () }
-            },
-            S(k2) => {
-              let c = leb (nth (S (add i g)) (*v)) pivot;
-              match c {
-                True => match g {
-                  Z => partScanE(v, k2, S(i), Z, pivot),
-                  -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
-                  -- + the recursion), and §2.1 copy-on-read now makes that natural: a
-                  -- `S`-constructor arg reads its var by copy (marker-free Nat), so the
-                  -- indices are the plain `S i`, `S (add i (S g2))`, `S g2` — no
-                  -- add-spine workaround, and these convert with the model's forms.
-                  S(g2) => { swapS(&mut *v, S(i), S(add i (S(g2))), (), ()); partScanE(v, k2, S(i), S(g2), pivot) }
-                },
-                False => partScanE(v, k2, i, S(g), pivot)
-              }
-            }
-        } } }
-
--- v=0, n=1; body binders n2=5, pivot=6.
-def partitionE : FnDef :=
-  decl{ fn partitionE (v : &mut List Nat, n : Nat) -> Unit
-        { match n {
-            Z => (),
-            S(n2) => { let pivot = nth Z (*v); partScanE(v, n2, Z, Z, pivot) }
-        } } }
-
-def partTable : List FnDef := [nthS, nth2S, swapSN, partScanE, partitionE]
+-- The subjects are the chain's `partScanE`/`partitionE` (M28 D7); what follows is
+-- the caller that runs them, spliced in as its tail.
 
 -- Executing-mode caller: create a concrete list, borrow, partition in place, recover.
 def partCaller (lst : List Nat) (n : Nat) : Term :=
@@ -400,7 +521,7 @@ def partCaller (lst : List Nat) (n : Nat) : Term :=
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
 
 def runPart (lst : List Nat) (n : Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec partTable (partCaller lst n) with
+  match Dllbc.Tests.S9Diff.runExec [] (withScan (partCaller lst n)) with
   | .ok env => env.lookup "y" == some (pv (partLT n lst))
   | .error _ => false
 
@@ -488,10 +609,7 @@ def psrCaller (lst : List Nat) (lo k pivot : Nat) : Term :=
 -- stale `loanₘ` (stuck) before the fix. `match c` forces the Bool. Post-fix the
 -- reborrow fully re-collapses *v, so `nth Z (*v)` = 1, `leb 1 5` = True, and the
 -- owner `x` recovers the swapped [1,2,3].
-def lebProbe : FnDef :=
-  decl{ fn lebProbe (v : &mut List Nat, pivot : Nat) -> Unit
-        { let c = leb (nth Z (*v)) pivot;
-          match c { True => (), False => () } } }
+-- (`lebProbe` is the chain's, M28 D7; what follows is the caller that runs it.)
 
 -- SUBJECT: raw Term caller for the isolated repro (x=[3,2,1]; b=&mut x; swapS through
 -- *b; lebProbe reborrows *b and comptime-reads it; recover y).
@@ -502,7 +620,7 @@ def swapLebCaller (lst : List Nat) : Term :=
         (.seq (.call "lebProbe" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 5])
           (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
 def runSwapLebProbe (lst : List Nat) (expect : List Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN, lebProbe] (swapLebCaller lst) with
+  match Dllbc.Tests.S9Diff.runExec [] (withCursors certHonest exitHonest (swapLebCaller lst)) with
   | .ok env => env.lookup "y" == some (vlist expect)
   | .error _ => false
 -- Before the fix this errored (leb scrutinee stuck on `loanₘ`); now the reborrow
@@ -520,7 +638,7 @@ def swapTwiceCaller (lst : List Nat) : Term :=
         (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
           (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
 def runSwapTwice (lst : List Nat) (expect : List Nat) : Bool :=
-  match Dllbc.Tests.S9Diff.runExec [nthS, nth2S, swapSN] (swapTwiceCaller lst) with
+  match Dllbc.Tests.S9Diff.runExec [] (withCursors certHonest exitHonest (swapTwiceCaller lst)) with
   | .ok env => env.lookup "y" == some (vlist expect)
   | .error _ => false
 example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
@@ -538,14 +656,11 @@ example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
     the entry value). Consumed params stay entry-pinned (M12). These prove the
     reading is genuinely the exit value, not the entry. -/
 
--- ACCEPTED: after the swap, *v (exit) IS swapL i j (old *v). Refl checks only
--- because bare *v reads the EXIT value; the body's proof cites `old *v` for the entry.
-def exitReject : Term := prog{
-  fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
-        -> Id (List Nat) (*v) (old *v)
-        { swapS(&mut *v, i, j, pij, p2); Refl };
-  () }
-example : progRejects exitReject "does not have return type" (.const "Unit") confTable = true := by native_decide
+-- The pair is the chain's `exitReject` (M28 D7): `Id (*v) (*v)` is accepted (both
+-- reads see one exit snapshot) and `Id (*v) (old *v)` is rejected (the swap moved
+-- things). The reading that is TRUE here and unprovable by `Refl` —
+-- `Id (*v) (swapL i j (old *v))` — is `S23Direct.swapAt`, which carries the
+-- derivation; §C2 of the disposition ledger is where that hand-off is recorded.
 
 -- OLD/EXIT MIXED: len is preserved across the swap. *v (exit) = swapL i j (old *v),
 -- so `len *v = len (old *v)` is exactly len_swapL at the entry snapshot — cited
