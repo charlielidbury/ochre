@@ -96,9 +96,9 @@ def p9 : List FnDef := [S9Diff.through, S9Diff.advance, S9Diff.choose, S9Diff.pu
 -- half never had a pool entry, being `hasType` derivations over `Val`s — so `p10`
 -- is gone with `p5`. None of its five contributed a decliner either.
 def p11 : List FnDef := [S11Lib.retRefl, S11Lib.storeProof, S11Lib.discharge]
-def p12 : List FnDef := [S12Inst.useRefl, S12Inst.callerRet, S12Inst.symCall, S12Inst.needs,
-  S12Inst.callNeeds1, S12Inst.callNeeds3, S12Inst.observe, S12Inst.observeGood,
-  S12Inst.observeBad, S12Inst.needsLe22, S12Inst.refineTest, S12Inst.classify]
+-- S12Inst is written as PROGRAMS now (M28 ν): each of its call cohorts is a `fn`
+-- chain, which is the pool this entry used to name, said in the grammar. `p12` is
+-- gone with `p5` and `p10`, and none of its twelve was a decliner.
 def p14 : List FnDef := [S14Bounds.nth, S14Bounds.nth2, S14Bounds.swap, S14Bounds.cascade,
   S14Bounds.rejectProbe]
 def p15 : List FnDef := [S15Elab.useTrans, S15Elab.badRefl]
@@ -177,7 +177,7 @@ def p25 : List FnDef := [S25ArrSort.splitA, S25ArrSort.partitionA, S25ArrSort.qu
 /-- The corpus total, as one number each, so that a file quietly dropping out of
     the survey is visible even if its own assertion was deleted with it. -/
 def pools : List (List FnDef) :=
-  [p6, p7, p9, p11, p12, p14, p15, p16, p17, p18, p19, p23, p24, p25]
+  [p6, p7, p9, p11, p14, p15, p16, p17, p18, p19, p23, p24, p25]
 
 -- (the corpus-total assertion went with `report`; the pools themselves are the
 -- inventory, and every declaration in them is asserted in its own file)
