@@ -1201,10 +1201,12 @@ mutual
           -- to lift: its variables were resolved into an environment when it was
           -- built. An honestly open motive would need to arrive in an ENVIRONMENT,
           -- not in a syntactic hole, and a shift is not what carries it there.
-          let sigTy : Val := .sigmaT a (.app (Val.shiftPure 1 0 b) (.pvar 0))
+          -- (Checked, not assumed: dropping them was bisected against the corpus
+          -- on its own, and changed nothing.)
+          let sigTy : Val := .sigmaT a (.app b (.pvar 0))
           let fTy : Val :=
-            .pi a (.pi (.app (Val.shiftPure 1 0 b) (.pvar 0))
-              (.app (Val.shiftPure 2 0 p) (.ctor "Pair" [.pvar 1, .pvar 0])))
+            .pi a (.pi (.app b (.pvar 0))
+              (.app p (.ctor "Pair" [.pvar 1, .pvar 0])))
           let fOk ← hasType fuel f fTy
           let sOk ← hasType fuel s sigTy
           finish (Val.nfV fuel (.app p s)) rest (fOk && sOk)
@@ -1243,10 +1245,10 @@ mutual
           let pnOk ← hasType fuel pn (Val.nfV fuel (.app (.app p Val.zero) (.ctor "Arr" [])))
           let pcTy : Val :=
             .pi (.const "Nat")
-              (.pi (Val.shiftPure 1 0 tt)
-                (.pi (Val.arrayTy (.pvar 1) (Val.shiftPure 2 0 tt))
-                  (.pi (.app (.app (Val.shiftPure 3 0 p) (.pvar 2)) (.pvar 0))
-                    (.app (.app (Val.shiftPure 4 0 p) (.ctor "S" [.pvar 3]))
+              (.pi tt
+                (.pi (Val.arrayTy (.pvar 1) tt)
+                  (.pi (.app (.app p (.pvar 2)) (.pvar 0))
+                    (.app (.app p (.ctor "S" [.pvar 3]))
                       (.app (.app (.app (.const "acons") (.pvar 3)) (.pvar 2)) (.pvar 1))))))
           let pcOk ← hasType fuel pc pcTy
           let nOk ← hasType fuel n (.const "Nat")
@@ -1410,7 +1412,7 @@ def carveObligation (fuel : Nat) (b m lo cnt : Val) : Val :=
   else
     let low := Val.kLe b lo
     let high := Val.kLe (rangeEnd fuel lo cnt) (Val.kAdd b m)
-    .sigmaT low (Val.shiftPure 1 0 high)
+    .sigmaT low high
 
 /-- Is the cited evidence good for this leaf? With no evidence cited we try the
     canonical inhabitant of ⊤ — ¶3.2's supply route 1, "conversion alone", which is

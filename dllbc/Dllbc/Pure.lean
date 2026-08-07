@@ -6,190 +6,22 @@ import Dllbc.Value
 The comptime fragment is a tiny standard type theory: one universe (type-in-
 type), Π, Σ, λ, application, constructors, and a fixed basis of recursors as
 built-in constants (`natRec`, `boolRec`, `botElim`). This module is the
-substitution-based evaluator over `Val`, in the `lean/Och` playbook (Och's
-`concEval` is the same shape): pure binders are de Bruijn (`pvar`), β and ι
-fire by substitution, and a `sym` (or a `pvar`) at an application/recursor
-head blocks reduction — the whole spine is then a legal (stuck neutral) value.
+evaluator over `Val`. Pure binders are de Bruijn (`pvar`); β and ι fire by
+**environment extension** (M30 — see the NbE section below, and `docs/nbe.md`),
+and a `sym` (or a `pvar`) at an application/recursor head blocks reduction — the
+whole spine is then a legal (stuck neutral) value.
 
 `readC` (⇝) and `hasType` (in `Machine.lean`) are built on top: `readC`
 reflects a `Term` into a `Val` (resolving Ω snapshot reads) and normalizes it
 here; `hasType` uses `convert` and the constructor signature table.
 
-Everything is total: `shiftPure`/`substPure` recurse structurally (mutual with
-a list helper for constructor arguments); `whnfV`/`nfV` take explicit fuel.
+Everything is total: `eval`/`whnfN`/`readback` take explicit fuel, and the
+value traversals recurse structurally (mutual with a list helper for constructor
+arguments). There is no substitution and no index arithmetic: `substPure`,
+`shiftPure` and the delayed-lift machinery were deleted in M30.
 -/
 
 namespace Dllbc.Val
-
-/-! ## de Bruijn shift and substitution for pure binders
-
-    Only `pvar` (pure de Bruijn) and the pure binders (`pi`/`sigmaT`/`lam`)
-    participate. Constructor arguments are recursed into (a dependent type
-    like `S #0` carries pure variables); `sym`/`const`/runtime forms are
-    leaves — σ, ℓ and constant names are global, not de Bruijn. -/
-
-/-! Shift pure de Bruijn indices ≥ `c` up by `d`. -/
-mutual
-  def shiftPure (d c : Nat) : Val → Val
-    | .pvar k => if k < c then .pvar k else .pvar (k + d)
-    | .cmpT τ => .cmpT (shiftPure d c τ)       -- a domain: same binder depth
-    | .lam dom b => .lam (shiftPure d c dom) (shiftPure d (c + 1) b)
-    | .pi dom cod => .pi (shiftPure d c dom) (shiftPure d (c + 1) cod)
-    | .sigmaT dom cod => .sigmaT (shiftPure d c dom) (shiftPure d (c + 1) cod)
-    | .app f a => .app (shiftPure d c f) (shiftPure d c a)
-    | .ctor n args => .ctor n (shiftPureList d c args)
-    | .idT a b b' => .idT (shiftPure d c a) (shiftPure d c b) (shiftPure d c b')
-    | v => v                                   -- type, const, sym, ⊥, loanM, borrowM: leaves
-  termination_by v => sizeOf v
-  def shiftPureList (d c : Nat) : List Val → List Val
-    | [] => []
-    | v :: vs => shiftPure d c v :: shiftPureList d c vs
-  termination_by vs => sizeOf vs
-end
-
-/-! Does the value mention any pure de Bruijn variable in a position the pure
-    shift/substitution reaches (`borrowM` payloads are leaves there, so a pvar
-    inside one does not count)? A pvar-free value is a fixed point of
-    `shiftPure d c`, which is what lets `substPure` below never copy it. -/
-mutual
-  def pvarFree : Val → Bool
-    | .pvar _ => false
-    | .cmpT τ => pvarFree τ
-    | .lam dom b => pvarFree dom && pvarFree b
-    | .pi dom cod => pvarFree dom && pvarFree cod
-    | .sigmaT dom cod => pvarFree dom && pvarFree cod
-    | .app f a => pvarFree f && pvarFree a
-    | .ctor _ args => pvarFreeList args
-    | .idT a b b' => pvarFree a && pvarFree b && pvarFree b'
-    | _ => true                                -- leaves (see shiftPure)
-  termination_by v => sizeOf v
-  def pvarFreeList : List Val → Bool
-    | [] => true
-    | v :: vs => pvarFree v && pvarFreeList vs
-  termination_by vs => sizeOf vs
-end
-
-/-! Substitute `s` for pure de Bruijn variable `j` in a value; indices `> j`
-    shift down by one (the binder at `j` is eliminated).
-
-    **Delayed lifting** (the checker's measured hot spot — see the perf commit):
-    the textbook recursion re-shifts `s` at *every* binder it goes under
-    (`substPure (j+1) (shiftPure 1 0 s) b`), which structurally copies `s` once
-    per binder crossed — O(binders × |s|). At quicksort scale the substituends
-    are 10⁵-node proof values and this one line was ~93% of all checker CPU
-    (62% `shiftPure` itself + ~30% allocator/refcount churn on the copies).
-    Instead we carry the number of binders crossed, `d`, and lift only at an
-    actual occurrence of the variable — and not even then when `s` is pvar-free
-    (`sc`), since the shift is then the identity. Extensionally identical to the
-    old recursion: `substGo j d sc s v = substPure_old (j+d) (shiftPure d 0 s) v`
-    by induction on `v`, using `shiftPure 1 0 ∘ shiftPure d 0 = shiftPure (d+1) 0`
-    (cutoff 0) at the binder cases and, for the `sc` fast path, that a pvar-free
-    `s` is a fixed point of every shift. -/
-mutual
-  def substGo (j d : Nat) (sc : Bool) (s : Val) : Val → Val
-    | .pvar k =>
-      if k == j + d then (if sc || d == 0 then s else shiftPure d 0 s)
-      else if k > j + d then .pvar (k - 1) else .pvar k
-    | .cmpT τ => .cmpT (substGo j d sc s τ)    -- a domain: same binder depth
-    | .lam dom b => .lam (substGo j d sc s dom) (substGo j (d + 1) sc s b)
-    | .pi dom cod => .pi (substGo j d sc s dom) (substGo j (d + 1) sc s cod)
-    | .sigmaT dom cod => .sigmaT (substGo j d sc s dom) (substGo j (d + 1) sc s cod)
-    | .app f a => .app (substGo j d sc s f) (substGo j d sc s a)
-    | .ctor n args => .ctor n (substGoList j d sc s args)
-    | .idT a b b' => .idT (substGo j d sc s a) (substGo j d sc s b) (substGo j d sc s b')
-    | v => v                                   -- leaves (see shiftPure)
-  termination_by v => sizeOf v
-  def substGoList (j d : Nat) (sc : Bool) (s : Val) : List Val → List Val
-    | [] => []
-    | v :: vs => substGo j d sc s v :: substGoList j d sc s vs
-  termination_by vs => sizeOf vs
-end
-
-def substPure (j : Nat) (s : Val) (v : Val) : Val := substGo j 0 (pvarFree s) s v
-
-def substPureList (j : Nat) (s : Val) (vs : List Val) : List Val := substGoList j 0 (pvarFree s) s vs
-
-/-! ## `let`, and how the comptime fragment reads one (M29 α)
-
-    **`let` is a form BOTH arrows read.** ⇒ binds an Ω slot; ⇝'s reading is β —
-    `let x = e ; rest` is `rest` with `x`'s occurrences replaced by `e`'s value.
-    The two reflections that implement ⇝ (`Term.toValPure` below, monad-free, and
-    `reflectC` in `Machine.lean`, which additionally resolves Ω snapshots) share
-    this context so that there is one statement of the rule rather than two.
-
-    Doing β as a REWRITE — abstract `x` out of `rest`, then apply — would take
-    both reflections off their structural recursion, since the abstracted body is
-    not a subterm of anything. So the substitution is carried rather than applied:
-    a binding is recorded here and consulted at the `.var` that needs it, which is
-    the same reduction with the copies delayed.
-
-    **The DEPTH is why this is a context and not a list.** A let-bound value may
-    mention pure de Bruijn variables — `λ (n : Nat). let s = f n ; …` binds `s` to
-    a value containing `#0` — and an occurrence of `s` under one more binder sits
-    at a different level than the binding did. Each entry therefore records the
-    depth it was made at, and a lookup lifts by the difference: exactly the
-    `shiftPure` a β-rewrite performs on the way in. -/
-structure LetCtx where
-  /-- Pure binders crossed so far. -/
-  dep : Nat := 0
-  /-- `id ↦ (depth at binding, value)`, innermost first. -/
-  lets : List (Nat × Nat × Val) := []
-deriving Inhabited
-
-/-- One pure binder deeper. -/
-def LetCtx.under (c : LetCtx) : LetCtx := { c with dep := c.dep + 1 }
-
-/-- Record a `let` binding at the current depth. PREPENDED, so an inner `let` on
-    the same id shadows an outer one. -/
-def LetCtx.bind (c : LetCtx) (id : Nat) (v : Val) : LetCtx :=
-  { c with lets := (id, c.dep, v) :: c.lets }
-
-/-- The value bound to a variable id, lifted from the depth it was bound at to
-    the depth this occurrence sits at. The identity at equal depths — every
-    occurrence not under a further pure binder, which is the common case — so the
-    lift is guarded rather than unconditional. -/
-def LetCtx.find? (c : LetCtx) (id : Nat) : Option Val :=
-  match c.lets.find? (fun e => e.1 == id) with
-  | some (_, bd, v) => some (if c.dep == bd then v else shiftPure (c.dep - bd) 0 v)
-  | none => none
-
-/-! Reflect a PURE `Term` into a `Val` (no monad, no Ω): the borrow-free fragment
-    only — `var`/`deref`/runtime forms map to `⊥` (they never occur in a pure
-    goal). Used by `Std.nfTerm` to normalize a §18 generalize goal so a computed
-    subterm (an `eqb`-spine hidden in a `count`-unfolding) is exposed before
-    `abstractOccurrences`.
-
-    A `let` is read by β, through the context above. A `.var` that is NOT
-    let-bound still maps to `⊥`: with no Ω there is nothing else it could be, and
-    the distinction is exactly the one this reflection is for — a `let` is part of
-    the pure term, an Ω snapshot is not. Moved here from `Value.lean` in M29 α,
-    which is when it acquired the `let` case and with it a use for `shiftPure`. -/
-mutual
-  def Term.toValPureGo (c : LetCtx) : Term → Val
-    | .type => .type
-    | .const k => .const k
-    | .pvar k => .pvar k
-    | .var x => (c.find? x.id).getD .bot
-    | .letIn x rhs rest => Term.toValPureGo (c.bind x.id (Term.toValPureGo c rhs)) rest
-    | .cmpT τ => .cmpT (Term.toValPureGo c τ)
-    | .pi d cod => .pi (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
-    | .sigmaT d cod => .sigmaT (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
-    | .lam d b => .lam (Term.toValPureGo c d) (Term.toValPureGo c.under b)
-    | .app f a => .app (Term.toValPureGo c f) (Term.toValPureGo c a)
-    | .idT a b b' => .idT (Term.toValPureGo c a) (Term.toValPureGo c b) (Term.toValPureGo c b')
-    | .ctorApp n args => .ctor n (Term.toValPureListGo c args)
-    | .unit => .ctor "unit" []
-    | _ => .bot                                          -- runtime forms: absent in pure goals
-  termination_by t => sizeOf t
-  def Term.toValPureListGo (c : LetCtx) : List Term → List Val
-    | [] => []
-    | t :: ts => Term.toValPureGo c t :: Term.toValPureListGo c ts
-  termination_by ts => sizeOf ts
-end
-
-def Term.toValPure (t : Term) : Val := Term.toValPureGo {} t
-
-def Term.toValPureList (ts : List Term) : List Val := Term.toValPureListGo {} ts
 
 /-! ## Kernel arithmetic, and the `Array` former's vocabulary
 
@@ -267,130 +99,6 @@ def collectSpine : Val → Val × List Val
 def rebuildSpine : Val → List Val → Val
   | h, [] => h
   | h, a :: as => rebuildSpine (.app h a) as
-
-/-- Weak-head-normalize: reduce the head redex (β / ι) only, fuel-bounded.
-    Leaves (`pvar`, `sym`, `type`, `const`, `pi`, `sigmaT`, `lam`, `ctor`) and
-    stuck neutral spines are returned as-is. -/
-def whnfV : Nat → Val → Val
-  | 0, v => v
-  | fuel + 1, v =>
-    let (head, args) := collectSpine v
-    match head, args with
-    | .lam _ b, a :: rest =>                        -- β
-      whnfV fuel (rebuildSpine (substPure 0 a b) rest)
-    | .const "natRec", motive :: z :: s :: n :: rest =>
-      match whnfV fuel n with
-      | .ctor "Z" [] => whnfV fuel (rebuildSpine z rest)
-      | .ctor "S" [m] =>
-        -- natRec P z s (S m) ↦ s m (natRec P z s m)
-        let recCall := .app (.app (.app (.app (.const "natRec") motive) z) s) m
-        whnfV fuel (rebuildSpine (.app (.app s m) recCall) rest)
-      | n' => rebuildSpine (.const "natRec") (motive :: z :: s :: n' :: rest)  -- stuck
-    | .const "boolRec", motive :: t :: f :: b :: rest =>
-      match whnfV fuel b with
-      | .ctor "True" [] => whnfV fuel (rebuildSpine t rest)
-      | .ctor "False" [] => whnfV fuel (rebuildSpine f rest)
-      | b' => rebuildSpine (.const "boolRec") (motive :: t :: f :: b' :: rest)  -- stuck
-    -- listRec A P pn pc l : P l ; ι on Nil ↦ pn, on Cons h t ↦ pc h t (rec on t).
-    | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
-      match whnfV fuel l with
-      | .ctor "Nil" [] => whnfV fuel (rebuildSpine pn rest)
-      | .ctor "Cons" [h, t] =>
-        let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
-        whnfV fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
-      | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)  -- stuck
-    -- sigmaRec A B P f p : P p (§9) — the dependent Σ eliminator, the basis's one
-    -- missing recursor-per-former. ι on `Pair a b ↦ f a b`. Non-recursive (Σ is not
-    -- inductive in its own right), so there is no `ih` argument, unlike natRec/listRec.
-    | .const "sigmaRec", a :: b :: motive :: f :: p :: rest =>
-      match whnfV fuel p with
-      | .ctor "Pair" [x, y] => whnfV fuel (rebuildSpine (.app (.app f x) y) rest)
-      | p' => rebuildSpine (.const "sigmaRec") (a :: b :: motive :: f :: p' :: rest)  -- stuck
-    -- Paulin-Mohring J (§10): j A a P d b p ; ι fires on Refl (b = a there), → d.
-    | .const "j", _A :: _a :: _P :: d :: _b :: p :: rest =>
-      match whnfV fuel p with
-      | .ctor "Refl" [] => whnfV fuel (rebuildSpine d rest)
-      | p' => rebuildSpine (.const "j") (_A :: _a :: _P :: d :: _b :: p' :: rest)  -- stuck
-    -- Streicher K (§10): k A a P d p ; ι fires on Refl, → d.
-    | .const "k", _A :: _a :: _P :: d :: p :: rest =>
-      match whnfV fuel p with
-      | .ctor "Refl" [] => whnfV fuel (rebuildSpine d rest)
-      | p' => rebuildSpine (.const "k") (_A :: _a :: _P :: d :: p' :: rest)  -- stuck
-    -- ## The array basis's computing constants (¶1.3)
-    --
-    -- `arrCat T m k a b : Array (add m k) T` — the SPLIT view, and the comptime
-    -- shadow of the segment structure. It computes on run-headed arguments
-    -- (segment-list concatenation) and is a legitimate stuck neutral on σ's, which
-    -- is exactly §3.2's knowledge/state line: the segment list is state, the
-    -- `arrCat` spine is knowledge. Empty runs are absorbed — a zero-extent carve
-    -- piece must vanish definitionally, or every degenerate carve's rejoin
-    -- conversion would need a lemma.
-    --
-    -- DEVIATION from ¶1.3's signature, and the reason: the doc writes `arrCat : Π T
-    -- (m k : Nat) → …`, but nothing needs the `T`. Its result type is checked, never
-    -- synthesized (an `Array` is never applied), while the merge normalization and
-    -- the ⇝ fold would both have to MANUFACTURE a `T` they cannot read off a value
-    -- tree — Ω records extents, not element types. So `T` is dropped here and
-    -- recovered from the expected type at the check. Same for `acons`; `aget` keeps
-    -- its `T`, since its result type genuinely is `T` and must be synthesized.
-    | .const "arrCat", m :: k :: a :: b :: rest =>
-      match whnfV fuel a, whnfV fuel b with
-      | .ctor "Arr" [], b' => whnfV fuel (rebuildSpine b' rest)
-      | a', .ctor "Arr" [] => whnfV fuel (rebuildSpine a' rest)
-      | .ctor "Arr" xs, .ctor "Arr" ys => whnfV fuel (rebuildSpine (.ctor "Arr" (xs ++ ys)) rest)
-      -- CONS-VIEW compatibility: `arrCat (acons x xs) b ⇝ acons x (arrCat xs b)`, the
-      -- array counterpart of `append (Cons h t) u ⇝ Cons h (append t u)`. Without it the
-      -- library transfer ¶1.3 promises is not mechanical: `sorted_append_pivot`'s proof
-      -- turns on `Sorted (append (Cons h t) …)` UNFOLDING definitionally, and the array
-      -- restatement needs the same unfolding or every step wants a transport lemma.
-      | .app (.app (.app (.const "acons") m') x) xs, b' =>
-        whnfV fuel (rebuildSpine
-          (.app (.app (.app (.const "acons") (kAdd m' k)) x)
-            (.app (.app (.app (.app (.const "arrCat") m') k) xs) b')) rest)
-      -- A nonempty RUN on the left with a non-run on the right peels its head into an
-      -- `acons`, which is the same rule read through the other view: a literal is a
-      -- cons spine that happens to be written flat. Without this `arrCat (asingle p) b`
-      -- is stuck for symbolic `b` — and `asingle p` computes to a RUN, so ¶6's own
-      -- spelling of the pivot splice would not reach the cons view it is meant to be.
-      | .ctor "Arr" (x :: xs), b' =>
-        let tlLen := valOfNat xs.length
-        whnfV fuel (rebuildSpine
-          (.app (.app (.app (.const "acons") (kAdd tlLen k)) x)
-            (.app (.app (.app (.app (.const "arrCat") tlLen) k) (.ctor "Arr" xs)) b')) rest)
-      | a', b' => rebuildSpine (.const "arrCat") (m :: k :: a' :: b' :: rest)
-    -- `aget T n i a : T` — positional read of the snapshot (¶2.2's ⇝ column at an
-    -- index place). Fires only at a concrete index into a run.
-    | .const "aget", tt :: n :: i :: a :: rest =>
-      match natOfVal? (whnfV fuel i), whnfV fuel a with
-      | some j, .ctor "Arr" vs =>
-        match vs.get? j with
-        | some v => whnfV fuel (rebuildSpine v rest)
-        | none => rebuildSpine (.const "aget") (tt :: n :: i :: .ctor "Arr" vs :: rest)
-      | _, a' => rebuildSpine (.const "aget") (tt :: n :: i :: a' :: rest)
-    -- `acons T n x xs : Array (S n) T` — the CONS view's constructor, so that the
-    -- pure library over arrays can be written exactly like the one over lists.
-    | .const "acons", n :: x :: xs :: rest =>
-      match whnfV fuel xs with
-      | .ctor "Arr" vs => whnfV fuel (rebuildSpine (.ctor "Arr" (x :: vs)) rest)
-      | xs' => rebuildSpine (.const "acons") (n :: x :: xs' :: rest)
-    -- `arrRec T P pn pc n a : P n a` — the cons-view recursor (¶1.3). ι on a run:
-    -- empty ↦ pn, `Arr (x :: vs)` ↦ pc |vs| x (Arr vs) (rec on Arr vs).
-    | .const "arrRec", tt :: motive :: pn :: pc :: n :: a :: rest =>
-      match whnfV fuel a with
-      | .ctor "Arr" [] => whnfV fuel (rebuildSpine pn rest)
-      | .ctor "Arr" (x :: vs) =>
-        let tl : Val := .ctor "Arr" vs
-        let k : Val := valOfNat vs.length
-        let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, k, tl]
-        whnfV fuel (rebuildSpine (rebuildSpine pc [k, x, tl, recCall]) rest)
-      -- …and ι on the CONS view, so a predicate over arrays unfolds on an `acons`
-      -- exactly as its list counterpart unfolds on a `Cons`.
-      | .app (.app (.app (.const "acons") m') x) xs =>
-        let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, m', xs]
-        whnfV fuel (rebuildSpine (rebuildSpine pc [m', x, xs, recCall]) rest)
-      | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
-    -- botElim never fires (⊥ has no constructors); it is always a stuck value.
-    | _, _ => rebuildSpine head args
 
 /-! ## Environment-based evaluation — NbE (M30, `docs/nbe.md`)
 
@@ -667,75 +375,109 @@ def whnfOut (fuel : Nat) (v : Val) : Val := whnfN true fuel v
 def instBodyOut (fuel : Nat) (body arg : Val) : Val :=
   readback fuel 0 (instBody fuel body arg)
 
-/-! ## Full normalization and conversion -/
+/-! ## `let`, and how the comptime fragment reads one (M29 α)
 
-/-! Normalize to full normal form: whnf the head, then normalize subterms.
-    Under a binder, de Bruijn `pvar 0` is naturally a neutral leaf, so no fresh
-    variable is needed. Fuel-bounded.
+    **`let` is a form BOTH arrows read.** ⇒ binds an Ω slot; ⇝'s reading is β —
+    `let x = e ; rest` is `rest` with `x`'s occurrences replaced by `e`'s value.
+    The two reflections that implement ⇝ (`Term.toValPure` below, monad-free, and
+    `reflectC` in `Machine.lean`, which additionally resolves Ω snapshots) share
+    this context so that there is one statement of the rule rather than two.
 
-    **The substitution normalizer, and for the duration of M30 it is no longer the
-    one the checker calls.** `nfV` below runs this and `nfN` against each other on
-    every normalization the corpus performs; this is the side that is going away. -/
+    Doing β as a REWRITE — abstract `x` out of `rest`, then apply — would take
+    both reflections off their structural recursion, since the abstracted body is
+    not a subterm of anything. So the substitution is carried rather than applied:
+    a binding is recorded here and consulted at the `.var` that needs it, which is
+    the same reduction with the copies delayed.
+
+    **The DEPTH is why this is a context and not a list.** A let-bound value may
+    mention pure de Bruijn variables — `λ (n : Nat). let s = f n ; …` binds `s` to
+    a value containing `#0` — and an occurrence of `s` under one more binder sits
+    at a different level than the binding did. Each entry therefore records the
+    depth it was made at, and a lookup lifts by the difference: exactly the shift a
+    β-rewrite performs on the way in, and since M30 exactly a `readback`. -/
+structure LetCtx where
+  /-- Pure binders crossed so far. -/
+  dep : Nat := 0
+  /-- `id ↦ (depth at binding, value)`, innermost first. -/
+  lets : List (Nat × Nat × Val) := []
+deriving Inhabited
+
+/-- One pure binder deeper. -/
+def LetCtx.under (c : LetCtx) : LetCtx := { c with dep := c.dep + 1 }
+
+/-- Record a `let` binding at the current depth. PREPENDED, so an inner `let` on
+    the same id shadows an outer one. -/
+def LetCtx.bind (c : LetCtx) (id : Nat) (v : Val) : LetCtx :=
+  { c with lets := (id, c.dep, v) :: c.lets }
+
+/-- The value bound to a variable id, lifted from the depth it was bound at to
+    the depth this occurrence sits at. The identity at equal depths — every
+    occurrence not under a further pure binder, which is the common case — so the
+    lift is guarded rather than unconditional.
+
+    **The lift is `readback`, which is why this block moved below the evaluator**
+    (M30). It used to be `shiftPure (dep - bd) 0`, and that was `shiftPure`'s last
+    caller outside the substitution machinery — the one thing standing between M30
+    and deleting index arithmetic outright. The two agree by construction: readback
+    at depth `d` sends a free index `k` to `k + d`, which is the whole of what a
+    shift by `d` at cutoff 0 does. It additionally normalizes, which costs nothing
+    here — `readC` normalizes the result anyway — and buys the deletion.
+
+    Fixed fuel, like `ctorSig`'s: a let-bound value is a reflected subterm, and the
+    two callers (`reflectC`, `Term.toValPureGo`) are structural recursions that
+    carry no budget of their own. -/
+def LetCtx.find? (c : LetCtx) (id : Nat) : Option Val :=
+  match c.lets.find? (fun e => e.1 == id) with
+  | some (_, bd, v) => some (if c.dep == bd then v else readback 1000 (c.dep - bd) v)
+  | none => none
+
+/-! Reflect a PURE `Term` into a `Val` (no monad, no Ω): the borrow-free fragment
+    only — `var`/`deref`/runtime forms map to `⊥` (they never occur in a pure
+    goal). Used by `Std.nfTerm` to normalize a §18 generalize goal so a computed
+    subterm (an `eqb`-spine hidden in a `count`-unfolding) is exposed before
+    `abstractOccurrences`.
+
+    A `let` is read by β, through the context above. A `.var` that is NOT
+    let-bound still maps to `⊥`: with no Ω there is nothing else it could be, and
+    the distinction is exactly the one this reflection is for — a `let` is part of
+    the pure term, an Ω snapshot is not. Moved here from `Value.lean` in M29 α,
+    which is when it acquired the `let` case and with it a use for `shiftPure`. -/
 mutual
-  def nfSubst : Nat → Val → Val
-    | 0, v => v
-    | fuel + 1, v =>
-      match whnfV (fuel + 1) v with
-      | .pi d c => .pi (nfSubst fuel d) (nfSubst fuel c)
-      | .sigmaT d c => .sigmaT (nfSubst fuel d) (nfSubst fuel c)
-      -- The mode marker SURVIVES normalization — ⇒'s application rules read it
-      -- off a normalized callee — and is invisible to `convert` anyway, because
-      -- `beq` unwraps it (§6, "case is inert under ⇝").
-      | .cmpT τ => .cmpT (nfSubst fuel τ)
-      | .lam d b => .lam (nfSubst fuel d) (nfSubst fuel b)
-      | .ctor n args => .ctor n (nfSubstList fuel args)
-      | .app f a => .app (nfSubst fuel f) (nfSubst fuel a)
-      | .idT a b b' => .idT (nfSubst fuel a) (nfSubst fuel b) (nfSubst fuel b')
-      | w => w                                       -- pvar, sym, type, const, and runtime leaves
-  termination_by fuel _ => (fuel, 0, 0)
-  def nfSubstList : Nat → List Val → List Val
-    | _, [] => []
-    | fuel, v :: vs => nfSubst fuel v :: nfSubstList fuel vs
-  termination_by fuel vs => (fuel, 1, vs.length)
+  def Term.toValPureGo (c : LetCtx) : Term → Val
+    | .type => .type
+    | .const k => .const k
+    | .pvar k => .pvar k
+    | .var x => (c.find? x.id).getD .bot
+    | .letIn x rhs rest => Term.toValPureGo (c.bind x.id (Term.toValPureGo c rhs)) rest
+    | .cmpT τ => .cmpT (Term.toValPureGo c τ)
+    | .pi d cod => .pi (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
+    | .sigmaT d cod => .sigmaT (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
+    | .lam d b => .lam (Term.toValPureGo c d) (Term.toValPureGo c.under b)
+    | .app f a => .app (Term.toValPureGo c f) (Term.toValPureGo c a)
+    | .idT a b b' => .idT (Term.toValPureGo c a) (Term.toValPureGo c b) (Term.toValPureGo c b')
+    | .ctorApp n args => .ctor n (Term.toValPureListGo c args)
+    | .unit => .ctor "unit" []
+    | _ => .bot                                          -- runtime forms: absent in pure goals
+  termination_by t => sizeOf t
+  def Term.toValPureListGo (c : LetCtx) : List Term → List Val
+    | [] => []
+    | t :: ts => Term.toValPureGo c t :: Term.toValPureListGo c ts
+  termination_by ts => sizeOf ts
 end
 
-/-! ## The M30 differential — SCAFFOLDING, deleted with the old evaluator
+def Term.toValPure (t : Term) : Val := Term.toValPureGo {} t
 
-    Every normalization the corpus performs runs BOTH evaluators and compares the
-    results byte for byte. A disagreement does not warn: it returns a value no rule
-    can use, so the check that asked fails and the build goes red. Silent
-    divergence is the only failure mode a refactor of the equality procedure really
-    has, and this is the M28 playbook that caught the last one.
+def Term.toValPureList (ts : List Term) : List Val := Term.toValPureListGo {} ts
 
-    The recursions above and below this line are careful to call `nfSubst`/`nfN`
-    and NOT this wrapper: a differential at every node would run the new evaluator
-    once per subterm and turn a linear normalization into a quadratic one.
+/-! ## Full normalization and conversion -/
 
-    Deleted at step 4, with `substPure`, `shiftPure` and `nfSubst`. -/
-/-! ## The M30 differential — SCAFFOLDING, deleted with the old evaluator
-
-    Every normalization the corpus performs runs BOTH evaluators and compares the
-    results byte for byte. A disagreement does not warn: it returns a value no rule
-    can use, so the check that asked fails and the build goes red. Silent
-    divergence is the only failure mode a refactor of the equality procedure really
-    has, and this is the M28 playbook pointed at it.
-
-    It is a total comparison again, which it was briefly not. While closures could
-    escape into checker state, `nfSubst` — which treats a closure as a leaf, having
-    no notion of one — disagreed with `nfN` on every value carrying one, and the
-    wrapper had to skip those inputs. Confining closures to this file (see the note
-    above `readback`) restores the comparison on every input there is.
-
-    The recursions on both sides call `nfSubst`/`nfN` and NOT this wrapper: a
-    differential at every node would run the new evaluator once per subterm and
-    turn a linear normalization into a quadratic one.
-
-    Deleted at step 4, with `substPure`, `shiftPure` and `nfSubst`. -/
-def nfV (fuel : Nat) (v : Val) : Val :=
-  let old := nfSubst fuel v
-  let new := nfN fuel v
-  if old == new then old
-  else .const s!"@@M30-DIVERGENCE@@ old={old.pretty} new={new.pretty}"
+/-- Normal form: `nfN`, and there is no longer a second one to compare it against.
+    The substitution normalizer and the whole-corpus differential that ran the two
+    against each other were deleted with `substPure` — the evidence they produced
+    is in the M30 step-1b commit, and keeping a second evaluator alive to re-derive
+    it on every build is exactly the two-evaluator era the milestone said must not
+    reach main. -/
+def nfV (fuel : Nat) (v : Val) : Val := nfN fuel v
 
 /-- Definitional conversion: equal normal forms. For this fragment (β, ι, no
     eta, de Bruijn) normal forms are canonical, so normal-form equality *is*
