@@ -482,7 +482,7 @@ mutual
       | .pi dom cod => .pi (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
       | .sigmaT dom cod => .sigmaT (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
       | .cmpT τ => .cmpT (eval (fuel + 1) ρ τ)
-      | .app f a => whnfN (fuel + 1) (.app (eval (fuel + 1) ρ f) (eval (fuel + 1) ρ a))
+      | .app f a => whnfN false (fuel + 1) (.app (eval (fuel + 1) ρ f) (eval (fuel + 1) ρ a))
       | .ctor n args => .ctor n (evalList (fuel + 1) ρ args)
       | .idT a b c => .idT (eval (fuel + 1) ρ a) (eval (fuel + 1) ρ b) (eval (fuel + 1) ρ c)
       | w => w        -- type, const, sym, lvl, closure, ⊥, loanM, borrowM, rfn
@@ -508,111 +508,90 @@ mutual
       binder by environment extension instead of by substitution. Everything else
       (the recursor table, the array basis's computing constants, what counts as a
       stuck neutral) is the same calculus and is meant to read as the same rules. -/
-  def whnfN : Nat → Val → Val
-    | 0, v => v
-    | fuel + 1, v =>
+  def whnfN : Bool → Nat → Val → Val
+    | _, 0, v => v
+    | rb, fuel + 1, v =>
       let (head, args) := collectSpine v
       match head, args with
       | .lam _ b, a :: rest =>                        -- β, by capture
-        whnfN fuel (rebuildSpine (instBody fuel b a) rest)
+        whnfN rb fuel (rebuildSpine (if rb then readback fuel 0 (instBody fuel b a) else instBody fuel b a) rest)
       | .const "natRec", motive :: z :: s :: n :: rest =>
-        match whnfN fuel n with
-        | .ctor "Z" [] => whnfN fuel (rebuildSpine z rest)
+        match whnfN rb fuel n with
+        | .ctor "Z" [] => whnfN rb fuel (rebuildSpine z rest)
         | .ctor "S" [m] =>
           let recCall := .app (.app (.app (.app (.const "natRec") motive) z) s) m
-          whnfN fuel (rebuildSpine (.app (.app s m) recCall) rest)
+          whnfN rb fuel (rebuildSpine (.app (.app s m) recCall) rest)
         | n' => rebuildSpine (.const "natRec") (motive :: z :: s :: n' :: rest)
       | .const "boolRec", motive :: t :: f :: b :: rest =>
-        match whnfN fuel b with
-        | .ctor "True" [] => whnfN fuel (rebuildSpine t rest)
-        | .ctor "False" [] => whnfN fuel (rebuildSpine f rest)
+        match whnfN rb fuel b with
+        | .ctor "True" [] => whnfN rb fuel (rebuildSpine t rest)
+        | .ctor "False" [] => whnfN rb fuel (rebuildSpine f rest)
         | b' => rebuildSpine (.const "boolRec") (motive :: t :: f :: b' :: rest)
       | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
-        match whnfN fuel l with
-        | .ctor "Nil" [] => whnfN fuel (rebuildSpine pn rest)
+        match whnfN rb fuel l with
+        | .ctor "Nil" [] => whnfN rb fuel (rebuildSpine pn rest)
         | .ctor "Cons" [h, t] =>
           let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
-          whnfN fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
+          whnfN rb fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
         | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)
       | .const "sigmaRec", a :: b :: motive :: f :: p :: rest =>
-        match whnfN fuel p with
-        | .ctor "Pair" [x, y] => whnfN fuel (rebuildSpine (.app (.app f x) y) rest)
+        match whnfN rb fuel p with
+        | .ctor "Pair" [x, y] => whnfN rb fuel (rebuildSpine (.app (.app f x) y) rest)
         | p' => rebuildSpine (.const "sigmaRec") (a :: b :: motive :: f :: p' :: rest)
       | .const "j", _A :: _a :: _P :: d :: _b :: p :: rest =>
-        match whnfN fuel p with
-        | .ctor "Refl" [] => whnfN fuel (rebuildSpine d rest)
+        match whnfN rb fuel p with
+        | .ctor "Refl" [] => whnfN rb fuel (rebuildSpine d rest)
         | p' => rebuildSpine (.const "j") (_A :: _a :: _P :: d :: _b :: p' :: rest)
       | .const "k", _A :: _a :: _P :: d :: p :: rest =>
-        match whnfN fuel p with
-        | .ctor "Refl" [] => whnfN fuel (rebuildSpine d rest)
+        match whnfN rb fuel p with
+        | .ctor "Refl" [] => whnfN rb fuel (rebuildSpine d rest)
         | p' => rebuildSpine (.const "k") (_A :: _a :: _P :: d :: p' :: rest)
       | .const "arrCat", m :: k :: a :: b :: rest =>
-        match whnfN fuel a, whnfN fuel b with
-        | .ctor "Arr" [], b' => whnfN fuel (rebuildSpine b' rest)
-        | a', .ctor "Arr" [] => whnfN fuel (rebuildSpine a' rest)
-        | .ctor "Arr" xs, .ctor "Arr" ys => whnfN fuel (rebuildSpine (.ctor "Arr" (xs ++ ys)) rest)
+        match whnfN rb fuel a, whnfN rb fuel b with
+        | .ctor "Arr" [], b' => whnfN rb fuel (rebuildSpine b' rest)
+        | a', .ctor "Arr" [] => whnfN rb fuel (rebuildSpine a' rest)
+        | .ctor "Arr" xs, .ctor "Arr" ys => whnfN rb fuel (rebuildSpine (.ctor "Arr" (xs ++ ys)) rest)
         | .app (.app (.app (.const "acons") m') x) xs, b' =>
-          whnfN fuel (rebuildSpine
+          whnfN rb fuel (rebuildSpine
             (.app (.app (.app (.const "acons") (kAdd m' k)) x)
               (.app (.app (.app (.app (.const "arrCat") m') k) xs) b')) rest)
         | .ctor "Arr" (x :: xs), b' =>
           let tlLen := valOfNat xs.length
-          whnfN fuel (rebuildSpine
+          whnfN rb fuel (rebuildSpine
             (.app (.app (.app (.const "acons") (kAdd tlLen k)) x)
               (.app (.app (.app (.app (.const "arrCat") tlLen) k) (.ctor "Arr" xs)) b')) rest)
         | a', b' => rebuildSpine (.const "arrCat") (m :: k :: a' :: b' :: rest)
       | .const "aget", tt :: n :: i :: a :: rest =>
-        match natOfVal? (whnfN fuel i), whnfN fuel a with
+        match natOfVal? (whnfN rb fuel i), whnfN rb fuel a with
         | some j, .ctor "Arr" vs =>
           match vs.get? j with
-          | some w => whnfN fuel (rebuildSpine w rest)
+          | some w => whnfN rb fuel (rebuildSpine w rest)
           | none => rebuildSpine (.const "aget") (tt :: n :: i :: .ctor "Arr" vs :: rest)
         | _, a' => rebuildSpine (.const "aget") (tt :: n :: i :: a' :: rest)
       | .const "acons", n :: x :: xs :: rest =>
-        match whnfN fuel xs with
-        | .ctor "Arr" vs => whnfN fuel (rebuildSpine (.ctor "Arr" (x :: vs)) rest)
+        match whnfN rb fuel xs with
+        | .ctor "Arr" vs => whnfN rb fuel (rebuildSpine (.ctor "Arr" (x :: vs)) rest)
         | xs' => rebuildSpine (.const "acons") (n :: x :: xs' :: rest)
       | .const "arrRec", tt :: motive :: pn :: pc :: n :: a :: rest =>
-        match whnfN fuel a with
-        | .ctor "Arr" [] => whnfN fuel (rebuildSpine pn rest)
+        match whnfN rb fuel a with
+        | .ctor "Arr" [] => whnfN rb fuel (rebuildSpine pn rest)
         | .ctor "Arr" (x :: vs) =>
           let tl : Val := .ctor "Arr" vs
           let k : Val := valOfNat vs.length
           let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, k, tl]
-          whnfN fuel (rebuildSpine (rebuildSpine pc [k, x, tl, recCall]) rest)
+          whnfN rb fuel (rebuildSpine (rebuildSpine pc [k, x, tl, recCall]) rest)
         | .app (.app (.app (.const "acons") m') x) xs =>
           let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, m', xs]
-          whnfN fuel (rebuildSpine (rebuildSpine pc [m', x, xs, recCall]) rest)
+          whnfN rb fuel (rebuildSpine (rebuildSpine pc [m', x, xs, recCall]) rest)
         | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
       | _, _ => rebuildSpine head args
-  termination_by fuel _ => (fuel, 0, 0)
-end
-
-/-! **Readback**: a value back to closure-free de Bruijn syntax.
-
-    It emits exactly the shapes `nfV` emits — classic indices, no levels, no
-    closures — which is what makes the old and new evaluators comparable byte for
-    byte over the whole corpus rather than merely "both plausible".
-
-    `depth` counts the binders readback has re-created, and it is the ONLY thing
-    the two variable rules need: a level is `depth - 1 - j` (levels count from the
-    outside, indices from the inside), a free index is `k + depth` (every binder
-    re-created around it is one more binder to skip).
-
-    **It weak-heads each node on the way down**, which is `nfV`'s own shape and not
-    a concession. `eval` is eager on the arguments it is *given* but leaves an ι
-    reduct residual — `natRec P z s (S m)` steps to `s m (natRec P z s m)`, and the
-    `S` node that wraps the recursive call is a constructor, where weak-head
-    reduction is *supposed* to stop. Something has to force it, and forcing it here
-    keeps the laziness that makes `hasType` linear in a value rather than quadratic:
-    a constructor's arguments are reduced when someone looks at them, once. (Found
-    by the smoke probe, not by reasoning: `add 2 3` normalized to
-    `S (natRec … (S Z))` before this line existed.) -/
-mutual
+  termination_by _ fuel _ => (fuel, 0, 0)
+  /-- Read a value back to closure-free de Bruijn syntax — see the note below the
+      block for why this is in it. -/
   def readback : Nat → Nat → Val → Val
     | 0, _, v => v
     | fuel + 1, depth, v =>
-      match whnfN (fuel + 1) v with
+      match whnfN false (fuel + 1) v with
       | .lvl j => .pvar (depth - 1 - j)
       | .pvar k => .pvar (k + depth)
       | .lam dom body =>
@@ -626,17 +605,67 @@ mutual
       | .ctor n args => .ctor n (readbackList fuel depth args)
       | .idT a b c => .idT (readback fuel depth a) (readback fuel depth b) (readback fuel depth c)
       | w => w        -- type, const, sym, ⊥, loanM, borrowM, rfn: leaves, as in `nfV`
-  termination_by fuel _ _ => (fuel, 0)
+  termination_by fuel _ _ => (fuel, 3, 0)
   def readbackList : Nat → Nat → List Val → List Val
     | _, _, [] => []
     | fuel, depth, v :: vs => readback fuel depth v :: readbackList fuel depth vs
-  termination_by fuel _ vs => (fuel, vs.length + 1)
+  termination_by fuel _ vs => (fuel, 3, vs.length + 1)
 end
+
+/-! **Readback lives INSIDE the block above**, and that placement is the M30
+    correction that made the corpus green rather than a tidiness choice.
+
+    The first draft let closures escape into checker state: `whnfN`'s β returned an
+    evaluated body, whose binders are closures, and that value flowed into Ω,
+    `sctx` and the obligations. Every conversion still agreed — the differentials
+    over `nfV`, over binder-opening and over weak-head reduction all found ZERO
+    divergence — and the corpus still failed, at quicksort's count equation.
+
+    The reason is §19. `generalizeStuck` abstracts a stuck spine out of *all*
+    σ-bearing state by STRUCTURAL IDENTITY (`abstractInto`'s `v == target`), with
+    the target a normalized spine. A closure holds its body UNEVALUATED, so the
+    same spine sits inside it in a different shape, `==` misses it, and the
+    generalization silently leaves an occurrence behind — after which the branch
+    equation that occurrence was supposed to become never fires. No conversion is
+    wrong anywhere; a comparison simply stops seeing.
+
+    So the rule, enforced by construction rather than by audit: **closures never
+    leave this file.** `readback` is applied at the two places a value crosses out
+    of normalization — β's reduct, and `instBody`'s exported form below — and the
+    checker goes on seeing the first-order trees it compares, prints, canonicalizes
+    and searches. What NbE deletes is unchanged: there is no index arithmetic left
+    anywhere, `substPure`/`shiftPure` are gone, and binder opening is environment
+    extension. What it does not buy, here, is closures as a value form — nbe.md
+    §6.1 files that under attack surface rather than under motivation, and this is
+    that item coming due.
+
+    The named consequence for §4.3 (step 3): contracts-as-closures puts closures
+    back into exactly the state `generalizeStuck` sweeps, so it must answer this
+    same question rather than inherit an answer. -/
 
 /-- Normal form by evaluation: evaluate against the empty environment, read back
     from depth zero. Intended to be **extensionally identical** to `nfV`, which is
     what the M30 differential asserts over the corpus rather than assumes. -/
 def nfN (fuel : Nat) (v : Val) : Val := readback fuel 0 (eval fuel [] v)
+
+/-- **Weak-head reduction, for callers outside this file.** Same rules; the
+    difference is that a β reduct is read back, so no closure ever crosses out.
+    Only this entry point may do that: `readback` itself calls `whnfN` at a
+    NON-ZERO depth, on values carrying levels, and a depth-0 readback there would
+    convert every level by the wrong offset. (Found the hard way — doing it inside
+    `whnfN` unconditionally turned two failures into eighty.) -/
+def whnfOut (fuel : Nat) (v : Val) : Val := whnfN true fuel v
+
+/-- **Open a binder, for callers outside this file** — the replacement for
+    `substPure 0 arg body` at all eighteen of its sites.
+
+    It reads the result back, which is the rule stated above `readback`: the
+    checker compares, prints, canonicalizes and searches its values, and every one
+    of those operations is defined on first-order trees. The cost is a normalization
+    of the opened body, which is what `substPure` followed by the caller's `nfV`
+    already amounted to at eleven of the eighteen sites. -/
+def instBodyOut (fuel : Nat) (body arg : Val) : Val :=
+  readback fuel 0 (instBody fuel body arg)
 
 /-! ## Full normalization and conversion -/
 
@@ -681,6 +710,25 @@ end
     The recursions above and below this line are careful to call `nfSubst`/`nfN`
     and NOT this wrapper: a differential at every node would run the new evaluator
     once per subterm and turn a linear normalization into a quadratic one.
+
+    Deleted at step 4, with `substPure`, `shiftPure` and `nfSubst`. -/
+/-! ## The M30 differential — SCAFFOLDING, deleted with the old evaluator
+
+    Every normalization the corpus performs runs BOTH evaluators and compares the
+    results byte for byte. A disagreement does not warn: it returns a value no rule
+    can use, so the check that asked fails and the build goes red. Silent
+    divergence is the only failure mode a refactor of the equality procedure really
+    has, and this is the M28 playbook pointed at it.
+
+    It is a total comparison again, which it was briefly not. While closures could
+    escape into checker state, `nfSubst` — which treats a closure as a leaf, having
+    no notion of one — disagreed with `nfN` on every value carrying one, and the
+    wrapper had to skip those inputs. Confining closures to this file (see the note
+    above `readback`) restores the comparison on every input there is.
+
+    The recursions on both sides call `nfSubst`/`nfN` and NOT this wrapper: a
+    differential at every node would run the new evaluator once per subterm and
+    turn a linear normalization into a quadratic one.
 
     Deleted at step 4, with `substPure`, `shiftPure` and `nfSubst`. -/
 def nfV (fuel : Nat) (v : Val) : Val :=
@@ -860,7 +908,7 @@ def ctorSig : String → Option CtorSig
   -- and this entry is where the drift would start.
   | "Arr"   => some { fieldTypes := fun ty =>
       match asArrayTy? ty with
-      | some (n, t) => (natOfVal? (Val.whnfV 1000 n)).map (fun k => List.replicate k t)
+      | some (n, t) => (natOfVal? (Val.whnfOut 1000 n)).map (fun k => List.replicate k t)
       | none => none }
   -- Refl : Id A a a — a nullary constructor whose type demands equal endpoints.
   -- (Fixed fuel for the endpoint convert; construction sites are small.)
@@ -914,7 +962,7 @@ def typeCtors : Val → Option (List String)
   -- array's information is positional, reached by the place grammar, not by a tag —
   -- so this entry exists for exhaustiveness's benefit and is never consulted.
   | ty => match asArrayTy? ty with
-    | some (n, _) => if (natOfVal? (Val.whnfV 1000 n)).isSome then some ["Arr"] else none
+    | some (n, _) => if (natOfVal? (Val.whnfOut 1000 n)).isSome then some ["Arr"] else none
     | none => none
 
 end Dllbc.Val

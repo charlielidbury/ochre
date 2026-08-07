@@ -362,7 +362,7 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   -- whnf the σ's type before classifying: a redex-headed type that reduces to
   -- Nat should copy, not be mistaken for data. Misclassification is otherwise
   -- only ever toward MOVE (conservative), but the whnf hardens the σ side.
-  | .sym σ => match sctx.lookup σ with | some τ => indexKindTy (Val.whnfV fuel τ) | none => false
+  | .sym σ => match sctx.lookup σ with | some τ => indexKindTy (Val.whnfOut fuel τ) | none => false
   | .type => true
   | .const _ => true
   | .pi _ _ => true
@@ -581,7 +581,7 @@ def arrExtent (fuel : Nat) (v : Val) : M Val := do
     | .sym σ =>
       match (← get).sctx.lookup σ with
       | some τ =>
-        match Val.asArrayTy? (Val.whnfV fuel τ) with
+        match Val.asArrayTy? (Val.whnfOut fuel τ) with
         | some (n, _) => pure (Val.nfV fuel n)
         | none => throwErr s!"array: σ{σ} is not of array type (its sctx type is {τ.pretty})"
       | none => throwErr s!"array: σ{σ} has no type in sctx — cannot read its extent"
@@ -808,8 +808,8 @@ def generalizeStuck (fuel : Nat) (spine : Val) : M (Nat × Val) := do
     STUCK — no unification beyond solution (no injectivity/conflict/cycle in the
     kernel; those are the fording library's job via j/k). -/
 def reflUnify (fuel : Nat) (a b : Val) : M Unit := do
-  let a' := Val.whnfV fuel a
-  let b' := Val.whnfV fuel b
+  let a' := Val.whnfOut fuel a
+  let b' := Val.whnfOut fuel b
   if Val.convert fuel a' b' then pure ()                         -- endpoints already equal
   else match a', b' with
     | .sym σa, _ =>
@@ -1042,13 +1042,13 @@ def borrowParamIds (telescope : List (String × Term)) : List Nat :=
     have its parameter type (Id σ0 (S Z))`.) -/
 def buildResult (fuel : Nat) (inst : Omega) (subs : List Val) : Term → M (Val × List (Nat × Val))
   | .borrowT τ S => do
-    let τVal := (subs.foldl (fun t v => Val.substPure 0 v t) (← readCWith fuel inst τ))
+    let τVal := (subs.foldl (fun t v => Val.instBodyOut fuel t v) (← readCWith fuel inst τ))
     let σ ← freshSym
     let ℓr ← freshLoan
     -- `S` binds the snapshot at pvar 0, so the enclosing Σ binders sit at 1+.
     let sVal ← readCWith fuel inst S
-    let sVal := Val.substPure 0 (Val.sym σ) sVal
-    let owedR := Val.nfV fuel (subs.foldl (fun t v => Val.substPure 0 v t) sVal)
+    let sVal := Val.instBodyOut fuel sVal (Val.sym σ)
+    let owedR := Val.nfV fuel (subs.foldl (fun t v => Val.instBodyOut fuel t v) sVal)
     modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
     pure (.borrowM ℓr (.sym σ), [(ℓr, owedR)])
   | .sigmaT a b => do
@@ -1056,7 +1056,7 @@ def buildResult (fuel : Nat) (inst : Omega) (subs : List Val) : Term → M (Val 
     let (vB, issB) ← buildResult fuel inst (vA :: subs) b
     pure (.ctor "Pair" [vA, vB], issA ++ issB)
   | rt => do
-    let retTy := (subs.foldl (fun t v => Val.substPure 0 v t) (← readCWith fuel inst rt))
+    let retTy := (subs.foldl (fun t v => Val.instBodyOut fuel t v) (← readCWith fuel inst rt))
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
     pure (.sym σ, [])
@@ -1110,7 +1110,7 @@ mutual
       let ty := Val.stripCmp ty
       -- Whnf the value first: a β-redex or stuck recursor (e.g. `eqb m a`,
       -- a λ-headed spine) must reduce to its weak head before we can type it.
-      let v := Val.whnfV fuel v
+      let v := Val.whnfOut fuel v
       match v with
       | .sym σ =>
         match (← get).sctx.lookup σ with
@@ -1125,7 +1125,7 @@ mutual
       -- is the single place where the residue-transition decision pays out, and it
       -- pays out at every array-mutating function in the program".
       | .ctor "§segs" segs =>
-        match Val.asArrayTy? (Val.whnfV fuel ty) with
+        match Val.asArrayTy? (Val.whnfOut fuel ty) with
         | none => pure false
         | some (n, t) => do
           let leaves ← extentMap fuel v
@@ -1138,7 +1138,7 @@ mutual
         match Val.ctorSig name with
         | none => throwErr s!"hasType: unknown constructor '{name}'"
         | some sig =>
-          match sig.fieldTypes (Val.whnfV fuel ty) with
+          match sig.fieldTypes (Val.whnfOut fuel ty) with
           | none => pure false                       -- constructor does not inhabit this type
           | some ftys => checkFields fuel args ftys
       | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
@@ -1192,10 +1192,15 @@ mutual
           finish (Val.nfV fuel (.app p l)) rest (pnOk && pcOk && lOk)
         | .const "sigmaRec", a :: b :: p :: f :: s :: rest =>  -- sigmaRec A B P f s : P s
           -- Σ's parameters are a type `A` and a FAMILY `B : A → Type`, so unlike
-          -- List's uniform parameter both premises cross binders and `B`/`P` must be
-          -- shifted to be read there. (`shiftPure` is the identity on the pvar-free
-          -- values every call site actually passes; correctness under an open motive
-          -- is why it is written rather than assumed.)
+          -- List's uniform parameter both premises cross binders and `B`/`P` are
+          -- read under them. Three `shiftPure` calls used to sit here, written
+          -- "for correctness under an open motive"; M30 deleted them because under
+          -- NbE the premise they were insuring against cannot arise, and no shift
+          -- would have helped if it could. `b` and `p` are SPINE ARGUMENTS of an
+          -- evaluated neutral — values — and a value has no free de Bruijn index
+          -- to lift: its variables were resolved into an environment when it was
+          -- built. An honestly open motive would need to arrive in an ENVIRONMENT,
+          -- not in a syntactic hole, and a shift is not what carries it there.
           let sigTy : Val := .sigmaT a (.app (Val.shiftPure 1 0 b) (.pvar 0))
           let fTy : Val :=
             .pi a (.pi (.app (Val.shiftPure 1 0 b) (.pvar 0))
@@ -1208,7 +1213,7 @@ mutual
         -- neither carries a `T` argument (Pure.lean's deviation note). `aget` and
         -- `arrRec` synthesize, so they keep theirs.
         | .const "arrCat", [m, k, a, b] =>
-          match Val.asArrayTy? (Val.whnfV fuel ty) with
+          match Val.asArrayTy? (Val.whnfOut fuel ty) with
           | none => pure false
           | some (n, t) =>
             if !(Val.convert fuel n (Val.kAdd m k)) then pure false
@@ -1217,7 +1222,7 @@ mutual
               let bOk ← hasType fuel b (Val.arrayTy k t)
               pure (aOk && bOk)
         | .const "acons", [n, x, xs] =>
-          match Val.asArrayTy? (Val.whnfV fuel ty) with
+          match Val.asArrayTy? (Val.whnfOut fuel ty) with
           | none => pure false
           | some (n', t) =>
             if !(Val.convert fuel n' (.ctor "S" [n])) then pure false
@@ -1232,9 +1237,9 @@ mutual
         | .const "arrRec", tt :: p :: pn :: pc :: n :: a :: rest =>   -- arrRec T P pn pc n a : P n a
           -- The cons view's recursor, so the pure library over arrays is written
           -- exactly like the one over lists (¶1.3). Its step crosses four binders,
-          -- so `T` and `P` are shifted at each use — identity on the pvar-free values
-          -- every call site passes, written out for correctness under an open motive
-          -- (the same care `sigmaRec` takes, and for the same reason).
+          -- and `T` and `P` are read under all four with no lifting at any of them
+          -- — see `sigmaRec` above for why the five `shiftPure` calls that used to
+          -- be on these lines are gone rather than merely unnecessary.
           let pnOk ← hasType fuel pn (Val.nfV fuel (.app (.app p Val.zero) (.ctor "Arr" [])))
           let pcTy : Val :=
             .pi (.const "Nat")
@@ -1265,12 +1270,12 @@ mutual
         -- This is what lets a Π-typed lemma (`le_refl : Π n. Le n n`) and the
         -- recursors' step arguments — both λs — type-check. No arrow of its own;
         -- it is the elaboration of dependent elimination (§10/§11).
-        match Val.whnfV fuel ty with
+        match Val.whnfOut fuel ty with
         | .pi d' c =>
           if Val.convert fuel d d' then do
             let σ ← freshSym
             modify (fun st => { st with sctx := (σ, d') :: st.sctx })
-            hasType fuel (Val.substPure 0 (.sym σ) b) (Val.substPure 0 (.sym σ) c)
+            hasType fuel (Val.instBodyOut fuel b (.sym σ)) (Val.instBodyOut fuel c (.sym σ))
           else pure false
         | _ => pure false
       | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
@@ -1281,9 +1286,9 @@ mutual
   def synthSpine : Nat → Val → List Val → M (Option Val)
     | _, hty, [] => pure (some hty)
     | fuel, hty, a :: rest => do
-      match Val.whnfV fuel hty with
+      match Val.whnfOut fuel hty with
       | .pi dom cod =>
-        if ← hasType fuel a dom then synthSpine fuel (Val.substPure 0 a cod) rest
+        if ← hasType fuel a dom then synthSpine fuel (Val.instBodyOut fuel cod a) rest
         else pure none
       | _ => pure none                                 -- applied a non-function
   termination_by fuel _ args => (fuel, 2, args.length)
@@ -1293,7 +1298,7 @@ mutual
     | _, [], [] => pure true
     | fuel, v :: vs, ty :: tys => do
       if ← hasType fuel v ty then
-        checkFields fuel vs (tys.map (Val.substPure 0 v))
+        checkFields fuel vs (tys.map (fun ty => Val.instBodyOut fuel ty v))
       else pure false
     | _, _, _ => pure false                          -- arity mismatch
   termination_by fuel _ tys => (fuel, 1, tys.length)
@@ -1435,7 +1440,7 @@ def carveBody (fuel : Nat) (body : Val) (loN cntN restN : Nat) (lo' cnt rest : V
     match (← get).sctx.lookup σ with
     | none => throwErr s!"carve: σ{σ} has no type in sctx"
     | some τ =>
-      match Val.asArrayTy? (Val.whnfV fuel τ) with
+      match Val.asArrayTy? (Val.whnfOut fuel τ) with
       | none => throwErr s!"carve: σ{σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
         let mk : Val → M Val := fun c => do
@@ -1475,7 +1480,7 @@ def elementize (fuel : Nat) (body : Val) : M Val := do
     match (← get).sctx.lookup σ with
     | none => throwErr s!"a[i]: σ{σ} has no type in sctx"
     | some τ =>
-      match Val.asArrayTy? (Val.whnfV fuel τ) with
+      match Val.asArrayTy? (Val.whnfOut fuel τ) with
       | none => throwErr s!"a[i]: σ{σ} is not of array type ({τ.pretty})"
       | some (_, t) => do
         let e ← freshSym
@@ -2281,12 +2286,12 @@ def reorgScrut : Nat → Var → M Dispatch
 /-- Mint fresh σ's for the given field types, typing each in `sctx`
     (dependent positions instantiated at earlier fresh σ's — a real telescope).
     Returns the fresh σ ids. -/
-def typeFieldSyms : List Var → List Val → M (List Nat)
+def typeFieldSyms (fuel : Nat) : List Var → List Val → M (List Nat)
   | [], [] => pure []
   | _ :: bs, ty :: tys => do
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, ty) :: s.sctx })
-    let rest ← typeFieldSyms bs (tys.map (Val.substPure 0 (Val.sym σ)))
+    let rest ← typeFieldSyms fuel bs (tys.map (fun t => Val.instBodyOut fuel t (Val.sym σ)))
     pure (σ :: rest)
   | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
 
@@ -2302,15 +2307,15 @@ def mintFieldSyms (fuel : Nat) (scrutσ : Nat) (br : Branch) : M (List Nat) := d
   | none => br.binders.mapM (fun _ => freshSym)     -- untyped scrutinee (M3)
   | some τ =>
     if br.ctor == "Refl" then
-      match Val.whnfV fuel τ with
+      match Val.whnfOut fuel τ with
       | .idT _ a b => do reflUnify fuel a b; pure []            -- unify endpoints, no fields
       | _ => throwErr "match: Refl branch on a non-Id scrutinee"
     else match Val.ctorSig br.ctor with
     | none => throwErr s!"match: unknown constructor '{br.ctor}'"
     | some sig =>
-      match sig.fieldTypes (Val.whnfV fuel τ) with
+      match sig.fieldTypes (Val.whnfOut fuel τ) with
       | none => throwErr s!"match: constructor '{br.ctor}' does not belong to the scrutinee's type"
-      | some ftys => typeFieldSyms br.binders ftys
+      | some ftys => typeFieldSyms fuel br.binders ftys
 
 /-- **The branch equation for a stuck split** (M23) — M18's second layer, on the
     imperative side. At an ordinary split, ⇜ rewrites every OCCURRENCE of the
@@ -2383,7 +2388,7 @@ def checkExhaustive (fuel : Nat) (scrutσ : Nat) (branches : List Branch) : M Un
   match (← get).sctx.lookup scrutσ with
   | none => pure ()                                   -- untyped scrutinee: skip
   | some τ =>
-    match Val.typeCtors (Val.whnfV fuel τ) with
+    match Val.typeCtors (Val.whnfOut fuel τ) with
     | none => pure ()                                 -- unknown type: nothing to check against
     | some ctors =>
       let covered := branches.map (·.ctor)
@@ -2458,7 +2463,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
-      let owed := Val.nfV fuel (Val.substPure 0 (Val.sym σ) SVal)   -- S[s := σ]
+      let owed := Val.nfV fuel (Val.instBodyOut fuel SVal (Val.sym σ))   -- S[s := σ]
       pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
     -- §5's second opacity ("borrows stored under a type constructor") reaching a
@@ -2470,7 +2475,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       let aVal ← readC fuel aTy
       let σc ← freshSym
       modify (fun s => { s with sctx := (σc, aVal) :: s.sctx })
-      let τVal := Val.substPure 0 (.sym σc) (← readC fuel τ)
+      let τVal := Val.instBodyOut fuel (← readC fuel τ) (.sym σc)
       let σ ← freshSym
       let ℓ ← freshLoan
       bindSlot x (.ctor "Pair" [.sym σc, .borrowM ℓ (.sym σ)])
@@ -2478,7 +2483,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       -- `S` binds the payload snapshot at pvar 0; the Σ's own binder sits at pvar 1
       -- and drops to 0 once the payload is substituted.
       let SVal ← readC fuel S
-      let owed := Val.nfV fuel (Val.substPure 0 (.sym σc) (Val.substPure 0 (.sym σ) SVal))
+      let owed := Val.nfV fuel (Val.instBodyOut fuel (Val.instBodyOut fuel SVal (.sym σ)) (.sym σc))
       pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- **`ih` — a parameter whose type is a borrow-moded Π** (M26-C, §7 cost 1).
     -- It has no `Val` (`readC` refuses `borrowT`), so it cannot be a σ in `sctx`;
@@ -2621,7 +2626,7 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
     a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1). -/
 def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Val)))
   | .borrowT _ S, .borrowM ℓ payload => do
-    let owed := Val.nfV fuel (Val.substPure 0 payload (← readC fuel S))
+    let owed := Val.nfV fuel (Val.instBodyOut fuel (← readC fuel S) payload)
     pure (some [(ℓ, payload, owed)])
   | .borrowT _ _, other =>
     throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
@@ -2727,14 +2732,30 @@ def readComptimeArg (fuel : Nat) (t : Term) : M Val := do
     Peels λ- or Π-binders left to right, reading `domComptime` off each domain.
     A callee with fewer binders than arguments pads with runtime and lets the
     existing over-application rejection fire — this function decides *which
-    arrow reads an argument*, never whether the arity is right. -/
+    arrow reads an argument*, never whether the arity is right.
+
+    **It OPENS each binder rather than descending into its body** (M30). Under
+    substitution the two were the same move — a body was a subterm and its binders
+    were visible from outside — and this function walked straight in. Under NbE a
+    body is a closure, and walking in finds no `Π` at all: the fallback fires and
+    reports every remaining binder as RUNTIME. That is the worst shape a bug can
+    have here, because it is silent and it is not a rejection — a comptime
+    parameter read by ⇒ is a proof CONSUMED instead of snapshotted, and the failure
+    surfaces at the audit of a function whose telescope was fine.
+
+    The probe argument is a rigid constant, deliberately: modes live on the
+    domains as written, so nothing should reduce on the way, and a neutral keeps
+    every dependent domain honestly stuck instead of computing at a made-up
+    value. -/
+def modeProbe : Val := .const "@modeProbe"
+
 def binderModes : Nat → Val → Nat → List Bool
   | _, _, 0 => []
   | 0, _, n => List.replicate n false
   | fuel + 1, v, n + 1 =>
-    match Val.whnfV fuel v with
-    | .lam dom body => Val.domComptime dom :: binderModes fuel body n
-    | .pi dom cod => Val.domComptime dom :: binderModes fuel cod n
+    match Val.whnfOut fuel v with
+    | .lam dom body => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel body modeProbe) n
+    | .pi dom cod => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel cod modeProbe) n
     | _ => List.replicate (n + 1) false
 
 /-! ## Value-callee application (combining-fns §7 cost 2, M26-A)
@@ -2883,9 +2904,9 @@ def instantiatePi : Nat → Val → List Val → M Val
   | 0, _, _ => throwErr "callV: out of fuel (Π instantiation)"
   | _, ty, [] => pure ty
   | fuel + 1, ty, a :: rest =>
-    match Val.whnfV fuel ty with
+    match Val.whnfOut fuel ty with
     | .pi dom cod => do
-      if ← hasType fuel a dom then instantiatePi fuel (Val.substPure 0 a cod) rest
+      if ← hasType fuel a dom then instantiatePi fuel (Val.instBodyOut fuel cod a) rest
       else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
     | other => throwErr s!"callV: too many arguments — the callee's type is {other.pretty}, not a function type"
 
@@ -2936,7 +2957,7 @@ def globalKind (st : St) : Val → Bool
   | .sym σ =>
     (st.fsig.lookup σ).isSome ||
       (match st.sctx.lookup σ with
-       | some τ => (match Val.whnfV 100 τ with | .pi _ _ => true | _ => false)
+       | some τ => (match Val.whnfOut 100 τ with | .pi _ _ => true | _ => false)
        | none => false)
   -- A RECURSOR SPINE is a function too, and this case is the executing machine's
   -- half of the same binding: sealing `natRec P z s` mints a σ when checking (so
@@ -3439,17 +3460,17 @@ mutual
   def applyLam : Nat → Val → List Val → M Val
     | 0, _, _ => throwErr "callV: out of fuel (λ application)"
     | fuel + 1, f, [] =>
-      match Val.whnfV fuel f with
+      match Val.whnfOut fuel f with
       | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
       | v => pure v
     | fuel + 1, f, a :: rest =>
-      match Val.whnfV fuel f with
+      match Val.whnfOut fuel f with
       | .lam dom body => do
-        if (← get).executing then applyLam fuel (Val.substPure 0 a body) rest
+        if (← get).executing then applyLam fuel (Val.instBodyOut fuel body a) rest
         -- `hasType` strips the mode marker: which arrow READ the argument was
         -- settled before this call (`valBinderModes`), and what remains is the
         -- ordinary domain check.
-        else if ← hasType fuel a dom then applyLam fuel (Val.substPure 0 a body) rest
+        else if ← hasType fuel a dom then applyLam fuel (Val.instBodyOut fuel body a) rest
         else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
       -- A pure λ whose body turns out to be a runtime function (or a recursor):
       -- hand the remaining spine to the ⇒-application rule rather than calling it
@@ -3489,18 +3510,18 @@ mutual
         else
           throwErr s!"callV: too many arguments — the runtime λ {(Val.rfn names body).pretty} binds {names.length} argument(s) and was given {all.length}"
       | .const "natRec", motive :: z :: s :: n :: rest =>
-        match Val.whnfV fuel n with
+        match Val.whnfOut fuel n with
         | .ctor "Z" [] => applyRest fuel z rest
         | .ctor "S" [m] =>
           applyRest fuel s (m :: Val.rebuildSpine (.const "natRec") [motive, z, s, m] :: rest)
         | n' => stuckRec fuel (.const "natRec") [motive, z, s, n'] rest
       | .const "boolRec", motive :: t :: e :: b :: rest =>
-        match Val.whnfV fuel b with
+        match Val.whnfOut fuel b with
         | .ctor "True" [] => applyRest fuel t rest
         | .ctor "False" [] => applyRest fuel e rest
         | b' => stuckRec fuel (.const "boolRec") [motive, t, e, b'] rest
       | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
-        match Val.whnfV fuel l with
+        match Val.whnfOut fuel l with
         | .ctor "Nil" [] => applyRest fuel pn rest
         | .ctor "Cons" [h, tl] =>
           applyRest fuel pc (h :: tl :: Val.rebuildSpine (.const "listRec") [a, motive, pn, pc, tl] :: rest)
@@ -3510,7 +3531,7 @@ mutual
       -- ascribes, or a recursor stuck on a σ — it is a VALUE; applied to
       -- something it cannot consume, it is over-application.
       | _, _ =>
-        if args.isEmpty then pure (Val.whnfV fuel f)
+        if args.isEmpty then pure (Val.whnfOut fuel f)
         else throwErr s!"callV: too many arguments — {head.pretty} is not a function (expected a λ, a runtime λ, or a recursor spine)"
   termination_by fuel _ _ => (fuel, 2, 0)
   /-- ι's continuation: the selected arm, applied to whatever the caller still
@@ -3519,7 +3540,7 @@ mutual
       and keeping that distinct from `applyR arm []` is what lets a zero-argument
       value-callee call (`f()`) still be the partial application it is. -/
   def applyRest : Nat → Val → List Val → M Val
-    | fuel, arm, [] => pure (Val.whnfV fuel arm)
+    | fuel, arm, [] => pure (Val.whnfOut fuel arm)
     | fuel, arm, rest => applyR fuel arm rest
   termination_by fuel _ _ => (fuel, 3, 0)
   /-- A recursor that did not ι. With nothing owed it is a VALUE — the abstract
@@ -3599,7 +3620,7 @@ mutual
           let τVal ← readCWith fuel inst τ
           if ← hasType fuel payload τVal then do
             let SVal ← readCWith fuel inst S
-            let owed := Val.nfV fuel (Val.substPure 0 payload SVal)
+            let owed := Val.nfV fuel (Val.instBodyOut fuel SVal payload)
             -- A borrow parameter is bound to the actual borrow itself, so a later
             -- type mentioning `*b` (§5.2's comptime-deref at the call site)
             -- reflects the peel to the payload snapshot just passed.
@@ -3618,10 +3639,10 @@ mutual
           if !(← hasType fuel cv aVal) then
             throwErr s!"call: slice length ({cv.pretty}) does not have its parameter type ({aVal.pretty})"
           else
-            let τVal := Val.substPure 0 cv (← readCWith fuel inst τ)
+            let τVal := Val.instBodyOut fuel (← readCWith fuel inst τ) cv
             if ← hasType fuel payload τVal then do
               let SVal ← readCWith fuel inst S
-              let owed := Val.nfV fuel (Val.substPure 0 cv (Val.substPure 0 payload SVal))
+              let owed := Val.nfV fuel (Val.instBodyOut fuel (Val.instBodyOut fuel SVal payload) cv)
               let pairV : Val := .ctor "Pair" [cv, .borrowM ℓ payload]
               let (rest, inst') ← processArgs fuel (i + 1) ((declVar, pairV) :: inst) tRest aRest
               pure ((ℓ, owed) :: rest, inst')
@@ -3674,7 +3695,7 @@ mutual
             | none => throwErr s!"callV: callee {x.name} is σ{σ}, which has no type in sctx"
             | some σty => do
               let resTy ← instantiatePi fuel σty argVals
-              match Val.whnfV fuel resTy with
+              match Val.whnfOut fuel resTy with
               | .pi d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
               | resTy => do
                 -- The runtime column of §2.3: the call FORGETS the application
