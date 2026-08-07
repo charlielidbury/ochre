@@ -340,8 +340,13 @@ end
 
 instance : BEq Term := ⟨Term.beq⟩
 
-/-! ## Pure de Bruijn shift on `Term` (mirror of `Val.shiftPure`), and syntactic
-    subterm abstraction — the §18 rewriting layer's mechanism. -/
+/-! ## Pure de Bruijn shift on `Term`, and syntactic subterm abstraction — the
+    §18 rewriting layer's mechanism.
+
+    It used to be described as the mirror of `Val.shiftPure`. There is no longer a
+    `Val` side to mirror: M30 replaced the value evaluator with an environment
+    machine and deleted the index arithmetic outright. What survives here does so
+    on its own justification, stated below `Term.substPure`. -/
 
 mutual
   def Term.shiftPure (d c : Nat) : Term → Term
@@ -363,17 +368,22 @@ end
 
 /-! ## Pure de Bruijn substitution on `Term` (M26-C)
 
-    The mirror of `Val.substPure`, and it exists for one reason: **a borrow-moded
-    Π has no `Val` form.** `borrowT` is a telescope-position marker that `readC`
+    It exists for one reason, and since M30 deleted `Val.substPure` this is the
+    only reason left: **a borrow-moded Π has no `Val` form.** `borrowT` is a telescope-position marker that `readC`
     refuses to reflect, so `Π (v : &mut List Nat) → …` — the type a sealed
     function is ascribed (§5) and the type a recursor arm is checked at (§7) —
     can only ever be manipulated as a `Term`. Peeling such a Π into a telescope
     therefore needs substitution at the `Term` level, which is this.
 
-    Textbook (lift `s` at every binder crossed) rather than `Val.substPure`'s
-    delayed-lifting version: this runs once per seal over a signature, never over
-    a 10⁵-node proof, so the measured hot spot that shaped the `Val` one does not
-    exist here and clarity wins. -/
+    Textbook (lift `s` at every binder crossed) rather than the delayed-lifting
+    version the `Val` evaluator used to carry: this runs once per seal over a
+    signature, never over a 10⁵-node proof, so the measured hot spot that shaped
+    that one never existed here and clarity wins.
+
+    A NOTE FOR WHOEVER TAKES nbe.md §5 (source names in the comptime fragment):
+    this is the residual index arithmetic in the tree, and it is where the
+    α-sensitive comparisons inventoried at M30 step 0 live (`absOcc` below,
+    `trivialOwed`, `piAgree`, `checkArm`). -/
 mutual
   def Term.substPure : Nat → Term → Term → Term
     | j, s, .pvar k => if k == j then s else if k > j then .pvar (k - 1) else .pvar k

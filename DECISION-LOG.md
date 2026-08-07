@@ -3,6 +3,105 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-07: M30 (NbE) — substitution is deleted; §4.3's closure contracts STOP on a §19 conflict
+
+**Decided: land the evaluator replacement (nbe.md §§1–3, §5's first half, §8's
+deletion list) and STOP before §4.3's contracts-as-closures, because §4.3 as
+specified reintroduces a failure step 1 diagnosed and fixed.** Steps 2 (source
+names) was not attempted; the reason is a dependency, stated below, not budget.
+
+### What landed
+
+The comptime fragment evaluates by environment, not by substitution. `eval`,
+`instBody`, `whnfN` and `readback` replace `whnfV`/`nfV`, and `substPure`,
+`shiftPure`, `pvarFree`, the delayed-lift machinery and the substitution
+normalizer are deleted outright — 372 lines removed from `Pure.lean` against 116
+added. There is no index arithmetic left in the value evaluator. `Term.shiftPure`
+/`Term.substPure` survive on their own justification (a borrow-moded Π has no
+`Val`) and are step 2's territory.
+
+Evidence, in the order it was produced: a whole-corpus differential running BOTH
+evaluators on every normalization, zero divergences; a positive control (breaking
+readback's level rule turns 106 assertions red) proving the differential is
+wired to the checks that matter; §3.2's capture invariant asserted at closure
+formation, zero violations, and kept LIVE because it measured free (122 s vs
+124 s). Then the old evaluator was deleted, so no two-evaluator era reaches main.
+
+### The finding that drove the design: closures may not escape the normalizer
+
+nbe.md §6 item 1 asks what each value traversal should do at a closure, and
+answers "state/marker searches do not descend; equality never traverses one". The
+inventory said that policy costs almost no edits, and it was implemented. The
+corpus then failed at quicksort's count equation while **every differential
+reported zero** — nothing computed a different answer.
+
+The mechanism is §19. `generalizeStuck` abstracts a stuck Bool spine out of every
+σ-bearing state component by STRUCTURAL IDENTITY (`abstractInto`'s `v == target`,
+with the target a normalized spine). A closure holds its body unevaluated, so the
+same spine sits inside it in a different shape, `==` misses it, and the
+generalization silently leaves an occurrence behind. The branch equation that
+occurrence was supposed to become never fires.
+
+So the rule adopted is stronger than nbe.md's: **closures never leave
+`Pure.lean`.** Readback is applied at the two exported boundaries, and the checker
+keeps seeing the first-order trees it compares, prints, canonicalizes and
+searches. All three of nbe.md §1's motivations survive this — the index-arithmetic
+bug class is deleted, both fragments are environment machines, and the λ-merge
+tension (task #17) is dissolved because nothing substitutes into a body any more.
+What does not survive is closures as a *value form*, which §6 files under attack
+surface rather than under motivation.
+
+### Why §4.3 stops here
+
+§4.3 puts closures into obligations (`clo(ρ[s ↦ σ], S)`) and into the pinned
+return type. Those are two of the five components `generalizeStuck` sweeps with
+`abstractInto`. So §4.3, implemented as written, reintroduces exactly the failure
+above — and "`substSym` descends into closures" (it does) is only half an answer,
+because the broken operation is identity, not traversal, and descending does not
+fix identity.
+
+There is a second, independent obstacle to §4.3's headline. The pin
+`R := clo(ρ_entry, λ exit₁…exitₙ. T′)` needs one binder per borrow parameter with
+bare `*vᵢ` reflected to that binder. Reflection happens at an arbitrary pure-binder
+depth, so building those binders with de Bruijn indices means computing
+`depth + (n - 1 - i)` at each occurrence — hand-written index arithmetic, in the
+milestone whose first motivation is deleting it. With **named** binders (§5, step
+2) the construction is immediate. So §4.3 wants step 2 underneath it.
+
+And the honest third point: today's mechanism already *is* an environment applied
+at the audit. `exitSyms` maps each borrow parameter to a fresh σ; the audit binds
+those σ's to the collapsed payloads and evaluates. Calling the σ namespace an
+environment and `substSym` an application is a renaming. nbe.md §4.3's claim that
+"the promise dissolves into function application" is true of the current code read
+generously; what §4.3 would buy is the *spelling*, and the spelling costs a
+conflict with §19 plus index arithmetic step 2 would remove.
+
+**Recommended sequencing for the successor: §5/step 2 (source names) first, then
+§4.3 — and §4.3 must additionally say what `generalizeStuck` does when a σ-bearing
+contract is opaque.** That is a question about §19, not about §4.3, and it is the
+user's to answer: either generalization normalizes closure bodies before
+comparing (expensive, and it re-opens "when is a contract evaluated"), or it
+becomes semantic rather than syntactic, or contracts stay first-order.
+
+### A latent bug found and fixed on the way
+
+`binderModes` walked INTO a Π/λ body instead of opening it. Under substitution
+those were the same move; under any design where a body can be opaque they are
+not, and the fallback then reports every remaining binder as RUNTIME. That is
+silent and it is not a rejection: a comptime parameter read by ⇒ is a proof
+consumed rather than snapshotted, and the damage surfaces at the audit of a
+function whose telescope was fine. Fixed by opening each binder at a rigid probe
+constant.
+
+### Method, recorded because it cost three rounds
+
+The failing program was probed with `lake env lean Scratch.lean`, which imports
+`Dllbc` — and `Dllbc.olean` cannot rebuild while any test module is red. The probe
+silently ran a kernel thirty minutes older than the source and reported "no
+divergence" three times, because the instrumentation it was looking for was not in
+the binary it was running. **Probe a red tree from inside the build (an `#eval`
+whose output lands in the build log), never from beside it.**
+
 ## 2026-08-06: M29 phase C (δ-constants) — the cost is REAL, CONFIRMED, and NOT DEMANDED. Parked.
 
 **Decision: do not build the transparent/sealed constant tier. Park it, with the

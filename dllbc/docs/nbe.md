@@ -1,6 +1,17 @@
 # Removing substitution: environment-based evaluation for the comptime fragment
 
-**Status: design resolved through discussion (2026-08-07); not yet scheduled.**
+**Status: PARTLY IMPLEMENTED at `b0f84fe0` (M30, 2026-08-07).**
+§§1–3, §5's comptime half and §8's deletion list are in the kernel: the comptime
+fragment evaluates by environment, and `substPure`/`shiftPure`/the delayed-lift
+machinery are gone. **§4.3 (contracts as closures) and §5's source-names half are
+NOT**, and they stopped on findings rather than on budget — see DECISION-LOG
+2026-08-07. In one line each: §6 item 1 turned out to bite harder than the
+document expects (closures in checker state break §19's identity-based
+generalization, so closures are confined to the evaluator), and §4.3's pin needs
+§5's named binders under it or it is index arithmetic again. Read §4.3 and §6 with
+those two amendments in mind.
+
+**Status of the original design: resolved through discussion (2026-08-07).**
 All pre-implementation questions are resolved inline (struck-through, with their
 resolutions); one item is explicitly deferred (§7) and two are implementation-time
 inventories. The document's remaining job is to be attacked by readers and to

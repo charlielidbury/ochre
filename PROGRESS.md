@@ -1,5 +1,56 @@
 # Progress
 
+## 2026-08-07 — dllbc/: **M30 — the comptime fragment evaluates by ENVIRONMENT; substitution is deleted**
+
+Five commits, `d27437dd` through `b0f84fe0`, full suite green at each pushed
+boundary. The pure fragment is a normalization-by-evaluation machine: a λ becomes
+a closure, application extends an environment, and nothing copies a term into
+another term ever again.
+
+    substitution                 deleted       substPure, substGo, substPureList
+    index arithmetic             deleted       shiftPure, shiftPureList, pvarFree
+    delayed-lift machinery       deleted       the `(d, sc)` fast path
+    evaluators                   2 → 1         whnfV/nfSubst gone; eval/whnfN/readback
+    `Val.shiftPure` call sites   8 → 0
+    `substPure 0 x b` sites      18 → 0        one `instBodyOut b x` each
+    Pure.lean                    651 → 710     (+96 of evaluator, −372 of substitution, net doc)
+    from-scratch build           268s → 251s   −6.3%, NOT a motivation, measured anyway
+
+**The differential, and its positive control.** Both evaluators ran against each
+other on every normalization the whole corpus performs, byte for byte: zero
+divergences. Because a differential that cannot fail is not evidence, readback's
+level rule was then deliberately broken — 106 assertions went red. The old
+evaluator was deleted afterwards, so no two-evaluator era reaches main.
+
+**§3.2's capture invariant is asserted, not sampled.** A λ closing over a state
+marker (⊥/loan/borrow) is checked at every closure formation, and the corpus
+produces none. The plan had been a one-shot instrumentation run on the argument
+that a marker scan per β is the innermost loop; measurement refuted the argument
+(122 s vs 124 s, inside the noise), so it stays live.
+
+**The finding: closures may not escape the normalizer.** Implemented as nbe.md §6
+describes — closures as an ordinary value form — the corpus failed at quicksort's
+count equation while every differential reported zero. Nothing computed a
+different answer; §19's `generalizeStuck` abstracts a stuck spine out of state by
+STRUCTURAL IDENTITY, a closure holds its body unevaluated, and the comparison
+stopped seeing. Closures are now confined to `Pure.lean` by construction, with
+readback at the two exported boundaries. All three of nbe.md §1's motivations
+survive; what does not is closures as a value form, which §6 filed under attack
+surface rather than motivation.
+
+**A latent bug fixed on the way.** `binderModes` walked into a Π body instead of
+opening it. Silent, and not a rejection: the fallback reports every remaining
+binder as RUNTIME, so a comptime parameter is read by ⇒ — a proof CONSUMED rather
+than snapshotted — and the damage surfaces at the audit of a function whose
+telescope was fine.
+
+**Steps 2 and 3 did NOT ship, and stop on a stated dependency** — see
+DECISION-LOG. §4.3's contracts-as-closures puts closures back into two of the five
+components `generalizeStuck` sweeps, so it reintroduces the failure above; and its
+pin needs one binder per borrow parameter, which is hand-written index arithmetic
+under de Bruijn and immediate under §5's source names. So §5 (step 2) comes first,
+and §4.3 additionally needs an answer about §19 that is the user's to give.
+
 ## 2026-08-06 — dllbc/: **M29 phase A — the elaboration mode is GONE; there is one macro**
 
 Five commits, `574c1ae4` through `af883194`, full suite green at each. The
