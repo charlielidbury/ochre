@@ -384,6 +384,12 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   | .idT _ _ _ => true
   | .app _ _ => true                                        -- a pure-former spine (proof/type)
   | .pvar _ => true
+  -- A closure is a function value, so it gets `.lam`'s answer for `.lam`'s reason;
+  -- a level is a bound variable, so it gets `.pvar`'s. Neither can reach a slot
+  -- (both are knowledge, and a level is besides transient to readback), so these
+  -- two arms exist to keep the match total rather than to decide anything.
+  | .closure _ _ => true
+  | .lvl _ => true
   | .sigmaT _ _ => true                                     -- a type
   | .borrowM _ _ => false
   | .loanM _ => false
@@ -399,6 +405,14 @@ mutual
   def substSym (σ : Nat) (newV : Val) : Val → Val
     | .sym σ' => if σ' == σ then newV else .sym σ'
     | .rfn xs b => .rfn xs b                             -- closed: no σ inside
+    -- **⇜'s reach widens to captured environments** (nbe.md §6.2). A σ inside a
+    -- closure is a σ like any other: the sealed contracts of §4.3 are closures
+    -- built over the entry snapshot, and a refinement that solved σ everywhere
+    -- EXCEPT there would leave the audit reading a frozen entry it was told had
+    -- been solved. Both halves are swept — the environment holds what the body was
+    -- closed over, the body holds what was written into it.
+    | .closure ρ b => .closure (substSymList σ newV ρ) (substSym σ newV b)
+    | .lvl k => .lvl k
     | .borrowM ℓ p => .borrowM ℓ (substSym σ newV p)
     | .cmpT τ => .cmpT (substSym σ newV τ)
     | .ctor n args => .ctor n (substSymList σ newV args)
@@ -438,6 +452,11 @@ mutual
       | .lam d c => .lam (abstractInto target σb d) (abstractInto target σb c)
       | .app d c => .app (abstractInto target σb d) (abstractInto target σb c)
       | .idT a b c => .idT (abstractInto target σb a) (abstractInto target σb b) (abstractInto target σb c)
+      -- Paired with `substSym`'s closure arm, and for the same reason: §19's
+      -- generalization sweeps exactly the state a refinement sweeps, so a spine
+      -- reachable by one and not the other would leave a branch equation that
+      -- talks about a term the refinement has already made unnameable.
+      | .closure ρ b => .closure (abstractIntoList target σb ρ) (abstractInto target σb b)
       | v' => v'
   termination_by sizeOf v
   def abstractIntoList (target : Val) (σb : Nat) (vs : List Val) : List Val :=

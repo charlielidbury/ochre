@@ -392,6 +392,236 @@ def whnfV : Nat → Val → Val
     -- botElim never fires (⊥ has no constructors); it is always a stuck value.
     | _, _ => rebuildSpine head args
 
+/-! ## Environment-based evaluation — NbE (M30, `docs/nbe.md`)
+
+    The replacement for everything above this line. A λ no longer reduces by
+    copying its argument into its body; it evaluates to a **closure** — the body
+    as written, plus the environment it was born in — and application extends
+    that environment. There is no index arithmetic anywhere below, which is the
+    point (§1.1: a hand-written index sat wrong for five milestones because
+    nothing consulted it; environments have no index to get wrong).
+
+    ### The one representation decision, and why it keeps the diff small
+
+    A closure lives in the BODY position of `lam`/`pi`/`sigmaT` rather than
+    replacing them. So every consumer that matches those three formers goes on
+    matching them; what changes is the single act of *opening* a binder, from
+    `substPure 0 a b` to `instBody b a`. That is why 18 substitution sites become
+    18 one-word edits rather than a rewrite of the checker.
+
+    It also means the domain is **mixed**: a `Val` may be syntax (a hand-built
+    recursor premise type, a term just reflected from the surface) or semantics (a
+    value `eval` produced), and the two differ only in whether binder bodies are
+    closures. `instBody` accepts both — a closure carries its own environment, a
+    syntactic body gets the singleton `[arg]` — and that is exactly right, because
+    a syntactic binder reached this way is closed but for its own variable.
+
+    ### The two variable conventions, which must not be conflated
+
+      * `pvar k` with `k < |ρ|` is **bound**: look it up.
+      * `pvar k` with `k ≥ |ρ|` is **free** — an index into the context *outside*
+        ρ — and evaluates to `pvar (k - |ρ|)`, the same down-shift `substPure`
+        performed when it eliminated a binder. Readback re-adds the depth.
+      * `lvl j` is a **level**, minted by readback, counted from the outside.
+        Readback turns it into `pvar (d - 1 - j)`.
+
+    The two rules disagree (`+d` versus `d - 1 - j`), which is the whole reason
+    `lvl` is a former of its own rather than a reuse of `pvar`.
+
+    ### No η, structurally
+
+    Readback is UNTYPED. It never expands a neutral at function type, so
+    `λ (u : Nat). u` and `λ (u : Nat). Z` stay unequal and a stuck spine stays the
+    spine it is — the property KernelFloor polices and the one an η-normalizing
+    readback would silently destroy. -/
+
+/-- Form a closure, unless the body already is one. A `.closure` in body position
+    means the binder is ALREADY semantic — it was produced by an earlier `eval` and
+    carries the environment it was born in — so re-capturing it against whatever
+    environment happens to be current is the one way this machinery can go wrong.
+    (It is also what makes `eval` idempotent on values, which the mixed domain
+    needs: a value re-entering `eval` must come out unchanged.) -/
+def mkClosure (ρ : List Val) (body : Val) : Val :=
+  match body with
+  | .closure _ _ => body
+  | b => .closure ρ b
+
+mutual
+  /-- Evaluate `v` (read as pure syntax) against the comptime environment `ρ`.
+      Strong everywhere except under a binder, where the body is suspended.
+
+      Runtime forms — `⊥`, `loanM`, `borrowM`, `rfn` — are LEAVES, exactly as they
+      were for `shiftPure`/`substPure`. That is not an omission: a borrow payload
+      is state, `eval` computes knowledge, and descending into one would be the
+      first step of the door §3.3 is holding shut. -/
+  def eval : Nat → List Val → Val → Val
+    | 0, _, v => v
+    | fuel + 1, ρ, v =>
+      match v with
+      | .pvar k =>
+        match ρ.get? k with
+        | some w => w
+        | none => .pvar (k - ρ.length)          -- free: the binder-elimination down-shift
+      | .lam dom body => .lam (eval (fuel + 1) ρ dom) (mkClosure ρ body)
+      | .pi dom cod => .pi (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
+      | .sigmaT dom cod => .sigmaT (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
+      | .cmpT τ => .cmpT (eval (fuel + 1) ρ τ)
+      | .app f a => whnfN (fuel + 1) (.app (eval (fuel + 1) ρ f) (eval (fuel + 1) ρ a))
+      | .ctor n args => .ctor n (evalList (fuel + 1) ρ args)
+      | .idT a b c => .idT (eval (fuel + 1) ρ a) (eval (fuel + 1) ρ b) (eval (fuel + 1) ρ c)
+      | w => w        -- type, const, sym, lvl, closure, ⊥, loanM, borrowM, rfn
+  termination_by fuel _ v => (fuel, 1, sizeOf v)
+  def evalList : Nat → List Val → List Val → List Val
+    | _, _, [] => []
+    | fuel, ρ, v :: vs => eval fuel ρ v :: evalList fuel ρ vs
+  termination_by fuel _ vs => (fuel, 1, sizeOf vs)
+  /-- **Open a binder at `arg`** — the single operation that replaces
+      `substPure 0 arg body` at all eighteen of its sites.
+
+      Both shapes of body are legal, and the asymmetry is the mixed domain showing
+      through rather than a special case: a `closure` was built by `eval` and knows
+      the environment it needs, while a bare body is syntax whose only free variable
+      is the binder's own, so the singleton environment is complete for it. -/
+  def instBody : Nat → Val → Val → Val
+    | fuel, .closure ρ b, arg => eval fuel (arg :: ρ) b
+    | fuel, b, arg => eval fuel [arg] b
+  termination_by fuel _ _ => (fuel, 2, 0)
+  /-- Weak-head reduction over the mixed domain: β and ι, head redex only.
+
+      Structurally the `whnfV` above it, with ONE line different — β opens the
+      binder by environment extension instead of by substitution. Everything else
+      (the recursor table, the array basis's computing constants, what counts as a
+      stuck neutral) is the same calculus and is meant to read as the same rules. -/
+  def whnfN : Nat → Val → Val
+    | 0, v => v
+    | fuel + 1, v =>
+      let (head, args) := collectSpine v
+      match head, args with
+      | .lam _ b, a :: rest =>                        -- β, by capture
+        whnfN fuel (rebuildSpine (instBody fuel b a) rest)
+      | .const "natRec", motive :: z :: s :: n :: rest =>
+        match whnfN fuel n with
+        | .ctor "Z" [] => whnfN fuel (rebuildSpine z rest)
+        | .ctor "S" [m] =>
+          let recCall := .app (.app (.app (.app (.const "natRec") motive) z) s) m
+          whnfN fuel (rebuildSpine (.app (.app s m) recCall) rest)
+        | n' => rebuildSpine (.const "natRec") (motive :: z :: s :: n' :: rest)
+      | .const "boolRec", motive :: t :: f :: b :: rest =>
+        match whnfN fuel b with
+        | .ctor "True" [] => whnfN fuel (rebuildSpine t rest)
+        | .ctor "False" [] => whnfN fuel (rebuildSpine f rest)
+        | b' => rebuildSpine (.const "boolRec") (motive :: t :: f :: b' :: rest)
+      | .const "listRec", a :: motive :: pn :: pc :: l :: rest =>
+        match whnfN fuel l with
+        | .ctor "Nil" [] => whnfN fuel (rebuildSpine pn rest)
+        | .ctor "Cons" [h, t] =>
+          let recCall := .app (.app (.app (.app (.app (.const "listRec") a) motive) pn) pc) t
+          whnfN fuel (rebuildSpine (.app (.app (.app pc h) t) recCall) rest)
+        | l' => rebuildSpine (.const "listRec") (a :: motive :: pn :: pc :: l' :: rest)
+      | .const "sigmaRec", a :: b :: motive :: f :: p :: rest =>
+        match whnfN fuel p with
+        | .ctor "Pair" [x, y] => whnfN fuel (rebuildSpine (.app (.app f x) y) rest)
+        | p' => rebuildSpine (.const "sigmaRec") (a :: b :: motive :: f :: p' :: rest)
+      | .const "j", _A :: _a :: _P :: d :: _b :: p :: rest =>
+        match whnfN fuel p with
+        | .ctor "Refl" [] => whnfN fuel (rebuildSpine d rest)
+        | p' => rebuildSpine (.const "j") (_A :: _a :: _P :: d :: _b :: p' :: rest)
+      | .const "k", _A :: _a :: _P :: d :: p :: rest =>
+        match whnfN fuel p with
+        | .ctor "Refl" [] => whnfN fuel (rebuildSpine d rest)
+        | p' => rebuildSpine (.const "k") (_A :: _a :: _P :: d :: p' :: rest)
+      | .const "arrCat", m :: k :: a :: b :: rest =>
+        match whnfN fuel a, whnfN fuel b with
+        | .ctor "Arr" [], b' => whnfN fuel (rebuildSpine b' rest)
+        | a', .ctor "Arr" [] => whnfN fuel (rebuildSpine a' rest)
+        | .ctor "Arr" xs, .ctor "Arr" ys => whnfN fuel (rebuildSpine (.ctor "Arr" (xs ++ ys)) rest)
+        | .app (.app (.app (.const "acons") m') x) xs, b' =>
+          whnfN fuel (rebuildSpine
+            (.app (.app (.app (.const "acons") (kAdd m' k)) x)
+              (.app (.app (.app (.app (.const "arrCat") m') k) xs) b')) rest)
+        | .ctor "Arr" (x :: xs), b' =>
+          let tlLen := valOfNat xs.length
+          whnfN fuel (rebuildSpine
+            (.app (.app (.app (.const "acons") (kAdd tlLen k)) x)
+              (.app (.app (.app (.app (.const "arrCat") tlLen) k) (.ctor "Arr" xs)) b')) rest)
+        | a', b' => rebuildSpine (.const "arrCat") (m :: k :: a' :: b' :: rest)
+      | .const "aget", tt :: n :: i :: a :: rest =>
+        match natOfVal? (whnfN fuel i), whnfN fuel a with
+        | some j, .ctor "Arr" vs =>
+          match vs.get? j with
+          | some w => whnfN fuel (rebuildSpine w rest)
+          | none => rebuildSpine (.const "aget") (tt :: n :: i :: .ctor "Arr" vs :: rest)
+        | _, a' => rebuildSpine (.const "aget") (tt :: n :: i :: a' :: rest)
+      | .const "acons", n :: x :: xs :: rest =>
+        match whnfN fuel xs with
+        | .ctor "Arr" vs => whnfN fuel (rebuildSpine (.ctor "Arr" (x :: vs)) rest)
+        | xs' => rebuildSpine (.const "acons") (n :: x :: xs' :: rest)
+      | .const "arrRec", tt :: motive :: pn :: pc :: n :: a :: rest =>
+        match whnfN fuel a with
+        | .ctor "Arr" [] => whnfN fuel (rebuildSpine pn rest)
+        | .ctor "Arr" (x :: vs) =>
+          let tl : Val := .ctor "Arr" vs
+          let k : Val := valOfNat vs.length
+          let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, k, tl]
+          whnfN fuel (rebuildSpine (rebuildSpine pc [k, x, tl, recCall]) rest)
+        | .app (.app (.app (.const "acons") m') x) xs =>
+          let recCall := rebuildSpine (.const "arrRec") [tt, motive, pn, pc, m', xs]
+          whnfN fuel (rebuildSpine (rebuildSpine pc [m', x, xs, recCall]) rest)
+        | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
+      | _, _ => rebuildSpine head args
+  termination_by fuel _ => (fuel, 0, 0)
+end
+
+/-! **Readback**: a value back to closure-free de Bruijn syntax.
+
+    It emits exactly the shapes `nfV` emits — classic indices, no levels, no
+    closures — which is what makes the old and new evaluators comparable byte for
+    byte over the whole corpus rather than merely "both plausible".
+
+    `depth` counts the binders readback has re-created, and it is the ONLY thing
+    the two variable rules need: a level is `depth - 1 - j` (levels count from the
+    outside, indices from the inside), a free index is `k + depth` (every binder
+    re-created around it is one more binder to skip).
+
+    **It weak-heads each node on the way down**, which is `nfV`'s own shape and not
+    a concession. `eval` is eager on the arguments it is *given* but leaves an ι
+    reduct residual — `natRec P z s (S m)` steps to `s m (natRec P z s m)`, and the
+    `S` node that wraps the recursive call is a constructor, where weak-head
+    reduction is *supposed* to stop. Something has to force it, and forcing it here
+    keeps the laziness that makes `hasType` linear in a value rather than quadratic:
+    a constructor's arguments are reduced when someone looks at them, once. (Found
+    by the smoke probe, not by reasoning: `add 2 3` normalized to
+    `S (natRec … (S Z))` before this line existed.) -/
+mutual
+  def readback : Nat → Nat → Val → Val
+    | 0, _, v => v
+    | fuel + 1, depth, v =>
+      match whnfN (fuel + 1) v with
+      | .lvl j => .pvar (depth - 1 - j)
+      | .pvar k => .pvar (k + depth)
+      | .lam dom body =>
+        .lam (readback fuel depth dom) (readback fuel (depth + 1) (instBody fuel body (.lvl depth)))
+      | .pi dom cod =>
+        .pi (readback fuel depth dom) (readback fuel (depth + 1) (instBody fuel cod (.lvl depth)))
+      | .sigmaT dom cod =>
+        .sigmaT (readback fuel depth dom) (readback fuel (depth + 1) (instBody fuel cod (.lvl depth)))
+      | .cmpT τ => .cmpT (readback fuel depth τ)
+      | .app f a => .app (readback fuel depth f) (readback fuel depth a)
+      | .ctor n args => .ctor n (readbackList fuel depth args)
+      | .idT a b c => .idT (readback fuel depth a) (readback fuel depth b) (readback fuel depth c)
+      | w => w        -- type, const, sym, ⊥, loanM, borrowM, rfn: leaves, as in `nfV`
+  termination_by fuel _ _ => (fuel, 0)
+  def readbackList : Nat → Nat → List Val → List Val
+    | _, _, [] => []
+    | fuel, depth, v :: vs => readback fuel depth v :: readbackList fuel depth vs
+  termination_by fuel _ vs => (fuel, vs.length + 1)
+end
+
+/-- Normal form by evaluation: evaluate against the empty environment, read back
+    from depth zero. Intended to be **extensionally identical** to `nfV`, which is
+    what the M30 differential asserts over the corpus rather than assumes. -/
+def nfN (fuel : Nat) (v : Val) : Val := readback fuel 0 (eval fuel [] v)
+
 /-! ## Full normalization and conversion -/
 
 /-! Normalize to full normal form: whnf the head, then normalize subterms.

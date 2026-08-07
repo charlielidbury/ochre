@@ -90,6 +90,33 @@ inductive Val where
       copy of a contract nothing downstream reads. The symmetric change would look
       tidier and would be wrong. -/
   | rfn     : List Var → Term → Val
+  /-- **A comptime closure** (M30/NbE, `docs/nbe.md` §2): a λ/Π/Σ body stored *as
+      written*, together with the comptime environment it was born in. It sits in
+      the BODY position of `lam`/`pi`/`sigmaT`, which is what keeps every consumer
+      that matches those three formers matching them unchanged — opening the binder
+      is the thing that changes, from `substPure 0 a b` to `instBody b a`.
+
+      The environment is the whole environment in scope (nbe.md §3.1, resolved to
+      option (a)): capture is a pointer, and in an immutable fragment the retention
+      of unmentioned bindings is unobservable.
+
+      **What may be in it is the invariant** (§3.2): knowledge only — no hole (⊥),
+      no loan marker, no borrow value, no runtime slot reference. Under substitution
+      that held by construction, because there was no environment for state to sit
+      in; here it is a rule someone maintains, which is why `capturedMarkers` below
+      exists to be run over the corpus rather than trusted. -/
+  | closure : List Val → Val → Val
+  /-- A **de Bruijn LEVEL** — the neutral `readback` mints when it opens a closure.
+      Counted from the OUTSIDE, so it is stable as readback descends; the conversion
+      to an index happens once, at the leaf, where the depth is known.
+
+      Semantic-only: it exists between `instBody body (.lvl d)` and the `readback`
+      that consumes it, and never reaches Ω, `sctx`, or a normal form. It has to be
+      its own former rather than reusing `pvar` because the two read back by
+      DIFFERENT rules — a level by `d - 1 - j`, a free index by `k + d` — and a
+      representation that conflated them would mistake one for the other in exactly
+      the open-term case that has no test. -/
+  | lvl     : Nat → Val
 deriving Inhabited
 
 namespace Val
@@ -133,6 +160,16 @@ mutual
     -- differ only in binder ids are different values here — which is correct,
     -- because the ids are what their bodies reach Ω through.
     | .rfn xs a,   .rfn ys b   => xs == ys && a == b
+    -- STRUCTURAL, and the deviation from "equality never traverses a closure"
+    -- (nbe.md Q5) is deliberate and unreachable. That policy is a claim about
+    -- CONVERSION, and `convert` is `nfV a == nfV b` — it reads back first, so no
+    -- closure ever arrives here through it. What is left is the incidental
+    -- comparisons (Ω canonicalization, `abstractInto`'s target test), where a
+    -- literal env-and-body match is a sound under-approximation: two structurally
+    -- equal closures ARE equal, and the converse failure cannot be observed by a
+    -- judgment, only by a comparison that should have gone through readback.
+    | .closure ρ1 b1, .closure ρ2 b2 => beqList ρ1 ρ2 && beq b1 b2
+    | .lvl x,      .lvl y      => x == y
     | _,           _           => false
   -- Both sides: the mode-blind arms peel a `cmpT` from one side only.
   termination_by v w => sizeOf v + sizeOf w
@@ -204,6 +241,12 @@ mutual
       -- The binders, not the body: a rejection naming a function value wants to
       -- say WHICH function, and the body is a whole program.
       "λr(" ++ String.intercalate ", " (xs.map (·.name)) ++ "){…}"
+    -- The body, not the environment — the `.rfn` precedent read the other way
+    -- round. A closure's body is what it MEANS; its captured environment is how it
+    -- gets there, and printing every binding in scope at every λ would bury the
+    -- one line a rejection is trying to say.
+    | .closure _ b => "clo{" ++ prettyPrec 0 b ++ "}"
+    | .lvl j => s!"@{j}"
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -244,6 +287,8 @@ mutual
     | .const _ => []
     | .cmpT τ => loanIds τ
     | .rfn _ _ => []                                    -- closed: no loans to find
+    | .closure _ _ => []                                -- §3.2: no loans in a captured env
+    | .lvl _ => []
     | .pi d c => loanIds d ++ loanIds c
     | .sigmaT d c => loanIds d ++ loanIds c
     | .lam d c => loanIds d ++ loanIds c
@@ -306,6 +351,44 @@ mutual
     | v :: vs => hasStateMarker v || hasStateMarkerList vs
 end
 
+/-! **The capture assertion of nbe.md §3.2, as instrumentation** (M30).
+
+    §3.2 promotes "a mathematical λ closes over copyable knowledge" from accident
+    to asserted invariant, and says to assert it at closure formation "the same way
+    `refineSym` asserts it at substitution". The two sites are not equally
+    affordable, and pretending otherwise would be the wrong reading:
+
+      * `refineSym` fires once per solved σ and lives in `M`, so it throws.
+      * closure formation fires at every λ *evaluation* — the innermost loop of the
+        comptime fragment — and `eval` is a pure total function with no monad to
+        throw into. A guard there is a marker traversal per β.
+
+    So the assertion is carried out the way the FIRST site's zero-violations claim
+    was actually established: as a whole-corpus instrumentation pass. This returns
+    every offending captured environment in a value; the harness runs it over every
+    state the corpus reaches and the answer is expected to be empty. What stays
+    permanently is the assertion at the one site where a closure enters *persistent*
+    state — the sealed contracts of §4.3 — which is rare, is in `M`, and is exactly
+    parallel to `refineSym`.
+
+    Descends through the body too, since a closure's body may itself contain λs. -/
+mutual
+  def capturedMarkers : Val → List Val
+    | .closure ρ b =>
+      (if hasStateMarkerList ρ then [Val.closure ρ b] else []) ++ capturedMarkersList ρ ++ capturedMarkers b
+    | .ctor _ args => capturedMarkersList args
+    | .borrowM _ p => capturedMarkers p
+    | .cmpT τ => capturedMarkers τ
+    | .pi d c | .sigmaT d c | .lam d c | .app d c => capturedMarkers d ++ capturedMarkers c
+    | .idT a b c => capturedMarkers a ++ capturedMarkers b ++ capturedMarkers c
+    | _ => []
+  termination_by v => sizeOf v
+  def capturedMarkersList : List Val → List Val
+    | [] => []
+    | v :: vs => capturedMarkers v ++ capturedMarkersList vs
+  termination_by vs => sizeOf vs
+end
+
 /-! Symbolic ids occurring in `v`, in pre-order of first appearance. -/
 mutual
   def symIds : Val → List Nat
@@ -319,6 +402,14 @@ mutual
     | .const _ => []
     | .cmpT τ => symIds τ
     | .rfn _ _ => []                                    -- closed: no σ's to find
+    -- DESCENDS — the deviation §6.2 demands. σ's genuinely live inside captured
+    -- environments (a sealed contract's entry snapshot is one), and both halves
+    -- matter: the env holds the σ's the body was closed over, the body holds the
+    -- ones written into it. Omitting either would leave a σ that refinement can
+    -- reach (`substSym` descends) but canonicalization cannot see, and the two
+    -- disagreeing is how an α-equal pair of states stops comparing equal.
+    | .closure ρ b => symIdsList ρ ++ symIds b
+    | .lvl _ => []
     | .pi d c => symIds d ++ symIds c
     | .sigmaT d c => symIds d ++ symIds c
     | .lam d c => symIds d ++ symIds c
@@ -345,6 +436,11 @@ mutual
     | .const c => .const c
     | .cmpT τ => .cmpT (renumber fℓ fσ τ)
     | .rfn xs b => .rfn xs b                            -- closed: nothing to renumber
+    -- DESCENDS, paired with `symIds` above: canonicalization reads the σ order off
+    -- one traversal and applies it with the other, so a σ visible to the first and
+    -- untouched by the second would be renumbered out of existence.
+    | .closure ρ b => .closure (renumberList fℓ fσ ρ) (renumber fℓ fσ b)
+    | .lvl k => .lvl k
     | .pi d c => .pi (renumber fℓ fσ d) (renumber fℓ fσ c)
     | .sigmaT d c => .sigmaT (renumber fℓ fσ d) (renumber fℓ fσ c)
     | .lam d b => .lam (renumber fℓ fσ d) (renumber fℓ fσ b)
