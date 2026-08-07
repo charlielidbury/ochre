@@ -440,11 +440,27 @@ def whnfV : Nat → Val → Val
     carries the environment it was born in — so re-capturing it against whatever
     environment happens to be current is the one way this machinery can go wrong.
     (It is also what makes `eval` idempotent on values, which the mixed domain
-    needs: a value re-entering `eval` must come out unchanged.) -/
+    needs: a value re-entering `eval` must come out unchanged.)
+
+    **And this is §3.2's capture assertion**, live rather than instrumented. The
+    plan had been a one-shot instrumentation run, on the reasoning that a marker
+    scan at every λ evaluation is the innermost loop of the comptime fragment and
+    `eval` is a pure function with no monad to throw into. The first half of that
+    reasoning was refuted by measurement — the guard costs 2 s on a 124 s suite,
+    inside the noise, because comptime environments are small and the scan
+    short-circuits — so the honest thing is to keep it.
+
+    The second half stands: there is no monad here, so a violation cannot be
+    thrown. It is turned into a value no rule can use, which surfaces as the
+    rejection of whatever asked. That is weaker than `refineSym`'s throw in the
+    message it can give and exactly as strong in what it forbids. -/
 def mkClosure (ρ : List Val) (body : Val) : Val :=
   match body with
   | .closure _ _ => body
-  | b => .closure ρ b
+  | b =>
+    if hasStateMarkerList ρ then
+      .const "@@capture: a λ/Π closed over a state marker (⊥/loan/borrow) — §3.2 knowledge/state"
+    else .closure ρ b
 
 mutual
   /-- Evaluate `v` (read as pure syntax) against the comptime environment `ρ`.
@@ -626,29 +642,52 @@ def nfN (fuel : Nat) (v : Val) : Val := readback fuel 0 (eval fuel [] v)
 
 /-! Normalize to full normal form: whnf the head, then normalize subterms.
     Under a binder, de Bruijn `pvar 0` is naturally a neutral leaf, so no fresh
-    variable is needed. Fuel-bounded. -/
+    variable is needed. Fuel-bounded.
+
+    **The substitution normalizer, and for the duration of M30 it is no longer the
+    one the checker calls.** `nfV` below runs this and `nfN` against each other on
+    every normalization the corpus performs; this is the side that is going away. -/
 mutual
-  def nfV : Nat → Val → Val
+  def nfSubst : Nat → Val → Val
     | 0, v => v
     | fuel + 1, v =>
       match whnfV (fuel + 1) v with
-      | .pi d c => .pi (nfV fuel d) (nfV fuel c)
-      | .sigmaT d c => .sigmaT (nfV fuel d) (nfV fuel c)
+      | .pi d c => .pi (nfSubst fuel d) (nfSubst fuel c)
+      | .sigmaT d c => .sigmaT (nfSubst fuel d) (nfSubst fuel c)
       -- The mode marker SURVIVES normalization — ⇒'s application rules read it
       -- off a normalized callee — and is invisible to `convert` anyway, because
       -- `beq` unwraps it (§6, "case is inert under ⇝").
-      | .cmpT τ => .cmpT (nfV fuel τ)
-      | .lam d b => .lam (nfV fuel d) (nfV fuel b)
-      | .ctor n args => .ctor n (nfVList fuel args)
-      | .app f a => .app (nfV fuel f) (nfV fuel a)
-      | .idT a b b' => .idT (nfV fuel a) (nfV fuel b) (nfV fuel b')
+      | .cmpT τ => .cmpT (nfSubst fuel τ)
+      | .lam d b => .lam (nfSubst fuel d) (nfSubst fuel b)
+      | .ctor n args => .ctor n (nfSubstList fuel args)
+      | .app f a => .app (nfSubst fuel f) (nfSubst fuel a)
+      | .idT a b b' => .idT (nfSubst fuel a) (nfSubst fuel b) (nfSubst fuel b')
       | w => w                                       -- pvar, sym, type, const, and runtime leaves
   termination_by fuel _ => (fuel, 0, 0)
-  def nfVList : Nat → List Val → List Val
+  def nfSubstList : Nat → List Val → List Val
     | _, [] => []
-    | fuel, v :: vs => nfV fuel v :: nfVList fuel vs
+    | fuel, v :: vs => nfSubst fuel v :: nfSubstList fuel vs
   termination_by fuel vs => (fuel, 1, vs.length)
 end
+
+/-! ## The M30 differential — SCAFFOLDING, deleted with the old evaluator
+
+    Every normalization the corpus performs runs BOTH evaluators and compares the
+    results byte for byte. A disagreement does not warn: it returns a value no rule
+    can use, so the check that asked fails and the build goes red. Silent
+    divergence is the only failure mode a refactor of the equality procedure really
+    has, and this is the M28 playbook that caught the last one.
+
+    The recursions above and below this line are careful to call `nfSubst`/`nfN`
+    and NOT this wrapper: a differential at every node would run the new evaluator
+    once per subterm and turn a linear normalization into a quadratic one.
+
+    Deleted at step 4, with `substPure`, `shiftPure` and `nfSubst`. -/
+def nfV (fuel : Nat) (v : Val) : Val :=
+  let old := nfSubst fuel v
+  let new := nfN fuel v
+  if old == new then old
+  else .const s!"@@M30-DIVERGENCE@@ old={old.pretty} new={new.pretty}"
 
 /-- Definitional conversion: equal normal forms. For this fragment (β, ι, no
     eta, de Bruijn) normal forms are canonical, so normal-form equality *is*
