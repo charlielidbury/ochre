@@ -320,8 +320,8 @@ end
 
 -- (`Term.toValPure` — the monad-free reflection of a pure `Term` — lives in
 -- `Pure.lean` since M29 α. `let` is a form of the pure fragment now, and reading
--- one is β, which needs `shiftPure`; that is declared there, so the reflection
--- that uses it has to be below it.)
+-- one is β; the β is built as a redex over `Val.letName`, which is declared there,
+-- so the reflection that uses it has to be below it.)
 
 /-! Does a value carry a STATE marker — a hole (`⊥`), a loan, or a borrow —
     anywhere in its tree? §3.2's knowledge/state invariant: a σ names ENTRY

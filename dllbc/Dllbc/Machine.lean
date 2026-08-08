@@ -2174,7 +2174,9 @@ def shiftVars (d : Nat) (t : Term) : Term := shiftVarsK [] d t
     type**, because that is the shape `seedTelescope` seeds and `auditAction`
     audits. Deriving one from a Π is ordinary binder-peeling — except that it has
     to happen on `Term`s, since a borrow-moded Π has no `Val` (see `St.fsig`).
-    `Term.substPure` is what that costs. -/
+    `Term.substP` is what that costs — and since M30 step 2 that is a name-keyed
+    substitution with no lifting, because every substituend here is a runtime
+    variable and a term with no free PURE names cannot be captured. -/
 
 /-- Peel one Π binder per name, instantiating the rest at that name. Returns the
     telescope and the residual return type.

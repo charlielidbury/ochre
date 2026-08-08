@@ -1,15 +1,28 @@
 # Removing substitution: environment-based evaluation for the comptime fragment
 
-**Status: PARTLY IMPLEMENTED at `b0f84fe0` (M30, 2026-08-07).**
-§§1–3, §5's comptime half and §8's deletion list are in the kernel: the comptime
-fragment evaluates by environment, and `substPure`/`shiftPure`/the delayed-lift
-machinery are gone. **§4.3 (contracts as closures) and §5's source-names half are
-NOT**, and they stopped on findings rather than on budget — see DECISION-LOG
-2026-08-07. In one line each: §6 item 1 turned out to bite harder than the
-document expects (closures in checker state break §19's identity-based
-generalization, so closures are confined to the evaluator), and §4.3's pin needs
-§5's named binders under it or it is index arithmetic again. Read §4.3 and §6 with
-those two amendments in mind.
+**Status: IMPLEMENTED EXCEPT §4.3, at `b6a3be55` (M30 step 2, 2026-08-08).**
+§§1–3, **all of §5** and §8's deletion list are in the kernel: the comptime
+fragment evaluates by environment, `substPure`/`shiftPure`/the delayed-lift
+machinery are gone, and since step 2 pure binders are **plain source names with
+shadowing** — no index survives in `Term` or in `Val`, and `Val.lvl` went with
+them. **§4.3 (contracts as closures) is NOT**, and it stopped on a finding rather
+than on budget — see DECISION-LOG 2026-08-07. In one line: §6 item 1 bites harder
+than the document expects (closures in checker state break §19's identity-based
+generalization, so closures are confined to the evaluator), and §4.3 must
+therefore answer a question about §19 rather than inherit an answer. Read §4.3
+and §6 with that amendment in mind.
+
+Two things step 2 learned that the document does not say, both recorded in
+DECISION-LOG 2026-08-08:
+
+  * §5's "NbE never transplants a body" is a claim about `eval`, and it was FALSE
+    of one other place in the tree — the `let` reflection carried its bindings and
+    lifted them at the occurrence. Under names a transplant captures, so the `let`
+    became the β-redex it always described itself as.
+  * The de Bruijn representation was *giving* α-insensitivity to three comparisons
+    that never asked for it (a λ's annotation against its ascription, a sealed
+    recursor's written motive against the derived one). Deleting the indices
+    deletes the gift; `Term.alphaEq` states it instead.
 
 **Status of the original design: resolved through discussion (2026-08-07).**
 All pre-implementation questions are resolved inline (struck-through, with their
@@ -291,6 +304,12 @@ So: **plain source names, with shadowing, in the comptime fragment.** Readback
 mints fresh names in a reserved namespace (unparseable as source identifiers) so
 generated names cannot collide with written ones.
 
+*(Implemented at step 2. The reserved namespace is the `§` prefix; readback's name
+is a function of the binder's LEVEL, which is what keeps readback output canonical
+— `convert` is still a literal `nfV a == nfV b`. "Unparseable as source" needed one
+line of help: an ordinary Lean `ident` cannot contain `§`, but an escaped one
+(`«§0»`) can, so `Surface.reservedBinder` refuses the prefix outright.)*
+
 The **runtime** store keeps `Var` ids and the flat arena for now (see §0 scope):
 loans end on *demand*, not on scope exit, so the arena's never-pop discipline is
 the cheap way to guarantee nothing dangles; §7 records the deferred alternative.
@@ -299,6 +318,13 @@ Residue to inventory during implementation: any remaining *term-level* structura
 comparison becomes α-sensitive (small post-M28 — the big offenders are deleted);
 KernelFloor's hand-built de Bruijn terms get rewritten (a benefit: that is where
 the dangling-index bug lived).
+
+*(Both came due at step 2. The comparisons are three — `piAgree`, `checkArm`,
+`sealRec` — and the inventory's framing was slightly wrong: they did not BECOME
+α-sensitive, they had been getting α-insensitivity free from a representation with
+no names to differ in. `Term.alphaEq` says it out loud. The KernelFloor rewrite is
+the predicted benefit and one more: its `jReflProof` note about a motive domain
+written at the wrong index now describes something unwritable.)*
 
 ## 6. Where the "identical behavior" intention could fail (attack surface)
 

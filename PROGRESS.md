@@ -1,5 +1,75 @@
 # Progress
 
+## 2026-08-08 — dllbc/: **M30 step 2 — pure binders are SOURCE NAMES; no index survives**
+
+Three commits on `m30-names`, full suite green at each pushed boundary. nbe.md §5
+in full: `lam`/`pi`/`sigmaT` and `borrowT`'s snapshot binder carry the name they
+were written with, `pvar` carries a `String`, and shadowing is the scope rule
+rather than a hazard.
+
+    `Term.shiftPure`               deleted       12 call sites, all no-ops under names
+    `Term.substPure` (by index)    → `substP`    name-keyed, no lifting, 8 sites
+    `Val.lvl`                      deleted       readback opens at a fresh `pvar`
+    `Val.LetCtx` (+ 4 ops)         deleted       the `let` is the redex now
+    `Surface.shadowedName`/`idxOf?` deleted      a shadowed binder is dropped, not masked
+    `Val.loanToPvar`               deleted       dead since M27-δ; last `pvar`-as-position
+    `.pvar ⟨index⟩` sites          59 → 0        every one of them now says a name
+    `Term.alphaEq`                 NEW           what the representation used to give free
+    from-scratch build             263s → 252s   −4.1%, and +9 assertions, NOT a motivation
+
+**The bug class, in one line of diff.** nbe.md §1.1's motivation is a hand-written
+index that sat wrong from M11 to M28 because nothing consulted it. That site is
+`hasType`'s five recursor premise types, and it went from `.pi a (.pi listA (.pi
+(.app p (.pvar 0)) (.app p (.ctor "Cons" [.pvar 2, .pvar 1]))))` to the same thing
+with `"§h"`, `"§t"`, `"§ih"` written where the indices were counted. Reserved
+names rather than mnemonic ones, deliberately: `p` is an arbitrary value spliced
+under those binders, and a source program cannot write `§h`.
+
+**Readback mints by LEVEL, and that is what keeps `convert` a literal `==`.** Every
+binder readback opens is renamed to `§⟨its level⟩` — reserved, and a function of
+the level alone — so two α-variant functions read back to the same tree and
+`Val.beq` can go on comparing binder names. A gensym counter would have been
+correct and would have cost an α-aware conversion plus an audit of every `==` on
+values in checker state. KernelFloor's new six-assertion battery says it directly:
+the renaming happens, it is by level, α-variants coincide, they convert,
+`λ (x : Nat). λ (x : Nat). x` is the second projection with no gensym anywhere,
+and the renaming is not an erasure.
+
+**Finding 1: "NbE never transplants a body" was false of one place.** It is nbe.md
+§5's argument for names, it is true of `eval`, and the `let` reflection was doing
+it anyway — M29 α carried the substitution in a depth-indexed `LetCtx` rather than
+building the redex. Under names a transplant CAPTURES (`λ (n : Nat). let s = f n ;
+λ (n : Nat). g s`). Under names it is also unnecessary, for the same reason
+everything else here got cheaper: a `let`'s occurrences are `.var x` and mapping
+one to a reserved pure name is a leaf rewrite. Both reflections now emit
+`(λ §let⟨id⟩. rest) e`. **The general form: "no transplant" is a property of the
+EVALUATOR; every other place that moves a term from where it was written to where
+it is used has to be found, not assumed.**
+
+**Finding 2: the representation was subsidizing three comparisons.** `piAgree`,
+`checkArm` and `sealRec` compare types written independently of each other, and
+were α-insensitive because indices have no names to differ in — not because anyone
+decided they should be. Measured, not reasoned: without `Term.alphaEq`,
+`S26Seal.f1` (a `natRec` sealed at `Π (fuel : Nat) → …` with the motive written
+`λ (f : Nat). …`) is rejected as a motive mismatch, and it is a program that
+checked before and checks after. **The properties a representation gives away for
+free are exactly the ones nobody writes down.**
+
+**Finding 3: `«§0»` was writable.** "A source program cannot write a reserved
+name" was resting on the tokenizer, and an escaped Lean identifier goes around it.
+`Surface.reservedBinder` refuses the prefix now.
+
+**Verdicts, on unchanged fuel constants.** Every `progOk`/`progRejects`/
+`progRunsTo` in the corpus is unchanged; Traces' golden environments and the four
+path-count canaries are untouched. Two golden VALUES moved for a representation
+reason with their meanings intact — a λ sitting in Ω is readback output, so its
+binder is `§0` — and both say so where they sit.
+
+**§4.3 remains stopped**, on the §19 question its predecessor recorded (a
+σ-bearing contract that is opaque to `generalizeStuck`). That question is the
+user's; step 2 removes the *other* obstacle §4.3 had, which was that its pin
+needed one binder per borrow parameter and that was index arithmetic.
+
 ## 2026-08-07 — dllbc/: **M30 — the comptime fragment evaluates by ENVIRONMENT; substitution is deleted**
 
 Five commits, `d27437dd` through `b0f84fe0`, full suite green at each pushed

@@ -1071,8 +1071,9 @@ example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (h : Le Z (S Z)) �
 /-! ### The unshifted-motive question, settled: LATENT AND UNREACHABLE
 
     `hasType`'s `natRec`/`listRec` premises use the motive under the step's binders
-    WITHOUT shifting it (`.pi a (.pi listA (.pi (.app p (.pvar 0)) …))`). Read as de
-    Bruijn terms that is a wrong-answer typing rule for an OPEN motive — one
+    WITHOUT shifting it (`.pi "§h" a (.pi "§t" listA (.pi "§ih" (.app p (.pvar "§t"))
+    …))`; it was `.pvar 0` and a missing shift when this note was written). Read as
+    de Bruijn terms that was a wrong-answer typing rule for an OPEN motive — one
     mentioning an enclosing λ's variable — which is exactly the shape
     `sorted_append_pivot` needs (induction on `a`, motive mentioning `p` and `b`).
     So it looked like a live hazard for the rest of M23 and worth fixing first.

@@ -51,8 +51,8 @@ phase, with the rejection pinned by a test rather than left to be discovered.
 two structural facts. (i) `.seal` is its own `Term` constructor, not an `.app` of
 a magic `.const` (the route `@exit` and `old` take), so ⇝'s application rule
 cannot see it and no test inside that rule distinguishes it. (ii) `Val` has no
-seal former, so no comptime RULE for the seal exists: `whnfV`, `nfV`, `convert`,
-`substPure` and `hasType` are functions on `Val` and would need a new value
+seal former, so no comptime RULE for the seal exists: `eval`, `whnfN`, `nfV`,
+`convert` and `hasType` are functions on `Val` and would need a new value
 constructor before one could be written. §2.1's question — what does a seal
 reduced twice under ⇝ mean — is therefore not answered conservatively, it is
 unaskable.

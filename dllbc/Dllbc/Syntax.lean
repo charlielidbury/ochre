@@ -187,9 +187,9 @@ inductive Term where
       carry the risk.** (i) It is its OWN constructor, not an `.app` of a magic
       `.const` (the route `@exit`/`old` take): ⇝'s application rule can therefore
       never meet it, and no check inside that rule distinguishes it. (ii) There is
-      no `Val.seal` — every comptime rule (`whnfV`, `nfV`, `convert`, `substPure`,
-      `hasType`) is a function on `Val`, so *no comptime rule for the seal exists
-      or can be written* without adding a value former. That is what makes §2.1's
+      no `Val.seal` — every comptime rule (`eval`, `whnfN`, `readback`, `nfV`,
+      `convert`, `hasType`) is a function on `Val`, so *no comptime rule for the
+      seal exists or can be written* without adding a value former. That is what makes §2.1's
       question unaskable: minting needs an event, ⇝ has none, and ⇝ has no seal to
       mint at. `reflectC` rejects the node in the one uniform way it already
       rejects `&mut`, `:=`, `;` and `f(…)` — "not in the comptime fragment" — which

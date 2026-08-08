@@ -3,6 +3,154 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-08: M30 step 2 (source names) — every index is gone, and three things the design did not predict
+
+**Decided: implement nbe.md §5 in full — `Term` and `Val` binders carry plain
+source names, `pvar` carries a `String`, `Val.lvl` is deleted, and readback mints
+canonical binders in a reserved namespace.** The comptime fragment now has no
+index arithmetic of any kind, in either representation. §4.3 remains stopped where
+its predecessor stopped it, for the reason recorded on 2026-08-07 — that reason
+was about §19 and is unaffected by this.
+
+### The representation, and the one decision inside it
+
+`lam`/`pi`/`sigmaT` and `borrowT`'s snapshot binder each gained a name; the
+evaluator's environment is name-keyed and prepending is shadowing; a free `pvar`
+evaluates to itself. The decision that is not forced: **readback renames every
+binder it opens to `readbackName ⟨its level⟩`**, i.e. `§0`, `§1`, ….
+
+Two properties come from that and both are load-bearing. It is RESERVED, so it
+cannot capture what it descends past — `§` is not a Lean identifier character.
+And it is a function of the level and nothing else, so **readback output is
+canonical**: two α-variant functions read back to literally the same tree. That
+is what lets `convert` stay a literal `nfV a == nfV b` and `Val.beq` go on
+comparing binder names. A gensym counter would have been correct and would have
+destroyed it; `Val.convert` would then have needed an α-aware comparison, and
+every `==` on values in checker state (`abstractInto`'s target test, Ω
+canonicalization, the golden envs) would have needed auditing for whether it was
+one of those. The battery in KernelFloor asserts the canonicality directly, in six
+assertions, rather than leaving it to be inferred from the corpus staying green.
+
+The invariant that makes readback capture-free in the other direction is stated
+above `eval`: readback at depth `d` runs only on values whose free reserved names
+are all below `d`. It holds at the three exported entry points (they read back
+from depth 0, on checker values in which every reserved name is bound) and is
+preserved by the recursion. `whnfN`'s `rb` flag — the M30-step-1 correction that
+only `whnfOut` reads back — survives unchanged and for the same reason: a
+depth-0 readback from inside a depth-`d` one would violate exactly this.
+
+### The disposition of `shiftPure` / `substPure`, site by site
+
+`Term.shiftPure` is DELETED. `Term.substPure` is deleted and REPLACED by
+`Term.substP` (name-keyed, no lifting, one rule: stop at a binder that rebinds the
+name).
+
+| site | was | is | why |
+|---|---|---|---|
+| `Uni`, `&mut (τ ~> S)` | `borrowT τ (shiftPure 1 0 S)` | `borrowT §_ τ S` | weakening is the identity |
+| `Uni`, `&mut τ` | `borrowT τ (shiftPure 1 0 τ)` | `borrowT §_ τ τ` | same |
+| `Syntax.trivialOwedT` | `beq s (shiftPure 1 0 τ)` | `alphaEq s τ` | reads the shape above; α because both sides are written types |
+| `Syntax.absOcc` (7 uses) | `shiftPure depth 0 e` at every binder | nothing, plus one guard | re-shifting the target was making the comparison happen at the right depth; the fact it implemented is "a binder rebinding one of `e`'s free names ends `e`'s meaning", and that is now the guard |
+| `Machine.piPeel` | `substPure 0 (.var x) cod` | `substP y (.var x) cod` | substituend is a runtime var: no free pure names, so no capture |
+| `Machine.piAgree` | same | same | same |
+| `Machine.sealRec` (7 uses) | `substPure 0 ⟨ctor spine⟩ R` | `substP sn ⟨ctor spine⟩ R` | spines over runtime vars: same |
+| `FnMacro.fnElab` (5 uses) | same | `substP (paramName kv) …` | same |
+| `FnMacro.absVar` | `pvar k ↦ pvar (k+1)` past each binder | nothing | the lift made room for the binder being introduced; under names there is no room to make |
+| `Val.LetCtx.find?` | `readback (dep − bd)` (was `shiftPure`) | the whole context is deleted | see below |
+
+Where a genuine substitution remains — the eight `substP` sites — it is genuine
+because a `borrow`-moded Π has no `Val` and so cannot be opened by the evaluator;
+that is `Term.substPure`'s original and only justification, unchanged. What is
+gone from those sites is the arithmetic, and the capture question with it: every
+substituend there is `.var x` or a constructor spine over `.var`s, which has no
+free pure names to capture.
+
+### Finding 1: §5's "NbE never transplants a body" was false of one place
+
+nbe.md §5 argues for names on the ground that "NbE never transplants a body —
+evaluation carries an environment *to* it". That is true of `eval`, and the `let`
+reflection was doing it anyway. M29 α made ⇝'s `let` a carried substitution
+(`Val.LetCtx`: each binding recorded with the pure-binder DEPTH it was made at, a
+lookup lifting by the difference) rather than a built redex, because building the
+redex means abstracting the binder out of a body that is not a subterm of
+anything — which takes both reflections off their structural recursion.
+
+Under names that carrying CAPTURES. `λ (n : Nat). let s = f n ; λ (n : Nat). g s`
+transplants a value mentioning `n` under a rebinding of `n`; the depth machinery
+was what made the de Bruijn version right, and there is no name-level equivalent
+short of freshening the value at every occurrence.
+
+The fix is the redex after all, and it is cheap for the same reason everything
+else in this milestone was: under names there is nothing to abstract — a `let`'s
+occurrences are `.var x` and mapping one to a reserved pure name is a leaf
+rewrite the recursion does on the way past. So both reflections emit
+`(λ §let⟨id⟩ : Type. rest) e` and the evaluator does the rest. `LetCtx` and its
+four operations are deleted. **The general form of the finding, for whoever meets
+it next: "no transplant" is a property of the EVALUATOR, and every other place
+that moves a term from where it was written to where it is used has to be found
+and converted, not assumed.**
+
+One side effect worth recording because it went the safe way rather than the
+convenient one: **§3.2's capture assertion now covers a case it was blind to.**
+`mkClosure` checks the ENVIRONMENT for state markers, and under the carried
+substitution a `let`-bound borrow ended up inside a λ's BODY, where the check does
+not look. As a redex the same value enters the environment, so a comptime λ
+closing over a let-bound borrow would now be flagged. Nothing in the corpus does
+it (the whole suite is green), and the fence is one §3.2 asks for — but it is a
+widening, and a program that relied on the blind spot would be rejected by it.
+
+### Finding 2: the representation was subsidizing three comparisons
+
+`Term.beq` compares binder names — correct for its own client, `absOcc`, which
+matches a subterm against the scope it was written in. Three OTHER comparisons are
+between types written independently of each other: `piAgree` and `checkArm` (a
+runtime λ's annotated domain against the ascription that binds it) and `sealRec`
+(a sealed recursor's written motive against the one its ascription derives, which
+is deliberately syntactic because a motive over a borrow-moded Π has no `Val` and
+therefore no conversion to be compared up to).
+
+Those three were α-insensitive because indices have no names to differ in — not
+because anyone decided they should be, and nothing in the code said so. Measured
+rather than reasoned: without a replacement, `S26Seal.f1` — a `natRec` sealed at
+`Π (fuel : Nat) → …` whose motive is written `λ (f : Nat). …` — is rejected as a
+motive mismatch, and it is a program that checked before and checks after.
+`Term.alphaEq` (de-Bruijn-on-the-fly over two binder stacks) states the relation
+those three wanted. **This is the shape of the risk in any representation change:
+the properties a representation gives away for free are exactly the ones nobody
+wrote down.**
+
+### Finding 3: the reserved namespace needed one line to actually be reserved
+
+"A source program cannot write a reserved name" was resting on the tokenizer.
+`§` is not a Lean identifier character — but `«§0»` is a perfectly good ESCAPED
+identifier, and `uterm`'s binder positions take `ident`. `Surface.reservedBinder`
+now refuses the `§` prefix outright, which turns "unreachable by accident of
+lexing" into "refused on purpose".
+
+### What the milestone was FOR, and whether it delivered
+
+nbe.md §1.1's motivation is deleting a bug class: a hand-written index in a motive
+sat wrong for five milestones (M11→M28) because nothing consulted it. The five
+recursor premise types in `hasType` are that site, and they now read
+
+    .pi "§k" (.const "Nat") (.pi "§ih" (.app p (.pvar "§k")) (.app p (.ctor "S" [.pvar "§k"])))
+
+where they read `.pvar 0` / `.pvar 1` / `.pvar 3` and had to be counted. Those
+binders are RESERVED rather than mnemonic, deliberately: `p` is an arbitrary value
+spliced under them, and a source program cannot write `§k`, so the capture
+question the (absent) shifts used to be blamed for does not arise. `Std`'s library
+terms take plain names instead — they are closed definitions nothing splices into,
+and `countArm` is now visibly OPEN in `n` where it used to say `pvar 4`.
+
+### Two expected values moved, and neither is a verdict
+
+`S26Seal.vlam` and S4Pure's `add σ 1` stuck spine are golden VALUES containing
+λs, and a λ in checker state is readback output, so its binder is `§0` rather than
+what the source wrote. The slots hold the same functions; what changed is how a
+normal form spells a binder. Every `progOk`/`progRejects`/`progRunsTo` verdict in
+the corpus is unchanged, Traces' golden environments and the path-count canaries
+are untouched (they contain no binders), and no fuel constant moved.
+
 ## 2026-08-08: task #19 RESOLVED — generalization stays syntactic; contracts stay first-order (option a)
 
 **Decided: option (a).** The M30 containment — closures never leave `Pure.lean` —
