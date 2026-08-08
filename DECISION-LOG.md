@@ -3,6 +3,44 @@
 Record significant design decisions here. Each entry should explain WHAT was
 decided, WHY, and what alternatives were considered.
 
+## 2026-08-08: task #19 RESOLVED — generalization stays syntactic; contracts stay first-order (option a)
+
+**Decided: option (a).** The M30 containment — closures never leave `Pure.lean` —
+is promoted from workaround to permanent policy; contracts remain first-order
+evaluated values; nbe.md §4.3's closure spelling is formally forgone. With this,
+M30 step 3 DISSOLVES as a work item: the current mechanism (`exitSyms` + audit
+substitution) already is the environment-applied-at-audit that §4.3 would have
+spelled, and under step 2's names the obligation pin `S[s := σ]` becomes seed-time
+evaluation in an extended env with no Term-level substitution. M30 completes when
+step 2 (m30-names) lands.
+
+**Why (a):** the mainstream NbE checkers made the same choice and kept it. Agda's
+`with`-abstraction is syntactic generalization of the goal (brittle in exactly the
+identity-not-evaluation way M30 rediscovered), complemented by an explicit bound
+equation (`with … in eq`); Lean's `match h : e with` likewise generalizes the
+motive and binds `h`, and a recomputed scrutinee does NOT reduce in-branch — the
+user rewrites with `h` deliberately. DLLBC's X-Gen + `match h : x` is that same
+design, independently derived (the paper already notes the correspondence). The
+rejected option (c) — branch knowledge consulted by the evaluator so recomputed
+spines reduce — is "smart case": present as local equational constraints in ΠΣ
+(Altenkirch–Danielsson–Löh–Oury, "ΠΣ: Dependent Types without the Sugar", FLOPS
+2010) and as congruence-closure conversion in Zombie (Sjöberg–Weirich,
+"Programming up to Congruence", POPL 2015); studied, never mainstream, because it
+turns conversion into normalization modulo a rewrite system whose confluence,
+termination, and branch-scoping become kernel obligations. Option (b)
+(normalize-before-comparing during the sweep) preserves semantics but flattens
+contract closures at the first stuck split, keeping the §4.3 spelling only where
+it is uninteresting.
+
+**The price of (a), named:** one standing invariant — closures are confined to the
+evaluator, asserted at the two exported boundaries — that future contributors must
+not relax without reopening this entry. (c) remains available as a deliberate
+LANGUAGE experiment (it would shrink the need for branch equations), to be
+proposed as semantics, never as plumbing.
+
+**Process note:** decided speculatively by the coordinator under the user's
+standing autonomy instruction; reviewable-in-retrospect via this entry.
+
 ## 2026-08-07: M30 (NbE) — substitution is deleted; §4.3's closure contracts STOP on a §19 conflict
 
 **Decided: land the evaluator replacement (nbe.md §§1–3, §5's first half, §8's
