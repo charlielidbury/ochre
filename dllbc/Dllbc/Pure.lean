@@ -495,10 +495,16 @@ def Term.toValPureList (ts : List Term) : List Val := Term.toValPureListGo [] ts
     reach main. -/
 def nfV (fuel : Nat) (v : Val) : Val := nfN fuel v
 
-/-- Definitional conversion: equal normal forms. For this fragment (β, ι, no
-    eta, de Bruijn) normal forms are canonical, so normal-form equality *is*
-    convertibility — simpler than a lazy whnf-and-compare recursion and, for a
-    normalizing system, equivalent. -/
+/-- Definitional conversion: equal normal forms. For this fragment (β, ι, no eta)
+    normal forms are canonical, so normal-form equality *is* convertibility —
+    simpler than a lazy whnf-and-compare recursion and, for a normalizing system,
+    equivalent.
+
+    **Canonical up to binder names is what `readback` buys** (M30 step 2), and it
+    is the whole reason this can stay a literal `==` now that binders have names:
+    readback renames each one to its level, so `nfV` forgets what a binder was
+    called. KernelFloor's readback-canonicality battery is where that is asserted
+    rather than assumed. -/
 def convert (fuel : Nat) (a b : Val) : Bool := nfV fuel a == nfV fuel b
 
 /-! ## Segments (¶1.1): the carved array's state form

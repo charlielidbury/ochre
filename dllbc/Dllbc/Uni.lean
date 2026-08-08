@@ -36,7 +36,7 @@ extended with two things the boundary needs:
     `seedTelescope` seeds (argument `i` ↦ var id `i`) and the corpus's `V i "…"`
     references use. Runtime vars are absolute ids, so crossing a Σ/Π/λ binder
     does NOT shift them (matching §5.2: a runtime var in a type is resolved by ⇝
-    to its snapshot, never de Bruijn).
+    to its snapshot, never a pure binder).
   * `*x` in type position → `.deref (.var ⟨i, name⟩)` — the comptime deref the
     corpus writes as `dv`/`lenT (.deref (.var vv))`.
 
@@ -77,9 +77,9 @@ with no mode parameter. The flag it used to carry had exactly two readers, and
 each was removed by giving the kernel the rule the surface had been standing in
 for:
 
-  * **`let`** (M29 α) emitted a `.letIn` in one mode and a de Bruijn β-redex in
-    the other. One row emits `.letIn` and the kernel reads it under both arrows;
-    ⇝'s reading of it IS that β, performed where the binder depth is known.
+  * **`let`** (M29 α) emitted a `.letIn` in one mode and a β-redex over a fresh
+    binder in the other. One row emits `.letIn` and the kernel reads it under both
+    arrows; ⇝'s reading of it IS that β, built at reflection.
   * **`&mut`** (M29 β) was the borrow OPERATION in one mode and the borrow TYPE in
     the other. They are spelled `&m` and `&mut` now, so each row emits its own
     node whatever surrounds it.
@@ -293,9 +293,18 @@ def aliasMap : List (String × Name) :=
     and reserving `j`/`k` would cost every program its loop indices for no
     disambiguation at all. Reserve what the marker needs, and nothing else. -/
 
-/-- May this identifier be a binder? -/
+/-- May this identifier be a binder?
+
+    Two families are refused. The capitalized basis names above, for §6's reason.
+    And the **reserved namespace** (M30 step 2): `§`-prefixed names are what the
+    kernel mints for binders no program wrote — readback's canonical `§0`, `§1`,
+    `abstractOccurrences`' `§gen`, a plain `&mut τ`'s unused snapshot binder — and
+    the whole point of them is that nothing can collide with one. An ordinary Lean
+    `ident` cannot contain `§`, so it would take an ESCAPED identifier (`«§0»`) to
+    offer one; that is exactly the sort of gap that is closed cheaply now and found
+    expensively later. -/
 def reservedBinder (s : String) : Bool :=
-  Dllbc.isUpperInit s && (ctorSet.contains s || constSet.contains s)
+  Dllbc.isReservedName s || (Dllbc.isUpperInit s && (ctorSet.contains s || constSet.contains s))
 
 /-- Reject a reserved name in binder position. Called at every binder the
     unified grammar has: λ, Π, Σ, `let`, match arms and their equation binder,
@@ -303,7 +312,10 @@ def reservedBinder (s : String) : Bool :=
 def checkBinder (x : Ident) : MacroM Unit := do
   let s := x.getId.toString
   if reservedBinder s then
-    Macro.throwErrorAt x s!"'{s}' is a reserved name (a constructor or a kernel type/constant) and cannot be a binder. §6 makes capitalisation the binder-mode marker — capital = comptime — which is unambiguous only if the capitalized names of the fixed basis are keywords."
+    if Dllbc.isReservedName s then
+      Macro.throwErrorAt x s!"'{s}' is in the kernel's reserved binder namespace (names beginning with '§'), which is where readback's canonical binders and the machine's minted ones live. A program may not write one, because the guarantee those names carry is that nothing else can be called that."
+    else
+      Macro.throwErrorAt x s!"'{s}' is a reserved name (a constructor or a kernel type/constant) and cannot be a binder. §6 makes capitalisation the binder-mode marker — capital = comptime — which is unambiguous only if the capitalized names of the fixed basis are keywords."
 
 /-- The λ/Π domain for a binder named `nm`: `⇝τ` when the name is capitalized
     (a COMPTIME binder — its argument is ⇝-read at ⇒-calls, and the fence keeps
@@ -339,8 +351,8 @@ binders in a body ever share an id. This is the id discipline of the retired
 runtime-body grammar, reproduced here exactly — every one of its 70 sites in the
 suite was checked byte-for-byte against this elaborator before it was deleted
 (M28 α–δ).
-Pure binders (λ/Π/Σ/→) push the de Bruijn `pctx` and never touch `next`; a
-runtime var referenced from inside a pure spine stays `.var` (absolute, unshifted). -/
+Pure binders (λ/Π/Σ/→) push their NAME onto `pctx` and never touch `next`; a
+runtime var referenced from inside a pure spine stays `.var`. -/
 
 partial def collectAppU : TSyntax `uterm → TSyntax `uterm × Array (TSyntax `uterm)
   | `(uterm| $f:uterm $a:uterm) => let (h, as) := collectAppU f; (h, as.push a)
@@ -731,12 +743,12 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     let name := x.getId.toString
     -- **ONE `let`, both fragments** (M29 α). This row used to branch on the mode:
     -- ⇒ minted a runtime slot and emitted `.letIn`, ⇝ emitted the β-redex
-    -- `(λ. rest) e` over a de Bruijn binder. The kernel now reads `.letIn` under
-    -- BOTH arrows — ⇝'s reading is that same β, performed at reflection where the
-    -- binder depth is known (`reflectC`) — so the surface has nothing left to
-    -- decide, and this was the first of the two branches the mode flag had.
+    -- `(λ. rest) e` over an anonymous binder. The kernel now reads `.letIn` under
+    -- BOTH arrows — ⇝'s reading is that same β, built at reflection (`reflectC`)
+    -- — so the surface has nothing left to decide, and this was the first of the
+    -- two branches the mode flag had.
     --
-    -- The de Bruijn spelling was not merely a second encoding, it was a second
+    -- The old spelling was not merely a second encoding, it was a second
     -- SCOPE: a `let` used to push `pctx` in one fragment and `rctx` in the other,
     -- so the same source bound a name in two different places depending on which
     -- macro it sat in. One `rctx` push is now the whole rule.
@@ -840,8 +852,8 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
       | `(uterm| Σ ($y:ident : $A:uterm). $B:uterm) => pure (A, y.getId.toString, B)
       | _ => Macro.throwError "elim: a Pair motive's binder type must be written as `Σ (x : A) → B`"
     let aT := (← elabUTerm rctx pctx n2 aSyn).1
-    -- `B` under its own binder at position 0 — de Bruijn-correct for BOTH uses (the
-    -- family `λ x. B` and the arm's second binder domain), whatever the arm names it.
+    -- `B` under its own binder — correct for the family `λ x. B` as written, and
+    -- renamed below for the arm's second binder domain, whatever the arm calls it.
     let bT := (← elabUTerm rctx (bName :: pctx) n2 bSyn).1
     let (pb, _, pbody) ← getArm "Pair"
     let xName := (pb.get! 0).getId.toString

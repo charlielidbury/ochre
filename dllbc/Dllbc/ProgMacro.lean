@@ -68,12 +68,12 @@ namespace Dllbc
 
     The M11 wall was mis-indexed de Bruijn failing silently across ~15 binder
     contexts. The fix was not a unifier or case trees — it was *names and explicit
-    structure*, elaborated to the existing de Bruijn kernel `Term` by the macro
+    structure*, elaborated to the kernel `Term` by the macro
     layer, in a resolve-or-error discipline. That is what this grammar is, and
     `StdLemmas` is written in it. Name resolution for a bare identifier `x`
     (`Surface.resolveName`):
 
-      * a **bound** name → its de Bruijn `pvar` (index = binders since it was bound);
+      * a **bound** name → the pure variable of that very name (`pvar`);
       * an earlier telescope parameter → its absolute runtime `var`;
       * a known **constructor** (`Z`, `S`, `Cons`, `Refl`, `unit`, …) → `ctorApp`;
       * a kernel **constant** (`Nat`, `List`, `natRec`, `j`, …) → `const`;

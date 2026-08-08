@@ -177,6 +177,69 @@ example : expectHasType [] []
 example : Val.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctor "Z" [])) = false := by
   native_decide
 
+/-! ## Readback is CANONICAL (M30 step 2)
+
+    Binders are source names now, and `convert` is still `nfV a == nfV b` — a
+    *literal* comparison of normal forms. That is only sound because `readback`
+    renames every binder it opens to `readbackName ⟨its level⟩`, so a normal form
+    does not remember what its binders were called. Six assertions, because the
+    property is load-bearing for every conversion in the calculus and is the thing
+    a future change to `readback` would break silently:
+
+      1. the renaming happens, and to the reserved namespace;
+      2. it is by LEVEL, so nesting is what distinguishes binders;
+      3. two α-variant functions therefore normalize to the same tree;
+      4. …and are convertible, which is (3) read through the rule that uses it;
+      5. shadowing means the INNER binder, without a gensym anywhere;
+      6. and the renaming does not make everything equal — the no-η negative
+         above and this one are what say it is a renaming and not an erasure.
+
+    A source program cannot write a reserved name (`Surface.reservedBinder`
+    refuses one, and the tokenizer would need an escaped identifier to offer it),
+    so nothing a program writes can collide with what readback mints. -/
+
+-- (1) and (2): the binder a normal form carries is its level, in the reserved
+-- namespace. Written as the whole tree rather than as a predicate, so a change to
+-- the naming scheme fails HERE and says what it changed to.
+example : (Val.nfV 1000 (.lam "x" natV (.pvar "x")) == .lam "§0" natV (.pvar "§0")) = true := by
+  native_decide
+example : (Val.nfV 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
+            == .lam "§0" natV (.lam "§1" natV (.app (.pvar "§0") (.pvar "§1")))) = true := by
+  native_decide
+
+-- (3): two α-variants of one function read back to the SAME tree — not merely to
+-- convertible ones, which is the weaker fact `convert` would still give if
+-- readback minted from a counter.
+example : (Val.nfV 1000 (.lam "a" natV (.lam "b" natV (.app (.pvar "a") (.pvar "b"))))
+            == Val.nfV 1000 (.lam "p" natV (.lam "q" natV (.app (.pvar "p") (.pvar "q"))))) = true := by
+  native_decide
+
+-- (4): and so they convert. (Under the de Bruijn representation this was true for
+-- a reason that no longer exists — the binders had no names to differ in.)
+example : Val.convert 1000 (.lam "x" natV (.pvar "x")) (.lam "y" natV (.pvar "y")) = true := by
+  native_decide
+
+-- (5): SHADOWING IS THE SCOPE RULE. `λ (x : Nat). λ (x : Nat). x` is the second
+-- projection, and both halves are asserted — it converts with `λ a. λ b. b` and
+-- does NOT convert with `λ a. λ b. a`. Nothing was renamed to make this work;
+-- the evaluator's environment is prepended to and the lookup finds the first hit.
+example : Val.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
+                           (.lam "a" natV (.lam "b" natV (.pvar "b"))) = true := by native_decide
+example : Val.convert 1000 (.lam "x" natV (.lam "x" natV (.pvar "x")))
+                           (.lam "a" natV (.lam "b" natV (.pvar "a"))) = false := by native_decide
+
+-- (6): the renaming is not an erasure — two functions that differ in WHICH binder
+-- they return stay distinct after it.
+example : Val.convert 1000 (.lam "a" natV (.lam "b" natV (.pvar "a")))
+                           (.lam "a" natV (.lam "b" natV (.pvar "b"))) = false := by native_decide
+
+-- The namespace itself: what readback mints is reserved, and a source binder may
+-- not be. The second is the surface check rather than the tokenizer, because an
+-- escaped Lean identifier (`«§0»`) would otherwise slip one through.
+example : Dllbc.isReservedName (Dllbc.readbackName 0) = true := by native_decide
+example : Dllbc.Surface.reservedBinder "§0" = true := by native_decide
+example : Dllbc.Surface.reservedBinder "x" = false := by native_decide
+
 end Dllbc.Tests.S4Pure
 end
 -- └── end of what was `S4Pure.lean` ───────────────────────────────────────────────

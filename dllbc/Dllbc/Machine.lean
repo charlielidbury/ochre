@@ -977,8 +977,9 @@ mutual
     | .callV _ _ => throwErr "readC (⇝): a value-callee call is not in the comptime fragment — comptime application of an abstract function is the structured neutral `f a`, written as an application (§2.1)"
     -- The runtime λ joins the same list, and for the same structural reason as
     -- the seal: it is its own constructor, and its body is a BODY. ⇝'s λ is
-    -- `.lam` — domain-annotated, de Bruijn, body a pure term — and a `.lamR`
-    -- would have to be reduced by binding named slots, which is ⇒'s move.
+    -- `.lam` — domain-annotated, body a pure term reduced against a comptime
+    -- environment — and a `.lamR` would have to be reduced by binding Ω slots,
+    -- which is ⇒'s move.
     | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x : τ, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
   def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []

@@ -91,8 +91,9 @@ def isUpperInit (s : String) : Bool :=
     cannot mean anything else. A `mode` field would be a second source of truth
     that a hand-written `⟨0, "Hfuel"⟩` could silently contradict; derived from
     the name there is only one, and `shiftVars`/`renumber` preserve it for free.
-    Pure (de Bruijn) binders have no name, so they carry their mode on the
-    domain instead — `Term.cmpT` below. -/
+    A pure binder has a name too since M30 step 2, but it does NOT carry its mode
+    there: the two namespaces are separate, and a pure binder's mode stays on the
+    domain — `Term.cmpT` below. -/
 def Var.isComptime (x : Var) : Bool := isUpperInit x.name
 
 /-! Core term syntax of DLLBC's concrete fragment (§2 forms plus §3 `match`).
@@ -214,13 +215,14 @@ inductive Term where
       form phase A filed and could not build: a λ whose body is a *body* (writes,
       calls, borrows, matches) rather than a pure term.
 
-      Its binders are **named runtime `Var`s**, not de Bruijn, and that is forced
-      rather than chosen: a body reaches its binders through Ω — `.matchE`
-      scrutinizes a `Var`, `&mut x` roots a place at a `Var`, `.callV` calls a
-      `Var` — and a de Bruijn index names no slot. So the pure λ (`.lam`, domain-
-      annotated, body a `Val`) and this one are the two halves §7 cost 5 predicts:
-      same former in the document, two representations in the machine, because
-      one substitutes and the other binds.
+      Its binders are **runtime `Var`s** — id-and-name pairs — and that is forced
+      rather than chosen: a body reaches its binders through Ω, so a binder has to
+      name a SLOT. (Until M30 step 2 the contrast was with de Bruijn; now both
+      fragments' binders have names and the difference is what a name resolves
+      against — an Ω slot here, a comptime environment there.) So the pure λ
+      (`.lam`, domain-annotated, body a `Val`) and this one are the two halves §7
+      cost 5 predicts: same former in the document, two representations in the
+      machine, because one is knowledge and the other is state.
 
       **Church-style: every binder carries its domain** (M27, the ratified
       function model), which is what the document's grammar said all along —
