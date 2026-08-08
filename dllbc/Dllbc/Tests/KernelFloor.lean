@@ -77,23 +77,23 @@ namespace Dllbc.Tests.S4Pure
 def natT : Term := .const "Nat"
 def tnat : Nat → Term | 0 => .ctorApp "Z" [] | n + 1 => .ctorApp "S" [tnat n]
 
-/-- `add m n = natRec (λ_.Nat) n (λ_. λr. S r) m` (m = #1, n = #0). -/
+/-- `add m n = natRec (λ_.Nat) n (λ_. λr. S r) m`. -/
 def addT : Term :=
-  .lam natT (.lam natT
-    (.app (.app (.app (.app (.const "natRec") (.lam natT natT)) (.pvar 0))
-      (.lam natT (.lam natT (.ctorApp "S" [.pvar 0])))) (.pvar 1)))
+  .lam "m" natT (.lam "n" natT
+    (.app (.app (.app (.app (.const "natRec") (.lam "_" natT natT)) (.pvar "n"))
+      (.lam "_" natT (.lam "r" natT (.ctorApp "S" [.pvar "r"])))) (.pvar "m")))
 
 /-- `VecF T n = natRec (λ_.Type) Unit (λn'. λrec. Σ(_:T). rec) n` — a `Vec`-shaped
     family by large elimination (§4.2's `VecF Nat Z = Unit`, `VecF Nat (S n) =
-    Σ (_:Nat). VecF Nat n`). `T = #1`, `n = #0`. -/
+    Σ (_:Nat). VecF Nat n`). -/
 def vecFT : Term :=
-  .lam .type (.lam natT
-    (.app (.app (.app (.app (.const "natRec") (.lam natT .type)) (.const "Unit"))
-      (.lam natT (.lam .type (.sigmaT (.pvar 3) (.pvar 1))))) (.pvar 0)))
+  .lam "T" .type (.lam "n" natT
+    (.app (.app (.app (.app (.const "natRec") (.lam "_" natT .type)) (.const "Unit"))
+      (.lam "n'" natT (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
 
 /-- `boolRec (λ_.Nat) t f b`. -/
 def boolRecNat (t f b : Term) : Term :=
-  .app (.app (.app (.app (.const "boolRec") (.lam (.const "Bool") natT)) t) f) b
+  .app (.app (.app (.app (.const "boolRec") (.lam "_" (.const "Bool") natT)) t) f) b
 
 /-- A slot holding `σ0`, and the term reading it. -/
 def sVar : Term := .var ⟨0, "s"⟩
@@ -117,9 +117,12 @@ example : expectReadC seedS [] (.app (.app (.const "botElim") natT) sVar)
 /-! ## Stuck neutrals and conversion -/
 
 -- add σ 1 evaluates to the canonical stuck spine `natRec (λ_.Nat) 1 step σ`.
+-- The expected value is READBACK OUTPUT, so its binders are the reserved
+-- level-named ones readback mints (`§0`, `§1`) rather than the source's — which is
+-- the canonicality property this file is the control group for, written down.
 example : expectReadC seedS [] (.app (.app addT sVar) (tnat 1))
-  (.app (.app (.app (.app (.const "natRec") (.lam (.const "Nat") (.const "Nat"))) (nat 1))
-    (.lam (.const "Nat") (.lam (.const "Nat") (.ctor "S" [.pvar 0])))) (.sym 0)) = true := by
+  (.app (.app (.app (.app (.const "natRec") (.lam "§0" (.const "Nat") (.const "Nat"))) (nat 1))
+    (.lam "§0" (.const "Nat") (.lam "§1" (.const "Nat") (.ctor "S" [.pvar "§1"])))) (.sym 0)) = true := by
   native_decide
 
 -- Conversion of stuck neutrals: reflexive, and sensitive to the argument.
@@ -135,7 +138,7 @@ example : expectConv seedS [] (.app (.app addT sVar) (tnat 1)) (.app (.app addT 
 -- stuck index, the property §4.2's dependent push stands on.
 example : expectConv seedS []
   (.app (.app vecFT natT) (.ctorApp "S" [sVar]))
-  (.sigmaT natT (.app (.app vecFT natT) sVar)) = true := by native_decide
+  (.sigmaT "_" natT (.app (.app vecFT natT) sVar)) = true := by native_decide
 
 /-! ## Value typing -/
 
@@ -143,11 +146,11 @@ example : expectConv seedS []
 def natV : Val := .const "Nat"
 def listNat : Val := .app (.const "List") natV
 def vecFV : Val :=
-  .lam .type (.lam natV
-    (.app (.app (.app (.app (.const "natRec") (.lam natV .type)) (.const "Unit"))
-      (.lam natV (.lam .type (.sigmaT (.pvar 3) (.pvar 1))))) (.pvar 0)))
-/-- `Σ (l : Nat). VecF Nat l` (the l is a genuine de Bruijn dependency). -/
-def sigVecF : Val := .sigmaT natV (.app (.app vecFV natV) (.pvar 0))
+  .lam "T" .type (.lam "n" natV
+    (.app (.app (.app (.app (.const "natRec") (.lam "_" natV .type)) (.const "Unit"))
+      (.lam "n'" natV (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
+/-- `Σ (l : Nat). VecF Nat l` (the l is a genuine dependency). -/
+def sigVecF : Val := .sigmaT "l" natV (.app (.app vecFV natV) (.pvar "l"))
 
 -- Positives: `Cons σₑ σ : List Nat` under sctx = {σₑ : Nat, σ : List Nat};
 -- `Pair 1 p : Σ (l:Nat). VecF Nat l` with `p = Pair 5 unit : VecF Nat 1` — the
@@ -168,9 +171,10 @@ example : expectHasType [] []
 
 /-! ## Conversion negative under a binder -/
 
--- Two λ's that differ only in their bodies are not convertible (no eta; de
--- Bruijn bodies compared structurally after normalization).
-example : Val.convert 1000 (.lam natV (.pvar 0)) (.lam natV (.ctor "Z" [])) = false := by
+-- Two λ's that differ only in their bodies are not convertible (no eta; bodies
+-- compared structurally after normalization, which renames both binders to the
+-- same level name and so cannot be what tells them apart).
+example : Val.convert 1000 (.lam "u" natV (.pvar "u")) (.lam "u" natV (.ctor "Z" [])) = false := by
   native_decide
 
 end Dllbc.Tests.S4Pure
@@ -229,15 +233,18 @@ def botElimV (t x : Val) : Val := .app (.app (.const "botElim") t) x
 /-- `NatCode : Nat → Nat → Type` by double `natRec`: `(Z,Z) ↦ ⊤`, `(S,S) ↦`
     code of predecessors, mixed `↦ ⊥`. The diagonal `NatCode a a` is `⊤`. -/
 def zCase : Val :=
-  .lam natV (natRecV (.lam natV .type) (.const "Unit") (.lam natV (.lam .type (.const "Bot"))) (.pvar 0))
+  .lam "b" natV (natRecV (.lam "_" natV .type) (.const "Unit")
+    (.lam "_" natV (.lam "_" .type (.const "Bot"))) (.pvar "b"))
 def sCase : Val :=
-  .lam natV (.lam (.pi natV .type) (.lam natV
-    (natRecV (.lam natV .type) (.const "Bot") (.lam natV (.lam .type (.app (.pvar 3) (.pvar 1)))) (.pvar 0))))
-def natCodeV : Val := .lam natV (natRecV (.lam natV (.pi natV .type)) zCase sCase (.pvar 0))
+  .lam "a'" natV (.lam "recA" (.pi "_" natV .type) (.lam "b" natV
+    (natRecV (.lam "_" natV .type) (.const "Bot")
+      (.lam "b'" natV (.lam "_" .type (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b"))))
+def natCodeV : Val := .lam "a" natV (natRecV (.lam "_" natV (.pi "_" natV .type)) zCase sCase (.pvar "a"))
 def natCode (a b : Val) : Val := .app (.app natCodeV a) b
 
 /-- `pred : Nat → Nat` (`pred Z = Z`, `pred (S n) = n`). -/
-def predV : Val := .lam natV (natRecV (.lam natV natV) sZ (.lam natV (.lam natV (.pvar 1))) (.pvar 0))
+def predV : Val :=
+  .lam "n" natV (natRecV (.lam "_" natV natV) sZ (.lam "m" natV (.lam "_" natV (.pvar "m"))) (.pvar "n"))
 
 /-! ## §10 kernel: the ι-rules (`j` and `k` fire on `Refl`)
 
@@ -246,14 +253,14 @@ def predV : Val := .lam natV (natRecV (.lam natV natV) sZ (.lam natV (.lam natV 
     to reduction — ι fires on the proof.) -/
 
 -- j Nat Z P 42 Z Refl ↦ 42
-example : (Val.nfV 1000 (jV natV sZ (.lam natV (.lam natV natV)) (vnat 42) sZ refl) == vnat 42) = true := by
+example : (Val.nfV 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ refl) == vnat 42) = true := by
   native_decide
 
 -- k Nat Z P 7 Refl ↦ 7
-example : (Val.nfV 1000 (kV natV sZ (.lam natV natV) (vnat 7) refl) == vnat 7) = true := by native_decide
+example : (Val.nfV 1000 (kV natV sZ (.lam "q" natV natV) (vnat 7) refl) == vnat 7) = true := by native_decide
 
 -- On a *symbolic* proof (sym 0), `j` does not fire — it is a stuck value, not 42.
-example : (Val.nfV 1000 (jV natV sZ (.lam natV (.lam natV natV)) (vnat 42) sZ (.sym 0)) == vnat 42) = false := by
+example : (Val.nfV 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 42) sZ (.sym 0)) == vnat 42) = false := by
   native_decide
 
 /-! ## The Refl-match: the solution transition (owned and through a borrow)
@@ -387,7 +394,8 @@ example : progRejects (prog{
     any type. This is the impossible branch, discharged with ordinary terms. -/
 
 -- P = λb'. λ_ : Id Nat Z b'. NatCode Z b'
-def nncMotive : Val := .lam natV (.lam (.idT natV sZ (.pvar 0)) (.app (.app natCodeV sZ) (.pvar 1)))
+def nncMotive : Val :=
+  .lam "b" natV (.lam "q" (.idT natV sZ (.pvar "b")) (.app (.app natCodeV sZ) (.pvar "b")))
 def nncProof (n p : Val) : Val := jV natV sZ nncMotive unitV (sS n) p
 -- σ0 = n : Nat, σ1 = p : Id Nat Z (S n)
 def nncSctx : List (Nat × Val) := [(0, natV), (1, .idT natV sZ (sS (.sym 0)))]
@@ -411,7 +419,7 @@ example : expectHasType [] nncSctx (botElimV (.const "Bool") (nncProof (.sym 0) 
     b`. (`pred (S σ)` reduces because the `S` is concrete around the symbol.) -/
 
 def injMotive (a : Val) : Val :=
-  .lam natV (.lam (.idT natV (sS a) (.pvar 0)) (.idT natV a (.app predV (.pvar 1))))
+  .lam "y" natV (.lam "q" (.idT natV (sS a) (.pvar "y")) (.idT natV a (.app predV (.pvar "y"))))
 def injProof (a b p : Val) : Val := jV natV (sS a) (injMotive a) refl (sS b) p
 def injSctx : List (Nat × Val) := [(0, natV), (1, natV), (2, .idT natV (sS (.sym 0)) (sS (.sym 1)))]
 
@@ -429,7 +437,7 @@ example : expectHasType [] injSctx (injProof (.sym 0) (.sym 1) (.sym 2)) (.idT n
     a decided commitment of this kernel. -/
 
 def idAA (a : Val) : Val := .idT natV a a
-def uipMotive (a : Val) : Val := .lam (idAA a) (.idT (idAA a) (.pvar 0) refl)
+def uipMotive (a : Val) : Val := .lam "q" (idAA a) (.idT (idAA a) (.pvar "q") refl)
 def uipProof (a p : Val) : Val := kV natV a (uipMotive a) refl p
 def uipSctx : List (Nat × Val) := [(0, natV), (1, idAA (.sym 0))]
 

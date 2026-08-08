@@ -55,11 +55,11 @@ def natT : Term := .const "Nat"
 def listNatT : Term := .app (.const "List") natT
 /-- `VecF T n = natRec (λ_.Type) Unit (λn'. λrec. Σ(_:T). rec) n`. -/
 def vecFT : Term :=
-  .lam .type (.lam natT
-    (.app (.app (.app (.app (.const "natRec") (.lam natT .type)) (.const "Unit"))
-      (.lam natT (.lam .type (.sigmaT (.pvar 3) (.pvar 1))))) (.pvar 0)))
+  .lam "T" .type (.lam "n" natT
+    (.app (.app (.app (.app (.const "natRec") (.lam "_" natT .type)) (.const "Unit"))
+      (.lam "n'" natT (.lam "rec" .type (.sigmaT "_" (.pvar "T") (.pvar "rec"))))) (.pvar "n")))
 /-- `Σ (l : Nat). VecF Nat l` — the self-describing length-vector pair. -/
-def sigVecF : Term := .sigmaT natT (.app (.app vecFT natT) (.pvar 0))
+def sigVecF : Term := .sigmaT "l" natT (.app (.app vecFT natT) (.pvar "l"))
 
 /-! ## §4.1 List push, by take and rebuild -/
 

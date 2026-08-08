@@ -25,9 +25,42 @@ macro resolves names to ids while elaborating, and an unresolved name is an
 elaboration-time error (mirroring `Och/Macro.lean`'s discipline that killed
 the silent-999 sentinel bug). The environment Ω is then keyed by these ids,
 so shadowing is a fresh id, never a name clash.
+
+## Pure variables carry SOURCE NAMES (M30 step 2, `docs/nbe.md` §5)
+
+And so, since M30 step 2, does the comptime fragment: `lam`/`pi`/`sigmaT` and
+`borrowT`'s snapshot binder each carry the name they were written with, an
+occurrence is `pvar "x"`, and lookup-the-nearest-binding is the scope rule.
+Shadowing is that mechanism rather than a hazard — `λ (x : τ). λ (x : υ). x`
+means the inner one — and nothing gensyms.
+
+The de Bruijn indices this replaces were a compensation for SUBSTITUTION, which
+M30 step 1 deleted: an evaluator that carries an environment to a body never
+transplants one, so there is no capture to arithmetic away. What is left of the
+compensation — `shiftPure`, and `substPure`'s index juggling — is deleted here.
 -/
 
 namespace Dllbc
+
+/-! ## The reserved binder namespace
+
+    Names beginning with `§` are the machine's. A Lean `ident` cannot contain
+    `§` (it is neither a letter nor letter-like), and every surface binder is an
+    `ident`, so **no program can write one** — which is what lets the kernel mint
+    binders (readback's canonical names, `abstractOccurrences`' fresh variable,
+    a plain `&mut τ`'s unused snapshot binder) without a freshness search and
+    without a capture check. The surface already relied on this for
+    `Surface.shadowedName`; M30 step 2 makes it a stated convention. -/
+
+/-- Is this a machine-minted binder name — one no source program can write? -/
+def isReservedName (s : String) : Bool := s.startsWith "§"
+
+/-- **Readback's binder at level `d`.** Deterministic in the level and nothing
+    else, which is what keeps readback output CANONICAL: two α-variant functions
+    read back to literally the same tree, so conversion stays structural equality
+    on normal forms (`Val.convert`). A gensym counter here would be correct and
+    would destroy that. -/
+def readbackName (d : Nat) : String := "§" ++ toString d
 
 /-- A runtime variable: a globally-unique `id` plus a display `name`. -/
 structure Var where
@@ -214,23 +247,24 @@ inductive Term where
   /-- Terminal form, the value a statement sequence returns when it has no
       final expression. -/
   | unit   : Term
-  -- Pure fragment (§4): the comptime type theory's formers. Pure binders use
-  -- de Bruijn indices (`pvar`); `readC` (⇝) reflects these into the matching
+  -- Pure fragment (§4): the comptime type theory's formers. Pure binders carry
+  -- their SOURCE NAME (M30 step 2); `readC` (⇝) reflects these into the matching
   -- `Val` forms and reduces. Runtime `var`/`let` (named ids) are unaffected.
-  | pvar   : Nat → Term              -- pure de Bruijn variable
+  | pvar   : String → Term           -- pure variable occurrence, by name
   | type   : Term                    -- the universe
-  | pi     : Term → Term → Term      -- Π (dom) (cod); cod binds var 0
-  | sigmaT : Term → Term → Term      -- Σ (fst-type) (snd-type); snd binds var 0
-  | lam    : Term → Term → Term      -- λ (dom) (body); body binds var 0
+  | pi     : String → Term → Term → Term      -- Π (x : dom) → cod
+  | sigmaT : String → Term → Term → Term      -- Σ (x : fst-type) → snd-type
+  | lam    : String → Term → Term → Term      -- λ (x : dom). body
   | app    : Term → Term → Term      -- application
   | const  : String → Term           -- a built-in constant (recursor or type former)
   | idT    : Term → Term → Term → Term  -- Id A a b (§10): the identity type
   /-- The borrow type `&mut (s : τ ↝ S)` (§5.1): exclusive access to a `τ`,
-      owing an `S` at the boundary. `S` is under one pure de Bruijn binder for
-      the entry snapshot `s`. Plain `&mut τ` is `borrowT τ (weaken τ)`. Only
+      owing an `S` at the boundary. `S` is under one pure binder named `s`, the
+      entry snapshot. Plain `&mut τ` is `borrowT ⟨a reserved name⟩ τ τ` — under
+      names the weakening the de Bruijn spelling needed is the identity. Only
       valid at a telescope position — interpreted by the seeding that
       `checkRFnBody` runs (`seedTelescopeV`), never reflected as a value. -/
-  | borrowT : Term → Term → Term
+  | borrowT : String → Term → Term → Term
   /-- `⇝τ` — the **comptime binder-mode marker on a domain** (combining-fns §6),
       and the pure-binder counterpart of `Var.isComptime`.
 
@@ -294,15 +328,22 @@ mutual
     -- the property the `.cmpT` note at the foot of this function is about.
     | .lamR xs a, .lamR ys b => Term.beqBinders xs ys && Term.beq a b
     | .unit, .unit => true
-    | .pvar k, .pvar j => k == j
+    | .pvar x, .pvar y => x == y
     | .type, .type => true
-    | .pi a b, .pi c d => Term.beq a c && Term.beq b d
-    | .sigmaT a b, .sigmaT c d => Term.beq a c && Term.beq b d
-    | .lam a b, .lam c d => Term.beq a c && Term.beq b d
+    -- Binder NAMES are compared, which makes this equality up-to-nothing rather
+    -- than up-to-α. That is what its clients want: `absOcc` (§18's occurrence
+    -- abstraction) matches a subterm written in one scope against the same scope,
+    -- and two terms that differ only in a binder's spelling are two different
+    -- pieces of source. Conversion, which must be up to α, is `Val.convert` —
+    -- `nfV a == nfV b` — and readback canonicalizes every binder to its level
+    -- before that comparison ever happens.
+    | .pi x a b, .pi y c d => x == y && Term.beq a c && Term.beq b d
+    | .sigmaT x a b, .sigmaT y c d => x == y && Term.beq a c && Term.beq b d
+    | .lam x a b, .lam y c d => x == y && Term.beq a c && Term.beq b d
     | .app a b, .app c d => Term.beq a c && Term.beq b d
     | .const n, .const m => n == m
     | .idT a b c, .idT d e f => Term.beq a d && Term.beq b e && Term.beq c f
-    | .borrowT a b, .borrowT c d => Term.beq a c && Term.beq b d
+    | .borrowT x a b, .borrowT y c d => x == y && Term.beq a c && Term.beq b d
     -- STRUCTURAL, unlike `Val.beq` — the asymmetry is deliberate. `Val.beq` is
     -- mode-blind because `convert` is built on it and §6 says case is inert
     -- under ⇝. `Term.beq` is not a conversion: its client is `absOcc` (§18's
@@ -340,80 +381,171 @@ end
 
 instance : BEq Term := ⟨Term.beq⟩
 
-/-! ## Pure de Bruijn shift on `Term`, and syntactic subterm abstraction — the
-    §18 rewriting layer's mechanism.
+/-! ## α-equality on `Term` (M30 step 2)
 
-    It used to be described as the mirror of `Val.shiftPure`. There is no longer a
-    `Val` side to mirror: M30 replaced the value evaluator with an environment
-    machine and deleted the index arithmetic outright. What survives here does so
-    on its own justification, stated below `Term.substPure`. -/
+    `Term.beq` compares binder names, and for its own client (`absOcc`, matching a
+    subterm against the scope it was written in) that is right. Three OTHER
+    comparisons are between types written INDEPENDENTLY of each other — a λ's
+    annotation against the ascription that binds it (`piAgree`, `checkArm`), a
+    sealed recursor's written motive against the one its ascription derives
+    (`sealRec`), a borrow's owed type against its payload type (`trivialOwedT`) —
+    and for those, two spellings of the same type must not be two types.
+
+    **This function exists because the de Bruijn representation was giving those
+    three α-insensitivity for free**, and deleting the indices deleted the gift
+    along with the arithmetic. It is stated rather than inherited now, which is
+    also the honest version: nothing about the comparisons said they were up to α;
+    they simply could not tell. (Measured, not assumed: without it, `S26Seal.f1` —
+    a `natRec` sealed at `Π (fuel : Nat) → …` with the motive written
+    `λ (f : Nat). …` — is rejected as a motive mismatch.)
+
+    Standard de-Bruijn-on-the-fly: each side carries its own binder stack, two
+    bound variables match when their innermost-first positions agree, and two free
+    variables match when their names do. -/
+
+/-- Innermost-first position of `x` in `l`. -/
+def bndPos? (l : List String) (x : String) : Option Nat :=
+  let rec go : List String → Nat → Option Nat
+    | [], _ => none
+    | y :: ys, i => if y == x then some i else go ys (i + 1)
+  go l 0
 
 mutual
-  def Term.shiftPure (d c : Nat) : Term → Term
-    | .pvar k => if k < c then .pvar k else .pvar (k + d)
-    | .lam dom b => .lam (Term.shiftPure d c dom) (Term.shiftPure d (c + 1) b)
-    | .pi dom cod => .pi (Term.shiftPure d c dom) (Term.shiftPure d (c + 1) cod)
-    | .sigmaT dom cod => .sigmaT (Term.shiftPure d c dom) (Term.shiftPure d (c + 1) cod)
-    | .app f a => .app (Term.shiftPure d c f) (Term.shiftPure d c a)
-    | .ctorApp n args => .ctorApp n (Term.shiftPureList d c args)
-    | .idT a b b' => .idT (Term.shiftPure d c a) (Term.shiftPure d c b) (Term.shiftPure d c b')
-    | .cmpT τ => .cmpT (Term.shiftPure d c τ)            -- a domain: same binder depth
-    | t => t                                             -- runtime forms / leaves
+  def Term.alphaEqGo (lc rc : List String) : Term → Term → Bool
+    | .pvar x, .pvar y =>
+      match bndPos? lc x, bndPos? rc y with
+      | some i, some j => i == j                       -- both bound: same binder
+      | none, none => x == y                           -- both free: same name
+      | _, _ => false
+    | .var x, .var y => x == y
+    | .type, .type => true
+    | .const n, .const m => n == m
+    | .unit, .unit => true
+    | .cmpT a, .cmpT b => Term.alphaEqGo lc rc a b
+    | .lam x da ba, .lam y db bb =>
+      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
+    | .pi x da ba, .pi y db bb =>
+      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
+    | .sigmaT x da ba, .sigmaT y db bb =>
+      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
+    | .borrowT x da ba, .borrowT y db bb =>
+      Term.alphaEqGo lc rc da db && Term.alphaEqGo (x :: lc) (y :: rc) ba bb
+    | .app fa aa, .app fb ab => Term.alphaEqGo lc rc fa fb && Term.alphaEqGo lc rc aa ab
+    | .idT a b c, .idT d e f =>
+      Term.alphaEqGo lc rc a d && Term.alphaEqGo lc rc b e && Term.alphaEqGo lc rc c f
+    | .ctorApp n as, .ctorApp m bs => n == m && Term.alphaEqListGo lc rc as bs
+    | .deref a, .deref b => Term.alphaEqGo lc rc a b
+    | .borrow a, .borrow b => Term.alphaEqGo lc rc a b
+    -- Everything else is a runtime STATEMENT form. It cannot occur in the types
+    -- these comparisons are about, and falling back to `beq` keeps the function
+    -- total without inventing a scoping rule for bodies.
+    | a, b => Term.beq a b
+  termination_by t u => sizeOf t + sizeOf u
+  def Term.alphaEqListGo (lc rc : List String) : List Term → List Term → Bool
+    | [], [] => true
+    | a :: as, b :: bs => Term.alphaEqGo lc rc a b && Term.alphaEqListGo lc rc as bs
+    | _, _ => false
+  termination_by ts us => sizeOf ts + sizeOf us
+end
+
+/-- Are these two terms equal up to the names of their pure binders? -/
+def Term.alphaEq (t u : Term) : Bool := Term.alphaEqGo [] [] t u
+
+/-! ## Pure substitution on `Term` (M26-C; renamed and de-arithmetized in M30 step 2)
+
+    It exists for one reason, and since M30 step 1 deleted `Val.substPure` this is
+    the only reason left: **a borrow-moded Π has no `Val` form.** `borrowT` is a
+    telescope-position marker that `readC` refuses to reflect, so
+    `Π (v : &mut List Nat) → …` — the type a sealed function is ascribed (§5) and
+    the type a recursor arm is checked at (§7) — can only ever be manipulated as a
+    `Term`. Peeling such a Π into a telescope therefore needs substitution at the
+    `Term` level, which is this.
+
+    **`Term.shiftPure` is gone and there is no lifting here** (M30 step 2). Under
+    de Bruijn a substitution had to renumber the substituend at every binder
+    crossed and renumber the term's own free indices on the way out; under names
+    both moves are the identity, and the only rule left is the one that was always
+    the real content — *stop at a binder that rebinds the name*, because inside it
+    the name means something else.
+
+    Nor is capture a hazard at the four sites that remain (`piPeel` and `piAgree`
+    in `Machine`, `fnElab`'s arm annotations): every substituend is a runtime
+    variable or a constructor spine over runtime variables — `.var x`,
+    `S(.var k)`, `Cons(.var h, .var t)` — and a term with no free PURE names
+    cannot be captured by a pure binder. Where that stops being true this needs
+    a freshening pass, and the reserved namespace (`isReservedName`) is where one
+    would draw from. -/
+mutual
+  def Term.substP : String → Term → Term → Term
+    | x, s, .pvar y => if y == x then s else .pvar y
+    | x, s, .cmpT τ => .cmpT (Term.substP x s τ)           -- a domain: outside the binder
+    -- The three pure binders and `borrowT`'s snapshot binder: the domain is
+    -- outside the binder, the body inside it — so a body whose binder rebinds `x`
+    -- is left alone, which is the whole of the scope discipline.
+    | x, s, .lam y dom b =>
+      .lam y (Term.substP x s dom) (if y == x then b else Term.substP x s b)
+    | x, s, .pi y dom cod =>
+      .pi y (Term.substP x s dom) (if y == x then cod else Term.substP x s cod)
+    | x, s, .sigmaT y dom cod =>
+      .sigmaT y (Term.substP x s dom) (if y == x then cod else Term.substP x s cod)
+    | x, s, .borrowT y τ S =>
+      .borrowT y (Term.substP x s τ) (if y == x then S else Term.substP x s S)
+    | x, s, .app f a => .app (Term.substP x s f) (Term.substP x s a)
+    | x, s, .ctorApp n args => .ctorApp n (Term.substPList x s args)
+    | x, s, .idT a b c => .idT (Term.substP x s a) (Term.substP x s b) (Term.substP x s c)
+    -- A type may read a live place (`*v`, `a[i]`, `a[lo ; cnt]` — §5.2/¶2.1), and
+    -- those subterms can carry pure variables in their index positions.
+    | x, s, .deref t => .deref (Term.substP x s t)
+    | x, s, .index t i ev => .index (Term.substP x s t) (Term.substP x s i)
+        (match ev with | some e => some (Term.substP x s e) | none => none)
+    | x, s, .range t lo cnt rest ev eqc =>
+      .range (Term.substP x s t) (Term.substP x s lo)
+        (match cnt with | some c => some (Term.substP x s c) | none => none)
+        (match rest with | some r => some (Term.substP x s r) | none => none)
+        (match ev with | some e => some (Term.substP x s e) | none => none)
+        (match eqc with | some e => some (Term.substP x s e) | none => none)
+    | _, _, t => t                                         -- runtime statement forms / leaves
+  termination_by _ _ t => sizeOf t
+  def Term.substPList : String → Term → List Term → List Term
+    | _, _, [] => []
+    | x, s, t :: ts => Term.substP x s t :: Term.substPList x s ts
+  termination_by _ _ ts => sizeOf ts
+end
+
+/-! The **free pure names** of a term: the names an occurrence of it depends on
+    its surroundings for. One client, `absOcc` below, which needs to know which
+    binders it may not carry a subterm under — so this walks exactly the forms
+    `absOcc` walks (the pure fragment plus the place reads a type may contain),
+    and treats a runtime statement form as a leaf for the same reason it does. -/
+mutual
+  def Term.freePNamesGo (bound : List String) : Term → List String
+    | .pvar x => if bound.contains x then [] else [x]
+    | .cmpT τ => Term.freePNamesGo bound τ
+    | .lam y dom b | .pi y dom b | .sigmaT y dom b | .borrowT y dom b =>
+      Term.freePNamesGo bound dom ++ Term.freePNamesGo (y :: bound) b
+    | .app f a => Term.freePNamesGo bound f ++ Term.freePNamesGo bound a
+    | .idT a b c =>
+      Term.freePNamesGo bound a ++ Term.freePNamesGo bound b ++ Term.freePNamesGo bound c
+    | .ctorApp _ args => Term.freePNamesListGo bound args
+    | .deref t | .borrow t => Term.freePNamesGo bound t
+    | .index t i ev =>
+      Term.freePNamesGo bound t ++ Term.freePNamesGo bound i
+        ++ (match ev with | some e => Term.freePNamesGo bound e | none => [])
+    | .range t lo cnt rest ev eqc =>
+      Term.freePNamesGo bound t ++ Term.freePNamesGo bound lo
+        ++ (match cnt with | some c => Term.freePNamesGo bound c | none => [])
+        ++ (match rest with | some r => Term.freePNamesGo bound r | none => [])
+        ++ (match ev with | some e => Term.freePNamesGo bound e | none => [])
+        ++ (match eqc with | some e => Term.freePNamesGo bound e | none => [])
+    | _ => []
   termination_by t => sizeOf t
-  def Term.shiftPureList (d c : Nat) : List Term → List Term
+  def Term.freePNamesListGo (bound : List String) : List Term → List String
     | [] => []
-    | t :: ts => Term.shiftPure d c t :: Term.shiftPureList d c ts
+    | t :: ts => Term.freePNamesGo bound t ++ Term.freePNamesListGo bound ts
   termination_by ts => sizeOf ts
 end
 
-/-! ## Pure de Bruijn substitution on `Term` (M26-C)
-
-    It exists for one reason, and since M30 deleted `Val.substPure` this is the
-    only reason left: **a borrow-moded Π has no `Val` form.** `borrowT` is a telescope-position marker that `readC`
-    refuses to reflect, so `Π (v : &mut List Nat) → …` — the type a sealed
-    function is ascribed (§5) and the type a recursor arm is checked at (§7) —
-    can only ever be manipulated as a `Term`. Peeling such a Π into a telescope
-    therefore needs substitution at the `Term` level, which is this.
-
-    Textbook (lift `s` at every binder crossed) rather than the delayed-lifting
-    version the `Val` evaluator used to carry: this runs once per seal over a
-    signature, never over a 10⁵-node proof, so the measured hot spot that shaped
-    that one never existed here and clarity wins.
-
-    A NOTE FOR WHOEVER TAKES nbe.md §5 (source names in the comptime fragment):
-    this is the residual index arithmetic in the tree, and it is where the
-    α-sensitive comparisons inventoried at M30 step 0 live (`absOcc` below,
-    `trivialOwed`, `piAgree`, `checkArm`). -/
-mutual
-  def Term.substPure : Nat → Term → Term → Term
-    | j, s, .pvar k => if k == j then s else if k > j then .pvar (k - 1) else .pvar k
-    | j, s, .cmpT τ => .cmpT (Term.substPure j s τ)        -- a domain: same depth
-    | j, s, .lam dom b => .lam (Term.substPure j s dom) (Term.substPure (j+1) (Term.shiftPure 1 0 s) b)
-    | j, s, .pi dom cod => .pi (Term.substPure j s dom) (Term.substPure (j+1) (Term.shiftPure 1 0 s) cod)
-    | j, s, .sigmaT dom cod => .sigmaT (Term.substPure j s dom) (Term.substPure (j+1) (Term.shiftPure 1 0 s) cod)
-    -- `S` binds the entry snapshot at pvar 0 (§5.1), so it is a binder like the rest.
-    | j, s, .borrowT τ S => .borrowT (Term.substPure j s τ) (Term.substPure (j+1) (Term.shiftPure 1 0 s) S)
-    | j, s, .app f a => .app (Term.substPure j s f) (Term.substPure j s a)
-    | j, s, .ctorApp n args => .ctorApp n (Term.substPureList j s args)
-    | j, s, .idT a b c => .idT (Term.substPure j s a) (Term.substPure j s b) (Term.substPure j s c)
-    -- A type may read a live place (`*v`, `a[i]`, `a[lo ; cnt]` — §5.2/¶2.1), and
-    -- those subterms can carry pure variables in their index positions.
-    | j, s, .deref t => .deref (Term.substPure j s t)
-    | j, s, .index t i ev => .index (Term.substPure j s t) (Term.substPure j s i)
-        (match ev with | some e => some (Term.substPure j s e) | none => none)
-    | j, s, .range t lo cnt rest ev eqc =>
-      .range (Term.substPure j s t) (Term.substPure j s lo)
-        (match cnt with | some c => some (Term.substPure j s c) | none => none)
-        (match rest with | some r => some (Term.substPure j s r) | none => none)
-        (match ev with | some e => some (Term.substPure j s e) | none => none)
-        (match eqc with | some e => some (Term.substPure j s e) | none => none)
-    | _, _, t => t                                         -- runtime statement forms / leaves
-  termination_by _ _ t => sizeOf t
-  def Term.substPureList : Nat → Term → List Term → List Term
-    | _, _, [] => []
-    | j, s, t :: ts => Term.substPure j s t :: Term.substPureList j s ts
-  termination_by _ _ ts => sizeOf ts
-end
+def Term.freePNames (t : Term) : List String := Term.freePNamesGo [] t
 
 /-! ## Free runtime variables (M26-C)
 
@@ -458,7 +590,8 @@ mutual
     | .lamR xs body =>
       Term.freeRVarsBinders bound xs
         ++ Term.freeRVars (xs.map (·.1.id) ++ bound) body
-    | .app a b | .pi a b | .lam a b | .sigmaT a b | .borrowT a b =>
+    | .app a b => Term.freeRVars bound a ++ Term.freeRVars bound b
+    | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b =>
       Term.freeRVars bound a ++ Term.freeRVars bound b
     | .idT a b c => Term.freeRVars bound a ++ Term.freeRVars bound b ++ Term.freeRVars bound c
     | .cmpT τ => Term.freeRVars bound τ
@@ -481,48 +614,60 @@ mutual
   termination_by xs => sizeOf xs
 end
 
-/-! Abstract every occurrence of `e` at binder `depth` (mutual with the ctor-arg
-    list helper). `e` is shifted under each binder crossed; a match replaces it
-    with `pvar depth`; a free pure variable is lifted to make room. -/
+/-! Abstract every occurrence of `e` into the pure variable `x` (mutual with the
+    ctor-arg list helper).
+
+    **No shifting, and one guard instead** (M30 step 2). The de Bruijn version
+    re-shifted `e` at every binder crossed so the comparison happened at the right
+    depth, and lifted the term's own free indices to make room for the binder
+    being introduced. Both moves are the identity under names; what survives is
+    the fact they were implementing — *a binder that rebinds one of `e`'s free
+    names ends `e`'s meaning*, so occurrences inside it are not occurrences of
+    `e` and the traversal stops. `shadowed` is that name set, computed once. -/
 mutual
-  def absOcc (e : Term) (depth : Nat) : Term → Term
-    | .lam dom b =>
-      if Term.beq (.lam dom b) (Term.shiftPure depth 0 e) then .pvar depth
-      else .lam (absOcc e depth dom) (absOcc e (depth + 1) b)
-    | .pi dom cod =>
-      if Term.beq (.pi dom cod) (Term.shiftPure depth 0 e) then .pvar depth
-      else .pi (absOcc e depth dom) (absOcc e (depth + 1) cod)
-    | .sigmaT dom cod =>
-      if Term.beq (.sigmaT dom cod) (Term.shiftPure depth 0 e) then .pvar depth
-      else .sigmaT (absOcc e depth dom) (absOcc e (depth + 1) cod)
+  def absOcc (e : Term) (x : String) (shadowed : List String) : Term → Term
+    | .lam y dom b =>
+      if Term.beq (.lam y dom b) e then .pvar x
+      else .lam y (absOcc e x shadowed dom)
+        (if shadowed.contains y then b else absOcc e x shadowed b)
+    | .pi y dom cod =>
+      if Term.beq (.pi y dom cod) e then .pvar x
+      else .pi y (absOcc e x shadowed dom)
+        (if shadowed.contains y then cod else absOcc e x shadowed cod)
+    | .sigmaT y dom cod =>
+      if Term.beq (.sigmaT y dom cod) e then .pvar x
+      else .sigmaT y (absOcc e x shadowed dom)
+        (if shadowed.contains y then cod else absOcc e x shadowed cod)
     | .app f a =>
-      if Term.beq (.app f a) (Term.shiftPure depth 0 e) then .pvar depth
-      else .app (absOcc e depth f) (absOcc e depth a)
+      if Term.beq (.app f a) e then .pvar x
+      else .app (absOcc e x shadowed f) (absOcc e x shadowed a)
     | .idT a b c =>
-      if Term.beq (.idT a b c) (Term.shiftPure depth 0 e) then .pvar depth
-      else .idT (absOcc e depth a) (absOcc e depth b) (absOcc e depth c)
+      if Term.beq (.idT a b c) e then .pvar x
+      else .idT (absOcc e x shadowed a) (absOcc e x shadowed b) (absOcc e x shadowed c)
     | .ctorApp n args =>
-      if Term.beq (.ctorApp n args) (Term.shiftPure depth 0 e) then .pvar depth
-      else .ctorApp n (absOccList e depth args)
+      if Term.beq (.ctorApp n args) e then .pvar x
+      else .ctorApp n (absOccList e x shadowed args)
     -- A mode marker is never itself an abstraction target (it is not a term),
     -- so recurse straight through rather than testing it.
-    | .cmpT τ => .cmpT (absOcc e depth τ)
-    | .pvar k =>
-      if Term.beq (.pvar k) (Term.shiftPure depth 0 e) then .pvar depth
-      else .pvar (if k < depth then k else k + 1)
-    | s => if Term.beq s (Term.shiftPure depth 0 e) then .pvar depth else s   -- leaves
+    | .cmpT τ => .cmpT (absOcc e x shadowed τ)
+    | s => if Term.beq s e then .pvar x else s   -- leaves, `pvar` among them
   termination_by s => sizeOf s
-  def absOccList (e : Term) (depth : Nat) : List Term → List Term
+  def absOccList (e : Term) (x : String) (shadowed : List String) : List Term → List Term
     | [] => []
-    | s :: ss => absOcc e depth s :: absOccList e depth ss
+    | s :: ss => absOcc e x shadowed s :: absOccList e x shadowed ss
   termination_by ss => sizeOf ss
 end
 
-/-- Abstract every occurrence of `e` in `t` by a fresh de Bruijn binder.
-    `Term.lam τ (abstractOccurrences e t)` applied to `e` β-reduces back to `t`.
-    The §18 motive-generalization mechanism: no matching by eye, no missed
-    occurrence. -/
-def abstractOccurrences (e t : Term) : Term := absOcc e 0 t
+/-- The binder `abstractOccurrences` introduces. Reserved (`isReservedName`), so
+    it can neither capture a source name nor be captured by one, which is what
+    replaces the de Bruijn version's lifting. -/
+def genName : String := "§gen"
+
+/-- Abstract every occurrence of `e` in `t` by the fresh pure binder `genName`.
+    `Term.lam genName τ (abstractOccurrences e t)` applied to `e` β-reduces back
+    to `t`. The §18 motive-generalization mechanism: no matching by eye, no
+    missed occurrence. -/
+def abstractOccurrences (e t : Term) : Term := absOcc e genName (Term.freePNames e) t
 
 /-- Does a type contain a borrow anywhere? A borrow-carrying return type (a
     `&mut`, or a `Pair` of them) is audited structurally by
@@ -531,11 +676,11 @@ def abstractOccurrences (e t : Term) : Term := absOcc e 0 t
     ascribed type, which is why this sits in the syntax layer rather than in
     `Boundary` where it was born — `Machine` cannot import `Boundary`. -/
 def hasBorrowT : Term → Bool
-  | .borrowT _ _ => true
-  | .sigmaT a b => hasBorrowT a || hasBorrowT b
-  | .pi a b => hasBorrowT a || hasBorrowT b
+  | .borrowT _ _ _ => true
+  | .sigmaT _ a b => hasBorrowT a || hasBorrowT b
+  | .pi _ a b => hasBorrowT a || hasBorrowT b
   | .app a b => hasBorrowT a || hasBorrowT b
-  | .lam a b => hasBorrowT a || hasBorrowT b
+  | .lam _ a b => hasBorrowT a || hasBorrowT b
   | .idT a b c => hasBorrowT a || hasBorrowT b || hasBorrowT c
   | .cmpT τ => hasBorrowT τ
   | _ => false
@@ -544,7 +689,7 @@ def hasBorrowT : Term → Bool
     is `[a, b, c]`; anything else is a single component. This is the same walk
     `collectResultBorrows` makes when it issues one loan per borrow position. -/
 partial def retComponents : Term → List Term
-  | .sigmaT d b => d :: retComponents b
+  | .sigmaT _ d b => d :: retComponents b
   | t => [t]
 
 /-- Does a return type MIX borrow and non-borrow components?
@@ -580,9 +725,11 @@ def retMixesBorrow (t : Term) : Bool :=
 /-- Is a borrow parameter's OWED type trivial — i.e. does the boundary owe nothing
     beyond the payload type it was lent?
 
-    `&mut τ` elaborates to `.borrowT τ (shiftPure 1 0 τ)` (Uni.lean), so triviality
-    is exactly that shape: the owed type is the payload type, weakened over the
-    entry-snapshot binder. `&mut (s : Bool ~> Nat)` and
+    `&mut τ` elaborates to `.borrowT ⟨reserved⟩ τ τ` (Uni.lean), so triviality is
+    exactly that shape: the owed type is the payload type. It used to be the
+    payload type WEAKENED over the entry-snapshot binder, and under names the
+    weakening is the identity — which is the whole of what M30 step 2 did to this
+    function. `&mut (s : Bool ~> Nat)` and
     `&mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (len l) (len s))` are the two
     non-trivial owed types in the corpus, and both are load-bearing claims the
     audit checks.
@@ -590,8 +737,8 @@ def retMixesBorrow (t : Term) : Bool :=
     Used by the M27 containment below: a non-trivial owed type is a claim, and a
     claim on a parameter CONSUMED INTO THE RESULT is checked by nobody. -/
 def trivialOwedT : Term → Bool
-  | .borrowT τ s => Term.beq s (Term.shiftPure 1 0 τ)
-  | .sigmaT _ (.borrowT τ s) => Term.beq s (Term.shiftPure 1 0 τ)
+  | .borrowT _ τ s => Term.alphaEq s τ
+  | .sigmaT _ _ (.borrowT _ τ s) => Term.alphaEq s τ
   | _ => true
 
 /-! ## Reading a binder's mode off its domain (combining-fns §6)

@@ -87,32 +87,42 @@ namespace FnMacro
 
     Building the sealed Π means turning a telescope — whose types reference their
     parameters as `.var ⟨i, name⟩`, the §5.2 convention — into nested Πs, whose
-    binders are de Bruijn. That is abstraction of a VARIABLE, which is a different
-    and simpler operation than §18's `abstractOccurrences` (an arbitrary subterm),
-    and it has to descend the forms a TYPE is made of: `*v` and `&mut (s : τ ↝ S)`
-    and the array steps, none of which `absOcc` looks inside because a §18 motive
-    never contains them. -/
+    binders are pure. That is abstraction of a VARIABLE, which is a different and
+    simpler operation than §18's `abstractOccurrences` (an arbitrary subterm), and
+    it has to descend the forms a TYPE is made of: `*v` and `&mut (s : τ ↝ S)` and
+    the array steps, none of which `absOcc` looks inside because a §18 motive never
+    contains them.
 
-/-- Replace `.var x` by the de Bruijn `pvar depth`, descending binders. Free pure
-    variables of the term (index ≥ depth) shift up by one to make room for the
-    binder being introduced; bound ones (< depth) stay. -/
-partial def absVar (x : Var) (depth : Nat) : Term → Term
-  | .var y => if y == x then .pvar depth else .var y
-  | .pvar k => if k < depth then .pvar k else .pvar (k + 1)
-  -- Binders: the codomain/body/snapshot sits one level deeper.
-  | .pi d c => .pi (absVar x depth d) (absVar x (depth + 1) c)
-  | .sigmaT d c => .sigmaT (absVar x depth d) (absVar x (depth + 1) c)
-  | .lam d b => .lam (absVar x depth d) (absVar x (depth + 1) b)
-  | .borrowT τ S => .borrowT (absVar x depth τ) (absVar x (depth + 1) S)
-  | .app f a => .app (absVar x depth f) (absVar x depth a)
-  | .idT a b c => .idT (absVar x depth a) (absVar x depth b) (absVar x depth c)
-  | .ctorApp n args => .ctorApp n (args.map (absVar x depth))
-  | .cmpT τ => .cmpT (absVar x depth τ)
-  | .deref t => .deref (absVar x depth t)
-  | .index t i ev => .index (absVar x depth t) (absVar x depth i) (ev.map (absVar x depth))
+    **It is now a leaf rewrite** (M30 step 2): no depth, and nothing happens at a
+    binder except recursion. The de Bruijn version had to lift the term's own free
+    indices past the binder it was introducing, at every binder crossed, and that
+    lifting is the identity under names. -/
+
+/-- The pure binder a telescope parameter is abstracted to. RESERVED, keyed on the
+    parameter's globally-unique runtime id: a source binder cannot write one, and
+    two parameters cannot collide even if a program names them both `x`, so the
+    abstraction needs no freshness check and no not-under-a-shadowing-binder guard.
+    (The parameter's own name would read better in a printed Π and would be wrong
+    for exactly those two reasons.) -/
+def paramName (x : Var) : String := "§p" ++ toString x.id
+
+/-- Replace `.var x` by the pure variable `paramName x`, descending everything a
+    type is made of. -/
+partial def absVar (x : Var) : Term → Term
+  | .var y => if y == x then .pvar (paramName x) else .var y
+  | .pi n d c => .pi n (absVar x d) (absVar x c)
+  | .sigmaT n d c => .sigmaT n (absVar x d) (absVar x c)
+  | .lam n d b => .lam n (absVar x d) (absVar x b)
+  | .borrowT n τ S => .borrowT n (absVar x τ) (absVar x S)
+  | .app f a => .app (absVar x f) (absVar x a)
+  | .idT a b c => .idT (absVar x a) (absVar x b) (absVar x c)
+  | .ctorApp n args => .ctorApp n (args.map (absVar x))
+  | .cmpT τ => .cmpT (absVar x τ)
+  | .deref t => .deref (absVar x t)
+  | .index t i ev => .index (absVar x t) (absVar x i) (ev.map (absVar x))
   | .range t lo cnt rest ev eq =>
-    .range (absVar x depth t) (absVar x depth lo) (cnt.map (absVar x depth))
-      (rest.map (absVar x depth)) (ev.map (absVar x depth)) (eq.map (absVar x depth))
+    .range (absVar x t) (absVar x lo) (cnt.map (absVar x))
+      (rest.map (absVar x)) (ev.map (absVar x)) (eq.map (absVar x))
   | t => t
 
 /-- A λ/Π domain carrying its binder's mode (§6): `⇝τ` for a capitalized binder.
@@ -126,7 +136,7 @@ def markDom (x : Var) (τ : Term) : Term :=
     back. -/
 def telePi : List (Var × Term) → Term → Term
   | [], ret => ret
-  | (x, τ) :: rest, ret => .pi (markDom x τ) (absVar x 0 (telePi rest ret))
+  | (x, τ) :: rest, ret => .pi (paramName x) (markDom x τ) (absVar x (telePi rest ret))
 
 /-! ## Resolving the scrutinee's match, and rewriting self-calls -/
 
@@ -147,9 +157,9 @@ partial def maxVarId : Term → Nat
   | .matchE s eqn brs =>
     brs.foldl (fun a b => max a (max (b.binders.foldl (fun c v => max c v.id) 0) (maxVarId b.body)))
       (max s.id ((eqn.map (·.id)).getD 0))
-  | .seq a b | .app a b | .pi a b | .lam a b | .sigmaT a b | .borrowT a b =>
+  | .seq a b | .app a b | .seal a b => max (maxVarId a) (maxVarId b)
+  | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b =>
     max (maxVarId a) (maxVarId b)
-  | .seal a b => max (maxVarId a) (maxVarId b)
   | .idT a b c => max (maxVarId a) (max (maxVarId b) (maxVarId c))
   | .lamR xs body => xs.foldl (fun a p => max a (max p.1.id (maxVarId p.2))) (maxVarId body)
   | _ => 0
@@ -174,9 +184,9 @@ partial def renameVar (from_ to : Var) : Term → Term
         (renameVar from_ to b.body)))
   | .app a b => .app (renameVar from_ to a) (renameVar from_ to b)
   | .idT a b c => .idT (renameVar from_ to a) (renameVar from_ to b) (renameVar from_ to c)
-  | .pi a b => .pi (renameVar from_ to a) (renameVar from_ to b)
-  | .lam a b => .lam (renameVar from_ to a) (renameVar from_ to b)
-  | .sigmaT a b => .sigmaT (renameVar from_ to a) (renameVar from_ to b)
+  | .pi n a b => .pi n (renameVar from_ to a) (renameVar from_ to b)
+  | .lam n a b => .lam n (renameVar from_ to a) (renameVar from_ to b)
+  | .sigmaT n a b => .sigmaT n (renameVar from_ to a) (renameVar from_ to b)
   | .cmpT t => .cmpT (renameVar from_ to t)
   | t => t
 
@@ -354,7 +364,7 @@ def fnElab (d : FnDef) : Except String Term := do
     -- something a programmer threads (it changes the signature, and every
     -- caller), never something a macro invents.
     match kτ with
-    | .borrowT _ _ =>
+    | .borrowT _ _ _ =>
       .error s!"fn: '{d.name}' decreases through the PAYLOAD of the borrow '{kv.name}' ([{k}]), which has no recursor form — §9's borrow-mode eliminator is filed, not built. §12 decision 8 blesses fuel-threading as the interim: add a `fuel : Nat` parameter and a `Le (len *{kv.name}) fuel` bound, recurse on the fuel, and every caller supplies one. That is a source change, not an elaboration."
     | _ => pure ()
     -- WHICH RECURSOR, decided by the scrutinee's type and nothing else. The two
@@ -378,8 +388,8 @@ def fnElab (d : FnDef) : Except String Term := do
     -- and because the kernel calls the same thing `R` (`sealRec` peels it off the
     -- ascription instead of building it, and the two agree by `telePi`/`piPeel`
     -- being inverse).
-    let R : Term := absVar kv 0 (telePi rest d.retType)
-    let motive : Term := .lam scrutDom R
+    let R : Term := absVar kv (telePi rest d.retType)
+    let motive : Term := .lam (paramName kv) scrutDom R
     -- Fresh binders for the step arm, above every id the body already uses.
     let base := max (maxVarId d.body) (tel.foldl (fun a p => max a p.1.id) 0) + 1
     -- The step arm's binders keep the names AND the ids the body's own `match k`
@@ -448,15 +458,15 @@ def fnElab (d : FnDef) : Except String Term := do
     let armTel (names : List Var) (ty : Term) : Except String (List (Var × Term)) := do
       let (tel, _) ← piPeel names ty
       .ok (tel.map (fun p => (p.1, markDom p.1 p.2)))
-    let ihTy : Term := Term.substPure 0 (.var dec) R
+    let ihTy : Term := Term.substP (paramName kv) (.var dec) R
     -- The recursor, UNAPPLIED: the scrutinee is the sealed Π's own first binder,
     -- so the recursor is exactly a function of it (§7's derived motive read the
     -- other way round). `listRec` takes its element type first, which is the only
     -- difference in the spine.
     match elemTy? with
     | none =>
-      let zTel ← armTel restIds (Term.substPure 0 (.ctorApp "Z" []) R)
-      let sTel ← armTel restIds (Term.substPure 0 (.ctorApp "S" [.var dec]) R)
+      let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Z" []) R)
+      let sTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "S" [.var dec]) R)
       .ok (.seal
         (.app (.app (.app (.const "natRec") motive)
           (.lamR zTel zBody))
@@ -464,9 +474,9 @@ def fnElab (d : FnDef) : Except String Term := do
         piT)
     | some a =>
       let hd : Var := stepBs.head!
-      let zTel ← armTel restIds (Term.substPure 0 (.ctorApp "Nil" []) R)
+      let zTel ← armTel restIds (Term.substP (paramName kv) (.ctorApp "Nil" []) R)
       let sTel ← armTel restIds
-        (Term.substPure 0 (.ctorApp "Cons" [.var hd, .var dec]) R)
+        (Term.substP (paramName kv) (.ctorApp "Cons" [.var hd, .var dec]) R)
       .ok (.seal
         (.app (.app (.app (.app (.const "listRec") a) motive)
           (.lamR zTel zBody))
@@ -524,9 +534,9 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
   | .seal t u => .seal (retarget binds t) (retarget binds u)
   | .app a b => .app (retarget binds a) (retarget binds b)
   | .idT a b c => .idT (retarget binds a) (retarget binds b) (retarget binds c)
-  | .pi a b => .pi (retarget binds a) (retarget binds b)
-  | .lam a b => .lam (retarget binds a) (retarget binds b)
-  | .sigmaT a b => .sigmaT (retarget binds a) (retarget binds b)
+  | .pi n a b => .pi n (retarget binds a) (retarget binds b)
+  | .lam n a b => .lam n (retarget binds a) (retarget binds b)
+  | .sigmaT n a b => .sigmaT n (retarget binds a) (retarget binds b)
   | .index t i ev => .index (retarget binds t) (retarget binds i) (ev.map (retarget binds))
   | .range t lo cnt rest ev eq =>
     .range (retarget binds t) (retarget binds lo) (cnt.map (retarget binds))
@@ -590,8 +600,8 @@ partial def fnSlots : Term → List Nat
     fnSlots t ++ fnSlots lo ++ (cnt.map fnSlots).getD [] ++ (rest.map fnSlots).getD []
       ++ (ev.map fnSlots).getD [] ++ (eq.map fnSlots).getD []
   | .matchE _ _ brs => brs.flatMap (fun b => fnSlots b.body)
-  | .seq a b | .app a b | .pi a b | .lam a b | .sigmaT a b | .borrowT a b | .seal a b =>
-    fnSlots a ++ fnSlots b
+  | .seq a b | .app a b | .seal a b => fnSlots a ++ fnSlots b
+  | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b => fnSlots a ++ fnSlots b
   | .idT a b c => fnSlots a ++ fnSlots b ++ fnSlots c
   | .lamR _ body => fnSlots body
   | _ => []

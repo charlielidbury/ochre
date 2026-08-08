@@ -46,14 +46,14 @@ inductive Val where
   -- Pure fragment (§4): types are terms of universe sort, and the borrow-free
   -- ("pure") fragment is an ordinary tiny type theory whose formers live in
   -- `Val` too, so a pure value (a type, a stuck neutral, a λ) is a first-class
-  -- runtime value. Pure binders use de Bruijn indices (`pvar`), managed by the
-  -- pure substitution in `Pure.lean`; runtime var ids, σ ids and ℓ ids are
-  -- globally named and untouched by it.
-  | pvar    : Nat → Val              -- pure de Bruijn variable (bound by lam/pi/sigmaT)
+  -- runtime value. Pure binders carry their SOURCE NAME (M30 step 2) and are
+  -- looked up in the comptime environment `Pure.lean`'s evaluator carries;
+  -- runtime var ids, σ ids and ℓ ids are a different namespace entirely.
+  | pvar    : String → Val           -- pure variable occurrence, by name
   | type    : Val                    -- the single universe (type-in-type)
-  | pi      : Val → Val → Val        -- Π (dom) (cod); cod binds var 0
-  | sigmaT  : Val → Val → Val        -- Σ (fst-type) (snd-type); snd binds var 0
-  | lam     : Val → Val → Val        -- λ (dom) (body); body binds var 0
+  | pi      : String → Val → Val → Val    -- Π (x : dom) → cod
+  | sigmaT  : String → Val → Val → Val    -- Σ (x : fst-type) → snd-type
+  | lam     : String → Val → Val → Val    -- λ (x : dom). body
   | app     : Val → Val → Val        -- application (a redex, or a stuck neutral spine)
   | const   : String → Val           -- a built-in constant: a recursor or a type former
   -- The identity type `Id A a b` (§10): the v0 basis's one genuine indexed
@@ -94,7 +94,7 @@ inductive Val where
       written*, together with the comptime environment it was born in. It sits in
       the BODY position of `lam`/`pi`/`sigmaT`, which is what keeps every consumer
       that matches those three formers matching them unchanged — opening the binder
-      is the thing that changes, from `substPure 0 a b` to `instBody b a`.
+      is the thing that changes, from `substPure 0 a b` to `instBody x b a`.
 
       The environment is the whole environment in scope (nbe.md §3.1, resolved to
       option (a)): capture is a pointer, and in an immutable fragment the retention
@@ -104,19 +104,16 @@ inductive Val where
       no loan marker, no borrow value, no runtime slot reference. Under substitution
       that held by construction, because there was no environment for state to sit
       in; here it is a rule someone maintains, which is why `capturedMarkers` below
-      exists to be run over the corpus rather than trusted. -/
-  | closure : List Val → Val → Val
-  /-- A **de Bruijn LEVEL** — the neutral `readback` mints when it opens a closure.
-      Counted from the OUTSIDE, so it is stable as readback descends; the conversion
-      to an index happens once, at the leaf, where the depth is known.
+      exists to be run over the corpus rather than trusted.
 
-      Semantic-only: it exists between `instBody body (.lvl d)` and the `readback`
-      that consumes it, and never reaches Ω, `sctx`, or a normal form. It has to be
-      its own former rather than reusing `pvar` because the two read back by
-      DIFFERENT rules — a level by `d - 1 - j`, a free index by `k + d` — and a
-      representation that conflated them would mistake one for the other in exactly
-      the open-term case that has no test. -/
-  | lvl     : Nat → Val
+      **Keyed by NAME since M30 step 2**, and prepending is the whole of what
+      shadowing is: `λ (x : τ). λ (x : υ). x` extends the same key twice and the
+      lookup finds the inner binding, with no index anywhere to renumber. The
+      `lvl` former that used to sit below this one is gone with the indices —
+      `readback` now opens a binder at a fresh NAME (`readbackName`), and a name
+      is already a `pvar`, so the second variable former earned its keep only
+      while the two read back by different arithmetic. -/
+  | closure : List (String × Val) → Val → Val
 deriving Inhabited
 
 namespace Val
@@ -133,9 +130,15 @@ mutual
     | .sym x,      .sym y       => x == y
     | .pvar x,     .pvar y      => x == y
     | .type,       .type        => true
-    | .pi d1 c1,   .pi d2 c2    => beq d1 d2 && beq c1 c2
-    | .sigmaT d1 c1, .sigmaT d2 c2 => beq d1 d2 && beq c1 c2
-    | .lam d1 b1,  .lam d2 b2   => beq d1 d2 && beq b1 b2
+    -- Binder NAMES are compared. That is not up-to-α, and it does not need to be:
+    -- `convert` is `nfV a == nfV b`, and readback renames every binder it opens to
+    -- `readbackName ⟨its level⟩` — so two α-variant functions arrive here as the
+    -- SAME tree and everything else that reaches this function is comparing values
+    -- that came out of the same normalizer. An α-insensitive `beq` would be the
+    -- wrong repair anyway: it would make `λ (x : τ). x` equal `λ (y : τ). x`.
+    | .pi x d1 c1,   .pi y d2 c2    => x == y && beq d1 d2 && beq c1 c2
+    | .sigmaT x d1 c1, .sigmaT y d2 c2 => x == y && beq d1 d2 && beq c1 c2
+    | .lam x d1 b1,  .lam y d2 b2   => x == y && beq d1 d2 && beq b1 b2
     | .app f1 a1,  .app f2 a2   => beq f1 f2 && beq a1 a2
     | .const x,    .const y     => x == y
     | .idT a1 b1 c1, .idT a2 b2 c2 => beq a1 a2 && beq b1 b2 && beq c1 c2
@@ -168,14 +171,18 @@ mutual
     -- literal env-and-body match is a sound under-approximation: two structurally
     -- equal closures ARE equal, and the converse failure cannot be observed by a
     -- judgment, only by a comparison that should have gone through readback.
-    | .closure ρ1 b1, .closure ρ2 b2 => beqList ρ1 ρ2 && beq b1 b2
-    | .lvl x,      .lvl y      => x == y
+    | .closure ρ1 b1, .closure ρ2 b2 => beqEnv ρ1 ρ2 && beq b1 b2
     | _,           _           => false
   -- Both sides: the mode-blind arms peel a `cmpT` from one side only.
   termination_by v w => sizeOf v + sizeOf w
   def beqList : List Val → List Val → Bool
     | [],      []      => true
     | x :: xs, y :: ys => beq x y && beqList xs ys
+    | _,       _       => false
+  termination_by vs ws => sizeOf vs + sizeOf ws
+  def beqEnv : List (String × Val) → List (String × Val) → Bool
+    | [],      []      => true
+    | (a, x) :: xs, (b, y) :: ys => a == b && beq x y && beqEnv xs ys
     | _,       _       => false
   termination_by vs ws => sizeOf vs + sizeOf ws
 end
@@ -218,18 +225,21 @@ mutual
     | .ctor name args =>
       let s := name ++ prettyArgs args
       if prec > 0 then s!"({s})" else s
-    | .pvar k => s!"#{k}"
+    -- A pure variable prints as its NAME (M30 step 2). `#` is kept as the sigil
+    -- so a rejection still says at a glance which namespace a variable is from,
+    -- which was the whole job `#0` was doing.
+    | .pvar x => s!"#{x}"
     | .type => "Type"
     | .const c => c
     | .cmpT τ => "⇝" ++ prettyPrec 1 τ
-    | .pi d c =>
-      let s := s!"Π{prettyPrec 1 d}. {prettyPrec 0 c}"
+    | .pi x d c =>
+      let s := s!"Π({x} : {prettyPrec 1 d}). {prettyPrec 0 c}"
       if prec > 0 then s!"({s})" else s
-    | .sigmaT d c =>
-      let s := s!"Σ{prettyPrec 1 d}. {prettyPrec 0 c}"
+    | .sigmaT x d c =>
+      let s := s!"Σ({x} : {prettyPrec 1 d}). {prettyPrec 0 c}"
       if prec > 0 then s!"({s})" else s
-    | .lam d b =>
-      let s := s!"λ{prettyPrec 1 d}. {prettyPrec 0 b}"
+    | .lam x d b =>
+      let s := s!"λ({x} : {prettyPrec 1 d}). {prettyPrec 0 b}"
       if prec > 0 then s!"({s})" else s
     | .app f a =>
       let s := prettyPrec 0 f ++ " " ++ prettyPrec 1 a
@@ -246,7 +256,6 @@ mutual
     -- gets there, and printing every binding in scope at every λ would bury the
     -- one line a rejection is trying to say.
     | .closure _ b => "clo{" ++ prettyPrec 0 b ++ "}"
-    | .lvl j => s!"@{j}"
   termination_by v => sizeOf v
   def prettyArgs : List Val → String
     | [] => ""
@@ -288,10 +297,9 @@ mutual
     | .cmpT τ => loanIds τ
     | .rfn _ _ => []                                    -- closed: no loans to find
     | .closure _ _ => []                                -- §3.2: no loans in a captured env
-    | .lvl _ => []
-    | .pi d c => loanIds d ++ loanIds c
-    | .sigmaT d c => loanIds d ++ loanIds c
-    | .lam d c => loanIds d ++ loanIds c
+    | .pi _ d c => loanIds d ++ loanIds c
+    | .sigmaT _ d c => loanIds d ++ loanIds c
+    | .lam _ d c => loanIds d ++ loanIds c
     | .app d c => loanIds d ++ loanIds c
     | .idT a b c => loanIds a ++ loanIds b ++ loanIds c
   termination_by v => sizeOf v
@@ -301,23 +309,14 @@ mutual
   termination_by vs => sizeOf vs
 end
 
-/-! Replace each loan marker (`loanM ℓ` or `borrowM ℓ …`) whose ℓ is in `loans`
-    with the pure de Bruijn `pvar` at ℓ's position in `loans` — the §6.2
-    "suspension tree with holes": a captured borrow's payload rewritten as the
-    backward function of the surrendered values. -/
-mutual
-  def loanToPvar (loans : List Nat) : Val → Val
-    | .loanM ℓ => match loans.findIdx? (· == ℓ) with | some i => .pvar i | none => .loanM ℓ
-    | .borrowM ℓ p =>
-      match loans.findIdx? (· == ℓ) with | some i => .pvar i | none => .borrowM ℓ (loanToPvar loans p)
-    | .ctor n args => .ctor n (loanToPvarList loans args)
-    | v => v
-  termination_by v => sizeOf v
-  def loanToPvarList (loans : List Nat) : List Val → List Val
-    | [] => []
-    | v :: vs => loanToPvar loans v :: loanToPvarList loans vs
-  termination_by vs => sizeOf vs
-end
+-- (`loanToPvar` — §6.2's "suspension tree with holes", a captured borrow's payload
+-- rewritten as the backward function of the surrendered values, by mapping each
+-- loan marker to the de Bruijn `pvar` at its position in a list — was deleted in
+-- M30 step 2. It had no caller: declared `back`s went in M27-δ and took its only
+-- one with them, and it was the last thing in this file that treated a `pvar` as a
+-- POSITION. Under names its signature would have had to invent a name per loan id,
+-- which is a design decision, and making one for a dead function is how a dead
+-- function survives another five milestones.)
 
 -- (`Term.toValPure` — the monad-free reflection of a pure `Term` — lives in
 -- `Pure.lean` since M29 α. `let` is a form of the pure fragment now, and reading
@@ -343,13 +342,21 @@ mutual
     | .loanM _ => true
     | .borrowM _ _ => true
     | .ctor _ args => hasStateMarkerList args
-    | .pi d c | .sigmaT d c | .lam d c | .app d c => hasStateMarker d || hasStateMarker c
+    | .app d c => hasStateMarker d || hasStateMarker c
+    | .pi _ d c | .sigmaT _ d c | .lam _ d c => hasStateMarker d || hasStateMarker c
     | .idT a b c => hasStateMarker a || hasStateMarker b || hasStateMarker c
     | _ => false
   def hasStateMarkerList : List Val → Bool
     | [] => false
     | v :: vs => hasStateMarker v || hasStateMarkerList vs
 end
+
+/-- The §3.2 capture guard's question, asked of an ENVIRONMENT: does any binding
+    hold state? Named separately from `hasStateMarkerList` because the environment
+    is name-keyed and the values are what the invariant is about. -/
+def hasStateMarkerEnv : List (String × Val) → Bool
+  | [] => false
+  | (_, v) :: ρ => hasStateMarker v || hasStateMarkerEnv ρ
 
 /-! **The capture assertion of nbe.md §3.2, as instrumentation** (M30).
 
@@ -375,11 +382,12 @@ end
 mutual
   def capturedMarkers : Val → List Val
     | .closure ρ b =>
-      (if hasStateMarkerList ρ then [Val.closure ρ b] else []) ++ capturedMarkersList ρ ++ capturedMarkers b
+      (if hasStateMarkerEnv ρ then [Val.closure ρ b] else []) ++ capturedMarkersEnv ρ ++ capturedMarkers b
     | .ctor _ args => capturedMarkersList args
     | .borrowM _ p => capturedMarkers p
     | .cmpT τ => capturedMarkers τ
-    | .pi d c | .sigmaT d c | .lam d c | .app d c => capturedMarkers d ++ capturedMarkers c
+    | .app d c => capturedMarkers d ++ capturedMarkers c
+    | .pi _ d c | .sigmaT _ d c | .lam _ d c => capturedMarkers d ++ capturedMarkers c
     | .idT a b c => capturedMarkers a ++ capturedMarkers b ++ capturedMarkers c
     | _ => []
   termination_by v => sizeOf v
@@ -387,6 +395,10 @@ mutual
     | [] => []
     | v :: vs => capturedMarkers v ++ capturedMarkersList vs
   termination_by vs => sizeOf vs
+  def capturedMarkersEnv : List (String × Val) → List Val
+    | [] => []
+    | (_, v) :: ρ => capturedMarkers v ++ capturedMarkersEnv ρ
+  termination_by ρ => sizeOf ρ
 end
 
 /-! Symbolic ids occurring in `v`, in pre-order of first appearance. -/
@@ -408,11 +420,10 @@ mutual
     -- ones written into it. Omitting either would leave a σ that refinement can
     -- reach (`substSym` descends) but canonicalization cannot see, and the two
     -- disagreeing is how an α-equal pair of states stops comparing equal.
-    | .closure ρ b => symIdsList ρ ++ symIds b
-    | .lvl _ => []
-    | .pi d c => symIds d ++ symIds c
-    | .sigmaT d c => symIds d ++ symIds c
-    | .lam d c => symIds d ++ symIds c
+    | .closure ρ b => symIdsEnv ρ ++ symIds b
+    | .pi _ d c => symIds d ++ symIds c
+    | .sigmaT _ d c => symIds d ++ symIds c
+    | .lam _ d c => symIds d ++ symIds c
     | .app d c => symIds d ++ symIds c
     | .idT a b c => symIds a ++ symIds b ++ symIds c
   termination_by v => sizeOf v
@@ -420,6 +431,10 @@ mutual
     | [] => []
     | v :: vs => symIds v ++ symIdsList vs
   termination_by vs => sizeOf vs
+  def symIdsEnv : List (String × Val) → List Nat
+    | [] => []
+    | (_, v) :: ρ => symIds v ++ symIdsEnv ρ
+  termination_by ρ => sizeOf ρ
 end
 
 /-! Rewrite every loan id `ℓ` to `fℓ ℓ` and every symbolic id `σ` to `fσ σ`
@@ -431,7 +446,7 @@ mutual
     | .ctor n args => .ctor n (renumberList fℓ fσ args)
     | .bot => .bot
     | .sym σ => .sym (fσ σ)
-    | .pvar k => .pvar k
+    | .pvar x => .pvar x
     | .type => .type
     | .const c => .const c
     | .cmpT τ => .cmpT (renumber fℓ fσ τ)
@@ -439,11 +454,10 @@ mutual
     -- DESCENDS, paired with `symIds` above: canonicalization reads the σ order off
     -- one traversal and applies it with the other, so a σ visible to the first and
     -- untouched by the second would be renumbered out of existence.
-    | .closure ρ b => .closure (renumberList fℓ fσ ρ) (renumber fℓ fσ b)
-    | .lvl k => .lvl k
-    | .pi d c => .pi (renumber fℓ fσ d) (renumber fℓ fσ c)
-    | .sigmaT d c => .sigmaT (renumber fℓ fσ d) (renumber fℓ fσ c)
-    | .lam d b => .lam (renumber fℓ fσ d) (renumber fℓ fσ b)
+    | .closure ρ b => .closure (renumberEnv fℓ fσ ρ) (renumber fℓ fσ b)
+    | .pi x d c => .pi x (renumber fℓ fσ d) (renumber fℓ fσ c)
+    | .sigmaT x d c => .sigmaT x (renumber fℓ fσ d) (renumber fℓ fσ c)
+    | .lam x d b => .lam x (renumber fℓ fσ d) (renumber fℓ fσ b)
     | .app f a => .app (renumber fℓ fσ f) (renumber fℓ fσ a)
     | .idT a b c => .idT (renumber fℓ fσ a) (renumber fℓ fσ b) (renumber fℓ fσ c)
   termination_by v => sizeOf v
@@ -451,6 +465,10 @@ mutual
     | [] => []
     | v :: vs => renumber fℓ fσ v :: renumberList fℓ fσ vs
   termination_by vs => sizeOf vs
+  def renumberEnv (fℓ fσ : Nat → Nat) : List (String × Val) → List (String × Val)
+    | [] => []
+    | (x, v) :: ρ => (x, renumber fℓ fσ v) :: renumberEnv fℓ fσ ρ
+  termination_by ρ => sizeOf ρ
 end
 
 end Val

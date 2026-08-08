@@ -367,12 +367,12 @@ example : progRejects d3 "cannot be the scrutinee of a runtime match" = true := 
     comptime judgment, and ⇒ still tells them apart. -/
 
 -- E1. The mode is invisible to conversion…
-example : Val.convert 1000 (.pi (.cmpT (.const "Nat")) (.const "Nat"))
-                           (.pi (.const "Nat") (.const "Nat")) = true := by native_decide
+example : Val.convert 1000 (.pi "X" (.cmpT (.const "Nat")) (.const "Nat"))
+                           (.pi "x" (.const "Nat") (.const "Nat")) = true := by native_decide
 -- …and NOT erased by normalization, which is what leaves ⇒ something to read.
 -- (`==` is mode-blind, so this has to be asked structurally.)
-example : (match Val.nfV 1000 (Val.pi (.cmpT (.const "Nat")) (.const "Nat")) with
-           | .pi d _ => Val.domComptime d
+example : (match Val.nfV 1000 (Val.pi "X" (.cmpT (.const "Nat")) (.const "Nat")) with
+           | .pi _ d _ => Val.domComptime d
            | _ => false) = true := by native_decide
 
 -- E2. `add` stays all-lowercase and is cited in a spec regardless — you never

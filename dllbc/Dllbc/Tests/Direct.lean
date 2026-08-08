@@ -1081,16 +1081,17 @@ example : (pv (prog{ Lb Z (Cons (S Z) Nil) }) == pv (prog{ Σ (h : Le Z (S Z)) �
     premise construction: `hasType` INSTANTIATES every λ binder with a fresh σ as it
     descends (the `.lam`-against-`.pi` case). By the time a recursor spine is
     reached, every enclosing binder is a `sym`, so the motive it carries is
-    pvar-free — and `shiftPure` is the identity on pvar-free values. Open motives
-    are a de Bruijn artifact of the elaborated term that the typing descent never
-    presents. A `.pi` codomain is the only place pvars survive, and `hasType` returns
-    `Type` there without checking inside.
+    variable-free — and a shift is the identity on a variable-free value. Open
+    motives were a de Bruijn artifact of the elaborated term that the typing
+    descent never presents. A `.pi` codomain is the only place a bound variable
+    survives, and `hasType` returns `Type` there without checking inside.
 
-    Verified rather than argued: these type-check, and they type-check IDENTICALLY
+    Verified rather than argued: these type-check, and they type-checked IDENTICALLY
     with the shifts inserted (I wrote the fix, measured no difference, and reverted
     it — three `shiftPure` calls on an unreachable case is complexity without
-    payoff). Kept as positive controls so that if the descent discipline ever
-    changes, something fails here first. -/
+    payoff). M30 deleted the shifts along with every other index, so what these now
+    pin is the descent discipline itself: if it ever changes, something fails here
+    first. -/
 
 def openMotiveL : Term := prog{
   λ (p : Nat). λ (l : List Nat).
@@ -2233,7 +2234,7 @@ def zt : Term := .ctorApp "Z" []
 def tnat : Nat → Term | 0 => zt | k + 1 => tS (tnat k)
 def lebSp (n : Term) : Term := .app (.app Std.lebFnT n) (tnat 2)
 def boolRecNat (t f sp : Term) : Term :=
-  .app (.app (.app (.app (.const "boolRec") (.lam (.const "Bool") natT)) t) f) sp
+  .app (.app (.app (.app (.const "boolRec") (.lam "_" (.const "Bool") natT)) t) f) sp
 def Refl : Term := .ctorApp "Refl" []
 
 -- n = 0; the `if` binds a fresh scrutinee (id 1).

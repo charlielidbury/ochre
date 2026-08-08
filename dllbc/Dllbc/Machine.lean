@@ -337,7 +337,7 @@ def indexKindTy : Val → Bool
   | .const "Unit" => true
   | .idT _ _ _ => true
   | .type => true
-  | .pi _ _ => true
+  | .pi _ _ _ => true
   | _ => false
 
 /-! Is a **value** index-kind, so §2.1's copy-on-read applies? A concrete
@@ -365,8 +365,8 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   | .sym σ => match sctx.lookup σ with | some τ => indexKindTy (Val.whnfOut fuel τ) | none => false
   | .type => true
   | .const _ => true
-  | .pi _ _ => true
-  | .lam _ _ => true
+  | .pi _ _ _ => true
+  | .lam _ _ _ => true
   -- A runtime function value is closed and marker-free, so the ownership
   -- machinery is doubly vacuous on it exactly as it is on a λ; §7 cost 2's "never
   -- partially applied, closed" is what earns this. A CONSERVATIVE DEFAULT, and
@@ -384,13 +384,11 @@ def indexKindV (fuel : Nat) (sctx : List (Nat × Val)) : Val → Bool
   | .idT _ _ _ => true
   | .app _ _ => true                                        -- a pure-former spine (proof/type)
   | .pvar _ => true
-  -- A closure is a function value, so it gets `.lam`'s answer for `.lam`'s reason;
-  -- a level is a bound variable, so it gets `.pvar`'s. Neither can reach a slot
-  -- (both are knowledge, and a level is besides transient to readback), so these
-  -- two arms exist to keep the match total rather than to decide anything.
+  -- A closure is a function value, so it gets `.lam`'s answer for `.lam`'s reason.
+  -- It cannot reach a slot (it is knowledge, and it never leaves `Pure.lean`), so
+  -- this arm exists to keep the match total rather than to decide anything.
   | .closure _ _ => true
-  | .lvl _ => true
-  | .sigmaT _ _ => true                                     -- a type
+  | .sigmaT _ _ _ => true                                   -- a type
   | .borrowM _ _ => false
   | .loanM _ => false
   -- A binder-mode marker is not a value and never stands in a slot (§6); it
@@ -411,19 +409,18 @@ mutual
     -- EXCEPT there would leave the audit reading a frozen entry it was told had
     -- been solved. Both halves are swept — the environment holds what the body was
     -- closed over, the body holds what was written into it.
-    | .closure ρ b => .closure (substSymList σ newV ρ) (substSym σ newV b)
-    | .lvl k => .lvl k
+    | .closure ρ b => .closure (substSymEnv σ newV ρ) (substSym σ newV b)
     | .borrowM ℓ p => .borrowM ℓ (substSym σ newV p)
     | .cmpT τ => .cmpT (substSym σ newV τ)
     | .ctor n args => .ctor n (substSymList σ newV args)
     | .loanM ℓ => .loanM ℓ
     | .bot => .bot
-    | .pvar k => .pvar k
+    | .pvar x => .pvar x
     | .type => .type
     | .const c => .const c
-    | .pi d c => .pi (substSym σ newV d) (substSym σ newV c)
-    | .sigmaT d c => .sigmaT (substSym σ newV d) (substSym σ newV c)
-    | .lam d c => .lam (substSym σ newV d) (substSym σ newV c)
+    | .pi x d c => .pi x (substSym σ newV d) (substSym σ newV c)
+    | .sigmaT x d c => .sigmaT x (substSym σ newV d) (substSym σ newV c)
+    | .lam x d c => .lam x (substSym σ newV d) (substSym σ newV c)
     | .app d c => .app (substSym σ newV d) (substSym σ newV c)
     | .idT a b c => .idT (substSym σ newV a) (substSym σ newV b) (substSym σ newV c)
   termination_by v => sizeOf v
@@ -431,6 +428,10 @@ mutual
     | [] => []
     | v :: vs => substSym σ newV v :: substSymList σ newV vs
   termination_by vs => sizeOf vs
+  def substSymEnv (σ : Nat) (newV : Val) : List (String × Val) → List (String × Val)
+    | [] => []
+    | (x, v) :: ρ => (x, substSym σ newV v) :: substSymEnv σ newV ρ
+  termination_by ρ => sizeOf ρ
 end
 
 /-! Abstract a whole sub-value `target` into `sym σb` **everywhere** — the
@@ -447,16 +448,16 @@ mutual
     else match v with
       | .borrowM ℓ p => .borrowM ℓ (abstractInto target σb p)
       | .ctor n args => .ctor n (abstractIntoList target σb args)
-      | .pi d c => .pi (abstractInto target σb d) (abstractInto target σb c)
-      | .sigmaT d c => .sigmaT (abstractInto target σb d) (abstractInto target σb c)
-      | .lam d c => .lam (abstractInto target σb d) (abstractInto target σb c)
+      | .pi x d c => .pi x (abstractInto target σb d) (abstractInto target σb c)
+      | .sigmaT x d c => .sigmaT x (abstractInto target σb d) (abstractInto target σb c)
+      | .lam x d c => .lam x (abstractInto target σb d) (abstractInto target σb c)
       | .app d c => .app (abstractInto target σb d) (abstractInto target σb c)
       | .idT a b c => .idT (abstractInto target σb a) (abstractInto target σb b) (abstractInto target σb c)
       -- Paired with `substSym`'s closure arm, and for the same reason: §19's
       -- generalization sweeps exactly the state a refinement sweeps, so a spine
       -- reachable by one and not the other would leave a branch equation that
       -- talks about a term the refinement has already made unnameable.
-      | .closure ρ b => .closure (abstractIntoList target σb ρ) (abstractInto target σb b)
+      | .closure ρ b => .closure (abstractIntoEnv target σb ρ) (abstractInto target σb b)
       | v' => v'
   termination_by sizeOf v
   def abstractIntoList (target : Val) (σb : Nat) (vs : List Val) : List Val :=
@@ -464,6 +465,11 @@ mutual
     | [] => []
     | v :: rest => abstractInto target σb v :: abstractIntoList target σb rest
   termination_by sizeOf vs
+  def abstractIntoEnv (target : Val) (σb : Nat) (ρ : List (String × Val)) : List (String × Val) :=
+    match ρ with
+    | [] => []
+    | (x, v) :: rest => (x, abstractInto target σb v) :: abstractIntoEnv target σb rest
+  termination_by sizeOf ρ
 end
 
 /-! ## The two Ω-primitives
@@ -845,7 +851,7 @@ def writeC (place : Term) (refined : Val) : M Unit := do
 /-! Reflect a comptime term into a value, resolving Ω snapshot reads. Pure
     formers map to their `Val` counterparts; runtime-only constructs error.
 
-    **`let` is read by β** (M29 α), through the `Val.LetCtx` declared in
+    **`let` is read by β** (M29 α), as the redex `Val.letRedex` declared in
     `Pure.lean` — shared with `Term.toValPure`, the monad-free reflection, so that
     the rule is stated once. The reading it replaces bound the reflected value
     into Ω, and that was wrong twice over. Both were measured before this was
@@ -867,15 +873,25 @@ def writeC (place : Term) (refined : Val) : M Unit := do
     fragments' `let` — is exactly what would have hit both. A scope that is local
     to the reflection, innermost-first, and discarded when it returns has neither,
     and it also retires §1.3's "the comptime read's one sanctioned footprint on Ω"
-    caveat: ⇝ now writes nothing whatsoever. -/
+    caveat: ⇝ now writes nothing whatsoever.
+
+    **And the β is BUILT, not carried** (M30 step 2). M29 α carried the
+    substitution — a `LetCtx` recording each binding with the pure-binder DEPTH it
+    was made at, so an occurrence read under further binders could be lifted to
+    where it sat — because building the redex meant abstracting the binder out of
+    the body, which is not a subterm of anything. Under names there is nothing to
+    abstract: `lets` is the list of ids in scope, an occurrence of one is the
+    reserved pure name `letName x.id`, and the `letIn` case wraps the whole thing
+    in the λ that binds it. What that buys is not tidiness — it is that the
+    let-bound VALUE is never carried under a binder, which is the one move a named
+    representation cannot do safely and the one this reflection used to make. -/
 mutual
-  def reflectC (lc : Val.LetCtx) : Term → M Val
+  def reflectC (lets : List Nat) : Term → M Val
     | .var x => do
       -- A ⇝ `let` binding first: it is the innermost scope there is, and it is
-      -- the one Ω knows nothing about.
-      match lc.find? x.id with
-      | some v => pure v
-      | none =>
+      -- the one Ω knows nothing about. Its occurrences are the redex's pure
+      -- binder, which the `letIn` case below wraps around this body.
+      if lets.contains x.id then pure (.pvar (Val.letName x.id)) else
         -- snapshot read (non-destructive) — but §2.1: every read-shaped rule
         -- excludes ⊥. A comptime read of a moved/uninitialized slot is a
         -- use-after-move; rejecting it here stops a silent ⊥ from riding into a
@@ -885,24 +901,24 @@ mutual
         | .bot => throwErr s!"readC (⇝): {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized in a comptime read)"
         | v => pure v
     | .deref t => do
-      match ← reflectC lc t with
+      match ← reflectC lets t with
       | .borrowM _ p => pure p                       -- *(borrowₘ ℓ v) ⇝ v
       | _ => throwErr "readC (⇝ *): dereferenced value is not a borrow"
-    | .ctorApp n args => do pure (.ctor n (← reflectCList lc args))
+    | .ctorApp n args => do pure (.ctor n (← reflectCList lets args))
     | .type => pure .type
     | .const c => pure (.const c)
-    | .pvar k => pure (.pvar k)
+    | .pvar x => pure (.pvar x)
     -- The mode marker reflects structurally. ⇝ carries it without ever reading
     -- it: `beq` is mode-blind, so no comptime judgment can branch on a mode
     -- (§6, "case is inert under ⇝"). It is here so that ⇒ can read it off a
     -- value callee's Π — the one arrow that is entitled to ask.
-    | .cmpT τ => do pure (.cmpT (← reflectC lc τ))
-    -- The three pure BINDERS, and the one thing that is new below them: the
-    -- codomain/body is reflected one level deeper, so a `let` binding made
-    -- outside is lifted when it is read inside (`LetCtx.find?`).
-    | .pi d c => do pure (.pi (← reflectC lc d) (← reflectC lc.under c))
-    | .sigmaT d c => do pure (.sigmaT (← reflectC lc d) (← reflectC lc.under c))
-    | .lam d b => do pure (.lam (← reflectC lc d) (← reflectC lc.under b))
+    | .cmpT τ => do pure (.cmpT (← reflectC lets τ))
+    -- The three pure BINDERS, carrying their names across unchanged. There is no
+    -- longer anything to do at one: a `let` binding made outside is a VALUE bound
+    -- in the redex's environment, not a term to be lifted to this depth.
+    | .pi x d c => do pure (.pi x (← reflectC lets d) (← reflectC lets c))
+    | .sigmaT x d c => do pure (.sigmaT x (← reflectC lets d) (← reflectC lets c))
+    | .lam x d b => do pure (.lam x (← reflectC lets d) (← reflectC lets b))
     -- §5.4 exit-snapshot marker: `markExit` stamps a bare borrow-param `*v` in a
     -- return type as `@exit(*v)`; here it pins to that borrow's fresh σ_exit (the
     -- audit later defines it as the collapsed final payload). Unmarked bare `*v`
@@ -910,35 +926,36 @@ mutual
     | .app (.const "@exit") (.deref (.var v)) => do
       match (← get).exitSyms.lookup v.id with
       | some σ => pure (.sym σ)
-      | none => reflectC lc (.deref (.var v))
+      | none => reflectC lets (.deref (.var v))
     -- §5.4 `old *v`: the ENTRY snapshot σ (recorded at seed) — a non-consuming read
     -- of the entry value, in the return type OR the body (where `*v`'s live payload
     -- has since been mutated). Falls back to the live deref outside a borrow-param.
     | .app (.const "old") (.deref (.var v)) => do
       match (← get).entrySyms.lookup v.id with
       | some σ => pure (.sym σ)
-      | none => reflectC lc (.deref (.var v))
-    | .app f a => do pure (.app (← reflectC lc f) (← reflectC lc a))
-    | .idT a b c => do pure (.idT (← reflectC lc a) (← reflectC lc b) (← reflectC lc c))
+      | none => reflectC lets (.deref (.var v))
+    | .app f a => do pure (.app (← reflectC lets f) (← reflectC lets a))
+    | .idT a b c => do pure (.idT (← reflectC lets a) (← reflectC lets b) (← reflectC lets c))
     | .unit => pure (.ctor "unit" [])
     | .letIn x rhs rest => do
-      -- **⇝'s `let` is β** (M29 α; see the header for what this replaces). The rhs
-      -- reflects at the current depth, the binding is recorded at that depth, and
-      -- the body reads it back lifted to wherever it is used. Nothing is written
-      -- to Ω, so a comptime read has no footprint and two reads cannot disagree.
-      let v ← reflectC lc rhs
-      reflectC (lc.bind x.id v) rest
+      -- **⇝'s `let` is β** (M29 α; see the header for what this replaces), and
+      -- since M30 step 2 it is the redex itself: the rhs reflects here, the body
+      -- reflects with `x` in scope as a reserved pure name, and the λ that binds
+      -- that name goes round the outside. Nothing is written to Ω, so a comptime
+      -- read has no footprint and two reads cannot disagree.
+      let v ← reflectC lets rhs
+      pure (Val.letRedex x.id v (← reflectC (x.id :: lets) rest))
     -- ¶2.2's ⇝ column at the two new steps. The snapshot of an array place is the
     -- snapshot of the SEGMENT sitting there — exact, and needing no new constant.
     -- Read-only, as ⇝ must be: it merges a local copy to find the segment but never
     -- carves, so a place the program has not carved is honestly stuck here rather
     -- than silently reorganized inside a type.
     | .index t i _ => do
-      let a := Val.mergeArrays (← reflectC lc t)
-      navStep 1000 (.idx (Val.nfV 1000 (← reflectC lc i)) none) a
+      let a := Val.mergeArrays (← reflectC lets t)
+      navStep 1000 (.idx (Val.nfV 1000 (← reflectC lets i)) none) a
     | .range t lo (some cnt) _ _ _ => do
-      let a := Val.mergeArrays (← reflectC lc t)
-      navStep 1000 (.rng (Val.nfV 1000 (← reflectC lc lo)) (Val.nfV 1000 (← reflectC lc cnt)) none) a
+      let a := Val.mergeArrays (← reflectC lets t)
+      navStep 1000 (.rng (Val.nfV 1000 (← reflectC lets lo)) (Val.nfV 1000 (← reflectC lets cnt)) none) a
     | .range _ _ none _ _ _ =>
       -- `a[lo ; ..]` reads its count off the extent map, which is STATE; ⇝ is the
       -- read-only projection and may not consult it. Write the count in a type.
@@ -947,7 +964,7 @@ mutual
     | .borrow _ => throwErr "readC (⇝): `&mut` is not in the comptime fragment"
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
     | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
-    | .borrowT _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
+    | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
     | .call _ _ => throwErr "readC (⇝): a call is not in the comptime fragment (its result is a fresh existential)"
     -- The seal is a ⇒-form and only a ⇒-form (combining-fns §5). Minting needs an
     -- EVENT; ⇝ is a pure judgment with none, so a seal reduced twice under ⇝ would
@@ -963,9 +980,9 @@ mutual
     -- `.lam` — domain-annotated, de Bruijn, body a pure term — and a `.lamR`
     -- would have to be reduced by binding named slots, which is ⇒'s move.
     | .lamR _ _ => throwErr "readC (⇝): a runtime λ (`λ(x : τ, …){ … }`) is not in the comptime fragment — its body is a body (writes, calls, borrows) and its binders are Ω slots. The comptime λ is `λ (x : τ). e` (§1.3)"
-  def reflectCList (lc : Val.LetCtx) : List Term → M (List Val)
+  def reflectCList (lets : List Nat) : List Term → M (List Val)
     | [] => pure []
-    | t :: ts => do pure ((← reflectC lc t) :: (← reflectCList lc ts))
+    | t :: ts => do pure ((← reflectC lets t) :: (← reflectCList lets ts))
 end
 
 /-- ⇝: reflect, FOLD, then normalize. Ω is read-only throughout.
@@ -979,7 +996,7 @@ end
     was never carved. A still-suspended one is left as the state form it is and is
     rejected at the one place that judges. -/
 def readC (fuel : Nat) (t : Term) : M Val := do
-  pure (Val.nfV fuel (Val.arrFoldDeep (← reflectC {} t)))
+  pure (Val.nfV fuel (Val.arrFoldDeep (← reflectC [] t)))
 
 /-- ⇝ against extra bindings prepended to Ω — how a dependent call instantiates a
     callee telescope type (§5.3): the decl's parameter vars are bound to the
@@ -1006,9 +1023,9 @@ mutual
     | .app (.const "old") (.deref (.var v)) => .app (.const "old") (.deref (.var v))
     | .app f a => .app (markExit borrowIds f) (markExit borrowIds a)
     | .ctorApp n args => .ctorApp n (markExitList borrowIds args)
-    | .pi d c => .pi (markExit borrowIds d) (markExit borrowIds c)
-    | .sigmaT d c => .sigmaT (markExit borrowIds d) (markExit borrowIds c)
-    | .lam d b => .lam (markExit borrowIds d) (markExit borrowIds b)
+    | .pi x d c => .pi x (markExit borrowIds d) (markExit borrowIds c)
+    | .sigmaT x d c => .sigmaT x (markExit borrowIds d) (markExit borrowIds c)
+    | .lam x d b => .lam x (markExit borrowIds d) (markExit borrowIds b)
     | .idT a b c => .idT (markExit borrowIds a) (markExit borrowIds b) (markExit borrowIds c)
     | t => t
   termination_by t => sizeOf t
@@ -1020,7 +1037,7 @@ end
 
 /-- The telescope's borrow-parameter var ids (param `i` gets var id `i`). -/
 def borrowParamIds (telescope : List (String × Term)) : List Nat :=
-  telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ => some i | _ => none)
+  telescope.enum.filterMap (fun (i, p) => match p.2 with | .borrowT _ _ _ => some i | _ => none)
 
 /-- Build a call's fresh result value from the (instantiated) return type, and
     collect the loans it ISSUES (§6.1). Each `&mut (τ ↝ S)` position mints a
@@ -1033,30 +1050,33 @@ def borrowParamIds (telescope : List (String × Term)) : List Nat :=
     already built — that is the whole point of a pinned result (`Σ (r : List Nat)
     → Id (List Nat) r (drop i (old *v))`, split_off's ensures), and with declared
     backs removed it is a caller's only route to knowing anything about a returned
-    value. `subs` carries the built components for the enclosing Σ binders,
-    innermost first; a leaf substitutes them into its type before minting the σ.
-    Substituting one at a time from the head is correct because `substPure 0`
-    shifts the outer binders down as it goes. (Before M23 the tail was built
-    independently, leaving a dangling `pvar` in the σ's sctx type, so the pin was
-    unusable at the call site — `useIt(a, h)` failed with `argument (σ1) does not
-    have its parameter type (Id σ0 (S Z))`.) -/
-def buildResult (fuel : Nat) (inst : Omega) (subs : List Val) : Term → M (Val × List (Nat × Val))
-  | .borrowT τ S => do
-    let τVal := (subs.foldl (fun t v => Val.instBodyOut fuel t v) (← readCWith fuel inst τ))
+    value. `subs` carries the built components for the enclosing Σ binders as
+    `(binder name, value)`, innermost first; a leaf opens each of them in its type
+    before minting the σ. Order stopped mattering at M30 step 2 — under de Bruijn
+    the fold had to run from the head because `substPure 0` shifted the outer
+    binders down as it went, and under names each entry is found by its own name.
+    (Before M23 the tail was built independently, leaving a dangling `pvar` in the
+    σ's sctx type, so the pin was unusable at the call site — `useIt(a, h)` failed
+    with `argument (σ1) does not have its parameter type (Id σ0 (S Z))`.) -/
+def buildResult (fuel : Nat) (inst : Omega) (subs : List (String × Val)) :
+    Term → M (Val × List (Nat × Val))
+  | .borrowT s τ S => do
+    let τVal := (subs.foldl (fun t p => Val.instBodyOut fuel p.1 t p.2) (← readCWith fuel inst τ))
     let σ ← freshSym
     let ℓr ← freshLoan
-    -- `S` binds the snapshot at pvar 0, so the enclosing Σ binders sit at 1+.
+    -- `S` binds the snapshot at `s`; the enclosing Σ binders are named too, so
+    -- opening one no longer disturbs the others.
     let sVal ← readCWith fuel inst S
-    let sVal := Val.instBodyOut fuel sVal (Val.sym σ)
-    let owedR := Val.nfV fuel (subs.foldl (fun t v => Val.instBodyOut fuel t v) sVal)
+    let sVal := Val.instBodyOut fuel s sVal (Val.sym σ)
+    let owedR := Val.nfV fuel (subs.foldl (fun t p => Val.instBodyOut fuel p.1 t p.2) sVal)
     modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
     pure (.borrowM ℓr (.sym σ), [(ℓr, owedR)])
-  | .sigmaT a b => do
+  | .sigmaT x a b => do
     let (vA, issA) ← buildResult fuel inst subs a
-    let (vB, issB) ← buildResult fuel inst (vA :: subs) b
+    let (vB, issB) ← buildResult fuel inst ((x, vA) :: subs) b
     pure (.ctor "Pair" [vA, vB], issA ++ issB)
   | rt => do
-    let retTy := (subs.foldl (fun t v => Val.instBodyOut fuel t v) (← readCWith fuel inst rt))
+    let retTy := (subs.foldl (fun t p => Val.instBodyOut fuel p.1 t p.2) (← readCWith fuel inst rt))
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, retTy) :: s.sctx })
     pure (.sym σ, [])
@@ -1091,7 +1111,7 @@ partial def calleeNames : Term → List String
   | .borrow t | .deref t => calleeNames t
   | .matchE _ _ bs => bs.flatMap (fun b => calleeNames b.body)
   | .app f a => calleeNames f ++ calleeNames a
-  | .lam d b | .pi d b | .sigmaT d b => calleeNames d ++ calleeNames b
+  | .lam _ d b | .pi _ d b | .sigmaT _ d b => calleeNames d ++ calleeNames b
   | .idT a b c => calleeNames a ++ calleeNames b ++ calleeNames c
   | _ => []
 
@@ -1142,8 +1162,8 @@ mutual
           | none => pure false                       -- constructor does not inhabit this type
           | some ftys => checkFields fuel args ftys
       | .type => pure (Val.convert fuel ty .type)     -- Type : Type (type-in-type)
-      | .pi _ _ => pure (Val.convert fuel ty .type)
-      | .sigmaT _ _ => pure (Val.convert fuel ty .type)
+      | .pi _ _ _ => pure (Val.convert fuel ty .type)
+      | .sigmaT _ _ _ => pure (Val.convert fuel ty .type)
       | .idT _ _ _ => pure (Val.convert fuel ty .type)   -- Id A a b : Type
       | .app _ _ =>
         -- A neutral spine. We synthesize a type only for the eliminator
@@ -1174,7 +1194,9 @@ mutual
           finish (Val.nfV fuel (.app p pf)) rest (dOk && pOk)
         | .const "natRec", p :: z :: s :: n :: rest =>   -- natRec P z s n : P n
           let zOk ← hasType fuel z (Val.nfV fuel (.app p (.ctor "Z" [])))
-          let sTy : Val := .pi (.const "Nat") (.pi (.app p (.pvar 0)) (.app p (.ctor "S" [.pvar 1])))
+          let sTy : Val :=
+            .pi "§k" (.const "Nat")
+              (.pi "§ih" (.app p (.pvar "§k")) (.app p (.ctor "S" [.pvar "§k"])))
           let sOk ← hasType fuel s sTy
           let nOk ← hasType fuel n (.const "Nat")
           finish (Val.nfV fuel (.app p n)) rest (zOk && sOk && nOk)
@@ -1186,7 +1208,11 @@ mutual
         | .const "listRec", a :: p :: pn :: pc :: l :: rest =>  -- listRec A P pn pc l : P l
           let listA : Val := .app (.const "List") a
           let pnOk ← hasType fuel pn (Val.nfV fuel (.app p (.ctor "Nil" [])))
-          let pcTy : Val := .pi a (.pi listA (.pi (.app p (.pvar 0)) (.app p (.ctor "Cons" [.pvar 2, .pvar 1]))))
+          let pcTy : Val :=
+            .pi "§h" a
+              (.pi "§t" listA
+                (.pi "§ih" (.app p (.pvar "§t"))
+                  (.app p (.ctor "Cons" [.pvar "§h", .pvar "§t"]))))
           let pcOk ← hasType fuel pc pcTy
           let lOk ← hasType fuel l listA
           finish (Val.nfV fuel (.app p l)) rest (pnOk && pcOk && lOk)
@@ -1194,19 +1220,24 @@ mutual
           -- Σ's parameters are a type `A` and a FAMILY `B : A → Type`, so unlike
           -- List's uniform parameter both premises cross binders and `B`/`P` are
           -- read under them. Three `shiftPure` calls used to sit here, written
-          -- "for correctness under an open motive"; M30 deleted them because under
-          -- NbE the premise they were insuring against cannot arise, and no shift
-          -- would have helped if it could. `b` and `p` are SPINE ARGUMENTS of an
-          -- evaluated neutral — values — and a value has no free de Bruijn index
-          -- to lift: its variables were resolved into an environment when it was
+          -- "for correctness under an open motive"; M30 step 1 deleted them because
+          -- under NbE the premise they were insuring against cannot arise, and no
+          -- shift would have helped if it could. `b` and `p` are SPINE ARGUMENTS of
+          -- an evaluated neutral — values — and a value has no free variable to
+          -- lift: its variables were resolved into an environment when it was
           -- built. An honestly open motive would need to arrive in an ENVIRONMENT,
           -- not in a syntactic hole, and a shift is not what carries it there.
           -- (Checked, not assumed: dropping them was bisected against the corpus
           -- on its own, and changed nothing.)
-          let sigTy : Val := .sigmaT a (.app b (.pvar 0))
+          --
+          -- The binders are RESERVED names (M30 step 2), and that is what has taken
+          -- the shifts' place as the reason `b` and `p` may be spliced under them:
+          -- a source program cannot write `§x`, so no value embedded here can have
+          -- a free occurrence of one to capture.
+          let sigTy : Val := .sigmaT "§x" a (.app b (.pvar "§x"))
           let fTy : Val :=
-            .pi a (.pi (.app b (.pvar 0))
-              (.app p (.ctor "Pair" [.pvar 1, .pvar 0])))
+            .pi "§x" a (.pi "§y" (.app b (.pvar "§x"))
+              (.app p (.ctor "Pair" [.pvar "§x", .pvar "§y"])))
           let fOk ← hasType fuel f fTy
           let sOk ← hasType fuel s sigTy
           finish (Val.nfV fuel (.app p s)) rest (fOk && sOk)
@@ -1244,12 +1275,13 @@ mutual
           -- be on these lines are gone rather than merely unnecessary.
           let pnOk ← hasType fuel pn (Val.nfV fuel (.app (.app p Val.zero) (.ctor "Arr" [])))
           let pcTy : Val :=
-            .pi (.const "Nat")
-              (.pi tt
-                (.pi (Val.arrayTy (.pvar 1) tt)
-                  (.pi (.app (.app p (.pvar 2)) (.pvar 0))
-                    (.app (.app p (.ctor "S" [.pvar 3]))
-                      (.app (.app (.app (.const "acons") (.pvar 3)) (.pvar 2)) (.pvar 1))))))
+            .pi "§n" (.const "Nat")
+              (.pi "§x" tt
+                (.pi "§xs" (Val.arrayTy (.pvar "§n") tt)
+                  (.pi "§ih" (.app (.app p (.pvar "§n")) (.pvar "§xs"))
+                    (.app (.app p (.ctor "S" [.pvar "§n"]))
+                      (.app (.app (.app (.const "acons") (.pvar "§n")) (.pvar "§x"))
+                        (.pvar "§xs"))))))
           let pcOk ← hasType fuel pc pcTy
           let nOk ← hasType fuel n (.const "Nat")
           let aOk ← hasType fuel a (Val.arrayTy n tt)
@@ -1266,18 +1298,23 @@ mutual
             | some resTy => pure (Val.convert fuel ty resTy)
             | none => pure false
         | _, _ => throwErr s!"hasType: cannot type neutral {v.pretty}"
-      | .lam d b =>
+      | .lam x d b =>
         -- λ against Π: check the domains convert, then the body under a fresh σ
         -- witness for the binder (a checking-time hypothesis added to `sctx`).
         -- This is what lets a Π-typed lemma (`le_refl : Π n. Le n n`) and the
         -- recursors' step arguments — both λs — type-check. No arrow of its own;
         -- it is the elaboration of dependent elimination (§10/§11).
+        --
+        -- The λ's binder and the Π's need not agree in NAME, and the two openings
+        -- below use each side's own — which is what makes checking `λ (a : τ). …`
+        -- against `Π (b : τ) → …` work, i.e. what makes the rule α-insensitive
+        -- where `beq` is not.
         match Val.whnfOut fuel ty with
-        | .pi d' c =>
+        | .pi y d' c =>
           if Val.convert fuel d d' then do
             let σ ← freshSym
             modify (fun st => { st with sctx := (σ, d') :: st.sctx })
-            hasType fuel (Val.instBodyOut fuel b (.sym σ)) (Val.instBodyOut fuel c (.sym σ))
+            hasType fuel (Val.instBodyOut fuel x b (.sym σ)) (Val.instBodyOut fuel y c (.sym σ))
           else pure false
         | _ => pure false
       | _ => throwErr s!"hasType: cannot type value {v.pretty} (λ/neutral typing deferred to M5)"
@@ -1289,18 +1326,22 @@ mutual
     | _, hty, [] => pure (some hty)
     | fuel, hty, a :: rest => do
       match Val.whnfOut fuel hty with
-      | .pi dom cod =>
-        if ← hasType fuel a dom then synthSpine fuel (Val.instBodyOut fuel cod a) rest
+      | .pi x dom cod =>
+        if ← hasType fuel a dom then synthSpine fuel (Val.instBodyOut fuel x cod a) rest
         else pure none
       | _ => pure none                                 -- applied a non-function
   termination_by fuel _ args => (fuel, 2, args.length)
   /-- Check a constructor's fields against its field-type telescope, threading
-      each checked field value into the remaining (dependent) field types. -/
-  def checkFields : Nat → List Val → List Val → M Bool
+      each checked field value into the remaining (dependent) field types.
+
+      A telescope entry carries the NAME later entries reach this field by (M30
+      step 2) — `Pair`'s first entry carries the Σ's own binder, and every
+      non-dependent entry carries a placeholder nothing looks up. -/
+  def checkFields : Nat → List Val → List (String × Val) → M Bool
     | _, [], [] => pure true
-    | fuel, v :: vs, ty :: tys => do
+    | fuel, v :: vs, (x, ty) :: tys => do
       if ← hasType fuel v ty then
-        checkFields fuel vs (tys.map (fun ty => Val.instBodyOut fuel ty v))
+        checkFields fuel vs (tys.map (fun e => (e.1, Val.instBodyOut fuel x e.2 v)))
       else pure false
     | _, _, _ => pure false                          -- arity mismatch
   termination_by fuel _ tys => (fuel, 1, tys.length)
@@ -1412,7 +1453,7 @@ def carveObligation (fuel : Nat) (b m lo cnt : Val) : Val :=
   else
     let low := Val.kLe b lo
     let high := Val.kLe (rangeEnd fuel lo cnt) (Val.kAdd b m)
-    .sigmaT low high
+    .sigmaT "§lo" low high
 
 /-- Is the cited evidence good for this leaf? With no evidence cited we try the
     canonical inhabitant of ⊤ — ¶3.2's supply route 1, "conversion alone", which is
@@ -1970,9 +2011,9 @@ partial def collapseCDerefs (fuel : Nat) : Term → M Unit
   | .app f a => do collapseCDerefs fuel f; collapseCDerefs fuel a
   | .ctorApp _ args => args.forM (collapseCDerefs fuel)
   | .idT a b c => do collapseCDerefs fuel a; collapseCDerefs fuel b; collapseCDerefs fuel c
-  | .lam d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
-  | .pi d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
-  | .sigmaT d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
+  | .lam _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
+  | .pi _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
+  | .sigmaT _ d b => do collapseCDerefs fuel d; collapseCDerefs fuel b
   | .letIn _ rhs rest => do collapseCDerefs fuel rhs; collapseCDerefs fuel rest
   | _ => pure ()
 
@@ -2098,9 +2139,9 @@ mutual
     -- runtime vars) stay in the catch-all.
     | .app f a => .app (shiftVarsK keep d f) (shiftVarsK keep d a)
     | .idT a b c => .idT (shiftVarsK keep d a) (shiftVarsK keep d b) (shiftVarsK keep d c)
-    | .pi a b => .pi (shiftVarsK keep d a) (shiftVarsK keep d b)
-    | .lam a b => .lam (shiftVarsK keep d a) (shiftVarsK keep d b)
-    | .sigmaT a b => .sigmaT (shiftVarsK keep d a) (shiftVarsK keep d b)
+    | .pi x a b => .pi x (shiftVarsK keep d a) (shiftVarsK keep d b)
+    | .lam x a b => .lam x (shiftVarsK keep d a) (shiftVarsK keep d b)
+    | .sigmaT x a b => .sigmaT x (shiftVarsK keep d a) (shiftVarsK keep d b)
     | t => t                                            -- unit / pure formers: no runtime vars
   termination_by t => sizeOf t
   def shiftVarsListK (keep : List Nat) (d : Nat) : List Term → List Term
@@ -2149,11 +2190,11 @@ def piPeel : List Var → Term → Except String (List (Var × Term) × Term)
   | [], u => .ok ([], u)
   | x :: xs, u =>
     match u with
-    | .pi dom cod =>
+    | .pi y dom cod =>
       if Term.domComptime dom != x.isComptime then
         .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
       else
-        match piPeel xs (Term.substPure 0 (.var x) cod) with
+        match piPeel xs (Term.substP y (.var x) cod) with
         | .ok (rest, ret) => .ok ((x, dom.stripCmp) :: rest, ret)
         | .error e => .error e
     | _ =>
@@ -2187,13 +2228,13 @@ def piAgree : List (Var × Term) → Term → Except String (List (Var × Term) 
   | [], u => .ok ([], u)
   | (x, τ) :: xs, u =>
     match u with
-    | .pi dom cod =>
+    | .pi y dom cod =>
       if Term.domComptime dom != x.isComptime then
         .error s!"seal: binder '{x.name}' is {if x.isComptime then "capitalized (comptime, §6)" else "lowercase (runtime, §6)"} but the ascribed type binds it as {if Term.domComptime dom then "comptime (⇝τ)" else "runtime"}. A binder's mode is a claim about whether the body may observe its argument at runtime, and the ascription is what callers are promised — the two cannot differ."
-      else if !(Term.beq dom.stripCmp τ.stripCmp) then
+      else if !(Term.alphaEq dom.stripCmp τ.stripCmp) then
         .error s!"seal: binder '{x.name}' is annotated with a domain the ascription does not bind it at. A λ states its own binder types and the seal converts that Π against what was written (§5 point 4: the ascription is the contract), so the two cannot differ — either the annotation is wrong or the ascription is."
       else
-        match piAgree xs (Term.substPure 0 (.var x) cod) with
+        match piAgree xs (Term.substP y (.var x) cod) with
         | .ok (rest, ret) => .ok ((x, τ.stripCmp) :: rest, ret)
         | .error e => .error e
     | _ =>
@@ -2210,7 +2251,7 @@ def piAgree : List (Var × Term) → Term → Except String (List (Var × Term) 
 def piBinderNames (t : Term) : List Var :=
   let rec go : Nat → Nat → Term → List Var
     | 0, _, _ => []
-    | fuel + 1, i, .pi dom cod =>
+    | fuel + 1, i, .pi _ dom cod =>
       Var.mk i (if Term.domComptime dom then s!"A{i}" else s!"a{i}") :: go fuel (i + 1) cod
     | _, _, _ => []
   go 64 0 t
@@ -2218,7 +2259,7 @@ def piBinderNames (t : Term) : List Var :=
 /-- A Var-keyed telescope's borrow parameters, by var id (`borrowParamIds`'
     counterpart for a telescope that brought its own names). -/
 def borrowVarIds (tel : List (Var × Term)) : List Nat :=
-  tel.filterMap (fun p => match p.2 with | .borrowT _ _ => some p.1.id | _ => none)
+  tel.filterMap (fun p => match p.2 with | .borrowT _ _ _ => some p.1.id | _ => none)
 
 /-! ## The symbolic driver and the boundary audit (relocated here, M26-C)
 
@@ -2288,12 +2329,12 @@ def reorgScrut : Nat → Var → M Dispatch
 /-- Mint fresh σ's for the given field types, typing each in `sctx`
     (dependent positions instantiated at earlier fresh σ's — a real telescope).
     Returns the fresh σ ids. -/
-def typeFieldSyms (fuel : Nat) : List Var → List Val → M (List Nat)
+def typeFieldSyms (fuel : Nat) : List Var → List (String × Val) → M (List Nat)
   | [], [] => pure []
-  | _ :: bs, ty :: tys => do
+  | _ :: bs, (x, ty) :: tys => do
     let σ ← freshSym
     modify (fun s => { s with sctx := (σ, ty) :: s.sctx })
-    let rest ← typeFieldSyms fuel bs (tys.map (fun t => Val.instBodyOut fuel t (Val.sym σ)))
+    let rest ← typeFieldSyms fuel bs (tys.map (fun e => (e.1, Val.instBodyOut fuel x e.2 (Val.sym σ))))
     pure (σ :: rest)
   | _, _ => throwErr "match: constructor arity mismatch (σ-typing)"
 
@@ -2453,11 +2494,11 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
     -- table entry that was never checked).
     if x.isComptime then
       match tyTerm with
-      | .borrowT _ _ | .sigmaT _ (.borrowT _ _) =>
+      | .borrowT _ _ _ | .sigmaT _ _ (.borrowT _ _ _) =>
         throwErr s!"telescope: parameter '{name}' is capitalized (comptime, §6) but its type is a borrow — a ⇝-read of `&mut` is meaningless, so borrow-typed binders must be lowercase"
       | _ => pure ()
     match tyTerm with
-    | .borrowT τ S => do
+    | .borrowT sn τ S => do
       let τVal ← readC fuel τ
       let σ ← freshSym
       let ℓ ← freshLoan
@@ -2465,7 +2506,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
       -- record σ as this borrow's entry snapshot (§5.4 `old *v`).
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx, entrySyms := (x.id, σ) :: s.entrySyms })
       let SVal ← readC fuel S
-      let owed := Val.nfV fuel (Val.instBodyOut fuel SVal (Val.sym σ))   -- S[s := σ]
+      let owed := Val.nfV fuel (Val.instBodyOut fuel sn SVal (Val.sym σ))   -- S[s := σ]
       pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- ¶4's RUNTIME-LENGTH SLICE, `Σ (c : Nat). &mut (Array c T)`, as a parameter.
     -- §5's second opacity ("borrows stored under a type constructor") reaching a
@@ -2473,19 +2514,20 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
     -- and a borrow — so the length is a σ the body can name, and the borrow carries
     -- an ordinary obligation. PROBE (M24 STEP 1): see `docs/DELTAS.md` G2 for why
     -- this is not enough on its own.
-    | .sigmaT aTy (.borrowT τ S) => do
+    | .sigmaT cn aTy (.borrowT sn τ S) => do
       let aVal ← readC fuel aTy
       let σc ← freshSym
       modify (fun s => { s with sctx := (σc, aVal) :: s.sctx })
-      let τVal := Val.instBodyOut fuel (← readC fuel τ) (.sym σc)
+      let τVal := Val.instBodyOut fuel cn (← readC fuel τ) (.sym σc)
       let σ ← freshSym
       let ℓ ← freshLoan
       bindSlot x (.ctor "Pair" [.sym σc, .borrowM ℓ (.sym σ)])
       modify (fun s => { s with sctx := (σ, τVal) :: s.sctx })
-      -- `S` binds the payload snapshot at pvar 0; the Σ's own binder sits at pvar 1
-      -- and drops to 0 once the payload is substituted.
+      -- `S` binds the payload snapshot at `sn`, the Σ's own binder is `cn`, and
+      -- the two are opened by name — where under de Bruijn the second opening had
+      -- to know that the first had dropped it from index 1 to index 0.
       let SVal ← readC fuel S
-      let owed := Val.nfV fuel (Val.instBodyOut fuel (Val.instBodyOut fuel SVal (.sym σ)) (.sym σc))
+      let owed := Val.nfV fuel (Val.instBodyOut fuel cn (Val.instBodyOut fuel sn SVal (.sym σ)) (.sym σc))
       pure (⟨x, ℓ, owed, trivialOwedT tyTerm⟩ :: (← seedTelescopeV fuel rest))
     -- **`ih` — a parameter whose type is a borrow-moded Π** (M26-C, §7 cost 1).
     -- It has no `Val` (`readC` refuses `borrowT`), so it cannot be a σ in `sctx`;
@@ -2494,7 +2536,7 @@ def seedTelescopeV (fuel : Nat) : List (Var × Term) → M (List Obligation)
     -- branch: "the only available view of the function is the σ-side, so the
     -- recursive call is abstract application at `u` — self-ensures FORCED rather
     -- than stipulated". Nothing about this branch knows it is for a recursor.
-    | .pi _ _ => do
+    | .pi _ _ _ => do
       if hasBorrowT tyTerm then do
         let σ ← freshSym
         bindSlot x (.sym σ)
@@ -2627,12 +2669,12 @@ def auditObligation (fuel : Nat) (resultLoans : List Nat) (ob : Obligation) : M 
     as `(issued loan, payload, owed type)`. `none` = value-returning (no borrow);
     a `Σ`/`Pair` of borrows gives the multi-issued list (`nth2`, §6.1). -/
 def collectResultBorrows (fuel : Nat) : Term → Val → M (Option (List (Nat × Val × Val)))
-  | .borrowT _ S, .borrowM ℓ payload => do
-    let owed := Val.nfV fuel (Val.instBodyOut fuel (← readC fuel S) payload)
+  | .borrowT sn _ S, .borrowM ℓ payload => do
+    let owed := Val.nfV fuel (Val.instBodyOut fuel sn (← readC fuel S) payload)
     pure (some [(ℓ, payload, owed)])
-  | .borrowT _ _, other =>
+  | .borrowT _ _ _, other =>
     throwErr s!"audit: borrow-returning body did not return a borrow (got {other.pretty})"
-  | .sigmaT a b, .ctor "Pair" [va, vb] => do
+  | .sigmaT _ a b, .ctor "Pair" [va, vb] => do
     let ra ← collectResultBorrows fuel a va
     let rb ← collectResultBorrows fuel b vb
     match ra, rb with
@@ -2756,8 +2798,8 @@ def binderModes : Nat → Val → Nat → List Bool
   | 0, _, n => List.replicate n false
   | fuel + 1, v, n + 1 =>
     match Val.whnfOut fuel v with
-    | .lam dom body => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel body modeProbe) n
-    | .pi dom cod => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel cod modeProbe) n
+    | .lam x dom body => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel x body modeProbe) n
+    | .pi x dom cod => Val.domComptime dom :: binderModes fuel (Val.instBodyOut fuel x cod modeProbe) n
     | _ => List.replicate (n + 1) false
 
 /-! ## Value-callee application (combining-fns §7 cost 2, M26-A)
@@ -2907,8 +2949,8 @@ def instantiatePi : Nat → Val → List Val → M Val
   | _, ty, [] => pure ty
   | fuel + 1, ty, a :: rest =>
     match Val.whnfOut fuel ty with
-    | .pi dom cod => do
-      if ← hasType fuel a dom then instantiatePi fuel (Val.instBodyOut fuel cod a) rest
+    | .pi x dom cod => do
+      if ← hasType fuel a dom then instantiatePi fuel (Val.instBodyOut fuel x cod a) rest
       else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
     | other => throwErr s!"callV: too many arguments — the callee's type is {other.pretty}, not a function type"
 
@@ -2955,11 +2997,11 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
     when it has one). -/
 def globalKind (st : St) : Val → Bool
   | .rfn _ _ => true
-  | .lam _ _ => true
+  | .lam _ _ _ => true
   | .sym σ =>
     (st.fsig.lookup σ).isSome ||
       (match st.sctx.lookup σ with
-       | some τ => (match Val.whnfOut 100 τ with | .pi _ _ => true | _ => false)
+       | some τ => (match Val.whnfOut 100 τ with | .pi _ _ _ => true | _ => false)
        | none => false)
   -- A RECURSOR SPINE is a function too, and this case is the executing machine's
   -- half of the same binding: sealing `natRec P z s` mints a σ when checking (so
@@ -3348,9 +3390,9 @@ mutual
       | .type => readC fuel t
       | .const _ => readC fuel t
       | .pvar _ => readC fuel t
-      | .pi _ _ => readC fuel t
-      | .sigmaT _ _ => readC fuel t
-      | .lam _ _ => do collapseCDerefs fuel t; readC fuel t
+      | .pi _ _ _ => readC fuel t
+      | .sigmaT _ _ _ => readC fuel t
+      | .lam _ _ _ => do collapseCDerefs fuel t; readC fuel t
       -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
       -- lift below sends every other application spine to `readC`; one whose arms
       -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
@@ -3421,7 +3463,7 @@ mutual
           | none =>
             if indexKindV fuel (← get).sctx p then do mergeRoot pos.root; pure p  -- §2.1 copy-on-read
             else do setAtPos fuel pos .bot; mergeRoot pos.root; pure p
-      | .borrowT _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
+      | .borrowT _ _ _ => throwErr "readR (⇒): borrow type `&mut (τ ↝ S)` is a telescope-position form, not a movable value"
       -- `⇝τ` outside a λ/Π domain is a mode marker that escaped its binder. Same
       -- standing as `borrowT` on the line above, and the same rejection.
       | .cmpT _ => throwErr "readR (⇒): `⇝τ` is a binder-mode marker (§6), legal only as a λ/Π domain — not a term and not a movable value"
@@ -3463,16 +3505,16 @@ mutual
     | 0, _, _ => throwErr "callV: out of fuel (λ application)"
     | fuel + 1, f, [] =>
       match Val.whnfOut fuel f with
-      | .lam d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
+      | .lam _ d _ => throwErr s!"callV: partial application — the callee still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4). A function-VALUED result is refused here too, and M26-B confirms binder modes do NOT separate the two cases: `Π (x : A) → (Π (y : B) → C)` and `Π (x : A) → Π (y : B) → C` are the same term, so the residual binder's own mode says nothing about whose it is. The separating fact is elsewhere — a residual telescope with no borrow-moded binder could be curried soundly — and that is a phase C/D decision against §12 decision 4, not a mode question."
       | v => pure v
     | fuel + 1, f, a :: rest =>
       match Val.whnfOut fuel f with
-      | .lam dom body => do
-        if (← get).executing then applyLam fuel (Val.instBodyOut fuel body a) rest
+      | .lam x dom body => do
+        if (← get).executing then applyLam fuel (Val.instBodyOut fuel x body a) rest
         -- `hasType` strips the mode marker: which arrow READ the argument was
         -- settled before this call (`valBinderModes`), and what remains is the
         -- ordinary domain check.
-        else if ← hasType fuel a dom then applyLam fuel (Val.instBodyOut fuel body a) rest
+        else if ← hasType fuel a dom then applyLam fuel (Val.instBodyOut fuel x body a) rest
         else throwErr s!"callV: argument ({a.pretty}) does not have its parameter type ({dom.pretty})"
       -- A pure λ whose body turns out to be a runtime function (or a recursor):
       -- hand the remaining spine to the ⇒-application rule rather than calling it
@@ -3528,7 +3570,7 @@ mutual
         | .ctor "Cons" [h, tl] =>
           applyRest fuel pc (h :: tl :: Val.rebuildSpine (.const "listRec") [a, motive, pn, pc, tl] :: rest)
         | l' => stuckRec fuel (.const "listRec") [a, motive, pn, pc, l'] rest
-      | .lam _ _, _ => applyLam fuel head all
+      | .lam _ _ _, _ => applyLam fuel head all
       -- Not a redex. Applied to nothing — the under-applied `natRec P z s` a seal
       -- ascribes, or a recursor stuck on a σ — it is a VALUE; applied to
       -- something it cannot consume, it is over-application.
@@ -3606,7 +3648,7 @@ mutual
       -- fallbacks to ⇒.
       if declVar.isComptime then
         match tyTerm with
-        | .borrowT _ _ | .sigmaT _ (.borrowT _ _) =>
+        | .borrowT _ _ _ | .sigmaT _ _ (.borrowT _ _ _) =>
           throwErr s!"call: parameter '{name}' is capitalized (comptime, §6) but its type is a borrow — a ⇝-read of `&mut` is meaningless, so borrow-typed binders must be lowercase"
         | _ => do
           let argVal ← readComptimeArg fuel arg
@@ -3616,13 +3658,13 @@ mutual
           else throwErr s!"call: comptime argument ({argVal.pretty}) does not have its parameter type ({τVal.pretty})"
       else
       match tyTerm with
-      | .borrowT τ S => do
+      | .borrowT sn τ S => do
         match ← readR fuel arg with
         | .borrowM ℓ payload => do
           let τVal ← readCWith fuel inst τ
           if ← hasType fuel payload τVal then do
             let SVal ← readCWith fuel inst S
-            let owed := Val.nfV fuel (Val.instBodyOut fuel SVal payload)
+            let owed := Val.nfV fuel (Val.instBodyOut fuel sn SVal payload)
             -- A borrow parameter is bound to the actual borrow itself, so a later
             -- type mentioning `*b` (§5.2's comptime-deref at the call site)
             -- reflects the peel to the payload snapshot just passed.
@@ -3634,17 +3676,17 @@ mutual
       -- ¶4's runtime-length slice at a CALL SITE (M24 STEP 1's probe). The actual is a
       -- genuine pair — a length and a borrow — so the capture is the borrow's loan and
       -- the length is checked like any other argument. See `docs/DELTAS.md` G2.
-      | .sigmaT aTy (.borrowT τ S) => do
+      | .sigmaT cn aTy (.borrowT sn τ S) => do
         match ← readR fuel arg with
         | .ctor "Pair" [cv, .borrowM ℓ payload] => do
           let aVal ← readCWith fuel inst aTy
           if !(← hasType fuel cv aVal) then
             throwErr s!"call: slice length ({cv.pretty}) does not have its parameter type ({aVal.pretty})"
           else
-            let τVal := Val.instBodyOut fuel (← readCWith fuel inst τ) cv
+            let τVal := Val.instBodyOut fuel cn (← readCWith fuel inst τ) cv
             if ← hasType fuel payload τVal then do
               let SVal ← readCWith fuel inst S
-              let owed := Val.nfV fuel (Val.instBodyOut fuel (Val.instBodyOut fuel SVal payload) cv)
+              let owed := Val.nfV fuel (Val.instBodyOut fuel cn (Val.instBodyOut fuel sn SVal payload) cv)
               let pairV : Val := .ctor "Pair" [cv, .borrowM ℓ payload]
               let (rest, inst') ← processArgs fuel (i + 1) ((declVar, pairV) :: inst) tRest aRest
               pure ((ℓ, owed) :: rest, inst')
@@ -3686,7 +3728,7 @@ mutual
           let modes ← valBinderModes fuel callee args.length
           let argVals ← readArgsModed fuel modes args  -- ⇒ or ⇝ per binder, left to right
           match callee with
-          | .lam _ _ => applyLam fuel callee argVals   -- body known ⟹ β
+          | .lam _ _ _ => applyLam fuel callee argVals   -- body known ⟹ β
           -- A runtime function, or a recursor over runtime arms: ⇒-application
           -- (bind-and-run, and ι with the arm as a body). `ih` arrives here.
           | .rfn _ _ => applyR fuel callee argVals
@@ -3698,7 +3740,7 @@ mutual
             | some σty => do
               let resTy ← instantiatePi fuel σty argVals
               match Val.whnfOut fuel resTy with
-              | .pi d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
+              | .pi _ d _ => throwErr s!"callV: partial application — σ{σ} still expects an argument of type {d.pretty}, and runtime application is saturated (§12 decision 4)"
               | resTy => do
                 -- The runtime column of §2.3: the call FORGETS the application
                 -- and keeps only what the type promised. Deliberately NOT the
@@ -3830,7 +3872,7 @@ mutual
       if binders.length < pre.length then
         throwErr s!"seal: this recursor arm binds {binders.length} argument(s) but its premise gives it {pre.length} before the motive's own — the predecessor and `ih` are the arm's leading binders, not optional."
       match (List.zip (binders.take pre.length) pre).find?
-              (fun p => !(Term.beq p.1.2.stripCmp p.2.2.stripCmp)) with
+              (fun p => !(Term.alphaEq p.1.2.stripCmp p.2.2.stripCmp)) with
       | some (b, _) =>
         throwErr s!"seal: recursor arm binder '{b.1.name}' is annotated with a domain the recursor's premise does not give it. The leading binders of an arm are the predecessor and `ih` — the sealed self-view AT THE PREDECESSOR (§7) — and their types are derived from the motive, not chosen: an `ih` annotated at the arm's own level would be the recursion available where §8's guard used to forbid it."
       | none =>
@@ -3843,10 +3885,13 @@ mutual
 
       **The motive is derived from the signature**, exactly as §7 says the macro
       derives it: peel one Π off the ascription and the codomain IS the motive's
-      body, with the scrutinee as its de Bruijn binder. The written motive is then
-      compared against the derived one — syntactically, and that is forced rather
-      than lazy: the motive contains borrow types, which have no `Val` and
-      therefore no conversion to be compared up to. Since phase D's macro derives
+      body, with the scrutinee as its binder. The written motive is then compared
+      against the derived one — syntactically UP TO α, and the syntactic part is
+      forced rather than lazy: the motive contains borrow types, which have no
+      `Val` and therefore no conversion to be compared up to. (The α part was free
+      while binders were indices and is stated explicitly since M30 step 2 — a
+      motive written `λ (f : Nat). …` against an ascription binding `fuel` is the
+      same motive.) Since phase D's macro derives
       it, they agree by construction; a hand-written mismatch is told what was
       expected.
 
@@ -3865,45 +3910,45 @@ mutual
   def sealRec : Nat → String → List Term → Term → M Val
     | fuel, c, args, u => do
       match u with
-      | .pi scrutDom R => do
+      | .pi sn scrutDom R => do
         let mi := match recLayout c with | some (_, m, _) => m | none => 0
-        let derived : Term := .lam scrutDom R
+        let derived : Term := .lam sn scrutDom R
         match args.get? mi with
         | none => throwErr s!"seal: {c} spine has no motive argument"
         | some written =>
-          if !(Term.beq written derived) then
+          if !(Term.alphaEq written derived) then
             throwErr s!"seal: the recursor's motive is not the one its ascription derives. §7 derives the motive from the signature — the sealed Π with the scrutinee peeled off — so a `{c}` sealed at `Π (n : τ) → R` must be written with the motive `λ (n : τ). R` and this one is not."
           else
             match c, args with
             | "natRec", [_, z, s] => do
               match z, s with
               | .lamR zn zbody, .lamR (k :: ihv :: rest) sbody => do
-                checkArm fuel zbody [] zn (Term.substPure 0 (.ctorApp "Z" []) R)
-                checkArm fuel sbody [(k.1, scrutDom), (ihv.1, Term.substPure 0 (.var k.1) R)]
+                checkArm fuel zbody [] zn (Term.substP sn (.ctorApp "Z" []) R)
+                checkArm fuel sbody [(k.1, scrutDom), (ihv.1, Term.substP sn (.var k.1) R)]
                   (k :: ihv :: rest)
-                  (Term.substPure 0 (.ctorApp "S" [.var k.1]) R)
+                  (Term.substP sn (.ctorApp "S" [.var k.1]) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: natRec's arms must be runtime λs, and the step arm must bind at least the predecessor and `ih` (§7's `λ f'. λ ih. λ v Hfuel. …`)"
             | "listRec", [_, _, pn, pc] => do
               match pn, pc with
               | .lamR nn nbody, .lamR (h :: tl :: ihv :: rest) cbody => do
-                checkArm fuel nbody [] nn (Term.substPure 0 (.ctorApp "Nil" []) R)
+                checkArm fuel nbody [] nn (Term.substP sn (.ctorApp "Nil" []) R)
                 -- `h`'s type is the element type, read off the scrutinee's own
                 -- `List A`; anything else and the arm is not this recursor's.
                 let elemTy : Term := match scrutDom with
                   | .app (.const "List") a => a
                   | _ => .const "Nat"
                 checkArm fuel cbody
-                  [(h.1, elemTy), (tl.1, scrutDom), (ihv.1, Term.substPure 0 (.var tl.1) R)]
+                  [(h.1, elemTy), (tl.1, scrutDom), (ihv.1, Term.substP sn (.var tl.1) R)]
                   (h :: tl :: ihv :: rest)
-                  (Term.substPure 0 (.ctorApp "Cons" [.var h.1, .var tl.1]) R)
+                  (Term.substP sn (.ctorApp "Cons" [.var h.1, .var tl.1]) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: listRec's arms must be runtime λs, and the Cons arm must bind at least the head, the tail and `ih`"
             | "boolRec", [_, tArm, fArm] => do
               match tArm, fArm with
               | .lamR tn tbody, .lamR fn fbody => do
-                checkArm fuel tbody [] tn (Term.substPure 0 (.ctorApp "True" []) R)
-                checkArm fuel fbody [] fn (Term.substPure 0 (.ctorApp "False" []) R)
+                checkArm fuel tbody [] tn (Term.substP sn (.ctorApp "True" []) R)
+                checkArm fuel fbody [] fn (Term.substP sn (.ctorApp "False" []) R)
                 sealMint fuel (piBinderNames u) u
               | _, _ => throwErr "seal: boolRec's arms must be runtime λs"
             | _, _ => throwErr s!"seal: `{c}` is not a recursor this phase checks as a sealed function, or its spine is not the bare `{c} P ⟨arms⟩` (the scrutinee is the SEALED Π's own binder, so it must not be applied)"

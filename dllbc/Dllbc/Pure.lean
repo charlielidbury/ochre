@@ -6,10 +6,10 @@ import Dllbc.Value
 The comptime fragment is a tiny standard type theory: one universe (type-in-
 type), Π, Σ, λ, application, constructors, and a fixed basis of recursors as
 built-in constants (`natRec`, `boolRec`, `botElim`). This module is the
-evaluator over `Val`. Pure binders are de Bruijn (`pvar`); β and ι fire by
-**environment extension** (M30 — see the NbE section below, and `docs/nbe.md`),
-and a `sym` (or a `pvar`) at an application/recursor head blocks reduction — the
-whole spine is then a legal (stuck neutral) value.
+evaluator over `Val`. Pure binders carry their source NAME (M30 step 2); β and ι
+fire by **environment extension** (M30 — see the NbE section below, and
+`docs/nbe.md`), and a `sym` (or a `pvar`) at an application/recursor head blocks
+reduction — the whole spine is then a legal (stuck neutral) value.
 
 `readC` (⇝) and `hasType` (in `Machine.lean`) are built on top: `readC`
 reflects a `Term` into a `Val` (resolving Ω snapshot reads) and normalizes it
@@ -18,7 +18,8 @@ here; `hasType` uses `convert` and the constructor signature table.
 Everything is total: `eval`/`whnfN`/`readback` take explicit fuel, and the
 value traversals recurse structurally (mutual with a list helper for constructor
 arguments). There is no substitution and no index arithmetic: `substPure`,
-`shiftPure` and the delayed-lift machinery were deleted in M30.
+`shiftPure` and the delayed-lift machinery were deleted in M30 step 1, and the
+indices themselves in step 2 — there is no arithmetic of ANY kind below.
 -/
 
 namespace Dllbc.Val
@@ -40,18 +41,18 @@ def kNatRecS (P z s n : Val) : Val := .app (.app (.app (.app (.const "natRec") P
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`). -/
 def kAddFn : Val :=
-  .lam kNatTy (.lam kNatTy (kNatRecS (.lam kNatTy kNatTy) (.pvar 0)
-    (.lam kNatTy (.lam kNatTy (.ctor "S" [.pvar 0]))) (.pvar 1)))
+  .lam "a" kNatTy (.lam "b" kNatTy (kNatRecS (.lam "_" kNatTy kNatTy) (.pvar "b")
+    (.lam "a'" kNatTy (.lam "r" kNatTy (.ctor "S" [.pvar "r"]))) (.pvar "a")))
 def kAdd (a b : Val) : Val := .app (.app kAddFn a) b
 
 /-- `Le : Nat → Nat → Type` as a computing predicate (`Z ≤ _ ↦ ⊤`, `S ≤ Z ↦ ⊥`,
     `S ≤ S ↦ recurse`). Premise (2)'s obligation type is built from this. -/
 def kLeFn : Val :=
-  .lam kNatTy (kNatRecS (.lam kNatTy (.pi kNatTy .type)) (.lam kNatTy kUnitTy)
-    (.lam kNatTy (.lam (.pi kNatTy .type) (.lam kNatTy
-      (kNatRecS (.lam kNatTy .type) kBotTy
-        (.lam kNatTy (.lam .type (.app (.pvar 3) (.pvar 1)))) (.pvar 0)))))
-    (.pvar 0))
+  .lam "a" kNatTy (kNatRecS (.lam "_" kNatTy (.pi "_" kNatTy .type)) (.lam "_" kNatTy kUnitTy)
+    (.lam "a'" kNatTy (.lam "f" (.pi "_" kNatTy .type) (.lam "b" kNatTy
+      (kNatRecS (.lam "_" kNatTy .type) kBotTy
+        (.lam "b'" kNatTy (.lam "_" .type (.app (.pvar "f") (.pvar "b'")))) (.pvar "b")))))
+    (.pvar "a"))
 def kLe (a b : Val) : Val := .app (.app kLeFn a) b
 
 /-- `Array n T` — the ¶1.1 former, in the FIXED BASIS rather than §7's declaration
@@ -90,6 +91,10 @@ def arrRun? : Val → Option (List Val)
     and its target (the last relevant one) is constructor-headed. A `sym`- or
     `pvar`-headed spine, or a recursor stuck on a neutral target, is a value. -/
 
+/-- The comptime environment: name ↦ value, innermost first. Prepending IS
+    shadowing, and `List.lookup` finding the first match IS the scope rule. -/
+abbrev PEnv := List (String × Val)
+
 /-- Collect an application spine into its head and argument list (in order). -/
 def collectSpine : Val → Val × List Val
   | .app f a => let (h, as) := collectSpine f; (h, as ++ [a])
@@ -114,27 +119,43 @@ def rebuildSpine : Val → List Val → Val
     A closure lives in the BODY position of `lam`/`pi`/`sigmaT` rather than
     replacing them. So every consumer that matches those three formers goes on
     matching them; what changes is the single act of *opening* a binder, from
-    `substPure 0 a b` to `instBody b a`. That is why 18 substitution sites become
+    `substPure 0 a b` to `instBody x b a`. That is why 18 substitution sites became
     18 one-word edits rather than a rewrite of the checker.
 
     It also means the domain is **mixed**: a `Val` may be syntax (a hand-built
     recursor premise type, a term just reflected from the surface) or semantics (a
     value `eval` produced), and the two differ only in whether binder bodies are
     closures. `instBody` accepts both — a closure carries its own environment, a
-    syntactic body gets the singleton `[arg]` — and that is exactly right, because
-    a syntactic binder reached this way is closed but for its own variable.
+    syntactic body gets the singleton `[(x, arg)]` — and that is exactly right,
+    because a syntactic binder reached this way is closed but for its own variable.
 
-    ### The two variable conventions, which must not be conflated
+    ### One variable convention (M30 step 2)
 
-      * `pvar k` with `k < |ρ|` is **bound**: look it up.
-      * `pvar k` with `k ≥ |ρ|` is **free** — an index into the context *outside*
-        ρ — and evaluates to `pvar (k - |ρ|)`, the same down-shift `substPure`
-        performed when it eliminated a binder. Readback re-adds the depth.
-      * `lvl j` is a **level**, minted by readback, counted from the outside.
-        Readback turns it into `pvar (d - 1 - j)`.
+    There used to be two, disagreeing about arithmetic: a bound index looked up,
+    a free index down-shifted by `|ρ|`, and a `lvl` minted by readback converted
+    back by `d - 1 - j`. Under names there is one rule and no arithmetic —
 
-    The two rules disagree (`+d` versus `d - 1 - j`), which is the whole reason
-    `lvl` is a former of its own rather than a reuse of `pvar`.
+      * `pvar x` with `x` in `ρ` is **bound**: look it up.
+      * `pvar x` otherwise is **free**, and evaluates to itself.
+
+    — which is why the `lvl` former is gone: readback opens a binder at a fresh
+    `pvar`, and a fresh `pvar` is already the neutral it needed `lvl` to express.
+
+    ### Freshness, and why it is a LEVEL and not a counter
+
+    `readback` renames every binder it opens to `readbackName ⟨its level⟩`. That
+    is a reserved name (`§0`, `§1`, …) which no source program can write, so it
+    cannot capture what it descends past; and it is a function of the level alone,
+    so **readback output is canonical**: two α-variant functions read back to the
+    same tree, which is what lets `convert` stay `nfV a == nfV b` on the nose.
+
+    The invariant that makes it capture-free in the other direction, stated once
+    because everything below depends on it: *`readback` at depth `d` is applied
+    only to values whose free reserved names are all below `d`*. It holds at the
+    three exported entry points (`nfN`, `whnfOut`, `instBodyOut`), which read back
+    from depth 0 and are handed checker values, in which every reserved name is
+    bound; and it is preserved by the recursion, which mints `§d` while descending
+    into a body whose only new free name is that same `§d`.
 
     ### No η, structurally
 
@@ -162,11 +183,11 @@ def rebuildSpine : Val → List Val → Val
     thrown. It is turned into a value no rule can use, which surfaces as the
     rejection of whatever asked. That is weaker than `refineSym`'s throw in the
     message it can give and exactly as strong in what it forbids. -/
-def mkClosure (ρ : List Val) (body : Val) : Val :=
+def mkClosure (ρ : PEnv) (body : Val) : Val :=
   match body with
   | .closure _ _ => body
   | b =>
-    if hasStateMarkerList ρ then
+    if hasStateMarkerEnv ρ then
       .const "@@capture: a λ/Π closed over a state marker (⊥/loan/borrow) — §3.2 knowledge/state"
     else .closure ρ b
 
@@ -178,38 +199,38 @@ mutual
       were for `shiftPure`/`substPure`. That is not an omission: a borrow payload
       is state, `eval` computes knowledge, and descending into one would be the
       first step of the door §3.3 is holding shut. -/
-  def eval : Nat → List Val → Val → Val
+  def eval : Nat → PEnv → Val → Val
     | 0, _, v => v
     | fuel + 1, ρ, v =>
       match v with
-      | .pvar k =>
-        match ρ.get? k with
+      | .pvar x =>
+        match ρ.lookup x with
         | some w => w
-        | none => .pvar (k - ρ.length)          -- free: the binder-elimination down-shift
-      | .lam dom body => .lam (eval (fuel + 1) ρ dom) (mkClosure ρ body)
-      | .pi dom cod => .pi (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
-      | .sigmaT dom cod => .sigmaT (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
+        | none => .pvar x                       -- free: a name means itself
+      | .lam x dom body => .lam x (eval (fuel + 1) ρ dom) (mkClosure ρ body)
+      | .pi x dom cod => .pi x (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
+      | .sigmaT x dom cod => .sigmaT x (eval (fuel + 1) ρ dom) (mkClosure ρ cod)
       | .cmpT τ => .cmpT (eval (fuel + 1) ρ τ)
       | .app f a => whnfN false (fuel + 1) (.app (eval (fuel + 1) ρ f) (eval (fuel + 1) ρ a))
       | .ctor n args => .ctor n (evalList (fuel + 1) ρ args)
       | .idT a b c => .idT (eval (fuel + 1) ρ a) (eval (fuel + 1) ρ b) (eval (fuel + 1) ρ c)
-      | w => w        -- type, const, sym, lvl, closure, ⊥, loanM, borrowM, rfn
+      | w => w        -- type, const, sym, closure, ⊥, loanM, borrowM, rfn
   termination_by fuel _ v => (fuel, 1, sizeOf v)
-  def evalList : Nat → List Val → List Val → List Val
+  def evalList : Nat → PEnv → List Val → List Val
     | _, _, [] => []
     | fuel, ρ, v :: vs => eval fuel ρ v :: evalList fuel ρ vs
   termination_by fuel _ vs => (fuel, 1, sizeOf vs)
-  /-- **Open a binder at `arg`** — the single operation that replaces
+  /-- **Open the binder `x` at `arg`** — the single operation that replaces
       `substPure 0 arg body` at all eighteen of its sites.
 
       Both shapes of body are legal, and the asymmetry is the mixed domain showing
       through rather than a special case: a `closure` was built by `eval` and knows
       the environment it needs, while a bare body is syntax whose only free variable
       is the binder's own, so the singleton environment is complete for it. -/
-  def instBody : Nat → Val → Val → Val
-    | fuel, .closure ρ b, arg => eval fuel (arg :: ρ) b
-    | fuel, b, arg => eval fuel [arg] b
-  termination_by fuel _ _ => (fuel, 2, 0)
+  def instBody : Nat → String → Val → Val → Val
+    | fuel, x, .closure ρ b, arg => eval fuel ((x, arg) :: ρ) b
+    | fuel, x, b, arg => eval fuel [(x, arg)] b
+  termination_by fuel _ _ _ => (fuel, 2, 0)
   /-- Weak-head reduction over the mixed domain: β and ι, head redex only.
 
       Structurally the `whnfV` above it, with ONE line different — β opens the
@@ -221,8 +242,9 @@ mutual
     | rb, fuel + 1, v =>
       let (head, args) := collectSpine v
       match head, args with
-      | .lam _ b, a :: rest =>                        -- β, by capture
-        whnfN rb fuel (rebuildSpine (if rb then readback fuel 0 (instBody fuel b a) else instBody fuel b a) rest)
+      | .lam x _ b, a :: rest =>                      -- β, by capture
+        whnfN rb fuel (rebuildSpine
+          (if rb then readback fuel 0 (instBody fuel x b a) else instBody fuel x b a) rest)
       | .const "natRec", motive :: z :: s :: n :: rest =>
         match whnfN rb fuel n with
         | .ctor "Z" [] => whnfN rb fuel (rebuildSpine z rest)
@@ -294,25 +316,36 @@ mutual
         | a' => rebuildSpine (.const "arrRec") (tt :: motive :: pn :: pc :: n :: a' :: rest)
       | _, _ => rebuildSpine head args
   termination_by _ fuel _ => (fuel, 0, 0)
-  /-- Read a value back to closure-free de Bruijn syntax — see the note below the
-      block for why this is in it. -/
+  /-- Read a value back to closure-free syntax, renaming every binder it opens to
+      its LEVEL — see the note below the block for why this is in it, and the
+      freshness paragraph above for why the renaming is what makes the output
+      canonical rather than merely closure-free. -/
   def readback : Nat → Nat → Val → Val
     | 0, _, v => v
     | fuel + 1, depth, v =>
       match whnfN false (fuel + 1) v with
-      | .lvl j => .pvar (depth - 1 - j)
-      | .pvar k => .pvar (k + depth)
-      | .lam dom body =>
-        .lam (readback fuel depth dom) (readback fuel (depth + 1) (instBody fuel body (.lvl depth)))
-      | .pi dom cod =>
-        .pi (readback fuel depth dom) (readback fuel (depth + 1) (instBody fuel cod (.lvl depth)))
-      | .sigmaT dom cod =>
-        .sigmaT (readback fuel depth dom) (readback fuel (depth + 1) (instBody fuel cod (.lvl depth)))
+      -- The binder is opened at its OWN name (`nm`, which is what its body's
+      -- occurrences say) and bound to the fresh `x`; the node that comes back
+      -- carries `x`. Passing `x` on both sides would bind a name the body never
+      -- mentions and leave every occurrence free — the one way this rewrite can be
+      -- got wrong, and the only reason `nm` is still read at all.
+      | .lam nm dom body =>
+        let x := readbackName depth
+        .lam x (readback fuel depth dom)
+          (readback fuel (depth + 1) (instBody fuel nm body (.pvar x)))
+      | .pi nm dom cod =>
+        let x := readbackName depth
+        .pi x (readback fuel depth dom)
+          (readback fuel (depth + 1) (instBody fuel nm cod (.pvar x)))
+      | .sigmaT nm dom cod =>
+        let x := readbackName depth
+        .sigmaT x (readback fuel depth dom)
+          (readback fuel (depth + 1) (instBody fuel nm cod (.pvar x)))
       | .cmpT τ => .cmpT (readback fuel depth τ)
       | .app f a => .app (readback fuel depth f) (readback fuel depth a)
       | .ctor n args => .ctor n (readbackList fuel depth args)
       | .idT a b c => .idT (readback fuel depth a) (readback fuel depth b) (readback fuel depth c)
-      | w => w        -- type, const, sym, ⊥, loanM, borrowM, rfn: leaves, as in `nfV`
+      | w => w        -- pvar, type, const, sym, ⊥, loanM, borrowM, rfn: leaves
   termination_by fuel _ _ => (fuel, 3, 0)
   def readbackList : Nat → Nat → List Val → List Val
     | _, _, [] => []
@@ -372,64 +405,46 @@ def whnfOut (fuel : Nat) (v : Val) : Val := whnfN true fuel v
     of those operations is defined on first-order trees. The cost is a normalization
     of the opened body, which is what `substPure` followed by the caller's `nfV`
     already amounted to at eleven of the eighteen sites. -/
-def instBodyOut (fuel : Nat) (body arg : Val) : Val :=
-  readback fuel 0 (instBody fuel body arg)
+def instBodyOut (fuel : Nat) (x : String) (body arg : Val) : Val :=
+  readback fuel 0 (instBody fuel x body arg)
 
-/-! ## `let`, and how the comptime fragment reads one (M29 α)
+/-! ## `let`, and how the comptime fragment reads one (M29 α; rebuilt in M30 step 2)
 
     **`let` is a form BOTH arrows read.** ⇒ binds an Ω slot; ⇝'s reading is β —
     `let x = e ; rest` is `rest` with `x`'s occurrences replaced by `e`'s value.
     The two reflections that implement ⇝ (`Term.toValPure` below, monad-free, and
     `reflectC` in `Machine.lean`, which additionally resolves Ω snapshots) share
-    this context so that there is one statement of the rule rather than two.
+    this vocabulary so that there is one statement of the rule rather than two.
 
-    Doing β as a REWRITE — abstract `x` out of `rest`, then apply — would take
-    both reflections off their structural recursion, since the abstracted body is
-    not a subterm of anything. So the substitution is carried rather than applied:
-    a binding is recorded here and consulted at the `.var` that needs it, which is
-    the same reduction with the copies delayed.
+    **And it is now the β-REDEX, built rather than carried.** M29 α carried the
+    substitution instead — a `LetCtx` recording each binding with the pure-binder
+    DEPTH it was made at, and a lookup that lifted the value by the difference
+    (`shiftPure`, then `readback`) — because building the redex means abstracting
+    `x` out of `rest`, which takes both reflections off their structural recursion.
 
-    **The DEPTH is why this is a context and not a list.** A let-bound value may
-    mention pure de Bruijn variables — `λ (n : Nat). let s = f n ; …` binds `s` to
-    a value containing `#0` — and an occurrence of `s` under one more binder sits
-    at a different level than the binding did. Each entry therefore records the
-    depth it was made at, and a lookup lifts by the difference: exactly the shift a
-    β-rewrite performs on the way in, and since M30 exactly a `readback`. -/
-structure LetCtx where
-  /-- Pure binders crossed so far. -/
-  dep : Nat := 0
-  /-- `id ↦ (depth at binding, value)`, innermost first. -/
-  lets : List (Nat × Nat × Val) := []
-deriving Inhabited
+    Under names there is nothing to abstract: a `let`'s occurrences are already
+    `.var x` and mapping them to a pure name is a leaf rewrite the recursion does
+    on the way past. So the reflection emits `(λ ⟨x's reserved name⟩ : Type. rest) e`
+    and the evaluator does the rest, which is strictly better than what it
+    replaces on the point that matters — **the transplant is gone.** Carrying a
+    value from its binding site to an occurrence under further binders is exactly
+    the move that captures under names (nbe.md §5's "NbE never transplants a body"
+    was a claim about `eval`, and `LetCtx` was the one place in the tree that did
+    it anyway); an environment extension cannot, because the argument is a VALUE
+    before the inner binder is ever entered.
 
-/-- One pure binder deeper. -/
-def LetCtx.under (c : LetCtx) : LetCtx := { c with dep := c.dep + 1 }
+    The redex's binder is `letName x.id` — reserved, so no source binder can
+    shadow it and no `let` can shadow another (runtime ids are globally unique).
+    Its domain is `Type` and is never read: β discards the domain, and every
+    consumer of these reflections normalizes. -/
 
-/-- Record a `let` binding at the current depth. PREPENDED, so an inner `let` on
-    the same id shadows an outer one. -/
-def LetCtx.bind (c : LetCtx) (id : Nat) (v : Val) : LetCtx :=
-  { c with lets := (id, c.dep, v) :: c.lets }
+/-- The pure binder a reflected `let` binds, for the runtime slot `id`. Reserved
+    (`isReservedName`), which is what makes the redex capture-free. -/
+def letName (id : Nat) : String := "§let" ++ toString id
 
-/-- The value bound to a variable id, lifted from the depth it was bound at to
-    the depth this occurrence sits at. The identity at equal depths — every
-    occurrence not under a further pure binder, which is the common case — so the
-    lift is guarded rather than unconditional.
-
-    **The lift is `readback`, which is why this block moved below the evaluator**
-    (M30). It used to be `shiftPure (dep - bd) 0`, and that was `shiftPure`'s last
-    caller outside the substitution machinery — the one thing standing between M30
-    and deleting index arithmetic outright. The two agree by construction: readback
-    at depth `d` sends a free index `k` to `k + d`, which is the whole of what a
-    shift by `d` at cutoff 0 does. It additionally normalizes, which costs nothing
-    here — `readC` normalizes the result anyway — and buys the deletion.
-
-    Fixed fuel, like `ctorSig`'s: a let-bound value is a reflected subterm, and the
-    two callers (`reflectC`, `Term.toValPureGo`) are structural recursions that
-    carry no budget of their own. -/
-def LetCtx.find? (c : LetCtx) (id : Nat) : Option Val :=
-  match c.lets.find? (fun e => e.1 == id) with
-  | some (_, bd, v) => some (if c.dep == bd then v else readback 1000 (c.dep - bd) v)
-  | none => none
+/-- The reflected `let x = rhs ; rest`: the β-redex, with `x`'s occurrences in
+    `rest` already rewritten to `letName x.id` by the caller's traversal. -/
+def letRedex (id : Nat) (rhs rest : Val) : Val := .app (.lam (letName id) .type rest) rhs
 
 /-! Reflect a PURE `Term` into a `Val` (no monad, no Ω): the borrow-free fragment
     only — `var`/`deref`/runtime forms map to `⊥` (they never occur in a pure
@@ -437,37 +452,38 @@ def LetCtx.find? (c : LetCtx) (id : Nat) : Option Val :=
     subterm (an `eqb`-spine hidden in a `count`-unfolding) is exposed before
     `abstractOccurrences`.
 
-    A `let` is read by β, through the context above. A `.var` that is NOT
-    let-bound still maps to `⊥`: with no Ω there is nothing else it could be, and
-    the distinction is exactly the one this reflection is for — a `let` is part of
-    the pure term, an Ω snapshot is not. Moved here from `Value.lean` in M29 α,
-    which is when it acquired the `let` case and with it a use for `shiftPure`. -/
+    A `let` is read by β, as the redex above. A `.var` that is NOT let-bound still
+    maps to `⊥`: with no Ω there is nothing else it could be, and the distinction
+    is exactly the one this reflection is for — a `let` is part of the pure term,
+    an Ω snapshot is not. `lets` is the list of ids currently bound, innermost
+    first, which is all the scope information a name-keyed reading needs. -/
 mutual
-  def Term.toValPureGo (c : LetCtx) : Term → Val
+  def Term.toValPureGo (lets : List Nat) : Term → Val
     | .type => .type
     | .const k => .const k
-    | .pvar k => .pvar k
-    | .var x => (c.find? x.id).getD .bot
-    | .letIn x rhs rest => Term.toValPureGo (c.bind x.id (Term.toValPureGo c rhs)) rest
-    | .cmpT τ => .cmpT (Term.toValPureGo c τ)
-    | .pi d cod => .pi (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
-    | .sigmaT d cod => .sigmaT (Term.toValPureGo c d) (Term.toValPureGo c.under cod)
-    | .lam d b => .lam (Term.toValPureGo c d) (Term.toValPureGo c.under b)
-    | .app f a => .app (Term.toValPureGo c f) (Term.toValPureGo c a)
-    | .idT a b b' => .idT (Term.toValPureGo c a) (Term.toValPureGo c b) (Term.toValPureGo c b')
-    | .ctorApp n args => .ctor n (Term.toValPureListGo c args)
+    | .pvar x => .pvar x
+    | .var x => if lets.contains x.id then .pvar (letName x.id) else .bot
+    | .letIn x rhs rest =>
+      letRedex x.id (Term.toValPureGo lets rhs) (Term.toValPureGo (x.id :: lets) rest)
+    | .cmpT τ => .cmpT (Term.toValPureGo lets τ)
+    | .pi x d cod => .pi x (Term.toValPureGo lets d) (Term.toValPureGo lets cod)
+    | .sigmaT x d cod => .sigmaT x (Term.toValPureGo lets d) (Term.toValPureGo lets cod)
+    | .lam x d b => .lam x (Term.toValPureGo lets d) (Term.toValPureGo lets b)
+    | .app f a => .app (Term.toValPureGo lets f) (Term.toValPureGo lets a)
+    | .idT a b b' => .idT (Term.toValPureGo lets a) (Term.toValPureGo lets b) (Term.toValPureGo lets b')
+    | .ctorApp n args => .ctor n (Term.toValPureListGo lets args)
     | .unit => .ctor "unit" []
     | _ => .bot                                          -- runtime forms: absent in pure goals
   termination_by t => sizeOf t
-  def Term.toValPureListGo (c : LetCtx) : List Term → List Val
+  def Term.toValPureListGo (lets : List Nat) : List Term → List Val
     | [] => []
-    | t :: ts => Term.toValPureGo c t :: Term.toValPureListGo c ts
+    | t :: ts => Term.toValPureGo lets t :: Term.toValPureListGo lets ts
   termination_by ts => sizeOf ts
 end
 
-def Term.toValPure (t : Term) : Val := Term.toValPureGo {} t
+def Term.toValPure (t : Term) : Val := Term.toValPureGo [] t
 
-def Term.toValPureList (ts : List Term) : List Val := Term.toValPureListGo {} ts
+def Term.toValPureList (ts : List Term) : List Val := Term.toValPureListGo [] ts
 
 /-! ## Full normalization and conversion -/
 
@@ -495,7 +511,7 @@ def convert (fuel : Nat) (a b : Val) : Bool := nfV fuel a == nfV fuel b
 
     The last is **state only**: reserved names with no `ctorSig` entry, so no program
     can write or match one, and every generic `Val` walker (`loanIds`, `symIds`,
-    `renumber`, `loanToPvar`, `hasStateMarker`, `beq`) traverses it unchanged — the
+    `renumber`, `hasStateMarker`, `beq`) traverses it unchanged — the
     load-bearing claim of Appendix A, and the reason the borrow machinery needed no
     edit. An UNCARVED array carries no wrapper at all: ¶1.1's "a single segment is
     abbreviated to its body, since the two are the same state". -/
@@ -622,13 +638,15 @@ partial def arrFoldDeep : Val → Val
 
     No inductive-declaration machinery: a small fixed table telling `hasType`,
     for a given whnf'd expected type, the constructor's field types as a
-    telescope (dependent positions carry de Bruijn references to earlier
-    fields — e.g. `Pair`'s second field). `none` means the constructor does
-    not inhabit that type former. -/
+    telescope (dependent positions refer to earlier fields BY NAME — e.g.
+    `Pair`'s second field, which is the Σ's codomain under the Σ's own binder).
+    `none` means the constructor does not inhabit that type former. -/
 
-/-- The field-type telescope of a constructor, given the whnf'd expected type. -/
+/-- The field-type telescope of a constructor, given the whnf'd expected type.
+    Each entry is `(the name later entries reach this field by, the field's
+    type)`; `"_"` where nothing does. -/
 structure CtorSig where
-  fieldTypes : Val → Option (List Val)
+  fieldTypes : Val → Option (List (String × Val))
 
 /-- The fixed constructor basis: Unit, Bool, Nat, List (element parameter),
     and Σ's `Pair` (dependent second field). -/
@@ -637,11 +655,18 @@ def ctorSig : String → Option CtorSig
   | "True"  => some { fieldTypes := fun ty => match ty with | .const "Bool" => some [] | _ => none }
   | "False" => some { fieldTypes := fun ty => match ty with | .const "Bool" => some [] | _ => none }
   | "Z"     => some { fieldTypes := fun ty => match ty with | .const "Nat" => some [] | _ => none }
-  | "S"     => some { fieldTypes := fun ty => match ty with | .const "Nat" => some [.const "Nat"] | _ => none }
+  | "S"     => some { fieldTypes := fun ty =>
+      match ty with | .const "Nat" => some [("_", .const "Nat")] | _ => none }
   | "Nil"   => some { fieldTypes := fun ty => match ty with | .app (.const "List") _ => some [] | _ => none }
   | "Cons"  => some { fieldTypes := fun ty =>
-      match ty with | .app (.const "List") t => some [t, .app (.const "List") t] | _ => none }
-  | "Pair"  => some { fieldTypes := fun ty => match ty with | .sigmaT a b => some [a, b] | _ => none }
+      match ty with
+      | .app (.const "List") t => some [("_", t), ("_", .app (.const "List") t)]
+      | _ => none }
+  -- The one DEPENDENT entry in the table: `Pair`'s second field type is the Σ's
+  -- codomain, a body under the Σ's own binder — so that binder is the name
+  -- `checkFields` opens it at.
+  | "Pair"  => some { fieldTypes := fun ty =>
+      match ty with | .sigmaT x a b => some [(x, a), ("_", b)] | _ => none }
   -- `Arr` — the array literal (¶1.4). Its field telescope for a CONCRETE `n` is `T`
   -- repeated `n` times; at a symbolic `n` there is no constructor signature, and
   -- correctly so — one cannot write an array literal of unknown length. This is
@@ -650,7 +675,7 @@ def ctorSig : String → Option CtorSig
   -- and this entry is where the drift would start.
   | "Arr"   => some { fieldTypes := fun ty =>
       match asArrayTy? ty with
-      | some (n, t) => (natOfVal? (Val.whnfOut 1000 n)).map (fun k => List.replicate k t)
+      | some (n, t) => (natOfVal? (Val.whnfOut 1000 n)).map (fun k => List.replicate k ("_", t))
       | none => none }
   -- Refl : Id A a a — a nullary constructor whose type demands equal endpoints.
   -- (Fixed fuel for the endpoint convert; construction sites are small.)
@@ -697,7 +722,7 @@ def typeCtors : Val → Option (List String)
   | .const "Unit" => some ["unit"]
   | .const "Bot"  => some []
   | .app (.const "List") _ => some ["Nil", "Cons"]
-  | .sigmaT _ _   => some ["Pair"]
+  | .sigmaT _ _ _ => some ["Pair"]
   | .idT _ _ _    => some ["Refl"]                 -- §10: Id's only constructor
   -- `Array n T` has the single constructor `Arr` at a concrete `n`, and NO known
   -- constructor set at a symbolic one. ¶1.4: arrays are never matched anyway — an

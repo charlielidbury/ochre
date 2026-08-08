@@ -50,8 +50,9 @@ def listRecS (A P pn pc l : Val) : Val := .app (.app (.app (.app (.app (.const "
 /-- The successor-recurse arm shared by `Le`/`NatCode`-shaped double recursions:
     `λa'. λrecA. λb. natRec (λ_.Type) falseCase (λb'. λ_. recA b') b`. -/
 def sucArm (falseCase : Val) : Val :=
-  .lam natTy (.lam (.pi natTy .type) (.lam natTy
-    (natRecS (.lam natTy .type) falseCase (.lam natTy (.lam .type (.app (.pvar 3) (.pvar 1)))) (.pvar 0))))
+  .lam "a'" natTy (.lam "recA" (.pi "_" natTy .type) (.lam "b" natTy
+    (natRecS (.lam "_" natTy .type) falseCase
+      (.lam "b'" natTy (.lam "_" .type (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b"))))
 
 /-! ## `Le : Nat → Nat → Type`  (Z ≤ _ ↦ ⊤ ; S ≤ Z ↦ ⊥ ; S ≤ S ↦ recurse) -/
 
@@ -65,36 +66,51 @@ def Le (a b : Val) : Val := .app (.app LeFn a) b
 
 /-! ## `eqb, leb : Nat → Nat → Bool` — runtime-usable decision procedures -/
 
-def eqbFn : Val := .lam natTy (natRecS (.lam natTy (.pi natTy boolTy))
-  (.lam natTy (natRecS (.lam natTy boolTy) tt (.lam natTy (.lam boolTy ff)) (.pvar 0)))
-  (.lam natTy (.lam (.pi natTy boolTy) (.lam natTy
-    (natRecS (.lam natTy boolTy) ff (.lam natTy (.lam boolTy (.app (.pvar 3) (.pvar 1)))) (.pvar 0)))))
-  (.pvar 0))
+def eqbFn : Val := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy))
+  (.lam "b" natTy (natRecS (.lam "_" natTy boolTy) tt (.lam "_" natTy (.lam "_" boolTy ff)) (.pvar "b")))
+  (.lam "a'" natTy (.lam "recA" (.pi "_" natTy boolTy) (.lam "b" natTy
+    (natRecS (.lam "_" natTy boolTy) ff
+      (.lam "b'" natTy (.lam "_" boolTy (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b")))))
+  (.pvar "a"))
 def eqb (a b : Val) : Val := .app (.app eqbFn a) b
 
-def lebFn : Val := .lam natTy (natRecS (.lam natTy (.pi natTy boolTy)) (.lam natTy tt)
-  (.lam natTy (.lam (.pi natTy boolTy) (.lam natTy
-    (natRecS (.lam natTy boolTy) ff (.lam natTy (.lam boolTy (.app (.pvar 3) (.pvar 1)))) (.pvar 0)))))
-  (.pvar 0))
+def lebFn : Val := .lam "a" natTy (natRecS (.lam "_" natTy (.pi "_" natTy boolTy)) (.lam "_" natTy tt)
+  (.lam "a'" natTy (.lam "recA" (.pi "_" natTy boolTy) (.lam "b" natTy
+    (natRecS (.lam "_" natTy boolTy) ff
+      (.lam "b'" natTy (.lam "_" boolTy (.app (.pvar "recA") (.pvar "b'")))) (.pvar "b")))))
+  (.pvar "a"))
 def leb (a b : Val) : Val := .app (.app lebFn a) b
 
 /-! ## `count : Nat → List Nat → Nat` — the multiset counter (`listRec` + `boolRec`) -/
 
-def countArm : Val := .lam natTy (.lam listNatTy (.lam natTy
-  (boolRecS (.lam boolTy natTy) (suc (.pvar 0)) (.pvar 0) (eqb (.pvar 4) (.pvar 2)))))
-def countFn : Val := .lam natTy (.lam listNatTy (listRecS natTy (.lam listNatTy natTy) zero countArm (.pvar 0)))
+-- OPEN in `n`, deliberately: an arm is the body of the recursion it belongs to and
+-- reaches the outer parameter the recursion is about. That was `pvar 4` and had to
+-- be counted; under names it says which variable it means, and `countFn` binding it
+-- is visible one line down.
+def countArm : Val := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy
+  (boolRecS (.lam "_" boolTy natTy) (suc (.pvar "rec")) (.pvar "rec")
+    (eqb (.pvar "n") (.pvar "h")))))
+def countFn : Val :=
+  .lam "n" natTy (.lam "l" listNatTy
+    (listRecS natTy (.lam "_" listNatTy natTy) zero countArm (.pvar "l")))
 def count (n l : Val) : Val := .app (.app countFn n) l
 
 /-! ## `Bound : Nat → List Nat → Type` and `Sorted : List Nat → Type` -/
 
 -- Bound h l : the head of l is ≥ h (Nil ↦ ⊤, Cons h' _ ↦ Le h h').
-def boundArm : Val := .lam natTy (.lam listNatTy (.lam .type (Le (.pvar 4) (.pvar 2))))
-def BoundFn : Val := .lam natTy (.lam listNatTy (listRecS natTy (.lam listNatTy .type) unitTy boundArm (.pvar 0)))
+def boundArm : Val :=                                    -- OPEN in `h`, like `countArm`
+  .lam "h'" natTy (.lam "t" listNatTy (.lam "_" .type (Le (.pvar "h") (.pvar "h'"))))
+def BoundFn : Val :=
+  .lam "h" natTy (.lam "l" listNatTy
+    (listRecS natTy (.lam "_" listNatTy .type) unitTy boundArm (.pvar "l")))
 def Bound (h l : Val) : Val := .app (.app BoundFn h) l
 
 -- Sorted l : Nil ↦ ⊤ ; Cons h t ↦ Bound h t × Sorted t.
-def sortedArm : Val := .lam natTy (.lam listNatTy (.lam .type (.sigmaT (Bound (.pvar 2) (.pvar 1)) (.pvar 1))))
-def SortedFn : Val := .lam listNatTy (listRecS natTy (.lam listNatTy .type) unitTy sortedArm (.pvar 0))
+def sortedArm : Val :=
+  .lam "h" natTy (.lam "t" listNatTy (.lam "rec" .type
+    (.sigmaT "_" (Bound (.pvar "h") (.pvar "t")) (.pvar "rec"))))
+def SortedFn : Val :=
+  .lam "l" listNatTy (listRecS natTy (.lam "_" listNatTy .type) unitTy sortedArm (.pvar "l"))
 def Sorted (l : Val) : Val := .app SortedFn l
 
 /-! ## `len`, `take`, `drop` — the segment vocabulary (§14)
@@ -104,24 +120,30 @@ def Sorted (l : Val) : Val := .app SortedFn l
     recursion shape. These are the length bound and the prefix/suffix a
     segment-scoped spec talks about. -/
 
-def lenArm : Val := .lam natTy (.lam listNatTy (.lam natTy (suc (.pvar 0))))
-def lenFn : Val := .lam listNatTy (listRecS natTy (.lam listNatTy natTy) zero lenArm (.pvar 0))
+def lenArm : Val := .lam "h" natTy (.lam "t" listNatTy (.lam "rec" natTy (suc (.pvar "rec"))))
+def lenFn : Val :=
+  .lam "l" listNatTy (listRecS natTy (.lam "_" listNatTy natTy) zero lenArm (.pvar "l"))
 def len (l : Val) : Val := .app lenFn l
 
 def takeArm : Val :=
-  .lam natTy (.lam (.pi listNatTy listNatTy) (.lam listNatTy
-    (listRecS natTy (.lam listNatTy listNatTy) nilV
-      (.lam natTy (.lam listNatTy (.lam listNatTy (consV (.pvar 2) (.app (.pvar 4) (.pvar 1)))))) (.pvar 0))))
+  .lam "n'" natTy (.lam "recN" (.pi "_" listNatTy listNatTy) (.lam "l" listNatTy
+    (listRecS natTy (.lam "_" listNatTy listNatTy) nilV
+      (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy
+        (consV (.pvar "h") (.app (.pvar "recN") (.pvar "t"))))))
+      (.pvar "l"))))
 def takeFn : Val :=
-  .lam natTy (natRecS (.lam natTy (.pi listNatTy listNatTy)) (.lam listNatTy nilV) takeArm (.pvar 0))
+  .lam "n" natTy (natRecS (.lam "_" natTy (.pi "_" listNatTy listNatTy))
+    (.lam "_" listNatTy nilV) takeArm (.pvar "n"))
 def take (n l : Val) : Val := .app (.app takeFn n) l
 
 def dropArm : Val :=
-  .lam natTy (.lam (.pi listNatTy listNatTy) (.lam listNatTy
-    (listRecS natTy (.lam listNatTy listNatTy) nilV
-      (.lam natTy (.lam listNatTy (.lam listNatTy (.app (.pvar 4) (.pvar 1))))) (.pvar 0))))
+  .lam "n'" natTy (.lam "recN" (.pi "_" listNatTy listNatTy) (.lam "l" listNatTy
+    (listRecS natTy (.lam "_" listNatTy listNatTy) nilV
+      (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy (.app (.pvar "recN") (.pvar "t")))))
+      (.pvar "l"))))
 def dropFn : Val :=
-  .lam natTy (natRecS (.lam natTy (.pi listNatTy listNatTy)) (.lam listNatTy (.pvar 0)) dropArm (.pvar 0))
+  .lam "n" natTy (natRecS (.lam "_" natTy (.pi "_" listNatTy listNatTy))
+    (.lam "l" listNatTy (.pvar "l")) dropArm (.pvar "n"))
 def drop (n l : Val) : Val := .app (.app dropFn n) l
 
 /-- `add a b` by recursion on `a` (`add Z b = b`, `add (S a') b = S (add a' b)`).
@@ -132,8 +154,10 @@ def add (a b : Val) : Val := .app (.app addFn a) b
 
 /-- `append a b` by recursion on `a` (`Nil ↦ b`, `Cons h t ↦ Cons h (append t b)`). -/
 def appendFn : Val :=
-  .lam listNatTy (.lam listNatTy (listRecS natTy (.lam listNatTy listNatTy) (.pvar 0)
-    (.lam natTy (.lam listNatTy (.lam listNatTy (consV (.pvar 2) (.pvar 0))))) (.pvar 1)))
+  .lam "a" listNatTy (.lam "b" listNatTy
+    (listRecS natTy (.lam "_" listNatTy listNatTy) (.pvar "b")
+      (.lam "h" natTy (.lam "t" listNatTy (.lam "r" listNatTy (consV (.pvar "h") (.pvar "r")))))
+      (.pvar "a")))
 def append (a b : Val) : Val := .app (.app appendFn a) b
 
 /-! ## First lemma: `le_refl : Π n. Le n n`, by `natRec`
@@ -143,9 +167,9 @@ def append (a b : Val) : Val := .app (.app appendFn a) b
     definitionally equal. -/
 
 def le_refl : Val :=
-  .lam natTy (natRecS (.lam natTy (Le (.pvar 0) (.pvar 0))) star
-    (.lam natTy (.lam (Le (.pvar 0) (.pvar 0)) (.pvar 0))) (.pvar 0))
-def le_refl_ty : Val := .pi natTy (Le (.pvar 0) (.pvar 0))
+  .lam "n" natTy (natRecS (.lam "m" natTy (Le (.pvar "m") (.pvar "m"))) star
+    (.lam "m" natTy (.lam "rec" (Le (.pvar "m") (.pvar "m")) (.pvar "rec"))) (.pvar "n"))
+def le_refl_ty : Val := .pi "n" natTy (Le (.pvar "n") (.pvar "n"))
 
 /-! ## Term-level Std (§12): the library at telescope/return/owed positions
 
@@ -159,10 +183,10 @@ mutual
   def toTerm : Val → Dllbc.Term
     | .type => .type
     | .const c => .const c
-    | .pvar k => .pvar k
-    | .lam d b => .lam (toTerm d) (toTerm b)
-    | .pi d c => .pi (toTerm d) (toTerm c)
-    | .sigmaT d c => .sigmaT (toTerm d) (toTerm c)
+    | .pvar x => .pvar x
+    | .lam x d b => .lam x (toTerm d) (toTerm b)
+    | .pi x d c => .pi x (toTerm d) (toTerm c)
+    | .sigmaT x d c => .sigmaT x (toTerm d) (toTerm c)
     | .app f a => .app (toTerm f) (toTerm a)
     | .idT a b c => .idT (toTerm a) (toTerm b) (toTerm c)
     | .ctor n args => .ctorApp n (toTermList args)

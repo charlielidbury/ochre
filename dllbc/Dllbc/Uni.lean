@@ -225,18 +225,18 @@ syntax uterm : ublk                                          -- final expression
 namespace Surface
 open Lean
 
-/-- The name a `pctx` entry is masked to when a `let` shadows a pure binder
-    (M29 α). It occupies the entry so that every de Bruijn INDEX below it keeps
-    its level, while being unwritable as source — so the masked binder is exactly
-    unreachable by name, which is what shadowing is. -/
-def shadowedName : String := "§shadowed"
+/-- The binder a pure form gets when NOTHING can refer to it: a plain `&mut τ`'s
+    entry snapshot, and the non-dependent arrow's domain. Reserved, so it is not
+    merely unused but unwritable. -/
+def unusedSnapName : String := "§_"
 
-/-- Innermost-first de Bruijn index of `s` in `l`. -/
-def idxOf? (l : List String) (s : String) : Option Nat :=
-  let rec go : List String → Nat → Option Nat
-    | [], _ => none
-    | x :: xs, i => if x == s then some i else go xs (i + 1)
-  go l 0
+-- (`shadowedName` and `idxOf?` were deleted in M30 step 2. The first existed so
+-- that a `let` shadowing a pure binder could occupy that binder's `pctx` slot —
+-- every de Bruijn INDEX below it had to keep its level — while being unwritable as
+-- source. Under names there is no level to keep, so the shadowed binder is simply
+-- dropped from the scope, which is what the mask was simulating. The second was the
+-- index lookup itself: `pctx` is now a set of names in scope and the question asked
+-- of it is membership.)
 
 /-- Build the `Term` syntax for the numeral `k` as `S (S (… Z))`. -/
 partial def buildNat : Nat → MacroM (TSyntax `term)
@@ -313,15 +313,14 @@ def checkBinder (x : Ident) : MacroM Unit := do
 def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
   if Dllbc.isUpperInit nm then `(Dllbc.Term.cmpT $τ) else pure τ
 
-/-- Resolve a bare identifier in a type/back position. Pure binder (innermost) →
-    `pvar`; earlier telescope param → `var`; constructor → nullary `ctorApp`;
-    kernel const → `const`; reified-function alias → its `…FnT` Term; else the
-    Lean identifier of that name (a `Term` in scope). -/
+/-- Resolve a bare identifier in a type/back position. Pure binder in scope →
+    `pvar` at that very name; earlier telescope param → `var`; constructor →
+    nullary `ctorApp`; kernel const → `const`; reified-function alias → its `…FnT`
+    Term; else the Lean identifier of that name (a `Term` in scope). -/
 def resolveName (rctx : List (String × Nat)) (pctx : List String) (x : Ident) : MacroM (TSyntax `term) := do
   let s := x.getId.toString
-  match idxOf? pctx s with
-  | some i => `(Dllbc.Term.pvar $(quote i))
-  | none =>
+  if pctx.contains s then `(Dllbc.Term.pvar $(quote s))
+  else
     match rctx.lookup s with
     | some id => `(Dllbc.Term.var ⟨$(quote id), $(quote s)⟩)
     | none =>
@@ -414,14 +413,18 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
   | `(uterm| &mut ( $x:ident : $τ:uterm ~> $s:uterm )) => do     -- borrow type, snapshot binder
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (s', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 s
-    return (← `(Dllbc.Term.borrowT $τ' $s'), n2)
+    return (← `(Dllbc.Term.borrowT $(quote (x.getId.toString)) $τ' $s'), n2)
+  -- The two spellings whose snapshot binder is UNUSED get a reserved name, and no
+  -- weakening: `shiftPure 1 0` used to sit on both of these lines and is the
+  -- identity under names (M30 step 2). `trivialOwedT` reads the second shape and
+  -- was simplified with them.
   | `(uterm| &mut ( $τ:uterm ~> $s:uterm )) => do                -- borrow type, S ignores s
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (s', n2) ← elabUTerm rctx pctx n1 s
-    return (← `(Dllbc.Term.borrowT $τ' (Dllbc.Term.shiftPure 1 0 $s')), n2)
+    return (← `(Dllbc.Term.borrowT $(quote unusedSnapName) $τ' $s'), n2)
   | `(uterm| &mut $e:uterm) => do                                -- the borrow TYPE, in any position
     let (e', n) ← elabUTerm rctx pctx next e
-    return (← `(Dllbc.Term.borrowT $e' (Dllbc.Term.shiftPure 1 0 $e')), n)
+    return (← `(Dllbc.Term.borrowT $(quote unusedSnapName) $e' $e'), n)
   | `(uterm| &m $e:uterm) => do                                  -- the borrow OPERATION, in any position
     -- M29 β. This row and the one above are the two spellings, and neither asks
     -- which arrow it is under: `&m` in a ⇝ position is a `.borrow`, which
@@ -442,7 +445,8 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.lam $(← binderDom (x.getId.toString) τ') $b'), n2)
+    return (← `(Dllbc.Term.lam $(quote (x.getId.toString))
+      $(← binderDom (x.getId.toString) τ') $b'), n2)
   | `(uterm| λ ($bs:ulamb,*) { $b:ublk }) => do
     -- Runtime binders, so fresh absolute ids threaded through `next` exactly as
     -- `let` and match patterns mint them — and pushed onto `rctx`, not `pctx`:
@@ -459,7 +463,8 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.pi $(← binderDom (x.getId.toString) τ') $b'), n2)
+    return (← `(Dllbc.Term.pi $(quote (x.getId.toString))
+      $(← binderDom (x.getId.toString) τ') $b'), n2)
   -- Σ binders are name-checked but carry NO mode. §6 gives modes to "λ, Π, and
   -- `let` alike" — the binders of *parameters* — and a Σ's binder names a
   -- projection, not a parameter: erasing one component of a pair is QTT
@@ -469,16 +474,20 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $τ' $b'), n2)
+    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString)) $τ' $b'), n2)
   | `(uterm| Σ ($x:ident : $τ:uterm). $b:uterm) => do
     checkBinder x
     let (τ', n1) ← elabUTerm rctx pctx next τ
     let (b', n2) ← elabUTerm rctx (x.getId.toString :: pctx) n1 b
-    return (← `(Dllbc.Term.sigmaT $τ' $b'), n2)
+    return (← `(Dllbc.Term.sigmaT $(quote (x.getId.toString)) $τ' $b'), n2)
+  -- The non-dependent arrow's binder is reserved and is NOT pushed onto `pctx`:
+  -- nothing can refer to it, which is what "non-dependent" means. (The de Bruijn
+  -- version had to push a placeholder, because every binder crossed moved the
+  -- indices below it.)
   | `(uterm| $a:uterm → $b:uterm) => do
     let (a', n1) ← elabUTerm rctx pctx next a
-    let (b', n2) ← elabUTerm rctx ("_" :: pctx) n1 b
-    return (← `(Dllbc.Term.pi $a' $b'), n2)
+    let (b', n2) ← elabUTerm rctx pctx n1 b
+    return (← `(Dllbc.Term.pi $(quote unusedSnapName) $a' $b'), n2)
   | `(uterm| &mut ( $x:ident : $τ:uterm )) =>
     Macro.throwErrorAt x s!"&mut ({x.getId} : τ) is not a borrow type — the snapshot-binder spelling is `&mut ({x.getId} : τ ~> S)`, where `S` is what the borrow OWES back and `{x.getId}` is its entry snapshot, bound as pure var 0 in `S`. Without the `~> S` this would read as `&mut` applied to the ascription `({x.getId} : τ)`, which is a borrow of a SEAL — never meaningful, since a seal is not a place. If you meant a plain borrow of the type, write `&mut τ`."
   | `(uterm| ($t:uterm : $u:uterm)) => do
@@ -556,7 +565,7 @@ partial def elabUTerm (rctx : List (String × Nat)) (pctx : List String) (next :
     | `(uterm| $h:ident) =>
       let hs := h.getId.toString
       let (argTerms, n) ← elabUList rctx pctx next args.toList
-      if ctorSet.contains hs && (idxOf? pctx hs).isNone && (rctx.lookup hs).isNone then
+      if ctorSet.contains hs && !pctx.contains hs && (rctx.lookup hs).isNone then
         return (← `(Dllbc.Term.ctorApp $(quote hs) [$argTerms,*]), n)
       -- **JUXTAPOSITION IS ALREADY ONE FORM, and β leaves the surface alone**
       -- (M27). `f a b` elaborates to a `.app` spine over the head's resolution,
@@ -696,8 +705,8 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     let decT ← match dec with
       | none => `((none : Option Nat))
       | some d =>
-        match idxOf? names.reverse d.getId.toString with     -- reverse: idxOf? is innermost-first
-        | some i => `(some $(quote (n - 1 - i)))
+        match names.findIdx? (· == d.getId.toString) with
+        | some i => `(some $(quote i))
         | none => Macro.throwErrorAt d s!"fn: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
     let nm := name.getId.toString
     -- The slot. `progBase + next` rather than `next` itself, because a function's
@@ -736,10 +745,12 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     -- out loud because `resolveName` consults `pctx` FIRST. Left alone,
     -- `λ (x : τ). let x = e ; x` would resolve the tail's `x` to the λ's binder —
     -- the outer one — which is capture by the sort of silent margin this project
-    -- keeps finding. Masking the name in `pctx` (the INDEX stays, so every other
-    -- de Bruijn reference keeps its level) makes the innermost binder win, which
-    -- is what shadowing means. ⇒ bodies had the same hole and are fixed with it.
-    let pctx' := pctx.map (fun s => if s == name then shadowedName else s)
+    -- keeps finding. Dropping the name from `pctx` makes the innermost binder win,
+    -- which is what shadowing means. (It was a MASK until M30 step 2, because the
+    -- entry had to stay to keep every index below it at its level; under names
+    -- there is nothing below it to keep.) ⇒ bodies had the same hole and are fixed
+    -- with it.
+    let pctx' := pctx.filter (fun s => s != name)
     let (rest', n2) ← elabUBlk ((name, n1) :: rctx) pctx' (n1 + 1) rest
     return (← `(Dllbc.Term.letIn ⟨$(quote n1), $(quote name)⟩ $e' $rest'), n2)
   | `(ublk| $p:uterm := $e:uterm ; $rest:ublk) => do
@@ -758,8 +769,13 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
     arm binders (k/ih/h/t) push `pctx`, never `next`. The arm binder DOMAINS are
     DERIVED from the recursor scheme and the motive rather than inferred: a natRec
     `S` step is `λ (k : Nat). λ (ih : P k). …`, and `P k` is built by re-elaborating
-    the motive BODY with the motive's own binder at position 0 — de Bruijn-correct
-    whatever the arm names its binders. -/
+    the motive BODY and renaming the motive's own binder to the arm's.
+
+    That renaming is what the de Bruijn version got by ARITHMETIC (M30 step 2): it
+    elaborated the body in a context contrived to put the motive's binder at the
+    index the arm's binder would occupy — hence `pOf`'s `leading` argument, whose
+    entries existed only to be counted. Under names the arm's binder is named and
+    the substitution says so. -/
 partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next : Nat)
     (scrut motive : TSyntax `uterm) (arms : Array (TSyntax `uelimArm)) : MacroM (TSyntax `term × Nat) := do
   let (scrutT, n1) ← elabUTerm rctx pctx next scrut
@@ -782,17 +798,20 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
   let names := arms.filterMap (fun a => match a with
     | `(uelimArm| $ctor:ident $[($_:ident)]* $[$_:ident]? => $_:ublk) => some ctor.getId.toString
     | _ => none)
-  let pOf (leading : List String) : MacroM (TSyntax `term) := do
-    pure (← elabUTerm rctx (mName :: leading ++ pctx) n2 mBody).1
+  -- `P ⟨target⟩`: the motive body with the motive's binder renamed to the arm's.
+  let pOf (target : String) : MacroM (TSyntax `term) := do
+    let b := (← elabUTerm rctx (mName :: pctx) n2 mBody).1
+    `(Dllbc.Term.substP $(quote mName) (Dllbc.Term.pvar $(quote target)) $b)
   if names.contains "Z" || names.contains "S" then
     let (_, _, zb) ← getArm "Z"; let z := (← elabUBlk rctx pctx n2 zb).1
     let (sb, sih, sbody) ← getArm "S"
     let kName := (sb.get! 0).getId.toString
     let ihName := (sih.getD (mkIdent `ih)).getId.toString
-    let ihDom ← pOf []
+    let ihDom ← pOf kName
     let body := (← elabUBlk rctx (ihName :: kName :: pctx) n2 sbody).1
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "natRec") $motiveT) $z)
-        (Dllbc.Term.lam (Dllbc.Term.const "Nat") (Dllbc.Term.lam $ihDom $body))) $scrutT), n2)
+        (Dllbc.Term.lam $(quote kName) (Dllbc.Term.const "Nat")
+          (Dllbc.Term.lam $(quote ihName) $ihDom $body))) $scrutT), n2)
   else if names.contains "True" || names.contains "False" then
     let (_, _, tb) ← getArm "True"; let t := (← elabUBlk rctx pctx n2 tb).1
     let (_, _, fb) ← getArm "False"; let f := (← elabUBlk rctx pctx n2 fb).1
@@ -803,10 +822,12 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     let hName := (cb.get! 0).getId.toString
     let tName := (cb.get! 1).getId.toString
     let ihName := (cih.getD (mkIdent `ih)).getId.toString
-    let ihDom ← pOf [hName]
+    let ihDom ← pOf tName
     let body := (← elabUBlk rctx (ihName :: tName :: hName :: pctx) n2 cbody).1
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "listRec") (Dllbc.Term.const "Nat")) $motiveT) $n)
-        (Dllbc.Term.lam (Dllbc.Term.const "Nat") (Dllbc.Term.lam (Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat")) (Dllbc.Term.lam $ihDom $body)))) $scrutT), n2)
+        (Dllbc.Term.lam $(quote hName) (Dllbc.Term.const "Nat")
+          (Dllbc.Term.lam $(quote tName) (Dllbc.Term.app (Dllbc.Term.const "List") (Dllbc.Term.const "Nat"))
+            (Dllbc.Term.lam $(quote ihName) $ihDom $body)))) $scrutT), n2)
   else if names.contains "Pair" then
     -- Σ elimination (§9). `sigmaRec` takes Σ's two parameters — the domain `A` and
     -- the FAMILY `λ x. B` — so the motive's binder type must be written as the Σ
@@ -826,9 +847,14 @@ partial def elabUElim (rctx : List (String × Nat)) (pctx : List String) (next :
     let xName := (pb.get! 0).getId.toString
     let yName := (pb.get! 1).getId.toString
     let body := (← elabUBlk rctx (yName :: xName :: pctx) n2 pbody).1
+    -- `B` reaches the Σ's own binder, and the arm names that field itself — so the
+    -- arm's second domain is `B` with the Σ binder renamed, the same move `pOf`
+    -- makes for a recursor's `ih`.
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "sigmaRec") $aT)
-        (Dllbc.Term.lam $aT $bT)) $motiveT)
-        (Dllbc.Term.lam $aT (Dllbc.Term.lam $bT $body))) $scrutT), n2)
+        (Dllbc.Term.lam $(quote bName) $aT $bT)) $motiveT)
+        (Dllbc.Term.lam $(quote xName) $aT
+          (Dllbc.Term.lam $(quote yName)
+            (Dllbc.Term.substP $(quote bName) (Dllbc.Term.pvar $(quote xName)) $bT) $body))) $scrutT), n2)
   else
     Macro.throwError "elim: arms do not match a known recursor (Nat/Bool/List/Σ)"
 
@@ -854,7 +880,7 @@ partial def elabUGenElim (rctx : List (String × Nat)) (pctx : List String) (nex
     let t ← armBody "True"
     let f ← armBody "False"
     let nf := Lean.mkIdent `Dllbc.Std.nfTerm
-    let motive ← `(Dllbc.Term.lam (Dllbc.Term.const "Bool")
+    let motive ← `(Dllbc.Term.lam Dllbc.genName (Dllbc.Term.const "Bool")
       (Dllbc.abstractOccurrences ($nf $scrutT) ($nf $goalT)))
     return (← `(Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.app (Dllbc.Term.const "boolRec") $motive) $t) $f) $scrutT), n2)
   else

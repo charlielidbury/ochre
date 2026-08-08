@@ -259,7 +259,11 @@ example : sealChk (StdLemmas.le_refl) (StdLemmas.id_sym_ty) = false := by native
     branch, per §6.2's lesson that a rule branch nobody probes is a rule branch
     nobody checked. -/
 
-def vlam : Val := .lam (.const "Nat") (.ctor "S" [.pvar 0])
+-- The λ as it SITS IN Ω, which is readback output: the binder the source wrote
+-- `x` is canonicalized to its level (M30 step 2), the same renaming that makes two
+-- α-variant functions compare equal. The slot holds the same function it always
+-- held; what moved is how a normal form spells a binder.
+def vlam : Val := .lam "§0" (.const "Nat") (.ctor "S" [.pvar "§0"])
 
 -- C1. **Body known ⟹ unfold.** A literal λ callee β-reduces, so the caller knows
 -- the result exactly: `y ↦ 3`, not an existential.
@@ -1934,11 +1938,12 @@ def stepArmWith (i : Nat) (τ : Term) : Option Term :=
                   (.lamR (s.set i ((s.get! i).1, τ)) sb)) piT)
   | _ => none
 
-/-- The motive's body, read off the ascription the statement emitted: the seal's type
-    is `Π (n : Nat) → R`, and every arm's type is an instance of that `R`. -/
-def bndR : Option Term :=
+/-- The motive's body, read off the ascription the statement emitted, WITH the
+    binder it is a body of: the seal's type is `Π (n : Nat) → R`, and every arm's
+    type is an instance of that `R` at some constructor of `n`. -/
+def bndR : Option (String × Term) :=
   match bndSeal with
-  | some (.seal _ (.pi _ R)) => some R
+  | some (.seal _ (.pi n _ R)) => some (n, R)
   | _ => none
 
 /-- The step arm's predecessor binder. -/
@@ -1953,8 +1958,8 @@ example : progOk bndProgram = true := by native_decide
 -- re-derives §E3 from the ASCRIPTION instead of from the arm, which is the
 -- independent route to the same fact.
 example : (match bndR, bndArms, bndDec with
-           | some R, some (_, s), some dec =>
-             Term.beq (s.get! 1).2 (Term.substPure 0 (.var dec) R)
+           | some (n, R), some (_, s), some dec =>
+             Term.beq (s.get! 1).2 (Term.substP n (.var dec) R)
            | _, _, _ => false) = true := by native_decide
 
 -- F1. **`ih` AT THE ARM'S OWN LEVEL** — `R` at `S dec` where the premise gives
@@ -1962,8 +1967,8 @@ example : (match bndR, bndArms, bndDec with
 -- snapshots, arriving as an annotation instead of as a call, and it is refused by
 -- the arm-binder rule rather than by anything downstream.
 example : (match bndR, bndDec with
-           | some R, some dec =>
-             match stepArmWith 1 (Term.substPure 0 (.ctorApp "S" [.var dec]) R) with
+           | some (n, R), some dec =>
+             match stepArmWith 1 (Term.substP n (.ctorApp "S" [.var dec]) R) with
              | some t => progRejects (bndProg t) "the recursor's premise does not give it"
              | none => false
            | _, _ => false) = true := by native_decide
@@ -2003,7 +2008,7 @@ example : (match stepArmWith 3 bndDeclHn with
 
 -- F4. …and an ordinary trailing binder, mistyped outright.
 example : (match stepArmWith 2
-             (.borrowT (.app (.const "List") (.const "Bool"))
+             (.borrowT "§_" (.app (.const "List") (.const "Bool"))
                        (.app (.const "List") (.const "Bool"))) with
            | some t => progRejects (bndProg t) "a domain the ascription does not bind it at"
            | none => false) = true := by native_decide
