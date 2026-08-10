@@ -3378,7 +3378,11 @@ mutual
         -- ⇝-positions. Local spec abbreviations and locally-derived certificates
         -- without a new form — and without the capture-before-call staging that
         -- a runtime `let` of a proof forces. `let x = e` is unchanged.
-        let v ← if x.isComptime then readComptimeArg fuel rhs else readR fuel rhs
+        --
+        -- **The seal keeps ⇒ whatever the binder's case** (M31 Stage A) — see
+        -- `Var.comptimeRhs`, which is the whole of that rule and is read here and
+        -- by the explore driver both.
+        let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
         bindSlot x v
         readR fuel rest
       | .assign place rhs rest => do
@@ -3473,13 +3477,21 @@ mutual
       -- if §7's deferral ever ends, is a value and will need its own rule; it will
       -- not inherit this one.
       | .callV x args => do
-        -- §6.3's distinction, made mechanical. A capital function-typed binder —
-        -- `map_spec (G : Nat → Nat, v)` — is a SPEC parameter: the caller may
-        -- supply an abstract or sealed function with no runtime existence, so the
-        -- body may cite `G a` in a type (⇝ gives the structured neutral) but may
-        -- not CALL it. `map_apply (g : …)` is the lowercase twin, and calling it
-        -- is exactly what the lowercase buys.
-        fenceComptime x "cannot be CALLED under ⇒ (a capital function-typed binder is a SPEC parameter — cite it in a type or a proof, where ⇝ gives its applications as structured neutrals; a caller need not supply anything with a runtime existence)"
+        -- **THE FENCE IS GONE** (M31 Stage A, §2.2). It read: a capital
+        -- function-typed binder is a SPEC parameter, citable in a type and never
+        -- callable, with `map_apply (g : …)` as the lowercase twin that could be
+        -- called. That distinction was the whole of §6.3, and M31 dissolves it —
+        -- a function IS comptime knowledge, so a capital binder is what every
+        -- function binding now looks like, and refusing to call one would refuse
+        -- every call there is.
+        --
+        -- What replaces it is not a weaker fence but a different sentence: the
+        -- head of a call is FETCHED BY ⇝ — the non-destructive slot read directly
+        -- below, which is what this rule already did and what `reflectC`'s own
+        -- `.var` case does (`lookupSlot` plus the ⊥ rejection). Nothing was
+        -- consuming a callee before, so nothing about erasure is weakened by
+        -- letting an erased binder be the callee: `G a` in a spec and `G(a)` in a
+        -- body reach the same value by the same read.
         match ← lookupSlot x with
         | .bot => throwErr s!"callV: callee {x.name}#{x.id} holds ⊥ (use-after-move or uninitialized)"
         | callee =>
@@ -3623,27 +3635,38 @@ mutual
           -- read would MOVE. A `Val.rfn`, a σ with a signature, or a recursor spine
           -- binds Ω slots — that is ⇒'s. Same room, two doors (§2.3).
           --
-          -- A capital head is excluded before anything is looked up: §6.3 makes a
-          -- capital function-typed binder a SPEC parameter, citable in a type or a
-          -- proof and never callable, so routing one here could only ever produce
-          -- `fenceComptime`'s rejection — including for a body's `let X = …` proof.
+          -- **THE MODE PRE-FILTER IS GONE** (M31 Stage A, §2.2). This used to
+          -- exclude a capital head *before anything was looked up*, on the ground
+          -- that §6.3 made such a binder a SPEC parameter which routing here could
+          -- only ever get `fenceComptime`'s rejection for. With the fence deleted
+          -- that ground is gone, and the exclusion would now be the one thing
+          -- preventing the model's own sentence — every function binding is
+          -- capital, so a mode filter on heads filters out all of them.
+          --
+          -- What survives is NOT arrow-inspection by mode but §2.2's own step 3:
+          -- the head is fetched (a non-destructive slot read, the ⇝ fetch), and
+          -- the value decides ENTER-or-β. A function that must be entered — an
+          -- `rfn`, a σ with a signature, a recursor spine — is `.callV`'s; a pure
+          -- λ or a stuck spine is the normalizer's, where β and the structured
+          -- neutral both live. That split is arrow-keyed rather than head-keyed
+          -- (§12 decision 5: write an application in a type and ⇝ remembers the
+          -- spine, write it as a statement and ⇒ mints), which is why it is not
+          -- what M31 dissolves.
           match appSpineVar? t with
           | some (x, args) =>
-            if x.isComptime then do collapseCDerefs fuel t; readC fuel t
-            else
-              match (← get).env.find? (fun kv => kv.1.id == x.id) with
-              | some kv => do
-                let st ← get
-                let isFn : Bool :=
-                  match kv.2 with
-                  | .rfn _ _ => true
-                  | .sym σ => (st.fsig.lookup σ).isSome
-                  | v => match valSpineHead v with
-                         | some c => (recLayout c).isSome
-                         | none => false
-                if isFn then readR fuel (.callV x args)
-                else do collapseCDerefs fuel t; readC fuel t
-              | none => do collapseCDerefs fuel t; readC fuel t
+            match (← get).env.find? (fun kv => kv.1.id == x.id) with
+            | some kv => do
+              let st ← get
+              let isFn : Bool :=
+                match kv.2 with
+                | .rfn _ _ => true
+                | .sym σ => (st.fsig.lookup σ).isSome
+                | v => match valSpineHead v with
+                       | some c => (recLayout c).isSome
+                       | none => false
+              if isFn then readR fuel (.callV x args)
+              else do collapseCDerefs fuel t; readC fuel t
+            | none => do collapseCDerefs fuel t; readC fuel t
           | none => do collapseCDerefs fuel t; readC fuel t
       | .idT _ _ _ => do collapseCDerefs fuel t; readC fuel t
       -- ¶2.2's ⇒ column at the two new steps, and the regularity §1.3 asks the
@@ -4319,7 +4342,7 @@ mutual
         -- duplication is two lines; a mode that silently stopped applying at the
         -- top level of a function body would have been a phantom.
         match (do
-            let v ← if x.isComptime then readComptimeArg fuel rhs else readR fuel rhs
+            let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
             bindSlot x v).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'

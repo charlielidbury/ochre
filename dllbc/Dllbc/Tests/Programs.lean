@@ -216,18 +216,26 @@ def b6 : Term := prog{
   () }
 example : progRejects b6 "cannot be ⇒-moved" = true := by native_decide
 
-/-! ### B7. §6.3's distinction, mechanical: `map_spec (G : …)` vs `map_apply (g : …)`
+/-! ### B7. §6.3's distinction, DISSOLVED (M31 Stage A)
 
-    The one place where kind cannot decide the mode. A capital function-typed
-    binder is a SPEC parameter — the caller may supply an abstract or sealed
-    function with no runtime existence — so the body may cite `G a` in a type,
-    where ⇝ gives the structured neutral, but may not CALL it. The lowercase twin
-    is `S26Seal`'s `apply1`, and calling it is exactly what the lowercase buys. -/
+    This used to be the one place where kind could not decide the mode. A capital
+    function-typed binder was a SPEC parameter — citable in a type, where ⇝ gives
+    the structured neutral, and refused as a callee by `.callV`'s fence — while
+    `map_apply (g : …)` was the lowercase twin that calling was the whole point
+    of. Two parameters, one function, and a caller had to know which door it came
+    in by.
+
+    M31 §2.2 deletes the fence, and with it the split: **a call's head is fetched
+    by ⇝**, which is what a capital binder is read by anyway, so a capital
+    function-typed parameter is both citable and callable and there is no second
+    kind of parameter left to be. The twins collapse — these two tests are now the
+    same test in two cases, kept as a pair only to assert that neither case is the
+    privileged one. -/
 
 def b7spec : Term := prog{
   fn b7spec (G : Π (x : Nat) → Nat, n : Nat) -> Unit { let r = G(n); () };
   () }
-example : progRejects b7spec "cannot be CALLED under ⇒" = true := by native_decide
+example : progOk b7spec = true := by native_decide
 example : progOk S26Seal.apply1 = true := by native_decide
 
 -- …and the citation that IS allowed: `G a` in a type position, where the whole
@@ -236,6 +244,43 @@ def b7cite : Term := prog{
   fn b7cite (G : Π (x : Nat) → Nat, n : Nat) -> Id Nat (G n) (G n) { Refl };
   () }
 example : progOk b7cite = true := by native_decide
+
+/-! ### B7b. Function bindings are comptime-moded (M31 Stage A, §2.1/§2.2)
+
+    The three assertions Stage A's semantic core is worth, stated where B7's
+    dissolution leaves off. A `fn` name may be CAPITAL and everything about it
+    still works — it is declared, it is called, and the executing machine runs it
+    — which is the whole of "a function binding flips mode".
+
+    `let F = Main` is the one the playground failed at, and it failed at two
+    independent layers: the surface had no reading for a bare `fn` name at all
+    (only `f(…)` resolved, through `retarget`), and the kernel refused reading a
+    function out of its slot. Stage A answers the first — a `fn` name is an
+    ordinary binding, so a bare name denotes it — and the second never fires,
+    because a capital binding reads its right-hand side by ⇝ and the function-read
+    refusal is a ⇒ rule. Both halves, one test. -/
+
+def b7capital : Term := prog{
+  fn Bump (n : Nat) -> Nat { add n 1 };
+  fn Caller () -> Nat { Bump(1) };
+  () }
+example : progOk b7capital = true := by native_decide
+
+def b7letF : Term := prog{
+  fn Main () -> Nat { add 1 1 };
+  let F = Main;
+  () }
+example : progOk b7letF = true := by native_decide
+
+-- E7's confirmation, as a run rather than as a claim: a comptime-moded slot is
+-- read by the executing machine the way it always read `rfn` — a plain slot read,
+-- no detour through the normalizer — so `Bump` is still holding its runtime λ at
+-- the end and `y` is the value the call computed.
+def b7run : Term := prog{
+  fn Bump (n : Nat) -> Nat { add n 1 };
+  let y = Bump(1);
+  () }
+example : progRuns b7run = true := by native_decide
 
 /-! ### B8/B9. Borrow-typed binders must be lowercase — checked, not assumed
 
@@ -1660,13 +1705,30 @@ def d3 : Term := prog{
   () }
 example : progRejects d3 "not a function" = true := by native_decide
 
--- D3b. And the capital form of the same binding is refused EARLIER and for a
--- different reason, which is §6's own parenthesis becoming a rejection: `let X =
--- e` reads `e` under ⇝, and the seal is a ⇒-form because minting needs an event.
--- So "sealed" and "comptime-bound" are mutually exclusive, and a reader who
--- expects `let Cert = (… : …)` to be the `Qed` form is told which half to drop.
+-- D3b. **The capital form of the same binding is now ACCEPTED** (M31 Stage A),
+-- and this test is the clearest statement of the rule that makes Stage A
+-- possible at all.
+--
+-- It used to be refused, on the ground that `let X = e` reads `e` under ⇝ while
+-- the seal is a ⇒-form because minting needs an event — so "sealed" and
+-- "comptime-bound" were mutually exclusive, and `let Cert = (… : …)` as a `Qed`
+-- form was told which half to drop. M31 drops neither: `Var.comptimeRhs` makes
+-- the seal's arrow a property of the SEAL rather than of the binder, so the event
+-- still happens under ⇒ and what the capital binder changes is the binding —
+-- erased, ⇝-readable, never ⇒-consumed.
+--
+-- This is not a concession made for proofs; it is forced. `fn F …` desugars to
+-- exactly this term — a comptime `let` of a λ ascribed its Π (§2.1) — so a rule
+-- that refused `let C = (t : T)` would refuse every function declaration in the
+-- language. The `Qed` binding and the function declaration are the same form, and
+-- M31's answer for one is its answer for both.
+--
+-- D3 above is UNMOVED, and the pair is worth reading together: what a λ body may
+-- NAME is still decided by `globalKind`, which admits functions and not proofs,
+-- so `cert` remains un-nameable from inside a body whether it is bound capital or
+-- lowercase. Binding it comptime is what changed; capturing it is not.
 def d3cap : Term := prog{ let C = (le_refl 3 : Le 3 3); () }
-example : progRejects d3cap "not in the comptime fragment" = true := by native_decide
+example : progOk d3cap = true := by native_decide
 
 /-! ## §E. The end of a program is a demand on everything it still holds
 
