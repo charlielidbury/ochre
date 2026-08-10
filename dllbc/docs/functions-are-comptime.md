@@ -380,15 +380,29 @@ of duplication this milestone exists to kill) or pay eval/readback at every boun
 It re-litigates M30's central representation choice (the mixed domain is why 18
 substitution sites became 18 one-word edits) at rewrite cost, for payload uniformity.
 
-Recommendation: (i), and not as scaffolding — the `Val ⊕ Term` split materializes the
-same semantic line the seal's two check engines draw (§2.3) and the capture/snapshot
-distinction draws (§2.4): a pure body is *conversed with* structurally; an imperative
-body is *entered* and never traversed. One line, three independent appearances;
-representing it as data is principled. (iii) stays the horizon where the question
-dissolves by construction; its stated cost is that the union tree admits machine-value
-forms (`loanM`, `sym`, `⊥`) everywhere syntax goes — type-enforced invariants become
-discipline — and touches every match in `Machine.lean`. Out of M31's scope, direction
-left open.
+Recommendation: (i) FOR M31 — the `Val ⊕ Term` split materializes the same semantic
+line the seal's two check engines draw (§2.3) and the capture/snapshot distinction
+draws (§2.4): a pure body is *conversed with* structurally; an imperative body is
+*entered* and never traversed. One line, three independent appearances.
+
+**The horizon (post-M31, its own milestone): suspensions everywhere — the classic NbE
+split.** Term becomes the ONLY syntax; Val shrinks to a semantic domain (constructors,
+neutrals, closures, borrow/loan markers, ⊥); Ω stores `(Term, knowledge-env)`
+suspensions and normalizes on demand; the mixed domain — Val embedding pure syntax, the
+fact that generated this E — dies. This supersedes the earlier union-tree horizon,
+which admitted machine forms grammatically everywhere; the suspension endpoint
+separates syntax from semantics instead of unioning them. Made viable by this
+milestone: §2.4's citation rule is what makes every suspension self-contained (σ-free
+Term + small knowledge-only env). The one design obligation is the identity-keyed
+machinery: X-Gen finds spine occurrences structurally, and a spine can be latent inside
+a suspension (materializing only on evaluation) — the M30 count-equation failure mode,
+measured, silent. The known answer: **normalize at splits** — `refineSym` already
+sweeps the whole store at every symbolic split, so evaluating suspensions during that
+sweep restores canonicality exactly where abstraction needs it, at the cost the split
+already pays; between splits everything stays lazy. Convert-site comparisons are
+timing-only (checker is 1.3% of the build — slack exists). Canary: quicksort's count
+equation. Cost print: at least M30-sized — every consumer of Val's syntax embedding is
+touched.
 
 **E4 — borrow-moded λ as a ⇝ value.** A function binding borrows now *exists* as
 comptime knowledge (an inert closure: never β-reduced under ⇝, entered only via ⇒).
@@ -461,5 +475,7 @@ discovered after (first-readings-err-dramatic).
     Fn/FnMut/FnOnce door (nbe.md §3) stays representable-not-open.
   * **Surface call syntax** (juxtaposition vs `f(a, b)`) — orthogonal, already tracked
     in language.md chapter 12's deviations block.
-  * **Term/Val unification** (E3 option iii) — named as horizon, not attempted.
+  * **Suspensions everywhere** (E3's horizon: Term the only syntax, Val a semantic
+    domain, normalize-at-splits) — the post-M31 milestone, not attempted here; M31's
+    capture/citation rules are what make it viable.
   * **Consistency/soundness proofs** — unchanged scope; the checker remains the claim.
