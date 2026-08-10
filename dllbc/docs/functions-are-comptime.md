@@ -313,6 +313,151 @@ the backstop message; everything else must differential to zero. **This stage is
 it goes first** (hardest-first: if functions-in-comptime-scope walls somewhere — E2's id
 windows, E7's executing-mode env — we find out before spending on representation work).
 
+> **Implementation addendum (Stage A, landed on `m31-stage-a`).** Four commits,
+> whole corpus green at each. Recorded where the plan is, in the order the plan
+> would be read.
+>
+> **0. THE ORDER ABOVE IS WRONG, and the corrected one is tolerate → rename →
+> enforce.** "The corpus rename lands first, as its own mechanical commit" cannot
+> be taken: under the pre-Stage-A kernel, capitalising a `fn` name makes its slot
+> a comptime binder, and three rules then refuse it before any call happens — the
+> `.letIn` row ⇝-reads a comptime binder's right-hand side and `readC` refuses the
+> `.seal` by name, the `callV` fence refuses a capital callee, and the `.app`
+> router excludes a capital head before looking anything up. A rename-first commit
+> is therefore not "zero behaviour delta"; it is a commit in which every renamed
+> function is unusable. The rename can only be green once the kernel tolerates both
+> cases. The motive behind the plan's order survives intact — the semantic
+> differential is still not buried in a rename diff, it is simply in the commit
+> *before* it.
+>
+> **1. The rule the plan does not state, and Stage A needs first: the seal's arrow
+> belongs to the seal.** §2.1 says `fn F …` desugars "as today, to a `let` of a λ
+> ascribed its Π, comptime-moded in Ω". Those two halves conflict under the
+> existing kernel, because a comptime `let` ⇝-reads its right-hand side and the
+> seal is the one form ⇝ refuses *by name* ("minting a fresh σ needs an event and
+> ⇝ has none"). The resolution is that the arrow is a property of the RIGHT-HAND
+> SIDE: a formation EVENT stays ⇒ whatever the binder's case, and what the capital
+> binder changes is the BINDING — erased, ⇝-readable, never ⇒-consumed — not the
+> event that produced its value. `Var.comptimeRhs` is that rule, and enforcement
+> showed it has two cases, not one: a bare runtime λ is a formation event too
+> (`admitGlobals` checks its closedness there), and §2.1's own `let Double = λ …`
+> requires it be writable.
+>
+> Its first consequence is a flip the plan does not list: `let C = (le_refl 3 : Le
+> 3 3)` becomes legal. The old refusal said "sealed" and "comptime-bound" are
+> mutually exclusive; a function declaration is *precisely* a comptime `let` of a
+> sealed λ, so keeping it would refuse every declaration in the language. The `Qed`
+> binding and the function declaration are one form.
+>
+> **2. §2.2's step 3 is not the same claim as "the `.app` router is deleted", and
+> the difference is a decision.** What was deleted is the router's MODE
+> pre-filter — the capital-head exclusion, which was the fence's shadow and would
+> otherwise have filtered out every function there is. What was KEPT is the
+> value-directed enter-or-β classification, because that is §2.2 step 3 itself.
+> The tempting further step — send every head to `.callV` — would change what a
+> stuck spine MEANS in a body: `callVValue` mints a fresh existential at the
+> instantiated codomain where `readC` remembers the structured neutral `σ a`. That
+> mint-vs-remember split is arrow-keyed (§12 decision 5), not head-keyed, so it is
+> not what M31 dissolves, and it was left alone rather than smuggled in.
+>
+> **3. E4, answered: the wall is not `hasType`, and it is one step earlier.** The
+> enumeration is short because it collapses — a borrow-moded Π has no `Val`
+> (M26-C), so it cannot be the second argument of `hasType`, which takes `Val`s.
+> Every site therefore takes its expected type either from a `Val` (structurally
+> safe) or from `readC` of a Term (which refuses `borrowT` by name). Measured, not
+> reasoned:
+>
+>   * declaring a borrow-moded Π parameter — fine (`fsig`, as `ih` already was);
+>   * CALLING one from inside a body — fine (`callDeclC`, the `ih` path);
+>   * passing a BORROW-FREE function as an argument — **fine, and this is new**:
+>     §7's "pass it as an argument" promise is closed for that case;
+>   * passing a function whose signature has a `&mut` binder — **refused**, by
+>     `processArgs`' `readCWith` of the parameter type: "borrow type `&mut (τ ↝ S)`
+>     is only valid at a telescope position".
+>
+> So E4's predicted `piAgree`-style agreement path does not exist, and nothing
+> silently mistypes: the failure is an honest named rejection one step before
+> `hasType` is reached. Building that path is Stage B's, and it should be built
+> against `piAgree`, which already does telescope agreement on Terms.
+>
+> A second wall sits in front of it and is the one to fix first: **a `fn` body
+> cannot NAME a sibling function as a bare identifier.** Bodies are elaborated in
+> `fullRctx` — their own parameters, numbered from 0 — so bare-name resolution
+> reaches the program tail only. This is not incidental. If bodies saw sibling
+> slots, `fnElab`'s fresh-binder base (`max (maxVarId d.body) … + 1`) would be
+> pushed above `progBase` and the synthesized `ih` would collide with a `fn` slot.
+> Fixing the scope means fixing that base first.
+>
+> **4. What the `fn` lowering's refusal sentinel cost, and the general lesson.**
+> `fn`'s statement lowering turns a refusal into an unbound `.call` whose NAME
+> carries the diagnosis, resting on three properties, the third being "the
+> diagnosis survives to the message". It survived because `readR`'s `.call` names
+> the function it could not find. A comptime `fn` slot reaches `readC` instead —
+> whose `.call` arm did not name it — and ten distinct `fnElab` refusals collapsed
+> into one generic sentence about the comptime fragment. A rejection that will not
+> say what it refused is worse at every site, so the fix went to the message.
+>
+> **5. The flip list, as-built against E9.** `let F = Main` accepted (needing a
+> surface change too: bare `fn` names had no reading at all, only `f(…)` resolved,
+> through `retarget`). Spec/apply twins collapsed. Fence tests deleted. The
+> "reached by NAME" tests re-pointed at the backstop — with a wrinkle: `let g = F`
+> never reaches the binding, because the ⇒-read of a capital binder hits
+> `fenceComptime` first, whose advice ("lower-case it") is exactly what §2.1
+> forbids for a function; hence `backstopFnRhs`, the same refusal asked before the
+> right-hand side is evaluated, at the one place both names are in view.
+> λ-citation refusals added with the migration. **Two flips off the list**, both
+> derived rather than chosen: `let C = (proof : T)` (item 1 above), and the
+> lowercase λ-valued `let` — `let g = λ(a){…}` — which §2.1 requires be capital and
+> which the corpus used 111 times.
+>
+> **6. Deliberate scope limits, recorded as deferrals rather than found later.**
+> The backstop's function test is `.rfn` or an `fsig`-σ — ⇒'s function values,
+> exactly what the refusal it succeeds excluded. A pure `.lam` is not one, so
+> §2.1's own example `let f = Add 1` is NOT caught; catching it would refuse every
+> staged proof-builder in the corpus, which is a second and larger migration.
+> Interestingly §2.4 collects part of that debt from the other side: a lowercase
+> sealed pure λ is not refused at its binding, but a body that NAMES one is, since
+> the binding is lowercase — which is why 94 such declarations capitalised in the
+> same stage. And the citation check covers the two positions where a λ becomes a
+> value in this corpus (an expression, a `let` right-hand side); a λ passed
+> directly as a call argument or stored in a constructor field is unmeasured. One λ
+> former makes "value position" one question instead of four, which is Stage B's.
+>
+> **7. What §2.4 was worth, concretely.** The rule's best moment in the corpus is
+> quicksort's staged builders: `mkUb` freezes `*v` BEFORE the two recursive sorts
+> and `fin` freezes it AFTER, and they were the same three characters in the
+> source. They are now `V0` and `V1` — and the lying twin's lie (pre-sort bounds
+> where post-sort ones belong) became the visible difference between `Hub0` and
+> `Hub2` rather than something a reader dates by position. The rule's two
+> boundaries both needed asserting: a λ's binder DOMAIN is checked (it is stored
+> with the λ and read at every application), while a λ inside a type is not (a type
+> is consumed at its own event) — without the second, every dependent signature in
+> the corpus would have been swallowed.
+>
+> **8. The rename policy, and the one name where it mattered.** PascalCase =
+> capitalise the initial and each letter after an underscore, then drop them.
+> Applied to all 215 `fn` names and the `aliasMap` keys (`Len`, `Add`, `Count`, …).
+> **Lemma reference names are NOT renamed**: `le_refl`, `nth`, `swapL` are *Lean*
+> identifiers reached by the raw fallthrough, with no `Var` for `isUpperInit` to
+> read, so no mode marker is being suppressed. That decision was forced by `nth`,
+> which is BOTH a `fn` and a `Std` lemma Term in the same block, coexisting at HEAD
+> only because the spelling disambiguates (`nth(…)` is a call, `nth Z (*v)` is
+> juxtaposition). Capitalise both and one becomes unreachable. The function
+> capitalised; the lemma did not; they have different names now.
+>
+> **9. For Stage B, on the vestigial machinery.** Neither deletion fell out.
+> `nextFrame + 128` is untouched by anything here. `applyRFn`'s `keep` set is still
+> load-bearing: `admitGlobals` still admits function names as a body's free
+> variables, so those ids must still be carried unshifted through `shiftVarsK`.
+> §2.4 is what empties that set by construction — the free variables it admits are
+> now exactly the comptime ones — so the deletion belongs after E2's newest-wins
+> probe, with a differential showing the set empty. **Where that probe should
+> start:** comptime-moded slots interact with the Stage 0 watermark discipline in
+> one way worth knowing — a `fn` slot is an ordinary Ω entry in the program's
+> outermost scope, which never pops, so no function binding is ever dropped by the
+> sweep and newest-wins has nothing to resolve about them. The hazard E2 names
+> lives entirely in frames and match arms, both of which Stage 0 already closed.
+
 **Stage B — one λ.** Merge `.lamR` into the λ former (comma-list as sugar for the
 telescope; binder representation per E3); `rfn` becomes a closure under the
 knowledge-only capture rule (body payload per E4); `applyRFn` re-keyed, with the
