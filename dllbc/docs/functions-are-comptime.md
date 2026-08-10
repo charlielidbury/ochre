@@ -132,18 +132,25 @@ value.** A λ — any λ — may close over the comptime surroundings it was bor
 `let`s, proofs, types, and *other functions*, which are now comptime bindings
 themselves. What no λ may capture is runtime state: a lowercase local, a borrow, a hole.
 
-Stated in surface vocabulary: **a λ body captures the PascalCase bindings in scope —
-nothing more, nothing less.** Two clarifications make that exact. A *pure* λ body (like
-any type — types are pure terms) may also cite snake_case variables, and those are not
-captures: they are ⇝-snapshot reads, resolved eagerly at formation, so later mutation is
-invisible — `Le i (len *v)` cites `i` and `v` this way, and eager resolution is what
-makes the pin machinery shadow-immune today. (For PascalCase bindings,
-capture-by-environment and eager resolution are indistinguishable, because comptime
-bindings are immutable — the distinction is only observable on mutable state, which is
-exactly what the rule forbids capturing.) An *imperative* λ body gets no snapshot reads:
-a snake_case citation is refused — make it a parameter, or name the snapshot first
-(`let V0 = *v`) and capture `V0`, which makes the snapshot-`let` idiom the one mechanism
-for baking state into a function.
+Stated in surface vocabulary: **a λ body may reference its own binders and the
+PascalCase bindings in scope — nothing more, nothing less — and this holds for every λ,
+pure or imperative, with no clarifications.** A snake_case citation inside any λ body is
+refused at formation; the fix is always the same — make it a parameter, or name the
+snapshot first (`let V0 = *v`, `let L = len l`) and reference the name. The formation
+check is therefore *identical* for both λ species: the node's free runtime variables
+must be empty. Nothing expressible is lost: for PascalCase bindings, capture and eager
+inlining are indistinguishable (comptime bindings are immutable), so the explicit form
+denotes the same stored value the implicit snapshot would have — the knowledge machinery
+(refinement, comparison) is untouched; the freeze just becomes visible as a binding.
+
+Snake_case citation remains legal exactly where there is no formation-vs-use **gap**:
+in **type positions** (`Le (S i) (len *v)`, return types with `*v`/`old *v`) — a type is
+consumed at its own event (seeding, the pin, an ascription), never stored-then-applied
+later — and in **ordinary pure computation at statements** (`let n = len *v`), resolved
+on the spot. The λ is the one form that is formed now and used later; the gap is where
+an implicit snapshot could hide, and the rule closes it. Corpus cost, enumerable: staged
+builders and the congruence λs (`append_back`'s `λ (a : List Nat). Cons (*hd) a`
+becomes `let H0 = *hd; … λ a. Cons H0 a`) each gain one naming line.
 
 This dissolves today's closedness check rather than relocating it. `rfn` formation
 currently refuses every free variable except the global function slots (`admitGlobals` —
@@ -359,7 +366,9 @@ own risk budget. Risk: LOW if kept, MEDIUM if bundled.
 **E9 — what the twins/e2e suite must become.** Enumerable flips: `let F = Main`
 accepted; spec/apply twins collapse to one function; fence-rejection tests deleted;
 "reached by NAME" rejection tests deleted or re-pointed at whatever Stage A's honest
-refusals are (e.g. partial imperative application). Everything else differentials to
+refusals are (e.g. partial imperative application); snake_case citations inside λ
+bodies flip to refusals (§2.4), with the staged builders and congruence λs migrated to
+the explicit-snapshot form as part of the same commit. Everything else differentials to
 zero. The flip list is written down *before* Stage A lands and checked against, not
 discovered after (first-readings-err-dramatic).
 
