@@ -402,8 +402,8 @@ namespace Dllbc.Tests.S3Sym
     functions, since both chains number their slots from `progBase` and the inner
     would shadow the outer. -/
 def withAny (rest : Term) : Term := prog{
-  fn anyNat () -> Nat { 0 };
-  fn anyList () -> List Nat { Nil };
+  fn AnyNat () -> Nat { 0 };
+  fn AnyList () -> List Nat { Nil };
   %rest }
 
 /-! The file-local `progPathsOfT` retired with the `FnDef` subjects it took (M28
@@ -422,7 +422,7 @@ def withAny (rest : Term) : Term := prog{
 -- paths. Z branch: ⇜ σ := Z, then n consumed to ⊥. S branch: ⇜ σ := S σ′,
 -- then n ↦ ⊥ and the field binder m ↦ (σ′ : Nat).
 def isZero : Term := withAny prog{
-  let n = anyNat();
+  let n = AnyNat();
   match n { Z => (), S(m) => () }
 }
 
@@ -437,7 +437,7 @@ example : tailPaths isZero
 -- the chain to `Cons 0 σ₂` (the doc's trace verbatim). The Nil branch refines
 -- the payload to Nil. Two paths.
 def zeroHead : Term := withAny prog{
-  let x = anyList();
+  let x = AnyList();
   let b = &m x;
   match b {
     Cons(hd, tl) => {
@@ -459,7 +459,7 @@ example : tailPaths zeroHead
 -- `*b := Nil` in the Cons branch drops the reborrowed fields (their loans are Ω
 -- entries) and installs Nil; both paths leave the owner holding Nil.
 def variantChange : Term := withAny prog{
-  let x = anyList();
+  let x = AnyList();
   let b = &m x;
   match b { Cons(hd, tl) => { *b := Nil; () }, Nil => () };
   let y = x;
@@ -479,7 +479,7 @@ example : tailPaths variantChange
 -- compose. Three paths (outer Cons × {inner Cons, inner Nil}, plus outer Nil):
 --   Cons σ₀ (Cons 0 σ₁),  Cons σ₀ Nil,  Nil.
 def twoLevel : Term := withAny prog{
-  let x = anyList();
+  let x = AnyList();
   let b = &m x;
   match b {
     Cons(hd, tl) => match tl {
@@ -507,7 +507,7 @@ example : expectMErr [(⟨0,"x"⟩, cons (nat 3) nil)]
 -- A symbolic match in expression position (a constructor argument) cannot split
 -- and is rejected clearly by the pre-pass / readR.
 def exprPosition : Term := withAny prog{
-  let z = anyList();
+  let z = AnyList();
   let y = Cons(match z { Nil => Nil, Cons(a, r) => Nil }, Nil);
   ()
 }
@@ -589,11 +589,11 @@ example : progRunsTo armEscape
 -- as absence-from-Ω rather than as a whole expected environment because the
 -- declaration entry itself is a runtime λ, which has no writable literal.
 def frameDrop : Term := prog{
-  fn setHead (v : &mut (List Nat ~> List Nat)) -> Unit {
+  fn SetHead (v : &mut (List Nat ~> List Nat)) -> Unit {
     match v { Cons(hd, tl) => { *hd := 0; () }, Nil => () }
   };
   let x = Cons(9, Nil);
-  setHead(&m x);
+  SetHead(&m x);
   let y = x;
   ()
 }

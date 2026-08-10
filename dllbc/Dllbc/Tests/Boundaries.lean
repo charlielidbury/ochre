@@ -67,7 +67,7 @@ def sigVecF : Term := .sigmaT "l" natT (.app (.app vecFT natT) (.pvar "l"))
 -- — five lines Rust rejects (E0507), accepted here: the audit sees `Cons σₑ σ`
 -- convert against `List Nat`.
 def pushList : Term := prog{
-  fn push (e : Nat, v : &mut List Nat) -> Unit {
+  fn Push (e : Nat, v : &mut List Nat) -> Unit {
     let tail = *v;
     *v := Cons(e, tail);
     ()
@@ -79,13 +79,13 @@ example : progOk pushList = true := by native_decide
 -- Take without refill: the borrow holds a hole (⊥) at return — a function
 -- cannot return one (§5.4).
 example : progRejects (prog{
-    fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; () };
+    fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; () };
     () })
   "take without refill" = true := by native_decide
 
 -- Pushing a `True` onto a `List Nat`: the rebuilt payload fails its owed type.
 example : progRejects (prog{
-    fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(True, tail); () };
+    fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(True, tail); () };
     () })
   "owed type" = true := by native_decide
 
@@ -96,7 +96,7 @@ example : progRejects (prog{
 -- in place; the audit computes `VecF Nat (S σₗ)` under the (now concrete)
 -- index and closes the pair.
 def vecPush : Term := prog{
-  fn push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
+  fn Push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
     match v { Pair(l, xs) => { *xs := Pair(e, *xs); *l := S(*l); () } }
   };
   () }
@@ -109,7 +109,7 @@ example : progOk vecPush = true := by native_decide
 -- dependent correctness catching the forgotten length update — the ownership
 -- machinery makes the mutation safe, the dependent types make it correct.
 example : progRejects (prog{
-    fn push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
+    fn Push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
       match v { Pair(l, xs) => { *xs := Pair(e, *xs); () } } };
     () })
   "owed type" = true := by native_decide
@@ -118,7 +118,7 @@ example : progRejects (prog{
 -- index argument, so — per §4.2's mechanization note — the order is NOT forced
 -- and both are honest (unlike the native `VCons` presentation).
 example : progOk (prog{
-    fn push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
+    fn Push (e : Nat, v : &mut (Σ (l : Nat) → vecFT Nat l)) -> Unit {
       match v { Pair(l, xs) => { *l := S(*l); *xs := Pair(e, *xs); () } } };
     () }) = true := by
   native_decide
@@ -130,27 +130,27 @@ example : progOk (prog{
 -- exhaustive over Nat, so it is the σ-typing check (not exhaustiveness, §9)
 -- that catches the stray `Cons` branch.
 example : progRejects (prog{
-    fn f (b : &mut Nat) -> Unit { match b { Z => (), S(m) => (), Cons(h, t) => () } };
+    fn F (b : &mut Nat) -> Unit { match b { Z => (), S(m) => (), Cons(h, t) => () } };
     () })
   "does not belong" = true := by native_decide
 
 -- Exhaustiveness (§9): a symbolic match must cover the scrutinee type's full
 -- constructor set. is_zero missing its `S` branch is rejected.
 example : progRejects (prog{
-    fn is_zero (n : Nat) -> Bool { match n { Z => True } };
+    fn IsZero (n : Nat) -> Bool { match n { Z => True } };
     () })
   "non-exhaustive" = true := by native_decide
 
 -- A borrow-mode match on `&mut List Nat` missing its `Nil` branch is rejected.
 example : progRejects (prog{
-    fn f (v : &mut List Nat) -> Unit { match v { Cons(hd, tl) => { *hd := 0; () } } };
+    fn F (v : &mut List Nat) -> Unit { match v { Cons(hd, tl) => { *hd := 0; () } } };
     () })
   "non-exhaustive" = true := by native_decide
 
 -- `is_zero (n : Nat) → Bool`: an owned symbolic argument, both branches audited
 -- against the return type.
 example : progOk (prog{
-    fn is_zero (n : Nat) -> Bool { match n { Z => True, S(m) => False } };
+    fn IsZero (n : Nat) -> Bool { match n { Z => True, S(m) => False } };
     () }) = true := by
   native_decide
 
@@ -191,7 +191,7 @@ namespace Dllbc.Tests.S6Call
 /-- `push (e : Nat, v : &mut List Nat)` from §4.1/M5, as a PREFIX: everything
     below is written as `withPush (prog{ … })` and gets `push` in scope. -/
 def withPush (rest : Term) : Term := prog{
-  fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
+  fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
   %rest }
 
 /-! ## §5.3 the wire: consume and promise -/
@@ -200,7 +200,7 @@ def withPush (rest : Term) : Term := prog{
 -- `let y = x` ends the owed loan by minting a fresh σ. y is that σ, typed a
 -- list — not the concrete `Cons 7 (Cons 1 Nil)`. "The spec is the type."
 example : tailEnv (withPush (prog{
-    let x = Cons(1, Nil); let b = &m x; push(7, b); let y = x; () }))
+    let x = Cons(1, Nil); let b = &m x; Push(7, b); let y = x; () }))
   [("x", .bot), ("b", .bot), ("y", .sym 0)] = true := by native_decide
 
 /-! ## The recursive cursor (§2.5's promised counterpart) -/
@@ -224,10 +224,10 @@ example : tailEnv (withPush (prog{
 -- own words, and the fact that the sentinel fires at the BINDING rather than at a
 -- call, so a refused function nothing calls still fails.
 def zeroAll : Term := prog{
-  fn zero_all [v] (v : &mut List Nat) -> Unit {
+  fn ZeroAll [v] (v : &mut List Nat) -> Unit {
     match v {
       Nil => (),
-      Cons(hd, tl) => { *hd := 0; zero_all(tl); () }
+      Cons(hd, tl) => { *hd := 0; ZeroAll(tl); () }
     } };
   () }
 example : progRejects zeroAll FnMacro.fnRefusedNeedle = true := by native_decide
@@ -241,7 +241,7 @@ example : progOk zeroAll = false := by native_decide
 -- Named because `S27Mixed` §E asserts it too, as one of the two subjects in the
 -- corpus that state a rich owed type.
 def toNatProg : Term := prog{
-  fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
+  fn ToNat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
   () }
 example : progOk toNatProg = true := by native_decide
 
@@ -249,8 +249,8 @@ example : progOk toNatProg = true := by native_decide
 -- σ : Nat. A strong update across a boundary, both sides. The caller is a `fn`
 -- too, so what is checked is the declaration and not one run of it.
 example : progOk (prog{
-  fn to_nat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
-  fn caller () -> Nat { let x = True; let b = &m x; to_nat(b); let y = x; y };
+  fn ToNat (v : &mut (Bool ~> Nat)) -> Unit { *v := 0; () };
+  fn Caller () -> Nat { let x = True; let b = &m x; ToNat(b); let y = x; y };
   () }) = true := by native_decide
 
 /-! ## Reborrow at a call site -/
@@ -258,24 +258,24 @@ example : progOk (prog{
 -- `push(7, &mut *b)` — the reborrow Rust inserts silently; the child loan gets
 -- the owed annotation and the parent recovers when it ends.
 --
--- Written as ONE chain rather than `withPush (prog{ fn caller … })`: a spliced
+-- Written as ONE chain rather than `withPush (prog{ fn Caller … })`: a spliced
 -- tail may not declare functions, because both chains number their slots from
 -- `progBase` and the inner would shadow `push`. `bindFn` refuses it — which is how
 -- this line was found, having been written the wrong way first and passed green.
 example : progOk (prog{
-  fn push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
-  fn caller () -> List Nat { let x = Cons(1, Nil); let b = &m x; push(7, &m *b); let y = x; y };
+  fn Push (e : Nat, v : &mut List Nat) -> Unit { let tail = *v; *v := Cons(e, tail); () };
+  fn Caller () -> List Nat { let x = Cons(1, Nil); let b = &m x; Push(7, &m *b); let y = x; y };
   () }) = true := by native_decide
 
 /-! ## Rejections -/
 
 -- Argument type mismatch: push a `True` where a `Nat` is owed.
 example : progRejects (withPush (prog{
-    let x = Cons(1, Nil); let b = &m x; push(True, b); () }))
+    let x = Cons(1, Nil); let b = &m x; Push(True, b); () }))
   "parameter type" = true := by native_decide
 
 -- A non-borrow where a borrow argument is expected.
-example : progRejects (withPush (prog{ let x = Cons(1, Nil); push(7, x); () }))
+example : progRejects (withPush (prog{ let x = Cons(1, Nil); Push(7, x); () }))
   "expected a borrow argument" = true := by native_decide
 
 -- Calling an unknown function.
@@ -283,7 +283,7 @@ example : progRejects (prog{ nope(); () }) "unknown function" = true := by nativ
 
 -- Using the consumed borrow variable after the call (it is ⊥).
 example : progRejects (withPush (prog{
-    let x = Cons(1, Nil); let b = &m x; push(7, b); let z = b; () }))
+    let x = Cons(1, Nil); let b = &m x; Push(7, b); let z = b; () }))
   "use-after-move" = true := by native_decide
 
 end Dllbc.Tests.S6Call
@@ -320,7 +320,7 @@ namespace Dllbc.Tests.S7Group
 -- The callee checks under the borrow-returning audit: each branch consumes one
 -- argument borrow into the result (exempt) and audits the other.
 def choose : Term := prog{
-  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+  fn Choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
     { match c { True => x, False => y } };
   () }
 
@@ -333,10 +333,10 @@ example : progOk choose = true := by native_decide
 -- demanded). a and b hold DISTINCT fresh σ's; z holds a's. The imprecision is
 -- the point: z = 7 is not provable (§6.2's cost).
 def chooseCaller : Term := prog{
-  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+  fn Choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
     { match c { True => x, False => y } };
   let a = 0; let b = 0; let pa = &m a; let pb = &m b;
-  let r = choose(True, pa, pb);
+  let r = Choose(True, pa, pb);
   *r := 7;
   let z = a;
   () }
@@ -357,14 +357,14 @@ example : tailEnv chooseCaller
 -- a fresh existential: the caller below recovers a FRESH σ : List Nat, NOT the
 -- written `Cons 9 Nil`. Precision is deliberately lost; §6.2's transparent/spec
 -- group ends are the recovery route.
-def through : Term := prog{ fn through (b : &mut List Nat) -> &mut List Nat { b }; () }
+def through : Term := prog{ fn Through (b : &mut List Nat) -> &mut List Nat { b }; () }
 
 example : progOk through = true := by native_decide
 
 def throughCaller : Term := prog{
-  fn through (b : &mut List Nat) -> &mut List Nat { b };
+  fn Through (b : &mut List Nat) -> &mut List Nat { b };
   let x = Cons(1, Nil); let b = &m x;
-  let r = through(b);
+  let r = Through(b);
   *r := Cons(9, Nil);
   let y = x;
   () }
@@ -408,9 +408,9 @@ example : (match runProgram throughCaller with
 -- ACCEPT: overwrite an owner whose loan a call captured. The write demands the
 -- group, the group ends, the owner is released, and the write lands.
 example : progOk (prog{
-  fn keepL (v : &mut List Nat) -> Unit { () };
+  fn KeepL (v : &mut List Nat) -> Unit { () };
   let a = Cons(1, Nil);
-  keepL(&m a);
+  KeepL(&m a);
   a := Cons(2, Nil);
   let y = a;
   () }) = true := by native_decide
@@ -419,9 +419,9 @@ example : progOk (prog{
 -- the issued borrow first and surrenders its payload, then releases the captured
 -- owner, which is §6.1's ordering reached from ⇐ for the first time.
 example : progOk (prog{
-  fn lend (v : &mut List Nat) -> &mut List Nat { &m *v };
+  fn Lend (v : &mut List Nat) -> &mut List Nat { &m *v };
   let a = Cons(1, Nil);
-  let b = lend(&m a);
+  let b = Lend(&m a);
   a := Nil;
   () }) = true := by native_decide
 
@@ -429,9 +429,9 @@ example : progOk (prog{
 -- `*b` was taken, so the issued borrow holds a hole and cannot surrender. The
 -- demand is a WRITE here and a read there; the refusal is the same one.
 example : progRejects (prog{
-  fn lend (v : &mut List Nat) -> &mut List Nat { &m *v };
+  fn Lend (v : &mut List Nat) -> &mut List Nat { &m *v };
   let a = Cons(1, Nil);
-  let b = lend(&m a);
+  let b = Lend(&m a);
   let t = *b;
   a := Nil;
   () })
@@ -442,10 +442,10 @@ example : progRejects (prog{
 -- The group cannot end because an issued borrow cannot surrender: `*r` was
 -- taken, leaving its payload a hole (⊥), and then a captured owner is demanded.
 example : progRejects (prog{
-  fn choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
+  fn Choose (c : Bool, x : &mut Nat, y : &mut Nat) -> &mut Nat
     { match c { True => x, False => y } };
   let a = 0; let b = 0; let pa = &m a; let pb = &m b;
-  let r = choose(True, pa, pb);
+  let r = Choose(True, pa, pb);
   let tk = *r;
   let z = a;
   () })
@@ -453,7 +453,7 @@ example : progRejects (prog{
 
 -- A borrow-returning body whose returned payload fails its owed type:
 -- `bad (b : &mut Nat) → &mut Bool = b` returns a Nat borrow as a Bool borrow.
-example : progRejects (prog{ fn bad (b : &mut Nat) -> &mut Bool { b }; () })
+example : progRejects (prog{ fn Bad (b : &mut Nat) -> &mut Bool { b }; () })
   "owed type" = true := by native_decide
 
 /-! ## The constrained branch, retired with its rule (M28 τ)
@@ -518,15 +518,15 @@ namespace Dllbc.Tests.S12Inst
 -- `use_refl (n : Nat) → Le n n = le_refl n`. The body ⇒-lifts the proof term
 -- `le_refl n` (pure lift, §11); the audit checks it against the pinned `Le n n`.
 def useRefl : Term := prog{
-  fn use_refl (n : Nat) -> Le n n { le_reflT n };
+  fn UseRefl (n : Nat) -> Le n n { le_reflT n };
   () }
 example : progOk useRefl = true := by native_decide
 
 -- A caller returning `Le 5 5` via `use_refl(5)`: the callee's `Le n n` is
 -- instantiated at `n := 5`, so the fresh existential is typed `Le 5 5`.
 def callerRet : Term := prog{
-  fn use_refl (n : Nat) -> Le n n { le_reflT n };
-  fn callerRet () -> Le 5 5 { use_refl(5) };
+  fn UseRefl (n : Nat) -> Le n n { le_reflT n };
+  fn CallerRet () -> Le 5 5 { UseRefl(5) };
   () }
 example : progOk callerRet = true := by native_decide
 
@@ -534,8 +534,8 @@ example : progOk callerRet = true := by native_decide
 -- the caller's σ symbolically (`Le σ σ`); the pinned return type is `Le σ σ`, and
 -- the returned existential is accepted at it.
 def symCall : Term := prog{
-  fn use_refl (n : Nat) -> Le n n { le_reflT n };
-  fn symCall (n : Nat) -> Le n n { use_refl(n) };
+  fn UseRefl (n : Nat) -> Le n n { le_reflT n };
+  fn SymCall (n : Nat) -> Le n n { UseRefl(n) };
   () }
 example : progOk symCall = true := by native_decide
 
@@ -548,16 +548,16 @@ example : progOk symCall = true := by native_decide
 
 -- `needs(1, ())`: `Le 1 2` whnf's to ⊤, which `()` inhabits — accepted.
 def callNeeds1 : Term := prog{
-  fn needs (a : Nat, p : Le a 2) -> Unit { () };
-  fn callNeeds1 () -> Unit { needs(1, ()) };
+  fn Needs (a : Nat, p : Le a 2) -> Unit { () };
+  fn CallNeeds1 () -> Unit { Needs(1, ()) };
   () }
 example : progOk callNeeds1 = true := by native_decide
 
 -- `needs(3, ())`: instantiation gives `Le 3 2` = ⊥, which `()` cannot inhabit —
 -- REJECTED. Without instantiation the parameter type would never resolve to ⊥.
 def callNeeds3 : Term := prog{
-  fn needs (a : Nat, p : Le a 2) -> Unit { () };
-  fn callNeeds3 () -> Unit { needs(3, ()) };
+  fn Needs (a : Nat, p : Le a 2) -> Unit { () };
+  fn CallNeeds3 () -> Unit { Needs(3, ()) };
   () }
 example : progRejects callNeeds3 "does not have its parameter type" = true := by
   native_decide
@@ -571,11 +571,11 @@ example : progRejects callNeeds3 "does not have its parameter type" = true := by
 -- Passing a borrow of `[1,2]`: `Sorted (*b)` instantiates to `Sorted [1,2]`
 -- (a product of ⊤s), which the unit-pair nest inhabits — accepted.
 def observeGood : Term := prog{
-  fn observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () };
-  fn observeGood () -> Unit {
+  fn Observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () };
+  fn ObserveGood () -> Unit {
     let x = Cons(1, Cons(2, Nil));
     let bb = &m x;
-    observe(bb, Pair((), Pair((), ())));
+    Observe(bb, Pair((), Pair((), ())));
     let y = x;
     ()
   };
@@ -585,11 +585,11 @@ example : progOk observeGood = true := by native_decide
 -- Passing a borrow of `[2,1]`: `Sorted [2,1]` contains ⊥ at the first bound, so
 -- the same proof fails — REJECTED. The dependent parameter caught the unsortedness.
 def observeBad : Term := prog{
-  fn observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () };
-  fn observeBad () -> Unit {
+  fn Observe (b : &mut List Nat, p : Sorted (*b)) -> Unit { () };
+  fn ObserveBad () -> Unit {
     let x = Cons(2, Cons(1, Nil));
     let bb = &m x;
-    observe(bb, Pair((), Pair((), ())));
+    Observe(bb, Pair((), Pair((), ())));
     let y = x;
     ()
   };
@@ -605,10 +605,10 @@ example : progRejects observeBad "does not have its parameter type" = true := by
 -- into `Le 2 2` — which `needsLe22` then requires. Green iff the refinement
 -- propagated to the instantiated call result.
 def refineTest : Term := prog{
-  fn use_refl (n : Nat) -> Le n n { le_reflT n };
-  fn needsLe22 (q : Le 2 2) -> Unit { () };
-  fn refineTest (n : Nat, pf : Id Nat n 2) -> Unit {
-    let r = use_refl(n); match pf { Refl => needsLe22(r) } };
+  fn UseRefl (n : Nat) -> Le n n { le_reflT n };
+  fn NeedsLe22 (q : Le 2 2) -> Unit { () };
+  fn RefineTest (n : Nat, pf : Id Nat n 2) -> Unit {
+    let r = UseRefl(n); match pf { Refl => NeedsLe22(r) } };
   () }
 example : progOk refineTest = true := by native_decide
 
@@ -617,7 +617,7 @@ example : progOk refineTest = true := by native_decide
 -- `classify (b : Bool) → Nat = if b { 1 } else { 0 }` desugars to a fresh-var let
 -- and a `match` on it; a symbolic `Bool` splits into two audited paths.
 def classify : Term := prog{
-  fn classify (b : Bool) -> Nat { if b { 1 } else { 0 } };
+  fn Classify (b : Bool) -> Nat { if b { 1 } else { 0 } };
   () }
 example : progOk classify = true := by native_decide
 
@@ -718,32 +718,32 @@ example : (Val.nfV 1000 (Dllbc.Std.drop (Std.ofNat 2) (Dllbc.Std.ofList [Std.ofN
     written through. -/
 
 def withCursors (rest : Term) : Term := prog{
-  fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat {
+  fn Nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (Len *v)) -> &mut Nat {
     match v {
       Nil => botElim Unit p,
       Cons(hd, tl) => match i {
         Z => &m *hd,
-        S(k) => nth(&m *tl, k, p)
+        S(k) => Nth(&m *tl, k, p)
       }
     } };
-  fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
-                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat {
+  fn Nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat) → &mut Nat {
     match v {
       Nil => botElim Unit p2,
       Cons(hd, tl) => match i {
         Z => match j {
           Z => botElim Unit pij,
-          S(jjv) => Pair(&m *hd, nth(&m *tl, jjv, p2))
+          S(jjv) => Pair(&m *hd, Nth(&m *tl, jjv, p2))
         },
         S(k) => match j {
           Z => botElim Unit pij,
-          S(jj2) => nth2(&m *tl, k, jj2, pij, p2)
+          S(jj2) => Nth2(&m *tl, k, jj2, pij, p2)
         }
       }
     } };
-  fn swap (v : &mut List Nat, i : Nat, j : Nat,
-                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit {
-    let pr = nth2(v, i, j, pij, p2);
+  fn Swap (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Unit {
+    let pr = Nth2(v, i, j, pij, p2);
     match pr { Pair(ei, ej) => {
       let t = *ei;
       *ei := *ej;
@@ -764,7 +764,7 @@ example : progOk cursors = true := by native_decide
 def swapBody : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
-  swap(bb, 0, 2, (), ());
+  Swap(bb, 0, 2, (), ());
   let y = x;
   () }
 example : progOk swapBody = true := by native_decide
@@ -780,7 +780,7 @@ example :
 def oobBody : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
-  swap(bb, 0, 4, (), ());
+  Swap(bb, 0, 4, (), ());
   let y = x;
   () }
 example : progRejects oobBody "does not have its parameter type" = true := by
@@ -793,7 +793,7 @@ example : progRejects oobBody "does not have its parameter type" = true := by
 def cascade : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
-  let pp = nth2(bb, 0, 2, (), ());
+  let pp = Nth2(bb, 0, 2, (), ());
   match pp { Pair(ei, ej) => { *ei := 9; *ej := 8; let y = x; () } } }
 example : progOk cascade = true := by native_decide
 
@@ -801,7 +801,7 @@ example : progOk cascade = true := by native_decide
 def rejectProbe : Term := withCursors prog{
   let x = Cons(1, Cons(2, Cons(3, Nil)));
   let bb = &m x;
-  let pp = nth2(bb, 0, 2, (), ());
+  let pp = Nth2(bb, 0, 2, (), ());
   match pp { Pair(ei, ej) => { let taken = *ei; let y = x; () } } }
 example : progRejects rejectProbe "nothing surrendered" = true := by native_decide
 

@@ -204,10 +204,10 @@ example : chk sfst_bad_target sfst_bad_target_ty = false := by native_decide
 -- A back-less callee returning a PINNED value, and a consumer whose second
 -- parameter's type mentions its first argument.
 def pinOne : Term := prog{
-  fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn PinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
   () }
 def useIt : Term := prog{
-  fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
+  fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
   () }
 example : progOk pinOne = true := by native_decide
 example : progOk useIt = true := by native_decide
@@ -216,28 +216,28 @@ example : progOk useIt = true := by native_decide
 -- type is `Id σa (S Z)` for the very σa bound to `a`. This is the caller-side
 -- shape every back-less callee in the rest of M23 depends on.
 def usePin : Term := prog{
-  fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
-  fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
-  fn usePin () -> Unit
-        { let p = pinOne();
-          match p { Pair(a, h) => { useIt(a, h); () } } };
+  fn PinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
+  fn UsePin () -> Unit
+        { let p = PinOne();
+          match p { Pair(a, h) => { UseIt(a, h); () } } };
   () }
 example : progOk usePin = true := by native_decide
 
 -- Not vacuous (a): the pin says `S Z`; a consumer wanting `S (S Z)` is rejected —
 -- so the threaded type is the callee's actual claim, not a rubber stamp.
 def useItLie : Term := prog{
-  fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
+  fn UseItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
   () }
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk useItLie = true := by native_decide
 def usePinLie : Term := prog{
-  fn pinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
-  fn useItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
-  fn usePinLie () -> Unit
-        { let p = pinOne();
-          match p { Pair(a, h) => { useItLie(a, h); () } } };
+  fn PinOne () -> Σ (r : Nat) → Id Nat r (S Z) { Pair(S Z, Refl) };
+  fn UseItLie (n : Nat, h : Id Nat n (S (S Z))) -> Unit { () };
+  fn UsePinLie () -> Unit
+        { let p = PinOne();
+          match p { Pair(a, h) => { UseItLie(a, h); () } } };
   () }
 example : progRejects usePinLie "does not have its parameter type" = true := by native_decide
 
@@ -246,15 +246,15 @@ example : progRejects usePinLie "does not have its parameter type" = true := by 
 -- pin is what carries the knowledge across the boundary, which is the whole
 -- premise of removing declared backs.
 def plainOne : Term := prog{
-  fn plainOne () -> Nat { S Z };
+  fn PlainOne () -> Nat { S Z };
   () }
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk plainOne = true := by native_decide
 def useUnpinned : Term := prog{
-  fn plainOne () -> Nat { S Z };
-  fn useIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
-  fn useUnpinned () -> Unit { let a = plainOne(); useIt(a, Refl); () };
+  fn PlainOne () -> Nat { S Z };
+  fn UseIt (n : Nat, h : Id Nat n (S Z)) -> Unit { () };
+  fn UseUnpinned () -> Unit { let a = PlainOne(); UseIt(a, Refl); () };
   () }
 example : progRejects useUnpinned "does not have its parameter type" = true := by native_decide
 
@@ -286,15 +286,15 @@ example : progRejects useUnpinned "does not have its parameter type" = true := b
 -- The honest shape, and the one the rest of M23 rides: structural decrease on a
 -- declared fuel argument.
 def recGood : Term := prog{
-  fn recGood [n] (n : Nat) -> Id Nat Z Z
-        { match n { Z => Refl, S(m) => recGood(m) } };
+  fn RecGood [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(m) => RecGood(m) } };
   () }
 example : progOk recGood = true := by native_decide
 
 -- BRANCH 1 — no `[k]` at all. THE headline control: this exact FnDef was accepted
 -- before the guard, and it proves `Z = S Z`.
 def recBad : Term := prog{
-  fn recBad () -> Id Nat Z (S Z) { recBad() };
+  fn RecBad () -> Id Nat Z (S Z) { RecBad() };
   () }
 -- MIGRATES, AND IS STILL REFUSED — with a different sentence, which is the whole
 -- of what the guard's deletion costs. §7 makes a recursive occurrence the `ih`
@@ -305,7 +305,7 @@ example : progRejects recBad "unknown function" = true := by native_decide
 
 -- BRANCH 2 — `[k]` declared, but the self-call passes the SAME fuel. Equal is not
 -- strictly smaller; this is the shape the strictness in `strictSubterm` exists for.
-def recSame : Term := prog{ fn recSame [n] (n : Nat) -> Id Nat Z (S Z) { recSame(n) }; () }
+def recSame : Term := prog{ fn RecSame [n] (n : Nat) -> Id Nat Z (S Z) { RecSame(n) }; () }
 -- REFUSED AT THE ELABORATION, which is where this branch's content now lives:
 -- §7 makes `ih` the sealed self-view AT THE PREDECESSOR, so a self-call at any
 -- other argument has nothing to become, and `fnElab` says so rather than emitting
@@ -319,24 +319,24 @@ example : progRejects recSame "not the predecessor" = true := by native_decide
 -- required *something* to decrease — which is unsound, since alternating branches
 -- can each decrease a different coordinate forever.)
 def recWrongIdx : Term := prog{
-  fn recWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
-        { match m { Z => Refl, S(m2) => recWrongIdx(n, m2) } };
+  fn RecWrongIdx [n] (n : Nat, m : Nat) -> Id Nat Z Z
+        { match m { Z => Refl, S(m2) => RecWrongIdx(n, m2) } };
   () }
 example : progRejects recWrongIdx "not the predecessor" = true := by native_decide
 
 -- …and the same body with the honest index declared is accepted, so branch 3 is
 -- about the index, not about the body.
 def recRightIdx : Term := prog{
-  fn recRightIdx [m] (n : Nat, m : Nat) -> Id Nat Z Z
-        { match m { Z => Refl, S(m2) => recRightIdx(n, m2) } };
+  fn RecRightIdx [m] (n : Nat, m : Nat) -> Id Nat Z Z
+        { match m { Z => Refl, S(m2) => RecRightIdx(n, m2) } };
   () }
 example : progOk recRightIdx = true := by native_decide
 
 -- BRANCH 4 — an INCREASE reads as "not a subterm", not as a decrease: `S(m2)`
 -- against a snapshot of `S m2` is equality one level up, and equality never passes.
 def recGrow : Term := prog{
-  fn recGrow [n] (n : Nat) -> Id Nat Z Z
-        { match n { Z => Refl, S(m2) => recGrow(S(m2)) } };
+  fn RecGrow [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(m2) => RecGrow(S(m2)) } };
   () }
 example : progRejects recGrow "not the predecessor" = true := by native_decide
 
@@ -345,8 +345,8 @@ example : progRejects recGrow "not the predecessor" = true := by native_decide
 -- same hole through two doors. Rejected outright (§8's measures are where a general
 -- story would live).
 def recMutA : Term := prog{
-  fn recMutA () -> Id Nat Z (S Z) { recMutB() };
-  fn recMutB () -> Id Nat Z (S Z) { recMutA() };
+  fn RecMutA () -> Id Nat Z (S Z) { RecMutB() };
+  fn RecMutB () -> Id Nat Z (S Z) { RecMutA() };
   () }
 -- Same replacement, and §8 predicted exactly this: mutual recursion "becomes
 -- unwritable" rather than staying rejected, because `recMutB` is not in scope
@@ -356,8 +356,8 @@ example : progRejects recMutA "unknown function" = true := by
 
 -- The guard is STRUCTURAL, not Nat-specific: a list fuel decreases the same way.
 def recList : Term := prog{
-  fn recList [l] (l : List Nat) -> Id Nat Z Z
-        { match l { Nil => Refl, Cons(h, t) => recList(t) } };
+  fn RecList [l] (l : List Nat) -> Id Nat Z Z
+        { match l { Nil => Refl, Cons(h, t) => RecList(t) } };
   () }
 example : progOk recList = true := by native_decide
 
@@ -365,8 +365,8 @@ example : progOk recList = true := by native_decide
 -- just one-step) — which the quicksort recursion needs, since it peels `cnt` twice
 -- before recursing.
 def recDeep : Term := prog{
-  fn recDeep [n] (n : Nat) -> Id Nat Z Z
-        { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => recDeep(b) } } };
+  fn RecDeep [n] (n : Nat) -> Id Nat Z Z
+        { match n { Z => Refl, S(a) => match a { Z => Refl, S(b) => RecDeep(b) } } };
   () }
 -- **A MACRO LIMIT, NOT A CALCULUS ONE** (§12 open 3, corrected in M27-P1). The
 -- macro declines two-constructors-down because §7 has it derive the motive
@@ -398,8 +398,8 @@ example : progRejects recDeep "not the predecessor" = true := by native_decide
     stage (vi)'s chain, where the price is one parameter and one dead branch. -/
 
 def borrowDecrease : Term := prog{
-  fn zero_all [v] (v : &mut List Nat) -> Unit
-        { match v { Nil => (), Cons(hd, tl) => { *hd := 0; zero_all(tl); () } } };
+  fn ZeroAll [v] (v : &mut List Nat) -> Unit
+        { match v { Nil => (), Cons(hd, tl) => { *hd := 0; ZeroAll(tl); () } } };
   () }
 -- Refused by the needle no other error can produce…
 example : progRejects borrowDecrease FnMacro.fnRefusedNeedle = true := by native_decide
@@ -415,8 +415,8 @@ example : progOk borrowDecrease = false := by native_decide
 -- A NON-self call to a recursive function is untouched — the guard is about
 -- self-calls, and every other call is the ordinary §5.3 signature rule.
 def recCaller : Term := prog{
-  fn recGood [n] (n : Nat) -> Id Nat Z Z { match n { Z => Refl, S(m) => recGood(m) } };
-  fn recCaller () -> Id Nat Z Z { recGood(S Z) };
+  fn RecGood [n] (n : Nat) -> Id Nat Z Z { match n { Z => Refl, S(m) => RecGood(m) } };
+  fn RecCaller () -> Id Nat Z Z { RecGood(S Z) };
   () }
 -- The callee is in scope by being written above it — no table (M28 φ).
 example : progOk recCaller = true := by native_decide
@@ -470,22 +470,22 @@ def sucT (t : Term) : Term := .ctorApp "S" [t]
 -- form in exactly one named argument each, so the body is written ONCE and the
 -- difference is by construction rather than by a reader comparing two spellings.
 def soUnder (ret tail : Term) : Term := prog{
-  fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v)) -> %ret
+  fn SplitOff [i] (v : &mut List Nat, i : Nat, hi : Le i (Len *v)) -> %ret
         { match i {
-            -- i = Z: take the whole payload out (§2.4's take-and-refill, the idiom
-            -- Rust rejects with E0507) and leave `Nil`. `take Z l = Nil` and
-            -- `drop Z l = l` both compute, so both conjuncts are `Refl`.
+            -- i = Z: Take the whole payload out (§2.4's Take-and-refill, the idiom
+            -- Rust rejects with E0507) and leave `Nil`. `Take Z l = Nil` and
+            -- `Drop Z l = l` both compute, so both conjuncts are `Refl`.
             Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
             S(i2) => match v {
-              -- `hi : Le (S i2) (len Nil)` is `Le (S i2) Z`, which IS `Bot`: the
+              -- `hi : Le (S i2) (Len Nil)` is `Le (S i2) Z`, which IS `Bot`: the
               -- branch is dead and the audit admits an ex-falso at any type (§5.4).
               Nil => botElim Unit hi,
               Cons(hd, tl) => {
-                -- `hi` passes down DEFINITIONALLY: `len (Cons _ t) = S (len t)`, so
-                -- `Le (S i2) (S (len σ_tl))` already IS `Le i2 (len σ_tl)`. The M14
+                -- `hi` passes down DEFINITIONALLY: `Len (Cons _ t) = S (Len t)`, so
+                -- `Le (S i2) (S (Len σ_tl))` already IS `Le i2 (Len σ_tl)`. The M14
                 -- bounds-cursor property, still holding.
-                let y1 = take i2 (*tl);
-                let p = split_off(&m *tl, i2, hi);
+                let y1 = Take i2 (*tl);
+                let p = SplitOff(&m *tl, i2, hi);
                 match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                   -- The prefix conjunct needs a congruence under `Cons (*hd)`, and
                   -- reading `*tl` here — AFTER handing `&mut *tl` to the call — is
@@ -493,8 +493,8 @@ def soUnder (ret tail : Term) : Term := prog{
                   -- forced the ⇝-side demand-end (Machine.lean, `collapseCDerefs`):
                   -- before it, the projection returned the parked `loanₘ` itself and
                   -- a state marker rode silently into this proof term.
-                  -- The suffix conjunct needs nothing: `drop (S i2) (Cons h t)` IS
-                  -- `drop i2 t`, so the callee's `h2` is already the goal.
+                  -- The suffix conjunct needs nothing: `Drop (S i2) (Cons h t)` IS
+                  -- `Drop i2 t`, so the callee's `h2` is already the goal.
                   let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
                              (*tl) y1 h1;
                   Pair(rr, Pair(c1, h2)) } } }
@@ -510,7 +510,7 @@ def soUnder (ret tail : Term) : Term := prog{
 def soRet (pre suf : Term) : Term := prog{
   Σ (ret : List Nat) → Σ (h1 : Id (List Nat) %dvT %pre) → Id (List Nat) ret %suf }
 
-def soHonest : Term := soRet (prog{ take %iT %oldvT }) (prog{ drop %iT %oldvT })
+def soHonest : Term := soRet (prog{ Take %iT %oldvT }) (prog{ Drop %iT %oldvT })
 def splitOff : Term := soUnder soHonest .unit
 example : progOk splitOff = true := by native_decide
 
@@ -521,9 +521,9 @@ example : progOk splitOff = true := by native_decide
     leave the recursive path untested; the body lie breaks the congruence in the
     `Cons` branch and is the control for that path. -/
 
-def splitOffLieTake : Term := soUnder (soRet (prog{ take (S %iT) %oldvT }) (prog{ drop %iT %oldvT })) .unit
-def splitOffLieDrop : Term := soUnder (soRet (prog{ take %iT %oldvT }) (prog{ drop (S %iT) %oldvT })) .unit
-def splitOffLieSwap : Term := soUnder (soRet (prog{ drop %iT %oldvT }) (prog{ take %iT %oldvT })) .unit
+def splitOffLieTake : Term := soUnder (soRet (prog{ Take (S %iT) %oldvT }) (prog{ Drop %iT %oldvT })) .unit
+def splitOffLieDrop : Term := soUnder (soRet (prog{ Take %iT %oldvT }) (prog{ Drop (S %iT) %oldvT })) .unit
+def splitOffLieSwap : Term := soUnder (soRet (prog{ Drop %iT %oldvT }) (prog{ Take %iT %oldvT })) .unit
 example : progRejects splitOffLieTake "does not have return type" = true := by native_decide
 example : progRejects splitOffLieDrop "does not have return type" = true := by native_decide
 example : progRejects splitOffLieSwap "does not have return type" = true := by native_decide
@@ -538,14 +538,14 @@ example : progRejects splitOffLieSwap "does not have return type" = true := by n
 -- which has no way to say "the `hd` this match will bind". The χ/ψ rules are about
 -- when sharing is worth its cost; this is the case where it is not available.
 def splitOffLieHead : Term := prog{
-  fn split_off [i] (v : &mut List Nat, i : Nat, hi : Le i (len *v)) -> %soHonest
+  fn SplitOff [i] (v : &mut List Nat, i : Nat, hi : Le i (Len *v)) -> %soHonest
         { match i {
             Z => { let tail = *v; *v := Nil; Pair(tail, Pair(Refl, Refl)) },
             S(i2) => match v {
               Nil => botElim Unit hi,
               Cons(hd, tl) => {
-                let y1 = take i2 (*tl);
-                let p = split_off(&m *tl, i2, hi);
+                let y1 = Take i2 (*tl);
+                let p = SplitOff(&m *tl, i2, hi);
                 match p { Pair(rr, q) => match q { Pair(h1, h2) => {
                   let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). a)
                              (*tl) y1 h1;
@@ -571,7 +571,7 @@ def vlistV : List Nat → Val | [] => .ctor "Nil" [] | x :: xs => .ctor "Cons" [
 def soCallerTail (l : List Nat) (i : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
-      (.letIn ⟨2, "p"⟩ (.call "split_off" [.var ⟨1, "b"⟩, tnatT i, .unit])
+      (.letIn ⟨2, "p"⟩ (.call "SplitOff" [.var ⟨1, "b"⟩, tnatT i, .unit])
         (.matchE ⟨2, "p"⟩ none [.mk "Pair" [⟨3, "rr"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "x"⟩) .unit)])))
 def runSplit (l : List Nat) (i : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (soUnder soHonest (soCallerTail l i)) with
@@ -628,7 +628,7 @@ example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything,
     attribution is `swap_at`'s for the same reason. -/
 
 def setSwapUnder (sret wret tail : Term) : Term := prog{
-  fn set_at [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (len *v)) -> %sret
+  fn SetAt [i] (v : &mut List Nat, i : Nat, x : Nat, hi : Le (S i) (Len *v)) -> %sret
         { match i {
             -- `*hd := x` is a strong update through a match-field reborrow: the
             -- parent suspends, the audit collapses it, and the exit is `Cons x σ_tl`
@@ -638,29 +638,29 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
               Nil => botElim Unit hi,
               Cons(hd, tl) => {
                 let y = set i2 x (*tl);
-                let h = set_at(&m *tl, i2, x, hi);
+                let h = SetAt(&m *tl, i2, x, hi);
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
         } };
-  -- `swap_at(v, i, j)`: two `set_at`s and the M22 bridge, ensuring the model
-  -- function `swapL` directly. Not recursive itself — the recursion is `set_at`'s.
-  fn swap_at (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
-                    p2 : Le (S j) (len *v), hi : Le (S i) (len *v)) -> %wret
+  -- `SwapAt(v, i, j)`: two `SetAt`s and the M22 bridge, ensuring the model
+  -- function `swapL` directly. Not recursive itself — the recursion is `SetAt`'s.
+  fn SwapAt (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j,
+                    p2 : Le (S j) (Len *v), hi : Le (S i) (Len *v)) -> %wret
         { let a = nth i (*v);
           let b = nth j (*v);
           -- The M22 bridge, cited as an ordinary lemma in the body. No audit
           -- feature, no pinning: `set i b (set j a s)` IS the set-form it relates.
           let bridge = swapL_set i j (old *v) pij p2;
-          let h1 = set_at(&m *v, j, a, p2);
+          let h1 = SetAt(&m *v, j, a, p2);
           -- The bound tax (M21's, unchanged): the second write's bound is stated
           -- over the LIVE `*v`, which the first write replaced with an opaque σ′, so
           -- it transports back through `len_set` along h1.
-          let hlen = id_trans Nat (len *v) (len (set j a (old *v))) (len (old *v))
-                       (id_congr (List Nat) Nat len (*v) (set j a (old *v)) h1)
+          let hlen = id_trans Nat (Len *v) (Len (set j a (old *v))) (Len (old *v))
+                       (id_congr (List Nat) Nat Len (*v) (set j a (old *v)) h1)
                        (len_set j a (old *v));
-          let hi2 = le_rw_r (S i) (len (old *v)) (len *v)
-                      (id_sym Nat (len *v) (len (old *v)) hlen) hi;
+          let hi2 = le_rw_r (S i) (Len (old *v)) (Len *v)
+                      (id_sym Nat (Len *v) (Len (old *v)) hlen) hi;
           -- PAIN DIARY (the recurring idiom, now named). After the second call the
           -- first call's exit σ′ can no longer be NAMED — `*v` reads the newest
           -- value, and nothing binds an older one. So the entire remaining
@@ -680,7 +680,7 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
                                (id_congr (List Nat) (List Nat) (λ (z : List Nat). set i b z)
                                  (*v) (set j a (old *v)) h1)
                                bridge));
-          let h2 = set_at(&m *v, i, b, hi2);
+          let h2 = SetAt(&m *v, i, b, hi2);
           finish (*v) h2 };
   %tail }
 
@@ -719,7 +719,7 @@ example : progRejects (setSwapUnder setHonest (exitIs oldvT) .unit)
 def setCallerTail (l : List Nat) (i x : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
-      (.seq (.call "set_at" [.var ⟨1, "b"⟩, tnatT i, tnatT x, .unit])
+      (.seq (.call "SetAt" [.var ⟨1, "b"⟩, tnatT i, tnatT x, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runSetAt (l : List Nat) (i x : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (setSwapUnder setHonest swapHonest (setCallerTail l i x)) with
@@ -733,7 +733,7 @@ example : runSetAt [5,5,5,5] 1 7 = true := by native_decide
 def swapCallerTail (l : List Nat) (i j : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
-      (.seq (.call "swap_at" [.var ⟨1, "b"⟩, tnatT i, tnatT j, .unit, .unit, .unit])
+      (.seq (.call "SwapAt" [.var ⟨1, "b"⟩, tnatT i, tnatT j, .unit, .unit, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runSwapAt (l : List Nat) (i j : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (setSwapUnder setHonest swapHonest (swapCallerTail l i j)) with
@@ -767,7 +767,7 @@ def insLT (k x l : Term) : Term := .app (.app (.app Dllbc.StdLemmas.insertL k) x
 
 /-- The function, once, with its return type and what follows it as parameters. -/
 def insUnder (ret tail : Term) : Term := prog{
-  fn insert_at [k] (v : &mut List Nat, k : Nat, x : Nat) -> %ret
+  fn InsertAt [k] (v : &mut List Nat, k : Nat, x : Nat) -> %ret
         { match k {
             Z => { let t = *v; *v := Cons(x, t); Refl },
             S(k2) => match v {
@@ -775,7 +775,7 @@ def insUnder (ret tail : Term) : Term := prog{
               Nil => { *v := Cons(x, Nil); Refl },
               Cons(hd, tl) => {
                 let y = insertL k2 x (*tl);
-                let h = insert_at(&m *tl, k2, x);
+                let h = InsertAt(&m *tl, k2, x);
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
@@ -804,7 +804,7 @@ example : (pv (insLC 0 9 []) == vlistV [9]) = true := by native_decide
 def insCallerTail (l : List Nat) (k x : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
-      (.seq (.call "insert_at" [.var ⟨1, "b"⟩, tnatT k, tnatT x])
+      (.seq (.call "InsertAt" [.var ⟨1, "b"⟩, tnatT k, tnatT x])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def runInsertAt (l : List Nat) (k x : Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (insUnder insHonest (insCallerTail l k x)) with
@@ -831,17 +831,17 @@ example : runInsertAt [1,2,3] 3 9 = true := by native_decide
     pair: -/
 
 def needLe : Term := prog{
-  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
   () }
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk needLe = true := by native_decide
 def branchKnowledge : Term := prog{
-  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
-  fn branchKnowledge (a : Nat, b : Nat) -> Unit
-        { let c = leb a b;
+  fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn BranchKnowledge (a : Nat, b : Nat) -> Unit
+        { let c = Leb a b;
           match c {
-            True => { needLe(a, b, leb_true_le a b Refl); () },
+            True => { NeedLe(a, b, leb_true_le a b Refl); () },
             False => ()
           } };
   () }
@@ -869,11 +869,11 @@ example : progRejects branchKnowledge "does not have its parameter type" = true 
     thing. -/
 
 def branchKnowledgeEq : Term := prog{
-  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
-  fn branchKnowledgeEq (a : Nat, b : Nat) -> Unit
-        { let c = leb a b;
+  fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn BranchKnowledgeEq (a : Nat, b : Nat) -> Unit
+        { let c = Leb a b;
           match e : c {
-            True => { needLe(a, b, leb_true_le a b e); () },
+            True => { NeedLe(a, b, leb_true_le a b e); () },
             False => ()
           } };
   () }
@@ -883,19 +883,19 @@ example : progOk branchKnowledgeEq = true := by native_decide
 -- `Id Bool (leb a b) False`, hence `Le (S b) a` — so the equation is per-branch,
 -- not a single fact smuggled in twice.
 def needGt : Term := prog{
-  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  fn NeedGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
   () }
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk needGt = true := by native_decide
 def branchKnowledgeBoth : Term := prog{
-  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
-  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
-  fn branchKnowledgeBoth (a : Nat, b : Nat) -> Unit
-        { let c = leb a b;
+  fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn NeedGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  fn BranchKnowledgeBoth (a : Nat, b : Nat) -> Unit
+        { let c = Leb a b;
           match e : c {
-            True => { needLe(a, b, leb_true_le a b e); () },
-            False => { needGt(a, b, leb_false_gt a b e); () }
+            True => { NeedLe(a, b, leb_true_le a b e); () },
+            False => { NeedGt(a, b, leb_false_gt a b e); () }
           } };
   () }
 example : progOk branchKnowledgeBoth = true := by
@@ -904,11 +904,11 @@ example : progOk branchKnowledgeBoth = true := by
 -- The `if` sugar carries it too (`if h : c { … } else { … }`), which is the form the
 -- partition body wants.
 def branchKnowledgeIf : Term := prog{
-  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
-  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
-  fn branchKnowledgeIf (a : Nat, b : Nat) -> Unit
-        { if e : leb a b { needLe(a, b, leb_true_le a b e); () }
-          else { needGt(a, b, leb_false_gt a b e); () } };
+  fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn NeedGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  fn BranchKnowledgeIf (a : Nat, b : Nat) -> Unit
+        { if e : Leb a b { NeedLe(a, b, leb_true_le a b e); () }
+          else { NeedGt(a, b, leb_false_gt a b e); () } };
   () }
 example : progOk branchKnowledgeIf = true := by
   native_decide
@@ -923,12 +923,12 @@ example : progOk branchKnowledgeIf = true := by
 -- (1) The equation is the branch's OWN constructor, not the other one: citing
 -- `leb_false_gt` on the True branch's `e : Id Bool (leb a b) True` is rejected.
 def branchEqSwapped : Term := prog{
-  fn needLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
-  fn needGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
-  fn branchEqSwapped (a : Nat, b : Nat) -> Unit
-        { let c = leb a b;
+  fn NeedLe (a : Nat, b : Nat, h : Le a b) -> Unit { () };
+  fn NeedGt (a : Nat, b : Nat, h : Le (S b) a) -> Unit { () };
+  fn BranchEqSwapped (a : Nat, b : Nat) -> Unit
+        { let c = Leb a b;
           match e : c {
-            True => { needGt(a, b, leb_false_gt a b e); () },
+            True => { NeedGt(a, b, leb_false_gt a b e); () },
             False => ()
           } };
   () }
@@ -938,17 +938,17 @@ example : progRejects branchEqSwapped "does not have its parameter type" = true 
 -- `leb a b`, then claim the equation is about `leb b a`. Rejected — so the minted
 -- type is read off the abstracted scrutinee, not fabricated per use site.
 def needLeSwap : Term := prog{
-  fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
+  fn NeedLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
   () }
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk needLeSwap = true := by native_decide
 def branchEqWrongSpine : Term := prog{
-  fn needLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
-  fn branchEqWrongSpine (a : Nat, b : Nat) -> Unit
-        { let c = leb a b;
+  fn NeedLeSwap (a : Nat, b : Nat, h : Le b a) -> Unit { () };
+  fn BranchEqWrongSpine (a : Nat, b : Nat) -> Unit
+        { let c = Leb a b;
           match e : c {
-            True => { needLeSwap(a, b, leb_true_le b a e); () },
+            True => { NeedLeSwap(a, b, leb_true_le b a e); () },
             False => ()
           } };
   () }
@@ -958,29 +958,29 @@ example : progRejects branchEqWrongSpine "does not have its parameter type" = tr
 -- `S` branch is `Id Nat (S σm) (S σm)` — ⇜ already rewrote the pre-split value, so
 -- both endpoints are the constructor tree and nothing off-diagonal is derivable.
 def wantEqLie : Term := prog{
-  fn wantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
+  fn WantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
   () }
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk wantEqLie = true := by native_decide
 def branchEqPlainSym : Term := prog{
-  fn wantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
-  fn branchEqPlainSym (n : Nat) -> Unit
-        { match e : n { Z => (), S(m) => { wantEqLie(m, e); () } } };
+  fn WantEqLie (n : Nat, h : Id Nat (S n) n) -> Unit { () };
+  fn BranchEqPlainSym (n : Nat) -> Unit
+        { match e : n { Z => (), S(m) => { WantEqLie(m, e); () } } };
   () }
 example : progRejects branchEqPlainSym "does not have its parameter type" = true := by native_decide
 
 -- …and the reflexive reading of that same equation IS available: `Id Nat (S m) (S m)`.
 def wantRefl : Term := prog{
-  fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
+  fn WantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
   () }
 -- A callee, written into each chain that calls it; the standalone form keeps
 -- the verdict `S26Migrate.p23` was computing for it.
 example : progOk wantRefl = true := by native_decide
 def branchEqPlainSymRefl : Term := prog{
-  fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
-  fn branchEqPlainSymRefl (n : Nat) -> Unit
-        { match e : n { Z => (), S(m) => { wantRefl(m, e); () } } };
+  fn WantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
+  fn BranchEqPlainSymRefl (n : Nat) -> Unit
+        { match e : n { Z => (), S(m) => { WantRefl(m, e); () } } };
   () }
 example : progOk branchEqPlainSymRefl = true := by
   native_decide
@@ -989,10 +989,10 @@ example : progOk branchEqPlainSymRefl = true := by
 -- equation too, so a body written with `match h :` runs. The differential below
 -- exercises the same path end to end.
 def concreteEq : Term := prog{
-  fn wantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
-  fn concreteEq () -> Unit
+  fn WantRefl (n : Nat, h : Id Nat (S n) (S n)) -> Unit { () };
+  fn ConcreteEq () -> Unit
         { let n = S(Z);
-          match e : n { Z => (), S(m) => { wantRefl(m, e); () } } };
+          match e : n { Z => (), S(m) => { WantRefl(m, e); () } } };
   () }
 example : progOk concreteEq = true := by native_decide
 
@@ -1015,7 +1015,7 @@ example : progOk concreteEq = true := by native_decide
 -- not declare functions (both chains number their function slots from `progBase`, so
 -- the inner would shadow the outer — `bindFn` refuses it). One chain, both functions.
 def pick : Term := prog{
-  fn insert_at [k] (v : &mut List Nat, k : Nat, x : Nat) -> %insHonest
+  fn InsertAt [k] (v : &mut List Nat, k : Nat, x : Nat) -> %insHonest
         { match k {
             Z => { let t = *v; *v := Cons(x, t); Refl },
             S(k2) => match v {
@@ -1023,21 +1023,21 @@ def pick : Term := prog{
               Nil => { *v := Cons(x, Nil); Refl },
               Cons(hd, tl) => {
                 let y = insertL k2 x (*tl);
-                let h = insert_at(&m *tl, k2, x);
+                let h = InsertAt(&m *tl, k2, x);
                 id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
               }
             }
         } };
-  fn pick (v : &mut List Nat, x : Nat, p : Nat)
+  fn Pick (v : &mut List Nat, x : Nat, p : Nat)
         -> Id (List Nat) (*v)
-             (insertL (boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p)) x (old *v))
+             (insertL (boolRec (λ (b : Bool). Nat) Z (S Z) (Leb x p)) x (old *v))
         -- (M26-B) `ki`, not `K`. §6 makes capitalisation the binder-mode marker,
-        -- and this binder is genuinely RUNTIME: `insert_at` matches on the index
+        -- and this binder is genuinely RUNTIME: `InsertAt` matches on the index
         -- it is passed. The capital was stylistic — this was the only binder in
         -- the whole corpus whose name contradicted its role, and the fence is
         -- what found it.
-        { let ki = boolRec (λ (b : Bool). Nat) Z (S Z) (leb x p);
-          insert_at(&m *v, ki, x) };
+        { let ki = boolRec (λ (b : Bool). Nat) Z (S Z) (Leb x p);
+          InsertAt(&m *v, ki, x) };
   () }
 example : progOk pick = true := by native_decide
 
@@ -1050,17 +1050,17 @@ example : progOk pick = true := by native_decide
 
 def ub_pick : Term := prog{
   λ (x : Nat). λ (p : Nat). λ (l : List Nat). λ (h : Ub p l).
-    elim (leb x p) return (λ (b : Bool).
-        Id Bool (leb x p) b →
-        Ub p (take (boolRec (λ (bb : Bool). Nat) (S Z) Z b)
+    elim (Leb x p) return (λ (b : Bool).
+        Id Bool (Leb x p) b →
+        Ub p (Take (boolRec (λ (bb : Bool). Nat) (S Z) Z b)
                 (insertL (boolRec (λ (bb : Bool). Nat) Z (S Z) b) x l))) {
-      True => λ (e : Id Bool (leb x p) True). Pair(leb_true_le x p e, unit),
-      False => λ (e : Id Bool (leb x p) False). unit
+      True => λ (e : Id Bool (Leb x p) True). Pair(leb_true_le x p e, unit),
+      False => λ (e : Id Bool (Leb x p) False). unit
     } Refl }
 def ub_pick_ty : Term := prog{
   Π (x : Nat) → Π (p : Nat) → Π (l : List Nat) → Ub p l →
-    Ub p (take (boolRec (λ (bb : Bool). Nat) (S Z) Z (leb x p))
-            (insertL (boolRec (λ (bb : Bool). Nat) Z (S Z) (leb x p)) x l)) }
+    Ub p (Take (boolRec (λ (bb : Bool). Nat) (S Z) Z (Leb x p))
+            (insertL (boolRec (λ (bb : Bool). Nat) Z (S Z) (Leb x p)) x l)) }
 example : chk ub_pick ub_pick_ty = true := by native_decide
 
 -- `Ub`/`Lb` compute, and are Σ-chained (so `sigmaRec` consumes them).
@@ -1324,15 +1324,15 @@ def fuelT : Term := .var ⟨0, "fuel"⟩
 
 def partHonest : Term := prog{
   Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
-    → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
-    → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) }
+    → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
+    → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (Count n (old *%vfT)) }
 
 def qsHonest : Term := prog{
-  Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) }
+  Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (Count n (*%vfT)) (Count n (old *%vfT)) }
 
 /-- The sufficiency hypothesis's type — a telescope entry, so it is a parameter of
     the chain too. Its twin is the one that weakens it to `Unit`. -/
-def suffHonest : Term := prog{ Le (len *%vfT) %fuelT }
+def suffHonest : Term := prog{ Le (Len *%vfT) %fuelT }
 
 /-! ### The chain, once
 
@@ -1343,21 +1343,21 @@ def suffHonest : Term := prog{ Le (len *%vfT) %fuelT }
     an id for, has no splice that can reach it). Both are transcribed below. -/
 
 def qsUnder (pret qret suff tail : Term) : Term := prog{
-  fn partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel) -> %pret
+  fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %pret
       { let l = *v;
         match l {
-          -- `Ub p Nil` and `Lb p Nil` are both `Unit`, and the count goal is
-          -- `add Z Z = Z` — the empty partition proves itself.
+          -- `Ub p Nil` and `Lb p Nil` are both `Unit`, and the Count goal is
+          -- `Add Z Z = Z` — the empty Partition proves itself.
           Nil => { *v := Nil;
                    Pair(Nil, Pair(unit, Pair(unit, Pair(unit, Pair(unit, λ (n : Nat). Refl))))) },
           Cons(x, rest) => match fuel {
-            -- Out of fuel with a non-empty list: `Hf : Le (S (len rest)) Z` IS
+            -- Out of fuel with a non-empty list: `Hf : Le (S (Len rest)) Z` IS
             -- `Bot`, so the path is dead and the audit admits an ex-falso at any
             -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
             Z => botElim Unit Hf,
             S(f2) => {
             -- PAIN DIARY (staging, and the first where the unnameable thing is an
-            -- ENTRY value, not an exit). Both count steps must name `rest`, the tail
+            -- ENTRY value, not an exit). Both Count steps must name `rest`, the tail
             -- as it was at entry; but `rest` is DATA and `*v := rest` moves it, so
             -- after the very next statement no term in the body denotes it. Dodged
             -- as ever by building the derivation while it is still live and applying
@@ -1365,33 +1365,33 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             -- about the CURRENT exit"); this instance says the same of any consumed
             -- parameter or binder, and it is a filing for `old` on consumed things.
             let mkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                           λ (n : Nat). count_cons_l n x a b rest (h n));
             let mkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                           λ (n : Nat). count_cons_r n x a b rest (h n));
-            -- The lengths need no staged lambda: `len rest` is a NAT, so naming the
+            -- The lengths need no staged lambda: `Len rest` is a NAT, so naming the
             -- computed value once, while `rest` is live, is enough. (The counts
-            -- cannot do this — `count n rest` is a family over `n`, and it is the
+            -- cannot do this — `Count n rest` is a family over `n`, and it is the
             -- LIST the lemma needs, not any one of its counts.)
-            let lr = len rest;
+            let lr = Len rest;
             *v := rest;
-            -- The bound goes with the call, UNCHANGED: `Le (len (Cons x rest)) (S f2)`
-            -- already IS `Le (len rest) f2`.
-            let r = partition(f2, &m *v, p, Hf);
+            -- The bound goes with the call, UNCHANGED: `Le (Len (Cons x rest)) (S f2)`
+            -- already IS `Le (Len rest) f2`.
+            let r = Partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
             match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
               -- THE BRANCH EQUATION, in its first real use. `e` is the only reason
-              -- either arm can build its bound: the split abstracted `leb σ_x σ_p`
+              -- either arm can build its bound: the split abstracted `Leb σ_x σ_p`
               -- away, so `leb_true_le x p Refl` is rejected here (see the wall test)
               -- and `leb_true_le x p e` is not.
-              if e : leb x p {
+              if e : Leb x p {
                 -- x ≤ p: the head belongs to the KEPT part. Derive both proofs
                 -- BEFORE the write, which consumes `lo` and `x` (§5.3's ordering
                 -- corollary, in its body-local form).
                 let lo = *v;
                 let hub2 = Pair(leb_true_le x p e, hub);
-                let hl2b = le_up_r (len hi) lr hl2;
+                let hl2b = le_up_r (Len hi) lr hl2;
                 let cnt = mkL lo hi hcnt;
                 *v := Cons(x, lo);
                 Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
@@ -1399,18 +1399,18 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 -- x > p: the head belongs to the RETURNED part. `*v` is untouched,
                 -- so `hub` passes straight through.
                 let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
-                let hl1b = le_up_r (len *v) lr hl1;
+                let hl1b = le_up_r (Len *v) lr hl1;
                 let cnt = mkR (*v) hi hcnt;
                 Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
               }
             } } } } } }
           } }
         } };
-  -- `append_back(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
+  -- `AppendBack(v, w)`: walk to the end of `*v`, put `w` there. The exit reading is
   -- `append (old *v) w` — the whole postcondition, and the whole description. Its
   -- return type is written INLINE, because nothing lies about it: no twin needs it
   -- spliced, and inside the header `v` and `w` are the names the programmer wrote.
-  fn append_back [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (len *v) fuel)
+  fn AppendBack [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (Len *v) fuel)
       -> Id (List Nat) (*v) (append (old *v) w)
       { match v {
           Nil => { *v := w; Refl },
@@ -1428,88 +1428,88 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             Z => botElim Unit Hf,
             S(f2) => {
               let y = append (*tl) w;
-              let h = append_back(f2, &m *tl, w, Hf);
+              let h = AppendBack(f2, &m *tl, w, Hf);
               id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
             }
           }
       } };
-  fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suff) -> %qret
+  fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suff) -> %qret
       { let l = *v;
         match l {
           Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
           Cons(x, rest) => match fuel {
-            -- Out of fuel with a non-empty list: `hfuel : Le (S (len rest)) Z` IS
+            -- Out of fuel with a non-empty list: `hfuel : Le (S (Len rest)) Z` IS
             -- `Bot`, so the path is dead and the audit admits an ex-falso at any
             -- return type (§5.4). Guard + sufficiency hypothesis = TOTAL correctness.
             Z => botElim Unit hfuel,
             S(f2) => {
-              let lr = len rest;
+              let lr = Len rest;
               -- THE COUNT CHAIN, staged whole while `rest` is still nameable. Its
               -- later arguments are the two parts before sorting (a, b) with the
-              -- partition's own count evidence, then the same two after sorting
+              -- partition's own Count evidence, then the same two after sorting
               -- (a2, b2) with each sort's evidence, then the glued exit and
-              -- `append_back`'s evidence. Read it as: rewrite the exit into an
-              -- append, split the append's count, move both parts back across
+              -- `AppendBack`'s evidence. Read it as: rewrite the exit into an
+              -- append, split the append's Count, move both parts back across
               -- their sorts, and land on the partition's equation.
               let mkCnt = (λ (a : List Nat). λ (b : List Nat).
-                  λ (hp : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                   λ (a2 : List Nat). λ (b2 : List Nat).
-                  λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n a)).
-                  λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n b)).
+                  λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n a)).
+                  λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n b)).
                   λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
                     λ (n : Nat).
-                      id_trans Nat (count n e) (add (count n a2) (count n (Cons x b2)))
-                                   (count n (Cons x rest))
-                        (id_trans Nat (count n e) (count n (append a2 (Cons x b2)))
-                                      (add (count n a2) (count n (Cons x b2)))
-                           (id_congr (List Nat) Nat (λ (z : List Nat). count n z)
+                      id_trans Nat (Count n e) (Add (Count n a2) (Count n (Cons x b2)))
+                                   (Count n (Cons x rest))
+                        (id_trans Nat (Count n e) (Count n (append a2 (Cons x b2)))
+                                      (Add (Count n a2) (Count n (Cons x b2)))
+                           (id_congr (List Nat) Nat (λ (z : List Nat). Count n z)
                               e (append a2 (Cons x b2)) hap)
                            (count_append n a2 (Cons x b2)))
-                        (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                      (add (count n a) (count n (Cons x b)))
-                                      (count n (Cons x rest))
-                           (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                         (add (count n a) (count n (Cons x b2)))
-                                         (add (count n a) (count n (Cons x b)))
-                              (id_congr Nat Nat (λ (r : Nat). add r (count n (Cons x b2)))
-                                 (count n a2) (count n a) (h1 n))
-                              (id_congr Nat Nat (λ (r : Nat). add (count n a) r)
-                                 (count n (Cons x b2)) (count n (Cons x b))
+                        (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
+                                      (Add (Count n a) (Count n (Cons x b)))
+                                      (Count n (Cons x rest))
+                           (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
+                                         (Add (Count n a) (Count n (Cons x b2)))
+                                         (Add (Count n a) (Count n (Cons x b)))
+                              (id_congr Nat Nat (λ (r : Nat). Add r (Count n (Cons x b2)))
+                                 (Count n a2) (Count n a) (h1 n))
+                              (id_congr Nat Nat (λ (r : Nat). Add (Count n a) r)
+                                 (Count n (Cons x b2)) (Count n (Cons x b))
                                  (count_cons_congr n x b2 b (h2 n))))
                            (count_cons_r n x a b rest (hp n))));
               *v := rest;
               -- Decision 8's price at a CALL SITE: the fuel and the bound go with
               -- the call, and the bound is `hfuel` UNCHANGED — after `*v := rest`
-              -- the callee wants `Le (len rest) f2`, which is what it already is.
-              -- It SURVIVES the call because `partition`'s `Hf` is capital.
-              let pr = partition(f2, &m *v, x, hfuel);
+              -- the callee wants `Le (Len rest) f2`, which is what it already is.
+              -- It SURVIVES the call because `Partition`'s `Hf` is capital.
+              let pr = Partition(f2, &m *v, x, hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
               match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
                 -- Both bounds are about to be invalidated as VALUES (the sorts
                 -- replace both lists), so their transports are staged now, while the
                 -- pre-sort lists are still nameable.
                 let mkUb = (λ (a2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n (*v))).
+                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n (*v))).
                       ub_perm x a2 (*v) h1 hub);
                 let mkLb = (λ (b2 : List Nat).
-                    λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n hi)).
+                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n hi)).
                       lb_perm x b2 hi h2 hlb);
                 let cnt1 = mkCnt (*v) hi hpc;
                 -- Sort the kept part in place. Its sufficiency is the partition's
                 -- length conjunct composed with this frame's.
-                let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
-                let s1 = quicksort(f2, &m *v, hf1);
+                let hf1 = le_trans (Len *v) lr f2 hl1 hfuel;
+                let s1 = Quicksort(f2, &m *v, hf1);
                 match s1 { Pair(hs1, hc1) => {
                   -- …and the returned part, through a borrow of the local that
                   -- holds it. Nothing about it is in `*v`; it is an ordinary value.
-                  let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
-                  let s2 = quicksort(f2, &m hi, hf2);
+                  let hf2 = le_trans (Len hi) lr f2 hl2 hfuel;
+                  let s2 = Quicksort(f2, &m hi, hf2);
                   match s2 { Pair(hs2, hc2) => {
                     let hub2 = mkUb (*v) hc1;
                     let hlb2 = mkLb hi hc2;
                     let cnt2 = cnt1 (*v) hi hc1 hc2;
                     -- The last staged builder: the glue's evidence arrives only
-                    -- from `append_back`, by which time both parts are consumed.
+                    -- from `AppendBack`, by which time both parts are consumed.
                     let fin = (λ (e : List Nat).
                         λ (hap : Id (List Nat) e (append (*v) (Cons x hi))).
                           list_rw (λ (z : List Nat). Sorted z) (append (*v) (Cons x hi)) e
@@ -1519,8 +1519,8 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                     -- The fuel that is exactly enough, staged BEFORE the borrow is
                     -- taken: a comptime argument mentioning `*v` would demand-
                     -- collapse the loan it was just lent.
-                    let lv = len *v;
-                    let happ = append_back(lv, &m *v, w, le_refl lv);
+                    let lv = Len *v;
+                    let happ = AppendBack(lv, &m *v, w, le_refl lv);
                     Pair(fin (*v) happ, cnt2 (*v) happ)
                   } }
                 } }
@@ -1546,29 +1546,29 @@ example : progOk flagship = true := by native_decide
 -- the entry is not what the caller gets back.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (old *%vfT)) → Σ (hlb : Lb %pT hi)
-      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) })
+      → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (Count n (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) LOWER BOUND on the kept part instead of the returned one.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT (*%vfT))
-      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (count n (old *%vfT)) })
+      → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (Count n (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (3) The returned part DROPPED from the count: "everything stayed in `*v`".
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
-      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) })
+      → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (Count n (*%vfT)) (Count n (old *%vfT)) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (4) …and the count off by one, which no `Nil`-path argument can reach.
 example : progRejects (qsUnder (prog{
     Σ (hi : List Nat) → Σ (hub : Ub %pT (*%vfT)) → Σ (hlb : Lb %pT hi)
-      → Σ (hl1 : Le (len *%vfT) (len (old *%vfT))) → Σ (hl2 : Le (len hi) (len (old *%vfT)))
-      → Π (n : Nat) → Id Nat (add (count n (*%vfT)) (count n hi)) (S (count n (old *%vfT))) })
+      → Σ (hl1 : Le (Len *%vfT) (Len (old *%vfT))) → Σ (hl2 : Le (Len hi) (Len (old *%vfT)))
+      → Π (n : Nat) → Id Nat (Add (Count n (*%vfT)) (Count n hi)) (S (Count n (old *%vfT))) })
     qsHonest suffHonest .unit) "does not have return type" = true := by native_decide
 
 /-! ### Not vacuous: `quicksort`'s two spec lies, and the sufficiency hypothesis
@@ -1582,13 +1582,13 @@ example : progRejects (qsUnder (prog{
 -- `Nil` (so the base path still passes) and false for any unsorted input, and the
 -- body's evidence is about the exit.
 example : progRejects (qsUnder partHonest (prog{
-    Σ (hs : Sorted (old *%vfT)) → Π (n : Nat) → Id Nat (count n (*%vfT)) (count n (old *%vfT)) })
+    Σ (hs : Sorted (old *%vfT)) → Π (n : Nat) → Id Nat (Count n (*%vfT)) (Count n (old *%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (2) PERMUTATION lied by DIRECTION: the two endpoints swapped. Again `Refl` at
 -- `Nil`, and again the body's evidence points the other way once anything moves.
 example : progRejects (qsUnder partHonest (prog{
-    Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (count n (old *%vfT)) (count n (*%vfT)) })
+    Σ (hs : Sorted (*%vfT)) → Π (n : Nat) → Id Nat (Count n (old *%vfT)) (Count n (*%vfT)) })
     suffHonest .unit) "does not have return type" = true := by native_decide
 
 -- (3) The SUFFICIENCY HYPOTHESIS is load-bearing, not decoration. Keep the
@@ -1618,7 +1618,7 @@ example : progRejects (qsUnder partHonest qsHonest (prog{ Unit }) .unit)
     the recursive `True` path and only in the count conjunct; the bounds still hold
     of a list with one element missing. -/
 def partitionLoses : Term := prog{
-  fn partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel) -> %partHonest
+  fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
       { let l = *v;
         match l {
           Nil => { *v := Nil;
@@ -1627,27 +1627,27 @@ def partitionLoses : Term := prog{
             Z => botElim Unit Hf,
             S(f2) => {
             let mkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                           λ (n : Nat). count_cons_l n x a b rest (h n));
             let mkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                           λ (n : Nat). count_cons_r n x a b rest (h n));
-            let lr = len rest;
+            let lr = Len rest;
             *v := rest;
-            let r = partition(f2, &m *v, p, Hf);
+            let r = Partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
             match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
-              if e : leb x p {
+              if e : Leb x p {
                 let lo = *v;
                 let hub2 = Pair(leb_true_le x p e, hub);
-                let hl2b = le_up_r (len hi) lr hl2;
+                let hl2b = le_up_r (Len hi) lr hl2;
                 let cnt = mkL lo hi hcnt;
                 -- THE LIE, and the only line that differs: the head is dropped.
                 *v := lo;
                 Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
               } else {
                 let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
-                let hl1b = le_up_r (len *v) lr hl1;
+                let hl1b = le_up_r (Len *v) lr hl1;
                 let cnt = mkR (*v) hi hcnt;
                 Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
               }
@@ -1663,7 +1663,7 @@ example : progRejects partitionLoses "does not have return type" = true := by na
     `… hub2 … hlb2`. Everything else is the chain's `quicksort` verbatim, so what the
     rejection isolates is exactly bound survival. -/
 def qsStaleBound : Term := prog{
-  fn partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (len *v) fuel) -> %partHonest
+  fn Partition [fuel] (fuel : Nat, v : &mut List Nat, p : Nat, Hf : Le (Len *v) fuel) -> %partHonest
       { let l = *v;
         match l {
           Nil => { *v := Nil;
@@ -1672,33 +1672,33 @@ def qsStaleBound : Term := prog{
             Z => botElim Unit Hf,
             S(f2) => {
             let mkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                           λ (n : Nat). count_cons_l n x a b rest (h n));
             let mkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                           λ (n : Nat). count_cons_r n x a b rest (h n));
-            let lr = len rest;
+            let lr = Len rest;
             *v := rest;
-            let r = partition(f2, &m *v, p, Hf);
+            let r = Partition(f2, &m *v, p, Hf);
             match r { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
             match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hcnt) => {
-              if e : leb x p {
+              if e : Leb x p {
                 let lo = *v;
                 let hub2 = Pair(leb_true_le x p e, hub);
-                let hl2b = le_up_r (len hi) lr hl2;
+                let hl2b = le_up_r (Len hi) lr hl2;
                 let cnt = mkL lo hi hcnt;
                 *v := Cons(x, lo);
                 Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
               } else {
                 let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
-                let hl1b = le_up_r (len *v) lr hl1;
+                let hl1b = le_up_r (Len *v) lr hl1;
                 let cnt = mkR (*v) hi hcnt;
                 Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
               }
             } } } } } }
           } }
         } };
-  fn append_back [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (len *v) fuel)
+  fn AppendBack [fuel] (fuel : Nat, v : &mut List Nat, w : List Nat, Hf : Le (Len *v) fuel)
       -> Id (List Nat) (*v) (append (old *v) w)
       { match v {
           Nil => { *v := w; Refl },
@@ -1706,61 +1706,61 @@ def qsStaleBound : Term := prog{
             Z => botElim Unit Hf,
             S(f2) => {
               let y = append (*tl) w;
-              let h = append_back(f2, &m *tl, w, Hf);
+              let h = AppendBack(f2, &m *tl, w, Hf);
               id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
             }
           }
       } };
-  fn quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suffHonest) -> %qsHonest
+  fn Quicksort [fuel] (fuel : Nat, v : &mut List Nat, hfuel : %suffHonest) -> %qsHonest
       { let l = *v;
         match l {
           Nil => { *v := Nil; Pair(unit, λ (n : Nat). Refl) },
           Cons(x, rest) => match fuel {
             Z => botElim Unit hfuel,
             S(f2) => {
-              let lr = len rest;
+              let lr = Len rest;
               let mkCnt = (λ (a : List Nat). λ (b : List Nat).
-                  λ (hp : Π (n : Nat) → Id Nat (add (count n a) (count n b)) (count n rest)).
+                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
                   λ (a2 : List Nat). λ (b2 : List Nat).
-                  λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n a)).
-                  λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n b)).
+                  λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n a)).
+                  λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n b)).
                   λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
                     λ (n : Nat).
-                      id_trans Nat (count n e) (add (count n a2) (count n (Cons x b2)))
-                                   (count n (Cons x rest))
-                        (id_trans Nat (count n e) (count n (append a2 (Cons x b2)))
-                                      (add (count n a2) (count n (Cons x b2)))
-                           (id_congr (List Nat) Nat (λ (z : List Nat). count n z)
+                      id_trans Nat (Count n e) (Add (Count n a2) (Count n (Cons x b2)))
+                                   (Count n (Cons x rest))
+                        (id_trans Nat (Count n e) (Count n (append a2 (Cons x b2)))
+                                      (Add (Count n a2) (Count n (Cons x b2)))
+                           (id_congr (List Nat) Nat (λ (z : List Nat). Count n z)
                               e (append a2 (Cons x b2)) hap)
                            (count_append n a2 (Cons x b2)))
-                        (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                      (add (count n a) (count n (Cons x b)))
-                                      (count n (Cons x rest))
-                           (id_trans Nat (add (count n a2) (count n (Cons x b2)))
-                                         (add (count n a) (count n (Cons x b2)))
-                                         (add (count n a) (count n (Cons x b)))
-                              (id_congr Nat Nat (λ (r : Nat). add r (count n (Cons x b2)))
-                                 (count n a2) (count n a) (h1 n))
-                              (id_congr Nat Nat (λ (r : Nat). add (count n a) r)
-                                 (count n (Cons x b2)) (count n (Cons x b))
+                        (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
+                                      (Add (Count n a) (Count n (Cons x b)))
+                                      (Count n (Cons x rest))
+                           (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
+                                         (Add (Count n a) (Count n (Cons x b2)))
+                                         (Add (Count n a) (Count n (Cons x b)))
+                              (id_congr Nat Nat (λ (r : Nat). Add r (Count n (Cons x b2)))
+                                 (Count n a2) (Count n a) (h1 n))
+                              (id_congr Nat Nat (λ (r : Nat). Add (Count n a) r)
+                                 (Count n (Cons x b2)) (Count n (Cons x b))
                                  (count_cons_congr n x b2 b (h2 n))))
                            (count_cons_r n x a b rest (hp n))));
               *v := rest;
-              let pr = partition(f2, &m *v, x, hfuel);
+              let pr = Partition(f2, &m *v, x, hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
               match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
                 let mkUb = (λ (a2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (count n a2) (count n (*v))).
+                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n (*v))).
                       ub_perm x a2 (*v) h1 hub);
                 let mkLb = (λ (b2 : List Nat).
-                    λ (h2 : Π (n : Nat) → Id Nat (count n b2) (count n hi)).
+                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n hi)).
                       lb_perm x b2 hi h2 hlb);
                 let cnt1 = mkCnt (*v) hi hpc;
-                let hf1 = le_trans (len *v) lr f2 hl1 hfuel;
-                let s1 = quicksort(f2, &m *v, hf1);
+                let hf1 = le_trans (Len *v) lr f2 hl1 hfuel;
+                let s1 = Quicksort(f2, &m *v, hf1);
                 match s1 { Pair(hs1, hc1) => {
-                  let hf2 = le_trans (len hi) lr f2 hl2 hfuel;
-                  let s2 = quicksort(f2, &m hi, hf2);
+                  let hf2 = le_trans (Len hi) lr f2 hl2 hfuel;
+                  let s2 = Quicksort(f2, &m hi, hf2);
                   match s2 { Pair(hs2, hc2) => {
                     let hub2 = mkUb (*v) hc1;
                     let hlb2 = mkLb hi hc2;
@@ -1773,8 +1773,8 @@ def qsStaleBound : Term := prog{
                             -- bounds, not their transports across the sorts.
                             (sorted_append_pivot x (*v) hi hs1 hub hs2 hlb));
                     let w = Cons(x, hi);
-                    let lv = len *v;
-                    let happ = append_back(lv, &m *v, w, le_refl lv);
+                    let lv = Len *v;
+                    let happ = AppendBack(lv, &m *v, w, le_refl lv);
                     Pair(fin (*v) happ, cnt2 (*v) happ)
                   } }
                 } }
@@ -1796,7 +1796,7 @@ example : progRejects qsStaleBound "does not have return type" = true := by nati
 def partCallerTail (l : List Nat) (pvv : Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
-      (.letIn ⟨2, "r"⟩ (.call "partition"
+      (.letIn ⟨2, "r"⟩ (.call "Partition"
           [tnatT l.length, .var ⟨1, "b"⟩, tnatT pvv, .unit])
         (.matchE ⟨2, "r"⟩ none
           [.mk "Pair" [⟨3, "hi"⟩, ⟨4, "q"⟩] (.letIn ⟨5, "y"⟩ (.var ⟨0, "z"⟩) .unit)])))
@@ -1819,7 +1819,7 @@ example : runPart [2,2,2] 2 = true := by native_decide       -- the boundary: x 
 def qsCallerTail (l : List Nat) : Term :=
   .letIn ⟨0, "z"⟩ (tlistT l)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "z"⟩))
-      (.seq (.call "quicksort" [tnatT l.length, .var ⟨1, "b"⟩, .unit])
+      (.seq (.call "Quicksort" [tnatT l.length, .var ⟨1, "b"⟩, .unit])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "z"⟩) .unit)))
 def qsRun (l : List Nat) : Term := qsUnder partHonest qsHonest suffHonest (qsCallerTail l)
 def runQs (l : List Nat) : Bool :=
@@ -1971,78 +1971,78 @@ def ejT : Term := .var ⟨2, "j"⟩
     the comptime-deref-through-a-reborrow that read a stale `loanₘ` before the fix.
 -/
 
-def certHonest : Term := prog{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (count %mT %sT) }
-def certLie : Term := prog{ Id Nat (count %mT (swapL %ciT %cjT %sT)) (S (count %mT %sT)) }
+def certHonest : Term := prog{ Id Nat (Count %mT (swapL %ciT %cjT %sT)) (Count %mT %sT) }
+def certLie : Term := prog{ Id Nat (Count %mT (swapL %ciT %cjT %sT)) (S (Count %mT %sT)) }
 def exitHonest : Term := prog{ Id (List Nat) (*%evT) (*%evT) }
 def exitStale : Term := prog{ Id (List Nat) (*%evT) (old *%evT) }
 
 def withCursors (cret eret tail : Term) : Term := prog{
-  fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+  fn Nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (Len *v)) -> &mut Nat
         { match v {
             Nil => botElim Unit p,
             Cons(hd, tl) => match i {
               Z => &m *hd,
-              S(k) => nth(&m *tl, k, p)
+              S(k) => Nth(&m *tl, k, p)
             }
         } };
-  fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
-                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat
+  fn Nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat) → &mut Nat
         { match v {
             Nil => botElim Unit p2,
             Cons(hd, tl) => match i {
               Z => match j {
                 Z => botElim Unit pij,
-                S(jjv) => Pair(&m *hd, nth(&m *tl, jjv, p2))
+                S(jjv) => Pair(&m *hd, Nth(&m *tl, jjv, p2))
               },
               S(k) => match j {
                 Z => botElim Unit pij,
-                S(jj2) => nth2(&m *tl, k, jj2, pij, p2)
+                S(jj2) => Nth2(&m *tl, k, jj2, pij, p2)
               }
             }
         } };
-  fn swapS (v : &mut List Nat, i : Nat, j : Nat,
-                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit
-        { let pr = nth2(v, i, j, pij, p2);
+  fn SwapS (v : &mut List Nat, i : Nat, j : Nat,
+                  pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Unit
+        { let pr = Nth2(v, i, j, pij, p2);
           match pr { Pair(ei, ej) => {
             let t = *ei;
             *ei := *ej;
             *ej := t;
             () } } };
   -- s=0, m=1, i=2, j=3, pij=4, p2=5.
-  fn certSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
-        pij : Le (S i) j, p2 : Le (S j) (len s)) -> %cret
+  fn CertSwapCount (s : List Nat, m : Nat, i : Nat, j : Nat,
+        pij : Le (S i) j, p2 : Le (S j) (Len s)) -> %cret
         { let cert = count_swapL' m i j s pij p2;
           let b = &m s;
-          swapS(b, i, j, pij, p2);
+          SwapS(b, i, j, pij, p2);
           cert };
   -- v=0, i=1, pib=2.
-  fn pivotPlace (v : &mut List Nat, i : Nat, pib : Le (S i) (len *v)) -> Unit
+  fn PivotPlace (v : &mut List Nat, i : Nat, pib : Le (S i) (Len *v)) -> Unit
         { match i {
             Z => (),
-            S(i2) => { swapS(v, Z, S(i2), (), pib); () }
+            S(i2) => { SwapS(v, Z, S(i2), (), pib); () }
         } };
   -- v=0, i=1, g=2, hlen=3.
-  fn pivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
-        hlen : Id Nat (len *v) (S (add i g))) -> Unit
+  fn PivotPlaceH (v : &mut List Nat, i : Nat, g : Nat,
+        hlen : Id Nat (Len *v) (S (Add i g))) -> Unit
         { match i {
             Z => (),
-            -- Derive the bound in a `let` FIRST, while `v` is still live (the `len *v`
-            -- read is comptime/non-consuming); THEN call swapS (which consumes `v`).
+            -- Derive the bound in a `let` FIRST, while `v` is still live (the `Len *v`
+            -- read is comptime/non-consuming); THEN call SwapS (which consumes `v`).
             S(i2) => {
-              let p2 = le_rw_r (S (S i2)) (S (S (add i2 g))) (len *v)
-                         (id_sym Nat (len *v) (S (S (add i2 g))) hlen)
+              let p2 = le_rw_r (S (S i2)) (S (S (Add i2 g))) (Len *v)
+                         (id_sym Nat (Len *v) (S (S (Add i2 g))) hlen)
                          (le_add i2 g);
-              swapS(v, Z, S(i2), (), p2);
+              SwapS(v, Z, S(i2), (), p2);
               ()
             }
         } };
   -- v=0, i=1, j=2, pij=3, p2=4.
-  fn exitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (len *v))
+  fn ExitReject (v : &mut List Nat, i : Nat, j : Nat, pij : Le (S i) j, p2 : Le (S j) (Len *v))
         -> %eret
-        { swapS(&m *v, i, j, pij, p2); Refl };
+        { SwapS(&m *v, i, j, pij, p2); Refl };
   -- v=0, pivot=1.
-  fn lebProbe (v : &mut List Nat, pivot : Nat) -> Unit
-        { let c = leb (nth Z (*v)) pivot;
+  fn LebProbe (v : &mut List Nat, pivot : Nat) -> Unit
+        { let c = Leb (nth Z (*v)) pivot;
           match c { True => (), False => () } };
   %tail }
 
@@ -2081,64 +2081,64 @@ example : progRejects (withCursors certHonest exitStale .unit)
     subject in it unasserted. -/
 
 def withScan (tail : Term) : Term := prog{
-  fn nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (len *v)) -> &mut Nat
+  fn Nth [i] (v : &mut List Nat, i : Nat, p : Le (S i) (Len *v)) -> &mut Nat
         { match v {
             Nil => botElim Unit p,
             Cons(hd, tl) => match i {
               Z => &m *hd,
-              S(k) => nth(&m *tl, k, p)
+              S(k) => Nth(&m *tl, k, p)
             }
         } };
-  fn nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
-                 pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Σ (x : &mut Nat) → &mut Nat
+  fn Nth2 [i] (v : &mut List Nat, i : Nat, j : Nat,
+                 pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Σ (x : &mut Nat) → &mut Nat
         { match v {
             Nil => botElim Unit p2,
             Cons(hd, tl) => match i {
               Z => match j {
                 Z => botElim Unit pij,
-                S(jjv) => Pair(&m *hd, nth(&m *tl, jjv, p2))
+                S(jjv) => Pair(&m *hd, Nth(&m *tl, jjv, p2))
               },
               S(k) => match j {
                 Z => botElim Unit pij,
-                S(jj2) => nth2(&m *tl, k, jj2, pij, p2)
+                S(jj2) => Nth2(&m *tl, k, jj2, pij, p2)
               }
             }
         } };
-  fn swapS (v : &mut List Nat, i : Nat, j : Nat,
-                  pij : Le (S i) j, p2 : Le (S j) (len *v)) -> Unit
-        { let pr = nth2(v, i, j, pij, p2);
+  fn SwapS (v : &mut List Nat, i : Nat, j : Nat,
+                  pij : Le (S i) j, p2 : Le (S j) (Len *v)) -> Unit
+        { let pr = Nth2(v, i, j, pij, p2);
           match pr { Pair(ei, ej) => {
             let t = *ei;
             *ei := *ej;
             *ej := t;
             () } } };
   -- v=0, k=1, i=2, g=3, pivot=4.
-  fn partScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
+  fn PartScanE [k] (v : &mut List Nat, k : Nat, i : Nat, g : Nat, pivot : Nat) -> Unit
         { match k {
             Z => match i {
               Z => (),
-              S(i2) => { swapS(v, Z, S(i2), (), ()); () }
+              S(i2) => { SwapS(v, Z, S(i2), (), ()); () }
             },
             S(k2) => {
-              let c = leb (nth (S (add i g)) (*v)) pivot;
+              let c = Leb (nth (S (Add i g)) (*v)) pivot;
               match c {
                 True => match g {
-                  Z => partScanE(v, k2, S(i), Z, pivot),
+                  Z => PartScanE(v, k2, S(i), Z, pivot),
                   -- `i` and `g2` are read MULTIPLE times here (boundary + scan position
                   -- + the recursion), and §2.1 copy-on-read makes that natural: a
                   -- `S`-constructor arg reads its var by copy (marker-free Nat), so the
-                  -- indices are the plain `S i`, `S (add i (S g2))`, `S g2`.
-                  S(g2) => { swapS(&m *v, S(i), S(add i (S(g2))), (), ()); partScanE(v, k2, S(i), S(g2), pivot) }
+                  -- indices are the plain `S i`, `S (Add i (S g2))`, `S g2`.
+                  S(g2) => { SwapS(&m *v, S(i), S(Add i (S(g2))), (), ()); PartScanE(v, k2, S(i), S(g2), pivot) }
                 },
-                False => partScanE(v, k2, i, S(g), pivot)
+                False => PartScanE(v, k2, i, S(g), pivot)
               }
             }
         } };
   -- v=0, n=1.
-  fn partitionE (v : &mut List Nat, n : Nat) -> Unit
+  fn PartitionE (v : &mut List Nat, n : Nat) -> Unit
         { match n {
             Z => (),
-            S(n2) => { let pivot = nth Z (*v); partScanE(v, n2, Z, Z, pivot) }
+            S(n2) => { let pivot = nth Z (*v); PartScanE(v, n2, Z, Z, pivot) }
         } };
   %tail }
 
@@ -2246,10 +2246,10 @@ def Refl : Term := .ctorApp "Refl" []
 -- of one repeated `let`. Sharing would have bought nothing and made the honest spec
 -- a hand-built `Term`.
 def stuckProbe : Term := prog{
-  fn stuckProbe (n : Nat) -> Id Nat
-        (boolRec (λ (b : Bool). Nat) (S Z) Z (leb n (S (S Z))))
-        (boolRec (λ (b : Bool). Nat) (add Z (S Z)) (add Z Z) (leb n (S (S Z))))
-        { let c = leb n (S (S Z));
+  fn StuckProbe (n : Nat) -> Id Nat
+        (boolRec (λ (b : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
+        (boolRec (λ (b : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))
+        { let c = Leb n (S (S Z));
           match c { True => Refl, False => Refl } };
   () }
 example : progOk stuckProbe = true := by native_decide
@@ -2261,8 +2261,8 @@ example : progOk stuckProbe = true := by native_decide
 def stuckProbeLieRet : Term := .idT natT
   (boolRecNat (tS zt) zt (lebSp (V 0 "n"))) (boolRecNat (tS (tS zt)) zt (lebSp (V 0 "n")))
 def stuckProbeLie : Term := prog{
-  fn stuckProbeLie (n : Nat) -> %stuckProbeLieRet
-        { let c = leb n (S (S Z));
+  fn StuckProbeLie (n : Nat) -> %stuckProbeLieRet
+        { let c = Leb n (S (S Z));
           match c { True => Refl, False => Refl } };
   () }
 example : progRejects stuckProbeLie "does not have return type" = true := by native_decide
@@ -2272,9 +2272,9 @@ example : progRejects stuckProbeLie "does not have return type" = true := by nat
 -- SUBJECT: a deliberately non-exhaustive body (raw Term, one-armed match) — the defect is the subject.
 def stuckProbeNonExhBody : Term := .letIn ⟨1, "c"⟩ (lebSp (V 0 "n")) (.matchE ⟨1, "c"⟩ none [.mk "True" [] Refl])
 def stuckProbeNonExh : Term := prog{
-  fn stuckProbeNonExh (n : Nat) -> Id Nat
-        (boolRec (λ (b : Bool). Nat) (S Z) Z (leb n (S (S Z))))
-        (boolRec (λ (b : Bool). Nat) (add Z (S Z)) (add Z Z) (leb n (S (S Z))))
+  fn StuckProbeNonExh (n : Nat) -> Id Nat
+        (boolRec (λ (b : Bool). Nat) (S Z) Z (Leb n (S (S Z))))
+        (boolRec (λ (b : Bool). Nat) (Add Z (S Z)) (Add Z Z) (Leb n (S (S Z))))
         { %stuckProbeNonExhBody };
   () }
 example : progRejects stuckProbeNonExh "non-exhaustive" = true := by native_decide
@@ -2352,7 +2352,7 @@ example : (pv (sortRangeLT 3 1 3 [9,3,1,2,7]) == vlist [9,1,2,3,7]) = true := by
 def partCaller (lst : List Nat) (n : Nat) : Term :=
   .letIn ⟨0, "x"⟩ (tlist lst)
     (.letIn ⟨1, "b"⟩ (.borrow (.var ⟨0, "x"⟩))
-      (.seq (.call "partitionE" [.var ⟨1, "b"⟩, tnat n])
+      (.seq (.call "PartitionE" [.var ⟨1, "b"⟩, tnat n])
         (.letIn ⟨2, "y"⟩ (.var ⟨0, "x"⟩) .unit)))
 
 def runPart (lst : List Nat) (n : Nat) : Bool :=
@@ -2451,8 +2451,8 @@ def psrCaller (lst : List Nat) (lo k pivot : Nat) : Term :=
 def swapLebCaller (lst : List Nat) : Term :=
   .letIn ⟨0,"x"⟩ (tlist lst)
     (.letIn ⟨1,"b"⟩ (.borrow (.var ⟨0,"x"⟩))
-      (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
-        (.seq (.call "lebProbe" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 5])
+      (.seq (.call "SwapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
+        (.seq (.call "LebProbe" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 5])
           (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
 def runSwapLebProbe (lst : List Nat) (expect : List Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (withCursors certHonest exitHonest (swapLebCaller lst)) with
@@ -2469,8 +2469,8 @@ example : runSwapLebProbe [3,2,1] [1,2,3] = true := by native_decide
 def swapTwiceCaller (lst : List Nat) : Term :=
   .letIn ⟨0,"x"⟩ (tlist lst)
     (.letIn ⟨1,"b"⟩ (.borrow (.var ⟨0,"x"⟩))
-      (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
-        (.seq (.call "swapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
+      (.seq (.call "SwapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
+        (.seq (.call "SwapS" [.borrow (.deref (.var ⟨1,"b"⟩)), tnat 0, tnat 2, .unit, .unit])
           (.letIn ⟨2,"y"⟩ (.var ⟨0,"x"⟩) .unit))))
 def runSwapTwice (lst : List Nat) (expect : List Nat) : Bool :=
   match Dllbc.Tests.S9Diff.runExec (withCursors certHonest exitHonest (swapTwiceCaller lst)) with
@@ -2505,10 +2505,10 @@ example : runSwapTwice [3,2,1] [3,2,1] = true := by native_decide
     `.callV` would have skipped. `S27Dispose` §C reads its verdict as the
     disposition record for this function's retired `back = *v`. -/
 def twoRec : Term := prog{
-  fn twoRec [f] (v : &mut List Nat, f : Nat) -> Unit
+  fn TwoRec [f] (v : &mut List Nat, f : Nat) -> Unit
         { match f {
             Z => (),
-            S(f2) => { twoRec(&m *v, f2); twoRec(&m *v, f2); () }
+            S(f2) => { TwoRec(&m *v, f2); TwoRec(&m *v, f2); () }
         } };
   () }
 example : progOk twoRec = true := by native_decide

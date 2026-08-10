@@ -1041,7 +1041,17 @@ mutual
     | .seq _ _ => throwErr "readC (⇝): statement sequencing is not a comptime read"
     | .matchE _ _ _ => throwErr "readC (⇝): match not implemented in the comptime fragment this milestone"
     | .borrowT _ _ _ => throwErr "readC (⇝): borrow type `&mut (τ ↝ S)` is only valid at a telescope position"
-    | .call _ _ => throwErr "readC (⇝): a call is not in the comptime fragment (its result is a fresh existential)"
+    -- **The callee is NAMED** (M31 Stage A), and it is load-bearing rather than
+    -- cosmetic. `fn`'s statement lowering turns a refusal into a term the checker
+    -- rejects distinctively — an unbound `.call` whose NAME carries `fnElab`'s
+    -- own message — and FnMacro's header rests that device on three properties,
+    -- the third being "the diagnosis survives to the message". It survived
+    -- because `readR`'s `.call` names the function it could not find. Now that a
+    -- `fn` slot is a COMPTIME binding, its right-hand side is reached by ⇝ when
+    -- the lowering succeeded and by ⇝ when it did not, so this arm became the
+    -- one that reports a refused lowering — and it was swallowing the diagnosis,
+    -- replacing ten distinct `fnElab` refusals with one generic sentence.
+    | .call f _ => throwErr s!"readC (⇝): a call is not in the comptime fragment (its result is a fresh existential) — '{f}'"
     -- The seal is a ⇒-form and only a ⇒-form (combining-fns §5). Minting needs an
     -- EVENT; ⇝ is a pure judgment with none, so a seal reduced twice under ⇝ would
     -- disagree with itself. It is listed here with the other five runtime-only

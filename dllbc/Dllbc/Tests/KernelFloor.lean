@@ -337,7 +337,7 @@ example : (Val.nfV 1000 (jV natV sZ (.lam "b" natV (.lam "q" natV natV)) (vnat 4
 -- var — `Id Nat n 2` — resolved by the `readC` snapshot read, not a pure de
 -- Bruijn index.)
 def learn : Term := prog{
-  fn learn (n : Nat, p : Id Nat n 2) -> Nat { match p { Refl => n } };
+  fn Learn (n : Nat, p : Id Nat n 2) -> Nat { match p { Refl => n } };
   () }
 
 example : progOk learn = true := by native_decide
@@ -346,7 +346,7 @@ example : progOk learn = true := by native_decide
 -- copies the *refined* value, so `m ↦ 2` (not a symbolic `n`). Had refinement
 -- not fired, `m` would be a `sym`.
 def learnObs : Term := prog{
-  fn learnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } };
+  fn LearnObs (n : Nat, p : Id Nat n 2) -> Unit { match p { Refl => { let m = n; () } } };
   () }
 
 -- Its Ω assertion died with `checkFn` (below), and until this file migrated the
@@ -374,7 +374,7 @@ example : progOk learnObs = true := by native_decide
     refinement is USABLE, where the Ω observation only said it was recorded. -/
 
 def learnDemand : Term := prog{
-  fn learnDemand (n : Nat, p : Id Nat n 2) -> Unit {
+  fn LearnDemand (n : Nat, p : Id Nat n 2) -> Unit {
     match p { Refl => { let m = n; let c = (Refl : Id Nat m 2); () } } };
   () }
 example : progOk learnDemand = true := by native_decide
@@ -383,7 +383,7 @@ example : progOk learnDemand = true := by native_decide
 -- decoration: the same `let m = n` and the same seal with the match REMOVED. `m`
 -- is unrefined, so `Refl` has nothing to inhabit.
 def learnDemandNo : Term := prog{
-  fn learnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
+  fn LearnDemandNo (n : Nat, p : Id Nat n 2) -> Unit {
     let m = n; let c = (Refl : Id Nat m 2); () };
   () }
 example : progRejects learnDemandNo "does not have its ascribed type"
@@ -394,7 +394,7 @@ example : progRejects learnDemandNo "does not have its ascribed type"
 -- obligations — the audit sees `pb` owing `Id Nat 2 2`, which its `Refl` payload
 -- inhabits. This is the case that forced obligations into machine state.
 def learnBorrow : Term := prog{
-  fn learnBorrow (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
+  fn LearnBorrow (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
     match pb { Refl => { let m = n; () } } };
   () }
 
@@ -403,7 +403,7 @@ example : progOk learnBorrow = true := by native_decide
 -- …and the same conversion through the borrow, so the demand form covers both
 -- routes the refinement takes rather than only the owned one.
 def learnBorrowDemand : Term := prog{
-  fn learnBorrowDemand (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
+  fn LearnBorrowDemand (n : Nat, pb : &mut (Id Nat n 2)) -> Unit {
     match pb { Refl => { let m = n; let c = (Refl : Id Nat m 2); () } } };
   () }
 example : progOk learnBorrowDemand = true := by native_decide
@@ -412,7 +412,7 @@ example : progOk learnBorrowDemand = true := by native_decide
 -- solution by refinement — STUCK, naming `j`/`k` as the elimination route. The
 -- kernel does NOT auto-discharge the conflict; that is the library's job (below).
 def rigidStuck : Term := prog{
-  fn rigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } };
+  fn RigidStuck (p : Id Nat 0 1) -> Nat { match p { Refl => 0 } };
   () }
 
 example : progRejects rigidStuck "rigid" = true := by native_decide
@@ -421,7 +421,7 @@ example : progRejects rigidStuck "j/k" = true := by native_decide
 -- Occurs check: `p : Id Nat n (S n)`. Refining `n := S n` would be cyclic —
 -- rejected before it can loop.
 def occursFn : Term := prog{
-  fn occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } };
+  fn Occ (n : Nat, p : Id Nat n (S n)) -> Unit { match p { Refl => () } };
   () }
 
 example : progRejects occursFn "occurs check" = true := by native_decide
@@ -430,17 +430,17 @@ example : progRejects occursFn "occurs check" = true := by native_decide
 
 -- An empty match on `p : Id Nat n 2` is non-exhaustive: `Refl` is uncovered.
 example : progRejects (prog{
-  fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { } }; () }) "non-exhaustive" = true := by native_decide
+  fn F (n : Nat, p : Id Nat n 2) -> Unit { match p { } }; () }) "non-exhaustive" = true := by native_decide
 
 -- A stray non-`Refl` constructor is likewise not enough to be exhaustive.
 example : progRejects (prog{
-  fn f (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } }; () }) "non-exhaustive" = true := by native_decide
+  fn F (n : Nat, p : Id Nat n 2) -> Unit { match p { Z => () } }; () }) "non-exhaustive" = true := by native_decide
 
 -- Scope guard: `Id` over a *borrow* type is rejected — reflecting the borrow-type
 -- index throws (borrow types live only at telescope positions), no special
 -- machinery needed. (Id over ordinary indexed types is unrestricted.)
 example : progRejects (prog{
-  fn f (q : Id (&mut Nat) 0 0) -> Unit { () }; () }) "borrow type" = true := by native_decide
+  fn F (q : Id (&mut Nat) 0 0) -> Unit { () }; () }) "borrow type" = true := by native_decide
 
 /-! ## The fording library — no confusion, injectivity, K, all as checked terms
 
@@ -607,13 +607,13 @@ def nncMotive : Term := prog{ λ (m : Nat). λ (q : Id Nat Z m). natCode Z m }
 -- Returning a proof: `Refl` at an `Id`-typed return. A `ctorApp`, so it lifts
 -- trivially — the degenerate case, which is why it goes first.
 example : progOk (prog{
-  fn retRefl (a : Nat) -> Id Nat a a { Refl };
+  fn RetRefl (a : Nat) -> Id Nat a a { Refl };
   () }) = true := by native_decide
 
 -- Storing a proof: a J-application (which ⇝-reduces to `Refl`) is ⇒-lifted into a
 -- `Pair`'s dependent second field and audited against `Id Nat a a`.
 example : progOk (prog{
-  fn storeProof (a : Nat) -> Σ (x : Nat) → Id Nat x x
+  fn StoreProof (a : Nat) -> Σ (x : Nat) → Id Nat x x
     { Pair(a, j Nat a (λ (x : Nat). λ (q : Id Nat a x). Id Nat a x) Refl a Refl) };
   () }) = true := by native_decide
 
@@ -622,7 +622,7 @@ example : progOk (prog{
 -- derives ⊥ through the no-confusion spine, and ⇒-lifts `botElim Nat (…)` to
 -- close the branch.
 example : progOk (prog{
-  fn discharge (n : Nat, p : Id Nat Z (S n), b : Bool) -> Nat {
+  fn Discharge (n : Nat, p : Id Nat Z (S n), b : Bool) -> Nat {
     match b {
       True => Z,
       False => botElim Nat (j Nat Z nncMotive unit (S n) p)
@@ -633,7 +633,7 @@ example : progOk (prog{
 -- has nothing of the return type to give. The same function with the `False` arm
 -- returning the PROOF rather than eliminating it is rejected.
 example : progRejects (prog{
-  fn dischargeLie (n : Nat, p : Id Nat Z (S n), b : Bool) -> Nat {
+  fn DischargeLie (n : Nat, p : Id Nat Z (S n), b : Bool) -> Nat {
     match b {
       True => Z,
       False => p
@@ -688,10 +688,10 @@ example : expectConv [] [] Dllbc.StdLemmas.le_refl Std.le_reflT = true := by nat
     counterfactual), not a hypothesis. -/
 
 -- (1) The merged `let` means what the β-redex it replaced meant.
-example : expectConv [] [] prog{ let a = 2 ; add a a } prog{ (λ (a : Nat). add a a) 2 } = true := by
+example : expectConv [] [] prog{ let a = 2 ; Add a a } prog{ (λ (a : Nat). Add a a) 2 } = true := by
   native_decide
 -- (2) …and a `let` chain still means its nesting.
-example : expectConv [] [] prog{ let a = 2 ; let b = S a ; add a b } prog{ 5 } = true := by
+example : expectConv [] [] prog{ let a = 2 ; let b = S a ; Add a b } prog{ 5 } = true := by
   native_decide
 
 -- (3) A `let` may SHADOW a pure binder, and the innermost one wins. A pure λ's
@@ -731,7 +731,7 @@ example : chk Dllbc.StdLemmas.id_congr Dllbc.StdLemmas.id_congr_ty = true := by 
 -- `le_trans a b c p q` (Le is monomorphic at Nat — no type argument), cited by
 -- name through the surface's identifier fallback.
 def useTrans : Term := prog{
-  fn useTrans (a : Nat, b : Nat, c : Nat, p : Le a b, q : Le b c) -> Le a c
+  fn UseTrans (a : Nat, b : Nat, c : Nat, p : Le a b, q : Le b c) -> Le a c
         { StdLemmas.le_trans a b c p q };
   () }
 example : progOk useTrans = true := by native_decide
@@ -753,7 +753,7 @@ def badReflClosed : Term := prog{
 -- above, spliced and applied — the mis-motive is what is under test, so it stays
 -- exactly as written.
 def badRefl : Term := prog{
-  fn badRefl (n : Nat) -> Le n n { %badReflClosed n };
+  fn BadRefl (n : Nat) -> Le n n { %badReflClosed n };
   () }
 example : progRejects badRefl "does not have return type" = true := by native_decide
 

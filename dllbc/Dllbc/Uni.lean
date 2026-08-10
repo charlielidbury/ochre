@@ -269,11 +269,19 @@ def constSet : List String := ["Nat", "Bool", "List", "Bot", "Unit", "natRec", "
 /-- Friendly aliases for the reified library functions whose surface name differs
     from their `…FnT` Term-constant (`Le` ↦ `LeFnT`, etc.). Everything else falls
     through to the raw-Lean-identifier resolution, so lemma Terms (`swapL`, `set`,
-    `sortRangeL`, …) are referenced by their own names via the use-site `open`s. -/
+    `sortRangeL`, …) are referenced by their own names via the use-site `open`s.
+
+    **The keys are PascalCase since M31 Stage A** (§2.1): "the standard
+    vocabulary capitalises with everything else — `Len`, `Add`, `Count`, `Take`
+    join the already-capital `Le`, `Sorted` — one rule for every name that denotes
+    a function, library or user's." The `…FnT` Terms they map to keep their Lean
+    names: a Lean identifier is not a DLLBC binder and carries no mode, which is
+    also why the lemma Terms below the alias table were left alone (see the
+    rename policy recorded in the Stage A addendum). -/
 def aliasMap : List (String × Name) :=
-  [("Le", `Dllbc.Std.LeFnT), ("len", `Dllbc.Std.lenFnT), ("add", `Dllbc.Std.addFnT),
-   ("leb", `Dllbc.Std.lebFnT), ("count", `Dllbc.Std.countFnT), ("eqb", `Dllbc.Std.eqbFnT),
-   ("take", `Dllbc.Std.takeFnT), ("drop", `Dllbc.Std.dropFnT),
+  [("Le", `Dllbc.Std.LeFnT), ("Len", `Dllbc.Std.lenFnT), ("Add", `Dllbc.Std.addFnT),
+   ("Leb", `Dllbc.Std.lebFnT), ("Count", `Dllbc.Std.countFnT), ("Eqb", `Dllbc.Std.eqbFnT),
+   ("Take", `Dllbc.Std.takeFnT), ("Drop", `Dllbc.Std.dropFnT),
    ("Sorted", `Dllbc.Std.SortedFnT), ("Bound", `Dllbc.Std.BoundFnT)]
 
 /-! ## Binder names, and what capitalisation may mean (combining-fns §6)
