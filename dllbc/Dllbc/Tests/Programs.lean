@@ -1419,7 +1419,7 @@ open Dllbc.Tests.S9Diff (progDiff)
     vacuous (it is the difference between a parked loan and a released value). -/
 def rawEnvs (t : Term) : List (Except String Env) :=
   (explore defaultFuel (pushContinuations t) initSt).map
-    (fun r => r.map (fun p => canonicalize (p.2.env.filter (·.1.id < 10000))))
+    (fun r => r.map (fun p => canonicalize p.2.env))
 
 /-! ## §A. A program is a term
 

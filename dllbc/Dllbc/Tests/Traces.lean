@@ -519,3 +519,92 @@ end Dllbc.Tests.S3Sym
 end
 -- └── end of what was `S3Sym.lean` ───────────────────────────────────────────────
 
+
+-- ┌── M31 Stage 0: pop-with-drop ─────────────────────────────────────────────
+section
+/-!
+# Scopes pop, and dropping ends what they held
+
+Ω entries leave with the scope that bound them: a match arm's binders at the
+arm's close, a call frame's slots at return. Each popped entry surrenders the
+borrows it holds first, in reverse binding order — Rust's — so the ends that used
+to wait for the next demand happen at the scope boundary instead.
+
+The §3 traces above already carry the arm half in their expected environments
+(the binders are simply not there any more). What is asserted here is the part
+those traces cannot show: that the pop is not a leak — the drop really runs — and
+that the one case where an entry must NOT go still works.
+-/
+
+open Dllbc
+open Dllbc.Val (nat nil cons)
+
+namespace Dllbc.Tests.S31Pop
+
+/-! ## The drop runs: an arm's reborrows are surrendered at its close -/
+
+-- The arm reborrows the fields and writes through one of them. At the arm's
+-- close both reborrows end — last-bound first — so the parent is whole again
+-- without anything having demanded it, and the owner reads back its updated
+-- value. Compare the §3.3 trace above, which observes the same program one
+-- statement earlier.
+def armDrop : Term := prog{
+  let x = Cons(3, Cons(4, Nil));
+  let b = &m x;
+  match b { Cons(hd, tl) => { *hd := 0; () }, Nil => () };
+  let y = x;
+  ()
+}
+
+example : progOk armDrop = true := by native_decide
+example : progRunsTo armDrop
+  [("x", .bot), ("b", .bot), ("y", cons (nat 0) (cons (nat 4) nil))] = true := by
+  native_decide
+
+/-! ## The one entry a pop must keep: a borrow of an arm-local that escapes it -/
+
+-- `a` is bound inside the arm and `r` borrows it, so `r` outlives its owner's
+-- scope. The pop keeps `a`'s storage — that storage is where the escaping
+-- borrow's payload returns to — and the write through `r` lands there, so the
+-- program's end still finds a loan to End-Mut. Popping `a` would leave the
+-- marker unfindable and the borrow dangling, which is a silent loss rather than
+-- an error: nothing would be left in Ω for `endScope` to end.
+def armEscape : Term := prog{
+  let l = Cons(1, Nil);
+  let r = match l { Cons(hd, tl) => { let a = 5; &m a }, Nil => { let a = 6; &m a } };
+  *r := 7;
+  let w = r;
+  ()
+}
+
+example : progOk armEscape = true := by native_decide
+example : progRunsTo armEscape
+  [("l", .bot), ("a", nat 7), ("r", .bot), ("w", .bot)] = true := by native_decide
+
+/-! ## A frame's slots leave with the frame -/
+
+-- The callee binds `v` and, in its arm, `hd` and `tl`. None of them is an entry
+-- of Ω once the call has returned — which is what retired the `id < 10000`
+-- filter every Ω-reading harness used to carry (`Program.runProgram`). Asserted
+-- as absence-from-Ω rather than as a whole expected environment because the
+-- declaration entry itself is a runtime λ, which has no writable literal.
+def frameDrop : Term := prog{
+  fn setHead (v : &mut (List Nat ~> List Nat)) -> Unit {
+    match v { Cons(hd, tl) => { *hd := 0; () }, Nil => () }
+  };
+  let x = Cons(9, Nil);
+  setHead(&m x);
+  let y = x;
+  ()
+}
+
+example : progOk frameDrop = true := by native_decide
+example : (match runProgram frameDrop with
+    | .ok env => (env.lookup "v").isNone && (env.lookup "hd").isNone
+                 && (env.lookup "tl").isNone
+                 && (env.lookup "y") == some (cons (nat 0) nil)
+    | .error _ => false) = true := by native_decide
+
+end Dllbc.Tests.S31Pop
+end
+-- └── end of M31 Stage 0 ────────────────────────────────────────────────────

@@ -74,11 +74,19 @@ def checkProgram (t : Term) (retType : Term := .const "Unit") : Except String Un
         | .error e _ => .error e)))
 
 /-- **Run a program** (§8): ⇒-evaluate it, concretely (executing mode — a call
-    runs the callee's actual body), and return the final canonicalized Ω. -/
+    runs the callee's actual body), and return the final canonicalized Ω.
+
+    **The `id < 10000` frame filter is gone** (M31 Stage 0). It was here — and in
+    `programEnvs`, `tailEnvs` and `Programs.rawEnvs` — because a frame's slots
+    stayed in Ω forever once the frame had returned, so every harness that read Ω
+    had to say "except the frames" to describe what a program leaves. Frames now
+    pop, and the whole corpus staying green without the filter is that claim's
+    standing assertion: if a frame slot ever survived its frame, it would appear
+    here under the callee's own binder name. -/
 def runProgram (t : Term) : Except String Env :=
   match (do let _ ← readR defaultFuel (pushContinuations t); endScope defaultFuel).run
       { initSt with executing := true } with
-  | .ok _ st => .ok (canonicalize (st.env.filter (·.1.id < 10000)))
+  | .ok _ st => .ok (canonicalize st.env)
   | .error e _ => .error e
 
 /-- The symbolic paths' final environments — for inspecting *what* a program
@@ -87,7 +95,7 @@ def programEnvs (t : Term) : List (Except String Env) :=
   (explore defaultFuel (pushContinuations t) initSt).map
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
-      | .ok _ st => .ok (canonicalize (st.env.filter (·.1.id < 10000)))
+      | .ok _ st => .ok (canonicalize st.env)
       | .error e _ => .error e))
 
 /-! ## Test helpers -/
@@ -146,7 +154,7 @@ def tailEnvs (t : Term) : List (Except String Env) :=
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
-          kv.1.id < FnMacro.progBase && kv.1.id < 10000)))
+          kv.1.id < FnMacro.progBase)))
       | .error e _ => .error e))
 
 /-- One path, and the tail leaves exactly this Ω. -/
