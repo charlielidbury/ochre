@@ -230,8 +230,10 @@ accepts only loan-end *timing* shifts (audits firing earlier, messages moving); 
 acceptance flips expected, and any found are surfaced, not absorbed. Standalone value
 even if M31 stalls: deterministic cleanup, nbe.md §7's deferred item closed.
 
-> **Implementation addendum (Stage 0, landed on `m31-stage0-popdrop`).** Four things
-> the plan above could not have known, recorded where the plan is.
+> **Implementation addendum (Stage 0, landed on `m31-stage0-popdrop`).** Five things
+> the plan above could not have known, recorded where the plan is. Nothing here
+> qualifies §2.4's capture rule or E3's recommendation; item 5 is a data point *for*
+> the latter, produced by building the former's neighbour.
 >
 > **1. `pushContinuations` had already answered the arm-scope question, wrongly.** A
 > statement-position match is fused with the continuation that followed it — the
@@ -281,7 +283,23 @@ even if M31 stalls: deterministic cleanup, nbe.md §7's deferred item closed.
 > expect: `keep` sets are computed from the escaping value's loans at every pop, and
 > the frame's id window (`nextFrame + 128`) is now doing nothing that the watermark
 > does not — the `id < 10000` filter every Ω-reading harness carried has already been
-> deleted as a consequence.
+> deleted as a consequence. §2.4's strengthening retires the other half of that
+> machinery on the same argument: `applyRFn`'s `keep` set is `Term.freeRVars`, the
+> globals carried unshifted through `shiftVarsK`, and "the node's free runtime
+> variables must be empty" makes that set empty by construction rather than by
+> `admitGlobals`' exemption.
+>
+> **5. E3's traversal argument gained a case, and Stage 0 is a (small) vote for (i).**
+> The drop sweep needed a finder E3's enumerated set did not contain —
+> `firstHeldBorrow`, "the outermost `borrowM ℓ _` this value HOLDS, skipping `keep`",
+> deliberately *not* reaching for the loan markers it carries (their borrows are held
+> elsewhere and end on their own owner's drop). Like every traversal on E3's list it is
+> opaque at `rfn` and `closure`, licensed by exactly the fact E3 names — the capture
+> rule, which is why `Val.loanIds` can say `.rfn _ _ => []  -- closed: no loans to
+> find` and mean it. The vote: a `Term`-bodied closure (option ii) would have required
+> a Term twin of this finder too, and it was written after M30, i.e. the enumerated set
+> is still growing. That is the duplication cost E3 prices, observed once more rather
+> than predicted.
 
 **Stage A — function bindings become comptime-moded (semantics, on today's
 representations).** `fn` bindings and λ-valued `let`s stay in Ω but flip mode (value:
