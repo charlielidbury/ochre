@@ -158,6 +158,27 @@ structure St where
   /-- Base var id for inlined-callee frames in executing mode; caller-own vars
       stay below it, so a body's own environment is `env.filter (·.1.id < this)`. -/
   nextFrame : Nat := 10000
+  /-- **Scope watermarks** (M31 Stage 0, pop-with-drop): for each still-open
+      lexical scope, innermost first, the Ω *length* recorded when it was entered
+      and whether it is a **match arm** (as opposed to a call frame).
+
+      The arm flag exists because the two are unwound by different events. A
+      frame unwinds to a depth it recorded itself. An arm unwinds at the `@popArm`
+      seam `pushContinuations` left in its body — and the seam has to take any
+      scopes still open *inside* the arm with it, since a match in TAIL position
+      within that arm has no seam of its own and its binders die with the arm that
+      contains them. "Pop until an arm has been popped" is that rule, and the flag
+      is what makes it askable.
+
+      No new bookkeeping structure was needed for this and that is the point:
+      `bindSlot` APPENDS and `setSlot` rewrites in place, so a scope's own
+      entries are exactly the suffix of Ω past the length it recorded — the
+      watermark is a `Nat` per open scope and nothing else. Every Ω-writing
+      primitive preserves the invariant (`bindSlot` appends; `setSlot`,
+      `writeC`, `refineSym`, `killBorrowInΩ`, `sendPayloadToLoan`, `endIssued`,
+      `mergeRoot` all `map` over Ω and so are length- and order-preserving), so
+      an index taken before a drop sweep is still valid after it. -/
+  scopeMarks : List (Nat × Bool) := []
 deriving Inhabited
 
 /-- The machine monad: errors are `String`s, state is `St`. -/
@@ -203,6 +224,31 @@ def lookupSlot (x : Var) : M Val := do
 def bindSlot (x : Var) (v : Val) : M Unit :=
   modify (fun s => { s with env := s.env ++ [(x, v)] })
 
+/-! ### Scope watermarks (M31 Stage 0)
+
+    A lexical scope is opened by recording Ω's length and closed by dropping the
+    suffix past it. `openScope`/`takeScopeMark` are the bookkeeping half; the
+    *drop* half (ending the loans inside the popped values) needs `endLoan` and
+    therefore lives below `hasType`, as `popScope`. -/
+
+/-- Open a lexical scope: record Ω's current length as the watermark. `arm` says
+    whether this is a match arm (unwound by its seam) or a call frame (unwound to
+    a depth the frame recorded). -/
+def openScope (arm : Bool) : M Unit :=
+  modify (fun s => { s with scopeMarks := (s.env.length, arm) :: s.scopeMarks })
+
+/-- The number of scopes currently open — the handle a frame keeps so it can
+    unwind back to it, however many scopes its body left open inside. -/
+def scopeDepth : M Nat := do pure (← get).scopeMarks.length
+
+/-- Take the innermost watermark off the stack, or `none` if no scope is open. -/
+def takeScopeMark : M (Option (Nat × Bool)) := do
+  match (← get).scopeMarks with
+  | [] => pure none
+  | m :: rest => do
+    modify (fun s => { s with scopeMarks := rest })
+    pure (some m)
+
 /-- Overwrite an existing slot in place, preserving order. Errors if absent. -/
 def setSlot (x : Var) (v : Val) : M Unit := do
   let ω ← getEnv
@@ -244,6 +290,30 @@ mutual
       match firstOwnNode v with
       | some r => some r
       | none => firstOwnNodeList vs
+  termination_by vs => sizeOf vs
+end
+
+/-! A borrow this value **holds** — the outermost `borrowM ℓ _` node whose loan
+    is not in `keep` — if any. The complement of `firstOwnNode` for the drop
+    sweep's purposes: dropping a scope must end the borrows its entries hold
+    (sending each payload home), and must NOT reach for the loan markers they
+    carry, whose borrows live elsewhere and end on their own owner's drop.
+
+    Outermost-first, unlike `firstOwnNode`: a `borrowM ℓ (borrowM ℓ' _)` is
+    surrendered from the outside in, because ending ℓ sends the inner borrow home
+    as ℓ's payload and there is then nothing left here to end. -/
+mutual
+  def firstHeldBorrow (keep : List Nat) : Val → Option Nat
+    | .borrowM ℓ p => if keep.contains ℓ then firstHeldBorrow keep p else some ℓ
+    | .ctor _ args => firstHeldBorrowList keep args
+    | _ => none
+  termination_by v => sizeOf v
+  def firstHeldBorrowList (keep : List Nat) : List Val → Option Nat
+    | [] => none
+    | v :: vs =>
+      match firstHeldBorrow keep v with
+      | some ℓ => some ℓ
+      | none => firstHeldBorrowList keep vs
   termination_by vs => sizeOf vs
 end
 
@@ -1403,21 +1473,95 @@ def endLoan (fuel : Nat) (ℓ : Nat) : M Unit := do
   | some grp => endGroup fuel grp
   | none => sendPayloadToLoan ℓ (← killBorrowInΩ ℓ)
 
-/-- **Scope-aware release at call return** (EXECUTING mode only, ledger G5 probe). -/
-partial def releaseFrameLoans (fuel : Nat) (offset : Nat) (keep : List Nat) : M Unit := do
+/-! ## Pop-with-drop (M31 Stage 0): a scope's entries leave with it
+
+    `openScope` recorded Ω's length; closing the scope drops the suffix past it.
+    Two halves, in this order:
+
+      1. **The drop sweep**, in REVERSE binding order (Rust's order: the
+         last-bound local is dropped first). Each popped entry surrenders the
+         borrows it *holds* — `endLoan` sends each payload home to its marker,
+         wherever that lives. Loan MARKERS in a popped entry are not touched:
+         their borrows are held elsewhere and end on their own owner's drop, and
+         reaching for them here would kill a borrow that is still live.
+      2. **The truncation.** What is left of the scope's entries is discarded —
+         except entries that still carry an ownership node, which are RETAINED.
+
+    Retention is the answer to the one semantic edge, and it is the answer frame
+    exit already gives today: `releaseFrameLoans` skips the loans the result
+    carries out (`keep`), and the frame slot holding the matching `loanM` marker
+    then survives because the arena never popped. Under pop-with-drop that
+    survival has to be *stated* rather than inherited, and the statement is
+    exactly this: **a scope-local whose borrow escaped the scope keeps its
+    storage, because that storage is where the escaping borrow's payload returns
+    to.** Popping it would leave the marker unfindable and the next `endLoan` on
+    that loan stuck ("cannot plug payload back"), turning a program that runs
+    into one that does not. The checker rejects an escaping borrow of a local at
+    the audit's boundary check, so this retention is only ever reached by the
+    executing machine on a program the checker never saw.
+
+    Ending a loan early is sound: the demand machinery already ends loans lazily
+    (§5.2, "every demand collapses first"), so eager ending at scope exit moves
+    the same events earlier and adds none.
+
+    `endLoan` and everything it calls REWRITE Ω rather than resize it, so `mark`
+    and the retained-tail length stay valid across the sweep. -/
+
+/-- The drop sweep for the entries of `Ω[mark … len - retain)`: end every borrow
+    they hold whose loan is not in `keep`, last-bound first. `retain` shields the
+    trailing entries that belong to the ENCLOSING scope — the `let x = match …`
+    seam binds `x` after the arm's own entries, and `x` outlives the arm. -/
+partial def dropScopeEntries (fuel : Nat) (mark retain : Nat) (keep : List Nat) : M Unit := do
   match fuel with
-  | 0 => pure ()
+  | 0 => throwErr "pop: out of fuel (scope drop sweep)"
   | f + 1 => do
     let env ← getEnv
-    let held := env.filterMap (fun kv =>
-      if kv.1.id ≥ offset then
-        match kv.2 with
-        | .borrowM ℓ _ => if keep.contains ℓ then none else some ℓ
-        | _ => none
-      else none)
-    match held.head? with
+    let inner := (env.drop mark).take (env.length - mark - retain)
+    match (inner.filterMap (fun kv => firstHeldBorrow keep kv.2)).getLast? with
     | none => pure ()
-    | some ℓ => do endLoan fuel ℓ; releaseFrameLoans f offset keep
+    | some ℓ => do endLoan fuel ℓ; dropScopeEntries f mark retain keep
+
+/-- **Close the innermost open scope**: drop its entries (above), then truncate
+    Ω past its watermark, retaining any entry that still carries an ownership
+    node. Returns whether the scope closed was a match arm; `true` when there was
+    nothing open, so the unwinding loops terminate. -/
+def popScope (fuel : Nat) (retain : Nat) (keep : List Nat) : M Bool := do
+  match ← takeScopeMark with
+  | none => pure true
+  | some (mark, arm) => do
+    dropScopeEntries fuel mark retain keep
+    let env ← getEnv
+    let inner := (env.drop mark).take (env.length - mark - retain)
+    setEnv (env.take mark
+              ++ inner.filter (fun kv => (firstOwnNode kv.2).isSome)
+              ++ env.drop (env.length - retain))
+    pure arm
+
+/-- Close scopes until only `depth` remain open, innermost first — a frame's
+    unwind. The loop, rather than one pop, because a body may leave inner scopes
+    open behind it: a match arm in TAIL position has no seam (there is no
+    continuation for the fusion to splice), so its scope closes with the
+    enclosing body's. Inner scopes drop before the frame containing them, which
+    is Rust's order. -/
+partial def popScopesTo (fuel : Nat) (depth : Nat) (retain : Nat) (keep : List Nat) : M Unit := do
+  if (← scopeDepth) > depth then do
+    let _ ← popScope fuel retain keep
+    popScopesTo fuel depth retain keep
+  else pure ()
+
+/-- Close scopes up to and including the innermost **match arm** — the `@popArm`
+    seam's unwind. Everything still open inside the arm is a tail-position match
+    within it, and dies with it. -/
+partial def popArmScope (fuel : Nat) (retain : Nat) (keep : List Nat) : M Unit := do
+  if ← popScope fuel retain keep then pure () else popArmScope fuel retain keep
+
+-- (`releaseFrameLoans` — "scope-aware release at call return", the drop half of
+-- frame exit keyed on the frame's ID WINDOW rather than on a watermark — retired
+-- in M31 Stage 0. `popScope` is the same sweep generalized twice: it finds a
+-- borrow anywhere in a popped value rather than only at its top, and it takes the
+-- slots with it instead of leaving a frame's environment in Ω forever. The id
+-- window was doing the watermark's job with arithmetic; `bindSlot` appends, so
+-- the length was always the honest key.)
 
 /-! ## CARVE (¶3) — the proof-licensed reorganization
 
@@ -2022,6 +2166,23 @@ partial def collapseCDerefs (fuel : Nat) : Term → M Unit
 def findBranch (branches : List Branch) (name : String) : Option Branch :=
   branches.find? (fun b => b.ctor == name)
 
+/-- **Does this arm body carry a seam?** (M31 Stage 0.) `pushContinuations` marks
+    every arm it fuses with a continuation by wrapping its body in
+    `@armScope`, and the mark is what the arm's scope is TAGGED with when it
+    opens.
+
+    The tag is load-bearing rather than decorative, and the case that forces it is
+    an arm whose body ends in a TAIL-position match: at the seam, the open scopes
+    are that inner arm's and this one's, and the seam must take both — the inner
+    arm has no continuation of its own to close it. So "unwind to the innermost
+    arm" is the wrong rule and "unwind to the innermost arm THAT OWNS A SEAM" is
+    the right one; nothing in the mark stack could distinguish the two, because
+    which arm a seam belongs to is a fact about the TERM. Hence the announcement,
+    written at the one place that knows. -/
+def armSeamed? : Term → Bool
+  | .seq (.const "@armScope") _ => true
+  | _ => false
+
 /-- Bind constructor fields to fresh binder entries (owned mode: the fields
     move in as owned values). Errors on arity mismatch. -/
 def bindFields : List Var → List Val → M Unit
@@ -2056,6 +2217,7 @@ def ownedSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (name 
   match findBranch branches name with
   | none => throwErr s!"match: no branch for constructor '{name}' (scrutinee {scrut.name}#{scrut.id})"
   | some br => do
+    openScope (armSeamed? br.body)             -- M31 Stage 0: the arm is a scope
     setSlot scrut .bot                         -- ⇒-consume
     bindFields br.binders fields
     bindEqnRefl eqn
@@ -2072,6 +2234,7 @@ def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ 
   | some br => do
     if br.binders.length != fields.length then
       throwErr "match: constructor arity mismatch (borrow mode)"
+    openScope (armSeamed? br.body)             -- M31 Stage 0: the arm is a scope
     let ℓs ← fields.mapM (fun _ => freshLoan)
     setSlot scrut (.borrowM ℓ (.ctor name (ℓs.map Val.loanM)))   -- suspend the parent
     bindBorrowFields br.binders ℓs fields
@@ -2397,6 +2560,7 @@ def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Val
     | none, _ => pure none
     | some _, none => pure (some (.ctor "Refl" []))
     | some _, some spine => do pure (some (.sym (← mintStuckEqn scrutσ spine br.ctor σs)))
+  openScope (armSeamed? br.body)                         -- M31 Stage 0: the arm is a scope
   writeC (.var scrut) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ everywhere (refinement first)
   setSlot scrut .bot                                     -- owned consume
   bindFields br.binders (σs.map Val.sym)
@@ -2412,6 +2576,7 @@ def symOwnedSetup (fuel : Nat) (scrut : Var) (scrutσ : Nat) (stuck : Option Val
 def symBorrowSetup (fuel : Nat) (scrut : Var) (ℓ : Nat) (scrutσ : Nat)
     (eqn : Option Var) (br : Branch) : M Term := do
   let σs ← mintFieldSyms fuel scrutσ br
+  openScope (armSeamed? br.body)                                 -- M31 Stage 0: the arm is a scope
   writeC (.deref (.var scrut)) (.ctor br.ctor (σs.map Val.sym))   -- ⇜ at payload, everywhere
   let ℓs ← br.binders.mapM (fun _ => freshLoan)
   setSlot scrut (.borrowM ℓ (.ctor br.ctor (ℓs.map Val.loanM)))   -- suspend the parent
@@ -2453,14 +2618,19 @@ mutual
     | .letIn x rhs rest =>
       match pushContinuations rhs with
       | .matchE s eqn bs =>
-        let k := pushContinuations rest
-        .matchE s eqn (bs.map (fun br => Branch.mk br.ctor br.binders (.letIn x br.body k)))
+        -- The seam marker goes between the arm's body and the continuation, and
+        -- AFTER `x` is bound: `x` is the enclosing scope's, the arm's binders are
+        -- not (M31 Stage 0, `readR`'s `@popArmL` case).
+        let k := Term.seq (.const "@popArmL") (pushContinuations rest)
+        .matchE s eqn (bs.map (fun br => Branch.mk br.ctor br.binders
+          (.seq (.const "@armScope") (.letIn x br.body k))))
       | rhs' => .letIn x rhs' (pushContinuations rest)
     | .seq e rest =>
       match pushContinuations e with
       | .matchE s eqn bs =>
-        let k := pushContinuations rest
-        .matchE s eqn (bs.map (fun br => Branch.mk br.ctor br.binders (.seq br.body k)))
+        let k := Term.seq (.const "@popArm") (pushContinuations rest)
+        .matchE s eqn (bs.map (fun br => Branch.mk br.ctor br.binders
+          (.seq (.const "@armScope") (.seq br.body k))))
       | e' => .seq e' (pushContinuations rest)
     | .assign p rhs rest => .assign p rhs (pushContinuations rest)
     | .matchE s eqn bs => .matchE s eqn (pushBranches bs)
@@ -3376,6 +3546,28 @@ mutual
         -- erasure principle applied to the value side.
         pure (.rfn (names.map (·.1)) body)
       | .unit => pure (.ctor "unit" [])
+      -- **The match-arm seam** (M31 Stage 0). `pushContinuations` fuses a
+      -- statement-position match with the continuation that followed it, which
+      -- puts the continuation lexically INSIDE each arm and so silently extends
+      -- the arm binders' scope over it. These two markers are the seam the fusion
+      -- would otherwise erase: they name the point where the arm's own body
+      -- ended, and closing the scope there restores the source's lexical reading
+      -- (`match x { Cons(h,t) => … }; k` — `h` and `t` are not in scope in `k`).
+      --
+      -- Two of them because the two splices differ by one binding. The `seq`
+      -- splice discards the arm's value, so nothing outlives the arm. The
+      -- `letIn` splice binds it — `let y = match x { … }; k` — and `y` is the
+      -- ENCLOSING scope's, bound (by `bindSlot`, which appends) as the last entry
+      -- at the moment the seam is reached: hence `retain = 1`, and the loans that
+      -- value carries out are the `keep` set the drop sweep must not touch.
+      -- The arm-scope announcement itself is inert at runtime: it was read off
+      -- the arm body by `armSeamed?` when the scope opened.
+      | .const "@armScope" => pure (.ctor "unit" [])
+      | .const "@popArm" => do popArmScope fuel 0 []; pure (.ctor "unit" [])
+      | .const "@popArmL" => do
+        let ω ← getEnv
+        popArmScope fuel 1 ((ω.drop (ω.length - 1)).flatMap (fun kv => kv.2.loanIds))
+        pure (.ctor "unit" [])
       -- The pure lift (§1.3): on the borrow-free fragment ⇒ coincides with ⇝ up
       -- to variable consumption. A comptime-only former (a proof term — an
       -- eliminator application, a Π-typed λ, `Id A a b`, a type) is an
@@ -3605,8 +3797,9 @@ mutual
       once per level, and its binders are the same `Var` ids every time — and
       `shiftVars` moves the binders WITH the body, so a nested runtime λ that has
       already been carried through one frame stays consistent in the next. The
-      body's own borrows are released on the way out, exactly as an inlined
-      callee's are (`releaseFrameLoans`), so a frame's loans cannot outlive it. -/
+      frame is a SCOPE (M31 Stage 0): its borrows are surrendered and its slots
+      taken on the way out, so neither a frame's loans nor its environment can
+      outlive it. -/
   def applyRFn : Nat → List Var → Term → List Val → M Val
     | fuel, names, body, args => do
       let offset ← freshFrame
@@ -3618,10 +3811,25 @@ mutual
       -- state. (`readR`'s `.lamR` case has already refused any free variable that
       -- is not a function in scope.)
       let keep := (Term.freeRVars (names.map (·.id)) body).map (·.id)
-      let shifted := shiftVarsK keep offset body
+      -- **The body is normalized here too** (M31 Stage 0). `checkRFnBody` has
+      -- always walked `pushContinuations body`; the executing machine walked the
+      -- body raw, and the two agreed about match-arm scope only by accident —
+      -- fusion extends an arm's binders over the continuation on the checking
+      -- side, and `readR`'s statement-position match leaked them there on the
+      -- executing side. Now both walk the same normal form, so the seam markers
+      -- (and therefore the arm scopes) are the same on both.
+      let shifted := pushContinuations (shiftVarsK keep offset body)
+      -- **The frame is a scope** (M31 Stage 0): its watermark is taken before the
+      -- parameters land, and `popScope` below both ends the borrows it still
+      -- holds — `releaseFrameLoans`' whole job — and takes its slots with it.
+      -- Loans the result carries out are `keep`; the slot holding an escaping
+      -- borrow's marker is retained, which is what `releaseFrameLoans` achieved
+      -- by never popping anything at all.
+      openScope false
+      let depth ← scopeDepth
       (names.zip args).forM (fun p => bindSlot ⟨p.1.id + offset, p.1.name⟩ p.2)
       let res ← readR fuel shifted
-      releaseFrameLoans fuel offset res.loanIds
+      popScopesTo fuel (depth - 1) 0 res.loanIds
       pure res
   termination_by fuel _ _ _ => (fuel, 4, 0)
   /-- Consume a call's arguments left-to-right, checking each against its
@@ -3788,8 +3996,12 @@ mutual
       -- `sealFn` without ever forming the `.rfn` value, so `readR`'s own check
       -- never runs on it.
       let gl ← admitGlobals "seal" tel.length (Term.freeRVars (tel.map (·.1.id)) body)
+      -- `scopeMarks` joins the wipe for the same reason as Ω: a watermark is an
+      -- index INTO Ω, so an enclosing scope's mark means nothing against the
+      -- fresh one, and the sealed body's own scopes are its own (M31 Stage 0).
       modify (fun s => { s with env := gl, obligations := [], groups := [],
-                                exitSyms := [], entrySyms := [], retTyVal := none })
+                                exitSyms := [], entrySyms := [], retTyVal := none,
+                                scopeMarks := [] })
       let obs ← seedTelescopeV fuel tel
       -- §5.4 exit snapshots: one σ per borrow parameter, recorded ONLY here until
       -- the audit defines it as that borrow's collapsed final payload.
@@ -4178,7 +4390,11 @@ def defaultFuel : Nat := 1000
     canonicalized Ω (loan ids renumbered to first-appearance order), or the
     error. The return value of the read is discarded — §2 tests inspect Ω. -/
 def runProg (t : Term) (fuel : Nat := defaultFuel) : Except String Env :=
-  match (readR fuel t).run initSt with
+  -- Normalized, since M31 Stage 0, for the reason `Program.runProgram` already
+  -- was: the seam markers `pushContinuations` inserts are what close a match
+  -- arm's scope, and a harness that walked the raw term would be the one place in
+  -- the machine where arm binders still outlived their arm.
+  match (readR fuel (pushContinuations t)).run initSt with
   | .ok _ st => .ok (canonicalize st.env)
   | .error e _ => .error e
 

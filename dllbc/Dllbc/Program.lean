@@ -47,11 +47,17 @@ namespace Dllbc
     only a difference in *when*.
 
     Ending the scope is what a `FnDef`'s audit did for its arguments
-    (`collapseArg`) and what `releaseFrameLoans` does for a frame; at the top
-    level there is no caller to hand anything back to, so every parked loan is
+    (`collapseArg`) and what `popScope` does for a frame or a match arm; at the
+    top level there is no caller to hand anything back to, so every parked loan is
     simply demanded. It can legitimately FAIL — a group whose release is not
     justified is rejected here rather than passed over — which is why it belongs
-    to checking and not to the harness. -/
+    to checking and not to the harness.
+
+    **This is the drop half of a pop WITHOUT the pop** (M31 Stage 0), and that is
+    deliberate: the program's scope has no enclosing scope to return control to,
+    so there is no moment at which its bindings stop being reachable, and its Ω is
+    the observable the whole test suite reads. A scope pops when control leaves it
+    INTO an enclosing scope; the outermost one never does. -/
 partial def endScope (fuel : Nat) : M Unit := do
   match (← getEnv).findSome? (fun kv => firstLoanMarker kv.2) with
   | some ℓ => do endLoan fuel ℓ; endScope fuel

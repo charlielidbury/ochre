@@ -217,31 +217,40 @@ def pair (a b : Val) : Val := .ctor "Pair" [a, b]
 /-! ## §3.1 Owned mode: destructuring -/
 
 -- The scrutinee is ⇒-consumed, its fields move into the binders; the branch
--- rebuilds the pair, reading `a`/`b` by copy (§2.1, marker-free), so they stay.
--- p ↦ ⊥, a ↦ 3, b ↦ 7, q ↦ Pair 3 7.
+-- rebuilds the pair, reading `a`/`b` by copy (§2.1, marker-free). The binders are
+-- the ARM's, so they leave with it (M31 Stage 0 pop-with-drop) — before that they
+-- outlived it, and the environment read `a ↦ 3, b ↦ 7` after the match.
+-- p ↦ ⊥, q ↦ Pair 3 7.
 example : expectEnv prog{
   let p = Pair(3, 7);
   let q = match p { Pair(a, b) => Pair(a, b) };
   ()
-} [("p", .bot), ("a", nat 3), ("b", nat 7), ("q", pair (nat 3) (nat 7))] = true := by
+} [("p", .bot), ("q", pair (nat 3) (nat 7))] = true := by
   native_decide
 
 -- A nested owned match: destructure the pair, then destructure its second
--- field. The unused tail binder `t` keeps its (unconsumed) value.
+-- field. The inner match is in TAIL position within the outer arm, so it has no
+-- seam of its own and its binders die with the arm that contains them: one pop
+-- takes `a`, `rest`, `h` and `t` together (M31 Stage 0), and only the outer
+-- `let`'s `r` survives.
 example : expectEnv prog{
   let p = Pair(1, Cons(2, Nil));
   let r = match p {
     Pair(a, rest) => match rest { Cons(h, t) => Pair(a, h), Nil => Pair(a, a) }
   };
   ()
-} [("p", .bot), ("a", nat 1), ("rest", .bot), ("h", nat 2), ("t", nil),
-   ("r", pair (nat 1) (nat 2))] = true := by native_decide
+} [("p", .bot), ("r", pair (nat 1) (nat 2))] = true := by native_decide
 
 /-! ## §3.3 Borrow mode: matching through -/
 
--- The suspended state, observed by ending the program right after the match:
--- each field binder is a whole-value reborrow, the parent's payload is a Cons
--- of loan markers (unreadable), and `*hd := 0` was a strong update.
+-- **What the suspension survives, and what ends it.** The field binders are
+-- whole-value reborrows and the parent's payload is a Cons of loan markers — but
+-- the binders are the arm's, so the arm's close ENDS their reborrows (M31 Stage 0
+-- drops in reverse binding order: ℓ2, then ℓ1) and each payload plugs back into
+-- the parent. What is observable one statement later is therefore the parent
+-- holding the strong-updated payload, not the marker chain. Before pop-with-drop
+-- the chain survived here and collapsed lazily at the next demand; this is the
+-- timing shift, and the value it collapses to is the same one.
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -251,14 +260,12 @@ example : expectEnv prog{
   };
   ()
 } [("x", .loanM 0),
-   ("b", .borrowM 0 (cons (.loanM 1) (.loanM 2))),
-   ("hd", .borrowM 1 (nat 0)),
-   ("tl", .borrowM 2 nil)] = true := by native_decide
+   ("b", .borrowM 0 (cons (nat 0) nil))] = true := by native_decide
 
--- Reading the owner back collapses the chain lazily: End-Mut ℓ0 (parent), then
--- the owned-position field loans ℓ1, ℓ2 are ended in turn as the value is moved,
--- so `x`'s value arrives fully updated. `x` is a Cons-tree (DATA), so the read
--- MOVES it (§2.1). y ↦ Cons 0 Nil.
+-- Reading the owner back collapses the rest of the chain: End-Mut ℓ0 (parent) —
+-- the field loans ℓ1, ℓ2 having already ended at the arm's close — so `x`'s value
+-- arrives fully updated. `x` is a Cons-tree (DATA), so the read MOVES it (§2.1).
+-- y ↦ Cons 0 Nil.
 example : expectEnv prog{
   let x = Cons(3, Nil);
   let b = &m x;
@@ -268,8 +275,7 @@ example : expectEnv prog{
   };
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot),
-   ("y", cons (nat 0) nil)] = true := by native_decide
+} [("x", .bot), ("b", .bot), ("y", cons (nat 0) nil)] = true := by native_decide
 
 -- The nullary branch binds nothing and issues no loans (degenerate case).
 example : expectEnv prog{
@@ -298,7 +304,7 @@ example : expectEnv prog{
   };
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)] = true := by
+} [("x", .bot), ("b", .bot), ("y", nil)] = true := by
   native_decide
 
 /-! ## Nested borrow-mode match (through a field binder) -/
@@ -319,8 +325,7 @@ example : expectEnv prog{
   };
   let y = x;
   ()
-} [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot),
-   ("h2", .bot), ("t2", .bot), ("y", cons (nat 1) (cons (nat 0) nil))] = true := by
+} [("x", .bot), ("b", .bot), ("y", cons (nat 1) (cons (nat 0) nil))] = true := by
   native_decide
 
 /-! ## Rejections -/
@@ -446,7 +451,7 @@ def zeroHead : Term := withAny prog{
 }
 
 example : tailPaths zeroHead
-  [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", cons (nat 0) (.sym 0))],
+  [ [("x", .bot), ("b", .bot), ("y", cons (nat 0) (.sym 0))],
     [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
 /-! ## §3.4 Symbolic variant change -/
@@ -461,8 +466,11 @@ def variantChange : Term := withAny prog{
   ()
 }
 
+-- Both paths now leave the SAME Ω — the Cons path's `hd`/`tl` left with the arm
+-- (M31 Stage 0) and were the only thing distinguishing it. The path COUNT is
+-- what this assertion still discriminates on, which is the half it was kept for.
 example : tailPaths variantChange
-  [ [("x", .bot), ("b", .bot), ("hd", .bot), ("tl", .bot), ("y", nil)],
+  [ [("x", .bot), ("b", .bot), ("y", nil)],
     [("x", .bot), ("b", .bot), ("y", nil)] ] = true := by native_decide
 
 /-! ## Two-level symbolic match (composed refinements) -/
@@ -510,3 +518,4 @@ example : progRejects exprPosition "expression position"
 end Dllbc.Tests.S3Sym
 end
 -- └── end of what was `S3Sym.lean` ───────────────────────────────────────────────
+
