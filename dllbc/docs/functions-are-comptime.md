@@ -284,13 +284,33 @@ pop-with-drop. Risk: MEDIUM — this is where Stage B's mechanical-ness lives or
 viability probe (an agent building the merged former + newest-wins Ω against
 `checkRFnBody` and the executing differential only) precedes full dispatch.
 
-**E3 — closure body payload.** Pure closures hold `Val` bodies; imperative bodies are
-`Term` (no `Val` embedding for assign/letIn/matchE). Options: (i) body := `Val ⊕ Term`
-(a hidden species tag — honest about being an intermediate); (ii) closures hold `Term`
-uniformly (re-reflect pure bodies on entry — perf and churn in Pure.lean); (iii) grow
-`Val` to embed all of `Term` and eventually **merge the two trees** — the deep
-simplification, out of M31's scope but the direction to leave open. Recommendation: (i)
-for M31, with (iii) named as the horizon so (i)'s tag is understood as scaffolding.
+**E3 — closure body payload.** Pure bodies live in `Val` (the mixed domain embeds pure
+syntax); imperative bodies are `Term` (no `Val` embedding for assign/letIn/matchE — and
+`rfn` is already the `(∅, Term)` closure in disguise). Options: (i) body := `Val ⊕
+Term`; (ii) closures hold `Term` uniformly (textbook NbE: `eval : Env → Term → Val`);
+(iii) grow `Val` to embed all of `Term` and **merge the two trees**.
+
+The deciding fact is that the checker structurally TRAVERSES pure λ bodies in place —
+`substSym` (σ refinement), `abstractInto` (§19 branch equations; it even sweeps closure
+environments), `markExit` (the pin machinery), the loan-marker search, and σ-renumbering
+all descend `.lam`/`.pi`/`.sigmaT` bodies as `Val` syntax — while every one of them
+treats `rfn` as a LEAF, justified each time by closedness ("no σ inside", "no loans to
+find"): the capture rule is what licenses the opacity. So (ii) is not wrong, but it is
+priced: stored λ values would carry `Term` bodies inside `Val` state, and each traversal
+must either grow a Term twin (a duplicate traversal layer over a second tree — the kind
+of duplication this milestone exists to kill) or pay eval/readback at every boundary.
+It re-litigates M30's central representation choice (the mixed domain is why 18
+substitution sites became 18 one-word edits) at rewrite cost, for payload uniformity.
+
+Recommendation: (i), and not as scaffolding — the `Val ⊕ Term` split materializes the
+same semantic line the seal's two check engines draw (§2.3) and the capture/snapshot
+distinction draws (§2.4): a pure body is *conversed with* structurally; an imperative
+body is *entered* and never traversed. One line, three independent appearances;
+representing it as data is principled. (iii) stays the horizon where the question
+dissolves by construction; its stated cost is that the union tree admits machine-value
+forms (`loanM`, `sym`, `⊥`) everywhere syntax goes — type-enforced invariants become
+discipline — and touches every match in `Machine.lean`. Out of M31's scope, direction
+left open.
 
 **E4 — borrow-moded λ as a ⇝ value.** A function binding borrows now *exists* as
 comptime knowledge (an inert closure: never β-reduced under ⇝, entered only via ⇒).
