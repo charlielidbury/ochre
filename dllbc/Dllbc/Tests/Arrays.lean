@@ -1431,8 +1431,15 @@ def sort2 : Term := prog{
     } else {
       (*a)[0] := y;
       (*a)[1] := x;
+      -- §2.4: the count λ cited the two swapped elements, which is a snapshot of
+      -- values that are about to be nowhere in particular. Naming them says which
+      -- pair the equation is about — and note it does NOT matter that the writes
+      -- happened above, because `x` and `y` are index-kind and were copied, not
+      -- moved. The rule asks for the name, not for a different program.
+      let X0 = x;
+      let Y0 = y;
       Pair(Pair(le_pred_l y x (leb_false_gt x y h), Pair(unit, unit)),
-           λ (n : Nat). count_swap2 n x y)
+           λ (n : Nat). count_swap2 n X0 Y0)
     } };
   () }
 example : progOk sort2 = true := by native_decide

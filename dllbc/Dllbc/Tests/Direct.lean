@@ -495,7 +495,8 @@ def soUnder (ret tail : Term) : Term := prog{
                   -- a state marker rode silently into this proof term.
                   -- The suffix conjunct needs nothing: `Drop (S i2) (Cons h t)` IS
                   -- `Drop i2 t`, so the callee's `h2` is already the goal.
-                  let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a)
+                  let H0 = *hd;
+                  let c1 = id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a)
                              (*tl) y1 h1;
                   Pair(rr, Pair(c1, h2)) } } }
               }
@@ -639,7 +640,8 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
               Cons(hd, tl) => {
                 let y = set i2 x (*tl);
                 let h = SetAt(&m *tl, i2, x, hi);
-                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+                let H0 = *hd;
+                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
               }
             }
         } };
@@ -672,16 +674,34 @@ def setSwapUnder (sret wret tail : Term) : Term := prog{
           -- two mutations must be built before the second and applied after it.
           -- The clean fix is a way to bind a snapshot — `let` at comptime, naming an
           -- exit the way `old` names an entry.
-          let finish = (λ (e : List Nat). λ (hh : Id (List Nat) e (set i b (*v))).
-                          id_trans (List Nat) e (set i b (*v)) (swapL i j (old *v))
+          -- **AND §2.4 MAKES THE SNAPSHOT VISIBLE** (M31 Stage A). The paragraph
+          -- above ends "the clean fix is a way to bind a snapshot", and this is
+          -- what the citation rule turns that into: the λ may no longer CITE a
+          -- runtime binding, so every value it was silently freezing at formation
+          -- is named first, on the line above, where a reader can see which
+          -- moment it belongs to. Nothing is staged differently — the λ closed
+          -- over exactly these values before, at exactly this point — the freeze
+          -- has simply stopped being implicit. `V0` is the pre-`h2` payload,
+          -- which is precisely the superseded intermediate the diary entry is
+          -- about, and it now has a name.
+          let I0 = i;
+          let B0 = b;
+          let J0 = j;
+          let A0 = a;
+          let V0 = *v;
+          let OldV0 = old *v;
+          let H1 = h1;
+          let Bridge0 = bridge;
+          let Finish = (λ (e : List Nat). λ (hh : Id (List Nat) e (set I0 B0 V0)).
+                          id_trans (List Nat) e (set I0 B0 V0) (swapL I0 J0 OldV0)
                             hh
-                            (id_trans (List Nat) (set i b (*v)) (set i b (set j a (old *v)))
-                               (swapL i j (old *v))
-                               (id_congr (List Nat) (List Nat) (λ (z : List Nat). set i b z)
-                                 (*v) (set j a (old *v)) h1)
-                               bridge));
+                            (id_trans (List Nat) (set I0 B0 V0) (set I0 B0 (set J0 A0 OldV0))
+                               (swapL I0 J0 OldV0)
+                               (id_congr (List Nat) (List Nat) (λ (z : List Nat). set I0 B0 z)
+                                 V0 (set J0 A0 OldV0) H1)
+                               Bridge0));
           let h2 = SetAt(&m *v, i, b, hi2);
-          finish (*v) h2 };
+          Finish (*v) h2 };
   %tail }
 
 /-- Each return type as a skeleton over the model function it cites — still surface
@@ -776,7 +796,8 @@ def insUnder (ret tail : Term) : Term := prog{
               Cons(hd, tl) => {
                 let y = insertL k2 x (*tl);
                 let h = InsertAt(&m *tl, k2, x);
-                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+                let H0 = *hd;
+                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
               }
             }
         } };
@@ -1024,7 +1045,8 @@ def pick : Term := prog{
               Cons(hd, tl) => {
                 let y = insertL k2 x (*tl);
                 let h = InsertAt(&m *tl, k2, x);
-                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+                let H0 = *hd;
+                id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
               }
             }
         } };
@@ -1364,12 +1386,20 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             -- it later. M23-iii stated the rule for exits ("a body can only talk
             -- about the CURRENT exit"); this instance says the same of any consumed
             -- parameter or binder, and it is a filing for `old` on consumed things.
-            let mkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
-                          λ (n : Nat). count_cons_l n x a b rest (h n));
-            let mkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
-                          λ (n : Nat). count_cons_r n x a b rest (h n));
+            -- §2.4: `Rest0` and `X0` are the snapshots these two were taking
+            -- implicitly. The paragraph above is about exactly this — "a body can
+            -- only talk about the CURRENT exit… a filing for `old` on consumed
+            -- things" — and the citation rule is what turns the filing into a
+            -- binding: the value is frozen HERE, before the call consumes it, and
+            -- the name says so.
+            let Rest0 = rest;
+            let X0 = x;
+            let MkL = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
+                          λ (n : Nat). count_cons_l n X0 a b Rest0 (h n));
+            let MkR = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
+                          λ (n : Nat). count_cons_r n X0 a b Rest0 (h n));
             -- The lengths need no staged lambda: `Len rest` is a NAT, so naming the
             -- computed value once, while `rest` is live, is enough. (The counts
             -- cannot do this — `Count n rest` is a family over `n`, and it is the
@@ -1392,7 +1422,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 let lo = *v;
                 let hub2 = Pair(leb_true_le x p e, hub);
                 let hl2b = le_up_r (Len hi) lr hl2;
-                let cnt = mkL lo hi hcnt;
+                let cnt = MkL lo hi hcnt;
                 *v := Cons(x, lo);
                 Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
               } else {
@@ -1400,7 +1430,7 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 -- so `hub` passes straight through.
                 let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
                 let hl1b = le_up_r (Len *v) lr hl1;
-                let cnt = mkR (*v) hi hcnt;
+                let cnt = MkR (*v) hi hcnt;
                 Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
               }
             } } } } } }
@@ -1429,7 +1459,8 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
             S(f2) => {
               let y = append (*tl) w;
               let h = AppendBack(f2, &m *tl, w, Hf);
-              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+              let H0 = *hd;
+              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
             }
           }
       } };
@@ -1451,32 +1482,37 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
               -- `AppendBack`'s evidence. Read it as: rewrite the exit into an
               -- append, split the append's Count, move both parts back across
               -- their sorts, and land on the partition's equation.
-              let mkCnt = (λ (a : List Nat). λ (b : List Nat).
-                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
+              -- §2.4: the citation rule, and the snapshots it makes visible.
+              -- `Rest0` is the tail as it is HERE — before `*v := rest` hands it
+              -- over — which is the value this builder was freezing implicitly.
+              let Rest0 = rest;
+              let X0 = x;
+              let MkCnt = (λ (a : List Nat). λ (b : List Nat).
+                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
                   λ (a2 : List Nat). λ (b2 : List Nat).
                   λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n a)).
                   λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n b)).
-                  λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
+                  λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons X0 b2))).
                     λ (n : Nat).
-                      id_trans Nat (Count n e) (Add (Count n a2) (Count n (Cons x b2)))
-                                   (Count n (Cons x rest))
-                        (id_trans Nat (Count n e) (Count n (append a2 (Cons x b2)))
-                                      (Add (Count n a2) (Count n (Cons x b2)))
+                      id_trans Nat (Count n e) (Add (Count n a2) (Count n (Cons X0 b2)))
+                                   (Count n (Cons X0 Rest0))
+                        (id_trans Nat (Count n e) (Count n (append a2 (Cons X0 b2)))
+                                      (Add (Count n a2) (Count n (Cons X0 b2)))
                            (id_congr (List Nat) Nat (λ (z : List Nat). Count n z)
-                              e (append a2 (Cons x b2)) hap)
-                           (count_append n a2 (Cons x b2)))
-                        (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
-                                      (Add (Count n a) (Count n (Cons x b)))
-                                      (Count n (Cons x rest))
-                           (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
-                                         (Add (Count n a) (Count n (Cons x b2)))
-                                         (Add (Count n a) (Count n (Cons x b)))
-                              (id_congr Nat Nat (λ (r : Nat). Add r (Count n (Cons x b2)))
+                              e (append a2 (Cons X0 b2)) hap)
+                           (count_append n a2 (Cons X0 b2)))
+                        (id_trans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
+                                      (Add (Count n a) (Count n (Cons X0 b)))
+                                      (Count n (Cons X0 Rest0))
+                           (id_trans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
+                                         (Add (Count n a) (Count n (Cons X0 b2)))
+                                         (Add (Count n a) (Count n (Cons X0 b)))
+                              (id_congr Nat Nat (λ (r : Nat). Add r (Count n (Cons X0 b2)))
                                  (Count n a2) (Count n a) (h1 n))
                               (id_congr Nat Nat (λ (r : Nat). Add (Count n a) r)
-                                 (Count n (Cons x b2)) (Count n (Cons x b))
-                                 (count_cons_congr n x b2 b (h2 n))))
-                           (count_cons_r n x a b rest (hp n))));
+                                 (Count n (Cons X0 b2)) (Count n (Cons X0 b))
+                                 (count_cons_congr n X0 b2 b (h2 n))))
+                           (count_cons_r n X0 a b Rest0 (hp n))));
               *v := rest;
               -- Decision 8's price at a CALL SITE: the fuel and the bound go with
               -- the call, and the bound is `hfuel` UNCHANGED — after `*v := rest`
@@ -1488,13 +1524,22 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                 -- Both bounds are about to be invalidated as VALUES (the sorts
                 -- replace both lists), so their transports are staged now, while the
                 -- pre-sort lists are still nameable.
-                let mkUb = (λ (a2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n (*v))).
-                      ub_perm x a2 (*v) h1 hub);
-                let mkLb = (λ (b2 : List Nat).
-                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n hi)).
-                      lb_perm x b2 hi h2 hlb);
-                let cnt1 = mkCnt (*v) hi hpc;
+                -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
+                -- parts as they are HERE, before either sort replaces them, and that
+                -- is exactly what these builders were freezing implicitly. The
+                -- comment above already said "while the pre-sort lists are still
+                -- nameable"; the rule turns that sentence into two bindings.
+                let V0 = *v;
+                let Hi0 = hi;
+                let Hub0 = hub;
+                let Hlb0 = hlb;
+                let MkUb = (λ (a2 : List Nat).
+                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n V0)).
+                      ub_perm X0 a2 V0 h1 Hub0);
+                let MkLb = (λ (b2 : List Nat).
+                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n Hi0)).
+                      lb_perm X0 b2 Hi0 h2 Hlb0);
+                let cnt1 = MkCnt (*v) hi hpc;
                 -- Sort the kept part in place. Its sufficiency is the partition's
                 -- length conjunct composed with this frame's.
                 let hf1 = le_trans (Len *v) lr f2 hl1 hfuel;
@@ -1505,23 +1550,33 @@ def qsUnder (pret qret suff tail : Term) : Term := prog{
                   let hf2 = le_trans (Len hi) lr f2 hl2 hfuel;
                   let s2 = Quicksort(f2, &m hi, hf2);
                   match s2 { Pair(hs2, hc2) => {
-                    let hub2 = mkUb (*v) hc1;
-                    let hlb2 = mkLb hi hc2;
+                    let hub2 = MkUb (*v) hc1;
+                    let hlb2 = MkLb hi hc2;
                     let cnt2 = cnt1 (*v) hi hc1 hc2;
                     -- The last staged builder: the glue's evidence arrives only
                     -- from `AppendBack`, by which time both parts are consumed.
-                    let fin = (λ (e : List Nat).
-                        λ (hap : Id (List Nat) e (append (*v) (Cons x hi))).
-                          list_rw (λ (z : List Nat). Sorted z) (append (*v) (Cons x hi)) e
-                            (id_sym (List Nat) e (append (*v) (Cons x hi)) hap)
-                            (sorted_append_pivot x (*v) hi hs1 hub2 hs2 hlb2));
+                    -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
+                    -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
+                    -- makes that difference visible instead of leaving the reader to
+                    -- date each capture by where it sits.
+                    let V1 = *v;
+                    let Hi1 = hi;
+                    let Hs1 = hs1;
+                    let Hs2 = hs2;
+                    let Hub2 = hub2;
+                    let Hlb2 = hlb2;
+                    let Fin = (λ (e : List Nat).
+                        λ (hap : Id (List Nat) e (append V1 (Cons X0 Hi1))).
+                          list_rw (λ (z : List Nat). Sorted z) (append V1 (Cons X0 Hi1)) e
+                            (id_sym (List Nat) e (append V1 (Cons X0 Hi1)) hap)
+                            (sorted_append_pivot X0 V1 Hi1 Hs1 Hub2 Hs2 Hlb2));
                     let w = Cons(x, hi);
                     -- The fuel that is exactly enough, staged BEFORE the borrow is
                     -- taken: a comptime argument mentioning `*v` would demand-
                     -- collapse the loan it was just lent.
                     let lv = Len *v;
                     let happ = AppendBack(lv, &m *v, w, le_refl lv);
-                    Pair(fin (*v) happ, cnt2 (*v) happ)
+                    Pair(Fin (*v) happ, cnt2 (*v) happ)
                   } }
                 } }
               } } } } } }
@@ -1626,12 +1681,20 @@ def partitionLoses : Term := prog{
           Cons(x, rest) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
-            let mkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
-                          λ (n : Nat). count_cons_l n x a b rest (h n));
-            let mkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
-                          λ (n : Nat). count_cons_r n x a b rest (h n));
+            -- §2.4: `Rest0` and `X0` are the snapshots these two were taking
+            -- implicitly. The paragraph above is about exactly this — "a body can
+            -- only talk about the CURRENT exit… a filing for `old` on consumed
+            -- things" — and the citation rule is what turns the filing into a
+            -- binding: the value is frozen HERE, before the call consumes it, and
+            -- the name says so.
+            let Rest0 = rest;
+            let X0 = x;
+            let MkL = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
+                          λ (n : Nat). count_cons_l n X0 a b Rest0 (h n));
+            let MkR = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
+                          λ (n : Nat). count_cons_r n X0 a b Rest0 (h n));
             let lr = Len rest;
             *v := rest;
             let r = Partition(f2, &m *v, p, Hf);
@@ -1641,14 +1704,14 @@ def partitionLoses : Term := prog{
                 let lo = *v;
                 let hub2 = Pair(leb_true_le x p e, hub);
                 let hl2b = le_up_r (Len hi) lr hl2;
-                let cnt = mkL lo hi hcnt;
+                let cnt = MkL lo hi hcnt;
                 -- THE LIE, and the only line that differs: the head is dropped.
                 *v := lo;
                 Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
               } else {
                 let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
                 let hl1b = le_up_r (Len *v) lr hl1;
-                let cnt = mkR (*v) hi hcnt;
+                let cnt = MkR (*v) hi hcnt;
                 Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
               }
             } } } } } }
@@ -1671,12 +1734,20 @@ def qsStaleBound : Term := prog{
           Cons(x, rest) => match fuel {
             Z => botElim Unit Hf,
             S(f2) => {
-            let mkL = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
-                          λ (n : Nat). count_cons_l n x a b rest (h n));
-            let mkR = (λ (a : List Nat). λ (b : List Nat).
-                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
-                          λ (n : Nat). count_cons_r n x a b rest (h n));
+            -- §2.4: `Rest0` and `X0` are the snapshots these two were taking
+            -- implicitly. The paragraph above is about exactly this — "a body can
+            -- only talk about the CURRENT exit… a filing for `old` on consumed
+            -- things" — and the citation rule is what turns the filing into a
+            -- binding: the value is frozen HERE, before the call consumes it, and
+            -- the name says so.
+            let Rest0 = rest;
+            let X0 = x;
+            let MkL = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
+                          λ (n : Nat). count_cons_l n X0 a b Rest0 (h n));
+            let MkR = (λ (a : List Nat). λ (b : List Nat).
+                        λ (h : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
+                          λ (n : Nat). count_cons_r n X0 a b Rest0 (h n));
             let lr = Len rest;
             *v := rest;
             let r = Partition(f2, &m *v, p, Hf);
@@ -1686,13 +1757,13 @@ def qsStaleBound : Term := prog{
                 let lo = *v;
                 let hub2 = Pair(leb_true_le x p e, hub);
                 let hl2b = le_up_r (Len hi) lr hl2;
-                let cnt = mkL lo hi hcnt;
+                let cnt = MkL lo hi hcnt;
                 *v := Cons(x, lo);
                 Pair(hi, Pair(hub2, Pair(hlb, Pair(hl1, Pair(hl2b, cnt)))))
               } else {
                 let hlb2 = Pair(le_pred_l p x (leb_false_gt x p e), hlb);
                 let hl1b = le_up_r (Len *v) lr hl1;
-                let cnt = mkR (*v) hi hcnt;
+                let cnt = MkR (*v) hi hcnt;
                 Pair(Cons(x, hi), Pair(hub, Pair(hlb2, Pair(hl1b, Pair(hl2, cnt)))))
               }
             } } } } } }
@@ -1707,7 +1778,8 @@ def qsStaleBound : Term := prog{
             S(f2) => {
               let y = append (*tl) w;
               let h = AppendBack(f2, &m *tl, w, Hf);
-              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons (*hd) a) (*tl) y h
+              let H0 = *hd;
+              id_congr (List Nat) (List Nat) (λ (a : List Nat). Cons H0 a) (*tl) y h
             }
           }
       } };
@@ -1719,63 +1791,87 @@ def qsStaleBound : Term := prog{
             Z => botElim Unit hfuel,
             S(f2) => {
               let lr = Len rest;
-              let mkCnt = (λ (a : List Nat). λ (b : List Nat).
-                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n rest)).
+              -- §2.4: the citation rule, and the snapshots it makes visible.
+              -- `Rest0` is the tail as it is HERE — before `*v := rest` hands it
+              -- over — which is the value this builder was freezing implicitly.
+              let Rest0 = rest;
+              let X0 = x;
+              let MkCnt = (λ (a : List Nat). λ (b : List Nat).
+                  λ (hp : Π (n : Nat) → Id Nat (Add (Count n a) (Count n b)) (Count n Rest0)).
                   λ (a2 : List Nat). λ (b2 : List Nat).
                   λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n a)).
                   λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n b)).
-                  λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons x b2))).
+                  λ (e : List Nat). λ (hap : Id (List Nat) e (append a2 (Cons X0 b2))).
                     λ (n : Nat).
-                      id_trans Nat (Count n e) (Add (Count n a2) (Count n (Cons x b2)))
-                                   (Count n (Cons x rest))
-                        (id_trans Nat (Count n e) (Count n (append a2 (Cons x b2)))
-                                      (Add (Count n a2) (Count n (Cons x b2)))
+                      id_trans Nat (Count n e) (Add (Count n a2) (Count n (Cons X0 b2)))
+                                   (Count n (Cons X0 Rest0))
+                        (id_trans Nat (Count n e) (Count n (append a2 (Cons X0 b2)))
+                                      (Add (Count n a2) (Count n (Cons X0 b2)))
                            (id_congr (List Nat) Nat (λ (z : List Nat). Count n z)
-                              e (append a2 (Cons x b2)) hap)
-                           (count_append n a2 (Cons x b2)))
-                        (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
-                                      (Add (Count n a) (Count n (Cons x b)))
-                                      (Count n (Cons x rest))
-                           (id_trans Nat (Add (Count n a2) (Count n (Cons x b2)))
-                                         (Add (Count n a) (Count n (Cons x b2)))
-                                         (Add (Count n a) (Count n (Cons x b)))
-                              (id_congr Nat Nat (λ (r : Nat). Add r (Count n (Cons x b2)))
+                              e (append a2 (Cons X0 b2)) hap)
+                           (count_append n a2 (Cons X0 b2)))
+                        (id_trans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
+                                      (Add (Count n a) (Count n (Cons X0 b)))
+                                      (Count n (Cons X0 Rest0))
+                           (id_trans Nat (Add (Count n a2) (Count n (Cons X0 b2)))
+                                         (Add (Count n a) (Count n (Cons X0 b2)))
+                                         (Add (Count n a) (Count n (Cons X0 b)))
+                              (id_congr Nat Nat (λ (r : Nat). Add r (Count n (Cons X0 b2)))
                                  (Count n a2) (Count n a) (h1 n))
                               (id_congr Nat Nat (λ (r : Nat). Add (Count n a) r)
-                                 (Count n (Cons x b2)) (Count n (Cons x b))
-                                 (count_cons_congr n x b2 b (h2 n))))
-                           (count_cons_r n x a b rest (hp n))));
+                                 (Count n (Cons X0 b2)) (Count n (Cons X0 b))
+                                 (count_cons_congr n X0 b2 b (h2 n))))
+                           (count_cons_r n X0 a b Rest0 (hp n))));
               *v := rest;
               let pr = Partition(f2, &m *v, x, hfuel);
               match pr { Pair(hi, q1) => match q1 { Pair(hub, q2) => match q2 { Pair(hlb, q3) =>
               match q3 { Pair(hl1, q4) => match q4 { Pair(hl2, hpc) => {
-                let mkUb = (λ (a2 : List Nat).
-                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n (*v))).
-                      ub_perm x a2 (*v) h1 hub);
-                let mkLb = (λ (b2 : List Nat).
-                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n hi)).
-                      lb_perm x b2 hi h2 hlb);
-                let cnt1 = mkCnt (*v) hi hpc;
+                -- §2.4: the PRE-sort snapshots, named. `V0` and `Hi0` are the two
+                -- parts as they are HERE, before either sort replaces them, and that
+                -- is exactly what these builders were freezing implicitly. The
+                -- comment above already said "while the pre-sort lists are still
+                -- nameable"; the rule turns that sentence into two bindings.
+                let V0 = *v;
+                let Hi0 = hi;
+                let Hub0 = hub;
+                let Hlb0 = hlb;
+                let MkUb = (λ (a2 : List Nat).
+                    λ (h1 : Π (n : Nat) → Id Nat (Count n a2) (Count n V0)).
+                      ub_perm X0 a2 V0 h1 Hub0);
+                let MkLb = (λ (b2 : List Nat).
+                    λ (h2 : Π (n : Nat) → Id Nat (Count n b2) (Count n Hi0)).
+                      lb_perm X0 b2 Hi0 h2 Hlb0);
+                let cnt1 = MkCnt (*v) hi hpc;
                 let hf1 = le_trans (Len *v) lr f2 hl1 hfuel;
                 let s1 = Quicksort(f2, &m *v, hf1);
                 match s1 { Pair(hs1, hc1) => {
                   let hf2 = le_trans (Len hi) lr f2 hl2 hfuel;
                   let s2 = Quicksort(f2, &m hi, hf2);
                   match s2 { Pair(hs2, hc2) => {
-                    let hub2 = mkUb (*v) hc1;
-                    let hlb2 = mkLb hi hc2;
+                    let hub2 = MkUb (*v) hc1;
+                    let hlb2 = MkLb hi hc2;
                     let cnt2 = cnt1 (*v) hi hc1 hc2;
-                    let fin = (λ (e : List Nat).
-                        λ (hap : Id (List Nat) e (append (*v) (Cons x hi))).
-                          list_rw (λ (z : List Nat). Sorted z) (append (*v) (Cons x hi)) e
-                            (id_sym (List Nat) e (append (*v) (Cons x hi)) hap)
+                    -- §2.4: and the POST-sort snapshots, which are DIFFERENT values
+                    -- from `V0`/`Hi0` above — both sorts wrote in place. The rule
+                    -- makes that difference visible instead of leaving the reader to
+                    -- date each capture by where it sits.
+                    let V1 = *v;
+                    let Hi1 = hi;
+                    let Hs1 = hs1;
+                    let Hs2 = hs2;
+                    let Fin = (λ (e : List Nat).
+                        λ (hap : Id (List Nat) e (append V1 (Cons X0 Hi1))).
+                          list_rw (λ (z : List Nat). Sorted z) (append V1 (Cons X0 Hi1)) e
+                            (id_sym (List Nat) e (append V1 (Cons X0 Hi1)) hap)
                             -- THE LIE, and the only line that differs: the PRE-sort
-                            -- bounds, not their transports across the sorts.
-                            (sorted_append_pivot x (*v) hi hs1 hub hs2 hlb));
+                            -- bounds (`Hub0`/`Hlb0`), not their transports across the
+                            -- sorts (`Hub2`/`Hlb2`). §2.4 sharpens the lie rather than
+                            -- hiding it: the two snapshots now have different names.
+                            (sorted_append_pivot X0 V1 Hi1 Hs1 Hub0 Hs2 Hlb0));
                     let w = Cons(x, hi);
                     let lv = Len *v;
                     let happ = AppendBack(lv, &m *v, w, le_refl lv);
-                    Pair(fin (*v) happ, cnt2 (*v) happ)
+                    Pair(Fin (*v) happ, cnt2 (*v) happ)
                   } }
                 } }
               } } } } } }

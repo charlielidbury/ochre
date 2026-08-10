@@ -95,12 +95,12 @@ namespace Dllbc.Tests.S26Seal
 /-! ## §A. The seal under ⇒-checking -/
 
 -- A1. A well-typed sealed λ is accepted, and the binding holds a σ afterwards.
-def a1 : Term := prog{ let f = (λ (x : Nat). x : Π (x : Nat) → Nat); () }
+def a1 : Term := prog{ let F = (λ (x : Nat). x : Π (x : Nat) → Nat); () }
 example : progOk a1 = true := by native_decide
 
 -- A2. An ill-typed one is rejected, by an honest TYPING rejection naming both the
 -- term and the ascribed type — not by getting stuck somewhere downstream.
-def a2 : Term := prog{ let f = (λ (x : Nat). x : Π (x : Nat) → Bool); () }
+def a2 : Term := prog{ let F = (λ (x : Nat). x : Π (x : Nat) → Bool); () }
 example : progRejects a2 "does not have its ascribed type" = true := by native_decide
 
 -- A3. Data seals: the same rule with no Π in sight.
@@ -115,7 +115,7 @@ example : progRejects a3no "does not have its ascribed type" = true := by native
 -- PURE λ there is still refused, and now for the reason rather than for the phase:
 -- `hasType` has no answer to a payload-owing Π, and pretending otherwise is the
 -- one thing this rule must not do.
-def a4 : Term := prog{ let f = (λ (x : Nat). x : &mut Nat); () }
+def a4 : Term := prog{ let F = (λ (x : Nat). x : &mut Nat); () }
 example : progRejects a4 "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### A5. ⇝ never meets the node
@@ -274,15 +274,15 @@ example : tailEnv c1 [("f", vlam), ("y", Val.nat 3)] = true := by native_decide
 -- C2. **Body withheld ⟹ the type's promise and nothing more.** Seal the same λ
 -- and the same call yields an opaque σ. This is §5 point 4 made mechanical: what
 -- the caller keeps is exactly what was written in the seal.
-def c2 : Term := prog{ let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); () }
+def c2 : Term := prog{ let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); () }
 example : progOk c2 = true := by native_decide
-example : tailEnv c2 [("f", .sym 0), ("y", .sym 1)] = true := by native_decide
+example : tailEnv c2 [("F", .sym 0), ("y", .sym 1)] = true := by native_decide
 
 -- C3. Two calls are two events, and are NOT identified (§2.2's requirement on the
 -- runtime column): σ1 and σ2 are distinct, each with its own type instance.
 def c3 : Term := prog{
-  let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); let z = f(2); () }
-example : tailEnv c3 [("f", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by native_decide
+  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); let z = F(2); () }
+example : tailEnv c3 [("F", .sym 0), ("y", .sym 1), ("z", .sym 2)] = true := by native_decide
 
 /-! ### C4–C8. The negative controls, one per rule branch -/
 
@@ -292,8 +292,8 @@ example : progRejects c4 "partial application" = true := by native_decide
 -- …and the same refusal on the abstract side, which is the branch that matters
 -- for phase C (a σ : Π under-applied is a closure holding its arguments).
 def c5 : Term := prog{
-  let f = (λ (x : Nat). λ (y : Nat). x : Π (x : Nat) → Π (y : Nat) → Nat);
-  let z = f(2); () }
+  let F = (λ (x : Nat). λ (y : Nat). x : Π (x : Nat) → Π (y : Nat) → Nat);
+  let z = F(2); () }
 example : progRejects c5 "partial application" = true := by native_decide
 
 -- Over-application.
@@ -303,7 +303,7 @@ example : progRejects c6 "too many arguments" = true := by native_decide
 -- A mistyped argument, on both branches.
 def c7 : Term := prog{ let f = λ (x : Nat). x; let z = f(Nil); () }
 example : progRejects c7 "does not have its parameter type" = true := by native_decide
-def c8 : Term := prog{ let f = (λ (x : Nat). x : Π (x : Nat) → Nat); let z = f(Nil); () }
+def c8 : Term := prog{ let F = (λ (x : Nat). x : Π (x : Nat) → Nat); let z = F(Nil); () }
 example : progRejects c8 "does not have its parameter type" = true := by native_decide
 
 -- A callee that is not a function at all, and one that was moved away.
@@ -371,7 +371,7 @@ def c13t : Term := prog{
   let f = λ (x : Nat). S x; let y = f(2); NeedsEq(y, Refl); () }
 def c13s : Term := prog{
   fn NeedsEq (n : Nat, h : Id Nat n 3) -> Unit { () };
-  let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); NeedsEq(y, Refl); () }
+  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); NeedsEq(y, Refl); () }
 example : progOk c13t = true := by native_decide
 example : progRejects c13s "does not have its parameter type" = true := by native_decide
 
@@ -498,7 +498,7 @@ def d2b : Term := prog{
   let n = GiveThree(0); let a = (Add n 1 : Nat); let b = Add n 1; () }
 -- a sealed function callee, passed and called
 def d2c : Term := prog{
-  let f = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = f(2); let z = f(5); () }
+  let F = (λ (x : Nat). S x : Π (x : Nat) → Nat); let y = F(2); let z = F(5); () }
 -- a transparent function callee, passed to a declared fn and called inside it
 def d2d : Term := prog{
   fn Apply1 (g : Π (x : Nat) → Nat, n : Nat) -> Nat { g(n) };
@@ -714,7 +714,39 @@ example : diffC a2 = true := by native_decide
 
 def a3bad : Term := prog{ let n = 3; let G = λ(a : Nat) { let z = n; () }; () }
 def a3ok : Term := prog{ let n = 3; let G = λ(a : Nat, m : Nat) { let z = m; () }; G(1, n); () }
-example : progRejects a3bad "is none of its 1 binder(s)" = true := by native_decide
+-- **The needle is §2.4's since M31 Stage A.** The old one said the citation is
+-- "none of its 1 binder(s)", which was the closedness rule counting binders; the
+-- rule now names the MODE, because that is what decides — and what a reader can
+-- act on. The refusal and the acceptance below are the whole of the change: a
+-- runtime citation is refused, a capital one is capture and is fine.
+example : progRejects a3bad "a runtime (lowercase) binding" = true := by native_decide
+
+-- A3cap. **THE NEW CAPABILITY** (§2.4). The same program with the binding
+-- capitalised is ACCEPTED: a λ may close over comptime knowledge, which is what
+-- makes the migration of every staged builder in this corpus writable at all.
+-- Nothing is lost by the freeze being explicit — comptime bindings are immutable,
+-- so capture and eager inlining are indistinguishable.
+def a3cap : Term := prog{ let N = 3; let G = λ(a : Nat) { let z = N; () }; () }
+example : progOk a3cap = true := by native_decide
+
+-- A3pure. **THE SAME CHECK, THE OTHER λ SPECIES** — which is §2.4's claim that
+-- the formation check is "identical for both λ species", asserted rather than
+-- described. A PURE λ citing a runtime binding gets the same refusal, with the
+-- same needle, as the runtime λ above; and the capital twin is accepted.
+def a3pureBad : Term := prog{ let n = 3; let P = λ (u : Unit). n; () }
+example : progRejects a3pureBad "a runtime (lowercase) binding" = true := by native_decide
+def a3pureCap : Term := prog{ let N = 3; let P = λ (u : Unit). N; () }
+example : progOk a3pureCap = true := by native_decide
+
+-- A3type. …and the EXEMPTION, which is the other half of the rule and the half
+-- that would be easy to lose: a runtime citation in a TYPE is untouched. `Le Z n`
+-- here is a type consumed at its own event, not a body stored and applied later,
+-- so §2.4 leaves it alone. Without this the rule would have swallowed every
+-- dependent signature in the corpus.
+def a3typeOk : Term := prog{
+  fn Bnd (n : Nat, h : Le Z n) -> Unit { () };
+  () }
+example : progOk a3typeOk = true := by native_decide
 example : progOk a3ok = true := by native_decide
 
 -- A4. A NULLARY runtime λ is refused, and for a real ambiguity rather than
@@ -1065,7 +1097,7 @@ example : progRejects e3d "no Π binder left for it" = true := by native_decide
 -- Sealing something that is NOT a runtime λ at a function signature — phase A's
 -- A4, now refused for the reason instead of for the phase.
 def e3e : Term := prog{
-  let f = (λ (x : Nat). x : %unitSeal); () }
+  let F = (λ (x : Nat). x : %unitSeal); () }
 example : progRejects e3e "the sealed term must be a runtime λ" = true := by native_decide
 
 /-! ### E4. FRAME ISOLATION — the sealed body's effects stay inside the check
@@ -1804,7 +1836,13 @@ example : (match runProgram annotated with
 -- C1. The domain captures a data binding: refused, by the same rule and the same
 -- message a captured body reference gets.
 def capInType : Term := prog{ let n = 3; let G = λ(a : Le n n) { () }; () }
-example : progRejects capInType "not a function" = true := by native_decide
+-- The needle moved with §2.4 (M31 Stage A): a λ's binder DOMAIN is part of the
+-- node, so a runtime citation there is refused by the same rule and with the same
+-- message as one in the body. That is deliberate — §2.4 exempts type positions
+-- because a type is consumed at its own event, and a λ's domain is not: it is
+-- stored with the λ and read whenever the λ is applied, which is the very gap the
+-- rule closes.
+example : progRejects capInType "a runtime (lowercase) binding" = true := by native_decide
 
 -- C2. THE ISOLATING CONTROL. The same λ with a closed domain is accepted, so C1 is
 -- about the reference and not about annotating a binder at all.
@@ -2174,8 +2212,8 @@ example : progOk juxLam (.const "Nat") = true := by native_decide
 
 def juxPure : Term := prog{
   fn Caller (v : &mut List Nat) -> Unit
-  { let mk = (λ (l : List Nat). l);
-    let y = mk (*v);
+  { let Mk = (λ (l : List Nat). l);
+    let y = Mk (*v);
     () };
   () }
 example : progOk juxPure = true := by native_decide

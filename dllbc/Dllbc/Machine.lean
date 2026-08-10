@@ -2087,6 +2087,25 @@ def backstopFnBinding (x : Var) (v : Val) : M Unit := do
     refuseFnBinding x s!"produced a function ({v.pretty})"
   else pure ()
 
+/-- **§2.4's citation rule at a λ formed in VALUE position** (M31 Stage A).
+
+    The node's free RUNTIME variables must be empty: a λ body may reference its
+    own binders and the capital bindings in scope, nothing more and nothing less.
+    The whole node is read, domains included, because a λ's binder domain is
+    stored with the λ and consulted whenever it is applied — it has the same
+    formation-vs-use gap the body has, which is what §2.4's exemption for type
+    positions does NOT cover.
+
+    Called from the two places a λ becomes a value: `readR`'s `.lam` arm (a λ
+    evaluated as an expression) and a `let` whose right-hand side is one. A λ
+    inside a TYPE reaches `readC` directly and never passes here, which is
+    exactly §2.4's boundary — a type is consumed at its own event. -/
+def checkLamCitation (t : Term) : M Unit :=
+  match (Term.freeRVars [] t).find? (fun y => !y.isComptime) with
+  | some y =>
+    throwErr s!"λ: the body cites '{y.name}', a runtime (lowercase) binding, and a λ body may reference only its own binders and the capital bindings in scope (§2.4). A λ is formed now and used later, and a runtime citation would be an implicit snapshot taken in that gap. Make it a parameter, or name the snapshot first: `let {y.name.capitalize} = …;` above the λ, and cite `{y.name.capitalize}`."
+  | none => pure ()
+
 /-- The same rule, asked BEFORE the right-hand side is evaluated, for the one
     shape where evaluating it would hit a different rule first.
 
@@ -3290,13 +3309,35 @@ def admitGlobals (what : String) (nbinders : Nat) (free : List Var) : M Omega :=
   let st ← get
   free.foldlM (fun acc x => do
     if acc.any (fun kv => kv.1.id == x.id) then pure acc
-    else match st.env.find? (fun kv => kv.1.id == x.id) with
+    else
+      -- **THE CITATION RULE** (M31 Stage A, §2.4). The test is the binder's MODE,
+      -- and it is asked before the lookup because it is a fact about the name
+      -- rather than about what the name happens to hold.
+      --
+      -- This dissolves the old check rather than relocating it. `admitGlobals`
+      -- used to admit exactly the FUNCTION values (`globalKind`) and refuse
+      -- everything else as the deferred environment capture — "may name a
+      -- function to call it, captures nothing". Under M31 the exemption IS the
+      -- rule: functions are comptime, so naming one is comptime capture, and what
+      -- is left to say is simply that a λ body may reference its own binders and
+      -- the capital bindings in scope, nothing more and nothing less.
+      --
+      -- What that buys, beyond one rule where there were two: a λ may now close
+      -- over a PROOF or a snapshot (`let H0 = *hd`), which is what makes §2.4's
+      -- migration writable at all. Nothing is lost by it — comptime bindings are
+      -- immutable, so capture and eager inlining are indistinguishable, and the
+      -- freeze merely becomes visible as a binding.
+      -- The LOOKUP comes first, and the order is load-bearing: a name that is
+      -- bound nowhere is a forward reference, and saying "it is lowercase" of one
+      -- would diagnose the wrong thing about a program whose real problem is that
+      -- the name does not exist.
+      match st.env.find? (fun kv => kv.1.id == x.id) with
       | none =>
         throwErr s!"{what}: the body mentions {x.name}#{x.id}, which is none of its {nbinders} binder(s) and is not bound anywhere above it. §8 makes SCOPE the call table — a body may call the functions bound lexically above it, and a let-chain cannot reference downward, so a forward reference is unwritable rather than merely rejected."
       | some kv =>
-        if globalKind st kv.2 then pure (acc ++ [kv])
-        else
-          throwErr s!"{what}: the body mentions {x.name}#{x.id}, which is none of its {nbinders} binder(s). It names a binding in scope, but that binding is not a function ({kv.2.pretty}) — §7 cost 2 admits only the CLOSED kind of function value, whose body may name its own binders and the FUNCTIONS above it, and environment capture stays deferred (constraint 5). Make what it needs a parameter.") []
+        if !x.isComptime then
+          throwErr s!"{what}: the body cites '{x.name}', a runtime (lowercase) binding, and a λ body may reference only its own binders and the capital bindings in scope (§2.4). A λ is formed now and used later, and a runtime citation would be an implicit snapshot taken in that gap. Make it a parameter, or name the snapshot first: `let {x.name.capitalize} = …;` above the λ, and cite `{x.name.capitalize}`."
+        else pure (acc ++ [kv])) []
 
 /-! ## ⇒ (read): the move arrow
 
@@ -3444,6 +3485,7 @@ mutual
         -- `Var.comptimeRhs`, which is the whole of that rule and is read here and
         -- by the explore driver both.
         backstopFnRhs x rhs                              -- M31 Stage A: §2.1, before the fence
+        (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
         let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
         backstopFnBinding x v                            -- …and §2.1 from below
         bindSlot x v
@@ -3668,7 +3710,20 @@ mutual
       | .pvar _ => readC fuel t
       | .pi _ _ _ => readC fuel t
       | .sigmaT _ _ _ => readC fuel t
-      | .lam _ _ _ => do collapseCDerefs fuel t; readC fuel t
+      -- **A λ FORMED IN VALUE POSITION takes the citation rule too** (M31 Stage A,
+      -- §2.4), which is what makes the check "identical for both λ species".
+      --
+      -- Reached HERE and not in `readC`, and the difference is exactly §2.4's own
+      -- boundary. This arm is ⇒'s: a λ evaluated as a VALUE — bound, passed,
+      -- stored — which is the form that is formed now and used later, and the gap
+      -- an implicit snapshot could hide in. A λ inside a TYPE reaches `readC`
+      -- directly (from a telescope, a motive, an ascription) and is consumed at
+      -- its own event, so it keeps citing whatever is in scope, as §2.4 says it
+      -- must. Statement-level pure computation (`let n = Len *v`) is not a λ at
+      -- all and is untouched.
+      | .lam _ _ _ => do
+        checkLamCitation t
+        collapseCDerefs fuel t; readC fuel t
       -- **A recursor over runtime arms is ⇒'s, not ⇝'s** (§7 cost 5). The pure
       -- lift below sends every other application spine to `readC`; one whose arms
       -- are BODIES has no comptime reading at all (`readC` refuses `.lamR`), so ⇒
@@ -4406,6 +4461,7 @@ mutual
         -- top level of a function body would have been a phantom.
         match (do
             backstopFnRhs x rhs
+            (match rhs with | .lam _ _ _ => checkLamCitation rhs | _ => pure ())
             let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
             backstopFnBinding x v
             bindSlot x v).run st with
