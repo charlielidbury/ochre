@@ -283,7 +283,7 @@ def deepStepArm : Term :=
       , .mk "S" [⟨2, "b"⟩] (.var ⟨1, "ih"⟩) ])
 def deepRec : Term :=
   .app (.app (.app (.const "natRec") deepMotT) deepBaseArm) deepStepArm
-def recDeepProg : Term := .letIn ⟨900, "f"⟩ (.seal deepRec deepSealT) .unit
+def recDeepProg : Term := .letIn ⟨900, "F"⟩ (.seal deepRec deepSealT) .unit
 
 example : progOk recDeepProg = true := by native_decide
 
@@ -292,7 +292,7 @@ example : progOk recDeepProg = true := by native_decide
     and the arms cannot inhabit it. -/
 def deepSealLie : Term := prog{ Π (n : Nat) → Id Nat Z (S Z) }
 def recDeepLie : Term :=
-  .letIn ⟨900, "f"⟩ (.seal (.app (.app (.app (.const "natRec")
+  .letIn ⟨900, "F"⟩ (.seal (.app (.app (.app (.const "natRec")
     (prog{ λ (n : Nat). Id Nat Z (S Z) })) deepBaseArm) deepStepArm) deepSealLie) .unit
 example : progOk recDeepLie = false := by native_decide
 

@@ -2037,6 +2037,74 @@ def fenceComptime (x : Var) (what : String) : M Unit :=
     throwErr s!"fence: '{x.name}' is a COMPTIME binder (capitalized — §6) and {what}. A comptime binder is erased: it is never moved, never scrutinized, never borrowed or written through, and exists only in ⇝-positions (types, proofs, and the capital argument positions of other calls). If it must exist at runtime, lower-case it."
   else pure ()
 
+/-! ## The mode backstop: a function may not land in a runtime binding
+
+    **§2.1's rule seen from below** (M31 Stage A). The surface refuses a lowercase
+    `fn` name, which is the rule stated where a reader writes it; this is the same
+    rule stated where the kernel can still see it — at the moment a value is bound
+    — and it catches what the surface cannot: `let f = SomeFn` where the
+    right-hand side only PRODUCES a function, through a read, a call result, or a
+    match arm's field.
+
+    It is the honest successor of the function-read refusal M27 α.2 installed
+    ("functions are reached by NAME"), and it succeeds it rather than joining it:
+    that rule refused the READ, on a model in which a function had no value form
+    a second binding could hold. M31 gives functions a mode instead, so the read
+    is fine — `let F = Main` is a ⇝ copy of knowledge — and what is wrong is the
+    MODE of the binder that catches it. Same programs refused, and the message
+    now names the fix.
+
+    **Checking-side only**, inherited verbatim from the rule it replaces and for
+    the same reason: the executing machine holds a real function value and copies
+    it correctly, so refusing there would break running programs to protect a
+    checker.
+
+    **What counts as a function here is ⇒'s function values** — a runtime λ and a
+    σ the kernel recorded as a function in `fsig`. A pure `.lam` is deliberately
+    NOT included, exactly as the refusal it succeeds excluded it: it is an
+    index-kind comptime object living in the ⇝ fragment, it is what every staged
+    proof-builder in the corpus binds, and §2.4's citation rule (Stage A's last
+    commit) is what governs those. `let f = Add 1` — a lowercase binding of a pure
+    partial application — is therefore NOT caught in Stage A; recorded as a
+    deferral rather than an oversight, since catching it is a second corpus
+    migration and not the one this rule is for. -/
+
+/-- ⇒'s function values: a runtime λ, or a σ whose signature the kernel recorded
+    in `fsig` (which is where a sealed function and a Π-typed parameter go). -/
+def isFnValue (st : St) : Val → Bool
+  | .rfn _ _ => true
+  | .sym σ => (st.fsig.lookup σ).isSome
+  | _ => false
+
+/-- The refusal itself, shared by the two sites below so the rule has one needle. -/
+def refuseFnBinding (x : Var) (what : String) : M Unit :=
+  throwErr s!"'{x.name}' is a runtime binding and its right-hand side {what} — functions are comptime; capitalise the binder. A function is comptime knowledge (§2.1): it is ⇝-read, erased, and never ⇒-consumed, so the binding that holds one must be capital. Write `{x.name.capitalize}` instead."
+
+/-- Refuse a function value landing in a runtime-moded (lowercase) binding. -/
+def backstopFnBinding (x : Var) (v : Val) : M Unit := do
+  let st ← get
+  if !st.executing && !x.isComptime && isFnValue st v then
+    refuseFnBinding x s!"produced a function ({v.pretty})"
+  else pure ()
+
+/-- The same rule, asked BEFORE the right-hand side is evaluated, for the one
+    shape where evaluating it would hit a different rule first.
+
+    `let g = F` — a lowercase binding of a name that already holds a function — is
+    a ⇒-read of a capital binder, so `fenceComptime` gets there first and refuses
+    it as an erasure violation. That is not wrong, but its advice is ("if it must
+    exist at runtime, lower-case it"), because `F` is a function and lowercasing
+    it is exactly what §2.1 forbids. The binder that is wrong is `g`, and this is
+    the one place both names are in view. -/
+def backstopFnRhs (x : Var) (rhs : Term) : M Unit := do
+  let st ← get
+  if st.executing || x.isComptime then pure () else
+    match rhs with
+    | .var y => if isFnValue st (← lookupSlot y) then
+                  refuseFnBinding x s!"names the function '{y.name}'"
+                else pure ()
+    | _ => pure ()
+
 /-- …and the same at a place expression, keyed on the place's root. -/
 def fencePlace (t : Term) (what : String) : M Unit :=
   match placeRoot? t with
@@ -2203,7 +2271,11 @@ def armSeamed? : Term → Bool
     move in as owned values). Errors on arity mismatch. -/
 def bindFields : List Var → List Val → M Unit
   | [], [] => pure ()
-  | x :: xs, v :: vs => do bindSlot x v; bindFields xs vs
+  -- The backstop's third acquisition site (M31 Stage A, E1): a constructor field
+  -- holding a function reaches a binding HERE, and this is the only place it can
+  -- — borrow-mode arms bind `borrowM ℓ field`, which is a borrow and not a
+  -- function value however its payload looks.
+  | x :: xs, v :: vs => do backstopFnBinding x v; bindSlot x v; bindFields xs vs
   | _, _ => throwErr "match: constructor arity mismatch (binders vs fields)"
 
 /-- Bind each field binder to a whole-value reborrow `borrowM ℓᵢ fieldᵢ`
@@ -3265,49 +3337,28 @@ mutual
           match firstLoanMarker v with
           | some ℓ => do endLoan fuel ℓ; readR fuel (.var x)
           | none => do
-            -- **FUNCTIONS ARE REACHED BY NAME** (M27 α.2, the ratified model),
-            -- and this is the one rule that says so.
+            -- **THE FUNCTION-READ REFUSAL IS GONE** (M31 Stage A), and what stood
+            -- here is worth recording because the deletion is a change of model
+            -- rather than a relaxation.
             --
-            -- The binding a declaration creates IS the name (§8: a declaration is
-            -- a `let`), so `let f = (λ… : Π…)` stays writable — it is the
-            -- declaration idiom, §12 decision 6. CALLING where bound is a
-            -- name-use, and `.callV` LOCATES its callee rather than reading it
-            -- (M26-E), so it never arrives here. PASSING as an argument is a
-            -- name-use too. What the model forbids is the one move that turns a
-            -- function from a name into a VALUE: reading it out of its slot into a
-            -- second binding.
+            -- It said: functions are reached by NAME (M27 α.2), so the one move
+            -- forbidden is reading a function out of its slot into a second
+            -- binding — `let g = ih`. That rule existed because a function had no
+            -- mode: it lived in a runtime slot, so a second runtime binding of it
+            -- was a second OWNER, and M27's third containment (c1's curry probe)
+            -- had measured the resulting simulation break on an accepted program
+            -- (`f = ⊥` checking, the λ-spine executing).
             --
-            -- **THE CONTAINMENT GRADUATED INTO THE MODEL.** M27's third
-            -- containment (c1's curry probe §G3b, generalizing M27-P3 §M) refused
-            -- exactly this for one case, keyed on a mechanism: a σ whose Π is
-            -- BORROW-MODED has no `Val` — M26-C's founding fact — so it lives in
-            -- `fsig` alone, `indexKindV` consults `sctx`, finds nothing, and takes
-            -- the move default while the executing machine copies. That was a
-            -- simulation break and the key was "absent from `sctx`". The key is now
-            -- **being a function at all**, which is a claim about the language
-            -- rather than about a table, and the borrow-free case flips with it —
-            -- c1 measured it as sound (§G3a), and it is refused anyway, because
-            -- soundness was never what made it wrong.
+            -- M31 gives functions a mode, and that dissolves the premise rather
+            -- than the symptom. A function binding is comptime: ⇝-read, erased,
+            -- never ⇒-consumed. So reading one is not a move at all — `let F =
+            -- Main` copies knowledge and leaves the original exactly where it was
+            -- — and there is no second owner for the two machines to disagree
+            -- about. What IS still wrong is binding a function to a runtime slot,
+            -- which is a claim about the BINDER, and `backstopFnBinding` is where
+            -- that is now said. Same programs refused, one layer later, with the
+            -- fix in the message.
             --
-            -- The test is `fsig` membership because that is the kernel's own record
-            -- of "this σ is a function": `sealMint` writes every sealed function
-            -- there, and `seedTelescopeV` writes a Π-typed parameter there. A pure
-            -- `.lam` is deliberately NOT included — it is a comptime object,
-            -- index-kind, living in the ⇝ fragment, and the model's sentence is
-            -- about ⇒'s function values.
-            --
-            -- CHECKING-SIDE ONLY, unchanged: the executing machine holds a real
-            -- function value and copies it correctly, so refusing there would
-            -- break running programs to protect a checker.
-            if !(← get).executing then do
-              let st ← get
-              let isFnVal : Bool :=
-                match v with
-                | .rfn _ _ => true
-                | .sym σ => (st.fsig.lookup σ).isSome
-                | _ => false
-              if isFnVal then
-                throwErr s!"read: '{x.name}' holds a function, and a function is reached by NAME rather than read as a value (§8 — a declaration is a `let`, and the binding IS the name). CALL it where it is bound, or pass it as an argument."
             -- §2.1 copy-on-read: an INDEX-KIND value (a Nat/Bool/Unit tree, a
             -- proof, a type, a λ, or a σ typed as one of these) is read by COPY,
             -- leaving the owner intact — the ownership machinery is doubly vacuous
@@ -3392,7 +3443,9 @@ mutual
         -- **The seal keeps ⇒ whatever the binder's case** (M31 Stage A) — see
         -- `Var.comptimeRhs`, which is the whole of that rule and is read here and
         -- by the explore driver both.
+        backstopFnRhs x rhs                              -- M31 Stage A: §2.1, before the fence
         let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
+        backstopFnBinding x v                            -- …and §2.1 from below
         bindSlot x v
         readR fuel rest
       | .assign place rhs rest => do
@@ -4352,7 +4405,9 @@ mutual
         -- duplication is two lines; a mode that silently stopped applying at the
         -- top level of a function body would have been a phantom.
         match (do
+            backstopFnRhs x rhs
             let v ← if x.comptimeRhs rhs then readComptimeArg fuel rhs else readR fuel rhs
+            backstopFnBinding x v
             bindSlot x v).run st with
         | .error e _ => [.error e]
         | .ok _ st' => explore fuel rest st'

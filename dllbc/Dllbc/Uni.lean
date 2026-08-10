@@ -360,17 +360,16 @@ def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
 
 /-- A `fn` slot bound above this point, by the name it was declared with.
 
-    **Capital names only**, which is §2.1's rule seen from the surface: a function
-    is comptime knowledge, so a function name is capitalised, and a bare name that
-    denotes one is capital. The condition is transitional cover as well as model —
-    while lowercase `fn` names are still tolerated (Stage A commit 1), a lowercase
-    slot must not start shadowing what its name resolved to before, and exactly one
-    name in the corpus would (`fn nth` against `Std`'s `nth` lemma Term). Commit 3
-    refuses a lowercase `fn` name outright, at which point this condition is
-    vacuous rather than load-bearing. -/
+    Every such name is capital, because the `fn` row refuses a lowercase one
+    (§2.1). That is what keeps this lookup from disturbing anything: the names it
+    can answer for are exactly the ones the raw-Lean fallthrough below it never
+    had a reading for, since a Lean lemma Term in this corpus is lowercase. The
+    one name where the two families met — `fn nth` against `Std`'s `nth` — is
+    resolved by the rename policy rather than by a condition here (see the Stage A
+    addendum): the function capitalised and the lemma did not. -/
 def fnSlotId (rctx : List (String × Nat)) (s : String) : Option Nat :=
   match rctx.lookup s with
-  | some id => if id ≥ Dllbc.FnMacro.progBase && Dllbc.isUpperInit s then some id else none
+  | some id => if id ≥ Dllbc.FnMacro.progBase then some id else none
   | none => none
 
 /-- Resolve a bare identifier in a type/back position. Pure binder in scope →
@@ -761,6 +760,22 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   -- terms of the arrow; deleting it loses no rejection, only a duplicate.
   | `(ublk| fn $name:ident $[[$dec:ident]]? ( $ps,* ) -> $ret:uterm { $body:ublk } ; $rest:ublk) => do
     checkBinder name
+    -- **A FUNCTION NAME IS CAPITALISED** (M31 Stage A, §2.1). A `fn` desugars to
+    -- a `let` of a λ ascribed its Π, and a function is comptime knowledge — so
+    -- the binding that holds one must be a capital binding, by the same one rule
+    -- that makes every other capital binder comptime. There is no carve-out and
+    -- no second marker.
+    --
+    -- Stated here, at the row that writes the binder, because this is where a
+    -- reader can be told the fix. The kernel says it again from below
+    -- (`backstopFnBinding`), where it catches what the surface cannot see: a
+    -- lowercase binding whose right-hand side merely PRODUCES a function.
+    --
+    -- The divergence from Rust's snake_case is deliberate and tracks a real
+    -- semantic difference — a Rust function is a runtime item, a DLLBC function
+    -- is a comptime value — so the surface says so rather than hiding it.
+    if !Dllbc.isUpperInit (name.getId.toString) then
+      Macro.throwErrorAt name s!"fn: '{name.getId}' must be capitalised. A function is COMPTIME knowledge (§2.1) — ⇝-read, erased, never ⇒-consumed — and §6 makes capitalisation the mode marker, so a function name is a capital name. Write `fn {(name.getId.toString).capitalize} …`."
     let parsed ← ps.getElems.toList.mapM fun (p : TSyntax `ulamb) => match p with
       | `(ulamb| $x:ident : $τ:uterm) => pure (x.getId.toString, τ)
       | _ => Macro.throwErrorAt p "fn: malformed parameter (expected `x : τ`)"

@@ -925,7 +925,7 @@ example : progOk twoBorrows = true := by native_decide
 def mixedSeal : Term := prog{ Π (v : &mut List Nat) → Σ (x : &mut Nat) → Id Nat Z (S Z) }
 
 def sealProg : Term := prog{
-  let f = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : %mixedSeal);
+  let F = (λ(v : &mut List Nat) { match v { Nil => (), Cons(hd, tl) => Pair(&m *hd, Refl) } } : %mixedSeal);
   () }
 
 example : progRejects sealProg "may not also carry VALUE components" = true := by native_decide
@@ -933,7 +933,7 @@ example : progRejects sealProg "may not also carry VALUE components" = true := b
 -- Not vacuous: an all-borrow ascription in the same position is accepted, so the
 -- refusal is about the MIXTURE and not about sealing a cursor at all.
 def borrowSeal : Term := prog{ Π (v : &mut List Nat) → &mut List Nat }
-def sealOk : Term := prog{ let f = (λ(v : &mut List Nat) { v } : %borrowSeal); () }
+def sealOk : Term := prog{ let F = (λ(v : &mut List Nat) { v } : %borrowSeal); () }
 example : progOk sealOk = true := by native_decide
 
 /-! ## §E. THE SECOND CONTAINMENT — a lie in a PARAMETER'S OWED TYPE
@@ -1088,19 +1088,46 @@ example : (match tailEnvs swapCaller with
     borrow-free case flips with it — c1 measured that one as SOUND on both
     machines (§G3a), and it is refused anyway, because soundness was never what
     made it wrong. What is left of "teach `indexKindV` about `fsig`" is §12 open
-    8, which the model may simply not need. -/
+    8, which the model may simply not need.
+
+    **AND THE MODEL HAS SINCE BEEN SUCCEEDED IN TURN** (M31 Stage A, §2.1). Read
+    the three paragraphs above as the record they are: a mechanism, then a model,
+    now a MODE. "Functions are reached by name" was a rule about the READ, and it
+    had to be, because a function lived in a runtime slot where a second binding
+    of it would be a second owner — which is exactly the divergence c1 measured.
+    M31 makes a function binding comptime, and the premise goes rather than the
+    symptom: a comptime binding is ⇝-read, erased and never ⇒-consumed, so `let G
+    = F` copies knowledge, leaves `F` where it was, and creates no second owner
+    for the two machines to disagree about.
+
+    What is still refused is the LOWERCASE destination, and the tests below say so
+    in pairs: `let g = F` is refused by `backstopFnBinding`, `let G = F` is
+    accepted. Same programs rejected as under the previous two rules — the verdict
+    has now outlived two complete changes of reason — but the needle is the FIX,
+    which is the part a reader can act on. -/
 
 def fSeal : Term := prog{ Π (v : &mut List Nat) → Unit }
 
 -- F1. A sealed borrow-taking function, NO recursor anywhere, bound to a second
 -- slot. This is the shape c1's §G3b has both machines accepting with different Ωs.
 def f1read : Term := prog{
-  let f = (λ(v : &mut List Nat) { () } : %fSeal);
-  let g = f;
+  let F = (λ(v : &mut List Nat) { () } : %fSeal);
+  let g = F;
   () }
--- The needle moved with the rule: what is refused is no longer "a sealed
--- borrow-taking function" but a function, full stop.
-example : progRejects f1read "reached by NAME" = true := by native_decide
+-- The needle moved with the rule a second time (M31 Stage A): what is refused is
+-- no longer the READ but the BINDER. `let G = F` is now accepted — it copies
+-- comptime knowledge — and `let g = F` is refused because a runtime binding
+-- cannot hold a function.
+example : progRejects f1read "capitalise the binder" = true := by native_decide
+
+-- The migrated twin, which is the whole content of the change: capitalise the
+-- second binder and the program is fine. c1's §G3b divergence cannot arise from
+-- it, because a comptime binding is not a second OWNER — nothing was moved.
+def f1readCap : Term := prog{
+  let F = (λ(v : &mut List Nat) { () } : %fSeal);
+  let G = F;
+  () }
+example : progOk f1readCap = true := by native_decide
 
 -- F2. **THE ONE THAT FLIPPED, and it is the clearest statement of what changed.**
 -- ~~The isolating control: a BORROW-FREE sealed function bound to a second slot is
@@ -1114,10 +1141,10 @@ example : progRejects f1read "reached by NAME" = true := by native_decide
 -- be isolated from.
 def gSeal : Term := prog{ Π (x : Nat) → Nat }
 def f2read : Term := prog{
-  let f = (λ(x : Nat) { x } : %gSeal);
-  let g = f;
+  let F = (λ(x : Nat) { x } : %gSeal);
+  let g = F;
   () }
-example : progRejects f2read "reached by NAME" = true := by native_decide
+example : progRejects f2read "capitalise the binder" = true := by native_decide
 
 -- F2b. The ISOLATING CONTROL that survives, and it has to be a different one now:
 -- an ordinary value in a second slot is still an ordinary read. So F1/F2 are about
@@ -1132,10 +1159,10 @@ example : progOk f2data = true := by native_decide
 -- than a caveat: calling where bound is a NAME-use. `.callV` locates its callee
 -- rather than moving it (M26-E), so it never reaches the read rule at all.
 def f3call : Term := prog{
-  let f = (λ(v : &mut List Nat) { () } : %fSeal);
+  let F = (λ(v : &mut List Nat) { () } : %fSeal);
   let x = Cons(1, Nil);
   let b = &m x;
-  f(b);
+  F(b);
   () }
 example : progOk f3call = true := by native_decide
 
@@ -1487,8 +1514,8 @@ example : progDiff a1 = true := by native_decide
 -- BINDING rather than to a table entry.
 def a2 : Term := prog{
   let f = (λ (x : Nat). x : Π (x : Nat) → Nat);
-  let g = (λ(y : Nat){ f(y) } : Π (y : Nat) → Nat);
-  let r = g(3);
+  let G = (λ(y : Nat){ f(y) } : Π (y : Nat) → Nat);
+  let r = G(3);
   r }
 example : progOk a2 (.const "Nat") = true := by native_decide
 example : progDiff a2 = true := by native_decide
@@ -1496,7 +1523,7 @@ example : progDiff a2 = true := by native_decide
 -- with `f` bound to a NON-function is refused, and the refusal names the capture.
 def a2cap : Term := prog{
   let f = 3;
-  let g = (λ(y : Nat){ let z = f; y } : Π (y : Nat) → Nat);
+  let G = (λ(y : Nat){ let z = f; y } : Π (y : Nat) → Nat);
   () }
 example : progRejects a2cap "not a function" = true := by native_decide
 
@@ -1504,10 +1531,10 @@ example : progRejects a2cap "not a function" = true := by native_decide
 -- program owns the list, lends it, and gets it back — the whole borrow story with
 -- no declaration anywhere in it.
 def push : Term := prog{
-  let push = (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
+  let Push = (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
                     let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit);
   let l = Cons(1, Nil);
-  let r = push(7, &m l);
+  let r = Push(7, &m l);
   () }
 example : progOk push = true := by native_decide
 -- The list really was mutated through the borrow, and the borrow really did come
@@ -1526,7 +1553,7 @@ example : progDiff push = true := by native_decide
 -- B1. A sealed function that does not inhabit its ascription is refused AT ITS
 -- OWN `let`, with nothing downstream of it — the binding is the demand site,
 -- which is what "the audit is the checking of the seal" means (§5).
-def b1 : Term := prog{ let f = (λ(x : Nat){ x } : Π (x : Nat) → Bool); () }
+def b1 : Term := prog{ let F = (λ(x : Nat){ x } : Π (x : Nat) → Bool); () }
 example : progRejects b1 "does not have return type (Bool)" = true := by native_decide
 
 /-- ### B2. The vacuous twin, kept beside it
@@ -1537,8 +1564,8 @@ example : progRejects b1 "does not have return type (Bool)" = true := by native_
     fall into — "binding a bad function is caught" is true only of a SEALED
     binding. The live twin below is what makes it a real difference: call it, and
     the demand arrives. -/
-def b2vac : Term := prog{ let g = λ(x : Nat){ True }; () }
-def b2live : Term := prog{ let g = λ(x : Nat){ True }; let r = g(1); r }
+def b2vac : Term := prog{ let G = λ(x : Nat){ True }; () }
+def b2live : Term := prog{ let G = λ(x : Nat){ True }; let r = G(1); r }
 example : progOk b2vac = true := by native_decide
 example : progRejects b2live "does not have return type (Nat)" (.const "Nat") = true := by native_decide
 
@@ -1546,8 +1573,8 @@ example : progRejects b2live "does not have return type (Nat)" (.const "Nat") = 
 -- that is reported is the FIRST. (Both messages have the same shape, so the
 -- needles are the types, which differ.)
 def b3 : Term := prog{
-  let f = (λ(x : Nat){ x } : Π (x : Nat) → Bool);
-  let g = (λ(x : Nat){ True } : Π (x : Nat) → Unit);
+  let F = (λ(x : Nat){ x } : Π (x : Nat) → Bool);
+  let G = (λ(x : Nat){ True } : Π (x : Nat) → Unit);
   () }
 example : progRejects b3 "does not have return type (Bool)" = true := by native_decide
 example : progRejects b3 "does not have return type (Unit)" = false := by native_decide
@@ -1568,7 +1595,7 @@ example : progRejects b3 "does not have return type (Unit)" = false := by native
     rejected". Note WHERE it is caught: at `g`'s own seal, because the audit is at
     the binding, so the diagnosis does not wait for a call. -/
 def c1 : Term := prog{
-  let g = (λ(y : Nat){ h(y) } : Π (y : Nat) → Nat);
+  let G = (λ(y : Nat){ h(y) } : Π (y : Nat) → Nat);
   let h = (λ (x : Nat). x : Π (x : Nat) → Nat);
   () }
 example : progRejects c1 "unknown function 'h'" = true := by native_decide
@@ -1576,8 +1603,8 @@ example : progRejects c1 "unknown function 'h'" = true := by native_decide
 -- rejection is about the order and not about the pair.
 def c1ok : Term := prog{
   let h = (λ (x : Nat). x : Π (x : Nat) → Nat);
-  let g = (λ(y : Nat){ h(y) } : Π (y : Nat) → Nat);
-  let r = g(3);
+  let G = (λ(y : Nat){ h(y) } : Π (y : Nat) → Nat);
+  let r = G(3);
   r }
 example : progOk c1ok (.const "Nat") = true := by native_decide
 example : progDiff c1ok = true := by native_decide
@@ -1597,8 +1624,8 @@ example : progDiff c1ok = true := by native_decide
     and caller are shared by construction rather than by two copies agreeing, so
     the difference the test measures is the only difference there is. -/
 def c2under (sig : Term) : Term := prog{
-  let f = (λ(n : Nat){ Pair(n, Refl) } : %sig);
-  let r = f(3);
+  let F = (λ(n : Nat){ Pair(n, Refl) } : %sig);
+  let r = F(3);
   r }
 /-- The retType the program is demanded at: the equation the caller wants. -/
 def c2demand : Term := prog{ Σ (m : Nat) → Id Nat m 3 }
@@ -1644,9 +1671,9 @@ example : progOk c2keeps (prog{ Σ (m : Nat) → Id Nat m m }) = false := by nat
 -- two frame shifts, and both globals are still where the program put them.
 def d1 : Term := prog{
   let f = (λ (x : Nat). S(x) : Π (x : Nat) → Nat);
-  let g = (λ(y : Nat){ f(f(y)) } : Π (y : Nat) → Nat);
-  let h = (λ(z : Nat){ g(g(z)) } : Π (z : Nat) → Nat);
-  let r = h(0);
+  let G = (λ(y : Nat){ f(f(y)) } : Π (y : Nat) → Nat);
+  let H = (λ(z : Nat){ G(G(z)) } : Π (z : Nat) → Nat);
+  let r = H(0);
   r }
 example : progOk d1 (.const "Nat") = true := by native_decide
 -- The executing machine agrees, and on the VALUE: four applications of successor.
@@ -1667,12 +1694,12 @@ example : progDiff d1 = true := by native_decide
 -- function.)
 def d2data : Term := prog{
   let n = 3;
-  let g = (λ(a : Nat){ let z = n; a } : Π (a : Nat) → Nat);
+  let G = (λ(a : Nat){ let z = n; a } : Π (a : Nat) → Nat);
   () }
 def d2dataOk : Term := prog{
   let n = 3;
-  let g = (λ(a : Nat, m : Nat){ let z = m; a } : Π (a : Nat) → Π (m : Nat) → Nat);
-  let r = g(1, n);
+  let G = (λ(a : Nat, m : Nat){ let z = m; a } : Π (a : Nat) → Π (m : Nat) → Nat);
+  let r = G(1, n);
   r }
 example : progRejects d2data "not a function" = true := by native_decide
 example : progOk d2dataOk (.const "Nat") = true := by native_decide
@@ -1682,7 +1709,7 @@ example : progOk d2dataOk (.const "Nat") = true := by native_decide
 def d2borrow : Term := prog{
   let l = Cons(1, Nil);
   let b = &m l;
-  let g = (λ(a : Nat){ *b := Nil; a } : Π (a : Nat) → Nat);
+  let G = (λ(a : Nat){ *b := Nil; a } : Π (a : Nat) → Nat);
   () }
 example : progRejects d2borrow "not a function" = true := by native_decide
 
@@ -1701,7 +1728,7 @@ example : progRejects d2free "not bound anywhere above it" = true := by native_d
 -- limitation with its route beside it, not as a defect.
 def d3 : Term := prog{
   let cert = (le_refl 3 : Le 3 3);
-  let g = (λ(a : Nat){ let z = cert; a } : Π (a : Nat) → Nat);
+  let G = (λ(a : Nat){ let z = cert; a } : Π (a : Nat) → Nat);
   () }
 example : progRejects d3 "not a function" = true := by native_decide
 
@@ -1846,8 +1873,8 @@ example : (programEnvs (hSplit .unit .unit)).length == 2 := by native_decide
 -- `admitGlobals` reached through the driver.
 def hGlobal (bad : Bool) : Term :=
   hSplit .unit
-    (.letIn ⟨3, "g"⟩ (.lamR [(⟨4, "y"⟩, .const "Nat")] (.callV ⟨0, "f"⟩ [.var ⟨4, "y"⟩]))
-      (.letIn ⟨5, "r"⟩ (.callV ⟨3, "g"⟩ [.var ⟨2, "k"⟩])
+    (.letIn ⟨3, "G"⟩ (.lamR [(⟨4, "y"⟩, .const "Nat")] (.callV ⟨0, "f"⟩ [.var ⟨4, "y"⟩]))
+      (.letIn ⟨5, "r"⟩ (.callV ⟨3, "G"⟩ [.var ⟨2, "k"⟩])
         (if bad then prog{ True } else .unit)))
 example : progOk (hGlobal false) = true := by native_decide
 -- The negative twin at the SAME position: the branch is entered and its result
@@ -1866,7 +1893,7 @@ example : progRejects hCapture "not a function" = true := by native_decide
 -- H3. A SEAL inside a branch fires its audit there, in that branch's Ω.
 def hSeal (bad : Bool) : Term :=
   hSplit .unit
-    (.letIn ⟨3, "s"⟩
+    (.letIn ⟨3, "Sf"⟩
       (.seal (.lamR [(⟨4, "y"⟩, .const "Nat")] (.var ⟨4, "y"⟩))
         (if bad then prog{ Π (y : Nat) → Bool } else prog{ Π (y : Nat) → Nat }))
       .unit)
@@ -1878,7 +1905,7 @@ example : progRejects (hSeal true) "does not have return type (Bool)" = true := 
 -- has nothing to demand — and the differential is what says both are right, since
 -- the concrete run takes exactly one of them.
 def hLend : Term :=
-  .letIn ⟨0, "push"⟩
+  .letIn ⟨0, "Push"⟩
     (prog{ (λ(e : Nat, v : &mut (s : List Nat ~> List Nat)){
                   let tail = *v; *v := Cons(e, tail); () } : Π (e : Nat) → Π (v : &mut (s : List Nat ~> List Nat)) → Unit) })
     (.letIn ⟨1, "l"⟩ (prog{ Cons(1, Nil) })
@@ -1887,7 +1914,7 @@ def hLend : Term :=
           (.matchE ⟨3, "n"⟩ none
             [Branch.mk "Z" [] .unit,
              Branch.mk "S" [⟨4, "k"⟩]
-               (.letIn ⟨5, "r"⟩ (.callV ⟨0, "push"⟩ [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
+               (.letIn ⟨5, "r"⟩ (.callV ⟨0, "Push"⟩ [.var ⟨4, "k"⟩, .borrow (.var ⟨1, "l"⟩)])
                  .unit)]))))
 example : progOk hLend = true := by native_decide
 example : progDiff hLend = true := by native_decide
