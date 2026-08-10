@@ -177,7 +177,13 @@ structure St where
       primitive preserves the invariant (`bindSlot` appends; `setSlot`,
       `writeC`, `refineSym`, `killBorrowInΩ`, `sendPayloadToLoan`, `endIssued`,
       `mergeRoot` all `map` over Ω and so are length- and order-preserving), so
-      an index taken before a drop sweep is still valid after it. -/
+      an index taken before a drop sweep is still valid after it.
+
+      **The one site that is neither** is `readCWith`, which PREPENDS a callee's
+      actuals and restores Ω exactly before returning — so the violation cannot be
+      observed: it opens no scope, closes none, and nothing inside a ⇝ reflection
+      takes a watermark. Enumerated here rather than trusted, because a second
+      prepending site would break the mechanism silently. -/
   scopeMarks : List (Nat × Bool) := []
 deriving Inhabited
 

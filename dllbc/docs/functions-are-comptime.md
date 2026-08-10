@@ -230,6 +230,59 @@ accepts only loan-end *timing* shifts (audits firing earlier, messages moving); 
 acceptance flips expected, and any found are surfaced, not absorbed. Standalone value
 even if M31 stalls: deterministic cleanup, nbe.md §7's deferred item closed.
 
+> **Implementation addendum (Stage 0, landed on `m31-stage0-popdrop`).** Four things
+> the plan above could not have known, recorded where the plan is.
+>
+> **1. `pushContinuations` had already answered the arm-scope question, wrongly.** A
+> statement-position match is fused with the continuation that followed it — the
+> continuation is *duplicated into every arm* so the driver can fork paths — which
+> puts it lexically inside the arm and silently extends the arm binders' scope over
+> it. "The end of the arm's body" is therefore not a point the normalized term still
+> has, and a pop at the `.matchE` node would take the entire tail of the program with
+> it. The fix is to make the fusion say where the seam was: `pushContinuations` now
+> emits a seam marker there (two, differing by whether the splice binds the arm's
+> value — `let y = match x { … }` binds `y` after the arm's own entries and `y`
+> belongs to the *enclosing* scope), and wraps the fused arm body so the arm's scope
+> knows it owns a seam. That last tag is load-bearing: an arm whose body ends in a
+> TAIL-position match has two scopes open at the seam and the seam must take both,
+> and nothing in a stack of watermarks can tell which arm a seam belongs to —
+> that is a fact about the term.
+>
+> **2. The rule that fell out, which Stage A/B should hold onto.** *A scope pops when
+> control leaves it into an enclosing scope; the outermost one does not.* A
+> tail-position arm has no seam and closes with the body containing it; a program's
+> own scope never closes, and `endScope` is exactly that case — the drop half without
+> the pop. Two harnesses were normalizing differently and now do not: the executing
+> machine walked function bodies raw, and agreed with the checking side about arm
+> scope only by accident (fusion extended the scope on one side, a leak extended it on
+> the other).
+>
+> **3. The escaping-borrow edge, decided as frame exit already decides it.** Frame
+> exit's answer was: skip the loans the result carries out, and the slot holding the
+> matching marker survives because the arena never popped anything. Stated rather than
+> inherited, that is: **an entry still carrying an ownership node after the drop sweep
+> is RETAINED** — a scope-local whose borrow escaped keeps its storage, because that
+> storage is where the escaping borrow's payload returns to. This was measured, not
+> reasoned: with retention disabled the program still runs *and still checks*, and
+> leaves a borrow with no owner anywhere in Ω, `endScope` finding no marker to end. The
+> failure mode is a silently dangling borrow, not a stuck `endLoan`. Note also that
+> the checker ACCEPTS an arm-local escaping its arm — the audit's boundary rejection
+> is about escaping a *function* — so this path is reachable in checked code, not only
+> in the differential's unchecked grammar.
+>
+> **4. What E2 actually gets.** The newest-wins hazard is not the shadowing `let` (two
+> lets in one scope are both live, and newest-wins is simply correct) — it is the
+> *ended* scope. Two of those exist. A recursive call's second frame must not shadow
+> the first after it returns, which is what the frame pop buys and is the load-bearing
+> half. And a match arm's binder must not shadow an outer binding of the same name
+> after the match (`let h = 5; match x { Cons(h,t) => … }; let y = h` resolves to the
+> arm's `h` under name-keying, to the outer one under ids), which is what the seam
+> buys. Both are now in place, so E2's precondition is met. The residue Stage B should
+> expect: `keep` sets are computed from the escaping value's loans at every pop, and
+> the frame's id window (`nextFrame + 128`) is now doing nothing that the watermark
+> does not — the `id < 10000` filter every Ω-reading harness carried has already been
+> deleted as a consequence.
+
 **Stage A — function bindings become comptime-moded (semantics, on today's
 representations).** `fn` bindings and λ-valued `let`s stay in Ω but flip mode (value:
 today's σ / `rfn` unchanged); call heads fetch by ⇝ (`readC` on the slot); fence and

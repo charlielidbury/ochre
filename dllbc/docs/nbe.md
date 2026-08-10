@@ -364,9 +364,10 @@ written at the wrong index now describes something unwritable.)*
 
 ## 7. Deferred: runtime names via frame pop-with-drop
 
-*Status: would be nice if it turns out easy; NOT on the current hot path. Natural
-adoption point: when compilation work begins, where a stack-and-drop machine is
-inevitable anyway.*
+*Status: **the pop-with-drop half is IMPLEMENTED** (M31 Stage 0, branch
+`m31-stage0-popdrop`); the runtime-names half it was to enable is M31 Stage B.
+Read the rest of this section as the design it was, with three corrections
+recorded at the end.*
 
 The end-state "source names everywhere" needs the runtime side too, and a flat
 name-keyed Ω breaks on return (the callee's stale `x` shadows the caller's
@@ -392,6 +393,28 @@ grammar — to be tested, not asserted); golden-trace churn (eager ending is
 observable). The honest framing: pop-with-drop is purchased *by* the names goal
 plus the metatheory alignment — it is not a free win, and the arena remains
 simpler for the current interpreter workload.
+
+*Three corrections from the implementation (M31 Stage 0; the full account is the
+addendum at the bottom of `functions-are-comptime.md` §5).*
+
+  * **Scope is not only the frame.** The section frames pop-with-drop as a
+    return-time event, and the frame half is indeed where E2's recursion hazard
+    lives — but a match arm is a scope too, and its binders shadow under
+    name-keying exactly as a stale frame's would. The arm half turned out to be
+    the harder half, because `pushContinuations` fuses an arm with the
+    continuation that followed it and thereby erases the point where the arm's
+    own body ended; the fusion now marks that seam.
+  * **The soundness argument is right and slightly narrow.** "A frame at pop holds
+    only ⊥'s, plain values, and loan chains endable by the existing drop rules" is
+    true of *audit-passing functions*, which is what the argument claims. What it
+    does not cover is a scope-local whose borrow escapes into the ENCLOSING scope
+    — legal, checked, and not a function boundary at all. Such an entry is
+    retained rather than popped, its storage being where the escaping payload
+    returns to.
+  * **The drop-stuckness worry (open question 9) resolved differently than
+    feared.** Popping an escaping borrow's owner does not get stuck; it silently
+    drops the End-Mut, leaving a borrow with no owner and `endScope` with nothing
+    to find. Retention is what closes it, and the danger was never an error story.
 
 ## 8. What actually gets deleted, and what appears
 

@@ -1,5 +1,55 @@
 # Progress
 
+## 2026-08-10 — dllbc/: **M31 Stage 0 — Ω entries pop with their lexical scope**
+
+Two commits on `m31-stage0-popdrop`, full suite green at each. `functions-are-comptime.md`
+§5's first stage and nbe.md §7's deferred item, closed together: a scope's entries
+are the suffix of Ω past the length it recorded on entry, and on leaving it they
+surrender the borrows they hold — reverse binding order, Rust's — and go with it.
+
+    `St.scopeMarks`                NEW           (watermark, owns-a-seam) per open scope
+    `openScope`/`popScope`         NEW           + `popScopesTo`, `popArmScope`
+    `dropScopeEntries`             NEW           the sweep; `firstHeldBorrow` is its finder
+    pop points                     2 → 4         + match arm, + `applyRFn` frame
+    `releaseFrameLoans`            deleted       same sweep, keyed on an id window
+    `filter (·.1.id < 10000)`      4 sites → 0   the workaround for frames that never popped
+    acceptance flips               0             rejection needles unchanged
+    golden changes                 8             all Traces, all "an arm binder is gone"
+
+`if` needed no pop point of its own: it has been surface sugar for a Bool match
+since M29.
+
+**The obstacle was `pushContinuations`, and it is worth knowing why.** A
+statement-position match is FUSED with the continuation that followed it — the
+continuation is duplicated into every arm so the driver can fork paths — which puts
+it lexically inside the arm and silently extends the arm binders' scope over it. So
+"the end of the arm's body" is not a point the normalized term still has, and a pop
+at the `.matchE` node takes the whole tail of the program with it. The fusion now
+marks the seam, and marks the arm body as owning one — the second tag being
+load-bearing, because an arm whose body ends in a TAIL-position match has two scopes
+open at the seam and must take both, and which arm a seam belongs to is a fact about
+the term that no stack of watermarks can recover.
+
+**The rule that fell out:** *a scope pops when control leaves it into an enclosing
+scope; the outermost one does not.* A tail-position arm has no seam and closes with
+the body containing it; a program's own scope never closes, which is what `endScope`
+has always been — the drop half without the pop.
+
+**The escaping-borrow edge, decided as frame exit already decided it.** An entry
+still carrying an ownership node after the sweep is RETAINED: a scope-local whose
+borrow escaped keeps its storage, because that storage is where the escaping
+borrow's payload returns to. Measured rather than reasoned — with retention
+disabled the program still runs *and still checks*, and leaves a borrow with no
+owner anywhere in Ω, `endScope` finding no marker to end. The failure mode is a
+silently dangling borrow, not a stuck `endLoan`, which is not what nbe.md §7's
+"drop-stuckness story" anticipated.
+
+**For E2.** The newest-wins hazard is the *ended* scope, not the shadowing `let`
+(two lets in one scope are both live and newest-wins is simply correct). Both ended
+scopes now pop: a returned frame, so a recursive call's second frame cannot shadow
+the first; and a closed arm, so `let h = 5; match x { Cons(h,t) => … }; let y = h`
+still means the outer `h`. E2's stated precondition is met.
+
 ## 2026-08-08 — dllbc/: **M30 step 2 — pure binders are SOURCE NAMES; no index survives**
 
 Three commits on `m30-names`, full suite green at each pushed boundary. nbe.md §5
