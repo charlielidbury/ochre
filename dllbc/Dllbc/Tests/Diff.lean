@@ -463,18 +463,24 @@ def instanceOfC (symEnv concEnv : Env) : Bool :=
 /-! ## The two runs and the differential check -/
 
 /-- Executing mode: run a body concretely (calls run callee bodies), returning
-    the caller's own final Ω (frame vars id ≥ 10000 filtered out). -/
+    the caller's own final Ω, declarations dropped.
+
+    **The frame half of this filter is gone** (M32 R4). It read `id < progBase &&
+    id < 10000`: the first conjunct dropped declarations, the second dropped
+    inlined-callee frame slots, which `freshFrame` numbered from 10000. There are
+    no frame ids any more — a call opens a SCOPE and `popScopesTo` takes its slots
+    on the way out, which is what actually kept them from leaking — so the second
+    conjunct had nothing left to exclude. The first is now a tag test. -/
 def runExec (body : Term) : Except String Env :=
   match (readR defaultFuel body).run { initSt with executing := true } with
-  | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
-      kv.1.id < FnMacro.progBase && kv.1.id < 10000)))
+  | .ok _ st => .ok (canonicalize (st.env.filter (fun kv => kv.1.id != declSlot)))
   | .error e _ => .error e
 
 /-- Checking mode: the accepted symbolic paths' final environments. -/
 def symEnvs (body : Term) : List (Except String Env) :=
   (explore defaultFuel (atBoundary body) initSt).map
     (fun r => r.map (fun p => canonicalize (p.2.env.filter (fun kv =>
-      kv.1.id < FnMacro.progBase && kv.1.id < 10000))))
+      kv.1.id != declSlot))))
 
 /-- The differential: the concrete final env is an instance of some symbolic
     path's final env. -/

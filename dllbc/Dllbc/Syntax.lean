@@ -110,6 +110,26 @@ deriving DecidableEq, BEq, Repr, Inhabited
     silently bound every occurrence of runtime slot `#0`. -/
 def noSlot : Nat := 0xFFFF_FFFF_FFFF
 
+/-- **A program-level DECLARATION's slot** (M32 R4) — the `let` a `fn` statement
+    becomes (§8: "a declaration is a `let`, and the binding IS the name").
+
+    A TAG, and that is the whole change from what it replaces. `FnMacro.progBase`
+    was an arithmetic base: declaration `i` bound at `900 + i`, so declarations
+    were distinguishable from locals by being ABOVE a number, from each other by
+    their index, and a body was checked not to mint an id that reached the base.
+    Every one of those three jobs was about ID resolution, and R1 made Ω resolve
+    by NAME — `findSlot?` never reads an id — so what is left is the one question
+    the arithmetic was also answering: *is this Ω entry a declaration?* The two
+    consumers are the harness projections that report "what this code leaves in
+    Ω" without the program's own function bindings in the way.
+
+    A single constant rather than `900 + i` also removes the collision the
+    arithmetic created: two `%`-spliced chains both numbered from `900`, so
+    `withA (withB …)` had `A` and `B` at the SAME id under DIFFERENT names, and
+    `bindFn` refused it. Under name-keying nothing was ever going to confuse
+    them, which is why that check retired here rather than being re-expressed. -/
+def declSlot : Nat := 0xFFFF_FFFF_FFFE
+
 instance : Coe String Var := ⟨fun s => ⟨noSlot, s⟩⟩
 
 /-- Does this identifier start with an uppercase letter? **The mode marker**

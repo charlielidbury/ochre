@@ -619,8 +619,9 @@ example : runSplit [1,2,3] 3 = true := by native_decide      -- take everything,
 
     **One chain serves both twin families, and that is a refinement of M28 χ's
     forced-duplication note.** χ wrote `insert_at`'s header a second time inside
-    `pick`'s program because two `%`-spliced chains collide at `progBase`, and read
-    it as the price of the guard. The price is only paid when the two functions need
+    `pick`'s program because two `%`-spliced chains collided at `progBase` (an id
+    collision M32 R4 retired along with the arithmetic), and read it as the price
+    of the guard. The price is only paid when the two functions need
     to be varied through DIFFERENT prefixes. Here they do not: a lying `set_at` is
     refused at its own seal, and a sealed `let` fires its audit at its own node in
     PROGRAM ORDER (§8, and `S26Prog` §B asserts it), so the message a `set_at` twin
@@ -1032,9 +1033,7 @@ example : progOk concreteEq = true := by native_decide
     definitionally. (This is a better program anyway: index arithmetic, not control
     flow, which is how the mutation was going to be expressed regardless.) -/
 
--- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail may
--- not declare functions (both chains number their function slots from `progBase`, so
--- the inner would shadow the outer — `bindFn` refuses it). One chain, both functions.
+-- `insert_at`'s header is repeated here rather than spliced: a `%`-spliced tail could not itself declare functions until M32 R4 (both chains numbered their slots from `progBase` and collided by id); it can now, and this shape is kept because it is what was written. One chain, both functions.
 def pick : Term := prog{
   fn InsertAt [k] (v : &mut List Nat, k : Nat, x : Nat) -> %insHonest
         { match k {
@@ -2013,8 +2012,9 @@ def ejT : Term := .var ⟨2, "j"⟩
     claims moved to `S7Group`, and this is the only place left that CALLS a cursor.
     They are written once, at the head of one chain, with every subject that needs
     them declared below them — because a callee is in scope by being written above
-    its caller (§8), and a `%`-spliced second chain cannot declare functions (both
-    number their slots from `progBase`, and `bindFn` refuses the shadowing).
+    its caller (§8). (A `%`-spliced second chain could not declare functions until
+    M32 R4 retired the `progBase` collision; it can now, and this shape is kept
+    because it is what was written.)
 
     Two return types are PARAMETERS, because two subjects have lying twins:
     `certSwapCount`'s (the count-preservation certificate) and `exitReject`'s (the

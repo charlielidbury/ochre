@@ -95,9 +95,7 @@ namespace Dllbc.Tests.S26Modes
 
 -- `useLe` and its capital twin `useLeC` are the callees of every pair below, one
 -- character apart. Each cohort is written as ONE chain — callee above caller —
--- because a `%`-spliced tail may not declare functions (both chains would number
--- their slots from `progBase` and the inner would shadow the outer), so the
--- callee line is repeated rather than factored.
+-- because a `%`-spliced tail could not itself declare functions until M32 R4 (both chains numbered their slots from `progBase` and collided by id); it can now, and this shape is kept because it is what was written, so the callee line is repeated rather than factored.
 
 -- A1. THE PAIN. The proof is passed, and citing it afterwards is a use-after-move.
 def a1 : Term := prog{
@@ -1022,8 +1020,9 @@ example : progOk Tests.S6Call.toNatProg = true := by native_decide
 /-- `swapS01` as a PREFIX: it is the callee of everything below, and the caller is
     a plain statement block, so the S6Call idiom applies — a Lean function taking
     the rest and splicing it with `%`. (A cohort whose caller is itself a `fn`
-    could not do this: two `%`-spliced chains both number their slots from
-    `progBase` and the inner would shadow the outer.) -/
+    could not do this until M32 R4: two `%`-spliced chains both numbered their
+    slots from `progBase` and collided by id. Both the arithmetic and the check
+    are gone.) -/
 def withSwapS01 (rest : Term) : Term := prog{
   fn SwapS01 (v : &mut (s : List Nat ~> Σ (l : List Nat) → Id Nat (Len l) (Len s)),
                     p : Le 2 (Len (*v))) -> Unit {

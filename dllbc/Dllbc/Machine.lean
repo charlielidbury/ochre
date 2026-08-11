@@ -183,9 +183,6 @@ structure St where
       EXECUTING (a call runs the callee's actual body concretely). checkFn is
       always checking; the differential's concrete side is executing. -/
   executing : Bool := false
-  /-- Base var id for inlined-callee frames in executing mode; caller-own vars
-      stay below it, so a body's own environment is `env.filter (·.1.id < this)`. -/
-  nextFrame : Nat := 10000
   /-- **Scope watermarks** (M31 Stage 0, pop-with-drop): for each still-open
       lexical scope, innermost first, the Ω *length* recorded when it was entered
       and whether it is a **match arm** (as opposed to a call frame).
@@ -264,9 +261,11 @@ def setEnv (ω : Omega) : M Unit := modify (fun s => { s with env := ω })
     means. Everything that crosses frames — loans, borrows, obligations, the
     audit — is ℓ-keyed and shadow-immune by construction.
 
-    The frame shift (`freshFrame`/`shiftVarsK`) is untouched and stays: it
-    renumbers ids and PRESERVES names, so store resolution is indifferent to it.
-    Its deletion is a separate question with its own differential (Stage R4).
+    **The frame shift is GONE** (M32 R4). `freshFrame`/`shiftVarsK` renumbered a
+    body's ids on entry so a frame could not collide with its caller's; under
+    name-keyed Ω `findSlot?` never reads an id, so the renumbering was inert and
+    R4 deleted it with its differential. What separates two live frames is the
+    scope watermark, which is what actually pops them.
 
     **The soundness condition this creates** is the L-suffix convention (M31
     Stage C's addendum item 2), which stops being style the moment a name is what
@@ -2613,97 +2612,6 @@ def borrowSelect (scrut : Var) (eqn : Option Var) (branches : List Branch) (ℓ 
     bindEqnRefl eqn
     pure br.body
 
-/-! Shift every runtime `Var` id in a term (and its match binders) up by `d`.
-    Used to inline a callee body under a fresh id window in executing mode
-    (§9 differential), so its frame cannot collide with the caller's ids. Pure
-    formers hold no runtime vars (the pool's types are closed), so they are
-    left as-is.
-
-    **`keep` is §8's globals** (M26-E). Once a program is a term, a function's
-    body names its callees as ordinary variables bound lexically above it — and
-    those bindings are the program's, not the frame's. Shifting them would send a
-    reference to `quicksort#901` looking for `#11029`, which is the same
-    silent-rebinding hazard the `.lamR` closedness check exists to prevent, so the
-    ids that a body has free are carried through the shift UNCHANGED. The set is
-    computed at the shift site by `Term.freeRVars` — no state, no capture list:
-    what is free is exactly what is not this frame's. -/
-mutual
-  def shiftVarsK (keep : List Nat) (d : Nat) : Term → Term
-    | .var x => .var ⟨(if keep.contains x.id then x.id else x.id + d), x.name⟩
-    | .letIn x rhs rest => .letIn ⟨x.id + d, x.name⟩ (shiftVarsK keep d rhs) (shiftVarsK keep d rest)
-    | .assign p e rest => .assign (shiftVarsK keep d p) (shiftVarsK keep d e) (shiftVarsK keep d rest)
-    | .ctorApp n args => .ctorApp n (shiftVarsListK keep d args)
-    | .borrow t => .borrow (shiftVarsK keep d t)
-    | .deref t => .deref (shiftVarsK keep d t)
-    -- The `Option` is matched inline rather than `.map`ped: a recursive call under
-    -- `Option.map` is opaque to the structural-recursion checker.
-    | .index t i ev => .index (shiftVarsK keep d t) (shiftVarsK keep d i)
-        (match ev with | some e => some (shiftVarsK keep d e) | none => none)
-    | .range t lo cnt rest ev eqc =>
-      .range (shiftVarsK keep d t) (shiftVarsK keep d lo)
-        (match cnt with | some c => some (shiftVarsK keep d c) | none => none)
-        (match rest with | some r => some (shiftVarsK keep d r) | none => none)
-        (match ev with | some e => some (shiftVarsK keep d e) | none => none)
-        (match eqc with | some e => some (shiftVarsK keep d e) | none => none)
-    | .matchE scrut eqn brs =>
-      .matchE ⟨(if keep.contains scrut.id then scrut.id else scrut.id + d), scrut.name⟩
-        (eqn.map (fun v => ⟨v.id + d, v.name⟩)) (shiftBranchesK keep d brs)
-    | .seq a b => .seq (shiftVarsK keep d a) (shiftVarsK keep d b)
-    | .call f args => .call f (shiftVarsListK keep d args)
-    -- A seal's BODY is a runtime term (it may name the frame's slots); its TYPE is
-    -- a type, whose runtime-var occurrences (`*v` in an ensures, §5.2) shift for
-    -- the same reason the pure formers below do.
-    | .seal s t u => .seal s (shiftVarsK keep d t) (shiftVarsK keep d u)
-    -- The callee is a slot, so it shifts exactly as a `.matchE` scrutinee does —
-    -- and a callee that is a PROGRAM-level binding (§8: scope is the call table)
-    -- is precisely the `keep` case, which is why it is the same test.
-    -- A runtime λ's binders shift WITH its body, which is the property that makes
-    -- frames compose: applying a `lamR` shifts the whole node into a fresh
-    -- window, so binder ids and their occurrences stay in step no matter how many
-    -- frames a nested one has already been carried through.
-    -- The DOMAINS shift with them (M27). A binder type is a type that may name
-    -- runtime slots — `Le (len *v) fuel` names two of this λ's own binders — so
-    -- leaving it unshifted would point the annotation at the PREVIOUS frame's
-    -- ids while the binder it annotates moved, which is the same silent
-    -- rebinding this whole function exists to avoid.
-    -- The one λ. The binder moves with the body, and a comptime binder's `noSlot`
-    -- id is left alone — it is not an id in a window, it is the absence of one.
-    | .lam x a b =>
-      .lam (if keep.contains x.id || x.id == noSlot then x else ⟨x.id + d, x.name⟩)
-        (shiftVarsK keep d a) (shiftVarsK keep d b)
-    -- Pure formers can EMBED runtime vars (a §19 body computes `leb (nth j (*v))`
-    -- — a pure spine over the runtime `v`, `i`, `g`). Their `.var` leaves must
-    -- shift with the executing-mode frame too; `.pvar`/`.type`/`.const` (no
-    -- runtime vars) stay in the catch-all.
-    | .app f a => .app (shiftVarsK keep d f) (shiftVarsK keep d a)
-    | .idT a b c => .idT (shiftVarsK keep d a) (shiftVarsK keep d b) (shiftVarsK keep d c)
-    | .pi x a b => .pi x (shiftVarsK keep d a) (shiftVarsK keep d b)
-    | .sigmaT x a b => .sigmaT x (shiftVarsK keep d a) (shiftVarsK keep d b)
-    | t => t                                            -- unit / pure formers: no runtime vars
-  termination_by t => sizeOf t
-  def shiftVarsListK (keep : List Nat) (d : Nat) : List Term → List Term
-    | [] => []
-    | t :: ts => shiftVarsK keep d t :: shiftVarsListK keep d ts
-  termination_by ts => sizeOf ts
-  def shiftBranchesK (keep : List Nat) (d : Nat) : List Branch → List Branch
-    | [] => []
-    | (.mk c bs body) :: rest =>
-      .mk c (bs.map (fun v => ⟨v.id + d, v.name⟩)) (shiftVarsK keep d body) :: shiftBranchesK keep d rest
-  termination_by bs => sizeOf bs
-  /-- An annotated runtime λ's binders: the names shift as binders, the domains as
-      terms. Separate from the `.map` it replaces because a recursive call under
-      `Option.map`/`List.map` is opaque to the structural-recursion checker. -/
-  def shiftBindersK (keep : List Nat) (d : Nat) : List (Var × Term) → List (Var × Term)
-    | [] => []
-    | (x, τ) :: rest => (⟨x.id + d, x.name⟩, shiftVarsK keep d τ) :: shiftBindersK keep d rest
-  termination_by xs => sizeOf xs
-end
-
-/-- Shift with nothing kept — the pre-M26-E behaviour, and still the right rule
-    for a DECLARED callee inlined in executing mode (a `FnDef` body's only free
-    variables are its telescope's, which the frame is exactly what renames). -/
-def shiftVars (d : Nat) (t : Term) : Term := shiftVarsK [] d t
-
 /-! ## Peeling a borrow-moded Π into a telescope (M26-C)
 
     §5's audit relocation needs the sealed type as a **telescope plus a return
@@ -3510,13 +3418,6 @@ def calleeIsRuntime (st : St) (v : Val) : Bool :=
       | some σ => (st.fsig.lookup σ).isSome || (st.sctx.lookup σ).isSome
       | none => (Val.asCtor? v).isSome
 
-/-- Mint a fresh frame window for an inlined body's slots (the executing call
-    rule's device, now shared with runtime-λ application). -/
-def freshFrame : M Nat := do
-  let s ← get
-  set { s with nextFrame := s.nextFrame + 128 }
-  pure s.nextFrame
-
 /-- The binder modes of a callee **value**, generalizing `binderModes` past the
     types it can read them off (§6, M26-C).
 
@@ -3603,8 +3504,7 @@ def auditAllPaths : Nat → Term → List (Except String (Val × St)) → St →
       auditAllPaths fuel ret rest
         { acc with nextLoan := max acc.nextLoan st'.nextLoan
                    nextSym := max acc.nextSym st'.nextSym
-                   nextGroup := max acc.nextGroup st'.nextGroup
-                   nextFrame := max acc.nextFrame st'.nextFrame }
+                   nextGroup := max acc.nextGroup st'.nextGroup }
 
 /-! ## §8's globals: what a function body may name besides its own binders
 
@@ -4354,53 +4254,52 @@ mutual
     | _, head, spine, [] => pure (Val.recSpine head spine)
     | _, head, spine, _ =>
       throwErr s!"applyR: {head} is stuck on a symbolic scrutinee ({(spine.getD (spine.length - 1) .bot).pretty}) and cannot ι. Applying a recursor at a symbolic scrutinee is arms-as-bodies CHECKING (§7 cost 1) — reachable through a seal, not through a call."
-  /-- Apply a runtime function: bind its named binders in a **fresh frame** and
+  /-- Apply a runtime function: bind its named binders in a fresh SCOPE and
       ⇒-evaluate its body.
 
-      The frame is what makes recursion work at all — the same body is entered
-      once per level, and its binders are the same `Var` ids every time — and
-      `shiftVars` moves the binders WITH the body, so a nested runtime λ that has
-      already been carried through one frame stays consistent in the next. The
-      frame is a SCOPE (M31 Stage 0): its borrows are surrendered and its slots
-      taken on the way out, so neither a frame's loans nor its environment can
-      outlive it. -/
+      **There is no id window any more** (M32 R4). The frame used to renumber the
+      body's ids by a fresh offset (`freshFrame`/`shiftVarsK`) so that two live
+      frames of the same recursive body could not collide. Under name-keyed Ω
+      (M32 R1) `findSlot?` never reads an id — newest binding of the NAME wins —
+      so the renumbering decided nothing, and shadowing is what separates the
+      frames. Measured, not argued: the whole corpus is green without it, and
+      `keep` went first on its own (see below).
+
+      **`keep` was §8's globals, and it was INERT.** It held the ids a body has
+      free — its callees, bound at program level — carried through the shift
+      unchanged so that a body calling `quicksort#901` would still find `#901`.
+      R4 asserted it empty-by-construction as the plan predicted and the corpus
+      REFUTED that: `swap`'s body yields `keep = [901]`. What is true instead is
+      that it never mattered, because the lookup that would have been broken by
+      shifting resolves by name; emptying it alone is green, which is the
+      differential that licensed deleting the shift entirely.
+
+      The scope survives all of this and does the real work (M31 Stage 0): its
+      borrows are surrendered and its slots taken on the way out, so neither a
+      frame's loans nor its environment can outlive it. -/
   def applyClosure : Nat → Omega → List Var → Term → List Val → M Val
     | fuel, ρ, names, body, args => do
-      let offset ← freshFrame
-      -- §8's globals are the program's bindings, not this frame's, so they are
-      -- carried through the shift UNCHANGED — a body calling `quicksort#901` must
-      -- still find `#901` after entering its own window. What is free is exactly
-      -- what is not this frame's, which is why the keep set is computed here from
-      -- the body itself rather than carried on the value: no capture list, no
-      -- state. (`readR`'s `.lamR` case has already refused any free variable that
-      -- is not a function in scope.)
-      let keep := (Term.freeRVars (names.map (·.name)) body).map (·.id)
       -- **The body is normalized here too** (M31 Stage 0). `checkRFnBody` has
       -- always walked `pushContinuations body`; the executing machine walked the
-      -- body raw, and the two agreed about match-arm scope only by accident —
-      -- fusion extends an arm's binders over the continuation on the checking
-      -- side, and `readR`'s statement-position match leaked them there on the
-      -- executing side. Now both walk the same normal form, so the seam markers
-      -- (and therefore the arm scopes) are the same on both.
-      let shifted := pushContinuations (shiftVarsK keep offset body)
+      -- body raw, and the two agreed about match-arm scope only by accident.
+      -- Now both walk the same normal form, so the seam markers (and therefore
+      -- the arm scopes) are the same on both.
+      let normalized := pushContinuations body
       -- **The frame is a scope** (M31 Stage 0): its watermark is taken before the
-      -- parameters land, and `popScope` below both ends the borrows it still
-      -- holds — `releaseFrameLoans`' whole job — and takes its slots with it.
-      -- Loans the result carries out are `keep`; the slot holding an escaping
-      -- borrow's marker is retained, which is what `releaseFrameLoans` achieved
-      -- by never popping anything at all.
+      -- parameters land, and `popScopesTo` below both ends the borrows it still
+      -- holds and takes its slots with it. Loans the result carries out are
+      -- retained, which is what `releaseFrameLoans` achieved by never popping.
       openScope false
       let depth ← scopeDepth
       -- **ρ ENTERS THE FRAME FIRST** (M32 R2, §2.2): the captured knowledge, then
       -- the arguments, so a parameter shadows a capture of the same name and the
       -- body reads what the λ SAW rather than what the caller's Ω holds now. This
       -- is the escape-safety §2.6 is about, and it is one `bindSlot` loop: under
-      -- name-keyed newest-wins Ω (M32 R1) "shadow the ambient binding" is just
-      -- binding later. `keep` above left these citations unshifted, so their ids
-      -- still name the entries going in here.
+      -- name-keyed newest-wins Ω "shadow the ambient binding" is just binding
+      -- later — which is now also the whole of what a frame is.
       ρ.forM (fun kv => bindSlot kv.1 kv.2)
-      (names.zip args).forM (fun p => bindSlot ⟨p.1.id + offset, p.1.name⟩ p.2)
-      let res ← readR fuel shifted
+      (names.zip args).forM (fun p => bindSlot p.1 p.2)
+      let res ← readR fuel normalized
       popScopesTo fuel (depth - 1) 0 res.loanIds
       pure res
   termination_by fuel _ _ _ _ => (fuel, 4, 0)
@@ -4607,7 +4506,7 @@ mutual
       -- gave to a nested seal. It is also what makes a seal inside an audited
       -- body deterministic across two audits of that body.
       set { saved with nextLoan := advanced.nextLoan, nextSym := advanced.nextSym
-                       nextGroup := advanced.nextGroup, nextFrame := advanced.nextFrame
+                       nextGroup := advanced.nextGroup
                        sealSites := advanced.sealSites }
   termination_by fuel _ _ _ => (fuel, 6, 0)
   /-- **The seal, at either arrow** (M32 R3, suspensions.md §2.4). One rule, two

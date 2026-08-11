@@ -140,11 +140,18 @@ def telePi : List (Var × Term) → Term → Term
 
 /-! ## Resolving the scrutinee's match, and rewriting self-calls -/
 
+/-- A `Var`'s id if it is one, and `0` if it is a sentinel — `noSlot` (a comptime
+    binder) or `declSlot` (a program declaration). Neither is an id in the
+    program's space and either would swamp a maximum. -/
+def realId (x : Var) : Nat := if x.id == noSlot || x.id == declSlot then 0 else x.id
+
 /-- The largest runtime var id anywhere in a term — for minting `ih` above every
     id the body already uses. -/
 partial def maxVarId : Term → Nat
   | .var x => x.id
-  | .letIn x rhs rest => max x.id (max (maxVarId rhs) (maxVarId rest))
+  -- Both SENTINELS are excluded (M32 R4 adds `declSlot` beside `noSlot`): they
+  -- are tags, not ids in the program's space, and either would swamp the max.
+  | .letIn x rhs rest => max (realId x) (max (maxVarId rhs) (maxVarId rest))
   | .assign p e rest => max (maxVarId p) (max (maxVarId e) (maxVarId rest))
   | .ctorApp _ args | .call _ args => args.foldl (fun a t => max a (maxVarId t)) 0
   | .borrow t | .deref t | .cmpT t => maxVarId t
@@ -160,8 +167,7 @@ partial def maxVarId : Term → Nat
   -- The one λ (M32 R2): the BINDER's id counts too, which is what the `lamR`
   -- fold over its telescope was for. A comptime binder's `noSlot` would swamp
   -- the maximum, so it is excluded — it is not an id in the program's space.
-  | .lam x a b =>
-    max (if x.id == noSlot then 0 else x.id) (max (maxVarId a) (maxVarId b))
+  | .lam x a b => max (realId x) (max (maxVarId a) (maxVarId b))
   | .pi _ a b | .sigmaT _ a b | .borrowT _ a b =>
     max (maxVarId a) (maxVarId b)
   | .idT a b c => max (maxVarId a) (max (maxVarId b) (maxVarId c))
@@ -574,15 +580,6 @@ partial def retarget (binds : List (String × Var × Option Nat)) : Term → Ter
       (rest.map (retarget binds)) (ev.map (retarget binds)) (eq.map (retarget binds))
   | t => t
 
-/-- The program-level binding ids. Chosen above every id a body mints (the
-    elaborated terms are checked against this below) and below the executing
-    machine's frame base, so a global is neither shadowed by a local nor mistaken
-    for a frame slot. Nothing in the surface names these ids: a tail written as
-    an ordinary program calls its callees by name, and `retarget` below binds
-    those calls into the slots — which is why there is no `…With` form to keep in
-    step with this number. -/
-def progBase : Nat := 900
-
 /-! ## The statement form's lowering (M28 θ)
 
     `fn` is a STATEMENT of the one grammar (Uni.lean), and a statement elaborates
@@ -617,40 +614,24 @@ def fnElabOrFail (d : FnDef) : Term :=
   | .ok t => t
   | .error e => .call s!"{fnRefusedNeedle}: {e}" []
 
-/-- Every FUNCTION slot a term binds — the ids at or above `progBase`, which only
-    a `fn` statement mints. Mirrors `maxVarId`'s walk because it has to see the
-    same places: a `%` splice can land anywhere an expression can. -/
-partial def fnSlots : Term → List Nat
-  | .letIn x rhs rest =>
-    (if x.id ≥ progBase then [x.id] else []) ++ fnSlots rhs ++ fnSlots rest
-  | .assign p e rest => fnSlots p ++ fnSlots e ++ fnSlots rest
-  | .ctorApp _ args | .call _ args => args.flatMap fnSlots
-  | .borrow t | .deref t | .cmpT t => fnSlots t
-  | .index t i ev => fnSlots t ++ fnSlots i ++ (ev.map fnSlots).getD []
-  | .range t lo cnt rest ev eq =>
-    fnSlots t ++ fnSlots lo ++ (cnt.map fnSlots).getD [] ++ (rest.map fnSlots).getD []
-      ++ (ev.map fnSlots).getD [] ++ (eq.map fnSlots).getD []
-  | .matchE _ _ brs => brs.flatMap (fun b => fnSlots b.body)
-  | .seq a b | .app a b | .seal _ a b => fnSlots a ++ fnSlots b
-  | .pi _ a b | .lam _ a b | .sigmaT _ a b | .borrowT _ a b => fnSlots a ++ fnSlots b
-  | .idT a b c => fnSlots a ++ fnSlots b ++ fnSlots c
-  | _ => []
+/-- **Bind a `fn` statement's slot over the rest of the block.** `retarget`, and
+    since M32 R4 nothing else.
 
-/-- **Bind a `fn` statement's slot over the rest of the block.** `retarget`, with
-    the one thing the surface cannot check for itself in front of it.
+    It used to carry an id-collision check in front of `retarget`: each `fn`
+    chain numbered its slots from `progBase`, so two chains composed through a
+    `%` splice — `withA (withB (prog{ … }))`, the obvious way to share a prefix —
+    both started at `900`, and the inner chain's FIRST declaration landed on the
+    outer chain's first. `bindFn` refused that.
 
-    Each `fn` chain numbers its slots from `progBase`, so two chains composed
-    through a `%` splice — `withA (withB (prog{ … }))`, the obvious way to share a
-    prefix — both start at `progBase` and the inner chain SHADOWS the outer one.
-    Left alone that is not an error but a wrong program that checks: measured, the
-    nested pair above accepts, with both `a` and `b` resolving to whichever
-    function landed second. A bulk migration's failure mode is exactly "a quietly
-    wrong rewrite that still builds" (Migrate.lean's header), so the collision is
-    detected and refused by the same sentinel a refused lowering uses. -/
+    **R4 retires it, because the hazard was the arithmetic's and R1 removed the
+    arithmetic's teeth.** The collision was on the ID and never on the NAME —
+    `withA (withB …)` collided `A` with `B` — and Ω resolves by name, so the two
+    entries were never confusable in the first place. Composing chains is now
+    ordinary let-chain composition, which is what `%` splicing always looked
+    like. What genuinely shadows is a chain redeclaring an outer chain's NAME,
+    and that is lexical shadowing doing its job. -/
 def bindFn (v : Var) (dec : Option Nat) (rest : Term) : Term :=
-  if (fnSlots rest).contains v.id then
-    .call s!"{fnRefusedNeedle}: '{v.name}' would bind function slot {v.id}, which a function BELOW it already binds. Two `fn` chains have been composed (a `%` splice of one program into another), and each numbers its slots from progBase, so the inner chain shadows this one and both names resolve to the same function. Declare them in ONE chain — `prog\{ fn a …; fn b …; tail }` — or splice only a tail that declares no functions." []
-  else retarget [(v.name, v, dec)] rest
+  retarget [(v.name, v, dec)] rest
 
 
 /-- **A program from a cohort of declarations** (§8), in dependency order: each
@@ -660,7 +641,7 @@ def bindFn (v : Var) (dec : Option Nat) (rest : Term) : Term :=
     unknown function it is. -/
 def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
   let binds : List (String × Var × Option Nat) :=
-    ds.enum.map (fun p => (p.2.name, ⟨progBase + p.1, p.2.name⟩, p.2.dec))
+    ds.map (fun d => (d.name, ⟨declSlot, d.name⟩, d.dec))
   let rec go (i : Nat) : List FnDef → Except String Term
     -- The tail is in the accumulated scope, so its calls are retargeted too — which
     -- is what lets an existing `FnDef`-era caller term be handed over unchanged and
@@ -668,14 +649,12 @@ def progOf (ds : List FnDef) (tail : Term) : Except String Term := do
     | [] => .ok (retarget binds tail)
     | d :: rest => do
       let t ← fnElab d
-      if maxVarId t ≥ progBase then
-        .error s!"prog: '{d.name}' elaborates to a term using variable id {maxVarId t}, at or above the program-binding base {progBase} — a global would collide with one of its own locals."
       -- Only the bindings STRICTLY ABOVE this one are in scope for it — a binding
       -- is not in scope in its own right-hand side — which is what makes both a
       -- forward reference and a residual self-call show up as the unknown
       -- function they are, rather than as a dangling variable.
       let above := binds.take i
-      pure (.letIn ⟨progBase + i, d.name⟩ (retarget above t) (← go (i + 1) rest))
+      pure (.letIn ⟨declSlot, d.name⟩ (retarget above t) (← go (i + 1) rest))
   go 0 ds
 
 end FnMacro

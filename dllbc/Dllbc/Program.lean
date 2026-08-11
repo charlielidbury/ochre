@@ -145,8 +145,17 @@ def progRunsTo (t : Term) (expected : Env) : Bool :=
     first-appearance σ ordering and shifts the index of every σ after it — filter
     afterwards and an unchanged tail's `y ↦ σ0` reads `σ2`, which would look like a
     rewrite having changed what the code leaves. So the walk is done here and the
-    filter is on the VAR ID against `FnMacro.progBase`, which is what a declaration
-    is. (`Migrate.progEnvsOfT` said the same thing about the same hazard for the
+    filter asks the VAR whether it is a declaration's.
+
+    **The key is `Var.declSlot`, a tag** (M32 R4). It was `id < FnMacro.progBase`
+    — declarations lived above a base, so "not a declaration" was "below 900".
+    R4 deleted the arithmetic (name-keyed Ω never read those ids), and this
+    projection is the reason the tag exists at all rather than the ids simply
+    going: dropping the filter would put every `fn` in the corpus's expected
+    environments, and keying it on the VALUE instead would drop `let F = (λ… :
+    Π…)`, which is a σ a program deliberately leaves. So the question "is this
+    entry a declaration?" is answered by the binder that made it.
+    (`Migrate.progEnvsOfT` said the same thing about the same hazard for the
     `FnDef` path; it retired with its users in M28 ο, so this is now the only
     statement of it.) -/
 def tailEnvs (t : Term) : List (Except String Env) :=
@@ -154,7 +163,7 @@ def tailEnvs (t : Term) : List (Except String Env) :=
     (fun r => r.bind (fun p =>
       match (endScope defaultFuel).run p.2 with
       | .ok _ st => .ok (canonicalize (st.env.filter (fun kv =>
-          kv.1.id < FnMacro.progBase)))
+          kv.1.id != declSlot)))
       | .error e _ => .error e))
 
 /-- One path, and the tail leaves exactly this Ω. -/

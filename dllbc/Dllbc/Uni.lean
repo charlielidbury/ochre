@@ -343,24 +343,24 @@ def binderDom (nm : String) (τ : TSyntax `term) : MacroM (TSyntax `term) :=
     A `fn` statement's name now goes into `rctx` alongside the ordinary runtime
     locals, because §2.1 makes a function an ordinary comptime BINDING and a
     binding is something a bare name may denote (`let F = Main`). They are told
-    apart by the id: a `fn` slot is numbered from `progBase`, which is the same
-    invariant `FnMacro.fnSlots` reads, so no second context has to be threaded
-    through the elaborator to keep them separate.
+    apart by the id, which since M32 R4 is the TAG `Var.declSlot` rather than a
+    position above `progBase` — same question, no arithmetic to keep in step.
 
     Separate they must stay, because two rows want the LOCALS only:
 
-      * `f(a, b)` must keep falling through to `.call`, whose rewrite into
-        `.callV` is `retarget`'s — and `retarget` also PERMUTES the arguments of a
-        `[k]`-hoisted callee (E8). Resolving the name here instead would produce a
-        `.callV` in declaration order against a telescope that has been reordered,
-        which is silent: it passes a borrow where a `Nat` is expected, and it was
-        found once already, by a migration disagreement list rather than by a test.
+      * `f(a, b)` must keep falling through to `.call`, whose rewrite into the
+        app SPINE is `retarget`'s — and `retarget` also PERMUTES the arguments of
+        a `[k]`-hoisted callee (E8). Resolving the name here instead would build
+        the spine in declaration order against a telescope that has been
+        reordered, which is silent: it passes a borrow where a `Nat` is expected,
+        and it was found once already, by a migration disagreement list rather
+        than by a test.
       * `match x { … }` wants a runtime scrutinee, and a function is not one. -/
 
 /-- An ordinary runtime local — a `fn` slot is not one. -/
 def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
   match rctx.lookup s with
-  | some id => if id ≥ Dllbc.FnMacro.progBase then none else some id
+  | some id => if id == Dllbc.declSlot then none else some id
   | none => none
 
 /-- A `fn` slot bound above this point, by the name it was declared with.
@@ -381,7 +381,7 @@ def localId (rctx : List (String × Nat)) (s : String) : Option Nat :=
     it, at the one place both names are in view. -/
 def fnSlotId (rctx : List (String × Nat)) (s : String) : Option Nat :=
   match rctx.lookup s with
-  | some id => if id ≥ Dllbc.FnMacro.progBase then some id else none
+  | some id => if id == Dllbc.declSlot then some id else none
   | none => none
 
 /-- **The L-suffix condition, checked** (M32 R1).
@@ -790,7 +790,7 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
   --   * the REST is passed through `bindFn`, i.e. `retarget` — which is how a call
   --     written in the tail finds the binding. That is not an optimisation over
   --     putting the name in `rctx`: `retarget` also PERMUTES a call's arguments to
-  --     match a `[k]`-hoisted callee's telescope, and a `.callV` minted at the
+  --     match a `[k]`-hoisted callee's telescope, and a spine minted at the
   --     surface would skip the permutation. Eight functions in this corpus have a
   --     `[k]` that is not parameter 0, so the difference is real and silent.
   --     `bindFn` adds the one check the surface cannot make for itself — that the
@@ -869,20 +869,20 @@ partial def elabUBlk (rctx : List (String × Nat)) (pctx : List String) (next : 
         | some i => `(some $(quote i))
         | none => Macro.throwErrorAt d s!"fn: decreasing argument '{d.getId}' is not a parameter of '{name.getId}'"
     let nm := name.getId.toString
-    -- The slot. `progBase + next` rather than `next` itself, because a function's
-    -- OWN body numbers its parameters from 0 and a binding that collided with one
-    -- of its callees' parameters would be read as that parameter. `next` is
-    -- consumed here so two `fn`s in a block cannot land on one slot; the arithmetic
-    -- is emitted rather than computed, so `progBase` stays the single definition of
-    -- where globals live.
-    let slot ← `((⟨Dllbc.FnMacro.progBase + $(quote next), $(quote nm)⟩ : Dllbc.Var))
+    -- The slot: the TAG `declSlot` (M32 R4). It used to be `progBase + next`,
+    -- distinct per declaration, because a function's OWN body numbers its
+    -- parameters from 0 and an id-keyed lookup would read a colliding binding as
+    -- that parameter. Ω resolves by NAME (M32 R1), so distinctness bought
+    -- nothing and the shared tag says the one thing still asked of it: this
+    -- entry is a declaration. `next` is no longer consumed here.
+    let slot ← `((⟨Dllbc.declSlot, $(quote nm)⟩ : Dllbc.Var))
     -- **The name goes into scope for the rest of the block** (M31 Stage A). A
     -- function is an ordinary comptime binding now (§2.1), so a bare `Main` is a
     -- name-use of one and `let F = Main` is the ⇝ copy of knowledge the model says
     -- it is. `retarget` below still owns the `f(…)` rewrite — `localId` keeps this
     -- entry out of the call row for exactly that reason — so what this adds is the
     -- BARE-name reading `retarget` never had, and nothing it did have is removed.
-    let (rest', n2) ← elabUBlk ((nm, Dllbc.FnMacro.progBase + next) :: rctx) pctx (next + 1) rest
+    let (rest', n2) ← elabUBlk ((nm, Dllbc.declSlot) :: rctx) pctx next rest
     return (← `(Dllbc.Term.letIn $slot
                   (Dllbc.FnMacro.fnElabOrFail
                     (Dllbc.FnDef.mk $(quote nm) [$teleSyns,*] $retT $bodyT $decT))

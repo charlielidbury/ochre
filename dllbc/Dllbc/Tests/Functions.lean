@@ -2349,9 +2349,10 @@ It was **the sweep's safety net** (M28 θ). While `decl{ … }` still produced a
     prog{ fn A …; fn B …; TAIL }   ==   progOf [declA, declB] (prog{ TAIL })
 
 as `Term`s, by `==` — literal equality, not α-equivalence, because the statement
-binds its slot at `progBase + next` and `progOf` binds the `i`-th declaration at
-`progBase + i`, and those agree exactly when the statements are consecutive and
-start a block. Four cases covered the shapes the lowering treats differently: a
+and `progOf` bound a declaration at the same id. That was `progBase + next`
+against `progBase + i`, agreeing exactly when the statements were consecutive and
+started a block; since M32 R4 both write the tag `Var.declSlot` and the agreement
+is unconditional. Four cases covered the shapes the lowering treats differently: a
 non-recursive function and a caller, `[k]` on parameter 0, `[k]` NOT on parameter
 0 (the permutation case the design exists for), and a dependent return type.
 
@@ -2381,31 +2382,44 @@ open Dllbc
 
 namespace Dllbc.Tests.FnStmt
 
-/-! ## §A. Two `fn` chains composed through a `%` splice
+/-! ## §A. Two `fn` chains composed through a `%` splice — NOW LEGAL (M32 R4)
 
-    Sharing a prefix is ordinary let-chain composition — a Lean function taking the
-    rest of the block and splicing it — and half the corpus is written that way.
-    But each chain numbers its slots from `progBase`, so NESTING two of them makes
-    the inner chain shadow the outer, and left alone that is not an error:
-    measured before the check existed, `withA (withB …)` ACCEPTED with both names
-    resolving to whichever function landed second. `bindFn` refuses it instead. -/
+    Sharing a prefix is ordinary let-chain composition — a Lean function taking
+    the rest of the block and splicing it — and half the corpus is written that
+    way. NESTING two chains used to be refused, and this assertion FLIPPED when
+    R4 deleted `progBase`.
 
+    The history, because the flip is only correct if the original hazard is
+    genuinely gone. Each chain numbered its slots from `progBase`, so the inner
+    chain's first declaration landed on the SAME id as the outer chain's first,
+    and under id-keyed Ω both names resolved to whichever function landed second
+    — measured, and accepted silently, which is why `bindFn` grew a check.
+
+    **The collision was on the ID and never on the NAME.** `withA (withB …)`
+    collided `A` with `B`. M32 R1 made Ω resolve by name, at which point the two
+    entries stopped being confusable and the check was refusing a program that
+    would have worked; R4 removed the arithmetic that produced the collision and
+    the check with it. What still shadows is a chain redeclaring an outer
+    chain's NAME, which is lexical shadowing doing its job. -/
+
+-- **The two declarations have DIFFERENT ARITIES**, which is what makes the
+-- assertion below discriminating rather than merely green: under the old
+-- collision both names denoted whichever function landed second, so `A(1)`
+-- would have reached a two-parameter callee and been an arity error. An accept
+-- can only happen if each name reaches its OWN declaration.
 def withA (rest : Term) : Term := prog{ fn A (n : Nat) -> Nat { n }; %rest }
-def withB (rest : Term) : Term := prog{ fn B (n : Nat) -> Nat { n }; %rest }
+def withB (rest : Term) : Term := prog{ fn B (n : Nat, m : Nat) -> Nat { n }; %rest }
 
--- Nested: refused, by the same needle a refused lowering uses, naming the slot
--- and the fix.
-example : progRejects (withA (withB (prog{ let r = A(1); let s = B(2); () })))
-  FnMacro.fnRefusedNeedle = true := by native_decide
-example : progOk (withA (withB (prog{ let r = A(1); let s = B(2); () }))) = false := by
+-- Nested: ACCEPTED.
+example : progOk (withA (withB (prog{ let r = A(1); let s = B(2, 3); () }))) = true := by
   native_decide
 
--- The two shapes that are FINE, so the check above is not simply banning
--- composition: one chain declaring both, and a prefix whose tail declares nothing.
+-- The shapes that were always fine, kept: one chain declaring both, and a
+-- prefix whose tail declares nothing.
 example : progOk (prog{
   fn A (n : Nat) -> Nat { n };
-  fn B (n : Nat) -> Nat { n };
-  let r = A(1); let s = B(2); () }) = true := by native_decide
+  fn B (n : Nat, m : Nat) -> Nat { n };
+  let r = A(1); let s = B(2, 3); () }) = true := by native_decide
 example : progOk (withA (prog{ let r = A(1); () })) = true := by native_decide
 
 /-! ## §B. The seal is ASCRIPTION, and its one confusable neighbour (M28 ξ)
