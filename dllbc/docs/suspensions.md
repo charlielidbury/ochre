@@ -1,228 +1,211 @@
 # M32: One syntax, one semantic domain — closures are the only suspensions
 
-**Status: UNDER CONSTRUCTION — design under review with the user. This revision
-supersedes the doc's first draft, which proposed lazy `(Term, ρ)` storage for ALL
-comptime bindings; the user's review dissolved that ("why does anything apart from λ
-need to capture? why evaluate anything else lazily?") and the answers below are the
-corrected architecture. Depends on: M31 Stage A (merged), Stage C (in flight).**
+**Status: UNDER CONSTRUCTION — design under review with the user; this revision
+records the capture model the user stated and the review converged on (raw closures
+at rest; cooking derived, not chosen). Depends on: M31 Stage A (merged), Stage C
+(at the merge gate).**
 
 ## 0. Motivation: three inherited problems, and what does NOT need fixing
 
 M32 is the representation milestone extracted from M31 (functions-are-comptime.md §5).
 It exists to fix three things:
 
-  1. **The mixed domain.** `Val` embeds the pure syntax (`pvar`, `pi`, `lam`, `app`,
-     … as Val constructors) so that normalized-but-open terms — a λ's body under its
-     binder, a stuck spine — have somewhere to live at rest. Every value traversal in
-     the checker therefore walks a tree that is sometimes semantics and sometimes
-     syntax; E3's whole payload question existed only because of this blur.
+  1. **The mixed domain.** `Val` embeds the pure syntax so that normalized-but-open
+     terms have somewhere to live at rest; every value traversal walks a tree that is
+     sometimes semantics and sometimes syntax; E3 existed only because of this blur.
   2. **Two λ species.** Pure λs evaluate to Pure.lean closures; imperative λs to
-     `Val.rfn` (names + suspended `Term`). One language-level λ (M31's model) wants
-     one value form.
+     `Val.rfn`. One language-level λ wants one value form — and gets one (§2).
   3. **The id machinery** (E2): frame windows, `shiftVars`, `progBase` arithmetic —
-     replaceable by name-keyed newest-wins Ω now that Stage 0's pop-with-drop
-     guarantees ended scopes leave no stale entries.
+     replaced by name-keyed newest-wins Ω, made safe by Stage 0's pop-with-drop.
 
-Two things explicitly do NOT need fixing, and the design refuses to touch them:
+Two things explicitly do NOT need fixing:
 
-  * **Nothing except a binder body needs capture.** A closure `(ρ, body)` is forced
-    exactly where evaluation must stop at a binder: a pure λ/Π/Σ body (evaluation
-    waits for the argument) and an imperative body (evaluation IS ⇒-entry, a later
-    event). A non-binder right-hand side — `let L = len l` — has nothing to capture:
-    it evaluates at its own event, snake_case citations resolved to snapshots
-    (eagerness the snapshot semantics REQUIRES), result stored as a value.
-  * **Nothing benefits from laziness.** Stored knowledge is normalized at rest today,
-    and that eagerness is load-bearing: `convert` is `==` on canonical forms, and the
-    store-wide sweeps (refinement, X-Gen abstraction) are correct because every
-    occurrence they must rewrite is materialized when they run (see §3 — abstraction
-    does not commute with evaluation, so anything unevaluated at sweep time is a
-    silent miss, M30's measured count-equation failure mode). Laziness would buy
-    unmeasurable time (the checker is 1.3% of the build) and cost a
-    normalize-at-splits/write-back apparatus purely to repair what eager-at-rest
-    gives free. Dropped.
+  * **Nothing except a λ captures.** A non-binder right-hand side (`let L = Len l`)
+    evaluates at its own event — snake_case citations resolved to snapshots, which
+    the snapshot semantics REQUIRES — and stores a value. Only a λ body awaits
+    something (its arguments; for an imperative body, its ⇒-entry), so only a λ
+    suspends.
+  * **Nothing benefits from lazy *bindings*.** Stored non-λ knowledge is normalized
+    at rest; `convert` is `==`/`alphaEq` on canonical forms; the sweeps run over
+    material occurrences. (λ *bodies* are different — §2.2 — and that difference is
+    the whole design.)
 
-**The model in one sentence: `Term` becomes the only syntax — EVERY at-rest value is
-a self-contained canonical Term (pure λs with normalized bodies, imperative λs with
-raw ones) — and `Val` shrinks to a true semantic domain whose closures exist only
-transiently inside the evaluator, replacing both Pure.lean closures and `rfn`.**
-#19(a)'s confinement becomes a totality rather than a policy: closures never leave
-the evaluator at all.
+**The model in one sentence: `Term` is the only syntax; `Val` is a small semantic
+domain used transiently; every λ value is a closure `(ρ, raw body)` — the one
+suspension form, replacing Pure.lean closures AND `rfn` — where ρ is the comptime
+slice of Ω at formation; and cooking is driven entirely by demand, with exactly one
+persistent case, derived in §3.**
 
 ## 1. What dies here
 
-The mixed domain (Val's syntax embedding — `pvar`/`pi`/`sigmaT`/`lam`-with-syntax-
-bodies/`idT`-as-stored-syntax leave Val); `Term.lamR` and `Val.rfn` (one λ, one
-closure); `callV` (app spines; nullary `fn` desugars to `λ (U : Unit)` per the E6
-ruling); `Var.comptimeRhs`'s seal/λ carve-outs (the let-arrow invariant becomes
-exceptionless); Stage A's backstop scatter (replaced by one structural fact, §2.5);
-the pure lift's λ case (⇒ can no longer construct a function); and E2's id machinery
-(minting, frame windows, `shiftVars`/`shiftBindersK`, `progBase` arithmetic, `keep`
-sets).
+The mixed domain (Val's syntax embedding); `Term.lamR` and `Val.rfn`; `callV` (app
+spines; nullary `fn` desugars to `λ (U : Unit)`); `Var.comptimeRhs`'s carve-outs (the
+let-arrow invariant becomes exceptionless); Stage A's backstop scatter (one
+structural fact, §2.5); the pure lift's λ case; the modeless-pure-binder exemption
+(§2.1); and E2's id machinery.
 
 ## 2. Target representation and semantics
 
-### 2.1 The two domains
+### 2.1 The universal binder convention (user ruling)
 
-**`Term`** — the whole language, plus one addition: σ's appear in Terms as reserved
-`§`-names (M30's reserved namespace, elaborator-unwritable), so a canonical Term can
-mention a symbol (`Len «§σ42»`) without a machine-value leak. **`Val`** — the
-semantic domain: constructors; neutral spines (head = a name, a σ-name, a seal-site,
-or a recursor constant; arguments = values); closures `(ρ, Term)` with knowledge-only
-environments; borrow/loan markers; ⊥. No syntax embedding.
+The capitalisation convention reaches EVERY binder — λ and Π binders included; the
+old exemption ("pure binders are modeless") dies. **A capital binder is comptime**:
+erased, its argument snapshot-read (⇝) at application, capturable by inner λs. **A
+lowercase binder is runtime**: its argument ⇒-read (moved/consumed or loan-seeded) at
+entry, NOT capturable — the capture rule with no special cases. `λ N. λ M. Add N M`;
+the inner λ captures `N` because it is capital, by the same rule as everything else.
+A lowercase-binder λ remains meaningful — `λ (l : List Nat). …` consumes its data
+argument where `λ (L : List Nat). …` snapshot-reads it — so binder case is
+load-bearing at argument-reading uniformly (M31 §2.2's rule reaching its last
+position). Migration: the stdlib's pure binders capitalise (mechanical; elim motives
+included).
 
-### 2.2 At rest: canonical Terms, eagerly
+### 2.2 The capture model (user's two rules)
 
-A comptime binding's RHS is evaluated at the binding event (as today) and stored in
-**readback form: a canonical Term** — closure-free, binder names canonicalized
-(`§0, §1, …`), σ's as reserved names. Comparison is `Term.alphaEq`/`==` on canonical
-forms (three sites already exist). The store-wide sweeps re-target from Val trees to
-Terms: refinement is `substP` at a σ-name (atom-keyed, commutes with evaluation, §3);
-X-Gen abstraction is Term-spine abstraction (the Term-level machinery `substP`,
-`alphaEq` already exists; `abstractInto` gains a Term twin and loses its Val
-original). Runtime bindings hold runtime `Val`s (data, markers) — never a function
-(§2.5).
+  1. **Formation**: when ⇝ evaluation reaches a λ, the closure captures ρ — the
+     evaluation environment, which began as the comptime-filtered slice of Ω and
+     grew binder entries as evaluation descended. Formation-time evaluation of the
+     body is a CHECK (the body type-checks against its binders/ascription); the
+     stored value is `(ρ, raw body)` — the syntax as written, not a cooked form.
+     The capture guard becomes a capture *filter*: knowledge-only by construction.
+  2. **Application, both fragments**: evaluate the body under captured-ρ plus the
+     arguments. For a pure body that is ⇝ evaluation; for an imperative body it is
+     ⇒-entry — a fresh frame in the LIVE store (effects act on the world at call
+     time; captured ρ supplies knowledge only, state arrives through arguments).
 
-There is NO at-rest closure — not even for imperative λs (user review: the species
-distinction dies entirely, not mostly). An imperative λ's captured environment is
-**discharged at formation**: `substP` its PascalCase names by their canonical-Term
-values into the body. This is not the substitution M30 banned (index arithmetic
-under runtime ids); it is name-keyed splicing of knowledge at canonical `§`-names,
-capture-free by the reserved namespace, and for immutable bindings it is
-observationally identical to env capture (§2.4 of functions-are-comptime.md). The
-stored imperative λ is therefore a self-contained Term whose body is raw (never
-normalized — entering it is ⇒'s job); it is opaque to conversion by design — the
-audited-not-conversed line — and fully sweepable as the Term tree it is. What
-distinguishes pure from imperative at rest is only how cooked the body is; nothing
-structural. The pure-vs-imperative fork is recomputed where it matters — at
-application and at the seal — by BODY CLASSIFICATION (does the body contain
-effectful formers), a property, not a species tag.
+There is no difference between the fragments in the closure or application
+mechanics; the single irreducible difference is what evaluating the body MEANS
+(pure reduction vs the effectful walk), recomputed by body classification at
+application and seal — a property, never a species tag, never a substitution.
 
-### 2.3 Evaluation: eval : ρ → Term → Val, readback : Val → Term
+Store-wide REFINEMENT sweeps (σ := v) rewrite captured ρ's like everything else,
+and later evaluation agrees — substitution commutes with evaluation (§3).
 
-Classic NbE shape. `eval` produces semantic values (closures at binders); `readback`
-canonicalizes at the store boundary — exactly today's discipline with "canonical
-form" changing type from Val-syntax to Term. Transient closures inside one evaluation
-are unchanged from M30's machinery in spirit; what changes is that they never need a
-syntax-embedded Val to be read back INTO.
+### 2.3 At rest: canonical Terms for knowledge, raw closures for λs
+
+Non-λ knowledge at rest is a canonical Term (σ's as reserved `§`-names; comparison
+by `alphaEq`/`==`; swept by Term-level `substP`/abstraction). λ values at rest are
+closures per §2.2. Conversion involving a λ value cooks TRANSIENTLY (evaluate the
+body under ρ + a fresh `§`-binder, read back, compare) — on demand, cost measured
+as noise (checker = 1.3% of build).
 
 ### 2.4 One λ, the let-arrow invariant, ⇝-sealing
 
-One λ former; formation is ⇝ (closure creation — knowledge). **Capital `let` ⇝-reads
-its RHS, lowercase `let` ⇒-reads it — zero carve-outs.** For `fn F = (λ… : Π…)` this
-requires the seal be ⇝-evaluable:
-
-  * Check half: conversion for pure bodies; for imperative bodies the audit
-    (`checkRFnBody`) becomes a judgment invocable from ⇝ (it already runs in its own
-    fresh store).
-  * Forget half — generativity resolved by structure: the sealed value is the **seal
-    SITE applied to its captured inputs**, a structured neutral (readback: a Term
-    spine headed by the site's reserved name). Deterministic — evaluation stays a
-    function, no counter under ⇝ — and distinguishing (a binder-nested seal at
-    different instantiations yields different values; the user's correction of
-    occurrence-only keying). `fsig` keys by site.
+One λ former; formation is ⇝ (closure creation — ⇒ cannot construct a function).
+**Capital `let` ⇝-reads its RHS, lowercase `let` ⇒-reads it — zero carve-outs.**
+The seal is ⇝-evaluable: check half by conversion (pure) or the audit invoked as a
+judgment (imperative — it already runs in its own fresh store); forget half by
+structure — the sealed value is the **seal SITE applied to its captured inputs**, a
+structured neutral, deterministic and distinguishing (`fsig` keys by site).
 
 ### 2.5 No function in a runtime slot — structurally
 
-λ formation is ⇝-only, so ⇒ cannot construct a function value; the invariant needs
-ONE enforcement point (the pure lift's result must be data, not a function —
-`let f = Add 1` fails there with the capitalise message). Stage A's backstop is
-deleted, not extended; the corpus's remaining lowercase partial-application bindings
-migrate capital in the same commit.
+λ formation is ⇝-only, so the invariant needs ONE enforcement point: the pure
+lift's result must be data, not a function (`let f = Add 1` fails there). Stage A's
+backstop is deleted; the corpus's lowercase partial-application bindings migrate
+capital in the same commit.
 
-### 2.6 Application: spines only; capture at full generality
+### 2.6 Application surface: spines only
 
-`callV` retires for app spines (nullary via Unit-desugar), preserving the arrow-keyed
-mint-vs-remember split (§12 decision 5): ⇒ call results mint fresh existentials at
-the instantiated codomain; ⇝ remembers structured neutrals. Saturation for imperative
-entry survives (§12 decision 4). Capture reaches M31-deferred generality: a fn body
-may cite enclosing comptime DATA, discharged into the body at formation (§2.2) —
-escape-safe trivially, since the stored value is self-contained. Requires the
-**fn body scope fix** (bodies elaborate seeing sibling and enclosing bindings; the
-`fnElab` id-collision that gated it is void under name-keying).
+`callV` retires for app spines (nullary via Unit-desugar), preserving the
+arrow-keyed mint-vs-remember split (§12 decision 5) and saturation for imperative
+entry (§12 decision 4). Capture reaches M31-deferred generality — a fn body cites
+enclosing comptime data, escape-safe because the closure carries its knowledge
+(Stage C's measured narrowing: program-scope citation already works today; the
+closure is what makes the ESCAPING case safe). Requires the fn body scope fix
+(params-only elaboration context retires; the id-collision that gated it is void
+under name-keying).
 
-## 3. The safety criterion (why at-rest stays eager)
+## 3. The cooking schedule — derived, not chosen
 
-**A store-wide sweep is safe only against material occurrences: abstraction does not
-commute with evaluation.** Substitution (σ := v) is atom-keyed and commutes — it
-propagates through environments and later evaluation is right. X-Gen's abstraction
-(spine ↦ fresh σ) is compound-keyed and does not — an unevaluated body can mint the
-spine AFTER the sweep passed, leaving later evaluations speaking pre-abstraction
-vocabulary: propositionally linked by the branch equation, definitionally divergent,
-presenting as flagship proofs failing (M30's count-equation mode — measured, silent).
-This criterion is WHY §0 refuses laziness: eager canonical Terms at rest make every
-sweep total over what exists, with no normalize-at-splits apparatus. The one
-remaining unevaluated thing at rest is the imperative λ's raw body, and it is
-hazard-free by construction: it never participates in conversion (audited once, at
-formation, with its knowledge already discharged in), and as a Term tree it is fully
-material to every sweep. Pure λ values at rest are in readback form (bodies
-normalized under their binder — today's discipline, kept). **Canary: quicksort's
-count equation.**
+**The criterion: a store-wide sweep is safe iff it commutes with evaluation, and a
+sweep may only rewrite occurrences that are material when it runs.**
+
+  * **Substitution (refinement, σ := v) commutes** — atom-keyed; every
+    representation preserves atoms; rewriting ρ and re-evaluating later agrees with
+    cooking first. Raw closures are fully correct under it. This is most sweeps.
+  * **X-Gen's generalization (spine ↦ fresh σ) does not commute** — compound-keyed;
+    a raw body + ρ holds the spine's INGREDIENTS and can re-mint the spine after
+    the sweep has passed, speaking pre-generalization vocabulary while the branch
+    speaks σb: propositionally linked by the branch equation, definitionally
+    divergent — the corpus's `Refl`s die. This is M30's measured count-equation
+    failure mode, and it is the ONLY non-commuting operation in the system.
+
+The schedule follows as the criterion's minimal fixpoint: **cooking is persistent
+exactly at generalization events, and nowhere else.** When a generalization sweep
+fires (a stuck-scrutinee split — the system's rarest sweep), the λ closures it
+reaches are cooked (body evaluated under ρ + fresh `§`-binders), swept in cooked
+form, and the cooked form written back; every other closure, and every closure
+before its first generalization, lives raw and revives its original syntax at every
+application, per §2.2. Imperative bodies are exempt entirely — they never
+participate in conversion (audited once at formation, then only entered), so they
+are never cooked, ever.
+
+Rejected alternatives, for the record: cook-at-formation (pre-bakes everything;
+user-rejected); normalize-at-every-split (pays at commuting sweeps that need
+nothing); assumption-indexed evaluation (smart case/Zombie — coherent, never
+mainstream, makes conversion path-relative; rejected with precedent at #19);
+propositional-only generalization (M30's wall). Optimization note, not requirement:
+a generalization need only cook closures whose ρ mentions σ's in the abstracted
+spine's support. **Canary: quicksort's count equation.**
 
 ## 4. Also landing here (from the M31 ledger)
 
 The `piAgree` agreement path for passing borrow-moded-signature functions (E4's
-measured gap); `sealFn` renamed to the audit half of ascription, with seal dispatch
-by body classification (meaningful once one former exists); the `fn` refusal
-sentinel's diagnosis (already fixed in Stage A) kept working through the spine
-transition.
+measured gap); `sealFn` renamed to the audit half of ascription, seal dispatch by
+body classification; the L-suffix lemma/fn namespace condition (Stage C: currently
+an unenforced convention — under name-keying it becomes a real check).
 
 ## 5. Staging
 
-Corpus green at every stage; representation stages differential to exactly zero; rule
-stages have enumerated flips only.
+Corpus green at every stage; representation stages differential to exactly zero;
+rule stages have enumerated flips only.
 
-**Stage V — viability probe (before any dispatch).** One agent, two bets tested
-cheaply: (a) newest-wins name-keyed Ω against `checkRFnBody` + the executing
-differential (E2's bet; fallback dual-key `Var`); (b) readback-to-Term with σ's as
-reserved names against the three comparison sites + one X-Gen path (the §2.2 bet;
-fallback is a small syntax embedding retained in Val, which would be a finding, not a
-failure).
+**Stage V — viability probe (before any dispatch).** One agent, three cheap bets:
+(a) newest-wins name-keyed Ω against `checkRFnBody` + the executing differential
+(E2; fallback dual-key `Var`); (b) readback-to-Term with `§`-σ-names against the
+comparison sites and one X-Gen path; (c) raw-closure conversion-on-demand against
+the three `alphaEq` sites (cook-transiently correctness + cost).
 
-**Stage R1 — the domain split.** Readback emits Terms; at-rest knowledge becomes
-canonical Terms; sweeps re-target (substP-at-σ-name; Term abstraction); Val loses its
-syntax embedding. The big rewrite — the E3 traversal set is the checklist. Zero
-differential.
+**Stage R1 — the domain split.** Readback emits Terms; at-rest non-λ knowledge
+becomes canonical Terms; sweeps re-target to Term level; Val loses its syntax
+embedding. Zero differential.
 
-**Stage R2 — one λ.** `lamR`/`rfn` fold into the one former; imperative λ values
-become self-contained Terms via formation-time discharge (no at-rest closure);
-frame-bind-and-walk enters the body with its knowledge already spliced in; capture
-generality + body scope fix. Zero differential except enumerated capture-legality
-flips.
+**Stage R2 — one λ, one closure.** `lamR`/`rfn` fold into `(ρ, raw body)`;
+formation captures the filtered slice; application per §2.2; cook-at-generalization
+with write-back; universal binder convention + stdlib binder migration; capture
+generality + body scope fix. Zero differential except enumerated flips (binder-case
+migrations, capture legality).
 
 **Stage R3 — arrows exceptionless.** ⇝-sealing (site-σ); `comptimeRhs` carve-outs
-deleted; no-⇒-λ + backstop demolition + the partial-application migration
-(enumerated flips: the `let f = Add 1` class).
+deleted; no-⇒-λ + backstop demolition + the partial-application migration.
 
-**Stage R4 — spines + sweep.** `callV` retires; §1's deletion list completed; E2's id
-machinery removed; docs/logs currency.
+**Stage R4 — spines + sweep.** `callV` retires; §1's deletion list completed; E2's
+id machinery removed; docs/logs currency.
 
 ## 6. Sharp edges to interrogate before dispatch
 
-  * **σ-names in Terms**: the reserved namespace now carries load in the one syntax —
-    confirm elaborator-unwritability end to end, and that `substP`'s
-    stop-at-rebinding-binder semantics is vacuous for `§`-names (nothing rebinds
-    them).
-  * **Seal-site identity**: stable across macro expansion and α-canonicalization —
-    minted at elaboration as a reserved name?
-  * **Audit-from-⇝ reentrancy**: state isolation of the audit's fresh store from the
-    caller's Ω.
-  * **Obligations**: owed types stored as canonical Terms — sweeps must reach O (they
-    do today as Vals; the re-target must not skip it).
-  * **Executing mode**: never converts; confirm no executing path compares, so
-    closures in executing state need entry only.
-  * **Term-level sweep completeness**: `abstractInto`'s Term twin must sweep
-    everywhere the Val original did — Ω, sctx, O (Stage 0's `firstHeldBorrow`
-    precedent: the traversal set grows; enumerate, don't assume).
-  * **Formation-time discharge at scale**: splicing captured knowledge into a body
-    duplicates trees (a builder citing a large snapshot n times stores n copies) —
-    measure on the flagship before declaring it free; and confirm `substP`'s
-    stop-at-rebinding semantics does the right thing inside imperative bodies
-    (shadowing a PascalCase name inside a body is refused by §2.1 anyway, which
-    should make the guard vacuous — verify, don't assume).
+  * **σ-names in Terms**: reserved-namespace unwritability end to end; `substP`'s
+    rebinding guard vacuous for `§`-names (nothing rebinds them) — verify.
+  * **Seal-site identity**: stable across macro expansion and α-canonicalization.
+  * **Audit-from-⇝ reentrancy**: state isolation of the audit's fresh store.
+  * **Cook-at-generalization mechanics**: cooking evaluates bodies mid-sweep —
+    confirm it cannot cascade (cooking normalizes; it cannot trigger a split) and
+    that write-back composes with the sweep's own traversal order; post-cook, the
+    raw form is gone — confirm nothing (error messages, pretty-printing) depended
+    on showing source syntax for cooked closures.
+  * **Obligations**: owed types swept wherever they live — the Term-level sweep
+    must reach O (Stage 0's `firstHeldBorrow` precedent: enumerate the traversal
+    set, don't assume it).
+  * **Executing mode**: never converts — confirm no executing path compares, so
+    closures in executing state are entry-only.
+  * **Universal binder migration**: stdlib λ/Π binders capitalise — mechanical, but
+    elim arms bind `ih`-style names the macro mints; confirm minted binders follow
+    the convention or are `§`-reserved.
 
 ## 7. Non-goals
 
 Borrow refounding (shape/contract split, store-relative types — SUGGESTIONS.md,
-post-M32, `split_at_mut` as its test); surface juxtaposition syntax (interacts with
-R4's spines — decide there or defer); consistency proofs (unchanged scope); laziness
-anywhere (refused on the record, §0).
+post-M32); surface juxtaposition syntax (interacts with R4's spines — decide there
+or defer); consistency proofs; lazy *bindings* (only λ bodies suspend — §0);
+assumption-indexed evaluation (rejected with precedent, §3).
